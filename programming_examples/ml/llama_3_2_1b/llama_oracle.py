@@ -591,11 +591,11 @@ def topk_sample_reference(
     temperature: float,
     top_k: int,
     state: list,
-    k_set: int = 64,
+    k_set: int = 8,
 ) -> tuple[int, list]:
     """The sampled global token id, and the generation's xoshiro state after it.
 
-    k_set is the resident-set capacity (the kernel's kKset); sampling draws
+    k_set is the set's capacity (the kernel's kKset); sampling draws
     one uniform from `state` over the set's best top_k members (by logit, then
     lower id), weighted e^(z - max z) with z = logit / temperature, and top_k
     0 means the whole set. Greedy (temperature <= 0) is the argmax whatever

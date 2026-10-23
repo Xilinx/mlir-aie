@@ -180,7 +180,7 @@ def mma_down(tile, c_w, part, out, kernels, spread_chunk, m_count=1):
         c_w.release(1)
 
 
-def mma_kernels(t_act, t_slot, t_out, t_scratch):
+def mma_kernels(t_act, t_slot, t_out, t_scratch, m_max):
     """The mma kernel object's bound entry points for these object types.
 
     Args:
@@ -188,13 +188,14 @@ def mma_kernels(t_act, t_slot, t_out, t_scratch):
         t_slot: The weight slots' type.
         t_out: The output objects' type.
         t_scratch: A second fp32 output buffer's type.
+        m_max: The rows an activation object holds.
 
     Returns:
         (llama_mma_spread, (llama_mma_acc, llama_mma_f32) for t_out, the same
         with llama_mma_f32_to for t_scratch, the tile's type, the partials'
         type).
     """
-    km = llama_kernels.gemv_mma()
+    km = llama_kernels.gemv_mma(m_max=m_max, out_bytes=OUT_BYTES)
     t_tile = np.ndarray[(MMA_ACT_BYTES,), np.dtype[np.int8]]
     t_part = np.ndarray[(8 * DOWN_ROWS_PER_CORE,), np.dtype[np.int32]]
     k_acc = km.bind("llama_mma_acc", [t_tile, t_slot, t_part] + [np.int32] * 3)

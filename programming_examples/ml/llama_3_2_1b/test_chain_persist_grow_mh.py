@@ -241,7 +241,11 @@ def main(argv=None):
     )
     p.add_argument("--t", type=int, default=128, help="KV cache rows")
     p.add_argument(
-        "--kset", type=int, default=8, help="the sampler's resident top-k set"
+        "--kset",
+        type=int,
+        choices=range(1, 9),
+        default=8,
+        help="the sampler's top-k set size",
     )
     p.add_argument(
         "--p-max",

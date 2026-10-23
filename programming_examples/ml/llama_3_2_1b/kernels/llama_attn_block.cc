@@ -43,7 +43,9 @@ static constexpr int kHeadStride = 64 + 4 * kHD;
 static constexpr int kStateBytes = kStateHeader + kREP * kHeadStride;
 
 static_assert(kHD == 64, "scores scale by 1/sqrt(hd) = 2^-3");
-static_assert(kTB % kLanes == 0, "block rows must be a multiple of 16");
+static_assert(
+    kTB % (2 * kLanes) == 0,
+    "block rows must be a multiple of 32: exp takes two groups a call");
 
 alignas(64) static const int32_t kLaneIndex[kLanes] = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
@@ -57,7 +59,8 @@ static inline float *head_record(int8_t *state, int h) {
 __attribute__((noinline)) static ::aie::vector<float, kLanes>
 vec_recip_rne(::aie::vector<float, kLanes> a) {
   ::aie::vector<int32, kLanes> bits = a.template cast_to<int32>();
-  ::aie::vector<int32, kLanes> e = ::aie::downshift(bits, 23);
+  ::aie::vector<int32, kLanes> e =
+      ::aie::downshift(::aie::bit_and(int32(0x7f800000), bits), 23);
   ::aie::vector<int32, kLanes> m =
       ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bits));
   ::aie::vector<int32, kLanes> rem = ::aie::broadcast<int32, kLanes>(1 << 24);

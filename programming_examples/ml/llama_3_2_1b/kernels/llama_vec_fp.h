@@ -70,13 +70,13 @@ static inline ::aie::vector<float, kN> vec_mul_rne(::aie::vector<float, kN> a,
       .template cast_to<float>();
 }
 
-// a * b rounded to nearest even, as the scalar soft-float `*` is -- the
-// scalar form of vec_mul_rne, for callers with one pair of floats rather than
-// a vector. The target has no scalar float multiplier (`*` on two floats is
-// __mulsf3), so this avoids that libcall via the same bit-exact machinery.
-// 8 lanes: the narrowest width AIE2P legalizes an integer bit_and/bit_or at.
+// a * b as vec_mul_rne rounds it: the scalar soft-float `*`'s product, but 0
+// below FLT_MIN, without __mulsf3 (the target has no scalar float
+// multiplier). 8 lanes: the narrowest width AIE2P legalizes an integer
+// bit_and/bit_or at.
 __attribute__((noinline)) static float scalar_mul_rne(float a, float b) {
-  return vec_mul_rne(::aie::broadcast<float, 8>(a), ::aie::broadcast<float, 8>(b))
+  return vec_mul_rne(::aie::broadcast<float, 8>(a),
+                     ::aie::broadcast<float, 8>(b))
       .get(0);
 }
 
@@ -208,9 +208,8 @@ static inline void q_requant_heads(const float *restrict q_fp,
   // Every head's scale and reciprocal at once. max(absmax, 1e-12f) is an
   // integer max of the non-negative bits.
   ::aie::vector<float, kGroup> absmax =
-      ::aie::max(
-          ::aie::load_v<kGroup>(q_scale).template cast_to<int32>(),
-          int32(0x2b8cbccc))
+      ::aie::max(::aie::load_v<kGroup>(q_scale).template cast_to<int32>(),
+                 int32(0x2b8cbccc))
           .template cast_to<float>();
   ::aie::vector<float, kGroup> scale =
       vec_mul_rne(absmax, ::aie::broadcast<float, kGroup>(1.0f / 127.0f));

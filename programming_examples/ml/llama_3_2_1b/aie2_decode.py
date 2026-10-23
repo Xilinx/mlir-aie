@@ -35,6 +35,11 @@ import sys
 
 import llama_kernels
 import numpy as np
+from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
+    AIEDevice,
+    WireBundle,
+    get_target_model,
+)
 from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
     CmpIPredicate,
     addi,
@@ -105,6 +110,7 @@ from llama_config import (
 # tiles to each core, in BD dimensions of LM_SLOTS_PER_TASK (at most 1023)
 # tiles.
 LM_N_TILES = VOCAB // N_TILE
+assert LM_N_TILES % N_CORES == 0
 LM_CORE_TILES = LM_N_TILES // N_CORES
 WLM_SLOT = N_TILE * D + 8 * 4 + 8 * 4
 assert WLM_SLOT == MMA_SLOT
@@ -176,7 +182,12 @@ M_MAX = 4
 # gamma; then a slot for outputs nothing reads; then the sampler's state.
 SLOTS = ("qkv", "o", "gu", "d")
 OUT_REGION = N_CORES * OUT_BYTES
-OUTS = {"qkv": M_MAX, "g": HD // N_CORES // 256, "u": HD // N_CORES // 256}
+OUTS = {
+    "qkv": M_MAX,
+    "g": HD // N_CORES // 256,
+    "u": HD // N_CORES // 256,
+    "lm": LM_OUTS,
+}
 # The SiLU core takes a row's up, then its gate, in chunks of SILU_CHUNK.
 SILU_CHUNK = 1024
 ROW = HACT_BYTES
@@ -194,6 +205,60 @@ assert ARRAY_ACT_BYTES == M_MAX * ACT_BYTES
 WM_SLOTS = 8
 WM_DEPTH = 6
 WM_COLS = (0, 2, 1, 3, 6, 4, 7, 5)
+
+
+class MemtilePins:
+    """The memtiles build() pins its links to, and what each link takes there.
+
+    The placer moves no pinned link, so the links pinned to one memtile must
+    fit it together at every build; the weight lanes' objects deepen with the
+    layers.
+    """
+
+    def __init__(self):
+        tm = get_target_model(AIEDevice.npu2)
+        self.limits = {
+            "bytes": tm.get_mem_tile_size(),
+            "S2MM channels": tm.get_num_dest_switchbox_connections(
+                0, 1, WireBundle.DMA
+            ),
+            "MM2S channels": tm.get_num_source_switchbox_connections(
+                0, 1, WireBundle.DMA
+            ),
+        }
+        self.links = {}
+
+    def tile(self, col, name, nbytes, s2mm, mm2s):
+        """Pin link `name` to column `col`'s memtile.
+
+        Args:
+            `col`: The memtile's column.
+            `name`: The link's name, for `check`'s error.
+            `nbytes`: Its buffers' bytes there.
+            `s2mm`: Its input channels there.
+            `mm2s`: Its output channels there.
+
+        Returns:
+            The memtile's Tile.
+        """
+        self.links.setdefault(col, []).append((name, (nbytes, s2mm, mm2s)))
+        return Tile(col, 1)
+
+    def check(self):
+        """Check every pinned memtile against the device's.
+
+        Raises:
+            ValueError: A memtile's links need more bytes or channels than it
+                has.
+        """
+        for col, links in self.links.items():
+            for i, (what, limit) in enumerate(self.limits.items()):
+                need = sum(use[i] for _, use in links)
+                if need > limit:
+                    raise ValueError(
+                        f"memtile ({col}, 1) needs {need} {what} for "
+                        f"{', '.join(name for name, _ in links)}; it has {limit}"
+                    )
 
 
 class StageLayout:
@@ -281,7 +346,12 @@ def build(
     T: CompileTime[int] = 128,
     KSET: CompileTime[int] = 8,
 ):
-    assert KSET <= 8, "a GEMV core keeps the top 8 of its share (llama_mma_lm_topk)"
+    if not 1 <= KSET <= 8:
+        raise ValueError(
+            f"KSET {KSET} is not 1..8: a GEMV core keeps the top 8 of its share "
+            "(llama_mma_lm_topk)"
+        )
+    pins = MemtilePins()
     stage_at = StageLayout(N_LAYERS)
     slots, outs, final_slot = stage_at.slots, stage_at.outs, stage_at.final
     discard, stage_total = stage_at.discard, stage_at.total
@@ -358,7 +428,12 @@ def build(
     of_w = [
         of_wm[c]
         .cons()
-        .forward(tile=Tile(WM_COLS[c], 1), obj_type=t_slot, depth=2, name=f"w{c}")
+        .forward(
+            tile=pins.tile(WM_COLS[c], f"wm{c}", WM_DEPTH * wm_slots * MMA_SLOT, 1, 1),
+            obj_type=t_slot,
+            depth=2,
+            name=f"w{c}",
+        )
         for c in range(N_CORES)
     ]
     of_outlo = ObjectFifo(
@@ -372,12 +447,12 @@ def build(
         out_offsets,
         obj_types=[t_out] * 4,
         names=[f"out{c}" for c in range(4)],
-        tile=Tile(0, 1),
+        tile=pins.tile(0, "outlo", 4 * OUT_BYTES, 4, 1),
     ) + of_outhi.prod().join(
         out_offsets,
         obj_types=[t_out] * 4,
         names=[f"out{c}" for c in range(4, 8)],
-        tile=Tile(7, 1),
+        tile=pins.tile(7, "outhi", 4 * OUT_BYTES, 4, 1),
     )
     # The residual core's inputs: cores 0-3's blocks, cores 4-7's blocks, and
     # from the norm core the fp32 residual they add to.
@@ -392,18 +467,20 @@ def build(
             blk_offsets,
             obj_types=[np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]]] * 4,
             names=[f"rblk{4 * half + c}" for c in range(4)],
-            tile=Tile((1, 6)[half], 1),
+            tile=pins.tile((1, 6)[half], ("rlo", "rhi")[half], 4 * RESID_BLOCK, 4, 1),
         )
     ]
     # A batch's rows are all normed before the residual core takes the first
-    # one's residual.
+    # one's residual. The norm core writes them into the residual core's
+    # memory, its west neighbor's (both pinned): the residual core's two
+    # input channels take rlo and rhi.
     of_rin = ObjectFifo(t_res, depth=M_MAX, name="rin")
     of_res = ObjectFifo(t_res, depth=1, name="res")
 
-    KA = llama_kernels.gemv_array()
+    KA = llama_kernels.gemv_array(m_max=M_MAX)
     t_scratch = np.ndarray[(M_MAX * 384 * 4,), np.dtype[np.int8]]
     k_spread, k_mma, k_mma_s, t_tile, t_part = mma_kernels(
-        t_act, t_slot, t_out, t_scratch
+        t_act, t_slot, t_out, t_scratch, M_MAX
     )
     # cs lives in part's groups 16-19; only mma_down writes them, after qkv_comb_cs.
     k_take_cs = KA.bind("llama_gemv_array_take_cs", [t_slot, t_part, np.int32])
@@ -415,7 +492,7 @@ def build(
         [t_scratch, np.ndarray[(RESID_BLOCK,), np.dtype[np.int8]], np.int32],
     )
     k_final = KA.bind("llama_gemv_array_residual_add", [t_half, t_half, t_res, t_res])
-    KM = llama_kernels.gemv_mma()
+    KM = llama_kernels.gemv_mma(m_max=M_MAX, out_bytes=OUT_BYTES)
     k_lm = KM.bind(
         "llama_mma_lm_topk", [t_act, t_slot, t_tile, t_part, np.int32, np.int32]
     )
@@ -580,6 +657,7 @@ def build(
                 p_m0,
                 k_final,
             ],
+            tile=Tile(3, 2),
             wait_for_parameters=True,
         )
     )
@@ -632,6 +710,7 @@ def build(
                 k_rms,
                 k_rms_fwd,
             ],
+            tile=Tile(4, 2),
             wait_for_parameters=True,
         )
     )
@@ -648,7 +727,13 @@ def build(
             offsets=[i * ROW_CHUNK for i in range(NH)] + [NH * ROW_CHUNK],
             obj_types=[t_rc] * NH + [t_rows],
             names=[f"rc_{half * NH + i}" for i in range(NH)] + [f"kvrows_{half}"],
-            tile=Tile((4, 2)[half], 1),
+            tile=pins.tile(
+                (4, 2)[half],
+                f"rchalf_{half}",
+                NH * (ROW_CHUNK + KV_ROW_WORDS * 4),
+                1,
+                NH + 1,
+            ),
         )
         for half in range(2)
     ]
@@ -695,7 +780,9 @@ def build(
             obj_types=[t_kvhb] * NH,
             depths=[2] * NH,
             names=[f"kvb_{half * NH + i}" for i in range(NH)],
-            tile=Tile((5, 3)[half], 1),
+            tile=pins.tile(
+                (5, 3)[half], f"kvblk_{half}", 2 * KV_BLOCK_WORDS * 4, 1, NH
+            ),
         )
     ]
     of_svc = [ObjectFifo(t_sv_half, depth=1, name=f"svhalf_{h}") for h in range(2)]
@@ -708,7 +795,7 @@ def build(
             offsets=[i * SVCHUNK_BYTES for i in range(NH)],
             obj_types=[t_sv] * NH,
             names=[f"svchunk_{half * NH + i}" for i in range(NH)],
-            tile=Tile((5, 3)[half], 1),
+            tile=pins.tile((5, 3)[half], f"svhalf_{half}", NH * SVCHUNK_BYTES, NH, 1),
         )
     ]
     KT = llama_kernels.attn_block(tb=KV_TB)
@@ -1372,12 +1459,12 @@ def build(
             # j, offset c * OUT_BYTES), then to the lm_head core, a candidate
             # slot each: half h's rows (objects 2h and 2h + 1), then its meta.
             lm_on = p_lm[tok]
-            lm_at = outs["g"]
+            lm_at = outs["lm"]
             step(
                 *acts(lm_on, discard),
-                *(t for j in range(3) for t in outs_drain(lm_on, "g", j)),
+                *(t for j in range(3) for t in outs_drain(lm_on, "lm", j)),
             )
-            step(*(t for j in range(3, LM_OUTS) for t in outs_drain(lm_on, "g", j)))
+            step(*(t for j in range(3, LM_OUTS) for t in outs_drain(lm_on, "lm", j)))
             w_tgs[N_LAYERS].finish()
             w_tgs[N_LAYERS + 1].finish()
             for c in range(N_CORES):
@@ -1437,6 +1524,7 @@ def build(
             *eps,
         ],
     )
+    pins.check()
     return Program(NPU2(), rt, workers=workers).resolve_program()
 
 
@@ -1451,7 +1539,7 @@ def main():
         "--n-layers", type=int, choices=range(1, MODEL_LAYERS + 1), default=2
     )
     p.add_argument("--t", type=int, default=128)
-    p.add_argument("--kset", type=int, default=8)
+    p.add_argument("--kset", type=int, choices=range(1, 9), default=8)
     opts = p.parse_args(sys.argv[1:])
     run_design_cli(
         build,

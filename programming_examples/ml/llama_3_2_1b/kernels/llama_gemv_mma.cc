@@ -83,11 +83,9 @@ half_epilogue(::aie::vector<int32, 32> sums, const float *restrict act_scales,
       if (ok) {
         out_val = fp.get(lane);
       } else {
-        // The target has no scalar float multiplier (only the int->float
-        // cast above is unavoidable there): vec_mul_rne keeps this exact
-        // without pulling in __mulsf3/__muldi3 for a path only the rare
-        // overflow case reaches. 8 lanes: the narrowest AIE2P legalizes an
-        // integer bit_and/bit_or at (see q_requant_heads).
+        // The scalar `*` without __mulsf3/__muldi3: IEEE's product but 0
+        // below FLT_MIN, which the decode's scales never reach. 8 lanes: the
+        // narrowest AIE2P legalizes an integer bit_and/bit_or at.
         ::aie::vector<float, 8> sv =
             vec_mul_rne(::aie::broadcast<float, 8>((float)sums.get(lane)),
                         ::aie::broadcast<float, 8>(act_scales[m]));
@@ -204,10 +202,19 @@ void llama_mma_f32_to(int8_t *restrict act, int8_t *restrict w,
 #ifndef LLAMA_LM_KSET
 #define LLAMA_LM_KSET 8
 #endif
+#ifndef LLAMA_GEMV_M_MAX
+#define LLAMA_GEMV_M_MAX 4
+#endif
+#ifndef LLAMA_GEMV_OUT_BYTES
+#define LLAMA_GEMV_OUT_BYTES 4096
+#endif
 static constexpr int kLmKset = LLAMA_LM_KSET;
 static constexpr int kLmRows = 4;
 static constexpr int kD = 2048;
+static constexpr int kRowsPerOut = LLAMA_GEMV_OUT_BYTES / kD;
 static_assert(kLmKset == 8, "the set is the mma tile's 8 rows, 2 meta blocks");
+static_assert(LLAMA_GEMV_OUT_BYTES % kD == 0 && kLmKset % kRowsPerOut == 0,
+              "an out object holds whole rows of the set");
 
 static inline int32_t lm_key(float f) {
   int32_t b = __builtin_bit_cast(int32_t, f);
@@ -219,8 +226,9 @@ static inline int32_t lm_key(float f) {
 extern "C" {
 
 // The logits of table slot `tile_idx` against act's first activation (a
-// decode activation object: row 0's 2048 columns, its scale at 4 * 2048),
-// inserted into the core's set. Tile 0 of the core's share resets the set.
+// decode activation object: row 0's 2048 columns, its scale after the
+// LLAMA_GEMV_M_MAX rows), inserted into the core's set. Tile 0 of the core's
+// share resets the set.
 void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
                        int8_t *restrict rows, int32_t *restrict meta,
                        int32_t tile_idx, int32_t first) {
@@ -258,7 +266,8 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
   sums.set(aie::reduce_add(acc3.template to_vector<int32>()), 3);
 
   alignas(16) float act_scales[4] = {
-      *reinterpret_cast<const float *>(act + 4 * kD), 1.0f, 1.0f, 1.0f};
+      *reinterpret_cast<const float *>(act + LLAMA_GEMV_M_MAX * kD), 1.0f, 1.0f,
+      1.0f};
   alignas(32) float logits[8];
   const aie::saturation_mode saved_sat =
       ::aie::swap_saturation(aie::saturation_mode::saturate);
@@ -314,13 +323,15 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
   event1();
 }
 
-// Part j of the core's set for the lm_head core: j < 4 its rows 2j and
-// 2j + 1, j = 4 its meta (the first 4096 bytes of the partials).
+// Out object j of the core's set for the lm_head core: below
+// kLmKset / kRowsPerOut its rows from kRowsPerOut * j, then its meta (the
+// partials' first LLAMA_GEMV_OUT_BYTES bytes).
 void llama_mma_lm_out(int8_t *restrict rows, int32_t *restrict meta,
                       int8_t *restrict out, int32_t j) {
-  const int8_t *src =
-      j < 4 ? rows + 2 * j * kD : reinterpret_cast<const int8_t *>(meta);
-  for (int c = 0; c < 2 * kD / 64; c++)
+  const int8_t *src = j < kLmKset / kRowsPerOut
+                          ? rows + kRowsPerOut * j * kD
+                          : reinterpret_cast<const int8_t *>(meta);
+  for (int c = 0; c < LLAMA_GEMV_OUT_BYTES / 64; c++)
     ::aie::store_v(out + c * 64, ::aie::load_v<64>(src + c * 64));
 }
 

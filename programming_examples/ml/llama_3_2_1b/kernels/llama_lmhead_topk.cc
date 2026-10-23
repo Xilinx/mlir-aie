@@ -82,7 +82,7 @@ lmhead_merge_impl(int8_t *restrict cand, float *restrict set_logit,
 }
 
 #ifndef LLAMA_LMHEAD_KSET
-#define LLAMA_LMHEAD_KSET 16
+#define LLAMA_LMHEAD_KSET 8
 #endif
 
 extern "C" {

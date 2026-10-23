@@ -19,11 +19,18 @@
 static constexpr int kResidRows = 256;
 static constexpr int kResidBlock = kResidRows * 4 + 64;
 
-extern "C" {
+#ifndef LLAMA_GEMV_M_MAX
+#define LLAMA_GEMV_M_MAX 4
+#endif
 
-// part's groups 16-19: only mma_down writes them, after the layer's last
-// qkv_comb_cs.
+// cs in part (8 partials a row, kResidRows rows): its groups 16-19, which
+// only mma_down writes, after the layer's last qkv_comb_cs.
 static constexpr int kCsInPart = 4096;
+static constexpr int kCsBytes = 256;
+static_assert(kCsInPart + LLAMA_GEMV_M_MAX * kCsBytes <= 8 * kResidRows * 4,
+              "a pass's cs rows fit in part");
+
+extern "C" {
 
 // The fused qkv combine for activation `row` of fp ([row][q 256 | k 64 | v
 // 64] fp32), with its position's RoPE cos/sin, which ride the head of the
@@ -38,7 +45,8 @@ void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int32_t *restrict part,
   constexpr int kHalf = kHD / 2;
   int8_t *cs = reinterpret_cast<int8_t *>(part) + kCsInPart;
   const float *q = reinterpret_cast<const float *>(fp + row * 384 * 4);
-  const uint16_t *cs_bits = reinterpret_cast<const uint16_t *>(cs + row * 256);
+  const uint16_t *cs_bits =
+      reinterpret_cast<const uint16_t *>(cs + row * kCsBytes);
   alignas(64) float cs_f[2 * kHD];
   for (int i = 0; i < 2 * kHD; i++)
     cs_f[i] = __builtin_bit_cast(float, (uint32_t)cs_bits[i] << 16);
@@ -65,18 +73,18 @@ void llama_gemv_array_qkv_comb_cs(int8_t *restrict fp, int32_t *restrict part,
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
   copy_words<512>(out + 288, q + 256);
-  copy_words<256>(out + 800, cs + row * 256);
+  copy_words<kCsBytes>(out + 800, cs + row * kCsBytes);
   event1();
 }
 
-// The first `rows` positions' RoPE cos/sin (256 B each) from the head of the
-// core's weight lane into cs (part's upper 1024 B), before the lane is
-// released.
+// The first `rows` positions' RoPE cos/sin (kCsBytes each) from the head of
+// the core's weight lane into cs (part's bytes from kCsInPart), before the
+// lane is released.
 void llama_gemv_array_take_cs(int8_t *restrict lane, int32_t *restrict part,
                               int32_t rows) {
   int8_t *cs = reinterpret_cast<int8_t *>(part) + kCsInPart;
   for (int32_t r = 0; r < rows; r++)
-    copy_words<256>(cs + r * 256, lane + r * 256);
+    copy_words<kCsBytes>(cs + r * kCsBytes, lane + r * kCsBytes);
 }
 
 // Core's projection rows for activation `row` (fp32, fp[256 row..256 row +

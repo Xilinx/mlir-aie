@@ -66,19 +66,28 @@ def attn_block(*, tb=64):
     )
 
 
-def lmhead(*, kset=16):
+def lmhead(*, kset=8):
     return KernelSource(
         "llama_lmhead_topk.cc",
         ["-ffp-contract=off", f"-DLLAMA_LMHEAD_KSET={kset}"],
     )
 
 
-def gemv_array():
-    return KernelSource("llama_gemv_array.cc", ["-ffp-contract=off"])
+def gemv_array(*, m_max):
+    return KernelSource(
+        "llama_gemv_array.cc", ["-ffp-contract=off", f"-DLLAMA_GEMV_M_MAX={m_max}"]
+    )
 
 
-def gemv_mma():
-    return KernelSource("llama_gemv_mma.cc", ["-ffp-contract=off"])
+def gemv_mma(*, m_max, out_bytes):
+    return KernelSource(
+        "llama_gemv_mma.cc",
+        [
+            "-ffp-contract=off",
+            f"-DLLAMA_GEMV_M_MAX={m_max}",
+            f"-DLLAMA_GEMV_OUT_BYTES={out_bytes}",
+        ],
+    )
 
 
 def gqa_glue():

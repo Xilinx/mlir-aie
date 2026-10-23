@@ -20,7 +20,7 @@
 #define LLAMA_TOPK_NTILE 4
 #endif
 #ifndef LLAMA_TOPK_KSET
-#define LLAMA_TOPK_KSET 64
+#define LLAMA_TOPK_KSET 8
 #endif
 
 static constexpr int kD = LLAMA_TOPK_D;
