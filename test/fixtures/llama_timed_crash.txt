@@ -1,10 +1,10 @@
 loading embed/final_norm from <repo>/programming_examples/ml/llama_3_2_1b/data ...
 packing the weights ...
 Traceback (most recent call last):
-  File "<repo>/programming_examples/ml/llama_3_2_1b/test_chain_persist_grow_mh.py", line 776, in <module>
+  File "<repo>/programming_examples/ml/llama_3_2_1b/test_decode.py", line 776, in <module>
     sys.exit(main())
              ^^^^^^
-  File "<repo>/programming_examples/ml/llama_3_2_1b/test_chain_persist_grow_mh.py", line 467, in main
+  File "<repo>/programming_examples/ml/llama_3_2_1b/test_decode.py", line 467, in main
     decoder = Decoder(shape, layers, lm, rope, opts.elf)
               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "<repo>/programming_examples/ml/llama_3_2_1b/llama_decode.py", line 377, in __init__

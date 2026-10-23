@@ -7,7 +7,7 @@ Does the full N=16 persistent, growing-KV decode still build, match its
 numpy oracle and run at the expected rate on real hardware. Compiles once,
 at a 128k-row KV cache, with the design's own CLI (aie2_decode.py), then runs
 that one full ELF through:
-- test_chain_persist_grow_mh.py --contexts: a dispatch of 4 tokens at
+- test_decode.py --contexts: a dispatch of 4 tokens at
   DISPATCH_RATE_AT and at each of CONTEXTS, from one random KV prefix, every
   token, KV row and final residual checked against the oracle, then timed
   (the fastest of 20 after 10 warmups). Attention reads only the live
@@ -41,7 +41,7 @@ any run fails or the check refuses, after writing both. Reproduced, from
 programming_examples/ml/llama_3_2_1b, with
 
     python3 aie2_decode.py --n-layers 16 --t 131072 --full-elf-path X.elf
-    python3 test_chain_persist_grow_mh.py --n-layers 16 --t 131072 \
+    python3 test_decode.py --n-layers 16 --t 131072 \
         --elf X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 \
         131068 --time
     python3 generate.py --t 131072 --elf X.elf \
@@ -93,9 +93,7 @@ _LLAMA_DIR = os.path.join(
 _TOKEN_LINE_RE = re.compile(
     r"^\s*token \d+(?: \(pos \d+\))?: (PASS|FAIL)", re.MULTILINE
 )
-_SUMMARY_RE = re.compile(
-    r"^chain_persist_grow_mh: (\d+)/(\d+) tokens PASS", re.MULTILINE
-)
+_SUMMARY_RE = re.compile(r"^decode: (\d+)/(\d+) tokens PASS", re.MULTILINE)
 _DECODE_RE = re.compile(
     r"^decode at (\d+): per-dispatch n=(\d+) min=([\d.]+) median=([\d.]+) "
     r"mad=([\d.]+) ms, (\d+) tokens/dispatch: ([\d.]+) ms/token \(([\d.]+) tok/s\)",
@@ -231,7 +229,7 @@ def run_decode(env: dict) -> Measured:
     return run_measured(
         [
             sys.executable,
-            "test_chain_persist_grow_mh.py",
+            "test_decode.py",
             *_SHAPE_ARGS,
             "--elf",
             _ELF,

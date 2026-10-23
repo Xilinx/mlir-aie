@@ -661,7 +661,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
           <p>and every seed and batch, as the nightly does:</p>
           <pre>python utils/component_checks/sa_placer_hw.py --out perf.json --meta meta.json</pre>
           <p>The Llama decode, from <code>programming_examples/ml/llama_3_2_1b</code> after <code>gen_llama_data.py</code> has built <code>data/</code> from the model's weights:</p>
-          <pre>python aie2_decode.py --p-max=4 --kset=8 --n-layers=16 --t=128 --full-elf-path build/chain_persist_grow_N16_PT4.elf &amp;&amp; python test_chain_persist_grow_mh.py --p-max=4 --kset=8 --n-layers=16 --t=128 --elf build/chain_persist_grow_N16_PT4.elf</pre>
+          <pre>python aie2_decode.py --p-max=4 --kset=8 --n-layers=16 --t=128 --full-elf-path build/chain_persist_grow_N16_PT4.elf &amp;&amp; python test_decode.py --p-max=4 --kset=8 --n-layers=16 --t=128 --elf build/chain_persist_grow_N16_PT4.elf</pre>
           <p>and as the nightly does:</p>
           <pre>python utils/component_checks/llama_chain_hw.py --out perf.json --meta meta.json</pre>
           <p>The YOLO26n detector, from <code>programming_examples/ml/yolo26n</code> after <code>gen_yolo_data.py</code> has built <code>data/</code> from the
@@ -1038,7 +1038,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         script: 'utils/component_checks/llama_chain_hw.py',
         whole: 'python utils/component_checks/llama_chain_hw.py --out perf.json --meta meta.json',
         failedId: /^llama\/persist_grow\/N=(\d+)$/,
-        repro: (_record, n = '16') => `cd programming_examples/ml/llama_3_2_1b && python aie2_decode.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --full-elf-path build/chain_persist_grow_N${n}_PT4.elf && python test_chain_persist_grow_mh.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --elf build/chain_persist_grow_N${n}_PT4.elf`,
+        repro: (_record, n = '16') => `cd programming_examples/ml/llama_3_2_1b && python aie2_decode.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --full-elf-path build/chain_persist_grow_N${n}_PT4.elf && python test_decode.py --p-max=4 --kset=8 --n-layers=${n} --t=128 --elf build/chain_persist_grow_N${n}_PT4.elf`,
         say: n => `the ${n}-layer decode`,
         metrics: ['decode_tok_s', 'tok_s', 'tokens_passed', 'ttft_ms', 'prefill_tok_s', 'kl_bf16', 'top1_bf16', 'compile_s', 'compile_s_warm', 'elf_bytes'],
         table: llamaTable, charts: () => [], summary: llamaSummary,

@@ -179,7 +179,7 @@ own cost.
 
 ### Next-token greedy agreement on 20 hard prompts (N=16)
 
-`bench_quality_mh.py --path numpy --bf16-ref` (the device's arithmetic,
+`bench_quality.py --path numpy --bf16-ref` (the device's arithmetic,
 prefilling each prompt as the device does), **20/20 = 100 %** against bf16:
 
 | Prompt | bf16 | device |
@@ -232,7 +232,7 @@ python gen_llama_data.py      # writes data/: INT8 weights, scales, gammas, toke
 
 The bf16 reference reads the safetensors directly.
 
-The decode test, `test_chain_persist_grow_mh.py`, compiles `aie2_decode.py`
+The decode test, `test_decode.py`, compiles `aie2_decode.py`
 with `@iron.jit` to a full ELF (cached under `NPU_CACHE_HOME`, so a rerun
 reuses it), or runs a prebuilt one (`--elf`, from
 `python aie2_decode.py ... --full-elf-path X`, which the same JIT key reuses).
@@ -248,7 +248,7 @@ against bf16 (`accuracy_vs_hf.py`).
 
 > **Pass `--n-layers 16`** to the decode test for any accuracy or timing run:
 > it defaults to 2 layers (a fast bring-up check), whose numbers mean nothing
-> for the model. `bench_quality_mh.py` defaults to the model's 16.
+> for the model. `bench_quality.py` defaults to the model's 16.
 
 ### Accuracy (no device: numpy)
 
@@ -258,7 +258,7 @@ against bf16 (`accuracy_vs_hf.py`).
 python accuracy_vs_hf.py --max-tokens 128
 
 # 20-prompt greedy bench, the device's arithmetic vs bf16
-python bench_quality_mh.py --path numpy --bf16-ref
+python bench_quality.py --path numpy --bf16-ref
 ```
 
 ### On silicon: text, and accuracy vs bf16
@@ -270,34 +270,34 @@ python bench_quality_mh.py --path numpy --bf16-ref
 python generate.py --prompt "The capital of France is" --max-new 32 --check
 
 # prefill and predict each prompt on the NPU, vs bf16
-python bench_quality_mh.py --bf16-ref
+python bench_quality.py --bf16-ref
 ```
 
 ### Decode + timing
 
 ```bash
 # the full 16-layer autoregressive decode (4 tokens a dispatch; --passes picks 1-4)
-python test_chain_persist_grow_mh.py --n-layers 16
+python test_decode.py --n-layers 16
 
 # a 6-token prompt (seeded random ids) before generating, in batches of up to
 # 4; --vs-batch 1 also runs it a token per dispatch and compares the two
-python test_chain_persist_grow_mh.py --n-layers 16 --prompt-tokens 6 --vs-batch 1
+python test_decode.py --n-layers 16 --prompt-tokens 6 --vs-batch 1
 
 # sampled instead of greedy (the sampler's settings are per dispatch)
-python test_chain_persist_grow_mh.py --n-layers 16 --sample-temp 0.7 --sample-topk 4
+python test_decode.py --n-layers 16 --sample-temp 0.7 --sample-topk 4
 
 # per-token TPS at full config, after checking the timed dispatch
-taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --time
+taskset -c 2-23 python test_decode.py --n-layers 16 --time
 
 # the context sweep of section 2: one build at 128k, each context checked
 # and timed (the oracle takes about 100 s a token at 128k)
 python aie2_decode.py --n-layers 16 --t 131072 --full-elf-path build/X.elf
-taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --t 131072 \
+taskset -c 2-23 python test_decode.py --n-layers 16 --t 131072 \
     --elf build/X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 131068 --time
 
 # a generation loop: 10 dispatches carrying the KV cache and seed, with the
 # NPU left idle (and suspended) between them
-python test_chain_persist_grow_mh.py --n-layers 16 --dispatches 10 --idle-s 6
+python test_decode.py --n-layers 16 --dispatches 10 --idle-s 6
 ```
 
 ---
@@ -305,7 +305,7 @@ python test_chain_persist_grow_mh.py --n-layers 16 --dispatches 10 --idle-s 6
 ## 5. Configuration
 
 The decode test takes these flags and passes them to the design as
-CompileTime values; `bench_quality_mh.py` takes the first two.
+CompileTime values; `bench_quality.py` takes the first two.
 
 | Flag | Meaning |
 |---|---|

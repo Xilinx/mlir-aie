@@ -66,7 +66,7 @@ def test_a_decode_that_checked_no_token_fails(llama):
 
 
 def test_a_decode_that_stopped_before_its_summary_fails(llama):
-    out = output("decode_pass").split("\nchain_persist_grow_mh:")[0]
+    out = output("decode_pass").split("\ndecode:")[0]
     got = llama.parse_correctness(out, 0)
     assert (got["tokens_passed"], got["tokens_total"]) == (4, 4)
     assert not got["passed"]

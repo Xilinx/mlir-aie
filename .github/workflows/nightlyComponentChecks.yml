@@ -290,7 +290,7 @@ jobs:
             if [[ -f results/llama-chain-hw/hw.log ]]; then
               echo "### Llama 3.2 1B on hardware"
               echo '```'
-              grep -E '^ *token [0-9]+|^chain_persist_grow_mh:|^per-token:|^ratio:|^refusing' results/llama-chain-hw/hw.log || true
+              grep -E '^ *token [0-9]+|^decode:|^per-token:|^ratio:|^refusing' results/llama-chain-hw/hw.log || true
               echo '```'
             fi
             if [[ -f results/yolo26n-hw/hw.log ]]; then

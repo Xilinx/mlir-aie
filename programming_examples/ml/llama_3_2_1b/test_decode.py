@@ -19,9 +19,9 @@ same random prefix, each checked (and with --time, timed): one build at a
 large --t times every context, attention reading only the live prefix.
 
 Run (compiles the design, or reuses its JIT cache entry):
-  python test_chain_persist_grow_mh.py --synthetic-weights
-  taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --time
-  python test_chain_persist_grow_mh.py --n-layers 16 --t 131072 \
+  python test_decode.py --synthetic-weights
+  taskset -c 2-23 python test_decode.py --n-layers 16 --time
+  python test_decode.py --n-layers 16 --t 131072 \
       --contexts 1024 32768 131068 --time
 """
 
@@ -508,7 +508,7 @@ def main(argv=None):
         print("packing the weights ...", flush=True)
         decoder = Decoder(shape, layers, lm, rope, opts.elf)
     print(
-        f"chain_persist_grow_mh shape.n_layers={shape.n_layers} "
+        f"decode shape.n_layers={shape.n_layers} "
         f"passes={[n for _, n in sweep] or [len(b) or n for _, n, b, _ in schedule]}"
         f" P0={[at for at, _ in sweep] if sweep else p0} KSET={shape.kset}"
         f"  temp={sample[0]} topk={sample[1]} seed={sample[2]}  fixture_seed={fseed}"
@@ -849,7 +849,7 @@ def main(argv=None):
 
     n = len(dev_tokens)
     print(
-        f"\nchain_persist_grow_mh: {n - tok_fails}/{n} tokens PASS  "
+        f"\ndecode: {n - tok_fails}/{n} tokens PASS  "
         f"(on-chip feedback + GROWING KV + per-position rope)"
     )
     if opts.split:
