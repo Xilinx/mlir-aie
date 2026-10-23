@@ -27,6 +27,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CheckedArithmetic.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/TypeSize.h"
 
 #include <cstdint>
@@ -967,8 +968,145 @@ mlir::Value AIEX::createConstantArgPlus(mlir::OpBuilder &builder,
 }
 
 //===----------------------------------------------------------------------===//
+// Buffer-relative runtime writes
+//===----------------------------------------------------------------------===//
+
+// DataLayout's default queries abort for types without a builtin layout or a
+// type interface; a legal memref element (such as another memref) need not have
+// either. Check component types before querying composite builtin layouts too.
+static bool hasQueryableStorageLayout(Type type) {
+  if (type.isIntOrFloat() || isa<IndexType, DataLayoutTypeInterface>(type))
+    return true;
+  if (auto vector = dyn_cast<VectorType>(type))
+    return hasQueryableStorageLayout(vector.getElementType());
+  if (auto complex = dyn_cast<ComplexType>(type))
+    return hasQueryableStorageLayout(complex.getElementType());
+  return false;
+}
+
+// Match BufferOp's allocation convention without an unchecked shape product or
+// a fixed-size conversion of scalable element storage.
+static std::optional<uint64_t>
+getStaticMemRefStorageBytes(MemRefType type, const DataLayout &layout) {
+  if (!type || !type.hasStaticShape() ||
+      !hasQueryableStorageLayout(type.getElementType()))
+    return std::nullopt;
+  if (auto vector = dyn_cast<VectorType>(type.getElementType())) {
+    // The default vector layout uses a signed getNumElements(), then unsigned
+    // innermost-dimension padding and bit products. Guard that query itself.
+    if (vector.isScalable() || vector.getRank() == 0)
+      return std::nullopt;
+    int64_t elements = 1;
+    for (int64_t dim : vector.getShape()) {
+      auto product = llvm::checkedMul(elements, dim);
+      if (!product)
+        return std::nullopt;
+      elements = *product;
+    }
+    uint64_t inner = vector.getShape().back();
+    auto padded = llvm::checkedMulUnsigned(
+        static_cast<uint64_t>(elements) / inner, llvm::PowerOf2Ceil(inner));
+    llvm::TypeSize bits = layout.getTypeSizeInBits(vector.getElementType());
+    if (!padded || bits.isScalable() ||
+        !llvm::checkedMulUnsigned(*padded, bits.getFixedValue()))
+      return std::nullopt;
+  }
+  llvm::TypeSize elementBytes = layout.getTypeSize(type.getElementType());
+  if (elementBytes.isScalable())
+    return std::nullopt;
+  if (llvm::is_contained(type.getShape(), int64_t{0}))
+    return 0;
+  uint64_t bytes = elementBytes.getFixedValue();
+  for (int64_t dim : type.getShape()) {
+    auto product = llvm::checkedMulUnsigned(bytes, static_cast<uint64_t>(dim));
+    if (!product)
+      return std::nullopt;
+    bytes = *product;
+  }
+  return bytes;
+}
+
+template <typename OpTy>
+static LogicalResult verifyBufferWriteScope(OpTy op) {
+  if (op.getBuffer() && !op->template getParentOfType<AIE::DeviceOp>())
+    return op.emitOpError("must be inside a device when buffer is present");
+  return success();
+}
+
+template <typename OpTy>
+static LogicalResult
+verifyBufferWrite(OpTy op, std::optional<uint32_t> wordOffset,
+                  uint64_t writeBytes, AIE::NamedOpTableCollection &names) {
+  if (!op.getBuffer())
+    return success();
+  if (!wordOffset)
+    return op.emitOpError("address must be constant when buffer is present");
+  auto device = op->template getParentOfType<AIE::DeviceOp>();
+  if (!device)
+    return op.emitOpError("must be inside a device when buffer is present");
+  // The device's region verifier owns the index and has verified all child
+  // invariants before dispatching these graph-dependent checks.
+  auto buffer =
+      names.lookupIn<AIE::BufferOp>(device, op.getBufferAttr().getAttr());
+  if (!buffer)
+    return op.emitOpError()
+           << "buffer '" << *op.getBuffer() << "' not found in device";
+  auto bufferBytes = getStaticMemRefStorageBytes(buffer.getType(),
+                                                 DataLayout::closest(buffer));
+  if (!bufferBytes)
+    return op.emitOpError(
+        "referenced buffer must have a static, fixed-size storage extent "
+        "representable in 64 bits");
+
+  uint64_t offsetBytes = uint64_t{*wordOffset} * sizeof(uint32_t);
+  auto end = llvm::checkedAddUnsigned(offsetBytes, writeBytes);
+  if (!end)
+    return op.emitOpError("buffer-relative write range overflows 64-bit bytes");
+  if (*end > *bufferBytes)
+    return op.emitOpError() << "write range [" << offsetBytes << ", " << *end
+                            << ") exceeds buffer @" << *op.getBuffer()
+                            << " size " << *bufferBytes << " bytes";
+
+  auto tile = buffer.getTileLike();
+  const auto &targetModel = device.getTargetModel();
+  uint64_t memoryBytes = tile.isMemTile() ? targetModel.getMemTileSize()
+                                          : targetModel.getLocalMemorySize();
+  uint64_t start = offsetBytes;
+  if (auto base = buffer.getAddress()) {
+    if (*base < 0)
+      return op.emitOpError("referenced buffer address must be nonnegative");
+    start += static_cast<uint64_t>(*base);
+    if (start % sizeof(uint32_t) != 0)
+      return op.emitOpError() << "resolved buffer write address " << start
+                              << " is not 4-byte aligned";
+  }
+  // An unassigned base can only move the interval upward. Check this necessary
+  // bound now, and the resolved interval when address assignment runs.
+  auto memoryEnd = llvm::checkedAddUnsigned(start, writeBytes);
+  if (!memoryEnd)
+    return op.emitOpError("resolved buffer write range overflows 64-bit bytes");
+  if (*memoryEnd > memoryBytes)
+    return op.emitOpError()
+           << "write range [" << start << ", " << *memoryEnd
+           << ") exceeds tile data memory size " << memoryBytes << " bytes";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // NpuWrite32Op
 //===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuWrite32Op::verify() {
+  return verifyBufferWriteScope(*this);
+}
+
+LogicalResult
+AIEX::NpuWrite32Op::verifyNamedOpUses(AIE::NamedOpTableCollection &names) {
+  if (!getBuffer())
+    return success();
+  return verifyBufferWrite(*this, getConstantIntOperand(getAddress()),
+                           sizeof(uint32_t), names);
+}
 
 template <typename T>
 static std::optional<uint32_t>
@@ -1144,6 +1282,18 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 // NpuMaskWrite32Op
 //===----------------------------------------------------------------------===//
 
+LogicalResult AIEX::NpuMaskWrite32Op::verify() {
+  return verifyBufferWriteScope(*this);
+}
+
+LogicalResult
+AIEX::NpuMaskWrite32Op::verifyNamedOpUses(AIE::NamedOpTableCollection &names) {
+  if (!getBuffer())
+    return success();
+  return verifyBufferWrite(*this, getConstantIntOperand(getAddress()),
+                           sizeof(uint32_t), names);
+}
+
 std::optional<uint32_t>
 AIEX::NpuMaskWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
@@ -1167,6 +1317,27 @@ AIEX::NpuMaskPollOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
 //===----------------------------------------------------------------------===//
 // NpuBlockWriteOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuBlockWriteOp::verify() {
+  return verifyBufferWriteScope(*this);
+}
+
+LogicalResult
+AIEX::NpuBlockWriteOp::verifyNamedOpUses(AIE::NamedOpTableCollection &names) {
+  if (!getBuffer())
+    return success();
+  auto type = dyn_cast<MemRefType>(getData().getType());
+  DataLayout layout = DataLayout::closest(*this);
+  auto bytes = getStaticMemRefStorageBytes(type, layout);
+  if (!bytes)
+    return emitOpError("payload must have a static, fixed-size storage extent "
+                       "representable in 64 bits when buffer is present");
+  llvm::TypeSize elementBits = layout.getTypeSizeInBits(type.getElementType());
+  if (elementBits.isScalable() || elementBits.getFixedValue() != 32)
+    return emitOpError(
+        "payload must have 32-bit elements when buffer is present");
+  return verifyBufferWrite(*this, getAddress(), *bytes, names);
+}
 
 std::optional<uint32_t>
 AIEX::NpuBlockWriteOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
