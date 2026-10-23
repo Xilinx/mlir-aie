@@ -4,8 +4,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // What the GEMV array's kernels (llama_gemv_array.cc, llama_gemv_mma.cc) and
-// the prefill's GEMM (llama_gemm_mma.cc) share: llama_vec_fp.h's fp32
-// helpers and the mma epilogue.
+// the prefill's (llama_gemm_mma.cc, llama_prefill_glue.cc) share:
+// llama_vec_fp.h's fp32 helpers, the mma epilogue and the Q rope.
 //===----------------------------------------------------------------------===//
 
 #ifndef LLAMA_GEMV_ARRAY_H
@@ -15,6 +15,36 @@
 #include <stdint.h>
 
 #include "llama_vec_fp.h"
+
+// A KV group's 4 Q heads (q: 4 x 64 fp32) roped in fp32 with a position's
+// cos/sin (cs_bits: bf16 cos[64], then sin[64]) as llama_kv_row.h ropes k,
+// then requantized per head into out: 256 int8, then per head [scale f32 |
+// 0]. Needs rounding_mode::conv_even and saturation_mode::saturate.
+static inline void rope_q_requant4(const float *restrict q,
+                                   const uint16_t *restrict cs_bits,
+                                   int8_t *restrict out) {
+  constexpr int kHD = 64;
+  constexpr int kHalf = kHD / 2;
+  alignas(64) float cs_f[2 * kHD];
+  for (int i = 0; i < 2 * kHD; i++)
+    cs_f[i] = __builtin_bit_cast(float, (uint32_t)cs_bits[i] << 16);
+  alignas(64) float roped[4 * kHD];
+  for (int h = 0; h < 4; h++)
+    for (int j = 0; j < kHalf; j += 16) {
+      ::aie::vector<float, 16> x1 = ::aie::load_v<16>(q + h * kHD + j);
+      ::aie::vector<float, 16> x2 = ::aie::load_v<16>(q + h * kHD + kHalf + j);
+      ::aie::store_v(
+          roped + h * kHD + j,
+          ::aie::sub(vec_mul_rne(x1, ::aie::load_v<16>(cs_f + j)),
+                     vec_mul_rne(x2, ::aie::load_v<16>(cs_f + kHD + j))));
+      ::aie::store_v(
+          roped + h * kHD + kHalf + j,
+          ::aie::add(
+              vec_mul_rne(x2, ::aie::load_v<16>(cs_f + kHalf + j)),
+              vec_mul_rne(x1, ::aie::load_v<16>(cs_f + kHD + kHalf + j))));
+    }
+  q_requant_heads<4, kHD>(roped, out, out + 256);
+}
 
 // The exponent fields of the scales the epilogue's vector form takes.
 static constexpr uint32_t kEpilogueExpLo = 80, kEpilogueExpHi = 174;

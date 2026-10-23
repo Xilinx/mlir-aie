@@ -91,13 +91,12 @@ static inline void vec_requant(const float *restrict x,
                        x + c * kLanes, gamma + c * kLanes, combined_v)));
 }
 
-extern "C" {
-
-// xg: the fp32 residual x[kCols], then gamma bf16[kCols] (the decode stages
-// the two together). y: int8[kCols + 8], the normed row, then its fp32 scale
-// absmax/127 and 4 zero bytes.
-void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
-  event0();
+// The norm of the fp32 residual x[kCols] with gamma bf16[kCols] into y:
+// int8[kCols + 8], the normed row, then its fp32 scale absmax/127 and 4 zero
+// bytes.
+static inline void rmsnorm_f32(const float *restrict x,
+                               const bfloat16 *restrict gamma,
+                               int8_t *restrict y) {
   const ::aie::saturation_mode prev_sat =
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
@@ -106,8 +105,6 @@ void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
   constexpr int kCols = LLAMA_RMSNORM_COLS;
   static_assert(kCols % kLanes == 0,
                 "LLAMA_RMSNORM_COLS must be a multiple of 16");
-  const float *x = reinterpret_cast<const float *>(xg);
-  const bfloat16 *gamma = reinterpret_cast<const bfloat16 *>(xg + 4 * kCols);
 
   float var = scalar_mul_rne(vec_sum_sq_f32(x, kCols), 1.0f / kCols);
   float inv_rms = sw_invsqrt(var + kEps);
@@ -126,6 +123,26 @@ void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
 
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
+}
+
+extern "C" {
+
+// xg: the fp32 residual x[kCols], then gamma bf16[kCols] (the decode stages
+// the two together), normed into y as rmsnorm_f32.
+void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
+  event0();
+  rmsnorm_f32(reinterpret_cast<const float *>(xg),
+              reinterpret_cast<const bfloat16 *>(xg + 4 * LLAMA_RMSNORM_COLS),
+              y);
+  event1();
+}
+
+// The prefill's: x and gamma (bf16, then padding) in buffers of their own.
+void llama_rmsnorm_f32(int8_t *restrict x, int8_t *restrict gamma,
+                       int8_t *restrict y) {
+  event0();
+  rmsnorm_f32(reinterpret_cast<const float *>(x),
+              reinterpret_cast<const bfloat16 *>(gamma), y);
   event1();
 }
 

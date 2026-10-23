@@ -535,6 +535,17 @@ static constexpr int kQChunkBytes = kREP * kHD + kREP * 8;
 static constexpr int kChunkBytes = kQChunkBytes + kRowBytes;
 static constexpr int kChunkStride = (kChunkBytes + 63) / 64 * 64;
 
+// The prefill's: a sub-batch's n chunks (as `chunks` holds them) into the
+// core's chunks, their states fresh.
+void llama_attn_take_batch(int8_t *restrict batch, int8_t *restrict chunks,
+                           int8_t *restrict states, int32_t n) {
+  for (int32_t r = 0; r < n; r++) {
+    copy_words<kChunkStride>(chunks + r * kChunkStride,
+                             batch + r * kChunkStride);
+    llama_attn_state_init(states + r * kStateBytes);
+  }
+}
+
 // Query r of a batch: its chunk into the core's chunks, its state fresh.
 void llama_attn_take_q(int8_t *restrict chunk, int8_t *restrict chunks,
                        int8_t *restrict states, int32_t r) {
