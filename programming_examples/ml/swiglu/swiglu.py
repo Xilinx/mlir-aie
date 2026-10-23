@@ -147,15 +147,12 @@ def _run_and_verify(opts):
 
     swiglu(a_t, w_t, b_t, **_compile_kwargs(opts))
 
-    x_f32 = in_np.astype(np.float32)
-    w1_f32 = w1_np.astype(np.float32)
-    w2_f32 = w2_np.astype(np.float32)
-    gate = x_f32 * w2_f32
-    expected = ((x_f32 * w1_f32) * (gate / (1.0 + np.exp(-gate)))).astype(bfloat16)
+    # The kernel rounds an f32 result once: within a bf16 ulp of the reference.
     assert_pass(
         b_t.numpy(),
-        expected,
-        rtol=0.128,
+        kernels.swiglu_ref(in_np, w1_np, w2_np),
+        rtol=2**-7,
+        atol=2**-126,
         fail_msg="swiglu output does not match reference",
     )
 

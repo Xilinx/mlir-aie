@@ -28,13 +28,14 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
 | [leaky_relu.cc](./activation/leaky_relu.cc) | AIE API | Leaky ReLU activation | `bfloat16` |
-| [gelu.cc](./activation/gelu.cc) | AIE API | GELU activation (tanh approx). The per-arch headers differ in tuning: the AIE2P one is MAC-fused with an `s*beta` precompute and post-RA pipelining | `bfloat16` |
+| [gelu.cc](./activation/gelu.cc) | AIE API | GELU, tanh form, as `x sigmoid(2u)` on `common/tanh_f32.h`, rounded once | `bfloat16` |
 | [gelu_erf.cc](./activation/gelu_erf.cc) | AIE API | Exact GELU, `x * Phi(x)` (erfc in f32 limbs, rounded once): correctly rounded wherever GELU is a normal bf16 (measured on npu2; npu1 unmeasured), subnormal results flushed to 0 | `bfloat16` |
-| [silu.cc](./activation/silu.cc) | AIE API | SiLU / Swish activation (tanh path from `activations.h`) | `bfloat16` |
-| [swiglu.cc](./activation/swiglu.cc) | AIE API | SwiGLU gated activation (tanh path from `activations.h`) | `bfloat16` |
-| [tanh.cc](./activation/tanh.cc) | AIE API | Tanh activation (tanh path from `activations.h`: native on AIE2P, LUT on AIE2) | `bfloat16` |
-| [sigmoid.cc](./activation/sigmoid.cc) | AIE API | Sigmoid activation (tanh path from `activations.h`) | `bfloat16` |
+| [silu.cc](./activation/silu.cc) | AIE API | SiLU / Swish on `common/tanh_f32.h`, rounded once | `bfloat16` |
+| [swiglu.cc](./activation/swiglu.cc) | AIE API | SwiGLU gated activation on `common/tanh_f32.h`, rounded once | `bfloat16` |
+| [tanh.cc](./activation/tanh.cc) | AIE API | Tanh, `common/tanh_f32.h`'s, rounded once | `bfloat16` |
+| [sigmoid.cc](./activation/sigmoid.cc) | AIE API | Sigmoid, `common/tanh_f32.h`'s, rounded once | `bfloat16` |
 | [softmax.cc](./activation/softmax.cc) | AIE API | Softmax; on AIE2P also `softmax_rows` (optionally causal), `partial_softmax` (flash-attn) and `mask` | `bfloat16` |
+| [soft_cap.cc](./activation/soft_cap.cc) | AIE API | Soft cap `cap * tanh(x / cap)`, the tanh in float32 (`common/tanh_f32.h`), rounded once | `bfloat16` |
 | [bf16_exp.cc](./activation/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
 | [exp2f_vec.cc](./activation/exp2f_vec.cc) | AIE API | Element-wise `2^x` (software polynomial; higher accuracy on negatives) | `float32` |
 | [log_f32.cc](./activation/log_f32.cc) | AIE API | `log(x + offset)`, float32-accurate from bf16 limb products, rounded once (a log-mel floor); `log10_clamp_f32_bf16` takes Whisper's log-mel features, log10 clamped below the clip's peak, then shifted and scaled | `float32`→`bfloat16` |
@@ -176,6 +177,9 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [addWeighted.cc](./vision/addWeighted.cc) | AIE API | Fixed point weighted sum of two tensors | `uint8_t` |
 | [threshold.cc](./vision/threshold.cc) | AIE API | Clipping | `uint8_t` |
 | [filter2d.cc](./vision/filter2d.cc) | AIE API | Fixed point 2D image processing filter | `uint8_t` |
+| [levels.cc](./vision/levels.cc) | Generic C | A row of RGB pixels through per-channel 256-entry tables to bf16 pixels of four channels, a run of them placed in a filled row (an image processor's crop, rescale and normalization, or a letterbox) | `uint8_t` in, `bfloat16` out |
+| [grid_decode.cc](./vision/grid_decode.cc) | AIE API | An anchor-free detector's boxes from a row of its prediction map, in float32: centres offset by the grid, sizes through `exp_f32`, both times the stride (YOLOX's `decode_outputs`) | `bfloat16` in, `float` out |
+| [resize_linear.cc](./vision/resize_linear.cc) | Generic C | OpenCV's INTER_LINEAR resize of a uint8 RGB image, bit for bit its fixed-point path, a source row in and each output row out once both its rows are in (YOLOX's letterbox) | `uint8_t` |
 | [resample_peak.cc](./vision/resample_peak.cc) | Generic C | The largest normalized weight of one core's share of a resize axis's filter table (torch's antialiased bicubic, IEEE float64), and `resample_join`, the larger of two; shared with [resample.h](./vision/resample.h) | `int32_t` |
 | [resample_quantize.cc](./vision/resample_quantize.cc) | Generic C | One chunk of that table: each output's first sample, tap count and int16 weights at the precision the peak sets, bit for bit as torch on the CPU | `int32_t` |
 | [resize.cc](./vision/resize.cc) | AIE API | A uint8 RGB image resized with those tables, across then down, each pass rounded to uint8 as torch on the CPU, and written as 16x16 patches of `u8 / 255`; six entry points share one core's state | `uint8_t` → `bfloat16` |

@@ -95,4 +95,25 @@ mac_limbs(aie::accum<accfloat, N> acc, const Limbs<N> &x, const Limbs<N> &c) {
   return aie::mac(acc, x.lo, c.hi);
 }
 
+// 1 / d for f32 d in [1, 2]: a quadratic within 2%, then two Newton steps
+// r -= r (d r - 1), the first from r in bf16.
+template <unsigned N>
+static inline __attribute__((always_inline)) aie::accum<accfloat, N>
+inv_1_2(aie::accum<accfloat, N> d) {
+  using Acc = aie::accum<accfloat, N>;
+  auto splat = [](float c) { return Acc(aie::broadcast<float, N>(c)); };
+  const Limbs<N> dl = bf16_limbs(d);
+  const auto q = aie::mac(splat(-1.4515766f), dl.hi, bf16_splat<N>(0x3ea5))
+                     .template to_vector<bfloat16>();
+  const auto r0 =
+      aie::mac(splat(2.1190739f), q, dl.hi).template to_vector<bfloat16>();
+  Limbs<N> e = bf16_limbs(aie::mac(
+      aie::mac(aie::mac(splat(-1.0f), dl.hi, r0), dl.mid, r0), dl.lo, r0));
+  const Acc r1 = aie::msc(aie::msc(Acc(r0), r0, e.hi), r0, e.mid);
+  const Limbs<N> rl = bf16_limbs(r1);
+  e = bf16_limbs(mac_limbs(splat(-1.0f), dl, rl));
+  return aie::msc(aie::msc(aie::msc(r1, rl.hi, e.hi), rl.hi, e.mid), rl.mid,
+                  e.hi);
+}
+
 #endif

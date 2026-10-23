@@ -26,8 +26,6 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.utils import config
 from aie.utils.compile import remarks
 
-_LUT_VARIANTS = ("silu", "swiglu", "tanh", "sigmoid")
-
 
 def _peano_available() -> bool:
     try:
@@ -51,15 +49,6 @@ def device(request):
         yield
 
 
-def _builds():
-    yield from remarks.kernel_builds()
-    for name in _LUT_VARIANTS:
-        try:
-            yield f"{name}/use_lut=True", getattr(kernels, name)(use_lut=True)
-        except NotImplementedError:
-            continue
-
-
 def _paths(ef) -> list[str]:
     paths = list(ef.include_dirs)
     for flag in ef.compile_flags:
@@ -79,7 +68,7 @@ def test_every_build_resolves_inside_the_override(tree, device):
     header_root = Path(config.cxx_header_path()).resolve()
     stray = [
         f"{name}: {p}"
-        for name, ef in _builds()
+        for name, ef in remarks.kernel_builds()
         for p in _paths(ef)
         if not Path(p).resolve().is_relative_to(tree.resolve())
         and Path(p).resolve() != header_root
@@ -103,7 +92,7 @@ def test_a_header_only_in_the_override_is_the_one_compiled(tree, device, tmp_pat
         )
     out = tmp_path / "build"
     out.mkdir()
-    cmd, _ = remarks.compile_command(kernels.tanh(use_lut=True), "aie2p", out)
+    cmd, _ = remarks.compile_command(kernels.tanh(), "aie2p", out)
     p = subprocess.run(cmd, capture_output=True, text=True)
     assert p.returncode == 0, p.stderr[-2000:]
     deps = next(out.glob("*.d")).read_text().replace("\\\n", " ").split(":", 1)[1]

@@ -43,12 +43,25 @@ _BF16_ROUNDTRIP = Tolerance.bf16_ulps(
 
 
 def axpy_ref(x, y, a):
-    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
+    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32, in the kernel's order.
 
-    The kernel broadcasts ``a`` as bf16, so it is rounded to bf16 here.
+    ``a`` is split toward zero into bf16 limbs that sum to it exactly; each
+    nonzero limb's product with ``x``, exact in float32, is added to ``y``,
+    the smallest limb first, each sum rounded in float32.
     """
-    a = np.float32(bfloat16(a))
-    return a * x.astype(np.float32) + y.astype(np.float32)
+    limbs = []
+    rest = np.float32(a)
+    for _ in range(3):
+        limb = (np.array(rest).view(np.uint32) & np.uint32(0xFFFF0000)).view(np.float32)
+        limbs.append(np.float32(limb))
+        rest = np.float32(rest - limb)
+    used = 3 if limbs[2] != 0 else 2 if limbs[1] != 0 else 1
+    x32 = x.astype(np.float32)
+    acc = y.astype(np.float32)
+    with np.errstate(invalid="ignore"):
+        for limb in reversed(limbs[:used]):
+            acc = (acc + x32 * limb).astype(np.float32)
+    return acc
 
 
 def convert_copy_ref(x):
@@ -129,6 +142,9 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
     The scalar ``a`` and element count are passed to the kernel at runtime, so a
     design supplies ``(x, y, a, z, size)``.  The vectorized path processes 64
     elements per iteration; ``tile_size`` must therefore be a multiple of 64.
+    It takes ``a`` as float32, exactly: its products with ``x`` are exact and
+    their sum with ``y`` is float32, rounded once to bf16 (``axpy_ref``).
+    The scalar path takes ``a`` as bf16.
 
     Args:
         tile_size: Elements per tile (multiple of 64 for the vectorized path).
@@ -158,10 +174,22 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
             setup=conv_even,
             roles=(In, In, Param, Out, Param),
             parameter_bindings=((4, tile_size),),
-            reference=axpy_ref,
+            reference=(
+                axpy_ref if vectorized else lambda x, y, a: axpy_ref(x, y, bfloat16(a))
+            ),
             acc_dtype=np.float32,
             reduction=1,
-            tolerance=_BF16_ROUNDTRIP,
+            tolerance=(
+                Tolerance.bf16_ulps(
+                    0,
+                    atol=2.0**-126,
+                    note="the reference sums as the kernel does, so its one "
+                    "bf16 rounding is the store's; atol is the smallest normal "
+                    "bf16, for the device's subnormal flush to zero",
+                )
+                if vectorized
+                else _BF16_ROUNDTRIP
+            ),
             ops_per_call=2 * tile_size,
         ),
     )

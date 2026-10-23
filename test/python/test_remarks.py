@@ -576,15 +576,15 @@ def test_case_builds_name_the_build_each_case_runs(tmp_path):
         CASES = [
             Case("tanh/a"),
             Case("tanh/b"),
-            Case("tanh/lut", dict(use_lut=True), devices=("npu2",)),
-            Case("tanh/lut-npu1", dict(use_lut=True), devices=("npu1",)),
+            Case("tanh/wide", dict(tile_size=2048), devices=("npu2",)),
+            Case("tanh/wide-npu1", dict(tile_size=2048), devices=("npu1",)),
         ]
         """))
     coverage = collections.Counter()
     builds = dict(remarks.case_builds(str(cases), "npu2", coverage=coverage))
     # a and b build one object; the npu1-only case is not this device's.
-    assert list(builds) == ["tanh/a", "tanh/lut"]
-    assert builds["tanh/lut"].object_file_name != builds["tanh/a"].object_file_name
+    assert list(builds) == ["tanh/a", "tanh/wide"]
+    assert builds["tanh/wide"].object_file_name != builds["tanh/a"].object_file_name
     assert remarks.case_coverage(coverage) == (
         "cases: 2 builds for 3 cases (1 share an earlier case's build); "
         "skipped 1 by devices, 0 other-architecture only"
@@ -599,8 +599,8 @@ def test_case_builds_name_the_build_each_case_runs(tmp_path):
 def test_case_builds_reach_the_library_cases_the_default_sweep_misses():
     defaults = {ef.object_file_name for _, ef in kernel_builds()}
     builds = dict(remarks.case_builds(str(KERNEL_CASES), "npu2", "^tanh/"))
-    lut = builds["tanh/1024x16/bfloat16/use_lut=True/lut"]
-    assert lut.object_file_name not in defaults
+    tail = builds["tanh/1056x4/bfloat16/tail"]
+    assert tail.object_file_name not in defaults
 
 
 def test_a_build_spec_parses_each_value_as_its_parameters_type():
@@ -720,7 +720,7 @@ def test_lut_kernel_command_uses_native_source(tmp_path):
     from aie.iron.device import NPU1Col1
 
     set_current_device(NPU1Col1())
-    ef = kernels.gelu()
+    ef = kernels.bf16_exp()
     assert ef.source_string is None
     assert Path(ef.source_file).name == "lut_kernel.cc"
     cmd, _ = compile_command(ef, "aie2", tmp_path)
@@ -1040,7 +1040,7 @@ def test_diff_rows_needs_matching_locations_to_call_it_a_rename():
 def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
     if not (Path(config.aie_runtime_lib_dir()) / "AIE2P").is_dir():
         pytest.skip("this build has no aie_runtime_lib/AIE2P")
-    # Only the LUT build compiles the extra loop.
+    # Only the 1056-element build compiles the extra loop.
     base = tmp_path / "base"
     shutil.copytree(config.aie_kernels_dir(), base / "aie_kernels")
     shutil.copytree(config.aie_runtime_lib_dir(), base / "aie_runtime_lib")
@@ -1050,7 +1050,7 @@ def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
     tanh.write_text(
         tanh.read_text().replace(
             marker,
-            f"{marker}#if !ACTIVATIONS_NATIVE_TANH\n"
+            f"{marker}#if TANH_ELEMS == 1056\n"
             "  for (volatile int k = 0; k < 3; ++k)\n    ;\n#endif\n",
         )
     )
@@ -1058,7 +1058,7 @@ def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
     code = remarks.main(
         [
             "--target=aie2p",
-            "--only=^tanh/1024x16/",
+            "--only=^tanh/10(24x16|56x4)/",
             f"--cases={KERNEL_CASES}",
             f"--out={tmp_path / 'rows.json'}",
             f"--meta={meta}",
@@ -1068,8 +1068,8 @@ def test_a_baseline_tree_compares_the_builds_cases_run(tmp_path, capsys):
     assert code == 0
     assert "\ncases: 2 builds for " in capsys.readouterr().out
     written = json.loads(meta.read_text())
-    lut = "tanh/1024x16/bfloat16/use_lut=True/lut"
-    assert set(written["kernels"]) == {"tanh/1024x16/bfloat16", lut}
+    tail = "tanh/1056x4/bfloat16/tail"
+    assert set(written["kernels"]) == {"tanh/1024x16/bfloat16", tail}
     changed = written["baseline"]["changed"]
-    assert changed and all(name.startswith(f"{lut}/") for name in changed)
-    assert changed[f"{lut}/pm_bytes"][0] > changed[f"{lut}/pm_bytes"][1]
+    assert changed and all(name.startswith(f"{tail}/") for name in changed)
+    assert changed[f"{tail}/pm_bytes"][0] > changed[f"{tail}/pm_bytes"][1]
