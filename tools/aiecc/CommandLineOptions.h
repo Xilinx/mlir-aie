@@ -139,6 +139,11 @@ inline cl::opt<bool> packetSwObjFifos("packet-sw-objFifos",
 inline cl::opt<bool> skipObjectFifoVerify(
     "skip-objectFifo-verify",
     cl::desc("Skip structural verification of split objectFifo IR"));
+inline cl::opt<bool> checkQueueSpace(
+    "check-queue-space",
+    cl::desc("Wait for room on the task queue before each push a core makes "
+             "onto an out-of-order channel"),
+    cl::init(true));
 inline cl::opt<bool>
     ctrlPktOverlay("generate-ctrl-pkt-overlay",
                    cl::desc("Route shim-to-tile control overlay"));
