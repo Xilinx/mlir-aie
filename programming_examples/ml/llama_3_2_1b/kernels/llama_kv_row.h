@@ -61,8 +61,6 @@ static inline void llama_kv_row_quant(const int8_t *restrict kvfp_packed,
                    vec_mul_rne(x1, ::aie::load_v<kV>(cs + kHD + kHalf + j))));
   }
 
-  // A non-NaN float's |v| bits order as an int32, so each absmax is an
-  // integer max, and max(absmax, 1e-12f) one more.
   ::aie::vector<int32, kV> k_mag = ::aie::zeros<int32, kV>();
   ::aie::vector<int32, kV> v_mag = ::aie::zeros<int32, kV>();
   for (int c = 0; c < kHD / kV; c++) {
@@ -81,7 +79,7 @@ static inline void llama_kv_row_quant(const int8_t *restrict kvfp_packed,
   absmax.set(::aie::reduce_max(k_mag), 0);
   absmax.set(::aie::reduce_max(v_mag), 1);
   ::aie::vector<float, 8> scale = vec_mul_rne(
-      ::aie::max(absmax, int32(0x2b8cbccc)).template cast_to<float>(),
+      ::aie::max(absmax, kAbsmaxFloorBits).template cast_to<float>(),
       ::aie::broadcast<float, 8>(1.0f / 127.0f));
   float ks = scale.get(0);
   float vs = scale.get(1);

@@ -39,11 +39,6 @@ static constexpr int kHalfKV = kNHeadsKV / 2;
 static constexpr int kVec = 16;
 static_assert(kHD % kVec == 0, "LLAMA_GQA_HEAD_DIM must be a multiple of 16");
 
-static inline float bits_to_float(int32_t bits) {
-  float f = __builtin_bit_cast(float, bits);
-  return f;
-}
-
 // Each KV group's chunk is its REP Q heads' sv, kREP*kHD fp32; the memtile
 // join packs 4 chunks per half, KV groups 0-3 in lo and 4-7 in hi. KV group
 // g holds Q heads [g*REP, g*REP + REP), so lo then hi is every Q head's sv
@@ -108,21 +103,14 @@ extern "C" void llama_af_quant(int8_t *restrict sv, int8_t *restrict af_out) {
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   const float *x = reinterpret_cast<const float *>(sv);
 
-  // A non-NaN float's |v| bits order as an int32, so the absmax is an
-  // integer max.
   ::aie::vector<int32, kVec> mag = ::aie::zeros<int32, kVec>();
   for (int c = 0; c < kQD / kVec; c++)
     mag = ::aie::max(
         mag, ::aie::bit_and(
                  int32(0x7fffffff),
                  ::aie::load_v<kVec>(x + c * kVec).template cast_to<int32>()));
-  float absmax = bits_to_float(::aie::reduce_max(mag));
-  // absmax is always a magnitude (sign bit clear, from the bit_and with
-  // 0x7fffffff above), so its bit pattern orders the same as its value: an
-  // unsigned int compare avoids __ltsf2.
-  if ((uint32_t)__builtin_bit_cast(int32_t, absmax) <
-      (uint32_t)__builtin_bit_cast(int32_t, 1e-12f))
-    absmax = 1e-12f;
+  const float absmax = __builtin_bit_cast(
+      float, std::max(::aie::reduce_max(mag), kAbsmaxFloorBits));
   float o_act_scale = scalar_mul_rne(absmax, 1.0f / 127.0f);
   ::aie::vector<float, kVec> inv_v =
       ::aie::broadcast<float, kVec>(recip_rne(o_act_scale));

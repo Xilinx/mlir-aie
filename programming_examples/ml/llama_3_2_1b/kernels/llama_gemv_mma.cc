@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 #include "llama_gemv_array.h"
+#include "llama_topk_set.h"
 
 static constexpr int kHalfTiles = 1024 / 8;
 static constexpr int kScalesOff = 8 * 2048;
@@ -82,14 +83,8 @@ half_epilogue(::aie::vector<int32, 32> sums, const float *restrict act_scales,
       if (ok) {
         out_val = fp.get(lane);
       } else {
-        // The scalar `*` without __mulsf3/__muldi3: IEEE's product but 0
-        // below FLT_MIN, which the decode's scales never reach. 8 lanes: the
-        // narrowest AIE2P legalizes an integer bit_and/bit_or at.
-        ::aie::vector<float, 8> sv =
-            vec_mul_rne(::aie::broadcast<float, 8>((float)sums.get(lane)),
-                        ::aie::broadcast<float, 8>(act_scales[m]));
-        out_val =
-            vec_mul_rne(sv, ::aie::broadcast<float, 8>(w_scales[n])).get(0);
+        out_val = scalar_mul_rne(
+            scalar_mul_rne((float)sums.get(lane), act_scales[m]), w_scales[n]);
       }
       reinterpret_cast<float *>(out)[(4 * h + m) * ostride + row0 + n] =
           out_val;
@@ -215,13 +210,6 @@ static_assert(kLmKset == 8, "the set is the mma tile's 8 rows, 2 meta blocks");
 static_assert(LLAMA_GEMV_OUT_BYTES % kD == 0 && kLmKset % kRowsPerOut == 0,
               "an out object holds whole rows of the set");
 
-static inline int32_t lm_key(float f) {
-  int32_t b = __builtin_bit_cast(int32_t, f);
-  if (b == INT32_MIN)
-    b = 0;
-  return b ^ ((b >> 31) & 0x7fffffff);
-}
-
 extern "C" {
 
 // The logits of table slot `tile_idx` against act's first activation (a
@@ -278,37 +266,18 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
   aie::set_saturation(saved_sat);
 
   const float *w_scales = reinterpret_cast<const float *>(w + kTrailer + 32);
-  int len = meta[kMetaLen];
-  int32_t min_key = 0, min_gidx = 0;
-  int mi = 0;
-  bool rescan = true;
+  TopkInsert<kLmKset> set{meta[kMetaLen]};
   for (int n = 0; n < kLmRows; n++) {
     const int32_t gidx = tile_idx * kLmRows + n;
-    const int32_t key = lm_key(logits[n]);
-    int slot;
-    if (len < kLmKset) {
-      slot = len++;
-    } else {
-      if (rescan) {
-        mi = 0;
-        min_key = lm_key(__builtin_bit_cast(float, meta[0]));
-        min_gidx = meta[4];
-        for (int i = 1; i < kLmKset; i++) {
-          const int at = kMetaBlock * (i / 4) + i % 4;
-          int32_t k = lm_key(__builtin_bit_cast(float, meta[at]));
-          if (k < min_key || (k == min_key && meta[at + 4] > min_gidx)) {
-            min_key = k;
-            min_gidx = meta[at + 4];
-            mi = i;
-          }
-        }
-        rescan = false;
-      }
-      if (key < min_key || (key == min_key && gidx > min_gidx))
-        continue;
-      slot = mi;
-      rescan = true;
-    }
+    const int slot = set.slot(
+        topk_key(logits[n]), gidx,
+        [&](int i) {
+          return topk_key(
+              __builtin_bit_cast(float, meta[kMetaBlock * (i / 4) + i % 4]));
+        },
+        [&](int i) { return meta[kMetaBlock * (i / 4) + i % 4 + 4]; });
+    if (slot < 0)
+      continue;
     const int at = kMetaBlock * (slot / 4) + slot % 4;
     meta[at] = __builtin_bit_cast(int32_t, logits[n]);
     meta[at + 4] = gidx;
@@ -317,8 +286,8 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
       ::aie::store_v(rows + slot * kD + c * 64,
                      ::aie::load_v<64>(w + n * kD + c * 64));
   }
-  meta[kMetaLen] = len;
-  meta[kMetaBlock + kMetaLen] = len;
+  meta[kMetaLen] = set.len;
+  meta[kMetaBlock + kMetaLen] = set.len;
   event1();
 }
 
@@ -327,11 +296,13 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
 // partials' first LLAMA_GEMV_OUT_BYTES bytes).
 void llama_mma_lm_out(int8_t *restrict rows, int32_t *restrict meta,
                       int8_t *restrict out, int32_t j) {
+  event0();
   const int8_t *src = j < kLmKset / kRowsPerOut
                           ? rows + kRowsPerOut * j * kD
                           : reinterpret_cast<const int8_t *>(meta);
   for (int c = 0; c < LLAMA_GEMV_OUT_BYTES / 64; c++)
     ::aie::store_v(out + c * 64, ::aie::load_v<64>(src + c * 64));
+  event1();
 }
 
 } // extern "C"

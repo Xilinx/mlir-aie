@@ -65,10 +65,11 @@ vec_normalize_lanes(const float *restrict x, const bfloat16 *restrict gamma,
                      g_acc.template to_vector<float>());
 }
 
-// absmax of (x * pre) * gamma as an integer max of the magnitude bits.
-static inline float vec_absmax(const float *restrict x,
-                               const bfloat16 *restrict gamma,
-                               ::aie::vector<float, kLanes> pre_v, int cols) {
+// absmax((x * pre) * gamma)'s bits, an integer max of the magnitudes' bits.
+static inline int32_t vec_absmax_bits(const float *restrict x,
+                                      const bfloat16 *restrict gamma,
+                                      ::aie::vector<float, kLanes> pre_v,
+                                      int cols) {
   ::aie::vector<int32, kLanes> mag = ::aie::zeros<int32, kLanes>();
   for (int c = 0; c < cols / kLanes; c++)
     mag = ::aie::max(
@@ -76,8 +77,7 @@ static inline float vec_absmax(const float *restrict x,
                  int32(0x7fffffff),
                  vec_normalize_lanes(x + c * kLanes, gamma + c * kLanes, pre_v)
                      .template cast_to<int32>()));
-  int32_t bits = ::aie::reduce_max(mag);
-  return __builtin_bit_cast(float, bits);
+  return ::aie::reduce_max(mag);
 }
 
 static inline void vec_requant(const float *restrict x,
@@ -112,13 +112,10 @@ void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
   float var = scalar_mul_rne(vec_sum_sq_f32(x, kCols), 1.0f / kCols);
   float inv_rms = sw_invsqrt(var + kEps);
 
-  float absmax =
-      vec_absmax(x, gamma, ::aie::broadcast<float, kLanes>(inv_rms), kCols);
-  // absmax is always a magnitude (sign bit clear), so its bit pattern orders
-  // the same as its value: an unsigned int compare avoids __ltsf2.
-  if ((uint32_t)__builtin_bit_cast(int32_t, absmax) <
-      (uint32_t)__builtin_bit_cast(int32_t, 1e-12f))
-    absmax = 1e-12f;
+  const int32_t absmax_bits = vec_absmax_bits(
+      x, gamma, ::aie::broadcast<float, kLanes>(inv_rms), kCols);
+  const float absmax =
+      __builtin_bit_cast(float, std::max(absmax_bits, kAbsmaxFloorBits));
   float scale_dyn = scalar_mul_rne(absmax, 1.0f / 127.0f);
   float combined = scalar_mul_rne(inv_rms, recip_rne(scale_dyn));
   vec_requant(x, gamma, y, ::aie::broadcast<float, kLanes>(combined), kCols);

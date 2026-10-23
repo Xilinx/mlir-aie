@@ -130,14 +130,40 @@ static inline float recip_rne(float a) {
   return __builtin_bit_cast(float, ((253u - e) << 23) + (q - (1u << 23)));
 }
 
+// recip_rne lane-wise: the same restoring division of the significand, on
+// kN lanes at once.
 template <unsigned kN>
-static inline ::aie::vector<float, kN> vec_recip(::aie::vector<float, kN> a) {
-  alignas(64) float lanes[kN];
-  ::aie::store_v(lanes, a);
-  for (unsigned i = 0; i < kN; i++)
-    lanes[i] = recip_rne(lanes[i]);
-  return ::aie::load_v<kN>(lanes);
+__attribute__((noinline)) static ::aie::vector<float, kN>
+vec_recip_rne(::aie::vector<float, kN> a) {
+  ::aie::vector<int32, kN> bits = a.template cast_to<int32>();
+  ::aie::vector<int32, kN> e =
+      ::aie::downshift(::aie::bit_and(int32(0x7f800000), bits), 23);
+  ::aie::vector<int32, kN> m =
+      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bits));
+  ::aie::vector<int32, kN> rem = ::aie::broadcast<int32, kN>(1 << 24);
+  ::aie::vector<int32, kN> q = ::aie::zeros<int32, kN>();
+  for (int i = 0; i < 24; i++) {
+    auto ge = ::aie::ge(rem, m);
+    q = ::aie::add(::aie::add(q, q),
+                   ::aie::select(::aie::zeros<int32, kN>(),
+                                 ::aie::broadcast<int32, kN>(1), ge));
+    rem = ::aie::select(rem, ::aie::sub(rem, m), ge);
+    rem = ::aie::add(rem, rem);
+  }
+  auto exact = ::aie::eq(q, int32(1 << 23)) & ::aie::eq(rem, int32(0));
+  auto up =
+      ::aie::gt(rem, m) |
+      (::aie::eq(rem, m) & ::aie::gt(::aie::bit_and(int32(1), q), int32(0)));
+  q = ::aie::select(q, ::aie::add(q, int32(1)), up);
+  return ::aie::select(::aie::add(::aie::upshift(::aie::sub(int32(253), e), 23),
+                                  ::aie::sub(q, int32(1 << 23))),
+                       ::aie::upshift(::aie::sub(int32(254), e), 23), exact)
+      .template cast_to<float>();
 }
+
+// 1e-12f's bits. A non-NaN float's |v| bits order as an int32, so an
+// absmax's floor is an integer max.
+static constexpr int32_t kAbsmaxFloorBits = 0x2b8cbccc;
 
 // e^x for x <= 0 lane-wise, as llama_oracle.exp_nonpos: with
 // t = x * log2(e) (vec_mul_rne), k = trunc(t) and f = t - k in (-1, 0],
@@ -184,12 +210,10 @@ static inline void q_requant_heads(const float *restrict q_fp,
                                    int8_t *restrict body,
                                    int8_t *restrict tail) {
   constexpr int kV = 16;
-  // One group covers every head in one vec_recip call; vec_recip's per-lane
-  // recip_rne is scalar, so padding the group to kV would spend most of its
-  // cost on unused lanes. kGroup stays at 8 (not kHeads) below 8 heads: AIE2P
-  // doesn't legalize a 128-bit (4-lane) integer bit_and/bit_or.
-  constexpr int kGroup = kHeads < 8 ? 8 : kHeads;
-  static_assert(kGroup <= kV);
+  // Every head's scale and reciprocal in one group of kV lanes: AIE2P
+  // legalizes vec_recip_rne's integer shifts at no fewer.
+  constexpr int kGroup = kV;
+  static_assert(kHeads <= kGroup);
   alignas(64) float q_scale[kGroup];
   alignas(64) float q_inv[kGroup];
   for (int h = kHeads; h < kGroup; h++)
@@ -204,16 +228,14 @@ static inline void q_requant_heads(const float *restrict q_fp,
                    ::aie::load_v<kV>(src + c * kV).template cast_to<int32>()));
     q_scale[h] = __builtin_bit_cast(float, ::aie::reduce_max(mag));
   }
-  // Every head's scale and reciprocal at once. max(absmax, 1e-12f) is an
-  // integer max of the non-negative bits.
   ::aie::vector<float, kGroup> absmax =
       ::aie::max(::aie::load_v<kGroup>(q_scale).template cast_to<int32>(),
-                 int32(0x2b8cbccc))
+                 kAbsmaxFloorBits)
           .template cast_to<float>();
   ::aie::vector<float, kGroup> scale =
       vec_mul_rne(absmax, ::aie::broadcast<float, kGroup>(1.0f / 127.0f));
   ::aie::store_v(q_scale, scale);
-  ::aie::store_v(q_inv, vec_recip(scale));
+  ::aie::store_v(q_inv, vec_recip_rne(scale));
   for (int h = 0; h < kHeads; h++) {
     const float *src = q_fp + h * kHD;
     int8_t *dst = body + h * kHD;

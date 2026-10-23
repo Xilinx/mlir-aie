@@ -138,7 +138,7 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
 
     // Sum and walk the survivors in ascending gidx, the oracle's order: fp32
     // adds don't associate, and an ulp moves a pick near a CDF boundary.
-    float sum_exp = 0.0f;
+    int order[kKset];
     int prev_g = -1;
     for (int step = 0; step < top_k; step++) {
       int si = -1;
@@ -149,9 +149,12 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
           sg = set_gidx[i];
         }
       }
+      order[step] = si;
       prev_g = sg;
-      sum_exp += e[si];
     }
+    float sum_exp = 0.0f;
+    for (int step = 0; step < top_k; step++)
+      sum_exp += e[order[step]];
 
     Xoshiro128 g;
     for (int i = 0; i < 4; i++)
@@ -160,26 +163,15 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
     for (int i = 0; i < 4; i++)
       params[2 + i] = g.s[i];
 
+    // The last survivor if u falls off the end (fp roundoff).
     float cum = 0.0f;
-    winner = -1;
-    prev_g = -1;
+    winner = order[top_k - 1];
     for (int step = 0; step < top_k; step++) {
-      // The next survivor by gidx.
-      int si = -1;
-      int32_t sg = 0;
-      for (int i = 0; i < len; i++) {
-        if (keep[i] && set_gidx[i] > prev_g && (si < 0 || set_gidx[i] < sg)) {
-          si = i;
-          sg = set_gidx[i];
-        }
-      }
-      prev_g = sg;
-      cum += e[si];
+      cum += e[order[step]];
       if (cum > u) {
-        winner = si;
+        winner = order[step];
         break;
       }
-      winner = si; // fallback to last if u falls off the end (fp roundoff)
     }
   }
 

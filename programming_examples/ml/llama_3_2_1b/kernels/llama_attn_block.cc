@@ -54,36 +54,6 @@ static inline float *head_record(int8_t *state, int h) {
   return reinterpret_cast<float *>(state + kStateHeader + h * kHeadStride);
 }
 
-// recip_rne lane-wise: the same restoring division of the significand, on
-// 16 lanes at once.
-__attribute__((noinline)) static ::aie::vector<float, kLanes>
-vec_recip_rne(::aie::vector<float, kLanes> a) {
-  ::aie::vector<int32, kLanes> bits = a.template cast_to<int32>();
-  ::aie::vector<int32, kLanes> e =
-      ::aie::downshift(::aie::bit_and(int32(0x7f800000), bits), 23);
-  ::aie::vector<int32, kLanes> m =
-      ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), bits));
-  ::aie::vector<int32, kLanes> rem = ::aie::broadcast<int32, kLanes>(1 << 24);
-  ::aie::vector<int32, kLanes> q = ::aie::zeros<int32, kLanes>();
-  for (int i = 0; i < 24; i++) {
-    auto ge = ::aie::ge(rem, m);
-    q = ::aie::add(::aie::add(q, q),
-                   ::aie::select(::aie::zeros<int32, kLanes>(),
-                                 ::aie::broadcast<int32, kLanes>(1), ge));
-    rem = ::aie::select(rem, ::aie::sub(rem, m), ge);
-    rem = ::aie::add(rem, rem);
-  }
-  auto exact = ::aie::eq(q, int32(1 << 23)) & ::aie::eq(rem, int32(0));
-  auto up =
-      ::aie::gt(rem, m) |
-      (::aie::eq(rem, m) & ::aie::gt(::aie::bit_and(int32(1), q), int32(0)));
-  q = ::aie::select(q, ::aie::add(q, int32(1)), up);
-  return ::aie::select(::aie::add(::aie::upshift(::aie::sub(int32(253), e), 23),
-                                  ::aie::sub(q, int32(1 << 23))),
-                       ::aie::upshift(::aie::sub(int32(254), e), 23), exact)
-      .template cast_to<float>();
-}
-
 // Folds every head's block max and sum (m_b[h], s_b[h]) into its record:
 // with M = max(m, m_b), a = s e^(m-M) and b = s_b e^(m_b-M), the record gets
 // (M, a + b) and w the weights a/(a+b) (w[h]) and b/(a+b) (w[kREP + h]) of
