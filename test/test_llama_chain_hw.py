@@ -196,6 +196,26 @@ def test_prefill_fails_on_its_exit_status(llama):
     assert not llama.parse_prefill(output("prefill_pass"), 1)["prefill_passed"]
 
 
+def test_prefill_without_its_prompt_length_fails_and_publishes_nothing(llama):
+    # The capture with its summary line's head cut off: the timing is still
+    # there, the prompt's length is not.
+    out = output("prefill_pass").split("prompt 513 tokens, ")[1]
+    got = llama.parse_prefill(out, 0)
+    assert got["ttft_ms"] == 8158.5
+    assert got["prompt_tokens"] is None
+    assert not got["prefill_passed"]
+    rows = llama.aggregate(
+        llama.parse_correctness(output("decode_pass"), 0),
+        llama.parse_timing(output("timed_pass"), 0),
+        llama.parse_generate("", 1),
+        {512: got},
+        {},
+        {},
+        {},
+    )
+    assert not any("/prompt=512/" in r["name"] for r in rows)
+
+
 def test_the_prefill_sweep_publishes_a_row_per_prompt_length(llama):
     correctness = llama.parse_correctness(output("decode_pass"), 0)
     timing = llama.parse_timing(output("timed_pass"), 0)

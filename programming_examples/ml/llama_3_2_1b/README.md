@@ -239,8 +239,11 @@ reuses it), or runs a prebuilt one (`--elf`, from
 
 `run_llama.lit` runs the decode test's cases at 2 layers on synthetic
 weights (`--synthetic-weights`): from an empty cache, across dispatches,
-into the cache's last rows, split, sampled, and a prompt in batches. The
-nightly component check runs all 16 real layers and scores the oracle
+into the cache's last rows, split, sampled, a prompt in batches, and every
+logit tied across two GEMV cores (`--tied-table`); and
+`test_kernel_edges.py`, the kernels' rare paths on one core each against
+the oracle. `compile_llama.lit` compiles the 16-layer build with no NPU.
+The nightly component check runs all 16 real layers and scores the oracle
 against bf16 (`accuracy_vs_hf.py`).
 
 > **Pass `--n-layers 16`** to the decode test for any accuracy or timing run:

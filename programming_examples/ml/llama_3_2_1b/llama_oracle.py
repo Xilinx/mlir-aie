@@ -277,15 +277,58 @@ def fold(state, m_b, s_b, sv_b):
     )
 
 
+def attention_weights(q_i8, q_scales, k_i8, k_slot, v_slot, t, tb):
+    """Each Q head's softmax over each block of the cache, as `llama_attn_block` computes it.
+
+    Args:
+        `q_i8`: int8 (N_HEADS_Q, HEAD_D).
+        `q_scales`: fp32 (N_HEADS_Q,).
+        `k_i8`: int8 (N_HEADS_KV, rows, HEAD_D), rows >= t.
+        `k_slot`: fp32 (N_HEADS_KV, rows), the rows' K scales.
+        `v_slot`: fp32 (N_HEADS_KV, rows), their V scales.
+        `t`: The live rows.
+        `tb`: Rows per block.
+
+    Returns:
+        (m, s, pv): per Q head and block, fp32 (N_HEADS_Q, nb), the block's
+        max score and its sum of e = e^(score - m); per row, fp32
+        (N_HEADS_Q, nb, tb), pv = (e / s) * v_slot, 0 past t.
+    """
+    nb = -(-t // tb)
+    kvh = np.arange(N_HEADS_Q) // REP
+    pad = nb * tb - t
+    live = np.arange(nb * tb).reshape(nb, tb) < t
+    k, ks, vs = (
+        np.pad(x[:, :t], [(0, 0), (0, pad)] + [(0, 0)] * (x.ndim - 2))
+        for x in (k_i8, k_slot, v_slot)
+    )
+    k = k.astype(np.float64)
+    ks = ks.reshape(N_HEADS_KV, nb, tb)
+    vs = vs.reshape(N_HEADS_KV, nb, tb)
+    dots = np.einsum("hrd,hd->hr", k[kvh], q_i8.astype(np.float64))
+    dots = dots.astype(np.float32).reshape(N_HEADS_Q, nb, tb)
+    qk = mul_rne(
+        mul_rne(np.asarray(q_scales, np.float32)[:, None, None], ks[kvh]),
+        np.float32(0.125),
+    )
+    scores = mul_rne(dots, qk)
+    m = np.where(live, scores, -np.inf).max(axis=2).astype(np.float32)
+    e = np.where(live, exp_nonpos(aie_add(scores, -m[:, :, None])), np.float32(0))
+    s = np.zeros((N_HEADS_Q, nb), np.float32)
+    for r in range(tb):
+        s = aie_add(s, e[:, :, r])
+    pv = mul_rne(mul_rne(e, (np.float32(1) / s)[:, :, None]), vs[kvh])
+    return m, s, pv
+
+
 def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
     """Every Q head over the cache, as the decode's attention cores compute it.
 
     The heads of a KV head attend its blocks of `tb` rows as
-    `llama_attn_block` does, every block at once (`attend_block` per head and
-    block); two cores per KV head take the even and the odd blocks, each
-    folding its blocks in order, and the second merges the first's state,
-    then its own (`llama_attn_merge_pair_q`), which writes each head's sv in
-    fp32.
+    `llama_attn_block` does, every block at once (`attention_weights`); two
+    cores per KV head take the even and the odd blocks, each folding its
+    blocks in order, and the second merges the first's state, then its own
+    (`llama_attn_merge_pair_q`), which writes each head's sv in fp32.
 
     Args:
         `q_i8`: int8 (N_HEADS_Q, HEAD_D).
@@ -302,31 +345,9 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
     """
     nb = -(-t // tb)
     kvh = np.arange(N_HEADS_Q) // REP
-    pad = nb * tb - t
-    rows = np.arange(nb * tb).reshape(nb, tb)
-    live = rows < t
-
-    k, v, ks, vs = (
-        np.pad(x[:, :t], [(0, 0), (0, pad)] + [(0, 0)] * (x.ndim - 2))
-        for x in (k_i8, v_i8, k_slot, v_slot)
-    )
-    k = k.astype(np.float64)
+    m, s, pv = attention_weights(q_i8, q_scales, k_i8, k_slot, v_slot, t, tb)
+    v = np.pad(v_i8[:, :t], [(0, 0), (0, nb * tb - t), (0, 0)])
     v = v.reshape(N_HEADS_KV, nb, tb, HEAD_D).astype(np.float32)
-    ks = ks.reshape(N_HEADS_KV, nb, tb)
-    vs = vs.reshape(N_HEADS_KV, nb, tb)
-    dots = np.einsum("hrd,hd->hr", k[kvh], q_i8.astype(np.float64))
-    dots = dots.astype(np.float32).reshape(N_HEADS_Q, nb, tb)
-    qk = mul_rne(
-        mul_rne(np.asarray(q_scales, np.float32)[:, None, None], ks[kvh]),
-        np.float32(0.125),
-    )
-    scores = mul_rne(dots, qk)
-    m = np.where(live, scores, -np.inf).max(axis=2).astype(np.float32)
-    e = np.where(live, exp_nonpos(aie_add(scores, -m[:, :, None])), np.float32(0))
-    s = np.zeros((N_HEADS_Q, nb), np.float32)
-    for r in range(tb):
-        s = aie_add(s, e[:, :, r])
-    pv = mul_rne(mul_rne(e, (np.float32(1) / s)[:, :, None]), vs[kvh])
     acc = np.zeros((N_HEADS_Q, nb, HEAD_D), np.float32)
     for r in range(tb):
         acc = aie_add(acc, mul_rne(v[kvh, :, r, :], pv[:, :, r, None]))

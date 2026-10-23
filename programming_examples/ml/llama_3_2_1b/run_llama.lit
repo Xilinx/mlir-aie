@@ -6,9 +6,12 @@
 // its record's seed, the last token's final residual and the whole KV cache
 // match the numpy oracle, from an empty cache, across dispatches with the NPU
 // idle between them, into the cache's last rows, for a split dispatch,
-// sampled, and for a prompt in batches. --synthetic-weights swaps the
-// embedding table and the layers' own weights for seeded ones in the same
-// layout. 16 real layers are the nightly component check.
+// sampled, for a prompt in batches, and with every logit tied across two
+// GEMV cores' sets (greedy, and sampled from a 4-entry set).
+// --synthetic-weights swaps the embedding table and the layers' own weights
+// for seeded ones in the same layout. 16 real layers are the nightly
+// component check.
+// test_kernel_edges.py runs the kernels' rare paths on one core each.
 //
 // REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings, xrt_python_ctrl_scratchpad_bo
 //
@@ -42,3 +45,20 @@
 // PROMPT: chain_persist_grow_mh: 5/5 tokens PASS
 // PROMPT: carry across 3 dispatches: PASS
 // PROMPT: prompt in batches of 4 vs 1: PASS
+//
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 0 --tied-table | FileCheck --check-prefix=TIED %s
+// TIED: KV cache: PASS
+// TIED: chain_persist_grow_mh: 4/4 tokens PASS
+// TIED: tied table: 4/4 picks are the lower twin PASS
+//
+// RUN: %run_on_npu2% %python %S/test_chain_persist_grow_mh.py --synthetic-weights --start-pos 5 --kset 4 --sample-temp 0.7 --sample-topk 3 --sample-seed 99 --tied-table | FileCheck --check-prefix=KSET4 %s
+// KSET4: sampler state: PASS
+// KSET4: chain_persist_grow_mh: 4/4 tokens PASS
+// KSET4: sampled draws: 4/4 distinct states PASS
+//
+// RUN: %run_on_npu2% %python %S/test_kernel_edges.py | FileCheck --check-prefix=EDGES %s
+// EDGES: mma per-element epilogue: 0 words differ, sums past 2^23, {{.*}}: PASS
+// EDGES: mma vector epilogue: 0 words differ, sums within 2^23, {{.*}}: PASS
+// EDGES: attention sv_head: 0 words differ, blocks take ['fast', 'fast'], {{.*}}: PASS
+// EDGES: attention sv_head_low: 0 words differ, blocks take ['low', 'fast'], {{.*}}: PASS
+// EDGES: attention per-row sv: 0 words differ, blocks take ['slow', 'fast'], {{.*}}: PASS

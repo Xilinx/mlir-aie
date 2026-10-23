@@ -36,9 +36,10 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie2_decode import M_MAX, REC_BYTES, RROW
+from aie2_decode import LM_CORE_TILES, M_MAX, REC_BYTES, RROW
+from aie2_gemv_array import N_CORES
 from gen_llama_data import quant_int8_perchan_absmax
-from llama_config import HEAD_D, N_HEADS_KV, N_LAYERS, VOCAB, D
+from llama_config import HEAD_D, N_HEADS_KV, N_LAYERS, N_TILE, VOCAB, D
 from llama_decode import Decoder, DecodeShape, tokens_of
 from llama_oracle import (
     Layer,
@@ -51,14 +52,25 @@ from ml_dtypes import bfloat16
 from numpy_llama_ref import load_bf16, load_qw, rope_table
 
 DATA_DIR = Path(__file__).parent / "data"
+# The embed rows one GEMV core's lm_head takes.
+CORE_SHARE = N_TILE * LM_CORE_TILES
 
 
-def synthetic_lm_weights(seed, rows_per_chunk=8192):
+def synthetic_lm_weights(seed, tied=False, rows_per_chunk=8192):
     """A seeded stand-in for data/'s embed table and final_norm gamma.
 
     Same shapes, dtypes and per-row INT8 quantization as gen_llama_data.py
     writes; the distributions follow Llama 3.2 1B's (embed std ~0.022, gamma
     ~N(2.35, 0.28)). Built in row chunks: the full fp32 table would be 1 GB.
+
+    Args:
+        `seed`: The numpy Generator's seed.
+        `tied`: Repeat each even GEMV core's share of the table as the next
+            core's, so every logit ties its twin's in another core's set.
+        `rows_per_chunk`: Rows drawn at a time.
+
+    Returns:
+        (int8 embed table, its fp32 row scales, bf16 final_norm gamma).
     """
     rng = np.random.default_rng(seed)
     embed_i8 = np.empty((VOCAB, D), np.int8)
@@ -68,6 +80,12 @@ def synthetic_lm_weights(seed, rows_per_chunk=8192):
         rows = rng.normal(0.0, 0.022, size=(r1 - r0, D)).astype(np.float32)
         embed_i8[r0:r1], embed_sc[r0:r1] = quant_int8_perchan_absmax(rows)
     gamma = rng.normal(2.35, 0.28, size=D).astype(bfloat16)
+    if tied:
+        for c in range(0, N_CORES, 2):
+            for x in (embed_i8, embed_sc):
+                x[(c + 1) * CORE_SHARE : (c + 2) * CORE_SHARE] = x[
+                    c * CORE_SHARE : (c + 1) * CORE_SHARE
+                ]
     return embed_i8, embed_sc, gamma
 
 
@@ -288,6 +306,13 @@ def main(argv=None):
         "instead of the real Llama weights; the oracle runs on the same table",
     )
     p.add_argument(
+        "--tied-table",
+        action="store_true",
+        help="with --synthetic-weights: repeat each even GEMV core's share of the "
+        "table as the next core's, so every logit ties across two cores' sets; a "
+        "greedy pick must be the lower twin",
+    )
+    p.add_argument(
         "--dispatches",
         type=int,
         default=1,
@@ -438,6 +463,8 @@ def main(argv=None):
             "--save-run, --from-run and --prompt-tokens are for runs of "
             "--dispatches or --contexts"
         )
+    if opts.tied_table and not opts.synthetic_weights:
+        p.error("--tied-table is for --synthetic-weights")
     if opts.vs_batch and (opts.save_run or opts.from_run or not opts.prompt_tokens):
         p.error("--vs-batch is for a --prompt-tokens run on the NPU")
     config = json.dumps(
@@ -447,6 +474,7 @@ def main(argv=None):
             kset=shape.kset,
             seed=fseed,
             synthetic=opts.synthetic_weights,
+            tied=opts.tied_table,
             schedule=schedule,
             contexts=sweep,
             time=opts.time and bool(sweep),
@@ -457,7 +485,7 @@ def main(argv=None):
 
     if opts.synthetic_weights:
         print(f"building synthetic embed/final_norm (seed {fseed}) ...", flush=True)
-        embed_i8, embed_sc, gamma = synthetic_lm_weights(fseed)
+        embed_i8, embed_sc, gamma = synthetic_lm_weights(fseed, opts.tied_table)
     else:
         print(f"loading embed/final_norm from {DATA_DIR} ...", flush=True)
         embed_i8, embed_sc = load_qw(DATA_DIR, "embed", (VOCAB, D))
@@ -838,13 +866,20 @@ def main(argv=None):
             f"prompt in batches of {opts.batch} vs {opts.vs_batch}: "
             f"{'PASS' if not vs_fails else 'FAIL'}"
         )
+    lower = sum((tok // CORE_SHARE) % 2 == 0 for tok in dev_tokens)
+    untied = n - lower if opts.tied_table and sample[0] <= 0 else 0
+    if opts.tied_table and sample[0] <= 0:
+        print(
+            f"tied table: {lower}/{n} picks are the lower twin "
+            f"{'PASS' if not untied else 'FAIL'}"
+        )
     reused = len(draws) - len(set(draws))
     if draws:
         print(
             f"sampled draws: {len(set(draws))}/{len(draws)} distinct states "
             f"{'PASS' if not reused else 'FAIL'}"
         )
-    if tok_fails or carry_fails or hidden_fails or vs_fails or reused:
+    if tok_fails or carry_fails or hidden_fails or vs_fails or reused or untied:
         return 1
     if opts.time and not sweep:
         assert decoder is not None
