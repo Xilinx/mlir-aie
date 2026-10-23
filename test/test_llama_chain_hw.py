@@ -66,7 +66,7 @@ def test_a_decode_that_checked_no_token_fails(llama):
 
 
 def test_a_decode_that_stopped_before_its_summary_fails(llama):
-    out = output("decode_pass").split("\nchain_persist_grow_mh:")[0]
+    out = output("decode_pass").split("\ndecode:")[0]
     got = llama.parse_correctness(out, 0)
     assert (got["tokens_passed"], got["tokens_total"]) == (4, 4)
     assert not got["passed"]
@@ -189,10 +189,31 @@ def test_prefill_passes_and_publishes_ttft_at_its_prompt_length(llama):
     assert got["ttft_min_ms"] == 8135.6
     assert got["ttft_npu_dispatch_ms"] == 8024.6
     assert got["ttft_host_ms"] == 133.9
+    assert got["prompt_tokens"] == 513
 
 
 def test_prefill_fails_on_its_exit_status(llama):
     assert not llama.parse_prefill(output("prefill_pass"), 1)["prefill_passed"]
+
+
+def test_prefill_without_its_prompt_length_fails_and_publishes_nothing(llama):
+    # The capture with its summary line's head cut off: the timing is still
+    # there, the prompt's length is not.
+    out = output("prefill_pass").split("prompt 513 tokens, ")[1]
+    got = llama.parse_prefill(out, 0)
+    assert got["ttft_ms"] == 8158.5
+    assert got["prompt_tokens"] is None
+    assert not got["prefill_passed"]
+    rows = llama.aggregate(
+        llama.parse_correctness(output("decode_pass"), 0),
+        llama.parse_timing(output("timed_pass"), 0),
+        llama.parse_generate("", 1),
+        {512: got},
+        {},
+        {},
+        {},
+    )
+    assert not any("/prompt=512/" in r["name"] for r in rows)
 
 
 def test_the_prefill_sweep_publishes_a_row_per_prompt_length(llama):
@@ -210,6 +231,8 @@ def test_the_prefill_sweep_publishes_a_row_per_prompt_length(llama):
     assert names["ttft_min_ms"]["value"] == 8135.6
     assert names["ttft_ms"]["range"] == "median of 5"
     assert names["ttft_min_ms"]["range"] == "fastest of 5"
+    assert names["prefill_tok_s"]["value"] == 62.9
+    assert names["prefill_tok_s"]["unit"] == "tok/s"
     assert f"{case}/prompt=512/ttft_ms" in {r["name"] for r in rows}
     # A failed length publishes nothing for it.
     failed_rows = llama.aggregate(

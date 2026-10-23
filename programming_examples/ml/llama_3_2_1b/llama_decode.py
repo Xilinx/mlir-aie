@@ -19,6 +19,7 @@ from aie2_decode import (
     LMW_GAMMA_BYTES,
     M_MAX,
     REC_BYTES,
+    REC_TOKEN_AT,
     RROW,
     STAGE_RESID,
     WLM_SLOT,
@@ -43,47 +44,32 @@ from llama_npu import DispatchSession
 from llama_oracle import xoshiro_seed
 from ml_dtypes import bfloat16
 
-# The decode's time a token at position p, fit to the README's N=16
-# measurements: the lm_head, then per layer its weights and its attention
+# The decode's time a token at position p, fit to the nightly's 16-layer
+# context sweep: the lm_head, then per layer its weights and its attention
 # over p rows. amdxdna times a dispatch out after about 5 s.
-LM_HEAD_MS = 19.0
-LAYER_MS = 1.80
-LAYER_MS_PER_ROW = 0.000163
+LM_HEAD_MS = 4.7
+LAYER_MS = 1.16
+LAYER_MS_PER_ROW = 0.000097
 DISPATCH_BUDGET_MS = 4000.0
 
 
-def pack_perchan_slots(w_i8, w_scales, bias_i32, n_tile, prefix_bytes: bytes = b""):
-    """Per-tile slots [prefix_bytes | n_tile * K int8 | n_tile int32 bias |
-    n_tile fp32 w_scales], the prefix repeated in every slot."""
-    N, K = w_i8.shape
-    n_tiles = N // n_tile
-    pre = len(prefix_bytes)
-    slot = pre + n_tile * K + n_tile * 4 + n_tile * 4
-    blob = np.zeros(n_tiles * slot, dtype=np.int8)
-    pre_arr = np.frombuffer(prefix_bytes, dtype=np.int8)
-    for t in range(n_tiles):
-        base = t * slot
-        off = base
-        if pre:
-            blob[off : off + pre] = pre_arr
-            off += pre
-        rows = w_i8[t * n_tile : (t + 1) * n_tile].flatten()
-        bs = bias_i32[t * n_tile : (t + 1) * n_tile].view(np.int8).flatten()
-        ws = w_scales[t * n_tile : (t + 1) * n_tile].view(np.int8).flatten()
-        blob[off : off + rows.size] = rows
-        off += rows.size
-        blob[off : off + bs.size] = bs
-        off += bs.size
-        blob[off : off + ws.size] = ws
-    return blob
-
-
 def pack_lane_mma(layer_w, order, core):
-    """One core's weight lane for kernels/llama_gemv_mma.cc: per projection,
-    its row groups of eight rows, each as two `MMA_SLOT` slots, one per half
-    of 2048 columns (down: per 2048-column chunk, chunk-major), with weight
-    W[n][8kt + i] of a slot's half at kt*64 + i*8 + n, then the eight rows'
-    int32 biases (zero) and fp32 scales."""
+    """One core's weight lane for kernels/llama_gemv_mma.cc.
+
+    Per projection, its row groups of eight rows, each as two `MMA_SLOT`
+    slots, one per half of 2048 columns (down: per 2048-column chunk,
+    chunk-major), with weight W[n][8kt + i] of a slot's half at
+    kt*64 + i*8 + n, then the eight rows' int32 biases (zero) and fp32
+    scales.
+
+    Args:
+        `layer_w`: Per projection letter, its int8 weights and fp32 scales.
+        `order`: The projections' letters, in the order the lane holds them.
+        `core`: The core, whose eighth of each projection's rows it takes.
+
+    Returns:
+        int8, the lane's slots.
+    """
     parts = []
     for p in order:
         rows, k = PROJECTIONS[p]
@@ -104,20 +90,24 @@ def pack_lane_mma(layer_w, order, core):
 
 
 def pack_lmw(embed_i8, embed_sc, gamma):
-    """The lm_head blob: the final norm's gamma, then the embed table's slots.
+    """The lm_head blob: the final norm's gamma, then the embed table's slots
+    (aie2_decode.WLM_SLOT): per 4 rows the rows, 8 zero biases and 8 scales,
+    the rows' then 1.
 
     Args:
-        embed_i8: int8 (VOCAB, D), the tied embed table.
-        embed_sc: Its per-row scales.
-        gamma: The final norm's bf16 gamma.
+        `embed_i8`: int8 (VOCAB, D), the tied embed table.
+        `embed_sc`: Its per-row scales.
+        `gamma`: The final norm's bf16 gamma.
 
     Returns:
         int8, LMW_GAMMA_BYTES + WLM_TOTAL.
     """
-    bias = np.zeros(VOCAB, np.int32)
-    wpacked = pack_perchan_slots(
-        embed_i8, embed_sc.astype(np.float32), bias, N_TILE, prefix_bytes=b"\x00" * 64
-    )
+    slots = np.zeros((VOCAB // N_TILE, WLM_SLOT), np.int8)
+    slots[:, : N_TILE * D] = embed_i8.reshape(-1, N_TILE * D)
+    scales = np.ones((VOCAB // N_TILE, 8), np.float32)
+    scales[:, :N_TILE] = embed_sc.astype(np.float32).reshape(-1, N_TILE)
+    slots[:, N_TILE * D + 32 :] = scales.view(np.int8)
+    wpacked = slots.reshape(-1)
     assert wpacked.size == WLM_TOTAL, (wpacked.size, WLM_TOTAL)
     gbytes = np.frombuffer(np.asarray(gamma, bfloat16).tobytes(), dtype=np.int8)
     blob = np.zeros(LMW_GAMMA_BYTES + WLM_TOTAL, dtype=np.int8)
@@ -131,7 +121,9 @@ def tokens_of(records, passes):
     return [
         int(
             np.frombuffer(
-                records[t * REC_BYTES + D + 4 : t * REC_BYTES + D + 8].tobytes(),
+                records[
+                    t * REC_BYTES + REC_TOKEN_AT : t * REC_BYTES + REC_TOKEN_AT + 4
+                ].tobytes(),
                 np.int32,
             )[0]
         )
@@ -143,10 +135,10 @@ class DecodeShape:
     """One build of the decode: its CompileTime values and buffer layouts.
 
     Args:
-        n_layers: Decoder layers.
-        t: KV cache rows.
-        kset: The sampler's resident top-k set size.
-        p_max: Passes (tokens) a dispatch can run.
+        `n_layers`: Decoder layers.
+        `t`: KV cache rows.
+        `kset`: The sampler's top-k set size, at most 8.
+        `p_max`: Passes (tokens) a dispatch can run.
     """
 
     def __init__(self, n_layers, t, kset=8, p_max=4):
@@ -168,14 +160,14 @@ class DecodeShape:
         """The design's ScratchpadParameters for one dispatch.
 
         Args:
-            t0: The position of the dispatch's first token.
-            passes: The passes it runs, 1..p_max, one token each, except
+            `t0`: The position of the dispatch's first token.
+            `passes`: The passes it runs, 1..p_max, one token each, except
                 that a batch is the only pass.
-            sampler: The sampler's (temperature, top_k).
-            batch: Prompt tokens, up to M_MAX within one KV block, that the
+            `sampler`: The sampler's (temperature, top_k).
+            `batch`: Prompt tokens, up to M_MAX within one KV block, that the
                 first pass runs together as its rows; without any, the first
                 pass inputs the previous token's sample.
-            batch_ends_prompt: Whether the batch's last token is the
+            `batch_ends_prompt`: Whether the batch's last token is the
                 prompt's last: the lm_head and sampler run for it (and for
                 every generated token) and give the first generated token.
 
@@ -244,7 +236,7 @@ class DecodeShape:
         """The tokens a dispatch from position t0 generates.
 
         Args:
-            t0: The position of its first token.
+            `t0`: The position of its first token.
 
         Returns:
             As many as p_max allows, the cache has room for and the dispatch
@@ -262,17 +254,17 @@ class DecodeShape:
         """The weight blob: each layer's eight weight lanes, then the RoPE table.
 
         Args:
-            layers: The llama_oracle.Layers.
-            rope: bf16 (t, 2 * HEAD_D), numpy_llama_ref.rope_table.
+            `layers`: The llama_oracle.Layers.
+            `rope`: bf16 (t, 2 * HEAD_D), numpy_llama_ref.rope_table.
 
         Returns:
             int8, wblob_layout(n_layers, t)'s.
         """
-        off_lanes, off_rope, total = wblob_layout(self.n_layers, self.t)
+        off_rope, total = wblob_layout(self.n_layers, self.t)
         w = np.zeros(total, np.int8)
         for L, layer in enumerate(layers):
             for c in range(N_CORES):
-                at = off_lanes + (L * N_CORES + c) * LANE_BYTES
+                at = (L * N_CORES + c) * LANE_BYTES
                 w[at : at + LANE_BYTES] = pack_lane_mma(layer.weights, LAYER, c)
         w[off_rope : off_rope + self.t * CS_BYTES] = rope.view(np.int8).ravel()
         return w
@@ -281,11 +273,11 @@ class DecodeShape:
         """The stage buffer at the start of a generation.
 
         Args:
-            layers: The llama_oracle.Layers, for their norms' gammas.
-            final_gamma: The final norm's bf16 gamma.
-            seed: The first token's fp32 (D,) layer-0 residual, if it is not
+            `layers`: The llama_oracle.Layers, for their norms' gammas.
+            `final_gamma`: The final norm's bf16 gamma.
+            `seed`: The first token's fp32 (D,) layer-0 residual, if it is not
                 a prompt token.
-            rng_seed: The sampler's 32-bit seed for the generation.
+            `rng_seed`: The sampler's 32-bit seed for the generation.
 
         Returns:
             int8, StageLayout's: each norm's gamma after the residual it
@@ -318,8 +310,8 @@ class DecodeShape:
         """A layer's cache rows at `positions`, as KV words.
 
         Args:
-            layer: A llama_oracle.Layer.
-            positions: Rows of its cache.
+            `layer`: A llama_oracle.Layer.
+            `positions`: Rows of its cache.
 
         Returns:
             int32 (N_HEADS_KV, len(positions), KV_ROW_WORDS): per head and
@@ -356,7 +348,7 @@ class DecodeShape:
         """A KV cache holding the layers' caches.
 
         Args:
-            layers: The llama_oracle.Layers.
+            `layers`: The llama_oracle.Layers.
 
         Returns:
             int32 (kv_words,), block-major as the design reads it.
@@ -373,12 +365,12 @@ class Generation:
     """A generation's tokens and times.
 
     Attributes:
-        tokens: The generated token ids.
-        ttft_s: Seconds from the request's start to the first generated
+        `tokens`: The generated token ids.
+        `ttft_s`: Seconds from the request's start to the first generated
             token's readback.
-        prefill_dispatch_s: Of those, the prefill dispatches' start-to-wait
+        `prefill_dispatch_s`: Of those, the prefill dispatches' start-to-wait
             time, summed.
-        decode_tok_s: Generated tokens per second after the first, or None
+        `decode_tok_s`: Generated tokens per second after the first, or None
             when the first one stopped the generation.
     """
 
@@ -392,11 +384,11 @@ class Decoder:
     """The decode on the NPU: one compiled build, its weights loaded.
 
     Args:
-        shape: The build.
-        layers: The llama_oracle.Layers.
-        lm: (embed_i8, embed_sc, final norm gamma).
-        rope: bf16 (shape.t, 2 * HEAD_D), numpy_llama_ref.rope_table.
-        elf: A prebuilt full ELF of `shape`'s build, or None for the JIT's.
+        `shape`: The build.
+        `layers`: The llama_oracle.Layers.
+        `lm`: (embed_i8, embed_sc, final norm gamma).
+        `rope`: bf16 (shape.t, 2 * HEAD_D), numpy_llama_ref.rope_table.
+        `elf`: A prebuilt full ELF of `shape`'s build, or None for the JIT's.
     """
 
     def __init__(self, shape, layers, lm, rope, elf=None):
@@ -412,9 +404,9 @@ class Decoder:
         """Run one dispatch on a KV cache and stage.
 
         Args:
-            kv_t: The KV cache tensor.
-            stage_t: The stage tensor.
-            params: shape.params's.
+            `kv_t`: The KV cache tensor.
+            `stage_t`: The stage tensor.
+            `params`: shape.params's.
 
         Returns:
             (its records, its wall time in ms).
@@ -432,12 +424,12 @@ class Decoder:
         token; then each dispatch runs shape.passes_for's many tokens.
 
         Args:
-            prompt: The prompt's token ids.
-            max_new: Tokens to generate at most.
-            sample: The sampler's (temperature, top_k, seed), seeded once
+            `prompt`: The prompt's token ids.
+            `max_new`: Tokens to generate at most.
+            `sample`: The sampler's (temperature, top_k, seed), seeded once
                 for the generation.
-            stop: Token ids that end the generation (kept).
-            started: The request's start (time.perf_counter), as early as
+            `stop`: Token ids that end the generation (kept).
+            `started`: The request's start (time.perf_counter), as early as
                 its tokenization; None starts it here.
 
         Returns:

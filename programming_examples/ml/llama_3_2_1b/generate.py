@@ -14,15 +14,15 @@ the same tokens. The weights are already on the device, as on a server.
 --prompt-tokens times prefill at a controlled length instead of --prompt's
 real text: seeded random ids, not readable, but --check still scores them.
 
-The prompt's tokens run token by token through the decode, each input from
-its own embed row, which the device gathers; the token after the last one is
-the first generated, and generation goes on from there.
+The prompt runs in batches of up to 4 tokens a dispatch, each input from its
+own embed row, which the device gathers; the token after the last one is the
+first generated, and generation goes on from there.
 
 Needs data/ (gen_llama_data.py) and tiktoken (`pip install tiktoken`).
 
 Run (compiles the design, or reuses its JIT cache entry):
   python generate.py --prompt "The capital of France is" --max-new 32
-  python generate.py --prompt-tokens 2048 --max-new 1   # TTFT at 2k tokens
+  python generate.py --prompt-tokens 2048 --max-new 1 --t 4096   # TTFT at 2k
 """
 
 import argparse

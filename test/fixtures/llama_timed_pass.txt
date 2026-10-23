@@ -1,6 +1,6 @@
 loading embed/final_norm from <repo>/programming_examples/ml/llama_3_2_1b/data ...
 packing the weights ...
-chain_persist_grow_mh shape.n_layers=16 passes=[4] P0=64 KSET=8  temp=0.0 topk=0 seed=0  fixture_seed=0  dispatches=1 repeats=1
+decode shape.n_layers=16 passes=[4] P0=64 KSET=8  temp=0.0 topk=0 seed=0  fixture_seed=0  dispatches=1 repeats=1
   token 0 (pos 64): PASS  dev=76509 ref=76509  [exact]
   token 1 (pos 65): PASS  dev=78549 ref=78549  [exact]
   token 2 (pos 66): PASS  dev=87117 ref=87117  [exact]
@@ -9,5 +9,5 @@ chain_persist_grow_mh shape.n_layers=16 passes=[4] P0=64 KSET=8  temp=0.0 topk=0
   KV cache: PASS
   final hidden: PASS
 
-chain_persist_grow_mh: 4/4 tokens PASS  (on-chip feedback + GROWING KV + per-position rope)
+decode: 4/4 tokens PASS  (on-chip feedback + GROWING KV + per-position rope)
 decode at 64: per-dispatch n=20 min=182.47 median=182.93 mad=0.32 ms, 4 tokens/dispatch: 45.62 ms/token (21.92 tok/s)

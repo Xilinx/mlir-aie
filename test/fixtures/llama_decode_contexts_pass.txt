@@ -1,4 +1,4 @@
-chain_persist_grow_mh shape.n_layers=16 passes=[4, 4, 4, 4, 4, 4, 4, 4, 4] P0=[64, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131068] KSET=8  temp=0.0 topk=0 seed=0  fixture_seed=0  dispatches=1 repeats=1
+decode shape.n_layers=16 passes=[4, 4, 4, 4, 4, 4, 4, 4, 4] P0=[64, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131068] KSET=8  temp=0.0 topk=0 seed=0  fixture_seed=0  dispatches=1 repeats=1
 context 64: tokens [56727, 45449, 15230, 11311]
   token 0 (pos 64): PASS  dev=56727 ref=56727  [greedy]
   token 1 (pos 65): PASS  dev=45449 ref=45449  [greedy]
@@ -81,4 +81,4 @@ context 131068: tokens [50867, 20449, 63085, 125798]
   final hidden: PASS
 decode at 131068: per-dispatch n=20 min=1913.14 median=1916.77 mad=1.56 ms, 4 tokens/dispatch: 478.29 ms/token (2.09 tok/s)
 
-chain_persist_grow_mh: 36/36 tokens PASS  (on-chip feedback + GROWING KV + per-position rope)
+decode: 36/36 tokens PASS  (on-chip feedback + GROWING KV + per-position rope)
