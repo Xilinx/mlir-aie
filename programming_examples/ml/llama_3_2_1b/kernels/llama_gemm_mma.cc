@@ -25,6 +25,83 @@ static constexpr int kTrailerWords = 16;
 static constexpr int kOutBlocks = 1;
 using MMUL = ::aie::mmul<8, 8, 8, int8, int8, acc32>;
 
+// llama_gemm_out's vector form, where its scale guards hold and the biases
+// are zero: rows' 8 * kOutBlocks rows by 64 columns through epilogue_rne, a
+// group's 4 rows (32 sums) at a time. Returns whether every sum was in
+// (-2^23, 2^23), else out is to be rewritten. Out of line, so that its frame
+// and half_epilogue's don't add up.
+__attribute__((noinline)) static bool gemm_out_rne(const int32_t *restrict rows,
+                                                   const float *restrict sc,
+                                                   const int32_t *restrict tr,
+                                                   float *restrict out) {
+  constexpr int kSets = 2 * kOutBlocks;
+  // epilogue_rne's operands: per 4 rows from their act_scales, per group
+  // from its w_scales.
+  alignas(64) int16_t row_lo[kSets][32], row_hi[kSets][32];
+  alignas(64) int32_t row_e[kSets][32], row_e1[kSets][32];
+  alignas(64) int16_t col_lo[8][32], col_hi[8][32];
+  alignas(64) int32_t col_e[8][16];
+  for (int q = 0; q < kSets; q++) {
+    ::aie::vector<int32, 32> a_bits =
+        ::aie::concat(::aie::broadcast<float, 8>(sc[4 * q]),
+                      ::aie::broadcast<float, 8>(sc[4 * q + 1]),
+                      ::aie::broadcast<float, 8>(sc[4 * q + 2]),
+                      ::aie::broadcast<float, 8>(sc[4 * q + 3]))
+            .template cast_to<int32>();
+    EpilogueSig am = epilogue_sig(a_bits);
+    ::aie::store_v(row_lo[q],
+                   ::aie::vector<uint16, 32>(am.lo).template cast_to<int16>());
+    ::aie::store_v(row_hi[q], ::aie::vector<int16, 32>(am.hi));
+    ::aie::store_v(row_e[q], epilogue_exp(a_bits, 126));
+    ::aie::store_v(row_e1[q], epilogue_exp(a_bits, 125));
+  }
+  for (int g = 0; g < 8; g++) {
+    ::aie::vector<int32, 8> w8 = ::aie::load_v<8>(tr + g * kTrailerWords + 8);
+    ::aie::vector<int32, 32> w_bits = ::aie::concat(w8, w8, w8, w8);
+    EpilogueSig wm = epilogue_sig(w_bits);
+    ::aie::store_v(col_lo[g],
+                   ::aie::vector<uint16, 32>(wm.lo).template cast_to<int16>());
+    ::aie::store_v(col_hi[g], ::aie::vector<int16, 32>(wm.hi));
+    ::aie::store_v(col_e[g], epilogue_exp(w_bits, 127).template extract<16>(0));
+  }
+  uint32_t wide_s = 0;
+  const int32_t *__restrict s_at = rows;
+  // Item b (32 sums) is rows 4q..4q + 3 of group g. A trip takes item b's
+  // first product and item b - 1's second, so that their chains overlap.
+  constexpr int kItems = 16 * kOutBlocks;
+  auto first = [&](int b) {
+    const int q = (b >> 4) * 2 + (b & 1);
+    return epilogue_first(
+        ::aie::load_v<32>(s_at + 32 * b),
+        {::aie::load_v<32>(row_lo[q]).template cast_to<uint16>(),
+         ::aie::load_v<32>(row_hi[q])},
+        wide_s);
+  };
+  auto rest = [&](const EpilogueState &x, int b) {
+    const int q = (b >> 4) * 2 + (b & 1);
+    const int g = (b >> 1) & 7;
+    const ::aie::vector<int32, 16> ce = ::aie::load_v<16>(col_e[g]);
+    ::aie::vector<float, 32> fp = epilogue_third(epilogue_second(
+        x,
+        {::aie::load_v<32>(col_lo[g]).template cast_to<uint16>(),
+         ::aie::load_v<32>(col_hi[g])},
+        ::aie::load_v<32>(row_e[q]), ::aie::load_v<32>(row_e1[q]),
+        ::aie::concat(ce, ce)));
+    float *o = out + 4 * q * 64 + g * 8;
+#pragma clang loop unroll(full)
+    for (int r = 0; r < 4; r++)
+      ::aie::store_v(o + r * 64, fp.template extract<8>(r));
+  };
+  EpilogueState x = first(0);
+  for (int b = 1; b < kItems; b++) {
+    EpilogueState next = first(b);
+    rest(x, b - 1);
+    x = next;
+  }
+  rest(x, kItems - 1);
+  return wide_s == 0;
+}
+
 extern "C" {
 
 // C (first: =, else +=) the chunk's a x W.
@@ -107,9 +184,10 @@ void llama_gemm_act_scales(const int8_t *restrict chunk,
 
 // Part `part` of the C tile, its rows 8mb..8mb + 8 * kOutBlocks - 1 for
 // mb = part * kOutBlocks, through the GEMV's epilogue, to out (fp32
-// [rows][64]): its vector form, stored a vector at a time, with the guards
-// checked for all the rows at once; where they fail, per 4 rows of a group
-// as half_epilogue decides, which takes the rows whose guards fail.
+// [rows][64]): gemm_out_rne where every scale is positive with its exponent
+// field in [kEpilogueExpLo, kEpilogueExpHi], every bias is zero (as the
+// model's are) and every sum is in (-2^23, 2^23); otherwise per 4 rows of a
+// group, as half_epilogue decides.
 void llama_gemm_out(const int32_t *restrict c, const float *restrict act_scales,
                     const int32_t *restrict trailers, float *restrict out,
                     int32_t part, int32_t core) {
@@ -122,100 +200,34 @@ void llama_gemm_out(const int32_t *restrict c, const float *restrict act_scales,
   const float *sc = act_scales + mb * 8;
   const int32_t *tr = trailers + core * 8 * kTrailerWords;
   const int32_t *rows = c + mb * 8 * 64;
-  // The guards of half_epilogue_vec for every row group at once: each scale's
-  // exponent field in [kEpilogueExpLo, kEpilogueExpHi] (the masked bits
-  // compare as nonnegative int32), every sum plus bias in (-2^23, 2^23).
-  const ::aie::vector<int32, 16> exp_lo =
-      ::aie::broadcast<int32, 16>(int32(kEpilogueExpLo << 23));
-  const ::aie::vector<int32, 16> exp_hi =
-      ::aie::broadcast<int32, 16>(int32(kEpilogueExpHi << 23));
-  ::aie::mask<16> scales_ok = ::aie::mask<16>(true);
-  for (int i = 0; i < 8 * kOutBlocks + 64; i += 16) {
-    ::aie::vector<int32, 16> e = ::aie::bit_and(
-        int32(0x7f800000),
-        i < 8 * kOutBlocks
-            ? ::aie::load_v<16>(reinterpret_cast<const int32_t *>(sc) + i)
-            : ::aie::concat(
-                  ::aie::load_v<8>(
-                      tr + (i - 8 * kOutBlocks) / 8 * kTrailerWords + 8),
-                  ::aie::load_v<8>(
-                      tr + ((i - 8 * kOutBlocks) / 8 + 1) * kTrailerWords +
-                      8)));
-    scales_ok = scales_ok & ::aie::ge(e, exp_lo) & ::aie::le(e, exp_hi);
+  // The part's act_scales, then the 8 groups' w_scales, 16 at a time; a
+  // negative scale's sign and exponent bits compare below the range as int32.
+  ::aie::mask<16> ok = ::aie::mask<16>(true);
+  for (int i = 0; i < kOutBlocks + 4; i++) {
+    const int32_t *lo = i < kOutBlocks
+                            ? reinterpret_cast<const int32_t *>(sc) + 8 * i
+                            : tr + 2 * (i - kOutBlocks) * kTrailerWords + 8;
+    const int32_t *hi = i < kOutBlocks ? lo : lo + kTrailerWords;
+    ::aie::vector<int32, 16> e =
+        ::aie::bit_and(int32(0xff800000), ::aie::concat(::aie::load_v<8>(lo),
+                                                        ::aie::load_v<8>(hi)));
+    ok = ok & ::aie::ge(e, int32(kEpilogueExpLo << 23)) &
+         ::aie::le(e, int32(kEpilogueExpHi << 23));
   }
-  ::aie::vector<int32, 32> s_min =
-      ::aie::broadcast<int32, 32>(int32((1 << 23) - 1));
-  ::aie::vector<int32, 32> s_max =
-      ::aie::broadcast<int32, 32>(int32(-(1 << 23) + 1));
-  for (int g = 0; g < 8; g++) {
-    ::aie::vector<int32, 8> b8 = ::aie::load_v<8>(tr + g * kTrailerWords);
-    ::aie::vector<int32, 32> b_v = ::aie::concat(b8, b8, b8, b8);
-    for (int i = 0; i < 2 * kOutBlocks; i++) {
-      ::aie::vector<int32, 32> s = ::aie::add(
-          ::aie::load_v<32>(rows + (i / 2 * 8 + g) * 64 + 32 * (i % 2)), b_v);
-      s_min = ::aie::min(s_min, s);
-      s_max = ::aie::max(s_max, s);
-    }
-  }
-  if (scales_ok.full() && ::aie::reduce_min(s_min) > -(1 << 23) &&
-      ::aie::reduce_max(s_max) < (1 << 23)) {
-    // vec_mul_rne's split of each product's shared operand, the rows'
-    // act_scales and each group's w_scales (exponent fields masked before
-    // the shift, which may round).
-    ::aie::vector<int32, 32> a_bits[2 * kOutBlocks], a_e[2 * kOutBlocks],
-        a_m[2 * kOutBlocks];
-    for (int i = 0; i < 2 * kOutBlocks; i++) {
-      a_bits[i] = ::aie::concat(::aie::broadcast<float, 8>(sc[4 * i]),
-                                ::aie::broadcast<float, 8>(sc[4 * i + 1]),
-                                ::aie::broadcast<float, 8>(sc[4 * i + 2]),
-                                ::aie::broadcast<float, 8>(sc[4 * i + 3]))
-                      .template cast_to<int32>();
-      a_e[i] =
-          ::aie::downshift(::aie::bit_and(int32(0x7f800000), a_bits[i]), 23);
-      a_m[i] = ::aie::bit_or(int32(0x800000),
-                             ::aie::bit_and(int32(0x7fffff), a_bits[i]));
-    }
-    for (int g = 0; g < 8; g++) {
-      ::aie::vector<int32, 8> b8 = ::aie::load_v<8>(tr + g * kTrailerWords);
-      ::aie::vector<int32, 8> w8 = ::aie::load_v<8>(tr + g * kTrailerWords + 8);
-      ::aie::vector<int32, 32> b_v = ::aie::concat(b8, b8, b8, b8);
-      ::aie::vector<int32, 32> w_bits = ::aie::concat(w8, w8, w8, w8);
-      ::aie::vector<int32, 32> w_e =
-          ::aie::downshift(::aie::bit_and(int32(0x7f800000), w_bits), 23);
-      ::aie::vector<int32, 32> w_m = ::aie::bit_or(
-          int32(0x800000), ::aie::bit_and(int32(0x7fffff), w_bits));
-      for (int i = 0; i < 2 * kOutBlocks; i++) {
-        ::aie::vector<int32, 32> s = ::aie::add(
-            ::aie::load_v<32>(rows + (i / 2 * 8 + g) * 64 + 32 * (i % 2)), b_v);
-        ::aie::vector<float, 32> fp =
-            vec_mul_rne_split(vec_mul_rne_split(::aie::to_float<float>(s, 0),
-                                                a_bits[i], a_e[i], a_m[i]),
-                              w_bits, w_e, w_m);
-        for (int m = 0; m < 4; m++)
-          ::aie::store_v(out + (4 * i + m) * 64 + g * 8, fp.extract<8>(m));
-      }
-    }
-  } else {
+  for (int g = 0; g < 8; g += 2)
+    ok = ok & ::aie::eq(
+                  ::aie::concat(::aie::load_v<8>(tr + g * kTrailerWords),
+                                ::aie::load_v<8>(tr + (g + 1) * kTrailerWords)),
+                  int32(0));
+  if (!ok.full() || !gemm_out_rne(rows, sc, tr, out))
     for (int g = 0; g < 8; g++)
-      for (int i = 0; i < 2 * kOutBlocks; i++) {
-        const int8_t *trailer =
-            reinterpret_cast<const int8_t *>(tr + g * kTrailerWords);
-        ::aie::vector<int32, 32> sums =
-            ::aie::load_v<32>(rows + (i / 2 * 8 + g) * 64 + 32 * (i % 2));
-        bool half_ok;
-        ::aie::vector<float, 32> fp =
-            half_epilogue_vec(sums, sc + 4 * i, trailer, half_ok);
-        if (half_ok)
-          for (int m = 0; m < 4; m++)
-            ::aie::store_v(out + (4 * i + m) * 64 + g * 8, fp.extract<8>(m));
-        else
-          half_epilogue(
-              ::aie::load_v<32>(rows + (i / 2 * 8 + g) * 64 + 32 * (i % 2)),
-              sc + 4 * i, trailer,
-              reinterpret_cast<int8_t *>(out + i / 2 * 8 * 64), i % 2, 64,
-              g * 8, 8);
-      }
-  }
+      for (int i = 0; i < 2 * kOutBlocks; i++)
+        half_epilogue(
+            ::aie::load_v<32>(rows + (i / 2 * 8 + g) * 64 + 32 * (i % 2)),
+            sc + 4 * i,
+            reinterpret_cast<const int8_t *>(tr + g * kTrailerWords),
+            reinterpret_cast<int8_t *>(out + i / 2 * 8 * 64), i % 2, 64, g * 8,
+            8);
   aie::set_rounding(saved_rnd);
   aie::set_saturation(saved_sat);
   event1();
