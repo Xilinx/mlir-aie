@@ -2471,7 +2471,7 @@ def AIE_ObjectFifoCreateOp
     a DMA channel, pinned or left to allocation, or a core stream port.
 
     ```
-      aie.objectfifo @of5 (%tile12, {%tile33}, 2 : i32)
+      aie.objectfifo @of5 (%tile12, { %tile33 }, 2 : i32)
           {transport = #aie.transport<dma, packet = #aie.packet_info<>>,
            prod_port = #aie.end_port<DMA : 1>}
           : !aie.objectfifo<memref<16xi32>>

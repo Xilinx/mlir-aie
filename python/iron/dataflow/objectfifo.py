@@ -169,7 +169,8 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 ``Packet(id=7)`` pins the 5-bit header for designs that route on it. None
                 leaves the choice to the lowering, which is the same as ``Transport.auto()``.
                 What drives each end, a DMA channel or a core stream port, is the ``port``
-                of [`prod`][iron.ObjectFifo.prod] and [`cons`][iron.ObjectFifo.cons].
+                of [`prod`][iron.dataflow.objectfifo.ObjectFifo.prod] and
+                [`cons`][iron.dataflow.objectfifo.ObjectFifo.cons].
                 Lowers to the ``transport`` attribute on the underlying ``aie.objectfifo`` op.
                 Defaults to None.
             init_values (list[np.ndarray] | None, optional): Per-buffer static initial values
