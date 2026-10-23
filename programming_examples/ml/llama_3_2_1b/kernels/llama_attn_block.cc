@@ -442,11 +442,11 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     ::aie::store_v(pt + 4 * g * kLanes + 2 * kLanes, c2);
     ::aie::store_v(pt + 4 * g * kLanes + 3 * kLanes, c3);
   }
-  ::aie::vector<int32, 32> escale = ::aie::concat(
-      ::aie::broadcast<int32, 8>(emax[0] - 135),
-      ::aie::broadcast<int32, 8>(emax[1] - 135),
-      ::aie::broadcast<int32, 8>(emax[2] - 135),
-      ::aie::broadcast<int32, 8>(emax[3] - 135));
+  ::aie::vector<int32, 32> escale =
+      ::aie::concat(::aie::broadcast<int32, 8>(emax[0] - 135),
+                    ::aie::broadcast<int32, 8>(emax[1] - 135),
+                    ::aie::broadcast<int32, 8>(emax[2] - 135),
+                    ::aie::broadcast<int32, 8>(emax[3] - 135));
 
   // sv per head into sv_b, then its record or, folded, into it.
   block_sv(block + kVOff, pt, escale, sv_b);
