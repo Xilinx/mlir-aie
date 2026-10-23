@@ -53,83 +53,82 @@ def _bf16_round(x, rounding):
 
 def fused_mm(
     *,
-    dim_m=32,
-    dim_k=32,
-    dim_n=16,
-    band_m=16,
-    chunk_k=16,
-    out_chunk=64,
-    epilogue="none",
-    clamp=None,
-    bfp16_b=False,
-    b_col_maj=False,
-    emulate_bf16_mmul_with_bfp16=False,
-    epilogue_modes=None,
-    rounding="conv_even",
-    gelu="fp32",
-    mmul_shape=None,
-    c_depth=2,
-    step_markers=False,
+    dim_m: int = 32,
+    dim_k: int = 32,
+    dim_n: int = 16,
+    band_m: int = 16,
+    chunk_k: int = 16,
+    out_chunk: int = 64,
+    epilogue: str = "none",
+    clamp: tuple[float, float] | None = None,
+    bfp16_b: bool = False,
+    b_col_maj: bool = False,
+    emulate_bf16_mmul_with_bfp16: bool = False,
+    epilogue_modes: tuple[str, ...] | None = None,
+    rounding: str = "conv_even",
+    gelu: str = "fp32",
+    mmul_shape: tuple[int, int, int] | None = None,
+    c_depth: int = 2,
+    step_markers: bool = False,
 ) -> _FusedMMKernel:
     """Compute one bf16 ``A @ B`` tile, with an f32 reduction and fused epilogue.
 
     This bounded composition holds its operands and accumulator on one core;
     it is not the streaming whole-matrix operator. A and B use bf16 storage
-    on both architectures unless ``bfp16_b`` is set.
-    ``band_m`` and ``chunk_k`` subdivide the reduction; ``out_chunk`` subdivides
-    the drain with a depth of two. The contract supplies the blocked storage
-    layouts, including B's column-major ordering of row-major microblocks.
+    on both architectures unless ``bfp16_b`` is set. The contract supplies
+    the blocked storage layouts, including B's column-major ordering of
+    row-major microblocks.
 
-    ``epilogue`` is ``none``, ``gelu`` (the kernel's sigmoid approximation,
-    not the tanh GELU curve), ``silu`` or ``sigmoid``. An optional finite
-    ``(min, max)`` clamp follows the activation, before the bf16 conversion.
+    Args:
+        dim_m: Rows of A and C.
+        dim_k: The reduction length.
+        dim_n: Columns of B and C.
+        band_m: Rows of A per reduction band.
+        chunk_k: Columns of A per reduction step.
+        out_chunk: Elements of C per drain chunk, drained at a depth of two.
+        epilogue: ``none``, ``gelu`` (the kernel's sigmoid approximation,
+            not the tanh GELU curve), ``silu`` or ``sigmoid``.
+        clamp: An optional finite ``(min, max)`` after the activation,
+            before the bf16 conversion.
+        bfp16_b: (aie2p) The prepacked-B form amd/IRON's flm GEMM builds: B
+            arrives as bfp16ebs8 blocks the host packs once, in the
+            ``rounding`` mode as IRON's ``pack_b`` does, the mmul is 8x8x8,
+            and the core converts A to bfp16 itself. Implies
+            ``emulate_bf16_mmul_with_bfp16``.
+        b_col_maj: Take B as stored transposed, the ``(n, k)`` layout of a
+            checkpoint's weights, with an ``(r, 8, 8)`` mmul (r 8 on bfp16
+            macs): each k chunk holds k panels of ``s`` rows, every n row of
+            a panel ``s`` contiguous k, which a DMA builds from ``(n, k)``
+            storage in 16-byte runs.
+        emulate_bf16_mmul_with_bfp16: (aie2p) Multiply on bfp16 macs, as
+            aie_api's emulated bf16 mmul does: the core converts A and B to
+            bfp16ebs8, each shared exponent spanning 8 consecutive k. The
+            mmul defaults to 8x8x8, which ``b_col_maj`` needs.
+        epilogue_modes: The activations compiled in, for a caller that picks
+            one at run time through ``mm_fused_epilogue_chunk``'s mode
+            argument; ``(epilogue,)`` by default, and must hold
+            ``epilogue``. On aie2 an activation links the tanh tables, 5 KB
+            of L1.
+        rounding: The core's rounding mode for every f32 -> bf16 and bf16 ->
+            bfp16 conversion: ``conv_even``, or ``floor``, the mode a core
+            powers up in.
+        gelu: ``fp32`` applies gelu to the f32 accumulator and rounds once;
+            ``bf16_steps`` rounds to bf16 and again after each step of ``x *
+            sigmoid(1.702x)``, as FastFlowLM's shipped mm overlay does (bit
+            for bit on AIE2P with ``rounding="floor"``).
+        mmul_shape: Overrides the mmul's ``(r, s, t)``.
+        c_depth: The depth of the C fifo, which a caller's drain loop
+            unrolls by.
+        step_markers: Bracket each init, k step and drain chunk with event
+            markers, for a caller that calls those entry points itself,
+            rather than one pair around the whole ``fused_mm_tile`` call.
 
-    ``bfp16_b`` (aie2p only) selects the prepacked-B form amd/IRON's flm GEMM
-    builds: B arrives as bfp16ebs8 blocks the host packs once, the mmul is
-    8x8x8, and the core converts A to bfp16 itself. The host rounds B in the
-    ``rounding`` mode, as IRON's ``pack_b`` does, and the reference
-    multiplies both operands as the core sees them.
-
-    ``b_col_maj`` (with an ``(r, 8, 8)`` mmul, r 8 on aie2p) takes B as stored
-    transposed, the ``(n, k)`` layout of a checkpoint's weights: each k chunk
-    holds k panels of ``s`` rows, every n row of a panel ``s`` contiguous k,
-    a layout a DMA builds from ``(n, k)`` storage in 16-byte runs. On bf16
-    macs the core transposes each half block in one shuffle; on bfp16 macs
-    it converts each block as loaded.
-
-    ``emulate_bf16_mmul_with_bfp16`` (aie2p) multiplies on bfp16 macs, as
-    aie_api's emulated bf16 mmul does: the core converts A and B to
-    bfp16ebs8, each shared exponent spanning 8 consecutive k, and the
-    reference multiplies both operands as the core sees them. The mmul
-    defaults to 8x8x8, which ``b_col_maj`` needs. ``bfp16_b`` implies it.
-
-    ``epilogue_modes`` lists the activations compiled in, for a caller that
-    selects one at run time through ``mm_fused_epilogue_chunk``'s mode
-    argument. It defaults to ``(epilogue,)``. ``epilogue`` is the mode
-    ``fused_mm_tile`` and the reference use, and must be in the list. On
-    aie2 an activation links the tanh tables, 5 KB of L1; ``("none",)``
-    links none.
-
-    ``rounding`` is the core's rounding mode for every f32 -> bf16 and
-    bf16 -> bfp16 conversion: ``conv_even`` or ``floor``, the mode a core
-    powers up in.
-
-    ``gelu`` selects how the gelu mode computes. ``fp32`` applies it to the
-    f32 accumulator and rounds once. ``bf16_steps`` rounds the accumulator to
-    bf16 and rounds again after each step of ``x * sigmoid(1.702x)``, as
-    FastFlowLM's shipped mm overlay does. With ``rounding="floor"`` it
-    reproduces that overlay bit for bit on AIE2P.
-
-    ``mmul_shape`` overrides the ``(r, s, t)`` of the mmul. ``c_depth`` is
-    the depth of the C fifo, which a caller's drain loop unrolls by.
-    ``step_markers`` brackets each init, k step and drain chunk with event
-    markers, for a caller that calls those entry points itself. Otherwise one
-    pair brackets the whole ``fused_mm_tile`` call.
-
-    The returned function carries every entry point of its object as an
-    attribute named by the C symbol: ``fn.mm_fused_acc_init``,
-    ``fn.mm_fused_k_step``, ``fn.mm_fused_epilogue_chunk`` and
-    ``fn.fused_mm_tile`` (``fn`` itself).
+    Returns:
+        ``fused_mm_tile``, carrying every entry point of its object as an
+        attribute named by its C symbol: ``mm_fused_acc_init``,
+        ``mm_fused_k_step``, ``mm_fused_epilogue_chunk`` and
+        ``fused_mm_tile`` (itself). The reference multiplies the operands as
+        the core sees them.
     """
     arch = _detect_arch()
     if bfp16_b and not ARCH_TRAITS[arch].bfp16:
@@ -149,8 +148,8 @@ def fused_mm(
         r, s, t = mmul_shape
     if b_col_maj and (s, t) != (8, 8):
         raise ValueError("fused_mm: b_col_maj needs an (r, 8, 8) mmul_shape")
-    if b_col_maj and arch == "aie2p" and r != 8:
-        raise ValueError("fused_mm: b_col_maj on aie2p needs mmul (8, 8, 8)")
+    if b_col_maj and emulated and r != 8:
+        raise ValueError("fused_mm: b_col_maj on bfp16 macs needs mmul (8, 8, 8)")
     dims = (dim_m, dim_k, dim_n, band_m, chunk_k, out_chunk, c_depth, r, s, t)
     if any(not isinstance(d, int) or isinstance(d, bool) or d <= 0 for d in dims):
         raise ValueError("fused_mm dimensions must be positive integers")
@@ -181,7 +180,7 @@ def fused_mm(
     if clamp is not None:
         if len(clamp) != 2 or not np.isfinite(clamp).all() or clamp[0] > clamp[1]:
             raise ValueError("clamp must be a finite (min, max) pair with min <= max")
-        clamp = tuple(float(v) for v in clamp)
+        clamp = (float(clamp[0]), float(clamp[1]))
 
     def pack_a(a):
         return (
@@ -495,6 +494,8 @@ def fused_mm(
         symbol_prefix=prefix,
         contract=contract,
     )
+    # Its source, flags and LUT includes are this arch's, as _make_extern's are.
+    fn.built_for_arch = arch
     acc = np.ndarray[(dim_m * dim_n,), np.dtype[np.float32]]
     b_chunk = (
         np.ndarray[(chunk_k * dim_n // 8,), np.dtype[v8bfp16ebs8]]

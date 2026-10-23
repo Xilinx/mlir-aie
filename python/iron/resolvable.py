@@ -119,6 +119,17 @@ class DeviceResources:
                 else:
                     programs[tile] = tile_dma
             self._resolved_tile_dmas = list(programs.values())
+            # A control-packet route rewrites its tile's DMA at dispatch; that
+            # would leave a static program broken for every later dispatch.
+            for flow in self._flows:
+                for tile in flow.control_tiles():
+                    if tile in programs or (tile.col, tile.row) in coordinates:
+                        raise ValueError(
+                            f"{type(flow).__name__} {flow.name!r} writes the "
+                            f"TileControl of {tile}, which runs a TileDma program: "
+                            "a dispatch would rewrite the DMA that program "
+                            "keeps running."
+                        )
         for program in self._resolved_tile_dmas:
             program.resolve()
 

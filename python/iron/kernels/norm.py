@@ -3,7 +3,12 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Normalization kernel factories + numpy references: rms_norm, layer_norm."""
+"""Normalization kernel factories + numpy references: rms_norm, layer_norm.
+
+Each norm has two C entries, one fixing eps at 1e-5 with ``(in, out, cols)``
+and an ``_eps`` one taking ``(in, out, cols, epsilon)``; a factory names the
+entry it builds, so the two keep their names rather than one ABI changing.
+"""
 
 from pathlib import Path
 
@@ -57,9 +62,17 @@ _LAYER_NORM_TOLERANCE = {"aie2": _LAYER_NORM_BF16_AIE2, "aie2p": _LAYER_NORM_BF1
 
 
 def _norm_extern(
-    func_name: str, filename: str, arg_types: list, contract: KernelContract
+    func_name: str,
+    filename: str,
+    arg_types: list,
+    contract: KernelContract,
+    row: int,
 ) -> ExternalFunction:
-    """Norm kernel with aie_runtime_lib (the arch's vec_math.h) on the include path."""
+    """Norm kernel with aie_runtime_lib (the arch's vec_math.h) on the include path.
+
+    ``row`` is the row length the contract binds ``cols`` to; as ``NORM_COLS``
+    it folds the kernel's divide by ``cols``.
+    """
     from aie.utils import config
 
     runtime_dir = Path(config.aie_runtime_lib_dir()) / _detect_arch().upper()
@@ -67,7 +80,7 @@ def _norm_extern(
         func_name,
         _kernel_source(f"norm/{filename}"),
         arg_types,
-        compile_flags=[f"-I{runtime_dir}"],
+        compile_flags=[f"-I{runtime_dir}", f"-DNORM_COLS={row}"],
         contract=contract,
     )
 
@@ -85,60 +98,58 @@ def _row_size(name: str, tile_size: int, cols: int | None, multiple: int = 1) ->
     return tile_size
 
 
+def _norm(
+    name: str,
+    tile_size: int,
+    cols: int | None,
+    *,
+    eps: bool,
+    layer: bool,
+    multiple: int = 1,
+) -> ExternalFunction:
+    """``name``, a layer or RMS norm row kernel; with ``eps`` the design passes epsilon last."""
+    tile_size = _row_size(name, tile_size, cols, multiple)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    base = layer_norm_ref if layer else rms_norm_ref
+
+    def with_eps(x, epsilon):
+        return base(x, eps=epsilon)
+
+    reference = with_eps if eps else base
+    tolerance = _LAYER_NORM_TOLERANCE if layer else _RMS_NORM_TOLERANCE
+    return _norm_extern(
+        name,
+        "layer_norm.cc" if layer else "rms_norm.cc",
+        [tile_ty, tile_ty, np.int32] + ([np.float32] if eps else []),
+        KernelContract(
+            trace=Trace.whole_call(),
+            setup=None if layer or _tuned_arch() == "aie2" else conv_even,
+            roles=(In, Out, Param) + ((Param,) if eps else ()),
+            parameter_bindings=((2, tile_size),),
+            per_build=tuple(
+                (build, reference, tolerance.get(build.tuned, _NORM_BF16))
+                for build in BUILDS
+            ),
+            acc_dtype=np.float32,
+            reduction=tile_size,
+            ops_per_call=(6 if layer else 4) * tile_size,
+        ),
+        tile_size,
+    )
+
+
 def rms_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunction:
     """RMS-norm a bf16 row on aie2/aie2p; ``(in, out, cols)``, eps=1e-5.
 
     ``cols`` is a compatibility alias for ``tile_size``. Positive row lengths
     need not be vector-aligned: the kernel handles scalar tails.
     """
-    tile_size = _row_size("rms_norm", tile_size, cols)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _norm_extern(
-        "rms_norm",
-        "rms_norm.cc",
-        [tile_ty, tile_ty, np.int32],
-        KernelContract(
-            trace=Trace.whole_call(),
-            setup=None if _tuned_arch() == "aie2" else conv_even,
-            roles=(In, Out, Param),
-            parameter_bindings=((2, tile_size),),
-            per_build=tuple(
-                (build, rms_norm_ref, _RMS_NORM_TOLERANCE.get(build.tuned, _NORM_BF16))
-                for build in BUILDS
-            ),
-            acc_dtype=np.float32,
-            reduction=tile_size,
-            ops_per_call=4 * tile_size,
-        ),
-    )
+    return _norm("rms_norm", tile_size, cols, eps=False, layer=False)
 
 
 def rms_norm_eps(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunction:
     """RMS-norm a bf16 row (gamma=1); design passes ``(in, out, cols, epsilon)``."""
-    tile_size = _row_size("rms_norm_eps", tile_size, cols)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _norm_extern(
-        "rms_norm_eps",
-        "rms_norm.cc",
-        [tile_ty, tile_ty, np.int32, np.float32],
-        KernelContract(
-            trace=Trace.whole_call(),
-            setup=None if _tuned_arch() == "aie2" else conv_even,
-            roles=(In, Out, Param, Param),
-            parameter_bindings=((2, tile_size),),
-            per_build=tuple(
-                (
-                    build,
-                    lambda x, epsilon: rms_norm_ref(x, eps=epsilon),
-                    _RMS_NORM_TOLERANCE.get(build.tuned, _NORM_BF16),
-                )
-                for build in BUILDS
-            ),
-            acc_dtype=np.float32,
-            reduction=tile_size,
-            ops_per_call=4 * tile_size,
-        ),
-    )
+    return _norm("rms_norm_eps", tile_size, cols, eps=True, layer=False)
 
 
 def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFunction:
@@ -147,29 +158,22 @@ def layer_norm(tile_size: int = 1024, *, cols: int | None = None) -> ExternalFun
     ``cols`` aliases ``tile_size``, a positive multiple of 16 (the source
     processes whole 16-lane halves, without a scalar tail).
     """
-    tile_size = _row_size("layer_norm", tile_size, cols, 16)
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _norm_extern(
-        "layer_norm",
-        "layer_norm.cc",
-        [tile_ty, tile_ty, np.int32],
-        KernelContract(
-            trace=Trace.whole_call(),
-            roles=(In, Out, Param),
-            parameter_bindings=((2, tile_size),),
-            per_build=tuple(
-                (
-                    build,
-                    layer_norm_ref,
-                    _LAYER_NORM_TOLERANCE.get(build.tuned, _NORM_BF16),
-                )
-                for build in BUILDS
-            ),
-            acc_dtype=np.float32,
-            reduction=tile_size,
-            ops_per_call=6 * tile_size,
-        ),
-    )
+    return _norm("layer_norm", tile_size, cols, eps=False, layer=True, multiple=16)
+
+
+def layer_norm_eps(
+    tile_size: int = 1024, *, cols: int | None = None
+) -> ExternalFunction:
+    """Layer-norm a bf16 row (gamma=1, beta=0); design passes ``(in, out, cols, epsilon)``.
+
+    Args:
+        tile_size: The row length, a positive multiple of 16.
+        cols: An alias for ``tile_size``.
+
+    Returns:
+        The kernel.
+    """
+    return _norm("layer_norm_eps", tile_size, cols, eps=True, layer=True, multiple=16)
 
 
 def rms_norm_ref(x, *, eps: float = 1e-5):

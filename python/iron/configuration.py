@@ -7,19 +7,28 @@ import itertools
 from collections.abc import Sequence
 from contextlib import contextmanager
 
+import numpy as np
+
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import (
+    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+    DeviceOp,  # pyright: ignore[reportAttributeAccessIssue]
+    RuntimeSequenceOp,  # pyright: ignore[reportAttributeAccessIssue]
     TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
     device,
 )
-from ..dialects.aiex import ConfigureOp  # pyright: ignore[reportAttributeAccessIssue]
+from ..dialects.aiex import (
+    ConfigureOp,  # pyright: ignore[reportAttributeAccessIssue]
+    ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ..helpers.dialects.func import FuncBase
+from ..helpers.util import mlir_type_to_np_dtype
 from ..utils import trace as trace_utils
 from ..utils.compile.jit.context import get_compile_arg
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.flow import PacketFlow
 from .dataflow.objectfifo import ObjectFifoLink
-from .device import Device
+from .device import Device, NamedDevice
 from .kernel import Kernel
 from .resolvable import DeviceResources, PerDeviceConfiguration, Resolvable
 from .runtime import Runtime
@@ -62,6 +71,8 @@ class DeviceConfiguration(DeviceResources):
         self._shimtile_events = None
         self._core_trace_mode = TraceMode.EventTime
         self._owners = None
+        self._prebuilt: str | None = None
+        self._scratchpad_parameters: list[ScratchpadParameter] = []
 
         runtime_names = [
             runtime.name for runtime in self._runtimes if runtime.name is not None
@@ -75,6 +86,94 @@ class DeviceConfiguration(DeviceResources):
             )
         for runtime in self._runtimes:
             runtime._bind_configuration(self)
+
+    @classmethod
+    def from_module(cls, name: str, module: ir.Module) -> DeviceConfiguration:
+        """Return a configuration that emits ``module``'s one ``aie.device`` verbatim.
+
+        Each runtime sequence in the device becomes a Runtime of the same name
+        and argument types. The ``aiex.scratchpad_parameter`` declarations
+        beside the device are declared again with all their attributes, so
+        ``Program.compose`` takes it like any other.
+
+        Args:
+            name: The configuration's name; the device is renamed to it.
+            module: The module holding the device and its declarations.
+
+        Returns:
+            The configuration.
+
+        Raises:
+            ValueError: ``module`` holds no ``aie.device``, or several; or the
+                device needs renaming and an op inside it has its name,
+                which the rename would rewrite too.
+            TypeError: A sequence argument has no NumPy dtype or a dynamic
+                shape, or a scratchpad parameter has no NumPy dtype.
+        """
+        devices = [op for op in module.body.operations if isinstance(op, DeviceOp)]
+        if len(devices) != 1:
+            raise ValueError(
+                f"DeviceConfiguration.from_module needs a module holding one "
+                f"aie.device, not {len(devices)}."
+            )
+        (device_op,) = devices
+        old = ir.StringAttr(device_op.attributes["sym_name"]).value
+        if old != name and any(
+            "sym_name" in op.attributes
+            and ir.StringAttr(op.attributes["sym_name"]).value == old
+            for op in device_op.body_region.blocks[0].operations
+        ):
+            raise ValueError(
+                f"aie.device @{old} holds an op named @{old}; renaming the "
+                f"device to @{name} would rewrite references to that symbol too."
+            )
+        with module.context:
+            declarations = [
+                op
+                for op in module.body.operations
+                if isinstance(op, ScratchpadParameterOp)
+            ]
+            parameters = [
+                ScratchpadParameter.from_declaration(op) for op in declarations
+            ]
+            runtimes = []
+            for sequence in device_op.body_region.blocks[0].operations:
+                if not isinstance(sequence, RuntimeSequenceOp):
+                    continue
+                types = []
+                for arg in sequence.body.blocks[0].arguments:
+                    if not isinstance(arg.type, ir.MemRefType):
+                        dtype = mlir_type_to_np_dtype(arg.type)
+                        if dtype is None:
+                            raise TypeError(f"No NumPy dtype for argument {arg.type}.")
+                        types.append(dtype)
+                        continue
+                    memref = ir.MemRefType(arg.type)
+                    if not memref.has_static_shape:
+                        raise TypeError(
+                            f"Argument {memref} has a dynamic shape; a Runtime "
+                            "argument's shape is fixed."
+                        )
+                    dtype = mlir_type_to_np_dtype(memref.element_type)
+                    if dtype is None:
+                        raise TypeError(f"No NumPy dtype for the elements of {memref}.")
+                    types.append(np.ndarray[tuple(memref.shape), np.dtype[dtype]])
+                runtime = Runtime(
+                    lambda *_: None,
+                    types,
+                    name=ir.StringAttr(sequence.attributes["sym_name"]).value,
+                )
+                for parameter in parameters:
+                    runtime.register_parameter(parameter)
+                runtimes.append(runtime)
+            kind = AIEDevice(ir.IntegerAttr(device_op.attributes["device"]).value)
+            # The device's reads verify against the declarations, so the text
+            # parsed again at resolution keeps them; only the device is cloned.
+            text = "\n".join([*(str(op) for op in declarations), str(device_op)])
+        configuration = cls(name, NamedDevice.of(kind), runtimes=runtimes)
+        configuration._prebuilt = text
+        configuration._scratchpad_parameters = parameters
+        return configuration
 
     # Device-local resources may belong to only one configuration.
     def _claim(self, resource, owners: dict[int, "DeviceConfiguration"]) -> None:
@@ -156,6 +255,11 @@ class DeviceConfiguration(DeviceResources):
     @property
     def runtimes(self) -> list[Runtime]:
         return list(self._runtimes)
+
+    @property
+    def scratchpad_parameters(self) -> list[ScratchpadParameter]:
+        """The parameters a prebuilt device declares beside it, used or not by a sequence."""
+        return list(self._scratchpad_parameters)
 
     @contextmanager
     def configure(self):
@@ -261,6 +365,22 @@ class DeviceConfiguration(DeviceResources):
         """Emit this configuration as one ``aie.device`` operation."""
         # The remaining emission order matches the dependencies between device ops.
         self._owners = owners
+        if self._prebuilt is not None:
+            prebuilt = ir.Module.parse(self._prebuilt)  # alive while cloned
+            (op,) = [o for o in prebuilt.body.operations if isinstance(o, DeviceOp)]
+            clone = op.clone(ip=ir.InsertionPoint.current)
+            old = ir.StringAttr(clone.attributes["sym_name"]).value
+            clone.attributes["sym_name"] = ir.StringAttr.get(device_name)
+            ir.SymbolTable.replace_all_symbol_uses(old, device_name, clone.operation)
+            if entry in self._runtimes and get_compile_arg("_iron_full_elf"):
+                (sequence,) = [
+                    o
+                    for o in clone.body_region.blocks[0].operations
+                    if isinstance(o, RuntimeSequenceOp)
+                    and ir.StringAttr(o.attributes["sym_name"]).value == entry.name
+                ]
+                entry.load_pdi_first(sequence.body.blocks[0], device_name)
+            return
         self._name_unnamed()
         device_type = type(self._device)
         self._device = device_type()  # pyright: ignore[reportCallIssue]

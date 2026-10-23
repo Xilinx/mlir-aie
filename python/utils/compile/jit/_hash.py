@@ -22,11 +22,13 @@ rebuilt or reinstalled.
 
 The Python a generator reaches is identified by what is running, which is
 not always what is on disk, and cheaply, since the key is taken on every
-call. A module imported from a file is named by its source's mtime and size
-when the key first reaches that import; a reload looks again. Code with no
-file behind it (a notebook cell, the REPL) and the script being run are
-identified by their code and the plain constants they read, since those can
-change without any file changing.
+call. A module imported from a file is named by its source's content when
+the key first reaches that import, read once per import; a reload looks
+again. The script
+being run counts as that kind of module, under the name it is imported as.
+Code with no file behind it (a notebook cell, the REPL) is identified by its
+code and the plain constants it reads, since those can change without any
+file changing.
 
 `_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
@@ -51,7 +53,7 @@ from pathlib import Path
 from types import CodeType, FunctionType, MethodType, ModuleType
 from typing import Any, Callable, Mapping
 
-from ._introspect import _introspect_generator
+from ._introspect import declare
 
 logger = logging.getLogger(__name__)
 
@@ -206,12 +208,29 @@ def _design_source(package: str, file: str | None) -> Path | None:
     return path
 
 
+def _import_name(name: str) -> str:
+    """Return the name module ``name`` is imported as.
+
+    A script run by path or with ``-m`` is ``__main__``; it keys as the module
+    its spec names, or its file's stem, so running a design's file and
+    importing it share a key. A ``__main__`` with no file behind it (the
+    REPL, ``-c``, a notebook) keeps its name.
+    """
+    module = sys.modules.get(name)
+    if name != "__main__" or module is None:
+        return name
+    if module.__spec__ is not None:
+        return module.__spec__.name
+    file = vars(module).get("__file__")
+    return Path(file).stem if file else name
+
+
 def _stamped_module(value) -> ModuleType | None:
     """Return the module ``value`` is, or comes from, if the key identifies it by its file."""
     if not isinstance(value, ModuleType):
         owner = value if isinstance(value, (type, FunctionType)) else type(value)
         value = sys.modules.get(owner.__module__ or "")
-    if value is None or value.__name__ == "__main__":
+    if value is None:
         return None
     package = value.__name__.partition(".")[0]
     if _design_source(package, vars(value).get("__file__")) is None:
@@ -220,7 +239,7 @@ def _stamped_module(value) -> ModuleType | None:
 
 
 # Per import of a file-backed module: the spec it was imported under, its
-# source's "mtime_ns:size" when the key first reached it, and the modules its
+# source's content digest when the key first reached it, and the modules its
 # globals reach. A reload brings a new spec, so the module is looked at again.
 _IMPORTS: dict[str, tuple[Any, str, tuple[str, ...]]] = {}
 
@@ -228,11 +247,7 @@ _IMPORTS: dict[str, tuple[Any, str, tuple[str, ...]]] = {}
 def _import_identity(module: ModuleType) -> tuple[str, tuple[str, ...]]:
     entry = _IMPORTS.get(module.__name__)
     if entry is None or entry[0] is not module.__spec__:
-        try:
-            stat = os.stat(module.__file__ or "")
-            stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
-        except OSError as exc:
-            stamp = f"<unreadable:{type(exc).__name__}>"
+        stamp = _content_digest(module.__file__ or "")
         # Importing a submodule binds it on its package, so a package's
         # namespace grows with whatever else the process imports. Its
         # submodules are reached through what they define, or by the code that
@@ -257,10 +272,10 @@ def _python_identity(roots) -> bytes:
 
     A generator's bytecode names a helper but does not contain it, so the key
     follows globals, closure cells and attributes of modules. Functions and
-    classes with no file behind them, or in the script being run, are
-    identified by their code and the plain constants they read; a module
-    imported from a file by its source's stamp (see ``_import_identity``),
-    and every module its globals reach in turn. Installed third-party code is
+    classes with no file behind them are identified by their code and the
+    plain constants they read; a module imported from a file, or the script
+    being run, by its source's stamp (see ``_import_identity``), and every
+    module its globals reach in turn. Installed third-party code is
     not followed. No design is generated to find any of it.
 
     An ``ExternalFunction`` it reaches is recorded by its content-based repr,
@@ -306,7 +321,8 @@ def _python_identity(roots) -> bytes:
     roots = set(map(id, todo))
     while todo:
         obj = todo.pop()
-        name = f"{obj.__module__}.{obj.__qualname__}"
+        home = _import_name(obj.__module__)
+        name = f"{home}.{obj.__qualname__}"
         if isinstance(obj, type):
             for attr, value in vars(obj).items():
                 if not attr.startswith("__") or isinstance(value, FunctionType):
@@ -318,7 +334,7 @@ def _python_identity(roots) -> bytes:
             visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
         names = _names(obj.__code__)
         scope = dict(obj.__globals__)
-        where = {n: f"{obj.__module__}.{n}" for n in scope}
+        where = {n: f"{home}.{n}" for n in scope}
         # A closure reaches its helpers and constants through cells rather
         # than globals; those shadow a global of the same name.
         for n, cell in zip(obj.__code__.co_freevars, obj.__closure__ or ()):
@@ -356,7 +372,7 @@ def _python_identity(roots) -> bytes:
             continue
         stamps[name], reached = _import_identity(module)
         pending += reached
-    records.update(f"{n}@{s}".encode() for n, s in stamps.items())
+    records.update(f"{_import_name(n)}@{s}".encode() for n, s in stamps.items())
     return b"\0".join(sorted(records))
 
 
@@ -393,23 +409,24 @@ def _compute_recipe_hash(
     else:
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
-        h.update(getattr(generator, "__module__", "").encode())
+        h.update(_import_name(generator.__module__ or "").encode())
         h.update(_python_identity([generator, *compile_kwargs.values()]))
-        hints, sig, (_, _, dispatch_params, _) = _introspect_generator(generator)
+        d = declare(generator)
+        assert d.signature is not None, "a generator's declaration has a signature"
+        dispatch_params = {m.name for m in d.per_calls}
         # Dispatch defaults are call-time values; explicitly bound defaults are
         # unused. Neither changes the compiled program.
         h.update(
             repr(
                 [
                     param.replace(
-                        annotation=hints.get(name, param.annotation),
                         default=(
                             param.empty
                             if name in dispatch_params or name in compile_kwargs
                             else param.default
                         ),
                     )
-                    for name, param in sig.parameters.items()
+                    for name, param in d.signature.parameters.items()
                 ]
             ).encode()
         )

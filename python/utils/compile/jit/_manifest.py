@@ -158,6 +158,7 @@ def record(
     dispatch_library=None,
     full_elf_kernel=None,
     digests: dict[str, str] | None = None,
+    full_elf_init_entry: bool = False,
 ) -> None:
     """Record the inputs this build consumed, if they can be known exactly.
 
@@ -191,6 +192,7 @@ def record(
             complete=False,
             dispatch_library=dispatch_library,
             full_elf_kernel=full_elf_kernel,
+            full_elf_init_entry=full_elf_init_entry,
         )
         return
 
@@ -220,6 +222,7 @@ def record(
                 complete=False,
                 dispatch_library=dispatch_library,
                 full_elf_kernel=full_elf_kernel,
+                full_elf_init_entry=full_elf_init_entry,
             )
             return
 
@@ -248,6 +251,7 @@ def record(
         },
         dispatch_library=dispatch_library,
         full_elf_kernel=full_elf_kernel,
+        full_elf_init_entry=full_elf_init_entry,
         digests=digests,
     )
 
@@ -258,6 +262,7 @@ def _write(
     complete: bool = True,
     dispatch_library: str | None = None,
     full_elf_kernel: str | None = None,
+    full_elf_init_entry: bool = False,
     digests: dict[str, str] | None = None,
 ) -> None:
     entries: list[dict] = []
@@ -278,6 +283,8 @@ def _write(
         payload["dispatch_library"] = dispatch_library
     if full_elf_kernel is not None:
         payload["full_elf_kernel"] = full_elf_kernel
+    if full_elf_init_entry:
+        payload["full_elf_init_entry"] = True
     with _staged(str(Path(kernel_dir) / MANIFEST_NAME)) as tmp:
         Path(tmp).write_text(json.dumps(payload))
 
@@ -312,6 +319,17 @@ def resolve_full_elf_kernel(kernel_dir: Path) -> str | None:
         return None
     name = payload.get("full_elf_kernel")
     return name if isinstance(name, str) else None
+
+
+def resolve_full_elf_init_entry(kernel_dir: Path) -> bool:
+    """Return whether the full ELF's build made a ``reconfig_init`` entry."""
+    try:
+        payload = json.loads((kernel_dir / MANIFEST_NAME).read_text())
+    except (OSError, ValueError):
+        return False
+    if not isinstance(payload, dict) or payload.get("version") != _VERSION:
+        return False
+    return payload.get("full_elf_init_entry") is True
 
 
 def is_valid(kernel_dir: Path) -> bool:

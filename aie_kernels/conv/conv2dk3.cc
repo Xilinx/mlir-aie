@@ -13,6 +13,8 @@
 #include <stdlib.h>
 
 #include "../aie_kernel_utils.h"
+#include "../common/table_i8.h"
+#include "conv_bias.h"
 #include <aie_api/aie.hpp>
 
 #ifndef CONV_INPUT_WIDTH
@@ -422,8 +424,10 @@ static void conv2dk3_vector(T *line0, T *line1, T *line2, int8_t *wts,
   event0();
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, T, int8>;
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::positive_inf);
 
   // The row width is fixed at 32 pixels; input_width is unused.
   constexpr int iw = 32;
@@ -500,6 +504,8 @@ static void conv2dk3_vector(T *line0, T *line1, T *line2, int8_t *wts,
     }
     wts_oc += (input_channels / 8) * wts_ic_stride;
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #elif AIE_TUNED_AIE2P
@@ -524,8 +530,10 @@ static void conv2dk3_vector(
   event0();
 
   using MMUL8x8x8 = aie::mmul<8, 8, 8, T, int8>;
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::positive_inf);
 
   // The row width is fixed at 32 pixels; input_width is unused.
   constexpr int iw = 32;
@@ -594,6 +602,8 @@ static void conv2dk3_vector(
     }
     wts_oc += (input_channels / 8) * wts_ic_stride;
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #else
@@ -618,9 +628,9 @@ void conv2dk3_i8_vector(
 
   // Compute
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = ::aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(
+  const aie::rounding_mode saved_rnd = ::aie::swap_rounding(
       aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
 
   constexpr unsigned VecFactor = 16;
@@ -1025,6 +1035,8 @@ void conv2dk3_i8_vector(
       }
     } // for(int oc=0; oc<(output_channels/8); oc++) {
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 
@@ -1050,9 +1062,9 @@ void conv2dk3_ui8_vector(
 
   // Compute
   using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = ::aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(
+  const aie::rounding_mode saved_rnd = ::aie::swap_rounding(
       aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
 
   constexpr unsigned VecFactor = 16;
@@ -1520,6 +1532,8 @@ void conv2dk3_ui8_vector(
       }
     } // for(int oc=0; oc<(output_channels/8); oc++) {
   }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 
@@ -1527,6 +1541,167 @@ void conv2dk3_ui8_vector(
 #endif
 
 #endif // Vector
+
+#ifdef CONV_BIAS
+//*****************************************************************************
+// conv2d 3x3 - vector, with a bias and table, see conv2dk1_i8.cc
+//
+// The output row for line1 at stride 1 or 2, M pixels at a time (8, or 4
+// when the output width is not a multiple of 8); the borders shift in zeros.
+//*****************************************************************************
+#ifndef CONV_STRIDE
+#define CONV_STRIDE 1
+#endif
+
+#ifndef CONV2DK3_BLOCKS
+#define CONV2DK3_BLOCKS 4
+#endif
+
+// NB neighbouring blocks of M output pixels from output pixel x0: each
+// weight vector loaded once for all of them, and each input vector once,
+// shared by the blocks that overlap it.
+template <int M, int Stride, int NB>
+static inline __attribute__((always_inline)) void conv2dk3_i8_bias_blocks(
+    const int8_t *line0, const int8_t *line1, const int8_t *line2,
+    const int8_t *__restrict wts_oc, aie::accum<acc32, M * 8> seeded,
+    int8_t *__restrict output, const int x0, const int row_start,
+    const int row_end, const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int input_channels = CONV_INPUT_CHANNELS;
+  constexpr int V = M * 8;
+  using MMUL = aie::mmul<M, 8, 8, int8, int8>;
+  const aie::vector<int8, V> zeros = aie::zeros<int8, V>();
+
+  MMUL acc[NB];
+  AIE_LOOP_UNROLL_FULL
+  for (int b = 0; b < NB; b++)
+    acc[b] = seeded;
+  for (int r = row_start; r < row_end; r++) {
+    const int8_t *line = r == 0 ? line0 : (r == 1 ? line1 : line2);
+    const int8_t *__restrict w = wts_oc + r * 3 * 64;
+    for (int ic = 0; ic < input_channels / 8; ic++) {
+      const int8_t *row = line + ic * iw * 8;
+      aie::vector<int8, 64> w0 = aie::load_v<64>(w);
+      aie::vector<int8, 64> w1 = aie::load_v<64>(w + 64);
+      aie::vector<int8, 64> w2 = aie::load_v<64>(w + 128);
+      w += 9 * 64;
+      if constexpr (Stride == 1) {
+        // in[b] holds input pixels x0 + (b - 1) * M onwards.
+        aie::vector<int8, V> in[NB + 2];
+        in[0] = x0 > 0 ? aie::load_v<V>(row + (x0 - M) * 8) : zeros;
+        AIE_LOOP_UNROLL_FULL
+        for (int b = 0; b < NB; b++)
+          in[b + 1] = aie::load_v<V>(row + (x0 + b * M) * 8);
+        in[NB + 1] =
+            x0 + NB * M < iw ? aie::load_v<V>(row + (x0 + NB * M) * 8) : zeros;
+        AIE_LOOP_UNROLL_FULL
+        for (int b = 0; b < NB; b++) {
+          acc[b].mac(aie::shuffle_down_fill(in[b], in[b + 1], V - 8), w0);
+          acc[b].mac(in[b + 1], w1);
+          acc[b].mac(aie::shuffle_down_fill(in[b + 1], in[b + 2], 8), w2);
+        }
+      } else {
+        // Output pixel x reads input pixels 2x - 1, 2x and 2x + 1.
+        const int xi = 2 * x0;
+        aie::vector<int8, V> prev =
+            xi > 0 ? aie::load_v<V>(row + (xi - M) * 8) : zeros;
+        AIE_LOOP_UNROLL_FULL
+        for (int b = 0; b < NB; b++) {
+          aie::vector<int8, V> lo = aie::load_v<V>(row + (xi + 2 * b * M) * 8);
+          aie::vector<int8, V> hi =
+              aie::load_v<V>(row + (xi + (2 * b + 1) * M) * 8);
+          aie::vector<int8, 2 * V> pair = aie::concat(lo, hi);
+          aie::vector<int8, V> even = aie::filter_even(pair, 8);
+          aie::vector<int8, V> odd = aie::filter_odd(pair, 8);
+          acc[b].mac(aie::shuffle_down_fill(prev, odd, V - 8), w0);
+          acc[b].mac(even, w1);
+          acc[b].mac(odd, w2);
+          prev = hi;
+        }
+      }
+    }
+  }
+  AIE_LOOP_UNROLL_FULL
+  for (int b = 0; b < NB; b++)
+    aie::store_v(output + b * V, acc[b].template to_vector<int8>(scale));
+}
+
+template <int M, int Stride, bool Table>
+static void conv2dk3_i8_bias_vector(const int8_t *line0, const int8_t *line1,
+                                    const int8_t *line2,
+                                    const int8_t *__restrict wts,
+                                    const int32_t *__restrict bias,
+                                    const int8_t *__restrict table,
+                                    int8_t *__restrict output,
+                                    const int32_t check, const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int ow = iw / Stride;
+  constexpr int input_channels = CONV_INPUT_CHANNELS;
+  constexpr int output_channels = CONV_OUTPUT_CHANNELS;
+  constexpr int V = M * 8;
+  constexpr int NB = CONV2DK3_BLOCKS;
+  constexpr int groups = ow / M / NB;
+  constexpr int singles = ow / M % NB;
+  static_assert(ow % M == 0, "conv2dk3 with a bias tiles the row by M");
+  event0();
+
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd = aie::swap_rounding(CONV_BIAS_ROUNDING);
+
+  const int row_start = check == top ? 1 : 0;
+  const int row_end = check == bottom ? 2 : 3;
+
+  for (int oc = 0; oc < output_channels / 8; oc++) {
+    const aie::accum<acc32, V> seeded =
+        bias_seed<M>(aie::load_v<8>(bias + oc * 8));
+    const int8_t *wts_oc = wts + oc * (input_channels / 8) * 9 * 64;
+    int8_t *out = output + oc * ow * 8;
+
+    for (int g = 0; g < groups; g++)
+      conv2dk3_i8_bias_blocks<M, Stride, NB>(
+          line0, line1, line2, wts_oc, seeded, out + g * NB * V, g * NB * M,
+          row_start, row_end, scale);
+    for (int x = 0; x < singles; x++)
+      conv2dk3_i8_bias_blocks<M, Stride, 1>(
+          line0, line1, line2, wts_oc, seeded, out + (groups * NB + x) * V,
+          (groups * NB + x) * M, row_start, row_end, scale);
+  }
+  if constexpr (Table)
+    map_table_i8<output_channels * ow>(output, table);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
+  event1();
+}
+#define CONV2DK3_M ((CONV_INPUT_WIDTH / CONV_STRIDE) % 8 == 0 ? 8 : 4)
+
+extern "C" {
+
+#ifdef CONV_TABLE
+void CONV2DK3_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
+                     int32_t *bias, int8_t *table, int8_t *output,
+                     const int32_t input_width, const int32_t input_channels,
+                     const int32_t output_channels, const int32_t kernel_width,
+                     const int32_t kernel_height, const int32_t check,
+                     const int scale, const int channel_offset) {
+  conv2dk3_i8_bias_vector<CONV2DK3_M, CONV_STRIDE, true>(
+      line0, line1, line2, wts, bias, table, output, check, scale);
+}
+#else
+void CONV2DK3_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
+                     int32_t *bias, int8_t *output, const int32_t input_width,
+                     const int32_t input_channels,
+                     const int32_t output_channels, const int32_t kernel_width,
+                     const int32_t kernel_height, const int32_t check,
+                     const int scale, const int channel_offset) {
+  conv2dk3_i8_bias_vector<CONV2DK3_M, CONV_STRIDE, false>(
+      line0, line1, line2, wts, bias, nullptr, output, check, scale);
+}
+#endif
+
+} // extern "C"
+
+#else // CONV_BIAS
 
 extern "C" {
 
@@ -1626,3 +1801,5 @@ void conv2dk3_ui8(uint8_t *line0, uint8_t *line1, uint8_t *line2, int8_t *wts,
 
 #endif // Vector
 }
+
+#endif // CONV_BIAS

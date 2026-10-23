@@ -65,6 +65,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ObjCopy/ConfigManager.h"
 #include "llvm/ObjCopy/ObjCopy.h"
 #include "llvm/Object/Binary.h"
@@ -76,6 +77,7 @@
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/xxhash.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <future>
 #include <iostream>
@@ -843,16 +845,44 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
 // Main compilation graph
 //===----------------------------------------------------------------------===//
 
+// The device named `root` and every device its sequences load or configure,
+// transitively: a full ELF for `root` has to carry their PDIs too.
+static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
+                                            llvm::StringRef root) {
+  llvm::StringSet<> reached;
+  llvm::SmallVector<llvm::StringRef> work{root};
+  while (!work.empty()) {
+    llvm::StringRef name = work.pop_back_val();
+    if (!reached.insert(name).second)
+      continue;
+    auto device = module.lookupSymbol<xilinx::AIE::DeviceOp>(name);
+    if (!device)
+      continue;
+    device.walk([&](mlir::Operation *op) {
+      if (auto load = llvm::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op)) {
+        if (std::optional<llvm::StringRef> ref = load.getDeviceRef())
+          work.push_back(*ref);
+      } else if (auto configure =
+                     llvm::dyn_cast<xilinx::AIEX::ConfigureOp>(op)) {
+        work.push_back(configure.getSymbol());
+      }
+    });
+  }
+  return reached;
+}
+
 // Assemble the full compilation artifact graph into `g` and return the list of
 // requested output edges. Edges named via `--cut` are appended to `cutEdges`
 // (and built) so a `--checkpoint` can capture them as its cut points. Edges
 // that must run but write nothing are appended to `checkEdges`. A non-null
 // `cache` is --device-cache, which the graph uses only when this build's
-// outputs allow it.
+// outputs allow it. `keptDevices` are the devices --device-name keeps, or
+// empty to keep all.
 static std::vector<EdgeBase *>
 buildMainGraph(mlir::MLIRContext &context, Graph &g,
                std::vector<EdgeBase *> &cutEdges,
-               std::vector<EdgeBase *> &checkEdges, DeviceCache *cache) {
+               std::vector<EdgeBase *> &checkEdges, DeviceCache *cache,
+               llvm::StringSet<> keptDevices) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -864,7 +894,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   using xilinx::AIE::TileOp;
   using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
 
-  const std::string &devFilter = deviceName.getValue();
   std::string inputFile = getInputFilename();
 
   std::string workDirStr = getWorkDir();
@@ -898,12 +927,22 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     };
   };
 
-  auto matchesDeviceFilter = [devFilter](DeviceOp d) {
+  auto matchesDeviceFilter = [keptDevices =
+                                  std::move(keptDevices)](DeviceOp d) {
     // Empty reset devices synthesized by --expand-load-pdis must always be
     // included, regardless of --device-name.
-    return devFilter.empty() || d.getSymName() == devFilter ||
-           d.getSymName().starts_with("empty_");
+    return keptDevices.empty() || d.getSymName().starts_with("empty_") ||
+           keptDevices.contains(d.getSymName());
   };
+
+  auto matchesSequenceFilter =
+      [seqFilter = sequenceName.getValue()](RuntimeSequenceOp s) {
+        // The init entry is kept whatever --sequence-name says, since the other
+        // entries rely on it.
+        return seqFilter.empty() || s.getSymName() == seqFilter ||
+               (reconfigInitEntry &&
+                s.getSymName() == xilinx::AIEX::initEntrySequenceName);
+      };
 
   // Split a whole-module edge into one item per DeviceOp (keyed by bare device
   // name), then drop devices that don't match --device-name.
@@ -2127,15 +2166,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                  s.getSymName());
               }))
           .filter(
-              "perSeqMatching",
-              [matchesDeviceFilter, seqFilter = sequenceName.getValue()](
-                  const OpInModule<RuntimeSequenceOp> &x) {
+              "perSeqMatching", [matchesDeviceFilter, matchesSequenceFilter](
+                                    const OpInModule<RuntimeSequenceOp> &x) {
                 RuntimeSequenceOp seq = x.op;
                 if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>())) {
                   return false;
                 }
                 // --sequence-name: keep only the named runtime sequence.
-                return seqFilter.empty() || seq.getSymName() == seqFilter;
+                return matchesSequenceFilter(seq);
               });
 
   // The C++ target consumes (and replaces) its module. Keep the shared lowered
@@ -2225,13 +2263,60 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //--------------------------------------------------------------------------//
   // Combined full ELF (joins the static configuration + NPU branches)
   //--------------------------------------------------------------------------//
+  // The full ELF's runtime sequences are `npuLowered`'s plus an empty one per
+  // device (`addEmptySequences`), split as `perSeq` and `npuLoweredPerDevice`
+  // are; a device's empty sequence is kept with the sequence --sequence-name
+  // keeps on it.
+  auto &npuLoweredFullElf =
+      npuLowered
+          .map<ModRef>("npu_lowered_full_elf.mlir",
+                       [&context](auto &&item,
+                                  Item<ModRef> &out) -> mlir::LogicalResult {
+                         ModRef mod = asModule(
+                             std::forward<decltype(item)>(item), &context);
+                         if (mlir::failed(addEmptySequences(*mod))) {
+                           return mlir::failure();
+                         }
+                         out.value = std::move(mod);
+                         return mlir::success();
+                       })
+          .takesInput();
+  auto &perSeqFullElf =
+      npuLoweredFullElf
+          .split<OpInModule<RuntimeSequenceOp>>(
+              "npu_seq_full_elf_{0}.mlir",
+              SplitIRAction<RuntimeSequenceOp>([](RuntimeSequenceOp s) {
+                return npuSeqKey(s->getParentOfType<DeviceOp>().getSymName(),
+                                 s.getSymName());
+              }))
+          .filter("perSeqFullElfMatching",
+                  [matchesDeviceFilter, matchesSequenceFilter,
+                   seqFilter = sequenceName.getValue()](
+                      const OpInModule<RuntimeSequenceOp> &x) {
+                    RuntimeSequenceOp seq = x.op;
+                    DeviceOp device = seq->getParentOfType<DeviceOp>();
+                    if (!matchesDeviceFilter(device)) {
+                      return false;
+                    }
+                    if (matchesSequenceFilter(seq)) {
+                      return true;
+                    }
+                    return seq.getSymName() == kEmptySequenceName &&
+                           RuntimeSequenceOp::getForSymbolInDevice(device,
+                                                                   seqFilter);
+                  });
+  auto &npuLoweredPerDeviceFullElf =
+      splitPerDevice(npuLoweredFullElf, "perDeviceNPULoweredFullElf_{0}.mlir",
+                     "perDeviceNPULoweredFullElfMatching");
+
   // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
   // the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
   // offset for every arg itself. cl::opt defaults to true, so only pass the
   // flag when unfolding is requested.
-  auto &npuProgramFullElf = buildNpuProgramSubgraph(
-      perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false,
-      /*withLocmap=*/false, npuConfigs);
+  auto &npuProgramFullElf =
+      buildNpuProgramSubgraph(perSeqFullElf, "npu_program_full_elf_{0}.bin",
+                              /*foldDDRAddrOffset=*/false,
+                              /*withLocmap=*/false, npuConfigs);
   auto &npuInstsFullElf =
       npuProgramFullElf
           .map<std::vector<char>>(
@@ -2276,14 +2361,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                  ctrlPktExpandedPerSeq)
            : static_cast<EdgeWithTypedOutput<OpInModule<RuntimeSequenceOp>> &>(
                  noCtrlPktSeqs))
-          .filter("ctrlPktSeqs", [matchesDeviceFilter,
-                                  seqFilter = sequenceName.getValue()](
+          .filter("ctrlPktSeqs", [matchesDeviceFilter, matchesSequenceFilter](
                                      const OpInModule<RuntimeSequenceOp> &x) {
             RuntimeSequenceOp seq = x.op;
             if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>())) {
               return false;
             }
-            return seqFilter.empty() || seq.getSymName() == seqFilter;
+            return matchesSequenceFilter(seq);
           });
 
   // Per-sequence control-packet binary, dropping empties so the config only
@@ -2342,7 +2426,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Combined ELF: all PDIs + NPU insts bundled
   // + control packet data, if any.
   auto &fullElfConfig =
-      bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out,
+      bundle(npuLoweredPerDeviceFullElf.out, pdi.out, npuInstsFullElf.out,
              fullElfCtrlpkt.out, fullElfPatchInfo.out)
           .join<llvm::json::Value>(
               "full_elf_config.json",
@@ -2628,6 +2712,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 //===----------------------------------------------------------------------===//
 
 int main(int argc, char **argv) {
+  std::chrono::steady_clock::time_point processStart =
+      std::chrono::steady_clock::now();
 
   //--------------------------------------------------------------------------//
   // Context setup
@@ -2705,7 +2791,7 @@ int main(int argc, char **argv) {
   // selection (xchesscc/xbridge), the --get-aiesim implication, and the
   // resolved-option globals (wantAiesim, doUnified, doCompileHost). See
   // CommandLineOptions.h.
-  if (!cli::resolveOptions()) {
+  if (!cli::resolveOptions(resume.active)) {
     return 1;
   }
   verifyEachPass = verifyEach;
@@ -2738,33 +2824,6 @@ int main(int argc, char **argv) {
                       "use --get-npu-cpp\n";
       return 1;
     }
-  }
-
-  // --expand-load-pdis reconfigures via PDI swaps and routes the config branch
-  // through the NPU-lowered module; control-packet generation currently
-  // assumes it runs on the *pre*-NPU-lowering module. The two are incompatible
-  // as implemented.
-  if (expandLoadPdis && generateCtrlpkt) {
-    llvm::errs() << "aiecc: --expand-load-pdis and --get-ctrlpkt are "
-                    "mutually exclusive\n";
-    return 1;
-  }
-
-  // --expand-load-pdis and --load-pdi-to-ctrl-pkt are two different reconfigure
-  // strategies for the same `load_pdi` ops (explicit write sequences vs.
-  // streamed control packets); at most one may apply.
-  if (expandLoadPdis && loadPdiToCtrlPkt) {
-    llvm::errs() << "aiecc: --expand-load-pdis and --load-pdi-to-ctrl-pkt are "
-                    "mutually exclusive\n";
-    return 1;
-  }
-
-  // Disambiguate the full-ELF control packet flow and the standalone
-  // artifact flows.
-  if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
-    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
-                    "together also requires --load-pdi-to-ctrl-pkt\n";
-    return 1;
   }
 
   // --cut only makes sense as a checkpoint frontier: it stops the build at the
@@ -2876,8 +2935,23 @@ int main(int argc, char **argv) {
                         DeviceCache::configurationKey(*effArgvStore, tools),
                         verbose);
   }
+  // --device-name keeps the named device, and a full ELF also the devices
+  // whose PDIs it carries. Later stages lower away the sequences' load_pdi and
+  // configure references, so those come from the input.
+  llvm::StringSet<> keptDevices;
+  if (!deviceName.empty()) {
+    keptDevices.insert(deviceName);
+    if (generateFullElf && !emitDot && !getInputFilename().empty()) {
+      mlir::OwningOpRef<mlir::ModuleOp> input =
+          parseModuleFromFile(getInputFilename(), &context);
+      if (!input)
+        return 1;
+      keptDevices = devicesReachedFrom(*input, deviceName);
+    }
+  }
   std::vector<EdgeBase *> outputs = buildMainGraph(
-      context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr);
+      context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr,
+      std::move(keptDevices));
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file
@@ -2950,7 +3024,8 @@ int main(int argc, char **argv) {
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile,
-                 enableRepeaterScripts && !disableRepeaterScripts});
+                 enableRepeaterScripts && !disableRepeaterScripts, profileJson,
+                 processStart});
   // --cut stops the build at the cut point: only the prefix up to the cut
   // edges is produced (as work-dir intermediates) and snapshotted by
   // --checkpoint; the requested final artifacts are NOT built here (the

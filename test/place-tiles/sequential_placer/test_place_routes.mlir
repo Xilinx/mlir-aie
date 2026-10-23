@@ -91,3 +91,84 @@ module @route_channel_demand {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// Packet routes merging into one endpoint share its channel, so a core taking
+// two merged flows plus one more input needs its two S2MM channels, not three.
+// CHECK-LABEL: @route_shared_dest_unplaced
+// CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.route_endpoint @merge(%[[CORE]]) DMA
+// CHECK-DAG: aie.route_endpoint @own(%[[CORE]]) DMA
+module @route_shared_dest_unplaced {
+  aie.device(npu2) {
+    %mt = aie.logical_tile<MemTile>(0, 1)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%core) { aie.end }
+    aie.route_endpoint @x(%mt) DMA
+    aie.route_endpoint @y(%mt) DMA
+    aie.route_endpoint @z(%mt) DMA
+    aie.route_endpoint @merge(%core) DMA
+    aie.route_endpoint @own(%core) DMA
+    aie.route from @x to [@merge] {packet, packet_id = 1 : i8}
+    aie.route from @y to [@merge] {packet, packet_id = 2 : i8}
+    aie.route from @z to [@own]
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// The same on a pinned core, fed from three shims.
+// CHECK-LABEL: @route_shared_dest_pinned
+// CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.route_endpoint @merge(%[[CORE]]) DMA
+// CHECK-DAG: aie.route_endpoint @own(%[[CORE]]) DMA
+// CHECK-DAG: aie.route_endpoint @out(%[[CORE]]) DMA
+module @route_shared_dest_pinned {
+  aie.device(npu2) {
+    %core = aie.logical_tile<CoreTile>(0, 2)
+    %s0 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s2 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s3 = aie.logical_tile<ShimNOCTile>(?, ?)
+    aie.core(%core) { aie.end }
+    aie.route_endpoint @in0(%s0) DMA {fifoName = "in0"}
+    aie.route_endpoint @in1(%s1) DMA {fifoName = "in1"}
+    aie.route_endpoint @in2(%s2) DMA {fifoName = "in2"}
+    aie.route_endpoint @merge(%core) DMA
+    aie.route_endpoint @own(%core) DMA
+    aie.route from @in0 to [@merge] {packet, packet_id = 1 : i8}
+    aie.route from @in1 to [@merge] {packet, packet_id = 2 : i8}
+    aie.route from @in2 to [@own]
+    aie.route_endpoint @out(%core) DMA
+    aie.route_endpoint @back(%s3) DMA {fifoName = "back"}
+    aie.route from @out to [@back]
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// One endpoint sending two packet routes holds one MM2S channel, so a core
+// sourcing it and one more flow fits its two.
+// CHECK-LABEL: @route_shared_source_unplaced
+// CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.route_endpoint @split(%[[CORE]]) DMA
+// CHECK-DAG: aie.route_endpoint @other(%[[CORE]]) DMA
+module @route_shared_source_unplaced {
+  aie.device(npu2) {
+    %mt = aie.logical_tile<MemTile>(0, 1)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%core) { aie.end }
+    aie.route_endpoint @split(%core) DMA
+    aie.route_endpoint @other(%core) DMA
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route_endpoint @c(%mt) DMA
+    aie.route from @split to [@a] {packet, packet_id = 1 : i8}
+    aie.route from @split to [@b] {packet, packet_id = 2 : i8}
+    aie.route from @other to [@c]
+    // CHECK-NOT: aie.logical_tile
+  }
+}

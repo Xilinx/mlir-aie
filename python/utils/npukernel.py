@@ -3,7 +3,9 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -26,6 +28,8 @@ class NPUKernel:
         elf_path=None,
         dispatch_params: list[str] | None = None,
         dispatch_lib_path=None,
+        init_entry: bool = False,
+        params_path=None,
     ):
         """Initialize the NPUKernel.
 
@@ -63,6 +67,12 @@ class NPUKernel:
                 compiled dispatch bridge (``dispatch.so``) for a
                 DispatchTime[T] design. Required (non-None) whenever
                 ``dispatch_params`` is non-empty.
+            init_entry (bool, optional): Whether the full ELF has the entry
+                aiecc's ``--reconfig-init-entry`` builds. Defaults to False.
+            params_path (str | Path | None, optional): The lowering's
+                ``params.txt`` for a full ELF whose design declares
+                ScratchpadParameters, which a call's ``parameters`` are
+                written through. Defaults to None.
         """
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
@@ -74,6 +84,8 @@ class NPUKernel:
         self._dispatch_params = list(dispatch_params) if dispatch_params else []
         self._dispatch_lib_path = dispatch_lib_path
         self._dispatch_bridge = None
+        self._init_entry = init_entry
+        self._params_path = params_path
 
     @property
     def trace_config(self) -> TraceConfig | None:
@@ -110,6 +122,26 @@ class NPUKernel:
             str | Path | None: The full-ELF path.
         """
         return self._elf_path
+
+    @property
+    def init_kernel_name(self) -> str | None:
+        """Get the full ELF's init entry, or ``None``.
+
+        Returns:
+            str | None: The ``"<device>:reconfig_init"`` entry.
+        """
+        if not self._init_entry:
+            return None
+        return f"{self.kernel_name.partition(':')[0]}:reconfig_init"
+
+    @property
+    def params_path(self):
+        """Get the ScratchpadParameter table, or ``None`` if the design declares none.
+
+        Returns:
+            str | Path | None: The lowering's ``params.txt``.
+        """
+        return self._params_path
 
     @property
     def kernel_name(self):
@@ -222,13 +254,15 @@ class NPUKernel:
             )
 
     # Blocking call.
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, parameters: Mapping[str, Any] | None = None, **kwargs):
         """Run the kernel with the given arguments.
 
         This is a blocking call.
 
         Args:
             *args: Arguments passed to the kernel.
+            parameters: ScratchpadParameter values for this call, by name,
+                written to the run's ctrl scratchpad before it starts.
             **kwargs: Declared dispatch scalar values and the optional ``retry``
                 runtime load option. A declared dispatch parameter named ``retry``
                 takes precedence over the load option.
@@ -253,5 +287,6 @@ class NPUKernel:
             self,
             list(args),
             dispatch_scalars=dispatch_scalars or None,
+            parameters=parameters,
             **other_kwargs,
         )

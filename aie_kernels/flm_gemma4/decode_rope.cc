@@ -13,49 +13,29 @@
 #include "rms_norm.h"
 #include "utils.h"
 
-template <int Dh>
-void apply_rope_t(bf16 *restrict y, bf16 *restrict x, bf16 *restrict cos_val,
-                  bf16 *restrict sin_val) {
-  constexpr int vector_size = 16;
-  const int Dh_2 = Dh / 2;
-  constexpr int F = Dh / 2 / vector_size;
-  bf16 *it_y_p1 = y;
-  bf16 *it_y_p2 = y + Dh_2;
-  bf16 *it_x_p1 = x;
-  bf16 *it_x_p2 = x + Dh_2;
-  bf16 *it_cos = cos_val;
-  bf16 *it_sin = sin_val;
-
-  for (int i = 0; i < F; i++) {
-    aie::vector<bf16, vector_size> x1_vec = aie::load_v<vector_size>(it_x_p1);
-    aie::vector<bf16, vector_size> x2_vec = aie::load_v<vector_size>(it_x_p2);
-    aie::vector<bf16, vector_size> cos_vec = aie::load_v<vector_size>(it_cos);
-    aie::vector<bf16, vector_size> sin_vec = aie::load_v<vector_size>(it_sin);
-    aie::vector<bf16, vector_size> neg_sin_vec = aie::neg(sin_vec);
-    aie::accum<accfloat, vector_size> C = aie::mul(x1_vec, cos_vec);
-    C = aie::mac(C, x2_vec, neg_sin_vec);
-    aie::accum<accfloat, vector_size> D = aie::mul(x1_vec, sin_vec);
-    D = aie::mac(D, x2_vec, cos_vec);
-    aie::store_v(it_y_p1, C.template to_vector<bf16>());
-    aie::store_v(it_y_p2, D.template to_vector<bf16>());
-    it_y_p1 += vector_size;
-    it_y_p2 += vector_size;
-    it_x_p1 += vector_size;
-    it_x_p2 += vector_size;
-    it_cos += vector_size;
-    it_sin += vector_size;
-  }
-}
-
-/// Norm then rotate one head. rope_w is [cos | sin] of Dh/2 each.
+/// Norm then rotate one head into q; qkv is only read. rope_w is [cos | sin]
+/// of Dh/2 each. Each half's normalized bf16 goes straight into the rotation.
 template <int Dh>
 void _rotate_t(bf16 *restrict q, bf16 *restrict qkv, bf16 *restrict rope_w,
                bf16 *restrict norm_weight) {
-  bf16 *it_rope = rope_w;
-  bf16 *cos_val = it_rope;
-  bf16 *sin_val = it_rope + Dh / 2;
-  rms_norm<Dh>(qkv, qkv, norm_weight);
-  apply_rope_t<Dh>(q, qkv, cos_val, sin_val);
+  constexpr int half = Dh / 2;
+  static_assert(half % f32_lanes == 0);
+  const Limbs<f32_lanes> s =
+      bf16_limbs(f32_acc(aie::broadcast<float, f32_lanes>(rms_scale<Dh>(qkv))));
+  for (int i = 0; i < half; i += f32_lanes) {
+    const bf16_vec x1 =
+        weighted_norm(aie::load_v<f32_lanes>(qkv + i),
+                      aie::load_v<f32_lanes>(norm_weight + i), s);
+    const bf16_vec x2 =
+        weighted_norm(aie::load_v<f32_lanes>(qkv + half + i),
+                      aie::load_v<f32_lanes>(norm_weight + half + i), s);
+    const bf16_vec cos = aie::load_v<f32_lanes>(rope_w + i);
+    const bf16_vec sin = aie::load_v<f32_lanes>(rope_w + half + i);
+    const f32_acc c = aie::msc(aie::mul(x1, cos), x2, sin);
+    const f32_acc d = aie::mac(aie::mul(x1, sin), x2, cos);
+    aie::store_v(q + i, c.to_vector<bfloat16>());
+    aie::store_v(q + half + i, d.to_vector<bfloat16>());
+  }
 }
 
 /// The kernel body. Dq/Dk/Dv are the total q/k/v widths; Dh the head dim.

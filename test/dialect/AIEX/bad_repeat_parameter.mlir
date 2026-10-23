@@ -80,14 +80,14 @@ aie.device(npu2) {
 
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
-  %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) {address = 0 : i32} : memref<64xi32>
+  %t = aie.tile(0, 2)
+  %buf = aie.buffer(%t) {address = 1024 : i32} : memref<64xi32>
   aie.runtime_sequence(%arg0 : memref<64xi32>) {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
       aie.end
     } {repeat_count = 3 : i32}
-    // expected-error @+1 {{repeat_parameter is only supported on shim NOC tiles, got tile (0, 1)}}
+    // expected-error @+1 {{repeat_parameter is only supported on shim NOC and mem tiles, got tile (0, 2)}}
     aiex.dma_start_task(%task) {repeat_parameter = @n}
   }
 }

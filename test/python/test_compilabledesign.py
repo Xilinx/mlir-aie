@@ -23,6 +23,7 @@ from types import CodeType
 
 import numpy as np
 import pytest
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
 from aie.iron import DeviceConfiguration, Program, Runtime, kernels
 from aie.iron.algorithms import _pipeline
@@ -37,6 +38,14 @@ from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_ha
 from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 from aie.utils.hostruntime import set_current_device
+
+
+@pytest.fixture(autouse=True)
+def bound_device():
+    """Bind a device for each test, so none opens the NPU to find one."""
+    with set_current_device(NPU2Col1()):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # Shared generator factories
@@ -683,11 +692,14 @@ def test_tensor_type_binds_and_keys_the_design():
     large = np.ndarray[(32, 32), np.dtype[np.int16]]
     design = CompilableDesign(gen).specialize(a=small)
     design.generate_mlir()
-    assert observed == [small]
+    (a,) = observed
+    assert isinstance(a, In) and a.name == "a"
+    assert (a.shape, a.dtype, a.ndarray_type) == ((16, 32), np.int16, small)
     assert design.split_runtime_args(("tensor",), {}) == (["tensor"], {})
     assert (
         design._compute_cache_hash()
         == CompilableDesign(gen, compile_kwargs={"a": small})._compute_cache_hash()
+        == CompilableDesign(gen).specialize(a=a)._compute_cache_hash()
     )
     assert (
         design._compute_cache_hash() != design.specialize(a=large)._compute_cache_hash()
@@ -1358,6 +1370,51 @@ def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
     assert seen == {
         _compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ())
     }
+
+
+def test_a_design_run_as_a_script_keys_as_its_import(tmp_path):
+    """Running a design's file, by path or with -m, keys it as importing it does.
+
+    The file is keyed by its bytes: rewriting them with a later mtime is a
+    hit, an edit a miss.
+    """
+    (tmp_path / "scaled.py").write_text(
+        "from aie.iron.device import NPU2Col1\n"
+        "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "FACTOR = 3\n\n\n"
+        "def scale(x):\n"
+        "    return x * FACTOR\n\n\n"
+        "def design(a, b):\n"
+        "    return scale(a), NPU2Col1()\n\n\n"
+        "def key():\n"
+        "    return _compute_recipe_hash(design, {}, (), ())\n\n\n"
+        "if __name__ == '__main__':\n"
+        "    device = NPU2Col1()\n"
+        "    print(key())\n"
+    )
+    (tmp_path / "importer.py").write_text("import scaled\n\nprint(scaled.key())\n")
+
+    def key(*args):
+        return subprocess.run(
+            [sys.executable, *args],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    imported = key("importer.py")
+    assert key("scaled.py") == imported
+    assert key("-m", "scaled") == imported
+    scaled = tmp_path / "scaled.py"
+    stat = scaled.stat()
+    scaled.write_text(scaled.read_text())
+    os.utime(scaled, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**10))
+    assert key("scaled.py") == key("importer.py") == imported
+    (tmp_path / "scaled.py").write_text(
+        (tmp_path / "scaled.py").read_text().replace("FACTOR = 3", "FACTOR = 4")
+    )
+    assert key("scaled.py") == key("importer.py") != imported
 
 
 _LAZY_FILES = {
@@ -2173,14 +2230,10 @@ def test_compute_hash_changes_when_active_device_changes_arch():
     gen = _gemm_gen()
     cd = CompilableDesign(gen, compile_kwargs={"M": 64, "K": 64, "N": 64})
 
-    set_current_device(NPU1Col1())
-    h_phx = cd._compute_cache_hash()
-
-    set_current_device(NPU2Col1())
-    h_strix = cd._compute_cache_hash()
-
-    # Restore Phoenix as the active device for any later test.
-    set_current_device(NPU1Col1())
+    with set_current_device(NPU1Col1()):
+        h_phx = cd._compute_cache_hash()
+    with set_current_device(NPU2Col1()):
+        h_strix = cd._compute_cache_hash()
 
     assert (
         h_phx != h_strix
@@ -2199,17 +2252,14 @@ def test_kernels_mm_mac_dims_per_arch():
     import aie.iron.kernels as kernels
     import numpy as np
 
-    set_current_device(NPU1Col1())
-    mm_aie2 = kernels.mm(
-        dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
-    )
-
-    set_current_device(NPU2Col1())
-    mm_aie2p = kernels.mm(
-        dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
-    )
-
-    set_current_device(NPU1Col1())
+    with set_current_device(NPU1Col1()):
+        mm_aie2 = kernels.mm(
+            dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
+        )
+    with set_current_device(NPU2Col1()):
+        mm_aie2p = kernels.mm(
+            dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
+        )
 
     assert mm_aie2.mac_dims == (
         4,
@@ -2280,6 +2330,22 @@ def test_iron_jit_infers_full_elf_for_composed_program():
     assert "iron.configuration_count = 2 : i32" in mlir
 
 
+@pytest.mark.parametrize("full_elf", [True, False])
+def test_no_full_elf_builds_for_a_device_that_cannot_dispatch_one(tmp_path, full_elf):
+    # Two configurations infer a full ELF; one asks for it.
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "a:sequence"} '
+        "{ aie.device(npu1_1col) @a {} aie.device(npu1_1col) @b {} }"
+        if not full_elf
+        else "module { aie.device(npu1_1col) @a {} }"
+    )
+    design = CompilableDesign(mlir_path, full_elf=full_elf)
+    with pytest.raises(ValueError, match="npu1_1col does not dispatch a full ELF"):
+        design.compile()
+
+
 @pytest.mark.parametrize(
     "expand_load_pdis,expected",
     [
@@ -2299,6 +2365,181 @@ def test_program_attributes_select_aiecc_options(tmp_path, expand_load_pdis, exp
     design = CompilableDesign(mlir_path)
 
     assert design._generated_for(full_elf=True).aiecc_options == expected
+
+
+def test_scratchpad_parameters_ask_for_their_params_file(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module { aiex.scratchpad_parameter @n : i32 }")
+    design = CompilableDesign(mlir_path)
+
+    assert design._generated_for(full_elf=True).aiecc_options == [
+        "--get-scratchpad-parameters"
+    ]
+
+
+def test_program_reconfiguration_options_reach_aiecc(tmp_path):
+    runtime = Runtime(lambda: None, [])
+    with mlir_mod_ctx():
+        module = Program.compose(
+            [DeviceConfiguration(NPU2Col1(), runtimes=[runtime])],
+            entry=runtime,
+            reconfig_teardown=True,
+            reconfig_init_entry=False,
+        ).resolve_program()
+        mlir_path = tmp_path / "design.mlir"
+        mlir_path.write_text(str(module))
+    design = CompilableDesign(mlir_path)
+
+    assert design._generated_for(full_elf=True).aiecc_options == [
+        "--reconfig-teardown=true",
+        "--reconfig-init-entry=false",
+    ]
+
+
+def test_single_configuration_program_reconfiguration_options():
+    with mlir_mod_ctx():
+        module = Program(
+            NPU2Col1(),
+            Runtime(lambda: None, []),
+            reconfig_teardown=False,
+            reconfig_init_entry=True,
+        ).resolve_program()
+        attributes = module.operation.attributes
+        assert attributes["iron.reconfig_teardown"].value is False
+        assert attributes["iron.reconfig_init_entry"].value is True
+
+
+@pytest.mark.parametrize(
+    "attribute,inferred",
+    [
+        (None, False),
+        ("iron.reconfig_teardown = false", False),
+        ("iron.expand_load_pdis = true", False),
+        ("iron.reconfig_teardown = true", True),
+        ("iron.reconfig_init_entry = true", True),
+    ],
+)
+def test_reconfiguration_option_implies_full_elf(tmp_path, attribute, inferred):
+    mlir_path = tmp_path / "design.mlir"
+    attributes = "" if attribute is None else f" attributes {{{attribute}}}"
+    mlir_path.write_text(f"module{attributes} {{}}")
+    design = CompilableDesign(mlir_path)
+
+    assert design._infer_full_elf() is inferred
+    assert design.full_elf is inferred
+
+
+def test_reconfiguration_option_rejects_standard_paths_before_aiecc(
+    tmp_path, monkeypatch
+):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module attributes {iron.reconfig_teardown = true} {}")
+    monkeypatch.setattr(
+        compilabledesign_module,
+        "compile_mlir_module",
+        lambda **kwargs: pytest.fail("aiecc ran"),
+    )
+    design = CompilableDesign(mlir_path)
+
+    with pytest.raises(ValueError, match="requires full-ELF compilation"):
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin",
+            inst_path=tmp_path / "insts.bin",
+        )
+
+
+def _write_full_elf_config(directory: Path, main_instances: list[str]) -> None:
+    (directory / "full_elf_config.json").write_text(
+        json.dumps(
+            {
+                "xrt-kernels": [
+                    {"name": "main", "instance": [{"id": i} for i in main_instances]}
+                ]
+            }
+        )
+    )
+
+
+def _compile_full_elf(tmp_path, monkeypatch, instances, aiecc_flags=(), attributes=""):
+    """Compile with aiecc faked to write a full ELF whose main device holds `instances`."""
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        f"module attributes {{{attributes}}} {{}}" if attributes else "module {}"
+    )
+
+    def fake_compile_mlir_module(**kwargs):
+        Path(kwargs["full_elf_path"]).touch()
+        _write_full_elf_config(kwargs["work_dir"], instances)
+
+    monkeypatch.setattr(
+        compilabledesign_module,
+        "compile_external_kernels",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
+    )
+    monkeypatch.setattr(
+        compilabledesign_module._manifest, "record", lambda *args, **kwargs: None
+    )
+    design = CompilableDesign(mlir_path, aiecc_flags=list(aiecc_flags))
+    design.compile(full_elf_path=tmp_path / "design.elf")
+    return design
+
+
+@pytest.mark.parametrize(
+    "aiecc_flags,attributes,init",
+    [
+        ([], "", False),
+        (["-reconfig-init-entry=1"], "", True),
+        # The Program's option follows aiecc_flags, so it wins.
+        (["--reconfig-init-entry"], "iron.reconfig_init_entry = false", False),
+    ],
+)
+def test_full_elf_init_entry_resolves_last_option(
+    tmp_path, monkeypatch, npu2_device, aiecc_flags, attributes, init
+):
+    design = _compile_full_elf(
+        tmp_path, monkeypatch, ["reconfig_init", "sequence"], aiecc_flags, attributes
+    )
+
+    assert design._full_elf_kernel_name == (
+        "main:sequence" if init else "main:reconfig_init"
+    )
+    assert design._full_elf_init_entry == init
+
+
+def test_full_elf_init_entry_recorded_only_if_built(tmp_path, monkeypatch, npu2_device):
+    # aiecc adds no init entry to a device without a load_pdi to expand.
+    design = _compile_full_elf(
+        tmp_path, monkeypatch, ["sequence"], ["--reconfig-init-entry"]
+    )
+
+    assert design._full_elf_kernel_name == "main:sequence"
+    assert design._full_elf_init_entry is False
+
+
+def test_full_elf_kernel_name_skips_init_entry(tmp_path):
+    _write_full_elf_config(tmp_path, ["reconfig_init", "sequence"])
+
+    parse = CompilableDesign._parse_full_elf_kernel_name
+    assert parse(tmp_path, init_entry=True) == "main:sequence"
+    # A sequence a design names reconfig_init is an entry like any other.
+    assert parse(tmp_path) == "main:reconfig_init"
+
+
+def test_full_elf_init_entry_round_trips_through_manifest(tmp_path):
+    manifest = compilabledesign_module._manifest
+    manifest.record(
+        tmp_path,
+        [],
+        [],
+        full_elf_kernel="main:sequence",
+        full_elf_init_entry=True,
+    )
+    assert manifest.resolve_full_elf_init_entry(tmp_path) is True
+    manifest.record(tmp_path, [], [], full_elf_kernel="main:sequence")
+    assert manifest.resolve_full_elf_init_entry(tmp_path) is False
 
 
 def test_full_elf_kernel_name_selects_explicit_entry(tmp_path):
@@ -2460,6 +2701,7 @@ def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
     cd = CompilableDesign(gen)
     cd._kernel_dir = tmp_path
     cd._elf_path = tmp_path / "design.elf"
+    cd._full_elf_kernel_name = "main:sequence"
     cd._xclbin_path = tmp_path / "final.xclbin"  # never written: left out
     for name in ("design.elf", "params.txt", "input_with_addresses.mlir", "main.pdi"):
         (tmp_path / name).write_bytes(b"x")
@@ -2468,6 +2710,7 @@ def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
     entry = cd.get_cache_entry()
     assert entry.directory == tmp_path
     assert entry.elf == tmp_path / "design.elf" and entry.xclbin is None
+    assert entry.full_elf_kernel == "main:sequence"
     assert entry.insts is None and entry.dispatch_library is None
     assert entry.pdis == (tmp_path / "main.pdi",)
     assert entry.params == tmp_path / "params.txt"

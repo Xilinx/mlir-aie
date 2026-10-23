@@ -15,7 +15,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron import DeviceConfiguration, ObjectFifo, Program, Runtime
 from aie.iron.device import NPU2Col1
 from aie.iron.scratchpad_parameter import ScratchpadParameter
 from aie.helpers.taplib import TensorAccessPattern
@@ -46,15 +46,18 @@ def design():
         in_h.fill(in_tensor, tap=stepped, repeat_parameter=reps)
         out_h.drain(out_tensor, tap=tile, wait=True, length_parameter=tiles)
 
-    rt = Runtime(sequence, [buf_ty, buf_ty, of_in.prod(), of_out.cons()])
+    rt = Runtime(
+        sequence,
+        [buf_ty, buf_ty, of_in.prod(), of_out.cons()],
+        name="sequence",
+        implicit_configure=False,
+    )
 
-    module = Program(NPU2Col1(), rt).resolve_program(device_name=device_name)
-
-    # Insert empty device to force PDI reload
-    mlir_text = str(module)
-    empty_device = "  aie.device(npu2) @empty { }\n"
-    mlir_text = mlir_text.replace("module {\n", "module {\n" + empty_device, 1)
-    return mlir_text
+    config = DeviceConfiguration(device_name, NPU2Col1(), runtimes=[rt])
+    # The firmware skips reloading the PDI it loaded last, so the sequence
+    # loads an empty device first.
+    empty = DeviceConfiguration("empty", NPU2Col1())
+    return str(Program.compose([empty, config], entry=rt).resolve_program())
 
 
 mlir_text = design()
