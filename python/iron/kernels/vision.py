@@ -461,7 +461,13 @@ def grid_decode(
     )
 
 
-def resize_linear(in_bytes: int = 3072, out_bytes: int = 1248) -> ExternalFunction:
+class _ResizeLinearKernel(ExternalFunction):
+    resize_linear_setup: Kernel
+    resize_linear_emit: Kernel
+    resize_linear_finish: Kernel
+
+
+def resize_linear(in_bytes: int = 3072, out_bytes: int = 1248) -> _ResizeLinearKernel:
     """Resize a uint8 RGB image as OpenCV's INTER_LINEAR does, a row at a time.
 
     Bit for bit OpenCV's fixed-point path on the CPU (resizeGeneric_ with
@@ -521,10 +527,11 @@ def resize_linear(in_bytes: int = 3072, out_bytes: int = 1248) -> ExternalFuncti
             ),
             ops_per_call=0,
         ),
+        cls=_ResizeLinearKernel,
     )
     lib = fn.object_file
     fn.resize_linear_setup = lib.bind(
-        "resize_linear_setup", [counts_ty] + [np.int32] * 4
+        "resize_linear_setup", [counts_ty, np.int32, np.int32, np.int32, np.int32]
     )
     fn.resize_linear_emit = lib.bind(
         "resize_linear_emit", [np.ndarray[(out_bytes,), np.dtype[np.uint8]]]
