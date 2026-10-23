@@ -316,6 +316,40 @@ def attention_weights(q_i8, q_scales, k_i8, k_slot, v_slot, t, tb):
     return m, s, pv
 
 
+def block_sv(pv, v):
+    """Each head's sv over each block, as `llama_attn_block`'s mmul forms it.
+
+    Per head and block, with E the largest exponent field of its pv, each
+    pv's significand m (exponent field e) becomes the fixed-point
+    P = RNE(m * 2^(6 - (E - e))), below 2^30; sv = sum over rows of P * v
+    is exact in integers, then rounded once to fp32 and scaled by
+    2^(E - 156), to a signed zero below FLT_MIN or +-inf past FLT_MAX.
+
+    Args:
+        `pv`: fp32 (heads, nb, tb), non-negative, zero or normal.
+        `v`: int8 (heads, nb, tb, HEAD_D).
+
+    Returns:
+        fp32 (heads, nb, HEAD_D).
+    """
+    bits = pv.view(np.int32).astype(np.int64)
+    field = (bits >> 23) & 0xFF
+    sig = np.where(field > 0, (bits & 0x7FFFFF) | 0x800000, 0)
+    top = field.max(axis=2, keepdims=True)
+    sh = top - field
+    p = np.where(
+        sh <= 6,
+        sig << np.clip(6 - sh, 0, 6),
+        srs_rne(sig << 1, np.clip(sh - 5, 1, 40)),
+    )
+    n = np.einsum("hbr,hbrd->hbd", p, v.astype(np.int64))
+    f = n.astype(np.float64).astype(np.float32).view(np.int32).astype(np.int64)
+    ne = ((f >> 23) & 0xFF) + top - 156
+    out = np.where(ne >= 255, (f & -0x80000000) | 0x7F800000, f + ((top - 156) << 23))
+    out = np.where((ne <= 0) | (n == 0), f & -0x80000000, out)
+    return out.astype(np.int32).view(np.float32)
+
+
 def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
     """Every Q head over the cache, as the decode's attention cores compute it.
 
@@ -342,10 +376,7 @@ def attention_blocks(q_i8, q_scales, k_i8, v_i8, k_slot, v_slot, t, tb):
     kvh = np.arange(N_HEADS_Q) // REP
     m, s, pv = attention_weights(q_i8, q_scales, k_i8, k_slot, v_slot, t, tb)
     v = np.pad(v_i8[:, :t], [(0, 0), (0, nb * tb - t), (0, 0)])
-    v = v.reshape(N_HEADS_KV, nb, tb, HEAD_D).astype(np.float32)
-    acc = np.zeros((N_HEADS_Q, nb, HEAD_D), np.float32)
-    for r in range(tb):
-        acc = aie_add(acc, mul_rne(v[kvh, :, r, :], pv[:, :, r, None]))
+    acc = block_sv(pv, v.reshape(N_HEADS_KV, nb, tb, HEAD_D)[kvh])
 
     merged = None
     for core in range(2):

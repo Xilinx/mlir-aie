@@ -139,6 +139,10 @@ that beats the decode's batches for it (`Prefiller.plan`).
   oracle reproduces it exactly: attention's and the sampler's exp is
   `exp_nonpos`, the inverse square root a Quake seed and two Newton steps, and
   reciprocals round as IEEE division.
+- **Attention's PV on the matrix unit:** per block, each head's weights
+  (softmax times v_scale) become 30-bit fixed point against the block's
+  largest, the sum over the block's rows with the int8 V is exact in acc64
+  (`mmul<4, 2, 8>`, int32 x int16), and each output rounds to fp32 once.
 - **Norm input and attention output:** RMSNorm reads the fp32 residual
   directly, and the attention output is quantized once, for the o projection.
 
