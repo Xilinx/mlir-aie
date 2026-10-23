@@ -9,13 +9,13 @@ p0 = 64 j); the KV cache holds the rows before them. The layer runs in
 phases through a DDR `stage` buffer (PrefillStage), on all 32 cores:
 
 - the GEMM array (aie2_prefill.GemmArray, row 2) runs qkv, o, g, u, d;
-- 4 glue cores (GR, row 5) run each row's norms (llama_rmsnorm_f32), its
+- GR glue cores (row 5) run each row's norms (llama_rmsnorm_f32), its
   fp32 residual adds and its attention output's quantization
-  (llama_af_quant), 16 rows each;
-- 2 (GQ) rope each row's Q and K and quantize Q per head and K and V into
-  the row's KV cache row (llama_prefill_qkv_row), 32 rows each, writing the
+  (llama_af_quant), M / GR rows each;
+- GQ rope each row's Q and K and quantize Q per head and K and V into
+  the row's KV cache row (llama_prefill_qkv_row), M / GQ rows each, writing the
   attention's per-KV-head chunks and the cache rows of block j;
-- 2 (GS) run SiLU(gate) * up and its quantization (llama_silu_*), 32 rows
+- GS run SiLU(gate) * up and its quantization (llama_silu_*), M / GS rows
   each;
 - 16 attention cores (rows 3 and 4) run the decode's block attention, two
   per KV head as the decode pairs them: the queries in 4 sub-batches of
@@ -76,9 +76,9 @@ from aie2_gemv_array import N_CORES
 from aie2_prefill import PREFILL_PROJS, TABLE_LAYER, GemmArray, M
 from llama_config import CS_BYTES, HD, HEAD_D, N_HEADS_KV, D
 
-GR = 4
+GR = 2
 GQ = 2
-GS = 2
+GS = 4
 SUB = 16
 CHUNK_STRIDE = 448
 SILU_CHUNK = 512
@@ -308,7 +308,7 @@ def build_layer(
                 of_gqrw[k].prod(),
                 k_qkv,
             ],
-            tile=Tile(4 + k, 5),
+            tile=Tile(GR + k, 5),
         )
         for k in range(GQ)
     ]
@@ -362,7 +362,7 @@ def build_layer(
                 k_up,
                 k_quant,
             ],
-            tile=Tile(6 + k, 5),
+            tile=Tile(GR + GQ + k, 5),
         )
         for k in range(GS)
     ]
