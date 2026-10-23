@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-23T07:05:43+00:00",
+ "generated_at": "2026-10-23T12:58:00+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 367,
+   "runs": 365,
    "main": {
     "passed": 12,
     "failed": 0,
@@ -302,19 +302,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 91,
-    "failed": 50,
+    "passed": 89,
+    "failed": 49,
     "rate": 0.645
    },
    "merge_queue": {
-    "passed": 47,
+    "passed": 48,
     "failed": 4,
-    "rate": 0.922
+    "rate": 0.923
    },
    "flaky": {
-    "commits": 353,
-    "flaky": 22,
-    "rate": 0.062
+    "commits": 351,
+    "flaky": 21,
+    "rate": 0.06
    },
    "minutes_median": 43.2,
    "minutes_p90": 59.5,
@@ -326,7 +326,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 367,
+   "runs": 365,
    "main": {
     "passed": 12,
     "failed": 1,
@@ -588,19 +588,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 98,
-    "failed": 67,
-    "rate": 0.594
+    "passed": 96,
+    "failed": 66,
+    "rate": 0.593
    },
    "merge_queue": {
-    "passed": 49,
+    "passed": 50,
     "failed": 4,
-    "rate": 0.925
+    "rate": 0.926
    },
    "flaky": {
-    "commits": 353,
-    "flaky": 21,
-    "rate": 0.059
+    "commits": 351,
+    "flaky": 20,
+    "rate": 0.057
    },
    "minutes_median": 45.8,
    "minutes_p90": 59.6,
@@ -612,7 +612,7 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 413,
+   "runs": 411,
    "main": {
     "passed": 58,
     "failed": 2,
@@ -1553,19 +1553,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 199,
-    "failed": 33,
-    "rate": 0.858
+    "passed": 197,
+    "failed": 32,
+    "rate": 0.86
    },
    "merge_queue": {
-    "passed": 52,
+    "passed": 53,
     "failed": 1,
     "rate": 0.981
    },
    "flaky": {
-    "commits": 353,
-    "flaky": 32,
-    "rate": 0.091
+    "commits": 351,
+    "flaky": 31,
+    "rate": 0.088
    },
    "minutes_median": 8.9,
    "minutes_p90": 24.1,
@@ -1577,7 +1577,7 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 413,
+   "runs": 411,
    "main": {
     "passed": 60,
     "failed": 0,
@@ -2518,19 +2518,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 200,
-    "failed": 34,
-    "rate": 0.855
+    "passed": 198,
+    "failed": 33,
+    "rate": 0.857
    },
    "merge_queue": {
-    "passed": 53,
+    "passed": 54,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 353,
-    "flaky": 31,
-    "rate": 0.088
+    "commits": 351,
+    "flaky": 30,
+    "rate": 0.085
    },
    "minutes_median": 8.5,
    "minutes_p90": 20.1,
@@ -2542,7 +2542,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 367,
+   "runs": 365,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -2793,19 +2793,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 175,
-    "failed": 87,
+    "passed": 173,
+    "failed": 86,
     "rate": 0.668
    },
    "merge_queue": {
-    "passed": 53,
+    "passed": 54,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 353,
-    "flaky": 32,
-    "rate": 0.091
+    "commits": 351,
+    "flaky": 31,
+    "rate": 0.088
    },
    "minutes_median": 2.8,
    "minutes_p90": 3.0,
@@ -2813,10 +2813,10 @@
   }
  ],
  "merge_time": {
-  "merged": 51,
+  "merged": 52,
   "hours_median": 24.7,
   "hours_p90": 896.0,
-  "open": 67,
+  "open": 66,
   "open_drafts": 24,
   "open_over_30_days": 45
  },
@@ -3036,11 +3036,11 @@
     {
      "id": 39914290794,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39914290794",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "failure",
      "created_at": "2026-10-23T06:53:35Z",
      "run_started_at": "2026-10-23T06:53:35Z",
-     "updated_at": "2026-10-23T07:03:38Z",
+     "updated_at": "2026-10-23T07:27:40Z",
      "head_sha": "1b56c5948379b21212f50d3a829584c1c3c83e76",
      "title": "Nightly Component Checks",
      "attempt": 1
@@ -3182,11 +3182,12 @@
     {
      "name": "SA placer seed sweep (CPU-only)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39914290794/job/120284196455",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-23T06:53:35Z",
      "started_at": "2026-10-23T06:53:59Z",
-     "runner": "GitHub Actions 1009300227"
+     "runner": "GitHub Actions 1009300227",
+     "outcome": "passed"
     },
     {
      "name": "runners / pick",
@@ -3201,11 +3202,22 @@
     {
      "name": "Design checks on hardware (mobilenet, llama, yolo26n; npu2)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39914290794/job/120287449177",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "failure",
      "created_at": "2026-10-23T07:03:13Z",
      "started_at": "2026-10-23T07:03:36Z",
-     "runner": "aie8"
+     "runner": "aie8",
+     "outcome": "failed"
+    },
+    {
+     "name": "publish",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39914290794/job/120295359824",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T07:26:42Z",
+     "started_at": "2026-10-23T07:27:10Z",
+     "runner": "GitHub Actions 1009302355",
+     "outcome": "passed"
     }
    ]
   },
@@ -3490,9 +3502,354 @@
    "every": 24,
    "legs": true,
    "why": "refreshes the latest-wheels releases users install from",
-   "runs": null,
-   "jobs": null,
-   "error": "HTTP 502 for /repos/Xilinx/mlir-aie/actions/runs/39899426272/jobs?per_page=100"
+   "runs": [
+    {
+     "id": 39899426272,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272",
+     "status": "completed",
+     "conclusion": "cancelled",
+     "created_at": "2026-10-23T04:16:13Z",
+     "run_started_at": "2026-10-23T04:16:13Z",
+     "updated_at": "2026-10-23T06:03:43Z",
+     "head_sha": "983e2c3569187fe29e8afe05dc24f7436781eaab",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 39721383370,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39721383370",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-22T04:15:40Z",
+     "run_started_at": "2026-10-22T04:15:40Z",
+     "updated_at": "2026-10-22T05:00:06Z",
+     "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 39543186881,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39543186881",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-21T04:17:05Z",
+     "run_started_at": "2026-10-21T04:17:05Z",
+     "updated_at": "2026-10-21T05:04:00Z",
+     "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 39368668913,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39368668913",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-20T04:16:06Z",
+     "run_started_at": "2026-10-20T04:16:06Z",
+     "updated_at": "2026-10-20T05:05:45Z",
+     "head_sha": "1a647f100e50c3f526d5e3c97eaba1327558e0f8",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 39198731928,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39198731928",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-19T04:17:32Z",
+     "run_started_at": "2026-10-19T04:17:32Z",
+     "updated_at": "2026-10-19T05:02:51Z",
+     "head_sha": "943cbc47e2da9b0238421c4e30a12a8a858efd0e",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 39096461578,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39096461578",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-18T04:15:27Z",
+     "run_started_at": "2026-10-18T04:15:27Z",
+     "updated_at": "2026-10-18T04:58:20Z",
+     "head_sha": "e0403707847d9dc3b8eb9497fbce7c38d10e53e6",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 39001856487,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39001856487",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-17T04:15:06Z",
+     "run_started_at": "2026-10-17T04:15:06Z",
+     "updated_at": "2026-10-17T04:59:06Z",
+     "head_sha": "0094b28c3470f7774ff690e5ccc85e54159bfca8",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 38849759537,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38849759537",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-16T04:16:17Z",
+     "run_started_at": "2026-10-16T04:16:17Z",
+     "updated_at": "2026-10-16T05:02:19Z",
+     "head_sha": "cb6f2d14a081ae09386eea05865c755dc0c4a86f",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 38680580570,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38680580570",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-15T04:16:10Z",
+     "run_started_at": "2026-10-15T04:16:10Z",
+     "updated_at": "2026-10-15T05:31:28Z",
+     "head_sha": "e7048fadf1975db3190accac9e7153f59a5e45b1",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 38510649892,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38510649892",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-14T04:17:45Z",
+     "run_started_at": "2026-10-14T04:17:45Z",
+     "updated_at": "2026-10-14T06:20:28Z",
+     "head_sha": "8dd485292eed18309770d11a768470fd497bf4da",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 38346144506,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38346144506",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-13T04:22:40Z",
+     "run_started_at": "2026-10-13T04:22:40Z",
+     "updated_at": "2026-10-13T05:08:48Z",
+     "head_sha": "e04ad858a0a9e3dfece25089044ae6a44e262683",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    },
+    {
+     "id": 38203701569,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38203701569",
+     "status": "completed",
+     "conclusion": "cancelled",
+     "created_at": "2026-10-12T04:25:10Z",
+     "run_started_at": "2026-10-12T04:25:10Z",
+     "updated_at": "2026-10-12T05:34:47Z",
+     "head_sha": "766aca40deaf57b2a12b14e1e15985b878e7faae",
+     "title": "Publish Ryzen AI wheels",
+     "attempt": 1
+    }
+   ],
+   "jobs": [
+    {
+     "name": "Build Windows wheels / Build and upload mlir_aie wheel (Windows 3.13 RTTI ON)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297352",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292962",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.12, OFF)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297483",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:47Z",
+     "runner": "GitHub Actions 1009292963",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.13, ON)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297513",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292970",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.14, OFF)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297587",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292964",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.14, ON)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297619",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292965",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.13, OFF)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297646",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292972",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.11, OFF)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297652",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292977",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.12, ON)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297673",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:47Z",
+     "runner": "GitHub Actions 1009292967",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.11, ON)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297674",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292966",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.11, ON)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297687",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292971",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.11, OFF)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297701",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:47Z",
+     "runner": "GitHub Actions 1009292968",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Windows wheels / Build and upload mlir_aie wheels (Windows) (3.13, OFF)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297719",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292969",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.14, ON)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297760",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:47Z",
+     "runner": "GitHub Actions 1009292973",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.12, OFF)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297784",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292976",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Build and upload mlir_aie wheel (Linux 3.12 RTTI ON)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297792",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292975",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Build and upload mlir_aie wheels (Linux) (3.14, OFF)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120237297828",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:16:14Z",
+     "started_at": "2026-10-23T04:16:48Z",
+     "runner": "GitHub Actions 1009292974",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Smoke-Test Wheel on Ryzen AI (aie2-4col, npu1)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120245419795",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:45:11Z",
+     "started_at": "2026-10-23T04:45:39Z",
+     "runner": "aie7",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Linux wheels / Smoke-Test Wheel on Ryzen AI (aie2p-8col, npu2)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120245419821",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T04:45:11Z",
+     "started_at": "2026-10-23T04:45:39Z",
+     "runner": "aie8",
+     "outcome": "passed"
+    },
+    {
+     "name": "Build Windows wheels / Smoke-Test Wheel on Ryzen AI (Windows)",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120246569435",
+     "status": "completed",
+     "conclusion": "cancelled",
+     "created_at": "2026-10-23T04:49:19Z",
+     "started_at": "2026-10-23T05:43:31Z",
+     "runner": "ephemeral-devlab-x2-la03-s02-d07-120231861871",
+     "outcome": "timed_out"
+    },
+    {
+     "name": "Publish wheels",
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899426272/job/120268137404",
+     "status": "completed",
+     "conclusion": "skipped",
+     "created_at": "2026-10-23T06:03:43Z",
+     "started_at": "2026-10-23T06:03:43Z",
+     "runner": null,
+     "outcome": "passed"
+    }
+   ]
   },
   {
    "file": "mlirDistro.yml",
@@ -3500,6 +3857,30 @@
    "every": 4,
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
+    {
+     "id": 39952845748,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39952845748",
+     "status": "in_progress",
+     "conclusion": null,
+     "created_at": "2026-10-23T12:22:40Z",
+     "run_started_at": "2026-10-23T12:22:40Z",
+     "updated_at": "2026-10-23T12:23:26Z",
+     "head_sha": "5c8c9e9702a59830782fc394a2f23e14664e2a44",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 39924031741,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39924031741",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-23T08:21:13Z",
+     "run_started_at": "2026-10-23T08:21:13Z",
+     "updated_at": "2026-10-23T08:56:32Z",
+     "head_sha": "1b56c5948379b21212f50d3a829584c1c3c83e76",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
     {
      "id": 39899598094,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39899598094",
@@ -3617,30 +3998,6 @@
      "run_started_at": "2026-10-21T16:16:12Z",
      "updated_at": "2026-10-21T20:42:11Z",
      "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 39599266607,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39599266607",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-21T12:23:54Z",
-     "run_started_at": "2026-10-21T12:23:54Z",
-     "updated_at": "2026-10-21T14:34:54Z",
-     "head_sha": "ac6a11081d6e29f1b5c02d484ffbb6f766f6ce80",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 39568613516,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39568613516",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-21T08:21:11Z",
-     "run_started_at": "2026-10-21T08:21:11Z",
-     "updated_at": "2026-10-21T09:34:47Z",
-     "head_sha": "7f36a183bf70b36e6ec4228887ff2be59c58585a",
      "title": "MLIR Distro",
      "attempt": 1
     }
