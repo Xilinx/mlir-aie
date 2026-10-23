@@ -4,11 +4,12 @@
 #
 """The prefill's GEMM array (aie2_prefill.py) on the NPU, against the oracle.
 
-Runs one projection of 64 rows for each of the first n layers, on the
-decode's weight blob of real (or seeded random) layers and a seeded random
-int8 activation block per layer, and checks every output row bit for bit
-against llama_oracle.Layer.project. Then times the dispatch: the weights it
-streams over its time, and its total DDR traffic.
+Runs a layer's projections (aie2_prefill.PREFILL_PROJS) for 64 rows, for
+each of the first n layers, on the decode's weight blob of real (or seeded
+random) layers and a seeded random int8 activation block per layer and
+projection, and checks every output row bit for bit against
+llama_oracle.Layer.project. Then times the dispatch: the weights it streams
+over its time.
 
 The oracle runs before the NPU lock is taken; `--lock` serializes the device
 part with other users of the NPU.
@@ -24,41 +25,38 @@ import aie.iron as iron
 import numpy as np
 from aie2_gemv_array import N_CORES
 from aie2_prefill import (
-    A_BYTES,
-    ACT_BYTES,
-    K_CHUNKS,
-    KC,
-    TABLE_PROJS,
+    PREFILL_PROJS,
     TILE_COLS,
-    TILE_TRAILERS,
+    GemmArray,
     M,
-    Projection,
-    build,
+    act_layout,
+    build_gemms,
     pack_trailers,
 )
-from llama_config import D
+from llama_config import PROJECTIONS
 from llama_decode import DecodeShape
 from llama_npu import DispatchSession
 from llama_oracle import Layer
 from ml_dtypes import bfloat16
 
 
-def act_block(rng, w_i8, edge_rows):
+def act_block(rng, k, w_i8, edge_rows):
     """A seeded random activation block and its per-row scales.
 
     Args:
         rng: The numpy Generator.
-        w_i8: The projection's int8 weights (rows, D).
+        k: The block's columns.
+        w_i8: A projection's int8 weights (rows, k) the block meets.
         edge_rows: Whether two rows take the epilogue's scalar path.
 
     Returns:
-        (int8 (M, D), fp32 (M,)): uniform int8 rows with scales like
+        (int8 (M, k), fp32 (M,)): uniform int8 rows with scales like
         dyn_scale's; with edge_rows, row 0 is 127 times the signs of the
         weight row with the largest absolute sum (its sum there is the
         largest the weights allow), and row 1's scale is below the vector
         form's exponent range.
     """
-    x = rng.integers(-128, 128, (M, D), dtype=np.int8)
+    x = rng.integers(-128, 128, (M, k), dtype=np.int8)
     scales = (10.0 ** rng.uniform(-3.0, 0.5, M)).astype(np.float32)
     if edge_rows:
         heaviest = np.abs(w_i8.astype(np.int32)).sum(axis=1).argmax()
@@ -67,26 +65,30 @@ def act_block(rng, w_i8, edge_rows):
     return x, scales
 
 
-def act_chunks(x, scales):
-    """A block in the design's `act` layout: [chunk][row][KC bytes], K's
-    chunks, then the rows' scales."""
-    out = np.zeros(ACT_BYTES, np.int8)
-    out[:A_BYTES] = x.reshape(M, K_CHUNKS, KC).transpose(1, 0, 2).ravel()
-    out[A_BYTES:] = scales.view(np.int8)
-    return out
+def pack_rows(x, scales, row_bytes):
+    """Rows as the array reads them: [K int8 | fp32 scale | pad]."""
+    out = np.zeros((M, row_bytes), np.int8)
+    out[:, : x.shape[1]] = x
+    out[:, x.shape[1] : x.shape[1] + 4] = scales.view(np.int8).reshape(M, 4)
+    return out.ravel()
 
 
 def rows_of(out, p):
-    """The design's `out` ([layer][core][tile][row][64 columns]) as
-    [layer][row][column]."""
-    n = out.shape[0]
-    tiles = out.reshape(n, N_CORES, p.tiles, M, TILE_COLS)
-    return np.ascontiguousarray(tiles.transpose(0, 3, 1, 2, 4)).reshape(n, M, p.rows)
+    """A projection's output ([half][tile][part][core][row][64]) as its
+    letters' [row][column] blocks."""
+    t = out.reshape(2, p.tiles, M // 8, 4, 8, TILE_COLS)
+    # [row][core][tile * 64 + n]: each core's run of its letters' rows.
+    per_core = t.transpose(2, 4, 0, 3, 1, 5).reshape(M, N_CORES, p.tiles * TILE_COLS)
+    blocks, at = {}, 0
+    for letter in p.name:
+        n = PROJECTIONS[letter][0] // N_CORES
+        blocks[letter] = per_core[:, :, at : at + n].reshape(M, -1)
+        at += n
+    return blocks
 
 
 def main():
     ap = argparse.ArgumentParser(prog="The prefill GEMM array against the oracle")
-    ap.add_argument("--proj", choices=TABLE_PROJS, default="q")
     ap.add_argument("--n-layers", type=int, choices=range(1, 17), default=1)
     ap.add_argument("--t", type=int, default=128, help="the blob's RoPE rows")
     ap.add_argument("--data", type=Path, default=Path(__file__).parent / "data")
@@ -94,7 +96,12 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--warmup", type=int, default=10)
     ap.add_argument("--iters", type=int, default=20, help="timed dispatches; 0: none")
-    ap.add_argument("--epi-cores", type=int, choices=(1, 2), default=2)
+    ap.add_argument(
+        "--projs",
+        nargs="+",
+        choices=[p.name for p in PREFILL_PROJS],
+        default=[p.name for p in PREFILL_PROJS],
+    )
     ap.add_argument("--lock", type=Path, help="flock this file around NPU work")
     opts = ap.parse_args()
 
@@ -104,89 +111,90 @@ def main():
         layers = [Layer.random(rng, opts.t) for _ in range(n)]
     else:
         layers = [Layer.real(i, opts.data, opts.t) for i in range(n)]
-    shape = DecodeShape(n, opts.t)
-    wblob = shape.pack_wblob(layers, np.zeros((opts.t, 128), bfloat16))
-    # Layer 0's block has rows the epilogue takes its scalar path for; the
-    # other layers' are typical, as the timing should see.
-    blocks = [
-        act_block(rng, layer.weights[opts.proj][0], L == 0)
-        for L, layer in enumerate(layers)
-    ]
-    act = np.stack([act_chunks(x, s) for x, s in blocks])
+    wblob = DecodeShape(n, opts.t).pack_wblob(layers, np.zeros((opts.t, 128), bfloat16))
+    projs = [p for name in opts.projs for p in PREFILL_PROJS if p.name == name]
+    act_at, act_bytes = act_layout(projs)
+    act = np.zeros((n, act_bytes), np.int8)
+    blocks = {}
+    for L, layer in enumerate(layers):
+        for p in projs:
+            # Layer 0's blocks have rows the epilogue takes its scalar path
+            # for; the other layers' are typical, as the timing should see.
+            x, s = act_block(rng, p.k, layer.weights[p.name[0]][0], L == 0)
+            blocks[L, p.name] = x, s
+            at = act_at[p.name]
+            act[L, at : at + M * p.row_bytes] = pack_rows(x, s, p.row_bytes)
 
     t0 = time.perf_counter()
-    want = np.stack(
-        [
-            np.stack([layer.project(opts.proj, x[r], s[r]) for r in range(M)])
-            for layer, (x, s) in zip(layers, blocks)
-        ]
-    )
+    want = {
+        (L, letter): np.stack([layer.project(letter, x[r], s[r]) for r in range(M)])
+        for L, layer in enumerate(layers)
+        for p in projs
+        for x, s in [blocks[L, p.name]]
+        for letter in p.name
+    }
     print(f"oracle: {n} layers x {M} rows in {time.perf_counter() - t0:.1f} s")
-    w0 = layers[0].weights[opts.proj][0].astype(np.int64)
-    wide = int((np.abs(w0 @ blocks[0][0][0]) >= 1 << 23).sum())
-    print(f"layer 0 row 0's sums at or past 2^23 (the epilogue's scalar path): {wide}")
 
-    p = Projection(opts.proj)
-    kwargs = dict(
-        PROJ=opts.proj, N_LAYERS=n, W_LAYERS=n, T=opts.t, EPI_CORES=opts.epi_cores
-    )
-    build.specialize(full_elf=True, **kwargs).compile()
+    kwargs = dict(N_LAYERS=n, W_LAYERS=n, T=opts.t, PROJS=" ".join(opts.projs))
+    build_gemms.specialize(full_elf=True, **kwargs).compile()
+    out_layer = sum(GemmArray.out_words(p) for p in projs)
 
     lock = open(opts.lock, "w") if opts.lock else None
     if lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
     try:
-        session = DispatchSession(build, **kwargs)
-        w_t = iron.tensor(wblob.view(np.int32), dtype=np.int32)
-        tr_t = iron.tensor(pack_trailers(wblob, n).view(np.int32), dtype=np.int32)
-        a_t = iron.tensor(act.view(np.int32), dtype=np.int32)
+        session = DispatchSession(build_gemms, **kwargs)
         out_t = iron.tensor(
-            np.full((n, N_CORES, p.tiles * M * TILE_COLS), np.nan, np.float32),
-            dtype=np.float32,
+            np.full(n * out_layer, np.nan, np.float32), dtype=np.float32
         )
-        tensors = [w_t, tr_t, a_t, out_t]
+        tensors = [
+            iron.tensor(wblob.view(np.int32), dtype=np.int32),
+            iron.tensor(pack_trailers(wblob, n).view(np.int32).ravel(), dtype=np.int32),
+            iron.tensor(act.view(np.int32).ravel(), dtype=np.int32),
+            out_t,
+        ]
         first_ms = session(tensors)
         out_t.to("cpu")
-        got = rows_of(out_t.numpy(), p)
-        times, again = [], got
+        runs = [out_t.numpy().copy()]
+        times = []
         if opts.iters:
             for _ in range(opts.warmup):
                 session(tensors)
             times = [session(tensors) for _ in range(opts.iters)]
             out_t.to("cpu")
-            again = rows_of(out_t.numpy(), p)
+            runs.append(out_t.numpy().copy())
     finally:
         if lock:
             fcntl.flock(lock, fcntl.LOCK_UN)
 
     print(f"first dispatch: {first_ms:.3f} ms")
-    bad = got.view(np.uint32) != want.view(np.uint32)
-    rows_bad = bad.any(axis=2)
-    for L, r in zip(*np.nonzero(rows_bad)):
-        cols = np.nonzero(bad[L, r])[0]
+    exact = True
+    for i, run in enumerate(runs):
+        at = 0
+        for L in range(n):
+            for p in projs:
+                words = GemmArray.out_words(p)
+                for letter, got in rows_of(run[at : at + words], p).items():
+                    w = want[L, letter]
+                    bad = (got.view(np.uint32) != w.view(np.uint32)).any(axis=1)
+                    exact &= not bad.any()
+                    if bad.any() and i == 0:
+                        print(f"layer {L} {letter}: rows {np.nonzero(bad)[0]} differ")
+                at += words
         print(
-            f"layer {L} row {r}: {cols.size} columns differ, first {cols[0]}: "
-            f"{got[L, r, cols[0]]!r} vs {want[L, r, cols[0]]!r}"
+            f"{'after timing' if i else 'first dispatch'}: {n} layers x "
+            f"{' '.join(opts.projs)}, {M} rows each, "
+            f"every row bit-exact: {'PASS' if exact else 'FAIL'}"
         )
-    exact = not rows_bad.any()
-    print(
-        f"{opts.proj} x {n} layers, {M} rows each: "
-        f"{rows_bad.size - rows_bad.sum()}/{rows_bad.size} rows bit-exact: "
-        f"{'PASS' if exact else 'FAIL'}"
-    )
     if times:
-        repeat = np.array_equal(again.view(np.uint32), want.view(np.uint32))
-        print(
-            f"after timing, every row still bit-exact: {'PASS' if repeat else 'FAIL'}"
+        w_bytes = n * sum(
+            PROJECTIONS[letter][0] * p.k for p in projs for letter in p.name
         )
-        exact &= repeat
-        w_bytes = n * p.rows * D
-        ddr = w_bytes + n * (p.tiles * TILE_TRAILERS + ACT_BYTES + M * p.rows * 4)
         lo, med = min(times), float(np.median(times))
         print(
-            f"dispatch: min {lo:.3f} ms, median {med:.3f} ms; weights {w_bytes / 1e6:.1f} MB"
-            f" at {w_bytes / lo / 1e6:.1f} GB/s (min); DDR traffic {ddr / 1e6:.1f} MB"
-            f" at {ddr / lo / 1e6:.1f} GB/s"
+            f"dispatch: min {lo:.3f} ms, median {med:.3f} ms; weights "
+            f"{w_bytes / 1e6:.1f} MB at {w_bytes / lo / 1e6:.1f} GB/s (min); "
+            f"{lo / n:.3f} ms a layer"
         )
     return 0 if exact else 1
 

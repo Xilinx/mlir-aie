@@ -8,10 +8,9 @@
 // chunks of 128. An A chunk is a 64 x 128 byte block x[r][b] tiled for mmul:
 // x[r][b] at (r/8)*1024 + (b/8)*64 + (r%8)*8 + b%8; a W chunk is
 // W[8g + n][8kt + i] at g*1024 + kt*64 + i*8 + n. C is int32 [8 row blocks]
-// [8 groups][64], lane m*8 + n. The epilogue (on another core) takes the 64
-// rows' act_scales with each projection and the 8 cores' 8 groups' weight
-// slot trailers ([core][group][64 bytes]) with each tile. The epilogue is
-// the GEMV's, so rows are byte-identical to the decode's.
+// [8 groups][64], lane m*8 + n. The epilogue (llama_gemm_out) takes the 64
+// rows' act_scales and the tile's 8 groups' weight slot trailers ([group][64
+// bytes]), and is the GEMV's, so rows are byte-identical to the decode's.
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
@@ -21,6 +20,7 @@
 
 static constexpr int kKt = 128 / 8;
 static constexpr int kBlock = 8 * 128;
+static constexpr int kChunk = 64 * 128;
 static constexpr int kTrailerWords = 16;
 static constexpr int kOutBlocks = 1;
 using MMUL = ::aie::mmul<8, 8, 8, int8, int8, acc32>;
@@ -81,6 +81,28 @@ void llama_gemm_chunk(const int8_t *restrict a, const int8_t *restrict w,
       ::aie::store_v(c11, m11.to_accum().template to_vector<int32>());
     }
   event1();
+}
+
+// A projection's trailers, [core][tile][group][64 bytes] in kChunk-byte A
+// chunks: chunk i's part of core `core`'s (of `tiles` tiles) into trailers.
+void llama_gemm_take_trailers(const int8_t *restrict chunk,
+                              int32_t *restrict trailers, int32_t i,
+                              int32_t core, int32_t tiles) {
+  const int32_t len = tiles * 8 * kTrailerWords * 4;
+  const int32_t lo = core * len > i * kChunk ? core * len : i * kChunk;
+  const int32_t hi =
+      (core + 1) * len < (i + 1) * kChunk ? (core + 1) * len : (i + 1) * kChunk;
+  for (int32_t b = lo; b < hi; b += 64)
+    ::aie::store_v(reinterpret_cast<int8_t *>(trailers) + b - core * len,
+                   ::aie::load_v<64>(chunk + b - i * kChunk));
+}
+
+// The 64 rows' act_scales, row r's at the start of its row of the chunk.
+void llama_gemm_act_scales(const int8_t *restrict chunk,
+                           float *restrict act_scales) {
+  for (int r = 0; r < 64; r++)
+    act_scales[r] = *reinterpret_cast<const float *>(chunk + (r >> 3) * kBlock +
+                                                     (r & 7) * 8);
 }
 
 // Part `part` of the C tile, its rows 8mb..8mb + 8 * kOutBlocks - 1 for
