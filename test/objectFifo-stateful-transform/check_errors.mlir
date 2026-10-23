@@ -55,8 +55,7 @@ module {
 
 // -----
 
-// A join's shared pool has one repeat_count, so its inputs must agree, the
-// same way a distribute's outputs must.
+// Parallel join inputs must have the same effective repeat count.
 module {
   aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
@@ -66,7 +65,7 @@ module {
     aie.objectfifo @of0(%tile12, {%tile11}, 2 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of1(%tile23, {%tile11}, 2 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of2(%tile11, {%tile10}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    // expected-error@+1 {{repeat counts of linked object FIFOs must be equal}}
+    // expected-error@+1 {{join inputs must have equal effective repeat counts: @of0 has 2, @of1 has 3}}
     aie.objectfifo.link [@of0, @of1] -> [@of2] ([0, 16] [])
   }
 }

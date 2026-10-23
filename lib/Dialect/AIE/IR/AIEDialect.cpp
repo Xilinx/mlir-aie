@@ -1769,19 +1769,23 @@ LogicalResult ObjectFifoLinkOp::verify() {
                          "join or distribute");
   }
 
-  // A join or distribute's shared pool has one repeat_count, so every
-  // participant that sets one -- on either side -- must agree.
-  // getOutputObjectFifos() is a single element for a join, so the comparison
-  // has to run over all participants to bite on that side.
+  // Parallel inputs of a join, or outputs of a distribute, must advance
+  // together. Repeats on opposite sides belong to separate DMA stages and
+  // compose independently; an absent repeat_count means one transfer.
   if (isJoin() || isDistribute()) {
-    std::optional<int> shared;
-    for (ObjectFifoCreateOp fifo : participants(*this)) {
-      std::optional<int> repeat = fifo.getRepeatCount();
-      if (!repeat)
-        continue;
-      if (shared && *shared != *repeat)
-        return emitError("repeat counts of linked object FIFOs must be equal");
-      shared = repeat;
+    auto fifos = isJoin() ? getInputObjectFifos() : getOutputObjectFifos();
+    ObjectFifoCreateOp first = fifos.front();
+    int repeat = first.getRepeatCount().value_or(1);
+    for (ObjectFifoCreateOp fifo : llvm::drop_begin(fifos)) {
+      int otherRepeat = fifo.getRepeatCount().value_or(1);
+      if (repeat != otherRepeat)
+        return emitOpError()
+               << (isJoin() ? "join inputs" : "distribute outputs")
+               << " must have equal effective repeat counts: @"
+               << first.name().getValue() << " has " << repeat
+               << (first.getRepeatCount() ? "" : " (default)") << ", @"
+               << fifo.name().getValue() << " has " << otherRepeat
+               << (fifo.getRepeatCount() ? "" : " (default)");
     }
   }
 
