@@ -9,12 +9,11 @@ The prompt's tokens are seeded random ids; the device makes each row's
 embed seed from the token's lm_head slot (staged in `prompt` as the gather
 leaves it) and its id. The oracle runs the positions before block j one at
 a time, which fills its KV caches; the device gets those caches and runs
-block j's 64 rows in one pass, a command per layer, queued. Checked: the
-residual leaving the last layer and block j's KV rows in every layer, every
-row bit for bit; and, to
-locate a mismatch, every stage of the last layer the device leaves in
-`stage`, against the same steps taken one at a time (forward_steps, itself
-checked against Layer.forward).
+block j's 64 rows in one pass, a command per layer, queued. Checked, every
+row bit for bit: the residual leaving the last layer, block j's KV rows in
+every layer, and every stage of the last layer the device leaves in `stage`
+against the same steps taken one at a time (forward_steps, itself checked
+against Layer.forward), which also locates a mismatch.
 
 The oracle runs before the NPU lock is taken; `--lock` serializes the device
 part with other users of the NPU.
@@ -333,7 +332,9 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_UN)
 
     print(f"first pass: {first_ms:.3f} ms")
+    stages_ok = True
     for name, bad in stage_checks(stage, st_got, steps):
+        stages_ok &= not bad
         print(
             f"  layer {n - 1} {name}: {KV_TB - len(bad)}/{KV_TB} rows"
             + (f", rows {bad[:8]} differ" if bad else "")
@@ -347,7 +348,7 @@ def main():
         kv_ok &= (kv_got[kv_at] == shape.kv_row_words(layer, rows)).all(axis=(0, 2))
     print(f"residual leaving layer {n - 1}: {out_ok.sum()}/{KV_TB} rows bit-exact")
     print(f"block {j}'s KV rows, all layers: {kv_ok.sum()}/{KV_TB} rows bit-exact")
-    exact = bool(out_ok.all() and kv_ok.all())
+    exact = bool(out_ok.all() and kv_ok.all() and stages_ok)
     print(f"prefill of {n} layers, block {j}: {'PASS' if exact else 'FAIL'}")
     if times:
         print(f"pass: min {min(times):.3f} ms, median {float(np.median(times)):.3f} ms")

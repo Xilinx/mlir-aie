@@ -130,10 +130,13 @@ static void fold_part(int8_t *acc_state, int8_t *part) {
 // llama_oracle.block_sv forms it: pt holds the heads' fixed-point P in
 // mmul<4, 2, 8> A tiles (rows 2k, 2k + 1 of the four heads at 8k), so each
 // 8 columns of sv are one exact acc64 4x64x8 product. Its integer N becomes
-// N / 2^21 rounded once, as the floored N / 2^21 plus the remaining 21 bits
-// over 2^21 in one vadd.f (both exact: |N| < 2^43), and then scaled by
-// 2^(E_h - 135) through its exponent field (escale: E_h - 135 in lanes
-// 8h..8h+7), to a signed zero below FLT_MIN or +-inf past FLT_MAX.
+// N / 2^21 rounded once (|N| < 2^43), then scaled by 2^(E_h - 135) through
+// its exponent field (escale: E_h - 135 in lanes 8h..8h+7), to a signed zero
+// below FLT_MIN or +-inf past FLT_MAX. vadd.f first rounds the smaller
+// operand onto the larger's grid, then the sum, so |N| = H * 2^21 + L is
+// added as big, exact on the result's grid with an even last bit, plus
+// small, under two of its ULPs: the pre-rounding is then the one rounding,
+// to nearest even, and the sum is exact.
 __attribute__((noinline)) static void block_sv(const int8_t *v,
                                                const int32_t *pt,
                                                ::aie::vector<int32, 32> escale,
@@ -175,12 +178,41 @@ __attribute__((noinline)) static void block_sv(const int8_t *v,
     }
     for (int j = 0; j < 4; j++) {
       ::aie::accum<acc64, 32> acc = c[j].to_accum();
-      ::aie::vector<float, 32> f = ::aie::add(
-          ::aie::to_float<float>(acc.template to_vector<int32>(21), 0),
-          ::aie::to_float<float>(
-              ::aie::bit_and(int32(0x1fffff), acc.template to_vector<int32>(0)),
-              21));
-      ::aie::vector<int32, 32> fb = f.template cast_to<int32>();
+      ::aie::vector<int32, 32> hi = acc.template to_vector<int32>(21);
+      ::aie::vector<int32, 32> lo =
+          ::aie::bit_and(int32(0x1fffff), acc.template to_vector<int32>(0));
+      auto neg = ::aie::lt(hi, int32(0));
+      ::aie::vector<int32, 32> h = ::aie::select(
+          hi,
+          ::aie::sub(::aie::neg(hi),
+                     ::aie::select(::aie::zeros<int32, 32>(),
+                                   ::aie::broadcast<int32, 32>(1),
+                                   ::aie::neq(lo, int32(0)))),
+          neg);
+      ::aie::vector<int32, 32> l = ::aie::select(
+          lo, ::aie::bit_and(int32(0x1fffff), ::aie::sub(int32(0x200000), lo)),
+          neg);
+      ::aie::vector<float, 32> fh = ::aie::to_float<float>(h, 0);
+      // p: the result's ULP in units of L, 2^max(0, e - 2) for H in
+      // [2^e, 2^(e + 1)).
+      ::aie::vector<int32, 32> pfield = ::aie::max(
+          ::aie::sub(::aie::downshift(::aie::bit_and(int32(0x7f800000),
+                                                     fh.template cast_to<int32>()),
+                                      23),
+                     int32(2)),
+          int32(127));
+      ::aie::vector<int32, 32> p = ::aie::to_fixed<int32>(
+          ::aie::upshift(pfield, 23).template cast_to<float>(), 0);
+      ::aie::vector<int32, 32> bit = ::aie::bit_and(l, p);
+      ::aie::vector<float, 32> big = ::aie::add(
+          fh, ::aie::to_float<float>(
+                  ::aie::sub(::aie::bit_and(l, ::aie::neg(p)), bit), 21));
+      ::aie::vector<float, 32> small = ::aie::to_float<float>(
+          ::aie::add(::aie::bit_and(l, ::aie::sub(p, int32(1))), bit), 21);
+      ::aie::vector<int32, 32> fb = ::aie::bit_or(
+          ::aie::add(big, small).template cast_to<int32>(),
+          ::aie::select(::aie::zeros<int32, 32>(),
+                        ::aie::broadcast<int32, 32>(int32(0x80000000)), neg));
       ::aie::vector<int32, 32> field =
           ::aie::downshift(::aie::bit_and(int32(0x7f800000), fb), 23);
       ::aie::vector<int32, 32> ne = ::aie::add(field, escale);
