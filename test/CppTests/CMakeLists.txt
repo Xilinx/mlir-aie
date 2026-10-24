@@ -36,7 +36,7 @@ add_test(NAME Bfloat16Fallback COMMAND bfloat16_fallback_test)
 
 # The aievec.shuffle mode table against the permutations measured on AIE2P.
 add_executable(aievec_shuffle_modes aievec_shuffle_modes.cpp)
-target_link_libraries(aievec_shuffle_modes PRIVATE MLIRAIEVecDialect)
+target_link_libraries(aievec_shuffle_modes PRIVATE MLIRAIEVecDialect AIE)
 add_test(NAME AIEVecShuffleModes
          COMMAND aievec_shuffle_modes
                  ${CMAKE_CURRENT_SOURCE_DIR}/aie2p_vshuffle_modes.json)
@@ -58,7 +58,7 @@ set(CPP_TEST_DEPENDS ${EXECUTABLES} bfloat16_fallback_test stack_size_analysis
 add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND}
                   DEPENDS ${CPP_TEST_DEPENDS})
 
-foreach(executable ${EXECUTABLES})
+foreach(executable ${EXECUTABLES} aievec_shuffle_modes)
     target_link_libraries(${executable}
                         PUBLIC
                         AIE
