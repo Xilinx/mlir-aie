@@ -459,11 +459,42 @@ class Runtime(DeviceResources, Resolvable):
         A fn_args entry may be a nested list/tuple of handles (e.g. one per
         column); the flattened leaves are registered while the body still
         receives the structured argument.
+
+        Consumer handles of one ObjectFifo bound to the same shim end, as when
+        several Runtimes drain it through their own ``cons()``, share the
+        first one's consumer, so the fifo does not broadcast to a shim
+        channel per handle.
+
+        Raises:
+            ValueError: Two such handles differ in depth or ``from_stream``.
         """
         for arg in flatten_fn_args(self._fn_args):
             if isinstance(arg, ObjectFifoHandle):
                 if arg.endpoint is None:
                     arg.endpoint = RuntimeEndpoint(arg._shim_tile)
+                fifo_obj = arg._object_fifo
+                if not arg._is_prod:
+                    for first in fifo_obj._cons:
+                        shared = first.endpoint
+                        if (
+                            first is arg
+                            or not isinstance(shared, RuntimeEndpoint)
+                            or shared != arg.endpoint
+                        ):
+                            continue
+                        if (first.depth, first.from_stream) != (
+                            arg.depth,
+                            arg.from_stream,
+                        ):
+                            raise ValueError(
+                                f"ObjectFifo {fifo_obj.name!r} is drained to one "
+                                "shim end through consumer handles with different "
+                                "depths or from_stream patterns"
+                            )
+                        if arg in fifo_obj._cons:
+                            fifo_obj._cons.remove(arg)
+                        arg.endpoint = shared
+                        break
                 self._fifos[arg] = None
 
     def add_flow(self, flow) -> None:
