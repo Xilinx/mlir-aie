@@ -125,6 +125,31 @@ def test_the_model_rejects_a_mark_no_priority_flow_takes(priority):
     assert "ctrl masterset South:2 at (0, 0) carries no priority flow" in problems
 
 
+def test_link_program_proves_too_many_trees_for_a_cut_unroutable():
+    d = rp.canonical(rp.load_design(OVER_CUT))
+    assert rp.LinkProgram(d, rp.Analysis(d)).unroutable(60)
+
+
+def test_link_program_gives_streams_that_cannot_share_an_arbiter_a_channel_each():
+    # Five circuit trees and two such packet streams on six channels: seven.
+    path = ROOT / "test/create-packet-flows/cut_counts_packets_kept_apart.mlir"
+    d = rp.canonical(rp.load_design(path.read_text()))
+    assert rp.LinkProgram(d, rp.Analysis(d)).unroutable(60)
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_link_program_never_proves_a_design_with_a_witness_unroutable(seed):
+    case = rp.generate(seed, device="npu1")
+    d = case["design"]
+    assert not rp.LinkProgram(d, case["analysis"]).unroutable(60)
+
+
+def test_the_verdict_rejects_what_link_program_proves_unroutable():
+    v = rp.verdict(rp.canonical(rp.load_design(OVER_CUT)), True, 0)
+    assert v["routable"] is False
+    assert "LinkProgram" in v["reason"]
+
+
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():
     d = rp.load_design(OVER_CUT)
     holds = router_shrink.holds_fn(OVERUSED, True)

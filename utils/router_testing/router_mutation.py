@@ -232,6 +232,7 @@ def must_reject(d):
         for x in f["dsts"]:
             if x in into:
                 return f"{rp.fmt_ep(x)} receives both circuit and packet flows"
+    an = None
     for r in range(t.rows - 1):
         for up in (True, False):
             load, cap = cut_load(d, r, up), cut_capacity(t, r, up)
@@ -240,7 +241,40 @@ def must_reject(d):
                     f"{load} trees must cross rows {r}/{r + 1} "
                     f"{'up' if up else 'down'} on {cap} channels"
                 )
+            if an is None and d.packet_flows:
+                an = rp.Analysis(d)
+            apart = packets_apart_across(an, r, up, cap - (load - 1))
+            if len(apart) > 1 and load - 1 + len(apart) > cap:
+                return (
+                    f"{load - 1} circuit trees and {len(apart)} packet streams "
+                    f"no two of which can share an arbiter must cross rows "
+                    f"{r}/{r + 1} {'up' if up else 'down'} on {cap} channels"
+                )
     return None
+
+
+def packets_apart_across(an, r, up, limit):
+    """cutOverflow's packet term: the most packet streams found crossing rows
+    r/r + 1 that pairwise must not share an arbiter, a channel's master port
+    having one; the search stops past `limit`."""
+    if an is None:
+        return []
+
+    def low(ep):
+        return ep[1] <= r
+
+    crossing = [
+        i
+        for i, s in enumerate(an.streams[: an.num_requested])
+        if s.pid is not None and low(s.src) == up and low(s.dst) != up
+    ]
+    most = min(
+        len({an.streams[i].src for i in crossing}),
+        len({an.streams[i].dst for i in crossing}),
+    )
+    if most <= limit:
+        return crossing[:1]
+    return rp.largest_apart_set(an, crossing, limit)
 
 
 # Mutators: (rng, design, context) -> (what, design, expect) or None, where
