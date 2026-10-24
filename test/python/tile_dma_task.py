@@ -88,7 +88,7 @@ def emit_shared_length_drain():
 # CHECK: aiex.dma_start_task
 # CHECK-NEXT: aiex.dma_free_task
 # CHECK-NEXT: aiex.dma_configure_task_for
-# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 sizes = [1, 1, %arg1, 512] strides = [0, 0, 512, 1])
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 sizes = [1, %arg1, 512] strides = [0, 512, 1])
 print(emit_shared_length_drain())
 
 
@@ -117,7 +117,7 @@ def emit_i32_dims(chain=False):
 # CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
 # CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> sizes = [%[[N]], 512] strides = [512, 1])
 # CHECK: aiex.dma_configure_task_for
-# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 sizes = [1, 1, %[[N]], 512]
+# CHECK-NEXT: aie.dma_bd(%{{.*}} : memref<4096xi32> offset = 0 sizes = [1, %[[N]], 512]
 print(emit_i32_dims())
 
 # Each block of a chain holds only its BD.
