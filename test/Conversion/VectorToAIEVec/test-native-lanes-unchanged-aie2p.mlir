@@ -139,3 +139,72 @@ func.func @addf_v1f32(%a: vector<1xf32>, %b: vector<1xf32>) -> vector<1xf32> {
   %0 = arith.addf %a, %b : vector<1xf32>
   return %0 : vector<1xf32>
 }
+
+// -----
+
+// An ord or uno compare has no lowering, so neither it nor its select is split.
+// CHECK-LABEL: func.func @cmpf_ord_select_v64bf16
+// CHECK-NOT: aievec
+// CHECK: arith.cmpf ord, %{{.*}}, %{{.*}} : vector<64xbf16>
+// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xbf16>
+func.func @cmpf_ord_select_v64bf16(%a: vector<64xbf16>, %b: vector<64xbf16>,
+                                   %x: vector<64xbf16>, %y: vector<64xbf16>) -> vector<64xbf16> {
+  %c = arith.cmpf ord, %a, %b : vector<64xbf16>
+  %0 = arith.select %c, %x, %y : vector<64xi1>, vector<64xbf16>
+  return %0 : vector<64xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @cmpf_uno_select_v64bf16
+// CHECK-NOT: aievec
+// CHECK: arith.cmpf uno, %{{.*}}, %{{.*}} : vector<64xbf16>
+// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xbf16>
+func.func @cmpf_uno_select_v64bf16(%a: vector<64xbf16>, %b: vector<64xbf16>,
+                                   %x: vector<64xbf16>, %y: vector<64xbf16>) -> vector<64xbf16> {
+  %c = arith.cmpf uno, %a, %b : vector<64xbf16>
+  %0 = arith.select %c, %x, %y : vector<64xi1>, vector<64xbf16>
+  return %0 : vector<64xbf16>
+}
+
+// -----
+
+// The LLVM lowering has no i8 compare or select.
+// CHECK-LABEL: func.func @cmpi_select_v128i8
+// CHECK-NOT: aievec
+// CHECK: arith.cmpi sge, %{{.*}}, %{{.*}} : vector<128xi8>
+// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<128xi1>, vector<128xi8>
+func.func @cmpi_select_v128i8(%a: vector<128xi8>, %b: vector<128xi8>,
+                              %x: vector<128xi8>, %y: vector<128xi8>) -> vector<128xi8> {
+  %c = arith.cmpi sge, %a, %b : vector<128xi8>
+  %0 = arith.select %c, %x, %y : vector<128xi1>, vector<128xi8>
+  return %0 : vector<128xi8>
+}
+
+// -----
+
+// Nor a part width an i8 compare and an i32 select would share.
+// CHECK-LABEL: func.func @cmpi_v128i8_select_v128i32
+// CHECK-NOT: aievec
+// CHECK: arith.cmpi sge, %{{.*}}, %{{.*}} : vector<128xi8>
+// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<128xi1>, vector<128xi32>
+func.func @cmpi_v128i8_select_v128i32(%a: vector<128xi8>, %b: vector<128xi8>,
+                                      %x: vector<128xi32>, %y: vector<128xi32>) -> vector<128xi32> {
+  %c = arith.cmpi sge, %a, %b : vector<128xi8>
+  %0 = arith.select %c, %x, %y : vector<128xi1>, vector<128xi32>
+  return %0 : vector<128xi32>
+}
+
+// -----
+
+// The LLVM lowering has no f32 select.
+// CHECK-LABEL: func.func @cmpf_v64bf16_select_v64f32
+// CHECK-NOT: aievec
+// CHECK: arith.cmpf olt, %{{.*}}, %{{.*}} : vector<64xbf16>
+// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xf32>
+func.func @cmpf_v64bf16_select_v64f32(%a: vector<64xbf16>, %b: vector<64xbf16>,
+                                      %x: vector<64xf32>, %y: vector<64xf32>) -> vector<64xf32> {
+  %c = arith.cmpf olt, %a, %b : vector<64xbf16>
+  %0 = arith.select %c, %x, %y : vector<64xi1>, vector<64xf32>
+  return %0 : vector<64xf32>
+}

@@ -374,14 +374,54 @@ func.func @cmpf_select_2x32bf16(%a: vector<2x32xbf16>, %b: vector<2x32xbf16>,
 
 // -----
 
-// CHECK-LABEL: func.func @cmpi_select_v128i8
-// CHECK-COUNT-2: aievec.sel %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi8>, vector<64xi8>, ui64, vector<64xi8>
-// CHECK: aievec.concat %{{.*}}, %{{.*}} : vector<64xi8>, vector<128xi8>
-func.func @cmpi_select_v128i8(%a: vector<128xi8>, %b: vector<128xi8>,
-                              %x: vector<128xi8>, %y: vector<128xi8>) -> vector<128xi8> {
-  %c = arith.cmpi sge, %a, %b : vector<128xi8>
-  %0 = arith.select %c, %x, %y : vector<128xi1>, vector<128xi8>
-  return %0 : vector<128xi8>
+// A 32-lane bf16 compare is one the lowering takes, but the i32 select on it
+// is not: both are split into 16-lane parts, each compare built again from
+// the compare's operands.
+// CHECK-LABEL: func.func @cmpf_v32bf16_select_v32i32
+// CHECK-SAME: (%[[A:.*]]: vector<32xbf16>, %[[B:.*]]: vector<32xbf16>, %[[X:.*]]: vector<32xi32>, %[[Y:.*]]: vector<32xi32>)
+// CHECK: %[[A0:.*]] = aievec.ext %[[A]] {index = 0 : i8} : vector<32xbf16>, vector<16xbf16>
+// CHECK: %[[B0:.*]] = aievec.ext %[[B]] {index = 0 : i8} : vector<32xbf16>, vector<16xbf16>
+// CHECK: aievec.cmp %{{.*}}, %{{.*}} {pred = "slt"} : vector<32xbf16>, vector<32xbf16>, ui32
+// CHECK: aievec.sel %{{.*}}, %{{.*}}, %{{.*}} : vector<16xi32>, vector<16xi32>, ui32, vector<16xi32>
+// CHECK: %[[A1:.*]] = aievec.ext %[[A]] {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+// CHECK: aievec.cmp %{{.*}}, %{{.*}} {pred = "slt"} : vector<32xbf16>, vector<32xbf16>, ui32
+// CHECK: aievec.sel %{{.*}}, %{{.*}}, %{{.*}} : vector<16xi32>, vector<16xi32>, ui32, vector<16xi32>
+// CHECK: %[[R:.*]] = aievec.concat %{{.*}}, %{{.*}} : vector<16xi32>, vector<32xi32>
+// CHECK: return %[[R]] : vector<32xi32>
+func.func @cmpf_v32bf16_select_v32i32(%a: vector<32xbf16>, %b: vector<32xbf16>,
+                                      %x: vector<32xi32>, %y: vector<32xi32>) -> vector<32xi32> {
+  %c = arith.cmpf olt, %a, %b : vector<32xbf16>
+  %0 = arith.select %c, %x, %y : vector<32xi1>, vector<32xi32>
+  return %0 : vector<32xi32>
+}
+
+// -----
+
+// An i16 compare selecting i32: 16-lane parts, which the i32 select takes and
+// the i16 compare pads to 32 lanes.
+// CHECK-LABEL: func.func @cmpi_v64i16_select_v64i32
+// CHECK-COUNT-4: aievec.cmp %{{.*}}, %{{.*}} {pred = "sgt"} : vector<32xi16>, vector<32xi16>, ui32
+// CHECK: aievec.concat %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : vector<16xi32>, vector<64xi32>
+func.func @cmpi_v64i16_select_v64i32(%a: vector<64xi16>, %b: vector<64xi16>,
+                                     %x: vector<64xi32>, %y: vector<64xi32>) -> vector<64xi32> {
+  %c = arith.cmpi sgt, %a, %b : vector<64xi16>
+  %0 = arith.select %c, %x, %y : vector<64xi1>, vector<64xi32>
+  return %0 : vector<64xi32>
+}
+
+// -----
+
+// More than nine parts: aievec.ext indices run up to 15.
+// CHECK-LABEL: func.func @maximumf_v512bf16
+// CHECK-SAME: (%[[A:.*]]: vector<512xbf16>, %[[B:.*]]: vector<512xbf16>)
+// CHECK-COUNT-15: aievec.max
+// CHECK: aievec.ext %[[A]] {index = 15 : i8} : vector<512xbf16>, vector<32xbf16>
+// CHECK: aievec.max
+// CHECK: aievec.concat
+// CHECK-SAME: vector<32xbf16>, vector<512xbf16>
+func.func @maximumf_v512bf16(%a: vector<512xbf16>, %b: vector<512xbf16>) -> vector<512xbf16> {
+  %0 = arith.maximumf %a, %b : vector<512xbf16>
+  return %0 : vector<512xbf16>
 }
 
 // -----

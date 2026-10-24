@@ -632,6 +632,12 @@ static LogicalResult genAddElemAIE2(ConversionPatternRewriter &rewriter,
   return success();
 }
 
+// Whether convertToIntegerPredicate takes `pred`.
+static bool hasIntegerPredicate(arith::CmpFPredicate pred) {
+  return pred != CmpFPredicate::AlwaysFalse && pred != CmpFPredicate::ORD &&
+         pred != CmpFPredicate::UNO && pred != CmpFPredicate::AlwaysTrue;
+}
+
 static arith::CmpIPredicate
 convertToIntegerPredicate(arith::CmpFPredicate pred) {
   switch (pred) {
@@ -5474,8 +5480,8 @@ static SmallVector<int64_t, 5> getAIE2PNativeLanes(Operation *op) {
     return {};
   Type elemType = type.getElementType();
   unsigned bitWidth = elemType.getIntOrFloatBitWidth();
-  bool is8To32Bit = bitWidth == 8 || bitWidth == 16 || bitWidth == 32;
-  bool isInt = isa<IntegerType>(elemType) && is8To32Bit;
+  bool isInt = isa<IntegerType>(elemType) &&
+               (bitWidth == 8 || bitWidth == 16 || bitWidth == 32);
 
   // f32 adds and subtracts run on the 2048-bit accumulator, which holds 64
   // lanes; the LLVM lowering pads 16 or 32 lanes to it. bf16 ones are moved
@@ -5512,16 +5518,17 @@ static SmallVector<int64_t, 5> getAIE2PNativeLanes(Operation *op) {
       return {32};
     return {};
   }
-  // Compare takes one 512-bit register of integers or bf16.
-  if (isa<arith::CmpIOp, arith::CmpFOp>(op)) {
-    if (isInt || elemType.isBF16())
-      return {512 / bitWidth};
-    return {};
-  }
-  // Select takes one 512-bit register of any 8-, 16- or 32-bit type.
-  if (isa<arith::SelectOp>(op)) {
-    if (is8To32Bit)
-      return {512 / bitWidth};
+  // Compare and select take 32 lanes of bf16 or i16, 16 of which are padded
+  // to 32, and 16 lanes of i32. A float compare that tests for NaN (ord, uno)
+  // has no lowering.
+  if (isa<arith::CmpIOp, arith::CmpFOp, arith::SelectOp>(op)) {
+    if (auto cmpOp = dyn_cast<arith::CmpFOp>(op);
+        cmpOp && !hasIntegerPredicate(cmpOp.getPredicate()))
+      return {};
+    if (elemType.isBF16() || elemType.isInteger(16))
+      return {16, 32};
+    if (elemType.isInteger(32))
+      return {16};
     return {};
   }
   return {};
@@ -5539,6 +5546,9 @@ static Operation *getSelectCompare(arith::SelectOp op) {
   Operation *cmp = skipShapeCastRoundTrip(op.getCondition()).getDefiningOp();
   return isa_and_nonnull<arith::CmpIOp, arith::CmpFOp>(cmp) ? cmp : nullptr;
 }
+
+// aievec.ext numbers the parts of its source with an i8.
+constexpr int64_t kAIE2PMaxParts = 128;
 
 // The lanes of each part an elementwise op is rewritten into when the AIE2P
 // lowering does not take its lane count, or none. Lanes are counted over all
@@ -5569,25 +5579,26 @@ static std::optional<int64_t> getAIE2PPartLanes(Operation *op) {
     return std::nullopt;
 
   SmallVector<int64_t, 5> native = getAIE2PNativeLanes(op);
+  if (auto selOp = dyn_cast<arith::SelectOp>(op)) {
+    Operation *cmp = getSelectCompare(selOp);
+    if (!cmp)
+      return std::nullopt;
+    SmallVector<int64_t, 5> cmpNative = getAIE2PNativeLanes(cmp);
+    llvm::erase_if(native,
+                   [&](int64_t n) { return !llvm::is_contained(cmpNative, n); });
+    if (llvm::is_contained(native, lanes))
+      return std::nullopt;
+    for (int64_t part : llvm::reverse(native))
+      if (part < lanes && lanes % part == 0 && lanes / part <= kAIE2PMaxParts)
+        return part;
+    return std::nullopt;
+  }
   if (native.empty() || llvm::is_contained(native, lanes))
     return std::nullopt;
 
-  if (auto selOp = dyn_cast<arith::SelectOp>(op)) {
-    Operation *cmp = getSelectCompare(selOp);
-    SmallVector<int64_t, 5> cmpNative;
-    if (cmp)
-      cmpNative = getAIE2PNativeLanes(cmp);
-    if (cmpNative.empty())
-      return std::nullopt;
-    int64_t part = std::min(native.back(), cmpNative.back());
-    if (lanes <= part || lanes % part != 0)
-      return std::nullopt;
-    return part;
-  }
-
   if (lanes > native.back()) {
     for (int64_t part : llvm::reverse(native))
-      if (lanes % part == 0)
+      if (lanes % part == 0 && lanes / part <= kAIE2PMaxParts)
         return part;
     return std::nullopt;
   }
@@ -5598,25 +5609,14 @@ static std::optional<int64_t> getAIE2PPartLanes(Operation *op) {
 }
 
 // Part `index` of `partLanes` lanes of `v`, or `v` repeated to `partLanes`
-// lanes when it has fewer. A select's mask is not cut apart: its compare is
-// built again on the parts of the compare's operands. A splat is built again
-// at the width of the part, which keeps the parts of a splat equal, and the
-// part of a concatenation of such parts is taken from it directly.
+// lanes when it has fewer. A splat is built again at the width of the part,
+// which keeps the parts of a splat equal, and the part of a concatenation of
+// such parts is taken from it directly.
 static Value getAIE2PPart(ConversionPatternRewriter &rewriter, Location loc,
                           Value v, int64_t partLanes, int64_t index) {
   auto type = cast<VectorType>(v.getType());
   auto partType = VectorType::get({partLanes}, type.getElementType());
   int64_t lanes = type.getNumElements();
-  if (type.getElementType().isInteger(1)) {
-    Operation *cmp = skipShapeCastRoundTrip(v).getDefiningOp();
-    OperationState state(loc, cmp->getName());
-    for (Value operand : cmp->getOperands())
-      state.addOperands(getAIE2PPart(
-          rewriter, loc, rewriter.getRemappedValue(operand), partLanes, index));
-    state.addTypes(partType);
-    state.addAttributes(cmp->getAttrs());
-    return rewriter.create(state)->getResult(0);
-  }
   if (auto cstOp = v.getDefiningOp<arith::ConstantOp>())
     if (auto dense = dyn_cast<DenseElementsAttr>(cstOp.getValue());
         dense && dense.isSplat())
@@ -5635,6 +5635,22 @@ static Value getAIE2PPart(ConversionPatternRewriter &rewriter, Location loc,
   }
   SmallVector<Value> copies(partLanes / lanes, v);
   return aievec::ConcatOp::create(rewriter, loc, partType, copies);
+}
+
+// Part `index` of the mask of `selOp`. The mask is not cut apart: its compare
+// is built again on the parts of the compare's operands. The compare is taken
+// from `selOp` itself, as the mask it is converted to may not be a vector.
+static Value getAIE2PMaskPart(ConversionPatternRewriter &rewriter, Location loc,
+                              arith::SelectOp selOp, int64_t partLanes,
+                              int64_t index) {
+  Operation *cmp = getSelectCompare(selOp);
+  OperationState state(loc, cmp->getName());
+  for (Value operand : cmp->getOperands())
+    state.addOperands(getAIE2PPart(
+        rewriter, loc, rewriter.getRemappedValue(operand), partLanes, index));
+  state.addTypes(VectorType::get({partLanes}, rewriter.getI1Type()));
+  state.addAttributes(cmp->getAttrs());
+  return rewriter.create(state)->getResult(0);
 }
 
 // Rewrite a rank-1 elementwise op whose lane count the AIE2P lowering does
@@ -5661,9 +5677,17 @@ struct NormalizeLanesAIE2PPattern : OpConversionPattern<OpTy> {
     Location loc = op.getLoc();
     auto createPart = [&](int64_t index) -> Value {
       SmallVector<Value> operands;
-      for (Value operand : adaptor.getOperands())
+      for (Value operand : adaptor.getOperands()) {
+        if constexpr (std::is_same_v<OpTy, arith::SelectOp>) {
+          if (operands.empty()) {
+            operands.push_back(
+                getAIE2PMaskPart(rewriter, loc, op, *partLanes, index));
+            continue;
+          }
+        }
         operands.push_back(
             getAIE2PPart(rewriter, loc, operand, *partLanes, index));
+      }
       return OpTy::create(rewriter, loc, TypeRange{partType}, operands,
                           op.getProperties(),
                           op->getDiscardableAttrDictionary().getValue())
