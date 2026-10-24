@@ -175,7 +175,7 @@ decode command generates up to `--p-max` (4) of them, and the host queues the
 commands back to back on the hardware context, four at most (amdxdna holds
 four started commands), reading each one's tokens as it completes
 (`Decoder.generate` in `llama_decode.py`). A command is at most 4 tokens of
-work, about 1.8 s at 128k (451 ms a token), inside amdxdna's ~5 s timeout. Four
+work, 0.72 s at 128k (180.5 ms a token), well inside amdxdna's ~5 s timeout. Four
 tokens a command measured 44.5 tok/s against 40.0 for one: a decode command
 carries about 2.5 ms of its own. The first generated token is read before the
 generation's commands start: amdxdna reports the commands started behind a
