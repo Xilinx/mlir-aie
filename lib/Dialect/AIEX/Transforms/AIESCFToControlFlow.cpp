@@ -25,10 +25,15 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+
+#include "llvm/ADT/APInt.h"
+
+#include <cstdint>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIESCFTOCONTROLFLOW
@@ -41,11 +46,72 @@ using namespace xilinx::AIEX;
 
 namespace {
 
+constexpr uint64_t kEffectivelyInfiniteLoopBound = (uint64_t{1} << 32) - 1;
+
+static bool isConstantZero(Value value) {
+  auto constant = value.getDefiningOp<arith::ConstantOp>();
+  auto integer =
+      constant ? dyn_cast<IntegerAttr>(constant.getValue()) : IntegerAttr{};
+  return integer && integer.getValue().isZero();
+}
+
+static bool isConstantOne(Value value) {
+  auto constant = value.getDefiningOp<arith::ConstantOp>();
+  auto integer =
+      constant ? dyn_cast<IntegerAttr>(constant.getValue()) : IntegerAttr{};
+  return integer && integer.getValue().isOne();
+}
+
+static bool hasEffectivelyInfiniteBound(Value value) {
+  auto constant = value.getDefiningOp<arith::ConstantOp>();
+  auto integer =
+      constant ? dyn_cast<IntegerAttr>(constant.getValue()) : IntegerAttr{};
+  if (!integer)
+    return false;
+  const llvm::APInt &bound = integer.getValue();
+  return !bound.isNegative() && bound.getActiveBits() >= 32 &&
+         bound.getLimitedValue() >= kEffectivelyInfiniteLoopBound;
+}
+
+static bool isCounterFreeForeverLoopCandidate(scf::ForOp forOp) {
+  return forOp.getInitArgs().empty() && forOp.getInductionVar().use_empty() &&
+         isConstantZero(forOp.getLowerBound()) &&
+         isConstantOne(forOp.getStep()) &&
+         hasEffectivelyInfiniteBound(forOp.getUpperBound());
+}
+
+static void replaceWithCounterFreeLoop(scf::ForOp forOp) {
+  OpBuilder builder(forOp);
+  Location loc = forOp.getLoc();
+  auto whileOp = builder.create<scf::WhileOp>(loc, TypeRange{}, ValueRange{},
+                                              ValueRange{});
+  Block *before = builder.createBlock(&whileOp.getBeforeRegion());
+  Block *after = builder.createBlock(&whileOp.getAfterRegion());
+
+  builder.setInsertionPointToEnd(before);
+  Value trueValue = builder.create<arith::ConstantIntOp>(loc, 1, 1);
+  builder.create<scf::ConditionOp>(loc, trueValue, ValueRange{});
+
+  Block *forBody = forOp.getBody();
+  after->getOperations().splice(after->end(), forBody->getOperations());
+  forBody->eraseArgument(0);
+  forOp.erase();
+}
+
 struct AIESCFToControlFlowPass
     : xilinx::AIEX::impl::AIESCFToControlFlowBase<AIESCFToControlFlowPass> {
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
+
+    SmallVector<scf::ForOp> foreverLoops;
+    module.walk([&](scf::ForOp forOp) {
+      if (forOp->getParentOfType<AIE::CoreOp>() &&
+          isCounterFreeForeverLoopCandidate(forOp))
+        foreverLoops.push_back(forOp);
+    });
+    for (scf::ForOp forOp : foreverLoops)
+      replaceWithCounterFreeLoop(forOp);
 
     ConversionTarget target(getContext());
     // Everything is legal by default; only scf outside a runtime sequence is
