@@ -43,10 +43,11 @@ void generateXAieDmaSetMultiDimAddr(llvm::raw_ostream &output, int ndims,
 
 llvm::SetVector<mlir::Block *> getOrderedChainOfBlocks(mlir::Region *region);
 
-/// Collect every BD block reached from an out-of-order aie.dma_start channel.
-/// These BDs use use_next_bd=0 (placement is by header id, not the chain).
+/// Collect every BD block of a channel whose descriptors run one at a time:
+/// one receiving out of order, where each object names its own descriptor,
+/// and one whose core pushes a task per object. These BDs use use_next_bd=0.
 llvm::SmallPtrSet<mlir::Block *, 8>
-collectOutOfOrderBlocks(const llvm::SetVector<mlir::Block *> &blockVector);
+collectUnchainedBlocks(const llvm::SetVector<mlir::Block *> &blockVector);
 
 /// A buffer's `initial_value` as the bytes to write to its tile memory, in
 /// element order. Every path that delivers that value to the device calls this

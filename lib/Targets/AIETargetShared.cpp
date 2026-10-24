@@ -158,7 +158,7 @@ llvm::SetVector<Block *> getOrderedChainOfBlocks(Region *region) {
 }
 
 llvm::SmallPtrSet<Block *, 8>
-collectOutOfOrderBlocks(const llvm::SetVector<Block *> &blockVector) {
+collectUnchainedBlocks(const llvm::SetVector<Block *> &blockVector) {
   // Scoped to this channel only.
   llvm::SmallPtrSet<Block *, 8> channelHeads;
   for (Block *block : blockVector) {
@@ -167,14 +167,14 @@ collectOutOfOrderBlocks(const llvm::SetVector<Block *> &blockVector) {
     }
   }
 
-  llvm::SmallPtrSet<Block *, 8> oooBlocks;
+  llvm::SmallPtrSet<Block *, 8> unchainedBlocks;
   for (Block *block : blockVector) {
     for (auto startOp : block->getOps<DMAStartOp>()) {
-      if (!startOp.getOutOfOrder()) {
+      if (!startOp.getOutOfOrder() && !startOp.getCorePushes()) {
         continue;
       }
       Block *b = startOp.getDest();
-      while (b && oooBlocks.insert(b).second && b->getNumSuccessors() > 0) {
+      while (b && unchainedBlocks.insert(b).second && b->getNumSuccessors() > 0) {
         Block *next = b->getSuccessor(0);
         // Another channel's head or this own channel's head.
         if (channelHeads.contains(next)) {
@@ -184,7 +184,7 @@ collectOutOfOrderBlocks(const llvm::SetVector<Block *> &blockVector) {
       }
     }
   }
-  return oooBlocks;
+  return unchainedBlocks;
 }
 
 std::optional<std::vector<char>>

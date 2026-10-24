@@ -935,10 +935,13 @@ struct AIEObjectFifoAllocatePass
   bool sharesPinnedChannel(RouteEndpoint endpoint, DMAChannelDir dir) {
     // An out-of-order receiver takes each object into the buffer its header
     // names, so its channel keeps no order its fifos would have to agree on.
-    if (dir == DMAChannelDir::S2MM) {
-      auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+    auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
+    if (dir == DMAChannelDir::S2MM)
       return dma && dma.getOutOfOrder();
-    }
+    // A sender whose core pushes a task per object keeps none either: each
+    // push names the descriptor that runs next.
+    if (dma && dma.getReleaseStrategy() == ObjectFifoRelease::PushQueue)
+      return true;
     if (!tileOf(endpoint).isShimTile())
       return false;
     for (auto flow : device.getOps<RouteOp>()) {

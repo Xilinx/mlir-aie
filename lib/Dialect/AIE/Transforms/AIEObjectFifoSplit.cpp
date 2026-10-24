@@ -240,7 +240,8 @@ struct AIEObjectFifoSplitPass
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr(),
         /*contiguous=*/false, /*zeroObjects=*/nullptr,
-        /*out_of_order_tags=*/DenseI32ArrayAttr());
+        /*out_of_order_tags=*/DenseI32ArrayAttr(),
+        /*send_tags=*/DenseI32ArrayAttr(), /*send_channel=*/IntegerAttr());
     createSegments(pool, loc, extents);
     return pool;
   }
@@ -300,7 +301,8 @@ struct AIEObjectFifoSplitPass
         builder.getStringAttr(from.name().getValue()), /*dispatch=*/ArrayAttr(),
         /*dispatchPackets=*/ArrayAttr(), /*turns=*/ArrayAttr(),
         from.getOutOfOrder() ? builder.getUnitAttr() : UnitAttr(),
-        /*out_of_order_tags=*/DenseI32ArrayAttr());
+        /*out_of_order_tags=*/DenseI32ArrayAttr(),
+        from.getReleaseStrategyAttr());
   }
 
   /// An end with no pool behind it: a shim whose transfers the runtime issues,
@@ -346,7 +348,8 @@ struct AIEObjectFifoSplitPass
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr(), /*contiguous=*/false,
         /*zeroObjects=*/nullptr,
-        /*out_of_order_tags=*/DenseI32ArrayAttr());
+        /*out_of_order_tags=*/DenseI32ArrayAttr(),
+        /*send_tags=*/DenseI32ArrayAttr(), /*send_channel=*/IntegerAttr());
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }
@@ -435,6 +438,25 @@ struct AIEObjectFifoSplitPass
       }
     }
     return success();
+  }
+
+  /// Two fifos pinned to one sending channel can only share it when the core
+  /// pushes a task per object, since a channel cycling on one fifo's buffers
+  /// never reaches the other's, so pinning them together selects that.
+  void selectPushQueueForSharedChannels(ArrayRef<ObjectFifoCreateOp> fifos) {
+    DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
+        onChannel;
+    for (ObjectFifoCreateOp fifo : fifos) {
+      std::optional<int32_t> channel = fifo.getProdDmaChannel();
+      auto tile = fifo.getProducerTile().getDefiningOp<TileOp>();
+      if (!channel || !tile)
+        continue;
+      onChannel[{tile.getCol(), tile.getRow(), *channel}].push_back(fifo);
+    }
+    for (auto &[channel, sharing] : onChannel)
+      if (sharing.size() > 1)
+        for (ObjectFifoCreateOp fifo : sharing)
+          fifo.setReleaseStrategy(ObjectFifoRelease::PushQueue);
   }
 
   /// A delegate tile can only hold a fifo's objects if both ends reach its
@@ -720,6 +742,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       failed(verifyOutOfOrderForSharedChannels(fifos))) {
     return signalPassFailure();
   }
+
+  selectPushQueueForSharedChannels(fifos);
 
   if (failed(createLinkPools()) || failed(verifyAllocateDelegates())) {
     return signalPassFailure();

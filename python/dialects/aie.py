@@ -936,6 +936,11 @@ class object_fifo(ObjectFifoCreateOp):
             [(Port.dma() if p is None else p).to_attr() for p in ports], None
         )
 
+    def set_release_strategy(self, strategy):
+        self.attributes["release_strategy"] = Attribute.parse(
+            f"#aie.release_strategy<{strategy}>"
+        )
+
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):

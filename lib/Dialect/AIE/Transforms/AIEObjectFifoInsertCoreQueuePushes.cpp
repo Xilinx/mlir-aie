@@ -75,8 +75,10 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
       if (checkQueueSpace)
         DmaPollForQueueSpaceOp::create(builder, loc, DMAChannelDir::S2MM,
                                        channel);
+      // Out-of-order ignores the descriptor a push names.
       DmaPushQueueOp::create(builder, loc, DMAChannelDir::S2MM, channel,
-                             /*bd_id=*/0, repeat, /*out_of_order=*/true);
+                             builder.getI32IntegerAttr(0), /*bd_tag=*/nullptr,
+                             repeat, /*out_of_order=*/true);
     }
     // Carry what the run overshot by, so the pushes stay in step with the
     // objects however many a release covers.

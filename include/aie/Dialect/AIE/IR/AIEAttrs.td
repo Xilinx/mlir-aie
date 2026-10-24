@@ -310,6 +310,20 @@ def InitValuesArrayAttr
 // ObjectFifo pools and endpoints
 //===----------------------------------------------------------------------===//
 
+def ObjectFifoRelease
+    : I32EnumAttr<"ObjectFifoRelease",
+                  "What a release on the sending end starts",
+                  [I32EnumAttrCase<"CycleBuffers", 0, "cycle_buffers">,
+                   I32EnumAttrCase<"PushQueue", 1, "push_queue">]> {
+  let cppNamespace = "xilinx::AIE";
+  // The attribute class comes from ObjectFifoReleaseAttr below, which prints
+  // the case by name rather than by number.
+  let genSpecializedAttr = 0;
+}
+
+def ObjectFifoReleaseAttr
+    : EnumAttr<AIE_Dialect, ObjectFifoRelease, "release_strategy">;
+
 def ObjectFifoRole
     : I32EnumAttr<"ObjectFifoRole",
                   "What an objectFifo endpoint does to its pool's buffers",

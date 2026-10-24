@@ -3779,6 +3779,9 @@ static uint32_t channelsOfOwnTile(TileOp tile, DMAChannelDir direction,
 LogicalResult DmaPushQueueOp::verify() {
   if (getOutOfOrder() && getDirection() != DMAChannelDir::S2MM)
     return emitOpError("out_of_order is only supported on S2MM channels");
+  if (getBdId().has_value() == getBdTag().has_value())
+    return emitOpError("names the descriptor it pushes either by bd_id or, "
+                       "before aie-assign-bd-ids runs, by bd_tag");
   auto core = (*this)->getParentOfType<CoreOp>();
   const AIETargetModel &targetModel = getTargetModel(*this);
   if (auto tile = core.getTile().getDefiningOp<TileOp>()) {

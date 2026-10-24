@@ -122,6 +122,7 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         transport: Transport | str | None = None,
         init_values: list[np.ndarray] | None = None,
         consumer_obj_type: type[np.ndarray] | In | Out | InOut | None = None,
+        release_strategy: str | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -187,6 +188,12 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
                 transfers and the consumer receives consumer_obj_type-sized transfers.
                 Producer element count must be an integer multiple of consumer element count.
                 Defaults to None.
+            release_strategy (str | None, optional): What a release on the producer
+                handle starts. ``"cycle_buffers"``, the default, leaves the sending
+                DMA to walk the pool's buffers on its own. ``"push_queue"`` has the
+                core push the descriptor of each buffer it releases, which is what
+                lets two ObjectFifos share a sending channel. Defaults to None.
+
 
         Raises:
             TypeError: If a stream walk is not a ``TensorAccessPattern``.
@@ -223,6 +230,7 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         self._delegate_tile: Tile | None = delegate_tile
         self._transport: Transport | None = Transport.coerce(transport)
         self._init_values: list[np.ndarray] | None = init_values
+        self._release_strategy: str | None = release_strategy
 
     @property
     def depth(self) -> int | None:
@@ -536,6 +544,9 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
             cons_ports = [con.port for con in self._cons]
             if any(p is not None for p in cons_ports):
                 op.set_cons_ports(cons_ports)
+
+            if self._release_strategy is not None:
+                op.set_release_strategy(self._release_strategy)
 
             # Shared-memory delegate: redirect the fifo's buffer pool to a tile
             # whose memory module is shared with both prod and cons. See the

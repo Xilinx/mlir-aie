@@ -598,7 +598,7 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
 LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
     Operation &op, int col, int row, int chNum, const DMAChannelDir &channelDir,
     int bdId, int repeatCount, uint32_t padValue, bool outOfOrder,
-    bool configureChannel) {
+    bool configureChannel, bool pushTask) {
   TxnLocBracket bracket(*this, op.getLoc());
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
@@ -627,10 +627,11 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
     XAie_DmaDeclareQueueConfig(startQueueCfg, /*StartBd=*/0, repeatCount,
                                /*EnToken=*/static_cast<uint8_t>(XAIE_DISABLE),
                                static_cast<uint8_t>(XAIE_ENABLE));
-    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueueGeneric,
-                            &aiert->devInst, tileLoc, chNum, direction,
-                            &startQueueCfg);
-  } else {
+    if (pushTask)
+      TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueueGeneric,
+                              &aiert->devInst, tileLoc, chNum, direction,
+                              &startQueueCfg);
+  } else if (pushTask) {
     bool enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &aiert->devInst,
                             tileLoc, chNum, direction, bdId, repeatCount,
@@ -985,8 +986,8 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
     llvm::SetVector<Block *> blockVector =
         getOrderedChainOfBlocks(&memOp.getOperation()->getRegion(0));
 
-    llvm::SmallPtrSet<Block *, 8> oooBlocks =
-        collectOutOfOrderBlocks(blockVector);
+    llvm::SmallPtrSet<Block *, 8> unchainedBlocks =
+        collectUnchainedBlocks(blockVector);
 
     // handle DMA ops separately
     auto dmaOps = llvm::to_vector_of<DMAOp>(
@@ -1004,7 +1005,7 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
         if (block->getOps<DMABDOp>().empty())
           continue;
         if (failed(configureLocksAndBd(*block, col, row,
-                                       oooBlocks.contains(block))))
+                                       unchainedBlocks.contains(block))))
           return failure();
       }
     }
@@ -1033,7 +1034,9 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                  "bd_id assigned by configureLocksAndBd above");
           if (failed(pushToBdQueueAndEnable(
                   *bd.getOperation(), col, row, chNum, channelDir, bdId.value(),
-                  op.getRepeatCount(), op.getPadValue(), op.getOutOfOrder())))
+                  op.getRepeatCount(), op.getPadValue(), op.getOutOfOrder(),
+                  /*configureChannel=*/true,
+                  /*pushTask=*/!op.getCorePushes())))
             return failure();
         }
       }

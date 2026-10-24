@@ -401,6 +401,21 @@ struct AIEAssignBufferDescriptorIDsPass
       bd.removeOutOfOrderTagAttr();
       return WalkResult::advance();
     });
+    if (walked.wasInterrupted())
+      return failure();
+    walked = device.walk([&](DmaPushQueueOp push) {
+      std::optional<int32_t> tag = push.getBdTag();
+      if (!tag)
+        return WalkResult::advance();
+      auto it = idOfTag.find(*tag);
+      if (it == idOfTag.end()) {
+        push.emitOpError("pushes a descriptor that this tile does not hold");
+        return WalkResult::interrupt();
+      }
+      push.setBdId(it->second);
+      push.removeBdTagAttr();
+      return WalkResult::advance();
+    });
     return failure(walked.wasInterrupted());
   }
 };

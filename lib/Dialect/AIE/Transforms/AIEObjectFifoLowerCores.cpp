@@ -143,6 +143,9 @@ struct LoweringContext {
       objectSlots{};
   DenseMap<std::pair<Operation *, Operation *>, Value> soleObject{};
   DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> heldCount{};
+  /// The slot a core-pushed endpoint releases next, where the core pushes the
+  /// descriptor of each object it releases.
+  DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> sendSlot{};
   bool sawError = false;
 
   ObjectFifoCoreEndpointOp endpointOf(Operation *op, StringRef name) {
@@ -187,6 +190,87 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
   LoweringContext &ctx;
   LowerRelease(MLIRContext *context, LoweringContext &ctx)
       : OpRewritePattern(context), ctx(ctx) {}
+
+  /// Push the descriptor of each object this release frees, for a pool
+  /// whose sending channel the core drives. Nothing else starts those
+  /// descriptors, so an object the core does not push is never sent.
+  void emitSendPushes(PatternRewriter &rewriter, Location loc, CoreOp core,
+                      ObjectFifoCoreEndpointOp endpoint, ObjectFifoPoolOp pool,
+                      int size) const {
+    std::optional<ArrayRef<int32_t>> tags = pool.getSendTags();
+    if (!tags || endpoint.drains())
+      return;
+    std::optional<int32_t> channel = pool.getSendChannel();
+    if (!channel)
+      return;
+    int depth = pool.getDepth();
+
+    auto key = std::make_pair(core.getOperation(), endpoint.getOperation());
+    memref::AllocaOp slot = ctx.sendSlot.lookup(key);
+    if (!slot) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(&core.getBody().front());
+      slot = memref::AllocaOp::create(
+          rewriter, loc, MemRefType::get({}, rewriter.getIndexType()));
+      Value zero = arith::ConstantIndexOp::create(rewriter, loc, 0);
+      memref::StoreOp::create(rewriter, loc, zero, slot.getResult(),
+                              ValueRange{});
+      ctx.sendSlot[key] = slot;
+    }
+
+    // One push per object, so the queue holds at most as many tasks as the
+    // pool holds objects: the core cannot run ahead of a lock it has not got
+    // back. A deeper pool than the queue holds needs the wait.
+    bool waitForRoom =
+        depth > static_cast<int>(
+                    ctx.device.getTargetModel().getDmaTaskQueueDepth());
+    Value current =
+        memref::LoadOp::create(rewriter, loc, slot.getResult(), ValueRange{});
+    Value depthValue = arith::ConstantIndexOp::create(rewriter, loc, depth);
+    for (int step = 0; step < size; ++step) {
+      Value offset = arith::ConstantIndexOp::create(rewriter, loc, step);
+      Value raw = arith::AddIOp::create(rewriter, loc, current, offset);
+      Value which = arith::RemUIOp::create(rewriter, loc, raw, depthValue);
+      emitPushSwitch(rewriter, loc, which, *tags, *channel, waitForRoom);
+    }
+    Value taken = arith::ConstantIndexOp::create(rewriter, loc, size);
+    Value raw = arith::AddIOp::create(rewriter, loc, current, taken);
+    Value next = arith::RemUIOp::create(rewriter, loc, raw, depthValue);
+    memref::StoreOp::create(rewriter, loc, next, slot.getResult(),
+                            ValueRange{});
+  }
+
+  /// Push the descriptor `tags[which]` names, selected at runtime. The switch
+  /// folds to one push once the enclosing loops unroll.
+  void emitPushSwitch(PatternRewriter &rewriter, Location loc, Value which,
+                      ArrayRef<int32_t> tags, int channel,
+                      bool waitForRoom) const {
+    SmallVector<int64_t> cases;
+    for (size_t c = 0; c < tags.size(); ++c)
+      cases.push_back(c);
+    auto switchOp = scf::IndexSwitchOp::create(
+        rewriter, loc, TypeRange{}, which,
+        DenseI64ArrayAttr::get(rewriter.getContext(), cases), tags.size());
+    auto emit = [&](int32_t tag) {
+      if (waitForRoom)
+        DmaPollForQueueSpaceOp::create(rewriter, loc, DMAChannelDir::MM2S,
+                                       channel);
+      DmaPushQueueOp::create(rewriter, loc, DMAChannelDir::MM2S, channel,
+                             /*bd_id=*/nullptr,
+                             rewriter.getI32IntegerAttr(tag),
+                             /*repeat_count=*/0, /*out_of_order=*/false);
+      scf::YieldOp::create(rewriter, loc);
+    };
+    rewriter.createBlock(&switchOp.getDefaultRegion());
+    rewriter.setInsertionPointToStart(&switchOp.getDefaultBlock());
+    emit(tags[0]);
+    for (size_t c = 0; c < tags.size(); ++c) {
+      rewriter.createBlock(&switchOp.getCaseRegions()[c]);
+      rewriter.setInsertionPointToStart(&switchOp.getCaseBlock(c));
+      emit(tags[c]);
+    }
+    rewriter.setInsertionPointAfter(switchOp);
+  }
 
   LogicalResult matchAndRewrite(ObjectFifoReleaseOp releaseOp,
                                 PatternRewriter &rewriter) const override {
@@ -233,6 +317,8 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
       memref::StoreOp::create(rewriter, loc, next, held.getResult(),
                               ValueRange{});
     }
+
+    emitSendPushes(rewriter, loc, core, endpoint, pool, releaseOp.getSize());
 
     if (index) {
       emitAdvanceObjectIndex(rewriter, loc, index.getResult(), pool.getDepth(),
