@@ -12,40 +12,42 @@
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/OpBase.td"
 
-def I4  : I<4>;
+def I4 : I<4>;
 def I256 : I<256>;
 def I512 : I<512>;
 
-class TypeShape<string name> :
-  StrFunc<"cast<::mlir::ShapedType>($" # name # ").getShape()">;
+class TypeShape<string name>
+    : StrFunc<"cast<::mlir::ShapedType>($"#name#").getShape()">;
 
 // Notice: This predicate class assumes that the type has been verified to be a
 //         ShapedType
-class VectorOfShape<list<int> shape> :
-  CPred<TypeShape<"_self">.result # " == ArrayRef<int64_t>({" #
-        !interleave(shape, ", ") # "})">;
+class VectorOfShape<list<int> shape>
+    : CPred<TypeShape<"_self">.result#" == ArrayRef<int64_t>({"#!interleave(
+          shape, ", ")#"})">;
 
 // Notice: This predicate class assumes that the type has been verified to be a
 //         ShapedType
-class VectorOfElementType<Type type> :
-  SubstLeaves<"$_self", ElementType<"_self">.result, type.predicate>;
+class VectorOfElementType<Type type>
+    : SubstLeaves<"$_self", ElementType<"_self">.result, type.predicate>;
 
 // Notice: This predicate class assumes that the type has been verified to be a
 //         ShapedType
-class VectorOfShapeAndType<list<int> shape, Type type> :
-  Type<And<[VectorOfShape<shape>,
-            VectorOfElementType<type>]>,
-        "vector of shape <" # !interleave(shape, "x") # "> and",
-        "::mlir::VectorType">;
+class VectorOfShapeAndType<list<int> shape, Type type>
+    : Type<And<[VectorOfShape<shape>, VectorOfElementType<type>]>,
+           "vector of shape <"#!interleave(shape, "x")#"> and",
+           "::mlir::VectorType">;
 
-class ShapedTypeBitWidth<string name> :
-  StrFunc<"(cast<::mlir::ShapedType>($" # name # ").getElementTypeBitWidth() * "
-          # !subst(".getType()", "", ElementCount<name>.result) # ")">;
+class ShapedTypeBitWidth<string name>
+    : StrFunc<
+          "(cast<::mlir::ShapedType>($"#name#").getElementTypeBitWidth() "
+                                             "* "#!subst(
+                                                 ".getType()", "",
+                                                 ElementCount<name>.result)#")">;
 
-class VectorOfBitWidthAndElementTypes<int bitwidth, list<Type> allowedTypes> :
-  Type<And<[VectorOfNonZeroRankOf<allowedTypes>.predicate,
-            CPred<ShapedTypeBitWidth<"_self">.result # " == " # bitwidth>]>,
-       bitwidth # "-bit wide vector, of " # AnyTypeOf<allowedTypes>.summary>;
+class VectorOfBitWidthAndElementTypes<int bitwidth, list<Type> allowedTypes>
+    : Type<And<[VectorOfNonZeroRankOf<allowedTypes>.predicate,
+                CPred<ShapedTypeBitWidth<"_self">.result#" == "#bitwidth>]>,
+           bitwidth#"-bit wide vector, of "#AnyTypeOf<allowedTypes>.summary>;
 
 // Matmul integer operands carry signedness in the element type (e.g. si8/ui8);
 // a signless type keeps the historical default. AnyI<w> (isInteger(w)) matches
@@ -74,16 +76,16 @@ def AIE2PMatMulRHS : MatMulOperand<[AnyI8, AnyI16, BF16],
 def AIE2PMatMulACC
     : MatMulOperand<[AnyI32, F32], "an accumulator of AIE2P matrix-multiply">;
 
-class isOperandResultTypePairValidForAIE2MulElem<string lhs, string rhs, string acc> :
-  PredOpTrait<acc # " type is a valid accumulator type given the type of the" #
-              " operands.",
-    Or<[  
-      And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I8>]>, 
-      And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I16>]>, 
-      And <[ElementTypeIsPred<acc,I64>, ElementTypeIsPred<lhs,I32>]>, 
-      And <[ElementTypeIsPred<acc,F32>, ElementTypeIsPred<lhs,BF16>]>, 
-      And <[ElementTypeIsPred<acc,F32>, ElementTypeIsPred<lhs,F32>]>
-    ]>>;
+class isOperandResultTypePairValidForAIE2MulElem<string lhs, string rhs,
+                                                 string acc>
+    : PredOpTrait<
+          acc#" type is a valid accumulator type given the type of the"#" opera"
+                                                                        "nds.",
+          Or<[And<[ElementTypeIsPred<acc, I32>, ElementTypeIsPred<lhs, I8>]>,
+              And<[ElementTypeIsPred<acc, I32>, ElementTypeIsPred<lhs, I16>]>,
+              And<[ElementTypeIsPred<acc, I64>, ElementTypeIsPred<lhs, I32>]>,
+              And<[ElementTypeIsPred<acc, F32>, ElementTypeIsPred<lhs, BF16>]>,
+              And<[ElementTypeIsPred<acc, F32>,
+                   ElementTypeIsPred<lhs, F32>]>]>>;
 
- 
 #endif
