@@ -5232,6 +5232,51 @@ public:
   }
 };
 
+// Apply `IntrOpTy`, an AIE2P intrinsic from v16 accfloat to v16 bf16 such as
+// exp2 or tanh, to a 16- or 32-lane bf16 or f32 vector. A 32-lane vector is
+// processed as two 16-lane halves. bf16 lanes are widened to accfloat before
+// the intrinsic, and the bf16 results are widened again when `resultElemType`
+// is f32.
+template <typename IntrOpTy>
+static Value applyAccFloatUnaryIntrinsic(ConversionPatternRewriter &rewriter,
+                                         Location loc, Value source,
+                                         Type resultElemType) {
+  auto srcType = cast<VectorType>(source.getType());
+  unsigned laneSize = getVectorLaneSize(srcType);
+  auto v16bf16Ty = VectorType::get({16}, rewriter.getBF16Type());
+  auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
+  auto toF32 = [&](Value v16bf16) -> Value {
+    return xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
+        rewriter, loc, v16f32Ty, v16bf16);
+  };
+
+  SmallVector<Value, 2> parts;
+  if (laneSize == 16) {
+    parts.push_back(source);
+  } else {
+    for (int64_t half = 0; half < 2; ++half) {
+      SmallVector<int64_t> mask =
+          llvm::to_vector(llvm::seq<int64_t>(16 * half, 16 * (half + 1)));
+      parts.push_back(
+          vector::ShuffleOp::create(rewriter, loc, source, source, mask));
+    }
+  }
+  if (srcType.getElementType().isBF16())
+    for (Value &part : parts)
+      part = toF32(part);
+  for (Value &part : parts)
+    part = IntrOpTy::create(rewriter, loc, v16bf16Ty, part);
+  if (resultElemType.isF32())
+    for (Value &part : parts)
+      part = toF32(part);
+
+  if (parts.size() == 1)
+    return parts.front();
+  SmallVector<int64_t> combineMask = llvm::to_vector(llvm::seq<int64_t>(0, 32));
+  return vector::ShuffleOp::create(rewriter, loc, parts[0], parts[1],
+                                   combineMask);
+}
+
 // Convert aievec.exp to xllvm.exp2 intrinsic for AIE2P
 // Uses the identity: exp(x) = exp2(x * log2(e))
 // Supports both lane-16 and lane-32 bf16 vectors
@@ -5281,43 +5326,9 @@ public:
     auto mulResult = aievec::MulElemOp::create(rewriter, loc, resultF32Ty,
                                                adaptor.getSource(), log2eVec);
 
-    // Step 3: Call exp2 intrinsic based on lane size
-    Value exp2Result;
-    auto v16bf16Ty = VectorType::get({16}, rewriter.getBF16Type());
-
-    if (laneSize == 16) {
-      // Lane-16: Single exp2 call
-      // exp2 takes v16float and returns v16bfloat16
-      exp2Result =
-          xllvm::Exp2AIE2pIntrOp::create(rewriter, loc, v16bf16Ty, mulResult);
-    } else {
-      // Lane-32: Split-and-recombine pattern
-      // Split v32float into two v16float halves
-      SmallVector<int64_t> lowerMask, upperMask;
-      for (int i = 0; i < 16; ++i) {
-        lowerMask.push_back(i);      // indices 0-15
-        upperMask.push_back(16 + i); // indices 16-31
-      }
-
-      auto lowerHalf = vector::ShuffleOp::create(rewriter, loc, mulResult,
-                                                 mulResult, lowerMask);
-      auto upperHalf = vector::ShuffleOp::create(rewriter, loc, mulResult,
-                                                 mulResult, upperMask);
-
-      // Call exp2 on each half separately
-      auto exp2Lower =
-          xllvm::Exp2AIE2pIntrOp::create(rewriter, loc, v16bf16Ty, lowerHalf);
-      auto exp2Upper =
-          xllvm::Exp2AIE2pIntrOp::create(rewriter, loc, v16bf16Ty, upperHalf);
-
-      // Recombine the two v16bfloat16 results into v32bfloat16
-      SmallVector<int64_t> combineMask;
-      for (int i = 0; i < 32; ++i)
-        combineMask.push_back(i);
-
-      exp2Result = vector::ShuffleOp::create(rewriter, loc, exp2Lower,
-                                             exp2Upper, combineMask);
-    }
+    // Step 3: exp2 of the product
+    Value exp2Result = applyAccFloatUnaryIntrinsic<xllvm::Exp2AIE2pIntrOp>(
+        rewriter, loc, mulResult, rewriter.getBF16Type());
 
     rewriter.replaceOp(expOp, exp2Result);
 
@@ -5325,82 +5336,31 @@ public:
   }
 };
 
-// Convert aievec.tanh to xllvm.tanh intrinsic for AIE2P
-// Supports lane-16 and lane-32 bf16 and f32 vectors. The intrinsic takes
-// accfloat and returns bf16, so an f32 result is widened back.
-class TanhOpAIE2pConversion
-    : public mlir::ConvertOpToLLVMPattern<aievec::TanhOp> {
+// Convert aievec.tanh or aievec.exp2 to the matching xllvm intrinsic for
+// AIE2P. Supports lane-16 and lane-32 bf16 and f32 vectors.
+template <typename SrcOpTy, typename IntrOpTy>
+class AccFloatUnaryOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<SrcOpTy> {
 public:
-  using ConvertOpToLLVMPattern<aievec::TanhOp>::ConvertOpToLLVMPattern;
+  using ConvertOpToLLVMPattern<SrcOpTy>::ConvertOpToLLVMPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
 
   LogicalResult
-  matchAndRewrite(aievec::TanhOp tanhOp, OpAdaptor adaptor,
+  matchAndRewrite(SrcOpTy op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto loc = tanhOp.getLoc();
     auto srcType = cast<VectorType>(adaptor.getSource().getType());
-    auto srcElemType = srcType.getElementType();
+    Type srcElemType = srcType.getElementType();
     unsigned laneSize = getVectorLaneSize(srcType);
 
-    // Support v16 and v32 of bfloat16 or float
     if ((laneSize != 16 && laneSize != 32) ||
         (!srcElemType.isBF16() && !srcElemType.isF32()))
-      return tanhOp.emitWarning()
-             << "aievec.tanh conversion only supports v16 and v32 of "
-                "bfloat16 or float.\n";
+      return op.emitWarning()
+             << op->getName()
+             << " conversion only supports v16 and v32 of bfloat16 or float.\n";
 
-    bool isF32 = srcElemType.isF32();
-    auto v16bf16Ty = VectorType::get({16}, rewriter.getBF16Type());
-    auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
-
-    auto toF32 = [&](Value v16bf16) -> Value {
-      return xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
-          rewriter, loc, v16f32Ty, v16bf16);
-    };
-
-    Value tanhResult;
-
-    if (laneSize == 16) {
-      // Lane-16: Convert bf16->f32 if needed, then call tanh
-      Value inputF32 = isF32 ? adaptor.getSource() : toF32(adaptor.getSource());
-      tanhResult =
-          xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, inputF32);
-      if (isF32)
-        tanhResult = toF32(tanhResult);
-    } else {
-      // Lane-32: Split into two 16-lane halves, tanh each, recombine
-      SmallVector<int64_t> lowerMask, upperMask;
-      for (int i = 0; i < 16; ++i) {
-        lowerMask.push_back(i);
-        upperMask.push_back(16 + i);
-      }
-
-      Value lowerHalf = vector::ShuffleOp::create(
-          rewriter, loc, adaptor.getSource(), adaptor.getSource(), lowerMask);
-      Value upperHalf = vector::ShuffleOp::create(
-          rewriter, loc, adaptor.getSource(), adaptor.getSource(), upperMask);
-
-      Value lowerF32 = isF32 ? lowerHalf : toF32(lowerHalf);
-      Value upperF32 = isF32 ? upperHalf : toF32(upperHalf);
-
-      Value tanhLower =
-          xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, lowerF32);
-      Value tanhUpper =
-          xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, upperF32);
-      if (isF32) {
-        tanhLower = toF32(tanhLower);
-        tanhUpper = toF32(tanhUpper);
-      }
-
-      SmallVector<int64_t> combineMask;
-      for (int i = 0; i < 32; ++i)
-        combineMask.push_back(i);
-
-      tanhResult = vector::ShuffleOp::create(rewriter, loc, tanhLower,
-                                             tanhUpper, combineMask);
-    }
-
-    rewriter.replaceOp(tanhOp, tanhResult);
-
+    rewriter.replaceOp(
+        op, applyAccFloatUnaryIntrinsic<IntrOpTy>(
+                rewriter, op.getLoc(), adaptor.getSource(), srcElemType));
     return success();
   }
 };
@@ -5720,7 +5680,10 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   // returns failure for i4->i8 inputs.
   patterns.add<UnpackI4OpAIE2pConversion>(converter, /*benefit=*/2);
   patterns.add<ExpOpAIE2pConversion>(converter);
-  patterns.add<TanhOpAIE2pConversion>(converter);
+  patterns.add<
+      AccFloatUnaryOpAIE2pConversion<aievec::TanhOp, xllvm::TanhAIE2pIntrOp>,
+      AccFloatUnaryOpAIE2pConversion<aievec::Exp2Op, xllvm::Exp2AIE2pIntrOp>>(
+      converter);
   patterns.add<InvOpAIE2pConversion>(converter);
   patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
   patterns.add<RsqrtOpAIE2pConversion>(converter);

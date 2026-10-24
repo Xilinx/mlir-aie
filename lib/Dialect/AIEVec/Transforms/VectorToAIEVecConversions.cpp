@@ -924,9 +924,10 @@ static bool matchExpOpForAIE2P(math::ExpOp::Adaptor adaptor) {
          elWidth == 16;
 }
 
-// Check if a vector type matches AIE2P tanh constraints. The tanh intrinsic
-// takes an accfloat operand, so f32 vectors map onto it as well as bf16.
-static bool isAIE2PTanhType(VectorType type) {
+// Check if a vector type matches the AIE2P tanh and exp2 constraints. These
+// intrinsics take an accfloat operand, so f32 vectors map onto them as well as
+// bf16.
+static bool isAIE2PAccFloatUnaryType(VectorType type) {
   if (type.isScalable())
     return false;
   Type elemType = type.getElementType();
@@ -935,9 +936,10 @@ static bool isAIE2PTanhType(VectorType type) {
          (laneSize == 16 || laneSize == 32);
 }
 
-// Check if math.tanh or math.erf of `type` is lowered for AIE2P: a bf16 or f32
-// scalar, one-lane vector, or vector matching isAIE2PTanhType.
-static bool isAIE2PTanhOrErfType(Type type) {
+// Check if math.tanh, math.erf or math.exp2 of `type` is lowered for AIE2P: a
+// bf16 or f32 scalar, one-lane vector, or vector matching
+// isAIE2PAccFloatUnaryType.
+static bool isAIE2PAccFloatUnaryOrScalarType(Type type) {
   auto vecType = dyn_cast<VectorType>(type);
   if (!vecType)
     return type.isBF16() || type.isF32();
@@ -946,7 +948,7 @@ static bool isAIE2PTanhOrErfType(Type type) {
     Type elemType = vecType.getElementType();
     return elemType.isBF16() || elemType.isF32();
   }
-  return isAIE2PTanhType(vecType);
+  return isAIE2PAccFloatUnaryType(vecType);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3141,21 +3143,22 @@ struct ConvertMathExpToAIEVecExpOpPattern : OpConversionPattern<math::ExpOp> {
   }
 };
 
-// Convert math.tanh to aievec.tanh for AIE2P (will be further lowered to tanh
-// intrinsic)
-struct ConvertMathTanhToAIEVecTanhOpPattern
-    : OpConversionPattern<math::TanhOp> {
-  using OpConversionPattern::OpConversionPattern;
+// Convert math.tanh to aievec.tanh, or math.exp2 to aievec.exp2, for AIE2P.
+// Both are further lowered to the hardware intrinsic of the same name.
+template <typename MathOpTy, typename AIEVecOpTy>
+struct ConvertMathToAIEVecAccFloatUnaryOpPattern
+    : OpConversionPattern<MathOpTy> {
+  using OpConversionPattern<MathOpTy>::OpConversionPattern;
+  using OpAdaptor = typename MathOpTy::Adaptor;
 
   LogicalResult
-  matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
+  matchAndRewrite(MathOpTy op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-    if (!srcType || !isAIE2PTanhType(srcType))
+    if (!srcType || !isAIE2PAccFloatUnaryType(srcType))
       return failure();
 
-    rewriter.replaceOpWithNewOp<aievec::TanhOp>(tanhOp, srcType,
-                                                adaptor.getOperand());
+    rewriter.replaceOpWithNewOp<AIEVecOpTy>(op, srcType, adaptor.getOperand());
     return success();
   }
 };
@@ -3174,7 +3177,8 @@ struct ComputeErfOpAIE2PPattern : OpConversionPattern<math::ErfOp> {
   matchAndRewrite(math::ErfOp erfOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-    if (!srcType || srcType.getRank() != 1 || !isAIE2PTanhType(srcType))
+    if (!srcType || srcType.getRank() != 1 ||
+        !isAIE2PAccFloatUnaryType(srcType))
       return failure();
 
     constexpr double a = 1.1283791670955126;  // 2/sqrt(pi)
@@ -3220,8 +3224,8 @@ struct ComputeErfOpAIE2PPattern : OpConversionPattern<math::ErfOp> {
   }
 };
 
-// Convert a scalar math.tanh or math.erf for AIE2P by broadcasting it to a
-// 16-lane vector, applying the vector op and extracting lane 0.
+// Convert a scalar math.tanh, math.erf or math.exp2 for AIE2P by broadcasting
+// it to a 16-lane vector, applying the vector op and extracting lane 0.
 template <typename OpTy>
 struct ComputeScalarMathOpByVectorAIE2PPattern : OpConversionPattern<OpTy> {
   using OpConversionPattern<OpTy>::OpConversionPattern;
@@ -3244,8 +3248,8 @@ struct ComputeScalarMathOpByVectorAIE2PPattern : OpConversionPattern<OpTy> {
   }
 };
 
-// Convert a one-lane math.tanh or math.erf for AIE2P to the scalar op, which
-// ComputeScalarMathOpByVectorAIE2PPattern lowers.
+// Convert a one-lane math.tanh, math.erf or math.exp2 for AIE2P to the scalar
+// op, which ComputeScalarMathOpByVectorAIE2PPattern lowers.
 template <typename OpTy>
 struct ComputeOneLaneMathOpAIE2PPattern : OpConversionPattern<OpTy> {
   using OpConversionPattern<OpTy>::OpConversionPattern;
@@ -5494,10 +5498,10 @@ static SmallVector<int64_t, 5> getAIE2PNativeLanes(Operation *op) {
       lanes.push_back(n);
     return lanes;
   }
-  // The tanh intrinsic takes 16 lanes of accfloat, which f32 maps onto as
-  // well as bf16; 32 lanes are taken as two halves. erf is computed with
-  // tanh.
-  if (isa<math::TanhOp, math::ErfOp>(op)) {
+  // The tanh and exp2 intrinsics take 16 lanes of accfloat, which f32 maps
+  // onto as well as bf16; 32 lanes are taken as two halves. erf is computed
+  // with tanh.
+  if (isa<math::TanhOp, math::ErfOp, math::Exp2Op>(op)) {
     if (elemType.isF32() || elemType.isBF16())
       return {16, 32};
     return {};
@@ -5715,9 +5719,9 @@ struct AIE2PElementwiseOps {
 using AIE2PElementwise = AIE2PElementwiseOps<
     arith::MulFOp, arith::DivFOp, arith::AddFOp, arith::SubFOp, arith::NegFOp,
     arith::TruncFOp, arith::ExtFOp, math::ExpOp, math::TanhOp, math::ErfOp,
-    arith::MaximumFOp, arith::MaxNumFOp, arith::MinimumFOp, arith::CmpFOp,
-    arith::CmpIOp, arith::SelectOp, arith::AddIOp, arith::SubIOp, arith::MulIOp,
-    arith::IndexCastOp>;
+    math::Exp2Op, arith::MaximumFOp, arith::MaxNumFOp, arith::MinimumFOp,
+    arith::CmpFOp, arith::CmpIOp, arith::SelectOp, arith::AddIOp, arith::SubIOp,
+    arith::MulIOp, arith::IndexCastOp>;
 
 static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
   populateAIEVecV2CommonConversionPatterns(patterns);
@@ -5741,12 +5745,17 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
   AIE2PElementwise::addPatterns(patterns, /*benefit=*/3);
   // Higher benefit to take priority over the AIE2 LUT-based tanh and the
   // emitc-based erf patterns registered in the common patterns.
-  patterns.add<ConvertMathTanhToAIEVecTanhOpPattern, ComputeErfOpAIE2PPattern,
-               ComputeScalarMathOpByVectorAIE2PPattern<math::TanhOp>,
-               ComputeScalarMathOpByVectorAIE2PPattern<math::ErfOp>,
-               ComputeOneLaneMathOpAIE2PPattern<math::TanhOp>,
-               ComputeOneLaneMathOpAIE2PPattern<math::ErfOp>>(
-      patterns.getContext(), /*benefit=*/2);
+  patterns.add<
+      ConvertMathToAIEVecAccFloatUnaryOpPattern<math::TanhOp, aievec::TanhOp>,
+      ConvertMathToAIEVecAccFloatUnaryOpPattern<math::Exp2Op, aievec::Exp2Op>,
+      ComputeErfOpAIE2PPattern,
+      ComputeScalarMathOpByVectorAIE2PPattern<math::TanhOp>,
+      ComputeScalarMathOpByVectorAIE2PPattern<math::ErfOp>,
+      ComputeScalarMathOpByVectorAIE2PPattern<math::Exp2Op>,
+      ComputeOneLaneMathOpAIE2PPattern<math::TanhOp>,
+      ComputeOneLaneMathOpAIE2PPattern<math::ErfOp>,
+      ComputeOneLaneMathOpAIE2PPattern<math::Exp2Op>>(patterns.getContext(),
+                                                      /*benefit=*/2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -6161,14 +6170,17 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     return false;
   });
 
-  // AIE2P-specific legalization for tanh and erf with LLVMIR backend
+  // AIE2P-specific legalization for tanh, erf and exp2 with LLVMIR backend
   // bf16 and f32 scalars, and one-, 16- and 32-lane vectors are illegal (uses
-  // aievec.tanh)
+  // aievec.tanh or aievec.exp2)
   target.addDynamicallyLegalOp<math::TanhOp>([](math::TanhOp tanhOp) {
-    return !isAIE2PTanhOrErfType(tanhOp.getOperand().getType());
+    return !isAIE2PAccFloatUnaryOrScalarType(tanhOp.getOperand().getType());
   });
   target.addDynamicallyLegalOp<math::ErfOp>([](math::ErfOp erfOp) {
-    return !isAIE2PTanhOrErfType(erfOp.getOperand().getType());
+    return !isAIE2PAccFloatUnaryOrScalarType(erfOp.getOperand().getType());
+  });
+  target.addDynamicallyLegalOp<math::Exp2Op>([](math::Exp2Op exp2Op) {
+    return !isAIE2PAccFloatUnaryOrScalarType(exp2Op.getOperand().getType());
   });
 
   // AIE2P-specific legalization for divf 1.0/x pattern with LLVMIR backend

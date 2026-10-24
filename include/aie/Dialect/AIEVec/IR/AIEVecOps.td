@@ -531,6 +531,20 @@ def AIEVec_TanhOp:
   let hasVerifier = 0;
 }
 
+def AIEVec_Exp2Op
+    : AIEVec_Op<"exp2", [Pure, AllTypesMatch<["source", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
+  let summary = "AIE vector base-2 exponential";
+  let description = [{
+    AMD-specific intrinsic that computes 2 raised to each element of the input
+    vector. For AIE2P, this is lowered to the hardware exp2 intrinsic.
+    `$result = exp2(`$source`).
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
 def AIEVec_InvOp:
   AIEVec_Op<"inv", [
     Pure,
