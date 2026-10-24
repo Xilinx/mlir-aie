@@ -5,33 +5,25 @@
 """The host side of the prefill (aie2_prefill_layer.py): a prompt's
 positions, 64 a pass, into a Decoder's KV cache.
 
-Three hardware contexts share the decode's buffers in one process: the
-gather (build_gather) copies the prompt's lm_head slots into `prompt`, 31
-a dispatch; the prefill (build_prefill) runs a pass's 64 rows through
-every layer, a command each, queued; the decode then runs the rest of the
-prompt, at least its last token, whose sample is the first generated
-token. Every gather runs before the first pass, so a request switches
-contexts twice: gather to prefill, and prefill to decode.
+The prefill runs on the Decoder's hardware context, its commands in the
+same full ELF (aie2_llama.build_llama), on the decode's buffers: a pass's
+64 rows as its embed commands, which read the rows' tokens' lm_head slots
+from the decode's `lmw`, then a command a layer, all queued; the decode then
+runs the rest of the prompt, at least its last token, whose sample is the
+first generated token. A request's first prefill command and its first
+decode command each load their device's PDI.
 """
 
 import time
 
 import aie.iron as iron
 import numpy as np
-from aie2_decode import KV_BLOCK_WORDS, LMW_GAMMA_BYTES, M_MAX, WLM_SLOT
+from aie2_decode import KV_BLOCK_WORDS, M_MAX
 from aie2_prefill import pack_trailers
-from aie2_prefill_layer import (
-    GATHER_ROWS,
-    SLOT_WORDS,
-    PrefillStage,
-    build_gather,
-    build_prefill,
-    ids_words,
-    prompt_words,
-)
-from llama_config import CS_BYTES, KV_TB, N_TILE, D
+from aie2_prefill_layer import PREFILL, PrefillStage, embed_commands, ids_words
+from llama_config import CS_BYTES, KV_TB, D
 from llama_decode import LAYER_MS_PER_ROW
-from llama_npu import QUEUE_DEPTH, DispatchSession
+from llama_npu import QUEUE_DEPTH
 from ml_dtypes import bfloat16
 
 # A pass's time per layer at block j, PASS_LAYER_MS + PASS_BLOCK_MS * (j + 1),
@@ -54,15 +46,7 @@ class Prefiller:
         shape = decoder.shape
         self.n_layers = shape.n_layers
         self.t = shape.t
-        self.gather = DispatchSession(build_gather, None, T=shape.t)
-        self.session = DispatchSession(
-            build_prefill,
-            None,
-            N_LAYERS=shape.n_layers,
-            LAYER=0,
-            W_LAYERS=shape.n_layers,
-            T=shape.t,
-        )
+        self.session = decoder.session
         self.table_t = iron.tensor(
             pack_trailers(decoder.w_t.data, shape.n_layers).view(np.int32).ravel(),
             dtype=np.int32,
@@ -74,7 +58,6 @@ class Prefiller:
                 at = stage.gamma(L, post) * 4
                 st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
         self.stage_t = iron.tensor(st.view(np.int32), dtype=np.int32)
-        self.prompt_t = iron.zeros([prompt_words(shape.t)], dtype=np.int32)
         self.ids_t = iron.zeros([ids_words(shape.t)], dtype=np.int32)
         self.dispatch_ms = []
 
@@ -111,8 +94,8 @@ class Prefiller:
 
         Returns:
             (the first position the decode runs, the dispatches' wall time in
-            ms); dispatch_ms holds each gather's, then each pass's, from
-            the end of the one before.
+            ms); dispatch_ms holds each pass's, from the end of the one
+            before.
         """
         passes, pos = self.plan(len(prompt))
         self.dispatch_ms = []
@@ -120,19 +103,6 @@ class Prefiller:
             return pos, 0.0
         rows = passes * KV_TB
         toks = (list(prompt[:-1]) + [prompt[-1]] * rows)[:rows]
-        for at in range(0, rows, GATHER_ROWS):
-            group = toks[at : at + GATHER_ROWS]
-            group += [group[-1]] * (GATHER_ROWS - len(group))
-            self.dispatch_ms.append(
-                self.gather(
-                    [decoder.lmw_t, self.prompt_t],
-                    dst=at * SLOT_WORDS,
-                    **{
-                        f"g{i}": (LMW_GAMMA_BYTES + tok // N_TILE * WLM_SLOT) // 4
-                        for i, tok in enumerate(group)
-                    },
-                )
-            )
         with self.ids_t.mutate() as ids:
             ids[:rows] = toks
         tensors = [
@@ -140,7 +110,7 @@ class Prefiller:
             self.table_t,
             decoder.kv_t,
             self.stage_t,
-            self.prompt_t,
+            decoder.lmw_t,
             self.ids_t,
         ]
         queued = []
@@ -156,21 +126,18 @@ class Prefiller:
                 done = now
 
         for j in range(passes):
-            params = dict(
+            commands = embed_commands(toks[j * KV_TB : (j + 1) * KV_TB], j * KV_TB)
+            layer = dict(
                 nb=j + 1,
-                cs_off=j * KV_TB * CS_BYTES // 4,
+                rope_off=j * KV_TB * CS_BYTES // 4,
                 kv_row=j * KV_BLOCK_WORDS,
             )
-            for i in range(self.n_layers):
-                if i == 0:
-                    first = dict(prompt_off=j * KV_TB * SLOT_WORDS, ids_off=j * KV_TB)
-                else:
-                    first = {}
+            commands += [(f"{PREFILL}:layer{i}", layer) for i in range(self.n_layers)]
+            for n, (command, params) in enumerate(commands):
                 while len(queued) == QUEUE_DEPTH:
                     wait_oldest()
-                command = f"prefill:layer{i}"
-                dispatch = self.session.submit(tensors, command, **params, **first)
-                queued.append((dispatch, i == self.n_layers - 1))
+                dispatch = self.session.submit(tensors, command, **params)
+                queued.append((dispatch, n == len(commands) - 1))
         while queued:
             wait_oldest()
         return pos, sum(self.dispatch_ms)

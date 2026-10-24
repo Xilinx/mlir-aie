@@ -25,12 +25,12 @@ from aie2_decode import (
     WLM_SLOT,
     WLM_TOTAL,
     StageLayout,
-    build,
     kv_blocks,
     kv_words,
     wblob_layout,
 )
 from aie2_gemv_array import LAYER, MMA_SLOT, N_CORES, sample_param_values
+from aie2_llama import build_llama
 from llama_config import (
     CS_BYTES,
     KV_TB,
@@ -153,7 +153,7 @@ class DecodeShape:
 
     @property
     def compile_kwargs(self):
-        """aie2_decode.build's CompileTime values."""
+        """aie2_llama.build_llama's CompileTime values."""
         return dict(P_MAX=self.p_max, N_LAYERS=self.n_layers, T=self.t, KSET=self.kset)
 
     def params(self, t0, passes, sampler, batch=(), batch_ends_prompt=True):
@@ -381,7 +381,9 @@ class Generation:
 
 
 class Decoder:
-    """The decode on the NPU: one compiled build, its weights loaded.
+    """The decode on the NPU: one compiled build (aie2_llama.build_llama,
+    the decode and the prefill on one hardware context, `session`), its
+    weights loaded.
 
     Args:
         `shape`: The build.
@@ -393,7 +395,7 @@ class Decoder:
 
     def __init__(self, shape, layers, lm, rope, elf=None):
         self.shape = shape
-        self.session = DispatchSession(build, elf, **shape.compile_kwargs)
+        self.session = DispatchSession(build_llama, elf, **shape.compile_kwargs)
         self.w_t = iron.tensor(shape.pack_wblob(layers, rope), dtype=np.int8)
         self.lmw_t = iron.tensor(pack_lmw(*lm), dtype=np.int8)
         self.kv_t = None

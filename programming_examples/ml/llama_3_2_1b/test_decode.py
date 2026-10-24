@@ -274,7 +274,7 @@ def main(argv=None):
     )
     p.add_argument(
         "--elf",
-        help="run this full ELF, built by aie2_decode.py --full-elf-path "
+        help="run this full ELF, built by aie2_llama.py --full-elf-path "
         "at this test's configuration, instead of the JIT cache's",
     )
     p.add_argument(

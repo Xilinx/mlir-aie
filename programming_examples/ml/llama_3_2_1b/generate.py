@@ -15,7 +15,7 @@ the same tokens. The weights are already on the device, as on a server.
 real text: seeded random ids, not readable, but --check still scores them.
 
 With --prefill prefill (the default), the prompt's positions run through
-the prefill (llama_prefill.py), 64 a dispatch, into the decode's KV cache;
+the prefill (llama_prefill.py), 64 a pass, into the decode's KV cache;
 the decode runs the rest, at least the last token. With --prefill decode,
 the whole prompt runs through the decode, up to 4 tokens a dispatch. Each
 input comes from its own embed row, which the device gathers; the token
@@ -149,11 +149,9 @@ def main():
     )
     if prefiller is not None:
         passes, pos0 = prefiller.plan(len(prompt))
-        gathers = prefiller.dispatch_ms[: len(prefiller.dispatch_ms) - passes]
-        steps = prefiller.dispatch_ms[len(gathers) :]
+        steps = prefiller.dispatch_ms
         print(
-            f"prefill, the last request: {len(gathers)} gathers "
-            f"{sum(gathers):.1f} ms, {passes} passes {sum(steps):.1f} ms"
+            f"prefill, the last request: {passes} passes {sum(steps):.1f} ms"
             + (f" (first {steps[0]:.1f}, last {steps[-1]:.1f})" if steps else "")
             + f", decode from position {pos0}"
         )

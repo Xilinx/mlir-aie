@@ -114,14 +114,15 @@ Longer prompts go through a prefill design of their own
 (`aie2_prefill_layer.py`, host side `llama_prefill.py`): a pass runs 64
 prompt rows, one KV block, through all 16 layers, its GEMM array
 (`aie2_prefill.py`) taking each projection's weights once for the 64 rows.
-Each layer is its own command, and a pass's 16 are queued back to back on the
-hardware context, so a command's work stays one layer's however long the
-prompt; the next pass's commands queue behind them. A
-gather design first copies the prompt's lm_head slots into a `prompt` buffer,
-31 a dispatch, and the prefill makes each row's embed seed from its slot. The
-three designs share the weights, lm_head and KV cache buffers in one process,
-each in its own hardware context; a request switches contexts twice (gather to
-prefill, prefill to decode), about 2.4 ms each. The decode then runs the
+A pass starts with three embed commands, which read each row's token's
+lm_head slot straight from the lm_head weights (one ScratchpadParameter a
+row) and make its embed seed; then each layer is its own command. A pass's
+commands are queued back to back on the hardware context, so a command's work
+stays one layer's however long the prompt, and the next pass's commands queue
+behind them. The prefill and the decode are two devices of one full ELF
+(`aie2_llama.py`) on one hardware context, sharing the weights, lm_head and
+KV cache buffers; a request's first prefill command and its first decode
+command each load their device's PDI. The decode then runs the
 rest of the prompt, at least its last token, whose sample is the first
 generated token. A partial last block runs as a padded prefill pass when
 that beats the decode's batches for it (`Prefiller.plan`).
@@ -252,10 +253,11 @@ python gen_llama_data.py      # writes data/: INT8 weights, scales, gammas, toke
 
 The bf16 reference reads the safetensors directly.
 
-The decode test, `test_decode.py`, compiles `aie2_decode.py`
-with `@iron.jit` to a full ELF (cached under `NPU_CACHE_HOME`, so a rerun
-reuses it), or runs a prebuilt one (`--elf`, from
-`python aie2_decode.py ... --full-elf-path X`, which the same JIT key reuses).
+The decode test, `test_decode.py`, compiles the model's one design,
+`aie2_llama.py` (the decode and the prefill, each a device of one full ELF),
+with `@iron.jit` (cached under `NPU_CACHE_HOME`, so a rerun reuses it), or
+runs a prebuilt one (`--elf`, from `python aie2_llama.py ... --full-elf-path
+X`, which the same JIT key reuses). `generate.py` runs the same build.
 
 `run_llama.lit` runs the decode test's cases at 2 layers on synthetic
 weights (`--synthetic-weights`): from an empty cache, across dispatches,
@@ -315,7 +317,7 @@ taskset -c 2-23 python test_decode.py --n-layers 16 --time
 
 # the context sweep of section 2: one build at 128k, each context checked
 # and timed (the oracle takes about 100 s a token at 128k)
-python aie2_decode.py --n-layers 16 --t 131072 --full-elf-path build/X.elf
+python aie2_llama.py --n-layers 16 --t 131072 --full-elf-path build/X.elf
 taskset -c 2-23 python test_decode.py --n-layers 16 --t 131072 \
     --elf build/X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 131068 --time
 
@@ -337,7 +339,7 @@ CompileTime values; `bench_quality.py` takes the first two.
 | `--t` | KV cache length (default 128) |
 | `--kset` | the sampler's top-k set size (at most 8, default 8) |
 
-The rest of `build()` in `aie2_decode.py` is on its CLI too: `--p-max`, the
+The rest of `build_llama()` in `aie2_llama.py` is on its CLI too: `--p-max`, the
 tokens a dispatch can generate (1 to 4, default 4). Per dispatch,
 as ScratchpadParameters, go the tokens it generates (`--passes`, default by
 `passes_for`), the first token's position (`--start-pos`) and the sampler's

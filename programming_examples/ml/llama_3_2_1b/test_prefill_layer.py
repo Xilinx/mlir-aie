@@ -6,10 +6,11 @@
 the NPU, bit for bit against llama_oracle.Layer.forward.
 
 The prompt's tokens are seeded random ids; the device makes each row's
-embed seed from the token's lm_head slot (staged in `prompt` as the gather
-leaves it) and its id. The oracle runs the positions before block j one at
-a time, which fills its KV caches; the device gets those caches and runs
-block j's 64 rows in one pass, a command per layer, queued. Checked, every
+embed seed from the token's lm_head slot, read from the lm_head blob, and
+its id. The oracle runs the positions before block j one at a time, which
+fills its KV caches; the device gets those caches and runs block j's 64
+rows in one pass: its embed commands, then a command per layer, queued.
+Checked, every
 row bit for bit: the residual leaving the last layer, block j's KV rows in
 every layer, and every stage of the last layer the device leaves in `stage`
 against the same steps taken one at a time (forward_steps, itself checked
@@ -29,26 +30,20 @@ from pathlib import Path
 import aie.iron as iron
 import numpy as np
 from aie.utils.aie_fp32 import aie_add
-from aie2_decode import (
-    ACT_BYTES,
-    HACT_BYTES,
-    KV_BLOCK_WORDS,
-    LMW_GAMMA_BYTES,
-    WLM_SLOT,
-)
+from aie2_decode import ACT_BYTES, HACT_BYTES, KV_BLOCK_WORDS
 from aie2_prefill import pack_trailers
 from aie2_prefill_layer import (
     CHUNK_STRIDE,
+    PREFILL,
     QKV_FP,
-    SLOT_WORDS,
     PrefillStage,
     build_prefill,
+    embed_commands,
     ids_words,
-    prompt_words,
 )
-from llama_config import HD, HEAD_D, KV_TB, N_HEADS_KV, N_HEADS_Q, N_TILE, VOCAB, D
+from llama_config import HD, HEAD_D, KV_TB, N_HEADS_KV, N_HEADS_Q, VOCAB, D
 from llama_decode import DecodeShape, pack_lmw
-from llama_npu import DispatchSession
+from llama_npu import QUEUE_DEPTH, DispatchSession
 from llama_oracle import (
     Layer,
     attention_blocks,
@@ -275,28 +270,24 @@ def main():
             at = stage.gamma(L, post) * 4
             st[at : at + 2 * D] = np.asarray(g, bfloat16).view(np.int8)
     lmw = pack_lmw(embed, embed_sc, np.zeros(D, np.float32))
-    prompt = np.zeros(prompt_words(opts.t) * 4, np.int8)
-    for p, tok in enumerate(tokens):
-        at = LMW_GAMMA_BYTES + tok // N_TILE * WLM_SLOT
-        prompt[p * WLM_SLOT : (p + 1) * WLM_SLOT] = lmw[at : at + WLM_SLOT]
-    del lmw
     ids = np.zeros(ids_words(opts.t), np.int32)
     ids[: tokens.size] = tokens
     wblob = shape.pack_wblob(layers, rope)
-    params = dict(nb=j + 1, cs_off=p0 * 64, kv_row=j * KV_BLOCK_WORDS)
-    first_params = dict(params, prompt_off=p0 * SLOT_WORDS, ids_off=p0)
+    layer = dict(nb=j + 1, rope_off=p0 * 64, kv_row=j * KV_BLOCK_WORDS)
+    commands = embed_commands(tokens[p0:], p0)
+    commands += [(f"{PREFILL}:layer{i}", layer) for i in range(n)]
     kwargs = dict(N_LAYERS=n, LAYER=0, W_LAYERS=n, T=opts.t)
 
     def run_pass():
-        """The pass's layer commands, queued; its wall time in ms."""
+        """The pass's commands, queued QUEUE_DEPTH at most; its wall time
+        in ms."""
         start = time.perf_counter_ns()
-        started = [
-            session.submit(
-                tensors, f"prefill:layer{i}", **(first_params if i == 0 else params)
-            )
-            for i in range(n)
-        ]
-        for d in started:
+        queued = []
+        for command, params in commands:
+            if len(queued) == QUEUE_DEPTH:
+                queued.pop(0).wait()
+            queued.append(session.submit(tensors, command, **params))
+        for d in queued:
             d.wait()
         return (time.perf_counter_ns() - start) / 1e6
 
@@ -314,7 +305,7 @@ def main():
             iron.tensor(pack_trailers(wblob, n).view(np.int32).ravel(), dtype=np.int32),
             kv_t,
             st_t,
-            iron.tensor(prompt.view(np.int32), dtype=np.int32),
+            iron.tensor(lmw.view(np.int32), dtype=np.int32),
             iron.tensor(ids, dtype=np.int32),
         ]
         first_ms = run_pass()
