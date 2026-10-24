@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecShuffleModes.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
@@ -5344,6 +5345,10 @@ class ShuffleOpConversion
   LogicalResult
   matchAndRewrite(aievec::ShuffleOp shuffleOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (isAIE2POnlyShuffleMode(shuffleOp.getMode()))
+      return shuffleOp.emitOpError()
+             << "shuffle mode '" << stringifyShuffleMode(shuffleOp.getMode())
+             << "' is not available on AIE2";
     auto loc = shuffleOp.getLoc();
     auto lhs = adaptor.getLhs();
     auto rhs = adaptor.getRhs();
@@ -5373,8 +5378,8 @@ class ShuffleOpConversion
   }
 };
 
-// aievec.shuffle on AIE2P: the mode numbers are AIE2's, the intrinsic is
-// AIE2P's.
+// aievec.shuffle on AIE2P: AIE2P keeps AIE2's mode numbers and adds its own;
+// the intrinsic is AIE2P's.
 class ShuffleOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::ShuffleOp> {
   using ConvertOpToLLVMPattern<aievec::ShuffleOp>::ConvertOpToLLVMPattern;

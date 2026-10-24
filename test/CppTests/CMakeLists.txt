@@ -34,6 +34,13 @@ else()
 endif()
 add_test(NAME Bfloat16Fallback COMMAND bfloat16_fallback_test)
 
+# The aievec.shuffle mode table against the permutations measured on AIE2P.
+add_executable(aievec_shuffle_modes aievec_shuffle_modes.cpp)
+target_link_libraries(aievec_shuffle_modes PRIVATE MLIRAIEVecDialect)
+add_test(NAME AIEVecShuffleModes
+         COMMAND aievec_shuffle_modes
+                 ${CMAKE_CURRENT_SOURCE_DIR}/aie2p_vshuffle_modes.json)
+
 # ELF fixtures and checks are in test/aiecc/stack_size_analysis.test.
 add_executable(stack_size_analysis stack_size_analysis.cpp
                ${CMAKE_CURRENT_SOURCE_DIR}/../../tools/aiecc/StackSizeAnalysis.cpp)
@@ -46,7 +53,8 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
 set(EXECUTABLES target_model target_model_rtti target_model_unknown_device register_database device_cache)
 
-set(CPP_TEST_DEPENDS ${EXECUTABLES} bfloat16_fallback_test stack_size_analysis)
+set(CPP_TEST_DEPENDS ${EXECUTABLES} bfloat16_fallback_test stack_size_analysis
+    aievec_shuffle_modes)
 add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND}
                   DEPENDS ${CPP_TEST_DEPENDS})
 
