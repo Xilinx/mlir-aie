@@ -182,13 +182,13 @@ __attribute__((noinline)) static void block_sv(const int8_t *v,
       ::aie::vector<int32, 32> lo =
           ::aie::bit_and(int32(0x1fffff), acc.template to_vector<int32>(0));
       auto neg = ::aie::lt(hi, int32(0));
-      ::aie::vector<int32, 32> h = ::aie::select(
-          hi,
-          ::aie::sub(::aie::neg(hi),
-                     ::aie::select(::aie::zeros<int32, 32>(),
-                                   ::aie::broadcast<int32, 32>(1),
-                                   ::aie::neq(lo, int32(0)))),
-          neg);
+      ::aie::vector<int32, 32> h =
+          ::aie::select(hi,
+                        ::aie::sub(::aie::neg(hi),
+                                   ::aie::select(::aie::zeros<int32, 32>(),
+                                                 ::aie::broadcast<int32, 32>(1),
+                                                 ::aie::neq(lo, int32(0)))),
+                        neg);
       ::aie::vector<int32, 32> l = ::aie::select(
           lo, ::aie::bit_and(int32(0x1fffff), ::aie::sub(int32(0x200000), lo)),
           neg);
@@ -196,10 +196,11 @@ __attribute__((noinline)) static void block_sv(const int8_t *v,
       // p: the result's ULP in units of L, 2^max(0, e - 2) for H in
       // [2^e, 2^(e + 1)).
       ::aie::vector<int32, 32> pfield = ::aie::max(
-          ::aie::sub(::aie::downshift(::aie::bit_and(int32(0x7f800000),
-                                                     fh.template cast_to<int32>()),
-                                      23),
-                     int32(2)),
+          ::aie::sub(
+              ::aie::downshift(::aie::bit_and(int32(0x7f800000),
+                                              fh.template cast_to<int32>()),
+                               23),
+              int32(2)),
           int32(127));
       ::aie::vector<int32, 32> p = ::aie::to_fixed<int32>(
           ::aie::upshift(pfield, 23).template cast_to<float>(), 0);
