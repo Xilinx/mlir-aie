@@ -3034,6 +3034,53 @@
     "offered": 95,
     "checked": 92
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "40069549085",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40069549085",
+   "date": "2026-10-24T06:16:27+00:00",
+   "commit": {
+    "id": "b775c31bef7a359dc0ff0c371af053de1cb61566",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/b775c31bef7a359dc0ff0c371af053de1cb61566",
+    "message": "Add ObjectFifoPool To IRON in Python (#3964)",
+    "timestamp": "2026-10-23T22:59:13Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "b775c31bef",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 1955,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 720,
+    "failed": 0,
+    "timed": 329,
+    "timing_failed": 0,
+    "untimed": 391,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 95,
+    "checked": 92
+   }
   }
  ]
 }
