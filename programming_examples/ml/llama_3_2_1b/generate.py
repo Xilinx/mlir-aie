@@ -15,9 +15,10 @@ the same tokens. The weights are already on the device, as on a server.
 real text: seeded random ids, not readable, but --check still scores them.
 
 With --prefill prefill (the default), the prompt's positions run through
-the prefill (llama_prefill.py), 64 a pass, into the decode's KV cache;
-the decode runs the rest, at least the last token. With --prefill decode,
-the whole prompt runs through the decode, up to 4 tokens a command. Each
+the prefill (llama_prefill.py), up to 64 a pass, into the decode's KV
+cache, and the decode runs the last 1 to 4 tokens. --prefill decode runs
+the whole prompt through the decode instead, up to 4 tokens a command:
+only a comparison with the prefill, which nothing falls back to. Each
 input comes from its own embed row, which the device gathers; the token
 after the last one is the first generated, and generation goes on from
 there.
@@ -30,7 +31,6 @@ Run (compiles the design, or reuses its JIT cache entry):
 """
 
 import argparse
-import fcntl
 import sys
 import time
 from pathlib import Path
@@ -71,13 +71,12 @@ def main():
         "--prefill",
         choices=("prefill", "decode"),
         default="prefill",
-        help="what runs the prompt: the prefill design, or the decode alone",
+        help="what runs the prompt: the prefill design, or (to compare) the decode",
     )
     p.add_argument("--sample-temp", type=float, default=0.0, help="0: greedy")
     p.add_argument("--sample-topk", type=int, default=0, help="0: the whole set")
     p.add_argument("--sample-seed", type=int, default=0)
     p.add_argument("--data-dir", default=str(Path(__file__).parent / "data"))
-    p.add_argument("--lock", help="flock this file around the NPU work")
     p.add_argument("--elf", help="a prebuilt full ELF of this build")
     p.add_argument(
         "--repeats",
@@ -122,9 +121,6 @@ def main():
             return [BOS] + ids.tolist()
         return [BOS] + enc.encode(opts.prompt)
 
-    lock = open(opts.lock, "w") if opts.lock else None
-    if lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
     # Moves the weights to the device and opens every context once, as a
     # server does before its first prompt: one prefill pass, then the decode.
     prompt = tokenize()
@@ -138,8 +134,6 @@ def main():
                 prompt, opts.max_new, sample, STOP, started, prefiller=prefiller
             )
         )
-    if lock and not opts.check:
-        fcntl.flock(lock, fcntl.LOCK_UN)
     runs.sort(key=lambda g: g.ttft_s)
     gen = runs[len(runs) // 2]
     out = gen.tokens
@@ -175,8 +169,6 @@ def main():
     # The prompt's KV rows, and its last position's final hidden state from
     # a request that stops at the first generated token.
     decoder.generate(prompt, 1, sample, prefiller=prefiller)
-    if lock:
-        fcntl.flock(lock, fcntl.LOCK_UN)
     assert decoder.kv_t is not None and decoder.stage_t is not None
     shape = decoder.shape
     kv = decoder.kv_t.numpy().copy()

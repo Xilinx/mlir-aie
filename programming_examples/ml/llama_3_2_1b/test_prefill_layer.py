@@ -17,14 +17,10 @@ leaves in `stage` against the same steps taken one at a time
 (forward_steps, itself checked against Layer.forward), which also locates
 a mismatch; and that the block's rows past the pass's keep what the cache
 held.
-
-The oracle runs before the NPU lock is taken; `--lock` serializes the device
-part with other users of the NPU.
 """
 
 import argparse
 import copy
-import fcntl
 import sys
 import time
 from pathlib import Path
@@ -223,7 +219,6 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--warmup", type=int, default=5)
     ap.add_argument("--iters", type=int, default=0, help="timed dispatches; 0: none")
-    ap.add_argument("--lock", type=Path, help="flock this file around NPU work")
     opts = ap.parse_args()
 
     j = opts.block
@@ -303,34 +298,27 @@ def main():
 
     build_prefill.specialize(full_elf=True, **kwargs).compile()
 
-    lock = open(opts.lock, "w") if opts.lock else None
-    if lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-    try:
-        session = DispatchSession(build_prefill, None, **kwargs)
-        kv_t = iron.tensor(kv_before.copy(), dtype=np.int32)
-        st_t = iron.tensor(st.view(np.int32).copy(), dtype=np.int32)
-        tensors = [
-            iron.tensor(wblob.view(np.int32), dtype=np.int32),
-            iron.tensor(pack_trailers(wblob, n).view(np.int32).ravel(), dtype=np.int32),
-            kv_t,
-            st_t,
-            iron.tensor(lmw.view(np.int32), dtype=np.int32),
-            iron.tensor(ids, dtype=np.int32),
-        ]
-        first_ms = run_pass()
-        kv_t.to("cpu")
-        st_t.to("cpu")
-        kv_got = kv_t.numpy().copy()
-        st_got = st_t.numpy().copy().view(np.int8)
-        times = []
-        if opts.iters:
-            for _ in range(opts.warmup):
-                run_pass()
-            times = [run_pass() for _ in range(opts.iters)]
-    finally:
-        if lock:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+    session = DispatchSession(build_prefill, None, **kwargs)
+    kv_t = iron.tensor(kv_before.copy(), dtype=np.int32)
+    st_t = iron.tensor(st.view(np.int32).copy(), dtype=np.int32)
+    tensors = [
+        iron.tensor(wblob.view(np.int32), dtype=np.int32),
+        iron.tensor(pack_trailers(wblob, n).view(np.int32).ravel(), dtype=np.int32),
+        kv_t,
+        st_t,
+        iron.tensor(lmw.view(np.int32), dtype=np.int32),
+        iron.tensor(ids, dtype=np.int32),
+    ]
+    first_ms = run_pass()
+    kv_t.to("cpu")
+    st_t.to("cpu")
+    kv_got = kv_t.numpy().copy()
+    st_got = st_t.numpy().copy().view(np.int8)
+    times = []
+    if opts.iters:
+        for _ in range(opts.warmup):
+            run_pass()
+        times = [run_pass() for _ in range(opts.iters)]
 
     print(f"first pass: {first_ms:.3f} ms")
     stages_ok = True
