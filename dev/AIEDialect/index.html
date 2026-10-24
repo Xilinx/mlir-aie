@@ -13150,6 +13150,14 @@ serves several independent actors: each holds its own slice under its own
 locks.</p>
 <p><code>produceLock</code> and <code>consumeLock</code> are filled in by
 <code>--aie-objectfifo-allocate</code>, which leaves alone whatever is already named.</p>
+<p><code>manualFill</code> and <code>manualDrain</code> hand one end of the segment to a DMA
+program the author writes, such as an <code>aie.mem</code> whose buffer descriptors
+name this segment's locks. <code>--aie-objectfifo-verify</code> then asks for no
+endpoint at that end, since the pool ops do not describe who works it.
+The author owes the lock protocol the other end expects: a filler acquires
+<code>produceLock</code> and releases <code>consumeLock</code>, a drainer the reverse, by the
+same count per object. Setting the attribute also claims that end, so a
+segment carrying it must not also name an endpoint there.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-74-1" name="__codelineno-74-1" href="#__codelineno-74-1"></a>  aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
 </code></pre></div></p>
@@ -13163,6 +13171,8 @@ locks.</p>
 <tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>produceLock</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>consumeLock</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>manualFill</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
+<tr><td><code>manualDrain</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
 </table>
 
 <h3 id="aieobjectfifo_rearm_binding-xilinxaieobjectfiforearmbindingop"><code>aie.objectfifo_rearm_binding</code> (::xilinx::AIE::ObjectFifoRearmBindingOp)<a class="headerlink" href="#aieobjectfifo_rearm_binding-xilinxaieobjectfiforearmbindingop" title="Permanent link">&para;</a></h3>
