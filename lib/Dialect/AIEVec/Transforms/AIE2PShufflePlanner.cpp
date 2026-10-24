@@ -883,8 +883,7 @@ std::optional<ShuffleGather> gatherOf(const ShuffleRequest &req, bool fold,
     return std::nullopt;
   int64_t m = resTy.getNumElements();
   // emitPlan concatenates the result registers in pairs.
-  if (m * w > 512 &&
-      (m * w % 512 != 0 || !llvm::isPowerOf2_64(m * w / 512)))
+  if (m * w > 512 && (m * w % 512 != 0 || !llvm::isPowerOf2_64(m * w / 512)))
     return std::nullopt;
 
   ShuffleGather g;
