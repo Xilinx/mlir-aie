@@ -17,6 +17,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
@@ -696,6 +697,36 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
   }
 };
 
+// Carry an n-D vector through an scf.for loop as a rank-1 vector. The LLVM
+// lowering turns an n-D vector into an array of rank-1 rows, so a loop that
+// carries one splits it into rows and rebuilds it on every iteration instead
+// of keeping it in registers. AIE2P lowers n-D elementwise ops by flattening
+// them to rank 1, so the shape casts added here at the loop boundary fold
+// against the ones that flattening adds. Each match rewrites one iter_arg.
+struct FlattenVectorIterArgsPattern : OpRewritePattern<scf::ForOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
+                                PatternRewriter &rewriter) const override {
+    for (OpOperand &init : forOp.getInitArgsMutable()) {
+      auto vecType = dyn_cast<VectorType>(init.get().getType());
+      if (!vecType || vecType.getRank() < 2 || vecType.isScalable())
+        continue;
+      Value flat = vector::ShapeCastOp::create(rewriter, forOp.getLoc(),
+                                               getFlattenedVectorType(vecType),
+                                               init.get());
+      auto shapeCast = [](OpBuilder &builder, Location loc, Type type,
+                          Value source) -> Value {
+        return vector::ShapeCastOp::create(builder, loc, type, source);
+      };
+      rewriter.replaceOp(forOp, scf::replaceAndCastForOpIterArg(
+                                    rewriter, forOp, init, flat, shapeCast));
+      return success();
+    }
+    return failure();
+  }
+};
+
 //============================================================================//
 //============ AIE2 canonicalization conversion patterns ===============//
 //============================================================================//
@@ -1217,6 +1248,8 @@ struct CanonicalizeVectorForAIEVecPass
       RewritePatternSet patterns(context);
       patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
                    CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
+      if (aieTarget == "aie2p")
+        patterns.add<FlattenVectorIterArgsPattern>(context);
       (void)applyPatternsGreedily(op, std::move(patterns));
     }
 
