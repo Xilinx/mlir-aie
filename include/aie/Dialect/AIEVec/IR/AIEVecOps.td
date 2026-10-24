@@ -814,6 +814,9 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
     t16_1x2_flip = [1, 0, 3, 2, ..., 29, 28, 31, 30]
     ```
 
+    The modes marked (AIE2P) exist on AIE2P only. Inside an `aie.device` of
+    another architecture they are rejected.
+
     The list of supported shuffle modes, required operands, and associated
     vector types are the following:
 

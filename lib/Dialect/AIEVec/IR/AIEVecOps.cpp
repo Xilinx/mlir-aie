@@ -15,9 +15,11 @@
 #include "mlir/Transforms/FoldUtils.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecShuffleModes.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -1452,6 +1454,10 @@ LogicalResult MatMulOp_AIE2P::verify() { return verifyMatMulOp(*this, true); }
 // ShuffleOp
 //===----------------------------------------------------------------------===//
 
+bool xilinx::aievec::isAIE2POnlyShuffleMode(ShuffleMode mode) {
+  return static_cast<uint32_t>(mode) >= 48;
+}
+
 // This verification function makes sure that the shuffle mode supports the
 // number and type of operands provided.
 LogicalResult ShuffleOp::verify() {
@@ -1547,6 +1553,13 @@ LogicalResult ShuffleOp::verify() {
     return emitError() << "shuffle mode '" << stringifyEnum(mode)
                        << "' requires vectors of " << modeBitWidth
                        << "-bit elements";
+
+  // When the op sits in a device, the device fixes the architecture.
+  if (isAIE2POnlyShuffleMode(mode))
+    if (auto target = (*this)->getParentOfType<AIE::AIETarget>())
+      if (target.getTargetModel().getTargetArch() != AIE::AIEArch::AIE2p)
+        return emitError() << "shuffle mode '" << stringifyEnum(mode)
+                           << "' is only available on AIE2P";
 
   return success();
 }

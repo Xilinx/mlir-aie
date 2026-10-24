@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecShuffleModes.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
@@ -5133,6 +5134,10 @@ class ShuffleOpConversion
   LogicalResult
   matchAndRewrite(aievec::ShuffleOp shuffleOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (isAIE2POnlyShuffleMode(shuffleOp.getMode()))
+      return shuffleOp.emitOpError()
+             << "shuffle mode '" << stringifyShuffleMode(shuffleOp.getMode())
+             << "' is not available on AIE2";
     auto loc = shuffleOp.getLoc();
     auto lhs = adaptor.getLhs();
     auto rhs = adaptor.getRhs();
