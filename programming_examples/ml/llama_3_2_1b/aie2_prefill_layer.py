@@ -26,13 +26,17 @@ in phases through a DDR `stage` buffer (PrefillStage), on all 32 cores:
   row (llama_attn_block_q), so every query's fold is attention_blocks'.
 
 Every kernel is the decode's arithmetic, so each row matches
-llama_oracle.Layer.forward bit for bit. Per dispatch, as ScratchpadParameters:
-the blocks attention reads (j + 1), the first row's RoPE row, block j's offset
-in the cache, and the first row's slot in `prompt` and id in `ids`.
+llama_oracle.Layer.forward bit for bit. Each layer is its own command
+(prefill:layer{i}), the first also making the embed seeds, so a command's
+work is one layer's whatever the prompt's length; a pass queues its layers'
+commands back to back. Per command, as ScratchpadParameters: the blocks
+attention reads (j + 1), the first row's RoPE row and block j's offset in the
+cache; for layer 0 also the first row's slot in `prompt` and id in `ids`.
 """
 
 import argparse
 import sys
+from functools import partial
 
 import llama_kernels
 import numpy as np
@@ -52,6 +56,7 @@ from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
+    DeviceConfiguration,
     ObjectFifo,
     Program,
     Runtime,
@@ -178,10 +183,11 @@ def build_prefill(
     W_LAYERS: CompileTime[int] = 1,
     T: CompileTime[int] = 128,
 ):
-    """Layers LAYER..LAYER + N_LAYERS - 1's prefill of M rows at block j.
+    """Layers LAYER..LAYER + N_LAYERS - 1's prefill of M rows at block j,
+    a command (prefill:layer{i}) per layer.
 
     Args:
-        N_LAYERS: Layers a dispatch runs.
+        N_LAYERS: Layers a pass runs.
         LAYER: The first, in the weight blob, trailer table and KV cache.
         W_LAYERS: Layers of the weight blob and KV cache (aie2_decode's
             N_LAYERS).
@@ -488,14 +494,11 @@ def build_prefill(
     def attn_body(c_kv, c_part, c_sv, chunks, states, nbp, mine, ktk, kb, kout):
         nb = nbp.read()
         last = addi(nb, constant(i32(), -1))
-        for t in range_(N_LAYERS * M // SUB):
+        for t in range_(M // SUB):
             q = c_kv.acquire(1)
             ktk(q, chunks, states, SUB)
             c_kv.release(1)
-            row0 = muli(
-                remsi(index_cast(i32(), t), constant(i32(), M // SUB)),
-                constant(i32(), SUB),
-            )
+            row0 = muli(index_cast(i32(), t), constant(i32(), SUB))
             for b in range_(index_cast(index(), nb)):
                 bi = index_cast(i32(), b)
                 blk = c_kv.acquire(1)
@@ -572,7 +575,7 @@ def build_prefill(
     act = ACT_BYTES // 4
     hact = HACT_BYTES // 4
 
-    def sequence(wblob, table, kv, st, prompt, ids, *fifos):
+    def sequence(i, wblob, table, kv, st, prompt, ids, *fifos):
         it = iter(fifos)
         gemm, gr, gr_out, gq, gq_ch, gq_rw, gs, kv_in, sv_out = (
             [next(it) for _ in range(n)] for n in sizes
@@ -771,44 +774,46 @@ def build_prefill(
             gemms(["d"], layer)
             gr_phase(stage.words("x1"), gr_y(stage.words("out_d"), False), x_out, False)
 
-        # The rows' embed seeds into xa.
-        tg = TaskGroup()
-        gr[0].fill(
-            prompt,
-            tap=tap(
-                prompt_total,
-                0,
-                [GR_ROWS, GR, 4, SLOT_WORDS // 4],
-                [SLOT_WORDS, GR_ROWS * SLOT_WORDS, SLOT_WORDS // 4, 1],
-            ),
-            offset_parameter=p_prompt,
-            group=tg,
-        )
-        gr[1].fill(
-            ids,
-            tap=tap(ids_total, 0, [1, GR, 4, 512], [0, 0, 512, 1]),
-            offset_parameter=p_ids,
-            group=tg,
-        )
-        gr_out[1].drain(st, tap=gr_y(stage.words("xa"), False), group=tg, wait=True)
-        tg.finish()
+        if i == 0:
+            # The rows' embed seeds into xa.
+            tg = TaskGroup()
+            gr[0].fill(
+                prompt,
+                tap=tap(
+                    prompt_total,
+                    0,
+                    [GR_ROWS, GR, 4, SLOT_WORDS // 4],
+                    [SLOT_WORDS, GR_ROWS * SLOT_WORDS, SLOT_WORDS // 4, 1],
+                ),
+                offset_parameter=p_prompt,
+                group=tg,
+            )
+            gr[1].fill(
+                ids,
+                tap=tap(ids_total, 0, [1, GR, 4, 512], [0, 0, 512, 1]),
+                offset_parameter=p_ids,
+                group=tg,
+            )
+            gr_out[1].drain(st, tap=gr_y(stage.words("xa"), False), group=tg, wait=True)
+            tg.finish()
         x = (stage.words("xa"), stage.words("xb"))
-        for i in range(N_LAYERS):
-            layer_phases(i, LAYER + i, x[i % 2], x[(i + 1) % 2])
+        layer_phases(i, LAYER + i, x[i % 2], x[(i + 1) % 2])
 
-    rt = Runtime(
-        sequence,
-        [
-            np.ndarray[(w_total // 4,), np.dtype[np.int32]],
-            np.ndarray[(W_LAYERS * TABLE_LAYER // 4,), np.dtype[np.int32]],
-            np.ndarray[(kv_total,), np.dtype[np.int32]],
-            np.ndarray[(stage_words,), np.dtype[np.int32]],
-            np.ndarray[(prompt_total,), np.dtype[np.int32]],
-            np.ndarray[(ids_total,), np.dtype[np.int32]],
-            *[f for g in fifo_groups for f in g],
-        ],
-    )
-    return Program(NPU2(), rt, workers=workers).resolve_program()
+    arg_types = [
+        np.ndarray[(w_total // 4,), np.dtype[np.int32]],
+        np.ndarray[(W_LAYERS * TABLE_LAYER // 4,), np.dtype[np.int32]],
+        np.ndarray[(kv_total,), np.dtype[np.int32]],
+        np.ndarray[(stage_words,), np.dtype[np.int32]],
+        np.ndarray[(prompt_total,), np.dtype[np.int32]],
+        np.ndarray[(ids_total,), np.dtype[np.int32]],
+        *[f for g in fifo_groups for f in g],
+    ]
+    runtimes = [
+        Runtime(partial(sequence, i), arg_types, name=f"layer{i}")
+        for i in range(N_LAYERS)
+    ]
+    config = DeviceConfiguration("prefill", NPU2(), workers=workers, runtimes=runtimes)
+    return Program.compose([config], entry=runtimes[0]).resolve_program()
 
 
 LMW_WORDS = (LMW_GAMMA_BYTES + WLM_TOTAL) // 4

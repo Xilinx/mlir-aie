@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// The prefill of 64 rows through two layers in one dispatch
+// The prefill of 64 rows through two layers, a command each
 // (aie2_prefill_layer.py) on NPU2, at block 1 of a 256-row KV cache, each
 // row's embed seed made on the device: the residual leaving the last layer
 // and block 1's KV rows in both layers bit-exact to llama_oracle.Layer.forward,

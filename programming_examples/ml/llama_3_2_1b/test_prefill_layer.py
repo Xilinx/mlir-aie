@@ -9,8 +9,9 @@ The prompt's tokens are seeded random ids; the device makes each row's
 embed seed from the token's lm_head slot (staged in `prompt` as the gather
 leaves it) and its id. The oracle runs the positions before block j one at
 a time, which fills its KV caches; the device gets those caches and runs
-block j's 64 rows in one dispatch. Checked: the residual leaving the last
-layer and block j's KV rows in every layer, every row bit for bit; and, to
+block j's 64 rows in one pass, a command per layer, queued. Checked: the
+residual leaving the last layer and block j's KV rows in every layer, every
+row bit for bit; and, to
 locate a mismatch, every stage of the last layer the device leaves in
 `stage`, against the same steps taken one at a time (forward_steps, itself
 checked against Layer.forward).
@@ -283,14 +284,23 @@ def main():
     ids = np.zeros(ids_words(opts.t), np.int32)
     ids[: tokens.size] = tokens
     wblob = shape.pack_wblob(layers, rope)
-    params = dict(
-        nb=j + 1,
-        cs_off=p0 * 64,
-        kv_row=j * KV_BLOCK_WORDS,
-        prompt_off=p0 * SLOT_WORDS,
-        ids_off=p0,
-    )
+    params = dict(nb=j + 1, cs_off=p0 * 64, kv_row=j * KV_BLOCK_WORDS)
+    first_params = dict(params, prompt_off=p0 * SLOT_WORDS, ids_off=p0)
     kwargs = dict(N_LAYERS=n, LAYER=0, W_LAYERS=n, T=opts.t)
+
+    def run_pass():
+        """The pass's layer commands, queued; its wall time in ms."""
+        start = time.perf_counter_ns()
+        started = [
+            session.submit(
+                tensors, f"prefill:layer{i}", **(first_params if i == 0 else params)
+            )
+            for i in range(n)
+        ]
+        for d in started:
+            d.wait()
+        return (time.perf_counter_ns() - start) / 1e6
+
     build_prefill.specialize(full_elf=True, **kwargs).compile()
 
     lock = open(opts.lock, "w") if opts.lock else None
@@ -308,7 +318,7 @@ def main():
             iron.tensor(prompt.view(np.int32), dtype=np.int32),
             iron.tensor(ids, dtype=np.int32),
         ]
-        first_ms = session(tensors, **params)
+        first_ms = run_pass()
         kv_t.to("cpu")
         st_t.to("cpu")
         kv_got = kv_t.numpy().copy()
@@ -316,13 +326,13 @@ def main():
         times = []
         if opts.iters:
             for _ in range(opts.warmup):
-                session(tensors, **params)
-            times = [session(tensors, **params) for _ in range(opts.iters)]
+                run_pass()
+            times = [run_pass() for _ in range(opts.iters)]
     finally:
         if lock:
             fcntl.flock(lock, fcntl.LOCK_UN)
 
-    print(f"first dispatch: {first_ms:.3f} ms")
+    print(f"first pass: {first_ms:.3f} ms")
     for name, bad in stage_checks(stage, st_got, steps):
         print(
             f"  layer {n - 1} {name}: {KV_TB - len(bad)}/{KV_TB} rows"
@@ -340,9 +350,7 @@ def main():
     exact = bool(out_ok.all() and kv_ok.all())
     print(f"prefill of {n} layers, block {j}: {'PASS' if exact else 'FAIL'}")
     if times:
-        print(
-            f"dispatch: min {min(times):.3f} ms, median {float(np.median(times)):.3f} ms"
-        )
+        print(f"pass: min {min(times):.3f} ms, median {float(np.median(times)):.3f} ms")
     return 0 if exact else 1
 
 

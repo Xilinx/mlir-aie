@@ -7,12 +7,14 @@ positions, 64 a pass, into a Decoder's KV cache.
 
 Three hardware contexts share the decode's buffers in one process: the
 gather (build_gather) copies the prompt's lm_head slots into `prompt`, 31
-a dispatch; the prefill (build_prefill) runs every layer for a pass's 64
-rows; the decode then runs the rest of the prompt, at least its last token,
-whose sample is the first generated token. Every gather runs before the
-first pass, so a request switches contexts twice: gather to prefill, and
-prefill to decode.
+a dispatch; the prefill (build_prefill) runs a pass's 64 rows through
+every layer, a command each, queued; the decode then runs the rest of the
+prompt, at least its last token, whose sample is the first generated
+token. Every gather runs before the first pass, so a request switches
+contexts twice: gather to prefill, and prefill to decode.
 """
+
+import time
 
 import aie.iron as iron
 import numpy as np
@@ -29,7 +31,7 @@ from aie2_prefill_layer import (
 )
 from llama_config import CS_BYTES, KV_TB, N_TILE, D
 from llama_decode import LAYER_MS_PER_ROW
-from llama_npu import DispatchSession
+from llama_npu import QUEUE_DEPTH, DispatchSession
 from ml_dtypes import bfloat16
 
 # A pass's time per layer at block j, PASS_LAYER_MS + PASS_BLOCK_MS * (j + 1),
@@ -109,7 +111,8 @@ class Prefiller:
 
         Returns:
             (the first position the decode runs, the dispatches' wall time in
-            ms); dispatch_ms holds each dispatch's, the gathers' first.
+            ms); dispatch_ms holds each gather's, then each pass's, from
+            the end of the one before.
         """
         passes, pos = self.plan(len(prompt))
         self.dispatch_ms = []
@@ -140,15 +143,34 @@ class Prefiller:
             self.prompt_t,
             self.ids_t,
         ]
+        queued = []
+        done = time.perf_counter()
+
+        def wait_oldest():
+            nonlocal done
+            dispatch, last = queued.pop(0)
+            dispatch.wait()
+            if last:
+                now = time.perf_counter()
+                self.dispatch_ms.append((now - done) * 1e3)
+                done = now
+
         for j in range(passes):
-            self.dispatch_ms.append(
-                self.session(
-                    tensors,
-                    nb=j + 1,
-                    cs_off=j * KV_TB * CS_BYTES // 4,
-                    kv_row=j * KV_BLOCK_WORDS,
-                    prompt_off=j * KV_TB * SLOT_WORDS,
-                    ids_off=j * KV_TB,
-                )
+            params = dict(
+                nb=j + 1,
+                cs_off=j * KV_TB * CS_BYTES // 4,
+                kv_row=j * KV_BLOCK_WORDS,
             )
+            for i in range(self.n_layers):
+                if i == 0:
+                    first = dict(prompt_off=j * KV_TB * SLOT_WORDS, ids_off=j * KV_TB)
+                else:
+                    first = {}
+                while len(queued) == QUEUE_DEPTH:
+                    wait_oldest()
+                command = f"prefill:layer{i}"
+                dispatch = self.session.submit(tensors, command, **params, **first)
+                queued.append((dispatch, i == self.n_layers - 1))
+        while queued:
+            wait_oldest()
         return pos, sum(self.dispatch_ms)

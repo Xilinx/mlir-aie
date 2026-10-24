@@ -111,9 +111,12 @@ a row at a time. Only the prompt's last batch runs the lm_head and sampler
 prompt into batches (`DecodeShape.batches`).
 
 Longer prompts go through a prefill design of their own
-(`aie2_prefill_layer.py`, host side `llama_prefill.py`): one dispatch runs 64
+(`aie2_prefill_layer.py`, host side `llama_prefill.py`): a pass runs 64
 prompt rows, one KV block, through all 16 layers, its GEMM array
-(`aie2_prefill.py`) taking each projection's weights once for the 64 rows. A
+(`aie2_prefill.py`) taking each projection's weights once for the 64 rows.
+Each layer is its own command, and a pass's 16 are queued back to back on the
+hardware context, so a command's work stays one layer's however long the
+prompt; the next pass's commands queue behind them. A
 gather design first copies the prompt's lm_head slots into a `prompt` buffer,
 31 a dispatch, and the prefill makes each row's embed seed from its slot. The
 three designs share the weights, lm_head and KV cache buffers in one process,
