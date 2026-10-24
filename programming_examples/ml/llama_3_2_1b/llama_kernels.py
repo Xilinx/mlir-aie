@@ -27,10 +27,17 @@ class KernelSource:
         self.compile_flags = compile_flags
 
     def bind(self, symbol: str, arg_types: list) -> ExternalFunction:
-        """Declare entry point `symbol` of this unit with `arg_types`."""
+        """Declare entry point `symbol` of this unit with `arg_types`, in an
+        object named for the unit and its defines' values, so two shapes of
+        one unit link side by side in one program."""
+        defines = [
+            f.split("=", 1)[1]
+            for f in self.compile_flags
+            if f.startswith("-D") and "=" in f
+        ]
         return ExternalFunction(
             symbol,
-            object_file_name=f"{self.source}.o",
+            object_file_name="_".join([Path(self.source).stem, *defines]) + ".o",
             source_file=str(KERNELS_DIR / self.source),
             arg_types=arg_types,
             compile_flags=self.compile_flags,
@@ -89,6 +96,14 @@ def gemv_mma(*, m_max, out_bytes):
             f"-DLLAMA_GEMV_OUT_BYTES={out_bytes}",
         ],
     )
+
+
+def gemm_mma():
+    return KernelSource("llama_gemm_mma.cc", ["-ffp-contract=off"])
+
+
+def prefill_glue():
+    return KernelSource("llama_prefill_glue.cc", ["-ffp-contract=off"])
 
 
 def gqa_glue():

@@ -2,12 +2,18 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""YOLO26n on the NPU, from a letterboxed image to its (300, 6) detections, in one dispatch.
+"""YOLO26n on the NPU, from letterboxed images to their (300, 6) detections, up to
+--capacity images a dispatch.
 
     python yolo26n.py --images DIR --n 8          # check images against the oracle
     python yolo26n.py --synthetic 7 --n 2         # seeded weights and images, no checkpoint
     python yolo26n.py --images DIR --n 8 --time   # and time it
     python yolo26n.py --n 8 --batch 8 --time      # eight images per dispatch
+
+A build holds --capacity images' buffers (CompileTime), and each image's
+transfers are gated by a ScratchpadParameter (image{i}), so a dispatch runs
+any number of them, --batch, chosen when it is dispatched; --n images run as
+dispatches of --batch, the last of the rest.
 
 With real images, the device's detections are also scored against the
 images' YOLO labels (``--labels``) as mAP@0.5.
@@ -27,7 +33,16 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie.iron import CompileTime, DeviceConfiguration, In, InOut, Out, Program, Runtime
+from aie.iron import (
+    CompileTime,
+    DeviceConfiguration,
+    In,
+    InOut,
+    Out,
+    Program,
+    Runtime,
+    ScratchpadParameter,
+)
 from aie.iron.device import NPU2
 from aie.utils.benchmark import print_benchmark, run_iters
 from coco_map import Labels, MeanAP50
@@ -159,21 +174,24 @@ def yolo26n(
     detections: Out,
     weights: In,
     *,
-    batch: CompileTime[int],
+    capacity: CompileTime[int],
     params_path: CompileTime[str],
     params_digest: CompileTime[str],
 ):
     """Every segment as a device configuration, and an entry sequence running them in turn.
 
-    Each configuration runs all `batch` images before the next is configured.
+    Each configuration runs the dispatch's images before the next is
+    configured: image i of the `capacity` the buffers hold when its
+    ScratchpadParameter image{i} is 1.
     """
     del params_digest  # keys the compile cache on the parameter file's contents
     network = Network.yolo26n()
     params = Params.load(Path(params_path))
     plan = Plan(network, params)
-    image_ty = np.ndarray[(batch * IMAGE_WORDS,), np.dtype[np.int32]]
-    scratch_ty = np.ndarray[(batch * plan.words,), np.dtype[np.int32]]
-    det_ty = np.ndarray[(batch * DETECTION_WORDS,), np.dtype[np.int32]]
+    image_ty = np.ndarray[(capacity * IMAGE_WORDS,), np.dtype[np.int32]]
+    scratch_ty = np.ndarray[(capacity * plan.words,), np.dtype[np.int32]]
+    det_ty = np.ndarray[(capacity * DETECTION_WORDS,), np.dtype[np.int32]]
+    images_on = [ScratchpadParameter(f"image{i}", np.int32) for i in range(capacity)]
     weights_ty = np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]]
     configurations, runtimes = [], []
     for k, (a, b) in enumerate(plan.spans):
@@ -184,11 +202,11 @@ def yolo26n(
             )
 
         def sequence(img, scr, det, wts, *handles, design=design):
-            for i in range(batch):
+            for i in range(capacity):
 
                 def locate(tensor, i=i):
                     if tensor.name == IMAGE.name:
-                        return img, batch * IMAGE_WORDS, i * IMAGE_WORDS
+                        return img, capacity * IMAGE_WORDS, i * IMAGE_WORDS
                     if tensor.name in plan.weight_offset:
                         return (
                             wts,
@@ -198,14 +216,14 @@ def yolo26n(
                     if tensor.name in plan.offset:
                         return (
                             scr,
-                            batch * plan.words,
+                            capacity * plan.words,
                             i * plan.words + plan.offset[tensor.name],
                         )
                     if tensor.name == network.ops[-1].dst.name:
-                        return det, batch * DETECTION_WORDS, i * DETECTION_WORDS
+                        return det, capacity * DETECTION_WORDS, i * DETECTION_WORDS
                     raise ValueError(f"no host buffer holds {tensor.name}")
 
-                design.transfer(handles, locate)
+                design.transfer(handles, locate, gate=images_on[i])
 
         runtime = Runtime(
             sequence,
@@ -249,7 +267,16 @@ def main() -> None:
     )
     parser.add_argument("--n", type=int, default=4, help="images to run")
     parser.add_argument(
-        "--batch", type=int, default=1, help="images per dispatch (divides --n)"
+        "--batch",
+        type=int,
+        default=1,
+        help="images per dispatch, at most --capacity; the last dispatch runs the rest",
+    )
+    parser.add_argument(
+        "--capacity",
+        type=int,
+        default=8,
+        help="images a dispatch can run: the build's buffers (CompileTime)",
     )
     parser.add_argument(
         "--params",
@@ -273,8 +300,8 @@ def main() -> None:
         "--compile-only", action="store_true", help="build the ELF and stop"
     )
     args = parser.parse_args()
-    if args.batch < 1 or not args.compile_only and args.n % args.batch:
-        parser.error(f"--batch {args.batch} does not divide --n {args.n}")
+    if not 1 <= args.batch <= args.capacity:
+        parser.error(f"--batch {args.batch} is not 1..--capacity {args.capacity}")
     if args.n_iters < 1 or args.n_warmup < 0:
         parser.error("--n-iters must be at least 1 and --n-warmup at least 0")
     paths = sorted(args.images.glob("*.jpg"))[: args.n]
@@ -292,15 +319,17 @@ def main() -> None:
     params = Params.load(params_path)
     plan = Plan(network, params)
     kwargs = dict(
-        batch=args.batch,
+        capacity=args.capacity,
         params_path=str(params_path),
         params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
     )
     if args.compile_only:
         yolo26n.specialize(
-            image=np.ndarray[(args.batch * IMAGE_WORDS,), np.dtype[np.int32]],
-            scratch=np.ndarray[(args.batch * plan.words,), np.dtype[np.int32]],
-            detections=np.ndarray[(args.batch * DETECTION_WORDS,), np.dtype[np.int32]],
+            image=np.ndarray[(args.capacity * IMAGE_WORDS,), np.dtype[np.int32]],
+            scratch=np.ndarray[(args.capacity * plan.words,), np.dtype[np.int32]],
+            detections=np.ndarray[
+                (args.capacity * DETECTION_WORDS,), np.dtype[np.int32]
+            ],
             weights=np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]],
             **kwargs,
         ).compile()
@@ -338,8 +367,20 @@ def main() -> None:
             )
             images.append((path.name, image, truth))
     oracle = Oracle(params, network)
-    scratch = iron.zeros(args.batch * plan.words, dtype=np.int32)
-    detections = iron.zeros(args.batch * DETECTION_WORDS, dtype=np.int32)
+    scratch = iron.zeros(args.capacity * plan.words, dtype=np.int32)
+    detections = iron.zeros(args.capacity * DETECTION_WORDS, dtype=np.int32)
+
+    def dispatch_args(group):
+        """A dispatch's image buffer and its images' parameters: the group's
+        pixels in the first slots, the rest of the buffer unread."""
+        pixels = np.zeros(args.capacity * IMAGE_WORDS, np.int32)
+        for i, (_, image, _) in enumerate(group):
+            pixels[i * IMAGE_WORDS : (i + 1) * IMAGE_WORDS] = image.reshape(-1).view(
+                np.int32
+            )
+        on = {f"image{i}": int(i < len(group)) for i in range(args.capacity)}
+        return iron.tensor(pixels), on
+
     weights = iron.tensor(plan.weights.view(np.int32))
     session = None
     if args.synthetic is None and args.onnx.exists():
@@ -353,11 +394,9 @@ def main() -> None:
     scored = MeanAP50()
     for start in range(0, len(images), args.batch):
         group = images[start : start + args.batch]
-        pixels = np.concatenate([image.reshape(-1) for _, image, _ in group])
-        yolo26n(
-            iron.tensor(pixels.view(np.int32)), scratch, detections, weights, **kwargs
-        )
-        found = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
+        image_t, on = dispatch_args(group)
+        yolo26n(image_t, scratch, detections, weights, parameters=on, **kwargs)
+        found = detections.numpy().reshape(args.capacity, MAX_DETECTIONS, 6)
         for (name, image, truth), mine in zip(group, found):
             want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
             if start == 0:
@@ -384,10 +423,7 @@ def main() -> None:
     failed = passed != len(images)
 
     if args.time:
-        pixels = np.concatenate(
-            [image.reshape(-1) for _, image, _ in images[: args.batch]]
-        )
-        tensor = iron.tensor(pixels.view(np.int32))
+        tensor, on = dispatch_args(images[: args.batch])
         bench = run_iters(
             yolo26n,
             tensor,
@@ -396,6 +432,7 @@ def main() -> None:
             weights,
             warmup=args.n_warmup,
             iters=args.n_iters,
+            parameters=on,
             **kwargs,
         )
         print_benchmark(bench)
@@ -407,7 +444,24 @@ def main() -> None:
             f"median {e2e.median_us / args.batch:.1f} us, "
             f"MAD {e2e.mad_us / args.batch:.1f} us"
         )
-        timed = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
+        # The same dispatch with no image on: its segments' configurations
+        # and the dispatch itself, which every dispatch pays once.
+        empty = run_iters(
+            yolo26n,
+            tensor,
+            scratch,
+            detections,
+            weights,
+            warmup=args.n_warmup,
+            iters=args.n_iters,
+            parameters={name: 0 for name in on},
+            **kwargs,
+        ).e2e
+        print(
+            f"empty dispatch ({len(plan.spans)} segment configurations, no image): "
+            f"{empty.min_us:.1f} us, median {empty.median_us:.1f} us"
+        )
+        timed = detections.numpy().reshape(args.capacity, MAX_DETECTIONS, 6)
         same = all(np.array_equal(t, w) for t, w in zip(timed, first))
         print(f"timed dispatch: {'PASS' if same else 'FAIL'}")
         failed |= not same
