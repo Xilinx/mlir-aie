@@ -5008,11 +5008,13 @@ class MatMulOpAIE2pConversion
                                     llvm::to_vector(llvm::seq<int64_t>(0, 16)));
       break;
     }
-    case K::AIE2P_BF16Elem_8x8x4:
+    case K::AIE2P_BF16Elem_8x8x4: {
       // 8×8×4 matmul: <8x8xbf16> [k, m] x <8x4xbf16> + <8x4xf32>
-      matMulResVal =
-          perform8x8x4MatMul(rewriter, loc, i32ty, getLhs(), getRhs(), acc);
+      Value lhs = getLhs();
+      Value rhs = getRhs();
+      matMulResVal = perform8x8x4MatMul(rewriter, loc, i32ty, lhs, rhs, acc);
       break;
+    }
     default:
       return rewriter.notifyMatchFailure(op, "not an AIE2P recipe");
     }
