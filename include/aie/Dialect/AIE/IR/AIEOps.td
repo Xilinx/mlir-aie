@@ -48,6 +48,10 @@ def AIE_DeviceOp
     The design itself is described using a region of code contained by the device
     operation.
 
+    Graph-dependent named-use checks run in this device's region verifier,
+    after its children have passed their invariants. Verify the containing
+    device or module, rather than only a named user, to check those references.
+
     The optional `has_ctrl_pkt_overlay` attribute marks a design that a
     control-packet reload (`aiecc --load-pdi-to-ctrl-pkt`) installs. The reload
     configures the `@ctrl_pkt_overlay` device first and the rest of the design
@@ -89,6 +93,7 @@ def AIE_DeviceOp
     }
   }];
   let hasVerifier = 1;
+  let hasRegionVerifier = 1;
 }
 
 def AIE_LogicalTileOp

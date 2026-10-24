@@ -17,6 +17,26 @@ include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 
+def NamedOpUserOpInterface : OpInterface<"NamedOpUserOpInterface"> {
+  let cppNamespace = "::xilinx::AIE";
+  let description = [{
+    Verify references to device-owned named operations after the device's
+    children have passed their invariants. Unlike MLIR symbols, these named
+    operations may also define SSA results.
+
+    The enclosing aie.device region verifier calls this interface with a fresh,
+    lazily populated collection. Implementations must not retain its tables.
+    Graph-dependent checks require verification of the containing device (or
+    module); standalone verification of the user does not perform them.
+  }];
+  let methods = [
+    InterfaceMethod<[{Verify named uses in the enclosing device.}],
+      "::mlir::LogicalResult", "verifyNamedOpUses",
+      (ins "::xilinx::AIE::NamedOpTableCollection &":$names)
+    >
+  ];
+}
+
 // Op is a DMA-like operation with BD contraints
 def HasValidBDs : NativeOpTrait<"HasValidBDs"> {
   string cppNamespace = "::xilinx::AIE";
