@@ -165,12 +165,16 @@ with the live context: each token reads every live KV block, and its
 score-to-probability step is the oracle's exact polynomial
 (`vec_exp_nonpos`), so the device stays bit-exact.
 
-**Tokens per dispatch.** amdxdna times a dispatch out after about 5 s. The host
-picks each dispatch's token count from its first position
-(`DecodeShape.passes_for` in `llama_decode.py`): as many of the 4 as fit a 4 s
-budget by a cost model (4.7 ms of lm_head a token, plus per layer 1.16 ms and
-0.097 ms per 1k rows of context). At 16 layers that is 4 tokens all the way to
-128k.
+**Tokens per command.** A request generates any number of tokens: each
+decode command generates up to `--p-max` (4) of them, and the host queues the
+commands back to back on the hardware context, four at most (amdxdna holds
+four started commands), reading each one's tokens as it completes
+(`Decoder.generate` in `llama_decode.py`). A command is at most 4 tokens of
+work, about 1.8 s at 128k (451 ms a token), inside amdxdna's ~5 s timeout. Four
+tokens a command measured 44.5 tok/s against 40.0 for one: a decode command
+carries about 2.5 ms of its own. The first generated token is read before the
+generation's commands start: amdxdna reports the commands started behind a
+PDI load (the prefill-to-decode switch) only as they all end.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
 > **TTFT** (time to first token). A prefill pass runs 64 prompt tokens through

@@ -343,7 +343,8 @@ def main(argv=None):
     p.add_argument(
         "--passes",
         type=int,
-        help="tokens generated per dispatch (default: DecodeShape.passes_for's, per dispatch)",
+        help="tokens generated per dispatch (default: DecodeShape.passes_for's: "
+        "--p-max, or what the cache has room for)",
     )
     p.add_argument(
         "--split",

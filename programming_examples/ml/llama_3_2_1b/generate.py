@@ -17,7 +17,7 @@ real text: seeded random ids, not readable, but --check still scores them.
 With --prefill prefill (the default), the prompt's positions run through
 the prefill (llama_prefill.py), 64 a pass, into the decode's KV cache;
 the decode runs the rest, at least the last token. With --prefill decode,
-the whole prompt runs through the decode, up to 4 tokens a dispatch. Each
+the whole prompt runs through the decode, up to 4 tokens a command. Each
 input comes from its own embed row, which the device gathers; the token
 after the last one is the first generated, and generation goes on from
 there.
@@ -61,6 +61,13 @@ def main():
     p.add_argument("--max-new", type=int, default=32, help="tokens to generate at most")
     p.add_argument("--t", type=int, default=128, help="KV cache rows (the build's T)")
     p.add_argument(
+        "--p-max",
+        type=int,
+        choices=range(1, 5),
+        default=4,
+        help="tokens a decode command generates (the build's P_MAX)",
+    )
+    p.add_argument(
         "--prefill",
         choices=("prefill", "decode"),
         default="prefill",
@@ -100,7 +107,7 @@ def main():
     model = load_model(data_dir)
     layers = [Layer.real(L, data_dir, opts.t) for L in range(N_LAYERS)]
     decoder = Decoder(
-        DecodeShape(N_LAYERS, opts.t),
+        DecodeShape(N_LAYERS, opts.t, p_max=opts.p_max),
         layers,
         (model.embed_i8, model.embed_sc, model.final_norm),
         rope_table(opts.t, HEAD_D),
@@ -147,6 +154,7 @@ def main():
         f"{(gen.ttft_s - gen.prefill_dispatch_s) * 1e3:.1f}), "
         + (f"decode {np.median(rates):.2f} tok/s" if rates else "decode n/a")
     )
+    print("TTFT per request, ms: " + " ".join(f"{g.ttft_s * 1e3:.1f}" for g in runs))
     if prefiller is not None:
         passes, pos0 = prefiller.plan(len(prompt))
         steps = prefiller.dispatch_ms

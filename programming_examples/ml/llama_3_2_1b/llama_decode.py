@@ -40,17 +40,13 @@ from llama_config import (
     VOCAB,
     D,
 )
-from llama_npu import DispatchSession
+from llama_npu import QUEUE_DEPTH, DispatchSession
 from llama_oracle import xoshiro_seed
 from ml_dtypes import bfloat16
 
-# The decode's time a token at position p, fit to the nightly's 16-layer
-# context sweep: the lm_head, then per layer its weights and its attention
-# over p rows. amdxdna times a dispatch out after about 5 s.
-LM_HEAD_MS = 4.7
-LAYER_MS = 1.16
+# The decode's attention time a token per cached row and layer, fit to the
+# nightly's 16-layer context sweep.
 LAYER_MS_PER_ROW = 0.000097
-DISPATCH_BUDGET_MS = 4000.0
 
 
 def pack_lane_mma(layer_w, order, core):
@@ -138,7 +134,7 @@ class DecodeShape:
         `n_layers`: Decoder layers.
         `t`: KV cache rows.
         `kset`: The sampler's top-k set size, at most 8.
-        `p_max`: Passes (tokens) a dispatch can run.
+        `p_max`: Passes (tokens) a command can run.
     """
 
     def __init__(self, n_layers, t, kset=8, p_max=4):
@@ -233,22 +229,15 @@ class DecodeShape:
         return out
 
     def passes_for(self, t0):
-        """The tokens a dispatch from position t0 generates.
+        """The tokens a command from position t0 generates.
 
         Args:
             `t0`: The position of its first token.
 
         Returns:
-            As many as p_max allows, the cache has room for and the dispatch
-            budget fits, and at least one.
+            p_max, or as many as the cache has room for, at least one.
         """
-        n, ms = 0, 0.0
-        while n < min(self.p_max, self.t - t0):
-            ms += LM_HEAD_MS + self.n_layers * (LAYER_MS + LAYER_MS_PER_ROW * (t0 + n))
-            if n and ms > DISPATCH_BUDGET_MS:
-                break
-            n += 1
-        return max(n, 1)
+        return max(1, min(self.p_max, self.t - t0))
 
     def pack_wblob(self, layers, rope):
         """The weight blob: each layer's eight weight lanes, then the RoPE table.
@@ -400,6 +389,11 @@ class Decoder:
         self.lmw_t = iron.tensor(pack_lmw(*lm), dtype=np.int8)
         self.kv_t = None
         self.stage_t = None
+        # A queued command's records each, reused once it is waited for.
+        self._recs = [
+            iron.zeros([shape.p_max * REC_BYTES], dtype=np.int8)
+            for _ in range(QUEUE_DEPTH)
+        ]
         self.layers = layers
         self.final_gamma = lm[2]
 
@@ -425,8 +419,12 @@ class Decoder:
         The first call allocates the KV cache. The prefiller, if any, runs
         the prompt's first positions; the rest run in batches
         (shape.batches), the last one's sample being the first generated
-        token; then each dispatch runs shape.passes_for's many tokens. The
-        generation's stage stays in stage_t.
+        token; then each command generates shape.passes_for's many tokens.
+        Every command after the prefill is queued as soon as the queue has
+        room, QUEUE_DEPTH at most, since each reads only what the ones
+        before it leave on the device; the host reads each command's tokens
+        as it completes, and after a stop token waits out the commands
+        already started. The generation's stage stays in stage_t.
 
         Args:
             `prompt`: The prompt's token ids.
@@ -470,43 +468,75 @@ class Decoder:
         )
         self.stage_t = stage_t
         pos = 0
-        out = []
         prefill_ms = 0.0
         if prefiller is not None:
             pos, prefill_ms = prefiller.run(self, prompt)
+        # (parameters, tokens the command generates, whether it is a batch).
+        commands = []
         sizes = self.shape.batches(pos, len(prompt) - pos)
         for i, n in enumerate(sizes):
-            records, ms = self.dispatch(
-                self.kv_t,
-                stage_t,
-                self.shape.params(
-                    pos,
-                    1,
-                    sampler,
-                    prompt[pos : pos + n],
-                    batch_ends_prompt=i == len(sizes) - 1,
-                ),
+            last = i == len(sizes) - 1
+            commands.append(
+                (
+                    self.shape.params(
+                        pos, 1, sampler, prompt[pos : pos + n], batch_ends_prompt=last
+                    ),
+                    int(last),
+                    True,
+                )
             )
-            prefill_ms += ms
             pos += n
-            out = tokens_of(records, 1)[:max_new]
-        first_at = time.perf_counter()
         # The last generated token is not input again.
         end = len(prompt) + max_new - 1
-        while pos < end and out[-1] not in stop:
+        while pos < end:
             n = min(self.shape.passes_for(pos), end - pos)
-            records, _ = self.dispatch(
-                self.kv_t, stage_t, self.shape.params(pos, n, sampler)
-            )
-            for tok in tokens_of(records, n):
+            commands.append((self.shape.params(pos, n, sampler), n, False))
+            pos += n
+
+        out = []
+        first_at = last_at = None
+        queued = []
+        stopped = False
+        batches_from = time.perf_counter()
+
+        def wait_oldest():
+            nonlocal first_at, last_at, stopped, prefill_ms
+            dispatch, rec_t, n, batch = queued.pop(0)
+            dispatch.wait()
+            if batch and n:
+                prefill_ms += (time.perf_counter() - batches_from) * 1e3
+            if stopped or not n:
+                return
+            rec_t.to("cpu")
+            last_at = time.perf_counter()
+            if first_at is None:
+                first_at = last_at
+            for tok in tokens_of(rec_t.numpy(), n):
                 out.append(tok)
                 if tok in stop:
-                    break
-            pos += n
-        done = time.perf_counter()
+                    stopped = True
+                    return
+
+        for k, (params, n, batch) in enumerate(commands):
+            # The batches' first command loads the decode's PDI, and amdxdna
+            # reports the commands started behind a PDI load as they all end
+            # (measured), so the first generated token is read before the
+            # generation's commands start.
+            while len(queued) == QUEUE_DEPTH or (
+                queued and not batch and first_at is None
+            ):
+                wait_oldest()
+            if stopped:
+                break
+            rec_t = self._recs[k % QUEUE_DEPTH]
+            tensors = [self.w_t, self.kv_t, self.lmw_t, rec_t, stage_t]
+            queued.append((self.session.submit(tensors, **params), rec_t, n, batch))
+        while queued:
+            wait_oldest()
+        assert first_at is not None and last_at is not None
         return Generation(
             out,
             first_at - start,
             prefill_ms / 1e3,
-            (len(out) - 1) / (done - first_at) if len(out) > 1 else None,
+            (len(out) - 1) / (last_at - first_at) if len(out) > 1 else None,
         )
