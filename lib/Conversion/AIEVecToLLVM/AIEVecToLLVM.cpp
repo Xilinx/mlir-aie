@@ -3589,13 +3589,14 @@ static Value buildCmpBitmask(OpBuilder &builder, Location loc, StringRef rel,
     return compare(/*lessThan=*/true, rhs, lhs);
   if (rel == "le")
     return compare(/*lessThan=*/false, rhs, lhs);
-  if (rel == "eq")
-    return LLVM::AndOp::create(builder, loc,
-                               compare(/*lessThan=*/false, lhs, rhs),
-                               compare(/*lessThan=*/false, rhs, lhs));
-  assert(rel == "ne" && "unexpected compare predicate");
-  return LLVM::OrOp::create(builder, loc, compare(/*lessThan=*/true, lhs, rhs),
-                            compare(/*lessThan=*/true, rhs, lhs));
+  assert((rel == "eq" || rel == "ne") && "unexpected compare predicate");
+  // Separate statements fix the order in which the two compares are emitted.
+  bool isEq = rel == "eq";
+  Value forward = compare(/*lessThan=*/!isEq, lhs, rhs);
+  Value backward = compare(/*lessThan=*/!isEq, rhs, lhs);
+  if (isEq)
+    return LLVM::AndOp::create(builder, loc, forward, backward);
+  return LLVM::OrOp::create(builder, loc, forward, backward);
 }
 
 // ----- CmpOp conversion for AIE2 and AIE2P -----
