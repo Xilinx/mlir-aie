@@ -4,28 +4,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// A static shuffle is planned on 512-bit registers whose lanes carry labels
-// (which source lane they hold). The building blocks are the vshuffle modes,
-// whose byte permutations come from aievec::getShuffleModeBytePermutation,
-// and splats of one lane. Two bounded searches look for plans:
-//
-// Rounds: every register goes through the same mode in each round, alone or
-// paired with the register whose index differs in one bit (the pair gets the
-// lo and the hi half). This finds transposes, interleaves and reversals, where
-// all registers move alike.
-//
-// Per register: each result register is searched backwards on its own, a few
-// modes deep, reusing what earlier registers built. This finds repetitions,
-// broadcasts and partial gathers.
-//
-// Both also run with a single lo/hi pair of modes, which finds plans that use
-// fewer modes. Each mode a plan uses is loaded into a scalar register, so a
-// plan may cost a few more shuffles and still win when it reuses the modes of
-// plans already emitted.
-//
-// A plan is taken when it costs fewer vector instructions than LLVM would
-// spend on the shuffle, and only after running it on lane labels gives the
-// requested result.
+// Plans static shuffles on 512-bit registers out of vshuffle modes and splats.
+// Two bounded searches run: in rounds, where all registers go through the same
+// mode (transposes, interleaves, reversals), and per result register, a few
+// modes deep (repetitions, broadcasts, gathers). A plan that needs fewer modes
+// can win at a higher shuffle count, since each mode costs a scalar register.
+// A plan is used only if it beats LLVM's instruction count and running it on
+// lane labels reproduces the requested result.
 //===----------------------------------------------------------------------===//
 
 #include "AIE2PShufflePlanner.h"
@@ -897,7 +882,9 @@ std::optional<ShuffleGather> gatherOf(const ShuffleRequest &req, bool fold,
   if (w != 8 && w != 16 && w != 32 && w != 64)
     return std::nullopt;
   int64_t m = resTy.getNumElements();
-  if (m * w > 512 && m * w % 512 != 0)
+  // emitPlan concatenates the result registers in pairs.
+  if (m * w > 512 &&
+      (m * w % 512 != 0 || !llvm::isPowerOf2_64(m * w / 512)))
     return std::nullopt;
 
   ShuffleGather g;

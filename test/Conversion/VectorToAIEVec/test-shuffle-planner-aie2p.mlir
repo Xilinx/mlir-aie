@@ -258,6 +258,41 @@ func.func @odd_size(%a: vector<12xf32>) -> vector<12xf32> {
 
 // -----
 
+// Three result registers: left to LLVM, the result is assembled in pairs.
+// CHECK-LABEL: @three_result_registers(
+// CHECK: vector.shuffle
+// CHECK-NOT: aievec.
+// CHECK: return
+func.func @three_result_registers(%a: vector<16xf32>) -> vector<48xf32> {
+  %r = vector.shuffle %a, %a [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0] : vector<16xf32>, vector<16xf32>
+  return %r : vector<48xf32>
+}
+
+// -----
+
+// Four result registers: one reversal, used four times.
+// CHECK-LABEL: @four_result_registers(
+// CHECK: aievec.shuffle %{{.*}} [t32_1x16_flip] : vector<16xf32>
+// CHECK-NOT: aievec.
+// CHECK: return
+func.func @four_result_registers(%a: vector<16xf32>) -> vector<64xf32> {
+  %r = vector.shuffle %a, %a [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0] : vector<16xf32>, vector<16xf32>
+  return %r : vector<64xf32>
+}
+
+// -----
+
+// A source of three registers is split into parts.
+// CHECK-LABEL: @three_source_registers(
+// CHECK: aievec.shuffle %{{.*}} [t32_1x16_flip] : vector<16xf32>
+// CHECK: return
+func.func @three_source_registers(%a: vector<48xf32>) -> vector<16xf32> {
+  %r = vector.shuffle %a, %a [47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32] : vector<48xf32>, vector<48xf32>
+  return %r : vector<16xf32>
+}
+
+// -----
+
 // vector.deinterleave: both results planned.
 // CHECK-LABEL: @deinterleave_op(
 // CHECK: %{{.*}} = aievec.shuffle %{{.*}}, %{{.*}} [t16_32x2_lo] : vector<32xbf16>
