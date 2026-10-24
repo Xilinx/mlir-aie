@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-24T07:00:17+00:00",
+ "generated_at": "2026-10-24T12:54:38+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 357,
+   "runs": 358,
    "main": {
     "passed": 12,
     "failed": 0,
@@ -303,8 +303,8 @@
    ],
    "pull_requests": {
     "passed": 86,
-    "failed": 47,
-    "rate": 0.647
+    "failed": 46,
+    "rate": 0.652
    },
    "merge_queue": {
     "passed": 43,
@@ -326,7 +326,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 357,
+   "runs": 359,
    "main": {
     "passed": 12,
     "failed": 1,
@@ -589,13 +589,13 @@
    ],
    "pull_requests": {
     "passed": 88,
-    "failed": 67,
-    "rate": 0.568
+    "failed": 66,
+    "rate": 0.571
    },
    "merge_queue": {
-    "passed": 45,
+    "passed": 46,
     "failed": 3,
-    "rate": 0.938
+    "rate": 0.939
    },
    "flaky": {
     "commits": 343,
@@ -612,7 +612,7 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 396,
+   "runs": 398,
    "main": {
     "passed": 51,
     "failed": 2,
@@ -1449,8 +1449,8 @@
    ],
    "pull_requests": {
     "passed": 183,
-    "failed": 34,
-    "rate": 0.843
+    "failed": 33,
+    "rate": 0.847
    },
    "merge_queue": {
     "passed": 47,
@@ -1458,7 +1458,7 @@
     "rate": 0.979
    },
    "flaky": {
-    "commits": 343,
+    "commits": 344,
     "flaky": 30,
     "rate": 0.087
    },
@@ -1472,7 +1472,7 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 396,
+   "runs": 398,
    "main": {
     "passed": 53,
     "failed": 0,
@@ -2309,8 +2309,8 @@
    ],
    "pull_requests": {
     "passed": 187,
-    "failed": 31,
-    "rate": 0.858
+    "failed": 30,
+    "rate": 0.862
    },
    "merge_queue": {
     "passed": 48,
@@ -2318,9 +2318,9 @@
     "rate": 1.0
    },
    "flaky": {
-    "commits": 343,
+    "commits": 344,
     "flaky": 29,
-    "rate": 0.085
+    "rate": 0.084
    },
    "minutes_median": 10.2,
    "minutes_p90": 20.2,
@@ -2332,7 +2332,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 357,
+   "runs": 359,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -2583,9 +2583,9 @@
     }
    ],
    "pull_requests": {
-    "passed": 159,
-    "failed": 88,
-    "rate": 0.644
+    "passed": 160,
+    "failed": 87,
+    "rate": 0.648
    },
    "merge_queue": {
     "passed": 48,
@@ -2593,9 +2593,9 @@
     "rate": 1.0
    },
    "flaky": {
-    "commits": 343,
-    "flaky": 30,
-    "rate": 0.087
+    "commits": 345,
+    "flaky": 31,
+    "rate": 0.09
    },
    "minutes_median": 2.8,
    "minutes_p90": 3.0,
@@ -2606,8 +2606,8 @@
   "merged": 46,
   "hours_median": 24.7,
   "hours_p90": 994.0,
-  "open": 68,
-  "open_drafts": 24,
+  "open": 70,
+  "open_drafts": 25,
   "open_over_30_days": 45
  },
  "workflows": [
@@ -2951,11 +2951,12 @@
     {
      "name": "SA placer seed sweep (CPU-only)",
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40071691781/job/120806309214",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-24T06:49:02Z",
      "started_at": "2026-10-24T06:49:18Z",
-     "runner": "GitHub Actions 1009371448"
+     "runner": "GitHub Actions 1009371448",
+     "outcome": "passed"
     },
     {
      "name": "runners / pick",
@@ -3615,6 +3616,30 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 40093510174,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40093510174",
+     "status": "in_progress",
+     "conclusion": null,
+     "created_at": "2026-10-24T12:20:17Z",
+     "run_started_at": "2026-10-24T12:20:17Z",
+     "updated_at": "2026-10-24T12:21:03Z",
+     "head_sha": "b775c31bef7a359dc0ff0c371af053de1cb61566",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 40077557260,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40077557260",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-24T08:19:02Z",
+     "run_started_at": "2026-10-24T08:19:02Z",
+     "updated_at": "2026-10-24T08:46:16Z",
+     "head_sha": "b775c31bef7a359dc0ff0c371af053de1cb61566",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 40061698343,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40061698343",
      "status": "completed",
@@ -3731,30 +3756,6 @@
      "run_started_at": "2026-10-22T16:18:30Z",
      "updated_at": "2026-10-22T20:08:42Z",
      "head_sha": "7d0c9bd4774ba5fa2fc961fa23923025ed337f9b",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 39778111716,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39778111716",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-22T12:24:42Z",
-     "run_started_at": "2026-10-22T12:24:42Z",
-     "updated_at": "2026-10-22T12:48:46Z",
-     "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 39747195351,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/39747195351",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-22T08:22:03Z",
-     "run_started_at": "2026-10-22T08:22:03Z",
-     "updated_at": "2026-10-22T10:34:51Z",
-     "head_sha": "843e9c3ec99981032066027bf7c6f4d3769ec5f5",
      "title": "MLIR Distro",
      "attempt": 1
     }
