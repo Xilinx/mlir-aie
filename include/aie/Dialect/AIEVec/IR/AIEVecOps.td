@@ -804,6 +804,18 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
     t16_1x2_flip = [1, 0, 3, 2, ..., 29, 28, 31, 30]
     ```
 
+    In general, mode `t<w>_<r>x<c>` reads an `r`x`c` row-major matrix of
+    `w`-bit elements and returns its transpose: `out[j*r+i] = in[i*c+j]`. A
+    mode whose matrix spans 1024 bits reads `lhs:rhs` and returns the `lo` or
+    `hi` 512 bits. A mode whose matrix spans fewer than 512 bits reads `lhs`
+    only and transposes each such block of it on its own. A mode
+    `t<w>_1x<c>_flip` reverses the order of each group of `c` elements.
+
+    The modes 48 to 55 (`t32_8x2`, `t32_2x8`, `t64_4x2`, `t64_2x4`,
+    `t16_8x8_lo`, `t16_8x8_hi`, `t32_1x16_flip` and `t8_1x4_flip`) exist on
+    AIE2P only. Inside an `aie.device` of another architecture they are
+    rejected.
+
     The list of supported shuffle modes, required operands, and associated
     vector types are the following:
 
@@ -814,6 +826,7 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
          t8_8x8             | ^                  | ^
          t8_16x4            | ^                  | ^
          t8_4x16            | ^                  | ^
+         t8_1x4_flip (AIE2P)| ^                  | ^
          t8_64x2_lo         | `lhs` & `rhs`      | ^
          t8_64x2_hi         | ^                  | ^
          t8_2x64_lo         | ^                  | ^
@@ -836,7 +849,12 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
          t16_16x4_hi        | ^                  | ^
          t16_4x16_lo        | ^                  | ^
          t16_4x16_hi        | ^                  | ^
+         t16_8x8_lo (AIE2P) | ^                  | ^
+         t16_8x8_hi (AIE2P) | ^                  | ^
          t32_4x4            | `lhs`              | `vector<16xi32>` or `vector<16xf32>`
+         t32_8x2 (AIE2P)    | ^                  | ^
+         t32_2x8 (AIE2P)    | ^                  | ^
+         t32_1x16_flip (AIE2P) | ^               | ^
          t32_16x2_lo        | `lhs` & `rhs`      | ^
          t32_16x2_hi        | ^                  | ^
          t32_2x16_lo        | ^                  | ^
@@ -845,7 +863,9 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
          t32_8x4_hi         | ^                  | ^
          t32_4x8_lo         | ^                  | ^
          t32_4x8_hi         | ^                  | ^
-         t64_8x2_lo         | ^                  | `vector<8xi64>`
+         t64_4x2 (AIE2P)    | `lhs`              | `vector<8xi64>`
+         t64_2x4 (AIE2P)    | ^                  | ^
+         t64_8x2_lo         | `lhs` & `rhs`      | ^
          t64_8x2_hi         | ^                  | ^
          t64_2x8_lo         | ^                  | ^
          t64_2x8_hi         | ^                  | ^
