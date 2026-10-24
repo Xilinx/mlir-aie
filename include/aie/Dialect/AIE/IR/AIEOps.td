@@ -2586,6 +2586,13 @@ def AIE_ObjectFifoCreateOp
       // the packet header's out_of_order_id field, instead of walking the
       // pool in a fixed BD chain. The consumer's channel then holds no order
       // of its own, which is what lets several fifos share it. Needs packet.
+      //
+      // Out-of-order drops the order a channel selects its descriptors in,
+      // not the order the stream delivers in. Each receiving descriptor still
+      // takes its object's lock, so a packet naming a full buffer stalls the
+      // channel and every packet behind it. Fifos sharing a channel whose
+      // producers and consumers run at the same rate stay clear of that;
+      // keeping them at the same rate is the user's part.
       UnitAttr:$out_of_order);
 
   let assemblyFormat = [{
