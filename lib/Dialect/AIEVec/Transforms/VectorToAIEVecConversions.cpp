@@ -4988,8 +4988,9 @@ struct ContractionTile {
   bool lhsTransposed = false, rhsTransposed = false, accTransposed = false;
 };
 
-static FailureOr<ContractionTile> analyzeContraction(vector::ContractionOp op,
-                                                     std::string &why) {
+static LogicalResult analyzeContraction(vector::ContractionOp op,
+                                        ContractionTile &tile,
+                                        std::string &why) {
   llvm::raw_string_ostream os(why);
   if (op.getKind() != vector::CombiningKind::ADD) {
     os << "the combining kind is not add";
@@ -5040,13 +5041,13 @@ static FailureOr<ContractionTile> analyzeContraction(vector::ContractionOp op,
     }
     dimOf[r] = d;
   }
-  ContractionTile tile;
-  if (dimOf[M])
-    tile.m = dimSize[*dimOf[M]];
-  if (dimOf[N])
-    tile.n = dimSize[*dimOf[N]];
-  if (dimOf[K])
-    tile.k = dimSize[*dimOf[K]];
+  auto sizeOf = [&](Role r) -> int64_t {
+    std::optional<unsigned> d = dimOf[r];
+    return d ? dimSize[*d] : 1;
+  };
+  tile.m = sizeOf(M);
+  tile.n = sizeOf(N);
+  tile.k = sizeOf(K);
   // Whether `second` comes before `first` among the results of `map`.
   auto swapped = [&](AffineMap map, Role first, Role second) {
     if (!dimOf[first] || !dimOf[second])
@@ -5059,7 +5060,7 @@ static FailureOr<ContractionTile> analyzeContraction(vector::ContractionOp op,
   tile.lhsTransposed = swapped(maps[0], M, K);
   tile.rhsTransposed = swapped(maps[1], K, N);
   tile.accTransposed = swapped(maps[2], M, N);
-  return tile;
+  return success();
 }
 
 // Convert a `vector.contract` op to an `aievec.matmul` op for AIE2 or
@@ -5090,8 +5091,8 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
                   ConversionPatternRewriter &rewriter) const override {
     StringRef target = isAIE2P ? "AIE2P" : "AIE2";
     std::string why;
-    FailureOr<ContractionTile> tile = analyzeContraction(contractOp, why);
-    if (failed(tile)) {
+    ContractionTile tile;
+    if (failed(analyzeContraction(contractOp, tile, why))) {
       contractOp.emitError()
           << "cannot lower to an " << target << " matrix multiply: " << why;
       return failure();
@@ -5099,9 +5100,9 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
 
     Value lhsIn = adaptor.getLhs(), rhsIn = adaptor.getRhs();
     Value lhsOrig = contractOp.getLhs(), rhsOrig = contractOp.getRhs();
-    int64_t m = tile->m, n = tile->n, k = tile->k;
-    bool lhsT = tile->lhsTransposed, rhsT = tile->rhsTransposed;
-    if (tile->accTransposed) {
+    int64_t m = tile.m, n = tile.n, k = tile.k;
+    bool lhsT = tile.lhsTransposed, rhsT = tile.rhsTransposed;
+    if (tile.accTransposed) {
       std::swap(lhsIn, rhsIn);
       std::swap(lhsOrig, rhsOrig);
       std::swap(m, n);
