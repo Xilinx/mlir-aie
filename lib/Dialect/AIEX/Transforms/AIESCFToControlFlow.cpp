@@ -83,17 +83,20 @@ static bool isCounterFreeForeverLoopCandidate(scf::ForOp forOp) {
 static void replaceWithCounterFreeLoop(scf::ForOp forOp) {
   OpBuilder builder(forOp);
   Location loc = forOp.getLoc();
-  auto whileOp = builder.create<scf::WhileOp>(loc, TypeRange{}, ValueRange{},
-                                              ValueRange{});
-  Block *before = builder.createBlock(&whileOp.getBeforeRegion());
-  Block *after = builder.createBlock(&whileOp.getAfterRegion());
-
-  builder.setInsertionPointToEnd(before);
-  Value trueValue = builder.create<arith::ConstantIntOp>(loc, 1, 1);
-  builder.create<scf::ConditionOp>(loc, trueValue, ValueRange{});
-
   Block *forBody = forOp.getBody();
-  after->getOperations().splice(after->end(), forBody->getOperations());
+  auto whileOp = builder.create<scf::WhileOp>(
+      loc, TypeRange{}, ValueRange{},
+      [&](OpBuilder &beforeBuilder, Location loc, ValueRange) {
+        Value trueValue = beforeBuilder.create<arith::ConstantIntOp>(loc, 1, 1);
+        beforeBuilder.create<scf::ConditionOp>(loc, trueValue, ValueRange{});
+      },
+      [&](OpBuilder &afterBuilder, Location loc, ValueRange) {
+        afterBuilder.create<scf::YieldOp>(loc, ValueRange{});
+      });
+  Block *after = whileOp.getAfterBody();
+  after->getOperations().splice(after->getTerminator()->getIterator(),
+                                forBody->getOperations(), forBody->begin(),
+                                forBody->getTerminator()->getIterator());
   forBody->eraseArgument(0);
   forOp.erase();
 }
