@@ -38,11 +38,8 @@ class VectorOfShapeAndType<list<int> shape, Type type>
            "::mlir::VectorType">;
 
 class ShapedTypeBitWidth<string name>
-    : StrFunc<
-          "(cast<::mlir::ShapedType>($"#name#").getElementTypeBitWidth() "
-                                             "* "#!subst(
-                                                 ".getType()", "",
-                                                 ElementCount<name>.result)#")">;
+    : StrFunc<"(cast<::mlir::ShapedType>($"#name#").getElementTypeBitWidth() "
+              "* "#!subst(".getType()", "", ElementCount<name>.result)#")">;
 
 class VectorOfBitWidthAndElementTypes<int bitwidth, list<Type> allowedTypes>
     : Type<And<[VectorOfNonZeroRankOf<allowedTypes>.predicate,
@@ -80,7 +77,7 @@ class isOperandResultTypePairValidForAIE2MulElem<string lhs, string rhs,
                                                  string acc>
     : PredOpTrait<
           acc#" type is a valid accumulator type given the type of the"#" opera"
-                                                                        "nds.",
+              "nds.",
           Or<[And<[ElementTypeIsPred<acc, I32>, ElementTypeIsPred<lhs, I8>]>,
               And<[ElementTypeIsPred<acc, I32>, ElementTypeIsPred<lhs, I16>]>,
               And<[ElementTypeIsPred<acc, I64>, ElementTypeIsPred<lhs, I32>]>,
