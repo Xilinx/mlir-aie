@@ -9,6 +9,8 @@
 
 // Unused counters with effectively infinite bounds become counter-free loops.
 // CHECK-LABEL: aie.core
+// CHECK-NOT:   arith.cmpi
+// CHECK-NOT:   arith.addi
 // CHECK:       cf.cond_br
 // CHECK-NOT:   arith.cmpi
 // CHECK-NOT:   arith.addi
