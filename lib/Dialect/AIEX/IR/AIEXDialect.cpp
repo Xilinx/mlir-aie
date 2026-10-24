@@ -702,12 +702,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
           return failure();
   }
 
-  // The experimental HSA target uses this op on AIE1, skip all the AIE2
-  // specific checks
-  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
-    return success();
-
-  if (offset % 4 != 0) {
+  bool isAIE1 = targetModel.getTargetArch() == AIE::AIEArch::AIE1;
+  if (!isAIE1 && offset % 4 != 0) {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
 
@@ -742,7 +738,10 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
     // aie-decompose-large-dma-bd leaves a transfer with a runtime length
     // alone, so it must be legal as written.
-    if (!hasLengthParameter &&
+    // AIE1 does not use the NPU BD decomposition path. Validate its dimensions
+    // directly against the AIE1 target-model limits instead of accepting a
+    // pattern on the assumption that an NPU pass will split it later.
+    if (!isAIE1 && !hasLengthParameter &&
         AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
                                          col, row, inputOffsets, inputSizes,
                                          inputStrides)) {
@@ -754,6 +753,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       return failure();
     }
   }
+
+  // AIE1 still needs dimension validation above, but does not use the NPU
+  // packet-header checks below.
+  if (isAIE1)
+    return success();
 
   // packet header
   if (auto packetInfo = getPacket()) {
