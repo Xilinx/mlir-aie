@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// The prefill of 64 rows through two layers, a command each
+// The prefill of a pass's rows through two layers, a command each
 // (aie2_prefill_layer.py) on NPU2, at block 1 of a 256-row KV cache, each
 // row's embed seed made on the device: the residual leaving the last layer
 // and block 1's KV rows in both layers bit-exact to llama_oracle.Layer.forward,
@@ -12,4 +12,12 @@
 // RUN: %run_on_npu2% %python %S/test_prefill_layer.py --synthetic-weights --block 1 --layers 2 --t 256 | FileCheck %s
 // CHECK: residual leaving layer 1: 64/64 rows bit-exact
 // CHECK: block 1's KV rows, all layers: 64/64 rows bit-exact
-// CHECK: prefill of 2 layers, block 1: PASS
+// CHECK: prefill of 2 layers, block 1, 64 rows: PASS
+//
+// A pass of 36 rows: two embed commands (28 and 8 rows), three of the
+// attention's four sub-batches, and block 1's last 28 rows left as they were.
+// RUN: %run_on_npu2% %python %S/test_prefill_layer.py --synthetic-weights --block 1 --rows 36 --layers 2 --t 256 | FileCheck --check-prefix=ROWS36 %s
+// ROWS36: residual leaving layer 1: 36/36 rows bit-exact
+// ROWS36: block 1's KV rows, all layers: 36/36 rows bit-exact
+// ROWS36: block 1's 28 rows past the pass's: kept
+// ROWS36: prefill of 2 layers, block 1, 36 rows: PASS

@@ -44,10 +44,6 @@ from llama_npu import QUEUE_DEPTH, DispatchSession
 from llama_oracle import xoshiro_seed
 from ml_dtypes import bfloat16
 
-# The decode's attention time a token per cached row and layer, fit to the
-# nightly's 16-layer context sweep.
-LAYER_MS_PER_ROW = 0.000097
-
 
 def pack_lane_mma(layer_w, order, core):
     """One core's weight lane for kernels/llama_gemv_mma.cc.

@@ -18,20 +18,21 @@ import time
 
 import aie.iron as iron
 import numpy as np
-from aie2_decode import KV_BLOCK_WORDS, M_MAX
+from aie2_decode import M_MAX
 from aie2_prefill import pack_trailers
-from aie2_prefill_layer import PREFILL, PrefillStage, embed_commands, ids_words
-from llama_config import CS_BYTES, KV_TB, D
-from llama_decode import LAYER_MS_PER_ROW
+from aie2_prefill_layer import (
+    CONFIGURE,
+    ROW_STEP,
+    PrefillStage,
+    ids_words,
+    pass_commands,
+)
+from llama_config import KV_TB, D
 from llama_npu import QUEUE_DEPTH
 from ml_dtypes import bfloat16
 
-# A pass's time per layer at block j, PASS_LAYER_MS + PASS_BLOCK_MS * (j + 1),
-# and a decode dispatch of M_MAX prompt rows near position 0, measured on
-# Strix (npu2); the decode's attention adds llama_decode's LAYER_MS_PER_ROW.
-PASS_LAYER_MS = 10.3
-PASS_BLOCK_MS = 0.75
-DECODE_BATCH_MS = 45.0
+# The decode's batch takes the prompt's last ROW_STEP tokens at most.
+assert ROW_STEP <= M_MAX
 
 
 class Prefiller:
@@ -62,11 +63,10 @@ class Prefiller:
         self.dispatch_ms = []
 
     def plan(self, n):
-        """How an n-token prompt splits between the prefill and the decode.
-
-        The decode runs at least the last token. A partial last pass runs
-        padded to 64 rows when that beats the decode's batches of M_MAX for
-        its rows.
+        """How an n-token prompt splits between the prefill and the decode:
+        the prefill takes the most rows short of the last token that come in
+        ROW_STEPs, KV_TB a pass, the last pass the rest; the decode the
+        prompt's last 1..ROW_STEP tokens, one batch.
 
         Args:
             n: The prompt's tokens.
@@ -74,16 +74,8 @@ class Prefiller:
         Returns:
             (prefill passes, the first position the decode runs).
         """
-        rows = n - 1
-        full, tail = divmod(rows, KV_TB)
-        if tail and (full + 1) * KV_TB <= self.t:
-            pass_ms = self.n_layers * (PASS_LAYER_MS + PASS_BLOCK_MS * (full + 1))
-            batch_ms = DECODE_BATCH_MS + (
-                self.n_layers * M_MAX * LAYER_MS_PER_ROW * full * KV_TB
-            )
-            if pass_ms < (-(-(tail + 1) // M_MAX) - 1) * batch_ms:
-                return full + 1, rows
-        return full, full * KV_TB
+        rows = (n - 1) // ROW_STEP * ROW_STEP
+        return -(-rows // KV_TB), rows
 
     def run(self, decoder, prompt):
         """Prefill the prompt's positions plan() gives the prefill.
@@ -101,10 +93,8 @@ class Prefiller:
         self.dispatch_ms = []
         if not passes:
             return pos, 0.0
-        rows = passes * KV_TB
-        toks = (list(prompt[:-1]) + [prompt[-1]] * rows)[:rows]
         with self.ids_t.mutate() as ids:
-            ids[:rows] = toks
+            ids[:pos] = prompt[:pos]
         tensors = [
             decoder.w_t,
             self.table_t,
@@ -113,7 +103,9 @@ class Prefiller:
             decoder.lmw_t,
             self.ids_t,
         ]
-        queued = []
+        # The array holds the decode's configuration until this loads the
+        # prefill's.
+        queued = [(self.session.submit(tensors, CONFIGURE), False)]
         done = time.perf_counter()
 
         def wait_oldest():
@@ -126,13 +118,8 @@ class Prefiller:
                 done = now
 
         for j in range(passes):
-            commands = embed_commands(toks[j * KV_TB : (j + 1) * KV_TB], j * KV_TB)
-            layer = dict(
-                nb=j + 1,
-                rope_off=j * KV_TB * CS_BYTES // 4,
-                kv_row=j * KV_BLOCK_WORDS,
-            )
-            commands += [(f"{PREFILL}:layer{i}", layer) for i in range(self.n_layers)]
+            tokens = prompt[j * KV_TB : min(pos, (j + 1) * KV_TB)]
+            commands = pass_commands(tokens, j, self.n_layers, j * KV_TB)
             for n, (command, params) in enumerate(commands):
                 while len(queued) == QUEUE_DEPTH:
                     wait_oldest()

@@ -33,8 +33,15 @@ import sys
 
 import llama_kernels
 import numpy as np
-from aie.dialects.arith import index_cast  # pyright: ignore[reportMissingImports]
-from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
+from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
+    CmpIPredicate,
+    addi,
+    cmpi,
+    constant,
+    divsi,
+    index_cast,
+)
+from aie.extras.types import i32, index  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
@@ -46,7 +53,7 @@ from aie.iron import (
     Worker,
     jit,
 )
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import if_, range_
 from aie.iron.device import NPU2, Tile
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -168,6 +175,12 @@ class GemmArray:
     Args:
         projs: The projections each layer runs, in order.
         n_layers: Layers a dispatch runs.
+        rows: None, or when each layer is its own command, the commands'
+            (nb, pass_rows) ScratchpadParameters and the parts' repeat
+            parameter: the cores then take one layer an iteration, for a
+            command whose nb is above 0, and form and send the C tile's
+            rows only up to pass_rows, OUT_ROWS a part (the drains repeat
+            that many parts less one).
 
     Attributes:
         workers: The cores' Workers.
@@ -175,8 +188,9 @@ class GemmArray:
             stream, the eight weight lanes, then the two output joins.
     """
 
-    def __init__(self, projs, n_layers):
+    def __init__(self, projs, n_layers, rows=None):
         self.projs = projs
+        self.parts_rep = None if rows is None else rows[2]
         t_a = np.ndarray[(A_CHUNK // 4,), np.dtype[np.int32]]
         t_w = np.ndarray[(SLOT_W // 4,), np.dtype[np.int32]]
         t_c = np.ndarray[(M * TILE_COLS,), np.dtype[np.int32]]
@@ -253,38 +267,64 @@ class GemmArray:
         k_sc = km.bind("llama_gemm_act_scales", [t_a, t_sc])
         k_out = km.bind("llama_gemm_out", [t_c, t_sc, t_tr, t_out] + [np.int32] * 2)
 
-        def core_body(c_a, c_w, c_out, acc, sc, tr, core, kc, kt, ks, ko):
-            for _ in range_(n_layers):
-                for p in projs:
-                    for i in range_(p.trailer_chunks):
-                        a = c_a.acquire(1)
-                        kt(a, tr, index_cast(i32(), i), core, p.tiles)
-                        c_a.release(1)
-                    for t in range_(p.tiles):
+        def layer(c_a, c_w, c_out, acc, sc, tr, core, kc, kt, ks, ko, parts):
+            for p in projs:
+                for i in range_(p.trailer_chunks):
+                    a = c_a.acquire(1)
+                    kt(a, tr, index_cast(i32(), i), core, p.tiles)
+                    c_a.release(1)
+                for t in range_(p.tiles):
+                    a = c_a.acquire(1)
+                    w = c_w.acquire(1)
+                    kc(a, w, acc, 1)
+                    c_a.release(1)
+                    c_w.release(1)
+                    for _ in range_(p.k_chunks - 1):
                         a = c_a.acquire(1)
                         w = c_w.acquire(1)
-                        kc(a, w, acc, 1)
+                        kc(a, w, acc, 0)
                         c_a.release(1)
                         c_w.release(1)
-                        for _ in range_(p.k_chunks - 1):
-                            a = c_a.acquire(1)
-                            w = c_w.acquire(1)
-                            kc(a, w, acc, 0)
-                            c_a.release(1)
-                            c_w.release(1)
-                        a = c_a.acquire(1)
-                        ks(a, sc)
-                        c_a.release(1)
-                        # The tile's 8 groups are block t of the core's
-                        # trailers.
-                        for part in range_(M // OUT_ROWS):
-                            o = c_out.acquire(1)
-                            ko(acc, sc, tr, o, index_cast(i32(), part), t)
-                            c_out.release(1)
+                    a = c_a.acquire(1)
+                    ks(a, sc)
+                    c_a.release(1)
+                    # The tile's 8 groups are block t of the core's
+                    # trailers.
+                    for part in range_(parts):
+                        o = c_out.acquire(1)
+                        ko(acc, sc, tr, o, index_cast(i32(), part), t)
+                        c_out.release(1)
+
+        def core_body(c_a, c_w, c_out, acc, sc, tr, core, kc, kt, ks, ko):
+            for _ in range_(n_layers):
+                layer(c_a, c_w, c_out, acc, sc, tr, core, kc, kt, ks, ko, M // OUT_ROWS)
+
+        def command_body(
+            c_a, c_w, c_out, acc, sc, tr, nbp, rowsp, core, kc, kt, ks, ko
+        ):
+            with if_(cmpi(CmpIPredicate.sgt, nbp.read(), constant(i32(), 0))):
+                parts = divsi(
+                    addi(rowsp.read(), constant(i32(), OUT_ROWS - 1)),
+                    constant(i32(), OUT_ROWS),
+                )
+                layer(
+                    c_a,
+                    c_w,
+                    c_out,
+                    acc,
+                    sc,
+                    tr,
+                    core,
+                    kc,
+                    kt,
+                    ks,
+                    ko,
+                    index_cast(index(), parts),
+                )
 
         self.workers = [
             Worker(
-                core_body,
+                core_body if rows is None else command_body,
                 [
                     of_ac.cons(),
                     of_w[c].cons(),
@@ -292,6 +332,7 @@ class GemmArray:
                     Buffer(t_c, name=f"acc{c}"),
                     Buffer(t_sc, name=f"act_sc{c}"),
                     Buffer(t_tr, name=f"trailers{c}"),
+                    *([] if rows is None else rows[:2]),
                     c,
                     k_chunk,
                     k_tr,
@@ -299,6 +340,7 @@ class GemmArray:
                     k_out,
                 ],
                 tile=Tile(c, CORE_ROW),
+                wait_for_parameters=rows is not None,
             )
             for c in range(N_CORES)
         ]
@@ -403,10 +445,15 @@ class GemmArray:
                     ),
                     group=drains,
                     wait=True,
+                    **(
+                        {}
+                        if self.parts_rep is None
+                        else dict(repeat_parameter=self.parts_rep)
+                    ),
                 )
         return drains
 
-    def run(self, fifos, projs, fill_args, outs, batch=4):
+    def run(self, fifos, projs, fill_args, outs, batch=None):
         """Issue a run of projections' transfers, each one's fills before
         the previous one's last drains, so the weights keep streaming.
 
@@ -415,8 +462,13 @@ class GemmArray:
             projs: The projections, in the cores' order.
             fill_args: Per projection, fill's (w, table, act).
             outs: Per projection, drain's out.
-            batch: Tiles a group of drains takes (a shim tile has 16 BDs).
+            batch: Tiles a group of drains takes (a shim tile has 16 BDs):
+                None for 4, or 2 when the drains repeat by a parameter,
+                whose head BD takes one of the tile's 4 ids at a multiple
+                of 4.
         """
+        if batch is None:
+            batch = 4 if self.parts_rep is None else 2
         fills = [self.fill(fifos, projs[0], *fill_args[0])]
         for k, p in enumerate(projs):
             starts = range(0, p.tiles, batch)

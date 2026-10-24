@@ -2,39 +2,47 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Llama 3.2 1B's prefill of M=64 prompt rows on the NPU, through N layers.
+"""Llama 3.2 1B's prefill of up to M=64 prompt rows on the NPU, through N layers.
 
-The 64 rows are the prompt's positions p0..p0 + 63, one KV block (block j,
-p0 = 64 j); the KV cache holds the rows before them. Each row's layer-0 input
-is its token's embed seed (llama_embed_seed), made on the device from the
-token's lm_head weight slot, read straight from the lm_head blob `lmw`, and
-from the token's id in `ids`. Each layer runs
-in phases through a DDR `stage` buffer (PrefillStage), on all 32 cores:
+A pass's rows are the prompt's positions p0..p0 + rows - 1 of one KV block
+(block j, p0 = 64 j), rows a multiple of ROW_STEP chosen per pass; the KV
+cache holds the rows before them. Each row's layer-0 input is its token's
+embed seed (llama_embed_seed), made on the device from the token's lm_head
+weight slot, read straight from the lm_head blob `lmw`, and from the token's
+id in `ids`. Each layer runs in phases through a DDR `stage` buffer
+(PrefillStage), on all 32 cores, each glue group's cores taking the rows in
+turn (core k of n: rows n i + k):
 
-- the GEMM array (aie2_prefill.GemmArray, row 2) runs qkv, o, g, u, d;
+- the GEMM array (aie2_prefill.GemmArray, row 2) runs qkv, o, g, u, d, its
+  mmul on M rows and its epilogue and output on the pass's;
 - GR glue cores (row 5) make the rows' embed seeds, and run each row's
   norms (llama_rmsnorm_f32), its fp32 residual adds and its attention
-  output's quantization (llama_af_quant), M / GR rows each;
+  output's quantization (llama_af_quant);
 - GQ rope each row's Q and K and quantize Q per head and K and V into the
-  row's KV cache row (llama_prefill_qkv_row), M / GQ rows each, writing the
-  attention's per-KV-head chunks and the cache rows of block j;
-- GS run SiLU(gate) * up and its quantization (llama_silu_*), M / GS rows
-  each;
+  row's KV cache row (llama_prefill_qkv_row), writing the attention's
+  per-KV-head chunks and the cache rows of block j;
+- GS run SiLU(gate) * up and its quantization (llama_silu_*);
 - 16 attention cores (rows 3 and 4) run the decode's block attention, two
-  per KV head as the decode pairs them: the queries in 4 sub-batches of
-  16, each over blocks 0..j, the diagonal block j up to each query's own
-  row (llama_attn_block_q), so every query's fold is attention_blocks'.
+  per KV head as the decode pairs them: the queries in sub-batches of SUB,
+  each over blocks 0..j, the diagonal block j up to each query's own row
+  (llama_attn_block_q), so every query's fold is attention_blocks'.
 
 Every kernel is the decode's arithmetic, so each row matches
 llama_oracle.Layer.forward bit for bit. A pass is commands queued back to
-back: EMBED_COMMANDS embed commands (prefill:embed{e}), each making up to
-EMBED_PAIRS GR row pairs' seeds from their tokens' slots (slot{k}, the first
-also taking the pass's ids, ids_off), then one command per layer
-(prefill:layer{i}), so a command's work is one layer's whatever the
-prompt's length. A layer command's ScratchpadParameters: the blocks
-attention reads (j + 1, nb), the first row's RoPE row (rope_off) and block j's
-offset in the cache (kv_row). Every command syncs the attention cores' nb;
-an embed command leaves it 0, and they run no layer for it.
+back (pass_commands), behind a prefill:configure command that loads the
+device's PDI when the array held another device: embed commands
+(prefill:embed{r}), each making r of its rows' seeds from their tokens'
+slots (slot{k}) and ids (ids_off) into xa from row xa_off / D, then one
+command per layer (prefill:layer{i}), so a command's work is at most one
+layer's of M rows whatever the prompt's length. A layer command's
+ScratchpadParameters: the blocks attention reads (j + 1, nb, and per further
+sub-batch nb{s} and sub{s}, 0 past the rows), the rows a GQ core takes
+(gq_rows), the SiLU row groups less one (gs_rep), the GEMMs' output parts
+of OUT_ROWS less one (gemm_rep), the first row's RoPE row (rope_off) and
+block j's offset in the cache (kv_row). Every command syncs the cores'
+pass_rows and nb; an embed or configure command leaves nb 0, which the
+GEMM, GQ, GS and attention cores skip, and configure's pass_rows 0, which
+the GR cores skip.
 """
 
 import argparse
@@ -50,6 +58,7 @@ from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
     andi,
     cmpi,
     constant,
+    divsi,
     index_cast,
     muli,
     remsi,
@@ -69,7 +78,7 @@ from aie.iron import (
     Worker,
     jit,
 )
-from aie.iron.controlflow import if_, range_
+from aie.iron.controlflow import else_, if_, range_
 from aie.iron.device import NPU2, Tile
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -89,7 +98,7 @@ from aie2_decode import (
     wblob_layout,
 )
 from aie2_gemv_array import N_CORES
-from aie2_prefill import PREFILL_PROJS, TABLE_LAYER, GemmArray, M
+from aie2_prefill import OUT_ROWS, PREFILL_PROJS, TABLE_LAYER, GemmArray, M
 from llama_config import CS_BYTES, HD, HEAD_D, N_HEADS_KV, N_TILE, D
 
 GR = 2
@@ -99,14 +108,18 @@ SUB = 16
 CHUNK_STRIDE = 448
 SILU_CHUNK = 512
 QKV_FP = N_CORES * (4 + 2) * HEAD_D
-GR_ROWS, GQ_ROWS, GS_ROWS = M // GR, M // GQ, M // GS
 PREFILL = "prefill"
+CONFIGURE = f"{PREFILL}:configure"
 SLOT_WORDS = WLM_SLOT // 4
 LMW_WORDS = (LMW_GAMMA_BYTES + WLM_TOTAL) // 4
-# GR row pairs an embed command feeds: their 30 slot offsets, ids_off and the
-# attention cores' nb fill a command's 32 ScratchpadParameters.
-EMBED_PAIRS = 15
-EMBED_COMMANDS = -(-GR_ROWS // EMBED_PAIRS)
+# A pass's rows come in multiples of ROW_STEP, so every glue group's cores
+# take as many rows (the SiLU cores, GS, the most of them).
+ROW_STEP = GS
+SUB_BATCHES = M // SUB
+# Rows an embed command makes seeds for, at most: its slot offsets, its first
+# row (xa_off, ids_off) and every core's nb and rows fill a command's 32
+# ScratchpadParameters.
+EMBED_ROWS = 28
 
 
 def ids_words(t):
@@ -114,27 +127,47 @@ def ids_words(t):
     return t + D
 
 
-def embed_commands(tokens, ids_off):
-    """A pass's embed commands and their ScratchpadParameters.
+def pass_commands(tokens, block, n_layers, ids_off):
+    """A pass's commands and their ScratchpadParameters.
 
     Args:
-        tokens: The pass's M token ids, in row order.
-        ids_off: Where they start in `ids`.
+        tokens: The pass's rows' token ids, in row order: a multiple of
+            ROW_STEP, at most M.
+        block: Its KV block, j.
+        n_layers: The build's N_LAYERS.
+        ids_off: Where `tokens` start in `ids`.
 
     Returns:
-        [(command, {parameter: value})], prefill:embed0 first: each row's
-        token's lm_head slot as a word offset in `lmw`, and the first
-        command's ids_off.
+        [(command, {parameter: value})] in order: embed{r} commands of r
+        rows each (EMBED_ROWS, then the rest), each row's token's lm_head
+        slot a word offset in `lmw`, then a layer command per layer.
     """
+    rows = len(tokens)
+    if not rows or rows % ROW_STEP or rows > M:
+        raise ValueError(f"a pass of {rows} rows, not a multiple of {ROW_STEP} to {M}")
     out = []
-    for e in range(EMBED_COMMANDS):
-        params = {}
-        for k in range(2 * min(EMBED_PAIRS, GR_ROWS - e * EMBED_PAIRS)):
-            tok = tokens[k % 2 * GR_ROWS + e * EMBED_PAIRS + k // 2]
-            params[f"slot{k}"] = (LMW_GAMMA_BYTES + tok // N_TILE * WLM_SLOT) // 4
-        if e == 0:
-            params["ids_off"] = ids_off
-        out.append((f"{PREFILL}:embed{e}", params))
+    for first in range(0, rows, EMBED_ROWS):
+        r = min(EMBED_ROWS, rows - first)
+        params = {
+            f"slot{k}": (LMW_GAMMA_BYTES + tok // N_TILE * WLM_SLOT) // 4
+            for k, tok in enumerate(tokens[first : first + r])
+        }
+        params.update(pass_rows=r, ids_off=ids_off + first, xa_off=first * D)
+        out.append((f"{PREFILL}:embed{r}", params))
+    subs = -(-rows // SUB)
+    layer = dict(
+        nb=block + 1,
+        pass_rows=rows,
+        gq_rows=rows // GQ,
+        gs_rep=rows // GS - 1,
+        gemm_rep=-(-rows // OUT_ROWS) - 1,
+        rope_off=block * M * CS_BYTES // 4,
+        kv_row=block * KV_BLOCK_WORDS,
+    )
+    for s in range(1, SUB_BATCHES):
+        layer[f"nb{s}"] = (block + 1) * (s < subs)
+        layer[f"sub{s}"] = int(s < subs)
+    out += [(f"{PREFILL}:layer{i}", layer) for i in range(n_layers)]
     return out
 
 
@@ -204,10 +237,10 @@ def tap(words, offset, sizes, strides):
 def prefill_configuration(
     *, N_LAYERS: int, LAYER: int, W_LAYERS: int, T: int
 ) -> DeviceConfiguration:
-    """Layers LAYER..LAYER + N_LAYERS - 1's prefill of M rows at block j,
-    as the module docstring's commands, on a DeviceConfiguration named
-    PREFILL; its first command, embed0, loads the device's PDI first, so a
-    pass may follow another device's commands in one ELF.
+    """Layers LAYER..LAYER + N_LAYERS - 1's prefill of up to M rows at block
+    j, as the module docstring's commands, on a DeviceConfiguration named
+    PREFILL; its configure command loads the device's PDI, so passes may
+    follow another device's commands in one ELF.
 
     Args:
         N_LAYERS: Layers a pass runs.
@@ -230,9 +263,16 @@ def prefill_configuration(
     p_rope = ScratchpadParameter("rope_off", np.int32)
     p_kv = ScratchpadParameter("kv_row", np.int32)
     p_ids = ScratchpadParameter("ids_off", np.int32)
-    p_slot = [ScratchpadParameter(f"slot{k}", np.int32) for k in range(2 * EMBED_PAIRS)]
+    p_rows = ScratchpadParameter("pass_rows", np.int32)
+    p_gq_rows = ScratchpadParameter("gq_rows", np.int32)
+    p_gs_rep = ScratchpadParameter("gs_rep", np.int32)
+    p_gemm_rep = ScratchpadParameter("gemm_rep", np.int32)
+    p_xa = ScratchpadParameter("xa_off", np.int32)
+    p_slot = [ScratchpadParameter(f"slot{k}", np.int32) for k in range(EMBED_ROWS)]
+    p_sub_nb = [ScratchpadParameter(f"nb{s}", np.int32) for s in range(1, SUB_BATCHES)]
+    p_sub = [ScratchpadParameter(f"sub{s}", np.int32) for s in range(1, SUB_BATCHES)]
 
-    array = GemmArray(PREFILL_PROJS, N_LAYERS)
+    array = GemmArray(PREFILL_PROJS, N_LAYERS, rows=(p_nb, p_rows, p_gemm_rep))
     workers = list(array.workers)
 
     t_row = np.ndarray[(D,), np.dtype[np.int32]]
@@ -283,10 +323,14 @@ def prefill_configuration(
         "llama_embed_seed", [t_slot, t_row, np.int32]
     )
 
-    def gr_body(c_x, c_y, c_h, c_o, core, kn, ka, kadd, ke):
+    def gr_body(c_x, c_y, c_h, c_o, nbp, rowsp, core, kn, ka, kadd, ke):
+        # A command's rows, GR at a time: core k takes rows GR i + k.
+        rows = rowsp.read()
+        pairs = index_cast(index(), divsi(rows, constant(i32(), GR)))
+
         def norm():
             g = c_y.acquire(1)
-            for _ in range_(GR_ROWS):
+            for _ in range_(pairs):
                 x = c_x.acquire(1)
                 h = c_h.acquire(1)
                 kn(x, g, h)
@@ -297,7 +341,7 @@ def prefill_configuration(
             c_y.release(1)
 
         def add():
-            for _ in range_(GR_ROWS):
+            for _ in range_(pairs):
                 x = c_x.acquire(1)
                 y = c_y.acquire(1)
                 o = c_o.acquire(1)
@@ -306,19 +350,24 @@ def prefill_configuration(
                 c_y.release(1)
                 c_x.release(1)
 
-        # Each row's token's embed seed, from its slot: row id % 4 of it.
-        ids = c_y.acquire(1)
-        for i in range_(GR_ROWS):
-            slot = c_x.acquire(1)
-            o = c_o.acquire(1)
-            tok = ids[addi(i, constant(index(), core * GR_ROWS))]
-            ke(slot, o, andi(tok, constant(i32(), 3)))
-            c_o.release(1)
-            c_x.release(1)
-        c_y.release(1)
-        for _ in range_(N_LAYERS):
+        with if_(cmpi(CmpIPredicate.eq, nbp.read(), constant(i32(), 0))) as embed:
+            # Each row's token's embed seed, from its slot: row id % 4 of it.
+            # No rows: the configure command's parameter sync.
+            with if_(cmpi(CmpIPredicate.sgt, rows, constant(i32(), 0))):
+                ids = c_y.acquire(1)
+                for i in range_(pairs):
+                    slot = c_x.acquire(1)
+                    o = c_o.acquire(1)
+                    tok = ids[
+                        addi(muli(i, constant(index(), GR)), constant(index(), core))
+                    ]
+                    ke(slot, o, andi(tok, constant(i32(), 3)))
+                    c_o.release(1)
+                    c_x.release(1)
+                c_y.release(1)
+        with else_(embed):
             norm()
-            for _ in range_(GR_ROWS):
+            for _ in range_(pairs):
                 sv = c_x.acquire(1)
                 h = c_h.acquire(1)
                 ka(sv, h)
@@ -338,6 +387,8 @@ def prefill_configuration(
                 gr_in[1][k].cons(),
                 grh[k].prod(),
                 grx[k].prod(),
+                p_nb,
+                p_rows,
                 k,
                 k_norm,
                 k_af,
@@ -345,6 +396,7 @@ def prefill_configuration(
                 k_embed,
             ],
             tile=Tile(k, 5),
+            wait_for_parameters=True,
         )
         for k in range(GR)
     ]
@@ -389,17 +441,20 @@ def prefill_configuration(
     ]
     k_qkv = kp.bind("llama_prefill_qkv_row", [t_fp, t_cs, t_ch, t_rw])
 
-    def gq_body(c_fp, c_cs, c_ch, c_rw, k):
-        for _ in range_(N_LAYERS * GQ_ROWS):
-            fp = c_fp.acquire(1)
-            cs = c_cs.acquire(1)
-            ch = c_ch.acquire(1)
-            rw = c_rw.acquire(1)
-            k(fp, cs, ch, rw)
-            c_rw.release(1)
-            c_ch.release(1)
-            c_cs.release(1)
-            c_fp.release(1)
+    def gq_body(c_fp, c_cs, c_ch, c_rw, nbp, rowsp, k):
+        # A layer command's rows, GQ at a time: core k takes rows GQ i + k.
+        with if_(cmpi(CmpIPredicate.sgt, nbp.read(), constant(i32(), 0))):
+            n = divsi(rowsp.read(), constant(i32(), GQ))
+            for _ in range_(index_cast(index(), n)):
+                fp = c_fp.acquire(1)
+                cs = c_cs.acquire(1)
+                ch = c_ch.acquire(1)
+                rw = c_rw.acquire(1)
+                k(fp, cs, ch, rw)
+                c_rw.release(1)
+                c_ch.release(1)
+                c_cs.release(1)
+                c_fp.release(1)
 
     workers += [
         Worker(
@@ -409,9 +464,12 @@ def prefill_configuration(
                 gq_cs[k].cons(),
                 of_gqch[k].prod(),
                 of_gqrw[k].prod(),
+                p_nb,
+                p_rows,
                 k_qkv,
             ],
             tile=Tile(GR + k, 5),
+            wait_for_parameters=True,
         )
         for k in range(GQ)
     ]
@@ -441,18 +499,21 @@ def prefill_configuration(
     k_up = ks.bind("llama_silu_up", [t_chunk, t_h, np.int32])
     k_quant = ks.bind("llama_silu_quant", [t_h, t_hact])
 
-    def gs_body(c_in, c_out, h, kg, ku, kq):
-        for _ in range_(N_LAYERS * GS_ROWS):
-            for kernel in (kg, ku):
-                for i in range_(HD // SILU_CHUNK):
-                    x = c_in.acquire(1)
-                    kernel(x, h, index_cast(i32(), i))
-                    c_in.release(1)
-            o = c_out.acquire(1)
-            kq(h, o)
-            o[HACT_BYTES // 4 - 2] = 0
-            o[HACT_BYTES // 4 - 1] = 0
-            c_out.release(1)
+    def gs_body(c_in, c_out, h, nbp, rowsp, kg, ku, kq):
+        # A layer command's rows, GS at a time: core k takes rows GS i + k.
+        with if_(cmpi(CmpIPredicate.sgt, nbp.read(), constant(i32(), 0))):
+            n = divsi(rowsp.read(), constant(i32(), GS))
+            for _ in range_(index_cast(index(), n)):
+                for kernel in (kg, ku):
+                    for i in range_(HD // SILU_CHUNK):
+                        x = c_in.acquire(1)
+                        kernel(x, h, index_cast(i32(), i))
+                        c_in.release(1)
+                o = c_out.acquire(1)
+                kq(h, o)
+                o[HACT_BYTES // 4 - 2] = 0
+                o[HACT_BYTES // 4 - 1] = 0
+                c_out.release(1)
 
     workers += [
         Worker(
@@ -461,11 +522,14 @@ def prefill_configuration(
                 gs_in[k].cons(),
                 gs_out[k].prod(),
                 Buffer(t_h, name=f"gs_h{k}"),
+                p_nb,
+                p_rows,
                 k_gate,
                 k_up,
                 k_quant,
             ],
             tile=Tile(GR + GQ + k, 5),
+            wait_for_parameters=True,
         )
         for k in range(GS)
     ]
@@ -517,12 +581,15 @@ def prefill_configuration(
     k_put = kt.bind("llama_attn_put_q", [t_states, t_state, np.int32])
     k_pair = kt.bind("llama_attn_merge_pair_q", [t_state, t_states, t_sv, np.int32])
 
-    def attn_body(c_kv, c_part, c_sv, chunks, states, nbp, mine, ktk, kb, kout):
+    def attn_body(c_kv, c_part, c_sv, chunks, states, nbp, rowsp, mine, ktk, kb, kout):
         nb = nbp.read()
         last = addi(nb, constant(i32(), -1))
+        # The rows' sub-batches of SUB queries, the last's queries past the
+        # rows computed and not read.
+        subs = divsi(addi(rowsp.read(), constant(i32(), SUB - 1)), constant(i32(), SUB))
         # nb 0: an embed command's parameter sync, which carries no layer.
         with if_(cmpi(CmpIPredicate.sgt, nb, constant(i32(), 0))):
-            for t in range_(M // SUB):
+            for t in range_(index_cast(index(), subs)):
                 q = c_kv.acquire(1)
                 ktk(q, chunks, states, SUB)
                 c_kv.release(1)
@@ -565,6 +632,7 @@ def prefill_configuration(
                         Buffer(t_chunks, name=f"attn_chunks_{h}_{mine}"),
                         Buffer(t_states, name=f"attn_states_{h}_{mine}"),
                         p_nb,
+                        p_rows,
                         mine,
                         k_take,
                         k_blk,
@@ -631,102 +699,111 @@ def prefill_configuration(
                 ],
             )
 
+        # A runtime length continues a transfer's third dimension, so each
+        # per-row transfer below walks its rows there, a row in the inner two.
         def gr_rows(at, n=D):
             """The GR cores' rows at stage word `at`, n words apart, read
-            into slot-sized objects."""
+            into slot-sized objects, GR rows an object."""
             return tap(
-                stage_words,
-                at,
-                [GR_ROWS, GR, 4, SLOT_WORDS // 4],
-                [n, GR_ROWS * n, SLOT_WORDS // 4, 1],
+                stage_words, at, [1, M, 4, SLOT_WORDS // 4], [0, n, SLOT_WORDS // 4, 1]
             )
 
-        def gr_y(at, gamma):
-            """The GR cores' second operand at stage word `at`: a gamma to
-            each, or a row each, D words apart."""
-            if gamma:
-                return tap(stage_words, at, [1, GR, 4, 512], [0, 0, 512, 1])
-            return tap(stage_words, at, [GR_ROWS, GR, 4, 512], [D, GR_ROWS * D, 512, 1])
+        def gr_y(at):
+            """The GR cores' fp32 rows at stage word `at`, GR rows an object."""
+            return tap(stage_words, at, [1, M, 4, 512], [0, D, 512, 1])
 
-        def gr_phase(x, y, out, h_out):
-            """GR's phase: the rows at x, with y (a gr_y tap, or None), to
-            out: h rows of ACT_BYTES (h_out) or fp32 rows."""
+        def gr_phase(x, out, h_out, y=None, gamma=False):
+            """GR's phase over the command's rows: the rows at x, with the
+            rows at y or (gamma) the gamma at y, to out: rows of ACT_BYTES
+            (h_out) or fp32 rows."""
             tg = TaskGroup()
-            gr[0].fill(st, tap=gr_rows(x), group=tg)
-            if y is not None:
-                gr[1].fill(st, tap=y, group=tg)
+            rows = dict(length_parameter=p_rows, group=tg)
+            gr[0].fill(st, tap=gr_rows(x), length_unit=SLOT_WORDS, **rows)
+            if gamma:
+                gr[1].fill(
+                    st,
+                    tap=tap(stage_words, y, [1, GR, 4, 512], [0, 0, 512, 1]),
+                    group=tg,
+                )
+            elif y is not None:
+                gr[1].fill(st, tap=gr_y(y), length_unit=D, **rows)
             if h_out:
                 gr_out[0].drain(
                     st,
-                    tap=tap(
-                        stage_words,
-                        out,
-                        [1, GR_ROWS, GR, act],
-                        [0, act, GR_ROWS * act, 1],
-                    ),
-                    group=tg,
+                    tap=tap(stage_words, out, [1, 1, M, act], [0, 0, act, 1]),
+                    length_unit=act,
                     wait=True,
+                    **rows,
                 )
             else:
-                gr_out[1].drain(st, tap=gr_y(out, False), group=tg, wait=True)
+                gr_out[1].drain(st, tap=gr_y(out), length_unit=D, wait=True, **rows)
             tg.finish()
 
         def layer_phases(i, layer, x_in, x_out):
             """Dispatch layer i (the blob's layer `layer`) from rows x_in to
             x_out."""
-            gr_phase(x_in, gr_y(stage.gamma(i, 0), True), stage.words("a_qkv"), True)
+            gr_phase(x_in, stage.words("a_qkv"), True, stage.gamma(i, 0), gamma=True)
             gemms(["qkv"], layer)
 
             tg = TaskGroup()
+            rows = dict(length_parameter=p_rows, group=tg)
             gq[0].fill(
                 st,
                 tap=tap(
                     stage_words,
                     stage.words("out_qkv"),
-                    [GQ_ROWS, GQ, QKV_FP // 512, 512],
-                    [QKV_FP, GQ_ROWS * QKV_FP, 512, 1],
+                    [1, M, QKV_FP // 512, 512],
+                    [0, QKV_FP, 512, 1],
                 ),
-                group=tg,
+                length_unit=QKV_FP,
+                **rows,
             )
             gq[1].fill(
                 wblob,
                 tap=tap(
                     w_total // 4,
                     off_rope // 4,
-                    [1, GQ_ROWS, GQ, cs],
-                    [0, cs, GQ_ROWS * cs, 1],
+                    [1, 1, M, cs],
+                    [0, 0, cs, 1],
                 ),
                 offset_parameter=p_rope,
-                group=tg,
+                length_unit=cs,
+                **rows,
             )
+            # Core k's rows, GQ i + k: gq_rows of them.
+            core_rows = dict(length_parameter=p_gq_rows, group=tg)
             for k in range(GQ):
                 gq_ch[k].drain(
                     st,
                     tap=tap(
                         stage_words,
-                        stage.words("chunks") + k * GQ_ROWS * ch,
-                        [1, GQ_ROWS, N_HEADS_KV, ch],
-                        [0, ch, M * ch, 1],
+                        stage.words("chunks") + k * ch,
+                        [1, M // GQ, N_HEADS_KV, ch],
+                        [0, GQ * ch, M * ch, 1],
                     ),
-                    group=tg,
+                    length_unit=N_HEADS_KV * ch,
                     wait=True,
+                    **core_rows,
                 )
                 for half in range(2):
                     gq_rw[2 * k + half].drain(
                         kv,
                         tap=tap(
                             kv_total,
-                            (layer * 2 + half) * kv_region + k * GQ_ROWS * KV_ROW_WORDS,
-                            [1, GQ_ROWS, NH, KV_ROW_WORDS],
-                            [0, KV_ROW_WORDS, KV_HEAD_BLOCK_WORDS, 1],
+                            (layer * 2 + half) * kv_region + k * KV_ROW_WORDS,
+                            [1, M // GQ, NH, KV_ROW_WORDS],
+                            [0, GQ * KV_ROW_WORDS, KV_HEAD_BLOCK_WORDS, 1],
                         ),
                         offset_parameter=p_kv,
-                        group=tg,
+                        length_unit=NH * KV_ROW_WORDS,
                         wait=True,
+                        **core_rows,
                     )
             tg.finish()
 
-            for s in range(M // SUB):
+            # Sub-batch s runs when the pass's rows reach it (sub{s}, nb{s}).
+            for s in range(SUB_BATCHES):
+                gate = {} if s == 0 else dict(length_parameter=p_sub[s - 1])
                 tg = TaskGroup()
                 for half in range(2):
                     kv_in[half].fill(
@@ -738,6 +815,7 @@ def prefill_configuration(
                             [0, M * ch, KV_HEAD_BLOCK_WORDS // 4, 1],
                         ),
                         group=tg,
+                        **gate,
                     )
                     kv_in[half].fill(
                         kv,
@@ -747,7 +825,7 @@ def prefill_configuration(
                             [1, 1, 16, KV_BLOCK_WORDS // 16],
                             [0, 0, KV_BLOCK_WORDS // 16, 1],
                         ),
-                        length_parameter=p_nb,
+                        length_parameter=p_nb if s == 0 else p_sub_nb[s - 1],
                         group=tg,
                     )
                     sv_out[half].drain(
@@ -760,29 +838,35 @@ def prefill_configuration(
                         ),
                         group=tg,
                         wait=True,
+                        **gate,
                     )
                 tg.finish()
 
-            gr_phase(stage.words("sv"), None, stage.words("a_o"), True)
+            gr_phase(stage.words("sv"), stage.words("a_o"), True)
             gemms(["o"], layer)
-            gr_phase(x_in, gr_y(stage.words("out_o"), False), stage.words("x1"), False)
+            gr_phase(x_in, stage.words("x1"), False, stage.words("out_o"))
             gr_phase(
                 stage.words("x1"),
-                gr_y(stage.gamma(i, 1), True),
                 stage.words("a_gu"),
                 True,
+                stage.gamma(i, 1),
+                gamma=True,
             )
             gemms(["g", "u"], layer)
 
             tg = TaskGroup()
+            rows = dict(length_parameter=p_rows, group=tg)
+            # An object is one chunk of GS rows: the row groups are the
+            # tap's iterations, gs_rep + 1 of them.
             gs[0].fill(
                 st,
                 tap=tap(
                     stage_words,
                     stage.words("out_gu"),
-                    [GS_ROWS, 2 * HD // SILU_CHUNK, GS, SILU_CHUNK],
-                    [2 * HD, SILU_CHUNK, GS_ROWS * 2 * HD, 1],
+                    [M // GS, 2 * HD // SILU_CHUNK, GS, SILU_CHUNK],
+                    [GS * 2 * HD, SILU_CHUNK, 2 * HD, 1],
                 ),
+                repeat_parameter=p_gs_rep,
                 group=tg,
             )
             gs[1].drain(
@@ -790,52 +874,52 @@ def prefill_configuration(
                 tap=tap(
                     stage_words,
                     stage.words("a_d"),
-                    [GS_ROWS, GS, 4, hact // 4],
-                    [hact, GS_ROWS * hact, hact // 4, 1],
+                    [1, M, 4, hact // 4],
+                    [0, hact, hact // 4, 1],
                 ),
-                group=tg,
+                length_unit=hact,
                 wait=True,
+                **rows,
             )
             tg.finish()
 
             gemms(["d"], layer)
-            gr_phase(stage.words("x1"), gr_y(stage.words("out_d"), False), x_out, False)
+            gr_phase(stage.words("x1"), x_out, False, stage.words("out_d"))
 
+        if kind == "configure":
+            npu_load_pdi(device_ref=PREFILL)
+            return
         if kind == "layer":
             x = (stage.words("xa"), stage.words("xb"))
             layer_phases(i, LAYER + i, x[i % 2], x[(i + 1) % 2])
             return
-        # Embed command i: GR row pairs from EMBED_PAIRS * i, each pair's
-        # tokens' lm_head slots read from lmw (slot{k}: row k % 2 * GR_ROWS
-        # + pair), their embed seeds into xa.
-        first = i * EMBED_PAIRS
-        pairs = min(GR_ROWS - first, EMBED_PAIRS)
-        if i == 0:
-            npu_load_pdi(device_ref=PREFILL)
+        # Embed command of i rows, from row xa_off / D: each row's token's
+        # lm_head slot read from lmw (slot{k}: the command's row k), the
+        # rows' ids from ids_off, their embed seeds into xa.
         drains = TaskGroup()
-        if i == 0:
-            gr[1].fill(
-                ids,
-                tap=tap(ids_total, 0, [1, GR, 4, 512], [0, 0, 512, 1]),
-                offset_parameter=p_ids,
-                group=drains,
-            )
+        gr[1].fill(
+            ids,
+            tap=tap(ids_total, 0, [1, GR, 4, 512], [0, 0, 512, 1]),
+            offset_parameter=p_ids,
+            group=drains,
+        )
         gr_out[1].drain(
             st,
             tap=tap(
                 stage_words,
-                stage.words("xa") + first * D,
-                [pairs, GR, 4, 512],
-                [D, GR_ROWS * D, 512, 1],
+                stage.words("xa"),
+                [1, i, 4, 512],
+                [0, D, 512, 1],
             ),
+            offset_parameter=p_xa,
             group=drains,
             wait=True,
         )
         # Groups of 15 keep the shim tile's BDs within its 16; one channel's
         # fills complete in order, so a group awaits its last.
-        for at in range(0, 2 * pairs, 15):
+        for at in range(0, i, 15):
             fills = TaskGroup()
-            group = range(at, min(at + 15, 2 * pairs))
+            group = range(at, min(at + 15, i))
             for k in group:
                 gr[0].fill(
                     lmw,
@@ -861,9 +945,12 @@ def prefill_configuration(
         np.ndarray[(ids_total,), np.dtype[np.int32]],
         *[f for g in fifo_groups for f in g],
     ]
-    runtimes = [
-        Runtime(partial(sequence, "embed", e), arg_types, name=f"embed{e}")
-        for e in range(EMBED_COMMANDS)
+    # One command loads the device's PDI: a load from another command than
+    # the last loader's reloads it, about 2.5 ms (measured).
+    runtimes = [Runtime(partial(sequence, "configure", 0), arg_types, name="configure")]
+    runtimes += [
+        Runtime(partial(sequence, "embed", r), arg_types, name=f"embed{r}")
+        for r in range(ROW_STEP, EMBED_ROWS + 1, ROW_STEP)
     ] + [
         Runtime(partial(sequence, "layer", i), arg_types, name=f"layer{i}")
         for i in range(N_LAYERS)

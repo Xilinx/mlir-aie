@@ -2,19 +2,21 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""The prefill of 64 rows through layers 0..n - 1 (aie2_prefill_layer.py) on
-the NPU, bit for bit against llama_oracle.Layer.forward.
+"""A prefill pass's rows (64, or --rows) through layers 0..n - 1
+(aie2_prefill_layer.py) on the NPU, bit for bit against
+llama_oracle.Layer.forward.
 
 The prompt's tokens are seeded random ids; the device makes each row's
 embed seed from the token's lm_head slot, read from the lm_head blob, and
 its id. The oracle runs the positions before block j one at a time, which
-fills its KV caches; the device gets those caches and runs block j's 64
-rows in one pass: its embed commands, then a command per layer, queued.
-Checked, every
-row bit for bit: the residual leaving the last layer, block j's KV rows in
-every layer, and every stage of the last layer the device leaves in `stage`
-against the same steps taken one at a time (forward_steps, itself checked
-against Layer.forward), which also locates a mismatch.
+fills its KV caches; the device gets those caches and runs block j's rows
+in one pass: its embed commands, then a command per layer, queued.
+Checked, every row bit for bit: the residual leaving the last layer, block
+j's KV rows in every layer, and every stage of the last layer the device
+leaves in `stage` against the same steps taken one at a time
+(forward_steps, itself checked against Layer.forward), which also locates
+a mismatch; and that the block's rows past the pass's keep what the cache
+held.
 
 The oracle runs before the NPU lock is taken; `--lock` serializes the device
 part with other users of the NPU.
@@ -30,16 +32,17 @@ from pathlib import Path
 import aie.iron as iron
 import numpy as np
 from aie.utils.aie_fp32 import aie_add
-from aie2_decode import ACT_BYTES, HACT_BYTES, KV_BLOCK_WORDS
+from aie2_decode import ACT_BYTES, HACT_BYTES
 from aie2_prefill import pack_trailers
 from aie2_prefill_layer import (
     CHUNK_STRIDE,
-    PREFILL,
+    CONFIGURE,
     QKV_FP,
+    ROW_STEP,
     PrefillStage,
     build_prefill,
-    embed_commands,
     ids_words,
+    pass_commands,
 )
 from llama_config import HD, HEAD_D, KV_TB, N_HEADS_KV, N_HEADS_Q, VOCAB, D
 from llama_decode import DecodeShape, pack_lmw
@@ -206,7 +209,13 @@ def stage_checks(stage, st, want):
 
 def main():
     ap = argparse.ArgumentParser(prog="Prefill layers against Layer.forward")
-    ap.add_argument("--block", type=int, default=1, help="j: rows 64j .. 64j + 63")
+    ap.add_argument("--block", type=int, default=1, help="j: rows from 64j")
+    ap.add_argument(
+        "--rows",
+        type=int,
+        default=KV_TB,
+        help=f"the pass's rows, a multiple of {ROW_STEP} to {KV_TB}",
+    )
     ap.add_argument("--layers", type=int, default=1, help="layers 0 .. n - 1")
     ap.add_argument("--t", type=int, default=256, help="KV cache rows")
     ap.add_argument("--data", type=Path, default=Path(__file__).parent / "data")
@@ -219,9 +228,12 @@ def main():
 
     j = opts.block
     n = opts.layers
+    m = opts.rows
     p0 = j * KV_TB
     if p0 + KV_TB > opts.t:
-        raise ValueError(f"block {j} is past t={opts.t}")
+        ap.error(f"block {j} is past t={opts.t}")
+    if m < ROW_STEP or m > KV_TB or m % ROW_STEP:
+        ap.error(f"--rows {m} is not a multiple of {ROW_STEP} to {KV_TB}")
     rng = np.random.default_rng(opts.seed)
     if opts.synthetic_weights:
         layers = [Layer.random(rng, opts.t) for _ in range(n)]
@@ -246,7 +258,7 @@ def main():
     kv_before = shape.pack_kv(layers)
     steps_layer = copy.deepcopy(layers[-1])
     want, steps = [], []
-    for i in range(KV_TB):
+    for i in range(m):
         p = p0 + i
         cos, sin = rope[p, :HEAD_D], rope[p, HEAD_D:]
         x = seeds[p]
@@ -257,9 +269,9 @@ def main():
         assert np.asarray(x_out).tobytes() == np.asarray(want[-1]).tobytes()
         steps.append(s)
     want = np.stack(want)
-    rows = np.arange(p0, p0 + KV_TB)
+    rows = np.arange(p0, p0 + m)
     print(
-        f"oracle: {n} layers, {p0} positions, then block {j}'s {KV_TB} rows, in "
+        f"oracle: {n} layers, {p0} positions, then block {j}'s {m} rows, in "
         f"{time.perf_counter() - t0:.1f} s"
     )
 
@@ -273,9 +285,7 @@ def main():
     ids = np.zeros(ids_words(opts.t), np.int32)
     ids[: tokens.size] = tokens
     wblob = shape.pack_wblob(layers, rope)
-    layer = dict(nb=j + 1, rope_off=p0 * 64, kv_row=j * KV_BLOCK_WORDS)
-    commands = embed_commands(tokens[p0:], p0)
-    commands += [(f"{PREFILL}:layer{i}", layer) for i in range(n)]
+    commands = [(CONFIGURE, {})] + pass_commands(tokens[p0 : p0 + m], j, n, p0)
     kwargs = dict(N_LAYERS=n, LAYER=0, W_LAYERS=n, T=opts.t)
 
     def run_pass():
@@ -327,20 +337,28 @@ def main():
     for name, bad in stage_checks(stage, st_got, steps):
         stages_ok &= not bad
         print(
-            f"  layer {n - 1} {name}: {KV_TB - len(bad)}/{KV_TB} rows"
+            f"  layer {n - 1} {name}: {m - len(bad)}/{m} rows"
             + (f", rows {bad[:8]} differ" if bad else "")
         )
     at = stage.at[("xa", "xb")[n % 2]]
-    x_out = st_got[at : at + KV_TB * D * 4].view(np.float32).reshape(KV_TB, D)
+    x_out = st_got[at : at + m * D * 4].view(np.float32).reshape(m, D)
     out_ok = (x_out.view(np.uint32) == want.view(np.uint32)).all(axis=1)
-    kv_ok = np.ones(KV_TB, bool)
+    kv_ok = np.ones(m, bool)
+    # The block's rows past the pass's keep what the cache held.
+    rest = np.arange(p0 + m, p0 + KV_TB)
+    rest_ok = True
     for L, layer in enumerate(layers):
         kv_at = shape.kv_word_index(L, rows)
         kv_ok &= (kv_got[kv_at] == shape.kv_row_words(layer, rows)).all(axis=(0, 2))
-    print(f"residual leaving layer {n - 1}: {out_ok.sum()}/{KV_TB} rows bit-exact")
-    print(f"block {j}'s KV rows, all layers: {kv_ok.sum()}/{KV_TB} rows bit-exact")
-    exact = bool(out_ok.all() and kv_ok.all() and stages_ok)
-    print(f"prefill of {n} layers, block {j}: {'PASS' if exact else 'FAIL'}")
+        rest_at = shape.kv_word_index(L, rest)
+        rest_ok &= bool((kv_got[rest_at] == kv_before[rest_at]).all())
+    print(f"residual leaving layer {n - 1}: {out_ok.sum()}/{m} rows bit-exact")
+    print(f"block {j}'s KV rows, all layers: {kv_ok.sum()}/{m} rows bit-exact")
+    print(
+        f"block {j}'s {rest.size} rows past the pass's: {'kept' if rest_ok else 'WRITTEN'}"
+    )
+    exact = bool(out_ok.all() and kv_ok.all() and stages_ok and rest_ok)
+    print(f"prefill of {n} layers, block {j}, {m} rows: {'PASS' if exact else 'FAIL'}")
     if times:
         print(f"pass: min {min(times):.3f} ms, median {float(np.median(times)):.3f} ms")
     return 0 if exact else 1

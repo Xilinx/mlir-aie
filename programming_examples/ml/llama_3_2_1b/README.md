@@ -111,21 +111,26 @@ a row at a time. Only the prompt's last batch runs the lm_head and sampler
 prompt into batches (`DecodeShape.batches`).
 
 Longer prompts go through a prefill design of their own
-(`aie2_prefill_layer.py`, host side `llama_prefill.py`): a pass runs 64
-prompt rows, one KV block, through all 16 layers, its GEMM array
+(`aie2_prefill_layer.py`, host side `llama_prefill.py`): a pass runs up to
+64 prompt rows of one KV block through all 16 layers, its GEMM array
 (`aie2_prefill.py`) taking each projection's weights once for the 64 rows.
-A pass starts with three embed commands, which read each row's token's
-lm_head slot straight from the lm_head weights (one ScratchpadParameter a
-row) and make its embed seed; then each layer is its own command. A pass's
-commands are queued back to back on the hardware context, so a command's work
-stays one layer's however long the prompt, and the next pass's commands queue
-behind them. The prefill and the decode are two devices of one full ELF
-(`aie2_llama.py`) on one hardware context, sharing the weights, lm_head and
-KV cache buffers; a request's first prefill command and its first decode
-command each load their device's PDI. The decode then runs the
-rest of the prompt, at least its last token, whose sample is the first
-generated token. A partial last block runs as a padded prefill pass when
-that beats the decode's batches for it (`Prefiller.plan`).
+A pass's rows are chosen when it is queued, a multiple of 4: the glue cores
+take them in turn and loop over as many as the pass has, every per-row
+transfer's length is a ScratchpadParameter, and the attention runs only the
+sub-batches of 16 queries the rows reach; the GEMMs run their 64-row tiles,
+the rows past the pass's not read. A pass starts with its embed commands,
+up to 28 rows each, which read each row's token's lm_head slot straight from
+the lm_head weights (one ScratchpadParameter a row) and make its embed seed;
+then each layer is its own command. A pass's commands are queued back to
+back on the hardware context, so a command's work stays at most one layer's
+however long the prompt, and the next pass's commands queue behind them.
+The prefill and the decode are two devices of one full ELF (`aie2_llama.py`)
+on one hardware context, sharing the weights, lm_head and KV cache buffers;
+a request's first prefill command and its first decode command each load
+their device's PDI. The prefill takes the prompt's rows up to the last
+multiple of 4 short of its last token; the decode runs the rest, 1 to 4
+tokens in one batch, the last one's sample being the first generated token
+(`Prefiller.plan`).
 
 ### INT8 recipe (W8A8-dynamic)
 
