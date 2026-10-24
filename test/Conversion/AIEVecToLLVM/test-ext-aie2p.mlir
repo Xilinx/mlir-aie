@@ -169,3 +169,29 @@ func.func @v32f32_ext_v64f32(%arg0 : vector<64xf32>) -> (vector<32xf32>, vector<
 // CHECK: %[[EXT0:.*]] = vector.shuffle %[[ARG0]], %[[ARG0]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<64xf32>, vector<64xf32>
 // CHECK: %[[EXT1:.*]] = vector.shuffle %[[ARG0]], %[[ARG0]] [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] : vector<64xf32>, vector<64xf32>
 // CHECK: return %[[EXT0]], %[[EXT1]] : vector<32xf32>, vector<32xf32>
+
+// -----
+
+// A quarter of v64f32
+func.func @v16f32_ext_v64f32(%arg0 : vector<64xf32>) -> vector<16xf32> {
+  %0 = aievec.ext %arg0 {index = 2 : i8} : vector<64xf32>, vector<16xf32>
+  return %0 : vector<16xf32>
+}
+
+// CHECK-LABEL: @v16f32_ext_v64f32
+// CHECK-SAME: %[[ARG0:.*]]: vector<64xf32>
+// CHECK: %[[EXT:.*]] = vector.shuffle %[[ARG0]], %[[ARG0]] [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47] : vector<64xf32>, vector<64xf32>
+// CHECK: return %[[EXT]] : vector<16xf32>
+
+// -----
+
+// The last of three parts of v96bf16
+func.func @v32bf16_ext_v96bf16(%arg0 : vector<96xbf16>) -> vector<32xbf16> {
+  %0 = aievec.ext %arg0 {index = 2 : i8} : vector<96xbf16>, vector<32xbf16>
+  return %0 : vector<32xbf16>
+}
+
+// CHECK-LABEL: @v32bf16_ext_v96bf16
+// CHECK-SAME: %[[ARG0:.*]]: vector<96xbf16>
+// CHECK: %[[EXT:.*]] = vector.shuffle %[[ARG0]], %[[ARG0]] [64, 65, {{([0-9]+, )+}}95] : vector<96xbf16>, vector<96xbf16>
+// CHECK: return %[[EXT]] : vector<32xbf16>

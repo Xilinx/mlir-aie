@@ -27,7 +27,14 @@ func.func @sitofp_v32_i16_bf16(%v: vector<32xi16>) -> vector<32xbf16> {
   // CHECK:  %[[MAGIC_F:.*]] = aievec.ups %[[BC]] {{.*}} : vector<32xbf16>, vector<32xf32>
   // CHECK:  %[[MAGIC_I:.*]] = aievec.cast %[[MAGIC_F]] {isResAcc = true} : vector<32xf32>, vector<32xi32>
   // CHECK:  %[[V_I:.*]] = aievec.ups %[[A]] {{.*}} : vector<32xi16>, vector<32xi32>
-  // CHECK:  %[[SUM_I:.*]] = arith.addi %[[V_I]], %[[MAGIC_I]] : vector<32xi32>
+  // The 1024-bit integer add is done as two 512-bit halves.
+  // CHECK:  %[[V_I0:.*]] = aievec.ext %[[V_I]] {index = 0 : i8} : vector<32xi32>, vector<16xi32>
+  // CHECK:  %[[MAGIC_I0:.*]] = aievec.ext %[[MAGIC_I]] {index = 0 : i8} : vector<32xi32>, vector<16xi32>
+  // CHECK:  %[[SUM_I0:.*]] = arith.addi %[[V_I0]], %[[MAGIC_I0]] : vector<16xi32>
+  // CHECK:  %[[V_I1:.*]] = aievec.ext %[[V_I]] {index = 1 : i8} : vector<32xi32>, vector<16xi32>
+  // CHECK:  %[[MAGIC_I1:.*]] = aievec.ext %[[MAGIC_I]] {index = 1 : i8} : vector<32xi32>, vector<16xi32>
+  // CHECK:  %[[SUM_I1:.*]] = arith.addi %[[V_I1]], %[[MAGIC_I1]] : vector<16xi32>
+  // CHECK:  %[[SUM_I:.*]] = aievec.concat %[[SUM_I0]], %[[SUM_I1]] : vector<16xi32>, vector<32xi32>
   // CHECK:  %[[SUM_F:.*]] = aievec.cast %[[SUM_I]] {isResAcc = true} : vector<32xi32>, vector<32xf32>
   // CHECK:  %[[DIFF:.*]] = aievec.sub_elem %[[SUM_F]], %[[MAGIC_F]] : vector<32xf32>
   // CHECK:  %[[BF:.*]] = aievec.srs %[[DIFF]], {{.*}} : vector<32xf32>, i32, vector<32xbf16>
