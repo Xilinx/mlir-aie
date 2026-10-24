@@ -5552,13 +5552,9 @@ constexpr int64_t kAIE2PMaxParts = 128;
 
 // The lanes of each part an elementwise op is rewritten into when the AIE2P
 // lowering does not take its lane count, or none. Lanes are counted over all
-// dimensions; an n-D op is flattened to rank 1 first.
-//
-// A vector wider than every native width is split into equal parts of the
-// widest one that divides it. A narrower one is repeated to the narrowest
-// native width that holds a whole number of copies. A one-lane vector is a
-// scalar, which other patterns handle, and a lane count neither rule fits is
-// left alone.
+// dimensions. A wider vector is split into parts of the widest native width
+// that divides it; a narrower one is repeated to the narrowest native width
+// that holds a whole number of copies.
 //
 // A compare is split together with the select that uses it, as the parts of
 // its mask cannot be put back together; the parts are as wide as both the
@@ -5584,8 +5580,8 @@ static std::optional<int64_t> getAIE2PPartLanes(Operation *op) {
     if (!cmp)
       return std::nullopt;
     SmallVector<int64_t, 5> cmpNative = getAIE2PNativeLanes(cmp);
-    llvm::erase_if(native,
-                   [&](int64_t n) { return !llvm::is_contained(cmpNative, n); });
+    llvm::erase_if(
+        native, [&](int64_t n) { return !llvm::is_contained(cmpNative, n); });
     if (llvm::is_contained(native, lanes))
       return std::nullopt;
     for (int64_t part : llvm::reverse(native))

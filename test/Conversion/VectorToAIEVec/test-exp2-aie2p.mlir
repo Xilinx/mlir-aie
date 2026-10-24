@@ -150,4 +150,3 @@ func.func @test_exp2_aie2(%a: vector<16xbf16>) -> vector<16xbf16> {
     %0 = math.exp2 %a : vector<16xbf16>
     return %0 : vector<16xbf16>
 }
-
