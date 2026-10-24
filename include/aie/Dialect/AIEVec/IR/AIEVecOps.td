@@ -632,18 +632,12 @@ def AIEVec_BandOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_MatMulOp:
-  AIEVec_Op<"matmul", [
-    Pure,
-    AllRanksMatch<["lhs", "rhs", "acc"]>,
-    AllTypesMatch<["acc", "result"]>,
-    ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
-    IsValidAIE2MatMulShapeAndType<"lhs", "rhs", "acc">
-  ]>,
-  Arguments<(ins AIE2MatMulLHS:$lhs,
-                 AIE2MatMulRHS:$rhs,
-                 AIE2MatMulACC:$acc)>,
-  Results<(outs AIE2MatMulACC:$result)> {
+def AIEVec_MatMulOp
+    : AIEVec_Op<"matmul", [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
+                           AllTypesMatch<["acc", "result"]>]>,
+      Arguments<(ins AIE2MatMulLHS:$lhs, AIE2MatMulRHS:$rhs, AIE2MatMulACC:$acc,
+          UnitAttr:$lhs_transposed, UnitAttr:$rhs_transposed)>,
+      Results<(outs AIE2MatMulACC:$result)> {
   let summary = "AIE2 matrix-multiply and accummulate";
   let description = [{
     AMD AIEv2-specific intrinsic that performs a matrix multiplications
@@ -669,24 +663,29 @@ def AIEVec_MatMulOp:
          `vector<4x4xi16>`  | `vector<4x4xi16>`  | `vector<4x4xi64>`
          `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
          `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+
+    The table gives `lhs` as `[m, k]` and `rhs` as `[k, n]`. With
+    `lhs_transposed`, `lhs` holds the `[k, m]` transpose instead, and with
+    `rhs_transposed`, `rhs` holds the `[n, k]` transpose; the shapes change
+    accordingly. The lowering transposes an operand with one shuffle when the
+    multiply reads it the other way. An operand that needs a transpose no
+    shuffle mode provides does not verify.
   }];
-  let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
-                         type($rhs) `into` type($acc)}];
-  let hasVerifier = 0;
+  let assemblyFormat = [{$lhs `,` $rhs `,` $acc
+                         (`lhs_transposed` $lhs_transposed^)?
+                         (`rhs_transposed` $rhs_transposed^)?
+                         attr-dict `:` type($lhs) `,` type($rhs) `into`
+                         type($acc)}];
+  let hasVerifier = 1;
 }
 
-def AIEVec_MatMulOp_AIE2P:
-  AIEVec_Op<"matmul_aie2p", [
-    Pure,
-    AllRanksMatch<["lhs", "rhs", "acc"]>,
-    AllTypesMatch<["acc", "result"]>,
-    ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
-    IsValidAIE2PMatMulShapeAndType<"lhs", "rhs", "acc">
-  ]>,
-  Arguments<(ins AIE2PMatMulLHS:$lhs,
-                 AIE2PMatMulRHS:$rhs,
-                 AIE2PMatMulACC:$acc)>,
-  Results<(outs AIE2PMatMulACC:$result)> {
+def AIEVec_MatMulOp_AIE2P
+    : AIEVec_Op<"matmul_aie2p", [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
+                                 AllTypesMatch<["acc", "result"]>]>,
+      Arguments<(ins AIE2PMatMulLHS:$lhs, AIE2PMatMulRHS:$rhs,
+          AIE2PMatMulACC:$acc, UnitAttr:$lhs_transposed,
+          UnitAttr:$rhs_transposed)>,
+      Results<(outs AIE2PMatMulACC:$result)> {
   let summary = "AIE2P matrix-multiply and accummulate";
   let description = [{
     AMD AIEv2P-specific intrinsic that performs a matrix multiplication
@@ -707,10 +706,21 @@ def AIEVec_MatMulOp_AIE2P:
          `vector<8x8xbf16>`  | `vector<8x4xbf16>`  | `vector<8x4xf32>`
          `vector<8x8xi8>`    | `vector<8x8xi8>`    | `vector<8x8xi32>`
          `vector<8x2xi16>`   | `vector<2x8xi16>`   | `vector<8x8xi32>`
+
+    `lhs_transposed` and `rhs_transposed` mean what they do for
+    `aievec.matmul`. The bf16 multiplies through bfp16 (an `rhs` of
+    `vector<8x8xbf16>`) read `rhs` as `[n, k]`, and the elementwise
+    `vector<8x8xbf16>` times `vector<8x4xbf16>` multiply reads `lhs` as
+    `[k, m]`; an operand stored that way needs no shuffle. Any other
+    transposed operand takes one shuffle, or the `t16_8x8_lo`/`t16_8x8_hi`
+    pair for an 8x8 bf16 tile.
   }];
-  let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
-                         type($rhs) `into` type($acc)}];
-  let hasVerifier = 0;
+  let assemblyFormat = [{$lhs `,` $rhs `,` $acc
+                         (`lhs_transposed` $lhs_transposed^)?
+                         (`rhs_transposed` $rhs_transposed^)?
+                         attr-dict `:` type($lhs) `,` type($rhs) `into`
+                         type($acc)}];
+  let hasVerifier = 1;
 }
 
 def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
@@ -836,6 +846,8 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
          t16_16x4_hi        | ^                  | ^
          t16_4x16_lo        | ^                  | ^
          t16_4x16_hi        | ^                  | ^
+         t16_8x8_lo (AIE2P) | ^                  | ^
+         t16_8x8_hi (AIE2P) | ^                  | ^
          t32_4x4            | `lhs`              | `vector<16xi32>` or `vector<16xf32>`
          t32_16x2_lo        | `lhs` & `rhs`      | ^
          t32_16x2_hi        | ^                  | ^

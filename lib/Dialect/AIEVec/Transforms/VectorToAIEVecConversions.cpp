@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 
@@ -4976,52 +4977,155 @@ struct LowerScalarShRSIToAIEVecUPSSRS : OpConversionPattern<arith::ShRSIOp> {
   }
 };
 
+// A `vector.contract` read as one matmul tile: the sizes of its m, n and k
+// dims, and the order each operand stores them in once its unit dims are
+// dropped. An m (n) dim indexes lhs (rhs) and acc, a k dim indexes lhs and
+// rhs and is reduced. Unit dims may sit anywhere and play any role.
+struct ContractionTile {
+  int64_t m = 1, n = 1, k = 1;
+  // lhs stored [k, m], rhs stored [n, k], acc stored [n, m]. Only set when
+  // both dims of the operand are larger than 1.
+  bool lhsTransposed = false, rhsTransposed = false, accTransposed = false;
+};
+
+static FailureOr<ContractionTile> analyzeContraction(vector::ContractionOp op,
+                                                     std::string &why) {
+  llvm::raw_string_ostream os(why);
+  if (op.getKind() != vector::CombiningKind::ADD) {
+    os << "the combining kind is not add";
+    return failure();
+  }
+  auto accTy = dyn_cast<VectorType>(op.getAccType());
+  if (!accTy) {
+    os << "the accumulator is a scalar";
+    return failure();
+  }
+  SmallVector<AffineMap, 3> maps = op.getIndexingMapsArray();
+  if (!llvm::all_of(maps, [](AffineMap map) {
+        return map.isProjectedPermutation(/*allowZeroInResults=*/false);
+      })) {
+    os << "an indexing map is not a projected permutation";
+    return failure();
+  }
+  enum Role { M, N, K, Other };
+  unsigned numDims = maps[0].getNumDims();
+  SmallVector<int64_t> dimSize(numDims, 1);
+  SmallVector<std::array<bool, 3>> indexes(numDims, {false, false, false});
+  ArrayRef<int64_t> shapes[3] = {op.getLhsType().getShape(),
+                                 op.getRhsType().getShape(), accTy.getShape()};
+  for (unsigned operand = 0; operand < 3; ++operand)
+    for (auto [i, expr] : llvm::enumerate(maps[operand].getResults())) {
+      unsigned d = cast<AffineDimExpr>(expr).getPosition();
+      dimSize[d] = shapes[operand][i];
+      indexes[d][operand] = true;
+    }
+  SmallVector<vector::IteratorType> iterators = op.getIteratorTypesArray();
+  std::optional<unsigned> dimOf[3];
+  for (unsigned d = 0; d < numDims; ++d) {
+    if (dimSize[d] == 1)
+      continue;
+    auto [inLhs, inRhs, inAcc] = indexes[d];
+    bool reduced = iterators[d] == vector::IteratorType::reduction;
+    Role r = Other;
+    if (inLhs && !inRhs && inAcc && !reduced)
+      r = M;
+    else if (!inLhs && inRhs && inAcc && !reduced)
+      r = N;
+    else if (inLhs && inRhs && !inAcc && reduced)
+      r = K;
+    if (r == Other || dimOf[r]) {
+      os << "d" << d << " of size " << dimSize[d]
+         << " is not the only m, n or k dim larger than 1";
+      return failure();
+    }
+    dimOf[r] = d;
+  }
+  ContractionTile tile;
+  if (dimOf[M])
+    tile.m = dimSize[*dimOf[M]];
+  if (dimOf[N])
+    tile.n = dimSize[*dimOf[N]];
+  if (dimOf[K])
+    tile.k = dimSize[*dimOf[K]];
+  // Whether `second` comes before `first` among the results of `map`.
+  auto swapped = [&](AffineMap map, Role first, Role second) {
+    if (!dimOf[first] || !dimOf[second])
+      return false;
+    return *map.getResultPosition(
+               getAffineDimExpr(*dimOf[second], map.getContext())) <
+           *map.getResultPosition(
+               getAffineDimExpr(*dimOf[first], map.getContext()));
+  };
+  tile.lhsTransposed = swapped(maps[0], M, K);
+  tile.rhsTransposed = swapped(maps[1], K, N);
+  tile.accTransposed = swapped(maps[2], M, N);
+  return tile;
+}
+
 // Convert a `vector.contract` op to an `aievec.matmul` op for AIE2 or
-// `aievec.matmul_aie2p` for AIE2P
+// `aievec.matmul_aie2p` for AIE2P. The operands keep the layout the
+// contraction stores them in, recorded by the lhs_transposed and
+// rhs_transposed flags; the lowering of the matmul op moves data only where
+// the multiply reads an operand the other way. An accumulator stored [n, m]
+// is handled by multiplying rhs^T by lhs^T, which swaps the operands and
+// flips both of their flags.
 template <typename MatMulOpTy>
 struct LowerVectorContractionOpToAIEVecMatMulPattern
     : OpConversionPattern<vector::ContractionOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LowerVectorContractionOpToAIEVecMatMulPattern(MLIRContext *context)
-      : OpConversionPattern(context) {}
+  static constexpr bool isAIE2P =
+      std::is_same_v<MatMulOpTy, aievec::MatMulOp_AIE2P>;
 
-  Value reshapeLeadingUnitDims(OpBuilder &b, Value v) const {
-    auto vecTy = dyn_cast<VectorType>(v.getType());
-    if (!vecTy)
+  static Value reshape(OpBuilder &b, Value v, ArrayRef<int64_t> shape) {
+    auto vecTy = cast<VectorType>(v.getType());
+    auto newTy = VectorType::get(shape, vecTy.getElementType());
+    if (newTy == vecTy)
       return v;
-    auto vecShape = vecTy.getShape();
-
-    size_t numLeadUnitDims = 0;
-    while (numLeadUnitDims < vecShape.size() && vecShape[numLeadUnitDims] == 1)
-      numLeadUnitDims++;
-
-    if (!numLeadUnitDims)
-      return v;
-
-    SmallVector<int64_t> newShape(vecShape.begin() + numLeadUnitDims,
-                                  vecShape.end());
-    auto newVecTy = VectorType::get(newShape, vecTy.getElementType());
-    return vector::ShapeCastOp::create(b, v.getLoc(), newVecTy, v).getResult();
+    return vector::ShapeCastOp::create(b, v.getLoc(), newTy, v).getResult();
   }
 
   LogicalResult
   matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto lhs = reshapeLeadingUnitDims(rewriter, adaptor.getLhs());
-    auto rhs = reshapeLeadingUnitDims(rewriter, adaptor.getRhs());
-    auto acc = reshapeLeadingUnitDims(rewriter, adaptor.getAcc());
-    bool bReshapedAcc = (acc != adaptor.getAcc());
+    StringRef target = isAIE2P ? "AIE2P" : "AIE2";
+    std::string why;
+    FailureOr<ContractionTile> tile = analyzeContraction(contractOp, why);
+    if (failed(tile)) {
+      contractOp.emitError()
+          << "cannot lower to an " << target << " matrix multiply: " << why;
+      return failure();
+    }
+
+    Value lhsIn = adaptor.getLhs(), rhsIn = adaptor.getRhs();
+    Value lhsOrig = contractOp.getLhs(), rhsOrig = contractOp.getRhs();
+    int64_t m = tile->m, n = tile->n, k = tile->k;
+    bool lhsT = tile->lhsTransposed, rhsT = tile->rhsTransposed;
+    if (tile->accTransposed) {
+      std::swap(lhsIn, rhsIn);
+      std::swap(lhsOrig, rhsOrig);
+      std::swap(m, n);
+      // A flag only matters, and is only set, when both dims are larger
+      // than 1.
+      std::tie(lhsT, rhsT) =
+          std::make_pair(!rhsT && m > 1 && k > 1, !lhsT && n > 1 && k > 1);
+    }
+    SmallVector<int64_t, 2> lhsShape =
+        lhsT ? SmallVector<int64_t, 2>{k, m} : SmallVector<int64_t, 2>{m, k};
+    SmallVector<int64_t, 2> rhsShape =
+        rhsT ? SmallVector<int64_t, 2>{n, k} : SmallVector<int64_t, 2>{k, n};
+    auto accTy =
+        VectorType::get({m, n}, getElementTypeOrSelf(adaptor.getAcc()));
 
     // Recover operand signedness from the widening op before it is peeled.
     // Consult both the (possibly already-rewritten) adaptor operands and the
     // original pre-conversion contraction operands.
-    auto lhsSigned = getSignednessOfWideningOp(adaptor.getLhs());
+    auto lhsSigned = getSignednessOfWideningOp(lhsIn);
     if (!lhsSigned)
-      lhsSigned = getSignednessOfWideningOp(contractOp.getLhs());
-    auto rhsSigned = getSignednessOfWideningOp(adaptor.getRhs());
+      lhsSigned = getSignednessOfWideningOp(lhsOrig);
+    auto rhsSigned = getSignednessOfWideningOp(rhsIn);
     if (!rhsSigned)
-      rhsSigned = getSignednessOfWideningOp(contractOp.getRhs());
+      rhsSigned = getSignednessOfWideningOp(rhsOrig);
 
     // Carry the signedness in the matmul operand element type (si8/ui8). MLIR
     // has no signless->signed/unsigned cast, so materialize an
@@ -5030,9 +5134,7 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     auto retype = [&](Value v, std::optional<bool> isSigned) -> Value {
       if (!isSigned)
         return v;
-      auto vecTy = dyn_cast<VectorType>(v.getType());
-      if (!vecTy)
-        return v;
+      auto vecTy = cast<VectorType>(v.getType());
       auto intTy = dyn_cast<IntegerType>(vecTy.getElementType());
       if (!intTy || !intTy.isSignless())
         return v;
@@ -5044,47 +5146,42 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
           .getResult(0);
     };
 
-    Value result;
-    {
-      // Replace diagnostics handler to silence errors when verifying the
-      // validity of the matmul ops being generated.
-      ScopedDiagnosticHandler diagHandler(
-          contractOp.getContext(), [](Diagnostic &) { return success(); });
-      // Decide whether the wide operands already form a valid matmul, or
-      // whether the widening ops must be peeled to reach a supported narrow
-      // shape. Use a throwaway signless op so a failed attempt leaves no retype
-      // casts behind.
-      auto testOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                       acc.getType(), lhs, rhs, acc);
-      bool needsPeel = failed(testOp.verifyInvariants());
-      rewriter.eraseOp(testOp);
-      if (needsPeel) {
-        // When the linalg op is converted to contractions, lower-precision
-        // operands may be cast to the target precision outside the contraction.
-        lhs = adaptor.getLhs();
-        auto wideLhsValue = getSourceOfWideningOp(lhs).value_or(nullptr);
-        if (wideLhsValue)
-          lhs = reshapeLeadingUnitDims(rewriter, wideLhsValue);
-
-        rhs = adaptor.getRhs();
-        auto wideRhsValue = getSourceOfWideningOp(rhs).value_or(nullptr);
-        if (wideRhsValue)
-          rhs = reshapeLeadingUnitDims(rewriter, wideRhsValue);
-      }
-
-      auto matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                         acc.getType(), retype(lhs, lhsSigned),
-                                         retype(rhs, rhsSigned), acc);
-      if (failed(matmulOp.verifyInvariants()))
+    auto tileFits = [&](Value lhs, Value rhs, bool report) {
+      auto emitError = [&]() {
+        return contractOp.emitError()
+               << "cannot lower to an " << target << " matrix multiply: ";
+      };
+      return checkMatMulTile(
+                 isAIE2P, VectorType::get(lhsShape, getElementTypeOrSelf(lhs)),
+                 VectorType::get(rhsShape, getElementTypeOrSelf(rhs)), accTy,
+                 lhsT, rhsT,
+                 report ? llvm::function_ref<InFlightDiagnostic()>(emitError)
+                        : nullptr)
+          .has_value();
+    };
+    // Multiply the operands as they are if they form a tile. Otherwise they
+    // may be widened from a type a multiply takes, as when a linalg op is
+    // converted to contractions with its operands cast to the accumulator
+    // type outside the contraction.
+    if (!tileFits(lhsIn, rhsIn, /*report=*/false)) {
+      lhsIn = getSourceOfWideningOp(lhsIn).value_or(lhsIn);
+      rhsIn = getSourceOfWideningOp(rhsIn).value_or(rhsIn);
+      if (!tileFits(lhsIn, rhsIn, /*report=*/true))
         return failure();
-      result = matmulOp.getResult();
     }
+    Value acc = reshape(rewriter, adaptor.getAcc(), accTy.getShape());
+    Value lhs = reshape(rewriter, lhsIn, lhsShape);
+    Value rhs = reshape(rewriter, rhsIn, rhsShape);
 
-    if (bReshapedAcc)
-      result = vector::ShapeCastOp::create(rewriter, contractOp.getLoc(),
-                                           adaptor.getAcc().getType(), result);
-    rewriter.replaceOp(contractOp, result);
-
+    auto matmulOp =
+        MatMulOpTy::create(rewriter, contractOp.getLoc(), acc.getType(),
+                           retype(lhs, lhsSigned), retype(rhs, rhsSigned), acc);
+    matmulOp.setLhsTransposed(lhsT);
+    matmulOp.setRhsTransposed(rhsT);
+    rewriter.replaceOp(
+        contractOp,
+        reshape(rewriter, matmulOp.getResult(),
+                cast<VectorType>(adaptor.getAcc().getType()).getShape()));
     return success();
   }
 };

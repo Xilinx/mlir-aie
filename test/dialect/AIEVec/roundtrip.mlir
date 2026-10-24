@@ -163,6 +163,34 @@ func.func @matmul_bf16(%A : vector<4x8xbf16>, %B : vector<8x4xbf16>,
 
 // -----
 
+// CHECK-LABEL: @matmul_bf16_transposed
+// CHECK-SAME: %[[A:.*]]: vector<8x4xbf16>
+// CHECK-SAME: %[[B:.*]]: vector<4x8xbf16>
+// CHECK-SAME: %[[C:.*]]: vector<4x4xf32>
+// CHECK:      %[[RES:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] lhs_transposed rhs_transposed :
+// CHECK-SAME: vector<8x4xbf16>, vector<4x8xbf16> into vector<4x4xf32>
+// CHECK: return %[[RES]] : vector<4x4xf32>
+func.func @matmul_bf16_transposed(%A : vector<8x4xbf16>, %B : vector<4x8xbf16>,
+                                  %C : vector<4x4xf32>) -> vector<4x4xf32> {
+  %0 = aievec.matmul %A, %B, %C lhs_transposed rhs_transposed
+         : vector<8x4xbf16>, vector<4x8xbf16> into vector<4x4xf32>
+  return %0 : vector<4x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @matmul_aie2p_rhs_transposed
+// CHECK:      aievec.matmul_aie2p %{{.*}}, %{{.*}}, %{{.*}} rhs_transposed :
+// CHECK-SAME: vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+func.func @matmul_aie2p_rhs_transposed(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>,
+                                       %C : vector<8x8xf32>) -> vector<8x8xf32> {
+  %0 = aievec.matmul_aie2p %A, %B, %C rhs_transposed
+         : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+  return %0 : vector<8x8xf32>
+}
+
+// -----
+
 func.func @shuffle_i8(%v : vector<64xi8>) -> vector<64xi8> {
   // CHECK: aievec.shuffle %{{.*}} [t8_8x8]
   %0 = aievec.shuffle %v [t8_8x8] : vector<64xi8>
