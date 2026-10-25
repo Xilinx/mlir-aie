@@ -1,9 +1,9 @@
 {
  "schema": 1,
  "target": "yolo26n-hw",
- "id": "40071691781",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40071691781",
- "date": "2026-10-24T06:49:02+00:00",
+ "id": "40170459458",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40170459458",
+ "date": "2026-10-25T06:49:11+00:00",
  "commit": {
   "id": "b775c31bef7a359dc0ff0c371af053de1cb61566",
   "url": "https://github.com/Xilinx/mlir-aie/commit/b775c31bef7a359dc0ff0c371af053de1cb61566",
@@ -44,52 +44,52 @@
     "range": "of 128"
    },
    "us_per_image_b1": {
-    "value": 12538.0,
+    "value": 12253.9,
     "unit": "us",
-    "range": "fastest of 20; median 12857.8, MAD 193.1"
+    "range": "fastest of 20; median 12789.9, MAD 197.9"
    },
    "fps_b1": {
-    "value": 79.76,
+    "value": 81.61,
     "unit": "fps"
    },
    "dispatch_us_per_image_b1": {
-    "value": 11854.0,
+    "value": 11543.2,
     "unit": "us",
-    "range": "fastest of 20; median 12234.0, MAD 188.3"
+    "range": "fastest of 20; median 12167.7, MAD 187.1"
    },
    "npu_us_per_image_b1": {
-    "value": 11697.7,
+    "value": 11353.7,
     "unit": "us",
-    "range": "fastest of 20; median 12077.7, MAD 188.3"
+    "range": "fastest of 20; median 11978.2, MAD 187.1"
    },
    "host_overhead_us_per_image_b1": {
-    "value": 684.0,
+    "value": 710.7,
     "unit": "us",
-    "range": "fastest of 20; median 623.8, MAD 381.4"
+    "range": "fastest of 20; median 622.2, MAD 385.0"
    },
    "us_per_image_b8": {
-    "value": 6472.9,
+    "value": 6474.9,
     "unit": "us",
-    "range": "fastest of 20; median 6537.0, MAD 28.1"
+    "range": "fastest of 20; median 6536.7, MAD 25.6"
    },
    "fps_b8": {
-    "value": 154.49,
+    "value": 154.44,
     "unit": "fps"
    },
    "dispatch_us_per_image_b8": {
-    "value": 6358.54,
+    "value": 6355.93,
     "unit": "us",
-    "range": "fastest of 20; median 6417.9, MAD 28.9"
+    "range": "fastest of 20; median 6426.8, MAD 18.1"
    },
    "npu_us_per_image_b8": {
-    "value": 6333.25,
+    "value": 6330.94,
     "unit": "us",
-    "range": "fastest of 20; median 6392.6, MAD 28.9"
+    "range": "fastest of 20; median 6401.8, MAD 18.1"
    },
    "host_overhead_us_per_image_b8": {
-    "value": 114.36,
+    "value": 118.94,
     "unit": "us",
-    "range": "fastest of 20; median 119.1, MAD 57.0"
+    "range": "fastest of 20; median 109.9, MAD 43.8"
    },
    "map50_coco128": {
     "value": 0.5859,
@@ -101,27 +101,27 @@
     "unit": "bytes"
    },
    "compile_s": {
-    "value": 32.4,
+    "value": 32.5,
     "unit": "s"
    },
    "compile_peak_mib": {
-    "value": 941.6,
+    "value": 882.2,
     "unit": "MiB"
    },
    "compile_peak_rss_mb": {
-    "value": 503.9,
+    "value": 502.8,
     "unit": "MiB"
    },
    "compile_s_warm": {
-    "value": 4.76,
+    "value": 4.75,
     "unit": "s"
    },
    "compile_peak_mib_warm": {
-    "value": 313.9,
+    "value": 314.3,
     "unit": "MiB"
    },
    "compile_peak_rss_mb_warm": {
-    "value": 279.5,
+    "value": 279.4,
     "unit": "MiB"
    },
    "compile_place_s": {
@@ -133,11 +133,11 @@
     "unit": "s"
    },
    "compile_lower_s": {
-    "value": 1.35,
+    "value": 1.27,
     "unit": "s"
    },
    "compile_kernels_s": {
-    "value": 27.41,
+    "value": 27.54,
     "unit": "s"
    },
    "compile_codegen_s": {
@@ -145,7 +145,7 @@
     "unit": "s"
    },
    "compile_link_s": {
-    "value": 0.32,
+    "value": 0.33,
     "unit": "s"
    },
    "compile_package_s": {
@@ -157,11 +157,11 @@
     "unit": "s"
    },
    "compile_aiecc_wall_s": {
-    "value": 30.16,
+    "value": 30.24,
     "unit": "s"
    },
    "compile_outside_aiecc_s": {
-    "value": 2.25,
+    "value": 2.24,
     "unit": "s"
    },
    "compile_place_s_warm": {
@@ -173,7 +173,7 @@
     "unit": "s"
    },
    "compile_lower_s_warm": {
-    "value": 1.1,
+    "value": 1.09,
     "unit": "s"
    },
    "compile_kernels_s_warm": {
@@ -197,11 +197,11 @@
     "unit": "s"
    },
    "compile_aiecc_wall_s_warm": {
-    "value": 2.47,
+    "value": 2.46,
     "unit": "s"
    },
    "compile_outside_aiecc_s_warm": {
-    "value": 2.25,
+    "value": 2.26,
     "unit": "s"
    },
    "compile_aiecc_outside_graph_s": {
@@ -224,69 +224,69 @@
    "images_total": 128,
    "ort_matches": 124,
    "failed_images": [],
-   "us_per_image_b1": 12538.0,
-   "fps_b1": 79.76,
+   "us_per_image_b1": 12253.9,
+   "fps_b1": 81.61,
    "timed_calls_b1": 20,
-   "median_us_per_image_b1": 12857.8,
-   "mad_us_per_image_b1": 193.1,
-   "dispatch_overhead_us_b1": 139.6,
-   "dispatch_us_per_image_b1": 11854.0,
-   "median_dispatch_us_per_image_b1": 12234.0,
-   "mad_dispatch_us_per_image_b1": 188.3,
-   "npu_us_per_image_b1": 11697.7,
-   "median_npu_us_per_image_b1": 12077.7,
-   "mad_npu_us_per_image_b1": 188.3,
-   "host_overhead_us_per_image_b1": 684.0,
-   "median_host_overhead_us_per_image_b1": 623.8,
-   "mad_host_overhead_us_per_image_b1": 381.4,
-   "us_per_image_b8": 6472.9,
-   "fps_b8": 154.49,
+   "median_us_per_image_b1": 12789.9,
+   "mad_us_per_image_b1": 197.9,
+   "dispatch_overhead_us_b1": 150.6,
+   "dispatch_us_per_image_b1": 11543.2,
+   "median_dispatch_us_per_image_b1": 12167.7,
+   "mad_dispatch_us_per_image_b1": 187.1,
+   "npu_us_per_image_b1": 11353.7,
+   "median_npu_us_per_image_b1": 11978.2,
+   "mad_npu_us_per_image_b1": 187.1,
+   "host_overhead_us_per_image_b1": 710.7,
+   "median_host_overhead_us_per_image_b1": 622.2,
+   "mad_host_overhead_us_per_image_b1": 385.0,
+   "us_per_image_b8": 6474.9,
+   "fps_b8": 154.44,
    "timed_calls_b8": 20,
-   "median_us_per_image_b8": 6537.0,
-   "mad_us_per_image_b8": 28.1,
-   "dispatch_overhead_us_b8": 154.2,
-   "dispatch_us_per_image_b8": 6358.54,
-   "median_dispatch_us_per_image_b8": 6417.85,
-   "mad_dispatch_us_per_image_b8": 28.94,
-   "npu_us_per_image_b8": 6333.25,
-   "median_npu_us_per_image_b8": 6392.55,
-   "mad_npu_us_per_image_b8": 28.94,
-   "host_overhead_us_per_image_b8": 114.36,
-   "median_host_overhead_us_per_image_b8": 119.12,
-   "mad_host_overhead_us_per_image_b8": 57.02,
+   "median_us_per_image_b8": 6536.7,
+   "mad_us_per_image_b8": 25.6,
+   "dispatch_overhead_us_b8": 150.5,
+   "dispatch_us_per_image_b8": 6355.93,
+   "median_dispatch_us_per_image_b8": 6426.8,
+   "mad_dispatch_us_per_image_b8": 18.11,
+   "npu_us_per_image_b8": 6330.94,
+   "median_npu_us_per_image_b8": 6401.81,
+   "mad_npu_us_per_image_b8": 18.11,
+   "host_overhead_us_per_image_b8": 118.94,
+   "median_host_overhead_us_per_image_b8": 109.9,
+   "mad_host_overhead_us_per_image_b8": 43.75,
    "map50_coco128_disagrees": false,
    "map50_coco128": 0.5859,
    "map50_coco128_objects": 929,
    "elf_bytes": 2939624,
    "compile_place_s": 0.08,
    "compile_route_s": 0.63,
-   "compile_lower_s": 1.35,
-   "compile_kernels_s": 27.41,
+   "compile_lower_s": 1.27,
+   "compile_kernels_s": 27.54,
    "compile_codegen_s": 0.5,
-   "compile_link_s": 0.32,
+   "compile_link_s": 0.33,
    "compile_package_s": 0.02,
    "compile_other_s": 0.0,
-   "compile_aiecc_wall_s": 30.16,
-   "compile_outside_aiecc_s": 2.25,
+   "compile_aiecc_wall_s": 30.24,
+   "compile_outside_aiecc_s": 2.24,
    "compile_aiecc_outside_graph_s": 0.03,
    "compile_place_s_warm": 0.08,
    "compile_route_s_warm": 0.57,
-   "compile_lower_s_warm": 1.1,
+   "compile_lower_s_warm": 1.09,
    "compile_kernels_s_warm": 0.0,
    "compile_codegen_s_warm": 0.52,
    "compile_link_s_warm": 0.32,
    "compile_package_s_warm": 0.02,
    "compile_other_s_warm": 0.0,
-   "compile_aiecc_wall_s_warm": 2.47,
-   "compile_outside_aiecc_s_warm": 2.25,
+   "compile_aiecc_wall_s_warm": 2.46,
+   "compile_outside_aiecc_s_warm": 2.26,
    "compile_aiecc_outside_graph_s_warm": 0.03,
    "compile_peak_unavailable": null,
-   "compile_s": 32.4,
-   "compile_peak_mib": 941.6,
-   "compile_peak_rss_mb": 503.9,
-   "compile_s_warm": 4.76,
-   "compile_peak_mib_warm": 313.9,
-   "compile_peak_rss_mb_warm": 279.5
+   "compile_s": 32.5,
+   "compile_peak_mib": 882.2,
+   "compile_peak_rss_mb": 502.8,
+   "compile_s_warm": 4.75,
+   "compile_peak_mib_warm": 314.3,
+   "compile_peak_rss_mb_warm": 279.4
   }
  ]
 }

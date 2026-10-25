@@ -655,6 +655,46 @@
     "full": 1.0
    },
    "iters": 20
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "40170459458",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40170459458",
+   "date": "2026-10-25T06:49:11+00:00",
+   "commit": {
+    "id": "b775c31bef7a359dc0ff0c371af053de1cb61566",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/b775c31bef7a359dc0ff0c371af053de1cb61566",
+    "message": "Add ObjectFifoPool To IRON in Python (#3964)",
+    "timestamp": "2026-10-23T22:59:13Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "b775c31bef",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "dispatch": "dynamic"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 355,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "efforts": {
+    "default": 0.05,
+    "full": 1.0
+   },
+   "iters": 20
   }
  ]
 }
