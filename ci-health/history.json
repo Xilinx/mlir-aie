@@ -794,10 +794,10 @@
    },
    "critical": {
     "buildAndTestRyzenAI.yml": {
-     "main": 0.846,
+     "main": 0.857,
      "pull_requests": 0.659,
      "flaky": 0.05,
-     "minutes_median": 46.1,
+     "minutes_median": 42.2,
      "queued_median": 0.5
     },
     "buildAndTestRyzenAIWindows.yml": {
