@@ -1,9 +1,9 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "40058505102",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40058505102",
- "date": "2026-10-24T03:29:27+00:00",
+ "id": "40158507911",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40158507911",
+ "date": "2026-10-25T03:31:07+00:00",
  "commit": {
   "id": "b775c31bef7a359dc0ff0c371af053de1cb61566",
   "url": "https://github.com/Xilinx/mlir-aie/commit/b775c31bef7a359dc0ff0c371af053de1cb61566",
@@ -12,11 +12,11 @@
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V45 96-Core Processor",
+ "device": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
  "device_raw": null,
  "provenance": {
   "commit": "b775c31bef",
-  "cpu": "AMD EPYC 9V45 96-Core Processor"
+  "cpu": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 218.5,
+    "value": 219.7,
     "unit": "s"
    }
   }
