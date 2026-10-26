@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-26T14:34:36+00:00",
+ "generated_at": "2026-10-26T19:02:46+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 371,
+   "runs": 381,
    "main": {
     "passed": 11,
     "failed": 0,
@@ -303,18 +303,18 @@
    ],
    "pull_requests": {
     "passed": 90,
-    "failed": 47,
-    "rate": 0.657
+    "failed": 49,
+    "rate": 0.647
    },
    "merge_queue": {
-    "passed": 43,
+    "passed": 42,
     "failed": 4,
-    "rate": 0.915
+    "rate": 0.913
    },
    "flaky": {
-    "commits": 357,
-    "flaky": 17,
-    "rate": 0.048
+    "commits": 358,
+    "flaky": 18,
+    "rate": 0.05
    },
    "minutes_median": 42.2,
    "minutes_p90": 67.7,
@@ -326,7 +326,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 371,
+   "runs": 381,
    "main": {
     "passed": 13,
     "failed": 0,
@@ -588,19 +588,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 92,
-    "failed": 66,
-    "rate": 0.582
+    "passed": 101,
+    "failed": 67,
+    "rate": 0.601
    },
    "merge_queue": {
-    "passed": 45,
+    "passed": 47,
     "failed": 3,
-    "rate": 0.938
+    "rate": 0.94
    },
    "flaky": {
-    "commits": 357,
-    "flaky": 17,
-    "rate": 0.048
+    "commits": 367,
+    "flaky": 26,
+    "rate": 0.071
    },
    "minutes_median": 45.8,
    "minutes_p90": 50.4,
@@ -612,15 +612,15 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 409,
+   "runs": 417,
    "main": {
-    "passed": 50,
+    "passed": 48,
     "failed": 2,
     "timed_out": 0,
     "runner_lost": 0,
     "no_runner": 0,
     "cancelled": 0,
-    "rate": 0.962
+    "rate": 0.96
    },
    "latest_main": {
     "id": 40250360040,
@@ -1400,55 +1400,25 @@
      "outcome": "passed",
      "waited": 0.4,
      "took": 8.1
-    },
-    {
-     "id": 38287543055,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38287543055",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-12T17:56:19Z",
-     "run_started_at": "2026-10-12T17:56:19Z",
-     "updated_at": "2026-10-12T18:05:14Z",
-     "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
-     "title": "Add a reconfiguration programming example and benchmark (#3395)",
-     "attempt": 1,
-     "outcome": "passed",
-     "waited": 0.4,
-     "took": 8.5
-    },
-    {
-     "id": 38279644347,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38279644347",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-12T16:45:40Z",
-     "run_started_at": "2026-10-12T16:45:40Z",
-     "updated_at": "2026-10-12T17:08:46Z",
-     "head_sha": "7040e7cffa58ef4f5d8c359ad48bda4e3c22923b",
-     "title": "Add route pinning to `aie.flow` with `via` (#3421)",
-     "attempt": 1,
-     "outcome": "passed",
-     "waited": 0.4,
-     "took": 22.7
     }
    ],
    "pull_requests": {
-    "passed": 188,
-    "failed": 36,
-    "rate": 0.839
+    "passed": 196,
+    "failed": 37,
+    "rate": 0.841
    },
    "merge_queue": {
-    "passed": 47,
-    "failed": 1,
-    "rate": 0.979
+    "passed": 50,
+    "failed": 0,
+    "rate": 1.0
    },
    "flaky": {
-    "commits": 357,
-    "flaky": 29,
-    "rate": 0.081
+    "commits": 366,
+    "flaky": 36,
+    "rate": 0.098
    },
    "minutes_median": 11.4,
-   "minutes_p90": 24.3,
+   "minutes_p90": 24.5,
    "queued_median": 0.4
   },
   {
@@ -1457,9 +1427,9 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 409,
+   "runs": 417,
    "main": {
-    "passed": 52,
+    "passed": 50,
     "failed": 0,
     "timed_out": 0,
     "runner_lost": 0,
@@ -2245,52 +2215,22 @@
      "outcome": "passed",
      "waited": 0.3,
      "took": 8.0
-    },
-    {
-     "id": 38287543145,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38287543145",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-12T17:56:19Z",
-     "run_started_at": "2026-10-12T17:56:19Z",
-     "updated_at": "2026-10-12T18:04:52Z",
-     "head_sha": "412f465c1705749af9f5551870910a0a4e2d192b",
-     "title": "Add a reconfiguration programming example and benchmark (#3395)",
-     "attempt": 1,
-     "outcome": "passed",
-     "waited": 0.4,
-     "took": 8.1
-    },
-    {
-     "id": 38279644250,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/38279644250",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-12T16:45:40Z",
-     "run_started_at": "2026-10-12T16:45:40Z",
-     "updated_at": "2026-10-12T17:07:37Z",
-     "head_sha": "7040e7cffa58ef4f5d8c359ad48bda4e3c22923b",
-     "title": "Add route pinning to `aie.flow` with `via` (#3421)",
-     "attempt": 1,
-     "outcome": "passed",
-     "waited": 0.4,
-     "took": 21.6
     }
    ],
    "pull_requests": {
-    "passed": 192,
-    "failed": 34,
-    "rate": 0.85
+    "passed": 201,
+    "failed": 35,
+    "rate": 0.852
    },
    "merge_queue": {
-    "passed": 48,
+    "passed": 50,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 357,
-    "flaky": 28,
-    "rate": 0.078
+    "commits": 367,
+    "flaky": 36,
+    "rate": 0.098
    },
    "minutes_median": 8.9,
    "minutes_p90": 20.2,
@@ -2302,7 +2242,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 371,
+   "runs": 381,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -2553,19 +2493,19 @@
     }
    ],
    "pull_requests": {
-    "passed": 164,
-    "failed": 91,
-    "rate": 0.643
+    "passed": 170,
+    "failed": 94,
+    "rate": 0.644
    },
    "merge_queue": {
-    "passed": 48,
+    "passed": 50,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 357,
-    "flaky": 29,
-    "rate": 0.081
+    "commits": 366,
+    "flaky": 34,
+    "rate": 0.093
    },
    "minutes_median": 2.8,
    "minutes_p90": 3.0,
@@ -2575,10 +2515,10 @@
  "merge_time": {
   "merged": 45,
   "hours_median": 24.7,
-  "hours_p90": 896.0,
-  "open": 75,
+  "hours_p90": 615.4,
+  "open": 73,
   "open_drafts": 25,
-  "open_over_30_days": 46
+  "open_over_30_days": 45
  },
  "workflows": [
   {
@@ -3618,13 +3558,25 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
+     "id": 40358038257,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40358038257",
+     "status": "completed",
+     "conclusion": "success",
+     "created_at": "2026-10-26T16:19:40Z",
+     "run_started_at": "2026-10-26T16:19:40Z",
+     "updated_at": "2026-10-26T17:24:43Z",
+     "head_sha": "b775c31bef7a359dc0ff0c371af053de1cb61566",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
      "id": 40333849837,
      "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40333849837",
-     "status": "in_progress",
-     "conclusion": null,
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-26T13:48:31Z",
      "run_started_at": "2026-10-26T13:48:31Z",
-     "updated_at": "2026-10-26T13:49:10Z",
+     "updated_at": "2026-10-26T14:50:18Z",
      "head_sha": "b775c31bef7a359dc0ff0c371af053de1cb61566",
      "title": "MLIR Distro",
      "attempt": 1
@@ -3745,18 +3697,6 @@
      "created_at": "2026-10-24T20:14:09Z",
      "run_started_at": "2026-10-24T20:14:09Z",
      "updated_at": "2026-10-25T00:51:10Z",
-     "head_sha": "b775c31bef7a359dc0ff0c371af053de1cb61566",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 40110649092,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40110649092",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-24T16:14:40Z",
-     "run_started_at": "2026-10-24T16:14:40Z",
-     "updated_at": "2026-10-24T17:07:43Z",
      "head_sha": "b775c31bef7a359dc0ff0c371af053de1cb61566",
      "title": "MLIR Distro",
      "attempt": 1
