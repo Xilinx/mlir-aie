@@ -291,7 +291,8 @@ def AIE_CertRemoteBarrierOp
   }];
 }
 
-def AIE_CertRelAcqSyncOp : AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]> {
+def AIE_CertRelAcqSyncOp
+    : AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]> {
   let summary = "Release-acquire global barrier on an AIE lock";
   let description = [{
     Releases the lock at rel_address, then busy-waits acquiring the lock at
@@ -313,10 +314,7 @@ def AIE_CertRelAcqSyncOp : AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]
       cert.rel_acq_sync(0x1000, 0x1004)
     ```
   }];
-  let arguments = (
-    ins UI32Attr:$rel_address,
-        UI32Attr:$acq_address
-  );
+  let arguments = (ins UI32Attr:$rel_address, UI32Attr:$acq_address);
   let assemblyFormat = [{
     `(` $rel_address `,` $acq_address `)` attr-dict
   }];
