@@ -1454,90 +1454,58 @@ LogicalResult MatMulOp_AIE2P::verify() { return verifyMatMulOp(*this, true); }
 // ShuffleOp
 //===----------------------------------------------------------------------===//
 
+ShuffleModeShape xilinx::aievec::getShuffleModeShape(ShuffleMode mode) {
+  // Every mode is named t<w>_<r>x<c> with an optional _lo, _hi or _flip.
+  StringRef name = stringifyShuffleMode(mode);
+  ShuffleModeShape shape{};
+  bool parsed =
+      name.consume_front("t") && !name.consumeInteger(10, shape.elemBits) &&
+      name.consume_front("_") && !name.consumeInteger(10, shape.rows) &&
+      name.consume_front("x") && !name.consumeInteger(10, shape.cols);
+  shape.flip = name == "_flip";
+  shape.hi = name == "_hi";
+  assert(parsed && (name.empty() || name == "_lo" || shape.hi || shape.flip) &&
+         "unexpected shuffle mode name");
+  (void)parsed;
+  return shape;
+}
+
 bool xilinx::aievec::isAIE2POnlyShuffleMode(ShuffleMode mode) {
   return static_cast<uint32_t>(mode) >= 48;
 }
 
-// This verification function makes sure that the shuffle mode supports the
-// number and type of operands provided.
-LogicalResult ShuffleOp::verify() {
-  unsigned modeBitWidth;
-  bool requireRhs = true;
-  auto mode = getMode();
-  switch (mode) {
-  case ShuffleMode::T8_8X8:  // 35
-  case ShuffleMode::T8_16X4: // 36
-  case ShuffleMode::T8_4X16: // 37
-  case ShuffleMode::T8_8X4:  // 46
-  case ShuffleMode::T8_4X8:  // 47
-    requireRhs = false;
-    LLVM_FALLTHROUGH;
-  case ShuffleMode::T8_64X2_LO: //  0
-  case ShuffleMode::T8_64X2_HI: //  1
-  case ShuffleMode::T8_2X64_LO: // 20
-  case ShuffleMode::T8_2X64_HI: // 21
-    modeBitWidth = 8u;
-    break;
-  case ShuffleMode::T16_8X4:      // 28
-  case ShuffleMode::T16_4X8:      // 29
-  case ShuffleMode::T16_1X2_flip: // 38
-  case ShuffleMode::T16_4X4:      // 39
-  case ShuffleMode::T16_4X2:      // 40
-  case ShuffleMode::T16_2X4:      // 41
-  case ShuffleMode::T16_8X2:      // 42
-  case ShuffleMode::T16_2X8:      // 43
-  case ShuffleMode::T16_16X2:     // 44
-  case ShuffleMode::T16_2X16:     // 45
-    requireRhs = false;
-    LLVM_FALLTHROUGH;
-  case ShuffleMode::T16_32X2_LO: //  2
-  case ShuffleMode::T16_32X2_HI: //  3
-  case ShuffleMode::T16_2X32_LO: // 18
-  case ShuffleMode::T16_2X32_HI: // 19
-  case ShuffleMode::T16_16X4_LO: // 24
-  case ShuffleMode::T16_16X4_HI: // 25
-  case ShuffleMode::T16_4X16_LO: // 26
-  case ShuffleMode::T16_4X16_HI: // 27
-  case ShuffleMode::T16_8X8_LO:  // 52
-  case ShuffleMode::T16_8X8_HI:  // 53
-    modeBitWidth = 16u;
-    break;
-  case ShuffleMode::T32_4X4: // 34
-    requireRhs = false;
-    LLVM_FALLTHROUGH;
-  case ShuffleMode::T32_16X2_LO: //  4
-  case ShuffleMode::T32_16X2_HI: //  5
-  case ShuffleMode::T32_2X16_LO: // 16
-  case ShuffleMode::T32_2X16_HI: // 17
-  case ShuffleMode::T32_8X4_LO:  // 30
-  case ShuffleMode::T32_8X4_HI:  // 31
-  case ShuffleMode::T32_4X8_LO:  // 32
-  case ShuffleMode::T32_4X8_HI:  // 33
-    modeBitWidth = 32u;
-    break;
-  case ShuffleMode::T64_8X2_LO: //  6
-  case ShuffleMode::T64_8X2_HI: //  7
-  case ShuffleMode::T64_2X8_LO: // 14
-  case ShuffleMode::T64_2X8_HI: // 15
-    modeBitWidth = 64u;
-    break;
-  case ShuffleMode::T128_4X2_LO: //  8
-  case ShuffleMode::T128_4X2_HI: //  9
-  case ShuffleMode::T128_2X4_LO: // 12
-  case ShuffleMode::T128_2X4_HI: // 13
-    modeBitWidth = 128u;
-    break;
-  case ShuffleMode::T256_2X2_LO: // 10
-  case ShuffleMode::T256_2X2_HI: // 11
-    modeBitWidth = 256u;
-    break;
-  case ShuffleMode::T512_1X2_LO: // 22
-  case ShuffleMode::T512_1X2_HI: // 23
-    modeBitWidth = 512u;
-    break;
+std::array<uint8_t, 64>
+xilinx::aievec::getShuffleModeBytePermutation(ShuffleMode mode) {
+  ShuffleModeShape shape = getShuffleModeShape(mode);
+  unsigned elemBytes = shape.elemBits / 8;
+  unsigned blockBytes = shape.blockBits() / 8;
+  unsigned blockElems = shape.rows * shape.cols;
+  std::array<uint8_t, 64> perm;
+  for (unsigned out = 0; out < 64; ++out) {
+    // Position in the 1024-bit result of a two-input mode, or in the 512-bit
+    // result otherwise.
+    unsigned pos = shape.isTwoInput() && shape.hi ? out + 64 : out;
+    unsigned block = pos / blockBytes;
+    unsigned elem = pos % blockBytes / elemBytes;
+    unsigned src;
+    if (shape.flip) {
+      src = blockElems - 1 - elem;
+    } else {
+      // elem = j * rows + i reads in[i * cols + j].
+      unsigned i = elem % shape.rows, j = elem / shape.rows;
+      src = i * shape.cols + j;
+    }
+    perm[out] = block * blockBytes + src * elemBytes + pos % elemBytes;
   }
+  return perm;
+}
 
-  // Verify number of operands
+// The mode fixes the element width and whether rhs is needed.
+LogicalResult ShuffleOp::verify() {
+  ShuffleMode mode = getMode();
+  ShuffleModeShape shape = getShuffleModeShape(mode);
+  bool requireRhs = shape.isTwoInput();
+
   if (requireRhs && !getRhs())
     return emitError() << "shuffle mode '" << stringifyEnum(mode)
                        << "' requires a second operand";
@@ -1546,12 +1514,11 @@ LogicalResult ShuffleOp::verify() {
     return emitError() << "shuffle mode '" << stringifyEnum(mode)
                        << "' does not admit a second operand";
 
-  // Verify vector element type
   auto elemBitWidth =
       cast<VectorType>(getLhs().getType()).getElementTypeBitWidth();
-  if (modeBitWidth != elemBitWidth)
+  if (shape.elemBits != elemBitWidth)
     return emitError() << "shuffle mode '" << stringifyEnum(mode)
-                       << "' requires vectors of " << modeBitWidth
+                       << "' requires vectors of " << shape.elemBits
                        << "-bit elements";
 
   // When the op sits in a device, the device fixes the architecture.

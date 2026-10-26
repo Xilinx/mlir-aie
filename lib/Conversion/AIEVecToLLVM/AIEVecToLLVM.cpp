@@ -5169,8 +5169,8 @@ class ShuffleOpConversion
   }
 };
 
-// aievec.shuffle on AIE2P: the mode numbers are AIE2's, the intrinsic is
-// AIE2P's.
+// aievec.shuffle on AIE2P: AIE2P keeps AIE2's mode numbers and adds its own;
+// the intrinsic is AIE2P's.
 class ShuffleOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::ShuffleOp> {
   using ConvertOpToLLVMPattern<aievec::ShuffleOp>::ConvertOpToLLVMPattern;

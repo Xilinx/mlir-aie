@@ -5,22 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --convert-aievec-to-llvm='aie-target=aie2' -split-input-file -verify-diagnostics
+// RUN: aie-opt %s --convert-aievec-to-llvm='aie-target=aie2' -verify-diagnostics
 
 // The AIE2 lowering rejects the modes AIE2 does not have.
 
-func.func @t16_8x8_lo_on_aie2(%v : vector<32xbf16>) -> vector<32xbf16> {
-  // expected-error @+2 {{shuffle mode 't16_8x8_lo' is not available on AIE2}}
+func.func @aie2p_mode_on_aie2(%v : vector<16xi32>) -> vector<16xi32> {
+  // expected-error @+2 {{shuffle mode 't32_1x16_flip' is not available on AIE2}}
   // expected-error @+1 {{failed to legalize operation 'aievec.shuffle'}}
-  %0 = aievec.shuffle %v, %v [t16_8x8_lo] : vector<32xbf16>
-  return %0 : vector<32xbf16>
-}
-
-// -----
-
-func.func @t16_8x8_hi_on_aie2(%v : vector<32xi16>) -> vector<32xi16> {
-  // expected-error @+2 {{shuffle mode 't16_8x8_hi' is not available on AIE2}}
-  // expected-error @+1 {{failed to legalize operation 'aievec.shuffle'}}
-  %0 = aievec.shuffle %v, %v [t16_8x8_hi] : vector<32xi16>
-  return %0 : vector<32xi16>
+  %0 = aievec.shuffle %v [t32_1x16_flip] : vector<16xi32>
+  return %0 : vector<16xi32>
 }

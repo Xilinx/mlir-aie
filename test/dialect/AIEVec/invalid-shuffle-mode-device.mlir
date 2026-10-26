@@ -12,6 +12,18 @@
 aie.device(npu1) {
   %t = aie.tile(0, 2)
   %c = aie.core(%t) {
+    %v = arith.constant dense<1> : vector<16xi32>
+    // expected-error @+1 {{shuffle mode 't32_1x16_flip' is only available on AIE2P}}
+    %r = aievec.shuffle %v [t32_1x16_flip] : vector<16xi32>
+    aie.end
+  }
+}
+
+// -----
+
+aie.device(npu1) {
+  %t = aie.tile(0, 2)
+  %c = aie.core(%t) {
     %v = arith.constant dense<1.0> : vector<32xbf16>
     // expected-error @+1 {{shuffle mode 't16_8x8_lo' is only available on AIE2P}}
     %r = aievec.shuffle %v, %v [t16_8x8_lo] : vector<32xbf16>
@@ -24,22 +36,9 @@ aie.device(npu1) {
 aie.device(xcve2302) {
   %t = aie.tile(0, 2)
   %c = aie.core(%t) {
-    %v = arith.constant dense<1> : vector<32xi16>
-    // expected-error @+1 {{shuffle mode 't16_8x8_hi' is only available on AIE2P}}
-    %r = aievec.shuffle %v, %v [t16_8x8_hi] : vector<32xi16>
-    aie.end
-  }
-}
-
-// -----
-
-// Accepted on AIE2P.
-aie.device(npu2) {
-  %t = aie.tile(0, 2)
-  %c = aie.core(%t) {
-    %v = arith.constant dense<1.0> : vector<32xbf16>
-    %lo = aievec.shuffle %v, %v [t16_8x8_lo] : vector<32xbf16>
-    %hi = aievec.shuffle %v, %v [t16_8x8_hi] : vector<32xbf16>
+    %v = arith.constant dense<1> : vector<8xi64>
+    // expected-error @+1 {{shuffle mode 't64_4x2' is only available on AIE2P}}
+    %r = aievec.shuffle %v [t64_4x2] : vector<8xi64>
     aie.end
   }
 }

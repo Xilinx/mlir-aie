@@ -78,9 +78,17 @@ def SHUFFLE_MODE_T16_16X2 : I32EnumAttrCase<"T16_16X2", 44, "t16_16x2">;
 def SHUFFLE_MODE_T16_2X16 : I32EnumAttrCase<"T16_2X16", 45, "t16_2x16">;
 def SHUFFLE_MODE_T8_8X4 : I32EnumAttrCase<"T8_8X4", 46, "t8_8x4">;
 def SHUFFLE_MODE_T8_4X8 : I32EnumAttrCase<"T8_4X8", 47, "t8_4x8">;
-// AIE2P only.
+// Modes 48 to 55 exist on AIE2P only.
+def SHUFFLE_MODE_T32_8X2 : I32EnumAttrCase<"T32_8X2", 48, "t32_8x2">;
+def SHUFFLE_MODE_T32_2X8 : I32EnumAttrCase<"T32_2X8", 49, "t32_2x8">;
+def SHUFFLE_MODE_T64_4X2 : I32EnumAttrCase<"T64_4X2", 50, "t64_4x2">;
+def SHUFFLE_MODE_T64_2X4 : I32EnumAttrCase<"T64_2X4", 51, "t64_2x4">;
 def SHUFFLE_MODE_T16_8X8_LO : I32EnumAttrCase<"T16_8X8_LO", 52, "t16_8x8_lo">;
 def SHUFFLE_MODE_T16_8X8_HI : I32EnumAttrCase<"T16_8X8_HI", 53, "t16_8x8_hi">;
+def SHUFFLE_MODE_T32_1X16_flip
+    : I32EnumAttrCase<"T32_1X16_flip", 54, "t32_1x16_flip">;
+def SHUFFLE_MODE_T8_1X4_flip
+    : I32EnumAttrCase<"T8_1X4_flip", 55, "t8_1x4_flip">;
 
 def ShuffleMode
     : I32EnumAttr<
@@ -106,8 +114,10 @@ def ShuffleMode
            SHUFFLE_MODE_T16_1X2_flip, SHUFFLE_MODE_T16_4X4,
            SHUFFLE_MODE_T16_4X2, SHUFFLE_MODE_T16_2X4, SHUFFLE_MODE_T16_8X2,
            SHUFFLE_MODE_T16_2X8, SHUFFLE_MODE_T16_16X2, SHUFFLE_MODE_T16_2X16,
-           SHUFFLE_MODE_T8_8X4, SHUFFLE_MODE_T8_4X8, SHUFFLE_MODE_T16_8X8_LO,
-           SHUFFLE_MODE_T16_8X8_HI]> {
+           SHUFFLE_MODE_T8_8X4, SHUFFLE_MODE_T8_4X8, SHUFFLE_MODE_T32_8X2,
+           SHUFFLE_MODE_T32_2X8, SHUFFLE_MODE_T64_4X2, SHUFFLE_MODE_T64_2X4,
+           SHUFFLE_MODE_T16_8X8_LO, SHUFFLE_MODE_T16_8X8_HI,
+           SHUFFLE_MODE_T32_1X16_flip, SHUFFLE_MODE_T8_1X4_flip]> {
   let cppNamespace = "::xilinx::aievec";
   let genSpecializedAttr = 0;
 }
