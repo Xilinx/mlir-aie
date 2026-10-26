@@ -4,7 +4,7 @@
 // RUN: aie-opt --cert-legalize-pages --split-input-file %s | FileCheck %s
 
 // With 1980 payload words, the estimated page cost is 7996 bytes:
-// 32 page overhead + 12 job overhead + 4 enqueue + 16 BD + 7920 data
+// 32 page overhead + 16 enqueue + 16 BD + 7920 data
 // + 12 REL_ACQ_SYNC. It stays below the 8000-byte split trigger.
 // CHECK-LABEL: aie.device(npu2)
 // CHECK: aiex.cert.page
