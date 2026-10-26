@@ -1,9 +1,9 @@
 {
  "schema": 1,
  "target": "router",
- "id": "40158507911",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40158507911",
- "date": "2026-10-25T03:31:07+00:00",
+ "id": "40264804232",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40264804232",
+ "date": "2026-10-26T03:35:15+00:00",
  "commit": {
   "id": "b775c31bef7a359dc0ff0c371af053de1cb61566",
   "url": "https://github.com/Xilinx/mlir-aie/commit/b775c31bef7a359dc0ff0c371af053de1cb61566",
@@ -12,11 +12,11 @@
  },
  "event": "schedule",
  "pmode": null,
- "device": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+ "device": "AMD EPYC 7763 64-Core Processor",
  "device_raw": null,
  "provenance": {
   "commit": "b775c31bef",
-  "cpu": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+  "cpu": "AMD EPYC 7763 64-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -39,15 +39,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0121,
+    "value": 1.014,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.253,
+    "value": 14.766,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 14.07,
+    "value": 19.39,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -73,15 +73,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0118,
+    "value": 1.0132,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.258,
+    "value": 14.909,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 12.13,
+    "value": 25.9,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -107,15 +107,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0122,
+    "value": 1.012,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 18.15,
+    "value": 18.396,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 230.16,
+    "value": 191.53,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -138,75 +138,75 @@
   {
    "device": "npu1",
    "run": "properties",
-   "first_seed": 207510000,
+   "first_seed": 207520000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu1",
    "run": "hops-on",
-   "first_seed": 207510000,
+   "first_seed": 207520000,
    "seeds": 400,
-   "killed": 1964,
+   "killed": 1901,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu1",
    "run": "hops-off",
-   "first_seed": 207510000,
+   "first_seed": 207520000,
    "seeds": 400,
-   "killed": 1961,
+   "killed": 1892,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "properties",
-   "first_seed": 207510000,
+   "first_seed": 207520000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu2",
    "run": "hops-on",
-   "first_seed": 207510000,
+   "first_seed": 207520000,
    "seeds": 400,
-   "killed": 1943,
+   "killed": 1887,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "hops-off",
-   "first_seed": 207510000,
+   "first_seed": 207520000,
    "seeds": 400,
-   "killed": 1936,
+   "killed": 1880,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "properties",
-   "first_seed": 207510000,
+   "first_seed": 207520000,
    "seeds": 500,
    "failed": []
   },
   {
    "device": "xcvc1902",
    "run": "hops-on",
-   "first_seed": 207510000,
+   "first_seed": 207520000,
    "seeds": 100,
-   "killed": 388,
+   "killed": 402,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "hops-off",
-   "first_seed": 207510000,
+   "first_seed": 207520000,
    "seeds": 100,
-   "killed": 387,
+   "killed": 401,
    "survived": 0,
    "failures": 0
   }

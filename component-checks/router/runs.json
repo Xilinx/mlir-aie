@@ -280,6 +280,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "40264804232",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40264804232",
+   "date": "2026-10-26T03:35:15+00:00",
+   "commit": {
+    "id": "b775c31bef7a359dc0ff0c371af053de1cb61566",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/b775c31bef7a359dc0ff0c371af053de1cb61566",
+    "message": "Add ObjectFifoPool To IRON in Python (#3964)",
+    "timestamp": "2026-10-23T22:59:13Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "b775c31bef",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
