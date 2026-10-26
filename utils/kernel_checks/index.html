@@ -257,7 +257,7 @@
     details.howto { margin: 10px 0 0; font-size: 13px; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 8px 14px; }
     details.howto[open] { padding-bottom: 12px; }
     details.howto > summary { cursor: pointer; color: var(--ink); font-weight: 600; }
-    details.howto > div { max-width: 88ch; color: var(--ink); }
+    details.howto > div { color: var(--ink); }
     details.howto h3 { font-size: 14px; margin: 14px 0 4px; }
     details.howto p, details.howto li { color: var(--muted); }
     details.howto p { margin: 6px 0; }
@@ -3755,13 +3755,16 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const failedJobs = (w.latest_main_jobs || []).filter(failedOutcome).map(j => jobName(j.name, w.title));
       // Completed, not-cancelled runs on main, newest first: `recent[0]` is
       // `latest` itself; `recent[1]` tells a one-off hardware blip (the NPU
-      // runners wedge now and then, as CI_NORMAL promises) from two in a row.
+      // runners wedge now and then, as CI_NORMAL promises) from two in a
+      // row. Without main_runs to check, there is no evidence of a blip, so
+      // a failing latest run stays bad rather than being given the benefit
+      // of the doubt.
       const recent = (w.main_runs || []).filter(r => r.status === 'completed' && r.outcome !== 'cancelled').slice(0, CI_RECENT_RUNS);
-      const previousFailed = recent.length > 1 && failedOutcome(recent[1]);
+      const previousPassed = recent.length > 1 && !failedOutcome(recent[1]);
       if (latest && failedOutcome(latest)) {
-        level = previousFailed ? 'bad' : 'warn';
-        kind = previousFailed ? 'failing' : 'intermittent';
-        notes.push(`its latest run on main ${latest.outcome === 'timed_out' ? 'timed out' : 'failed'}${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}${previousFailed ? '' : '; the previous run passed'}`);
+        level = previousPassed ? 'warn' : 'bad';
+        kind = previousPassed ? 'intermittent' : 'failing';
+        notes.push(`its latest run on main ${latest.outcome === 'timed_out' ? 'timed out' : 'failed'}${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}${previousPassed ? '; the previous run passed' : ''}`);
       } else if (latest && ['runner_lost', 'no_runner'].includes(latest.outcome)) {
         // A machine that died mid-run is often back by the next; none taking
         // the run at all needs someone to bring one back.

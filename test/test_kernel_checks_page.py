@@ -2416,6 +2416,16 @@ let v = criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'failure'),
 assert.deepEqual(v, { level: 'bad', kind: 'failing', notes: ['its latest run on main failed (aie2p-8col)'], failedJobs: ['aie2p-8col'], late: false });
 assert.equal(criticalTile(crit({ latest_main: run(30, 3, 'completed', 'failure'),
   latest_main_jobs: [job('build', 3, 'completed', 'failure')] }), NOW).text, 'Failed on main 3 h ago: build');
+// A one-off hardware blip: the run before the latest passed, so it watches
+// rather than demanding attention, as CI_NORMAL promises.
+v = criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'failure'),
+  main_runs: [run(30, 3, 'completed', 'failure'), run(29, 27, 'completed', 'success')] }), NOW);
+assert.deepEqual([v.level, v.kind, v.notes], ['warn', 'intermittent', ['its latest run on main failed; the previous run passed']]);
+// Two in a row is not a blip: stays bad. No main_runs at all is the same:
+// there is no evidence it is a blip, so it is not given the benefit of the doubt.
+assert.equal(criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'failure'),
+  main_runs: [run(30, 3, 'completed', 'failure'), run(29, 27, 'completed', 'failure')] }), NOW).level, 'bad');
+assert.equal(criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'failure') }), NOW).level, 'bad');
 // A two-week pass rate under 90%, or one commit in ten re-run, is its normal: shown, not flagged.
 v = criticalVerdict(crit({ main: { passed: 8, failed: 2, rate: 0.8 }, flaky: { commits: 20, flaky: 3, rate: 0.15 } }), NOW);
 assert.deepEqual([v.level, v.notes], ['ok', []]);
