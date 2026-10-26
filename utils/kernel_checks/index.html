@@ -58,7 +58,7 @@
       --link: #3446c4; --focus: #3446c4;
       --ok: #0a7259; --ok-soft: #d6efe7; --bad: #bf2c37; --bad-soft: #fbe3e5; --warn: #9a5c00; --warn-soft: #fcefd6;
       --none: #c7ccd5; --none-soft: #eceef2;
-      --npu1: #1f6fb8; --npu2: #9a3fc4; --grid: rgba(28, 34, 48, 0.08); --band: 0.16;
+      --grid: rgba(28, 34, 48, 0.08); --band: 0.16;
       --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6;
       --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
     }
@@ -68,7 +68,7 @@
         --link: #8c9bff; --focus: #8c9bff;
         --ok: #3cc49a; --ok-soft: #173a31; --bad: #ff6b74; --bad-soft: #4a1d23; --warn: #f0a93b; --warn-soft: #43321a;
         --none: #4a515e; --none-soft: #232832;
-        --npu1: #5aa6ea; --npu2: #c587e6; --grid: rgba(230, 233, 239, 0.08); --band: 0.22;
+        --grid: rgba(230, 233, 239, 0.08); --band: 0.22;
         --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500; --series-5: #d55181; --series-6: #008300; --series-7: #9085e9;
       }
     }
@@ -167,13 +167,11 @@
     .moves .move { white-space: nowrap; }
     details.repro pre { margin: 0; padding: 8px 10px; background: var(--none-soft); border-radius: 6px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
 
-    .s-ok { background: var(--ok-soft); color: var(--ok); }
     .s-better { background: var(--ok); color: #fff; }
     .s-bad { background: var(--bad); color: #fff; }
     .s-warn { background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
     .s-none { background: repeating-linear-gradient(135deg, var(--none-soft) 0 4px, transparent 4px 7px); color: var(--faint); box-shadow: inset 0 0 0 1px var(--none); }
     .s-untimed { background: var(--ok-soft); color: var(--faint); box-shadow: inset 0 0 0 1px var(--none); }
-    .s-absent { background: transparent; color: var(--faint); border: 1px dashed var(--none); }
 
     /* Tables: numbers right-aligned in tabular figures, so they scan. */
     .table-wrap { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow-x: auto; }
@@ -200,7 +198,6 @@
     .case-name { overflow-wrap: anywhere; }
     .case-name .rest { color: var(--muted); }
     .pill { display: inline-block; font-size: 11.5px; font-weight: 600; border-radius: 10px; padding: 0 8px; white-space: nowrap; }
-    .pill.s-absent { border: 0; box-shadow: none; padding: 0; font-weight: 500; }
     .tag { display: inline-block; font-size: 11.5px; color: var(--muted); border: 1px solid var(--rule); border-radius: 10px; padding: 0 7px; margin-left: 6px; font-weight: 500; }
     .note { font-size: 12px; color: var(--muted); }
     .note.bad { color: var(--bad); font-weight: 600; }
@@ -338,7 +335,6 @@
       .ci-row { grid-template-columns: 10px minmax(0, 1fr) auto; gap: 2px 10px; }
       .ci-row .t-state { grid-column: 2 / -1; grid-row: 2; }
     }
-    .pill.s-running { background: var(--none-soft); color: var(--muted); box-shadow: inset 0 0 0 1px var(--none); }
     .night.running { background: var(--none-soft); border: 1px dashed var(--muted); }
     .chart.trend { margin: 4px 0 10px; }
     .chart.trend .trend-head { display: flex; justify-content: flex-start; }
@@ -385,13 +381,10 @@
     .k-row .k-bad { color: var(--bad); font-weight: 600; }
     .k-row .k-warn { color: var(--warn); font-weight: 600; }
     .k-row .k-absent .dot { background: transparent; border: 1px dashed var(--none); }
-    .k-row .spark { display: block; height: 28px; }
-    .k-row .spark svg { height: 28px; }
     @media (max-width: 700px) {
       .k-head { display: none; }
       a.k-row { grid-template-columns: 1fr 1fr; }
       .k-row .k-name { grid-column: 1 / -1; }
-      .k-row .spark { display: none; }
     }
     table.changes td:first-child { width: 46%; min-width: 220px; }
     table.changes td, table.changes th { white-space: nowrap; }
@@ -2469,12 +2462,6 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function cssVar(name, fallback) {
       if (typeof getComputedStyle !== 'function' || !document.documentElement) return fallback;
       return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-    }
-
-    // An NPU keeps one color on every chart: npu1 blue, npu2 violet.
-    function npuColor(npu) {
-      const fallback = { npu1: '#1f6fb8', npu2: '#9a3fc4' };
-      return cssVar(`--${npu}`, fallback[npu] || '#5b6475');
     }
 
     // The [low, high] shaded behind a row's point: value ± d for a range
