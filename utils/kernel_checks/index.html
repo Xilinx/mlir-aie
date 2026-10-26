@@ -474,9 +474,7 @@
             Runs started by hand are charted but never compared against.</p>
           <h3>Working on the page</h3>
           <pre>python3 utils/kernel_checks/preview.py --fetch                 # the published data, this page
-python3 utils/kernel_checks/preview.py --scenario bad-night      # a synthetic failing night on top
-python3 utils/kernel_checks/preview.py --site components --scenario bad-night
-python3 -m pytest test/test_kernel_checks_page.py                # the page's code, under node</pre>
+python3 -m pytest test/test_kernel_checks_page.py                # the page's code, under node; its own failure states, against recorded data</pre>
           <p>To add a section: publish its checks to <code>component-checks/&lt;check&gt;/</code> from a nightly job
             (add the check to <code>COMPONENTS</code> in <code>publish.py</code>), then add the section to <code>SECTIONS</code> and its checks to <code>BANDS</code> in the page.</p>
         </div>
@@ -3755,10 +3753,15 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const latest = w.latest_main && w.latest_main.status === 'completed' ? w.latest_main : null;
       // The jobs that failed in it, by their own names.
       const failedJobs = (w.latest_main_jobs || []).filter(failedOutcome).map(j => jobName(j.name, w.title));
+      // Completed, not-cancelled runs on main, newest first: `recent[0]` is
+      // `latest` itself; `recent[1]` tells a one-off hardware blip (the NPU
+      // runners wedge now and then, as CI_NORMAL promises) from two in a row.
+      const recent = (w.main_runs || []).filter(r => r.status === 'completed' && r.outcome !== 'cancelled').slice(0, CI_RECENT_RUNS);
+      const previousFailed = recent.length > 1 && failedOutcome(recent[1]);
       if (latest && failedOutcome(latest)) {
-        level = 'bad';
-        kind = 'failing';
-        notes.push(`its latest run on main ${latest.outcome === 'timed_out' ? 'timed out' : 'failed'}${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}`);
+        level = previousFailed ? 'bad' : 'warn';
+        kind = previousFailed ? 'failing' : 'intermittent';
+        notes.push(`its latest run on main ${latest.outcome === 'timed_out' ? 'timed out' : 'failed'}${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}${previousFailed ? '' : '; the previous run passed'}`);
       } else if (latest && ['runner_lost', 'no_runner'].includes(latest.outcome)) {
         // A machine that died mid-run is often back by the next; none taking
         // the run at all needs someone to bring one back.
@@ -3780,7 +3783,6 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         if (level !== 'bad') { level = 'bad'; kind = 'runner'; }
         notes.push(`its newest run on main is ${waiting.text}`);
       }
-      const recent = (w.main_runs || []).filter(r => r.status === 'completed' && r.outcome !== 'cancelled').slice(0, CI_RECENT_RUNS);
       const fails = recent.filter(failedOutcome).length;
       if (level === 'ok' && fails >= CI_INTERMITTENT_FAILS) {
         level = 'warn';
@@ -3920,7 +3922,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     let ciToken = 0;
     async function showCi() {
       const token = ++ciToken;
-      $('ci-critical').replaceChildren(el('p', { className: 'dim' }, 'Reading the published CI health…'));
+      // Only the first paint says "Reading…": a background refresh keeps
+      // showing the last answer rather than blanking it while it waits.
+      if (!$('ci-critical').children.length) {
+        $('ci-critical').replaceChildren(el('p', { className: 'dim' }, 'Reading the published CI health…'));
+      }
       const loaded = await loadCi();
       if (token !== ciToken || currentView() !== 'ci') return null;
       const now = Date.now();
@@ -4271,24 +4277,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return view;
     }
 
-    async function main() {
-      applyTheme(readTheme());
-      $('theme').addEventListener('click', () => {
-        applyTheme(isDark() ? 'light' : 'dark');
-        if (SECTIONS[currentView()]) showSection(currentView());
-        if (!started) return;
-        // Canvases read their colors when drawn.
-        if (currentView() === 'kernel') showKernel((readHash().kernel || '').split('/')[0]);
-      });
-      window.addEventListener('hashchange', showView);
-      showView();
-      $('verdicts').replaceChildren(el('p', { className: 'dim' }, 'Loading the latest nights…'));
-      for (const [m, about] of Object.entries(METRICS)) {
-        $('key-metrics').append(el('dt', {}, label(m)), el('dd', {}, termOf(m, about)));
-      }
-      for (const m of sectionMetrics('performance')) {
-        $('performance-metrics').append(el('dt', {}, label(m)), el('dd', {}, termOf(m, COMPONENT_METRICS[m])));
-      }
+    // The kernel library's nights: fetched once at start and again by a
+    // background refresh, so kept apart from the one-time listeners and
+    // static metric lists in main(). Only the first call shows "Loading…";
+    // a refresh swaps the rendered content in place once it lands.
+    async function refreshKernels() {
+      if (!started) $('verdicts').replaceChildren(el('p', { className: 'dim' }, 'Loading the latest nights…'));
       const [catalogues, indexes, latests] = await Promise.all([
         Promise.all(NPUS.map(n => fetchJson(`${KERNELS_DIR}/${n}/catalogue.json`))),
         Promise.all(NPUS.map(n => fetchJson(`${KERNELS_DIR}/${n}/runs.json`))),
@@ -4311,8 +4305,46 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       nights = renderDashboard(shown, published.length ? recent : null, new Map(catalogues.map(c => [c.npu, c])), indexes, Date.now());
       renderWindowChanges(hist, shown);
       renderKernelList(nights, hist);
+    }
+
+    // Five minutes: the published files are small and static, off gh-pages'
+    // CDN, so nothing here needs throttling beyond not polling a hidden tab.
+    const REFRESH_MS = 5 * 60 * 1000;
+    let refreshing = false;
+    async function refreshAll() {
+      if (refreshing || document.visibilityState !== 'visible') return;
+      refreshing = true;
+      try {
+        historyCache.clear();
+        componentsLoad = null;
+        ciLoad = null;
+        await refreshKernels();
+        showView();
+      } finally { refreshing = false; }
+    }
+
+    async function main() {
+      applyTheme(readTheme());
+      $('theme').addEventListener('click', () => {
+        applyTheme(isDark() ? 'light' : 'dark');
+        if (SECTIONS[currentView()]) showSection(currentView());
+        if (!started) return;
+        // Canvases read their colors when drawn.
+        if (currentView() === 'kernel') showKernel((readHash().kernel || '').split('/')[0]);
+      });
+      window.addEventListener('hashchange', showView);
+      showView();
+      for (const [m, about] of Object.entries(METRICS)) {
+        $('key-metrics').append(el('dt', {}, label(m)), el('dd', {}, termOf(m, about)));
+      }
+      for (const m of sectionMetrics('performance')) {
+        $('performance-metrics').append(el('dt', {}, label(m)), el('dd', {}, termOf(m, COMPONENT_METRICS[m])));
+      }
+      await refreshKernels();
       started = true;
       showView();
+      setInterval(refreshAll, REFRESH_MS);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshAll(); });
     }
 
     if (typeof window !== 'undefined' && window.document && typeof window.addEventListener === 'function' && !window.KERNEL_CHECKS_TEST) main();
