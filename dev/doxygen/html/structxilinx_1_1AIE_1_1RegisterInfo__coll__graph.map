@@ -1,0 +1,9 @@
+<map id="xilinx::AIE::RegisterInfo" name="xilinx::AIE::RegisterInfo">
+<area shape="rect" id="Node000001" title="Register information." alt="" coords="55,152,230,177"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,13,64,38"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="38,51,44,90,51,109,62,126,78,140,97,149,95,154,75,144,58,130,46,111,39,91,32,52"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="105,13,180,38"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="145,52,145,152,140,152,140,52"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="205,5,347,45"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="255,58,226,94,191,130,161,154,158,150,188,126,222,90,251,55"/>
+</map>
