@@ -709,7 +709,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 // The verifier-owned collection shares the device symbol table across memcpy
 // checks without retaining allocation pointers between verification calls.
 LogicalResult
-AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbols) {
+AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   BaseMemRefType buffer = getMemref().getType();
   const auto &targetModel = AIE::getTargetModel(*this);
   bool allStridesConstant = llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
@@ -733,7 +733,7 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbols) {
     return success();
 
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-  auto allocOp = symbols.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
+  auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getMetadata().getRootReference());
   if (isDynamic)
     return verifyDynamicSizesStrides(targetModel, buffer, allocOp);
