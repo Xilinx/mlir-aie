@@ -9149,8 +9149,8 @@ exp(x) = exp2(x * log2(e)).
 </table>
 <h3 id="aievecext-xilinxaievecextop"><code>aievec.ext</code> (::xilinx::aievec::ExtOp)<a class="headerlink" href="#aievecext-xilinxaievecextop" title="Permanent link">&para;</a></h3>
 <p><em>AIE ext</em></p>
-<p>AMD-specific vector extract intrinsic. Selects contiguous lanes from 
-the source vector, and transfers the data from those lanes to the 
+<p>AMD-specific vector extract intrinsic. Selects contiguous lanes from
+the source vector, and transfers the data from those lanes to the
 result. The lane selection is controlled by index. There are two cases:
 1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
 2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
@@ -9878,8 +9878,8 @@ a vector of 8-bit values.
 <p><em>AIE2 concat and shift</em></p>
 <p>AMD-specific shift intrinsic. Concatenates two
 vectors into a bigger vector, interprets them as a vector of 128 bytes
-and returns v1::v2[shift: shift+64]. <code>shift</code> is the number of bytes to 
-be shifted. The verifier confirms that all the input and result vectors 
+and returns v1::v2[shift: shift+64]. <code>shift</code> is the number of bytes to
+be shifted. The verifier confirms that all the input and result vectors
 have the same number of lanes and element types.
 <code>$result = shift($lhs, $rhs, $shift)</code></p>
 <p>Traits: <code>AlwaysSpeculatableImplTrait</code></p>
@@ -9991,6 +9991,16 @@ tranposed to a 8x4 arrangement. In the example above:</p>
 Would result in:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>t16_1x2_flip = [1, 0, 3, 2, ..., 29, 28, 31, 30]
 </code></pre></div></p>
+<p>In general, mode <code>t&lt;w&gt;_&lt;r&gt;x&lt;c&gt;</code> reads an <code>r</code>x<code>c</code> row-major matrix of
+<code>w</code>-bit elements and returns its transpose: <code>out[j*r+i] = in[i*c+j]</code>. A
+mode whose matrix spans 1024 bits reads <code>lhs:rhs</code> and returns the <code>lo</code> or
+<code>hi</code> 512 bits. A mode whose matrix spans fewer than 512 bits reads <code>lhs</code>
+only and transposes each such block of it on its own. A mode
+<code>t&lt;w&gt;_1x&lt;c&gt;_flip</code> reverses the order of each group of <code>c</code> elements.</p>
+<p>The modes 48 to 55 (<code>t32_8x2</code>, <code>t32_2x8</code>, <code>t64_4x2</code>, <code>t64_2x4</code>,
+<code>t16_8x8_lo</code>, <code>t16_8x8_hi</code>, <code>t32_1x16_flip</code> and <code>t8_1x4_flip</code>) exist on
+AIE2P only. Inside an <code>aie.device</code> of another architecture they are
+rejected.</p>
 <p>The list of supported shuffle modes, required operands, and associated
 vector types are the following:</p>
 <div class="highlight"><pre><span></span><code> Shuffle Mode       | Operands           | Types Supported
@@ -10000,6 +10010,7 @@ vector types are the following:</p>
  t8_8x8             | ^                  | ^
  t8_16x4            | ^                  | ^
  t8_4x16            | ^                  | ^
+ t8_1x4_flip (AIE2P)| ^                  | ^
  t8_64x2_lo         | `lhs` &amp; `rhs`      | ^
  t8_64x2_hi         | ^                  | ^
  t8_2x64_lo         | ^                  | ^
@@ -10022,7 +10033,12 @@ vector types are the following:</p>
  t16_16x4_hi        | ^                  | ^
  t16_4x16_lo        | ^                  | ^
  t16_4x16_hi        | ^                  | ^
+ t16_8x8_lo (AIE2P) | ^                  | ^
+ t16_8x8_hi (AIE2P) | ^                  | ^
  t32_4x4            | `lhs`              | `vector&lt;16xi32&gt;` or `vector&lt;16xf32&gt;`
+ t32_8x2 (AIE2P)    | ^                  | ^
+ t32_2x8 (AIE2P)    | ^                  | ^
+ t32_1x16_flip (AIE2P) | ^               | ^
  t32_16x2_lo        | `lhs` &amp; `rhs`      | ^
  t32_16x2_hi        | ^                  | ^
  t32_2x16_lo        | ^                  | ^
@@ -10031,7 +10047,9 @@ vector types are the following:</p>
  t32_8x4_hi         | ^                  | ^
  t32_4x8_lo         | ^                  | ^
  t32_4x8_hi         | ^                  | ^
- t64_8x2_lo         | ^                  | `vector&lt;8xi64&gt;`
+ t64_4x2 (AIE2P)    | `lhs`              | `vector&lt;8xi64&gt;`
+ t64_2x4 (AIE2P)    | ^                  | ^
+ t64_8x2_lo         | `lhs` &amp; `rhs`      | ^
  t64_8x2_hi         | ^                  | ^
  t64_2x8_lo         | ^                  | ^
  t64_2x8_hi         | ^                  | ^
@@ -10263,9 +10281,9 @@ a vector of 16-bit values.
 <h3 id="aievecupd-xilinxaievecupdop"><code>aievec.upd</code> (::xilinx::aievec::UPDOp)<a class="headerlink" href="#aievecupd-xilinxaievecupdop" title="Permanent link">&para;</a></h3>
 <p><em>AIE upd</em></p>
 <p>AMD-specific update intrinsic. General upd intrinsic updates contiguous
-lanes of the result vector from a smaller source vector. This form of 
-upd intrinsic combines the load of data from memory into a vector 
-register, and then updating the lanes of the result vector using it. 
+lanes of the result vector from a smaller source vector. This form of
+upd intrinsic combines the load of data from memory into a vector
+register, and then updating the lanes of the result vector using it.
 <code>$result = upd($source[$indices], $offset, $index)</code></p>
 <p>Traits: <code>AlwaysSpeculatableImplTrait</code>, <code>AttrSizedOperandSegments</code></p>
 <p>Interfaces: <code>ConditionallySpeculatable</code>, <code>NoMemoryEffect (MemoryEffectOpInterface)</code></p>
@@ -10365,7 +10383,7 @@ the shift parameter.
 <p><em>Shuffle mode for AIEVec shuffle operations</em></p>
 <p>Syntax:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>#aievec.mode&lt;
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>  `t8_64x2_lo` | `t8_64x2_hi` | `t16_32x2_lo` | `t16_32x2_hi` | `t32_16x2_lo` | `t32_16x2_hi` | `t64_8x2_lo` | `t64_8x2_hi` | `t128_4x2_lo` | `t128_4x2_hi` | `t256_2x2_lo` | `t256_2x2_hi` | `t128_2x4_lo` | `t128_2x4_hi` | `t64_2x8_lo` | `t64_2x8_hi` | `t32_2x16_lo` | `t32_2x16_hi` | `t16_2x32_lo` | `t16_2x32_hi` | `t8_2x64_lo` | `t8_2x64_hi` | `t512_1x2_lo` | `t512_1x2_hi` | `t16_16x4_lo` | `t16_16x4_hi` | `t16_4x16_lo` | `t16_4x16_hi` | `t16_8x4` | `t16_4x8` | `t32_8x4_lo` | `t32_8x4_hi` | `t32_4x8_lo` | `t32_4x8_hi` | `t32_4x4` | `t8_8x8` | `t8_16x4` | `t8_4x16` | `t16_1x2_flip` | `t16_4x4` | `t16_4x2` | `t16_2x4` | `t16_8x2` | `t16_2x8` | `t16_16x2` | `t16_2x16` | `t8_8x4` | `t8_4x8`   # value
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>  `t8_64x2_lo` | `t8_64x2_hi` | `t16_32x2_lo` | `t16_32x2_hi` | `t32_16x2_lo` | `t32_16x2_hi` | `t64_8x2_lo` | `t64_8x2_hi` | `t128_4x2_lo` | `t128_4x2_hi` | `t256_2x2_lo` | `t256_2x2_hi` | `t128_2x4_lo` | `t128_2x4_hi` | `t64_2x8_lo` | `t64_2x8_hi` | `t32_2x16_lo` | `t32_2x16_hi` | `t16_2x32_lo` | `t16_2x32_hi` | `t8_2x64_lo` | `t8_2x64_hi` | `t512_1x2_lo` | `t512_1x2_hi` | `t16_16x4_lo` | `t16_16x4_hi` | `t16_4x16_lo` | `t16_4x16_hi` | `t16_8x4` | `t16_4x8` | `t32_8x4_lo` | `t32_8x4_hi` | `t32_4x8_lo` | `t32_4x8_hi` | `t32_4x4` | `t8_8x8` | `t8_16x4` | `t8_4x16` | `t16_1x2_flip` | `t16_4x4` | `t16_4x2` | `t16_2x4` | `t16_8x2` | `t16_2x8` | `t16_16x2` | `t16_2x16` | `t8_8x4` | `t8_4x8` | `t32_8x2` | `t32_2x8` | `t64_4x2` | `t64_2x4` | `t16_8x8_lo` | `t16_8x8_hi` | `t32_1x16_flip` | `t8_1x4_flip`   # value
 <a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>&gt;
 </code></pre></div>
 <h4 id="parameters">Parameters:<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h4>
@@ -18399,6 +18417,46 @@ the shift parameter.
 <td style="text-align: center;">T8_4X8</td>
 <td style="text-align: center;"><code>47</code></td>
 <td>t8_4x8</td>
+</tr>
+<tr>
+<td style="text-align: center;">T32_8X2</td>
+<td style="text-align: center;"><code>48</code></td>
+<td>t32_8x2</td>
+</tr>
+<tr>
+<td style="text-align: center;">T32_2X8</td>
+<td style="text-align: center;"><code>49</code></td>
+<td>t32_2x8</td>
+</tr>
+<tr>
+<td style="text-align: center;">T64_4X2</td>
+<td style="text-align: center;"><code>50</code></td>
+<td>t64_4x2</td>
+</tr>
+<tr>
+<td style="text-align: center;">T64_2X4</td>
+<td style="text-align: center;"><code>51</code></td>
+<td>t64_2x4</td>
+</tr>
+<tr>
+<td style="text-align: center;">T16_8X8_LO</td>
+<td style="text-align: center;"><code>52</code></td>
+<td>t16_8x8_lo</td>
+</tr>
+<tr>
+<td style="text-align: center;">T16_8X8_HI</td>
+<td style="text-align: center;"><code>53</code></td>
+<td>t16_8x8_hi</td>
+</tr>
+<tr>
+<td style="text-align: center;">T32_1X16_flip</td>
+<td style="text-align: center;"><code>54</code></td>
+<td>t32_1x16_flip</td>
+</tr>
+<tr>
+<td style="text-align: center;">T8_1X4_flip</td>
+<td style="text-align: center;"><code>55</code></td>
+<td>t8_1x4_flip</td>
 </tr>
 </tbody>
 </table>
