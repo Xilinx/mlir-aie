@@ -30,6 +30,7 @@ from ..utils.compile.jit.markers import _DispatchParameter
 from .buffer import Buffer
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
+from .dataflow.objectfifopool import ObjectFifoPoolHandle
 from .device import AnyComputeTile, Tile
 from .kernel import Kernel
 from .resolvable import PerDeviceConfiguration, Resolvable
@@ -187,7 +188,7 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         # fn_args may nest lists (e.g. one fifo per column); iterate the flattened
         # leaves for registration while the core_fn still receives the structure.
         for arg in flatten_fn_args(self.fn_args):
-            if isinstance(arg, ObjectFifoHandle):
+            if isinstance(arg, (ObjectFifoHandle, ObjectFifoPoolHandle)):
                 arg.endpoint = self
                 self._fifos.append(arg)
             elif isinstance(arg, Buffer):
@@ -299,11 +300,12 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         return list(flatten_fn_args(self.fn_args)) + self._setup_kernels
 
     @property
-    def fifos(self) -> list[ObjectFifoHandle]:
-        """Returns a list of ObjectFifoHandles given to the Worker via fn_args.
+    def fifos(self) -> list[ObjectFifoHandle | ObjectFifoPoolHandle]:
+        """Returns the fifo and pool handles given to the Worker via fn_args.
 
         Returns:
-            list[ObjectFifoHandle]: ObjectFifoHandles used by the Worker.
+            list[ObjectFifoHandle | ObjectFifoPoolHandle]: handles the Worker
+                acquires and releases objects through.
         """
         return self._fifos.copy()
 
