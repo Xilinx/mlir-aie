@@ -15,6 +15,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 #include <tuple>
@@ -190,10 +191,10 @@ static LogicalResult checkPreemptConsistency(AIE::DeviceOp device) {
 // checks (e.g. the remote-barrier mask shift) free of undefined behavior.
 static LogicalResult checkGroupIds(AIE::DeviceOp device) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
-  int64_t numUcs = tm.getNumControllers();
+  int64_t numUcs = std::min<int64_t>(tm.getNumControllers(), 32);
   LogicalResult result = success();
   auto checkId = [&](Operation *op, int64_t id, llvm::StringRef what) {
-    if (id < 0 || id >= numUcs || id >= 32) {
+    if (id < 0 || id >= numUcs) {
       op->emitError() << what << " " << id << " is not a valid uC id [0, "
                       << numUcs << ")";
       result = failure();
@@ -284,7 +285,8 @@ static LogicalResult checkRemoteBarrierParties(AIE::DeviceOp device) {
 }
 
 // G-barlimits: local_barrier_id must be in [0, 15] and remote_barrier_id in
-// [1, 8]; a single uC may use at most 16 distinct local ids and 8 distinct
+// [0, 6], matching the assembler operands $rb0..$rb6; a single uC may
+// use at most 16 distinct local ids and 7 distinct
 // remote ids (the firmware barrier-id budget per microcontroller).
 static LogicalResult checkBarrierLimits(AIE::DeviceOp device) {
   LogicalResult result = success();
@@ -303,9 +305,9 @@ static LogicalResult checkBarrierLimits(AIE::DeviceOp device) {
 
   device.walk([&](AIEX::CertRemoteBarrierOp barrier) {
     int id = barrier.getRemoteBarrierId();
-    if (id < 1 || id > 8) {
+    if (id < 0 || id > 6) {
       barrier.emitError() << "cert.remote_barrier remote_barrier_id " << id
-                          << " out of range [1, 8]";
+                          << " out of range [0, 6]";
       result = failure();
     }
     remoteIds[getUcGroupId(barrier)].insert(id);
@@ -318,9 +320,9 @@ static LogicalResult checkBarrierLimits(AIE::DeviceOp device) {
       result = failure();
     }
   for (auto &[uc, ids] : remoteIds)
-    if (ids.size() > 8) {
+    if (ids.size() > 7) {
       device.emitError() << "uC " << uc << " uses " << ids.size()
-                         << " distinct remote_barrier ids (max 8)";
+                         << " distinct remote_barrier ids (max 7)";
       result = failure();
     }
   return result;

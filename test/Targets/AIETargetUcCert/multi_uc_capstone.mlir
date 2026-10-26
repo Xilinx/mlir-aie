@@ -9,11 +9,11 @@
 // more than one microcontroller, covering the shape a real multi-uC design
 // takes:
 //  - @configure is the first page on uC0;
-//  - uC0 releases its core, rendezvous with col1 via a remote barrier, then
+//  - uC0 performs a representative release write, rendezvous with col1 via a remote barrier, then
 //    waits for TCTs -- all in one page (release before WAIT_TCTS, no forward
 //    dependency);
 //  - col1's controller (uC1, via placement=1) rendezvous on the same remote
-//    barrier and releases its core;
+//    barrier and performs a representative release write;
 //  - the two uCs form independent ordered streams;
 //  - aie-cert-verify accepts it (matching rendezvous, valid ids).
 
@@ -32,14 +32,14 @@
 // ASM: START_JOB 1
 // ASM: WRITE_32{{.*}}0x00060000
 // ASM: START_JOB 2
-// ASM: WRITE_32{{.*}}0x007ae050
+// ASM: WRITE_32{{.*}}0x00001000
 // ASM-NOT: .eop
 // ASM: REMOTE_BARRIER
 // ASM: WAIT_TCTS
-// uC1 stream: rendezvous then release col1's core.
+// uC1 stream: rendezvous then write on uC1.
 // ASM: .attach_to_group 1
 // ASM: REMOTE_BARRIER
-// ASM: WRITE_32{{.*}}0x026ae050
+// ASM: WRITE_32{{.*}}0x00002000
 
 aie.device(xcve3858) {
   // Configuration job (forced first on uC0).
@@ -47,20 +47,20 @@ aie.device(xcve3858) {
     aiex.cert.write32(0x60000, 1)
   } {cert.configure}
 
-  // uC0: release col0 core, rendezvous with col1, wait for TCTs (one page).
+  // uC0: write on uC0, rendezvous with col1, wait for TCTs (one page).
   aiex.cert.page {
     aiex.cert.job(2) {
-      aiex.cert.write32(0x7AE050, 1)
+      aiex.cert.write32(0x1000, 1)
       aiex.cert.remote_barrier(1, 0x3)
       aiex.cert.wait_tcts(0, 0, 1)
     }
   }
 
-  // uC1 (col1 controller): rendezvous, then release col1 core.
+  // uC1 (col1 controller): rendezvous, then write on uC1.
   aiex.cert.page {
     aiex.cert.job(3) {
       aiex.cert.remote_barrier(1, 0x3)
-      aiex.cert.write32(0x26AE050, 1)
+      aiex.cert.write32(0x2000, 1)
     }
   } {placement = 1 : i32}
 }

@@ -17,7 +17,7 @@
 
 // CHECK: .attach_to_group 0
 // CHECK: START_JOB 0
-// CHECK: WRITE_32{{.*}}0x007ae050
+// CHECK: WRITE_32{{.*}}0x00001000
 // CHECK: START_JOB 2
 // CHECK: WAIT_TCTS
 
@@ -25,7 +25,7 @@ aie.device(npu2) {
   // Release job, authored first, on uC 0.
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
-      aiex.cert.write32(0x7AE050, 1)
+      aiex.cert.write32(0x1000, 1)
     }
   }
   // Runtime-sequence page (waits for TCTs), authored second, also uC 0.

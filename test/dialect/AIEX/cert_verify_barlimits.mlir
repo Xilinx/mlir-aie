@@ -5,16 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-// G-barlimits: local_barrier_id in [0,15], remote_barrier_id in [1,8]; a uC may
-// use at most 16 distinct local and 8 distinct remote ids.
+// G-barlimits: local_barrier_id in [0,15], remote_barrier_id in [0,6]; a uC may
+// use at most 16 distinct local and 7 distinct remote ids.
 
 // RUN: aie-opt --aie-cert-verify --split-input-file --verify-diagnostics %s
 
-// Positive: local id 15 and remote id 8 are the in-range extremes -> OK.
+// Positive: local id 15 and remote id 6 are the in-range extremes -> OK.
 aie.device(npu2) {
   aiex.cert.job(0) {
     aiex.cert.local_barrier(15, 2)
-    aiex.cert.remote_barrier(8, 0x1)
+    aiex.cert.remote_barrier(6, 0x1)
   }
 }
 
@@ -30,11 +30,11 @@ aie.device(npu2) {
 
 // -----
 
-// Negative: remote_barrier_id 9 is out of range.
+// Negative: remote_barrier_id 7 is out of range.
 aie.device(npu2) {
   aiex.cert.job(0) {
-    // expected-error@+1 {{cert.remote_barrier remote_barrier_id 9 out of range [1, 8]}}
-    aiex.cert.remote_barrier(9, 0x1)
+    // expected-error@+1 {{cert.remote_barrier remote_barrier_id 7 out of range [0, 6]}}
+    aiex.cert.remote_barrier(7, 0x1)
   }
 }
 
@@ -63,5 +63,21 @@ aie.device(npu2) {
     aiex.cert.local_barrier(15, 2)
     // expected-error@+1 {{cert.local_barrier local_barrier_id 16 out of range [0, 15]}}
     aiex.cert.local_barrier(16, 2)
+  }
+}
+
+// -----
+
+// Positive: remote id 0 names $rb0 and is a valid rendezvous.
+aie.device(xcve3858) {
+  aiex.cert.attach_to_group(0) {
+    aiex.cert.job(0) {
+      aiex.cert.remote_barrier(0, 0x3)
+    }
+  }
+  aiex.cert.attach_to_group(1) {
+    aiex.cert.job(0) {
+      aiex.cert.remote_barrier(0, 0x3)
+    }
   }
 }

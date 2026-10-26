@@ -247,7 +247,7 @@ def AIECertVerify : Pass<"aie-cert-verify", "AIE::DeviceOp"> {
   let summary = "Verify CERT ordering/placement legality invariants";
   let description = [{
     This pass checks the firmware-imposed legality invariants on cert
-    operations (see the CERT runtime-sequence report). It performs no IR
+    operations. It performs no IR
     mutation; it only emits diagnostics for illegal cert programs.
 
     The uC (microcontroller / CERT group) of a cert op is the `group_id` of

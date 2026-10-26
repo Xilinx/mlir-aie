@@ -277,7 +277,8 @@ def AIE_CertRemoteBarrierOp
   let description = [{
     This operation represents a remote barrier that synchronizes execution
     based on a barrier ID `remote_barrier_id` and `party_mask`, a bit map of
-    participant uC IDs.
+    participant uC IDs. The integer id names the assembler operand
+    `$rb0`..`$rb6`, encoded as firmware ids 1..7.
 
     Example:
     ```

@@ -97,11 +97,9 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
       newJobId = maxJobId + 1;
     }
 
-    // Create the job in place of the runtime sequence, WITHOUT a page wrapper.
-    // A later "form implicit pages" step (in cert-legalize-pages) groups
-    // contiguous top-level jobs into pages; explicit cert.page ops are the only
-    // delimiters. CertJobOp legally parents under DeviceOp, so a bare
-    // device-level job is valid between the two passes.
+    // Replace the runtime sequence with a job directly inside aie.device.
+    // CertJobOp lists DeviceOp as an allowed parent in its ParentOneOf trait.
+    // cert-legalize-pages later groups contiguous jobs into implicit pages.
     rewriter.setInsertionPoint(op);
     auto jobOp = AIEX::CertJobOp::create(rewriter, op.getLoc(), newJobId);
 
@@ -1531,8 +1529,8 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     bool found_split_point = false;
     uint32_t cost = estimateCost(op, cert_page_size / 2, split_job, split_iter,
                                  found_split_point);
-    LLVM_DEBUG(llvm::outs() << "Estimate cost for page: "
-                            << " is " << cost << "\n");
+    LLVM_DEBUG(llvm::outs()
+               << "Estimate cost for page: " << " is " << cost << "\n");
 
     if (cost < split_threshold)
       return failure();

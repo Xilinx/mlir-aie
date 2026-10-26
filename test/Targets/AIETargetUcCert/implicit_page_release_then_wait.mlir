@@ -18,23 +18,23 @@
 // Both jobs are in one page: no new cert.page opens between them.
 // CHECK: aiex.cert.page {
 // CHECK: aiex.cert.job(2)
-// CHECK: aiex.cert.write32(8052816, 1)
+// CHECK: aiex.cert.write32(4096, 1)
 // CHECK-NOT: aiex.cert.page
 // CHECK: aiex.cert.job(3)
 // CHECK: aiex.cert.wait_tcts(0, 0, 1)
 
 // In the emitted asm, the release WRITE_32 precedes WAIT_TCTS with no .eop
 // (page break) between them; a single .eop follows both.
-// ASM: WRITE_32{{.*}}0x007ae050
+// ASM: WRITE_32{{.*}}0x00001000
 // ASM-NOT: .eop
 // ASM: WAIT_TCTS
 // ASM: .eop
 
 module {
   aie.device(npu2) @main {
-    // Non-blocking release (writes a lock register), textually first.
+    // Non-blocking release (uses a synthetic address), textually first.
     aie.runtime_sequence @release() {
-      %ra = arith.constant 0x7AE050 : i32
+      %ra = arith.constant 0x1000 : i32
       %rv = arith.constant 1 : i32
       aiex.npu.write32(%ra, %rv) : i32, i32
     }

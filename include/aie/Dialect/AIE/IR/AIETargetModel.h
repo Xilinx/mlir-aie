@@ -181,11 +181,11 @@ public:
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
 
-  /// Number of aie2ps/aie4 microcontrollers (uC) per column
+  /// Number of microcontrollers (uC) per column
   virtual uint32_t getNumControllersPerColumn() const { return 0; }
 
-  /// Total number of aie2ps/aie4 microcontrollers (uC) in the device.
-  /// Defaults to one uC per column (see getNumControllersPerColumn());
+  /// Total number of microcontrollers (uC) in the device.
+  /// Defaults to columns() * getNumControllersPerColumn();
   /// architectures with a single device-level uC (e.g. AIE2/AIE2P NPUs)
   /// override this directly instead, since their controller count doesn't
   /// scale with column count.
