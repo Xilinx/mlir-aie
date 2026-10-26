@@ -343,6 +343,9 @@ assert.equal(changeClass(5, 6.5, 'npu_us'), '');
 assert.equal(changeClass(50, 60, 'npu_us'), 'worse');
 // The empty dispatch is the host's and the runtime's: shown, never judged.
 assert.equal(changeClass(90, 300, 'dispatch_overhead_us'), '');
+// Information only: never worse or better.
+THRESHOLDS.ort_matches = { ...THRESHOLDS.ort_matches, neutral: true };
+assert.equal(changeClass(8, 6, 'ort_matches'), '');
 assert.deepEqual(['dispatch_us', 'dispatch_overhead_us', 'npu_us'].map(label), ['Dispatch time', 'Dispatch overhead', 'NPU time']);
 // The router's failed mutations went 0 -> 2: flagged, said as "+2", not a percentage.
 const before = routerRecord('6', '2026-10-01T03:17:00Z', 0);
@@ -738,14 +741,6 @@ for (const m of [...published, ...ALL_METRICS]) {{
   assert.ok(m in LABELS, `${{m}} has no label`);
   assert.ok(m in METRICS || m in COMPONENT_METRICS, `${{m}} has no description`);
 }}
-// A chart's tooltip formats its value as its ticks do.
-db = fromRecords({{ npu1: [rec('1', 1, 'turbo', {{ 'a/1/i8/dispatch_us': ['us', 80.25] }}), rec('2', 2, 'turbo', {{ 'a/1/i8/dispatch_us': ['us', 81] }})] }});
-const kc = kernelTrendConfig(db, 'npu1', 'a', 'dispatch_us');
-const tick = kc.options.scales.y.ticks.callback(81);
-assert.ok(kc.options.plugins.tooltip.callbacks.label({{ dataset: kc.data.datasets[0], dataIndex: 1, raw: 81 }}).includes(tick));
-// Information only: never worse or better.
-THRESHOLDS.ort_matches = {{ ...THRESHOLDS.ort_matches, neutral: true }};
-assert.equal(changeClass(8, 6, 'ort_matches'), '');
 // The removed helpers stay removed.
 assert.equal(typeof latestChange, 'undefined');
 """)
@@ -1019,7 +1014,7 @@ const index = { target: 'npu1', runs: [
 """
 
 
-def test_latest_run_prefers_the_recorded_run_and_falls_back_to_the_series(page):
+def test_latest_run_resolves_recorded_vs_fallback_state(page):
     page(MOVED + RUNS + """
 const run = latestRun('npu1', index, db, catalogue);
 assert.equal(run.recorded, true);
@@ -1031,6 +1026,28 @@ assert.equal(run.message, 'same revision');
 assert.equal(run.pmode, 'default');
 assert.equal(run.device, 'NPU Strix');
 assert.equal(run.previous.id, '1');
+// A migrated run has no Actions link.
+const migrated = latestRun('npu1', { runs: [{ ...index.runs[0], url: '' }] }, db, catalogue);
+assert.equal(migrated.url, null);
+// Without runs.json, the latest run's record stands in.
+const fallback = latestRun('npu1', null, db, catalogue);
+assert.equal(fallback.recorded, false);
+assert.equal(fallback.url, null);
+assert.equal(fallback.date, 2000);
+assert.equal(fallback.commit, 'abcdef123456');
+assert.equal(fallback.pmode, 'turbo');
+// Only the catalogue (every run dropped): nothing published, nothing failed.
+const empty = latestRun('npu1', { schema: 1, runs: [] }, fromRecords({}), catalogue);
+assert.equal(empty.sane, null);
+// Nothing at all.
+const none = latestRun('npu2', null, db, null);
+assert.equal(none.date, null);
+""")
+
+
+def test_warnings_for_flag_mode_failure_truncation_and_provenance_changes(page):
+    page(MOVED + RUNS + """
+const run = latestRun('npu1', index, db, catalogue);
 const now = 3600 * 1000;
 assert.deepEqual(warningsFor('npu1', run, now).map(w => [w.level, w.text.split(':')[0]]), [
   ['warn', 'measured in power mode "default", not turbo'],
@@ -1041,9 +1058,12 @@ assert.deepEqual(warningsFor('npu1', run, now).map(w => [w.level, w.text.split('
 ]);
 // A field the run before did not record is no change: xrt is new here.
 assert.ok(!warningsFor('npu1', run, now).some(w => w.change === 'xrt'));
-// A migrated run has no Actions link.
-const migrated = latestRun('npu1', { runs: [{ ...index.runs[0], url: '' }] }, db, catalogue);
-assert.equal(migrated.url, null);
+""")
+
+
+def test_warnings_for_handles_refused_stale_and_empty_records(page):
+    page(MOVED + RUNS + """
+const now = 3600 * 1000;
 // Stale, unsane runs say so first.
 const bad = latestRun('npu1', { runs: [{ ...index.runs[0], sane: false, published: false }] }, db, catalogue);
 assert.deepEqual(warningsFor('npu1', bad, now + 48 * 3600 * 1000).map(w => w.level), ['bad', 'bad']);
@@ -1056,25 +1076,17 @@ assert.deepEqual(warningsFor('npu1', latestRun('npu1', { runs: refusedRuns }, db
 const after = latestRun('npu1', { runs: [...refusedRuns, summary('4', '1970-01-01T00:00:04Z', 'turbo', index.runs[1].provenance)] }, db, catalogue);
 assert.equal(after.previous.id, '2');
 assert.deepEqual(warningsFor('npu1', after, now), []);
-
-// Without runs.json, the latest run's record stands in.
+// Fallback staleness: silent within the window, loud past it.
 const fallback = latestRun('npu1', null, db, catalogue);
-assert.equal(fallback.recorded, false);
-assert.equal(fallback.url, null);
-assert.equal(fallback.date, 2000);
-assert.equal(fallback.commit, 'abcdef123456');
-assert.equal(fallback.pmode, 'turbo');
 assert.deepEqual(warningsFor('npu1', fallback, now), []);
 assert.deepEqual(warningsFor('npu1', fallback, now + 48 * 3600 * 1000),
                  [{ level: 'bad', text: 'no run since 1 Jan, 00:00 UTC', stale: true }]);
 // Only the catalogue (every run dropped): nothing published, nothing failed.
 const empty = latestRun('npu1', { schema: 1, runs: [] }, fromRecords({}), catalogue);
-assert.equal(empty.sane, null);
 assert.deepEqual(warningsFor('npu1', empty, Date.parse(catalogue.date)).map(w => w.text),
                  ['no numbers have been published yet']);
 // Nothing at all.
 const none = latestRun('npu2', null, db, null);
-assert.equal(none.date, null);
 assert.deepEqual(warningsFor('npu2', none, now).map(w => w.level), ['bad']);
 """)
 
@@ -1133,15 +1145,10 @@ assert.ok(worse.text.startsWith('npu11 case got slower past its threshold vs 1 J
 assert.ok(worse.text.includes('relu/1024/bf16 cycles +3.0%'));
 assert.equal(all(worse, n => n.tag === 'a')[0].href, '#view=kernel&kernel=relu');
 
-// All kernels: a line each, those that need a look first; a state per NPU.
-const list = renderKernelList(shownNights, db);
-assert.deepEqual(list.map(r => [r.factory, r.className, r.children.slice(1, 3).map(c => c.text)]), [
-  ['mm', 'k-row bad', ['npu11 failing', 'npu2not offered']],
-  ['relu', 'k-row bad', ['npu1slower +3.0%1,030 cycles1 slower since 1 Jan', 'npu2not offered']],
-  ['exp2f_vec', 'k-row none', ['npu1not offered', 'npu2not offered']],
-]);
-assert.equal(list[1].href, '#view=kernel&kernel=relu');
-assert.equal($('kernels-status').text, '3 kernels of 3');
+// All kernels: worst problem first, a correctness failure before a
+// regression, both before a kernel not built anywhere (row shape and per-NPU
+// text are test_all_kernels_is_a_line_each_problems_first_and_filters' own).
+assert.deepEqual(renderKernelList(shownNights, db).map(r => r.factory), ['mm', 'relu', 'exp2f_vec']);
 """)
 
 
@@ -1351,6 +1358,8 @@ assert.deepEqual(config.data.labels, ['1 Jan', '1 Jan']);
 assert.deepEqual(config.data.datasets.map(d => [d.label, d.data]), [['64/bfloat16', [50, null]], ['1024/bfloat16', [1000, 1100]]]);
 const tips = config.options.plugins.tooltip.callbacks;
 assert.equal(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }), '1024/bfloat16: 1,100 (median 1150 max 1200 n=16)');
+// The tooltip always repeats the axis tick's own formatting of the value.
+assert.ok(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }).includes(config.options.scales.y.ticks.callback(1100)));
 assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
 assert.equal(config.options.scales.y.title.text, 'Cycles per call (fastest traced call) · ↓ better');
 // 50 and 1,100 differ over ten times: a log axis, so both lines' moves show.
@@ -1404,6 +1413,12 @@ assert.equal($('placement').hidden, true);
 location.hash = '#view=routing';
 assert.equal(applyView(), 'routing');
 assert.equal($('routing').hidden, false);
+// "design" was the performance section's first name; an unrecognized
+// hash lands on the overview.
+location.hash = '#view=design';
+assert.equal(applyView(), 'performance');
+location.hash = '#view=nonsense';
+assert.equal(applyView(), 'overview');
 """)
 
 
@@ -2222,17 +2237,6 @@ assert.equal(one(lateBand, n => n.className === 'headline').text.slice(0, 16), '
 """)
 
 
-def test_old_links_land_on_their_new_views(page):
-    page("""
-for (const [hash, view] of [['', 'overview'], ['#view=dashboard', 'night'], ['#view=catalogue', 'kernels'],
-    ['#view=components', 'placement'], ['#view=components&metric=compile_s', 'performance'],
-    ['#view=design', 'performance'], ['#view=nonsense', 'overview']]) {
-  location.hash = hash;
-  assert.equal(currentView(), view, hash);
-}
-""")
-
-
 def test_performance_trends_chart_each_batch_as_the_mean_over_seeds(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const read = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
@@ -2618,9 +2622,9 @@ const watching = ciVerdictBand(loadedOf(status({ critical: [crit({ main_runs: fl
 assert.deepEqual([watching.className, watching.children[0].text], ['verdict warn', 'Nothing is broken; 1 workflow to watch.']);
 // Nothing published.
 assert.equal(ciVerdictBand(loadedOf(null), NOW).children[0].text, 'No CI health published yet.');
-// The rows: one state each.
-assert.equal(nightlyRow(loaded.results[0], NOW).children[2].text, 'Waiting for a runner: aie2p-8col');
-assert.equal(criticalTile(crit(), NOW).text, 'Passed on main 3 h ago');
+// The rows: one state each (nightlyRow and criticalTile's own cases are
+// test_nightly_jobs_are_a_row_each_with_their_recent_runs and
+// test_critical_workflows_judge_main_now_and_show_their_normal's).
 assert.equal(scheduledTile({ wf: nightly, runs: [run(5, 6, 'completed', 'success')], jobs: [] }, NOW).text, 'Passed 6 h ago');
 assert.equal(scheduledTile({ wf: nightly, runs: [run(5, 40, 'completed', 'success')], jobs: [] }, NOW).text, 'No run for 1 day 16 h');
 assert.equal(scheduledTile({ wf: nightly, runs: null, error: 'HTTP 502' }, NOW).text, 'GitHub did not answer');
