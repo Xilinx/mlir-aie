@@ -861,7 +861,6 @@ struct AIENpuToCertPass
     for (auto dev : devices) {
       if (dev.getSymName() == deviceName) {
         mainDevice = dev;
-        processDevice(dev);
         break;
       }
     }
@@ -872,6 +871,12 @@ struct AIENpuToCertPass
       signalPassFailure();
       return;
     }
+
+    if (failed(migrateGlobalsIntoMainDevice(mainDevice, devices))) {
+      signalPassFailure();
+      return;
+    }
+    processDevice(mainDevice);
 
     // Then process other devices
     for (auto dev : devices) {
@@ -892,6 +897,43 @@ struct AIENpuToCertPass
     for (auto dev : devicesToRemove) {
       dev.erase();
     }
+  }
+
+  // Absorbed configure bodies must retain their payloads when source devices
+  // are erased. Rename uses before cloning them into the surviving device.
+  LogicalResult migrateGlobalsIntoMainDevice(AIE::DeviceOp mainDevice,
+                                             ArrayRef<AIE::DeviceOp> devices) {
+    for (auto dev : devices) {
+      if (dev == mainDevice)
+        continue;
+      auto globals = llvm::to_vector(dev.getOps<memref::GlobalOp>());
+      for (auto global : globals) {
+        StringRef oldName = global.getSymName();
+        std::string newName = oldName.str();
+        unsigned counter = 0;
+        // Avoid a temporary collision with another source global: rewriting
+        // its uses later would otherwise redirect both payloads to one symbol.
+        auto taken = [&](StringRef candidate) {
+          return mainDevice.lookupSymbol(candidate) ||
+                 (candidate != oldName && dev.lookupSymbol(candidate)) ||
+                 llvm::any_of(devices, [&](AIE::DeviceOp device) {
+                   // Device names become section symbols during absorption.
+                   return device.getSymName() == candidate;
+                 });
+        };
+        while (taken(newName))
+          newName = oldName.str() + "_" + std::to_string(counter++);
+        if (newName != oldName) {
+          if (failed(SymbolTable::replaceAllSymbolUses(
+                  global, StringAttr::get(&getContext(), newName), dev)))
+            return dev.emitError("could not rename global '")
+                   << oldName << "' while absorbing it into the main device";
+          global.setSymName(newName);
+        }
+        global->moveBefore(mainDevice.getBody(), mainDevice.getBody()->begin());
+      }
+    }
+    return success();
   }
 
   void processDevice(AIE::DeviceOp currentDevice) {
