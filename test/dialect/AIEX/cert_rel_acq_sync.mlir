@@ -13,14 +13,14 @@
 // CHECK-LABEL: aie.device(npu2)
 // CHECK: aiex.cert.page
 // CHECK: aiex.cert.job(1)
-// CHECK: aiex.cert.rel_acq_sync(90116, 90632)
+// CHECK: aiex.cert.rel_acq_sync(4096, 4100)
 
 module {
   aie.device(npu2) {
     aiex.cert.page {
       aiex.cert.job(1) {
-        // rel(+1), then acq_eq(2), on lock 8 of a shim NOC module.
-        aiex.cert.rel_acq_sync(0x00016004, 0x00016208)
+        // Synthetic addresses check attribute preservation without a register map.
+        aiex.cert.rel_acq_sync(0x1000, 0x1004)
       }
     }
   }

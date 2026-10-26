@@ -291,7 +291,7 @@ def AIE_CertRemoteBarrierOp
   }];
 }
 
-def AIE_CertRelAcqSyncOp: AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]> {
+def AIE_CertRelAcqSyncOp : AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]> {
   let summary = "Release-acquire global barrier on an AIE lock";
   let description = [{
     Releases the lock at rel_address, then busy-waits acquiring the lock at
@@ -308,9 +308,9 @@ def AIE_CertRelAcqSyncOp: AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]>
 
     Operand order is release then acquire, matching the aiebu assembler.
 
-    Example:
+    Example (illustrative lock-request addresses):
     ```
-      cert.rel_acq_sync(0x00016004, 0x00016208)
+      cert.rel_acq_sync(0x1000, 0x1004)
     ```
   }];
   let arguments = (
@@ -322,7 +322,7 @@ def AIE_CertRelAcqSyncOp: AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]>
   }];
 }
 
-def AIE_CertPreemptOp: AIEX_Op<"cert.preempt", [HasParent<"CertJobOp">]> {
+def AIE_CertPreemptOp : AIEX_Op<"cert.preempt", [HasParent<"CertJobOp">]> {
   let summary = "Preemption point with save/restore control code references";
   let description = [{
     This operation defines a preemption point in control code. If preemption is
