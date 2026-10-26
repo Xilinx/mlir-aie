@@ -45,7 +45,8 @@ module {
       // These are the operations that reference other SSA values in the device, which will require hoisting those SSA values into the calling device.
       %rtpv0 = arith.constant -1168197103 : i32
       aiex.npu.rtp_write(@rtp_0_0, 0, %rtpv0) : i32
-      aiex.set_lock(%lock_0_2, 1)
+      %lock_value_0 = arith.constant 1 : i32
+      aiex.set_lock(%lock_0_2, %lock_value_0)
     }
   }
 }

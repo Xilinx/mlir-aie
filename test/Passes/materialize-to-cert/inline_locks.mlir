@@ -54,11 +54,15 @@ module {
 
     aie.runtime_sequence (%arg0: memref<64xi32>, %arg1: memref<64xi32>) {
       // Multiple set_lock operations with different locks and the same lock used multiple times
-      aiex.set_lock(%lock_0, 1)
-      aiex.set_lock(%lock_1, 0)
-      aiex.set_lock(%lock_2, 1)
+      %lock_value_0 = arith.constant 1 : i32
+      aiex.set_lock(%lock_0, %lock_value_0)
+      %lock_value_1 = arith.constant 0 : i32
+      aiex.set_lock(%lock_1, %lock_value_1)
+      %lock_value_2 = arith.constant 1 : i32
+      aiex.set_lock(%lock_2, %lock_value_2)
       // Use lock_0 again to verify the mapping is maintained
-      aiex.set_lock(%lock_0, 2)
+      %lock_value_3 = arith.constant 2 : i32
+      aiex.set_lock(%lock_0, %lock_value_3)
     }
   }
 }
@@ -101,8 +105,10 @@ module {
     %lock_1_2 = aie.lock(%tile_1_2, 0) {init = 0 : i32}
 
     aie.runtime_sequence (%arg0: memref<64xi32>) {
-      aiex.set_lock(%lock_0_2, 1)
-      aiex.set_lock(%lock_1_2, 1)
+      %lock_value_4 = arith.constant 1 : i32
+      aiex.set_lock(%lock_0_2, %lock_value_4)
+      %lock_value_5 = arith.constant 1 : i32
+      aiex.set_lock(%lock_1_2, %lock_value_5)
     }
   }
 }

@@ -1154,10 +1154,9 @@ struct AIENpuToCertPass
 
 } // namespace
 
-// Instruction sizes are the authoritative ISA_OPSIZE_* values from
-// third_party/aiebu/specification/aie2ps/isa_stubs.h -- the same table the
-// assembler encodes against -- so the running total here matches the bytes
-// emitJob actually produces. Keep the two in sync when adding a cert op:
+// Instruction sizes follow the AIEBU CERT ISA specification so the running
+// total here matches the bytes emitJob actually produces. Keep the cost model
+// and emitter in sync when adding a cert op:
 // an op the emitter can emit but this function ignores is counted as free,
 // which makes the page look smaller than it is.
 static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,

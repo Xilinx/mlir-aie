@@ -64,7 +64,8 @@ module {
     aie.runtime_sequence (%arg0: memref<64xi32>) {
       %rtpv0 = arith.constant -1168197103 : i32
       aiex.npu.rtp_write(@rtp_0_0, 0, %rtpv0) : i32
-      aiex.set_lock(%lock_0_2, 1)
+      %lock_value_0 = arith.constant 1 : i32
+      aiex.set_lock(%lock_0_2, %lock_value_0)
     }
   }
 
@@ -83,7 +84,8 @@ module {
     aie.runtime_sequence (%arg0: memref<64xi32>) {
       %rtpv1 = arith.constant -1168197103 : i32
       aiex.npu.rtp_write(@rtp_0_0, 0, %rtpv1) : i32
-      aiex.set_lock(%lock_0_2, 1)
+      %lock_value_1 = arith.constant 1 : i32
+      aiex.set_lock(%lock_0_2, %lock_value_1)
     }
   }
 }
