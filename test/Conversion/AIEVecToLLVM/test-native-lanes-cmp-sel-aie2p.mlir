@@ -7,8 +7,9 @@
 
 // RUN: aie-opt %s -split-input-file --convert-vector-to-aievec="aie-target=aie2p" --convert-aievec-to-llvm="aie-target=aie2p" | FileCheck %s
 
-// Compares and selects split into parts in VectorToAIEVec, and wide vectors
-// split into more than nine parts, lower to LLVM with no aievec op left.
+// Compares and selects split into parts in VectorToAIEVec, wide vectors split
+// into more than nine parts, and f32 adds split into 16-lane parts lower to
+// LLVM with no aievec op left.
 
 // CHECK-LABEL: func.func @cmpf_select_v64bf16
 // CHECK-NOT: aievec
@@ -70,7 +71,7 @@ func.func @cmpi_v64i16_select_v64i32(%a: vector<64xi16>, %b: vector<64xi16>,
 // CHECK: return
 func.func @cmpi_v64i32_select_v64bf16(%a: vector<64xi32>, %b: vector<64xi32>,
                                       %x: vector<64xbf16>, %y: vector<64xbf16>) -> vector<64xbf16> {
-  %c = arith.cmpi ult, %a, %b : vector<64xi32>
+  %c = arith.cmpi slt, %a, %b : vector<64xi32>
   %0 = arith.select %c, %x, %y : vector<64xi1>, vector<64xbf16>
   return %0 : vector<64xbf16>
 }
@@ -86,4 +87,23 @@ func.func @cmpi_v64i32_select_v64bf16(%a: vector<64xi32>, %b: vector<64xi32>,
 func.func @maximumf_v512bf16(%a: vector<512xbf16>, %b: vector<512xbf16>) -> vector<512xbf16> {
   %0 = arith.maximumf %a, %b : vector<512xbf16>
   return %0 : vector<512xbf16>
+}
+
+// -----
+
+// 48 lanes of f32 add and sub are three 16-lane parts, each padded to the
+// 64-lane accumulator intrinsic.
+// CHECK-LABEL: func.func @addf_subf_v48f32
+// CHECK-NOT: aievec
+// CHECK-COUNT-3: xllvm.intr.aie2p.ACC2048.accfloat.add.conf
+// CHECK-COUNT-3: xllvm.intr.aie2p.ACC2048.accfloat.sub.conf
+// CHECK-NOT: aievec
+// CHECK-NOT: arith.addf
+// CHECK-NOT: arith.subf
+// CHECK: return
+func.func @addf_subf_v48f32(%a: vector<48xf32>, %b: vector<48xf32>)
+    -> (vector<48xf32>, vector<48xf32>) {
+  %0 = arith.addf %a, %b : vector<48xf32>
+  %1 = arith.subf %a, %b : vector<48xf32>
+  return %0, %1 : vector<48xf32>, vector<48xf32>
 }

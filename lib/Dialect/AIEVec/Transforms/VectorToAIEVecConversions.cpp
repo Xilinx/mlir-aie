@@ -632,12 +632,6 @@ static LogicalResult genAddElemAIE2(ConversionPatternRewriter &rewriter,
   return success();
 }
 
-// Whether convertToIntegerPredicate takes `pred`.
-static bool hasIntegerPredicate(arith::CmpFPredicate pred) {
-  return pred != CmpFPredicate::AlwaysFalse && pred != CmpFPredicate::ORD &&
-         pred != CmpFPredicate::UNO && pred != CmpFPredicate::AlwaysTrue;
-}
-
 static arith::CmpIPredicate
 convertToIntegerPredicate(arith::CmpFPredicate pred) {
   switch (pred) {
@@ -5519,11 +5513,23 @@ static SmallVector<int64_t, 5> getAIE2PNativeLanes(Operation *op) {
     return {};
   }
   // Compare and select take 32 lanes of bf16 or i16, 16 of which are padded
-  // to 32, and 16 lanes of i32. A float compare that tests for NaN (ord, uno)
-  // has no lowering.
+  // to 32, and 16 lanes of i32. The LLVM lowering compares integers as signed
+  // and bf16 as ordered (false if either is NaN); a compare it does not
+  // honour is not given a native width, so it is not split or repeated.
   if (isa<arith::CmpIOp, arith::CmpFOp, arith::SelectOp>(op)) {
+    if (auto cmpOp = dyn_cast<arith::CmpIOp>(op);
+        cmpOp && !llvm::is_contained(
+                     {CmpIPredicate::eq, CmpIPredicate::ne, CmpIPredicate::slt,
+                      CmpIPredicate::sle, CmpIPredicate::sgt,
+                      CmpIPredicate::sge},
+                     cmpOp.getPredicate()))
+      return {};
     if (auto cmpOp = dyn_cast<arith::CmpFOp>(op);
-        cmpOp && !hasIntegerPredicate(cmpOp.getPredicate()))
+        cmpOp && !llvm::is_contained(
+                     {CmpFPredicate::OEQ, CmpFPredicate::ONE,
+                      CmpFPredicate::OLT, CmpFPredicate::OLE,
+                      CmpFPredicate::OGT, CmpFPredicate::OGE},
+                     cmpOp.getPredicate()))
       return {};
     if (elemType.isBF16() || elemType.isInteger(16))
       return {16, 32};
@@ -5552,9 +5558,9 @@ constexpr int64_t kAIE2PMaxParts = 128;
 
 // The lanes of each part an elementwise op is rewritten into when the AIE2P
 // lowering does not take its lane count, or none. Lanes are counted over all
-// dimensions. A wider vector is split into parts of the widest native width
-// that divides it; a narrower one is repeated to the narrowest native width
-// that holds a whole number of copies.
+// dimensions. A vector is split into parts of the widest native width that
+// divides it or, if none does, repeated to the narrowest native width that
+// holds a whole number of copies.
 //
 // A compare is split together with the select that uses it, as the parts of
 // its mask cannot be put back together; the parts are as wide as both the
@@ -5582,22 +5588,18 @@ static std::optional<int64_t> getAIE2PPartLanes(Operation *op) {
     SmallVector<int64_t, 5> cmpNative = getAIE2PNativeLanes(cmp);
     llvm::erase_if(
         native, [&](int64_t n) { return !llvm::is_contained(cmpNative, n); });
-    if (llvm::is_contained(native, lanes))
-      return std::nullopt;
-    for (int64_t part : llvm::reverse(native))
-      if (part < lanes && lanes % part == 0 && lanes / part <= kAIE2PMaxParts)
-        return part;
-    return std::nullopt;
   }
   if (native.empty() || llvm::is_contained(native, lanes))
     return std::nullopt;
-
-  if (lanes > native.back()) {
-    for (int64_t part : llvm::reverse(native))
-      if (lanes % part == 0 && lanes / part <= kAIE2PMaxParts)
-        return part;
+  // LLVM takes an integer add of one register whatever its lane count.
+  if (isa<arith::AddIOp, arith::SubIOp>(op) && lanes < native.back())
     return std::nullopt;
-  }
+
+  for (int64_t part : llvm::reverse(native))
+    if (part < lanes && lanes % part == 0 && lanes / part <= kAIE2PMaxParts)
+      return part;
+  if (isa<arith::SelectOp>(op))
+    return std::nullopt;
   for (int64_t part : native)
     if (part > lanes && part % lanes == 0)
       return part;

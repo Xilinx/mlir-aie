@@ -208,3 +208,90 @@ func.func @cmpf_v64bf16_select_v64f32(%a: vector<64xbf16>, %b: vector<64xbf16>,
   %0 = arith.select %c, %x, %y : vector<64xi1>, vector<64xf32>
   return %0 : vector<64xf32>
 }
+
+// -----
+
+// 24 or 80 lanes of bf16 max (native 32), and 24 lanes of tanh (16 and 32):
+// no native width divides the lane count or is a multiple of it.
+// CHECK-LABEL: func.func @no_part_width
+// CHECK-NOT: aievec
+// CHECK: arith.maximumf %{{.*}}, %{{.*}} : vector<24xbf16>
+// CHECK: arith.maximumf %{{.*}}, %{{.*}} : vector<80xbf16>
+// CHECK: math.tanh %{{.*}} : vector<24xbf16>
+func.func @no_part_width(%a: vector<24xbf16>, %b: vector<80xbf16>,
+                         %c: vector<24xbf16>, %d: vector<80xbf16>)
+    -> (vector<24xbf16>, vector<80xbf16>, vector<24xbf16>) {
+  %0 = arith.maximumf %a, %c : vector<24xbf16>
+  %1 = arith.maximumf %b, %d : vector<80xbf16>
+  %2 = math.tanh %a : vector<24xbf16>
+  return %0, %1, %2 : vector<24xbf16>, vector<80xbf16>, vector<24xbf16>
+}
+
+// -----
+
+// An integer add that fits in a register is left to LLVM whatever its lane
+// count.
+// CHECK-LABEL: func.func @addi_v24i16
+// CHECK-NOT: aievec
+// CHECK: arith.addi %{{.*}}, %{{.*}} : vector<24xi16>
+func.func @addi_v24i16(%a: vector<24xi16>, %b: vector<24xi16>) -> vector<24xi16> {
+  %0 = arith.addi %a, %b : vector<24xi16>
+  return %0 : vector<24xi16>
+}
+
+// -----
+
+// The LLVM lowering compares integers as signed, so an unsigned relational
+// compare and its select are left as they are.
+// CHECK-LABEL: func.func @cmpi_unsigned_select_v64
+// CHECK-NOT: aievec
+// CHECK: arith.cmpi ult, %{{.*}}, %{{.*}} : vector<64xi32>
+// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xi32>
+// CHECK: arith.cmpi ule, %{{.*}}, %{{.*}} : vector<64xi32>
+// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xi32>
+// CHECK: arith.cmpi ugt, %{{.*}}, %{{.*}} : vector<64xi16>
+// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xi32>
+// CHECK: arith.cmpi uge, %{{.*}}, %{{.*}} : vector<64xi16>
+// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xbf16>
+func.func @cmpi_unsigned_select_v64(%a: vector<64xi32>, %b: vector<64xi32>,
+                                    %c: vector<64xi16>, %d: vector<64xi16>,
+                                    %x: vector<64xi32>, %y: vector<64xi32>,
+                                    %s: vector<64xbf16>, %t: vector<64xbf16>)
+    -> (vector<64xi32>, vector<64xi32>, vector<64xi32>, vector<64xbf16>) {
+  %m0 = arith.cmpi ult, %a, %b : vector<64xi32>
+  %0 = arith.select %m0, %x, %y : vector<64xi1>, vector<64xi32>
+  %m1 = arith.cmpi ule, %a, %b : vector<64xi32>
+  %1 = arith.select %m1, %x, %y : vector<64xi1>, vector<64xi32>
+  %m2 = arith.cmpi ugt, %c, %d : vector<64xi16>
+  %2 = arith.select %m2, %x, %y : vector<64xi1>, vector<64xi32>
+  %m3 = arith.cmpi uge, %c, %d : vector<64xi16>
+  %3 = arith.select %m3, %s, %t : vector<64xi1>, vector<64xbf16>
+  return %0, %1, %2, %3 : vector<64xi32>, vector<64xi32>, vector<64xi32>, vector<64xbf16>
+}
+
+// -----
+
+// The LLVM lowering compares bf16 as ordered, false if either is NaN, so an
+// unordered compare and its select are left as they are.
+// CHECK-LABEL: func.func @cmpf_unordered_select_v64bf16
+// CHECK-NOT: aievec
+// CHECK-COUNT-6: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xbf16>
+func.func @cmpf_unordered_select_v64bf16(%a: vector<64xbf16>, %b: vector<64xbf16>,
+                                         %x: vector<64xbf16>, %y: vector<64xbf16>)
+    -> (vector<64xbf16>, vector<64xbf16>, vector<64xbf16>, vector<64xbf16>,
+        vector<64xbf16>, vector<64xbf16>) {
+  %c0 = arith.cmpf ueq, %a, %b : vector<64xbf16>
+  %0 = arith.select %c0, %x, %y : vector<64xi1>, vector<64xbf16>
+  %c1 = arith.cmpf une, %a, %b : vector<64xbf16>
+  %1 = arith.select %c1, %x, %y : vector<64xi1>, vector<64xbf16>
+  %c2 = arith.cmpf ult, %a, %b : vector<64xbf16>
+  %2 = arith.select %c2, %x, %y : vector<64xi1>, vector<64xbf16>
+  %c3 = arith.cmpf ule, %a, %b : vector<64xbf16>
+  %3 = arith.select %c3, %x, %y : vector<64xi1>, vector<64xbf16>
+  %c4 = arith.cmpf ugt, %a, %b : vector<64xbf16>
+  %4 = arith.select %c4, %x, %y : vector<64xi1>, vector<64xbf16>
+  %c5 = arith.cmpf uge, %a, %b : vector<64xbf16>
+  %5 = arith.select %c5, %x, %y : vector<64xi1>, vector<64xbf16>
+  return %0, %1, %2, %3, %4, %5 : vector<64xbf16>, vector<64xbf16>, vector<64xbf16>,
+                                  vector<64xbf16>, vector<64xbf16>, vector<64xbf16>
+}
