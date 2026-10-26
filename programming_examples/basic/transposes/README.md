@@ -5,9 +5,9 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# Transposes — four ways
+# Transposes — five ways
 
-A single [`@iron.jit`](./transposes.py) design exposing four distinct on-device transpose mechanisms.  All four produce the same end result: a full `M × K → K × M` transpose.  Only the on-device mechanism differs — pick one via `--strategy`.
+A single [`@iron.jit`](./transposes.py) design exposing five distinct on-device transpose mechanisms.  All five produce the same end result: a full `M × K → K × M` transpose.  Only the on-device mechanism differs — pick one via `--strategy`.
 
 | `--strategy`  | mechanism                                                     | dtypes      | size constraints                               |
 | ------------- | ------------------------------------------------------------- | ----------- | ---------------------------------------------- |
@@ -15,10 +15,12 @@ A single [`@iron.jit`](./transposes.py) design exposing four distinct on-device 
 | `dma_packet`  | same as `dma` but lowered with `--packet-sw-objFifos`         | int32/uint32 only<sup>1</sup>      | any                                            |
 | `shuffle`     | per-tile VSHUFFLE (hand-coded `transpose_16x16` kernel)       | uint8 only<sup>2</sup>             | M = K = 16 only                                |
 | `combined`    | hybrid: shim DMA outer reshuffle + VSHUFFLE inner sub-tile    | i8 / i16 / i32 (`--dtype-bytes`)   | `m \| M`, `n \| K`, `s \| m`, `s \| n`<sup>3</sup> |
+| `dyn`         | scalar transpose on a compute core (`transpose_dyn.cc`)      | i8 / i16 / i32 (`--dtype-bytes`)   | `M`, `K` fit one core's L1<sup>4</sup>          |
 
 <sup>1</sup> Shim DMA stride-1 must be ≥ 4 bytes, so 1- and 2-byte elements would lower to `aie.dma_bd` with stride < 4 bytes and be rejected.
 <sup>2</sup> The `shuffle_16x16.cc` kernel is hand-written for `uint8 16x16`; supporting other dtypes / sizes would require new kernels.
 <sup>3</sup> Plus an empirical lower bound — `s = 8` needs `m, n ≥ 32` for the underlying `transpose_8x8` VECTOR_SIZE arithmetic to do the right block interleave.
+<sup>4</sup> `mb`/`nb` are ordinary `int32` kernel arguments, not `-DDIM_m`/`-DDIM_n` macros, and `M`/`K` are dispatch-time, so `dyn` has no divisibility or minimum-size constraint the way `combined`/`shuffle` do and needs no recompile per shape; the whole `M x K` tile is moved and transposed in one core call, so it has to fit in the core's 64 KB L1 alongside the objectFIFO's ping-pong buffers, the core's stack and its runtime parameters; the compiler's buffer placement rejects a buffer that doesn't.
 
 Each `@iron.jit` function in [`transposes.py`](./transposes.py) raises `ValueError` if asked for a combo outside its support envelope.
 
@@ -31,6 +33,7 @@ python3 transposes.py -d npu2 -s dma          # int32 64x64
 python3 transposes.py -d npu2 -s dma_packet   # int32 64x32
 python3 transposes.py -d npu2 -s shuffle      # uint8 16x16
 python3 transposes.py -d npu2 -s combined     # int32 128x128, m=n=32, s=8
+python3 transposes.py -d npu2 -s dyn          # bf16 48x37 (deliberately not a power of 2)
 ```
 
 Pick `--dtype-bytes 1|2|4`, `-M`, `-K`, plus `-m`/`-n`/`--ss` for `combined`.  Strategies that can't satisfy the request fail fast with a clear `ValueError`.
@@ -90,8 +93,8 @@ encounter the elements in the order the arrow traverses them.
 The first two transformations occur in the DMAs. In
 [`transposes.py`](./transposes.py) the `combined` strategy expresses
 both as `TensorAccessPattern`s (`tap_in_L3L2`, `tap_in_L2L1`) and feeds
-the L2→L1 layout through the L3→L2 ObjectFifo's consumer
-(`.cons(dims_from_stream=tap_in_L2L1.transformation_dims).forward(...)`):
+the L2→L1 pattern through the L3→L2 ObjectFifo's consumer
+(`.cons(from_stream=tap_in_L2L1).forward(...)`):
 
 First, the ObjectFifo from L3 (host) to L2 (mem tile) tiles the
 `M × K` input matrix into tiles of size `m × n`. The DMA iterates over
@@ -138,3 +141,29 @@ individually, then interleave the result two elements at a time.
 After this kernel, the `m × n` tile is completely transposed. The
 output transfer then writes the tiles back into their correct position
 in the transposed output `M × K` matrix.
+
+## `dyn` strategy: `--strategy dyn`
+
+`combined` and `shuffle` both bake their tile shape into the compiled
+kernel object (`-DDIM_m`/`-DDIM_n`, or a hand-written `16x16` body), so
+a new `(M, K)` needs a new compiled kernel, and only shapes satisfying
+`m | M`, `n | K`, `s | m`, `s | n` are reachable at all. `dyn` moves the
+whole `M x K` tile into one core's L1 in a single DMA and transposes it
+with a plain nested loop, taking `mb`/`nb` as ordinary `int32` arguments
+(`aie_kernels/transpose_dyn.cc`) rather than macros.
+
+`M` and `K` are `DispatchTime[np.int32]` parameters, so one compiled design
+serves every shape whose `M * K` fits the buffers it was compiled for,
+including sizes `combined` cannot express, such as this design's own
+default `48 x 37`. The runtime sequence writes `M` and `K` into a
+runtime-parameter buffer the core reads before each call, and refuses a
+shape that is non-positive or overflows the buffers before it reaches the
+NPU. The default run dispatches `48 x 37` and then `24 x 18` on the same
+build.
+
+An objectFIFO object has a fixed size, and the core's DMA waits for a whole
+one, so each dispatch moves the full compiled buffer, not just its live
+`M x K` prefix. The input and output sit packed row-major at the front of
+flat buffers. The costs are one element per cycle instead of a
+`VSHUFFLE` per tile, the full-buffer transfer, and a tile that has to fit
+L1 rather than being DMA-tiled the way `combined` tiles it.

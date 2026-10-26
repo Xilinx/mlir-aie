@@ -18,8 +18,9 @@ The script has two modes (matching whole_array.py):
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -29,7 +30,6 @@ from aie.iron import (
     Runtime,
     TaskGroup,
     Worker,
-    kernels,
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
@@ -44,7 +44,7 @@ from aie.utils.trace import TraceConfig
 from aie.utils.verify import assert_close_with_benchmark
 
 
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit
 def single_core(
     A: In,
     B: In,
@@ -86,7 +86,7 @@ def single_core(
         use_chess=use_chess,
         emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
     )
-    zero_kernel = matmul_kernel.zero
+    zero_kernel = kernels.zero(m * n, dtype_out, use_chess=use_chess)
     r, s, t = matmul_kernel.mac_dims
     assert m % r == 0
     assert k % s == 0
@@ -104,20 +104,16 @@ def single_core(
     b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
+    dims = matmul_kernel.stream_dims
+
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-    memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
+    memA = inA.cons().forward(name="memA", to_stream=dims.A)
 
     inB = ObjectFifo(b_ty, name="inB")
-    if b_col_maj:
-        b_dims = [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
-    else:
-        b_dims = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
-    memB = inB.cons().forward(name="memB", dims_to_stream=b_dims)
+    memB = inB.cons().forward(name="memB", to_stream=dims.B)
 
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
-    outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
+    outC = memC.cons().forward(name="outC", to_stream=dims.C)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
         for _ in range_(tiles) if tiles > 1 else range(1):
@@ -140,29 +136,15 @@ def single_core(
 
     rows_per_block = 4
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n, prune_step=False
-    )
+    A_tiles = TensorAccessPattern.full((M, K)).tile((m, k))
     if b_col_maj:
-        b_tap = TensorTiler2D.group_tiler(
-            (N, K), (n, k), (N_div_n, K_div_k), prune_step=False
-        )[0]
+        b_tap = TensorAccessPattern.full((N, K)).tile((n, k))
     else:
-        b_tap = TensorTiler2D.group_tiler(
-            (K, N),
-            (k, n),
-            (K_div_k, N_div_n),
-            tile_group_col_major=True,
-            prune_step=False,
-        )[0]
-    C_tiles = TensorTiler2D.group_tiler(
-        (M, N), (m, n), (rows_per_block // 2, N_div_n), prune_step=False
-    )
-    c_index = 0
+        b_tap = TensorAccessPattern.full((K, N)).tile((k, n)).permute((1, 0, 2, 3))
+    C_tiles = TensorAccessPattern.full((M, N)).tile((m, n))
 
     def sequence(A, B, C, inA_h, inB_h, outC_h):
         tgs = []
-        nonlocal c_index
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
             for pingpong in [0, 1]:
                 row_base = (
@@ -173,11 +155,11 @@ def single_core(
                     break
                 tgs.append(TaskGroup())
                 for tile_row in range(num_tile_rows):
-                    tile_offset = (row_base + tile_row) % len(A_tiles)
-                    inA_h.fill(A, tap=A_tiles[tile_offset], group=tgs[-1])
+                    a_tap = A_tiles[row_base + tile_row].repeat(N_div_n)
+                    inA_h.fill(A, tap=a_tap, group=tgs[-1])
                     inB_h.fill(B, tap=b_tap, group=tgs[-1])
-                outC_h.drain(C, tap=C_tiles[c_index], group=tgs[-1], wait=True)
-                c_index += 1
+                c_tap = C_tiles[row_base : row_base + num_tile_rows]
+                outC_h.drain(C, tap=c_tap, group=tgs[-1], wait=True)
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
                     tgs[-2].finish()
                     del tgs[-2]
@@ -221,17 +203,6 @@ def _make_argparser():
     return p
 
 
-def _numpy_reference(A_np, B_np, b_col_maj, dtype_out):
-    B_logical = B_np.T if b_col_maj else B_np
-    if np.issubdtype(A_np.dtype, np.integer):
-        return (A_np.astype(np.int64) @ B_logical.astype(np.int64)).astype(dtype_out)
-    return (A_np.astype(np.float32) @ B_logical.astype(np.float32)).astype(dtype_out)
-
-
-def _trace_config(opts):
-    return TraceConfig(trace_size=opts.trace_size) if opts.trace_size > 0 else None
-
-
 def _run_and_verify(opts):
     dtype_in = str_to_dtype(opts.dtype_in)
     dtype_out = str_to_dtype(opts.dtype_out)
@@ -253,34 +224,35 @@ def _run_and_verify(opts):
     C_t = iron.zeros(opts.M * opts.N, dtype=dtype_out, device="npu")
 
     bench = run_iters(
-        single_core,
+        single_core.specialize(**_compile_kwargs(opts)),
         A_t,
         B_t,
         C_t,
-        M=opts.M,
-        K=opts.K,
-        N=opts.N,
-        m=opts.m,
-        k=opts.k,
-        n=opts.n,
-        dtype_in_str=opts.dtype_in,
-        dtype_out_str=opts.dtype_out,
-        b_col_maj=opts.b_col_maj,
-        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
-        use_chess=bool(opts.use_chess),
-        trace_config=_trace_config(opts),
         warmup=opts.warmup,
         iters=opts.iters,
     )
 
-    expected = _numpy_reference(A_np, B_np, opts.b_col_maj, dtype_out)
+    B_logical = B_np.T if opts.b_col_maj else B_np  # b_col_maj stores B transposed
+    expected = kernels.mm_ref(A_np, B_logical).astype(dtype_out)
     actual = C_t.numpy().reshape(opts.M, opts.N)
+
+    # The same kernel the design binds; kernels.mm is memoized, so this is
+    # the object the design built, asked for its tolerance.
+    kernel = kernels.mm(
+        dim_m=opts.m,
+        dim_k=opts.k,
+        dim_n=opts.n,
+        input_dtype=dtype_in,
+        output_dtype=dtype_out,
+        b_col_maj=bool(opts.b_col_maj),
+    )
 
     assert_close_with_benchmark(
         actual,
         expected,
         bench=bench,
         ops=2.0 * opts.M * opts.K * opts.N,
+        tolerance=kernel.contract.tolerance,
         fail_msg="output does not match A @ B",
     )
 
@@ -298,7 +270,9 @@ def _compile_kwargs(opts):
         b_col_maj=opts.b_col_maj,
         emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
         use_chess=bool(opts.use_chess),
-        trace_config=_trace_config(opts),
+        trace_config=(
+            TraceConfig(trace_size=opts.trace_size) if opts.trace_size > 0 else None
+        ),
     )
 
 

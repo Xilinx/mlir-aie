@@ -396,3 +396,12 @@ func.func @matmul_i8i8_signless(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
                                   into vector<4x8xi32>
   return %0 : vector<4x8xi32>
 }
+
+// -----
+
+// CHECK-LABEL: @mul_elem_bf16_64
+// CHECK: aievec.mul_elem %{{.*}}, %{{.*}} : vector<64xbf16>, vector<64xbf16>, vector<64xf32>
+func.func @mul_elem_bf16_64(%a : vector<64xbf16>, %b : vector<64xbf16>) -> vector<64xf32> {
+  %0 = aievec.mul_elem %a, %b : vector<64xbf16>, vector<64xbf16>, vector<64xf32>
+  return %0 : vector<64xf32>
+}

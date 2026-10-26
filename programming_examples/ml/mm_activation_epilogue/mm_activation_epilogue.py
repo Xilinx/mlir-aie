@@ -3,73 +3,59 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""One resident program, three RTP-selected GEMM-epilogue modes -- IRON API
-+ ``@iron.jit``.
+"""One resident program, four RTP-selected GEMM-epilogue modes -- IRON API +
+``@iron.jit``.
 
-NPU2-only: the underlying ``mm_activation_epilogue_row`` kernel lives under
-``aie_kernels/aie2p/`` and has no aie2 counterpart.
+Runs on NPU1 and NPU2. The ``mm_activation_epilogue_row`` kernel lives under
+``aie_kernels/transformer/``; on aie2, which has no tanh instruction, SiLU and GELU
+take tanh from the ``getTanhBf16`` lookup table instead.
 
 ``float32`` in, ``float32`` out, per-element:
 
   * mode 0 (identity): ``out = acc``
   * mode 1 (SiLU, hybrid precision): ``out = acc * sigmoid(acc)``
   * mode 2 (GELU, tanh approximation): ``out = 0.5*acc*(1+tanh(...))``
+  * mode 3 (ReLU): ``out = max(acc, 0)``
 
 The design compiles ONCE into a single xclbin. A per-core
 ``Buffer(..., use_write_rtp=True)`` carries the mode; a
-``WorkerRuntimeBarrier`` synchronizes each of the three dispatches (one per
+``WorkerRuntimeBarrier`` synchronizes each of the four dispatches (one per
 mode) with the workers so the new mode value is visible before a worker
 starts the next phase -- structurally this mirrors ``ml/scale_shift``'s
 two-phase (multiply, then add) runtime-parameter dispatch, extended to
-three phases and three separate output tensors so each mode's result can
+four phases and four separate output tensors so each mode's result can
 be checked against its own reference independently. No reconfiguration
 (no new xclbin, no new hardware context) happens between phases; only the
 RTP word and the DMA fill/drain addressing differ.
 """
 
 import argparse
-from pathlib import Path
-
-import numpy as np
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
+import numpy as np
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
     In,
-    Out,
     ObjectFifo,
+    Out,
     Program,
     Runtime,
     TaskGroup,
     Worker,
     WorkerRuntimeBarrier,
 )
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.helpers.util import np_ndarray_type_get_shape
-from aie.utils import config
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
-
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/mm_activation_epilogue.cc"
-)
 
 _MODE_IDENTITY = 0
 _MODE_SILU = 1
 _MODE_GELU = 2
-
-
-def _epilogue_extern(tile_ty):
-    return ExternalFunction(
-        "mm_activation_epilogue_row",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[tile_ty, tile_ty, np.int32, np.int32],
-        include_dirs=[config.cxx_header_path()],
-    )
+_MODE_RELU = 3
 
 
 @iron.jit
@@ -78,6 +64,7 @@ def mm_activation_epilogue(
     identity_out: Out,
     silu_out: Out,
     gelu_out: Out,
+    relu_out: Out,
     *,
     size: CompileTime[int] = 65536,
     n_cores: CompileTime[int] = 2,
@@ -113,11 +100,11 @@ def mm_activation_epilogue(
             names=[f"{name}{i}" for i in range(n_cores)],
         )
 
-    # One input, one output ObjectFifo per core -- the AIE2P compute tile's
+    # One input, one output ObjectFifo per core -- the compute tile's
     # DMA channel budget (2 in / 2 out) does not stretch to a separate
     # output per mode, and the real epilogue this mirrors only ever has one
     # input and one output tile anyway (the C accumulator in, the
-    # activated tile out). All three modes reuse this SAME pair; only the
+    # activated tile out). All four modes reuse this SAME pair; only the
     # RTP `mode` word and which host tensor the runtime sequence drains
     # into change between epochs.
     inA = ObjectFifo(memtile_ty, name="inA")
@@ -125,7 +112,7 @@ def mm_activation_epilogue(
     outC = ObjectFifo(memtile_ty, name="outC")
     outC_fifos = _join(outC, "memC")
 
-    epilogue_fn = _epilogue_extern(tile_ty)
+    epilogue_fn = kernels.mm_activation_epilogue(tile_size=tile_size)
 
     modes = [
         Buffer(
@@ -172,7 +159,7 @@ def mm_activation_epilogue(
         for m in modes:
             m[0] = value
 
-    def sequence(a, id_out, silu_result, gelu_result, inA_h, outC_h):
+    def sequence(a, id_out, silu_result, gelu_result, relu_result, inA_h, outC_h):
         # One epoch per mode: write this epoch's RTP mode, release every
         # core's barrier for one pass, fill the SAME input `a` again, and
         # drain the SAME output ObjectFifo into that mode's own host
@@ -182,6 +169,7 @@ def mm_activation_epilogue(
             (_MODE_IDENTITY, id_out),
             (_MODE_SILU, silu_result),
             (_MODE_GELU, gelu_result),
+            (_MODE_RELU, relu_result),
         ):
             _set_modes_to(mode_value)
             for barrier in barriers:
@@ -194,6 +182,7 @@ def mm_activation_epilogue(
     rt = Runtime(
         sequence,
         [
+            tensor_ty,
             tensor_ty,
             tensor_ty,
             tensor_ty,
@@ -227,6 +216,10 @@ def _gelu_tanh_ref_f32(x):
     return 0.5 * x * (1.0 + np.tanh(0.7978845608 * (x + 0.044715 * x**3)))
 
 
+def _relu_ref_f32(x):
+    return np.maximum(x, 0.0)
+
+
 def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     n = opts.length
@@ -236,8 +229,9 @@ def _run_and_verify(opts):
     id_t = iron.zeros_like(a_t)
     silu_t = iron.zeros_like(a_t)
     gelu_t = iron.zeros_like(a_t)
+    relu_t = iron.zeros_like(a_t)
 
-    mm_activation_epilogue(a_t, id_t, silu_t, gelu_t, **_compile_kwargs(opts))
+    mm_activation_epilogue(a_t, id_t, silu_t, gelu_t, relu_t, **_compile_kwargs(opts))
 
     assert_pass(id_t.numpy(), a_np, atol=0.0, fail_msg="identity mode mismatch")
     assert_pass(
@@ -251,6 +245,12 @@ def _run_and_verify(opts):
         _gelu_tanh_ref_f32(a_np),
         atol=0.05,
         fail_msg="GELU mode mismatch",
+    )
+    assert_pass(
+        relu_t.numpy(),
+        _relu_ref_f32(a_np),
+        atol=0.0,
+        fail_msg="ReLU mode mismatch",
     )
 
 

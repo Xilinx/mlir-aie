@@ -7,6 +7,7 @@
 add_mlir_dialect_library(
   AIETransforms
   AIEPlacer.cpp
+  AIEStructuralRank.cpp
   AIEPlaceTiles.cpp
   AIESAPlacer.cpp
   AIEAssignBufferDescriptorIDs.cpp
@@ -15,17 +16,23 @@ add_mlir_dialect_library(
   AIEAssignCoreLinkFiles.cpp
   AIEAssignLockIDs.cpp
   AIEFindFlows.cpp
+  AIEStreamDependencyAnalysis.cpp
+  AIESplitFlowVias.cpp
   AIEPathFinder.cpp
+  AIERoutingDiagnostics.cpp
   AIECreatePathFindFlows.cpp
   AIECoreToStandard.cpp
+  AIECoreIntRangeNarrowing.cpp
   AIECanonicalizeDevice.cpp
   AIELocalizeLocks.cpp
+  AIENormalizeDmaBdDims.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorToPointerLoops.cpp
   AIEVectorTransferLowering.cpp
   AIEHoistVectorTransferPointers.cpp
   AIEDMAChannelAnalysis.cpp
   AIEObjectFifoAllocate.cpp
+  AIECheckAgainstImage.cpp
   AIEObjectFifoLowerDMAs.cpp
   AIEObjectFifoLowerCores.cpp
   AIEObjectFifoErasePools.cpp
@@ -51,9 +58,12 @@ add_mlir_dialect_library(
   MLIRAIEPassIncGen
 
   LINK_LIBS PUBLIC
+  MLIRAnalysis
+  MLIRArithTransforms
   MLIRIR
   MLIRPass
   MLIRSupport
   MLIRSCFTransforms
   MLIRTransformUtils
-  MLIRFuncDialect)
+  MLIRFuncDialect
+  MLIRMemRefUtils)

@@ -13,10 +13,8 @@ Two parallelism modes share the same conv2dk14 sub-kernel:
     across cols, weights col-broadcast across rows, output joined per
     column; ~5ms.
 
-The library's ``kernels.conv2dk14`` sizes per-call output as
-``output_channels * tiles * 8`` (acc-byte layout), but both designs here
-feed the kernel ``sub_tiles x sub_out_channels = 256`` bytes per call.
-Wired via ``ExternalFunction`` with the design's actual per-call sizing.
+Both designs feed ``kernels.conv2dk14`` ``sub_tiles x sub_out_channels``
+bytes of output per call (one int8 per output channel and tile).
 
 Compile-only entrypoint:
   ``python3 conv2dk14.py -d npu2 [--multi]
@@ -26,9 +24,9 @@ End-to-end verification lives in ``test.py``.
 
 import argparse
 import sys
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 import torch  # pyright: ignore[reportMissingImports]
 import torch.nn as nn  # pyright: ignore[reportMissingImports]
@@ -40,13 +38,10 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    StreamDims,
     Worker,
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.ml import DataShaper
@@ -58,26 +53,26 @@ _KERNEL_SIZE = 14
 _IN_CHANNELS = 4
 _OUT_CHANNELS = 1152
 _X_BLOCKS = 4
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/conv2dk14.cc"
+
+# A tile-row of pixels arrives row by row and is stored block by block.
+_ACT_L3L2_WALK = TensorAccessPattern.full(
+    (64, _KERNEL_SIZE, _KERNEL_SIZE * _IN_CHANNELS)
+).permute((1, 0, 2))
+_ACT_L2L1_WALK = TensorAccessPattern.full(
+    (64 // 8, 8, _KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS)
+).permute((0, 2, 1, 3))
 
 
-def _conv2dk14_extern(act_in_ty, weights_ty, out_ty):
-    return ExternalFunction(
-        "conv2dk14_i8",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[
-            act_in_ty,
-            weights_ty,
-            out_ty,
-            np.dtype(np.int32),
-            np.dtype(np.int32),
-            np.dtype(np.int32),
-            np.dtype(np.int32),
-            np.dtype(np.int32),
-        ],
-        include_dirs=[config.cxx_header_path()],
-        compile_flags=["-DUINT8_ACT"],
+def _conv2dk14_kernel(act_in_ty, weights_ty, out_ty):
+    """The library kernel, sized for ``_SUB_TILES`` tiles x ``_SUB_OUT_CHANNELS``."""
+    fn = kernels.conv2dk14(
+        input_width=_SUB_TILES * _KERNEL_SIZE,
+        input_channels=_IN_CHANNELS,
+        output_channels=_SUB_OUT_CHANNELS,
+        kernel_width=_KERNEL_SIZE,
     )
+    assert fn.arg_types()[:3] == [act_in_ty, weights_ty, out_ty]
+    return fn
 
 
 @iron.jit
@@ -119,26 +114,17 @@ def conv2dk14(
     tensor_wts_ty = np.ndarray[(tensor_wts_size,), np.dtype[np.int8]]
     tensor_out_ty = np.ndarray[(tensor_out_size,), np.dtype[np.int8]]
 
-    conv_fn = _conv2dk14_extern(act_in_ty, weights_ty, out_ty)
+    conv_fn = _conv2dk14_kernel(act_in_ty, weights_ty, out_ty)
 
     of_act_l3l2 = ObjectFifo(
         buf_in_ty,
         name="inOF_act_L3L2",
-        dims_from_stream_per_cons=[
-            (_KERNEL_SIZE, _KERNEL_SIZE * _IN_CHANNELS),
-            (64, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
-            (_KERNEL_SIZE * _IN_CHANNELS, 1),
-        ],
+        from_stream_per_cons=_ACT_L3L2_WALK,
     )
     of_act_l2 = of_act_l3l2.cons().forward(
         obj_type=act_in_ty,
         name="act_L2_02",
-        dims_to_stream=[
-            (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
-            (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
-            (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
-            (2 * _IN_CHANNELS, 1),
-        ],
+        to_stream=_ACT_L2L1_WALK,
     )
 
     of_wts_l3l2 = ObjectFifo(weights_ty, depth=1, name="inOF_wts_0_L3L2")
@@ -147,7 +133,7 @@ def conv2dk14(
     of_out_l3 = of_out_l2.cons().forward(
         obj_type=buf_out_ty,
         name="outOFL2L3",
-        dims_to_stream=[(256, 256), (16, 8), (2, 128), (8, 1)],
+        to_stream=TensorAccessPattern.full((256, 2, 16, 8)).permute((0, 2, 1, 3)),
     )
 
     def core_fn(of_wts, of_act, of_out, kernel):
@@ -256,34 +242,23 @@ def conv2dk14_multi(
     tensor_wts_ty = np.ndarray[(tensor_wts_size,), np.dtype[np.int8]]
     tensor_out_ty = np.ndarray[(tensor_out_size,), np.dtype[np.int8]]
 
-    conv_fn = _conv2dk14_extern(act_in_ty, weights_ty, out_ty)
+    conv_fn = _conv2dk14_kernel(act_in_ty, weights_ty, out_ty)
 
     # Activations: per-row shim -> per-row memtile -> broadcast to 8 cores
     of_act_l3l2: list[ObjectFifo] = []
     of_act_l2l1: list[ObjectFifo] = []
-    act_l3l2_dims: StreamDims = [
-        (_KERNEL_SIZE, _KERNEL_SIZE * _IN_CHANNELS),
-        (64, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
-        (_KERNEL_SIZE * _IN_CHANNELS, 1),
-    ]
-    act_l2l1_dims: StreamDims = [
-        (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
-        (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
-        (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
-        (2 * _IN_CHANNELS, 1),
-    ]
     for j in range(n_rows):
         act_l3l2 = ObjectFifo(
             buf_in_ty,
             name=f"of_act_L3L2_{j}",
-            dims_from_stream_per_cons=act_l3l2_dims,
+            from_stream_per_cons=_ACT_L3L2_WALK,
         )
         of_act_l3l2.append(act_l3l2)
         of_act_l2l1.append(
             act_l3l2.cons().forward(
                 obj_type=act_in_ty,
                 name=f"of_act_L2L1_{j}",
-                dims_to_stream=act_l2l1_dims,
+                to_stream=_ACT_L2L1_WALK,
                 tile=Tile(j, 1),
             )
         )
@@ -295,12 +270,12 @@ def conv2dk14_multi(
     of_out_l2l3: list[ObjectFifo] = []
     of_out_l1l2: list[list[ObjectFifo]] = [[] for _ in range(n_rows)]
     out_offsets = [act_out * 4 * 16 * j for j in range(n_rows)]
-    out_l2l3_dims: StreamDims = [(64, 256), (16, 8), (2, 128), (8, 1)]
+    out_l2l3_dims = TensorAccessPattern.full((64, 2, 16, 8)).permute((0, 2, 1, 3))
     for i in range(n_cols):
         out_l2l3 = ObjectFifo(
             out_mem_ty,
             name=f"of_out_L2L3_{i}",
-            dims_to_stream=out_l2l3_dims,
+            to_stream=out_l2l3_dims,
         )
         of_out_l2l3.append(out_l2l3)
         col_fifos = out_l2l3.prod().join(
@@ -351,30 +326,17 @@ def conv2dk14_multi(
     )
 
     def sequence(inp, W, out, act_prods, wts_prods, out_conses):
-        row_chunk = tensor_in_size // n_rows
-        wts_chunk = tensor_wts_size // n_cols
-        out_chunk = tensor_out_size // n_cols
+        # Each row of workers reads its chunk of the activations act_repeat
+        # times; each column reads its chunk of the weights and writes its
+        # chunk of the output.
+        act_chunks = TensorAccessPattern.full((tensor_in_size,)).partition(n_rows)
+        wts_chunks = TensorAccessPattern.full((tensor_wts_size,)).partition(n_cols)
+        out_chunks = TensorAccessPattern.full((tensor_out_size,)).partition(n_cols)
         for j in range(n_rows):
-            tap = TensorAccessPattern(
-                (1, tensor_in_size),
-                row_chunk * j,
-                [act_repeat, 1, 1, row_chunk],
-                [0, 0, 0, 1],
-            )
-            act_prods[j].fill(inp, tap)
+            act_prods[j].fill(inp, act_chunks[j].repeat(act_repeat))
         for i in range(n_cols):
-            wts_tap = TensorAccessPattern(
-                (1, tensor_wts_size),
-                wts_chunk * i,
-                [1, 1, 1, wts_chunk],
-                [0, 0, 0, 1],
-            )
-            out_tap = TensorAccessPattern(
-                (1, tensor_out_size),
-                out_chunk * i,
-                [1, 1, 1, out_chunk],
-                [0, 0, 0, 1],
-            )
+            wts_tap = wts_chunks[i]
+            out_tap = out_chunks[i]
             wts_prods[i].fill(W, wts_tap)
             out_conses[i].drain(out, out_tap, wait=True)
 

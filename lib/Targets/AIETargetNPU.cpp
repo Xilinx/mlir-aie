@@ -7,20 +7,26 @@
 
 #include "aie/Targets/AIETargets.h"
 
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Runtime/TxnEncoding.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "llvm/ADT/DenseMap.h"
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
@@ -37,13 +43,6 @@ using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
 namespace {
-
-// Device generation ID written into the TXN header. Centralized here so adding
-// a new device family is a single edit instead of an inline ternary at the call
-// site.
-uint8_t txnDeviceGen(const AIETargetModel &tm) {
-  return llvm::isa<AIE::BaseNPU2TargetModel>(tm) ? 4 : 3;
-}
 
 // Example:
 // - instructions = {3,4,5}
@@ -108,24 +107,24 @@ LogicalResult appendMaskWrite32(std::vector<uint32_t> &instructions,
   return success();
 }
 
+LogicalResult appendMaskPoll(std::vector<uint32_t> &instructions,
+                             NpuMaskPollOp op) {
+  if (op.getBuffer())
+    return op.emitOpError("Cannot translate symbolic address");
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
+  std::optional<uint32_t> mask = AIEX::getConstantIntOperand(op.getMask());
+  if (!address || !value || !mask)
+    return op.emitOpError("Cannot translate maskpoll with non-constant "
+                          "address, value, or mask to a static TXN binary");
+  aie_runtime::txn_append_maskpoll32(instructions, *address, *value, *mask);
+  return success();
+}
+
 void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
   aie_runtime::txn_append_loadpdi(instructions, op.getId(), op.getSize(),
                                   op.getAddress());
 }
-
-// The "instruction buffer" runtime (xclbin + insts.bin, launched as
-// kernel(opcode, insts_bo, ninsts, host_bo0, ...)) has the NPU firmware
-// pre-translate host buffer addresses into the AIE address space by adding this
-// offset, but only for the first `kNumFirmwareTranslatedArgs` host arguments.
-// Host arguments beyond that keep their raw host address, so the DDR patch must
-// fold the same offset into arg_plus to land at the correct AIE address.
-//
-// The full-ELF runtime (xrt.elf + xrt.ext.kernel) instead assigns NPU-space
-// device addresses to ALL host arguments, so folding the offset there would
-// double-translate the 6th+ buffer. `foldDDRAddrOffset` (see
-// AIETranslateNpuToBinary) selects between the two runtimes.
-static constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
-static constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
 
 LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
                                  NpuAddressPatchOp op, bool foldDDRAddrOffset) {
@@ -134,21 +133,17 @@ LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
                           "register address (addr_val) to a static TXN binary; "
                           "the runtime-bd_id pool path targets the C++ TXN "
                           "target only");
-  std::optional<uint32_t> argPlus =
-      AIEX::getConstantIntOperand(op.getArgPlus());
+  std::optional<uint64_t> argPlus =
+      AIEX::getConstantInt64Operand(op.getArgPlus());
   if (!argPlus)
     return op.emitOpError("Cannot translate address_patch with non-constant "
                           "arg_plus to a static TXN binary");
-  std::optional<uint32_t> argIdxAttr = op.getArgIdx();
-  if (!argIdxAttr)
+  std::optional<uint32_t> argIdx = op.getArgIdx();
+  if (!argIdx)
     return op.emitOpError("address_patch still names its host buffer by SSA "
                           "value; run -aie-resolve-address-patch-buffers");
-  uint32_t argIdx = *argIdxAttr;
-  uint32_t patchedArgPlus = *argPlus;
-  if (foldDDRAddrOffset && argIdx >= kNumFirmwareTranslatedArgs)
-    patchedArgPlus += kDDRAIEAddrOffset;
-  aie_runtime::txn_append_address_patch(instructions, op.getAddr(), argIdx,
-                                        patchedArgPlus);
+  aie_runtime::txn_append_arg_patch(instructions, op.getAddr(), *argIdx,
+                                    *argPlus, foldDDRAddrOffset);
   return success();
 }
 
@@ -169,6 +164,11 @@ static DenseIntElementsAttr cachedBlockWriteData(
   auto getGlobal = op.getData().getDefiningOp<mlir::memref::GetGlobalOp>();
   if (!getGlobal)
     return op.getDataWords();
+  // A hit already passed the width check: get_global's type is its global's.
+  mlir::StringAttr key = getGlobal.getNameAttr().getRootReference();
+  auto it = cache.find(key);
+  if (it != cache.end())
+    return it->second;
   // Honor getDataWords()'s 32-bit-element contract exactly: a non-32-bit memref
   // must take the canonical path (which emits "Only 32-bit data type is
   // supported" + returns nullptr), not the cached fast path.
@@ -177,10 +177,6 @@ static DenseIntElementsAttr cachedBlockWriteData(
           mlir::cast<mlir::MemRefType>(op.getData().getType())
               .getElementType()) != 32)
     return op.getDataWords();
-  mlir::StringAttr key = getGlobal.getNameAttr().getRootReference();
-  auto it = cache.find(key);
-  if (it != cache.end())
-    return it->second;
   DenseIntElementsAttr data;
   if (auto global =
           dyn_cast_if_present<mlir::memref::GlobalOp>(symTab.lookup(key)))
@@ -194,9 +190,8 @@ static DenseIntElementsAttr cachedBlockWriteData(
 
 LogicalResult appendBlockWrite(
     std::vector<uint32_t> &instructions, NpuBlockWriteOp op,
-    mlir::SymbolTable &symTab,
+    std::optional<uint32_t> address, mlir::SymbolTable &symTab,
     llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> &dataCache) {
-  std::optional<uint32_t> address = op.getAbsoluteAddress();
   if (!address)
     return op.emitOpError(
         "Cannot translate blockwrite with unresolved address to a static TXN "
@@ -207,8 +202,12 @@ LogicalResult appendBlockWrite(
   // the encoder which owns the word layout.
   std::vector<uint32_t> payload;
   payload.reserve(data.size());
-  for (auto d : data)
-    payload.push_back(d.getZExtValue());
+  if (auto words = data.tryGetValues<uint32_t>(); succeeded(words))
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    payload.assign(words->begin(), words->end());
+  else
+    for (auto d : data)
+      payload.push_back(d.getZExtValue());
 
   // The col/row word is only populated when BOTH are present (matching the
   // historical behavior); otherwise it stays 0 (a flat address).
@@ -249,8 +248,9 @@ void appendCreateScratchpad(std::vector<uint32_t> &instructions,
 }
 
 LogicalResult appendUpdateRegFromScratchpad(std::vector<uint32_t> &instructions,
-                                            NpuUpdateFromScratchpadOp op) {
-  std::optional<uint32_t> address = op.getAbsoluteAddress();
+                                            NpuUpdateFromScratchpadOp op,
+                                            const NamedOpTable &names) {
+  std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
   if (!address)
     return op.emitOpError("Cannot translate update_from_scratchpad with "
                           "unresolved address to a static TXN binary");
@@ -355,12 +355,258 @@ static void pushLocEntry(std::vector<TxnLocEntry> *locmap,
   locmap->push_back(std::move(e));
 }
 
+// Appends the TXN encoding of a runtime sequence's ops, one op at a time.
+struct TxnEncoder {
+  TxnEncoder(DeviceOp device, std::vector<uint32_t> &instructions,
+             std::vector<TxnLocEntry> *locmap, bool foldDDRAddrOffset,
+             NpuConfigCache &configs)
+      : device(device), tm(device.getTargetModel()),
+        symTab(device.getOperation()), names(device.getOperation()),
+        configs(configs), instructions(instructions), locmap(locmap),
+        foldDDRAddrOffset(foldDDRAddrOffset) {}
+
+  void encode(Operation &o);
+  LogicalResult encodeConfig(DeviceOp configured, bool teardown,
+                             NpuConfigCache::Config &config);
+  void appendConfig(Operation *op, FlatSymbolRefAttr deviceRef, bool teardown);
+
+  DeviceOp device;
+  const AIETargetModel &tm;
+  // Built once, with a per-global data cache, so block-write data resolution
+  // is O(1)+memoized instead of a per-op linear symbol scan
+  // (cachedBlockWriteData). ~47% of the translation on a B=128 sequence.
+  mlir::SymbolTable symTab;
+  NamedOpTable names;
+  llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> blockWriteDataCache;
+  NpuConfigCache &configs;
+  std::vector<uint32_t> &instructions;
+  std::vector<TxnLocEntry> *locmap;
+  bool foldDDRAddrOffset;
+  uint32_t count = 0;
+  // Accumulates failure from the per-op append helpers (e.g. a non-constant
+  // operand that cannot be encoded into a static TXN binary). The walk
+  // finishes so every offending op is diagnosed, then the translation fails
+  // rather than emit a silently incomplete binary.
+  LogicalResult result = success();
+};
+
+// Generates `configured`'s configuration ops, or with `teardown` its teardown
+// ops, as the expand-load-pdi pass would inline them, in a scratch device of
+// its own, and encodes them as a sequence's own ops are.
+LogicalResult TxnEncoder::encodeConfig(DeviceOp configured, bool teardown,
+                                       NpuConfigCache::Config &config) {
+  MLIRContext *ctx = device.getContext();
+  ctx->getOrLoadDialect<arith::ArithDialect>();
+  ctx->getOrLoadDialect<memref::MemRefDialect>();
+  OpBuilder builder(ctx);
+  OwningOpRef<ModuleOp> scratch = ModuleOp::create(device.getLoc());
+  builder.setInsertionPointToStart(scratch->getBody());
+  auto holder =
+      DeviceOp::create(builder, device.getLoc(), configured.getDevice(),
+                       configured.getSymName());
+  holder.getRegion().emplaceBlock();
+  DeviceOp::ensureTerminator(holder.getBodyRegion(), builder, device.getLoc());
+  builder.setInsertionPointToStart(holder.getBody());
+  auto seq = RuntimeSequenceOp::create(
+      builder, device.getLoc(), builder.getStringAttr("configure"), BoolAttr{},
+      TraceBufferAttr{}, ArrayAttr{}, ArrayAttr{});
+  Block *body = new Block;
+  seq.getBody().push_back(body);
+  builder.setInsertionPointToStart(body);
+  BlockwriteData payloads(holder, teardown ? "teardown_" : "loadpdi_");
+  if (teardown
+          ? failed(generateAndInsertTeardownOps(builder, configured, payloads))
+          : failed(generateAndInsertConfigOps(builder, configured, payloads)))
+    return failure();
+  // The locmap is kept whether or not this translation writes one: another
+  // sharing the cache may.
+  TxnEncoder encoder(holder, config.words, &config.locmap, foldDDRAddrOffset,
+                     configs);
+  for (Operation &op : *body)
+    encoder.encode(op);
+  config.count = encoder.count;
+  return encoder.result;
+}
+
+void TxnEncoder::appendConfig(Operation *op, FlatSymbolRefAttr deviceRef,
+                              bool teardown) {
+  auto configured = dyn_cast_or_null<DeviceOp>(
+      SymbolTable::lookupSymbolIn(device->getParentOp(), deviceRef));
+  const NpuConfigCache::Config *config =
+      configured
+          ? configs.getOrEncode(configured, teardown,
+                                [&](NpuConfigCache::Config &c) {
+                                  return encodeConfig(configured, teardown, c);
+                                })
+          : nullptr;
+  if (!config) {
+    op->emitOpError(teardown ? "cannot generate the teardown of "
+                             : "cannot generate the configuration of ")
+        << deviceRef;
+    result = failure();
+    return;
+  }
+  uint32_t base = static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
+  llvm::append_range(instructions, config->words);
+  count += config->count;
+  if (locmap)
+    for (TxnLocEntry entry : config->locmap) {
+      entry.byteOffset += base;
+      locmap->push_back(std::move(entry));
+    }
+}
+
+void TxnEncoder::encode(Operation &o) {
+  auto byteOffset = [&]() -> uint32_t {
+    return static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
+  };
+  llvm::TypeSwitch<Operation *>(&o)
+      .Case<cf::AssertOp>([&](auto op) {
+        // A static sequence only ever carries a constant-true guard
+        // (canonicalization erases it); a constant-false one failed at
+        // compile time, and anything unresolved means a runtime value
+        // reached the binary path.
+        auto c = getConstantIntValue(op.getArg());
+        if (c && *c == 0) {
+          op.emitOpError("is violated at compile time: ") << op.getMsg();
+          result = failure();
+        } else if (!c) {
+          op.emitOpError("runtime check cannot be encoded in a static TXN "
+                         "binary; use the C++ builder (--aie-npu-to-cpp) "
+                         "or specialize the value: ")
+              << op.getMsg();
+          result = failure();
+        }
+      })
+      .Case<NpuSyncOp>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        if (failed(appendSync(instructions, op)))
+          result = failure();
+        pushLocEntry(locmap, before, byteOffset(), "TCT",
+                     op->getName().getStringRef(), std::nullopt, op, tm);
+      })
+      .Case<NpuWrite32Op>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        uint64_t addr = op.getAbsoluteAddress().value_or(0);
+        if (failed(appendWrite32(instructions, op)))
+          result = failure();
+        pushLocEntry(locmap, before, byteOffset(), "WRITE32",
+                     op->getName().getStringRef(), addr, op, tm);
+      })
+      .Case<NpuBlockWriteOp>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        std::optional<uint32_t> addr = op.getAbsoluteAddress(&names);
+        if (failed(appendBlockWrite(instructions, op, addr, symTab,
+                                    blockWriteDataCache)))
+          result = failure();
+        pushLocEntry(locmap, before, byteOffset(), "BLOCKWRITE",
+                     op->getName().getStringRef(), addr.value_or(0), op, tm);
+      })
+      .Case<NpuBlockWriteValuesOp>([&](auto op) {
+        // A runtime-computed blockwrite payload has no static encoding;
+        // this op only reaches the EmitC (C++ TXN) target.
+        op.emitOpError("cannot translate a runtime-valued blockwrite "
+                       "payload to a static TXN binary; this op is "
+                       "supported only by the C++ TXN target "
+                       "(--aie-npu-to-cpp)");
+        result = failure();
+      })
+      .Case<NpuMaskWrite32Op>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        uint64_t addr = op.getAbsoluteAddress().value_or(0);
+        if (failed(appendMaskWrite32(instructions, op)))
+          result = failure();
+        pushLocEntry(locmap, before, byteOffset(), "MASKWRITE",
+                     op->getName().getStringRef(), addr, op, tm);
+      })
+      .Case<NpuMaskPollOp>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        uint64_t addr = op.getAbsoluteAddress().value_or(0);
+        if (failed(appendMaskPoll(instructions, op)))
+          result = failure();
+        pushLocEntry(locmap, before, byteOffset(), "MASKPOLL",
+                     op->getName().getStringRef(), addr, op, tm);
+      })
+      .Case<NpuLoadPdiOp>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        appendLoadPdi(instructions, op);
+        pushLocEntry(locmap, before, byteOffset(), "LOAD_PDI",
+                     op->getName().getStringRef(), std::nullopt, op, tm);
+      })
+      .Case<NpuAddressPatchOp>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        if (failed(appendAddressPatch(instructions, op, foldDDRAddrOffset)))
+          result = failure();
+        pushLocEntry(locmap, before, byteOffset(), "ADDRESS_PATCH",
+                     op->getName().getStringRef(), op.getAddr(), op, tm);
+      })
+      .Case<NpuPreemptOp>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        appendPreempt(instructions, op);
+        pushLocEntry(locmap, before, byteOffset(), "PREEMPT",
+                     op->getName().getStringRef(), std::nullopt, op, tm);
+      })
+      .Case<NpuCreateScratchpadOp>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        appendCreateScratchpad(instructions, op);
+        pushLocEntry(locmap, before, byteOffset(), "CREATE_SCRATCHPAD",
+                     op->getName().getStringRef(), std::nullopt, op, tm);
+      })
+      .Case<NpuUpdateFromScratchpadOp>([&](auto op) {
+        count++;
+        uint32_t before = byteOffset();
+        if (failed(appendUpdateRegFromScratchpad(instructions, op, names)))
+          result = failure();
+        pushLocEntry(locmap, before, byteOffset(), "UPDATE_FROM_SCRATCHPAD",
+                     op->getName().getStringRef(), std::nullopt, op, tm);
+      })
+      .Case<NpuWriteConfigOp>([&](auto op) {
+        appendConfig(op, op.getDeviceRefAttr(), /*teardown=*/false);
+      })
+      .Case<NpuWriteTeardownOp>([&](auto op) {
+        appendConfig(op, op.getDeviceRefAttr(), /*teardown=*/true);
+      })
+      .Default([&](Operation *op) {
+        // Pure values (constants, the operands above) need no encoding;
+        // control packets have their own translation. Anything else would
+        // be dropped from the binary without a trace.
+        if (isMemoryEffectFree(op) || op->hasTrait<OpTrait::IsTerminator>() ||
+            isa<NpuControlPacketOp>(op))
+          return;
+        op->emitOpError("has no static TXN encoding");
+        result = failure();
+      });
+}
+
 } // namespace
+
+const NpuConfigCache::Config *xilinx::AIE::NpuConfigCache::getOrEncode(
+    Operation *device, bool teardown,
+    llvm::function_ref<LogicalResult(Config &)> encode) {
+  std::lock_guard<std::mutex> lock(mutex);
+  auto [it, inserted] = configs[teardown].try_emplace(device);
+  if (inserted) {
+    auto config = std::make_unique<Config>();
+    if (succeeded(encode(*config)))
+      it->second = std::move(config);
+  }
+  return it->second.get();
+}
 
 LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     mlir::ModuleOp moduleOp, std::vector<uint32_t> &instructions,
     StringRef deviceName, StringRef sequenceName,
-    std::vector<TxnLocEntry> *locmap, bool foldDDRAddrOffset) {
+    std::vector<TxnLocEntry> *locmap, bool foldDDRAddrOffset,
+    NpuConfigCache *configs) {
 
   DeviceOp deviceOp =
       DeviceOp::getForSymbolInModuleOrError(moduleOp, deviceName);
@@ -374,12 +620,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   // txn_prepend_header once all instructions are appended.
   aie_runtime::txn_init(instructions);
 
-  aie_runtime::TxnDeviceInfo devInfo;
-  devInfo.devGen = txnDeviceGen(tm);
-  devInfo.numRows = tm.rows();
-  devInfo.numCols = tm.columns();
-  devInfo.numMemTileRows = tm.getNumMemTileRows();
-  uint32_t count = 0;
+  aie_runtime::TxnDeviceInfo devInfo = aie_runtime::txn_device_info(
+      txnDeviceGen(tm), tm.rows(), tm.columns(), tm.getNumMemTileRows());
 
   AIE::RuntimeSequenceOp seq =
       AIE::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
@@ -388,116 +630,17 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return failure();
   }
 
-  auto byteOffset = [&]() -> uint32_t {
-    return static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
-  };
-
-  // Build the device symbol table ONCE + a per-global data cache, so
-  // block-write data resolution is O(1)+memoized instead of a per-op linear
-  // symbol scan (cachedBlockWriteData). ~47% of this function on a B=128
-  // sequence.
-  mlir::SymbolTable symTab(deviceOp.getOperation());
-  llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> blockWriteDataCache;
-
-  // Accumulates failure from the per-op append helpers (e.g. a non-constant
-  // operand that cannot be encoded into a static TXN binary). We finish the
-  // walk so every offending op is diagnosed, then fail the translation rather
-  // than emit a silently incomplete binary.
-  LogicalResult result = success();
-
-  for (Block &block : seq.getBody()) {
-    for (Operation &o : block) {
-      llvm::TypeSwitch<Operation *>(&o)
-          .Case<NpuSyncOp>([&](auto op) {
-            count++;
-            uint32_t before = byteOffset();
-            if (failed(appendSync(instructions, op)))
-              result = failure();
-            pushLocEntry(locmap, before, byteOffset(), "TCT",
-                         op->getName().getStringRef(), std::nullopt, op, tm);
-          })
-          .Case<NpuWrite32Op>([&](auto op) {
-            count++;
-            uint32_t before = byteOffset();
-            uint64_t addr = op.getAbsoluteAddress().value_or(0);
-            if (failed(appendWrite32(instructions, op)))
-              result = failure();
-            pushLocEntry(locmap, before, byteOffset(), "WRITE32",
-                         op->getName().getStringRef(), addr, op, tm);
-          })
-          .Case<NpuBlockWriteOp>([&](auto op) {
-            count++;
-            uint32_t before = byteOffset();
-            uint64_t addr = op.getAbsoluteAddress().value_or(0);
-            if (failed(appendBlockWrite(instructions, op, symTab,
-                                        blockWriteDataCache)))
-              result = failure();
-            pushLocEntry(locmap, before, byteOffset(), "BLOCKWRITE",
-                         op->getName().getStringRef(), addr, op, tm);
-          })
-          .Case<NpuBlockWriteValuesOp>([&](auto op) {
-            // A runtime-computed blockwrite payload has no static encoding;
-            // this op only reaches the EmitC (C++ TXN) target.
-            op.emitOpError("cannot translate a runtime-valued blockwrite "
-                           "payload to a static TXN binary; this op is "
-                           "supported only by the C++ TXN target "
-                           "(--aie-npu-to-cpp)");
-            result = failure();
-          })
-          .Case<NpuMaskWrite32Op>([&](auto op) {
-            count++;
-            uint32_t before = byteOffset();
-            uint64_t addr = op.getAbsoluteAddress().value_or(0);
-            if (failed(appendMaskWrite32(instructions, op)))
-              result = failure();
-            pushLocEntry(locmap, before, byteOffset(), "MASKWRITE",
-                         op->getName().getStringRef(), addr, op, tm);
-          })
-          .Case<NpuLoadPdiOp>([&](auto op) {
-            count++;
-            uint32_t before = byteOffset();
-            appendLoadPdi(instructions, op);
-            pushLocEntry(locmap, before, byteOffset(), "LOAD_PDI",
-                         op->getName().getStringRef(), std::nullopt, op, tm);
-          })
-          .Case<NpuAddressPatchOp>([&](auto op) {
-            count++;
-            uint32_t before = byteOffset();
-            if (failed(appendAddressPatch(instructions, op, foldDDRAddrOffset)))
-              result = failure();
-            pushLocEntry(locmap, before, byteOffset(), "ADDRESS_PATCH",
-                         op->getName().getStringRef(), op.getAddr(), op, tm);
-          })
-          .Case<NpuPreemptOp>([&](auto op) {
-            count++;
-            uint32_t before = byteOffset();
-            appendPreempt(instructions, op);
-            pushLocEntry(locmap, before, byteOffset(), "PREEMPT",
-                         op->getName().getStringRef(), std::nullopt, op, tm);
-          })
-          .Case<NpuCreateScratchpadOp>([&](auto op) {
-            count++;
-            uint32_t before = byteOffset();
-            appendCreateScratchpad(instructions, op);
-            pushLocEntry(locmap, before, byteOffset(), "CREATE_SCRATCHPAD",
-                         op->getName().getStringRef(), std::nullopt, op, tm);
-          })
-          .Case<NpuUpdateFromScratchpadOp>([&](auto op) {
-            count++;
-            uint32_t before = byteOffset();
-            if (failed(appendUpdateRegFromScratchpad(instructions, op)))
-              result = failure();
-            pushLocEntry(locmap, before, byteOffset(), "UPDATE_FROM_SCRATCHPAD",
-                         op->getName().getStringRef(), std::nullopt, op, tm);
-          });
-    }
-  }
-
-  if (failed(result))
+  NpuConfigCache ownConfigs;
+  TxnEncoder encoder(deviceOp, instructions, locmap, foldDDRAddrOffset,
+                     configs ? *configs : ownConfigs);
+  for (Block &block : seq.getBody())
+    for (Operation &o : block)
+      encoder.encode(o);
+  if (failed(encoder.result))
     return failure();
 
   // Finalize the TXN header (overwrites the 4 reserved words).
-  aie_runtime::txn_prepend_header(instructions, count, devInfo);
+  aie_runtime::txn_prepend_header(instructions, encoder.count, devInfo);
   return success();
 }
 

@@ -11,15 +11,24 @@ Tests that exercise compile() or actual NPU kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
+import subprocess
+import sys
+import warnings
+
+import aie.iron as iron
+import numpy as np
 import pytest
-
-from unittest.mock import MagicMock, patch
-
-from aie.utils.compile.jit.compilabledesign import CompilableDesign
-from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
-from aie.utils.callabledesign import CallableDesign
-from aie.utils.jit import _JIT_CONFIG_KEYS, jit
+from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
+from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron.algorithms._transform import transform
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.callabledesign import CallableDesign
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
+from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
+from aie.utils.jit import _JIT_CONFIG_KEYS, jit
+from aie.utils.trace import TraceConfig
+from aie.utils.trace.parse import DEFAULT_KERNEL
+from ml_dtypes import bfloat16
 
 # ---------------------------------------------------------------------------
 # CallableDesign construction
@@ -38,6 +47,72 @@ def test_repr_contains_callable_design():
 
     cd = CallableDesign(gen, compile_kwargs={"M": 1})
     assert "CallableDesign" in repr(cd)
+
+
+def test_jit_explicit_dispatch_specialization():
+    def gen(a: In, *, M: DispatchTime[np.int32] = 8):
+        pass
+
+    dynamic = jit(gen)
+    static = jit(gen, M=4)
+    assert dynamic.compilable.dispatch_params == ["M"]
+    assert static.compilable.dispatch_params == []
+    assert static.compilable.compile_kwargs == {"M": 4}
+    assert static.specialize(M=6).compilable.compile_kwargs == {"M": 6}
+    assert static.specialize(use_cache=False).compilable.bound_dispatch_params == ("M",)
+    assert dynamic._extract_compile_kwargs({"M": 7}) == ({}, {"M": 7}, {})
+    with pytest.raises(TypeError, match="specialized.*specialize"):
+        static._extract_compile_kwargs({"M": 7})
+    with pytest.raises(TypeError, match="specialized.*specialize"):
+        static.as_mlir(None, M=7)
+
+
+@pytest.mark.parametrize("factory", [CompilableDesign, CallableDesign, jit])
+@pytest.mark.parametrize("prebound", [False, True])
+@pytest.mark.parametrize(
+    "kind", ["positional", "positional-only", "defaulted", "args", "kwargs"]
+)
+def test_dispatch_requires_keyword_only(factory, prebound, kind):
+    def positional(a: In, count: DispatchTime[np.int32]):
+        pass
+
+    def positional_only(count: DispatchTime[np.int32], /, a: In):
+        pass
+
+    def defaulted(a: In, count: DispatchTime[np.int32] = 3):
+        pass
+
+    def args(a: In, *count: DispatchTime[np.int32]):
+        pass
+
+    def kwargs(a: In, **count: DispatchTime[np.int32]):
+        pass
+
+    gen = {
+        "positional": positional,
+        "positional-only": positional_only,
+        "defaulted": defaulted,
+        "args": args,
+        "kwargs": kwargs,
+    }[kind]
+    options = (
+        ({"count": 3} if factory is jit else {"compile_kwargs": {"count": 3}})
+        if prebound
+        else {}
+    )
+    with pytest.raises(TypeError, match=r"DispatchTime.*count.*keyword-only"):
+        factory(gen, **options)
+
+
+@pytest.mark.parametrize("factory", [CompilableDesign, CallableDesign, jit])
+def test_keyword_only_group_order_is_not_enforced(factory):
+    def gen(a: In, *, size: CompileTime[int] = 8, count: DispatchTime[np.int32] = 3):
+        pass
+
+    design = factory(gen)
+    compilable = design if isinstance(design, CompilableDesign) else design.compilable
+    assert compilable.dispatch_params == ["count"]
+    assert compilable.split_runtime_args(("tensor",), {}) == (["tensor"], {"count": 3})
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +401,20 @@ def test_external_function_positional_not_in_tensor_args():
     ), "Kernel instance must not appear in scalar_kwargs"
 
 
+def test_variadic_tensor_design_takes_any_number_of_positionals():
+    """A ``*tensors: In`` design has no positional maximum; the runtime checks the count."""
+
+    def stream(*tensors: In, N: CompileTime[int]):
+        pass
+
+    cd = jit(stream, N=2)
+    assert cd.compilable.variadic_tensor_param == "tensors"
+    assert cd.compilable.tensor_params == ["tensors"]
+    assert cd.compilable.split_runtime_args((1, 2, 3), {}) == ([1, 2, 3], {})
+    with pytest.raises(TypeError, match="keyword arguments"):
+        cd(1, tensors=2)
+
+
 # NOTE: trace_config end-to-end behaviour (forwarded to NPUKernel.__init__,
 # not to kernel.__call__) is covered by a real NPU run in
 # test/python/npu/test_iron_jit_e2e.py::test_trace_config_forwarded_to_kernel.
@@ -412,56 +501,43 @@ def test_guard_3c_too_many_positional_raises():
         cd(object(), object(), object())  # 3 positional, only 1 expected
 
 
-def test_as_mlir_call_time_kwarg_overrides_prebound():
+def _sized_copy(a: In, b: Out, *, N: CompileTime[int] = 1024):
+    """A copy whose host buffers are N int32s, so N shows in the MLIR."""
+    of_in = ObjectFifo(np.ndarray[(16,), np.dtype[np.int32]])
+    of_out = of_in.cons().forward()
+
+    def seq(src, dst, producer, consumer):
+        producer.fill(src)
+        consumer.drain(dst, wait=True)
+
+    tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
+    rt = Runtime(seq, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt).resolve_program()
+
+
+def test_as_mlir_call_time_kwarg_overrides_prebound(npu2_device):
     """as_mlir() must let call-time CompileTime[T] kwargs override pre-bound values.
 
     Call-time-wins semantics are shared with __call__ so the MLIR you
     inspect matches the MLIR that would be compiled for the same kwargs.
     """
+    cd = CallableDesign(_sized_copy, compile_kwargs={"N": 1024})
 
-    def gen(a: In, b: Out, *, N: CompileTime[int] = 1024):
-        pass
-
-    cd = CallableDesign(gen, compile_kwargs={"N": 1024})
-
-    # Capture the CompilableDesign that as_mlir() ends up calling
-    # generate_mlir on so we can assert its effective compile_kwargs reflect
-    # the override.
-    captured_self = []
-
-    def fake_generate(self):
-        captured_self.append(self)
-        return "<mlir>"
-
-    with patch.object(
-        CompilableDesign, "generate_mlir", autospec=True, side_effect=fake_generate
-    ):
-        result = cd.as_mlir(N=512)
-
-    assert result == "<mlir>"
-    assert len(captured_self) == 1
-    bound = captured_self[0]
-    assert bound.compile_kwargs["N"] == 512, (
-        f"as_mlir() must override pre-bound N=1024 with call-time N=512; "
-        f"CompilableDesign got compile_kwargs={bound.compile_kwargs}"
-    )
+    overridden = cd.as_mlir(N=512)
+    assert "memref<512xi32>" in overridden
+    assert "memref<1024xi32>" not in overridden
     # The original CallableDesign must remain unchanged for future calls.
     assert cd.compilable.compile_kwargs["N"] == 1024
+    assert "memref<1024xi32>" in cd.as_mlir()
 
 
-def test_as_mlir_no_warning_when_no_conflict():
+def test_as_mlir_no_warning_when_no_conflict(npu2_device):
     """as_mlir() must not warn when call-time kwargs match pre-bound values."""
-    import warnings as _warnings
+    cd = CallableDesign(_sized_copy, compile_kwargs={"N": 1024})
 
-    def gen(a: In, b: Out, *, N: CompileTime[int] = 1024):
-        pass
-
-    cd = CallableDesign(gen, compile_kwargs={"N": 1024})
-
-    with _warnings.catch_warnings(record=True) as caught:
-        _warnings.simplefilter("always")
-        with patch.object(CompilableDesign, "generate_mlir", return_value="<mlir>"):
-            cd.as_mlir(N=1024)  # same value — no conflict
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        cd.as_mlir(N=1024)  # same value — no conflict
 
     conflict_warnings = [
         w
@@ -473,85 +549,9 @@ def test_as_mlir_no_warning_when_no_conflict():
     ), "as_mlir() must not warn when call-time and pre-bound values match"
 
 
-def test_call_binds_runtime_device_before_in_process_cache(monkeypatch):
-    """Direct @iron.jit calls bind the runtime device before cache lookup."""
-    import aie.utils as utils
-    from aie.iron.device import NPU2
-    from aie.utils.hostruntime import set_current_device
-
-    class FakeRuntime:
-        def device(self):
-            return NPU2()
-
-    def gen():
-        pass
-
-    set_current_device(None)
-    monkeypatch.setattr(utils, "_get_default_npu_runtime", lambda: FakeRuntime())
-
-    cd = CallableDesign(gen)
-    seen_keys = []
-
-    def fake_compile_and_build(self, compilable, cache_key, trace_config):
-        seen_keys.append(cache_key)
-        assert type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2"
-        return lambda *args, **kwargs: "ran"
-
-    monkeypatch.setattr(
-        CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
-    )
-
-    try:
-        assert cd() == "ran"
-    finally:
-        set_current_device(None)
-
-    assert seen_keys
-    assert seen_keys[0][-1][0] == "device"
-    assert "__iron_device__" not in seen_keys[0][1]
-
-
-@pytest.mark.parametrize("artifact_name", ["xclbin_path", "insts_path"])
-def test_call_rebuilds_removed_cached_artifacts(
-    monkeypatch, tmp_path, npu2_device, artifact_name
-):
-    """A memory-cache entry is invalid after either artifact is removed."""
-
-    def gen():
-        pass
-
-    class FakeKernel:
-        def __init__(self, xclbin_path, insts_path, result):
-            self.xclbin_path = xclbin_path
-            self.insts_path = insts_path
-            self.result = result
-
-        def __call__(self, *args, **kwargs):
-            return self.result
-
-    cd = CallableDesign(gen)
-    builds = []
-
-    def fake_compile_and_build(self, compilable, cache_key, trace_config):
-        index = len(builds)
-        xclbin_path = tmp_path / f"{index}.xclbin"
-        insts_path = tmp_path / f"{index}.bin"
-        xclbin_path.touch()
-        insts_path.touch()
-        kernel = FakeKernel(xclbin_path, insts_path, index)
-        self._kernel_cache[cache_key] = kernel
-        builds.append(kernel)
-        return kernel
-
-    monkeypatch.setattr(
-        CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
-    )
-
-    assert cd() == 0
-    getattr(builds[0], artifact_name).unlink()
-
-    assert cd() == 1
-    assert len(builds) == 2
+# Binding the runtime's device before the in-process cache lookup, rebuilding
+# a cached kernel whose artifacts were removed, and as_mlir()'s device binding
+# run real kernels: see test/python/npu/test_iron_jit_e2e.py.
 
 
 def test_function_cache_key_keeps_internal_identity_out_of_compile_kwargs():
@@ -572,56 +572,121 @@ def test_function_cache_key_keeps_internal_identity_out_of_compile_kwargs():
     assert key[2] == ("device", "NPU2Col1")
 
 
-def test_call_argument_errors_do_not_probe_runtime(monkeypatch):
-    """Cheap call-shape errors are reported before runtime device probing."""
-    import aie.utils as utils
-    from aie.utils.hostruntime import set_current_device
+def test_call_argument_errors_do_not_probe_runtime():
+    """Cheap call-shape errors are reported before runtime device probing.
 
-    def gen(a: In):
-        pass
+    In a fresh interpreter, so no earlier test has made the runtime already.
+    """
+    script = (
+        "import aie.utils as utils\n"
+        "from aie.utils.callabledesign import CallableDesign\n"
+        "from aie.utils.compile.jit.markers import In\n"
+        "def gen(a: In):\n"
+        "    pass\n"
+        "try:\n"
+        "    CallableDesign(gen)(object(), object())\n"
+        "except TypeError as error:\n"
+        "    print('at most 1 positional' in str(error), "
+        "utils._DefaultNPURuntime is None)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], check=True, capture_output=True, text=True
+    )
+    assert result.stdout.split() == ["True", "True"]
 
-    def fail_runtime_probe():
-        raise AssertionError("runtime should not be probed before argument validation")
 
-    set_current_device(None)
-    monkeypatch.setattr(utils, "_get_default_npu_runtime", fail_runtime_probe)
+def test_as_mlir_generator_receives_tensor_operands(npu2_device):
+    seen = []
 
-    cd = CallableDesign(gen)
-    with pytest.raises(TypeError, match="at most 1 positional"):
-        cd(object(), object())
+    @jit
+    def copy(a: In, b: Out):
+        seen.append((a, b))
+        of_in = ObjectFifo(np.ndarray[(16,), np.dtype[np.int32]])
+        of_out = of_in.cons().forward()
+
+        def seq(src, dst, producer, consumer):
+            producer.fill(src)
+            consumer.drain(dst, wait=True)
+
+        rt = Runtime(seq, [a, b, of_in.prod(), of_out.cons()])
+        return Program(iron.get_current_device(), rt).resolve_program()
+
+    small = copy.as_mlir(np.zeros(64, np.int32), np.zeros(64, np.int32))
+    large = copy.as_mlir(np.zeros((4, 32), np.int32), np.zeros(128, np.int32))
+    (a, b), (wide, _) = seen
+    assert isinstance(a, In) and isinstance(b, Out)
+    assert (a.ndarray_type, b.ndarray_type) == (
+        np.ndarray[(64,), np.dtype[np.int32]],
+        np.ndarray[(64,), np.dtype[np.int32]],
+    )
+    assert wide.shape == (4, 32) and wide.dtype == np.int32
+    assert "memref<64xi32>" in small
+    assert "memref<4x32xi32>" in large
 
 
-def test_as_mlir_binds_runtime_device_before_generation(monkeypatch):
-    """Inspection follows the same device binding invariant as __call__."""
-    import aie.utils as utils
-    from aie.iron.device import NPU2Col1
-    from aie.utils.hostruntime import set_current_device
+def _copy_program(src_ty, dst_ty):
+    of_in = ObjectFifo(src_ty)
+    of_out = of_in.cons().forward()
 
-    class FakeRuntime:
-        def device(self):
-            return NPU2Col1()
+    def seq(src, dst, producer, consumer):
+        producer.fill(src)
+        consumer.drain(dst, wait=True)
 
-    set_current_device(None)
-    monkeypatch.setattr(utils, "_get_default_npu_runtime", lambda: FakeRuntime())
+    rt = Runtime(seq, [src_ty, dst_ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt).resolve_program()
 
-    generated_for = []
 
-    def gen():
-        generated_for.append(
-            type(utils.get_current_device(probe_runtime=False)).__name__
-        )
+def test_an_operand_goes_wherever_its_tensor_type_goes(npu2_device):
+    @jit
+    def by_operand(a: In, b: Out):
+        assert np_ndarray_type_get_shape(a) == (64,)
+        assert np_ndarray_type_get_dtype(b) == np.int32
+        return _copy_program(a, b)
 
-    cd = CallableDesign(gen)
+    @jit
+    def by_type(a: In, b: Out):
+        return _copy_program(a.ndarray_type, b.ndarray_type)
 
-    try:
-        mlir_text = cd.as_mlir()
-    finally:
-        set_current_device(None)
+    tensors = (np.zeros(64, np.int32), np.zeros(64, np.int32))
+    assert by_operand.as_mlir(*tensors) == by_type.as_mlir(*tensors)
 
-    # Real generation ran and bound the runtime-detected device beforehand.
-    assert generated_for == ["NPU2Col1"]
-    assert "module" in mlir_text
 
-    keys = list(cd.compilable._generated_cache)
-    assert len(keys) == 1
-    assert "NPU2Col1" in keys[0][2]
+def _kernel_program(src_ty, dst_ty):
+    copy_all = Kernel("copy_all", "copy_all.o", [src_ty, dst_ty])
+    scratch = Buffer(src_ty, name="scratch")
+    of_in, of_out = ObjectFifo(src_ty), ObjectFifo(dst_ty)
+
+    def core(of_in, of_out, scratch, kernel):
+        kernel(of_in.acquire(1), scratch)
+        kernel(scratch, of_out.acquire(1))
+        of_in.release(1)
+        of_out.release(1)
+
+    def seq(src, dst, producer, consumer):
+        producer.fill(src)
+        consumer.drain(dst, wait=True)
+
+    worker = Worker(core, [of_in.cons(), of_out.prod(), scratch, copy_all])
+    rt = Runtime(seq, [src_ty, dst_ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        _kernel_program,
+        lambda a, b: transform(kernels.gelu(tile_size=1024), a, tile_size=1024),
+    ],
+    ids=["buffer-and-kernel", "transform"],
+)
+def test_an_operand_builds_what_its_tensor_type_builds(npu2_device, build):
+    @jit
+    def by_operand(a: In, b: Out):
+        return build(a, b)
+
+    @jit
+    def by_type(a: In, b: Out):
+        return build(a.ndarray_type, b.ndarray_type)
+
+    tensors = (np.zeros(4096, bfloat16), np.zeros(4096, bfloat16))
+    assert by_operand.as_mlir(*tensors) == by_type.as_mlir(*tensors)

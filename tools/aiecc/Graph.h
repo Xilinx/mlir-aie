@@ -72,13 +72,21 @@ inline std::mutex &fileWriteMutex() {
   return m;
 }
 
-// Serializes diagnostic/progress writes to the shared stdout/stderr so that
-// concurrent worker threads (and the tool-invocation echo) don't interleave
-// their lines. Any code that prints a full log line from a worker thread should
-// hold this across the write (and flush before releasing).
-inline std::mutex &logMutex() {
-  static std::mutex m;
-  return m;
+// The --progress line has no trailing newline. `endProgressLine` returns with
+// `logMutex()` held; keep the lock until the diagnostic is written.
+inline bool &progressLineOpen() {
+  static bool open = false;
+  return open;
+}
+
+inline std::unique_lock<std::mutex> endProgressLine() {
+  std::unique_lock<std::mutex> log(logMutex());
+  if (!progressLineOpen())
+    return log;
+  progressLineOpen() = false;
+  llvm::errs() << '\n';
+  llvm::errs().flush();
+  return log;
 }
 
 //===----------------------------------------------------------------------===//
@@ -140,6 +148,11 @@ struct Item : ItemBase {
       Serializer<T>::write(*value, os);
       return out;
     }
+  }
+
+  // The path asFile() materializes the item to, without writing anything.
+  const std::string &path() const {
+    return aliasSource ? aliasSource->path() : filePath;
   }
 
   const std::string &asFile() const override {
@@ -333,12 +346,11 @@ struct NodeDeserializer<OpInModule<KeyOp>> {
     std::vector<Item<OpInModule<KeyOp>>> items;
     if (!entries)
       return items;
+    SharedModule shared{std::move(parsed)};
     for (const llvm::json::Value &e : *entries) {
       const llvm::json::Object *eo = e.getAsObject();
       int64_t walkIdx = eo->getInteger("walkIdx").value_or(-1);
-      // Each item owns its own module (matching the split); clone per item.
-      mlir::OwningOpRef<mlir::ModuleOp> clone(parsed.get().clone());
-      KeyOp op = opAtWalkIndex<KeyOp>(clone.get(), walkIdx);
+      KeyOp op = opAtWalkIndex<KeyOp>(shared.get(), walkIdx);
       if (!op) {
         llvm::errs() << "aiecc: cannot resume: focus op index " << walkIdx
                      << " out of range\n";
@@ -346,7 +358,7 @@ struct NodeDeserializer<OpInModule<KeyOp>> {
       }
       Item<OpInModule<KeyOp>> it;
       it.key = eo->getString("key").value_or("").str();
-      it.value = OpInModule<KeyOp>{std::move(clone), op};
+      it.value = OpInModule<KeyOp>{shared, op};
       items.push_back(std::move(it));
     }
     return items;
@@ -476,6 +488,11 @@ struct EdgeBase {
   // edge; edges left false are serialized against each other. Set fluently via
   // EdgeWithTypedOutput::threadSafe().
   bool isThreadSafe = false;
+
+  // takesInput() asks to take the input payloads rather than copy them; the
+  // engine grants `ownsInput` only where nothing else reads them.
+  bool mayTakeInput = false;
+  bool ownsInput = false;
 
   EdgeBase(Graph &g, std::string n) : graph(g), name(std::move(n)) {}
   virtual ~EdgeBase() = default;
@@ -630,6 +647,11 @@ struct EdgeWithTypedOutput : EdgeBase {
   // for chaining onto a map/split/filter/join call.
   EdgeWithTypedOutput &threadSafe() {
     isThreadSafe = true;
+    return *this;
+  }
+
+  EdgeWithTypedOutput &takesInput() {
+    mayTakeInput = true;
     return *this;
   }
 
@@ -794,8 +816,17 @@ struct MapEdge : Edge<In, Out> {
     return this->out.items[i].key;
   }
 
+  // An owned item reaches `fn` as an rvalue; an aliased one is never owned.
   mlir::LogicalResult executeForItem(size_t i) override {
-    if (mlir::failed(fn(this->in.items[i], this->out.items[i]))) {
+    Item<In> &src = this->in.items[i];
+    mlir::LogicalResult result = mlir::failure();
+    if constexpr (std::is_invocable_v<MapFn &, Item<In> &&, Item<Out> &>)
+      result = this->ownsInput && !src.aliasSource
+                   ? fn(std::move(src), this->out.items[i])
+                   : fn(std::as_const(src), this->out.items[i]);
+    else
+      result = fn(std::as_const(src), this->out.items[i]);
+    if (mlir::failed(result)) {
       this->recordFailedKey(this->in.items[i].key);
       return mlir::failure();
     }
@@ -852,7 +883,8 @@ struct SplitEdge : Edge<In, Out> {
 
 // FilterEdge — produce a view of a Node<T> containing only items whose payload
 // satisfies `fn`. Output items alias the source items (Item::aliasSource)
-// rather than owning a payload, so no cloning happens.
+// rather than owning a payload, so no cloning happens. A predicate returning
+// FailureOr<bool> may fail the build.
 template <typename T, typename FilterFn>
 struct FilterEdge : Edge<T, T> {
   FilterFn fn;
@@ -864,13 +896,24 @@ struct FilterEdge : Edge<T, T> {
 
   mlir::LogicalResult execute() override {
     this->out.items.clear();
-    for (const auto &src : this->in.items)
-      if (fn(src.get())) {
+    for (const auto &src : this->in.items) {
+      bool keep;
+      if constexpr (std::is_same_v<std::invoke_result_t<FilterFn, const T &>,
+                                   mlir::FailureOr<bool>>) {
+        mlir::FailureOr<bool> kept = fn(src.get());
+        if (mlir::failed(kept))
+          return mlir::failure();
+        keep = *kept;
+      } else {
+        keep = fn(src.get());
+      }
+      if (keep) {
         Item<T> view;
         view.key = src.key;
         view.aliasSource = &src;
         this->out.items.push_back(std::move(view));
       }
+    }
     return mlir::success();
   }
 };

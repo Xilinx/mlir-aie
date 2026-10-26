@@ -65,12 +65,18 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       output << "_reserved DMb 0x00000 " << utohexstr(dataMemoryStart)
              << " // Don't put data in code memory\n";
 
-      int stacksize = 0;
-      if (auto core = tile.getCoreOp())
-        stacksize = core.getEffectiveStackSize();
+      MemoryRun stackRun;
+      if (auto core = tile.getCoreOp()) {
+        if (core.getStackBank() && !core.getStackAddress())
+          return core.emitOpError(
+              "stack_bank has no assigned stack_address; run "
+              "--aie-assign-buffer-addresses with bank-aware allocation");
+        stackRun = core.getStackRun();
+      }
       output << "_stack DM_stack "
-             << utohexstr(targetModel.getMemInternalBaseAddress(srcCoord))
-             << " " << utohexstr(stacksize) << " // stack for core\n";
+             << utohexstr(targetModel.getMemInternalBaseAddress(srcCoord) +
+                          stackRun.start)
+             << " " << utohexstr(stackRun.size) << " // stack for core\n";
 
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
                           const std::string &dir) {
@@ -88,28 +94,21 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
           // remaining buffer)
           if (tiles.count(*tile)) {
             for (auto buf : buffers[tiles[*tile]]) {
+              if (buf.getCoreData())
+                continue;
               std::string bufName(buf.name().getValue());
               int bufferBaseAddr = getBufferBaseAddress(buf);
               int numBytes = buf.getAllocationSize();
-              if (buf.getInitialValue() && tile != srcCoord) {
-                output << "// skip initialization of " << buf.name()
-                       << " which is initialized "
-                          "in the neighboring tile\n";
-                output << "\n";
-                continue;
-              }
-              if (buf.getInitialValue() && tile == srcCoord) {
-                output << "_overlay " << bufName << " "
-                       << utohexstr(offset + bufferBaseAddr) << " // "
-                       << numBytes << " bytes\n";
-              } else {
-                output << "_symbol " << bufName << " "
-                       << utohexstr(offset + bufferBaseAddr) << " " << numBytes
-                       << '\n';
-                output << "_extern " << bufName << "\n";
-                output << "_reserved DMb " << utohexstr(offset + bufferBaseAddr)
-                       << " " << numBytes << '\n';
-              }
+              // Every buffer is an external symbol at a reserved address,
+              // whether or not it has an `initial_value`. No core object
+              // defines a buffer, so there is no data here to overlay. Whoever
+              // configures the device writes the initial value.
+              output << "_symbol " << bufName << " "
+                     << utohexstr(offset + bufferBaseAddr) << " " << numBytes
+                     << '\n';
+              output << "_extern " << bufName << "\n";
+              output << "_reserved DMb " << utohexstr(offset + bufferBaseAddr)
+                     << " " << numBytes << '\n';
               output << "\n";
             }
           }
@@ -132,7 +131,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                targetModel.getMemEastBaseAddress(), std::string("east"));
       output << "// end mapping neighbors tile memory\n\n";
 
-      int addressSpaceSize = 0x100000;
+      int addressSpaceSize = targetModel.getCoreDataAddressSpaceSize();
       int dataMemoryEnd = targetModel.getMemEastBaseAddress() +
                           targetModel.getLocalMemorySize();
       output << "_reserved DMb " << utohexstr(dataMemoryEnd) << " "

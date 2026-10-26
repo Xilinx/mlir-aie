@@ -5,12 +5,13 @@
 from .compilabledesign import CompilableDesign
 from .compileconfig import compileconfig
 from .context import compile_context, get_compile_arg
-from .markers import CompileTime, In, InOut, Out
+from .markers import CompileTime, DispatchTime, In, InOut, Out
 
 __all__ = [
     "CompilableDesign",
     "compile_context",
     "CompileTime",
+    "DispatchTime",
     "In",
     "InOut",
     "Out",

@@ -6,7 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
+// aie-prepare-buffers checks buffer placement. It runs before the cores are
+// compiled, so a malformed design is rejected before any core is built.
+// aie-assign-buffer-addresses assigns the addresses.
+// RUN: not aie-opt --aie-prepare-buffers %s 2>&1 | FileCheck %s
 // CHECK:error: 'aie.tile' op Buffer '"c"' must be defined directly under the device scope. Currently it is nested inside a core tile.
 
 module @test {
@@ -25,4 +28,3 @@ module @test {
     }
   }
 }
-

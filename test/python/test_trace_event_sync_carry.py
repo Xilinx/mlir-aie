@@ -22,7 +22,11 @@ that capture's tile 0, verbatim (loc "2,0"'s core byte stream, offset 27).
 """
 
 from aie.utils.trace.events import get_events_for_device
-from aie.utils.trace.parse import EVENT_SYNC_CYCLES, convert_commands_to_json
+from aie.utils.trace.parse import (
+    EVENT_SYNC_CYCLES,
+    convert_commands_to_json,
+    make_event_lists,
+)
 from aie.utils.trace.utils import convert_to_commands
 
 EVENTS_MODULE = get_events_for_device("npu1_1col")
@@ -51,8 +55,39 @@ def test_event_sync_carried_across_bracket():
     assert begins["INSTR_EVENT_1"] - begins["INSTR_EVENT_0"] == 262144 + 44602 == 306746
 
 
+def test_repeated_event_sync_carries_each_wrap():
+    # Real npu2 capture of a 4.5M-cycle bracket: Single1(event0, +18) Event_Sync
+    # Repeat1(16) Skip Single2(event1, +95433). The hardware folds 17 wraps into
+    # a Sync and a Repeat of it; replaying the Repeat as the last event instead
+    # decoded 357882 cycles. A capture of the same run with enough events to
+    # never wrap measured 4551882.
+    byte_stream = [0x80, 0x12, 0xFF, 0xD8, 0x10, 0xFE, 0xA5, 0x74, 0xC9]
+    commands = convert_to_commands([{"2,0": byte_stream}, {}, {}, {}])
+
+    trace_events = []
+    convert_commands_to_json(trace_events, commands, PID_EVENTS, EVENTS_MODULE)
+
+    begins = [(e["name"], e["ts"]) for e in trace_events if e["ph"] == "B"]
+    assert [name for name, _ in begins] == ["INSTR_EVENT_0", "INSTR_EVENT_1"]
+    assert begins[1][1] - begins[0][1] == 17 * 262144 + 95434 == 4551882
+
+
 def test_event_sync_emits_no_trace_event():
     commands = [{"2,0": [{"type": "Event_Sync"}]}, {}, {}, {}]
     trace_events = []
     convert_commands_to_json(trace_events, commands, PID_EVENTS, EVENTS_MODULE)
     assert trace_events == []
+
+
+def test_make_event_lists_counts_repeated_event_sync():
+    commands = [
+        {"type": "Start", "timer_value": 100},
+        {"type": "Single0", "event": 0, "cycles": 9},
+        {"type": "Event_Sync"},
+        {"type": "Repeat0", "repeats": 2},
+        {"type": "Single0", "event": 1, "cycles": 5},
+    ]
+    assert make_event_lists(commands) == {
+        0: [109],
+        1: [109 + 3 * EVENT_SYNC_CYCLES + 5],
+    }

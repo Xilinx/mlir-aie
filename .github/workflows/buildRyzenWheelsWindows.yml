@@ -1,0 +1,586 @@
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Build Ryzen AI Windows wheels
+
+permissions:
+  contents: read
+  packages: read
+
+on:
+  pull_request:
+  workflow_call:
+    inputs:
+      AIE_COMMIT:
+        description: 'AIE commit to build'
+        type: string
+        required: false
+        default: ''
+
+concurrency:
+  group: ci-build-ryzenai-windows-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  VITIS: /opt/ryzen_ai-1.3.0/vitis_aie_essentials
+  XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+  PIP_RETRIES: "3"
+  PIP_RESUME_RETRIES: "3"
+  PIP_TIMEOUT: "60"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  build-windows-npu-wheel:
+    name: Build and upload mlir_aie wheel (Windows 3.13 RTTI ON)
+    runs-on: windows-2022
+
+    permissions:
+      id-token: write
+      contents: write
+      packages: read
+      attestations: write
+
+    env:
+      BUILD_PYTHON_VERSION: "3.13"
+      ENABLE_RTTI: ON
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: "true"
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ env.BUILD_PYTHON_VERSION }}
+          allow-prereleases: true
+
+      - name: Compute wheel version on host
+        id: wheel_version
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${REF_TYPE}" == "tag" && "${REF_NAME}" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          else
+            VERSION=$(AIE_WHEEL_KEEP_LOCAL=1 python utils/mlir_aie_wheels/_version_helper.py)
+          fi
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::computed wheel version is empty" >&2
+            exit 1
+          fi
+          if ! [[ "${VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9.+_-]*$ ]]; then
+            echo "::error::computed wheel version contains unexpected characters: ${VERSION}" >&2
+            exit 1
+          fi
+          echo "Computed AIE_WHEEL_VERSION=${VERSION}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1
+        with:
+          arch: x64
+
+      # OpenSSL is not available by default on Windows and must be built.
+      # Use vcpkg's GHA cache to avoid rebuilding OpenSSL for every matrix element.
+      - name: Enable vcpkg binary caching
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN)
+      - name: Install OpenSSL
+        shell: pwsh
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ($vcpkgRoot) {
+            $vcpkg = Join-Path $vcpkgRoot "vcpkg.exe"
+          } else {
+            $vcpkg = (Get-Command vcpkg.exe -ErrorAction Stop).Source
+            $vcpkgRoot = Split-Path -Parent $vcpkg
+          }
+
+          Remove-Item Env:VCPKG_ROOT -ErrorAction SilentlyContinue
+
+          $env:VCPKG_BINARY_SOURCES = "clear;x-gha,readwrite"
+          & $vcpkg install openssl:x64-windows-static
+
+          "OPENSSL_ROOT_DIR=$($vcpkgRoot.Replace('\','/'))/installed/x64-windows-static" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # Puts ccache on PATH, which is what makes setup.py pass
+      # CMAKE_<LANG>_COMPILER_LAUNCHER=ccache.
+      - uses: ./.github/actions/setup_ccache
+        with:
+          MATRIX_OS: windows-2022
+          MATRIX_ARCH: AMD64
+          EXTRA_KEY: ryzen-wheels-rtti-${{ env.ENABLE_RTTI }}
+
+      - name: Stage XRT SDK
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/Xilinx/XRT/releases/download/2.21.75/xrt_windows_sdk.zip'
+
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile xrt_windows_sdk.zip
+              break
+            } catch {
+              if ($attempt -eq 3) { throw }
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          Expand-Archive -Path xrt_windows_sdk.zip -DestinationPath xrt_windows_sdk -Force
+          New-Item -ItemType Directory -Path C:\Xilinx -Force | Out-Null
+          Copy-Item xrt_windows_sdk\xrt_sdk\xrt C:\Xilinx\XRT -Recurse -Force
+          "XRT_ROOT=C:/Xilinx/XRT" >> $env:GITHUB_ENV
+
+      - name: Build mlir-aie wheel
+        shell: bash
+        env:
+          AIE_WHEEL_VERSION: ${{ steps.wheel_version.outputs.version }}
+          ENABLE_RTTI: ${{ env.ENABLE_RTTI }}
+          CMAKE_GENERATOR: Ninja
+          CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF -DOPENSSL_USE_STATIC_LIBS=TRUE -DAIE_ENABLE_XRT_PYTHON_BINDINGS=OFF
+        run: |
+          set -euo pipefail
+
+          # No Vitis on Windows!
+          unset VITIS XILINXD_LICENSE_FILE || true
+
+          git config --global --add safe.directory "$PWD"
+          MLIR_VERSION=$(git rev-parse --short HEAD)
+          echo "Building mlir-aie version $MLIR_VERSION"
+
+          python -m venv aie-venv
+          source aie-venv/Scripts/activate
+
+          python -m pip install --upgrade pip
+          pip install -r python/requirements_ml.txt
+          python -m pip install --require-hashes -r python/requirements_dev.lock
+
+          export ENABLE_RTTI="${ENABLE_RTTI}"
+
+          NO_RTTI=""  # Set a default value
+          NO_RTTI_UNDERSCORE=""  # Set a default value
+          if [ x"$ENABLE_RTTI" == x"OFF" ]; then
+            NO_RTTI="-no-rtti"
+            NO_RTTI_UNDERSCORE="_no_rtti"
+          fi
+
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+
+          # Grab the MLIR distro wheel and extract
+          for attempt in 1 2 3; do
+            rm -f mlir*.whl
+            if pip -q download "mlir${NO_RTTI}==${VERSION}" -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+          python -m zipfile -e mlir*.whl .
+
+          # Normalize timestamps on the unpacked MLIR wheel so ccache hashes stay stable
+          # across runs. Per-file `find -exec touch ... \;` blows MSYS bash's env-block
+          # limit on the Windows runner ("find: The environment is too large for exec()")
+          # because each spawned `touch` inherits the giant Visual Studio INCLUDE/LIB/Path
+          # block. One python process avoids the per-file fork and the env explosion.
+          python -c "import os, pathlib; ts = 1314108314; [os.utime(p, (ts, ts)) for p in pathlib.Path('mlir${NO_RTTI_UNDERSCORE}').rglob('*')]"
+
+          # Match Linux wheel version metadata on non-tag builds.
+          export DATETIME=$(date +"%Y%m%d%H")
+          if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
+            export AIE_PROJECT_COMMIT=$MLIR_VERSION
+          else
+            export AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+            export AIE_PROJECT_COMMIT="${AIE_PROJECT_COMMIT:0:7}"
+          fi
+          export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
+          export AIE_WHEEL_KEEP_LOCAL=1
+
+          # Try to always forward slash paths.
+          ROOT_WIN=$(python -c "import os; print(os.getcwd().replace('\\\\', '/'))")
+
+          export MLIR_INSTALL_ABS_PATH="${ROOT_WIN}/mlir${NO_RTTI_UNDERSCORE}"
+          export MLIR_AIE_SOURCE_DIR="${ROOT_WIN}"
+          export WHEELHOUSE_DIR="${ROOT_WIN}/wheelhouse"
+          export CMAKE_MODULE_PATH="${ROOT_WIN}/cmake/modulesXilinx"
+
+          mkdir -p "${WHEELHOUSE_DIR}"
+          pushd utils/mlir_aie_wheels
+
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --require-hashes -r ci-tools.lock
+          CIBW_ARCHS=AMD64 pip wheel . -v -w "${WHEELHOUSE_DIR}" --no-build-isolation
+
+          popd
+
+          # Try to repair the wheel on Windows using delvewheel (closest auditwheel equivalent).
+          pip install delvewheel
+          python -m delvewheel repair --ignore-existing --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
+
+      - name: Validate wheel metadata
+        shell: bash
+        run: |
+          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          python -m twine check --strict wheelhouse/repaired_wheel/mlir_aie*whl
+
+      - name: Smoke test wheel in clean venv
+        shell: bash
+        run: |
+          python -m venv /tmp/smoke-venv
+          /tmp/smoke-venv/Scripts/python -m pip install --upgrade pip
+          /tmp/smoke-venv/Scripts/python -m pip install wheelhouse/repaired_wheel/mlir_aie*whl
+          /tmp/smoke-venv/Scripts/python -c 'import aie.ir; import aie.extras; import aie.helpers'
+
+      - name: Generate build provenance attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-path: wheelhouse/repaired_wheel/mlir_aie*whl
+
+      - name: Upload mlir_aie
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          path: wheelhouse/repaired_wheel/mlir_aie*whl
+          name: mlir_aie_windows_rtti_${{ env.ENABLE_RTTI }}-${{ env.BUILD_PYTHON_VERSION }}
+
+  build-windows:
+    name: Build and upload mlir_aie wheels (Windows)
+    runs-on: windows-2022
+
+    permissions:
+      id-token: write
+      contents: write
+      packages: read
+      attestations: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python_version: "3.11"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.11"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.12"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.12"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.13"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.14"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.14"
+            ENABLE_RTTI: OFF
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: "true"
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python_version }}
+          allow-prereleases: true
+
+      - name: Compute wheel version on host
+        id: wheel_version
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${REF_TYPE}" == "tag" && "${REF_NAME}" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          else
+            VERSION=$(AIE_WHEEL_KEEP_LOCAL=1 python utils/mlir_aie_wheels/_version_helper.py)
+          fi
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::computed wheel version is empty" >&2
+            exit 1
+          fi
+          if ! [[ "${VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9.+_-]*$ ]]; then
+            echo "::error::computed wheel version contains unexpected characters: ${VERSION}" >&2
+            exit 1
+          fi
+          echo "Computed AIE_WHEEL_VERSION=${VERSION}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1
+        with:
+          arch: x64
+
+      # OpenSSL is not available by default on Windows and must be built.
+      # Use vcpkg's GHA cache to avoid rebuilding OpenSSL for every matrix element.
+      - name: Enable vcpkg binary caching
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN)
+      - name: Install OpenSSL
+        shell: pwsh
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ($vcpkgRoot) {
+            $vcpkg = Join-Path $vcpkgRoot "vcpkg.exe"
+          } else {
+            $vcpkg = (Get-Command vcpkg.exe -ErrorAction Stop).Source
+            $vcpkgRoot = Split-Path -Parent $vcpkg
+          }
+
+          Remove-Item Env:VCPKG_ROOT -ErrorAction SilentlyContinue
+
+          $env:VCPKG_BINARY_SOURCES = "clear;x-gha,readwrite"
+          & $vcpkg install openssl:x64-windows-static
+
+          "OPENSSL_ROOT_DIR=$($vcpkgRoot.Replace('\','/'))/installed/x64-windows-static" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # Puts ccache on PATH, which is what makes setup.py pass
+      # CMAKE_<LANG>_COMPILER_LAUNCHER=ccache.
+      - uses: ./.github/actions/setup_ccache
+        with:
+          MATRIX_OS: windows-2022
+          MATRIX_ARCH: AMD64
+          EXTRA_KEY: ryzen-wheels-rtti-${{ matrix.ENABLE_RTTI }}
+
+      - name: Stage XRT SDK
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/Xilinx/XRT/releases/download/2.21.75/xrt_windows_sdk.zip'
+
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile xrt_windows_sdk.zip
+              break
+            } catch {
+              if ($attempt -eq 3) { throw }
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          Expand-Archive -Path xrt_windows_sdk.zip -DestinationPath xrt_windows_sdk -Force
+          New-Item -ItemType Directory -Path C:\Xilinx -Force | Out-Null
+          Copy-Item xrt_windows_sdk\xrt_sdk\xrt C:\Xilinx\XRT -Recurse -Force
+          "XRT_ROOT=C:/Xilinx/XRT" >> $env:GITHUB_ENV
+
+      - name: Build mlir-aie wheel
+        shell: bash
+        env:
+          AIE_WHEEL_VERSION: ${{ steps.wheel_version.outputs.version }}
+          ENABLE_RTTI: ${{ matrix.ENABLE_RTTI }}
+          CMAKE_GENERATOR: Ninja
+          CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF -DOPENSSL_USE_STATIC_LIBS=TRUE -DAIE_ENABLE_XRT_PYTHON_BINDINGS=OFF
+        run: |
+          set -euo pipefail
+
+          # No Vitis on Windows!
+          unset VITIS XILINXD_LICENSE_FILE || true
+
+          git config --global --add safe.directory "$PWD"
+          MLIR_VERSION=$(git rev-parse --short HEAD)
+          echo "Building mlir-aie version $MLIR_VERSION"
+
+          python -m venv aie-venv
+          source aie-venv/Scripts/activate
+
+          python -m pip install --upgrade pip
+          pip install -r python/requirements_ml.txt
+          python -m pip install --require-hashes -r python/requirements_dev.lock
+
+          export ENABLE_RTTI="${ENABLE_RTTI}"
+
+          NO_RTTI=""  # Set a default value
+          NO_RTTI_UNDERSCORE=""  # Set a default value
+          if [ x"$ENABLE_RTTI" == x"OFF" ]; then
+            NO_RTTI="-no-rtti"
+            NO_RTTI_UNDERSCORE="_no_rtti"
+          fi
+
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+
+          # Grab the MLIR distro wheel and extract
+          for attempt in 1 2 3; do
+            rm -f mlir*.whl
+            if pip -q download "mlir${NO_RTTI}==${VERSION}" -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+          python -m zipfile -e mlir*.whl .
+
+          # Normalize timestamps on the unpacked MLIR wheel so ccache hashes stay stable
+          # across runs. Per-file `find -exec touch ... \;` blows MSYS bash's env-block
+          # limit on the Windows runner ("find: The environment is too large for exec()")
+          # because each spawned `touch` inherits the giant Visual Studio INCLUDE/LIB/Path
+          # block. One python process avoids the per-file fork and the env explosion.
+          python -c "import os, pathlib; ts = 1314108314; [os.utime(p, (ts, ts)) for p in pathlib.Path('mlir${NO_RTTI_UNDERSCORE}').rglob('*')]"
+
+          # Match Linux wheel version metadata on non-tag builds.
+          export DATETIME=$(date +"%Y%m%d%H")
+          if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
+            export AIE_PROJECT_COMMIT=$MLIR_VERSION
+          else
+            export AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+            export AIE_PROJECT_COMMIT="${AIE_PROJECT_COMMIT:0:7}"
+          fi
+          export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
+          export AIE_WHEEL_KEEP_LOCAL=1
+
+          # Try to always forward slash paths.
+          ROOT_WIN=$(python -c "import os; print(os.getcwd().replace('\\\\', '/'))")
+
+          export MLIR_INSTALL_ABS_PATH="${ROOT_WIN}/mlir${NO_RTTI_UNDERSCORE}"
+          export MLIR_AIE_SOURCE_DIR="${ROOT_WIN}"
+          export WHEELHOUSE_DIR="${ROOT_WIN}/wheelhouse"
+          export CMAKE_MODULE_PATH="${ROOT_WIN}/cmake/modulesXilinx"
+
+          mkdir -p "${WHEELHOUSE_DIR}"
+          pushd utils/mlir_aie_wheels
+
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install --require-hashes -r ci-tools.lock
+          CIBW_ARCHS=AMD64 pip wheel . -v -w "${WHEELHOUSE_DIR}" --no-build-isolation
+
+          popd
+
+          # Try to repair the wheel on Windows using delvewheel (closest auditwheel equivalent).
+          pip install delvewheel
+          python -m delvewheel repair --ignore-existing --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
+
+      - name: Validate wheel metadata
+        shell: bash
+        run: |
+          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          python -m twine check --strict wheelhouse/repaired_wheel/mlir_aie*whl
+
+      - name: Smoke test wheel in clean venv
+        shell: bash
+        run: |
+          python -m venv /tmp/smoke-venv
+          /tmp/smoke-venv/Scripts/python -m pip install --upgrade pip
+          /tmp/smoke-venv/Scripts/python -m pip install wheelhouse/repaired_wheel/mlir_aie*whl
+          /tmp/smoke-venv/Scripts/python -c 'import aie.ir; import aie.extras; import aie.helpers'
+
+      - name: Generate build provenance attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-path: wheelhouse/repaired_wheel/mlir_aie*whl
+
+      - name: Upload mlir_aie
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          path: wheelhouse/repaired_wheel/mlir_aie*whl
+          name: mlir_aie_windows_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
+
+  smoke-test-wheels-npu-windows:
+    name: Smoke-Test Wheel on Ryzen AI (Windows)
+    # Windows analogue of smoke-test-npu: install the same-commit 3.13/RTTI-ON
+    # build-windows-npu-wheel artifact via iron_setup.py (runtime mode, so the
+    # installed wheel is exercised, not a from-source build) and run a few
+    # @iron.jit
+    # designs on the self-hosted Windows NPU. Only npu2 Windows runners exist.
+    # 3.13 matches the XRT SDK's pyxrt.pyd (built for CPython 3.13);
+    # setup-python provides it since the runner's system Python is 3.12.
+    needs: build-windows-npu-wheel
+    runs-on: [self-hosted, windows, devlab-dispatch, strix-halo]
+    # Normal exec is 3-6 min; observed hang 192.6 min on this job (2026-08-04).
+    timeout-minutes: 20
+    env:
+      NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Download same-commit mlir_aie wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: mlir_aie_windows_rtti_ON-3.13
+          path: wheelhouse
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - uses: ./.github/actions/setup_windows_xrt
+
+      - name: Install wheel and run an example on the NPU
+        shell: cmd
+        run: |
+          REM iron_setup --wheelhouse installs the downloaded same-commit wheel
+          REM (runtime env, no --dev), so this exercises the published wheel.
+          python utils\iron_setup.py --wheelhouse wheelhouse
+          if errorlevel 1 exit /b 1
+          call .\iron_env.cmd
+          if errorlevel 1 exit /b 1
+
+          if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
+          mkdir "%NPU_CACHE_HOME%"
+          set XRT_CONTEXT_CACHE_SIZE=2
+
+          REM A few representative @iron.jit designs: an elementwise kernel, a
+          REM vector-vector op, a reduction, and a 2D data-movement design. Each
+          REM resolves the device via iron.get_current_device(), so they target
+          REM this npu2 runner.
+          REM Use the venv interpreter explicitly: bare "python" picked up the
+          REM system 3.13, which has no numpy.
+          set "IRON_PY=%CD%\ironenv\Scripts\python.exe"
+
+          echo ===== basic/passthrough_kernel =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\passthrough_kernel\passthrough_kernel.py --in1_size 4096
+          if errorlevel 1 exit /b 1
+
+          echo ===== basic/vector_vector_add =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\vector_vector_add\vector_vector_add.py
+          if errorlevel 1 exit /b 1
+
+          echo ===== basic/vector_reduce_add =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\vector_reduce_add\vector_reduce_add.py
+          if errorlevel 1 exit /b 1
+
+          echo ===== basic/matrix_scalar_add =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\matrix_scalar_add\matrix_scalar_add.py
+          if errorlevel 1 exit /b 1
+
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        shell: cmd
+        run: |
+          if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
+          if exist "%PIP_CACHE_DIR%" rmdir /s /q "%PIP_CACHE_DIR%"

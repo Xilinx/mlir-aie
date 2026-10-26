@@ -487,29 +487,30 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
 struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
-  int tileCol = 0;
-  int tileRow = 0;
   AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
-                      PatternBenefit benefit = 1, int tileCol = -1,
-                      int tileRow = -1)
-      : OpConversionPattern(context, benefit), module(m), tileCol(tileCol),
-        tileRow(tileRow) {}
+                      PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), module(m) {}
   LogicalResult
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    // The core's own sections fill this extent; nothing refers to it by name.
+    if (buffer.getCoreData()) {
+      rewriter.eraseOp(buffer);
+      return success();
+    }
     rewriter.setInsertionPointToStart(module.getBody());
     auto t = llvm::cast<MemRefType>(buffer.getType());
-    int col = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getCol();
-    int row = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getRow();
     auto symName = buffer.name().getValue();
-    mlir::ElementsAttr initValue = buffer.getInitialValueAttr();
-    // Don't emit initialization for cores that don't "own" the buffer (to
-    // prevent duplication in the data section of the elf/object file)
-    if ((tileRow != row && tileRow != -1) || (tileCol != col && tileCol != -1))
-      initValue = nullptr;
+    // A declaration, never a definition: a buffer lives at the address the
+    // allocator chose, and the linker supplies that address from the generated
+    // script or BCF. `initial_value` is device state, written by whoever
+    // configures the device -- the CDO writer, or mlir_aie_initialize_buffers
+    // on the simulator path. A definition here would place the bytes wherever
+    // `*(.data*)` lands, which costs the core's data region a copy it never
+    // reads.
     memref::GlobalOp::create(rewriter, buffer.getLoc(), symName,
                              rewriter.getStringAttr("public"), buffer.getType(),
-                             initValue, /*constant*/ false,
+                             /*initial_value=*/nullptr, /*constant*/ false,
                              /*alignment*/ nullptr);
 
     for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
@@ -638,9 +639,11 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
             //    matching ::aie::set_rounding(aie::rounding_mode::conv_even)
             //    used in external C++ matmul kernels.
             //  - positive_inf (9) for integer SRS (shift-round-saturate on
-            //    integer data, e.g., i32→i8).
-            //  - floor (0) for float-only SRS (f32→bf16 truncation).
-            int roundingMode = hasBF16Matmul ? 12 : hasIntegerSRS ? 9 : 0;
+            //    integer data, e.g., i32→i8), unless the core has a bf16
+            //    matmul.
+            //  - conv_even (12) for float-only SRS (f32→bf16), matching the
+            //    round-to-nearest-even semantics of arith.truncf.
+            int roundingMode = hasIntegerSRS && !hasBF16Matmul ? 9 : 12;
             auto cRndIdx = arith::ConstantOp::create(
                 rewriter, loc, rewriter.getI32IntegerAttr(rndRegIdx));
             auto cRoundingMode = arith::ConstantOp::create(
@@ -775,8 +778,7 @@ struct AIECoreToStandardPass
                  AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
                  AIEEventOpToStdLowering>(m.getContext(), m);
 
-    patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
-                                      tileRow);
+    patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1);
     if (failed(applyPartialConversion(deviceOp, target, std::move(patterns))))
       return signalPassFailure();
 

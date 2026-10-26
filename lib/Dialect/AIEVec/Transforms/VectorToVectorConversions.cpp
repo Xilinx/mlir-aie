@@ -15,6 +15,7 @@
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
@@ -533,7 +534,8 @@ struct ExtractTransposeFromContractionOp
       rhsVal =
           arith::ExtFOp::create(
               rewriter, loc,
-              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
+              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal,
+              /*fastmath=*/nullptr)
               .getOut();
     if (doExtSI)
       rhsVal =
@@ -824,6 +826,79 @@ static Value smartTruncF32ToBF16(PatternRewriter &rewriter, Location loc,
   return arith::TruncFOp::create(rewriter, loc, bf16Type, val);
 }
 
+// `v` rounded to the nearest bf16, still in its own semantics.
+static APFloat roundedToBF16(APFloat v) {
+  bool losesInfo = false;
+  const llvm::fltSemantics &sem = v.getSemantics();
+  v.convert(APFloat::BFloat(), APFloat::rmNearestTiesToEven, &losesInfo);
+  v.convert(sem, APFloat::rmNearestTiesToEven, &losesInfo);
+  return v;
+}
+
+// True if `val` is an f32 vector whose elements are all bf16 values.
+static bool holdsBF16(Value val) {
+  if (auto extfOp = val.getDefiningOp<arith::ExtFOp>())
+    return getElementTypeOrSelf(extfOp.getIn().getType()).isBF16();
+  DenseFPElementsAttr dense;
+  return matchPattern(val, m_Constant(&dense)) &&
+         llvm::all_of(dense.getValues<APFloat>(), [](const APFloat &v) {
+           return roundedToBF16(v).bitwiseIsEqual(v);
+         });
+}
+
+// `val` rounded to bf16, still as f32. Constants are rounded here.
+static Value roundToBF16(PatternRewriter &rewriter, Location loc, Value val) {
+  if (holdsBF16(val))
+    return val;
+  auto vecType = cast<VectorType>(val.getType());
+  DenseFPElementsAttr dense;
+  if (matchPattern(val, m_Constant(&dense))) {
+    SmallVector<APFloat> values;
+    for (const APFloat &v : dense.getValues<APFloat>())
+      values.push_back(roundedToBF16(v));
+    return arith::ConstantOp::create(rewriter, loc,
+                                     DenseElementsAttr::get(vecType, values));
+  }
+  auto bf16VecType =
+      VectorType::get(vecType.getShape(), rewriter.getBF16Type());
+  Value bf16 = smartTruncF32ToBF16(rewriter, loc, val, bf16VecType);
+  return arith::ExtFOp::create(rewriter, loc, vecType, bf16,
+                               /*fastmath=*/nullptr);
+}
+
+static bool isF32Vector(Type type) {
+  auto vecType = dyn_cast<VectorType>(type);
+  return vecType && vecType.getElementType().isF32();
+}
+
+/// Pattern to drop `bf16 -> f32 -> bf16` round trips.
+///
+/// Arith used to fold these but no longer does: widening a signaling NaN quiets
+/// it, so the original bit pattern cannot be recovered. This pass has always
+/// made that trade anyway -- `smartTruncF32ToBF16` collapses the same pair on
+/// sight -- so fold here to keep the pipeline's pre-existing behavior rather
+/// than leaving the round trips for the backend.
+struct FoldBF16RoundTripPattern : public OpRewritePattern<arith::TruncFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::TruncFOp op,
+                                PatternRewriter &rewriter) const override {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    auto intermediateType = dyn_cast<VectorType>(op.getIn().getType());
+    if (!resultType || !intermediateType ||
+        !resultType.getElementType().isBF16() ||
+        !intermediateType.getElementType().isF32())
+      return failure();
+
+    auto extfOp = op.getIn().getDefiningOp<arith::ExtFOp>();
+    if (!extfOp || extfOp.getIn().getType() != resultType)
+      return failure();
+
+    rewriter.replaceOp(op, extfOp.getIn());
+    return success();
+  }
+};
+
 /// Pattern to emulate f32 binary vector arithmetic ops in bf16.
 /// For an op like: %r = arith.addf %a, %b : vector<16xf32>
 /// Produces:
@@ -852,7 +927,8 @@ struct EmulateBinaryF32InBF16Pattern : public OpRewritePattern<OpTy> {
 
     Value newResult =
         OpTy::create(rewriter, loc, bf16VecType, lhsBF16, rhsBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
@@ -907,38 +983,80 @@ struct EmulateSelectF32InBF16Pattern
 
     Value newResult = arith::SelectOp::create(rewriter, loc, op.getCondition(),
                                               trueValBF16, falseValBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
 };
 
-/// Pattern to emulate f32 vector.fma in bf16.
-/// All three operands (lhs, rhs, acc) are truncated.
+/// Pattern to emulate an f32 multiply with bf16 inputs. The product of two
+/// bf16 values fits in f32 except at the ends of the exponent range, so only
+/// the inputs are rounded:
+///   %r = arith.mulf %a, %b : vector<16xf32>
+/// becomes
+///   %r = arith.mulf (extf (truncf %a)), (extf (truncf %b)) : vector<16xf32>
+struct EmulateMulFInBF16Pattern : public OpRewritePattern<arith::MulFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::MulFOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isF32Vector(op.getType()) ||
+        (holdsBF16(op.getLhs()) && holdsBF16(op.getRhs())))
+      return failure();
+    Location loc = op.getLoc();
+    Value lhs = roundToBF16(rewriter, loc, op.getLhs());
+    Value rhs = roundToBF16(rewriter, loc, op.getRhs());
+    rewriter.replaceOpWithNewOp<arith::MulFOp>(op, lhs, rhs,
+                                               op.getFastmathAttr());
+    return success();
+  }
+};
+
+/// Pattern to fold an f32 multiply into the add that is its only user, as a
+/// vector.fma with bf16 inputs. Only when both ops allow contraction: the
+/// fused result can differ where the product underflows or overflows.
+struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::AddFOp op,
+                                PatternRewriter &rewriter) const override {
+    auto contracts = [](arith::FastMathFlagsAttr flags) {
+      return flags && bitEnumContainsAll(flags.getValue(),
+                                         arith::FastMathFlags::contract);
+    };
+    if (!isF32Vector(op.getType()) || !contracts(op.getFastmathAttr()))
+      return failure();
+    for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
+                                   std::pair(op.getRhs(), op.getLhs())}) {
+      auto mulOp = mulOperand.getDefiningOp<arith::MulFOp>();
+      if (!mulOp || !mulOp->hasOneUse() || !contracts(mulOp.getFastmathAttr()))
+        continue;
+      Location loc = op.getLoc();
+      Value lhs = roundToBF16(rewriter, loc, mulOp.getLhs());
+      Value rhs = roundToBF16(rewriter, loc, mulOp.getRhs());
+      rewriter.replaceOpWithNewOp<vector::FMAOp>(op, lhs, rhs, acc);
+      rewriter.eraseOp(mulOp);
+      return success();
+    }
+    return failure();
+  }
+};
+
+/// Pattern to emulate f32 vector.fma with bf16 inputs. The accumulator stays
+/// f32.
 struct EmulateFMAF32InBF16Pattern : public OpRewritePattern<vector::FMAOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(vector::FMAOp op,
                                 PatternRewriter &rewriter) const override {
-    auto resultType = dyn_cast<VectorType>(op.getType());
-    if (!resultType || !resultType.getElementType().isF32())
+    if (!isF32Vector(op.getType()) ||
+        (holdsBF16(op.getLhs()) && holdsBF16(op.getRhs())))
       return failure();
-
     Location loc = op.getLoc();
-    auto bf16VecType =
-        VectorType::get(resultType.getShape(), rewriter.getBF16Type());
-
-    Value lhsBF16 =
-        smartTruncF32ToBF16(rewriter, loc, op.getLhs(), bf16VecType);
-    Value rhsBF16 =
-        smartTruncF32ToBF16(rewriter, loc, op.getRhs(), bf16VecType);
-    Value accBF16 =
-        smartTruncF32ToBF16(rewriter, loc, op.getAcc(), bf16VecType);
-
-    Value newResult =
-        vector::FMAOp::create(rewriter, loc, lhsBF16, rhsBF16, accBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
-    rewriter.replaceOp(op, extOp);
+    Value lhs = roundToBF16(rewriter, loc, op.getLhs());
+    Value rhs = roundToBF16(rewriter, loc, op.getRhs());
+    rewriter.replaceOpWithNewOp<vector::FMAOp>(op, lhs, rhs, op.getAcc());
     return success();
   }
 };
@@ -962,7 +1080,8 @@ struct EmulateUnaryF32InBF16Pattern : public OpRewritePattern<OpTy> {
         smartTruncF32ToBF16(rewriter, loc, op->getOperand(0), bf16VecType);
 
     Value newResult = OpTy::create(rewriter, loc, bf16VecType, inputBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
@@ -976,11 +1095,11 @@ struct BF16EmulationPass
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
-    // Binary arithmetic ops
-    patterns.add<EmulateBinaryF32InBF16Pattern<arith::AddFOp>,
-                 EmulateBinaryF32InBF16Pattern<arith::SubFOp>,
-                 EmulateBinaryF32InBF16Pattern<arith::MulFOp>,
-                 EmulateBinaryF32InBF16Pattern<arith::MaximumFOp>,
+    // Multiplies take bf16 inputs; sums stay f32, which the accumulator
+    // adds natively.
+    patterns.add<FuseMulAddFInBF16Pattern>(context, /*benefit=*/2);
+    patterns.add<EmulateMulFInBF16Pattern, EmulateFMAF32InBF16Pattern>(context);
+    patterns.add<EmulateBinaryF32InBF16Pattern<arith::MaximumFOp>,
                  EmulateBinaryF32InBF16Pattern<arith::MinimumFOp>>(context);
 
     // Note: arith.divf is NOT demoted because bf16 vector divf is unsupported
@@ -990,11 +1109,15 @@ struct BF16EmulationPass
     // and result lower to fp_to_bf16/bf16_to_fp which older Peano versions
     // cannot select on AIE2P; reductions are intentionally left in f32
     // to avoid these scalar bf16 conversions)
-    patterns.add<EmulateCmpFF32InBF16Pattern, EmulateSelectF32InBF16Pattern,
-                 EmulateFMAF32InBF16Pattern>(context);
+    patterns.add<EmulateCmpFF32InBF16Pattern, EmulateSelectF32InBF16Pattern>(
+        context);
 
     // Unary ops
-    patterns.add<EmulateUnaryF32InBF16Pattern<arith::NegFOp>>(context);
+    patterns.add<EmulateUnaryF32InBF16Pattern<arith::NegFOp>,
+                 EmulateUnaryF32InBF16Pattern<math::TanhOp>>(context);
+
+    // Clean up the round trips the demotion itself introduces.
+    patterns.add<FoldBF16RoundTripPattern>(context);
 
     (void)applyPatternsGreedily(op, std::move(patterns));
   }

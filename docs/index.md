@@ -47,6 +47,12 @@ with full control over tile placement, data movement, and vectorized compute.
 <span class="iron-card-desc">Agent Skills that teach a coding agent to port and optimize IRON designs.</span>
 </a>
 
+<a class="iron-card" href="https://xilinx.github.io/mlir-aie/dashboard/" markdown>
+<span class="iron-card-icon">📊</span>
+<span class="iron-card-title">Maintainer Dashboard</span>
+<span class="iron-card-desc">Nightly checks of the kernels, performance and placement on Ryzen AI NPUs.</span>
+</a>
+
 <a class="iron-card" href="https://discord.gg/UbXzGdXsR5" markdown>
 <span class="iron-card-icon">💬</span>
 <span class="iron-card-title">Join us on Discord</span>

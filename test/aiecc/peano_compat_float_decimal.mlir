@@ -38,23 +38,23 @@ module {
     %tile = aie.tile(0, 2)
     %buf_in = aie.buffer(%tile) {sym_name = "in"} : memref<4xf32>
     %buf_out = aie.buffer(%tile) {sym_name = "out"} : memref<4xf32>
-    // Typed position: an initialized constant array. 2.5 is exact as a double
-    // and must be left as printed; the other three are not.
-    %lut = aie.buffer(%tile) {
-      sym_name = "lut",
-      initial_value = dense<[3.141590e+00, 1.100000e-01, -3.236090e-03,
-                             2.500000e+00]> : tensor<4xf32>
-    } : memref<4xf32>
 
     %core = aie.core(%tile) {
       %c0 = arith.constant 0 : index
       %c4 = arith.constant 4 : index
       %c1 = arith.constant 1 : index
+      // Typed position: a dense constant prints each element behind its own
+      // `float` keyword. 2.5 is exact as a double and must be left as printed;
+      // the other three are not. A buffer's `initial_value` does not reach the
+      // core's object, because a buffer lowers to a declaration and its
+      // contents come from the device configuration.
+      %lut = arith.constant dense<[3.141590e+00, 1.100000e-01, -3.236090e-03,
+                                   2.500000e+00]> : vector<4xf32>
       // Bare operand position: the constant carries no type keyword of its own.
       %k = arith.constant 1.100000e-01 : f32
       scf.for %i = %c0 to %c4 step %c1 {
         %v = memref.load %buf_in[%i] : memref<4xf32>
-        %l = memref.load %lut[%i] : memref<4xf32>
+        %l = vector.extract %lut[%i] : f32 from vector<4xf32>
         %s = arith.addf %v, %l : f32
         %r = arith.mulf %s, %k : f32
         memref.store %r, %buf_out[%i] : memref<4xf32>

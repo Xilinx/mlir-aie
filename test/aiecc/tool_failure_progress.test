@@ -1,0 +1,109 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Exercise in-process failures with silent and noisy tool-library stand-ins.
+// No AIE toolchain or linked aiebu/bootgen library is needed.
+// REQUIRES: system-linux
+// RUN: split-file %s %t
+// RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -std=c++17 -UNDEBUG -DAIECC_HAS_AIEBU_LIBRARY -DAIECC_HAS_BOOTGEN_LIBRARY -I%t -I%S/../../tools/aiecc -I%S/../../include %t/test.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags) -Wl,--start-group -lMLIRIR -lMLIRSupport $(%LLVM_TOOLS_DIR/llvm-config --libs support --system-libs) -Wl,--end-group %host_link_flags -o %t/test'
+// RUN: %t/test 2>&1 | FileCheck %s --match-full-lines
+//
+// CHECK: elf silent progress
+// CHECK-NEXT: aiecc: aiebu_assembler_get_elf failed (code -1)
+// CHECK-NEXT: elf noisy progress
+// CHECK-NEXT: tool log
+// CHECK-NEXT: aiecc: aiebu_assembler_get_elf failed (code -1)
+// CHECK-NEXT: pdi silent progress
+// CHECK-NEXT: aiecc: bootgen_generate_pdi failed (code -1)
+// CHECK-NEXT: pdi noisy progress
+// CHECK-NEXT: tool log
+// CHECK-NEXT: aiecc: bootgen_generate_pdi failed (code -1)
+// CHECK-NEXT: aiecc: aiebu_assembler_get_elf failed (code -1)
+// CHECK-NEXT: elf write progress
+// CHECK-NEXT: aiecc: cannot write ELF '{{.*}}': {{.*}}
+// CHECK-NEXT: atomic progress
+// CHECK-NEXT: atomic diagnostic
+//
+//--- aiebu/aiebu.h
+#include <cstddef>
+#include <cstdio>
+#include <cstdlib>
+inline bool noisy = false;
+inline bool elfSuccess = false;
+enum aiebu_assembler_buffer_type {
+  aiebu_assembler_buffer_type_blob_instr_transaction
+};
+inline int aiebu_assembler_get_elf(aiebu_assembler_buffer_type, const char *,
+                                 size_t, const char *, size_t, void **elf,
+                                 const char *, size_t, const char *,
+                                 const char *, const void *, size_t) {
+  if (noisy)
+    std::fputs("tool log\n", stderr);
+  if (elfSuccess) {
+    *elf = std::malloc(1);
+    return 1;
+  }
+  return -1;
+}
+//--- bootgen_c_api.h
+enum { BOOTGEN_ARCH_VERSAL, BOOTGEN_SUCCESS = 0 };
+inline int bootgen_generate_pdi(const char *, const char *, int, int, char *,
+                                size_t) {
+  if (noisy)
+    std::fputs("tool log\n", stderr);
+  return -1;
+}
+//--- test.cpp
+#include "Tools.h"
+#include <atomic>
+#include <cassert>
+#include <thread>
+
+using namespace xilinx::aiecc;
+
+static void startProgress(llvm::StringRef label) {
+  llvm::errs() << label << " progress";
+  progressLineOpen() = true;
+}
+
+int main() {
+  Item<File> out;
+  Item<std::string> bif;
+  bif.filePath = "unused.bif";
+  bif.fileWritten = true;
+  for (bool log : {false, true}) {
+    noisy = log;
+    startProgress(log ? "elf noisy" : "elf silent");
+    assert(mlir::failed(assembleElf({}, {}, {}, out, false)));
+    assert(!progressLineOpen());
+  }
+  for (bool log : {false, true}) {
+    noisy = log;
+    startProgress(log ? "pdi noisy" : "pdi silent");
+    assert(mlir::failed(assemblePdi(bif, out, false)));
+    assert(!progressLineOpen());
+  }
+  noisy = false;
+  assert(mlir::failed(assembleElf({}, {}, {}, out, false)));
+  elfSuccess = true;
+  startProgress("elf write");
+  assert(mlir::failed(assembleElf({}, {}, {}, out, false)));
+  assert(!progressLineOpen());
+
+  startProgress("atomic");
+  auto log = endProgressLine();
+  std::atomic<bool> started = false;
+  std::atomic<bool> acquired = false;
+  std::thread waiter([&] {
+    started = true;
+    std::lock_guard<std::mutex> next(logMutex());
+    acquired = true;
+  });
+  while (!started)
+    std::this_thread::yield();
+  assert(!acquired);
+  llvm::errs() << "atomic diagnostic\n";
+  log.unlock();
+  waiter.join();
+  assert(acquired);
+}

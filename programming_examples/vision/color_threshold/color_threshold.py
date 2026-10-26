@@ -18,7 +18,7 @@ import aie.iron as iron
 import numpy as np
 from aie.extras import types as T  # pyright: ignore[reportMissingImports]
 from aie.extras.dialects import arith  # pyright: ignore[reportMissingImports]
-from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -36,7 +36,7 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit
 def color_threshold(
     in_tensor: In,
     _b_unused: In,

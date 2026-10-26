@@ -17,7 +17,8 @@ module {
 
     %input_buffer = aie.buffer(%tile_0_2) {sym_name = "input_buffer"} : memref<8xi32>
     %output_buffer = aie.buffer(%tile_0_2) {sym_name = "output_buffer"} : memref<8xi32>
-    %other_buffer = aie.buffer(%tile_0_2) {sym_name = "other_buffer"} : memref<8xi32>
+    // The host's control packets read this buffer at tile-relative address 0x440.
+    %other_buffer = aie.buffer(%tile_0_2) {sym_name = "other_buffer", address = 0x440 : i32} : memref<8xi32>
 
     aie.packet_flow(0x1) {
       aie.packet_source<%tile_0_0, DMA : 0>
@@ -47,8 +48,8 @@ module {
         memref.store %1, %input_buffer[%arg1] : memref<8xi32>
         memref.store %c1_i32, %other_buffer[%arg1] : memref<8xi32>
       }
-      %c4294967295 = arith.constant 4294967295 : index
-      scf.for %arg0 = %c0 to %c4294967295 step %c1 {
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c1_ul1 = arith.constant 1 : i32
         aie.use_lock(%input_lock0, AcquireGreaterEqual, %c1_ul1)
         scf.for %arg1 = %c0 to %c8 step %c1 {

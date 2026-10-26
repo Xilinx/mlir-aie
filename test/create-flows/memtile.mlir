@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s -o %t.opt
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows=remove-lifted=false %s -o %t.opt
 // RUN: FileCheck %s --check-prefix=CHECK1 < %t.opt
 // RUN: aie-translate --aie-flows-to-json %t.opt | FileCheck %s --check-prefix=CHECK2
 
@@ -52,4 +52,3 @@ module {
         aie.flow(%t04, DMA : 1, %t02, DMA : 5)
     }
 }
-

@@ -10,6 +10,7 @@ updates:
     # was kept current. Add a line here when a new composite action lands.
     directories:
       - "/"
+      - "/.github/actions/run_x86_container"
       - "/.github/actions/setup_base"
       - "/.github/actions/setup_ccache"
     schedule:
@@ -99,6 +100,10 @@ updates:
       - dependency-name: "third_party/bootgen"
       - dependency-name: "platforms/boards"
 
+  # Dependabot only understands the hook revs in .pre-commit-config.yaml. To
+  # keep CI from drifting, workflows must invoke pre-commit-managed tools via
+  # the pre-commit hook itself (see lintAndFormat.yml) rather than duplicating
+  # a second tool/version contract in workflow-local config.
   - package-ecosystem: "pre-commit"
     directory: "/"
     schedule:

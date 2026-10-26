@@ -17,14 +17,6 @@ CHESS ?= false
 trace_size ?= 16384
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
-#ifeq (${targetname}, group2)
-#alloc_scheme=--alloc-scheme=basic-sequential
-#else
-#alloc_scheme=--alloc-scheme=bank-aware
-#endif
-
-alloc_scheme=--alloc-scheme=basic-sequential
-
 VPATH := ${srcdir}/kernels
 
 all: build/aie.mlir
@@ -41,15 +33,15 @@ build/%.o: %.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F};
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(abspath $<) -o ${@F};
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -c $(abspath $<) -o ${@F} $(call attach_bitcode,${PEANOWRAP2_FLAGS})
 endif
 else ifeq (${devicename}, npu2)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -c $< -o ${@F};
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -c $(abspath $<) -o ${@F};
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -c $(abspath $<) -o ${@F} $(call attach_bitcode,${PEANOWRAP2P_FLAGS})
 endif
 else
 	echo "Device type not supported"
@@ -59,15 +51,15 @@ build/group0a.o: group0.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DGROUPA -c $< -o ${@F};
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DGROUPA -c $(abspath $<) -o ${@F};
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DGROUPA -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DGROUPA -c $(abspath $<) -o ${@F} $(call attach_bitcode,${PEANOWRAP2_FLAGS} -DGROUPA)
 endif
 else ifeq (${devicename}, npu2)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DGROUPA -c $< -o ${@F};
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DGROUPA -c $(abspath $<) -o ${@F};
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DGROUPA -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DGROUPA -c $(abspath $<) -o ${@F} $(call attach_bitcode,${PEANOWRAP2P_FLAGS} -DGROUPA)
 endif
 else
 	echo "Device type not supported"
@@ -77,15 +69,15 @@ build/group0b.o: group0.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DGROUPB -c $< -o ${@F};
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DGROUPB -c $(abspath $<) -o ${@F};
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DGROUPB -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DGROUPB -c $(abspath $<) -o ${@F} $(call attach_bitcode,${PEANOWRAP2_FLAGS} -DGROUPB)
 endif
 else ifeq (${devicename}, npu2)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DGROUPB -c $< -o ${@F};
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DGROUPB -c $(abspath $<) -o ${@F};
 else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DGROUPB -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DGROUPB -c $(abspath $<) -o ${@F} $(call attach_bitcode,${PEANOWRAP2P_FLAGS} -DGROUPB)
 endif
 else
 	echo "Device type not supported"
@@ -100,20 +92,20 @@ group_objs=${group_objs_${targetname}}
 build/final.xclbin: build/${mlirFileName}.mlir ${group_objs}
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc ${AIECC_FLAGS} -v --get-xclbin --xclbin-name=${@F} \
 				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc ${AIECC_FLAGS} -v --get-xclbin --xclbin-name=${@F} \
 				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
 
 build/final_trace.xclbin: build/${mlirFileName}_trace.mlir ${group_objs}
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc ${AIECC_FLAGS} -v --get-xclbin --xclbin-name=${@F} \
 				--get-npu-insts --npu-insts-name=insts.bin --get-input-with-addresses $(<:%=../%)
 else
-	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc ${AIECC_FLAGS} -v --get-xclbin --xclbin-name=${@F} \
 				--get-npu-insts --npu-insts-name=insts.bin --get-input-with-addresses $(<:%=../%)
 endif
 

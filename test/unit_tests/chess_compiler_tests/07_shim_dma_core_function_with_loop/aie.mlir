@@ -16,6 +16,7 @@
 // CHECK: test start.
 // CHECK: PASS!
 
+// aiesim.sh aborts (SIGABRT, no output) under Vitis 2025.1.
 // XFAIL: *
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{

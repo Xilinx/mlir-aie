@@ -1,7 +1,7 @@
 # Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -27,16 +27,12 @@ def matrix_vector_tiling_sweep():
                 m_x_K = m * K
 
                 A_iter = iter(
-                    TensorTiler2D.group_tiler(
-                        (M, K), (m, k), (M_div_m_div_n_cores, K // k)
-                    )
+                    TensorAccessPattern.full((M, K))
+                    .tile((m, k))
+                    .split(0, M_div_m_div_n_cores)
                 )
-                B_tap = TensorTiler2D.simple_tiler(
-                    (1, K), (1, K), pattern_repeat=M_div_m_div_n_cores
-                )[0]
-                C_iter = iter(
-                    TensorTiler2D.simple_tiler((1, C_sz), (1, C_sz_div_n_cores))
-                )
+                B_tap = TensorAccessPattern.full((1, K)).repeat(M_div_m_div_n_cores)
+                C_iter = iter(TensorAccessPattern.full((C_sz,)).partition(n_cores))
 
                 B_sizes = [M_div_m_div_n_cores, 1, 1, K]
                 B_strides = [0, 0, 0, 1]
@@ -54,7 +50,7 @@ def matrix_vector_tiling_sweep():
                     A_sizes = [M_div_m_div_n_cores, K_div_k, m, k]
                     A_strides = [m_x_K, k, K, 1]
 
-                    # Tile iter way to calculating sizes/strides/offsets
+                    # Tiling way of calculating sizes/strides/offsets
                     A_tap = next(A_iter)
                     if (
                         A_sizes != A_tap.sizes
@@ -74,7 +70,7 @@ def matrix_vector_tiling_sweep():
                     C_sizes = [1, 1, 1, C_sz_div_n_cores]
                     C_strides = [0, 0, 0, 1]
 
-                    # Tile iter way to calculating sizes/strides/offsets
+                    # Tiling way of calculating sizes/strides/offsets
                     C_tap = next(C_iter)
                     if (
                         C_sizes != C_tap.sizes

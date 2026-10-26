@@ -18,6 +18,11 @@
 #include "aie/Dialect/AIEX/IR/AIEXEnums.h"
 #include "mlir/IR/Operation.h"
 
+#include "aie/Dialect/AIEX/IR/AIEXInterfaces.h.inc"
+
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.h.inc"
+
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.h.inc"
@@ -41,6 +46,7 @@ void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
                              llvm::SmallVector<int64_t, 4> &strides);
 mlir::LogicalResult
 verifyStridesWraps(mlir::Operation *forOp,
+                   llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
                    mlir::BaseMemRefType referencedBufType, int tileCol,
                    int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
                    llvm::SmallVector<int64_t, 4> inputStrides,
@@ -61,10 +67,17 @@ bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
 bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
                           llvm::ArrayRef<int64_t> strides);
 
+// Whether the DMA lowerings encode the BD in linear mode (no ND wrap limits):
+// a linear transfer, or a contiguous one on a shim NOC tile. Innermost first.
+bool isLinearModeTransfer(const AIE::AIETargetModel &targetModel, int col,
+                          int row, llvm::ArrayRef<int64_t> sizes,
+                          llvm::ArrayRef<int64_t> strides);
+
 // Folds an SSA value to a compile-time uint32_t if it is a constant integer,
 // otherwise returns nullopt. Used by ops whose operands carry
 // compile-time-known values in the static lowering path.
 std::optional<uint32_t> getConstantIntOperand(mlir::Value v);
+std::optional<uint64_t> getConstantInt64Operand(mlir::Value v);
 
 // Materializes a 32-bit integer constant. The inverse of getConstantIntOperand:
 // used when lowering passes feed a compile-time-known value into an npu op
@@ -72,6 +85,16 @@ std::optional<uint32_t> getConstantIntOperand(mlir::Value v);
 // as 0x80000000) is preserved.
 mlir::Value createConstantI32(mlir::OpBuilder &builder, mlir::Location loc,
                               uint32_t value);
+
+// Materializes an address_patch `arg_plus` offset as the narrowest constant
+// that holds it: i32 while the value fits, i64 beyond that. aie-rt carries the
+// field as u64, so truncating a wider offset mis-addresses the buffer.
+mlir::Value createConstantArgPlus(mlir::OpBuilder &builder, mlir::Location loc,
+                                  uint64_t value);
+
+// The first `aie.dma_start` or `aie.dma` in one of `device`'s shim DMAs, which
+// starts a channel teardown cannot stop, or null.
+mlir::Operation *findShimDmaStart(AIE::DeviceOp device);
 
 } // namespace AIEX
 } // namespace xilinx

@@ -5,13 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s | FileCheck %s
+// RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
 module @test {
   aie.device(xcvc1902) {
-    
-    //Note that the bank-aware allocator should issue two different types of errors with these buffer allocation addresses.
-    //This test is making sure that the alloc-scheme=basic-sequential flag is respected.
+
+    // Every buffer here is pinned, and some of the pins overlap ranges the
+    // allocator would otherwise choose. Pins win: the pass places them exactly
+    // where asked and allocates nothing around them.
 
     %t1 = aie.tile(0, 1)
     //CHECK: address = 2048
@@ -25,6 +26,6 @@ module @test {
 
     aie.core(%t1) {
       aie.end
-    }{ stackSize = 2048 :i32}
+    }{ stack_size = 2048 : i32}
   }
 }

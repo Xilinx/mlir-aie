@@ -15,9 +15,10 @@ import argparse
 from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -26,7 +27,6 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    StreamDims,
     TaskGroup,
     Worker,
 )
@@ -42,7 +42,7 @@ _KERNEL_SRC = Path(__file__).resolve().parent / "mm_bfp_mixed.cc"
 _AIE_KERNELS_INC = Path(__file__).resolve().parents[5] / "aie_kernels"
 
 
-@iron.jit(aiecc_flags=["--dynamic-objFifos", "--alloc-scheme=basic-sequential"])
+@iron.jit(aiecc_flags=["--dynamic-objFifos"])
 def n32_core_gemm(
     A: In,
     B: In,
@@ -67,26 +67,14 @@ def n32_core_gemm(
     B_l1_ty = np.ndarray[(k, n // 8), np.dtype[v8bfp16ebs8]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[bfloat16]]
 
-    kernel_flags = [
-        f"-DDIM_M={m}",
-        f"-DDIM_K={k}",
-        f"-DDIM_N={n}",
-        f"-I{_AIE_KERNELS_INC}",
-    ]
+    kernel_flags = [f"-I{_AIE_KERNELS_INC}"]
 
-    zero_kernel = ExternalFunction(
-        "zero_kernel_bf16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[C_l1_ty],
-        compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
-    )
+    zero_kernel = kernels.zero((m, n), bfloat16)
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_different_datatypes",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
+        compile_flags=kernel_flags,
     )
 
     A_l3l2_fifos: list[ObjectFifo] = []
@@ -98,38 +86,33 @@ def n32_core_gemm(
 
     # Input A: 4 shim-rows, each shim→memtile carries an L2 strip and
     # the memtile then fans out the L1 sub-tiles to all 8 cores in that row.
-    a_l3l2_dims: StreamDims = [(m, k), (mtk // k, m * k), (k, 1)]
-    a_l2l1_in_dims: StreamDims = [
-        (mtk // k * 4, m * k // 4),
-        (k // s, s),
-        (m // 4, k),
-        (s, 1),
-    ]
-    a_l2l1_out_dims: StreamDims = [
-        (k // s, r * s),
-        (m // 4 // r, r * k),
-        (r * s, 1),
-    ]
+    a_l3l2_dims = TensorAccessPattern.full((mtk // k, m, k)).permute((1, 0, 2))
+    a_l2l1_in_dims = TensorAccessPattern.full(
+        (mtk // k * 4, m // 4, k // s, s)
+    ).permute((0, 2, 1, 3))
+    a_l2l1_out_dims = TensorAccessPattern.full((m // 4 // r, k // s, r * s)).permute(
+        (1, 0, 2)
+    )
 
     for row in range(n_aie_rows):
         a_l3l2 = ObjectFifo(
             A_l2_ty,
             name=f"A_L3L2_{row}",
             depth=2,
-            dims_from_stream_per_cons=a_l3l2_dims,
+            from_stream_per_cons=a_l3l2_dims,
         )
         A_l3l2_fifos.append(a_l3l2)
         # forward() emits an ObjectFifoLink at the memtile. The new
-        # (A_l2l1) fifo's producer-side `dims_to_stream` is the memtile
-        # TX layout, and per-cons `dims_from_stream` is the layout each
+        # (A_l2l1) fifo's producer-side `to_stream` is the memtile
+        # TX layout, and per-cons `from_stream` is the layout each
         # of the 8 compute-tile consumers reads from the stream.
         A_l2l1_fifos.append(
             a_l3l2.cons().forward(
                 obj_type=A_l1_ty,
                 name=f"A_L2L1_{row}",
                 depth=2,
-                dims_to_stream=a_l2l1_in_dims,
-                dims_from_stream=a_l2l1_out_dims,
+                to_stream=a_l2l1_in_dims,
+                from_stream=a_l2l1_out_dims,
             )
         )
 
@@ -143,10 +126,10 @@ def n32_core_gemm(
 
     # Output C: per-col, 4 cores join at memtile, memtile→shim with the
     # final layout transform.
-    c_l2l3_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    c_l2l3_dims = TensorAccessPattern.full((m, n)).tile((r, t)).inverse()
     for col in range(n_aie_cols):
         c_l2l3 = ObjectFifo(
-            C_l2_ty, name=f"C_L2L3_{col}", depth=2, dims_to_stream=c_l2l3_dims
+            C_l2_ty, name=f"C_L2L3_{col}", depth=2, to_stream=c_l2l3_dims
         )
         C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n * i for i in range(n_aie_rows)]
@@ -186,7 +169,7 @@ def n32_core_gemm(
                 zero_kernel,
                 matmul_kernel,
             ],
-            stack_size=0xD00,
+            stack_size=0xA00,
         ),
     )
 
@@ -194,9 +177,9 @@ def n32_core_gemm(
     B_ty = np.ndarray[(K * N // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N,), np.dtype[bfloat16]]
 
-    A_taps = TensorTiler2D.group_tiler((M, K), (m, mtk), (1, K // mtk))
-    B_taps = TensorTiler2D.group_tiler((1, N * K // 8), (1, n * K // 8), (1, 1))
-    C_taps = TensorTiler2D.group_tiler((M, N), (n_aie_rows * m, n), (1, 1))
+    A_taps = TensorAccessPattern.full((M, K)).tile((m, mtk))
+    B_taps = TensorAccessPattern.full((N * K // 8,)).tile((n * K // 8,))
+    C_taps = TensorAccessPattern.full((M, N)).tile((n_aie_rows * m, n))
 
     num_row_tile = M // m // n_aie_rows
     num_col_tile = N // n // n_aie_cols
@@ -245,11 +228,10 @@ def n32_core_gemm(
                     group=tg,
                     wait=False,
                 )
-            c_base_idx = group_idx * n_aie_cols
             for col in range(n_aie_cols):
                 C_conses[col].drain(
                     c,
-                    tap=C_taps[c_base_idx + col],
+                    tap=C_taps[group_idx // num_col_tile, b_base_idx + col],
                     group=tg,
                     wait=True,
                 )

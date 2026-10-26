@@ -7,7 +7,6 @@
 
 * class `CSVLogger`
 * `load_class_label`
-* `unpickle`
 * `fuse_single_conv_bn_pair`
 * class `DataShaper`
 * `run_conv_torch_test`
@@ -69,14 +68,6 @@ def load_class_label(class_label_file: str, num_classes: int) -> list:
     class_label_list = [class_label[str(i)] for i in range(num_classes)]
 
     return class_label_list
-
-
-def unpickle(file):
-    import pickle
-
-    with open(file, "rb") as fo:
-        dict = pickle.load(fo, encoding="latin1")
-    return dict
 
 
 def fuse_single_conv_bn_pair(bn_mean, bn_var, bn_wts, bn_bias, conv_wts):
@@ -394,14 +385,14 @@ def run_conv_torch_test(
             (e.g. ``(co, h, w)``).
         out_scale: float multiplier applied to the AIE int output before comparison.
         atol: ``np.allclose`` absolute tolerance.
-        kernel_name: name passed to :class:`NPUKernel`; default ``None`` lets
+        kernel_name: name passed to `NPUKernel`; default ``None`` lets
             the runtime pick the first kernel in the xclbin.
         in_layout: input ``(order, defOrder)`` token pair passed positionally
-            to :meth:`DataShaper.reorder_mat`.  Defaults to ``YCXC8 / CYX``.
+            to `DataShaper.reorder_mat`.  Defaults to ``YCXC8 / CYX``.
         wts_layout: weights ``(order, defOrder)`` token pair passed positionally
-            to :meth:`DataShaper.reorder_mat`.  Defaults to ``OIYXI8O8 / OIYX``.
+            to `DataShaper.reorder_mat`.  Defaults to ``OIYXI8O8 / OIYX``.
         out_reorder: output ``(order, defOrder)`` token pair passed positionally
-            to :meth:`DataShaper.reorder_mat`.  Defaults to ``CDYX / YCXD``.
+            to `DataShaper.reorder_mat`.  Defaults to ``CDYX / YCXD``.
         dtype_in: numpy dtype for the input NPU buffer. Default int8.
         dtype_wts: numpy dtype for the weights NPU buffer. Default int8.
         dtype_out: numpy dtype for the output NPU buffer. Default int8.
