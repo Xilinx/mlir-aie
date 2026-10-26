@@ -1,0 +1,292 @@
+{
+ "schema": 1,
+ "target": "yolo26n-hw",
+ "id": "40283983936",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40283983936",
+ "date": "2026-10-26T07:08:43+00:00",
+ "commit": {
+  "id": "b775c31bef7a359dc0ff0c371af053de1cb61566",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/b775c31bef7a359dc0ff0c371af053de1cb61566",
+  "message": "Add ObjectFifoPool To IRON in Python (#3964)",
+  "timestamp": "2026-10-23T22:59:13Z"
+ },
+ "event": "schedule",
+ "pmode": "turbo",
+ "device": "Krackan",
+ "device_raw": "NPU Krackan 1",
+ "provenance": {
+  "commit": "b775c31bef",
+  "peano": "22.0.0+4f5df13d",
+  "kernels": "804811e55156",
+  "runtime": "CachedXRTRuntime",
+  "xdna": "2.25.0_20260902",
+  "xrt": "2.25.0",
+  "host": "aie8",
+  "device": "NPU Krackan 1",
+  "pmode": "turbo"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 42,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "yolo26n/640": {
+   "images_passed": {
+    "value": 128,
+    "unit": "images",
+    "range": "of 128"
+   },
+   "ort_matches": {
+    "value": 124,
+    "unit": "images",
+    "range": "of 128"
+   },
+   "us_per_image_b1": {
+    "value": 12544.6,
+    "unit": "us",
+    "range": "fastest of 20; median 12983.5, MAD 212.8"
+   },
+   "fps_b1": {
+    "value": 79.72,
+    "unit": "fps"
+   },
+   "dispatch_us_per_image_b1": {
+    "value": 11868.5,
+    "unit": "us",
+    "range": "fastest of 20; median 12333.7, MAD 226.8"
+   },
+   "npu_us_per_image_b1": {
+    "value": 11671.9,
+    "unit": "us",
+    "range": "fastest of 20; median 12137.1, MAD 226.8"
+   },
+   "host_overhead_us_per_image_b1": {
+    "value": 676.1,
+    "unit": "us",
+    "range": "fastest of 20; median 649.8, MAD 439.6"
+   },
+   "us_per_image_b8": {
+    "value": 6400.4,
+    "unit": "us",
+    "range": "fastest of 20; median 6510.5, MAD 31.5"
+   },
+   "fps_b8": {
+    "value": 156.24,
+    "unit": "fps"
+   },
+   "dispatch_us_per_image_b8": {
+    "value": 6306.64,
+    "unit": "us",
+    "range": "fastest of 20; median 6399.2, MAD 35.7"
+   },
+   "npu_us_per_image_b8": {
+    "value": 6281.71,
+    "unit": "us",
+    "range": "fastest of 20; median 6374.3, MAD 35.7"
+   },
+   "host_overhead_us_per_image_b8": {
+    "value": 93.71,
+    "unit": "us",
+    "range": "fastest of 20; median 111.3, MAD 67.2"
+   },
+   "map50_coco128": {
+    "value": 0.5859,
+    "unit": "mAP",
+    "range": "929 labelled objects"
+   },
+   "elf_bytes": {
+    "value": 2939624,
+    "unit": "bytes"
+   },
+   "compile_s": {
+    "value": 32.4,
+    "unit": "s"
+   },
+   "compile_peak_mib": {
+    "value": 880.8,
+    "unit": "MiB"
+   },
+   "compile_peak_rss_mb": {
+    "value": 490.2,
+    "unit": "MiB"
+   },
+   "compile_s_warm": {
+    "value": 4.79,
+    "unit": "s"
+   },
+   "compile_peak_mib_warm": {
+    "value": 313.7,
+    "unit": "MiB"
+   },
+   "compile_peak_rss_mb_warm": {
+    "value": 278.9,
+    "unit": "MiB"
+   },
+   "compile_place_s": {
+    "value": 0.08,
+    "unit": "s"
+   },
+   "compile_route_s": {
+    "value": 0.65,
+    "unit": "s"
+   },
+   "compile_lower_s": {
+    "value": 1.22,
+    "unit": "s"
+   },
+   "compile_kernels_s": {
+    "value": 27.5,
+    "unit": "s"
+   },
+   "compile_codegen_s": {
+    "value": 0.51,
+    "unit": "s"
+   },
+   "compile_link_s": {
+    "value": 0.33,
+    "unit": "s"
+   },
+   "compile_package_s": {
+    "value": 0.02,
+    "unit": "s"
+   },
+   "compile_other_s": {
+    "value": 0.0,
+    "unit": "s"
+   },
+   "compile_aiecc_wall_s": {
+    "value": 30.14,
+    "unit": "s"
+   },
+   "compile_outside_aiecc_s": {
+    "value": 2.25,
+    "unit": "s"
+   },
+   "compile_place_s_warm": {
+    "value": 0.08,
+    "unit": "s"
+   },
+   "compile_route_s_warm": {
+    "value": 0.57,
+    "unit": "s"
+   },
+   "compile_lower_s_warm": {
+    "value": 1.1,
+    "unit": "s"
+   },
+   "compile_kernels_s_warm": {
+    "value": 0.0,
+    "unit": "s"
+   },
+   "compile_codegen_s_warm": {
+    "value": 0.53,
+    "unit": "s"
+   },
+   "compile_link_s_warm": {
+    "value": 0.34,
+    "unit": "s"
+   },
+   "compile_package_s_warm": {
+    "value": 0.02,
+    "unit": "s"
+   },
+   "compile_other_s_warm": {
+    "value": 0.0,
+    "unit": "s"
+   },
+   "compile_aiecc_wall_s_warm": {
+    "value": 2.49,
+    "unit": "s"
+   },
+   "compile_outside_aiecc_s_warm": {
+    "value": 2.26,
+    "unit": "s"
+   },
+   "compile_aiecc_outside_graph_s": {
+    "value": 0.03,
+    "unit": "s"
+   },
+   "compile_aiecc_outside_graph_s_warm": {
+    "value": 0.04,
+    "unit": "s"
+   }
+  }
+ },
+ "builds": {},
+ "detail": [
+  {
+   "case": "yolo26n/640",
+   "passed": true,
+   "ort_passed": true,
+   "images_passed": 128,
+   "images_total": 128,
+   "ort_matches": 124,
+   "failed_images": [],
+   "us_per_image_b1": 12544.6,
+   "fps_b1": 79.72,
+   "timed_calls_b1": 20,
+   "median_us_per_image_b1": 12983.5,
+   "mad_us_per_image_b1": 212.8,
+   "dispatch_overhead_us_b1": 172.7,
+   "dispatch_us_per_image_b1": 11868.5,
+   "median_dispatch_us_per_image_b1": 12333.7,
+   "mad_dispatch_us_per_image_b1": 226.8,
+   "npu_us_per_image_b1": 11671.9,
+   "median_npu_us_per_image_b1": 12137.1,
+   "mad_npu_us_per_image_b1": 226.8,
+   "host_overhead_us_per_image_b1": 676.1,
+   "median_host_overhead_us_per_image_b1": 649.8,
+   "mad_host_overhead_us_per_image_b1": 439.6,
+   "us_per_image_b8": 6400.4,
+   "fps_b8": 156.24,
+   "timed_calls_b8": 20,
+   "median_us_per_image_b8": 6510.5,
+   "mad_us_per_image_b8": 31.5,
+   "dispatch_overhead_us_b8": 136.6,
+   "dispatch_us_per_image_b8": 6306.64,
+   "median_dispatch_us_per_image_b8": 6399.25,
+   "mad_dispatch_us_per_image_b8": 35.7,
+   "npu_us_per_image_b8": 6281.71,
+   "median_npu_us_per_image_b8": 6374.34,
+   "mad_npu_us_per_image_b8": 35.7,
+   "host_overhead_us_per_image_b8": 93.71,
+   "median_host_overhead_us_per_image_b8": 111.26,
+   "mad_host_overhead_us_per_image_b8": 67.15,
+   "map50_coco128_disagrees": false,
+   "map50_coco128": 0.5859,
+   "map50_coco128_objects": 929,
+   "elf_bytes": 2939624,
+   "compile_place_s": 0.08,
+   "compile_route_s": 0.65,
+   "compile_lower_s": 1.22,
+   "compile_kernels_s": 27.5,
+   "compile_codegen_s": 0.51,
+   "compile_link_s": 0.33,
+   "compile_package_s": 0.02,
+   "compile_other_s": 0.0,
+   "compile_aiecc_wall_s": 30.14,
+   "compile_outside_aiecc_s": 2.25,
+   "compile_aiecc_outside_graph_s": 0.03,
+   "compile_place_s_warm": 0.08,
+   "compile_route_s_warm": 0.57,
+   "compile_lower_s_warm": 1.1,
+   "compile_kernels_s_warm": 0.0,
+   "compile_codegen_s_warm": 0.53,
+   "compile_link_s_warm": 0.34,
+   "compile_package_s_warm": 0.02,
+   "compile_other_s_warm": 0.0,
+   "compile_aiecc_wall_s_warm": 2.49,
+   "compile_outside_aiecc_s_warm": 2.26,
+   "compile_aiecc_outside_graph_s_warm": 0.04,
+   "compile_peak_unavailable": null,
+   "compile_s": 32.4,
+   "compile_peak_mib": 880.8,
+   "compile_peak_rss_mb": 490.2,
+   "compile_s_warm": 4.79,
+   "compile_peak_mib_warm": 313.7,
+   "compile_peak_rss_mb_warm": 278.9
+  }
+ ]
+}
