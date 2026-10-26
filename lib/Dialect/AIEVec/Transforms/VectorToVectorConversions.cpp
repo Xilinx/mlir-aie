@@ -1127,8 +1127,36 @@ std::unique_ptr<::mlir::Pass> xilinx::aievec::createBF16EmulationPass() {
   return std::make_unique<BF16EmulationPass>();
 }
 
+// A broadcast of a vector that only adds leading dims, as the vector repeated
+// by a 1-D shuffle (mask [i % n]). The AIE2P shuffle lowering then sees the
+// repetition, alone or together with a shuffle that reads it, as one gather.
+struct BroadcastLeadingDimsToRepeatPattern
+    : public OpRewritePattern<vector::BroadcastOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::BroadcastOp op,
+                                PatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(op.getSourceType());
+    VectorType resType = op.getResultVectorType();
+    if (!srcType || srcType.getRank() != 1 || resType.getRank() < 2 ||
+        resType.getShape().back() != srcType.getNumElements() ||
+        !srcType.getElementType().isIntOrFloat() || resType.isScalable())
+      return failure();
+    int64_t n = srcType.getNumElements();
+    SmallVector<int64_t> mask;
+    for (int64_t i = 0; i < resType.getNumElements(); ++i)
+      mask.push_back(i % n);
+    Value src = op.getSource();
+    Value flat =
+        vector::ShuffleOp::create(rewriter, op.getLoc(), src, src, mask);
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, resType, flat);
+    return success();
+  }
+};
+
 struct VectorBroadcastLoweringPass
     : public PassWrapper<VectorBroadcastLoweringPass, OperationPass<>> {
+  VectorBroadcastLoweringPass(bool aie2p = false) : aie2p(aie2p) {}
 
   void runOnOperation() override {
     auto *op = getOperation();
@@ -1137,13 +1165,21 @@ struct VectorBroadcastLoweringPass
     populateVectorBroadcastLoweringPatterns(patterns);
     patterns.add<ConvertLeadingUnitDimInsertToReshapePattern>(
         patterns.getContext());
+    // Ahead of the generic lowering, which builds the result a row at a time.
+    if (aie2p)
+      patterns.add<BroadcastLeadingDimsToRepeatPattern>(patterns.getContext(),
+                                                        /*benefit=*/2);
 
     (void)applyPatternsGreedily(op, std::move(patterns));
   }
+
+private:
+  bool aie2p;
 };
 
-static std::unique_ptr<::mlir::Pass> createVectorBroadcastLoweringPass() {
-  return std::make_unique<VectorBroadcastLoweringPass>();
+static std::unique_ptr<::mlir::Pass>
+createVectorBroadcastLoweringPass(bool aie2p = false) {
+  return std::make_unique<VectorBroadcastLoweringPass>(aie2p);
 }
 
 // This pass converts standard vector ops into a subset of `Vector` ops more
@@ -1274,6 +1310,6 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
 
   pm.addPass(createReorderOperationsPass());
   pm.addPass(createCopyRemovalPass());
-  pm.addPass(createVectorBroadcastLoweringPass());
+  pm.addPass(createVectorBroadcastLoweringPass(options.aieTarget == "aie2p"));
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
 }

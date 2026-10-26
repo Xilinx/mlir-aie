@@ -19,8 +19,8 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for AIE dialect ops.
-class AIEVec_Op<string mnemonic, list<Trait> traits = []> :
-    Op<AIEVec_Dialect, mnemonic, traits> {
+class AIEVec_Op<string mnemonic, list<Trait> traits = []>
+    : Op<AIEVec_Dialect, mnemonic, traits> {
   // For every AIE vector op, there needs to be a:
   //   * void ${C++ class of Op}::print(OpAsmPrinter &p)
   //   * LogicalResult ${C++ class of Op}::verify()
@@ -31,14 +31,10 @@ class AIEVec_Op<string mnemonic, list<Trait> traits = []> :
   let hasVerifier = 1;
 }
 
-
-def AIEVec_AddElemOp:
-  AIEVec_Op<"add_elem", [
-    Pure,
-    AllTypesMatch<["lhs", "rhs", "result"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_AddElemOp
+    : AIEVec_Op<"add_elem", [Pure, AllTypesMatch<["lhs", "rhs", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector add elem";
   let description = [{
     AMD-specific AIE2 intrinsic that allows you to perform addition operation
@@ -48,14 +44,10 @@ def AIEVec_AddElemOp:
   let hasVerifier = 0;
 }
 
-
-def AIEVec_SubElemOp:
-  AIEVec_Op<"sub_elem", [
-    Pure,
-    AllTypesMatch<["lhs", "rhs", "result"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_SubElemOp
+    : AIEVec_Op<"sub_elem", [Pure, AllTypesMatch<["lhs", "rhs", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector sub elem";
   let description = [{
     AMD-specific AIE2 intrinsic that allows you to perform substraction operation
@@ -65,15 +57,12 @@ def AIEVec_SubElemOp:
   let hasVerifier = 0;
 }
 
-
-def AIEVec_FMAElemOp :
-  AIEVec_Op<"mac_elem", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
-               AnyVectorOfNonZeroRank:$acc,
-               DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_FMAElemOp
+    : AIEVec_Op<"mac_elem", [Pure]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+          AnyVectorOfNonZeroRank:$acc,
+          DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 element-wise vector fused multiply-add";
   let description = [{
     AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
@@ -82,12 +71,11 @@ def AIEVec_FMAElemOp :
     Note: the same operator can be used as fmsub operator by setting the
     'fmsub' bool to true.
   }];
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$lhs, "mlir::Value":$rhs, "mlir::Value":$acc,
-            "bool":$fmsub),
-    [{build($_builder, $_state, acc.getType(), lhs, rhs, acc,
-            fmsub);}]>
-  ];
+  let builders = [OpBuilder<
+      (ins "mlir::Value":$lhs, "mlir::Value":$rhs, "mlir::Value":$acc,
+          "bool":$fmsub),
+      [{build($_builder, $_state, acc.getType(), lhs, rhs, acc,
+            fmsub);}]>];
   let extraClassDeclaration = [{
     // Get the attribute names
     llvm::StringRef getSubAttrName() { return "fmsub"; }
@@ -120,51 +108,45 @@ def AIEVec_MulElemOp
         `vector<16xbf16>`  | `vector<16xbf16>`  | `vector<16xf32>`
         `vector<16xf32>`   | `vector<16xf32>`   | `vector<16xf32>`'
   }];
-} 
+}
 
-def AIEVec_BroadcastOp:
-  AIEVec_Op<"broadcast", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source,
-          DefaultValuedAttr<ConfinedAttr<AIEI8Attr, [IntNonNegative]>, "0">:$idx)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_BroadcastOp
+    : AIEVec_Op<"broadcast", [Pure]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source,
+          DefaultValuedAttr<ConfinedAttr<AIEI8Attr, [IntNonNegative]>,
+                            "0">:$idx)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 broadcast";
   let description = [{
     AMD-specific broadcast intrinsic. Extract element index from vector and broadcasts its
     value to all lanes of the vector.
     `$result = broadcast($source, $idx)`
   }];
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$source, "int32_t":$idx),
-    [{build($_builder, $_state, source.getType(), source, idx);}]>
-  ];
+  let builders = [OpBuilder<
+      (ins "mlir::Value":$source, "int32_t":$idx),
+      [{build($_builder, $_state, source.getType(), source, idx);}]>];
 }
 
-def AIEVec_BroadcastScalarOp:
-  AIEVec_Op<"broadcast_scalar", [
-    Pure
-  ]>,
-  Arguments<(ins AnyTypeOf<[BF16, F32, I32, I16, I8]>:$source)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_BroadcastScalarOp
+    : AIEVec_Op<"broadcast_scalar", [Pure]>,
+      Arguments<(ins AnyTypeOf<[BF16, F32, I32, I16, I8]>:$source)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 broadcast scalar";
   let description = [{
     AMD-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
     `$result = broadcast_scalar($source)`
   }];
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$source),
-    [{build($_builder, $_state, source.getType(), source);}]>
-  ];
+  let builders = [OpBuilder<
+      (ins "mlir::Value":$source),
+      [{build($_builder, $_state, source.getType(), source);}]>];
 }
 
-def AIEVec_UPSOp:
-  AIEVec_Op<"ups", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source,
-          DefaultValuedAttr<ConfinedAttr<AIEI8Attr, [IntNonNegative]>, "0">:$shift)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_UPSOp
+    : AIEVec_Op<"ups", [Pure]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source,
+          DefaultValuedAttr<ConfinedAttr<AIEI8Attr, [IntNonNegative]>,
+                            "0">:$shift)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ups";
   let description = [{
     AMD-specific upshift intrinsic. Moves data from AIE vector data type
@@ -172,40 +154,34 @@ def AIEVec_UPSOp:
     the shift parameter.
     `$result = ups($source, $shift)`
   }];
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$source, "int8_t":$shift),
-    [{build($_builder, $_state, source.getType(), source, shift);}]>
-  ];
+  let builders = [OpBuilder<
+      (ins "mlir::Value":$source, "int8_t":$shift),
+      [{build($_builder, $_state, source.getType(), source, shift);}]>];
   let hasFolder = 1;
 }
 
-def AIEVec_CastOp:
-  AIEVec_Op<"cast", [
-    Pure
-  ]>, 
-  Arguments<(ins AnyVectorOfNonZeroRank:$source,
-             DefaultValuedAttr<BoolAttr, "false">:$isResAcc)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_CastOp : AIEVec_Op<"cast", [Pure]>,
+                    Arguments<(ins AnyVectorOfNonZeroRank:$source,
+                        DefaultValuedAttr<BoolAttr, "false">:$isResAcc)>,
+                    Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE cast";
   let description = [{
     AIE2 cast intrinsic. Cast values from source data type to result data types.
     `$result = cast($source, isResAcc)`
   }];
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$source, "bool":$isResAcc),
-    [{build($_builder, $_state, source.getType(), source, isResAcc);}]>
-  ];
+  let builders = [OpBuilder<
+      (ins "mlir::Value":$source, "bool":$isResAcc),
+      [{build($_builder, $_state, source.getType(), source, isResAcc);}]>];
   let hasFolder = 1;
 }
 
-def AIEVec_SRSOp:
-  AIEVec_Op<"srs", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift,
-          DefaultValuedAttr<ConfinedAttr<AIEI32Attr,
-                 [IntMinValue<0>, IntMaxValue<1>]>, "1">:$sign)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_SRSOp
+    : AIEVec_Op<"srs", [Pure]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift,
+          DefaultValuedAttr<
+                     ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>,
+                     "1">:$sign)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE srs";
   let description = [{
     AMD-specific shift-round-saturate intrinsic. Moves values from
@@ -217,41 +193,34 @@ def AIEVec_SRSOp:
   let hasFolder = 1;
 }
 
-def AIEVec_UPDOp:
-  AIEVec_Op<"upd", [
-    Pure,
-    AttrSizedOperandSegments
-  ]>,
-  Arguments<(ins AnyShaped:$source,
-                 Variadic<Index>:$indices,
-                 DefaultValuedAttr<AIEI32Attr, "0">:$offset,
-                 DefaultValuedAttr<ConfinedAttr<AIEI8Attr,
-                        [IntMinValue<0>, IntMaxValue<1>]>, "0">:$index,
-                 Optional<AnyVectorOfNonZeroRank>:$vector)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_UPDOp
+    : AIEVec_Op<"upd", [Pure, AttrSizedOperandSegments]>,
+      Arguments<(ins AnyShaped:$source, Variadic<Index>:$indices,
+          DefaultValuedAttr<AIEI32Attr, "0">:$offset,
+          DefaultValuedAttr<
+                     ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<1>]>,
+                     "0">:$index,
+          Optional<AnyVectorOfNonZeroRank>:$vector)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE upd";
   let description = [{
     AMD-specific update intrinsic. General upd intrinsic updates contiguous
-    lanes of the result vector from a smaller source vector. This form of 
-    upd intrinsic combines the load of data from memory into a vector 
-    register, and then updating the lanes of the result vector using it. 
+    lanes of the result vector from a smaller source vector. This form of
+    upd intrinsic combines the load of data from memory into a vector
+    register, and then updating the lanes of the result vector using it.
     `$result = upd($source[$indices], $offset, $index)`
   }];
-  let builders = [
-    OpBuilder<(ins "mlir::Type":$resultType, "mlir::Value":$source,
-                   "mlir::ValueRange":$indices,
-                   "int32_t":$offset, "int8_t":$index),
-    [{build($_builder, $_state, resultType, source, indices, 
-                   offset, index, nullptr);}]>
-  ];
+  let builders = [OpBuilder<
+      (ins "mlir::Type":$resultType, "mlir::Value":$source,
+          "mlir::ValueRange":$indices, "int32_t":$offset, "int8_t":$index),
+      [{build($_builder, $_state, resultType, source, indices,
+                   offset, index, nullptr);}]>];
 }
 
-def AIEVec_ConcatOp:
-  AIEVec_Op<"concat", [
-    Pure, InferTypeOpAdaptor,
-  ]>, 
-  Arguments<(ins Variadic<AnyVectorOfNonZeroRank>:$sources)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_ConcatOp
+    : AIEVec_Op<"concat", [Pure, InferTypeOpAdaptor, ]>,
+      Arguments<(ins Variadic<AnyVectorOfNonZeroRank>:$sources)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE concat";
   let description = [{
     AMD-specific concat intrinsic. Concatenates two or more smaller
@@ -261,17 +230,15 @@ def AIEVec_ConcatOp:
   }];
 }
 
-def AIEVec_ExtOp:
-  AIEVec_Op<"ext", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source,
-             ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_ExtOp
+    : AIEVec_Op<"ext", [Pure]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source,
+          ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ext";
   let description = [{
-    AMD-specific vector extract intrinsic. Selects contiguous lanes from 
-    the source vector, and transfers the data from those lanes to the 
+    AMD-specific vector extract intrinsic. Selects contiguous lanes from
+    the source vector, and transfers the data from those lanes to the
     result. The lane selection is controlled by index. There are two cases:
     1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
     2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
@@ -281,12 +248,9 @@ def AIEVec_ExtOp:
   }];
 }
 
-def AIEVec_PackOp:
-  AIEVec_Op<"pack", [
-    Pure
-  ]>, 
-  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_PackOp : AIEVec_Op<"pack", [Pure]>,
+                    Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+                    Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE pack";
   let description = [{
     AMD-specific pack intrinsic. Pack a vector of 16-bit values into
@@ -295,12 +259,9 @@ def AIEVec_PackOp:
   }];
 }
 
-def AIEVec_UnpackOp:
-  AIEVec_Op<"unpack", [
-    Pure
-  ]>, 
-  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_UnpackOp : AIEVec_Op<"unpack", [Pure]>,
+                      Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+                      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE unpack";
   let description = [{
     AMD-specific unpack intrinsic. Unpack a vector of 8-bit values into
@@ -309,31 +270,26 @@ def AIEVec_UnpackOp:
   }];
 }
 
-def AIEVec_ShiftOp:
-  AIEVec_Op<"shift", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
-             I32:$shift, DefaultValuedAttr<BoolAttr, "false">:$isAcc)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_ShiftOp
+    : AIEVec_Op<"shift", [Pure]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+          I32:$shift, DefaultValuedAttr<BoolAttr, "false">:$isAcc)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 concat and shift";
   let description = [{
     AMD-specific shift intrinsic. Concatenates two
     vectors into a bigger vector, interprets them as a vector of 128 bytes
-    and returns v1::v2[shift: shift+64]. `shift` is the number of bytes to 
-    be shifted. The verifier confirms that all the input and result vectors 
+    and returns v1::v2[shift: shift+64]. `shift` is the number of bytes to
+    be shifted. The verifier confirms that all the input and result vectors
     have the same number of lanes and element types.
     `$result = shift($lhs, $rhs, $shift)`
   }];
 }
 
-def AIEVec_LegacyShuffleOp:
-  AIEVec_Op<"legacyshuffle", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source,
-             DefaultValuedAttr<AIEI32Attr, "0">:$mode)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_LegacyShuffleOp : AIEVec_Op<"legacyshuffle", [Pure]>,
+                             Arguments<(ins AnyVectorOfNonZeroRank:$source,
+                                 DefaultValuedAttr<AIEI32Attr, "0">:$mode)>,
+                             Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 shuffle";
   let description = [{
     AMD-specific vector shuffle intrinsic by a specific shuffle mode.
@@ -341,37 +297,31 @@ def AIEVec_LegacyShuffleOp:
   }];
 }
 
-def AIEVec_MulConvOp:
-  AIEVec_Op<"mul_conv", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
-             DefaultValuedAttr<AIEI32Attr, "0">:$M,
-             DefaultValuedAttr<AIEI32Attr, "0">:$N)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_MulConvOp
+    : AIEVec_Op<"mul_conv", [Pure]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+          DefaultValuedAttr<AIEI32Attr, "0">:$M,
+          DefaultValuedAttr<AIEI32Attr, "0">:$N)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 multiply convolution";
   let description = [{
     AMD-specific multiply convolution intrinsic. Multiply convolution operation
     of (M x N)matrix with (N x 1)kernel.
     `$result = mul_convMxN($lhs, $rhs)`
   }];
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$lhs, "mlir::Value":$rhs, "mlir::Type":$accType,
-               "int32_t":$M, "int32_t":$N),
-    [{build($_builder, $_state, accType, lhs, rhs, M, N);}]>
-  ];
+  let builders = [OpBuilder<
+      (ins "mlir::Value":$lhs, "mlir::Value":$rhs, "mlir::Type":$accType,
+          "int32_t":$M, "int32_t":$N),
+      [{build($_builder, $_state, accType, lhs, rhs, M, N);}]>];
 }
 
-def AIEVec_FMAConvOp:
-  AIEVec_Op<"fma_conv", [
-    Pure
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
-             AnyVectorOfNonZeroRank:$acc,
-             DefaultValuedAttr<AIEI32Attr, "0">:$M,
-             DefaultValuedAttr<AIEI32Attr, "0">:$N,
-             DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_FMAConvOp
+    : AIEVec_Op<"fma_conv", [Pure]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+          AnyVectorOfNonZeroRank:$acc, DefaultValuedAttr<AIEI32Attr, "0">:$M,
+          DefaultValuedAttr<AIEI32Attr, "0">:$N,
+          DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 multiply accumulate convolution";
   let description = [{
     AMD-specific multiply accumulate convolution intrinsic. Multiply accumulate convolution
@@ -379,19 +329,16 @@ def AIEVec_FMAConvOp:
     `$result = mac_convMxN($lhs, $rhs, $acc)`
   }];
 
-   let extraClassDeclaration = [{
+  let extraClassDeclaration = [{
      // Get the attributes name
      llvm::StringRef getSubAttrName() { return "fmsub"; }
    }];
 }
 
-def AIEVec_MinOp:
-  AIEVec_Op<"min", [
-    Pure,
-    AllTypesMatch<["lhs", "rhs", "result"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_MinOp
+    : AIEVec_Op<"min", [Pure, AllTypesMatch<["lhs", "rhs", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector minimum";
   let description = [{
     AMD-specific intrinsic that calculates the minimum between two input vectors.
@@ -401,13 +348,10 @@ def AIEVec_MinOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_MaxOp:
-  AIEVec_Op<"max", [
-    Pure,
-    AllTypesMatch<["lhs", "rhs", "result"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_MaxOp
+    : AIEVec_Op<"max", [Pure, AllTypesMatch<["lhs", "rhs", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector maximum";
   let description = [{
     AMD-specific intrinsic that calculates the maximum between two input vectors.
@@ -417,14 +361,11 @@ def AIEVec_MaxOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_CmpOp:
-  AIEVec_Op<"cmp", [
-    Pure,
-    AllTypesMatch<["lhs", "rhs"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
-             DefaultValuedStrAttr<StrAttr, "">:$pred)>,
-  Results<(outs AnyUnsignedInteger:$result)> {
+def AIEVec_CmpOp
+    : AIEVec_Op<"cmp", [Pure, AllTypesMatch<["lhs", "rhs"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+          DefaultValuedStrAttr<StrAttr, "">:$pred)>,
+      Results<(outs AnyUnsignedInteger:$result)> {
   let summary = "AIE vector comparison";
   let description = [{
     AMD-specific intrinsic that performs element-wise comparisonof two input vectors.
@@ -443,50 +384,43 @@ def AIEVec_CmpOp:
     -   unsigned greater than or equal (mnemonic: `"uge"`)
   }];
 
-  let assemblyFormat = "$lhs `,` $rhs ` ` `{` `pred` `=` $pred attr-dict `}` `:` type($lhs) `,` type($rhs)  `,` type($result)";
+  let assemblyFormat = "$lhs `,` $rhs ` ` `{` `pred` `=` $pred attr-dict `}` "
+                       "`:` type($lhs) `,` type($rhs)  `,` type($result)";
   let hasVerifier = 0;
 }
 
-def AIEVec_SelOp:
-  AIEVec_Op<"sel", [
-    Pure,
-    AllTypesMatch<["lhs", "rhs", "result"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
-             AnyUnsignedInteger:$sel)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_SelOp
+    : AIEVec_Op<"sel", [Pure, AllTypesMatch<["lhs", "rhs", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$lhs, AnyVectorOfNonZeroRank:$rhs,
+          AnyUnsignedInteger:$sel)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector lane wise selection";
   let description = [{
     AMD-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
     `$result = sel(`$lhs, $rhs, $sel`).
   }];
-  let assemblyFormat = "$lhs `,` $rhs `,` $sel attr-dict `:` type($lhs) `,` type($rhs) `,` type($sel) `,` type($result)";
+  let assemblyFormat = "$lhs `,` $rhs `,` $sel attr-dict `:` type($lhs) `,` "
+                       "type($rhs) `,` type($sel) `,` type($result)";
   let hasVerifier = 0;
 }
 
-def AIEVec_ExtElemOp:
-  AIEVec_Op<"ext_elem", [
-    Pure,
-    AllElementTypesMatch<["source", "result"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source, I32:$index)>,
-  Results<(outs AnyTypeOf<[BF16, F32, I32, I16, I8]>:$result)> {
+def AIEVec_ExtElemOp
+    : AIEVec_Op<"ext_elem", [Pure, AllElementTypesMatch<["source", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source, I32:$index)>,
+      Results<(outs AnyTypeOf<[BF16, F32, I32, I16, I8]>:$result)> {
   let summary = "AIE extract element";
-  let description =
-      [{AMD - specific extract element
+  let description = [{AMD - specific extract element
                   intrinsic. Extract element determined by index from vector.
     `$result = ext_elem($source, $index)`.}];
-  let assemblyFormat = "$source `,` $index attr-dict `:` type($source) `,` type($index) `,` type($result)";
+  let assemblyFormat = "$source `,` $index attr-dict `:` type($source) `,` "
+                       "type($index) `,` type($result)";
   let hasVerifier = 1;
 }
 
-def AIEVec_NegOp:
-  AIEVec_Op<"neg", [
-    Pure,
-    AllTypesMatch<["source", "result"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_NegOp
+    : AIEVec_Op<"neg", [Pure, AllTypesMatch<["source", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector negative";
   let description = [{
     AMD-specific intrinsic that negates the vector and returns the result.
@@ -496,13 +430,10 @@ def AIEVec_NegOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_ExpOp:
-  AIEVec_Op<"exp", [
-    Pure,
-    AllTypesMatch<["source", "result"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_ExpOp
+    : AIEVec_Op<"exp", [Pure, AllTypesMatch<["source", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector exponential";
   let description = [{
     AMD-specific intrinsic that computes the exponential of the input vector.
@@ -514,13 +445,10 @@ def AIEVec_ExpOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_TanhOp:
-  AIEVec_Op<"tanh", [
-    Pure,
-    AllTypesMatch<["source", "result"]>
-  ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_TanhOp
+    : AIEVec_Op<"tanh", [Pure, AllTypesMatch<["source", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE vector hyperbolic tangent";
   let description = [{
     AMD-specific intrinsic that computes the hyperbolic tangent of the input
@@ -531,13 +459,14 @@ def AIEVec_TanhOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_InvOp:
-  AIEVec_Op<"inv", [
-    Pure,
-    AllTypesMatch<["source", "result"]>
-  ]>,
-  Arguments<(ins AnyTypeOf<[F32, VectorOfLengthAndType<[16, 32], [F32]>]>:$source)>,
-  Results<(outs AnyTypeOf<[F32, VectorOfLengthAndType<[16, 32], [F32]>]>:$result)> {
+def AIEVec_InvOp
+    : AIEVec_Op<"inv", [Pure, AllTypesMatch<["source", "result"]>]>,
+      Arguments<(
+          ins AnyTypeOf<[F32,
+                         VectorOfLengthAndType<[16, 32], [F32]>]>:$source)>,
+      Results<(
+          outs AnyTypeOf<[F32,
+                          VectorOfLengthAndType<[16, 32], [F32]>]>:$result)> {
   let summary = "AIE inverse";
   let description = [{
     AMD-specific intrinsic that computes the inverse (1/x) of a scalar f32
@@ -550,16 +479,13 @@ def AIEVec_InvOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_BxorOp:
-  AIEVec_Op<"bxor", [
-    Pure,
-    AllTypesMatch<["lhs", "rhs", "result"]>
-  ]>,
-  Arguments<(ins
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
-  Results<(outs
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
+def AIEVec_BxorOp
+    : AIEVec_Op<"bxor", [Pure, AllTypesMatch<["lhs", "rhs", "result"]>]>,
+      Arguments<(
+          ins VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
+          VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
+      Results<(outs VectorOfBitWidthAndElementTypes<512, [I8, I16, I32,
+                                                          BF16]>:$result)> {
   let summary = "AIE vector bitwise xor";
   let description = [{
     AMD-specific intrinsic that computes bitwise xor of two vectors and returns
@@ -571,15 +497,12 @@ def AIEVec_BxorOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_BnegOp:
-  AIEVec_Op<"bneg", [
-    Pure,
-    AllTypesMatch<["source", "result"]>
-  ]>,
-  Arguments<(ins
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$source)>,
-  Results<(outs
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
+def AIEVec_BnegOp
+    : AIEVec_Op<"bneg", [Pure, AllTypesMatch<["source", "result"]>]>,
+      Arguments<(ins VectorOfBitWidthAndElementTypes<512, [I8, I16, I32,
+                                                           BF16]>:$source)>,
+      Results<(outs VectorOfBitWidthAndElementTypes<512, [I8, I16, I32,
+                                                          BF16]>:$result)> {
   let summary = "AIE vector bitwise negation";
   let description = [{
     AMD-specific intrinsic that computes bitwise negation of a vector and
@@ -590,16 +513,13 @@ def AIEVec_BnegOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_BorOp:
-  AIEVec_Op<"bor", [
-    Pure,
-    AllTypesMatch<["lhs", "rhs", "result"]>
-  ]>,
-  Arguments<(ins
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
-  Results<(outs
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
+def AIEVec_BorOp
+    : AIEVec_Op<"bor", [Pure, AllTypesMatch<["lhs", "rhs", "result"]>]>,
+      Arguments<(
+          ins VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
+          VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
+      Results<(outs VectorOfBitWidthAndElementTypes<512, [I8, I16, I32,
+                                                          BF16]>:$result)> {
   let summary = "AIE vector bitwise or";
   let description = [{
     AMD-specific intrinsic that computes bitwise or of two vectors and returns
@@ -611,16 +531,13 @@ def AIEVec_BorOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_BandOp:
-  AIEVec_Op<"band", [
-    Pure,
-    AllTypesMatch<["lhs", "rhs", "result"]>
-  ]>,
-  Arguments<(ins
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
-  Results<(outs
-      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
+def AIEVec_BandOp
+    : AIEVec_Op<"band", [Pure, AllTypesMatch<["lhs", "rhs", "result"]>]>,
+      Arguments<(
+          ins VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
+          VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
+      Results<(outs VectorOfBitWidthAndElementTypes<512, [I8, I16, I32,
+                                                          BF16]>:$result)> {
   let summary = "AIE vector bitwise and";
   let description = [{
     AMD-specific intrinsic that computes bitwise and of two vectors and returns
@@ -632,18 +549,14 @@ def AIEVec_BandOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_MatMulOp:
-  AIEVec_Op<"matmul", [
-    Pure,
-    AllRanksMatch<["lhs", "rhs", "acc"]>,
-    AllTypesMatch<["acc", "result"]>,
-    ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
-    IsValidAIE2MatMulShapeAndType<"lhs", "rhs", "acc">
-  ]>,
-  Arguments<(ins AIE2MatMulLHS:$lhs,
-                 AIE2MatMulRHS:$rhs,
-                 AIE2MatMulACC:$acc)>,
-  Results<(outs AIE2MatMulACC:$result)> {
+def AIEVec_MatMulOp
+    : AIEVec_Op<"matmul", [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
+                           AllTypesMatch<["acc", "result"]>,
+                           ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
+                           IsValidAIE2MatMulShapeAndType<"lhs", "rhs", "acc">]>,
+      Arguments<(ins AIE2MatMulLHS:$lhs, AIE2MatMulRHS:$rhs,
+          AIE2MatMulACC:$acc)>,
+      Results<(outs AIE2MatMulACC:$result)> {
   let summary = "AIE2 matrix-multiply and accummulate";
   let description = [{
     AMD AIEv2-specific intrinsic that performs a matrix multiplications
@@ -675,18 +588,15 @@ def AIEVec_MatMulOp:
   let hasVerifier = 0;
 }
 
-def AIEVec_MatMulOp_AIE2P:
-  AIEVec_Op<"matmul_aie2p", [
-    Pure,
-    AllRanksMatch<["lhs", "rhs", "acc"]>,
-    AllTypesMatch<["acc", "result"]>,
-    ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
-    IsValidAIE2PMatMulShapeAndType<"lhs", "rhs", "acc">
-  ]>,
-  Arguments<(ins AIE2PMatMulLHS:$lhs,
-                 AIE2PMatMulRHS:$rhs,
-                 AIE2PMatMulACC:$acc)>,
-  Results<(outs AIE2PMatMulACC:$result)> {
+def AIEVec_MatMulOp_AIE2P
+    : AIEVec_Op<"matmul_aie2p",
+                [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
+                 AllTypesMatch<["acc", "result"]>,
+                 ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
+                 IsValidAIE2PMatMulShapeAndType<"lhs", "rhs", "acc">]>,
+      Arguments<(ins AIE2PMatMulLHS:$lhs, AIE2PMatMulRHS:$rhs,
+          AIE2PMatMulACC:$acc)>,
+      Results<(outs AIE2PMatMulACC:$result)> {
   let summary = "AIE2P matrix-multiply and accummulate";
   let description = [{
     AMD AIEv2P-specific intrinsic that performs a matrix multiplication
@@ -713,18 +623,18 @@ def AIEVec_MatMulOp_AIE2P:
   let hasVerifier = 0;
 }
 
-def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
-    [Pure, AllTypesMatch<["lhs", "result"]>,
-     OptionalTypesMatchWith<"result and rhs have the same type", "result", "rhs",
-                            "::llvm::cast<Type>($_self)">]>,
-  Arguments<(ins VectorOfBitWidthAndElementTypes<
-                      512, [I8, I16, I32, I64, I128, I256,
-                            I512, BF16, F32]>:$lhs,
-                 Optional<VectorOfBitWidthAndElementTypes<
-                      512, [I8, I16, I32, I64, I128, I256,
-                            I512, BF16, F32]>>:$rhs,
-                 AIEVec_ShuffleModeAttr:$mode)>,
-  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_ShuffleOp
+    : AIEVec_Op<"shuffle", [Pure, AllTypesMatch<["lhs", "result"]>,
+                            OptionalTypesMatchWith<
+                                "result and rhs have the same type", "result",
+                                "rhs", "::llvm::cast<Type>($_self)">]>,
+      Arguments<(
+          ins VectorOfBitWidthAndElementTypes<
+              512, [I8, I16, I32, I64, I128, I256, I512, BF16, F32]>:$lhs,
+          Optional<VectorOfBitWidthAndElementTypes<
+              512, [I8, I16, I32, I64, I128, I256, I512, BF16, F32]>>:$rhs,
+          AIEVec_ShuffleModeAttr:$mode)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE2 shuffle";
   let description = [{
     AMD AIEv2-specific vector shuffle. It performs a shuffle of the elements of
@@ -804,6 +714,18 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
     t16_1x2_flip = [1, 0, 3, 2, ..., 29, 28, 31, 30]
     ```
 
+    In general, mode `t<w>_<r>x<c>` reads an `r`x`c` row-major matrix of
+    `w`-bit elements and returns its transpose: `out[j*r+i] = in[i*c+j]`. A
+    mode whose matrix spans 1024 bits reads `lhs:rhs` and returns the `lo` or
+    `hi` 512 bits. A mode whose matrix spans fewer than 512 bits reads `lhs`
+    only and transposes each such block of it on its own. A mode
+    `t<w>_1x<c>_flip` reverses the order of each group of `c` elements.
+
+    The modes 48 to 55 (`t32_8x2`, `t32_2x8`, `t64_4x2`, `t64_2x4`,
+    `t16_8x8_lo`, `t16_8x8_hi`, `t32_1x16_flip` and `t8_1x4_flip`) exist on
+    AIE2P only. Inside an `aie.device` of another architecture they are
+    rejected.
+
     The list of supported shuffle modes, required operands, and associated
     vector types are the following:
 
@@ -814,6 +736,7 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
          t8_8x8             | ^                  | ^
          t8_16x4            | ^                  | ^
          t8_4x16            | ^                  | ^
+         t8_1x4_flip (AIE2P)| ^                  | ^
          t8_64x2_lo         | `lhs` & `rhs`      | ^
          t8_64x2_hi         | ^                  | ^
          t8_2x64_lo         | ^                  | ^
@@ -836,7 +759,12 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
          t16_16x4_hi        | ^                  | ^
          t16_4x16_lo        | ^                  | ^
          t16_4x16_hi        | ^                  | ^
+         t16_8x8_lo (AIE2P) | ^                  | ^
+         t16_8x8_hi (AIE2P) | ^                  | ^
          t32_4x4            | `lhs`              | `vector<16xi32>` or `vector<16xf32>`
+         t32_8x2 (AIE2P)    | ^                  | ^
+         t32_2x8 (AIE2P)    | ^                  | ^
+         t32_1x16_flip (AIE2P) | ^               | ^
          t32_16x2_lo        | `lhs` & `rhs`      | ^
          t32_16x2_hi        | ^                  | ^
          t32_2x16_lo        | ^                  | ^
@@ -845,7 +773,9 @@ def AIEVec_ShuffleOp : AIEVec_Op<"shuffle",
          t32_8x4_hi         | ^                  | ^
          t32_4x8_lo         | ^                  | ^
          t32_4x8_hi         | ^                  | ^
-         t64_8x2_lo         | ^                  | `vector<8xi64>`
+         t64_4x2 (AIE2P)    | `lhs`              | `vector<8xi64>`
+         t64_2x4 (AIE2P)    | ^                  | ^
+         t64_8x2_lo         | `lhs` & `rhs`      | ^
          t64_8x2_hi         | ^                  | ^
          t64_2x8_lo         | ^                  | ^
          t64_2x8_hi         | ^                  | ^

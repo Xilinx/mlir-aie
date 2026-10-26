@@ -83,3 +83,30 @@ func.func @invalidMulElem64LanesInt(%arg0 : vector<64xi16>, %arg1 : vector<64xi1
   %0 = aievec.mul_elem %arg0, %arg1 : vector<64xi16>, vector<64xi16>, vector<64xi32>
   return %0 : vector<64xi32>
 }
+
+// -----
+
+func.func @invalidAIE2PShuffleModeElementType(%v : vector<32xi16>)
+            -> vector<32xi16> {
+  // expected-error @+1 {{shuffle mode 't32_8x2' requires vectors of 32-bit elements}}
+  %r = aievec.shuffle %v [t32_8x2] : vector<32xi16>
+  return %r : vector<32xi16>
+}
+
+// -----
+
+func.func @invalidAIE2PShuffleModeExtraOperand(%v : vector<8xi64>)
+            -> vector<8xi64> {
+  // expected-error @+1 {{shuffle mode 't64_2x4' does not admit a second operand}}
+  %r = aievec.shuffle %v, %v [t64_2x4] : vector<8xi64>
+  return %r : vector<8xi64>
+}
+
+// -----
+
+func.func @invalidAIE2PShuffleModeMissingOperand(%v : vector<32xbf16>)
+            -> vector<32xbf16> {
+  // expected-error @+1 {{shuffle mode 't16_8x8_hi' requires a second operand}}
+  %r = aievec.shuffle %v [t16_8x8_hi] : vector<32xbf16>
+  return %r : vector<32xbf16>
+}
