@@ -1,4 +1,6 @@
 // RUN: aie-opt --split-input-file --aie-objectfifo-allocate --verify-diagnostics %s -o /dev/null
+// RUN: not aie-opt --split-input-file --aie-objectfifo-allocate %s 2>&1 | FileCheck %s --implicit-check-not=aie.device
+// CHECK-COUNT-2: is already in use on this tile
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -7,10 +9,11 @@
 module @existing_source {
   aie.device(npu2) {
     %home = aie.tile(0, 2)
-    // expected-error @+1 {{number of output Core channels exceeded}}
     %alias = aie.logical_tile<CoreTile>(0, 2)
     %dest = aie.tile(1, 0)
+    // expected-note @+1 {{the other stream is here}}
     aie.flow(%home, Core : 0, %dest, DMA : 1)
+    // expected-error @+1 {{Core output 0 is already in use on this tile; a core stream port carries one circuit or only packet flows}}
     aie.route_endpoint @source(%alias) Core {channelIndex = 0 : i32}
     aie.route_endpoint @dest(%dest) DMA
     aie.route from @source to [@dest]
@@ -22,11 +25,12 @@ module @existing_source {
 module @existing_dest {
   aie.device(npu2) {
     %home = aie.tile(0, 2)
-    // expected-error @+1 {{number of input Core channels exceeded}}
     %alias = aie.logical_tile<CoreTile>(0, 2)
     %source = aie.tile(1, 0)
+    // expected-note @+1 {{the other stream is here}}
     aie.flow(%source, DMA : 1, %home, Core : 0)
     aie.route_endpoint @source(%source) DMA
+    // expected-error @+1 {{Core input 0 is already in use on this tile}}
     aie.route_endpoint @dest(%alias) Core {channelIndex = 0 : i32}
     aie.route from @source to [@dest]
   }

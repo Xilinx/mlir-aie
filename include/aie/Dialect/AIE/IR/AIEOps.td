@@ -48,6 +48,12 @@ def AIE_DeviceOp
     The design itself is described using a region of code contained by the device
     operation.
 
+    The optional `has_ctrl_pkt_overlay` attribute marks a design that a
+    control-packet reload (`aiecc --load-pdi-to-ctrl-pkt`) installs. The reload
+    configures the `@ctrl_pkt_overlay` device first and the rest of the design
+    through it, so the router keeps the switch settings the overlay's flows
+    take on their own. `aie-generate-column-control-overlay` sets it.
+
     Example:
     ```
     aie.device(xcvc1902) {
@@ -58,7 +64,8 @@ def AIE_DeviceOp
   }];
 
   let arguments = (ins AIEDevice:$device,
-      DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name);
+      DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name,
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$has_ctrl_pkt_overlay);
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
     `(` $device `)` ($sym_name^)? regions attr-dict
@@ -68,6 +75,18 @@ def AIE_DeviceOp
     static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
     static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
     static llvm::StringRef getDefaultDeviceName() { return "main"; }
+    // Visits each OpT the device holds outside its runtime sequences, which
+    // hold host-side ops alone.
+    template <typename OpT, typename FnT>
+    void walkOutsideRuntimeSequences(FnT &&fn) {
+      (*this)->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+        if (llvm::isa<xilinx::AIE::RuntimeSequenceOp>(op))
+          return mlir::WalkResult::skip();
+        if (auto typed = llvm::dyn_cast<OpT>(op))
+          fn(typed);
+        return mlir::WalkResult::advance();
+      });
+    }
   }];
   let hasVerifier = 1;
 }
@@ -338,14 +357,15 @@ def AIE_ShimDMAOp
 }
 
 def AIE_CoreOp
-    : AIE_Op<"core", [IsFlowEndPoint, IsCoreTile, TileElement,
+    : AIE_Op<"core", [ParentOneOf<["DeviceOp", "::mlir::ModuleOp"]>,
+                      IsFlowEndPoint, IsCoreTile, TileElement,
                       AutomaticAllocationScope,
                       DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
       Results<(outs Index)> {
   let arguments =
       (ins Index:$tile,
-          // Absent means "use this target's default"; read
-          // getEffectiveStackSize().
+          // Absent means "size it from measured_stack_size, or use this
+          // target's default"; read getEffectiveStackSize().
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
           // Where the stack starts, tile-relative. Absent means 0 unless
           // stack_bank requires the allocator to resolve it. The stack grows
@@ -359,8 +379,9 @@ def AIE_CoreOp
           // an address inside it and writes `stack_address`, the way it does
           // for a `mem_bank`-only aie.buffer.
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_bank,
-          // Written by aiecc from the compiled core object and the call graph.
-          // Absent when aiecc cannot measure the core.
+          // Written by aiecc from the call graph of the core's probe link,
+          // before placement, or else from its final link. Absent when aiecc
+          // cannot measure the core exactly.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
           // Bytes to set aside for the core's own .data, .rodata and .bss.
@@ -368,7 +389,7 @@ def AIE_CoreOp
           // run after placing all buffers.
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$data_size,
           // Written by aiecc from the linked ELF. Absent when aiecc cannot
-          // measure the core.
+          // measure the core; aiecc drops any value its input carries.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_data_size,
           // Bytes this core's own sections need in each bank, indexed by bank
@@ -376,6 +397,8 @@ def AIE_CoreOp
           // aiecc from a probe link, so that placement can leave the room the
           // real link will need. Absent when there is nothing to probe or the
           // probe could not run, in which case placement proceeds as before.
+          // Like every measured_* attribute, aiecc drops any value its input
+          // carries.
           OptionalAttr<DenseI32ArrayAttr>:$measured_bank_sizes,
           OptionalAttr<DenseI32ArrayAttr>:$measured_data_ranges,
           // Deprecated: attach link_with to func.func declarations instead and
@@ -421,8 +444,10 @@ def AIE_CoreOp
     file.
 
     This op has an optional `stack_size` attribute, to control the amount of memory (in bytes)
-    reserved for the stack.  When absent the target's default is used
-    (`AIETargetModel::getDefaultCoreStackSize()`).  The stack (and other data allocations)
+    reserved for the stack.  When absent the reservation is the larger of the
+    target's default (`AIETargetModel::getDefaultCoreStackSize()`) and
+    `measured_stack_size` rounded up to the stack ABI alignment, or the default
+    alone when `measured_stack_size` is absent.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data
     allocations in other cores.
 
@@ -444,14 +469,17 @@ def AIE_CoreOp
 
     By default the stack sits directly below the buffers with no clearance, so a
     `stack_size` below the core's use overwrites those buffers. `aiecc` measures
-    the stack this core needs, writes it to the `measured_stack_size` attribute,
-    and fails the build
-    when `stack_size` is smaller. `aiecc` measures the whole live call chain. That
+    the stack this core needs from a probe link before placing buffers, and
+    writes it to the `measured_stack_size` attribute, so a core that leaves
+    `stack_size` absent gets the stack it needs. After the final link it
+    measures again, and fails the build when the reservation is smaller than
+    the requirement. `aiecc` measures the whole live call chain. That
     chain starts above the core body: the runtime enters at `__start` (crt0), which
     calls `_main_init` (crt1), which calls the core body, which calls its kernels.
     `_main_init` holds a frame that stays live across the whole chain. `aiecc`
     measures the linked core, so the chain covers crt0 and crt1 too.
-    `measured_stack_size` stays absent when `aiecc` cannot measure the core. The
+    `aiecc` drops any `measured_stack_size` its input carries, so the attribute
+    stays absent when `aiecc` cannot measure the core. The
     measurement reads the relocations of the linked core, which the Peano link
     keeps and the chess/BCF link drops, so a `--xbridge` build leaves every core
     unmeasured. See `programming_guide/core_data_memory.md` for the mechanism, the
@@ -523,7 +551,7 @@ def AIE_CoreOp
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
     /// The stack reservation in bytes: the `stack_size` attribute when set,
-    /// otherwise this target's default.
+    /// otherwise this target's default grown to cover `measured_stack_size`.
     uint32_t getEffectiveStackSize();
     /// Where the stack sits in this tile's data memory. Absent `stack_address`
     /// means offset 0, which is where every core put it before the attribute
@@ -600,11 +628,17 @@ def AIE_ConnectOp
   }];
 }
 
-def AIE_FlowOp : AIE_Op<"flow", []> {
+def AIE_FlowOp
+    : AIE_Op<"flow", [ParentOneOf<["DeviceOp", "::mlir::ModuleOp"]>]> {
   let arguments = (ins Index:$source, WireBundle:$source_bundle,
       ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel, Index:$dest,
       WireBundle:$dest_bundle,
-      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel);
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
+      Variadic<Index>:$vias,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_channels,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels);
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
     The `aie.flow` operation represents a circuit switched connection between two endpoints, usually
@@ -612,23 +646,47 @@ def AIE_FlowOp : AIE_Op<"flow", []> {
     the programmed connections inside a switchbox, along with `aie.wire` operations which represent
     physical connections between switchboxes and other components.
 
+    An optional `via` list pins the exact tiles and stream-switch ports the flow
+    must route through.  Each via is a tuple of a tile value together with the
+    ingress and egress port (bundle and channel) the stream uses at that tile,
+    so the intermediate switchbox configuration follows from the flow itself.  A
+    flow with vias is equivalent to the disaggregated flows that meet on the via
+    ports, and `--aie-split-flow-vias` rewrites it into those segments plus a
+    local flow for each pinned switchbox hop.
+
     Example:
     ```
       %00 = aie.tile(0, 0)
       %11 = aie.tile(1, 1)
       %01 = aie.tile(0, 1)
       aie.flow(%00, "DMA" : 0, %11, "Core" : 1)
+      aie.flow(%00, "DMA" : 0, %11, "Core" : 1) via (%01 : South : 0 -> North : 0)
     ```
   }];
 
   let assemblyFormat = [{
-    `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)` attr-dict
+    `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)`
+    custom<FlowVias>($vias, $via_ingress_bundles, $via_ingress_channels, $via_egress_bundles, $via_egress_channels)
+    attr-dict
   }];
+
+  let hasVerifier = 1;
+
+  let builders = [OpBuilder<
+      (ins "mlir::Value":$source, "xilinx::AIE::WireBundle":$source_bundle,
+          "int":$source_channel, "mlir::Value":$dest,
+          "xilinx::AIE::WireBundle":$dest_bundle, "int":$dest_channel),
+      [{
+      build($_builder, $_state, source, source_bundle, source_channel, dest,
+            dest_bundle, dest_channel, mlir::ValueRange{}, nullptr, nullptr,
+            nullptr, nullptr);
+    }]>];
 
   let extraClassDeclaration = [{
     int sourceIndex() { return getSourceChannel(); }
     int destIndex() { return getDestChannel(); }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_AMSelOp
@@ -718,6 +776,7 @@ def AIE_MasterSetOp
   let extraClassDeclaration = [{
     int destIndex() { return getDestChannel(); }
     Port destPort() { return {getDestBundle(), destIndex()}; }
+    bool keepsPktHeader();
   }];
 
   let hasVerifier = 1;
@@ -808,7 +867,8 @@ def AIE_PacketRuleOp : AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
 }
 
 def AIE_PacketFlowOp
-    : AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
+    : AIE_Op<"packet_flow", [ParentOneOf<["DeviceOp", "::mlir::ModuleOp"]>,
+                             SingleBlockImplicitTerminator<"EndOp">]> {
   let summary = "Packet switched flow";
   let description = [{
     A logical packet-switched flow between tiles.  During place and
@@ -817,10 +877,11 @@ def AIE_PacketFlowOp
 
     The optional attribute keep_pkt_header indicates whether each
     data packet's packet header gets preserved at the flow's
-    destination. The optional attribute priority_route indicates
-    whether the packet flow is routed in priority over other flows,
-    so that they always get allocated with the same master, slave
-    ports, arbiters and master selects (msel).
+    destination. The optional attribute priority_route routes the flow
+    first, on its own, and the other flows route around it. If the design
+    cannot route that way, the flow routes with the others. In a device
+    with `has_ctrl_pkt_overlay`, the control overlay's flows (those to or
+    from a TileControl port) always keep the route they take on their own.
 
     The optional attribute mask, written after the ID in the parentheses,
     states the packet-rule mask of the flow. A slave port accepts a packet
@@ -830,13 +891,14 @@ def AIE_PacketFlowOp
     from other routes. The ID must have no bit outside the mask, or no packet
     can match.
 
+    A packet flow with via waypoints represents one linear route section and
+    must have exactly one source and one destination. Packet broadcasts and
+    merges use separate linear sections around materialized switchbox
+    configuration.
+
     Example:
     ```
       %01 = aie.tile(0, 1)
-      aie.packet_flow(0x10) {
-        aie.packet_source<%01, "Core" : 0>
-        aie.packet_dest<%01, "Core" : 0>
-      }
       // Claims 0x10 through 0x13: the mask ignores the low two bits.
       aie.packet_flow(0x10, mask = 0x1c) {
         aie.packet_source<%01, "Core" : 0>
@@ -847,11 +909,17 @@ def AIE_PacketFlowOp
 
   let arguments = (ins AIEI8Attr:$ID, OptionalAttr<AIEI8Attr>:$mask,
       OptionalAttr<BoolAttr>:$keep_pkt_header,
-      OptionalAttr<BoolAttr>:$priority_route);
+      OptionalAttr<BoolAttr>:$priority_route, Variadic<Index>:$vias,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_channels,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels);
   let regions = (region AnyRegion:$ports);
 
   let assemblyFormat = [{
-    `(` $ID (`,` `mask` `=` $mask^)? `)` regions attr-dict
+    `(` $ID (`,` `mask` `=` $mask^)? `)` regions
+    custom<FlowVias>($vias, $via_ingress_bundles, $via_ingress_channels, $via_egress_bundles, $via_egress_channels)
+    attr-dict
   }];
   let hasVerifier = 1;
 
@@ -859,13 +927,15 @@ def AIE_PacketFlowOp
                                 "mlir::BoolAttr":$keep_pkt_header,
                                 "mlir::BoolAttr":$priority_route),
                             [{
-      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route);
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr);
     }]>,
                   OpBuilder<(ins "mlir::IntegerAttr":$ID,
                                 "mlir::BoolAttr":$keep_pkt_header,
                                 "mlir::BoolAttr":$priority_route),
                             [{
-      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route);
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr);
     }]>];
 
   let extraClassDeclaration = [{
@@ -892,6 +962,7 @@ def AIE_PacketSourceOp : AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_PacketDestOp : AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
@@ -914,6 +985,7 @@ def AIE_PacketDestOp : AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_DMABDPACKETOp : AIE_Op<"dma_bd_packet", []> {
@@ -1088,8 +1160,62 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
     Do NOT copy an iteration number between the two ops: e.g. `size = 1` disables
     iteration here, but `iteration_size = 1` means *two* executions on
-    `writebd`. The `iteration` attribute is rejected on the other path; express
-    iteration there via the outermost `sizes`/`strides` dimension instead.
+    `writebd`.
+
+    Inside a runtime-sequence DMA task (`aiex.dma_configure_task`), the
+    attribute takes the iteration register that the outermost `sizes`/`strides`
+    dimension would otherwise fill, so such a BD gives one dimension fewer.
+
+    ## Runtime length
+
+    A shim DMA BD in a runtime sequence can take part of its length from an
+    `aiex.scratchpad_parameter`: with `length_parameter = @n` and
+    `length_unit = u`, the BD moves `len + n * u` elements, where `n` is the
+    value the host writes to the parameter. `len` stays the length for `n = 0`,
+    and may itself be 0 so that the BD moves exactly `n` units; `sizes` and
+    `strides` then still give the shape of each unit. The lowering writes the
+    BD with the static length, then emits an `aiex.npu.update_from_scratchpad`
+    that adds `n * u` to the BD's `Buffer_Length` word. A BD with an iteration
+    dimension gets the added length on every iteration.
+
+    ```
+    aiex.scratchpad_parameter @n : i32
+    ...
+    %t = aiex.dma_configure_task_for @of_in {
+      aie.dma_bd(%in : memref<4096xbf16> offset = 0 len = 64)
+          {length_parameter = @n, length_unit = 64 : i32}
+      aie.end
+    }
+    %rows = aiex.dma_configure_task_for @of_rows {
+      aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 0
+                 sizes = [2, 2, 4] strides = [16, 4, 1])
+          {length_parameter = @n, length_unit = 8 : i32}
+      aie.end
+    }
+    ```
+
+    The length works with either parameter kind, so one parameter can set both
+    a core's trip count (`aiex.read_scratchpad_parameter`) and the length of
+    the transfers feeding it, or both a transfer's `offset_parameter` and its
+    length.
+
+    Constraints. The firmware's register update clears the low two bits of the
+    length word before adding to it, and the stride of a size-1 dimension is
+    not encoded in the BD:
+    - Shim NOC tiles on AIE2 and AIE2P only.
+    - `len` and `length_unit` must both be multiples of 16 bytes.
+    - With a data layout transformation that is not a contiguous scan, the
+      added length continues the third dimension. A pattern whose third
+      dimension has size one but whose second does not (such as
+      `sizes = [2, 8]`) is lowered with its second dimension in the third, so
+      the added length continues that one instead. The dimension continued
+      needs a size above one (a size-1 dimension's stride is not encoded), and
+      `length_unit` must be a multiple of the elements moved per step of it
+      (the product of the sizes inside it).
+    - An `aiex.dma_configure_task` whose BD has an iteration dimension runs
+      only once unless it is pushed with a `repeat_count`, set on the task or
+      on its `aiex.dma_start_task`; this is not specific to the runtime
+      length, but a runtime length makes it easy to miss.
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,
@@ -1097,14 +1223,16 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // Can be given as a static attribute or a runtime SSA value. If neither
       // are given, we assume zero for the offset and the memref's full buffer
       // length for the length.
-      Optional<I32>:$offset, Optional<I32>:$len,
+      Optional<AnySignlessIntegerOrIndex>:$offset,
+      Optional<AnySignlessIntegerOrIndex>:$len,
       OptionalAttr<AIEI32Attr>:$static_offset,
       OptionalAttr<AIEI32Attr>:$static_len,
       // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
       // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
       // lands in static_sizes/static_strides; a runtime value becomes an
       // operand. Outermost dimension first.
-      Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      Variadic<AnySignlessIntegerOrIndex>:$sizes,
+      Variadic<AnySignlessIntegerOrIndex>:$strides,
       OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
       OptionalAttr<DenseI64ArrayAttr>:$static_strides,
       OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
@@ -1137,16 +1265,27 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // offset. After lowering, $offset_parameter is removed in favor of this
       // attribute.
       OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // If set, the aiex.scratchpad_parameter value n lengthens the BD at run
+      // time: it moves len + n * length_unit elements. See the "## Runtime
+      // length" section above.
+      OptionalAttr<FlatSymbolRefAttr>:$length_parameter,
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$length_unit,
+      // Set by --aie-lower-scratchpad-parameters from $length_parameter, which
+      // it replaces, like $offset_state_table_idx.
+      OptionalAttr<UI8Attr>:$length_state_table_idx,
+      // Set by --aie-lower-scratchpad-parameters when the length parameter is
+      // core kind, whose state-table slot holds n << 2 rather than n.
+      UnitAttr:$length_core_encoded,
       // should never be assigned by user...
       OptionalAttr<AIEI32Attr>:$next_bd_id);
 
   let hasVerifier = 1;
   let assemblyFormat = [{
     `(` $buffer `:` type($buffer)
-    ( `offset` `=` custom<DynamicScalar>($offset, $static_offset)^ )?
-    ( `len` `=` custom<DynamicScalar>($len, $static_len)^ )?
-    ( `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)^ )?
-    ( `strides` `=` custom<DynamicIndexList>($strides, $static_strides)^ )?
+    ( `offset` `=` custom<DynamicScalar>($offset, $static_offset, type($offset))^ )?
+    ( `len` `=` custom<DynamicScalar>($len, $static_len, type($len))^ )?
+    ( `sizes` `=` custom<TypedDynamicIndexList>($sizes, $static_sizes, type($sizes))^ )?
+    ( `strides` `=` custom<TypedDynamicIndexList>($strides, $static_strides, type($strides))^ )?
     ( `pad` $pad_dimensions^ )?
     `)`
     ( `bd_id_val` $bd_id_val^ `:` type($bd_id_val) )?
@@ -1230,6 +1369,10 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     // a mismatch (llvm #179401). A BD in a DMA task reaches its parent op's
     // verifier before its own, so that verifier must call this directly.
     ::mlir::LogicalResult verifyMixedSizesAndStrides();
+
+    // Rejects a constant transfer reaching past a static-shaped local buffer.
+    // Task BDs skip DMABDOp::verify, so their parent's verifier calls this too.
+    ::mlir::LogicalResult verifyTransferInBounds();
 
     // Reconstruct the historical BDDimLayoutAttr list (outermost-first) by
     // folding the mixed sizes/strides to constants. Returns:
@@ -1320,7 +1463,8 @@ def AIE_DMAStartOp
     : AIE_Op<"dma_start", [ParentOneOf<["MemOp", "MemTileDMAOp",
                                         "mlir::func::FuncOp", "ShimDMAOp"]>,
                            Terminator,
-                           DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+                           DeclareOpInterfaceMethods<InferTypeOpInterface>,
+                           DeclareOpInterfaceMethods<SymbolUserOpInterface>]>,
       Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
@@ -1342,6 +1486,16 @@ def AIE_DMAStartOp
         aie.end
     ```
 
+    In place of the index, the channel may be named by an `aie.route_endpoint`
+    with a `DMA` bundle on the same tile. `--aie-objectfifo-allocate` picks the
+    index along with the route's other channels and writes it here:
+    ```
+      aie.route_endpoint @in(%tile) DMA
+      aie.route from @src to [@in]
+      ...
+        aie.dma_start(S2MM, @in, ^bd0, ^end)
+    ```
+
     Conceptually, the aie.dma_start operation is a terminator that either passes
     control to a basic block containing DMA operations (through its first successor)
     or to a basic block for another dma_start, to an aie.end operation.
@@ -1357,7 +1511,8 @@ def AIE_DMAStartOp
   }];
 
   let arguments = (ins DMAChannelDir:$channel_dir,
-      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
+      AnyAttrOf<[ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>,
+                 FlatSymbolRefAttr]>:$channel,
       // repeat_count==0 means "do it once" and don't repeat
       DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
@@ -1365,12 +1520,35 @@ def AIE_DMAStartOp
       UnitAttr:$out_of_order);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
+    `(` $channel_dir `,` custom<DMAStartChannel>($channel) `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
   }];
+
+  let builders = [OpBuilder<(ins "DMAChannelDir":$channel_dir,
+                                "int":$channel_index, "int":$repeat_count,
+                                "int":$pad_value, "bool":$out_of_order,
+                                "mlir::Block *":$dest, "mlir::Block *":$chain),
+                            [{
+      build($_builder, $_state, channel_dir,
+            $_builder.getI32IntegerAttr(channel_index), repeat_count,
+            pad_value, out_of_order, dest, chain);
+    }]>];
 
   let extraClassDeclaration = [{
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
+    /// The hardware channel index. A start naming a route endpoint has none
+    /// until `--aie-objectfifo-allocate` resolves it.
+    int getChannelIndex() {
+      auto index = llvm::dyn_cast<mlir::IntegerAttr>(getChannel());
+      assert(index && "dma_start still names a route endpoint; run "
+                      "--aie-objectfifo-allocate");
+      return index.getInt();
+    }
+    /// The route endpoint naming the channel in place of an index, if any.
+    mlir::FlatSymbolRefAttr getEndpoint() {
+      return llvm::dyn_cast<mlir::FlatSymbolRefAttr>(getChannel());
+    }
+    RouteEndpointOp getEndpointOp();
   }];
 
   let hasCanonicalizer = 1;
@@ -1973,17 +2151,30 @@ def AIE_RouteEndpointOp
     `--aie-objectfifo-allocate` is free to pick the index, and the route can be
     written before that decision is made.
 
-    `bundle` says what kind of port it is. A `DMA` bundle on a shim tile names a
-    DMA the host runtime programs itself; the chosen channel is recorded as an
-    `aie.shim_dma_allocation` under `fifoName` for the runtime sequence to
-    address. A `Core` bundle names a core's stream port, which the core reads
-    and writes directly and which needs no DMA. Setting `channelIndex` pins the
-    channel instead of leaving it to allocation.
+    `bundle` says what kind of port it is. A `DMA` bundle names a DMA channel
+    the design programs itself, so allocation only picks its index:
+    - On a shim tile the host runtime programs it. With `fifoName` set, the
+      chosen channel is recorded as an `aie.shim_dma_allocation` named
+      `{fifoName}_shim_alloc`, and every use of this symbol is renamed to it.
+    - On any tile, an `aie.dma_start` in the tile's DMA program, or an
+      `aiex.dma_configure_task_for` in the runtime sequence, may name this
+      symbol in place of a channel index. Allocation rewrites both to the
+      index it picked.
+
+    A `Core` bundle names a core's stream port, which the core reads and writes
+    directly and which needs no DMA. Setting `channelIndex` pins the channel
+    instead of leaving it to allocation.
+
+    Allocation assigns these after the channels objectFIFOs use. On a tile
+    whose BD ids are split between channels (a MemTile's by channel parity), it
+    picks the free channel whose BDs have the most room left after the other
+    channels' programs and runtime tasks.
 
     Example:
     ```
       aie.route_endpoint @in(%shim) DMA {fifoName = "in"}
       aie.route_endpoint @out(%tile) Core {channelIndex = 0}
+      aie.route_endpoint @b_in(%memtile) DMA
     ```
   }];
 
@@ -2022,8 +2213,14 @@ def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
     `packet` routes the connection as an `aie.packet_flow` instead, sharing the
     stream with every other packet flow rather than reserving a circuit for it.
     `packet_id` pins the header the source stamps; without it allocation picks
-    an id no other flow is using. Circuit- and packet-switched routes coexist in
-    one device.
+    an id no other flow is using. `keep_pkt_header` keeps each packet's header
+    at the destinations, as on `aie.packet_flow`. Circuit- and packet-switched
+    routes coexist in one device.
+
+    Packet routes that name the same endpoint, all as source or all as
+    destination, share its one channel: several sources merge into one
+    receiving channel, or one channel sends several ids. A shared source's BDs
+    state each packet's header themselves, so its routes pin `packet_id`.
 
     Example:
     ```
@@ -2034,7 +2231,8 @@ def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
 
   let arguments = (ins FlatSymbolRefAttr:$source,
       FlatSymbolRefArrayAttr:$destinations, UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id,
+      UnitAttr:$keep_pkt_header);
 
   let assemblyFormat = [{
     `from` $source `to` $destinations attr-dict
@@ -2427,6 +2625,12 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     bool isJoin() { return getFifoIns().size() > 1; }
     bool isDistribute() { return getFifoOuts().size() > 1; }
     std::optional<mlir::Value> getOptionalSharedTile();
+    // The fifo whose declared object type sizes the pool on the shared tile.
+    ObjectFifoCreateOp getPoolOwner();
+    // The pool's (offset, size) segments in the owner's elements: one per
+    // participant on a join's or distribute's many side, else the whole
+    // object.
+    llvm::SmallVector<std::pair<int64_t, int64_t>> getPoolSegments();
     std::optional<int> getRepeatCount();
     std::vector<int> getJoinTransferLengths();
     std::vector<int> getDistributeTransferLengths();
@@ -2449,6 +2653,15 @@ def AIE_ObjectFifoSegmentOp
     `produceLock` and `consumeLock` are filled in by
     `--aie-objectfifo-allocate`, which leaves alone whatever is already named.
 
+    `manualFill` and `manualDrain` hand one end of the segment to a DMA
+    program the author writes, such as an `aie.mem` whose buffer descriptors
+    name this segment's locks. `--aie-objectfifo-verify` then asks for no
+    endpoint at that end, since the pool ops do not describe who works it.
+    The author owes the lock protocol the other end expects: a filler acquires
+    `produceLock` and releases `consumeLock`, a drainer the reverse, by the
+    same count per object. Setting the attribute also claims that end, so a
+    segment carrying it must not also name an endpoint there.
+
     Example:
     ```
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
@@ -2457,7 +2670,8 @@ def AIE_ObjectFifoSegmentOp
 
   let arguments = (ins SymbolNameAttr:$sym_name, AIEI32Attr:$offset,
       AIEI32Attr:$size, OptionalAttr<FlatSymbolRefAttr>:$produceLock,
-      OptionalAttr<FlatSymbolRefAttr>:$consumeLock);
+      OptionalAttr<FlatSymbolRefAttr>:$consumeLock, UnitAttr:$manualFill,
+      UnitAttr:$manualDrain);
 
   let assemblyFormat = [{
     $sym_name attr-dict
@@ -2655,6 +2869,20 @@ def AIE_ObjectFifoDmaEndpointOp
 
     /// Segments this endpoint is responsible for.
     std::vector<ObjectFifoSegmentOp> getSelectedSegments();
+
+    /// Descriptors in one pass over the pool: one per object and selected
+    /// segment.
+    int64_t getNumDescriptors();
+    /// Times the chain runs per pass: the pool's repeat count at the draining
+    /// end, once at the filling end.
+    int64_t getRepeat();
+    /// Whether the channel's own repeat count replays the chain, which it can
+    /// only for a single descriptor, rather than copies of it.
+    bool repeatsInHardware();
+    /// Buffer descriptors `--aie-objectfifo-lower-dmas` emits for this
+    /// endpoint: the pass's descriptors, copied per repeat unless the
+    /// repeat runs in hardware.
+    int64_t getNumBDs();
   }];
 }
 
@@ -2821,7 +3049,11 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [AIESymbol, NoTerminator,
       OptionalAttr<TraceBufferAttr>:$trace_buffer,
       // If this runtime sequence produces multiple traces, `trace_slices`
       // states which slice of the trace buffer corresponds to which trace.
-      OptionalAttr<TraceSliceArrayAttr>:$trace_slices);
+      OptionalAttr<TraceSliceArrayAttr>:$trace_slices,
+      // Set by `--aie-lower-scratchpad-parameters` on a sequence no `aiex.run`
+      // calls, a command of its own with its own scratchpad: the parameters
+      // its run reads, whose state-table slots are distinct.
+      OptionalAttr<FlatSymbolRefArrayAttr>:$scratchpad_parameters);
   let regions = (region AnyRegion:$body);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;

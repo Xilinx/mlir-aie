@@ -8,6 +8,7 @@ aie.dma_bd op as an #aie.bd_iteration attribute."""
 
 import numpy as np
 
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Bd, BdIteration, Buffer, DmaChannel, Program, Runtime, TileDma
 from aie.iron.device import NPU2Col1, Tile
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
@@ -29,11 +30,8 @@ def emit_iteration_bd():
                 bds=[
                     Bd(
                         buffer=buf,
-                        offset=0,
-                        length=n,
-                        sizes=[16, 16],
-                        strides=[16, 1],
-                        iteration=BdIteration(size=4, stride=16, current=2),
+                        tap=TensorAccessPattern.full((n,))[:64],
+                        iteration=BdIteration(size=4, stride=64, current=2),
                     ),
                 ],
             ),
@@ -49,6 +47,6 @@ def emit_iteration_bd():
     return Program(NPU2Col1(), rt).resolve_program()
 
 
-# CHECK: aie.dma_bd({{.*}} : memref<256xi32> len = {{.*}} sizes = [16, 16] strides = [16, 1])
-# CHECK-SAME: iteration = #aie.bd_iteration<size = 4, stride = 16, current = 2>
+# CHECK: aie.dma_bd({{.*}} : memref<256xi32> len = 64)
+# CHECK-SAME: iteration = #aie.bd_iteration<size = 4, stride = 64, current = 2>
 print(emit_iteration_bd())

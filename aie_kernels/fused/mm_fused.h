@@ -101,37 +101,52 @@ constexpr aie::rounding_mode round_mode = aie::rounding_mode::conv_even;
 constexpr aie::rounding_mode round_mode = aie::rounding_mode::floor;
 #endif
 
-// One activation's inner loop. Templated so each mode compiles branch-free;
-// mm_fused_epilogue_chunk selects between them once per chunk.
-//
-// The clamp is unconditional. An unclamped caller sends (-inf, +inf), which
-// leaves every finite value bit-identical, so there is no unclamped
-// instantiation to compile and no clamped-versus-not fork in the build.
-template <int MODE>
-static inline void epilogue_body(bfloat16 *__restrict y_out,
-                                 const float *__restrict src, float clamp_min,
-                                 float clamp_max) {
-  // The clamp runs on the bf16 result, against bounds rounded the same way.
-  // Rounding is monotone and fixes representable values, so for finite
-  // inputs round(clamp(f, lo, hi)) == clamp(round(f), round(lo), round(hi))
-  // and the output is bit-identical to clamping in f32. aie2p has no native
-  // f32 min/max.
-  aie::accum<accfloat, V> bound;
-  bound.from_vector(aie::broadcast<float, V>(clamp_min));
-  const aie::vector<bfloat16, V> lo = bound.template to_vector<bfloat16>();
-  bound.from_vector(aie::broadcast<float, V>(clamp_max));
-  const aie::vector<bfloat16, V> hi = bound.template to_vector<bfloat16>();
+// MM_FUSED_GELU_BF16_STEPS reproduces the gelu (mode 1) of FastFlowLM's shipped
+// mm overlay bit for bit on AIE2P. The overlay rounds the accumulator to bf16
+// and then rounds the result of each step of the activation. The default gelu
+// rounds once and is more accurate, so use the flag only to match the overlay.
+// The other modes ignore it.
+#ifdef MM_FUSED_GELU_BF16_STEPS
+constexpr bool gelu_bf16_steps = true;
+#else
+constexpr bool gelu_bf16_steps = false;
+#endif
 
-  // Walking cursors rather than src + j * V, which Peano recomputes each
-  // trip.
-  AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
-  AIE_LOOP_UNROLL(2)
-  for (int j = 0; j < CHUNK / V; j++) {
+// x * sigmoid(1.702x) in the step order of the overlay's getGeluBf16_nonLUT,
+// with sigmoid(y) = (tanh(y/2) + 1) / 2. Each step rounds to bf16 in the core's
+// rounding mode. The result bits depend on the step order and on the bf16 value
+// of 1.702: (bfloat16)1.702f is 1.703125, as in the overlay. The two products
+// by 0.5 are exact.
+template <int W>
+static inline aie::vector<bfloat16, W>
+gelu_bf16_steps_vec(aie::vector<bfloat16, W> x) {
+  const aie::vector<bfloat16, W> scale =
+      aie::broadcast<bfloat16, W>((bfloat16)1.702f);
+  const aie::vector<bfloat16, W> half =
+      aie::broadcast<bfloat16, W>((bfloat16)0.5f);
+  const aie::vector<bfloat16, W> one =
+      aie::broadcast<bfloat16, W>((bfloat16)1.0f);
+  const aie::vector<bfloat16, W> y =
+      aie::mul(x, scale).template to_vector<bfloat16>();
+  const aie::vector<bfloat16, W> t =
+      tanh_bf16_vec<W>(aie::mul(y, half).template to_vector<float>());
+  const aie::vector<bfloat16, W> sig =
+      aie::mul(aie::add(t, one), half).template to_vector<bfloat16>();
+  return aie::mul(x, sig).template to_vector<bfloat16>();
+}
+
+// One vector of the output: the activation and the conversion.
+template <int MODE>
+static inline aie::vector<bfloat16, V> epilogue_vec(aie::vector<float, V> f) {
+  aie::vector<bfloat16, V> v;
+  if constexpr (MODE == 1 && gelu_bf16_steps) {
+    aie::accum<accfloat, V> acc;
+    acc.from_vector(f);
+    v = gelu_bf16_steps_vec<V>(acc.template to_vector<bfloat16>());
+  } else {
     // The accumulator stays f32 through the activation and is converted to
     // bf16 exactly once. Converting first would round twice and let the
     // activation's slope amplify the first rounding -- see activations.h.
-    aie::vector<float, V> f = aie::load_v<V>(src);
-    src += V;
     if constexpr (MODE == 1)
       f = gelu_vec<V>(f);
     else if constexpr (MODE == 2)
@@ -140,38 +155,114 @@ static inline void epilogue_body(bfloat16 *__restrict y_out,
       f = sigmoid_vec<V>(f);
     aie::accum<accfloat, V> out;
     out.from_vector(f);
-    aie::vector<bfloat16, V> v = out.template to_vector<bfloat16>();
-    aie::store_v(y_out, aie::max(aie::min(v, hi), lo));
-    y_out += V;
+    v = out.template to_vector<bfloat16>();
+  }
+  return v;
+}
+
+// One activation's inner loop. Templated so each mode compiles branch-free;
+// mm_fused_epilogue_chunk selects between them once per chunk.
+template <int MODE>
+static inline void epilogue_body(bfloat16 *__restrict y_out,
+                                 const float *__restrict src, float clamp_min,
+                                 float clamp_max) {
+  // The clamp is unconditional. An unclamped caller sends (-inf, +inf), which
+  // leaves every finite value bit-identical, so there is no unclamped
+  // instantiation to compile and no clamped-versus-not fork in the build.
+  //
+  // The clamp runs on the bf16 result, against bounds rounded the same way.
+  // Rounding is monotone and fixes representable values, so for finite
+  // inputs round(clamp(f, lo, hi)) == clamp(round(f), round(lo), round(hi))
+  // and the output is bit-identical to clamping in f32. aie2p has no native
+  // f32 min/max.
+  //
+  // aie2's LUT tanh orders its table reads against every other load and
+  // store, so a loop that loads, looks up and stores one vector runs its
+  // vectors one after another. Its activations load K vectors, look them all
+  // up, then store them, as lut_map_bf16 does for bf16 inputs.
+  constexpr bool batched = AIE_TUNED_AIE2 && MODE != 0;
+#ifdef MM_FUSED_C_HALVES
+  // The k step leaves each r x t block as its left then right t/2 columns.
+  // The conversion is lane-wise, so the halves are rejoined after it, and the
+  // clamp, also lane-wise, runs on the rejoined vectors at full width.
+  constexpr int HALF = R * T / 2;
+  static_assert(CHUNK % (R * T) == 0 && HALF % V == 0);
+  constexpr int W = batched ? 2 * V : HALF;
+#else
+  constexpr int W = V;
+#endif
+  aie::accum<accfloat, W> bound;
+  bound.from_vector(aie::broadcast<float, W>(clamp_min));
+  const aie::vector<bfloat16, W> lo = bound.template to_vector<bfloat16>();
+  bound.from_vector(aie::broadcast<float, W>(clamp_max));
+  const aie::vector<bfloat16, W> hi = bound.template to_vector<bfloat16>();
+
+  if constexpr (batched) {
+#ifdef MM_FUSED_C_HALVES
+    constexpr int K = R * T / V;
+#else
+    constexpr int K = CHUNK % (4 * V) == 0 ? 4 : CHUNK % (2 * V) == 0 ? 2 : 1;
+#endif
+    AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / (K * V))
+    for (int j = 0; j < CHUNK / (K * V); j++) {
+      aie::vector<float, V> x[K];
+      for (int k = 0; k < K; k++)
+        x[k] = aie::load_v<V>(src + k * V);
+      src += K * V;
+      aie::vector<bfloat16, V> y[K];
+      AIE_LOOP_UNROLL_FULL
+      for (int k = 0; k < K; k++)
+        y[k] = epilogue_vec<MODE>(x[k]);
+#ifdef MM_FUSED_C_HALVES
+      static_assert(V % (T / 2) == 0);
+      for (int p = 0; p < K / 2; p++) {
+        auto [top, bottom] = aie::interleave_zip(y[p], y[K / 2 + p], T / 2);
+        aie::store_v(y_out + p * W,
+                     aie::max(aie::min(aie::concat(top, bottom), hi), lo));
+      }
+#else
+      for (int k = 0; k < K; k++)
+        aie::store_v(y_out + k * V, aie::max(aie::min(y[k], hi), lo));
+#endif
+      y_out += K * V;
+    }
+  } else {
+#ifdef MM_FUSED_C_HALVES
+    AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / (R * T))
+    for (int j = 0; j < CHUNK / (R * T); j++) {
+      aie::vector<bfloat16, HALF> left, right;
+      for (int p = 0; p < HALF / V; p++) {
+        left.insert(p, epilogue_vec<MODE>(aie::load_v<V>(src + p * V)));
+        right.insert(p, epilogue_vec<MODE>(aie::load_v<V>(src + HALF + p * V)));
+      }
+      src += R * T;
+      auto [top, bottom] = aie::interleave_zip(left, right, T / 2);
+      aie::store_v(y_out, aie::max(aie::min(top, hi), lo));
+      aie::store_v(y_out + HALF, aie::max(aie::min(bottom, hi), lo));
+      y_out += R * T;
+    }
+#else
+    // Walking cursors rather than src + j * V, which Peano recomputes each
+    // trip.
+    AIE_LOOP_MAX_ITERATION_COUNT(CHUNK / V)
+    AIE_LOOP_UNROLL(2)
+    for (int j = 0; j < CHUNK / V; j++) {
+      aie::store_v(
+          y_out,
+          aie::max(aie::min(epilogue_vec<MODE>(aie::load_v<V>(src)), hi), lo));
+      src += V;
+      y_out += V;
+    }
+#endif
   }
 }
-} // namespace
 
-extern "C" {
-
-// Zero the f32 accumulator, before the k loop starts accumulating into it.
-//
-// A bias is deliberately not supported: initialising the accumulator from one
-// would mean consuming an extra object through the handshake the B ObjectFifo
-// owns, which desynchronises that fifo and hangs rather than mis-computing.
-void mm_fused_acc_init(float *y_acc) {
-  zero_vectorized<float, M, N, step_markers>(y_acc);
-}
-
-// One step of the k loop: one B chunk multiplied against one A band,
-// accumulated into y_acc.
-//
-// Takes no locks. A is a single object spanning every z slice of the mmul, and
-// the A and B fifos own the handshake, so the core body acquires around this
-// call rather than the kernel acquiring inside it.
-// mm_fused_b_elem_t is bfp16ebs8 or bfloat16 depending on how B is stored,
-// which mm_fused_mmul.h selects from the architecture. One signature either
-// way, so the design's Kernel declaration does not have to care.
-void mm_fused_k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
-                     int32_t band) {
+// mm_fused_k_step and mm_fused_epilogue_chunk without the rounding mode,
+// which fused_mm_tile sets once around all of them.
+inline void k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
+                   int32_t band) {
   if constexpr (step_markers)
     event0();
-  ::aie::set_rounding(round_mode);
   // The accumulator is [row-block][col-block][r*t], so band b starts at
   // b * MA * N -- b*(MA/R) row-blocks in, each colB*(r*t) wide.
   mm_fused_mmul_2x2<(MA / R), (CT_K / S), (N / T), R, S, T>(
@@ -180,25 +271,11 @@ void mm_fused_k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
     event1();
 }
 
-// Output stage: convert chunk (outer * C_DEPTH + half) of the f32 accumulator
-// to a bf16 C object, applying an activation and clamp on the way out. Fusing
-// here is the point -- the values are already in registers, so the activation
-// costs one more vector op per 16 elements instead of a separate pass over L1.
-//
-// The mode is runtime, tested once per chunk so the inner loops stay
-// branch-free; the cost is program memory, since every mode in the mask is
-// compiled in. The bounds arrive as raw int32 because npu_write_rtp only
-// writes i32 words. The chunk index is split (outer, half) because the core
-// body unrolls the drain by the C fifo depth to keep the acquired buffer index
-// a compile-time constant.
-void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
-                             int32_t half, int32_t mode, int32_t clamp_min_bits,
-                             int32_t clamp_max_bits) {
-  // The store below is a conversion, so it obeys the same rounding mode the
-  // mmul does and must agree with it.
+inline void epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
+                           int32_t half, int32_t mode, int32_t clamp_min_bits,
+                           int32_t clamp_max_bits) {
   if constexpr (step_markers)
     event0();
-  ::aie::set_rounding(round_mode);
   const float *__restrict src = y_acc + (outer * C_DEPTH + half) * CHUNK;
   // __builtin_bit_cast, not memcpy: memcpy leaves an unresolved external
   // call here rather than folding to a register move.
@@ -229,5 +306,55 @@ void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
   }
   if constexpr (step_markers)
     event1();
+}
+} // namespace
+
+extern "C" {
+
+// Zero the f32 accumulator, before the k loop starts accumulating into it.
+//
+// A bias is deliberately not supported: initialising the accumulator from one
+// would mean consuming an extra object through the handshake the B ObjectFifo
+// owns, which desynchronises that fifo and hangs rather than mis-computing.
+void mm_fused_acc_init(float *y_acc) {
+  zero_vectorized<float, M, N, step_markers>(y_acc);
+}
+
+// One step of the k loop: one B chunk multiplied against one A band,
+// accumulated into y_acc.
+//
+// Takes no locks. A is a single object spanning every z slice of the mmul, and
+// the A and B fifos own the handshake, so the core body acquires around this
+// call rather than the kernel acquiring inside it.
+// mm_fused_b_elem_t is bfp16ebs8 or bfloat16 depending on how B is stored,
+// which mm_fused_mmul.h selects from the architecture. One signature either
+// way, so the design's Kernel declaration does not have to care.
+void mm_fused_k_step(bfloat16 *a_buf, mm_fused_b_elem_t *b_buf, float *y_acc,
+                     int32_t band) {
+  const ::aie::rounding_mode saved_rnd = ::aie::swap_rounding(round_mode);
+  k_step(a_buf, b_buf, y_acc, band);
+  ::aie::set_rounding(saved_rnd);
+}
+
+// Output stage: convert chunk (outer * C_DEPTH + half) of the f32 accumulator
+// to a bf16 C object, applying an activation and clamp on the way out. Fusing
+// here is the point -- the values are already in registers, so the activation
+// costs one more vector op per 16 elements instead of a separate pass over L1.
+//
+// The mode is runtime, tested once per chunk so the inner loops stay
+// branch-free; the cost is program memory, since every mode in the mask is
+// compiled in. The bounds arrive as raw int32 because npu_write_rtp only
+// writes i32 words. The chunk index is split (outer, half) because the core
+// body unrolls the drain by the C fifo depth to keep the acquired buffer index
+// a compile-time constant.
+void mm_fused_epilogue_chunk(bfloat16 *y_out, float *y_acc, int32_t outer,
+                             int32_t half, int32_t mode, int32_t clamp_min_bits,
+                             int32_t clamp_max_bits) {
+  // The store is a conversion, so it obeys the same rounding mode the mmul
+  // does and must agree with it.
+  const ::aie::rounding_mode saved_rnd = ::aie::swap_rounding(round_mode);
+  epilogue_chunk(y_out, y_acc, outer, half, mode, clamp_min_bits,
+                 clamp_max_bits);
+  ::aie::set_rounding(saved_rnd);
 }
 }

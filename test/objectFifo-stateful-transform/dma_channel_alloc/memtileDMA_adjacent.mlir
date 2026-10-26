@@ -25,9 +25,9 @@
 // CHECK-DAG: aie.flow(%[[S0]], DMA : 0, %[[M0]], DMA : 4)
 // CHECK-DAG: aie.flow(%[[S0]], DMA : 1, %[[M0]], DMA : 5)
 // CHECK-DAG: aie.flow(%[[S1]], DMA : 0, %[[M0]], DMA : 0)
-// CHECK-DAG: aie.flow(%[[S1]], DMA : 1, %[[M0]], DMA : 1)
-// CHECK-DAG: aie.flow(%[[S2]], DMA : 0, %[[M0]], DMA : 2)
-// CHECK-DAG: aie.flow(%[[S2]], DMA : 1, %[[M0]], DMA : 3)
+// CHECK-DAG: aie.flow(%[[S1]], DMA : 1, %[[M0]], DMA : 3)
+// CHECK-DAG: aie.flow(%[[S2]], DMA : 0, %[[M0]], DMA : 1)
+// CHECK-DAG: aie.flow(%[[S2]], DMA : 1, %[[M0]], DMA : 2)
 module {
   aie.device(npu2) {
     %shim0 = aie.tile(0, 0)

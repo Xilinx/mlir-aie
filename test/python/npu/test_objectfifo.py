@@ -59,7 +59,7 @@ def test_acquire_release():
 
 def test_join():
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
-    of = ObjectFifo(n_ty)
+    of = ObjectFifo(n_ty, name="of")
     prod = of.prod()
     with pytest.raises(ValueError):
         of.cons().join([0])
@@ -67,13 +67,12 @@ def test_join():
     assert len(sub_fifos) == 2
     assert isinstance(sub_fifos[0], ObjectFifo)
     assert isinstance(sub_fifos[1], ObjectFifo)
-    assert sub_fifos[0].name == of.name + "_join0"
-    assert sub_fifos[1].name == of.name + "_join1"
+    assert [f.name for f in sub_fifos] == ["of_join0", "of_join1"]
 
 
 def test_split():
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
-    of = ObjectFifo(n_ty)
+    of = ObjectFifo(n_ty, name="of")
     cons = of.cons()
     with pytest.raises(ValueError):
         of.prod().split([0])
@@ -81,8 +80,7 @@ def test_split():
     assert len(sub_fifos) == 2
     assert isinstance(sub_fifos[0], ObjectFifo)
     assert isinstance(sub_fifos[1], ObjectFifo)
-    assert sub_fifos[0].name == of.name + "_split0"
-    assert sub_fifos[1].name == of.name + "_split1"
+    assert [f.name for f in sub_fifos] == ["of_split0", "of_split1"]
 
 
 def test_worker_tile_type_validation():

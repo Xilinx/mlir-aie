@@ -28,8 +28,8 @@ void cast_f32_bf16_row(const float *restrict input, bfloat16 *restrict output,
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 #if AIE_TUNED_AIE2
-  // AIE2 loads the f32 vector straight into the accumulator (a port only). The
-  // pipelined schedule needs a promised minimum trip count.
+  // AIE2 loads the f32 vector straight into the accumulator (a port only).
+  // Pipelining takes AIE_LOOP_MIN_ITERATION_COUNT, hence the steps >= 8 split.
   auto pin = ::aie::begin_restrict_vector<N>(input);
   auto pout = ::aie::begin_restrict_vector<N>(output);
   const int steps = (uint32_t)cols / N;

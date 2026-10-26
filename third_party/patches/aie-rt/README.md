@@ -7,7 +7,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 [Xilinx/aie-rt](https://github.com/Xilinx/aie-rt) `release/main_aig`. The
 patches in this directory carry functionality mlir-aie depends on that isn't
 upstream yet, applied automatically at CMake configure time (see
-`runtime_lib/xaiengine/aiert.cmake`).
+`runtime_lib/xaiengine/aiert.cmake`). Each patch has an upstream PR, and
+[#3851](https://github.com/Xilinx/mlir-aie/issues/3851) tracks what is needed
+to drop them.
 
 - `0001-cdo-sim-defork-fixes.patch`: works around aie-rt's
   `cdo_rts.h`/`main_rts.h` dependencies on Vitis-only headers by replacing the
@@ -15,8 +17,9 @@ upstream yet, applied automatically at CMake configure time (see
   an explicit backend-selection parameter to `XAie_IOInit` and a matching
   `Backend` field on `XAie_Config` (`xaiegbl.c`/`.h`, `xaie_io.c`/`.h`) that
   `lib/Targets/AIERT.cpp` depends on to select the CDO backend, and carries a
-  few minor build/warning fixes. None of this is present upstream as of the
-  pinned commit.
+  few minor build/warning fixes. Upstream:
+  [Xilinx/aie-rt#25](https://github.com/Xilinx/aie-rt/pull/25), together with
+  an `AIERT.cpp` change to call `XAie_SetupBackendConfig`.
 - `0002-elfloader-zero-bss-gap.patch`: `_XAie_LoadDataMemSection` wrote
   `p_memsz` bytes from a buffer (`ElfMem + p_offset`) holding only `p_filesz`
   valid ones, substituting a zeroed buffer only when `p_filesz == 0`. That
@@ -28,14 +31,15 @@ upstream yet, applied automatically at CMake configure time (see
   System V gABI defines those trailing bytes to hold zero; that is how `.bss` is
   represented in a loadable segment. The patch allocates a `p_memsz` zeroed
   buffer whenever `p_memsz > p_filesz` and copies the initialised prefix into
-  it. Regression test: `test/aiecc/bss_zero_init.mlir`. Not fixed upstream as of
-  the pinned commit.
+  it. Regression test: `test/aiecc/bss_zero_init.mlir`. Upstream:
+  [Xilinx/aie-rt#27](https://github.com/Xilinx/aie-rt/pull/27).
 - `0003-remove-dead-blockwrite32-append-fns.patch`: deletes
   `_XAie_AppendBlockWrite32`/`_opt` in `xaie_txn.c`, two `static inline`
   functions left over from an upstream TXN-serialization refactor that no
   caller references anymore (block-write commands now go through
   `_XAie_AppendBWToTxnBuff`/`_XAie_AppendBWToBlockwriteBuff` instead). GCC
-  doesn't flag this, but clang's `-Werror=unused` (used in CI) does.
+  doesn't flag this, but clang's `-Werror=unused` (used in CI) does. Upstream:
+  [Xilinx/aie-rt#31](https://github.com/Xilinx/aie-rt/pull/31).
 - `0004-fix-aie1-tiledma-intrleavecount-underflow.patch`: fixes an unsigned
   underflow in the AIE1 tile-DMA BD writer. `_XAie_TileDmaWriteBd` guards each
   BD field with `_XAie_CheckPrecisionExceeds(Lsb, _XAie_MaxBitsNeeded(v), 32)`,
@@ -46,8 +50,8 @@ upstream yet, applied automatically at CMake configure time (see
   programming a single word, so every AIE1 tile DMA silently goes
   unconfigured. The neighbouring `XAie_SetField` that actually writes the
   field masks the wrapped value, which is why only the new check is affected.
-  Clamp the checked value to 0 when interleaving is disabled. Reported
-  upstream; drop this once it lands.
+  Clamp the checked value to 0 when interleaving is disabled. Upstream:
+  [Xilinx/aie-rt#32](https://github.com/Xilinx/aie-rt/pull/32).
 - `0005-fix-txn-misaligned-header-writes.patch`: the `_XAie_Append*`
   serializers in `xaie_txn.c` cast the transaction buffer cursor to a header
   struct pointer and assign through it. Earlier ops advance the cursor by
@@ -56,4 +60,5 @@ upstream yet, applied automatically at CMake configure time (see
   misaligned, which is undefined behaviour (UBSan `alignment`). The patch
   fills a zeroed stack header and `memcpy`s it into place, the same fix
   upstream applied to `_XAie_AppendDDRPatch_opt` in aa07f57f. The buffer is
-  already zero-initialised, so the serialized bytes are unchanged.
+  already zero-initialised, so the serialized bytes are unchanged. Upstream:
+  [Xilinx/aie-rt#33](https://github.com/Xilinx/aie-rt/pull/33).

@@ -6,10 +6,12 @@
 """Row-wise bf16 RoPE (Rotary Position Embedding) — IRON API design.
 
 Four cores process ``sequence_length // 4`` rows each.  Per row, on
-even/odd element pairs::
+even/odd element pairs:
 
-    out[2i]   = x[2i]   * cos(theta) - x[2i+1] * sin(theta)
-    out[2i+1] = x[2i]   * sin(theta) + x[2i+1] * cos(theta)
+```text
+out[2i]   = x[2i]   * cos(theta) - x[2i+1] * sin(theta)
+out[2i+1] = x[2i]   * sin(theta) + x[2i+1] * cos(theta)
+```
 
 The cos/sin LUT (interleaved as cos, sin, cos, sin, ...) is generated
 host-side from ``theta = 10000`` per the canonical RoPE formula.
@@ -20,7 +22,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
@@ -76,8 +78,8 @@ def rope(
         for i in range(n_cores)
     ]
 
-    taps = TensorTiler2D.simple_tiler(
-        (sequence_length, embedding_dim), (rows_per_core, embedding_dim)
+    taps = TensorAccessPattern.full((sequence_length, embedding_dim)).tile(
+        (rows_per_core, embedding_dim)
     )
 
     def sequence(a, lut, c, in_prods, lut_prods, out_conses):

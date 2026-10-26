@@ -27,8 +27,8 @@ module {
       %c3_i32 = arith.constant 926365495 : i32
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 8 : index
-      %c4294967295 = arith.constant 4294967295 : index
-      scf.for %arg0 = %c0 to %c4294967295 step %c1 {
+      %c9223372036854775807 = arith.constant 9223372036854775807 : index
+      scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         scf.for %arg1 = %c0 to %c8 step %c1 {
             memref.store %c3_i32, %input_buffer[%arg1] : memref<8xi32>
         }

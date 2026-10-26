@@ -47,10 +47,8 @@ def tree(tmp_path, monkeypatch):
 
 @pytest.fixture
 def device(request):
-    previous = iron.get_current_device(probe_runtime=False)
-    iron.set_current_device(request.param())
-    yield
-    iron.set_current_device(previous)
+    with iron.set_current_device(request.param()):
+        yield
 
 
 def _builds():

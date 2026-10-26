@@ -5,7 +5,6 @@
 #
 """Named memory region accessible by both Workers and the Runtime."""
 
-import itertools
 from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
@@ -16,26 +15,26 @@ from ..helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
+    np_ndarray_type_of,
 )
+from ..helpers.sourceloc import SourceSite
 from .device import Tile
-from .resolvable import NotResolvedError, Resolvable
+from .resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 
 if TYPE_CHECKING:
+    from ..utils.compile.jit.markers import In, InOut, Out
     from .worker import Worker
 
 
-class Buffer(Resolvable):
+class Buffer(PerDeviceConfigurationResolvable):
     """A buffer that is available both to Workers and to the Runtime for operations.
 
     This is often used for Runtime Parameters.
     """
 
-    # Used to generate unique names when none is provided during construction.
-    _gbuf_index = itertools.count()
-
     def __init__(
         self,
-        type: type[np.ndarray] | None = None,
+        type: "type[np.ndarray] | In | Out | InOut | None" = None,
         initial_value: np.ndarray | None = None,
         name: str | None = None,
         tile: Tile | None = None,
@@ -48,11 +47,13 @@ class Buffer(Resolvable):
         The buffer is accessible by both Workers and the Runtime.
 
         Args:
-            type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.
+            type (type[np.ndarray] | In | Out | InOut | None, optional): The type of the buffer,
+                or a generator's tensor operand. Defaults to None.
             initial_value (np.ndarray | None, optional): An initial value to set the buffer
                 to. Should be of same datatype and shape as the buffer. Defaults to None.
-            name (str | None, optional): The name of the buffer. If none is given, a unique
-                name will be generated. Defaults to None.
+            name (str | None, optional): The name of the buffer. If none is given, the
+                buffer is left unnamed, or its DeviceConfiguration names it if
+                the runtime writes it. Defaults to None.
             tile (Tile | None, optional): The tile for the buffer. Automatically set to the
                 Worker's tile when the buffer is passed in the Worker's fn_args list.
                 Defaults to None.
@@ -71,6 +72,7 @@ class Buffer(Resolvable):
             ValueError: If neither ``type`` nor ``initial_value`` is provided, or if
                 ``address``/``mem_bank`` are provided but are not a non-negative int.
         """
+        self._site = SourceSite.capture()
         if type is None and initial_value is None:
             raise ValueError("Must provide either type, initial value, or both.")
         if address is not None:
@@ -95,9 +97,7 @@ class Buffer(Resolvable):
         self._initial_value = initial_value
         self._name = name
         self._op = None
-        self._arr_type = type
-        if not self._name:
-            self._name = f"buf_{next(Buffer._gbuf_index)}"
+        self._arr_type = np_ndarray_type_of(type)
         self._use_write_rtp = use_write_rtp
         self._address = address
         self._mem_bank = mem_bank
@@ -115,15 +115,34 @@ class Buffer(Resolvable):
         """The tile this buffer is on."""
         return self._tile
 
+    @property
+    def name(self) -> str | None:
+        """The buffer's symbol, which another op refers to it by."""
+        return self._name
+
+    def place(self, tile: Tile) -> Tile:
+        """Put this buffer on ``tile`` unless it already has one.
+
+        Args:
+            tile: The tile to place an unplaced buffer on.
+
+        Returns:
+            The tile the buffer is on, which differs from ``tile`` if it was
+            already placed elsewhere.
+        """
+        if self._tile is None:
+            self._tile = tile
+        return self._tile
+
     def tiles(self) -> list:
-        """Tile dependency for Program.resolve tile discovery.
+        """Tile dependency for DeviceConfiguration tile discovery.
 
         Pinned Buffers (e.g. a compute [`Worker`][iron.Worker] reading a
         neighbor tile's L1 directly) need their tile registered with the
         Device before `resolve` runs. Worker-attached Buffers without an
         explicit placement get pinned to the Worker's tile in
         [`Worker`][iron.Worker]'s constructor, which is already discoverable
-        via `Worker.tile`; this method just exposes any extra (cross-tile)
+        via `Worker.tile`; this method exposes any extra cross-tile
         placements.
         """
         return [self._tile] if self._tile is not None else []
@@ -175,4 +194,6 @@ class Buffer(Resolvable):
                 mem_bank=self._mem_bank,
                 initial_value=self._initial_value,
                 use_write_rtp=self._use_write_rtp,
+                loc=loc or self._site.location(self._name),
+                ip=ip,
             )

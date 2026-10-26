@@ -87,7 +87,7 @@ module @objectfifo_link {
     %core1 = aie.logical_tile<CoreTile>(?, ?)
 
     // shim -> mem (splits to 2 outputs)
-    aie.objectfifo @inA (%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<1024xbf16>>
+    aie.objectfifo @inA (%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<2048xbf16>>
     aie.objectfifo @memA0 (%mem, {%core0}, 2 : i32) : !aie.objectfifo<memref<1024xbf16>>
     aie.objectfifo @memA1 (%mem, {%core1}, 2 : i32) : !aie.objectfifo<memref<1024xbf16>>
 

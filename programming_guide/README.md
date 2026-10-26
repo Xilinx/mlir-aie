@@ -78,6 +78,7 @@ my_design(a, b)              # compile + run + sync back
 | The implicit-MLIR-context error you just hit | [Implicit MLIR context](./implicit_mlir_context.md) |
 | Setting-by-setting configuration (cache dir, tensor backend, log level) | [Configuration options](./iron_configuration.md) |
 | What happens between `@iron.jit` and the NPU running | [Compilation stages](./compilation_stages.md) |
+| A routing error, or how flows become switch settings | [Routing](./routing.md) |
 | Ready-made compute kernels (matmul, conv, eltwise, vision) | [Kernel library](./kernels_library.md) |
 | Every control op you can put in a runtime sequence | [AIEX dialect reference](../AIEXDialect.md) |
 
@@ -93,7 +94,7 @@ my_design(a, b)              # compile + run + sync back
 
 ## JIT compile + cache
 
-`@iron.jit` caches compiled artifacts by `(MLIR bytecode + compile-time kwargs)`. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.
+`@iron.jit` caches compiled artifacts by the design's Python sources (the generator, the modules it reaches, and mlir-aie's own) and its compile-time kwargs. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.
 
 * Cache directory: `${NPU_CACHE_HOME:-~/.npu/cache}`. Set `NPU_CACHE_HOME=/tmp/iron_cache` (or anywhere) to override.
 * To force a clean build, `rm -rf "$NPU_CACHE_HOME"` (or the per-design `build/` directory the Makefile writes to).

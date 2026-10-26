@@ -49,7 +49,7 @@ my_worker = Worker(core_fn, [buf], tile=Tile(0, 2), while_true=False)
 >
 > If you wrote `range` instead of `range_`, the generated NPU code would contain many `buff[i] = 0` instructions back-to-back, with no loop at all (the loop is "unrolled"). On the other hand, when you use `range_`, Python executes the loop body once to collect the instructions, then emits a real loop into the NPU code. The same applies to other branching constructs like `if`; using Python's native `if` will emit no actual branches into the NPU code.
 
-> **NOTE 2:** The Worker above is instantiated with `while_true=False`. By default this is `True`, which wraps the kernel body in a `while True`-style loop simulated by a `for _ in range(sys.maxsize):`. Depending on the body (e.g., creating a local buffer with a unique name) the infinite-loop wrapper can cause compiler issues.
+> **NOTE 2:** The Worker above is instantiated with `while_true=False`. By default this is `True`, which wraps the kernel body in a `while True` loop (an `scf.while` whose condition is always true). Depending on the body (e.g., creating a local buffer with a unique name) the infinite-loop wrapper can cause compiler issues. A body that must do some work once and then loop, or that loops forever itself, should pass `while_true=False` and write the loop with `for _ in forever_():` (from `aie.iron.controlflow`) rather than a `range_` with a huge bound.
 >
 > **NOTE 3:** A `Buffer` such as `buf` above shares the tile's local data memory with the Worker's call stack and compiled static data, including bank-pinned LUT tables; instructions occupy separate program memory. See [Core Data Memory](../core_data_memory.md) for placement controls, compiler checks, and what to do when a stack or memory build error fires.
 
@@ -78,7 +78,7 @@ By default the `--aie-place-tiles` pass uses a sequential placer that assigns ti
 aiecc --placer=sa_placer --sa-seed=3 ...
 ```
 
-The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`.
+The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`. The SA placer's nightly checks are on the [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=placement).
 
 ## Other Tile Types
 
@@ -130,7 +130,7 @@ python3 aie2.py --dev npu --emit-mlir > aie.mlir
 
 5. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument, regenerate `aie.mlir`, and inspect it. What changed in the MLIR?
     <details markdown="1"><summary>Show answer</summary>
-    The core body is now nested inside an `scf.for` that bounds to `sys.maxsize` — the simulated while-true wrapper.
+    The core body is now nested inside an `scf.while` whose condition is a constant `true` — the while-true wrapper.
     </details>
 
 -----

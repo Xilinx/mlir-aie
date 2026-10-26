@@ -47,22 +47,17 @@ std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
   return {};
 }
 
-/// The aie.objectfifo.allocate naming `op`, if any. Reports when several claim
-/// the same fifo, since only one delegate tile can hold its objects.
+/// The aie.objectfifo.allocate naming `op`, if any. The allocate verifier
+/// rejects a second one for the same fifo.
 std::optional<ObjectFifoAllocateOp>
 getOptionalAllocateOp(ObjectFifoCreateOp op) {
-  std::optional<ObjectFifoAllocateOp> found;
   for (auto alloc :
        op->getParentOfType<DeviceOp>().getOps<ObjectFifoAllocateOp>()) {
-    if (alloc.getObjFifoName() != op.name().getValue()) {
-      continue;
+    if (alloc.getObjFifoName() == op.name().getValue()) {
+      return alloc;
     }
-    if (found) {
-      op.emitOpError("has more than one allocate operation");
-    }
-    found = alloc;
   }
-  return found;
+  return std::nullopt;
 }
 
 /// Whether `delegate`'s memory module is reachable from both ends of `op`.
@@ -143,6 +138,18 @@ int objectCountOn(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo) {
     return 1;
   }
   return maxAcquire + 1;
+}
+
+/// Objects a fifo whose ends share one memory module keeps in its single pool:
+/// the most that any end states, so the deeper end can acquire all of its own.
+int sharedObjectCount(ObjectFifoCreateOp objFifo) {
+  int depth = objFifo.size();
+  if (auto depths = dyn_cast<ArrayAttr>(objFifo.getElemNumber())) {
+    for (int index = 1; index < static_cast<int>(depths.size()); ++index) {
+      depth = std::max(depth, objFifo.size(index));
+    }
+  }
+  return depth;
 }
 
 bool hasCoreAccess(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo,
@@ -472,47 +479,12 @@ void AIEObjectFifoSplitPass::createLinkPools() {
     bool isJoin = linkOp.isJoin();
     bool isDistribute = linkOp.isDistribute();
 
-    ObjectFifoCreateOp owner = isJoin ? outs[0] : ins[0];
-    if (!isJoin && !isDistribute) {
-      auto inType = cast<MemRefType>(
-          cast<AIEObjectFifoType>(ins[0].getElemType()).getElementType());
-      auto outType = cast<MemRefType>(
-          cast<AIEObjectFifoType>(outs[0].getElemType()).getElementType());
-      // Padding is applied as the objects leave, so the pool holds what
-      // arrives.
-      if (outs[0].getInitValues() ||
-          (outType.getNumElements() > inType.getNumElements() &&
-           !outs[0].getPadDimensions())) {
-        owner = outs[0];
-      }
-    }
-
+    ObjectFifoCreateOp owner = linkOp.getPoolOwner();
     auto elemType = cast<MemRefType>(
         cast<AIEObjectFifoType>(owner.getElemType()).getElementType());
     builder.setInsertionPoint(owner);
 
-    SmallVector<std::pair<int64_t, int64_t>> extents;
-    if (isJoin || isDistribute) {
-      ArrayAttr offsets =
-          isJoin ? linkOp.getSrcOffsets() : linkOp.getDstOffsets();
-      std::vector<ObjectFifoCreateOp> &side = isJoin ? ins : outs;
-      for (auto [index, participant] : llvm::enumerate(side)) {
-        int64_t offset = *getConstantIntValue(offsets[index]);
-        int64_t next = index + 1 < side.size()
-                           ? *getConstantIntValue(offsets[index + 1])
-                           : elemType.getNumElements();
-        int64_t size = next - offset;
-        if (size <= 0) {
-          size = cast<MemRefType>(
-                     cast<AIEObjectFifoType>(participant.getElemType())
-                         .getElementType())
-                     .getNumElements();
-        }
-        extents.emplace_back(offset, size);
-      }
-    } else {
-      extents.emplace_back(0, elemType.getNumElements());
-    }
+    SmallVector<std::pair<int64_t, int64_t>> extents = linkOp.getPoolSegments();
 
     bool ownerIsOutput = llvm::is_contained(outs, owner);
     std::string name;
@@ -617,11 +589,14 @@ void AIEObjectFifoSplitPass::runOnOperation() {
           }
           tile = alloc->getDelegateTile();
         }
-        ref = PoolRef{
-            createPool(loc, (fifoName + "_pool").str(), tile, fifo.size(),
-                       elemType, fifo, {{0, elemType.getNumElements()}},
-                       /*holdsInitialContents=*/true, fifo.getRepeatCount()),
-            {0}};
+        // Both ends address the one pool, so it needs the deeper end's depth
+        // even when init_values fill only the producer's share of it.
+        ref = PoolRef{createPool(loc, (fifoName + "_pool").str(), tile,
+                                 sharedObjectCount(fifo), elemType, fifo,
+                                 {{0, elemType.getNumElements()}},
+                                 /*holdsInitialContents=*/true,
+                                 fifo.getRepeatCount()),
+                      {0}};
       }
 
       if (hasCoreAccess(device, fifo.getProducerTile(), fifo,

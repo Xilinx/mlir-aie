@@ -26,13 +26,13 @@ void eltwise_mul_add(T_in *a, T_in *b, T_out *c, bool is_mul) {
   }
 }
 
-// AIE2: restrict parameters and a rolled loop let the pipeliner overlap
+// Tuned: restrict parameters and a rolled loop let the pipeliner overlap
 // iterations; the add goes through a mac so only a needs the a-port-only
 // vlda.conv (see add.cc).
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 template <typename T_in, typename T_out, const int N>
 void eltwise_vadd(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c) {
-  constexpr int vec_factor = 16;
+  constexpr int vec_factor = AIE_BF16_LANES;
   event0();
   auto pA = aie::begin_restrict_vector<vec_factor>(a);
   auto pB = aie::begin_restrict_vector<vec_factor>(b);
@@ -49,7 +49,7 @@ void eltwise_vadd(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c) {
 
 template <typename T_in, typename T_out, const int N>
 void eltwise_vmul(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c) {
-  constexpr int vec_factor = 16;
+  constexpr int vec_factor = AIE_BF16_LANES;
   event0();
   auto pA = aie::begin_restrict_vector<vec_factor>(a);
   auto pB = aie::begin_restrict_vector<vec_factor>(b);

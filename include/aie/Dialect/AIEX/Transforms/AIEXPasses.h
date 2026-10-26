@@ -49,6 +49,8 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEAssignRuntimeSequenceBDIDsPass(
     const AIEAssignRuntimeSequenceBDIDsOptions &options);
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIESplitLongRepeatsPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEReserveRuntimeBDIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEUnrollRuntimeSequenceLoopsPass();
@@ -90,6 +92,9 @@ createAIELowerScratchpadParametersPass(
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+
+/// Name of the runtime sequence aie-expand-load-pdi{init-entry} adds.
+inline constexpr llvm::StringLiteral initEntrySequenceName = "reconfig_init";
 
 } // namespace xilinx::AIEX
 

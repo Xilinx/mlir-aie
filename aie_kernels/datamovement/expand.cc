@@ -125,6 +125,11 @@ void expand(T_in *__restrict in, T_out *__restrict out) {
   const aie::vector<bfloat16, block_size> bias =
       aie::broadcast<bfloat16, block_size>(bfloat16(128.0f));
   event0();
+#if AIE_TUNED_AIE2P
+  // A block's mul -> msc chain holds its accumulator for the whole latency;
+  // two blocks in flight fill the gap.
+  AIE_LOOP_UNROLL(2)
+#endif
   for (int i = 0; i < F; i++)
     chess_prepare_for_pipelining chess_loop_range(F, ) { // 16 -> F
       // Load one scale per group (scalar load)

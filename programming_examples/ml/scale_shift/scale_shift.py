@@ -184,26 +184,19 @@ def _compile_kwargs(opts):
 
 
 def _run_and_verify(opts):
-    # Constant inputs match the C++ test (4.0, 3.35, 0.77); the two-pass
-    # mul-then-add with bf16 intermediate-store makes random inputs flaky
-    # to mirror exactly in numpy.
-    a_t = iron.full(opts.length, 4.0, dtype=bfloat16, device="npu")
-    b_t = iron.full(opts.length, 3.35, dtype=bfloat16, device="npu")
-    c_t = iron.full(opts.length, 0.77, dtype=bfloat16, device="npu")
+    # Each pass rounds its fp32 result to the nearest bf16, as numpy's cast
+    # does, so the product is stored to bf16 before the add.
+    rng = np.random.default_rng(0)
+    a, b, c = (rng.uniform(-4, 4, opts.length).astype(bfloat16) for _ in range(3))
+    a_t, b_t, c_t = (iron.tensor(x, dtype=bfloat16, device="npu") for x in (a, b, c))
     d_t = iron.zeros_like(a_t)
 
     scale_shift(a_t, b_t, c_t, d_t, **_compile_kwargs(opts))
 
-    expected = (
-        a_t.numpy().astype(np.float32) * b_t.numpy().astype(np.float32)
-        + c_t.numpy().astype(np.float32)
-    ).astype(bfloat16)
-    assert_pass(
-        d_t.numpy(),
-        expected,
-        atol=0.002,
-        fail_msg="scale_shift output mismatch",
-    )
+    f32 = np.float32
+    product = (a.astype(f32) * b.astype(f32)).astype(bfloat16)
+    expected = (product.astype(f32) + c.astype(f32)).astype(bfloat16)
+    assert_pass(d_t.numpy(), expected, fail_msg="scale_shift output mismatch")
 
 
 def main():

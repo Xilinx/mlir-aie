@@ -37,6 +37,12 @@ The objects most designs are built from.
     options:
       show_root_heading: false
 
+### DeviceConfiguration
+
+::: iron.configuration
+    options:
+      show_root_heading: false
+
 ### Worker
 
 ::: iron.worker
@@ -92,6 +98,13 @@ such as `kernels.zero(...)` own their own objects.
 
 ### ScratchpadParameter
 
+A design that declares `ScratchpadParameter`s and compiles to a full ELF
+(`@iron.jit(full_elf=True)`) takes their values per call:
+`design(out, parameters={"foo": bfloat16(3.0), "bar": bfloat16(4.0)})`. The
+values go through the run's ctrl scratchpad, laid out by the build's own
+`params.txt`. A design without `ScratchpadParameter`s refuses `parameters=`,
+and so do the HSA and HRX runtimes.
+
 ::: iron.scratchpad_parameter
     options:
       show_root_heading: false
@@ -116,7 +129,7 @@ constants. These are re-exported into `iron` from `aie.utils`.
 | `iron.CallableDesign` | class | A compiled, callable design produced from a `CompilableDesign`. |
 | `iron.compileconfig` | decorator | Attach compile-time configuration to a design generator. |
 | `iron.get_compile_arg` | function | Dynamically inject a compile-time argument (advanced). |
-| `iron.In` / `iron.Out` / `iron.InOut` | markers | Type-annotation markers for design inputs/outputs. |
+| `iron.In` / `iron.Out` / `iron.InOut` | classes | As annotations they mark a design's inputs and outputs; instantiated in an operator's class body, they declare its tensors. |
 | `iron.CompileTime` | marker | Type-annotation marker for a compile-time constant argument. |
 | `iron.DispatchTime` | marker | Integer scalar that can vary per call without recompiling the device program. |
 
@@ -147,8 +160,17 @@ into `iron` from `aie.utils`.
 | Symbol | Summary |
 |--------|---------|
 | `iron.get_current_device` | Return the currently selected NPU device. |
-| `iron.set_current_device` | Select the NPU device for subsequent allocations. |
+| `iron.set_current_device` | Select the NPU device for subsequent allocations; under `with`, restore the previous one on exit. |
 | `iron.ensure_current_device` | Raise if no device is currently selected. |
+
+The [`Device`][iron.Device] a `Program` targets also reports the hardware
+limits a design is sized against, such as `max_lock_value`,
+`max_repeat_count`, `dma_task_queue_depth` and `get_num_bds(tile_type)`, so a
+design can read them instead of hardcoding them.
+
+::: iron.Device
+    options:
+      show_root_heading: true
 
 ---
 
@@ -171,11 +193,17 @@ descriptors, and locks.
 
 Circuit-switched ([`Flow`][iron.Flow]) and packet-switched
 ([`PacketFlow`][iron.PacketFlow]) stream connections, plus the
-[`PacketDest`][iron.PacketDest] endpoint descriptor.
+[`PacketDest`][iron.PacketDest] endpoint descriptor.  A `Flow` given no DMA
+channels lets the compiler assign them.  `endpoint(tile)` on either returns the
+[`FlowEndpoint`][iron.FlowEndpoint] on `tile`, which a `DmaChannel` takes in
+place of a channel index and which can run a runtime-sequence task.  A `Flow`
+or `PacketFlow` with one shim end has `fill` / `drain`; `PacketFlow.fill`
+stamps the packet header on the input.
 
 ::: iron.dataflow.flow
     options:
       show_root_heading: false
+      inherited_members: true
 
 ### CascadeFlow
 
@@ -185,11 +213,15 @@ Directed cascade-stream connection between two adjacent Workers.
     options:
       show_root_heading: false
 
-### TileDma / DmaChannel / Bd
+### TileDma / DmaChannel / Bd / DmaEndpoint
 
 Explicit tile DMA programs: [`TileDma`][iron.TileDma],
 [`DmaChannel`][iron.DmaChannel], buffer descriptors ([`Bd`][iron.Bd]), and the
-[`Acquire`][iron.Acquire] / [`Release`][iron.Release] lock actions.
+[`Acquire`][iron.Acquire] / [`Release`][iron.Release] lock actions.  A
+[`DmaEndpoint`][iron.DmaEndpoint] names one channel of one tile;
+`endpoint.task(*bds)` configures a [`TileDmaTask`][iron.TileDmaTask] on a mem
+or core tile from the runtime sequence, so its descriptors can change per
+dispatch.
 
 ::: iron.dataflow.tile_dma
     options:

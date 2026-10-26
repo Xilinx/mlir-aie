@@ -13,7 +13,7 @@ call, so a kernel whose markers sit in a sibling function, around an inner
 loop, or behind an early return charts the wrong number or none. Each build
 is compiled to -O2 IR with the library's own flags and its entry symbol
 classified by ``remarks.trace_markers``; the result must equal the declared
-``Trace``. The builds are every factory at its defaults and ``.dtypes``
+``Trace``. The builds are every factory at its defaults and ``kernels.DTYPES``
 entries, the initializers they declare, and each device case whose entry
 symbol those do not already cover. A case that changes only the code inside
 an already-checked symbol (a tile-size define) is not compiled again.
@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from aie.iron import kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels import Trace
 from aie.utils import config
@@ -35,7 +36,11 @@ sys.path.insert(0, str(Path(__file__).parent / "npu"))
 from kernel_cases import CASES  # noqa: E402
 
 # The only builds whose calls cannot be timed; each contract says why.
-UNTIMED = {"set_rounding"}
+UNTIMED = {
+    "set_rounding",
+    # The decode kernels block on core locks the generic harness cannot drive.
+    *(n for n in kernels.factories() if n.startswith("flm_gemma4_decode_")),
+}
 
 
 def _builds(device, generation):

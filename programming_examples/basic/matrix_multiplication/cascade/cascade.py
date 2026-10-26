@@ -15,7 +15,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CascadeFlow,
@@ -39,13 +39,6 @@ from aie.utils.hostruntime.argparse import (
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_close_with_benchmark
-
-
-def _device_for(dev_str, n_aie_cols):
-    # On NPU1 pick the matching ColN variant (or NPU1 itself when
-    # n_aie_cols == max = 4).  On NPU2 use the unrestricted device
-    # regardless of n_aie_cols so the placer has the full 8-column array.
-    return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
 
 
 @iron.jit
@@ -131,7 +124,7 @@ def cascade(
                     f"A_L2L1_{r_}"
                     for r_ in range(start_row, start_row + n_A_tiles_per_shim)
                 ],
-                dims_to_stream=[a_dims] * n_A_tiles_per_shim,
+                to_stream=[a_dims] * n_A_tiles_per_shim,
                 tile=Tile(col, 1),
             )
         )
@@ -154,7 +147,7 @@ def cascade(
                 of_offsets,
                 obj_types=[B_l1_ty] * n_aie_rows,
                 names=[f"B_L2L1_{col}_{row}" for row in range(n_aie_rows)],
-                dims_to_stream=[b_dims] * n_aie_rows,
+                to_stream=[b_dims] * n_aie_rows,
                 tile=Tile(col, 1),
             )
         )
@@ -172,7 +165,7 @@ def cascade(
             obj_type=C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=dims.C,
+            to_stream=dims.C,
             tile=Tile(col, 1),
         )
         C_l1l2_fifos.append(c_l1l2)
@@ -288,39 +281,19 @@ def cascade(
 
     tb_max_n_rows = 5
 
-    # C drain TAPs: one per (tb, col).  step_tiler with allow_partial=True
-    # handles the trailing tb that has fewer than tb_max_n_rows rows.
-    C_taps = TensorTiler2D.step_tiler(
-        (M, N),
-        (m, n),
-        tile_group_repeats=(tb_max_n_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
-        allow_partial=True,
-        prune_step=False,
+    # C drain TAPs: rows of a tb, every n_aie_cols-th tile column from col.
+    C_tiles = TensorAccessPattern.full((M, N)).tile((m, n))
+
+    # B fill TAPs: one per col, walked tile column by tile column and reused
+    # across all (tb, tile_row) for that col.
+    B_tiles = (
+        TensorAccessPattern.full((K, N)).tile((k * n_aie_rows, n)).permute((1, 0, 2, 3))
     )
 
-    # B fill TAPs: one per col, reused across all (tb, tile_row) for that col.
-    B_taps = TensorTiler2D.step_tiler(
-        (K, N),
-        (k * n_aie_rows, n),
-        tile_group_repeats=(K // k // n_aie_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
-        tile_group_col_major=True,
-        prune_step=False,
-    )
-
-    # A fill TAPs: one per (col, m-block).  Indexed by (m_block_idx * n_aie_cols
-    # + col) — m_block_idx walks all M//m rows once, col iterates the columns
-    # for each row.  Each TAP repeats N//n//n_aie_cols times (broadcast across
-    # the N output-column axis) via pattern_repeat.
-    A_taps = TensorTiler2D.step_tiler(
-        (M, K),
-        (m * n_A_tiles_per_shim, k),
-        tile_group_repeats=(1, K // k // n_aie_rows),
-        tile_group_steps=(1, n_aie_rows),
-        pattern_repeat=N // n // n_aie_cols,
-        prune_step=False,
-    )
+    # A fill TAPs: one per (col, m-block), every n_aie_rows-th k-tile of a tile
+    # row.  Each TAP repeats N//n//n_aie_cols times (broadcast across the N
+    # output-column axis).
+    A_tiles = TensorAccessPattern.full((M, K)).tile((m * n_A_tiles_per_shim, k))
 
     # Move the shim-tile placement onto the handles (fill/drain no longer take
     # tile=); one prod/cons handle per column, passed as fn_args lists.
@@ -329,28 +302,30 @@ def cascade(
     C_conses = [f.cons(tile=Tile(col, 0)) for col, f in enumerate(C_l2l3_fifos)]
 
     def sequence(A, B, C, A_hs, B_hs, C_hs):
-        c_index = 0
         for tb in range(iron.ceildiv(M // m, tb_max_n_rows)):
-            tb_n_rows = min([tb_max_n_rows, M // m - tb * tb_max_n_rows])
+            row_base = tb * tb_max_n_rows
+            tb_n_rows = min([tb_max_n_rows, M // m - row_base])
             tg = TaskGroup()
             for col in range(n_aie_cols):
                 C_hs[col].drain(
                     C,
-                    tap=C_taps[c_index],
+                    tap=C_tiles[row_base : row_base + tb_n_rows, col::n_aie_cols],
                     wait=True,
                     group=tg,
                 )
-                c_index += 1
                 for tile_row in range(tb_n_rows):
-                    a_idx = ((tb * tb_max_n_rows) + tile_row) * n_aie_cols + col
+                    a_idx = (row_base + tile_row) * n_aie_cols + col
+                    a_row, a_col = divmod(a_idx, n_aie_rows)
                     A_hs[col].fill(
                         A,
-                        tap=A_taps[a_idx],
+                        tap=A_tiles[a_row, a_col::n_aie_rows].repeat(
+                            N // n // n_aie_cols
+                        ),
                         group=tg,
                     )
                     B_hs[col].fill(
                         B,
-                        tap=B_taps[col],
+                        tap=B_tiles[col::n_aie_cols],
                         group=tg,
                     )
             tg.finish()
@@ -464,7 +439,11 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: _device_for(o.dev, o.n_aie_cols),
+        # NPU1 binds the ColN variant matching n_aie_cols; NPU2 keeps the
+        # full array for the placer.
+        device=lambda o: from_name(
+            o.dev, n_cols=o.n_aie_cols if o.dev == "npu" else None
+        ),
     )
 
 

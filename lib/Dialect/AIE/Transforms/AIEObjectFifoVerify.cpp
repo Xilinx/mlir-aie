@@ -32,18 +32,26 @@ struct AIEObjectFifoVerifyPass
           AIEObjectFifoVerifyPass> {
 
   /// Every segment needs an actor at each end, so that what one writes another
-  /// reads. A segment may go unfilled when the pool's objects start full.
+  /// reads. A segment may go unfilled when the pool's objects start full, and
+  /// may name no endpoint at an end its `manualFill` or `manualDrain` hands to
+  /// a DMA program the author writes.
   LogicalResult verifyActors(ObjectFifoPoolOp pool,
                              ArrayRef<SegmentActors> actors) {
     bool external = llvm::any_of(pool.getBufferOps(), [](BufferLike buffer) {
       return isa<ExternalBufferOp>(buffer.getOperation());
     });
+    std::vector<ObjectFifoSegmentOp> segmentOps = pool.getSegmentOps();
     for (auto [index, segment] : llvm::enumerate(actors)) {
-      if (segment.fillers.size() > 1) {
+      ObjectFifoSegmentOp segmentOp = segmentOps[index];
+      bool manualFill = segmentOp.getManualFill();
+      bool manualDrain = segmentOp.getManualDrain();
+      if (segment.fillers.size() > 1 ||
+          (manualFill && !segment.fillers.empty())) {
         return pool.emitOpError("segment ")
                << index << " is filled by more than one endpoint";
       }
-      if (segment.drainers.size() > 1) {
+      if (segment.drainers.size() > 1 ||
+          (manualDrain && !segment.drainers.empty())) {
         return pool.emitOpError("segment ")
                << index << " is drained by more than one endpoint";
       }
@@ -51,10 +59,11 @@ struct AIEObjectFifoVerifyPass
       // this device does not program.
       bool hostDrains = external && !segment.fillers.empty();
       bool hostFills = external && !segment.drainers.empty();
-      if (segment.drainers.empty() && !hostDrains) {
+      if (segment.drainers.empty() && !hostDrains && !manualDrain) {
         return pool.emitOpError("segment ") << index << " has no drainer";
       }
-      if (segment.fillers.empty() && !pool.getInitValues() && !hostFills) {
+      if (segment.fillers.empty() && !pool.getInitValues() && !hostFills &&
+          !manualFill) {
         return pool.emitOpError("segment ") << index << " has no filler";
       }
     }
@@ -77,7 +86,8 @@ struct AIEObjectFifoVerifyPass
       if (count == 0) {
         return endpoint->emitOpError("is not connected by any flow");
       }
-      if (count > 1) {
+      // An aie.route_endpoint's own verifier says which flows may share it.
+      if (count > 1 && !isa<RouteEndpointOp>(endpoint.getOperation())) {
         return endpoint->emitOpError(
                    "drives one channel, so at most one flow may name it, but "
                    "it is named ")
@@ -94,16 +104,19 @@ struct AIEObjectFifoVerifyPass
   /// loop-carried lock values, which no scan can decide.
   LogicalResult verifyOverRelease(DeviceOp device) {
     for (auto coreOp : device.getOps<CoreOp>()) {
-      WalkResult result = coreOp.walk([&](scf::ForOp forOp) {
+      WalkResult result = coreOp.walk([&](Operation *loop) {
+        if (!isObjectFifoLoop(loop)) {
+          return WalkResult::advance();
+        }
         auto directlyIn = [&](Operation *op) {
-          return op->getParentOfType<scf::ForOp>() == forOp;
+          return getObjectFifoLoopParent(op) == loop;
         };
         DenseMap<StringRef, int64_t> acquired;
         DenseMap<StringRef, int64_t> released;
         DenseMap<StringRef, Operation *> blame;
         DenseSet<StringRef> spansNestedLoop;
 
-        forOp.getBody()->walk([&](ObjectFifoAcquireOp a) {
+        loop->walk([&](ObjectFifoAcquireOp a) {
           StringRef key = a.getObjFifoName();
           if (!directlyIn(a)) {
             spansNestedLoop.insert(key);
@@ -112,7 +125,7 @@ struct AIEObjectFifoVerifyPass
             blame.try_emplace(key, a);
           }
         });
-        forOp.getBody()->walk([&](ObjectFifoReleaseOp r) {
+        loop->walk([&](ObjectFifoReleaseOp r) {
           StringRef key = r.getObjFifoName();
           if (!directlyIn(r)) {
             spansNestedLoop.insert(key);

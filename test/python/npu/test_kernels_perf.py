@@ -11,8 +11,8 @@ kernel against its contract, then times it. Checking first is the point --
 timings from a kernel that returns the wrong answer are noise, so the
 assertion runs before anything is recorded. A failing kernel drops only its
 own rows; the JSON is still written, unless the device itself is suspect --
-preflight or ``test_measurement_is_sane`` did not pass -- in which case
-``pytest_sessionfinish`` writes none of it.
+preflight did not pass, or ``test_measurement_is_sane`` ran and failed -- in
+which case ``pytest_sessionfinish`` writes none of it.
 With ``--correctness-results correctness.xml``, publication also excludes
 cases with any extensive-suite failure or no passing correctness test.
 
@@ -22,15 +22,21 @@ Run it the way the nightly workflow does::
         --perf-out perf.json --perf-meta meta.json --pmode turbo
         --warmup 10 --iters 50
 
-``-k`` selects a subset; include the sanity test, for example
-``-k '(softmax) or test_measurement_is_sane'``, to allow publication.
+``-k`` selects a subset. A subset that leaves out the sanity test still
+writes its rows, with ``measurement_sane`` null in the meta; include it, for
+example ``-k '(softmax) or test_measurement_is_sane'``, to vouch for them.
 The series a row lands in is ``<case>/<metric>``;
 ``test_perf_series_names.py`` pins those names, because renaming one
 restarts its chart on gh-pages.
+
+With ``--baseline-sources DIR`` each case also runs with its kernels from
+``DIR`` and the two arms' raw output words are compared; the ``check()``
+cases, which are not timed, join that comparison untimed.
 """
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -38,19 +44,26 @@ import numpy as np
 import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
+from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
-from cases import Case, inputs_for
+from aie.utils.compile.readobj import linked
+from aie.utils.compile.remarks import current_kernel_sources
+from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
 
+# Bump with any change to how a published metric is taken: publish.py and the
+# page compare a series only within one measurement.
+MEASUREMENT = "3"
 TRACE_SIZE = 16384
-# The add/256 case filled 16 KB after 91 intervals (180 B each); size for
+# The add/256 case filled 16 KB after 91 intervals (180 B each) when every
+# default core event was traced; markers alone take about 5 B. Size for
 # every declared interval with headroom, so the split sees whole calls.
 TRACE_BYTES_PER_INTERVAL = 512
 # A long kernel costs more trace bytes per interval than that (swiglu/256
 # filled 128 KB after 84 calls), so a filled buffer is regrown from what it
 # held and the traced run repeated, this many times at most, and never past
-# TRACE_MAX_BYTES: a trace still full there is kept, and marked truncated,
-# rather than risk a host buffer the runtime cannot allocate.
+# TRACE_MAX_BYTES: a trace still full there fails the case, rather than
+# risk a host buffer the runtime cannot allocate.
 TRACE_RETRIES = 3
 TRACE_MAX_BYTES = 4 << 20
 
@@ -79,8 +92,20 @@ def _param(case: Case):
 _PERF_CASES = [_param(c) for c in CASES if c.perf and c.name != SMOKE_TEST.name]
 
 
-def _measure(case: Case, config, workdir: Path) -> dict:
-    """Build, check and time one case. Raises if it is wrong."""
+def _measure(
+    case: Case,
+    config,
+    workdir: Path,
+    *,
+    strict: bool = True,
+    timed: bool = True,
+) -> dict:
+    """Build, check and time one case. Raises if it is wrong, unless not ``strict``.
+
+    Not ``strict``, a wrong output is timed anyway and its verdict's detail
+    is the result's ``"failed"`` (None when it passed). Not ``timed``, it
+    only runs once.
+    """
     fn = case.fn()
     factory = getattr(kernels, case.factory)
     inputs = inputs_for(case, "random", np.random.default_rng(0))
@@ -107,11 +132,21 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         inputs=inputs,
         scalars=case.scalars,
     )
-    assert verdict, f"{case.name}: {verdict.detail}"
+    assert verdict or not strict, f"{case.name}: {verdict.detail}"
     measured: dict = {
         "outputs": got,
         "kernel_object_bytes": _kernel_object_size(design, fn),
+        "failed": None if verdict else verdict.detail,
     }
+    measured["error"] = error_report(
+        fn,
+        got if len(got) > 1 else got[0],
+        inputs,
+        calls=case.calls,
+        scalars=case.scalars,
+    )
+    if not timed:
+        return measured
     measured["wall"] = run_iters(
         design,
         *ins,
@@ -119,6 +154,26 @@ def _measure(case: Case, config, workdir: Path) -> dict:
         warmup=config.getoption("--warmup"),
         iters=config.getoption("--iters"),
     )
+    # A compiler bug can leave a kernel right on its first run and wrong after
+    # many, so check it once more after the timing loop, into fresh poisoned
+    # outputs (the timed runs' outputs could hide a run that wrote nothing).
+    _, again = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
+    again = again if isinstance(again, tuple) else (again,)
+    design(*ins, *again)
+    got = tuple(o.numpy().copy() for o in again)
+    verdict = fn.judge(
+        got if len(got) > 1 else got[0],
+        ref,
+        calls=case.calls,
+        inputs=inputs,
+        scalars=case.scalars,
+    )
+    runs = 2 + config.getoption("--warmup") + config.getoption("--iters")
+    if not verdict:
+        measured["failed"] = verdict.detail
+    assert (
+        verdict or not strict
+    ), f"{case.name}: wrong on run {runs} (right on the first): {verdict.detail}"
     if not config.getoption("--no-cycles"):
         # A separate traced run: tracing perturbs the timing above.
         intervals = kd.traced_intervals(fn, calls=case.calls)
@@ -151,6 +206,11 @@ def _measure(case: Case, config, workdir: Path) -> dict:
                 + sum(len(v) for v in traced.initializers.values())
             )
             trace_size = _grow_trace_size(trace_size, seen=seen, expected=intervals)
+        # A short trace would chart the min of the calls that fit.
+        assert not traced.truncated, (
+            f"{case.name}: {len(traced.kernel)} of {case.calls} "
+            "calls traced; the rest never reached the host"
+        )
         measured["cycles"] = traced
         measured["trace_size"] = trace_size
     return measured
@@ -164,7 +224,7 @@ def _grow_trace_size(trace_size: int, *, seen: int, expected: int) -> int:
     every interval at the cost the filled run measured, and half as much
     again, rounded up to 4 KiB, never less than double and never more than
     ``TRACE_MAX_BYTES``. A guess that still falls short costs a retry, and
-    after the last one the case is recorded as truncated.
+    after the last one the case fails as truncated.
     """
     if seen < 1:
         grown = 2 * trace_size
@@ -175,31 +235,47 @@ def _grow_trace_size(trace_size: int, *, seen: int, expected: int) -> int:
 
 
 def _kernel_object_size(design, fn) -> int | None:
-    """Return only the tested kernel's object size, excluding harness objects."""
+    """Return the bytes of code and initialized data the tested entry point links.
+
+    What the entry reaches in its object (``readobj.linked``): not the
+    object's sibling entry points, symbol tables, or the bitcode
+    ``--check-lut-banks`` embeds.
+    """
     if Path(fn.object_file_name).suffix != ".o":
         return None
-    entry = design.compilable.get_cache_entry()
-    return (entry.directory / fn.object_file_name).stat().st_size
+    obj = design.compilable.get_cache_entry().directory / fn.object_file_name
+    reached = linked(obj, fn.name)
+    assert fn.name in reached.functions, f"{obj} does not define {fn.name}"
+    return reached.linked_bytes
 
 
-def _cycles_span(traced: kd.CallCycles) -> str:
-    """The kernel's spread, and any initializer's, beside its min."""
+def _cycles(case: Case, traced: kd.CallCycles) -> int:
+    """The cheapest call, or for calls of unequal work, the median call."""
     k = traced.kernel
-    parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    return min(k) if case.fn().contract.even_calls else int(np.median(k))
+
+
+def _cycles_span(case: Case, traced: kd.CallCycles) -> str:
+    """The kernel's spread, and any initializer's, beside its row's value."""
+    k = traced.kernel
+    if case.fn().contract.even_calls:
+        parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    else:
+        parts = [
+            f"median of calls of unequal work; min {min(k)} max {max(k)} n={len(k)}"
+        ]
     parts += [f"init[{i}] min {min(v)}" for i, v in traced.initializers.items() if v]
-    if traced.truncated:
-        parts.append("truncated")
     return "; ".join(parts)
 
 
 def _detail(case: Case, m: dict) -> dict:
-    """Return the distribution behind each row, for ``--perf-meta``.
+    """Return the kernel's build key and the distribution behind each row, for ``--perf-meta``.
 
     A row keeps one value and a text ``range``; the numbers a reader needs to judge that value (how far the median and the
     slowest call sit above the min, how many calls the trace held) go here
     as fields.
     """
-    detail: dict = {}
+    detail: dict = {"build": case.fn().recipe_key}
     if (traced := m.get("cycles")) is not None:
         k = traced.kernel
         detail["cycles"] = {
@@ -211,8 +287,8 @@ def _detail(case: Case, m: dict) -> dict:
             "truncated": traced.truncated,
             "trace_size": m.get("trace_size"),
         }
-    if (wall := m.get("wall")) and (s := wall.npu):
-        detail["npu_us"] = {
+    for metric, s in _wall_stats(m).items():
+        detail[metric] = {
             "median": round(s.median_us, 2),
             "mad": round(s.mad_us, 2),
             "p95": round(s.p95_us, 2),
@@ -223,6 +299,32 @@ def _detail(case: Case, m: dict) -> dict:
     return detail
 
 
+def _wall_stats(m: dict) -> dict:
+    """Return the host-clock timings of a measurement, by metric name.
+
+    ``dispatch_us`` is submit to completion of each call, the dispatch's
+    fixed cost included; ``dispatch_overhead_us`` is that cost alone, an
+    empty dispatch on the same hardware context after each call; ``npu_us``
+    is each call's dispatch less the overhead's median. A runtime with no
+    empty dispatch for the kernel gives neither of the last two.
+
+    Args:
+        m: ``_measure``'s result.
+
+    Returns:
+        Each present timing's ``Stats``, in series-name order.
+    """
+    wall = m.get("wall")
+    if wall is None:
+        return {}
+    found = {
+        "dispatch_overhead_us": wall.dispatch_overhead,
+        "dispatch_us": wall.dispatch,
+        "npu_us": wall.npu,
+    }
+    return {metric: s for metric, s in found.items() if s is not None}
+
+
 def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     """Emit the rows one measurement contributes, in series-name order.
 
@@ -231,28 +333,21 @@ def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     """
     if meta is not None:
         meta.setdefault("cases", {})[case.name] = _detail(case, m)
+    rows = []
     if (traced := m.get("cycles")) is not None:
-        # The min: every call does the same work, so anything above it is
-        # the core waiting (a stall, a refresh), not the kernel.
-        cycles = min(traced.kernel)
-        record(case.name, "cycles", "cycles", cycles, _cycles_span(traced))
+        cycles = _cycles(case, traced)
+        rows.append(("cycles", "cycles", cycles, _cycles_span(case, traced)))
         if ops := case.work():
-            record(
-                case.name,
-                "cycles_per_kop",
-                "cycles/1k-ops",
-                round(1000.0 * cycles * case.kernel_calls() / ops, 3),
-            )
-    if (wall := m.get("wall")) and (s := wall.npu):
-        record(
-            case.name,
-            "npu_us",
-            "us",
-            round(s.median_us, 2),
-            f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}",
-        )
+            per_kop = round(1000.0 * cycles * case.kernel_calls() / ops, 3)
+            rows.append(("cycles_per_kop", "cycles/1k-ops", per_kop, None))
+    for metric, s in _wall_stats(m).items():
+        # The MAD leads the range text: the page and pr_report read it there.
+        span = f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}"
+        rows.append((metric, "us", round(s.median_us, 2), span))
     if (size := m.get("kernel_object_bytes")) is not None:
-        record(case.name, "kernel_object_bytes", "bytes", size)
+        rows.append(("kernel_object_bytes", "bytes", size, None))
+    for metric, unit, value, span in sorted(rows, key=lambda row: row[0]):
+        record(case.name, metric, unit, value, span)
 
 
 @pytest.fixture(scope="module")
@@ -282,7 +377,9 @@ def _preflight(request):
             "(set it with xrt-smi configure --pmode, or pass --pmode any)"
         )
     config._perf_meta["preflight"] = dict(vars(pre))
-    config._perf_meta["provenance"] = provenance(device=pre.device, pmode=pre.pmode)
+    config._perf_meta["provenance"] = provenance(
+        device=pre.device, pmode=pre.pmode, measurement=MEASUREMENT
+    )
     return pre
 
 
@@ -313,45 +410,192 @@ def _differing_words(a: np.ndarray, b: np.ndarray) -> int:
     return int(np.count_nonzero(a.view(word) != b.view(word)))
 
 
-def _against_baseline(case: Case, config, workdir: Path, current: dict) -> None:
-    """Measure ``case`` from the ``--baseline-sources`` tree beside the current one.
+def _measure_and_compare(
+    case: Case,
+    config,
+    workdir: Path,
+    *,
+    tree: str | None = None,
+    meta: dict | None = None,
+    timed: bool = True,
+) -> dict:
+    """``_measure`` ``case``, compared with ``tree`` before it is judged.
+
+    ``tree`` defaults to ``--baseline-sources`` and ``meta`` to the run's
+    meta. A kernel that fails its contract still gets its words compared --
+    a mutant has to show up in that diff for a ``same`` to mean anything --
+    and then fails.
+    """
+    tree = tree or config.getoption("--baseline-sources")
+    m = _measure(case, config, workdir, strict=not tree, timed=timed)
+    if tree:
+        entry = _compare(case, config, workdir, m, tree)
+        meta = config._perf_meta if meta is None else meta
+        if "baseline" not in meta:
+            current_sources, suspect = current_kernel_sources(tree)
+            meta["baseline"] = {
+                "sources": tree,
+                "current_sources": current_sources,
+                "warning": suspect,
+                "cases": {},
+            }
+        meta["baseline"]["cases"][case.name] = entry
+    assert m["failed"] is None, f"{case.name}: {m['failed']}"
+    return m
+
+
+def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dict:
+    """Measure ``case`` from the kernel tree ``tree`` beside the current one.
 
     Both sides get the same inputs, so their raw output words are compared
-    exactly, and both must pass the contract. The rows stay the current
-    tree's; the pair goes to ``--perf-meta`` and the terminal summary.
+    exactly. Both arms are judged by this tree's contract and only recorded
+    here: the caller fails the current arm, and the baseline's miss can be a
+    tolerance tightened along with the kernel. Returns the pair of each
+    arm's cycles, dispatch_us and npu_us (min, and min, max and n), each arm's error
+    against the reference (``cases.error_report``), the differing words and
+    each arm's verdict. The baseline is timed only if ``current`` was.
     """
-    tree = config.getoption("--baseline-sources")
+    timed = "wall" in current
     # The baseline's kernels share their object names with this tree's but
-    # not their sources; the registry would refuse them as a collision.
+    # not their sources; the registry would refuse either arm's as a collision
+    # with the other's.
+    saved = set(ExternalFunction._instances)
     ExternalFunction._instances.clear()
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("MLIR_AIE_KERNEL_SOURCES", tree)
         try:
-            base = _measure(case, config, workdir / "baseline")
+            base = _measure(
+                case, config, workdir / "baseline", strict=False, timed=timed
+            )
         except AssertionError as e:
             raise AssertionError(f"baseline tree {tree}: {e}") from None
+        finally:
+            ExternalFunction._instances.clear()
+            ExternalFunction._instances.update(saved)
 
     def cycles(m):
-        return min(m["cycles"].kernel) if "cycles" in m else None
-
-    def npu_us(m):
-        return round(m["wall"].npu.min_us, 2) if m["wall"].npu else None
+        if "cycles" not in m:
+            return None
+        k = m["cycles"].kernel
+        return {"min": min(k), "max": max(k), "n": len(k)}
 
     words = [
         _differing_words(a, b) for a, b in zip(base["outputs"], current["outputs"])
     ]
-    baseline = config._perf_meta.setdefault("baseline", {"sources": tree, "cases": {}})
-    baseline["cases"][case.name] = {
-        "cycles": [cycles(base), cycles(current)],
-        "npu_us_min": [npu_us(base), npu_us(current)],
+    cycles_range = [cycles(base), cycles(current)]
+    timed_ranges = {
+        metric: [
+            (s := _wall_stats(m).get(metric))
+            and {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
+            for m in (base, current)
+        ]
+        for metric in ("dispatch_us", "npu_us")
+    }
+    return {
+        "cycles": [r and r["min"] for r in cycles_range],
+        **{
+            f"{metric}_min": [r and r["min"] for r in ranges]
+            for metric, ranges in timed_ranges.items()
+        },
+        "cycles_range": cycles_range,
+        **{f"{metric}_range": ranges for metric, ranges in timed_ranges.items()},
         "differing_words": sum(words),
+        "accuracy": [base["error"], current["error"]],
+        "baseline_failed": base["failed"],
+        "current_failed": current["failed"],
     }
 
 
 @pytest.mark.perf
 @pytest.mark.parametrize("case", _PERF_CASES)
 def test_kernel_perf(case, request, record_perf, workdir):
-    m = _measure(case, request.config, workdir)
+    m = _measure_and_compare(case, request.config, workdir)
     _record(record_perf, case, m, request.config._perf_meta)
-    if request.config.getoption("--baseline-sources"):
-        _against_baseline(case, request.config, workdir, m)
+
+
+def pytest_generate_tests(metafunc):
+    if "check_case" in metafunc.fixturenames:
+        compared = metafunc.config.getoption("--baseline-sources")
+        cases = [c for c in CASES if not c.perf] if compared else []
+        metafunc.parametrize("check_case", [_param(c) for c in cases])
+
+
+@pytest.mark.perf
+def test_kernel_same_as_baseline(check_case, request, workdir):
+    """A case the run checks but does not time, compared with --baseline-sources.
+
+    It gets the raw-word comparison and both arms' verdicts, not a row;
+    without --baseline-sources nothing is collected.
+    """
+    _measure_and_compare(check_case, request.config, workdir, timed=False)
+
+
+@pytest.mark.perf
+def test_a_baseline_that_fails_the_contract_is_timed(request, workdir, tmp_path):
+    """A baseline the current contract rejects is recorded and timed, not failed.
+
+    The contract is this tree's, so a change that fixes a kernel and tightens
+    its tolerance must still be able to time the kernel it replaced.
+    """
+    tree = tmp_path / "base"
+    shutil.copytree(aie_kernels_dir(), tree / "aie_kernels")
+    shutil.copytree(aie_runtime_lib_dir(), tree / "aie_runtime_lib")
+    for header in ("relu_aie2.h", "relu_aie2p.h"):
+        path = tree / "aie_kernels" / "eltwise" / header
+        assert path.read_text().count("  event1();") == 1
+        path.write_text(
+            path.read_text().replace(
+                "  event1();", "  c[0] = (bfloat16)-1.0f;\n  event1();"
+            )
+        )
+    case = Case("relu", calls=4)
+    current = _measure(case, request.config, workdir)
+    entry = _compare(case, request.config, workdir, current, str(tree))
+    assert "mismatches" in entry["baseline_failed"]
+    assert entry["differing_words"] == case.calls
+    assert entry["npu_us_min"][0] is not None
+    if not request.config.getoption("--no-cycles"):
+        assert entry["cycles"][0] is not None
+
+
+@pytest.mark.perf
+def test_a_wrong_kernel_is_compared_before_it_fails(request, workdir, tmp_path):
+    """A kernel that fails its contract still gets its words compared, then fails.
+
+    Otherwise a mutant, the one way to show the word diff sees a change,
+    fails on the reference before the diff is taken.
+    """
+    trees = {}
+    for name in ("base", "wrong"):
+        trees[name] = tmp_path / name
+        shutil.copytree(aie_kernels_dir(), trees[name] / "aie_kernels")
+        shutil.copytree(aie_runtime_lib_dir(), trees[name] / "aie_runtime_lib")
+    for header in ("relu_aie2.h", "relu_aie2p.h"):
+        path = trees["wrong"] / "aie_kernels" / "eltwise" / header
+        assert path.read_text().count("  event1();") == 1
+        path.write_text(
+            path.read_text().replace(
+                "  event1();", "  c[0] = (bfloat16)-1.0f;\n  event1();"
+            )
+        )
+    case = Case("relu", calls=4)
+    meta: dict = {}
+    # This tree's relu, and later tests', share the wrong one's object name.
+    ExternalFunction._instances.clear()
+    try:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setenv("MLIR_AIE_KERNEL_SOURCES", str(trees["wrong"]))
+            with pytest.raises(AssertionError, match="mismatches"):
+                _measure_and_compare(
+                    case,
+                    request.config,
+                    workdir,
+                    tree=str(trees["base"]),
+                    meta=meta,
+                    timed=False,
+                )
+    finally:
+        ExternalFunction._instances.clear()
+    entry = meta["baseline"]["cases"][case.name]
+    assert entry["differing_words"] == case.calls
+    assert "mismatches" in entry["current_failed"] and entry["baseline_failed"] is None

@@ -11,36 +11,42 @@ kwargs that are not recognised as configuration keys become ``compile_kwargs``
 
 Three usage patterns are supported:
 
-1. **Bare decorator** — no pre-bound compile params::
+1. **Bare decorator** — no pre-bound compile params:
 
-       @iron.jit
-       def gemm(a: In, b: In, c: Out, *,
-                M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
-           ...
+   ```python
+   @iron.jit
+   def gemm(a: In, b: In, c: Out, *,
+            M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+       ...
 
-       gemm(a, b, c, M=512, K=512, N=512)   # compile params at call time
+   gemm(a, b, c, M=512, K=512, N=512)   # compile params at call time
+   ```
 
-2. **With configuration only** — source files, flags, etc., no compile params::
+2. **With configuration only** — source files, flags, etc., no compile params:
 
-       @iron.jit(source_files=["kernel.cc"])
-       def gemm(a: In, b: In, c: Out, *, M: CompileTime[int], ...):
-           ...
+   ```python
+   @iron.jit(source_files=["kernel.cc"])
+   def gemm(a: In, b: In, c: Out, *, M: CompileTime[int], ...):
+       ...
+   ```
 
-3. **With pre-bound compile params** — Triton-style, params fixed at decoration::
+3. **With pre-bound compile params** — Triton-style, params fixed at decoration:
 
-       @iron.jit(M=512, K=512, N=512)
-       def gemm(a: In, b: In, c: Out, *,
-                M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
-           ...
+   ```python
+   @iron.jit(M=512, K=512, N=512)
+   def gemm(a: In, b: In, c: Out, *,
+            M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+       ...
 
-       gemm(a, b, c)   # no compile params needed at call time
+   gemm(a, b, c)   # no compile params needed at call time
+   ```
 
-.. note::
-   The decorated function body runs inside an implicit MLIR context
-   (thread-local ``Location`` / ``InsertionPoint``).  See
-   ``programming_guide/implicit_mlir_context.md`` for the model and
-   for the most common gotchas (e.g. why ``@func`` pykernels must be
-   decorated at module scope).
+Note:
+    The decorated function body runs inside an implicit MLIR context
+    (thread-local ``Location`` / ``InsertionPoint``).  See
+    ``programming_guide/implicit_mlir_context.md`` for the model and
+    for the most common gotchas (e.g. why ``@func`` pykernels must be
+    decorated at module scope).
 """
 
 from __future__ import annotations
@@ -50,6 +56,7 @@ import inspect as _inspect
 from typing import Callable, overload
 
 from aie.utils.callabledesign import CallableDesign as _CallableDesign
+from aie.utils.compile.jit._introspect import declare
 from aie.utils.compile.jit.compilabledesign import config_param_names
 
 # Derived from CallableDesign.__init__ so it stays in sync automatically:
@@ -98,15 +105,22 @@ def jit(
 
     # --- Validate CompileTime[T] params when generator is callable ---
     if callable(mlir_generator):
-        from aie.utils.compile.jit._introspect import split_params
-
-        compile_params, _, dispatch_params, scalar_params = split_params(mlir_generator)
+        declaration = declare(mlir_generator)
+        compile_params = list(declaration.params)
+        tensor_params = [m.name for m in declaration.operands]
+        dispatch_params = [m.name for m in declaration.per_calls]
+        scalar_params = list(declaration.scalars)
 
         # Guard 1-A: reject any compile kwarg that doesn't match a CompileTime[T]
         # param. Failing fast at decoration time catches typos like @jit(NN=...)
         # before they silently run a kernel with no value bound.
         if compile_kwargs:
-            unknown = set(compile_kwargs) - set(compile_params) - set(dispatch_params)
+            unknown = (
+                set(compile_kwargs)
+                - set(compile_params)
+                - set(tensor_params)
+                - set(dispatch_params)
+            )
             if unknown:
                 raise TypeError(
                     f"@iron.jit received keyword argument(s) that do not match any "
@@ -114,17 +128,19 @@ def jit(
                     f"{sorted(unknown)}.\n"
                     f"  Valid CompileTime[T] params: {compile_params}.\n"
                     f"  Specializable DispatchTime[T] params: {dispatch_params}.\n"
+                    f"  Tensor params (bind a np.ndarray type): {tensor_params}.\n"
                     f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}."
                 )
 
         # Guard 1-C: an unannotated scalar binds at generation time, so its
         # default bakes into the MLIR and per-call overrides are *silently*
         # ignored. DispatchTime[T] is exempt -- its stream is rebuilt per call.
-        sig_for_defaults = _inspect.signature(mlir_generator)
+        sig = declaration.signature
+        assert sig is not None, "a generator's declaration has a signature"
         silent_default_scalars = [
             name
             for name in scalar_params
-            if sig_for_defaults.parameters[name].default is not _inspect.Parameter.empty
+            if sig.parameters[name].default is not _inspect.Parameter.empty
         ]
         if silent_default_scalars:
             raise TypeError(
@@ -147,7 +163,6 @@ def jit(
         # have a signature default).  Pre-bound and defaulted params are exempt
         # because callers can omit them at the call site, so positional-vs-
         # keyword ambiguity does not arise.
-        sig = _inspect.signature(mlir_generator)
         non_kw_compile_params = [
             name
             for name in compile_params

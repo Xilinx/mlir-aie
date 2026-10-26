@@ -35,6 +35,7 @@ include = [
   "programming_examples/ml/dwconv1d/**/*.py",
   "programming_examples/ml/eltwise/**/*.py",
   "programming_examples/ml/eltwise_unary/**/*.py",
+  "programming_examples/ml/llama_3_2_1b/**/*.py",
   "programming_examples/ml/magika/**/*.py",
   "programming_examples/ml/mm_activation_epilogue/**/*.py",
   "programming_examples/ml/norm/**/*.py",
@@ -43,7 +44,9 @@ include = [
   "programming_examples/ml/scale_shift/**/*.py",
   "programming_examples/ml/softmax/**/*.py",
   "programming_examples/ml/swiglu/**/*.py",
+  "programming_examples/ml/yolo26n/**/*.py",
   "utils/kernel_checks/**/*.py",
+  "utils/component_checks/**/*.py",
 ]
 
 # Same generated/vendored dirs excluded from the black pre-commit hook.
@@ -56,6 +59,10 @@ extend-exclude = [
   "cmakeModules*",
   "ironenv",
 ]
+
+# The mlir_aie wheel requires Python 3.11; these examples use `match`.
+[per-file-target-version]
+"programming_examples/ml/yolo26n/**/*.py" = "py311"
 
 [lint]
 # E/F: pyflakes + pycodestyle errors (ruff defaults).

@@ -27,9 +27,9 @@ The kernel library ([`aie.iron.kernels`](../../kernels_library.md)) comes with c
 |---|---|
 | [`test/python/npu/kernel_cases.py`](../../../test/python/npu/kernel_cases.py) | The table of cases: kernel, tile size, number of calls, edge data, and which cases are smoke tests, nightly tests, or performance cases. |
 | [`test/python/npu/test_kernels_e2e.py`](../../../test/python/npu/test_kernels_e2e.py) | Is the kernel still correct? Runs each case on the NPU with poisoned output buffers, checks that nothing was written past each output tile, and judges it against the kernel's numpy reference. |
-| [`test/python/npu/test_kernels_perf.py`](../../../test/python/npu/test_kernels_perf.py) | How fast is it? Checks correctness first, then records traced core `cycles` per call, wall-clock `npu_us`, compile time and binary sizes. |
+| [`test/python/npu/test_kernels_perf.py`](../../../test/python/npu/test_kernels_perf.py) | How fast is it? Checks correctness first, then records traced core `cycles` per call, wall-clock `dispatch_us` and `npu_us` (the dispatch less an empty one), compile time and binary sizes. |
 | `python -m aie.utils.compile.remarks` | What did the compiler do? Compiles each kernel exactly as the JIT does and reports every loop's II, stages, zero-overhead-loop status, program memory, dropped pragmas, runtime-library calls and stack depth. No device needed. |
-| [Nightly Kernel Checks](https://xilinx.github.io/mlir-aie/kernel-checks/) | Last night's run per NPU (power mode, host, Peano, what passed, what moved past its threshold, and warnings when the numbers are less comparable), then the history: the [kernels view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels) lists every kernel, its sources, which NPUs build it and passed it last night; a kernel's own page (`#view=kernel&kernel=<factory>`) has every case's latest numbers and charts; the charts view has one chart per case and metric. |
+| [Maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=night) | Last night's kernel checks on npu1 and npu2, and each kernel's history. |
 
 All of them honour `MLIR_AIE_KERNEL_SOURCES` (see [section 4c](../section-4c#before-you-start-make-sure-your-edits-are-compiled)): point it at a checkout and they compile that checkout's `aie_kernels/`. That is also how you build a "before" version to compare against.
 
@@ -50,7 +50,7 @@ RuntimeError: expected <N> trace intervals, got <M>; a kernel on the core emits 
 
 A trace buffer that fills keeps only the first intervals. The split still labels them, and the row's `range` says `truncated`.
 
-Adding markers has a cost of its own: on AIE2P they grew one kernel's stack frame by 64 bytes. After instrumenting, check the remarks tool's `stack_bytes` row (see [Keeping it correct](#keeping-it-correct)).
+Adding markers has a cost of its own: on AIE2P they grew one kernel's stack frame by 64 bytes. After instrumenting, check the remarks tool's `kernel_stack_bytes` row (see [Keeping it correct](#keeping-it-correct)).
 
 ## <u>A worked example: `add`</u>
 
@@ -66,7 +66,7 @@ MLIR_AIE_KERNEL_SOURCES=$PWD pytest test/python/npu/test_kernels_perf.py -m perf
     --baseline-sources /tmp/before --perf-meta meta.json
 ```
 
-`--baseline-sources` measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and `meta.json` give both arms' `cycles` and minimum `npu_us`, and how many raw output words differ. The rows in `after.json` are the checkout's. Set `MLIR_AIE_KERNEL_SOURCES` for the checkout too. Without it, the tools compile the installed copy of `aie_kernels/`, so the "after" arm quietly measures whatever kernel was last installed. The brackets in `-k` match the whole case ID; without them, `mul_add/1024x16/bfloat16` would match too. `--pmode <mode>` makes the run refuse to start unless the device is in that power mode (the nightly uses `turbo`); it checks the mode and does not set it.
+`--baseline-sources` measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and `meta.json` give both arms' `cycles` and minimum `dispatch_us` and `npu_us`, and how many raw output words differ. The rows in `after.json` are the checkout's. Set `MLIR_AIE_KERNEL_SOURCES` for the checkout too. Without it, the tools compile the installed copy of `aie_kernels/`, so the "after" arm quietly measures whatever kernel was last installed. The brackets in `-k` match the whole case ID; without them, `mul_add/1024x16/bfloat16` would match too. `--pmode <mode>` makes the run refuse to start unless the device is in that power mode (the nightly uses `turbo`); it checks the mode and does not set it.
 
 Each row in the JSON is `<case>/<metric>`:
 
@@ -74,7 +74,7 @@ Each row in the JSON is `<case>/<metric>`:
 |---|---|---|
 | `add/1024x16/bfloat16/cycles` | 390 | 150 |
 | `add/1024x16/bfloat16/cycles_per_kop` | 380.859 | 146.484 |
-| `add/1024x16/bfloat16/npu_us` | 85.16 | 90.53 |
+| `add/1024x16/bfloat16/dispatch_us` | 85.16 | 90.53 |
 
 `cycles` is the minimum over the 16 traced calls, with the median, maximum and count in the row's `range`. The table's cycles are medians, recorded before the performance check switched to the minimum. `npu_us` is the median device time of a whole 16-call dispatch. The kernel is 2.6x faster, yet `npu_us` got *slower*. The next section explains why that is expected, and why you should judge the kernel by `cycles`.
 
@@ -192,9 +192,9 @@ The remarks tool (see [Static checks](../../kernels_library.md#static-checks)) w
 | `pipelined`, `missed_reason` | A loop the pipeliner declined. The hot loop should be innermost, with no `if` in its body. |
 | `prologue_bundles`, `epilogue_bundles` | The fixed cost of entering the loop. It matters when the trip count is small or the loop is entered many times. |
 
-Per kernel, `pm_bytes` is program memory, `pass_failed` lists `#pragma clang loop` or `AIE_*` hints the compiler could not apply, and `schedule_notes` holds the scheduler's messages. "Unable to find schedule" means the modulo scheduler gave up; the loop may still have been packed by the post-pass scheduler, so read `ii` and `ns` too. The tool builds each factory at its defaults and at each entry of its `.dtypes` table, not at every case's parameters.
+Per kernel, `pm_bytes` is program memory, `pass_failed` lists `#pragma clang loop` or `AIE_*` hints the compiler could not apply, and `schedule_notes` holds the scheduler's messages. "Unable to find schedule" means the modulo scheduler gave up; the loop may still have been packed by the post-pass scheduler, so read `ii` and `ns` too. The tool builds each factory at its defaults and at each entry of its `kernels.DTYPES` table, not at every case's parameters.
 
-**Library calls and stack.** Scalar code that looks harmless can compile to a function call. The tool also reads each kernel object. Its `libcalls` row counts the runtime-library routines that the entry symbol reaches, and the build prints their names (`calls the runtime library: __divsf3 __mulsf3`). A healthy kernel has none. [Peano and AIE2P traps](#peano-and-aie2p-traps) lists the calls to look for. For an object outside the library, `$PEANO_INSTALL_DIR/bin/llvm-nm -u <kernel>.o` lists the same symbols, next to any other kernels it calls. The `stack_bytes` row is the deepest chain of stack frames from the entry symbol, not counting the library routines' own frames. When it is over the contract's `stack_bytes` (or the target's default), the tool prints a warning.
+**Library calls and stack.** Scalar code that looks harmless can compile to a function call. The tool also reads each kernel object. Its `libcalls` row counts the runtime-library routines that the entry symbol reaches, and the build prints their names (`calls the runtime library: __divsf3 __mulsf3`). A healthy kernel has none. [Peano and AIE2P traps](#peano-and-aie2p-traps) lists the calls to look for. For an object outside the library, `$PEANO_INSTALL_DIR/bin/llvm-nm -u <kernel>.o` lists the same symbols, next to any other kernels it calls. The `kernel_stack_bytes` row is the deepest chain of stack frames from the entry symbol, not counting the library routines' own frames or the core's `main`, so the core needs more than it says. aiecc measures the whole linked core and reserves that.
 
 **The object.** When a number moves unexpectedly, look before you explain. In the loop body, count the `vlda`/`vldb`/`vmac`/`vst` operations and any `[sp, #...]` accesses (spills to the stack). Size code per function, not per object: `llvm-size -A` and the `.text.<entry>` section. A `static` helper that is inlined into its `extern "C"` entry point can also be emitted on its own; it counts in the object, and the linker then drops it.
 
@@ -255,7 +255,7 @@ Step 64 lanes for 8- and 16-bit data and 32 lanes for bf16 arithmetic, not 16. `
 On an int8 convolution network, three more changes measured faster:
 * doing the bias add on an int32 vector and then `acc.to_vector<int8>(shift)` with `rounding_mode::conv_even`, which is bit-exact with the scalar rounding: 20-25% per kernel;
 * having the producing kernel write the matrix-multiply A operand in the order the consumer's `mmul` loads it: -23.6% on one block;
-* moving a pure strided copy (a stride-2 deinterleave) out of the kernel into the memory tile's DMA (`dims_to_stream`): +12%. This helps only when each contiguous element is at least 512 bytes, and int8 vector loads still need a 32-byte-aligned start.
+* moving a pure strided copy (a stride-2 deinterleave) out of the kernel into the memory tile's DMA (`to_stream`): +12%. This helps only when each contiguous element is at least 512 bytes, and int8 vector loads still need a 32-byte-aligned start.
 
 ## <u>Peano and AIE2P traps</u>
 
@@ -266,7 +266,7 @@ Some things compile without a warning and then run silently slower or give wrong
 **Pragmas that do nothing, or the opposite.** Under Peano, `AIE_PREPARE_FOR_PIPELINING` expands to nothing, and so do the other Chess-only controls ([pragma reference](../section-4c#loop-pragma-reference)). Code built with and without it is byte-identical. `AIE_PREPARE_FOR_POSTPIPELINING` expands to `pipeline(disable)`: it **turns pipelining off**. `AIE_LOOP_RANGE` states a trip count and unrolls nothing. `chess_storage(...)` silently drops its alignment and bank placement: the same table was 32-byte aligned under Chess and 4-byte aligned under Peano. Use `alignas`.
 
 **Silent wrong results.**
-* A stack overflow does not trap on AIE2P; it overwrites the neighbouring buffer. aiecc measures the stack each core needs and fails the build when the declared size is too small. The IRON `Worker` default is 1024 bytes; a kernel contract states a larger need in `stack_bytes`. The remarks `stack_bytes` row gives the deepest path before you build.
+* A stack overflow does not trap on AIE2P; it overwrites the neighbouring buffer. aiecc measures the stack each linked core needs and reserves it, never less than the 1024-byte default, and fails the build when an explicit `Worker(stack_size=)` is too small. The remarks `kernel_stack_bytes` row gives the kernel's deepest path before you build; the core adds `main`'s frame.
 * On hardware, a block stream's `pop_seek` that directly follows a plain `pop()` landed on the wrong block when the seek stride was odd; even strides were correct. [mm_bfp.cc](../../../aie_kernels/linalg/mm_bfp.cc) therefore seeks after every pop when the number of k blocks is odd, and an odd-K case in [kernel_cases.py](../../../test/python/npu/kernel_cases.py) covers that path.
 * An unaligned `load_v<int8, 32>` silently returns wrong bytes: use two aligned loads and `shuffle_down`. Vector stores of 64 lanes need a 64-byte-aligned buffer (32 at the least), and lookup tables need `alignas(32)`.
 * `mmul::to_vector<int32>` dumps the accumulator in a different lane order from `to_vector<int8>(shift)`.
@@ -353,7 +353,7 @@ Make sure every number comes from the source you think it does.
     }
     ```
     <details markdown="1"><summary>Show answer</summary>
-    390 and 150 cycles; II 12 and II 18, both with `NS=1`. The wall-clock `npu_us` does not move beyond noise, because the core is busy for about 1.5% of the device time.
+    390 and 150 cycles; II 12 and II 18, both with `NS=1`. The wall-clock `dispatch_us` does not move beyond noise, because the core is busy for about 1.5% of the device time.
     </details>
 
 1. The performance check sizes the trace buffer from the number of intervals the contracts declare (`kd.traced_intervals`). Call `kd.cycles_per_call` for the `add/1024x256/bfloat16` case with `trace_size=16384` instead. What comes back, and how can you tell?

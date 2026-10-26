@@ -5,19 +5,17 @@
 #
 
 # RUN: %pytest %s
+# REQUIRES: peano
 """Unit tests for ExternalFunction's compile-recipe accessors (no NPU required).
 
-Also covers ``cxx_core_compile_command``, the factored Peano command builder;
-no compiler is invoked, only the argument list is inspected.
+Also covers ``cxx_core_compile_command``, the factored Peano command builder,
+and prefixing a Peano-compiled object's symbols.
 """
-
-from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import patch
 
 import numpy as np
 import pytest
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.compile import utils
 from aie.utils.compile.utils import cxx_core_compile_command
 
 # ---------------------------------------------------------------------------
@@ -32,16 +30,19 @@ def test_name_is_the_symbol():
 def test_file_backed_recipe_is_readable(tmp_path):
     src = tmp_path / "k.cc"
     src.write_text("void k(int*){}")
+    # A host-absolute dir: on Windows a driveless "/inc/a" is drive-relative,
+    # so the constructor would (correctly) anchor it to the current drive.
+    inc = str(tmp_path / "inc")
     ef = ExternalFunction(
         "k",
         source_file=str(src),
         arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
-        include_dirs=["/inc/a"],
+        include_dirs=[inc],
         compile_flags=["-DBIT_WIDTH=32"],
     )
     assert ef.source_file == str(src)
     assert ef.source_string is None
-    assert ef.include_dirs == ["/inc/a"]
+    assert ef.include_dirs == [inc]
     assert ef.compile_flags == ["-DBIT_WIDTH=32"]
     assert ef.use_chess is False
 
@@ -53,30 +54,79 @@ def test_inline_recipe_is_readable():
     assert ef.include_dirs == [] and ef.compile_flags == []
 
 
-def test_accessors_return_copies():
+def test_accessors_return_copies(tmp_path):
+    inc = str(tmp_path / "i")
     ef = ExternalFunction(
-        "k", source_string="void k(){}", include_dirs=["/i"], compile_flags=["-O3"]
+        "k", source_string="void k(){}", include_dirs=[inc], compile_flags=["-O3"]
     )
     ef.include_dirs.append("/mutated")
     ef.compile_flags.append("-mutated")
-    assert ef.include_dirs == ["/i"]
+    assert ef.include_dirs == [inc]
     assert ef.compile_flags == ["-O3"]
+
+
+def test_a_kernel_made_unregistered_joins_no_build():
+    before = set(ExternalFunction._instances)
+    with ExternalFunction.unregistered():
+        probe = ExternalFunction(
+            "probe",
+            source_string="void probe(int* p){}",
+            arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
+        )
+    assert probe not in ExternalFunction._instances
+    assert ExternalFunction._instances == before
+
+
+def test_a_recipe_key_names_the_build_not_where_it_happens(tmp_path):
+    def built(where, flags=("-DN=16",), prefix=None, source="void k(int*){}", n=16):
+        src = tmp_path / where / "k.cc"
+        src.parent.mkdir(exist_ok=True)
+        src.write_text(source)
+        return ExternalFunction(
+            "k",
+            source_file=str(src),
+            arg_types=[np.ndarray[(n,), np.dtype[np.int32]]],
+            include_dirs=[str(tmp_path / where)],
+            compile_flags=list(flags),
+            symbol_prefix=prefix,
+        ).recipe_key
+
+    here = built("a")
+    assert here.startswith("k-")
+    assert here == built("b", prefix="d1g3st")
+    assert here != built("c", flags=("-DN=32",))
+    assert here != built("d", n=32)
+    assert here != built("e", source="void k(int* p){ *p = 0; }")
+
+    # Two include trees under no known root are two builds.
+    assert built("f", flags=(f"-I{tmp_path / 'x' / 'inc'}",)) != built(
+        "g", flags=(f"-I{tmp_path / 'y' / 'inc'}",)
+    )
+
+
+def test_a_recipe_key_names_the_kernel_sources_by_their_root(tmp_path, monkeypatch):
+    def installed(where, lut="gelu.cc"):
+        checkout = tmp_path / where
+        monkeypatch.setenv("MLIR_AIE_KERNEL_SOURCES", str(checkout))
+        lib = checkout / "aie_runtime_lib"
+        return ExternalFunction(
+            "k",
+            source_string="void k(int* p){}",
+            arg_types=[np.ndarray[(16,), np.dtype[np.int32]]],
+            compile_flags=[
+                f"-I{lib / 'AIE2P'}",
+                f"-isystem {lib / 'AIE2P'}",
+                f'-DAIE_LUT_KERNEL_SOURCE="{lib / lut}"',
+            ],
+        ).recipe_key
+
+    assert installed("f") == installed("g")
+    assert installed("f") != installed("h", lut="silu.cc")
 
 
 # ---------------------------------------------------------------------------
 # cxx_core_compile_command
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(autouse=True)
-def _no_peano_needed(monkeypatch):
-    """Stub the Peano and header paths so no Peano install is needed.
-
-    Building the command resolves both through ``aie.utils.config``; a pure
-    host test must not depend on the llvm-aie wheel being present.
-    """
-    monkeypatch.setattr("aie.utils.config.peano_cxx_path", lambda: "/peano/bin/clang++")
-    monkeypatch.setattr("aie.utils.config.cxx_header_path", lambda: "/mlir_aie/include")
 
 
 def _cmd(**kw):
@@ -112,8 +162,8 @@ def test_command_carries_the_library_defaults():
         assert flag in cmd
 
 
-def test_chess_path_needs_the_wrapper_on_path(monkeypatch):
-    monkeypatch.setattr("shutil.which", lambda name: None)
+def test_chess_path_needs_the_wrapper_on_path(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path))
     with pytest.raises(RuntimeError, match="xchesscc_wrapper"):
         _cmd(use_chess=True)
 
@@ -123,53 +173,34 @@ def test_chess_path_needs_the_wrapper_on_path(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_prefixing_renames_every_defined_symbol(tmp_path, monkeypatch):
+def test_prefixing_renames_every_defined_symbol(tmp_path):
     """A prefix covers the object's siblings, not just the declared symbol.
 
     Leaving additional entry points bare makes parameterizations collide at
-    link. Uses a stub object so the test needs no Peano.
+    link.
     """
-    from aie.utils.compile import utils
-
-    monkeypatch.setattr(utils.config, "nm_path", lambda: "nm")
-    monkeypatch.setattr(utils.config, "objcopy_path", lambda: "objcopy")
-    monkeypatch.setattr(utils, "_object_has_bitcode", lambda _: False)
-
+    src = tmp_path / "k.cc"
+    src.write_text(
+        'extern "C" void matmul_i16_i16() {}\n'
+        'extern "C" void matmul_scalar_i16_i16() {}\n'
+        'extern "C" void zero_i16() {}\n'
+    )
     obj = tmp_path / "k.o"
-    obj.write_bytes(b"")
-    calls = []
+    utils.compile_cxx_core_function(str(src), "aie2p", str(obj))
 
-    def fake_run(cmd, **kwargs):
-        calls.append(cmd)
-        if "--defined-only" in cmd:  # llvm-nm
-            listed = "\n".join(
-                f"00000000 T {s}" for s in getattr(fake_run, "symbols", [])
-            )
-            return SimpleNamespace(returncode=0, stdout=listed.encode(), stderr=b"")
-        redefines = [a for a in cmd if a.startswith("--redefine-syms=")]
-        assert redefines, cmd
-        mapping = dict(
-            line.split()
-            for line in Path(redefines[0].split("=", 1)[1]).read_text().splitlines()
-        )
-        fake_run.symbols = [mapping.get(s, s) for s in fake_run.symbols]
-        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
-
-    fake_run.symbols = ["matmul_i16_i16", "matmul_scalar_i16_i16", "zero_i16"]
-    with patch("subprocess.run", fake_run):
-        utils.prefix_symbols_in_object(str(obj), "d00d_")
-        assert fake_run.symbols == [
-            "d00d_matmul_i16_i16",
-            "d00d_matmul_scalar_i16_i16",
-            "d00d_zero_i16",
-        ]
-        # Prefixing is literal; compile_external_kernel tracks cache state.
-        utils.prefix_symbols_in_object(str(obj), "d00d_")
-        assert fake_run.symbols == [
-            "d00d_d00d_matmul_i16_i16",
-            "d00d_d00d_matmul_scalar_i16_i16",
-            "d00d_d00d_zero_i16",
-        ]
+    utils.prefix_symbols_in_object(str(obj), "d00d_")
+    assert sorted(utils._defined_symbols(str(obj))) == [
+        "d00d_matmul_i16_i16",
+        "d00d_matmul_scalar_i16_i16",
+        "d00d_zero_i16",
+    ]
+    # Prefixing is literal; compile_external_kernel tracks cache state.
+    utils.prefix_symbols_in_object(str(obj), "d00d_")
+    assert sorted(utils._defined_symbols(str(obj))) == [
+        "d00d_d00d_matmul_i16_i16",
+        "d00d_d00d_matmul_scalar_i16_i16",
+        "d00d_d00d_zero_i16",
+    ]
 
 
 def test_bind_other_symbols_from_the_same_object():

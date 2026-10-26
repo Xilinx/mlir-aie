@@ -26,10 +26,12 @@ void tanh_bf16_vectorized(bfloat16 *restrict input_vector,
   const int num_elems = TANH_ELEMS;
 #if AIE_TUNED_AIE2
   // AIE2's tanh reads a table; lut_map_bf16 lays the loop out around the reads.
-  lut_map_bf16<4, false>(input_vector, output_vector, num_elems,
+  lut_map_bf16<3, false>(input_vector, output_vector, num_elems,
                          [](aie::vector<bfloat16, 16> x) {
                            return aie::vector<bfloat16, 16>(tanh_bf16_v16(x));
                          });
+#elif AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
+  tanh_lut_map(input_vector, output_vector, num_elems);
 #else
   auto it_in = aie::begin_restrict_vector<32>((bfloat16 *)input_vector);
   auto it_out = aie::begin_restrict_vector<32>((bfloat16 *)output_vector);

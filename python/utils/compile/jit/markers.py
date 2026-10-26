@@ -27,6 +27,14 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     Marks a generator function parameter as a runtime bidirectional tensor.
     Data is DMA-transferred in both directions on every kernel call.
 
+A generator receives each tensor as an operand of its marker's class, never its
+data: an ``In``/``Out``/``InOut`` with the ``shape`` and ``dtype`` of the
+tensor the design is called with, or of a type bound ahead of time with
+``specialize(name=np.ndarray[...])``, as an operator's ``op.a`` is. Every API
+that takes a tensor type also takes the operand; ``operand.ndarray_type`` is
+its ``np.ndarray[shape, np.dtype[T]]``. A different shape or dtype is a
+different compiled design.
+
 ``DispatchTime[T]``
     Marks a keyword-only integer scalar that can vary per dispatch without
     recompiling. Explicit specialization instead fixes it at compile time.
@@ -43,7 +51,22 @@ instead.
 
 from __future__ import annotations
 
-from typing import Annotated, NoReturn, TypeVar
+import math
+import sys
+from typing import Annotated, Any, NoReturn, TypeVar
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
+
+import numpy as np
+from ml_dtypes import bfloat16
+
+from ....helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
+from ....helpers.taplib import PerCall
+from ... import bfp
+from .params import Member, OperatorParam, _text, resolve
 
 T = TypeVar("T")
 
@@ -58,27 +81,176 @@ construction time (or bound by ``@iron.jit(...)``).
 Changing a ``CompileTime[T]``-annotated value → new cache key → recompile.
 Required unless a default is given.
 
-Example::
+For example:
 
-    from ml_dtypes import bfloat16
+```python
+from ml_dtypes import bfloat16
 
-    def gemm(a: In, b: In, c: Out,
-             M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
-             dtype: CompileTime[type] = bfloat16):
-        ...
+def gemm(a: In, b: In, c: Out,
+         M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
+         dtype: CompileTime[type] = bfloat16):
+    ...
+```
 """
 
 
-class In:
-    """Runtime input tensor annotation (host → NPU, DMA each call)."""
+class _Operand(Member):
+    """A tensor declared in an operator's class body.
+
+    On an instance, ``op.a`` is the operand the operator bound (`of`).
+    ``In`` documents the arguments.
+    """
+
+    fills = drains = False
+
+    def __init__(
+        self,
+        *dims: Any,
+        dtype: Any = bfloat16,
+        obj_shape: Any = None,
+        per: Any = None,
+        depth: int = 2,
+        replicate: bool = False,
+        when: OperatorParam | None = None,
+        like: _Operand | None = None,
+    ):
+        if replicate and per is None:
+            raise TypeError(
+                "replicate=True needs per=<dim>: every lane receives the whole tensor"
+            )
+        if like is not None and dims:
+            raise TypeError(f"give dims {dims} or like={like!r}, not both")
+        self.like = like
+        self.dims = dims if like is None else like.dims
+        self.declared_dtype = dtype
+        self.obj_dims = (
+            None
+            if obj_shape is None
+            else (
+                tuple(obj_shape)
+                if isinstance(obj_shape, (tuple, list))
+                else (obj_shape,)
+            )
+        )
+        self.per = (
+            None
+            if per is None
+            else tuple(per) if isinstance(per, (tuple, list)) else (per,)
+        )
+        self.depth = depth
+        self.replicate = replicate
+        self.when = when
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return resolve(self.dims, self.op)
+
+    @property
+    def dtype(self):
+        dtype = self.declared_dtype
+        return (
+            getattr(self.op, dtype.name) if isinstance(dtype, OperatorParam) else dtype
+        )
+
+    @property
+    def elements(self) -> int:
+        return math.prod(self.shape)
+
+    @property
+    def ndarray_type(self) -> type[np.ndarray]:
+        """The tensor type this operand describes, ``np.ndarray[shape, np.dtype[T]]``."""
+        return np.ndarray[self.shape, np.dtype[self.dtype]]
+
+    @classmethod
+    def for_tensor(cls, name: str, ndarray_type: type[np.ndarray]) -> Self:
+        """Return the operand a generator's ``name`` parameter receives.
+
+        Args:
+            name: The generator parameter.
+            ndarray_type: The tensor's type, ``np.ndarray[shape, np.dtype[T]]``.
+
+        Returns:
+            An operand of this class with that shape and dtype.
+        """
+        operand = cls(
+            *np_ndarray_type_get_shape(ndarray_type),
+            dtype=np_ndarray_type_get_dtype(ndarray_type),
+        )
+        operand.__set_name__(None, name)
+        return operand
+
+    @property
+    def streamed(self) -> bool:
+        return self.obj_dims is not None
+
+    @property
+    def obj_shape(self) -> tuple[int, ...]:
+        if self.obj_dims is None:
+            raise TypeError(f"{self.name} is declared without an obj_shape=: no stream")
+        return resolve(self.obj_dims, self.op)
+
+    @property
+    def lanes(self) -> int:
+        """The stream's ObjectFifos."""
+        if self.obj_dims is None:
+            raise TypeError(f"{self.name} is declared without an obj_shape=: no stream")
+        return 1 if self.per is None else math.prod(resolve(self.per, self.op))
+
+    def __repr__(self) -> str:
+        role = type(self).__name__
+        if self.op is None:
+            if self.like is not None:
+                return f"{role}(like={self.like.name})"
+            return f"{role}({', '.join(map(_text, self.dims))})"
+        return f"<{role} {self.name} {self.shape} {bfp.dtype_name(self.dtype)}>"
 
 
-class Out:
-    """Runtime output tensor annotation (NPU → host, DMA each call)."""
+class In(_Operand):
+    """Runtime input tensor (host → NPU, DMA each call).
+
+    ``Out`` and ``InOut`` take the same arguments.
+
+    Args:
+        dims: The host shape: integers, ``param()``s and ``Select``s. A
+            ``param()`` that is None on an instance is a dimension the shape
+            leaves out there.
+        dtype: The element type, or a ``param()`` holding it.
+        obj_shape: What one ObjectFifo element holds. With one the tensor
+            streams into the array; without one a hand-written sequence
+            moves it.
+        per: The ``param()`` (or several, multiplied) the stream is split
+            over, one ObjectFifo each.
+        depth: The ObjectFifo depth.
+        replicate: Every ``per=`` lane gets the whole tensor, not a share.
+        when: A bool ``param()``; the tensor exists only where it is true.
+        like: An input whose dims these are; a caller gives this tensor the
+            shape that input has on the call, so ``Out(like=x)`` of a flat
+            ``x`` is ``(rows, cols)`` where ``x`` is.
+
+    Raises:
+        TypeError: ``replicate`` without ``per``, or both ``dims`` and
+            ``like``.
+    """
+
+    fills = True
 
 
-class InOut:
-    """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
+class Out(_Operand):
+    """Runtime output tensor (NPU → host, DMA each call).
+
+    Takes the arguments ``In`` documents.
+    """
+
+    drains = True
+
+
+class InOut(_Operand):
+    """Runtime bidirectional tensor (DMA in both directions each call).
+
+    Takes the arguments ``In`` documents.
+    """
+
+    fills = drains = True
 
 
 DispatchTime = Annotated[T, "aie.dispatch_time"]
@@ -95,32 +267,35 @@ includes it in the cache key; calls cannot override it.
 types are rejected. Parameters must be keyword-only, even when defaulted or
 specialized.
 
-The generator receives an identity-bearing symbolic parameter for each unbound
-scalar. Forward it exactly once as a direct ``Runtime(seq, fn_args=[...])``
-entry, in any order. Use the callback's SSA argument for runtime operations.
-Generation-time arithmetic, truth tests, shapes, dtypes, and Worker arguments
-require ``CompileTime`` or specialization instead.
+The generator receives a ``PerCall`` for each unbound scalar. Forward it
+exactly once as a direct ``Runtime(seq, fn_args=[...])`` entry, in any order.
+Integer arithmetic on it (``n * 64``, ``(n + 1) // 2``) is an ``Affine``
+expression, which a tensor access pattern built in the sequence body stages;
+the callback's SSA argument serves runtime control flow. Truth tests,
+comparisons, shapes, dtypes, and Worker arguments require ``CompileTime`` or
+specialization instead.
 
 The Python bridge supports one runtime sequence, rejects remaining load-PDI
 operations, and cannot use ``full_elf=True`` while any parameters remain dynamic.
 
-Example::
+For example:
 
-    import numpy as np
+```python
+import numpy as np
 
-    def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
-        ...
+def scaled_copy(a: In, b: Out, *, scale: DispatchTime[np.int32]):
+    ...
+```
 """
 
 
-class _DispatchParameter:
-    """An opaque value until Runtime replaces it with a sequence block argument."""
+class _DispatchParameter(PerCall):
+    """A ``PerCall`` with no value until Runtime binds it to a sequence block argument."""
 
-    __slots__ = ("name", "scalar_type", "position", "owner", "_binding")
+    __slots__ = ("position", "owner", "_binding")
 
     def __init__(self, name: str, scalar_type: type, position: int, owner: object):
-        self.name = name
-        self.scalar_type = scalar_type
+        super().__init__(name, "aie.dispatch_time", scalar_type)
         self.position = position
         self.owner = owner
         self._binding = None
@@ -128,32 +303,40 @@ class _DispatchParameter:
     def __repr__(self) -> str:
         return f"DispatchTime({self.name!r}, {self.scalar_type.__name__})"
 
-    def _misuse(self, *args, **kwargs) -> NoReturn:
+    def refuse(self, *args, **kwargs) -> NoReturn:
+        """Raise the TypeError any generation-time use of this parameter gets.
+
+        Raises:
+            TypeError: Always.
+        """
         raise TypeError(
             f"DispatchTime parameter {self.name!r} has no generation-time value. "
-            "Forward it directly in Runtime(seq, fn_args=[...]) and use the "
-            "sequence callback's argument for runtime arithmetic/control flow. "
-            "For shapes, dtypes, or worker configuration, use CompileTime or "
-            f"specialize({self.name}=...)."
+            "+, -, *, // and % on it make an expression a tensor access pattern "
+            "in the Runtime sequence stages; use the sequence callback's argument "
+            "for runtime control flow. For truth tests, comparisons, shapes, "
+            f"dtypes, or worker configuration, use CompileTime or specialize({self.name}=...)."
         )
 
-    def _bind(self, binding: object) -> None:
+    def _bind(self, binding: object, ssa) -> None:
         if self._binding is not None:
             raise TypeError(
                 f"DispatchTime parameter {self.name!r} must be bound exactly once "
                 "in one Runtime sequence."
             )
         self._binding = binding
+        self.ssa = ssa
 
     # Python and NumPy must not silently interpret a symbolic parameter as a
-    # truthy object, a dtype, an object-array element, or a generation-time value.
-    __bool__ = __int__ = __index__ = __float__ = __complex__ = __hash__ = _misuse
-    __array__ = __array_ufunc__ = __getattr__ = _misuse
-    __call__ = __iter__ = __len__ = __getitem__ = __contains__ = _misuse
-    __eq__ = __ne__ = __lt__ = __le__ = __gt__ = __ge__ = _misuse
-    __add__ = __radd__ = __sub__ = __rsub__ = __mul__ = __rmul__ = _misuse
-    __truediv__ = __rtruediv__ = __floordiv__ = __rfloordiv__ = _misuse
-    __mod__ = __rmod__ = __pow__ = __rpow__ = __divmod__ = __rdivmod__ = _misuse
-    __lshift__ = __rlshift__ = __rshift__ = __rrshift__ = _misuse
-    __and__ = __rand__ = __or__ = __ror__ = __xor__ = __rxor__ = _misuse
-    __neg__ = __pos__ = __abs__ = __invert__ = __round__ = _misuse
+    # truthy object, a dtype, an object-array element, or a generation-time
+    # value. PerCall's integer arithmetic stays: None makes a NumPy scalar on
+    # the left defer to the reflected operator, and a ufunc refuse.
+    __array_ufunc__ = None
+    __bool__ = __int__ = __index__ = __float__ = __complex__ = __hash__ = refuse
+    __array__ = __getattr__ = refuse
+    __call__ = __iter__ = __len__ = __getitem__ = __contains__ = refuse
+    __eq__ = __ne__ = __lt__ = __le__ = __gt__ = __ge__ = refuse
+    __truediv__ = __rtruediv__ = __rfloordiv__ = refuse
+    __rmod__ = __pow__ = __rpow__ = __divmod__ = __rdivmod__ = refuse
+    __lshift__ = __rlshift__ = __rshift__ = __rrshift__ = refuse
+    __and__ = __rand__ = __or__ = __ror__ = __xor__ = __rxor__ = refuse
+    __pos__ = __abs__ = __invert__ = __round__ = refuse

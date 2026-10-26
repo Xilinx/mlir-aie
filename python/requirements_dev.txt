@@ -43,6 +43,8 @@ numpy>=2.5.2; python_version >= "3.12"
 matplotlib
 psutil
 pytest
+pytest-rerunfailures
+pytest-xdist
 pyyaml
 cloudpickle # required by eudsl when it is vendored instead of installed
 reuse[charset-normalizer]==6.2.0

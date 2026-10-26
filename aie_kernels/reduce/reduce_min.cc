@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <limits>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +26,7 @@ void _reduce_min_vector(int32_t *restrict in, int32_t *restrict out,
   const int32_t vector_size = 16;
   v16int32 after_vector;
   v16int32 running_min = massive;
-#if AIE_TUNED_AIE2
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   // Walked pointer, rolled loop: see reduce_add.cc.
   const v16int32 *p = (const v16int32 *)in;
   AIE_LOOP_NO_UNROLL
@@ -68,7 +69,54 @@ void _reduce_min_scalar(int32_t *restrict in, int32_t *restrict out,
   return;
 }
 
+// The identity of a bf16 min is +inf, not the largest finite value, so an
+// all-+inf tile reduces to +inf.
+static inline bfloat16 bf16_min_identity() {
+  return static_cast<bfloat16>(std::numeric_limits<float>::infinity());
+}
+
+// bf16 min, as reduce_max.cc's bf16 max.
+static void _reduce_min_vector_bf16(bfloat16 *restrict in,
+                                    bfloat16 *restrict out,
+                                    const int32_t input_size) {
+  event0();
+  constexpr int32_t vector_size = 32;
+  aie::vector<bfloat16, vector_size> running_min =
+      aie::broadcast<bfloat16, vector_size>(bf16_min_identity());
+  const bfloat16 *p = in;
+  AIE_LOOP_NO_UNROLL
+  for (int32_t i = 0; i < REDUCE_MIN_ELEMS; i += vector_size) {
+    running_min = aie::min(running_min, aie::load_v<vector_size>(p));
+    p += vector_size;
+  }
+  *out = aie::reduce_min(running_min);
+  event1();
+}
+
+static void _reduce_min_scalar_bf16(bfloat16 *restrict in,
+                                    bfloat16 *restrict out,
+                                    const int32_t input_size) {
+  event0();
+  bfloat16 running_min = bf16_min_identity();
+  for (int32_t i = 0; i < REDUCE_MIN_ELEMS; i++) {
+    if (in[i] < running_min)
+      running_min = in[i];
+  }
+  *out = running_min;
+  event1();
+}
+
 extern "C" {
+
+void reduce_min_vector_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
+                                int32_t input_size) {
+  _reduce_min_vector_bf16(a_in, c_out, input_size);
+}
+
+void reduce_min_scalar_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
+                                int32_t input_size) {
+  _reduce_min_scalar_bf16(a_in, c_out, input_size);
+}
 
 void reduce_min_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
   _reduce_min_vector(a_in, c_out, input_size);

@@ -21,26 +21,39 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
-from aie.dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
+from aie.dialects import arith, memref  # pyright: ignore[reportAttributeAccessIssue]
 from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
     constant,
 )
 from aie.helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from aie.helpers.util import np_ndarray_type_to_memref_type
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    IndexType,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.iron.buffer import Buffer
 from aie.iron.dataflow import ObjectFifo
+from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels._common import Param, _is_tensor_type
-from aie.utils import bfp, get_current_device, tensor
-from aie.utils.compile.jit import CompileTime, In, InOut, Out
+from aie.utils import bfp, ensure_current_device, tensor
+from aie.utils.compile import resolve_target_arch
+from aie.utils.compile.jit import CompileTime, In, InOut, Out, get_compile_arg
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
+from aie.utils.trace.events import CoreEvent
 from aie.utils.trace.utils import get_cycles_summary
 from aie.utils.verify import poisoned
 
 from ._pipeline import Stage, pipeline
 
 GUARD_BYTES = 64
-_GUARD_WORDS = np.ndarray[(GUARD_BYTES // 4,), np.dtype[np.int32]]
+# The traced core emits this many event0/event1 pairs after its last call:
+# the trace unit sends only whole packets, and without them the last two
+# of bn_conv2dk3_dw_out_split's 8 calls never left the tile (1 or 2 pairs
+# still lost them). The pairs decoded as 1 to 18 cycles.
+TRACE_FLUSH = 16
+FLUSH_CYCLES = 32
+# A Param bound at a byte offset sits in a buffer this much larger.
+VIEW_PAD = 64
 
 
 def _contract(fn):
@@ -77,16 +90,14 @@ def _calls(calls, shape=None):
 
 
 def _device():
-    device = get_current_device()
+    # Bound, not just probed: a factory reads the arch from the bound device,
+    # so one called with none bound builds the aie2 variant of its contract.
+    device = ensure_current_device()
     if device is None:
         raise RuntimeError(
             "no device is bound; select one with iron.set_current_device()"
         )
     return device
-
-
-def _stack_bytes(fn):
-    return _contract(fn).stack_bytes or _device().default_core_stack_bytes
 
 
 def _guarded(fn, guard):
@@ -101,6 +112,57 @@ def _guarded(fn, guard):
 
 def _guard_elems(arg_type):
     return GUARD_BYTES // np.dtype(shape_dtype(arg_type)[1]).itemsize
+
+
+def _poison_fill(words, use_chess):
+    """Return a kernel that fills ``words`` words with the value it is passed.
+
+    Not a loop in the core's main: that keeps the object FIFO lowering from
+    unrolling the calls, and the buffer selects it leaves spill into main's
+    frame and grow the core's stack. The value is an argument
+    because a constant fill becomes a memset libcall, whose stack aiecc
+    cannot measure.
+    """
+    name = f"kd_poison_{words}"
+    return ExternalFunction(
+        name,
+        source_string=f"""extern "C" void {name}(int *tile, int value) {{
+  for (int i = 0; i < {words}; i++)
+    tile[i] = value;
+}}""",
+        arg_types=[np.ndarray[(words,), np.dtype[np.int32]], np.int32],
+        use_chess=use_chess,
+    )
+
+
+def _kernel_frame_bytes(kernels, embed_bitcode):
+    """Return what ``kernels`` hold in the core beyond the core's own frame.
+
+    Each object's static data (``ExternalFunction.frame_bytes``' data), which
+    all coexists, and the deepest kernel stack, as only one call is live: a
+    declared ``stack_size_override`` stands. An object-linked Peano kernel is
+    built through the design's object cache, which its own build then hits,
+    or in a scratch directory when caching is off. A kernel ``measure``
+    cannot read counts as 0, as aiecc cannot measure it either; that
+    undercount only picks too deep a buffering for the tile, and aiecc's
+    allocator then fails the build.
+    """
+    cache = get_compile_arg("_iron_object_cache")
+    arch = resolve_target_arch(_device())
+    data, deepest = {}, 0
+    for k in kernels:
+        found = (
+            k.measure(arch, cache, embed_bitcode)
+            if isinstance(k, ExternalFunction)
+            else None
+        )
+        if found is not None:
+            data[k.object_file_name] = found.data
+        if k.stack_size_override is not None:
+            deepest = max(deepest, k.stack_size_override)
+        elif found is not None:
+            deepest = max(deepest, found.stack or 0)
+    return sum(data.values()) + deepest
 
 
 def _view(raw, arg_type, byte_shift):
@@ -182,7 +244,32 @@ def _encode_params(fn, params):
     return tuple(encoded)
 
 
-def _stage(fn, calls, scalars, params, stack_bytes, guard=False):
+def _byte_offsets(fn, arg_byte_offsets):
+    """Check ``(argument, byte offset)`` pairs.
+
+    Each argument must be a tensor Param and each offset element-aligned and
+    below ``VIEW_PAD``.
+    """
+    types = fn.arg_types()
+    params = _fifo_plan(fn)[2]
+    result = {}
+    for i, offset in arg_byte_offsets:
+        if i not in params:
+            raise ValueError(
+                f"{fn.name}: argument {i} is not a tensor Param; only those "
+                "can be bound at a byte offset"
+            )
+        itemsize = np.dtype(shape_dtype(types[i])[1]).itemsize
+        if not 0 <= offset < VIEW_PAD or offset % itemsize:
+            raise ValueError(
+                f"{fn.name}: argument {i}'s byte offset must be a multiple of "
+                f"{itemsize} below {VIEW_PAD}, not {offset}"
+            )
+        result[i] = offset
+    return tuple(sorted(result.items()))
+
+
+def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offsets=()):
     """Plan the Worker: fifos per input group and output, buffers per Param, the call itself."""
     c = _contract(fn)
     types = fn.arg_types()
@@ -229,11 +316,31 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False):
             _view(o, types[i], 0) if i in guarded else o for i, o in zip(outs, outputs)
         ]
 
-    # Two sets of tiles (ping-pong) when they fit beside the parameters and
-    # the stack, one otherwise.
+    words = {i: (nbytes(i) + GUARD_BYTES) // 4 for i in guarded}
+    fills = {n: _poison_fill(n, fn.use_chess) for n in words.values()}
+
+    # Two sets of tiles (ping-pong) when they fit beside the parameters, the
+    # kernels' static data and the stack, one otherwise. aiecc reserves the
+    # larger of the default stack and main's frame plus the deepest kernel
+    # call; the default covers main's frame, so the kernels' go on top of it.
     tile_bytes = sum(nbytes(i) for i in [*ins, *outs]) + GUARD_BYTES * len(guarded)
-    fixed_bytes = sum(nbytes(i) for i in param_pos) + stack_bytes
+    shifted = dict(arg_byte_offsets)
+    fixed_bytes = (
+        sum(nbytes(i) for i in param_pos)
+        + (VIEW_PAD + 4) * len(shifted)
+        + (stack_bytes or _device().default_core_stack_bytes)
+    )
     core_bytes = _device().core_memory_bytes
+    if not stack_bytes and 2 * tile_bytes + fixed_bytes <= core_bytes:
+        fixed_bytes += _kernel_frame_bytes(
+            [
+                fn,
+                *(k for _, k in initializers),
+                *fills.values(),
+                *([setter] if setter else []),
+            ],
+            c.uses_lut and not fn.use_chess,
+        )
     depth = next(
         (d for d in (2, 1) if d * tile_bytes + fixed_bytes <= core_bytes), None
     )
@@ -249,24 +356,57 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False):
         ObjectFifo(fifo_type(i), name=f"out{j}", depth=depth)
         for j, i in enumerate(outs)
     ]
-    buffers = [
-        Buffer(
-            types[i],
+
+    def param_buffer(j, i, dt, shape, vals):
+        value = np.array(vals, dtype=np.dtype(dt)).reshape(shape)
+        if i not in shifted:
+            return Buffer(types[i], name=f"param{j}", initial_value=value)
+        # Poison around the data, so a load rounded down to an aligned
+        # address reads something no reference expects.
+        raw = poisoned(nbytes(i) + VIEW_PAD, np.int8)
+        raw[shifted[i] : shifted[i] + nbytes(i)] = value.view(np.int8).ravel()
+        return Buffer(
+            np.ndarray[raw.shape, np.dtype[np.int8]],
             name=f"param{j}",
-            initial_value=np.array(vals, dtype=np.dtype(dt)).reshape(shape),
+            initial_value=raw,
         )
-        for j, (i, (dt, shape, vals)) in enumerate(zip(param_pos, params))
+
+    buffers = [
+        param_buffer(j, i, *param)
+        for j, (i, param) in enumerate(zip(param_pos, params))
     ]
+    # The shifts are loaded at run time, as a caller outside IRON would
+    # compute them, so no fold sees a constant offset.
+    shifts = (
+        [
+            Buffer(
+                np.ndarray[(len(shifted),), np.dtype[np.int32]],
+                name="param_shift",
+                initial_value=np.array(list(shifted.values()), dtype=np.int32),
+            )
+        ]
+        if shifted
+        else []
+    )
     # The Worker's constants: the param buffers, the kernel, the
-    # initializer kernels and the setup callable.
+    # initializer kernels, the poison fills, the view shifts and the setup
+    # callable.
     n_param, n_init = len(buffers), len(initializers)
     slot = {i: j for j, i in enumerate(outs)}
+    n_shift = n_param + 1 + n_init + len(fills)
 
     def body(acquired, outputs, _held, constants, call):
         values = dict(zip(param_pos, constants[:n_param]))
+        for k, i in enumerate(shifted):
+            shift = arith.index_cast(IndexType.get(), constants[n_shift][k])
+            values[i] = memref.view(
+                np_ndarray_type_to_memref_type(types[i]), values[i].op, shift, []
+            )
         values.update(bound)
         if offset:
             values[offset[0]] = call * offset[1]
+        if c.call_index is not None:
+            values[c.call_index] = call
         for got, group in zip(acquired, groups):
             values.update(
                 (i, got if len(group) == 1 else got[j]) for j, i in enumerate(group)
@@ -277,9 +417,12 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False):
     def initialize(outputs, constants):
         for i, raw in zip(outs, outputs):
             if i in guarded:
-                words = _view(raw, _GUARD_WORDS, nbytes(i))
-                for k in range(GUARD_BYTES // 4):
-                    words[k] = 0x55555555
+                # The tile too, not just the guard: the DMA drains what the
+                # core holds, so an element the kernel skips would otherwise
+                # read back as zero or as an earlier call's value.
+                fill = constants[n_param + 1 + n_init + list(fills).index(words[i])]
+                tile = _view(raw, fill.arg_types()[0], 0)
+                fill(tile, int(poisoned(1, np.int32)[0]))
         if initializers:
             views = typed(outputs)
             kernels = constants[n_param + 1 : n_param + 1 + n_init]
@@ -293,6 +436,8 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False):
         constants=buffers
         + [fn]
         + [init for _, init in initializers]
+        + list(fills.values())
+        + shifts
         + ([setter] if setter else []),
         iterations=calls,
         outputs_span_iterations=offset is not None,
@@ -307,15 +452,19 @@ def _build_stream(
     factory,
     factory_kwargs,
     calls,
-    stack_bytes,
+    stack_bytes=None,
     scalars=(),
     params=(),
     trace_config=None,
     guard=False,
+    arg_byte_offsets=(),
 ):
     fn = factory(**factory_kwargs)
-    stage = _stage(fn, calls, tuple(scalars), params, stack_bytes, guard)
+    stage = _stage(
+        fn, calls, tuple(scalars), params, stack_bytes, guard, arg_byte_offsets
+    )
     stage.trace = trace_config is not None
+    stage.trace_flush = TRACE_FLUSH
     types = fn.arg_types()
 
     guarded = _guarded(fn, guard)
@@ -337,6 +486,9 @@ def _build_stream(
         host_types,
         transfers,
         trace_size=trace_config.trace_size if trace_config else 0,
+        # cycles_per_call reads only the markers; the default events add an
+        # INSTR_VECTOR per vector op, which filled a 64 KB buffer mid-run.
+        coretile_events=[CoreEvent.INSTR_EVENT_0, CoreEvent.INSTR_EVENT_1],
     )
 
 
@@ -350,11 +502,12 @@ def _stream(
     factory: CompileTime[Callable],
     factory_kwargs: CompileTime[dict],
     calls: CompileTime[int],
-    stack_bytes: CompileTime[int],
+    stack_bytes: CompileTime[int | None] = None,
     scalars: CompileTime[tuple] = (),
     params: CompileTime[tuple] = (),
     trace_config: CompileTime[TraceConfig | None] = None,
     guard: CompileTime[bool] = False,
+    arg_byte_offsets: CompileTime[tuple] = (),
 ):
     return _build_stream(
         factory=factory,
@@ -365,6 +518,7 @@ def _stream(
         params=params,
         trace_config=trace_config,
         guard=guard,
+        arg_byte_offsets=arg_byte_offsets,
     )
 
 
@@ -377,6 +531,8 @@ def design(
     params=None,
     aiecc_flags=None,
     guard=False,
+    stack_bytes=None,
+    arg_byte_offsets=(),
     **factory_kwargs,
 ):
     """Wrap tile calls; ``params``/``scalars`` supply unbound tensor/scalar Params.
@@ -384,13 +540,27 @@ def design(
     This harness embeds these values for every call; changing them recompiles
     the design. Direct designs can supply different operands on each call.
 
-    With ``guard=True`` the core writes ``GUARD_BYTES`` of ``0x55`` after each
-    output tile in its memory before every call and drains them with the
-    tile, so a kernel that writes past its output shows up on the host:
+    ``stack_bytes`` fixes the core stack. Leave it unset and aiecc sizes the
+    stack from the linked core; set it where aiecc cannot measure, as for a
+    Chess build. Unset, choosing between one and two sets of tiles reads the
+    kernels' stack frames, so generating a design whose tiles could double
+    buffer compiles its kernels.
+
+    With ``guard=True`` the core fills each output tile and ``GUARD_BYTES``
+    after it with ``0x55`` before every call and drains the guard with the
+    tile, so a kernel that skips part of its output or writes past it shows
+    up on the host:
     size the outputs with ``output_size(..., guard=True)`` and split them
     with ``strip_guard``. bfp outputs carry no guard.
+
+    ``arg_byte_offsets`` binds tensor Params at a byte offset: ``((1, 16),)``
+    hands argument 1 a view 16 bytes into a buffer ``VIEW_PAD`` larger,
+    poisoned around the data, as a design that packs several weights into
+    one buffer does. The shift is loaded at run time, so the kernel sees an
+    address no design-time check could have folded.
     """
     calls = _calls(calls, shape)
+    _device()
     fn = factory(**factory_kwargs)
     c = _contract(fn)
     if c.unsupported:
@@ -398,6 +568,7 @@ def design(
             f"{fn.name}: the generic harness cannot build this kernel: {c.unsupported}"
         )
     _fifo_plan(fn)  # the DMA channel budget is checked before anything builds
+    offsets = _byte_offsets(fn, arg_byte_offsets)
     flags: list[str] = list(aiecc_flags or ())
     if any(bfp.is_bfp(shape_dtype(t)[1]) for t in fn.arg_types() if _is_tensor_type(t)):
         if "--dynamic-objFifos" not in flags:
@@ -412,12 +583,12 @@ def design(
         factory=factory,
         factory_kwargs=factory_kwargs,
         calls=calls,
-        # A key of its own: the contract that sets it can change in a module
-        # the cache key never reads, and a stale stack overflows silently.
-        stack_bytes=_stack_bytes(fn),
         scalars=tuple(scalars),
         params=_encode_params(fn, params or ()),
         guard=guard,
+        # Only when given, so every other design keeps its cache key.
+        **({"stack_bytes": stack_bytes} if stack_bytes else {}),
+        **({"arg_byte_offsets": offsets} if offsets else {}),
         **({"aiecc_flags": flags} if flags else {}),
     )
 
@@ -623,22 +794,29 @@ def traced_intervals(fn, *, calls=1) -> int:
     return int(setup) + _calls(calls) * (len(inits) + 1)
 
 
-def split_intervals(durations, *, calls, per_call, setup=0):
+def split_intervals(durations, *, calls, per_call, setup=0, flush=0):
     """Label an interval stream: ``setup`` intervals, then ``per_call`` per call.
 
     The harness runs the setup kernel once, then each call runs its traced
     initializers in contract order and the kernel last, so interval ``j`` of
     call ``n`` sits at ``setup + n * per_call + j``. Returns ``(setup
-    intervals, one tuple per per-call kernel, truncated)``. A stream longer
-    than that is some kernel emitting markers it does not declare.
+    intervals, one tuple per per-call kernel, truncated)``. Up to ``flush``
+    intervals of at most ``FLUSH_CYCLES`` may follow, the pairs the core
+    emits to push the trace out. Anything else is some kernel emitting
+    markers it does not declare; one whose extra intervals are that short
+    and that few passes as a flush.
     """
     durations = [int(d) for d in durations]
     expected = setup + calls * per_call
-    if len(durations) > expected:
+    tail = durations[expected:]
+    if len(tail) > flush or any(d > FLUSH_CYCLES for d in tail):
         raise RuntimeError(
-            f"expected {expected} trace intervals, got {len(durations)}; a kernel "
-            "on the core emits markers its contract's trace does not declare"
+            f"expected {expected} trace intervals and up to {flush} flush pairs, "
+            f"got {len(durations)}, the extra {tail[:flush + 1]} cycles; a "
+            "kernel on the core emits markers its contract's trace does not "
+            "declare"
         )
+    durations = durations[:expected]
     head, stream = durations[:setup], durations[setup:]
     return (
         tuple(head),
@@ -677,7 +855,11 @@ def cycles_per_call(
     cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
     durations = [d for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
     head, per_kernel, truncated = split_intervals(
-        durations, calls=calls, per_call=len(inits) + 1, setup=int(setup)
+        durations,
+        calls=calls,
+        per_call=len(inits) + 1,
+        setup=int(setup),
+        flush=TRACE_FLUSH,
     )
     if not per_kernel[-1]:
         raise RuntimeError(

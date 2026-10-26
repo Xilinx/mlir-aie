@@ -20,17 +20,26 @@ chart histories a change ends.
 """
 
 import sys
-import tempfile
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
+from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
+from aie.iron.device import NPU2Col1
+from aie.utils.hostruntime import set_current_device
+from ml_dtypes import bfloat16
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from cases import Case, device_for  # noqa: E402
 from kernel_cases import CASES  # noqa: E402
+from test_kernels_perf import (  # noqa: E402
+    _PERF_CASES,
+    SMOKE_TEST,
+    _differing_words,
+    _kernel_object_size,
+    _record,
+)
 
 _SNAPSHOT = Path(__file__).parent / "perf_series.txt"
 
@@ -70,16 +79,12 @@ def test_series_names_are_unique():
 
 
 def test_smoke_case_is_measured_once():
-    from test_kernels_perf import _PERF_CASES, SMOKE_TEST
-
     names = [SMOKE_TEST.name, *(param.values[0].name for param in _PERF_CASES)]
     assert len(names) == len(set(names))
     assert set(names) == {case.name for case in CASES if case.perf}
 
 
 def test_cycle_efficiency_is_independent_of_call_count():
-    from test_kernels_perf import _record
-
     for calls in (1, 16, 256):
         case = Case("passthrough", dict(tile_size=2048), calls=calls)
         rows = []
@@ -89,53 +94,51 @@ def test_cycle_efficiency_is_independent_of_call_count():
 
 
 def test_cycles_row_is_the_kernel_min_with_its_spread_beside_it():
-    from test_kernels_perf import _record
-
-    case = Case("mm", dict(dim_m=32, dim_k=64, dim_n=32), calls=4, devices=("npu2",))
+    case = Case("mm", dict(dim_m=32, dim_k=64, dim_n=32), calls=3, devices=("npu2",))
     # One call stalled; zero's intervals are their own population.
-    traced = kd.CallCycles(
-        kernel=(900, 1400, 905), initializers={2: (60, 61, 60)}, truncated=True
-    )
+    traced = kd.CallCycles(kernel=(900, 1400, 905), initializers={2: (60, 61, 60)})
     rows = []
     _record(lambda *row: rows.append(row), case, {"cycles": traced})
     assert rows[0][1:] == (
         "cycles",
         "cycles",
         900,
-        "median 905 max 1400 n=3; init[2] min 60; truncated",
+        "median 905 max 1400 n=3; init[2] min 60",
     )
 
 
-def test_size_records_only_the_tested_kernel_object():
-    from test_kernels_perf import _kernel_object_size, _record
+def test_size_records_the_bytes_the_tested_entry_links():
+    """reduce_max.cc compiles every dtype's entry points into one object.
 
-    with tempfile.TemporaryDirectory() as tmp:
-        directory = Path(tmp)
-        (directory / "tested.o").write_bytes(b"\0" * 128)
-        for name in ("initializer.o", "core.elf", "final.xclbin", "insts.bin"):
-            (directory / name).write_bytes(b"\0" * 256)
-        design = SimpleNamespace(
-            compilable=SimpleNamespace(
-                get_cache_entry=lambda: SimpleNamespace(directory=directory)
-            )
-        )
-        size = _kernel_object_size(design, SimpleNamespace(object_file_name="tested.o"))
-        rows = []
-        _record(
-            lambda *row: rows.append(row),
-            SimpleNamespace(name="tested"),
-            {"kernel_object_bytes": size},
-        )
-        assert rows == [("tested", "kernel_object_bytes", "bytes", 128)]
-        assert (
-            _kernel_object_size(design, SimpleNamespace(object_file_name="inline.ll"))
-            is None
-        )
+    Each build's row counts its own entry's code and data, not the object
+    file, which all of them share.
+    """
+    sizes = {}
+    with set_current_device(NPU2Col1()):
+        for dtype in (np.int32, bfloat16):
+            fn = kernels.reduce_max(dtype=dtype)
+            design = kd.design(kernels.reduce_max, calls=1, dtype=dtype)
+            design.compilable.compile()
+            obj = design.compilable.get_cache_entry().directory / fn.object_file_name
+            sizes[dtype] = _kernel_object_size(design, fn)
+            assert 0 < sizes[dtype] < obj.stat().st_size
+        assert sizes[np.int32] != sizes[bfloat16]
+
+
+def test_cycles_row_is_the_median_call_when_calls_do_unequal_work():
+    case = Case("resample_quantize", calls=4, scalars=(4032, 912, 11, 4))
+    traced = kd.CallCycles(kernel=(100, 5000, 7000, 9000))
+    rows = []
+    _record(lambda *row: rows.append(row), case, {"cycles": traced})
+    assert rows[0][1:] == (
+        "cycles",
+        "cycles",
+        6000,
+        "median of calls of unequal work; min 100 max 9000 n=4",
+    )
 
 
 def test_raw_words_compare_bits_not_values():
-    from test_kernels_perf import _differing_words
-
     a = np.array([0.0, 1.0, np.nan], dtype=np.float32)
     b = np.array([-0.0, 1.0, np.nan], dtype=np.float32)
     assert _differing_words(a, a.copy()) == 0
@@ -157,7 +160,8 @@ if __name__ == "__main__":
     test_smoke_case_is_measured_once()
     test_cycle_efficiency_is_independent_of_call_count()
     test_cycles_row_is_the_kernel_min_with_its_spread_beside_it()
-    test_size_records_only_the_tested_kernel_object()
+    test_size_records_the_bytes_the_tested_entry_links()
+    test_cycles_row_is_the_median_call_when_calls_do_unequal_work()
     test_raw_words_compare_bits_not_values()
     test_matrix_series_keep_tile_geometry_and_call_count()
     print("PASS!")
