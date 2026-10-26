@@ -4159,12 +4159,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     function currentView() {
       const want = readHash();
-      // Old links keep working: "catalogue" was the kernels table's first
-      // name, "dashboard" the kernels' last night when this page was the
-      // kernel checks' alone, "components" the placer's checks, and
+      // Old links keep working: "components" was the placer's checks, and
       // "design" the performance section's first name.
-      if (want.view === 'catalogue') return 'kernels';
-      if (want.view === 'dashboard') return 'night';
       if (want.view === 'components') return sectionOfMetric(want.metric) === 'performance' ? 'performance' : 'placement';
       if (want.view === 'design') return 'performance';
       // The kernels' Trends, a chart per case, became each kernel's page.

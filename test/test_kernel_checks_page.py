@@ -1372,7 +1372,7 @@ assert.ok(!config.data.datasets.some(d => d.label.startsWith('mask')));
 
 def test_views_come_from_the_hash_and_old_links_keep_working(page):
     page("""
-location.hash = '#view=catalogue';
+location.hash = '#view=kernels';
 assert.equal(applyView(), 'kernels');
 assert.equal($('kernels').hidden, false);
 assert.equal($('kernels-section').hidden, false);
@@ -1384,13 +1384,13 @@ location.hash = '#view=kernel&kernel=softmax';
 assert.equal(applyView(), 'kernel');
 assert.equal($('tab-kernel').hidden, false);
 assert.equal($('kernel').hidden, false);
-// No hash is the overview; the kernels' last night was "dashboard".
+// No hash, or one unrecognized, is the overview.
 location.hash = '';
 assert.equal(applyView(), 'overview');
 assert.equal($('overview').hidden, false);
 assert.equal($('kernels-section').hidden, true);
 assert.equal($('nav-overview').className, 'current');
-location.hash = '#view=dashboard';
+location.hash = '#view=night';
 assert.equal(applyView(), 'night');
 assert.equal($('dashboard').hidden, false);
 assert.equal($('tab-night').className, 'current');
