@@ -3565,9 +3565,46 @@ public:
   }
 };
 
-// ----- CmpOp conversion for AIE2 -----
-// Implements aievec.cmp using vmax.lt / vmin.ge intrinsics, extracting the
-// comparison bitmask (field 1 of the returned struct).
+// The i32 bitmask of the lanes where `lhs rel rhs` holds, with `rel` one of
+// lt, ge, gt, le, eq and ne. `LtOp` and `GeOp` are vmax.lt and vmin.ge
+// intrinsics, which return the lanes where a < b and a >= b in field 1 of their
+// struct result. gt and le swap the operands; eq and ne combine the compares in
+// both directions. `extraOperands` follow the two vectors in each call.
+template <typename LtOp, typename GeOp>
+static Value buildCmpBitmask(OpBuilder &builder, Location loc, StringRef rel,
+                             Value lhs, Value rhs, ValueRange extraOperands) {
+  auto structTy = LLVM::LLVMStructType::getLiteral(
+      builder.getContext(), {lhs.getType(), builder.getI32Type()});
+  auto compare = [&](bool lessThan, Value a, Value b) -> Value {
+    SmallVector<Value> operands{a, b};
+    llvm::append_range(operands, extraOperands);
+    Value result = lessThan
+                       ? Value(LtOp::create(builder, loc, structTy, operands))
+                       : Value(GeOp::create(builder, loc, structTy, operands));
+    return LLVM::ExtractValueOp::create(builder, loc, result, 1);
+  };
+  if (rel == "lt")
+    return compare(/*lessThan=*/true, lhs, rhs);
+  if (rel == "ge")
+    return compare(/*lessThan=*/false, lhs, rhs);
+  if (rel == "gt")
+    return compare(/*lessThan=*/true, rhs, lhs);
+  if (rel == "le")
+    return compare(/*lessThan=*/false, rhs, lhs);
+  assert((rel == "eq" || rel == "ne") && "unexpected compare predicate");
+  // Separate statements fix the order in which the two compares are emitted.
+  bool isEq = rel == "eq";
+  Value forward = compare(/*lessThan=*/!isEq, lhs, rhs);
+  Value backward = compare(/*lessThan=*/!isEq, rhs, lhs);
+  if (isEq)
+    return LLVM::AndOp::create(builder, loc, forward, backward);
+  return LLVM::OrOp::create(builder, loc, forward, backward);
+}
+
+// ----- CmpOp conversion for AIE2 and AIE2P -----
+// Implements aievec.cmp using vmax.lt / vmin.ge intrinsics. The integer
+// intrinsics take a last operand that selects a signed (1) or unsigned (0)
+// compare, which follows the predicate.
 template <typename MaxLtBf16IntrOp, typename MinGeBf16IntrOp,
           typename MaxLt32IntrOp, typename MinGe32IntrOp,
           typename MaxLt16IntrOp, typename MinGe16IntrOp>
@@ -3583,68 +3620,28 @@ public:
     auto elTy = vecTy.getElementType();
     unsigned elWidth = elTy.getIntOrFloatBitWidth();
     unsigned lanes = getVectorLaneSize(vecTy);
-    auto pred = op.getPred();
+    StringRef pred = op.getPred();
 
-    // Handle bf16 vectors (16 or 32 lanes)
-    if (elWidth == 16 && isa<FloatType>(elTy)) {
+    bool isUnsigned = llvm::is_contained({"ult", "uge", "ugt", "ule"}, pred);
+    if (!isUnsigned &&
+        !llvm::is_contained({"slt", "sge", "sgt", "sle", "eq", "ne"}, pred))
+      return failure();
+    // The relation without its signedness prefix: slt -> lt, uge -> ge.
+    StringRef rel = pred.size() == 3 ? pred.drop_front() : pred;
+
+    Value lhs = adaptor.getLhs(), rhs = adaptor.getRhs();
+    Value bitmask;
+    if (elWidth == 16 && isa<FloatType>(elTy) && (lanes == 16 || lanes == 32)) {
+      // bf16 vectors (16 or 32 lanes); 16 lanes are padded to 32
       auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
-      auto structTy = LLVM::LLVMStructType::getLiteral(
-          rewriter.getContext(), {v32bf16Ty, rewriter.getI32Type()});
-
-      Value lhs = adaptor.getLhs(), rhs = adaptor.getRhs();
       if (lanes == 16) {
         lhs = padVectorWithPoison(rewriter, loc, lhs, 16, 32);
         rhs = padVectorWithPoison(rewriter, loc, rhs, 16, 32);
-      } else if (lanes != 32) {
-        return failure();
       }
-
-      Value bitmask;
-      auto castedLhs =
-          forceCastOperandsToSignature(rewriter, loc, {lhs}, {v32bf16Ty});
-      auto castedRhs =
-          forceCastOperandsToSignature(rewriter, loc, {rhs}, {v32bf16Ty});
-
-      if (pred == "slt" || pred == "ult") {
-        auto intrOp = MaxLtBf16IntrOp::create(
-            rewriter, loc, structTy, ValueRange{castedLhs[0], castedRhs[0]});
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "sge" || pred == "uge") {
-        auto intrOp = MinGeBf16IntrOp::create(
-            rewriter, loc, structTy, ValueRange{castedLhs[0], castedRhs[0]});
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "sgt" || pred == "ugt") {
-        // gt(a,b) = lt(b,a): swap operands
-        auto intrOp = MaxLtBf16IntrOp::create(
-            rewriter, loc, structTy, ValueRange{castedRhs[0], castedLhs[0]});
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "sle" || pred == "ule") {
-        // le(a,b) = ge(b,a): swap operands
-        auto intrOp = MinGeBf16IntrOp::create(
-            rewriter, loc, structTy, ValueRange{castedRhs[0], castedLhs[0]});
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "eq") {
-        // eq(a,b) = ge(a,b) AND ge(b,a)
-        auto geAB = MinGeBf16IntrOp::create(
-            rewriter, loc, structTy, ValueRange{castedLhs[0], castedRhs[0]});
-        auto geBA = MinGeBf16IntrOp::create(
-            rewriter, loc, structTy, ValueRange{castedRhs[0], castedLhs[0]});
-        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, geAB, 1);
-        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, geBA, 1);
-        bitmask = LLVM::AndOp::create(rewriter, loc, maskAB, maskBA);
-      } else if (pred == "ne") {
-        // ne(a,b) = lt(a,b) OR lt(b,a)
-        auto ltAB = MaxLtBf16IntrOp::create(
-            rewriter, loc, structTy, ValueRange{castedLhs[0], castedRhs[0]});
-        auto ltBA = MaxLtBf16IntrOp::create(
-            rewriter, loc, structTy, ValueRange{castedRhs[0], castedLhs[0]});
-        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, ltAB, 1);
-        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, ltBA, 1);
-        bitmask = LLVM::OrOp::create(rewriter, loc, maskAB, maskBA);
-      } else {
-        return failure();
-      }
-
+      SmallVector<Value> operands = forceCastOperandsToSignature(
+          rewriter, loc, {lhs, rhs}, {v32bf16Ty, v32bf16Ty});
+      bitmask = buildCmpBitmask<MaxLtBf16IntrOp, MinGeBf16IntrOp>(
+          rewriter, loc, rel, operands[0], operands[1], {});
       // Mask off upper bits for 16-lane inputs
       if (lanes == 16) {
         auto mask =
@@ -3652,162 +3649,30 @@ public:
                                      rewriter.getI32IntegerAttr(0xFFFF));
         bitmask = LLVM::AndOp::create(rewriter, loc, bitmask, mask);
       }
-
-      // Cast i32 bitmask to the op's unsigned integer result type
-      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
-          op, op.getResult().getType(), bitmask);
-      return success();
+    } else if (isa<IntegerType>(elTy) && elWidth * lanes == 512 &&
+               (elWidth == 32 || elWidth == 16)) {
+      // v16i32 and v32i16 vectors. eq and ne do not depend on the signedness
+      // and use the signed form.
+      auto intVecTy =
+          VectorType::get({lanes}, rewriter.getIntegerType(elWidth));
+      Value sign = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI32Type(),
+          rewriter.getI32IntegerAttr(isUnsigned ? 0 : 1));
+      SmallVector<Value> operands = forceCastOperandsToSignature(
+          rewriter, loc, {lhs, rhs}, {intVecTy, intVecTy});
+      bitmask = elWidth == 32
+                    ? buildCmpBitmask<MaxLt32IntrOp, MinGe32IntrOp>(
+                          rewriter, loc, rel, operands[0], operands[1], sign)
+                    : buildCmpBitmask<MaxLt16IntrOp, MinGe16IntrOp>(
+                          rewriter, loc, rel, operands[0], operands[1], sign);
+    } else {
+      return failure();
     }
 
-    // Handle i32 vectors
-    if (elWidth == 32 && isa<IntegerType>(elTy) && lanes == 16) {
-      auto v16i32Ty = VectorType::get({16}, rewriter.getI32Type());
-      auto structTy = LLVM::LLVMStructType::getLiteral(
-          rewriter.getContext(), {v16i32Ty, rewriter.getI32Type()});
-      auto cmpCst = LLVM::ConstantOp::create(
-          rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
-      Value bitmask;
-
-      if (pred == "slt" || pred == "ult") {
-        auto intrOp = MaxLt32IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
-                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "sge" || pred == "uge") {
-        auto intrOp = MinGe32IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
-                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "sgt" || pred == "ugt") {
-        auto intrOp = MaxLt32IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
-                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "sle" || pred == "ule") {
-        auto intrOp = MinGe32IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
-                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "eq") {
-        auto geAB = MinGe32IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
-                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
-        auto geBA = MinGe32IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
-                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
-        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, geAB, 1);
-        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, geBA, 1);
-        bitmask = LLVM::AndOp::create(rewriter, loc, maskAB, maskBA);
-      } else if (pred == "ne") {
-        auto ltAB = MaxLt32IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
-                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
-        auto ltBA = MaxLt32IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
-                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
-        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, ltAB, 1);
-        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, ltBA, 1);
-        bitmask = LLVM::OrOp::create(rewriter, loc, maskAB, maskBA);
-      } else {
-        return failure();
-      }
-
-      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
-          op, op.getResult().getType(), bitmask);
-      return success();
-    }
-
-    // Handle i16 vectors
-    if (elWidth == 16 && isa<IntegerType>(elTy) && lanes == 32) {
-      auto v32i16Ty = VectorType::get({32}, rewriter.getI16Type());
-      auto structTy = LLVM::LLVMStructType::getLiteral(
-          rewriter.getContext(), {v32i16Ty, rewriter.getI32Type()});
-      auto cmpCst = LLVM::ConstantOp::create(
-          rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
-      Value bitmask;
-
-      if (pred == "slt" || pred == "ult") {
-        auto intrOp = MaxLt16IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
-                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "sge" || pred == "uge") {
-        auto intrOp = MinGe16IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
-                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "sgt" || pred == "ugt") {
-        auto intrOp = MaxLt16IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
-                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "sle" || pred == "ule") {
-        auto intrOp = MinGe16IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
-                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
-        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
-      } else if (pred == "eq") {
-        auto geAB = MinGe16IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
-                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
-        auto geBA = MinGe16IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
-                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
-        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, geAB, 1);
-        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, geBA, 1);
-        bitmask = LLVM::AndOp::create(rewriter, loc, maskAB, maskBA);
-      } else if (pred == "ne") {
-        auto ltAB = MaxLt16IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
-                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
-        auto ltBA = MaxLt16IntrOp::create(
-            rewriter, loc, structTy,
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
-                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
-        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, ltAB, 1);
-        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, ltBA, 1);
-        bitmask = LLVM::OrOp::create(rewriter, loc, maskAB, maskBA);
-      } else {
-        return failure();
-      }
-
-      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
-          op, op.getResult().getType(), bitmask);
-      return success();
-    }
-
-    return failure();
+    // Cast i32 bitmask to the op's unsigned integer result type
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+        op, op.getResult().getType(), bitmask);
+    return success();
   }
 };
 
