@@ -5518,18 +5518,16 @@ static SmallVector<int64_t, 5> getAIE2PNativeLanes(Operation *op) {
   // honour is not given a native width, so it is not split or repeated.
   if (isa<arith::CmpIOp, arith::CmpFOp, arith::SelectOp>(op)) {
     if (auto cmpOp = dyn_cast<arith::CmpIOp>(op);
-        cmpOp && !llvm::is_contained(
-                     {CmpIPredicate::eq, CmpIPredicate::ne, CmpIPredicate::slt,
-                      CmpIPredicate::sle, CmpIPredicate::sgt,
-                      CmpIPredicate::sge},
-                     cmpOp.getPredicate()))
+        cmpOp && !llvm::is_contained({CmpIPredicate::eq, CmpIPredicate::ne,
+                                      CmpIPredicate::slt, CmpIPredicate::sle,
+                                      CmpIPredicate::sgt, CmpIPredicate::sge},
+                                     cmpOp.getPredicate()))
       return {};
     if (auto cmpOp = dyn_cast<arith::CmpFOp>(op);
-        cmpOp && !llvm::is_contained(
-                     {CmpFPredicate::OEQ, CmpFPredicate::ONE,
-                      CmpFPredicate::OLT, CmpFPredicate::OLE,
-                      CmpFPredicate::OGT, CmpFPredicate::OGE},
-                     cmpOp.getPredicate()))
+        cmpOp && !llvm::is_contained({CmpFPredicate::OEQ, CmpFPredicate::ONE,
+                                      CmpFPredicate::OLT, CmpFPredicate::OLE,
+                                      CmpFPredicate::OGT, CmpFPredicate::OGE},
+                                     cmpOp.getPredicate()))
       return {};
     if (elemType.isBF16() || elemType.isInteger(16))
       return {16, 32};
