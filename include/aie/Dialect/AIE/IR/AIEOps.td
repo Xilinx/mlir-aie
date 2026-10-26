@@ -2653,6 +2653,15 @@ def AIE_ObjectFifoSegmentOp
     `produceLock` and `consumeLock` are filled in by
     `--aie-objectfifo-allocate`, which leaves alone whatever is already named.
 
+    `manualFill` and `manualDrain` hand one end of the segment to a DMA
+    program the author writes, such as an `aie.mem` whose buffer descriptors
+    name this segment's locks. `--aie-objectfifo-verify` then asks for no
+    endpoint at that end, since the pool ops do not describe who works it.
+    The author owes the lock protocol the other end expects: a filler acquires
+    `produceLock` and releases `consumeLock`, a drainer the reverse, by the
+    same count per object. Setting the attribute also claims that end, so a
+    segment carrying it must not also name an endpoint there.
+
     Example:
     ```
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
@@ -2661,7 +2670,8 @@ def AIE_ObjectFifoSegmentOp
 
   let arguments = (ins SymbolNameAttr:$sym_name, AIEI32Attr:$offset,
       AIEI32Attr:$size, OptionalAttr<FlatSymbolRefAttr>:$produceLock,
-      OptionalAttr<FlatSymbolRefAttr>:$consumeLock);
+      OptionalAttr<FlatSymbolRefAttr>:$consumeLock, UnitAttr:$manualFill,
+      UnitAttr:$manualDrain);
 
   let assemblyFormat = [{
     $sym_name attr-dict

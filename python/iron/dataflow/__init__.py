@@ -15,6 +15,9 @@ Lower-level (explicit routing + DMA programs; peers of the above):
 [`Acquire`][iron.Acquire], [`Release`][iron.Release],
 [`DmaEndpoint`][iron.DmaEndpoint], [`FlowEndpoint`][iron.FlowEndpoint],
 [`TileDmaTask`][iron.TileDmaTask]
+
+One end managed, the other written by hand:
+[`ObjectFifoPool`][iron.ObjectFifoPool], [`PoolSegment`][iron.PoolSegment]
 """
 
 from .cascadeflow import CascadeFlow
@@ -25,6 +28,7 @@ from .objectfifo import (
     ObjectFifoHandle,
     ObjectFifoLink,
 )
+from .objectfifopool import ObjectFifoPool, ObjectFifoPoolHandle, PoolSegment
 from .tile_dma import (
     Acquire,
     Bd,
@@ -37,6 +41,9 @@ from .tile_dma import (
 )
 
 __all__ = [
+    "ObjectFifoPool",
+    "ObjectFifoPoolHandle",
+    "PoolSegment",
     "ObjectFifo",
     "ObjectFifoHandle",
     "ObjectFifoLink",
