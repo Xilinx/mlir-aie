@@ -1183,7 +1183,6 @@ public:
 
   uint32_t getNumMemTileRows() const override { return 1; }
 
-  // AIE2 NPU1 has a single device-level uC, not one per column.
   uint32_t getNumControllers() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {
@@ -1258,7 +1257,6 @@ public:
 
   bool isMemTilePadValueSupported() const override { return true; }
 
-  // AIE2P NPU2 has a single device-level uC, not one per column.
   uint32_t getNumControllers() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {

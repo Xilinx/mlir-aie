@@ -261,7 +261,8 @@ def AIECertVerify : Pass<"aie-cert-verify", "AIE::DeviceOp"> {
   ];
 }
 
-def AIEMaterializeBDChains : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> {
+def AIEMaterializeBDChains
+    : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> {
   let summary = "Concretize aie.bd_chain ops at aiex.start_task use sites";
   let description = [{
     Inlines pre-defined `aie.bd_chains` at `aiex.start_task` use sites to become `aiex.dma_configure_task` and `aiex.dma_start_task` ops.

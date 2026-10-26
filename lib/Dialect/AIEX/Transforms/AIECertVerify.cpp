@@ -45,12 +45,7 @@ static int getUcGroupId(Operation *op) {
 // be co-resident on one page, else the firmware hangs).
 static LogicalResult checkLocalBarrierColocation(AIE::DeviceOp device) {
   LogicalResult result = success();
-  // Key: (uC group id, local_barrier_id) -> the co-location scope the id was
-  // first seen in. Participants of a local barrier must share one page; a
-  // barrier in a standalone job (no page) uses its enclosing job as its scope,
-  // so barriers in *different* standalone jobs are correctly flagged as not
-  // co-located (and two in the same job are fine). local_barrier always has an
-  // enclosing job (HasParent<CertJobOp>), so the scope is never null.
+  // Before page formation, a standalone job is its own co-location scope.
   std::map<std::pair<int, int>, Operation *> firstScope;
   device.walk(
       [&](AIEX::CertLocalBarrierOp barrier) {
@@ -75,20 +70,10 @@ static LogicalResult checkLocalBarrierColocation(AIE::DeviceOp device) {
   return result;
 }
 
-// G-tct: within one page, at most one *job* may wait on a given (tile_id,
-// channel_id). The firmware tracks a single outstanding TCT count per actor, so
-// two jobs that are cooperatively scheduled on the same page and both wait on
-// the same actor over-wait and hang forever.
-//
-// The constraint is on concurrency, not on the whole uC program, so two cases
-// that look like duplicates are legal and must not be flagged:
-//   - two wait_tcts in the *same job*: a job is a single thread of control, so
-//     they execute in sequence and only one is ever outstanding;
-//   - two wait_tcts on *different pages* of one uC: pages execute strictly in
-//     order, so the earlier wait has retired before the later page starts.
-// A page belongs to exactly one uC, so keying on the page scope also keys on
-// the uC; a wait in a bare job (no enclosing page, e.g. before
-// cert-legalize-pages has run) uses that job as its scope.
+// Firmware keeps one outstanding TCT count per actor. Concurrent jobs waiting
+// on the same (tile, channel) would over-wait; sequential waits within a job or
+// on different pages are safe. Bare jobs use their own scope until
+// legalization.
 static LogicalResult checkWaitTctsUniqueness(AIE::DeviceOp device) {
   LogicalResult result = success();
   // (page scope, tile, channel) -> the job that already waits on that actor.
@@ -119,8 +104,6 @@ static LogicalResult checkWaitTctsUniqueness(AIE::DeviceOp device) {
   return result;
 }
 
-// The set of uCs (CERT groups) present in a design: every group_id declared by
-// a cert.attach_to_group, plus 0 when there is cert content at device level.
 static std::set<int> computePresentUcs(AIE::DeviceOp device) {
   std::set<int> present;
   device.walk([&](AIEX::CertAttachToGroupOp group) {
@@ -133,11 +116,8 @@ static std::set<int> computePresentUcs(AIE::DeviceOp device) {
   return present;
 }
 
-// G-preempt: every uC must expose the same multiset of cert.preempt ids. A uC
-// is the group_id of an enclosing cert.attach_to_group, or 0 for device-level
-// content. Compare each present uC's preempt-id multiset against the smallest
-// present uC (the reference); a mismatch means a preemption point is missing or
-// extra on some uC, which the firmware requires to be consistent.
+// Firmware requires each controller to expose the same preemption IDs,
+// including multiplicity. Compare against the lowest present controller ID.
 static LogicalResult checkPreemptConsistency(AIE::DeviceOp device) {
   std::map<int, std::multiset<int>> preemptIds;
   std::map<int, AIEX::CertAttachToGroupOp> repAttach;

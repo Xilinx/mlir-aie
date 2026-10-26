@@ -36,19 +36,8 @@ using namespace xilinx;
 
 namespace {
 
-// Two distinct thresholds, doing two different jobs.
-//
-// `cert_page_size` is the conservative trigger for *attempting* a split. It
-// sits below the real limit to absorb the imprecision in estimateCost (page
-// `.align 16` padding, `.eop`, and the data-vs-page layout it approximates).
-//
-// `cert_page_limit` is the hard architectural bound: a uC page buffer is 8 KB.
-// Anything at or under it is legal hardware.
-//
-// The distinction matters for diagnostics. A page between the two values trips
-// the trigger but is still perfectly loadable, so failing to split it is not an
-// error -- only a page whose estimate exceeds `cert_page_limit` is genuinely
-// unlowerable and worth rejecting at compile time.
+// Trigger splitting below the 8 KB page limit to allow for estimated padding.
+// An unsplittable page is an error only if it exceeds cert_page_limit.
 static constexpr uint32_t cert_page_size = 8000;
 static constexpr uint32_t cert_page_limit = 8192;
 
@@ -1243,14 +1232,8 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
           found_split_point = true;
         } else if (!isa<AIE::EndOp>(o) &&
                    current != job.getBody().front().begin()) {
-          // The op that crossed the target is this job's last real op, so
-          // "cut after it" is not a split at all. Cut immediately before it
-          // instead: everything ahead of it was under the target and its own
-          // cost is what pushed the page over, so both halves are strictly
-          // smaller than the whole. NB the `!isa<AIE::EndOp>(o)` guard: this
-          // loop also visits the terminator, and cutting before *it* would put
-          // the whole job on the earlier page and an empty job on the later
-          // one -- a no-op "split" the greedy driver repeats forever.
+          // Cutting after the last real op would leave an empty second half.
+          // Cut before it; exclude the terminator to guarantee progress.
           split_job = job;
           split_iter = current;
           found_split_point = true;
@@ -1262,19 +1245,9 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
   return text_cost + data_cost;
 }
 
-// local_barrier co-location across a page split (G-localbar).
-//
-// A page is a single uC scope, so all cert.local_barrier ops that share a
-// local_barrier_id are participants of one barrier and must stay together on a
-// single page (splitting them across an .eop hangs the firmware). We model a
-// candidate split as a "cut" in the page's flat textual op order: ops before
-// the cut land on the earlier page, ops at/after the cut land on the later
-// page. A barrier group is "separated" iff the cut falls strictly inside the
-// span of its participants' flat indices.
-
-// Assign each non-terminator op in `page` a flat textual index (jobs in order,
-// ops in order) and record, per local_barrier_id, the [min,max] flat-index span
-// of its participants.
+// A cut inside a barrier's [min, max] textual indices would separate its
+// participants, which must remain co-resident (see
+// checkLocalBarrierColocation).
 static void computeBarrierSpans(AIEX::CertPageOp page,
                                 std::map<Operation *, int> &flatIndex,
                                 std::map<int, std::pair<int, int>> &spans) {
@@ -1309,18 +1282,9 @@ static bool cutSeparatesBarrier(const std::map<int, std::pair<int, int>> &spans,
   });
 }
 
-// Search for a split point whose cut keeps every local_barrier group intact.
-// Two kinds of position qualify, and the splitter can execute either:
-//   - interior cut: at least one op of the same job precedes the position, so
-//     the job is partitioned into an earlier and a later half;
-//   - job-boundary cut: the position is a job's first op while an earlier job
-//     already carries content, so that job moves whole to the later page and no
-//     job is partitioned at all.
-// What is never legal is a cut ahead of everything on the page: it leaves the
-// earlier page empty, so the "split" makes no progress and the greedy driver
-// repeats it forever. Among the legal candidates pick the one whose
-// earlier-page cost is closest to `split_target`. Returns false if no legal
-// split point exists (the caller then leaves the page intact).
+// Choose the barrier-safe cut closest to split_target, allowing both interior
+// and job-boundary cuts. Each half needs content so repeated splitting
+// progresses.
 static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
                                 const std::map<Operation *, int> &flatIndex,
                                 const std::map<int, std::pair<int, int>> &spans,
@@ -1540,15 +1504,8 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     std::map<int, std::pair<int, int>> barrierSpans;
     computeBarrierSpans(op, flatIndex, barrierSpans);
 
-    // estimateCost's search is greedy: it retains only the first position at
-    // which the running cost crosses split_target and never backtracks, and it
-    // only ever considers positions interior to the one job the crossing
-    // happened in. So a page can be reported as offering no split point when a
-    // cut is plainly available -- the crossing op alone in its job while an
-    // earlier job has several ops, or a page of small jobs whose sizes merely
-    // sum over the limit, where the cut belongs on a job boundary. Fall back to
-    // the exhaustive search, which considers every position in the page and
-    // keeps the barrier-legal one closest to split_target, before giving up.
+    // The initial estimate can miss a job-boundary cut or an earlier candidate;
+    // search all positions before declaring the page unsplittable.
     if (!found_split_point)
       found_split_point =
           findLegalSplitPoint(op, cert_page_size / 2, flatIndex, barrierSpans,
@@ -1634,26 +1591,8 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
 
     auto loc = op.getLoc();
 
-    // the split preserves IR (textual) order both within and across the
-    // two result pages. Jobs before split_job are cloned whole onto the earlier
-    // page; jobs after it onto the later page; split_job's own ops are
-    // partitioned at split_iter into [begin, split_iter) -> earlier page and
-    // [split_iter, end) -> later page, each cloned in order (see the
-    // distribution loop below). Because nothing is reordered, every producer
-    // stays before its consumer, so any dependency that survives across the new
-    // .eop is backward (earlier page -> later page), which is legal (G-fwd). In
-    // particular splitting a wait_tcts from its earlier uc_dma enqueues is
-    // allowed: the enqueues land on the earlier page and the wait on the later
-    // page (a backward dependency).
-    //
-    // split_iter at split_job's first op means the cut falls on a job boundary:
-    // split_job is not partitioned at all, it moves whole to the later page and
-    // the earlier page is made of the jobs ahead of it. That is a real split
-    // only because some earlier job carries content; the searches guarantee it,
-    // and cutting ahead of everything would leave an empty earlier page and no
-    // progress. Otherwise the cut is interior to split_job and, again by
-    // construction, at least one op stays behind on the earlier page. Either
-    // way the earlier page is non-empty and the split strictly makes progress.
+    // Preserve source order across both pages so cross-page dependencies stay
+    // backward. A job-boundary cut moves split_job whole onto the later page.
     bool jobBoundaryCut = split_iter == split_job.getBody().front().begin();
     [[maybe_unused]] auto earlierJobHasRealOp = [&]() {
       for (auto job : op.getBody().front().getOps<AIEX::CertJobOp>()) {
@@ -1760,19 +1699,8 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
   bool *hadError;
 };
 
-// Form implicit pages: group maximal runs of contiguous top-level
-// cert.job ops into a single cert.page. Only an explicit cert.page delimits a
-// run; structural ops (tiles, buffers, locks, switchboxes, ...) do NOT. The
-// implicit configuration job (tagged {cert.configure}) is kept isolated in its
-// own page so it can be forced first on uC0 and never merged into a user
-// implicit page. CertJobOp legally parents under DeviceOp, so bare device-level
-// jobs are valid input here (produced by RuntimeSequenceToCertJob).
-// attach_to_group(0) names uC 0, which is exactly the default (unspecified)
-// group. It is therefore a placement no-op, not a page boundary: flatten it so
-// its content joins the device-level group-0 stream and participates in
-// implicit-page formation with adjacent default-group-0 content (rather than
-// being isolated on its own page). Move each group-0 op out before the
-// attach_to_group, preserving order, then erase the now-empty op.
+// Explicit group 0 shares the default stream. Flatten it before page formation
+// so it does not introduce an artificial scheduling boundary.
 static void inlineDefaultGroup(AIE::DeviceOp dev) {
   Block *body = dev.getBody();
   SmallVector<AIEX::CertAttachToGroupOp> zeroGroups;
@@ -1875,8 +1803,6 @@ static void formImplicitPagesInBlock(Block *body, OpBuilder &builder) {
 
 static void formImplicitPages(AIE::DeviceOp dev) {
   OpBuilder builder(dev.getContext());
-  // uC 0 (device-level) stream. attach_to_group(0) has already been inlined
-  // here by inlineDefaultGroup.
   formImplicitPagesInBlock(dev.getBody(), builder);
   // Each other uC (attach_to_group) forms implicit pages within its own stream,
   // so adjacent jobs on that uC are cooperatively co-located too.
@@ -1910,12 +1836,7 @@ static void moveConfigPageFirst(AIE::DeviceOp dev) {
     configPage->moveBefore(&body->front());
 }
 
-// Lower the `placement` attribute on top-level cert.page ops to enclosing
-// cert.attach_to_group ops. Placed pages (placement present and != 0)
-// are moved, preserving IR order, under one cert.attach_to_group per distinct
-// group id. Unplaced pages (and placement 0) stay at device level and are
-// emitted as the implicit group 0. Nesting stays attach_to_group -> page -> job
-// as the emitter expects.
+// Move nonzero placements into their controller containers, retaining order.
 static void lowerPagePlacementToGroups(AIE::DeviceOp dev) {
   Block *body = dev.getBody();
 
@@ -1955,13 +1876,8 @@ static void lowerPagePlacementToGroups(AIE::DeviceOp dev) {
 struct AIECertPagesPass
     : xilinx::AIEX::impl::AIECertPagesBase<AIECertPagesPass> {
   void runOnOperation() override {
-    // Flatten attach_to_group(0) into the device-level (default group-0) stream
-    // so it is a placement no-op, not a page boundary.
     inlineDefaultGroup(getOperation());
 
-    // Form implicit pages: group contiguous top-level jobs into pages; only an
-    // explicit cert.page delimits. Replaces the old one-page-per-job
-    // wrapping.
     formImplicitPages(getOperation());
 
     // Force the @configure page to be first on uC0.

@@ -429,13 +429,8 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
       result = failure();
   }
 
-  // Single pass over the device body so each uC stream preserves the textual
-  // (encounter) order of its *executable* ops. In particular a device-level
-  // (group-0) page and an attach_to_group(0) job interleave in source order.
-  // The previous two-phase approach emitted ALL device-level pages before ANY
-  // attach_to_group content, which inverted source order on uC 0 -- e.g. a
-  // release job authored before the runtime sequence was emitted on a later
-  // page than the sequence's WAIT_TCTS, creating a forward-page dependency.
+  // Preserve encounter order: emitting all bare pages first could put a release
+  // after its WAIT_TCTS consumer on controller 0.
   for (Operation &op : *deviceOp.getBody()) {
     if (auto page = dyn_cast<CertPageOp>(&op)) {
       if (failed(emitPage(page, text[0], data[0])))
