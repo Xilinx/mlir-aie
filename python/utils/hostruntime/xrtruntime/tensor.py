@@ -4,11 +4,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import ctypes
 import math
 
 import numpy as np
 import pyxrt as xrt  # pyright: ignore[reportMissingImports]
-from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.npdtypes import np_ndarray_type_get_shape
 
 from ..buffer import Storage, Transport
 from ..tensor_class import NpuTensor
@@ -34,7 +35,11 @@ class XrtTransport(Transport):
         self.xrt_device = xrt_device
         self.nbytes = nbytes
         self._bo = xrt.bo(xrt_device, nbytes, flags, group_id)
-        self._host = np.frombuffer(self._bo.map(), dtype=np.uint8)
+        mapped = np.frombuffer(self._bo.map(), dtype=np.uint8)
+        # A view of the map does not hold the bo, whose release unmaps it.
+        owner = (ctypes.c_uint8 * nbytes).from_address(mapped.ctypes.data)
+        owner.bo = self._bo  # pyright: ignore[reportAttributeAccessIssue]
+        self._host = np.frombuffer(owner, dtype=np.uint8)
         self._handles = {}
 
     @property
@@ -73,7 +78,7 @@ class XRTTensor(NpuTensor):
     def __init__(
         self,
         shape_or_data,
-        dtype=np.uint32,
+        dtype=None,
         device="npu",
         flags=xrt.bo.host_only,
         group_id=0,
@@ -85,14 +90,16 @@ class XRTTensor(NpuTensor):
             shape_or_data (tuple or array-like):
                 - If a tuple, creates a new tensor with the given shape and dtype.
                 - If array-like, wraps the data into a tensor with optional dtype casting.
-            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            dtype (np.dtype, optional): Element type. Taken from the data when
+                that is a typed array and this is omitted; np.uint32 when the
+                tensor is built from a shape.
             device (str, optional): Device string identifier. Defaults to 'npu'.
             flags (optional): XRT buffer object flags. Defaults to xrt.bo.host_only.
             group_id (int, optional): XRT buffer object group ID. Defaults to 0.
             xrt_device (optional): Existing PyXRT device handle to use for BO allocation.
                 When omitted, the process's handle on device 0 is used. Opening
                 one per tensor instead closes and reopens the device as tensors
-                come and go; see :mod:`.device`.
+                come and go; see `.device`.
         """
         super().__init__(shape_or_data, dtype=dtype, device=device)
         self.xrt_device = xrt_device if xrt_device is not None else acquire_device()
@@ -101,7 +108,7 @@ class XRTTensor(NpuTensor):
         # Extract the shape
         if isinstance(shape_or_data, tuple):
             # If this is a shape, check for it "ShapeLike"-ness using numpy ndarray types.
-            np_type = np.ndarray[shape_or_data, np.dtype[dtype]]
+            np_type = np.ndarray[shape_or_data, np.dtype]
             self._shape = np_ndarray_type_get_shape(np_type)
         elif hasattr(shape_or_data, "shape"):
             # If this is a shaped thing, we will trust it.
@@ -113,7 +120,7 @@ class XRTTensor(NpuTensor):
             # `np.asarray` is the NumPy-2.x-safe form of the old
             # `np.array(..., copy=False)`: avoid copy when possible, copy
             # when necessary, identical semantics on both 1.x and 2.x.
-            np_data = np.asarray(shape_or_data, dtype=dtype)
+            np_data = np.asarray(shape_or_data, dtype=self.dtype)
             self._shape = np_data.shape
 
         # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currently.
@@ -144,7 +151,7 @@ class XRTTensor(NpuTensor):
     def data(self):
         """Get the underlying numpy array.
 
-        Writes through this array are not reconciled; use :meth:`mutate` for a
+        Writes through this array are not reconciled; use `mutate` for a
         write that is. Kept as the unmediated handle for callers that manage
         their own synchronization.
 

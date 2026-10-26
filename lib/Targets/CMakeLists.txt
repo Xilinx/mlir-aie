@@ -82,7 +82,9 @@ add_mlir_library(AIETargets
   AIE
   AIEX
   AIEXUtils
+  MLIRAIEToConfiguration
   MLIRAIEXToEmitC
+  MLIRControlFlowDialect
   MLIREmitCDialect
   MLIRTargetCpp
 )

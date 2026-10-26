@@ -1,0 +1,141 @@
+diff --git a/driver/src/common/xaie_txn.c b/driver/src/common/xaie_txn.c
+index 7bc5baaf..77b0e933 100644
+--- a/driver/src/common/xaie_txn.c
++++ b/driver/src/common/xaie_txn.c
+@@ -655,55 +655,64 @@ AieRC _XAie_Txn_Submit(XAie_DevInst *DevInst, XAie_TxnInst *TxnInst)
+ static inline void _XAie_AppendWrite32(XAie_DevInst *DevInst,
+ 		XAie_TxnCmd *Cmd, u8 *TxnPtr)
+ {
+-	XAie_Write32Hdr *Hdr = (XAie_Write32Hdr*)(uintptr_t)TxnPtr;
+-	Hdr->RegOff = Cmd->RegOff;
+-	Hdr->Value = Cmd->Value;
+-	Hdr->Size = (u32)sizeof(*Hdr);
+-	Hdr->OpHdr.Col = _XAie_GetColfromRegOff(DevInst,Cmd->RegOff);
+-	Hdr->OpHdr.Row = _XAie_GetRowfromRegOff(DevInst,Cmd->RegOff);
+-	Hdr->OpHdr.Op = (u8)XAIE_IO_WRITE;
++	XAie_Write32Hdr Hdr;
++
++	memset(&Hdr, 0, sizeof(Hdr));
++	Hdr.RegOff = Cmd->RegOff;
++	Hdr.Value = Cmd->Value;
++	Hdr.Size = (u32)sizeof(Hdr);
++	Hdr.OpHdr.Col = _XAie_GetColfromRegOff(DevInst,Cmd->RegOff);
++	Hdr.OpHdr.Row = _XAie_GetRowfromRegOff(DevInst,Cmd->RegOff);
++	Hdr.OpHdr.Op = (u8)XAIE_IO_WRITE;
++	memcpy(TxnPtr, &Hdr, sizeof(Hdr));
+ }
+ 
+ static inline void _XAie_AppendMaskWrite32(XAie_DevInst *DevInst,
+ 		XAie_TxnCmd *Cmd, u8 *TxnPtr)
+ {
+-	XAie_MaskWrite32Hdr *Hdr = (XAie_MaskWrite32Hdr*)(uintptr_t)TxnPtr;
+-
+-	Hdr->RegOff = Cmd->RegOff;
+-	Hdr->Mask = Cmd->Mask;
+-	Hdr->Value = Cmd->Value;
+-	Hdr->Size = (u32)sizeof(*Hdr);
+-	Hdr->OpHdr.Col = _XAie_GetColfromRegOff(DevInst,Cmd->RegOff);
+-	Hdr->OpHdr.Row = _XAie_GetRowfromRegOff(DevInst,Cmd->RegOff);
+-	Hdr->OpHdr.Op = (u8)XAIE_IO_MASKWRITE;
++	XAie_MaskWrite32Hdr Hdr;
++
++	memset(&Hdr, 0, sizeof(Hdr));
++	Hdr.RegOff = Cmd->RegOff;
++	Hdr.Mask = Cmd->Mask;
++	Hdr.Value = Cmd->Value;
++	Hdr.Size = (u32)sizeof(Hdr);
++	Hdr.OpHdr.Col = _XAie_GetColfromRegOff(DevInst,Cmd->RegOff);
++	Hdr.OpHdr.Row = _XAie_GetRowfromRegOff(DevInst,Cmd->RegOff);
++	Hdr.OpHdr.Op = (u8)XAIE_IO_MASKWRITE;
++	memcpy(TxnPtr, &Hdr, sizeof(Hdr));
+ }
+ 
+ static inline void _XAie_AppendMaskPoll32(XAie_DevInst *DevInst,
+ 		XAie_TxnCmd *Cmd, uint8_t *TxnPtr)
+ {
+-	XAie_MaskPoll32Hdr *Hdr = (XAie_MaskPoll32Hdr*)(uintptr_t)TxnPtr;
+-
+-	Hdr->RegOff = Cmd->RegOff;
+-	Hdr->Mask = Cmd->Mask;
+-	Hdr->Value = Cmd->Value;
+-	Hdr->Size = (u32)sizeof(*Hdr);
+-	Hdr->OpHdr.Col = _XAie_GetColfromRegOff(DevInst,Cmd->RegOff);
+-	Hdr->OpHdr.Row = _XAie_GetRowfromRegOff(DevInst,Cmd->RegOff);
+-	Hdr->OpHdr.Op = (u8)XAIE_IO_MASKPOLL;
++	XAie_MaskPoll32Hdr Hdr;
++
++	memset(&Hdr, 0, sizeof(Hdr));
++	Hdr.RegOff = Cmd->RegOff;
++	Hdr.Mask = Cmd->Mask;
++	Hdr.Value = Cmd->Value;
++	Hdr.Size = (u32)sizeof(Hdr);
++	Hdr.OpHdr.Col = _XAie_GetColfromRegOff(DevInst,Cmd->RegOff);
++	Hdr.OpHdr.Row = _XAie_GetRowfromRegOff(DevInst,Cmd->RegOff);
++	Hdr.OpHdr.Op = (u8)XAIE_IO_MASKPOLL;
++	memcpy(TxnPtr, &Hdr, sizeof(Hdr));
+ }
+ 
+ static inline void _XAie_AppendMaskPollBusy32(XAie_DevInst *DevInst,
+ 		XAie_TxnCmd *Cmd, uint8_t *TxnPtr)
+ {
+-	XAie_MaskPoll32Hdr *Hdr = (XAie_MaskPoll32Hdr*)(uintptr_t)TxnPtr;
+-
+-	Hdr->RegOff = Cmd->RegOff;
+-	Hdr->Mask = Cmd->Mask;
+-	Hdr->Value = Cmd->Value;
+-	Hdr->Size = (u32)sizeof(*Hdr);
+-	Hdr->OpHdr.Col = _XAie_GetColfromRegOff(DevInst,Cmd->RegOff);
+-	Hdr->OpHdr.Row = _XAie_GetRowfromRegOff(DevInst,Cmd->RegOff);
+-	Hdr->OpHdr.Op = (u8)XAIE_IO_MASKPOLL_BUSY;
++	XAie_MaskPoll32Hdr Hdr;
++
++	memset(&Hdr, 0, sizeof(Hdr));
++	Hdr.RegOff = Cmd->RegOff;
++	Hdr.Mask = Cmd->Mask;
++	Hdr.Value = Cmd->Value;
++	Hdr.Size = (u32)sizeof(Hdr);
++	Hdr.OpHdr.Col = _XAie_GetColfromRegOff(DevInst,Cmd->RegOff);
++	Hdr.OpHdr.Row = _XAie_GetRowfromRegOff(DevInst,Cmd->RegOff);
++	Hdr.OpHdr.Op = (u8)XAIE_IO_MASKPOLL_BUSY;
++	memcpy(TxnPtr, &Hdr, sizeof(Hdr));
+ }
+ 
+ static inline void _XAie_AppendBlockSet32(XAie_DevInst *DevInst,
+@@ -754,12 +763,12 @@ static inline void _XAie_AppendPreempt(XAie_TxnCmd *Cmd, u8 *TxnPtr)
+ 
+ static inline void _XAie_AppendLoadPdi(XAie_TxnCmd *Cmd, u8 *TxnPtr)
+ {
+-	XAie_LoadPdiHdr *Hdr = ( XAie_LoadPdiHdr*)((void*)TxnPtr);
++	XAie_LoadPdiHdr Hdr;
+ 
+-	Hdr->Op = (u8)Cmd->Opcode;
+-	Hdr->PdiId = Cmd->PdiId;
+-	Hdr->PdiSize = 0;
+-	Hdr->PdiAddress = 0;
++	memset(&Hdr, 0, sizeof(Hdr));
++	Hdr.Op = (u8)Cmd->Opcode;
++	Hdr.PdiId = Cmd->PdiId;
++	memcpy(TxnPtr, &Hdr, sizeof(Hdr));
+ }
+ 
+ static inline u8* _XAie_AppendPmLoad(XAie_TxnCmd *Cmd, u8 *TxnPtr, u32 *LoadOffset)
+@@ -783,12 +792,14 @@ static inline u8* _XAie_AppendPmLoad(XAie_TxnCmd *Cmd, u8 *TxnPtr, u32 *LoadOffs
+ 
+ static inline void _XAie_AppendCreateScratchpad(XAie_TxnCmd *Cmd, u8 *TxnPtr)
+ {
+-	XAie_CreateScratchpadHdr *Hdr = ( XAie_CreateScratchpadHdr*)(uintptr_t)TxnPtr;
++	XAie_CreateScratchpadHdr Hdr;
+ 
+-	Hdr->Op = (u8)Cmd->Opcode;
+-	Hdr->UsageType = (u8)Cmd->UsageType;
+-	Hdr->Size = (u32)Cmd->Size;
+-	Hdr->ScratchOffset = (u64)Cmd->ScratchOffset;
++	memset(&Hdr, 0, sizeof(Hdr));
++	Hdr.Op = (u8)Cmd->Opcode;
++	Hdr.UsageType = (u8)Cmd->UsageType;
++	Hdr.Size = (u32)Cmd->Size;
++	Hdr.ScratchOffset = (u64)Cmd->ScratchOffset;
++	memcpy(TxnPtr, &Hdr, sizeof(Hdr));
+ }
+ 
+ static inline void _XAie_AppendUpdateState(XAie_TxnCmd *Cmd, u8 *TxnPtr)

@@ -17,6 +17,10 @@ namespace xilinx {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertAIEXToEmitCPass();
 
+/// \brief Configure the pass programmatically; see AIETranslateNpuToCpp.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertAIEXToEmitCPass(bool foldDDRAddrOffset, bool emitDispatchShim);
+
 } // namespace xilinx
 
 #endif // AIE_CONVERSION_AIEXTOEMITC_AIEXTOEMITC_H

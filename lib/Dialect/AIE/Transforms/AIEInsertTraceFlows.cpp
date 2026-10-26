@@ -537,16 +537,20 @@ struct AIEInsertTraceFlowsPass
               findNearestSpareColumn(shimCol, activeColumns, targetModel);
           if (spare >= 0) {
             shimInfo.shimTile = getOrCreateShim(device, builder, spare);
-            // Reset channel to default since spare shim is clean
-            shimInfo.channel = clShimChannel;
+            // A spare has no core but can still carry one flow; it is not
+            // full, so its other channel is free.
+            shimInfo.channel = usedChannels[spare].count(clShimChannel)
+                                   ? 1 - clShimChannel
+                                   : clShimChannel;
             continue;
           }
         }
         // No lateral available -- emit error
         device.emitError()
             << "no S2MM channels available on shim tile at column " << shimCol
-            << " (both channels in use by existing flows); enable "
-               "lateral-routing to redirect to a spare column";
+            << " (both channels in use by existing flows or objectFifos); "
+               "set egress_shim_col to a column with a free channel, or "
+               "enable lateral-routing to redirect to a spare column";
         return signalPassFailure();
       }
 
@@ -1103,8 +1107,8 @@ private:
   }
 
   /// Scan the device for existing S2MM channel claims on shim tiles.
-  /// Checks aie.flow destinations, aie.packet_flow destinations, and
-  /// ShimDMAAllocationOp declarations.
+  /// Checks aie.flow destinations, aie.packet_flow destinations,
+  /// ShimDMAAllocationOp declarations, and objectFifos that end at a shim.
   std::map<int, std::set<int>> scanUsedS2MMChannels(DeviceOp device) {
     std::map<int, std::set<int>> used; // shimCol -> set of used S2MM channels
 
@@ -1132,6 +1136,33 @@ private:
         used[tile.getCol()].insert(alloc.getChannelIndex());
       }
     });
+
+    // This pass runs before objectFifo lowering, so an objectFifo that ends
+    // at a shim has no flow yet. Claim what its lowering will: every
+    // cons_dma_channels pin first, then the lowest free S2MM channel for
+    // each unpinned consumer.
+    SmallVector<TileOp> unpinned;
+    device.walk([&](ObjectFifoCreateOp fifo) {
+      if (fifo.getPlio())
+        return;
+      auto pins = fifo.getConsDmaChannels();
+      for (auto [i, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
+        auto tile = dyn_cast_or_null<TileOp>(consumer.getDefiningOp());
+        if (!tile || !tile.isShimTile())
+          continue;
+        if (pins && i < pins->size() && (*pins)[i] >= 0)
+          used[tile.getCol()].insert((*pins)[i]);
+        else
+          unpinned.push_back(tile);
+      }
+    });
+    for (TileOp tile : unpinned) {
+      auto &channels = used[tile.getCol()];
+      int ch = 0;
+      while (channels.count(ch))
+        ++ch;
+      channels.insert(ch);
+    }
 
     return used;
   }

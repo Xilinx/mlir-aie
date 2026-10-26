@@ -5,10 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -191,6 +194,30 @@ struct NpuMaskWrite32ToCertMaskWrite32
 
     rewriter.replaceOpWithNewOp<AIEX::CertMaskWrite32Op>(op, absoluteAddr,
                                                          *mask, *value);
+    return success();
+  }
+};
+
+struct NpuMaskPollToCertMaskPoll32 : OpConversionPattern<AIEX::NpuMaskPollOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(AIEX::NpuMaskPollOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    std::optional<uint32_t> address =
+        AIEX::getConstantIntOperand(op.getAddress());
+    std::optional<uint32_t> mask = AIEX::getConstantIntOperand(op.getMask());
+    std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
+    if (!address || !mask || !value)
+      return op.emitOpError("cannot lower to cert.maskpoll32 with non-constant "
+                            "address, mask, or value");
+
+    std::optional<uint32_t> absAddress = op.getAbsoluteAddress();
+    if (!absAddress)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<AIEX::CertMaskPoll32Op>(op, *absAddress, *mask,
+                                                        *value);
     return success();
   }
 };
@@ -610,7 +637,8 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
       --it;
       Operation *prevOp = &*it;
       if (isa<AIEX::CertWrite32Op, AIEX::CertMaskWrite32Op,
-              AIEX::CertApplyOffset57Op, AIEX::CertWaitTCTSOp>(prevOp))
+              AIEX::CertMaskPoll32Op, AIEX::CertApplyOffset57Op,
+              AIEX::CertWaitTCTSOp>(prevOp))
         return failure();
       prevWriteDesSync = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(prevOp);
     }
@@ -785,6 +813,8 @@ struct AIENpuToCertPass
     : xilinx::AIEX::impl::AIENpuToCertBase<AIENpuToCertPass> {
   void runOnOperation() override {
     auto moduleOp = getOperation();
+    if (failed(AIE::inlineWriteConfigs(moduleOp)))
+      return signalPassFailure();
 
     // Collect all devices
     llvm::SmallVector<AIE::DeviceOp, 4> devices;
@@ -944,6 +974,7 @@ struct AIENpuToCertPass
     target.addLegalOp<AIEX::CertSectionOp>();
     target.addLegalOp<AIEX::CertLoadPdiOp>();
     target.addLegalOp<AIEX::CertMaskWrite32Op>();
+    target.addLegalOp<AIEX::CertMaskPoll32Op>();
     target.addLegalOp<AIEX::CertUcDmaWriteDesSyncOp>();
     target.addLegalOp<AIEX::CertUcDmaChainOp>();
     target.addLegalOp<AIEX::CertUcDmaBdOp>();
@@ -978,6 +1009,7 @@ struct AIENpuToCertPass
     target.addIllegalOp<AIEX::NpuBlockWriteOp>();
     target.addIllegalOp<AIEX::NpuBlockWriteValuesOp>();
     target.addIllegalOp<AIEX::NpuMaskWrite32Op>();
+    target.addIllegalOp<AIEX::NpuMaskPollOp>();
     target.addIllegalOp<AIEX::NpuSyncOp>();
     target.addIllegalOp<AIEX::NpuWrite32Op>();
     target.addIllegalOp<AIEX::NpuLoadPdiOp>();
@@ -985,6 +1017,7 @@ struct AIENpuToCertPass
     RewritePatternSet p2(&getContext());
     p2.insert<NpuBlockWriteToCertUcDma>(&getContext());
     p2.insert<NpuMaskWrite32ToCertMaskWrite32>(&getContext());
+    p2.insert<NpuMaskPollToCertMaskPoll32>(&getContext());
     p2.insert<NpuWrite32ToCertWrite32>(&getContext());
     p2.insert<NpuSyncToCertWaitTCTS>(&getContext());
     p2.insert<NpuLoadPdiToCertLoadPdi>(&getContext());
@@ -1089,8 +1122,8 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     text_cost += 8; // remote barrier
   } else if (isa<AIEX::CertWaitTCTSOp>(o)) {
     text_cost += 8; // wait tct
-  } else if (isa<AIEX::CertMaskWrite32Op>(o)) {
-    text_cost += 16; // mask write
+  } else if (isa<AIEX::CertMaskWrite32Op, AIEX::CertMaskPoll32Op>(o)) {
+    text_cost += 16; // mask write / poll
   } else if (isa<AIEX::CertWrite32Op>(o)) {
     text_cost += 12; // write
   } else if (isa<AIEX::CertApplyOffset57Op>(o)) {

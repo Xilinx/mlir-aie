@@ -6,8 +6,8 @@
 This module owns everything at the C-ABI boundary: the enum/flag constants and
 ``ctypes`` struct mirrors from ``hrx_runtime.h`` / ``hrx_amdxdna.h``, library
 discovery + ``dlopen``, and the bound ``hrx_*`` entry points. The higher-level
-device/stream/buffer/dispatch orchestration lives in :mod:`.context`
-(:class:`~.context.HRXContext`); the package ``__init__`` re-exports both.
+device/stream/buffer/dispatch orchestration lives in `.context`
+(`.context.HRXContext`); the package ``__init__`` re-exports both.
 
 Library discovery order for ``libhrx``:
   1. ``$HRX_LIBHRX``                       (explicit full path)
@@ -17,10 +17,10 @@ Library discovery order for ``libhrx``:
   5. plain ``libhrx.so`` / ``hrx.dll`` via the loader
 
 Importing this module is side-effect-free: it performs no ``dlopen`` and no
-device init. Binding is deferred to :meth:`_HrxLib.ensure`, which the first
-:class:`~.context.HRXContext` triggers. That is what lets the cheap ``has_hrx``
+device init. Binding is deferred to `_HrxLib.ensure`, which the first
+`.context.HRXContext` triggers. That is what lets the cheap ``has_hrx``
 capability probe in ``aie.utils`` (which only imports the sibling
-:mod:`.discovery` module) stay as cheap and safe as a plain import.
+`.discovery` module) stay as cheap and safe as a plain import.
 """
 
 import ctypes
@@ -220,10 +220,10 @@ def _load_libhrx() -> ctypes.CDLL:
 class _HrxLib:
     """The dlopen'd ``libhrx`` handle plus its bound C ABI entry points.
 
-    A single process-wide instance (:data:`lib`) is bound lazily by
-    :meth:`ensure`; until then no library is opened. Every bound entry point is
+    A single process-wide instance (`lib`) is bound lazily by
+    `ensure`; until then no library is opened. Every bound entry point is
     exposed as an attribute (e.g. ``lib.hrx_stream_dispatch``) so callers in
-    :mod:`.context` reference one populated object rather than a set of
+    `.context` reference one populated object rather than a set of
     rebindable module globals.
     """
 
@@ -237,7 +237,7 @@ class _HrxLib:
     def ensure(self) -> None:
         """Load libhrx and bind the C ABI (idempotent, thread-safe).
 
-        Deferred until first real use (i.e. when an :class:`~.context.HRXContext`
+        Deferred until first real use (i.e. when an `.context.HRXContext`
         is created) so that merely importing this package -- as the
         ``discovery``-based ``has_hrx`` probe does transitively -- never
         ``dlopen()``s a library or touches the device. Double-checked locking

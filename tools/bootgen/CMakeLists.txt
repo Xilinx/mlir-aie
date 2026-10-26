@@ -6,7 +6,10 @@ set(BOOTGEN_SOURCE ${PROJECT_SOURCE_DIR}/third_party/bootgen)
 
 # Avoid retriggering compilation when configuration produces identical sources.
 function(write_bootgen_source_if_changed path contents)
-  file(READ "${path}" current_contents)
+  set(current_contents)
+  if(EXISTS "${path}")
+    file(READ "${path}" current_contents)
+  endif()
   if(NOT current_contents STREQUAL contents)
     file(WRITE "${path}" "${contents}")
   endif()
@@ -42,6 +45,26 @@ list(APPEND libsources
 # C API for exception-safe PDI generation, so tools like aiecc can call
 # bootgen as a library instead of shelling out.
 list(APPEND libsources ${CMAKE_CURRENT_SOURCE_DIR}/bootgen_c_api.cpp)
+
+# BifOptions leaves lastPartitionBifOption uninitialized. A fresh bootgen
+# process zeroes it, but aiecc's in-process calls can inherit a stale pointer
+# equal to the first partition, so Add() pops an empty list and aborts.
+# Compile a copy that initializes it, leaving the submodule untouched, until
+# https://github.com/Xilinx/bootgen/pull/57 lands.
+set(bifoptions_source ${BOOTGEN_SOURCE}/common/src/bifoptions.cpp)
+set(bifoptions_patched ${CMAKE_CURRENT_BINARY_DIR}/bifoptions.cpp)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${bifoptions_source})
+file(READ ${bifoptions_source} FILE_CONTENTS)
+string(REPLACE "    , spkRevokeId(0x00000000)\n{"
+  "    , spkRevokeId(0x00000000)\n    , lastPartitionBifOption(NULL)\n{"
+  PATCHED_CONTENTS "${FILE_CONTENTS}")
+if(PATCHED_CONTENTS STREQUAL FILE_CONTENTS)
+  message(FATAL_ERROR "BifOptions constructor changed in ${bifoptions_source}; "
+    "re-check the lastPartitionBifOption initialization patch")
+endif()
+write_bootgen_source_if_changed(${bifoptions_patched} "${PATCHED_CONTENTS}")
+list(REMOVE_ITEM libsources ${bifoptions_source})
+list(APPEND libsources ${bifoptions_patched})
 
 set(bootgen_include_dirs
   ${BOOTGEN_SOURCE}/bisonflex

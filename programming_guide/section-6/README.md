@@ -25,6 +25,11 @@ There are a number of example designs available [here](../../programming_example
 |-|-|-|
 |[bottleneck](../../programming_examples/ml/bottleneck/)|ui8|A Bottleneck Residual Block is a variant of the residual block that utilizes three convolutions, using 1x1, 3x3, and 1x1 filter sizes, respectively. The implementation features fusing of multiple kernels and dataflow optimizations, highlighting the unique architectural capabilities of AI Engines|
 |[resnet](../../programming_examples/ml/resnet/)|ui8|ResNet with offloaded conv2_x layers. The implementation features depth-first implementation of multiple bottleneck blocks across multiple NPU columns.|
+|[MobileNet V3](../../programming_examples/ml/mobilenet/)|ui8 / i8|End-to-end MobileNet V3 inference, depth-first across the 4x8 array of the Strix NPU2. The weights are a seeded random init (untrained), so accuracy here means every image of the batch bit-exact against `mobilenet_numpy`, within 3 of the brevitas golden.|
+|[YOLO26n](../../programming_examples/ml/yolo26n/)|int8|Stock Ultralytics YOLO26n object detection at 640x640, the whole graph on the NPU2, from a uint8 image to the (300, 6) detections.|
+|[Llama 3.2 1B](../../programming_examples/ml/llama_3_2_1b/)|int8|Llama 3.2 1B decode and prompt on the NPU2, all 16 layers, with on-chip token feedback and a growing KV cache.|
+
+The MobileNet V3, YOLO26n and Llama 3.2 1B designs are measured every night; their current latency and throughput are on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
 
 ## Exercises
 1. In [bottleneck](../../programming_examples/ml/bottleneck/) design, how many different types of fused computations do you observe?

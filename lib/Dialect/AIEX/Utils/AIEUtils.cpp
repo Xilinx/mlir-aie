@@ -8,15 +8,11 @@
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
-
-#include <numeric>
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 using namespace mlir;
 using namespace xilinx;
-
-// Counter used to name private blockwrite data globals when no caller-supplied
-// next-index is available; the symbol-table probe below keeps names unique.
-static unsigned blockwriteDataCounter = 0;
 
 std::optional<AIEX::SubviewTraceResult>
 AIEX::traceSubviewToBlockArgument(Value value) {
@@ -156,63 +152,48 @@ std::optional<unsigned> AIEX::getHostBufferArgIndex(BlockArgument arg) {
   return std::nullopt;
 }
 
-memref::GlobalOp AIEX::getOrCreateDataMemref(
-    OpBuilder &builder, AIE::DeviceOp dev, mlir::Location loc,
-    ArrayRef<uint32_t> words,
-    llvm::DenseMap<mlir::Attribute, memref::GlobalOp> *dedupCache,
-    unsigned *nextId) {
-  uint32_t num_words = words.size();
-  MemRefType memrefType = MemRefType::get({num_words}, builder.getI32Type());
+unsigned AIEX::getHostBufferCount(Block &block) {
+  return llvm::count_if(block.getArguments(), [](BlockArgument arg) {
+    return isa<BaseMemRefType>(arg.getType());
+  });
+}
+
+AIEX::BlockwriteData::BlockwriteData(AIE::DeviceOp dev, StringRef prefix)
+    : dev(dev), prefix(prefix) {
+  for (Operation &op : dev.getBody()->getOperations()) {
+    if (auto global = dyn_cast<memref::GlobalOp>(op))
+      if (auto initVal = global.getInitialValue();
+          initVal && global.getConstant())
+        byValue.try_emplace(*initVal, global);
+    auto symName =
+        op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    if (!symName)
+      continue;
+    StringRef suffix = symName.getValue();
+    unsigned idx;
+    if (suffix.consume_front(prefix) && !suffix.getAsInteger(10, idx) &&
+        idx >= nextId)
+      nextId = idx + 1;
+  }
+}
+
+memref::GlobalOp AIEX::BlockwriteData::getOrCreate(OpBuilder &builder,
+                                                   Location loc,
+                                                   ArrayRef<uint32_t> words) {
+  int64_t numWords = words.size();
+  MemRefType memrefType = MemRefType::get({numWords}, builder.getI32Type());
   TensorType tensorType =
-      RankedTensorType::get({num_words}, builder.getI32Type());
+      RankedTensorType::get({numWords}, builder.getI32Type());
   auto initVal = DenseElementsAttr::get<uint32_t>(tensorType, words);
 
-  // Dedup. The initial-value attribute is uniqued and encodes both the element
-  // data and the (shaped) type, so it is a sufficient key on its own.
-  memref::GlobalOp global = nullptr;
-  if (dedupCache) {
-    // O(1): the cache is seeded by the caller from the device's existing
-    // globals and kept in sync below as we create new ones.
-    auto it = dedupCache->find(initVal);
-    if (it != dedupCache->end()) {
-      // initVal encodes element data + shape, but not memref layout/memory
-      // space.
-      if (it->second && it->second.getType() == memrefType)
-        return it->second;
-      dedupCache->erase(it);
-    }
-  } else {
-    // No cache supplied: scan existing globals for a match. Callers that create
-    // many globals should pass a cache (see header).
-    for (auto g : dev.getOps<memref::GlobalOp>()) {
-      if (g.getType() != memrefType)
-        continue;
-      auto otherValue = g.getInitialValue();
-      if (!otherValue)
-        continue;
-      if (*otherValue != initVal)
-        continue;
-      return g;
-    }
-  }
-
-  // With a caller-supplied `nextId` (one past the largest existing
-  // blockwrite_data_<n>) the name is unique by construction; otherwise probe
-  // the symbol table for a free index.
-  std::string name;
-  if (nextId) {
-    name = "blockwrite_data_" + std::to_string((*nextId)++);
-  } else {
-    name = "blockwrite_data_";
-    while (dev.lookupSymbol(name + std::to_string(blockwriteDataCounter)))
-      blockwriteDataCounter++;
-    name += std::to_string(blockwriteDataCounter++);
-  }
-  global = memref::GlobalOp::create(builder, loc, name,
-                                    builder.getStringAttr("private"),
-                                    memrefType, initVal, true, nullptr);
-  if (dedupCache)
-    (*dedupCache)[initVal] = global;
+  // The attribute is uniqued and carries the shape, but not the memref's
+  // layout or memory space.
+  memref::GlobalOp &global = byValue[initVal];
+  if (global && global.getType() == memrefType)
+    return global;
+  global = memref::GlobalOp::create(
+      builder, loc, prefix + std::to_string(nextId++),
+      builder.getStringAttr("private"), memrefType, initVal, true, nullptr);
   return global;
 }
 
@@ -226,25 +207,6 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
   uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
 
-  // The firmware masks the BD address register with 0xFFFFFFFC, so the byte
-  // offset it computes below is rounded DOWN to a 4-byte boundary rather than
-  // rejected. When elemBytes is itself a multiple of 4 that can never bite.
-  // Otherwise the runtime value has to be a multiple of 4 / gcd(4, elemBytes)
-  // elements, and nothing here can check that -- the value only exists at
-  // run time. The static offset path rejects the same misalignment outright
-  // (NpuDmaMemcpyNdOp::verify, "Offset must be 4-byte-aligned"), so warn
-  // rather than leave the runtime path silent.
-  if (elemBytes != 0 && elemBytes % 4 != 0) {
-    uint32_t elemMultiple = 4 / std::gcd(4u, elemBytes);
-    bdOp->emitWarning()
-        << "runtime offset parameter on a " << (elemBytes * 8)
-        << "-bit element type: the firmware masks the BD address register "
-           "with 0xFFFFFFFC, so a value that is not a multiple of "
-        << elemMultiple
-        << " elements is silently rounded down to the 4-byte boundary below "
-           "instead of being rejected";
-  }
-
   // Use func=mul with func_arg=elemBytes so the firmware computes
   // StateTable[idx] * elemBytes = byte offset, added into the BD address
   // register.
@@ -256,27 +218,142 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   return success();
 }
 
+LogicalResult AIEX::emitUpdateBdLengthFromParameter(
+    OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
+    int64_t lengthUnit, const AIE::AIETargetModel &targetModel, int col,
+    int row, int bdId) {
+  auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("length_state_table_idx");
+  assert(idxAttr && "emitUpdateBdLengthFromParameter called without "
+                    "length_state_table_idx attribute");
+
+  if (failed(AIE::verifyLengthParameterTile(bdOp, targetModel, col, row)))
+    return failure();
+  uint64_t registerAddr =
+      targetModel.getDmaBdAddress(col, row, bdId) +
+      4 * targetModel.getDmaBdLayout(col, row)->bufferLength.word;
+
+  uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
+  FailureOr<int64_t> unitBytes =
+      AIE::getLengthUnitBytes(bdOp, lengthUnit, bufType);
+  if (failed(unitBytes))
+    return failure();
+
+  // The length register counts 32-bit words, so func=mul adds n * unitBytes / 4
+  // words: func_arg is unitBytes / 4 for an addr parameter (StateTable[idx]
+  // holds n) and unitBytes / 16 for a core parameter (it holds n << 2).
+  int64_t bytesPerStateUnit = bdOp->hasAttr("length_core_encoded") ? 16 : 4;
+  AIEX::NpuUpdateFromScratchpadOp::create(
+      builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
+      // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+      /*func_arg=*/static_cast<uint32_t>(*unitBytes / bytesPerStateUnit),
+      /*address=*/static_cast<uint32_t>(registerAddr),
+      /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+  return success();
+}
+
+std::string AIEX::scratchpadCommandName(AIE::RuntimeSequenceOp seq) {
+  auto device = seq->getParentOfType<AIE::DeviceOp>();
+  return (device.getSymName() + ":" + seq.getSymName()).str();
+}
+
 void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
   SmallVector<AIEX::ScratchpadParameterOp> allParams;
   moduleOp.walk([&](AIEX::ScratchpadParameterOp p) { allParams.push_back(p); });
 
-  os << allParams.size() << "\n";
+  unsigned numSlots = 0;
+  for (auto p : allParams)
+    if (auto idx = p.getStateTableIdx())
+      numSlots = std::max(numSlots, static_cast<unsigned>(*idx) + 1);
+  os << allParams.size() << " " << numSlots << "\n";
   for (auto p : allParams) {
     std::string typeStr;
     llvm::raw_string_ostream ts(typeStr);
     p.getType().print(ts);
     ts.flush();
-    // --aie-lower-scratchpad-parameters assigns kind and state_table_idx to
-    // every ScratchpadParameterOp unconditionally (defaulting unused
-    // parameters to Core), so by the time this dump runs both are set.
     auto kind = p.getKind();
-    auto stateTableIdx = p.getStateTableIdx();
-    assert(kind && stateTableIdx &&
-           "expected --aie-lower-scratchpad-parameters to have assigned "
-           "kind/state_table_idx to every parameter");
-    StringRef kindStr =
-        *kind == AIEX::ScratchpadParameterKind::Addr ? "addr" : "core";
-    os << p.getSymName() << " " << static_cast<unsigned>(*stateTableIdx) << " "
-       << typeStr << " " << kindStr << "\n";
+    assert(kind && "expected --aie-lower-scratchpad-parameters to have "
+                   "assigned every parameter a kind");
+    StringRef kindStr = AIEX::stringifyScratchpadParameterKind(*kind);
+    os << p.getSymName() << " ";
+    if (std::optional<uint8_t> stateTableIdx = p.getStateTableIdx())
+      os << static_cast<unsigned>(*stateTableIdx);
+    else
+      os << "-";
+    os << " " << typeStr << " " << kindStr;
+    auto minValue = p.getMinValue();
+    auto maxValue = p.getMaxValue();
+    if (minValue && maxValue)
+      os << " " << static_cast<int32_t>(*minValue) << " "
+         << static_cast<int32_t>(*maxValue);
+    else
+      os << " - -";
+    os << "\n";
   }
+
+  SmallVector<std::pair<StringRef, AIEX::JointBoundAttr>> jointBounds;
+  for (auto p : allParams)
+    if (ArrayAttr bounds = p.getJointBoundsAttr())
+      for (auto bound : bounds.getAsRange<AIEX::JointBoundAttr>())
+        jointBounds.push_back({p.getSymName(), bound});
+  os << jointBounds.size() << "\n";
+  for (auto [length, bound] : jointBounds)
+    os << length << " " << bound.getOffset().getValue() << " "
+       << bound.getLengthStep() << " " << bound.getMax() << "\n";
+
+  SmallVector<AIE::RuntimeSequenceOp> commands;
+  moduleOp.walk([&](AIE::RuntimeSequenceOp seq) {
+    if (seq.getScratchpadParametersAttr())
+      commands.push_back(seq);
+  });
+  os << commands.size() << "\n";
+  for (AIE::RuntimeSequenceOp seq : commands) {
+    ArrayAttr reads = seq.getScratchpadParametersAttr();
+    os << scratchpadCommandName(seq) << " " << reads.size();
+    for (auto ref : reads.getAsRange<FlatSymbolRefAttr>())
+      os << " " << ref.getValue();
+    os << "\n";
+  }
+}
+
+bool AIEX::getReachableConfigures(
+    Value task, SmallVectorImpl<DMAConfigureTaskOp> &configures) {
+  bool complete = true;
+  llvm::SmallPtrSet<Value, 8> seen;
+  SmallVector<Value> worklist{task};
+  while (!worklist.empty()) {
+    Value v = worklist.pop_back_val();
+    if (!v || !seen.insert(v).second)
+      continue;
+    if (auto cfg = v.getDefiningOp<DMAConfigureTaskOp>()) {
+      configures.push_back(cfg);
+      continue;
+    }
+
+    Operation *regionBranchOp;
+    if (auto res = dyn_cast<OpResult>(v))
+      regionBranchOp = res.getOwner();
+    else
+      regionBranchOp = cast<BlockArgument>(v).getOwner()->getParentOp();
+    auto rbi = dyn_cast_or_null<RegionBranchOpInterface>(regionBranchOp);
+    if (!rbi) {
+      complete = false;
+      continue;
+    }
+
+    RegionBranchInverseSuccessorMapping mapping;
+    rbi.getSuccessorInputOperandMapping(mapping);
+    auto operands = mapping.lookup(v);
+    if (operands.empty())
+      complete = false;
+    for (OpOperand *operand : operands)
+      worklist.push_back(operand->get());
+  }
+  return complete;
+}
+
+AIEX::DMAConfigureTaskOp AIEX::getUniqueReachableConfigure(Value task) {
+  SmallVector<DMAConfigureTaskOp> configures;
+  if (!getReachableConfigures(task, configures) || configures.size() != 1)
+    return nullptr;
+  return configures.front();
 }

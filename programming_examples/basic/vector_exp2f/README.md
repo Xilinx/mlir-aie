@@ -5,20 +5,21 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# Vector 2^x (software minimax poly)
+# Vector 2^x (software polynomial)
 
-Demonstrates `kernels.exp2f_vec`, a software degree-5 minimax polynomial
-approximation of `2**x` for `float32`, aie2p only. This is the accuracy
-alternative to [`basic/vector_exp`](../vector_exp)'s LUT-based `bf16_exp`:
+Demonstrates `kernels.exp2f_vec`, a software degree-4 polynomial
+approximation of `2**x` for `float32`, on NPU1 (aie2) and NPU2 (aie2p).
+This is the accuracy alternative to [`basic/vector_exp`](../vector_exp)'s
+LUT-based `bf16_exp`:
 the LUT's relative error is domain-dependent and grows sharply for
 negative inputs (up to 49.1% on `[-100, 0]`, measured), which is exactly
-softmax's input range after the row-max shift. The poly holds ~8.9e-5
-relative error across its default domain, `x` in `[-111, 127.999)` (and a
+softmax's input range after the row-max shift. The poly holds ~9.2e-6
+(aie2p) and ~7.4e-6 (aie2) relative error across its default domain, `x` in `[-111, 127.999)` (and a
 bounded ~7.8e-4 in the narrow `[127.999, 128)` sliver right at the upper
-clamp). The lower clamp is movable down to the hard floor of `-126` at up
-to 6.5e-3; see
-[`aie_kernels/aie2p/exp2f_vec.cc`](../../../aie_kernels/aie2p/exp2f_vec.cc)
-for the measured accuracy table and the derivation (`x = k + f`, `2^k`
+clamp). The lower clamp is movable down to the hard floor of `-126` at the
+same accuracy; see
+[`aie_kernels/activation/exp2f_vec.cc`](../../../aie_kernels/activation/exp2f_vec.cc)
+for the measured accuracy and the derivation (`x = k + f`, `2^k`
 built directly in the float32 exponent field, `2^f` from the poly).
 
 Four cores each operate on `1024` `float32` numbers.
@@ -30,8 +31,7 @@ Four cores each operate on `1024` `float32` numbers.
    with `kernels.exp2f_vec` / `kernels.exp2f_vec_ref` in place of
    `kernels.bf16_exp` / `kernels.bf16_exp_ref`, and `float32` in place of
    `bfloat16`.
-2. [`exp2f_vec.cc`](../../../aie_kernels/aie2p/exp2f_vec.cc) - the kernel.
-   Its `__attribute__((noinline))` is load-bearing; see the comment there.
+2. [`exp2f_vec.cc`](../../../aie_kernels/activation/exp2f_vec.cc) - the kernel.
 
 ## Usage
 
@@ -39,8 +39,10 @@ Four cores each operate on `1024` `float32` numbers.
 python3 vector_exp2f.py
 ```
 
-The IRON JIT runtime detects the attached NPU generation automatically
-(aie2p / NPU2 required; the kernel raises `NotImplementedError` on aie2).
+The IRON JIT runtime detects the attached NPU generation automatically.
+The kernel source, `aie_kernels/activation/exp2f_vec.cc`, builds for aie2
+and aie2p. aiecc sizes each core's stack from the linked kernel, so the
+design sets no `stack_size`.
 
 The host driver builds four input blocks: a dense grid over `[-111, 0]`, a
 random sample over the same range, a block from `-500` to just below
@@ -49,7 +51,7 @@ positive-domain block (a dense grid over `[0, 127]` plus explicit values
 straddling the upper clamp at k = 127, 128, 129, ... up to 1e30).
 
 It gates the two graded blocks on max relative error against a float64
-`2**x` reference at `5e-4`, well above the measured ~8.9e-5. The clamp
+`2**x` reference at `5e-4`, well above the measured ~9.2e-6. The clamp
 block is checked only for NaN/Inf, since its contract is
 `2**max(x, -111)`. The boundary block is gated on VALUES rather than
 finiteness: no negative-signed output anywhere, and bit-exact `+inf` for

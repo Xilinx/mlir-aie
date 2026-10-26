@@ -7,15 +7,17 @@
 
 // A runtime-valued dma_bd len on a shim-NOC tile lowers through the dynamic
 // BD-word encoder into one npu.blockwrite_values carrying the whole register
-// block (bd_id is pinned here, so the address is constant). buffer_length
-// carries the runtime len as len * elemWidth / addressGranularity; the
-// size/stride words carry the (here constant) ND layout.
+// block (bd_id is pinned here, so the address is constant). buffer_length is
+// the d0*d1*d2 extent of the (here constant, contiguous) layout, so the runtime
+// len is guarded to be non-zero and to agree with it rather than written
+// unchecked.
 
 // CHECK-LABEL: aie.runtime_sequence
-// buffer_length derived from the runtime %len operand:
-// CHECK: %[[MUL:.*]] = arith.muli %arg1, %{{.*}}
-// CHECK: %[[LEN:.*]] = arith.divui %[[MUL]], %{{.*}}
-// CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %[[LEN]]
+// CHECK: %[[LEN:.*]] = arith.extui %arg1 : i32 to i64
+// CHECK: cf.assert %{{.*}}, "a runtime DMA length must be in [1:4294967295] elements"
+// CHECK: %[[EQ:.*]] = arith.cmpi eq, %[[LEN]], %c4096_i64 : i64
+// CHECK: cf.assert %[[EQ]], "a runtime DMA length must equal the d0*d1*d2 extent of its dimensions"
+// CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %c4096_i32,
 // CHECK: aiex.npu.address_patch
 
 module {

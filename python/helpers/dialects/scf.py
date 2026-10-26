@@ -2,13 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from contextlib import contextmanager
-from typing import Sequence
+from typing import Any, Iterator, Sequence
 
 import numpy as np
 
+from ...dialects.arith import (  # pyright: ignore[reportMissingImports]
+    ConstantOp,
+)
 from ...dialects.scf import (  # pyright: ignore[reportMissingImports]
     ForOp,
     IfOp,
+    WhileOp,
+    condition,
     yield_,
 )
 from ...extras import types as T  # pyright: ignore[reportMissingImports]
@@ -16,14 +21,13 @@ from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
     constant,
     index_cast,
 )
-from ...extras.util import (  # pyright: ignore[reportMissingImports]
-    get_user_code_loc,
-)
 from ...ir import (  # pyright: ignore[reportMissingImports]
     IndexType,
     InsertionPoint,
+    IntegerType,
     Value,
 )
+from ..sourceloc import user_code_location
 
 
 def _for(
@@ -35,7 +39,7 @@ def _for(
     *,
     loc=None,
     ip=None,
-):
+) -> Iterator[Any]:
     """Emit an scf.for loop, like the convenience wrapper in scf but with an added insert_yield parameter.
 
     The insert_yield parameter defaults to True; if left as True, the user no longer needs to manually insert
@@ -84,10 +88,25 @@ def _for(
             yield_([])
 
 
+def forever_(*, loc=None, ip=None) -> Iterator[None]:
+    """Emit an scf.while whose condition is always true, for a loop that never exits.
+
+    Used like ``_for``: the body of a Python ``for`` over it is emitted once,
+    into the loop body. Unlike an scf.for with a huge bound, the loop keeps no
+    counter.
+    """
+    while_op = WhileOp([], [], loc=loc, ip=ip)
+    with InsertionPoint(while_op.before.blocks.append()):
+        condition(ConstantOp(IntegerType.get_signless(1), 1), [])
+    with InsertionPoint(while_op.after.blocks.append()):
+        yield
+        yield_([])
+
+
 @contextmanager
 def if_(cond, hasElse=True, insert_yield=True, loc=None, ip=None):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = user_code_location()
     if_op = IfOp(cond, has_else=hasElse, loc=loc, ip=ip)
     with InsertionPoint(if_op.thenRegion.blocks[0]):
         yield if_op

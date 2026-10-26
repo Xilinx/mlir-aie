@@ -208,3 +208,41 @@ module {
     }
   }
 }
+
+// -----
+
+// A size-1 dimension never steps, so its stride may be 0 (the form
+// TensorAccessPattern gives it); a padded unit dimension keeps it.
+module {
+  aie.device(npu2) {
+    %t1 = aie.tile(1, 1)
+    %buf = aie.buffer(%t1) : memref<512xi32>
+    aie.memtile_dma(%t1) {
+      aie.dma_start(MM2S, 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf : memref<512xi32> len = 1024 sizes = [1, 512] strides = [0, 1] pad [<const_pad_before = 0, const_pad_after = 1>, <const_pad_before = 0, const_pad_after = 0>])
+        aie.next_bd ^end
+      ^end:
+        aie.end
+    }
+  }
+}
+
+// -----
+
+// A dimension that steps needs a positive stride.
+module {
+  aie.device(npu2) {
+    %t1 = aie.tile(1, 1)
+    %buf = aie.buffer(%t1) : memref<512xi32>
+    aie.memtile_dma(%t1) {
+      aie.dma_start(MM2S, 0, ^bd0, ^end)
+      ^bd0:
+        // expected-error@+1 {{Invalid step size; must be a positive integer.}}
+        aie.dma_bd(%buf : memref<512xi32> len = 1024 sizes = [2, 512] strides = [0, 1])
+        aie.next_bd ^end
+      ^end:
+        aie.end
+    }
+  }
+}

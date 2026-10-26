@@ -24,16 +24,10 @@
 // CHECK:             %[[C14:.*]] = arith.constant 14 : index
 // CHECK:             %[[C1:.*]] = arith.constant 1 : index
 // CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[INIT:.*]] = arith.constant 0 : i32
 // CHECK:             %[[ONE:.*]] = arith.constant 1 : i32
-// CHECK:             %[[FOUR:.*]] = arith.constant 4 : i32
-// CHECK:             %{{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] iter_args(%[[IDX:.*]] = %[[INIT]]) -> (i32) {
+// CHECK:             scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] {
 // CHECK:               aie.use_lock(%[[PROD]], AcquireGreaterEqual, %[[ONE]])
 // CHECK:               aie.use_lock(%[[CONS]], Release, %[[ONE]])
-// CHECK:               %[[NX:.*]] = arith.addi %[[IDX]], %[[ONE]] : i32
-// CHECK:               %[[CMP:.*]] = arith.cmpi sge, %[[NX]], %[[FOUR]] : i32
-// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[INIT]], %[[NX]] : i32
-// CHECK:               scf.yield %[[SEL]] : i32
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }

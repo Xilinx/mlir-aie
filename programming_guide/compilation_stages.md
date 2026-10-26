@@ -82,9 +82,11 @@ safe.
 
 Two hashes drop out of the frozen recipe:
 
-- **`recipe_hash`** — function of generator + `compile_kwargs` +
-  compile/aiecc flags. Same across machines. Used as the cache key
-  for "have I built this design before?"
+- **`recipe_hash`** — function of generator + the Python sources it
+  reaches (its module, the modules it imports from, and mlir-aie's own)
+  + `compile_kwargs` + compile/aiecc flags. Computed without running the
+  generator. Used as the cache key for "have I built this design
+  before?"
 - **`artifact_hash`** — function of source-file mtimes, object-file
   mtimes, tool-binary mtimes, and target architecture. Different
   across machines / builds. Used to decide "are the cached artifacts
@@ -100,8 +102,17 @@ even across many `.compile()` / `__call__` / `.as_mlir()` invocations.
 The first call:
 
 1. Opens a fresh MLIR `Context` and `Location` via `mlir_mod_ctx()`.
-2. Builds tensor placeholders for the `In`/`Out`/`InOut` parameters.
-3. Calls the generator with `(**placeholders, **compile_kwargs)`.
+2. Gives each `In`/`Out`/`InOut` parameter its operand: an `In`/`Out`/
+   `InOut` with the shape and dtype of the bound tensor type (`a.shape`,
+   `a.dtype`, `a.ndarray_type`), which every API taking a tensor type
+   accepts in its place. A parameter with no type bound gets a placeholder
+   that raises on use, and a variadic `*tensors: In` gets an empty tuple: the
+   generator decides how many tensors the design takes from its
+   `CompileTime[T]` parameters.
+3. Calls the generator with those operands, the `compile_kwargs` and,
+   for each `DispatchTime[T]` parameter the call leaves unbound, a
+   `PerCall` placeholder that the design forwards once through
+   `Runtime(seq, fn_args=[...])` to a runtime-sequence argument.
 4. Captures the resulting `Module` (either the generator's return
    value, or `ctx.module` if it returned `None` — "placed" vs
    "unplaced" generator style).
@@ -449,6 +460,14 @@ baked in:
 A defaulted *and* call-time-overridden `CompileTime[T]` recompiles for the
 new value; the cache key includes the resolved value, not the source
 default.
+
+A generator whose tensor count follows from its compile-time parameters
+declares them as one variadic list, `def design(*tensors: In, N:
+CompileTime[int])`: every positional argument of a call is a tensor of
+that list, in the order the lowered `aie.runtime_sequence` takes them, and
+the runtime checks the count against the compiled design. Only a tensor
+parameter may be variadic; the generator body cannot read the list (it is
+empty at generation); named operands carry only shape and dtype.
 
 ## Related reading
 

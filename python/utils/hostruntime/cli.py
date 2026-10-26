@@ -39,11 +39,6 @@ if TYPE_CHECKING:
 _DeviceArg: TypeAlias = "Device | Callable[[Any], Device | None]"
 
 
-def _resolve(value: Any, opts) -> Any:
-    """Resolve ``value`` to a concrete value: call it if callable, else pass through."""
-    return value(opts) if callable(value) else value
-
-
 def _resolve_device(value: _DeviceArg, opts) -> "Device":
     """Resolve a CLI device selector to a concrete Device."""
     resolved = value(opts) if callable(value) else value
@@ -80,7 +75,7 @@ def _detect_runtime_target(opts, *, mode: str):
             "automatic target selection."
         )
 
-    if hasattr(opts, "dev"):
+    if "dev" in vars(opts):
         opts.dev = _runtime_device_name(runtime_device)
     return runtime_device
 
@@ -121,7 +116,9 @@ def run_design_cli(
            the standard message), then call
            ``design.specialize(**compile_kwargs).compile(
            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path,
-           [elf_path=opts.elf_path])``.
+           [elf_path=opts.elf_path])``. A design with ``DispatchTime[T]``
+           parameters builds its instructions per call, so it takes
+           ``--xclbin-path`` alone and refuses ``--insts-path``.
 
       5. Otherwise, call ``run_and_verify(opts)``.
 
@@ -166,19 +163,15 @@ def run_design_cli(
     # until a design actually enters the dispatcher.
     from aie.utils.hostruntime import set_current_device
 
-    emit_mlir_requested = getattr(opts, "emit_mlir", False)
-    full_elf_path = getattr(opts, "full_elf_path", None)
+    given = vars(opts)
+    emit_mlir_requested = given.get("emit_mlir", False)
+    full_elf_path = given.get("full_elf_path")
     compile_only_requested = (
-        getattr(opts, "xclbin_path", None) is not None or full_elf_path is not None
+        given.get("xclbin_path") is not None or full_elf_path is not None
     )
-    requested_dev = getattr(opts, "dev", None)
+    requested_dev = given.get("dev")
 
-    if getattr(opts, "xclbin_path", None) is not None and not getattr(
-        opts, "insts_path", None
-    ):
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-
-    if full_elf_path is not None and getattr(opts, "xclbin_path", None) is not None:
+    if full_elf_path is not None and given.get("xclbin_path") is not None:
         sys.exit(
             "--full-elf-path and --xclbin-path/--insts-path are mutually exclusive"
         )
@@ -191,7 +184,7 @@ def run_design_cli(
                 "pass --dev."
             )
 
-        if device is None and not hasattr(opts, "dev"):
+        if device is None and "dev" not in given:
             raise ValueError(
                 "run_design_cli: device=None requires opts to expose a "
                 "'dev' attribute (the standard add_compile_args flag). "
@@ -222,29 +215,39 @@ def run_design_cli(
     if validate is not None:
         validate(opts)
 
-    if emit_mlir_requested:
-        if emit_mlir is not None:
-            emit_mlir(opts)
-        else:
-            kwargs = _resolve(compile_kwargs, opts)
-            print(design.specialize(**kwargs).as_mlir())
+    if emit_mlir_requested and emit_mlir is not None:
+        emit_mlir(opts)
         return
 
-    if compile_only_requested:
-        kwargs = _resolve(compile_kwargs, opts)
-        spec = design.specialize(**kwargs)
+    if emit_mlir_requested or compile_only_requested:
+        spec = design.specialize(
+            **(compile_kwargs(opts) if callable(compile_kwargs) else compile_kwargs)
+        )
+        if emit_mlir_requested:
+            print(spec.as_mlir())
+            return
         if full_elf_path is not None:
             # Full ELF is self-contained: no xclbin/insts pair.
             spec.compile(full_elf_path=full_elf_path)
             return
-        compile_opts = dict(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
-        elf_path = getattr(opts, "elf_path", None)
-        if elf_path is not None:
-            compile_opts["elf_path"] = elf_path
-        pdi_path = getattr(opts, "pdi_path", None)
-        if pdi_path is not None:
-            compile_opts["pdi_path"] = pdi_path
-        spec.compile(**compile_opts)
+        insts_path = given.get("insts_path")
+        if spec.compilable.dispatch_params:
+            if insts_path:
+                sys.exit(
+                    "--insts-path: a DispatchTime design builds its instructions "
+                    "per call; pass --xclbin-path alone"
+                )
+        elif not insts_path:
+            sys.exit("--xclbin-path requires --insts-path (must be set together)")
+        spec.compile(
+            xclbin_path=opts.xclbin_path,
+            inst_path=insts_path,
+            **{
+                k: given[k]
+                for k in ("elf_path", "pdi_path")
+                if given.get(k) is not None
+            },
+        )
         return
 
     if run_and_verify is None:

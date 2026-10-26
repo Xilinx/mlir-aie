@@ -158,6 +158,8 @@ mlir::LogicalResult AIE::AIETranslateShimSolution(mlir::ModuleOp module,
   if (!targetOp) {
     return mlir::failure();
   }
+  if (failed(verifyDMAChannelsResolved(targetOp)))
+    return mlir::failure();
 
   // Generate boilerplate header
   output << "{\n";

@@ -54,14 +54,16 @@ def compileconfig(
         keyword args), or a partial decorator (internal use when keywords are
         supplied before the callable).
 
-    Example::
+    For example:
 
-        @iron.compileconfig(source_files=["kernel.cc"])
-        def gemm_design(a: In, b: In, c: Out,
-                        M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
-            ...
+    ```python
+    @iron.compileconfig(source_files=["kernel.cc"])
+    def gemm_design(a: In, b: In, c: Out,
+                    M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+        ...
 
-        design = CompilableDesign(gemm_design, compile_kwargs={"M": 512, ...})
+    design = CompilableDesign(gemm_design, compile_kwargs={"M": 512, ...})
+    ```
     """
     config_kwargs: dict[str, Any] = dict(
         use_cache=use_cache,

@@ -15,6 +15,7 @@ include "aie/Dialect/AIE/IR/AIE.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpAsmInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 // Op is a DMA-like operation with BD contraints
 def HasValidBDs : NativeOpTrait<"HasValidBDs"> {
@@ -256,5 +257,14 @@ def MyOffsetSizeAndStrideOpInterface : OpInterfaceTrait<"::xilinx::AIE::MyOffset
 def SkipAccessibilityCheckTrait : NativeOpTrait<"SkipAccessibilityCheckTrait"> {
   string cppNamespace = "::xilinx::AIE";
 }
+
+// See `AttrBasedSymbolVisibility` in AIEDialect.h.
+def AttrBasedSymbolVisibility : NativeOpTrait<"AttrBasedSymbolVisibility"> {
+  string cppNamespace = "::xilinx::AIE";
+}
+
+// Use in place of a bare `Symbol`, which no longer implements the name and
+// visibility accessors itself.
+def AIESymbol : TraitList<[Symbol, SymbolName, AttrBasedSymbolVisibility]>;
 
 #endif // AIE_INTERFACES
