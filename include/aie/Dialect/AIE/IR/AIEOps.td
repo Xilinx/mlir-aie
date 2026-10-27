@@ -1751,7 +1751,8 @@ def AIE_LockOp : AIE_Op<"lock", [TileElement, AIESymbol]> {
       );
     }]>,
                   OpBuilder<(ins "mlir::Value":$tile, "int":$init,
-                                 "llvm::StringRef":$name), [{
+                                "llvm::StringRef":$name),
+                            [{
       build($_builder, $_state,
         tile,
         /*lockID=*/nullptr,
