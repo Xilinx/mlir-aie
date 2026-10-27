@@ -51,7 +51,9 @@ from functools import partial
 
 import llama_kernels
 import numpy as np
-from aie.dialects.aiex import npu_load_pdi  # pyright: ignore[reportMissingImports]
+from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
+    npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
     CmpIPredicate,
     addi,

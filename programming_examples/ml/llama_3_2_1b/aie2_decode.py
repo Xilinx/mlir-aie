@@ -23,7 +23,9 @@ from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
     WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.dialects.aiex import npu_load_pdi  # pyright: ignore[reportMissingImports]
+from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
+    npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
     CmpIPredicate,
     addi,
