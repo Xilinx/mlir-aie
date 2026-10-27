@@ -44,6 +44,7 @@ from ..ir import (
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
+from ..extras.dialects import arith
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
 from ..helpers.taplib._symbolic import is_sym, si32, sprod
@@ -429,9 +430,6 @@ def shim_dma_single_bd_task(
     if tap:
         offset, sizes, strides = shim_dims(tap)
 
-    # The iteration attribute (when set) claims the shim's single iteration/repeat
-    # slot, so the BD carries ONLY its access dimensions (<=3) and does NOT also
-    # hoist an outer dimension.
     repeat_count = 0
     repeat_count_val = None
     if iteration is not None:
@@ -442,38 +440,52 @@ def shim_dma_single_bd_task(
                 f"slot); got {len(sizes)}."
             )
     else:
-        # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
-        # dimension. The repeat_count below hoists sizes[0] into that iteration
-        # dimension, but the transferred extent is prod(sizes[-3:]) (see shim_dma_bd),
-        # so sizes[0] is left out of it only when there are 4 dimensions. With fewer
-        # than 4 dims and sizes[0] > 1, sizes[0] is counted both as a real access dim
-        # (in transfer_len and in the BD dimensions) and as repeat_count, so the shim
-        # re-issues the whole transfer sizes[0] times, waits on the objectfifo for that
-        # many objects, and dma_await_task never returns. Normalize to the canonical
-        # 4-dim form (left-pad with unit dims) so sizes[0] is only ever the iteration
-        # dimension. Past 4 dims, every dim before the last three iterates, and
-        # aie-decompose-large-dma-bd splits the ones a BD cannot hold into separate
-        # tasks, which it can only do for constant sizes and strides.
         if sizes is not None:
             while len(sizes) < 4:
                 sizes = [1] + list(sizes)
                 if strides is not None:
                     strides = [0] + list(strides)
 
-        # The outer dimensions become the queue-push repeat_count. Constants fold to
-        # the repeat_count attribute; a runtime sizes[0] (4 dims at most) flows into
-        # the repeat_count_val operand so a dynamic tile count is supported.
         if sizes:
             outer = sizes[:-3]
             if all(isinstance(v, (int, np.integer)) for v in outer):
                 runs = int(np.prod([int(v) for v in outer]))
                 if runs > 1:
                     repeat_count = runs - 1
+                # Strip the outermost dim when it fits the hardware iteration
+                # register (size ≤ 64); larger counts stay in the implicit path.
+                if len(sizes) == 4 and int(sizes[0]) <= 64:
+                    st0 = strides[0] if strides is not None else 0
+                    if isinstance(st0, (int, np.integer)) and int(st0) != 0:
+                        iteration = (int(sizes[0]), int(st0), 0)
+                    if strides is None:
+                        strides = [0] * (len(sizes) - 1) + [1]
+                    sizes = list(sizes[1:])
+                    strides = list(strides[1:])
             else:
-                # Runtime: a zero sizes[0] wraps to a huge count, which the
-                # queue-push lowering refuses along with any other one past the
-                # target's maximum.
-                repeat_count_val = sizes[0] - 1
+                # Runtime SSA sizes[0]: strip and emit iteration via SSA.
+                # Keep values as i64 to match the BD's native type and avoid
+                # ExtSIOp(i32→i64) which prevents constant folding in packBdWords.
+                s0 = sizes[0]
+                s0_i32 = s0
+                if hasattr(s0, 'type') and s0.type != T.i32():
+                    s0_i32 = arith.trunci(T.i32(), s0)
+                repeat_count_val = s0_i32 - _as_i32(1)
+                st0 = strides[0] if strides is not None else 0
+                # iteration pair as i64 (native BD dim type)
+                def _as_i64(v):
+                    if isinstance(v, (int, np.integer)):
+                        return arith.ConstantOp(T.i64(), int(v)).result
+                    if hasattr(v, 'type') and v.type != T.i64():
+                        return arith.extsi(T.i64(), v)
+                    return v
+                s0_i64 = _as_i64(s0)
+                st0_i64 = _as_i64(st0)
+                if strides is None:
+                    strides = [0] * (len(sizes) - 1) + [1]
+                sizes = list(sizes[1:])
+                strides = list(strides[1:])
+                iteration = (s0_i64, st0_i64)
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,

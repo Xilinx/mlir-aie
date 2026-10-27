@@ -45,7 +45,7 @@ module {
 
     aie.runtime_sequence @task_static(%in: memref<8192xi32>) {
       %t = aiex.dma_configure_task_for @of_in {
-        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [4096, 512, 32, 1]) {bd_id = 0 : i32}
+        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 1024 sizes = [4, 8, 32] strides = [512, 32, 1]) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -53,7 +53,7 @@ module {
 
     aie.runtime_sequence @task_dynamic(%in: memref<8192xi32>, %n: i64) {
       %t = aiex.dma_configure_task_for @of_in {
-        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 1024 sizes = [1, %n, 8, 32] strides = [4096, 512, 32, 1]) {bd_id = 0 : i32}
+        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 1024 sizes = [%n, 8, 32] strides = [512, 32, 1]) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%t)
