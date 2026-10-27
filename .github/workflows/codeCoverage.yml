@@ -35,7 +35,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false # The package list includes powershell, unavailable on Ubuntu 26.04.
           swap-storage: false
 
       - name: Get the project repository

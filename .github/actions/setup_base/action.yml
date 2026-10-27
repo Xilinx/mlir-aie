@@ -65,7 +65,7 @@ runs:
         android: true
         dotnet: true
         haskell: true
-        large-packages: true
+        large-packages: false # The package list includes powershell, unavailable on Ubuntu 26.04.
         swap-storage: false # This frees space on the wrong partition.
 
     - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
