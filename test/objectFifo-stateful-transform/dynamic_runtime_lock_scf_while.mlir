@@ -29,13 +29,13 @@
 // CHECK-DAG:           aie.buffer @[[BUF:buf]](%[[T2]]) : memref<1xindex>
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
-// CHECK:             %[[C14:.*]] = arith.constant 14 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C0I:.*]] = arith.constant 0 : i32
-// CHECK:             %[[C3I:.*]] = arith.constant 3 : i32
-// CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
-// CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
+// CHECK-DAG:             %[[C14:.*]] = arith.constant 14 : index
+// CHECK-DAG:             %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:             %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[C0I:.*]] = arith.constant 0 : i32
+// CHECK-DAG:             %[[C3I:.*]] = arith.constant 3 : i32
+// CHECK-DAG:             %[[C1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:             %[[C2I:.*]] = arith.constant 2 : i32
 // CHECK:             %[[W:.*]]:2 = scf.while (%[[A0:.*]] = %[[C0]], %[[A1:.*]] = %[[C0I]]) : (index, i32) -> (index, i32) {
 // CHECK:               %[[CND:.*]] = arith.cmpi slt, %[[A0]], %[[C14]] : index
 // CHECK:               scf.condition(%[[CND]]) %[[A0]], %[[A1]] : index, i32

@@ -127,6 +127,7 @@
 // CHECK-NEXT:  arith.constant 1705600 : i32
 // CHECK-NEXT:  aiex.npu.maskpoll
 // CHECK-NEXT:  aiex.dma_configure_task(%{{.*}}, MM2S, 4)
+// CHECK-NEXT:  aie.get_buffer @buf
 // CHECK-NEXT:  {bd_id = 0 : i32}
 
 aie.device(npu2) @shim_dev {

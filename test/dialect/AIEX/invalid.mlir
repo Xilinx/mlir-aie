@@ -19,13 +19,15 @@ aie.device(npu1) {
 // set_lock takes a runtime_sequence ANCESTOR, not necessarily a parent -- a
 // rolled loop or a select arm may hold one. It still has to be under a
 // sequence somewhere, though: this one is under a plain func.
-func.func @set_lock_outside_sequence() {
+aie.device(npu1) {
   %tile22 = aie.tile(2, 2)
   aie.lock @lock22_0(%tile22, 0) {init = 0 : i32}
-  // expected-error@+2 {{'aiex.set_lock' op expects ancestor op 'aie.runtime_sequence'}}
-  %lock22_0_v1 = arith.constant 1 : i32
-  aiex.set_lock(@lock22_0, %lock22_0_v1)
-  return
+  func.func @set_lock_outside_sequence() {
+    // expected-error@+2 {{'aiex.set_lock' op expects ancestor op 'aie.runtime_sequence'}}
+    %lock22_0_v1 = arith.constant 1 : i32
+    aiex.set_lock(@lock22_0, %lock22_0_v1)
+    return
+  }
 }
 
 // -----

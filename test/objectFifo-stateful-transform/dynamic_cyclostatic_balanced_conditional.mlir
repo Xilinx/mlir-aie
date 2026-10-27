@@ -33,10 +33,10 @@
 // CHECK-DAG:           aie.lock @[[CONS:fifo_cons_lock_0]](%[[MT]]) {init = 0 : i32}
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
-// CHECK:             %[[C14:.*]] = arith.constant 14 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:             %[[C14:.*]] = arith.constant 14 : index
+// CHECK-DAG:             %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:             %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:             scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] {
 // CHECK:               aie.use_lock(@[[CCONS]], AcquireGreaterEqual, %[[C1I]])
 // CHECK:               aie.use_lock(@[[CPROD]], Release, %[[C1I]])

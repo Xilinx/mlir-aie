@@ -21,9 +21,9 @@
 // CHECK-DAG:     aie.lock @[[VAL_7:of1_cons_lock_0]](%{{.*}}tile_1_2) {init = 0 : i32}
 // CHECK-DAG:     aie.buffer @test_buff(%{{.*}}tile_1_2) : memref<16xi32>
 // CHECK-DAG:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_3_3, DMA : 0)
-// CHECK:     %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 // CHECK-DAG:       aie.lock @test_prod_lock(%{{.*}}tile_1_2, 0) {init = 1 : i32}
 // CHECK-DAG:       aie.lock @test_cons_lock(%{{.*}}tile_1_2, 1) {init = 0 : i32}
+// CHECK:     %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 // CHECK:       %[[CHECK_SSA_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
 // CHECK:       aie.use_lock(@test_prod_lock, AcquireGreaterEqual, %{{.*}})

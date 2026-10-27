@@ -766,6 +766,23 @@ struct AIECoreToStandardPass
     builder.setInsertionPointToStart(m.getBody());
     declareAIEIntrinsics(targetModel.getTargetArch(), builder);
 
+    for (auto buffer : deviceOp.getOps<BufferOp>()) {
+      auto type = cast<MemRefType>(buffer.getType());
+      if (auto global = m.lookupSymbol<memref::GlobalOp>(buffer.getSymName())) {
+        if (global.getType() != type || global.getInitialValue()) {
+          buffer.emitOpError(
+              "buffer conflicts with an existing memref.global definition");
+          return signalPassFailure();
+        }
+      } else {
+        builder.setInsertionPointToStart(m.getBody());
+        memref::GlobalOp::create(builder, buffer.getLoc(), buffer.getSymName(),
+                                 builder.getStringAttr("public"), type,
+                                 /*initial_value=*/nullptr, /*constant=*/false,
+                                 /*alignment=*/nullptr);
+      }
+    }
+
     IRMapping mapper;
     ConversionTarget target(getContext());
     target.addLegalDialect<func::FuncDialect>();

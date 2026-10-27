@@ -32,7 +32,7 @@
 // CHECK:       aie.use_lock(@of_stream_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
-// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
+// CHECK:       %{{.*}} = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
 // CHECK:       aie.use_lock(@of_stream_cons_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%{{[^ ,)]+}} : memref<16xi32> offset = {{.*}} len = {{.*}})

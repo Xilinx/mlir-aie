@@ -27,11 +27,11 @@
 // CHECK-DAG:           aie.lock @[[CONS:fifo_cons_lock_0]](%[[T22]]) {init = 0 : i32}
 // CHECK-DAG:           aie.buffer @[[BUF23:buf23]](%[[T23]]) : memref<4xi32>
 // CHECK:           %{{.*}} = aie.core(%[[T22]]) {
-// CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
-// CHECK:             %[[C88:.*]] = arith.constant 88 : i32
-// CHECK:             %[[C77:.*]] = arith.constant 77 : i32
-// CHECK:             %[[C66:.*]] = arith.constant 66 : i32
-// CHECK:             %[[C55:.*]] = arith.constant 55 : i32
+// CHECK-DAG:             %[[C1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:             %[[C88:.*]] = arith.constant 88 : i32
+// CHECK-DAG:             %[[C77:.*]] = arith.constant 77 : i32
+// CHECK-DAG:             %[[C66:.*]] = arith.constant 66 : i32
+// CHECK-DAG:             %[[C55:.*]] = arith.constant 55 : i32
 // CHECK:             aie.use_lock(@[[PROD]], AcquireGreaterEqual, %[[C1I]])
 // CHECK:             memref.store %[[C55]], %{{[^ ,)]+}}[] : memref<i32>
 // CHECK:             aie.use_lock(@[[CONS]], Release, %[[C1I]])
@@ -47,12 +47,12 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %{{.*}} = aie.core(%[[T23]]) {
-// CHECK:             %[[D1I:.*]] = arith.constant 1 : i32
-// CHECK:             %[[C3:.*]] = arith.constant 3 : index
-// CHECK:             %[[C2:.*]] = arith.constant 2 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
+// CHECK-DAG:             %[[D1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:             %[[C3:.*]] = arith.constant 3 : index
+// CHECK-DAG:             %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:             %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:             %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[C2I:.*]] = arith.constant 2 : i32
 // CHECK:             aie.use_lock(@[[CONS]], AcquireGreaterEqual, %[[D1I]])
 // CHECK:             %[[V0:.*]] = memref.load %{{[^ ,)]+}}[] : memref<i32>
 // CHECK:             memref.store %[[V0]], %{{[^ ,)]+}}{{\[}}%[[C0]]] : memref<4xi32>

@@ -18,12 +18,12 @@
 // CHECK:        return
 // CHECK:      }
 // CHECK:      %core_1_2 = aie.core(%{{.*}}tile_1_2) {
-// CHECK:        %[[IDX2:.*]] = arith.constant 2 : index
-// CHECK:        %[[IDX4:.*]] = arith.constant 4 : index
-// CHECK:        %[[IDX1:.*]] = arith.constant 1 : index
-// CHECK:        %[[IDX0:.*]] = arith.constant 0 : index
-// CHECK:        %[[C0I:.*]] = arith.constant 0 : i32
-// CHECK:        %[[C1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:        %[[IDX2:.*]] = arith.constant 2 : index
+// CHECK-DAG:        %[[IDX4:.*]] = arith.constant 4 : index
+// CHECK-DAG:        %[[IDX1:.*]] = arith.constant 1 : index
+// CHECK-DAG:        %[[IDX0:.*]] = arith.constant 0 : index
+// CHECK-DAG:        %[[C0I:.*]] = arith.constant 0 : i32
+// CHECK-DAG:        %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:        scf.for %[[IV:.*]] = %[[IDX0]] to %[[IDX4]] step %[[IDX2]] {
 // CHECK:          aie.use_lock(@[[VAL_2]], Acquire, %[[C0I]])
 // CHECK:          func.call @some_work(%{{[^ ,)]+}}, %[[IV]]) : (memref<16xi32>, index) -> ()

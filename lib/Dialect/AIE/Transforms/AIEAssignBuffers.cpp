@@ -202,7 +202,8 @@ static void materializePrebakedRanges(DeviceOp device) {
       bool present = false;
       device.walk([&](BufferOp buffer) {
         if (buffer.getBankReserved() && buffer.getTileOp() == tile &&
-            !buffer.getMemBank() && buffer.getAddress() == address) {
+            buffer.getAddress() == address &&
+            buffer.getAllocationSize() == size) {
           present = true;
         }
       });

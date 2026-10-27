@@ -19,10 +19,10 @@
 // CHECK:      aie.lock @[[VAL_2:input_fifo_cons_cons_lock_0]](%{{.*}}tile_0_2) {init = 0 : i32}
 // CHECK:      aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
 // CHECK:      %core_0_2 = aie.core(%{{.*}}tile_0_2) {
-// CHECK:        %{{.*}} = arith.constant 10 : index
-// CHECK:        %{{.*}} = arith.constant 1 : index
-// CHECK:        %{{.*}} = arith.constant 0 : index
-// CHECK:        %[[C1:.*]] = arith.constant 1 : i32
+// CHECK-DAG:        %{{.*}} = arith.constant 10 : index
+// CHECK-DAG:        %{{.*}} = arith.constant 1 : index
+// CHECK-DAG:        %{{.*}} = arith.constant 0 : index
+// CHECK-DAG:        %[[C1:.*]] = arith.constant 1 : i32
 // CHECK:        scf.for %arg0 = %{{.*}} to %{{.*}} step %{{.*}} {
 // CHECK:          aie.use_lock(@[[VAL_2]], AcquireGreaterEqual, %[[C1]])
 // CHECK:          func.call @passthrough_10_i32(%{{[^ ,)]+}}) : (memref<10xi32>) -> ()

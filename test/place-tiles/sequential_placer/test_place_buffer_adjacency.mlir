@@ -197,7 +197,8 @@ module @adjacency_consumer_follows_owner {
     // CHECK: aie.core(%[[F1]])
     // CHECK: aie.core(%[[CONSUMER]])
     // CHECK-NEXT: arith.constant
-    // CHECK-NEXT: memref.load %{{[^ ,)]+}}
+    // CHECK-NEXT: %[[ACCESS:.*]] = aie.get_buffer @[[BUF]]
+    // CHECK-NEXT: memref.load %[[ACCESS]]
     %owner = aie.logical_tile<CoreTile>(?, ?)
     aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }

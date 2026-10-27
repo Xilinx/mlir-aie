@@ -12,7 +12,7 @@
 // CHECK: {{.*}} aie.buffer @core02_rtp_Buffer({{.*}}) {address = 1024 : i32, mem_bank = {{[0-9]+}} : i32} : memref<256xi8>
 // CHECK: {{.*}} aie.buffer @core02_buff_out({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32} : memref<256xi8>
 // CHECK: {{.*}} aie.buffer @core02_buff_out2({{.*}}) {address = 16384 : i32, mem_bank = 1 : i32} : memref<256xi8>
-// CHECK: {{.*}} aie.buffer @buffer_4({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : memref<500xi32>
+// CHECK: {{.*}} aie.buffer @buffer_4({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32} : memref<500xi32>
 
 module @test {
   aie.device(npu2) {

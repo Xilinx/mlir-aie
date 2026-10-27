@@ -36,7 +36,7 @@ aie.device(npu2) {
   aie.mem(%t) {
     aie.dma_start(MM2S, 0, ^bd0, ^end)
   ^bd0:
-    // expected-error@+3 {{transfer of 1024 elements at offset 512 runs past the end of the 1024-element buffer}}
+    // expected-error@+2 {{transfer of 1024 elements at offset 512 runs past the end of the 1024-element buffer}}
     %buf = aie.get_buffer @buf : memref<1024xi32>
     aie.dma_bd(%buf : memref<1024xi32> offset = 512 len = 1024)
     aie.next_bd ^end
@@ -87,7 +87,7 @@ aie.device(npu2) {
   aie.buffer @buf(%t) {address = 0 : i32} : memref<1024xi32>
   aie.runtime_sequence @task_no_len() {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
-      // expected-error@+2 {{transfer of 1024 elements at offset 512 runs past the end of the 1024-element buffer}}
+      // expected-error@+3 {{transfer of 1024 elements at offset 512 runs past the end of the 1024-element buffer}}
       // expected-note@+2 {{an omitted `len` is the whole buffer; give the length to transfer from this offset}}
       %buf = aie.get_buffer @buf : memref<1024xi32>
       aie.dma_bd(%buf : memref<1024xi32> offset = 512) {bd_id = 0 : i32}

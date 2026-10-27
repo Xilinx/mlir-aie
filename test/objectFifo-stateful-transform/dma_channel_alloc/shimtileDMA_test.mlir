@@ -16,32 +16,35 @@
 // CHECK-DAG:           aie.lock @[[VAL_3:objfifo_cons_cons_lock_0]](%{{.*}}tile_3_3) {init = 0 : i32}
 // CHECK-DAG:           aie.lock @[[VAL_4:objfifo_prod_lock_0]](%{{.*}}tile_2_0) {init = 1 : i32}
 // CHECK-DAG:           aie.lock @[[VAL_5:objfifo_cons_lock_0]](%{{.*}}tile_2_0) {init = 0 : i32}
-// CHECK-DAG:           aie.external_buffer @buffer_0 : memref<16xi32>
-// CHECK-DAG:           aie.lock @lock_2_0(%{{.*}}tile_2_0, 0)
-// CHECK-DAG:           aie.external_buffer @buffer_1 : memref<16xi32>
-// CHECK-DAG:           aie.lock @lock_2_0_0(%{{.*}}tile_2_0, 1)
-// CHECK-DAG:           aie.external_buffer @buffer_2 : memref<16xi32>
-// CHECK-DAG:           aie.lock @lock_2_0_1(%{{.*}}tile_2_0, 2)
+// CHECK-DAG:           aie.external_buffer @[[BUFF0:buff0]] : memref<16xi32>
+// CHECK-DAG:           aie.lock @[[LOCK0:lock0]](%{{.*}}tile_2_0, 0)
+// CHECK-DAG:           aie.external_buffer @[[BUFF1:buff1]] : memref<16xi32>
+// CHECK-DAG:           aie.lock @[[LOCK1:lock1]](%{{.*}}tile_2_0, 1)
+// CHECK-DAG:           aie.external_buffer @[[BUFF2:buff2]] : memref<16xi32>
+// CHECK-DAG:           aie.lock @[[LOCK2:lock2]](%{{.*}}tile_2_0, 2)
 // CHECK-DAG:           aie.flow(%{{.*}}tile_2_0, DMA : 0, %{{.*}}tile_3_3, DMA : 0)
 // CHECK-DAG:           aie.external_buffer @ext_buffer_in : memref<16xi32>
 // CHECK:           %shim_dma_2_0 = aie.shim_dma(%{{.*}}tile_2_0) {
 // CHECK:             %[[CHECK_SSA_0:.*]] = aie.dma_start(MM2S, 1, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:             aie.use_lock(@lock_2_0, Acquire, %{{.*}})
-// CHECK:             aie.dma_bd(%{{[^ ,)]+}} : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(@lock_2_0, Release, %{{.*}})
+// CHECK:             aie.use_lock(@[[LOCK0]], Acquire, %{{.*}})
+// CHECK:             %[[BUFF0_ACCESS:.*]] = aie.get_buffer @[[BUFF0]] : memref<16xi32>
+// CHECK:             aie.dma_bd(%[[BUFF0_ACCESS]] : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[LOCK0]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
-// CHECK:             aie.use_lock(@lock_2_0_0, Acquire, %{{.*}})
-// CHECK:             aie.dma_bd(%{{[^ ,)]+}} : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(@lock_2_0_0, Release, %{{.*}})
+// CHECK:             aie.use_lock(@[[LOCK1]], Acquire, %{{.*}})
+// CHECK:             %[[BUFF1_ACCESS:.*]] = aie.get_buffer @[[BUFF1]] : memref<16xi32>
+// CHECK:             aie.dma_bd(%[[BUFF1_ACCESS]] : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[LOCK1]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
 // CHECK:             %[[CHECK_SSA_1:.*]] = aie.dma_start(S2MM, 0, ^bb4, ^bb5)
 // CHECK:           ^bb4:  // 2 preds: ^bb3, ^bb4
-// CHECK:             aie.use_lock(@lock_2_0_1, Acquire, %{{.*}})
-// CHECK:             aie.dma_bd(%{{[^ ,)]+}} : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(@lock_2_0_1, Release, %{{.*}})
+// CHECK:             aie.use_lock(@[[LOCK2]], Acquire, %{{.*}})
+// CHECK:             %[[BUFF2_ACCESS:.*]] = aie.get_buffer @[[BUFF2]] : memref<16xi32>
+// CHECK:             aie.dma_bd(%[[BUFF2_ACCESS]] : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[LOCK2]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb5:  // pred: ^bb3
 // CHECK:             %[[CHECK_SSA_2:.*]] = aie.dma_start(MM2S, 0, ^bb6, ^bb7)

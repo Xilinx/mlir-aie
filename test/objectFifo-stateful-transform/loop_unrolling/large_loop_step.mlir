@@ -22,15 +22,15 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[VAL_12:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[IDX8:.*]] = arith.constant 8 : index
-// CHECK:             %[[IDX17:.*]] = arith.constant 17 : index
-// CHECK:             %[[IDX2:.*]] = arith.constant 2 : index
-// CHECK:             %[[IDX1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C0I:.*]] = arith.constant 0 : i32
-// CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
-// CHECK:             %[[IDX4:.*]] = arith.constant 4 : index
-// CHECK:             %[[IDX6:.*]] = arith.constant 6 : index
-// CHECK:             %[[IDX19:.*]] = arith.constant 19 : index
+// CHECK-DAG:             %[[IDX8:.*]] = arith.constant 8 : index
+// CHECK-DAG:             %[[IDX17:.*]] = arith.constant 17 : index
+// CHECK-DAG:             %[[IDX2:.*]] = arith.constant 2 : index
+// CHECK-DAG:             %[[IDX1:.*]] = arith.constant 1 : index
+// CHECK-DAG:             %[[C0I:.*]] = arith.constant 0 : i32
+// CHECK-DAG:             %[[C1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:             %[[IDX4:.*]] = arith.constant 4 : index
+// CHECK-DAG:             %[[IDX6:.*]] = arith.constant 6 : index
+// CHECK-DAG:             %[[IDX19:.*]] = arith.constant 19 : index
 // CHECK:             scf.for %[[IV:.*]] = %[[IDX1]] to %[[IDX17]] step %[[IDX8]] {
 // CHECK:               aie.use_lock(@[[VAL_6]], Acquire, %[[C0I]])
 // CHECK:               func.call @some_work(%{{[^ ,)]+}}, %[[IV]]) : (memref<16xi32>, index) -> ()

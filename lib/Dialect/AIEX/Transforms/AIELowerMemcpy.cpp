@@ -68,6 +68,8 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     rewriter.setInsertionPointToStart(bdBlock);
     UseTokenOp::create(rewriter, loc, tokenName, acquireTknVal,
                        LockAction::Acquire);
+    if (auto access = buf.getDefiningOp<GetBufferOp>())
+      buf = rewriter.clone(*access)->getResult(0);
     DMABDOp::create(rewriter, loc, buf, offset, len);
     UseTokenOp::create(rewriter, loc, tokenName, releaseTknVal,
                        LockAction::Release);
@@ -137,6 +139,7 @@ struct AIELowerMemcpyPass
     target.addLegalDialect<arith::ArithDialect>();
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
+    target.addLegalOp<GetBufferOp>();
     target.addLegalOp<UseTokenOp>();
     target.addLegalOp<NextBDOp>();
 

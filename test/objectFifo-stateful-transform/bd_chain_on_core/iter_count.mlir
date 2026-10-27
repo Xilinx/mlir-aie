@@ -32,10 +32,12 @@ module @iter_count_on_core {
 // CHECK: %mem_0_2 = aie.mem(%tile_0_2) {
 // CHECK:   %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb4, repeat_count = 3)
 // CHECK: ^bb1:  // pred: ^bb0
-// CHECK:   aie.dma_bd(%p_buff_0 : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:   %[[DMA_BUFFER:.*]] = aie.get_buffer @p_buff_0 : memref<16xi32>
+// CHECK:   aie.dma_bd(%[[DMA_BUFFER]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:   aie.next_bd ^bb2
 // CHECK: ^bb2:  // pred: ^bb1
-// CHECK:   aie.dma_bd(%p_buff_1 : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:   %[[DMA_BUFFER:.*]] = aie.get_buffer @p_buff_1 : memref<16xi32>
+// CHECK:   aie.dma_bd(%[[DMA_BUFFER]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:   aie.next_bd ^bb3
 // CHECK: ^bb3:  // pred: ^bb2
 // CHECK:   aie.end

@@ -29,15 +29,20 @@ module {
     func.func private @use(memref<16xi32>)
 
     // CHECK-LABEL: aie.core(%{{.*}}tile_0_2)
+    // CHECK-DAG:     %[[IN0:.*]] = aie.get_buffer @of_in_cons_buff_0 : memref<16xi32>
+    // CHECK-DAG:     %[[IN1:.*]] = aie.get_buffer @of_in_cons_buff_1 : memref<16xi32>
+    // CHECK-DAG:     %[[OUT0:.*]] = aie.get_buffer @of_out_buff_0 : memref<16xi32>
+    // CHECK-DAG:     %[[OUT1:.*]] = aie.get_buffer @of_out_buff_1 : memref<16xi32>
+    // CHECK-DAG:     %[[OUT2:.*]] = aie.get_buffer @of_out_buff_2 : memref<16xi32>
     // CHECK:         scf.while : () -> () {
     // CHECK:           scf.condition(%{{.*}})
     // CHECK:         } do {
-    // CHECK:           func.call @work(%of_in_cons_buff_0, %of_out_buff_0)
-    // CHECK:           func.call @work(%of_in_cons_buff_1, %of_out_buff_2)
-    // CHECK:           func.call @work(%of_in_cons_buff_0, %of_out_buff_1)
-    // CHECK:           func.call @work(%of_in_cons_buff_1, %of_out_buff_0)
-    // CHECK:           func.call @work(%of_in_cons_buff_0, %of_out_buff_2)
-    // CHECK:           func.call @work(%of_in_cons_buff_1, %of_out_buff_1)
+    // CHECK:           func.call @work(%[[IN0]], %[[OUT0]])
+    // CHECK:           func.call @work(%[[IN1]], %[[OUT2]])
+    // CHECK:           func.call @work(%[[IN0]], %[[OUT1]])
+    // CHECK:           func.call @work(%[[IN1]], %[[OUT0]])
+    // CHECK:           func.call @work(%[[IN0]], %[[OUT2]])
+    // CHECK:           func.call @work(%[[IN1]], %[[OUT1]])
     // CHECK-NOT:       func.call
     // CHECK:           scf.yield
     // CHECK-NOT:     aie.unroll_hint

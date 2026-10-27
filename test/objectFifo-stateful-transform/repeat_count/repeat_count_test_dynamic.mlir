@@ -25,10 +25,10 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %{{.*}} = aie.core(%[[T12]]) {
-// CHECK:             %[[C12:.*]] = arith.constant 12 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C3I:.*]] = arith.constant 3 : i32
+// CHECK-DAG:             %[[C12:.*]] = arith.constant 12 : index
+// CHECK-DAG:             %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:             %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[C3I:.*]] = arith.constant 3 : i32
 // CHECK:             scf.for %{{.*}} = %[[C0]] to %[[C12]] step %[[C1]] {
 // CHECK:               aie.use_lock(@[[PROD]], AcquireGreaterEqual, %[[C3I]])
 // CHECK:               func.call @some_work(%{{[^ ,)]+}}) : (memref<16xi32>) -> ()

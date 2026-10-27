@@ -39,13 +39,13 @@
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 1, %[[T2]], DMA : 1)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
-// CHECK:             %[[C14:.*]] = arith.constant 14 : index
-// CHECK:             %[[C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C0I:.*]] = arith.constant 0 : i32
-// CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
-// CHECK:             %[[C3I:.*]] = arith.constant 3 : i32
-// CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:             %[[C14:.*]] = arith.constant 14 : index
+// CHECK-DAG:             %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:             %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[C0I:.*]] = arith.constant 0 : i32
+// CHECK-DAG:             %[[C2I:.*]] = arith.constant 2 : i32
+// CHECK-DAG:             %[[C3I:.*]] = arith.constant 3 : i32
+// CHECK-DAG:             %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:             %{{.*}}:2 = scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] iter_args(%[[WH:.*]] = %[[C0I]], %[[XH:.*]] = %[[C0I]]) -> (i32, i32) {
 // CHECK:               %[[WS:.*]] = arith.subi %[[C2I]], %[[WH]] : i32
 // CHECK:               %[[WD:.*]] = arith.maxsi %[[WS]], %[[C0I]] : i32

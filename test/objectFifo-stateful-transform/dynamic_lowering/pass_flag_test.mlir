@@ -41,10 +41,10 @@
 // CHECK-DAG:           aie.flow(%[[SHIM]], DMA : 1, %[[T4]], DMA : 0)
 // CHECK-DAG:           aie.flow(%[[T4]], DMA : 0, %[[SHIM]], DMA : 1)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
-// CHECK:             %[[C2:.*]] = arith.constant 2 : index
-// CHECK:             %[[C10:.*]] = arith.constant 10 : index
-// CHECK:             %[[C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:             %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:             %[[C10:.*]] = arith.constant 10 : index
+// CHECK-DAG:             %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:             scf.for %{{.*}} = %[[C0]] to %[[C10]] step %[[C2]] {
 // CHECK:               aie.use_lock(@[[OF_PROD]], AcquireGreaterEqual, %[[C1I]])
 // CHECK:               aie.use_lock(@[[IF_CONS]], AcquireGreaterEqual, %[[C1I]])
@@ -60,10 +60,10 @@
 // CHECK:             aie.end
 // CHECK:           } {dynamic_objfifo_lowering = false}
 // CHECK:           %{{.*}} = aie.core(%[[T4]]) {
-// CHECK:             %[[E_C0:.*]] = arith.constant 0 : index
-// CHECK:             %[[E_C1:.*]] = arith.constant 1 : index
-// CHECK:             %[[E_C10:.*]] = arith.constant 10 : index
-// CHECK:             %[[E_C1I:.*]] = arith.constant 1 : i32
+// CHECK-DAG:             %[[E_C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[E_C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:             %[[E_C10:.*]] = arith.constant 10 : index
+// CHECK-DAG:             %[[E_C1I:.*]] = arith.constant 1 : i32
 // CHECK:             %[[O0:.*]] = memref.alloca() : memref<memref<10xi32>>
 // CHECK:             memref.store %{{[^ ,)]+}}, %[[O0]][] : memref<memref<10xi32>>
 // CHECK:             %[[O1:.*]] = memref.alloca() : memref<memref<10xi32>>

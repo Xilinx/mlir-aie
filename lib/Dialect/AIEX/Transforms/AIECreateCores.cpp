@@ -220,6 +220,16 @@ struct AIECreateCoresPass
       }
     }
 
+    for (auto [operand, buffer] : buffers) {
+      if (!isa<MemRefType>(operand.getType()))
+        continue;
+      for (OpOperand &use : llvm::make_early_inc_range(operand.getUses())) {
+        builder.setInsertionPoint(use.getOwner());
+        use.set(GetBufferOp::create(builder, use.getOwner()->getLoc(),
+                                    cast<BufferLike>(buffer.getOperation())));
+      }
+    }
+
     // Setup FlowOps
     // Since memcpy moves data from one memory module to another, we use
     // WireBundle::DMA for both the source and the destination In addition, we

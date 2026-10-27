@@ -15,10 +15,12 @@
 
 // CHECK-LABEL: aie.device(npu2)
 // CHECK:     %[[CORE:.*]] = aie.core
+// CHECK:       %[[B0:.*]] = aie.get_buffer @fifo_cons_buff_0 : memref<8xi8>
+// CHECK:       %[[B1:.*]] = aie.get_buffer @fifo_cons_buff_1 : memref<8xi8>
 // CHECK:       %[[S0:.*]] = memref.alloca() : memref<memref<8xi8>>
-// CHECK:       memref.store %{{.*}}buff_0, %[[S0]][]
+// CHECK:       memref.store %[[B0]], %[[S0]][]
 // CHECK:       %[[S1:.*]] = memref.alloca() : memref<memref<8xi8>>
-// CHECK:       memref.store %{{.*}}buff_1, %[[S1]][]
+// CHECK:       memref.store %[[B1]], %[[S1]][]
 // CHECK:       scf.for
 // CHECK-NOT:   iter_args
 // CHECK:         %[[OBJ:.*]] = memref.load %[[S0]][] : memref<memref<8xi8>>

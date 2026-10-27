@@ -49,18 +49,22 @@ module @distribute_on_core {
 // CHECK:       aie.mem(%[[T02]])
 // CHECK:         aie.dma_start(S2MM, 0
 // CHECK:         aie.use_lock(@[[PROD0]], AcquireGreaterEqual
-// CHECK:         aie.dma_bd(%[[BUF0:.*]] : memref<32xi32> offset = 0 len = 16)
+// CHECK:         %[[BUF0:.*]] = aie.get_buffer @[[BUFFER:in_cons_buff_0]] : memref<32xi32>
+// CHECK:         aie.dma_bd(%[[BUF0]] : memref<32xi32> offset = 0 len = 16)
 // CHECK:         aie.use_lock(@[[CONS0]], Release
 // CHECK:         aie.use_lock(@[[PROD1]], AcquireGreaterEqual
+// CHECK:         %[[BUF0:.*]] = aie.get_buffer @[[BUFFER]] : memref<32xi32>
 // CHECK:         aie.dma_bd(%[[BUF0]] : memref<32xi32> offset = 16 len = 16)
 // CHECK:         aie.use_lock(@[[CONS1]], Release
 
 // CHECK:         aie.dma_start(MM2S, 0
 // CHECK:         aie.use_lock(@[[CONS0]], AcquireGreaterEqual
+// CHECK:         %[[BUF0:.*]] = aie.get_buffer @[[BUFFER]] : memref<32xi32>
 // CHECK:         aie.dma_bd(%[[BUF0]] : memref<32xi32> offset = 0 len = 16)
 // CHECK:         aie.use_lock(@[[PROD0]], Release
 
 // CHECK:         aie.dma_start(MM2S, 1
 // CHECK:         aie.use_lock(@[[CONS1]], AcquireGreaterEqual
+// CHECK:         %[[BUF0:.*]] = aie.get_buffer @[[BUFFER]] : memref<32xi32>
 // CHECK:         aie.dma_bd(%[[BUF0]] : memref<32xi32> offset = 16 len = 16)
 // CHECK:         aie.use_lock(@[[PROD1]], Release
