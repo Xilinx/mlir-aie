@@ -1797,8 +1797,7 @@ def AIE_UseLockOp : AIE_Op<"use_lock",
   let hasCanonicalizeMethod = 1;
   let builders =
       [OpBuilder<(ins "mlir::FlatSymbolRefAttr":$lock,
-                     "xilinx::AIE::LockAction":$action,
-                     "int32_t":$value),
+                     "xilinx::AIE::LockAction":$action, "int32_t":$value),
                  [{
       auto constant = mlir::arith::ConstantOp::create(
           $_builder, $_state.location, $_builder.getI32Type(),
