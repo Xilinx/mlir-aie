@@ -3175,6 +3175,53 @@
     "offered": 95,
     "checked": 92
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "40460315118",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40460315118",
+   "date": "2026-10-27T06:18:26+00:00",
+   "commit": {
+    "id": "1631e1b04cb22dfe3fb99eb910d6b679863a948c",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/1631e1b04cb22dfe3fb99eb910d6b679863a948c",
+    "message": "[AIEVec] AIE2P: elementwise ops at any lane count, exp2, flat loop-carried vectors (#3969)",
+    "timestamp": "2026-10-27T03:19:59Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "1631e1b04c",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 1955,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 720,
+    "failed": 0,
+    "timed": 329,
+    "timing_failed": 0,
+    "untimed": 391,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 95,
+    "checked": 92
+   }
   }
  ]
 }
