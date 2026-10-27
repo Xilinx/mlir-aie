@@ -130,8 +130,9 @@ class DispatchSession:
             for name, value in params.items():
                 pooled.scratchpad.write(name, value)
             pooled.scratchpad.sync()
+        dispatch = Dispatch(self, command, pooled)
         pooled.run.start()
-        return Dispatch(self, command, pooled)
+        return dispatch
 
     def __call__(self, tensors, command: str | None = None, **params) -> float:
         """Run one command and wait for it, without a timeout.
