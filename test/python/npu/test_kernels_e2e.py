@@ -66,41 +66,15 @@ def _param(case):
     return pytest.param(case, marks=marks, id=case.name)
 
 
-def _run(design, fn, inputs, out_n, out_dt):
-    """Upload, run and read back, with the output poisoned first.
-
-    The result is a copy: ``Tensor.numpy()`` views the XRT buffer's mapped
-    host memory, and ``out`` is the last reference to that buffer.
-    """
-    ins, out = kd.upload(inputs, out_n, out_dt, fn=fn, poison=True)
-    outputs = out if isinstance(out, tuple) else (out,)
-    design(*ins, *outputs)
-    got = tuple(o.numpy().copy() for o in outputs)
-    return got if len(got) > 1 else got[0]
-
-
 def _run_case(case, data_case: str, seed: int, report_error=None):
-    fn = case.fn()
-    inputs = inputs_for(case, data_case, np.random.default_rng(1000 + seed))
-    design = kd.design(
-        getattr(kernels, case.factory),
-        **case.harness_opts(),
-        params=fn.param_values(inputs),
-        guard=True,
-        **case.kwargs,
+    design = case.kernel_design(guard=True)
+    fn = design.fn
+    inputs = inputs_for(
+        case, data_case, np.random.default_rng(1000 + seed), design=design
     )
-    ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kd.output_size(fn, calls=case.calls, guard=True)
-    out_dt = fn.output_dtype()
     # The output is poisoned so a kernel that writes nothing cannot pass.
-    got, overrun = kd.strip_guard(
-        fn, _run(design, fn, inputs, out_n, out_dt), calls=case.calls
-    )
-    assert not any(np.atleast_1d(overrun)), (
-        f"{case.name} [{data_case}, seed {seed}]: changed {overrun} guard byte(s) past its output "
-        f"({kd.GUARD_BYTES} after each tile)"
-    )
-    verdict = fn.judge(got, ref, calls=case.calls, inputs=inputs, scalars=case.scalars)
+    got = design.run(inputs)
+    verdict = design.check(got, inputs)
     if report_error:
         entries = error_report(fn, got, inputs, calls=case.calls, scalars=case.scalars)
         report_error(f"{case.name}/{data_case}/s{seed}", entries, bool(verdict))
@@ -158,8 +132,8 @@ def test_bf16_exp_saturates_outside_lut_domain():
     tile[: len(xs)] = xs
     tile_bf16 = tile.astype(bfloat16)
 
-    design = kd.design(kernels.bf16_exp, calls=1)
-    got = _run(design, fn, [tile_bf16.reshape(1, 1024)], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([tile_bf16.reshape(1, 1024)])
     expected = fn.expected([tile_bf16.reshape(1, 1024)])
     verdict = fn.judge(got, expected, calls=1)
     assert verdict, verdict.detail
@@ -202,8 +176,8 @@ def test_bf16_exp_full_clamped_range():
     ]
     tile[: len(edges)] = edges
     tile_bf16 = tile.astype(bfloat16).reshape(1, 1024)
-    design = kd.design(kernels.bf16_exp, calls=1)
-    got = _run(design, fn, [tile_bf16], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([tile_bf16])
     expected = fn.expected([tile_bf16])
     verdict = fn.judge(got, expected, calls=1)
     assert verdict, verdict.detail
@@ -230,8 +204,8 @@ def test_softmax_wide_dynamic_range():
     tile[0], tile[1] = 0.0, -5.0
     tile_bf16 = tile.astype(bfloat16)
 
-    design = kd.design(kernels.softmax, calls=1)
-    got = _run(design, fn, [tile_bf16.reshape(1, 1024)], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([tile_bf16.reshape(1, 1024)])
     verdict = fn.judge(got, fn.expected([tile_bf16.reshape(1, 1024)]), calls=1)
     assert verdict, verdict.detail
     # The peak must dominate: a wrapped index used to bury it at ~1e-14.
@@ -292,8 +266,8 @@ def test_activation_saturates_for_huge_inputs(factory, limit, kwargs):
     """Each activation takes its limit for large and infinite inputs."""
     fn = getattr(kernels, factory)(**kwargs)
     tile = _huge_tile(bfloat16)
-    design = kd.design(getattr(kernels, factory), calls=1, **kwargs)
-    got = _run(design, fn, [tile], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([tile])
     edge = tile.ravel()[: len(_HUGE)].astype(np.float32)
     np.testing.assert_array_equal(got[: len(_HUGE)].astype(np.float32), limit(edge))
     verdict = fn.judge(got, fn.expected([tile]), calls=1, inputs=[tile])
@@ -307,8 +281,8 @@ def test_swiglu_zero_gate_hides_overflow(kwargs):
     x = _huge_tile(bfloat16, [1e20, 1e20, 1e20, 2, 1, 1])
     w1 = _huge_tile(bfloat16, [1e20, 1e20, -1e20, np.inf, 1, 1])
     w2 = _huge_tile(bfloat16, [-1e20, 1e20, 1e20, -1e3, np.inf, -np.inf])
-    design = kd.design(kernels.swiglu, calls=1, **kwargs)
-    got = _run(design, fn, [x, w1, w2], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([x, w1, w2])
     np.testing.assert_array_equal(
         got[:6].astype(np.float32), [0, np.inf, -np.inf, 0, np.inf, 0]
     )
@@ -320,10 +294,10 @@ def test_epilogue_gelu_saturates_for_huge_inputs():
     """The matmul epilogue's gelu, which narrows its f32 input to bf16 first."""
     fn = kernels.mm_activation_epilogue()
     tile = _huge_tile(np.float32)
-    design = kd.design(kernels.mm_activation_epilogue, calls=1, scalars=(2,))
-    got = _run(design, fn, [tile], 1024, np.dtype(np.float32))
+    design = kd.KernelDesign(fn, scalars=(2,))
+    got = design.run([tile])
     _assert_gelu_saturates(got, tile)
-    verdict = fn.judge(got, fn.expected([tile], scalars=(2,)), calls=1)
+    verdict = design.check(got, [tile])
     assert verdict, verdict.detail
 
 
@@ -332,10 +306,10 @@ def test_epilogue_silu_saturates_for_huge_inputs():
     fn = kernels.mm_activation_epilogue()
     finite = np.concatenate([_HUGE[np.isfinite(_HUGE)], [3.4e38, -3.4e38]])
     tile = _huge_tile(np.float32, finite)
-    design = kd.design(kernels.mm_activation_epilogue, calls=1, scalars=(1,))
-    got = _run(design, fn, [tile], 1024, np.dtype(np.float32))
+    design = kd.KernelDesign(fn, scalars=(1,))
+    got = design.run([tile])
     np.testing.assert_allclose(got[: len(finite)], _relu(finite), rtol=2**-16)
-    verdict = fn.judge(got, fn.expected([tile], scalars=(1,)), calls=1)
+    verdict = design.check(got, [tile])
     assert verdict, verdict.detail
 
 
@@ -345,19 +319,16 @@ def test_argmax_of_a_tile_with_no_finite_value(vectorized):
     n = 1000
     tiles = np.stack([np.full(n, -np.inf), np.full(n, np.nan)]).astype(bfloat16)
     fn = kernels.argmax(tile_size=n, dtype=bfloat16, vectorized=vectorized)
-    design = kd.design(
-        kernels.argmax,
+    design = kd.KernelDesign(
+        fn,
         calls=2,
         scalars=(7,),
-        tile_size=n,
-        dtype=bfloat16,
-        vectorized=vectorized,
     )
-    got = _run(design, fn, [tiles], kd.output_size(fn, calls=2), np.dtype(np.int32))
+    got = design.run([tiles])
     records = got.reshape(2, 2)
     np.testing.assert_array_equal(records[:, 0].view(np.float32), [-np.inf, -np.inf])
     np.testing.assert_array_equal(records[:, 1], [7, 7])
-    verdict = fn.judge(got, fn.expected([tiles], scalars=(7,)), calls=2)
+    verdict = design.check(got, [tiles])
     assert verdict, verdict.detail
 
 
@@ -373,19 +344,16 @@ def test_argmax_ties_minus_zero_with_plus_zero(vectorized):
     tiles = tiles.astype(bfloat16)
     calls = len(tiles)
     fn = kernels.argmax(tile_size=n, dtype=bfloat16, vectorized=vectorized)
-    design = kd.design(
-        kernels.argmax,
+    design = kd.KernelDesign(
+        fn,
         calls=calls,
         scalars=(0,),
-        tile_size=n,
-        dtype=bfloat16,
-        vectorized=vectorized,
     )
-    got = _run(design, fn, [tiles], kd.output_size(fn, calls=calls), np.dtype(np.int32))
+    got = design.run([tiles])
     records = got.reshape(calls, 2)
     np.testing.assert_array_equal(records[:, 0], [0] * calls)
     np.testing.assert_array_equal(records[:, 1], [0, 1, 1, 2])
-    verdict = fn.judge(got, fn.expected([tiles], scalars=(0,)), calls=calls)
+    verdict = design.check(got, [tiles])
     assert verdict, verdict.detail
 
 
@@ -436,16 +404,8 @@ def test_setup_reaches_the_core():
     conv_even_result = _bf16_from_bits(bits + 1)  # ties away from the odd neighbor
 
     fn = kernels.mul(tile_size=n)
-    design = kd.design(kernels.mul, calls=1, tile_size=n)
-    ins, out = kd.upload(
-        [x.reshape(1, n), y.reshape(1, n)],
-        kd.output_size(fn, calls=1),
-        bfloat16,
-        fn=fn,
-        poison=True,
-    )
-    design(*ins, out)
-    got = out.numpy().copy().reshape(-1)[:n].astype(bfloat16)
+    design = kd.KernelDesign(fn)
+    got = design.run([x.reshape(1, n), y.reshape(1, n)])[:n].astype(bfloat16)
 
     assert np.array_equal(got, conv_even_result), (
         f"{int((got == floor_result).sum())} of {n} ties rounded floor: the "
@@ -556,12 +516,8 @@ def test_guard_poisons_the_core_tile():
     calls = 3
     fn = _skips_first_vector()
     x = np.arange(calls * 64, dtype=np.int32).reshape(calls, 64) + 1
-    design = kd.design(_skips_first_vector, calls=calls, guard=True)
-    out_n = kd.output_size(fn, calls=calls, guard=True)
-    got, overrun = kd.strip_guard(
-        fn, _run(design, fn, [x], out_n, np.int32), calls=calls
-    )
-    assert not any(np.atleast_1d(overrun))
+    design = kd.KernelDesign(fn, calls=calls, guard=True)
+    got = design.run([x])
     got = got.reshape(calls, 64)
     np.testing.assert_array_equal(got[:, 16:], x[:, 16:])
     skipped = got[:, :16]
@@ -602,14 +558,13 @@ def _run_adds_param(vector_loads, offset):
     fn = _adds_param(vector_loads)
     x = np.arange(calls * 64, dtype=np.int32).reshape(calls, 64)
     w = np.arange(64, dtype=np.int32) * 1000 + 7
-    design = kd.design(
-        _adds_param,
+    design = kd.KernelDesign(
+        fn,
         calls=calls,
         params=[w],
         arg_byte_offsets=((1, offset),),
-        vector_loads=vector_loads,
     )
-    got = _run(design, fn, [x, w], kd.output_size(fn, calls=calls), np.int32)
+    got = design.run([x, w])
     return got.reshape(calls, 64), x + w
 
 
@@ -901,7 +856,7 @@ def test_mm_k_tail_zeroes_each_operand_past_k_valid(config):
     in_dt = np.dtype(_K_TAIL_CONFIGS[config]["input_dtype"])
     out_dt = np.dtype(_K_TAIL_CONFIGS[config]["output_dtype"])
     calls = len(_K_TAIL_CALLS)
-    a, b = kd.sample_inputs(fn, calls=calls, rng=np.random.default_rng(5))
+    a, b = kd.KernelDesign(fn, calls=calls).sample_inputs(np.random.default_rng(5))
     poison = np.iinfo(in_dt).max if in_dt.kind == "i" else np.nan
     for i, (kv, side) in enumerate(_K_TAIL_CALLS):
         clamped = min(max(kv, 0), _K_TAIL_DIM)

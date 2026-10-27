@@ -22,8 +22,7 @@ adder is not IEEE, so no host model reproduces either kernel's bits.
 import aie.iron as iron
 import numpy as np
 import pytest
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
-from aie.iron import kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.buffer import Buffer
 from ml_dtypes import bfloat16
@@ -95,25 +94,9 @@ def _row_maj(a, b, vec_size):
         output_dtype=bfloat16,
         vec_size=vec_size,
     )
-    design = kd.design(
-        kernels.mv,
-        calls=calls,
-        dim_m=4,
-        dim_k=dim_k,
-        input_dtype=bfloat16,
-        output_dtype=bfloat16,
-        vec_size=vec_size,
-    )
+    design = kd.KernelDesign(fn, calls=calls)
     inputs = [a.reshape(calls, 4, dim_k), np.broadcast_to(b, (calls, dim_k))]
-    ins, out = kd.upload(
-        inputs,
-        kd.output_size(fn, calls=calls),
-        fn.output_dtype(),
-        fn=fn,
-        poison=True,
-    )
-    design(*ins, out)
-    return out.numpy().copy()
+    return design.run(inputs)
 
 
 def _col_maj(a_t, b, chunk, vec_size):

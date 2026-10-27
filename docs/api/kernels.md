@@ -114,7 +114,7 @@ it. Multi-dtype factories publish the combinations they support in
         - Param
         - Trace
 
-`aie.iron.algorithms.kernel_design` turns any contract-bearing factory into a
+`aie.iron.algorithms.KernelDesign` turns any contract-bearing kernel into a
 design of one Worker, built on the same single-core pipeline as
 `transform`, `for_each` and `reduce`. What a kernel can answer about itself
 -- its
@@ -125,22 +125,30 @@ kernel needs no test harness. See
 [Kernel Library](../programming_guide/kernels_library.md#adding-a-kernel) for
 the add-a-kernel procedure and the test tiers built on it.
 
-Import the builder with `from aie.iron.algorithms import kernel_design as kd`
-and call `kd.design(...)`, or import `design` directly from `aie.iron.algorithms`.
+Give the call count and guard setting once, on the builder:
+
+```python
+from aie.iron import kernels
+from aie.iron.algorithms import KernelDesign
+
+kd = KernelDesign(kernels.relu(tile_size=1024), calls=4, guard=True)
+inputs = kd.sample_inputs()
+outputs = kd.run(inputs)
+assert kd.check(outputs, inputs)
+```
+
+`kd.design()` exposes the underlying JIT design, and `kd.as_mlir()` generates its
+MLIR. `kd.host_args()`, `kd.output_size()` and `kd.upload(inputs)` share the same
+configuration. `kd.cycles_per_call(inputs)` measures the declared trace intervals.
+The exported `design(factory, **kwargs)` remains a compatibility wrapper.
 
 ::: iron.algorithms.kernel_design
     options:
       show_root_heading: false
       members:
         - design
-        - host_args
-        - sample_inputs
-        - host_layout
-        - output_size
-        - upload
-        - cycles_per_call
+        - KernelDesign
         - CallCycles
-        - traced_intervals
         - split_intervals
 
 
