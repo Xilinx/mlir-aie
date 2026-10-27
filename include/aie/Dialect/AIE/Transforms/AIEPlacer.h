@@ -219,9 +219,9 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
 //      the columns that keep its group together. Unpinned candidates are
 //      tried in two passes: first the slots with column stream capacity and
 //      not soft-reserved for another demand-bearing LTO's peers, then a
-//      fallback accepting overloaded columns and reserved slots. Each placement
-//      of a demand-bearing LTO soft-reserves
-//      its mem-affinity neighbor slots for that LTO's compute peers.
+//      fallback accepting overloaded columns and reserved slots. Placing a
+//      demand-bearing LTO soft-reserves its mem-affinity neighbor slots for
+//      that LTO's compute peers.
 //   4. Place each remaining non-core (mem/shim) LTO near the column
 //      centroid of its placed-core peers. With mergeLogicalTiles == true
 //      (default) several non-core LTOs may share one physical tile when

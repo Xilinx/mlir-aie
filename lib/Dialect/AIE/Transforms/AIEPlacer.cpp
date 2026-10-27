@@ -1603,8 +1603,8 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
   // Choose a physical tile by lexicographic minimum of
   //   (|col - targetCol| + broadcast pressure, current load, col, row).
   // A memtile's extra broadcast destinations penalize sharing its bandwidth,
-  // even when an idle tile is slightly farther from the centroid. Unicast
-  // traffic and shim placement retain distance-first ranking.
+  // even when an idle tile is slightly farther from the centroid. Without
+  // broadcasts, and for shims or explicit column hints, distance still leads.
   // (col, row) is the final tiebreaker for determinism.
   //
   // Without a targetCol there is no routing anchor to measure against, so the
@@ -1764,13 +1764,12 @@ void SequentialPlacer::buildStreamDemand(
       streamDemand[producer].southOut++;
   }
   for (auto &[op, demand] : streamDemand)
-    if (auto tile = dyn_cast<TileOp>(op)) {
+    if (auto tile = dyn_cast<TileOp>(op))
       if (tile.isCoreTile())
         columnStreamsUsed[tile.getCol()] += demand;
-      if (tile.isMemTile())
-        broadcastFanoutUsed[{tile.getCol(), tile.getRow()}] +=
-            broadcastFanout.lookup(op);
-    }
+  for (auto &[op, fanout] : broadcastFanout)
+    if (auto tile = dyn_cast<TileOp>(op))
+      broadcastFanoutUsed[{tile.getCol(), tile.getRow()}] += fanout;
 }
 
 void SequentialPlacer::buildRuntimeBdProfiles(
