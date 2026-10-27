@@ -598,7 +598,11 @@ struct AIELowerDynamicBDPoolPass
     return success();
   }
 
-  // Guard pushes that can land on a full task queue.
+  // Guard pushes that can land on a full task queue, and (opt-in) warn at a
+  // dma_free_task whose own push is not yet proven complete. Must run before
+  // frees are erased below -- it is the only point where this pass still has
+  // both the dma_free_task ops and the origin-configure metadata they resolve
+  // through.
   //
   // A sequence lowered here keeps its scf.for rolled, so the static allocator
   // skips it. Guard while task metadata is available; aie-dma-to-npu later
@@ -620,6 +624,16 @@ struct AIELowerDynamicBDPoolPass
         // Only a token-issuing await retires anything.
         if (cfg && !cfg.getIssueToken())
           return {};
+      } else if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
+        cfg = originConfigure.lookup(freeOp.getTask());
+        if (!cfg)
+          return {};
+        AIE::TileOp tile = cfg.tryGetTileOp();
+        if (!tile)
+          return {};
+        return QueueEffect::free(
+            DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel()),
+            cfg.getOperation());
       } else {
         return {};
       }
@@ -630,13 +644,13 @@ struct AIELowerDynamicBDPoolPass
         return {};
       DmaQueueModel::ChannelKey key =
           DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
-      return isPush ? QueueEffect::push(key, issuesToken)
+      return isPush ? QueueEffect::push(key, issuesToken, cfg.getOperation())
                     : QueueEffect::await(key);
     };
 
     DmaQueueModel queue;
     guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
-                            effectOf);
+                            warnUnsafeBdReuse, effectOf);
   }
 
   void runOnOperation() override {
@@ -746,11 +760,13 @@ struct AIELowerDynamicBDPoolPass
       });
       if (r.wasInterrupted())
         return WalkResult::interrupt();
+      // Only once this sequence has lowered cleanly: guarding or reporting a
+      // queue on a design that is already being rejected just buries the
+      // error. Guard before erasing the frees above -- it still needs to see
+      // them, resolved through originConfigure, to check reuse safety.
+      guardQueueDepth(seq);
       for (Operation *op : toErase)
         op->erase();
-      // Only once this sequence has lowered cleanly: guarding or reporting a
-      // queue on a design that is already being rejected just buries the error.
-      guardQueueDepth(seq);
       return WalkResult::advance();
     });
     if (wr.wasInterrupted())

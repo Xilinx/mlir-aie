@@ -1995,6 +1995,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   // below skips it. Straight-line sequences fall through unchanged.
   X::AIELowerDynamicBDPoolOptions poolOpts;
   poolOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  poolOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
   dpm.addPass(X::createAIELowerDynamicBDPoolPass(poolOpts));
   dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;

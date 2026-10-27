@@ -49,10 +49,22 @@ public:
             static_cast<int>(channel)};
   }
 
+  /// One push onto a channel: whether it issues a completion token, and the
+  /// operation whose task this push belongs to (null when the caller does not
+  /// need to ask about this specific push again). A later free of the same
+  /// owner can check isProvenComplete to see whether this push is still here.
+  struct Push {
+    bool issuesToken = false;
+    mlir::Operation *owner = nullptr;
+    bool operator==(const Push &other) const {
+      return issuesToken == other.issuesToken && owner == other.owner;
+    }
+  };
+
   /// One channel's queue: its pushes not yet known to have completed, oldest
-  /// first, each true when it issues a completion token.
+  /// first.
   struct ChannelState {
-    llvm::SmallVector<bool, 8> pushes;
+    llvm::SmallVector<Push, 8> pushes;
     bool unknownTokens = false;
     bool operator==(const ChannelState &other) const {
       return pushes == other.pushes && unknownTokens == other.unknownTokens;
@@ -67,8 +79,9 @@ public:
 
   /// Record a push. Every push occupies a slot, not just issue_token ones, and
   /// one push occupies exactly one whatever its repeat_count.
-  static void push(ChannelState &q, bool issuesToken) {
-    q.pushes.push_back(issuesToken && !q.unknownTokens);
+  static void push(ChannelState &q, bool issuesToken,
+                   mlir::Operation *owner = nullptr) {
+    q.pushes.push_back({issuesToken && !q.unknownTokens, owner});
   }
 
   /// Retire what a task-completion-token await proves has drained. The sync
@@ -79,7 +92,8 @@ public:
   static void awaitToken(ChannelState &q) {
     if (q.unknownTokens)
       return;
-    auto *tok = llvm::find(q.pushes, true);
+    auto *tok =
+        llvm::find_if(q.pushes, [](const Push &p) { return p.issuesToken; });
     if (tok != q.pushes.end())
       q.pushes.erase(q.pushes.begin(), std::next(tok));
   }
@@ -91,12 +105,25 @@ public:
   static void noteSpaceGuaranteed(ChannelState &q, uint32_t depth) {
     if (depth > 0 && q.pushes.size() > depth - 1) {
       auto end = q.pushes.end() - (depth - 1);
-      q.unknownTokens |=
-          llvm::is_contained(llvm::make_range(q.pushes.begin(), end), true);
+      q.unknownTokens |= llvm::any_of(llvm::make_range(q.pushes.begin(), end),
+                                      [](const Push &p) {
+                                        return p.issuesToken;
+                                      });
       q.pushes.erase(q.pushes.begin(), end);
       if (q.unknownTokens)
-        llvm::fill(q.pushes, false);
+        llvm::fill(q.pushes, Push{});
     }
+  }
+
+  /// True once `owner`'s own push is no longer outstanding here: an await
+  /// retired it, a space-guaranteeing poll proved it had drained, or it was
+  /// never pushed with an owner at all. Once `unknownTokens` is set, this
+  /// channel's retirement order is no longer tracked, so nothing past that
+  /// point can be proven complete.
+  static bool isProvenComplete(const ChannelState &q, mlir::Operation *owner) {
+    return !q.unknownTokens &&
+           !llvm::any_of(q.pushes,
+                         [&](const Push &p) { return p.owner == owner; });
   }
 
   bool wouldOverflow(const ChannelKey &key, uint32_t depth) const {
@@ -104,8 +131,9 @@ public:
     return it != queued.end() && wouldOverflow(it->second, depth);
   }
 
-  void push(const ChannelKey &key, bool issuesToken) {
-    push(queued[key], issuesToken);
+  void push(const ChannelKey &key, bool issuesToken,
+            mlir::Operation *owner = nullptr) {
+    push(queued[key], issuesToken, owner);
   }
 
   void awaitToken(const ChannelKey &key) {
@@ -115,6 +143,11 @@ public:
 
   void noteSpaceGuaranteed(const ChannelKey &key, uint32_t depth) {
     noteSpaceGuaranteed(queued[key], depth);
+  }
+
+  bool isProvenComplete(const ChannelKey &key, mlir::Operation *owner) const {
+    auto it = queued.find(key);
+    return it == queued.end() || isProvenComplete(it->second, owner);
   }
 
   /// True the first time a channel is reported. An over-subscribed channel
@@ -193,6 +226,25 @@ emitQueueOverflowWarning(mlir::Operation *op, int col, int row,
             "on how fast the consumer drains, which is why this is a warning "
             "and not an error. Drain the channel with an await on this tile, "
             "direction and channel before pushing again";
+}
+
+/// Wording for a dma_free_task that releases a buffer descriptor id the
+/// runtime pool could hand straight back out before hardware has actually
+/// finished the freed transfer -- the rolled-loop counterpart to
+/// aie-assign-runtime-sequence-bd-ids's unsafe-BD-reuse warning.
+inline mlir::InFlightDiagnostic
+emitUnsafeBdReuseWarning(mlir::Operation *freeOp, int col, int row,
+                         AIE::DMAChannelDir dir, uint32_t channel) {
+  return freeOp->emitWarning()
+         << "frees a task on tile (" << col << "," << row << ") "
+         << AIE::stringifyDMAChannelDir(dir) << " channel " << channel
+         << " with no completion guarantee, so its buffer descriptor id "
+            "goes back to the runtime pool while the DMA may still be "
+            "running; the pool may hand that id straight to the next task "
+            "drawn on this tile, reprogramming a BD still in flight. Await "
+            "this task, or a later one queued on the same tile, direction "
+            "and channel, before freeing it -- an await consumes the oldest "
+            "outstanding token, regardless of the task it names";
 }
 
 /// Emit a poll that blocks until the channel's task queue has a free slot,
@@ -277,21 +329,35 @@ inline void guardQueueOverflow(DmaQueueModel &queue, mlir::Operation *push,
 /// What one op in a loop body does to a channel queue. The two lowering paths
 /// spell pushes and awaits with different ops, so the fixed point below takes
 /// the classification from its caller and keeps the FIFO rule to itself.
+///
+/// Free is a read-only check, not a hardware event: a dma_free_task returns a
+/// buffer descriptor id to the compiler's pool without touching the channel,
+/// so it neither pushes nor retires anything here. It asks whether `owner`'s
+/// own push -- the one a later pop could still be waiting behind -- has
+/// already been proven complete.
 struct QueueEffect {
-  enum class Kind { Ignore, Push, Await };
+  enum class Kind { Ignore, Push, Await, Free };
   Kind kind = Kind::Ignore;
   DmaQueueModel::ChannelKey key{};
   bool issuesToken = false;
+  mlir::Operation *owner = nullptr;
 
-  static QueueEffect push(DmaQueueModel::ChannelKey key, bool issuesToken) {
-    return {Kind::Push, key, issuesToken};
+  static QueueEffect push(DmaQueueModel::ChannelKey key, bool issuesToken,
+                          mlir::Operation *owner = nullptr) {
+    return {Kind::Push, key, issuesToken, owner};
   }
   static QueueEffect await(DmaQueueModel::ChannelKey key) {
-    return {Kind::Await, key, false};
+    return {Kind::Await, key, false, nullptr};
+  }
+  static QueueEffect free(DmaQueueModel::ChannelKey key,
+                          mlir::Operation *owner) {
+    return {Kind::Free, key, false, owner};
   }
 };
 
-/// Guard every push in a runtime sequence that can land on a full queue.
+/// Guard every push in a runtime sequence that can land on a full queue, and
+/// (when `warnUnsafeBdReuse`) warn at every Free effect whose own push is not
+/// yet proven complete along some reachable path.
 ///
 /// Retain all reachable states at branches and loop exits, including zero
 /// iterations. Nested loops are analyzed recursively, not walked once. Queue
@@ -302,7 +368,7 @@ struct QueueEffect {
 template <typename EffectFn>
 inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
                                     const AIE::AIETargetModel &tm, bool enforce,
-                                    EffectFn effectOf) {
+                                    bool warnUnsafeBdReuse, EffectFn effectOf) {
   auto depthOf = [&](const DmaQueueModel::ChannelKey &k) {
     return tm.getDmaTaskQueueDepth(k[0], k[1], k[3],
                                    static_cast<AIE::DMAChannelDir>(k[2]));
@@ -364,6 +430,7 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
                                                           : QueueEffect{};
     };
     llvm::SetVector<mlir::Operation *> overflowing;
+    llvm::SetVector<mlir::Operation *> unsafeFrees;
     std::map<mlir::Operation *, DmaQueueModel::ChannelState> witnesses;
     auto append = [](States &to, const States &from) {
       for (const auto &state : from)
@@ -404,7 +471,7 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
         if (e.kind != QueueEffect::Kind::Push)
           return;
         for (auto &state : states) {
-          state.pushes.assign(depth, false);
+          state.pushes.assign(depth, DmaQueueModel::Push{});
           state.unknownTokens = true;
           if (overflowing.insert(op))
             witnesses[op] = state;
@@ -459,6 +526,16 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
         QueueEffect e = channelEffectOf(&op);
         if (e.kind == QueueEffect::Kind::Ignore)
           continue;
+        if (e.kind == QueueEffect::Kind::Free) {
+          if (warnUnsafeBdReuse)
+            for (const auto &state : states)
+              if (!DmaQueueModel::isProvenComplete(state, e.owner))
+                if (unsafeFrees.insert(&op))
+                  emitUnsafeBdReuseWarning(
+                      &op, key[0], key[1],
+                      static_cast<AIE::DMAChannelDir>(key[2]), key[3]);
+          continue;
+        }
         for (auto &state : states) {
           if (e.kind == QueueEffect::Kind::Await) {
             DmaQueueModel::awaitToken(state);
@@ -469,7 +546,7 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
               witnesses[&op] = state;
             DmaQueueModel::noteSpaceGuaranteed(state, depth);
           }
-          DmaQueueModel::push(state, e.issuesToken);
+          DmaQueueModel::push(state, e.issuesToken, e.owner);
         }
         dedupe(states);
       }
@@ -492,7 +569,8 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     for (const auto &state : exits)
       if (!(channelExit == state)) {
         channelExit.pushes.assign(
-            std::max(channelExit.pushes.size(), state.pushes.size()), false);
+            std::max(channelExit.pushes.size(), state.pushes.size()),
+            DmaQueueModel::Push{});
         channelExit.unknownTokens = true;
       }
     merged[key] = channelExit;

@@ -887,8 +887,9 @@ static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
 
   device.walk([&](AIE::RuntimeSequenceOp seq) {
     DmaQueueModel queue;
+    // No dma_free_task survives to this lowering stage; nothing to check here.
     guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
-                            effectOf);
+                            /*warnUnsafeBdReuse=*/false, effectOf);
     seq->removeAttr(queueDiagnosedAttr);
   });
 }
