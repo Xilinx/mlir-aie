@@ -1578,7 +1578,6 @@ def AIE_DMAOp
     `[`regions`]`
   }];
   let hasVerifier = 1;
-
 }
 
 def AIE_MemOp
