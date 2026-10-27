@@ -312,6 +312,55 @@ def test_a_run_on_main_is_judged_by_its_jobs(
     assert counts["rate"] == (0.5 if outcome in ("failed", "timed_out") else 1.0)
 
 
+def test_judge_records_each_jobs_runner_and_whether_it_passed(ci, served):
+    get, _ = served(
+        [
+            (
+                r"/actions/runs/1/jobs",
+                {
+                    "jobs": [
+                        job("build", 30, runner="r1", conclusion="success"),
+                        # Never found a runner: not attributed to one.
+                        job("test", 0, runner="", conclusion="cancelled", id=2),
+                    ]
+                },
+            )
+        ]
+    )
+    j = ci.judge(get, "o/r", run(1, 2, "push", "success"))
+    assert j["runners"] == [{"runner": "r1", "passed": True}]
+
+
+def test_runner_tally_counts_passed_and_failed_jobs(ci):
+    critical_wfs = [
+        {
+            "main_runs": [
+                {
+                    "runners": [
+                        {"runner": "r1", "passed": True},
+                        {"runner": "r2", "passed": False},
+                    ]
+                },
+                {"runners": [{"runner": "r1", "passed": False}]},
+            ]
+        },
+        {"main_runs": [{"runners": [{"runner": "r1", "passed": True}]}]},
+    ]
+    assert ci.runner_tally(critical_wfs) == {
+        "r1": {"passed": 2, "failed": 1},
+        "r2": {"passed": 0, "failed": 1},
+    }
+
+
+def test_runners_lists_each_one_named_in_the_critical_jobs(ci, served):
+    get, _ = served(critical_routes())
+    (crit,) = ci.critical(get, "o/r", [{"file": "crit.yml", "title": "Crit"}], NOW, {})
+    # r1 ran every job in the on-main runs: run 10 (1 failed), run 9 (2 passed).
+    assert ci.runners([crit]) == [{"name": "r1", "passed": 2, "failed": 1}]
+    # No critical workflows answered: no runners to name.
+    assert ci.runners([]) == []
+
+
 def test_a_run_judged_before_is_not_asked_about_again(ci, served):
     get, api = served(critical_routes())
     config = [{"file": "crit.yml", "title": "Crit"}]

@@ -300,31 +300,21 @@
     details.howto { margin-top: 28px; }
     .verdict .headline { margin-bottom: 8px; }
 
-    /* CI health: the verdict and its problems, the healthy in one line,
-       the merge figures; tiles and tables under Details. */
-    #ci-verdict { margin-top: 18px; }
-    ul.ci-problems { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
-    ul.ci-problems li { display: grid; grid-template-columns: 10px 1fr; gap: 8px; align-items: baseline; font-size: 14px; }
-    ul.ci-problems .dot { width: 9px; height: 9px; border-radius: 50%; align-self: center; background: var(--none); }
-    ul.ci-problems li.bad .dot, .ci-row.bad .dot, .k-row .k-bad .dot { background: transparent; border-radius: 0; color: var(--bad); font-size: 11px; font-weight: 800; line-height: 9px; text-align: center; }
-    ul.ci-problems li.bad .dot::before, .ci-row.bad .dot::before, .k-row .k-bad .dot::before { content: '✕'; }
-    ul.ci-problems li.warn .dot, .ci-row.warn .dot, .k-row .k-warn .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--warn); }
-    ul.ci-problems b { margin-right: 6px; }
+    /* CI health: the runners table, the healthy in one line, the merge
+       figures; tiles and tables under Details. */
+    .ci-row .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--none); }
+    .ci-row.bad .dot, .k-row .k-bad .dot { background: transparent; border-radius: 0; color: var(--bad); font-size: 11px; font-weight: 800; line-height: 9px; text-align: center; }
+    .ci-row.bad .dot::before, .k-row .k-bad .dot::before { content: '✕'; }
+    .ci-row.warn .dot, .k-row .k-warn .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--warn); }
+    .ci-row.ok .dot { background: var(--ok); }
     ul.ci-merge { margin: 10px 0 0; }
     .ci-rows { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
     .ci-row { display: grid; grid-template-columns: 10px minmax(150px, 220px) minmax(0, 1fr) auto; gap: 10px; align-items: center;
               padding: 7px 14px; border-top: 1px solid var(--rule); font-size: 13px; }
     .ci-row:first-child { border-top: 0; }
-    .ci-row .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--none); }
-    .ci-row.ok .dot { background: var(--ok); }
     .ci-row .wf-name { font-weight: 600; color: var(--ink); }
     .ci-row .t-state { color: var(--muted); min-width: 0; }
     .ci-row .t-usual { display: block; font-size: 12px; color: var(--faint); }
-    ul.ci-problems .kind { display: inline-block; font-size: 11px; font-weight: 650; border-radius: 4px; padding: 0 6px; margin-right: 8px;
-                           background: var(--none-soft); color: var(--muted); vertical-align: 1px; }
-    ul.ci-problems li.bad .kind { background: var(--bad-soft); color: var(--bad); }
-    ul.ci-problems li.warn .kind { background: var(--warn-soft); color: var(--warn); }
-    ul.ci-problems .see { color: var(--muted); }
     .ci-row.bad .t-state { color: var(--bad); }
     .ci-row.warn .t-state { color: var(--warn); }
     .ci-row .nights { gap: 2px; }
@@ -480,7 +470,10 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
         <p>The tests that gate a merge, the other scheduled jobs, and how long merging takes.</p>
         <span class="runs"><a href="https://github.com/Xilinx/mlir-aie/actions">Actions</a><a href="https://github.com/Xilinx/mlir-aie/queue/main">Merge queue</a></span>
       </div>
-      <div id="ci-verdict"></div>
+      <section class="block">
+        <div class="block-head"><h3>Runners</h3><p>Each self-hosted machine that ran a test gating a merge in the last two weeks, and how its jobs fared.</p></div>
+        <div id="ci-runners"></div>
+      </section>
       <section class="block">
         <div class="block-head"><h3>Tests that gate a merge</h3><p>Each judged on its latest run on main; under it, its normal over two weeks.</p></div>
         <div id="ci-critical" class="ci-rows"></div>
@@ -507,6 +500,8 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
             with the workflow's own token, for each workflow's recent scheduled runs on main and, for those on the NPU and bench machines, the jobs of the latest run,
             and writes <code>ci-health/status.json</code> beside this page. The scheduled jobs are judged on their scheduled runs on main alone; the tests
             that gate a merge on their runs on main, and on how often a pull-request or merge-queue commit needed a re-run to pass.</p>
+          <p><b>Runners</b> lists each self-hosted machine named in those runs' jobs, and how many it ran that passed or failed over the last two
+            weeks; a machine idle or down the whole window just does not appear.</p>
           <p>Every workflow is listed once, in one of two kinds. <b>Tests that gate a merge</b> are the workflows the merge queue runs, listed under
             <code>critical</code> in the file below. They also run on main, nightly and for some after each push; each is judged on its latest run there,
             names the jobs that failed in it, and is late when main has not run it for 36 hours. Main failing 2 of its last 5 runs, the latest
@@ -3701,7 +3696,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     function renderCi(loaded, now) {
-      $('ci-verdict').replaceChildren(ciVerdictBand(loaded, now));
+      $('ci-runners').replaceChildren(runnerTable(loaded, now));
       return renderCiDetails(loaded, now);
     }
 
@@ -3741,9 +3736,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       // The jobs that failed in it, by their own names.
       const failedJobs = (w.latest_main_jobs || []).filter(failedOutcome).map(j => jobName(j.name, w.title));
       // Completed, not-cancelled runs on main, newest first: `recent[0]` is
-      // `latest` itself; `recent[1]` tells a one-off hardware blip (the NPU
-      // runners wedge now and then, as CI_NORMAL promises) from two in a
-      // row. Without main_runs to check, there is no evidence of a blip, so
+      // `latest` itself; `recent[1]` tells a one-off hardware blip (normal:
+      // the NPU runners wedge now and then) from two in a row. Without
+      // main_runs to check, there is no evidence of a blip, so
       // a failing latest run stays bad rather than being given the benefit
       // of the doubt.
       const recent = (w.main_runs || []).filter(r => r.status === 'completed' && r.outcome !== 'cancelled').slice(0, CI_RECENT_RUNS);
@@ -3931,8 +3926,6 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return m && title && m[1].toLowerCase() === title.toLowerCase() ? m[2] : name;
     };
 
-    // What a problem is, in a word: who acts on it.
-    const CI_KINDS = { failing: 'Failing on main', failed: 'Nightly failed', stopped: 'Stopped', runner: 'Runner', intermittent: 'Intermittent' };
     // The dashboard sections a nightly's numbers are in: its failure is
     // explained there.
     const CI_SECTIONS = { 'nightlyKernelChecks.yml': [['night', 'Kernels']],
@@ -3997,36 +3990,33 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return parts.join(' ');
     }
 
-    // What is normal and what is flagged, said once under the verdict.
-    const CI_NORMAL = 'Normal, and not flagged: a hardware run that fails or times out once and passes the next time (the NPU runners wedge now and then), '
-      + 'a cancelled run, and pull requests failing (they test unmerged code). Red: main\'s latest run failing, a nightly that failed or stopped, '
-      + 'and a job no runner takes. Amber: main failing 2 of its last 5 runs though the latest passed, or a runner lost mid-run.';
-
-    // The CI health tab's verdict: one sentence, every problem a line with
-    // its kind, its run linked and the section that explains it, what is
-    // normal, then how fresh the answers are.
-    function ciVerdictBand(loaded, now) {
-      const p = ciProblems(loaded, now);
+    // The CI health tab's runners: a table of the self-hosted machines named
+    // in the tests that gate a merge, how their jobs fared over the window,
+    // then how fresh the answers are.
+    function runnerTable(loaded, now) {
       const fresh = ciStatus(loaded, now);
-      const bad = p.problems.filter(x => x.level === 'bad').length, warn = p.problems.length - bad;
-      const level = loaded.unread ? 'bad' : !loaded.status ? 'none' : bad ? 'bad' : warn ? 'warn' : fresh.level === 'bad' ? 'warn' : 'ok';
-      const band = el('article', { className: `verdict ${level}` });
-      const headline = loaded.unread ? `${cap(loaded.unread.text)}.` : !loaded.status ? 'No CI health published yet.'
-        : bad ? `${plural(bad, 'workflow')} need${bad === 1 ? 's' : ''} attention${warn ? `, ${warn} to watch` : ''}.`
-        : warn ? `Nothing is broken; ${plural(warn, 'workflow')} to watch.` : 'Nothing needs attention.';
-      band.append(el('p', { className: 'headline' }, headline, p.problems.length || !loaded.status ? '' : el('span', { className: 'quiet' }, ` ${ciRest(p)}`)));
-      if (p.problems.length) {
-        band.append(el('ul', { className: 'ci-problems' }, ...p.problems.map(x => {
-          const see = x.see.length ? el('span', { className: 'see' }, ' See ', ...x.see.flatMap(([view, name], i) =>
-            [i ? ' and ' : '', link(hashFor({ view }), name)]), '.') : '';
-          return el('li', { className: x.level }, el('span', { className: 'dot' }),
-            el('span', {}, x.kind ? el('span', { className: 'kind' }, CI_KINDS[x.kind]) : '', el('b', {}, x.url ? link(x.url, x.who) : x.who), x.text, see));
-        })));
+      const wrap = el('div', {});
+      const runners = loaded.status && loaded.status.runners;
+      if (loaded.unread) {
+        wrap.append(el('p', { className: 'note bad' }, `${cap(loaded.unread.text)}.`));
+      } else if (!loaded.status) {
+        wrap.append(el('p', { className: 'note' }, 'No CI health published yet.'));
+      } else if (!runners || !runners.length) {
+        wrap.append(el('p', { className: 'note' }, 'No self-hosted runner named in a run in the window.'));
+      } else {
+        const rows = runners.slice().sort((a, b) => a.name.localeCompare(b.name));
+        const table = el('table', {},
+          el('thead', {}, el('tr', {}, el('th', {}, 'Runner'), el('th', { className: 'num' }, 'Passed'), el('th', { className: 'num' }, 'Failed'))),
+          el('tbody', {}, ...rows.map(r => el('tr', {},
+            el('th', {}, r.name),
+            el('td', { className: 'num' }, String(r.passed)),
+            el('td', { className: 'num' }, String(r.failed))))));
+        wrap.append(el('div', { className: 'table-wrap' }, table));
+        wrap.append(el('p', { className: 'note' },
+          'Counts its jobs among the tests that gate a merge, over the last two weeks.'));
       }
-      if (loaded.status) band.append(el('p', { className: 'note' }, CI_NORMAL));
-      if (fresh.text) band.append(el('div', { className: 'meta' }, el('span', { className: fresh.level === 'bad' ? 'msg worse' : 'msg' }, fresh.text)));
-      band.level = level;
-      return band;
+      if (fresh.text) wrap.append(el('div', { className: 'meta' }, el('span', { className: fresh.level === 'bad' ? 'msg worse' : 'msg' }, fresh.text)));
+      return wrap;
     }
 
     // A critical workflow's one state: {level, title, text, url}.

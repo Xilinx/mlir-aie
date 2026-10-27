@@ -594,7 +594,8 @@ global.fetch = async url => {
   // CI health.
   const ci = { status: null, unread: new Unread('../ci-health/status.json', 'HTTP 502'), newer: false, results: [], critical: [], merge: null };
   assert.equal(ciStatus(ci, NOW).text, 'Could not read ci-health/status.json (HTTP 502): reload the page.');
-  assert.equal(ciVerdictBand(ci, NOW).className, 'verdict bad');
+  const unreadNote = one(runnerTable(ci, NOW), n => n.className === 'note bad');
+  assert.equal(unreadNote.text, 'Could not read ci-health/status.json (HTTP 502): reload the page.');
   const [tile] = overviewTiles(null, [], NOW, ci);
   assert.deepEqual([tile.level, tile.children[1].text], ['bad', 'Needs attention']);
 })().catch(e => { console.error(e); process.exit(1); });
@@ -2588,40 +2589,25 @@ assert.deepEqual(config.data.datasets[0].pointBackgroundColor,
 """)
 
 
-def test_ci_health_reads_at_a_glance(page):
+def test_ci_health_runners_are_a_table_of_recent_job_counts(page):
     page(CI_RUNS + """
-// Nothing to act on: one sentence, the counts beside it, what is normal, how fresh.
-let verdictBox = ciVerdictBand(loadedOf(status()), NOW);
-assert.equal(verdictBox.className, 'verdict ok');
-assert.equal(verdictBox.children[0].text, 'Nothing needs attention. 1 of 1 merge-gating test healthy on main; 1 of 1 scheduled job passed their last run.');
-assert.equal(verdictBox.children[1].text, CI_NORMAL);
-assert.equal(verdictBox.children.at(-1).text, 'Read from GitHub 6 Oct, 11:30 UTC by publishCiHealth.yml, which runs every six hours.');
-// Problems: how many need attention and how many to watch, each a line with
-// its kind and its run linked, worst first; a failed nightly points at the
-// section that explains it.
-const flaky = ['success', 'failure', 'failure'].map((c, i) => ({ ...run(40 - i, 3 + 24 * i, 'completed', c), outcome: c === 'success' ? 'passed' : 'failed' }));
-const loaded = loadedOf(status({
-  critical: [crit({ latest_main: run(30, 3, 'completed', 'failure') }), crit({ file: 'py.yml', title: 'Python versions', main_runs: flaky })],
-  workflows: [{ ...nightly, runs: [run(2, 30, 'in_progress', null)], jobs: [job('Kernel checks (aie2p-8col)', 30, 'queued', null)] },
-              { ...nightly, file: 'nightlyComponentChecks.yml', title: 'Placement and performance checks', runs: [run(3, 6, 'completed', 'failure')], jobs: [] }],
-}));
-verdictBox = ciVerdictBand(loaded, NOW);
-assert.equal(verdictBox.className, 'verdict bad');
-assert.equal(verdictBox.children[0].text, '3 workflows need attention, 1 to watch.');
-assert.deepEqual(verdictBox.children[1].children.map(li => [li.className, li.text]), [
-  ['bad', 'Failing on mainLinux hardware testsIts latest run on main failed.'],
-  ['bad', 'RunnerKernel checksRunning now. aie2p-8col: waiting for a runner for 1 day 6 h.'],
-  ['bad', 'Nightly failedPlacement and performance checksFailed. See Performance and Placement.'],
-  ['warn', 'IntermittentPython versionsIts latest run passed, but 2 of its last 3 on main failed.'],
-]);
-assert.equal(verdictBox.children[1].children[0].children[1].children[1].children[0].href, 'https://example.com/runs/30');
-const see = verdictBox.children[1].children[2].children[1].children.at(-1);
-assert.equal(see.children.find(n => n.text === 'Performance').href, '#view=performance');
-// Only watching: nothing is broken.
-const watching = ciVerdictBand(loadedOf(status({ critical: [crit({ main_runs: flaky })] })), NOW);
-assert.deepEqual([watching.className, watching.children[0].text], ['verdict warn', 'Nothing is broken; 1 workflow to watch.']);
-// Nothing published.
-assert.equal(ciVerdictBand(loadedOf(null), NOW).children[0].text, 'No CI health published yet.');
+const runners = [
+  { name: 'bench-npu2-a', passed: 11, failed: 1 },
+  { name: 'bench-npu1-a', passed: 9, failed: 0 },
+];
+const box = runnerTable(loadedOf(status({ runners })), NOW);
+const [tableWrap, note, fresh] = box.children;
+const [, tbody] = tableWrap.children[0].children;
+// Sorted by name.
+assert.deepEqual(tbody.children.map(tr => tr.children[0].text), ['bench-npu1-a', 'bench-npu2-a']);
+const [name, passed, failed] = tbody.children[1].children;
+assert.deepEqual([name.text, passed.text, failed.text], ['bench-npu2-a', '11', '1']);
+assert.equal(note.text, 'Counts its jobs among the tests that gate a merge, over the last two weeks.');
+assert.equal(fresh.children[0].text, 'Read from GitHub 6 Oct, 11:30 UTC by publishCiHealth.yml, which runs every six hours.');
+// No self-hosted runner named in the window.
+assert.equal(runnerTable(loadedOf(status({ runners: [] })), NOW).children[0].text, 'No self-hosted runner named in a run in the window.');
+// Nothing published at all.
+assert.equal(runnerTable(loadedOf(null), NOW).children[0].text, 'No CI health published yet.');
 // The rows: one state each (nightlyRow and criticalTile's own cases are
 // test_nightly_jobs_are_a_row_each_with_their_recent_runs and
 // test_critical_workflows_judge_main_now_and_show_their_normal's).
