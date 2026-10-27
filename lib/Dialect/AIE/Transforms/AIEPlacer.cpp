@@ -714,6 +714,10 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
   auto fitsColumnStreams = [&](TileID candidate) {
     StreamDemand demand = streamDemand.lookup(logicalTile);
     StreamDemand used = columnStreamsUsed.lookup(candidate.col);
+    auto incoming = columnIncomingFifos.find(candidate.col);
+    if (incoming != columnIncomingFifos.end())
+      for (Operation *fifo : incomingFifos.lookup(logicalTile))
+        demand.southIn -= incoming->second.contains(fifo);
     // Measure the bottleneck at the bottom compute row, not at a candidate
     // in the middle of the column. Overflow can still route via other columns.
     int bottomRow = candidate.row;
@@ -1054,7 +1058,7 @@ void SequentialPlacer::recordPlacement(LogicalTileOp logicalTile, TileID tile,
                           << logicalTile.getLoc() << " at (" << tile.col << ", "
                           << tile.row << ")\n");
   if (logicalTile.getTileType() == AIETileType::CoreTile) {
-    columnStreamsUsed[tile.col] += streamDemand.lookup(logicalTile);
+    recordColumnStreamUsage(logicalTile, tile.col);
     availability.removeTile(tile, AIETileType::CoreTile);
     ctx.reserveNeighborSlots(logicalTile.getOperation(), tile);
   }
@@ -1720,10 +1724,21 @@ bool SequentialPlacer::hasAvailableChannels(TileID tile, int inputChannels,
          (currentOut + outputChannels <= maxOut);
 }
 
+void SequentialPlacer::recordColumnStreamUsage(Operation *tile, int col) {
+  auto &incoming = columnIncomingFifos[col];
+  for (Operation *fifo : incomingFifos.lookup(tile))
+    incoming.insert(fifo);
+  auto &used = columnStreamsUsed[col];
+  used += streamDemand.lookup(tile);
+  used.southIn = incoming.size();
+}
+
 void SequentialPlacer::buildStreamDemand(
     ArrayRef<ObjectFifoCreateOp> objectFifos) {
   streamDemand.clear();
   columnStreamsUsed.clear();
+  incomingFifos.clear();
+  columnIncomingFifos.clear();
   broadcastFanout.clear();
   broadcastFanoutUsed.clear();
   // Rows rise from shims through memtiles to cores, so a stream to a higher
@@ -1753,6 +1768,8 @@ void SequentialPlacer::buildStreamDemand(
       if (*consumerRank > *producerRank) {
         north = true;
         streamDemand[consumer].southIn++;
+        if (*consumerRank == 2)
+          incomingFifos[consumer].push_back(of.getOperation());
       } else {
         south = true;
         streamDemand[consumer].northIn++;
@@ -1766,7 +1783,7 @@ void SequentialPlacer::buildStreamDemand(
   for (auto &[op, demand] : streamDemand)
     if (auto tile = dyn_cast<TileOp>(op))
       if (tile.isCoreTile())
-        columnStreamsUsed[tile.getCol()] += demand;
+        recordColumnStreamUsage(op, tile.getCol());
   for (auto &[op, fanout] : broadcastFanout)
     if (auto tile = dyn_cast<TileOp>(op))
       broadcastFanoutUsed[{tile.getCol(), tile.getRow()}] += fanout;

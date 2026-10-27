@@ -308,6 +308,11 @@ private:
   llvm::DenseMap<mlir::Operation *, StreamDemand> streamDemand;
   // Aggregate traffic between a column's cores and the tiles below them.
   llvm::DenseMap<int, StreamDemand> columnStreamsUsed;
+  // Broadcast consumers in one column share a single incoming stream.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Operation *>>
+      incomingFifos;
+  llvm::DenseMap<int, llvm::DenseSet<mlir::Operation *>> columnIncomingFifos;
+  void recordColumnStreamUsage(mlir::Operation *tile, int col);
   // Extra broadcast destinations beyond the first, which uses one DMA channel.
   llvm::DenseMap<mlir::Operation *, int> broadcastFanout;
   llvm::DenseMap<TileID, int> broadcastFanoutUsed;

@@ -10,9 +10,10 @@
 // RUN: sed -E 's/(%[abc]([0-7]) = aie.logical_tile<CoreTile>)\(\?, \?\)/\1(\2, ?)/' %s | aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform='skip-verify=true' --aie-create-pathfinder-flows -o /dev/null
 
 // Eight three-core pipelines with two memtile forwards each, shared K/V
-// broadcasts, and four-way Q splits/O joins. Stream demand should prevent
-// packing all 24 cores into six columns. Kernel bodies are omitted.
-// CHECK-DAG: aie.tile(6, {{[2-5]}})
+// broadcasts, and four-way Q splits/O joins. Column budgets count shared K/V
+// inputs once while accounting for independent streams. Kernel bodies are
+// omitted.
+// CHECK-DAG: aie.tile(5, {{[2-5]}})
 // CHECK-NOT: aie.logical_tile
 module {
   aie.device(npu2) {
