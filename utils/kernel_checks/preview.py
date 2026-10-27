@@ -72,6 +72,7 @@ HW_DETAIL = (
     "effort_label",
     "passed",
     *sa_placer_hw.TIMED,
+    "fps",
     "dispatch_overhead_us",
     "placement",
 )

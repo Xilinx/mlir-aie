@@ -126,11 +126,12 @@ def test_thresholds_match_the_report_and_color_only_past_them(page):
     expected = {m: s for m, s in shared.items() if not m.startswith("_")}
     assert json.loads(match[1]) == expected
     page("""
-assert.equal(changeClass(100, 101.9, 'cycles'), '');
-assert.equal(changeClass(100, 102, 'cycles'), 'worse');
-assert.equal(changeClass(100, 98, 'kernel_object_bytes'), 'better');
-assert.equal(changeClass(100, 109, 'dispatch_us'), '');
-assert.equal(changeClass(100, 110, 'dispatch_us'), 'worse');
+assert.equal(changeClass(100, 100.9, 'cycles'), '');
+assert.equal(changeClass(100, 101, 'cycles'), 'worse');
+assert.equal(changeClass(100, 99.1, 'kernel_object_bytes'), '');
+assert.equal(changeClass(100, 99, 'kernel_object_bytes'), 'better');
+assert.equal(changeClass(100, 114, 'dispatch_us'), '');
+assert.equal(changeClass(100, 115, 'dispatch_us'), 'worse');
 assert.equal(changeClass(100, 114, 'compile_s'), '');
 assert.equal(changeClass(100, 115, 'compile_s'), 'worse');
 assert.equal(changeClass(1000, 1009, 'final_cost_mean'), '');
@@ -151,7 +152,7 @@ for (const m of sectionMetrics('performance')) {
   assert.equal(termOf(m, COMPONENT_METRICS[m]).includes('higher is better'), up.includes(m), m);
 }
 assert.equal(termOf('tok_s', 'x'), 'x; higher is better; counts past 5%');
-assert.equal(termOf('dispatch_us', 'x'), 'x; counts past 10% and 3× its spread');
+assert.equal(termOf('dispatch_us', 'x'), 'x; counts past 15% and 3× its spread');
 // No description says it on its own any more: the list adds it.
 assert.ok(Object.values(COMPONENT_METRICS).every(about => !about.includes('higher is better')));
 assert.equal(axisTitle('Tokens per second', 'tok_s'), 'Tokens per second · ↑ better');
@@ -237,7 +238,7 @@ assert.deepEqual(w.moves, ['skip/1/i8: 1,556 on 10 Oct → 1,621, past the thres
 w = kernelWindow(cyclesOn([[10, 100], [12, 120], [14, 121], [20, 122]]), 'npu1', 'skip');
 assert.equal(shortDate(w.since), '12 Oct');
 // Nothing moved: no date.
-assert.equal(kernelWindow(cyclesOn([[10, 100], [20, 101]]), 'npu1', 'skip').since, null);
+assert.equal(kernelWindow(cyclesOn([[10, 100], [20, 100.5]]), 'npu1', 'skip').since, null);
 // The window spans 30 nightlies; a strip of recent runs, two weeks of them.
 assert.equal(WINDOW_NIGHTS, 30);
 assert.equal(STRIP_RUNS, 14);
@@ -336,9 +337,9 @@ assert.equal(changeClass(0, 1, 'max_ulp'), 'worse');
 assert.equal(changeClass(4, 4, 'max_ulp'), '');
 assert.equal(thresholdText('compile_place_s'), 'counts past 15% and a change of 0.5');
 assert.equal(thresholdText('max_ulp'), 'counts past a change of 1');
-assert.equal(thresholdText('dispatch_us'), 'counts past 10% and 3× its spread');
-// The NPU time keeps the dispatch's rule with a floor: a small kernel's is a few µs.
-assert.equal(thresholdText('npu_us'), 'counts past 10% and a change of 2 and 3× its spread');
+assert.equal(thresholdText('dispatch_us'), 'counts past 15% and 3× its spread');
+// The NPU time has its own percentage, spread and floor.
+assert.equal(thresholdText('npu_us'), 'counts past 10% and a change of 2 and 5× its spread');
 assert.equal(changeClass(5, 6.5, 'npu_us'), '');
 assert.equal(changeClass(50, 60, 'npu_us'), 'worse');
 // The empty dispatch is the host's and the runtime's: shown, never judged.
@@ -551,9 +552,9 @@ assert.ok(hops.max - hops.min >= 1.035 * 0.01 * 2.5);
 // Bank sharing, 0.31 to 0.33: not 0 to 1.33.
 const sharing = yRange([{ data: [0.31, 0.33] }], 'bank_pair_sharing');
 assert.ok(sharing.min > 0.28 && sharing.max < 0.36, JSON.stringify(sharing));
-// A flat series still spans its threshold: dispatch_us at 100, 10%.
+// A flat series still spans its threshold: dispatch_us at 100, 15%.
 const flat = yRange([{ data: [100, 100] }], 'dispatch_us');
-assert.deepEqual(flat, { min: 87.5, max: 112.5 });
+assert.deepEqual(flat, { min: 81.25, max: 118.75 });
 // An abs-only metric pads by its floor; all zeros still draw an axis.
 assert.deepEqual(yRange([{ data: [0, 0] }], 'max_ulp_float32'), { min: 0, max: 1.25 });
 assert.deepEqual(yRange([{ data: [0, 0] }], 'cycles'), { min: 0, max: 1 });
@@ -980,7 +981,7 @@ const r1 = rec('1', 1000, 'turbo', {
 const r2 = rec('2', 2000, 'turbo', {
   'relu/1024/bf16/cycles': ['cycles', 1030], 'relu/1024/bf16/cycles_per_kop': ['cycles/1k-ops', 10.3],
   'relu/1024/bf16/dispatch_us': ['us', 150], 'relu/1024/bf16/kernel_object_bytes': ['bytes', 4096],
-  'gelu/1024/bf16/cycles': ['cycles', 1500], 'flat/1/i8/cycles': ['cycles', 505],
+  'gelu/1024/bf16/cycles': ['cycles', 1500], 'flat/1/i8/cycles': ['cycles', 502],
   'fresh/1/i8/cycles': ['cycles', 5],
 });
 db = fromRecords({ npu1: [r1, r2] });
@@ -991,7 +992,7 @@ def test_moved_series_use_the_thresholds_and_lead_with_gated_metrics(page):
     page(MOVED + """
 const moved = movedSeries(db, 'npu1');
 // cycles_per_kop is derived, an unchanged object is not a move, gone/ has no
-// latest point, fresh/ no previous one, flat/ moved 1%.
+// latest point, fresh/ no previous one, flat/ moved less than 1%.
 assert.deepEqual(moved.regressed.map(x => [x.series.kase, x.series.metric, x.before, x.after]), [
   ['relu/1024/bf16', 'cycles', 1000, 1030],
   ['relu/1024/bf16', 'dispatch_us', 100, 150],
@@ -1300,13 +1301,59 @@ assert.equal(cyclesWords([50, 1100]), '50 and 1,100 cycles');
 assert.equal(cyclesWords([5, 50, 1100]), '5 to 1,100 cycles');
 // Filters: text, family, only problems.
 $('kernels-filter').value = 'relu';
-$('kernels-filter').on.input();
+$('kernels-filter').oninput();
 assert.deepEqual(rows.map(r => r.hidden), [true, true, false]);
 assert.equal($('kernels-status').text, '1 kernel of 3');
 $('kernels-filter').value = '';
 $('kernels-problems').checked = true;
-$('kernels-problems').on.change();
+$('kernels-problems').onchange();
 assert.deepEqual(rows.map(r => r.hidden), [false, true, true]);
+""")
+
+
+def test_refresh_preserves_kernel_filters_and_replaces_their_handlers(page):
+    page(KERNELS + """
+location.hash = '#view=kernels';
+const family = $('kernels-family');
+const replace = family.replaceChildren.bind(family);
+family.replaceChildren = (...options) => { replace(...options); family.value = ''; };
+let listeners = 0;
+for (const id of ['kernels-filter', 'kernels-family', 'kernels-problems']) {
+  $(id).addEventListener = () => { listeners++; };
+}
+const oldRows = renderKernelList(nights, db);
+family.value = 'activation';
+$('kernels-filter').value = 'softmax';
+$('kernels-problems').checked = true;
+const oldHandler = $('kernels-filter').oninput;
+for (let i = 0; i < 3; i++) renderKernelList(nights, db);
+assert.equal(family.value, 'activation');
+assert.equal($('kernels-filter').value, 'softmax');
+assert.equal($('kernels-problems').checked, true);
+assert.equal(listeners, 0);
+assert.notEqual($('kernels-filter').oninput, oldHandler);
+const rows = $('kernel-list').children;
+assert.deepEqual(rows.map(r => r.hidden), [false, true, true]);
+$('kernels-filter').value = 'relu';
+$('kernels-problems').checked = false;
+$('kernels-filter').oninput();
+assert.deepEqual(rows.map(r => r.hidden), [true, true, false]);
+// Detached row trees are no longer visited by filter events.
+assert.deepEqual(oldRows.map(r => r.hidden), [false, false, false]);
+family.value = 'removed-family';
+renderKernelList(nights, db);
+assert.equal(family.value, '');
+// A deep link initializes filters once, not again on every refresh.
+location.hash = '#view=kernels&family=activation&problems=1';
+renderKernelList(nights, db);
+assert.equal(family.value, 'activation');
+assert.equal($('kernels-problems').checked, true);
+family.value = '';
+$('kernels-problems').checked = false;
+renderKernelList(nights, db);
+applyKernelsFilter();
+assert.equal(family.value, '');
+assert.equal($('kernels-problems').checked, false);
 """)
 
 
@@ -1434,8 +1481,12 @@ assert.equal(verdict('dispatch_us', us(100, 10), us(120, 1)), '');
 assert.equal(verdict('dispatch_us', us(100, 1), us(120, 7)), '');
 assert.equal(verdict('dispatch_us', us(100), us(120)), 'worse');
 assert.equal(verdict('dispatch_us', us(120, 1), us(100, 1)), 'better');
-// Many MADs but under 10%.
+// Many MADs but under 15%.
 assert.equal(verdict('dispatch_us', us(100, 0.1), us(105, 0.1)), '');
+assert.equal(verdict('npu_us', us(100, 2), us(109, 2)), '');
+assert.equal(verdict('npu_us', us(100, 2), us(110, 2)), '');
+assert.equal(verdict('npu_us', us(100, 2), us(111, 2)), 'worse');
+assert.equal(verdict('npu_us', us(100, 3), us(110, 2)), '');
 // Other metrics ignore the range.
 assert.equal(verdict('cycles', { value: 100, range: '± 50' }, { value: 103 }), 'worse');
 
@@ -1672,6 +1723,9 @@ assert.equal(one(empty, n => n.className === 'headline').text, 'No results publi
 
 
 def test_the_mobilenet_table_shows_each_seed_against_the_nightly_before(page):
+    preview = (ROOT / "utils/kernel_checks/preview.py").read_text(encoding="utf-8")
+    detail = re.search(r"^HW_DETAIL = \((.*?)^\)", preview, re.MULTILINE | re.DOTALL)
+    assert detail and '"fps"' in detail[1]
     page(COMPONENT_RUNS + HW_NIGHTS + """
 // Chart.js configs are normally captured one at a time in `chart`; the
 // Batch scaling card draws two, so collect every one drawn here.
@@ -2483,6 +2537,16 @@ assert.equal(criticalTile(crit({ latest_main: run(30, 3, 'completed', 'failure')
 v = criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'failure'),
   main_runs: [run(30, 3, 'completed', 'failure'), run(29, 27, 'completed', 'success')] }), NOW);
 assert.deepEqual([v.level, v.kind, v.notes], ['warn', 'intermittent', ['its latest run on main failed; the previous run passed']]);
+// Infrastructure loss is not evidence that the previous run passed, even
+// if its GitHub conclusion contradicts the judged outcome.
+for (const outcome of ['runner_lost', 'no_runner', 'failed', 'timed_out']) {
+  v = criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'failure'),
+    main_runs: [run(30, 3, 'completed', 'failure'), { ...run(29, 27, 'completed', 'success'), outcome }] }), NOW);
+  assert.equal(v.level, 'bad');
+  assert.ok(!v.notes[0].includes('the previous run passed'));
+}
+assert.equal(criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'failure'),
+  main_runs: [run(30, 3, 'completed', 'failure'), { ...run(29, 27, 'completed', 'success'), outcome: 'passed' }] }), NOW).level, 'warn');
 // Two in a row is not a blip: stays bad. No main_runs at all is the same:
 // there is no evidence it is a blip, so it is not given the benefit of the doubt.
 assert.equal(criticalVerdict(crit({ latest_main: run(30, 3, 'completed', 'failure'),
@@ -2587,6 +2651,48 @@ const fine = ciLines(loadedOf(status()), NOW);
 assert.deepEqual(fine[0], { level: 'ok', who: 'All workflows', text: '1 of 1 merge-gating test healthy on main; 1 of 1 scheduled job passed their last run.' });
 // Nothing published: says so rather than "no results".
 assert.equal(overviewTiles(null, [], NOW, loadedOf(null))[0].children[1].text, 'Not published yet');
+""")
+
+
+def test_overview_keeps_live_tiles_until_both_refresh_sources_arrive(page):
+    page(CI_RUNS + """
+const pending = () => {
+  let resolve;
+  const promise = new Promise(r => { resolve = r; });
+  return { promise, resolve };
+};
+(async () => {
+  const firstComponents = pending(), firstCi = pending();
+  componentsLoad = firstComponents.promise;
+  ciLoad = firstCi.promise;
+  const first = renderOverview();
+  const initial = [...$('overview-tiles').children];
+  assert.equal(initial[0].children[1].text, 'Loading…');
+  firstComponents.resolve([]);
+  await Promise.resolve();
+  assert.deepEqual($('overview-tiles').children, initial);
+  firstCi.resolve(loadedOf(status()));
+  await first;
+  assert.notEqual($('overview-tiles').children[0].children[1].text, 'Loading…');
+  for (const order of ['components', 'ci']) {
+    const components = pending(), ci = pending();
+    componentsLoad = components.promise;
+    ciLoad = ci.promise;
+    const live = [...$('overview-tiles').children];
+    const refresh = renderOverview();
+    assert.deepEqual($('overview-tiles').children, live);
+    if (order === 'components') components.resolve([]);
+    else ci.resolve(loadedOf(status()));
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual($('overview-tiles').children, live);
+    components.resolve([]);
+    ci.resolve(loadedOf(status()));
+    await refresh;
+    assert.notEqual($('overview-tiles').children[0], live[0]);
+    assert.notEqual($('overview-tiles').children[0].children[1].text, 'Loading…');
+  }
+})().catch(e => { console.error(e); process.exit(1); });
 """)
 
 
@@ -2843,10 +2949,10 @@ assert.equal(rows[0].children[3].title, 'mm/1/f32/gelu: 2.0 KiB → 4.3 KiB (+11
 // A measure that did not move is greyed: size grew, cycles flat.
 const both = fromRecords({ npu2: [
   rec('1', 1, 'turbo', { 'k/1/i8/cycles': ['cycles', 100], 'k/1/i8/kernel_object_bytes': ['bytes', 2048] }),
-  rec('2', 2, 'turbo', { 'k/1/i8/cycles': ['cycles', 101], 'k/1/i8/kernel_object_bytes': ['bytes', 4096] }),
+  rec('2', 2, 'turbo', { 'k/1/i8/cycles': ['cycles', 100.5], 'k/1/i8/kernel_object_bytes': ['bytes', 4096] }),
 ] });
 const [row] = renderWindowChanges(both, ['npu2']);
 assert.deepEqual(row.children.slice(2).map(c => [c.className, c.text]),
-  [['num quiet', '100 → 101 (+1.0%)'], ['num', '2.0 KiB → 4.0 KiB (+100.0%)']]);
+  [['num quiet', '100 → 101 (+0.5%)'], ['num', '2.0 KiB → 4.0 KiB (+100.0%)']]);
 assert.equal(rows[0].children[0].children[0].title, 'mm/1/f32/gelu\\nmm/1/f32/relu');
 """)

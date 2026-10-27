@@ -2285,7 +2285,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         el('span', { className: 'sub' }, ' last night, cycles now'))));
       $('kernel-list').replaceChildren(...rows);
       const families = [...new Set(kernels.map(k => k.family))].sort();
+      const selectedFamily = $('kernels-family').value;
       $('kernels-family').replaceChildren(new Option('All', ''), ...families.map(f => new Option(f, f)));
+      $('kernels-family').value = families.includes(selectedFamily) ? selectedFamily : '';
       const apply = () => {
         const q = ($('kernels-filter').value || '').trim().toLowerCase();
         const family = $('kernels-family').value, problems = $('kernels-problems').checked;
@@ -2296,11 +2298,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         }
         status.textContent = `${plural(shown, 'kernel')} of ${rows.length}`;
       };
-      for (const id of ['kernels-filter', 'kernels-family', 'kernels-problems']) $(id).addEventListener(id === 'kernels-filter' ? 'input' : 'change', apply);
+      for (const id of ['kernels-filter', 'kernels-family', 'kernels-problems']) $(id)[id === 'kernels-filter' ? 'oninput' : 'onchange'] = apply;
       applyKernelsFilter = () => {
-        const want = readHash();
-        if (want.problems) $('kernels-problems').checked = true;
-        if (want.family !== undefined && families.includes(want.family)) $('kernels-family').value = want.family;
+        if (kernelsFilterHash !== location.hash) {
+          kernelsFilterHash = location.hash;
+          const want = readHash();
+          if (want.problems) $('kernels-problems').checked = true;
+          if (want.family !== undefined && families.includes(want.family)) $('kernels-family').value = want.family;
+        }
         apply();
       };
       applyKernelsFilter();
@@ -2424,6 +2429,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // size histories behind the sparklines.
     let db, recent, hist, nights = [];
     let applyKernelsFilter = () => {};
+    let kernelsFilterHash = null;
     const historyCache = new Map();
 
     // The history files of `metrics` on `npus`, fetched once each.
@@ -3797,7 +3803,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       // a failing latest run stays bad rather than being given the benefit
       // of the doubt.
       const recent = (w.main_runs || []).filter(r => r.status === 'completed' && r.outcome !== 'cancelled').slice(0, CI_RECENT_RUNS);
-      const previousPassed = recent.length > 1 && !failedOutcome(recent[1]);
+      const previousPassed = recent.length > 1 && (recent[1].outcome === 'passed' || (!recent[1].outcome && recent[1].conclusion === 'success'));
       if (latest && failedOutcome(latest)) {
         level = previousPassed ? 'warn' : 'bad';
         kind = previousPassed ? 'intermittent' : 'failing';
@@ -4185,17 +4191,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     async function renderOverview() {
       const token = ++overviewToken;
       const now = Date.now();
-      $('overview-tiles').replaceChildren(...overviewTiles(started ? nights : null, null, now));
-      // Each source redraws the tiles as it arrives: GitHub can be slow.
-      let loaded = null, ci = null;
-      const draw = () => {
-        if (token !== overviewToken || currentView() !== 'overview') return null;
-        const tiles = overviewTiles(started ? nights : null, loaded, now, ci);
-        $('overview-tiles').replaceChildren(...tiles);
-        return tiles;
-      };
-      await Promise.all([loadComponents().then(l => { loaded = l; draw(); }), loadCi().then(c => { ci = c; draw(); })]);
-      return draw();
+      if (!$('overview-tiles').children.length) $('overview-tiles').replaceChildren(...overviewTiles(started ? nights : null, null, now));
+      const [loaded, ci] = await Promise.all([loadComponents(), loadCi()]);
+      if (token !== overviewToken || currentView() !== 'overview') return null;
+      const tiles = overviewTiles(started ? nights : null, loaded, now, ci);
+      $('overview-tiles').replaceChildren(...tiles);
+      return tiles;
     }
 
     // ------------------------------------------------------------------
