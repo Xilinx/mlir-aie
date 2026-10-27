@@ -22,27 +22,29 @@ Kernels are grouped by family, and each family directory matches a module under 
 - When the two architectures need different code, the family holds `X_aie2.h` and `X_aie2p.h` and a small `X.cc` that includes the right one.
 - [`common/`](./common) holds helpers shared across families.
 
-The tables below describe the sources. Which kernels each NPU builds, and whether they passed the nightly hardware sweep, is in the [kernels view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels) of the Nightly Kernel Checks page, generated from `aie.iron.kernels` each night; each kernel's name there opens its own page with its cases' latest numbers and history.
+The tables below describe the sources. Which kernels each NPU builds, and whether they passed the nightly hardware sweep, is in the [Kernels section](https://xilinx.github.io/mlir-aie/dashboard/#view=kernels) of the maintainer dashboard, generated from `aie.iron.kernels` each night; each kernel's name there opens its own page with its cases' latest numbers and history.
 
 ## activation
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
 | [leaky_relu.cc](./activation/leaky_relu.cc) | AIE API | Leaky ReLU activation | `bfloat16` |
 | [gelu.cc](./activation/gelu.cc) | AIE API | GELU activation (tanh approx). The per-arch headers differ in tuning: the AIE2P one is MAC-fused with an `s*beta` precompute and post-RA pipelining | `bfloat16` |
+| [gelu_erf.cc](./activation/gelu_erf.cc) | AIE API | Exact GELU, `x * Phi(x)` (erfc in f32 limbs, rounded once): correctly rounded wherever GELU is a normal bf16 (measured on npu2; npu1 unmeasured), subnormal results flushed to 0 | `bfloat16` |
 | [silu.cc](./activation/silu.cc) | AIE API | SiLU / Swish activation (tanh path from `activations.h`) | `bfloat16` |
 | [swiglu.cc](./activation/swiglu.cc) | AIE API | SwiGLU gated activation (tanh path from `activations.h`) | `bfloat16` |
 | [tanh.cc](./activation/tanh.cc) | AIE API | Tanh activation (tanh path from `activations.h`: native on AIE2P, LUT on AIE2) | `bfloat16` |
 | [sigmoid.cc](./activation/sigmoid.cc) | AIE API | Sigmoid activation (tanh path from `activations.h`) | `bfloat16` |
 | [softmax.cc](./activation/softmax.cc) | AIE API | Softmax; on AIE2P also `softmax_rows` (optionally causal), `partial_softmax` (flash-attn) and `mask` | `bfloat16` |
 | [bf16_exp.cc](./activation/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
-| [exp2f_vec.cc](./activation/exp2f_vec.cc) | AIE API | Element-wise `2^x` (degree-5 minimax poly; higher accuracy on negatives) | `float32` |
+| [exp2f_vec.cc](./activation/exp2f_vec.cc) | AIE API | Element-wise `2^x` (software polynomial; higher accuracy on negatives) | `float32` |
+| [log_f32.cc](./activation/log_f32.cc) | AIE API | `log(x + offset)`, float32-accurate from bf16 limb products, rounded once (a log-mel floor); `log10_clamp_f32_bf16` takes Whisper's log-mel features, log10 clamped below the clip's peak, then shifted and scaled | `float32`→`bfloat16` |
 
 ## conv
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
-| [conv2dk1_i8.cc](./conv/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |
+| [conv2dk1_i8.cc](./conv/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D; with a bias, ONNX QLinearConv for a power-of-two per-tensor scale and zero zero-points (an `int32` bias per output channel, then optionally a 256-entry `int8` table from [table_i8.h](./common/table_i8.h)) | `int8_t` |
 | [conv2dk1.cc](./conv/conv2dk1.cc) | AIE API | 1x1 Conv2D with fused ReLU | `int8_t`, `uint8_t` |
-| [conv2dk3.cc](./conv/conv2dk3.cc) | AIE API | 3x3 Conv2D with fused ReLU | `int8_t`, `uint8_t` |
+| [conv2dk3.cc](./conv/conv2dk3.cc) | AIE API | 3x3 Conv2D with fused ReLU; with a bias, ONNX QLinearConv (power-of-two per-tensor scale, zero zero-points) to `int8` at stride 1 or 2, optionally through the `int8` table of [table_i8.h](./common/table_i8.h) | `int8_t`, `uint8_t` |
 | [conv2dk1_skip.cc](./conv/conv2dk1_skip.cc) | AIE API| 1x1 Conv2D with fused skip addition | `int8_t`, `uint8_t` |
 | [conv2dk1_skip_init.cc](./conv/conv2dk1_skip_init.cc) | AIE API | 1x1 Conv2D with fused 1x1 Conv2D skip addition | `int8_t`, `uint8_t` |
 | [conv2dk14.cc](./conv/conv2dk14.cc) | AIE API | 1x14 / 14x1 Conv2D | `int8_t` |
@@ -62,18 +64,24 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [expand.cc](./datamovement/expand.cc) | AIE API | uint4→bf16 dequant with per-group scale factors (zero-extended, no zero point) | `uint4`→`bfloat16` |
 | [axpy.cc](./datamovement/axpy.cc) | AIE API | `z = a*x + y` (SAXPY) | `bfloat16` |
 | [rope.cc](./datamovement/rope.cc) | AIE API | RoPE — `rope` (interleaved / Llama) + `rope_two_halves` (HF) | `bfloat16` |
+| [row_addresses.cc](./datamovement/row_addresses.cc) | Generic C | Each id's table row as a shim buffer descriptor's address words, the id clipped to the table | `int32`→`uint32` |
+| [merge_rows.cc](./datamovement/merge_rows.cc) | Generic C | The table row each position of a token sequence takes: its own, or the next of a tower's rows for a placeholder, counted across calls | `int32` |
+| [patch_positions.cc](./datamovement/patch_positions.cc) | Generic C | Where each patch of a vision tower's image comes from, in pooling-window order: its x and y, its position-table rows and its row of a padded raster, counted across calls | `int32` |
 | [cast_f32_bf16.cc](./datamovement/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
+| [limbs_f32.cc](./datamovement/limbs_f32.cc) | AIE API | f32 as six planes of its exact bf16 limbs (`hi + mid + lo`), for an f32-accurate bf16 matmul | `float32`→`bfloat16` |
 | [affine_cast_f32_bf16.cc](./datamovement/affine_cast_f32_bf16.cc) | AIE API | Per-column affine `out = bf16(in*gamma + beta)`, gamma and beta packed in one buffer (`conv_even` rounding) | `float32`→`bfloat16` |
 
 ## eltwise
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
 | [passThrough.cc](./eltwise/passThrough.cc) | AIE API | A simple memcpy operation | `uint8_t`, `int16_t`, `int32_t` |
-| [add.cc](./eltwise/add.cc) | AIE API | Pointwise addition of 2 tensors | `bfloat16` |
+| [add.cc](./eltwise/add.cc) | AIE API | Pointwise addition of 2 tensors; on `int8`, ONNX QLinearAdd with power-of-two scales | `bfloat16`, `int8_t` |
 | [mul.cc](./eltwise/mul.cc) | AIE API | Pointwise multiplication of 2 tensors | `bfloat16` |
 | [scale.cc](./eltwise/scale.cc) | AIE API | Scale all elements of a tensor with a scale factor | `int32_t` |
 | [scale_shift.cc](./eltwise/scale_shift.cc) | AIE API | Scale-and-shift | `int32_t` |
 | [relu.cc](./eltwise/relu.cc) | Intrinsics | ReLU activation | `bfloat16` |
+| [clamp.cc](./eltwise/clamp.cc) | AIE API | Clamp to runtime bounds, each passed as its bf16 bits | `bfloat16` |
+| [magnitude_f32.cc](./eltwise/magnitude_f32.cc) | AIE API | `sqrt(re^2 + im^2)` of `[re \| im]`, float32-accurate from bf16 limb products; `power_f32` is `re^2 + im^2` | `float32` |
 
 ## fused
 | Name | Coding style | Purpose | Datatypes |
@@ -109,13 +117,20 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [mm_bfp_mixed.cc](./linalg/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul (AIE2P only) | `bfp16` |
 | [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV); `-DA_COL_MAJ` reads A column-major with partial sums carried across calls, bit-identical to row-major | `bfloat16` |
 | [mv_i16.cc](./linalg/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
-| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention **decode** toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 16 rows; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16` |
+| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 8 rows, key blocks a multiple of 16 and a head dimension a multiple of 8; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16`, running state and O `float32` |
+| [attention_i8.cc](./linalg/attention_i8.cc) | AIE API | One head of int8 attention over a 2-D map (YOLO26n's PSA), a row of queries a call: power-of-two scales, an integer softmax from a 256-entry exp table, rounding half to even | `int8_t`, table `int32_t` |
 | [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
+
+## moe
+| Name | Coding style | Purpose | Datatypes |
+|-|-|-|-|
+| [router_top_k.cc](./moe/router_top_k.cc) | AIE API | A router's `top_k` expert ids and softmax weights, from one `sample_select` summary | `int32_t` → `int32_t`, `bfloat16` |
+| [experts.cc](./moe/experts.cc) | AIE API | One row's gated feed-forward through its chosen experts, from the row and one stream of weight tiles, summed in float32 and rounded once | `bfloat16` |
 
 ## norm
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
-| [layer_norm.cc](./norm/layer_norm.cc) | AIE API | Layer normalization | `bfloat16` |
+| [layer_norm.cc](./norm/layer_norm.cc) | AIE API | Layer normalization — `layer_norm` (eps=1e-5) + `layer_norm_eps` (runtime eps) | `bfloat16` |
 | [rms_norm.cc](./norm/rms_norm.cc) | AIE API | RMS normalization — `rms_norm` (eps=1e-5) + `rms_norm_eps` (runtime eps) | `bfloat16` |
 
 ## quant
@@ -126,15 +141,23 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 ## reduce
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
+| [argmax.cc](./reduce/argmax.cc) | AIE API | Index of the max value across a tensor, plus a pairwise record combine | `int32_t`, `bfloat16` |
 | [reduce_add.cc](./reduce/reduce_add.cc) | Intrinsics | Sum of elements in a tensor | `int32_t` |
-| [reduce_max.cc](./reduce/reduce_max.cc) | Intrinsics | Max value across a tensor | `int32_t`, `bfloat16` |
+| [reduce_max.cc](./reduce/reduce_max.cc) | AIE API | Max value across a tensor | `int32_t`, `bfloat16`, `float32` |
 | [reduce_min.cc](./reduce/reduce_min.cc) | Intrinsics | Min value across a tensor | `int32_t` |
+| [maxpool2d.cc](./reduce/maxpool2d.cc) | AIE API | 5x5, stride-1 max pool of one row, padded with -inf (YOLO's SPPF) | `int8_t` |
 
 ## sample
 | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|
 | [sample_select.cc](./sample/sample_select.cc) | AIE API | One column's half of exact top-k sampling: reduces its slice of the logits to a summary (the entries above the k-th largest, and a bitmap of the ties at it); geometry via `-DSAMPLE_*`, shared with [sample.h](./sample/sample.h) | `bfloat16` → `int32_t` |
 | [sample_combine.cc](./sample/sample_combine.cc) | Generic C | Draws one token from every column's summary, bit for bit as `aie.iron.kernels.sample.sample_ref` does: IEEE soft-float weights through [exp64.h](./sample/exp64.h), summed exactly in fixed point | `int32_t` |
+
+## ssm
+| Name | Coding style | Purpose | Datatypes |
+|-|-|-|-|
+| [selective_scan.cc](./ssm/selective_scan.cc) | AIE API | Mamba2's state space recurrence for one head over a block of rows, the float32 state carried across calls | `bfloat16`, `float32` → `bfloat16`, `float32` |
+| [gated_delta_rule.cc](./ssm/gated_delta_rule.cc) | AIE API | Gated DeltaNet's recurrence for one value head over a block of rows, the float32 state carried across calls as bf16 limbs (f32 products from exact limb products) | `bfloat16`, `float32` → `bfloat16`, `float32` |
 
 ## transformer
 | Name | Coding style | Purpose | Datatypes |
@@ -153,6 +176,9 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [addWeighted.cc](./vision/addWeighted.cc) | AIE API | Fixed point weighted sum of two tensors | `uint8_t` |
 | [threshold.cc](./vision/threshold.cc) | AIE API | Clipping | `uint8_t` |
 | [filter2d.cc](./vision/filter2d.cc) | AIE API | Fixed point 2D image processing filter | `uint8_t` |
+| [resample_peak.cc](./vision/resample_peak.cc) | Generic C | The largest normalized weight of one core's share of a resize axis's filter table (torch's antialiased bicubic, IEEE float64), and `resample_join`, the larger of two; shared with [resample.h](./vision/resample.h) | `int32_t` |
+| [resample_quantize.cc](./vision/resample_quantize.cc) | Generic C | One chunk of that table: each output's first sample, tap count and int16 weights at the precision the peak sets, bit for bit as torch on the CPU | `int32_t` |
+| [resize.cc](./vision/resize.cc) | AIE API | A uint8 RGB image resized with those tables, across then down, each pass rounded to uint8 as torch on the CPU, and written as 16x16 patches of `u8 / 255`; six entry points share one core's state | `uint8_t` → `bfloat16` |
 
 ## zero
 | Name | Coding style | Purpose | Datatypes |

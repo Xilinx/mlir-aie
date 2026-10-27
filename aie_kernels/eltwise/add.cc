@@ -134,6 +134,36 @@ void eltwise_vadd_size(T_in *__restrict a, T_in *__restrict b,
   event1();
 }
 
+#ifdef ADD_INT8
+// int8 a + b on power-of-two scales: each operand is shifted up onto the
+// finer scale, and the int32 sum shifted down to the output's, rounding half
+// to even and saturating (ONNX QLinearAdd with power-of-two scales).
+template <const int N>
+void eltwise_vadd_i8(const int8_t *__restrict a, const int8_t *__restrict b,
+                     int8_t *__restrict c, int a_shift, int b_shift,
+                     int out_shift) {
+  constexpr int lanes = 32;
+  static_assert(N % lanes == 0, "the int8 add takes whole 32-lane vectors");
+  event0();
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
+  AIE_PREPARE_FOR_PIPELINING
+  for (int i = 0; i < N / lanes; i++) {
+    aie::accum<acc32, lanes> sum;
+    sum.from_vector(aie::load_v<lanes>(a + i * lanes), a_shift);
+    aie::accum<acc32, lanes> rhs;
+    rhs.from_vector(aie::load_v<lanes>(b + i * lanes), b_shift);
+    sum = aie::add(sum, rhs.template to_vector<int32>(0));
+    aie::store_v(c + i * lanes, sum.template to_vector<int8>(out_shift));
+  }
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
+  event1();
+}
+#endif
+
 extern "C" {
 
 void eltwise_add_bf16_scalar(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
@@ -148,5 +178,12 @@ void eltwise_add_bf16_vector_size(bfloat16 *a_in, bfloat16 *b_in,
                                   bfloat16 *c_out, int size) {
   eltwise_vadd_size<bfloat16, bfloat16>(a_in, b_in, c_out, size);
 }
+
+#ifdef ADD_INT8
+void eltwise_add_i8_vector(int8_t *a_in, int8_t *b_in, int8_t *c_out,
+                           int a_shift, int b_shift, int out_shift) {
+  eltwise_vadd_i8<ADD_ELEMS>(a_in, b_in, c_out, a_shift, b_shift, out_shift);
+}
+#endif
 
 } // extern "C"

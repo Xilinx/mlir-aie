@@ -147,7 +147,7 @@ The placement kwarg is **`tile=`** (not `placement=`), and it defaults to `AnyCo
 which leaves the choice to the `--aie-place-tiles` pass. Passing a non-compute tile raises
 `ValueError` at construction.
 
-`while_true` (default `True`) wraps `core_body` in a `while(true)` loop so the core keeps servicing the fifo until reconfiguration; pass `False` for a core that should run exactly once (rare — most designs want the default forever-loop).
+`while_true` (default `True`) wraps `core_body` in a `while(true)` loop so the core keeps servicing the fifo until reconfiguration; pass `False` for a core that should run exactly once (rare — most designs want the default forever-loop). To run setup once and then loop, pass `False` and write `for _ in forever_():` (`aie.iron.controlflow`) in the body; don't fake it with `range_(sys.maxsize)`.
 
 `stack_size` defaults to the target model's `getDefaultCoreStackSize()` (currently 1024 bytes) — bump it if a core overflows its stack. `dynamic_objfifo_lowering` is a per-core override of the ObjectFifo lowering strategy and is only honored when the global `--dynamic-objFifos` flag is false; leave it `None` unless you're specifically working around a lowering issue.
 
@@ -309,6 +309,12 @@ def sequence(a_in, c_out, in_h, out_h):
     out_h.drain(c_out, wait=True)
 ```
 
+From the host, an `@iron.jit(full_elf=True)` design takes the values per call, by name:
+`design(a, c, parameters={"seq_len": np.int32(128)})`. A design that declares no
+`ScratchpadParameter` refuses `parameters=`, and a generator may not name one of its own
+parameters `parameters`. `test/python/npu-xrt/scratchpad_params/test.py` runs both this and
+the lower-level pyxrt + `ParameterScratchpad` form.
+
 Reach for `Buffer(..., use_write_rtp=True)` + `WorkerRuntimeBarrier` for the common case (matches most existing examples); use `ScratchpadParameter` when you specifically want to avoid a dedicated RTP buffer/lock.
 
 Note that `ScratchpadParameter`s depend on the full-ELF flow (`aiecc --get-full-elf`) and are not available on the Phoenix/Hawk Point architectures.
@@ -356,6 +362,11 @@ def my_design(input_t: In, output_t: Out, *, N: CompileTime[int] = 4096):
 # First call compiles to xclbin, caches; subsequent calls reuse it.
 my_design(input_array, output_array, N=4096)
 ```
+
+The generator never sees tensor data: `input_t` is an `In` with the call's
+`shape` and `dtype` (`input_t.shape`, `input_t.dtype`, `input_t.ndarray_type`),
+and any API that takes a tensor type (`Runtime` fn_args, `ObjectFifo`,
+`np_ndarray_type_get_shape`, the `iron.algorithms` helpers) takes it as is.
 
 `use_cache` defaults to `True`, so `@iron.jit` bare is the normal form — pass
 `use_cache=False` only to force a rebuild. Other config keys: `source_files`,

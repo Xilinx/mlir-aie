@@ -40,10 +40,6 @@ void relu_vectorized_bf16(bfloat16 *restrict a, bfloat16 *restrict c,
 
 extern "C" {
 
-void bf16_relu(bfloat16 *a_in, bfloat16 *c_out) {
-  relu_vectorized_bf16(a_in, c_out, 1024);
-}
-
 void relu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
                     int32_t input_size) {
   relu_vectorized_bf16(input, output, input_size);

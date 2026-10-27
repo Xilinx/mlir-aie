@@ -11,6 +11,7 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallSet.h"
 
 extern "C" {
 #include "xaiengine/xaie_core.h"
@@ -685,7 +686,7 @@ LogicalResult xilinx::AIE::AIERTControl::initLocks(DeviceOp &targetOp) {
   }
 
   // Set locks with explicit initializers
-  targetOp.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
+  targetOp.walkOutsideRuntimeSequences<LockOp>([&](LockOp lockOp) {
     if (lockOp.getLockID() && lockOp.getInit()) {
       TxnLocBracket bracket(*this, lockOp.getLoc());
       auto tileLoc = XAie_TileLoc(lockOp.getTileOp().colIndex(),
@@ -702,7 +703,7 @@ LogicalResult xilinx::AIE::AIERTControl::initLocks(DeviceOp &targetOp) {
 
 LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
   // Set buffers with explicit initializers
-  targetOp.walk<WalkOrder::PreOrder>([&](BufferOp bufferOp) {
+  targetOp.walkOutsideRuntimeSequences<BufferOp>([&](BufferOp bufferOp) {
     auto initialValue = bufferOp.getInitialValue();
     if (!initialValue)
       return;
@@ -729,6 +730,7 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
 LogicalResult
 xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
                                              bool skipCtrlPktOverlay) {
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(targetOp.getContext());
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
@@ -740,7 +742,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if (skipCtrlPktOverlay && connectOp->hasAttr("is_ctrl_pkt_overlay"))
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(connectOp))
         continue;
       TxnLocBracket bracket(*this, connectOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
@@ -752,7 +754,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
 
     for (auto masterSetOp : b.getOps<MasterSetOp>()) {
-      if (skipCtrlPktOverlay && masterSetOp->hasAttr("is_ctrl_pkt_overlay"))
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(masterSetOp))
         continue;
       TxnLocBracket bracket(*this, masterSetOp.getLoc());
       int mask = 0;
@@ -767,23 +769,9 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
         mask |= (1 << msel);
       }
 
-      // the default is to keep header
-      bool keepHeader = true;
-      // the default for dma destinations is to drop the header
-      if (masterSetOp.getDestBundle() == WireBundle::DMA)
-        keepHeader = false;
-      // assume a connection going south from row zero gets wired to shimdma
-      // by a shimmux.
-      if (switchboxOp.rowIndex() == 0 &&
-          masterSetOp.getDestBundle() == WireBundle::South)
-        keepHeader = false;
-
-      // "keep_pkt_header" attribute overrides the above defaults, if set
-      if (auto keep = masterSetOp.getKeepPktHeader())
-        keepHeader = *keep;
-
-      auto dropHeader =
-          keepHeader ? XAIE_SS_PKT_DONOT_DROP_HEADER : XAIE_SS_PKT_DROP_HEADER;
+      auto dropHeader = masterSetOp.keepsPktHeader()
+                            ? XAIE_SS_PKT_DONOT_DROP_HEADER
+                            : XAIE_SS_PKT_DROP_HEADER;
       TRY_XAIE_API_EMIT_ERROR(
           masterSetOp, XAie_StrmPktSwMstrPortEnable, &aiert->devInst, tileLoc,
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
@@ -791,20 +779,32 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
     }
 
     for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
-      if (skipCtrlPktOverlay && packetRulesOp->hasAttr("is_ctrl_pkt_overlay"))
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(packetRulesOp))
         continue;
       TxnLocBracket bracket(*this, packetRulesOp.getLoc());
       int slot = 0;
       Block &block = packetRulesOp.getRules().front();
+      // The overlay's rules take the first slots of a port they share with the
+      // design's rules, and the overlay already enabled the port.
+      bool overlayPort =
+          skipCtrlPktOverlay &&
+          llvm::any_of(block.getOps<PacketRuleOp>(), [&](PacketRuleOp rule) {
+            return overlay.isAttrPresent(rule);
+          });
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
+        if (skipCtrlPktOverlay && overlay.isAttrPresent(slotOp)) {
+          slot++;
+          continue;
+        }
         AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
-        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
-                                &aiert->devInst, tileLoc,
-                                WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
-                                    packetRulesOp.getSourceBundle()),
-                                packetRulesOp.sourceIndex());
+        if (!overlayPort)
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortEnable,
+                                  &aiert->devInst, tileLoc,
+                                  WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(
+                                      packetRulesOp.getSourceBundle()),
+                                  packetRulesOp.sourceIndex());
         auto packetInit = XAie_PacketInit(slotOp.valueInt(), /*PktType*/ 0);
         // TODO Need to better define packet id,type used here
         TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotEnable,
@@ -857,6 +857,97 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
   return success();
 }
 
+LogicalResult xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp) {
+  for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
+    XAie_LocType tileLoc =
+        XAie_TileLoc(switchboxOp.colIndex(), switchboxOp.rowIndex());
+    Block &b = switchboxOp.getConnections().front();
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+      TxnLocBracket bracket(*this, connectOp.getLoc());
+      TRY_XAIE_API_EMIT_ERROR(
+          switchboxOp, XAie_StrmConnCctDisable, &aiert->devInst, tileLoc,
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
+          connectOp.sourceIndex(),
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
+          connectOp.destIndex());
+    }
+    for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      TxnLocBracket bracket(*this, masterSetOp.getLoc());
+      TRY_XAIE_API_EMIT_ERROR(
+          masterSetOp, XAie_StrmPktSwMstrPortDisable, &aiert->devInst, tileLoc,
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(masterSetOp.getDestBundle()),
+          masterSetOp.destIndex());
+    }
+    for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
+      auto rules = packetRulesOp.getRules().front().getOps<PacketRuleOp>();
+      if (rules.empty())
+        continue;
+      TxnLocBracket bracket(*this, packetRulesOp.getLoc());
+      StrmSwPortType port =
+          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(packetRulesOp.getSourceBundle());
+      TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortDisable,
+                              &aiert->devInst, tileLoc, port,
+                              packetRulesOp.sourceIndex());
+      // A slot stays enabled when its port is disabled.
+      for (auto [slot, rule] : llvm::enumerate(rules))
+        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotDisable,
+                                &aiert->devInst, tileLoc, port,
+                                packetRulesOp.sourceIndex(), slot);
+    }
+  }
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::disableCores(DeviceOp &targetOp) {
+  for (auto coreOp : targetOp.getOps<CoreOp>()) {
+    TileID tile = coreOp.getTileID();
+    TxnLocBracket bracket(*this, coreOp.getLoc());
+    TRY_XAIE_API_EMIT_ERROR(coreOp, XAie_CoreDisable, &aiert->devInst,
+                            XAie_TileLoc(tile.col, tile.row));
+  }
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetDmaChannels(DeviceOp &targetOp) {
+  auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
+  llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
+  for (TileElement memOp : memOps) {
+    TileID tile = memOp.getTileID();
+    XAie_LocType tileLoc = XAie_TileLoc(tile.col, tile.row);
+    llvm::SmallSet<std::pair<DMAChannelDir, int>, 4> reset;
+    auto resetChannel = [&](Operation *op, DMAChannelDir dir,
+                            int channel) -> LogicalResult {
+      if (!reset.insert({dir, channel}).second)
+        return success();
+      TxnLocBracket bracket(*this, op->getLoc());
+      XAie_DmaDirection direction =
+          dir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelReset, &aiert->devInst,
+                              tileLoc, channel, direction,
+                              XAie_DmaChReset::DMA_CHANNEL_RESET);
+      // Writing a fresh descriptor ends the reset and returns every field of
+      // the control register, such as out-of-order mode, to its reset value.
+      XAie_DmaChannelDesc defaults;
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaChannelDescInit, &aiert->devInst,
+                              &defaults, tileLoc);
+      TRY_XAIE_API_EMIT_ERROR((*op), XAie_DmaWriteChannel, &aiert->devInst,
+                              &defaults, tileLoc, channel, direction);
+      return success();
+    };
+    Region &region = memOp.getOperation()->getRegion(0);
+    for (auto dmaOp : region.getOps<DMAOp>())
+      if (failed(resetChannel(dmaOp, dmaOp.getChannelDir(),
+                              dmaOp.getChannelIndex())))
+        return failure();
+    for (Block *block : getOrderedChainOfBlocks(&region))
+      for (auto startOp : block->getOps<DMAStartOp>())
+        if (failed(resetChannel(startOp, startOp.getChannelDir(),
+                                startOp.getChannelIndex())))
+          return failure();
+  }
+  return success();
+}
+
 LogicalResult
 xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                                          bool skipCtrlPktOverlay) {
@@ -869,6 +960,12 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
   }
 
   if (failed(initBuffers(targetOp))) {
+    return failure();
+  }
+
+  // A DMA whose lock is already satisfied streams as soon as it is enabled, so
+  // its route must exist first.
+  if (failed(configureSwitches(targetOp, skipCtrlPktOverlay))) {
     return failure();
   }
 
@@ -936,10 +1033,6 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
             return failure();
         }
       }
-  }
-
-  if (failed(configureSwitches(targetOp, skipCtrlPktOverlay))) {
-    return failure();
   }
 
   return success();

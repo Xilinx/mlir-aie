@@ -306,18 +306,19 @@ class HRXContext:
         Args:
             exe: The ``hrx_executable_t`` handle to dispatch.
             export_ordinal (int): The export ordinal from `lookup_export`.
-            bindings (list): Ordered ``(buffer_handle, size)`` tuples; the list
-                index is the DDR-patch argument index.
+            bindings (list): Ordered ``(buffer_handle, offset, length)`` tuples,
+                ``offset`` and ``length`` in bytes; the list index is the
+                DDR-patch argument index.
 
         Raises:
             HRXError: If libhrx rejects the dispatch.
         """
         n = len(bindings)
         arr = (HrxBufferRef * n)()
-        for i, (buf, size) in enumerate(bindings):
+        for i, (buf, offset, length) in enumerate(bindings):
             arr[i].buffer = buf
-            arr[i].offset = 0
-            arr[i].length = size
+            arr[i].offset = offset
+            arr[i].length = length
         cfg = HrxDispatchConfig()
         cfg.workgroup_count[0] = cfg.workgroup_count[1] = cfg.workgroup_count[2] = 1
         cfg.workgroup_size[0] = cfg.workgroup_size[1] = cfg.workgroup_size[2] = 1
@@ -351,8 +352,8 @@ class HRXContext:
 
         Args:
             items: An iterable of ``(executable, export_ordinal, bindings)``,
-                where ``bindings`` is a list of ``(buffer_handle, size)`` tuples
-                (the same shape `dispatch` takes).
+                where ``bindings`` is a list of ``(buffer_handle, offset,
+                length)`` tuples (the same shape `dispatch` takes).
 
         Raises:
             HRXError: If libhrx rejects any recorded dispatch.

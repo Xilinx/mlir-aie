@@ -5,7 +5,10 @@
 #
 """``for_each``: apply a function in-place over a tiled tensor on an AIE core."""
 
+from typing import get_args
+
 import numpy as np
+from aie.helpers.npdtypes import np_ndarray_type_of
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
@@ -37,12 +40,13 @@ def for_each(func, tensor_ty, tile_size=16):
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
+    tensor_ty = np_ndarray_type_of(tensor_ty)
     try:
-        shape_arg, dtype_arg = tensor_ty.__args__
+        shape_arg, dtype_arg = get_args(tensor_ty)
         num_elements = 1
         for dim in shape_arg:
             num_elements *= dim
-        dtype = dtype_arg.__args__[0]
+        dtype = get_args(dtype_arg)[0]
     except Exception as exc:
         raise TypeError(
             f"for_each expects a numpy ndarray type such as "

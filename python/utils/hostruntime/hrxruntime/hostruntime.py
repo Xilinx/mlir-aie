@@ -28,10 +28,12 @@ import logging
 import os
 import time
 from collections import OrderedDict
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
+from ..tensor_class import TensorRegion
 from . import HRXContext, HRXError, control_code_from_elf
 from .tensor import HRXTensor
 
@@ -265,9 +267,11 @@ class HRXHostRuntime(HostRuntime):
         """Validate/sync a run's args and return its HRX dispatch bindings.
 
         Drops callables (the ``@iron.jit`` trailing kernel ref), checks every
-        remaining arg is an ``HRXTensor``, pushes host-side inputs to the device
-        (a cheap ``flush_range`` clflush on the persistent mapping — no copy),
-        and returns both the kept tensors and the ``(buffer, size)`` bindings.
+        remaining arg is an ``HRXTensor`` or a `TensorRegion` of one, pushes
+        host-side inputs to the device (a cheap ``flush_range`` clflush on the
+        persistent mapping — no copy), and returns both the tensors behind the
+        args (a region's whole tensor) and the ``(buffer, offset, length)``
+        bindings.
 
         Sync cost note (review r3623783388): this layer does not know an arg's
         direction (input / output / in-out), so it is deliberately conservative
@@ -282,16 +286,24 @@ class HRXHostRuntime(HostRuntime):
         the same conservative trade-off the XRT runtime makes today.
         """
         kept = [a for a in args if not callable(a)]
-        if not all(isinstance(a, self._tensor_class) for a in kept):
+        owners = [a.tensor if isinstance(a, TensorRegion) else a for a in kept]
+        if not all(isinstance(owner, self._tensor_class) for owner in owners):
             raise HostRuntimeError(
                 f"The {self.__class__.__name__} can only take "
-                f"{self._tensor_class.__name__} as arguments, but got: {kept}"
+                f"{self._tensor_class.__name__} arguments, or regions of them, "
+                f"but got: {kept}"
             )
+        for owner in owners:
+            owner.to("npu")
+            owner._sync_to_device()
+        bindings = []
         for a in kept:
-            a.to("npu")
-            a._sync_to_device()
-        bindings = [(a.buffer_object(), a.nbytes_alloc()) for a in kept]
-        return kept, bindings
+            if isinstance(a, TensorRegion):
+                assert isinstance(a.tensor, HRXTensor)
+                bindings.append((a.tensor.buffer_object(), a.storage_offset, a.nbytes))
+            else:
+                bindings.append((a.buffer_object(), 0, a.nbytes_alloc()))
+        return owners, bindings
 
     def run(
         self,
@@ -301,6 +313,7 @@ class HRXHostRuntime(HostRuntime):
         fail_on_error: bool = True,
         only_if_loaded: bool = False,
         dispatch_insts=None,
+        parameters: Mapping[str, Any] | None = None,
         **kwargs,
     ) -> HRXKernelResult:
         """Dispatch a single loaded kernel and wait for it to finish.
@@ -319,14 +332,16 @@ class HRXHostRuntime(HostRuntime):
             only_if_loaded (bool, optional): Accepted for API compatibility.
             dispatch_insts (np.ndarray | None, optional): Per-call instruction
                 words. Builds a fresh executable and releases it after the run.
+            parameters (Mapping[str, Any] | None, optional): Must be empty:
+                HRX writes no ScratchpadParameters.
             **kwargs: Accepted for API compatibility; ignored by HRX.
 
         Returns:
             HRXKernelResult: Wraps the elapsed dispatch time and success flag.
 
         Raises:
-            HostRuntimeError: If ``trace_config`` is set, or the dispatch fails
-                and ``fail_on_error`` is True.
+            HostRuntimeError: If ``trace_config`` or ``parameters`` is set, or
+                the dispatch fails and ``fail_on_error`` is True.
         """
         assert isinstance(kernel_handle, HRXKernelHandle)
         # HRX does not implement trace capture; fail loudly rather than silently
@@ -334,6 +349,10 @@ class HRXHostRuntime(HostRuntime):
         # trace). Matches the C++ wrapper's reject_unsupported_features.
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
+        if parameters:
+            raise HostRuntimeError(
+                f"HRX writes no ScratchpadParameters; got {sorted(parameters)}"
+            )
         self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
 
@@ -442,7 +461,9 @@ class HRXHostRuntime(HostRuntime):
 
         return HRXKernelResult(stop - start, success=True)
 
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
+    def load_and_run(
+        self, npu_kernel, run_args, dispatch_scalars=None, parameters=None, **kwargs
+    ):
         """Reject trace up front, then defer to the base load/run pipeline.
 
         The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
@@ -452,7 +473,9 @@ class HRXHostRuntime(HostRuntime):
         """
         if getattr(npu_kernel, "trace_config", None) is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(npu_kernel, run_args, dispatch_scalars, **kwargs)
+        return super().load_and_run(
+            npu_kernel, run_args, dispatch_scalars, parameters, **kwargs
+        )
 
     def device(self) -> "Device":
         from aie.iron.device import from_name

@@ -12,40 +12,39 @@
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/OpBase.td"
 
-def I4  : I<4>;
+def I4 : I<4>;
 def I256 : I<256>;
 def I512 : I<512>;
 
-class TypeShape<string name> :
-  StrFunc<"cast<::mlir::ShapedType>($" # name # ").getShape()">;
+class TypeShape<string name>
+    : StrFunc<"cast<::mlir::ShapedType>($"#name#").getShape()">;
 
 // Notice: This predicate class assumes that the type has been verified to be a
 //         ShapedType
-class VectorOfShape<list<int> shape> :
-  CPred<TypeShape<"_self">.result # " == ArrayRef<int64_t>({" #
-        !interleave(shape, ", ") # "})">;
+class VectorOfShape<list<int> shape>
+    : CPred<TypeShape<"_self">.result#" == ArrayRef<int64_t>({"#!interleave(
+          shape, ", ")#"})">;
 
 // Notice: This predicate class assumes that the type has been verified to be a
 //         ShapedType
-class VectorOfElementType<Type type> :
-  SubstLeaves<"$_self", ElementType<"_self">.result, type.predicate>;
+class VectorOfElementType<Type type>
+    : SubstLeaves<"$_self", ElementType<"_self">.result, type.predicate>;
 
 // Notice: This predicate class assumes that the type has been verified to be a
 //         ShapedType
-class VectorOfShapeAndType<list<int> shape, Type type> :
-  Type<And<[VectorOfShape<shape>,
-            VectorOfElementType<type>]>,
-        "vector of shape <" # !interleave(shape, "x") # "> and",
-        "::mlir::VectorType">;
+class VectorOfShapeAndType<list<int> shape, Type type>
+    : Type<And<[VectorOfShape<shape>, VectorOfElementType<type>]>,
+           "vector of shape <"#!interleave(shape, "x")#"> and",
+           "::mlir::VectorType">;
 
-class ShapedTypeBitWidth<string name> :
-  StrFunc<"(cast<::mlir::ShapedType>($" # name # ").getElementTypeBitWidth() * "
-          # !subst(".getType()", "", ElementCount<name>.result) # ")">;
+class ShapedTypeBitWidth<string name>
+    : StrFunc<"(cast<::mlir::ShapedType>($"#name#").getElementTypeBitWidth() "
+              "* "#!subst(".getType()", "", ElementCount<name>.result)#")">;
 
-class VectorOfBitWidthAndElementTypes<int bitwidth, list<Type> allowedTypes> :
-  Type<And<[VectorOfNonZeroRankOf<allowedTypes>.predicate,
-            CPred<ShapedTypeBitWidth<"_self">.result # " == " # bitwidth>]>,
-       bitwidth # "-bit wide vector, of " # AnyTypeOf<allowedTypes>.summary>;
+class VectorOfBitWidthAndElementTypes<int bitwidth, list<Type> allowedTypes>
+    : Type<And<[VectorOfNonZeroRankOf<allowedTypes>.predicate,
+                CPred<ShapedTypeBitWidth<"_self">.result#" == "#bitwidth>]>,
+           bitwidth#"-bit wide vector, of "#AnyTypeOf<allowedTypes>.summary>;
 
 // Matmul integer operands carry signedness in the element type (e.g. si8/ui8);
 // a signless type keeps the historical default. AnyI<w> (isInteger(w)) matches
@@ -53,170 +52,37 @@ class VectorOfBitWidthAndElementTypes<int bitwidth, list<Type> allowedTypes> :
 // AnyI8/16/32/64; AnyI4 is not upstream, so define it here.
 def AnyI4 : AnyI<4>;
 
-def AIE2MatMulLHS :
-  AnyTypeOf<[VectorOfShapeAndType<[4, 16], AnyI8>,
-             VectorOfShapeAndType<[4, 8], AnyI8>,
-             VectorOfShapeAndType<[4, 4], AnyI16>,
-             VectorOfShapeAndType<[4, 2], AnyI16>,
-             VectorOfShapeAndType<[2, 8], AnyI16>,
-             VectorOfShapeAndType<[4, 8], AnyI16>,
-             VectorOfShapeAndType<[2, 4], AnyI16>,
-             VectorOfShapeAndType<[4, 2], AnyI32>,
-             VectorOfShapeAndType<[4, 8], BF16>],
-            "a vector compatible with a lhs operand of matrix-multiply and "
-            # "accumulate",
-            "::mlir::VectorType">;
+// The matmul operand types below only filter element types. Which shapes,
+// types and layouts form a tile is checked by the op verifiers against the
+// recipe table in AIEVecMatMul.h.
+class MatMulOperand<list<Type> types, string what>
+    : Type<VectorOfRankAndType<[2], types>.predicate,
+           "a vector compatible with "#what#" and accumulate",
+           "::mlir::VectorType">;
 
-def AIE2MatMulRHS :
-  AnyTypeOf<[VectorOfShapeAndType<[16, 8], AnyI4>,
-             VectorOfShapeAndType<[8, 8], AnyI8>,
-             VectorOfShapeAndType<[4, 8], AnyI8>,
-             VectorOfShapeAndType<[2, 8], AnyI16>,
-             VectorOfShapeAndType<[8, 4], AnyI8>,
-             VectorOfShapeAndType<[4, 8], AnyI16>,
-             VectorOfShapeAndType<[4, 4], AnyI16>,
-             VectorOfShapeAndType<[2, 4], AnyI16>,
-             VectorOfShapeAndType<[8, 4], BF16>],
-            "a vector compatible with a rhs operand of matrix-multiply and "
-            # "accumulate",
-            "::mlir::VectorType">;
+def AIE2MatMulLHS : MatMulOperand<[AnyI8, AnyI16, AnyI32, BF16],
+                                  "a lhs operand of matrix-multiply">;
+def AIE2MatMulRHS : MatMulOperand<[AnyI4, AnyI8, AnyI16, BF16],
+                                  "a rhs operand of matrix-multiply">;
+def AIE2MatMulACC
+    : MatMulOperand<[AnyI32, AnyI64, F32], "an accumulator of matrix-multiply">;
+def AIE2PMatMulLHS : MatMulOperand<[AnyI8, AnyI16, BF16],
+                                   "a lhs operand of AIE2P matrix-multiply">;
+def AIE2PMatMulRHS : MatMulOperand<[AnyI8, AnyI16, BF16],
+                                   "a rhs operand of AIE2P matrix-multiply">;
+def AIE2PMatMulACC
+    : MatMulOperand<[AnyI32, F32], "an accumulator of AIE2P matrix-multiply">;
 
-def AIE2MatMulACC :
-  AnyTypeOf<[VectorOfShapeAndType<[4, 8], AnyI32>,
-             VectorOfShapeAndType<[4, 4], AnyI32>,
-             VectorOfShapeAndType<[2, 8], AnyI64>,
-             VectorOfShapeAndType<[4, 4], AnyI64>,
-             VectorOfShapeAndType<[4, 4], F32>],
-            "a vector compatible with an accumulator of matrix-multiply and "
-            # "accumulate",
-            "::mlir::VectorType">;
+class isOperandResultTypePairValidForAIE2MulElem<string lhs, string rhs,
+                                                 string acc>
+    : PredOpTrait<
+          acc#" type is a valid accumulator type given the type of the"#" opera"
+              "nds.",
+          Or<[And<[ElementTypeIsPred<acc, I32>, ElementTypeIsPred<lhs, I8>]>,
+              And<[ElementTypeIsPred<acc, I32>, ElementTypeIsPred<lhs, I16>]>,
+              And<[ElementTypeIsPred<acc, I64>, ElementTypeIsPred<lhs, I32>]>,
+              And<[ElementTypeIsPred<acc, F32>, ElementTypeIsPred<lhs, BF16>]>,
+              And<[ElementTypeIsPred<acc, F32>,
+                   ElementTypeIsPred<lhs, F32>]>]>>;
 
-def AIE2PMatMulLHS :
-  AnyTypeOf<[VectorOfShapeAndType<[8, 8], BF16>,
-            VectorOfShapeAndType<[8, 4], BF16>,
-            VectorOfShapeAndType<[8, 1], BF16>,
-            VectorOfShapeAndType<[4, 8], BF16>,
-            VectorOfShapeAndType<[8, 8], AnyI8>,
-            VectorOfShapeAndType<[8, 2], AnyI16>],
-            "a vector compatible with a lhs operand of AIE2P matrix-multiply and "
-            # "accumulate",
-            "::mlir::VectorType">;
-
-def AIE2PMatMulRHS :
-  AnyTypeOf<[VectorOfShapeAndType<[8, 8], BF16>,
-            VectorOfShapeAndType<[4, 8], BF16>,
-            VectorOfShapeAndType<[1, 8], BF16>,
-            VectorOfShapeAndType<[8, 4], BF16>,
-            VectorOfShapeAndType<[8, 8], AnyI8>,
-            VectorOfShapeAndType<[2, 8], AnyI16>],
-            "a vector compatible with a rhs operand of AIE2P matrix-multiply and "
-            # "accumulate",
-            "::mlir::VectorType">;
-
-def AIE2PMatMulACC :
-  AnyTypeOf<[VectorOfShapeAndType<[8, 8], F32>,
-             VectorOfShapeAndType<[8, 4], F32>,
-             VectorOfShapeAndType<[4, 8], F32>,
-             VectorOfShapeAndType<[4, 4], F32>,
-             VectorOfShapeAndType<[8, 8], AnyI32>],
-            "a vector compatible with an accumulator of AIE2P matrix-multiply and "
-            # "accumulate",
-            "::mlir::VectorType">;
-
-class ShapeDimsMatch<string lhs, int ld, string rhs, int rd> :
-  CPred<Shape<lhs>.result # "[" # ld # "] == " #
-        Shape<rhs>.result # "[" # rd # "]">;
-
-class ShapesCompatibleWithContraction<string lhs, string rhs, string acc> :
-  PredOpTrait<"[" # lhs # " x " # rhs # " = " # acc #
-              "] is a valid contraction",
-              And<[ShapeDimsMatch<lhs, 1, rhs, 0>,
-                   ShapeDimsMatch<lhs, 0, acc, 0>,
-                   ShapeDimsMatch<rhs, 1, acc, 1>]>>;
-
-class VectorType<string name> : StrFunc<"cast<VectorType>($" # name #
-                                        ".getType())">;
-
-class VectorTypesMatch<string op1, Type t1,
-                       string op2, Type t2,
-                       string op3, Type t3> :
-  And<[SubstLeaves<"$_self", VectorType<op1>.result, t1.predicate>,
-       SubstLeaves<"$_self", VectorType<op2>.result, t2.predicate>,
-       SubstLeaves<"$_self", VectorType<op3>.result, t3.predicate>]>;
-
-class IsValidAIE2MatMulShapeAndType<string lhs, string rhs, string acc> :
-  PredOpTrait<lhs # " x " # rhs # " = " # acc # " is a valid AIE2 " #
-              "matrix-multiply and accumulate op",
-              Or<[VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 16], AnyI8>,
-                                   rhs, VectorOfShapeAndType<[16, 8], AnyI4>,
-                                   acc, VectorOfShapeAndType<[4, 8], AnyI32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 8], AnyI8>,
-                                   rhs, VectorOfShapeAndType<[8, 8], AnyI8>,
-                                   acc, VectorOfShapeAndType<[4, 8], AnyI32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 4], AnyI16>,
-                                   rhs, VectorOfShapeAndType<[4, 8], AnyI8>,
-                                   acc, VectorOfShapeAndType<[4, 8], AnyI32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 2], AnyI16>,
-                                   rhs, VectorOfShapeAndType<[2, 8], AnyI16>,
-                                   acc, VectorOfShapeAndType<[4, 8], AnyI32>>,
-
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[2, 8], AnyI16>,
-                                   rhs, VectorOfShapeAndType<[8, 8], AnyI8>,
-                                   acc, VectorOfShapeAndType<[2, 8], AnyI64>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 8], AnyI16>,
-                                   rhs, VectorOfShapeAndType<[8, 4], AnyI8>,
-                                   acc, VectorOfShapeAndType<[4, 4], AnyI64>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[2, 4], AnyI16>,
-                                   rhs, VectorOfShapeAndType<[4, 8], AnyI16>,
-                                   acc, VectorOfShapeAndType<[2, 8], AnyI64>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 4], AnyI16>,
-                                   rhs, VectorOfShapeAndType<[4, 4], AnyI16>,
-                                   acc, VectorOfShapeAndType<[4, 4], AnyI64>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 2], AnyI32>,
-                                   rhs, VectorOfShapeAndType<[2, 4], AnyI16>,
-                                   acc, VectorOfShapeAndType<[4, 4], AnyI64>>,
-
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 8], BF16>,
-                                   rhs, VectorOfShapeAndType<[8, 4], BF16>,
-                                   acc, VectorOfShapeAndType<[4, 4], F32>>]>>;
-
-class IsValidAIE2PMatMulShapeAndType<string lhs, string rhs, string acc> :
-  PredOpTrait<lhs # " x " # rhs # " = " # acc # " is a valid AIE2P " #
-              "matrix-multiply and accumulate op",
-              Or<[VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 8], BF16>,
-                                   rhs, VectorOfShapeAndType<[8, 8], BF16>,
-                                   acc, VectorOfShapeAndType<[8, 8], F32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 8], BF16>,
-                                   rhs, VectorOfShapeAndType<[8, 4], BF16>,
-                                   acc, VectorOfShapeAndType<[4, 4], F32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 8], BF16>,
-                                   rhs, VectorOfShapeAndType<[8, 8], BF16>,
-                                   acc, VectorOfShapeAndType<[4, 8], F32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 1], BF16>,
-                                   rhs, VectorOfShapeAndType<[1, 8], BF16>,
-                                   acc, VectorOfShapeAndType<[8, 8], F32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 8], BF16>,
-                                   rhs, VectorOfShapeAndType<[8, 4], BF16>,
-                                   acc, VectorOfShapeAndType<[8, 4], F32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 8], AnyI8>,
-                                   rhs, VectorOfShapeAndType<[8, 8], AnyI8>,
-                                   acc, VectorOfShapeAndType<[8, 8], AnyI32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 2], AnyI16>,
-                                   rhs, VectorOfShapeAndType<[2, 8], AnyI16>,
-                                   acc, VectorOfShapeAndType<[8, 8], AnyI32>>]>>;
-
-
-
-class isOperandResultTypePairValidForAIE2MulElem<string lhs, string rhs, string acc> :
-  PredOpTrait<acc # " type is a valid accumulator type given the type of the" #
-              " operands.",
-    Or<[  
-      And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I8>]>, 
-      And <[ElementTypeIsPred<acc,I32>, ElementTypeIsPred<lhs,I16>]>, 
-      And <[ElementTypeIsPred<acc,I64>, ElementTypeIsPred<lhs,I32>]>, 
-      And <[ElementTypeIsPred<acc,F32>, ElementTypeIsPred<lhs,BF16>]>, 
-      And <[ElementTypeIsPred<acc,F32>, ElementTypeIsPred<lhs,F32>]>
-    ]>>;
-
- 
 #endif

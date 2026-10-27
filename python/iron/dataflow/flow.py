@@ -20,7 +20,6 @@ lower-level "just declare the route" primitives, paired with explicit
 [`Lock`][iron.Lock] shared state) for designs that need direct control.
 """
 
-import itertools
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -28,6 +27,9 @@ from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAcces
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     DMAChannelDir,
     WireBundle,
+)
+from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
+    FlowOp as _FlowOp,
 )
 from ...dialects.aie import (
     flow as _flow_op,
@@ -44,14 +46,15 @@ from ...dialects.aie import (
 from ...dialects.aie import (
     shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ...helpers.sourceloc import SourceSite
 from ..device import Tile  # noqa: F401  (re-exported via package)
-from ..resolvable import NotResolvedError, Resolvable
+from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 from ..runtime._context import active_sequence
 from ..runtime.dmatask import emit_shim_transfer
 from .tile_dma import _SHIM_TILE_TYPES, DmaEndpoint
 
 
-class _Route(Resolvable):
+class _Route(PerDeviceConfigurationResolvable):
     """What Flow and PacketFlow share: named ends, endpoints and shim transfers.
 
     Subclasses set ``_src``, ``_dsts``, ``_name``, ``_shim_symbol``,
@@ -61,20 +64,64 @@ class _Route(Resolvable):
     _broadcast = False
     _src: Tile
     _dsts: list[Tile]
-    _name: str
+    _name: str | None
     _op: Any
     _shim_symbol: str | None
-    _shim_used: bool
-    _channels: list[int | None]
+    _shim_ends: set[int]
+    _channels: "list[int | None | FlowEndpoint]"
     _endpoints: "dict[int, FlowEndpoint]"
+    _src_port: WireBundle
+    _site: SourceSite
+    # The aie.route attributes a routed lowering adds for this kind of route.
+    _route_attrs: "dict[str, Any]" = {}
 
-    def all_tiles(self):
-        """Return the tiles this route touches — Program uses this to resolve them."""
+    def _single_op(self, loc: ir.Location, ip: ir.InsertionPoint | None) -> Any:
+        """Return the one op this route lowers to when it is not routed."""
+        raise NotImplementedError
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        if self._op is not None:
+            return
+        loc = loc or self._site.location(self._name)
+        if self._routed:
+            self._resolve_route(
+                loc, ip, [self._src_port, *self.dst_ports], **self._route_attrs
+            )
+            return
+        self._op = self._single_op(loc, ip)
+        if self._shim_symbol is not None or self._shim_ends:
+            self._emit_shim_dma_alloc(loc, ip)
+
+    def _endpoint_tiles(self):
         return [self._src, *self._dsts]
 
     @property
-    def name(self) -> str:
-        """The name the route's end symbols are built from."""
+    def dst_ports(self) -> list[WireBundle]:
+        """The port each destination tile receives on, in ``_dsts`` order."""
+        raise NotImplementedError
+
+    def control_tiles(self) -> list[Tile]:
+        """Return the destination tiles whose TileControl port this route writes."""
+        return [
+            tile
+            for tile, port in zip(self._dsts, self.dst_ports)
+            if port == WireBundle.TileControl
+        ]
+
+    def all_tiles(self):
+        """Return the tiles this route touches — Program uses this to resolve them."""
+        return self._endpoint_tiles()
+
+    @property
+    def name(self) -> str | None:
+        """The name the route's end symbols are built from.
+
+        None for a route left unnamed until its configuration resolves.
+        """
         return self._name
 
     @property
@@ -94,21 +141,23 @@ class _Route(Resolvable):
         Pass it as a [`DmaChannel`][iron.DmaChannel]'s ``channel``, or build a
         runtime-sequence task on it with
         [`task`][iron.dataflow.tile_dma.DmaEndpoint.task]. Its channel is the
-        one given to the route, or else the one the compiler assigns.
+        one given to the route, or else the one the compiler assigns. An end
+        that shares another route's channel returns that route's end, so one
+        channel is one endpoint.
         """
-        ends = [i for i, t in enumerate(self.all_tiles()) if t == tile]
+        ends = [i for i, t in enumerate(self._endpoint_tiles()) if t == tile]
         if len(ends) != 1:
             raise ValueError(
                 f"{tile} is {'not an end' if not ends else 'more than one end'} "
                 f"of this {type(self).__name__}."
             )
-        end = ends[0]
-        if end not in self._endpoints:
-            self._endpoints[end] = FlowEndpoint(self, end)
-        return self._endpoints[end]
+        owner, end = self._owner(ends[0])
+        if end not in owner._endpoints:
+            owner._endpoints[end] = FlowEndpoint(owner, end)
+        return owner._endpoints[end]
 
     def _shim_end(self) -> int | None:
-        """Return the end ``fill``/``drain`` reach: a shim source, else a lone shim dst."""
+        """Return the end ``shim_symbol`` names: a shim source, else a lone shim dst."""
         if self._src.effective_tile_type in _SHIM_TILE_TYPES:
             return 0
         if len(self._dsts) == 1 and self._dsts[0].effective_tile_type in (
@@ -117,67 +166,136 @@ class _Route(Resolvable):
             return 1
         return None
 
+    def _owner(self, end: int) -> "tuple[_Route, int]":
+        """Return the route and end that own ``end``'s channel.
+
+        An end given another route's end as its channel shares that one.
+        """
+        channel = self._channels[end]
+        if isinstance(channel, FlowEndpoint):
+            return channel._flow._owner(channel._end)
+        return self, end
+
     def _end_symbol(self, end: int) -> str:
+        owner, owner_end = self._owner(end)
+        if owner is not self:
+            return owner._end_symbol(owner_end)
         if end == self._shim_end() and self._shim_symbol is not None:
             return self._shim_symbol
+        if self._name is None:
+            raise ValueError(
+                f"This {type(self).__name__} has no name yet: an unnamed route "
+                "is named by the configuration it is registered with "
+                "(rt.add_flow) when that resolves."
+            )
         if end == 0:
             return f"{self._name}_src"
-        return f"{self._name}_dst{end - 1}" if self._broadcast else f"{self._name}_dst"
+        many = self._broadcast or len(self._dsts) > 1
+        return f"{self._name}_dst{end - 1}" if many else f"{self._name}_dst"
 
-    def _emit_shim_dma_alloc(self) -> None:
-        """Name the shim channel of a route that gives its channels."""
-        end = self._shim_end()
-        if end is None:
-            raise ValueError(
-                f"{type(self).__name__}.shim_symbol={self._shim_symbol!r} requires "
-                f"a shim endpoint, but neither src ({self._src}) nor its one dst "
-                "is a shim tile."
+    def _allocated_ends(self) -> list[int]:
+        """Return the shim ends a transfer used, and the one ``shim_symbol`` names."""
+        ends = set(self._shim_ends)
+        if self._shim_symbol is not None:
+            end = self._shim_end()
+            if end is None:
+                raise ValueError(
+                    f"{type(self).__name__}.shim_symbol={self._shim_symbol!r} "
+                    f"requires a shim endpoint, but neither src ({self._src}) nor "
+                    "its one dst is a shim tile."
+                )
+            ends.add(end)
+        return sorted(ends)
+
+    def _emit_shim_dma_alloc(
+        self, loc: ir.Location | None, ip: ir.InsertionPoint | None
+    ) -> None:
+        """Name the shim channels of a route that gives its channels."""
+        for end in self._allocated_ends():
+            shim_dma_allocation(
+                self._end_symbol(end),
+                self._endpoint_tiles()[end].op,
+                DMAChannelDir.MM2S if end == 0 else DMAChannelDir.S2MM,
+                self._channels[end],
+                loc=loc,
+                ip=ip,
             )
-        shim_dma_allocation(
-            self._end_symbol(end),
-            self.all_tiles()[end].op,
-            DMAChannelDir.MM2S if end == 0 else DMAChannelDir.S2MM,
-            self._channels[end],
+
+    def _resolve_route(
+        self,
+        loc: ir.Location | None,
+        ip: ir.InsertionPoint | None,
+        ports: Sequence[WireBundle],
+        **route_attrs,
+    ) -> None:
+        """Emit one ``aie.route_endpoint`` per end and the ``aie.route`` joining them.
+
+        A shim end carries ``fifoName``, which is what gives it the shim DMA
+        allocation the runtime sequence's transfers are renamed to: the end
+        ``shim_symbol`` would name, and each end a transfer used. An end that
+        shares another route's end names that end's symbol and emits none.
+        """
+        allocated = self._shim_ends | {self._shim_end()}
+        for end, (tile, port, channel) in enumerate(
+            zip(self._endpoint_tiles(), ports, self._channels)
+        ):
+            if isinstance(channel, FlowEndpoint):
+                continue
+            symbol = self._end_symbol(end)
+            _route_endpoint_op(
+                symbol,
+                tile.op,
+                port,
+                channel_index=channel,
+                fifo_name=symbol if end in allocated else None,
+                loc=loc,
+                ip=ip,
+            )
+        self._op = _route_op(
+            self._end_symbol(0),
+            [self._end_symbol(end) for end in range(1, len(self._channels))],
+            **route_attrs,
+            loc=loc,
+            ip=ip,
         )
 
     def _transfer(self, rt_data, direction, **kwargs):
-        """Emit a transfer on the shim channel this route starts or ends at."""
+        """Emit a fill's MM2S at the source or a drain's S2MM at the one dst."""
         kind = type(self).__name__
-        if self not in active_sequence()._runtime.flows:
+        if self not in active_sequence().runtime.flows:
             raise ValueError(
                 f"{kind} must be registered with rt.add_flow(flow) before the "
                 "runtime sequence fills or drains it."
             )
-        src_is_shim = self._src.effective_tile_type in _SHIM_TILE_TYPES
-        dst_is_shim = any(d.effective_tile_type in _SHIM_TILE_TYPES for d in self._dsts)
-        if src_is_shim and dst_is_shim:
-            raise ValueError(
-                f"{kind}.fill()/drain() require exactly one shim endpoint; "
-                "shim-to-shim transfers need explicit endpoint allocations."
-            )
-        if direction == DMAChannelDir.MM2S and not src_is_shim:
-            raise ValueError(
-                f"fill() sends data into the array, so it needs a {kind} whose "
-                f"src is a shim tile; this one's src is {self._src}. "
-                "To read results back out, use drain()."
-            )
-        if direction == DMAChannelDir.S2MM and self._shim_end() != 1:
-            dsts = ", ".join(str(d) for d in self._dsts)
-            raise ValueError(
-                "drain() reads results back out of the array, so it needs a "
-                f"{kind} whose one dst is a shim tile; this one's dst is {dsts}. "
-                "To send data in, use fill()."
-            )
-        end = self._shim_end()
-        assert end is not None
-        self._shim_used = True
+        if direction == DMAChannelDir.MM2S:
+            if self._src.effective_tile_type not in _SHIM_TILE_TYPES:
+                raise ValueError(
+                    f"fill() sends data into the array, so it needs a {kind} whose "
+                    f"src is a shim tile; this one's src is {self._src}. "
+                    "To read results back out, use drain()."
+                )
+            end = 0
+        else:
+            if (
+                len(self._dsts) != 1
+                or self._dsts[0].effective_tile_type not in _SHIM_TILE_TYPES
+            ):
+                dsts = ", ".join(str(d) for d in self._dsts)
+                raise ValueError(
+                    "drain() reads results back out of the array, so it needs a "
+                    f"{kind} whose one dst is a shim tile; this one's dst is "
+                    f"{dsts}. To send data in, use fill()."
+                )
+            end = 1
+        owner, owner_end = self._owner(end)
+        owner._shim_ends.add(owner_end)
         return emit_shim_transfer(self._end_symbol(end), rt_data, **kwargs)
 
     def drain(self, dest, **kwargs):
         """Receive data from this route into the ``dest`` runtime buffer.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body, on a route
-        with exactly one shim endpoint, at its one destination. See
+        whose one destination is a shim tile; the source may be a shim too. See
         ``emit_shim_transfer`` for the keyword arguments; returns a
         [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
@@ -201,13 +319,41 @@ class FlowEndpoint(DmaEndpoint):
     """
 
     def __init__(self, flow: _Route, end: int):
+        channel = flow._channels[end]
         super().__init__(
-            flow.all_tiles()[end],
+            flow._endpoint_tiles()[end],
             DMAChannelDir.MM2S if end == 0 else DMAChannelDir.S2MM,
-            flow._channels[end],
+            channel.channel if isinstance(channel, FlowEndpoint) else channel,
         )
         self._flow = flow
         self._end = end
+
+    def sync(self) -> None:
+        """Wait until this end's tasks have issued their completion tokens.
+
+        Called in a [`Runtime`][iron.Runtime] sequence body, as
+        ``DmaEndpoint.sync`` is.
+
+        A shim end the sequence waits on is driven at run time, so it gets its
+        ``aie.shim_dma_allocation``, as an end a ``fill`` or ``drain`` uses
+        does, and no fifo is given the channel. That is the end a route's
+        other runtime traffic programs, such as a gather's descriptors pushed
+        by control packets.
+
+        Raises:
+            ValueError: The route is not registered with the runtime, or the
+                tile is not placed or the channel is not given.
+        """
+        flow = self._flow
+        if flow not in active_sequence().runtime.flows:
+            raise ValueError(
+                f"{type(flow).__name__} must be registered with rt.add_flow(flow) "
+                "before the runtime sequence waits on its end."
+            )
+        super().sync()
+        if self.tile.effective_tile_type in _SHIM_TILE_TYPES:
+            owner, owner_end = flow._owner(self._end)
+            owner._shim_ends.add(owner_end)
 
     @property
     def symbol(self) -> str | None:
@@ -219,7 +365,7 @@ class FlowEndpoint(DmaEndpoint):
         return self._flow._end_symbol(self._end) if self._flow._routed else None
 
     def __str__(self) -> str:
-        if self.channel is None:
+        if self.channel is None and self._flow.name is not None:
             return f"@{self.symbol}"
         return super().__str__()
 
@@ -239,8 +385,6 @@ class Flow(_Route):
     also how a list of destinations (a circuit-switched broadcast) lowers.
     """
 
-    _flow_index = itertools.count()
-
     def __init__(
         self,
         src: Tile,
@@ -250,6 +394,13 @@ class Flow(_Route):
         src_channel: int | None = None,
         dst_port: WireBundle = WireBundle.DMA,
         dst_channel: int | None = None,
+        vias: Sequence[
+            tuple[
+                Tile,
+                tuple[WireBundle, int],
+                tuple[WireBundle, int],
+            ]
+        ] = (),
         shim_symbol: str | None = None,
         name: str | None = None,
     ):
@@ -265,20 +416,35 @@ class Flow(_Route):
             dst_port (WireBundle): The destination port bundle.  Defaults to DMA.
             dst_channel (int | None): The channel at every destination. ``None``
                 (default) lets the compiler assign each a DMA channel.
+            vias: Exact ``(tile, ingress, egress)`` switchbox hops. Each port is
+                a ``(WireBundle, channel)`` tuple. Vias require one destination
+                and explicit source and destination channels.
             shim_symbol (str | None): Name the runtime sequence reaches the
                 shim end by, in place of the one built from ``name``. Only
                 needed to refer to the channel from elsewhere (e.g. a raw
                 ``shim_dma_single_bd_task("symbol", ...)``); ``fill``/``drain``
                 name it themselves. Direction is inferred: shim-as-source →
-                MM2S, shim-as-dest → S2MM.
+                MM2S, shim-as-dest → S2MM. When both ends are shim tiles it
+                names the source; a drain at the destination uses
+                ``{name}_dst``.
             name (str | None): Base of the end symbols, ``{name}_src`` and
-                ``{name}_dst`` (``{name}_dst{i}`` for a broadcast). A unique name
-                is generated if not provided.
+                ``{name}_dst`` (``{name}_dst{i}`` for a broadcast). Left
+                ``None``, the configuration the Flow is registered with names
+                it ``flow{n}`` when it resolves, counting in registration order.
         """
+        self._site = SourceSite.capture()
         self._broadcast = not isinstance(dst, Tile)
         self._dsts: list[Tile] = [dst] if isinstance(dst, Tile) else list(dst)
         if not self._dsts:
             raise ValueError("Flow needs at least one destination.")
+        self._vias = list(vias)
+        if self._vias and (
+            self._broadcast or src_channel is None or dst_channel is None
+        ):
+            raise ValueError(
+                "Flow vias require one destination and explicit source and "
+                "destination channels."
+            )
         for port, channel, end in (
             (src_port, src_channel, "src"),
             (dst_port, dst_channel, "dst"),
@@ -291,10 +457,10 @@ class Flow(_Route):
         self._src = src
         self._src_port = src_port
         self._dst_port = dst_port
-        self._channels = [src_channel] + [dst_channel] * len(self._dsts)
+        self._channels = [src_channel, *([dst_channel] * len(self._dsts))]
         self._shim_symbol = shim_symbol
-        self._shim_used = False
-        self._name = name if name is not None else f"flow{next(Flow._flow_index)}"
+        self._shim_ends: set[int] = set()
+        self._name = name
         self._endpoints: dict[int, FlowEndpoint] = {}
         self._op = None
 
@@ -307,63 +473,57 @@ class Flow(_Route):
         return list(self._dsts) if self._broadcast else self._dsts[0]
 
     @property
+    def dst_ports(self) -> list[WireBundle]:
+        return [self._dst_port] * len(self._dsts)
+
+    @property
     def _routed(self) -> bool:
         """Whether this Flow lowers to route endpoints rather than `aie.flow`."""
         return self._broadcast or None in self._channels
+
+    def all_tiles(self):
+        tiles = self._endpoint_tiles()
+        return [
+            *tiles,
+            *[tile for tile, _, _ in self._vias if tile not in tiles],
+        ]
 
     def fill(self, source, **kwargs):
         """Send data from the ``source`` runtime buffer into this route.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body, on a Flow
-        with exactly one shim endpoint, at the source. See ``emit_shim_transfer``
-        for the keyword arguments; returns a
+        whose source is a shim tile; a destination may be a shim too. See
+        ``emit_shim_transfer`` for the keyword arguments; returns a
         [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         return self._transfer(source, DMAChannelDir.MM2S, **kwargs)
 
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        if self._op is not None:
-            return
-        if self._routed:
-            self._resolve_route()
-            return
-        self._op = _flow_op(
+    def _single_op(self, loc: ir.Location, ip: ir.InsertionPoint | None):
+        if self._vias:
+            return _FlowOp(
+                self._src.op,
+                self._src_port,
+                self._channels[0],
+                self._dsts[0].op,
+                self._dst_port,
+                self._channels[1],
+                [tile.op for tile, _, _ in self._vias],
+                via_ingress_bundles=[ingress[0].value for _, ingress, _ in self._vias],
+                via_ingress_channels=[ingress[1] for _, ingress, _ in self._vias],
+                via_egress_bundles=[egress[0].value for _, _, egress in self._vias],
+                via_egress_channels=[egress[1] for _, _, egress in self._vias],
+                loc=loc,
+                ip=ip,
+            )
+        return _flow_op(
             self._src.op,
             self._src_port,
             self._channels[0],
             self._dsts[0].op,
             self._dst_port,
             self._channels[1],
-        )
-        if self._shim_symbol is not None or self._shim_used:
-            self._emit_shim_dma_alloc()
-
-    def _resolve_route(self) -> None:
-        """Emit one ``aie.route_endpoint`` per end and the ``aie.route`` joining them.
-
-        The shim end carries ``fifoName``, which is what gives it the shim DMA
-        allocation the runtime sequence's transfers are renamed to.
-        """
-        shim_end = self._shim_end()
-        ports = [self._src_port] + [self._dst_port] * len(self._dsts)
-        for end, (tile, port, channel) in enumerate(
-            zip(self.all_tiles(), ports, self._channels)
-        ):
-            symbol = self._end_symbol(end)
-            _route_endpoint_op(
-                symbol,
-                tile.op,
-                port,
-                channel_index=channel,
-                fifo_name=symbol if end == shim_end else None,
-            )
-        self._op = _route_op(
-            self._end_symbol(0),
-            [self._end_symbol(end) for end in range(1, len(self._channels))],
+            loc=loc,
+            ip=ip,
         )
 
 
@@ -378,23 +538,24 @@ class PacketDest:
 
     tile: Tile
     port: WireBundle = WireBundle.DMA
-    channel: int = 0
+    channel: "int | None | FlowEndpoint" = 0
 
 
 class PacketFlow(_Route):
     """An explicit packet-switched route from a source to one or more destinations.
 
     Connects ``(src_tile, src_port, src_channel)`` to each destination
-    endpoint, tagging the stream with `pkt_id`. Lowers to a single
-    `aie.packetflow` op holding one `aie.packet_source` and one
-    `aie.packet_dest` per destination. The user is responsible for
-    arranging matching [`TileDma`][iron.TileDma] channels on the producer and
-    consumer ends, which [`endpoint`][iron.dataflow.flow.PacketFlow.endpoint]
-    names. Its channels are always given: the compiler assigns channels only
-    to a [`Flow`][iron.Flow].
-    """
+    endpoint, tagging the stream with `pkt_id`. The user arranges matching
+    [`TileDma`][iron.TileDma] channels on the producer and consumer ends, which
+    [`endpoint`][iron.dataflow.flow.PacketFlow.endpoint] names.
 
-    _flow_index = itertools.count()
+    Each end's channel is an index, ``None`` for the compiler to assign, or
+    another PacketFlow's end on the same tile and side, whose channel this end
+    then shares: several flows merging into one receiving channel, or one
+    channel sending several ids. With every channel an index it lowers to one
+    `aie.packet_flow`; otherwise to an `aie.route` as a [`Flow`][iron.Flow]
+    does.
+    """
 
     def __init__(
         self,
@@ -403,9 +564,9 @@ class PacketFlow(_Route):
         dst: Tile,
         *,
         src_port: WireBundle = WireBundle.DMA,
-        src_channel: int = 0,
+        src_channel: "int | None | FlowEndpoint" = 0,
         dst_port: WireBundle = WireBundle.DMA,
-        dst_channel: int = 0,
+        dst_channel: "int | None | FlowEndpoint" = 0,
         extra_dsts: Sequence[PacketDest] = (),
         keep_pkt_header: bool = False,
         shim_symbol: str | None = None,
@@ -421,38 +582,75 @@ class PacketFlow(_Route):
             src: Source tile.
             dst: Primary destination tile.
             src_port: Source port bundle (as for [`Flow`][iron.Flow]).
-            src_channel: Source channel.  Defaults to 0.
+            src_channel: Source channel: an index (default 0), ``None`` for
+                the compiler to assign, or another PacketFlow's source end on
+                ``src`` to share.
             dst_port: Destination port bundle (as for [`Flow`][iron.Flow]).
-            dst_channel: Destination channel.  Defaults to 0.
+            dst_channel: Destination channel, as ``src_channel`` is, sharing
+                another PacketFlow's destination end on ``dst``.
             extra_dsts: Additional destination endpoints if this packet needs
                 to fan out. Each is a [`PacketDest`][iron.PacketDest].
             keep_pkt_header: If `True`, downstream tile receives the 4-byte
                 packet header alongside the payload (useful when the receiver
                 needs to re-emit with the same pkt_id). Defaults to `False`.
             shim_symbol: Same meaning as on [`Flow`][iron.Flow] — emit a
-                matching `aie.shim_dma_allocation` of that name when one
-                endpoint is a shim tile.
-            name: Same meaning as on [`Flow`][iron.Flow].
+                matching `aie.shim_dma_allocation` of that name at the shim
+                source, else at the one shim destination.
+            name: Same meaning as on [`Flow`][iron.Flow]; left ``None``, it is
+                named ``packetflow{n}``.
         """
+        self._site = SourceSite.capture()
         self._pkt_id = pkt_id
         self._src = src
         self._dsts = [dst, *(d.tile for d in extra_dsts)]
         self._src_port = src_port
         self._dst_port = dst_port
         self._channels = [src_channel, dst_channel, *(d.channel for d in extra_dsts)]
+        ports = [src_port, dst_port, *(d.port for d in extra_dsts)]
+        for end, (tile, port, channel) in enumerate(
+            zip(self._endpoint_tiles(), ports, self._channels)
+        ):
+            if isinstance(channel, int):
+                continue
+            if port != WireBundle.DMA:
+                raise ValueError(
+                    f"PacketFlow end on {tile} with port={port} needs a channel "
+                    "index; the compiler only assigns DMA channels."
+                )
+            if isinstance(channel, FlowEndpoint) and not (
+                isinstance(channel._flow, PacketFlow)
+                and channel.tile == tile
+                and (channel._end == 0) == (end == 0)
+                and channel.channel is None
+            ):
+                raise ValueError(
+                    f"PacketFlow end on {tile} can share only another "
+                    "PacketFlow's end on this same Tile object, on the same "
+                    f"side, whose channel the compiler assigns, not {channel}."
+                )
         self._extra_dsts: list[PacketDest] = list(extra_dsts)
         self._endpoints: dict[int, FlowEndpoint] = {}
         self._keep_pkt_header = keep_pkt_header
-        self._shim_symbol = shim_symbol
-        self._shim_used = False
-        self._name = (
-            name if name is not None else f"packetflow{next(PacketFlow._flow_index)}"
+        self._route_attrs = dict(
+            packet=True, packet_id=pkt_id, keep_pkt_header=keep_pkt_header or None
         )
+        self._shim_symbol = shim_symbol
+        self._shim_ends: set[int] = set()
+        self._name = name
         self._op = None
 
     @property
     def pkt_id(self) -> int:
         return self._pkt_id
+
+    @property
+    def dst_ports(self) -> list[WireBundle]:
+        return [self._dst_port, *(d.port for d in self._extra_dsts)]
+
+    @property
+    def _routed(self) -> bool:
+        """Whether a channel is left to the compiler, so this lowers to a route."""
+        return not all(isinstance(c, int) for c in self._channels)
 
     def fill(self, source, pkt_type: int = 0, **kwargs):
         """Send data from the ``source`` runtime buffer into this route.
@@ -468,13 +666,7 @@ class PacketFlow(_Route):
             source, DMAChannelDir.MM2S, packet=(pkt_type, self._pkt_id), **kwargs
         )
 
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        if self._op is not None:
-            return
+    def _single_op(self, loc: ir.Location, ip: ir.InsertionPoint | None):
         dests = [
             {
                 "dest": self._dsts[0].op,
@@ -484,13 +676,13 @@ class PacketFlow(_Route):
         ]
         for d in self._extra_dsts:
             dests.append({"dest": d.tile.op, "port": d.port, "channel": d.channel})
-        self._op = _packetflow_op(
+        return _packetflow_op(
             pkt_id=self._pkt_id,
             source=self._src.op,
             source_port=self._src_port,
             source_channel=self._channels[0],
             dests=dests,
             keep_pkt_header=self._keep_pkt_header,
+            loc=loc,
+            ip=ip,
         )
-        if self._shim_symbol is not None or self._shim_used:
-            self._emit_shim_dma_alloc()

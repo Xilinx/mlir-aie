@@ -221,7 +221,10 @@ def AIENpuToCert : Pass<"aie-npu-to-cert", "mlir::ModuleOp"> {
                         "removed after absorption)">];
 
   let constructor = "xilinx::AIEX::createAIENpuToCertPass()";
-  let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
 }
@@ -646,8 +649,10 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     By default (`ctrl-pkt = false`), each op is replaced with:
     1. A `load_pdi { device_ref = @empty_N }` op (loading an empty device,
        which causes a device reset).
-    2. A sequence of `aiex.npu.write32`/`aiex.npu.blockwrite` ops that
-       configure the device.
+    2. An `aiex.npu.write_config @device` op, whose register writes the NPU
+       translation emits from the device, generating them once however many
+       times the device is reloaded. With `inline-config = true`, the
+       `aiex.npu.write32`/`aiex.npu.blockwrite` ops of those writes instead.
 
     With `ctrl-pkt = true`, each op is replaced with:
     1. A `load_pdi { device_ref = @ctrl_pkt_overlay }` op, which loads the
@@ -662,10 +667,22 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     This pass is intended to run after runtime sequence materialization
     (i.e., after `aiex.configure` ops have been turned into
     `aiex.npu.load_pdi`).
+
+    With `teardown = true`, an `aiex.npu.write_teardown @device` before the
+    next `load_pdi`, or at the sequence's end, undoes what each configuration
+    enabled, so only a sequence's first configuration keeps its reset. With
+    `init-entry = true` as well, that reset moves into an argument-free
+    `reconfig_init` runtime sequence, which the host runs once before the
+    others.
+
+    A sequence whose first and last reset (or overlay load) name the same PDI
+    gets one more of the other, so the next dispatch's first load is not skipped
+    as cached. Under teardown no sequence needs this.
   }];
 
   let constructor = "xilinx::AIEX::createAIEExpandLoadPdiPass()";
-  let dependentDialects = ["mlir::memref::MemRefDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -674,6 +691,17 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
               "If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi "
               "followed by aiex.npu.control_packet ops instead of write32/"
               "blockwrite ops with an empty-device reset.">,
+       Option<"clInlineConfig", "inline-config", "bool", /*default=*/"false",
+              "If true, write each reloaded device's configuration and "
+              "teardown as write32/blockwrite ops rather than an "
+              "aiex.npu.write_config and aiex.npu.write_teardown.">,
+       Option<"clTeardown", "teardown", "bool", /*default=*/"false",
+              "If true, each configuration undoes what it enabled once it is "
+              "done, and only the first configuration of a runtime sequence "
+              "keeps its reset.">,
+       Option<"clInitEntry", "init-entry", "bool", /*default=*/"false",
+              "If true (requires teardown), the one reset moves to an "
+              "argument-free `reconfig_init` runtime sequence per device.">,
   ];
 }
 

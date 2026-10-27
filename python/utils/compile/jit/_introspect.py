@@ -3,30 +3,30 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Annotation introspection helpers for classifying generator parameters.
+"""The generator front end of a declaration.
 
-Classifies generator parameters into ``CompileTime[T]`` / tensor /
-``DispatchTime[T]`` / scalar buckets. Carved out of ``compilabledesign.py`` to
-keep the main file focused on the
-``CompilableDesign`` class itself.  The public surface is
-`split_params`; the rest is implementation detail behind
-`_introspect_generator`'s ``lru_cache``.
+`declare` reads a generator's signature into the same ``Declaration`` an
+operator's class body makes, which ``CompilableDesign`` reads.
 """
 
 from __future__ import annotations
 
 import functools
 import inspect
-import logging
+import re
 import typing
+from dataclasses import MISSING
+from types import FunctionType
 from typing import Annotated, Callable, get_args, get_origin
 
+from .declaration import Declaration
 from .markers import In, InOut, Out
-
-logger = logging.getLogger(__name__)
+from .params import Member, OperatorParam, PerCallMember, param
 
 # Annotation origins that represent runtime tensor directions.
 _TENSOR_ANNOTATIONS = (In, Out, InOut)
+
+_MARKER_NAME = re.compile(r"\b(?:In|Out|InOut|CompileTime|DispatchTime)\b")
 
 
 def _tagged_type(annotation, tag):
@@ -53,95 +53,81 @@ def _tagged_type(annotation, tag):
     return None
 
 
-def _is_compile_param(annotation) -> bool:
-    """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
-    return _tagged_type(annotation, "aie.compile_time") is not None
-
-
-def _is_dispatch_param(annotation) -> bool:
-    """Return True for ``DispatchTime[T]`` or ``Optional[DispatchTime[T]]``."""
-    return _dispatch_param_type(annotation) is not None
-
-
-def _is_tensor_param(annotation) -> bool:
-    """Return True if *annotation* is ``In``, ``Out``, or ``InOut``."""
-    return annotation in _TENSOR_ANNOTATIONS
-
-
-def _dispatch_param_type(annotation):
-    """Return the wrapped ``T`` of a ``DispatchTime[T]``, else ``None``."""
-    return _tagged_type(annotation, "aie.dispatch_time")
-
-
 @functools.lru_cache(maxsize=None)
-def _introspect_generator(generator: Callable):
-    """Memoise ``(hints, signature, (compile, tensor, dispatch, scalar))``.
+def declare(generator: Callable) -> Declaration:
+    """Return the declaration a generator's signature makes.
 
-    All four derived values are pure functions of the generator's source —
-    the same answer for every call of the same function object — but
-    ``typing.get_type_hints`` and ``inspect.signature`` together cost
-    ~40us per invocation.  Memoising shaves both ``split_params`` and
-    ``CompilableDesign.split_runtime_args`` to a dict lookup on the JIT
-    hot path.
-
-    The returned param tuples are immutable; callers that need lists copy.
+    ``CompileTime[T]`` parameters are its parameters, ``In``/``Out``/``InOut``
+    its operands (their shapes come from a call's tensor types) and
+    ``DispatchTime[T]`` its per-call values; any other is a scalar.
+    Memoised: ``typing.get_type_hints`` and ``inspect.signature`` together
+    cost ~40us, and the JIT hot path asks per call.
     """
+    sig = inspect.signature(generator)
     try:
         # include_extras=True: without it, get_type_hints strips Annotated
         # metadata and CompileTime[T] becomes indistinguishable from T.
         hints = typing.get_type_hints(generator, include_extras=True)
-    except Exception as exc:
-        logger.debug("get_type_hints failed for %r: %s", generator, exc)
+    except Exception:
+        # One unresolvable annotation (e.g. a TYPE_CHECKING-only import) must
+        # not demote the others to scalars, so resolve each on its own.
         hints = {}
+        namespace = generator.__globals__ if isinstance(generator, FunctionType) else {}
+        for name, p in sig.parameters.items():
+            if not isinstance(p.annotation, str):
+                continue
+            try:
+                hints[name] = eval(p.annotation, namespace)
+            except Exception as exc:
+                if _MARKER_NAME.search(p.annotation):
+                    raise TypeError(
+                        f"Parameter {name!r} of {generator!r}: annotation "
+                        f"{p.annotation!r} names an iron marker but does not "
+                        f"resolve ({type(exc).__name__}: {exc})"
+                    ) from exc
 
-    sig = inspect.signature(generator)
-    compile_params: list[str] = []
-    tensor_params: list[str] = []
-    dispatch_params: list[str] = []
-    scalar_params: list[str] = []
-    for name, param in sig.parameters.items():
-        ann = hints.get(name, param.annotation)
-        if ann is inspect.Parameter.empty:
-            scalar_params.append(name)
-        elif _is_compile_param(ann):
-            compile_params.append(name)
-        elif _is_tensor_param(ann):
-            tensor_params.append(name)
-        elif _is_dispatch_param(ann):
-            dispatch_params.append(name)
-        else:
-            scalar_params.append(name)
-
-    return (
-        hints,
-        sig,
-        (
-            tuple(compile_params),
-            tuple(tensor_params),
-            tuple(dispatch_params),
-            tuple(scalar_params),
-        ),
+    sig = sig.replace(
+        parameters=[
+            p.replace(annotation=hints.get(n, p.annotation))
+            for n, p in sig.parameters.items()
+        ]
     )
-
-
-def split_params(
-    generator: Callable,
-) -> tuple[list[str], list[str], list[str], list[str]]:
-    """Inspect *generator*; return ``(compile, tensor, dispatch, scalar)`` params.
-
-    * ``compile_params``  — names with ``CompileTime[T]`` annotation
-    * ``tensor_params``   — names with ``In``/``Out``/``InOut`` annotation (in
-      order); a ``*tensors: In`` entry stands for however many tensors a call
-      passes after the named ones
-    * ``dispatch_params``  — names with ``DispatchTime[T]`` annotation (runtime
-      scalars, one compiled artifact serves many values)
-    * ``scalar_params``   — names with any other annotation (unclassified;
-      currently rejected at ``@iron.jit`` time if they carry a default)
-
-    Uses ``typing.get_type_hints()`` so that stringified annotations (produced
-    by ``from __future__ import annotations`` or PEP 563 mode) are evaluated
-    correctly.  Falls back to ``inspect.signature`` annotations on any error
-    (e.g. when the generator's globals are not resolvable at call time).
-    """
-    _, _, (cp, tp, dp, sp) = _introspect_generator(generator)
-    return list(cp), list(tp), list(dp), list(sp)
+    params: dict[str, OperatorParam] = {}
+    members: list[Member] = []
+    scalars: list[str] = []
+    for name, p in sig.parameters.items():
+        ann = p.annotation
+        if ann is inspect.Parameter.empty:
+            scalars.append(name)
+            continue
+        if _tagged_type(ann, "aie.compile_time") is not None:
+            default = MISSING if p.default is p.empty else p.default
+            # A function default is the value, so the record computes it as
+            # itself; so is a list, dict or set, which param() would reject as
+            # shared between instances, but the function already shares it.
+            member = param(
+                default=(
+                    (lambda op, f=default: f)
+                    if isinstance(default, (FunctionType, list, dict, set))
+                    else default
+                )
+            )
+        elif ann in _TENSOR_ANNOTATIONS:
+            member = ann()
+        elif (dtype := _tagged_type(ann, "aie.dispatch_time")) is not None:
+            member = PerCallMember(dtype, None, None)
+        else:
+            scalars.append(name)
+            continue
+        member.__set_name__(None, name)
+        if isinstance(member, OperatorParam):
+            params[name] = member
+        else:
+            members.append(member)
+    return Declaration(
+        generator.__name__ if isinstance(generator, FunctionType) else repr(generator),
+        params,
+        tuple(members),
+        scalars=tuple(scalars),
+        signature=sig,
+    )

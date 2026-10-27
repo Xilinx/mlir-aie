@@ -248,8 +248,8 @@ def _make_argparser():
     p.add_argument(
         "--sa-effort",
         type=float,
-        help="SA placer search budget scale (default: 1.0; lower trades "
-        "placement cost for compile time)",
+        help="SA placer search budget scale (default: 0.05; 1.0 is the full "
+        "schedule, which compiles slower for a placement no faster on the NPU)",
     )
     return p
 

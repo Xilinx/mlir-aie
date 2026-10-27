@@ -163,6 +163,34 @@ func.func @matmul_bf16(%A : vector<4x8xbf16>, %B : vector<8x4xbf16>,
 
 // -----
 
+// CHECK-LABEL: @matmul_bf16_transposed
+// CHECK-SAME: %[[A:.*]]: vector<8x4xbf16>
+// CHECK-SAME: %[[B:.*]]: vector<4x8xbf16>
+// CHECK-SAME: %[[C:.*]]: vector<4x4xf32>
+// CHECK:      %[[RES:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] lhs_transposed rhs_transposed :
+// CHECK-SAME: vector<8x4xbf16>, vector<4x8xbf16> into vector<4x4xf32>
+// CHECK: return %[[RES]] : vector<4x4xf32>
+func.func @matmul_bf16_transposed(%A : vector<8x4xbf16>, %B : vector<4x8xbf16>,
+                                  %C : vector<4x4xf32>) -> vector<4x4xf32> {
+  %0 = aievec.matmul %A, %B, %C lhs_transposed rhs_transposed
+         : vector<8x4xbf16>, vector<4x8xbf16> into vector<4x4xf32>
+  return %0 : vector<4x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @matmul_aie2p_rhs_transposed
+// CHECK:      aievec.matmul_aie2p %{{.*}}, %{{.*}}, %{{.*}} rhs_transposed :
+// CHECK-SAME: vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+func.func @matmul_aie2p_rhs_transposed(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>,
+                                       %C : vector<8x8xf32>) -> vector<8x8xf32> {
+  %0 = aievec.matmul_aie2p %A, %B, %C rhs_transposed
+         : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
+  return %0 : vector<8x8xf32>
+}
+
+// -----
+
 func.func @shuffle_i8(%v : vector<64xi8>) -> vector<64xi8> {
   // CHECK: aievec.shuffle %{{.*}} [t8_8x8]
   %0 = aievec.shuffle %v [t8_8x8] : vector<64xi8>
@@ -395,4 +423,52 @@ func.func @matmul_i8i8_signless(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
   %0 = aievec.matmul %A, %B, %C : vector<4x8xi8>, vector<8x8xi8>
                                   into vector<4x8xi32>
   return %0 : vector<4x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @mul_elem_bf16_64
+// CHECK: aievec.mul_elem %{{.*}}, %{{.*}} : vector<64xbf16>, vector<64xbf16>, vector<64xf32>
+func.func @mul_elem_bf16_64(%a : vector<64xbf16>, %b : vector<64xbf16>) -> vector<64xf32> {
+  %0 = aievec.mul_elem %a, %b : vector<64xbf16>, vector<64xbf16>, vector<64xf32>
+  return %0 : vector<64xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @shuffle_aie2p_modes
+func.func @shuffle_aie2p_modes(%i32 : vector<16xi32>, %i64 : vector<8xi64>,
+                               %bf16 : vector<32xbf16>, %i8 : vector<64xi8>)
+    -> (vector<16xi32>, vector<8xi64>, vector<32xbf16>, vector<64xi8>) {
+  // CHECK: aievec.shuffle %{{.*}} [t32_8x2]
+  %0 = aievec.shuffle %i32 [t32_8x2] : vector<16xi32>
+  // CHECK: aievec.shuffle %{{.*}} [t32_2x8]
+  %1 = aievec.shuffle %0 [t32_2x8] : vector<16xi32>
+  // CHECK: aievec.shuffle %{{.*}} [t32_1x16_flip]
+  %2 = aievec.shuffle %1 [t32_1x16_flip] : vector<16xi32>
+  // CHECK: aievec.shuffle %{{.*}} [t64_4x2]
+  %3 = aievec.shuffle %i64 [t64_4x2] : vector<8xi64>
+  // CHECK: aievec.shuffle %{{.*}} [t64_2x4]
+  %4 = aievec.shuffle %3 [t64_2x4] : vector<8xi64>
+  // CHECK: aievec.shuffle %{{.*}}, %{{.*}} [t16_8x8_lo]
+  %5 = aievec.shuffle %bf16, %bf16 [t16_8x8_lo] : vector<32xbf16>
+  // CHECK: aievec.shuffle %{{.*}}, %{{.*}} [t16_8x8_hi]
+  %6 = aievec.shuffle %5, %bf16 [t16_8x8_hi] : vector<32xbf16>
+  // CHECK: aievec.shuffle %{{.*}} [t8_1x4_flip]
+  %7 = aievec.shuffle %i8 [t8_1x4_flip] : vector<64xi8>
+  return %2, %4, %6, %7 : vector<16xi32>, vector<8xi64>, vector<32xbf16>, vector<64xi8>
+}
+
+// -----
+
+// Inside an AIE2P device the AIE2P-only modes verify.
+// CHECK-LABEL: aie.device(npu2)
+// CHECK: aievec.shuffle %{{.*}} [t32_1x16_flip]
+aie.device(npu2) {
+  %t = aie.tile(0, 2)
+  %c = aie.core(%t) {
+    %v = arith.constant dense<1> : vector<16xi32>
+    %r = aievec.shuffle %v [t32_1x16_flip] : vector<16xi32>
+    aie.end
+  }
 }

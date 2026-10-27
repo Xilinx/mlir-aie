@@ -31,20 +31,20 @@
 // CHECK-DAG:           aie.shim_dma_allocation @of_in_shim_alloc(%[[VAL_1]], MM2S, 0)
 // CHECK-DAG:           aie.shim_dma_allocation @of_out_shim_alloc(%[[VAL_1]], S2MM, 0)
 // CHECK:           %[[VAL_16:.*]] = aie.shim_dma(%[[VAL_1]]) {
-// CHECK:             %[[VAL_17:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
-// CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:             aie.use_lock(%[[VAL_13]], AcquireGreaterEqual, %{{.*}})
-// CHECK:             aie.dma_bd(%[[VAL_14]] : memref<64xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_12]], Release, %{{.*}})
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:  // pred: ^bb0
-// CHECK:             %[[VAL_18:.*]] = aie.dma_start(S2MM, 0, ^bb3, ^bb4)
-// CHECK:           ^bb3:  // 2 preds: ^bb2, ^bb3
+// CHECK:             %[[VAL_18:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_2]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_15]] : memref<64xi32> offset = {{.*}} len = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_3]], Release, %{{.*}})
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             %[[VAL_17:.*]] = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
+// CHECK:           ^bb3:
+// CHECK:             aie.use_lock(%[[VAL_13]], AcquireGreaterEqual, %{{.*}})
+// CHECK:             aie.dma_bd(%[[VAL_14]] : memref<64xi32> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(%[[VAL_12]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb3
-// CHECK:           ^bb4:  // pred: ^bb2
+// CHECK:           ^bb4:
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_19:.*]] = aie.mem(%[[VAL_0]]) {

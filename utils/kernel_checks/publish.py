@@ -5,20 +5,23 @@
 
 Each NPU the hardware checks ran on (``npu1``, ``npu2``) has a directory on
 the branch, ``kernel-checks/<npu>/``, and each component check
-(``sa-placer``, ``sa-placer-hw``, nightlyComponentChecks.yml) one at
+(``sa-placer`` and ``sa-placer-hw`` from nightlyComponentChecks.yml,
+``allocator`` and ``router`` from modelBasedTests.yml) one at
 ``component-checks/<check>/``, holding:
 
     runs/<id>.json         one record per run: the Actions run, what started
                            it (``event``), commit, power mode, provenance,
                            sanity result, failures, and every row as
-                           rows[case][metric] = {value, unit, range}; a
+                           rows[case][metric] = {value, unit, range}, a
+                           timed case's error beside its times; a
                            component check's adds its per-seed ``detail``
     runs.json              the records without their rows or detail, oldest
                            first, and the metrics there is a history of
     latest.json            the newest nightly record that published rows; the
                            PR report's baseline
     history/<metric>.json  one series per case for that metric, a value per
-                           run, for the charts
+                           run, for the charts; each run names its part
+                           (``device``), which host time is compared within
 
 Standard library only: publishKernelResults.yml runs it from a copy beside
 the page, where the package is not installed.
@@ -30,13 +33,22 @@ the page, where the package is not installed.
     publish.py rebuild --out kernel-checks/npu1 [--drop-pmode default]
     publish.py backfill --out kernel-checks/npu1 --runs runs.jsonl
         [--keep-pmode turbo]
-    publish.py redirect --out component-checks --to ../kernel-checks/#view=components
+    publish.py redirect --out kernel-checks --to ../dashboard/#view=night
 
-``perf`` reads the timing step's ``perf.json`` and ``meta.json`` and the
-catalogue. Every publish first migrates a directory that still holds a
+``perf`` reads the timing step's ``perf.json`` and ``meta.json``, the
+correctness step's ``error.json`` (``--report-error``) and the catalogue.
+Each timed case's error is charted as two more metrics per output dtype,
+over its data cases (but the all-zero and all-one edge data) and seeds:
+``max_ulp_<dtype>``, the furthest any result fell from the correctly rounded
+mathematical reference, and ``not_correctly_rounded_<dtype>``, the
+percentage of all those results, pooled, that were not. ``builds`` maps each timed case to its kernel's
+``ExternalFunction.recipe_key``, so a design that calls the same kernel finds
+its row. Every publish first migrates a directory that still holds a
 github-action-benchmark ``data.js`` (one record per entry, then the file is
-removed), rebuilds ``runs.json``, ``latest.json`` and the history from the
-run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
+removed), upgrades any older run record (``upgrade``: a static
+``sa-placer-hw`` record's cases, a kernel check's ``measurement``), rebuilds
+``runs.json``, ``latest.json`` and the history from
+the run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
 ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
 also deletes the records of every run measured in ``MODE``, for retiring a
 power mode nobody should compare against; ``--keep-pmode MODE`` deletes
@@ -79,7 +91,23 @@ MAX_RUNS = 400
 # reader of the old format would get wrong.
 SCHEMA = 1
 REPO = "https://github.com/Xilinx/mlir-aie"
-COMPONENTS = ("sa-placer", "sa-placer-hw")
+COMPONENTS = (
+    "sa-placer",
+    "sa-placer-hw",
+    "allocator",
+    "router",
+    "llama-chain-hw",
+    "yolo26n-hw",
+)
+# The dashboard section each component check's page redirects to.
+SECTION_OF = {
+    "sa-placer": "placement",
+    "sa-placer-hw": "performance",
+    "allocator": "placement",
+    "router": "routing",
+    "llama-chain-hw": "performance",
+    "yolo26n-hw": "performance",
+}
 TARGETS = ("npu1", "npu2") + COMPONENTS
 # Provenance fields worth a column in the history (the rest stay in the record).
 HISTORY_PROVENANCE = (
@@ -91,6 +119,8 @@ HISTORY_PROVENANCE = (
     "kernels",
     "device",
     "fixtures",
+    "dispatch",
+    "measurement",
 )
 # The component checks' rows from before they were published here, renamed to
 # what they are called now. Their other rows (wall time and RSS over the one
@@ -99,7 +129,33 @@ LEGACY_ROWS = (
     (r"sa_placer/fail_count", "test_sa_effort/failed_seeds"),
     (r"sa_placer/(mean|max)_final_cost", r"test_sa_effort/final_cost_\1"),
     (r"sa_placer/hw_fail_count", "mobilenet/failed_seeds"),
-    (r"sa_placer/hw_seed(\d+)_latency_us", r"mobilenet/seed=\1/batch=1/us_per_image"),
+    (
+        r"sa_placer/hw_seed(\d+)_latency_us",
+        r"mobilenet/seed=\1/batch=1/us_per_image",
+    ),
+)
+# An sa-placer-hw case from before the check swept the SA effort and compiled
+# a static design per batch. Every one of those runs placed at effort 1.0, the
+# page's "full".
+STATIC_CASE = re.compile(r"mobilenet/seed=(?P<seed>\d+)(?:/batch=(?P<batch>\d+))?")
+# The night #3807's trace decoder, which counts every timer wrap an Event_Sync
+# repeat folds in, first measured npu2. Before it, the cases below, whose
+# calls run past two wraps, decoded 1.5 to 7.2 times too few cycles; the
+# wraps lost can't be recovered, so their points are dropped.
+DECODER_FIXED = "2026-10-02"
+UNDERSTATED = frozenset(
+    {
+        "bn_conv2dk1_i8/2352x8/uint8_int8/input_channels=336/input_width=7/output_channels=80",
+        "bn_conv2dk1_relu/1792x8/int8_uint8/input_channels=16/input_width=112/output_channels=64",
+        "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=40/input_width=28/output_channels=120",
+        "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40/skip_dtype=int8",
+        "bn_conv2dk1_skip/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
+        "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=120/input_width=28/output_channels=40",
+        "bn_conv2dk1_relu/1120x8/int8_uint8/input_channels=80/input_width=14/output_channels=184",
+        "bn_conv2dk1_skip/2576x8/uint8_int8/input_channels=184/input_width=14/output_channels=80/skip_dtype=int8",
+        "bn_conv2dk1_i8/3360x8/uint8_int8/input_channels=240/input_width=14/output_channels=80",
+        "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16",
+    }
 )
 # The part a runtime's device name means, first match wins. XRT names the
 # same NPU differently across drivers ("RyzenAI-npu1", "NPU Phoenix"); the
@@ -173,6 +229,58 @@ def rows_by_case(rows: list[dict]) -> dict[str, dict[str, dict]]:
     return out
 
 
+# Edge data whose every result is right or wrong together: pooled with the
+# rest, it would swamp the percentage.
+TRIVIAL_DATA = ("zeros", "ones")
+
+
+def error_rows(report: dict) -> dict[str, dict[str, dict]]:
+    """Each case's error metrics in a ``--report-error`` report.
+
+    The report is keyed ``<case>/<data>/s<seed>``, and each run lists its
+    outputs. Per case and output dtype, ``max_ulp_<dtype>`` is the worst
+    over its data cases, seeds and outputs, and ``not_correctly_rounded_
+    <dtype>`` is pooled over all of them; ``TRIVIAL_DATA`` is left out. A
+    row's range names the reference it was measured against, and says when
+    the check itself judges the build by a model of the kernel.
+    """
+    totals: dict[tuple[str, str], dict] = {}
+    for key, run in report.items():
+        case, data, _ = key.rsplit("/", 2)
+        if data in TRIVIAL_DATA:
+            continue
+        for entry in run["outputs"]:
+            t = totals.setdefault(
+                (case, entry["dtype"]),
+                {"ulp": 0, "wrong": 0, "n": 0, "references": set(), "modeled": False},
+            )
+            t["ulp"] = max(t["ulp"], entry["max_ulp"])
+            t["wrong"] += entry["not_correctly_rounded"]
+            t["n"] += entry["n"]
+            t["references"].add(entry["reference"])
+            t["modeled"] |= entry["modeled"]
+    rows: dict[str, dict[str, dict]] = {}
+    for (case, dtype), t in totals.items():
+        if not t["n"]:
+            continue
+        spread = (
+            f"vs the {', '.join(sorted(t['references']))} correctly rounded reference"
+        )
+        if t["modeled"]:
+            spread += "; the check judges this build by a model of the kernel"
+        rows.setdefault(case, {}).update(
+            {
+                f"max_ulp_{dtype}": {"value": t["ulp"], "unit": "ulp", "range": spread},
+                f"not_correctly_rounded_{dtype}": {
+                    "value": round(100 * t["wrong"] / t["n"], 3),
+                    "unit": "%",
+                    "range": spread,
+                },
+            }
+        )
+    return rows
+
+
 def _load(path: Path, default):
     return json.loads(path.read_text()) if path.exists() else default
 
@@ -225,17 +333,20 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
     """Return the record of one hardware run from its ``results`` directory."""
     meta = _load(results / "meta.json", {})
     rows = _load(results / "perf.json", [])
+    errors = error_rows(_load(results / "error.json", {}))
     catalogue = _load(results / "catalogue.json", None)
     preflight = meta.get("preflight") or {}
+    provenance = provenance_fields(meta.get("provenance", ""))
     cases = meta.get("cases") or {}
     record = {
         "schema": SCHEMA,
         "target": target,
         **run,
         "pmode": preflight.get("pmode"),
-        "device": device_part(preflight.get("device")),
+        # A check without an NPU times the CPU it ran on.
+        "device": device_part(preflight.get("device")) or provenance.get("cpu"),
         "device_raw": preflight.get("device"),
-        "provenance": provenance_fields(meta.get("provenance", "")),
+        "provenance": provenance,
         "sane": meta.get("measurement_sane"),
         "published": meta.get("measurement_sane") is True and bool(rows),
         "n_rows": len(rows),
@@ -246,9 +357,26 @@ def record_perf(results: Path, *, target: str, run: dict) -> dict:
             for name, d in cases.items()
             if (d.get("cycles") or {}).get("truncated")
         ),
-        "rows": rows_by_case(rows) if meta.get("measurement_sane") is True else {},
+        "rows": {},
     }
-    for key in ("correctness_error", "refused", "detail"):
+    if meta.get("measurement_sane") is True:
+        record["rows"] = {
+            case: {**cells, **errors.get(case, {})}
+            for case, cells in rows_by_case(rows).items()
+        }
+        record["builds"] = {
+            case: d["build"]
+            for case, d in cases.items()
+            if case in record["rows"] and "build" in d
+        }
+    for key in (
+        "correctness_error",
+        "refused",
+        "reason",
+        "efforts",
+        "iters",
+        "detail",
+    ):
         if key in meta:
             record[key] = meta[key]
     if catalogue:
@@ -265,8 +393,8 @@ def is_nightly(record: dict) -> bool:
 
 
 def summary(record: dict) -> dict:
-    """Return the record without its rows or detail, for ``runs.json``."""
-    return {k: v for k, v in record.items() if k not in ("rows", "detail")}
+    """Return the record without its rows, builds or detail, for ``runs.json``."""
+    return {k: v for k, v in record.items() if k not in ("rows", "builds", "detail")}
 
 
 def _current_name(name: str) -> str | None:
@@ -274,6 +402,84 @@ def _current_name(name: str) -> str | None:
         if re.fullmatch(pattern, name):
             return re.sub(pattern, current, name)
     return None if name.startswith("sa_placer/") else name
+
+
+def upgrade(record: dict) -> bool:
+    """Bring an older run record up to the current case ids; return whether it changed.
+
+    An ``sa-placer-hw`` record from before the check swept the SA effort and
+    compiled one ``--dynamic`` design for every batch has no ``dispatch`` in
+    its provenance; it gets ``dispatch static``. Its placement cost
+    (``mobilenet/seed=S``) and failures become ``.../effort=full``, and its
+    batch 1 compile time becomes ``mobilenet/seed=S/effort=full``'s, the one
+    compile a seed takes now. Its other per-batch compile times go, and its
+    per-batch times stay under their own ids (``mobilenet/seed=S/batch=B``):
+    a static design's times are not the dynamic one's. Its runs get
+    ``effort_label`` ``full``.
+
+    A record with a ``device_raw`` but no ``device`` in its provenance gets
+    it there, where the page keeps each part's times apart.
+
+    A kernel check's record gets the ``measurement`` that took its cycles:
+    ``1`` before ``DECODER_FIXED``, ``2`` since. An npu2 record from before
+    it loses the cycles of the ``UNDERSTATED`` cases. A kernel check's
+    ``npu_us`` from before the check published ``dispatch_us`` was submit to
+    completion, the dispatch's fixed cost included, so it becomes that
+    case's ``dispatch_us``; ``npu_us`` is now the dispatch less an empty
+    one's.
+
+    Other records, and records already current, are left as they are.
+    """
+    before = json.dumps(record, sort_keys=True)
+    target = record.get("target")
+    provenance = record.get("provenance") or {}
+    rows = record.get("rows", {})
+    if record.get("device_raw") and "device" not in provenance:
+        provenance = record["provenance"] = {
+            **provenance,
+            "device": record["device_raw"],
+        }
+    if target == "sa-placer-hw" and "dispatch" not in provenance:
+        record["provenance"] = {**provenance, "dispatch": "static"}
+        upgraded: dict[str, dict] = {}
+        for case, cells in rows.items():
+            static = STATIC_CASE.fullmatch(case)
+            if not static:
+                upgraded[case] = cells
+                continue
+            seed = f"mobilenet/seed={static['seed']}/effort=full"
+            if static["batch"] is None:
+                upgraded.setdefault(seed, {}).update(cells)
+                continue
+            cells = dict(cells)
+            compiled = cells.pop("compile_s", None)
+            if compiled and static["batch"] == "1":
+                upgraded.setdefault(seed, {})["compile_s"] = compiled
+            if cells:
+                upgraded[case] = cells
+        if "rows" in record:
+            record["rows"] = upgraded
+        record["failed"] = [
+            f"{case}/effort=full" if STATIC_CASE.fullmatch(case) else case
+            for case in record.get("failed", [])
+        ]
+        for run in record.get("detail", []):
+            run.setdefault("effort_label", "full")
+    if target in ("npu1", "npu2") and "measurement" not in provenance:
+        decoded_before = record["date"] < DECODER_FIXED
+        record["provenance"] = {
+            **provenance,
+            "measurement": "1" if decoded_before else "2",
+        }
+        if target == "npu2" and decoded_before:
+            for case in UNDERSTATED & rows.keys():
+                for metric in ("cycles", "cycles_per_kop"):
+                    rows[case].pop(metric, None)
+    if target in ("npu1", "npu2"):
+        for cells in rows.values():
+            if "npu_us" in cells and "dispatch_us" not in cells:
+                cells["dispatch_us"] = cells.pop("npu_us")
+    return json.dumps(record, sort_keys=True) != before
 
 
 def migrate(out: Path) -> int:
@@ -376,7 +582,8 @@ def rebuild(
 ) -> dict:
     """Rewrite the derived files from ``runs/*.json``, pruning old runs.
 
-    With ``drop_pmode``, the records of runs measured in that power mode are
+    A record still using older case ids is upgraded in place first. With
+    ``drop_pmode``, the records of runs measured in that power mode are
     deleted first; with ``keep_pmode``, those of runs that charted numbers in
     any other mode.
     """
@@ -386,6 +593,9 @@ def rebuild(
     records = [
         _check_schema(json.loads(p.read_text()), p) for p in runs_dir.glob("*.json")
     ]
+    for r in records:
+        if upgrade(r):
+            (runs_dir / f"{r['id']}.json").write_text(json.dumps(r, indent=1))
 
     def dropped(r: dict) -> bool:
         if drop_pmode and r.get("pmode") == drop_pmode:
@@ -434,6 +644,7 @@ def rebuild(
             "date": r["date"],
             "commit": r.get("commit", {}),
             "pmode": r.get("pmode"),
+            "device": r.get("device"),
             **({"event": r["event"]} if r.get("event") else {}),
             "provenance": {
                 k: v
@@ -512,14 +723,24 @@ def backfill(out: Path, runs: dict[str, dict]) -> int:
 
 
 def redirect(out: Path, to: str) -> Path:
-    """Write ``out/index.html``, sending a browser on to ``to``."""
+    """Write ``out/index.html``, sending a browser on to ``to``.
+
+    A link that carries its own ``#...`` keeps it, so an old link to one
+    view lands on that view; without one, ``to``'s own hash is used.
+    """
     out.mkdir(parents=True, exist_ok=True)
     page = out / "index.html"
+    base = to.split("#", 1)[0]
+    script = (
+        f"<script>location.replace({json.dumps(base)} + "
+        f"(location.hash || {json.dumps(to[len(base):])}));</script>\n"
+    )
     page.write_text(
         "<!DOCTYPE html>\n"
         '<meta charset="utf-8">\n'
-        "<title>Nightly checks</title>\n"
-        f'<meta http-equiv="refresh" content="0; url={to}">\n'
+        "<title>Maintainer dashboard</title>\n"
+        + script
+        + f'<meta http-equiv="refresh" content="0; url={to}">\n'
         f'<link rel="canonical" href="{to}">\n'
         f'<p>This page moved to <a href="{to}">{to}</a>.</p>\n'
     )

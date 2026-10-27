@@ -1,0 +1,2 @@
+a
+prompt 513 tokens, generated 1, median of 5: TTFT 8158.5 ms (min 8135.6; NPU dispatch 8024.6, host 133.9), decode n/a

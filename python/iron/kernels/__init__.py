@@ -6,44 +6,69 @@
 """Factory functions for AIE kernel ExternalFunctions.
 
 Submodules:
-- `eltwise` — passthrough, scale, add, mul, relu
-- `datamovement` — affine_cast, axpy, convert_copy, expand, rope, transpose
+- `eltwise` — passthrough, scale, add, add_sized, mul, mul_sized, mul_add, relu, clamp, magnitude_f32
+- `datamovement` — affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
-- `reduce` — reduce_add, reduce_min, reduce_max, compute_max
-- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
-- `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
-- `norm` — rms_norm, rms_norm_eps, layer_norm
+- `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine, maxpool2d
+- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize
+- `activation` — softmax, gelu, gelu_erf, silu, swiglu, bf16_exp, exp2f_vec, log_f32, log10_clamp_f32, tanh, sigmoid, leaky_relu
+- `norm` — rms_norm, rms_norm_eps, layer_norm, layer_norm_eps
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
 - `sample` — sample_select, sample_combine (exact top-k sampling, split across columns)
+- `moe` — router_top_k (a mixture-of-experts router's top-k ids and softmax
+  weights, deterministic, from a `sample_select` summary), experts (a
+  row's gated feed-forward through its chosen experts, tile by tile)
+- `ssm` — selective_scan (Mamba2's state space recurrence for one head),
+  gated_delta_rule (Gated DeltaNet's recurrence for one value head)
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
 - `flm_gemma4` — core kernels extracted from FastFlowLM's Gemma 4
   implementation (AIE2P): prefill attention, the q4nx LM head and the decode
   layer's cores, each with its object's entry points as attributes. Not
   intended for other models.
-- `linalg` — mm, mv, cascade_mm, mm_bfp (a ``MatrixKernel``: ``.mac_dims``
-  and ``.stream_dims`` read the blocking and DMA transforms off the
-  contract's operand layouts)
+- `linalg` — mm, mv, cascade_mm, cascade_mm_put, mm_bfp, mm_bfp_shuffle (a
+  ``MatrixKernel``: ``.mac_dims`` and ``.stream_dims`` read the blocking and
+  DMA transforms off the contract's operand layouts), mha, mha_softmax and
+  prefill_fv (flash attention's pieces), attention_i8 (int8 attention for
+  YOLO26n's PSA)
+- `fused` — fused_mm (one bf16 GEMM tile with an f32 reduction and a fused
+  activation epilogue)
 - `mm(...).zero` and `mv(...).zero` construct companion zero-fill kernels;
   `mm.mac_dims(...)`, `cascade_mm.mac_dims(...)` and `mha.mac_dims(...)` query
   micro-kernel geometry without constructing a kernel.
 - `zero` — independent zero-fill kernel
+- `tables` — exp_lut, silu_lut and the C headers that compile them into a kernel
+- `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, dwconv1d, dwconv1d_channels_first, dwconv1d_channels_last, bn_*
 
 Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
 ``.contract``: the role of each argument (``In``, ``Out``, ``InOut``,
 ``Param``), a numpy reference, a tolerance and the dtype facts a signature
-cannot say. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
+cannot say. A kernel whose arithmetic differs by ``Build`` declares the
+reference and tolerance per build, and ``fn.contract_for()`` picks the one of
+the build that produced an output. It is what ``aie.iron.algorithms.kernel_design`` uses to build,
 run and check any kernel, and the ``*_ref`` functions exported here are those
 references. ``factories`` lists the factory names.
-- `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 
 import inspect
 import sys
-from typing import get_type_hints
+from typing import get_origin, get_type_hints
 
 from aie.iron.kernel import ExternalFunction
 
+from . import (
+    activation,
+    conv,
+    datamovement,
+    eltwise,
+    flm_gemma4,
+    linalg,
+    reduce,
+    vision,
+)
+from . import zero as _zero_module  # the factory `zero` takes the name
 from ._common import (
+    BUILDS,
+    Build,
     KernelContract,
     Param,
     TensorLayout,
@@ -56,24 +81,27 @@ from .activation import (
     exp2f_vec,
     exp2f_vec_ref,
     gelu,
+    gelu_aie2_lut_ref,
+    gelu_erf,
+    gelu_erf_ref,
+    gelu_lut_ref,
     gelu_ref,
-    gelu_sized,
     leaky_relu,
     leaky_relu_ref,
+    log10_clamp_f32,
+    log10_clamp_f32_ref,
+    log_f32,
+    log_f32_ref,
     relu_ref,
     sigmoid,
-    sigmoid_lut_ref,
     sigmoid_ref,
     sigmoid_table_ref,
     silu,
-    silu_lut_ref,
     silu_ref,
-    silu_sized,
     silu_table_ref,
     softmax,
     softmax_ref,
     swiglu,
-    swiglu_lut_ref,
     swiglu_ref,
     swiglu_table_ref,
     tanh,
@@ -93,7 +121,7 @@ from .conv import (
     bn_conv2dk3,
     bn_conv2dk3_dw,
     bn_conv2dk3_dw_out_split,
-    bn_fc_relu_ui16_pad,
+    bn_fc_relu_ui16_ic_chunk,
     conv2dk1,
     conv2dk1_i8,
     conv2dk1_i8_ref,
@@ -123,8 +151,16 @@ from .datamovement import (
     convert_copy_ref,
     expand,
     expand_ref,
+    limbs_f32,
+    limbs_f32_ref,
+    merge_rows,
+    merge_rows_ref,
+    patch_positions,
+    patch_positions_ref,
     rope,
     rope_ref,
+    row_addresses,
+    row_addresses_ref,
     transpose,
     transpose_ref,
 )
@@ -132,6 +168,10 @@ from .eltwise import (
     add,
     add_ref,
     add_sized,
+    clamp,
+    clamp_ref,
+    magnitude_f32,
+    magnitude_f32_ref,
     mul,
     mul_add,
     mul_add_ref,
@@ -139,7 +179,6 @@ from .eltwise import (
     mul_sized,
     passthrough,
     relu,
-    relu_sized,
     scale,
     scale_ref,
 )
@@ -199,6 +238,8 @@ from .flm_gemma4 import (
     flm_gemma4_q4nx_lm_head_ref,
     flm_gemma4_q4nx_lm_head_rms,
     flm_gemma4_q4nx_lm_head_rms_ref,
+    flm_gemma4_rms_norm_core,
+    flm_gemma4_rms_norm_core_ref,
     flm_gemma4_rms_residual_core,
     flm_gemma4_rms_residual_core_ref,
     flm_gemma4_rope_core,
@@ -215,6 +256,8 @@ from .linalg import (
     MV_COL_MAJ_FIRST,
     MV_COL_MAJ_LAST,
     MatrixKernel,
+    attention_i8,
+    attention_i8_ref,
     cascade_mm,
     cascade_mm_put,
     mha,
@@ -238,11 +281,30 @@ from .linalg import (
     prefill_fv,
     prefill_fv_ref,
 )
-from .norm import layer_norm, layer_norm_ref, rms_norm, rms_norm_eps, rms_norm_ref
+from .moe import (
+    experts,
+    experts_ref,
+    router_top_k,
+    router_top_k_ref,
+)
+from .norm import (
+    layer_norm,
+    layer_norm_eps,
+    layer_norm_ref,
+    rms_norm,
+    rms_norm_eps,
+    rms_norm_ref,
+)
 from .quant import q4nx_dequant, q4nx_dequant_ref
 from .reduce import (
+    argmax,
+    argmax_combine,
+    argmax_combine_ref,
+    argmax_ref,
     compute_max,
     compute_max_ref,
+    maxpool2d,
+    maxpool2d_ref,
     reduce_add,
     reduce_add_ref,
     reduce_max,
@@ -251,6 +313,12 @@ from .reduce import (
     reduce_min_ref,
 )
 from .sample import exp64_ref, sample_combine, sample_ref, sample_select
+from .ssm import (
+    gated_delta_rule,
+    gated_delta_rule_ref,
+    selective_scan,
+    selective_scan_ref,
+)
 from .transformer import (
     layer_norm_affine_cast,
     layer_norm_affine_cast_ref,
@@ -271,6 +339,12 @@ from .vision import (
     filter2d_ref,
     gray2rgba,
     gray2rgba_ref,
+    resample_peak,
+    resample_peak_ref,
+    resample_quantize,
+    resample_quantize_ref,
+    resize,
+    resize_ref,
     rgba2gray,
     rgba2gray_ref,
     rgba2hue,
@@ -280,7 +354,24 @@ from .vision import (
 )
 from .zero import zero
 
+# Each factory's keyword combinations beyond its defaults, by name, so the
+# registry and the host contract test enumerate them instead of restating them.
+DTYPES: dict[str, tuple[dict, ...]] = {
+    **activation.DTYPES,
+    **conv.DTYPES,
+    **datamovement.DTYPES,
+    **eltwise.DTYPES,
+    **flm_gemma4.DTYPES,
+    **linalg.DTYPES,
+    **reduce.DTYPES,
+    **vision.DTYPES,
+    **_zero_module.DTYPES,
+}
+
 __all__ = [
+    "DTYPES",
+    "BUILDS",
+    "Build",
     "KernelContract",
     "MatrixKernel",
     "TensorLayout",
@@ -305,6 +396,14 @@ __all__ = [
     "sample_combine",
     "sample_ref",
     "exp64_ref",
+    "router_top_k",
+    "router_top_k_ref",
+    "experts",
+    "experts_ref",
+    "selective_scan",
+    "selective_scan_ref",
+    "gated_delta_rule",
+    "gated_delta_rule_ref",
     "rms_norm_ref",
     "layer_norm",
     "layer_norm_ref",
@@ -374,6 +473,8 @@ __all__ = [
     "flm_gemma4_decode_rms_residual",
     "flm_gemma4_rms_residual_core",
     "flm_gemma4_rms_residual_core_ref",
+    "flm_gemma4_rms_norm_core",
+    "flm_gemma4_rms_norm_core_ref",
     "flm_gemma4_decode_proj_main",
     "flm_gemma4_decode_per_layer_up",
     "flm_gemma4_bf16_proj_core",
@@ -387,8 +488,17 @@ __all__ = [
     "reduce_max",
     "compute_max",
     "compute_max_ref",
+    "argmax",
+    "argmax_ref",
+    "argmax_combine",
+    "argmax_combine_ref",
+    "maxpool2d",
+    "maxpool2d_ref",
     "relu",
-    "relu_sized",
+    "clamp",
+    "clamp_ref",
+    "magnitude_f32",
+    "magnitude_f32_ref",
     "rgba2hue",
     "rgba2hue_ref",
     "threshold",
@@ -405,15 +515,22 @@ __all__ = [
     "filter2d_ref",
     "add_weighted",
     "add_weighted_ref",
+    "resample_peak",
+    "resample_peak_ref",
+    "resample_quantize",
+    "resample_quantize_ref",
+    "resize",
+    "resize_ref",
     "softmax",
     "gelu",
-    "gelu_sized",
+    "gelu_erf",
     "silu",
-    "silu_sized",
     "swiglu",
     "swiglu_ref",
     "bf16_exp",
     "exp2f_vec",
+    "log_f32",
+    "log10_clamp_f32",
     "tanh",
     "sigmoid",
     "leaky_relu",
@@ -421,6 +538,10 @@ __all__ = [
     "axpy",
     "convert_copy",
     "expand",
+    "limbs_f32",
+    "merge_rows",
+    "patch_positions",
+    "row_addresses",
     "transpose",
     "add_ref",
     "mul_ref",
@@ -432,6 +553,10 @@ __all__ = [
     "axpy_ref",
     "convert_copy_ref",
     "expand_ref",
+    "limbs_f32_ref",
+    "merge_rows_ref",
+    "patch_positions_ref",
+    "row_addresses_ref",
     "transpose_ref",
     "mm_ref",
     "mm_tile_ref",
@@ -440,18 +565,21 @@ __all__ = [
     "mv_bf16_ref",
     "mm_stream_dims",
     "rms_norm_eps",
+    "layer_norm_eps",
     "relu_ref",
     "silu_ref",
+    "gelu_aie2_lut_ref",
+    "gelu_lut_ref",
     "gelu_ref",
+    "gelu_erf_ref",
     "bf16_exp_lut_ref",
     "bf16_exp_ref",
     "exp2f_vec_ref",
+    "log_f32_ref",
+    "log10_clamp_f32_ref",
     "softmax_ref",
-    "sigmoid_lut_ref",
     "sigmoid_table_ref",
-    "silu_lut_ref",
     "silu_table_ref",
-    "swiglu_lut_ref",
     "swiglu_table_ref",
     "tanh_lut_ref",
     "tanh_ref",
@@ -463,6 +591,8 @@ __all__ = [
     "mha",
     "mha_softmax",
     "mha_softmax_ref",
+    "attention_i8",
+    "attention_i8_ref",
     "prefill_fv",
     "prefill_fv_ref",
     "mm_bfp",
@@ -501,7 +631,7 @@ __all__ = [
     "bn_conv2dk1_skip",
     "bn_conv2dk3_dw",
     "bn_conv2dk1_relu_xy_pool_padded",
-    "bn_fc_relu_ui16_pad",
+    "bn_fc_relu_ui16_ic_chunk",
     "bn_conv2dk1_partial_put_i8",
     "bn_conv2dk1_partial_get_relu_i8",
     "bn_conv2dk3_dw_out_split",
@@ -527,6 +657,11 @@ def factories() -> list[str]:
         declared = inspect.signature(f).return_annotation
         if isinstance(declared, str):
             declared = get_type_hints(f).get("return")
-        return inspect.isclass(declared) and issubclass(declared, ExternalFunction)
+        # Python 3.10 takes a generic alias such as tuple[...] for a class.
+        return (
+            get_origin(declared) is None
+            and inspect.isclass(declared)
+            and issubclass(declared, ExternalFunction)
+        )
 
     return [name for name in __all__ if builds_a_kernel(getattr(module, name))]

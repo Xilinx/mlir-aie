@@ -29,7 +29,7 @@ Both are installed into `bin/` and are also importable as
 ## Usage
 
 ```
-aie-hsaco --hsaco OUT.hsaco --arch {aie2,aie2p} --kernel SPEC [--kernel SPEC ...]
+aie-hsaco --hsaco OUT.hsaco --arch {aie2,aie2p,aie4} --kernel SPEC [--kernel SPEC ...]
 ```
 
 `--hsaco` is created as an empty AMDGPU relocatable if it does not exist, so
@@ -58,7 +58,8 @@ The direct form: `INSTS` is the raw `insts.bin` and `PDI` the `main.pdi` that
 `aiecc` emitted next to the xclbin. The PDI is optional — omit it for a design
 whose instruction stream is self-contained. `NUM_COLS` is required: neither
 file records the partition it was compiled for, so it must match the design's
-device (4 for `npu1`, 8 for `npu2`, N for `npuX_Ncol`).
+device (4 for `npu1`, 8 for `npu2`, N for `npuX_Ncol`). AIE4 (`npu3`) has no
+xclbin/PDI flow, so this form does not apply there -- use the full-ELF form.
 
 ```bash
 aie-hsaco --hsaco vector_add.hsaco --arch aie2p \
@@ -96,7 +97,8 @@ elf:PATH[:KERNARG_SIZE[:NUM_COLS]]
 A full ELF is self-contained — it carries its own control code, so there is no
 separate PDI. The tool reads the ELF's COMDAT groups and emits one kernel entry
 per group, named `kernel:instance`. Every entry embeds the same ELF image, and
-the section's blob pool stores it once.
+the section's blob pool stores it once. This is the only form AIE4 (`npu3`)
+supports.
 
 ```bash
 aie-hsaco --hsaco vector_add.hsaco --arch aie2p --kernel 'elf:build/final.elf:64'
@@ -104,6 +106,22 @@ aie-hsaco --hsaco vector_add.hsaco --arch aie2p --kernel 'elf:build/final.elf:64
 
 `KERNARG_SIZE` defaults to `0`. The column count comes from the ELF's
 `.note.xrt.configuration`; `NUM_COLS`, if given, must match it.
+
+Not every group is meant to be dispatched on its own: an MLIR-AIR full ELF
+(Triton-XDNA's `elf` output) also carries an internal sequence, e.g.
+`vecadd_0:vecadd_0_sequence`, that loads no PDI, and ROCR refuses to load a
+full-ELF kernel that loads no PDI. To pack only the kernels you dispatch, name
+them with `--kernel-elf-name` after `--kernel-elf`, repeating `--kernel-elf` to
+pick several (the image is still stored once):
+
+```bash
+aie-hsaco --hsaco vecadd.hsaco --arch aie2p \
+  --kernel-elf build/vecadd.elf --kernel-elf-name main:vecadd
+```
+
+A name the ELF does not have is an error that lists the kernels it does have.
+This is long-form only: full-ELF kernel names contain a colon, which the
+`elf:` spec cannot carry.
 
 ### Column count
 
@@ -151,6 +169,7 @@ kernels and freely mixed with `--kernel`.
 |---|---|
 | `--kernel-name NAME` | starts a PDI+insts kernel |
 | `--kernel-elf PATH` | starts a self-contained full ELF |
+| `--kernel-elf-name NAME` | pack only this `kernel:instance` of the `--kernel-elf` it follows |
 | `--kernel-insts PATH` | instruction stream (`insts.bin`) |
 | `--kernel-pdi PATH` | PDI (`main.pdi`) |
 | `--kernel-xclbin PATH` | xclbin to extract the PDI from |
@@ -288,8 +307,9 @@ name, giving `vecadd:inst_a` and `vecmul:inst_b`.
 
 ## Section layout
 
-The section is named after the architecture (`aie2` or `aie2p`) and is laid out
-as a versioned header, a kernel table, a string table, and a blob pool:
+The section is named after the architecture (`aie2`, `aie2p` or `aie4`) and is
+laid out as a versioned header, a kernel table, a string table, and a blob
+pool:
 
 ```
 [header][kernel table][string table][blob pool]

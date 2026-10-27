@@ -25,10 +25,10 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -53,17 +53,16 @@ static LogicalResult emitUnplacedTileError(Operation *op,
   return err;
 }
 
-struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
+struct DMAStartTaskOpPattern : OpRewritePattern<DMAStartTaskOp> {
   DMAStartTaskOpPattern(MLIRContext *context,
                         llvm::DenseMap<Operation *, bool> &onlyPushedOnce)
-      : OpConversionPattern(context), onlyPushedOnce(onlyPushedOnce) {}
+      : OpRewritePattern(context), onlyPushedOnce(onlyPushedOnce) {}
 
   // Whether every start of a configure pushes a constant repeat count of 0.
   llvm::DenseMap<Operation *, bool> &onlyPushedOnce;
 
-  LogicalResult
-  matchAndRewrite(DMAStartTaskOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(DMAStartTaskOp op,
+                                PatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
     if (!task_op && !op.getTask().getDefiningOp<DMAConfigureTaskForOp>()) {
       // A task carried through runtime control flow. The push names one head
@@ -99,18 +98,24 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
       return failure();
     }
     Value bdIdVal = getAsValue(rewriter, loc, idOfr, rewriter.getI32Type());
+    if (op.getRepeatParameterAttr())
+      return op.emitOpError("has a repeat_parameter; run "
+                            "--aie-lower-scratchpad-parameters first");
     // A runtime repeat count keeps its width so the push lowering can
-    // range-check it before narrowing.
-    OpFoldResult repeatOfr = op.getPushRepeatCount(task_op);
+    // range-check it before narrowing. A scratchpad one is added to a push
+    // of 0.
+    IntegerAttr repeatIdx = op.getRepeatStateTableIdxAttr();
+    OpFoldResult repeatOfr = repeatIdx ? rewriter.getI32IntegerAttr(0)
+                                       : op.getPushRepeatCount(task_op);
     onlyPushedOnce.try_emplace(task_op, true).first->second &=
-        isConstantIntValue(repeatOfr, 0);
+        !repeatIdx && isConstantIntValue(repeatOfr, 0);
     Value repeatCount = dyn_cast<Value>(repeatOfr);
     if (!repeatCount)
       repeatCount = getAsValue(rewriter, loc, repeatOfr, rewriter.getI32Type());
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
         task_op.getChannel(), op.getPushIssueToken(task_op), repeatCount,
-        bdIdVal);
+        bdIdVal, repeatIdx);
     return success();
   }
 };
@@ -135,12 +140,11 @@ static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
   return configures.empty() ? nullptr : configures.front();
 }
 
-struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
-  using OpConversionPattern::OpConversionPattern;
+struct DMAAwaitTaskOpPattern : OpRewritePattern<DMAAwaitTaskOp> {
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult
-  matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(DMAAwaitTaskOp op,
+                                PatternRewriter &rewriter) const override {
     DMAConfigureTaskOp task_op = op.getTaskOp();
     if (!task_op) {
       // The awaited task threads through runtime control flow (an scf result),
@@ -371,13 +375,10 @@ struct AIEDMATasksToNPUPass
             "address.");
       }
       uint64_t buf_addr = *bufferAddr;
-      // On AIE2p (NPU2), memtile DMAs use an offset-based address
-      // space where the base depends on the relative position of the
-      // buffer's tile (west=0, internal=getMemTileSize, east=2x).
-      // On AIE2 (NPU1), memtile DMAs address local memory directly
-      // starting at 0. Only add the offset for AIE2p.
-      if (target_model.isMemTile(col, row) &&
-          target_model.getTargetArch() == AIE::AIEArch::AIE2p) {
+      // A memtile DMA addresses its west neighbour, itself and its east
+      // neighbour as three windows (west=0, own=getMemTileSize, east=2x), as
+      // the static lowering in AIERT.cpp does.
+      if (target_model.isMemTile(col, row)) {
         auto addrOffset = target_model.getMemLocalBaseAddress(
             col, row, buffer.getTileOp().getCol(), buffer.getTileOp().getRow());
         if (addrOffset)
@@ -898,9 +899,8 @@ struct AIEDMATasksToNPUPass
       // wrap-size limit.  Canonicalization zeroes size-1 strides before this
       // pass runs, so isContiguousTransfer is sufficient.
       bool treatAsLinear =
-          isLinearTransfer(input_sizes, input_strides) ||
-          (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
-           isContiguousTransfer(input_sizes, input_strides));
+          isLinearModeTransfer(target_model, tile.getCol(), tile.getRow(),
+                               input_sizes, input_strides);
       if (!treatAsLinear && bd_op.getLengthStateTableIdxAttr())
         AIE::placeRuntimeLengthDimension(input_sizes, input_strides);
 
@@ -929,9 +929,10 @@ struct AIEDMATasksToNPUPass
       getHardwareStridesWraps(target_model, bd_op, buffer_type, input_sizes,
                               input_strides, sizes, strides);
 
-      if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
-                                    tile.getRow(), input_sizes, input_strides,
-                                    sizes, strides, treatAsLinear))) {
+      if (failed(verifyStridesWraps(
+              bd_op, [&] { return bd_op->emitOpError(); }, buffer_type,
+              tile.getCol(), tile.getRow(), input_sizes, input_strides, sizes,
+              strides, treatAsLinear))) {
         return failure();
       }
 
@@ -1284,20 +1285,24 @@ struct AIEDMATasksToNPUPass
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
-    // Convert DMAStartBD and DMAAwaitBD ops
-    ConversionTarget target(getContext());
-    target.addLegalDialect<AIEXDialect>();
-    target.addLegalDialect<arith::ArithDialect>();
-    target.addLegalOp<cf::AssertOp>();
-    target.addIllegalOp<DMAStartTaskOp>();
-    target.addIllegalOp<DMAAwaitTaskOp>();
+    // Lower the starts and awaits. Each rewrites one op into ops that need no
+    // further lowering, so one walk does it.
     RewritePatternSet patterns(&getContext());
     llvm::DenseMap<Operation *, bool> onlyPushedOnce;
     patterns.insert<DMAStartTaskOpPattern>(&getContext(), onlyPushedOnce);
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
+    walkAndApplyPatterns(device, std::move(patterns));
     // A start or await left unlowered still uses its configure, so lowering
     // the configures would only add errors.
-    if (failed(applyPartialConversion(device, target, std::move(patterns))))
+    bool unlowered = false;
+    device.walk([&](Operation *op) {
+      if (isa<DMAStartTaskOp, DMAAwaitTaskOp>(op)) {
+        op->emitError() << "failed to legalize operation '" << op->getName()
+                        << "'";
+        unlowered = true;
+      }
+    });
+    if (unlowered)
       return signalPassFailure();
 
     // Drop the now-dead task-index carries the awaits held, so the branch-local

@@ -7,9 +7,9 @@
 
 import hashlib
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterable, TypeVar, get_args, get_origin, overload
+from typing import Callable, TypeVar, get_args, get_origin, overload
 
 import numpy as np
 from aie.helpers.npdtypes import (
@@ -19,7 +19,9 @@ from aie.helpers.npdtypes import (
 )
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction
+from aie.utils import get_current_device
 from aie.utils.compile.jit.markers import In, InOut, Out
+from aie.utils.compile.utils import AIE_API_PREFIX_FLAGS, resolve_target_arch
 from aie.utils.verify import Tolerance
 
 
@@ -32,6 +34,11 @@ class Param:
 
 
 _ROLES = (In, Out, InOut, Param)
+
+_STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
+# The scalar MoE and SSM kernels stay rolled: unrolled, they overflow aie2's
+# 16 KB program memory.
+_STRICT_FP_ROLLED = [*_STRICT_FP, "-fno-unroll-loops"]
 
 
 def _is_tensor_type(arg_type):
@@ -106,6 +113,25 @@ class Trace:
 
 
 @dataclass(frozen=True)
+class Build:
+    """The branch of a kernel's source that one compile selects.
+
+    Attributes:
+        arch: The architecture compiled for, as ``resolve_target_arch`` names it.
+        portable: Compiled with ``AIE_KERNELS_PORTABLE``, which turns every
+            ``AIE_TUNED_*`` branch off and builds the untuned one.
+    """
+
+    arch: str
+    portable: bool = False
+
+    @property
+    def tuned(self) -> str:
+        """The ``AIE_TUNED_*`` branch compiled: ``arch``, or ``"portable"``."""
+        return "portable" if self.portable else self.arch
+
+
+@dataclass(frozen=True)
 class KernelContract:
     """What a kernel computes, declared next to the factory that builds it.
 
@@ -124,10 +150,19 @@ class KernelContract:
             saturating kernel's reference clips). Called with every unbound
             non-output argument in order: ``In`` tiles as ``(calls, n)``
             arrays, ``Param`` values as arrays or numbers. Returns the
-            output for all calls, a tuple for several outputs. ``None``
-            builds the kernel but does not judge it.
+            output for all calls, a tuple for several outputs. ``None``,
+            without ``per_build``, builds the kernel but does not judge it.
         tolerance: How close the device must come; ``None`` is
             ``Tolerance.default_for`` the output dtype.
+        per_build: ``(build, reference, tolerance)`` for each of ``BUILDS``,
+            for a kernel whose arithmetic or measured bound differs by build:
+            a LUT one build reads and another does not, a bound measured on
+            each arch. ``reference`` and ``tolerance`` are then ``None``, and
+            ``for_build`` picks the row of the build that produced an output,
+            once that is known.
+        true_function: The function the kernel approximates, for error
+            reports, where the reference (or a build's row) models the kernel
+            instead, as a LUT build's does. ``None``: the reference is it.
         ops_per_call: Arithmetic operations per call; ``None`` means one
             per output element.
         out_valid: Meaningful leading elements of a DMA-padded output tile;
@@ -143,10 +178,6 @@ class KernelContract:
             the rounding mode a bf16 store needs); ``None`` when the source
             sets its own mode or narrows nothing. A Worker handed the kernel
             calls it before its loop.
-        stack_bytes: Core stack a Worker calling this kernel needs, when
-            more than the target's default. Say where the number came from;
-            a note that gives only bytes per build means aiecc's
-            measured_stack_size.
         unsupported: Why the builder cannot run this kernel, or ``None``. A
             kernel with no output argument (a cascade PUT half) says so here.
         layouts: A ``TensorLayout`` per argument; ``None`` is identity.
@@ -160,6 +191,14 @@ class KernelContract:
             every call the same output tile, passes ``call * step`` as the
             offset and drains the tile once, so the calls must fill it
             exactly. ``None``: each call writes a whole tile of its own.
+        call_index: The bound scalar ``Param`` the builder sets to each
+            call's index, 0 first, for a kernel whose state carries from one
+            call to the next and restarts at 0. The reference sees every
+            call at once, in order. ``None``: the bound value holds.
+        even_calls: Whether every call does the same work. Timing then
+            reports the cheapest call, the rest being the core waiting;
+            calls of unequal work (each its own chunk of a resample) report
+            the median call.
         trace: The ``Trace`` shape of the kernel's markers. Every
             library factory declares one; ``None`` (undeclared) is only for
             ad-hoc kernels, and ``cycles_per_call`` refuses it.
@@ -179,21 +218,24 @@ class KernelContract:
     roles: tuple[type, ...]
     reference: Callable[..., np.ndarray | tuple[np.ndarray, ...]] | None = None
     tolerance: Tolerance | None = None
+    true_function: Callable[..., np.ndarray | tuple[np.ndarray, ...]] | None = None
     ops_per_call: int | None = None
     out_valid: int | None = None
     sample: Callable[..., list] | None = None
     acc_dtype: type | None = None
     reduction: int | None = None
     setup: Callable[[], object] | None = None
-    stack_bytes: int | None = None
     unsupported: str | None = None
     layouts: tuple[TensorLayout | None, ...] = ()
     parameter_bindings: tuple[tuple[int, object], ...] = ()
     initializers: tuple[tuple[int, Callable], ...] = ()
     out_offset: tuple[int, int] | None = None
+    call_index: int | None = None
+    even_calls: bool = True
     trace: Trace | None = None
     uses_lut: bool = False
     alignments: tuple[tuple[int, int], ...] = ()
+    per_build: tuple[tuple[Build, Callable | None, Tolerance | None], ...] = ()
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in _ROLES]
@@ -232,16 +274,47 @@ class KernelContract:
                 )
             if step < 1:
                 raise ValueError(f"out_offset step must be >= 1, got {step}")
+        if self.call_index is not None and (
+            self.call_index not in bound
+            or self.out_offset is not None
+            and self.out_offset[0] == self.call_index
+        ):
+            raise ValueError(
+                "call_index needs a bound Param that out_offset does not set"
+            )
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
-        if self.stack_bytes is not None and self.stack_bytes < 1:
-            raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
         if any(
             not 0 <= i < len(self.roles) or align < 1 for i, align in self.alignments
         ):
             raise ValueError("alignments must name arguments with positive byte counts")
+        if self.per_build:
+            builds = [build for build, _, _ in self.per_build]
+            if len(set(builds)) != len(builds) or set(builds) != set(BUILDS):
+                raise ValueError(f"per_build must have one row for each of {BUILDS}")
+            if self.reference is not None or self.tolerance is not None:
+                raise ValueError(
+                    "a per_build contract leaves reference and tolerance to its rows"
+                )
+
+    def for_build(self, build: Build) -> "KernelContract":
+        """Return this contract with the reference and tolerance of ``build``'s row.
+
+        A contract without ``per_build`` is the same for every build.
+
+        Raises:
+            ValueError: When ``per_build`` has no row for ``build``.
+        """
+        if not self.per_build:
+            return self
+        for row, reference, tolerance in self.per_build:
+            if row == build:
+                return replace(
+                    self, reference=reference, tolerance=tolerance, per_build=()
+                )
+        raise ValueError(f"no per_build row for {build}")
 
     @property
     def out_indices(self) -> tuple[int, ...]:
@@ -374,17 +447,24 @@ ARCH_TRAITS = {
     )
 }
 
+BUILDS = tuple(
+    Build(arch, portable) for arch in ARCH_TRAITS for portable in (False, True)
+)
 
-def _detect_arch() -> str:
-    """Return the bound device's architecture, or ``'aie2'`` when none is bound.
+
+def _bound_arch() -> str | None:
+    """Return the bound device's architecture, or ``None`` when none is bound.
 
     Raises:
         RuntimeError: When the bound device's architecture has no kernels.
     """
-    from aie.utils import get_current_device
-    from aie.utils.compile.utils import resolve_target_arch
+    device = get_current_device(probe_runtime=False)
+    return None if device is None else resolve_target_arch(device)
 
-    return resolve_target_arch(get_current_device(probe_runtime=False))
+
+def _detect_arch() -> str:
+    """Return the bound device's architecture, or ``'aie2'`` when none is bound."""
+    return _bound_arch() or "aie2"
 
 
 def _arch_traits() -> ArchTraits:
@@ -392,13 +472,20 @@ def _arch_traits() -> ArchTraits:
     return ARCH_TRAITS[_detect_arch()]
 
 
+def _vector_args(*indices):
+    """``alignments`` for arguments every build, portable too, loads as whole vectors."""
+    align = {"aie2": 32, "aie2p": 64}.get(_detect_arch())
+    return tuple((i, align) for i in indices) if align else ()
+
+
 def _tuned_arch() -> str:
     """Return the arch whose ``AIE_TUNED_*`` code is built, or ``"portable"``.
 
-    A factory choice that follows the code of one branch -- a stack size, a
-    tolerance, a reference model -- keys on this rather than on
-    ``_detect_arch``, so that it pairs with the branch built when
-    ``AIE_KERNELS_PORTABLE=1`` asks for every kernel's untuned branch.
+    A compile-side choice that follows one branch's code (a setup kernel, an
+    alignment) keys on this rather than on ``_detect_arch``, so that it pairs
+    with the branch built when ``AIE_KERNELS_PORTABLE=1`` asks for every
+    kernel's untuned branch. A reference or tolerance is picked by
+    ``KernelContract.for_build`` from the build that ran instead.
     """
     if os.environ.get("AIE_KERNELS_PORTABLE") == "1":
         return "portable"
@@ -466,23 +553,6 @@ def _dtype_to_bit_width(dtype, *, factory_name: str) -> int:
             "Use np.uint8, np.int16, or np.int32."
         )
     return bit_width
-
-
-def dtypes(table: Iterable[dict]):
-    """Declare the keyword combinations a factory builds, as ``factory.dtypes``.
-
-    The registry and the host contract test enumerate the table instead of
-    restating it.
-    """
-
-    def decorate(factory):
-        # A function attribute: pyright models functions as having a fixed
-        # attribute set, so the one assignment is annotated rather than each
-        # of the ~20 factories that carry a table.
-        factory.dtypes = tuple(table)  # pyright: ignore[reportFunctionMemberAccess]
-        return factory
-
-    return decorate
 
 
 def _conv_act_dtype_info(
@@ -634,9 +704,7 @@ def _make_extern(
     declaration. Different parameterizations get distinct
     ``object_file_name``s — the latter is auto-suffixed with a short
     digest of the identity so per-parameterization .o files don't
-    overwrite each other on disk.  The default ``<name>.o`` is preserved
-    when ``compile_flags`` is empty AND ``use_chess`` is False (no
-    parameterization to disambiguate).
+    overwrite each other on disk.
 
     ``use_chess`` selects the Chess (xchesscc) compiler instead of Peano
     for this kernel's .o build.  See
@@ -654,11 +722,16 @@ def _make_extern(
     the ``.cc`` and collide at link.
     """
     flags_tuple = tuple(compile_flags or []) + _portable_flags()
+    # A source that includes aie_api reads it first, so a precompiled header of it
+    # builds the same object.
+    if not use_chess and "#include <aie_api/aie.hpp>" in Path(source_path).read_text():
+        flags_tuple += AIE_API_PREFIX_FLAGS
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
     # One source serves every arch, so the arch is part of the kernel's identity.
     identity = (
         func_name,
         str(source_path),
+        tuple(include_dirs or ()),
         arg_keys,
         flags_tuple,
         use_chess,
@@ -681,15 +754,12 @@ def _make_extern(
         # suffix, and (below) no symbol prefix, so every binding of that
         # translation unit resolves to the one KernelObject.
         digest = None
-    elif flags_tuple or arg_keys or str(source_path):
+    else:
         # 8 hex chars of sha256 — short enough not to bloat MLIR strings,
         # wide enough that the chance of two distinct identities colliding
         # is vanishingly small (~2^-32).
         digest = hashlib.sha256(repr(identity).encode()).hexdigest()[:8]
         object_file_name = f"{func_name}_{digest}{'.ll' if inline else '.o'}"
-    else:
-        digest = None
-        object_file_name = None  # ExternalFunction default → ``<name>.o``
 
     # Prefix the SYMBOL name with the digest whenever this is a parameterized
     # kernel.  Two helper calls with different parameterizations compile two
@@ -709,8 +779,8 @@ def _make_extern(
     # copy.  ``digest`` is a pure function of ``identity``, so prefixing every
     # parameterized variant unconditionally keeps the symbol and the
     # suffix-form ``f"{func_name}_{digest}.o"`` filename identical across builds.
-    # When ``digest`` is None (unparameterized default-name kernel, or an
-    # explicit ``object_file_name``) this leaves the symbol unprefixed.
+    # An explicit ``object_file_name`` leaves ``digest`` None and the symbol
+    # unprefixed.
     #
     # Chess exception: the symbol prefix is applied post-compile via
     # ``llvm-objcopy --redefine-sym`` (see compile_external_kernel), which only

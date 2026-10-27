@@ -20,9 +20,9 @@ import numpy as np
 import pytest
 from aie.iron import In, InOut, Out, kernels
 from aie.iron.device import from_name
-from aie.iron.kernels import sample
+from aie.iron.kernels import moe, sample
 from aie.iron.kernels._common import ARCH_TRAITS
-from aie.utils import config, get_current_device
+from aie.utils import config
 from aie.utils.compile.utils import compile_cxx_core_function
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
@@ -59,6 +59,13 @@ def _logits(rng, n, *, ties=0, scale=3.0):
     return logits
 
 
+@pytest.fixture(params=list(ARCH_TRAITS))
+def arch(request):
+    """Bind a one-column device of each architecture and yield its name."""
+    with set_current_device(from_name(ARCH_TRAITS[request.param].device, n_cols=1)):
+        yield request.param
+
+
 # --- factory arguments -----------------------------------------------------
 
 
@@ -72,6 +79,9 @@ def _logits(rng, n, *, ties=0, scale=3.0):
         (kernels.sample_combine, "slice_size"),
         (kernels.sample_combine, "columns"),
         (kernels.sample_combine, "k_max"),
+        (kernels.sample_combine, "last_slice"),
+        (kernels.router_top_k, "slice_size"),
+        (kernels.router_top_k, "top_k"),
     ],
 )
 def test_factories_reject_non_positive_integers(factory, name, bad):
@@ -84,13 +94,22 @@ def test_factories_reject_non_positive_integers(factory, name, bad):
     [
         (kernels.sample_select, dict(slice_size=32, chunk=32, k_max=33), "k_max"),
         (kernels.sample_combine, dict(slice_size=32, k_max=33), "k_max"),
-        (kernels.sample_select, dict(slice_size=1024, chunk=256, k_max=129), "stack"),
-        (kernels.sample_combine, dict(slice_size=1024, k_max=129), "stack"),
+        (
+            kernels.sample_select,
+            dict(slice_size=1024, chunk=256, k_max=129),
+            "verified",
+        ),
+        (kernels.sample_combine, dict(slice_size=1024, k_max=129), "verified"),
         (kernels.sample_select, dict(slice_size=1 << 24, chunk=1 << 12), "2\\*\\*24"),
         (kernels.sample_combine, dict(slice_size=1 << 24, columns=1), "2\\*\\*24"),
         (kernels.sample_select, dict(slice_size=1024, chunk=384), "divide"),
         (kernels.sample_select, dict(slice_size=1023, chunk=341), "even"),
         (kernels.sample_combine, dict(slice_size=1 << 23, columns=256), "int32"),
+        (kernels.sample_combine, dict(slice_size=1024, last_slice=1026), "last_slice"),
+        (kernels.sample_combine, dict(slice_size=1024, last_slice=32), "last_slice"),
+        (kernels.router_top_k, dict(slice_size=32, top_k=33), "k_max"),
+        (kernels.router_top_k, dict(slice_size=1024, top_k=129), "verified"),
+        (kernels.router_top_k, dict(slice_size=1 << 24), "2\\*\\*24"),
     ],
 )
 def test_factories_reject_bad_geometry(factory, kwargs, match):
@@ -98,13 +117,23 @@ def test_factories_reject_bad_geometry(factory, kwargs, match):
         factory(**kwargs)
 
 
-def test_factories_accept_their_edges(npu2_device):
+def test_factories_accept_their_edges(arch):
     kernels.sample_select(slice_size=64, chunk=64, k_max=64)
     kernels.sample_select(slice_size=(1 << 24) - 2, chunk=2, k_max=1)
     kernels.sample_select(slice_size=np.int64(1030), chunk=np.int32(206), k_max=8)
     kernels.sample_combine(slice_size=(1 << 23) - 1, columns=256, k_max=1)
     kernels.sample_select(slice_size=1024, chunk=256, k_max=sample.K_MAX_LIMIT)
     kernels.sample_combine(slice_size=1024, k_max=sample.K_MAX_LIMIT)
+    kernels.sample_combine(slice_size=1024, k_max=64, last_slice=64)
+    kernels.router_top_k(slice_size=np.int64(64), top_k=np.int32(64))
+    kernels.router_top_k(slice_size=1024, top_k=sample.K_MAX_LIMIT)
+
+
+def test_combine_takes_a_shorter_last_summary():
+    combine = kernels.sample_combine(columns=4, slice_size=14560, last_slice=8186)
+    assert combine.arg_shape(0) == (
+        3 * sample.summary_words(14560, 64) + sample.summary_words(8186, 64),
+    )
 
 
 # --- geometry --------------------------------------------------------------
@@ -497,7 +526,7 @@ def test_reference_rejects_a_non_finite_scaled_maximum():
 # --- factory metadata ------------------------------------------------------
 
 
-def test_select_factory_metadata(npu2_device):
+def test_select_factory_metadata(arch):
     fn = kernels.sample_select(slice_size=2048, chunk=512, k_max=32)
     assert Path(fn._source_file).name == "sample_select.cc"
     assert Path(fn._source_file).parent.name == "sample"
@@ -518,7 +547,7 @@ def test_select_factory_metadata(npu2_device):
     assert fn == kernels.sample_select(slice_size=2048, chunk=512, k_max=32)
 
 
-def test_combine_factory_metadata(npu2_device):
+def test_combine_factory_metadata(arch):
     fn = kernels.sample_combine(columns=3, slice_size=2048, k_max=32)
     assert Path(fn._source_file).name == "sample_combine.cc"
     for flag in (
@@ -534,7 +563,6 @@ def test_combine_factory_metadata(npu2_device):
     assert fn.arg_shape(2) == fn.arg_shape(3) == (1,)
     assert all(fn.arg_dtype(i) == np.int32 for i in range(4))
     assert fn.contract.roles == (In, In, Out, Out)
-    assert fn.contract.stack_bytes == 4096
 
 
 # --- builds ----------------------------------------------------------------
@@ -548,7 +576,6 @@ def _peano_available() -> bool:
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
-@pytest.mark.parametrize("arch", list(ARCH_TRAITS))
 @pytest.mark.parametrize(
     "factory, kwargs",
     [
@@ -560,12 +587,7 @@ def _peano_available() -> bool:
 def test_kernels_build_for_every_architecture(arch, factory, kwargs, tmp_path):
     # An object, not a syntax check: a builtin the backend cannot lower (ctz
     # and popcount on aie2) passes -fsyntax-only.
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(from_name(ARCH_TRAITS[arch].device, n_cols=1))
-    try:
-        fn = getattr(kernels, factory)(**kwargs)
-    finally:
-        set_current_device(previous)
+    fn = vars(kernels)[factory](**kwargs)
     source = Path(fn._source_file)
     compile_cxx_core_function(
         str(source),
@@ -575,3 +597,25 @@ def test_kernels_build_for_every_architecture(arch, factory, kwargs, tmp_path):
         compile_args=list(fn._compile_flags),
     )
     assert (tmp_path / f"{fn.name}.o").stat().st_size > 0
+
+
+@pytest.mark.parametrize("slice_size, top_k", [(32, 8), (70, 4), (64, 16)])
+def test_a_summary_routes_as_the_logits_it_summarizes(slice_size, top_k):
+    # The device cases feed router_top_k summaries built on the host.
+    rng = np.random.default_rng(slice_size + top_k)
+    rows = [rng.normal(0, 2, slice_size) for _ in range(8)]
+    rows.append(np.full(slice_size, 1.5))
+    rows.append(np.where(rng.random(slice_size) < 0.5, -0.0, 0.0))
+    rows.append(np.arange(slice_size) / 16.0)
+    ties = rng.normal(0, 0.5, slice_size)
+    ties[rng.choice(slice_size, top_k, replace=False)] = np.sort(ties)[-1 - top_k // 2]
+    rows.append(ties)
+    for logits in rows:
+        logits = np.asarray(logits, bfloat16)
+        summary = sample.select_summary_ref(logits, top_k)
+        ids, weights = moe.router_top_k_summary_ref(summary, top_k=top_k)
+        want_ids, want_weights = moe.router_top_k_ref(logits, top_k)
+        np.testing.assert_array_equal(ids[0], want_ids)
+        np.testing.assert_array_equal(
+            weights[0].view(np.uint16), want_weights.view(np.uint16)
+        )

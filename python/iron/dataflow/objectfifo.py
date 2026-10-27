@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 
@@ -23,16 +23,21 @@ from ...helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
+    np_ndarray_type_of,
     pack_pad_value,
     single_elem_or_list_to_list,
 )
+from ...helpers.sourceloc import SourceSite
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
-from ..resolvable import NotResolvedError, Resolvable
+from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from .endpoint import ObjectFifoEndpoint
+
+if TYPE_CHECKING:
+    from ...utils.compile.jit.markers import In, InOut, Out
 
 
 def _object_walk(
@@ -83,7 +88,7 @@ def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
     return (a.col, a.row) == (b.col, b.row)
 
 
-class ObjectFifo(Resolvable):
+class ObjectFifo(PerDeviceConfigurationResolvable):
     """A synchronized, explicit dataflow channel between IRON program components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
 
     Internally, an ObjectFifo is a circular buffer with a given depth and
@@ -101,7 +106,7 @@ class ObjectFifo(Resolvable):
 
     def __init__(
         self,
-        obj_type: type[np.ndarray],
+        obj_type: type[np.ndarray] | In | Out | InOut,
         *,
         depth: int | None = 2,
         name: str | None = None,
@@ -114,7 +119,7 @@ class ObjectFifo(Resolvable):
         delegate_tile: Tile | None = None,
         via_DMA: bool = False,
         init_values: list[np.ndarray] | None = None,
-        consumer_obj_type: type[np.ndarray] | None = None,
+        consumer_obj_type: type[np.ndarray] | In | Out | InOut | None = None,
         aie_stream: tuple[int, int] | None = None,
         packet: bool = False,
         packet_id: int | None = None,
@@ -122,9 +127,11 @@ class ObjectFifo(Resolvable):
         """Construct an ObjectFifo.
 
         Args:
-            obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
+            obj_type (type[np.ndarray] | In | Out | InOut): The type of each buffer in the
+                ObjectFifo, or a generator's tensor operand.
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
-            name (str | None, optional): The name of the ObjectFifo. If None is given, the Program names it when it resolves. Defaults to None.
+            name (str | None, optional): The name of the ObjectFifo. If None is
+                given, its DeviceConfiguration names it. Defaults to None.
             to_stream (TensorAccessPattern | None, optional): How the producer's DMA
                 walks each object onto the AXI stream: a pattern over a tensor the
                 size of one object (of each input's object, for a join's output),
@@ -187,13 +194,16 @@ class ObjectFifo(Resolvable):
             ValueError: If ``depth`` is provided and is less than 1, or a stream
                 walk is staged, has a nonzero offset, or pads a consumer.
         """
+        self._site = SourceSite.capture()
         self._depth = depth
         if self._depth is not None and self._depth < 1:
             raise ValueError(
                 f"Default ObjectFifo depth must be > 0, but got {self._depth}"
             )
-        self._obj_type = obj_type
-        self._consumer_obj_type: type[np.ndarray] | None = consumer_obj_type
+        self._obj_type = np_ndarray_type_of(obj_type)
+        self._consumer_obj_type: type[np.ndarray] | None = (
+            None if consumer_obj_type is None else np_ndarray_type_of(consumer_obj_type)
+        )
         self._to_stream = _object_walk(to_stream, "to_stream", can_pad=True)
         self._from_stream_per_cons = _object_walk(
             from_stream_per_cons, "from_stream_per_cons"
@@ -209,7 +219,7 @@ class ObjectFifo(Resolvable):
         self._repeat_count: int | None = repeat_count
         self._disable_synchronization: bool = disable_synchronization
         # Delegate tile for shared-memory buffer placement (lowers to aie.objectfifo.allocate).
-        # Must be resolved before resolve() runs — Program.resolve() picks this up via
+        # Must be resolved before resolve() runs; DeviceConfiguration finds it via
         # ObjectFifo._delegate_tile when collecting tiles to assign MLIR ops to.
         self._delegate_tile: Tile | None = delegate_tile
         self._via_DMA: bool = via_DMA
@@ -516,6 +526,8 @@ class ObjectFifo(Resolvable):
                 consumer_datatype=consumer_datatype,
                 packet=self._packet or None,
                 packet_id=self._packet_id,
+                loc=ir.Location.name(self.name, childLoc=loc or self._site.location()),
+                ip=ip,
             )
             self._op = op
 
@@ -568,7 +580,7 @@ class ObjectFifo(Resolvable):
         self.op.release(port, num_elem)
 
 
-class ObjectFifoHandle(Resolvable):
+class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     """A handle to an [`ObjectFifo`][iron.ObjectFifo], of type *producer* or *consumer*.
 
     Producer and consumer handles are what [`Worker`][iron.Worker] core
@@ -670,7 +682,7 @@ class ObjectFifoHandle(Resolvable):
 
     @property
     def name(self) -> str | None:
-        """The name of the ObjectFifo, None until the Program names an unnamed one."""
+        """The name, or None until its DeviceConfiguration assigns one."""
         return self._object_fifo.name
 
     def _derived_name(self, suffix: str) -> str | None:
@@ -752,6 +764,7 @@ class ObjectFifoHandle(Resolvable):
         managed=True,
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
+        repeat_parameter: ScratchpadParameter | str | None = None,
     ):
         """Shared body for fill()/drain().
 
@@ -787,6 +800,7 @@ class ObjectFifoHandle(Resolvable):
             managed=managed,
             length_parameter=length_parameter,
             length_unit=length_unit,
+            repeat_parameter=repeat_parameter,
         )
 
     def fill(
@@ -800,6 +814,7 @@ class ObjectFifoHandle(Resolvable):
         managed: bool = True,
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
+        repeat_parameter: ScratchpadParameter | str | None = None,
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
 
@@ -820,6 +835,7 @@ class ObjectFifoHandle(Resolvable):
             managed,
             length_parameter,
             length_unit,
+            repeat_parameter,
         )
 
     def drain(
@@ -833,6 +849,7 @@ class ObjectFifoHandle(Resolvable):
         managed: bool = True,
         length_parameter: ScratchpadParameter | str | None = None,
         length_unit: int | None = None,
+        repeat_parameter: ScratchpadParameter | str | None = None,
     ):
         """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.
 
@@ -853,6 +870,7 @@ class ObjectFifoHandle(Resolvable):
             managed,
             length_parameter,
             length_unit,
+            repeat_parameter,
         )
 
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:
@@ -1146,7 +1164,7 @@ class ObjectFifoHandle(Resolvable):
         self._object_fifo.resolve(loc=loc, ip=ip)
 
 
-class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
+class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
     """This is an object used internally by split(), join() and forward() operations."""
 
     def __init__(
@@ -1171,6 +1189,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         Raises:
             ValueError: Arguments are validated.
         """
+        self._site = SourceSite.capture()
         self._srcs = single_elem_or_list_to_list(srcs)
         self._dsts = single_elem_or_list_to_list(dsts)
         self._src_offsets = src_offsets if src_offsets is not None else []
@@ -1259,5 +1278,10 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             src_ops = [s.op for s in self._srcs]
             dst_ops = [d.op for d in self._dsts]
             self._op = object_fifo_link(
-                src_ops, dst_ops, self._src_offsets, self._dst_offsets
+                src_ops,
+                dst_ops,
+                self._src_offsets,
+                self._dst_offsets,
+                loc=loc or self._site.location(),
+                ip=ip,
             )

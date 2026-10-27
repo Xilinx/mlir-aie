@@ -18,8 +18,7 @@ give every aiex.run its own slice of a single trace argument. Each run emits the
 number of events its runtime parameter names, so the count in a slice identifies
 the run that filled it.
 
-The design is compiled from a pre-written .mlir file because IRON builds one
-device with one runtime sequence, and this needs three devices with five.
+The design uses three IRON Configurations with five runtime sequences.
 """
 
 import json
@@ -34,6 +33,7 @@ from aie.utils.trace import (
     get_trace_slices,
     parse_trace_slices,
 )
+from aie_design import build_design
 
 HERE = Path(__file__).parent
 
@@ -67,7 +67,7 @@ def main():
 
     trace_config = TraceConfig(trace_size=len(RUNS) * SLICE_BYTES)
     design = iron.jit(
-        HERE / "aie.mlir",
+        build_design,
         full_elf=True,
         trace_config=trace_config,
         object_files=[str(Path.cwd() / "kernel.o")],

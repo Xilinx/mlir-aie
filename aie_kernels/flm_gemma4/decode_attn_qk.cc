@@ -28,7 +28,6 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bf16 *__restrict pY,
 
 constexpr int k_prod_lock = FLM_GEMMA4_DECODE_ATTN_QK_K_PROD_LOCK;
 constexpr int k_cons_lock = FLM_GEMMA4_DECODE_ATTN_QK_K_CONS_LOCK;
-constexpr int l_cons_lock = FLM_GEMMA4_DECODE_ATTN_QK_L_CONS_LOCK;
 
 // ---------------------------------------------------------------------------
 // Entry points. See decode_attn_kv.cc; k has the role of v there. q arrives
@@ -41,13 +40,11 @@ extern "C" {
 
 // Primes the running max. The Worker acquires q before this call, and q
 // arrives only after the host writes the RTPs, so the Worker may read L only
-// after this function returns. The kv tile waits for the l_cons_lock release.
+// after this function returns.
 void attn_qk_begin(bf16 *m) {
-  // Peano miscompiles a function-local `static const aie::vector`, so a loop
-  // fills m.
-  for (int _z = 0; _z < 16; _z++)
-    m[_z] = (bf16)(-0x1.FEp127f);
-  _lock_release_p(m, l_cons_lock);
+  static const aie::vector<bf16, 16> neg_inf =
+      aie::broadcast<bf16, 16>(-0x1.FEp127f);
+  aie::store_v(m, neg_inf);
 }
 
 // One round. iter is the round index and sets the causal mask. s is the
@@ -240,6 +237,7 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bfloat16 *__restrict pY,
     out[6] = mout3.extract<16>(2);
     out[7] = mout3.extract<16>(3);
 
+    AIE_LOOP_UNROLL_FULL
     for (int h = 0; h < Q_HEADS_PER_CU; h++) {
       aie::vector<bf16, 16> vec = update(m + h, c + h, out[h], mask, is_first);
       aie::store_v(pY1, vec);

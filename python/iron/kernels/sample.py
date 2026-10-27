@@ -43,7 +43,13 @@ from aie.iron.kernel import ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, Trace, _kernel_source, _make_extern
+from ._common import (
+    _STRICT_FP,
+    KernelContract,
+    Trace,
+    _kernel_source,
+    _make_extern,
+)
 
 # int32 words of a draw row: temperature bits, top-k, n53 low, n53 high.
 ROW_WORDS = 4
@@ -54,10 +60,8 @@ SELECT_PASSES = 2
 # int32 words before a summary's (index, key) entries (sample.h).
 SUMMARY_HEADER = 8
 # The largest k_max: sample_combine's stack holds a table of k_max weights.
-# 128 is the largest verified on hardware; see sample_combine's stack_bytes.
+# 128 is the largest verified on hardware.
 K_MAX_LIMIT = 128
-
-_STRICT_FP = ["-ffp-contract=off", "-fno-fast-math"]
 
 
 def summary_words(slice_size: int, k_max: int) -> int:
@@ -81,8 +85,8 @@ def _check_slice(owner: str, slice_size: int, k_max: int) -> None:
         raise ValueError(f"{owner}: a slice must hold at least k_max logits")
     if k_max > K_MAX_LIMIT:
         raise ValueError(
-            f"{owner}: k_max {k_max} is above {K_MAX_LIMIT}, the most "
-            "sample_combine's 4096-byte stack holds"
+            f"{owner}: k_max {k_max} is above {K_MAX_LIMIT}, the largest "
+            "verified on hardware"
         )
     if slice_size >= 1 << 24:
         raise ValueError(f"{owner}: slice_size must be below 2**24")
@@ -97,7 +101,9 @@ def select_streams(slice_size: int, chunk: int) -> int:
     return 1 if chunk == slice_size else SELECT_PASSES
 
 
-def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction:
+def sample_select(
+    *, slice_size=32064, chunk=5344, k_max=64, valid=None
+) -> ExternalFunction:
     """One column's half of sampling: its slice's summary, for ``sample_combine``.
 
     ``sample_select(x, row, state, summary)`` takes ``chunk`` bf16 logits per
@@ -107,9 +113,18 @@ def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction
     ``state`` is ``SELECT_STATE_WORDS`` int32 of worker-local memory, zero
     before the first call; the last call of a position leaves it ready for the
     next. ``summary`` is ``summary_words(slice_size, k_max)`` int32.
+    ``valid`` (default ``slice_size``) is how many of the slice's logits are
+    tokens'; the rest pad it to whole words, and the kernel writes them -inf
+    in ``x`` so none is drawn.
     """
     _check_slice("sample_select", slice_size, k_max)
     _positive("sample_select", chunk=chunk)
+    valid = slice_size if valid is None else valid
+    if not k_max <= valid <= slice_size:
+        raise ValueError(
+            f"sample_select: valid ({valid}) must be from k_max ({k_max}) to "
+            f"slice_size ({slice_size})"
+        )
     if slice_size % chunk:
         raise ValueError("sample_select: chunk must divide slice_size")
     if chunk % 2:
@@ -128,24 +143,47 @@ def sample_select(*, slice_size=32064, chunk=5344, k_max=64) -> ExternalFunction
             f"-DSAMPLE_SLICE={slice_size}",
             f"-DSAMPLE_CHUNK={chunk}",
             f"-DSAMPLE_K_MAX={k_max}",
+            f"-DSAMPLE_VALID={valid}",
         ],
         contract=KernelContract(
             trace=Trace.whole_call(),
-            roles=(In, In, InOut, InOut),
+            roles=(In if valid == slice_size else InOut, In, InOut, InOut),
         ),
     )
 
 
-def sample_combine(*, columns=4, slice_size=32064, k_max=64) -> ExternalFunction:
+def sample_combine(
+    *,
+    columns: int = 4,
+    slice_size: int = 32064,
+    k_max: int = 64,
+    last_slice: int | None = None,
+) -> ExternalFunction:
     """Draw from ``columns`` summaries of ``sample_select``, as ``sample_ref`` does.
 
     ``sample_combine(summaries, row, token, record)`` reads the summaries
     column 0 first, and writes the drawn token (an index into the whole row
     of ``columns * slice_size``) to both one-word outputs, so a design can
     send it two places.
+
+    Args:
+        columns: Summaries to combine, one per ``sample_select`` column.
+        slice_size: Each column's slice of the row.
+        k_max: The largest top-k the summaries carry.
+        last_slice: The last column's slice, if shorter than
+            ``slice_size``: the row and the last summary end early.
+
+    Returns:
+        The kernel.
     """
+    last = slice_size if last_slice is None else last_slice
     _check_slice("sample_combine", slice_size, k_max)
-    _positive("sample_combine", columns=columns)
+    _positive("sample_combine", columns=columns, last_slice=last)
+    # A tie's index in its column must stay below SAMPLE_SLICE, its sentinel.
+    if not k_max <= last <= slice_size:
+        raise ValueError(
+            "sample_combine: last_slice must hold k_max to slice_size logits"
+        )
     if columns * slice_size >= 1 << 31:
         raise ValueError("sample_combine: a token must fit int32")
     return _make_extern(
@@ -153,7 +191,11 @@ def sample_combine(*, columns=4, slice_size=32064, k_max=64) -> ExternalFunction
         _kernel_source("sample/sample_combine.cc"),
         [
             np.ndarray[
-                (columns * summary_words(slice_size, k_max),), np.dtype[np.int32]
+                (
+                    (columns - 1) * summary_words(slice_size, k_max)
+                    + summary_words(last, k_max),
+                ),
+                np.dtype[np.int32],
             ],
             np.ndarray[(ROW_WORDS,), np.dtype[np.int32]],
             np.ndarray[(1,), np.dtype[np.int32]],
@@ -168,12 +210,6 @@ def sample_combine(*, columns=4, slice_size=32064, k_max=64) -> ExternalFunction
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, In, Out, Out),
-            # The weight table (12 bytes a k_max entry) and the 256-bin
-            # histogram below it: 2240 bytes at k_max 64, 3008 at
-            # K_MAX_LIMIT. The soft-float builtins carry no stack sizes for
-            # aiecc to count; the deepest call that reaches them, 320 bytes
-            # with their 64, stays above the histogram's 1024.
-            stack_bytes=4096,
         ),
     )
 
@@ -299,6 +335,31 @@ def order_keys(logits) -> np.ndarray:
     bits = np.where(bits == 0x8000, np.uint16(0), bits)
     negative = (bits & np.uint16(0x8000)) != 0
     return np.where(negative, ~bits, bits | np.uint16(0x8000)).astype(np.uint16)
+
+
+def select_summary_ref(logits, k_max: int) -> np.ndarray:
+    """Return the summary ``sample_select`` writes for one column of bf16 ``logits`` at top_k ``k_max``.
+
+    Words as ``sample.h`` lays them out: tau (the k-th largest key), the
+    count of keys above it, the largest key, its first index and the count
+    of keys equal to tau, three zero words, an (index, key) pair per key
+    above tau in index order, zeros for the unused pairs (the device leaves
+    them as they were), then the bitmap of the indices holding tau.
+    """
+    keys = order_keys(logits).astype(np.int64)
+    n = keys.size
+    _check_slice("select_summary_ref", n, k_max)
+    tau = np.partition(keys, n - k_max)[n - k_max]
+    above = np.flatnonzero(keys > tau)
+    tied = keys == tau
+    words = np.zeros(summary_words(n, k_max), np.int32)
+    words[:5] = (tau, above.size, keys.max(), np.argmax(keys), tied.sum())
+    words[SUMMARY_HEADER : SUMMARY_HEADER + 2 * above.size : 2] = above
+    words[SUMMARY_HEADER + 1 : SUMMARY_HEADER + 2 * above.size : 2] = keys[above]
+    bitmap = np.packbits(tied, bitorder="little")
+    bitmap = np.pad(bitmap, (0, 4 * ((n + 31) // 32) - bitmap.size))
+    words[SUMMARY_HEADER + 2 * k_max :] = bitmap.view("<i4")
+    return words
 
 
 def check_order_preserving(temperature) -> None:

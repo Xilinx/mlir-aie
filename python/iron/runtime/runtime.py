@@ -31,9 +31,12 @@ from ...dialects.aiex import (
     dma_await_task,
     dma_free_task,
     npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
+    run,  # pyright: ignore[reportAttributeAccessIssue]
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from ...helpers.npdtypes import np_ndarray_type_of
+from ...helpers.sourceloc import SourceSite, traced_body
 from ...helpers.util import (
     flatten_fn_args,
     np_dtype_to_mlir_type,
@@ -42,15 +45,16 @@ from ...helpers.util import (
 from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
 from ..dataflow.objectfifo import ObjectFifoHandle
-from ..resolvable import Resolvable
+from ..resolvable import DeviceResources, Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
-from ._context import active_sequence, active_sequence_scope
+from ._context import active_configuration, active_sequence, active_sequence_scope
 from .data import RuntimeData
 from .dmatask import DMATask
 from .endpoint import RuntimeEndpoint
 from .taskgroup import TaskGroup
 
 if TYPE_CHECKING:
+    from ..configuration import DeviceConfiguration
     from ..device import Device
 
 logger = logging.getLogger(__name__)
@@ -71,8 +75,8 @@ class ActiveSequence:
     The body runs exactly once, inside the ``runtime_sequence`` op: each verb
     both binds its ObjectFifo's shim endpoint and emits the shim DMA. The DMA
     references the fifo by symbol name (a legal MLIR forward reference), so it
-    does not require the fifo to be resolved yet -- the Program resolves fifos
-    and cores afterward, with every runtime endpoint already bound.
+    does not require the fifo to be resolved yet. DeviceConfiguration resolves
+    fifos and cores afterward, with every runtime endpoint already bound.
     """
 
     def __init__(self, runtime: "Runtime", seq_op: RuntimeSequenceOp, device=None):
@@ -85,6 +89,11 @@ class ActiveSequence:
         self._used_default = False
         self._used_explicit = False
 
+    @property
+    def runtime(self) -> "Runtime":
+        """The Runtime whose sequence body is running."""
+        return self._runtime
+
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
         """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
         self._runtime._fifos[handle] = None
@@ -92,9 +101,12 @@ class ActiveSequence:
     def resolve_in_device(self, resolvable) -> None:
         """Resolve a Buffer or Lock the body reaches first, ahead of the sequence.
 
-        Program resolves the objects it can find before the body runs; one only
-        a runtime task names is placed here, at device scope.
+        DeviceConfiguration resolves discoverable objects before the body runs.
+        This method places an object named only by a runtime task at device scope.
         """
+        configuration = self._runtime.configuration
+        if configuration is not None:
+            configuration.claim_runtime_resource(resolvable)
         with ir.InsertionPoint(self._seq_op):
             if self._device is not None:
                 self._device.resolve_tile(resolvable.tile)
@@ -126,7 +138,8 @@ class ActiveSequence:
                 f"Unknown action type detected: {','.join(str(a) for a in unknown)}"
             )
         for fn, a in wait_tasks + free_tasks:
-            fn(*a)
+            with a[0].location:
+                fn(*a)
         tg._actions = []
 
     def emit_transfer(self, task: DMATask, task_group: TaskGroup | None) -> None:
@@ -150,29 +163,35 @@ class ActiveSequence:
             group._actions.append((dma_await_task, [task.task]))
         group._actions.append((dma_free_task, [task.task]))
 
-    def finalize(self) -> None:
-        """Close bookkeeping after the body runs."""
+    def finalize(self, strict: bool | None = None) -> None:
+        """Close bookkeeping after the body runs, or after one merged step's body.
+
+        A fresh default group then takes the next step's transfers.
+
+        Args:
+            strict: That body's ``strict_task_groups``; the runtime's when None.
+        """
+        if strict is None:
+            strict = self._runtime._strict_task_groups
         explicit_open = [
             tg for tg in self._open_task_groups if tg is not self._default_task_group
         ]
         if explicit_open:
             tgs = ", ".join(str(t) for t in explicit_open)
             raise IronRuntimeError(f"Failed to close task groups: {tgs}")
-        if (
-            self._runtime._strict_task_groups
-            and self._used_default
-            and self._used_explicit
-        ):
+        if strict and self._used_default and self._used_explicit:
             raise IronRuntimeError(
                 "Mixing explicit task groups and the default task group is "
                 "prohibited. Please assign all tasks to a task group."
             )
-        # Flush any transfers left in the default group (no explicit finish).
-        if self._default_task_group._actions:
-            self.finish_task_group(self._default_task_group)
+        # Flush any transfers left in the default group (no explicit finish),
+        # and close it even when empty: a merged step makes a fresh one.
+        self.finish_task_group(self._default_task_group)
+        self._default_task_group = TaskGroup(next(self._runtime._task_group_index))
+        self._used_default = self._used_explicit = False
 
 
-class Runtime(Resolvable):
+class Runtime(DeviceResources, Resolvable):
     """The host-side sequence of data-movement operations that execute an IRON design.
 
     A Runtime describes what the host does at runtime: filling input
@@ -187,7 +206,9 @@ class Runtime(Resolvable):
         seq_fn: Callable,
         fn_args: "Sequence | None" = None,
         *,
+        name: str | None = None,
         strict_task_groups: bool = True,
+        implicit_configure: bool = True,
     ) -> None:
         """Create a runtime from its sequence body and fn_args.
 
@@ -205,8 +226,9 @@ class Runtime(Resolvable):
         * an unbound **DispatchTime parameter**: replaced with its live SSA
           scalar. Forward each parameter once, in any order; parameter identity
           determines the host binding, not its position in ``fn_args``.
-        * a **type** (a tensor type or a scalar type like ``np.int32``): declares
-          a runtime input and is replaced with a live SSA value bound to a new
+        * a **type** (a tensor type, a generator's ``In``/``Out``/``InOut``
+          operand, or a scalar type like ``np.int32``): declares a runtime
+          input and is replaced with a live SSA value bound to a new
           ``runtime_sequence`` block arg -- a tensor type becomes a
           ``RuntimeData`` (``fill``/``drain`` target), a scalar type becomes the
           bare SSA value (``scf`` survives to the dynamic EmitC path).
@@ -224,10 +246,21 @@ class Runtime(Resolvable):
             seq_fn (Callable): The sequence body; params bound to ``fn_args`` in order.
             fn_args (Sequence | None): Types/ints (runtime inputs) and shared objects,
                 in the order ``seq_fn`` expects them. Defaults to None (empty list).
+            name (str | None): The runtime-sequence symbol name. Program assigns
+                a unique name when this value is None.
             strict_task_groups (bool): Disallow mixing the default and explicit task groups. Defaults to True.
+            implicit_configure (bool): Configure the full-ELF entry sequence's
+                device when the body contains no ``aiex.configure`` or
+                ``aiex.npu.load_pdi`` operation. Defaults to True.
         """
+        super().__init__()
+        if name == "":
+            raise ValueError("Runtime name must not be empty.")
+        self._site = SourceSite.capture()
+        self._name = name
+        self._configuration: DeviceConfiguration | None = None
         self._seq_fn: Callable = seq_fn
-        self._fn_args = list(fn_args) if fn_args is not None else []
+        self._fn_args = [np_ndarray_type_of(arg) for arg in fn_args or ()]
         self._dispatch_binding = object()
         dispatch_args = [
             arg for arg in self._fn_args if isinstance(arg, _DispatchParameter)
@@ -295,20 +328,132 @@ class Runtime(Resolvable):
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
         # ObjectFifo manage them).
-        self._flows = []
-        self._locks = []
-        self._tile_dmas = []
-        self._resolved_tile_dmas = None
         self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._strict_task_groups = strict_task_groups
+        self._implicit_configure = implicit_configure
         self._task_group_index = itertools.count()
 
+    @classmethod
+    def merge(cls, runtimes: Sequence[Runtime], name: str | None = None) -> Runtime:
+        """Return one Runtime whose sequence runs the bodies of ``runtimes`` in order.
+
+        For steps that run back to back on one configuration: they issue one
+        instruction stream with no ``aiex.configure`` or ``aiex.run`` between
+        them, which an xclbin can carry. Its ``fn_args`` are theirs, in order,
+        with a DispatchTime parameter several steps forward kept once, and it
+        registers their flows, locks, tile DMAs and scratchpad parameters.
+
+        Args:
+            runtimes: The steps, in the order their bodies run.
+            name: The merged Runtime's name, or None to have one given.
+
+        Returns:
+            The merged Runtime.
+
+        Raises:
+            ValueError: One of ``runtimes`` already belongs to a configuration.
+            TypeError: The steps forward DispatchTime parameters of different
+                designs.
+        """
+        runtimes = list(runtimes)
+        for runtime in runtimes:
+            if runtime.configuration is not None:
+                raise ValueError(
+                    f"Runtime {runtime.name!r} belongs to configuration "
+                    f"{runtime.configuration.name!r}; merge it before configuring."
+                )
+        fn_args: list = []
+        slots: list[list[int]] = []
+        for runtime in runtimes:
+            slots.append([])
+            for arg in runtime._fn_args:
+                shared = [
+                    i
+                    for i, kept in enumerate(fn_args)
+                    if isinstance(arg, _DispatchParameter) and kept is arg
+                ]
+                slots[-1].append(shared[0] if shared else len(fn_args))
+                if not shared:
+                    fn_args.append(arg)
+
+        def body(*args):
+            for runtime, slot in zip(runtimes, slots):
+                runtime._seq_fn(*(args[i] for i in slot))
+                # Closing the step's task groups awaits its wait=True
+                # transfers before the next step issues; the rest are freed.
+                active_sequence().finalize(runtime._strict_task_groups)
+
+        merged = cls(
+            body,
+            fn_args,
+            name=name,
+            implicit_configure=all(rt._implicit_configure for rt in runtimes),
+        )
+        for runtime in runtimes:
+            for flow in runtime.flows:
+                merged.add_flow(flow)
+            for lock in runtime.locks:
+                merged.add_lock(lock)
+            for tile_dma in runtime.tile_dmas:
+                merged.add_tile_dma(tile_dma)
+            for parameter in runtime.scratchpad_parameters:
+                merged.register_parameter(parameter)
+        return merged
+
+    @property
+    def name(self) -> str | None:
+        return self._name
+
+    def _assign_name(self, name: str) -> None:
+        if self._name is None:
+            self._name = name
+
+    @property
+    def arg_types(self) -> list[type]:
+        """The sequence's argument types, in the order it takes them."""
+        return [data.arr_type for data in self._block_data]
+
+    @property
+    def configuration(self) -> DeviceConfiguration | None:
+        return self._configuration
+
+    def _bind_configuration(self, configuration: DeviceConfiguration) -> None:
+        if self._configuration is not None:
+            raise ValueError(
+                f"Runtime {self._name!r} already belongs to configuration "
+                f"{self._configuration.name!r}."
+            )
+        self._configuration = configuration
+        for flow in self._flows:
+            configuration.add_flow(flow)
+        for lock in self._locks:
+            configuration.add_lock(lock)
+        for tile_dma in self._tile_dmas:
+            configuration.add_tile_dma(tile_dma)
+
+    def call(self, *args) -> None:
+        configuration = active_configuration()
+        if configuration is None:
+            raise RuntimeError(
+                f"Runtime {self._name!r} must be called inside a configuration scope."
+            )
+        if configuration is not self._configuration:
+            owner = (
+                self._configuration.name if self._configuration is not None else None
+            )
+            raise ValueError(
+                f"Runtime {self._name!r} belongs to configuration {owner!r}, "
+                f"not {configuration.name!r}."
+            )
+        values = [arg.op if isinstance(arg, RuntimeData) else arg for arg in args]
+        run(self._name, values)
+
     def _register_fn_args(self) -> None:
-        """Bind shared objects in fn_args now, before the Program resolves.
+        """Bind shared objects before DeviceConfiguration resolves them.
 
         Mirrors Worker.__init__: an ObjectFifoHandle gets its shim endpoint bound
         (from the handle's prod()/cons() tile) and is recorded, so the fifo has
-        both ends known when the Program resolves it -- letting the sequence body
+        both ends known when DeviceConfiguration resolves it, letting the sequence body
         emit last (after workers), which the body's worker-reading verbs need.
 
         A fn_args entry may be a nested list/tuple of handles (e.g. one per
@@ -322,11 +467,13 @@ class Runtime(Resolvable):
                 self._fifos[arg] = None
 
     def add_flow(self, flow) -> None:
-        """Register an explicit flow so the Program resolves it alongside the ObjectFifos.
+        """Register a flow for resolution alongside the ObjectFifos.
 
         Accepts a [`Flow`][iron.Flow] or [`PacketFlow`][iron.PacketFlow].
         """
-        self._flows.append(flow)
+        super().add_flow(flow)
+        if self._configuration is not None:
+            self._configuration.add_flow(flow)
 
     def add_lock(self, lock) -> None:
         """Register an explicit [`Lock`][iron.Lock] no TileDma, task or Worker reaches.
@@ -334,53 +481,22 @@ class Runtime(Resolvable):
         Locks a [`TileDma`][iron.TileDma]'s or a task's Bds use are found
         from them, and a Worker's from its ``fn_args``.
         """
-        self._locks.append(lock)
+        super().add_lock(lock)
+        if self._configuration is not None:
+            self._configuration.add_lock(lock)
 
     def add_tile_dma(self, tile_dma) -> None:
         """Register a TileDma; channels sharing a Tile are combined at resolution."""
-        if self._resolved_tile_dmas is not None:
-            raise IronRuntimeError("Cannot register TileDma after DMA resolution.")
-        self._tile_dmas.append(tile_dma)
+        if self._configuration is not None:
+            self._configuration.add_tile_dma(tile_dma)
+        super().add_tile_dma(tile_dma)
 
     def resolve_tile_dmas(self) -> None:
         """Validate and emit one DMA region per Tile without changing registrations."""
-        from ..dataflow.tile_dma import TileDma
-
-        if self._resolved_tile_dmas is None:
-            programs = {}
-            coordinates = {}
-            for tile_dma in self._tile_dmas:
-                tile = tile_dma.tile
-                if tile.col is not None and tile.row is not None:
-                    key = (tile.col, tile.row)
-                    if key in coordinates and coordinates[key] is not tile:
-                        raise IronRuntimeError(
-                            f"Two TileDma programs name {tile}, via different "
-                            "Tile objects. Share one Tile object for their channels."
-                        )
-                    coordinates[key] = tile
-                if tile in programs:
-                    programs[tile] = TileDma(
-                        tile, [*programs[tile].channels, *tile_dma.channels]
-                    )
-                else:
-                    programs[tile] = tile_dma
-            self._resolved_tile_dmas = list(programs.values())
-        # Placement coalesces tile ops, not their DMA regions or channel chains.
-        for program in self._resolved_tile_dmas:
-            program.resolve()
-
-    @property
-    def flows(self):
-        return list(self._flows)
-
-    @property
-    def locks(self):
-        return list(self._locks)
-
-    @property
-    def tile_dmas(self):
-        return list(self._tile_dmas)
+        if self._configuration is not None:
+            self._configuration.resolve_tile_dmas()
+            return
+        super().resolve_tile_dmas()
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
@@ -416,7 +532,7 @@ class Runtime(Resolvable):
         trace_size: int | None = None,
         reuse_output_buffer: bool = False,
         egress_shim_col: int = 0,
-        load_pdi_device_ref: str | None = None,
+        implicit_configure_device_ref: str | None = None,
         device: Device | None = None,
     ) -> None:
         """Build the ``runtime_sequence`` op and run the sequence body inside it.
@@ -439,9 +555,8 @@ class Runtime(Resolvable):
             egress_shim_col: Forwarded from
                 [`Program.enable_trace`][iron.program.Program.enable_trace]; see
                 there.
-            load_pdi_device_ref: On the full-ELF path (no xclbin configures the
-                device), the device symbol to load via ``npu_load_pdi`` as the
-                first op in the sequence. ``None`` on the xclbin path.
+            implicit_configure_device_ref: The enclosing device symbol for an
+                implicit full-ELF ``aiex.npu.load_pdi``. ``None`` on the xclbin path.
             device: The [`Device`][iron.Device] that places tiles the body
                 reaches first, such as a buffer only a runtime task names.
         """
@@ -452,22 +567,21 @@ class Runtime(Resolvable):
             for rt_data in self._block_data
             if rt_data is not None
         ]
-        seq_op = RuntimeSequenceOp(sym_name="sequence")
+        loc = loc or self._site.location()
+        seq_op = RuntimeSequenceOp(sym_name=self._name, loc=loc, ip=ip)
         active = ActiveSequence(self, seq_op, device)
-        entry_block = seq_op.body.blocks.append(*rt_dtypes)
-        with ir.InsertionPoint(entry_block):
-            # Full-ELF designs configure the device themselves: no xclbin
-            # pre-loads the PDI, so the sequence must start by loading it.
-            if load_pdi_device_ref is not None:
-                npu_load_pdi(device_ref=load_pdi_device_ref)
-
+        entry_block = seq_op.body.blocks.append(
+            *rt_dtypes, arg_locs=[loc] * len(rt_dtypes)
+        )
+        with ir.InsertionPoint(entry_block), seq_op.location:
             block_args = iter(entry_block.arguments)
             for rt_data in self._block_data:
                 if rt_data is not None:
                     rt_data.op = next(block_args)
-            for arg in self._fn_args:
+            for arg, rt_data in zip(self._fn_args, self._rt_data):
                 if isinstance(arg, _DispatchParameter):
-                    arg._bind(self._dispatch_binding)
+                    assert rt_data is not None
+                    arg._bind(self._dispatch_binding, rt_data.op)
 
             if trace_size is not None and trace_size > 0:
                 trace_utils.start_trace(
@@ -522,10 +636,46 @@ class Runtime(Resolvable):
                     body_args.append(arg)
 
             with active_sequence_scope(active):
-                self._seq_fn(*body_args)
+                with traced_body(self._seq_fn):
+                    self._seq_fn(*body_args)
                 active.finalize()
 
+        if implicit_configure_device_ref is not None:
+            self.load_pdi_first(entry_block, implicit_configure_device_ref)
+
         self._dedup_runtime_consumers()
+
+    def load_pdi_first(self, entry_block: ir.Block, device_ref: str) -> None:
+        """Load ``device_ref``'s PDI at the start of ``entry_block``, the full-ELF entry's body.
+
+        Nothing is added when this Runtime was made with
+        ``implicit_configure=False`` or the body already configures a device.
+
+        Args:
+            entry_block: The entry runtime sequence's body.
+            device_ref: The symbol of the device whose PDI it loads.
+        """
+        if not self._implicit_configure:
+            return
+
+        def contains_configuration(block: ir.Block) -> bool:
+            for operation in block.operations:
+                if operation.name in ("aiex.configure", "aiex.npu.load_pdi"):
+                    return True
+                for region in operation.regions:
+                    if any(
+                        contains_configuration(nested_block)
+                        for nested_block in region.blocks
+                    ):
+                        return True
+            return False
+
+        if not contains_configuration(entry_block):
+            operations = list(entry_block.operations)
+            with ir.InsertionPoint(entry_block):
+                load_pdi = npu_load_pdi(device_ref=device_ref)
+            if operations:
+                load_pdi.operation.move_before(operations[0])
 
     def _dedup_runtime_consumers(self) -> None:
         """Prune duplicate runtime consumer handles on shared ObjectFifos.

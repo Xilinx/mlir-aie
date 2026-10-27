@@ -9,6 +9,15 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
+
+#include "mlir/CAPI/IR.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
+
+#include "llvm/Support/MathExtras.h"
 
 using namespace mlir;
 
@@ -185,6 +194,70 @@ uint32_t aieTargetModelGetMemTileSize(AieTargetModel targetModel) {
 uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
                                    int row) {
   return unwrap(targetModel).getNumBanks(col, row);
+}
+
+bool aieDmaBdFits(uint32_t device, int col, int row, MlirType elementType,
+                  int64_t offset, const int64_t *sizes, const int64_t *strides,
+                  int64_t len) {
+  Type elemType = unwrap(elementType);
+  MLIRContext *ctx = elemType.getContext();
+  ctx->getOrLoadDialect<xilinx::AIE::AIEDialect>();
+  OpBuilder builder(ctx);
+  Location loc = builder.getUnknownLoc();
+  OwningOpRef<ModuleOp> module = ModuleOp::create(loc);
+  builder.setInsertionPointToStart(module->getBody());
+  auto dev = xilinx::AIE::DeviceOp::create(
+      builder, loc, static_cast<xilinx::AIE::AIEDevice>(device),
+      xilinx::AIE::DeviceOp::getDefaultDeviceName());
+  const xilinx::AIE::AIETargetModel &tm = dev.getTargetModel();
+
+  int64_t elemBits = DataLayout::closest(dev).getTypeSizeInBits(elemType);
+  if (offset * elemBits % tm.getAddressGenGranularity())
+    return false;
+
+  SmallVector<xilinx::AIE::BDDimLayoutAttr> dims;
+  for (unsigned d = 0; d < xilinx::AIEX::kNdDmaDims; d++) {
+    if (sizes[d] < 0 || sizes[d] > UINT32_MAX || strides[d] < 0 ||
+        strides[d] > UINT32_MAX)
+      return false;
+    dims.push_back(
+        xilinx::AIE::BDDimLayoutAttr::get(ctx, sizes[d], strides[d]));
+  }
+  // The dimensions the lowerings see: a descriptor the normalize pass makes
+  // one linear transfer is held to its length alone.
+  if (std::optional<SmallVector<xilinx::AIE::BDDimLayoutAttr>> normalized =
+          xilinx::AIE::normalizedBDDims(dims, len)) {
+    if (normalized->empty()) {
+      int64_t bits;
+      return !llvm::MulOverflow(len, elemBits, bits) &&
+             static_cast<uint64_t>(bits / tm.getAddressGenGranularity()) <=
+                 tm.getDmaBdMaxLen(col, row);
+    }
+    dims = *normalized;
+  }
+  // Innermost first, the dimensions the descriptor lacks filled with units.
+  xilinx::AIEX::NdDmaPattern pattern;
+  for (unsigned d = 0; d < xilinx::AIEX::kNdDmaDims; d++) {
+    bool held = d < dims.size();
+    pattern.offsets.push_back(0);
+    pattern.sizes.push_back(held ? dims[dims.size() - 1 - d].getSize() : 1);
+    pattern.strides.push_back(held ? dims[dims.size() - 1 - d].getStride() : 0);
+  }
+  bool linear = xilinx::AIEX::isLinearModeTransfer(tm, col, row, pattern.sizes,
+                                                   pattern.strides);
+  if (!xilinx::AIEX::patternPassesVerification(
+          dev, MemRefType::get({ShapedType::kDynamic}, elemType), tm, col, row,
+          pattern, linear))
+    return false;
+
+  // The wrap checks leave the length field, d0 * d1 * d2 in address granules,
+  // to NpuWriteBdOp's verifier.
+  int64_t lenBits = elemBits;
+  for (int d = 0; d < 3; d++)
+    if (llvm::MulOverflow(lenBits, pattern.sizes[d], lenBits))
+      return false;
+  return static_cast<uint64_t>(lenBits / tm.getAddressGenGranularity()) <=
+         tm.getDmaBdMaxLen(col, row);
 }
 
 uint32_t aieTargetModelGetNumDestSwitchboxConnections(

@@ -36,19 +36,6 @@ struct Descriptor {
   int64_t binaryLock;
 };
 
-int64_t paddedSize(BDDimLayoutArrayAttr dimensions,
-                   BDPadLayoutArrayAttr padding, int64_t fallback) {
-  if (!dimensions || dimensions.empty() || !padding || padding.empty()) {
-    return fallback;
-  }
-  int64_t size = 1;
-  for (auto [dimension, pad] : llvm::zip(dimensions, padding)) {
-    size *=
-        dimension.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
-  }
-  return size;
-}
-
 Block *findEndOpBlock(Region &region) {
   Block *endBlock = nullptr;
   for (Block &block : region) {
@@ -265,6 +252,20 @@ struct AIEObjectFifoLowerDMAsPass
 
     SmallVector<ObjectFifoDmaEndpointOp> endpoints(
         device.getOps<ObjectFifoDmaEndpointOp>());
+    // A tile's chains, and so the BD ids they get, follow its channels rather
+    // than the order the endpoints were written in.
+    DenseMap<Value, size_t> tileOrder;
+    for (ObjectFifoDmaEndpointOp endpoint : endpoints)
+      tileOrder.try_emplace(endpoint.getTile(), tileOrder.size());
+    llvm::stable_sort(
+        endpoints, [&](ObjectFifoDmaEndpointOp a, ObjectFifoDmaEndpointOp b) {
+          return std::make_tuple(tileOrder.lookup(a.getTile()),
+                                 a.getRouteDirection(),
+                                 a.getChannelIndex().value_or(-1)) <
+                 std::make_tuple(tileOrder.lookup(b.getTile()),
+                                 b.getRouteDirection(),
+                                 b.getChannelIndex().value_or(-1));
+        });
     for (ObjectFifoDmaEndpointOp endpoint : endpoints) {
       std::optional<int> channel = endpoint.getChannelIndex();
       if (!channel) {

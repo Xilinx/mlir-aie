@@ -35,7 +35,8 @@ from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels._common import Param, _is_tensor_type
 from aie.utils import bfp, ensure_current_device, tensor
-from aie.utils.compile.jit import CompileTime, In, InOut, Out
+from aie.utils.compile import resolve_target_arch
+from aie.utils.compile.jit import CompileTime, In, InOut, Out, get_compile_arg
 from aie.utils.jit import jit
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.events import CoreEvent
@@ -99,10 +100,6 @@ def _device():
     return device
 
 
-def _stack_bytes(fn):
-    return _contract(fn).stack_bytes or _device().default_core_stack_bytes
-
-
 def _guarded(fn, guard):
     """Return the outputs ``guard`` covers: every one but bfp."""
     types = fn.arg_types()
@@ -122,7 +119,7 @@ def _poison_fill(words, use_chess):
 
     Not a loop in the core's main: that keeps the object FIFO lowering from
     unrolling the calls, and the buffer selects it leaves spill into main's
-    frame, past the stack the contracts measured. The value is an argument
+    frame and grow the core's stack. The value is an argument
     because a constant fill becomes a memset libcall, whose stack aiecc
     cannot measure.
     """
@@ -136,6 +133,36 @@ def _poison_fill(words, use_chess):
         arg_types=[np.ndarray[(words,), np.dtype[np.int32]], np.int32],
         use_chess=use_chess,
     )
+
+
+def _kernel_frame_bytes(kernels, embed_bitcode):
+    """Return what ``kernels`` hold in the core beyond the core's own frame.
+
+    Each object's static data (``ExternalFunction.frame_bytes``' data), which
+    all coexists, and the deepest kernel stack, as only one call is live: a
+    declared ``stack_size_override`` stands. An object-linked Peano kernel is
+    built through the design's object cache, which its own build then hits,
+    or in a scratch directory when caching is off. A kernel ``measure``
+    cannot read counts as 0, as aiecc cannot measure it either; that
+    undercount only picks too deep a buffering for the tile, and aiecc's
+    allocator then fails the build.
+    """
+    cache = get_compile_arg("_iron_object_cache")
+    arch = resolve_target_arch(_device())
+    data, deepest = {}, 0
+    for k in kernels:
+        found = (
+            k.measure(arch, cache, embed_bitcode)
+            if isinstance(k, ExternalFunction)
+            else None
+        )
+        if found is not None:
+            data[k.object_file_name] = found.data
+        if k.stack_size_override is not None:
+            deepest = max(deepest, k.stack_size_override)
+        elif found is not None:
+            deepest = max(deepest, found.stack or 0)
+    return sum(data.values()) + deepest
 
 
 def _view(raw, arg_type, byte_shift):
@@ -289,14 +316,31 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
             _view(o, types[i], 0) if i in guarded else o for i, o in zip(outs, outputs)
         ]
 
-    # Two sets of tiles (ping-pong) when they fit beside the parameters and
-    # the stack, one otherwise.
+    words = {i: (nbytes(i) + GUARD_BYTES) // 4 for i in guarded}
+    fills = {n: _poison_fill(n, fn.use_chess) for n in words.values()}
+
+    # Two sets of tiles (ping-pong) when they fit beside the parameters, the
+    # kernels' static data and the stack, one otherwise. aiecc reserves the
+    # larger of the default stack and main's frame plus the deepest kernel
+    # call; the default covers main's frame, so the kernels' go on top of it.
     tile_bytes = sum(nbytes(i) for i in [*ins, *outs]) + GUARD_BYTES * len(guarded)
     shifted = dict(arg_byte_offsets)
     fixed_bytes = (
-        sum(nbytes(i) for i in param_pos) + (VIEW_PAD + 4) * len(shifted) + stack_bytes
+        sum(nbytes(i) for i in param_pos)
+        + (VIEW_PAD + 4) * len(shifted)
+        + (stack_bytes or _device().default_core_stack_bytes)
     )
     core_bytes = _device().core_memory_bytes
+    if not stack_bytes and 2 * tile_bytes + fixed_bytes <= core_bytes:
+        fixed_bytes += _kernel_frame_bytes(
+            [
+                fn,
+                *(k for _, k in initializers),
+                *fills.values(),
+                *([setter] if setter else []),
+            ],
+            c.uses_lut and not fn.use_chess,
+        )
     depth = next(
         (d for d in (2, 1) if d * tile_bytes + fixed_bytes <= core_bytes), None
     )
@@ -344,8 +388,6 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
         if shifted
         else []
     )
-    words = {i: (nbytes(i) + GUARD_BYTES) // 4 for i in guarded}
-    fills = {n: _poison_fill(n, fn.use_chess) for n in words.values()}
     # The Worker's constants: the param buffers, the kernel, the
     # initializer kernels, the poison fills, the view shifts and the setup
     # callable.
@@ -363,6 +405,8 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
         values.update(bound)
         if offset:
             values[offset[0]] = call * offset[1]
+        if c.call_index is not None:
+            values[c.call_index] = call
         for got, group in zip(acquired, groups):
             values.update(
                 (i, got if len(group) == 1 else got[j]) for j, i in enumerate(group)
@@ -408,7 +452,7 @@ def _build_stream(
     factory,
     factory_kwargs,
     calls,
-    stack_bytes,
+    stack_bytes=None,
     scalars=(),
     params=(),
     trace_config=None,
@@ -458,7 +502,7 @@ def _stream(
     factory: CompileTime[Callable],
     factory_kwargs: CompileTime[dict],
     calls: CompileTime[int],
-    stack_bytes: CompileTime[int],
+    stack_bytes: CompileTime[int | None] = None,
     scalars: CompileTime[tuple] = (),
     params: CompileTime[tuple] = (),
     trace_config: CompileTime[TraceConfig | None] = None,
@@ -496,8 +540,11 @@ def design(
     This harness embeds these values for every call; changing them recompiles
     the design. Direct designs can supply different operands on each call.
 
-    ``stack_bytes`` replaces the core stack the contract declares, for a
-    kernel built from sources other than the ones the contract was sized for.
+    ``stack_bytes`` fixes the core stack. Leave it unset and aiecc sizes the
+    stack from the linked core; set it where aiecc cannot measure, as for a
+    Chess build. Unset, choosing between one and two sets of tiles reads the
+    kernels' stack frames, so generating a design whose tiles could double
+    buffer compiles its kernels.
 
     With ``guard=True`` the core fills each output tile and ``GUARD_BYTES``
     after it with ``0x55`` before every call and drains the guard with the
@@ -536,13 +583,11 @@ def design(
         factory=factory,
         factory_kwargs=factory_kwargs,
         calls=calls,
-        # A key of its own: the contract that sets it can change in a module
-        # the cache key never reads, and a stale stack overflows silently.
-        stack_bytes=stack_bytes or _stack_bytes(fn),
         scalars=tuple(scalars),
         params=_encode_params(fn, params or ()),
         guard=guard,
         # Only when given, so every other design keeps its cache key.
+        **({"stack_bytes": stack_bytes} if stack_bytes else {}),
         **({"arg_byte_offsets": offsets} if offsets else {}),
         **({"aiecc_flags": flags} if flags else {}),
     )

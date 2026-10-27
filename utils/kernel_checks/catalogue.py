@@ -222,14 +222,11 @@ def catalogue(
     from aie.iron import kernels
     from aie.iron.device import from_name
     from aie.iron.kernels._common import ARCH_TRAITS
-    from aie.utils import get_current_device
     from aie.utils.compile.remarks import kernel_builds
     from aie.utils.hostruntime import set_current_device
 
     arch = next(t.name for t in ARCH_TRAITS.values() if t.device == npu)
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(from_name(npu, n_cols=1))
-    try:
+    with set_current_device(from_name(npu, n_cols=1)):
         builds = defaultdict(list)
         sources = defaultdict(set)
         why: dict[str, str] = {}
@@ -240,8 +237,6 @@ def catalogue(
             if factory not in why and (reason := why_uncased(ef)):
                 why[factory] = reason
         declared = _declared(npu, cases_dir)
-    finally:
-        set_current_device(previous)
 
     if correctness:
         for case, variant, _ in pr_report.sweep(correctness, include_skipped=True):

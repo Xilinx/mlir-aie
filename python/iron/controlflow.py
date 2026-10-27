@@ -13,6 +13,9 @@ from aie.helpers.dialects.scf import (
     else_ as _else_,
 )
 from aie.helpers.dialects.scf import (
+    forever_ as _forever_,
+)
+from aie.helpers.dialects.scf import (
     if_ as _if_,
 )
 from aie.helpers.dialects.scf import (
@@ -144,6 +147,18 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
         for i, (kind, _, _) in enumerate(packers):
             if kind == "task" and frame.values and isinstance(frame.values[i], Task):
                 results[i]._carry(frame.values[i])
+
+
+def forever_() -> Iterator[None]:
+    """``scf.while(true)`` for a core body that runs until reconfiguration.
+
+    The body of a Python ``for`` over it is emitted once, into a loop whose
+    condition is always true, so the loop keeps no counter. A
+    [`Worker`][iron.Worker] already wraps its body in one unless
+    ``while_true=False``; write it yourself when a body must do some work once
+    before it loops forever.
+    """
+    return _forever_()
 
 
 def yield_(values):

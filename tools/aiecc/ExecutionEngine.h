@@ -239,6 +239,12 @@ struct Engine {
     bool keepIntermediates = false;
     unsigned numThreads = 1; // 0 = auto-detect; 1 = sequential
     bool profile = false; // print a per-edge execution-time summary at the end
+    // No edge owns its input: the on-failure reproducer reads intermediates.
+    bool keepInputs = false;
+    std::string profileJson; // also write the summary here, as JSON
+    // aiecc's main() entry; the JSON summary's process_ms counts from it.
+    std::chrono::steady_clock::time_point processStart;
+    bool timesEdges() const { return profile || !profileJson.empty(); }
   };
 
   Options opts;
@@ -303,15 +309,19 @@ struct Engine {
     struct EdgeCost {
       std::string name;
       int64_t ms = 0;
+      int64_t endMs = 0; // since the scheduler started
       uint64_t rssAfter = 0;
       uint64_t peakAfter = 0;
     };
     std::vector<EdgeCost> edgeTimings;
+    std::chrono::steady_clock::time_point schedulerStart =
+        std::chrono::steady_clock::now();
 
     std::mutex mtx;
     std::condition_variable cv;
     std::vector<Task> ready;
-    llvm::StringSet<> seenPaths; // duplicate-output-path guard
+    // Duplicate-output-path guard: each written path and the item key it holds.
+    llvm::StringMap<std::string> seenPaths;
     unsigned numEdges = 0;
     unsigned finishedEdges = 0;
     unsigned inFlight = 0;
@@ -386,12 +396,17 @@ struct Engine {
       for (const ItemBase *item : e->outputNode()->itemRefs()) {
         if (item->filePath.empty())
           continue;
-        if (!seenPaths.insert(item->filePath).second) {
-          if (opts.progress)
-            llvm::errs() << '\n';
+        auto [seen, fresh] = seenPaths.try_emplace(item->filePath, item->key);
+        if (!fresh) {
+          auto log = endProgressLine();
           llvm::errs() << "aiecc: edge '" << displayName(e)
                        << "' produced duplicate output path '" << item->filePath
-                       << "'\n";
+                       << "'";
+          if (!item->key.empty() && item->key != seen->second)
+            llvm::errs() << " for items '" << seen->second << "' and '"
+                         << item->key
+                         << "'; its output name needs '{0}' to tell them apart";
+          llvm::errs() << "\n";
           return false;
         }
       }
@@ -447,6 +462,7 @@ struct Engine {
       llvm::errs() << '\r' << line << std::string(pad, ' ');
       llvm::errs().flush();
       progressPrevLen = line.size();
+      progressLineOpen() = true;
     }
 
     // Re-scan the reachable edges and enqueue every task that is now runnable.
@@ -616,11 +632,15 @@ struct Engine {
           ++finishedEdges;
           if (opts.verbose)
             logEdgeFinished(s);
-          if (opts.profile) {
+          if (opts.timesEdges()) {
+            auto now = std::chrono::steady_clock::now();
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - s.startTime)
+                          now - s.startTime)
                           .count();
-            edgeTimings.push_back({displayName(s.edge).str(), ms,
+            auto endMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             now - schedulerStart)
+                             .count();
+            edgeTimings.push_back({displayName(s.edge).str(), ms, endMs,
                                    processRSSBytes(), processPeakRSSBytes()});
           }
           if (!recordPaths(task.edge))
@@ -684,8 +704,7 @@ struct Engine {
       }
 
       // Terminate the single progress line before any further output.
-      if (opts.progress)
-        llvm::errs() << '\n';
+      endProgressLine();
 
       if (failed) {
         if (stalled)
@@ -754,6 +773,27 @@ struct Engine {
       return std::find(outputs.begin(), outputs.end(), e) != outputs.end();
     };
 
+    // An edge may take its input only as that node's one reader, and only if
+    // nothing writes the node out after the run: not an output, a `buildAlso`
+    // root (a --cut frontier is captured afterwards) or a kept intermediate.
+    llvm::DenseMap<NodeBase *, unsigned> readers;
+    for (EdgeBase *e : reachable)
+      if (!satisfied.count(e))
+        for (NodeBase *n : e->inputNodes())
+          ++readers[n];
+    for (auto &e : g.edges) {
+      std::vector<NodeBase *> ins = e->inputNodes();
+      NodeBase *src = ins.size() == 1 ? ins.front() : nullptr;
+      e->ownsInput = e->mayTakeInput && reachable.count(e.get()) &&
+                     !opts.keepIntermediates && !opts.keepInputs && src &&
+                     src->producer && readers.lookup(src) == 1 &&
+                     !isOutput(src->producer) &&
+                     !llvm::is_contained(buildAlso, src->producer);
+      if (opts.verbose && e->ownsInput)
+        llvm::errs() << "aiecc: edge '" << llvm::sys::path::filename(e->name)
+                     << "' takes its input\n";
+    }
+
     for (auto &e : g.edges) {
       bool out = isOutput(e.get());
       e->outputDir = out ? opts.outputDir : opts.workDir;
@@ -802,8 +842,9 @@ struct Engine {
       int64_t total = 0;
       uint64_t peak = 0, prevRSS = baselineRSS;
       llvm::errs() << "aiecc: profile (per-edge time and resident memory):\n";
-      llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  {3}\n", "ms",
-                                    "dRSS MiB", "peak MiB", "edge");
+      llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  {4}\n",
+                                    "ms", "end ms", "dRSS MiB", "peak MiB",
+                                    "edge");
       for (const Scheduler::EdgeCost &e : edgeTimings) {
         total += e.ms;
         peak = std::max(peak, e.peakAfter);
@@ -813,13 +854,54 @@ struct Engine {
                 : llvm::formatv("{0:F1}", (int64_t)(e.rssAfter - prevRSS) /
                                               (1024.0 * 1024.0))
                       .str();
-        llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  {3}\n", e.ms,
-                                      delta, formatMiB(e.peakAfter), e.name);
+        llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  {4}\n",
+                                      e.ms, e.endMs, delta,
+                                      formatMiB(e.peakAfter), e.name);
         prevRSS = e.rssAfter;
       }
-      llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  total\n", total,
-                                    "", formatMiB(peak));
+      llvm::errs() << llvm::formatv("  {0,8}  {1,8}  {2,10}  {3,10}  total\n",
+                                    total, "", "", formatMiB(peak));
     }
+    if (!opts.profileJson.empty())
+      return writeProfileJson(edgeTimings);
+    return mlir::success();
+  }
+
+  mlir::LogicalResult
+  writeProfileJson(llvm::ArrayRef<Scheduler::EdgeCost> edgeTimings) const {
+    auto mib = [](uint64_t bytes) -> llvm::json::Value {
+      if (bytes == 0)
+        return nullptr;
+      return bytes / (1024.0 * 1024.0);
+    };
+    int64_t wallMs = 0;
+    llvm::json::Array edges;
+    for (const Scheduler::EdgeCost &e : edgeTimings) {
+      wallMs = std::max(wallMs, e.endMs);
+      edges.push_back(llvm::json::Object{{"name", e.name},
+                                         {"ms", e.ms},
+                                         {"start_ms", e.endMs - e.ms},
+                                         {"end_ms", e.endMs},
+                                         {"rss_after_mib", mib(e.rssAfter)},
+                                         {"peak_mib", mib(e.peakAfter)}});
+    }
+    std::error_code ec;
+    llvm::raw_fd_ostream os(opts.profileJson, ec, llvm::sys::fs::OF_Text);
+    if (ec) {
+      llvm::errs() << "aiecc: --profile-json: cannot write '"
+                   << opts.profileJson << "': " << ec.message() << "\n";
+      return mlir::failure();
+    }
+    int64_t processMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - opts.processStart)
+            .count();
+    os << llvm::formatv("{0:2}", llvm::json::Value(llvm::json::Object{
+                                     {"version", 1},
+                                     {"wall_ms", wallMs},
+                                     {"process_ms", processMs},
+                                     {"edges", std::move(edges)}}))
+       << "\n";
     return mlir::success();
   }
 };

@@ -26,11 +26,13 @@ What this probe establishes about the AIE compute-tile compression hardware:
 ## Files
 
 - `dma_compression.py` — IRON design. `dma_compression(in_tensor, out_tensor,
-  config=...)` returns an MLIR module per config. Most configs use
-  `ObjectFifo.forward(tile=...)` + raw ops written directly in the runtime
-  sequence body; `multi_cmp_only`
-  spells each tile's DMA explicitly with `TileDma` / `Bd` / `Flow` for
-  per-side BD sizing, and `regdump` uses an output-only Worker that calls the kernel.
+  config=...)` returns an MLIR module per config. The single-tile configs
+  and `multi_cmp_only` spell the link tile's DMA explicitly with `TileDma` /
+  `Bd` / `Flow` (a `PingPongDma`), because a (de)compressing channel does not
+  move whole `ObjectFifo` objects. The roundtrip configs compress only between
+  tiles, so their shim ends stay `ObjectFifo`s. `regdump` uses an output-only
+  Worker that calls the kernel. Raw register writes go directly in the runtime
+  sequence body.
 - `kernel.cc` — peano core-side kernel used by the `core_*` and `regdump`
   configs. Arch-guarded include selects `aie2pintrin.h` on AIE2P or
   `aiev2intrin.h` on AIE-ML; both expose `write_tm` and `read_tm`. A
@@ -309,7 +311,7 @@ Source: `third_party/aie-rt/driver/src/global/xaiemlgbl_params.h` and
 `xaiemlgbl_reginit.c` (AIE2P uses the same addresses and bit positions —
 see `xaie2pgbl_params.h`).
 
-After IRON's `ObjectFifo.forward()` lowering, BDs land at:
+`PingPongDma` pins the link tile's BDs at:
 
 | BD slot | Channel               |
 |---------|-----------------------|
