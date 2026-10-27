@@ -687,7 +687,7 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
   }
 
   // A candidate that leaves no free core tile for one of this LTO's
-  // unplaced shared-L1 peers is tried only in the second pass. Each peer
+  // unplaced shared-L1 peers is tried only in the final pass. Each peer
   // claims its own tile; claiming greedily is exact when the peers share one
   // candidate set, as one owner's consumers do.
   auto leavesPeerRoom = [&](TileID candidate) {
@@ -734,18 +734,20 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
                     candidate.col, bottomRow, WireBundle::South)));
   };
 
-  // Two passes: first prefer candidates that aren't reserved for an
-  // unrelated demand-bearing LTO's peers and whose column has stream capacity;
-  // fall back to reserved or overloaded candidates only if nothing else fits.
-  for (bool allowReserved : {false, true}) {
+  // First prefer columns with stream capacity, then allow overloaded columns
+  // while preserving peer room and reservations. Relax those only as a last
+  // resort.
+  for (int pass = 0; pass < 3; ++pass) {
     for (const TileID &candidate : orderedCandidates) {
       if (col && candidate.col != *col)
         continue;
       if (row && candidate.row != *row)
         continue;
-      if (!allowReserved &&
+      if (pass < 2 &&
           (inputs.isReservedForOther(logicalTile.getOperation(), candidate) ||
-           !leavesPeerRoom(candidate) || !fitsColumnStreams(candidate)))
+           !leavesPeerRoom(candidate)))
+        continue;
+      if (pass == 0 && !fitsColumnStreams(candidate))
         continue;
       result.sawConstraintMatch = true;
       if (!satisfiesAdjacency(logicalTile, candidate, inputs.bufferAdjacency,
