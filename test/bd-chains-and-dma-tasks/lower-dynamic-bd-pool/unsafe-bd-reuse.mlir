@@ -34,12 +34,8 @@ aie.device(npu1) {
       scf.yield %t : index
     }
     aiex.dma_await_task(%last)
-    // Nothing in this loop ever awaits, so the hardware queue depth (4) is
-    // reached in the fixed point; the overflow guard discards a token-bearing
-    // push without an await retiring it first, so token tracking on this
-    // channel is lost for good past that point. With no way to prove
-    // anything downstream complete either, the await just above this cannot
-    // be credited, so this free warns too.
+    // Unbounded unconsumed tokens exceed the finite completion history.
+    // The final await cannot be credited to the last task, so this warns too.
     // expected-warning@+1 {{frees a task on tile (0,0) MM2S channel 0 with no completion guarantee, so its buffer descriptor id goes back to the runtime pool while the DMA may still be running}}
     aiex.dma_free_task(%last)
   }

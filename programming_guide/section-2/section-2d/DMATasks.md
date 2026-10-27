@@ -216,6 +216,8 @@ dma_await_task(in_task, out_task)
 
 `aiecc --warn-unsafe-bd-reuse` catches the common way this goes wrong: a `dma_free_task(X)` whose BD id is reused before anything on the same tile, direction and channel proves `X` complete. It covers both the straight-line sequences the static allocator handles and the runtime-bound loops the dynamic BD pool handles. It is off by default because it can only reason about completion within the runtime sequence itself, so a design that proves `X` complete through the compute core or another tile will still be flagged.
 
+On the dynamic pool path, the check follows the task selected by branch yields and loop-carried values. Task starts, raw queue pushes and `npu.dma_memcpy_nd` share the same channel FIFO, as do task awaits, `npu.sync` and `npu.dma_wait`: a wait may consume an older transfer's token instead of the named task's. A queue-space poll does not by itself prove the oldest tracked task complete, because queue occupancy excludes the running task. If the bounded analysis loses track of outstanding tokens, it conservatively warns rather than assuming a later wait completed the freed task.
+
 **Function Signature**:
 ```python
 def dma_free_task(*args: DMAConfigureTaskForOp)

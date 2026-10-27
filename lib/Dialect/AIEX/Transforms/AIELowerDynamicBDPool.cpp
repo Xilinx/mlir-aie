@@ -612,19 +612,64 @@ struct AIELowerDynamicBDPoolPass
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
 
     auto effectOf = [&](Operation *op) -> QueueEffect {
+      if (auto push = dyn_cast<NpuPushQueueOp>(op))
+        return QueueEffect::push({static_cast<int>(push.getColumn()),
+                                  static_cast<int>(push.getRow()),
+                                  static_cast<int>(push.getDirection()),
+                                  static_cast<int>(push.getChannel())},
+                                 push.getIssueToken());
+      if (auto sync = dyn_cast<NpuSyncOp>(op)) {
+        if (auto key = syncChannelKey(sync))
+          return QueueEffect::await(*key);
+        return {};
+      }
+      if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+        auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
+            seq->getParentOfType<AIE::DeviceOp>(),
+            copy.getMetadata().getRootReference());
+        if (allocation)
+          if (AIE::TileOp tile = allocation.getTileOp())
+            return QueueEffect::push(
+                DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
+                                     allocation.getChannelIndex()),
+                copy.getIssueToken() ||
+                    allocation.getChannelDir() == AIE::DMAChannelDir::S2MM);
+        return {};
+      }
+      if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
+        auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
+            seq->getParentOfType<AIE::DeviceOp>(), wait.getSymbol());
+        if (allocation)
+          if (AIE::TileOp tile = allocation.getTileOp())
+            return QueueEffect::await(
+                DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
+                                     allocation.getChannelIndex()));
+        return {};
+      }
       DMAConfigureTaskOp cfg;
+      Value task;
+      bool isConfigure = false;
       bool isPush = false;
       bool issuesToken = false;
       if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
-        cfg = originConfigure.lookup(start.getTask());
+        task = start.getTask();
+        cfg = originConfigure.lookup(task);
         isPush = true;
         issuesToken = cfg && start.getPushIssueToken(cfg);
+      } else if (auto configure = dyn_cast<DMAConfigureTaskOp>(op)) {
+        if (!warnUnsafeBdReuse)
+          return {};
+        cfg = configure;
+        task = configure.getResult();
+        isConfigure = true;
       } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
         cfg = originConfigure.lookup(await.getTask());
         // Only a token-issuing await retires anything.
         if (cfg && !cfg.getIssueToken())
           return {};
       } else if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
+        if (!warnUnsafeBdReuse)
+          return {};
         cfg = originConfigure.lookup(freeOp.getTask());
         if (!cfg)
           return {};
@@ -633,7 +678,7 @@ struct AIELowerDynamicBDPoolPass
           return {};
         return QueueEffect::free(
             DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel()),
-            cfg.getOperation());
+            freeOp.getTask());
       } else {
         return {};
       }
@@ -644,7 +689,10 @@ struct AIELowerDynamicBDPoolPass
         return {};
       DmaQueueModel::ChannelKey key =
           DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
-      return isPush ? QueueEffect::push(key, issuesToken, cfg.getOperation())
+      if (isConfigure)
+        return QueueEffect::configure(key, task);
+      return isPush ? QueueEffect::push(key, issuesToken,
+                                        warnUnsafeBdReuse ? task : Value{})
                     : QueueEffect::await(key);
     };
 
