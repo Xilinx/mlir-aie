@@ -2572,6 +2572,27 @@ assert.equal(criticalVerdict({ file: 'x.yml', error: 'HTTP 404' }).level, 'none'
 """)
 
 
+def test_only_hardware_workflows_get_first_failure_grace(page):
+    page(CI_RUNS + """
+const hardware = ['buildAndTestRyzenAI.yml', 'buildAndTestRyzenAIWindows.yml'];
+const software = ['lintAndFormat.yml', 'buildAndTestMulti.yml', 'buildAndTestPythons.yml', 'unknown.yml'];
+for (const file of [...hardware, ...software]) {
+  for (const outcome of [undefined, 'failed', 'timed_out']) {
+    const latest = { ...run(30, 3, 'completed', 'failure'), outcome };
+    const w = crit({ file, latest_main: latest,
+      main_runs: [latest, { ...run(29, 27, 'completed', 'success'), outcome: 'passed' }] });
+    const v = criticalVerdict(w, NOW);
+    const isHardware = hardware.includes(file);
+    assert.deepEqual([v.level, v.kind], isHardware ? ['warn', 'intermittent'] : ['bad', 'failing'], file);
+    assert.equal(v.notes[0].includes('the previous run passed'), isHardware);
+    const summary = ciSummary(loadedOf(status({ critical: [w] })), NOW);
+    assert.equal(summary.includes('Needs attention:'), !isHardware, summary);
+    assert.equal(summary.includes('Nothing is broken'), isHardware, summary);
+  }
+}
+""")
+
+
 def test_merging_reads_as_figures_and_run_times_as_one_chart(page):
     page(CI_RUNS + """
 assert.deepEqual(mergeFigures(status().merge_time).map(li => li.text),

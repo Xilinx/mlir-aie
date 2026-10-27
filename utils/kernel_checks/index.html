@@ -504,7 +504,8 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
           <p>Every workflow is listed once, in one of two kinds. <b>Tests that gate a merge</b> are the workflows the merge queue runs, listed under
             <code>critical</code> in the file below. They also run on main, nightly and for some after each push; each is judged on its latest run there,
             names the jobs that failed in it, and is late when main has not run it for 36 hours. Main failing 2 of its last 5 runs, the latest
-            passing, is intermittent: amber, worth watching. Its pass rate on main and how often a pull-request or merge-queue commit needed a
+            passing, is intermittent: amber, worth watching. A hardware workflow's first failure after a passing run is also amber;
+            software-only workflows fail red immediately. Its pass rate on main and how often a pull-request or merge-queue commit needed a
             re-run to pass, over two weeks, are its normal: shown under it, never judged, since a hardware runner that wedges now and then is usual.</p>
           <p><b>Nightly and scheduled jobs</b> are judged on their latest scheduled run on main, and are late when it started more than one and a half
             of their periods ago (36 hours for a nightly). A cancelled run has no result: the run before it stands. A job still queued after six hours
@@ -3804,10 +3805,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       // of the doubt.
       const recent = (w.main_runs || []).filter(r => r.status === 'completed' && r.outcome !== 'cancelled').slice(0, CI_RECENT_RUNS);
       const previousPassed = recent.length > 1 && (recent[1].outcome === 'passed' || (!recent[1].outcome && recent[1].conclusion === 'success'));
+      const hardwareBlip = previousPassed && ['buildAndTestRyzenAI.yml', 'buildAndTestRyzenAIWindows.yml'].includes(w.file);
       if (latest && failedOutcome(latest)) {
-        level = previousPassed ? 'warn' : 'bad';
-        kind = previousPassed ? 'intermittent' : 'failing';
-        notes.push(`its latest run on main ${latest.outcome === 'timed_out' ? 'timed out' : 'failed'}${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}${previousPassed ? '; the previous run passed' : ''}`);
+        level = hardwareBlip ? 'warn' : 'bad';
+        kind = hardwareBlip ? 'intermittent' : 'failing';
+        notes.push(`its latest run on main ${latest.outcome === 'timed_out' ? 'timed out' : 'failed'}${failedJobs.length ? ` (${failedJobs.join(', ')})` : ''}${hardwareBlip ? '; the previous run passed' : ''}`);
       } else if (latest && ['runner_lost', 'no_runner'].includes(latest.outcome)) {
         // A machine that died mid-run is often back by the next; none taking
         // the run at all needs someone to bring one back.
