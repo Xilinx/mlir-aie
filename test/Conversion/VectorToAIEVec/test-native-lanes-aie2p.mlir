@@ -434,6 +434,31 @@ func.func @cmpi_select_v64bf16(%a: vector<64xi32>, %b: vector<64xi32>,
 
 // -----
 
+// Unsigned compares are split like signed ones and keep their predicate.
+// CHECK-LABEL: func.func @cmpi_unsigned_select_v64
+// CHECK-COUNT-4: aievec.cmp %{{.*}}, %{{.*}} {pred = "ult"} : vector<16xi32>, vector<16xi32>, ui32
+// CHECK-COUNT-4: aievec.cmp %{{.*}}, %{{.*}} {pred = "ule"} : vector<16xi32>, vector<16xi32>, ui32
+// CHECK-COUNT-2: aievec.cmp %{{.*}}, %{{.*}} {pred = "ugt"} : vector<32xi16>, vector<32xi16>, ui32
+// CHECK-COUNT-2: aievec.cmp %{{.*}}, %{{.*}} {pred = "uge"} : vector<32xi16>, vector<32xi16>, ui32
+// CHECK-NOT: arith.cmpi
+func.func @cmpi_unsigned_select_v64(%a: vector<64xi32>, %b: vector<64xi32>,
+                                    %c: vector<64xi16>, %d: vector<64xi16>,
+                                    %x: vector<64xi32>, %y: vector<64xi32>,
+                                    %s: vector<64xi16>, %t: vector<64xi16>)
+    -> (vector<64xi32>, vector<64xi32>, vector<64xi16>, vector<64xi16>) {
+  %m0 = arith.cmpi ult, %a, %b : vector<64xi32>
+  %0 = arith.select %m0, %x, %y : vector<64xi1>, vector<64xi32>
+  %m1 = arith.cmpi ule, %a, %b : vector<64xi32>
+  %1 = arith.select %m1, %x, %y : vector<64xi1>, vector<64xi32>
+  %m2 = arith.cmpi ugt, %c, %d : vector<64xi16>
+  %2 = arith.select %m2, %s, %t : vector<64xi1>, vector<64xi16>
+  %m3 = arith.cmpi uge, %c, %d : vector<64xi16>
+  %3 = arith.select %m3, %s, %t : vector<64xi1>, vector<64xi16>
+  return %0, %1, %2, %3 : vector<64xi32>, vector<64xi32>, vector<64xi16>, vector<64xi16>
+}
+
+// -----
+
 // Rank 2 bf16: 32-lane parts.
 // CHECK-LABEL: func.func @cmpf_select_2x32bf16
 // CHECK-COUNT-2: aievec.cmp %{{.*}}, %{{.*}} {pred = "sgt"} : vector<32xbf16>, vector<32xbf16>, ui32

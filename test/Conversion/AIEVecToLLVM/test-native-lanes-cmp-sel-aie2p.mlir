@@ -78,6 +78,28 @@ func.func @cmpi_v64i32_select_v64bf16(%a: vector<64xi32>, %b: vector<64xi32>,
 
 // -----
 
+// An unsigned compare's parts pass the unsigned sign mode (0) to the
+// intrinsic.
+// CHECK-LABEL: func.func @cmpi_ult_v64i32_select_v64i32
+// CHECK: %[[U0:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT: "xllvm.intr.aie2p.vmax.lt32"(%{{.*}}, %{{.*}}, %[[U0]])
+// CHECK: %[[U1:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT: "xllvm.intr.aie2p.vmax.lt32"(%{{.*}}, %{{.*}}, %[[U1]])
+// CHECK: %[[U2:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT: "xllvm.intr.aie2p.vmax.lt32"(%{{.*}}, %{{.*}}, %[[U2]])
+// CHECK: %[[U3:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT: "xllvm.intr.aie2p.vmax.lt32"(%{{.*}}, %{{.*}}, %[[U3]])
+// CHECK-NOT: aievec
+// CHECK: return
+func.func @cmpi_ult_v64i32_select_v64i32(%a: vector<64xi32>, %b: vector<64xi32>,
+                                         %x: vector<64xi32>, %y: vector<64xi32>) -> vector<64xi32> {
+  %c = arith.cmpi ult, %a, %b : vector<64xi32>
+  %0 = arith.select %c, %x, %y : vector<64xi1>, vector<64xi32>
+  return %0 : vector<64xi32>
+}
+
+// -----
+
 // Part 15 of 16 is lanes 480 to 511.
 // CHECK-LABEL: func.func @maximumf_v512bf16
 // CHECK-NOT: aievec

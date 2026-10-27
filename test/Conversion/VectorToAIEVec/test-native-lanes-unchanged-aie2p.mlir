@@ -241,36 +241,6 @@ func.func @addi_v24i16(%a: vector<24xi16>, %b: vector<24xi16>) -> vector<24xi16>
 
 // -----
 
-// The LLVM lowering compares integers as signed, so an unsigned relational
-// compare and its select are left as they are.
-// CHECK-LABEL: func.func @cmpi_unsigned_select_v64
-// CHECK-NOT: aievec
-// CHECK: arith.cmpi ult, %{{.*}}, %{{.*}} : vector<64xi32>
-// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xi32>
-// CHECK: arith.cmpi ule, %{{.*}}, %{{.*}} : vector<64xi32>
-// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xi32>
-// CHECK: arith.cmpi ugt, %{{.*}}, %{{.*}} : vector<64xi16>
-// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xi32>
-// CHECK: arith.cmpi uge, %{{.*}}, %{{.*}} : vector<64xi16>
-// CHECK: arith.select %{{.*}}, %{{.*}}, %{{.*}} : vector<64xi1>, vector<64xbf16>
-func.func @cmpi_unsigned_select_v64(%a: vector<64xi32>, %b: vector<64xi32>,
-                                    %c: vector<64xi16>, %d: vector<64xi16>,
-                                    %x: vector<64xi32>, %y: vector<64xi32>,
-                                    %s: vector<64xbf16>, %t: vector<64xbf16>)
-    -> (vector<64xi32>, vector<64xi32>, vector<64xi32>, vector<64xbf16>) {
-  %m0 = arith.cmpi ult, %a, %b : vector<64xi32>
-  %0 = arith.select %m0, %x, %y : vector<64xi1>, vector<64xi32>
-  %m1 = arith.cmpi ule, %a, %b : vector<64xi32>
-  %1 = arith.select %m1, %x, %y : vector<64xi1>, vector<64xi32>
-  %m2 = arith.cmpi ugt, %c, %d : vector<64xi16>
-  %2 = arith.select %m2, %x, %y : vector<64xi1>, vector<64xi32>
-  %m3 = arith.cmpi uge, %c, %d : vector<64xi16>
-  %3 = arith.select %m3, %s, %t : vector<64xi1>, vector<64xbf16>
-  return %0, %1, %2, %3 : vector<64xi32>, vector<64xi32>, vector<64xi32>, vector<64xbf16>
-}
-
-// -----
-
 // The LLVM lowering compares bf16 as ordered, false if either is NaN, so an
 // unordered compare and its select are left as they are.
 // CHECK-LABEL: func.func @cmpf_unordered_select_v64bf16

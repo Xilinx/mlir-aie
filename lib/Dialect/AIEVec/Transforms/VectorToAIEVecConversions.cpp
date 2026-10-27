@@ -5556,16 +5556,10 @@ static SmallVector<int64_t, 5> getAIE2PNativeLanes(Operation *op) {
     return {};
   }
   // Compare and select take 32 lanes of bf16 or i16, 16 of which are padded
-  // to 32, and 16 lanes of i32. The LLVM lowering compares integers as signed
-  // and bf16 as ordered (false if either is NaN); a compare it does not
-  // honour is not given a native width, so it is not split or repeated.
+  // to 32, and 16 lanes of i32. The LLVM lowering compares bf16 as ordered
+  // (false if either is NaN); a compare it does not honour is not given a
+  // native width, so it is not split or repeated.
   if (isa<arith::CmpIOp, arith::CmpFOp, arith::SelectOp>(op)) {
-    if (auto cmpOp = dyn_cast<arith::CmpIOp>(op);
-        cmpOp && !llvm::is_contained({CmpIPredicate::eq, CmpIPredicate::ne,
-                                      CmpIPredicate::slt, CmpIPredicate::sle,
-                                      CmpIPredicate::sgt, CmpIPredicate::sge},
-                                     cmpOp.getPredicate()))
-      return {};
     if (auto cmpOp = dyn_cast<arith::CmpFOp>(op);
         cmpOp && !llvm::is_contained({CmpFPredicate::OEQ, CmpFPredicate::ONE,
                                       CmpFPredicate::OLT, CmpFPredicate::OLE,
