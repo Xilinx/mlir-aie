@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --split-input-file --aie-place-tiles %s | FileCheck %s --implicit-check-not='aie.logical_tile'
+// RUN: sed 's/%k = aie.logical_tile<MemTile>(?, ?)/%k = aie.tile(3, 1)/' %s | aie-opt --split-input-file --aie-place-tiles | FileCheck %s --implicit-check-not='aie.logical_tile'
 // RUN: aie-opt --split-input-file --aie-place-tiles --aie-objectFifo-stateful-transform='skip-verify=true' --aie-create-pathfinder-flows %s -o /dev/null
 
 // Two eight-way broadcasts have the same centroid. Spare DMA channels alone

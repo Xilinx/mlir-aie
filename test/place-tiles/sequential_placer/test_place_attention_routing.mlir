@@ -7,6 +7,7 @@
 
 // RUN: aie-opt --aie-place-tiles %s | FileCheck %s
 // RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform='skip-verify=true' --aie-create-pathfinder-flows %s -o /dev/null
+// RUN: sed -E 's/(%[abc]([0-7]) = aie.logical_tile<CoreTile>)\(\?, \?\)/\1(\2, ?)/' %s | aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform='skip-verify=true' --aie-create-pathfinder-flows -o /dev/null
 
 // Eight three-core pipelines with two memtile forwards each, shared K/V
 // broadcasts, and four-way Q splits/O joins. Stream demand should prevent
@@ -15,6 +16,12 @@
 // CHECK-NOT: aie.logical_tile
 module {
   aie.device(npu2) {
+    %sk = aie.logical_tile<ShimNOCTile>(?, ?)
+    %sv = aie.logical_tile<ShimNOCTile>(?, ?)
+    %sq0 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %sq1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %so0 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %so1 = aie.logical_tile<ShimNOCTile>(?, ?)
     %k = aie.logical_tile<MemTile>(?, ?)
     %v = aie.logical_tile<MemTile>(?, ?)
     %q0 = aie.logical_tile<MemTile>(?, ?)
@@ -63,6 +70,10 @@ module {
     %bc7 = aie.logical_tile<MemTile>(?, ?)
     aie.objectfifo @k(%k, {%a0, %a1, %a2, %a3, %a4, %a5, %a6, %a7}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @v(%v, {%c0, %c1, %c2, %c3, %c4, %c5, %c6, %c7}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @k_in(%sk, {%k}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @v_in(%sv, {%v}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@k_in] -> [@k] ([] [])
+    aie.objectfifo.link [@v_in] -> [@v] ([] [])
     aie.objectfifo @q0(%q0, {%a0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @q1(%q0, {%a1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @q2(%q0, {%a2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
@@ -71,6 +82,10 @@ module {
     aie.objectfifo @q5(%q1, {%a5}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @q6(%q1, {%a6}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @q7(%q1, {%a7}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @q_in0(%sq0, {%q0}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @q_in1(%sq1, {%q1}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@q_in0] -> [@q0, @q1, @q2, @q3] ([] [0, 16, 32, 48])
+    aie.objectfifo.link [@q_in1] -> [@q4, @q5, @q6, @q7] ([] [0, 16, 32, 48])
     aie.objectfifo @o0(%c0, {%o0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @o1(%c1, {%o0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @o2(%c2, {%o0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
@@ -79,6 +94,10 @@ module {
     aie.objectfifo @o5(%c5, {%o1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @o6(%c6, {%o1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @o7(%c7, {%o1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @o_out0(%o0, {%so0}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @o_out1(%o1, {%so1}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@o0, @o1, @o2, @o3] -> [@o_out0] ([0, 16, 32, 48] [])
+    aie.objectfifo.link [@o4, @o5, @o6, @o7] -> [@o_out1] ([0, 16, 32, 48] [])
     aie.objectfifo @a0(%a0, {%ab0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @ab0(%ab0, {%b0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b0(%b0, {%bc0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
