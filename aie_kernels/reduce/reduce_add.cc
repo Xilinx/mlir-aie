@@ -82,7 +82,7 @@ static void _reduce_add_vector_bf16(bfloat16 *restrict in,
   constexpr int32_t L = AIE_BF16_LANES;
   const bfloat16 *p = in;
   aie::accum<accfloat, L> t0 = aie::zeros<accfloat, L>();
-  if constexpr (REDUCE_ADD_ELEMS % (4 * L) == 0) {
+  if (REDUCE_ADD_ELEMS % (4 * L) == 0) {
     // The adds chain on their latency; four independent sums hide it.
     aie::accum<accfloat, L> t1 = t0, t2 = t0, t3 = t0;
     AIE_LOOP_NO_UNROLL

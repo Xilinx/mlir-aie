@@ -2455,6 +2455,12 @@ def test_scalar_bounds_are_specialized_without_vector_alignment(name):
     assert f"-D{macro}=3" in fn.compile_flags
 
 
+def test_reduce_add_bf16_runtime_fallback_does_not_require_constant_expression():
+    source = Path(kernels.reduce_add(dtype=bfloat16).source_file).read_text()
+    assert "#define REDUCE_ADD_ELEMS input_size" in source
+    assert re.search(r"\bif\s*\(REDUCE_ADD_ELEMS % \(4 \* L\) == 0\)", source)
+
+
 @pytest.mark.parametrize(
     "dims,mac",
     [((64, 64, 64), (4, 8, 8)), ((128, 64, 64), (8, 8, 8)), ((64, 32, 64), (4, 4, 8))],
