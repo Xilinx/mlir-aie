@@ -58,9 +58,12 @@ func.func @matmul_aie2p_8x8x4(%A : vector<8x8xbf16>, %B : vector<8x4xbf16>,
 // CHECK-DAG:  %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK-DAG:  %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x4xbf16> to vector<32xbf16>
 // CHECK-DAG:  %[[FC:.*]] = vector.shape_cast %[[C]] : vector<8x4xf32> to vector<32xf32>
-// Uses shared helper perform8x8x4MatMul: split LHS into lower/upper 32, shuffle with modes 52/53
-// CHECK:      vector.shuffle %[[FA]], %[[FA]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
-// CHECK:      vector.shuffle %[[FA]], %[[FA]] [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+// The multiply reads LHS as [k, m]: transpose it from its two halves with
+// modes 52/53
+// CHECK:      llvm.bitcast %[[FA]] : vector<64xbf16> to vector<32xi32>
+// CHECK:      llvm.mlir.constant(52 : i32) : i32
+// CHECK:      llvm.mlir.constant(53 : i32) : i32
+// CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
 // CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
 // Performs 8 MAC operations with conf=60
 // CHECK-COUNT-8: "xllvm.intr.aie2p.I512.I512.ACC1024.bf.mac.conf"
@@ -78,7 +81,6 @@ func.func @matmul_aie2p_4x8x8(%A : vector<4x8xbf16>, %B : vector<8x8xbf16>,
 // CHECK-DAG:  %[[FA:.*]] = vector.shape_cast %[[A]] : vector<4x8xbf16> to vector<32xbf16>
 // CHECK-DAG:  %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK-DAG:  %[[FC:.*]] = vector.shape_cast %[[C]] : vector<4x8xf32> to vector<32xf32>
-// CHECK:      llvm.mlir.constant(780 : i32) : i32
 // Convert LHS v32bf16 to v32accfloat and pad to v64accfloat
 // CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"(%[[FA]]) : (vector<32xbf16>) -> vector<32xf32>
 // CHECK:      vector.shuffle {{.*}}, {{.*}} {{.*}}-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1{{.*}} : vector<32xf32>, vector<32xf32>

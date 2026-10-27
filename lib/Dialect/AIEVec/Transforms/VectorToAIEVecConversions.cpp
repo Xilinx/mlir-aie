@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 
@@ -150,10 +151,21 @@ static bool scalarClampInCompoundSRS(Operation *op) {
   return false;
 }
 
+// The value at the bottom of a chain of vector.shape_casts that ends at the
+// type it started from, or `v` itself. Flattening an op to rank 1 leaves such
+// round trips between it and the ops that use it.
+static Value skipShapeCastRoundTrip(Value v) {
+  Value src = v;
+  while (auto castOp = src.getDefiningOp<vector::ShapeCastOp>())
+    src = castOp.getSource();
+  return src.getType() == v.getType() ? src : v;
+}
+
 // Given a Value, if it is defined by a widening op (arith:ExtSIOp,
 // arith::ExtUIOp, arith::ExtFOp, aievec::UPSOp + aievec::SRSOp,
 // aievec::UPSOp + aievec::CastOp), return the source of the widening op.
 static std::optional<Value> getSourceOfWideningOp(Value src) {
+  src = skipShapeCastRoundTrip(src);
   if (auto extSIOp = src.getDefiningOp<arith::ExtSIOp>())
     return extSIOp.getIn();
   if (auto extUIOp = src.getDefiningOp<arith::ExtUIOp>())
@@ -915,9 +927,10 @@ static bool matchExpOpForAIE2P(math::ExpOp::Adaptor adaptor) {
          elWidth == 16;
 }
 
-// Check if a vector type matches AIE2P tanh constraints. The tanh intrinsic
-// takes an accfloat operand, so f32 vectors map onto it as well as bf16.
-static bool isAIE2PTanhType(VectorType type) {
+// Check if a vector type matches the AIE2P tanh and exp2 constraints. These
+// intrinsics take an accfloat operand, so f32 vectors map onto them as well as
+// bf16.
+static bool isAIE2PAccFloatUnaryType(VectorType type) {
   if (type.isScalable())
     return false;
   Type elemType = type.getElementType();
@@ -926,9 +939,10 @@ static bool isAIE2PTanhType(VectorType type) {
          (laneSize == 16 || laneSize == 32);
 }
 
-// Check if math.tanh or math.erf of `type` is lowered for AIE2P: a bf16 or f32
-// scalar, one-lane vector, or vector matching isAIE2PTanhType.
-static bool isAIE2PTanhOrErfType(Type type) {
+// Check if math.tanh, math.erf or math.exp2 of `type` is lowered for AIE2P: a
+// bf16 or f32 scalar, one-lane vector, or vector matching
+// isAIE2PAccFloatUnaryType.
+static bool isAIE2PAccFloatUnaryOrScalarType(Type type) {
   auto vecType = dyn_cast<VectorType>(type);
   if (!vecType)
     return type.isBF16() || type.isF32();
@@ -937,7 +951,7 @@ static bool isAIE2PTanhOrErfType(Type type) {
     Type elemType = vecType.getElementType();
     return elemType.isBF16() || elemType.isF32();
   }
-  return isAIE2PTanhType(vecType);
+  return isAIE2PAccFloatUnaryType(vecType);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2056,41 +2070,10 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     }
     // Float types
     else {
-      // v8bf16: pad to v16bf16 via concat with zero, run the standard
-      // 16-wide UPS+AddElem+SRS path, extract the lower 8. Uses the same
-      // building blocks as the integer widen-by-zero-pad helper.
-      if (laneSize == 8 && scalarType.isBF16()) {
-        auto loc = srcOp.getLoc();
-        VectorType v16Ty = createVectorType(16, scalarType);
-        VectorType v8Ty = resultType;
-        auto zeroCst = arith::ConstantOp::create(
-            rewriter, loc, scalarType, rewriter.getZeroAttr(scalarType));
-        auto v16Zero = aievec::BroadcastScalarOp::create(rewriter, loc, v16Ty,
-                                                         zeroCst->getResult(0));
-        auto v8Zero = aievec::ExtOp::create(rewriter, loc, v8Ty,
-                                            v16Zero->getResult(0), 0);
-        auto lhs16 = aievec::ConcatOp::create(
-            rewriter, loc, v16Ty,
-            SmallVector<Value>{lhs, v8Zero->getResult(0)});
-        auto rhs16 = aievec::ConcatOp::create(
-            rewriter, loc, v16Ty,
-            SmallVector<Value>{rhs, v8Zero->getResult(0)});
-        Type accType = getVectorOpDestType(v16Ty, /*AIE2 =*/true);
-        auto lUpsOp =
-            aievec::UPSOp::create(rewriter, loc, accType, lhs16->getResult(0));
-        auto rUpsOp =
-            aievec::UPSOp::create(rewriter, loc, accType, rhs16->getResult(0));
-        auto elemOp =
-            DstOpTy::create(rewriter, loc, lUpsOp->getResult(0).getType(),
-                            lUpsOp->getResult(0), rUpsOp->getResult(0));
-        auto shiftParamOp = arith::ConstantOp::create(
-            rewriter, loc, rewriter.getI32IntegerAttr(0));
-        auto srsOp = aievec::SRSOp::create(
-            rewriter, loc, v16Ty, elemOp.getResult(), shiftParamOp.getResult());
-        rewriter.replaceOpWithNewOp<aievec::ExtOp>(srcOp, v8Ty,
-                                                   srsOp.getResult(), 0);
-        return success();
-      }
+      // f32 at 64 lanes, the width of the accumulator, as one op.
+      if (laneSize == 64 && scalarType.isF32())
+        return genAddElemAIE2<SrcOpTy, DstOpTy>(rewriter, lhs, rhs, resultType,
+                                                srcOp);
       if (laneSize != 16 && laneSize != 32)
         return failure();
 
@@ -3163,21 +3146,22 @@ struct ConvertMathExpToAIEVecExpOpPattern : OpConversionPattern<math::ExpOp> {
   }
 };
 
-// Convert math.tanh to aievec.tanh for AIE2P (will be further lowered to tanh
-// intrinsic)
-struct ConvertMathTanhToAIEVecTanhOpPattern
-    : OpConversionPattern<math::TanhOp> {
-  using OpConversionPattern::OpConversionPattern;
+// Convert math.tanh to aievec.tanh, or math.exp2 to aievec.exp2, for AIE2P.
+// Both are further lowered to the hardware intrinsic of the same name.
+template <typename MathOpTy, typename AIEVecOpTy>
+struct ConvertMathToAIEVecAccFloatUnaryOpPattern
+    : OpConversionPattern<MathOpTy> {
+  using OpConversionPattern<MathOpTy>::OpConversionPattern;
+  using OpAdaptor = typename MathOpTy::Adaptor;
 
   LogicalResult
-  matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
+  matchAndRewrite(MathOpTy op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-    if (!srcType || !isAIE2PTanhType(srcType))
+    if (!srcType || !isAIE2PAccFloatUnaryType(srcType))
       return failure();
 
-    rewriter.replaceOpWithNewOp<aievec::TanhOp>(tanhOp, srcType,
-                                                adaptor.getOperand());
+    rewriter.replaceOpWithNewOp<AIEVecOpTy>(op, srcType, adaptor.getOperand());
     return success();
   }
 };
@@ -3196,7 +3180,8 @@ struct ComputeErfOpAIE2PPattern : OpConversionPattern<math::ErfOp> {
   matchAndRewrite(math::ErfOp erfOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-    if (!srcType || srcType.getRank() != 1 || !isAIE2PTanhType(srcType))
+    if (!srcType || srcType.getRank() != 1 ||
+        !isAIE2PAccFloatUnaryType(srcType))
       return failure();
 
     constexpr double a = 1.1283791670955126;  // 2/sqrt(pi)
@@ -3242,8 +3227,8 @@ struct ComputeErfOpAIE2PPattern : OpConversionPattern<math::ErfOp> {
   }
 };
 
-// Convert a scalar math.tanh or math.erf for AIE2P by broadcasting it to a
-// 16-lane vector, applying the vector op and extracting lane 0.
+// Convert a scalar math.tanh, math.erf or math.exp2 for AIE2P by broadcasting
+// it to a 16-lane vector, applying the vector op and extracting lane 0.
 template <typename OpTy>
 struct ComputeScalarMathOpByVectorAIE2PPattern : OpConversionPattern<OpTy> {
   using OpConversionPattern<OpTy>::OpConversionPattern;
@@ -3266,8 +3251,8 @@ struct ComputeScalarMathOpByVectorAIE2PPattern : OpConversionPattern<OpTy> {
   }
 };
 
-// Convert a one-lane math.tanh or math.erf for AIE2P to the scalar op, which
-// ComputeScalarMathOpByVectorAIE2PPattern lowers.
+// Convert a one-lane math.tanh, math.erf or math.exp2 for AIE2P to the scalar
+// op, which ComputeScalarMathOpByVectorAIE2PPattern lowers.
 template <typename OpTy>
 struct ComputeOneLaneMathOpAIE2PPattern : OpConversionPattern<OpTy> {
   using OpConversionPattern<OpTy>::OpConversionPattern;
@@ -4978,52 +4963,156 @@ struct LowerScalarShRSIToAIEVecUPSSRS : OpConversionPattern<arith::ShRSIOp> {
   }
 };
 
+// A `vector.contract` read as one matmul tile: the sizes of its m, n and k
+// dims, and the order each operand stores them in once its unit dims are
+// dropped. An m (n) dim indexes lhs (rhs) and acc, a k dim indexes lhs and
+// rhs and is reduced. Unit dims may sit anywhere and play any role.
+struct ContractionTile {
+  int64_t m = 1, n = 1, k = 1;
+  // lhs stored [k, m], rhs stored [n, k], acc stored [n, m]. Only set when
+  // both dims of the operand are larger than 1.
+  bool lhsTransposed = false, rhsTransposed = false, accTransposed = false;
+};
+
+static LogicalResult analyzeContraction(vector::ContractionOp op,
+                                        ContractionTile &tile,
+                                        std::string &why) {
+  llvm::raw_string_ostream os(why);
+  if (op.getKind() != vector::CombiningKind::ADD) {
+    os << "the combining kind is not add";
+    return failure();
+  }
+  auto accTy = dyn_cast<VectorType>(op.getAccType());
+  if (!accTy) {
+    os << "the accumulator is a scalar";
+    return failure();
+  }
+  SmallVector<AffineMap, 3> maps = op.getIndexingMapsArray();
+  if (!llvm::all_of(maps, [](AffineMap map) {
+        return map.isProjectedPermutation(/*allowZeroInResults=*/false);
+      })) {
+    os << "an indexing map is not a projected permutation";
+    return failure();
+  }
+  enum Role { M, N, K, Other };
+  unsigned numDims = maps[0].getNumDims();
+  SmallVector<int64_t> dimSize(numDims, 1);
+  SmallVector<std::array<bool, 3>> indexes(numDims, {false, false, false});
+  ArrayRef<int64_t> shapes[3] = {op.getLhsType().getShape(),
+                                 op.getRhsType().getShape(), accTy.getShape()};
+  for (unsigned operand = 0; operand < 3; ++operand)
+    for (auto [i, expr] : llvm::enumerate(maps[operand].getResults())) {
+      unsigned d = cast<AffineDimExpr>(expr).getPosition();
+      dimSize[d] = shapes[operand][i];
+      indexes[d][operand] = true;
+    }
+  SmallVector<vector::IteratorType> iterators = op.getIteratorTypesArray();
+  std::optional<unsigned> dimOf[3];
+  for (unsigned d = 0; d < numDims; ++d) {
+    if (dimSize[d] == 1)
+      continue;
+    auto [inLhs, inRhs, inAcc] = indexes[d];
+    bool reduced = iterators[d] == vector::IteratorType::reduction;
+    Role r = Other;
+    if (inLhs && !inRhs && inAcc && !reduced)
+      r = M;
+    else if (!inLhs && inRhs && inAcc && !reduced)
+      r = N;
+    else if (inLhs && inRhs && !inAcc && reduced)
+      r = K;
+    if (r == Other || dimOf[r]) {
+      os << "d" << d << " of size " << dimSize[d]
+         << " is not the only m, n or k dim larger than 1";
+      return failure();
+    }
+    dimOf[r] = d;
+  }
+  auto sizeOf = [&](Role r) -> int64_t {
+    std::optional<unsigned> d = dimOf[r];
+    return d ? dimSize[*d] : 1;
+  };
+  tile.m = sizeOf(M);
+  tile.n = sizeOf(N);
+  tile.k = sizeOf(K);
+  // Whether `second` comes before `first` among the results of `map`.
+  auto swapped = [&](AffineMap map, Role first, Role second) {
+    if (!dimOf[first] || !dimOf[second])
+      return false;
+    return *map.getResultPosition(
+               getAffineDimExpr(*dimOf[second], map.getContext())) <
+           *map.getResultPosition(
+               getAffineDimExpr(*dimOf[first], map.getContext()));
+  };
+  tile.lhsTransposed = swapped(maps[0], M, K);
+  tile.rhsTransposed = swapped(maps[1], K, N);
+  tile.accTransposed = swapped(maps[2], M, N);
+  return success();
+}
+
 // Convert a `vector.contract` op to an `aievec.matmul` op for AIE2 or
-// `aievec.matmul_aie2p` for AIE2P
+// `aievec.matmul_aie2p` for AIE2P. The operands keep the layout the
+// contraction stores them in, recorded by the lhs_transposed and
+// rhs_transposed flags; the lowering of the matmul op moves data only where
+// the multiply reads an operand the other way. An accumulator stored [n, m]
+// is handled by multiplying rhs^T by lhs^T, which swaps the operands and
+// flips both of their flags.
 template <typename MatMulOpTy>
 struct LowerVectorContractionOpToAIEVecMatMulPattern
     : OpConversionPattern<vector::ContractionOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LowerVectorContractionOpToAIEVecMatMulPattern(MLIRContext *context)
-      : OpConversionPattern(context) {}
+  static constexpr bool isAIE2P =
+      std::is_same_v<MatMulOpTy, aievec::MatMulOp_AIE2P>;
 
-  Value reshapeLeadingUnitDims(OpBuilder &b, Value v) const {
-    auto vecTy = dyn_cast<VectorType>(v.getType());
-    if (!vecTy)
+  static Value reshape(OpBuilder &b, Value v, ArrayRef<int64_t> shape) {
+    auto vecTy = cast<VectorType>(v.getType());
+    auto newTy = VectorType::get(shape, vecTy.getElementType());
+    if (newTy == vecTy)
       return v;
-    auto vecShape = vecTy.getShape();
-
-    size_t numLeadUnitDims = 0;
-    while (numLeadUnitDims < vecShape.size() && vecShape[numLeadUnitDims] == 1)
-      numLeadUnitDims++;
-
-    if (!numLeadUnitDims)
-      return v;
-
-    SmallVector<int64_t> newShape(vecShape.begin() + numLeadUnitDims,
-                                  vecShape.end());
-    auto newVecTy = VectorType::get(newShape, vecTy.getElementType());
-    return vector::ShapeCastOp::create(b, v.getLoc(), newVecTy, v).getResult();
+    return vector::ShapeCastOp::create(b, v.getLoc(), newTy, v).getResult();
   }
 
   LogicalResult
   matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto lhs = reshapeLeadingUnitDims(rewriter, adaptor.getLhs());
-    auto rhs = reshapeLeadingUnitDims(rewriter, adaptor.getRhs());
-    auto acc = reshapeLeadingUnitDims(rewriter, adaptor.getAcc());
-    bool bReshapedAcc = (acc != adaptor.getAcc());
+    StringRef target = isAIE2P ? "AIE2P" : "AIE2";
+    std::string why;
+    ContractionTile tile;
+    if (failed(analyzeContraction(contractOp, tile, why))) {
+      contractOp.emitError()
+          << "cannot lower to an " << target << " matrix multiply: " << why;
+      return failure();
+    }
+
+    Value lhsIn = adaptor.getLhs(), rhsIn = adaptor.getRhs();
+    Value lhsOrig = contractOp.getLhs(), rhsOrig = contractOp.getRhs();
+    int64_t m = tile.m, n = tile.n, k = tile.k;
+    bool lhsT = tile.lhsTransposed, rhsT = tile.rhsTransposed;
+    if (tile.accTransposed) {
+      std::swap(lhsIn, rhsIn);
+      std::swap(lhsOrig, rhsOrig);
+      std::swap(m, n);
+      // A flag only matters, and is only set, when both dims are larger
+      // than 1.
+      std::tie(lhsT, rhsT) =
+          std::make_pair(!rhsT && m > 1 && k > 1, !lhsT && n > 1 && k > 1);
+    }
+    SmallVector<int64_t, 2> lhsShape =
+        lhsT ? SmallVector<int64_t, 2>{k, m} : SmallVector<int64_t, 2>{m, k};
+    SmallVector<int64_t, 2> rhsShape =
+        rhsT ? SmallVector<int64_t, 2>{n, k} : SmallVector<int64_t, 2>{k, n};
+    auto accTy =
+        VectorType::get({m, n}, getElementTypeOrSelf(adaptor.getAcc()));
 
     // Recover operand signedness from the widening op before it is peeled.
     // Consult both the (possibly already-rewritten) adaptor operands and the
     // original pre-conversion contraction operands.
-    auto lhsSigned = getSignednessOfWideningOp(adaptor.getLhs());
+    auto lhsSigned = getSignednessOfWideningOp(lhsIn);
     if (!lhsSigned)
-      lhsSigned = getSignednessOfWideningOp(contractOp.getLhs());
-    auto rhsSigned = getSignednessOfWideningOp(adaptor.getRhs());
+      lhsSigned = getSignednessOfWideningOp(lhsOrig);
+    auto rhsSigned = getSignednessOfWideningOp(rhsIn);
     if (!rhsSigned)
-      rhsSigned = getSignednessOfWideningOp(contractOp.getRhs());
+      rhsSigned = getSignednessOfWideningOp(rhsOrig);
 
     // Carry the signedness in the matmul operand element type (si8/ui8). MLIR
     // has no signless->signed/unsigned cast, so materialize an
@@ -5032,9 +5121,7 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     auto retype = [&](Value v, std::optional<bool> isSigned) -> Value {
       if (!isSigned)
         return v;
-      auto vecTy = dyn_cast<VectorType>(v.getType());
-      if (!vecTy)
-        return v;
+      auto vecTy = cast<VectorType>(v.getType());
       auto intTy = dyn_cast<IntegerType>(vecTy.getElementType());
       if (!intTy || !intTy.isSignless())
         return v;
@@ -5046,47 +5133,42 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
           .getResult(0);
     };
 
-    Value result;
-    {
-      // Replace diagnostics handler to silence errors when verifying the
-      // validity of the matmul ops being generated.
-      ScopedDiagnosticHandler diagHandler(
-          contractOp.getContext(), [](Diagnostic &) { return success(); });
-      // Decide whether the wide operands already form a valid matmul, or
-      // whether the widening ops must be peeled to reach a supported narrow
-      // shape. Use a throwaway signless op so a failed attempt leaves no retype
-      // casts behind.
-      auto testOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                       acc.getType(), lhs, rhs, acc);
-      bool needsPeel = failed(testOp.verifyInvariants());
-      rewriter.eraseOp(testOp);
-      if (needsPeel) {
-        // When the linalg op is converted to contractions, lower-precision
-        // operands may be cast to the target precision outside the contraction.
-        lhs = adaptor.getLhs();
-        auto wideLhsValue = getSourceOfWideningOp(lhs).value_or(nullptr);
-        if (wideLhsValue)
-          lhs = reshapeLeadingUnitDims(rewriter, wideLhsValue);
-
-        rhs = adaptor.getRhs();
-        auto wideRhsValue = getSourceOfWideningOp(rhs).value_or(nullptr);
-        if (wideRhsValue)
-          rhs = reshapeLeadingUnitDims(rewriter, wideRhsValue);
-      }
-
-      auto matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                         acc.getType(), retype(lhs, lhsSigned),
-                                         retype(rhs, rhsSigned), acc);
-      if (failed(matmulOp.verifyInvariants()))
+    auto tileFits = [&](Value lhs, Value rhs, bool report) {
+      auto emitError = [&]() {
+        return contractOp.emitError()
+               << "cannot lower to an " << target << " matrix multiply: ";
+      };
+      return checkMatMulTile(
+                 isAIE2P, VectorType::get(lhsShape, getElementTypeOrSelf(lhs)),
+                 VectorType::get(rhsShape, getElementTypeOrSelf(rhs)), accTy,
+                 lhsT, rhsT,
+                 report ? llvm::function_ref<InFlightDiagnostic()>(emitError)
+                        : nullptr)
+          .has_value();
+    };
+    // Multiply the operands as they are if they form a tile. Otherwise they
+    // may be widened from a type a multiply takes, as when a linalg op is
+    // converted to contractions with its operands cast to the accumulator
+    // type outside the contraction.
+    if (!tileFits(lhsIn, rhsIn, /*report=*/false)) {
+      lhsIn = getSourceOfWideningOp(lhsIn).value_or(lhsIn);
+      rhsIn = getSourceOfWideningOp(rhsIn).value_or(rhsIn);
+      if (!tileFits(lhsIn, rhsIn, /*report=*/true))
         return failure();
-      result = matmulOp.getResult();
     }
+    Value acc = reshape(rewriter, adaptor.getAcc(), accTy.getShape());
+    Value lhs = reshape(rewriter, lhsIn, lhsShape);
+    Value rhs = reshape(rewriter, rhsIn, rhsShape);
 
-    if (bReshapedAcc)
-      result = vector::ShapeCastOp::create(rewriter, contractOp.getLoc(),
-                                           adaptor.getAcc().getType(), result);
-    rewriter.replaceOp(contractOp, result);
-
+    auto matmulOp =
+        MatMulOpTy::create(rewriter, contractOp.getLoc(), acc.getType(),
+                           retype(lhs, lhsSigned), retype(rhs, rhsSigned), acc);
+    matmulOp.setLhsTransposed(lhsT);
+    matmulOp.setRhsTransposed(rhsT);
+    rewriter.replaceOp(
+        contractOp,
+        reshape(rewriter, matmulOp.getResult(),
+                cast<VectorType>(adaptor.getAcc().getType()).getShape()));
     return success();
   }
 };
@@ -5339,6 +5421,33 @@ struct ConvertSplatToAIEBroadcastAIE2p
   }
 };
 
+// Whether FlattenElementwiseVectorToRank1Pattern rewrites `op`: an n-D
+// elementwise op whose vector operands all have the shape of its result.
+static bool isFlattenableElementwise(Operation *op) {
+  if (op->getNumResults() != 1)
+    return false;
+  auto resultType = dyn_cast<VectorType>(op->getResult(0).getType());
+  if (!resultType || resultType.getRank() == 1 || resultType.isScalable())
+    return false;
+
+  // The contraction lowering folds an extf on its operand into the matmul.
+  // It looks for the extf directly, so a flattened extf hidden behind a
+  // shape_cast would leave the contraction with no lowering.
+  if (isa<arith::ExtFOp>(op) &&
+      llvm::any_of(op->getUsers(), [](Operation *user) {
+        return isa<vector::ContractionOp>(user);
+      }))
+    return false;
+
+  // Only shapes that agree with the result are elementwise; anything else (a
+  // broadcast of a differently shaped vector, say) is left to the patterns
+  // that understand it.
+  return llvm::all_of(op->getOperandTypes(), [&](Type type) {
+    auto operandType = dyn_cast<VectorType>(type);
+    return !operandType || operandType.getShape() == resultType.getShape();
+  });
+}
+
 // Rewrite an elementwise op on an n-D vector into the same op on the rank-1
 // vector with the same lane count, between a pair of vector.shape_casts.
 //
@@ -5354,19 +5463,10 @@ struct FlattenElementwiseVectorToRank1Pattern : OpConversionPattern<OpTy> {
   LogicalResult
   matchAndRewrite(OpTy op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto resultType = dyn_cast<VectorType>(op.getType());
-    if (!resultType || resultType.getRank() == 1 || resultType.isScalable())
+    if (!isFlattenableElementwise(op))
       return failure();
 
-    // The contraction lowering folds an extf on its operand into the matmul.
-    // It looks for the extf directly, so a flattened extf hidden behind a
-    // shape_cast would leave the contraction with no lowering.
-    if (isa<arith::ExtFOp>(op.getOperation()) &&
-        llvm::any_of(op->getUsers(), [](Operation *user) {
-          return isa<vector::ContractionOp>(user);
-        }))
-      return failure();
-
+    auto resultType = cast<VectorType>(op.getType());
     auto flatResultType = getFlattenedVectorType(resultType);
     Location loc = op.getLoc();
 
@@ -5378,11 +5478,6 @@ struct FlattenElementwiseVectorToRank1Pattern : OpConversionPattern<OpTy> {
         flatOperands.push_back(operand);
         continue;
       }
-      // Only shapes that agree with the result are elementwise; anything else
-      // (a broadcast of a differently shaped vector, say) is left to the
-      // patterns that understand it.
-      if (operandType.getShape() != resultType.getShape())
-        return failure();
       auto flatOperandType = getFlattenedVectorType(operandType);
       // Rematerialise a splat at the flat type instead of shape_casting it:
       // patterns that match on a constant operand (the reciprocal lowering
@@ -5411,6 +5506,280 @@ struct FlattenElementwiseVectorToRank1Pattern : OpConversionPattern<OpTy> {
   }
 };
 
+// The lane counts at which the AIE2P lowering of `op` takes one op, smallest
+// first, or none if it has no such lowering. For a compare they are those of
+// its operands.
+static SmallVector<int64_t, 5> getAIE2PNativeLanes(Operation *op) {
+  Value v = isa<arith::CmpIOp, arith::CmpFOp>(op) ? op->getOperand(0)
+                                                  : op->getResult(0);
+  auto type = dyn_cast<VectorType>(v.getType());
+  if (!type || !type.getElementType().isIntOrFloat())
+    return {};
+  Type elemType = type.getElementType();
+  unsigned bitWidth = elemType.getIntOrFloatBitWidth();
+  bool isInt = isa<IntegerType>(elemType) &&
+               (bitWidth == 8 || bitWidth == 16 || bitWidth == 32);
+
+  // f32 adds and subtracts run on the 2048-bit accumulator, which holds 64
+  // lanes; the LLVM lowering pads 16 or 32 lanes to it. bf16 ones are moved
+  // to the accumulator and back at 16 lanes, and 32 lanes as two halves.
+  if (isa<arith::AddFOp, arith::SubFOp>(op)) {
+    if (elemType.isF32())
+      return {16, 32, 64};
+    if (elemType.isBF16())
+      return {16, 32};
+    return {};
+  }
+  // Integer adds and subtracts are left to LLVM, which takes one 512-bit
+  // register or less. Splitting wider ones here rather than in LLVM lets the
+  // parts feed the parts of a split compare directly.
+  if (isa<arith::AddIOp, arith::SubIOp>(op)) {
+    if (!isInt)
+      return {};
+    SmallVector<int64_t, 5> lanes;
+    for (int64_t n = 2; n <= 512 / bitWidth; n *= 2)
+      lanes.push_back(n);
+    return lanes;
+  }
+  // The tanh and exp2 intrinsics take 16 lanes of accfloat, which f32 maps
+  // onto as well as bf16; 32 lanes are taken as two halves. erf is computed
+  // with tanh.
+  if (isa<math::TanhOp, math::ErfOp, math::Exp2Op>(op)) {
+    if (elemType.isF32() || elemType.isBF16())
+      return {16, 32};
+    return {};
+  }
+  // Float max and min take one 512-bit register of bf16.
+  if (isa<arith::MaximumFOp, arith::MaxNumFOp, arith::MinimumFOp>(op)) {
+    if (elemType.isBF16())
+      return {32};
+    return {};
+  }
+  // Compare and select take 32 lanes of bf16 or i16, 16 of which are padded
+  // to 32, and 16 lanes of i32. The LLVM lowering compares bf16 as ordered
+  // (false if either is NaN); a compare it does not honour is not given a
+  // native width, so it is not split or repeated.
+  if (isa<arith::CmpIOp, arith::CmpFOp, arith::SelectOp>(op)) {
+    if (auto cmpOp = dyn_cast<arith::CmpFOp>(op);
+        cmpOp && !llvm::is_contained({CmpFPredicate::OEQ, CmpFPredicate::ONE,
+                                      CmpFPredicate::OLT, CmpFPredicate::OLE,
+                                      CmpFPredicate::OGT, CmpFPredicate::OGE},
+                                     cmpOp.getPredicate()))
+      return {};
+    if (elemType.isBF16() || elemType.isInteger(16))
+      return {16, 32};
+    if (elemType.isInteger(32))
+      return {16};
+    return {};
+  }
+  return {};
+}
+
+// Whether the AIE2P lowering of `op` takes it at its lane count.
+static bool isAIE2PNativeWidth(Operation *op) {
+  auto type = dyn_cast<VectorType>(op->getResult(0).getType());
+  return type && !type.isScalable() &&
+         llvm::is_contained(getAIE2PNativeLanes(op), type.getNumElements());
+}
+
+// The compare that `op`, a select, selects on.
+static Operation *getSelectCompare(arith::SelectOp op) {
+  Operation *cmp = skipShapeCastRoundTrip(op.getCondition()).getDefiningOp();
+  return isa_and_nonnull<arith::CmpIOp, arith::CmpFOp>(cmp) ? cmp : nullptr;
+}
+
+// aievec.ext numbers the parts of its source with an i8.
+constexpr int64_t kAIE2PMaxParts = 128;
+
+// The lanes of each part an elementwise op is rewritten into when the AIE2P
+// lowering does not take its lane count, or none. Lanes are counted over all
+// dimensions. A vector is split into parts of the widest native width that
+// divides it or, if none does, repeated to the narrowest native width that
+// holds a whole number of copies.
+//
+// A compare is split together with the select that uses it, as the parts of
+// its mask cannot be put back together; the parts are as wide as both the
+// compare and the select take.
+static std::optional<int64_t> getAIE2PPartLanes(Operation *op) {
+  if (op->getNumResults() != 1 || isa<arith::CmpIOp, arith::CmpFOp>(op))
+    return std::nullopt;
+  auto type = dyn_cast<VectorType>(op->getResult(0).getType());
+  if (!type || type.isScalable())
+    return std::nullopt;
+  int64_t lanes = type.getNumElements();
+  if (lanes < 2 || llvm::any_of(
+                       op->getOperandTypes(),
+                       [&](Type t) {
+                         auto vt = dyn_cast<VectorType>(t);
+                         return !vt || vt.getShape() != type.getShape();
+                       }))
+    return std::nullopt;
+
+  SmallVector<int64_t, 5> native = getAIE2PNativeLanes(op);
+  if (auto selOp = dyn_cast<arith::SelectOp>(op)) {
+    Operation *cmp = getSelectCompare(selOp);
+    if (!cmp)
+      return std::nullopt;
+    SmallVector<int64_t, 5> cmpNative = getAIE2PNativeLanes(cmp);
+    llvm::erase_if(
+        native, [&](int64_t n) { return !llvm::is_contained(cmpNative, n); });
+  }
+  if (native.empty() || llvm::is_contained(native, lanes))
+    return std::nullopt;
+  // LLVM takes an integer add of one register whatever its lane count.
+  if (isa<arith::AddIOp, arith::SubIOp>(op) && lanes < native.back())
+    return std::nullopt;
+
+  for (int64_t part : llvm::reverse(native))
+    if (part < lanes && lanes % part == 0 && lanes / part <= kAIE2PMaxParts)
+      return part;
+  if (isa<arith::SelectOp>(op))
+    return std::nullopt;
+  for (int64_t part : native)
+    if (part > lanes && part % lanes == 0)
+      return part;
+  return std::nullopt;
+}
+
+// Part `index` of `partLanes` lanes of `v`, or `v` repeated to `partLanes`
+// lanes when it has fewer. A splat is built again at the width of the part,
+// which keeps the parts of a splat equal, and the part of a concatenation of
+// such parts is taken from it directly.
+static Value getAIE2PPart(ConversionPatternRewriter &rewriter, Location loc,
+                          Value v, int64_t partLanes, int64_t index) {
+  auto type = cast<VectorType>(v.getType());
+  auto partType = VectorType::get({partLanes}, type.getElementType());
+  int64_t lanes = type.getNumElements();
+  if (auto cstOp = v.getDefiningOp<arith::ConstantOp>())
+    if (auto dense = dyn_cast<DenseElementsAttr>(cstOp.getValue());
+        dense && dense.isSplat())
+      return arith::ConstantOp::create(
+          rewriter, loc,
+          DenseElementsAttr::get(partType, dense.getSplatValue<Attribute>()));
+  if (auto bcastOp = v.getDefiningOp<vector::BroadcastOp>())
+    if (!isa<VectorType>(bcastOp.getSourceType()))
+      return vector::BroadcastOp::create(rewriter, loc, partType,
+                                         bcastOp.getSource());
+  if (partLanes < lanes) {
+    if (auto concatOp = v.getDefiningOp<aievec::ConcatOp>())
+      if (concatOp.getSources().front().getType() == partType)
+        return concatOp.getSources()[index];
+    return aievec::ExtOp::create(rewriter, loc, partType, v, index);
+  }
+  SmallVector<Value> copies(partLanes / lanes, v);
+  return aievec::ConcatOp::create(rewriter, loc, partType, copies);
+}
+
+// Part `index` of the mask of `selOp`. The mask is not cut apart: its compare
+// is built again on the parts of the compare's operands. The compare is taken
+// from `selOp` itself, as the mask it is converted to may not be a vector.
+static Value getAIE2PMaskPart(ConversionPatternRewriter &rewriter, Location loc,
+                              arith::SelectOp selOp, int64_t partLanes,
+                              int64_t index) {
+  Operation *cmp = getSelectCompare(selOp);
+  OperationState state(loc, cmp->getName());
+  for (Value operand : cmp->getOperands())
+    state.addOperands(getAIE2PPart(
+        rewriter, loc, rewriter.getRemappedValue(operand), partLanes, index));
+  state.addTypes(VectorType::get({partLanes}, rewriter.getI1Type()));
+  state.addAttributes(cmp->getAttrs());
+  return rewriter.create(state)->getResult(0);
+}
+
+// Rewrite a rank-1 elementwise op whose lane count the AIE2P lowering does
+// not take into the same op on parts of a lane count it does take (see
+// getAIE2PPartLanes): ops on the parts joined by aievec.concat, or one op on
+// the repeated operands followed by aievec.ext of the lanes wanted. A select
+// takes its compare along.
+template <typename OpTy>
+struct NormalizeLanesAIE2PPattern : OpConversionPattern<OpTy> {
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using OpAdaptor = typename OpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(OpTy op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto type = dyn_cast<VectorType>(op->getResult(0).getType());
+    if (!type || type.getRank() != 1)
+      return failure();
+    std::optional<int64_t> partLanes = getAIE2PPartLanes(op);
+    if (!partLanes)
+      return failure();
+    int64_t lanes = type.getNumElements();
+    auto partType = VectorType::get({*partLanes}, type.getElementType());
+    Location loc = op.getLoc();
+    auto createPart = [&](int64_t index) -> Value {
+      SmallVector<Value> operands;
+      for (Value operand : adaptor.getOperands()) {
+        if constexpr (std::is_same_v<OpTy, arith::SelectOp>) {
+          if (operands.empty()) {
+            operands.push_back(
+                getAIE2PMaskPart(rewriter, loc, op, *partLanes, index));
+            continue;
+          }
+        }
+        operands.push_back(
+            getAIE2PPart(rewriter, loc, operand, *partLanes, index));
+      }
+      return OpTy::create(rewriter, loc, TypeRange{partType}, operands,
+                          op.getProperties(),
+                          op->getDiscardableAttrDictionary().getValue())
+          ->getResult(0);
+    };
+
+    if (*partLanes > lanes) {
+      rewriter.replaceOpWithNewOp<aievec::ExtOp>(op, type, createPart(0), 0);
+      return success();
+    }
+    SmallVector<Value> parts;
+    for (int64_t i = 0; i < lanes / *partLanes; ++i)
+      parts.push_back(createPart(i));
+    rewriter.replaceOpWithNewOp<aievec::ConcatOp>(op, type, parts);
+    return success();
+  }
+};
+
+// The elementwise ops AIE2P flattens to rank 1 and, for those with an entry
+// in getAIE2PNativeLanes, brings to a lane count its lowering takes. An n-D
+// op the rank-1 patterns would leave alone is flattened all the same: the
+// LLVM lowering cannot take an n-D vector either.
+template <typename... OpTys>
+struct AIE2PElementwiseOps {
+  static void addPatterns(RewritePatternSet &patterns, PatternBenefit benefit) {
+    patterns.add<FlattenElementwiseVectorToRank1Pattern<OpTys>...,
+                 NormalizeLanesAIE2PPattern<OpTys>...>(patterns.getContext(),
+                                                       benefit);
+  }
+  static void markIllegal(ConversionTarget &target, MLIRContext *ctx) {
+    (markIllegal<OpTys>(target, ctx), ...);
+  }
+  // An n-D op to flatten, or one to bring to another lane count, is illegal.
+  // An op that is already illegal stays so; a dynamically legal one keeps its
+  // predicate for the rest.
+  template <typename OpTy>
+  static void markIllegal(ConversionTarget &target, MLIRContext *ctx) {
+    std::optional<ConversionTarget::LegalizationAction> action =
+        target.getOpAction(OperationName(OpTy::getOperationName(), ctx));
+    if (action == ConversionTarget::LegalizationAction::Legal)
+      target.addDynamicallyLegalOp<OpTy>([](Operation *op) {
+        return !isFlattenableElementwise(op) && !getAIE2PPartLanes(op);
+      });
+    else if (action == ConversionTarget::LegalizationAction::Dynamic)
+      target.addDynamicallyLegalOp<OpTy>(
+          [](Operation *op) -> std::optional<bool> {
+            if (isFlattenableElementwise(op) || getAIE2PPartLanes(op))
+              return false;
+            return std::nullopt;
+          });
+  }
+};
+using AIE2PElementwise = AIE2PElementwiseOps<
+    arith::MulFOp, arith::DivFOp, arith::AddFOp, arith::SubFOp, arith::NegFOp,
+    arith::TruncFOp, arith::ExtFOp, math::ExpOp, math::TanhOp, math::ErfOp,
+    math::Exp2Op, arith::MaximumFOp, arith::MaxNumFOp, arith::MinimumFOp,
+    arith::CmpFOp, arith::CmpIOp, arith::SelectOp, arith::AddIOp, arith::SubIOp,
+    arith::MulIOp, arith::IndexCastOp>;
+
 static void populateAIEVecV2PConversionPatterns(
     RewritePatternSet &patterns, std::shared_ptr<AIE2PShufflePlanner> planner) {
   populateAIEVecV2CommonConversionPatterns(patterns);
@@ -5430,25 +5799,20 @@ static void populateAIEVecV2PConversionPatterns(
           patterns.getContext());
   // Higher benefit than the AIE2P-specific patterns below, which would
   // otherwise take an n-D op before it has been flattened.
-  patterns.add<FlattenElementwiseVectorToRank1Pattern<arith::MulFOp>,
-               FlattenElementwiseVectorToRank1Pattern<arith::DivFOp>,
-               FlattenElementwiseVectorToRank1Pattern<arith::AddFOp>,
-               FlattenElementwiseVectorToRank1Pattern<arith::SubFOp>,
-               FlattenElementwiseVectorToRank1Pattern<arith::NegFOp>,
-               FlattenElementwiseVectorToRank1Pattern<arith::TruncFOp>,
-               FlattenElementwiseVectorToRank1Pattern<arith::ExtFOp>,
-               FlattenElementwiseVectorToRank1Pattern<math::ExpOp>,
-               FlattenElementwiseVectorToRank1Pattern<math::TanhOp>,
-               FlattenElementwiseVectorToRank1Pattern<math::ErfOp>>(
-      patterns.getContext(), /*benefit=*/3);
+  AIE2PElementwise::addPatterns(patterns, /*benefit=*/3);
   // Higher benefit to take priority over the AIE2 LUT-based tanh and the
   // emitc-based erf patterns registered in the common patterns.
-  patterns.add<ConvertMathTanhToAIEVecTanhOpPattern, ComputeErfOpAIE2PPattern,
-               ComputeScalarMathOpByVectorAIE2PPattern<math::TanhOp>,
-               ComputeScalarMathOpByVectorAIE2PPattern<math::ErfOp>,
-               ComputeOneLaneMathOpAIE2PPattern<math::TanhOp>,
-               ComputeOneLaneMathOpAIE2PPattern<math::ErfOp>>(
-      patterns.getContext(), /*benefit=*/2);
+  patterns.add<
+      ConvertMathToAIEVecAccFloatUnaryOpPattern<math::TanhOp, aievec::TanhOp>,
+      ConvertMathToAIEVecAccFloatUnaryOpPattern<math::Exp2Op, aievec::Exp2Op>,
+      ComputeErfOpAIE2PPattern,
+      ComputeScalarMathOpByVectorAIE2PPattern<math::TanhOp>,
+      ComputeScalarMathOpByVectorAIE2PPattern<math::ErfOp>,
+      ComputeScalarMathOpByVectorAIE2PPattern<math::Exp2Op>,
+      ComputeOneLaneMathOpAIE2PPattern<math::TanhOp>,
+      ComputeOneLaneMathOpAIE2PPattern<math::ErfOp>,
+      ComputeOneLaneMathOpAIE2PPattern<math::Exp2Op>>(patterns.getContext(),
+                                                      /*benefit=*/2);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5865,14 +6229,17 @@ configureAIEVecV2PLegalizations(ConversionTarget &target,
     return false;
   });
 
-  // AIE2P-specific legalization for tanh and erf with LLVMIR backend
+  // AIE2P-specific legalization for tanh, erf and exp2 with LLVMIR backend
   // bf16 and f32 scalars, and one-, 16- and 32-lane vectors are illegal (uses
-  // aievec.tanh)
+  // aievec.tanh or aievec.exp2)
   target.addDynamicallyLegalOp<math::TanhOp>([](math::TanhOp tanhOp) {
-    return !isAIE2PTanhOrErfType(tanhOp.getOperand().getType());
+    return !isAIE2PAccFloatUnaryOrScalarType(tanhOp.getOperand().getType());
   });
   target.addDynamicallyLegalOp<math::ErfOp>([](math::ErfOp erfOp) {
-    return !isAIE2PTanhOrErfType(erfOp.getOperand().getType());
+    return !isAIE2PAccFloatUnaryOrScalarType(erfOp.getOperand().getType());
+  });
+  target.addDynamicallyLegalOp<math::Exp2Op>([](math::Exp2Op exp2Op) {
+    return !isAIE2PAccFloatUnaryOrScalarType(exp2Op.getOperand().getType());
   });
 
   // AIE2P-specific legalization for divf 1.0/x pattern with LLVMIR backend
@@ -5984,7 +6351,7 @@ configureAIEVecV2PLegalizations(ConversionTarget &target,
   });
 
   // AIE2P-specific legalization: Override AddFOp to support laneSize==32 for
-  // float types. Also route v8bf16 through aievec (padded to v16bf16).
+  // float types, and bf16 and f32 at the widths getAIE2PNativeLanes gives.
   target.addDynamicallyLegalOp<arith::AddFOp>([](arith::AddFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType)
@@ -5993,11 +6360,8 @@ configureAIEVecV2PLegalizations(ConversionTarget &target,
     Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32. Other
-    // 16-bit floats (e.g. f16) are not handled by the aievec lowering
-    // and must fall through to the default float predicate below.
-    if (scalarType.isBF16())
-      return laneSize != 8 && laneSize != 16 && laneSize != 32;
+    if (scalarType.isBF16() || scalarType.isF32())
+      return !isAIE2PNativeWidth(op);
 
     // For other float types, support both laneSize==16 and laneSize==32
     if (isa<FloatType>(scalarType))
@@ -6008,7 +6372,7 @@ configureAIEVecV2PLegalizations(ConversionTarget &target,
   });
 
   // AIE2P-specific legalization: Override SubFOp to support laneSize==32 for
-  // float types. Also route v8bf16 through aievec (padded to v16bf16).
+  // float types, and bf16 and f32 at the widths getAIE2PNativeLanes gives.
   target.addDynamicallyLegalOp<arith::SubFOp>([](arith::SubFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType)
@@ -6017,11 +6381,8 @@ configureAIEVecV2PLegalizations(ConversionTarget &target,
     Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32. Other
-    // 16-bit floats (e.g. f16) are not handled by the aievec lowering
-    // and must fall through to the default float predicate below.
-    if (scalarType.isBF16())
-      return laneSize != 8 && laneSize != 16 && laneSize != 32;
+    if (scalarType.isBF16() || scalarType.isF32())
+      return !isAIE2PNativeWidth(op);
 
     // For other float types, support both laneSize==16 and laneSize==32
     if (isa<FloatType>(scalarType))
@@ -6584,6 +6945,8 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
       populateAIEVecV2PConversionPatterns(patterns, planner);
       configureAIEVecV2Legalizations(target);
       configureAIEVecV2PLegalizations(target, planner);
+      // Last, as it overrides the predicates above for the ops it rewrites.
+      AIE2PElementwise::markIllegal(target, &getContext());
     } else {
       llvm_unreachable("AIE version is misconfigured");
     }

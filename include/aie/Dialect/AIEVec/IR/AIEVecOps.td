@@ -230,20 +230,18 @@ def AIEVec_ConcatOp
   }];
 }
 
-def AIEVec_ExtOp
-    : AIEVec_Op<"ext", [Pure]>,
-      Arguments<(ins AnyVectorOfNonZeroRank:$source,
-          ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
-      Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_ExtOp : AIEVec_Op<"ext", [Pure]>,
+                   Arguments<(ins AnyVectorOfNonZeroRank:$source,
+                       ConfinedAttr<AIEI8Attr, [IntNonNegative]>:$index)>,
+                   Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ext";
   let description = [{
     AMD-specific vector extract intrinsic. Selects contiguous lanes from
     the source vector, and transfers the data from those lanes to the
-    result. The lane selection is controlled by index. There are two cases:
-    1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
-    2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
-    In the first case, index can be 0 or 1. Index 0 extracts the lower half, and index 1 extracts the upper half.
-    In the second case, index can be 0 to 3. Index 0 extracts the lowest quarter, index 1 the next quarter, and so on.
+    result. The source divides into equal parts as wide as the result, and
+    index selects one of them: index 0 extracts the lowest part, index 1 the
+    next one, and so on. The verifier requires index to be less than the
+    number of parts.
     `$result = ext($source, $index)`
   }];
 }
@@ -459,6 +457,20 @@ def AIEVec_TanhOp
   let hasVerifier = 0;
 }
 
+def AIEVec_Exp2Op
+    : AIEVec_Op<"exp2", [Pure, AllTypesMatch<["source", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
+  let summary = "AIE vector base-2 exponential";
+  let description = [{
+    AMD-specific intrinsic that computes 2 raised to each element of the input
+    vector. For AIE2P, this is lowered to the hardware exp2 intrinsic.
+    `$result = exp2(`$source`).
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
 def AIEVec_InvOp
     : AIEVec_Op<"inv", [Pure, AllTypesMatch<["source", "result"]>]>,
       Arguments<(
@@ -551,11 +563,9 @@ def AIEVec_BandOp
 
 def AIEVec_MatMulOp
     : AIEVec_Op<"matmul", [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
-                           AllTypesMatch<["acc", "result"]>,
-                           ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
-                           IsValidAIE2MatMulShapeAndType<"lhs", "rhs", "acc">]>,
-      Arguments<(ins AIE2MatMulLHS:$lhs, AIE2MatMulRHS:$rhs,
-          AIE2MatMulACC:$acc)>,
+                           AllTypesMatch<["acc", "result"]>]>,
+      Arguments<(ins AIE2MatMulLHS:$lhs, AIE2MatMulRHS:$rhs, AIE2MatMulACC:$acc,
+          UnitAttr:$lhs_transposed, UnitAttr:$rhs_transposed)>,
       Results<(outs AIE2MatMulACC:$result)> {
   let summary = "AIE2 matrix-multiply and accummulate";
   let description = [{
@@ -582,20 +592,28 @@ def AIEVec_MatMulOp
          `vector<4x4xi16>`  | `vector<4x4xi16>`  | `vector<4x4xi64>`
          `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
          `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+
+    The table gives `lhs` as `[m, k]` and `rhs` as `[k, n]`. With
+    `lhs_transposed`, `lhs` holds the `[k, m]` transpose instead, and with
+    `rhs_transposed`, `rhs` holds the `[n, k]` transpose; the shapes change
+    accordingly. The lowering transposes an operand with one shuffle when the
+    multiply reads it the other way. An operand that needs a transpose no
+    shuffle mode provides does not verify.
   }];
-  let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
-                         type($rhs) `into` type($acc)}];
-  let hasVerifier = 0;
+  let assemblyFormat = [{$lhs `,` $rhs `,` $acc
+                         (`lhs_transposed` $lhs_transposed^)?
+                         (`rhs_transposed` $rhs_transposed^)?
+                         attr-dict `:` type($lhs) `,` type($rhs) `into`
+                         type($acc)}];
+  let hasVerifier = 1;
 }
 
 def AIEVec_MatMulOp_AIE2P
-    : AIEVec_Op<"matmul_aie2p",
-                [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
-                 AllTypesMatch<["acc", "result"]>,
-                 ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
-                 IsValidAIE2PMatMulShapeAndType<"lhs", "rhs", "acc">]>,
+    : AIEVec_Op<"matmul_aie2p", [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
+                                 AllTypesMatch<["acc", "result"]>]>,
       Arguments<(ins AIE2PMatMulLHS:$lhs, AIE2PMatMulRHS:$rhs,
-          AIE2PMatMulACC:$acc)>,
+          AIE2PMatMulACC:$acc, UnitAttr:$lhs_transposed,
+          UnitAttr:$rhs_transposed)>,
       Results<(outs AIE2PMatMulACC:$result)> {
   let summary = "AIE2P matrix-multiply and accummulate";
   let description = [{
@@ -617,10 +635,21 @@ def AIEVec_MatMulOp_AIE2P
          `vector<8x8xbf16>`  | `vector<8x4xbf16>`  | `vector<8x4xf32>`
          `vector<8x8xi8>`    | `vector<8x8xi8>`    | `vector<8x8xi32>`
          `vector<8x2xi16>`   | `vector<2x8xi16>`   | `vector<8x8xi32>`
+
+    `lhs_transposed` and `rhs_transposed` mean what they do for
+    `aievec.matmul`. The bf16 multiplies through bfp16 (an `rhs` of
+    `vector<8x8xbf16>`) read `rhs` as `[n, k]`, and the elementwise
+    `vector<8x8xbf16>` times `vector<8x4xbf16>` multiply reads `lhs` as
+    `[k, m]`; an operand stored that way needs no shuffle. Any other
+    transposed operand takes one shuffle, or the `t16_8x8_lo`/`t16_8x8_hi`
+    pair for an 8x8 bf16 tile.
   }];
-  let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
-                         type($rhs) `into` type($acc)}];
-  let hasVerifier = 0;
+  let assemblyFormat = [{$lhs `,` $rhs `,` $acc
+                         (`lhs_transposed` $lhs_transposed^)?
+                         (`rhs_transposed` $rhs_transposed^)?
+                         attr-dict `:` type($lhs) `,` type($rhs) `into`
+                         type($acc)}];
+  let hasVerifier = 1;
 }
 
 def AIEVec_ShuffleOp
