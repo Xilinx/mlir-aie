@@ -1,0 +1,7 @@
+<map id="xilinx::aievec::ShuffleModeShape" name="xilinx::aievec::ShuffleModeShape">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,123,204,163"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="19,5,100,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="58,44,58,71,64,98,82,121,78,124,60,100,53,71,53,44"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="125,5,175,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="143,45,123,100,114,124,109,122,118,98,138,43"/>
+</map>
