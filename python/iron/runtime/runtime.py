@@ -466,7 +466,8 @@ class Runtime(DeviceResources, Resolvable):
         channel per handle.
 
         Raises:
-            ValueError: Two such handles differ in depth or ``from_stream``.
+            ValueError: Two such handles differ in depth, ``from_stream`` or
+                pinned DMA channel.
         """
         for arg in flatten_fn_args(self._fn_args):
             if isinstance(arg, ObjectFifoHandle):
@@ -482,14 +483,15 @@ class Runtime(DeviceResources, Resolvable):
                             or shared != arg.endpoint
                         ):
                             continue
-                        if (first.depth, first.from_stream) != (
+                        if (first.depth, first.from_stream, first.channel) != (
                             arg.depth,
                             arg.from_stream,
+                            arg.channel,
                         ):
                             raise ValueError(
                                 f"ObjectFifo {fifo_obj.name!r} is drained to one "
                                 "shim end through consumer handles with different "
-                                "depths or from_stream patterns"
+                                "depths, from_stream patterns or pinned DMA channels"
                             )
                         if arg in fifo_obj._cons:
                             fifo_obj._cons.remove(arg)

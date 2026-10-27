@@ -957,6 +957,11 @@ def test_runtimes_draining_one_shim_end_at_different_depths_are_refused():
         step_runtimes(2, lambda of, k: of.cons(depth=k + 1))
 
 
+def test_runtimes_draining_one_shim_end_at_different_channels_are_refused():
+    with pytest.raises(ValueError, match="'out_of' is drained to one shim end"):
+        step_runtimes(2, lambda of, k: of.cons(channel=k))
+
+
 def test_merged_steps_may_each_use_only_explicit_groups():
     # Each step's default group is left empty, and must not stay open.
     of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
