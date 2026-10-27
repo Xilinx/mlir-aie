@@ -293,6 +293,8 @@ private:
     bool capacityExistsSomewhere = false;
     int tilesOfType = 0;
     int inUsed = 0, inMax = 0, outUsed = 0, outMax = 0;
+    // Both shortfalls belong to one tile, minimizing their sum.
+    int closestShortIn = 0, closestShortOut = 0;
   };
   CapacityDiagnosis diagnoseCapacityExhaustion(AIETileType requestedType,
                                                int requiredInputChannels,
