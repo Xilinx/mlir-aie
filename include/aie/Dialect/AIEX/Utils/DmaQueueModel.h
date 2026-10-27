@@ -348,11 +348,13 @@ struct DmaCompletionState {
   llvm::SmallVector<Push, 8> pushes;
   std::set<unsigned> forgottenOwners;
   bool unknownTokens = false;
+  bool mayHaveDroppedPushes = false;
 
   bool operator==(const DmaCompletionState &other) const {
     return tasks == other.tasks && pushes == other.pushes &&
            forgottenOwners == other.forgottenOwners &&
-           unknownTokens == other.unknownTokens;
+           unknownTokens == other.unknownTokens &&
+           mayHaveDroppedPushes == other.mayHaveDroppedPushes;
   }
 
   // Canonical identities keep loop fixed points finite. Instances no longer
@@ -389,6 +391,8 @@ struct DmaCompletionState {
   // A real space poll leaves at most depth-1 queued tasks AND one running.
   // Abstract truncation instead retains every lost owner's uncertainty.
   void bound(unsigned limit, bool spaceGuaranteed) {
+    // Attempted pushes no longer bound FIFO progress after a possible drop.
+    spaceGuaranteed &= !mayHaveDroppedPushes;
     if (spaceGuaranteed && pushes.size() >= limit)
       forgottenOwners.clear();
     if (pushes.size() <= limit)
@@ -516,13 +520,42 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     llvm::SetVector<mlir::Operation *> overflowing;
     llvm::SetVector<mlir::Operation *> unsafeFrees;
     std::map<mlir::Operation *, DmaQueueModel::ChannelState> witnesses;
-    auto append = [](States &to, const States &from) {
+    bool trackCompletion = warnUnsafeBdReuse;
+    size_t completionWork = 0;
+    auto equivalent = [&](const PathState &a, const PathState &b) {
+      return a.queue == b.queue &&
+             (!trackCompletion || a.completion == b.completion);
+    };
+    auto contains = [&](const States &states, const PathState &state) {
+      return llvm::any_of(states, [&](const PathState &other) {
+        return equivalent(state, other);
+      });
+    };
+    auto compact = [&](States &states) {
+      States unique;
+      for (const auto &state : states)
+        if (!contains(unique, state))
+          unique.push_back(state);
+      states = std::move(unique);
+    };
+    // Bound optional ownership analysis without weakening queue-depth guards.
+    // Beyond the budget, all frees are uncertain and only occupancy is tracked.
+    auto append = [&](States &to, const States &from) {
+      if (warnUnsafeBdReuse && !trackCompletion)
+        compact(to);
       for (const auto &state : from)
-        if (!llvm::is_contained(to, state))
+        if (!contains(to, state)) {
+          if (trackCompletion && to.size() >= 256) {
+            trackCompletion = false;
+            compact(to);
+            if (contains(to, state))
+              continue;
+          }
           to.push_back(state);
+        }
     };
     auto dedupe = [&](States &states) {
-      if (warnUnsafeBdReuse)
+      if (trackCompletion)
         for (auto &state : states)
           state.completion.normalize();
       if (states.size() < 2)
@@ -533,7 +566,7 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     };
     auto transfer = [&](States &states, mlir::ValueRange from,
                         mlir::ValueRange to) {
-      if (!warnUnsafeBdReuse)
+      if (!trackCompletion)
         return;
       for (auto &state : states) {
         auto previous = state.completion.tasks;
@@ -547,7 +580,7 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     };
     auto forgetScope = [&](States &states, mlir::Region &region,
                            bool keepArguments = false) {
-      if (!warnUnsafeBdReuse)
+      if (!trackCompletion)
         return;
       for (auto [value, index] : taskIndices) {
         mlir::Region *parent = value.getParentRegion();
@@ -596,8 +629,9 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
         for (auto &state : states) {
           state.queue.pushes.assign(depth, false);
           state.queue.unknownTokens = true;
-          if (warnUnsafeBdReuse) {
+          if (trackCompletion) {
             state.completion.unknownTokens = true;
+            state.completion.mayHaveDroppedPushes |= !canPoll;
             for (unsigned owner : state.completion.tasks)
               if (owner)
                 state.completion.forgottenOwners.insert(owner);
@@ -618,6 +652,13 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
       if (blockVisits == channelVisits.end())
         return states;
       for (mlir::Operation *visited : blockVisits->second) {
+        if (trackCompletion) {
+          completionWork += states.size();
+          if (completionWork > 16384) {
+            trackCompletion = false;
+            compact(states);
+          }
+        }
         mlir::Operation &op = *visited;
         if (auto loop = mlir::dyn_cast<mlir::scf::ForOp>(&op)) {
           auto lb = mlir::getConstantIntValue(loop.getLowerBound());
@@ -632,11 +673,19 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
           // zero times.
           transfer(states, loop.getInitArgs(), loop.getRegionIterArgs());
           States reachable = states;
-          for (size_t i = 0; i < reachable.size(); ++i) {
+          for (size_t i = 0; i < reachable.size();) {
+            bool wasTrackingCompletion = trackCompletion;
             States next = analyze(loop.getRegion(), States{reachable[i]});
             transfer(next, loop.getYieldedValues(), loop.getRegionIterArgs());
             forgetScope(next, loop.getRegion(), /*keepArguments=*/true);
             append(reachable, next);
+            if (wasTrackingCompletion && !trackCompletion) {
+              // Revisit earlier paths with uncertain ownership as well.
+              compact(reachable);
+              i = 0;
+            } else {
+              ++i;
+            }
           }
           transfer(reachable, loop.getRegionIterArgs(), loop.getResults());
           forgetScope(reachable, loop.getRegion());
@@ -665,7 +714,7 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
           if (pollsChannel(poll)) {
             for (auto &state : states) {
               DmaQueueModel::noteSpaceGuaranteed(state.queue, depth);
-              if (warnUnsafeBdReuse)
+              if (trackCompletion)
                 state.completion.bound(depth, /*spaceGuaranteed=*/true);
             }
             dedupe(states);
@@ -677,23 +726,30 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
         if (e.kind == QueueEffect::Kind::Free) {
           if (warnUnsafeBdReuse)
             for (const auto &state : states)
-              if (!state.completion.isProvenComplete(
+              if (!trackCompletion ||
+                  !state.completion.isProvenComplete(
                       state.completion.tasks[taskIndices.lookup(e.task)]))
-                if (unsafeFrees.insert(&op))
-                  emitUnsafeBdReuseWarning(
+                if (unsafeFrees.insert(&op)) {
+                  auto diag = emitUnsafeBdReuseWarning(
                       &op, key[0], key[1],
                       static_cast<AIE::DMAChannelDir>(key[2]), key[3]);
+                  if (!trackCompletion)
+                    diag.attachNote()
+                        << "task ownership analysis budget exhausted; "
+                           "completion is conservatively unproven";
+                }
           continue;
         }
         for (auto &state : states) {
           if (e.kind == QueueEffect::Kind::Configure) {
-            state.completion.tasks[taskIndices.lookup(e.task)] =
-                taskIndices.size() + 1;
+            if (trackCompletion)
+              state.completion.tasks[taskIndices.lookup(e.task)] =
+                  taskIndices.size() + 1;
             continue;
           }
           if (e.kind == QueueEffect::Kind::Await) {
             DmaQueueModel::awaitToken(state.queue);
-            if (warnUnsafeBdReuse)
+            if (trackCompletion)
               state.completion.awaitToken();
             continue;
           }
@@ -701,11 +757,13 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
             if (overflowing.insert(&op))
               witnesses[&op] = state.queue;
             DmaQueueModel::noteSpaceGuaranteed(state.queue, depth);
-            if (warnUnsafeBdReuse && canPoll)
+            if (trackCompletion && canPoll)
               state.completion.bound(depth, /*spaceGuaranteed=*/true);
+            else if (trackCompletion)
+              state.completion.mayHaveDroppedPushes = true;
           }
           DmaQueueModel::push(state.queue, e.issuesToken);
-          if (warnUnsafeBdReuse) {
+          if (trackCompletion) {
             unsigned owner =
                 e.task ? state.completion.tasks[taskIndices.lookup(e.task)] : 0;
             state.completion.pushes.push_back({e.issuesToken, owner});
