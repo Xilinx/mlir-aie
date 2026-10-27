@@ -37,7 +37,7 @@
 
 module {
  aie.device(xcvc1902) {
-  %buffer = aie.external_buffer { sym_name = "buf" } : memref<16 x f32>
+  aie.external_buffer @buf : memref<16 x f32>
   %t21 = aie.tile(2, 1)
   %t20 = aie.tile(2, 0)
   %c21 = aie.core(%t21)  {
@@ -52,24 +52,26 @@ module {
   %mux = aie.shim_mux(%t20)  {
     aie.connect<North : 2, DMA : 0>
   }
+  aie.lock @lock0(%t20, 0)
+  aie.lock @lock1(%t20, 1)
   %dma = aie.shim_dma(%t20)  {
-      %lock0 = aie.lock(%t20, 0)
-      %lock1 = aie.lock(%t20, 1)
 
       aie.dma_start(S2MM, 0, ^bd0, ^dma0)
     ^dma0:
       aie.dma_start(MM2S, 0, ^bd1, ^end)
     ^bd0:
       %c0_ul1 = arith.constant 0 : i32
-      aie.use_lock(%lock0, Acquire, %c0_ul1)
+      aie.use_lock(@lock0, Acquire, %c0_ul1)
+      %buffer = aie.get_buffer @buf : memref<16 x f32>
       aie.dma_bd(%buffer : memref<16 x f32> offset = 0 len = 16)
       %c1_ul2 = arith.constant 1 : i32
-      aie.use_lock(%lock0, Release, %c1_ul2)
+      aie.use_lock(@lock0, Release, %c1_ul2)
       aie.next_bd ^bd0
     ^bd1:
-      // aie.use_lock(%lock1, Acquire, %{{.*}})
-      aie.dma_bd(%buffer : memref<16 x f32> offset = 0 len = 4)
-      // aie.use_lock(%lock1, Release, %{{.*}})
+      // aie.use_lock(@lock1, Acquire, %{{.*}})
+      %buffer_1 = aie.get_buffer @buf : memref<16 x f32>
+      aie.dma_bd(%buffer_1 : memref<16 x f32> offset = 0 len = 4)
+      // aie.use_lock(@lock1, Release, %{{.*}})
       aie.next_bd ^bd1
     ^end:
       aie.end

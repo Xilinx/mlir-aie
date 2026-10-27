@@ -37,17 +37,19 @@ module {
     %tile_0_2 = aie.tile(0, 2)
     %tile_1_2 = aie.tile(1, 2)
 
-    %b02 = aie.buffer(%tile_0_2) { sym_name = "buf_a", initial_value = dense<11> : tensor<64xi32> } : memref<64xi32>
-    %b12 = aie.buffer(%tile_1_2) { sym_name = "buf_b", initial_value = dense<22> : tensor<64xi32> } : memref<64xi32>
+    aie.buffer @buf_a(%tile_0_2) { initial_value = dense<11> : tensor<64xi32> } : memref<64xi32>
+    aie.buffer @buf_b(%tile_1_2) { initial_value = dense<22> : tensor<64xi32> } : memref<64xi32>
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
+      %b02 = aie.get_buffer @buf_a : memref<64xi32>
       %v = memref.load %b02[%c0] : memref<64xi32>
       memref.store %v, %b02[%c0] : memref<64xi32>
       aie.end
     }
     %core_1_2 = aie.core(%tile_1_2) {
       %c0 = arith.constant 0 : index
+      %b12 = aie.get_buffer @buf_b : memref<64xi32>
       %v = memref.load %b12[%c0] : memref<64xi32>
       memref.store %v, %b12[%c0] : memref<64xi32>
       aie.end

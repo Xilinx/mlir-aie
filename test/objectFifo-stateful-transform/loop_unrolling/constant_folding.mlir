@@ -13,7 +13,7 @@
 // amount:
 //     %held  = <load runtime held counter>
 //     %delta = arith.maxsi(arith.subi(%acqNum, %held), 0)
-//     aie.use_lock(%cons_lock, AcquireGreaterEqual, %delta)
+//     aie.use_lock(@cons_lock, AcquireGreaterEqual, %delta)
 // and the acquired buffer is selected at runtime with an scf.index_switch.
 //
 // After unrolling by the buffer depth followed by mem2reg + canonicalize + sccp
@@ -25,10 +25,10 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
-// CHECK-DAG:           %[[CONS_BUFF0:.*]] = aie.buffer(%{{.*}}) {sym_name = "fifo_cons_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[CONS_BUFF1:.*]] = aie.buffer(%{{.*}}) {sym_name = "fifo_cons_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[PROD_LOCK:.*]] = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "fifo_cons_prod_lock_0"}
-// CHECK-DAG:           %[[CONS_LOCK:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
+// CHECK-DAG:           aie.buffer @[[CONS_BUFF0:fifo_cons_buff_0]](%{{.*}}) : memref<8xi8>
+// CHECK-DAG:           aie.buffer @[[CONS_BUFF1:fifo_cons_buff_1]](%{{.*}}) : memref<8xi8>
+// CHECK-DAG:           aie.lock @[[PROD_LOCK:fifo_cons_prod_lock_0]](%{{.*}}) {init = 2 : i32}
+// CHECK-DAG:           aie.lock @[[CONS_LOCK:fifo_cons_cons_lock_0]](%{{.*}}) {init = 0 : i32}
 // CHECK:           aie.core
 // The runtime-computed acquire amount folds to a single constant...
 // CHECK:             %[[C1:.*]] = arith.constant 1 : i32
@@ -36,12 +36,12 @@
 // buffer with the constant, folded AcquireGreaterEqual amount -- no runtime
 // index selection and no acquire-count arithmetic remain.
 // CHECK:             scf.for
-// CHECK:               aie.use_lock(%[[CONS_LOCK]], AcquireGreaterEqual, %[[C1]])
-// CHECK:               func.call @work(%[[CONS_BUFF0]])
-// CHECK:               aie.use_lock(%[[PROD_LOCK]], Release, %[[C1]])
-// CHECK:               aie.use_lock(%[[CONS_LOCK]], AcquireGreaterEqual, %[[C1]])
-// CHECK:               func.call @work(%[[CONS_BUFF1]])
-// CHECK:               aie.use_lock(%[[PROD_LOCK]], Release, %[[C1]])
+// CHECK:               aie.use_lock(@[[CONS_LOCK]], AcquireGreaterEqual, %[[C1]])
+// CHECK:               func.call @work(%{{[^ ,)]+}})
+// CHECK:               aie.use_lock(@[[PROD_LOCK]], Release, %[[C1]])
+// CHECK:               aie.use_lock(@[[CONS_LOCK]], AcquireGreaterEqual, %[[C1]])
+// CHECK:               func.call @work(%{{[^ ,)]+}})
+// CHECK:               aie.use_lock(@[[PROD_LOCK]], Release, %[[C1]])
 // CHECK-NOT:           scf.index_switch
 // CHECK-NOT:           arith.subi
 // CHECK-NOT:           arith.maxsi

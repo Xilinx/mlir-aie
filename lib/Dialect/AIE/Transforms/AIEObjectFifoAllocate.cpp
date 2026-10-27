@@ -392,10 +392,8 @@ struct AIEObjectFifoAllocatePass
   LockOp createLock(ObjectFifoPoolOp pool, Value tile, StringRef name,
                     int value) {
     setInsertionPointOn(tile);
-    auto lock = LockOp::create(builder, pool.getLoc(), tile, value);
+    auto lock = LockOp::create(builder, pool.getLoc(), tile, value, name);
     lastPlaced[tile] = lock;
-    lock->setAttr(SymbolTable::getSymbolAttrName(),
-                  builder.getStringAttr(name));
     return lock;
   }
 
@@ -594,7 +592,8 @@ struct AIEObjectFifoAllocatePass
       for (auto name :
            {segment.getProduceLockAttr(), segment.getConsumeLockAttr()})
         if (name)
-          if (auto lock = lookupNamedOp<LockOp>(device, name.getAttr()))
+          if (auto lock = dyn_cast_if_present<LockOp>(
+                  SymbolTable::lookupSymbolIn(device, name)))
             tiles.push_back(lock.getTile());
     }
     return tiles;
@@ -683,11 +682,10 @@ struct AIEObjectFifoAllocatePass
     auto remote = [&](Operation *op) {
       Value tile;
       if (auto bd = dyn_cast<DMABDOp>(op)) {
-        if (auto buffer =
-                dyn_cast_or_null<BufferOp>(bd.getBuffer().getDefiningOp()))
+        if (auto buffer = bd.getBufferOp())
           tile = buffer.getTile();
       } else if (auto use = dyn_cast<UseLockOp>(op)) {
-        if (auto lock = dyn_cast_or_null<LockOp>(use.getLock().getDefiningOp()))
+        if (auto lock = use.getLockOp())
           tile = lock.getTile();
       }
       return tile && !sameTile(tile, endpoint.getTile());
@@ -1282,9 +1280,12 @@ struct AIEObjectFifoAllocatePass
       return success();
     }
 
+    SymbolTableCollection symbols;
+    SymbolTable &table = symbols.getSymbolTable(device);
     builder.setInsertionPoint(device.getBody()->getTerminator());
     for (auto &[fifoName, users] : rearmUsers) {
-      SmallVector<Value> channelTiles, lockValues;
+      SmallVector<Value> channelTiles;
+      SmallVector<Attribute> lockValues;
       SmallVector<int32_t> channelDirs, channelIndices, lockInits;
 
       for (auto endpoint : device.getOps<RouteEndpoint>()) {
@@ -1303,7 +1304,7 @@ struct AIEObjectFifoAllocatePass
           continue;
         }
         for (LockOp lock : pool.getLockOps()) {
-          lockValues.push_back(lock.getResult());
+          lockValues.push_back(FlatSymbolRefAttr::get(lock.getSymNameAttr()));
           lockInits.push_back(lock.getInit().value_or(0));
         }
       }
@@ -1318,20 +1319,20 @@ struct AIEObjectFifoAllocatePass
       }
 
       std::string name = (fifoName + "_rearm").str();
-      for (unsigned suffix = 0; lookupNamedOpIn(device, StringRef(name));
-           suffix++) {
-        name = (fifoName + "_rearm_" + std::to_string(suffix)).str();
-      }
+      unsigned counter = 0;
+      if (table.lookup(name))
+        name = generateUniqueSymbolName(table, name + "_", counter);
 
       // head_bd_ids and repeat_counts are filled in by --aie-assign-bd-ids.
-      ObjectFifoRearmBindingOp::create(
+      auto binding = ObjectFifoRearmBindingOp::create(
           builder, device.getLoc(), builder.getStringAttr(name),
-          ValueRange(channelTiles), ValueRange(lockValues),
+          ValueRange(channelTiles), builder.getArrayAttr(lockValues),
           builder.getDenseI32ArrayAttr(channelDirs),
           builder.getDenseI32ArrayAttr(channelIndices),
           builder.getDenseI32ArrayAttr(lockInits),
           /*head_bd_ids=*/DenseI32ArrayAttr(),
           /*repeat_counts=*/DenseI32ArrayAttr());
+      table.insert(binding);
       auto target = FlatSymbolRefAttr::get(builder.getContext(), name);
       for (Operation *user : users) {
         user->setAttr("objfifo", target);

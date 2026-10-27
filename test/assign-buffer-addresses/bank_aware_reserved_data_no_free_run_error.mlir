@@ -19,7 +19,7 @@ module @zero_free_run_nonzero_reservation {
     // "a" is the larger extent, so it takes every free byte and the one byte
     // the core asked for has nowhere to go. The memory map lists both, because
     // the region is a buffer like any other.
-    %a = aie.buffer(%tile_0_2) {sym_name = "a", aligned = false} : memref<64512xi8>
+    aie.buffer @a(%tile_0_2) {aligned = false} : memref<64512xi8>
     // expected-error @below {{could not be placed: this core's data sections (data_size) needs 1 bytes}}
     aie.core(%tile_0_2) {
       aie.end

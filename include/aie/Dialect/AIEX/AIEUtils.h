@@ -17,6 +17,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <memory>
+
 using namespace mlir;
 
 namespace xilinx {
@@ -40,6 +42,8 @@ public:
 private:
   AIE::DeviceOp dev;
   std::string prefix;
+  std::unique_ptr<mlir::SymbolTableCollection> symbols =
+      std::make_unique<mlir::SymbolTableCollection>();
   llvm::DenseMap<mlir::Attribute, memref::GlobalOp> byValue;
   unsigned nextId = 0;
 };

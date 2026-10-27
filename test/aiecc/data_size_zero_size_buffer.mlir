@@ -16,7 +16,7 @@
 module {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %mid = aie.buffer(%tile_0_2) {address = 30016 : i32, sym_name = "mid"} : memref<0xi32>
+    aie.buffer @mid(%tile_0_2) {address = 30016 : i32} : memref<0xi32>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32, data_size = 64512 : i32}

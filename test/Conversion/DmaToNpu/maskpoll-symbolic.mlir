@@ -15,7 +15,7 @@
 module {
   aie.device(npu1_1col) {
     %tile = aie.tile(0, 3)
-    %buffer = aie.buffer(%tile) {address = 1024 : i32, sym_name = "status"} : memref<128xi32>
+    aie.buffer @status(%tile) {address = 1024 : i32} : memref<128xi32>
     aie.runtime_sequence() {
       %offset = arith.constant 200 : i32
       %value = arith.constant 321 : i32

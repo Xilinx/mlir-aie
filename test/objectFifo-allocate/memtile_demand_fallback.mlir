@@ -23,8 +23,8 @@ module @packing_failure {
     %home = aie.tile(0, 1)
     %neighbor = aie.tile(1, 1)
     %other = aie.tile(2, 1)
-    %reserved0 = aie.buffer(%home) {sym_name = "reserved0"} : memref<393216xi8>
-    %reserved1 = aie.buffer(%neighbor) {sym_name = "reserved1"} : memref<327680xi8>
+    aie.buffer @reserved0(%home) : memref<393216xi8>
+    aie.buffer @reserved1(%neighbor) : memref<327680xi8>
     aie.objectfifo.pool @low(%home) {depth = 2 : i32} : memref<98304xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 98304 : i32}
     }
@@ -48,11 +48,11 @@ module @packing_failure {
 // CHECK-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
 // CHECK-DAG: %[[OTHER:.*]] = aie.tile(2, 1)
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "high_buff_0"}
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "high_buff_1"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "low_buff_0"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "low_buff_1"}
-// CHECK-DAG: aie.buffer(%[[OTHER]]) {sym_name = "unrelated_buff_0"}
+// CHECK-DAG: aie.buffer @high_buff_0(%[[HOME]])
+// CHECK-DAG: aie.buffer @high_buff_1(%[[HOME]])
+// CHECK-DAG: aie.buffer @low_buff_0(%[[NEIGHBOR]])
+// CHECK-DAG: aie.buffer @low_buff_1(%[[NEIGHBOR]])
+// CHECK-DAG: aie.buffer @unrelated_buff_0(%[[OTHER]])
 // CHECK: @low_dma(%[[HOME]]) {{fills|drains}} @low {channelIndex = 0 : i32}
 // CHECK: @high0(%[[HOME]]) {{fills|drains}} @high {channelIndex = 1 : i32}
 // CHECK: @high1(%[[HOME]]) {{fills|drains}} @high {channelIndex = 2 : i32}
@@ -65,7 +65,7 @@ module @preserve_size_first {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
     %neighbor = aie.tile(1, 1)
-    %reserved = aie.buffer(%home) {sym_name = "reserved"} : memref<358400xi8>
+    aie.buffer @reserved(%home) : memref<358400xi8>
     aie.objectfifo.pool @low(%home) {depth = 2 : i32} : memref<102400xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 102400 : i32}
     }
@@ -80,7 +80,7 @@ module @preserve_size_first {
 // CHECK-LABEL: module @preserve_size_first
 // CHECK-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "low_buff_0"}
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "high_buff_0"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "low_buff_1"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "high_buff_1"}
+// CHECK-DAG: aie.buffer @low_buff_0(%[[HOME]])
+// CHECK-DAG: aie.buffer @high_buff_0(%[[HOME]])
+// CHECK-DAG: aie.buffer @low_buff_1(%[[NEIGHBOR]])
+// CHECK-DAG: aie.buffer @high_buff_1(%[[NEIGHBOR]])

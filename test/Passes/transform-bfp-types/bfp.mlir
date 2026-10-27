@@ -57,16 +57,17 @@ module {
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
+    aie.lock @lock_0_1(%tile_0_1) {init = 1 : i32}
+    aie.lock @lock_0_1_0(%tile_0_1) {init = 0 : i32}
+    aie.buffer @buffer_0_1(%tile_0_1) {address = 0 : i32} : memref<8x!aiex.bfp<"v8bfp16ebs8">>
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
-      %lock_0_1 = aie.lock(%tile_0_1) {init = 1 : i32}
-      %lock_0_1_0 = aie.lock(%tile_0_1) {init = 0 : i32}
-      %buffer_0_1 = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<8x!aiex.bfp<"v8bfp16ebs8">>
-      %0 = aie.dma(S2MM, 0) [{
+      aie.dma(S2MM, 0) [{
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1, AcquireGreaterEqual, %c1_ul1)
+        aie.use_lock(@lock_0_1, AcquireGreaterEqual, %c1_ul1)
+        %buffer_0_1 = aie.get_buffer @buffer_0_1 : memref<8x!aiex.bfp<"v8bfp16ebs8">>
         aie.dma_bd(%buffer_0_1 : memref<8x!aiex.bfp<"v8bfp16ebs8">> offset = 0)
         %c1_ul2 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_0, Release, %c1_ul2)
+        aie.use_lock(@lock_0_1_0, Release, %c1_ul2)
       }]
       aie.end
     }

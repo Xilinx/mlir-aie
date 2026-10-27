@@ -110,8 +110,9 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
     // Guard the lock operands (the verifier already requires them to be
     // aie.lock, but stay defensive so a malformed binding cannot make the
     // set_lock builder cast a non-lock operand and abort).
-    for (Value lock : binding.getLocks())
-      if (!lock.getDefiningOp<AIE::LockOp>()) {
+    for (Attribute lock : binding.getLocks())
+      if (!SymbolTable::lookupNearestSymbolFrom<AIE::LockOp>(
+              binding, cast<SymbolRefAttr>(lock))) {
         op.emitOpError("re-arm binding lock operand is not an aie.lock");
         return WalkResult::interrupt();
       }
@@ -131,10 +132,10 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
                                 builder.getI32IntegerAttr(ep.channel));
 
     // 2. set_lock per lock, to the value the fifo was armed with.
-    ValueRange locks = binding.getLocks();
+    ArrayAttr locks = binding.getLocks();
     ArrayRef<int32_t> lockInits = binding.getLockInits();
     for (unsigned j = 0; j < locks.size(); ++j)
-      SetLockOp::create(builder, loc, locks[j],
+      SetLockOp::create(builder, loc, cast<FlatSymbolRefAttr>(locks[j]),
                         createConstantI32(builder, loc, lockInits[j]));
 
     // 3. START_QUEUE re-push per endpoint, emitted as aiex.npu.push_queue so

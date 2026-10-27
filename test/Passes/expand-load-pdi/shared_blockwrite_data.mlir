@@ -14,7 +14,7 @@
 // CHECK-LABEL: aie.device(npu2_1col) {
 // CHECK: memref.global "private" constant @loadpdi_4 : memref<4xi32> = dense<[1, 2, 3, 4]>
 // CHECK-NOT: memref.global
-// CHECK: aie.buffer({{.*}}) {{.*}}sym_name = "loadpdi_3"
+// CHECK: aie.buffer @loadpdi_3({{.*}}) {{.*}}
 // CHECK: memref.global "private" constant @loadpdi_1 : memref<2xi32> = dense<[7, 8]>
 // CHECK-NOT: memref.global
 // CHECK: %[[G:.*]] = memref.get_global @loadpdi_4
@@ -27,11 +27,11 @@
 module {
   aie.device(npu2_1col) @init {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) {address = 1024 : i32, sym_name = "b"} : memref<4xi32> = dense<[1, 2, 3, 4]>
+    aie.buffer @b(%t) {address = 1024 : i32} : memref<4xi32> = dense<[1, 2, 3, 4]>
   }
   aie.device(npu2_1col) @main {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) {address = 1024 : i32, sym_name = "loadpdi_3"} : memref<4xi32>
+    aie.buffer @loadpdi_3(%t) {address = 1024 : i32} : memref<4xi32>
     memref.global "private" constant @loadpdi_1 : memref<2xi32> = dense<[7, 8]>
     aie.runtime_sequence(%arg0: memref<1xi32>) {
       aiex.npu.load_pdi {device_ref = @init}

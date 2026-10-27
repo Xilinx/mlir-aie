@@ -16,7 +16,7 @@
 module {
   aie.device(npu2) {
     %tile_0_3 = aie.tile(0, 3)
-    %disagree = aie.buffer(%tile_0_3) {sym_name = "disagree", mem_bank = 2 : i32}
+    aie.buffer @disagree(%tile_0_3) {mem_bank = 2 : i32}
         : memref<64xi8, 6>
     %core_0_3 = aie.core(%tile_0_3) { aie.end } { stack_size = 1024 : i32 }
   }

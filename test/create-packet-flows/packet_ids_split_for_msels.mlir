@@ -24,31 +24,35 @@ module {
   aie.device(npu2) {
     %t_4_1 = aie.tile(4, 1)
     %t_4_4 = aie.tile(4, 4)
-    %b_4_1_0 = aie.buffer(%t_4_1) {sym_name = "b_4_1_0"} : memref<256xi32>
-    %b_4_1_1 = aie.buffer(%t_4_1) {sym_name = "b_4_1_1"} : memref<64xi32>
+    aie.buffer @b_4_1_0(%t_4_1) : memref<256xi32>
+    aie.buffer @b_4_1_1(%t_4_1) : memref<64xi32>
     %dma_4_1 = aie.memtile_dma(%t_4_1) {
       %d0 = aie.dma_start(S2MM, 3, ^p0b0, ^p1)
     ^p0b0:
+      %b_4_1_0 = aie.get_buffer @b_4_1_0 : memref<256xi32>
       aie.dma_bd(%b_4_1_0 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^p0b0
     ^p1:
       %d1 = aie.dma_start(S2MM, 5, ^p1b0, ^end)
     ^p1b0:
+      %b_4_1_1 = aie.get_buffer @b_4_1_1 : memref<64xi32>
       aie.dma_bd(%b_4_1_1 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^p1b0
     ^end:
       aie.end
     }
-    %b_4_4_2 = aie.buffer(%t_4_4) {sym_name = "b_4_4_2"} : memref<256xi32>
-    %b_4_4_3 = aie.buffer(%t_4_4) {sym_name = "b_4_4_3"} : memref<32xi32>
+    aie.buffer @b_4_4_2(%t_4_4) : memref<256xi32>
+    aie.buffer @b_4_4_3(%t_4_4) : memref<32xi32>
     %dma_4_4 = aie.mem(%t_4_4) {
       %d0 = aie.dma_start(S2MM, 0, ^p0b0, ^p1)
     ^p0b0:
+      %b_4_4_2 = aie.get_buffer @b_4_4_2 : memref<256xi32>
       aie.dma_bd(%b_4_4_2 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^p0b0
     ^p1:
       %d1 = aie.dma_start(S2MM, 1, ^p1b0, ^end)
     ^p1b0:
+      %b_4_4_3 = aie.get_buffer @b_4_4_3 : memref<32xi32>
       aie.dma_bd(%b_4_4_3 : memref<32xi32> offset = 0 len = 32)
       aie.next_bd ^p1b0
     ^end:

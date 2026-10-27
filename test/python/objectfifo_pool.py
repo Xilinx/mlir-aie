@@ -152,9 +152,9 @@ def a_pool_holds_a_multidimensional_object():
 # them, and the core endpoint names the pool rather than generating a second end.
 # CHECK: module {
 # CHECK:   aie.device(npu2_1col) {
-# CHECK-DAG: aie.buffer({{.*}}) {sym_name = "x_pool_buff_0"}
-# CHECK-DAG: aie.lock({{.*}}) {init = 1 : i32, sym_name = "x_pool_prod_lock_0"}
-# CHECK-DAG: aie.lock({{.*}}) {init = 0 : i32, sym_name = "x_pool_cons_lock_0"}
+# CHECK-DAG: aie.buffer @x_pool_buff_0({{.*}})
+# CHECK-DAG: aie.lock @x_pool_prod_lock_0({{.*}}) {init = 1 : i32}
+# CHECK-DAG: aie.lock @x_pool_cons_lock_0({{.*}}) {init = 0 : i32}
 
 # CHECK:     aie.objectfifo.pool @x_pool({{.*}}) {buffers = [@x_pool_buff_0], depth = 1 : i32}
 # CHECK:       aie.objectfifo.segment @x_pool_s0 {consumeLock = @x_pool_cons_lock_0,
@@ -168,9 +168,9 @@ def a_pool_holds_a_multidimensional_object():
 # The filling BD takes the lock protocol the core endpoint expects.
 # CHECK:     aie.mem({{.*}}) {
 # CHECK:       aie.dma_start(S2MM, 0
-# CHECK:       aie.use_lock(%x_pool_prod_lock_0, AcquireGreaterEqual
+# CHECK:       aie.use_lock(@x_pool_prod_lock_0, AcquireGreaterEqual
 # CHECK:       aie.dma_bd(%x_pool_buff_0 : memref<16xi32>)
-# CHECK:       aie.use_lock(%x_pool_cons_lock_0, Release
+# CHECK:       aie.use_lock(@x_pool_cons_lock_0, Release
 # CHECK:     }
 # CHECK:   }
 # CHECK: }

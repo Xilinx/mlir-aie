@@ -17,19 +17,19 @@
 // RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // CHECK-LABEL: module @no_reservation
-// CHECK: %b0 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "b0"} : memref<8192xi8>
-// CHECK: %b1 = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "b1"} : memref<8192xi8>
-// CHECK: %b2 = aie.buffer(%tile_0_2) {address = 32768 : i32, mem_bank = 2 : i32, sym_name = "b2"} : memref<8192xi8>
-// CHECK: %b3 = aie.buffer(%tile_0_2) {address = 49152 : i32, mem_bank = 3 : i32, sym_name = "b3"} : memref<8192xi8>
-// CHECK: %b4 = aie.buffer(%tile_0_2) {address = 24576 : i32, mem_bank = 1 : i32, sym_name = "b4"} : memref<8192xi8>
+// CHECK: aie.buffer @b0(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b1(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b2(%tile_0_2) {address = 32768 : i32, mem_bank = 2 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b3(%tile_0_2) {address = 49152 : i32, mem_bank = 3 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b4(%tile_0_2) {address = 24576 : i32, mem_bank = 1 : i32} : memref<8192xi8>
 module @no_reservation {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b0 = aie.buffer(%t) {sym_name = "b0"} : memref<8192xi8>
-    %b1 = aie.buffer(%t) {sym_name = "b1"} : memref<8192xi8>
-    %b2 = aie.buffer(%t) {sym_name = "b2"} : memref<8192xi8>
-    %b3 = aie.buffer(%t) {sym_name = "b3"} : memref<8192xi8>
-    %b4 = aie.buffer(%t) {sym_name = "b4"} : memref<8192xi8>
+    aie.buffer @b0(%t) : memref<8192xi8>
+    aie.buffer @b1(%t) : memref<8192xi8>
+    aie.buffer @b2(%t) : memref<8192xi8>
+    aie.buffer @b3(%t) : memref<8192xi8>
+    aie.buffer @b4(%t) : memref<8192xi8>
     %core = aie.core(%t) { aie.end } {stack_size = 1024 : i32}
   }
 }
@@ -37,20 +37,20 @@ module @no_reservation {
 // -----
 
 // CHECK-LABEL: module @reservation
-// CHECK: %b0 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "b0"} : memref<8192xi8>
-// CHECK: %b1 = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "b1"} : memref<8192xi8>
-// CHECK: %b2 = aie.buffer(%tile_0_2) {address = 24576 : i32, mem_bank = 1 : i32, sym_name = "b2"} : memref<8192xi8>
-// CHECK: %b3 = aie.buffer(%tile_0_2) {address = 32768 : i32, mem_bank = 2 : i32, sym_name = "b3"} : memref<8192xi8>
-// CHECK: %b4 = aie.buffer(%tile_0_2) {address = 40960 : i32, mem_bank = 2 : i32, sym_name = "b4"} : memref<8192xi8>
-// CHECK: %core_data_0_2 = aie.buffer(%tile_0_2) {address = 49152 : i32, core_data, mem_bank = 3 : i32, sym_name = "core_data_0_2"} : memref<16384xi8>
+// CHECK: aie.buffer @b0(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b1(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b2(%tile_0_2) {address = 24576 : i32, mem_bank = 1 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b3(%tile_0_2) {address = 32768 : i32, mem_bank = 2 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b4(%tile_0_2) {address = 40960 : i32, mem_bank = 2 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @core_data_0_2(%tile_0_2) {address = 49152 : i32, core_data, mem_bank = 3 : i32} : memref<16384xi8>
 module @reservation {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b0 = aie.buffer(%t) {sym_name = "b0"} : memref<8192xi8>
-    %b1 = aie.buffer(%t) {sym_name = "b1"} : memref<8192xi8>
-    %b2 = aie.buffer(%t) {sym_name = "b2"} : memref<8192xi8>
-    %b3 = aie.buffer(%t) {sym_name = "b3"} : memref<8192xi8>
-    %b4 = aie.buffer(%t) {sym_name = "b4"} : memref<8192xi8>
+    aie.buffer @b0(%t) : memref<8192xi8>
+    aie.buffer @b1(%t) : memref<8192xi8>
+    aie.buffer @b2(%t) : memref<8192xi8>
+    aie.buffer @b3(%t) : memref<8192xi8>
+    aie.buffer @b4(%t) : memref<8192xi8>
     %core = aie.core(%t) { aie.end } {stack_size = 1024 : i32, data_size = 16384 : i32}
   }
 }

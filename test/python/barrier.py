@@ -18,16 +18,16 @@ from aie.iron.device import (
 # CHECK: module {
 # CHECK:   aie.device(npu2_1col) {
 # CHECK:     %[[TILE:.*]] = aie.logical_tile<CoreTile>(?, ?)
-# CHECK:     %[[LOCK:.*]] = aie.lock(%[[TILE]])
+# CHECK:     aie.lock @[[LOCK:[^(]+]](%[[TILE]])
 # CHECK:     %{{.*}} = aie.core(%[[TILE]]) {
 # CHECK:         %{{.*}} = arith.constant 1 : i32
-# CHECK:         aie.use_lock(%[[LOCK]], Acquire, %{{.*}})
+# CHECK:         aie.use_lock(@[[LOCK]], Acquire, %{{.*}})
 # CHECK:         %{{.*}} = arith.constant 1 : i32
-# CHECK:         aie.use_lock(%[[LOCK]], Release, %{{.*}})
+# CHECK:         aie.use_lock(@[[LOCK]], Release, %{{.*}})
 # CHECK:     }
 # CHECK:     aie.runtime_sequence(%arg0: memref<16xi32>) {
 # CHECK:       %[[ONE:.*]] = arith.constant 1 : i32
-# CHECK-NEXT:  aiex.set_lock(%[[LOCK]], %[[ONE]])
+# CHECK-NEXT:  aiex.set_lock(@[[LOCK]], %[[ONE]])
 # CHECK:     }
 # CHECK:   }
 # CHECK: }

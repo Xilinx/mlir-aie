@@ -36,8 +36,8 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 2)
-    %buf_in = aie.buffer(%tile) {sym_name = "in"} : memref<4xf32>
-    %buf_out = aie.buffer(%tile) {sym_name = "out"} : memref<4xf32>
+    aie.buffer @in(%tile) : memref<4xf32>
+    aie.buffer @out(%tile) : memref<4xf32>
 
     %core = aie.core(%tile) {
       %c0 = arith.constant 0 : index
@@ -53,10 +53,12 @@ module {
       // Bare operand position: the constant carries no type keyword of its own.
       %k = arith.constant 1.100000e-01 : f32
       scf.for %i = %c0 to %c4 step %c1 {
+        %buf_in = aie.get_buffer @in : memref<4xf32>
         %v = memref.load %buf_in[%i] : memref<4xf32>
         %l = vector.extract %lut[%i] : f32 from vector<4xf32>
         %s = arith.addf %v, %l : f32
         %r = arith.mulf %s, %k : f32
+        %buf_out = aie.get_buffer @out : memref<4xf32>
         memref.store %r, %buf_out[%i] : memref<4xf32>
       }
       aie.end

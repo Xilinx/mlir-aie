@@ -223,7 +223,10 @@ struct NpuMaskPollToCertMaskPoll32 : OpConversionPattern<AIEX::NpuMaskPollOp> {
 };
 
 struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
-  using OpConversionPattern::OpConversionPattern;
+  NpuBlockWriteToCertUcDma(MLIRContext *context, SymbolTableCollection &symbols)
+      : OpConversionPattern(context), symbols(symbols) {}
+
+  SymbolTableCollection &symbols;
 
   LogicalResult
   matchAndRewrite(AIEX::NpuBlockWriteOp op, OpAdaptor adaptor,
@@ -236,22 +239,20 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
     MemRefType dataType = cast<MemRefType>(dataOperand.getResult().getType());
     uint32_t dataSize = dataType.getNumElements();
 
-    int id = 0;
-    std::string symbolName = "chain_" + std::to_string(id);
-    while (op->getParentOfType<AIE::DeviceOp>().lookupSymbol(symbolName))
-      symbolName = "chain_" + std::to_string(++id);
+    auto parentDevice = op->getParentOfType<AIE::DeviceOp>();
+    if (!parentDevice)
+      return failure();
+    SymbolTable &table = symbols.getSymbolTable(parentDevice);
+    unsigned id = 0;
+    std::string symbolName = AIE::generateUniqueSymbolName(table, "chain_", id);
+    Location loc = op.getLoc();
+    uint32_t address = op.getAddress();
 
     // Create a new uc_dma_write_des_sync operation
     rewriter.replaceOpWithNewOp<AIEX::CertUcDmaWriteDesSyncOp>(op, symbolName);
 
     // Create the uc_dma_chain operation
     // Find the nearest device to insert the chain
-    auto parentDevice = op->getParentOfType<AIE::DeviceOp>();
-    if (!parentDevice) {
-      // No parent device - this shouldn't happen but handle gracefully
-      return failure();
-    }
-
     // Insert after the last existing uc_dma_chain (before any pages/jobs),
     // preserving the order of blockwrite ops. Globals are allowed to precede
     // the chains, so skip over them too.
@@ -269,17 +270,16 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
       rewriter.setInsertionPointToStart(deviceBody);
 
     auto symbolAttr = rewriter.getStringAttr(symbolName);
-    auto chainOp =
-        AIEX::CertUcDmaChainOp::create(rewriter, op.getLoc(), symbolAttr);
+    auto chainOp = AIEX::CertUcDmaChainOp::create(rewriter, loc, symbolAttr);
+    table.insert(chainOp);
 
     Block *bb = new Block();
     chainOp.getRegion().push_back(bb);
     rewriter.setInsertionPointToStart(bb);
-    AIEX::CertUcDmaBdOp::create(rewriter, op.getLoc(), dataOperand.getName(),
-                                op.getAddress(), dataSize, false);
+    AIEX::CertUcDmaBdOp::create(rewriter, loc, dataOperand.getName(), address,
+                                dataSize, false);
 
-    AIEX::CertUcDmaChainOp::ensureTerminator(chainOp.getBody(), rewriter,
-                                             op->getLoc());
+    AIEX::CertUcDmaChainOp::ensureTerminator(chainOp.getBody(), rewriter, loc);
     return success();
   }
 };
@@ -692,7 +692,11 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
 };
 
 struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
-  using OpRewritePattern::OpRewritePattern;
+  SplitNpuBlockWriteOpPattern(MLIRContext *context,
+                              SymbolTableCollection &symbols)
+      : OpRewritePattern(context), symbols(symbols) {}
+
+  SymbolTableCollection &symbols;
 
   LogicalResult matchAndRewrite(AIEX::NpuBlockWriteOp op,
                                 PatternRewriter &rewriter) const override {
@@ -718,8 +722,8 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     // Find the original memref.global operation
     auto deviceOp = op->getParentOfType<AIE::DeviceOp>();
-    auto originalGlobal = dyn_cast_if_present<memref::GlobalOp>(
-        deviceOp.lookupSymbol(dataOperand.getName()));
+    auto originalGlobal = symbols.lookupSymbolIn<memref::GlobalOp>(
+        deviceOp, dataOperand.getNameAttr());
     if (!originalGlobal)
       return failure();
 
@@ -757,27 +761,27 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
     std::string firstName = dataOperand.getName().str() + "_split_0";
     std::string secondName = dataOperand.getName().str() + "_split_1";
 
-    // Ensure unique names
-    int counter = 0;
-    while (deviceOp.lookupSymbol(firstName)) {
+    SymbolTable &table = symbols.getSymbolTable(deviceOp);
+    unsigned counter = 0;
+    if (table.lookup(firstName))
       firstName =
-          dataOperand.getName().str() + "_split_0_" + std::to_string(counter++);
-    }
+          AIE::generateUniqueSymbolName(table, firstName + "_", counter);
     counter = 0;
-    while (deviceOp.lookupSymbol(secondName)) {
+    if (table.lookup(secondName))
       secondName =
-          dataOperand.getName().str() + "_split_1_" + std::to_string(counter++);
-    }
+          AIE::generateUniqueSymbolName(table, secondName + "_", counter);
 
     // Create the new global operations
     rewriter.setInsertionPoint(originalGlobal);
-    memref::GlobalOp::create(rewriter, loc, firstName,
-                             rewriter.getStringAttr("private"), firstChunkType,
-                             firstChunkAttr, true, nullptr);
+    auto firstGlobal = memref::GlobalOp::create(
+        rewriter, loc, firstName, rewriter.getStringAttr("private"),
+        firstChunkType, firstChunkAttr, true, nullptr);
+    table.insert(firstGlobal);
 
-    memref::GlobalOp::create(rewriter, loc, secondName,
-                             rewriter.getStringAttr("private"), secondChunkType,
-                             secondChunkAttr, true, nullptr);
+    auto secondGlobal = memref::GlobalOp::create(
+        rewriter, loc, secondName, rewriter.getStringAttr("private"),
+        secondChunkType, secondChunkAttr, true, nullptr);
+    table.insert(secondGlobal);
 
     // Create get_global operations for the new data
     rewriter.setInsertionPoint(op);
@@ -998,10 +1002,11 @@ struct AIENpuToCertPass
     if (failed(applyPartialConversion(currentDevice, target, std::move(p1))))
       return signalPassFailure();
 
+    SymbolTableCollection symbols;
     // Split oversized NpuBlockWriteOps before lowering them to cert ops
     {
       RewritePatternSet p(&getContext());
-      p.insert<SplitNpuBlockWriteOpPattern>(&getContext());
+      p.insert<SplitNpuBlockWriteOpPattern>(&getContext(), symbols);
       if (failed(applyPatternsGreedily(getOperation(), std::move(p))))
         signalPassFailure();
     }
@@ -1015,7 +1020,7 @@ struct AIENpuToCertPass
     target.addIllegalOp<AIEX::NpuLoadPdiOp>();
 
     RewritePatternSet p2(&getContext());
-    p2.insert<NpuBlockWriteToCertUcDma>(&getContext());
+    p2.insert<NpuBlockWriteToCertUcDma>(&getContext(), symbols);
     p2.insert<NpuMaskWrite32ToCertMaskWrite32>(&getContext());
     p2.insert<NpuMaskPollToCertMaskPoll32>(&getContext());
     p2.insert<NpuWrite32ToCertWrite32>(&getContext());

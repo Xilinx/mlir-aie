@@ -24,7 +24,7 @@ module {
 module {
   aie.device(npu2_1col) @main {
     %t = aie.tile(0, 2)
-    %buf = aie.buffer(%t) {sym_name = "buf"} : memref<16xi32>
+    aie.buffer @buf(%t) : memref<16xi32>
     aie.runtime_sequence() {
       // expected-error @+1 {{@buf is not a device}}
       aiex.npu.load_pdi {device_ref = @buf}

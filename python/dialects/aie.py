@@ -12,6 +12,9 @@ import numpy as np
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect, DMABDOp as _DMABDOp
+from ._aie_ops_gen import (
+    objectfifo_register_external_buffers as _register_external_buffers,
+)
 from ._ods_common import _cext
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
@@ -50,7 +53,6 @@ from ..extras import types as T
 from ..extras.meta import region_op
 from ..extras.util import (
     Successor,
-    _get_sym_name,
     find_ops,
     find_parent_of_type,
     region_adder,
@@ -60,6 +62,7 @@ from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
 from ..ir import (
+    ArrayAttr,
     Attribute,
     Block,
     BlockList,
@@ -72,7 +75,9 @@ from ..ir import (
     IntegerAttr,
     IntegerType,
     MemRefType,
+    OpView,
     StringAttr,
+    SymbolTable,
     TypeAttr,
     UnitAttr,
     Value,
@@ -99,7 +104,11 @@ def use_lock(
     if value is None:
         value = 1
     if isinstance(value, int):
-        value = constant(value, T.i32())
+        value = constant(value, T.i32(), loc=loc, ip=ip)
+    if isinstance(lock, (LockOp, _cext.ir.Operation)):
+        lock = FlatSymbolRefAttr.get(StringAttr(lock.attributes["sym_name"]).value)
+    elif isinstance(lock, StringAttr):
+        lock = FlatSymbolRefAttr.get(lock.value)
     return _use_lock(
         lock, action, value, blocking=blocking, acq_en=acq_en, loc=loc, ip=ip
     )
@@ -117,7 +126,7 @@ class npu_write_rtp(NpuWriteRTPOp):
         # `value` is an SSA i32 operand; materialize a constant from a plain int
         # while still accepting a Value for runtime-parameterized sequences.
         if isinstance(value, int):
-            value = constant(value, T.i32())
+            value = constant(value, T.i32(), loc=loc, ip=ip)
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
 
 
@@ -178,7 +187,7 @@ def dma_bd(
 
     # Leave the static arrays unset when there is no ND layout so they elide.
     return _DMABDOp(
-        buffer,
+        _as_buffer_value(buffer, loc=kwargs.get("loc"), ip=kwargs.get("ip")),
         sizes=dyn_sizes,
         strides=dyn_strides,
         static_sizes=static_sizes if static_sizes else None,
@@ -284,8 +293,8 @@ class external_func(FuncOp):
                 IntegerType.get_signless(32), stack_size_override
             )
 
-    def __call__(self, *call_args):
-        return call(self, call_args)
+    def __call__(self, *call_args, **kwargs):
+        return call(self, call_args, **kwargs)
 
 
 @register_attribute_builder("BDDimLayoutAttr")
@@ -513,14 +522,117 @@ class Core(CoreOp):
         )
 
 
+def _symbol_declaration(name, prefix, ip=None):
+    ip = ip if ip is not None else InsertionPoint.current
+    parent = ip.block.owner.operation
+    child = None
+    while parent is not None and parent.name != "aie.device":
+        child = parent
+        parent = parent.parent
+    if parent is None:
+        raise ValueError(f"{prefix} declarations must be inside an aie.device")
+    if not name:
+        symbols = SymbolTable(parent)
+        name = prefix
+        suffix = 0
+        while name in symbols:
+            name = f"{prefix}_{suffix}"
+            suffix += 1
+    decl_ip = InsertionPoint(child) if child is not None else ip
+    return name, decl_ip
+
+
+def _as_buffer_value(value, *, loc=None, ip=None):
+    if isinstance(value, (BufferOp, ExternalBufferOp)):
+        return GetBufferOp(
+            value.buffer_type.value,
+            value.sym_name.value,
+            loc=loc or user_code_location(),
+            ip=ip,
+        ).result
+    return value
+
+
+class _BufferOperation:
+    """Keep declaration metadata while adapting an OpView to an SSA operand.
+
+    Generated builders convert OpViews through ``operation.result``. Only that
+    conversion creates an accessor; inspecting the declaration does not.
+    """
+
+    def __init__(self, buffer):
+        self.buffer = buffer
+
+    @property
+    def result(self):
+        return self.buffer.result
+
+    @property
+    def results(self):
+        return [self.result]
+
+    def __getattr__(self, name):
+        return getattr(self.buffer.declaration.operation, name)
+
+    def __str__(self):
+        return str(self.buffer.declaration.operation)
+
+
+class _BufferValue:
+    @property
+    def declaration(self):
+        return self._declaration
+
+    @property
+    def operation(self):
+        return _BufferOperation(self)
+
+    @property
+    def result(self):
+        return GetBufferOp(
+            self.type, self.sym_name.value, loc=user_code_location()
+        ).result
+
+    @property
+    def value(self):
+        return self.result
+
+    def get_name(self):
+        return self.sym_name.value
+
+    def __str__(self):
+        return str(self.declaration)
+
+    def __repr__(self):
+        return str(self)
+
+    @property
+    def owner(self):
+        return self.declaration.operation
+
+
+def _buffer_value(cls):
+    # Native OpViews support only one base class.
+    for name in (
+        "declaration",
+        "operation",
+        "result",
+        "value",
+        "get_name",
+        "__str__",
+        "__repr__",
+        "owner",
+    ):
+        setattr(cls, name, _BufferValue.__dict__[name])
+    return cls
+
+
 # Create an aie buffer of (shape x datatype) on given tile.
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the BufferOp and instead pretends to be a MemRef
 @ShapedValue
+@_buffer_value
 class buffer(BufferOp):
-    def __init__(self):
-        raise ValueError("Should never be called")
-
     def __init__(
         self,
         tile,
@@ -542,29 +654,28 @@ class buffer(BufferOp):
                 type=self.type.element_type,
                 context=None,
             )
-        super().__init__(
-            buffer=self.type,
+        name, ip = _symbol_declaration(name, "buffer", ip)
+        declaration = BufferOp(
             tile=tile,
             sym_name=name,
+            buffer_type=TypeAttr.get(self.type),
             address=address,
             mem_bank=mem_bank,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
         )
+        self._declaration = declaration
+        OpView.__init__(self, declaration.operation)
 
-    def get_name(self):
-        return self.sym_name.value if self.sym_name else self.result.get_name()
-
-    def __str__(self):
-        return str(self.result)
-
-    def __repr__(self):
-        return str(self)
-
-    @property
-    def owner(self):
-        return self.result.owner
+    @classmethod
+    def _from_declaration(cls, declaration):
+        result = cls.__new__(cls)
+        result._declaration = declaration
+        OpView.__init__(result, declaration.operation)
+        result.type = declaration.buffer_type.value
+        result.use_write_rtp = False
+        return result
 
     def __getitem__(self, idx: tuple | ScalarValue) -> MemRefValue:
         loc = user_code_location()
@@ -587,7 +698,7 @@ class buffer(BufferOp):
                 idx[i] = constant(d, index=True, loc=loc)
 
         if all(isinstance(d, ScalarValue) for d in idx) and len(idx) == len(self.shape):
-            return memref_load(self, idx, loc=loc)
+            return memref_load(self.result, idx, loc=loc)
         else:
             raise ValueError("Buffer slicing not supported, only indexing supported")
 
@@ -617,7 +728,7 @@ class buffer(BufferOp):
             ):
                 if not isinstance(source, ScalarValue):
                     source = ScalarValue(source, dtype=self.dtype)
-                memref_store(source, self, idx, loc=loc)
+                memref_store(source, self.result, idx, loc=loc)
             else:
                 raise ValueError(
                     "Buffer slicing not supported, only indexing supported"
@@ -627,26 +738,51 @@ class buffer(BufferOp):
 # Create an aie external buffer of (shape x datatype).
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the ExternalBufferOp and instead pretends to be a MemRef
-class external_buffer(MemRefValue):
-    def __init__(self):
-        raise ValueError("Should never be called")
-
-    def __new__(
-        cls,
+@ShapedValue
+@_buffer_value
+class external_buffer(ExternalBufferOp):
+    def __init__(
+        self,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
         address=None,
         loc=None,
         ip=None,
     ):
-        my_buffer = ExternalBufferOp(
-            buffer=try_convert_np_type_to_mlir_type(datatype),
+        self.type = try_convert_np_type_to_mlir_type(datatype)
+        name, ip = _symbol_declaration(name, "external_buffer", ip)
+        declaration = ExternalBufferOp(
             sym_name=name,
+            buffer_type=TypeAttr.get(self.type),
             address=address,
             loc=loc,
             ip=ip,
         )
-        return my_buffer.result
+        self._declaration = declaration
+        OpView.__init__(self, declaration.operation)
+
+    def __getitem__(self, idx):
+        return MemRefValue(self.result)[idx]
+
+    def __setitem__(self, idx, source):
+        MemRefValue(self.result)[idx] = source
+
+
+def objectfifo_register_external_buffers(
+    obj_fifo_name, tile, external_buffers, *, loc=None, ip=None
+):
+    refs = []
+    for b in external_buffers:
+        if isinstance(b, ExternalBufferOp):
+            b = b.sym_name
+        if isinstance(b, StringAttr):
+            b = b.value
+        if isinstance(b, str):
+            b = FlatSymbolRefAttr.get(b)
+        refs.append(b)
+    return _register_external_buffers(
+        obj_fifo_name, tile, ArrayAttr.get(refs), loc=loc, ip=ip
+    )
 
 
 # Create an aie objectFifo between specified tiles, with given depth and memref datatype.
@@ -1010,7 +1146,6 @@ def dma(
     loop=None,
     repeat_count=None,
     out_of_order=False,
-    sym_name=None,
     pad_value: int = 0,
     loc=None,
     ip=None,
@@ -1018,14 +1153,12 @@ def dma(
     if isinstance(channel_index, IntegerAttr):
         channel_index = channel_index.value
     return DMAOp(
-        valid=T.bool(),
         channel_dir=channel_dir,
         channel_index=channel_index,
         num_bds=num_blocks,
         loop=loop,
         repeat_count=repeat_count,
         out_of_order=out_of_order,
-        sym_name=sym_name,
         pad_value=pad_value or None,
         loc=loc,
         ip=ip,
@@ -1158,24 +1291,20 @@ def next_bd(
     return NextBDOp(dest, loc=loc, ip=ip).dest
 
 
-_lock = lock
-
-
 def lock(
     tile, *, lock_id=None, init=None, sym_name=None, annot=None, loc=None, ip=None
 ):
-    if sym_name is not None and not sym_name:
-        sym_name = _get_sym_name(inspect.currentframe().f_back, "aie\\.lock|lock")
-    l = _lock(
+    sym_name, ip = _symbol_declaration(sym_name, "lock", ip)
+    l = LockOp(
         tile,
-        lock_id=lock_id,
+        lockID=lock_id,
         init=init,
         sym_name=sym_name,
         loc=loc,
         ip=ip,
     )
     if annot is not None:
-        l.owner.attributes["annot"] = DictAttr.get({annot: UnitAttr.get()})
+        l.attributes["annot"] = DictAttr.get({annot: UnitAttr.get()})
     return l
 
 
@@ -1287,7 +1416,7 @@ def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
         if isinstance(op, LockOp):
             return (
                 op.tile.owner.opview in tiles
-                and (sym_name == str(op.sym_name) if sym_name is not None else True)
+                and (sym_name == op.sym_name.value if sym_name is not None else True)
                 and (
                     ("annot" in op.attributes and annot in op.attributes["annot"])
                     if annot is not None
@@ -1296,11 +1425,11 @@ def find_matching_locks(tiles, sym_name=None, annot=None, device=None):
             )
 
     return sorted(
-        [o.result for o in find_ops(device, _cb)],
+        find_ops(device, _cb),
         key=lambda a: (
-            int(a.owner.opview.tile.owner.opview.col),
-            int(a.owner.opview.tile.owner.opview.row),
-            a.get_name(),
+            int(a.tile.owner.opview.col),
+            int(a.tile.owner.opview.row),
+            a.sym_name.value,
         ),
     )
 
@@ -1313,7 +1442,7 @@ def find_matching_buffers(tiles, sym_name=None, annot=None, device=None):
         if isinstance(op, BufferOp):
             return (
                 op.tile.owner.opview in tiles
-                and (sym_name == str(op.sym_name) if sym_name is not None else True)
+                and (sym_name == op.sym_name.value if sym_name is not None else True)
                 and (
                     ("annot" in op.attributes and annot in op.attributes["annot"])
                     if annot is not None
@@ -1322,11 +1451,11 @@ def find_matching_buffers(tiles, sym_name=None, annot=None, device=None):
             )
 
     return sorted(
-        [o.result for o in find_ops(device, _cb)],
+        [buffer._from_declaration(o) for o in find_ops(device, _cb)],
         key=lambda a: (
-            int(a.owner.opview.tile.owner.opview.col),
-            int(a.owner.opview.tile.owner.opview.row),
-            a.get_name(),
+            int(a.tile.owner.opview.col),
+            int(a.tile.owner.opview.row),
+            a.sym_name.value,
         ),
     )
 

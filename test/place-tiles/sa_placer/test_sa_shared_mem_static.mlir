@@ -14,18 +14,18 @@
 // RUN: aie-opt --aie-place-tiles='placer=sa_placer sa-seed=42' %s | FileCheck %s
 // RUN: aie-opt --aie-place-tiles='placer=sa_placer sa-seed=42' --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s | FileCheck %s --check-prefix=ADDR
 
-// CHECK: aie.buffer(%[[WTS:[a-z0-9_]+]]) {sym_name = "weights"}
+// CHECK: aie.buffer @weights(%[[WTS:[a-z0-9_]+]])
 // CHECK-NOT: aie.objectfifo.allocate @data(%[[WTS]])
 // CHECK: aie.objectfifo.allocate @data(
 
-// ADDR-DAG: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "data_buff_0"}
-// ADDR-DAG: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "data_buff_1"}
-// ADDR-DAG: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "weights"}
+// ADDR-DAG: aie.buffer @data_buff_0{{.*}}{address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32}
+// ADDR-DAG: aie.buffer @data_buff_1{{.*}}{address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32}
+// ADDR-DAG: aie.buffer @weights{{.*}}{address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32}
 module @shared_mem_pool_avoids_static_buffers {
   aie.device(npu2) {
     %coreA = aie.logical_tile<CoreTile>(?, ?)
     %coreB = aie.logical_tile<CoreTile>(?, ?)
-    %wts = aie.buffer(%coreA) {sym_name = "weights"} : memref<15360xi32>
+    aie.buffer @weights(%coreA) : memref<15360xi32>
     aie.objectfifo @data(%coreA, {%coreB}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
     aie.core(%coreA) {
       %0 = aie.objectfifo.acquire @data(Produce, 1) : memref<1024xi32>

@@ -20,10 +20,10 @@ module {
   aie.device(npu2) {
     %t12 = aie.tile(1, 2)
     %t23 = aie.tile(2, 3)
-    %lock = aie.lock(%t12, 0) {sym_name = "lock"}
-    %a = aie.buffer(%t12) {address = 1024 : i32, sym_name = "a"} : memref<64xi32>
-    %b = aie.buffer(%t12) {address = 2048 : i32, sym_name = "b"} : memref<64xi32>
-    %c = aie.buffer(%t23) {address = 1024 : i32, sym_name = "c"} : memref<64xi32>
+    aie.lock @lock(%t12, 0)
+    aie.buffer @a(%t12) {address = 1024 : i32} : memref<64xi32>
+    aie.buffer @b(%t12) {address = 2048 : i32} : memref<64xi32>
+    aie.buffer @c(%t23) {address = 1024 : i32} : memref<64xi32>
     memref.global "private" constant @payload : memref<2xi32> = dense<[5, 6]>
     aie.runtime_sequence() {
       %data = memref.get_global @payload : memref<2xi32>

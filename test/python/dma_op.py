@@ -28,16 +28,17 @@ from util import construct_and_print_module
 #  aie.device(xcve2302) {
 #   %tile_0_0 = aie.tile(0, 0)
 #    %tile_0_1 = aie.tile(0, 1)
-#    %lock_0_1 = aie.lock(%tile_0_1, 0) {init = 1 : i32}
-#    %lock_0_1_0 = aie.lock(%tile_0_1, 1) {init = 0 : i32}
-#    %mem_A = aie.buffer(%tile_0_1) {sym_name = "mem_A"} : memref<2x1xi16>
+#    aie.lock @lock(%tile_0_1, 0) {init = 1 : i32}
+#    aie.lock @lock_0(%tile_0_1, 1) {init = 0 : i32}
+#    aie.buffer @mem_A(%tile_0_1) : memref<2x1xi16>
 #    aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
 #    aie.shim_dma_allocation @mem_A(MM2S, 0, 0)
 #    %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
-#      %0 = aie.dma(MM2S, 0) [{
-#        aie.use_lock(%lock_0_1_0, AcquireGreaterEqual)
+#      aie.dma(MM2S, 0) [{
+#        aie.use_lock(@lock_0, AcquireGreaterEqual, %c1_i32)
+#        %mem_A = aie.get_buffer @mem_A : memref<2x1xi16>
 #        aie.dma_bd(%mem_A : memref<2x1xi16> len = 2 sizes = [1, 1, 1, 1] strides = [1, 1, 1, 1])
-#        aie.use_lock(%lock_0_1, Release)
+#        aie.use_lock(@lock, Release, %c1_i32)
 #      }]
 #      aie.end
 #    }

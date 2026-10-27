@@ -56,23 +56,25 @@ module {
     aie.packet_flow(4) { aie.packet_source<%m, DMA : 0>  aie.packet_dest<%c2, DMA : 0> }
     aie.packet_flow(5) { aie.packet_source<%m, DMA : 0>  aie.packet_dest<%s0, DMA : 0> }
     aie.packet_flow(6) { aie.packet_source<%s0, DMA : 0>  aie.packet_dest<%m, DMA : 0> }
-    %prod = aie.lock(%m, 0) {init = 1 : i32}
-    %cons = aie.lock(%m, 1) {init = 0 : i32}
-    %buf = aie.buffer(%m) : memref<16xi32>
+    aie.lock @prod(%m, 0) {init = 1 : i32}
+    aie.lock @cons(%m, 1) {init = 0 : i32}
+    aie.buffer @buf(%m) : memref<16xi32>
     aie.memtile_dma(%m) {
       %one = arith.constant 1 : i32
       %0 = aie.dma_start(S2MM, 0, ^in, ^ch1)
     ^in:
-      aie.use_lock(%prod, AcquireGreaterEqual, %one)
+      aie.use_lock(@prod, AcquireGreaterEqual, %one)
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%cons, Release, %one)
+      aie.use_lock(@cons, Release, %one)
       aie.next_bd ^in
     ^ch1:
       %1 = aie.dma_start(MM2S, 0, ^out, ^end)
     ^out:
-      aie.use_lock(%cons, AcquireGreaterEqual, %one)
-      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
-      aie.use_lock(%prod, Release, %one)
+      aie.use_lock(@cons, AcquireGreaterEqual, %one)
+      %buf_1 = aie.get_buffer @buf : memref<16xi32>
+      aie.dma_bd(%buf_1 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
+      aie.use_lock(@prod, Release, %one)
       aie.next_bd ^out
     ^end:
       aie.end
@@ -131,10 +133,11 @@ module {
     aie.packet_flow(0) { aie.packet_source<%t02, DMA : 0> aie.packet_dest<%t04, DMA : 0> }
     aie.packet_flow(1) { aie.packet_source<%t05, DMA : 0> aie.packet_dest<%t03, DMA : 0> }
     aie.packet_flow(2) { aie.packet_source<%t05, DMA : 0> aie.packet_dest<%t05, DMA : 0> }
-    %buf = aie.buffer(%t05) : memref<16xi32>
+    aie.buffer @buf(%t05) : memref<16xi32>
     aie.mem(%t05) {
       %0 = aie.dma_start(MM2S, 0, ^send, ^end)
     ^send:
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
       aie.next_bd ^send
     ^end:

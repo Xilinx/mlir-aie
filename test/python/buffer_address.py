@@ -17,8 +17,8 @@ from aie.iron.device import NPU2Col1
 
 # CHECK:  module {
 # CHECK:    aie.device(npu2_1col) {
-# CHECK:      %pinned_local_buf = aie.buffer(%{{.*}}) {address = 8192 : i32, sym_name = "pinned_local_buf"} : memref<4096xui8>
-# CHECK:      %default_local_buf = aie.buffer(%{{.*}}) {sym_name = "default_local_buf"} : memref<4096xui8>
+# CHECK:      aie.buffer @pinned_local_buf(%{{.*}}) {address = 8192 : i32} : memref<4096xui8>
+# CHECK:      aie.buffer @default_local_buf(%{{.*}}) : memref<4096xui8>
 def passthrough_pinned_buff():
     in1_size = 4096
     in1_dtype = np.uint8

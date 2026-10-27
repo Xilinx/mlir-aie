@@ -28,14 +28,16 @@
 module {
   aie.device(npu1_1col) {
     %tile_0_2 = aie.tile(0, 2)
-    %buf = aie.buffer(%tile_0_2) {sym_name = "buf"} : memref<16xi32>
-    %n = aie.buffer(%tile_0_2) {sym_name = "n"} : memref<1xindex>
+    aie.buffer @buf(%tile_0_2) : memref<16xi32>
+    aie.buffer @n(%tile_0_2) : memref<1xindex>
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
+      %n = aie.get_buffer @n : memref<1xindex>
       %bound = memref.load %n[%c0] : memref<1xindex>
       scf.for %i = %c0 to %bound step %c1 {
+        %buf = aie.get_buffer @buf : memref<16xi32>
         %v = memref.load %buf[%c0] : memref<16xi32>
         %w = arith.addi %v, %v : i32
         memref.store %w, %buf[%i] : memref<16xi32>

@@ -14,11 +14,11 @@ aie.device(xcvc1902) {
 
   %tile13 = aie.tile(1, 3)
 
-  %l13_0 = aie.lock(%tile13, 0)
+  aie.lock @l13_0(%tile13, 0)
 
 aie.core(%tile13) {
     %c0_ul0 = arith.constant 0 : i32
-    aie.use_lock(%l13_0, "Acquire", %c0_ul0)
+    aie.use_lock(@l13_0, "Acquire", %c0_ul0)
     aie.end
   }
 

@@ -23,7 +23,7 @@ module @test00_itsalive {
   aie.device(xcve2802) {
     %tile12 = aie.tile(1, 3)
 
-    %buf12_0 = aie.buffer(%tile12) { sym_name = "a" } : memref<256xi32>
+    aie.buffer @a(%tile12) : memref<256xi32>
 
     %core12 = aie.core(%tile12) {
       %val1 = arith.constant 1 : i32

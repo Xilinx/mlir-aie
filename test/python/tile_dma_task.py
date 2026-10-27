@@ -54,7 +54,7 @@ def emit_dynamic_memtile_task():
 # shim DMA allocation, and carries runtime sizes; the compiler derives the
 # transfer length from them.
 
-# CHECK: aie.buffer({{.*}}) {sym_name = "resident"}
+# CHECK: aie.buffer @resident({{.*}})
 # CHECK: aie.runtime_sequence
 # CHECK: cf.assert %{{.*}}, "All sizes must be >= 1
 # CHECK-NEXT: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
@@ -149,7 +149,7 @@ def emit_endpoint_task():
 # A Flow whose channels the compiler assigns runs the task on its endpoint, and
 # a buffer given no tile lands on the endpoint's.
 # CHECK: %[[MEM:.*]] = aie.logical_tile<MemTile>
-# CHECK: aie.buffer(%[[MEM]]) {sym_name = "staged"}
+# CHECK: aie.buffer @staged(%[[MEM]])
 # CHECK: aiex.dma_configure_task_for @out_src {
 # CHECK-NEXT: aie.dma_bd(%staged
 # CHECK: } {repeat_count = 1 : i32}
@@ -191,10 +191,10 @@ def emit_resident_replay(uses_ty):
 # A resident buffer handed out a dispatch-time number of times: the lock values
 # of its fill, the re-arm and the replay's start count all take the scalar.
 # CHECK: aie.runtime_sequence
-# CHECK: aiex.set_lock(%empty, %arg1)
+# CHECK: aiex.set_lock(@empty, %arg1)
 # CHECK: aiex.dma_configure_task(%{{.*}}, S2MM, 0)
-# CHECK-NEXT: aie.use_lock(%empty, AcquireGreaterEqual, %arg1)
-# CHECK: aie.use_lock(%full, Release, %arg1)
+# CHECK-NEXT: aie.use_lock(@empty, AcquireGreaterEqual, %arg1)
+# CHECK: aie.use_lock(@full, Release, %arg1)
 # CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0)
 # CHECK: aiex.dma_start_task(%{{.*}}) repeat %arg1 : i32
 print(emit_resident_replay(np.int32))
@@ -205,8 +205,8 @@ print(emit_resident_replay(np.int32))
 # CHECK: cf.assert %{{.*}}, "a runtime 32-bit field value must be >= 0"
 # CHECK: cf.assert %{{.*}}, "a runtime 32-bit field value must be < 2**31"
 # CHECK-NEXT: %[[SET:.*]] = arith.trunci %arg1 : i64 to i32
-# CHECK-NEXT: aiex.set_lock(%empty, %[[SET]])
+# CHECK-NEXT: aiex.set_lock(@empty, %[[SET]])
 # CHECK: %[[ACQ:.*]] = arith.trunci %arg1 : i64 to i32
-# CHECK-NEXT: aie.use_lock(%empty, AcquireGreaterEqual, %[[ACQ]])
+# CHECK-NEXT: aie.use_lock(@empty, AcquireGreaterEqual, %[[ACQ]])
 # CHECK: aiex.dma_start_task(%{{.*}}) repeat %arg1 : i64
 print(emit_resident_replay(np.int64))

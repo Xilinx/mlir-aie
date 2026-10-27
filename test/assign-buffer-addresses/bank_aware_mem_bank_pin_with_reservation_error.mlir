@@ -21,7 +21,7 @@ module @too_large_around_the_pin {
     // expected-warning @below {{Not all requested buffers fit in the available memory}}
     // expected-note @below {{Current configuration of buffers in bank(s)}}
     %tile_0_2 = aie.tile(0, 2)
-    %mid = aie.buffer(%tile_0_2) {sym_name = "mid", mem_bank = 1 : i32} : memref<8192xi8>
+    aie.buffer @mid(%tile_0_2) {mem_bank = 1 : i32} : memref<8192xi8>
     // expected-error @below {{could not be placed: this core's data sections (data_size) needs 45000 bytes}}
     aie.core(%tile_0_2) {
       aie.end

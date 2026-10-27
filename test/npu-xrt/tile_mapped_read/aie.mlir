@@ -22,14 +22,14 @@ module {
 
     // Create 8 locks on tile 0,2 with init values 42 to 49
     // This is the data the core will read over the processor bus
-    aie.lock(%t02, 8) {init = 42 : i32, sym_name = "lock8"}
-    aie.lock(%t02, 9) {init = 43 : i32, sym_name = "lock9"}
-    aie.lock(%t02, 10) {init = 44 : i32, sym_name = "lock10"}
-    aie.lock(%t02, 11) {init = 45 : i32, sym_name = "lock11"}
-    aie.lock(%t02, 12) {init = 46 : i32, sym_name = "lock12"}
-    aie.lock(%t02, 13) {init = 47 : i32, sym_name = "lock13"}
-    aie.lock(%t02, 14) {init = 48 : i32, sym_name = "lock14"}
-    aie.lock(%t02, 15) {init = 49 : i32, sym_name = "lock15"}
+    aie.lock @lock8(%t02, 8) {init = 42 : i32}
+    aie.lock @lock9(%t02, 9) {init = 43 : i32}
+    aie.lock @lock10(%t02, 10) {init = 44 : i32}
+    aie.lock @lock11(%t02, 11) {init = 45 : i32}
+    aie.lock @lock12(%t02, 12) {init = 46 : i32}
+    aie.lock @lock13(%t02, 13) {init = 47 : i32}
+    aie.lock @lock14(%t02, 14) {init = 48 : i32}
+    aie.lock @lock15(%t02, 15) {init = 49 : i32}
 
     aie.core(%t02) {
       %c8 = arith.constant 8 : index

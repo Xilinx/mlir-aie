@@ -329,11 +329,12 @@ module @buffer_adjacency_both_pinned_violation {
     // CHECK: note: shared-L1 buffer consumer peer placed at (3, 5)
     // CHECK: note: shared-L1 buffer adjacency requires this LTO to be on a tile whose L1 is shared with the buffer owner's tile
     %owner = aie.logical_tile<CoreTile>(0, 2)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(3, 5)
     aie.core(%consumer) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
@@ -349,11 +350,12 @@ module @buffer_adjacency_unsatisfiable_column {
     // CHECK: error: no compute tile available matching constraint (3, ?) and shared-L1 buffer adjacency
     // CHECK: note: shared-L1 buffer owner peer placed at (0, 2)
     %owner = aie.logical_tile<CoreTile>(0, 2)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(3, ?)
     aie.core(%consumer) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
@@ -368,7 +370,7 @@ module @buffer_adjacency_unsatisfiable_column {
 module @buffer_adjacency_star_oversubscribed {
   aie.device(npu1) {
     %owner = aie.logical_tile<CoreTile>(1, 3)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %c1 = aie.logical_tile<CoreTile>(?, ?)
     %c2 = aie.logical_tile<CoreTile>(?, ?)
@@ -378,22 +380,26 @@ module @buffer_adjacency_star_oversubscribed {
     %c4 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c1) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
     aie.core(%c2) {
       %i = arith.constant 0 : index
-      %v = memref.load %buf[%i] : memref<16xi32>
+      %buf_1 = aie.get_buffer @buf : memref<16xi32>
+      %v = memref.load %buf_1[%i] : memref<16xi32>
       aie.end
     }
     aie.core(%c3) {
       %i = arith.constant 0 : index
-      %v = memref.load %buf[%i] : memref<16xi32>
+      %buf_2 = aie.get_buffer @buf : memref<16xi32>
+      %v = memref.load %buf_2[%i] : memref<16xi32>
       aie.end
     }
     aie.core(%c4) {
       %i = arith.constant 0 : index
-      %v = memref.load %buf[%i] : memref<16xi32>
+      %buf_3 = aie.get_buffer @buf : memref<16xi32>
+      %v = memref.load %buf_3[%i] : memref<16xi32>
       aie.end
     }
   }

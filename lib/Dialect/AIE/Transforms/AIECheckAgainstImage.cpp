@@ -91,12 +91,12 @@ std::string identity(ArrayRef<Operation *> ops) {
   std::set<std::string> buffers, locks;
   for (Operation *op : ops) {
     if (auto bd = dyn_cast<DMABDOp>(op)) {
-      if (auto buffer = bd.getBuffer().getDefiningOp())
+      if (auto buffer = bd.getBufferOp())
         if (std::string name = nameOf(buffer); !name.empty())
           buffers.insert(name + "@" +
                          std::to_string(bd.getConstantOffset().value_or(-1)));
     } else if (auto use = dyn_cast<UseLockOp>(op)) {
-      if (auto lock = use.getLock().getDefiningOp())
+      if (auto lock = use.getLockOp())
         if (std::string name = nameOf(lock); !name.empty())
           locks.insert(name);
     }

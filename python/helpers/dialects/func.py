@@ -45,6 +45,17 @@ from ..util import (
 )
 
 
+def _call_operand(arg, *, loc=None, ip=None):
+    if isinstance(arg, OpView) and arg.operation.name in (
+        "aie.buffer",
+        "aie.external_buffer",
+    ):
+        from ...dialects.aie import _as_buffer_value
+
+        return _as_buffer_value(arg, loc=loc, ip=ip)
+    return arg
+
+
 def call(
     callee_or_results: FuncOp | List[Type] | str,
     arguments_or_callee: (
@@ -77,11 +88,12 @@ def call(
         args = []
         for i, a in enumerate(arguments_or_callee):
             expected_type = func_op.function_type.value.inputs[i]
+            a = _call_operand(a, loc=loc, ip=ip)
             operand: Any = a
             if isinstance(a, (int, float)):
                 # Get the type to convert the python value to based on the expected input to the function
                 # TODO: should check if it's safe to do this? What is int value is outside range?
-                args.append(ScalarValue(a, dtype=expected_type))
+                args.append(ScalarValue(a, dtype=expected_type, loc=loc, ip=ip))
             elif (
                 isinstance(a, (Value, Operation, OpView, OpResult))
                 and isinstance(
@@ -96,7 +108,7 @@ def call(
             ):
                 # Auto-cast index-typed values (e.g. loop induction variables from range_)
                 # to the integer type expected by the function signature.
-                args.append(index_cast(a, to=expected_type))
+                args.append(index_cast(a, to=expected_type, loc=loc, ip=ip))
             else:
                 args.append(a)
         if not all(isinstance(a, (Value, Operation, OpView)) for a in args):
@@ -118,6 +130,9 @@ def call(
             + "expected the second argument to be a string or a "
             + f"FlatSymbolRefAttr, got {type(arguments_or_callee)}"
         )
+
+    if arguments is not None:
+        arguments = [_call_operand(a, loc=loc, ip=ip) for a in arguments]
 
     if isinstance(arguments_or_callee, FlatSymbolRefAttr):
         return get_op_result_or_op_results(

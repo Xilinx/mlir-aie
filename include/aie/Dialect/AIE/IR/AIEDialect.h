@@ -122,67 +122,9 @@ uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
 uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                     uint32_t burstLength);
 
-// Looks up a name, falling back to a scan for the `sym_name` attribute.
-// `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` are referred to
-// by name but define an SSA value, so they cannot be `Symbol` ops and
-// `mlir::SymbolTable` does not find them.
-mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
-                                 mlir::StringAttr name);
-mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
-                                 llvm::StringRef name);
-// Looks in the symbol table nearest to (or at) `from`.
-mlir::Operation *lookupNamedOp(mlir::Operation *from, mlir::StringAttr name);
-mlir::Operation *lookupNamedOp(mlir::Operation *from, llvm::StringRef name);
-
-template <typename OpTy, typename NameT>
-OpTy lookupNamedOpIn(mlir::Operation *symbolTableOp, NameT name) {
-  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOpIn(symbolTableOp, name));
-}
-
-template <typename OpTy, typename NameT>
-OpTy lookupNamedOp(mlir::Operation *from, NameT name) {
-  return llvm::dyn_cast_if_present<OpTy>(lookupNamedOp(from, name));
-}
-
-// `lookupNamedOpIn` indexed once, for resolving many names in a symbol table
-// whose named ops do not change meanwhile.
-class NamedOpTable {
-public:
-  explicit NamedOpTable(mlir::Operation *symbolTableOp);
-
-  mlir::Operation *lookup(mlir::StringAttr name) const {
-    return ops.lookup(name);
-  }
-  template <typename OpTy>
-  OpTy lookup(mlir::StringAttr name) const {
-    return llvm::dyn_cast_if_present<OpTy>(lookup(name));
-  }
-
-  // "<prefix><n>" for the first n from `counter` up that no op in the table
-  // has. `counter` moves past n, so names drawn from one counter differ
-  // although the table does not record them.
-  std::string uniqueName(llvm::StringRef prefix, unsigned &counter) const;
-
-private:
-  mlir::MLIRContext *context;
-  llvm::DenseMap<mlir::StringAttr, mlir::Operation *> ops;
-};
-
-// The NamedOpTables of several symbol tables, each indexed on first use, as
-// mlir::SymbolTableCollection is for symbols.
-class NamedOpTableCollection {
-public:
-  NamedOpTable &getTable(mlir::Operation *symbolTableOp) {
-    return tables.try_emplace(symbolTableOp, symbolTableOp).first->second;
-  }
-  template <typename OpTy>
-  OpTy lookupIn(mlir::Operation *symbolTableOp, mlir::StringAttr name) {
-    return getTable(symbolTableOp).lookup<OpTy>(name);
-  }
-
-private:
-  llvm::DenseMap<mlir::Operation *, NamedOpTable> tables;
-};
+// Returns an unused "<prefix><n>", advancing counter past the chosen suffix.
+std::string generateUniqueSymbolName(mlir::SymbolTable &symbols,
+                                     llvm::StringRef prefix, unsigned &counter);
 
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);

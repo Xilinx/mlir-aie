@@ -25,8 +25,8 @@
 module {
   aie.device(npu1_1col) {
     %tile_0_2 = aie.tile(0, 2)
-    %buf_in = aie.buffer(%tile_0_2) {sym_name = "buf_in"} : memref<256xf32>
-    %buf_out = aie.buffer(%tile_0_2) {sym_name = "buf_out"} : memref<256xf32>
+    aie.buffer @buf_in(%tile_0_2) : memref<256xf32>
+    aie.buffer @buf_out(%tile_0_2) : memref<256xf32>
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
@@ -38,9 +38,11 @@ module {
       // Scalar f32 clamp: maxnumf then minnumf, the shape a softmax-style
       // reduction lowers to.
       scf.for %i = %c0 to %c256 step %c1 {
+        %buf_in = aie.get_buffer @buf_in : memref<256xf32>
         %val = memref.load %buf_in[%i] : memref<256xf32>
         %mx = arith.maxnumf %val, %lo : f32
         %mn = arith.minnumf %mx, %hi : f32
+        %buf_out = aie.get_buffer @buf_out : memref<256xf32>
         memref.store %mn, %buf_out[%i] : memref<256xf32>
       }
       aie.end

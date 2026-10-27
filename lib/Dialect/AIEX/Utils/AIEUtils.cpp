@@ -192,8 +192,11 @@ memref::GlobalOp AIEX::BlockwriteData::getOrCreate(OpBuilder &builder,
   if (global && global.getType() == memrefType)
     return global;
   global = memref::GlobalOp::create(
-      builder, loc, prefix + std::to_string(nextId++),
+      builder, loc,
+      AIE::generateUniqueSymbolName(symbols->getSymbolTable(dev), prefix,
+                                    nextId),
       builder.getStringAttr("private"), memrefType, initVal, true, nullptr);
+  symbols->getSymbolTable(dev).insert(global);
   return global;
 }
 

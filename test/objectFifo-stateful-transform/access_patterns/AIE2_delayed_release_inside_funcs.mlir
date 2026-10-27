@@ -20,7 +20,7 @@ module @AIE2_delayed_release {
     aie.device(xcve2302) {
         %tile22 = aie.tile(2, 2)
         %tile23 = aie.tile(2, 3)
-        %buf23 = aie.buffer(%tile23) {sym_name = "buf23"} : memref<4xi32>
+        aie.buffer @buf23(%tile23) : memref<4xi32>
 
         aie.objectfifo @fifo (%tile22, {%tile23}, 4 : i32) : !aie.objectfifo<memref<i32>>
 
@@ -84,6 +84,7 @@ module @AIE2_delayed_release {
 
         // Consumer -- consumes {2, 1, 3, 1}; releases {0, 0, 0, 2}
         %core23 = aie.core(%tile23) {
+            %buf23 = aie.get_buffer @buf23 : memref<4xi32>
             func.call @step1(%buf23) : (memref<4xi32>) -> ()
             func.call @step2(%buf23) : (memref<4xi32>) -> ()
             func.call @step3(%buf23) : (memref<4xi32>) -> ()

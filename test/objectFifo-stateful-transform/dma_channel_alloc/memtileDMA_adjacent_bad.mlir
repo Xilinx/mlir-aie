@@ -25,7 +25,7 @@ module {
     %shim1 = aie.tile(1, 0)
     %shim2 = aie.tile(2, 0)
     %mem = aie.tile(0, 1) loc("design.py":10:3)
-    %reserved = aie.buffer(%mem) : memref<524288xi8>
+    aie.buffer @reserved(%mem) : memref<524288xi8>
     aie.objectfifo @in0(%shim0, {%mem}, 2 : i32) : !aie.objectfifo<memref<16xi32>> loc("design.py":20:3)
     aie.objectfifo @in1(%shim0, {%mem}, 2 : i32) : !aie.objectfifo<memref<16xi32>> loc("design.py":21:3)
     aie.objectfifo @in2(%shim1, {%mem}, 2 : i32) : !aie.objectfifo<memref<16xi32>> loc("design.py":22:3)

@@ -60,10 +60,12 @@ struct AIELocalizeLocksPass
             // localize the current lock if it is used within the core. Note
             // that this pass is to be applied after the scf-to-cf lowering, so
             // it suffices to check if the parent of a UseLockOp is coreOp.
-            if (llvm::none_of(lock.getResult().getUsers(),
-                              [&](Operation *user) {
-                                return user->getParentOp() == coreOp;
-                              }))
+            SmallVector<UseLockOp> uses;
+            coreOp.walk([&](UseLockOp use) {
+              if (use.getLockOp() == lock)
+                uses.push_back(use);
+            });
+            if (uses.empty())
               continue;
 
             auto lockIndexOffset =
@@ -74,15 +76,10 @@ struct AIELocalizeLocksPass
             int localLockIndex =
                 lockIndexOffset.value() + lock.getLockIDValue();
 
-            OpBuilder builder =
-                OpBuilder::atBlockBegin(&coreOp.getBody().front());
-
-            Value coreLockIDValue = arith::ConstantIndexOp::create(
-                builder, lock.getLoc(), localLockIndex);
-            lock.getResult().replaceUsesWithIf(
-                coreLockIDValue, [&](OpOperand &opOperand) {
-                  return opOperand.getOwner()->getParentOp() == coreOp;
-                });
+            for (UseLockOp use : uses)
+              use->setAttr("local_lock_id",
+                           IntegerAttr::get(IntegerType::get(&getContext(), 32),
+                                            localLockIndex));
           }
       }
     }

@@ -36,10 +36,10 @@ namespace {
 struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
-  Write32SymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+  Write32SymToAddr(MLIRContext *context, SymbolTableCollection &names)
       : OpConversionPattern(context), names(names) {}
 
-  const AIE::NamedOpTable &names;
+  SymbolTableCollection &names;
 
   LogicalResult
   matchAndRewrite(NpuWrite32Op op, OpAdaptor adaptor,
@@ -63,10 +63,10 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
 struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  BlockWriteSymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+  BlockWriteSymToAddr(MLIRContext *context, SymbolTableCollection &names)
       : OpConversionPattern(context), names(names) {}
 
-  const AIE::NamedOpTable &names;
+  SymbolTableCollection &names;
 
   LogicalResult
   matchAndRewrite(NpuBlockWriteOp op, OpAdaptor adaptor,
@@ -88,10 +88,10 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
 struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
   using OpConversionPattern::OpConversionPattern;
 
-  MaskWrite32SymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+  MaskWrite32SymToAddr(MLIRContext *context, SymbolTableCollection &names)
       : OpConversionPattern(context), names(names) {}
 
-  const AIE::NamedOpTable &names;
+  SymbolTableCollection &names;
 
   LogicalResult
   matchAndRewrite(NpuMaskWrite32Op op, OpAdaptor adaptor,
@@ -117,10 +117,10 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
 struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  MaskPollSymToAddr(MLIRContext *context, const AIE::NamedOpTable &names)
+  MaskPollSymToAddr(MLIRContext *context, SymbolTableCollection &names)
       : OpConversionPattern(context), names(names) {}
 
-  const AIE::NamedOpTable &names;
+  SymbolTableCollection &names;
 
   LogicalResult
   matchAndRewrite(NpuMaskPollOp op, OpAdaptor adaptor,
@@ -144,16 +144,17 @@ struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
 struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  RtpToWrite32Pattern(MLIRContext *context, const AIE::NamedOpTable &names)
+  RtpToWrite32Pattern(MLIRContext *context, SymbolTableCollection &names)
       : OpConversionPattern(context), names(names) {}
 
-  const AIE::NamedOpTable &names;
+  SymbolTableCollection &names;
 
   LogicalResult
   matchAndRewrite(NpuWriteRTPOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto buffer = names.lookup<AIE::BufferOp>(op.getBufferAttr().getAttr());
+    auto buffer =
+        names.lookupNearestSymbolFrom<AIE::BufferOp>(op, op.getBufferAttr());
     if (!buffer) {
       op->emitError("buffer '" + op.getBuffer() + "' not found in device");
       return failure();
@@ -925,7 +926,7 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
         [&](NpuMaskPollOp op) { return !op.getBuffer(); });
 
     BlockwriteData blockwriteData(device, "blockwrite_data_");
-    AIE::NamedOpTable names(device);
+    SymbolTableCollection names;
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<BlockWriteSymToAddr>(&getContext(), names);

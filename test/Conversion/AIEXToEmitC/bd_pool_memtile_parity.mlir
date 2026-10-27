@@ -23,7 +23,7 @@
 
 aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
-  %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+  aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
   aie.runtime_sequence @memtile_parity_pools() {
     %even = aiex.dma_bd_pool_pop(0, 1) partition [0, 24) : i32
     %odd = aiex.dma_bd_pool_pop(0, 1) partition [24, 48) : i32

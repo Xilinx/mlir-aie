@@ -22,16 +22,16 @@
 
 // RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
-// CHECK-DAG: aie.buffer({{.*}}) {address = 16384 : i32, {{.*}}sym_name = "prebaked_0_2_16384"} : memref<2048xi8>
-// CHECK-DAG: aie.buffer({{.*}}) {address = 48128 : i32, {{.*}}sym_name = "prebaked_0_2_48128"} : memref<1024xi8>
+// CHECK-DAG: aie.buffer @prebaked_0_2_16384({{.*}}) {address = 16384 : i32{{.*}}} : memref<2048xi8>
+// CHECK-DAG: aie.buffer @prebaked_0_2_48128({{.*}}) {address = 48128 : i32{{.*}}} : memref<1024xi8>
 
 // Without the reservation this lands at 16384, exactly on the prebaked .data.
-// CHECK-DAG: aie.buffer({{.*}}) {address = 49152 : i32, {{.*}}sym_name = "scratch"}
+// CHECK-DAG: aie.buffer @scratch({{.*}}) {address = 49152 : i32{{.*}}}
 
 module @prebaked_elf_ranges {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %scratch = aie.buffer(%t) { sym_name = "scratch" } : memref<16384xi8>
+    aie.buffer @scratch(%t) : memref<16384xi8>
     aie.core(%t) {
       aie.end
     } { elf_file = "prebaked.elf", stack_size = 1024 : i32,
@@ -44,5 +44,5 @@ module @prebaked_elf_ranges {
 
 // RUN: aie-opt --aie-assign-buffer-addresses %s | aie-opt --aie-assign-buffer-addresses | FileCheck %s --check-prefix=TWICE
 
-// TWICE-COUNT-1: sym_name = "prebaked_0_2_16384"
-// TWICE-NOT: sym_name = "prebaked_0_2_16384"
+// TWICE-COUNT-1: aie.buffer @prebaked_0_2_16384
+// TWICE-NOT: aie.buffer @prebaked_0_2_16384

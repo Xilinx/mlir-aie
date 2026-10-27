@@ -147,19 +147,9 @@ LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
   return success();
 }
 
-// Cached resolution of NpuBlockWriteOp's data words.
-// NpuBlockWriteOp::getDataWords() resolves the data memref.global via
-// device.lookupSymbol (a LINEAR symbol scan over the device's symbols) +
-// global.getInitialValue() on EVERY call — perf shows this
-// (SymbolTable::lookupSymbolIn + memref::GlobalOp::getInherentAttr) is ~47% of
-// AIETranslateNpuToBinary on a B=128 runtime sequence (~10^5 block-writes),
-// i.e. O(block-writes x globals). Resolve via a prebuilt per-device SymbolTable
-// (O(1)) and memoize per global symbol (the B-unroll's streams reuse the same
-// data globals), so the returned attribute is byte-identical but the work
-// collapses. Falls back to the canonical method on any non-global memref /
-// lookup miss (identical behavior).
+// Share the symbol index with buffer resolution and memoize global payloads.
 static DenseIntElementsAttr cachedBlockWriteData(
-    NpuBlockWriteOp op, mlir::SymbolTable &symTab,
+    NpuBlockWriteOp op, SymbolTableCollection &symbols,
     llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> &cache) {
   auto getGlobal = op.getData().getDefiningOp<mlir::memref::GetGlobalOp>();
   if (!getGlobal)
@@ -178,8 +168,8 @@ static DenseIntElementsAttr cachedBlockWriteData(
               .getElementType()) != 32)
     return op.getDataWords();
   DenseIntElementsAttr data;
-  if (auto global =
-          dyn_cast_if_present<mlir::memref::GlobalOp>(symTab.lookup(key)))
+  if (auto global = symbols.lookupNearestSymbolFrom<mlir::memref::GlobalOp>(
+          getGlobal, getGlobal.getNameAttr()))
     if (auto initVal = global.getInitialValue())
       data = dyn_cast<DenseIntElementsAttr>(*initVal);
   if (!data)
@@ -190,13 +180,13 @@ static DenseIntElementsAttr cachedBlockWriteData(
 
 LogicalResult appendBlockWrite(
     std::vector<uint32_t> &instructions, NpuBlockWriteOp op,
-    std::optional<uint32_t> address, mlir::SymbolTable &symTab,
+    std::optional<uint32_t> address, SymbolTableCollection &symbols,
     llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> &dataCache) {
   if (!address)
     return op.emitOpError(
         "Cannot translate blockwrite with unresolved address to a static TXN "
         "binary");
-  DenseIntElementsAttr data = cachedBlockWriteData(op, symTab, dataCache);
+  DenseIntElementsAttr data = cachedBlockWriteData(op, symbols, dataCache);
 
   // Resolve the payload words via the (cached) data attribute, then hand off to
   // the encoder which owns the word layout.
@@ -249,8 +239,8 @@ void appendCreateScratchpad(std::vector<uint32_t> &instructions,
 
 LogicalResult appendUpdateRegFromScratchpad(std::vector<uint32_t> &instructions,
                                             NpuUpdateFromScratchpadOp op,
-                                            const NamedOpTable &names) {
-  std::optional<uint32_t> address = op.getAbsoluteAddress(&names);
+                                            SymbolTableCollection &symbols) {
+  std::optional<uint32_t> address = op.getAbsoluteAddress(&symbols);
   if (!address)
     return op.emitOpError("Cannot translate update_from_scratchpad with "
                           "unresolved address to a static TXN binary");
@@ -361,7 +351,6 @@ struct TxnEncoder {
              std::vector<TxnLocEntry> *locmap, bool foldDDRAddrOffset,
              NpuConfigCache &configs)
       : device(device), tm(device.getTargetModel()),
-        symTab(device.getOperation()), names(device.getOperation()),
         configs(configs), instructions(instructions), locmap(locmap),
         foldDDRAddrOffset(foldDDRAddrOffset) {}
 
@@ -372,11 +361,7 @@ struct TxnEncoder {
 
   DeviceOp device;
   const AIETargetModel &tm;
-  // Built once, with a per-global data cache, so block-write data resolution
-  // is O(1)+memoized instead of a per-op linear symbol scan
-  // (cachedBlockWriteData). ~47% of the translation on a B=128 sequence.
-  mlir::SymbolTable symTab;
-  NamedOpTable names;
+  SymbolTableCollection symbols;
   llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> blockWriteDataCache;
   NpuConfigCache &configs;
   std::vector<uint32_t> &instructions;
@@ -498,8 +483,8 @@ void TxnEncoder::encode(Operation &o) {
       .Case<NpuBlockWriteOp>([&](auto op) {
         count++;
         uint32_t before = byteOffset();
-        std::optional<uint32_t> addr = op.getAbsoluteAddress(&names);
-        if (failed(appendBlockWrite(instructions, op, addr, symTab,
+        std::optional<uint32_t> addr = op.getAbsoluteAddress(&symbols);
+        if (failed(appendBlockWrite(instructions, op, addr, symbols,
                                     blockWriteDataCache)))
           result = failure();
         pushLocEntry(locmap, before, byteOffset(), "BLOCKWRITE",
@@ -564,7 +549,7 @@ void TxnEncoder::encode(Operation &o) {
       .Case<NpuUpdateFromScratchpadOp>([&](auto op) {
         count++;
         uint32_t before = byteOffset();
-        if (failed(appendUpdateRegFromScratchpad(instructions, op, names)))
+        if (failed(appendUpdateRegFromScratchpad(instructions, op, symbols)))
           result = failure();
         pushLocEntry(locmap, before, byteOffset(), "UPDATE_FROM_SCRATCHPAD",
                      op->getName().getStringRef(), std::nullopt, op, tm);

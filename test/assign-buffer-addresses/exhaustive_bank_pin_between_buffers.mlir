@@ -26,18 +26,18 @@
 
 // RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
-// CHECK-DAG: aie.buffer({{.*}}) {address = 10752 : i32, {{.*}}sym_name = "small"}
-// CHECK-DAG: aie.buffer({{.*}}) {address = 17792 : i32, mem_bank = 1 : i32, sym_name = "banked"}
-// CHECK-DAG: aie.buffer({{.*}}) {address = 17856 : i32, {{.*}}sym_name = "big"}
+// CHECK-DAG: aie.buffer @small({{.*}}) {address = 10752 : i32{{.*}}}
+// CHECK-DAG: aie.buffer @banked({{.*}}) {address = 17792 : i32, mem_bank = 1 : i32}
+// CHECK-DAG: aie.buffer @big({{.*}}) {address = 17856 : i32{{.*}}}
 
 module @exhaustive_bank_pin_between_buffers {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %low = aie.buffer(%t) { sym_name = "low", address = 5760 : i32 } : memref<3904xi8>
-    %mid = aie.buffer(%t) { sym_name = "mid", address = 10560 : i32 } : memref<192xi8>
-    %small = aie.buffer(%t) { sym_name = "small" } : memref<7040xi8>
-    %banked = aie.buffer(%t) { sym_name = "banked", mem_bank = 1 : i32 } : memref<64xi8>
-    %big = aie.buffer(%t) { sym_name = "big" } : memref<42881xi8>
+    aie.buffer @low(%t) { address = 5760 : i32 } : memref<3904xi8>
+    aie.buffer @mid(%t) { address = 10560 : i32 } : memref<192xi8>
+    aie.buffer @small(%t) : memref<7040xi8>
+    aie.buffer @banked(%t) { mem_bank = 1 : i32 } : memref<64xi8>
+    aie.buffer @big(%t) : memref<42881xi8>
     aie.core(%t) {
       aie.end
     } { stack_size = 1024 : i32 }

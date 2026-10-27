@@ -12,7 +12,7 @@
 module @pinned_local {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
-    %reserved = aie.buffer(%home) : memref<196608xi8>
+    aie.buffer @reserved(%home) : memref<196608xi8>
     aie.objectfifo.pool @large(%home) {depth = 2 : i32} : memref<147456xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 147456 : i32}
     }
@@ -26,10 +26,10 @@ module @pinned_local {
 // CHECK-LABEL: module @pinned_local
 // CHECK-DAG: %[[H:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[N:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[H]]) {sym_name = "small_buff_0"}
-// CHECK-DAG: aie.buffer(%[[H]]) {sym_name = "small_buff_1"}
-// CHECK-DAG: aie.buffer(%[[H]]) {sym_name = "large_buff_0"}
-// CHECK-DAG: aie.buffer(%[[N]]) {sym_name = "large_buff_1"}
+// CHECK-DAG: aie.buffer @small_buff_0(%[[H]])
+// CHECK-DAG: aie.buffer @small_buff_1(%[[H]])
+// CHECK-DAG: aie.buffer @large_buff_0(%[[H]])
+// CHECK-DAG: aie.buffer @large_buff_1(%[[N]])
 // CHECK: @large_dma(%[[H]]) fills @large {channelIndex = 0 : i32}
 // CHECK: @small_dma(%[[H]]) fills @small {channelIndex = 5 : i32}
 
@@ -41,7 +41,7 @@ module @shared_existing {
   aie.device(npu2) {
     %reader = aie.tile(0, 1)
     %writer = aie.tile(1, 1)
-    %b = aie.buffer(%reader) {sym_name = "existing"} : memref<16xi32>
+    aie.buffer @existing(%reader) : memref<16xi32>
     aie.objectfifo.pool @shared(%writer) {
       depth = 1 : i32, buffers = [@existing]
     } : memref<16xi32> {
@@ -71,8 +71,8 @@ module @shared_spill {
     %left = aie.tile(0, 1)
     %home = aie.tile(1, 1)
     %right = aie.tile(2, 1)
-    %left_reserved = aie.buffer(%left) : memref<196608xi8>
-    %home_reserved = aie.buffer(%home) : memref<524288xi8>
+    aie.buffer @left_reserved(%left) : memref<196608xi8>
+    aie.buffer @home_reserved(%home) : memref<524288xi8>
     aie.objectfifo.pool @shared(%home) {depth = 2 : i32} : memref<32768xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 32768 : i32}
     }
@@ -82,8 +82,8 @@ module @shared_spill {
 }
 // CHECK-LABEL: module @shared_spill
 // CHECK: %[[LEFT:.*]] = aie.tile(0, 1)
-// CHECK-DAG: aie.buffer(%[[LEFT]]) {sym_name = "shared_buff_0"}
-// CHECK-DAG: aie.buffer(%[[LEFT]]) {sym_name = "shared_buff_1"}
+// CHECK-DAG: aie.buffer @shared_buff_0(%[[LEFT]])
+// CHECK-DAG: aie.buffer @shared_buff_1(%[[LEFT]])
 // CHECK: @reader(%[[LEFT]]) drains @shared {channelIndex = 5 : i32}
 
 // -----
@@ -94,8 +94,8 @@ module @split_existing {
   aie.device(npu2) {
     %left = aie.tile(0, 1)
     %right = aie.tile(1, 1)
-    %a = aie.buffer(%left) {sym_name = "a"} : memref<16xi32>
-    %b = aie.buffer(%right) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @a(%left) : memref<16xi32>
+    aie.buffer @b(%right) : memref<16xi32>
     aie.objectfifo.pool @split(%left) {
       depth = 2 : i32, buffers = [@a, @b]
     } : memref<16xi32> {
@@ -118,8 +118,8 @@ module @split_existing {
 module @reserved_channels {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
-    %reserved = aie.buffer(%home) : memref<196608xi8>
-    %fixed = aie.buffer(%home) {sym_name = "fixed"} : memref<16xi32>
+    aie.buffer @reserved(%home) : memref<196608xi8>
+    aie.buffer @fixed(%home) : memref<16xi32>
     aie.objectfifo.pool @fixed_pool(%home) {
       depth = 1 : i32, buffers = [@fixed]
     } : memref<16xi32> {
@@ -166,9 +166,9 @@ module @shared_local_channel {
 // CHECK-LABEL: module @shared_local_channel
 // CHECK-DAG: %[[LOCKS:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[READER:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.lock(%[[READER]]) {{.*}}sym_name = "shared_prod_lock_0"
-// CHECK-DAG: aie.buffer(%[[READER]]) {sym_name = "shared_buff_0"}
-// CHECK-DAG: aie.buffer(%[[READER]]) {sym_name = "shared_buff_1"}
+// CHECK-DAG: aie.lock @shared_prod_lock_0(%[[READER]]) {{.*}}
+// CHECK-DAG: aie.buffer @shared_buff_0(%[[READER]])
+// CHECK-DAG: aie.buffer @shared_buff_1(%[[READER]])
 // CHECK: @reader(%[[READER]]) drains @shared {channelIndex = 5 : i32}
 // CHECK: @writer(%[[LOCKS]]) fills @shared {channelIndex = 0 : i32}
 
@@ -188,7 +188,7 @@ module @unplaced_shared {
 }
 // CHECK-LABEL: module @unplaced_shared
 // CHECK: %[[UNPLACED:.*]] = aie.logical_tile<MemTile>(?, ?)
-// CHECK: aie.buffer(%[[UNPLACED]]) {sym_name = "shared_buff_0"}
+// CHECK: aie.buffer @shared_buff_0(%[[UNPLACED]])
 // CHECK: @reader({{.*}}) drains @shared {channelIndex = 0 : i32}
 
 // -----
@@ -199,8 +199,8 @@ module @partly_placed {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
     %other = aie.logical_tile<MemTile>(1, ?)
-    %a = aie.buffer(%home) {sym_name = "a"} : memref<16xi32>
-    %b = aie.buffer(%other) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @a(%home) : memref<16xi32>
+    aie.buffer @b(%other) : memref<16xi32>
     aie.objectfifo.pool @local(%home) {
       depth = 1 : i32, buffers = [@a]
     } : memref<16xi32> {

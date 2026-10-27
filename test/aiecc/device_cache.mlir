@@ -87,9 +87,10 @@
 module {
   aie.device(npu2) @a {
     %t02 = aie.tile(0, 2)
-    %buf = aie.buffer(%t02) {sym_name = "buf_a"} : memref<16xi32>
+    aie.buffer @buf_a(%t02) : memref<16xi32>
     func.func private @bump(memref<16xi32>) attributes {link_with = "device_cache_kernel.o"}
     %core = aie.core(%t02) {
+      %buf = aie.get_buffer @buf_a : memref<16xi32>
       func.call @bump(%buf) : (memref<16xi32>) -> ()
       aie.end
     }
@@ -97,10 +98,11 @@ module {
   aie.device(npu2) @b {
     %t02 = aie.tile(0, 2)
     %t12 = aie.tile(1, 2)
-    %buf = aie.buffer(%t02) {sym_name = "buf_b"} : memref<16xi32>
+    aie.buffer @buf_b(%t02) : memref<16xi32>
     %core_0_2 = aie.core(%t02) {
       %c0 = arith.constant 0 : index
       %v = arith.constant 7 : i32
+      %buf = aie.get_buffer @buf_b : memref<16xi32>
       memref.store %v, %buf[%c0] : memref<16xi32>
       aie.end
     }

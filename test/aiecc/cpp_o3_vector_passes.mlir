@@ -63,16 +63,18 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 2)
-    %in = aie.buffer(%tile) {sym_name = "in"} : memref<16x64xi16>
-    %out = aie.buffer(%tile) {sym_name = "out"} : memref<16x64xi32>
+    aie.buffer @in(%tile) : memref<16x64xi16>
+    aie.buffer @out(%tile) : memref<16x64xi32>
     %core = aie.core(%tile) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c16 = arith.constant 16 : index
       %pad = arith.constant 0 : i16
       scf.for %i = %c0 to %c16 step %c1 {
+        %in = aie.get_buffer @in : memref<16x64xi16>
         %v = vector.transfer_read %in[%i, %c0], %pad {in_bounds = [true]} : memref<16x64xi16>, vector<64xi16>
         %e = arith.extsi %v : vector<64xi16> to vector<64xi32>
+        %out = aie.get_buffer @out : memref<16x64xi32>
         vector.transfer_write %e, %out[%i, %c0] {in_bounds = [true]} : vector<64xi32>, memref<16x64xi32>
       }
       aie.end

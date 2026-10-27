@@ -10,8 +10,8 @@ module {
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
     %tile_0_1 = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
 
-    %in_buff = aie.buffer(%tile_0_1) {sym_name = "in_buff"} : memref<4096xi32>
-    %out_buff = aie.buffer(%tile_0_1) {sym_name = "out_buff"} : memref<4096xi32>
+    aie.buffer @in_buff(%tile_0_1) : memref<4096xi32>
+    aie.buffer @out_buff(%tile_0_1) : memref<4096xi32>
 
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
@@ -36,16 +36,20 @@ module {
 
       // Configure memtile DMA to receive from shim
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
+        %out_buff = aie.get_buffer @out_buff : memref<4096xi32>
         aie.dma_bd(%out_buff : memref<4096xi32> offset = 1024 len = 1024) {bd_id = 0 : i32}
         aie.next_bd ^bb1
       ^bb1:
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = 3072 len = 1024) {bd_id = 1 : i32}
+        %out_buff_1 = aie.get_buffer @out_buff : memref<4096xi32>
+        aie.dma_bd(%out_buff_1 : memref<4096xi32> offset = 3072 len = 1024) {bd_id = 1 : i32}
         aie.next_bd ^bb2
       ^bb2:
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = 0 len = 1024) {bd_id = 2 : i32}
+        %out_buff_2 = aie.get_buffer @out_buff : memref<4096xi32>
+        aie.dma_bd(%out_buff_2 : memref<4096xi32> offset = 0 len = 1024) {bd_id = 2 : i32}
         aie.next_bd ^bb3
       ^bb3:
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = 2048 len = 1024) {bd_id = 3 : i32}
+        %out_buff_3 = aie.get_buffer @out_buff : memref<4096xi32>
+        aie.dma_bd(%out_buff_3 : memref<4096xi32> offset = 2048 len = 1024) {bd_id = 3 : i32}
         aie.end
       } {issue_token = true}
 
@@ -56,7 +60,8 @@ module {
 
       // Configure memtile DMA to send data to shim
       %t2 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = 0 len = 4096) {bd_id = 1 : i32}
+        %out_buff_4 = aie.get_buffer @out_buff : memref<4096xi32>
+        aie.dma_bd(%out_buff_4 : memref<4096xi32> offset = 0 len = 4096) {bd_id = 1 : i32}
         aie.end
       } {issue_token = true}
 

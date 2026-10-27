@@ -12,10 +12,10 @@ module @spill_backtrack {
     %m1 = aie.tile(1, 1)
     %m2 = aie.tile(2, 1)
     %m3 = aie.tile(3, 1)
-    %r0 = aie.buffer(%m0) : memref<324288xi8>
-    %r1 = aie.buffer(%m1) : memref<324288xi8>
-    %r2 = aie.buffer(%m2) : memref<324288xi8>
-    %r3 = aie.buffer(%m3) : memref<324288xi8>
+    aie.buffer @r0(%m0) : memref<324288xi8>
+    aie.buffer @r1(%m1) : memref<324288xi8>
+    aie.buffer @r2(%m2) : memref<324288xi8>
+    aie.buffer @r3(%m3) : memref<324288xi8>
     aie.objectfifo.pool @middle(%m2) {depth = 2 : i32} : memref<200000xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 200000 : i32}
     }
@@ -31,7 +31,7 @@ module @spill_backtrack {
 // CHECK-DAG: %[[M1:.*]] = aie.tile(1, 1)
 // CHECK-DAG: %[[M2:.*]] = aie.tile(2, 1)
 // CHECK-DAG: %[[M3:.*]] = aie.tile(3, 1)
-// CHECK-DAG: aie.buffer(%[[M2]]) {sym_name = "middle_buff_0"}
-// CHECK-DAG: aie.buffer(%[[M3]]) {sym_name = "middle_buff_1"}
-// CHECK-DAG: aie.buffer(%[[M0]]) {sym_name = "edge_buff_0"}
-// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "edge_buff_1"}
+// CHECK-DAG: aie.buffer @middle_buff_0(%[[M2]])
+// CHECK-DAG: aie.buffer @middle_buff_1(%[[M3]])
+// CHECK-DAG: aie.buffer @edge_buff_0(%[[M0]])
+// CHECK-DAG: aie.buffer @edge_buff_1(%[[M1]])

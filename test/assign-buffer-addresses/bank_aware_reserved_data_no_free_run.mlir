@@ -15,14 +15,14 @@
 
 // RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
-// CHECK: %a = aie.buffer(%tile_0_2) {address = 1024 : i32, aligned = false, mem_bank = 0 : i32, sym_name = "a"} : memref<64512xi8>
+// CHECK: aie.buffer @a(%tile_0_2) {address = 1024 : i32, aligned = false, mem_bank = 0 : i32} : memref<64512xi8>
 // The core reserves nothing, so the allocator creates no core_data buffer and
 // the buffer takes the whole tile.
 // CHECK-NOT: core_data
 module @zero_free_run_zero_reservation {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %a = aie.buffer(%tile_0_2) {sym_name = "a", aligned = false} : memref<64512xi8>
+    aie.buffer @a(%tile_0_2) {aligned = false} : memref<64512xi8>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32, data_size = 0 : i32}

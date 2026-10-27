@@ -23,10 +23,10 @@ module @test_mmap1 {
   %tsouth = aie.tile(2, 3) // Different row
   %tnorth = aie.tile(2, 5) // Different row
 
-  %bufsame = aie.buffer(%tsame) { sym_name = "same", address = 0x0 : i32 } : memref<4xi32>
-  %bufeast = aie.buffer(%teast) { sym_name = "east", address = 0x0 : i32 } : memref<4xi32>
-  %bufwest = aie.buffer(%twest) { sym_name = "west", address = 0x0 : i32 } : memref<4xi32>
-  %bufsouth = aie.buffer(%tsouth) { sym_name = "south", address = 0x0 : i32 } : memref<4xi32>
-  %bufnorth = aie.buffer(%tnorth) { sym_name = "north", address = 0x0 : i32 } : memref<4xi32>
+  aie.buffer @same(%tsame) { address = 0x0 : i32 } : memref<4xi32>
+  aie.buffer @east(%teast) { address = 0x0 : i32 } : memref<4xi32>
+  aie.buffer @west(%twest) { address = 0x0 : i32 } : memref<4xi32>
+  aie.buffer @south(%tsouth) { address = 0x0 : i32 } : memref<4xi32>
+  aie.buffer @north(%tnorth) { address = 0x0 : i32 } : memref<4xi32>
  }
 }

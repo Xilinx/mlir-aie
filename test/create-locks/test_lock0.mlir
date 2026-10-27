@@ -12,7 +12,7 @@
 // CHECK:         aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(3, 3)
 // CHECK:           %[[VAL_1:.*]] = aie.tile(2, 3)
-// CHECK:           %[[VAL_2:.*]] = aie.lock(%[[VAL_1]], 0) {init = 0 : i32}
+// CHECK:           aie.lock @[[VAL_2:.*]](%[[VAL_1]], 0) {init = 0 : i32}
 // CHECK:           aiex.token(0) {sym_name = "token0"}
 // CHECK:           %[[VAL_3:.*]] = aie.mem(%[[VAL_0]]) {
 // CHECK:             aie.end

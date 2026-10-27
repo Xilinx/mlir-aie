@@ -39,30 +39,33 @@ module @aie_module  {
   %t00 = aie.tile(1, 1)
   %t01 = aie.tile(2, 1)
   %t02 = aie.tile(3, 1)
-  %buf_w = aie.buffer(%t00) { address = 0 : i32, sym_name = "west" } : memref<16xi32>
-  %buf_l = aie.buffer(%t01) { address = 0 : i32, sym_name = "local" } : memref<16xi32>
-  %buf_e = aie.buffer(%t02) { address = 0 : i32, sym_name = "east" } : memref<16xi32>
+  aie.buffer @west(%t00) { address = 0 : i32} : memref<16xi32>
+  aie.buffer @local(%t01) { address = 0 : i32} : memref<16xi32>
+  aie.buffer @east(%t02) { address = 0 : i32} : memref<16xi32>
 
-  %lock_w = aie.lock(%t00, 0)
-  %lock_l = aie.lock(%t01, 0)
-  %lock_e = aie.lock(%t02, 0)
+  aie.lock @lock_w(%t00, 0)
+  aie.lock @lock_l(%t01, 0)
+  aie.lock @lock_e(%t02, 0)
 
   %m01 = aie.memtile_dma(%t01) {
       %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %buf_w = aie.get_buffer @west : memref<16xi32>
       aie.dma_bd(%buf_w : memref<16xi32> offset = 0 len = 16)
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%lock_w, "Release", %c1_ul1)
+      aie.use_lock(@lock_w, "Release", %c1_ul1)
       aie.next_bd ^bd1
     ^bd1:
+      %buf_l = aie.get_buffer @local : memref<16xi32>
       aie.dma_bd(%buf_l : memref<16xi32> offset = 0 len = 16)
       %c1_ul2 = arith.constant 1 : i32
-      aie.use_lock(%lock_l, "Release", %c1_ul2)
+      aie.use_lock(@lock_l, "Release", %c1_ul2)
       aie.next_bd ^bd2
     ^bd2:
+      %buf_e = aie.get_buffer @east : memref<16xi32>
       aie.dma_bd(%buf_e : memref<16xi32> offset = 0 len = 16)
       %c1_ul3 = arith.constant 1 : i32
-      aie.use_lock(%lock_e, "Release", %c1_ul3)
+      aie.use_lock(@lock_e, "Release", %c1_ul3)
       aie.next_bd ^end
     ^end:
       aie.end

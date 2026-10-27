@@ -26,8 +26,8 @@
 module {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %buf_in  = aie.buffer(%tile_0_2) {sym_name = "in"}  : memref<256xf32>
-    %buf_out = aie.buffer(%tile_0_2) {sym_name = "out"} : memref<256xf32>
+    aie.buffer @in(%tile_0_2)  : memref<256xf32>
+    aie.buffer @out(%tile_0_2) : memref<256xf32>
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0   = arith.constant 0 : index
@@ -38,8 +38,10 @@ module {
       // 'f0x3727C5AC'; the downgrade must rewrite it to '0x3EE4F8B580000000'.
       %eps  = arith.constant 9.99999974E-6 : f32
       scf.for %i = %c0 to %c256 step %c1 {
+        %buf_in = aie.get_buffer @in : memref<256xf32>
         %val = memref.load %buf_in[%i] : memref<256xf32>
         %out = arith.addf %val, %eps : f32
+        %buf_out = aie.get_buffer @out : memref<256xf32>
         memref.store %out, %buf_out[%i] : memref<256xf32>
       }
       aie.end

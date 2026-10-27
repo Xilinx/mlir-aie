@@ -11,11 +11,11 @@ module {
     %tile_0_2 = aie.tile(0, 2)
 
     // Core tile buffers
-    %in_buff = aie.buffer(%tile_0_2) {sym_name = "in_buff"} : memref<1024xi32>
+    aie.buffer @in_buff(%tile_0_2) : memref<1024xi32>
 
     // Locks
-    %prod_lock = aie.lock(%tile_0_2, 0) {init = 1 : i32, sym_name = "prod_lock"}
-    %cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "cons_lock"}
+    aie.lock @prod_lock(%tile_0_2, 0) {init = 1 : i32}
+    aie.lock @cons_lock(%tile_0_2, 1) {init = 0 : i32}
 
     // Flows: shim -> memtile -> core -> memtile -> shim
     aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)
@@ -31,10 +31,11 @@ module {
       // Configure core DMA to receive from shim
       %t3 = aiex.dma_configure_task(%tile_0_2, S2MM, 0) {
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul1)
+        aie.use_lock(@prod_lock, AcquireGreaterEqual, %c1_ul1)
+        %in_buff = aie.get_buffer @in_buff : memref<1024xi32>
         aie.dma_bd(%in_buff : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
         %c1_ul2 = arith.constant 1 : i32
-        aie.use_lock(%cons_lock, Release, %c1_ul2)
+        aie.use_lock(@cons_lock, Release, %c1_ul2)
         aie.end
       }
 
@@ -45,10 +46,11 @@ module {
       // Configure core DMA to send to memtile
       %t4 = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
         %c1_ul3 = arith.constant 1 : i32
-        aie.use_lock(%cons_lock, AcquireGreaterEqual, %c1_ul3)
-        aie.dma_bd(%in_buff : memref<1024xi32> offset = 0 len = 1024) {bd_id = 1 : i32}
+        aie.use_lock(@cons_lock, AcquireGreaterEqual, %c1_ul3)
+        %in_buff_1 = aie.get_buffer @in_buff : memref<1024xi32>
+        aie.dma_bd(%in_buff_1 : memref<1024xi32> offset = 0 len = 1024) {bd_id = 1 : i32}
         %c1_ul4 = arith.constant 1 : i32
-        aie.use_lock(%prod_lock, Release, %c1_ul4)
+        aie.use_lock(@prod_lock, Release, %c1_ul4)
         aie.end
       }
 

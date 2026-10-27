@@ -87,7 +87,7 @@ struct AIEVerifyRuntimeRearmPass
       for (Block *b = start.getDest(); b && visited.insert(b).second;
            b = (b->getNumSuccessors() == 1 ? b->getSuccessor(0) : nullptr))
         for (auto use : b->getOps<UseLockOp>())
-          if (auto l = dyn_cast_or_null<LockOp>(use.getLock().getDefiningOp()))
+          if (auto l = use.getLockOp())
             if (!llvm::is_contained(locks, l))
               locks.push_back(l);
       return WalkResult::advance();

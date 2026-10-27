@@ -28,8 +28,8 @@ module {
 module {
   aie.device(npu2) {
     %t03 = aie.tile(0, 3)
-    %pl = aie.lock(%t03, 0) {init = 1 : i32}
-    aie.objectfifo_rearm_binding @of_rearm channels(%t03 : index) locks(%pl : index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 1>}
+    aie.lock @pl(%t03, 0) {init = 1 : i32}
+    aie.objectfifo_rearm_binding @of_rearm channels(%t03 : index) locks([@pl]) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 1>}
     aie.runtime_sequence() {
       // expected-error @+1 {{has no head_bd_ids/repeat_counts; run --aie-assign-bd-ids before this pass, or set them on the binding}}
       aiex.dma_channel_reset_for(@of_rearm)

@@ -37,34 +37,38 @@ module {
     %t_20_2 = aie.tile(20, 2)
     %t_22_5 = aie.tile(22, 5)
     %t_26_6 = aie.tile(26, 6)
-    %l_4_1_0 = aie.lock(%t_4_1, 0) {init = 0 : i32, sym_name = "l_4_1_0"}
-    %l_4_1_1 = aie.lock(%t_4_1, 1) {init = 0 : i32, sym_name = "l_4_1_1"}
-    %b_4_1_0 = aie.buffer(%t_4_1) {sym_name = "b_4_1_0"} : memref<16xi32>
-    %b_4_1_1 = aie.buffer(%t_4_1) {sym_name = "b_4_1_1"} : memref<16xi32>
-    %b_4_1_2 = aie.buffer(%t_4_1) {sym_name = "b_4_1_2"} : memref<8xi32>
-    %b_4_1_3 = aie.buffer(%t_4_1) {sym_name = "b_4_1_3"} : memref<8xi32>
+    aie.lock @l_4_1_0(%t_4_1, 0) {init = 0 : i32}
+    aie.lock @l_4_1_1(%t_4_1, 1) {init = 0 : i32}
+    aie.buffer @b_4_1_0(%t_4_1) : memref<16xi32>
+    aie.buffer @b_4_1_1(%t_4_1) : memref<16xi32>
+    aie.buffer @b_4_1_2(%t_4_1) : memref<8xi32>
+    aie.buffer @b_4_1_3(%t_4_1) : memref<8xi32>
     %dma_4_1 = aie.mem(%t_4_1) {
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 1, ^p0b0, ^p1)
     ^p0b0:
-      aie.use_lock(%l_4_1_0, Acquire, %c0)
+      aie.use_lock(@l_4_1_0, Acquire, %c0)
+      %b_4_1_0 = aie.get_buffer @b_4_1_0 : memref<16xi32>
       aie.dma_bd(%b_4_1_0 : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%l_4_1_0, Release, %c1)
+      aie.use_lock(@l_4_1_0, Release, %c1)
       aie.next_bd ^p0b0
     ^p1:
       %d1 = aie.dma_start(MM2S, 0, ^p1b0, ^p2)
     ^p1b0:
-      aie.use_lock(%l_4_1_1, Acquire, %c1)
+      aie.use_lock(@l_4_1_1, Acquire, %c1)
+      %b_4_1_1 = aie.get_buffer @b_4_1_1 : memref<16xi32>
       aie.dma_bd(%b_4_1_1 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 26>}
-      aie.use_lock(%l_4_1_1, Release, %c0)
+      aie.use_lock(@l_4_1_1, Release, %c0)
       aie.next_bd ^end
     ^p2:
       %d2 = aie.dma_start(MM2S, 1, ^p2b0, ^end)
     ^p2b0:
+      %b_4_1_2 = aie.get_buffer @b_4_1_2 : memref<8xi32>
       aie.dma_bd(%b_4_1_2 : memref<8xi32> offset = 0 len = 8) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 19>}
       aie.next_bd ^p2b1
     ^p2b1:
+      %b_4_1_3 = aie.get_buffer @b_4_1_3 : memref<8xi32>
       aie.dma_bd(%b_4_1_3 : memref<8xi32> offset = 0 len = 8) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 19>}
       aie.next_bd ^end
     ^end:
@@ -73,10 +77,10 @@ module {
     %core_4_1 = aie.core(%t_4_1) {
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%l_4_1_1, Acquire, %c0)
-      aie.use_lock(%l_4_1_0, Acquire, %c1)
-      aie.use_lock(%l_4_1_0, Release, %c0)
-      aie.use_lock(%l_4_1_1, Release, %c1)
+      aie.use_lock(@l_4_1_1, Acquire, %c0)
+      aie.use_lock(@l_4_1_0, Acquire, %c1)
+      aie.use_lock(@l_4_1_0, Release, %c0)
+      aie.use_lock(@l_4_1_1, Release, %c1)
       aie.end
     }
     aie.packet_flow(1) { aie.packet_source<%t_4_1, Core : 0> aie.packet_dest<%t_0_1, Core : 0> } {keep_pkt_header = true}

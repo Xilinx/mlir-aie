@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Named ops that define an SSA value are not `Symbol` ops, so upstream's
-// symbol table verifier does not compare their names.
+// Buffer and lock declarations are symbols. The standard symbol table verifier
+// diagnoses collisions with each other and with other device symbols.
 
 // RUN: not aie-opt --split-input-file %s 2>&1 | FileCheck %s
 
@@ -14,8 +14,8 @@
 // CHECK: note{{.*}}see existing symbol definition here
 aie.device(npu1) {
   %t = aie.tile(0, 2)
-  %b0 = aie.buffer(%t) {sym_name = "dup_buf"} : memref<4xi32>
-  %b1 = aie.buffer(%t) {sym_name = "dup_buf"} : memref<4xi32>
+  aie.buffer @dup_buf(%t) : memref<4xi32>
+  aie.buffer @dup_buf(%t) : memref<4xi32>
 }
 
 // -----
@@ -23,8 +23,8 @@ aie.device(npu1) {
 // CHECK: error{{.*}}redefinition of symbol named 'dup_lock'
 aie.device(npu1) {
   %t = aie.tile(0, 2)
-  %l0 = aie.lock(%t, 0) {sym_name = "dup_lock"}
-  %l1 = aie.lock(%t, 1) {sym_name = "dup_lock"}
+  aie.lock @dup_lock(%t, 0)
+  aie.lock @dup_lock(%t, 1)
 }
 
 // -----
@@ -33,17 +33,27 @@ aie.device(npu1) {
 // CHECK: error{{.*}}redefinition of symbol named 'shared'
 aie.device(npu1) {
   %t = aie.tile(0, 2)
-  %b = aie.buffer(%t) {sym_name = "shared"} : memref<4xi32>
-  %l = aie.lock(%t, 0) {sym_name = "shared"}
+  aie.buffer @shared(%t) : memref<4xi32>
+  aie.lock @shared(%t, 0)
 }
 
 // -----
 
-// Upstream's verifier compares symbol names only, so it never sees this pair.
+// The same symbol table also contains objectFIFO declarations.
 // CHECK: error{{.*}}redefinition of symbol named 'shared_with_fifo'
 aie.device(npu1) {
   %shim = aie.tile(0, 0)
   %core = aie.tile(0, 2)
   aie.objectfifo @shared_with_fifo(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
-  %b = aie.buffer(%core) {sym_name = "shared_with_fifo"} : memref<4xi32>
+  aie.buffer @shared_with_fifo(%core) : memref<4xi32>
+}
+
+// -----
+
+// External buffers participate in the same symbol table.
+// CHECK: error{{.*}}redefinition of symbol named 'shared_external'
+aie.device(npu1) {
+  %tile = aie.tile(0, 2)
+  aie.external_buffer @shared_external : memref<4xi32>
+  aie.buffer @shared_external(%tile) : memref<4xi32>
 }

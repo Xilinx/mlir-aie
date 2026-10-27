@@ -23,7 +23,7 @@
 // CHECK-DAG: %[[T04:.*]] = aie.tile(0, 4)
 // CHECK: aiex.dma_channel_reset_for(@of_rearm)
 // CHECK-NOT: aiex.dma_channel_reset_for(@of)
-// CHECK: aie.objectfifo_rearm_binding @of_rearm channels(%[[T02]], %[[T04]] : index, index) locks({{.*}} : index, index, index, index) {channel_dirs = array<i32: 1, 0>, channel_indices = array<i32: 0, 0>, lock_inits = array<i32: 2, 0, 2, 0>}
+// CHECK: aie.objectfifo_rearm_binding @of_rearm channels(%[[T02]], %[[T04]] : index, index) locks([{{.*}}]) {channel_dirs = array<i32: 1, 0>, channel_indices = array<i32: 0, 0>, lock_inits = array<i32: 2, 0, 2, 0>}
 module @reset_for_binding {
   aie.device(npu2) {
     %t02 = aie.tile(0, 2)
@@ -58,7 +58,7 @@ module @no_rearm {
 // CHECK-LABEL: @shim_producer
 // CHECK-DAG: %[[C:.*]] = aie.tile(0, 2)
 // CHECK: aiex.dma_channel_reset_for(@of_in_rearm)
-// CHECK: aie.objectfifo_rearm_binding @of_in_rearm channels(%[[C]] : index) locks(%[[PL:.*]], %[[CL:.*]] : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2, 0>}
+// CHECK: aie.objectfifo_rearm_binding @of_in_rearm channels(%[[C]] : index) locks([@[[PL:.*]], @[[CL:.*]]]) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2, 0>}
 module @shim_producer {
   aie.device(npu2) {
     %t00 = aie.tile(0, 0)
@@ -77,7 +77,7 @@ module @shim_producer {
 // would fall through to the shim-alloc rewrite and dangle at @adj_shim_alloc.
 // CHECK-LABEL: @adjacent
 // CHECK: aiex.dma_channel_reset_for(@adj_rearm)
-// CHECK: aie.objectfifo_rearm_binding @adj_rearm channels() locks(%{{.*}}, %{{.*}} : index, index) {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32: 2, 0>}
+// CHECK: aie.objectfifo_rearm_binding @adj_rearm channels() locks([@{{.*}}, @{{.*}}]) {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32: 2, 0>}
 module @adjacent {
   aie.device(npu2) {
     %t02 = aie.tile(0, 2)
@@ -101,7 +101,7 @@ module @rearm_name_collision {
   aie.device(npu2) {
     %t02 = aie.tile(0, 2)
     %t04 = aie.tile(0, 4)
-    %junk = aie.lock(%t02, 5) {init = 0 : i32, sym_name = "of_rearm"}
+    aie.lock @of_rearm(%t02, 5) {init = 0 : i32}
     aie.objectfifo @of (%t02, {%t04}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.runtime_sequence() {
       aiex.dma_channel_reset_for(@of)

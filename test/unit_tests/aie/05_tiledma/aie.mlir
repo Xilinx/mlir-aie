@@ -16,15 +16,15 @@ aie.device(xcvc1902) {
   %tile23 = aie.tile(2, 3)
   %tile33 = aie.tile(3, 3)
 
-  %buf13_0 = aie.buffer(%tile13) { sym_name = "a13" } : memref<256xi32>
-  %buf13_1 = aie.buffer(%tile13) { sym_name = "b13" } : memref<256xi32>
-  %buf33_0 = aie.buffer(%tile33) { sym_name = "a33" } : memref<256xi32>
-  %buf33_1 = aie.buffer(%tile33) { sym_name = "b33" } : memref<256xi32>
+  aie.buffer @a13(%tile13) : memref<256xi32>
+  aie.buffer @b13(%tile13) : memref<256xi32>
+  aie.buffer @a33(%tile33) : memref<256xi32>
+  aie.buffer @b33(%tile33) : memref<256xi32>
 
-  %lock13_3 = aie.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
-  %lock13_5 = aie.lock(%tile13, 5) { sym_name = "interlock1" } // interbuffer lock
-  %lock33_6 = aie.lock(%tile33, 6) { sym_name = "interlock2" } // interbuffer lock
-  %lock33_7 = aie.lock(%tile33, 7) { sym_name = "output_lock" } // output buffer lock
+  aie.lock @input_lock(%tile13, 3) // input buffer lock
+  aie.lock @interlock1(%tile13, 5) // interbuffer lock
+  aie.lock @interlock2(%tile33, 6) // interbuffer lock
+  aie.lock @output_lock(%tile33, 7) // output buffer lock
 
   aie.switchbox(%tile13) { aie.connect<"DMA": 0, "East": 1> }
   aie.switchbox(%tile23) { aie.connect<"West": 1, "East": 3> }
@@ -32,41 +32,45 @@ aie.device(xcvc1902) {
 
   %core13 = aie.core(%tile13) {
     %c1_ul1 = arith.constant 1 : i32
-    aie.use_lock(%lock13_3, "Acquire", %c1_ul1) // acquire for read(e.g. input ping)
+    aie.use_lock(@input_lock, "Acquire", %c1_ul1) // acquire for read(e.g. input ping)
     %c0_ul2 = arith.constant 0 : i32
-    aie.use_lock(%lock13_5, "Acquire", %c0_ul2) // acquire for write
+    aie.use_lock(@interlock1, "Acquire", %c0_ul2) // acquire for write
     %idx1 = arith.constant 3 : index
+    %buf13_0 = aie.get_buffer @a13 : memref<256xi32>
     %val1 = memref.load %buf13_0[%idx1] : memref<256xi32>
     %2    = arith.addi %val1, %val1 : i32
     %3 = arith.addi %2, %val1 : i32
     %4 = arith.addi %3, %val1 : i32
     %5 = arith.addi %4, %val1 : i32
     %idx2 = arith.constant 5 : index
+    %buf13_1 = aie.get_buffer @b13 : memref<256xi32>
     memref.store %5, %buf13_1[%idx2] : memref<256xi32>
     %c0_ul3 = arith.constant 0 : i32
-    aie.use_lock(%lock13_3, "Release", %c0_ul3) // release for write
+    aie.use_lock(@input_lock, "Release", %c0_ul3) // release for write
     %c1_ul4 = arith.constant 1 : i32
-    aie.use_lock(%lock13_5, "Release", %c1_ul4) // release for read
+    aie.use_lock(@interlock1, "Release", %c1_ul4) // release for read
     aie.end
   }
 
   %core33 = aie.core(%tile33) {
     %c1_ul5 = arith.constant 1 : i32
-    aie.use_lock(%lock33_6, "Acquire", %c1_ul5) // acquire for read(e.g. input ping)
+    aie.use_lock(@interlock2, "Acquire", %c1_ul5) // acquire for read(e.g. input ping)
     %c0_ul6 = arith.constant 0 : i32
-    aie.use_lock(%lock33_7, "Acquire", %c0_ul6) // acquire for write
+    aie.use_lock(@output_lock, "Acquire", %c0_ul6) // acquire for write
     %idx1 = arith.constant 5 : index
+    %buf33_0 = aie.get_buffer @a33 : memref<256xi32>
     %val1 = memref.load %buf33_0[%idx1] : memref<256xi32>
     %2    = arith.addi %val1, %val1 : i32
     %3 = arith.addi %2, %val1 : i32
     %4 = arith.addi %3, %val1 : i32
     %5 = arith.addi %4, %val1 : i32
     %idx2 = arith.constant 5 : index
+    %buf33_1 = aie.get_buffer @b33 : memref<256xi32>
     memref.store %5, %buf33_1[%idx2] : memref<256xi32>
     %c0_ul7 = arith.constant 0 : i32
-    aie.use_lock(%lock33_6, "Release", %c0_ul7) // release for write
+    aie.use_lock(@interlock2, "Release", %c0_ul7) // release for write
     %c1_ul8 = arith.constant 1 : i32
-    aie.use_lock(%lock33_7, "Release", %c1_ul8) // release for read
+    aie.use_lock(@output_lock, "Release", %c1_ul8) // release for read
     aie.end
   }
 
@@ -76,10 +80,11 @@ aie.device(xcvc1902) {
     %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%lock13_5, "Acquire", %c1_ul1)
-      aie.dma_bd(%buf13_1 : memref<256xi32> offset = 0 len = 256)
+      aie.use_lock(@interlock1, "Acquire", %c1_ul1)
+      %buf13_1_1 = aie.get_buffer @b13 : memref<256xi32>
+      aie.dma_bd(%buf13_1_1 : memref<256xi32> offset = 0 len = 256)
       %c0_ul2 = arith.constant 0 : i32
-      aie.use_lock(%lock13_5, "Release", %c0_ul2)
+      aie.use_lock(@interlock1, "Release", %c0_ul2)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
       aie.end
@@ -91,10 +96,11 @@ aie.device(xcvc1902) {
     %dma0 = aie.dma_start("S2MM", 1, ^bd0, ^end)
     ^bd0:
       %c0_ul3 = arith.constant 0 : i32
-      aie.use_lock(%lock33_6, "Acquire", %c0_ul3)
-      aie.dma_bd(%buf33_0 : memref<256xi32> offset = 0 len = 256)
+      aie.use_lock(@interlock2, "Acquire", %c0_ul3)
+      %buf33_0_1 = aie.get_buffer @a33 : memref<256xi32>
+      aie.dma_bd(%buf33_0_1 : memref<256xi32> offset = 0 len = 256)
       %c1_ul4 = arith.constant 1 : i32
-      aie.use_lock(%lock33_6, "Release", %c1_ul4)
+      aie.use_lock(@interlock2, "Release", %c1_ul4)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
       aie.end

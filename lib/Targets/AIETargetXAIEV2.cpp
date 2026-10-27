@@ -196,7 +196,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     bool hasAcq = false, hasRel = false;
     int acqLockID = 0, relLockID = 0;
     for (auto op : block->getOps<UseLockOp>()) {
-      LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
+      LockOp lock = op.getLockOp();
       int lockCol = lock.colIndex();
       int lockRow = lock.rowIndex();
       int lockID = lock.getLockIDValue();
@@ -659,7 +659,10 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
         uint64_t offset = 0;
         for (auto op : block.getOps<DMABDOp>()) {
           offset = op.getOffsetInBytes();
-          auto buffer = cast<ExternalBufferOp>(op.getBuffer().getDefiningOp());
+          auto buffer = cast<ExternalBufferOp>(op.getBuffer()
+                                                   .getDefiningOp<GetBufferOp>()
+                                                   .getBufferOp()
+                                                   .getOperation());
 
           output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
                  << "_" << slot << "(void) {\n"

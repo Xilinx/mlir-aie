@@ -35,13 +35,13 @@ module @tutorial_2b {
 
         aie.flow(%tile14, DMA : 0, %tile34, DMA : 0)
 
-        %buf14 = aie.buffer(%tile14) { sym_name = "buf14" } : memref<128xi32>
-        %buf34 = aie.buffer(%tile34) { sym_name = "buf34" } : memref<128xi32>
+        aie.buffer @buf14(%tile14) : memref<128xi32>
+        aie.buffer @buf34(%tile34) : memref<128xi32>
 
-        %lock14_done = aie.lock(%tile14, 0) { init = 0 : i32, sym_name = "lock14_done" }
-        %lock14_sent = aie.lock(%tile14, 1) { init = 0 : i32, sym_name = "lock14_sent" }
-        %lock34_wait = aie.lock(%tile34, 0) { init = 1 : i32, sym_name = "lock34_wait" }
-        %lock34_recv = aie.lock(%tile34, 1) { init = 0 : i32, sym_name = "lock34_recv" }
+        aie.lock @lock14_done(%tile14, 0) { init = 0 : i32}
+        aie.lock @lock14_sent(%tile14, 1) { init = 0 : i32}
+        aie.lock @lock34_wait(%tile34, 0) { init = 1 : i32}
+        aie.lock @lock34_recv(%tile34, 1) { init = 0 : i32}
 
         // This core stores the sequence of numbers 0, 1, 2, 3, ... into
         // buffer buf14, s.t. buf14[i] == i.
@@ -54,13 +54,14 @@ module @tutorial_2b {
             %c1 = arith.constant 1 : i32
 
             scf.for %it = %i0 to %i128 step %i1 iter_args(%c = %c0) -> i32 {
+                %buf14 = aie.get_buffer @buf14 : memref<128xi32>
                 memref.store %c, %buf14[%it] : memref<128xi32>
                 %cp = arith.addi %c1, %c : i32
                 scf.yield %cp : i32
             }
 
             %c1_ul1 = arith.constant 1 : i32
-            aie.use_lock(%lock14_done, "Release", %c1_ul1)
+            aie.use_lock(@lock14_done, "Release", %c1_ul1)
 
             aie.end
         }
@@ -81,13 +82,14 @@ module @tutorial_2b {
           %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
           ^bd0:
             %c1_ul2 = arith.constant 1 : i32
-            aie.use_lock(%lock14_done, "AcquireGreaterEqual", %c1_ul2)
+            aie.use_lock(@lock14_done, "AcquireGreaterEqual", %c1_ul2)
                                                              ////////// new //////////
-            aie.dma_bd(%buf14 : memref<128xi32> offset = 0 len = 128 sizes = [8, 2, 8] strides = [16, 1, 2])
+            %buf14_1 = aie.get_buffer @buf14 : memref<128xi32>
+            aie.dma_bd(%buf14_1 : memref<128xi32> offset = 0 len = 128 sizes = [8, 2, 8] strides = [16, 1, 2])
                                                             // w, s    w, s    w,  s
                                                             // dim 2,  dim 1,  dim 0
             %c1_ul3 = arith.constant 1 : i32
-            aie.use_lock(%lock14_sent, "Release", %c1_ul3)
+            aie.use_lock(@lock14_sent, "Release", %c1_ul3)
             aie.next_bd ^end
           ^end:
             aie.end
@@ -99,10 +101,11 @@ module @tutorial_2b {
           %dstDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
           ^bd0:
             %c1_ul4 = arith.constant 1 : i32
-            aie.use_lock(%lock34_wait, "AcquireGreaterEqual", %c1_ul4)
+            aie.use_lock(@lock34_wait, "AcquireGreaterEqual", %c1_ul4)
+            %buf34 = aie.get_buffer @buf34 : memref<128xi32>
             aie.dma_bd(%buf34 : memref<128xi32> offset = 0 len = 128)
             %c1_ul5 = arith.constant 1 : i32
-            aie.use_lock(%lock34_recv, "Release", %c1_ul5)
+            aie.use_lock(@lock34_recv, "Release", %c1_ul5)
             aie.next_bd ^end
           ^end:
             aie.end

@@ -27,8 +27,8 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 2)
-    %buf_in  = aie.buffer(%tile) {sym_name = "in"}  : memref<32xf32>
-    %buf_out = aie.buffer(%tile) {sym_name = "out"} : memref<1xf32>
+    aie.buffer @in(%tile)  : memref<32xf32>
+    aie.buffer @out(%tile) : memref<1xf32>
 
     %core = aie.core(%tile) {
       %c0  = arith.constant 0 : index
@@ -41,11 +41,13 @@ module {
       %neg_inf = arith.constant 0xFF800000 : f32
       %max = scf.for %i = %c0 to %c32 step %c1
           iter_args(%acc = %neg_inf) -> (f32) {
+        %buf_in = aie.get_buffer @in : memref<32xf32>
         %v = memref.load %buf_in[%i] : memref<32xf32>
         %gt = arith.cmpf ogt, %v, %acc : f32
         %sel = arith.select %gt, %v, %acc : f32
         scf.yield %sel : f32
       }
+      %buf_out = aie.get_buffer @out : memref<1xf32>
       memref.store %max, %buf_out[%c0] : memref<1xf32>
       aie.end
     }

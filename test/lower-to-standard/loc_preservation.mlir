@@ -16,17 +16,20 @@
 module @loc_test {
  aie.device(xcve2302) {
   %tile13 = aie.tile(1, 3)
-  %lock13 = aie.lock(%tile13, 0) loc(#user_loc)
-  %buf13 = aie.buffer(%tile13) {sym_name = "my_buf"} : memref<16xi32> loc(#buf_loc)
+  aie.lock @lock13(%tile13, 0) loc(#user_loc)
+  aie.buffer @my_buf(%tile13) : memref<16xi32> loc(#buf_loc)
 
-  func.func private @kernel(%lock : index) {
+  func.func private @kernel() -> i32 {
     %c0_ul0 = arith.constant 0 : i32
-    aie.use_lock(%lock, "Acquire", %c0_ul0) loc(#user_loc)
-    return
+    return %c0_ul0 : i32
   }
 
   %core13 = aie.core(%tile13) {
-    func.call @kernel(%lock13) : (index) -> ()
+    %value = func.call @kernel() : () -> i32
+    %buffer = aie.get_buffer @my_buf : memref<16xi32> loc(#buf_loc)
+    %index = arith.constant 0 : index
+    memref.store %value, %buffer[%index] : memref<16xi32>
+    aie.use_lock(@lock13, "Acquire", %value) loc(#user_loc)
     aie.end
   }
  }

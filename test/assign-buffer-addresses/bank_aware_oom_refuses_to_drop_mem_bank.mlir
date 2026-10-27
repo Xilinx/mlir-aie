@@ -25,13 +25,13 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %req = aie.buffer(%t) {sym_name = "req", mem_bank = 1 : i32} : memref<128xi8>
-    %f0 = aie.buffer(%t) {sym_name = "f0"} : memref<13952xi8>
-    %f1 = aie.buffer(%t) {sym_name = "f1"} : memref<11744xi8>
-    %f2 = aie.buffer(%t) {sym_name = "f2"} : memref<10688xi8>
-    %f3 = aie.buffer(%t) {sym_name = "f3"} : memref<12352xi8>
-    %f4 = aie.buffer(%t) {sym_name = "f4"} : memref<11648xi8>
-    %f5 = aie.buffer(%t) {sym_name = "f5"} : memref<4000xi8>
+    aie.buffer @req(%t) {mem_bank = 1 : i32} : memref<128xi8>
+    aie.buffer @f0(%t) : memref<13952xi8>
+    aie.buffer @f1(%t) : memref<11744xi8>
+    aie.buffer @f2(%t) : memref<10688xi8>
+    aie.buffer @f3(%t) : memref<12352xi8>
+    aie.buffer @f4(%t) : memref<11648xi8>
+    aie.buffer @f5(%t) : memref<4000xi8>
     aie.core(%t) { aie.end } {stack_size = 1024 : i32}
   }
 }

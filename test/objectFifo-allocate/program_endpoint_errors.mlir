@@ -9,7 +9,7 @@ module @direction_mismatch {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
     %mt = aie.tile(0, 1)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt) : memref<64xi32>
     aie.route_endpoint @b_out(%mt) DMA
     aie.route_endpoint @b_dst(%shim) DMA {fifoName = "b"}
     aie.route from @b_out to [@b_dst]
@@ -17,6 +17,7 @@ module @direction_mismatch {
       // expected-error @+1 {{starts S2MM on @b_out, but its route makes it MM2S}}
       aie.dma_start(S2MM, @b_out, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<64xi32>
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:
@@ -32,7 +33,7 @@ module @packet_source_program {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt) : memref<64xi32>
     aie.route_endpoint @spray(%mt) DMA
     aie.route_endpoint @catch(%core) DMA
     aie.route from @spray to [@catch] {packet}
@@ -40,6 +41,7 @@ module @packet_source_program {
       // expected-error @+1 {{names @spray, the source of a packet-switched route without a pinned packet_id; pin packet_id on each route it sources and state that header in each of the program's BDs}}
       aie.dma_start(MM2S, @spray, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<64xi32>
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:
@@ -56,18 +58,20 @@ module @packet_source_without_header {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt) : memref<64xi32>
     aie.route_endpoint @spray(%mt) DMA
     aie.route_endpoint @catch(%core) DMA
     aie.route from @spray to [@catch] {packet, packet_id = 3 : i8}
     aie.memtile_dma(%mt) {
       aie.dma_start(MM2S, @spray, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<64xi32>
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
       aie.next_bd ^bd1
     ^bd1:
-      // expected-error @+1 {{sends on @spray without the packet header of one of its flows, ids 3}}
-      aie.dma_bd(%b : memref<64xi32> offset = 32 len = 32)
+      // expected-error @+2 {{sends on @spray without the packet header of one of its flows, ids 3}}
+      %b_1 = aie.get_buffer @b : memref<64xi32>
+      aie.dma_bd(%b_1 : memref<64xi32> offset = 32 len = 32)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -107,7 +111,7 @@ module @pinned_clash {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
     %mt = aie.tile(0, 1)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt) : memref<64xi32>
     // expected-error @+1 {{pinned MM2S DMA channel 0 is out of range or already in use on this tile}}
     aie.route_endpoint @b_out(%mt) DMA {channelIndex = 0 : i32}
     aie.route_endpoint @b_dst(%shim) DMA {fifoName = "b"}
@@ -116,6 +120,7 @@ module @pinned_clash {
       // expected-note @+1 {{pre-existing aie.dma_start reserves DMA channel 0}}
       aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<64xi32>
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:
@@ -159,8 +164,8 @@ module @adjacent_exhausted {
     %west = aie.tile(0, 1)
     // expected-error @+1 {{number of output DMA channel exceeded! requires at least 5 MM2S channels, but capacity is 4 for adjacent MemTile access}}
     %mt = aie.tile(1, 1)
-    %far = aie.buffer(%west) {sym_name = "far"} : memref<64xi32>
-    %near = aie.buffer(%mt) {sym_name = "near"} : memref<64xi32>
+    aie.buffer @far(%west) : memref<64xi32>
+    aie.buffer @near(%mt) : memref<64xi32>
     // expected-note @+1 {{DMA endpoint @reach requires adjacent MemTile access}}
     aie.route_endpoint @reach(%mt) DMA
     aie.route_endpoint @reach_dst(%shim) DMA {fifoName = "reach"}
@@ -169,29 +174,34 @@ module @adjacent_exhausted {
       // expected-note @+1 {{pre-existing aie.dma_start reserves DMA channel 0}}
       aie.dma_start(MM2S, 0, ^bd0, ^start1)
     ^bd0:
+      %near = aie.get_buffer @near : memref<64xi32>
       aie.dma_bd(%near : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^start1:
       // expected-note @+1 {{pre-existing aie.dma_start reserves DMA channel 1}}
       aie.dma_start(MM2S, 1, ^bd1, ^start2)
     ^bd1:
-      aie.dma_bd(%near : memref<64xi32> offset = 0 len = 64)
+      %near_1 = aie.get_buffer @near : memref<64xi32>
+      aie.dma_bd(%near_1 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd1
     ^start2:
       // expected-note @+1 {{pre-existing aie.dma_start reserves DMA channel 2}}
       aie.dma_start(MM2S, 2, ^bd2, ^start3)
     ^bd2:
-      aie.dma_bd(%near : memref<64xi32> offset = 0 len = 64)
+      %near_2 = aie.get_buffer @near : memref<64xi32>
+      aie.dma_bd(%near_2 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd2
     ^start3:
       // expected-note @+1 {{pre-existing aie.dma_start reserves DMA channel 3}}
       aie.dma_start(MM2S, 3, ^bd3, ^start4)
     ^bd3:
-      aie.dma_bd(%near : memref<64xi32> offset = 0 len = 64)
+      %near_3 = aie.get_buffer @near : memref<64xi32>
+      aie.dma_bd(%near_3 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd3
     ^start4:
       aie.dma_start(MM2S, @reach, ^bd4, ^end)
     ^bd4:
+      %far = aie.get_buffer @far : memref<64xi32>
       aie.dma_bd(%far : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd4
     ^end:
@@ -216,7 +226,7 @@ module @bds_overcommitted {
     aie.objectfifo.core_endpoint @reader(%core) drains @p
     aie.route_endpoint @src(%shim) DMA {fifoName = "p"}
     aie.route from @src to [@fill]
-    %b = aie.buffer(%core) {sym_name = "b"} : memref<48xi32>
+    aie.buffer @b(%core) : memref<48xi32>
     // expected-warning @+1 {{channel 0 can use 16 BDs, but it and the channels sharing them need 17 at once; BD id assignment fails unless tasks free their BDs before others start}}
     aie.route_endpoint @out(%core) DMA
     aie.route_endpoint @dst(%shim) DMA {fifoName = "b"}
@@ -224,13 +234,16 @@ module @bds_overcommitted {
     aie.mem(%core) {
       aie.dma_start(MM2S, @out, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<48xi32>
       aie.dma_bd(%b : memref<48xi32> offset = 0 len = 16)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%b : memref<48xi32> offset = 16 len = 16)
+      %b_1 = aie.get_buffer @b : memref<48xi32>
+      aie.dma_bd(%b_1 : memref<48xi32> offset = 16 len = 16)
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%b : memref<48xi32> offset = 32 len = 16)
+      %b_2 = aie.get_buffer @b : memref<48xi32>
+      aie.dma_bd(%b_2 : memref<48xi32> offset = 32 len = 16)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -267,7 +280,7 @@ module @shared_source_bd_packet_wrong_id {
     %mt = aie.tile(0, 1)
     %a = aie.tile(0, 2)
     %b = aie.tile(0, 3)
-    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
+    aie.buffer @buf(%mt) : memref<64xi32>
     aie.route_endpoint @scatter(%mt) DMA
     aie.route_endpoint @a_in(%a) DMA
     aie.route_endpoint @b_in(%b) DMA
@@ -277,7 +290,8 @@ module @shared_source_bd_packet_wrong_id {
       aie.dma_start(MM2S, @scatter, ^bd0, ^end)
     ^bd0:
       aie.dma_bd_packet(0, 3)
-      // expected-error @+1 {{sends on @scatter without the packet header of one of its flows, ids 1, 2}}
+      // expected-error @+2 {{sends on @scatter without the packet header of one of its flows, ids 1, 2}}
+      %buf = aie.get_buffer @buf : memref<64xi32>
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:

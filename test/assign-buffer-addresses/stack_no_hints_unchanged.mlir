@@ -21,7 +21,7 @@
 module @stack_no_hints_unchanged {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) { sym_name = "b" } : memref<64xi32>
+    aie.buffer @b(%t) : memref<64xi32>
     %c = aie.core(%t) {
       aie.end
     } { stack_size = 1024 : i32 }

@@ -150,58 +150,13 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
   return getShimBurstLength(tm, burstLength).first;
 }
 
-Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
-                                        StringAttr name) {
-  if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
-      symbolTableOp->getRegion(0).empty()) {
-    return nullptr;
-  }
-  // One walk finds both kinds: a symbol op's name is its `sym_name`, and
-  // `getAttr` reads it whether it is inherent or discardable.
-  for (Operation &op : symbolTableOp->getRegion(0).front()) {
-    if (op.getAttrOfType<StringAttr>(mlir::SymbolTable::getSymbolAttrName()) ==
-        name) {
-      return &op;
-    }
-  }
-  return nullptr;
-}
-
-xilinx::AIE::NamedOpTable::NamedOpTable(Operation *symbolTableOp)
-    : context(symbolTableOp->getContext()) {
-  if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
-      symbolTableOp->getRegion(0).empty()) {
-    return;
-  }
-  for (Operation &op : symbolTableOp->getRegion(0).front()) {
-    if (auto name = op.getAttrOfType<StringAttr>(
-            mlir::SymbolTable::getSymbolAttrName())) {
-      ops.try_emplace(name, &op);
-    }
-  }
-}
-
-Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
-                                        StringRef name) {
-  return lookupNamedOpIn(symbolTableOp,
-                         StringAttr::get(symbolTableOp->getContext(), name));
-}
-
-Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringAttr name) {
-  Operation *symbolTableOp = mlir::SymbolTable::getNearestSymbolTable(from);
-  return symbolTableOp ? lookupNamedOpIn(symbolTableOp, name) : nullptr;
-}
-
-Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringRef name) {
-  return lookupNamedOp(from, StringAttr::get(from->getContext(), name));
-}
-
-std::string xilinx::AIE::NamedOpTable::uniqueName(llvm::StringRef prefix,
-                                                  unsigned &counter) const {
+std::string xilinx::AIE::generateUniqueSymbolName(mlir::SymbolTable &symbols,
+                                                  llvm::StringRef prefix,
+                                                  unsigned &counter) {
   std::string name;
   do {
     name = (prefix + llvm::Twine(counter++)).str();
-  } while (ops.count(StringAttr::get(context, name)));
+  } while (symbols.lookup(name));
   return name;
 }
 
@@ -343,7 +298,18 @@ struct UsesAreAccessible {
       return success();
 
     auto thisID = thisElement.getTileID();
-    auto users = op->getResult(0).getUsers();
+    SmallVector<Operation *> users;
+    Operation *symbolTable = SymbolTable::getNearestSymbolTable(op);
+    if (!symbolTable)
+      return op->emitOpError("must be nested in a symbol table");
+    if (auto uses = SymbolTable::getSymbolUses(op, symbolTable))
+      for (const SymbolTable::SymbolUse &use : *uses) {
+        Operation *user = use.getUser();
+        if (auto access = dyn_cast<GetBufferOp>(user))
+          llvm::append_range(users, access.getResult().getUsers());
+        else if (isa<UseLockOp>(user))
+          users.push_back(user);
+      }
     const auto &targetModel = getTargetModel(op);
     for (auto *user : users) {
       // AIE.useLock may be used in a device to set the lock's default value
@@ -691,7 +657,7 @@ SmallVector<OpTy> lookupAll(Operation *from, std::optional<ArrayAttr> names) {
   if (names) {
     for (auto name : names->getAsRange<FlatSymbolRefAttr>()) {
       if (auto op =
-              dyn_cast_or_null<OpTy>(lookupNamedOp(from, name.getAttr()))) {
+              dyn_cast_or_null<OpTy>(SymbolTable::lookupSymbolIn(from, name))) {
         ops.push_back(op);
       }
     }
@@ -802,7 +768,8 @@ SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {
     for (std::optional<FlatSymbolRefAttr> name :
          {segment.getProduceLockAttr(), segment.getConsumeLockAttr()}) {
       if (name && *name) {
-        if (auto lock = lookupNamedOp<LockOp>(device, name->getAttr())) {
+        if (auto lock = dyn_cast_if_present<LockOp>(
+                mlir::SymbolTable::lookupSymbolIn(device, *name))) {
           locks.push_back(lock);
         }
       }
@@ -1962,6 +1929,20 @@ TileOp ObjectFifoRegisterExternalBuffersOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
 
+LogicalResult ObjectFifoRegisterExternalBuffersOp::verifySymbolUses(
+    SymbolTableCollection &symbols) {
+  if (!symbols.lookupNearestSymbolFrom<ObjectFifoCreateOp>(
+          *this, getObjFifoNameAttr()))
+    return emitOpError(
+        "objectFIFO must reference an aie.objectfifo declaration");
+  for (Attribute buffer : getExternalBuffers())
+    if (!symbols.lookupNearestSymbolFrom<ExternalBufferOp>(
+            *this, cast<FlatSymbolRefAttr>(buffer)))
+      return emitOpError("externalBuffers must reference "
+                         "aie.external_buffer declarations");
+  return success();
+}
+
 ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
@@ -2556,40 +2537,6 @@ LogicalResult verifyNoSharedCircuitViaEgresses(DeviceOp device) {
   return failure(result.wasInterrupted());
 }
 
-// `mlir::detail::verifySymbolTable` compares names carried by `Symbol` ops.
-// `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` name themselves
-// with `sym_name` but define an SSA value, so they are not `Symbol` ops and
-// their names escape that check. `lookupNamedOpIn` resolves them by name, so a
-// repeated name would bind every reference to whichever op comes first.
-LogicalResult verifyNoDuplicateNames(Operation *symbolTableOp) {
-  if (symbolTableOp->getNumRegions() == 0 ||
-      symbolTableOp->getRegion(0).empty()) {
-    return success();
-  }
-  DenseMap<StringAttr, Operation *> nameSeen;
-  for (Operation &op : symbolTableOp->getRegion(0).front()) {
-    auto name = op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
-    if (!name) {
-      continue;
-    }
-    auto [it, inserted] = nameSeen.try_emplace(name, &op);
-    if (inserted) {
-      continue;
-    }
-    // Leave a pair of `Symbol` ops to `verifySymbolTable`, which runs after the
-    // body and so lets the body ops report about themselves first.
-    if (isa<SymbolOpInterface>(op) && isa<SymbolOpInterface>(it->second)) {
-      continue;
-    }
-    InFlightDiagnostic diag = op.emitError() << "redefinition of symbol named '"
-                                             << name.getValue() << "'";
-    diag.attachNote(it->second->getLoc())
-        << "see existing symbol definition here";
-    return failure();
-  }
-  return success();
-}
-
 } // namespace
 
 LogicalResult DeviceOp::verify() {
@@ -2632,10 +2579,6 @@ LogicalResult DeviceOp::verify() {
   if (failed(verifyNoSharedCircuitPorts(*this)))
     return failure();
   if (failed(verifyNoSharedCircuitViaEgresses(*this))) {
-    return failure();
-  }
-
-  if (failed(verifyNoDuplicateNames(*this))) {
     return failure();
   }
 
@@ -3408,6 +3351,15 @@ int64_t BufferOp::getAllocationSize() {
 }
 
 LogicalResult BufferOp::verify() {
+  auto type = dyn_cast<MemRefType>(getType());
+  if (!type || !type.hasStaticShape())
+    return emitOpError("requires a statically shaped ranked memref type");
+  if (auto initial = getInitialValue()) {
+    auto initialType = cast<ShapedType>(initial->getType());
+    if (initialType.getShape() != type.getShape() ||
+        initialType.getElementType() != type.getElementType())
+      return emitOpError("initial value must match the declared buffer type");
+  }
   if (UsesAreAccessible::verifyTrait(*this).failed()) {
     return failure();
   }
@@ -3485,7 +3437,7 @@ void xilinx::AIE::collectBuffers(
   }
 }
 
-static void printBufferInitialValue(OpAsmPrinter &p, BufferOp op, Type type,
+static void printBufferInitialValue(OpAsmPrinter &p, BufferOp op, TypeAttr type,
                                     Attribute initialValue) {
   if (op.getInitialValue()) {
     p << "= ";
@@ -3493,9 +3445,9 @@ static void printBufferInitialValue(OpAsmPrinter &p, BufferOp op, Type type,
   }
 }
 
-static ParseResult parseBufferInitialValue(OpAsmParser &parser, Type &type,
+static ParseResult parseBufferInitialValue(OpAsmParser &parser, TypeAttr &type,
                                            Attribute &initialValue) {
-  auto memrefType = llvm::cast<MemRefType>(type);
+  auto memrefType = llvm::cast<MemRefType>(type.getValue());
   if (!memrefType.hasStaticShape())
     return parser.emitError(parser.getNameLoc())
            << "type should be static shaped memref, but got " << type;
@@ -3586,7 +3538,7 @@ LogicalResult MemTileDMAOp::verify() {
         for (Block *b : reachable) {
           for (DMABDOp bd : b->getOps<DMABDOp>()) {
             if (auto bufferOp = bd.getBufferOp();
-                bufferOp.getTile() != getTile()) {
+                bufferOp && bufferOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   bd.emitOpError()
                   << "is reachable from DMA channel "
@@ -3599,7 +3551,7 @@ LogicalResult MemTileDMAOp::verify() {
           }
           for (auto useLock : b->getOps<UseLockOp>()) {
             if (auto lockOp = useLock.getLockOp();
-                lockOp.getTile() != getTile()) {
+                lockOp && lockOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   useLock.emitOpError()
                   << "is reachable from DMA channel "
@@ -3727,12 +3679,12 @@ xilinx::AIE::verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
   for (DMABDOp bd : bds)
     for (auto useLock : bd->getBlock()->getOps<UseLockOp>())
       if (useLock.release())
-        if (Operation *lockDef = useLock.getLock().getDefiningOp())
+        if (Operation *lockDef = useLock.getLockOp())
           releasedByRecvBd.try_emplace(lockDef, bd.getOperation());
   for (DMABDOp bd : bds)
     for (auto useLock : bd->getBlock()->getOps<UseLockOp>())
       if (useLock.acquire() || useLock.acquireGE())
-        if (Operation *lockDef = useLock.getLock().getDefiningOp()) {
+        if (Operation *lockDef = useLock.getLockOp()) {
           auto it = releasedByRecvBd.find(lockDef);
           if (it != releasedByRecvBd.end() && it->second != bd.getOperation())
             return bd.emitOpError(
@@ -3770,6 +3722,8 @@ LogicalResult xilinx::AIE::verifyBdLockPair(Block &block, bool outOfOrder,
 }
 
 LogicalResult DMAOp::verify() {
+  if ((*this)->hasAttr(SymbolTable::getSymbolAttrName()))
+    return emitOpError("does not support a sym_name attribute");
   auto *parentOp = getOperation()->getParentOp();
   if (parentOp->getRegion(0).getBlocks().size() > 1)
     return emitOpError("DMAOp can only appear in single block region");
@@ -3811,7 +3765,42 @@ LogicalResult DMAOp::verify() {
 //===----------------------------------------------------------------------===//
 
 BufferOp DMABDOp::getBufferOp() {
-  return cast<BufferOp>(getBuffer().getDefiningOp());
+  if (auto access = getBuffer().getDefiningOp<GetBufferOp>())
+    if (auto declaration = access.getBufferOp())
+      return dyn_cast<BufferOp>(declaration.getOperation());
+  return nullptr;
+}
+
+BufferLike GetBufferOp::getBufferOp() {
+  if (!getBufferAttr())
+    return nullptr;
+  return dyn_cast_or_null<BufferLike>(
+      SymbolTable::lookupNearestSymbolFrom(*this, getBufferAttr()));
+}
+
+LogicalResult
+GetBufferOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  auto declaration = dyn_cast_or_null<BufferLike>(
+      symbolTable.lookupNearestSymbolFrom(*this, getBufferAttr()));
+  if (!declaration)
+    return emitOpError("expected buffer to reference an aie.buffer or "
+                       "aie.external_buffer declaration");
+  if (declaration.getType() != getResult().getType())
+    return emitOpError("result type must match the declared buffer type ")
+           << declaration.getType();
+  return success();
+}
+
+LockOp UseLockOp::getLockOp() {
+  if (!getLockAttr())
+    return nullptr;
+  return SymbolTable::lookupNearestSymbolFrom<LockOp>(*this, getLockAttr());
+}
+
+LogicalResult UseLockOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  if (!symbolTable.lookupNearestSymbolFrom<LockOp>(*this, getLockAttr()))
+    return emitOpError("expected lock to reference an aie.lock declaration");
+  return success();
 }
 
 // The optional `: type` after an SSA operand, defaulting to `defaultType`, so
@@ -4322,7 +4311,8 @@ LogicalResult DMABDOp::verify() {
   // For unranked memrefs, we can't verify as strictly since we don't know
   // the buffer's defining op or its full type at compile time
   if (!isUnrankedMemRef) {
-    if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
+    auto access = getBuffer().getDefiningOp<GetBufferOp>();
+    if (!access || !access.getBufferOp())
       return emitOpError(
           "BDs only support BufferOp or ExternalBufferOp operands.");
   }
@@ -4337,7 +4327,8 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("parent tile must implement TileLike interface");
 
   if (!isUnrankedMemRef && getOperation()->getParentOfType<MemOp>() &&
-      getBufferOp().getTile() != parentTileElement.getTile())
+      (!getBufferOp() ||
+       getBufferOp().getTile() != parentTileElement.getTile()))
     return emitOpError(
         "Core tile DMAs can only access a buffer in the same tile.");
 
@@ -4568,7 +4559,11 @@ LogicalResult DMABDOp::verify() {
   }
   if (!isUnrankedMemRef &&
       (parentTile.isMemTile() || parentTile.isCoreTile())) {
-    if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
+    auto buffer = getBufferOp();
+    if (!buffer)
+      return emitOpError(
+          "core and memory tile DMAs require an aie.buffer declaration");
+    if (auto baseAddr = buffer.getAddress(); baseAddr.has_value()) {
       int64_t offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
         return emitOpError("bd address must be 4 byte (32b) aligned; got "
@@ -4661,10 +4656,28 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
     auto b2OpRange = b2->without_terminator();
     if (llvm::range_size(b1OpRange) != llvm::range_size(b2OpRange))
       return false;
+    DenseMap<Value, Value> equivalentValues;
+    auto checkEquivalent = [&](Value lhs, Value rhs) {
+      if (lhs == rhs || equivalentValues.lookup(lhs) == rhs)
+        return success();
+      auto lhsAccess = lhs.getDefiningOp<GetBufferOp>();
+      auto rhsAccess = rhs.getDefiningOp<GetBufferOp>();
+      if (!lhsAccess || !rhsAccess)
+        return failure();
+      auto lhsDeclaration = lhsAccess.getBufferOp();
+      auto rhsDeclaration = rhsAccess.getBufferOp();
+      return success(lhsDeclaration && rhsDeclaration &&
+                     lhsDeclaration.getOperation() ==
+                         rhsDeclaration.getOperation());
+    };
+    auto markEquivalent = [&](Value lhs, Value rhs) {
+      equivalentValues[lhs] = rhs;
+    };
     if (!llvm::all_of(llvm::zip_equal(b1OpRange, b2OpRange),
-                      [](std::tuple<Operation &, Operation &> pair) {
+                      [&](std::tuple<Operation &, Operation &> pair) {
                         return OperationEquivalence::isEquivalentTo(
                             &std::get<0>(pair), &std::get<1>(pair),
+                            checkEquivalent, markEquivalent,
                             OperationEquivalence::IgnoreLocations);
                       }))
       return false;
@@ -4720,8 +4733,10 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     // Only fire for shim DMA BDs: ExternalBufferOp buffer
     // (dma_configure_task_for stage), parent TileElement is shim
     // (dma_configure_task stage), or inside ShimDMAOp (after full lowering).
+    auto access = op.getBuffer().getDefiningOp<GetBufferOp>();
+    auto declaration = access ? access.getBufferOp() : BufferLike{};
     bool bufferIsExternal =
-        isa_and_nonnull<ExternalBufferOp>(op.getBuffer().getDefiningOp());
+        declaration && isa<ExternalBufferOp>(declaration.getOperation());
     TileElement parentElem = getParentTileElement(op.getOperation());
     TileLike parentTileLike =
         parentElem ? parentElem.getTileLike() : TileLike{};
@@ -5104,8 +5119,7 @@ struct UsesOneLockInDMABlock {
     auto *block = op->getBlock();
     int lockID = -1;
     for (auto op : block->getOps<UseLockOp>()) {
-      if (auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-          lock.getLockID().has_value()) {
+      if (auto lock = op.getLockOp(); lock && lock.getLockID().has_value()) {
         if (lockID != -1 && lockID != lock.getLockIDValue())
           return failure();
         lockID = lock.getLockIDValue();
@@ -5145,7 +5159,8 @@ struct AccessesLocalLocks {
   static LogicalResult verifyTrait(Operation *op) {
     if (auto memOp = op->getParentOfType<MemOp>()) {
       auto useLock = cast<UseLockOp>(op);
-      if (auto lock = useLock.getLockOp(); lock.getTile() != memOp.getTile())
+      if (auto lock = useLock.getLockOp();
+          lock && lock.getTile() != memOp.getTile())
         return failure();
     }
     return success();
@@ -5153,6 +5168,8 @@ struct AccessesLocalLocks {
 };
 
 LogicalResult UseLockOp::verify() {
+  if (!getLockOp())
+    return emitOpError("expected lock to reference an aie.lock declaration");
   // AIE.useLock cannot be used at the top level
   if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>((*this)->getParentOp()))
     return (*this)->emitOpError("must be used in a core or memory operation.");
@@ -5498,9 +5515,19 @@ LogicalResult ObjectFifoRearmBindingOp::verify() {
       return emitOpError("channel_tiles must be non-shim tiles; a shim DMA "
                          "endpoint is host-managed and is not re-armed here");
   }
-  for (Value lock : getLocks())
-    if (!lock.getDefiningOp<LockOp>())
-      return emitOpError("locks operands must be aie.lock values");
+  for (Attribute lock : getLocks())
+    if (!SymbolTable::lookupNearestSymbolFrom<LockOp>(
+            *this, cast<SymbolRefAttr>(lock)))
+      return emitOpError("locks must reference aie.lock declarations");
+  return success();
+}
+
+LogicalResult
+ObjectFifoRearmBindingOp::verifySymbolUses(SymbolTableCollection &symbols) {
+  for (Attribute lock : getLocks())
+    if (!symbols.lookupNearestSymbolFrom<LockOp>(*this,
+                                                 cast<SymbolRefAttr>(lock)))
+      return emitOpError("locks must reference aie.lock declarations");
   return success();
 }
 
@@ -5634,24 +5661,19 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
       auto walkResult = attr.walk([&](SymbolRefAttr symbolRef) {
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
-        if (!symbolDefOp) {
-          if (auto flat = dyn_cast<FlatSymbolRefAttr>(symbolRef)) {
-            symbolDefOp = lookupNamedOp(*this, flat.getAttr());
-          }
-        }
         if (symbolDefOp) {
           if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
               !llvm::isa<DeviceOp>(symbolDefOp) &&
               !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
-              !llvm::isa<BufferOp>(symbolDefOp) &&
+              !llvm::isa<BufferOp, ExternalBufferOp, LockOp>(symbolDefOp) &&
               !llvm::isa<ObjectFifoRearmBindingOp>(symbolDefOp) &&
               !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
             op->emitOpError()
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp, BufferOp, ObjectFifoRearmBindingOp, or "
-                   "GlobalOp, but got: "
+                   "RuntimeSequenceOp, BufferOp, ExternalBufferOp, LockOp, "
+                   "ObjectFifoRearmBindingOp, or GlobalOp, but got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }

@@ -18,12 +18,12 @@
 // RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // CHECK-LABEL: module @pinned_declared_first
-// CHECK: %wants_bank1 = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "wants_bank1"} : memref<4096xbf16>
+// CHECK: aie.buffer @wants_bank1(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<4096xbf16>
 module @pinned_declared_first {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %pinned_hi = aie.buffer(%tile_0_2) {address = 24576 : i32, sym_name = "pinned_hi"} : memref<4096xbf16>
-    %wants_bank1 = aie.buffer(%tile_0_2) {mem_bank = 1 : i32, sym_name = "wants_bank1"} : memref<4096xbf16>
+    aie.buffer @pinned_hi(%tile_0_2) {address = 24576 : i32} : memref<4096xbf16>
+    aie.buffer @wants_bank1(%tile_0_2) {mem_bank = 1 : i32} : memref<4096xbf16>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -33,12 +33,12 @@ module @pinned_declared_first {
 // -----
 
 // CHECK-LABEL: module @pinned_declared_last
-// CHECK: %wants_bank1 = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "wants_bank1"} : memref<4096xbf16>
+// CHECK: aie.buffer @wants_bank1(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<4096xbf16>
 module @pinned_declared_last {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %wants_bank1 = aie.buffer(%tile_0_2) {mem_bank = 1 : i32, sym_name = "wants_bank1"} : memref<4096xbf16>
-    %pinned_hi = aie.buffer(%tile_0_2) {address = 24576 : i32, sym_name = "pinned_hi"} : memref<4096xbf16>
+    aie.buffer @wants_bank1(%tile_0_2) {mem_bank = 1 : i32} : memref<4096xbf16>
+    aie.buffer @pinned_hi(%tile_0_2) {address = 24576 : i32} : memref<4096xbf16>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}

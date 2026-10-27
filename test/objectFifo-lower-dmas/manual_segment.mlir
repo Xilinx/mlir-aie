@@ -13,12 +13,12 @@ module @manual_fill_segment {
     %tile = aie.tile(1, 2)
     %shim = aie.tile(1, 0)
 
-    %b0 = aie.buffer(%tile) {sym_name = "b0"} : memref<48xi32>
-    %b1 = aie.buffer(%tile) {sym_name = "b1"} : memref<48xi32>
-    %f0 = aie.lock(%tile) {init = 2 : i32, sym_name = "f0"}
-    %u0 = aie.lock(%tile) {init = 0 : i32, sym_name = "u0"}
-    %f1 = aie.lock(%tile) {init = 2 : i32, sym_name = "f1"}
-    %u1 = aie.lock(%tile) {init = 0 : i32, sym_name = "u1"}
+    aie.buffer @b0(%tile) : memref<48xi32>
+    aie.buffer @b1(%tile) : memref<48xi32>
+    aie.lock @f0(%tile) {init = 2 : i32}
+    aie.lock @u0(%tile) {init = 0 : i32}
+    aie.lock @f1(%tile) {init = 2 : i32}
+    aie.lock @u1(%tile) {init = 0 : i32}
 
     aie.objectfifo.pool @pool(%tile) {
       depth = 2 : i32, buffers = [@b0, @b1]
@@ -48,17 +48,19 @@ module @manual_fill_segment {
 // CHECK-NEXT:     aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK-NEXT:   ^bb1:
 // CHECK-NEXT:     %{{.*}} = arith.constant 1 : i32
-// CHECK-NEXT:     aie.use_lock(%f1, AcquireGreaterEqual, %{{.*}})
-// CHECK-NEXT:     aie.dma_bd(%b0 : memref<48xi32> offset = 16 len = 32)
+// CHECK-NEXT:     aie.use_lock(@f1, AcquireGreaterEqual, %{{.*}})
+// CHECK-NEXT:     %[[B0:.*]] = aie.get_buffer @b0 : memref<48xi32>
+// CHECK-NEXT:     aie.dma_bd(%[[B0]] : memref<48xi32> offset = 16 len = 32)
 // CHECK-NEXT:     %{{.*}} = arith.constant 1 : i32
-// CHECK-NEXT:     aie.use_lock(%u1, Release, %{{.*}})
+// CHECK-NEXT:     aie.use_lock(@u1, Release, %{{.*}})
 // CHECK-NEXT:     aie.next_bd ^bb2
 // CHECK-NEXT:   ^bb2:
 // CHECK-NEXT:     %{{.*}} = arith.constant 1 : i32
-// CHECK-NEXT:     aie.use_lock(%f1, AcquireGreaterEqual, %{{.*}})
-// CHECK-NEXT:     aie.dma_bd(%b1 : memref<48xi32> offset = 16 len = 32)
+// CHECK-NEXT:     aie.use_lock(@f1, AcquireGreaterEqual, %{{.*}})
+// CHECK-NEXT:     %[[B1:.*]] = aie.get_buffer @b1 : memref<48xi32>
+// CHECK-NEXT:     aie.dma_bd(%[[B1]] : memref<48xi32> offset = 16 len = 32)
 // CHECK-NEXT:     %{{.*}} = arith.constant 1 : i32
-// CHECK-NEXT:     aie.use_lock(%u1, Release, %{{.*}})
+// CHECK-NEXT:     aie.use_lock(@u1, Release, %{{.*}})
 // CHECK-NEXT:     aie.next_bd ^bb1
 // CHECK-NEXT:   ^bb3:
 // CHECK-NEXT:     aie.end
@@ -92,14 +94,14 @@ module @manual_fill_segment_allocated {
 }
 
 // CHECK-LABEL: @manual_fill_segment_allocated
-// CHECK-DAG: %[[F0:.*]] = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "pool_prod_lock_0"}
-// CHECK-DAG: %[[U0:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "pool_cons_lock_0"}
-// CHECK-DAG: %[[F1:.*]] = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "pool_prod_lock_1"}
-// CHECK-DAG: %[[U1:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "pool_cons_lock_1"}
+// CHECK-DAG: aie.lock @[[F0:pool_prod_lock_0]](%{{.*}}) {init = 2 : i32}
+// CHECK-DAG: aie.lock @[[U0:pool_cons_lock_0]](%{{.*}}) {init = 0 : i32}
+// CHECK-DAG: aie.lock @[[F1:pool_prod_lock_1]](%{{.*}}) {init = 2 : i32}
+// CHECK-DAG: aie.lock @[[U1:pool_cons_lock_1]](%{{.*}}) {init = 0 : i32}
 
 // The core holds the whole object, so it waits on both segments and frees both.
 // CHECK:   aie.core(%{{.*}}) {
-// CHECK:     aie.use_lock(%[[U0]], AcquireGreaterEqual, %{{.*}})
-// CHECK:     aie.use_lock(%[[U1]], AcquireGreaterEqual, %{{.*}})
-// CHECK:     aie.use_lock(%[[F0]], Release, %{{.*}})
-// CHECK:     aie.use_lock(%[[F1]], Release, %{{.*}})
+// CHECK:     aie.use_lock(@[[U0]], AcquireGreaterEqual, %{{.*}})
+// CHECK:     aie.use_lock(@[[U1]], AcquireGreaterEqual, %{{.*}})
+// CHECK:     aie.use_lock(@[[F0]], Release, %{{.*}})
+// CHECK:     aie.use_lock(@[[F1]], Release, %{{.*}})

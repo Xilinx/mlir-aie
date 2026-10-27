@@ -15,10 +15,11 @@
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<200000xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<200000xi32>
     aie.runtime_sequence @memtile_overflow() {
-      // expected-error@+2 {{Buffer length exceeds the [0:131071] range}}
+      // expected-error@+3 {{Buffer length exceeds the [0:131071] range}}
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+        %buf = aie.get_buffer @buf : memref<200000xi32>
         aie.dma_bd(%buf : memref<200000xi32> offset = 0 len = 200000) {bd_id = 0 : i32}
         aie.end
       }
@@ -32,10 +33,11 @@ module {
 module {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %buf = aie.buffer(%tile_0_2) {address = 0 : i32} : memref<20000xi32>
+    aie.buffer @buf(%tile_0_2) {address = 0 : i32} : memref<20000xi32>
     aie.runtime_sequence @coretile_overflow() {
-      // expected-error@+2 {{Buffer length exceeds the [0:16383] range}}
+      // expected-error@+3 {{Buffer length exceeds the [0:16383] range}}
       %t = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
+        %buf = aie.get_buffer @buf : memref<20000xi32>
         aie.dma_bd(%buf : memref<20000xi32> offset = 0 len = 20000) {bd_id = 0 : i32}
         aie.end
       }

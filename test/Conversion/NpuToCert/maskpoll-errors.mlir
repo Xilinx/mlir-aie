@@ -39,7 +39,7 @@ aie.device(npu2) {
 // CHECK: error: referenced buffer must have address assigned
 aie.device(npu2) {
   %tile = aie.tile(0, 3)
-  %buffer = aie.buffer(%tile) {sym_name = "status"} : memref<1xi32>
+  aie.buffer @status(%tile) : memref<1xi32>
   aie.runtime_sequence @configure() {
     %zero = arith.constant 0 : i32
     %mask = arith.constant 0x1000000 : i32

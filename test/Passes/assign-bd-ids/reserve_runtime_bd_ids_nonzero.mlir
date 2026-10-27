@@ -16,17 +16,20 @@
 // CHECK: aie.dma_bd({{.*}}) {bd_id = 3 : i32
 aie.device(npu2) {
   %t = aie.tile(0, 0)
-  %buf = aie.external_buffer {sym_name = "b"} : memref<8xi32>
+  aie.external_buffer @b : memref<8xi32>
   aie.shim_dma(%t) {
     %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
   ^bd0:
+    %buf = aie.get_buffer @b : memref<8xi32>
     aie.dma_bd(%buf : memref<8xi32>)
     aie.next_bd ^bd1
   ^bd1:
-    aie.dma_bd(%buf : memref<8xi32>)
+    %buf_1 = aie.get_buffer @b : memref<8xi32>
+    aie.dma_bd(%buf_1 : memref<8xi32>)
     aie.next_bd ^bd2
   ^bd2:
-    aie.dma_bd(%buf : memref<8xi32>)
+    %buf_2 = aie.get_buffer @b : memref<8xi32>
+    aie.dma_bd(%buf_2 : memref<8xi32>)
     aie.next_bd ^end
   ^end:
     aie.end

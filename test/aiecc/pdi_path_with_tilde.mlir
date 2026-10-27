@@ -18,7 +18,7 @@ module {
   aie.device(npu1_1col) {
     %shim = aie.tile(0, 0)
     %mem = aie.tile(0, 1)
-    %buf = aie.buffer(%mem) {sym_name = "buf"} : memref<16xi32> = dense<7>
+    aie.buffer @buf(%mem) : memref<16xi32> = dense<7>
     aie.runtime_sequence(%a: memref<16xi32>) {
     }
   }

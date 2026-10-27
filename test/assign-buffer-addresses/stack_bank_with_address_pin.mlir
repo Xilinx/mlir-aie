@@ -10,7 +10,7 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) { sym_name = "b", address = 16384 : i32 } : memref<1024xi8>
+    aie.buffer @b(%t) { address = 16384 : i32 } : memref<1024xi8>
     %c = aie.core(%t) { aie.end } { stack_size = 1024 : i32, stack_bank = 1 : i32 }
   }
 }
@@ -27,7 +27,7 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) { sym_name = "b", address = 16384 : i32 } : memref<32xi8>
+    aie.buffer @b(%t) { address = 16384 : i32 } : memref<32xi8>
     %c = aie.core(%t) { aie.end } { stack_size = 1024 : i32, stack_bank = 1 : i32 }
   }
 }

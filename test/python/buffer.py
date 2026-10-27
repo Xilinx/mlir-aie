@@ -11,8 +11,8 @@ from aie.iron.device import NPU2Col1
 # CHECK:  module {
 # CHECK:    aie.device(npu2_1col) {
 # CHECK:      %[[TILE:.*]] = aie.logical_tile<CoreTile>(?, ?)
-# CHECK:      %uninit_local_buf = aie.buffer(%[[TILE]]) {sym_name = "uninit_local_buf"} : memref<4096xui8>
-# CHECK:      %init_local_buf = aie.buffer(%[[TILE]]) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
+# CHECK:      aie.buffer @uninit_local_buf(%[[TILE]]) : memref<4096xui8>
+# CHECK:      aie.buffer @init_local_buf(%[[TILE]]) : memref<4096xui8> = dense<0>
 def passthrough_local_buff():
     in1_size = 4096
     in1_dtype = np.uint8

@@ -64,14 +64,16 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @ring : i32
 aie.device(npu2) {
   %t = aie.tile(1, 1)
-  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.buffer @buf(%t) {address = 0 : i32} : memref<1024xi32>
   aie.runtime_sequence @memtile_s2mm1(%arg0 : memref<1024xi32>) {
     %fill = aiex.dma_configure_task(%t, S2MM, 1) {
+      %buf = aie.get_buffer @buf : memref<1024xi32>
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
       aie.end
     } {repeat_count = 15 : i32}
     %drain = aiex.dma_configure_task(%t, MM2S, 2) {
-      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      %buf_1 = aie.get_buffer @buf : memref<1024xi32>
+      aie.dma_bd(%buf_1 : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
       aie.end
     } {repeat_count = 15 : i32}
     aiex.dma_start_task(%fill) {repeat_parameter = @ring}
@@ -159,14 +161,16 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @runs : i32
 aie.device(npu2) {
   %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.buffer @buf(%t) {address = 0 : i32} : memref<1024xi32>
   aie.runtime_sequence @memtile_runs(%arg0 : memref<1024xi32>) {
     %in = aiex.dma_configure_task(%t, S2MM, 0) {
+      %buf = aie.get_buffer @buf : memref<1024xi32>
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
       aie.end
     } {repeat_count = 15 : i32}
     %out = aiex.dma_configure_task(%t, MM2S, 0) {
-      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      %buf_1 = aie.get_buffer @buf : memref<1024xi32>
+      aie.dma_bd(%buf_1 : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
       aie.end
     } {repeat_count = 15 : i32}
     aiex.dma_start_task(%in) {repeat_parameter = @runs}
@@ -190,14 +194,16 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @runs : i32
 aie.device(npu2) {
   %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) {address = 0 : i32} : memref<1024xi32>
+  aie.buffer @buf(%t) {address = 0 : i32} : memref<1024xi32>
   aie.runtime_sequence @memtile_channel5(%arg0 : memref<1024xi32>) {
     %in = aiex.dma_configure_task(%t, S2MM, 5) {
+      %buf = aie.get_buffer @buf : memref<1024xi32>
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
       aie.end
     } {repeat_count = 15 : i32}
     %out = aiex.dma_configure_task(%t, MM2S, 5) {
-      aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
+      %buf_1 = aie.get_buffer @buf : memref<1024xi32>
+      aie.dma_bd(%buf_1 : memref<1024xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>}
       aie.end
     } {repeat_count = 15 : i32}
     aiex.dma_start_task(%in) {repeat_parameter = @runs}

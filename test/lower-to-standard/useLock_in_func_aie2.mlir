@@ -8,15 +8,15 @@
 // RUN: aie-opt --aie-localize-locks --aie-standard-lowering="tilecol=1 tilerow=3" %s | FileCheck --check-prefix=CHECK %s
 
 // CHECK: module @test attributes {llvm.target_triple = "aie2"} {
-// CHECK:   func.func private @kernel(%arg0: index) {
+// A function can compute the SSA lock value; the lock itself is a device symbol.
+// CHECK:   func.func private @kernel() -> i32 {
 // CHECK-NEXT:     %c0_i32 = arith.constant 0 : i32
-// CHECK-NEXT:     %0 = arith.index_cast %arg0 : index to i32
-// CHECK-NEXT:     call @llvm.aie2.acquire(%0, %c0_i32) : (i32, i32) -> ()
-// CHECK-NEXT:     return
+// CHECK-NEXT:     return %c0_i32 : i32
 // CHECK:   }
 // CHECK:   func.func @core_1_3() {
-// CHECK:     %c48 = arith.constant 48 : index
-// CHECK:     call @kernel(%c48) : (index) -> ()
+// CHECK:     %[[VALUE:.*]] = call @kernel() : () -> i32
+// CHECK:     %[[LOCK:.*]] = arith.constant 48 : i32
+// CHECK:     call @llvm.aie2.acquire(%[[LOCK]], %[[VALUE]]) : (i32, i32) -> ()
 // CHECK:     return
 // CHECK:   }
 // CHECK: }
@@ -24,16 +24,16 @@
 module @test {
  aie.device(xcve2302) {
   %tile13 = aie.tile(1, 3)
-  %lock13_3 = aie.lock(%tile13, 0)
+  aie.lock @lock13_3(%tile13, 0)
 
-  func.func private @kernel(%lock : index) {
+  func.func private @kernel() -> i32 {
     %c0_ul0 = arith.constant 0 : i32
-    aie.use_lock(%lock, "Acquire", %c0_ul0)
-    return
+    return %c0_ul0 : i32
   }
 
   %core13 = aie.core(%tile13) {
-    func.call @kernel(%lock13_3) : (index) -> ()
+    %value = func.call @kernel() : () -> i32
+    aie.use_lock(@lock13_3, "Acquire", %value)
     aie.end
   }
  }

@@ -19,8 +19,8 @@
 module {
   aie.device(npu1_1col) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) { sym_name = "b", address = 8192 : i32 } : memref<8192xi8>
-    %data = aie.buffer(%t) { sym_name = "core_data", address = 32768 : i32, core_data } : memref<4096xi8>
+    aie.buffer @b(%t) { address = 8192 : i32 } : memref<8192xi8>
+    aie.buffer @core_data(%t) { address = 32768 : i32, core_data } : memref<4096xi8>
     %c = aie.core(%t) { aie.end } { stack_size = 1024 : i32, stack_address = 16384 : i32, stack_bank = 1 : i32 }
   }
 }

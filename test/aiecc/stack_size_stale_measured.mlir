@@ -17,7 +17,7 @@
 // RUN: FileCheck %s < %t.out/input_with_addresses.mlir
 // RUN: FileCheck %s --check-prefix=LDSCRIPT < %t.prj/ldScripts_main_core_0_2.ld.script
 
-// CHECK: aie.buffer(%{{.*}}tile_0_2) {address = 1024 : i32
+// CHECK: aie.buffer @{{[^ (]+}}(%{{.*}}tile_0_2) {address = 1024 : i32
 // CHECK-NOT: measured_stack_size = 8192
 // LDSCRIPT: . += 0x400; /* stack */
 
@@ -27,7 +27,7 @@
 // RUN: FileCheck %s --check-prefix=NOAUTO < %t.noauto.out/input_with_addresses.mlir
 // RUN: FileCheck %s --check-prefix=LDSCRIPT < %t.noauto.prj/ldScripts_main_core_0_2.ld.script
 
-// NOAUTO: aie.buffer(%{{.*}}tile_0_2) {address = 1024 : i32
+// NOAUTO: aie.buffer @{{[^ (]+}}(%{{.*}}tile_0_2) {address = 1024 : i32
 // NOAUTO-NOT: measured_stack_size
 
 module {

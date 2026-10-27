@@ -39,7 +39,7 @@ module {
   // CHECK: aie.device(npu2) @loop_device
   aie.device(npu2) @loop_device {
     %tile_0_2 = aie.tile(0, 2)
-    %rtp_0_0 = aie.buffer(%tile_0_2) {sym_name = "rtp_0_0", address = 0xDEADBEEF : i32} : memref<1xi32>
+    aie.buffer @rtp_0_0(%tile_0_2) {address = 0xDEADBEEF : i32} : memref<1xi32>
 
     aie.runtime_sequence @loop_seq(%arg0: memref<64xi32>) {
       %c0 = arith.constant 0 : index

@@ -20,9 +20,10 @@
 module @memtile_wide {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) : memref<4096xi32>
+    aie.buffer @buf(%tile_0_1) : memref<4096xi32>
     aie.runtime_sequence(%n: i64, %stride: i64, %d0: i64) {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+          %buf = aie.get_buffer @buf : memref<4096xi32>
           aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 1024 sizes = [1, 8, %n, %d0] strides = [0, %stride, 8, 1]) {bd_id = 0 : i32}
           aie.end
       }

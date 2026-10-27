@@ -13,7 +13,7 @@
 // RUN: sed 's/^define /define linkonce_odr /' %t.d/kernel.ll > %t.d/lut_banks_parameters.ll
 // RUN: sed 's/link_with = "lut_banks_parameters.o"/link_with = "lut_banks_parameters.ll", link_with_mode = "merge"/' %s > %t.d/merge.mlir
 // RUN: cd %t.d && not %aiecc --get-core-elfs --check-lut-banks merge.mlir 2>&1 | FileCheck %s --check-prefix=MERGE
-// RUN: sed 's/sym_name = "cd", mem_bank = 1/sym_name = "cd", mem_bank = 2/' %t.d/merge.mlir > %t.d/separate.mlir
+// RUN: sed '/aie.buffer @cd(/s/mem_bank = 1/mem_bank = 2/' %t.d/merge.mlir > %t.d/separate.mlir
 // RUN: cd %t.d && %aiecc --get-core-elfs --check-lut-banks separate.mlir
 // RUN: cd %t.d && %aiecc --get-core-elfs --unified --check-lut-banks separate.mlir
 // MERGE: the aie::lut tables in
@@ -22,11 +22,14 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 2)
-    %ab = aie.buffer(%tile) {sym_name = "ab", mem_bank = 1 : i32} : memref<512xi16>
-    %cd = aie.buffer(%tile) {sym_name = "cd", mem_bank = 1 : i32} : memref<512xi16>
-    %out = aie.buffer(%tile) {sym_name = "out"} : memref<64xi8>
+    aie.buffer @ab(%tile) {mem_bank = 1 : i32} : memref<512xi16>
+    aie.buffer @cd(%tile) {mem_bank = 1 : i32} : memref<512xi16>
+    aie.buffer @out(%tile) : memref<64xi8>
     func.func private @classify(memref<512xi16>, memref<512xi16>, memref<64xi8>) attributes {link_with = "lut_banks_parameters.o"}
     %core = aie.core(%tile) {
+      %ab = aie.get_buffer @ab : memref<512xi16>
+      %cd = aie.get_buffer @cd : memref<512xi16>
+      %out = aie.get_buffer @out : memref<64xi8>
       func.call @classify(%ab, %cd, %out) : (memref<512xi16>, memref<512xi16>, memref<64xi8>) -> ()
       aie.end
     } {stack_size = 1024 : i32}

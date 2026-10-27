@@ -35,91 +35,101 @@ module {
     %t_0_3 = aie.tile(0, 3)
     %t_0_4 = aie.tile(0, 4)
     %t_0_5 = aie.tile(0, 5)
-    %l_0_1_0 = aie.lock(%t_0_1, 0) {init = 2 : i32, sym_name = "l_0_1_0"}
-    %l_0_1_1 = aie.lock(%t_0_1, 1) {init = 0 : i32, sym_name = "l_0_1_1"}
-    %l_0_4_0 = aie.lock(%t_0_4, 0) {init = 2 : i32, sym_name = "l_0_4_0"}
-    %l_0_4_1 = aie.lock(%t_0_4, 1) {init = 0 : i32, sym_name = "l_0_4_1"}
-    %l_0_5_0 = aie.lock(%t_0_5, 0) {init = 0 : i32, sym_name = "l_0_5_0"}
-    %l_0_5_1 = aie.lock(%t_0_5, 1) {init = 1 : i32, sym_name = "l_0_5_1"}
-    %b_0_1_0 = aie.buffer(%t_0_1) {sym_name = "b_0_1_0"} : memref<16xi32>
-    %b_0_1_1 = aie.buffer(%t_0_1) {sym_name = "b_0_1_1"} : memref<64xi32>
-    %b_0_1_2 = aie.buffer(%t_0_1) {sym_name = "b_0_1_2"} : memref<8xi32>
-    %b_0_1_3 = aie.buffer(%t_0_1) {sym_name = "b_0_1_3"} : memref<8xi32>
+    aie.lock @l_0_1_0(%t_0_1, 0) {init = 2 : i32}
+    aie.lock @l_0_1_1(%t_0_1, 1) {init = 0 : i32}
+    aie.lock @l_0_4_0(%t_0_4, 0) {init = 2 : i32}
+    aie.lock @l_0_4_1(%t_0_4, 1) {init = 0 : i32}
+    aie.lock @l_0_5_0(%t_0_5, 0) {init = 0 : i32}
+    aie.lock @l_0_5_1(%t_0_5, 1) {init = 1 : i32}
+    aie.buffer @b_0_1_0(%t_0_1) : memref<16xi32>
+    aie.buffer @b_0_1_1(%t_0_1) : memref<64xi32>
+    aie.buffer @b_0_1_2(%t_0_1) : memref<8xi32>
+    aie.buffer @b_0_1_3(%t_0_1) : memref<8xi32>
     %dma_0_1 = aie.memtile_dma(%t_0_1) {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(MM2S, 0, ^p0b0, ^p1)
     ^p0b0:
+      %b_0_1_0 = aie.get_buffer @b_0_1_0 : memref<16xi32>
       aie.dma_bd(%b_0_1_0 : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^p0b0
     ^p1:
       %d1 = aie.dma_start(MM2S, 1, ^p1b0, ^p2)
     ^p1b0:
+      %b_0_1_1 = aie.get_buffer @b_0_1_1 : memref<64xi32>
       aie.dma_bd(%b_0_1_1 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^p1b1
     ^p1b1:
+      %b_0_1_2 = aie.get_buffer @b_0_1_2 : memref<8xi32>
       aie.dma_bd(%b_0_1_2 : memref<8xi32> offset = 0 len = 8)
       aie.next_bd ^end
     ^p2:
       %d2 = aie.dma_start(S2MM, 3, ^p2b0, ^end)
     ^p2b0:
-      aie.use_lock(%l_0_1_0, AcquireGreaterEqual, %one)
+      aie.use_lock(@l_0_1_0, AcquireGreaterEqual, %one)
+      %b_0_1_3 = aie.get_buffer @b_0_1_3 : memref<8xi32>
       aie.dma_bd(%b_0_1_3 : memref<8xi32> offset = 0 len = 8)
-      aie.use_lock(%l_0_1_1, Release, %one)
+      aie.use_lock(@l_0_1_1, Release, %one)
       aie.next_bd ^p2b0
     ^end:
       aie.end
     }
-    %b_0_2_0 = aie.buffer(%t_0_2) {sym_name = "b_0_2_0"} : memref<8xi32>
+    aie.buffer @b_0_2_0(%t_0_2) : memref<8xi32>
     %dma_0_2 = aie.mem(%t_0_2) {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(MM2S, 1, ^p0b0, ^end)
     ^p0b0:
+      %b_0_2_0 = aie.get_buffer @b_0_2_0 : memref<8xi32>
       aie.dma_bd(%b_0_2_0 : memref<8xi32> offset = 0 len = 8)
       aie.next_bd ^end
     ^end:
       aie.end
     }
-    %b_0_3_0 = aie.buffer(%t_0_3) {sym_name = "b_0_3_0"} : memref<32xi32>
+    aie.buffer @b_0_3_0(%t_0_3) : memref<32xi32>
     %dma_0_3 = aie.mem(%t_0_3) {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(MM2S, 1, ^p0b0, ^end)
     ^p0b0:
+      %b_0_3_0 = aie.get_buffer @b_0_3_0 : memref<32xi32>
       aie.dma_bd(%b_0_3_0 : memref<32xi32> offset = 0 len = 32)
       aie.next_bd ^p0b0
     ^end:
       aie.end
     }
-    %b_0_4_0 = aie.buffer(%t_0_4) {sym_name = "b_0_4_0"} : memref<16xi32>
-    %b_0_4_1 = aie.buffer(%t_0_4) {sym_name = "b_0_4_1"} : memref<8xi32>
+    aie.buffer @b_0_4_0(%t_0_4) : memref<16xi32>
+    aie.buffer @b_0_4_1(%t_0_4) : memref<8xi32>
     %dma_0_4 = aie.mem(%t_0_4) {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 0, ^p0b0, ^p1)
     ^p0b0:
-      aie.use_lock(%l_0_4_0, AcquireGreaterEqual, %one)
+      aie.use_lock(@l_0_4_0, AcquireGreaterEqual, %one)
+      %b_0_4_0 = aie.get_buffer @b_0_4_0 : memref<16xi32>
       aie.dma_bd(%b_0_4_0 : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%l_0_4_1, Release, %one)
+      aie.use_lock(@l_0_4_1, Release, %one)
       aie.next_bd ^p0b0
     ^p1:
       %d1 = aie.dma_start(S2MM, 1, ^p1b0, ^end)
     ^p1b0:
+      %b_0_4_1 = aie.get_buffer @b_0_4_1 : memref<8xi32>
       aie.dma_bd(%b_0_4_1 : memref<8xi32> offset = 0 len = 8)
       aie.next_bd ^p1b0
     ^end:
       aie.end
     }
-    %b_0_5_0 = aie.buffer(%t_0_5) {sym_name = "b_0_5_0"} : memref<16xi32>
-    %b_0_5_1 = aie.buffer(%t_0_5) {sym_name = "b_0_5_1"} : memref<8xi32>
+    aie.buffer @b_0_5_0(%t_0_5) : memref<16xi32>
+    aie.buffer @b_0_5_1(%t_0_5) : memref<8xi32>
     %dma_0_5 = aie.mem(%t_0_5) {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(MM2S, 0, ^p0b0, ^p1)
     ^p0b0:
-      aie.use_lock(%l_0_5_0, AcquireGreaterEqual, %one)
+      aie.use_lock(@l_0_5_0, AcquireGreaterEqual, %one)
+      %b_0_5_0 = aie.get_buffer @b_0_5_0 : memref<16xi32>
       aie.dma_bd(%b_0_5_0 : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%l_0_5_1, Release, %one)
+      aie.use_lock(@l_0_5_1, Release, %one)
       aie.next_bd ^p0b0
     ^p1:
       %d1 = aie.dma_start(MM2S, 1, ^p1b0, ^end)
     ^p1b0:
+      %b_0_5_1 = aie.get_buffer @b_0_5_1 : memref<8xi32>
       aie.dma_bd(%b_0_5_1 : memref<8xi32> offset = 0 len = 8) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 8>}
       aie.next_bd ^p1b0
     ^end:
@@ -127,14 +137,14 @@ module {
     }
     %core_0_4 = aie.core(%t_0_4) {
       %one = arith.constant 1 : i32
-      aie.use_lock(%l_0_4_1, AcquireGreaterEqual, %one)
-      aie.use_lock(%l_0_4_0, Release, %one)
+      aie.use_lock(@l_0_4_1, AcquireGreaterEqual, %one)
+      aie.use_lock(@l_0_4_0, Release, %one)
       aie.end
     }
     %core_0_5 = aie.core(%t_0_5) {
       %one = arith.constant 1 : i32
-      aie.use_lock(%l_0_5_0, Release, %one)
-      aie.use_lock(%l_0_5_1, AcquireGreaterEqual, %one)
+      aie.use_lock(@l_0_5_0, Release, %one)
+      aie.use_lock(@l_0_5_1, AcquireGreaterEqual, %one)
       aie.end
     }
     aie.packet_flow(14) { aie.packet_source<%t_0_2, DMA : 1> aie.packet_dest<%t_0_1, DMA : 3> aie.packet_dest<%t_0_5, DMA : 1> } {priority_route = true}

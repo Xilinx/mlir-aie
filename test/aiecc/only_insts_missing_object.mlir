@@ -20,9 +20,10 @@
 module {
   aie.device(npu2) {
     %t02 = aie.tile(0, 2)
-    %rtp = aie.buffer(%t02) {sym_name = "rtp"} : memref<4xi32>
+    aie.buffer @rtp(%t02) : memref<4xi32>
     func.func private @kernel(memref<4xi32>) attributes {link_with = "only_insts_missing_object_kernel.o"}
     %core_0_2 = aie.core(%t02) {
+      %rtp = aie.get_buffer @rtp : memref<4xi32>
       func.call @kernel(%rtp) : (memref<4xi32>) -> ()
       aie.end
     }

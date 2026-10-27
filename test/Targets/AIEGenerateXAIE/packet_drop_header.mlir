@@ -57,27 +57,29 @@ module @aie_module {
         aie.rule(31, 3, %7)
       }
     }
-    %4 = aie.lock(%2, 1)
-    %5 = aie.buffer(%2) {address = 3072 : i32, sym_name = "buf1"} : memref<16xi32, 2>
+    aie.lock @lock_4(%2, 1)
+    aie.buffer @buf1(%2) {address = 3072 : i32} : memref<16xi32, 2>
     %6 = aie.mem(%2) {
       %7 = aie.dma_start(S2MM, 0, ^bb2, ^bb1)
     ^bb1:  // pred: ^bb0
       %8 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
     ^bb2:  // 2 preds: ^bb0, ^bb2
       %c0_ul1 = arith.constant 0 : i32
-      aie.use_lock(%4, Acquire, %c0_ul1)
+      aie.use_lock(@lock_4, Acquire, %c0_ul1)
       aie.dma_bd_packet(2, 3)
-      aie.dma_bd(%5 : memref<16xi32, 2> offset = 0 len = 16)
+      %buffer_5_0 = aie.get_buffer @buf1 : memref<16xi32, 2>
+      aie.dma_bd(%buffer_5_0 : memref<16xi32, 2> offset = 0 len = 16)
       %c1_ul2 = arith.constant 1 : i32
-      aie.use_lock(%4, Release, %c1_ul2)
+      aie.use_lock(@lock_4, Release, %c1_ul2)
       aie.next_bd ^bb2
     ^bb3:  // 2 preds: ^bb1, ^bb3
       %c1_ul3 = arith.constant 1 : i32
-      aie.use_lock(%4, Acquire, %c1_ul3)
+      aie.use_lock(@lock_4, Acquire, %c1_ul3)
       aie.dma_bd_packet(6, 10)
-      aie.dma_bd(%5 : memref<16xi32, 2> offset = 0 len = 16)
+      %buffer_5_1 = aie.get_buffer @buf1 : memref<16xi32, 2>
+      aie.dma_bd(%buffer_5_1 : memref<16xi32, 2> offset = 0 len = 16)
       %c0_ul4 = arith.constant 0 : i32
-      aie.use_lock(%4, Release, %c0_ul4)
+      aie.use_lock(@lock_4, Release, %c0_ul4)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb1
       aie.end

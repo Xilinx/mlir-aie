@@ -252,7 +252,7 @@ module {
   aie.device(npu2_1col) {
     %t = aie.tile(0, 0)
     %core = aie.tile(0, 2)
-    %rtp = aie.buffer(%core) {sym_name = "rtp", address = 1024 : i32} : memref<4xi32>
+    aie.buffer @rtp(%core) {address = 1024 : i32} : memref<4xi32>
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.shim_dma_allocation @c (%t, S2MM, 0)
     aie.runtime_sequence @past_parameters(%in: memref<32768xi32>, %out: memref<32768xi32>) {
@@ -298,7 +298,7 @@ module {
   aie.device(npu2_1col) {
     %t = aie.tile(0, 0)
     %core = aie.tile(0, 2)
-    %lock = aie.lock(%core, 0) {init = 0 : i32}
+    aie.lock @lock(%core, 0) {init = 0 : i32}
     aie.shim_dma_allocation @a (%t, MM2S, 0)
     aie.shim_dma_allocation @c (%t, S2MM, 0)
     aie.runtime_sequence @past_lock_set(%in: memref<32768xi32>, %out: memref<32768xi32>) {
@@ -308,7 +308,7 @@ module {
       }
       aiex.dma_start_task(%a)
       %lock_v1 = arith.constant 1 : i32
-      aiex.set_lock(%lock, %lock_v1)
+      aiex.set_lock(@lock, %lock_v1)
       %c = aiex.dma_configure_task_for @c {
         aie.dma_bd(%out : memref<32768xi32> offset = 0 len = 64 sizes = [1, 1, 1, 64] strides = [0, 0, 0, 1])
         aie.end

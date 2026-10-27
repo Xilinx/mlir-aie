@@ -21,16 +21,17 @@ module {
   aie.device(npu1_1col) {
     %shim = aie.tile(0, 0)
     %mem = aie.tile(0, 1)
-    %full = aie.lock(%mem, 0) {init = 1 : i32}
-    %empty = aie.lock(%mem, 1) {init = 0 : i32}
-    %buf = aie.buffer(%mem) {address = 0 : i32, mem_bank = 0 : i32} : memref<4xi32> = dense<[0, 1, 2, 3]>
+    aie.lock @full(%mem, 0) {init = 1 : i32}
+    aie.lock @empty(%mem, 1) {init = 0 : i32}
+    aie.buffer @buf(%mem) {address = 0 : i32, mem_bank = 0 : i32} : memref<4xi32> = dense<[0, 1, 2, 3]>
     %dma = aie.memtile_dma(%mem) {
       %one = arith.constant 1 : i32
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      aie.use_lock(%full, AcquireGreaterEqual, %one)
+      aie.use_lock(@full, AcquireGreaterEqual, %one)
+      %buf = aie.get_buffer @buf : memref<4xi32>
       aie.dma_bd(%buf : memref<4xi32> offset = 0 len = 4) {bd_id = 0 : i32}
-      aie.use_lock(%empty, Release, %one)
+      aie.use_lock(@empty, Release, %one)
       aie.next_bd ^end
     ^end:
       aie.end

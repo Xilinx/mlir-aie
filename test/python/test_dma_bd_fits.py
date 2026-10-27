@@ -37,13 +37,15 @@ def lowers(dev, col, row, sizes, strides):
     shim = dev.get_tile_type(col, row) is AIETileType.ShimNOCTile
     reach = 1 + sum((n - 1) * s for n, s in zip(sizes, strides))
     memref = f"memref<{reach}xi32>"
-    buffer = "" if shim else f"%buf = aie.buffer(%t) {{address = 0 : i32}} : {memref}"
+    buffer = "" if shim else f"aie.buffer @buf(%t) {{address = 0 : i32}} : {memref}"
+    access = "" if shim else f"%buf = aie.get_buffer @buf : {memref}"
     length = int(np.prod(sizes[1:]))
     text = f"""
         aie.device({dev.name}) {{
           %t = aie.tile({col}, {row})
           {buffer}
           aie.runtime_sequence({"%buf: " + memref if shim else ""}) {{
+            {access}
             %task = aiex.dma_configure_task(%t, MM2S, 0) {{
               aie.dma_bd(%buf : {memref} offset = 0 len = {length}
                 sizes = {list(sizes)} strides = {list(strides)}) {{bd_id = 0 : i32}}

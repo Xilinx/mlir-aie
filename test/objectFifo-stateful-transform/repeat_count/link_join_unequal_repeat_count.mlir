@@ -19,39 +19,39 @@
 // POOL: aie.objectfifo.segment @s0
 // POOL: aie.objectfifo.segment @s1
 // DMA-LABEL: module @join_unequal
-// DMA: %[[AP:.*]] = aie.lock({{.*}}) {init = 2 : i32, sym_name = "a_prod_lock_0"}
-// DMA: %[[AC:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "a_cons_lock_0"}
-// DMA: %[[BP:.*]] = aie.lock({{.*}}) {init = 1 : i32, sym_name = "b_prod_lock_0"}
-// DMA: %[[BC:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "b_cons_lock_0"}
-// DMA: %[[OP0:.*]] = aie.lock({{.*}}) {init = 1 : i32, sym_name = "out_prod_lock_0"}
-// DMA: %[[OC0:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "out_cons_lock_0"}
-// DMA: %[[OP1:.*]] = aie.lock({{.*}}) {init = 1 : i32, sym_name = "out_prod_lock_1"}
-// DMA: %[[OC1:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "out_cons_lock_1"}
+// DMA: aie.lock @[[AP:a_prod_lock_0]]({{.*}}) {init = 2 : i32}
+// DMA: aie.lock @[[AC:a_cons_lock_0]]({{.*}}) {init = 0 : i32}
+// DMA: aie.lock @[[BP:b_prod_lock_0]]({{.*}}) {init = 1 : i32}
+// DMA: aie.lock @[[BC:b_cons_lock_0]]({{.*}}) {init = 0 : i32}
+// DMA: aie.lock @[[OP0:out_prod_lock_0]]({{.*}}) {init = 1 : i32}
+// DMA: aie.lock @[[OC0:out_cons_lock_0]]({{.*}}) {init = 0 : i32}
+// DMA: aie.lock @[[OP1:out_prod_lock_1]]({{.*}}) {init = 1 : i32}
+// DMA: aie.lock @[[OC1:out_cons_lock_1]]({{.*}}) {init = 0 : i32}
 // DMA: aie.core(
 // DMA: %[[TWO:.*]] = arith.constant 2 : i32
-// DMA: aie.use_lock(%[[AP]], AcquireGreaterEqual, %[[TWO]])
-// DMA: aie.use_lock(%[[AC]], Release, %[[TWO]])
+// DMA: aie.use_lock(@[[AP]], AcquireGreaterEqual, %[[TWO]])
+// DMA: aie.use_lock(@[[AC]], Release, %[[TWO]])
 // DMA: aie.core(
 // DMA: %[[ONE:.*]] = arith.constant 1 : i32
-// DMA: aie.use_lock(%[[BP]], AcquireGreaterEqual, %[[ONE]])
-// DMA: aie.use_lock(%[[BC]], Release, %[[ONE]])
-// DMA: aie.use_lock(%[[BP]], AcquireGreaterEqual, %[[ONE]])
-// DMA: aie.use_lock(%[[BC]], Release, %[[ONE]])
+// DMA: aie.use_lock(@[[BP]], AcquireGreaterEqual, %[[ONE]])
+// DMA: aie.use_lock(@[[BC]], Release, %[[ONE]])
+// DMA: aie.use_lock(@[[BP]], AcquireGreaterEqual, %[[ONE]])
+// DMA: aie.use_lock(@[[BC]], Release, %[[ONE]])
 // DMA: aie.mem(
 // DMA: aie.dma_start(MM2S, 0, {{.*}}, repeat_count = 1)
 // DMA: aie.memtile_dma(
 // DMA: %[[UNIT:.*]] = arith.constant 1 : i32
 // DMA: aie.dma_start(S2MM, 0,
-// DMA: aie.use_lock(%[[OP0]], AcquireGreaterEqual, %[[UNIT]])
-// DMA: aie.use_lock(%[[OC0]], Release, %[[UNIT]])
+// DMA: aie.use_lock(@[[OP0]], AcquireGreaterEqual, %[[UNIT]])
+// DMA: aie.use_lock(@[[OC0]], Release, %[[UNIT]])
 // DMA: aie.dma_start(S2MM, 1,
-// DMA: aie.use_lock(%[[OP1]], AcquireGreaterEqual, %[[UNIT]])
-// DMA: aie.use_lock(%[[OC1]], Release, %[[UNIT]])
+// DMA: aie.use_lock(@[[OP1]], AcquireGreaterEqual, %[[UNIT]])
+// DMA: aie.use_lock(@[[OC1]], Release, %[[UNIT]])
 // DMA: aie.dma_start(MM2S, 0,
-// DMA: aie.use_lock(%[[OC0]], AcquireGreaterEqual, %[[UNIT]])
-// DMA: aie.use_lock(%[[OP0]], Release, %[[UNIT]])
-// DMA: aie.use_lock(%[[OC1]], AcquireGreaterEqual, %[[UNIT]])
-// DMA: aie.use_lock(%[[OP1]], Release, %[[UNIT]])
+// DMA: aie.use_lock(@[[OC0]], AcquireGreaterEqual, %[[UNIT]])
+// DMA: aie.use_lock(@[[OP0]], Release, %[[UNIT]])
+// DMA: aie.use_lock(@[[OC1]], AcquireGreaterEqual, %[[UNIT]])
+// DMA: aie.use_lock(@[[OP1]], Release, %[[UNIT]])
 module @join_unequal {
   aie.device(npu1) {
     %a = aie.tile(1, 2)

@@ -18,7 +18,7 @@ module {
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
     %tile_0_2 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
 
-    %core_buf = aie.buffer(%tile_0_2) {sym_name = "core_buf"} : memref<256xi32>
+    aie.buffer @core_buf(%tile_0_2) : memref<256xi32>
 
     // Input path: shim MM2S ch0 -> core S2MM ch0
     aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)
@@ -34,26 +34,28 @@ module {
     aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 0)
 
     // Core tile: continuously looping S2MM->MM2S passthrough
-    %lock_in = aie.lock(%tile_0_2, 0) {init = 1 : i32, sym_name = "lock_in"}
-    %lock_out = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "lock_out"}
+    aie.lock @lock_in(%tile_0_2, 0) {init = 1 : i32}
+    aie.lock @lock_out(%tile_0_2, 1) {init = 0 : i32}
 
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(S2MM, 0, ^s2mm, ^mm2s_entry)
     ^s2mm:
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%lock_in, AcquireGreaterEqual, %c1_ul1)
+      aie.use_lock(@lock_in, AcquireGreaterEqual, %c1_ul1)
+      %core_buf = aie.get_buffer @core_buf : memref<256xi32>
       aie.dma_bd(%core_buf : memref<256xi32> offset = 0 len = 256)
       %c1_ul2 = arith.constant 1 : i32
-      aie.use_lock(%lock_out, Release, %c1_ul2)
+      aie.use_lock(@lock_out, Release, %c1_ul2)
       aie.next_bd ^s2mm
     ^mm2s_entry:
       %1 = aie.dma_start(MM2S, 0, ^mm2s, ^end)
     ^mm2s:
       %c1_ul3 = arith.constant 1 : i32
-      aie.use_lock(%lock_out, AcquireGreaterEqual, %c1_ul3)
-      aie.dma_bd(%core_buf : memref<256xi32> offset = 0 len = 256)
+      aie.use_lock(@lock_out, AcquireGreaterEqual, %c1_ul3)
+      %core_buf_1 = aie.get_buffer @core_buf : memref<256xi32>
+      aie.dma_bd(%core_buf_1 : memref<256xi32> offset = 0 len = 256)
       %c1_ul4 = arith.constant 1 : i32
-      aie.use_lock(%lock_in, Release, %c1_ul4)
+      aie.use_lock(@lock_in, Release, %c1_ul4)
       aie.next_bd ^mm2s
     ^end:
       aie.end

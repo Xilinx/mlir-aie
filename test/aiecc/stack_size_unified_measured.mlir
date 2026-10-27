@@ -18,7 +18,7 @@
 
 // CHECK-NOT: error
 
-// PLACED: aie.buffer(%{{.*}}tile_0_2) {address = {{4[0-9][0-9][0-9]}} : i32
+// PLACED: aie.buffer @{{[^ (]+}}(%{{.*}}tile_0_2) {address = {{4[0-9][0-9][0-9]}} : i32
 // PLACED: measured_stack_size = {{4[0-9][0-9][0-9]}} : i32
 
 module {

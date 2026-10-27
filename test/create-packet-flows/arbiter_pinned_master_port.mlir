@@ -32,30 +32,33 @@ module {
     aie.packet_flow(0) { aie.packet_source<%c13, DMA : 0>  aie.packet_dest<%c12, DMA : 0> }
     aie.packet_flow(1) { aie.packet_source<%c14, DMA : 0>  aie.packet_dest<%c12, DMA : 0> }
 
-    %b13 = aie.buffer(%c13) : memref<64xi32>
+    aie.buffer @b13(%c13) : memref<64xi32>
     aie.mem(%c13) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
+      %b13 = aie.get_buffer @b13 : memref<64xi32>
       aie.dma_bd(%b13 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:
       aie.end
     }
 
-    %b14 = aie.buffer(%c14) : memref<16xi32>
+    aie.buffer @b14(%c14) : memref<16xi32>
     aie.mem(%c14) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
+      %b14 = aie.get_buffer @b14 : memref<16xi32>
       aie.dma_bd(%b14 : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd0
     ^end:
       aie.end
     }
 
-    %b12 = aie.buffer(%c12) : memref<16xi32>
+    aie.buffer @b12(%c12) : memref<16xi32>
     aie.mem(%c12) {
       %0 = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b12 = aie.get_buffer @b12 : memref<16xi32>
       aie.dma_bd(%b12 : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd0
     ^end:

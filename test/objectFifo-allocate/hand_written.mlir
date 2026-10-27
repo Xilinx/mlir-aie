@@ -11,10 +11,10 @@ module @hand_written {
     %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
-    %mine_0 = aie.buffer(%tile12) {sym_name = "mine_0", address = 4096 : i32} : memref<16xi32>
-    %mine_1 = aie.buffer(%tile12) {sym_name = "mine_1", address = 8192 : i32} : memref<16xi32>
-    %free = aie.lock(%tile12) {init = 2 : i32, sym_name = "free"}
-    %full = aie.lock(%tile12) {init = 0 : i32, sym_name = "full"}
+    aie.buffer @mine_0(%tile12) {address = 4096 : i32} : memref<16xi32>
+    aie.buffer @mine_1(%tile12) {address = 8192 : i32} : memref<16xi32>
+    aie.lock @free(%tile12) {init = 2 : i32}
+    aie.lock @full(%tile12) {init = 0 : i32}
 
     aie.objectfifo.pool @prod_pool(%tile12) {
       depth = 2 : i32,

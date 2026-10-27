@@ -21,9 +21,9 @@ module {
         %t00 = aie.tile(0, 0)
         %t01 = aie.tile(0, 1)
 
-        %prod = aie.lock(%t01, 0) {init = 2 : i32, sym_name = "prod"}
-        %cons = aie.lock(%t01, 1) {init = 0 : i32, sym_name = "cons"}
-        %ring = aie.buffer(%t01) {sym_name = "ring"} : memref<128xi32>
+        aie.lock @prod(%t01, 0) {init = 2 : i32}
+        aie.lock @cons(%t01, 1) {init = 0 : i32}
+        aie.buffer @ring(%t01) : memref<128xi32>
 
         aie.flow(%t00, DMA : 0, %t01, DMA : 0)
         aie.flow(%t01, DMA : 0, %t00, DMA : 0)
@@ -39,18 +39,20 @@ module {
             } {issue_token = true}
             %a_drain = aiex.dma_configure_task(%t01, MM2S, 0) {
                 %c1 = arith.constant 1 : i32
-                aie.use_lock(%cons, AcquireGreaterEqual, %c1)
+                aie.use_lock(@cons, AcquireGreaterEqual, %c1)
+                %ring = aie.get_buffer @ring : memref<128xi32>
                 aie.dma_bd(%ring : memref<128xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
                 %c2 = arith.constant 1 : i32
-                aie.use_lock(%prod, Release, %c2)
+                aie.use_lock(@prod, Release, %c2)
                 aie.end
             } {repeat_count = 1 : i32}
             %a_fill = aiex.dma_configure_task(%t01, S2MM, 0) {
                 %c3 = arith.constant 1 : i32
-                aie.use_lock(%prod, AcquireGreaterEqual, %c3)
-                aie.dma_bd(%ring : memref<128xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
+                aie.use_lock(@prod, AcquireGreaterEqual, %c3)
+                %ring_1 = aie.get_buffer @ring : memref<128xi32>
+                aie.dma_bd(%ring_1 : memref<128xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
                 %c4 = arith.constant 1 : i32
-                aie.use_lock(%cons, Release, %c4)
+                aie.use_lock(@cons, Release, %c4)
                 aie.end
             } {repeat_count = 1 : i32}
             %a_in = aiex.dma_configure_task(%t00, MM2S, 0) {
@@ -69,18 +71,20 @@ module {
             } {issue_token = true}
             %b_drain = aiex.dma_configure_task(%t01, MM2S, 0) {
                 %c5 = arith.constant 1 : i32
-                aie.use_lock(%cons, AcquireGreaterEqual, %c5)
-                aie.dma_bd(%ring : memref<128xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
+                aie.use_lock(@cons, AcquireGreaterEqual, %c5)
+                %ring_2 = aie.get_buffer @ring : memref<128xi32>
+                aie.dma_bd(%ring_2 : memref<128xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
                 %c6 = arith.constant 1 : i32
-                aie.use_lock(%prod, Release, %c6)
+                aie.use_lock(@prod, Release, %c6)
                 aie.end
             } {repeat_count = 15 : i32}
             %b_fill = aiex.dma_configure_task(%t01, S2MM, 0) {
                 %c7 = arith.constant 1 : i32
-                aie.use_lock(%prod, AcquireGreaterEqual, %c7)
-                aie.dma_bd(%ring : memref<128xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
+                aie.use_lock(@prod, AcquireGreaterEqual, %c7)
+                %ring_3 = aie.get_buffer @ring : memref<128xi32>
+                aie.dma_bd(%ring_3 : memref<128xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
                 %c8 = arith.constant 1 : i32
-                aie.use_lock(%cons, Release, %c8)
+                aie.use_lock(@cons, Release, %c8)
                 aie.end
             } {repeat_count = 15 : i32}
             %b_in = aiex.dma_configure_task(%t00, MM2S, 0) {
@@ -99,18 +103,20 @@ module {
             } {issue_token = true}
             %c_drain = aiex.dma_configure_task(%t01, MM2S, 0) {
                 %c9 = arith.constant 1 : i32
-                aie.use_lock(%cons, AcquireGreaterEqual, %c9)
-                aie.dma_bd(%ring : memref<128xi32> offset = 0 len = 64 sizes = [8, 8] strides = [1, 8]) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
+                aie.use_lock(@cons, AcquireGreaterEqual, %c9)
+                %ring_4 = aie.get_buffer @ring : memref<128xi32>
+                aie.dma_bd(%ring_4 : memref<128xi32> offset = 0 len = 64 sizes = [8, 8] strides = [1, 8]) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
                 %c10 = arith.constant 1 : i32
-                aie.use_lock(%prod, Release, %c10)
+                aie.use_lock(@prod, Release, %c10)
                 aie.end
             } {repeat_count = 15 : i32}
             %c_fill = aiex.dma_configure_task(%t01, S2MM, 0) {
                 %c11 = arith.constant 1 : i32
-                aie.use_lock(%prod, AcquireGreaterEqual, %c11)
-                aie.dma_bd(%ring : memref<128xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
+                aie.use_lock(@prod, AcquireGreaterEqual, %c11)
+                %ring_5 = aie.get_buffer @ring : memref<128xi32>
+                aie.dma_bd(%ring_5 : memref<128xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 2, stride = 64, current = 0>}
                 %c12 = arith.constant 1 : i32
-                aie.use_lock(%cons, Release, %c12)
+                aie.use_lock(@cons, Release, %c12)
                 aie.end
             } {repeat_count = 15 : i32}
             %c_in = aiex.dma_configure_task(%t00, MM2S, 0) {

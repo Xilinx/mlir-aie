@@ -28,12 +28,12 @@ module @example0 {
   %t33 = aie.tile(3, 3)
   %t43 = aie.tile(4, 3)
 
-  %l33_0 = aie.lock(%t33, 0)
-  %l33_1 = aie.lock(%t33, 1)
-  %l43_0 = aie.lock(%t43, 0)
+  aie.lock @l33_0(%t33, 0)
+  aie.lock @l33_1(%t33, 1)
+  aie.lock @l43_0(%t43, 0)
 
-  %buf33 = aie.buffer(%t33) { sym_name = "a" } : memref<256xi32>
-  %buf43 = aie.buffer(%t43) { sym_name = "b" } : memref<256xi32>
+  aie.buffer @a(%t33) : memref<256xi32>
+  aie.buffer @b(%t43) : memref<256xi32>
 
   %m33 = aie.mem(%t33) {
     %c0_i32 = arith.constant 0 : i32
@@ -41,10 +41,11 @@ module @example0 {
       %dmaSt0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%l33_0, Acquire, %c1_ul1)
+      aie.use_lock(@l33_0, Acquire, %c1_ul1)
+      %buf33 = aie.get_buffer @a : memref<256xi32>
       aie.dma_bd(%buf33 : memref<256xi32> offset = 0 len = 256)
       %c0_ul2 = arith.constant 0 : i32
-      aie.use_lock(%l33_0, Release, %c0_ul2)
+      aie.use_lock(@l33_0, Release, %c0_ul2)
       aie.next_bd ^end
     ^end:
       aie.end
@@ -56,10 +57,11 @@ module @example0 {
       %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c0_ul3 = arith.constant 0 : i32
-      aie.use_lock(%l43_0, Acquire, %c0_ul3)
+      aie.use_lock(@l43_0, Acquire, %c0_ul3)
+      %buf43 = aie.get_buffer @b : memref<256xi32>
       aie.dma_bd(%buf43 : memref<256xi32> offset = 0 len = 256)
       %c1_ul4 = arith.constant 1 : i32
-      aie.use_lock(%l43_0, Release, %c1_ul4)
+      aie.use_lock(@l43_0, Release, %c1_ul4)
       aie.next_bd ^end
     ^end:
       aie.end
@@ -75,7 +77,7 @@ module @example0 {
 
   %c33 = aie.core(%t33) {
     %c0_ul5 = arith.constant 0 : i32
-    aie.use_lock(%l33_0, Acquire, %c0_ul5)
+    aie.use_lock(@l33_0, Acquire, %c0_ul5)
     // code
     %val0 = arith.constant 16 : i32
     %0 = arith.constant 0 : i32
@@ -84,18 +86,18 @@ module @example0 {
     %val2 = arith.constant 1 : i384
     aie.put_cascade(%val2: i384)
     %c1_ul6 = arith.constant 1 : i32
-    aie.use_lock(%l33_0, Release, %c1_ul6)
+    aie.use_lock(@l33_0, Release, %c1_ul6)
     aie.end
   }
 
   %c43 = aie.core(%t43) {
     %c1_ul7 = arith.constant 1 : i32
-    aie.use_lock(%l43_0, Acquire, %c1_ul7)
+    aie.use_lock(@l43_0, Acquire, %c1_ul7)
 
     // code
 
     %c0_ul8 = arith.constant 0 : i32
-    aie.use_lock(%l43_0, Release, %c0_ul8)
+    aie.use_lock(@l43_0, Release, %c0_ul8)
     aie.end
   }
  }

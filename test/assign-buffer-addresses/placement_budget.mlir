@@ -15,7 +15,7 @@
 // RUN: not aie-opt --aie-assign-buffer-addresses='placement-budget=5' %s 2>&1 | FileCheck %s --check-prefix=FIVE
 // RUN: not aie-opt --aie-assign-buffer-addresses='placement-budget=0' %s 2>&1 | FileCheck %s --check-prefix=ZERO
 
-// FITS: sym_name = "buf3"
+// FITS: aie.buffer @buf3
 
 // ONE: error: 'aie.buffer' op could not be placed
 // ONE: note: the search hit its 1-placement budget with arrangements still untried, so a layout may exist that it did not reach (raise it with placement-budget)
@@ -28,12 +28,12 @@
 module @placement_budget {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %bankres0 = aie.buffer(%t) { sym_name = "bankres0", mem_bank = 0 : i32 } : memref<512xi8>
-    %bankres1 = aie.buffer(%t) { sym_name = "bankres1", mem_bank = 2 : i32 } : memref<768xi8>
-    %buf0 = aie.buffer(%t) { sym_name = "buf0" } : memref<21696xi8>
-    %buf1 = aie.buffer(%t) { sym_name = "buf1" } : memref<8896xi8>
-    %buf2 = aie.buffer(%t) { sym_name = "buf2" } : memref<22976xi8>
-    %buf3 = aie.buffer(%t) { sym_name = "buf3" } : memref<8320xi8>
+    aie.buffer @bankres0(%t) { mem_bank = 0 : i32 } : memref<512xi8>
+    aie.buffer @bankres1(%t) { mem_bank = 2 : i32 } : memref<768xi8>
+    aie.buffer @buf0(%t) : memref<21696xi8>
+    aie.buffer @buf1(%t) : memref<8896xi8>
+    aie.buffer @buf2(%t) : memref<22976xi8>
+    aie.buffer @buf3(%t) : memref<8320xi8>
     aie.core(%t) {
       aie.end
     } { stack_size = 1024 : i32, data_size = 640 : i32 }

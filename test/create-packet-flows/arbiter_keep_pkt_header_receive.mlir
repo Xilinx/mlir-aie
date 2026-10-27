@@ -51,153 +51,171 @@ module {
     aie.packet_flow(5) { aie.packet_source<%t5, DMA : 0> aie.packet_dest<%m, DMA : 5> } {keep_pkt_header = false}
     aie.packet_flow(6) { aie.packet_source<%m, DMA : 0> aie.packet_dest<%t6, DMA : 1> }
 
-    %b0 = aie.buffer(%t0) : memref<16xi32>
+    aie.buffer @b0(%t0) : memref<16xi32>
     aie.mem(%t0) {
       %0 = aie.dma_start(MM2S, 0, ^bd, ^end)
     ^bd:
+      %b0 = aie.get_buffer @b0 : memref<16xi32>
       aie.dma_bd(%b0 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 0, pkt_type = 0>}
       aie.next_bd ^end
     ^end:
       aie.end
     }
-    %b1 = aie.buffer(%t1) : memref<16xi32>
+    aie.buffer @b1(%t1) : memref<16xi32>
     aie.mem(%t1) {
       %0 = aie.dma_start(MM2S, 0, ^bd, ^end)
     ^bd:
+      %b1 = aie.get_buffer @b1 : memref<16xi32>
       aie.dma_bd(%b1 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 1, pkt_type = 0>}
       aie.next_bd ^end
     ^end:
       aie.end
     }
-    %b2 = aie.buffer(%t2) : memref<16xi32>
+    aie.buffer @b2(%t2) : memref<16xi32>
     aie.mem(%t2) {
       %0 = aie.dma_start(MM2S, 0, ^bd, ^end)
     ^bd:
+      %b2 = aie.get_buffer @b2 : memref<16xi32>
       aie.dma_bd(%b2 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 2, pkt_type = 0>}
       aie.next_bd ^end
     ^end:
       aie.end
     }
-    %b3 = aie.buffer(%t3) : memref<16xi32>
+    aie.buffer @b3(%t3) : memref<16xi32>
     aie.mem(%t3) {
       %0 = aie.dma_start(MM2S, 0, ^bd, ^end)
     ^bd:
+      %b3 = aie.get_buffer @b3 : memref<16xi32>
       aie.dma_bd(%b3 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 3, pkt_type = 0>}
       aie.next_bd ^end
     ^end:
       aie.end
     }
-    %b4 = aie.buffer(%t4) : memref<16xi32>
+    aie.buffer @b4(%t4) : memref<16xi32>
     aie.mem(%t4) {
       %0 = aie.dma_start(MM2S, 0, ^bd, ^end)
     ^bd:
+      %b4 = aie.get_buffer @b4 : memref<16xi32>
       aie.dma_bd(%b4 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 4, pkt_type = 0>}
       aie.next_bd ^end
     ^end:
       aie.end
     }
-    %b5 = aie.buffer(%t5) : memref<16xi32>
+    aie.buffer @b5(%t5) : memref<16xi32>
     aie.mem(%t5) {
       %0 = aie.dma_start(MM2S, 0, ^bd, ^end)
     ^bd:
+      %b5 = aie.get_buffer @b5 : memref<16xi32>
       aie.dma_bd(%b5 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 5, pkt_type = 0>}
       aie.next_bd ^end
     ^end:
       aie.end
     }
 
-    %mb0 = aie.buffer(%m) : memref<17xi32>
-    %mb1 = aie.buffer(%m) : memref<17xi32>
-    %mb2 = aie.buffer(%m) : memref<17xi32>
-    %mb3 = aie.buffer(%m) : memref<17xi32>
-    %mb4 = aie.buffer(%m) : memref<17xi32>
-    %mb5 = aie.buffer(%m) : memref<17xi32>
-    %p0 = aie.lock(%m, 0) {init = 1 : i32}
-    %c0 = aie.lock(%m, 1) {init = 0 : i32}
-    %p1 = aie.lock(%m, 2) {init = 1 : i32}
-    %c1 = aie.lock(%m, 3) {init = 0 : i32}
-    %p2 = aie.lock(%m, 4) {init = 1 : i32}
-    %c2 = aie.lock(%m, 5) {init = 0 : i32}
-    %p3 = aie.lock(%m, 6) {init = 1 : i32}
-    %c3 = aie.lock(%m, 7) {init = 0 : i32}
-    %p4 = aie.lock(%m, 8) {init = 1 : i32}
-    %c4 = aie.lock(%m, 9) {init = 0 : i32}
-    %p5 = aie.lock(%m, 10) {init = 1 : i32}
-    %c5 = aie.lock(%m, 11) {init = 0 : i32}
+    aie.buffer @mb0(%m) : memref<17xi32>
+    aie.buffer @mb1(%m) : memref<17xi32>
+    aie.buffer @mb2(%m) : memref<17xi32>
+    aie.buffer @mb3(%m) : memref<17xi32>
+    aie.buffer @mb4(%m) : memref<17xi32>
+    aie.buffer @mb5(%m) : memref<17xi32>
+    aie.lock @p0(%m, 0) {init = 1 : i32}
+    aie.lock @c0(%m, 1) {init = 0 : i32}
+    aie.lock @p1(%m, 2) {init = 1 : i32}
+    aie.lock @c1(%m, 3) {init = 0 : i32}
+    aie.lock @p2(%m, 4) {init = 1 : i32}
+    aie.lock @c2(%m, 5) {init = 0 : i32}
+    aie.lock @p3(%m, 6) {init = 1 : i32}
+    aie.lock @c3(%m, 7) {init = 0 : i32}
+    aie.lock @p4(%m, 8) {init = 1 : i32}
+    aie.lock @c4(%m, 9) {init = 0 : i32}
+    aie.lock @p5(%m, 10) {init = 1 : i32}
+    aie.lock @c5(%m, 11) {init = 0 : i32}
     aie.memtile_dma(%m) {
       %one = arith.constant 1 : i32
       %0 = aie.dma_start(S2MM, 0, ^r0, ^s1)
     ^r0:
-      aie.use_lock(%p0, AcquireGreaterEqual, %one)
+      aie.use_lock(@p0, AcquireGreaterEqual, %one)
+      %mb0 = aie.get_buffer @mb0 : memref<17xi32>
       aie.dma_bd(%mb0 : memref<17xi32> offset = 0 len = 16)
-      aie.use_lock(%c0, Release, %one)
+      aie.use_lock(@c0, Release, %one)
       aie.next_bd ^r0
     ^s1:
       %1 = aie.dma_start(S2MM, 1, ^r1, ^s2)
     ^r1:
-      aie.use_lock(%p1, AcquireGreaterEqual, %one)
+      aie.use_lock(@p1, AcquireGreaterEqual, %one)
+      %mb1 = aie.get_buffer @mb1 : memref<17xi32>
       aie.dma_bd(%mb1 : memref<17xi32> offset = 0 len = 16)
-      aie.use_lock(%c1, Release, %one)
+      aie.use_lock(@c1, Release, %one)
       aie.next_bd ^r1
     ^s2:
       %2 = aie.dma_start(S2MM, 2, ^r2, ^s3)
     ^r2:
-      aie.use_lock(%p2, AcquireGreaterEqual, %one)
+      aie.use_lock(@p2, AcquireGreaterEqual, %one)
+      %mb2 = aie.get_buffer @mb2 : memref<17xi32>
       aie.dma_bd(%mb2 : memref<17xi32> offset = 0 len = 16)
-      aie.use_lock(%c2, Release, %one)
+      aie.use_lock(@c2, Release, %one)
       aie.next_bd ^r2
     ^s3:
       %3 = aie.dma_start(S2MM, 3, ^r3, ^s4)
     ^r3:
-      aie.use_lock(%p3, AcquireGreaterEqual, %one)
+      aie.use_lock(@p3, AcquireGreaterEqual, %one)
+      %mb3 = aie.get_buffer @mb3 : memref<17xi32>
       aie.dma_bd(%mb3 : memref<17xi32> offset = 0 len = 16)
-      aie.use_lock(%c3, Release, %one)
+      aie.use_lock(@c3, Release, %one)
       aie.next_bd ^r3
     ^s4:
       %4 = aie.dma_start(S2MM, 4, ^r4, ^s5)
     ^r4:
-      aie.use_lock(%p4, AcquireGreaterEqual, %one)
+      aie.use_lock(@p4, AcquireGreaterEqual, %one)
+      %mb4 = aie.get_buffer @mb4 : memref<17xi32>
       aie.dma_bd(%mb4 : memref<17xi32> offset = 0 len = 16)
-      aie.use_lock(%c4, Release, %one)
+      aie.use_lock(@c4, Release, %one)
       aie.next_bd ^r4
     ^s5:
       %5 = aie.dma_start(S2MM, 5, ^r5, ^join)
     ^r5:
-      aie.use_lock(%p5, AcquireGreaterEqual, %one)
+      aie.use_lock(@p5, AcquireGreaterEqual, %one)
+      %mb5 = aie.get_buffer @mb5 : memref<17xi32>
       aie.dma_bd(%mb5 : memref<17xi32> offset = 0 len = 16)
-      aie.use_lock(%c5, Release, %one)
+      aie.use_lock(@c5, Release, %one)
       aie.next_bd ^r5
     ^join:
       %6 = aie.dma_start(MM2S, 0, ^j0, ^end)
     ^j0:
-      aie.use_lock(%c0, AcquireGreaterEqual, %one)
-      aie.dma_bd(%mb0 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
-      aie.use_lock(%p0, Release, %one)
+      aie.use_lock(@c0, AcquireGreaterEqual, %one)
+      %mb0_1 = aie.get_buffer @mb0 : memref<17xi32>
+      aie.dma_bd(%mb0_1 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
+      aie.use_lock(@p0, Release, %one)
       aie.next_bd ^j1
     ^j1:
-      aie.use_lock(%c1, AcquireGreaterEqual, %one)
-      aie.dma_bd(%mb1 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
-      aie.use_lock(%p1, Release, %one)
+      aie.use_lock(@c1, AcquireGreaterEqual, %one)
+      %mb1_1 = aie.get_buffer @mb1 : memref<17xi32>
+      aie.dma_bd(%mb1_1 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
+      aie.use_lock(@p1, Release, %one)
       aie.next_bd ^j2
     ^j2:
-      aie.use_lock(%c2, AcquireGreaterEqual, %one)
-      aie.dma_bd(%mb2 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
-      aie.use_lock(%p2, Release, %one)
+      aie.use_lock(@c2, AcquireGreaterEqual, %one)
+      %mb2_1 = aie.get_buffer @mb2 : memref<17xi32>
+      aie.dma_bd(%mb2_1 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
+      aie.use_lock(@p2, Release, %one)
       aie.next_bd ^j3
     ^j3:
-      aie.use_lock(%c3, AcquireGreaterEqual, %one)
-      aie.dma_bd(%mb3 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
-      aie.use_lock(%p3, Release, %one)
+      aie.use_lock(@c3, AcquireGreaterEqual, %one)
+      %mb3_1 = aie.get_buffer @mb3 : memref<17xi32>
+      aie.dma_bd(%mb3_1 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
+      aie.use_lock(@p3, Release, %one)
       aie.next_bd ^j4
     ^j4:
-      aie.use_lock(%c4, AcquireGreaterEqual, %one)
-      aie.dma_bd(%mb4 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
-      aie.use_lock(%p4, Release, %one)
+      aie.use_lock(@c4, AcquireGreaterEqual, %one)
+      %mb4_1 = aie.get_buffer @mb4 : memref<17xi32>
+      aie.dma_bd(%mb4_1 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
+      aie.use_lock(@p4, Release, %one)
       aie.next_bd ^j5
     ^j5:
-      aie.use_lock(%c5, AcquireGreaterEqual, %one)
-      aie.dma_bd(%mb5 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
-      aie.use_lock(%p5, Release, %one)
+      aie.use_lock(@c5, AcquireGreaterEqual, %one)
+      %mb5_1 = aie.get_buffer @mb5 : memref<17xi32>
+      aie.dma_bd(%mb5_1 : memref<17xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_id = 6, pkt_type = 0>}
+      aie.use_lock(@p5, Release, %one)
       aie.next_bd ^j0
     ^end:
       aie.end

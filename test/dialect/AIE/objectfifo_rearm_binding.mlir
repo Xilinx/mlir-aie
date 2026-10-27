@@ -15,16 +15,16 @@
 // CHECK-LABEL: aie.device(npu2)
 // CHECK: %[[CT:.*]] = aie.tile(0, 3)
 // CHECK: %[[MT:.*]] = aie.tile(0, 1)
-// CHECK: %[[PL:.*]] = aie.lock(%[[CT]], 0)
-// CHECK: %[[CL:.*]] = aie.lock(%[[CT]], 1)
-// CHECK: aie.objectfifo_rearm_binding @of_rearm channels(%[[CT]], %[[MT]] : index, index) locks(%[[PL]], %[[CL]] : index, index) {channel_dirs = array<i32: 0, 1>, channel_indices = array<i32: 0, 0>, lock_inits = array<i32: 2, 0>}
+// CHECK: aie.lock @[[PL:.*]](%[[CT]], 0)
+// CHECK: aie.lock @[[CL:.*]](%[[CT]], 1)
+// CHECK: aie.objectfifo_rearm_binding @of_rearm channels(%[[CT]], %[[MT]] : index, index) locks([@[[PL]], @[[CL]]]) {channel_dirs = array<i32: 0, 1>, channel_indices = array<i32: 0, 0>, lock_inits = array<i32: 2, 0>}
 module {
   aie.device(npu2) {
     %ct = aie.tile(0, 3)
     %mt = aie.tile(0, 1)
-    %pl = aie.lock(%ct, 0) {init = 2 : i32}
-    %cl = aie.lock(%ct, 1) {init = 0 : i32}
-    aie.objectfifo_rearm_binding @of_rearm channels(%ct, %mt : index, index) locks(%pl, %cl : index, index) {channel_dirs = array<i32: 0, 1>, channel_indices = array<i32: 0, 0>, lock_inits = array<i32: 2, 0>}
+    aie.lock @pl(%ct, 0) {init = 2 : i32}
+    aie.lock @cl(%ct, 1) {init = 0 : i32}
+    aie.objectfifo_rearm_binding @of_rearm channels(%ct, %mt : index, index) locks([@pl, @cl]) {channel_dirs = array<i32: 0, 1>, channel_indices = array<i32: 0, 0>, lock_inits = array<i32: 2, 0>}
   }
 }
 
@@ -33,10 +33,10 @@ module {
 // A degenerate binding with no channels and no locks (a shim-only fifo has
 // nothing on-tile to re-arm) is legal and round-trips.
 // CHECK-LABEL: aie.device(npu1)
-// CHECK: aie.objectfifo_rearm_binding @empty_rearm channels() locks() {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32>}
+// CHECK: aie.objectfifo_rearm_binding @empty_rearm channels() locks([]) {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32>}
 module {
   aie.device(npu1) {
-    aie.objectfifo_rearm_binding @empty_rearm channels() locks() {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32>}
+    aie.objectfifo_rearm_binding @empty_rearm channels() locks([]) {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32>}
   }
 }
 
@@ -47,12 +47,12 @@ module {
 // these for an objectFIFO binding; a hand-authored binding may set them directly
 // so the op is usable with no objectFIFO code behind it.
 // CHECK-LABEL: aie.device(npu2)
-// CHECK: aie.objectfifo_rearm_binding @of_rearm channels(%[[CT:.*]] : index) locks(%[[PL:.*]], %[[CL:.*]] : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, head_bd_ids = array<i32: 5>, lock_inits = array<i32: 2, 0>, repeat_counts = array<i32: 0>}
+// CHECK: aie.objectfifo_rearm_binding @of_rearm channels(%[[CT:.*]] : index) locks([@[[PL:.*]], @[[CL:.*]]]) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, head_bd_ids = array<i32: 5>, lock_inits = array<i32: 2, 0>, repeat_counts = array<i32: 0>}
 module {
   aie.device(npu2) {
     %ct = aie.tile(0, 3)
-    %pl = aie.lock(%ct, 0) {init = 2 : i32}
-    %cl = aie.lock(%ct, 1) {init = 0 : i32}
-    aie.objectfifo_rearm_binding @of_rearm channels(%ct : index) locks(%pl, %cl : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2, 0>, head_bd_ids = array<i32: 5>, repeat_counts = array<i32: 0>}
+    aie.lock @pl(%ct, 0) {init = 2 : i32}
+    aie.lock @cl(%ct, 1) {init = 0 : i32}
+    aie.objectfifo_rearm_binding @of_rearm channels(%ct : index) locks([@pl, @cl]) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2, 0>, head_bd_ids = array<i32: 5>, repeat_counts = array<i32: 0>}
   }
 }

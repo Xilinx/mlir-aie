@@ -8,15 +8,15 @@
 module {
   aie.device(npu1) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) { address = 0xBEEF : i32 } : memref<32xi8> 
+    aie.buffer @buf(%tile_0_1) { address = 0xBEEF : i32 } : memref<32xi8>
 
     aie.runtime_sequence(%arg0: memref<32xi8>) { 
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
-      // expected-error@+1 {{supports padding only for MM2S direction on MemTiles.}}
+      // expected-error@+2 {{supports padding only for MM2S direction on MemTiles.}}
+          %buf = aie.get_buffer @buf : memref<32xi8>
           aie.dma_bd(%buf : memref<32xi8> offset = 4 len = 16 sizes = [2, 2, 4] strides = [4, 8, 1] pad [<const_pad_before=2, const_pad_after=1>]) {bd_id = 0 : i32}
           aie.end
       }
     }
   }
 }
-

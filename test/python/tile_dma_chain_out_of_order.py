@@ -79,7 +79,7 @@ def emit_merge(bad=None):
 # CHECK: %[[T:.*]] = aiex.dma_configure_task(%{{.*}}, S2MM, 0) {
 # CHECK-NOT: aie.dma_bd_packet
 # CHECK:   aie.dma_bd(%{{.*}} : memref<64xi32> len = 16) {bd_id = 3 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 0>}
-# CHECK:   aie.use_lock(%done, Release, %{{.*}})
+# CHECK:   aie.use_lock(@done, Release, %{{.*}})
 # CHECK:   aie.next_bd ^bb1
 # CHECK:   aie.dma_bd(%{{.*}} : memref<64xi32> offset = 48 len = 16) {bd_id = 9 : i32, packet = {{.*}}}
 # CHECK:   aie.end

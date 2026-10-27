@@ -11,7 +11,7 @@ module @unknown_row {
     %home = aie.logical_tile<MemTile>(1, 1)
     // expected-error @+1 {{requires at least 5 MM2S channels, but capacity is 4 for adjacent MemTile access}}
     %reader = aie.logical_tile<MemTile>(0, ?)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%home) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -37,7 +37,7 @@ module @unknown_column {
     %home = aie.tile(0, 1)
     // expected-error @+1 {{requires at least 5 S2MM channels, but capacity is 4 for adjacent MemTile access}}
     %writer = aie.logical_tile<MemTile>(?, 1)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%home) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -62,7 +62,7 @@ module @unknown_coordinates {
   aie.device(npu2) {
     %home = aie.logical_tile<MemTile>(?, ?)
     %reader = aie.logical_tile<MemTile>(?, ?)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%home) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }

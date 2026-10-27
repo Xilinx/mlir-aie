@@ -401,8 +401,7 @@ class Design:
             out.append(f"    %t_{c}_{r} = aie.tile({c}, {r})")
         for name, (c, r, lid, init) in self.locks.items():
             out.append(
-                f"    %{name} = aie.lock(%t_{c}_{r}, {lid}) "
-                f'{{init = {init} : i32, sym_name = "{name}"}}'
+                f"    aie.lock @{name}(%t_{c}_{r}, {lid}) {{init = {init} : i32}}"
             )
         nbuf = [0]
 
@@ -411,14 +410,15 @@ class Design:
             nbuf[0] += 1
             elem, n = ("i32", nbytes // 4) if nbytes % 4 == 0 else ("i8", nbytes)
             op = (
-                "aie.external_buffer"
+                f"aie.external_buffer @{name}"
                 if self.target.kind(tile) == "shim"
-                else f"aie.buffer(%t_{tile[0]}_{tile[1]})"
+                else f"aie.buffer @{name}(%t_{tile[0]}_{tile[1]})"
             )
-            out.append(
-                f'    %{name} = {op} {{sym_name = "{name}"}} : memref<{n}x{elem}>'
+            out.append(f"    {op} : memref<{n}x{elem}>")
+            return (
+                f"      %{name} = aie.get_buffer @{name} : memref<{n}x{elem}>",
+                f"%{name} : memref<{n}x{elem}> offset = 0 len = {n}",
             )
-            return f"%{name} : memref<{n}x{elem}> offset = 0 len = {n}"
 
         def lock_ops(ops, indent, consts):
             lines = []
@@ -427,7 +427,7 @@ class Design:
                     _, action, lock, n = op
                     consts.add(n)
                     lines.append(
-                        f"{indent}aie.use_lock(%{lock}, {ACTIONS[action]}, %c{n})"
+                        f"{indent}aie.use_lock(@{lock}, {ACTIONS[action]}, %c{n})"
                     )
             return lines
 
@@ -463,9 +463,10 @@ class Design:
                         if op[0] == "lock":
                             body += lock_ops([op], "      ", consts)
                         else:
+                            access, operand = buffer(tile, op[1])
+                            body.append(access)
                             body.append(
-                                f"      aie.dma_bd({buffer(tile, op[1])})"
-                                + pkt_attr(op[2])
+                                f"      aie.dma_bd({operand})" + pkt_attr(op[2])
                             )
                     if i + 1 < len(blocks):
                         body.append(f"      aie.next_bd ^p{n}b{i + 1}")
@@ -487,7 +488,7 @@ class Design:
             consts = {n for _, _, n in uses}
             out += [f"      %c{n} = arith.constant {n} : i32" for n in sorted(consts)]
             for action, lock, n in uses:
-                out.append(f"      aie.use_lock(%{lock}, {ACTIONS[action]}, %c{n})")
+                out.append(f"      aie.use_lock(@{lock}, {ACTIONS[action]}, %c{n})")
             out += ["      aie.end", "    }"]
         for (c, r), ops in sorted(self.boxes.items()):
             out.append(f"    %sb_{c}_{r} = aie.switchbox(%t_{c}_{r}) {{")
@@ -771,8 +772,8 @@ def load_design(text):
         def lock_ops(op, out):
             if op.name == "aie.use_lock":
                 a = _attrs(op)
-                lock = locks.get(value_key(op.operands[0]))
-                n = const_of(op.operands[1]) if len(op.operands) > 1 else None
+                lock = locks.get(str(a["lock"]).lstrip("@"))
+                n = const_of(op.operands[0]) if op.operands else None
                 if n is None and "value" in a:
                     n = _int(a["value"])
                 out.append(("lock", _int(a["action"]), lock, n))
@@ -1103,7 +1104,7 @@ def load_design(text):
                 )
                 lid = _int(a["lockID"]) if "lockID" in a else -1
                 init = _int(a["init"]) if "init" in a else 0
-                locks[value_key(op.results[0])] = sym
+                locks[sym] = sym
                 d.locks[sym] = (t[0], t[1], lid, init)
             elif name in ("aie.mem", "aie.memtile_dma", "aie.shim_dma"):
                 dma_programs(op, tile_of(op.operands[0]))

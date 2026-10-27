@@ -490,8 +490,7 @@ static size_t blockAt(const DmaChannelProgram &p, size_t size, uint64_t step) {
 // The value `use` acquires or releases, if it is a constant.
 static std::optional<int64_t> lockAmount(UseLockOp use) {
   APInt amount;
-  if (!use.getLock().getDefiningOp<LockOp>() ||
-      !matchPattern(use.getValue(), m_ConstantInt(&amount)))
+  if (!use.getLockOp() || !matchPattern(use.getValue(), m_ConstantInt(&amount)))
     return std::nullopt;
   return amount.getSExtValue();
 }
@@ -624,7 +623,7 @@ bool StreamVolumeAnalysis::walkLoop(const DmaChannelProgram &p,
   for (int step = 0; step < maxBDSteps; step++) {
     for (Operation &bdOp : *sequence[blockAt(p, sequence.size(), step)]) {
       if (auto use = dyn_cast<UseLockOp>(bdOp)) {
-        auto lock = use.getLock().getDefiningOp<LockOp>();
+        auto lock = use.getLockOp();
         std::optional<uint64_t> n = lockTokens(use);
         if (!n || (!use.release() && !use.acquireGE()))
           return false;
@@ -668,10 +667,14 @@ StreamVolumeAnalysis::tokensFromOthers(LockOp lock,
                                        const DmaChannelProgram *self) const {
   llvm::SetVector<const DmaChannelProgram *> releasers;
   uint64_t tokens = 0;
-  for (Operation *user : lock->getUsers()) {
+  auto symbolUses = SymbolTable::getSymbolUses(lock, device);
+  if (!symbolUses)
+    return std::nullopt;
+  for (const SymbolTable::SymbolUse &symbolUse : *symbolUses) {
+    Operation *user = symbolUse.getUser();
     auto use = dyn_cast<UseLockOp>(user);
     if (!use)
-      return std::nullopt;
+      continue;
     if (!use.release())
       continue;
     auto owner = lockUseProgram.find(use);
@@ -740,7 +743,7 @@ StreamVolumeAnalysis::releasesOver(const DmaChannelProgram &p,
     uint64_t perPass = 0;
     for (Block *b : sequence)
       for (auto use : b->getOps<UseLockOp>())
-        if (use.release() && use.getLock().getDefiningOp() == lock) {
+        if (use.release() && use.getLockOp() == lock) {
           std::optional<uint64_t> n = lockTokens(use);
           if (!n)
             return std::nullopt;
@@ -769,7 +772,7 @@ StreamVolumeAnalysis::releasesOver(const DmaChannelProgram &p,
           return tokens;
         filled += bd.getLenInBytes();
       } else if (auto use = dyn_cast<UseLockOp>(bdOp)) {
-        if (!use.release() || use.getLock().getDefiningOp() != lock)
+        if (!use.release() || use.getLockOp() != lock)
           continue;
         std::optional<uint64_t> n = lockTokens(use);
         if (!n)
@@ -826,7 +829,7 @@ static std::optional<uint64_t> programCapacity(const DmaChannelProgram &p,
         std::optional<int64_t> n = lockAmount(use);
         if (!n)
           return 0;
-        auto lock = use.getLock().getDefiningOp<LockOp>();
+        auto lock = use.getLockOp();
         int64_t &value =
             lockValues.try_emplace(lock, lock.getInit().value_or(0))
                 .first->second;
@@ -897,7 +900,7 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
   // Who acquires and who releases each lock.
   DenseMap<Operation *, llvm::SetVector<unsigned>> acquirers, releasers;
   auto noteLock = [&](UseLockOp use, unsigned agent) {
-    Operation *lock = use.getLock().getDefiningOp();
+    Operation *lock = use.getLockOp();
     if (!lock)
       return;
     if (use.getAction() == LockAction::Release)

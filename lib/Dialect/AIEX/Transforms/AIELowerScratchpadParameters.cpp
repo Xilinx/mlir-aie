@@ -282,7 +282,7 @@ commandParameters(ModuleOp moduleOp) {
   DenseMap<Operation *, llvm::SetVector<StringRef>> uses;
   DenseMap<Operation *, SmallVector<RuntimeSequenceOp>> callees;
   DenseSet<Operation *> called;
-  NamedOpTableCollection names;
+  SymbolTableCollection names;
   moduleOp.walk([&](RuntimeSequenceOp seq) {
     seq.walk([&](Operation *op) {
       for (StringRef attr :
@@ -433,7 +433,8 @@ struct AIELowerScratchpadParametersPass
   void allocateBuffers(DeviceOp device, OpBuilder &builder) {
     MLIRContext *ctx = device.getContext();
     unsigned uniquingCounter = 0;
-    AIE::NamedOpTable names(device);
+    SymbolTableCollection symbols;
+    SymbolTable &names = symbols.getSymbolTable(device);
 
     DenseMap<std::pair<StringRef, Operation *>, BufferOp> seen;
 
@@ -445,7 +446,7 @@ struct AIELowerScratchpadParametersPass
 
       if (seen.count(key)) {
         readOp.setBufferAttr(
-            FlatSymbolRefAttr::get(ctx, *seen[key].getSymName()));
+            FlatSymbolRefAttr::get(ctx, seen[key].getSymName()));
         return;
       }
 
@@ -463,15 +464,16 @@ struct AIELowerScratchpadParametersPass
           ("__param_" + paramName + "_" + std::to_string(tile.getCol()) + "_" +
            std::to_string(tile.getRow()) + "_")
               .str();
-      std::string bufName = names.uniqueName(prefix, uniquingCounter);
+      std::string bufName =
+          AIE::generateUniqueSymbolName(names, prefix, uniquingCounter);
       auto buf =
           BufferOp::create(builder, readOp.getLoc(), bufType, tile,
                            builder.getStringAttr(bufName), /*address=*/nullptr,
                            /*initial_value=*/nullptr, /*mem_bank=*/nullptr);
+      names.insert(buf);
       seen[key] = buf;
 
-      readOp.setBufferAttr(
-          FlatSymbolRefAttr::get(ctx, *seen[key].getSymName()));
+      readOp.setBufferAttr(FlatSymbolRefAttr::get(ctx, seen[key].getSymName()));
     });
   }
 
@@ -484,11 +486,13 @@ struct AIELowerScratchpadParametersPass
 
     for (auto readOp : readOps) {
       FlatSymbolRefAttr bufRef = readOp.getBufferAttr();
-      auto buf = AIE::lookupNamedOpIn<BufferOp>(device, bufRef.getAttr());
+      auto buf = dyn_cast_if_present<BufferOp>(
+          SymbolTable::lookupSymbolIn(device, bufRef));
 
       builder.setInsertionPoint(readOp);
       Value c0 = arith::ConstantIndexOp::create(builder, readOp.getLoc(), 0);
-      Value raw = memref::LoadOp::create(builder, readOp.getLoc(), buf, c0);
+      Value buffer = GetBufferOp::create(builder, readOp.getLoc(), buf);
+      Value raw = memref::LoadOp::create(builder, readOp.getLoc(), buffer, c0);
       Value c2 = arith::ConstantOp::create(builder, readOp.getLoc(),
                                            builder.getI32IntegerAttr(2));
       Value decoded = arith::ShRUIOp::create(builder, readOp.getLoc(), raw, c2);
@@ -519,7 +523,10 @@ struct AIELowerScratchpadParametersPass
   // the outermost loop around the read, or if a core without the preamble
   // waits.
   LogicalResult emitCorePreambles(DeviceOp device, OpBuilder &builder,
-                                  SmallVector<Value> &syncLocks) {
+                                  SmallVector<LockOp> &syncLocks) {
+    SymbolTableCollection symbols;
+    SymbolTable &table = symbols.getSymbolTable(device);
+    unsigned counter = 0;
     WalkResult result = device.walk([&](CoreOp coreOp) {
       if (!shouldEmitParameterSyncPreamble(coreOp)) {
         return coreOp.walk([](WaitScratchpadParametersOp wait) {
@@ -568,20 +575,22 @@ struct AIELowerScratchpadParametersPass
 
       TileOp tile = coreOp.getTileOp();
       builder.setInsertionPointAfter(tile);
-      auto lockOp = LockOp::create(
-          builder, coreOp.getLoc(), builder.getIndexType(), tile.getResult(),
-          /*lockID=*/IntegerAttr{}, builder.getI32IntegerAttr(0),
-          /*sym_name=*/StringAttr{});
-      syncLocks.push_back(lockOp.getResult());
+      auto lockOp =
+          LockOp::create(builder, coreOp.getLoc(), tile.getResult(),
+                         /*lockID=*/IntegerAttr{}, builder.getI32IntegerAttr(0),
+                         builder.getStringAttr(AIE::generateUniqueSymbolName(
+                             table, "__param_sync_", counter)));
+      table.insert(lockOp);
+      syncLocks.push_back(lockOp);
 
       if (waits.empty()) {
         builder.setInsertionPointToStart(&coreOp.getBody().front());
-        UseLockOp::create(builder, coreOp.getLoc(), lockOp.getResult(),
-                          LockAction::Acquire, 1);
+        UseLockOp::create(builder, coreOp.getLoc(), lockOp, LockAction::Acquire,
+                          1);
       }
       for (WaitScratchpadParametersOp wait : waits) {
         builder.setInsertionPoint(wait);
-        UseLockOp::create(builder, wait.getLoc(), lockOp.getResult(),
+        UseLockOp::create(builder, wait.getLoc(), lockOp,
                           LockAction::AcquireGreaterEqual, 1);
         wait.erase();
       }
@@ -656,7 +665,7 @@ struct AIELowerScratchpadParametersPass
   void lowerSyncParametersOp(
       SyncScratchpadParametersFromHostOp syncOp, uint32_t scratchpadSize,
       const SmallVector<std::pair<uint8_t, FlatSymbolRefAttr>> &paramEntries,
-      const SmallVector<Value> &syncLocks) {
+      const SmallVector<LockOp> &syncLocks) {
     OpBuilder builder(syncOp);
     Location loc = syncOp.getLoc();
 
@@ -677,7 +686,7 @@ struct AIELowerScratchpadParametersPass
           /*column=*/nullptr, /*row=*/nullptr);
     }
 
-    for (Value lock : syncLocks) {
+    for (LockOp lock : syncLocks) {
       SetLockOp::create(builder, loc, lock, createConstantI32(builder, loc, 1));
     }
 
@@ -689,7 +698,7 @@ struct AIELowerScratchpadParametersPass
   void lowerSyncParametersOps(
       DeviceOp device, uint32_t scratchpadSize,
       const SmallVector<std::pair<uint8_t, FlatSymbolRefAttr>> &paramEntries,
-      const SmallVector<Value> &syncLocks) {
+      const SmallVector<LockOp> &syncLocks) {
     SmallVector<SyncScratchpadParametersFromHostOp> syncOps;
     device.walk(
         [&](SyncScratchpadParametersFromHostOp op) { syncOps.push_back(op); });
@@ -1110,7 +1119,7 @@ struct AIELowerScratchpadParametersPass
       // sync_scratchpad_parameters_from_host op in the device (both the
       // preamble-inserted ones and any user-written ones) using this device's
       // parameter info.
-      SmallVector<Value> syncLocks;
+      SmallVector<LockOp> syncLocks;
       if (failed(emitCorePreambles(d, builder, syncLocks)) ||
           failed(emitSequencePreambles(d, builder, !syncLocks.empty())))
         return signalPassFailure();

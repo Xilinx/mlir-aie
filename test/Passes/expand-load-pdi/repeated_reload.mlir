@@ -45,8 +45,8 @@
 module {
   aie.device(npu2_1col) @init {
     %t = aie.tile(0, 2)
-    %l = aie.lock(%t, 0) {init = 1 : i32}
-    %b = aie.buffer(%t) {address = 1024 : i32, sym_name = "b"} : memref<4xi32> = dense<[1, 2, 3, 4]>
+    aie.lock @l(%t, 0) {init = 1 : i32}
+    aie.buffer @b(%t) {address = 1024 : i32} : memref<4xi32> = dense<[1, 2, 3, 4]>
   }
   aie.device(npu2_1col) @main {
     %t = aie.tile(0, 2)

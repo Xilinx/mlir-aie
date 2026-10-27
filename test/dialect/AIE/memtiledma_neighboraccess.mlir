@@ -16,27 +16,32 @@ aie.device(xcve2802) {
   %t1 = aie.tile(1, 1)
   %t2 = aie.tile(2, 1)
   %t0 = aie.tile(0, 1)
-  %buf = aie.buffer(%t1) : memref<256xi32>
-  %buf2 = aie.buffer(%t2) : memref<256xi32>
-  %buf0 = aie.buffer(%t0) : memref<256xi32>
+  aie.buffer @buf(%t1) : memref<256xi32>
+  aie.buffer @buf2(%t2) : memref<256xi32>
+  aie.buffer @buf0(%t0) : memref<256xi32>
   %mem = aie.memtile_dma(%t1) {
     aie.dma_start("MM2S", 0, ^bd0, ^dma1)
     ^dma1:
     aie.dma_start("MM2S", 1, ^bd15, ^dma1)
     ^bd0:
+      %buf = aie.get_buffer @buf : memref<256xi32>
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd1
     ^bd1:
+      %buf0 = aie.get_buffer @buf0 : memref<256xi32>
       aie.dma_bd(%buf0 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd2
     ^bd2:
+      %buf2 = aie.get_buffer @buf2 : memref<256xi32>
       aie.dma_bd(%buf2 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd15
     ^bd15:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_1 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_1 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd16
     ^bd16:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_2 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = 0 len = 256)
       aie.end
   }
 }

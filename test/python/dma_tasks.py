@@ -16,9 +16,9 @@ with mlir_mod_ctx() as ctx:
         # CHECK: %[[tile1:.+]] = aie.tile
         mem_tile = tile(0, 1)
 
-        # CHECK: %[[buf0:.+]] = aie.buffer
+        # CHECK: aie.buffer @buffer(
         buf0 = buffer(mem_tile, np.ndarray[(16,), np.dtype[np.int16]])
-        # CHECK: %[[buf1:.+]] = aie.buffer
+        # CHECK: aie.buffer @buffer_0(
         buf1 = buffer(mem_tile, T.memref(32, T.i16()))
 
         of0 = object_fifo("of0", shim_tile, mem_tile, 2, T.memref(256, T.i32()))
@@ -34,12 +34,14 @@ with mlir_mod_ctx() as ctx:
                     pass
                 # CHECK: ^bb1:
                 with bd[1]:
+                    # CHECK:   %[[buf0:.+]] = aie.get_buffer @buffer : memref<16xi16>
                     # CHECK:   aie.dma_bd(%[[buf0]] : memref<16xi16>)
                     dma_bd(buf0)
                     # CHECK:   aie.next_bd ^bb2
                     next_bd(bd[2])
                 # CHECK: ^bb2:
                 with bd[2]:
+                    # CHECK:   %[[buf1:.+]] = aie.get_buffer @buffer_0 : memref<32xi16>
                     # CHECK:   aie.dma_bd(%[[buf1]] : memref<32xi16>)
                     dma_bd(buf1)
                     # CHECK:   aie.next_bd ^bb1

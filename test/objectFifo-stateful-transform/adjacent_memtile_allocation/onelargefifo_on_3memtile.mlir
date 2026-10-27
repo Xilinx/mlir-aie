@@ -12,23 +12,23 @@
 // CHECK-DAG: %[[MEM_TILE_2_1:.*]] = aie.tile(2, 1)
 // CHECK-DAG: %[[MEM_TILE_0_1:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[TILE_1_2:.*]] = aie.tile(1, 2)
-// CHECK-DAG: %[[OUT1_CONS_BUFF_0:.*]] = aie.buffer(%[[MEM_TILE_1_1]]) {sym_name = "out1_cons_buff_0"} : memref<8xi32>
-// CHECK-DAG: %[[OUT1_CONS_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE_1_1]]) {sym_name = "out1_cons_buff_1"} : memref<8xi32>
-// CHECK-DAG: %[[OUT1_CONS_PROD_LOCK_0:.*]] = aie.lock(%[[MEM_TILE_1_1]]) {init = 2 : i32, sym_name = "out1_cons_prod_lock_0"}
-// CHECK-DAG: %[[OUT1_CONS_CONS_LOCK_0:.*]] = aie.lock(%[[MEM_TILE_1_1]]) {init = 0 : i32, sym_name = "out1_cons_cons_lock_0"}
-// CHECK-DAG: %[[OUT1_BUFF_0:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "out1_buff_0"} : memref<8xi32>
-// CHECK-DAG: %[[OUT1_BUFF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "out1_buff_1"} : memref<8xi32>
-// CHECK-DAG: %[[OUT1_PROD_LOCK_0:.*]] = aie.lock(%[[TILE_1_2]]) {init = 2 : i32, sym_name = "out1_prod_lock_0"}
-// CHECK-DAG: %[[OUT1_CONS_LOCK_0:.*]] = aie.lock(%[[TILE_1_2]]) {init = 0 : i32, sym_name = "out1_cons_lock_0"}
-// CHECK-DAG: %[[IN1_CONS_BUFF_0:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "in1_cons_buff_0"} : memref<8xi32>
-// CHECK-DAG: %[[IN1_CONS_BUFF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "in1_cons_buff_1"} : memref<8xi32>
-// CHECK-DAG: %[[IN1_CONS_PROD_LOCK_0:.*]] = aie.lock(%[[TILE_1_2]]) {init = 2 : i32, sym_name = "in1_cons_prod_lock_0"}
-// CHECK-DAG: %[[IN1_CONS_CONS_LOCK_0:.*]] = aie.lock(%[[TILE_1_2]]) {init = 0 : i32, sym_name = "in1_cons_cons_lock_0"}
-// CHECK-DAG: %[[IN0_CONS_BUFF_0:.*]] = aie.buffer(%[[MEM_TILE_1_1]]) {sym_name = "in0_cons_buff_0"} : memref<96000xi32>
-// CHECK-DAG: %[[IN0_CONS_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE_0_1]]) {sym_name = "in0_cons_buff_1"} : memref<96000xi32>
-// CHECK-DAG: %[[IN0_CONS_BUFF_2:.*]] = aie.buffer(%[[MEM_TILE_2_1]]) {sym_name = "in0_cons_buff_2"} : memref<96000xi32>
-// CHECK-DAG: %[[IN0_CONS_PROD_LOCK_0:.*]] = aie.lock(%[[MEM_TILE_1_1]]) {init = 3 : i32, sym_name = "in0_cons_prod_lock_0"}
-// CHECK-DAG: %[[IN0_CONS_CONS_LOCK_0:.*]] = aie.lock(%[[MEM_TILE_1_1]]) {init = 0 : i32, sym_name = "in0_cons_cons_lock_0"}
+// CHECK-DAG: aie.buffer @[[OUT1_CONS_BUFF_0:out1_cons_buff_0]](%[[MEM_TILE_1_1]]) : memref<8xi32>
+// CHECK-DAG: aie.buffer @[[OUT1_CONS_BUFF_1:out1_cons_buff_1]](%[[MEM_TILE_1_1]]) : memref<8xi32>
+// CHECK-DAG: aie.lock @[[OUT1_CONS_PROD_LOCK_0:out1_cons_prod_lock_0]](%[[MEM_TILE_1_1]]) {init = 2 : i32}
+// CHECK-DAG: aie.lock @[[OUT1_CONS_CONS_LOCK_0:out1_cons_cons_lock_0]](%[[MEM_TILE_1_1]]) {init = 0 : i32}
+// CHECK-DAG: aie.buffer @[[OUT1_BUFF_0:out1_buff_0]](%[[TILE_1_2]]) : memref<8xi32>
+// CHECK-DAG: aie.buffer @[[OUT1_BUFF_1:out1_buff_1]](%[[TILE_1_2]]) : memref<8xi32>
+// CHECK-DAG: aie.lock @[[OUT1_PROD_LOCK_0:out1_prod_lock_0]](%[[TILE_1_2]]) {init = 2 : i32}
+// CHECK-DAG: aie.lock @[[OUT1_CONS_LOCK_0:out1_cons_lock_0]](%[[TILE_1_2]]) {init = 0 : i32}
+// CHECK-DAG: aie.buffer @[[IN1_CONS_BUFF_0:in1_cons_buff_0]](%[[TILE_1_2]]) : memref<8xi32>
+// CHECK-DAG: aie.buffer @[[IN1_CONS_BUFF_1:in1_cons_buff_1]](%[[TILE_1_2]]) : memref<8xi32>
+// CHECK-DAG: aie.lock @[[IN1_CONS_PROD_LOCK_0:in1_cons_prod_lock_0]](%[[TILE_1_2]]) {init = 2 : i32}
+// CHECK-DAG: aie.lock @[[IN1_CONS_CONS_LOCK_0:in1_cons_cons_lock_0]](%[[TILE_1_2]]) {init = 0 : i32}
+// CHECK-DAG: aie.buffer @[[IN0_CONS_BUFF_0:in0_cons_buff_0]](%[[MEM_TILE_1_1]]) : memref<96000xi32>
+// CHECK-DAG: aie.buffer @[[IN0_CONS_BUFF_1:in0_cons_buff_1]](%[[MEM_TILE_0_1]]) : memref<96000xi32>
+// CHECK-DAG: aie.buffer @[[IN0_CONS_BUFF_2:in0_cons_buff_2]](%[[MEM_TILE_2_1]]) : memref<96000xi32>
+// CHECK-DAG: aie.lock @[[IN0_CONS_PROD_LOCK_0:in0_cons_prod_lock_0]](%[[MEM_TILE_1_1]]) {init = 3 : i32}
+// CHECK-DAG: aie.lock @[[IN0_CONS_CONS_LOCK_0:in0_cons_cons_lock_0]](%[[MEM_TILE_1_1]]) {init = 0 : i32}
 // CHECK-DAG: aie.flow(%[[SHIM_NOC_TILE_1_0]], DMA : 0, %[[MEM_TILE_1_1]], DMA : 0)
 // CHECK-DAG: aie.flow(%[[MEM_TILE_1_1]], DMA : 0, %[[TILE_1_2]], DMA : 0)
 // CHECK-DAG: aie.flow(%[[MEM_TILE_1_1]], DMA : 1, %[[SHIM_NOC_TILE_1_0]], DMA : 0)

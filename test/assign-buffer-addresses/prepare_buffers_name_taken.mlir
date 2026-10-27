@@ -5,19 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A buffer or lock name is not a Symbol, yet naming an unnamed buffer must
-// still skip it.
+// Preparing buffers preserves declaration symbols, including names shared
+// with the allocator's historical anonymous-name prefix.
 
 // RUN: aie-opt --aie-prepare-buffers %s | FileCheck %s
 
-// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "_anonymous0"} : memref<16xi32>
-// CHECK-DAG: aie.lock(%{{.*}}) {sym_name = "_anonymous1"}
-// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "_anonymous2"} : memref<16xi32>
+// CHECK-DAG: aie.buffer @_anonymous0(%{{.*}}) : memref<16xi32>
+// CHECK-DAG: aie.lock @_anonymous1(%{{.*}})
+// CHECK-DAG: aie.buffer @unnamed(%{{.*}}) : memref<16xi32>
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %named = aie.buffer(%t) {sym_name = "_anonymous0"} : memref<16xi32>
-    %lock = aie.lock(%t) {sym_name = "_anonymous1"}
-    %unnamed = aie.buffer(%t) : memref<16xi32>
+    aie.buffer @_anonymous0(%t) : memref<16xi32>
+    aie.lock @_anonymous1(%t)
+    aie.buffer @unnamed(%t) : memref<16xi32>
   }
 }

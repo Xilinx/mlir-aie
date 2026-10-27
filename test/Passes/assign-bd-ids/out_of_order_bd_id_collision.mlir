@@ -11,19 +11,21 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) : memref<8xi32>
+    aie.buffer @b(%t) : memref<8xi32>
     aie.mem(%t) {
         aie.dma_start(S2MM, 0, ^bd0, ^dma1, repeat_count = 1) { out_of_order }
       ^dma1:
         aie.dma_start(S2MM, 1, ^bd1, ^end, repeat_count = 1) { out_of_order }
       ^bd0:
         aie.dma_bd_packet(0, 0)
+        %b = aie.get_buffer @b : memref<8xi32>
         aie.dma_bd(%b : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32 }
         aie.next_bd ^end
       ^bd1:
         aie.dma_bd_packet(0, 0)
-        // expected-error@+1 {{assigned bd_id 0 is already used by another BD on this tile}}
-        aie.dma_bd(%b : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32 }
+        // expected-error@+2 {{assigned bd_id 0 is already used by another BD on this tile}}
+        %b_1 = aie.get_buffer @b : memref<8xi32>
+        aie.dma_bd(%b_1 : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32 }
         aie.next_bd ^end
       ^end:
         aie.end

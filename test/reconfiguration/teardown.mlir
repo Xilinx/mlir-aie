@@ -61,10 +61,11 @@ module {
         aie.rule(31, 3, %a)
       }
     }
-    %buf = aie.buffer(%mem) {address = 0 : i32, sym_name = "buf"} : memref<16xi32>
+    aie.buffer @buf(%mem) {address = 0 : i32} : memref<16xi32>
     %memdma = aie.memtile_dma(%mem) {
       %0 = aie.dma_start(MM2S, 1, ^bb1, ^bb2)
     ^bb1:
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 24 : i32, next_bd_id = 24 : i32}
       aie.next_bd ^bb1
     ^bb2:
@@ -107,10 +108,11 @@ module {
 module {
   aie.device(npu2_1col) @cfg {
     %mem = aie.tile(0, 1)
-    %buf = aie.buffer(%mem) {address = 0 : i32, sym_name = "buf"} : memref<16xi32>
+    aie.buffer @buf(%mem) {address = 0 : i32} : memref<16xi32>
     %memdma = aie.memtile_dma(%mem) {
       %0 = aie.dma_start(MM2S, 1, ^bb1, ^bb2)
     ^bb1:
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 24 : i32, next_bd_id = 24 : i32}
       aie.next_bd ^bb1
     ^bb2:
@@ -199,10 +201,11 @@ module {
 module {
   aie.device(npu2_1col) @cfg {
     %compute = aie.tile(0, 2)
-    %buf = aie.buffer(%compute) {address = 1024 : i32, sym_name = "buf"} : memref<16xi32>
+    aie.buffer @buf(%compute) {address = 1024 : i32} : memref<16xi32>
     %mem = aie.mem(%compute) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32, next_bd_id = 0 : i32}
       aie.next_bd ^bb1
     ^bb2:

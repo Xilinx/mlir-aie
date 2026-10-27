@@ -7,7 +7,7 @@ module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
     // expected-error @+1 {{has address space for bank 0 or 2 but is pinned to bank 1}}
-    %b = aie.buffer(%t) {sym_name = "conflict", mem_bank = 1 : i32} : memref<64xi8, 10>
+    aie.buffer @conflict(%t) {mem_bank = 1 : i32} : memref<64xi8, 10>
   }
 }
 
@@ -17,7 +17,7 @@ module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
     // expected-error @+1 {{address attribute places the buffer in bank 1, which is excluded by its memory space}}
-    %b = aie.buffer(%t) {sym_name = "wrong_address", address = 16384 : i32} : memref<64xi8, 10>
+    aie.buffer @wrong_address(%t) {address = 16384 : i32} : memref<64xi8, 10>
   }
 }
 
@@ -28,7 +28,7 @@ module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
     // expected-error @+1 {{address attribute places the buffer in bank 1, which is excluded by its memory space}}
-    %b = aie.buffer(%t) {sym_name = "crossing_address", address = 16352 : i32, mem_bank = 0 : i32} : memref<64xi8, 10>
+    aie.buffer @crossing_address(%t) {address = 16352 : i32, mem_bank = 0 : i32} : memref<64xi8, 10>
   }
 }
 
@@ -39,7 +39,7 @@ module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
     // expected-error @+1 {{requires 32768 bytes, but no contiguous aligned space remains within allowed banks 0 and 2}}
-    %b = aie.buffer(%t) {sym_name = "too_large"} : memref<32768xi8, 10>
+    aie.buffer @too_large(%t) : memref<32768xi8, 10>
   }
 }
 
@@ -49,10 +49,10 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %a = aie.buffer(%t) {sym_name = "a", address = 0 : i32} : memref<16384xi8>
-    %c = aie.buffer(%t) {sym_name = "c", address = 32768 : i32} : memref<16384xi8>
+    aie.buffer @a(%t) {address = 0 : i32} : memref<16384xi8>
+    aie.buffer @c(%t) {address = 32768 : i32} : memref<16384xi8>
     // expected-error @+1 {{requires 64 bytes, but no contiguous aligned space remains within allowed banks 0 and 2}}
-    %b = aie.buffer(%t) {sym_name = "full_pair"} : memref<64xi8, 10>
+    aie.buffer @full_pair(%t) : memref<64xi8, 10>
   }
 }
 
@@ -63,7 +63,7 @@ module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
     // expected-error @+1 {{address attribute places the buffer in bank 1, which is excluded by its memory space}}
-    %b = aie.buffer(%t) {sym_name = "single_crossing", address = 16352 : i32} : memref<64xi8, 5>
+    aie.buffer @single_crossing(%t) {address = 16352 : i32} : memref<64xi8, 5>
   }
 }
 
@@ -74,7 +74,7 @@ module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
     // expected-error @+1 {{address attribute places the buffer in bank 2, which is excluded by its memory space}}
-    %b = aie.buffer(%t) {sym_name = "single_address", address = 32768 : i32} : memref<64xi8, 6>
+    aie.buffer @single_address(%t) {address = 32768 : i32} : memref<64xi8, 6>
   }
 }
 
@@ -84,8 +84,8 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %c = aie.buffer(%t) {sym_name = "c", address = 32768 : i32} : memref<16384xi8>
+    aie.buffer @c(%t) {address = 32768 : i32} : memref<16384xi8>
     // expected-error @+1 {{requires 64 bytes in bank 2, but only 0 of 16384 bytes are free there}}
-    %b = aie.buffer(%t) {sym_name = "narrowed", mem_bank = 2 : i32} : memref<64xi8, 10>
+    aie.buffer @narrowed(%t) {mem_bank = 2 : i32} : memref<64xi8, 10>
   }
 }

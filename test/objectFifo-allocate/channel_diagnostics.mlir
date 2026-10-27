@@ -15,12 +15,13 @@ module @restricted_contributors {
     %home = aie.tile(0, 1)
     %alias = aie.logical_tile<MemTile>(0, 1)
     %neighbor = aie.tile(1, 1)
-    %local = aie.buffer(%home) {sym_name = "local"} : memref<16xi32>
-    %remote = aie.buffer(%neighbor) {sym_name = "remote"} : memref<16xi32>
+    aie.buffer @local(%home) : memref<16xi32>
+    aie.buffer @remote(%neighbor) : memref<16xi32>
     aie.memtile_dma(%home) {
       // expected-note @+1 {{pre-existing aie.dma_start reserves DMA channel 1}}
       aie.dma_start(MM2S, 1, ^bd, ^end)
     ^bd:
+      %local = aie.get_buffer @local : memref<16xi32>
       aie.dma_bd(%local : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd
     ^end:

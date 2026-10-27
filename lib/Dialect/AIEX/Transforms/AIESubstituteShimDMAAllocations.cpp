@@ -34,7 +34,7 @@ struct AIESubstituteShimDMAAllocationsPass
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
-    mlir::SymbolTable symbolTable(device);
+    SymbolTableCollection symbols;
 
     SmallVector<DMAConfigureTaskForOp> tasks;
     device.walk([&](DMAConfigureTaskForOp op) { tasks.push_back(op); });
@@ -42,8 +42,8 @@ struct AIESubstituteShimDMAAllocationsPass
     IRRewriter rewriter(&getContext());
     for (DMAConfigureTaskForOp op : tasks) {
       AIE::ShimDMAAllocationOp alloc_op =
-          symbolTable.lookup<AIE::ShimDMAAllocationOp>(
-              op.getAlloc().getRootReference());
+          symbols.lookupSymbolIn<AIE::ShimDMAAllocationOp>(device,
+                                                           op.getAlloc());
       if (!alloc_op) {
         op.emitOpError("no shim DMA allocation found for symbol");
         return signalPassFailure();

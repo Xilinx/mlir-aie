@@ -15,8 +15,8 @@ module @program_endpoints {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
-    %b_l1 = aie.buffer(%core) {sym_name = "b_l1"} : memref<64xi32>
+    aie.buffer @b(%mt) : memref<64xi32>
+    aie.buffer @b_l1(%core) : memref<64xi32>
     aie.route_endpoint @b_in(%mt) DMA
     aie.route_endpoint @b_out(%mt) DMA
     aie.route_endpoint @b_core(%core) DMA
@@ -24,6 +24,7 @@ module @program_endpoints {
     aie.memtile_dma(%mt) {
       aie.dma_start(MM2S, @b_out, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<64xi32>
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:
@@ -32,6 +33,7 @@ module @program_endpoints {
     aie.mem(%core) {
       aie.dma_start(S2MM, @b_core, ^bd0, ^end)
     ^bd0:
+      %b_l1 = aie.get_buffer @b_l1 : memref<64xi32>
       aie.dma_bd(%b_l1 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:
@@ -52,11 +54,12 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %core = aie.tile(0, 2)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core) : memref<64xi32>
   aie.mem(%core) {
     // expected-error @+1 {{@b is not an aie.route_endpoint}}
     aie.dma_start(S2MM, @b, ^bd0, ^end)
   ^bd0:
+    %b = aie.get_buffer @b : memref<64xi32>
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
     aie.next_bd ^bd0
   ^end:
@@ -68,12 +71,13 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %core = aie.tile(0, 2)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core) : memref<64xi32>
   aie.route_endpoint @port(%core) Core {channelIndex = 0 : i32}
   aie.mem(%core) {
     // expected-error @+1 {{@port names a Core port, not a DMA channel}}
     aie.dma_start(S2MM, @port, ^bd0, ^end)
   ^bd0:
+    %b = aie.get_buffer @b : memref<64xi32>
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
     aie.next_bd ^bd0
   ^end:
@@ -86,12 +90,13 @@ aie.device(npu2) {
 aie.device(npu2) {
   %core = aie.tile(0, 2)
   %other = aie.tile(0, 3)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core) : memref<64xi32>
   aie.route_endpoint @elsewhere(%other) DMA
   aie.mem(%core) {
     // expected-error @+1 {{@elsewhere is on a different tile than this DMA program}}
     aie.dma_start(S2MM, @elsewhere, ^bd0, ^end)
   ^bd0:
+    %b = aie.get_buffer @b : memref<64xi32>
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
     aie.next_bd ^bd0
   ^end:
@@ -103,11 +108,12 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   %core = aie.tile(0, 2)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core) : memref<64xi32>
   aie.mem(%core) {
     // expected-error @+1 {{attribute 'channel' failed to satisfy constraint}}
     aie.dma_start(S2MM, -1, ^bd0, ^end)
   ^bd0:
+    %b = aie.get_buffer @b : memref<64xi32>
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
     aie.next_bd ^bd0
   ^end:
@@ -120,24 +126,27 @@ aie.device(npu2) {
 // Each endpoint a program names takes a channel of its own.
 aie.device(npu2) {
   %core = aie.tile(0, 2)
-  %b = aie.buffer(%core) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%core) : memref<64xi32>
   aie.route_endpoint @e0(%core) DMA
   aie.route_endpoint @e1(%core) DMA
   // expected-error @+1 {{uses more input channels than available on this tile}}
   aie.mem(%core) {
     aie.dma_start(S2MM, 0, ^bd0, ^s1)
   ^bd0:
+    %b = aie.get_buffer @b : memref<64xi32>
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 16)
     aie.next_bd ^bd0
   ^s1:
     aie.dma_start(S2MM, @e0, ^bd1, ^s2)
   ^bd1:
-    aie.dma_bd(%b : memref<64xi32> offset = 16 len = 16)
+    %b_1 = aie.get_buffer @b : memref<64xi32>
+    aie.dma_bd(%b_1 : memref<64xi32> offset = 16 len = 16)
     aie.next_bd ^bd1
   ^s2:
     aie.dma_start(S2MM, @e1, ^bd2, ^end)
   ^bd2:
-    aie.dma_bd(%b : memref<64xi32> offset = 32 len = 16)
+    %b_2 = aie.get_buffer @b : memref<64xi32>
+    aie.dma_bd(%b_2 : memref<64xi32> offset = 32 len = 16)
     aie.next_bd ^bd2
   ^end:
     aie.end

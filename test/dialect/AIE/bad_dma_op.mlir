@@ -11,19 +11,20 @@
 module {
   aie.device(npu1) {
     %tile_0_1 = aie.tile(0, 1)
-    %objFifo_in0_cons_buff_0 = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<16xi32>
-    %objFifo_in0_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 2 : i32}
-    %objFifo_in0_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32}
+    aie.buffer @objFifo_in0_cons_buff_0(%tile_0_1) {address = 0 : i32} : memref<16xi32>
+    aie.lock @objFifo_in0_cons_prod_lock(%tile_0_1, 0) {init = 2 : i32}
+    aie.lock @objFifo_in0_cons_cons_lock(%tile_0_1, 1) {init = 0 : i32}
 
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
     ^bb0:
       aie.dma(S2MM, 0) [{
         %c0_i32 = arith.constant 0 : i32
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, %c1_ul1)
+        aie.use_lock(@objFifo_in0_cons_prod_lock, AcquireGreaterEqual, %c1_ul1)
+        %objFifo_in0_cons_buff_0 = aie.get_buffer @objFifo_in0_cons_buff_0 : memref<16xi32>
         aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32> offset = 0 len = 16)
         %c1_ul2 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_in0_cons_cons_lock, Release, %c1_ul2)
+        aie.use_lock(@objFifo_in0_cons_cons_lock, Release, %c1_ul2)
       }]
       aie.next_bd ^bb1
     ^bb1:
@@ -40,12 +41,13 @@ module {
 module {
   aie.device(npu1) {
     %tile14 = aie.tile(1, 4)
-    %buf14 = aie.buffer(%tile14) { sym_name = "buf14" } : memref<128xi32>
+    aie.buffer @buf14(%tile14) : memref<128xi32>
     %mem14 = aie.mem(%tile14) {
       %c0_i32 = arith.constant 0 : i32
       %c128_i32 = arith.constant 128 : i32
       %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
+        %buf14 = aie.get_buffer @buf14 : memref<128xi32>
         aie.dma_bd(%buf14 : memref<128xi32> offset = 0 len = 128 sizes = [1] strides = [128]) {packet = #aie.packet_info<pkt_type = 7, pkt_id = 33>}
         aie.next_bd ^end
       ^end:
@@ -61,12 +63,13 @@ module {
 module {
   aie.device(npu1) {
     %tile14 = aie.tile(1, 4)
-    %buf14 = aie.buffer(%tile14) { sym_name = "buf14" } : memref<128x!aiex.bfp<"v8bfp16ebs8">>
+    aie.buffer @buf14(%tile14) : memref<128x!aiex.bfp<"v8bfp16ebs8">>
     %mem14 = aie.mem(%tile14) {
       %c0_i32 = arith.constant 0 : i32
       %c128_i32 = arith.constant 128 : i32
       %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
+        %buf14 = aie.get_buffer @buf14 : memref<128x!aiex.bfp<"v8bfp16ebs8">>
         aie.dma_bd(%buf14 : memref<128x!aiex.bfp<"v8bfp16ebs8">> offset = 0 len = 128 sizes = [8] strides = [16]) {}
         aie.next_bd ^end
       ^end:

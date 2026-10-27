@@ -144,12 +144,14 @@ def TileElement : OpInterface<"TileElement", [
 
   let extraTraitClassDeclaration = [{
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+      if ($_op->getNumResults() == 0)
+        return;
       std::optional<int> col = $_op.getTileLike().tryGetCol();
       std::optional<int> row = $_op.getTileLike().tryGetRow();
       if (col && row) {
         llvm::StringRef opName = $_op.getOperation()->getName().stripDialect();
         std::string name = (opName + "_" + llvm::Twine(*col) + "_" + llvm::Twine(*row)).str();
-        setNameFn($_op.getResult(), name);
+        setNameFn($_op->getResult(0), name);
       }
     }
   }];
@@ -161,9 +163,9 @@ def BufferLike : OpInterface<"BufferLike"> {
     `aie.buffer` in a tile's memory module and `aie.external_buffer` in DDR.
   }];
   let cppNamespace = "::xilinx::AIE";
-  let methods = [InterfaceMethod<[{The memref this op declares.}],
-                                 "mlir::Value", "getBuffer", (ins), [{}],
-                                 [{ return $_op.getBuffer(); }]>,
+  let methods = [InterfaceMethod<[{The memref type this op declares.}],
+                                 "mlir::BaseMemRefType", "getType", (ins), [{}],
+                                 [{ return $_op.getType(); }]>,
                  InterfaceMethod<
                      [{The tile whose memory module holds this buffer, null
       where it lives outside the array.}],

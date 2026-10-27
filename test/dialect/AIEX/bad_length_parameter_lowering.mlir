@@ -15,10 +15,11 @@
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
   %t = aie.tile(0, 1)
-  %buf = aie.buffer(%t) {address = 0 : i32} : memref<4096xi32>
+  aie.buffer @buf(%t) {address = 0 : i32} : memref<4096xi32>
   aie.runtime_sequence(%arg0 : memref<4096xi32>) {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
-      // expected-error @+1 {{'aie.dma_bd' op length_parameter is only supported on shim NOC tiles, got tile (0, 1)}}
+      // expected-error @+2 {{'aie.dma_bd' op length_parameter is only supported on shim NOC tiles, got tile (0, 1)}}
+      %buf = aie.get_buffer @buf : memref<4096xi32>
       aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 64) {bd_id = 0 : i32, length_parameter = @n, length_unit = 4 : i32}
       aie.end
     }
@@ -66,13 +67,13 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
   %t = aie.tile(0, 0)
-  %lock = aie.lock(%t, 0) {init = 0 : i32}
+  aie.lock @lock(%t, 0) {init = 0 : i32}
   aie.runtime_sequence(%arg0 : memref<4096xi32>, %uses : i32) {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
-      aie.use_lock(%lock, AcquireGreaterEqual, %uses)
+      aie.use_lock(@lock, AcquireGreaterEqual, %uses)
       // expected-error @+1 {{'aie.dma_bd' op length_parameter requires a constant offset, bd_id, next_bd and lock value}}
       aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 64) {bd_id = 0 : i32, length_parameter = @n, length_unit = 4 : i32}
-      aie.use_lock(%lock, Release, %uses)
+      aie.use_lock(@lock, Release, %uses)
       aie.end
     }
     aiex.dma_start_task(%task)

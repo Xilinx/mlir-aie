@@ -13,13 +13,13 @@
 module {
   aie.device(npu1) {
     %tile = aie.tile(1, 2)
-    %lock = aie.lock(%tile, 0) {init = 1 : i32}
+    aie.lock @lock(%tile, 0) {init = 1 : i32}
     %core = aie.core(%tile) {
       %v = arith.constant 2 : i32
-      // CHECK: aie.use_lock(%{{.*}}, AcquireGreaterEqual, %{{.*}})
-      aie.use_lock(%lock, AcquireGreaterEqual, %v)
-      // CHECK: aie.use_lock(%{{.*}}, Release, %{{.*}})
-      aie.use_lock(%lock, Release, %v)
+      // CHECK: aie.use_lock(@{{.*}}, AcquireGreaterEqual, %{{.*}})
+      aie.use_lock(@lock, AcquireGreaterEqual, %v)
+      // CHECK: aie.use_lock(@{{.*}}, Release, %{{.*}})
+      aie.use_lock(@lock, Release, %v)
       aie.end
     }
   }

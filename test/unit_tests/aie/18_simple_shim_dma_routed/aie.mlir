@@ -14,8 +14,8 @@ aie.device(xcvc1902) {
   %t70 = aie.tile(7, 0)
   %t72 = aie.tile(7, 2)
 
-  %buffer = aie.external_buffer {sym_name = "input_buffer" } : memref<512 x i32>
-  %lock1 = aie.lock(%t70, 1) {sym_name = "input_lock" }
+  aie.external_buffer @input_buffer : memref<512 x i32>
+  aie.lock @input_lock(%t70, 1)
 
   %dma = aie.shim_dma(%t70) {
     %c0_i32 = arith.constant 0 : i32
@@ -24,10 +24,11 @@ aie.device(xcvc1902) {
 
     ^bd0:
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%lock1, Acquire, %c1_ul1)
+      aie.use_lock(@input_lock, Acquire, %c1_ul1)
+      %buffer = aie.get_buffer @input_buffer : memref<512 x i32>
       aie.dma_bd(%buffer : memref<512 x i32> offset = 0 len = 512)
       %c0_ul2 = arith.constant 0 : i32
-      aie.use_lock(%lock1, Release, %c0_ul2)
+      aie.use_lock(@input_lock, Release, %c0_ul2)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -35,28 +36,30 @@ aie.device(xcvc1902) {
 
   aie.flow(%t70, "DMA" : 0, %t72, "DMA" : 0)
 
-  %buf72_0 = aie.buffer(%t72) {sym_name = "buf72_0" } : memref<256xi32>
-  %buf72_1 = aie.buffer(%t72) {sym_name = "buf72_1" } : memref<256xi32>
+  aie.buffer @buf72_0(%t72) : memref<256xi32>
+  aie.buffer @buf72_1(%t72) : memref<256xi32>
 
-  %l72_0 = aie.lock(%t72, 0)
-  %l72_1 = aie.lock(%t72, 1)
+  aie.lock @l72_0(%t72, 0)
+  aie.lock @l72_1(%t72, 1)
 
   %m72 = aie.mem(%t72) {
     %c0_i32 = arith.constant 0 : i32
       %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
     ^bd0:
       %c0_ul1 = arith.constant 0 : i32
-      aie.use_lock(%l72_0, "Acquire", %c0_ul1)
+      aie.use_lock(@l72_0, "Acquire", %c0_ul1)
+      %buf72_0 = aie.get_buffer @buf72_0 : memref<256xi32>
       aie.dma_bd(%buf72_0 : memref<256xi32> offset = 0 len = 256)
       %c1_ul2 = arith.constant 1 : i32
-      aie.use_lock(%l72_0, "Release", %c1_ul2)
+      aie.use_lock(@l72_0, "Release", %c1_ul2)
       aie.next_bd ^bd1
     ^bd1:
       %c0_ul3 = arith.constant 0 : i32
-      aie.use_lock(%l72_1, "Acquire", %c0_ul3)
+      aie.use_lock(@l72_1, "Acquire", %c0_ul3)
+      %buf72_1 = aie.get_buffer @buf72_1 : memref<256xi32>
       aie.dma_bd(%buf72_1 : memref<256xi32> offset = 0 len = 256)
       %c1_ul4 = arith.constant 1 : i32
-      aie.use_lock(%l72_1, "Release", %c1_ul4)
+      aie.use_lock(@l72_1, "Release", %c1_ul4)
       aie.next_bd ^bd0
     ^end:
       aie.end

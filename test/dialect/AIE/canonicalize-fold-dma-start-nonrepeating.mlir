@@ -23,25 +23,27 @@
 
 module @test {
   %t1 = aie.tile(1, 1)
-  %buf_0 = aie.buffer(%t1) { sym_name = "buf_0" } : memref<256xi32>
-  %buf_1 = aie.buffer(%t1) { sym_name = "buf_1" } : memref<256xi32>
-  %lock_0 = aie.lock(%t1, 0)
+  aie.buffer @buf_0(%t1) : memref<256xi32>
+  aie.buffer @buf_1(%t1) : memref<256xi32>
+  aie.lock @lock_0(%t1, 0)
 
   %mem = aie.mem(%t1) {
     %start = aie.dma_start("MM2S", 0, ^bd0, ^end)
   ^bd0:
     %c1 = arith.constant 1 : i32
-    aie.use_lock(%lock_0, Acquire, %c1)
+    aie.use_lock(@lock_0, Acquire, %c1)
+    %buf_0 = aie.get_buffer @buf_0 : memref<256xi32>
     aie.dma_bd(%buf_0 : memref<256xi32> offset = 0 len = 256)
     %c0 = arith.constant 0 : i32
-    aie.use_lock(%lock_0, Release, %c0)
+    aie.use_lock(@lock_0, Release, %c0)
     aie.next_bd ^bd1
   ^bd1:
     %c1b = arith.constant 1 : i32
-    aie.use_lock(%lock_0, Acquire, %c1b)
+    aie.use_lock(@lock_0, Acquire, %c1b)
+    %buf_1 = aie.get_buffer @buf_1 : memref<256xi32>
     aie.dma_bd(%buf_1 : memref<256xi32> offset = 0 len = 128)
     %c0b = arith.constant 0 : i32
-    aie.use_lock(%lock_0, Release, %c0b)
+    aie.use_lock(@lock_0, Release, %c0b)
     aie.next_bd ^bd0
   ^end:
     aie.end

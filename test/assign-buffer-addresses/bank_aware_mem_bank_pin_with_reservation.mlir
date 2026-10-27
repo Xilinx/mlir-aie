@@ -22,12 +22,12 @@
 
 // A reservation that fits only the larger [24576, 65536) run is placed there,
 // and the bank pin stays where it is.
-// CHECK: %mid = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "mid"} : memref<8192xi8>
-// CHECK: %core_data_0_2 = aie.buffer(%tile_0_2) {address = 32768 : i32, core_data, mem_bank = 2 : i32, sym_name = "core_data_0_2"} : memref<30000xi8>
+// CHECK: aie.buffer @mid(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @core_data_0_2(%tile_0_2) {address = 32768 : i32, core_data, mem_bank = 2 : i32} : memref<30000xi8>
 module @fits_around_the_pin {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %mid = aie.buffer(%tile_0_2) {sym_name = "mid", mem_bank = 1 : i32} : memref<8192xi8>
+    aie.buffer @mid(%tile_0_2) {mem_bank = 1 : i32} : memref<8192xi8>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32, data_size = 30000 : i32}

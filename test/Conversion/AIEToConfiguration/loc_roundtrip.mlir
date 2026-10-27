@@ -19,7 +19,7 @@
 
 aie.device(npu1_1col) {
   %t02 = aie.tile(0, 2)
-  %lock = aie.lock(%t02, 0) { init = 1 : i32, sym_name = "lk" } loc(#user_lock_name)
+  aie.lock @lk(%t02, 0) { init = 1 : i32} loc(#user_lock_name)
   %4 = aie.core(%t02) {
     aie.end
   } { elf_file = "core_0_2.elf" }

@@ -23,4 +23,4 @@ module {
 
 // CHECK-NOT: aie.objectfifo.pool
 // CHECK:     aiex.dma_channel_reset_for(@of_rearm)
-// CHECK:     aie.objectfifo_rearm_binding @of_rearm channels(%{{.*}} : index) locks(%{{.*}}, %{{.*}} : index, index)
+// CHECK:     aie.objectfifo_rearm_binding @of_rearm channels(%{{.*}} : index) locks([@{{.*}}, @{{.*}}])

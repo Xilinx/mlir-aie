@@ -81,9 +81,10 @@ aie.device(npu2) {
 aiex.scratchpad_parameter @n : i32
 aie.device(npu2) {
   %t = aie.tile(0, 2)
-  %buf = aie.buffer(%t) {address = 1024 : i32} : memref<64xi32>
+  aie.buffer @buf(%t) {address = 1024 : i32} : memref<64xi32>
   aie.runtime_sequence(%arg0 : memref<64xi32>) {
     %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      %buf = aie.get_buffer @buf : memref<64xi32>
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
       aie.end
     } {repeat_count = 3 : i32}

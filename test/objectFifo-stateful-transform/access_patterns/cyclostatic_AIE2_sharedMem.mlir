@@ -12,12 +12,12 @@
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(2, 2)
-// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_2"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_3"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]]) {init = 4 : i32, sym_name = "fifo0_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "fifo0_cons_lock_0"}
+// CHECK-DAG:           aie.buffer @[[VAL_2:fifo0_buff_0]](%[[VAL_0]]) : memref<16xi32>
+// CHECK-DAG:           aie.buffer @[[VAL_3:fifo0_buff_1]](%[[VAL_0]]) : memref<16xi32>
+// CHECK-DAG:           aie.buffer @[[VAL_4:fifo0_buff_2]](%[[VAL_0]]) : memref<16xi32>
+// CHECK-DAG:           aie.buffer @[[VAL_5:fifo0_buff_3]](%[[VAL_0]]) : memref<16xi32>
+// CHECK-DAG:           aie.lock @[[VAL_6:fifo0_prod_lock_0]](%[[VAL_0]]) {init = 4 : i32}
+// CHECK-DAG:           aie.lock @[[VAL_7:fifo0_cons_lock_0]](%[[VAL_0]]) {init = 0 : i32}
 // Producer: shared-mem semaphore-lock producer, fully unrolled x4 (+1 remainder)
 // storing to buff0..3 in rotation; each push acquires 1 prod / releases 1 cons.
 // CHECK:           %[[VAL_8:.*]] = aie.core(%[[VAL_0]]) {
@@ -27,22 +27,22 @@
 // CHECK-DAG:             %[[V11:.*]] = arith.constant 11 : i32
 // CHECK-DAG:             %[[ONE:.*]] = arith.constant 1 : i32
 // CHECK:             scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C4]] {
-// CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
-// CHECK:               memref.store %[[V11]], %[[VAL_2]]{{\[}}%[[C0]]] : memref<16xi32>
-// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[ONE]])
-// CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
-// CHECK:               memref.store %[[V11]], %[[VAL_3]]{{\[}}%[[C0]]] : memref<16xi32>
-// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[ONE]])
-// CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
-// CHECK:               memref.store %[[V11]], %[[VAL_4]]{{\[}}%[[C0]]] : memref<16xi32>
-// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[ONE]])
-// CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
-// CHECK:               memref.store %[[V11]], %[[VAL_5]]{{\[}}%[[C0]]] : memref<16xi32>
-// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[ONE]])
+// CHECK:               aie.use_lock(@[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
+// CHECK:               memref.store %[[V11]], %{{[^ ,)]+}}{{\[}}%[[C0]]] : memref<16xi32>
+// CHECK:               aie.use_lock(@[[VAL_7]], Release, %[[ONE]])
+// CHECK:               aie.use_lock(@[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
+// CHECK:               memref.store %[[V11]], %{{[^ ,)]+}}{{\[}}%[[C0]]] : memref<16xi32>
+// CHECK:               aie.use_lock(@[[VAL_7]], Release, %[[ONE]])
+// CHECK:               aie.use_lock(@[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
+// CHECK:               memref.store %[[V11]], %{{[^ ,)]+}}{{\[}}%[[C0]]] : memref<16xi32>
+// CHECK:               aie.use_lock(@[[VAL_7]], Release, %[[ONE]])
+// CHECK:               aie.use_lock(@[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
+// CHECK:               memref.store %[[V11]], %{{[^ ,)]+}}{{\[}}%[[C0]]] : memref<16xi32>
+// CHECK:               aie.use_lock(@[[VAL_7]], Release, %[[ONE]])
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
-// CHECK:             memref.store %[[V11]], %[[VAL_2]]{{\[}}%[[C0]]] : memref<16xi32>
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[ONE]])
+// CHECK:             aie.use_lock(@[[VAL_6]], AcquireGreaterEqual, %[[ONE]])
+// CHECK:             memref.store %[[V11]], %{{[^ ,)]+}}{{\[}}%[[C0]]] : memref<16xi32>
+// CHECK:             aie.use_lock(@[[VAL_7]], Release, %[[ONE]])
 // CHECK:             aie.end
 // CHECK:           }
 // Consumer: cyclostatic {1,3,...} sliding window. The consumer enters its loop
@@ -54,27 +54,27 @@
 // CHECK-DAG:         %[[D1:.*]] = arith.constant 1 : i32
 // CHECK-DAG:         %[[D2:.*]] = arith.constant 2 : i32
 // CHECK-DAG:         %[[D3:.*]] = arith.constant 3 : i32
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D3]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D2]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D3]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(@[[VAL_6]], Release, %[[D2]])
 // CHECK:             aie.end
 // CHECK:           }
 

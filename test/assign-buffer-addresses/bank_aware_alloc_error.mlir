@@ -20,11 +20,11 @@
 module @test {
   aie.device(xcvc1902) {
     %0 = aie.tile(3, 3)
-    %b1 = aie.buffer(%0) { sym_name = "a" } : memref<16xi8>
-    %1 = aie.buffer(%0) { sym_name = "b" } : memref<8192xi32>
-    %b2 = aie.buffer(%0) { sym_name = "c" } : memref<16xi16>
+    aie.buffer @a(%0) : memref<16xi8>
+    aie.buffer @b(%0) : memref<8192xi32>
+    aie.buffer @c(%0) : memref<16xi16>
     %3 = aie.tile(4, 4)
-    %4 = aie.buffer(%3) : memref<500xi32>
+    aie.buffer @buffer_4(%3) : memref<500xi32>
     aie.core(%0) {
       aie.end
     }

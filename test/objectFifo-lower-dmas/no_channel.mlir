@@ -9,9 +9,9 @@
 module @no_channel {
   aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
-    %b0 = aie.buffer(%tile12) {sym_name = "b0"} : memref<16xi32>
-    %free = aie.lock(%tile12) {init = 1 : i32, sym_name = "free"}
-    %full = aie.lock(%tile12) {init = 0 : i32, sym_name = "full"}
+    aie.buffer @b0(%tile12) : memref<16xi32>
+    aie.lock @free(%tile12) {init = 1 : i32}
+    aie.lock @full(%tile12) {init = 0 : i32}
     aie.objectfifo.pool @pool(%tile12) {
       depth = 1 : i32, buffers = [@b0]
     } : memref<16xi32> {

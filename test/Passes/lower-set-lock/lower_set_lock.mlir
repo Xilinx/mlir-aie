@@ -10,21 +10,21 @@
 module @test_simple_lock_set {
   aie.device(npu2) {
     %tile22 = aie.tile(2, 2)
-    %lock22_0 = aie.lock(%tile22, 0)  {init = 1 : i32}
-    %lock22_15 = aie.lock(%tile22, 15)  {init = 0 : i32}
+    aie.lock @lock22_0(%tile22, 0) {init = 1 : i32}
+    aie.lock @lock22_15(%tile22, 15) {init = 0 : i32}
 
     %memtile11 = aie.tile(1, 1)
-    %lock11_3 = aie.lock(%memtile11, 3)  {init = 1 : i32}
-    %lock11_56 = aie.lock(%memtile11, 56)  {init = 1 : i32}
+    aie.lock @lock11_3(%memtile11, 3) {init = 1 : i32}
+    aie.lock @lock11_56(%memtile11, 56) {init = 1 : i32}
 
     %shimtile00 = aie.tile(0, 0)
-    %lock00_5 = aie.lock(%shimtile00, 5)  {init = 1 : i32}
+    aie.lock @lock00_5(%shimtile00, 5) {init = 1 : i32}
 
     %core22 = aie.core(%tile22) {
         %c0_ul0 = arith.constant 0 : i32
-        aie.use_lock(%lock22_0, "Acquire", %c0_ul0)
+        aie.use_lock(@lock22_0, "Acquire", %c0_ul0)
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%lock22_15, "Acquire", %c1_ul1)
+        aie.use_lock(@lock22_15, "Acquire", %c1_ul1)
         // Do operations
         aie.end
     }
@@ -41,31 +41,31 @@ module @test_simple_lock_set {
         // CHECK-DAG: %[[A0:.*]] = arith.constant 126976 : i32
         // CHECK: aiex.npu.write32(%[[A0]], %[[V0]]) {column = 2 : i32, row = 2 : i32} : i32, i32
         %lock22_0_v0 = arith.constant 0 : i32
-        aiex.set_lock(%lock22_0, %lock22_0_v0)
+        aiex.set_lock(@lock22_0, %lock22_0_v0)
         // 127216 = 0X0001F0F0
         // CHECK-DAG: %[[V1:.*]] = arith.constant 1 : i32
         // CHECK-DAG: %[[A1:.*]] = arith.constant 127216 : i32
         // CHECK: aiex.npu.write32(%[[A1]], %[[V1]]) {column = 2 : i32, row = 2 : i32} : i32, i32
         %lock22_15_v1 = arith.constant 1 : i32
-        aiex.set_lock(%lock22_15, %lock22_15_v1)
+        aiex.set_lock(@lock22_15, %lock22_15_v1)
         // 786480 = 0x000C0030
         // CHECK-DAG: %[[V2:.*]] = arith.constant 0 : i32
         // CHECK-DAG: %[[A2:.*]] = arith.constant 786480 : i32
         // CHECK: aiex.npu.write32(%[[A2]], %[[V2]]) {column = 1 : i32, row = 1 : i32} : i32, i32
         %lock11_3_v0 = arith.constant 0 : i32
-        aiex.set_lock(%lock11_3, %lock11_3_v0)
+        aiex.set_lock(@lock11_3, %lock11_3_v0)
         // 787328 = 0x000C0380
         // CHECK-DAG: %[[V3:.*]] = arith.constant 0 : i32
         // CHECK-DAG: %[[A3:.*]] = arith.constant 787328 : i32
         // CHECK: aiex.npu.write32(%[[A3]], %[[V3]]) {column = 1 : i32, row = 1 : i32} : i32, i32
         %lock11_56_v0 = arith.constant 0 : i32
-        aiex.set_lock(%lock11_56, %lock11_56_v0)
+        aiex.set_lock(@lock11_56, %lock11_56_v0)
         // 82000 = 0x00014050
         // CHECK-DAG: %[[V4:.*]] = arith.constant 0 : i32
         // CHECK-DAG: %[[A4:.*]] = arith.constant 82000 : i32
         // CHECK: aiex.npu.write32(%[[A4]], %[[V4]]) {column = 0 : i32, row = 0 : i32} : i32, i32
         %lock00_5_v0 = arith.constant 0 : i32
-        aiex.set_lock(%lock00_5, %lock00_5_v0)
+        aiex.set_lock(@lock00_5, %lock00_5_v0)
     }
 
     // A runtime value is written as is, guarded to [0, max lock value].
@@ -74,7 +74,7 @@ module @test_simple_lock_set {
     // CHECK: cf.assert %[[OK]], "a runtime lock value must be in [0:63]"
     // CHECK: aiex.npu.write32(%{{.*}}, %arg0) {column = 1 : i32, row = 1 : i32} : i32, i32
     aie.runtime_sequence @runtime_value(%uses: i32) {
-        aiex.set_lock(%lock11_3, %uses)
+        aiex.set_lock(@lock11_3, %uses)
     }
   }
 }

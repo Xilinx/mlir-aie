@@ -13,10 +13,10 @@
 module {
   aie.device(xcve2302) {
     %t = aie.tile(1, 2)
-    %b0 = aie.buffer(%t) {sym_name = "b0"} : memref<16xi32>
-    %b1 = aie.buffer(%t) {sym_name = "b1"} : memref<16xi32>
-    %free = aie.lock(%t) {init = 2 : i32, sym_name = "free"}
-    %full = aie.lock(%t) {init = 0 : i32, sym_name = "full"}
+    aie.buffer @b0(%t) : memref<16xi32>
+    aie.buffer @b1(%t) : memref<16xi32>
+    aie.lock @free(%t) {init = 2 : i32}
+    aie.lock @full(%t) {init = 0 : i32}
     aie.objectfifo.pool @pool(%t) {depth = 2 : i32, buffers = [@b0, @b1]} : memref<16xi32> {
       aie.objectfifo.segment @s0 {consumeLock = @full, offset = 0 : i32, produceLock = @free, size = 16 : i32}
     }
@@ -38,9 +38,9 @@ module {
 module {
   aie.device(xcve2302) {
     %t = aie.tile(1, 2)
-    %b0 = aie.buffer(%t) {sym_name = "b0"} : memref<16xi32>
-    %free = aie.lock(%t) {init = 2 : i32, sym_name = "free"}
-    %full = aie.lock(%t) {init = 0 : i32, sym_name = "full"}
+    aie.buffer @b0(%t) : memref<16xi32>
+    aie.lock @free(%t) {init = 2 : i32}
+    aie.lock @full(%t) {init = 0 : i32}
     // expected-error@+1 {{expects every one of its 'depth' buffers to resolve}}
     aie.objectfifo.pool @pool(%t) {depth = 2 : i32, buffers = [@b0, @missing]} : memref<16xi32> {
       aie.objectfifo.segment @s0 {consumeLock = @full, offset = 0 : i32, produceLock = @free, size = 16 : i32}
@@ -63,9 +63,9 @@ module {
 module {
   aie.device(xcve2302) {
     %t = aie.tile(1, 2)
-    %b0 = aie.buffer(%t) {sym_name = "b0"} : memref<16xi32>
-    %free = aie.lock(%t) {init = 2 : i32, sym_name = "free"}
-    %full = aie.lock(%t) {init = 0 : i32, sym_name = "full"}
+    aie.buffer @b0(%t) : memref<16xi32>
+    aie.lock @free(%t) {init = 2 : i32}
+    aie.lock @full(%t) {init = 0 : i32}
     // expected-error@+1 {{expects every one of its 'depth' buffers to resolve}}
     aie.objectfifo.pool @pool(%t) {depth = 2 : i32, buffers = [@b0, @missing]} : memref<16xi32> {
       aie.objectfifo.segment @s0 {consumeLock = @full, offset = 0 : i32, produceLock = @free, size = 16 : i32}

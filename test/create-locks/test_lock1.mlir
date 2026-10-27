@@ -11,9 +11,9 @@
 // CHECK-LABEL: module @test_lock1 {
 // CHECK:         aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(3, 3)
-// CHECK:           %[[VAL_1:.*]] = aie.lock(%[[VAL_0]], 0) {init = 0 : i32}
+// CHECK:           aie.lock @[[VAL_1:.*]](%[[VAL_0]], 0) {init = 0 : i32}
 // CHECK:           %[[VAL_2:.*]] = aie.tile(2, 3)
-// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_2]], 0) {init = 0 : i32}
+// CHECK:           aie.lock @[[VAL_3:.*]](%[[VAL_2]], 0) {init = 0 : i32}
 // CHECK:           %[[VAL_4:.*]] = aie.tile(4, 3)
 // CHECK:           aiex.token(0) {sym_name = "token0"}
 // CHECK:           %[[VAL_5:.*]] = aie.mem(%[[VAL_0]]) {

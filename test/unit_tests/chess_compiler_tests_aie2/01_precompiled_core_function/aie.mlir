@@ -19,24 +19,26 @@ module @test_chesss_01_precompiled_core_function {
   aie.device(xcve2802) {
     %tile13 = aie.tile(1, 3)
 
-    %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
-    %buf13_1 = aie.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
+    aie.buffer @a(%tile13) : memref<256xi32>
+    aie.buffer @b(%tile13) : memref<256xi32>
 
-    %lock13_3 = aie.lock(%tile13, 3) { sym_name = "input_lock" }
-    %lock13_5 = aie.lock(%tile13, 5) { sym_name = "output_lock" }
+    aie.lock @input_lock(%tile13, 3)
+    aie.lock @output_lock(%tile13, 5)
 
     func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> () attributes {link_with = "kernel.o"}
 
     %core13 = aie.core(%tile13) {
       %c1_ul0 = arith.constant 1 : i32
-      aie.use_lock(%lock13_3, "Acquire", %c1_ul0) // acquire for read(e.g. input ping)
+      aie.use_lock(@input_lock, "Acquire", %c1_ul0) // acquire for read(e.g. input ping)
       %c0_ul1 = arith.constant 0 : i32
-      aie.use_lock(%lock13_5, "Acquire", %c0_ul1) // acquire for write
+      aie.use_lock(@output_lock, "Acquire", %c0_ul1) // acquire for write
+      %buf13_0 = aie.get_buffer @a : memref<256xi32>
+      %buf13_1 = aie.get_buffer @b : memref<256xi32>
       func.call @func(%buf13_0, %buf13_1) : (memref<256xi32>, memref<256xi32>) -> ()
       %c0_ul2 = arith.constant 0 : i32
-      aie.use_lock(%lock13_3, "Release", %c0_ul2) // release for write
+      aie.use_lock(@input_lock, "Release", %c0_ul2) // release for write
       %c1_ul3 = arith.constant 1 : i32
-      aie.use_lock(%lock13_5, "Release", %c1_ul3) // release for read
+      aie.use_lock(@output_lock, "Release", %c1_ul3) // release for read
       aie.end
     }
   }

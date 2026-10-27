@@ -13,16 +13,17 @@
 module @slice_wrongcore {
  aie.device(npu1_2col) @device1 {
   %t12 = aie.tile(1, 2)
-  %l12 = aie.lock(%t12, 0)
-  %b12 = aie.buffer(%t12) { sym_name = "a12" } : memref<16xi32>
+  aie.lock @l12(%t12, 0)
+  aie.buffer @a12(%t12) : memref<16xi32>
   %c12 = aie.core(%t12) {
     %c0_ul0 = arith.constant 0 : i32
-    aie.use_lock(%l12, Acquire, %c0_ul0)
+    aie.use_lock(@l12, Acquire, %c0_ul0)
     %v = arith.constant 99 : i32
     %i = arith.constant 5 : index
+    %b12 = aie.get_buffer @a12 : memref<16xi32>
     memref.store %v, %b12[%i] : memref<16xi32>
     %c1_ul1 = arith.constant 1 : i32
-    aie.use_lock(%l12, Release, %c1_ul1)
+    aie.use_lock(@l12, Release, %c1_ul1)
     aie.end
   }
  }

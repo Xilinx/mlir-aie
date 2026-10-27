@@ -44,7 +44,7 @@ class Lock(PerDeviceConfigurationResolvable):
                 the lowering pass picks one.
             init (int): Initial lock value at design startup. Defaults to 0.
             name (str | None): Symbol name for the lock. Defaults to None
-                (unnamed).
+                (resolution generates a unique symbol).
         """
         self._site = SourceSite.capture()
         self._tile = tile

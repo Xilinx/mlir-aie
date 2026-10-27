@@ -15,8 +15,8 @@
 module @core_endpoint {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %buf = aie.buffer(%t) : memref<16xi32>
-    %lock = aie.lock(%t, 0) {init = 1 : i32}
+    aie.buffer @buf(%t) : memref<16xi32>
+    aie.lock @lock(%t, 0) {init = 1 : i32}
     aie.route_endpoint @source(%t) Core {channelIndex = 0 : i32}
     aie.route_endpoint @input(%t) DMA
     aie.route from @source to [@input]
@@ -24,7 +24,8 @@ module @core_endpoint {
       aie.dma_start(S2MM, @input, ^bd0, ^end)
     ^bd0:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+      aie.use_lock(@lock, AcquireGreaterEqual, %c1)
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd0
     ^end:
@@ -33,7 +34,7 @@ module @core_endpoint {
     aie.runtime_sequence() {
       aiex.dma_channel_reset(%t, S2MM, 0)
       %lock_v1 = arith.constant 1 : i32
-      aiex.set_lock(%lock, %lock_v1)
+      aiex.set_lock(@lock, %lock_v1)
     }
   }
 }
@@ -49,8 +50,8 @@ module @mem_endpoint {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %buf = aie.buffer(%t) : memref<16xi32>
-    %lock = aie.lock(%t, 0) {init = 1 : i32}
+    aie.buffer @buf(%t) : memref<16xi32>
+    aie.lock @lock(%t, 0) {init = 1 : i32}
     aie.route_endpoint @output(%t) DMA
     aie.route_endpoint @sink(%core) Core {channelIndex = 0 : i32}
     aie.route from @output to [@sink]
@@ -58,7 +59,8 @@ module @mem_endpoint {
       aie.dma_start(MM2S, @output, ^bd0, ^end)
     ^bd0:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+      aie.use_lock(@lock, AcquireGreaterEqual, %c1)
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd0
     ^end:
@@ -67,7 +69,7 @@ module @mem_endpoint {
     aie.runtime_sequence() {
       aiex.dma_channel_reset(%t, MM2S, 0)
       %lock_v1 = arith.constant 1 : i32
-      aiex.set_lock(%lock, %lock_v1)
+      aiex.set_lock(@lock, %lock_v1)
     }
   }
 }

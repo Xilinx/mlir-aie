@@ -143,19 +143,22 @@ aie.device(npu1) {
 
 aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
-  %buf = aie.buffer(%tile_0_1) : memref<1024xi32>
+  aie.buffer @buf(%tile_0_1) : memref<1024xi32>
   aie.runtime_sequence @memtile_chain(%n: index) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     scf.for %i = %c0 to %n step %c1 {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 1) {
+        %buf = aie.get_buffer @buf : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256)
         aie.next_bd ^bd1
       ^bd1:
-        aie.dma_bd(%buf : memref<1024xi32> offset = 256 len = 256)
+        %buf_1 = aie.get_buffer @buf : memref<1024xi32>
+        aie.dma_bd(%buf_1 : memref<1024xi32> offset = 256 len = 256)
         aie.next_bd ^bd2
       ^bd2:
-        aie.dma_bd(%buf : memref<1024xi32> offset = 512 len = 256)
+        %buf_2 = aie.get_buffer @buf : memref<1024xi32>
+        aie.dma_bd(%buf_2 : memref<1024xi32> offset = 512 len = 256)
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)

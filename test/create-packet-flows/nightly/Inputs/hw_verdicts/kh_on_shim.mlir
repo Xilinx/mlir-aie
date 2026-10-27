@@ -8,23 +8,25 @@ module {
     %t0_2 = aie.tile(0, 2)
     aie.packet_flow(5) { aie.packet_source<%t1_0, DMA : 0> aie.packet_dest<%t0_2, DMA : 0> } {keep_pkt_header = true}
     aie.flow(%t0_2, DMA : 0, %t0_0, DMA : 0)
-    %rx = aie.buffer(%t0_2) {sym_name = "rx"} : memref<514xi32>
-    %rx_p = aie.lock(%t0_2, 0) {init = 1 : i32, sym_name = "rx_p"}
-    %rx_c = aie.lock(%t0_2, 1) {init = 0 : i32, sym_name = "rx_c"}
+    aie.buffer @rx(%t0_2) : memref<514xi32>
+    aie.lock @rx_p(%t0_2, 0) {init = 1 : i32}
+    aie.lock @rx_c(%t0_2, 1) {init = 0 : i32}
     %dma_t0_2 = aie.mem(%t0_2) {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 0, ^c0b0, ^s1)
       ^c0b0:
-        aie.use_lock(%rx_p, AcquireGreaterEqual, %one)
+        aie.use_lock(@rx_p, AcquireGreaterEqual, %one)
+        %rx = aie.get_buffer @rx : memref<514xi32>
         aie.dma_bd(%rx : memref<514xi32> offset = 0 len = 514)
-        aie.use_lock(%rx_c, Release, %one)
+        aie.use_lock(@rx_c, Release, %one)
         aie.next_bd ^end
       ^s1:
       %d1 = aie.dma_start(MM2S, 0, ^c1b0, ^end)
       ^c1b0:
-        aie.use_lock(%rx_c, AcquireGreaterEqual, %one)
-        aie.dma_bd(%rx : memref<514xi32> offset = 0 len = 514)
-        aie.use_lock(%rx_p, Release, %one)
+        aie.use_lock(@rx_c, AcquireGreaterEqual, %one)
+        %rx_1 = aie.get_buffer @rx : memref<514xi32>
+        aie.dma_bd(%rx_1 : memref<514xi32> offset = 0 len = 514)
+        aie.use_lock(@rx_p, Release, %one)
         aie.next_bd ^end
       ^end:
         aie.end

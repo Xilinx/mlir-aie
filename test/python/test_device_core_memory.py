@@ -27,7 +27,7 @@ def test_a_buffer_pinned_to_a_bank_lands_inside_it(device):
     dev = device()
     banks, bank_bytes = dev.core_memory_banks, dev.core_memory_bank_bytes
     buffers = "\n".join(
-        f'%b{k} = aie.buffer(%t) {{sym_name = "b{k}", mem_bank = {k} : i32}}'
+        f"aie.buffer @b{k}(%t) {{mem_bank = {k} : i32}}"
         f" : memref<{bank_bytes // 2}xi8>"
         for k in range(banks)
     )

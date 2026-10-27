@@ -11,8 +11,8 @@ module {
   aie.device(npu2) {
     %dst = aie.tile(0, 1)
     %neighbor = aie.tile(1, 1)
-    %free = aie.lock(%dst) {sym_name = "free", init = 1 : i32}
-    %full = aie.lock(%dst) {sym_name = "full", init = 0 : i32}
+    aie.lock @free(%dst) {init = 1 : i32}
+    aie.lock @full(%dst) {init = 0 : i32}
     aie.objectfifo.pool @resident(%dst) {depth = 1 : i32} : memref<31xi32> {
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 1 : i32}
       aie.objectfifo.segment @s1 {offset = 1 : i32, size = 1 : i32}
@@ -62,8 +62,8 @@ module {
 }
 // CHECK-DAG: %[[DST:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[DST]]) {sym_name = "larger_buff_0"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "cheap_buff_0"}
-// CHECK-DAG: aie.lock(%[[NEIGHBOR]]) {{.*}}sym_name = "cheap_prod_lock_0"
+// CHECK-DAG: aie.buffer @larger_buff_0(%[[DST]])
+// CHECK-DAG: aie.buffer @cheap_buff_0(%[[NEIGHBOR]])
+// CHECK-DAG: aie.lock @cheap_prod_lock_0(%[[NEIGHBOR]]) {{.*}}
 // CHECK: @r3(%[[DST]]) drains @cheap {channelIndex = 3 : i32}
 // CHECK: @r4(%[[DST]]) drains @larger {channelIndex = 4 : i32}

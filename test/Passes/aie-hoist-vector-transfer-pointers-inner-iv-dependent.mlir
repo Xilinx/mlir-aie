@@ -46,7 +46,7 @@ module {
 }
 
 // CHECK-LABEL: func.func @inner_iv_dependent_addresses
-// CHECK: scf.for %[[OUTER:.*]] = 
+// CHECK: scf.for %[[OUTER:.*]] =
 // CHECK:   memref.collapse_shape
 // CHECK:   affine.apply{{.*}}(%c0{{.*}}, %[[OUTER]])
 // CHECK:   memref.collapse_shape

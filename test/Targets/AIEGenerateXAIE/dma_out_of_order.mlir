@@ -30,26 +30,29 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) : memref<8xi32>
+    aie.buffer @b(%t) : memref<8xi32>
     aie.mem(%t) {
         aie.dma_start(S2MM, 0, ^bd0, ^end, repeat_count = 5) { out_of_order }
       ^bd0:
         aie.dma_bd_packet(0, 0)
+        %b = aie.get_buffer @b : memref<8xi32>
         aie.dma_bd(%b : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32 }
         aie.next_bd ^bd1
       ^bd1:
         aie.dma_bd_packet(0, 0)
-        aie.dma_bd(%b : memref<8xi32> offset = 4 len = 4) { bd_id = 1 : i32 }
+        %b_1 = aie.get_buffer @b : memref<8xi32>
+        aie.dma_bd(%b_1 : memref<8xi32> offset = 4 len = 4) { bd_id = 1 : i32 }
         aie.next_bd ^end
       ^end:
         aie.end
     }
     %t12 = aie.tile(1, 2)
-    %b12 = aie.buffer(%t12) : memref<8xi32>
+    aie.buffer @b12(%t12) : memref<8xi32>
     aie.mem(%t12) {
         aie.dma_start(S2MM, 0, ^i0, ^end2, repeat_count = 7) { out_of_order }
       ^i0:
         aie.dma_bd_packet(0, 0)
+        %b12 = aie.get_buffer @b12 : memref<8xi32>
         aie.dma_bd(%b12 : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 2, stride = 4, current = 0> }
         aie.next_bd ^end2
       ^end2:

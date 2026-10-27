@@ -29,27 +29,29 @@ module @test_xaie2 {
  aie.device(xcvc1902) {
   %t33 = aie.tile(3, 3)
 
-  %buf33_0 = aie.buffer(%t33) { address = 0x1000 : i32, sym_name = "buff33_0" }: memref<256xi32>
-  %buf33_1 = aie.buffer(%t33) { address = 0x1400 : i32, sym_name = "buff33_1" }: memref<16xi32>
+  aie.buffer @buff33_0(%t33) { address = 0x1000 : i32}: memref<256xi32>
+  aie.buffer @buff33_1(%t33) { address = 0x1400 : i32}: memref<16xi32>
 
-  %l33_0 = aie.lock(%t33, 0)
-  %l33_1 = aie.lock(%t33, 1)
+  aie.lock @l33_0(%t33, 0)
+  aie.lock @l33_1(%t33, 1)
 
   %m33 = aie.mem(%t33) {
       %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c0_ul1 = arith.constant 0 : i32
-      aie.use_lock(%l33_0, Acquire, %c0_ul1)
+      aie.use_lock(@l33_0, Acquire, %c0_ul1)
+      %buf33_0 = aie.get_buffer @buff33_0 : memref<256xi32>
       aie.dma_bd(%buf33_0 : memref<256xi32> offset = 0 len = 256)
       %c1_ul2 = arith.constant 1 : i32
-      aie.use_lock(%l33_0, Release, %c1_ul2)
+      aie.use_lock(@l33_0, Release, %c1_ul2)
       aie.next_bd ^bd1
     ^bd1:
       %c0_ul3 = arith.constant 0 : i32
-      aie.use_lock(%l33_0, Acquire, %c0_ul3)
+      aie.use_lock(@l33_0, Acquire, %c0_ul3)
+      %buf33_1 = aie.get_buffer @buff33_1 : memref<16xi32>
       aie.dma_bd(%buf33_1 : memref<16xi32> offset = 0 len = 4)
       %c1_ul4 = arith.constant 1 : i32
-      aie.use_lock(%l33_0, Release, %c1_ul4)
+      aie.use_lock(@l33_0, Release, %c1_ul4)
       aie.next_bd ^bd0
     ^end:
       aie.end

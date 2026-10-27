@@ -25,8 +25,8 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 2)
-    %buf_in  = aie.buffer(%tile) {sym_name = "in"}  : memref<32xbf16>
-    %buf_out = aie.buffer(%tile) {sym_name = "out"} : memref<32xbf16>
+    aie.buffer @in(%tile)  : memref<32xbf16>
+    aie.buffer @out(%tile) : memref<32xbf16>
 
     %core = aie.core(%tile) {
       %c0  = arith.constant 0 : index
@@ -37,8 +37,10 @@ module {
       // rewrite it to 'bfloat 0xR3FB9' for Peano's opt to parse.
       %log2e = arith.constant 1.445310e+00 : bf16
       scf.for %i = %c0 to %c32 step %c1 {
+        %buf_in = aie.get_buffer @in : memref<32xbf16>
         %v = memref.load %buf_in[%i] : memref<32xbf16>
         %r = arith.mulf %v, %log2e : bf16
+        %buf_out = aie.get_buffer @out : memref<32xbf16>
         memref.store %r, %buf_out[%i] : memref<32xbf16>
       }
       aie.end

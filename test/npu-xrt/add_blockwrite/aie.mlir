@@ -11,16 +11,16 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    %objFifo_in1_cons_buff_0 = aie.buffer(%tile_0_2) {sym_name = "objFifo_in1_cons_buff_0"} : memref<8xi32>
-    %objFifo_in1_cons_buff_1 = aie.buffer(%tile_0_2) {sym_name = "objFifo_in1_cons_buff_1"} : memref<8xi32>
-    %objFifo_out1_buff_0 = aie.buffer(%tile_0_2) {sym_name = "objFifo_out1_buff_0"} : memref<8xi32>
-    %objFifo_out1_buff_1 = aie.buffer(%tile_0_2) {sym_name = "objFifo_out1_buff_1"} : memref<8xi32>
-    %constant_buffer = aie.buffer(%tile_0_2) {sym_name = "constant_buffer"} : memref<8xi32>
+    aie.buffer @objFifo_in1_cons_buff_0(%tile_0_2) : memref<8xi32>
+    aie.buffer @objFifo_in1_cons_buff_1(%tile_0_2) : memref<8xi32>
+    aie.buffer @objFifo_out1_buff_0(%tile_0_2) : memref<8xi32>
+    aie.buffer @objFifo_out1_buff_1(%tile_0_2) : memref<8xi32>
+    aie.buffer @constant_buffer(%tile_0_2) : memref<8xi32>
 
-    %objFifo_in1_cons_prod_lock = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "objFifo_in1_cons_prod_lock"}
-    %objFifo_in1_cons_cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "objFifo_in1_cons_cons_lock"}
-    %objFifo_out1_prod_lock = aie.lock(%tile_0_2, 2) {init = 2 : i32, sym_name = "objFifo_out1_prod_lock"}
-    %objFifo_out1_cons_lock = aie.lock(%tile_0_2, 3) {init = 0 : i32, sym_name = "objFifo_out1_cons_lock"}
+    aie.lock @objFifo_in1_cons_prod_lock(%tile_0_2, 0) {init = 2 : i32}
+    aie.lock @objFifo_in1_cons_cons_lock(%tile_0_2, 1) {init = 0 : i32}
+    aie.lock @objFifo_out1_prod_lock(%tile_0_2, 2) {init = 2 : i32}
+    aie.lock @objFifo_out1_cons_lock(%tile_0_2, 3) {init = 0 : i32}
 
     aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)
     aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 0)
@@ -33,38 +33,44 @@ module {
       %c2 = arith.constant 2 : index
       scf.for %arg0 = %c0 to %c8 step %c2 {
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul1)
+        aie.use_lock(@objFifo_in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul1)
         %c1_ul2 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_out1_prod_lock, AcquireGreaterEqual, %c1_ul2)
+        aie.use_lock(@objFifo_out1_prod_lock, AcquireGreaterEqual, %c1_ul2)
 
         scf.for %arg1 = %c0 to %c8 step %c1 {
+          %objFifo_in1_cons_buff_0 = aie.get_buffer @objFifo_in1_cons_buff_0 : memref<8xi32>
           %0 = memref.load %objFifo_in1_cons_buff_0[%arg1] : memref<8xi32>
+          %constant_buffer = aie.get_buffer @constant_buffer : memref<8xi32>
           %1 = memref.load %constant_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %0, %1 : i32
+          %objFifo_out1_buff_0 = aie.get_buffer @objFifo_out1_buff_0 : memref<8xi32>
           memref.store %2, %objFifo_out1_buff_0[%arg1] : memref<8xi32>
         }
 
         %c1_ul3 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_in1_cons_prod_lock, Release, %c1_ul3)
+        aie.use_lock(@objFifo_in1_cons_prod_lock, Release, %c1_ul3)
         %c1_ul4 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_out1_cons_lock, Release, %c1_ul4)
+        aie.use_lock(@objFifo_out1_cons_lock, Release, %c1_ul4)
 
         %c1_ul5 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul5)
+        aie.use_lock(@objFifo_in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul5)
         %c1_ul6 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_out1_prod_lock, AcquireGreaterEqual, %c1_ul6)
+        aie.use_lock(@objFifo_out1_prod_lock, AcquireGreaterEqual, %c1_ul6)
 
         scf.for %arg1 = %c0 to %c8 step %c1 {
+          %objFifo_in1_cons_buff_1 = aie.get_buffer @objFifo_in1_cons_buff_1 : memref<8xi32>
           %0 = memref.load %objFifo_in1_cons_buff_1[%arg1] : memref<8xi32>
-          %1 = memref.load %constant_buffer[%arg1] : memref<8xi32>
+          %constant_buffer_1 = aie.get_buffer @constant_buffer : memref<8xi32>
+          %1 = memref.load %constant_buffer_1[%arg1] : memref<8xi32>
           %2 = arith.addi %0, %1 : i32
+          %objFifo_out1_buff_1 = aie.get_buffer @objFifo_out1_buff_1 : memref<8xi32>
           memref.store %2, %objFifo_out1_buff_1[%arg1] : memref<8xi32>
         }
 
         %c1_ul7 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_in1_cons_prod_lock, Release, %c1_ul7)
+        aie.use_lock(@objFifo_in1_cons_prod_lock, Release, %c1_ul7)
         %c1_ul8 = arith.constant 1 : i32
-        aie.use_lock(%objFifo_out1_cons_lock, Release, %c1_ul8)
+        aie.use_lock(@objFifo_out1_cons_lock, Release, %c1_ul8)
       }
       aie.end
     }
@@ -92,33 +98,37 @@ module {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       %c1_ul9 = arith.constant 1 : i32
-      aie.use_lock(%objFifo_in1_cons_prod_lock, AcquireGreaterEqual, %c1_ul9)
-      aie.dma_bd(%objFifo_in1_cons_buff_0 : memref<8xi32> offset = 0 len = 8)
+      aie.use_lock(@objFifo_in1_cons_prod_lock, AcquireGreaterEqual, %c1_ul9)
+      %objFifo_in1_cons_buff_0_1 = aie.get_buffer @objFifo_in1_cons_buff_0 : memref<8xi32>
+      aie.dma_bd(%objFifo_in1_cons_buff_0_1 : memref<8xi32> offset = 0 len = 8)
       %c1_ul10 = arith.constant 1 : i32
-      aie.use_lock(%objFifo_in1_cons_cons_lock, Release, %c1_ul10)
+      aie.use_lock(@objFifo_in1_cons_cons_lock, Release, %c1_ul10)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
       %c1_ul11 = arith.constant 1 : i32
-      aie.use_lock(%objFifo_in1_cons_prod_lock, AcquireGreaterEqual, %c1_ul11)
-      aie.dma_bd(%objFifo_in1_cons_buff_1 : memref<8xi32> offset = 0 len = 8)
+      aie.use_lock(@objFifo_in1_cons_prod_lock, AcquireGreaterEqual, %c1_ul11)
+      %objFifo_in1_cons_buff_1_1 = aie.get_buffer @objFifo_in1_cons_buff_1 : memref<8xi32>
+      aie.dma_bd(%objFifo_in1_cons_buff_1_1 : memref<8xi32> offset = 0 len = 8)
       %c1_ul12 = arith.constant 1 : i32
-      aie.use_lock(%objFifo_in1_cons_cons_lock, Release, %c1_ul12)
+      aie.use_lock(@objFifo_in1_cons_cons_lock, Release, %c1_ul12)
       aie.next_bd ^bb1
     ^bb3:  // pred: ^bb0
       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
     ^bb4:  // 2 preds: ^bb3, ^bb5
       %c1_ul13 = arith.constant 1 : i32
-      aie.use_lock(%objFifo_out1_cons_lock, AcquireGreaterEqual, %c1_ul13)
-      aie.dma_bd(%objFifo_out1_buff_0 : memref<8xi32> offset = 0 len = 8)
+      aie.use_lock(@objFifo_out1_cons_lock, AcquireGreaterEqual, %c1_ul13)
+      %objFifo_out1_buff_0_1 = aie.get_buffer @objFifo_out1_buff_0 : memref<8xi32>
+      aie.dma_bd(%objFifo_out1_buff_0_1 : memref<8xi32> offset = 0 len = 8)
       %c1_ul14 = arith.constant 1 : i32
-      aie.use_lock(%objFifo_out1_prod_lock, Release, %c1_ul14)
+      aie.use_lock(@objFifo_out1_prod_lock, Release, %c1_ul14)
       aie.next_bd ^bb5
     ^bb5:  // pred: ^bb4
       %c1_ul15 = arith.constant 1 : i32
-      aie.use_lock(%objFifo_out1_cons_lock, AcquireGreaterEqual, %c1_ul15)
-      aie.dma_bd(%objFifo_out1_buff_1 : memref<8xi32> offset = 0 len = 8)
+      aie.use_lock(@objFifo_out1_cons_lock, AcquireGreaterEqual, %c1_ul15)
+      %objFifo_out1_buff_1_1 = aie.get_buffer @objFifo_out1_buff_1 : memref<8xi32>
+      aie.dma_bd(%objFifo_out1_buff_1_1 : memref<8xi32> offset = 0 len = 8)
       %c1_ul16 = arith.constant 1 : i32
-      aie.use_lock(%objFifo_out1_prod_lock, Release, %c1_ul16)
+      aie.use_lock(@objFifo_out1_prod_lock, Release, %c1_ul16)
       aie.next_bd ^bb4
     ^bb6:  // pred: ^bb3
       aie.end

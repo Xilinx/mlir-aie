@@ -9,7 +9,7 @@
 module @spill_no_orphan_tiles {
   aie.device(npu2) {
     %m1 = aie.tile(1, 1)
-    %r1 = aie.buffer(%m1) : memref<524288xi8>
+    aie.buffer @r1(%m1) : memref<524288xi8>
     aie.objectfifo.pool @spill(%m1) {depth = 1 : i32} : memref<1024xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 1024 : i32}
     }
@@ -18,7 +18,7 @@ module @spill_no_orphan_tiles {
 }
 // CHECK-LABEL: module @spill_no_orphan_tiles
 // CHECK-DAG: %[[M0:.*]] = aie.tile(0, 1)
-// CHECK-DAG: aie.buffer(%[[M0]]) {sym_name = "spill_buff_0"}
+// CHECK-DAG: aie.buffer @spill_buff_0(%[[M0]])
 
 // -----
 
@@ -27,7 +27,7 @@ module @spill_no_orphan_tiles {
 module @spill_then_another_device {
   aie.device(npu2) @a {
     %m1 = aie.tile(1, 1)
-    %r1 = aie.buffer(%m1) : memref<524288xi8>
+    aie.buffer @r1(%m1) : memref<524288xi8>
     aie.objectfifo.pool @spill(%m1) {depth = 1 : i32} : memref<1024xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 1024 : i32}
     }
@@ -39,6 +39,6 @@ module @spill_then_another_device {
 }
 // CHECK-LABEL: module @spill_then_another_device
 // CHECK: aie.device(npu2) @a
-// CHECK: aie.buffer({{.*}}) {sym_name = "spill_buff_0"}
+// CHECK: aie.buffer @spill_buff_0({{.*}})
 // CHECK: aie.device(npu2) @b
 // CHECK: aie.tile(0, 2)

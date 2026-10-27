@@ -200,7 +200,7 @@ def pack_weights(op: Conv, weight: np.ndarray) -> np.ndarray:
 
 def view(element, offset: int, size: int, dtype: type = np.int8):
     """`size` elements of `dtype` in an int8 buffer (an acquired element or a Buffer) from byte `offset`."""
-    source = element.op if isinstance(element, Buffer) else element
+    source = element.op.result if isinstance(element, Buffer) else element
     kind = np.ndarray[(size,), np.dtype[dtype]]
     return memref.view(
         np_ndarray_type_to_memref_type(kind), source, constant(offset, index=True), []

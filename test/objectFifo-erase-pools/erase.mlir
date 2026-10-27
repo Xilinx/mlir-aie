@@ -9,7 +9,7 @@ module @erase {
   aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
 
-    %b0 = aie.buffer(%tile12) {sym_name = "b0"} : memref<16xi32>
+    aie.buffer @b0(%tile12) : memref<16xi32>
 
     aie.objectfifo.pool @spent(%tile12) {
       depth = 1 : i32, buffers = [@b0]
@@ -27,7 +27,7 @@ module @erase {
 }
 
 // CHECK-LABEL: @erase
-// CHECK:     aie.buffer({{.*}}) {sym_name = "b0"}
+// CHECK:     aie.buffer @b0({{.*}})
 // CHECK-NOT: aie.objectfifo.pool @spent
 // CHECK:     aie.objectfifo.pool @live
 // CHECK:     aie.objectfifo.core_endpoint @reader

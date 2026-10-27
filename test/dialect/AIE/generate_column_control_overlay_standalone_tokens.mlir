@@ -26,9 +26,10 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
-    %buf = aie.buffer(%tile_0_1) : memref<16xi32>
+    aie.buffer @buf(%tile_0_1) : memref<16xi32>
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+        %buf = aie.get_buffer @buf : memref<16xi32>
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end
       } {issue_token = true}
@@ -40,9 +41,10 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
-    %buf = aie.buffer(%tile_0_2) : memref<16xi32>
+    aie.buffer @buf(%tile_0_2) : memref<16xi32>
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       %t = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
+        %buf = aie.get_buffer @buf : memref<16xi32>
         aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
         aie.end
       } {issue_token = true}

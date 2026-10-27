@@ -15,12 +15,12 @@
 module @test {
   aie.device(xcvc1902) {
     %0 = aie.tile(3, 3)
-    %b1 = aie.buffer(%0) { sym_name = "a" } : memref<16xi8>
+    aie.buffer @a(%0) : memref<16xi8>
     %3 = aie.tile(4, 4)
-    %4 = aie.buffer(%3) : memref<500xi32>
+    aie.buffer @buffer_4(%3) : memref<500xi32>
     aie.core(%0) {
-     %b2 = aie.buffer(%0) { sym_name = "c" } : memref<16xi16>
-     %1 = aie.buffer(%0) { sym_name = "b" } : memref<3x3xi16> = dense<[[0, 4096, 0], [4096, -16384, 4096], [0, 4096, 0]]>
+      aie.buffer @c(%0) : memref<16xi16>
+      aie.buffer @b(%0) : memref<3x3xi16> = dense<[[0, 4096, 0], [4096, -16384, 4096], [0, 4096, 0]]>
       aie.end
     }
     aie.core(%3) {

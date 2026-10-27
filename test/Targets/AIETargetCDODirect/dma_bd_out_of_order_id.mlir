@@ -17,11 +17,12 @@
 module {
  aie.device(npu2) {
   %t02 = aie.tile(0, 2)
-  %b02 = aie.buffer(%t02) : memref<4 x i32>
+  aie.buffer @b02(%t02) : memref<4 x i32>
   aie.mem(%t02) {
       aie.dma_start(MM2S, 0, ^c0, ^end0)
     ^c0:
       aie.dma_bd_packet(0, 0)
+      %b02 = aie.get_buffer @b02 : memref<4 x i32>
       aie.dma_bd(%b02 : memref<4 x i32> offset = 0 len = 4) { bd_id = 0 : i32, out_of_order_id = 5 : i32 }
       aie.next_bd ^end0
     ^end0:
@@ -37,11 +38,12 @@ module {
 module {
  aie.device(npu2) {
   %t02 = aie.tile(0, 2)
-  %b02 = aie.buffer(%t02) : memref<4 x i32>
+  aie.buffer @b02(%t02) : memref<4 x i32>
   aie.mem(%t02) {
       aie.dma_start(MM2S, 0, ^c0, ^end0)
     ^c0:
       aie.dma_bd_packet(0, 0)
+      %b02 = aie.get_buffer @b02 : memref<4 x i32>
       aie.dma_bd(%b02 : memref<4 x i32> offset = 0 len = 4) { bd_id = 0 : i32 }
       aie.next_bd ^end0
     ^end0:

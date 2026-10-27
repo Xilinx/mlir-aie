@@ -11,11 +11,11 @@
 module @test {
   %t1 = aie.tile(1, 1)
   %t2 = aie.tile(4, 4)
-  %lock = aie.lock(%t2, 3) { sym_name = "lock1" }
+  aie.lock @lock1(%t2, 3)
 
   func.func @task3() -> () {
     %c1_ul0 = arith.constant 1 : i32
-    aie.use_lock(%lock, "Acquire", %c1_ul0)
+    aie.use_lock(@lock1, "Acquire", %c1_ul0)
     return
   }
 }

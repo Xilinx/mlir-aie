@@ -28,12 +28,13 @@
 module @strip_noncontiguous {
   aie.device(npu1) {
     %tile = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_t1" } : memref<256xi32>
+    aie.external_buffer @buf_t1 : memref<256xi32>
     aie.shim_dma(%tile) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
         // sizes=[1,4,32] strides=[128,64,1]: leading dim is degenerate (size=1)
         // maxIdx = (1-1)*128 + (4-1)*64 + (32-1)*1 = 0 + 192 + 31 = 223 < 256
+        %buf = aie.get_buffer @buf_t1 : memref<256xi32>
         aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 128
                    sizes = [1, 4, 32] strides = [128, 64, 1])
         aie.next_bd ^end
@@ -58,12 +59,13 @@ module @strip_noncontiguous {
 module @strip_then_linearize {
   aie.device(npu1) {
     %tile = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_t2" } : memref<256xi32>
+    aie.external_buffer @buf_t2 : memref<256xi32>
     aie.shim_dma(%tile) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
         // sizes=[1,4,64] strides=[256,64,1]: strip leading dim, then contiguous.
         // maxIdx = (1-1)*256 + (4-1)*64 + (64-1)*1 = 0 + 192 + 63 = 255 < 256
+        %buf = aie.get_buffer @buf_t2 : memref<256xi32>
         aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256
                    sizes = [1, 4, 64] strides = [256, 64, 1])
         aie.next_bd ^end
@@ -86,12 +88,13 @@ module @strip_then_linearize {
 module @no_degenerate_dims {
   aie.device(npu1) {
     %tile = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_t3" } : memref<512xi32>
+    aie.external_buffer @buf_t3 : memref<512xi32>
     aie.shim_dma(%tile) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
         // No size-1 dims; pass should not touch this BD.
         // maxIdx = (4-1)*128 + (32-1)*1 = 384 + 31 = 415 < 512
+        %buf = aie.get_buffer @buf_t3 : memref<512xi32>
         aie.dma_bd(%buf : memref<512xi32> offset = 0 len = 128
                    sizes = [4, 32] strides = [128, 1])
         aie.next_bd ^end
@@ -115,11 +118,12 @@ module @no_degenerate_dims {
 module @all_degenerate_linearize {
   aie.device(npu1) {
     %tile = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_t4" } : memref<4xi32>
+    aie.external_buffer @buf_t4 : memref<4xi32>
     aie.shim_dma(%tile) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
         // All sizes are 1; maxIdx = 0 < 4. product = 1, len = 1.
+        %buf = aie.get_buffer @buf_t4 : memref<4xi32>
         aie.dma_bd(%buf : memref<4xi32> offset = 0 len = 1
                    sizes = [1, 1, 1] strides = [4, 2, 1])
         aie.next_bd ^end
@@ -142,10 +146,11 @@ module @all_degenerate_linearize {
 module @already_linear {
   aie.device(npu1) {
     %tile = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_t5" } : memref<1024xi32>
+    aie.external_buffer @buf_t5 : memref<1024xi32>
     aie.shim_dma(%tile) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf_t5 : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024)
         aie.next_bd ^end
       ^end:
@@ -170,7 +175,7 @@ module @already_linear {
 module @cascade_i16_strip_linearize {
   aie.device(xcve2802) {
     %tile = aie.tile(1, 1)
-    %buf = aie.buffer(%tile) { sym_name = "buf_t6" } : memref<1024xi16>
+    aie.buffer @buf_t6(%tile) : memref<1024xi16>
     aie.memtile_dma(%tile) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
@@ -178,6 +183,7 @@ module @cascade_i16_strip_linearize {
         // maxIdx = (32-1)*32 + (32-1)*1 + 0 + 0 = 992 + 31 = 1023 < 1024
         // innermost stride for size>1 is dims[1].stride=1 (valid for i16).
         // outer non-degenerate dim: stride=32, 32*2=64 bytes is word-aligned.
+        %buf = aie.get_buffer @buf_t6 : memref<1024xi16>
         aie.dma_bd(%buf : memref<1024xi16> offset = 0 len = 1024
                    sizes = [32, 32, 1, 1] strides = [32, 1, 32, 1])
         aie.next_bd ^end
@@ -204,10 +210,11 @@ module @cascade_i16_strip_linearize {
 module @iteration_case_no_strip {
   aie.device(xcve2802) {
     %tile = aie.tile(1, 1)
-    %buf = aie.buffer(%tile) { sym_name = "buf_t7" } : memref<65536xi32>
+    aie.buffer @buf_t7(%tile) : memref<65536xi32>
     aie.memtile_dma(%tile) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf_t7 : memref<65536xi32>
         aie.dma_bd(%buf : memref<65536xi32> offset = 0 len = 8192
                    sizes = [8, 1, 256, 32] strides = [8192, 32, 32, 1])
         aie.next_bd ^end

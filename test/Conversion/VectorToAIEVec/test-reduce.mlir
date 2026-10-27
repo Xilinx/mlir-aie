@@ -279,7 +279,7 @@ func.func @reduce_min_f32(%arg0: vector<16xf32>) -> f32 {
   // CHECK: %[[MIN3:.*]] = aievec.min %[[MIN2]], %[[SHIFT8]] : vector<16xf32>
   // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[MIN3]], %[[MIN3]], %[[C4]] {isAcc = false} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
   // CHECK: %[[MIN4:.*]] = aievec.min %[[MIN3]], %[[SHIFT4]] : vector<16xf32>
-  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MIN4]], %[[C0]] : vector<16xf32>, i32, f32 
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MIN4]], %[[C0]] : vector<16xf32>, i32, f32
   %0 = vector.reduction <minimumf>, %arg0 : vector<16xf32> into f32
   // CHECK: return %[[EXTELEM]] : f32
   return %0 : f32

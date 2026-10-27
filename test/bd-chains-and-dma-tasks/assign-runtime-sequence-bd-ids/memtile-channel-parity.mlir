@@ -24,14 +24,16 @@
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
     aie.runtime_sequence @memtile_parity() {
       %even = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+        %buf = aie.get_buffer @buf : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256)
         aie.end
       }
       %odd = aiex.dma_configure_task(%tile_0_1, MM2S, 1) {
-        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256)
+        %buf_1 = aie.get_buffer @buf : memref<1024xi32>
+        aie.dma_bd(%buf_1 : memref<1024xi32> offset = 0 len = 256)
         aie.end
       }
     }

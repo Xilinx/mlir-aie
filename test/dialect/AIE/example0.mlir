@@ -32,14 +32,14 @@ module @example0 {
   %t42 = aie.tile(4, 2)
   %t44 = aie.tile(4, 4)
 
-  %l33_0 = aie.lock(%t33, 0)
-  %l33_1 = aie.lock(%t33, 1)
-  %l42_0 = aie.lock(%t42, 0)
-  %l44_0 = aie.lock(%t44, 0)
+  aie.lock @l33_0(%t33, 0)
+  aie.lock @l33_1(%t33, 1)
+  aie.lock @l42_0(%t42, 0)
+  aie.lock @l44_0(%t44, 0)
 
-  %buf33 = aie.buffer(%t33) : memref<256xi32>
-  %buf42 = aie.buffer(%t42) : memref<256xi32>
-  %buf44 = aie.buffer(%t44) : memref<256xi32>
+  aie.buffer @buf33(%t33) : memref<256xi32>
+  aie.buffer @buf42(%t42) : memref<256xi32>
+  aie.buffer @buf44(%t44) : memref<256xi32>
 
   %m33 = aie.mem(%t33) {
     %c0_i32 = arith.constant 0 : i32
@@ -49,17 +49,19 @@ module @example0 {
       %dmaSt1 = aie.dma_start("MM2S", 1, ^bd1, ^end)
     ^bd0:
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%l33_0, Acquire, %c1_ul1)
+      aie.use_lock(@l33_0, Acquire, %c1_ul1)
+      %buf33 = aie.get_buffer @buf33 : memref<256xi32>
       aie.dma_bd(%buf33 : memref<256xi32> offset = 0 len = 256)
       %c0_ul2 = arith.constant 0 : i32
-      aie.use_lock(%l33_0, Release, %c0_ul2)
+      aie.use_lock(@l33_0, Release, %c0_ul2)
       aie.next_bd ^end
     ^bd1:
       %c0_ul3 = arith.constant 0 : i32
-      aie.use_lock(%l33_1, Acquire, %c0_ul3)
-      aie.dma_bd(%buf33 : memref<256xi32> offset = 0 len = 256)
+      aie.use_lock(@l33_1, Acquire, %c0_ul3)
+      %buf33_1 = aie.get_buffer @buf33 : memref<256xi32>
+      aie.dma_bd(%buf33_1 : memref<256xi32> offset = 0 len = 256)
       %c1_ul4 = arith.constant 1 : i32
-      aie.use_lock(%l33_1, Release, %c1_ul4)
+      aie.use_lock(@l33_1, Release, %c1_ul4)
       aie.next_bd ^end
     ^end:
       aie.end
@@ -71,10 +73,11 @@ module @example0 {
       %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c0_ul5 = arith.constant 0 : i32
-      aie.use_lock(%l42_0, Acquire, %c0_ul5)
+      aie.use_lock(@l42_0, Acquire, %c0_ul5)
+      %buf42 = aie.get_buffer @buf42 : memref<256xi32>
       aie.dma_bd(%buf42 : memref<256xi32> offset = 0 len = 256)
       %c1_ul6 = arith.constant 1 : i32
-      aie.use_lock(%l42_0, Release, %c1_ul6)
+      aie.use_lock(@l42_0, Release, %c1_ul6)
       aie.next_bd ^end
     ^end:
       aie.end
@@ -86,10 +89,11 @@ module @example0 {
       %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c1_ul7 = arith.constant 1 : i32
-      aie.use_lock(%l44_0, Acquire, %c1_ul7)
+      aie.use_lock(@l44_0, Acquire, %c1_ul7)
+      %buf44 = aie.get_buffer @buf44 : memref<256xi32>
       aie.dma_bd(%buf44 : memref<256xi32> offset = 0 len = 256)
       %c0_ul8 = arith.constant 0 : i32
-      aie.use_lock(%l44_0, Release, %c0_ul8)
+      aie.use_lock(@l44_0, Release, %c0_ul8)
       aie.next_bd ^end
     ^end:
       aie.end
@@ -110,9 +114,9 @@ module @example0 {
 
   %c33 = aie.core(%t33) {
     %c0_ul9 = arith.constant 0 : i32
-    aie.use_lock(%l33_1, Acquire, %c0_ul9)
+    aie.use_lock(@l33_1, Acquire, %c0_ul9)
     %c0_ul10 = arith.constant 0 : i32
-    aie.use_lock(%l33_0, Acquire, %c0_ul10)
+    aie.use_lock(@l33_0, Acquire, %c0_ul10)
 
     // code
     %val0 = arith.constant 16 : i32
@@ -123,32 +127,32 @@ module @example0 {
     aie.put_cascade(%val2: i384)
 
     %c1_ul11 = arith.constant 1 : i32
-    aie.use_lock(%l33_0, Release, %c1_ul11)
+    aie.use_lock(@l33_0, Release, %c1_ul11)
     %c1_ul12 = arith.constant 1 : i32
-    aie.use_lock(%l33_1, Release, %c1_ul12)
+    aie.use_lock(@l33_1, Release, %c1_ul12)
 
     aie.end
   }
 
   %c42 = aie.core(%t42) {
     %c1_ul13 = arith.constant 1 : i32
-    aie.use_lock(%l42_0, Acquire, %c1_ul13)
+    aie.use_lock(@l42_0, Acquire, %c1_ul13)
 
     // code
 
     %c0_ul14 = arith.constant 0 : i32
-    aie.use_lock(%l42_0, Release, %c0_ul14)
+    aie.use_lock(@l42_0, Release, %c0_ul14)
     aie.end
   }
 
   %c44 = aie.core(%t44) {
     %c1_ul15 = arith.constant 1 : i32
-    aie.use_lock(%l44_0, Acquire, %c1_ul15)
+    aie.use_lock(@l44_0, Acquire, %c1_ul15)
 
     // code
 
     %c0_ul16 = arith.constant 0 : i32
-    aie.use_lock(%l44_0, Release, %c0_ul16)
+    aie.use_lock(@l44_0, Release, %c0_ul16)
     aie.end
   }
 }

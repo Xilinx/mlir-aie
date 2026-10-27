@@ -13,16 +13,16 @@
 // writes the object the initial contents leave empty.
 
 // CHECK-LABEL: module @init_shared_array_depth_aie2
-// CHECK-DAG:   %[[B0:.*]] = aie.buffer(%{{.*}}) {sym_name = "of_buff_0"} : memref<16xi32> = dense<0>
-// CHECK-DAG:   %[[B1:.*]] = aie.buffer(%{{.*}}) {sym_name = "of_buff_1"} : memref<16xi32> = dense<1>
-// CHECK-DAG:   %[[B2:.*]] = aie.buffer(%{{.*}}) {sym_name = "of_buff_2"} : memref<16xi32>{{ *$}}
-// CHECK-DAG:   aie.lock(%{{.*}}) {init = 1 : i32, sym_name = "of_prod_lock_0"}
-// CHECK-DAG:   aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "of_cons_lock_0"}
+// CHECK-DAG:   aie.buffer @[[B0:of_buff_0]](%{{.*}}) : memref<16xi32> = dense<0>
+// CHECK-DAG:   aie.buffer @[[B1:of_buff_1]](%{{.*}}) : memref<16xi32> = dense<1>
+// CHECK-DAG:   aie.buffer @[[B2:of_buff_2]](%{{.*}}) : memref<16xi32>{{ *$}}
+// CHECK-DAG:   aie.lock @of_prod_lock_0(%{{.*}}) {init = 1 : i32}
+// CHECK-DAG:   aie.lock @of_cons_lock_0(%{{.*}}) {init = 2 : i32}
 // CHECK:       aie.core
-// CHECK:         func.call @fill(%[[B2]])
-// CHECK:         func.call @fill(%[[B0]])
+// CHECK:         func.call @fill(%{{[^ ,)]+}})
+// CHECK:         func.call @fill(%{{[^ ,)]+}})
 // CHECK:       aie.core
-// CHECK:         func.call @drain(%[[B0]], %[[B1]], %[[B2]])
+// CHECK:         func.call @drain(%{{[^ ,)]+}}, %{{[^ ,)]+}}, %{{[^ ,)]+}})
 
 module @init_shared_array_depth_aie2 {
   aie.device(npu2) {
@@ -54,15 +54,15 @@ module @init_shared_array_depth_aie2 {
 // With binary locks, only the objects holding initial contents start full.
 
 // CHECK-LABEL: module @init_shared_array_depth_aie1
-// CHECK-DAG:   %[[B0:.*]] = aie.buffer(%{{.*}}) {sym_name = "of_buff_0"} : memref<16xi32> = dense<0>
-// CHECK-DAG:   %[[B1:.*]] = aie.buffer(%{{.*}}) {sym_name = "of_buff_1"} : memref<16xi32> = dense<1>
-// CHECK-DAG:   %[[B2:.*]] = aie.buffer(%{{.*}}) {sym_name = "of_buff_2"} : memref<16xi32>{{ *$}}
-// CHECK-DAG:   aie.lock(%{{.*}}) {init = 1 : i32, sym_name = "of_lock_0"}
-// CHECK-DAG:   aie.lock(%{{.*}}) {init = 1 : i32, sym_name = "of_lock_1"}
-// CHECK-DAG:   %[[L2:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "of_lock_2"}
+// CHECK-DAG:   aie.buffer @[[B0:of_buff_0]](%{{.*}}) : memref<16xi32> = dense<0>
+// CHECK-DAG:   aie.buffer @[[B1:of_buff_1]](%{{.*}}) : memref<16xi32> = dense<1>
+// CHECK-DAG:   aie.buffer @[[B2:of_buff_2]](%{{.*}}) : memref<16xi32>{{ *$}}
+// CHECK-DAG:   aie.lock @of_lock_0(%{{.*}}) {init = 1 : i32}
+// CHECK-DAG:   aie.lock @of_lock_1(%{{.*}}) {init = 1 : i32}
+// CHECK-DAG:   aie.lock @[[L2:of_lock_2]](%{{.*}}) {init = 0 : i32}
 // CHECK:       aie.core
-// CHECK:         aie.use_lock(%[[L2]], Acquire, %{{.*}})
-// CHECK:         func.call @fill(%[[B2]])
+// CHECK:         aie.use_lock(@[[L2]], Acquire, %{{.*}})
+// CHECK:         func.call @fill(%{{[^ ,)]+}})
 
 module @init_shared_array_depth_aie1 {
   aie.device(xcvc1902) {

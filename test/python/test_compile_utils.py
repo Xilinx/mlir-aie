@@ -26,8 +26,9 @@ DESIGN = """module {
   aie.device(npu1_1col) {
     %shim = aie.tile(0, 0)
     %core = aie.tile(0, 2)
-    %buf = aie.buffer(%core) {sym_name = "buf"} : memref<16xi32>
+    aie.buffer @buf(%core) : memref<16xi32>
     aie.core(%core) {
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %c7 = arith.constant 7 : i32
       %c0 = arith.constant 0 : index
       memref.store %c7, %buf[%c0] : memref<16xi32>
@@ -44,9 +45,10 @@ LINKED_DESIGN = """module {
   aie.device(npu1_1col) {
     %shim = aie.tile(0, 0)
     %core = aie.tile(0, 2)
-    %buf = aie.buffer(%core) {sym_name = "buf"} : memref<16xi32>
+    aie.buffer @buf(%core) : memref<16xi32>
     func.func private @fill(memref<16xi32>) attributes {link_with = "fill.o"}
     aie.core(%core) {
+      %buf = aie.get_buffer @buf : memref<16xi32>
       func.call @fill(%buf) : (memref<16xi32>) -> ()
       aie.end
     }

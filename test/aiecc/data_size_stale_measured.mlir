@@ -18,7 +18,7 @@
 // RUN: cd %t.d && %aiecc --no-measure-data-size --get-core-elfs --get-input-with-addresses --output-dir=%t.disabled.out %s
 // RUN: FileCheck %s --check-prefix=DISABLED --implicit-check-not=measured_data --implicit-check-not=measured_bank --implicit-check-not=core_data --implicit-check-not=bank_reserved --implicit-check-not=prebaked --input-file=%t.disabled.out/input_with_addresses.mlir
 
-// CHECK: aie.buffer({{.*}}) {{.*}}core_data{{.*}} : memref<128xi8>
+// CHECK: aie.buffer @{{[^ (]+}}({{.*}}) {{.*}}core_data{{.*}} : memref<128xi8>
 // CHECK: measured_data_size = 128 : i32
 // DISABLED: aie.core(
 

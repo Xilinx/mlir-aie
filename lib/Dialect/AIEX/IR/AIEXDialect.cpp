@@ -71,6 +71,24 @@ void AIEXDialect::initialize() {
 using xilinx::AIE::parseTypedDynamicIndexList;
 using xilinx::AIE::printTypedDynamicIndexList;
 
+static ParseResult parseRunArgumentTypes(OpAsmParser &parser,
+                                         SmallVectorImpl<Type> &types) {
+  return parser.parseCommaSeparatedList(OpAsmParser::Delimiter::Paren, [&] {
+    Type type;
+    if (parser.parseType(type))
+      return failure();
+    types.push_back(type);
+    return success();
+  });
+}
+
+static void printRunArgumentTypes(OpAsmPrinter &printer, AIEX::RunOp,
+                                  TypeRange types) {
+  printer << '(';
+  llvm::interleaveComma(types, printer);
+  printer << ')';
+}
+
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
 
@@ -1010,7 +1028,7 @@ mlir::Value AIEX::createConstantArgPlus(mlir::OpBuilder &builder,
 template <typename T>
 static std::optional<uint32_t>
 getAbsoluteAddress(T *op, uint32_t addressOffset,
-                   const AIE::NamedOpTable *names) {
+                   SymbolTableCollection *symbols) {
   AIE::DeviceOp device =
       op->getOperation()->template getParentOfType<AIE::DeviceOp>();
   if (!device) {
@@ -1025,8 +1043,10 @@ getAbsoluteAddress(T *op, uint32_t addressOffset,
   // relative to the buffer's start address.
   if (auto bufferSym = op->getBuffer()) {
     AIE::BufferOp buffer =
-        names ? names->lookup<AIE::BufferOp>(op->getBufferAttr().getAttr())
-              : AIE::lookupNamedOpIn<AIE::BufferOp>(device, *bufferSym);
+        symbols ? symbols->lookupSymbolIn<AIE::BufferOp>(device,
+                                                         op->getBufferAttr())
+                : dyn_cast_if_present<AIE::BufferOp>(
+                      SymbolTable::lookupSymbolIn(device, op->getBufferAttr()));
     if (!buffer) {
       op->emitError() << "buffer '" << *bufferSym << "' not found in device";
       return std::nullopt;
@@ -1062,11 +1082,11 @@ getAbsoluteAddress(T *op, uint32_t addressOffset,
 }
 
 std::optional<uint32_t>
-AIEX::NpuWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
+AIEX::NpuWrite32Op::getAbsoluteAddress(SymbolTableCollection *symbols) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset, names);
+  return ::getAbsoluteAddress(this, *addressOffset, symbols);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1091,8 +1111,8 @@ LogicalResult AIEX::NpuAddressPatchOp::verify() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress(
-    const AIE::NamedOpTable *names) {
-  return ::getAbsoluteAddress(this, getAddress(), names);
+    SymbolTableCollection *symbols) {
+  return ::getAbsoluteAddress(this, getAddress(), symbols);
 }
 
 LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
@@ -1182,11 +1202,11 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t>
-AIEX::NpuMaskWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
+AIEX::NpuMaskWrite32Op::getAbsoluteAddress(SymbolTableCollection *symbols) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset, names);
+  return ::getAbsoluteAddress(this, *addressOffset, symbols);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1194,11 +1214,11 @@ AIEX::NpuMaskWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t>
-AIEX::NpuMaskPollOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
+AIEX::NpuMaskPollOp::getAbsoluteAddress(SymbolTableCollection *symbols) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset, names);
+  return ::getAbsoluteAddress(this, *addressOffset, symbols);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1206,8 +1226,8 @@ AIEX::NpuMaskPollOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t>
-AIEX::NpuBlockWriteOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
-  return ::getAbsoluteAddress(this, getAddress(), names);
+AIEX::NpuBlockWriteOp::getAbsoluteAddress(SymbolTableCollection *symbols) {
+  return ::getAbsoluteAddress(this, getAddress(), symbols);
 }
 
 DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
@@ -1854,6 +1874,8 @@ LogicalResult AIEX::SetLockOp::verify() {
   }
 
   auto lockOp = getLockOp();
+  if (!lockOp)
+    return emitOpError("lock must reference an aie.lock declaration");
   auto lockIDOpt = getLockOp().getLockID();
   // Note that the lockID may not be assigned initially, so lets wait until it
   // is to verify the lockID dependent conditions
@@ -2144,7 +2166,7 @@ AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
 }
 
 AIE::RuntimeSequenceOp
-AIEX::RunOp::getCalleeRuntimeSequenceOp(AIE::NamedOpTableCollection *tables) {
+AIEX::RunOp::getCalleeRuntimeSequenceOp(SymbolTableCollection *tables) {
   AIEX::ConfigureOp configureOp =
       getOperation()->getParentOfType<AIEX::ConfigureOp>();
   if (!configureOp) {
@@ -2157,9 +2179,10 @@ AIEX::RunOp::getCalleeRuntimeSequenceOp(AIE::NamedOpTableCollection *tables) {
 
   StringAttr name = getRuntimeSequenceSymbolAttr().getAttr();
   if (!tables) {
-    return AIE::lookupNamedOpIn<AIE::RuntimeSequenceOp>(referencedDevice, name);
+    return dyn_cast_if_present<AIE::RuntimeSequenceOp>(
+        SymbolTable::lookupSymbolIn(referencedDevice, name));
   }
-  return tables->lookupIn<AIE::RuntimeSequenceOp>(referencedDevice, name);
+  return tables->lookupSymbolIn<AIE::RuntimeSequenceOp>(referencedDevice, name);
 }
 
 //===----------------------------------------------------------------------===//

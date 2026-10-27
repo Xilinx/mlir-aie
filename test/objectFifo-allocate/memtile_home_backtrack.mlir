@@ -12,9 +12,9 @@ module @home_backtrack {
     %m0 = aie.tile(0, 1)
     %m1 = aie.tile(1, 1)
     %m2 = aie.tile(2, 1)
-    %r0 = aie.buffer(%m0) : memref<324288xi8>
-    %r1 = aie.buffer(%m1) : memref<324288xi8>
-    %r2 = aie.buffer(%m2) : memref<324288xi8>
+    aie.buffer @r0(%m0) : memref<324288xi8>
+    aie.buffer @r1(%m1) : memref<324288xi8>
+    aie.buffer @r2(%m2) : memref<324288xi8>
     aie.objectfifo.pool @free(%m1) {depth = 1 : i32} : memref<200000xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 200000 : i32}
     }
@@ -29,5 +29,5 @@ module @home_backtrack {
 // CHECK-LABEL: module @home_backtrack
 // CHECK-DAG: %[[M0:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[M1:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[M0]]) {sym_name = "free_buff_0"}
-// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "pinned_buff_0"}
+// CHECK-DAG: aie.buffer @free_buff_0(%[[M0]])
+// CHECK-DAG: aie.buffer @pinned_buff_0(%[[M1]])

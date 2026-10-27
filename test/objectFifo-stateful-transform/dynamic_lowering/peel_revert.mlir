@@ -26,7 +26,7 @@
 // CHECK:             %{{.*}} = scf.for %{{.*}} iter_args(%[[HELD:.*]] = %{{.*}}) -> (i32) {
 // CHECK:               %[[DELTA:.*]] = arith.subi %{{.*}}, %[[HELD]] : i32
 // CHECK:               %[[ACQ:.*]] = arith.maxsi %[[DELTA]], %{{.*}} : i32
-// CHECK:               aie.use_lock(%{{.*}}, AcquireGreaterEqual, %[[ACQ]])
+// CHECK:               aie.use_lock(@{{.*}}, AcquireGreaterEqual, %[[ACQ]])
 // CHECK:               %{{.*}} = scf.if
 // CHECK:             }
 // CHECK-NOT:         scf.for

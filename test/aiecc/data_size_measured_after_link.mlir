@@ -27,14 +27,14 @@
 
 // CHECK: aie.core(%tile_0_2)
 // CHECK: measured_data_size = 128 : i32
-// AUTO: aie.buffer({{.*}}) {{.*}}core_data{{.*}} : memref<128xi8>
+// AUTO: aie.buffer @{{[^ (]+}}({{.*}}) {{.*}}core_data{{.*}} : memref<128xi8>
 // AUTO: measured_data_alignment =
 // AUTO-SAME: measured_data_size = 128 : i32
 // DISABLED: aie.core(
 // A disabled measurement does not waive linker overflow for an undersized
 // explicit reservation; only request placement for this case.
 // SMALL: data_size 64 is smaller than the 128 bytes this core's linked sections occupy
-// EXPLICIT: aie.buffer({{.*}}) {{.*}}core_data{{.*}} : memref<64xi8>
+// EXPLICIT: aie.buffer @{{[^ (]+}}({{.*}}) {{.*}}core_data{{.*}} : memref<64xi8>
 // EXPLICIT: data_size = 64 : i32
 
 module {

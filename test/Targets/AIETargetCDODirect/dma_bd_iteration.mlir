@@ -24,10 +24,11 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) { address = 524288 : i32, sym_name = "b" } : memref<256xi32>
+    aie.buffer @b(%t) { address = 524288 : i32} : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<256xi32>
       aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64 sizes = [2, 2, 2, 2] strides = [8, 4, 2, 1]) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 4, stride = 16, current = 0> }
       aie.next_bd ^end
     ^end:
@@ -43,10 +44,11 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) { address = 524288 : i32, sym_name = "b" } : memref<256xi32>
+    aie.buffer @b(%t) { address = 524288 : i32} : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<256xi32>
       aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64 sizes = [2, 2, 2, 2] strides = [8, 4, 2, 1]) { bd_id = 0 : i32 }
       aie.next_bd ^end
     ^end:
@@ -62,10 +64,11 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) { address = 524288 : i32, sym_name = "b" } : memref<256xi32>
+    aie.buffer @b(%t) { address = 524288 : i32} : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<256xi32>
       aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 4, stride = 16, current = 0> }
       aie.next_bd ^end
     ^end:
@@ -81,10 +84,11 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) { address = 524288 : i32, sym_name = "b" } : memref<256xi32>
+    aie.buffer @b(%t) { address = 524288 : i32} : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<256xi32>
       aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 4, stride = 16, current = 2> }
       aie.next_bd ^end
     ^end:
@@ -100,10 +104,11 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) { address = 524288 : i32, sym_name = "b" } : memref<256xi64>
+    aie.buffer @b(%t) { address = 524288 : i32} : memref<256xi64>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<256xi64>
       aie.dma_bd(%b : memref<256xi64> offset = 0 len = 64) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 4, stride = 4, current = 0> }
       aie.next_bd ^end
     ^end:
@@ -119,10 +124,11 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) { address = 524288 : i32, sym_name = "b" } : memref<256xi32>
+    aie.buffer @b(%t) { address = 524288 : i32} : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<256xi32>
       aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 64, stride = 16, current = 0> }
       aie.next_bd ^end
     ^end:
@@ -138,10 +144,11 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) { address = 524288 : i32, sym_name = "b" } : memref<256xi32>
+    aie.buffer @b(%t) { address = 524288 : i32} : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<256xi32>
       aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 4, stride = 131072, current = 0> }
       aie.next_bd ^end
     ^end:
@@ -157,10 +164,11 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b = aie.buffer(%t) { address = 524288 : i32, sym_name = "b" } : memref<256xi32>
+    aie.buffer @b(%t) { address = 524288 : i32} : memref<256xi32>
     %m = aie.memtile_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<256xi32>
       aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 1, stride = 16, current = 0> }
       aie.next_bd ^end
     ^end:
@@ -176,10 +184,11 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) { address = 1024 : i32, sym_name = "cb" } : memref<256xi32>
+    aie.buffer @cb(%t) { address = 1024 : i32} : memref<256xi32>
     %m = aie.mem(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @cb : memref<256xi32>
       aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 4, stride = 16, current = 0> }
       aie.next_bd ^end
     ^end:
@@ -194,11 +203,12 @@ module {
 // CHECK: Address: {{0x[0-9A-Fa-f]+18}}  Data@ {{0x[0-9a-z]+}} is: 0x00330D3F
 module {
   aie.device(npu2) {
-    %b = aie.external_buffer { sym_name = "eb" } : memref<256xi32>
+    aie.external_buffer @eb : memref<256xi32>
     %t = aie.tile(0, 0)
     aie.shim_dma(%t) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @eb : memref<256xi32>
       aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 4, stride = 200000, current = 0> }
       aie.next_bd ^end
     ^end:

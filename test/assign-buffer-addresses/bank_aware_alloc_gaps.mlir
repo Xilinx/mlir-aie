@@ -15,15 +15,15 @@
 // The hole is [1040, 1216), whose first free byte is misaligned. The candidate
 // start rounds up to 1088 *before* the fit test, so the buffer uses the hole.
 // CHECK-LABEL: module @alignment_rounds_up_inside_hole
-// CHECK: %pin_lo = aie.buffer(%tile_0_2) {address = 1024 : i32, aligned = false, mem_bank = 0 : i32, sym_name = "pin_lo"} : memref<8xbf16>
-// CHECK: %pin_hi = aie.buffer(%tile_0_2) {address = 1216 : i32, aligned = false, mem_bank = 0 : i32, sym_name = "pin_hi"} : memref<8xbf16>
-// CHECK: %fits_after_rounding = aie.buffer(%tile_0_2) {address = 1088 : i32, mem_bank = 0 : i32, sym_name = "fits_after_rounding"} : memref<64xbf16>
+// CHECK: aie.buffer @pin_lo(%tile_0_2) {address = 1024 : i32, aligned = false, mem_bank = 0 : i32} : memref<8xbf16>
+// CHECK: aie.buffer @pin_hi(%tile_0_2) {address = 1216 : i32, aligned = false, mem_bank = 0 : i32} : memref<8xbf16>
+// CHECK: aie.buffer @fits_after_rounding(%tile_0_2) {address = 1088 : i32, mem_bank = 0 : i32} : memref<64xbf16>
 module @alignment_rounds_up_inside_hole {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %pin_lo = aie.buffer(%tile_0_2) {address = 1024 : i32, aligned = false, sym_name = "pin_lo"} : memref<8xbf16>
-    %pin_hi = aie.buffer(%tile_0_2) {address = 1216 : i32, aligned = false, sym_name = "pin_hi"} : memref<8xbf16>
-    %fits_after_rounding = aie.buffer(%tile_0_2) {sym_name = "fits_after_rounding"} : memref<64xbf16>
+    aie.buffer @pin_lo(%tile_0_2) {address = 1024 : i32, aligned = false} : memref<8xbf16>
+    aie.buffer @pin_hi(%tile_0_2) {address = 1216 : i32, aligned = false} : memref<8xbf16>
+    aie.buffer @fits_after_rounding(%tile_0_2) : memref<64xbf16>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -36,15 +36,15 @@ module @alignment_rounds_up_inside_hole {
 // [2112, 2368). A 256-byte buffer takes the tighter, higher hole, which keeps
 // the larger clean region free for a larger buffer.
 // CHECK-LABEL: module @best_fit_prefers_tightest_hole
-// CHECK: %pin_mid = aie.buffer(%tile_0_2) {address = 2048 : i32, mem_bank = 0 : i32, sym_name = "pin_mid"} : memref<32xbf16>
-// CHECK: %pin_rest = aie.buffer(%tile_0_2) {address = 2368 : i32, mem_bank = 0 : i32, sym_name = "pin_rest"} : memref<7008xbf16>
-// CHECK: %snug = aie.buffer(%tile_0_2) {address = 2112 : i32, mem_bank = 0 : i32, sym_name = "snug"} : memref<128xbf16>
+// CHECK: aie.buffer @pin_mid(%tile_0_2) {address = 2048 : i32, mem_bank = 0 : i32} : memref<32xbf16>
+// CHECK: aie.buffer @pin_rest(%tile_0_2) {address = 2368 : i32, mem_bank = 0 : i32} : memref<7008xbf16>
+// CHECK: aie.buffer @snug(%tile_0_2) {address = 2112 : i32, mem_bank = 0 : i32} : memref<128xbf16>
 module @best_fit_prefers_tightest_hole {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %pin_mid = aie.buffer(%tile_0_2) {address = 2048 : i32, sym_name = "pin_mid"} : memref<32xbf16>
-    %pin_rest = aie.buffer(%tile_0_2) {address = 2368 : i32, sym_name = "pin_rest"} : memref<7008xbf16>
-    %snug = aie.buffer(%tile_0_2) {sym_name = "snug"} : memref<128xbf16>
+    aie.buffer @pin_mid(%tile_0_2) {address = 2048 : i32} : memref<32xbf16>
+    aie.buffer @pin_rest(%tile_0_2) {address = 2368 : i32} : memref<7008xbf16>
+    aie.buffer @snug(%tile_0_2) : memref<128xbf16>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -56,13 +56,13 @@ module @best_fit_prefers_tightest_hole {
 // The buffer exactly fills the [1024, 2048) hole, exercising the boundary of
 // the fit test.
 // CHECK-LABEL: module @exact_fit_in_hole
-// CHECK: %pin_rest = aie.buffer(%tile_0_2) {address = 2048 : i32, mem_bank = 0 : i32, sym_name = "pin_rest"} : memref<7168xbf16>
-// CHECK: %exact = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "exact"} : memref<512xbf16>
+// CHECK: aie.buffer @pin_rest(%tile_0_2) {address = 2048 : i32, mem_bank = 0 : i32} : memref<7168xbf16>
+// CHECK: aie.buffer @exact(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32} : memref<512xbf16>
 module @exact_fit_in_hole {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %pin_rest = aie.buffer(%tile_0_2) {address = 2048 : i32, sym_name = "pin_rest"} : memref<7168xbf16>
-    %exact = aie.buffer(%tile_0_2) {sym_name = "exact"} : memref<512xbf16>
+    aie.buffer @pin_rest(%tile_0_2) {address = 2048 : i32} : memref<7168xbf16>
+    aie.buffer @exact(%tile_0_2) : memref<512xbf16>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -76,19 +76,19 @@ module @exact_fit_in_hole {
 // the four small buffers first would spread them round-robin over every bank
 // and dirty all four, which leaves "large" no bank-contained home.
 // CHECK-LABEL: module @largest_first
-// CHECK: %small0 = aie.buffer(%tile_0_2) {address = 32768 : i32, mem_bank = 2 : i32, sym_name = "small0"} : memref<16xbf16>
-// CHECK: %small1 = aie.buffer(%tile_0_2) {address = 49152 : i32, mem_bank = 3 : i32, sym_name = "small1"} : memref<16xbf16>
-// CHECK: %small2 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "small2"} : memref<16xbf16>
-// CHECK: %small3 = aie.buffer(%tile_0_2) {address = 32800 : i32, mem_bank = 2 : i32, sym_name = "small3"} : memref<16xbf16>
-// CHECK: %large = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "large"} : memref<8192xbf16>
+// CHECK: aie.buffer @small0(%tile_0_2) {address = 32768 : i32, mem_bank = 2 : i32} : memref<16xbf16>
+// CHECK: aie.buffer @small1(%tile_0_2) {address = 49152 : i32, mem_bank = 3 : i32} : memref<16xbf16>
+// CHECK: aie.buffer @small2(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32} : memref<16xbf16>
+// CHECK: aie.buffer @small3(%tile_0_2) {address = 32800 : i32, mem_bank = 2 : i32} : memref<16xbf16>
+// CHECK: aie.buffer @large(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<8192xbf16>
 module @largest_first {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %small0 = aie.buffer(%tile_0_2) {sym_name = "small0"} : memref<16xbf16>
-    %small1 = aie.buffer(%tile_0_2) {sym_name = "small1"} : memref<16xbf16>
-    %small2 = aie.buffer(%tile_0_2) {sym_name = "small2"} : memref<16xbf16>
-    %small3 = aie.buffer(%tile_0_2) {sym_name = "small3"} : memref<16xbf16>
-    %large = aie.buffer(%tile_0_2) {sym_name = "large"} : memref<8192xbf16>
+    aie.buffer @small0(%tile_0_2) : memref<16xbf16>
+    aie.buffer @small1(%tile_0_2) : memref<16xbf16>
+    aie.buffer @small2(%tile_0_2) : memref<16xbf16>
+    aie.buffer @small3(%tile_0_2) : memref<16xbf16>
+    aie.buffer @large(%tile_0_2) : memref<8192xbf16>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -100,13 +100,13 @@ module @largest_first {
 // A zero-sized buffer is degenerate but legal, and must not upset the occupancy
 // bookkeeping. It takes a free address where one exists.
 // CHECK-LABEL: module @zero_sized_buffer
-// CHECK: %empty = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "empty"} : memref<0xi32>
-// CHECK: %normal = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "normal"} : memref<16xbf16>
+// CHECK: aie.buffer @empty(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<0xi32>
+// CHECK: aie.buffer @normal(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32} : memref<16xbf16>
 module @zero_sized_buffer {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %empty = aie.buffer(%tile_0_2) {sym_name = "empty"} : memref<0xi32>
-    %normal = aie.buffer(%tile_0_2) {sym_name = "normal"} : memref<16xbf16>
+    aie.buffer @empty(%tile_0_2) : memref<0xi32>
+    aie.buffer @normal(%tile_0_2) : memref<16xbf16>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -119,19 +119,19 @@ module @zero_sized_buffer {
 // covers no bytes, so allocation still places it, and the overlap checks accept
 // the address it shares with the buffer or the stack.
 // CHECK-LABEL: module @zero_sized_buffer_on_full_tile
-// CHECK: %b0 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "b0"} : memref<15360xi8>
-// CHECK: %b1 = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "b1"} : memref<16384xi8>
-// CHECK: %b2 = aie.buffer(%tile_0_2) {address = 32768 : i32, mem_bank = 2 : i32, sym_name = "b2"} : memref<16384xi8>
-// CHECK: %b3 = aie.buffer(%tile_0_2) {address = 49152 : i32, mem_bank = 3 : i32, sym_name = "b3"} : memref<16384xi8>
-// CHECK: %empty = aie.buffer(%tile_0_2) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "empty"} : memref<0xi32>
+// CHECK: aie.buffer @b0(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32} : memref<15360xi8>
+// CHECK: aie.buffer @b1(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<16384xi8>
+// CHECK: aie.buffer @b2(%tile_0_2) {address = 32768 : i32, mem_bank = 2 : i32} : memref<16384xi8>
+// CHECK: aie.buffer @b3(%tile_0_2) {address = 49152 : i32, mem_bank = 3 : i32} : memref<16384xi8>
+// CHECK: aie.buffer @empty(%tile_0_2) {address = 0 : i32, mem_bank = 0 : i32} : memref<0xi32>
 module @zero_sized_buffer_on_full_tile {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %b0 = aie.buffer(%tile_0_2) {address = 1024 : i32, sym_name = "b0"} : memref<15360xi8>
-    %b1 = aie.buffer(%tile_0_2) {address = 16384 : i32, sym_name = "b1"} : memref<16384xi8>
-    %b2 = aie.buffer(%tile_0_2) {address = 32768 : i32, sym_name = "b2"} : memref<16384xi8>
-    %b3 = aie.buffer(%tile_0_2) {address = 49152 : i32, sym_name = "b3"} : memref<16384xi8>
-    %empty = aie.buffer(%tile_0_2) {sym_name = "empty"} : memref<0xi32>
+    aie.buffer @b0(%tile_0_2) {address = 1024 : i32} : memref<15360xi8>
+    aie.buffer @b1(%tile_0_2) {address = 16384 : i32} : memref<16384xi8>
+    aie.buffer @b2(%tile_0_2) {address = 32768 : i32} : memref<16384xi8>
+    aie.buffer @b3(%tile_0_2) {address = 49152 : i32} : memref<16384xi8>
+    aie.buffer @empty(%tile_0_2) : memref<0xi32>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -146,13 +146,13 @@ module @zero_sized_buffer_on_full_tile {
 // want of a free byte the buffer never uses. It lands inside the bank it
 // requested.
 // CHECK-LABEL: module @zero_sized_buffer_pinned_to_full_bank
-// CHECK: %b1 = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "b1"} : memref<16384xi8>
-// CHECK: %empty = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "empty"} : memref<0xi32>
+// CHECK: aie.buffer @b1(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<16384xi8>
+// CHECK: aie.buffer @empty(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<0xi32>
 module @zero_sized_buffer_pinned_to_full_bank {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %b1 = aie.buffer(%tile_0_2) {address = 16384 : i32, sym_name = "b1"} : memref<16384xi8>
-    %empty = aie.buffer(%tile_0_2) {sym_name = "empty", mem_bank = 1 : i32} : memref<0xi32>
+    aie.buffer @b1(%tile_0_2) {address = 16384 : i32} : memref<16384xi8>
+    aie.buffer @empty(%tile_0_2) {mem_bank = 1 : i32} : memref<0xi32>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -165,11 +165,11 @@ module @zero_sized_buffer_pinned_to_full_bank {
 // memory, one past every bank's range, is legal for the same reason: it covers
 // no bytes, so nothing there conflicts with it. It lands in the last bank.
 // CHECK-LABEL: module @zero_sized_buffer_at_exact_top_of_tile
-// CHECK: %top = aie.buffer(%tile_0_2) {address = 65536 : i32, mem_bank = 3 : i32, sym_name = "top"} : memref<0xi32>
+// CHECK: aie.buffer @top(%tile_0_2) {address = 65536 : i32, mem_bank = 3 : i32} : memref<0xi32>
 module @zero_sized_buffer_at_exact_top_of_tile {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %top = aie.buffer(%tile_0_2) {address = 65536 : i32, sym_name = "top"} : memref<0xi32>
+    aie.buffer @top(%tile_0_2) {address = 65536 : i32} : memref<0xi32>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}

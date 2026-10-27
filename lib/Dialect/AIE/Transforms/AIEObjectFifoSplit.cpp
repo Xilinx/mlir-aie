@@ -304,8 +304,9 @@ struct AIEObjectFifoSplitPass
       if (regOp.getTile() != tile || regOp.getObjectFifo() != fifo) {
         continue;
       }
-      for (Value buffer : regOp.getExternalBuffers()) {
-        auto external = cast<ExternalBufferOp>(buffer.getDefiningOp());
+      for (Attribute buffer : regOp.getExternalBuffers()) {
+        auto external = SymbolTable::lookupNearestSymbolFrom<ExternalBufferOp>(
+            regOp, cast<FlatSymbolRefAttr>(buffer));
         names.push_back(SymbolRefAttr::get(external.getSymNameAttr()));
         // The registered buffer's own extent is what the DMA moves, which need
         // not be the fifo's object size.

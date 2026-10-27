@@ -32,7 +32,7 @@ module @cascade_unplaceable {
 module @core_memory_over_estimate {
   aie.device(npu2) {
     %c = aie.logical_tile<CoreTile>(?, ?)
-    %b = aie.buffer(%c) : memref<20000xi32>
+    aie.buffer @b(%c) : memref<20000xi32>
     aie.core(%c) { aie.end }
   }
 }

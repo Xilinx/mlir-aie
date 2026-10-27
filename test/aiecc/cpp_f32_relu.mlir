@@ -22,8 +22,8 @@
 module attributes {dlti.dl_spec = #dlti.dl_spec<index = 32>} {
   aie.device(npu1_1col) {
     %tile_0_2 = aie.tile(0, 2)
-    %buf_in = aie.buffer(%tile_0_2) {sym_name = "buf_in"} : memref<256xf32>
-    %buf_out = aie.buffer(%tile_0_2) {sym_name = "buf_out"} : memref<256xf32>
+    aie.buffer @buf_in(%tile_0_2) : memref<256xf32>
+    aie.buffer @buf_out(%tile_0_2) : memref<256xf32>
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
@@ -35,9 +35,11 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<index = 32>} {
       // Without convert-to-llvm{dynamic=true}, the index<->i64 mismatch
       // from the 32-bit index data layout causes unrealized_conversion_cast.
       scf.for %i = %c0 to %c256 step %c1 {
+        %buf_in = aie.get_buffer @buf_in : memref<256xf32>
         %val = memref.load %buf_in[%i] : memref<256xf32>
         %gt = arith.cmpf ogt, %val, %cst : f32
         %relu = arith.select %gt, %val, %cst : f32
+        %buf_out = aie.get_buffer @buf_out : memref<256xf32>
         memref.store %relu, %buf_out[%i] : memref<256xf32>
       }
       aie.end

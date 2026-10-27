@@ -22,14 +22,14 @@ aie.device(xcvc1902) {
         return %next : i32
     }
 
-    %ext_buf70_in  = aie.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32>
-    %ext_buf70_out = aie.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<256xi32>
+    aie.external_buffer @ddr_test_buffer_in: memref<256xi32>
+    aie.external_buffer @ddr_test_buffer_out: memref<256xi32>
 
     aie.objectfifo @of_in (%tile70, {%tile34}, 1 : i32) : !aie.objectfifo<memref<256xi32>>
     aie.objectfifo @of_out (%tile34, {%tile70}, 1 : i32) : !aie.objectfifo<memref<256xi32>>
 
-    aie.objectfifo.register_external_buffers @of_in (%tile70, {%ext_buf70_in}) : (memref<256xi32>)
-    aie.objectfifo.register_external_buffers @of_out (%tile70, {%ext_buf70_out}) : (memref<256xi32>)
+    aie.objectfifo.register_external_buffers @of_in (%tile70, [@ddr_test_buffer_in])
+    aie.objectfifo.register_external_buffers @of_out (%tile70, [@ddr_test_buffer_out])
 
     %core34 = aie.core(%tile34) {
         %c0 = arith.constant 0 : index

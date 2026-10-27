@@ -21,7 +21,7 @@
 
 // The 4096-byte buffer plus the call chain, aligned to aie2p's 64 bytes. The
 // first buffer starts where the stack ends.
-// PLACED: aie.buffer(%{{.*}}tile_0_2) {address = {{4[0-9][0-9][0-9]}} : i32
+// PLACED: aie.buffer @{{[^ (]+}}(%{{.*}}tile_0_2) {address = {{4[0-9][0-9][0-9]}} : i32
 // PLACED: measured_stack_size = {{4[0-9][0-9][0-9]}} : i32
 // LDSCRIPT: . += 0x10{{[0-9A-F]}}0; /* stack */
 

@@ -13,10 +13,11 @@
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
     aie.runtime_sequence @odd_channel_low_id() {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 1) {
-        // expected-error@+1 {{cannot be submitted on channel 1}}
+        // expected-error@+2 {{cannot be submitted on channel 1}}
+        %buf = aie.get_buffer @buf : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256) {bd_id = 0 : i32}
         aie.end
       }
@@ -30,10 +31,11 @@ module {
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
+    aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<1024xi32>
     aie.runtime_sequence @even_channel_high_id() {
       %t = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
-        // expected-error@+1 {{cannot be submitted on channel 0}}
+        // expected-error@+2 {{cannot be submitted on channel 0}}
+        %buf = aie.get_buffer @buf : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 256) {bd_id = 30 : i32}
         aie.end
       }

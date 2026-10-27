@@ -21,15 +21,15 @@
 module {
   aie.device(npu2) {
     %t = aie.logical_tile<CoreTile>(?, ?)
-    %lock = aie.lock(%t, 0) {init = 0 : i32}
+    aie.lock @lock(%t, 0) {init = 0 : i32}
     aie.core(%t) {
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+      aie.use_lock(@lock, AcquireGreaterEqual, %c1)
       aie.end
     }
     aie.runtime_sequence() {
       %v = arith.constant 1 : i32
-      aiex.set_lock(%lock, %v)
+      aiex.set_lock(@lock, %v)
     }
   }
 }
@@ -44,15 +44,15 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.logical_tile<CoreTile>(0, 2)
-    %lock = aie.lock(%t, 15) {init = 0 : i32}
+    aie.lock @lock(%t, 15) {init = 0 : i32}
     aie.core(%t) {
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+      aie.use_lock(@lock, AcquireGreaterEqual, %c1)
       aie.end
     }
     aie.runtime_sequence() {
       %v = arith.constant 1 : i32
-      aiex.set_lock(%lock, %v)
+      aiex.set_lock(@lock, %v)
     }
   }
 }

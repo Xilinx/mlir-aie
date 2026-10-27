@@ -30,12 +30,13 @@
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) : memref<4096xi32>
+    aie.buffer @buf(%tile_0_1) : memref<4096xi32>
 
     aie.runtime_sequence(%len: i32) {
       // MM2S channel 0 is even, so the BD id must be below 24
       // (isBdChannelAccessible).
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+          %buf = aie.get_buffer @buf : memref<4096xi32>
           aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = %len sizes = [1, 8, 16, 32] strides = [4096, 512, 32, 1]) {bd_id = 0 : i32}
           aie.end
       }

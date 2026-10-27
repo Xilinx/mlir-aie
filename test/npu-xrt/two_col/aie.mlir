@@ -12,10 +12,10 @@ module {
     %3 = aie.tile(0, 3)
     %4 = aie.tile(1, 4)
     %5 = aie.tile(1, 5)
-    %rtp0 = aie.buffer(%2) {sym_name = "rtp0"} : memref<16xi32>
-    %rtp1 = aie.buffer(%3) {sym_name = "rtp1"} : memref<16xi32>
-    %rtp2 = aie.buffer(%4) {sym_name = "rtp2"} : memref<16xi32>
-    %rtp3 = aie.buffer(%5) {sym_name = "rtp3"} : memref<16xi32>
+    aie.buffer @rtp0(%2) : memref<16xi32>
+    aie.buffer @rtp1(%3) : memref<16xi32>
+    aie.buffer @rtp2(%4) : memref<16xi32>
+    aie.buffer @rtp3(%5) : memref<16xi32>
     aie.objectfifo @objFifo_in0(%0, {%1}, 2 : i32) : !aie.objectfifo<memref<512xui8>>
     aie.objectfifo @objFifo_in1(%1, {%2}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
     aie.objectfifo @objFifo_in2(%1, {%3}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
@@ -37,13 +37,15 @@ module {
       %maxValue = arith.constant 255 : i32
       %th = arith.constant 50 : i32
       %v0 = arith.constant 0 : i32
+      %rtp0 = aie.get_buffer @rtp0 : memref<16xi32>
       memref.store %th, %rtp0[%c0] : memref<16xi32>
       memref.store %v0, %rtp0[%c1] : memref<16xi32>
       scf.for %arg0 = %c0 to %c4096 step %c1 {
         %elem0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : memref<128xui8>
         %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : memref<128xui8>
-        %thresh = memref.load %rtp0[%c0] : memref<16xi32>
-        %tt = memref.load %rtp0[%c1] : memref<16xi32>
+        %rtp0_1 = aie.get_buffer @rtp0 : memref<16xi32>
+        %thresh = memref.load %rtp0_1[%c0] : memref<16xi32>
+        %tt = memref.load %rtp0_1[%c1] : memref<16xi32>
         %threshType = arith.trunci %tt : i32 to i8
         func.call @thresholdLine(%elem0,%elem1,%lineWidth,%thresh,%maxValue,%threshType) : (memref<128xui8>, memref<128xui8>, i32, i32, i32, i8) -> ()
         aie.objectfifo.release @objFifo_in1(Consume, 1)
@@ -59,13 +61,15 @@ module {
       %maxValue = arith.constant 255 : i32
       %th = arith.constant 50 : i32
       %v0 = arith.constant 0 : i32
+      %rtp1 = aie.get_buffer @rtp1 : memref<16xi32>
       memref.store %th, %rtp1[%c0] : memref<16xi32>
       memref.store %v0, %rtp1[%c1] : memref<16xi32>
       scf.for %arg0 = %c0 to %c4096 step %c1 {
         %elem0 = aie.objectfifo.acquire @objFifo_in2(Consume, 1) : memref<128xui8>
         %elem1 = aie.objectfifo.acquire @objFifo_out2(Produce, 1) : memref<128xui8>
-        %thresh = memref.load %rtp1[%c0] : memref<16xi32>
-        %tt = memref.load %rtp1[%c1] : memref<16xi32>
+        %rtp1_1 = aie.get_buffer @rtp1 : memref<16xi32>
+        %thresh = memref.load %rtp1_1[%c0] : memref<16xi32>
+        %tt = memref.load %rtp1_1[%c1] : memref<16xi32>
         %threshType = arith.trunci %tt : i32 to i8
         func.call @thresholdLine(%elem0,%elem1,%lineWidth,%thresh,%maxValue,%threshType) : (memref<128xui8>, memref<128xui8>, i32, i32, i32, i8) -> ()
         aie.objectfifo.release @objFifo_in2(Consume, 1)
@@ -81,13 +85,15 @@ module {
       %maxValue = arith.constant 255 : i32
       %th = arith.constant 50 : i32
       %v0 = arith.constant 0 : i32
+      %rtp2 = aie.get_buffer @rtp2 : memref<16xi32>
       memref.store %th, %rtp2[%c0] : memref<16xi32>
       memref.store %v0, %rtp2[%c1] : memref<16xi32>
       scf.for %arg0 = %c0 to %c4096 step %c1 {
         %elem0 = aie.objectfifo.acquire @objFifo_in3(Consume, 1) : memref<128xui8>
         %elem1 = aie.objectfifo.acquire @objFifo_out3(Produce, 1) : memref<128xui8>
-        %thresh = memref.load %rtp2[%c0] : memref<16xi32>
-        %tt = memref.load %rtp2[%c1] : memref<16xi32>
+        %rtp2_1 = aie.get_buffer @rtp2 : memref<16xi32>
+        %thresh = memref.load %rtp2_1[%c0] : memref<16xi32>
+        %tt = memref.load %rtp2_1[%c1] : memref<16xi32>
         %threshType = arith.trunci %tt : i32 to i8
         func.call @thresholdLine(%elem0,%elem1,%lineWidth,%thresh,%maxValue,%threshType) : (memref<128xui8>, memref<128xui8>, i32, i32, i32, i8) -> ()
         aie.objectfifo.release @objFifo_in3(Consume, 1)
@@ -103,13 +109,15 @@ module {
       %maxValue = arith.constant 255 : i32
       %th = arith.constant 50 : i32
       %v0 = arith.constant 0 : i32
+      %rtp3 = aie.get_buffer @rtp3 : memref<16xi32>
       memref.store %th, %rtp3[%c0] : memref<16xi32>
       memref.store %v0, %rtp3[%c1] : memref<16xi32>
       scf.for %arg0 = %c0 to %c4096 step %c1 {
         %elem0 = aie.objectfifo.acquire @objFifo_in4(Consume, 1) : memref<128xui8>
         %elem1 = aie.objectfifo.acquire @objFifo_out4(Produce, 1) : memref<128xui8>
-        %thresh = memref.load %rtp3[%c0] : memref<16xi32>
-        %tt = memref.load %rtp3[%c1] : memref<16xi32>
+        %rtp3_1 = aie.get_buffer @rtp3 : memref<16xi32>
+        %thresh = memref.load %rtp3_1[%c0] : memref<16xi32>
+        %tt = memref.load %rtp3_1[%c1] : memref<16xi32>
         %threshType = arith.trunci %tt : i32 to i8
         func.call @thresholdLine(%elem0,%elem1,%lineWidth,%thresh,%maxValue,%threshType) : (memref<128xui8>, memref<128xui8>, i32, i32, i32, i8) -> ()
         aie.objectfifo.release @objFifo_in4(Consume, 1)

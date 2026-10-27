@@ -7,7 +7,7 @@
 module @shared_fixed_exact_capacity {
   aie.device(npu2_1col) {
     %mem = aie.tile(0, 1)
-    %b = aie.buffer(%mem) {sym_name = "b"} : memref<524288xi8>
+    aie.buffer @b(%mem) : memref<524288xi8>
     aie.objectfifo.pool @p(%mem) {depth = 1 : i32, buffers = [@b]} : memref<524288xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 524288 : i32}
     }
@@ -19,7 +19,7 @@ module @shared_fixed_exact_capacity {
   }
 }
 // CHECK-LABEL: module @shared_fixed_exact_capacity
-// CHECK: aie.buffer({{.*}}) {address = 0 : i32, {{.*}}sym_name = "b"}
+// CHECK: aie.buffer @b({{.*}}) {address = 0 : i32{{.*}}}
 // CHECK: @reader({{.*}}) drains @p {channelIndex = 0 : i32}
 // CHECK: @writer({{.*}}) fills @q {channelIndex = 0 : i32}
 
@@ -30,7 +30,7 @@ module @shared_fixed_exact_capacity {
 module @sub_byte_exact_capacity {
   aie.device(npu2_1col) {
     %mem = aie.tile(0, 1)
-    %reserved = aie.buffer(%mem) {sym_name = "reserved"} : memref<524160xi8>
+    aie.buffer @reserved(%mem) : memref<524160xi8>
     aie.objectfifo.pool @small(%mem) {depth = 1 : i32} : memref<32xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 32 : i32}
     }
@@ -42,5 +42,5 @@ module @sub_byte_exact_capacity {
   }
 }
 // CHECK-LABEL: module @sub_byte_exact_capacity
-// CHECK: aie.buffer({{.*}}) {address = 524160 : i32, {{.*}}sym_name = "large_buff_0"
-// CHECK: aie.buffer({{.*}}) {address = 524256 : i32, {{.*}}sym_name = "small_buff_0"
+// CHECK: aie.buffer @large_buff_0({{.*}}) {address = 524160 : i32{{.*}}
+// CHECK: aie.buffer @small_buff_0({{.*}}) {address = 524256 : i32{{.*}}

@@ -24,11 +24,11 @@ aie.device(xcvc1902) {
   %tile13 = aie.tile(1, 3)
   %tile23 = aie.tile(2, 3)
 
-  %buf13 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
-  %buf23 = aie.buffer(%tile23) { sym_name = "c" } : memref<256xi32>
+  aie.buffer @a(%tile13) : memref<256xi32>
+  aie.buffer @c(%tile23) : memref<256xi32>
 
-  %lock13_3 = aie.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
-  %lock23_7 = aie.lock(%tile23, 7) { sym_name = "output_lock" } // output buffer lock
+  aie.lock @input_lock(%tile13, 3) // input buffer lock
+  aie.lock @output_lock(%tile23, 7) // output buffer lock
 
   func.func private @do_mul(%A: memref<256xi32>) -> ()
   func.func private @do_mac(%A: memref<256xi32>) -> ()
@@ -39,11 +39,12 @@ aie.device(xcvc1902) {
     %0 = arith.constant 0 : i32
     %idx0 = arith.constant 3 : index
     %c1_ul0 = arith.constant 1 : i32
-    aie.use_lock(%lock13_3, "Acquire", %c1_ul0) // acquire for read(e.g. input ping)
+    aie.use_lock(@input_lock, "Acquire", %c1_ul0) // acquire for read(e.g. input ping)
+    %buf13 = aie.get_buffer @a : memref<256xi32>
     %val = memref.load %buf13[%idx0] : memref<256xi32>
     aie.put_stream(%0 : i32, %val : i32)
     %c0_ul1 = arith.constant 0 : i32
-    aie.use_lock(%lock13_3, "Release", %c0_ul1) // release for write
+    aie.use_lock(@input_lock, "Release", %c0_ul1) // release for write
     aie.end
   }
 
@@ -51,11 +52,12 @@ aie.device(xcvc1902) {
     %0 = arith.constant 0 : i32
     %idx0 = arith.constant 3 : index
     %c0_ul2 = arith.constant 0 : i32
-    aie.use_lock(%lock23_7, "Acquire", %c0_ul2) // acquire for write
+    aie.use_lock(@output_lock, "Acquire", %c0_ul2) // acquire for write
     %val = aie.get_stream(%0 : i32) : i32
+    %buf23 = aie.get_buffer @c : memref<256xi32>
     memref.store %val, %buf23[%idx0] : memref<256xi32>
     %c1_ul3 = arith.constant 1 : i32
-    aie.use_lock(%lock23_7, "Release", %c1_ul3) // release for read
+    aie.use_lock(@output_lock, "Release", %c1_ul3) // release for read
     aie.end
   }
 

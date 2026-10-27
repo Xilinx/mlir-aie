@@ -30,13 +30,14 @@
 // TXN: aiex.npu.sync
 aie.device(npu2) {
   %mt = aie.tile(0, 1)
-  %buf = aie.buffer(%mt) {address = 0 : i32} : memref<4096xi32>
+  aie.buffer @buf(%mt) {address = 0 : i32} : memref<4096xi32>
   aie.runtime_sequence @replay(%n: index, %uses: i32) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %one = arith.constant 1 : i32
     scf.for %i = %c0 to %n step %c1 {
       %t = aiex.dma_configure_task(%mt, MM2S, 0) {
+        %buf = aie.get_buffer @buf : memref<4096xi32>
         aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096)
         aie.end
       } {issue_token = true}

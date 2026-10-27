@@ -12,7 +12,7 @@ module @input {
   aie.device(xcvc1902) {
     %shim = aie.tile(2, 0)
     %tile = aie.tile(2, 2)
-    %buffer = aie.external_buffer {sym_name = "buffer"} : memref<32xi32>
+    aie.external_buffer @buffer : memref<32xi32>
     aie.objectfifo.pool @pool(%shim) {depth = 1 : i32, buffers = [@buffer]}
       : memref<32xi32> {
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 32 : i32}
@@ -30,7 +30,7 @@ module @output {
   aie.device(xcvc1902) {
     %shim = aie.tile(2, 0)
     %tile = aie.tile(2, 2)
-    %buffer = aie.external_buffer {sym_name = "buffer"} : memref<32xi32>
+    aie.external_buffer @buffer : memref<32xi32>
     aie.objectfifo.pool @pool(%shim) {depth = 1 : i32, buffers = [@buffer]}
       : memref<32xi32> {
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 32 : i32}
@@ -47,7 +47,7 @@ module @output {
 module @no_device_actor {
   aie.device(xcvc1902) {
     %shim = aie.tile(2, 0)
-    %buffer = aie.external_buffer {sym_name = "buffer"} : memref<32xi32>
+    aie.external_buffer @buffer : memref<32xi32>
     // expected-error@+1 {{segment 0 has no drainer}}
     aie.objectfifo.pool @pool(%shim) {depth = 1 : i32, buffers = [@buffer]}
       : memref<32xi32> {

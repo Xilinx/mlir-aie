@@ -77,7 +77,7 @@ module  {
 module {
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0,2)
-    %data = aie.buffer(%tile02) {address = 1024 : i32, sym_name = "data"} : memref<128xi32>
+    aie.buffer @data(%tile02) {address = 1024 : i32} : memref<128xi32>
     aie.runtime_sequence() {
       %cst_npu_0 = arith.constant 100 : i32
       %cst_npu_1 = arith.constant 1234 : i32
@@ -94,7 +94,7 @@ module {
   aie.device(npu1_1col) {
     memref.global "private" constant @data : memref<4xi32> = dense<[4, 3, 2, 1]>
     %tile02 = aie.tile(0,2)
-    %buf = aie.buffer(%tile02) {address = 1024 : i32, sym_name = "buf"} : memref<128xi32>
+    aie.buffer @buf(%tile02) {address = 1024 : i32} : memref<128xi32>
     aie.runtime_sequence() {
       %0 = memref.get_global @data : memref<4xi32>
       aiex.npu.blockwrite(%0) {buffer = @buf, address = 100 : ui32, value = 1234 : ui32} : memref<4xi32>
@@ -112,7 +112,7 @@ module {
 module {
   aie.device(npu1_1col) {
     %tile03 = aie.tile(0,3)
-    %s = aie.buffer(%tile03) {address = 1024 : i32, sym_name = "stuff"} : memref<128xi32>
+    aie.buffer @stuff(%tile03) {address = 1024 : i32} : memref<128xi32>
     aie.runtime_sequence() {
       %cst_npu_2 = arith.constant 200 : i32
       %cst_npu_3 = arith.constant 321 : i32

@@ -10,7 +10,7 @@
 
 // CHECK-LABEL: module @test_core0 {
 // CHECK:         %[[VAL_0:.*]] = aie.tile(1, 1)
-// CHECK:         %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<256xi32>
+// CHECK:         aie.buffer @[[VAL_1:.*]](%[[VAL_0]]) : memref<256xi32>
 // CHECK:         %[[VAL_2:.*]] = aie.mem(%[[VAL_0]]) {
 // CHECK:           aie.end
 // CHECK:         }

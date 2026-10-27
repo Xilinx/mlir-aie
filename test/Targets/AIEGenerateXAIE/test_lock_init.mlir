@@ -11,6 +11,6 @@
 module @test_lock_init {
  aie.device(xcvc1902) {
   %t33 = aie.tile(3, 3)
-  %l33_0 = aie.lock(%t33, 0) { init = 1 : i32 }
+  aie.lock @l33_0(%t33, 0) { init = 1 : i32 }
  }
 }

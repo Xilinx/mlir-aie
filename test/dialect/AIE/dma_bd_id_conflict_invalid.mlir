@@ -12,12 +12,13 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) : memref<4xi32>
+    aie.buffer @b(%t) : memref<4xi32>
     aie.mem(%t) {
         aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
         %id = arith.constant 3 : i32
-        // expected-error@+1 {{bd_id and bd_id_val are mutually exclusive}}
+        // expected-error@+2 {{bd_id and bd_id_val are mutually exclusive}}
+        %b = aie.get_buffer @b : memref<4xi32>
         aie.dma_bd(%b : memref<4xi32> offset = 0 len = 4) bd_id_val %id : i32 { bd_id = 3 : i32 }
         aie.next_bd ^end
       ^end:

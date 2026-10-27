@@ -29,14 +29,14 @@ module @shim_and_segments {
 // CHECK-LABEL: @shim_and_segments
 // CHECK-DAG:   %[[SHIM:.*]] = aie.tile(0, 0)
 // CHECK-DAG:   %[[MT:.*]] = aie.tile(0, 1)
-// CHECK-NOT: aie.buffer(%[[SHIM]])
-// CHECK-NOT: aie.lock(%[[SHIM]])
-// CHECK:   aie.buffer(%[[MT]]) {sym_name = "in_buff_0"} : memref<48xi32>
-// CHECK:   aie.buffer(%[[MT]]) {sym_name = "in_buff_1"} : memref<48xi32>
-// CHECK:   aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "in_prod_lock_0"}
-// CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in_cons_lock_0"}
-// CHECK:   aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "in_prod_lock_1"}
-// CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in_cons_lock_1"}
+// CHECK-NOT: aie.buffer @{{[^ (]+}}(%[[SHIM]])
+// CHECK-NOT: aie.lock @{{[^ (]+}}(%[[SHIM]])
+// CHECK:   aie.buffer @in_buff_0(%[[MT]]) : memref<48xi32>
+// CHECK:   aie.buffer @in_buff_1(%[[MT]]) : memref<48xi32>
+// CHECK:   aie.lock @in_prod_lock_0(%[[MT]]) {init = 2 : i32}
+// CHECK:   aie.lock @in_cons_lock_0(%[[MT]]) {init = 0 : i32}
+// CHECK:   aie.lock @in_prod_lock_1(%[[MT]]) {init = 2 : i32}
+// CHECK:   aie.lock @in_cons_lock_1(%[[MT]]) {init = 0 : i32}
 // CHECK:   aie.route_endpoint @in_shim(%[[SHIM]]) DMA {channelIndex = 0 : i32, fifoName = "in"}
 // CHECK:   aie.flow(%[[SHIM]], DMA : 0, %[[MT]], DMA : 0)
 // CHECK:   aie.shim_dma_allocation @in_shim_alloc(%[[SHIM]], MM2S, 0)

@@ -15,9 +15,9 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
 
-    %prod_lock = aie.lock(%tile_0_1, 0) {init = 4 : i32, sym_name = "prod_lock"}
-    %cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "cons_lock"}
-    %out_buff = aie.buffer(%tile_0_1) {sym_name = "out_buff"} : memref<4096xi32>
+    aie.lock @prod_lock(%tile_0_1, 0) {init = 4 : i32}
+    aie.lock @cons_lock(%tile_0_1, 1) {init = 0 : i32}
+    aie.buffer @out_buff(%tile_0_1) : memref<4096xi32>
 
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
@@ -32,10 +32,11 @@ module {
       // one cons_lock release each.
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
         %c1 = arith.constant 1 : i32
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1)
+        aie.use_lock(@prod_lock, AcquireGreaterEqual, %c1)
+        %out_buff = aie.get_buffer @out_buff : memref<4096xi32>
         aie.dma_bd(%out_buff : memref<4096xi32> offset = 0 len = 1024) {bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 4, stride = 1024, current = 2>}
         %c1_0 = arith.constant 1 : i32
-        aie.use_lock(%cons_lock, Release, %c1_0)
+        aie.use_lock(@cons_lock, Release, %c1_0)
         aie.end
       } {repeat_count = 3 : i32}
       aiex.dma_start_task(%t0)
@@ -43,10 +44,11 @@ module {
 
       %t2 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
         %c4 = arith.constant 4 : i32
-        aie.use_lock(%cons_lock, AcquireGreaterEqual, %c4)
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = 0 len = 4096) {bd_id = 1 : i32}
+        aie.use_lock(@cons_lock, AcquireGreaterEqual, %c4)
+        %out_buff_1 = aie.get_buffer @out_buff : memref<4096xi32>
+        aie.dma_bd(%out_buff_1 : memref<4096xi32> offset = 0 len = 4096) {bd_id = 1 : i32}
         %c4_0 = arith.constant 4 : i32
-        aie.use_lock(%prod_lock, Release, %c4_0)
+        aie.use_lock(@prod_lock, Release, %c4_0)
         aie.end
       }
       %t3 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {

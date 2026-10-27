@@ -33,10 +33,10 @@ module {
 // Buffers, locks and channels are all assigned against the unplaced tiles.
 // CHECK-DAG:   %[[SHIM:.*]] = aie.logical_tile<ShimNOCTile>(?, ?)
 // CHECK-DAG:   %[[MEM:.*]] = aie.logical_tile<MemTile>(?, ?)
-// CHECK:       aie.buffer(%[[MEM]]) {sym_name = "p_buff_0"}
-// CHECK:       aie.buffer(%[[MEM]]) {sym_name = "p_buff_1"}
-// CHECK:       aie.lock(%[[MEM]]) {init = 2 : i32, sym_name = "p_prod_lock_0"}
-// CHECK:       aie.lock(%[[MEM]]) {init = 0 : i32, sym_name = "p_cons_lock_0"}
+// CHECK:       aie.buffer @p_buff_0(%[[MEM]])
+// CHECK:       aie.buffer @p_buff_1(%[[MEM]])
+// CHECK:       aie.lock @p_prod_lock_0(%[[MEM]]) {init = 2 : i32}
+// CHECK:       aie.lock @p_cons_lock_0(%[[MEM]]) {init = 0 : i32}
 // CHECK:       aie.objectfifo.dma_endpoint @src(%[[SHIM]]) drains @shim_p {channelIndex = 0 : i32
 // CHECK:       aie.objectfifo.dma_endpoint @dst(%[[MEM]]) fills @p {channelIndex = 0 : i32
 // CHECK:       aie.flow(%[[SHIM]], DMA : 0, %[[MEM]], DMA : 0)
@@ -66,12 +66,12 @@ module @shared_logical {
 }
 // CHECK-LABEL: module @shared_logical
 // CHECK: %[[HOME:.*]] = aie.logical_tile<MemTile>(0, 1)
-// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_0"}
-// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_1"}
+// CHECK: aie.buffer @shared_buff_0(%[[HOME]])
+// CHECK: aie.buffer @shared_buff_1(%[[HOME]])
 // CHECK: @reader({{.*}}) drains @shared {channelIndex = 0 : i32}
 // PLACED-LABEL: module @shared_logical
 // PLACED: %[[PHOME:.*]] = aie.tile(0, 1)
-// PLACED: aie.buffer(%[[PHOME]]) {sym_name = "shared_buff_0"}
+// PLACED: aie.buffer @shared_buff_0(%[[PHOME]])
 // PLACED: aie.dma_start(MM2S, 0
 
 // -----
@@ -119,7 +119,7 @@ module @remote_unplaced {
   aie.device(npu2) {
     %home = aie.logical_tile<MemTile>(1, 1)
     %reader = aie.logical_tile<MemTile>(0, ?)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%home) : memref<16xi32>
     aie.objectfifo.pool @remote(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }

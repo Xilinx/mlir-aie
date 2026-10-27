@@ -46,12 +46,12 @@ func.func @v64i32_ups_v64i8(%arg0 : vector<64xi8>) {
 // CHECK-NEXT: %[[SIGN0:.*]] = llvm.mlir.constant(1 : i32) : i32
 // CHECK-NEXT: %[[SHIFT0:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT: %[[UPS0:.*]] = "xllvm.intr.aie2p.acc32.v64.I512.ups"(
-// CHECK-SAME: %[[ARG0]], %[[SHIFT0]], %[[SIGN0]]) : 
+// CHECK-SAME: %[[ARG0]], %[[SHIFT0]], %[[SIGN0]]) :
 // CHECK-SAME: (vector<64xi8>, i32, i32) -> vector<64xi32>
 // CHECK-NEXT: %[[SIGN1:.*]] = llvm.mlir.constant(1 : i32) : i32
 // CHECK-NEXT: %[[SHIFT5:.*]] = llvm.mlir.constant(5 : i32) : i32
 // CHECK-NEXT: %[[UPS1:.*]] = "xllvm.intr.aie2p.acc32.v64.I512.ups"(
-// CHECK-SAME: %[[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
+// CHECK-SAME: %[[ARG0]], %[[SHIFT5]], %[[SIGN1]]) :
 // CHECK-SAME: (vector<64xi8>, i32, i32) -> vector<64xi32>
 
 // -----
@@ -67,10 +67,10 @@ func.func @v32i64_ups_v32i16(%arg0 : vector<32xi16>) {
 // CHECK-NEXT: %[[SIGN0:.*]] = llvm.mlir.constant(1 : i32) : i32
 // CHECK-NEXT: %[[SHIFT0:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT: %[[UPS0:.*]] = "xllvm.intr.aie2p.acc64.v32.I512.ups"(
-// CHECK-SAME: %[[ARG0]], %[[SHIFT0]], %[[SIGN0]]) : 
+// CHECK-SAME: %[[ARG0]], %[[SHIFT0]], %[[SIGN0]]) :
 // CHECK-SAME: (vector<32xi16>, i32, i32) -> vector<32xi64>
 // CHECK-NEXT: %[[SIGN1:.*]] = llvm.mlir.constant(1 : i32) : i32
 // CHECK-NEXT: %[[SHIFT5:.*]] = llvm.mlir.constant(5 : i32) : i32
 // CHECK-NEXT: %[[UPS1:.*]] = "xllvm.intr.aie2p.acc64.v32.I512.ups"(
-// CHECK-SAME: %[[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
+// CHECK-SAME: %[[ARG0]], %[[SHIFT5]], %[[SIGN1]]) :
 // CHECK-SAME: (vector<32xi16>, i32, i32) -> vector<32xi64>

@@ -211,11 +211,12 @@ aie.core(%tile_0_2) { ... } {data_size = 8192 : i32}
 `core_data` and places it alongside the tile's other buffers:
 
 ```mlir
-%core_data_0_2 = aie.buffer(%tile_0_2) {address = 49152 : i32, core_data, sym_name = "core_data_0_2"} : memref<8192xi8>
+aie.buffer @core_data_0_2(%tile_0_2) {address = 49152 : i32, core_data} : memref<8192xi8>
 ```
 
 `aie-translate` emits that buffer's extent as the `data` MEMORY region of the
-linker script. The buffer names no symbol, so nothing else refers to it.
+linker script. This declaration reserves space without materializing a memref
+value or a symbol in the core ELF.
 
 Reserving costs nothing when the tile has room, and it improves placement. The
 allocator packs the buffers around a declared reservation, and a packing that
@@ -384,7 +385,7 @@ is a specific range. Declaring the range yourself still works, and is worth
 doing when the ELF is not where `aiecc` can read it:
 
 ```mlir
-%prebaked = aie.buffer(%tile_0_3) {sym_name = "prebaked_data", address = 8192 : i32} : memref<4096xi8>
+aie.buffer @prebaked_data(%tile_0_3) {address = 8192 : i32} : memref<4096xi8>
 ```
 
 Either way the allocator treats the extent as occupied space, keeps every

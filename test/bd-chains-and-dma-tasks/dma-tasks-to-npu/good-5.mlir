@@ -15,10 +15,10 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
-    // CHECK: %{{.*}} = aie.buffer(%{{.*}}tile_0_1) {address = [[ADDR1:[0-9]+]] {{.*}}}
-    %buf0 = aie.buffer(%tile_0_1) : memref<32xi8>
-    // CHECK: %{{.*}} = aie.buffer(%{{.*}}tile_0_1) {address = [[ADDR2:[0-9]+]] {{.*}}}
-    %buf1 = aie.buffer(%tile_0_1) : memref<32xi8>
+    // CHECK: aie.buffer @{{.*}}(%{{.*}}tile_0_1) {address = [[ADDR1:[0-9]+]] {{.*}}}
+    aie.buffer @buf0(%tile_0_1) : memref<32xi8>
+    // CHECK: aie.buffer @{{.*}}(%{{.*}}tile_0_1) {address = [[ADDR2:[0-9]+]] {{.*}}}
+    aie.buffer @buf1(%tile_0_1) : memref<32xi8>
 
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
@@ -27,6 +27,7 @@ module {
           // CHECK-DAG: %[[MW1VAL:.*]] = arith.constant 131073 : i32
           // CHECK-DAG: %[[MW1ADDR:.*]] = arith.constant 1703940 : i32
           // CHECK: aiex.npu.maskwrite32(%[[MW1ADDR]], %[[MW1VAL]], %[[MW1MASK]]) : i32, i32, i32
+          %buf0 = aie.get_buffer @buf0 : memref<32xi8>
           aie.dma_bd(%buf0 : memref<32xi8> offset = 4 len = 16) {bd_id = 0 : i32}
           aie.next_bd ^bd2
         ^bd2:
@@ -35,6 +36,7 @@ module {
           // CHECK-DAG: %[[MW2VAL:.*]] = arith.constant 147457 : i32
           // CHECK-DAG: %[[MW2ADDR:.*]] = arith.constant 1703972 : i32
           // CHECK: aiex.npu.maskwrite32(%[[MW2ADDR]], %[[MW2VAL]], %[[MW2MASK]]) : i32, i32, i32
+          %buf1 = aie.get_buffer @buf1 : memref<32xi8>
           aie.dma_bd(%buf1 : memref<32xi8> offset = 4 len = 16) {bd_id = 1 : i32}
           aie.end
       }

@@ -14,8 +14,8 @@
 // CHECK: %[[TILE:.*]] = aie.logical_tile<CoreTile>(?, ?)
 // CHECK: aie.core(%[[TILE]])
 // CHECK: aie.mem(%[[TILE]])
-// CHECK: aie.buffer(%[[TILE]])
-// CHECK: aie.lock(%[[TILE]])
+// CHECK: aie.buffer @{{[^ (]+}}(%[[TILE]])
+// CHECK: aie.lock @{{[^ (]+}}(%[[TILE]])
 module @test_core_tile_elements {
   aie.device(npu2) {
     %core_tile = aie.logical_tile<CoreTile>(?, ?)
@@ -25,8 +25,8 @@ module @test_core_tile_elements {
     %mem = aie.mem(%core_tile) {
       aie.end
     }
-    %buf = aie.buffer(%core_tile) : memref<256xi32>
-    %lock = aie.lock(%core_tile)
+    aie.buffer @buf(%core_tile) : memref<256xi32>
+    aie.lock @lock(%core_tile)
     aie.end
   }
 }
@@ -38,16 +38,16 @@ module @test_core_tile_elements {
 // CHECK-LABEL: @test_mem_tile_elements
 // CHECK: %[[TILE:.*]] = aie.logical_tile<MemTile>(?, ?)
 // CHECK: aie.memtile_dma(%[[TILE]])
-// CHECK: aie.buffer(%[[TILE]])
-// CHECK: aie.lock(%[[TILE]])
+// CHECK: aie.buffer @{{[^ (]+}}(%[[TILE]])
+// CHECK: aie.lock @{{[^ (]+}}(%[[TILE]])
 module @test_mem_tile_elements {
   aie.device(npu2) {
     %mem_tile = aie.logical_tile<MemTile>(?, ?)
     %memtile_dma = aie.memtile_dma(%mem_tile) {
       aie.end
     }
-    %buf = aie.buffer(%mem_tile) : memref<256xi32>
-    %lock = aie.lock(%mem_tile)
+    aie.buffer @buf(%mem_tile) : memref<256xi32>
+    aie.lock @lock(%mem_tile)
     aie.end
   }
 }
@@ -59,14 +59,14 @@ module @test_mem_tile_elements {
 // CHECK-LABEL: @test_shim_noc_tile_elements
 // CHECK: %[[TILE:.*]] = aie.logical_tile<ShimNOCTile>(?, ?)
 // CHECK: aie.shim_dma(%[[TILE]])
-// CHECK: aie.lock(%[[TILE]])
+// CHECK: aie.lock @{{[^ (]+}}(%[[TILE]])
 module @test_shim_noc_tile_elements {
   aie.device(npu2) {
     %shim_tile = aie.logical_tile<ShimNOCTile>(?, ?)
     %shim_dma = aie.shim_dma(%shim_tile) {
       aie.end
     }
-    %lock = aie.lock(%shim_tile)
+    aie.lock @lock(%shim_tile)
     aie.end
   }
 }
@@ -154,10 +154,11 @@ module @test_mixed_tile_types {
 module @test_dma_configure_task {
   aie.device(npu2) {
     %shim_tile = aie.logical_tile<ShimNOCTile>(?, ?)
-    %buffer = aie.external_buffer {sym_name = "ext_buffer"} : memref<1024xi32>
+    aie.external_buffer @ext_buffer : memref<1024xi32>
 
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %task = aiex.dma_configure_task(%shim_tile, MM2S, 0) {
+        %buffer = aie.get_buffer @ext_buffer : memref<1024xi32>
         aie.dma_bd(%buffer : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
         aie.end
       }
@@ -174,10 +175,11 @@ module @test_dma_configure_task {
 module @test_dma_configure_task_memtile {
   aie.device(npu2) {
     %mem_tile = aie.logical_tile<MemTile>(?, ?)
-    %buffer_in = aie.buffer(%mem_tile) {sym_name = "buf_in"} : memref<256xi32>
+    aie.buffer @buf_in(%mem_tile) : memref<256xi32>
 
     aie.runtime_sequence(%arg0: memref<256xi32>) {
       %task = aiex.dma_configure_task(%mem_tile, S2MM, 0) {
+        %buffer_in = aie.get_buffer @buf_in : memref<256xi32>
         aie.dma_bd(%buffer_in : memref<256xi32> len = 256) {bd_id = 0 : i32}
         aie.end
       }

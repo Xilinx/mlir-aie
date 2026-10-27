@@ -74,11 +74,14 @@ struct AIECreateCoresPass
 
     DeviceOp device = getOperation();
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
+    SymbolTableCollection symbols;
+    SymbolTable &symbolTable = symbols.getSymbolTable(device);
+    unsigned bufferCounter = 0;
 
     DenseMap<TileID, Operation *> tiles;
     DenseMap<Operation *, CoreOp> cores;
     DenseMap<Operation *, MemOp> mems;
-    DenseMap<Value, Value> buffers;
+    DenseMap<Value, BufferOp> buffers;
     DenseMap<func::FuncOp, std::pair<int, int>> funcs;
 
     // Collect existing TileOps
@@ -127,12 +130,14 @@ struct AIECreateCoresPass
 
           assert(t && "Unsupported type!");
           coreBufTypes.push_back({t, i});
-          BufferOp buf = BufferOp::create(
-              builder, callOp.getLoc(), t, tile, /*sym_name*/ nullptr,
-              /*address*/ nullptr, /*initial_value*/ nullptr,
-              /*mem_bank*/ nullptr, /*aligned*/ nullptr);
+          BufferOp buf =
+              BufferOp::create(builder, callOp.getLoc(), t, tile,
+                               builder.getStringAttr(generateUniqueSymbolName(
+                                   symbolTable, "_anonymous", bufferCounter)),
+                               /*address*/ nullptr, /*initial_value*/ nullptr,
+                               /*mem_bank*/ nullptr, /*aligned*/ nullptr);
+          symbolTable.insert(buf);
           buffers[callOperands[i]] = buf;
-          operand.replaceAllUsesWith(buf.getResult());
         }
 
         MemOp mem = MemOp::create(builder, callOp.getLoc(),
@@ -178,7 +183,10 @@ struct AIECreateCoresPass
           for (auto pair : coreBufTypes) {
             int operandID = pair.second;
             Value arg = func.getArgument(operandID);
-            Value buf = buffers[callOperands[operandID]];
+            Value buf = GetBufferOp::create(
+                builder, callOp.getLoc(),
+                cast<BufferLike>(
+                    buffers[callOperands[operandID]].getOperation()));
             if (arg.getType().isIntOrFloat()) {
               assert(pair.first.getShape().size() == 1 &&
                      "Expected MemRefType of shape 1");

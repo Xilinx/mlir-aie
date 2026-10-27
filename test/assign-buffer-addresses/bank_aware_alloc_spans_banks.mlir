@@ -16,16 +16,16 @@
 // CHECK:   module @test {
 // CHECK:     aie.device(xcvc1902) {
 // CHECK:       %tile_1_2 = aie.tile(1, 2)
-// CHECK:       %act_3_4_buff_0 = aie.buffer(%tile_1_2) {address = 16384 : i32, mem_bank = 2 : i32, sym_name = "act_3_4_buff_0"} : memref<8xi32>
-// CHECK:       %act_3_4_buff_1 = aie.buffer(%tile_1_2) {address = 24576 : i32, mem_bank = 3 : i32, sym_name = "act_3_4_buff_1"} : memref<8xi32>
-// CHECK:       %act_3_4_buff_2 = aie.buffer(%tile_1_2) {address = 16416 : i32, mem_bank = 2 : i32, sym_name = "act_3_4_buff_2"} : memref<8xi32>
-// CHECK:       %act_3_4_buff_3 = aie.buffer(%tile_1_2) {address = 24608 : i32, mem_bank = 3 : i32, sym_name = "act_3_4_buff_3"} : memref<8xi32>
-// CHECK:       %act_3_4_lock_0 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "act_3_4_lock_0"}
-// CHECK:       %act_3_4_lock_1 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "act_3_4_lock_1"}
-// CHECK:       %act_3_4_lock_2 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "act_3_4_lock_2"}
-// CHECK:       %act_3_4_lock_3 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "act_3_4_lock_3"}
-// CHECK:       %a = aie.buffer(%tile_1_2) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "a"} : memref<4096xi32>
-// CHECK:       %b = aie.buffer(%tile_1_2) {address = 16448 : i32, mem_bank = 2 : i32, sym_name = "b"} : memref<16xi16>
+// CHECK:       aie.buffer @act_3_4_buff_0(%tile_1_2) {address = 16384 : i32, mem_bank = 2 : i32} : memref<8xi32>
+// CHECK:       aie.buffer @act_3_4_buff_1(%tile_1_2) {address = 24576 : i32, mem_bank = 3 : i32} : memref<8xi32>
+// CHECK:       aie.buffer @act_3_4_buff_2(%tile_1_2) {address = 16416 : i32, mem_bank = 2 : i32} : memref<8xi32>
+// CHECK:       aie.buffer @act_3_4_buff_3(%tile_1_2) {address = 24608 : i32, mem_bank = 3 : i32} : memref<8xi32>
+// CHECK:       aie.lock @act_3_4_lock_0(%tile_1_2) {init = 0 : i32}
+// CHECK:       aie.lock @act_3_4_lock_1(%tile_1_2) {init = 0 : i32}
+// CHECK:       aie.lock @act_3_4_lock_2(%tile_1_2) {init = 0 : i32}
+// CHECK:       aie.lock @act_3_4_lock_3(%tile_1_2) {init = 0 : i32}
+// CHECK:       aie.buffer @a(%tile_1_2) {address = 0 : i32, mem_bank = 0 : i32} : memref<4096xi32>
+// CHECK:       aie.buffer @b(%tile_1_2) {address = 16448 : i32, mem_bank = 2 : i32} : memref<16xi16>
 // CHECK:       %tile_1_3 = aie.tile(1, 3)
 // CHECK:     }
 // CHECK:   }
@@ -33,8 +33,8 @@
 module @test {
  aie.device(xcvc1902) {
   %tile12 = aie.tile(1, 2)
-  %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<4096xi32>  //16384 bytes
-  %b1 = aie.buffer(%tile12) { sym_name = "b" } : memref<16xi16> //32 bytes
+  aie.buffer @a(%tile12) : memref<4096xi32>  //16384 bytes
+  aie.buffer @b(%tile12) : memref<16xi16> //32 bytes
   %tile13 = aie.tile(1, 3)
   aie.objectfifo @act_3_4(%tile12, {%tile13}, 4 : i32) : !aie.objectfifo<memref<8xi32>> //4x1 bytes
  }

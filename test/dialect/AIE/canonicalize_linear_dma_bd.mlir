@@ -33,12 +33,13 @@
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf0" } : memref<1024xi32>
+    aie.external_buffer @buf0 : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf0 : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [512, 1])
         aie.next_bd ^end
       ^end:
@@ -61,12 +62,13 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf1" } : memref<1024xi32>
+    aie.external_buffer @buf1 : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf1 : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [4, 8, 32] strides = [256, 32, 1])
         aie.next_bd ^end
       ^end:
@@ -89,11 +91,12 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf2" } : memref<4096xi32>
+    aie.external_buffer @buf2 : memref<4096xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf2 : memref<4096xi32>
         aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096)
         aie.next_bd ^end
       ^end:
@@ -120,12 +123,13 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_pkt" } : memref<1024xi32>
+    aie.external_buffer @buf_pkt : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf_pkt : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [512, 1]) {
             packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
         aie.next_bd ^end
@@ -148,7 +152,7 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf3" } : memref<1200xi32>
+    aie.external_buffer @buf3 : memref<1200xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -156,6 +160,7 @@ module {
       ^bd0:
         // stride 513 != product 512: genuinely strided, must not linearize.
         // max index = 1*513 + 511*1 = 1024 < 1200 (in bounds).
+        %buf = aie.get_buffer @buf3 : memref<1200xi32>
         aie.dma_bd(%buf : memref<1200xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [513, 1])
         aie.next_bd ^end
       ^end:
@@ -183,13 +188,14 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf4" } : memref<2073600xi32>
+    aie.external_buffer @buf4 : memref<2073600xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
         // 1080 x 1920: d0=1920 > 1023, d1=1080 > 1023, but contiguous so
         // LinearizeContiguousBDTransfer folds it to linear mode.
+        %buf = aie.get_buffer @buf4 : memref<2073600xi32>
         aie.dma_bd(%buf : memref<2073600xi32> offset = 0 len = 2073600 sizes = [1080, 1920] strides = [1920, 1])
         aie.next_bd ^end
       ^end:
@@ -216,12 +222,13 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_burst" } : memref<1024xi32>
+    aie.external_buffer @buf_burst : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf_burst : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [512, 1]) {
             burst_length = 64 : i32}
         aie.next_bd ^end
@@ -246,12 +253,13 @@ module {
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    %buf = aie.external_buffer { sym_name = "buf_bdid" } : memref<1024xi32>
+    aie.external_buffer @buf_bdid : memref<1024xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf_bdid : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [512, 1]) {
             bd_id = 3 : i32}
         aie.next_bd ^end

@@ -13,7 +13,7 @@ module @relocated_core_locks {
   aie.device(npu2) {
     %home = aie.tile(0, 2)
     %reader = aie.tile(2, 2)
-    %b = aie.buffer(%reader) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%reader) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -27,15 +27,15 @@ module @relocated_core_locks {
 }
 // CHECK-LABEL: module @relocated_core_locks
 // CHECK: %[[READER:.*]] = aie.tile(2, 2)
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_prod_lock_0"
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_cons_lock_0"
+// CHECK: aie.lock @p_prod_lock_0(%[[READER]]) {{.*}}
+// CHECK: aie.lock @p_cons_lock_0(%[[READER]]) {{.*}}
 // LOWER-LABEL: module @relocated_core_locks
 // LOWER: %[[READER:.*]] = aie.tile(2, 2)
-// LOWER: %[[FREE:.*]] = aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_0"
-// LOWER: %[[FULL:.*]] = aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_0"
+// LOWER: aie.lock @[[FREE:p_prod_lock_0]](%[[READER]], {{[0-9]+}}) {{.*}}
+// LOWER: aie.lock @[[FULL:p_cons_lock_0]](%[[READER]], {{[0-9]+}}) {{.*}}
 // LOWER: aie.core(%[[READER]])
-// LOWER: aie.use_lock(%[[FULL]], AcquireGreaterEqual,
-// LOWER: aie.use_lock(%[[FREE]], Release,
+// LOWER: aie.use_lock(@[[FULL]], AcquireGreaterEqual,
+// LOWER: aie.use_lock(@[[FREE]], Release,
 
 // -----
 
@@ -46,7 +46,7 @@ module @core_and_dma_locks {
     %home = aie.tile(0, 2)
     %memory = aie.tile(0, 3)
     %reader = aie.tile(0, 4)
-    %b = aie.buffer(%memory) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%memory) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -61,15 +61,15 @@ module @core_and_dma_locks {
 }
 // CHECK-LABEL: module @core_and_dma_locks
 // CHECK: %[[MEMORY:.*]] = aie.tile(0, 3)
-// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p_prod_lock_0"
-// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p_cons_lock_0"
+// CHECK: aie.lock @p_prod_lock_0(%[[MEMORY]]) {{.*}}
+// CHECK: aie.lock @p_cons_lock_0(%[[MEMORY]]) {{.*}}
 // LOWER-LABEL: module @core_and_dma_locks
 // LOWER: %[[MEMORY:.*]] = aie.tile(0, 3)
-// LOWER: %[[FREE:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_0"
-// LOWER: %[[FULL:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_0"
+// LOWER: aie.lock @[[FREE:p_prod_lock_0]](%[[MEMORY]], {{[0-9]+}}) {{.*}}
+// LOWER: aie.lock @[[FULL:p_cons_lock_0]](%[[MEMORY]], {{[0-9]+}}) {{.*}}
 // LOWER: aie.core
-// LOWER: aie.use_lock(%[[FULL]], AcquireGreaterEqual,
-// LOWER: aie.use_lock(%[[FREE]], Release,
+// LOWER: aie.use_lock(@[[FULL]], AcquireGreaterEqual,
+// LOWER: aie.use_lock(@[[FREE]], Release,
 
 // -----
 
@@ -79,7 +79,7 @@ module @delegated_core_locks {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
     %reader = aie.tile(0, 2)
-    %b = aie.buffer(%reader) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%reader) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -88,12 +88,12 @@ module @delegated_core_locks {
 }
 // CHECK-LABEL: module @delegated_core_locks
 // CHECK: %[[READER:.*]] = aie.tile(0, 2)
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_prod_lock_0"
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_cons_lock_0"
+// CHECK: aie.lock @p_prod_lock_0(%[[READER]]) {{.*}}
+// CHECK: aie.lock @p_cons_lock_0(%[[READER]]) {{.*}}
 // LOWER-LABEL: module @delegated_core_locks
 // LOWER: %[[READER:.*]] = aie.tile(0, 2)
-// LOWER: aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_0"
-// LOWER: aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_0"
+// LOWER: aie.lock @p_prod_lock_0(%[[READER]], {{[0-9]+}}) {{.*}}
+// LOWER: aie.lock @p_cons_lock_0(%[[READER]], {{[0-9]+}}) {{.*}}
 
 // -----
 
@@ -101,7 +101,7 @@ module @relocated_binary_locks {
   aie.device(xcvc1902) {
     %home = aie.tile(0, 2)
     %reader = aie.tile(2, 2)
-    %b = aie.buffer(%reader) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%reader) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -115,13 +115,16 @@ module @relocated_binary_locks {
 }
 // CHECK-LABEL: module @relocated_binary_locks
 // CHECK: %[[READER:.*]] = aie.tile(2, 2)
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_lock_0"
+// CHECK: aie.lock @p_lock_0(%[[READER]]) {{.*}}
 // LOWER-LABEL: module @relocated_binary_locks
 // LOWER: %[[READER:.*]] = aie.tile(2, 2)
-// LOWER: %[[LOCK:.*]] = aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_lock_0"
+// LOWER: aie.lock @[[LOCK:p_lock_0]](%[[READER]], {{[0-9]+}}) {{.*}}
 // LOWER: aie.core
-// LOWER: scf.yield %[[LOCK]]
-// LOWER: aie.use_lock
+// LOWER: scf.index_switch
+// LOWER: aie.use_lock(@[[LOCK]], Acquire,
+// LOWER: scf.yield
+// LOWER: scf.index_switch
+// LOWER: aie.use_lock(@[[LOCK]], Release,
 
 // -----
 
@@ -131,7 +134,7 @@ module @neighbor_core_locks {
   aie.device(npu2) {
     %home = aie.tile(0, 2)
     %reader = aie.tile(0, 3)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%home) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -145,15 +148,15 @@ module @neighbor_core_locks {
 }
 // CHECK-LABEL: module @neighbor_core_locks
 // CHECK: %[[HOME:.*]] = aie.tile(0, 2)
-// CHECK: aie.lock(%[[HOME]]) {{.*}}sym_name = "p_prod_lock_0"
-// CHECK: aie.lock(%[[HOME]]) {{.*}}sym_name = "p_cons_lock_0"
+// CHECK: aie.lock @p_prod_lock_0(%[[HOME]]) {{.*}}
+// CHECK: aie.lock @p_cons_lock_0(%[[HOME]]) {{.*}}
 // LOWER-LABEL: module @neighbor_core_locks
 // LOWER: %[[HOME:.*]] = aie.tile(0, 2)
-// LOWER: %[[FREE:.*]] = aie.lock(%[[HOME]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_0"
-// LOWER: %[[FULL:.*]] = aie.lock(%[[HOME]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_0"
+// LOWER: aie.lock @[[FREE:p_prod_lock_0]](%[[HOME]], {{[0-9]+}}) {{.*}}
+// LOWER: aie.lock @[[FULL:p_cons_lock_0]](%[[HOME]], {{[0-9]+}}) {{.*}}
 // LOWER: aie.core
-// LOWER: aie.use_lock(%[[FULL]], AcquireGreaterEqual,
-// LOWER: aie.use_lock(%[[FREE]], Release,
+// LOWER: aie.use_lock(@[[FULL]], AcquireGreaterEqual,
+// LOWER: aie.use_lock(@[[FREE]], Release,
 
 // -----
 
@@ -164,9 +167,9 @@ module @selected_segment_locks {
     %lower = aie.tile(0, 2)
     %memory = aie.tile(0, 3)
     %upper = aie.tile(0, 4)
-    %b = aie.buffer(%memory) {sym_name = "b"} : memref<32xi32>
-    %free = aie.lock(%lower) {sym_name = "free", init = 1 : i32}
-    %full = aie.lock(%lower) {sym_name = "full", init = 0 : i32}
+    aie.buffer @b(%memory) : memref<32xi32>
+    aie.lock @free(%lower) {init = 1 : i32}
+    aie.lock @full(%lower) {init = 0 : i32}
     aie.objectfifo.pool @p(%lower) {depth = 1 : i32, buffers = [@b]} : memref<32xi32> {
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32, produceLock = @free, consumeLock = @full}
       aie.objectfifo.segment @s1 {offset = 16 : i32, size = 16 : i32}
@@ -182,13 +185,13 @@ module @selected_segment_locks {
 }
 // CHECK-LABEL: module @selected_segment_locks
 // CHECK: %[[MEMORY:.*]] = aie.tile(0, 3)
-// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p_prod_lock_1"
-// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p_cons_lock_1"
+// CHECK: aie.lock @p_prod_lock_1(%[[MEMORY]]) {{.*}}
+// CHECK: aie.lock @p_cons_lock_1(%[[MEMORY]]) {{.*}}
 // CHECK: produceLock = @free
 // LOWER-LABEL: module @selected_segment_locks
 // LOWER: %[[MEMORY:.*]] = aie.tile(0, 3)
-// LOWER: %[[FREE:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_1"
-// LOWER: %[[FULL:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_1"
+// LOWER: aie.lock @[[FREE:p_prod_lock_1]](%[[MEMORY]], {{[0-9]+}}) {{.*}}
+// LOWER: aie.lock @[[FULL:p_cons_lock_1]](%[[MEMORY]], {{[0-9]+}}) {{.*}}
 // LOWER: aie.core
-// LOWER: aie.use_lock(%[[FULL]], AcquireGreaterEqual,
-// LOWER: aie.use_lock(%[[FREE]], Release,
+// LOWER: aie.use_lock(@[[FULL]], AcquireGreaterEqual,
+// LOWER: aie.use_lock(@[[FREE]], Release,

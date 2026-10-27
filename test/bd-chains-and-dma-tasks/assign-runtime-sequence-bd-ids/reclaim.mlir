@@ -680,102 +680,129 @@ aie.device(npu2) @shim_dev {
 
 aie.device(npu2) @mem_dev {
   %mem = aie.tile(0, 1)
-  %buf = aie.buffer(%mem) {address = 0 : i32} : memref<64xi32>
+  aie.buffer @buf(%mem) {address = 0 : i32} : memref<64xi32>
   aie.runtime_sequence @parity(%arg0: memref<64xi32>) {
     %o0 = aiex.dma_configure_task(%mem, MM2S, 1) {
+      %buf = aie.get_buffer @buf : memref<64xi32>
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
       aie.end
     }
     aiex.dma_start_task(%o0)
     %o1 = aiex.dma_configure_task(%mem, MM2S, 1) {
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_1 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_1 : memref<64xi32> offset = 0 len = 8)
       aie.end
     }
     aiex.dma_start_task(%o1)
     // expected-note@+1 {{the task it waits for}}
     %e0 = aiex.dma_configure_task(%mem, MM2S, 0) {
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_2 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_2 : memref<64xi32> offset = 0 len = 8)
       aie.end
     }
     aiex.dma_start_task(%e0)
     %e1 = aiex.dma_configure_task(%mem, MM2S, 0) {
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_3 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_3 : memref<64xi32> offset = 0 len = 8)
       aie.end
     }
     aiex.dma_start_task(%e1)
     %e2 = aiex.dma_configure_task(%mem, S2MM, 0) {
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_4 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_4 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_5 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_5 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_6 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_6 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd3
     ^bd3:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_7 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_7 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd4
     ^bd4:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_8 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_8 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd5
     ^bd5:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_9 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_9 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd6
     ^bd6:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_10 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_10 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd7
     ^bd7:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_11 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_11 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd8
     ^bd8:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_12 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_12 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd9
     ^bd9:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_13 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_13 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd10
     ^bd10:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_14 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_14 : memref<64xi32> offset = 0 len = 8)
       aie.end
     }
     aiex.dma_start_task(%e2)
     %e3 = aiex.dma_configure_task(%mem, S2MM, 2) {
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_15 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_15 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_16 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_16 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_17 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_17 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd3
     ^bd3:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_18 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_18 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd4
     ^bd4:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_19 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_19 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd5
     ^bd5:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_20 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_20 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd6
     ^bd6:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_21 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_21 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd7
     ^bd7:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_22 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_22 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd8
     ^bd8:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_23 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_23 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd9
     ^bd9:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_24 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_24 : memref<64xi32> offset = 0 len = 8)
       aie.next_bd ^bd10
     ^bd10:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_25 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_25 : memref<64xi32> offset = 0 len = 8)
       aie.end
     }
     aiex.dma_start_task(%e3)
     // expected-remark@+1 {{queue behind an earlier task is short enough to prove it finished and takes back its ids 0}}
     %new = aiex.dma_configure_task(%mem, MM2S, 4) {
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 8)
+      %buf_26 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_26 : memref<64xi32> offset = 0 len = 8)
       aie.end
     }
     aiex.dma_start_task(%new)

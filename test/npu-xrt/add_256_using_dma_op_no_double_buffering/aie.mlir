@@ -12,13 +12,13 @@ module {
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
 
-    %buffer_0_2 = aie.buffer(%tile_0_2) : memref<16xi32>
-    %buffer_0_2_1 = aie.buffer(%tile_0_2) : memref<16xi32>
+    aie.buffer @buffer_0_2(%tile_0_2) : memref<16xi32>
+    aie.buffer @buffer_0_2_1(%tile_0_2) : memref<16xi32>
 
-    %lock_0_2_0 = aie.lock(%tile_0_2, 0) {init = 1 : i32}
-    %lock_0_2_1 = aie.lock(%tile_0_2, 1) {init = 0 : i32}
-    %lock_0_2_2 = aie.lock(%tile_0_2, 2) {init = 1 : i32}
-    %lock_0_2_3 = aie.lock(%tile_0_2, 3) {init = 0 : i32}
+    aie.lock @lock_0_2_0(%tile_0_2, 0) {init = 1 : i32}
+    aie.lock @lock_0_2_1(%tile_0_2, 1) {init = 0 : i32}
+    aie.lock @lock_0_2_2(%tile_0_2, 2) {init = 1 : i32}
+    aie.lock @lock_0_2_3(%tile_0_2, 3) {init = 0 : i32}
 
     // forward
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
@@ -33,79 +33,87 @@ module {
       %c256_i32 = arith.constant 256 : i32
       affine.for %arg0 = 0 to 4 step 1 {
         %c1_ul0 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_2_1, AcquireGreaterEqual, %c1_ul0)
+        aie.use_lock(@lock_0_2_1, AcquireGreaterEqual, %c1_ul0)
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_2_2, AcquireGreaterEqual, %c1_ul1)
+        aie.use_lock(@lock_0_2_2, AcquireGreaterEqual, %c1_ul1)
         affine.for %arg1 = 0 to 16 step 1 {
+          %buffer_0_2 = aie.get_buffer @buffer_0_2 : memref<16xi32>
           %0 = memref.load %buffer_0_2[%arg1] : memref<16xi32>
           %1 = arith.addi %0, %c256_i32: i32
+          %buffer_0_2_1 = aie.get_buffer @buffer_0_2_1 : memref<16xi32>
           memref.store %1, %buffer_0_2_1[%arg1] : memref<16xi32>
         }
         %c1_ul2 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_2_0, Release, %c1_ul2)
+        aie.use_lock(@lock_0_2_0, Release, %c1_ul2)
         %c1_ul3 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_2_3, Release, %c1_ul3)
+        aie.use_lock(@lock_0_2_3, Release, %c1_ul3)
       }
       aie.end
     }
 
+    aie.buffer @buffer_0_1(%tile_0_1) : memref<16xi32>
+    aie.buffer @buffer_0_1_0(%tile_0_1) : memref<16xi32>
+    aie.lock @lock_0_1_0(%tile_0_1, 0) {init = 1 : i32}
+    aie.lock @lock_0_1_1(%tile_0_1, 1) {init = 0 : i32}
+    aie.lock @lock_0_1_2(%tile_0_1, 2) {init = 1 : i32}
+    aie.lock @lock_0_1_3(%tile_0_1, 3) {init = 0 : i32}
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
-      %buffer_0_1 = aie.buffer(%tile_0_1) : memref<16xi32>
-      %buffer_0_1_0 = aie.buffer(%tile_0_1) : memref<16xi32>
-      %lock_0_1_0 = aie.lock(%tile_0_1, 0) {init = 1 : i32}
-      %lock_0_1_1 = aie.lock(%tile_0_1, 1) {init = 0 : i32}
-      %lock_0_1_2 = aie.lock(%tile_0_1, 2) {init = 1 : i32}
-      %lock_0_1_3 = aie.lock(%tile_0_1, 3) {init = 0 : i32}
 
       // forward
-      %0 = aie.dma(S2MM, 0) [{
+      aie.dma(S2MM, 0) [{
         %c1_ul4 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_0, AcquireGreaterEqual, %c1_ul4)
+        aie.use_lock(@lock_0_1_0, AcquireGreaterEqual, %c1_ul4)
+        %buffer_0_1 = aie.get_buffer @buffer_0_1 : memref<16xi32>
         aie.dma_bd(%buffer_0_1 : memref<16xi32>)
         %c1_ul5 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_1, Release, %c1_ul5)
+        aie.use_lock(@lock_0_1_1, Release, %c1_ul5)
       }]
-      %1 = aie.dma(MM2S, 0) [{
+      aie.dma(MM2S, 0) [{
         %c1_ul6 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_1, AcquireGreaterEqual, %c1_ul6)
-        aie.dma_bd(%buffer_0_1 : memref<16xi32>)
+        aie.use_lock(@lock_0_1_1, AcquireGreaterEqual, %c1_ul6)
+        %buffer_0_1_1 = aie.get_buffer @buffer_0_1 : memref<16xi32>
+        aie.dma_bd(%buffer_0_1_1 : memref<16xi32>)
         %c1_ul7 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_0, Release, %c1_ul7)
+        aie.use_lock(@lock_0_1_0, Release, %c1_ul7)
       }]
       // backward
-      %2 = aie.dma(S2MM, 1) [{
+      aie.dma(S2MM, 1) [{
         %c1_ul8 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_2, AcquireGreaterEqual, %c1_ul8)
+        aie.use_lock(@lock_0_1_2, AcquireGreaterEqual, %c1_ul8)
+        %buffer_0_1_0 = aie.get_buffer @buffer_0_1_0 : memref<16xi32>
         aie.dma_bd(%buffer_0_1_0 : memref<16xi32>)
         %c1_ul9 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_3, Release, %c1_ul9)
+        aie.use_lock(@lock_0_1_3, Release, %c1_ul9)
       }]
-      %3 = aie.dma(MM2S, 1) [{
+      aie.dma(MM2S, 1) [{
         %c1_ul10 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_3, AcquireGreaterEqual, %c1_ul10)
-        aie.dma_bd(%buffer_0_1_0 : memref<16xi32>)
+        aie.use_lock(@lock_0_1_3, AcquireGreaterEqual, %c1_ul10)
+        %buffer_0_1_0_1 = aie.get_buffer @buffer_0_1_0 : memref<16xi32>
+        aie.dma_bd(%buffer_0_1_0_1 : memref<16xi32>)
         %c1_ul11 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_2, Release, %c1_ul11)
+        aie.use_lock(@lock_0_1_2, Release, %c1_ul11)
       }]
       aie.end
     }
     // streaming interface synchronizes these two tiles
     %mem_0_2 = aie.mem(%tile_0_2) {
      // in
-      %0 = aie.dma(S2MM, 0) [{
+      aie.dma(S2MM, 0) [{
         %c1_ul12 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_2_0, AcquireGreaterEqual, %c1_ul12)
-        aie.dma_bd(%buffer_0_2 : memref<16xi32>)
+        aie.use_lock(@lock_0_2_0, AcquireGreaterEqual, %c1_ul12)
+        %buffer_0_2_1_ = aie.get_buffer @buffer_0_2 : memref<16xi32>
+        aie.dma_bd(%buffer_0_2_1_ : memref<16xi32>)
         %c1_ul13 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_2_1, Release, %c1_ul13)
+        aie.use_lock(@lock_0_2_1, Release, %c1_ul13)
       }]
       // out
-      %1 = aie.dma(MM2S, 0) [{
+      aie.dma(MM2S, 0) [{
         %c1_ul14 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_2_3, AcquireGreaterEqual, %c1_ul14)
-        aie.dma_bd(%buffer_0_2_1 : memref<16xi32>)
+        aie.use_lock(@lock_0_2_3, AcquireGreaterEqual, %c1_ul14)
+        %buffer_0_2_1_1 = aie.get_buffer @buffer_0_2_1 : memref<16xi32>
+        aie.dma_bd(%buffer_0_2_1_1 : memref<16xi32>)
         %c1_ul15 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_2_2, Release, %c1_ul15)
+        aie.use_lock(@lock_0_2_2, Release, %c1_ul15)
       }]
       aie.end
     }

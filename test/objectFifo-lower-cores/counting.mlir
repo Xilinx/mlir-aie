@@ -15,10 +15,10 @@ module @counting {
   aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
 
-    %b0 = aie.buffer(%tile12) {sym_name = "b0"} : memref<16xi32>
-    %b1 = aie.buffer(%tile12) {sym_name = "b1"} : memref<16xi32>
-    %free = aie.lock(%tile12) {init = 2 : i32, sym_name = "free"}
-    %full = aie.lock(%tile12) {init = 0 : i32, sym_name = "full"}
+    aie.buffer @b0(%tile12) : memref<16xi32>
+    aie.buffer @b1(%tile12) : memref<16xi32>
+    aie.lock @free(%tile12) {init = 2 : i32}
+    aie.lock @full(%tile12) {init = 0 : i32}
 
     aie.objectfifo.pool @pool(%tile12) {
       depth = 2 : i32, buffers = [@b0, @b1]
@@ -40,24 +40,26 @@ module @counting {
 
 // CHECK-LABEL: @counting
 // CHECK:   aie.core(%{{.*}}) {
+// CHECK:     %[[BUFFER0:.*]] = aie.get_buffer @b0 : memref<16xi32>
+// CHECK:     %[[BUFFER1:.*]] = aie.get_buffer @b1 : memref<16xi32>
 
 // The objects sit in memory in rotation order, starting with the next one to
 // acquire.
 // CHECK:     %[[FRONT:.*]] = memref.alloca() {aie.objectfifo.object_slot} : memref<memref<16xi32>>
-// CHECK:     memref.store %b0, %[[FRONT]][]
+// CHECK:     memref.store %[[BUFFER0]], %[[FRONT]][]
 // CHECK:     %[[BACK:.*]] = memref.alloca() {aie.objectfifo.object_slot} : memref<memref<16xi32>>
-// CHECK:     memref.store %b1, %[[BACK]][]
+// CHECK:     memref.store %[[BUFFER1]], %[[BACK]][]
 
 // Take the shortfall between what is wanted and what is held.
 // CHECK:     %[[DELTA:.*]] = arith.maxsi
-// CHECK:     aie.use_lock(%free, AcquireGreaterEqual, %[[DELTA]])
+// CHECK:     aie.use_lock(@free, AcquireGreaterEqual, %[[DELTA]])
 
 // The object handed over is the one at the front.
 // CHECK:     %[[OBJ:.*]] = memref.load %[[FRONT]][]
 // CHECK:     memref.store %{{.*}}, %[[OBJ]][%{{.*}}]
 
 // Releasing one object rotates the objects by one.
-// CHECK:     aie.use_lock(%full, Release, %{{.*}})
+// CHECK:     aie.use_lock(@full, Release, %{{.*}})
 // CHECK:     %[[WAS_FRONT:.*]] = memref.load %[[FRONT]][]
 // CHECK:     %[[WAS_BACK:.*]] = memref.load %[[BACK]][]
 // CHECK:     memref.store %[[WAS_BACK]], %[[FRONT]][]
@@ -71,9 +73,9 @@ module @counting {
 // Check provenance as well as coverage: acquire/release lower to the same op
 // kind but must still point at their respective user source lines.
 // LOC-DAG: arith.maxsi {{.*}} loc(#[[ACQUIRE:loc[0-9]*]])
-// LOC-DAG: aie.use_lock(%free, AcquireGreaterEqual, {{.*}}) loc(#[[ACQUIRE]])
+// LOC-DAG: aie.use_lock(@free, AcquireGreaterEqual, {{.*}}) loc(#[[ACQUIRE]])
 // LOC-DAG: memref.load {{.*}}[] {{.*}} loc(#[[ACQUIRE]])
-// LOC-DAG: aie.use_lock(%full, Release, {{.*}}) loc(#[[RELEASE:loc[0-9]*]])
+// LOC-DAG: aie.use_lock(@full, Release, {{.*}}) loc(#[[RELEASE:loc[0-9]*]])
 // LOC-DAG: memref.store {{.*}} loc(#[[RELEASE]])
 // LOC-DAG: #[[ACQUIRE]] = loc("fifo_user.py":50:4)
 // LOC-DAG: #[[RELEASE]] = loc("fifo_user.py":60:4)

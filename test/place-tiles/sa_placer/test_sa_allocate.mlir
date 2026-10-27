@@ -26,7 +26,7 @@ module @intratile_spill {
     aie.objectfifo @data(%coreA, {%coreB}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
 
     // 50KB static weights
-    %wts = aie.buffer(%coreA) {sym_name = "weights"} : memref<12800xi32>
+    aie.buffer @weights(%coreA) : memref<12800xi32>
 
     // Intratile fifos (3 x 6KB = 18KB, total 68KB > 64KB)
     aie.objectfifo @intra0(%coreA, {%coreA}, 3 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
@@ -84,7 +84,7 @@ module @user_allocate_kept {
 
     aie.objectfifo @data(%coreA, {%coreC}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
 
-    %wts = aie.buffer(%coreA) {sym_name = "weights"} : memref<12800xi32>
+    aie.buffer @weights(%coreA) : memref<12800xi32>
 
     aie.objectfifo @intra0(%coreA, {%coreA}, 3 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2048xi8>>
     aie.objectfifo.allocate @intra0(%coreB)
@@ -131,7 +131,7 @@ module @unpinned_delegate_reachable {
 module @exact_fit_needs_padding {
   aie.device(npu2) {
     %coreA = aie.logical_tile<CoreTile>(?, ?)
-    %wts = aie.buffer(%coreA) {sym_name = "weights"} : memref<54208xi8>
+    aie.buffer @weights(%coreA) : memref<54208xi8>
     aie.objectfifo @intra0(%coreA, {%coreA}, 4 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<2576xi8>>
     aie.core(%coreA) { aie.end }
   }

@@ -30,10 +30,11 @@
 module @pin_d2size_4elem {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) : memref<20000xi32>
+    aie.buffer @buf(%tile_0_1) : memref<20000xi32>
 
     aie.runtime_sequence(%arg0: memref<20000xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+        %buf = aie.get_buffer @buf : memref<20000xi32>
         aie.dma_bd(%buf : memref<20000xi32> offset = 0 len = 17920 sizes = [1, 512, 5, 7] strides = [0, 35, 7, 1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -57,10 +58,11 @@ module @pin_d2size_4elem {
 module @pin_d2size_3elem {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) : memref<20000xi32>
+    aie.buffer @buf(%tile_0_1) : memref<20000xi32>
 
     aie.runtime_sequence(%arg0: memref<20000xi32>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+        %buf = aie.get_buffer @buf : memref<20000xi32>
         aie.dma_bd(%buf : memref<20000xi32> offset = 0 len = 17920 sizes = [512, 5, 7] strides = [35, 7, 1]) {bd_id = 0 : i32}
         aie.end
       }

@@ -19,11 +19,12 @@
 module {
   aie.device(npu1_1col) {
     %tile_0_2 = aie.tile(0, 2)
-    %buf = aie.buffer(%tile_0_2) {sym_name = "buf"} : memref<16xi32>
+    aie.buffer @buf(%tile_0_2) : memref<16xi32>
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
       %c1_i32 = arith.constant 1 : i32
+      %buf = aie.get_buffer @buf : memref<16xi32>
       memref.store %c1_i32, %buf[%c0] : memref<16xi32>
       aie.end
     }

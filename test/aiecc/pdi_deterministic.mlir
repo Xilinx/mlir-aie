@@ -17,6 +17,6 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(1, 2)
-    %buf = aie.buffer(%tile) : memref<256xi32>
+    aie.buffer @buf(%tile) : memref<256xi32>
   }
 }

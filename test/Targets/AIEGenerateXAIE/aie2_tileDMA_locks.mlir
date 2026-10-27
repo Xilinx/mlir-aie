@@ -24,41 +24,45 @@ module @aie_module  {
     %t72 = aie.tile(7, 3)
     %t74 = aie.tile(7, 5)
 
-    %buf_e = aie.buffer(%t63) {address = 0 : i32, sym_name = "east" } : memref<256xi32>
-    %buf_l = aie.buffer(%t73) {address = 1824 : i32, sym_name = "local" } : memref<256xi32>
-    %buf_n = aie.buffer(%t74) {address = 0 : i32, sym_name = "north" } : memref<256xi32>
-    %buf_s = aie.buffer(%t72) {address = 0 : i32, sym_name = "south" } : memref<256xi32>
+    aie.buffer @east(%t63) {address = 0 : i32} : memref<256xi32>
+    aie.buffer @local(%t73) {address = 1824 : i32} : memref<256xi32>
+    aie.buffer @north(%t74) {address = 0 : i32} : memref<256xi32>
+    aie.buffer @south(%t72) {address = 0 : i32} : memref<256xi32>
 
-    %lock_e = aie.lock(%t63, 0)
-    %lock_l1 = aie.lock(%t73, 3)
-    %lock_l2 = aie.lock(%t73, 4)
-    %lock_n = aie.lock(%t74, 0)
-    %lock_s = aie.lock(%t72, 0)
+    aie.lock @lock_e(%t63, 0)
+    aie.lock @lock_l1(%t73, 3)
+    aie.lock @lock_l2(%t73, 4)
+    aie.lock @lock_n(%t74, 0)
+    aie.lock @lock_s(%t72, 0)
 
     // Tile DMA
     %m73 = aie.mem(%t73) {
         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
       ^bd0:
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%lock_l1, AcquireGreaterEqual, %c1_ul1)
+        aie.use_lock(@lock_l1, AcquireGreaterEqual, %c1_ul1)
+        %buf_l = aie.get_buffer @local : memref<256xi32>
         aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256)
         %c1_ul2 = arith.constant 1 : i32
-        aie.use_lock(%lock_l2, Release, %c1_ul2)
+        aie.use_lock(@lock_l2, Release, %c1_ul2)
         aie.next_bd ^bd1
       ^bd1:
-        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256)
+        %buf_l_1 = aie.get_buffer @local : memref<256xi32>
+        aie.dma_bd(%buf_l_1 : memref<256xi32> offset = 0 len = 256)
         %c1_ul3 = arith.constant 1 : i32
-        aie.use_lock(%lock_l1, Release, %c1_ul3)
+        aie.use_lock(@lock_l1, Release, %c1_ul3)
         aie.next_bd ^bd2
       ^bd2:
-        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256)
+        %buf_l_2 = aie.get_buffer @local : memref<256xi32>
+        aie.dma_bd(%buf_l_2 : memref<256xi32> offset = 0 len = 256)
         %c1_ul4 = arith.constant 1 : i32
-        aie.use_lock(%lock_l1, Release, %c1_ul4)
+        aie.use_lock(@lock_l1, Release, %c1_ul4)
         aie.next_bd ^bd3
       ^bd3:
-        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256)
+        %buf_l_3 = aie.get_buffer @local : memref<256xi32>
+        aie.dma_bd(%buf_l_3 : memref<256xi32> offset = 0 len = 256)
         %c1_ul5 = arith.constant 1 : i32
-        aie.use_lock(%lock_l1, Release, %c1_ul5)
+        aie.use_lock(@lock_l1, Release, %c1_ul5)
         aie.next_bd ^end
       ^end:
         aie.end

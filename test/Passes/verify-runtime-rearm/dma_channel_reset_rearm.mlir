@@ -12,16 +12,17 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %buf = aie.buffer(%t) : memref<16xi32>
-    %prod = aie.lock(%t, 0) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
-    %cons = aie.lock(%t, 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+    aie.buffer @buf(%t) : memref<16xi32>
+    aie.lock @fifo_prod_lock_0(%t, 0) {init = 1 : i32}
+    aie.lock @fifo_cons_lock_0(%t, 1) {init = 0 : i32}
     %mem = aie.mem(%t) {
       %dma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%prod, AcquireGreaterEqual, %c1)
+      aie.use_lock(@fifo_prod_lock_0, AcquireGreaterEqual, %c1)
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%cons, Release, %c1)
+      aie.use_lock(@fifo_cons_lock_0, Release, %c1)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -29,9 +30,9 @@ module {
     aie.runtime_sequence() {
       aiex.dma_channel_reset(%t, S2MM, 0)
       %prod_v1 = arith.constant 1 : i32
-      aiex.set_lock(%prod, %prod_v1)
+      aiex.set_lock(@fifo_prod_lock_0, %prod_v1)
       %cons_v0 = arith.constant 0 : i32
-      aiex.set_lock(%cons, %cons_v0)
+      aiex.set_lock(@fifo_cons_lock_0, %cons_v0)
     }
   }
 }
@@ -43,18 +44,19 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %buf = aie.buffer(%t) : memref<16xi32>
+    aie.buffer @buf(%t) : memref<16xi32>
     // expected-note @+1 {{this lock is bound to the reset channel and is not re-armed}}
-    %prod = aie.lock(%t, 0) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
+    aie.lock @fifo_prod_lock_0(%t, 0) {init = 1 : i32}
     // expected-note @+1 {{this lock is bound to the reset channel and is not re-armed}}
-    %cons = aie.lock(%t, 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+    aie.lock @fifo_cons_lock_0(%t, 1) {init = 0 : i32}
     %mem = aie.mem(%t) {
       %dma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%prod, AcquireGreaterEqual, %c1)
+      aie.use_lock(@fifo_prod_lock_0, AcquireGreaterEqual, %c1)
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%cons, Release, %c1)
+      aie.use_lock(@fifo_cons_lock_0, Release, %c1)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -73,17 +75,18 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %buf = aie.buffer(%t) : memref<16xi32>
-    %prod = aie.lock(%t, 0) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
+    aie.buffer @buf(%t) : memref<16xi32>
+    aie.lock @fifo_prod_lock_0(%t, 0) {init = 1 : i32}
     // expected-note @+1 {{this lock is bound to the reset channel and is not re-armed}}
-    %cons = aie.lock(%t, 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+    aie.lock @fifo_cons_lock_0(%t, 1) {init = 0 : i32}
     %mem = aie.mem(%t) {
       %dma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%prod, AcquireGreaterEqual, %c1)
+      aie.use_lock(@fifo_prod_lock_0, AcquireGreaterEqual, %c1)
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%cons, Release, %c1)
+      aie.use_lock(@fifo_cons_lock_0, Release, %c1)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -92,7 +95,7 @@ module {
       // expected-error @+1 {{resets a DMA channel whose objectFIFO lock is never re-armed}}
       aiex.dma_channel_reset(%t, S2MM, 0)
       %prod_v1 = arith.constant 1 : i32
-      aiex.set_lock(%prod, %prod_v1)
+      aiex.set_lock(@fifo_prod_lock_0, %prod_v1)
     }
   }
 }
@@ -104,10 +107,11 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %buf = aie.buffer(%t) : memref<16xi32>
+    aie.buffer @buf(%t) : memref<16xi32>
     %mem = aie.mem(%t) {
       %dma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd0
     ^end:
@@ -126,16 +130,17 @@ module {
 module {
   aie.device(npu1) {
     %t = aie.tile(0, 2)
-    %buf = aie.buffer(%t) : memref<16xi32>
-    %prod = aie.lock(%t, 0) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
-    %cons = aie.lock(%t, 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+    aie.buffer @buf(%t) : memref<16xi32>
+    aie.lock @fifo_prod_lock_0(%t, 0) {init = 1 : i32}
+    aie.lock @fifo_cons_lock_0(%t, 1) {init = 0 : i32}
     %mem = aie.mem(%t) {
       %dma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%prod, AcquireGreaterEqual, %c1)
+      aie.use_lock(@fifo_prod_lock_0, AcquireGreaterEqual, %c1)
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%cons, Release, %c1)
+      aie.use_lock(@fifo_cons_lock_0, Release, %c1)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -143,9 +148,9 @@ module {
     aie.runtime_sequence() {
       aiex.dma_channel_reset(%t, S2MM, 0)
       %prod_v1 = arith.constant 1 : i32
-      aiex.set_lock(%prod, %prod_v1)
+      aiex.set_lock(@fifo_prod_lock_0, %prod_v1)
       %cons_v0 = arith.constant 0 : i32
-      aiex.set_lock(%cons, %cons_v0)
+      aiex.set_lock(@fifo_cons_lock_0, %cons_v0)
     }
   }
 }
@@ -157,15 +162,16 @@ module {
 module {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
-    %buf = aie.buffer(%mt) : memref<16xi32>
+    aie.buffer @buf(%mt) : memref<16xi32>
     // expected-note @+1 {{this lock is bound to the reset channel and is not re-armed}}
-    %prod = aie.lock(%mt, 0) {init = 1 : i32, sym_name = "mtfifo_prod_lock_0"}
-    %cons = aie.lock(%mt, 1) {init = 0 : i32, sym_name = "mtfifo_cons_lock_0"}
+    aie.lock @mtfifo_prod_lock_0(%mt, 0) {init = 1 : i32}
+    aie.lock @mtfifo_cons_lock_0(%mt, 1) {init = 0 : i32}
     %memtile = aie.memtile_dma(%mt) {
       %dma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%prod, AcquireGreaterEqual, %c1)
+      aie.use_lock(@mtfifo_prod_lock_0, AcquireGreaterEqual, %c1)
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd0
     ^end:
@@ -175,7 +181,7 @@ module {
       // expected-error @+1 {{resets a DMA channel whose objectFIFO lock is never re-armed}}
       aiex.dma_channel_reset(%mt, S2MM, 0)
       %cons_v0 = arith.constant 0 : i32
-      aiex.set_lock(%cons, %cons_v0)
+      aiex.set_lock(@mtfifo_cons_lock_0, %cons_v0)
     }
   }
 }
@@ -187,16 +193,17 @@ module {
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %buf = aie.buffer(%t) : memref<16xi32>
-    %prod = aie.lock(%t, 0) {init = 1 : i32}
-    %cons = aie.lock(%t, 1) {init = 0 : i32}
+    aie.buffer @buf(%t) : memref<16xi32>
+    aie.lock @prod(%t, 0) {init = 1 : i32}
+    aie.lock @cons(%t, 1) {init = 0 : i32}
     %mem = aie.mem(%t) {
       %dma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       %c1 = arith.constant 1 : i32
-      aie.use_lock(%prod, AcquireGreaterEqual, %c1)
+      aie.use_lock(@prod, AcquireGreaterEqual, %c1)
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%cons, Release, %c1)
+      aie.use_lock(@cons, Release, %c1)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -206,9 +213,9 @@ module {
     }
     aie.runtime_sequence @rearm() {
       %prod_v1 = arith.constant 1 : i32
-      aiex.set_lock(%prod, %prod_v1)
+      aiex.set_lock(@prod, %prod_v1)
       %cons_v0 = arith.constant 0 : i32
-      aiex.set_lock(%cons, %cons_v0)
+      aiex.set_lock(@cons, %cons_v0)
     }
   }
 }

@@ -57,7 +57,7 @@ module @loc_test {
 // CHECK-DAG: aie.core({{.*}}) {{[{][[:space:]]*$}}
 // CHECK-DAG: aie.end loc(#[[CALLLOC]])
 // CHECK-DAG: } loc(#[[CALLLOC]])
-// CHECK-DAG: aie.buffer({{.*}}) : memref<256xi32> loc(#[[CALLLOC]])
+// CHECK-DAG: aie.buffer @{{[^ (]+}}({{.*}}) : memref<256xi32> loc(#[[CALLLOC]])
 
 // AIELowerMemcpy: synthesized aie.flow / dma_start / dma_bd / use_token /
 // next_bd carry the memcpy's loc.

@@ -27,7 +27,7 @@ module @test_mmap1 {
   %t33 = aie.tile(3, 3) // Different row
   %t35 = aie.tile(3, 5) // Different row
 
-  %buf34_0 = aie.buffer(%t34) { sym_name = "a", address = 0x0 : i32 } : memref<4xi32>
+  aie.buffer @a(%t34) { address = 0x0 : i32 } : memref<4xi32>
  }
 }
 

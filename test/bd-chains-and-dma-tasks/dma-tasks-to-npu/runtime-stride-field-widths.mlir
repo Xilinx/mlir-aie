@@ -36,9 +36,10 @@ module @shim_stride {
 module @memtile_stride {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) : memref<4096xi32>
+    aie.buffer @buf(%tile_0_1) : memref<4096xi32>
     aie.runtime_sequence(%stride: i64) {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+          %buf = aie.get_buffer @buf : memref<4096xi32>
           aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 1024 sizes = [1, 8, 16, 8] strides = [0, %stride, 8, 1]) {bd_id = 0 : i32}
           aie.end
       }
@@ -53,9 +54,10 @@ module @memtile_stride {
 module @coretile_stride {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %buf = aie.buffer(%tile_0_2) : memref<1024xi32>
+    aie.buffer @buf(%tile_0_2) : memref<1024xi32>
     aie.runtime_sequence(%stride: i64) {
       %t = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
+          %buf = aie.get_buffer @buf : memref<1024xi32>
           aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 512 sizes = [1, 8, 8, 8] strides = [0, %stride, 8, 1]) {bd_id = 0 : i32}
           aie.end
       }

@@ -39,16 +39,17 @@ module {
     %t_3_2 = aie.tile(3, 2)
     %t_3_3 = aie.tile(3, 3)
     %t_3_5 = aie.tile(3, 5)
-    %l_3_5_0 = aie.lock(%t_3_5, 0) {init = 1 : i32, sym_name = "l_3_5_0"}
-    %l_3_5_1 = aie.lock(%t_3_5, 1) {init = 0 : i32, sym_name = "l_3_5_1"}
-    %b_3_5_0 = aie.buffer(%t_3_5) {sym_name = "b_3_5_0"} : memref<24xi32>
+    aie.lock @l_3_5_0(%t_3_5, 0) {init = 1 : i32}
+    aie.lock @l_3_5_1(%t_3_5, 1) {init = 0 : i32}
+    aie.buffer @b_3_5_0(%t_3_5) : memref<24xi32>
     %dma_3_5 = aie.mem(%t_3_5) {
       %c1 = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 0, ^p0b0, ^end)
     ^p0b0:
-      aie.use_lock(%l_3_5_0, AcquireGreaterEqual, %c1)
+      aie.use_lock(@l_3_5_0, AcquireGreaterEqual, %c1)
+      %b_3_5_0 = aie.get_buffer @b_3_5_0 : memref<24xi32>
       aie.dma_bd(%b_3_5_0 : memref<24xi32> offset = 0 len = 24)
-      aie.use_lock(%l_3_5_1, Release, %c1)
+      aie.use_lock(@l_3_5_1, Release, %c1)
       aie.next_bd ^p0b0
     ^end:
       aie.end

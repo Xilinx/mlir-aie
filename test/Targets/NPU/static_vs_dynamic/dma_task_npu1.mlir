@@ -32,7 +32,7 @@ module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
-    %rtp = aie.buffer(%tile_0_2) {sym_name = "rtp", address = 49152 : i32} : memref<16xi32>
+    aie.buffer @rtp(%tile_0_2) {address = 49152 : i32} : memref<16xi32>
     aie.shim_dma_allocation @of_in  (%tile_0_0, MM2S, 0)
     aie.shim_dma_allocation @of_out (%tile_0_0, S2MM, 0)
 

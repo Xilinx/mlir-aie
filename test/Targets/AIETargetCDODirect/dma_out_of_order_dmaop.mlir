@@ -20,23 +20,25 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %b = aie.buffer(%t) : memref<8xi32>
-    %l0 = aie.lock(%t, 0) { init = 1 : i32 }
-    %l1 = aie.lock(%t, 1) { init = 0 : i32 }
+    aie.buffer @b(%t) : memref<8xi32>
+    aie.lock @l0(%t, 0) { init = 1 : i32 }
+    aie.lock @l1(%t, 1) { init = 0 : i32 }
     aie.mem(%t) {
       %c1 = arith.constant 1 : i32
-      %0 = aie.dma(S2MM, 0) { out_of_order } [
+      aie.dma(S2MM, 0) { out_of_order } [
         {
-          aie.use_lock(%l0, AcquireGreaterEqual, %c1)
+          aie.use_lock(@l0, AcquireGreaterEqual, %c1)
           aie.dma_bd_packet(0, 0)
+          %b = aie.get_buffer @b : memref<8xi32>
           aie.dma_bd(%b : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32 }
-          aie.use_lock(%l1, Release, %c1)
+          aie.use_lock(@l1, Release, %c1)
         },
         {
-          aie.use_lock(%l0, AcquireGreaterEqual, %c1)
+          aie.use_lock(@l0, AcquireGreaterEqual, %c1)
           aie.dma_bd_packet(0, 0)
-          aie.dma_bd(%b : memref<8xi32> offset = 4 len = 4) { bd_id = 1 : i32 }
-          aie.use_lock(%l1, Release, %c1)
+          %b_1 = aie.get_buffer @b : memref<8xi32>
+          aie.dma_bd(%b_1 : memref<8xi32> offset = 4 len = 4) { bd_id = 1 : i32 }
+          aie.use_lock(@l1, Release, %c1)
         }
       ]
       aie.end

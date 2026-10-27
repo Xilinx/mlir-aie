@@ -24,14 +24,16 @@ module {
     %t_0_3 = aie.tile(0, 3)
     %t_0_4 = aie.tile(0, 4)
     %t_0_5 = aie.tile(0, 5)
-    %b_0_3_0 = aie.buffer(%t_0_3) {sym_name = "b_0_3_0"} : memref<32xi32>
-    %b_0_3_1 = aie.buffer(%t_0_3) {sym_name = "b_0_3_1"} : memref<16xi32>
+    aie.buffer @b_0_3_0(%t_0_3) : memref<32xi32>
+    aie.buffer @b_0_3_1(%t_0_3) : memref<16xi32>
     %dma_0_3 = aie.mem(%t_0_3) {
       %d0 = aie.dma_start(MM2S, 0, ^p0b0, ^end)
     ^p0b0:
+      %b_0_3_0 = aie.get_buffer @b_0_3_0 : memref<32xi32>
       aie.dma_bd(%b_0_3_0 : memref<32xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
       aie.next_bd ^p0b1
     ^p0b1:
+      %b_0_3_1 = aie.get_buffer @b_0_3_1 : memref<16xi32>
       aie.dma_bd(%b_0_3_1 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
       aie.next_bd ^p0b0
     ^end:

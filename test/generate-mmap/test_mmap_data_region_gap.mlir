@@ -44,12 +44,12 @@ module @test_mmap_data_region_gap {
   %t02 = aie.tile(0, 2)
 
   // a: local [0x2000, 0x4000)
-  %buf_a = aie.buffer(%t02) { sym_name = "a", address = 0x2000 : i32 } : memref<2048xi32>
+  aie.buffer @a(%t02) { address = 0x2000 : i32 } : memref<2048xi32>
   // gap: local [0x4000, 0x8000) -- the largest free gap (0x4000 bytes)
   // b: local [0x8000, 0xC000)
-  %buf_b = aie.buffer(%t02) { sym_name = "b", address = 0x8000 : i32 } : memref<4096xi32>
+  aie.buffer @b(%t02) { address = 0x8000 : i32 } : memref<4096xi32>
   // c: local [0xC000, 0x10000) -- fills memory flush to the top
-  %buf_c = aie.buffer(%t02) { sym_name = "c", address = 0xC000 : i32 } : memref<4096xi32>
+  aie.buffer @c(%t02) { address = 0xC000 : i32 } : memref<4096xi32>
 
   aie.core(%t02) {
     aie.end

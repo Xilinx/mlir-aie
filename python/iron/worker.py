@@ -374,7 +374,7 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
             if op.name == "aie.core":
                 core_tile = op.operands[0].owner.operation
                 for worker_lock in self.worker_locks:
-                    lock_tile = worker_lock.owner.operation.operands[0].owner.operation
+                    lock_tile = worker_lock.operation.operands[0].owner.operation
                     # Value equality emits arith.cmpi; compare defining operations.
                     if lock_tile == core_tile:
                         return worker_lock

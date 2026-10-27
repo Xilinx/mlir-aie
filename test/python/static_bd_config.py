@@ -13,32 +13,34 @@ with mlir_mod_ctx() as ctx:
     def device_body():
         # CHECK: %[[tile_0_2:.+]] = aie.tile
         tile_0_2 = tile(0, 2)
-        # CHECK: %[[buf0:.+]] = aie.buffer
+        # CHECK: aie.buffer @buffer(
         buf0 = buffer(tile_0_2, T.memref(16, T.i32()))
-        # CHECK: %[[buf1:.+]] = aie.buffer
+        # CHECK: aie.buffer @buffer_0(
         buf1 = buffer(tile_0_2, np.ndarray[(16,), np.dtype[np.int32]])
-        # CHECK: %[[lock0:.+]] = aie.lock
+        # CHECK: aie.lock @[[lock0:[^(]+]](
         lock0 = lock(tile_0_2)
-        # CHECK: %[[lock1:.+]] = aie.lock
+        # CHECK: aie.lock @[[lock1:[^(]+]](
         lock1 = lock(tile_0_2)
 
         # CHECK: %{{.+}} = aie.mem(%[[tile_0_2]]) {
-        # CHECK:    %0 = aie.dma_start(S2MM, 1, ^bb1, ^bb2)
+        # CHECK:    %{{.*}} = aie.dma_start(S2MM, 1, ^bb1, ^bb2)
         # CHECK:  ^bb1:  // pred: ^bb0
         # CHECK:    %{{.*}} = arith.constant 1 : i32
-        # CHECK:    aie.use_lock(%[[lock0]], AcquireGreaterEqual, %{{.*}})
+        # CHECK:    aie.use_lock(@[[lock0]], AcquireGreaterEqual, %{{.*}})
+        # CHECK:    %[[buf0:.+]] = aie.get_buffer @buffer : memref<16xi32>
         # CHECK:    aie.dma_bd(%[[buf0]] : memref<16xi32>)
         # CHECK:    %{{.*}} = arith.constant 1 : i32
-        # CHECK:    aie.use_lock(%[[lock1]], Release, %{{.*}})
+        # CHECK:    aie.use_lock(@[[lock1]], Release, %{{.*}})
         # CHECK:    aie.end
         # CHECK:  ^bb2:  // pred: ^bb0
-        # CHECK:    %1 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
+        # CHECK:    %{{.*}} = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
         # CHECK:  ^bb3:  // pred: ^bb2
         # CHECK:    %{{.*}} = arith.constant 1 : i32
-        # CHECK:    aie.use_lock(%[[lock1]], AcquireGreaterEqual, %{{.*}})
+        # CHECK:    aie.use_lock(@[[lock1]], AcquireGreaterEqual, %{{.*}})
+        # CHECK:    %[[buf1:.+]] = aie.get_buffer @buffer_0 : memref<16xi32>
         # CHECK:    aie.dma_bd(%[[buf1]] : memref<16xi32>)
         # CHECK:    %{{.*}} = arith.constant 1 : i32
-        # CHECK:    aie.use_lock(%[[lock0]], Release, %{{.*}})
+        # CHECK:    aie.use_lock(@[[lock0]], Release, %{{.*}})
         # CHECK:    aie.end
         # CHECK:  ^bb4:  // pred: ^bb2
         # CHECK:    aie.end

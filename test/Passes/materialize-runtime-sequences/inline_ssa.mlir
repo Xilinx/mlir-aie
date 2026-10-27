@@ -14,8 +14,8 @@ module {
   aie.device(npu2) {
     // The following SSA values should have been inlined from the aiex.run call, since the referenced runtime sequence references them.
     // CHECK: aie.tile(0, 2)
-    // CHECK: aie.lock
-    // CHECK: aie.buffer
+    // CHECK-DAG: aie.lock
+    // CHECK-DAG: aie.buffer
 
     // CHECK-LABEL: aie.runtime_sequence
     aie.runtime_sequence(%arg0: memref<64xi32>) {
@@ -36,15 +36,15 @@ module {
     // CHECK: aie.lock
     %tile_0_2 = aie.tile(0, 2)
 
-    %rtp_0_0 = aie.buffer(%tile_0_2) {sym_name = "rtp_0_0", address = 0xDEADBEEF : i32} : memref<1xi32>
-    %lock_0_2 = aie.lock(%tile_0_2)
+    aie.buffer @rtp_0_0(%tile_0_2) {address = 0xDEADBEEF : i32} : memref<1xi32>
+    aie.lock @lock_0_2(%tile_0_2)
 
     aie.runtime_sequence (%arg0: memref<64xi32>) {
       // These are the operations that reference other SSA values in the device, which will require hoisting those SSA values into the calling device.
       %cst_npu_0 = arith.constant -1168197103 : i32
       aiex.npu.rtp_write(@rtp_0_0, 0, %cst_npu_0) : i32
       %lock_0_2_v1 = arith.constant 1 : i32
-      aiex.set_lock(%lock_0_2, %lock_0_2_v1)
+      aiex.set_lock(@lock_0_2, %lock_0_2_v1)
     }
   }
 }

@@ -31,18 +31,21 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 2)
-    %a = aie.buffer(%tile) {sym_name = "a"} : memref<4x8x8xbf16>
-    %b = aie.buffer(%tile) {sym_name = "b"} : memref<4x8x8xbf16>
-    %c = aie.buffer(%tile) {sym_name = "c"} : memref<8x8xf32>
+    aie.buffer @a(%tile) : memref<4x8x8xbf16>
+    aie.buffer @b(%tile) : memref<4x8x8xbf16>
+    aie.buffer @c(%tile) : memref<8x8xf32>
     %core = aie.core(%tile) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c4 = arith.constant 4 : index
       %pbf = arith.constant 0.0 : bf16
       %pf = arith.constant 0.0 : f32
+      %c = aie.get_buffer @c : memref<8x8xf32>
       %acc0 = vector.transfer_read %c[%c0, %c0], %pf {in_bounds = [true, true]} : memref<8x8xf32>, vector<8x8xf32>
       %acc = scf.for %k = %c0 to %c4 step %c1 iter_args(%acck = %acc0) -> (vector<8x8xf32>) {
+        %a = aie.get_buffer @a : memref<4x8x8xbf16>
         %ta = vector.transfer_read %a[%k, %c0, %c0], %pbf {in_bounds = [true, true]} : memref<4x8x8xbf16>, vector<8x8xbf16>
+        %b = aie.get_buffer @b : memref<4x8x8xbf16>
         %tb = vector.transfer_read %b[%k, %c0, %c0], %pbf {in_bounds = [true, true]} : memref<4x8x8xbf16>, vector<8x8xbf16>
         %r = aievec.matmul_aie2p %ta, %tb, %acck : vector<8x8xbf16>, vector<8x8xbf16> into vector<8x8xf32>
         scf.yield %r : vector<8x8xf32>

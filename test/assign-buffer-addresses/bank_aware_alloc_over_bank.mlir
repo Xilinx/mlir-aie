@@ -14,11 +14,11 @@
 // A 512 kB memtile as 8 banks of 64 kB, completely empty. The 128 kB buffer is
 // larger than a bank and takes bank 0 onward.
 // CHECK-LABEL: module @over_bank_empty_memtile
-// CHECK: %big = aie.buffer(%mem_tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "big"} : memref<32768xi32>
+// CHECK: aie.buffer @big(%mem_tile_0_1) {address = 0 : i32, mem_bank = 0 : i32} : memref<32768xi32>
 module @over_bank_empty_memtile {
   aie.device(npu2) {
     %mem_tile_0_1 = aie.tile(0, 1)
-    %big = aie.buffer(%mem_tile_0_1) {sym_name = "big"} : memref<32768xi32>
+    aie.buffer @big(%mem_tile_0_1) : memref<32768xi32>
     aie.memtile_dma(%mem_tile_0_1) {
       aie.end
     }
@@ -32,12 +32,12 @@ module @over_bank_empty_memtile {
 // placement touching the fewest banks: 65536 spans banks 1-2, whereas any
 // unaligned start of a 128 kB buffer would touch three banks.
 // CHECK-LABEL: module @over_bank_after_obstacle
-// CHECK: %big = aie.buffer(%mem_tile_0_1) {address = 65536 : i32, mem_bank = 1 : i32, sym_name = "big"} : memref<32768xi32>
+// CHECK: aie.buffer @big(%mem_tile_0_1) {address = 65536 : i32, mem_bank = 1 : i32} : memref<32768xi32>
 module @over_bank_after_obstacle {
   aie.device(npu2) {
     %mem_tile_0_1 = aie.tile(0, 1)
-    %pin_bank0 = aie.buffer(%mem_tile_0_1) {address = 0 : i32, sym_name = "pin_bank0"} : memref<16384xi32>
-    %big = aie.buffer(%mem_tile_0_1) {sym_name = "big"} : memref<32768xi32>
+    aie.buffer @pin_bank0(%mem_tile_0_1) {address = 0 : i32} : memref<16384xi32>
+    aie.buffer @big(%mem_tile_0_1) : memref<32768xi32>
     aie.memtile_dma(%mem_tile_0_1) {
       aie.end
     }
@@ -50,15 +50,15 @@ module @over_bank_after_obstacle {
 // inside a single bank still gets one, and the round-robin spread over banks
 // is unchanged.
 // CHECK-LABEL: module @fits_in_bank_still_spreads
-// CHECK: %a = aie.buffer(%mem_tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "a"} : memref<4096xi32>
-// CHECK: %b = aie.buffer(%mem_tile_0_1) {address = 65536 : i32, mem_bank = 1 : i32, sym_name = "b"} : memref<4096xi32>
-// CHECK: %c = aie.buffer(%mem_tile_0_1) {address = 131072 : i32, mem_bank = 2 : i32, sym_name = "c"} : memref<4096xi32>
+// CHECK: aie.buffer @a(%mem_tile_0_1) {address = 0 : i32, mem_bank = 0 : i32} : memref<4096xi32>
+// CHECK: aie.buffer @b(%mem_tile_0_1) {address = 65536 : i32, mem_bank = 1 : i32} : memref<4096xi32>
+// CHECK: aie.buffer @c(%mem_tile_0_1) {address = 131072 : i32, mem_bank = 2 : i32} : memref<4096xi32>
 module @fits_in_bank_still_spreads {
   aie.device(npu2) {
     %mem_tile_0_1 = aie.tile(0, 1)
-    %a = aie.buffer(%mem_tile_0_1) {sym_name = "a"} : memref<4096xi32>
-    %b = aie.buffer(%mem_tile_0_1) {sym_name = "b"} : memref<4096xi32>
-    %c = aie.buffer(%mem_tile_0_1) {sym_name = "c"} : memref<4096xi32>
+    aie.buffer @a(%mem_tile_0_1) : memref<4096xi32>
+    aie.buffer @b(%mem_tile_0_1) : memref<4096xi32>
+    aie.buffer @c(%mem_tile_0_1) : memref<4096xi32>
     aie.memtile_dma(%mem_tile_0_1) {
       aie.end
     }
@@ -71,11 +71,11 @@ module @fits_in_bank_still_spreads {
 // needs two of the four 16 kB banks; bank 0 is unusable because the stack sits
 // at its base, so the buffer starts at the bank 1 boundary.
 // CHECK-LABEL: module @over_bank_skips_stack
-// CHECK: %big = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "big"} : memref<16384xbf16>
+// CHECK: aie.buffer @big(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<16384xbf16>
 module @over_bank_skips_stack {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %big = aie.buffer(%tile_0_2) {sym_name = "big"} : memref<16384xbf16>
+    aie.buffer @big(%tile_0_2) : memref<16384xbf16>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -88,13 +88,13 @@ module @over_bank_skips_stack {
 // natural-size alignment requirement on a buffer, and designs in the field
 // hand-pin buffers at addresses like this.
 // CHECK-LABEL: module @pin_straddles_bank_boundary
-// CHECK: %straddle = aie.buffer(%tile_0_2) {address = 8192 : i32, mem_bank = 0 : i32, sym_name = "straddle"} : memref<8192xbf16>
-// CHECK: %after = aie.buffer(%tile_0_2) {address = 24576 : i32, mem_bank = 1 : i32, sym_name = "after"} : memref<512xbf16>
+// CHECK: aie.buffer @straddle(%tile_0_2) {address = 8192 : i32, mem_bank = 0 : i32} : memref<8192xbf16>
+// CHECK: aie.buffer @after(%tile_0_2) {address = 24576 : i32, mem_bank = 1 : i32} : memref<512xbf16>
 module @pin_straddles_bank_boundary {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %straddle = aie.buffer(%tile_0_2) {address = 8192 : i32, sym_name = "straddle"} : memref<8192xbf16>
-    %after = aie.buffer(%tile_0_2) {mem_bank = 1 : i32, sym_name = "after"} : memref<512xbf16>
+    aie.buffer @straddle(%tile_0_2) {address = 8192 : i32} : memref<8192xbf16>
+    aie.buffer @after(%tile_0_2) {mem_bank = 1 : i32} : memref<512xbf16>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}

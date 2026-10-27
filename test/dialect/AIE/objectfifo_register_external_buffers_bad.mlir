@@ -15,7 +15,7 @@ module @objectfifo_register_external_buffers_bad {
     %tile13 = aie.tile(1, 3)
 
     aie.objectfifo @of_0 (%tile21, {%tile13}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    %ext_buffer_in  = aie.external_buffer {sym_name = "ext_buffer_in"}: memref<16xi32>
-    aie.objectfifo.register_external_buffers @of_0 (%tile21, {%ext_buffer_in}) : (memref<16xi32>)
+    aie.external_buffer @ext_buffer_in: memref<16xi32>
+    aie.objectfifo.register_external_buffers @of_0 (%tile21, [@ext_buffer_in])
  }
 }

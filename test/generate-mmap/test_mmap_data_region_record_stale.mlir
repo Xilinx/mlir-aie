@@ -23,11 +23,11 @@ module @test_mmap_data_region_record_stale {
  aie.device(npu1_1col) {
   %t02 = aie.tile(0, 2)
 
-  %buf_a = aie.buffer(%t02) { sym_name = "a", address = 0x2000 : i32 } : memref<2048xi32>
+  aie.buffer @a(%t02) { address = 0x2000 : i32 } : memref<2048xi32>
   // b sits at 0x8000, exactly where the recorded region below claims to start.
-  %buf_b = aie.buffer(%t02) { sym_name = "b", address = 0x8000 : i32 } : memref<4096xi32>
+  aie.buffer @b(%t02) { address = 0x8000 : i32 } : memref<4096xi32>
 
-  %core_data = aie.buffer(%t02) { sym_name = "core_data", address = 32768 : i32, core_data } : memref<4096xi8>
+  aie.buffer @core_data(%t02) { address = 32768 : i32, core_data } : memref<4096xi8>
 
   aie.core(%t02) {
     aie.end

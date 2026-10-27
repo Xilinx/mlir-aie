@@ -16,12 +16,12 @@
 // RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
 // 1024 (stack) + 3 (buffer) = 1027, which rounds up to 1088.
-// CHECK: %core_data_0_2 = aie.buffer(%tile_0_2) {address = 1088 : i32, core_data, mem_bank = 0 : i32, sym_name = "core_data_0_2"}
+// CHECK: aie.buffer @core_data_0_2(%tile_0_2) {address = 1088 : i32, core_data, mem_bank = 0 : i32}
 
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %odd = aie.buffer(%t) { sym_name = "odd", address = 1024 : i32 } : memref<3xi8>
+    aie.buffer @odd(%t) { address = 1024 : i32 } : memref<3xi8>
     %c = aie.core(%t) {
       aie.end
     } { data_size = 4096 : i32 }

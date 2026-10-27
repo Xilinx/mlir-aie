@@ -22,17 +22,17 @@
 // link reports the shortfall.
 // CHECK-LABEL: module @nothing_declared
 // CHECK-NOT: core_data
-// CHECK: %b0 = aie.buffer(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "b0"} : memref<8192xi8>
-// CHECK: %b5 = aie.buffer(%tile_0_2) {address = 49152 : i32, mem_bank = 3 : i32, sym_name = "b5"} : memref<8192xi8>
+// CHECK: aie.buffer @b0(%tile_0_2) {address = 1024 : i32, mem_bank = 0 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b5(%tile_0_2) {address = 49152 : i32, mem_bank = 3 : i32} : memref<8192xi8>
 module @nothing_declared {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %b0 = aie.buffer(%tile_0_2) {sym_name = "b0"} : memref<8192xi8>
-    %b1 = aie.buffer(%tile_0_2) {sym_name = "b1"} : memref<8192xi8>
-    %b2 = aie.buffer(%tile_0_2) {sym_name = "b2"} : memref<8192xi8>
-    %b3 = aie.buffer(%tile_0_2) {sym_name = "b3"} : memref<8192xi8>
-    %b4 = aie.buffer(%tile_0_2) {sym_name = "b4"} : memref<8192xi8>
-    %b5 = aie.buffer(%tile_0_2) {sym_name = "b5"} : memref<8192xi8>
+    aie.buffer @b0(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b1(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b2(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b3(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b4(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b5(%tile_0_2) : memref<8192xi8>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32}
@@ -45,18 +45,18 @@ module @nothing_declared {
 // buffer, placement sorts it among the rest by size, it takes the bottom of the
 // tile, the six buffers move up one slot, and all seven extents fit.
 // CHECK-LABEL: module @data_size_declared
-// CHECK: %b0 = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "b0"} : memref<8192xi8>
-// CHECK: %b5 = aie.buffer(%tile_0_2) {address = 57344 : i32, mem_bank = 3 : i32, sym_name = "b5"} : memref<8192xi8>
-// CHECK: %core_data_0_2 = aie.buffer(%tile_0_2) {address = 1024 : i32, core_data, mem_bank = 0 : i32, sym_name = "core_data_0_2"} : memref<12000xi8>
+// CHECK: aie.buffer @b0(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @b5(%tile_0_2) {address = 57344 : i32, mem_bank = 3 : i32} : memref<8192xi8>
+// CHECK: aie.buffer @core_data_0_2(%tile_0_2) {address = 1024 : i32, core_data, mem_bank = 0 : i32} : memref<12000xi8>
 module @data_size_declared {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %b0 = aie.buffer(%tile_0_2) {sym_name = "b0"} : memref<8192xi8>
-    %b1 = aie.buffer(%tile_0_2) {sym_name = "b1"} : memref<8192xi8>
-    %b2 = aie.buffer(%tile_0_2) {sym_name = "b2"} : memref<8192xi8>
-    %b3 = aie.buffer(%tile_0_2) {sym_name = "b3"} : memref<8192xi8>
-    %b4 = aie.buffer(%tile_0_2) {sym_name = "b4"} : memref<8192xi8>
-    %b5 = aie.buffer(%tile_0_2) {sym_name = "b5"} : memref<8192xi8>
+    aie.buffer @b0(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b1(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b2(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b3(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b4(%tile_0_2) : memref<8192xi8>
+    aie.buffer @b5(%tile_0_2) : memref<8192xi8>
     aie.core(%tile_0_2) {
       aie.end
     } {stack_size = 1024 : i32, data_size = 12000 : i32}

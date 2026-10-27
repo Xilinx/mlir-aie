@@ -878,8 +878,8 @@ SequentialPlacer::buildChannelRequirements(
 // Walk view-like aliasing memref ops back to the underlying BufferOp.
 static BufferOp traceToBuffer(Value val) {
   for (Operation *op = val.getDefiningOp(); op;) {
-    if (auto buf = dyn_cast<BufferOp>(op))
-      return buf;
+    if (auto access = dyn_cast<GetBufferOp>(op))
+      return dyn_cast_or_null<BufferOp>(access.getBufferOp().getOperation());
     if (auto view = dyn_cast<ViewLikeOpInterface>(op)) {
       val = view.getViewSource();
       op = val.getDefiningOp();

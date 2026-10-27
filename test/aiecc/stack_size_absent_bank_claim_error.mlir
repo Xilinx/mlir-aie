@@ -23,9 +23,10 @@
 module {
   aie.device(npu1_1col) {
     %tile = aie.tile(0, 2)
-    %out = aie.buffer(%tile) {sym_name = "out"} : memref<256xi32>
+    aie.buffer @out(%tile) : memref<256xi32>
     func.func private @large_stack(memref<256xi32>) attributes {link_with = "large_stack_kernel.ll", link_with_mode = "merge"}
     aie.core(%tile) {
+      %out = aie.get_buffer @out : memref<256xi32>
       func.call @large_stack(%out) : (memref<256xi32>) -> ()
       aie.end
     } // core

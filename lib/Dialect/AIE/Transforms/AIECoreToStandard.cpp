@@ -464,8 +464,21 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
 
       SmallVector<Value, 2> args;
       auto i32Ty = IntegerType::get(rewriter.getContext(), 32);
-      args.push_back(arith::IndexCastOp::create(rewriter, useLock.getLoc(),
-                                                i32Ty, useLock.getLock()));
+      auto lock = useLock.getLockOp();
+      auto core = useLock->getParentOfType<CoreOp>();
+      int lockID = lock.getLockIDValue();
+      if (auto local = useLock->getAttrOfType<IntegerAttr>("local_lock_id"))
+        lockID = local.getInt();
+      else if (core) {
+        auto base = targetModel.getLockLocalBaseIndex(
+            core.colIndex(), core.rowIndex(), lock.colIndex(), lock.rowIndex());
+        if (!base)
+          return useLock.emitOpError("lock is not accessible from this core");
+        lockID += *base;
+      }
+      args.push_back(
+          arith::ConstantOp::create(rewriter, useLock.getLoc(), i32Ty,
+                                    rewriter.getI32IntegerAttr(lockID)));
 
       Value value = adaptor.getValue();
       // AIE2 acquire-greater-equal is encoded as a negative value, so negate
@@ -484,23 +497,18 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
   }
 };
 
-struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
+struct AIEBufferToStandard : OpConversionPattern<GetBufferOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
   AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
                       PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit), module(m) {}
   LogicalResult
-  matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
+  matchAndRewrite(GetBufferOp access, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // The core's own sections fill this extent; nothing refers to it by name.
-    if (buffer.getCoreData()) {
-      rewriter.eraseOp(buffer);
-      return success();
-    }
     rewriter.setInsertionPointToStart(module.getBody());
-    auto t = llvm::cast<MemRefType>(buffer.getType());
-    auto symName = buffer.name().getValue();
+    auto t = llvm::cast<MemRefType>(access.getType());
+    auto symName = access.getBuffer();
     // A declaration, never a definition: a buffer lives at the address the
     // allocator chose, and the linker supplies that address from the generated
     // script or BCF. `initial_value` is device state, written by whoever
@@ -508,24 +516,24 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     // on the simulator path. A definition here would place the bytes wherever
     // `*(.data*)` lands, which costs the core's data region a copy it never
     // reads.
-    memref::GlobalOp::create(rewriter, buffer.getLoc(), symName,
-                             rewriter.getStringAttr("public"), buffer.getType(),
-                             /*initial_value=*/nullptr, /*constant*/ false,
-                             /*alignment*/ nullptr);
-
-    for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
-      Operation *user = use.getOwner();
-      rewriter.setInsertionPoint(user);
-      auto allocated =
-          memref::GetGlobalOp::create(rewriter, buffer.getLoc(), t, symName);
-      // Assume that buffers are aligned so they can be vectorized.
-      memref::AssumeAlignmentOp::create(rewriter, buffer.getLoc(), allocated,
-                                        32);
-
-      use.set(allocated.getResult());
+    if (auto global = module.lookupSymbol<memref::GlobalOp>(symName)) {
+      if (global.getType() != t || global.getInitialValue())
+        return access.emitOpError(
+            "buffer conflicts with an existing memref.global definition");
+    } else {
+      memref::GlobalOp::create(rewriter, access.getLoc(), symName,
+                               rewriter.getStringAttr("public"), t,
+                               /*initial_value=*/nullptr, /*constant*/ false,
+                               /*alignment*/ nullptr);
     }
 
-    rewriter.eraseOp(buffer);
+    rewriter.setInsertionPoint(access);
+    auto allocated =
+        memref::GetGlobalOp::create(rewriter, access.getLoc(), t, symName);
+    // Assume that buffers are aligned so they can be vectorized.
+    memref::AssumeAlignmentOp::create(rewriter, access.getLoc(), allocated, 32);
+
+    rewriter.replaceOp(access, allocated.getResult());
     return success();
   }
 };

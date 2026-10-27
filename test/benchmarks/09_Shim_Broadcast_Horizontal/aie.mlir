@@ -16,8 +16,8 @@ aie.device(xcvc1902) {
   %t72 = aie.tile(7, 2)
   %t3 = aie.tile(3,0)
   %60 = aie.tile(6,0)
-  aie.lock(%t72, 1) { sym_name = "lock1" }
-  aie.lock(%t72, 2) { sym_name = "lock2" }
+  aie.lock @lock1(%t72, 1)
+  aie.lock @lock2(%t72, 2)
 
 }
 }

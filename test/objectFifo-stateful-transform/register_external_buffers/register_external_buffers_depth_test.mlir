@@ -10,35 +10,36 @@
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK-DAG:               %{{.*}}tile_7_1 = aie.tile(7, 1)
 // CHECK-DAG:               %{{.*}}tile_7_0 = aie.tile(7, 0)
-// CHECK-DAG:               %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_7_1) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:               %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_7_1) {init = 0 : i32, sym_name = "ext_of_cons_lock_0"}
-// CHECK-DAG:               %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_7_0) {init = 0 : i32, sym_name = "ext_of_lock_0"}
-// CHECK-DAG:               %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_7_0) {init = 0 : i32, sym_name = "ext_of_lock_1"}
+// CHECK-DAG:               aie.buffer @[[VAL_0:ext_of_cons_buff_0]](%{{.*}}tile_7_1) : memref<16xi32>
+// CHECK-DAG:               aie.lock @[[VAL_1:ext_of_cons_lock_0]](%{{.*}}tile_7_1) {init = 0 : i32}
+// CHECK-DAG:               aie.lock @[[VAL_2:ext_of_lock_0]](%{{.*}}tile_7_0) {init = 0 : i32}
+// CHECK-DAG:               aie.lock @[[VAL_3:ext_of_lock_1]](%{{.*}}tile_7_0) {init = 0 : i32}
 // CHECK-DAG:               aie.flow(%{{.*}}tile_7_0, DMA : 0, %{{.*}}tile_7_1, DMA : 0)
-// CHECK-DAG:               %ext_buffer_in0 = aie.external_buffer {sym_name = "ext_buffer_in0"} : memref<64xi32>
-// CHECK-DAG:               %ext_buffer_in1 = aie.external_buffer {sym_name = "ext_buffer_in1"} : memref<64xi32>
+// CHECK-DAG:               aie.external_buffer @ext_buffer_in0 : memref<64xi32>
+// CHECK-DAG:               aie.external_buffer @ext_buffer_in1 : memref<64xi32>
 // CHECK-DAG:               aie.shim_dma_allocation @ext_of_shim_alloc(%shim_noc_tile_7_0, MM2S, 0)
 // CHECK:               %shim_dma_7_0 = aie.shim_dma(%{{.*}}tile_7_0) {
-// CHECK:                 %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
+// CHECK:                 %[[CHECK_SSA_0:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:               ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:                 aie.use_lock(%[[VAL_2]], Acquire, %{{.*}})
-// CHECK:                 aie.dma_bd(%ext_buffer_in0 : memref<64xi32> offset = {{.*}} len = {{.*}})
-// CHECK:                 aie.use_lock(%[[VAL_2]], Release, %{{.*}})
+// CHECK:                 aie.use_lock(@[[VAL_2]], Acquire, %{{.*}})
+// CHECK:                 aie.dma_bd(%{{[^ ,)]+}} : memref<64xi32> offset = {{.*}} len = {{.*}})
+// CHECK:                 aie.use_lock(@[[VAL_2]], Release, %{{.*}})
 // CHECK:                 aie.next_bd ^bb2
 // CHECK:               ^bb2:  // pred: ^bb1
-// CHECK:                 aie.use_lock(%[[VAL_3]], Acquire, %{{.*}})
-// CHECK:                 aie.dma_bd(%ext_buffer_in1 : memref<64xi32> offset = {{.*}} len = {{.*}})
-// CHECK:                 aie.use_lock(%[[VAL_3]], Release, %{{.*}})
+// CHECK:                 aie.use_lock(@[[VAL_3]], Acquire, %{{.*}})
+// CHECK:                 aie.dma_bd(%{{[^ ,)]+}} : memref<64xi32> offset = {{.*}} len = {{.*}})
+// CHECK:                 aie.use_lock(@[[VAL_3]], Release, %{{.*}})
 // CHECK:                 aie.next_bd ^bb1
 // CHECK:               ^bb3:  // pred: ^bb0
 // CHECK:                 aie.end
 // CHECK:               }
 // CHECK:               %mem_7_1 = aie.mem(%{{.*}}tile_7_1) {
-// CHECK:                 %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:                 %[[CHECK_SSA_1:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:               ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:                 aie.use_lock(%[[VAL_1]], Acquire, %{{.*}})
-// CHECK:                 aie.dma_bd(%[[VAL_0]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:                 aie.use_lock(%[[VAL_1]], Release, %{{.*}})
+// CHECK:                 aie.use_lock(@[[VAL_1]], Acquire, %{{.*}})
+// CHECK:                 %[[VAL_0_ACCESS_0:.*]] = aie.get_buffer @[[VAL_0]] : memref<16xi32>
+// CHECK:                 aie.dma_bd(%[[VAL_0_ACCESS_0]] : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:                 aie.use_lock(@[[VAL_1]], Release, %{{.*}})
 // CHECK:                 aie.next_bd ^bb1
 // CHECK:               ^bb2:  // pred: ^bb0
 // CHECK:                 aie.end
@@ -52,8 +53,8 @@ module @register_external_buffers_depth {
 
     aie.objectfifo @ext_of (%tile70, {%tile71}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
 
-    %ext_buffer_in0 = aie.external_buffer {sym_name = "ext_buffer_in0"}: memref<64xi32>
-    %ext_buffer_in1 = aie.external_buffer {sym_name = "ext_buffer_in1"}: memref<64xi32>
-    aie.objectfifo.register_external_buffers @ext_of (%tile70, {%ext_buffer_in0, %ext_buffer_in1}) : (memref<64xi32>, memref<64xi32>)
+    aie.external_buffer @ext_buffer_in0: memref<64xi32>
+    aie.external_buffer @ext_buffer_in1: memref<64xi32>
+    aie.objectfifo.register_external_buffers @ext_of (%tile70, [@ext_buffer_in0, @ext_buffer_in1])
  }
 }

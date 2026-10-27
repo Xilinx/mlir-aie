@@ -18,7 +18,7 @@ import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIssue]
-from ..dialects.aie import external_func
+from ..dialects.aie import GetBufferOp, _as_buffer_value, external_func
 from ..helpers.dialects.func import call
 from ..helpers.npdtypes import is_block_float, np_ndarray_type_of
 from ..helpers.sourceloc import SourceSite
@@ -77,7 +77,7 @@ def _is_contiguous_row_major(mr):
     return list(strides) == expected
 
 
-def _maybe_collapse_to_match(arg, expected_ty):
+def _maybe_collapse_to_match(arg, expected_ty, *, loc=None, ip=None):
     """Bridge an N-D contiguous memref arg to a 1-D kernel signature.
 
     Uses ``memref.collapse_shape``. Iron L1 buffers are multi-dim (e.g.
@@ -113,7 +113,7 @@ def _maybe_collapse_to_match(arg, expected_ty):
         return arg
     # All N input dims collapse into the single output dim.
     reassociation = [list(range(arg_mr.rank))]
-    return memref.collapse_shape(exp_mr, arg, reassociation)
+    return memref.collapse_shape(exp_mr, arg, reassociation, loc=loc, ip=ip)
 
 
 def _view_byte_offset(arg) -> tuple[int | None, str | None]:
@@ -133,6 +133,8 @@ def _view_byte_offset(arg) -> tuple[int | None, str | None]:
             return None, None
         offset += ir.IntegerAttr(shift.value).value
         owner = owner.source.owner
+    if isinstance(owner, GetBufferOp):
+        return offset, owner.buffer.value
     if isinstance(owner, ir.OpView) and "sym_name" in owner.attributes:
         return offset, ir.StringAttr(owner.attributes["sym_name"]).value
     return offset, None
@@ -581,9 +583,15 @@ class Kernel(Resolvable):
                     f"before it put it at byte {offset + pad}."
                 )
         arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
+        arg_ops = [
+            _as_buffer_value(a, loc=kwargs.get("loc"), ip=kwargs.get("ip"))
+            for a in arg_ops
+        ]
         expected_input_types = callee.function_type.value.inputs
         adapted = [
-            _maybe_collapse_to_match(a, expected_ty)
+            _maybe_collapse_to_match(
+                a, expected_ty, loc=kwargs.get("loc"), ip=kwargs.get("ip")
+            )
             for a, expected_ty in zip(arg_ops, expected_input_types)
         ]
         call(callee, adapted, **kwargs)

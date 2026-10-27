@@ -92,7 +92,7 @@ DEVICES = [
     ),
 ]
 
-BUF_RE = re.compile(r"aie\.buffer.*?\{(.*?)\}\s*:\s*memref<(\d+)xi8>")
+BUF_RE = re.compile(r"aie\.buffer @([^(]+).*?\{(.*?)\}\s*:\s*memref<(\d+)xi8>")
 
 
 def align_up(v, a):
@@ -202,7 +202,7 @@ def build_design(rng, cfg):
     for b in blocks:
         if b is core_data:
             continue
-        attrs = [f'sym_name = "{b["name"]}"']
+        attrs = []
         if b["role"] == "pin":
             attrs.append(f'address = {b["addr"]} : i32')
         if b["role"] == "bank":
@@ -210,7 +210,7 @@ def build_design(rng, cfg):
         if not b["aligned"]:
             attrs.append("aligned = false")
         lines.append(
-            f'    %{b["name"]} = aie.buffer(%t) {{{", ".join(attrs)}}} '
+            f'    aie.buffer @{b["name"]}(%t) {{{", ".join(attrs)}}} '
             f'    : memref<{b["size"]}xi8>'
         )
     if cfg["stack"]:
@@ -483,7 +483,7 @@ def build_bank_reservation_design(rng, cfg, tag=None):
                 continue  # the allocator rebuilds this one from data_size
             if b["role"] == "bank" and not tell_allocator:
                 continue  # object-derived: invisible to placement today
-            attrs = [f'sym_name = "{b["name"]}"']
+            attrs = []
             if b["role"] == "bank":
                 attrs.append(f'mem_bank = {b["addr"] // bank} : i32')
             if b["role"] == "pin":
@@ -491,7 +491,7 @@ def build_bank_reservation_design(rng, cfg, tag=None):
             if not b["aligned"]:
                 attrs.append("aligned = false")
             out.append(
-                f'    %{b["name"]} = aie.buffer(%t) {{{", ".join(attrs)}}} '
+                f'    aie.buffer @{b["name"]}(%t) {{{", ".join(attrs)}}} '
                 f'    : memref<{b["size"]}xi8>'
             )
         if stack:
@@ -603,7 +603,7 @@ def zero_size_reserved_data_case(cfg):
         "module {",
         f'  aie.device({cfg["dev"]}) {{',
         f'    %t = aie.tile({cfg["tile"][0]}, {cfg["tile"][1]})',
-        f'    %mid = aie.buffer(%t) {{sym_name = "mid", address = {addr} : i32}} : memref<0xi8>',
+        f"    aie.buffer @mid(%t) {{address = {addr} : i32}} : memref<0xi8>",
         f"    aie.core(%t) {{ aie.end }} "
         f"{{stack_size = {stack} : i32, data_size = {reserved} : i32}}",
         "  }",
@@ -642,9 +642,7 @@ def stress_design(cfg, n_buffers):
         f'    %t = aie.tile({cfg["tile"][0]}, {cfg["tile"][1]})',
     ]
     for i in range(n_buffers):
-        lines.append(
-            f'    %b{i} = aie.buffer(%t) {{sym_name = "b{i}"}} : memref<16xi8>'
-        )
+        lines.append(f"    aie.buffer @b{i}(%t) : memref<16xi8>")
     if cfg["stack"]:
         lines.append(
             f'    aie.core(%t) {{ aie.end }} {{stack_size = {cfg["stack"]} : i32}}'
@@ -678,12 +676,11 @@ def allocate(mlir, stats=None):
         m = BUF_RE.search(line)
         if not m:
             continue
-        attrs, size = m.group(1), int(m.group(2))
-        name = re.search(r'sym_name = "([^"]+)"', attrs)
+        name, attrs, size = m.group(1), m.group(2), int(m.group(3))
         addr = re.search(r"address = (\d+)", attrs)
         mb = re.search(r"mem_bank = (\d+)", attrs)
-        if name and addr:
-            placed[name.group(1)] = (
+        if addr:
+            placed[name] = (
                 int(addr.group(1)),
                 size,
                 int(mb.group(1)) if mb else None,
@@ -730,12 +727,11 @@ def allocate_batch(tagged, stats=None):
         m = BUF_RE.search(line)
         if not m:
             continue
-        attrs, size = m.group(1), int(m.group(2))
-        name = re.search(r'sym_name = "([^"]+)"', attrs)
+        name, attrs, size = m.group(1), m.group(2), int(m.group(3))
         addr = re.search(r"address = (\d+)", attrs)
         mb = re.search(r"mem_bank = (\d+)", attrs)
-        if name and addr:
-            results[current][name.group(1)] = (
+        if addr:
+            results[current][name] = (
                 int(addr.group(1)),
                 size,
                 int(mb.group(1)) if mb else None,

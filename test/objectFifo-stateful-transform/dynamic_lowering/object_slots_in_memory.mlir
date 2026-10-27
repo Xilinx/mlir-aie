@@ -28,7 +28,7 @@ module {
   aie.device(npu2) {
     %t1 = aie.tile(0, 1)
     %t2 = aie.tile(0, 2)
-    %buf = aie.buffer(%t2) {sym_name = "buf"} : memref<8xi8>
+    aie.buffer @buf(%t2) : memref<8xi8>
     aie.objectfifo @fifo(%t1, {%t2}, 2 : i32) : !aie.objectfifo<memref<8xi8>>
     %core = aie.core(%t2) {
       %c0 = arith.constant 0 : index
@@ -39,6 +39,7 @@ module {
         scf.for %i = %c0 to %c3 step %c1 {
           %x = aie.objectfifo.acquire @fifo(Consume, 1) : memref<8xi8>
           %v = memref.load %x[%c0] : memref<8xi8>
+          %buf = aie.get_buffer @buf : memref<8xi8>
           memref.store %v, %buf[%c0] : memref<8xi8>
           aie.objectfifo.release @fifo(Consume, 1)
         }
@@ -69,8 +70,8 @@ module {
   aie.device(npu2) {
     %t1 = aie.tile(0, 1)
     %t2 = aie.tile(0, 2)
-    %b0 = aie.buffer(%t2) {sym_name = "b0"} : memref<8xi8>
-    %b1 = aie.buffer(%t2) {sym_name = "b1"} : memref<8xi8>
+    aie.buffer @b0(%t2) : memref<8xi8>
+    aie.buffer @b1(%t2) : memref<8xi8>
     aie.objectfifo @fifo(%t1, {%t2}, 2 : i32) : !aie.objectfifo<memref<8xi8>>
     %core = aie.core(%t2) {
       %c0 = arith.constant 0 : index
@@ -84,6 +85,8 @@ module {
           %v = memref.load %x[%c0] : memref<8xi8>
           %r = arith.remui %i, %c2 : index
           %even = arith.cmpi eq, %r, %c0 : index
+          %b0 = aie.get_buffer @b0 : memref<8xi8>
+          %b1 = aie.get_buffer @b1 : memref<8xi8>
           %d0 = arith.select %even, %b0, %b1 : memref<8xi8>
           memref.store %v, %d0[%c0] : memref<8xi8>
           %d1 = arith.select %even, %b1, %b0 : memref<8xi8>
@@ -114,7 +117,7 @@ module {
   aie.device(npu2) {
     %t1 = aie.tile(0, 1)
     %t2 = aie.tile(0, 2)
-    %buf = aie.buffer(%t2) {sym_name = "buf"} : memref<8xi8>
+    aie.buffer @buf(%t2) : memref<8xi8>
     aie.objectfifo @fifo(%t1, {%t2}, 2 : i32) : !aie.objectfifo<memref<8xi8>>
     %core = aie.core(%t2) {
       %c0 = arith.constant 0 : index
@@ -124,6 +127,7 @@ module {
     ^loop(%i: index):
       %o = aie.objectfifo.acquire @fifo(Consume, 1) : memref<8xi8>
       %v = memref.load %o[%c0] : memref<8xi8>
+      %buf = aie.get_buffer @buf : memref<8xi8>
       memref.store %v, %buf[%c0] : memref<8xi8>
       aie.objectfifo.release @fifo(Consume, 1)
       %n = arith.addi %i, %c1 : index

@@ -132,11 +132,12 @@ module {
   }
   aie.device(npu2_1col) @shim {
     %shim = aie.tile(0, 0)
-    %ext = aie.external_buffer {sym_name = "ext"} : memref<16xi32>
+    aie.external_buffer @ext : memref<16xi32>
     %shimdma = aie.shim_dma(%shim) {
       // expected-note @+1 {{started here}}
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:
+      %ext = aie.get_buffer @ext : memref<16xi32>
       aie.dma_bd(%ext : memref<16xi32> offset = 0 len = 16) {bd_id = 0 : i32, next_bd_id = 0 : i32}
       aie.next_bd ^bb1
     ^bb2:
@@ -160,15 +161,16 @@ module {
   }
   aie.device(npu2_1col) @shim {
     %shim = aie.tile(0, 0)
-    %ext = aie.external_buffer {sym_name = "ext"} : memref<16xi32>
-    %lock = aie.lock(%shim, 0) {init = 1 : i32}
+    aie.external_buffer @ext : memref<16xi32>
+    aie.lock @lock(%shim, 0) {init = 1 : i32}
     %shimdma = aie.shim_dma(%shim) {
       // expected-note @+1 {{started here}}
-      %0 = aie.dma(MM2S, 0) [{
+      aie.dma(MM2S, 0) [{
         %c1 = arith.constant 1 : i32
-        aie.use_lock(%lock, AcquireGreaterEqual, %c1)
+        aie.use_lock(@lock, AcquireGreaterEqual, %c1)
+        %ext = aie.get_buffer @ext : memref<16xi32>
         aie.dma_bd(%ext : memref<16xi32> offset = 0 len = 16)
-        aie.use_lock(%lock, Release, %c1)
+        aie.use_lock(@lock, Release, %c1)
       }]
       aie.end
     }

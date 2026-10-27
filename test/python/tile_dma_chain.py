@@ -87,9 +87,9 @@ def emit_ring(bad=None):
 # One task, one descriptor per slot, each taking and handing back its slot's
 # locks. The chain is linear and ends after the last slot.
 # CHECK: %[[T:.*]] = aiex.dma_configure_task(%{{.*}}, S2MM, 0) {
-# CHECK:   aie.use_lock(%prod0, AcquireGreaterEqual, %{{.*}})
+# CHECK:   aie.use_lock(@prod0, AcquireGreaterEqual, %{{.*}})
 # CHECK:   aie.dma_bd(%{{.*}} : memref<1536xi32> len = 512)
-# CHECK:   aie.use_lock(%cons0, Release, %{{.*}})
+# CHECK:   aie.use_lock(@cons0, Release, %{{.*}})
 # CHECK:   aie.next_bd ^bb1
 
 # CHECK: ^bb1:

@@ -15,9 +15,9 @@ module @tutorial_2b {
 
         aie.flow(%tile14, DMA : 0, %tile34, DMA : 0)
 
-        %buf14 = aie.buffer(%tile14) { sym_name = "buf14" } : memref<128xi32>
+        aie.buffer @buf14(%tile14) : memref<128xi32>
 
-        %lock14_done = aie.lock(%tile14, 0) { init = 0 : i32, sym_name = "lock14_done" }
+        aie.lock @lock14_done(%tile14, 0) { init = 0 : i32}
 
         %mem14 = aie.mem(%tile14) {
           %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
@@ -26,7 +26,8 @@ module @tutorial_2b {
             // repetition of accessing array %buf14 with stride of 128 will
             // attempt an access at index 128, which is OOB for a 128xi32 
             // memref.
-            // expected-error@+1 {{Specified stride(s) and size(s) result in out of bounds access}}
+            // expected-error@+2 {{Specified stride(s) and size(s) result in out of bounds access}}
+            %buf14 = aie.get_buffer @buf14 : memref<128xi32>
             aie.dma_bd(%buf14 : memref<128xi32> offset = 0 len = 128 sizes = [2] strides = [128])
             aie.next_bd ^end
           ^end: 

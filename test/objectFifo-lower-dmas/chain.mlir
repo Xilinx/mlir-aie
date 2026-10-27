@@ -15,10 +15,10 @@ module @chain {
     %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
-    %b0 = aie.buffer(%tile12) {sym_name = "b0"} : memref<16xi32>
-    %b1 = aie.buffer(%tile12) {sym_name = "b1"} : memref<16xi32>
-    %free = aie.lock(%tile12) {init = 2 : i32, sym_name = "free"}
-    %full = aie.lock(%tile12) {init = 0 : i32, sym_name = "full"}
+    aie.buffer @b0(%tile12) : memref<16xi32>
+    aie.buffer @b1(%tile12) : memref<16xi32>
+    aie.lock @free(%tile12) {init = 2 : i32}
+    aie.lock @full(%tile12) {init = 0 : i32}
 
     aie.objectfifo.pool @prod_pool(%tile12) {
       depth = 2 : i32, buffers = [@b0, @b1]
@@ -29,9 +29,9 @@ module @chain {
       channelIndex = 0 : i32
     } loc("fifo_user.py":30:2)
 
-    %c0 = aie.buffer(%tile33) {sym_name = "c0"} : memref<16xi32>
-    %cfree = aie.lock(%tile33) {init = 1 : i32, sym_name = "cfree"}
-    %cfull = aie.lock(%tile33) {init = 0 : i32, sym_name = "cfull"}
+    aie.buffer @c0(%tile33) : memref<16xi32>
+    aie.lock @cfree(%tile33) {init = 1 : i32}
+    aie.lock @cfull(%tile33) {init = 0 : i32}
 
     aie.objectfifo.pool @cons_pool(%tile33) {
       depth = 1 : i32, buffers = [@c0]
@@ -48,31 +48,37 @@ module @chain {
 // CHECK:   aie.mem(%{{.*}}) {
 // CHECK:     aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:   ^bb1:
-// CHECK:     aie.use_lock(%full, AcquireGreaterEqual, %{{.*}})
-// CHECK:     aie.dma_bd(%b0 : memref<16xi32> offset = 0 len = 16)
-// CHECK:     aie.use_lock(%free, Release, %{{.*}})
+// CHECK:     aie.use_lock(@full, AcquireGreaterEqual, %{{.*}})
+// CHECK:     %[[B0:.*]] = aie.get_buffer @b0 : memref<16xi32>
+// CHECK:     aie.dma_bd(%[[B0]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:     aie.use_lock(@free, Release, %{{.*}})
 // CHECK:     aie.next_bd ^bb2
 // CHECK:   ^bb2:
-// CHECK:     aie.use_lock(%full, AcquireGreaterEqual, %{{.*}})
-// CHECK:     aie.dma_bd(%b1 : memref<16xi32> offset = 0 len = 16)
-// CHECK:     aie.use_lock(%free, Release, %{{.*}})
+// CHECK:     aie.use_lock(@full, AcquireGreaterEqual, %{{.*}})
+// CHECK:     %[[B1:.*]] = aie.get_buffer @b1 : memref<16xi32>
+// CHECK:     aie.dma_bd(%[[B1]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:     aie.use_lock(@free, Release, %{{.*}})
 // CHECK:     aie.next_bd ^bb1
 
 // CHECK:   aie.mem(%{{.*}}) {
 // CHECK:     aie.dma_start(S2MM, 1, ^bb1, ^bb2)
-// CHECK:     aie.use_lock(%cfree, AcquireGreaterEqual, %{{.*}})
-// CHECK:     aie.dma_bd(%c0 : memref<16xi32> offset = 0 len = 16)
-// CHECK:     aie.use_lock(%cfull, Release, %{{.*}})
+// CHECK:     aie.use_lock(@cfree, AcquireGreaterEqual, %{{.*}})
+// CHECK:     %[[C0:.*]] = aie.get_buffer @c0 : memref<16xi32>
+// CHECK:     aie.dma_bd(%[[C0]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:     aie.use_lock(@cfull, Release, %{{.*}})
 
 // CHECK-NOT: aie.objectfifo.dma_endpoint
 
 // Distinct endpoints must retain distinct origins throughout their BD chains.
 // LOC-DAG: aie.dma_start(MM2S, {{.*}}) loc(#[[PROD:loc[0-9]*]])
-// LOC-DAG: aie.use_lock(%full, AcquireGreaterEqual, {{.*}}) loc(#[[PROD]])
-// LOC-DAG: aie.dma_bd(%b0 : {{.*}}) loc(#[[PROD]])
-// LOC-DAG: aie.dma_bd(%b1 : {{.*}}) loc(#[[PROD]])
+// LOC-DAG: aie.use_lock(@full, AcquireGreaterEqual, {{.*}}) loc(#[[PROD]])
+// LOC-DAG: %[[LOC_B0:.*]] = aie.get_buffer @b0 : {{.*}} loc(#[[PROD]])
+// LOC-DAG: aie.dma_bd(%[[LOC_B0]] : {{.*}}) loc(#[[PROD]])
+// LOC-DAG: %[[LOC_B1:.*]] = aie.get_buffer @b1 : {{.*}} loc(#[[PROD]])
+// LOC-DAG: aie.dma_bd(%[[LOC_B1]] : {{.*}}) loc(#[[PROD]])
 // LOC-DAG: aie.next_bd {{.*}} loc(#[[PROD]])
 // LOC-DAG: aie.dma_start(S2MM, {{.*}}) loc(#[[CONS:loc[0-9]*]])
-// LOC-DAG: aie.dma_bd(%c0 : {{.*}}) loc(#[[CONS]])
+// LOC-DAG: %[[LOC_C0:.*]] = aie.get_buffer @c0 : {{.*}} loc(#[[CONS]])
+// LOC-DAG: aie.dma_bd(%[[LOC_C0]] : {{.*}}) loc(#[[CONS]])
 // LOC-DAG: #[[PROD]] = loc("fifo_user.py":30:2)
 // LOC-DAG: #[[CONS]] = loc("fifo_user.py":40:2)

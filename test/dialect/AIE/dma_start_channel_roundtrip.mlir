@@ -15,17 +15,19 @@
 // CHECK: = aie.dma_start(MM2S, @out, ^bb3, ^bb4, repeat_count = 2)
 aie.device(npu2) {
   %mt = aie.tile(0, 1)
-  %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+  aie.buffer @b(%mt) : memref<64xi32>
   aie.route_endpoint @out(%mt) DMA
   aie.memtile_dma(%mt) {
     aie.dma_start(S2MM, 1, ^bd0, ^s1)
   ^bd0:
+    %b = aie.get_buffer @b : memref<64xi32>
     aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
     aie.next_bd ^bd0
   ^s1:
     aie.dma_start(MM2S, @out, ^bd1, ^end, repeat_count = 2)
   ^bd1:
-    aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
+    %b_1 = aie.get_buffer @b : memref<64xi32>
+    aie.dma_bd(%b_1 : memref<64xi32> offset = 0 len = 64)
     aie.next_bd ^bd1
   ^end:
     aie.end

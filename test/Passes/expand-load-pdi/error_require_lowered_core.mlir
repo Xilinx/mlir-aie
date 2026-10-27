@@ -15,7 +15,7 @@ module {
 
     aie.device(npu2_1col) @my_core_device {
         %tile = aie.tile(0, 2)
-        %lock = aie.lock(%tile, 0) {init = 1 : i32}
+        aie.lock @lock(%tile, 0) {init = 1 : i32}
         // CoreOp without elf_file — should be skipped by addAieElfs
         // but still trigger core reset/enable in initLocks/addCoreEnable
         aie.core(%tile) {

@@ -40,17 +40,19 @@ module @parity {
     aie.route from @light_src to [@light_in]
     aie.route from @light_out to [@light_dst]
 
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt) : memref<64xi32>
     aie.route_endpoint @b_out(%mt) DMA
     aie.route_endpoint @b_dst(%shim) DMA {fifoName = "b"}
     aie.route from @b_out to [@b_dst]
     aie.memtile_dma(%mt) {
       aie.dma_start(MM2S, @b_out, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<64xi32>
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 32)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%b : memref<64xi32> offset = 32 len = 32)
+      %b_1 = aie.get_buffer @b : memref<64xi32>
+      aie.dma_bd(%b_1 : memref<64xi32> offset = 32 len = 32)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -112,8 +114,8 @@ module @programs_and_tasks {
     aie.route from @light_shim to [@light_in]
     aie.route from @light_out to [@light_sink]
 
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
-    %b_l1 = aie.buffer(%core) {sym_name = "b_l1"} : memref<32xi32>
+    aie.buffer @b(%mt) : memref<64xi32>
+    aie.buffer @b_l1(%core) : memref<32xi32>
     aie.route_endpoint @b_shim(%shim) DMA {fifoName = "b"}
     aie.route_endpoint @b_in(%mt) DMA
     aie.route_endpoint @b_out(%mt) DMA
@@ -124,10 +126,12 @@ module @programs_and_tasks {
     aie.memtile_dma(%mt) {
       aie.dma_start(MM2S, @b_out, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<64xi32>
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 32)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%b : memref<64xi32> offset = 32 len = 32)
+      %b_1 = aie.get_buffer @b : memref<64xi32>
+      aie.dma_bd(%b_1 : memref<64xi32> offset = 32 len = 32)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -135,6 +139,7 @@ module @programs_and_tasks {
     aie.mem(%core) {
       aie.dma_start(S2MM, @b_core, ^bd0, ^end)
     ^bd0:
+      %b_l1 = aie.get_buffer @b_l1 : memref<32xi32>
       aie.dma_bd(%b_l1 : memref<32xi32> offset = 0 len = 32)
       aie.next_bd ^bd0
     ^end:
@@ -148,7 +153,8 @@ module @programs_and_tasks {
       }
       aiex.dma_start_task(%t0)
       %t1 = aiex.dma_configure_task_for @b_in {
-        aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
+        %b_2 = aie.get_buffer @b : memref<64xi32>
+        aie.dma_bd(%b_2 : memref<64xi32> offset = 0 len = 64)
         aie.end
       } {repeat_count = 3 : i32}
       aiex.dma_start_task(%t1)
@@ -170,25 +176,29 @@ module @pinned_task_demand {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
     %mt = aie.tile(0, 1)
-    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
+    aie.buffer @buf(%mt) : memref<64xi32>
     aie.route_endpoint @src(%shim) DMA {fifoName = "src"}
     aie.route_endpoint @prog(%mt) DMA
     aie.route from @src to [@prog]
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       %big = aiex.dma_configure_task(%mt, S2MM, 2) {
+        %buf = aie.get_buffer @buf : memref<64xi32>
         aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 4)
         aie.next_bd ^bd1
       ^bd1:
-        aie.dma_bd(%buf : memref<64xi32> offset = 4 len = 4)
+        %buf_1 = aie.get_buffer @buf : memref<64xi32>
+        aie.dma_bd(%buf_1 : memref<64xi32> offset = 4 len = 4)
         aie.next_bd ^bd2
       ^bd2:
-        aie.dma_bd(%buf : memref<64xi32> offset = 8 len = 4)
+        %buf_2 = aie.get_buffer @buf : memref<64xi32>
+        aie.dma_bd(%buf_2 : memref<64xi32> offset = 8 len = 4)
         aie.end
       }
       aiex.dma_start_task(%big)
       aiex.dma_free_task(%big)
       %t = aiex.dma_configure_task_for @prog {
-        aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
+        %buf_3 = aie.get_buffer @buf : memref<64xi32>
+        aie.dma_bd(%buf_3 : memref<64xi32> offset = 0 len = 64)
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -213,8 +223,8 @@ module @shim_and_packet {
     %shim = aie.tile(0, 0)
     %mt = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
-    %l1 = aie.buffer(%core) {sym_name = "l1"} : memref<64xi32>
+    aie.buffer @buf(%mt) : memref<64xi32>
+    aie.buffer @l1(%core) : memref<64xi32>
     aie.route_endpoint @host(%shim) DMA
     aie.route_endpoint @landing(%mt) DMA
     aie.route from @host to [@landing]
@@ -224,6 +234,7 @@ module @shim_and_packet {
     aie.mem(%core) {
       aie.dma_start(S2MM, @catch, ^bd0, ^end)
     ^bd0:
+      %l1 = aie.get_buffer @l1 : memref<64xi32>
       aie.dma_bd(%l1 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:
@@ -236,6 +247,7 @@ module @shim_and_packet {
       }
       aiex.dma_start_task(%t0)
       %t1 = aiex.dma_configure_task_for @spray {
+        %buf = aie.get_buffer @buf : memref<64xi32>
         aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
         aie.end
       }
@@ -258,8 +270,8 @@ module @adjacent_program {
     %shim = aie.tile(1, 0)
     %west = aie.tile(0, 1)
     %mt = aie.tile(1, 1)
-    %far = aie.buffer(%west) {sym_name = "far"} : memref<64xi32>
-    %near = aie.buffer(%mt) {sym_name = "near"} : memref<64xi32>
+    aie.buffer @far(%west) : memref<64xi32>
+    aie.buffer @near(%mt) : memref<64xi32>
     aie.objectfifo.pool @heavy(%mt) {depth = 10 : i32} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -275,16 +287,19 @@ module @adjacent_program {
     aie.memtile_dma(%mt) {
       aie.dma_start(MM2S, 0, ^bd0, ^start2)
     ^bd0:
+      %near = aie.get_buffer @near : memref<64xi32>
       aie.dma_bd(%near : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^start2:
       aie.dma_start(MM2S, 2, ^bd2, ^start3)
     ^bd2:
-      aie.dma_bd(%near : memref<64xi32> offset = 0 len = 64)
+      %near_1 = aie.get_buffer @near : memref<64xi32>
+      aie.dma_bd(%near_1 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd2
     ^start3:
       aie.dma_start(MM2S, @reach, ^bd3, ^end)
     ^bd3:
+      %far = aie.get_buffer @far : memref<64xi32>
       aie.dma_bd(%far : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd3
     ^end:
@@ -328,7 +343,7 @@ module @task_size_one {
     aie.route from @heavy_out to [@heavy_dst]
     aie.route from @light_src to [@light_in]
     aie.route from @light_out to [@light_dst]
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<256xi32>
+    aie.buffer @b(%mt) : memref<256xi32>
     aie.route_endpoint @b_shim(%shim1) DMA {fifoName = "b"}
     aie.route_endpoint @b_in(%mt) DMA
     aie.route_endpoint @b_out(%mt) DMA
@@ -337,13 +352,15 @@ module @task_size_one {
     aie.route from @b_out to [@b_sink]
     aie.runtime_sequence(%arg0: memref<256xi32>) {
       %b_in = aiex.dma_configure_task_for @b_in {
+        %b = aie.get_buffer @b : memref<256xi32>
         aie.dma_bd(%b : memref<256xi32> offset = 0 len = 16)
         aie.end
       }
       aiex.dma_start_task(%b_in)
       aiex.dma_free_task(%b_in)
       %b_out = aiex.dma_configure_task_for @b_out {
-        aie.dma_bd(%b : memref<256xi32> offset = 0 len = 16)
+        %b_1 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_1 : memref<256xi32> offset = 0 len = 16)
         aie.end
       }
       aiex.dma_start_task(%b_out)
@@ -381,7 +398,7 @@ module @task_size_eight {
     aie.route from @heavy_out to [@heavy_dst]
     aie.route from @light_src to [@light_in]
     aie.route from @light_out to [@light_dst]
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<256xi32>
+    aie.buffer @b(%mt) : memref<256xi32>
     aie.route_endpoint @b_shim(%shim1) DMA {fifoName = "b"}
     aie.route_endpoint @b_in(%mt) DMA
     aie.route_endpoint @b_out(%mt) DMA
@@ -390,55 +407,71 @@ module @task_size_eight {
     aie.route from @b_out to [@b_sink]
     aie.runtime_sequence(%arg0: memref<256xi32>) {
       %b_in = aiex.dma_configure_task_for @b_in {
+        %b = aie.get_buffer @b : memref<256xi32>
         aie.dma_bd(%b : memref<256xi32> offset = 0 len = 16)
         aie.next_bd ^bd1
       ^bd1:
-        aie.dma_bd(%b : memref<256xi32> offset = 16 len = 16)
+        %b_1 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_1 : memref<256xi32> offset = 16 len = 16)
         aie.next_bd ^bd2
       ^bd2:
-        aie.dma_bd(%b : memref<256xi32> offset = 32 len = 16)
+        %b_2 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_2 : memref<256xi32> offset = 32 len = 16)
         aie.next_bd ^bd3
       ^bd3:
-        aie.dma_bd(%b : memref<256xi32> offset = 48 len = 16)
+        %b_3 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_3 : memref<256xi32> offset = 48 len = 16)
         aie.next_bd ^bd4
       ^bd4:
-        aie.dma_bd(%b : memref<256xi32> offset = 64 len = 16)
+        %b_4 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_4 : memref<256xi32> offset = 64 len = 16)
         aie.next_bd ^bd5
       ^bd5:
-        aie.dma_bd(%b : memref<256xi32> offset = 80 len = 16)
+        %b_5 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_5 : memref<256xi32> offset = 80 len = 16)
         aie.next_bd ^bd6
       ^bd6:
-        aie.dma_bd(%b : memref<256xi32> offset = 96 len = 16)
+        %b_6 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_6 : memref<256xi32> offset = 96 len = 16)
         aie.next_bd ^bd7
       ^bd7:
-        aie.dma_bd(%b : memref<256xi32> offset = 112 len = 16)
+        %b_7 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_7 : memref<256xi32> offset = 112 len = 16)
         aie.end
       }
       aiex.dma_start_task(%b_in)
       aiex.dma_free_task(%b_in)
       %b_out = aiex.dma_configure_task_for @b_out {
-        aie.dma_bd(%b : memref<256xi32> offset = 0 len = 16)
+        %b_8 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_8 : memref<256xi32> offset = 0 len = 16)
         aie.next_bd ^bd1
       ^bd1:
-        aie.dma_bd(%b : memref<256xi32> offset = 16 len = 16)
+        %b_9 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_9 : memref<256xi32> offset = 16 len = 16)
         aie.next_bd ^bd2
       ^bd2:
-        aie.dma_bd(%b : memref<256xi32> offset = 32 len = 16)
+        %b_10 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_10 : memref<256xi32> offset = 32 len = 16)
         aie.next_bd ^bd3
       ^bd3:
-        aie.dma_bd(%b : memref<256xi32> offset = 48 len = 16)
+        %b_11 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_11 : memref<256xi32> offset = 48 len = 16)
         aie.next_bd ^bd4
       ^bd4:
-        aie.dma_bd(%b : memref<256xi32> offset = 64 len = 16)
+        %b_12 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_12 : memref<256xi32> offset = 64 len = 16)
         aie.next_bd ^bd5
       ^bd5:
-        aie.dma_bd(%b : memref<256xi32> offset = 80 len = 16)
+        %b_13 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_13 : memref<256xi32> offset = 80 len = 16)
         aie.next_bd ^bd6
       ^bd6:
-        aie.dma_bd(%b : memref<256xi32> offset = 96 len = 16)
+        %b_14 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_14 : memref<256xi32> offset = 96 len = 16)
         aie.next_bd ^bd7
       ^bd7:
-        aie.dma_bd(%b : memref<256xi32> offset = 112 len = 16)
+        %b_15 = aie.get_buffer @b : memref<256xi32>
+        aie.dma_bd(%b_15 : memref<256xi32> offset = 112 len = 16)
         aie.end
       }
       aiex.dma_start_task(%b_out)
@@ -483,9 +516,9 @@ module @shared_packet_channels {
     %a = aie.tile(0, 2)
     %b = aie.tile(0, 3)
     %c = aie.tile(0, 4)
-    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
-    %la = aie.buffer(%a) {sym_name = "la"} : memref<64xi32>
-    %lb = aie.buffer(%b) {sym_name = "lb"} : memref<64xi32>
+    aie.buffer @buf(%mt) : memref<64xi32>
+    aie.buffer @la(%a) : memref<64xi32>
+    aie.buffer @lb(%b) : memref<64xi32>
     aie.route_endpoint @a_out(%a) DMA
     aie.route_endpoint @b_out(%b) DMA
     aie.route_endpoint @gather(%mt) DMA
@@ -502,20 +535,24 @@ module @shared_packet_channels {
     aie.memtile_dma(%mt) {
       aie.dma_start(MM2S, @scatter, ^bd0, ^recv)
     ^bd0:
+      %buf = aie.get_buffer @buf : memref<64xi32>
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf : memref<64xi32> offset = 32 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
+      %buf_1 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_1 : memref<64xi32> offset = 32 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
       aie.next_bd ^bd0
     ^recv:
       aie.dma_start(S2MM, @gather, ^bd2, ^side)
     ^bd2:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
+      %buf_2 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_2 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd2
     ^side:
       aie.dma_start(S2MM, @side, ^bd3, ^end)
     ^bd3:
-      aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 64)
+      %buf_3 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_3 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd3
     ^end:
       aie.end
@@ -538,7 +575,7 @@ module @shared_channel_counted_once {
   aie.device(npu2) {
     %mt = aie.tile(0, 1)
     %core = aie.tile(0, 2)
-    %l1 = aie.buffer(%core) {sym_name = "l1"} : memref<64xi32>
+    aie.buffer @l1(%core) : memref<64xi32>
     aie.route_endpoint @x(%mt) DMA
     aie.route_endpoint @y(%mt) DMA
     aie.route_endpoint @z(%mt) DMA
@@ -550,12 +587,14 @@ module @shared_channel_counted_once {
     aie.mem(%core) {
       aie.dma_start(S2MM, @merge, ^bd0, ^own)
     ^bd0:
+      %l1 = aie.get_buffer @l1 : memref<64xi32>
       aie.dma_bd(%l1 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^own:
       aie.dma_start(S2MM, @own, ^bd1, ^end)
     ^bd1:
-      aie.dma_bd(%l1 : memref<64xi32> offset = 0 len = 64)
+      %l1_1 = aie.get_buffer @l1 : memref<64xi32>
+      aie.dma_bd(%l1_1 : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd1
     ^end:
       aie.end
@@ -607,7 +646,7 @@ module @shared_source_bd_packet_ops {
     %mt = aie.tile(0, 1)
     %a = aie.tile(0, 2)
     %b = aie.tile(0, 3)
-    %buf = aie.buffer(%mt) {sym_name = "buf"} : memref<64xi32>
+    aie.buffer @buf(%mt) : memref<64xi32>
     aie.route_endpoint @scatter(%mt) DMA
     aie.route_endpoint @a_in(%a) DMA
     aie.route_endpoint @b_in(%b) DMA
@@ -617,11 +656,13 @@ module @shared_source_bd_packet_ops {
       aie.dma_start(MM2S, @scatter, ^bd0, ^end)
     ^bd0:
       aie.dma_bd_packet(0, 1)
+      %buf = aie.get_buffer @buf : memref<64xi32>
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 32)
       aie.next_bd ^bd1
     ^bd1:
       aie.dma_bd_packet(0, 2)
-      aie.dma_bd(%buf : memref<64xi32> offset = 32 len = 32)
+      %buf_1 = aie.get_buffer @buf : memref<64xi32>
+      aie.dma_bd(%buf_1 : memref<64xi32> offset = 32 len = 32)
       aie.next_bd ^bd0
     ^end:
       aie.end

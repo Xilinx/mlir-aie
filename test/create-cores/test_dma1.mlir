@@ -12,43 +12,47 @@
 
 // CHECK-LABEL: module @test_dma1 {
 // CHECK:         %[[VAL_0:.*]] = aie.tile(1, 1)
-// CHECK:         %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<256xi32>
+// CHECK:         aie.buffer @[[VAL_1:.*]](%[[VAL_0]]) : memref<256xi32>
 // CHECK:         %[[VAL_2:.*]] = aie.mem(%[[VAL_0]]) {
 // CHECK:           %[[VAL_3:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb4)
 // CHECK:         ^bb1:
 // CHECK:           aiex.useToken @token0(Acquire, 1)
-// CHECK:           aie.dma_bd(%[[VAL_1]] : memref<256xi32> offset = {{.*}} len = {{.*}})
+// CHECK:           %[[VAL_1_ACCESS_0:.*]] = aie.get_buffer @[[VAL_1]] : memref<256xi32>
+// CHECK:           aie.dma_bd(%[[VAL_1_ACCESS_0]] : memref<256xi32> offset = {{.*}} len = {{.*}})
 // CHECK:           aiex.useToken @token0(Release, 2)
 // CHECK:           aie.next_bd ^bb4
 // CHECK:         ^bb2:
 // CHECK:           %[[VAL_4:.*]] = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
 // CHECK:         ^bb3:
 // CHECK:           aiex.useToken @token1(Acquire, 1)
-// CHECK:           aie.dma_bd(%[[VAL_1]] : memref<256xi32> offset = {{.*}} len = {{.*}})
+// CHECK:           %[[VAL_1_ACCESS_1:.*]] = aie.get_buffer @[[VAL_1]] : memref<256xi32>
+// CHECK:           aie.dma_bd(%[[VAL_1_ACCESS_1]] : memref<256xi32> offset = {{.*}} len = {{.*}})
 // CHECK:           aiex.useToken @token1(Release, 2)
 // CHECK:           aie.next_bd ^bb4
 // CHECK:         ^bb4:
 // CHECK:           aie.end
 // CHECK:         }
 // CHECK:         %[[VAL_5:.*]] = aie.tile(2, 2)
-// CHECK:         %[[VAL_6:.*]] = aie.buffer(%[[VAL_5]]) : memref<256xi32>
+// CHECK:         aie.buffer @[[VAL_6:.*]](%[[VAL_5]]) : memref<256xi32>
 // CHECK:         %[[VAL_7:.*]] = aie.mem(%[[VAL_5]]) {
 // CHECK:           %[[VAL_8:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
 // CHECK:           aiex.useToken @token0(Acquire, 1)
-// CHECK:           aie.dma_bd(%[[VAL_6]] : memref<256xi32> offset = {{.*}} len = {{.*}})
+// CHECK:           %[[VAL_6_ACCESS_2:.*]] = aie.get_buffer @[[VAL_6]] : memref<256xi32>
+// CHECK:           aie.dma_bd(%[[VAL_6_ACCESS_2]] : memref<256xi32> offset = {{.*}} len = {{.*}})
 // CHECK:           aiex.useToken @token0(Release, 2)
 // CHECK:           aie.next_bd ^bb2
 // CHECK:         ^bb2:
 // CHECK:           aie.end
 // CHECK:         }
 // CHECK:         %[[VAL_9:.*]] = aie.tile(3, 3)
-// CHECK:         %[[VAL_10:.*]] = aie.buffer(%[[VAL_9]]) : memref<256xi32>
+// CHECK:         aie.buffer @[[VAL_10:.*]](%[[VAL_9]]) : memref<256xi32>
 // CHECK:         %[[VAL_11:.*]] = aie.mem(%[[VAL_9]]) {
 // CHECK:           %[[VAL_12:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
 // CHECK:           aiex.useToken @token1(Acquire, 1)
-// CHECK:           aie.dma_bd(%[[VAL_10]] : memref<256xi32> offset = {{.*}} len = {{.*}})
+// CHECK:           %[[VAL_10_ACCESS_3:.*]] = aie.get_buffer @[[VAL_10]] : memref<256xi32>
+// CHECK:           aie.dma_bd(%[[VAL_10_ACCESS_3]] : memref<256xi32> offset = {{.*}} len = {{.*}})
 // CHECK:           aiex.useToken @token1(Release, 2)
 // CHECK:           aie.next_bd ^bb2
 // CHECK:         ^bb2:

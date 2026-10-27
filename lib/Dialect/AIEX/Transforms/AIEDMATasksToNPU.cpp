@@ -365,8 +365,7 @@ struct AIEDMATasksToNPUPass
                                 /*addr*/ register_addr,
                                 /*addr_val*/ runtimeRegisterAddr,
                                 /*arg_idx*/ arg_idx, argPlus);
-    } else if (AIE::BufferOp buffer =
-                   llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
+    } else if (AIE::BufferOp buffer = bd_op.getBufferOp()) {
       std::optional<uint32_t> bufferAddr = buffer.getAddress();
       if (!bufferAddr.has_value()) {
         return bd_op->emitOpError(

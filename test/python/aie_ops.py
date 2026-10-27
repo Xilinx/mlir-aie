@@ -116,28 +116,32 @@ def deviceOp():
 
 # CHECK-LABEL: bufferOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(0, 3)
-# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
-# CHECK: %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
-# CHECK: %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {address = 48879 : i32} : memref<42xi8>
+# CHECK: aie.buffer @buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: aie.buffer @buffer_0(%[[VAL_0]]) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
+# CHECK: aie.buffer @buffer_1(%[[VAL_0]]) {address = 48879 : i32} : memref<42xi8>
 @construct_and_print_module
 def bufferOp():
-    t = tile(col=0, row=3)
-    b = buffer(t, np.ndarray[(12,), np.dtype[np.int32]])
-    b = buffer(
-        t,
-        T.memref(2, 2, T.i32()),
-        initial_value=np.arange(2 * 2, dtype=np.int32).reshape(2, 2),
-    )
-    b = buffer(t, np.ndarray[(42,), np.dtype[np.int8]], address=0xBEEF)
+    dev = Device(AIEDevice.xcvc1902)
+    with InsertionPoint(Block.create_at_start(dev.body_region)):
+        t = tile(col=0, row=3)
+        b = buffer(t, np.ndarray[(12,), np.dtype[np.int32]])
+        b = buffer(
+            t,
+            T.memref(2, 2, T.i32()),
+            initial_value=np.arange(2 * 2, dtype=np.int32).reshape(2, 2),
+        )
+        b = buffer(t, np.ndarray[(42,), np.dtype[np.int8]], address=0xBEEF)
 
 
 # CHECK-LABEL: externalBufferOp
-# CHECK: %[[VAL_0:.*]] = aie.external_buffer : memref<12xi32>
-# CHECK: %[[VAL_1:.*]] = aie.external_buffer {address = 209934011881080 : i64} : memref<13xi8>
+# CHECK: aie.external_buffer @external_buffer : memref<12xi32>
+# CHECK: aie.external_buffer @external_buffer_0 {address = 209934011881080 : i64} : memref<13xi8>
 @construct_and_print_module
 def externalBufferOp():
-    b = external_buffer(T.memref(12, T.i32()))
-    c = external_buffer(T.memref(13, T.i8()), address=0xBEEF12345678)
+    dev = Device(AIEDevice.xcvc1902)
+    with InsertionPoint(Block.create_at_start(dev.body_region)):
+        b = external_buffer(T.memref(12, T.i32()))
+        c = external_buffer(T.memref(13, T.i8()), address=0xBEEF12345678)
 
 
 # CHECK-LABEL: objFifo
@@ -373,13 +377,16 @@ def packetFlowViaOp():
 
 # CHECK-LABEL: dmaBDOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
-# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: aie.buffer @buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: %[[VAL_1:.*]] = aie.get_buffer @buffer : memref<12xi32>
 # CHECK: aie.dma_bd(%[[VAL_1]] : memref<12xi32>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
 @construct_and_print_module
 def dmaBDOp():
-    t0 = tile(col=1, row=3)
-    b = buffer(t0, np.ndarray[(12,), np.dtype[np.int32]])
-    dma_bd(b, packet=(0, 4))
+    dev = Device(AIEDevice.xcvc1902)
+    with InsertionPoint(Block.create_at_start(dev.body_region)):
+        t0 = tile(col=1, row=3)
+        b = buffer(t0, np.ndarray[(12,), np.dtype[np.int32]])
+        dma_bd(b, packet=(0, 4))
 
 
 # CHECK-LABEL: test_module_context

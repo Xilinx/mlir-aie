@@ -46,8 +46,8 @@ func.func @mul_i16(%A : vector<16xi16>, %B : vector<16xi16>) -> vector<16xi48> {
 // CHECK-SAME: %[[A:.*]]: vector<16xf32>,
 // CHECK-SAME: %[[B:.*]]: vector<8xf32>,
 // CHECK-SAME: %[[ACC:.*]]: vector<8xf32>
-// CHECK:      %[[RES:.*]] = aievec_aie1.mac %[[A]], %[[B]], %[[ACC]] 
-// CHECK-SAME: {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : 
+// CHECK:      %[[RES:.*]] = aievec_aie1.mac %[[A]], %[[B]], %[[ACC]]
+// CHECK-SAME: {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} :
 // CHECK-SAME: vector<16xf32>, vector<8xf32>, vector<8xf32>
 // CHECK: return %[[RES]] : vector<8xf32>
 func.func @mac_f32(%A : vector<16xf32>, %B : vector<8xf32>, %ACC : vector<8xf32>) -> vector<8xf32> {

@@ -18,13 +18,14 @@ module {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
     %mem = aie.tile(0, 1)
-    %buf = aie.buffer(%mem) : memref<1024xi32>
+    aie.buffer @buf(%mem) : memref<1024xi32>
 
     // CHECK-LABEL: @mem_repeat
     // CHECK: cf.assert %{{.*}}, "a runtime DMA repeat count exceeds the task queue's [0:255] range (at most 256 executions)"
     // CHECK: aiex.npu.write32
     aie.runtime_sequence @mem_repeat(%repeat: i32) {
       %t = aiex.dma_configure_task(%mem, MM2S, 0) repeat %repeat : i32 {
+        %buf = aie.get_buffer @buf : memref<1024xi32>
         aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
         aie.end
       }
@@ -48,7 +49,8 @@ module {
     // CHECK: aiex.npu.write32(%{{.*}}, %c16711680_i32)
     aie.runtime_sequence @const_repeat() {
       %t = aiex.dma_configure_task(%mem, MM2S, 0) {
-        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
+        %buf_1 = aie.get_buffer @buf : memref<1024xi32>
+        aie.dma_bd(%buf_1 : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
         aie.end
       } {repeat_count = 255 : i32}
       aiex.dma_start_task(%t)

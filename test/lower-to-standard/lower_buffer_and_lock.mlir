@@ -19,60 +19,60 @@ module @test_core_llvm1 {
  aie.device(xcvc1902) {
 // CHECK11:  memref.global "public" @a : memref<256xi32>
 // CHECK11:  func.func @core_1_1() {
-// CHECK11:    %c56 = arith.constant 56 : index
 // CHECK11:    %c0_i32 = arith.constant 0 : i32
-// CHECK11:    %0 = arith.index_cast %c56 : index to i32
-// CHECK11:    call @llvm.aie.lock.acquire.reg(%0, %c0_i32) : (i32, i32) -> ()
+// CHECK11:    %[[ACQUIRE11:.*]] = arith.constant 56 : i32
+// CHECK11:    call @llvm.aie.lock.acquire.reg(%[[ACQUIRE11]], %c0_i32) : (i32, i32) -> ()
 // CHECK11:    %c1_i32 = arith.constant 1 : i32
 // CHECK11:    %c16 = arith.constant 16 : index
-// CHECK11:    %1 = memref.get_global @a : memref<256xi32>
-// CHECK11:    memref.assume_alignment %1, 32 : memref<256xi32>
-// CHECK11:    memref.store %c1_i32, %1[%c16] : memref<256xi32>
+// CHECK11:    %[[BUFFER11:.*]] = memref.get_global @a : memref<256xi32>
+// CHECK11:    memref.assume_alignment %[[BUFFER11]], 32 : memref<256xi32>
+// CHECK11:    memref.store %c1_i32, %[[BUFFER11]][%c16] : memref<256xi32>
 // CHECK11:    %c1_i32_0 = arith.constant 1 : i32
-// CHECK11:    %2 = arith.index_cast %c56 : index to i32
-// CHECK11:    call @llvm.aie.lock.release.reg(%2, %c1_i32_0) : (i32, i32) -> ()
+// CHECK11:    %[[RELEASE11:.*]] = arith.constant 56 : i32
+// CHECK11:    call @llvm.aie.lock.release.reg(%[[RELEASE11]], %c1_i32_0) : (i32, i32) -> ()
 // CHECK11:    return
 // CHECK11:  }
 
 // CHECK12:  memref.global "public" @a : memref<256xi32>
 // CHECK12:  func.func @core_1_2() {
-// CHECK12:    %c8 = arith.constant 8 : index
 // CHECK12:    %c1_i32 = arith.constant 1 : i32
-// CHECK12:    %0 = arith.index_cast %c8 : index to i32
-// CHECK12:    call @llvm.aie.lock.acquire.reg(%0, %c1_i32) : (i32, i32) -> ()
+// CHECK12:    %[[ACQUIRE12:.*]] = arith.constant 8 : i32
+// CHECK12:    call @llvm.aie.lock.acquire.reg(%[[ACQUIRE12]], %c1_i32) : (i32, i32) -> ()
 // CHECK12:    %c16 = arith.constant 16 : index
-// CHECK12:    %1 = memref.get_global @a : memref<256xi32>
-// CHECK12:    memref.assume_alignment %1, 32 : memref<256xi32>
-// CHECK12:    %2 = memref.load %1[%c16] : memref<256xi32>
+// CHECK12:    %[[BUFFER12:.*]] = memref.get_global @a : memref<256xi32>
+// CHECK12:    memref.assume_alignment %[[BUFFER12]], 32 : memref<256xi32>
+// CHECK12:    %{{.*}} = memref.load %[[BUFFER12]][%c16] : memref<256xi32>
 // CHECK12:    %c0_i32 = arith.constant 0 : i32
-// CHECK12:    %3 = arith.index_cast %c8 : index to i32
-// CHECK12:    call @llvm.aie.lock.release.reg(%3, %c0_i32) : (i32, i32) -> ()
+// CHECK12:    %[[RELEASE12:.*]] = arith.constant 8 : i32
+// CHECK12:    call @llvm.aie.lock.release.reg(%[[RELEASE12]], %c0_i32) : (i32, i32) -> ()
 // CHECK12:    return
 // CHECK12:  }
   %tile11 = aie.tile(1, 1)
   %tile12 = aie.tile(1, 2)
 
-  %lock11_8 = aie.lock(%tile11, 8)
-  %buf11_0  = aie.buffer(%tile11) { sym_name = "a" } : memref<256xi32>
+  aie.lock @lock11_8(%tile11, 8)
+  aie.buffer @a(%tile11) : memref<256xi32>
 
   %core11 = aie.core(%tile11) {
     %c0_ul0 = arith.constant 0 : i32
-    aie.use_lock(%lock11_8, Acquire, %c0_ul0)
+    aie.use_lock(@lock11_8, Acquire, %c0_ul0)
     %0 = arith.constant 1 : i32
     %i = arith.constant 16 : index
+    %buf11_0 = aie.get_buffer @a : memref<256xi32>
     memref.store %0, %buf11_0[%i] : memref<256xi32>
     %c1_ul1 = arith.constant 1 : i32
-    aie.use_lock(%lock11_8, Release, %c1_ul1)
+    aie.use_lock(@lock11_8, Release, %c1_ul1)
     aie.end
   }
 
   %core12 = aie.core(%tile12) {
     %c1_ul2 = arith.constant 1 : i32
-    aie.use_lock(%lock11_8, Acquire, %c1_ul2)
+    aie.use_lock(@lock11_8, Acquire, %c1_ul2)
     %i = arith.constant 16 : index
-    %0 = memref.load %buf11_0[%i] : memref<256xi32>
+    %buf11_0_1 = aie.get_buffer @a : memref<256xi32>
+    %0 = memref.load %buf11_0_1[%i] : memref<256xi32>
     %c0_ul3 = arith.constant 0 : i32
-    aie.use_lock(%lock11_8, Release, %c0_ul3)
+    aie.use_lock(@lock11_8, Release, %c0_ul3)
     aie.end
   }
  }

@@ -12,18 +12,18 @@ module {
     aie.packet_flow(2) { aie.packet_source<%t3_0, DMA : 0> aie.packet_dest<%t0_1, DMA : 0> }
     aie.flow(%t1_2, DMA : 0, %t1_0, DMA : 0)
     aie.flow(%t0_1, DMA : 0, %t0_0, DMA : 0)
-    %i12_0 = aie.buffer(%t1_2) {sym_name = "i12_0"} : memref<256xi32>
-    %i12_0_p = aie.lock(%t1_2, 0) {init = 1 : i32, sym_name = "i12_0_p"}
-    %i12_0_c = aie.lock(%t1_2, 1) {init = 0 : i32, sym_name = "i12_0_c"}
-    %i12_1 = aie.buffer(%t1_2) {sym_name = "i12_1"} : memref<256xi32>
-    %i12_1_p = aie.lock(%t1_2, 2) {init = 1 : i32, sym_name = "i12_1_p"}
-    %i12_1_c = aie.lock(%t1_2, 3) {init = 0 : i32, sym_name = "i12_1_c"}
-    %o12_0 = aie.buffer(%t1_2) {sym_name = "o12_0"} : memref<256xi32>
-    %o12_0_p = aie.lock(%t1_2, 4) {init = 1 : i32, sym_name = "o12_0_p"}
-    %o12_0_c = aie.lock(%t1_2, 5) {init = 0 : i32, sym_name = "o12_0_c"}
-    %mtg = aie.buffer(%t0_1) {sym_name = "mtg"} : memref<512xi32>
-    %mtg_p = aie.lock(%t0_1, 0) {init = 2 : i32, sym_name = "mtg_p"}
-    %mtg_c = aie.lock(%t0_1, 1) {init = 0 : i32, sym_name = "mtg_c"}
+    aie.buffer @i12_0(%t1_2) : memref<256xi32>
+    aie.lock @i12_0_p(%t1_2, 0) {init = 1 : i32}
+    aie.lock @i12_0_c(%t1_2, 1) {init = 0 : i32}
+    aie.buffer @i12_1(%t1_2) : memref<256xi32>
+    aie.lock @i12_1_p(%t1_2, 2) {init = 1 : i32}
+    aie.lock @i12_1_c(%t1_2, 3) {init = 0 : i32}
+    aie.buffer @o12_0(%t1_2) : memref<256xi32>
+    aie.lock @o12_0_p(%t1_2, 4) {init = 1 : i32}
+    aie.lock @o12_0_c(%t1_2, 5) {init = 0 : i32}
+    aie.buffer @mtg(%t0_1) : memref<512xi32>
+    aie.lock @mtg_p(%t0_1, 0) {init = 2 : i32}
+    aie.lock @mtg_c(%t0_1, 1) {init = 0 : i32}
     %sb_t1_0 = aie.switchbox(%t1_0) {
       %r1_0 = aie.amsel<1> (0)
       %r1_1 = aie.amsel<1> (1)
@@ -86,22 +86,25 @@ module {
       %cb = arith.constant 256 : index
       %k = arith.constant 0 : i32
       scf.for %it = %c0 to %cn step %c1 {
-        aie.use_lock(%i12_1_c, AcquireGreaterEqual, %one)
-        aie.use_lock(%i12_0_c, AcquireGreaterEqual, %one)
-        aie.use_lock(%o12_0_p, AcquireGreaterEqual, %one)
+        aie.use_lock(@i12_1_c, AcquireGreaterEqual, %one)
+        aie.use_lock(@i12_0_c, AcquireGreaterEqual, %one)
+        aie.use_lock(@o12_0_p, AcquireGreaterEqual, %one)
         scf.for %i = %c0 to %cb step %c1 {
           %a0 = arith.addi %i, %c0 : index
+          %i12_1 = aie.get_buffer @i12_1 : memref<256xi32>
           %x0 = memref.load %i12_1[%a0] : memref<256xi32>
           %s0 = arith.addi %k, %x0 : i32
           %a1 = arith.addi %i, %c0 : index
+          %i12_0 = aie.get_buffer @i12_0 : memref<256xi32>
           %x1 = memref.load %i12_0[%a1] : memref<256xi32>
           %s1 = arith.addi %s0, %x1 : i32
           %ao = arith.addi %i, %c0 : index
+          %o12_0 = aie.get_buffer @o12_0 : memref<256xi32>
           memref.store %s1, %o12_0[%ao] : memref<256xi32>
         }
-        aie.use_lock(%i12_1_p, Release, %one)
-        aie.use_lock(%i12_0_p, Release, %one)
-        aie.use_lock(%o12_0_c, Release, %one)
+        aie.use_lock(@i12_1_p, Release, %one)
+        aie.use_lock(@i12_0_p, Release, %one)
+        aie.use_lock(@o12_0_c, Release, %one)
       }
       aie.end
     }
@@ -109,23 +112,26 @@ module {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 0, ^c0b0, ^s1, repeat_count = 3)
       ^c0b0:
-        aie.use_lock(%i12_0_p, AcquireGreaterEqual, %one)
-        aie.dma_bd(%i12_0 : memref<256xi32> offset = 0 len = 256)
-        aie.use_lock(%i12_0_c, Release, %one)
+        aie.use_lock(@i12_0_p, AcquireGreaterEqual, %one)
+        %i12_0_1 = aie.get_buffer @i12_0 : memref<256xi32>
+        aie.dma_bd(%i12_0_1 : memref<256xi32> offset = 0 len = 256)
+        aie.use_lock(@i12_0_c, Release, %one)
         aie.next_bd ^end
       ^s1:
       %d1 = aie.dma_start(S2MM, 1, ^c1b0, ^s2, repeat_count = 3)
       ^c1b0:
-        aie.use_lock(%i12_1_p, AcquireGreaterEqual, %one)
-        aie.dma_bd(%i12_1 : memref<256xi32> offset = 0 len = 256)
-        aie.use_lock(%i12_1_c, Release, %one)
+        aie.use_lock(@i12_1_p, AcquireGreaterEqual, %one)
+        %i12_1_1 = aie.get_buffer @i12_1 : memref<256xi32>
+        aie.dma_bd(%i12_1_1 : memref<256xi32> offset = 0 len = 256)
+        aie.use_lock(@i12_1_c, Release, %one)
         aie.next_bd ^end
       ^s2:
       %d2 = aie.dma_start(MM2S, 0, ^c2b0, ^end, repeat_count = 3)
       ^c2b0:
-        aie.use_lock(%o12_0_c, AcquireGreaterEqual, %one)
-        aie.dma_bd(%o12_0 : memref<256xi32> offset = 0 len = 256)
-        aie.use_lock(%o12_0_p, Release, %one)
+        aie.use_lock(@o12_0_c, AcquireGreaterEqual, %one)
+        %o12_0_1 = aie.get_buffer @o12_0 : memref<256xi32>
+        aie.dma_bd(%o12_0_1 : memref<256xi32> offset = 0 len = 256)
+        aie.use_lock(@o12_0_p, Release, %one)
         aie.next_bd ^end
       ^end:
         aie.end
@@ -134,26 +140,30 @@ module {
       %one = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 0, ^c0b0, ^s1, repeat_count = 1)
       ^c0b0:
-        aie.use_lock(%mtg_p, AcquireGreaterEqual, %one)
+        aie.use_lock(@mtg_p, AcquireGreaterEqual, %one)
+        %mtg = aie.get_buffer @mtg : memref<512xi32>
         aie.dma_bd(%mtg : memref<512xi32> offset = 0 len = 256)
-        aie.use_lock(%mtg_c, Release, %one)
+        aie.use_lock(@mtg_c, Release, %one)
         aie.next_bd ^c0b1
       ^c0b1:
-        aie.use_lock(%mtg_p, AcquireGreaterEqual, %one)
-        aie.dma_bd(%mtg : memref<512xi32> offset = 256 len = 256)
-        aie.use_lock(%mtg_c, Release, %one)
+        aie.use_lock(@mtg_p, AcquireGreaterEqual, %one)
+        %mtg_1 = aie.get_buffer @mtg : memref<512xi32>
+        aie.dma_bd(%mtg_1 : memref<512xi32> offset = 256 len = 256)
+        aie.use_lock(@mtg_c, Release, %one)
         aie.next_bd ^end
       ^s1:
       %d1 = aie.dma_start(MM2S, 0, ^c1b0, ^end, repeat_count = 1)
       ^c1b0:
-        aie.use_lock(%mtg_c, AcquireGreaterEqual, %one)
-        aie.dma_bd(%mtg : memref<512xi32> offset = 0 len = 256)
-        aie.use_lock(%mtg_p, Release, %one)
+        aie.use_lock(@mtg_c, AcquireGreaterEqual, %one)
+        %mtg_2 = aie.get_buffer @mtg : memref<512xi32>
+        aie.dma_bd(%mtg_2 : memref<512xi32> offset = 0 len = 256)
+        aie.use_lock(@mtg_p, Release, %one)
         aie.next_bd ^c1b1
       ^c1b1:
-        aie.use_lock(%mtg_c, AcquireGreaterEqual, %one)
-        aie.dma_bd(%mtg : memref<512xi32> offset = 256 len = 256)
-        aie.use_lock(%mtg_p, Release, %one)
+        aie.use_lock(@mtg_c, AcquireGreaterEqual, %one)
+        %mtg_3 = aie.get_buffer @mtg : memref<512xi32>
+        aie.dma_bd(%mtg_3 : memref<512xi32> offset = 256 len = 256)
+        aie.use_lock(@mtg_p, Release, %one)
         aie.next_bd ^end
       ^end:
         aie.end

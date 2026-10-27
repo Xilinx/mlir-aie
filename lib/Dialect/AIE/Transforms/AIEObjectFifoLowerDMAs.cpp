@@ -25,7 +25,7 @@ namespace {
 /// One buffer descriptor's worth of work: which object, which slice of it, and
 /// the locks guarding that slice.
 struct Descriptor {
-  Value buffer;
+  BufferLike buffer;
   int64_t offset;
   int64_t size;
   BDDimLayoutArrayAttr dimensions;
@@ -79,18 +79,15 @@ struct AIEObjectFifoLowerDMAsPass
   }
 
   /// Objects the endpoint moves.
-  SmallVector<Value> buffersOf(ObjectFifoPoolOp pool) {
-    SmallVector<Value> buffers;
-    for (BufferLike buffer : pool.getBufferOps()) {
-      buffers.push_back(buffer.getBuffer());
-    }
-    return buffers;
+  SmallVector<BufferLike> buffersOf(ObjectFifoPoolOp pool) {
+    return pool.getBufferOps();
   }
 
   /// Buffer-major, segment-minor: the DMA walks the objects in turn, and within
   /// each object the slices this endpoint is responsible for.
   SmallVector<Descriptor> descriptorsFor(ObjectFifoDmaEndpointOp endpoint,
-                                         ArrayRef<Value> buffers, bool drains) {
+                                         ArrayRef<BufferLike> buffers,
+                                         bool drains) {
     std::vector<ObjectFifoSegmentOp> segments = endpoint.getSelectedSegments();
     SmallVector<BDDimLayoutArrayAttr> dimensions;
     if (auto allDimensions = endpoint.getDimensions()) {
@@ -139,10 +136,10 @@ struct AIEObjectFifoLowerDMAsPass
         action = LockAction::Acquire;
       }
     } else if (descriptor.acquireLock) {
-      acquireLock =
-          lookupNamedOp<LockOp>(device, descriptor.acquireLock.getAttr());
-      releaseLock =
-          lookupNamedOp<LockOp>(device, descriptor.releaseLock.getAttr());
+      acquireLock = dyn_cast_if_present<LockOp>(
+          SymbolTable::lookupSymbolIn(device, descriptor.acquireLock));
+      releaseLock = dyn_cast_if_present<LockOp>(
+          SymbolTable::lookupSymbolIn(device, descriptor.releaseLock));
     }
 
     if (acquireLock) {
@@ -153,17 +150,17 @@ struct AIEObjectFifoLowerDMAsPass
                             packet->getPktId());
     }
 
+    Value buffer = GetBufferOp::create(builder, loc, descriptor.buffer);
     if (descriptor.dimensions && drains && descriptor.padding) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+      DMABDOp::create(builder, loc, buffer, descriptor.offset,
                       paddedSize(descriptor.dimensions, descriptor.padding,
                                  descriptor.size),
                       descriptor.dimensions, descriptor.padding);
     } else if (descriptor.dimensions) {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size, descriptor.dimensions);
+      DMABDOp::create(builder, loc, buffer, descriptor.offset, descriptor.size,
+                      descriptor.dimensions);
     } else {
-      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size);
+      DMABDOp::create(builder, loc, buffer, descriptor.offset, descriptor.size);
     }
 
     if (releaseLock) {
@@ -176,7 +173,7 @@ struct AIEObjectFifoLowerDMAsPass
   LogicalResult lowerEndpoint(ObjectFifoDmaEndpointOp endpoint, int channel) {
     bool drains = endpoint.drains();
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
-    SmallVector<Value> buffers = buffersOf(pool);
+    SmallVector<BufferLike> buffers = buffersOf(pool);
     if (buffers.empty()) {
       return success();
     }

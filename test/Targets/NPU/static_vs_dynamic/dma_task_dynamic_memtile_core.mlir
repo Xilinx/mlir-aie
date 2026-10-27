@@ -59,11 +59,12 @@ module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
-    %mem_buf = aie.buffer(%tile_0_1) {address = 4096 : i32} : memref<4096xi32>
-    %core_buf = aie.buffer(%tile_0_2) {address = 4096 : i32} : memref<1024xi32>
+    aie.buffer @mem_buf(%tile_0_1) {address = 4096 : i32} : memref<4096xi32>
+    aie.buffer @core_buf(%tile_0_2) {address = 4096 : i32} : memref<1024xi32>
 
     aie.runtime_sequence @mem_size_static() {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 1) {
+        %mem_buf = aie.get_buffer @mem_buf : memref<4096xi32>
         aie.dma_bd(%mem_buf : memref<4096xi32> offset = 0 len = 1024 sizes = [1, 4, 8, 32] strides = [0, 512, 32, 1]) {bd_id = 24 : i32}
         aie.end
       }
@@ -72,7 +73,8 @@ module {
 
     aie.runtime_sequence @mem_size_dynamic(%n: i64) {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 1) {
-        aie.dma_bd(%mem_buf : memref<4096xi32> offset = 0 len = 1024 sizes = [1, %n, 8, 32] strides = [0, 512, 32, 1]) {bd_id = 24 : i32}
+        %mem_buf_1 = aie.get_buffer @mem_buf : memref<4096xi32>
+        aie.dma_bd(%mem_buf_1 : memref<4096xi32> offset = 0 len = 1024 sizes = [1, %n, 8, 32] strides = [0, 512, 32, 1]) {bd_id = 24 : i32}
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -80,7 +82,8 @@ module {
 
     aie.runtime_sequence @mem_offset_static() {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 1) {
-        aie.dma_bd(%mem_buf : memref<4096xi32> offset = 256 len = 512) {bd_id = 24 : i32}
+        %mem_buf_2 = aie.get_buffer @mem_buf : memref<4096xi32>
+        aie.dma_bd(%mem_buf_2 : memref<4096xi32> offset = 256 len = 512) {bd_id = 24 : i32}
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -88,7 +91,8 @@ module {
 
     aie.runtime_sequence @mem_offset_dynamic(%off: i32) {
       %t = aiex.dma_configure_task(%tile_0_1, MM2S, 1) {
-        aie.dma_bd(%mem_buf : memref<4096xi32> offset = %off len = 512) {bd_id = 24 : i32}
+        %mem_buf_3 = aie.get_buffer @mem_buf : memref<4096xi32>
+        aie.dma_bd(%mem_buf_3 : memref<4096xi32> offset = %off len = 512) {bd_id = 24 : i32}
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -96,6 +100,7 @@ module {
 
     aie.runtime_sequence @core_size_static() {
       %t = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
+        %core_buf = aie.get_buffer @core_buf : memref<1024xi32>
         aie.dma_bd(%core_buf : memref<1024xi32> offset = 0 len = 512 sizes = [1, 4, 4, 32] strides = [0, 128, 32, 1]) {bd_id = 3 : i32}
         aie.end
       }
@@ -104,7 +109,8 @@ module {
 
     aie.runtime_sequence @core_size_dynamic(%n: i64) {
       %t = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
-        aie.dma_bd(%core_buf : memref<1024xi32> offset = 0 len = 512 sizes = [1, %n, 4, 32] strides = [0, 128, 32, 1]) {bd_id = 3 : i32}
+        %core_buf_1 = aie.get_buffer @core_buf : memref<1024xi32>
+        aie.dma_bd(%core_buf_1 : memref<1024xi32> offset = 0 len = 512 sizes = [1, %n, 4, 32] strides = [0, 128, 32, 1]) {bd_id = 3 : i32}
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -112,7 +118,8 @@ module {
 
     aie.runtime_sequence @core_offset_static() {
       %t = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
-        aie.dma_bd(%core_buf : memref<1024xi32> offset = 64 len = 256) {bd_id = 3 : i32}
+        %core_buf_2 = aie.get_buffer @core_buf : memref<1024xi32>
+        aie.dma_bd(%core_buf_2 : memref<1024xi32> offset = 64 len = 256) {bd_id = 3 : i32}
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -120,7 +127,8 @@ module {
 
     aie.runtime_sequence @core_offset_dynamic(%off: i32) {
       %t = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
-        aie.dma_bd(%core_buf : memref<1024xi32> offset = %off len = 256) {bd_id = 3 : i32}
+        %core_buf_3 = aie.get_buffer @core_buf : memref<1024xi32>
+        aie.dma_bd(%core_buf_3 : memref<1024xi32> offset = %off len = 256) {bd_id = 3 : i32}
         aie.end
       }
       aiex.dma_start_task(%t)

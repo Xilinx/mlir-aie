@@ -12,9 +12,9 @@
 module @test27_simple_shim_dma_single_lock {
   aie.device(xcve2802) {
     %tile72 = aie.tile(7, 3)
-    %lockCore = aie.lock(%tile72, 0)  {init = 0 : i32 , sym_name = "coreLock"}
-    %dummyLock = aie.lock(%tile72, 1) { sym_name = "dummyLock"}
-    %buf72_0 = aie.buffer(%tile72) {sym_name = "aieL1" } : memref<16xi32>
+    aie.lock @coreLock(%tile72, 0) {init = 0 : i32 }
+    aie.lock @dummyLock(%tile72, 1)
+    aie.buffer @aieL1(%tile72) : memref<16xi32>
 
     %core72 = aie.core(%tile72) {
       %c0 = arith.constant 0 : index
@@ -26,28 +26,29 @@ module @test27_simple_shim_dma_single_lock {
       %constant47 = arith.constant 47 : i32
 
       %c0_ul0 = arith.constant 0 : i32
-      aie.use_lock(%lockCore, "Acquire", %c0_ul0)
+      aie.use_lock(@coreLock, "Acquire", %c0_ul0)
+      %buf72_0 = aie.get_buffer @aieL1 : memref<16xi32>
       memref.store %constant7, %buf72_0[%c0] : memref<16xi32>
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%lockCore, "Release", %c1_ul1)
+      aie.use_lock(@coreLock, "Release", %c1_ul1)
 
       %c0_ul2 = arith.constant 0 : i32
-      aie.use_lock(%lockCore, "Acquire", %c0_ul2)
+      aie.use_lock(@coreLock, "Acquire", %c0_ul2)
       memref.store %constant13, %buf72_0[%c0] : memref<16xi32>
       %c1_ul3 = arith.constant 1 : i32
-      aie.use_lock(%lockCore, "Release", %c1_ul3)
+      aie.use_lock(@coreLock, "Release", %c1_ul3)
 
       %c0_ul4 = arith.constant 0 : i32
-      aie.use_lock(%lockCore, "Acquire", %c0_ul4)
+      aie.use_lock(@coreLock, "Acquire", %c0_ul4)
       memref.store %constant43, %buf72_0[%c0] : memref<16xi32>
       %c1_ul5 = arith.constant 1 : i32
-      aie.use_lock(%lockCore, "Release", %c1_ul5)
+      aie.use_lock(@coreLock, "Release", %c1_ul5)
 
       %c0_ul6 = arith.constant 0 : i32
-      aie.use_lock(%lockCore, "Acquire", %c0_ul6)
+      aie.use_lock(@coreLock, "Acquire", %c0_ul6)
       memref.store %constant47, %buf72_0[%c0] : memref<16xi32>
       %c1_ul7 = arith.constant 1 : i32
-      aie.use_lock(%lockCore, "Release", %c1_ul7)
+      aie.use_lock(@coreLock, "Release", %c1_ul7)
 
       aie.end
     }

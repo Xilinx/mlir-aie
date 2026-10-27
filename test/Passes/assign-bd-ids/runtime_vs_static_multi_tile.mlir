@@ -14,13 +14,14 @@ module {
   aie.device(npu2) {
     %s0 = aie.tile(0, 0)
     %s1 = aie.tile(0, 0)
-    %sb = aie.external_buffer {sym_name = "sb"} : memref<8xi32>
+    aie.external_buffer @sb : memref<8xi32>
 
     // CHECK: aie.shim_dma
     // CHECK: aie.dma_bd({{.*}}) {bd_id = 0 : i32}
     aie.shim_dma(%s0) {
         aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %sb = aie.get_buffer @sb : memref<8xi32>
         aie.dma_bd(%sb : memref<8xi32> offset = 0 len = 4)
         aie.next_bd ^end
       ^end:

@@ -15,14 +15,14 @@
 module {
   aie.device(npu1) {
     %tile = aie.tile(1, 2)
-    %lock = aie.lock(%tile, 0)
+    aie.lock @lock(%tile, 0)
     %mem = aie.mem(%tile) {
       %dma = aie.dma_start(MM2S, 0, ^bd, ^end)
     ^bd:
       %v = arith.constant 1 : i32
       %w = arith.addi %v, %v : i32
       // expected-error@+1 {{lock value in a DMA/BD block must be a compile-time constant (defined by an arith.constant)}}
-      aie.use_lock(%lock, Acquire, %w)
+      aie.use_lock(@lock, Acquire, %w)
       aie.next_bd ^end
     ^end:
       aie.end

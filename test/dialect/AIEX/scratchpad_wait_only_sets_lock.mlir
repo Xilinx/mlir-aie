@@ -10,10 +10,10 @@
 
 // RUN: aie-opt --aie-lower-scratchpad-parameters %s | FileCheck %s
 
-// CHECK: %[[LOCK:.*]] = aie.lock(%{{.*}}) {init = 0 : i32}
-// CHECK: aie.use_lock(%[[LOCK]], AcquireGreaterEqual, %{{.*}})
+// CHECK: aie.lock @[[LOCK:.*]](%{{.*}}) {init = 0 : i32}
+// CHECK: aie.use_lock(@[[LOCK]], AcquireGreaterEqual, %{{.*}})
 // CHECK: aie.runtime_sequence
-// CHECK: aiex.set_lock(%[[LOCK]], %{{.*}})
+// CHECK: aiex.set_lock(@[[LOCK]], %{{.*}})
 module {
   aiex.scratchpad_parameter @n : i32
   aie.device(npu2) {

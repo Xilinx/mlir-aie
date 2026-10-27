@@ -38,10 +38,11 @@ module {
     aie.switchbox(%compute) {
       aie.connect<South : 1, DMA : 0>
     }
-    %buf = aie.buffer(%mem) {address = 0 : i32, sym_name = "buf"} : memref<16xi32>
+    aie.buffer @buf(%mem) {address = 0 : i32} : memref<16xi32>
     %memdma = aie.memtile_dma(%mem) {
       %0 = aie.dma_start(MM2S, 1, ^bb1, ^bb2)
     ^bb1:
+      %buf = aie.get_buffer @buf : memref<16xi32>
       aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 24 : i32, next_bd_id = 24 : i32}
       aie.next_bd ^bb1
     ^bb2:

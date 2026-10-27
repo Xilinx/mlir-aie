@@ -22,11 +22,11 @@
 
 aie.device(npu1_1col) {
   %t02 = aie.tile(0, 2)
-  %a = aie.buffer(%t02) { sym_name = "a", address = 1024 : i32,
+  aie.buffer @a(%t02) { address = 1024 : i32,
         initial_value = dense<[1, 2, 3, 4]> : tensor<4xi32> } : memref<4xi32> loc(#buf_a_loc)
-  %b = aie.buffer(%t02) { sym_name = "b", address = 1040 : i32,
+  aie.buffer @b(%t02) { address = 1040 : i32,
         initial_value = dense<[5, 6, 7, 8]> : tensor<4xi32> } : memref<4xi32> loc(#buf_b_loc)
-  %lock = aie.lock(%t02, 0) { init = 1 : i32, sym_name = "lk" } loc(#lock_loc)
+  aie.lock @lk(%t02, 0) { init = 1 : i32} loc(#lock_loc)
   %core = aie.core(%t02) {
     aie.end
   } { elf_file = "core_0_2.elf" }

@@ -36,17 +36,17 @@ module @resources {
 // CHECK-LABEL: @resources
 // CHECK-DAG:   %[[T12:.*]] = aie.tile(1, 2)
 // CHECK-DAG:   %[[T33:.*]] = aie.tile(3, 3)
-// CHECK-DAG:   aie.buffer(%[[T12]]) {sym_name = "prod_buff_0"} : memref<16xi32>
-// CHECK-DAG:   aie.buffer(%[[T12]]) {sym_name = "prod_buff_1"} : memref<16xi32>
-// CHECK-DAG:   aie.buffer(%[[T33]]) {sym_name = "cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:   aie.buffer(%[[T33]]) {sym_name = "cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:   aie.buffer(%[[T33]]) {sym_name = "cons_buff_2"} : memref<16xi32>
+// CHECK-DAG:   aie.buffer @prod_buff_0(%[[T12]]) : memref<16xi32>
+// CHECK-DAG:   aie.buffer @prod_buff_1(%[[T12]]) : memref<16xi32>
+// CHECK-DAG:   aie.buffer @cons_buff_0(%[[T33]]) : memref<16xi32>
+// CHECK-DAG:   aie.buffer @cons_buff_1(%[[T33]]) : memref<16xi32>
+// CHECK-DAG:   aie.buffer @cons_buff_2(%[[T33]]) : memref<16xi32>
 
 // The producer's lock counts free objects, the consumer's counts full ones.
-// CHECK-DAG:   aie.lock(%[[T12]]) {init = 2 : i32, sym_name = "prod_prod_lock_0"}
-// CHECK-DAG:   aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "prod_cons_lock_0"}
-// CHECK-DAG:   aie.lock(%[[T33]]) {init = 3 : i32, sym_name = "cons_prod_lock_0"}
-// CHECK-DAG:   aie.lock(%[[T33]]) {init = 0 : i32, sym_name = "cons_cons_lock_0"}
+// CHECK-DAG:   aie.lock @prod_prod_lock_0(%[[T12]]) {init = 2 : i32}
+// CHECK-DAG:   aie.lock @prod_cons_lock_0(%[[T12]]) {init = 0 : i32}
+// CHECK-DAG:   aie.lock @cons_prod_lock_0(%[[T33]]) {init = 3 : i32}
+// CHECK-DAG:   aie.lock @cons_cons_lock_0(%[[T33]]) {init = 0 : i32}
 
 // CHECK:   aie.objectfifo.pool @prod_pool({{.*}}) {buffers = [@prod_buff_0, @prod_buff_1], depth = 2 : i32}
 // CHECK: aie.objectfifo.segment @s0 {consumeLock = @prod_cons_lock_0, offset = 0 : i32, produceLock = @prod_prod_lock_0, size = 16 : i32}
@@ -59,9 +59,9 @@ module @resources {
 
 // The modular allocation pass must retain pool/route provenance, not replace it
 // with a tile or device location. The implicit negative check covers every op.
-// LOC-DAG: aie.buffer({{.*}}) {sym_name = "prod_buff_0"} : memref<16xi32> loc(#[[POOL:loc[0-9]*]])
-// LOC-DAG: aie.buffer({{.*}}) {sym_name = "prod_buff_1"} : memref<16xi32> loc(#[[POOL]])
-// LOC-DAG: aie.lock({{.*}}) {init = 2 : i32, sym_name = "prod_prod_lock_0"} loc(#[[POOL]])
+// LOC-DAG: aie.buffer @prod_buff_0({{.*}}) : memref<16xi32> loc(#[[POOL:loc[0-9]*]])
+// LOC-DAG: aie.buffer @prod_buff_1({{.*}}) : memref<16xi32> loc(#[[POOL]])
+// LOC-DAG: aie.lock @prod_prod_lock_0({{.*}}) {init = 2 : i32} loc(#[[POOL]])
 // LOC-DAG: aie.flow({{.*}}) loc(#[[ROUTE:loc[0-9]*]])
 // LOC-DAG: #[[POOL]] = loc("fifo_user.py":10:2)
 // LOC-DAG: #[[ROUTE]] = loc("fifo_user.py":20:4)

@@ -261,7 +261,8 @@ struct AIEGenerateColumnControlOverlayPass
       }
     }
 
-    if (module.lookupSymbol("ctrl_pkt_overlay")) {
+    SymbolTableCollection symbols;
+    if (symbols.getSymbolTable(module).lookup("ctrl_pkt_overlay")) {
       return module.emitOpError(
           "a symbol named `ctrl_pkt_overlay` already exists in the module; "
           "cannot create a standalone ctrl_pkt_overlay device.");
@@ -685,6 +686,8 @@ struct AIEGenerateColumnControlOverlayPass
   // widen the columns and rows covered, as a first run never covered them.
   static bool hasRoutedRequests(DeviceOp device,
                                 DenseMap<TileID, int> &tileIDMap) {
+    SymbolTableCollection symbols;
+    SymbolTable &table = symbols.getSymbolTable(device);
     llvm::DenseMap<TileID, TileOp> tiles;
     llvm::DenseMap<int, int> maxRowOfCol;
     std::optional<int> minCol, maxCol;
@@ -713,7 +716,8 @@ struct AIEGenerateColumnControlOverlayPass
         TileOp tile = tiles.lookup({col, row});
         int chan = rowToShimChanMap[row];
         if (!tile ||
-            !device.lookupSymbol(getCtrlPktAllocName(col, true, chan)) ||
+            !table.lookup<ShimDMAAllocationOp>(
+                getCtrlPktAllocName(col, true, chan)) ||
             !hasRoutedRequest(device, shimTile, chan, tile, tileIDMap))
           return false;
       }
@@ -797,6 +801,8 @@ struct AIEGenerateColumnControlOverlayPass
       WireBundle shimWireBundle, const SmallVector<AIE::TileOp> &ctrlTiles,
       WireBundle ctrlWireBundle, int coreOrMemChanId,
       DenseMap<TileID, int> tileIDMap, bool isShimMM2S) {
+    SymbolTableCollection symbols;
+    SymbolTable &table = symbols.getSymbolTable(device);
     int ctrlPktFlowID = 0;
     auto rowToShimChanMap =
         getRowToShimChanMap(device.getTargetModel(), shimWireBundle);
@@ -886,13 +892,19 @@ struct AIEGenerateColumnControlOverlayPass
       std::string dma_name =
           getCtrlPktAllocName(shimTile.colIndex(), isShimMM2S, chan);
 
-      // check to see if ShimDMAAllocationOp already exists
-      if (device.lookupSymbol(dma_name))
-        continue;
+      if (Operation *existing = table.lookup(dma_name)) {
+        if (isa<ShimDMAAllocationOp>(existing))
+          continue;
+        // Control-packet lowering reconstructs this canonical name.
+        return existing->emitOpError()
+               << "symbol name '" << dma_name
+               << "' is reserved for a control-packet shim DMA allocation";
+      }
 
-      AIE::ShimDMAAllocationOp::create(
+      auto allocation = AIE::ShimDMAAllocationOp::create(
           builder, tOp.getLoc(), StringRef(dma_name), shimTile.getResult(), dir,
           rowToShimChanMap[tOp.rowIndex()], false, nullptr);
+      table.insert(allocation);
     }
     return success();
   }

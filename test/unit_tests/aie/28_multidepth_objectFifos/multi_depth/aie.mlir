@@ -14,17 +14,17 @@ module @multi_depth {
         %tile23 = aie.tile(2, 3)
         %tile25 = aie.tile(2, 5)
 
-        %lock_pc = aie.lock(%tile25, 0) {sym_name = "lock_pc"}
+        aie.lock @lock_pc(%tile25, 0)
 
-        %lock_out = aie.lock(%tile25, 1) {sym_name = "lock_out"}
-        %buff_out = aie.buffer(%tile25) {sym_name = "buff_out"} : memref<4x32xi32>
+        aie.lock @lock_out(%tile25, 1)
+        aie.buffer @buff_out(%tile25) : memref<4x32xi32>
 
         aie.objectfifo @of_in (%tile20, {%tile23, %tile25}, [2, 2, 3]) : !aie.objectfifo<memref<32xi32>>
         aie.objectfifo @of_inter (%tile23, {%tile25}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
 
-        %ext_buffer_in_0  = aie.external_buffer {sym_name = "ext_buffer_in_0"} : memref<32xi32>
-        %ext_buffer_in_1  = aie.external_buffer {sym_name = "ext_buffer_in_1"} : memref<32xi32>
-        aie.objectfifo.register_external_buffers @of_in (%tile20, {%ext_buffer_in_0, %ext_buffer_in_1}) : (memref<32xi32>, memref<32xi32>)
+        aie.external_buffer @ext_buffer_in_0 : memref<32xi32>
+        aie.external_buffer @ext_buffer_in_1 : memref<32xi32>
+        aie.objectfifo.register_external_buffers @of_in (%tile20, [@ext_buffer_in_0, @ext_buffer_in_1])
 
         func.func @add_one(%elemIn : memref<32xi32>, %elemOut : memref<32xi32>) -> () {
             %c0 = arith.constant 0 : index
@@ -80,16 +80,17 @@ module @multi_depth {
             %iter_max = arith.constant 4 : index
 
             %c0_ul0 = arith.constant 0 : i32
-            aie.use_lock(%lock_pc, Acquire, %c0_ul0)
+            aie.use_lock(@lock_pc, Acquire, %c0_ul0)
 
             %c0_ul1 = arith.constant 0 : i32
-            aie.use_lock(%lock_out, Acquire, %c0_ul1)
+            aie.use_lock(@lock_out, Acquire, %c0_ul1)
 
             scf.for %iter = %c0 to %iter_max step %c1 {
                 %elemIn_21 = aie.objectfifo.acquire @of_in (Consume, 1) : memref<32xi32>
 
                 %elemIn_22 = aie.objectfifo.acquire @of_inter (Consume, 1) : memref<32xi32>
 
+                %buff_out = aie.get_buffer @buff_out : memref<4x32xi32>
                 func.call @add_store(%elemIn_21, %elemIn_22, %buff_out, %iter) : (memref<32xi32>, memref<32xi32>, memref<4x32xi32>, index) -> ()
 
                 aie.objectfifo.release @of_in (Consume, 1)
@@ -97,10 +98,10 @@ module @multi_depth {
             }
 
             %c1_ul2 = arith.constant 1 : i32
-            aie.use_lock(%lock_out, Release, %c1_ul2)
+            aie.use_lock(@lock_out, Release, %c1_ul2)
 
             %c1_ul3 = arith.constant 1 : i32
-            aie.use_lock(%lock_pc, Release, %c1_ul3)
+            aie.use_lock(@lock_pc, Release, %c1_ul3)
 
             aie.end
         }

@@ -451,9 +451,11 @@ def lowered(device, *tasks):
         %shim = aie.tile(0, 0)
         %mem = aie.tile(0, 1)
         %core = aie.tile(0, 2)
-        %mbuf = aie.buffer(%mem) {{address = 0x4000 : i32}} : memref<1024xi32>
-        %cbuf = aie.buffer(%core) {{address = 0x800 : i32}} : memref<256xi32>
+        aie.buffer @mbuf(%mem) {{address = 0x4000 : i32}} : memref<1024xi32>
+        aie.buffer @cbuf(%core) {{address = 0x800 : i32}} : memref<256xi32>
         aie.runtime_sequence() {{
+          %mbuf = aie.get_buffer @mbuf : memref<1024xi32>
+          %cbuf = aie.get_buffer @cbuf : memref<256xi32>
           {"".join(tasks)}
         }}
       }}

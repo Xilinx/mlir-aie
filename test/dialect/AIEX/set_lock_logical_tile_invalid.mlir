@@ -14,10 +14,10 @@ module {
   aie.device(npu2) {
     %t = aie.logical_tile<CoreTile>(?, ?)
     // expected-error @+1 {{lock assigned invalid id (maximum is 15)}}
-    %lock = aie.lock(%t, 16) {init = 0 : i32}
+    aie.lock @lock(%t, 16) {init = 0 : i32}
     aie.runtime_sequence() {
       %v = arith.constant 1 : i32
-      aiex.set_lock(%lock, %v)
+      aiex.set_lock(@lock, %v)
     }
   }
 }

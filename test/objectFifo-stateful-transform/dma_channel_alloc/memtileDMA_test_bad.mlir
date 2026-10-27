@@ -16,44 +16,50 @@ module @memtileDMA_channels {
         %tile11 = aie.tile(1, 1)
         %tile33 = aie.tile(3, 3)
 
-        %buff0 = aie.buffer(%tile11) : memref<16xi32>
-        %buff1 = aie.buffer(%tile11) : memref<16xi32>
-        %buff2 = aie.buffer(%tile11) : memref<16xi32>
-        %buff3 = aie.buffer(%tile11) : memref<16xi32>
-        %buff4 = aie.buffer(%tile11) : memref<16xi32>
-        %buff5 = aie.buffer(%tile11) : memref<16xi32>
+        aie.buffer @buff0(%tile11) : memref<16xi32>
+        aie.buffer @buff1(%tile11) : memref<16xi32>
+        aie.buffer @buff2(%tile11) : memref<16xi32>
+        aie.buffer @buff3(%tile11) : memref<16xi32>
+        aie.buffer @buff4(%tile11) : memref<16xi32>
+        aie.buffer @buff5(%tile11) : memref<16xi32>
 
         aie.objectfifo @objfifo (%tile33, {%tile11}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
         %mem11 = aie.memtile_dma(%tile11) {
             %dma1 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
         ^bb1:
+            %buff0 = aie.get_buffer @buff0 : memref<16xi32>
             aie.dma_bd(%buff0 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb1
         ^bb2:
             %dma2 = aie.dma_start(S2MM, 1, ^bb3, ^bb4)
         ^bb3:
+            %buff2 = aie.get_buffer @buff2 : memref<16xi32>
             aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb3
         ^bb4:
             %dma3 = aie.dma_start(S2MM, 2, ^bb5, ^bb6)
         ^bb5:
-            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
+            %buff2_1 = aie.get_buffer @buff2 : memref<16xi32>
+            aie.dma_bd(%buff2_1 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb5
         ^bb6:
             %dma4 = aie.dma_start(S2MM, 3, ^bb7, ^bb8)
         ^bb7:
-            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
+            %buff2_2 = aie.get_buffer @buff2 : memref<16xi32>
+            aie.dma_bd(%buff2_2 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb7
         ^bb8:
             %dma5 = aie.dma_start(S2MM, 4, ^bb9, ^bb10)
         ^bb9:
-            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
+            %buff2_3 = aie.get_buffer @buff2 : memref<16xi32>
+            aie.dma_bd(%buff2_3 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb9
         ^bb10:
             %dma6 = aie.dma_start(S2MM, 5, ^bb11, ^bb12)
         ^bb11:
-            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
+            %buff2_4 = aie.get_buffer @buff2 : memref<16xi32>
+            aie.dma_bd(%buff2_4 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb11
         ^bb12:
             aie.end

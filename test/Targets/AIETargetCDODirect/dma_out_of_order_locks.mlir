@@ -34,44 +34,48 @@
 module {
  aie.device(npu2) {
   %t02 = aie.tile(0, 2)
-  %b02 = aie.buffer(%t02) : memref<12 x i32>
-  %ooo_cons  = aie.lock(%t02, 0) { init = 0 : i32 }
-  %ooo_prod = aie.lock(%t02, 1) { init = 2 : i32 }
+  aie.buffer @b02(%t02) : memref<12 x i32>
+  aie.lock @ooo_cons(%t02, 0) { init = 0 : i32 }
+  aie.lock @ooo_prod(%t02, 1) { init = 2 : i32 }
   aie.mem(%t02) {
       aie.dma_start(S2MM, 0, ^c0, ^end0, repeat_count = 5) { out_of_order }
     ^c0:  // release-only completion counter
       aie.dma_bd_packet(0, 0)
+      %b02 = aie.get_buffer @b02 : memref<12 x i32>
       aie.dma_bd(%b02 : memref<12 x i32> offset = 0 len = 4) { bd_id = 3 : i32 }
       %o0 = arith.constant 1 : i32
-      aie.use_lock(%ooo_cons, Release, %o0)
+      aie.use_lock(@ooo_cons, Release, %o0)
       aie.next_bd ^c1
     ^c1:  // acquire(ooo_prod)+release(ooo_cons) backpressure
       %o1 = arith.constant 1 : i32
-      aie.use_lock(%ooo_prod, AcquireGreaterEqual, %o1)
+      aie.use_lock(@ooo_prod, AcquireGreaterEqual, %o1)
       aie.dma_bd_packet(0, 0)
-      aie.dma_bd(%b02 : memref<12 x i32> offset = 8 len = 4) { bd_id = 5 : i32 }
+      %b02_1 = aie.get_buffer @b02 : memref<12 x i32>
+      aie.dma_bd(%b02_1 : memref<12 x i32> offset = 8 len = 4) { bd_id = 5 : i32 }
       %o2 = arith.constant 1 : i32
-      aie.use_lock(%ooo_cons, Release, %o2)
+      aie.use_lock(@ooo_cons, Release, %o2)
       aie.next_bd ^end0
     ^end0:
       aie.end
   }
   %t01 = aie.tile(0, 1)
-  %b01 = aie.buffer(%t01) : memref<8 x i32>
-  %ooo_cons_mt = aie.lock(%t01, 0) { init = 0 : i32 }
+  aie.buffer @b01(%t01) : memref<8 x i32>
+  aie.lock @ooo_cons_mt(%t01, 0) { init = 0 : i32 }
   aie.memtile_dma(%t01) {
       aie.dma_start(S2MM, 0, ^m0, ^end1, repeat_count = 7) { out_of_order }
     ^m0:  // release-only completion counter on a memtile receive BD
       aie.dma_bd_packet(0, 0)
+      %b01 = aie.get_buffer @b01 : memref<8 x i32>
       aie.dma_bd(%b01 : memref<8 x i32> offset = 0 len = 4) { bd_id = 4 : i32 }
       %m0c = arith.constant 1 : i32
-      aie.use_lock(%ooo_cons_mt, Release, %m0c)
+      aie.use_lock(@ooo_cons_mt, Release, %m0c)
       aie.next_bd ^m1
     ^m1:
       aie.dma_bd_packet(0, 0)
-      aie.dma_bd(%b01 : memref<8 x i32> offset = 4 len = 4) { bd_id = 6 : i32 }
+      %b01_1 = aie.get_buffer @b01 : memref<8 x i32>
+      aie.dma_bd(%b01_1 : memref<8 x i32> offset = 4 len = 4) { bd_id = 6 : i32 }
       %m1c = arith.constant 1 : i32
-      aie.use_lock(%ooo_cons_mt, Release, %m1c)
+      aie.use_lock(@ooo_cons_mt, Release, %m1c)
       aie.next_bd ^end1
     ^end1:
       aie.end

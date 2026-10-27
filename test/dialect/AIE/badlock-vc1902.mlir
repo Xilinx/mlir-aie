@@ -9,5 +9,5 @@
 // CHECK: error{{.*}}'aie.lock' op lock assigned invalid id (maximum is 15)
 module @test {
   %t1 = aie.tile(1, 1)
-  %lock = aie.lock(%t1, 16) { sym_name = "lock1" }
+  aie.lock @lock1(%t1, 16)
 }

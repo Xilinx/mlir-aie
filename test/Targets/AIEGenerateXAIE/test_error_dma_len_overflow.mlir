@@ -19,10 +19,11 @@ module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     // expected-error @+1 {{does not fit in 32 bits}}
+    aie.external_buffer @myBuffer_0_0_0 : memref<536870912xi64>
     aie.shim_dma(%tile_0_0) {
       %srcDma = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      %buf = aie.external_buffer { sym_name = "myBuffer_0_0_0" } : memref<536870912xi64>
+      %buf = aie.get_buffer @myBuffer_0_0_0 : memref<536870912xi64>
       aie.dma_bd(%buf : memref<536870912xi64> offset = 0 len = 536870912)
       aie.next_bd ^end
     ^end:

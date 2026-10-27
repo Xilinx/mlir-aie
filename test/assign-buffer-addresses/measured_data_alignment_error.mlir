@@ -8,7 +8,7 @@ module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
     // expected-error @+1 {{data reservation address must be aligned to 256 bytes to satisfy its measured section alignment}}
-    %data = aie.buffer(%t) {sym_name = "data", core_data, address = 1088 : i32, aligned = false} : memref<64xi8>
+    aie.buffer @data(%t) {core_data, address = 1088 : i32, aligned = false} : memref<64xi8>
     aie.core(%t) {
       aie.end
     } {data_size = 64 : i32, measured_data_alignment = 256 : i32}
@@ -21,7 +21,7 @@ module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
     // expected-error @+1 {{data reservation address must be aligned to 4096 bytes to satisfy its measured section alignment}}
-    %data = aie.buffer(%t) {sym_name = "bank_reserved_0_2_0", bank_reserved, mem_bank = 0 : i32, address = 1024 : i32, aligned = false} : memref<4096xi8>
+    aie.buffer @bank_reserved_0_2_0(%t) {bank_reserved, mem_bank = 0 : i32, address = 1024 : i32, aligned = false} : memref<4096xi8>
     aie.core(%t) {
       aie.end
     } {measured_bank_alignments = array<i32: 4096, 1, 1, 1>}

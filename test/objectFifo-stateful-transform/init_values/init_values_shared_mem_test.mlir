@@ -11,10 +11,10 @@
 // CHECK:   aie.device(xcve2302) {
 // CHECK-DAG:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK-DAG:     %{{.*}}tile_1_3 = aie.tile(1, 3)
-// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_buff_0"} : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
-// CHECK-DAG:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_buff_1"} : memref<2x2xi32> = dense<{{\[}}[4, 5], [6, 7]]>
-// CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_0"} : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
-// CHECK-DAG:     %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_1"} : memref<2x2xi32> = dense<{{\[}}[4, 5], [6, 7]]>
+// CHECK-DAG:     aie.buffer @[[VAL_0:of1_buff_0]](%{{.*}}tile_1_3) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
+// CHECK-DAG:     aie.buffer @[[VAL_1:of1_buff_1]](%{{.*}}tile_1_3) : memref<2x2xi32> = dense<{{\[}}[4, 5], [6, 7]]>
+// CHECK-DAG:     aie.buffer @[[VAL_4:of0_buff_0]](%{{.*}}tile_1_2) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
+// CHECK-DAG:     aie.buffer @[[VAL_5:of0_buff_1]](%{{.*}}tile_1_2) : memref<2x2xi32> = dense<{{\[}}[4, 5], [6, 7]]>
 // CHECK:   }
 // CHECK: }
 

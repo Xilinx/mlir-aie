@@ -62,22 +62,22 @@ def expect_failure(emit, *args):
         raise AssertionError(f"Expected {emit.__name__}{args} to fail verification")
 
 
-# CHECK: %prod = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "prod"}
+# CHECK: aie.lock @prod(%{{.*}}) {init = 2 : i32}
 # CHECK: aie.runtime_sequence
 # CHECK: %[[V4:.*]] = arith.constant 4 : i32
-# CHECK-NEXT: aiex.set_lock(%prod, %[[V4]])
+# CHECK-NEXT: aiex.set_lock(@prod, %[[V4]])
 print(emit_rearm())
 
 # CHECK: %[[V0:.*]] = arith.constant 0 : i32
-# CHECK-NEXT: aiex.set_lock(%prod, %[[V0]])
+# CHECK-NEXT: aiex.set_lock(@prod, %[[V0]])
 print(emit_rearm(0))
 # CHECK: %[[V63:.*]] = arith.constant 63 : i32
-# CHECK-NEXT: aiex.set_lock(%prod, %[[V63]])
+# CHECK-NEXT: aiex.set_lock(@prod, %[[V63]])
 print(emit_rearm(63))
 
 # A dispatch-time value is range-checked when the instruction stream is built.
 # CHECK: aie.runtime_sequence
-# CHECK-NEXT: aiex.set_lock(%prod, %arg1)
+# CHECK-NEXT: aiex.set_lock(@prod, %arg1)
 print(emit_rearm_runtime())
 
 # CHECK: error: {{.*}}Lock value must be non-negative

@@ -216,8 +216,8 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir):
         # L2+L3 combined buffer sliced via memref_view.
         # act_out.acquire is LAZY (just before the PW call) — eager acquire
         # would hold an of_12 slot while waiting on act_out and risk deadlock.
-        dw_wts = memref_view(wts.op, [bn12_dw_wts_sz], shift=bn12_dw_off)
-        pw_wts = memref_view(wts.op, [bn12_pw_wts_sz], shift=bn12_pw_off)
+        dw_wts = memref_view(wts.op.result, [bn12_dw_wts_sz], shift=bn12_dw_off)
+        pw_wts = memref_view(wts.op.result, [bn12_pw_wts_sz], shift=bn12_pw_off)
 
         def _pw():
             dw_tmp_c = dw_tmp_cons.acquire(1)

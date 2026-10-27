@@ -14,27 +14,27 @@
 
 // RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
-// CHECK-COUNT-7: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]}} : i32, sym_name = "a{{[0-6]}}"}
-// CHECK-COUNT-6: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]}} : i32, sym_name = "b{{[0-5]}}"}
-// CHECK: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]}} : i32, sym_name = "w"}
+// CHECK-COUNT-7: aie.buffer @a{{[0-6]}}{{.*}}{address = {{[0-9]+}} : i32, mem_bank = {{[0-9]}} : i32}
+// CHECK-COUNT-6: aie.buffer @b{{[0-5]}}{{.*}}{address = {{[0-9]+}} : i32, mem_bank = {{[0-9]}} : i32}
+// CHECK: aie.buffer @w{{.*}}{address = {{[0-9]+}} : i32, mem_bank = {{[0-9]}} : i32}
 
 module @backtracking_same_size_buffers {
   aie.device(npu2) {
     %t = aie.tile(7, 4)
-    %a0 = aie.buffer(%t) {sym_name = "a0"} : memref<2576xui8>
-    %a1 = aie.buffer(%t) {sym_name = "a1"} : memref<2576xui8>
-    %a2 = aie.buffer(%t) {sym_name = "a2"} : memref<2576xui8>
-    %a3 = aie.buffer(%t) {sym_name = "a3"} : memref<2576xui8>
-    %a4 = aie.buffer(%t) {sym_name = "a4"} : memref<2576xui8>
-    %a5 = aie.buffer(%t) {sym_name = "a5"} : memref<2576xui8>
-    %a6 = aie.buffer(%t) {sym_name = "a6"} : memref<2576xui8>
-    %b0 = aie.buffer(%t) {sym_name = "b0"} : memref<6720xui8>
-    %b1 = aie.buffer(%t) {sym_name = "b1"} : memref<6720xui8>
-    %b2 = aie.buffer(%t) {sym_name = "b2"} : memref<6720xui8>
-    %b3 = aie.buffer(%t) {sym_name = "b3"} : memref<6720xui8>
-    %b4 = aie.buffer(%t) {sym_name = "b4"} : memref<6720xui8>
-    %b5 = aie.buffer(%t) {sym_name = "b5"} : memref<6720xui8>
-    %w = aie.buffer(%t) {sym_name = "w"} : memref<4320xi8>
+    aie.buffer @a0(%t) : memref<2576xui8>
+    aie.buffer @a1(%t) : memref<2576xui8>
+    aie.buffer @a2(%t) : memref<2576xui8>
+    aie.buffer @a3(%t) : memref<2576xui8>
+    aie.buffer @a4(%t) : memref<2576xui8>
+    aie.buffer @a5(%t) : memref<2576xui8>
+    aie.buffer @a6(%t) : memref<2576xui8>
+    aie.buffer @b0(%t) : memref<6720xui8>
+    aie.buffer @b1(%t) : memref<6720xui8>
+    aie.buffer @b2(%t) : memref<6720xui8>
+    aie.buffer @b3(%t) : memref<6720xui8>
+    aie.buffer @b4(%t) : memref<6720xui8>
+    aie.buffer @b5(%t) : memref<6720xui8>
+    aie.buffer @w(%t) : memref<4320xi8>
     aie.core(%t) {
       aie.end
     }

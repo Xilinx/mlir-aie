@@ -316,10 +316,10 @@ Gives pools their buffers and locks, and endpoints their channels, flows and
 shim allocations.
 
 ```mlir
-%of1_buff_0 = aie.buffer(%tile_0_2) {sym_name = "of1_buff_0"} : memref<16xi32>
-%of1_buff_1 = aie.buffer(%tile_0_2) {sym_name = "of1_buff_1"} : memref<16xi32>
-%of1_prod_lock_0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
-%of1_cons_lock_0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+aie.buffer @of1_buff_0(%tile_0_2) : memref<16xi32>
+aie.buffer @of1_buff_1(%tile_0_2) : memref<16xi32>
+aie.lock @of1_prod_lock_0(%tile_0_2) {init = 2 : i32}
+aie.lock @of1_cons_lock_0(%tile_0_2) {init = 0 : i32}
 
 aie.objectfifo.pool @of1_pool(%tile_0_2) {
     depth = 2 : i32, fifoName = "of1",
@@ -354,9 +354,10 @@ for each buffer b in pool.buffers:
 %mem_0_2 = aie.mem(%tile_0_2) {
   %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 ^bb1:
-  aie.use_lock(%of1_cons_lock_0, AcquireGreaterEqual, %c1_i32)
+  aie.use_lock(@of1_cons_lock_0, AcquireGreaterEqual, %c1_i32)
+  %of1_buff_0 = aie.get_buffer @of1_buff_0 : memref<16xi32>
   aie.dma_bd(%of1_buff_0 : memref<16xi32> offset = 0 len = 16)
-  aie.use_lock(%of1_prod_lock_0, Release, %c1_i32_0)
+  aie.use_lock(@of1_prod_lock_0, Release, %c1_i32_0)
   aie.next_bd ^bb2
 ^bb2:   // the same, with %of1_buff_1
   ...
@@ -372,10 +373,10 @@ the released objects to the back.
 ```mlir
 %0 = arith.subi %c1_i32, %c0_i32 : i32   // acquire(N) is absolute:
 %1 = arith.maxsi %0, %c0_i32_0 : i32     // delta = max(N - held, 0)
-aie.use_lock(%of1_prod_lock_0, AcquireGreaterEqual, %1)
+aie.use_lock(@of1_prod_lock_0, AcquireGreaterEqual, %1)
 %obj = memref.load %front[] : memref<memref<16xi32>>
 ...
-aie.use_lock(%of1_cons_lock_0, Release, %c1_i32)
+aie.use_lock(@of1_cons_lock_0, Release, %c1_i32)
 %a = memref.load %front[] : memref<memref<16xi32>>   // release(1) rotates
 %b = memref.load %back[] : memref<memref<16xi32>>    // the objects by one
 memref.store %b, %front[] : memref<memref<16xi32>>

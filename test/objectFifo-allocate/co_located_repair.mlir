@@ -12,7 +12,7 @@ module {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
     %alias = aie.logical_tile<MemTile>(0, 1)
-    %reserved = aie.buffer(%home) {sym_name = "reserved"} : memref<196608xi8>
+    aie.buffer @reserved(%home) : memref<196608xi8>
     aie.objectfifo.pool @large(%home) {depth = 2 : i32} : memref<147456xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 147456 : i32}
     }
@@ -26,11 +26,11 @@ module {
 // CHECK-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[ALIAS:.*]] = aie.logical_tile<MemTile>(0, 1)
 // CHECK-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[ALIAS]]) {sym_name = "small_buff_0"}
-// CHECK-DAG: aie.buffer(%[[ALIAS]]) {sym_name = "small_buff_1"}
-// CHECK-DAG: aie.lock(%[[ALIAS]]) {{.*}}sym_name = "small_prod_lock_0"
-// CHECK-DAG: aie.lock(%[[ALIAS]]) {{.*}}sym_name = "small_cons_lock_0"
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "large_buff_0"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "large_buff_1"}
+// CHECK-DAG: aie.buffer @small_buff_0(%[[ALIAS]])
+// CHECK-DAG: aie.buffer @small_buff_1(%[[ALIAS]])
+// CHECK-DAG: aie.lock @small_prod_lock_0(%[[ALIAS]]) {{.*}}
+// CHECK-DAG: aie.lock @small_cons_lock_0(%[[ALIAS]]) {{.*}}
+// CHECK-DAG: aie.buffer @large_buff_0(%[[HOME]])
+// CHECK-DAG: aie.buffer @large_buff_1(%[[NEIGHBOR]])
 // CHECK: @large_dma(%[[HOME]]) fills @large {channelIndex = 0 : i32}
 // CHECK: @small_dma(%[[ALIAS]]) fills @small {channelIndex = 5 : i32}

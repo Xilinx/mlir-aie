@@ -14,9 +14,9 @@ module {
     %mem = aie.tile(0, 1)
     %core = aie.tile(0, 2)
     %shim = aie.tile(0, 0)
-    %bytes = aie.buffer(%mem) {address = 4096 : i32} : memref<4096xi8>
-    %halves = aie.buffer(%core) {address = 4096 : i32} : memref<1024xi16>
-    %words = aie.buffer(%mem) {address = 8192 : i32} : memref<1024xi32>
+    aie.buffer @bytes(%mem) {address = 4096 : i32} : memref<4096xi8>
+    aie.buffer @halves(%core) {address = 4096 : i32} : memref<1024xi16>
+    aie.buffer @words(%mem) {address = 8192 : i32} : memref<1024xi32>
 
     // CHECK-LABEL: @mem_bytes
     // CHECK: cf.assert %{{.*}}, "a runtime DMA d0 size must be in [1:524284]"
@@ -32,6 +32,7 @@ module {
     // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[WORD_ADDR32]],
     aie.runtime_sequence @mem_bytes(%offset: i32, %len: i32) {
       %task = aiex.dma_configure_task(%mem, MM2S, 0) {
+        %bytes = aie.get_buffer @bytes : memref<4096xi8>
         aie.dma_bd(%bytes : memref<4096xi8> offset = %offset len = %len sizes = [4] strides = [1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -51,6 +52,7 @@ module {
     // CHECK: aiex.npu.maskwrite32
     aie.runtime_sequence @core_halves(%offset: i32, %len: i32) {
       %task = aiex.dma_configure_task(%core, MM2S, 0) {
+        %halves = aie.get_buffer @halves : memref<1024xi16>
         aie.dma_bd(%halves : memref<1024xi16> offset = %offset len = %len sizes = [2] strides = [1]) {bd_id = 0 : i32}
         aie.end
       }
@@ -58,6 +60,7 @@ module {
 
     aie.runtime_sequence @mem_words(%offset: i32) {
       %task = aiex.dma_configure_task(%mem, MM2S, 0) {
+        %words = aie.get_buffer @words : memref<1024xi32>
         aie.dma_bd(%words : memref<1024xi32> offset = %offset len = 4) {bd_id = 0 : i32}
         aie.end
       }
@@ -65,7 +68,8 @@ module {
 
     aie.runtime_sequence @stride(%size: i64, %stride: i64) {
       %task = aiex.dma_configure_task(%mem, MM2S, 0) {
-        aie.dma_bd(%words : memref<1024xi32> offset = 0 len = 64 sizes = [%size, 8] strides = [%stride, 1]) {bd_id = 0 : i32}
+        %words_1 = aie.get_buffer @words : memref<1024xi32>
+        aie.dma_bd(%words_1 : memref<1024xi32> offset = 0 len = 64 sizes = [%size, 8] strides = [%stride, 1]) {bd_id = 0 : i32}
         aie.end
       }
     }

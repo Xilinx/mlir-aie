@@ -51,9 +51,9 @@ class Buffer(PerDeviceConfigurationResolvable):
                 or a generator's tensor operand. Defaults to None.
             initial_value (np.ndarray | None, optional): An initial value to set the buffer
                 to. Should be of same datatype and shape as the buffer. Defaults to None.
-            name (str | None, optional): The name of the buffer. If none is given, the
-                buffer is left unnamed, or its DeviceConfiguration names it if
-                the runtime writes it. Defaults to None.
+            name (str | None, optional): The name of the buffer. If none is given,
+                resolution generates a unique symbol, or its DeviceConfiguration
+                names it if the runtime writes it. Defaults to None.
             tile (Tile | None, optional): The tile for the buffer. Automatically set to the
                 Worker's tile when the buffer is passed in the Worker's fn_args list.
                 Defaults to None.

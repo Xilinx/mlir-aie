@@ -8,7 +8,7 @@ module @possible_memtile_neighbors {
   aie.device(npu2) {
     %home = aie.logical_tile<MemTile>(1, ?)
     %reader = aie.logical_tile<MemTile>(0, ?)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%home) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -25,7 +25,7 @@ module @possible_core_neighbors {
   aie.device(npu2) {
     %home = aie.tile(0, 3)
     %reader = aie.logical_tile<CoreTile>(?, 2)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%home) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
@@ -42,9 +42,9 @@ module @possible_neighbor_locks {
   aie.device(npu2) {
     %home = aie.logical_tile<MemTile>(0, ?)
     %remote = aie.logical_tile<MemTile>(1, ?)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
-    %free = aie.lock(%remote) {sym_name = "free", init = 1 : i32}
-    %full = aie.lock(%remote) {sym_name = "full", init = 0 : i32}
+    aie.buffer @b(%home) : memref<16xi32>
+    aie.lock @free(%remote) {init = 1 : i32}
+    aie.lock @full(%remote) {init = 0 : i32}
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {
         offset = 0 : i32, size = 16 : i32,
@@ -65,9 +65,9 @@ module @possible_local_core_dma_locks {
   aie.device(npu2) {
     %home = aie.tile(0, 2)
     %reader = aie.logical_tile<CoreTile>(0, ?)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
-    %free = aie.lock(%home) {sym_name = "free", init = 1 : i32}
-    %full = aie.lock(%home) {sym_name = "full", init = 0 : i32}
+    aie.buffer @b(%home) : memref<16xi32>
+    aie.lock @free(%home) {init = 1 : i32}
+    aie.lock @full(%home) {init = 0 : i32}
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {
         offset = 0 : i32, size = 16 : i32,

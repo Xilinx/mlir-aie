@@ -13,9 +13,9 @@ module @test27_simple_shim_dma_single_lock {
 aie.device(xcvc1902) {
 
   %tile73 = aie.tile(7, 3)
-  %lockCore = aie.lock(%tile73, 0) { sym_name = "coreLock"}
-  %dummyLock = aie.lock(%tile73, 1) { sym_name = "dummyLock"}
-  %buf73_0 = aie.buffer(%tile73) {sym_name = "aieL1" } : memref<16xi32>
+  aie.lock @coreLock(%tile73, 0)
+  aie.lock @dummyLock(%tile73, 1)
+  aie.buffer @aieL1(%tile73) : memref<16xi32>
 
   %core72 = aie.core(%tile73) {
     %c0 = arith.constant 0 : index
@@ -27,56 +27,57 @@ aie.device(xcvc1902) {
     %constant47 = arith.constant 47 : i32
 
     %c0_ul0 = arith.constant 0 : i32
-    aie.use_lock(%lockCore, "Acquire", %c0_ul0)
+    aie.use_lock(@coreLock, "Acquire", %c0_ul0)
+    %buf73_0 = aie.get_buffer @aieL1 : memref<16xi32>
     memref.store %constant7, %buf73_0[%c0] : memref<16xi32>
     %c1_ul1 = arith.constant 1 : i32
-    aie.use_lock(%lockCore, "Release", %c1_ul1)
+    aie.use_lock(@coreLock, "Release", %c1_ul1)
 
     %c0_ul2 = arith.constant 0 : i32
-    aie.use_lock(%lockCore, "Acquire", %c0_ul2)
+    aie.use_lock(@coreLock, "Acquire", %c0_ul2)
     %c1_ul3 = arith.constant 1 : i32
-    aie.use_lock(%lockCore, "Release", %c1_ul3)
-    // aie.use_lock(%dummyLock, "Acquire", %{{.*}})
-    // aie.use_lock(%dummyLock, "Release", %{{.*}})
+    aie.use_lock(@coreLock, "Release", %c1_ul3)
+    // aie.use_lock(@dummyLock, "Acquire", %{{.*}})
+    // aie.use_lock(@dummyLock, "Release", %{{.*}})
 
     %c0_ul4 = arith.constant 0 : i32
-    aie.use_lock(%lockCore, "Acquire", %c0_ul4)
+    aie.use_lock(@coreLock, "Acquire", %c0_ul4)
     memref.store %constant13, %buf73_0[%c0] : memref<16xi32>
     %c1_ul5 = arith.constant 1 : i32
-    aie.use_lock(%lockCore, "Release", %c1_ul5)
+    aie.use_lock(@coreLock, "Release", %c1_ul5)
 
     %c0_ul6 = arith.constant 0 : i32
-    aie.use_lock(%lockCore, "Acquire", %c0_ul6)
+    aie.use_lock(@coreLock, "Acquire", %c0_ul6)
     %c1_ul7 = arith.constant 1 : i32
-    aie.use_lock(%lockCore, "Release", %c1_ul7)
-    // aie.use_lock(%dummyLock, "Acquire", %{{.*}})
-    // aie.use_lock(%dummyLock, "Release", %{{.*}})
+    aie.use_lock(@coreLock, "Release", %c1_ul7)
+    // aie.use_lock(@dummyLock, "Acquire", %{{.*}})
+    // aie.use_lock(@dummyLock, "Release", %{{.*}})
 
     %c0_ul8 = arith.constant 0 : i32
-    aie.use_lock(%lockCore, "Acquire", %c0_ul8)
+    aie.use_lock(@coreLock, "Acquire", %c0_ul8)
     memref.store %constant43, %buf73_0[%c0] : memref<16xi32>
     %c1_ul9 = arith.constant 1 : i32
-    aie.use_lock(%lockCore, "Release", %c1_ul9)
+    aie.use_lock(@coreLock, "Release", %c1_ul9)
 
     %c0_ul10 = arith.constant 0 : i32
-    aie.use_lock(%lockCore, "Acquire", %c0_ul10)
+    aie.use_lock(@coreLock, "Acquire", %c0_ul10)
     %c1_ul11 = arith.constant 1 : i32
-    aie.use_lock(%lockCore, "Release", %c1_ul11)
-    // aie.use_lock(%dummyLock, "Acquire", %{{.*}})
-    // aie.use_lock(%dummyLock, "Release", %{{.*}})
+    aie.use_lock(@coreLock, "Release", %c1_ul11)
+    // aie.use_lock(@dummyLock, "Acquire", %{{.*}})
+    // aie.use_lock(@dummyLock, "Release", %{{.*}})
 
     %c0_ul12 = arith.constant 0 : i32
-    aie.use_lock(%lockCore, "Acquire", %c0_ul12)
+    aie.use_lock(@coreLock, "Acquire", %c0_ul12)
     memref.store %constant47, %buf73_0[%c0] : memref<16xi32>
     %c1_ul13 = arith.constant 1 : i32
-    aie.use_lock(%lockCore, "Release", %c1_ul13)
+    aie.use_lock(@coreLock, "Release", %c1_ul13)
 
     %c0_ul14 = arith.constant 0 : i32
-    aie.use_lock(%lockCore, "Acquire", %c0_ul14)
+    aie.use_lock(@coreLock, "Acquire", %c0_ul14)
     %c1_ul15 = arith.constant 1 : i32
-    aie.use_lock(%lockCore, "Release", %c1_ul15)
-    // aie.use_lock(%dummyLock, "Acquire", %{{.*}})
-    // aie.use_lock(%dummyLock, "Release", %{{.*}})
+    aie.use_lock(@coreLock, "Release", %c1_ul15)
+    // aie.use_lock(@dummyLock, "Acquire", %{{.*}})
+    // aie.use_lock(@dummyLock, "Release", %{{.*}})
 
     aie.end
   }

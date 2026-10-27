@@ -10,15 +10,15 @@
 module @test_invalid_lock_value {
   aie.device(npu2) {
     %tile22 = aie.tile(2, 2)
-    %lock22_0 = aie.lock(%tile22, 0)  {init = 1 : i32}
-    %lock22_15 = aie.lock(%tile22, 15)  {init = 0 : i32}
+    aie.lock @lock22_0(%tile22, 0) {init = 1 : i32}
+    aie.lock @lock22_15(%tile22, 15) {init = 0 : i32}
 
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
         // Set some runtime parameters before starting execution
 
         // CHECK: Lock value exceeds the maximum value
         %lock22_0_v1024 = arith.constant 1024 : i32
-        aiex.set_lock(%lock22_0, %lock22_0_v1024)
+        aiex.set_lock(@lock22_0, %lock22_0_v1024)
     }
   }
 }
@@ -28,15 +28,15 @@ module @test_invalid_lock_value {
 module @test_invalid_lock_value {
   aie.device(xcvc1902) {
     %tile22 = aie.tile(2, 2)
-    %lock22_0 = aie.lock(%tile22, 0)  {init = 1 : i32}
-    %lock22_15 = aie.lock(%tile22, 15)  {init = 0 : i32}
+    aie.lock @lock22_0(%tile22, 0) {init = 1 : i32}
+    aie.lock @lock22_15(%tile22, 15) {init = 0 : i32}
 
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
         // Set some runtime parameters before starting execution
 
         // CHECK: SetLockOp is not supported on AIE1.
         %lock22_0_v1 = arith.constant 1 : i32
-        aiex.set_lock(%lock22_0, %lock22_0_v1)
+        aiex.set_lock(@lock22_0, %lock22_0_v1)
     }
   }
 }

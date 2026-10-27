@@ -15,26 +15,26 @@ from aie.iron.device import NPU2Col1
 # REGISTERED: %[[TILE_A:[^ ]+]] = aie.logical_tile<CoreTile>(?, ?)
 # REGISTERED: %[[TILE_B:[^ ]+]] = aie.logical_tile<CoreTile>(?, ?)
 
-# REGISTERED: %[[LOCK_A:[^ ]+]] = aie.lock(%[[TILE_A]])
+# REGISTERED: aie.lock @[[LOCK_A:[^(]+]](%[[TILE_A]])
 # REGISTERED: aie.core(%[[TILE_A]])
 # REGISTERED: scf.while
 # REGISTERED: scf.for
-# REGISTERED: aie.use_lock(%[[LOCK_A]], Acquire,
-# REGISTERED: aie.use_lock(%[[LOCK_A]], AcquireGreaterEqual,
-# REGISTERED: aie.use_lock(%[[LOCK_A]], Release,
+# REGISTERED: aie.use_lock(@[[LOCK_A]], Acquire,
+# REGISTERED: aie.use_lock(@[[LOCK_A]], AcquireGreaterEqual,
+# REGISTERED: aie.use_lock(@[[LOCK_A]], Release,
 # REGISTERED: aie.end
 
-# REGISTERED: %[[LOCK_B:[^ ]+]] = aie.lock(%[[TILE_B]])
+# REGISTERED: aie.lock @[[LOCK_B:[^(]+]](%[[TILE_B]])
 # REGISTERED: aie.core(%[[TILE_B]])
 # REGISTERED: scf.for
-# REGISTERED: aie.use_lock(%[[LOCK_B]], Acquire,
-# REGISTERED: aie.use_lock(%[[LOCK_B]], AcquireGreaterEqual,
-# REGISTERED: aie.use_lock(%[[LOCK_B]], Release,
+# REGISTERED: aie.use_lock(@[[LOCK_B]], Acquire,
+# REGISTERED: aie.use_lock(@[[LOCK_B]], AcquireGreaterEqual,
+# REGISTERED: aie.use_lock(@[[LOCK_B]], Release,
 # REGISTERED: aie.end
 
 # REGISTERED: aie.runtime_sequence()
-# REGISTERED: aiex.set_lock(%[[LOCK_A]],
-# REGISTERED: aiex.set_lock(%[[LOCK_B]],
+# REGISTERED: aiex.set_lock(@[[LOCK_A]],
+# REGISTERED: aiex.set_lock(@[[LOCK_B]],
 
 
 def registered():

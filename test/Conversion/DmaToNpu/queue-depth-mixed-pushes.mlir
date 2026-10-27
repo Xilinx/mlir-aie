@@ -62,9 +62,9 @@ aie.device(npu2) {
 // CHECK-NOT: aiex.npu.maskpoll
 aie.device(npu2) {
   %tile = aie.tile(0, 3)
-  %pl = aie.lock(%tile, 0) {init = 1 : i32}
-  %cl = aie.lock(%tile, 1) {init = 0 : i32}
-  aie.objectfifo_rearm_binding @binding channels(%tile : index) locks(%pl, %cl : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 1, 0>, head_bd_ids = array<i32: 5>, repeat_counts = array<i32: 0>}
+  aie.lock @pl(%tile, 0) {init = 1 : i32}
+  aie.lock @cl(%tile, 1) {init = 0 : i32}
+  aie.objectfifo_rearm_binding @binding channels(%tile : index) locks([@pl, @cl]) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 1, 0>, head_bd_ids = array<i32: 5>, repeat_counts = array<i32: 0>}
   aie.runtime_sequence @rearm() {
     %c0 = arith.constant 0 : i32
     aiex.dma_channel_reset_for(@binding)

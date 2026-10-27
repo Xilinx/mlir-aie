@@ -14,7 +14,7 @@
 // RUN: aie-translate --aie-generate-ldscript --tilecol=0 --tilerow=2 %t.mlir | FileCheck %s --check-prefix=LD
 // RUN: aie-translate --aie-generate-bcf --tilecol=0 --tilerow=2 %t.mlir | FileCheck %s --check-prefix=BCF
 
-// ADDR: aie.buffer(%tile_0_2) {address = 20480 : i32, mem_bank = 1 : i32, sym_name = "out"} : memref<256xi32>
+// ADDR: aie.buffer @out(%tile_0_2) {address = 20480 : i32, mem_bank = 1 : i32} : memref<256xi32>
 // ADDR: stack_size = 20480 : i32
 
 // LD: . = 0x70000;
@@ -30,9 +30,10 @@
 module {
   aie.device(npu1_1col) {
     %tile = aie.tile(0, 2)
-    %out = aie.buffer(%tile) {sym_name = "out"} : memref<256xi32>
+    aie.buffer @out(%tile) : memref<256xi32>
     func.func private @large_stack(memref<256xi32>) attributes {link_with = "large_stack_kernel.o"}
     aie.core(%tile) {
+      %out = aie.get_buffer @out : memref<256xi32>
       func.call @large_stack(%out) : (memref<256xi32>) -> ()
       aie.end
     } {stack_size = 20480 : i32}

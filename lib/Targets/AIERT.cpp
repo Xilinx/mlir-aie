@@ -340,7 +340,7 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
     // expected; if you aren't checking use cast instead as it will at
     // least assert in debug mode with an easier to understand error than
     // dereferencing.
-    lock = cast<AIE::LockOp>(op.getLock().getDefiningOp());
+    lock = op.getLockOp();
     switch (op.getAction()) {
     case AIE::LockAction::Acquire:
     case AIE::LockAction::AcquireGreaterEqual: {
@@ -429,14 +429,17 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
   uint64_t baseAddr = 0;
   if (targetModel.isShimNOCTile(col, row)) {
     auto bufferOp =
-        cast<AIE::ExternalBufferOp>(bdOp.getBuffer().getDefiningOp());
+        cast<AIE::ExternalBufferOp>(bdOp.getBuffer()
+                                        .getDefiningOp<AIE::GetBufferOp>()
+                                        .getBufferOp()
+                                        .getOperation());
     // external buffers aren't required to have an address here because the
     // address might get patched later or the default of zero might be a valid
     // address.
     if (auto addr = bufferOp.getAddress())
       baseAddr = *addr; // NOLINT(bugprone-unchecked-optional-access)
   } else {
-    auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
+    auto bufferOp = bdOp.getBufferOp();
     auto addr = bufferOp.getAddress();
     if (!addr)
       return bufferOp.emitError("buffer must have address assigned");
@@ -446,7 +449,7 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
   if (targetModel.isMemTile(col, row)) {
     // check if buffer is allocated on the same memtile, the west, or the east
     // one
-    auto bufferOp = cast<AIE::BufferOp>(bdOp.getBuffer().getDefiningOp());
+    auto bufferOp = bdOp.getBufferOp();
     auto bufferRow = bufferOp.getTileOp().getRow();
     auto bufferCol = bufferOp.getTileOp().getCol();
     auto addrOffset =

@@ -14,15 +14,15 @@ module {
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
     // expected-error@+1 {{accessed from an unreachable tile}}
-    %buf = aie.buffer(%tile_0_2) {addr = 0xBEEF : i32} : memref<32xi8> 
+    aie.buffer @buf(%tile_0_2) {addr = 0xBEEF : i32} : memref<32xi8>
 
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-          // expected-note@+1 {{user}}
+          // expected-note@+2 {{user}}
+          %buf = aie.get_buffer @buf : memref<32xi8>
           aie.dma_bd(%buf : memref<32xi8> offset = 4 len = 32) {bd_id = 0 : i32}
           aie.end
       }
     }
   }
 }
-

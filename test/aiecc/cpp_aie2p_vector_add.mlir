@@ -24,9 +24,9 @@
 module {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %buf_a = aie.buffer(%tile_0_2) {sym_name = "buf_a"} : memref<256xbf16>
-    %buf_b = aie.buffer(%tile_0_2) {sym_name = "buf_b"} : memref<256xbf16>
-    %buf_c = aie.buffer(%tile_0_2) {sym_name = "buf_c"} : memref<256xbf16>
+    aie.buffer @buf_a(%tile_0_2) : memref<256xbf16>
+    aie.buffer @buf_b(%tile_0_2) : memref<256xbf16>
+    aie.buffer @buf_c(%tile_0_2) : memref<256xbf16>
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
@@ -40,9 +40,12 @@ module {
       // With the broken aie1 fallback, it produces aievec_aie1.add which can't be
       // lowered to LLVM, resulting in empty core function and linker failure.
       scf.for %i = %c0 to %c256 step %c16 {
+        %buf_a = aie.get_buffer @buf_a : memref<256xbf16>
         %a = vector.transfer_read %buf_a[%i], %cst {in_bounds = [true]} : memref<256xbf16>, vector<16xbf16>
+        %buf_b = aie.get_buffer @buf_b : memref<256xbf16>
         %b = vector.transfer_read %buf_b[%i], %cst {in_bounds = [true]} : memref<256xbf16>, vector<16xbf16>
         %c = arith.addf %a, %b : vector<16xbf16>
+        %buf_c = aie.get_buffer @buf_c : memref<256xbf16>
         vector.transfer_write %c, %buf_c[%i] {in_bounds = [true]} : vector<16xbf16>, memref<256xbf16>
       }
       aie.end

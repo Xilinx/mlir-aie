@@ -76,6 +76,12 @@ struct AIENormalizeAddressSpacesPass
 
     // Convert any output types to have the default address space
     device.walk([&](Operation *op) {
+      if (auto buffer = dyn_cast<BufferOp>(op))
+        buffer.setBufferTypeAttr(
+            TypeAttr::get(memRefToDefaultAddressSpace(buffer.getType())));
+      else if (auto buffer = dyn_cast<ExternalBufferOp>(op))
+        buffer.setBufferTypeAttr(
+            TypeAttr::get(memRefToDefaultAddressSpace(buffer.getType())));
       for (Value r : op->getResults())
         r.setType(memRefToDefaultAddressSpace(r.getType()));
     });

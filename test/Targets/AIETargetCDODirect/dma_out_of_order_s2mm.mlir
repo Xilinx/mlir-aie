@@ -60,45 +60,51 @@
 module {
  aie.device(npu2) {
   %t02 = aie.tile(0, 2)
-  %b02 = aie.buffer(%t02) : memref<20 x i32>
+  aie.buffer @b02(%t02) : memref<20 x i32>
   aie.mem(%t02) {
       aie.dma_start(S2MM, 0, ^c0, ^end0, repeat_count = 5) { out_of_order }
     ^c0:
       aie.dma_bd_packet(0, 0)
+      %b02 = aie.get_buffer @b02 : memref<20 x i32>
       aie.dma_bd(%b02 : memref<20 x i32> offset = 0 len = 4) { bd_id = 0 : i32 }
       aie.next_bd ^c1
     ^c1:
       aie.dma_bd_packet(0, 0)
-      aie.dma_bd(%b02 : memref<20 x i32> offset = 8 len = 4) { bd_id = 3 : i32 }
+      %b02_1 = aie.get_buffer @b02 : memref<20 x i32>
+      aie.dma_bd(%b02_1 : memref<20 x i32> offset = 8 len = 4) { bd_id = 3 : i32 }
       aie.next_bd ^c2
     ^c2:
       aie.dma_bd_packet(0, 0)
-      aie.dma_bd(%b02 : memref<20 x i32> offset = 16 len = 4) { bd_id = 7 : i32 }
+      %b02_2 = aie.get_buffer @b02 : memref<20 x i32>
+      aie.dma_bd(%b02_2 : memref<20 x i32> offset = 16 len = 4) { bd_id = 7 : i32 }
       aie.next_bd ^end0
     ^end0:
       aie.end
   }
   %t01 = aie.tile(0, 1)
-  %b01 = aie.buffer(%t01) : memref<8 x i32>
+  aie.buffer @b01(%t01) : memref<8 x i32>
   aie.memtile_dma(%t01) {
       aie.dma_start(S2MM, 0, ^m0, ^end1, repeat_count = 7) { out_of_order }
     ^m0:
       aie.dma_bd_packet(0, 0)
+      %b01 = aie.get_buffer @b01 : memref<8 x i32>
       aie.dma_bd(%b01 : memref<8 x i32> offset = 0 len = 4) { bd_id = 0 : i32 }
       aie.next_bd ^m1
     ^m1:
       aie.dma_bd_packet(0, 0)
-      aie.dma_bd(%b01 : memref<8 x i32> offset = 4 len = 4) { bd_id = 1 : i32 }
+      %b01_1 = aie.get_buffer @b01 : memref<8 x i32>
+      aie.dma_bd(%b01_1 : memref<8 x i32> offset = 4 len = 4) { bd_id = 1 : i32 }
       aie.next_bd ^end1
     ^end1:
       aie.end
   }
   %t12 = aie.tile(1, 2)
-  %b12 = aie.buffer(%t12) : memref<8 x i32>
+  aie.buffer @b12(%t12) : memref<8 x i32>
   aie.mem(%t12) {
       aie.dma_start(S2MM, 0, ^i0, ^end2, repeat_count = 9) { out_of_order }
     ^i0:
       aie.dma_bd_packet(0, 0)
+      %b12 = aie.get_buffer @b12 : memref<8 x i32>
       aie.dma_bd(%b12 : memref<8 x i32> offset = 0 len = 4) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 2, stride = 4, current = 0> }
       aie.next_bd ^end2
     ^end2:

@@ -16,9 +16,9 @@
 module {
   aie.device(npu1) {
     %0 = aie.tile(2, 3)
-    %1 = aie.buffer(%0) {address = 1536 : i32, sym_name = "rtp"} : memref<16xi32>
+    aie.buffer @rtp(%0) {address = 1536 : i32} : memref<16xi32>
     %2 = aie.tile(0, 2)
-    %3 = aie.buffer(%2) {address = 3200 : i32, sym_name = "RTP"} : memref<16xi32>
+    aie.buffer @RTP(%2) {address = 3200 : i32} : memref<16xi32>
     aie.runtime_sequence() {
       %cst_npu_0 = arith.constant 50 : i32
       aiex.npu.rtp_write(@rtp, 0, %cst_npu_0) : i32

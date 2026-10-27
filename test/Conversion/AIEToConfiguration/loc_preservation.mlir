@@ -18,7 +18,7 @@
 
 aie.device(npu1_1col) {
   %12 = aie.tile(0, 2)
-  %buf = aie.buffer(%12) : memref<256xi32>
+  aie.buffer @buf(%12) : memref<256xi32>
   %4 = aie.core(%12) {
     aie.end
   } { elf_file = "core_0_2.elf" } loc(#core_named)

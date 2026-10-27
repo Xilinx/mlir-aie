@@ -206,7 +206,7 @@ def build_3layer(
         s_prev = _layer_sf(prev_blk, sf, 2)
         sa_prev = _skip_sf(prev_blk, sf) if prev_blk.skip else None
         p01, c01, k_prev, *res = prev
-        wts_prev = memref_view(wts.op, [prev_ch * in_c], shift=offs[-1])
+        wts_prev = memref_view(wts.op.result, [prev_ch * in_c], shift=offs[-1])
 
         def feed(n):
             for _ in range(n):
@@ -241,18 +241,20 @@ def build_3layer(
         ):
             # Sliding-window 3-layer pipeline (stride-1, with skip add).
             # Phases — preamble (rows 0,1) → middle (rows 2..in_h-2) → postamble (last row).
-            wts_l1 = memref_view(wts.op, [l1_sz], shift=off_l1)
-            wts_l2 = memref_view(wts.op, [l2_sz], shift=off_l2)
+            wts_l1 = memref_view(wts.op.result, [l1_sz], shift=off_l1)
+            wts_l2 = memref_view(wts.op.result, [l2_sz], shift=off_l2)
             wts_prev = wts_l3 = None
             prev = []
             if split_l3:
                 assert prev_blk is not None
                 wts_prev = memref_view(
-                    wts.op, [prev_blk.layers[1].in_shape[2] * in_c], shift=offs[-1]
+                    wts.op.result,
+                    [prev_blk.layers[1].in_shape[2] * in_c],
+                    shift=offs[-1],
                 )
             else:
                 prev = rest[3:]
-                wts_l3 = memref_view(wts.op, [l3_sz], shift=off_l3)
+                wts_l3 = memref_view(wts.op.result, [l3_sz], shift=off_l3)
             feed, rows_f = _prev_rows(act_in_fifo, wts, prev)
 
             def _pw_row():
@@ -357,15 +359,17 @@ def build_3layer(
         n_l3 = len(l3_args)
 
         def worker_fn(act_in_fifo, wts, p12, c12, p23, k_pw, k_dw, *rest):
-            wts_l1 = memref_view(wts.op, [l1_sz], shift=off_l1)
-            wts_l2 = memref_view(wts.op, [l2_sz], shift=off_l2)
+            wts_l1 = memref_view(wts.op.result, [l1_sz], shift=off_l1)
+            wts_l2 = memref_view(wts.op.result, [l2_sz], shift=off_l2)
             l3, prev = rest[:n_l3], rest[n_l3:]
             wts_l3 = wts_next = None
             if l3:
-                wts_l3 = memref_view(wts.op, [l3_sz], shift=off_l3)
+                wts_l3 = memref_view(wts.op.result, [l3_sz], shift=off_l3)
             if next_blk:
                 wts_next = memref_view(
-                    wts.op, [out_c * next_blk.layers[0].out_shape[2]], shift=offs[3]
+                    wts.op.result,
+                    [out_c * next_blk.layers[0].out_shape[2]],
+                    shift=offs[3],
                 )
             feed, rows_f = _prev_rows(act_in_fifo, wts, prev)
 
@@ -508,8 +512,8 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, wts_tag="chain"):
     f23 = ObjectFifo(dw_out_ty, depth=1)
 
     def worker_fn(act_in_fifo, wts, out_f, p23, c23, k_dw, k_skip):
-        wts_dw = memref_view(wts.op, [dw_wts_sz], shift=off_dw)
-        wts_skip = memref_view(wts.op, [skip_wts_sz], shift=off_skip)
+        wts_dw = memref_view(wts.op.result, [dw_wts_sz], shift=off_dw)
+        wts_skip = memref_view(wts.op.result, [skip_wts_sz], shift=off_skip)
 
         def _dw(top, mid, bot, border):
             row_out = p23.acquire(1)
@@ -691,12 +695,12 @@ def build_fused_pair(
         kb_skip,
         *a_pw,
     ):
-        wa1 = memref_view(wts.op, [a_l1], shift=offs[0]) if a_pw else None
-        wa2 = memref_view(wts.op, [a_l2], shift=offs[1])
-        wa3 = memref_view(wts.op, [a_l3], shift=offs[2])
-        wb1 = memref_view(wts.op, [b_l1], shift=offs[3])
-        wb2 = memref_view(wts.op, [b_l2], shift=offs[4])
-        wb3 = memref_view(wts.op, [b_l3], shift=offs[5])
+        wa1 = memref_view(wts.op.result, [a_l1], shift=offs[0]) if a_pw else None
+        wa2 = memref_view(wts.op.result, [a_l2], shift=offs[1])
+        wa3 = memref_view(wts.op.result, [a_l3], shift=offs[2])
+        wb1 = memref_view(wts.op.result, [b_l1], shift=offs[3])
+        wb2 = memref_view(wts.op.result, [b_l2], shift=offs[4])
+        wb3 = memref_view(wts.op.result, [b_l3], shift=offs[5])
 
         # ── Per-block step closures ───────────────────────────────────
         # a-block reads act_in (the design's input fifo) and writes f_a_b.

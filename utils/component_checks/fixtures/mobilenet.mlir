@@ -137,63 +137,63 @@ module {
     aie.objectfifo @post_L2_wts_2(%logical_mem_47, {%logical_core_28}, 2 : i32) : !aie.objectfifo<memref<409600xi8>>  -> !aie.objectfifo<memref<10240xi8>> = [dense<0> : memref<409600xi8>, dense<0> : memref<409600xi8>]
     aie.objectfifo @post_L2_wts_3(%logical_mem_48, {%logical_core_29}, 2 : i32) : !aie.objectfifo<memref<409600xi8>>  -> !aie.objectfifo<memref<10240xi8>> = [dense<0> : memref<409600xi8>, dense<0> : memref<409600xi8>]
     aie.objectfifo @post_L2_wts_4(%logical_mem_49, {%logical_core_30}, 2 : i32) : !aie.objectfifo<memref<409600xi8>>  -> !aie.objectfifo<memref<10240xi8>> = [dense<0> : memref<409600xi8>, dense<0> : memref<409600xi8>]
-    %buf_0 = aie.buffer(%logical_core) {sym_name = "buf_0"} : memref<1152xi8> = dense<0>
+    aie.buffer @buf_0(%logical_core) : memref<1152xi8> = dense<0>
     func.func private @"1b12b3d8_conv2dk3_stride2_i8"(memref<1792xi8>, memref<1792xi8>, memref<1792xi8>, memref<1152xi8>, memref<1792xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_stride2_i8_1b12b3d8.o"}
-    %buf_1 = aie.buffer(%logical_core_0) {sym_name = "buf_1"} : memref<448xi8> = dense<0>
+    aie.buffer @buf_1(%logical_core_0) : memref<448xi8> = dense<0>
     func.func private @"77adb2a9_conv2dk3_dw_stride1_relu_ui8_ui8"(memref<1792xui8>, memref<1792xui8>, memref<1792xui8>, memref<144xi8>, memref<1792xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride1_relu_ui8_ui8_77adb2a9.o"}
     func.func private @"36e6bbc5_conv2dk1_skip_ui8_ui8_i8"(memref<1792xui8>, memref<256xi8>, memref<1792xi8>, memref<1792xui8>, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk1_skip_ui8_ui8_i8_36e6bbc5.o"}
-    %buf_2 = aie.buffer(%logical_core_1) {sym_name = "buf_2"} : memref<1600xi8> = dense<0>
+    aie.buffer @buf_2(%logical_core_1) : memref<1600xi8> = dense<0>
     func.func private @"0d52fac7_conv2dk1_relu_i8_ui8"(memref<1792xi8>, memref<1024xi8>, memref<7168xui8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_relu_i8_ui8_0d52fac7.o"}
     func.func private @"167332cb_conv2dk3_dw_stride2_relu_ui8_ui8"(memref<7168xui8>, memref<7168xui8>, memref<7168xui8>, memref<576xi8>, memref<3584xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride2_relu_ui8_ui8_167332cb.o"}
-    %buf_3 = aie.buffer(%logical_core_2) {sym_name = "buf_3"} : memref<3968xi8> = dense<0>
+    aie.buffer @buf_3(%logical_core_2) : memref<3968xi8> = dense<0>
     func.func private @b33ddc7d_conv2dk1_relu_i8_ui8(memref<1344xi8>, memref<1728xi8>, memref<4032xui8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_relu_i8_ui8_b33ddc7d.o"}
     func.func private @a63dee7f_conv2dk3_dw_stride1_relu_ui8_ui8(memref<4032xui8>, memref<4032xui8>, memref<4032xui8>, memref<648xi8>, memref<4032xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride1_relu_ui8_ui8_a63dee7f.o"}
     func.func private @f7ee2b1f_conv2dk1_ui8_i8(memref<3584xui8>, memref<1536xi8>, memref<1344xi8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_ui8_i8_f7ee2b1f.o"}
-    %buf_4 = aie.buffer(%logical_core_3) {sym_name = "buf_4"} : memref<11840xi8> = dense<0>
+    aie.buffer @buf_4(%logical_core_3) : memref<11840xi8> = dense<0>
     func.func private @c374361d_conv2dk3_dw_stride2_relu_ui8_ui8(memref<4032xui8>, memref<4032xui8>, memref<4032xui8>, memref<648xi8>, memref<2016xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride2_relu_ui8_ui8_c374361d.o"}
     func.func private @aff12032_conv2dk1_ui8_i8(memref<2016xui8>, memref<2880xi8>, memref<1120xi8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_ui8_i8_aff12032.o"}
     func.func private @"453c6c71_conv2dk1_relu_i8_ui8"(memref<1120xi8>, memref<4800xi8>, memref<3360xui8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_relu_i8_ui8_453c6c71.o"}
     func.func private @"8d516248_conv2dk1_skip_ui8_i8_i8"(memref<4032xui8>, memref<1728xi8>, memref<1344xi8>, memref<1344xi8>, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk1_skip_ui8_i8_i8_8d516248.o"}
-    %buf_5 = aie.buffer(%logical_core_4) {sym_name = "buf_5"} : memref<16576xi8> = dense<0>
+    aie.buffer @buf_5(%logical_core_4) : memref<16576xi8> = dense<0>
     func.func private @"3e7b1aaa_conv2dk3_dw_stride1_relu_ui8_ui8"(memref<3360xui8>, memref<3360xui8>, memref<3360xui8>, memref<1080xi8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride1_relu_ui8_ui8_3e7b1aaa.o"}
     func.func private @"6d1fcc7d_conv2dk1_skip_ui8_i8_i8"(memref<3360xui8>, memref<4800xi8>, memref<1120xi8>, memref<1120xi8>, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk1_skip_ui8_i8_i8_6d1fcc7d.o"}
-    %buf_6 = aie.buffer(%logical_core_5) {sym_name = "buf_6"} : memref<30976xi8> = dense<0>
+    aie.buffer @buf_6(%logical_core_5) : memref<30976xi8> = dense<0>
     func.func private @b8f588ff_conv2dk1_relu_i8_ui8(memref<1120xi8>, memref<9600xi8>, memref<6720xui8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_relu_i8_ui8_b8f588ff.o"}
     func.func private @"5a8aa48c_conv2dk3_dw_stride2_relu_ui8_ui8"(memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<2160xi8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride2_relu_ui8_ui8_5a8aa48c.o"}
     func.func private @a7cf1c86_conv2dk1_ui8_i8(memref<3360xui8>, memref<19200xi8>, memref<1120xi8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_ui8_i8_a7cf1c86.o"}
-    %buf_7 = aie.buffer(%logical_core_6) {sym_name = "buf_7"} : memref<33856xi8> = dense<0>
+    aie.buffer @buf_7(%logical_core_6) : memref<33856xi8> = dense<0>
     func.func private @ee5a41d0_conv2dk1_relu_i8_ui8(memref<1120xi8>, memref<16000xi8>, memref<2800xui8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_relu_i8_ui8_ee5a41d0.o"}
     func.func private @"4cb11a8b_conv2dk3_dw_stride1_relu_ui8_ui8"(memref<2800xui8>, memref<2800xui8>, memref<2800xui8>, memref<1800xi8>, memref<2800xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride1_relu_ui8_ui8_4cb11a8b.o"}
     func.func private @f245367d_conv2dk1_skip_ui8_i8_i8(memref<2800xui8>, memref<16000xi8>, memref<1120xi8>, memref<1120xi8>, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk1_skip_ui8_i8_i8_f245367d.o"}
-    %buf_8 = aie.buffer(%logical_core_7) {sym_name = "buf_8"} : memref<62208xi8> = dense<0>
+    aie.buffer @buf_8(%logical_core_7) : memref<62208xi8> = dense<0>
     func.func private @a74d4d9a_conv2dk3_dw_stride1_relu_ui8_ui8(memref<2576xui8>, memref<2576xui8>, memref<2576xui8>, memref<1656xi8>, memref<2576xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride1_relu_ui8_ui8_a74d4d9a.o"}
     func.func private @a7eba513_conv2dk1_skip_ui8_i8_i8(memref<2576xui8>, memref<14720xi8>, memref<1120xi8>, memref<1120xi8>, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk1_skip_ui8_i8_i8_a7eba513.o"}
     func.func private @"14a4ba36_conv2dk1_relu_i8_ui8"(memref<1120xi8>, memref<14720xi8>, memref<2576xui8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_relu_i8_ui8_14a4ba36.o"}
-    %buf_9 = aie.buffer(%logical_core_8) {sym_name = "buf_9"} : memref<38400xi8> = dense<0>
+    aie.buffer @buf_9(%logical_core_8) : memref<38400xi8> = dense<0>
     func.func private @"62fc3ee5_conv2dk1_relu_i8_ui8"(memref<1120xi8>, memref<38400xi8>, memref<6720xui8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_relu_i8_ui8_62fc3ee5.o"}
-    %buf_10 = aie.buffer(%logical_core_9) {sym_name = "buf_10"} : memref<4320xi8> = dense<0>
+    aie.buffer @buf_10(%logical_core_9) : memref<4320xi8> = dense<0>
     func.func private @"61f9b950_conv2dk3_dw_stride1_relu_ui8_ui8"(memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<4320xi8>, memref<6720xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride1_relu_ui8_ui8_61f9b950.o"}
-    %buf_11 = aie.buffer(%logical_core_10) {sym_name = "buf_11"} : memref<53760xi8> = dense<0>
+    aie.buffer @buf_11(%logical_core_10) : memref<53760xi8> = dense<0>
     func.func private @c261f057_conv2dk1_ui8_i8(memref<6720xui8>, memref<53760xi8>, memref<1568xi8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_ui8_i8_c261f057.o"}
-    %buf_12 = aie.buffer(%logical_core_11) {sym_name = "buf_12"} : memref<37632xi8> = dense<0>
+    aie.buffer @buf_12(%logical_core_11) : memref<37632xi8> = dense<0>
     func.func private @"9c08375a_conv2dk1_relu_i8_ui8"(memref<1568xi8>, memref<37632xi8>, memref<4704xui8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_relu_i8_ui8_9c08375a.o"}
-    %buf_13 = aie.buffer(%logical_core_12) {sym_name = "buf_13"} : memref<3024xi8> = dense<0>
+    aie.buffer @buf_13(%logical_core_12) : memref<3024xi8> = dense<0>
     func.func private @"1461e5eb_conv2dk3_dw_stride1_relu_ui8_ui8"(memref<4704xui8>, memref<4704xui8>, memref<4704xui8>, memref<3024xi8>, memref<4704xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride1_relu_ui8_ui8_1461e5eb.o"}
-    %buf_14 = aie.buffer(%logical_core_13) {sym_name = "buf_14"} : memref<37632xi8> = dense<0>
+    aie.buffer @buf_14(%logical_core_13) : memref<37632xi8> = dense<0>
     func.func private @"0de09bc1_conv2dk1_skip_ui8_i8_i8"(memref<4704xui8>, memref<37632xi8>, memref<1568xi8>, memref<1568xi8>, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk1_skip_ui8_i8_i8_0de09bc1.o"}
-    %buf_15 = aie.buffer(%logical_core_14) {sym_name = "buf_15"} : memref<37632xi8> = dense<0>
-    %buf_16 = aie.buffer(%logical_core_15) {sym_name = "buf_16"} : memref<29952xi8> = dense<0>
+    aie.buffer @buf_15(%logical_core_14) : memref<37632xi8> = dense<0>
+    aie.buffer @buf_16(%logical_core_15) : memref<29952xi8> = dense<0>
     func.func private @"2aac7224_conv2dk3_dw_stride2_relu_ui8_ui8"(memref<4704xui8>, memref<4704xui8>, memref<4704xui8>, memref<3024xi8>, memref<2352xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "conv2dk3_dw_stride2_relu_ui8_ui8_2aac7224.o"}
     func.func private @"6a5d1c89_conv2dk1_ui8_i8"(memref<2352xui8>, memref<26880xi8>, memref<560xi8>, i32, i32, i32, i32) attributes {link_with = "conv2dk1_ui8_i8_6a5d1c89.o"}
     func.func private @e10f2832_bn13_1_conv2dk1_i8_ui8_partial_width_put_new(memref<560xi8>, memref<19200xi8>, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn13_1_conv2dk1_i8_ui8_partial_width_put_new_e10f2832.o"}
     func.func private @ef8b7952_bn13_1_conv2dk1_i8_ui8_partial_width_get_new(memref<560xi8>, memref<19200xi8>, memref<6720xui8>, i32, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn13_1_conv2dk1_i8_ui8_partial_width_get_new_ef8b7952.o"}
-    %bn13_2_wts_static = aie.buffer(%logical_core_18) {sym_name = "bn13_2_wts_static"} : memref<8640xi8> = dense<0>
+    aie.buffer @bn13_2_wts_static(%logical_core_18) : memref<8640xi8> = dense<0>
     func.func private @db3aae29_bn13_conv2dk3_ui8_out_split(memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<8640xi8>, memref<3360xui8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn13_conv2dk3_ui8_out_split_db3aae29.o"}
     func.func private @"612b8218_bn13_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new"(memref<3360xui8>, memref<19200xi8>, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn13_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new_612b8218.o"}
     func.func private @f8d47821_bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(memref<3360xui8>, memref<19200xi8>, memref<560xi8>, memref<560xi8>, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new_f8d47821.o"}
     func.func private @d244edb6_bn14_1_conv2dk1_i8_ui8_partial_width_put_new(memref<560xi8>, memref<19200xi8>, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn14_1_conv2dk1_i8_ui8_partial_width_put_new_d244edb6.o"}
     func.func private @"7a24c72f_bn14_1_conv2dk1_i8_ui8_partial_width_get_new"(memref<560xi8>, memref<19200xi8>, memref<6720xui8>, i32, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn14_1_conv2dk1_i8_ui8_partial_width_get_new_7a24c72f.o"}
-    %bn14_2_wts_static = aie.buffer(%logical_core_23) {sym_name = "bn14_2_wts_static"} : memref<8640xi8> = dense<0>
+    aie.buffer @bn14_2_wts_static(%logical_core_23) : memref<8640xi8> = dense<0>
     func.func private @a1fb6ef1_bn14_conv2dk3_ui8_out_split(memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<8640xi8>, memref<3360xui8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn14_conv2dk3_ui8_out_split_a1fb6ef1.o"}
     func.func private @aa85880e_bn14_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new(memref<3360xui8>, memref<19200xi8>, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn14_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new_aa85880e.o"}
     func.func private @"9336eff4_bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new"(memref<3360xui8>, memref<19200xi8>, memref<560xi8>, memref<560xi8>, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32) attributes {link_with = "bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new_9336eff4.o"}
@@ -218,6 +218,7 @@ module {
         %c0_i32 = arith.constant 0 : i32
         %c8_i32_54 = arith.constant 8 : i32
         %c0_i32_55 = arith.constant 0 : i32
+        %buf_0 = aie.get_buffer @buf_0 : memref<1152xi8>
         func.call @"1b12b3d8_conv2dk3_stride2_i8"(%collapse_shape, %collapse_shape_50, %collapse_shape_51, %buf_0, %collapse_shape_52, %c224_i32, %c8_i32, %c16_i32, %c3_i32, %c3_i32_53, %c0_i32, %c8_i32_54, %c0_i32_55) : (memref<1792xi8>, memref<1792xi8>, memref<1792xi8>, memref<1152xi8>, memref<1792xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
         aie.objectfifo.release @of1(Produce, 1)
         aie.objectfifo.release @of0(Consume, 1)
@@ -239,7 +240,8 @@ module {
           %c1_i32 = arith.constant 1 : i32
           %c8_i32_67 = arith.constant 8 : i32
           %c0_i32_68 = arith.constant 0 : i32
-          func.call @"1b12b3d8_conv2dk3_stride2_i8"(%collapse_shape_58, %collapse_shape_59, %collapse_shape_60, %buf_0, %collapse_shape_61, %c224_i32_62, %c8_i32_63, %c16_i32_64, %c3_i32_65, %c3_i32_66, %c1_i32, %c8_i32_67, %c0_i32_68) : (memref<1792xi8>, memref<1792xi8>, memref<1792xi8>, memref<1152xi8>, memref<1792xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
+          %buf_0_1 = aie.get_buffer @buf_0 : memref<1152xi8>
+          func.call @"1b12b3d8_conv2dk3_stride2_i8"(%collapse_shape_58, %collapse_shape_59, %collapse_shape_60, %buf_0_1, %collapse_shape_61, %c224_i32_62, %c8_i32_63, %c16_i32_64, %c3_i32_65, %c3_i32_66, %c1_i32, %c8_i32_67, %c0_i32_68) : (memref<1792xi8>, memref<1792xi8>, memref<1792xi8>, memref<1152xi8>, memref<1792xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of0(Consume, 2)
           aie.objectfifo.release @of1(Produce, 1)
         }
@@ -253,6 +255,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c0_50 = arith.constant 0 : index
+        %buf_1 = aie.get_buffer @buf_1 : memref<448xi8>
         %view = memref.view %buf_1[%c0_50][] : memref<448xi8> to memref<144xi8>
         %c192 = arith.constant 192 : index
         %view_51 = memref.view %buf_1[%c192][] : memref<448xi8> to memref<256xi8>
@@ -359,6 +362,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c0_50 = arith.constant 0 : index
+        %buf_2 = aie.get_buffer @buf_2 : memref<1600xi8>
         %view = memref.view %buf_2[%c0_50][] : memref<1600xi8> to memref<1024xi8>
         %c1024 = arith.constant 1024 : index
         %view_51 = memref.view %buf_2[%c1024][] : memref<1600xi8> to memref<576xi8>
@@ -447,6 +451,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c0_50 = arith.constant 0 : index
+        %buf_3 = aie.get_buffer @buf_3 : memref<3968xi8>
         %view = memref.view %buf_3[%c0_50][] : memref<3968xi8> to memref<1728xi8>
         %c1728 = arith.constant 1728 : index
         %view_51 = memref.view %buf_3[%c1728][] : memref<3968xi8> to memref<648xi8>
@@ -576,6 +581,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c0_50 = arith.constant 0 : index
+        %buf_4 = aie.get_buffer @buf_4 : memref<11840xi8>
         %view = memref.view %buf_4[%c0_50][] : memref<11840xi8> to memref<1728xi8>
         %c1728 = arith.constant 1728 : index
         %view_51 = memref.view %buf_4[%c1728][] : memref<11840xi8> to memref<648xi8>
@@ -770,6 +776,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c0_50 = arith.constant 0 : index
+        %buf_5 = aie.get_buffer @buf_5 : memref<16576xi8>
         %view = memref.view %buf_5[%c0_50][] : memref<16576xi8> to memref<1080xi8>
         %c1088 = arith.constant 1088 : index
         %view_51 = memref.view %buf_5[%c1088][] : memref<16576xi8> to memref<4800xi8>
@@ -1084,6 +1091,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c0_50 = arith.constant 0 : index
+        %buf_6 = aie.get_buffer @buf_6 : memref<30976xi8>
         %view = memref.view %buf_6[%c0_50][] : memref<30976xi8> to memref<9600xi8>
         %c9600 = arith.constant 9600 : index
         %view_51 = memref.view %buf_6[%c9600][] : memref<30976xi8> to memref<2160xi8>
@@ -1196,6 +1204,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c0_50 = arith.constant 0 : index
+        %buf_7 = aie.get_buffer @buf_7 : memref<33856xi8>
         %view = memref.view %buf_7[%c0_50][] : memref<33856xi8> to memref<16000xi8>
         %c16000 = arith.constant 16000 : index
         %view_51 = memref.view %buf_7[%c16000][] : memref<33856xi8> to memref<1800xi8>
@@ -1335,6 +1344,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c0_50 = arith.constant 0 : index
+        %buf_8 = aie.get_buffer @buf_8 : memref<62208xi8>
         %view = memref.view %buf_8[%c0_50][] : memref<62208xi8> to memref<14720xi8>
         %c14720 = arith.constant 14720 : index
         %view_51 = memref.view %buf_8[%c14720][] : memref<62208xi8> to memref<1656xi8>
@@ -1696,6 +1706,7 @@ module {
           %c80_i32 = arith.constant 80 : i32
           %c480_i32 = arith.constant 480 : i32
           %c8_i32 = arith.constant 8 : i32
+          %buf_9 = aie.get_buffer @buf_9 : memref<38400xi8>
           func.call @"62fc3ee5_conv2dk1_relu_i8_ui8"(%collapse_shape, %buf_9, %collapse_shape_52, %c14_i32, %c80_i32, %c480_i32, %c8_i32) : (memref<1120xi8>, memref<38400xi8>, memref<6720xui8>, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of25(Consume, 1)
           aie.objectfifo.release @of31(Produce, 1)
@@ -1722,6 +1733,7 @@ module {
         %c0_i32 = arith.constant 0 : i32
         %c7_i32 = arith.constant 7 : i32
         %c0_i32_54 = arith.constant 0 : i32
+        %buf_10 = aie.get_buffer @buf_10 : memref<4320xi8>
         func.call @"61f9b950_conv2dk3_dw_stride1_relu_ui8_ui8"(%collapse_shape, %collapse_shape_50, %collapse_shape_51, %buf_10, %collapse_shape_52, %c14_i32, %c1_i32, %c480_i32, %c3_i32, %c3_i32_53, %c0_i32, %c7_i32, %c0_i32_54) : (memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<4320xi8>, memref<6720xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
         aie.objectfifo.release @of32(Produce, 1)
         %c0_55 = arith.constant 0 : index
@@ -1742,7 +1754,8 @@ module {
           %c1_i32_77 = arith.constant 1 : i32
           %c7_i32_78 = arith.constant 7 : i32
           %c0_i32_79 = arith.constant 0 : i32
-          func.call @"61f9b950_conv2dk3_dw_stride1_relu_ui8_ui8"(%collapse_shape_68, %collapse_shape_69, %collapse_shape_70, %buf_10, %collapse_shape_71, %c14_i32_72, %c1_i32_73, %c480_i32_74, %c3_i32_75, %c3_i32_76, %c1_i32_77, %c7_i32_78, %c0_i32_79) : (memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<4320xi8>, memref<6720xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
+          %buf_10_1 = aie.get_buffer @buf_10 : memref<4320xi8>
+          func.call @"61f9b950_conv2dk3_dw_stride1_relu_ui8_ui8"(%collapse_shape_68, %collapse_shape_69, %collapse_shape_70, %buf_10_1, %collapse_shape_71, %c14_i32_72, %c1_i32_73, %c480_i32_74, %c3_i32_75, %c3_i32_76, %c1_i32_77, %c7_i32_78, %c0_i32_79) : (memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<4320xi8>, memref<6720xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of31(Consume, 1)
           aie.objectfifo.release @of32(Produce, 1)
         }
@@ -1783,6 +1796,7 @@ module {
           %c480_i32 = arith.constant 480 : i32
           %c112_i32 = arith.constant 112 : i32
           %c9_i32 = arith.constant 9 : i32
+          %buf_11 = aie.get_buffer @buf_11 : memref<53760xi8>
           func.call @c261f057_conv2dk1_ui8_i8(%collapse_shape, %buf_11, %collapse_shape_52, %c14_i32, %c480_i32, %c112_i32, %c9_i32) : (memref<6720xui8>, memref<53760xi8>, memref<1568xi8>, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of32(Consume, 1)
           aie.objectfifo.release @of33(Produce, 1)
@@ -1807,6 +1821,7 @@ module {
           %c112_i32 = arith.constant 112 : i32
           %c336_i32 = arith.constant 336 : i32
           %c9_i32 = arith.constant 9 : i32
+          %buf_12 = aie.get_buffer @buf_12 : memref<37632xi8>
           func.call @"9c08375a_conv2dk1_relu_i8_ui8"(%collapse_shape, %buf_12, %collapse_shape_52, %c14_i32, %c112_i32, %c336_i32, %c9_i32) : (memref<1568xi8>, memref<37632xi8>, memref<4704xui8>, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of33(Consume, 1)
           aie.objectfifo.release @of34(Produce, 1)
@@ -1833,6 +1848,7 @@ module {
         %c0_i32 = arith.constant 0 : i32
         %c8_i32 = arith.constant 8 : i32
         %c0_i32_54 = arith.constant 0 : i32
+        %buf_13 = aie.get_buffer @buf_13 : memref<3024xi8>
         func.call @"1461e5eb_conv2dk3_dw_stride1_relu_ui8_ui8"(%collapse_shape, %collapse_shape_50, %collapse_shape_51, %buf_13, %collapse_shape_52, %c14_i32, %c1_i32, %c336_i32, %c3_i32, %c3_i32_53, %c0_i32, %c8_i32, %c0_i32_54) : (memref<4704xui8>, memref<4704xui8>, memref<4704xui8>, memref<3024xi8>, memref<4704xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
         aie.objectfifo.release @of35(Produce, 1)
         %c0_55 = arith.constant 0 : index
@@ -1853,7 +1869,8 @@ module {
           %c1_i32_77 = arith.constant 1 : i32
           %c8_i32_78 = arith.constant 8 : i32
           %c0_i32_79 = arith.constant 0 : i32
-          func.call @"1461e5eb_conv2dk3_dw_stride1_relu_ui8_ui8"(%collapse_shape_68, %collapse_shape_69, %collapse_shape_70, %buf_13, %collapse_shape_71, %c14_i32_72, %c1_i32_73, %c336_i32_74, %c3_i32_75, %c3_i32_76, %c1_i32_77, %c8_i32_78, %c0_i32_79) : (memref<4704xui8>, memref<4704xui8>, memref<4704xui8>, memref<3024xi8>, memref<4704xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
+          %buf_13_1 = aie.get_buffer @buf_13 : memref<3024xi8>
+          func.call @"1461e5eb_conv2dk3_dw_stride1_relu_ui8_ui8"(%collapse_shape_68, %collapse_shape_69, %collapse_shape_70, %buf_13_1, %collapse_shape_71, %c14_i32_72, %c1_i32_73, %c336_i32_74, %c3_i32_75, %c3_i32_76, %c1_i32_77, %c8_i32_78, %c0_i32_79) : (memref<4704xui8>, memref<4704xui8>, memref<4704xui8>, memref<3024xi8>, memref<4704xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of34(Consume, 1)
           aie.objectfifo.release @of35(Produce, 1)
         }
@@ -1897,6 +1914,7 @@ module {
           %c112_i32 = arith.constant 112 : i32
           %c12_i32 = arith.constant 12 : i32
           %c1_i32 = arith.constant 1 : i32
+          %buf_14 = aie.get_buffer @buf_14 : memref<37632xi8>
           func.call @"0de09bc1_conv2dk1_skip_ui8_i8_i8"(%collapse_shape, %buf_14, %collapse_shape_52, %collapse_shape_53, %c14_i32, %c336_i32, %c112_i32, %c12_i32, %c1_i32) : (memref<4704xui8>, memref<37632xi8>, memref<1568xi8>, memref<1568xi8>, i32, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of35(Consume, 1)
           aie.objectfifo.release @of36(Produce, 1)
@@ -1922,6 +1940,7 @@ module {
           %c112_i32 = arith.constant 112 : i32
           %c336_i32 = arith.constant 336 : i32
           %c8_i32 = arith.constant 8 : i32
+          %buf_15 = aie.get_buffer @buf_15 : memref<37632xi8>
           func.call @"9c08375a_conv2dk1_relu_i8_ui8"(%collapse_shape, %buf_15, %collapse_shape_52, %c14_i32, %c112_i32, %c336_i32, %c8_i32) : (memref<1568xi8>, memref<37632xi8>, memref<4704xui8>, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of36(Consume, 1)
           aie.objectfifo.release @of37(Produce, 1)
@@ -1935,6 +1954,7 @@ module {
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
         %c0_50 = arith.constant 0 : index
+        %buf_16 = aie.get_buffer @buf_16 : memref<29952xi8>
         %view = memref.view %buf_16[%c0_50][] : memref<29952xi8> to memref<3024xi8>
         %c3072 = arith.constant 3072 : index
         %view_51 = memref.view %buf_16[%c3072][] : memref<29952xi8> to memref<26880xi8>
@@ -2118,6 +2138,7 @@ module {
         %c0_i32 = arith.constant 0 : i32
         %c8_i32 = arith.constant 8 : i32
         %c0_i32_55 = arith.constant 0 : i32
+        %bn13_2_wts_static = aie.get_buffer @bn13_2_wts_static : memref<8640xi8>
         func.call @db3aae29_bn13_conv2dk3_ui8_out_split(%collapse_shape, %collapse_shape_50, %collapse_shape_51, %bn13_2_wts_static, %collapse_shape_52, %collapse_shape_53, %c7_i32, %c1_i32, %c960_i32, %c3_i32, %c3_i32_54, %c0_i32, %c8_i32, %c0_i32_55) : (memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<8640xi8>, memref<3360xui8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
         aie.objectfifo.release @of41(Produce, 1)
         aie.objectfifo.release @of42(Produce, 1)
@@ -2141,7 +2162,8 @@ module {
           %c1_i32_80 = arith.constant 1 : i32
           %c8_i32_81 = arith.constant 8 : i32
           %c0_i32_82 = arith.constant 0 : i32
-          func.call @db3aae29_bn13_conv2dk3_ui8_out_split(%collapse_shape_70, %collapse_shape_71, %collapse_shape_72, %bn13_2_wts_static, %collapse_shape_73, %collapse_shape_74, %c7_i32_75, %c1_i32_76, %c960_i32_77, %c3_i32_78, %c3_i32_79, %c1_i32_80, %c8_i32_81, %c0_i32_82) : (memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<8640xi8>, memref<3360xui8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
+          %bn13_2_wts_static_1 = aie.get_buffer @bn13_2_wts_static : memref<8640xi8>
+          func.call @db3aae29_bn13_conv2dk3_ui8_out_split(%collapse_shape_70, %collapse_shape_71, %collapse_shape_72, %bn13_2_wts_static_1, %collapse_shape_73, %collapse_shape_74, %c7_i32_75, %c1_i32_76, %c960_i32_77, %c3_i32_78, %c3_i32_79, %c1_i32_80, %c8_i32_81, %c0_i32_82) : (memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<8640xi8>, memref<3360xui8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of41(Produce, 1)
           aie.objectfifo.release @of42(Produce, 1)
           aie.objectfifo.release @of40(Consume, 1)
@@ -2328,6 +2350,7 @@ module {
         %c0_i32 = arith.constant 0 : i32
         %c7_i32_55 = arith.constant 7 : i32
         %c0_i32_56 = arith.constant 0 : i32
+        %bn14_2_wts_static = aie.get_buffer @bn14_2_wts_static : memref<8640xi8>
         func.call @a1fb6ef1_bn14_conv2dk3_ui8_out_split(%collapse_shape, %collapse_shape_50, %collapse_shape_51, %bn14_2_wts_static, %collapse_shape_52, %collapse_shape_53, %c7_i32, %c1_i32, %c960_i32, %c3_i32, %c3_i32_54, %c0_i32, %c7_i32_55, %c0_i32_56) : (memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<8640xi8>, memref<3360xui8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
         aie.objectfifo.release @of45(Produce, 1)
         aie.objectfifo.release @of46(Produce, 1)
@@ -2351,7 +2374,8 @@ module {
           %c1_i32_81 = arith.constant 1 : i32
           %c7_i32_82 = arith.constant 7 : i32
           %c0_i32_83 = arith.constant 0 : i32
-          func.call @a1fb6ef1_bn14_conv2dk3_ui8_out_split(%collapse_shape_71, %collapse_shape_72, %collapse_shape_73, %bn14_2_wts_static, %collapse_shape_74, %collapse_shape_75, %c7_i32_76, %c1_i32_77, %c960_i32_78, %c3_i32_79, %c3_i32_80, %c1_i32_81, %c7_i32_82, %c0_i32_83) : (memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<8640xi8>, memref<3360xui8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
+          %bn14_2_wts_static_1 = aie.get_buffer @bn14_2_wts_static : memref<8640xi8>
+          func.call @a1fb6ef1_bn14_conv2dk3_ui8_out_split(%collapse_shape_71, %collapse_shape_72, %collapse_shape_73, %bn14_2_wts_static_1, %collapse_shape_74, %collapse_shape_75, %c7_i32_76, %c1_i32_77, %c960_i32_78, %c3_i32_79, %c3_i32_80, %c1_i32_81, %c7_i32_82, %c0_i32_83) : (memref<6720xui8>, memref<6720xui8>, memref<6720xui8>, memref<8640xi8>, memref<3360xui8>, memref<3360xui8>, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
           aie.objectfifo.release @of45(Produce, 1)
           aie.objectfifo.release @of46(Produce, 1)
           aie.objectfifo.release @of44(Consume, 1)

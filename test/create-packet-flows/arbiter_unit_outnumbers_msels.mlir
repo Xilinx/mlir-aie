@@ -31,16 +31,17 @@ module {
     %t_0_3 = aie.tile(0, 3)
     %t_0_4 = aie.tile(0, 4)
     %t_0_5 = aie.tile(0, 5)
-    %l_0_1_2 = aie.lock(%t_0_1, 2) {init = 1 : i32, sym_name = "l_0_1_2"}
-    %l_0_1_3 = aie.lock(%t_0_1, 3) {init = 0 : i32, sym_name = "l_0_1_3"}
-    %b_0_1_0 = aie.buffer(%t_0_1) {sym_name = "b_0_1_0"} : memref<48xi32>
+    aie.lock @l_0_1_2(%t_0_1, 2) {init = 1 : i32}
+    aie.lock @l_0_1_3(%t_0_1, 3) {init = 0 : i32}
+    aie.buffer @b_0_1_0(%t_0_1) : memref<48xi32>
     %dma_0_1 = aie.memtile_dma(%t_0_1) {
       %c1 = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 3, ^p0b0, ^end)
     ^p0b0:
-      aie.use_lock(%l_0_1_2, AcquireGreaterEqual, %c1)
+      aie.use_lock(@l_0_1_2, AcquireGreaterEqual, %c1)
+      %b_0_1_0 = aie.get_buffer @b_0_1_0 : memref<48xi32>
       aie.dma_bd(%b_0_1_0 : memref<48xi32> offset = 0 len = 48)
-      aie.use_lock(%l_0_1_3, Release, %c1)
+      aie.use_lock(@l_0_1_3, Release, %c1)
       aie.next_bd ^p0b0
     ^end:
       aie.end

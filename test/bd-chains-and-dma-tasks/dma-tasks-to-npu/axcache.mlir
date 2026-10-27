@@ -12,7 +12,7 @@ module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) { address = 0xBEEF : i32 } : memref<32xi8>
+    aie.buffer @buf(%tile_0_1) { address = 0xBEEF : i32 } : memref<32xi8>
 
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       // CHECK: aiex.npu.writebd {axcache = 15 : i32, bd_id = 7 : i32
@@ -32,6 +32,7 @@ module {
 
       // CHECK: aiex.npu.writebd {bd_id = 9 : i32
       %t3 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
+        %buf = aie.get_buffer @buf : memref<32xi8>
         aie.dma_bd(%buf : memref<32xi8> offset = 0 len = 32) {bd_id = 9 : i32}
         aie.end
       } {issue_token = true}

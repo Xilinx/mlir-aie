@@ -14,61 +14,78 @@
 
 aie.device(xcve2802) {
   %t1 = aie.tile(1, 1)
-  %buf = aie.buffer(%t1) : memref<256xi32>
+  aie.buffer @buf(%t1) : memref<256xi32>
   %mem = aie.memtile_dma(%t1) {
     aie.dma_start("MM2S", 0, ^bd0, ^dma1)
     ^dma1:
     aie.dma_start("MM2S", 1, ^bd15, ^dma1)
     ^bd0:
+      %buf = aie.get_buffer @buf : memref<256xi32>
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_1 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_1 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_2 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd3
     ^bd3:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_3 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_3 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd4
     ^bd4:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_4 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_4 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd5
     ^bd5:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_5 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_5 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd6
     ^bd6:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_6 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_6 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd7
     ^bd7:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_7 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_7 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd8
     ^bd8:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_8 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_8 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd9
     ^bd9:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_9 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_9 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd10
     ^bd10:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_10 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_10 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd11
     ^bd11:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_11 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_11 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd12
     ^bd12:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_12 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_12 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd13
     ^bd13:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      %buf_13 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_13 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd14
     ^bd14:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256 sizes = [2] strides = [128])
+      %buf_14 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_14 : memref<256xi32> offset = 0 len = 256 sizes = [2] strides = [128])
       aie.next_bd ^bd15
     ^bd15:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256 sizes = [2] strides = [128] pad [<const_pad_before = 1, const_pad_after = 1>])
+      %buf_15 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_15 : memref<256xi32> offset = 0 len = 256 sizes = [2] strides = [128] pad [<const_pad_before = 1, const_pad_after = 1>])
       aie.next_bd ^bd16
     ^bd16:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256 sizes = [2] strides = [128] pad [<const_pad_before = 1, const_pad_after = 1>])
+      %buf_16 = aie.get_buffer @buf : memref<256xi32>
+      aie.dma_bd(%buf_16 : memref<256xi32> offset = 0 len = 256 sizes = [2] strides = [128] pad [<const_pad_before = 1, const_pad_after = 1>])
       aie.end
   }
 }

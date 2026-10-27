@@ -41,32 +41,6 @@ namespace {
 constexpr llvm::StringLiteral kBookkeepingSlotAttrName =
     "aie.objectfifo.bookkeeping_slot";
 
-/// Build an `scf.index_switch` on `idx` with `n` cases (0..n-1) plus a default;
-/// case k (and the default) yields `elem(k)`. The runtime selection folds to a
-/// constant once the enclosing loops are unrolled. Leaves the builder after the
-/// switch and returns its result.
-Value buildRotatingSwitch(OpBuilder &builder, Location loc, Value idx,
-                          Type resultTy, int n,
-                          llvm::function_ref<Value(int)> elem) {
-  SmallVector<int64_t, 4> caseValues;
-  for (int c = 0; c < n; ++c) {
-    caseValues.push_back(c);
-  }
-  auto cases = DenseI64ArrayAttr::get(builder.getContext(), caseValues);
-  auto switchOp = scf::IndexSwitchOp::create(builder, loc, TypeRange{resultTy},
-                                             idx, cases, n);
-  builder.createBlock(&switchOp.getDefaultRegion());
-  builder.setInsertionPointToStart(&switchOp.getDefaultBlock());
-  scf::YieldOp::create(builder, loc, elem(0));
-  for (int c = 0; c < n; ++c) {
-    builder.createBlock(&switchOp.getCaseRegions()[c]);
-    builder.setInsertionPointToStart(&switchOp.getCaseBlock(c));
-    scf::YieldOp::create(builder, loc, elem(c));
-  }
-  builder.setInsertionPointAfter(switchOp);
-  return switchOp.getResult(0);
-}
-
 /// Rotate the objects in `slots` left by `released`, so that the first slot
 /// again holds the next object to acquire.
 void emitRotateObjects(OpBuilder &builder, Location loc,
@@ -132,7 +106,8 @@ segmentLocksFor(ObjectFifoCoreEndpointOp endpoint, LockAction action) {
 struct LoweringContext {
   DeviceOp device;
   bool usesSemaphoreLocks;
-  DenseMap<Operation *, SmallVector<Value>> poolBuffers{};
+  DenseMap<std::pair<Operation *, Operation *>, SmallVector<Value>>
+      poolBuffers{};
   /// Per-(core, endpoint) runtime bookkeeping: the rotating object index (which
   /// selects binary locks), the objects in rotation order, starting with the
   /// next one to acquire, and, where locks count, the number of objects
@@ -151,7 +126,8 @@ struct LoweringContext {
   }
 
   LockOp lockOf(FlatSymbolRefAttr name) {
-    return lookupNamedOp<LockOp>(device, name.getAttr());
+    return dyn_cast_if_present<LockOp>(
+        SymbolTable::lookupSymbolIn(device, name));
   }
 };
 
@@ -173,13 +149,21 @@ void emitBinaryUseLocks(OpBuilder &builder, Location loc,
       memref::LoadOp::create(builder, loc, counterSlot, ValueRange{});
   Value index =
       arith::IndexCastOp::create(builder, loc, builder.getIndexType(), counter);
-  Type lockTy = locks[0].getType();
   for (int i = 0; i < count; i++) {
-    Value lock =
-        buildRotatingSwitch(builder, loc, index, lockTy, depth, [&](int c) {
-          return locks[(i + c) % depth].getResult();
-        });
-    UseLockOp::create(builder, loc, lock, action, full ? 1 : 0);
+    SmallVector<int64_t> cases(depth);
+    std::iota(cases.begin(), cases.end(), 0);
+    auto switchOp =
+        scf::IndexSwitchOp::create(builder, loc, TypeRange{}, index,
+                                   builder.getDenseI64ArrayAttr(cases), depth);
+    for (int c = -1; c < depth; ++c) {
+      Region &region =
+          c < 0 ? switchOp.getDefaultRegion() : switchOp.getCaseRegions()[c];
+      builder.createBlock(&region);
+      UseLockOp::create(builder, loc, locks[(i + std::max(c, 0)) % depth],
+                        action, full ? 1 : 0);
+      scf::YieldOp::create(builder, loc);
+    }
+    builder.setInsertionPointAfter(switchOp);
   }
 }
 
@@ -364,7 +348,8 @@ struct AIEObjectFifoLowerCoresPass
                     std::pair<Operation *, Operation *> key,
                     LoweringContext &ctx) {
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
-    SmallVector<Value> buffers = ctx.poolBuffers.lookup(pool.getOperation());
+    SmallVector<Value> buffers =
+        ctx.poolBuffers.lookup(std::make_pair(key.first, pool.getOperation()));
     // An endpoint holding one side of a join or distribute reaches only its
     // own run of each object.
     MemRefType accessType = endpoint.getAccessType();
@@ -438,11 +423,12 @@ struct AIEObjectFifoLowerCoresPass
         return;
       }
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
-      auto [buffers, inserted] =
-          ctx.poolBuffers.try_emplace(pool.getOperation());
+      auto [buffers, inserted] = ctx.poolBuffers.try_emplace(
+          std::make_pair(core, pool.getOperation()));
       if (inserted) {
         for (BufferLike buffer : pool.getBufferOps()) {
-          buffers->second.push_back(buffer.getBuffer());
+          buffers->second.push_back(
+              GetBufferOp::create(builder, coreOp.getLoc(), buffer));
         }
         if (static_cast<int64_t>(buffers->second.size()) != pool.getDepth()) {
           pool.emitOpError(

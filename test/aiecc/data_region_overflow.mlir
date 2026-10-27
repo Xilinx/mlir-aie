@@ -31,8 +31,8 @@ module {
 
     // Buffers large enough that the remaining space cannot hold the kernel's
     // 40000-byte .bss, in any placement order.
-    %big0 = aie.buffer(%tile_0_2) { sym_name = "big0" } : memref<16384xi8>
-    %big1 = aie.buffer(%tile_0_2) { sym_name = "big1" } : memref<16384xi8>
+    aie.buffer @big0(%tile_0_2) : memref<16384xi8>
+    aie.buffer @big1(%tile_0_2) : memref<16384xi8>
 
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<64xi8>>
 
@@ -40,7 +40,9 @@ module {
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
+      %big0 = aie.get_buffer @big0 : memref<16384xi8>
       %v0 = memref.load %big0[%c0] : memref<16384xi8>
+      %big1 = aie.get_buffer @big1 : memref<16384xi8>
       memref.store %v0, %big1[%c0] : memref<16384xi8>
       %e = aie.objectfifo.acquire @of_out(Produce, 1) : memref<64xi8>
       func.call @touch(%e) : (memref<64xi8>) -> ()

@@ -117,14 +117,14 @@ static void unrollForeverLoop(scf::WhileOp whileOp, int64_t factor) {
 static bool removeRedundantBinaryAcquires(DeviceOp device) {
   bool erased = false;
   device.walk([&](Block *block) {
-    llvm::DenseSet<Value> held;
+    llvm::DenseSet<Operation *> held;
     SmallVector<UseLockOp> toErase;
     for (Operation &op : *block) {
       auto useLock = dyn_cast<UseLockOp>(&op);
       if (!useLock) {
         continue;
       }
-      Value lock = useLock.getLock();
+      Operation *lock = useLock.getLockOp();
       if (useLock.acquire()) {
         // A binary `Acquire` of a lock already in the held set is redundant.
         if (!held.insert(lock).second) {

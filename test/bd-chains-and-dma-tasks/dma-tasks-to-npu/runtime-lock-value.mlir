@@ -25,14 +25,15 @@
 // CHECK-NOT: aiex.npu.writebd
 aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
-  %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<4096xi32>
-  %prod = aie.lock(%tile_0_1, 0) {init = 0 : i32}
-  %cons = aie.lock(%tile_0_1, 1) {init = 0 : i32}
+  aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<4096xi32>
+  aie.lock @prod(%tile_0_1, 0) {init = 0 : i32}
+  aie.lock @cons(%tile_0_1, 1) {init = 0 : i32}
   aie.runtime_sequence @memtile(%uses: i32) {
     %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-      aie.use_lock(%cons, AcquireGreaterEqual, %uses)
+      aie.use_lock(@cons, AcquireGreaterEqual, %uses)
+      %buf = aie.get_buffer @buf : memref<4096xi32>
       aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096) {bd_id = 0 : i32}
-      aie.use_lock(%prod, Release, %uses)
+      aie.use_lock(@prod, Release, %uses)
       aie.end
     }
   }
@@ -54,14 +55,15 @@ aie.device(npu2) {
 // CHECK-NOT: aiex.npu.writebd
 aie.device(npu2) {
   %tile_0_2 = aie.tile(0, 2)
-  %buf = aie.buffer(%tile_0_2) {address = 4096 : i32} : memref<1024xi32>
-  %prod = aie.lock(%tile_0_2, 0) {init = 1 : i32}
-  %cons = aie.lock(%tile_0_2, 1) {init = 0 : i32}
+  aie.buffer @buf(%tile_0_2) {address = 4096 : i32} : memref<1024xi32>
+  aie.lock @prod(%tile_0_2, 0) {init = 1 : i32}
+  aie.lock @cons(%tile_0_2, 1) {init = 0 : i32}
   aie.runtime_sequence @coretile(%acq: i32, %rel: i32) {
     %t = aiex.dma_configure_task(%tile_0_2, S2MM, 0) {
-      aie.use_lock(%prod, Acquire, %acq)
+      aie.use_lock(@prod, Acquire, %acq)
+      %buf = aie.get_buffer @buf : memref<1024xi32>
       aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
-      aie.use_lock(%cons, Release, %rel)
+      aie.use_lock(@cons, Release, %rel)
       aie.end
     }
   }
@@ -74,14 +76,15 @@ aie.device(npu2) {
 // CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %c128_i32,
 aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
-  %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<128xi32>
-  %prod = aie.lock(%tile_0_1, 0) {init = 0 : i32}
-  %cons = aie.lock(%tile_0_1, 1) {init = 0 : i32}
+  aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<128xi32>
+  aie.lock @prod(%tile_0_1, 0) {init = 0 : i32}
+  aie.lock @cons(%tile_0_1, 1) {init = 0 : i32}
   aie.runtime_sequence @no_len(%uses: i32) {
     %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-      aie.use_lock(%cons, AcquireGreaterEqual, %uses)
+      aie.use_lock(@cons, AcquireGreaterEqual, %uses)
+      %buf = aie.get_buffer @buf : memref<128xi32>
       aie.dma_bd(%buf : memref<128xi32>) {bd_id = 0 : i32}
-      aie.use_lock(%prod, Release, %uses)
+      aie.use_lock(@prod, Release, %uses)
       aie.end
     }
   }
@@ -94,14 +97,15 @@ aie.device(npu2) {
 // CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %c128_i32,
 aie.device(npu2) {
   %tile_0_1 = aie.tile(0, 1)
-  %buf = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<128xi32>
-  %prod = aie.lock(%tile_0_1, 0) {init = 0 : i32}
-  %cons = aie.lock(%tile_0_1, 1) {init = 0 : i32}
+  aie.buffer @buf(%tile_0_1) {address = 0 : i32} : memref<128xi32>
+  aie.lock @prod(%tile_0_1, 0) {init = 0 : i32}
+  aie.lock @cons(%tile_0_1, 1) {init = 0 : i32}
   aie.runtime_sequence @no_len_dims(%uses: i32) {
     %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-      aie.use_lock(%cons, AcquireGreaterEqual, %uses)
+      aie.use_lock(@cons, AcquireGreaterEqual, %uses)
+      %buf = aie.get_buffer @buf : memref<128xi32>
       aie.dma_bd(%buf : memref<128xi32> sizes = [8, 16] strides = [16, 1]) {bd_id = 0 : i32}
-      aie.use_lock(%prod, Release, %uses)
+      aie.use_lock(@prod, Release, %uses)
       aie.end
     }
   }

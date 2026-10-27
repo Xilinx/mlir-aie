@@ -25,7 +25,7 @@ module @test_mmap_data_region_alignment {
  aie.device(npu1_1col) {
   %t02 = aie.tile(0, 2)
 
-  %buf_odd = aie.buffer(%t02) { sym_name = "odd", address = 0x400 : i32 } : memref<3xi8>
+  aie.buffer @odd(%t02) { address = 0x400 : i32 } : memref<3xi8>
 
   aie.core(%t02) {
     aie.end

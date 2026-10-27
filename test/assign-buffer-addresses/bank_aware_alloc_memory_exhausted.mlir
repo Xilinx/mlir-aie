@@ -16,25 +16,25 @@
 // CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:
 // CHECK: (no stack allocated)
 // CHECK:         bank : 0        0x0-0x3FFF
-// CHECK:                 _anonymous0     : 0x0-0x5FFF     (24576 bytes) (straddles into bank 1)
+// CHECK:                 C_L1L2_0_0_buff_0 : 0x0-0x5FFF     (24576 bytes) (straddles into bank 1)
 // CHECK:         bank : 1        0x4000-0x7FFF
-// CHECK:                 _anonymous1     : 0x6000-0xBFFF          (24576 bytes) (straddles into bank 2)
+// CHECK:                 C_L1L2_0_0_buff_1 : 0x6000-0xBFFF          (24576 bytes) (straddles into bank 2)
 // CHECK:         bank : 2        0x8000-0xBFFF
 // CHECK:         bank : 3        0xC000-0xFFFF
-// CHECK:                 _anonymous2     : 0xC000-0xD7FF          (6144 bytes)
-// CHECK:                 _anonymous3     : 0xD800-0xEFFF          (6144 bytes)
-// CHECK:                 _anonymous4     : 0xF000-0xFFFF          (4096 bytes)
+// CHECK:                 B_L2L1_0_0_cons_buff_0 : 0xC000-0xD7FF          (6144 bytes)
+// CHECK:                 B_L2L1_0_0_cons_buff_1 : 0xD800-0xEFFF          (6144 bytes)
+// CHECK:                 A_L2L1_0_0_cons_buff_0 : 0xF000-0xFFFF          (4096 bytes)
 
-// CHECK: error: {{.*}}could not be placed: buffer "_anonymous5" needs 4096 bytes and this tile has no room left for it
+// CHECK: error: {{.*}}could not be placed: buffer "A_L2L1_0_0_cons_buff_1" needs 4096 bytes and this tile has no room left for it
 
 module {
   aie.device(npu1_2col) {
     %tile_0_2 = aie.tile(0, 2)
-    %C_L1L2_0_0_buff_0 = aie.buffer(%tile_0_2) : memref<64x96xf32>
-    %C_L1L2_0_0_buff_1 = aie.buffer(%tile_0_2) : memref<64x96xf32>
-    %B_L2L1_0_0_cons_buff_0 = aie.buffer(%tile_0_2) : memref<32x96xbf16>
-    %B_L2L1_0_0_cons_buff_1 = aie.buffer(%tile_0_2) : memref<32x96xbf16>
-    %A_L2L1_0_0_cons_buff_0 = aie.buffer(%tile_0_2) : memref<64x32xbf16>
-    %A_L2L1_0_0_cons_buff_1 = aie.buffer(%tile_0_2) : memref<64x32xbf16>
+    aie.buffer @C_L1L2_0_0_buff_0(%tile_0_2) : memref<64x96xf32>
+    aie.buffer @C_L1L2_0_0_buff_1(%tile_0_2) : memref<64x96xf32>
+    aie.buffer @B_L2L1_0_0_cons_buff_0(%tile_0_2) : memref<32x96xbf16>
+    aie.buffer @B_L2L1_0_0_cons_buff_1(%tile_0_2) : memref<32x96xbf16>
+    aie.buffer @A_L2L1_0_0_cons_buff_0(%tile_0_2) : memref<64x32xbf16>
+    aie.buffer @A_L2L1_0_0_cons_buff_1(%tile_0_2) : memref<64x32xbf16>
   }
 }

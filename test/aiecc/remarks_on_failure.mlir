@@ -19,13 +19,14 @@ module {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
     %mt = aie.tile(0, 1)
-    %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
+    aie.buffer @b(%mt) : memref<64xi32>
     aie.route_endpoint @b_out(%mt) DMA {channelIndex = 0 : i32}
     aie.route_endpoint @b_dst(%shim) DMA {fifoName = "b"}
     aie.route from @b_out to [@b_dst]
     aie.memtile_dma(%mt) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
+      %b = aie.get_buffer @b : memref<64xi32>
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
       aie.next_bd ^bd0
     ^end:

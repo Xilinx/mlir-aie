@@ -17,7 +17,7 @@
 module {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
-    %sb = aie.external_buffer {sym_name = "sb"} : memref<8xi32>
+    aie.external_buffer @sb : memref<8xi32>
 
     // Static shim BD takes id 0.
     // CHECK: aie.shim_dma
@@ -25,6 +25,7 @@ module {
     aie.shim_dma(%shim) {
         aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %sb = aie.get_buffer @sb : memref<8xi32>
         aie.dma_bd(%sb : memref<8xi32> offset = 0 len = 4)
         aie.next_bd ^end
       ^end:

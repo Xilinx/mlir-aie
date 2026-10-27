@@ -9,9 +9,9 @@ module {
   aie.device(npu1_1col) {
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
     %tile_0_1 = aie.tile(0, 1)
-    %in_cons_buff_0 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "in_cons_buff_0"} : memref<4096xi32> 
-    %in_cons_prod_lock = aie.lock(%tile_0_1, 0) {init = 1 : i32, sym_name = "in_cons_prod_lock"}
-    %in_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "in_cons_cons_lock"}
+    aie.buffer @in_cons_buff_0(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32} : memref<4096xi32>
+    aie.lock @in_cons_prod_lock(%tile_0_1, 0) {init = 1 : i32}
+    aie.lock @in_cons_cons_lock(%tile_0_1, 1) {init = 0 : i32}
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
     aie.shim_dma_allocation @in (%tile_0_0, MM2S, 0)

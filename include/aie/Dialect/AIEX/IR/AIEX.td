@@ -539,14 +539,15 @@ def AIE_RunOp : AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
       Variadic<AnyType>:$args);
 
   let assemblyFormat = [{
-     $runtime_sequence_symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
+     $runtime_sequence_symbol `(` $args `)` `:`
+     custom<RunArgumentTypes>(type($args)) attr-dict
   }];
 
   let extraClassDeclaration = [{
     AIE::DeviceOp getCalleeDeviceOp();
     // `tables`, if given, indexes each referenced device once across calls.
     AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp(
-        ::xilinx::AIE::NamedOpTableCollection *tables = nullptr);
+        ::mlir::SymbolTableCollection *tables = nullptr);
   }];
 
   let summary = "Execute a runtime sequence";
@@ -894,7 +895,7 @@ def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", []> {
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t>
-    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
+    getAbsoluteAddress(::mlir::SymbolTableCollection *symbols = nullptr);
   }];
 }
 
@@ -928,7 +929,7 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t>
-    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
+    getAbsoluteAddress(::mlir::SymbolTableCollection *symbols = nullptr);
   }];
 }
 
@@ -958,7 +959,7 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", []> {
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t>
-    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
+    getAbsoluteAddress(::mlir::SymbolTableCollection *symbols = nullptr);
   }];
 }
 
@@ -984,7 +985,7 @@ def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", []> {
   let extraClassDeclaration = [{
     // `names` resolves a referenced buffer without a scan of the device.
     std::optional<uint32_t>
-    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
+    getAbsoluteAddress(::mlir::SymbolTableCollection *symbols = nullptr);
     mlir::DenseIntElementsAttr getDataWords();
   }];
 }
@@ -1232,7 +1233,7 @@ def AIE_NpuUpdateFromScratchpadOp : AIEX_Op<"npu.update_from_scratchpad", []> {
   let extraClassDeclaration = [{
     // `names` resolves a referenced buffer without a scan of the device.
     std::optional<uint32_t>
-    getAbsoluteAddress(const ::xilinx::AIE::NamedOpTable *names = nullptr);
+    getAbsoluteAddress(::mlir::SymbolTableCollection *symbols = nullptr);
   }];
   let hasVerifier = 1;
 }
@@ -1788,8 +1789,10 @@ def AIE_DMAStartBdChainForOp
   }];
 }
 
-def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
-                                          SkipAccessibilityCheckTrait]> {
+def AIEX_SetLockOp
+    : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
+        SkipAccessibilityCheckTrait,
+        DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Set the value of a lock";
   let description = [{
     This operation sets the value of `lock` inside of a RuntimeSequenceOp.
@@ -1802,13 +1805,13 @@ def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
     Example:
     ```
       %tile22 = aie.tile(2, 2)
-      %lock22_0 = aie.lock(%tile22, 0)
+      aie.lock @lock22_0(%tile22, 0)
       ...
       %c5 = arith.constant 5 : i32
-      aiex.set_lock(%lock22_0, %c5)
+      aiex.set_lock(@lock22_0, %c5)
     ```
   }];
-  let arguments = (ins Index:$lock, I32:$value);
+  let arguments = (ins FlatSymbolRefAttr:$lock, I32:$value);
   let assemblyFormat = [{ `(` $lock `,` $value `)` attr-dict }];
   let hasVerifier = 1;
 
@@ -1817,8 +1820,23 @@ def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
   }];
 
   let extraClassDefinition = [{
-    AIE::LockOp SetLockOp::getLockOp() { return cast<AIE::LockOp>(getLock().getDefiningOp()); }
+    AIE::LockOp SetLockOp::getLockOp() {
+      if (!getLockAttr())
+        return nullptr;
+      return mlir::SymbolTable::lookupNearestSymbolFrom<AIE::LockOp>(
+          *this, getLockAttr());
+    }
+    mlir::LogicalResult SetLockOp::verifySymbolUses(
+        mlir::SymbolTableCollection &symbols) {
+      if (!symbols.lookupNearestSymbolFrom<AIE::LockOp>(*this, getLockAttr()))
+        return emitOpError("lock must reference an aie.lock declaration");
+      return mlir::success();
+    }
   }];
+  let builders = [OpBuilder<(ins "AIE::LockOp":$lock, "mlir::Value":$value), [{
+    build($_builder, $_state,
+      mlir::FlatSymbolRefAttr::get(lock.getSymNameAttr()), value);
+  }]>];
 }
 
 def AIEX_DmaChannelResetOp

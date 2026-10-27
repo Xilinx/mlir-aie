@@ -33,10 +33,11 @@
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<16384xi32>
+    aie.buffer @buf(%t1) : memref<16384xi32>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf : memref<16384xi32>
         aie.dma_bd(%buf : memref<16384xi32> offset = 0 len = 4096 sizes = [512, 4] strides = [8, 1])
         aie.next_bd ^end
       ^end:
@@ -53,10 +54,11 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<16384xi32>
+    aie.buffer @buf(%t1) : memref<16384xi32>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf : memref<16384xi32>
         aie.dma_bd(%buf : memref<16384xi32> offset = 0 len = 4096 sizes = [600, 4] strides = [8, 1])
         aie.next_bd ^end
       ^end:
@@ -72,10 +74,11 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<16384xi32>
+    aie.buffer @buf(%t1) : memref<16384xi32>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf : memref<16384xi32>
         aie.dma_bd(%buf : memref<16384xi32> offset = 0 len = 4096 sizes = [1023, 4] strides = [8, 1])
         aie.next_bd ^end
       ^end:
@@ -91,11 +94,12 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<16384xi32>
+    aie.buffer @buf(%t1) : memref<16384xi32>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        // expected-error@+1 {{Size may not exceed 1023.}}
+        // expected-error@+2 {{Size may not exceed 1023.}}
+        %buf = aie.get_buffer @buf : memref<16384xi32>
         aie.dma_bd(%buf : memref<16384xi32> offset = 0 len = 4096 sizes = [1024, 4] strides = [8, 1])
         aie.next_bd ^end
       ^end:
@@ -114,10 +118,11 @@ module {
 module {
   aie.device(npu2) {
     %t0 = aie.tile(0, 0)
+    aie.external_buffer @buf_524287 : memref<524291xi32>
     aie.shim_dma(%t0) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        %buf = aie.external_buffer { sym_name = "buf_524287" } : memref<524291xi32>
+        %buf = aie.get_buffer @buf_524287 : memref<524291xi32>
         aie.dma_bd(%buf : memref<524291xi32> offset = 0 len = 8 sizes = [2, 2] strides = [524287, 1])
         aie.next_bd ^end
       ^end:
@@ -133,10 +138,11 @@ module {
 module {
   aie.device(npu2) {
     %t0 = aie.tile(0, 0)
+    aie.external_buffer @buf_524288 : memref<524292xi32>
     aie.shim_dma(%t0) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        %buf = aie.external_buffer { sym_name = "buf_524288" } : memref<524292xi32>
+        %buf = aie.get_buffer @buf_524288 : memref<524292xi32>
         aie.dma_bd(%buf : memref<524292xi32> offset = 0 len = 8 sizes = [2, 2] strides = [524288, 1])
         aie.next_bd ^end
       ^end:
@@ -151,10 +157,11 @@ module {
 module {
   aie.device(npu2) {
     %t0 = aie.tile(0, 0)
+    aie.external_buffer @buf_1048575 : memref<1048579xi32>
     aie.shim_dma(%t0) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        %buf = aie.external_buffer { sym_name = "buf_1048575" } : memref<1048579xi32>
+        %buf = aie.get_buffer @buf_1048575 : memref<1048579xi32>
         aie.dma_bd(%buf : memref<1048579xi32> offset = 0 len = 8 sizes = [2, 2] strides = [1048575, 1])
         aie.next_bd ^end
       ^end:
@@ -173,10 +180,11 @@ module {
 module {
   aie.device(npu2) {
     %t0 = aie.tile(0, 0)
+    aie.external_buffer @buf_1048576 : memref<1048580xi32>
     aie.shim_dma(%t0) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        %buf = aie.external_buffer { sym_name = "buf_1048576" } : memref<1048580xi32>
+        %buf = aie.get_buffer @buf_1048576 : memref<1048580xi32>
         aie.dma_bd(%buf : memref<1048580xi32> offset = 0 len = 8 sizes = [2, 2] strides = [1048576, 1])
         aie.next_bd ^end
       ^end:
@@ -196,11 +204,12 @@ module {
 module {
   aie.device(npu2) {
     %t0 = aie.tile(0, 0)
+    aie.external_buffer @buf_1048577 : memref<1048581xi32>
     aie.shim_dma(%t0) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        %buf = aie.external_buffer { sym_name = "buf_1048577" } : memref<1048581xi32>
-        // expected-error@+1 {{Stride may not exceed 1048576.}}
+        // expected-error@+2 {{Stride may not exceed 1048576.}}
+        %buf = aie.get_buffer @buf_1048577 : memref<1048581xi32>
         aie.dma_bd(%buf : memref<1048581xi32> offset = 0 len = 8 sizes = [2, 2] strides = [1048577, 1])
         aie.next_bd ^end
       ^end:
@@ -216,10 +225,11 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<512xi32>
+    aie.buffer @buf(%t1) : memref<512xi32>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf : memref<512xi32>
         aie.dma_bd(%buf : memref<512xi32> len = 1024 sizes = [1, 512] strides = [0, 1] pad [<const_pad_before = 0, const_pad_after = 1>, <const_pad_before = 0, const_pad_after = 0>])
         aie.next_bd ^end
       ^end:
@@ -234,11 +244,12 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<512xi32>
+    aie.buffer @buf(%t1) : memref<512xi32>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        // expected-error@+1 {{Invalid step size; must be a positive integer.}}
+        // expected-error@+2 {{Invalid step size; must be a positive integer.}}
+        %buf = aie.get_buffer @buf : memref<512xi32>
         aie.dma_bd(%buf : memref<512xi32> len = 1024 sizes = [2, 512] strides = [0, 1])
         aie.next_bd ^end
       ^end:

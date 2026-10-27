@@ -21,7 +21,7 @@ module {
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
     %tile_0_1 = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
 
-    %buf = aie.buffer(%tile_0_1) {sym_name = "buf"} : memref<4096xi32>
+    aie.buffer @buf(%tile_0_1) : memref<4096xi32>
 
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
@@ -51,6 +51,7 @@ module {
       } {issue_token = true}
 
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
+        %buf = aie.get_buffer @buf : memref<4096xi32>
         aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = %len sizes = [1, 1, %n, 512] strides = [0, 0, 512, 1]) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
@@ -61,7 +62,8 @@ module {
       aiex.dma_await_task(%t1)
 
       %t2 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-        aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = %len sizes = [1, 1, %n, 512] strides = [0, 0, 512, 1]) {bd_id = 1 : i32}
+        %buf_1 = aie.get_buffer @buf : memref<4096xi32>
+        aie.dma_bd(%buf_1 : memref<4096xi32> offset = 0 len = %len sizes = [1, 1, %n, 512] strides = [0, 0, 512, 1]) {bd_id = 1 : i32}
         aie.end
       } {issue_token = true}
 

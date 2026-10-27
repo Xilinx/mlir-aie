@@ -8,8 +8,8 @@ module @fixed_pool_overflow {
   aie.device(npu2) {
     // expected-error @+1 {{existing buffers require 524289 bytes, exceeding MemTile capacity of 524288 bytes}}
     %mem = aie.tile(0, 1)
-    %a = aie.buffer(%mem) {sym_name = "a"} : memref<524288xi8>
-    %b = aie.buffer(%mem) {sym_name = "b"} : memref<1xi8>
+    aie.buffer @a(%mem) : memref<524288xi8>
+    aie.buffer @b(%mem) : memref<1xi8>
     aie.objectfifo.pool @p(%mem) {depth = 1 : i32, buffers = [@a]} : memref<524288xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 524288 : i32}
     }
@@ -26,8 +26,8 @@ module @aliased_fixed_overflow {
     // expected-error @+1 {{existing buffers require 524289 bytes, exceeding MemTile capacity of 524288 bytes}}
     %mem = aie.tile(0, 1)
     %alias = aie.logical_tile<MemTile>(0, 1)
-    %a = aie.buffer(%mem) : memref<524288xi8>
-    %b = aie.buffer(%alias) : memref<1xi8>
+    aie.buffer @a(%mem) : memref<524288xi8>
+    aie.buffer @b(%alias) : memref<1xi8>
   }
 }
 
@@ -38,7 +38,7 @@ module @aliased_fixed_overflow {
 module @sub_byte_overflow {
   aie.device(npu2_1col) {
     %mem = aie.tile(0, 1)
-    %reserved = aie.buffer(%mem) : memref<524280xi8>
+    aie.buffer @reserved(%mem) : memref<524280xi8>
     // expected-error @+1 {{could not place buffers in accessible memory with available capacity}}
     aie.objectfifo.pool @p(%mem) {depth = 1 : i32} : memref<9xi1> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 9 : i32}
@@ -55,8 +55,8 @@ module @fixed_alignment_overflow {
   aie.device(npu2_1col) {
     // expected-error @+1 {{existing buffers require 524291 bytes, exceeding MemTile capacity of 524288 bytes}}
     %mem = aie.tile(0, 1)
-    %a = aie.buffer(%mem) {sym_name = "a"} : memref<524285xi8>
-    %b = aie.buffer(%mem) {sym_name = "b"} : memref<3xi8>
+    aie.buffer @a(%mem) : memref<524285xi8>
+    aie.buffer @b(%mem) : memref<3xi8>
   }
 }
 
@@ -67,7 +67,7 @@ module @local_pool_alignment_overflow {
   // expected-remark @+1 {{could not find a spill-aware allocation}}
   aie.device(npu2) {
     %mem = aie.tile(0, 1)
-    %reserved = aie.buffer(%mem) {sym_name = "reserved"} : memref<524281xi8>
+    aie.buffer @reserved(%mem) : memref<524281xi8>
     aie.objectfifo.pool @p(%mem) {depth = 2 : i32} : memref<3xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 3 : i32}
     }

@@ -26,15 +26,15 @@
 
 // RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
-// CHECK-DAG: aie.buffer({{.*}}) {address = 44800 : i32, {{.*}}sym_name = "mid"}
-// CHECK-DAG: aie.buffer({{.*}}) {address = 57600 : i32, {{.*}}sym_name = "small"}
+// CHECK-DAG: aie.buffer @mid({{.*}}) {address = 44800 : i32{{.*}}}
+// CHECK-DAG: aie.buffer @small({{.*}}) {address = 57600 : i32{{.*}}}
 
 module @backtracking_strands_a_tail {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %pinned = aie.buffer(%t) { sym_name = "pinned", address = 1024 : i32 } : memref<43776xi8>
-    %mid = aie.buffer(%t) { sym_name = "mid" } : memref<12800xi8>
-    %small = aie.buffer(%t) { sym_name = "small" } : memref<5000xi8>
+    aie.buffer @pinned(%t) { address = 1024 : i32 } : memref<43776xi8>
+    aie.buffer @mid(%t) : memref<12800xi8>
+    aie.buffer @small(%t) : memref<5000xi8>
     aie.core(%t) {
       aie.end
     } { stack_size = 1024 : i32 }

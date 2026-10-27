@@ -29,12 +29,13 @@ module @example0 {
 
             // Use all the local memory for buffers, combined with the 1024 byte
             // stack size.
-            %buf33 = aie.buffer(%t33)
+            aie.buffer @buf33(%t33)
         : memref<31744xi8>
 
                       %c33 = aie.core(%t33) {
       %idx1 = arith.constant 3 : index %val1 =
                    arith.constant 7 : i8 memref.store %val1,
+        %buf33 = aie.get_buffer @buf33 : memref<31744xi8>
         %buf33[%idx1] : memref<31744xi8>
                               func.call @test(%idx1, %val1)
           : (index, i8)->i8 aie.end

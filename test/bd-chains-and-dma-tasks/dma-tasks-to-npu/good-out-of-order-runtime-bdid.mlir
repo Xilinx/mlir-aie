@@ -26,13 +26,13 @@
 
 aie.device(npu2) {
   %t00 = aie.tile(0, 0)
-  %lock = aie.lock(%t00, 0) {init = 0 : i32}
+  aie.lock @lock(%t00, 0) {init = 0 : i32}
   aie.runtime_sequence @rt_ooo_dyn(%arg0: memref<1024xi32>) {
     %c1 = arith.constant 1 : i32
     %bd = aiex.dma_bd_pool_pop(0, 0) partition [0, 16) : i32
     %t = aiex.dma_configure_task(%t00, S2MM, 0, <pkt_type = 0, pkt_id = 0>) {
       aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256) bd_id_val %bd : i32
-      aie.use_lock(%lock, Release, %c1)
+      aie.use_lock(@lock, Release, %c1)
       aie.end
     } {out_of_order}
     aiex.dma_start_task(%t)

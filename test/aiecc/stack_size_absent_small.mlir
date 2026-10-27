@@ -16,7 +16,7 @@
 // RUN: FileCheck %s < %t.out/input_with_addresses.mlir
 // RUN: FileCheck %s --check-prefix=LDSCRIPT < %t.prj/ldScripts_main_core_0_2.ld.script
 
-// CHECK: aie.buffer(%{{.*}}tile_0_2) {address = 1024 : i32
+// CHECK: aie.buffer @{{[^ (]+}}(%{{.*}}tile_0_2) {address = 1024 : i32
 // CHECK: measured_stack_size = {{[0-9]+}} : i32
 // LDSCRIPT: . += 0x400; /* stack */
 

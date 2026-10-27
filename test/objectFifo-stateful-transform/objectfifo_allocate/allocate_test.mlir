@@ -10,15 +10,15 @@
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK-DAG:           %of2_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of2_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %of2_prod_lock_0 = aie.lock(%tile_1_2) {init = 1 : i32, sym_name = "of2_prod_lock_0"}
-// CHECK-DAG:           %of2_cons_lock_0 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "of2_cons_lock_0"}
-// CHECK-DAG:           %of1_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %of1_prod_lock_0 = aie.lock(%tile_1_3) {init = 1 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK-DAG:           %of1_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK-DAG:           %of0_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of0_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %of0_prod_lock_0 = aie.lock(%tile_1_3) {init = 1 : i32, sym_name = "of0_prod_lock_0"}
-// CHECK-DAG:           %of0_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
+// CHECK-DAG:           aie.buffer @of2_buff_0(%tile_1_2) : memref<16xi32>
+// CHECK-DAG:           aie.lock @of2_prod_lock_0(%tile_1_2) {init = 1 : i32}
+// CHECK-DAG:           aie.lock @of2_cons_lock_0(%tile_1_2) {init = 0 : i32}
+// CHECK-DAG:           aie.buffer @of1_buff_0(%tile_1_3) : memref<16xi32>
+// CHECK-DAG:           aie.lock @of1_prod_lock_0(%tile_1_3) {init = 1 : i32}
+// CHECK-DAG:           aie.lock @of1_cons_lock_0(%tile_1_3) {init = 0 : i32}
+// CHECK-DAG:           aie.buffer @of0_buff_0(%tile_1_3) : memref<16xi32>
+// CHECK-DAG:           aie.lock @of0_prod_lock_0(%tile_1_3) {init = 1 : i32}
+// CHECK-DAG:           aie.lock @of0_cons_lock_0(%tile_1_3) {init = 0 : i32}
 // CHECK:         }
 
 module @allocate {

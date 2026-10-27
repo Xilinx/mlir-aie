@@ -303,15 +303,16 @@ module {
 module {
   aie.device(npu2_1col) {
     %mt = aie.tile(0, 1)
-    %buf = aie.buffer(%mt) : memref<4096xi32>
-    %lk = aie.lock(%mt) {init = 0 : i32}
+    aie.buffer @buf(%mt) : memref<4096xi32>
+    aie.lock @lk(%mt) {init = 0 : i32}
     aie.runtime_sequence @nd_takes_locks(%in: memref<4096xi32>) {
       %c1 = arith.constant 1 : i32
       %tk = aiex.dma_configure_task(%mt, MM2S, 0) {
-        aie.use_lock(%lk, AcquireGreaterEqual, %c1)
-        // expected-error@+1 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off a descriptor that takes no locks}}
+        aie.use_lock(@lk, AcquireGreaterEqual, %c1)
+        // expected-error@+2 {{has 5 dimensions, and a buffer descriptor holds 4; the extra ones can only be split off a descriptor that takes no locks}}
+        %buf = aie.get_buffer @buf : memref<4096xi32>
         aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 256 sizes = [2, 2, 2, 8, 16] strides = [2048, 1024, 256, 32, 1])
-        aie.use_lock(%lk, Release, %c1)
+        aie.use_lock(@lk, Release, %c1)
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%tk)

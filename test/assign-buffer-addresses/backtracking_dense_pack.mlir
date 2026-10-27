@@ -24,23 +24,23 @@
 // RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
 // Everything placed, nothing overlapping, and the tile holds it all.
-// CHECK-DAG: aie.buffer({{.*}}) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "bankres0"}
-// CHECK-DAG: aie.buffer({{.*}}) {address = 32768 : i32, mem_bank = 2 : i32, sym_name = "bankres1"}
-// CHECK-DAG: aie.buffer({{.*}}) {address = 1536 : i32, mem_bank = 0 : i32, sym_name = "buf0"}
-// CHECK-DAG: aie.buffer({{.*}}) {address = 23232 : i32, mem_bank = 1 : i32, sym_name = "buf1"}
-// CHECK-DAG: aie.buffer({{.*}}) {address = 33536 : i32, mem_bank = 2 : i32, sym_name = "buf2"}
-// CHECK-DAG: aie.buffer({{.*}}) {address = 56512 : i32, mem_bank = 3 : i32, sym_name = "buf3"}
-// CHECK-DAG: aie.buffer({{.*}}) {address = 32128 : i32, core_data, mem_bank = 1 : i32, sym_name = "core_data_0_2"}
+// CHECK-DAG: aie.buffer @bankres0({{.*}}) {address = 1024 : i32, mem_bank = 0 : i32}
+// CHECK-DAG: aie.buffer @bankres1({{.*}}) {address = 32768 : i32, mem_bank = 2 : i32}
+// CHECK-DAG: aie.buffer @buf0({{.*}}) {address = 1536 : i32, mem_bank = 0 : i32}
+// CHECK-DAG: aie.buffer @buf1({{.*}}) {address = 23232 : i32, mem_bank = 1 : i32}
+// CHECK-DAG: aie.buffer @buf2({{.*}}) {address = 33536 : i32, mem_bank = 2 : i32}
+// CHECK-DAG: aie.buffer @buf3({{.*}}) {address = 56512 : i32, mem_bank = 3 : i32}
+// CHECK-DAG: aie.buffer @core_data_0_2({{.*}}) {address = 32128 : i32, core_data, mem_bank = 1 : i32}
 
 module @backtracking_dense_pack {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %bankres0 = aie.buffer(%t) { sym_name = "bankres0", mem_bank = 0 : i32 } : memref<512xi8>
-    %bankres1 = aie.buffer(%t) { sym_name = "bankres1", mem_bank = 2 : i32 } : memref<768xi8>
-    %buf0 = aie.buffer(%t) { sym_name = "buf0" } : memref<21696xi8>
-    %buf1 = aie.buffer(%t) { sym_name = "buf1" } : memref<8896xi8>
-    %buf2 = aie.buffer(%t) { sym_name = "buf2" } : memref<22976xi8>
-    %buf3 = aie.buffer(%t) { sym_name = "buf3" } : memref<8320xi8>
+    aie.buffer @bankres0(%t) { mem_bank = 0 : i32 } : memref<512xi8>
+    aie.buffer @bankres1(%t) { mem_bank = 2 : i32 } : memref<768xi8>
+    aie.buffer @buf0(%t) : memref<21696xi8>
+    aie.buffer @buf1(%t) : memref<8896xi8>
+    aie.buffer @buf2(%t) : memref<22976xi8>
+    aie.buffer @buf3(%t) : memref<8320xi8>
     aie.core(%t) {
       aie.end
     } { stack_size = 1024 : i32, data_size = 640 : i32 }

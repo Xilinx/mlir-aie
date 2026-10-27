@@ -9,7 +9,7 @@ module @pinned_remote {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
     %remote = aie.tile(1, 1)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @b(%home) : memref<16xi32>
     aie.objectfifo.pool @p(%home) {
       depth = 1 : i32, buffers = [@b]
     } : memref<16xi32> {
@@ -28,8 +28,8 @@ module @pinned_split {
   aie.device(npu2) {
     %left = aie.tile(0, 1)
     %right = aie.tile(1, 1)
-    %a = aie.buffer(%left) {sym_name = "a"} : memref<16xi32>
-    %b = aie.buffer(%right) {sym_name = "b"} : memref<16xi32>
+    aie.buffer @a(%left) : memref<16xi32>
+    aie.buffer @b(%right) : memref<16xi32>
     aie.objectfifo.pool @p(%left) {
       depth = 2 : i32, buffers = [@a, @b]
     } : memref<16xi32> {
@@ -48,7 +48,7 @@ module @no_common_memory {
     %left = aie.tile(0, 1)
     %middle = aie.tile(1, 1)
     %right = aie.tile(2, 1)
-    %reserved = aie.buffer(%middle) : memref<524288xi8>
+    aie.buffer @reserved(%middle) : memref<524288xi8>
     // expected-error @+1 {{could not place buffers in accessible memory with available capacity}}
     aie.objectfifo.pool @p(%middle) {depth = 1 : i32} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
@@ -67,9 +67,9 @@ module @pinned_remote_locks {
   aie.device(npu2) {
     %home = aie.tile(0, 1)
     %remote = aie.tile(1, 1)
-    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
-    %free = aie.lock(%remote) {sym_name = "free", init = 1 : i32}
-    %full = aie.lock(%remote) {sym_name = "full", init = 0 : i32}
+    aie.buffer @b(%home) : memref<16xi32>
+    aie.lock @free(%remote) {init = 1 : i32}
+    aie.lock @full(%remote) {init = 0 : i32}
     aie.objectfifo.pool @p(%home) {
       depth = 1 : i32, buffers = [@b]
     } : memref<16xi32> {

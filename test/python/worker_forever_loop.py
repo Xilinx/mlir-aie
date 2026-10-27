@@ -40,7 +40,7 @@ def worker_module(while_true, then_forever=False):
 # CHECK:             %[[TRUE:.*]] = arith.constant true
 # CHECK:             scf.condition(%[[TRUE]])
 # CHECK:           } do {
-# CHECK:             aie.use_lock(%{{.*}}, Acquire, %{{.*}})
+# CHECK:             aie.use_lock(@{{.*}}, Acquire, %{{.*}})
 # CHECK:             scf.yield
 # CHECK:           aie.end
 print("forever")
@@ -50,7 +50,7 @@ print(worker_module(True))
 # CHECK:         aie.core
 # CHECK-NOT:       scf.while
 # CHECK:           scf.for %{{.*}} = %c0 to %c1 step %c1
-# CHECK:             aie.use_lock(%{{.*}}, Acquire, %{{.*}})
+# CHECK:             aie.use_lock(@{{.*}}, Acquire, %{{.*}})
 # CHECK:           aie.end
 print("once")
 print(worker_module(False))
@@ -58,7 +58,7 @@ print(worker_module(False))
 # CHECK-LABEL: once_then_forever
 # CHECK:         aie.core
 # CHECK:           scf.for %{{.*}} = %c0 to %c1 step %c1
-# CHECK:             aie.use_lock(%{{.*}}, Acquire, %{{.*}})
+# CHECK:             aie.use_lock(@{{.*}}, Acquire, %{{.*}})
 # CHECK:             scf.while : () -> () {
 # CHECK:               %[[TRUE:.*]] = arith.constant true
 # CHECK:               scf.condition(%[[TRUE]])

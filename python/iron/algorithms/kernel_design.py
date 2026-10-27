@@ -400,7 +400,7 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
         for k, i in enumerate(shifted):
             shift = arith.index_cast(IndexType.get(), constants[n_shift][k])
             values[i] = memref.view(
-                np_ndarray_type_to_memref_type(types[i]), values[i].op, shift, []
+                np_ndarray_type_to_memref_type(types[i]), values[i].op.result, shift, []
             )
         values.update(bound)
         if offset:

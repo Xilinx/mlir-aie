@@ -16,13 +16,13 @@ module @test {
 
     %t1 = aie.tile(0, 1)
     //CHECK: address = 2048
-    %buf0 = aie.buffer(%t1) { address = 2048 : i32 } : memref<1024xi8>
+    aie.buffer @buf0(%t1) { address = 2048 : i32 } : memref<1024xi8>
     //CHECK: address = 3072
-    %buf2 = aie.buffer(%t1) { address = 3072 : i32 } : memref<1024xi32>
+    aie.buffer @buf2(%t1) { address = 3072 : i32 } : memref<1024xi32>
     //CHECK: address = 12288
-    %b3 = aie.buffer(%t1) { address = 12288 : i32 } : memref<1024xi32>
+    aie.buffer @b3(%t1) { address = 12288 : i32 } : memref<1024xi32>
     //CHECK: address = 20000
-    %b34 = aie.buffer(%t1) { address = 20000 : i32 } : memref<1024xi32>
+    aie.buffer @b34(%t1) { address = 20000 : i32 } : memref<1024xi32>
 
     aie.core(%t1) {
       aie.end

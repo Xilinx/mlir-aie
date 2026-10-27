@@ -25,8 +25,8 @@ module {
     // CHECK-NOT: dense
     // CHECK: memref.global "public" @buf33 : memref<2x2xi32>
     // CHECK-NOT: dense
-    %buf33 = aie.buffer(%t23) { sym_name = "buf33" } : memref<2x2xi32> = dense<[[0, 1], [2, 3]]>
-    %buf42 = aie.buffer(%t32) { sym_name = "buf42" } : memref<2x3xi32> = dense<[[0, 1, 2], [3, 4, 5]]>
-    %buf44 = aie.buffer(%t34) { sym_name = "buf44" } : memref<3x2xi32> = dense<[[0, 1], [2, 3], [4, 5]]>
+    aie.buffer @buf33(%t23) : memref<2x2xi32> = dense<[[0, 1], [2, 3]]>
+    aie.buffer @buf42(%t32) : memref<2x3xi32> = dense<[[0, 1, 2], [3, 4, 5]]>
+    aie.buffer @buf44(%t34) : memref<3x2xi32> = dense<[[0, 1], [2, 3], [4, 5]]>
   }
 }

@@ -30,23 +30,25 @@ module {
       aiex.npu.dma_wait {symbol = @out0}
     }
 
+    aie.buffer @buff(%tile_0_1) : memref<16xi32>
+    aie.lock @prod_lock(%tile_0_1, 0) {init = 1 : i32}
+    aie.lock @cons_lock(%tile_0_1, 1) {init = 0 : i32}
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
-      %buff = aie.buffer(%tile_0_1) {sym_name = "buff"} : memref<16xi32>
-      %prod_lock = aie.lock(%tile_0_1, 0) {init = 1 : i32, sym_name = "prod_lock"}
-      %cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "cons_lock"}
-      %0 = aie.dma(S2MM, 0) [{
+      aie.dma(S2MM, 0) [{
         %c1_i32 = arith.constant 1 : i32
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_i32)
+        aie.use_lock(@prod_lock, AcquireGreaterEqual, %c1_i32)
+        %buff = aie.get_buffer @buff : memref<16xi32>
         aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 13)
         %c1_i32_0 = arith.constant 1 : i32
-        aie.use_lock(%cons_lock, Release, %c1_i32_0)
+        aie.use_lock(@cons_lock, Release, %c1_i32_0)
       }]
-      %1 = aie.dma(MM2S, 0) {pad_value = 42 : i32} [{
+      aie.dma(MM2S, 0) {pad_value = 42 : i32} [{
         %c1_i32 = arith.constant 1 : i32
-        aie.use_lock(%cons_lock, AcquireGreaterEqual, %c1_i32)
-        aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16 sizes = [13] strides = [1] pad [<const_pad_before = 2, const_pad_after = 1>])
+        aie.use_lock(@cons_lock, AcquireGreaterEqual, %c1_i32)
+        %buff_1 = aie.get_buffer @buff : memref<16xi32>
+        aie.dma_bd(%buff_1 : memref<16xi32> offset = 0 len = 16 sizes = [13] strides = [1] pad [<const_pad_before = 2, const_pad_after = 1>])
         %c1_i32_0 = arith.constant 1 : i32
-        aie.use_lock(%prod_lock, Release, %c1_i32_0)
+        aie.use_lock(@prod_lock, Release, %c1_i32_0)
       }]
       aie.end
     }

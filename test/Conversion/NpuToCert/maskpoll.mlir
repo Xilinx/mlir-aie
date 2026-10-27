@@ -25,7 +25,7 @@
 
 aie.device(npu2) {
   %tile = aie.tile(0, 3)
-  %buffer = aie.buffer(%tile) {address = 1024 : i32, sym_name = "status"} : memref<128xi32>
+  aie.buffer @status(%tile) {address = 1024 : i32} : memref<128xi32>
   memref.global "private" constant @before : memref<1xi32> = dense<1>
   memref.global "private" constant @after : memref<1xi32> = dense<2>
   aie.runtime_sequence @configure() {

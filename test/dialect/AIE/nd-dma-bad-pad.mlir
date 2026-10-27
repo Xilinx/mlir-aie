@@ -13,11 +13,12 @@
 module {
   aie.device(xcve2802) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<256xi8>
+    aie.buffer @buf(%t1) : memref<256xi8>
     %mem = aie.memtile_dma(%t1) {
       aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
-        // expected-error@+1 {{'aie.dma_bd' op Inner-most padding-before count must result in padding in 32-bit words.}}
+        // expected-error@+2 {{'aie.dma_bd' op Inner-most padding-before count must result in padding in 32-bit words.}}
+        %buf = aie.get_buffer @buf : memref<256xi8>
         aie.dma_bd(%buf : memref<256xi8> offset = 0 len = 8 sizes = [4] strides = [1] pad [<const_pad_before = 2, const_pad_after = 2>])
         aie.next_bd ^end
       ^end:

@@ -11,15 +11,15 @@
 module @test {
   %t1 = aie.tile(1, 1)
   %t2 = aie.tile(4, 4)
-  %lock = aie.lock(%t2, 3) { sym_name = "lock1" }
+  aie.lock @lock1(%t2, 3)
 
   %mem13 = aie.mem(%t1) {
     %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
       %c1_ul0 = arith.constant 1 : i32
-      aie.use_lock(%lock, "Acquire", %c1_ul0)
+      aie.use_lock(@lock1, "Acquire", %c1_ul0)
       %c0_ul1 = arith.constant 0 : i32
-      aie.use_lock(%lock, "Release", %c0_ul1)
+      aie.use_lock(@lock1, "Release", %c0_ul1)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
       aie.end

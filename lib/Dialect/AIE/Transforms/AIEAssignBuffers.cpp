@@ -83,6 +83,9 @@ static StringRef mapLabel(BufferOp buffer) {
 // and inside larger pipelines.
 static void materializeCoreDataBuffers(DeviceOp device) {
   OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
+  SymbolTableCollection symbols;
+  SymbolTable &table = symbols.getSymbolTable(device);
+  unsigned counter = 0;
   for (auto core : llvm::to_vector(device.getOps<CoreOp>())) {
     // A declared `data_size` still wins: it is a reservation the design asked
     // for, and may deliberately exceed what this build happens to measure.
@@ -105,18 +108,19 @@ static void materializeCoreDataBuffers(DeviceOp device) {
     }
     builder.setInsertionPoint(core);
     auto type = MemRefType::get({size}, builder.getI8Type());
+    std::string name = "core_data_" + std::to_string(tile.getCol()) + "_" +
+                       std::to_string(tile.getRow());
+    if (table.lookup(name))
+      name = generateUniqueSymbolName(table, name + "_", counter);
     auto buffer =
         BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
-                         /*sym_name=*/nullptr, /*address=*/nullptr,
+                         builder.getStringAttr(name), /*address=*/nullptr,
                          /*initial_value=*/nullptr,
                          /*mem_bank=*/nullptr,
                          /*core_data=*/builder.getUnitAttr(),
                          /*bank_reserved=*/nullptr,
                          /*aligned=*/nullptr);
-    buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                    builder.getStringAttr("core_data_" +
-                                          std::to_string(tile.getCol()) + "_" +
-                                          std::to_string(tile.getRow())));
+    table.insert(buffer);
   }
 }
 
@@ -126,6 +130,9 @@ static void materializeCoreDataBuffers(DeviceOp device) {
 // Idempotent, like materializeCoreDataBuffers.
 static void materializeBankReservations(DeviceOp device) {
   OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
+  SymbolTableCollection symbols;
+  SymbolTable &table = symbols.getSymbolTable(device);
+  unsigned counter = 0;
   for (auto core : llvm::to_vector(device.getOps<CoreOp>())) {
     auto sizes = core.getMeasuredBankSizes();
     if (!sizes) {
@@ -141,7 +148,8 @@ static void materializeBankReservations(DeviceOp device) {
                          std::to_string(bank);
       bool present = false;
       device.walk([&](BufferOp buffer) {
-        if (buffer.name() == name) {
+        if (buffer.getBankReserved() && buffer.getTileOp() == tile &&
+            buffer.getMemBank() == bank) {
           present = true;
         }
       });
@@ -150,16 +158,17 @@ static void materializeBankReservations(DeviceOp device) {
       }
       builder.setInsertionPoint(core);
       auto type = MemRefType::get({size}, builder.getI8Type());
+      if (table.lookup(name))
+        name = generateUniqueSymbolName(table, name + "_", counter);
       auto buffer =
           BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
-                           /*sym_name=*/nullptr, /*address=*/nullptr,
+                           builder.getStringAttr(name), /*address=*/nullptr,
                            /*initial_value=*/nullptr,
                            /*mem_bank=*/builder.getI32IntegerAttr(bank),
                            /*core_data=*/nullptr,
                            /*bank_reserved=*/builder.getUnitAttr(),
                            /*aligned=*/nullptr);
-      buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                      builder.getStringAttr(name));
+      table.insert(buffer);
     }
   }
 }
@@ -173,6 +182,9 @@ static void materializeBankReservations(DeviceOp device) {
 // by bank: the addresses in a prebaked image are already final. Idempotent.
 static void materializePrebakedRanges(DeviceOp device) {
   OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
+  SymbolTableCollection symbols;
+  SymbolTable &table = symbols.getSymbolTable(device);
+  unsigned counter = 0;
   for (auto core : llvm::to_vector(device.getOps<CoreOp>())) {
     auto ranges = core.getMeasuredDataRanges();
     if (!ranges) {
@@ -189,7 +201,8 @@ static void materializePrebakedRanges(DeviceOp device) {
                          std::to_string(address);
       bool present = false;
       device.walk([&](BufferOp buffer) {
-        if (buffer.name() == name) {
+        if (buffer.getBankReserved() && buffer.getTileOp() == tile &&
+            !buffer.getMemBank() && buffer.getAddress() == address) {
           present = true;
         }
       });
@@ -198,17 +211,18 @@ static void materializePrebakedRanges(DeviceOp device) {
       }
       builder.setInsertionPoint(core);
       auto type = MemRefType::get({size}, builder.getI8Type());
+      if (table.lookup(name))
+        name = generateUniqueSymbolName(table, name + "_", counter);
       auto buffer =
           BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
-                           /*sym_name=*/nullptr,
+                           builder.getStringAttr(name),
                            /*address=*/builder.getI32IntegerAttr(address),
                            /*initial_value=*/nullptr,
                            /*mem_bank=*/nullptr,
                            /*core_data=*/nullptr,
                            /*bank_reserved=*/builder.getUnitAttr(),
                            /*aligned=*/builder.getBoolAttr(false));
-      buffer->setAttr(SymbolTable::getSymbolAttrName(),
-                      builder.getStringAttr(name));
+      table.insert(buffer);
     }
   }
 }
@@ -1653,19 +1667,6 @@ struct AIEPrepareBuffersPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    // A buffer's name becomes a symbol in its core's object, so every buffer
-    // needs a name before the cores are lowered. Naming runs first, because a
-    // diagnostic below names the buffer it rejects.
-    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
-    unsigned counter = 0;
-    NamedOpTable names(device);
-    device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-      if (!buffer.hasName()) {
-        buffer->setAttr(
-            SymbolTable::getSymbolAttrName(),
-            builder.getStringAttr(names.uniqueName("_anonymous", counter)));
-      }
-    });
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
       if (failed(checkBufferScope(buffer, device))) {
         return signalPassFailure();

@@ -15,7 +15,7 @@
 // CHECK-LABEL: aie.device(npu2)
 aie.device(npu2) {
   %tile = aie.tile(0, 2)
-  %buf = aie.buffer(%tile) : memref<1024xi32>
+  aie.buffer @buf(%tile) : memref<1024xi32>
 
   // CHECK: func.func @helper(%[[M:.*]]: memref<1024xi32>)
   // CHECK: scf.for %[[I:.*]] = %{{.*}} to %{{.*}} step %{{.*}} : i32 {
@@ -48,16 +48,19 @@ aie.device(npu2) {
     // CHECK:     memref.load %{{.*}}[%[[JIDX]]]
     scf.for %iter = %c0 to %cmax step %c1 {
       scf.for %i = %c0 to %c32 step %c1 {
+        %buf = aie.get_buffer @buf : memref<1024xi32>
         %x = memref.load %buf[%i] : memref<1024xi32>
         %y = arith.addi %x, %v : i32
         memref.store %y, %buf[%i] : memref<1024xi32>
       }
-      func.call @helper(%buf) : (memref<1024xi32>) -> ()
+      %buf_1 = aie.get_buffer @buf : memref<1024xi32>
+      func.call @helper(%buf_1) : (memref<1024xi32>) -> ()
     }
     // 0xFFFFFFFF does not fit in a signed i32.
     // CHECK: scf.for %{{.*}} = %{{.*}} to %c4294967295 step %{{.*}} {
     scf.for %i = %c0 to %cu32 step %c1 {
-      memref.store %v, %buf[%c0] : memref<1024xi32>
+      %buf_2 = aie.get_buffer @buf : memref<1024xi32>
+      memref.store %v, %buf_2[%c0] : memref<1024xi32>
     }
     // The bounds and step fit in i32, but the final increment does not
     // (2147483646 + 2), so an i32 counter would wrap. The loop keeps `index`.
@@ -66,13 +69,15 @@ aie.device(npu2) {
     %chi = arith.constant 2147483647 : index
     %c2 = arith.constant 2 : index
     scf.for %i = %clo to %chi step %c2 {
-      memref.store %v, %buf[%c0] : memref<1024xi32>
+      %buf_3 = aie.get_buffer @buf : memref<1024xi32>
+      memref.store %v, %buf_3[%c0] : memref<1024xi32>
     }
     // The final increment reaches 2147483647 exactly, so this one is narrowed.
     // CHECK: scf.for %{{.*}} = %c2147483645_i32 to %c2147483647_i32 step %{{.*}} : i32 {
     %clo1 = arith.constant 2147483645 : index
     scf.for %i = %clo1 to %chi step %c1 {
-      memref.store %v, %buf[%c0] : memref<1024xi32>
+      %buf_4 = aie.get_buffer @buf : memref<1024xi32>
+      memref.store %v, %buf_4[%c0] : memref<1024xi32>
     }
     aie.end
   }
@@ -80,7 +85,7 @@ aie.device(npu2) {
   // Index arithmetic and comparisons on the induction variable are narrowed
   // when their results fit in i32, and stay `index` when they might not.
   %tile2 = aie.tile(0, 3)
-  %idx = aie.buffer(%tile2) : memref<32xindex>
+  aie.buffer @idx(%tile2) : memref<32xindex>
   // CHECK: aie.core
   // CHECK:   %[[CBIG:.*]] = arith.constant 1099511627776 : index
   // CHECK:   scf.for %[[K:.*]] = %{{.*}} to %{{.*}} step %{{.*}} : i32 {
@@ -109,6 +114,7 @@ aie.device(npu2) {
       %a = arith.addi %m, %c16 : index
       %lt = arith.cmpi ult, %a, %c32 : index
       %s = arith.select %lt, %a, %c0 : index
+      %idx = aie.get_buffer @idx : memref<32xindex>
       memref.store %s, %idx[%k] : memref<32xindex>
       // Up to 31 * 2^40 + 16, which does not.
       %w = arith.muli %k, %cbig : index
@@ -123,9 +129,9 @@ aie.device(npu2) {
   // A core's buffers are defined above it. A loop bounded by a value read
   // from one is narrowed, and so is the loop nested in it.
   %tile3 = aie.tile(0, 4)
-  %ctl = aie.buffer(%tile3) : memref<4xi32>
-  %out = aie.buffer(%tile3) : memref<16xi32>
-  %ctl64 = aie.buffer(%tile3) : memref<1xi64>
+  aie.buffer @ctl(%tile3) : memref<4xi32>
+  aie.buffer @out(%tile3) : memref<16xi32>
+  aie.buffer @ctl64(%tile3) : memref<1xi64>
   // CHECK: aie.core
   // CHECK:   %[[N:.*]] = memref.load %{{.*}}[%{{.*}}] : memref<4xi32>
   // CHECK:   scf.for %{{.*}} = %c0_i32 to %[[N]] step %{{.*}} : i32 {
@@ -140,13 +146,16 @@ aie.device(npu2) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c16 = arith.constant 16 : index
+    %ctl = aie.get_buffer @ctl : memref<4xi32>
     %n = memref.load %ctl[%c0] : memref<4xi32>
     %ni = arith.index_cast %n : i32 to index
     scf.for %i = %c0 to %ni step %c1 {
       scf.for %l = %c0 to %c16 step %c1 {
+        %out = aie.get_buffer @out : memref<16xi32>
         memref.store %n, %out[%l] : memref<16xi32>
       }
     }
+    %ctl64 = aie.get_buffer @ctl64 : memref<1xi64>
     %m = memref.load %ctl64[%c0] : memref<1xi64>
     %mi = arith.index_cast %m : i64 to index
     %r = scf.while (%k = %c1) : (index) -> index {
@@ -157,7 +166,8 @@ aie.device(npu2) {
     ^bb0(%a: index):
       scf.yield %a : index
     }
-    memref.store %n, %out[%r] : memref<16xi32>
+    %out_1 = aie.get_buffer @out : memref<16xi32>
+    memref.store %n, %out_1[%r] : memref<16xi32>
     aie.end
   }
 

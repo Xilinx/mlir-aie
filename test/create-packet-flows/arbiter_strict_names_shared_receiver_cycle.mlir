@@ -28,37 +28,41 @@ module {
     %t_2_3 = aie.tile(2, 3)
     %t_2_4 = aie.tile(2, 4)
     %t_2_5 = aie.tile(2, 5)
-    %l_2_1_0 = aie.lock(%t_2_1, 0) {init = 1 : i32, sym_name = "l_2_1_0"}
-    %l_2_1_1 = aie.lock(%t_2_1, 1) {init = 0 : i32, sym_name = "l_2_1_1"}
-    %b_2_1_0 = aie.buffer(%t_2_1) {sym_name = "b_2_1_0"} : memref<32xi32>
+    aie.lock @l_2_1_0(%t_2_1, 0) {init = 1 : i32}
+    aie.lock @l_2_1_1(%t_2_1, 1) {init = 0 : i32}
+    aie.buffer @b_2_1_0(%t_2_1) : memref<32xi32>
     %dma_2_1 = aie.memtile_dma(%t_2_1) {
       %c1 = arith.constant 1 : i32
       %d0 = aie.dma_start(S2MM, 5, ^p0b0, ^end)
     ^p0b0:
-      aie.use_lock(%l_2_1_0, AcquireGreaterEqual, %c1)
+      aie.use_lock(@l_2_1_0, AcquireGreaterEqual, %c1)
+      %b_2_1_0 = aie.get_buffer @b_2_1_0 : memref<32xi32>
       aie.dma_bd(%b_2_1_0 : memref<32xi32> offset = 0 len = 32)
-      aie.use_lock(%l_2_1_1, Release, %c1)
+      aie.use_lock(@l_2_1_1, Release, %c1)
       aie.next_bd ^p0b0
     ^end:
       aie.end
     }
-    %b_2_2_1 = aie.buffer(%t_2_2) {sym_name = "b_2_2_1"} : memref<32xi32>
+    aie.buffer @b_2_2_1(%t_2_2) : memref<32xi32>
     %dma_2_2 = aie.mem(%t_2_2) {
       %d0 = aie.dma_start(S2MM, 1, ^p0b0, ^end)
     ^p0b0:
+      %b_2_2_1 = aie.get_buffer @b_2_2_1 : memref<32xi32>
       aie.dma_bd(%b_2_2_1 : memref<32xi32> offset = 0 len = 32)
       aie.next_bd ^p0b0
     ^end:
       aie.end
     }
-    %b_2_3_2 = aie.buffer(%t_2_3) {sym_name = "b_2_3_2"} : memref<16xi32>
-    %b_2_3_3 = aie.buffer(%t_2_3) {sym_name = "b_2_3_3"} : memref<8xi32>
+    aie.buffer @b_2_3_2(%t_2_3) : memref<16xi32>
+    aie.buffer @b_2_3_3(%t_2_3) : memref<8xi32>
     %dma_2_3 = aie.mem(%t_2_3) {
       %d0 = aie.dma_start(MM2S, 1, ^p0b0, ^end)
     ^p0b0:
+      %b_2_3_2 = aie.get_buffer @b_2_3_2 : memref<16xi32>
       aie.dma_bd(%b_2_3_2 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 10>}
       aie.next_bd ^p0b1
     ^p0b1:
+      %b_2_3_3 = aie.get_buffer @b_2_3_3 : memref<8xi32>
       aie.dma_bd(%b_2_3_3 : memref<8xi32> offset = 0 len = 8) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 10>}
       aie.next_bd ^p0b0
     ^end:

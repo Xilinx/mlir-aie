@@ -10,13 +10,14 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     // expected-error@+1 {{unreachable}}
-    %buf = aie.buffer(%tile_0_2) : memref<8xi16>
+    aie.buffer @buf(%tile_0_2) : memref<8xi16>
 
     aie.bd_chain @simple_chain(%arg0: memref<8xi16>) {
             aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8)
             aie.next_bd ^bd1
         ^bd1:
-            // expected-note@+1{{user}}
+            // expected-note@+2{{user}}
+            %buf = aie.get_buffer @buf : memref<8xi16>
             aie.dma_bd(%buf : memref<8xi16> offset = 0 len = 8)
             aie.end
     }
@@ -28,4 +29,3 @@ module {
     }
   }
 }
-

@@ -23,20 +23,20 @@
 
 // RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
-// CHECK: %b2 = aie.buffer(%mem_tile_0_1) {address = 17144 : i32, mem_bank = 0 : i32, sym_name = "b2"} : memref<7808xi8>
-// CHECK: %b4 = aie.buffer(%mem_tile_0_1) {address = 194948 : i32, mem_bank = 2 : i32, sym_name = "b4"} : memref<13536xi8>
-// CHECK: %b5 = aie.buffer(%mem_tile_0_1) {address = 208484 : i32, mem_bank = 3 : i32, sym_name = "b5"} : memref<191939xi8>
+// CHECK: aie.buffer @b2(%mem_tile_0_1) {address = 17144 : i32, mem_bank = 0 : i32} : memref<7808xi8>
+// CHECK: aie.buffer @b4(%mem_tile_0_1) {address = 194948 : i32, mem_bank = 2 : i32} : memref<13536xi8>
+// CHECK: aie.buffer @b5(%mem_tile_0_1) {address = 208484 : i32, mem_bank = 3 : i32} : memref<191939xi8>
 // b6 slides to the far end of bank 6, the position that leaves the free space
 // below it in one run.
-// CHECK: %b6 = aie.buffer(%mem_tile_0_1) {address = 436536 : i32, mem_bank = 6 : i32, sym_name = "b6"} : memref<22216xi8>
+// CHECK: aie.buffer @b6(%mem_tile_0_1) {address = 436536 : i32, mem_bank = 6 : i32} : memref<22216xi8>
 
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 1)
-    %b2 = aie.buffer(%t) {sym_name = "b2", address = 17144 : i32} : memref<7808xi8>
-    %b4 = aie.buffer(%t) {sym_name = "b4", address = 194948 : i32} : memref<13536xi8>
-    %b5 = aie.buffer(%t) {sym_name = "b5"} : memref<191939xi8>
-    %b6 = aie.buffer(%t) {sym_name = "b6", mem_bank = 6 : i32} : memref<22216xi8>
+    aie.buffer @b2(%t) {address = 17144 : i32} : memref<7808xi8>
+    aie.buffer @b4(%t) {address = 194948 : i32} : memref<13536xi8>
+    aie.buffer @b5(%t) : memref<191939xi8>
+    aie.buffer @b6(%t) {mem_bank = 6 : i32} : memref<22216xi8>
     aie.memtile_dma(%t) { aie.end }
   }
 }

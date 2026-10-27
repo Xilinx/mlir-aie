@@ -687,7 +687,7 @@ aie.device(npu2_1col) @main {
 BUFFER_NAMED = """
 aie.device(npu2_1col) @main {
   %t = aie.tile(0, 2)
-  %b = aie.buffer(%t) {sym_name = "main"} : memref<16xi32>
+  aie.buffer @main(%t) : memref<16xi32>
   aie.runtime_sequence @run(%a: memref<16xi32>) {
     %c = arith.constant 1 : i32
     aiex.npu.rtp_write(@main, 0, %c) : i32

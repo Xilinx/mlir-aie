@@ -29,10 +29,11 @@ module {
     %t_0_2 = aie.tile(0, 2)
     %t_1_1 = aie.tile(1, 1)
     %t_1_3 = aie.tile(1, 3)
-    %b_0_1_0 = aie.buffer(%t_0_1) {sym_name = "b_0_1_0"} : memref<16xi32>
+    aie.buffer @b_0_1_0(%t_0_1) : memref<16xi32>
     %dma_0_1 = aie.memtile_dma(%t_0_1) {
       %d0 = aie.dma_start(MM2S, 5, ^p0b0, ^end)
     ^p0b0:
+      %b_0_1_0 = aie.get_buffer @b_0_1_0 : memref<16xi32>
       aie.dma_bd(%b_0_1_0 : memref<16xi32> offset = 0 len = 16) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 30>}
       aie.next_bd ^p0b0
     ^end:

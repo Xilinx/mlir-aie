@@ -32,16 +32,18 @@ module {
     %t01 = aie.tile(0, 1)
     %t03 = aie.tile(0, 3)
     %t04 = aie.tile(0, 4)
-    %b0 = aie.buffer(%t01) : memref<16xi32>
-    %b1 = aie.buffer(%t01) : memref<32xi32>
+    aie.buffer @b0(%t01) : memref<16xi32>
+    aie.buffer @b1(%t01) : memref<32xi32>
     %dma01 = aie.memtile_dma(%t01) {
       %d0 = aie.dma_start(S2MM, 4, ^bd0, ^next)
     ^bd0:
+      %b0 = aie.get_buffer @b0 : memref<16xi32>
       aie.dma_bd(%b0 : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd0
     ^next:
       %d1 = aie.dma_start(S2MM, 5, ^bd1, ^end)
     ^bd1:
+      %b1 = aie.get_buffer @b1 : memref<32xi32>
       aie.dma_bd(%b1 : memref<32xi32> offset = 0 len = 32)
       aie.next_bd ^bd1
     ^end:

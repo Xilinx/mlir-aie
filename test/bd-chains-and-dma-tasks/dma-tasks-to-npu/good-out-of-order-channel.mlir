@@ -31,7 +31,7 @@ module {
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) { address = 0xBEEF : i32 } : memref<32xi8>
+    aie.buffer @buf(%tile_0_1) { address = 0xBEEF : i32 } : memref<32xi8>
     aie.runtime_sequence(%arg0: memref<4xi32>) {
       // On memtile S2MM receiver.
       // CHECK-DAG: %[[ADDR:.*]] = arith.constant 656896 : i32
@@ -39,6 +39,7 @@ module {
       // CHECK-DAG: %[[MASK:.*]] = arith.constant 8 : i32
       // CHECK: aiex.npu.maskwrite32(%[[ADDR]], %[[VAL]], %[[MASK]])
       %t = aiex.dma_configure_task(%tile_0_1, S2MM, 0, <pkt_type = 0, pkt_id = 0>) {
+        %buf = aie.get_buffer @buf : memref<32xi8>
         aie.dma_bd(%buf : memref<32xi8> offset = 0 len = 4) {bd_id = 0 : i32}
         aie.end
       } {out_of_order}
@@ -54,7 +55,7 @@ module {
 module @test_release_only_ooo {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)
-    %lock = aie.lock(%tile_0_0, 0) {init = 0 : i32}
+    aie.lock @lock(%tile_0_0, 0) {init = 0 : i32}
     aie.runtime_sequence(%arg0: memref<4xi32>) {
       // CHECK: aiex.npu.writebd
       // CHECK-SAME: lock_acq_enable = 0
@@ -65,7 +66,7 @@ module @test_release_only_ooo {
       %t = aiex.dma_configure_task(%tile_0_0, S2MM, 0, <pkt_type = 0, pkt_id = 0>) {
         %c1 = arith.constant 1 : i32
         aie.dma_bd(%arg0 : memref<4xi32> offset = 0 len = 4) {bd_id = 0 : i32}
-        aie.use_lock(%lock, Release, %c1)
+        aie.use_lock(@lock, Release, %c1)
         aie.end
       } {out_of_order}
       aiex.dma_start_task(%t)

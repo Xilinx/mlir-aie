@@ -22,10 +22,10 @@ module @aie_module  {
   aie.device(xcve2802) {
     %t73 = aie.tile(7, 3)
 
-    %buf_a_ping = aie.buffer(%t73) {address = 1824 : i32, sym_name = "a_ping" } : memref<256xi32>
+    aie.buffer @a_ping(%t73) {address = 1824 : i32} : memref<256xi32>
 
-    %lock_a_write = aie.lock(%t73, 3) { init = 1 : i32 }
-    %lock_a_read = aie.lock(%t73, 4)
+    aie.lock @lock_a_write(%t73, 3) { init = 1 : i32 }
+    aie.lock @lock_a_read(%t73, 4)
 
     // Tile DMA
     %m73 = aie.mem(%t73) {
@@ -33,9 +33,10 @@ module @aie_module  {
       ^bd0:
         // Note: acquire and release are different locks.
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%lock_a_write, AcquireGreaterEqual, %c1_ul1)
+        aie.use_lock(@lock_a_write, AcquireGreaterEqual, %c1_ul1)
+        %buf_a_ping = aie.get_buffer @a_ping : memref<256xi32>
         aie.dma_bd(%buf_a_ping : memref<256xi32> offset = 0 len = 256)
-        // aie.use_lock(%lock_a_read, Release, %{{.*}})
+        // aie.use_lock(@lock_a_read, Release, %{{.*}})
         aie.next_bd ^end
       ^end:
         aie.end

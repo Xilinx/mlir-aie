@@ -118,13 +118,15 @@ test_auto_placed_buffer_sharing_still_raises()
 # A single buffer, declared once on the producer tile (0, 2)...
 # CHECK: %[[PTILE:.+]] = aie.logical_tile<CoreTile>(0, 2)
 # CHECK: %[[CTILE:.+]] = aie.logical_tile<CoreTile>(0, 3)
-# CHECK: %[[BUF:.+]] = aie.buffer(%[[PTILE]]) {sym_name = "shared_l1"}
+# CHECK: aie.buffer @shared_l1(%[[PTILE]])
 # ...written by the producer core...
 # CHECK: aie.core(%[[PTILE]])
+# CHECK: %[[BUF:.+]] = aie.get_buffer @shared_l1
 # CHECK: memref.store {{.*}}, %[[BUF]]
 # ...and read by the consumer core on the neighbor tile.
 # CHECK: aie.core(%[[CTILE]])
-# CHECK: memref.load %[[BUF]]
+# CHECK: %[[READ:.+]] = aie.get_buffer @shared_l1
+# CHECK: memref.load %[[READ]]
 test_shared_buffer_resolves_to_cross_core_access()
 
 # After --aie-place-tiles, the pinned owner is at (0, 2) and the unpinned
@@ -133,9 +135,10 @@ test_shared_buffer_resolves_to_cross_core_access()
 # emitted in placement order, which lands (0, 3) before (0, 2).)
 # CHECK: %[[CT:.+]] = aie.tile(0, 3)
 # CHECK: %[[PT:.+]] = aie.tile(0, 2)
-# CHECK: %[[PBUF:.+]] = aie.buffer(%[[PT]]) {sym_name = "shared_l1"}
+# CHECK: aie.buffer @shared_l1(%[[PT]])
 # CHECK: aie.core(%[[PT]])
 # CHECK: aie.core(%[[CT]])
+# CHECK: %[[PBUF:.+]] = aie.get_buffer @shared_l1
 # CHECK: memref.load %[[PBUF]]
 # CHECK-NOT: aie.logical_tile
 test_unpinned_consumer_is_steered_to_owner_neighbor()

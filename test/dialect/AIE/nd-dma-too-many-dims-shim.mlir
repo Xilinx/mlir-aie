@@ -16,11 +16,12 @@
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
+    aie.external_buffer @buf00 : memref<128xi32>
     aie.shim_dma(%tile_0_0) {
       %srcDma = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      %buf = aie.external_buffer { sym_name = "buf00" } : memref<128xi32>
-      // expected-error@+1 {{Cannot give more than 3 dimensions}}
+      // expected-error@+2 {{Cannot give more than 3 dimensions}}
+      %buf = aie.get_buffer @buf00 : memref<128xi32>
       aie.dma_bd(%buf : memref<128xi32> offset = 0 len = 128 sizes = [1, 1, 1, 1] strides = [1, 1, 1, 1])
       aie.next_bd ^end
     ^end:

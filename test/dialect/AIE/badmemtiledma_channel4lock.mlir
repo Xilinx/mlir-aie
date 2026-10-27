@@ -10,27 +10,29 @@
 // CHECK: note: channel
 // CHECK:     aie.dma_start("MM2S", 4, ^bd0, ^dma1)
 // CHECK: note: lock
-// CHECK:   %lock2 = aie.lock(%t2, 3) { sym_name = "lock2" }
+// CHECK:   aie.lock @lock2(%t2, 3)
 
 aie.device(xcve2802) {
   %t1 = aie.tile(1, 1)
   %t2 = aie.tile(2, 1)
-  %buf1 = aie.buffer(%t1) : memref<256xi32>
-  %lock1 = aie.lock(%t1, 3) { sym_name = "lock1" }
-  %lock2 = aie.lock(%t2, 3) { sym_name = "lock2" }
+  aie.buffer @buf1(%t1) : memref<256xi32>
+  aie.lock @lock1(%t1, 3)
+  aie.lock @lock2(%t2, 3)
   %mem = aie.memtile_dma(%t1) {
     aie.dma_start("MM2S", 4, ^bd0, ^dma1)
     ^dma1:
     aie.dma_start("MM2S", 1, ^bd1, ^dma1)
     ^bd0:
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%lock2, "Acquire", %c1_ul1)
+      aie.use_lock(@lock2, "Acquire", %c1_ul1)
+      %buf1 = aie.get_buffer @buf1 : memref<256xi32>
       aie.dma_bd(%buf1 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd2
     ^bd1:
       %c1_ul2 = arith.constant 1 : i32
-      aie.use_lock(%lock1, "Acquire", %c1_ul2)
-      aie.dma_bd(%buf1 : memref<256xi32> offset = 0 len = 256)
+      aie.use_lock(@lock1, "Acquire", %c1_ul2)
+      %buf1_1 = aie.get_buffer @buf1 : memref<256xi32>
+      aie.dma_bd(%buf1_1 : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd2
     ^bd2:
       aie.end

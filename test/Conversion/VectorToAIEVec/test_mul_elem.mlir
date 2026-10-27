@@ -40,7 +40,7 @@ func.func @test_mul_elem_i16_i32(%a : vector<32xi16>,
   return %3 : vector<32xi32> 
 }
 
-// CHECK-LABEL: func @test_mul_elem_i8_i32 
+// CHECK-LABEL: func @test_mul_elem_i8_i32
 // CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<32xi8>
 // CHECK-SAME: %[[B:[A-Za-z0-9]+]]: vector<32xi8>
 func.func @test_mul_elem_i8_i32(%a : vector<32xi8>,
@@ -53,7 +53,7 @@ func.func @test_mul_elem_i8_i32(%a : vector<32xi8>,
   return %3 : vector<32xi32>
 }
 
-// CHECK-LABEL: func @test_mul_elem_i8_i8 
+// CHECK-LABEL: func @test_mul_elem_i8_i8
 // CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<32xi8>
 // CHECK-SAME: %[[B:[A-Za-z0-9]+]]: vector<32xi8>
 func.func @test_mul_elem_i8_i8(%a : vector<32xi8>,

@@ -20,8 +20,8 @@
 // CHECK-DAG: %[[S0:.*]] = aie.tile(0, 0)
 // CHECK-DAG: %[[S1:.*]] = aie.tile(1, 0)
 // CHECK-DAG: %[[S2:.*]] = aie.tile(2, 0)
-// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "join_out_buff_0"}
-// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "join_out_buff_1"}
+// CHECK-DAG: aie.buffer @join_out_buff_0(%[[M1]])
+// CHECK-DAG: aie.buffer @join_out_buff_1(%[[M1]])
 // CHECK-DAG: aie.flow(%[[S0]], DMA : 0, %[[M0]], DMA : 4)
 // CHECK-DAG: aie.flow(%[[S0]], DMA : 1, %[[M0]], DMA : 5)
 // CHECK-DAG: aie.flow(%[[S1]], DMA : 0, %[[M0]], DMA : 0)
@@ -34,7 +34,7 @@ module {
     %shim1 = aie.tile(1, 0)
     %shim2 = aie.tile(2, 0)
     %home = aie.tile(0, 1)
-    %reserved = aie.buffer(%home) : memref<131072xi8>
+    aie.buffer @reserved(%home) : memref<131072xi8>
 
     aie.objectfifo @a_in(%shim0, {%home}, 2 : i32) : !aie.objectfifo<memref<131072xi8>>
     aie.objectfifo @a_out(%home, {%shim0}, 2 : i32) : !aie.objectfifo<memref<131072xi8>>

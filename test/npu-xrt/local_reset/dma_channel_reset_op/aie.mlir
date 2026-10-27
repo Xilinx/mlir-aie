@@ -16,10 +16,10 @@ module {
     %t00 = aie.tile(0, 0)
     %t02 = aie.tile(0, 2)
 
-    %cons = aie.lock(%t02, 0) {init = 0 : i32, sym_name = "cons"}
-    %prod = aie.lock(%t02, 1) {init = 0 : i32, sym_name = "prod"}
-    %good = aie.buffer(%t02) { initial_value = dense<[100,101,102,103,104,105,106,107]> : tensor<8xi32>, sym_name = "good" } : memref<8xi32>
-    %bad  = aie.buffer(%t02) { initial_value = dense<[900,901,902,903,904,905,906,907]> : tensor<8xi32>, sym_name = "bad" } : memref<8xi32>
+    aie.lock @cons(%t02, 0) {init = 0 : i32}
+    aie.lock @prod(%t02, 1) {init = 0 : i32}
+    aie.buffer @good(%t02) { initial_value = dense<[100,101,102,103,104,105,106,107]> : tensor<8xi32>} : memref<8xi32>
+    aie.buffer @bad(%t02) { initial_value = dense<[900,901,902,903,904,905,906,907]> : tensor<8xi32>} : memref<8xi32>
 
     aie.flow(%t02, DMA : 0, %t00, DMA : 0)
 
@@ -29,15 +29,17 @@ module {
       %s = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       %o0 = arith.constant 1 : i32
-      aie.use_lock(%cons, AcquireGreaterEqual, %o0)
+      aie.use_lock(@cons, AcquireGreaterEqual, %o0)
+      %bad = aie.get_buffer @bad : memref<8xi32>
       aie.dma_bd(%bad : memref<8xi32> offset = 0 len = 8) {bd_id = 0 : i32}
-      aie.use_lock(%prod, Release, %o0)
+      aie.use_lock(@prod, Release, %o0)
       aie.next_bd ^bd1
     ^bd1:
       %o1 = arith.constant 1 : i32
-      aie.use_lock(%cons, AcquireGreaterEqual, %o1)
+      aie.use_lock(@cons, AcquireGreaterEqual, %o1)
+      %good = aie.get_buffer @good : memref<8xi32>
       aie.dma_bd(%good : memref<8xi32> offset = 0 len = 8) {bd_id = 1 : i32}
-      aie.use_lock(%prod, Release, %o1)
+      aie.use_lock(@prod, Release, %o1)
       aie.next_bd ^end
     ^end:
       aie.end
@@ -64,7 +66,7 @@ module {
 
       // Arm cons so the good BD runs (aie-rt XAie_LockSetValue via aiex.set_lock).
       %cons_v1 = arith.constant 1 : i32
-      aiex.set_lock(%cons, %cons_v1)
+      aiex.set_lock(@cons, %cons_v1)
 
       aiex.npu.dma_memcpy_nd(%arg0[0,0,0,0][1,1,1,8][0,0,0,1]) {id=0:i64, issue_token=true, metadata=@out0} : memref<8xi32>
       aiex.npu.dma_wait {symbol=@out0}

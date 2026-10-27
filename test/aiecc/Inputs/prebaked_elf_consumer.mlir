@@ -6,7 +6,7 @@
 module {
   aie.device(npu2) {
     %t = aie.tile(0, 2)
-    %scratch = aie.buffer(%t) {sym_name = "scratch"} : memref<16384xi8>
+    aie.buffer @scratch(%t) : memref<16384xi8>
     aie.core(%t) { aie.end } {elf_file = "prebaked.elf", stack_size = 1024 : i32}
   }
 }

@@ -17,14 +17,14 @@
 
 // CHECK-DAG: %[[T02:.*]] = aie.tile(0, 2)
 // CHECK-DAG: %[[T03:.*]] = aie.tile(0, 3)
-// CHECK-DAG: %[[L02:.*]] = aie.lock(%[[T02]]) {init = 0 : i32}
-// CHECK-DAG: %[[L03:.*]] = aie.lock(%[[T03]]) {init = 0 : i32}
+// CHECK-DAG: aie.lock @[[L02:.*]](%[[T02]]) {init = 0 : i32}
+// CHECK-DAG: aie.lock @[[L03:.*]](%[[T03]]) {init = 0 : i32}
 
 // CHECK: aie.core(%[[T02]]) {
 // CHECK-NOT: aie.use_lock
 // CHECK: scf.for
 // CHECK-NEXT: %[[ONE:.*]] = arith.constant 1 : i32
-// CHECK-NEXT: aie.use_lock(%[[L02]], AcquireGreaterEqual, %[[ONE]])
+// CHECK-NEXT: aie.use_lock(@[[L02]], AcquireGreaterEqual, %[[ONE]])
 // CHECK: memref.load
 // CHECK: scf.for
 // CHECK: memref.load
@@ -32,13 +32,13 @@
 
 // CHECK: aie.core(%[[T03]]) {
 // CHECK-NEXT: %[[ONE3:.*]] = arith.constant 1 : i32
-// CHECK-NEXT: aie.use_lock(%[[L03]], Acquire, %[[ONE3]])
+// CHECK-NEXT: aie.use_lock(@[[L03]], Acquire, %[[ONE3]])
 // CHECK: aie.end
 
 // CHECK: aie.runtime_sequence
 // CHECK: aiex.npu.create_scratchpad
-// CHECK-DAG: aiex.set_lock(%[[L02]], %{{.*}})
-// CHECK-DAG: aiex.set_lock(%[[L03]], %{{.*}})
+// CHECK-DAG: aiex.set_lock(@[[L02]], %{{.*}})
+// CHECK-DAG: aiex.set_lock(@[[L03]], %{{.*}})
 module {
   aiex.scratchpad_parameter @n : i32
   aie.device(npu2) {

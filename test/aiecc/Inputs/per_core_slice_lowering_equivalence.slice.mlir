@@ -14,18 +14,19 @@ module @slice {
  aie.device(npu1_2col) @device1 {
   %t02 = aie.tile(0, 2)
   %t12 = aie.tile(1, 2)
-  %l02 = aie.lock(%t02, 0)
-  %b02 = aie.buffer(%t02) { sym_name = "a02" } : memref<16xi32>
-  %l12 = aie.lock(%t12, 0)
-  %b12 = aie.buffer(%t12) { sym_name = "a12" } : memref<16xi32>
+  aie.lock @l02(%t02, 0)
+  aie.buffer @a02(%t02) : memref<16xi32>
+  aie.lock @l12(%t12, 0)
+  aie.buffer @a12(%t12) : memref<16xi32>
   %c02 = aie.core(%t02) {
     %c0_ul0 = arith.constant 0 : i32
-    aie.use_lock(%l02, Acquire, %c0_ul0)
+    aie.use_lock(@l02, Acquire, %c0_ul0)
     %v = arith.constant 7 : i32
     %i = arith.constant 3 : index
+    %b02 = aie.get_buffer @a02 : memref<16xi32>
     memref.store %v, %b02[%i] : memref<16xi32>
     %c1_ul1 = arith.constant 1 : i32
-    aie.use_lock(%l02, Release, %c1_ul1)
+    aie.use_lock(@l02, Release, %c1_ul1)
     aie.end
   }
  }

@@ -17,11 +17,12 @@ module @adjacency_steers_unconstrained_consumer {
     // CHECK-DAG: aie.tile(2, 3)
     // CHECK-DAG: aie.tile(2, 2)
     %owner = aie.logical_tile<CoreTile>(2, 3)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%consumer) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
@@ -42,24 +43,27 @@ module @adjacency_star_three_consumers {
     // CHECK-DAG: aie.tile(1, 4)
     // CHECK-DAG: aie.tile(2, 3)
     %owner = aie.logical_tile<CoreTile>(1, 3)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %c1 = aie.logical_tile<CoreTile>(?, ?)
     %c2 = aie.logical_tile<CoreTile>(?, ?)
     %c3 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c1) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
     aie.core(%c2) {
       %i = arith.constant 0 : index
-      %v = memref.load %buf[%i] : memref<16xi32>
+      %buf_1 = aie.get_buffer @buf : memref<16xi32>
+      %v = memref.load %buf_1[%i] : memref<16xi32>
       aie.end
     }
     aie.core(%c3) {
       %i = arith.constant 0 : index
-      %v = memref.load %buf[%i] : memref<16xi32>
+      %buf_2 = aie.get_buffer @buf : memref<16xi32>
+      %v = memref.load %buf_2[%i] : memref<16xi32>
       aie.end
     }
     // CHECK-NOT: aie.logical_tile
@@ -76,11 +80,12 @@ module @adjacency_both_pinned_compatible {
     // CHECK-DAG: aie.tile(0, 2)
     // CHECK-DAG: aie.tile(0, 3)
     %owner = aie.logical_tile<CoreTile>(0, 2)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(0, 3)
     aie.core(%consumer) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
@@ -98,10 +103,11 @@ module @adjacency_through_view_op {
     // CHECK-DAG: aie.tile(2, 3)
     // CHECK-DAG: aie.tile(2, 2)
     %owner = aie.logical_tile<CoreTile>(2, 3)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%consumer) {
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %sub = memref.subview %buf[0][8][1] : memref<16xi32> to memref<8xi32, strided<[1]>>
       %i = arith.constant 0 : index
       %v = memref.load %sub[%i] : memref<8xi32, strided<[1]>>
@@ -120,9 +126,10 @@ module @adjacency_self_reference_no_constraint {
   aie.device(npu1) {
     // CHECK-DAG: aie.tile(0, 2)
     %lt = aie.logical_tile<CoreTile>(?, ?)
-    %buf = aie.buffer(%lt) : memref<16xi32>
+    aie.buffer @buf(%lt) : memref<16xi32>
     aie.core(%lt) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
@@ -139,11 +146,12 @@ module @adjacency_npu2_target_model {
     // CHECK-DAG: aie.tile(2, 3)
     // CHECK-DAG: aie.tile(2, 2)
     %owner = aie.logical_tile<CoreTile>(2, 3)
-    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%consumer) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
@@ -183,15 +191,15 @@ module @adjacency_consumer_follows_owner {
     // CHECK-DAG: %[[F0:.*]] = aie.tile(0, 4)
     // CHECK-DAG: %[[F1:.*]] = aie.tile(0, 5)
     // CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 2)
-    // CHECK: %[[BUF:.*]] = aie.buffer(%[[OWNER]])
+    // CHECK: aie.buffer @[[BUF:.*]](%[[OWNER]])
     // CHECK: aie.core(%[[OWNER]])
     // CHECK: aie.core(%[[F0]])
     // CHECK: aie.core(%[[F1]])
     // CHECK: aie.core(%[[CONSUMER]])
     // CHECK-NEXT: arith.constant
-    // CHECK-NEXT: memref.load %[[BUF]]
+    // CHECK-NEXT: memref.load %{{[^ ,)]+}}
     %owner = aie.logical_tile<CoreTile>(?, ?)
-    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %f0 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%f0) { aie.end }
@@ -200,6 +208,7 @@ module @adjacency_consumer_follows_owner {
     %consumer = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%consumer) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
@@ -232,17 +241,18 @@ module @adjacency_allocate_ignores_memtile_end {
 // CHECK-LABEL: @owner_leaves_room_for_consumer
 // CHECK-DAG: aie.tile(0, 5)
 // CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 4)
-// CHECK-DAG: aie.buffer(%[[OWNER]])
+// CHECK-DAG: aie.buffer @{{[^ (]+}}(%[[OWNER]])
 module @owner_leaves_room_for_consumer {
   aie.device(npu2_1col) {
     %pin = aie.logical_tile<CoreTile>(0, 3)
     aie.core(%pin) { aie.end }
     %owner = aie.logical_tile<CoreTile>(?, ?)
-    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %consumer = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%consumer) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
@@ -258,28 +268,31 @@ module @owner_leaves_room_for_consumer {
 // CHECK-DAG: aie.tile(0, 4)
 // CHECK-DAG: aie.tile(1, 3)
 // CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 3)
-// CHECK-DAG: aie.buffer(%[[OWNER]])
+// CHECK-DAG: aie.buffer @{{[^ (]+}}(%[[OWNER]])
 module @owner_leaves_room_for_three_consumers {
   aie.device(npu2) {
     %owner = aie.logical_tile<CoreTile>(?, ?)
-    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %c0 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c0) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
     %c1 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c1) {
       %i = arith.constant 0 : index
-      %v = memref.load %buf[%i] : memref<16xi32>
+      %buf_1 = aie.get_buffer @buf : memref<16xi32>
+      %v = memref.load %buf_1[%i] : memref<16xi32>
       aie.end
     }
     %c2 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c2) {
       %i = arith.constant 0 : index
-      %v = memref.load %buf[%i] : memref<16xi32>
+      %buf_2 = aie.get_buffer @buf : memref<16xi32>
+      %v = memref.load %buf_2[%i] : memref<16xi32>
       aie.end
     }
   }
@@ -293,22 +306,24 @@ module @owner_leaves_room_for_three_consumers {
 // CHECK-DAG: aie.tile(0, 2)
 // CHECK-DAG: aie.tile(0, 4)
 // CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 3)
-// CHECK-DAG: aie.buffer(%[[OWNER]])
+// CHECK-DAG: aie.buffer @{{[^ (]+}}(%[[OWNER]])
 module @owner_leaves_room_for_two_consumers {
   aie.device(npu2_1col) {
     %owner = aie.logical_tile<CoreTile>(?, ?)
-    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
     %c0 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c0) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }
     %c1 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c1) {
       %i = arith.constant 0 : index
-      %v = memref.load %buf[%i] : memref<16xi32>
+      %buf_1 = aie.get_buffer @buf : memref<16xi32>
+      %v = memref.load %buf_1[%i] : memref<16xi32>
       aie.end
     }
   }
@@ -322,17 +337,18 @@ module @owner_leaves_room_for_two_consumers {
 // CHECK-LABEL: @buffer_and_allocate_on_one_owner
 // CHECK-DAG: %[[OWNER:.*]] = aie.tile(0, 2)
 // CHECK-DAG: aie.tile(0, 3)
-// CHECK-DAG: aie.buffer(%[[OWNER]])
+// CHECK-DAG: aie.buffer @{{[^ (]+}}(%[[OWNER]])
 module @buffer_and_allocate_on_one_owner {
   aie.device(npu2_1col) {
     %owner = aie.logical_tile<CoreTile>(?, ?)
     %consumer = aie.logical_tile<CoreTile>(?, ?)
-    %buf = aie.buffer(%owner) : memref<16xi32>
+    aie.buffer @buf(%owner) : memref<16xi32>
     aie.objectfifo @of (%owner, {%consumer}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.allocate @of (%owner)
     aie.core(%owner) { aie.end }
     aie.core(%consumer) {
       %i = arith.constant 0 : index
+      %buf = aie.get_buffer @buf : memref<16xi32>
       %v = memref.load %buf[%i] : memref<16xi32>
       aie.end
     }

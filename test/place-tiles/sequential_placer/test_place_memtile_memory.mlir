@@ -29,19 +29,19 @@
 // CHECK: aie.objectfifo @join0(%{{.*}}, {%[[M0]]}
 // ALLOC-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // ALLOC-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
-// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out_buff_0"}
-// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out_buff_1"}
-// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "b1_in_cons_buff_0"}
-// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b0_in_cons_buff_1"}
-// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b0_in_cons_buff_0"}
-// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b1_in_cons_buff_1"}
+// ALLOC-DAG: aie.buffer @join_out_buff_0(%[[HOME]])
+// ALLOC-DAG: aie.buffer @join_out_buff_1(%[[HOME]])
+// ALLOC-DAG: aie.buffer @b1_in_cons_buff_0(%[[HOME]])
+// ALLOC-DAG: aie.buffer @b0_in_cons_buff_1(%[[NEIGHBOR]])
+// ALLOC-DAG: aie.buffer @b0_in_cons_buff_0(%[[NEIGHBOR]])
+// ALLOC-DAG: aie.buffer @b1_in_cons_buff_1(%[[NEIGHBOR]])
 // BOUNDARY: %[[M:.*]] = aie.tile(0, 1)
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b0_in_cons_buff_0"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b0_in_cons_buff_1"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b1_in_cons_buff_0"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b1_in_cons_buff_1"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "join_out_buff_0"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "join_out_buff_1"}
+// BOUNDARY-DAG: aie.buffer @b0_in_cons_buff_0(%[[M]])
+// BOUNDARY-DAG: aie.buffer @b0_in_cons_buff_1(%[[M]])
+// BOUNDARY-DAG: aie.buffer @b1_in_cons_buff_0(%[[M]])
+// BOUNDARY-DAG: aie.buffer @b1_in_cons_buff_1(%[[M]])
+// BOUNDARY-DAG: aie.buffer @join_out_buff_0(%[[M]])
+// BOUNDARY-DAG: aie.buffer @join_out_buff_1(%[[M]])
 module {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
@@ -53,7 +53,7 @@ module {
     %b0 = aie.logical_tile<MemTile>(?, ?)
     %b1 = aie.logical_tile<MemTile>(?, ?)
     %join = aie.logical_tile<MemTile>(?, ?)
-    %reserved = aie.buffer(%home) : memref<196608xi8>
+    aie.buffer @reserved(%home) : memref<196608xi8>
 
     aie.objectfifo @b0_in(%shim, {%b0}, [1, 2]) : !aie.objectfifo<memref<16384x!aiex.bfp<"v8bfp16ebs8">>>
     aie.objectfifo @b0_out(%b0, {%core0}, 2 : i32) {repeat_count = 4 : i32} : !aie.objectfifo<memref<64x!aiex.bfp<"v8bfp16ebs8">>>

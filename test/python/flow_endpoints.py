@@ -111,8 +111,8 @@ def build(bad=None):
 # fifoName, which is what later gives the sequence a shim DMA allocation.
 
 # CHECK-DAG: aie.flow(%{{.*}}, DMA : 0, %{{.*}}, DMA : 3)
-# CHECK-DAG: %side_free = aie.lock(%{{.*}}) {init = 1 : i32, sym_name = "side_free"}
-# CHECK-DAG: %side_full = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "side_full"}
+# CHECK-DAG: aie.lock @side_free(%{{.*}}) {init = 1 : i32}
+# CHECK-DAG: aie.lock @side_full(%{{.*}}) {init = 0 : i32}
 # CHECK-DAG: aie.route_endpoint @flow0_src(%{{.*}}) DMA {fifoName = "flow0_src"}
 # CHECK-DAG: aie.route_endpoint @flow0_dst(%{{.*}}) DMA
 # CHECK-DAG: aie.route from @flow0_src to [@flow0_dst]

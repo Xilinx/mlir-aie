@@ -21,10 +21,11 @@
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<64xi8>
+    aie.buffer @buf(%t1) : memref<64xi8>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf : memref<64xi8>
         aie.dma_bd(%buf : memref<64xi8> offset = 0 len = 8 sizes = [2, 4] strides = [4, 1])
         aie.next_bd ^end
       ^end:
@@ -40,11 +41,12 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<64xi8>
+    aie.buffer @buf(%t1) : memref<64xi8>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        // expected-error@+1 {{non-innermost dim stride must be a multiple of 4 bytes for sub-32b element types}}
+        // expected-error@+2 {{non-innermost dim stride must be a multiple of 4 bytes for sub-32b element types}}
+        %buf = aie.get_buffer @buf : memref<64xi8>
         aie.dma_bd(%buf : memref<64xi8> offset = 0 len = 8 sizes = [2, 4] strides = [1, 1])
         aie.next_bd ^end
       ^end:
@@ -60,10 +62,11 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<64xi8>
+    aie.buffer @buf(%t1) : memref<64xi8>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf : memref<64xi8>
         aie.dma_bd(%buf : memref<64xi8> offset = 0 len = 8 sizes = [2, 4] strides = [8, 1])
         aie.next_bd ^end
       ^end:
@@ -78,11 +81,12 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<64xi8>
+    aie.buffer @buf(%t1) : memref<64xi8>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        // expected-error@+1 {{innermost dim size must be a multiple of 4 bytes for sub-32b element types}}
+        // expected-error@+2 {{innermost dim size must be a multiple of 4 bytes for sub-32b element types}}
+        %buf = aie.get_buffer @buf : memref<64xi8>
         aie.dma_bd(%buf : memref<64xi8> offset = 0 len = 16 sizes = [2, 5] strides = [8, 1])
         aie.next_bd ^end
       ^end:
@@ -99,11 +103,12 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<64xi8>
+    aie.buffer @buf(%t1) : memref<64xi8>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        // expected-error@+1 {{innermost dim size must be a multiple of 4 bytes for sub-32b element types}}
+        // expected-error@+2 {{innermost dim size must be a multiple of 4 bytes for sub-32b element types}}
+        %buf = aie.get_buffer @buf : memref<64xi8>
         aie.dma_bd(%buf : memref<64xi8> offset = 0 len = 16 sizes = [2, 6] strides = [8, 1])
         aie.next_bd ^end
       ^end:
@@ -118,11 +123,12 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<64xi8>
+    aie.buffer @buf(%t1) : memref<64xi8>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        // expected-error@+1 {{innermost dim size must be a multiple of 4 bytes for sub-32b element types}}
+        // expected-error@+2 {{innermost dim size must be a multiple of 4 bytes for sub-32b element types}}
+        %buf = aie.get_buffer @buf : memref<64xi8>
         aie.dma_bd(%buf : memref<64xi8> offset = 0 len = 16 sizes = [2, 7] strides = [8, 1])
         aie.next_bd ^end
       ^end:
@@ -139,10 +145,11 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<2xi16>
+    aie.buffer @buf(%t1) : memref<2xi16>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf : memref<2xi16>
         aie.dma_bd(%buf : memref<2xi16> offset = 0 len = 2 sizes = [1, 1, 1, 1] strides = [1, 1, 1, 1])
         aie.next_bd ^end
       ^end:
@@ -166,10 +173,11 @@ module {
 module {
   aie.device(npu2) {
     %t1 = aie.tile(1, 1)
-    %buf = aie.buffer(%t1) : memref<1024xi16>
+    aie.buffer @buf(%t1) : memref<1024xi16>
     aie.memtile_dma(%t1) {
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
+        %buf = aie.get_buffer @buf : memref<1024xi16>
         aie.dma_bd(%buf : memref<1024xi16> offset = 0 len = 2048 sizes = [32, 32, 1, 1] strides = [32, 1, 32, 1])
         aie.next_bd ^end
       ^end:

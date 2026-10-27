@@ -17,22 +17,25 @@
 
 // RUN: aie-opt --aie-assign-buffer-addresses %s | FileCheck %s
 
-// CHECK: mem_bank = 1 : i32, sym_name = "in_bank_b"
-// CHECK: mem_bank = 3 : i32, sym_name = "in_bank_d"
+// CHECK: aie.buffer @in_bank_b{{.*}}mem_bank = 1 : i32
+// CHECK: aie.buffer @in_bank_d{{.*}}mem_bank = 3 : i32
 // An unqualified buffer keeps whatever bank placement finds for it.
-// CHECK: sym_name = "unconstrained"
+// CHECK: aie.buffer @unconstrained
 
 module {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
-    %in_bank_b = aie.buffer(%tile_0_2) {sym_name = "in_bank_b"} : memref<64xi8, 6>
-    %in_bank_d = aie.buffer(%tile_0_2) {sym_name = "in_bank_d"} : memref<64xi8, 8>
-    %unconstrained = aie.buffer(%tile_0_2) {sym_name = "unconstrained"} : memref<64xi8>
+    aie.buffer @in_bank_b(%tile_0_2) : memref<64xi8, 6>
+    aie.buffer @in_bank_d(%tile_0_2) : memref<64xi8, 8>
+    aie.buffer @unconstrained(%tile_0_2) : memref<64xi8>
 
     // Parameters 0 and 1 name banks b and d; the third names none.
     func.func private @gather(memref<64xi8, 6>, memref<64xi8, 8>, memref<64xi8>)
 
     %core_0_2 = aie.core(%tile_0_2) {
+      %in_bank_b = aie.get_buffer @in_bank_b : memref<64xi8, 6>
+      %in_bank_d = aie.get_buffer @in_bank_d : memref<64xi8, 8>
+      %unconstrained = aie.get_buffer @unconstrained : memref<64xi8>
       func.call @gather(%in_bank_b, %in_bank_d, %unconstrained)
           : (memref<64xi8, 6>, memref<64xi8, 8>, memref<64xi8>) -> ()
       aie.end

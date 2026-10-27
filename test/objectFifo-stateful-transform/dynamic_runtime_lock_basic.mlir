@@ -17,17 +17,17 @@
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:           %[[MT:.*]] = aie.tile(0, 1)
 // CHECK-DAG:           %[[T2:.*]] = aie.tile(0, 2)
-// CHECK-DAG:           %[[CB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[CB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[CB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[CPROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "fifo_cons_prod_lock_0"}
-// CHECK-DAG:           %[[CCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
-// CHECK-DAG:           %[[B0:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[B1:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[B2:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[B3:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_3"} : memref<8xi8>
-// CHECK-DAG:           %[[PROD:.*]] = aie.lock(%[[MT]]) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK-DAG:           %[[CONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK-DAG:           aie.buffer @[[CB0:fifo_cons_buff_0]](%[[T2]]) : memref<8xi8>
+// CHECK-DAG:           aie.buffer @[[CB1:fifo_cons_buff_1]](%[[T2]]) : memref<8xi8>
+// CHECK-DAG:           aie.buffer @[[CB2:fifo_cons_buff_2]](%[[T2]]) : memref<8xi8>
+// CHECK-DAG:           aie.lock @[[CPROD:fifo_cons_prod_lock_0]](%[[T2]]) {init = 3 : i32}
+// CHECK-DAG:           aie.lock @[[CCONS:fifo_cons_cons_lock_0]](%[[T2]]) {init = 0 : i32}
+// CHECK-DAG:           aie.buffer @[[B0:fifo_buff_0]](%[[MT]]) : memref<8xi8>
+// CHECK-DAG:           aie.buffer @[[B1:fifo_buff_1]](%[[MT]]) : memref<8xi8>
+// CHECK-DAG:           aie.buffer @[[B2:fifo_buff_2]](%[[MT]]) : memref<8xi8>
+// CHECK-DAG:           aie.buffer @[[B3:fifo_buff_3]](%[[MT]]) : memref<8xi8>
+// CHECK-DAG:           aie.lock @[[PROD:fifo_prod_lock_0]](%[[MT]]) {init = 4 : i32}
+// CHECK-DAG:           aie.lock @[[CONS:fifo_cons_lock_0]](%[[MT]]) {init = 0 : i32}
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
 // CHECK:             %[[C14:.*]] = arith.constant 14 : index
@@ -39,9 +39,9 @@
 // CHECK:             %{{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] iter_args(%[[HELD:.*]] = %[[INIT]]) -> (i32) {
 // CHECK:               %[[DELTA:.*]] = arith.subi %[[TWO]], %[[HELD]] : i32
 // CHECK:               %[[ACQ:.*]] = arith.maxsi %[[DELTA]], %[[INIT]] : i32
-// CHECK:               aie.use_lock(%[[CCONS]], AcquireGreaterEqual, %[[ACQ]])
+// CHECK:               aie.use_lock(@[[CCONS]], AcquireGreaterEqual, %[[ACQ]])
 // CHECK:               %[[HELDACQ:.*]] = arith.addi %[[HELD]], %[[ACQ]] : i32
-// CHECK:               aie.use_lock(%[[CPROD]], Release, %[[ONE]])
+// CHECK:               aie.use_lock(@[[CPROD]], Release, %[[ONE]])
 // CHECK:               %[[HELDREL:.*]] = arith.subi %[[HELDACQ]], %[[ONE]] : i32
 // CHECK:               scf.yield %[[HELDREL]] : i32
 // CHECK:             }
@@ -51,24 +51,28 @@
 // CHECK:             %[[M1:.*]] = arith.constant 1 : i32
 // CHECK:             %{{.*}} = aie.dma_start(MM2S, 0, ^bb1, ^bb5)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[CONS]], AcquireGreaterEqual, %[[M1]])
-// CHECK:             aie.dma_bd(%[[B0]] : memref<8xi8> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[PROD]], Release, %[[M1]])
+// CHECK:             aie.use_lock(@[[CONS]], AcquireGreaterEqual, %[[M1]])
+// CHECK:             %[[B0_ACCESS_0:.*]] = aie.get_buffer @[[B0]] : memref<8xi8>
+// CHECK:             aie.dma_bd(%[[B0_ACCESS_0]] : memref<8xi8> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[PROD]], Release, %[[M1]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[CONS]], AcquireGreaterEqual, %[[M1]])
-// CHECK:             aie.dma_bd(%[[B1]] : memref<8xi8> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[PROD]], Release, %[[M1]])
+// CHECK:             aie.use_lock(@[[CONS]], AcquireGreaterEqual, %[[M1]])
+// CHECK:             %[[B1_ACCESS_1:.*]] = aie.get_buffer @[[B1]] : memref<8xi8>
+// CHECK:             aie.dma_bd(%[[B1_ACCESS_1]] : memref<8xi8> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[PROD]], Release, %[[M1]])
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[CONS]], AcquireGreaterEqual, %[[M1]])
-// CHECK:             aie.dma_bd(%[[B2]] : memref<8xi8> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[PROD]], Release, %[[M1]])
+// CHECK:             aie.use_lock(@[[CONS]], AcquireGreaterEqual, %[[M1]])
+// CHECK:             %[[B2_ACCESS_2:.*]] = aie.get_buffer @[[B2]] : memref<8xi8>
+// CHECK:             aie.dma_bd(%[[B2_ACCESS_2]] : memref<8xi8> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[PROD]], Release, %[[M1]])
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb4:
-// CHECK:             aie.use_lock(%[[CONS]], AcquireGreaterEqual, %[[M1]])
-// CHECK:             aie.dma_bd(%[[B3]] : memref<8xi8> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[PROD]], Release, %[[M1]])
+// CHECK:             aie.use_lock(@[[CONS]], AcquireGreaterEqual, %[[M1]])
+// CHECK:             %[[B3_ACCESS_3:.*]] = aie.get_buffer @[[B3]] : memref<8xi8>
+// CHECK:             aie.dma_bd(%[[B3_ACCESS_3]] : memref<8xi8> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[PROD]], Release, %[[M1]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb5:
 // CHECK:             aie.end
@@ -77,19 +81,22 @@
 // CHECK:             %[[N1:.*]] = arith.constant 1 : i32
 // CHECK:             %{{.*}} = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[CPROD]], AcquireGreaterEqual, %[[N1]])
-// CHECK:             aie.dma_bd(%[[CB0]] : memref<8xi8> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[CCONS]], Release, %[[N1]])
+// CHECK:             aie.use_lock(@[[CPROD]], AcquireGreaterEqual, %[[N1]])
+// CHECK:             %[[CB0_ACCESS_4:.*]] = aie.get_buffer @[[CB0]] : memref<8xi8>
+// CHECK:             aie.dma_bd(%[[CB0_ACCESS_4]] : memref<8xi8> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[CCONS]], Release, %[[N1]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[CPROD]], AcquireGreaterEqual, %[[N1]])
-// CHECK:             aie.dma_bd(%[[CB1]] : memref<8xi8> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[CCONS]], Release, %[[N1]])
+// CHECK:             aie.use_lock(@[[CPROD]], AcquireGreaterEqual, %[[N1]])
+// CHECK:             %[[CB1_ACCESS_5:.*]] = aie.get_buffer @[[CB1]] : memref<8xi8>
+// CHECK:             aie.dma_bd(%[[CB1_ACCESS_5]] : memref<8xi8> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[CCONS]], Release, %[[N1]])
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[CPROD]], AcquireGreaterEqual, %[[N1]])
-// CHECK:             aie.dma_bd(%[[CB2]] : memref<8xi8> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[CCONS]], Release, %[[N1]])
+// CHECK:             aie.use_lock(@[[CPROD]], AcquireGreaterEqual, %[[N1]])
+// CHECK:             %[[CB2_ACCESS_6:.*]] = aie.get_buffer @[[CB2]] : memref<8xi8>
+// CHECK:             aie.dma_bd(%[[CB2_ACCESS_6]] : memref<8xi8> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(@[[CCONS]], Release, %[[N1]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb4:
 // CHECK:             aie.end

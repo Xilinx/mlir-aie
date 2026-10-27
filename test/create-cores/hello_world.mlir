@@ -10,24 +10,26 @@
 
 // CHECK-LABEL: module @hello_world {
 // CHECK:         %[[VAL_0:.*]] = aie.tile(3, 3)
-// CHECK:         %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<512xi32>
+// CHECK:         aie.buffer @[[VAL_1:.*]](%[[VAL_0]]) : memref<512xi32>
 // CHECK:         %[[VAL_2:.*]] = aie.mem(%[[VAL_0]]) {
 // CHECK:           %[[VAL_3:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
 // CHECK:           aiex.useToken @token0(Acquire, 1)
-// CHECK:           aie.dma_bd(%[[VAL_1]] : memref<512xi32> offset = {{.*}} len = {{.*}})
+// CHECK:           %[[VAL_1_ACCESS_0:.*]] = aie.get_buffer @[[VAL_1]] : memref<512xi32>
+// CHECK:           aie.dma_bd(%[[VAL_1_ACCESS_0]] : memref<512xi32> offset = {{.*}} len = {{.*}})
 // CHECK:           aiex.useToken @token0(Release, 2)
 // CHECK:           aie.next_bd ^bb2
 // CHECK:         ^bb2:
 // CHECK:           aie.end
 // CHECK:         }
 // CHECK:         %[[VAL_4:.*]] = aie.tile(4, 4)
-// CHECK:         %[[VAL_5:.*]] = aie.buffer(%[[VAL_4]]) : memref<512xi32>
+// CHECK:         aie.buffer @[[VAL_5:.*]](%[[VAL_4]]) : memref<512xi32>
 // CHECK:         %[[VAL_6:.*]] = aie.mem(%[[VAL_4]]) {
 // CHECK:           %[[VAL_7:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
 // CHECK:           aiex.useToken @token0(Acquire, 1)
-// CHECK:           aie.dma_bd(%[[VAL_5]] : memref<512xi32> offset = {{.*}} len = {{.*}})
+// CHECK:           %[[VAL_5_ACCESS_1:.*]] = aie.get_buffer @[[VAL_5]] : memref<512xi32>
+// CHECK:           aie.dma_bd(%[[VAL_5_ACCESS_1]] : memref<512xi32> offset = {{.*}} len = {{.*}})
 // CHECK:           aiex.useToken @token0(Release, 2)
 // CHECK:           aie.next_bd ^bb2
 // CHECK:         ^bb2:
@@ -40,14 +42,14 @@
 // CHECK:           aiex.useToken @token0(Acquire, 0)
 // CHECK:           %[[VAL_11:.*]] = arith.constant 16 : index
 // CHECK:           %[[VAL_12:.*]] = arith.constant 1 : i32
-// CHECK:           memref.store %[[VAL_12]], %[[VAL_1]]{{\[}}%[[VAL_11]]] : memref<512xi32>
+// CHECK:           memref.store %[[VAL_12]], %{{[^ ,)]+}}{{\[}}%[[VAL_11]]] : memref<512xi32>
 // CHECK:           aiex.useToken @token0(Release, 1)
 // CHECK:           aie.end
 // CHECK:         }
 // CHECK:         %[[VAL_13:.*]] = aie.core(%[[VAL_4]]) {
 // CHECK:           aiex.useToken @token0(Acquire, 2)
 // CHECK:           %[[VAL_14:.*]] = arith.constant 16 : index
-// CHECK:           %[[VAL_15:.*]] = memref.load %[[VAL_5]]{{\[}}%[[VAL_14]]] : memref<512xi32>
+// CHECK:           %[[VAL_15:.*]] = memref.load %{{[^ ,)]+}}{{\[}}%[[VAL_14]]] : memref<512xi32>
 // CHECK:           aiex.useToken @token0(Release, 3)
 // CHECK:           aie.end
 // CHECK:         }

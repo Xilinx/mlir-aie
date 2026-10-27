@@ -10,12 +10,12 @@
 // feed, and so do @c and @d in the core they drain.
 
 // CHECK-LABEL: module @declared
-// CHECK:       sym_name = "a_l2_buff_0"
-// CHECK:       sym_name = "b_l2_buff_0"
-// CHECK:       sym_name = "c_l1_buff_0"
-// CHECK:       sym_name = "a_l1_buff_0"
-// CHECK:       sym_name = "d_l1_buff_0"
-// CHECK:       sym_name = "b_l1_buff_0"
+// CHECK:       aie.buffer @a_l2_buff_0
+// CHECK:       aie.buffer @b_l2_buff_0
+// CHECK:       aie.buffer @c_l1_buff_0
+// CHECK:       aie.buffer @a_l1_buff_0
+// CHECK:       aie.buffer @d_l1_buff_0
+// CHECK:       aie.buffer @b_l1_buff_0
 // CHECK-DAG:   aie.route_endpoint @a_shim({{.*}}) DMA {channelIndex = 0 : i32, fifoName = "a"}
 // CHECK-DAG:   aie.objectfifo.dma_endpoint @a_in({{.*}}) fills @a_l2 {channelIndex = 0 : i32}
 // CHECK-DAG:   aie.objectfifo.dma_endpoint @a_out({{.*}}) drains @a_l2 {channelIndex = 0 : i32}
@@ -28,12 +28,12 @@
 // CHECK-DAG:   aie.route_endpoint @d_shim({{.*}}) DMA {channelIndex = 1 : i32, fifoName = "d"}
 
 // CHECK-LABEL: module @permuted
-// CHECK:       sym_name = "v_l1_buff_0"
-// CHECK:       sym_name = "x_l1_buff_0"
-// CHECK:       sym_name = "w_l1_buff_0"
-// CHECK:       sym_name = "y_l1_buff_0"
-// CHECK:       sym_name = "y_l2_buff_0"
-// CHECK:       sym_name = "x_l2_buff_0"
+// CHECK:       aie.buffer @v_l1_buff_0
+// CHECK:       aie.buffer @x_l1_buff_0
+// CHECK:       aie.buffer @w_l1_buff_0
+// CHECK:       aie.buffer @y_l1_buff_0
+// CHECK:       aie.buffer @y_l2_buff_0
+// CHECK:       aie.buffer @x_l2_buff_0
 // CHECK-DAG:   aie.route_endpoint @y_shim({{.*}}) DMA {channelIndex = 0 : i32, fifoName = "y"}
 // CHECK-DAG:   aie.objectfifo.dma_endpoint @y_in({{.*}}) fills @y_l2 {channelIndex = 0 : i32}
 // CHECK-DAG:   aie.objectfifo.dma_endpoint @y_out({{.*}}) drains @y_l2 {channelIndex = 0 : i32}

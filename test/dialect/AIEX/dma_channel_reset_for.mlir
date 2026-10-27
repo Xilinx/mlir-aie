@@ -33,8 +33,8 @@ module {
 module {
   aie.device(npu2) {
     %ct = aie.tile(0, 3)
-    %pl = aie.lock(%ct, 0) {init = 2 : i32}
-    aie.objectfifo_rearm_binding @of_rearm channels(%ct : index) locks(%pl : index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2>}
+    aie.lock @pl(%ct, 0) {init = 2 : i32}
+    aie.objectfifo_rearm_binding @of_rearm channels(%ct : index) locks([@pl]) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2>}
     aie.runtime_sequence() {
       aiex.dma_channel_reset_for(@of_rearm)
     }

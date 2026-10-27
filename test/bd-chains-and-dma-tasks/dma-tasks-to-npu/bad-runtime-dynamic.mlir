@@ -17,10 +17,11 @@
 module {
   aie.device(npu2) {
     %tile = aie.tile(1, 1)
-    %buf = aie.buffer(%tile) {sym_name = "b", address = 4096 : i32} : memref<4096xi8>
+    aie.buffer @b(%tile) {address = 4096 : i32} : memref<4096xi8>
     aie.runtime_sequence(%len: i32) {
       %t = aiex.dma_configure_task(%tile, MM2S, 0) {
-          // expected-error@+1 {{zero padding is not supported with runtime sizes/strides/len}}
+          // expected-error@+2 {{zero padding is not supported with runtime sizes/strides/len}}
+          %buf = aie.get_buffer @b : memref<4096xi8>
           aie.dma_bd(%buf : memref<4096xi8> offset = 0 len = %len sizes = [2, 2, 4] strides = [4, 8, 1] pad [<const_pad_before=2, const_pad_after=1>]) {bd_id = 0 : i32}
           aie.end
       }
@@ -75,10 +76,11 @@ module {
 module {
   aie.device(npu2) {
     %tile_0_1 = aie.tile(0, 1)
-    %buf = aie.buffer(%tile_0_1) {sym_name = "b2", address = 0 : i32} : memref<4096xi32>
+    aie.buffer @b2(%tile_0_1) {address = 0 : i32} : memref<4096xi32>
     aie.runtime_sequence(%len: i32, %n: i64) {
       %t = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
-          // expected-error@+1 {{stride 1 must be positive unless its size is statically 1}}
+          // expected-error@+2 {{stride 1 must be positive unless its size is statically 1}}
+          %buf = aie.get_buffer @b2 : memref<4096xi32>
           aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = %len sizes = [1, 1, %n, 512] strides = [0, 0, 0, 1]) {bd_id = 0 : i32}
           aie.end
       }
