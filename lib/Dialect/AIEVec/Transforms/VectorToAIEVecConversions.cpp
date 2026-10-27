@@ -9,9 +9,12 @@
 // to ops that can be translated to a sequence of valid AIEVec ops.
 //===----------------------------------------------------------------------===//
 
+#include "AIE2PShufflePlanner.h"
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 
@@ -4960,52 +4963,156 @@ struct LowerScalarShRSIToAIEVecUPSSRS : OpConversionPattern<arith::ShRSIOp> {
   }
 };
 
+// A `vector.contract` read as one matmul tile: the sizes of its m, n and k
+// dims, and the order each operand stores them in once its unit dims are
+// dropped. An m (n) dim indexes lhs (rhs) and acc, a k dim indexes lhs and
+// rhs and is reduced. Unit dims may sit anywhere and play any role.
+struct ContractionTile {
+  int64_t m = 1, n = 1, k = 1;
+  // lhs stored [k, m], rhs stored [n, k], acc stored [n, m]. Only set when
+  // both dims of the operand are larger than 1.
+  bool lhsTransposed = false, rhsTransposed = false, accTransposed = false;
+};
+
+static LogicalResult analyzeContraction(vector::ContractionOp op,
+                                        ContractionTile &tile,
+                                        std::string &why) {
+  llvm::raw_string_ostream os(why);
+  if (op.getKind() != vector::CombiningKind::ADD) {
+    os << "the combining kind is not add";
+    return failure();
+  }
+  auto accTy = dyn_cast<VectorType>(op.getAccType());
+  if (!accTy) {
+    os << "the accumulator is a scalar";
+    return failure();
+  }
+  SmallVector<AffineMap, 3> maps = op.getIndexingMapsArray();
+  if (!llvm::all_of(maps, [](AffineMap map) {
+        return map.isProjectedPermutation(/*allowZeroInResults=*/false);
+      })) {
+    os << "an indexing map is not a projected permutation";
+    return failure();
+  }
+  enum Role { M, N, K, Other };
+  unsigned numDims = maps[0].getNumDims();
+  SmallVector<int64_t> dimSize(numDims, 1);
+  SmallVector<std::array<bool, 3>> indexes(numDims, {false, false, false});
+  ArrayRef<int64_t> shapes[3] = {op.getLhsType().getShape(),
+                                 op.getRhsType().getShape(), accTy.getShape()};
+  for (unsigned operand = 0; operand < 3; ++operand)
+    for (auto [i, expr] : llvm::enumerate(maps[operand].getResults())) {
+      unsigned d = cast<AffineDimExpr>(expr).getPosition();
+      dimSize[d] = shapes[operand][i];
+      indexes[d][operand] = true;
+    }
+  SmallVector<vector::IteratorType> iterators = op.getIteratorTypesArray();
+  std::optional<unsigned> dimOf[3];
+  for (unsigned d = 0; d < numDims; ++d) {
+    if (dimSize[d] == 1)
+      continue;
+    auto [inLhs, inRhs, inAcc] = indexes[d];
+    bool reduced = iterators[d] == vector::IteratorType::reduction;
+    Role r = Other;
+    if (inLhs && !inRhs && inAcc && !reduced)
+      r = M;
+    else if (!inLhs && inRhs && inAcc && !reduced)
+      r = N;
+    else if (inLhs && inRhs && !inAcc && reduced)
+      r = K;
+    if (r == Other || dimOf[r]) {
+      os << "d" << d << " of size " << dimSize[d]
+         << " is not the only m, n or k dim larger than 1";
+      return failure();
+    }
+    dimOf[r] = d;
+  }
+  auto sizeOf = [&](Role r) -> int64_t {
+    std::optional<unsigned> d = dimOf[r];
+    return d ? dimSize[*d] : 1;
+  };
+  tile.m = sizeOf(M);
+  tile.n = sizeOf(N);
+  tile.k = sizeOf(K);
+  // Whether `second` comes before `first` among the results of `map`.
+  auto swapped = [&](AffineMap map, Role first, Role second) {
+    if (!dimOf[first] || !dimOf[second])
+      return false;
+    return *map.getResultPosition(
+               getAffineDimExpr(*dimOf[second], map.getContext())) <
+           *map.getResultPosition(
+               getAffineDimExpr(*dimOf[first], map.getContext()));
+  };
+  tile.lhsTransposed = swapped(maps[0], M, K);
+  tile.rhsTransposed = swapped(maps[1], K, N);
+  tile.accTransposed = swapped(maps[2], M, N);
+  return success();
+}
+
 // Convert a `vector.contract` op to an `aievec.matmul` op for AIE2 or
-// `aievec.matmul_aie2p` for AIE2P
+// `aievec.matmul_aie2p` for AIE2P. The operands keep the layout the
+// contraction stores them in, recorded by the lhs_transposed and
+// rhs_transposed flags; the lowering of the matmul op moves data only where
+// the multiply reads an operand the other way. An accumulator stored [n, m]
+// is handled by multiplying rhs^T by lhs^T, which swaps the operands and
+// flips both of their flags.
 template <typename MatMulOpTy>
 struct LowerVectorContractionOpToAIEVecMatMulPattern
     : OpConversionPattern<vector::ContractionOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  LowerVectorContractionOpToAIEVecMatMulPattern(MLIRContext *context)
-      : OpConversionPattern(context) {}
+  static constexpr bool isAIE2P =
+      std::is_same_v<MatMulOpTy, aievec::MatMulOp_AIE2P>;
 
-  Value reshapeLeadingUnitDims(OpBuilder &b, Value v) const {
-    auto vecTy = dyn_cast<VectorType>(v.getType());
-    if (!vecTy)
+  static Value reshape(OpBuilder &b, Value v, ArrayRef<int64_t> shape) {
+    auto vecTy = cast<VectorType>(v.getType());
+    auto newTy = VectorType::get(shape, vecTy.getElementType());
+    if (newTy == vecTy)
       return v;
-    auto vecShape = vecTy.getShape();
-
-    size_t numLeadUnitDims = 0;
-    while (numLeadUnitDims < vecShape.size() && vecShape[numLeadUnitDims] == 1)
-      numLeadUnitDims++;
-
-    if (!numLeadUnitDims)
-      return v;
-
-    SmallVector<int64_t> newShape(vecShape.begin() + numLeadUnitDims,
-                                  vecShape.end());
-    auto newVecTy = VectorType::get(newShape, vecTy.getElementType());
-    return vector::ShapeCastOp::create(b, v.getLoc(), newVecTy, v).getResult();
+    return vector::ShapeCastOp::create(b, v.getLoc(), newTy, v).getResult();
   }
 
   LogicalResult
   matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto lhs = reshapeLeadingUnitDims(rewriter, adaptor.getLhs());
-    auto rhs = reshapeLeadingUnitDims(rewriter, adaptor.getRhs());
-    auto acc = reshapeLeadingUnitDims(rewriter, adaptor.getAcc());
-    bool bReshapedAcc = (acc != adaptor.getAcc());
+    StringRef target = isAIE2P ? "AIE2P" : "AIE2";
+    std::string why;
+    ContractionTile tile;
+    if (failed(analyzeContraction(contractOp, tile, why))) {
+      contractOp.emitError()
+          << "cannot lower to an " << target << " matrix multiply: " << why;
+      return failure();
+    }
+
+    Value lhsIn = adaptor.getLhs(), rhsIn = adaptor.getRhs();
+    Value lhsOrig = contractOp.getLhs(), rhsOrig = contractOp.getRhs();
+    int64_t m = tile.m, n = tile.n, k = tile.k;
+    bool lhsT = tile.lhsTransposed, rhsT = tile.rhsTransposed;
+    if (tile.accTransposed) {
+      std::swap(lhsIn, rhsIn);
+      std::swap(lhsOrig, rhsOrig);
+      std::swap(m, n);
+      // A flag only matters, and is only set, when both dims are larger
+      // than 1.
+      std::tie(lhsT, rhsT) =
+          std::make_pair(!rhsT && m > 1 && k > 1, !lhsT && n > 1 && k > 1);
+    }
+    SmallVector<int64_t, 2> lhsShape =
+        lhsT ? SmallVector<int64_t, 2>{k, m} : SmallVector<int64_t, 2>{m, k};
+    SmallVector<int64_t, 2> rhsShape =
+        rhsT ? SmallVector<int64_t, 2>{n, k} : SmallVector<int64_t, 2>{k, n};
+    auto accTy =
+        VectorType::get({m, n}, getElementTypeOrSelf(adaptor.getAcc()));
 
     // Recover operand signedness from the widening op before it is peeled.
     // Consult both the (possibly already-rewritten) adaptor operands and the
     // original pre-conversion contraction operands.
-    auto lhsSigned = getSignednessOfWideningOp(adaptor.getLhs());
+    auto lhsSigned = getSignednessOfWideningOp(lhsIn);
     if (!lhsSigned)
-      lhsSigned = getSignednessOfWideningOp(contractOp.getLhs());
-    auto rhsSigned = getSignednessOfWideningOp(adaptor.getRhs());
+      lhsSigned = getSignednessOfWideningOp(lhsOrig);
+    auto rhsSigned = getSignednessOfWideningOp(rhsIn);
     if (!rhsSigned)
-      rhsSigned = getSignednessOfWideningOp(contractOp.getRhs());
+      rhsSigned = getSignednessOfWideningOp(rhsOrig);
 
     // Carry the signedness in the matmul operand element type (si8/ui8). MLIR
     // has no signless->signed/unsigned cast, so materialize an
@@ -5014,9 +5121,7 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     auto retype = [&](Value v, std::optional<bool> isSigned) -> Value {
       if (!isSigned)
         return v;
-      auto vecTy = dyn_cast<VectorType>(v.getType());
-      if (!vecTy)
-        return v;
+      auto vecTy = cast<VectorType>(v.getType());
       auto intTy = dyn_cast<IntegerType>(vecTy.getElementType());
       if (!intTy || !intTy.isSignless())
         return v;
@@ -5028,47 +5133,42 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
           .getResult(0);
     };
 
-    Value result;
-    {
-      // Replace diagnostics handler to silence errors when verifying the
-      // validity of the matmul ops being generated.
-      ScopedDiagnosticHandler diagHandler(
-          contractOp.getContext(), [](Diagnostic &) { return success(); });
-      // Decide whether the wide operands already form a valid matmul, or
-      // whether the widening ops must be peeled to reach a supported narrow
-      // shape. Use a throwaway signless op so a failed attempt leaves no retype
-      // casts behind.
-      auto testOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                       acc.getType(), lhs, rhs, acc);
-      bool needsPeel = failed(testOp.verifyInvariants());
-      rewriter.eraseOp(testOp);
-      if (needsPeel) {
-        // When the linalg op is converted to contractions, lower-precision
-        // operands may be cast to the target precision outside the contraction.
-        lhs = adaptor.getLhs();
-        auto wideLhsValue = getSourceOfWideningOp(lhs).value_or(nullptr);
-        if (wideLhsValue)
-          lhs = reshapeLeadingUnitDims(rewriter, wideLhsValue);
-
-        rhs = adaptor.getRhs();
-        auto wideRhsValue = getSourceOfWideningOp(rhs).value_or(nullptr);
-        if (wideRhsValue)
-          rhs = reshapeLeadingUnitDims(rewriter, wideRhsValue);
-      }
-
-      auto matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                         acc.getType(), retype(lhs, lhsSigned),
-                                         retype(rhs, rhsSigned), acc);
-      if (failed(matmulOp.verifyInvariants()))
+    auto tileFits = [&](Value lhs, Value rhs, bool report) {
+      auto emitError = [&]() {
+        return contractOp.emitError()
+               << "cannot lower to an " << target << " matrix multiply: ";
+      };
+      return checkMatMulTile(
+                 isAIE2P, VectorType::get(lhsShape, getElementTypeOrSelf(lhs)),
+                 VectorType::get(rhsShape, getElementTypeOrSelf(rhs)), accTy,
+                 lhsT, rhsT,
+                 report ? llvm::function_ref<InFlightDiagnostic()>(emitError)
+                        : nullptr)
+          .has_value();
+    };
+    // Multiply the operands as they are if they form a tile. Otherwise they
+    // may be widened from a type a multiply takes, as when a linalg op is
+    // converted to contractions with its operands cast to the accumulator
+    // type outside the contraction.
+    if (!tileFits(lhsIn, rhsIn, /*report=*/false)) {
+      lhsIn = getSourceOfWideningOp(lhsIn).value_or(lhsIn);
+      rhsIn = getSourceOfWideningOp(rhsIn).value_or(rhsIn);
+      if (!tileFits(lhsIn, rhsIn, /*report=*/true))
         return failure();
-      result = matmulOp.getResult();
     }
+    Value acc = reshape(rewriter, adaptor.getAcc(), accTy.getShape());
+    Value lhs = reshape(rewriter, lhsIn, lhsShape);
+    Value rhs = reshape(rewriter, rhsIn, rhsShape);
 
-    if (bReshapedAcc)
-      result = vector::ShapeCastOp::create(rewriter, contractOp.getLoc(),
-                                           adaptor.getAcc().getType(), result);
-    rewriter.replaceOp(contractOp, result);
-
+    auto matmulOp =
+        MatMulOpTy::create(rewriter, contractOp.getLoc(), acc.getType(),
+                           retype(lhs, lhsSigned), retype(rhs, rhsSigned), acc);
+    matmulOp.setLhsTransposed(lhsT);
+    matmulOp.setRhsTransposed(rhsT);
+    rewriter.replaceOp(
+        contractOp,
+        reshape(rewriter, matmulOp.getResult(),
+                cast<VectorType>(adaptor.getAcc().getType()).getShape()));
     return success();
   }
 };
@@ -5160,63 +5260,6 @@ struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
-
-// A shuffle that repeats a 128-bit vector to fill 512 or 1024 bits (mask
-// [i % n]), such as a broadcast of a small vector across a wide one. The
-// vector is doubled to 256 bits, repeated to 512 bits by a t256_2x2_lo
-// shuffle, and concatenated with itself for 1024 bits.
-struct LowerReplicatingShuffleAIE2pPattern
-    : OpConversionPattern<vector::ShuffleOp> {
-  using OpConversionPattern<vector::ShuffleOp>::OpConversionPattern;
-
-  static bool matches(vector::ShuffleOp op) {
-    auto srcTy = op.getV1VectorType();
-    auto dstTy = op.getResultVectorType();
-    if (srcTy.getRank() != 1 || dstTy.getRank() != 1)
-      return false;
-    unsigned bw = srcTy.getElementTypeBitWidth();
-    int64_t n = srcTy.getNumElements(), m = dstTy.getNumElements();
-    if (n * bw != 128 || (m * bw != 512 && m * bw != 1024))
-      return false;
-    return llvm::all_of(llvm::enumerate(op.getMask()), [&](auto it) {
-      return it.value() == (int64_t)it.index() % n;
-    });
-  }
-
-  LogicalResult
-  matchAndRewrite(vector::ShuffleOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    if (!matches(op))
-      return failure();
-    Location loc = op.getLoc();
-    auto srcTy = op.getV1VectorType();
-    auto dstTy = op.getResultVectorType();
-    int64_t n = srcTy.getNumElements();
-    SmallVector<int64_t> twice;
-    for (int64_t i = 0; i < 2 * n; ++i)
-      twice.push_back(i % n);
-    Value v = adaptor.getV1();
-    Value v256 = vector::ShuffleOp::create(rewriter, loc, v, v, twice);
-    // The step to 512 bits is an aievec.shuffle rather than a second
-    // vector.shuffle: LLVM would fold two plain shuffles back into the one
-    // wide shuffle this pattern replaces.
-    auto pad = llvm::to_vector(llvm::seq<int64_t>(0, 2 * n));
-    pad.append(2 * n, vector::ShuffleOp::kPoisonIndex);
-    Value v512 = vector::ShuffleOp::create(rewriter, loc, v256, v256, pad);
-    auto mode = aievec::ShuffleModeAttr::get(rewriter.getContext(),
-                                             aievec::ShuffleMode::T256_2X2_LO);
-    auto v2xi256 = VectorType::get({2}, rewriter.getIntegerType(256));
-    Value w = vector::BitCastOp::create(rewriter, loc, v2xi256, v512);
-    w = aievec::ShuffleOp::create(rewriter, loc, v2xi256, w, w, mode);
-    Value r = vector::BitCastOp::create(rewriter, loc, v512.getType(), w);
-    if (dstTy.getNumElements() == 4 * n)
-      rewriter.replaceOp(op, r);
-    else
-      rewriter.replaceOpWithNewOp<aievec::ConcatOp>(op, dstTy,
-                                                    SmallVector<Value>({r, r}));
-    return success();
-  }
-};
 
 static void
 populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns) {
@@ -5743,7 +5786,8 @@ using AIE2PElementwise = AIE2PElementwiseOps<
     arith::CmpFOp, arith::CmpIOp, arith::SelectOp, arith::AddIOp, arith::SubIOp,
     arith::MulIOp, arith::IndexCastOp>;
 
-static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
+static void populateAIEVecV2PConversionPatterns(
+    RewritePatternSet &patterns, std::shared_ptr<AIE2PShufflePlanner> planner) {
   populateAIEVecV2CommonConversionPatterns(patterns);
   patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2P>(
       patterns.getContext());
@@ -5752,8 +5796,7 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
                                                          /*benefit=*/2);
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
-  patterns.add<LowerReplicatingShuffleAIE2pPattern>(patterns.getContext(),
-                                                    /*benefit=*/3);
+  populateAIE2PShufflePlannerPatterns(patterns, std::move(planner));
   patterns.add<LowerVectorReductionAddBfloat16OpAIE2P>(patterns.getContext());
   // For AIE2P with LLVMIR backend, use aievec.exp and aievec.inv
   // math.rsqrt is kept legal and will be lowered in AIEVecToLLVM pass
@@ -6156,7 +6199,9 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target) {
   target.addLegalDialect<memref::MemRefDialect>();
 }
 
-static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
+static void
+configureAIEVecV2PLegalizations(ConversionTarget &target,
+                                std::shared_ptr<AIE2PShufflePlanner> planner) {
   // AIE2P-specific legalization for rsqrt with LLVMIR backend
   // Vector bf16 rsqrt is illegal (no hardware support)
   // Scalar f32 and vector f32 rsqrt are legal (lowered in AIEVecToLLVM pass)
@@ -6410,16 +6455,11 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     return true; // legal - not supported
   });
 
-  // LowerVectorSIToFPI16BF16AIE2pPattern uses vector.shuffle to split
-  // 64-wide inputs into two 32-wide halves; mark shuffle legal so the
-  // pattern's replacement IR survives partial conversion. Rank-1
-  // arith.sitofp is already marked illegal by the common legality config
-  // (LLVMIR backend), so LowerVectorSIToFPI16BF16AIE2pPattern is tried
-  // ahead of the per-lane scalarize fallback by pattern benefit. Shuffles
-  // that repeat a 128-bit vector to 512 or 1024 bits are converted.
-  target.addDynamicallyLegalOp<vector::ShuffleOp>([](vector::ShuffleOp op) {
-    return !LowerReplicatingShuffleAIE2pPattern::matches(op);
-  });
+  // A vector.shuffle stays legal for LLVM unless the shuffle planner has a
+  // cheaper lowering. Moves of whole register halves, such as the splitting
+  // and joining shuffles LowerVectorSIToFPI16BF16AIE2pPattern emits, always
+  // stay.
+  configureAIE2PShufflePlannerLegality(target, std::move(planner));
 }
 
 static void configureAIEVecV2Legalizations(ConversionTarget &target) {
@@ -6907,9 +6947,10 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
       populateAIEVecV2ConversionPatterns(patterns);
       configureAIEVecV2Legalizations(target);
     } else if (aieVersion == AIEArch::AIE2P) {
-      populateAIEVecV2PConversionPatterns(patterns);
+      auto planner = std::make_shared<AIE2PShufflePlanner>();
+      populateAIEVecV2PConversionPatterns(patterns, planner);
       configureAIEVecV2Legalizations(target);
-      configureAIEVecV2PLegalizations(target);
+      configureAIEVecV2PLegalizations(target, planner);
       // Last, as it overrides the predicates above for the ops it rewrites.
       AIE2PElementwise::markIllegal(target, &getContext());
     } else {

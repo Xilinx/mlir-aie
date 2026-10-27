@@ -563,11 +563,9 @@ def AIEVec_BandOp
 
 def AIEVec_MatMulOp
     : AIEVec_Op<"matmul", [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
-                           AllTypesMatch<["acc", "result"]>,
-                           ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
-                           IsValidAIE2MatMulShapeAndType<"lhs", "rhs", "acc">]>,
-      Arguments<(ins AIE2MatMulLHS:$lhs, AIE2MatMulRHS:$rhs,
-          AIE2MatMulACC:$acc)>,
+                           AllTypesMatch<["acc", "result"]>]>,
+      Arguments<(ins AIE2MatMulLHS:$lhs, AIE2MatMulRHS:$rhs, AIE2MatMulACC:$acc,
+          UnitAttr:$lhs_transposed, UnitAttr:$rhs_transposed)>,
       Results<(outs AIE2MatMulACC:$result)> {
   let summary = "AIE2 matrix-multiply and accummulate";
   let description = [{
@@ -594,20 +592,28 @@ def AIEVec_MatMulOp
          `vector<4x4xi16>`  | `vector<4x4xi16>`  | `vector<4x4xi64>`
          `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
          `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+
+    The table gives `lhs` as `[m, k]` and `rhs` as `[k, n]`. With
+    `lhs_transposed`, `lhs` holds the `[k, m]` transpose instead, and with
+    `rhs_transposed`, `rhs` holds the `[n, k]` transpose; the shapes change
+    accordingly. The lowering transposes an operand with one shuffle when the
+    multiply reads it the other way. An operand that needs a transpose no
+    shuffle mode provides does not verify.
   }];
-  let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
-                         type($rhs) `into` type($acc)}];
-  let hasVerifier = 0;
+  let assemblyFormat = [{$lhs `,` $rhs `,` $acc
+                         (`lhs_transposed` $lhs_transposed^)?
+                         (`rhs_transposed` $rhs_transposed^)?
+                         attr-dict `:` type($lhs) `,` type($rhs) `into`
+                         type($acc)}];
+  let hasVerifier = 1;
 }
 
 def AIEVec_MatMulOp_AIE2P
-    : AIEVec_Op<"matmul_aie2p",
-                [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
-                 AllTypesMatch<["acc", "result"]>,
-                 ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
-                 IsValidAIE2PMatMulShapeAndType<"lhs", "rhs", "acc">]>,
+    : AIEVec_Op<"matmul_aie2p", [Pure, AllRanksMatch<["lhs", "rhs", "acc"]>,
+                                 AllTypesMatch<["acc", "result"]>]>,
       Arguments<(ins AIE2PMatMulLHS:$lhs, AIE2PMatMulRHS:$rhs,
-          AIE2PMatMulACC:$acc)>,
+          AIE2PMatMulACC:$acc, UnitAttr:$lhs_transposed,
+          UnitAttr:$rhs_transposed)>,
       Results<(outs AIE2PMatMulACC:$result)> {
   let summary = "AIE2P matrix-multiply and accummulate";
   let description = [{
@@ -629,10 +635,21 @@ def AIEVec_MatMulOp_AIE2P
          `vector<8x8xbf16>`  | `vector<8x4xbf16>`  | `vector<8x4xf32>`
          `vector<8x8xi8>`    | `vector<8x8xi8>`    | `vector<8x8xi32>`
          `vector<8x2xi16>`   | `vector<2x8xi16>`   | `vector<8x8xi32>`
+
+    `lhs_transposed` and `rhs_transposed` mean what they do for
+    `aievec.matmul`. The bf16 multiplies through bfp16 (an `rhs` of
+    `vector<8x8xbf16>`) read `rhs` as `[n, k]`, and the elementwise
+    `vector<8x8xbf16>` times `vector<8x4xbf16>` multiply reads `lhs` as
+    `[k, m]`; an operand stored that way needs no shuffle. Any other
+    transposed operand takes one shuffle, or the `t16_8x8_lo`/`t16_8x8_hi`
+    pair for an 8x8 bf16 tile.
   }];
-  let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
-                         type($rhs) `into` type($acc)}];
-  let hasVerifier = 0;
+  let assemblyFormat = [{$lhs `,` $rhs `,` $acc
+                         (`lhs_transposed` $lhs_transposed^)?
+                         (`rhs_transposed` $rhs_transposed^)?
+                         attr-dict `:` type($lhs) `,` type($rhs) `into`
+                         type($acc)}];
+  let hasVerifier = 1;
 }
 
 def AIEVec_ShuffleOp
@@ -726,6 +743,18 @@ def AIEVec_ShuffleOp
     t16_1x2_flip = [1, 0, 3, 2, ..., 29, 28, 31, 30]
     ```
 
+    In general, mode `t<w>_<r>x<c>` reads an `r`x`c` row-major matrix of
+    `w`-bit elements and returns its transpose: `out[j*r+i] = in[i*c+j]`. A
+    mode whose matrix spans 1024 bits reads `lhs:rhs` and returns the `lo` or
+    `hi` 512 bits. A mode whose matrix spans fewer than 512 bits reads `lhs`
+    only and transposes each such block of it on its own. A mode
+    `t<w>_1x<c>_flip` reverses the order of each group of `c` elements.
+
+    The modes 48 to 55 (`t32_8x2`, `t32_2x8`, `t64_4x2`, `t64_2x4`,
+    `t16_8x8_lo`, `t16_8x8_hi`, `t32_1x16_flip` and `t8_1x4_flip`) exist on
+    AIE2P only. Inside an `aie.device` of another architecture they are
+    rejected.
+
     The list of supported shuffle modes, required operands, and associated
     vector types are the following:
 
@@ -736,6 +765,7 @@ def AIEVec_ShuffleOp
          t8_8x8             | ^                  | ^
          t8_16x4            | ^                  | ^
          t8_4x16            | ^                  | ^
+         t8_1x4_flip (AIE2P)| ^                  | ^
          t8_64x2_lo         | `lhs` & `rhs`      | ^
          t8_64x2_hi         | ^                  | ^
          t8_2x64_lo         | ^                  | ^
@@ -758,7 +788,12 @@ def AIEVec_ShuffleOp
          t16_16x4_hi        | ^                  | ^
          t16_4x16_lo        | ^                  | ^
          t16_4x16_hi        | ^                  | ^
+         t16_8x8_lo (AIE2P) | ^                  | ^
+         t16_8x8_hi (AIE2P) | ^                  | ^
          t32_4x4            | `lhs`              | `vector<16xi32>` or `vector<16xf32>`
+         t32_8x2 (AIE2P)    | ^                  | ^
+         t32_2x8 (AIE2P)    | ^                  | ^
+         t32_1x16_flip (AIE2P) | ^               | ^
          t32_16x2_lo        | `lhs` & `rhs`      | ^
          t32_16x2_hi        | ^                  | ^
          t32_2x16_lo        | ^                  | ^
@@ -767,7 +802,9 @@ def AIEVec_ShuffleOp
          t32_8x4_hi         | ^                  | ^
          t32_4x8_lo         | ^                  | ^
          t32_4x8_hi         | ^                  | ^
-         t64_8x2_lo         | ^                  | `vector<8xi64>`
+         t64_4x2 (AIE2P)    | `lhs`              | `vector<8xi64>`
+         t64_2x4 (AIE2P)    | ^                  | ^
+         t64_8x2_lo         | `lhs` & `rhs`      | ^
          t64_8x2_hi         | ^                  | ^
          t64_2x8_lo         | ^                  | ^
          t64_2x8_hi         | ^                  | ^
