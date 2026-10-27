@@ -1,0 +1,19 @@
+<map id="xilinx::AIE::Placer::CollectedOps" name="xilinx::AIE::Placer::CollectedOps">
+<area shape="rect" id="Node000001" title=" " alt="" coords="449,173,584,213"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="29,7,248,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="262,13,303,17,346,25,388,38,427,58,457,83,480,114,510,172,506,174,476,117,453,87,424,62,386,43,345,30,303,22,261,18"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="10,57,267,82"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="281,74,355,89,427,114,468,141,500,171,496,175,465,145,424,118,354,94,280,80"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="18,106,259,131"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="273,129,349,141,426,157,468,171,466,176,425,163,348,146,273,135"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="5,155,272,181"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="286,175,449,186,449,192,286,180"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="21,205,256,230"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="270,217,347,215,425,209,449,206,450,211,426,215,347,221,270,223"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="49,254,228,279"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="242,264,332,256,425,237,455,226,482,211,485,216,457,231,426,243,332,262,242,269"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="28,303,249,329"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="262,317,344,306,385,296,424,280,447,266,468,248,499,212,503,215,472,252,450,270,427,285,387,301,345,311,263,322"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="45,353,232,378"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="245,374,290,373,336,367,382,355,424,335,454,309,478,276,495,242,507,213,512,215,500,244,483,278,458,312,427,340,384,360,337,372,290,378,246,379"/>
+</map>
