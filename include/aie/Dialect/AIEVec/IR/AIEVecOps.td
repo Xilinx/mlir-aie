@@ -230,20 +230,18 @@ def AIEVec_ConcatOp
   }];
 }
 
-def AIEVec_ExtOp
-    : AIEVec_Op<"ext", [Pure]>,
-      Arguments<(ins AnyVectorOfNonZeroRank:$source,
-          ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
-      Results<(outs AnyVectorOfNonZeroRank:$result)> {
+def AIEVec_ExtOp : AIEVec_Op<"ext", [Pure]>,
+                   Arguments<(ins AnyVectorOfNonZeroRank:$source,
+                       ConfinedAttr<AIEI8Attr, [IntNonNegative]>:$index)>,
+                   Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE ext";
   let description = [{
     AMD-specific vector extract intrinsic. Selects contiguous lanes from
     the source vector, and transfers the data from those lanes to the
-    result. The lane selection is controlled by index. There are two cases:
-    1. Extracted vector fills half of the original vector lanes (e.g. extract v64int8 from v128int8)
-    2. Extracted vector fills a fourth of the original vector lanes (e.g. extract v32int8 from v128int8)
-    In the first case, index can be 0 or 1. Index 0 extracts the lower half, and index 1 extracts the upper half.
-    In the second case, index can be 0 to 3. Index 0 extracts the lowest quarter, index 1 the next quarter, and so on.
+    result. The source divides into equal parts as wide as the result, and
+    index selects one of them: index 0 extracts the lowest part, index 1 the
+    next one, and so on. The verifier requires index to be less than the
+    number of parts.
     `$result = ext($source, $index)`
   }];
 }
@@ -454,6 +452,20 @@ def AIEVec_TanhOp
     AMD-specific intrinsic that computes the hyperbolic tangent of the input
     vector. For AIE2P, this is lowered to the hardware tanh intrinsic.
     `$result = tanh(`$source`).
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
+def AIEVec_Exp2Op
+    : AIEVec_Op<"exp2", [Pure, AllTypesMatch<["source", "result"]>]>,
+      Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+      Results<(outs AnyVectorOfNonZeroRank:$result)> {
+  let summary = "AIE vector base-2 exponential";
+  let description = [{
+    AMD-specific intrinsic that computes 2 raised to each element of the input
+    vector. For AIE2P, this is lowered to the hardware exp2 intrinsic.
+    `$result = exp2(`$source`).
   }];
   let assemblyFormat = "$source attr-dict `:` type($result)";
   let hasVerifier = 0;
