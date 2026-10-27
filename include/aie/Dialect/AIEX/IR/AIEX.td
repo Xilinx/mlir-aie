@@ -1791,8 +1791,8 @@ def AIE_DMAStartBdChainForOp
 
 def AIEX_SetLockOp
     : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
-        SkipAccessibilityCheckTrait,
-        DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+                           SkipAccessibilityCheckTrait,
+                           DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Set the value of a lock";
   let description = [{
     This operation sets the value of `lock` inside of a RuntimeSequenceOp.
