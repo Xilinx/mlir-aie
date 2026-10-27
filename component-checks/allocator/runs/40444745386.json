@@ -1,0 +1,108 @@
+{
+ "schema": 1,
+ "target": "allocator",
+ "id": "40444745386",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40444745386",
+ "date": "2026-10-27T03:32:37+00:00",
+ "commit": {
+  "id": "b60cba56cfab3b357aad7bbb36dfe31417888f11",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/b60cba56cfab3b357aad7bbb36dfe31417888f11",
+  "message": "[AIEVec] Lower contractions in their stored operand layouts (#3970)",
+  "timestamp": "2026-10-27T00:03:03Z"
+ },
+ "event": "schedule",
+ "pmode": null,
+ "device": "AMD EPYC 9V45 96-Core Processor",
+ "device_raw": null,
+ "provenance": {
+  "commit": "b60cba56cf",
+  "cpu": "AMD EPYC 9V45 96-Core Processor"
+ },
+ "sane": true,
+ "published": true,
+ "n_rows": 6,
+ "exitstatus": 0,
+ "failed": [],
+ "truncated": [],
+ "rows": {
+  "allocator": {
+   "failed_properties": {
+    "value": 0,
+    "unit": "properties"
+   },
+   "unsolved": {
+    "value": 0,
+    "unit": "designs"
+   },
+   "illegal": {
+    "value": 0,
+    "unit": "designs"
+   },
+   "avoidable_crossings": {
+    "value": 0,
+    "unit": "crossings"
+   },
+   "bank_pair_sharing": {
+    "value": 0.2434,
+    "unit": "fraction"
+   },
+   "wall_s": {
+    "value": 173.3,
+    "unit": "s"
+   }
+  }
+ },
+ "builds": {},
+ "detail": [
+  {
+   "name": "metric-validation",
+   "ok": true,
+   "detail": "0 wrong answer(s)"
+  },
+  {
+   "name": "legality",
+   "ok": true,
+   "detail": "0 illegal of 5000 placed"
+  },
+  {
+   "name": "determinism",
+   "ok": true,
+   "detail": "0 unstable"
+  },
+  {
+   "name": "completeness",
+   "ok": true,
+   "detail": "5000/5000 solved"
+  },
+  {
+   "name": "bank-reservations",
+   "ok": true,
+   "detail": "185217/185217 solved (100.0%, min 100%), 0 illegal, 0 unsolvable-by-construction"
+  },
+  {
+   "name": "search-exercised",
+   "ok": true,
+   "detail": "3122 tile(s) needed backtracking (min 231)"
+  },
+  {
+   "name": "bank-crossings",
+   "ok": true,
+   "detail": "0 avoidable (max 0)"
+  },
+  {
+   "name": "bank-sharing",
+   "ok": true,
+   "detail": "mean shared pairs 0.243 (max 0.27)"
+  },
+  {
+   "name": "forced-regressions",
+   "ok": true,
+   "detail": "0 problem(s)"
+  },
+  {
+   "name": "stress",
+   "ok": true,
+   "detail": "300/300 placed in 0.1s (max 30s)"
+  }
+ ]
+}
