@@ -2189,30 +2189,36 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // A box with a measure switch over a chart drawn by `configOf(metric)`.
     function switchChart(metrics, want, configOf, about, aria) {
-      let metric = metrics.includes(want) ? want : metrics[0], drawn = null;
+      let metric = metrics.includes(want) ? want : metrics[0], drawn = null, disposed = false;
       const seg = el('span', { className: 'seg', role: 'group', ariaLabel: 'measure' });
       const note = el('p', { className: 'note' });
       const canvas = el('canvas', { role: 'img', ariaLabel: aria });
       const box = el('div', { className: 'chart trend' }, el('div', { className: 'trend-head' }, seg), note, el('div', { className: 'canvas' }, canvas));
       const draw = m => {
+        if (disposed) return;
         metric = m;
         segment(seg, metrics, m, draw);
         note.textContent = about(m);
         canvas.ariaLabel = `${aria}: ${AXIS_OF[m] || label(m)}`;
         if (drawn) drawn.destroy();
         drawn = lineChart(canvas, configOf(m));
-        componentCharts.push(drawn);
       };
       segment(seg, metrics, metric, draw);
       note.textContent = about(metric);
       const seen = new IntersectionObserver(entries => {
-        if (!entries.some(e => e.isIntersecting)) return;
+        if (disposed || !entries.some(e => e.isIntersecting)) return;
         seen.disconnect();
         draw(metric);
       }, { rootMargin: '400px' });
       seen.observe(box);
       box.metric = () => metric;
       box.redraw = () => draw(metric);
+      box.destroy = () => {
+        disposed = true;
+        seen.disconnect();
+        if (drawn) drawn.destroy();
+        drawn = null;
+      };
       return box;
     }
 
@@ -4247,7 +4253,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // One factory's page, rebuilt when another is asked for (or the theme
     // changes, since its charts read their colors when drawn).
-    let currentKernel = null, kernelNpu = null;
+    let currentKernel = null, kernelNpu = null, kernelTrend = null;
+
+    function replaceKernelTrend(content) {
+      if (kernelTrend && kernelTrend.destroy) kernelTrend.destroy();
+      kernelTrend = content;
+      $('kernel-trend').replaceChildren(...(content ? [content] : []));
+    }
 
     // One factory's page: what it is, a chart of its cases over recent
     // nightlies on one NPU, and a table of its cases on every NPU.
@@ -4255,14 +4267,18 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       currentKernel = factory;
       $('tab-kernel').textContent = factory || 'Kernel';
       const found = renderKernel(factory, nights);
-      if (!found) { for (const id of ['kernel-npu', 'kernel-trend', 'kernel-cases']) $(id).replaceChildren(); return; }
+      if (!found) {
+        replaceKernelTrend();
+        for (const id of ['kernel-npu', 'kernel-cases']) $(id).replaceChildren();
+        return;
+      }
       $('kernel-cases').replaceChildren(kernelCaseTable(factory, nights, hist));
       // The NPUs that timed it, the one with the most nightlies first.
       const npus = nights.map(n => n.npu).map(n => [n, nightValues(hist, n, 'cycles', factory).length]).filter(([, k]) => k)
         .sort((a, b) => b[1] - a[1]).map(([n]) => n);
       if (!npus.length) {
         $('kernel-npu').replaceChildren();
-        $('kernel-trend').replaceChildren(el('p', { className: 'dim' }, 'No nightly has timed this kernel yet.'));
+        replaceKernelTrend(el('p', { className: 'dim' }, 'No nightly has timed this kernel yet.'));
         return;
       }
       const want = readHash();
@@ -4273,7 +4289,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         loadHistories([npu], ALL_METRICS).then(data => {
           if (currentKernel !== factory || kernelNpu !== npu || currentView() !== 'kernel') return;
           const metrics = ALL_METRICS.filter(m => nightValues(data, npu, m, factory).length);
-          $('kernel-trend').replaceChildren(switchChart(metrics, want.metric, m => kernelTrendConfig(data, npu, factory, m),
+          replaceKernelTrend(switchChart(metrics, want.metric, m => kernelTrendConfig(data, npu, factory, m),
             m => `${label(m)}: ${METRICS[m]}. A line per case; hover for its value, click for the commit.`,
             `${factory} on ${npu} over recent nightlies, a line per case`));
         });
@@ -4306,6 +4322,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     function showView() {
       const view = applyView();
+      if (view !== 'kernel') replaceKernelTrend();
       // The other sections read their own files, not the kernels'; the
       // overview reads both, and draws the kernels' once they are in.
       if (SECTIONS[view]) showSection(view);

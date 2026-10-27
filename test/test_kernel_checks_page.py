@@ -1390,6 +1390,70 @@ assert.equal(renderKernel('nope', nights), false);
 """)
 
 
+@pytest.mark.parametrize("visible", [False, True])
+def test_kernel_refresh_disposes_charts_and_pending_observers(page, visible):
+    page(KERNELS + f"const visible = {json.dumps(visible)};\n" + """
+const observers = [], liveCharts = new Set();
+let created = 0, destroyed = 0;
+global.Chart = function () { created++; liveCharts.add(this); };
+Chart.prototype.destroy = function () {
+  assert.ok(liveCharts.delete(this), 'a chart must be destroyed exactly once');
+  destroyed++;
+};
+global.IntersectionObserver = class {
+  constructor(cb) { this.cb = cb; observers.push(this); }
+  observe() {}
+  disconnect() { this.disconnected = true; }
+  fire() { this.cb([{ isIntersecting: true }]); }
+};
+hist = db;
+loadHistories = async () => db;
+location.hash = hashFor({ view: 'kernel', kernel: 'softmax' });
+(async () => {
+  const show = async factory => { showKernel(factory); await Promise.resolve(); };
+  await show('softmax');
+  for (let i = 0; i < 4; i++) {
+    const old = $('kernel-trend').children[0], observer = observers.at(-1);
+    if (visible) {
+      observer.fire();
+      old.redraw();
+      assert.equal(liveCharts.size, 1);
+    }
+    // Keep the live chart until replacement history arrives.
+    showKernel('softmax');
+    assert.equal(liveCharts.size, visible ? 1 : 0);
+    await Promise.resolve();
+    assert.ok(observer.disconnected);
+    assert.equal(liveCharts.size, 0);
+    const count = created;
+    observer.fire();
+    old.redraw();
+    assert.equal(created, count, 'a disposed chart cannot draw a detached canvas');
+    assert.equal(componentCharts.length, 0, 'kernel charts are not retained by sections');
+  }
+  // NPU changes replace the trend through the same cleanup path.
+  observers.at(-1).fire();
+  $('kernel-npu').children[1].on.click();
+  await Promise.resolve();
+  assert.equal(liveCharts.size, 0);
+  observers.at(-1).fire();
+  await show('relu');
+  assert.equal(liveCharts.size, 0);
+  assert.ok($('kernel-trend').text.includes('No nightly has timed'));
+  await show('softmax');
+  observers.at(-1).fire();
+  await show('missing');
+  assert.equal(liveCharts.size, 0);
+  await show('softmax');
+  observers.at(-1).fire();
+  location.hash = '#view=kernels';
+  showView();
+  assert.equal(liveCharts.size, 0);
+  assert.equal(created, destroyed);
+})().catch(e => { console.error(e); process.exitCode = 1; });
+""")
+
+
 def test_case_titles_and_trend_lines(page):
     page("""
 assert.deepEqual(caseParts('bn_conv2dk3/1792x8/int8_uint8/input_channels=8/stride=2/lut'),
