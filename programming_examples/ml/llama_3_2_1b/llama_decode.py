@@ -437,8 +437,11 @@ class Decoder:
             The Generation.
 
         Raises:
-            ValueError: The prompt and max_new do not fit the KV cache.
+            ValueError: `max_new` is not positive, or the prompt and
+                `max_new` do not fit the KV cache.
         """
+        if max_new < 1:
+            raise ValueError(f"max_new must be at least 1, not {max_new}")
         if not prompt or len(prompt) + max_new - 1 > self.shape.t:
             raise ValueError(
                 f"{len(prompt)} prompt tokens and {max_new} more do not fit "
