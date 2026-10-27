@@ -19,9 +19,9 @@ same random prefix, each checked (and with --time, timed): one build at a
 large --t times every context, attention reading only the live prefix.
 
 Run (compiles the design, or reuses its JIT cache entry):
-  python test_chain_persist_grow_mh.py --synthetic-weights
-  taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --time
-  python test_chain_persist_grow_mh.py --n-layers 16 --t 131072 \
+  python test_decode.py --synthetic-weights
+  taskset -c 2-23 python test_decode.py --n-layers 16 --time
+  python test_decode.py --n-layers 16 --t 131072 \
       --contexts 1024 32768 131068 --time
 """
 
@@ -36,9 +36,10 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie2_decode import M_MAX, REC_BYTES, RROW
+from aie2_decode import LM_CORE_TILES, M_MAX, REC_BYTES, RROW
+from aie2_gemv_array import N_CORES
 from gen_llama_data import quant_int8_perchan_absmax
-from llama_config import HEAD_D, N_HEADS_KV, N_LAYERS, VOCAB, D
+from llama_config import HEAD_D, N_HEADS_KV, N_LAYERS, N_TILE, VOCAB, D
 from llama_decode import Decoder, DecodeShape, tokens_of
 from llama_oracle import (
     Layer,
@@ -48,17 +49,28 @@ from llama_oracle import (
     xoshiro_seed,
 )
 from ml_dtypes import bfloat16
-from numpy_llama_ref import _load_bf16, _load_qw, rope_table
+from numpy_llama_ref import load_bf16, load_qw, rope_table
 
 DATA_DIR = Path(__file__).parent / "data"
+# The embed rows one GEMV core's lm_head takes.
+CORE_SHARE = N_TILE * LM_CORE_TILES
 
 
-def synthetic_lm_weights(seed, rows_per_chunk=8192):
+def synthetic_lm_weights(seed, tied=False, rows_per_chunk=8192):
     """A seeded stand-in for data/'s embed table and final_norm gamma.
 
     Same shapes, dtypes and per-row INT8 quantization as gen_llama_data.py
     writes; the distributions follow Llama 3.2 1B's (embed std ~0.022, gamma
     ~N(2.35, 0.28)). Built in row chunks: the full fp32 table would be 1 GB.
+
+    Args:
+        `seed`: The numpy Generator's seed.
+        `tied`: Repeat each even GEMV core's share of the table as the next
+            core's, so every logit ties its twin's in another core's set.
+        `rows_per_chunk`: Rows drawn at a time.
+
+    Returns:
+        (int8 embed table, its fp32 row scales, bf16 final_norm gamma).
     """
     rng = np.random.default_rng(seed)
     embed_i8 = np.empty((VOCAB, D), np.int8)
@@ -68,6 +80,12 @@ def synthetic_lm_weights(seed, rows_per_chunk=8192):
         rows = rng.normal(0.0, 0.022, size=(r1 - r0, D)).astype(np.float32)
         embed_i8[r0:r1], embed_sc[r0:r1] = quant_int8_perchan_absmax(rows)
     gamma = rng.normal(2.35, 0.28, size=D).astype(bfloat16)
+    if tied:
+        for c in range(0, N_CORES, 2):
+            for x in (embed_i8, embed_sc):
+                x[(c + 1) * CORE_SHARE : (c + 2) * CORE_SHARE] = x[
+                    c * CORE_SHARE : (c + 1) * CORE_SHARE
+                ]
     return embed_i8, embed_sc, gamma
 
 
@@ -127,16 +145,16 @@ def replay(shape, records, passes, residual, layers, p0, rope, lm, sampler, rng,
     following the device's tokens.
 
     Args:
-        records: The dispatch's packed records.
-        passes: Its passes.
-        residual: The first token's layer-0 residual.
-        layers: The oracle's layers, their caches as the dispatch found them.
-        p0: The first token's position.
-        rope: The RoPE table.
-        lm: (embed_i8, embed_sc, final_norm gamma).
-        sampler: The sampler's (temperature, top_k).
-        rng: The generation's xoshiro state as the dispatch found it.
-        plan: Per token, (the prompt token it inputs, or None to input the
+        `records`: The dispatch's packed records.
+        `passes`: Its passes.
+        `residual`: The first token's layer-0 residual.
+        `layers`: The oracle's layers, their caches as the dispatch found them.
+        `p0`: The first token's position.
+        `rope`: The RoPE table.
+        `lm`: (embed_i8, embed_sc, final_norm gamma).
+        `sampler`: The sampler's (temperature, top_k).
+        `rng`: The generation's xoshiro state as the dispatch found it.
+        `plan`: Per token, (the prompt token it inputs, or None to input the
             previous token's sample (the first token: residual); the index of
             the record the lm_head and sampler left for it, or None).
 
@@ -188,12 +206,12 @@ def check_kv(shape, layers, kv_before, kv_idx, kv_val, positions):
     KV cache and changed nothing else.
 
     Args:
-        shape: The build.
-        layers: The oracle's layers, after it appended those rows.
-        kv_before: The device's KV cache words before the dispatch.
-        kv_idx: The sorted indices of the words the dispatch changed.
-        kv_val: Their new values.
-        positions: The rows the dispatch appended.
+        `shape`: The build.
+        `layers`: The oracle's layers, after it appended those rows.
+        `kv_before`: The device's KV cache words before the dispatch.
+        `kv_idx`: The sorted indices of the words the dispatch changed.
+        `kv_val`: Their new values.
+        `positions`: The rows the dispatch appended.
 
     Returns:
         1 if a row differs or the dispatch changed a word outside them, else 0.
@@ -241,7 +259,11 @@ def main(argv=None):
     )
     p.add_argument("--t", type=int, default=128, help="KV cache rows")
     p.add_argument(
-        "--kset", type=int, default=8, help="the sampler's resident top-k set"
+        "--kset",
+        type=int,
+        choices=range(1, 9),
+        default=8,
+        help="the sampler's top-k set size",
     )
     p.add_argument(
         "--p-max",
@@ -282,6 +304,13 @@ def main(argv=None):
         action="store_true",
         help="use a seeded synthetic embed table + final_norm (same layout as data/) "
         "instead of the real Llama weights; the oracle runs on the same table",
+    )
+    p.add_argument(
+        "--tied-table",
+        action="store_true",
+        help="with --synthetic-weights: repeat each even GEMV core's share of the "
+        "table as the next core's, so every logit ties across two cores' sets; a "
+        "greedy pick must be the lower twin",
     )
     p.add_argument(
         "--dispatches",
@@ -434,6 +463,8 @@ def main(argv=None):
             "--save-run, --from-run and --prompt-tokens are for runs of "
             "--dispatches or --contexts"
         )
+    if opts.tied_table and not opts.synthetic_weights:
+        p.error("--tied-table is for --synthetic-weights")
     if opts.vs_batch and (opts.save_run or opts.from_run or not opts.prompt_tokens):
         p.error("--vs-batch is for a --prompt-tokens run on the NPU")
     config = json.dumps(
@@ -443,6 +474,7 @@ def main(argv=None):
             kset=shape.kset,
             seed=fseed,
             synthetic=opts.synthetic_weights,
+            tied=opts.tied_table,
             schedule=schedule,
             contexts=sweep,
             time=opts.time and bool(sweep),
@@ -453,11 +485,11 @@ def main(argv=None):
 
     if opts.synthetic_weights:
         print(f"building synthetic embed/final_norm (seed {fseed}) ...", flush=True)
-        embed_i8, embed_sc, gamma = synthetic_lm_weights(fseed)
+        embed_i8, embed_sc, gamma = synthetic_lm_weights(fseed, opts.tied_table)
     else:
         print(f"loading embed/final_norm from {DATA_DIR} ...", flush=True)
-        embed_i8, embed_sc = _load_qw(DATA_DIR, "embed", (VOCAB, D))
-        gamma = _load_bf16(DATA_DIR, "final_norm", (D,))
+        embed_i8, embed_sc = load_qw(DATA_DIR, "embed", (VOCAB, D))
+        gamma = load_bf16(DATA_DIR, "final_norm", (D,))
     lm = (embed_i8, embed_sc, gamma)
 
     residual0, layers = build_fixtures(
@@ -476,7 +508,7 @@ def main(argv=None):
         print("packing the weights ...", flush=True)
         decoder = Decoder(shape, layers, lm, rope, opts.elf)
     print(
-        f"chain_persist_grow_mh shape.n_layers={shape.n_layers} "
+        f"decode shape.n_layers={shape.n_layers} "
         f"passes={[n for _, n in sweep] or [len(b) or n for _, n, b, _ in schedule]}"
         f" P0={[at for at, _ in sweep] if sweep else p0} KSET={shape.kset}"
         f"  temp={sample[0]} topk={sample[1]} seed={sample[2]}  fixture_seed={fseed}"
@@ -817,7 +849,7 @@ def main(argv=None):
 
     n = len(dev_tokens)
     print(
-        f"\nchain_persist_grow_mh: {n - tok_fails}/{n} tokens PASS  "
+        f"\ndecode: {n - tok_fails}/{n} tokens PASS  "
         f"(on-chip feedback + GROWING KV + per-position rope)"
     )
     if opts.split:
@@ -834,13 +866,20 @@ def main(argv=None):
             f"prompt in batches of {opts.batch} vs {opts.vs_batch}: "
             f"{'PASS' if not vs_fails else 'FAIL'}"
         )
+    lower = sum((tok // CORE_SHARE) % 2 == 0 for tok in dev_tokens)
+    untied = n - lower if opts.tied_table and sample[0] <= 0 else 0
+    if opts.tied_table and sample[0] <= 0:
+        print(
+            f"tied table: {lower}/{n} picks are the lower twin "
+            f"{'PASS' if not untied else 'FAIL'}"
+        )
     reused = len(draws) - len(set(draws))
     if draws:
         print(
             f"sampled draws: {len(set(draws))}/{len(draws)} distinct states "
             f"{'PASS' if not reused else 'FAIL'}"
         )
-    if tok_fails or carry_fails or hidden_fails or vs_fails or reused:
+    if tok_fails or carry_fails or hidden_fails or vs_fails or reused or untied:
         return 1
     if opts.time and not sweep:
         assert decoder is not None

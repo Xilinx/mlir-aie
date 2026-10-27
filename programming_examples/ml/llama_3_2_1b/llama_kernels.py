@@ -14,6 +14,7 @@ object.
 from pathlib import Path
 
 from aie.iron.kernel import ExternalFunction
+from llama_config import HD, HEAD_D, KV_TB, N_HEADS_KV, N_HEADS_Q, N_TILE, REP, D
 
 KERNELS_DIR = Path(__file__).parent / "kernels"
 
@@ -36,14 +37,14 @@ class KernelSource:
         )
 
 
-def rmsnorm(*, cols=2048):
+def rmsnorm(*, cols=D):
     return KernelSource(
         "llama_rmsnorm_int8.cc",
         ["-ffp-contract=off", f"-DLLAMA_RMSNORM_COLS={cols}"],
     )
 
 
-def silu_mul(*, cols=8192, chunk=1024):
+def silu_mul(*, cols=HD, chunk=1024):
     return KernelSource(
         "llama_silu_mul_int8.cc",
         [
@@ -54,31 +55,40 @@ def silu_mul(*, cols=8192, chunk=1024):
     )
 
 
-def attn_block(*, tb=64):
+def attn_block(*, tb=KV_TB):
     return KernelSource(
         "llama_attn_block.cc",
         [
             "-ffp-contract=off",
-            "-DLLAMA_ATTN_HEAD_DIM=64",
+            f"-DLLAMA_ATTN_HEAD_DIM={HEAD_D}",
             f"-DLLAMA_ATTN_TB={tb}",
-            "-DLLAMA_ATTN_REP=4",
+            f"-DLLAMA_ATTN_REP={REP}",
         ],
     )
 
 
-def lmhead(*, kset=16):
+def lmhead(*, kset=8):
     return KernelSource(
         "llama_lmhead_topk.cc",
         ["-ffp-contract=off", f"-DLLAMA_LMHEAD_KSET={kset}"],
     )
 
 
-def gemv_array():
-    return KernelSource("llama_gemv_array.cc", ["-ffp-contract=off"])
+def gemv_array(*, m_max):
+    return KernelSource(
+        "llama_gemv_array.cc", ["-ffp-contract=off", f"-DLLAMA_GEMV_M_MAX={m_max}"]
+    )
 
 
-def gemv_mma():
-    return KernelSource("llama_gemv_mma.cc", ["-ffp-contract=off"])
+def gemv_mma(*, m_max, out_bytes):
+    return KernelSource(
+        "llama_gemv_mma.cc",
+        [
+            "-ffp-contract=off",
+            f"-DLLAMA_GEMV_M_MAX={m_max}",
+            f"-DLLAMA_GEMV_OUT_BYTES={out_bytes}",
+        ],
+    )
 
 
 def gqa_glue():
@@ -86,20 +96,20 @@ def gqa_glue():
         "llama_gqa_glue.cc",
         [
             "-ffp-contract=off",
-            "-DLLAMA_GQA_HEAD_DIM=64",
-            "-DLLAMA_GQA_N_HEADS_Q=32",
-            "-DLLAMA_GQA_N_HEADS_KV=8",
+            f"-DLLAMA_GQA_HEAD_DIM={HEAD_D}",
+            f"-DLLAMA_GQA_N_HEADS_Q={N_HEADS_Q}",
+            f"-DLLAMA_GQA_N_HEADS_KV={N_HEADS_KV}",
         ],
     )
 
 
-def topk_sample(*, dim=2048, kset=8):
+def topk_sample(*, kset=8):
     return KernelSource(
         "llama_topk_sample.cc",
         [
             "-ffp-contract=off",
-            f"-DLLAMA_TOPK_D={dim}",
-            "-DLLAMA_TOPK_NTILE=4",
+            f"-DLLAMA_TOPK_D={D}",
+            f"-DLLAMA_TOPK_NTILE={N_TILE}",
             f"-DLLAMA_TOPK_KSET={kset}",
         ],
     )

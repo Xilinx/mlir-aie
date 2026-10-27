@@ -30,6 +30,7 @@ from ..utils.compile.jit.markers import _DispatchParameter
 from .buffer import Buffer
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
+from .dataflow.objectfifopool import ObjectFifoPoolHandle
 from .device import AnyComputeTile, Tile
 from .kernel import Kernel
 from .resolvable import PerDeviceConfiguration, Resolvable
@@ -187,7 +188,7 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         # fn_args may nest lists (e.g. one fifo per column); iterate the flattened
         # leaves for registration while the core_fn still receives the structure.
         for arg in flatten_fn_args(self.fn_args):
-            if isinstance(arg, ObjectFifoHandle):
+            if isinstance(arg, (ObjectFifoHandle, ObjectFifoPoolHandle)):
                 arg.endpoint = self
                 self._fifos.append(arg)
             elif isinstance(arg, Buffer):
@@ -299,11 +300,12 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         return list(flatten_fn_args(self.fn_args)) + self._setup_kernels
 
     @property
-    def fifos(self) -> list[ObjectFifoHandle]:
-        """Returns a list of ObjectFifoHandles given to the Worker via fn_args.
+    def fifos(self) -> list[ObjectFifoHandle | ObjectFifoPoolHandle]:
+        """Returns the fifo and pool handles given to the Worker via fn_args.
 
         Returns:
-            list[ObjectFifoHandle]: ObjectFifoHandles used by the Worker.
+            list[ObjectFifoHandle | ObjectFifoPoolHandle]: handles the Worker
+                acquires and releases objects through.
         """
         return self._fifos.copy()
 
@@ -366,6 +368,25 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
         self.initial_value = initial_value
         self.worker_locks = []
 
+    def _get_worker_lock(self) -> ir.Value:
+        op = ir.InsertionPoint.current.block.owner.operation
+        while op is not None:
+            if op.name == "aie.core":
+                core_tile = op.operands[0].owner.operation
+                for worker_lock in self.worker_locks:
+                    lock_tile = worker_lock.owner.operation.operands[0].owner.operation
+                    # Value equality emits arith.cmpi; compare defining operations.
+                    if lock_tile == core_tile:
+                        return worker_lock
+                break
+            if op.name in ("aie.device", "builtin.module"):
+                break
+            op = op.parent
+        raise ValueError(
+            "No lock is registered for this barrier on the current core's tile; "
+            "pass the barrier in this Worker's fn_args."
+        )
+
     def wait_for_value(self, value: int, *, greater_equal: bool = False):
         """Wait for the barrier to be set to `value`.
 
@@ -378,15 +399,8 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
             value (int): The value to wait for.
             greater_equal (bool): Use a consuming greater-than-or-equal lock wait.
         """
-        # Here this is assuming that the we are currently placing the last added lock
-        # And therefore that wait_for_value operations are placed just after their corresponding Worker...
-        # This is a pretty bad assumption, think about an alternative way to solve this
-        if len(self.worker_locks) == 0:
-            raise ValueError(
-                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
-            )
         action = LockAction.AcquireGreaterEqual if greater_equal else LockAction.Acquire
-        use_lock(self.worker_locks[-1], action, value=value)
+        use_lock(self._get_worker_lock(), action, value=value)
 
     def set(self, value: int):
         """Set the barrier to ``value`` from within a runtime sequence body.
@@ -407,11 +421,7 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
         Args:
             value (int): The value to add.
         """
-        if len(self.worker_locks) == 0:
-            raise ValueError(
-                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
-            )
-        use_lock(self.worker_locks[-1], LockAction.Release, value=value)
+        use_lock(self._get_worker_lock(), LockAction.Release, value=value)
 
 
 class _BarrierSetOp(Resolvable):

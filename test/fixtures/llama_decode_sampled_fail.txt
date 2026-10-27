@@ -1,6 +1,6 @@
 building synthetic embed/final_norm (seed 0) ...
 packing the weights ...
-chain_persist_grow_mh shape.n_layers=2 passes=[4, 4] P0=5 KSET=8  temp=0.7 topk=4 seed=1234  fixture_seed=0  dispatches=2 repeats=1
+decode shape.n_layers=2 passes=[4, 4] P0=5 KSET=8  temp=0.7 topk=4 seed=1234  fixture_seed=0  dispatches=2 repeats=1
 dispatch 0 (pos 5): tokens [15288, 46021, 1011, 4746]
   token 0 (pos 5): PASS  dev=15288 ref=15288  [sampled, state a0bbcc12]
   token 1 (pos 6): FAIL  dev=46021 ref=72743  [sampled, state c36b363d]
@@ -18,5 +18,5 @@ dispatch 1 (pos 9): tokens [27413, 31724, 31366, 70823]
   KV cache: PASS
   final hidden: PASS
 
-chain_persist_grow_mh: 3/8 tokens PASS  (on-chip feedback + GROWING KV + per-position rope)
+decode: 3/8 tokens PASS  (on-chip feedback + GROWING KV + per-position rope)
 carry across 2 dispatches: FAIL

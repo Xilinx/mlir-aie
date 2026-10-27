@@ -39,11 +39,6 @@ static constexpr int kHalfKV = kNHeadsKV / 2;
 static constexpr int kVec = 16;
 static_assert(kHD % kVec == 0, "LLAMA_GQA_HEAD_DIM must be a multiple of 16");
 
-static inline float bits_to_float(int32_t bits) {
-  float f = __builtin_bit_cast(float, bits);
-  return f;
-}
-
 // Each KV group's chunk is its REP Q heads' sv, kREP*kHD fp32; the memtile
 // join packs 4 chunks per half, KV groups 0-3 in lo and 4-7 in hi. KV group
 // g holds Q heads [g*REP, g*REP + REP), so lo then hi is every Q head's sv
@@ -66,7 +61,7 @@ static constexpr int kKfpHead = kHD * 4;
 static constexpr int kRowBytes = 2 * kHD + 8;
 static constexpr int kRowChunk = kChunk + kRowBytes;
 
-// comb_rope_rows (the GEMV array decode): the array's per-KV-group chunks
+// comb_rope_rows: the GEMV array's per-KV-group chunks
 // [roped q body 256 B | q tail 32 B | k fp32 x64 | v fp32 x64 | cs 256 B]
 // (llama_gemv_array_qkv_comb_cs), all 8 groups in comb, to the attention's
 // [q 288 B | row 136 B] chunks, lo (groups 0-3) and hi (4-7), each half
@@ -77,20 +72,23 @@ extern "C" void llama_comb_rope_rows(int8_t *restrict comb,
                                      int8_t *restrict out_lo,
                                      int8_t *restrict out_hi) {
   event0();
+  const ::aie::saturation_mode prev_sat =
+      ::aie::swap_saturation(::aie::saturation_mode::saturate);
+  const ::aie::rounding_mode prev_rnd =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   for (int g = 0; g < kNHeadsKV; g++) {
     int8_t *base = (g < kHalfKV) ? out_lo : out_hi;
     int local = (g < kHalfKV) ? g : (g - kHalfKV);
     int8_t *dst = base + local * kRowChunk;
     const int8_t *src = comb + g * kArrayChunk;
-    const int8_t *kvfp = src + kChunk;
     copy_words<kChunk>(dst, src);
-    int8_t *row = dst + kChunk;
-    float ks, vs;
-    llama_kv_row_quant<kHD>(kvfp, row, row + kHD, &ks, &vs);
-    __builtin_memcpy(row + 2 * kHD, &ks, 4);
-    __builtin_memcpy(row + 2 * kHD + 4, &vs, 4);
+    alignas(64) int8_t row[kRowBytes];
+    llama_kv_row_quant<kHD>(src + kChunk, row);
+    copy_words<kRowBytes>(dst + kChunk, row);
     copy_words<kRowBytes>(base + kHalfKV * kRowChunk + local * kRowBytes, row);
   }
+  ::aie::set_rounding(prev_rnd);
+  ::aie::set_saturation(prev_sat);
   event1();
 }
 
@@ -105,18 +103,15 @@ extern "C" void llama_af_quant(int8_t *restrict sv, int8_t *restrict af_out) {
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   const float *x = reinterpret_cast<const float *>(sv);
 
-  // A non-NaN float's |v| bits order as an int32, so the absmax is an
-  // integer max.
   ::aie::vector<int32, kVec> mag = ::aie::zeros<int32, kVec>();
   for (int c = 0; c < kQD / kVec; c++)
     mag = ::aie::max(
         mag, ::aie::bit_and(
                  int32(0x7fffffff),
                  ::aie::load_v<kVec>(x + c * kVec).template cast_to<int32>()));
-  float absmax = bits_to_float(::aie::reduce_max(mag));
-  if (absmax < 1e-12f)
-    absmax = 1e-12f;
-  float o_act_scale = absmax * (1.0f / 127.0f);
+  const float absmax = __builtin_bit_cast(
+      float, std::max(::aie::reduce_max(mag), kAbsmaxFloorBits));
+  float o_act_scale = scalar_mul_rne(absmax, 1.0f / 127.0f);
   ::aie::vector<float, kVec> inv_v =
       ::aie::broadcast<float, kVec>(recip_rne(o_act_scale));
   for (int c = 0; c < kQD / kVec; c++)

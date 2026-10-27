@@ -15,6 +15,9 @@ Lower-level (explicit routing + DMA programs; peers of the above):
 [`Acquire`][iron.Acquire], [`Release`][iron.Release],
 [`DmaEndpoint`][iron.DmaEndpoint], [`FlowEndpoint`][iron.FlowEndpoint],
 [`TileDmaTask`][iron.TileDmaTask]
+
+One end managed, the other written by hand:
+[`ObjectFifoPool`][iron.ObjectFifoPool], [`PoolSegment`][iron.PoolSegment]
 """
 
 from ...dialects.aie import Packet, Port
@@ -27,6 +30,7 @@ from .objectfifo import (
     ObjectFifoLink,
     Transport,
 )
+from .objectfifopool import ObjectFifoPool, ObjectFifoPoolHandle, PoolSegment
 from .tile_dma import (
     Acquire,
     Bd,
@@ -39,6 +43,9 @@ from .tile_dma import (
 )
 
 __all__ = [
+    "ObjectFifoPool",
+    "ObjectFifoPoolHandle",
+    "PoolSegment",
     "ObjectFifo",
     "Packet",
     "Port",

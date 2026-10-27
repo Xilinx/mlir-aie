@@ -25,11 +25,11 @@ class DispatchSession:
         """Compile `design` at `compile_kwargs`, or reuse its build.
 
         Args:
-            design: The `@iron.jit` design.
-            full_elf_path: Where the full ELF goes, or where an up-to-date one
+            `design`: The `@iron.jit` design.
+            `full_elf_path`: Where the full ELF goes, or where an up-to-date one
                 built at the same `compile_kwargs` already is. `None` keeps it
                 in the JIT cache.
-            **compile_kwargs: The design's CompileTime values.
+            `**compile_kwargs`: The design's CompileTime values.
         """
         specialized = design.specialize(full_elf=True, **compile_kwargs)
         specialized.compile(full_elf_path=full_elf_path)
@@ -48,9 +48,9 @@ class DispatchSession:
         """Run one dispatch and wait for it, without a timeout.
 
         Args:
-            tensors: The sequence's host tensors, in argument order. They stay
+            `tensors`: The sequence's host tensors, in argument order. They stay
                 bound, and alive, until a later call replaces them.
-            **params: ScratchpadParameter values by name.
+            `**params`: ScratchpadParameter values by name.
 
         Returns:
             The dispatch's wall time, start to completion, in ms.

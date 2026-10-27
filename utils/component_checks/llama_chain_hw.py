@@ -7,7 +7,7 @@ Does the full N=16 persistent, growing-KV decode still build, match its
 numpy oracle and run at the expected rate on real hardware. Compiles once,
 at a 128k-row KV cache, with the design's own CLI (aie2_decode.py), then runs
 that one full ELF through:
-- test_chain_persist_grow_mh.py --contexts: a dispatch of 4 tokens at
+- test_decode.py --contexts: a dispatch of 4 tokens at
   DISPATCH_RATE_AT and at each of CONTEXTS, from one random KV prefix, every
   token, KV row and final residual checked against the oracle, then timed
   (the fastest of 20 after 10 warmups). Attention reads only the live
@@ -41,7 +41,7 @@ any run fails or the check refuses, after writing both. Reproduced, from
 programming_examples/ml/llama_3_2_1b, with
 
     python3 aie2_decode.py --n-layers 16 --t 131072 --full-elf-path X.elf
-    python3 test_chain_persist_grow_mh.py --n-layers 16 --t 131072 \
+    python3 test_decode.py --n-layers 16 --t 131072 \
         --elf X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 \
         131068 --time
     python3 generate.py --t 131072 --elf X.elf \
@@ -93,9 +93,7 @@ _LLAMA_DIR = os.path.join(
 _TOKEN_LINE_RE = re.compile(
     r"^\s*token \d+(?: \(pos \d+\))?: (PASS|FAIL)", re.MULTILINE
 )
-_SUMMARY_RE = re.compile(
-    r"^chain_persist_grow_mh: (\d+)/(\d+) tokens PASS", re.MULTILINE
-)
+_SUMMARY_RE = re.compile(r"^decode: (\d+)/(\d+) tokens PASS", re.MULTILINE)
 _DECODE_RE = re.compile(
     r"^decode at (\d+): per-dispatch n=(\d+) min=([\d.]+) median=([\d.]+) "
     r"mad=([\d.]+) ms, (\d+) tokens/dispatch: ([\d.]+) ms/token \(([\d.]+) tok/s\)",
@@ -105,6 +103,7 @@ _GENERATE_RE = re.compile(
     r"median of (\d+): TTFT ([\d.]+) ms \(min ([\d.]+); NPU dispatch ([\d.]+), "
     r"host ([\d.]+)\), decode (?:([\d.]+) tok/s|n/a)"
 )
+_PROMPT_RE = re.compile(r"^prompt (\d+) tokens, generated", re.MULTILINE)
 _CHECK_RE = re.compile(r"check: (\d+)/(\d+) tokens")
 _ORACLE_RE = re.compile(r"^oracle: (\d+)/(\d+) generated tokens pass", re.MULTILINE)
 # generate.py's prompt and length, the same every night.
@@ -230,7 +229,7 @@ def run_decode(env: dict) -> Measured:
     return run_measured(
         [
             sys.executable,
-            "test_chain_persist_grow_mh.py",
+            "test_decode.py",
             *_SHAPE_ARGS,
             "--elf",
             _ELF,
@@ -295,11 +294,13 @@ def parse_prefill(out: str, returncode: int) -> dict:
     Returns:
         `prefill_passed`: it exited 0 (every repeat generated the same
         token; generate.py's own gate, no oracle here); the TTFT split, as
-        `parse_generate`'s.
+        `parse_generate`'s; and `prompt_tokens`, the prompt's length with BOS.
     """
     timing = _GENERATE_RE.search(out)
+    prompt = _PROMPT_RE.search(out)
     return {
-        "prefill_passed": returncode == 0 and bool(timing),
+        "prefill_passed": returncode == 0 and bool(timing) and bool(prompt),
+        "prompt_tokens": int(prompt.group(1)) if prompt else None,
         "ttft_runs": int(timing.group(1)) if timing else None,
         "ttft_ms": float(timing.group(2)) if timing else None,
         "ttft_min_ms": float(timing.group(3)) if timing else None,
@@ -506,6 +507,15 @@ def aggregate(
             out.append(
                 row(prompt, metric, p[metric], unit, f"{stat} of {p['ttft_runs']}")
             )
+        out.append(
+            row(
+                prompt,
+                "prefill_tok_s",
+                round(p["prompt_tokens"] / (p["ttft_ms"] / 1e3), 1),
+                "tok/s",
+                f"prompt tokens over the median of {p['ttft_runs']} TTFTs",
+            )
+        )
     if accuracy.get("accuracy_passed"):
         note = f"{ACCURACY_MAX_TOKENS} tokens, teacher-forced"
         out.append(row(case, "kl_bf16", accuracy["kl_bf16"], "nats", note))

@@ -5,6 +5,7 @@
 
 """Execute workflow shell behavior on synthetic inputs; no NPU required."""
 
+import importlib.util
 import json
 import os
 import re
@@ -377,7 +378,9 @@ def test_a_run_that_publishes_requires_the_power_mode(event, ref, seeds):
         if "REQUIRED_PMODE" in step.get("env", {})
     ]
     assert [step["id"] for step in designs] == ["mobilenet", "llama", "yolo26n"]
-    if not evaluate(jobs["hw-checks"]["if"], context):
+    # The hardware job waits on the runner it is given, which a pull request never asks for.
+    assert jobs["hw-checks"]["needs"] == "runners"
+    if not evaluate(jobs["runners"]["if"], context):
         assert event == "pull_request"
         return
     for step in designs:
@@ -802,3 +805,117 @@ def test_ci_health_publishes_its_files_and_the_page(tmp_path):
     assert args[args.index("--previous") + 1] == f"{temp}/status.json"
     assert (temp / "status.json").read_text() == '{"schema": 1}'
     assert args[args.index("--history") + 1] == f"{temp}/history.json"
+
+
+def pick_runner():
+    script = WORKFLOWS.parents[1] / "utils" / "kernel_checks" / "pick_runner.py"
+    spec = importlib.util.spec_from_file_location("pick_runner", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize(
+    "file, job, types",
+    [
+        ("nightlyKernelChecks.yml", "checks", "aie2-4col aie2p-8col"),
+        ("nightlyComponentChecks.yml", "hw-checks", "aie2p-8col"),
+    ],
+)
+def test_a_nightly_leg_runs_on_the_runner_picked_for_it(file, job, types):
+    jobs = workflow(file)["jobs"]
+    picker = jobs["runners"]
+    assert picker["uses"] == "./.github/workflows/pickBenchRunner.yml"
+    assert picker["with"]["runner_types"] == types
+    assert picker["permissions"]["actions"] == "write"
+    # A dispatch may name the role; the nightly and a pull request probe.
+    assert picker["with"]["role"] == "${{ inputs.runner || 'auto' }}"
+    assert workflow(file)["on"]["workflow_dispatch"]["inputs"]["runner"]["options"] == [
+        "auto",
+        "primary",
+        "backup",
+    ]
+    leg = jobs[job]
+    assert leg["needs"] == "runners"
+    key = "matrix.runner_type" if job == "checks" else "'aie2p-8col'"
+    assert leg["runs-on"] == "${{ fromJSON(needs.runners.outputs.runs_on)[%s] }}" % key
+    # The picker's types are the legs' own.
+    if job == "checks":
+        legs = [m["runner_type"] for m in leg["strategy"]["matrix"]["include"]]
+        assert " ".join(legs) == types
+
+
+def test_the_probe_is_the_run_the_picker_looks_for():
+    module = pick_runner()
+    probe = workflow(module.PROBE)
+    # Its run name, as GitHub renders it for one leg, is the title the picker finds.
+    rendered = probe["run-name"].replace("${{ inputs.runner_type }}", "aie2p-8col")
+    rendered = rendered.replace("${{ inputs.for_run }}", "123")
+    assert rendered == module.probe_title("aie2p-8col", "123")
+    job = probe["jobs"]["probe"]
+    assert job["runs-on"] == [
+        "self-hosted",
+        "bench",
+        "${{ inputs.runner_type }}",
+        module.LABELS["primary"],
+    ]
+    options = probe["on"]["workflow_dispatch"]["inputs"]["runner_type"]["options"]
+    assert options == ["aie2-4col", "aie2p-8col"]
+
+
+def test_a_primary_that_takes_the_probe_keeps_the_leg():
+    module = pick_runner()
+    # Jobs as the API lists them: queued with no runner, then taken.
+    queued = [{"name": "Probe (aie2-4col)", "status": "queued", "runner_name": None}]
+    taken = [
+        {"name": "Probe (aie2-4col)", "status": "in_progress", "runner_name": "aie1"}
+    ]
+    assert module.verdict([], 1, 240) is None
+    assert module.verdict(queued, 239, 240) is None
+    assert module.verdict(taken, 239, 240) == "primary"
+    # Taken at the last moment still counts; never taken goes to the backup.
+    assert module.verdict(taken, 300, 240) == "primary"
+    assert module.verdict(queued, 240, 240) == "backup"
+    assert module.verdict([], 240, 240) == "backup"
+
+
+@pytest.mark.parametrize("role", ["primary", "backup"])
+def test_a_dispatch_that_names_the_role_writes_its_labels(role, tmp_path):
+    out = tmp_path / "output"
+    env = {
+        **os.environ,
+        "GITHUB_OUTPUT": str(out),
+        "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
+    }
+    script = WORKFLOWS.parents[1] / "utils" / "kernel_checks" / "pick_runner.py"
+    subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--runner-types",
+            "aie2-4col",
+            "aie2p-8col",
+            "--run-id",
+            "7",
+            "--role",
+            role,
+        ],
+        check=True,
+        env=env,
+    )
+    name, value = out.read_text().strip().split("=", 1)
+    assert name == "runs_on"
+    assert json.loads(value) == {
+        t: ["self-hosted", "bench", t, f"nightly-{role}"]
+        for t in ["aie2-4col", "aie2p-8col"]
+    }
+    assert f"aie2p-8col: {role}" in (tmp_path / "summary").read_text()
+
+
+def test_the_picker_step_runs_the_script_with_the_types_split():
+    step = workflow("pickBenchRunner.yml")["jobs"]["pick"]["steps"][-1]
+    assert step["id"] == "pick"
+    assert 'read -ra types <<< "$TYPES"' in step["run"]
+    assert '--runner-types "${types[@]}"' in step["run"]
+    outputs = workflow("pickBenchRunner.yml")["on"]["workflow_call"]["outputs"]
+    assert outputs["runs_on"]["value"] == "${{ jobs.pick.outputs.runs_on }}"

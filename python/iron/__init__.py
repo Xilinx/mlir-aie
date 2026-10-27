@@ -81,9 +81,12 @@ from .dataflow import (
     Flow,
     FlowEndpoint,
     ObjectFifo,
+    ObjectFifoPool,
+    ObjectFifoPoolHandle,
     Packet,
     PacketDest,
     PacketFlow,
+    PoolSegment,
     Port,
     Release,
     TileDma,
@@ -101,6 +104,9 @@ from .scratchpad_parameter import ScratchpadParameter
 from .worker import Worker, WorkerRuntimeBarrier
 
 __all__ = [
+    "ObjectFifoPool",
+    "ObjectFifoPoolHandle",
+    "PoolSegment",
     # Core design abstractions
     "Buffer",
     "DeviceConfiguration",

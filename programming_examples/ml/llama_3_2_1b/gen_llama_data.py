@@ -42,7 +42,6 @@ import json
 import os
 import shutil
 import struct
-import sys
 from pathlib import Path
 
 import ml_dtypes
@@ -160,7 +159,7 @@ def main():
         "weights).",
     )
     p.add_argument("--out-dir", type=Path, default=Path(__file__).parent / "data")
-    args = p.parse_args(sys.argv[1:])
+    args = p.parse_args()
 
     for path in (args.weights, args.tokenizer):
         if not path.exists():

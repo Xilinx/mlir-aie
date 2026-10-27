@@ -16,8 +16,8 @@ Exits 1 when the agreement is below --min-agree. Tokenizing needs tiktoken
 (`pip install tiktoken`).
 
 Run:
-  python bench_quality_mh.py --bf16-ref
-  python bench_quality_mh.py --path numpy
+  python bench_quality.py --bf16-ref
+  python bench_quality.py --path numpy
 """
 
 from __future__ import annotations

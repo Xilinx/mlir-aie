@@ -2142,19 +2142,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
                << std::to_string(minOutputBufferSize) << ".";
       }
     }
-
-    std::vector<int> repeat_counts;
-    for (auto fifoOut : getOutputObjectFifos()) {
-      if (auto repeatCount = fifoOut.getRepeatCount()) {
-        repeat_counts.push_back(*repeatCount);
-      } else {
-        repeat_counts.push_back(0);
-      }
-    }
-    for (auto repeat : repeat_counts)
-      if (repeat_counts[0] != repeat)
-        return emitError("repeat counts of output object FIFOs must be equal");
-
   } else {
     if (!getSrcOffsets().empty() && !getDstOffsets().empty())
       return emitOpError("all offsets should be empty if there is no "
@@ -2207,6 +2194,25 @@ LogicalResult ObjectFifoLinkOp::verify() {
                               "per output, "
                            << window.outputs << ", but a MemTile channel has "
                            << bds;
+  }
+
+  // Distribute outputs drain one shared pool with a single repeat count.
+  // Join inputs repeat at independent producer pools.
+  if (isDistribute()) {
+    auto fifos = getOutputObjectFifos();
+    for (size_t i = 1; i < fifos.size(); ++i) {
+      ObjectFifoCreateOp first = fifos[0], fifo = fifos[i];
+      int repeat = first.getRepeatCount().value_or(1);
+      int otherRepeat = fifo.getRepeatCount().value_or(1);
+      if (repeat != otherRepeat)
+        return emitOpError()
+               << "distribute outputs must have equal effective repeat counts: "
+                  "@"
+               << first.name().getValue() << " has " << repeat
+               << (first.getRepeatCount() ? "" : " (default)") << ", @"
+               << fifo.name().getValue() << " has " << otherRepeat
+               << (fifo.getRepeatCount() ? "" : " (default)");
+    }
   }
 
   return success();

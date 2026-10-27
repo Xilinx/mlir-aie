@@ -37,9 +37,9 @@ around it.
                     │   lm_head + top-k insert ─ sample ─► token, embed seed ─┐         │
                     │   ▲                                                      │         │
                     │   └────────── next token's seed, through the stage ──────┘         │
- DDR: weights ─────►│ 8 lanes into the GEMV array's 8 cores; the lm_head on one lane    │
+ DDR: weights ─────►│ 8 lanes into the GEMV array's 8 cores, then the lm_head on them   │
  DDR: KV cache ◄───►│ each token's live blocks in, its new row out                      │
- host: records ◄────│ P packed [seed | scale | token]                                   │
+ host: records ◄────│ P packed [embed row | scale | token]                              │
                     └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,20 +51,25 @@ Key design pieces:
   residual), gate and up.
   The layers' weights stream over eight shim lanes, one per core, on
   `aie::mmul<8, 8, 8>` (`kernels/llama_gemv_mma.cc`): a prefill batch's up to 4
-  activations share one pass of the weights.
+  activations share one pass of the weights. Each lane is staged in a
+  memtile of its own and issued a layer ahead, so DDR keeps streaming while the
+  array waits on the cores around it. Its activations and outputs pass
+  through a DDR `stage` buffer (`StageLayout` in `aie2_decode.py`).
 
-- **One-stream sampler + embed gather** (`kernels/llama_topk_sample.cc`). The
-  lm_head must stream the full 262 MB tied embed table every token. Rather than
-  stream it twice (once for logits, once to fetch the sampled token's embedding),
-  the sampler keeps a **resident top-k set** of `{logit, index, embed_sc, embed
-  row}` as the table flows by **once**, then emits both the token id and the
-  next-token embedding seed. No second pass, one shim channel. Its temperature,
-  top-k and seed are set per dispatch; its xoshiro state carries across tokens
-  in the stage buffer.
+- **lm_head, top-k and sampler** (`kernels/llama_gemv_mma.cc`,
+  `kernels/llama_lmhead_topk.cc`, `kernels/llama_topk_sample.cc`). The tied
+  262 MB embed table streams once a token, over the GEMV array's eight weight
+  lanes, an eighth to each core. Each core keeps the top 8 of its share with
+  their embed rows (`llama_mma_lm_topk`). The sampler core merges the eight
+  sets, which hold the vocabulary's top k whatever the split, samples, and
+  makes the next token's embed seed from the winner's row, so no second pass
+  over the table fetches it. Temperature, top-k and seed are set per dispatch;
+  the xoshiro state carries across dispatches in the stage buffer.
 
 - **Token feedback.** The sampled token's embed seed goes to the seed slot of
   the `stage` buffer in DDR, where the next token's first RMSNorm reads it, in
-  the same dispatch or the next; the host writes it only for the first token.
+  the same dispatch or the next; the host writes it only when the first token
+  is not a prompt token.
   (DDR, not core memory: after the driver's 5 s autosuspend the cores come back
   reset.)
 
@@ -75,9 +80,9 @@ Key design pieces:
   per KV head fold them block by block, alternating (`llama_attn_block.cc`, an
   exact online softmax), and the token's own new row joins its last block on chip
   and is the one row written back. A batch's queries read each block once, the
-  batch's rows joining its block in turn so each query sees its own prefix. Rope
-  advances with position too. Since attention reads only the live prefix, one
-  build at a large `T` serves every context.
+  batch's rows joining its block in turn so each query sees its own prefix.
+  Since attention reads only the live prefix, one build at a large `T` serves
+  every context.
 
 ### On the device, and on the host
 
@@ -85,16 +90,20 @@ Every transformer op, the lm_head, the sampler, the token feedback and the KV
 append run as AI Engine kernels, and one compiled design serves every dispatch.
 The host (`DispatchSession` in `llama_npu.py`) keeps one hardware context and,
 per dispatch, writes the design's ScratchpadParameters (`DecodeShape.params` in
-`llama_decode.py`): how many passes it runs and how many rows the first one
-has (one, or a prompt batch of up to 4), which every worker reads; the position
-of the dispatch's first token, which the attention workers read; its row in the
-RoPE table the weight blob carries, built once with Llama 3's rope scaling; per
-pass, whether it runs (a pass that does not run moves nothing), how many KV
-blocks to read and where its rows go; and the sampler's settings.
+`llama_decode.py`):
+
+| Parameter | Read by | Meaning |
+|---|---|---|
+| `passes`, `m0` | every core | passes this dispatch runs; rows of the first (1, or a batch of up to 4) |
+| `t0`, `cs_off` | attention; lanes | first token's position; its row in the RoPE table the weight blob carries |
+| `pass{t}`, `kvb{t}`, `row{t}` | runtime sequence | pass t runs (else it moves nothing); KV blocks it reads; its row's offset |
+| `gat{m}`, `pg{m}`, `rows` | sampler core | a prompt row's embed slot, whether row m is a prompt token, packed bits |
+| `lm{t}` | runtime sequence | the lm_head and sampler run for pass t |
+| `samp0`, `samp1` | sampler core | temperature and top-k |
 
 Prefill runs on the device in batches: a dispatch's one pass takes up to 4
 prompt tokens as its rows, within one KV block, each row's input being the seed
-the lm_head core makes of the token's embed row, which it fetches from the
+the sampler core makes of the token's embed row, which it fetches from the
 lm_head's weights (`gat{m}`, `pg{m}`, `rows`). The GEMV array runs each
 projection once for all the rows; the norms, RoPE, attention and SiLU take them
 a row at a time. Only the prompt's last batch runs the lm_head and sampler
@@ -130,18 +139,17 @@ charted on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/)
 (`utils/component_checks/llama_chain_hw.py`; section 4 has the commands).
 
 **What bounds it.** The layers' weights stream over the array's eight lanes
-and the tied 262 MB lm_head over one, every token. Attention grows with the
-live context: each token reads every live KV block, and its
+and the tied 262 MB lm_head over the same eight, every token. Attention grows
+with the live context: each token reads every live KV block, and its
 score-to-probability step is the oracle's exact polynomial
 (`vec_exp_nonpos`), so the device stays bit-exact.
 
 **Tokens per dispatch.** amdxdna times a dispatch out after about 5 s. The host
 picks each dispatch's token count from its first position
 (`DecodeShape.passes_for` in `llama_decode.py`): as many of the 4 as fit a 4 s
-budget by a cost model (19 ms of lm_head a token, plus per layer 1.80 ms and
-0.163 ms per 1k rows of context). At 16 layers that is 4 tokens all the way to
-128k. The array's activations and outputs pass through a DDR `stage` buffer
-between it and the cores around it (see `aie2_decode.py`).
+budget by a cost model (4.7 ms of lm_head a token, plus per layer 1.16 ms and
+0.097 ms per 1k rows of context). At 16 layers that is 4 tokens all the way to
+128k.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
 > **TTFT** (time to first token). Prefill runs one dispatch of up to 4 prompt
@@ -156,21 +164,22 @@ between it and the cores around it (see `aie2_decode.py`).
 The device is **bit-exact to its numpy oracle** (`llama_oracle.py`): the
 decode test checks every token, KV row, sampler state and final residual
 against it, and a greedy token must be the oracle's argmax. So scoring the
-oracle against the bf16 Hugging Face model scores the device. The INT8 recipe
-(`numpy_llama_ref.py`) is shown beside it for scale: the recipe's gap to bf16
-is the quantization's own cost. The reference is the true Llama 3.2 1B **bf16** checkpoint, loaded
-from the safetensors (no torch or transformers).
+oracle against the bf16 Hugging Face model scores the device. The reference
+is the true Llama 3.2 1B **bf16** checkpoint, loaded from the safetensors
+(no torch or transformers).
 
 ### KL and top-1 against bf16
 
 On running prose (`accuracy_vs_hf.py`'s default sample), the nightly scores
 the device's arithmetic against bf16 (next-token top-1 agreement and mean
 KL(bf16 ‖ model)) and charts both on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
-`accuracy_vs_hf.py --model recipe` scores the INT8 recipe the same way.
+`accuracy_vs_hf.py --model recipe` scores the INT8 recipe
+(`numpy_llama_ref.py`) the same way: its gap to bf16 is the quantization's
+own cost.
 
 ### Next-token greedy agreement on 20 hard prompts (N=16)
 
-`bench_quality_mh.py --path numpy --bf16-ref` (the device's arithmetic,
+`bench_quality.py --path numpy --bf16-ref` (the device's arithmetic,
 prefilling each prompt as the device does), **20/20 = 100 %** against bf16:
 
 | Prompt | bf16 | device |
@@ -223,20 +232,23 @@ python gen_llama_data.py      # writes data/: INT8 weights, scales, gammas, toke
 
 The bf16 reference reads the safetensors directly.
 
-The decode test, `test_chain_persist_grow_mh.py`, compiles `aie2_decode.py`
+The decode test, `test_decode.py`, compiles `aie2_decode.py`
 with `@iron.jit` to a full ELF (cached under `NPU_CACHE_HOME`, so a rerun
 reuses it), or runs a prebuilt one (`--elf`, from
 `python aie2_decode.py ... --full-elf-path X`, which the same JIT key reuses).
 
 `run_llama.lit` runs the decode test's cases at 2 layers on synthetic
 weights (`--synthetic-weights`): from an empty cache, across dispatches,
-into the cache's last rows, split, sampled, and a prompt in batches. The
-nightly component check runs all 16 real layers and scores the oracle
+into the cache's last rows, split, sampled, a prompt in batches, and every
+logit tied across two GEMV cores (`--tied-table`); and
+`test_kernel_edges.py`, the kernels' rare paths on one core each against
+the oracle. `compile_llama.lit` compiles the 16-layer build with no NPU.
+The nightly component check runs all 16 real layers and scores the oracle
 against bf16 (`accuracy_vs_hf.py`).
 
 > **Pass `--n-layers 16`** to the decode test for any accuracy or timing run:
 > it defaults to 2 layers (a fast bring-up check), whose numbers mean nothing
-> for the model. `bench_quality_mh.py` defaults to the model's 16.
+> for the model. `bench_quality.py` defaults to the model's 16.
 
 ### Accuracy (no device: numpy)
 
@@ -246,7 +258,7 @@ against bf16 (`accuracy_vs_hf.py`).
 python accuracy_vs_hf.py --max-tokens 128
 
 # 20-prompt greedy bench, the device's arithmetic vs bf16
-python bench_quality_mh.py --path numpy --bf16-ref
+python bench_quality.py --path numpy --bf16-ref
 ```
 
 ### On silicon: text, and accuracy vs bf16
@@ -258,48 +270,48 @@ python bench_quality_mh.py --path numpy --bf16-ref
 python generate.py --prompt "The capital of France is" --max-new 32 --check
 
 # prefill and predict each prompt on the NPU, vs bf16
-python bench_quality_mh.py --bf16-ref
+python bench_quality.py --bf16-ref
 ```
 
 ### Decode + timing
 
 ```bash
 # the full 16-layer autoregressive decode (4 tokens a dispatch; --passes picks 1-4)
-python test_chain_persist_grow_mh.py --n-layers 16
+python test_decode.py --n-layers 16
 
 # a 6-token prompt (seeded random ids) before generating, in batches of up to
 # 4; --vs-batch 1 also runs it a token per dispatch and compares the two
-python test_chain_persist_grow_mh.py --n-layers 16 --prompt-tokens 6 --vs-batch 1
+python test_decode.py --n-layers 16 --prompt-tokens 6 --vs-batch 1
 
 # sampled instead of greedy (the sampler's settings are per dispatch)
-python test_chain_persist_grow_mh.py --n-layers 16 --sample-temp 0.7 --sample-topk 4
+python test_decode.py --n-layers 16 --sample-temp 0.7 --sample-topk 4
 
 # per-token TPS at full config, after checking the timed dispatch
-taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --time
+taskset -c 2-23 python test_decode.py --n-layers 16 --time
 
 # the context sweep of section 2: one build at 128k, each context checked
 # and timed (the oracle takes about 100 s a token at 128k)
 python aie2_decode.py --n-layers 16 --t 131072 --full-elf-path build/X.elf
-taskset -c 2-23 python test_chain_persist_grow_mh.py --n-layers 16 --t 131072 \
+taskset -c 2-23 python test_decode.py --n-layers 16 --t 131072 \
     --elf build/X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 131068 --time
 
 # a generation loop: 10 dispatches carrying the KV cache and seed, with the
 # NPU left idle (and suspended) between them
-python test_chain_persist_grow_mh.py --n-layers 16 --dispatches 10 --idle-s 6
+python test_decode.py --n-layers 16 --dispatches 10 --idle-s 6
 ```
 
 ---
 
-## Configuration
+## 5. Configuration
 
 The decode test takes these flags and passes them to the design as
-CompileTime values; `bench_quality_mh.py` takes the first two.
+CompileTime values; `bench_quality.py` takes the first two.
 
 | Flag | Meaning |
 |---|---|
 | `--n-layers` | decoder layers (**16** for real runs; the test's default is 2) |
 | `--t` | KV cache length (default 128) |
-| `--kset` | the sampler's resident top-k set size (default 8) |
+| `--kset` | the sampler's top-k set size (at most 8, default 8) |
 
 The rest of `build()` in `aie2_decode.py` is on its CLI too: `--p-max`, the
 tokens a dispatch can generate (1 to 4, default 4). Per dispatch,
@@ -310,17 +322,18 @@ temperature ≤ 0 is greedy, top-k 0 the whole set).
 
 ---
 
-## Hardware constraints (AIE2P / IRON)
+## 6. Hardware constraints (AIE2P / IRON)
 
 Constraints that shape the design:
 
 1. **Compute-tile DMA budget: 2 in + 2 out per tile.** Pack per-call constants
    (weights + bias + scale) into one `ObjectFifo` payload.
-2. **Placement.** The GEMV array's 8 cores are pinned
-   (`Worker(tile=Tile(...))`, `CORE_TILES`) so each sits above its weight
-   lane's shim column; the SA placer (`--placer=sa_placer`, its seed pinned)
-   places the other cores, since the sequential placer leaves their flows
-   unroutable along the shim row.
+2. **Placement.** The GEMV array's 8 cores (`CORE_TILES`), each weight
+   lane's memtile (`WM_COLS`, one memtile a lane), the joins and splits
+   beside them, and the norm and residual cores (which share memory) are
+   pinned; the SA placer (`--placer=sa_placer`, its seed pinned) places the
+   other cores, since the sequential placer leaves their flows unroutable
+   along the shim row.
 3. **One `Kernel` object per unique C symbol.** Share it across same-signature
    workers; use a distinct symbol per shape.
 4. **L1 is 64 KB/tile.** The KV cache lives in DDR; an attention core holds a
@@ -330,14 +343,13 @@ Constraints that shape the design:
 
 ---
 
-## What's next
+## 7. What's next
 
 One compiled design serves decode and batched prefill, with the per-call
 values (passes, a batch's rows, position, live context, the sampler's
 settings) as ScratchpadParameters. Next:
 
-- **The lm_head over more lanes** (it streams over one),
-  and the glue fused into the GEMV array's epilogues.
+- **Glue fused into the GEMV array's epilogues.**
 - **Larger prefill batches**: the mma tile has 8 activation slots and the
   design fills 4, its per-row parameters (`pg{m}`, `gat{m}`) sharing the
   32-parameter budget with the passes'. One dispatch per 4 prompt tokens

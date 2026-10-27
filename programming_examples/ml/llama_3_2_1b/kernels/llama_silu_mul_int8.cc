@@ -88,8 +88,6 @@ void llama_silu_quant(float *restrict h, int8_t *restrict out) {
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
-  // |v| as int32 bits: for non-NaN floats their integer order is the order
-  // of the magnitudes.
   ::aie::vector<int32, kLanes> mag = ::aie::zeros<int32, kLanes>();
   for (int c = 0; c < kCols / kLanes; c++)
     mag = ::aie::max(
@@ -97,10 +95,9 @@ void llama_silu_quant(float *restrict h, int8_t *restrict out) {
         ::aie::bit_and(
             int32(0x7fffffff),
             ::aie::load_v<kLanes>(h + c * kLanes).template cast_to<int32>()));
-  float absmax = __builtin_bit_cast(float, ::aie::reduce_max(mag));
-  if (absmax < 1e-12f)
-    absmax = 1e-12f;
-  float out_scale = absmax * (1.0f / 127.0f);
+  const float absmax = __builtin_bit_cast(
+      float, std::max(::aie::reduce_max(mag), kAbsmaxFloorBits));
+  float out_scale = scalar_mul_rne(absmax, 1.0f / 127.0f);
   ::aie::vector<float, kLanes> inv_v =
       ::aie::broadcast<float, kLanes>(recip_rne(out_scale));
   for (int c = 0; c < kCols / kLanes; c++)

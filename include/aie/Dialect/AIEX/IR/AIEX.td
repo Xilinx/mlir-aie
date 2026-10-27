@@ -556,8 +556,9 @@ def AIE_RunOp : AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
 }
 
 def AIE_NpuDmaMemcpyNdOp
-    : AIEX_Op<"npu.dma_memcpy_nd", [AttrSizedOperandSegments,
-                                    MyOffsetSizeAndStrideOpInterface]> {
+    : AIEX_Op<"npu.dma_memcpy_nd",
+              [AttrSizedOperandSegments, MyOffsetSizeAndStrideOpInterface,
+               DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "half DMA operator";
 
   let description = [{
@@ -756,10 +757,11 @@ def AIE_NpuDmaMemcpyNdOp
     uint64_t getElementTypeBitwidth();
 
     /* Verifies the supported scope and bounds for a transfer carrying runtime
-       (SSA) sizes/strides. Called from verify() on the dynamic path. */
+       (SSA) sizes/strides using the allocation resolved by verifySymbolUses(). */
     llvm::LogicalResult verifyDynamicSizesStrides(
         const xilinx::AIE::AIETargetModel &targetModel,
-        mlir::BaseMemRefType buffer);
+        mlir::BaseMemRefType buffer,
+        xilinx::AIE::ShimDMAAllocationOp allocOp);
 
     /* $axcache, or the target's default when unset. */
     uint32_t getAxcacheOrDefault();

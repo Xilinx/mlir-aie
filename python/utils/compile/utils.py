@@ -22,7 +22,7 @@ import threading
 import time
 import weakref
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import aie.utils.config as config
 from aie import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
@@ -47,21 +47,63 @@ SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
 SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
 
 
+def _msvc_style_driver(compiler: str) -> bool:
+    """Return whether ``compiler`` is ``clang-cl`` or ``cl``."""
+    # PureWindowsPath splits ``\`` and ``/``. pathlib.Path follows the host, so
+    # on Linux the stem of ``C:\LLVM\bin\clang-cl.exe`` is the whole string.
+    return PureWindowsPath(compiler).stem.lower() in {"clang-cl", "cl"}
+
+
+def _msvc_opt_flag(opt: str) -> str:
+    """Translate a GCC ``-O*`` level into the MSVC spelling."""
+    if opt == "-O0":
+        return "/Od"
+    if opt.startswith("-"):
+        return "/" + opt[1:]
+    return opt
+
+
+def _windows_reproducible_link_flag(compiler: str) -> str:
+    """Keep a GCC-driven Windows dispatch DLL from embedding a timestamp.
+
+    Identical builds must hash the same. A triple containing ``msvc`` takes
+    ``/Brepro``; every other GCC-style driver takes ``--no-insert-timestamp``.
+    ``clang-cl`` and ``cl`` do not use this helper.
+    """
+    target = subprocess.run(
+        [compiler, "-dumpmachine"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if "msvc" in target:
+        return "-Wl,/Brepro"
+    return "-Wl,--no-insert-timestamp"
+
+
 def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[str]:
     """Build a host shared library with the project's C++17 ABI."""
     compiler = config.host_cxx_path()
+    if _msvc_style_driver(compiler):
+        # clang-cl ignores -shared and -std=c++17, and it parses -Wl,/Brepro
+        # as a -W warning name. The generated transaction source is C++17.
+        # /Fo applies only to source files that follow it. Without it, cl
+        # writes dispatch_gen.obj in the process working directory.
+        return [
+            compiler,
+            "/LD",
+            _msvc_opt_flag(opt),
+            "/std:c++17",
+            *(f"/I{inc}" for inc in includes),
+            f"/Fo{out.with_suffix('.obj')}",
+            str(src),
+            f"/Fe:{out}",
+            "/link",
+            "/Brepro",
+        ]
     link_flags = []
     if SHARED_LIB_SUFFIX == ".dll":
-        target = subprocess.run(
-            [compiler, "-dumpmachine"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        # PE timestamps must not give identical dispatch builds different hashes.
-        link_flags.append(
-            "-Wl,/Brepro" if "msvc" in target else "-Wl,--no-insert-timestamp"
-        )
+        link_flags.append(_windows_reproducible_link_flag(compiler))
     return [
         compiler,
         *SHARED_LIB_FLAGS,

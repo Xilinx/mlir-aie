@@ -48,6 +48,12 @@ on:
         description: 'timed runs per case, each checked again after the last (default 50)'
         required: false
         default: ''
+      runner:
+        description: 'bench runner: auto (the primary, or the backup when it is down), primary or backup'
+        required: false
+        type: choice
+        options: [auto, primary, backup]
+        default: auto
   schedule:
     - cron: '0 6 * * *'          # after the 00:00 test nightly
   pull_request:
@@ -70,17 +76,27 @@ env:
   PERF_PMODE: turbo
 
 jobs:
-  checks:
-    name: Kernel checks (${{ matrix.runner_type }})
-    # Only in-repo branches on self-hosted hardware.
+  # Each NPU's leg runs on its nightly-primary bench runner, so a series of
+  # numbers comes from one machine; on its nightly-backup only when the
+  # primary is down (pickBenchRunner.yml).
+  runners:
     if: github.event_name != 'pull_request' ||
         github.event.pull_request.head.repo.full_name == github.repository
-    # All three labels must be present on a runner for it to be picked, and
-    # any runner carrying them can be: this does not pin a machine, so nightly
-    # runs move between hosts of the same generation. `bench` selects the pool
-    # reserved for timing, and the concurrency group below is what stops two
-    # timing jobs sharing one NPU.
-    runs-on: [self-hosted, bench, "${{ matrix.runner_type }}"]
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/pickBenchRunner.yml
+    with:
+      runner_types: aie2-4col aie2p-8col
+      role: ${{ inputs.runner || 'auto' }}
+
+  checks:
+    name: Kernel checks (${{ matrix.runner_type }})
+    needs: runners
+    # `bench` selects the pool reserved for timing, nightly-primary or
+    # nightly-backup the machine; the concurrency group below is what stops
+    # two timing jobs sharing one NPU.
+    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on)[matrix.runner_type] }}
     # A soak (more seeds or runs) gets the time it asks for.
     timeout-minutes: ${{ (inputs.seeds || inputs.iters) && 600 || 120 }}
     # Never share an NPU; preserve queued runs (up to GitHub's 100-run limit).

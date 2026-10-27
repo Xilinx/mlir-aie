@@ -434,7 +434,7 @@ def _llama_night(rng: random.Random) -> tuple[list, dict]:
     drift = rng.uniform(0.98, 1.03)
     ttft = 125.9 * rng.uniform(0.98, 1.03)
     ran = "".join(f"  token {i} (pos {64 + i}): PASS\n" for i in range(4))
-    ran += "chain_persist_grow_mh: 4/4 tokens PASS\n"
+    ran += "decode: 4/4 tokens PASS\n"
     for at in (llama_chain_hw.DISPATCH_RATE_AT, *llama_chain_hw.CONTEXTS):
         ms = (45.1 + 0.0033 * at) * drift
         ran += (
