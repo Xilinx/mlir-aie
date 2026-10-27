@@ -738,7 +738,7 @@ def test_fifo_plan_groups_hashable_numpy_abi_types():
         "typed_groups", source_string="", arg_types=[i16, i32, same_i16, i16]
     )
     fn.contract = KernelContract(roles=(In, In, In, Out))
-    assert kd.KernelDesign(fn).fifo_plan == ([[0, 2], [1]], [0, 1, 2], [])
+    assert kd.KernelDesign(fn)._fifo_plan == ([[0, 2], [1]], [0, 1, 2], [])
 
 
 def test_per_tile_matrix_references_agree_with_the_whole_problem_ones():

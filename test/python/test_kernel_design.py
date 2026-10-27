@@ -4,17 +4,22 @@
 # RUN: %pytest %s
 """One harness owns host layout, embedded constants, execution and checking."""
 
+import os
+import subprocess
+import sys
+from collections import Counter
 from dataclasses import replace
 from functools import cached_property
 from unittest.mock import Mock
 
 import numpy as np
 import pytest
+from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import KernelContract, Param, Trace
 from aie.utils import get_current_device
-from aie.utils.compile.jit import In, Out
+from aie.utils.compile.jit import In, InOut, Out
 from aie.utils.hostruntime import set_current_device
 
 
@@ -84,10 +89,20 @@ def test_sampling_does_not_require_the_calls_to_fill_an_offset_output():
         design.output_size()
 
 
-def test_sampling_does_not_bind_a_device():
+def test_host_sampling_checking_and_trace_counts_do_not_bind_a_device():
     with set_current_device(None):
-        design = kd.KernelDesign(_kernel(), calls=2)
-        assert [a.shape for a in design.sample_inputs()] == [(2, 4), (2, 4)]
+        fn = _kernel(trace=Trace.whole_call())
+        design = kd.KernelDesign(fn, calls=2)
+        inputs = design.sample_inputs()
+        assert [a.shape for a in inputs] == [(2, 4), (2, 4)]
+        assert design.check(fn.expected(inputs), inputs)
+        assert design.traced_intervals() == 2
+        assert [arg.n_elements for arg in design.host_args()] == [16, 8]
+        assert len(design.host_layout(inputs)) == 1
+        parameterized = kd.KernelDesign(
+            _kernel(param=True), scalars=(2,), arg_byte_offsets=((2, 16),)
+        )
+        assert len(parameterized.sample_inputs()) == 3
         assert get_current_device(probe_runtime=False) is None
 
 
@@ -101,30 +116,30 @@ def test_declaration_and_plan_facts_are_cached(monkeypatch):
     )
     design = kd.KernelDesign(fn, calls=2)
     facts = (
-        design.contract,
-        design.arg_types,
-        design.tensor_positions,
-        design.output_tiles,
-        design.fifo_plan,
-        design.guarded_outputs,
+        design._contract,
+        design._types,
+        design._tensor_positions,
+        design._out_tiles,
+        design._fifo_plan,
+        design._guarded,
     )
     for _ in range(3):
         design.host_layout([np.ones((2, 4)), np.ones((2, 4))])
         design.host_args()
         design.output_size()
         assert facts == (
-            design.contract,
-            design.arg_types,
-            design.tensor_positions,
-            design.output_tiles,
-            design.fifo_plan,
-            design.guarded_outputs,
+            design._contract,
+            design._types,
+            design._tensor_positions,
+            design._out_tiles,
+            design._fifo_plan,
+            design._guarded,
         )
     arg_types.assert_called_once_with()
     assert validate.call_count == 1
 
 
-def test_private_plan_properties_are_cached_and_share_the_public_facts():
+def test_plan_properties_are_private_and_cached():
     design = kd.KernelDesign(_kernel(), calls=2, guard=True)
     for private, public in (
         ("_contract", "contract"),
@@ -135,7 +150,8 @@ def test_private_plan_properties_are_cached_and_share_the_public_facts():
         ("_guarded", "guarded_outputs"),
     ):
         assert isinstance(vars(kd.KernelDesign)[private], cached_property)
-        assert getattr(design, private) is getattr(design, public)
+        assert getattr(design, private) is getattr(design, private)
+        assert not hasattr(design, public)
 
 
 @pytest.mark.parametrize(
@@ -186,6 +202,7 @@ def test_specialization_reuses_encoded_values_and_keeps_stable_kernel(monkeypatc
     assert specialize.call_count == 2
     kwargs = specialize.call_args_list[0].kwargs
     assert kwargs["kernel"] is fn
+    assert kwargs["owner"] is design
     assert kwargs["params"] == (("int32", (4,), (0, 1, 2, 3)),)
     assert kwargs["calls"] == 1 and kwargs["guard"]
     assert "factory" not in kwargs and "fn" not in kwargs
@@ -214,6 +231,68 @@ def test_contract_schedule_facts_participate_in_specialization(monkeypatch):
     changed = specialize.call_args.kwargs
     assert original["kernel"] is changed["kernel"]
     assert original["plan"] != changed["plan"]
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["out_offset", "initializers", "parameter_bindings", "uses_lut", "scalar_arity"],
+)
+def test_same_kernel_recipe_with_different_contract_build_plans_has_distinct_keys(
+    change,
+):
+    output_type = _tile(size=8)
+    contract = KernelContract(roles=(In, Param, Out), parameter_bindings=((1, 0),))
+    scalars = ()
+    if change == "out_offset":
+        changed = replace(contract, out_offset=(1, 4))
+    elif change == "initializers":
+        initial_before = ExternalFunction(
+            "kd_plan_init_before",
+            source_string="void kd_plan_init_before() {}",
+            arg_types=[output_type],
+        )
+        initialize = ExternalFunction(
+            "kd_plan_init",
+            source_string="void kd_plan_init() {}",
+            arg_types=[output_type],
+        )
+        contract = replace(
+            contract,
+            roles=(In, Param, InOut),
+            initializers=((2, lambda _fn: initial_before),),
+        )
+        changed = replace(contract, initializers=((2, lambda _fn: initialize),))
+    elif change == "parameter_bindings":
+        changed = replace(contract, parameter_bindings=((1, 7),))
+    elif change == "uses_lut":
+        changed = replace(contract, uses_lut=True)
+    else:
+        changed = replace(contract, parameter_bindings=())
+        scalars = (0,)
+
+    def harness(c, scalars=()):
+        fn = ExternalFunction(
+            "kd_same_recipe",
+            source_string="void kd_same_recipe() {}",
+            arg_types=[_tile(), np.int32, output_type],
+            contract=c,
+        )
+        return kd.KernelDesign(fn, calls=2, scalars=scalars, stack_bytes=1024)
+
+    original = harness(contract)
+    different = harness(changed, scalars)
+    equivalent_contract = (
+        replace(changed, initializers=((2, lambda _fn: initialize),))
+        if change == "initializers"
+        else replace(changed)
+    )
+    equivalent = harness(equivalent_contract, scalars)
+    assert repr(original.fn) == repr(different.fn) == repr(equivalent.fn)
+    assert original.fn == different.fn == equivalent.fn
+    before = original.design().compilable.recipe_hash
+    after = different.design().compilable.recipe_hash
+    assert before != after
+    assert after == equivalent.design().compilable.recipe_hash
 
 
 @pytest.mark.parametrize("multiple", [False, True])
@@ -258,6 +337,49 @@ class _Tensor:
 
     def numpy(self):
         return self.array
+
+
+@pytest.mark.parametrize("custom_sample", [False, True])
+def test_configured_tensor_params_roundtrip_and_reject_mismatched_inputs(
+    monkeypatch, custom_sample
+):
+    fn = kernels.scale(tile_size=16, dtype=np.int32)
+    if custom_sample:
+        fn.contract = replace(
+            fn.contract,
+            sample=lambda rng, calls: [
+                np.ones((calls, 16), np.int32),
+                np.array([99], np.int32),
+            ],
+        )
+    factor = np.array([3], np.int32)
+    design = kd.KernelDesign(fn, calls=2, params=[factor])
+    inputs = design.sample_inputs()
+    np.testing.assert_array_equal(inputs[1], factor)
+    assert not np.shares_memory(inputs[1], factor)
+
+    def execute(input_, output):
+        output.array[:] = (input_.array * np.int32(3)).ravel()
+
+    compiled = Mock(side_effect=execute)
+    specialize = Mock(return_value=compiled)
+    tensor = Mock(side_effect=lambda array, **kwargs: _Tensor(array))
+    monkeypatch.setattr(kd._stream, "specialize", specialize)
+    monkeypatch.setattr(kd, "tensor", tensor)
+    outputs = design.run(inputs)
+    assert specialize.call_args.kwargs["params"] == (("int32", (1,), (3,)),)
+    assert design.check(outputs, inputs)
+    assert not design.check(outputs + 1, inputs)
+
+    inputs[1][0] = 4
+    before = tensor.call_count
+    with pytest.raises(ValueError, match="tensor Param argument 2.*configured params"):
+        design.run(inputs)
+    with pytest.raises(ValueError, match="tensor Param argument 2.*configured params"):
+        design.check(outputs, inputs)
+    assert tensor.call_count == before
+    assert compiled.call_count == 1
+    np.testing.assert_array_equal(factor, [3])
 
 
 @pytest.mark.parametrize("multiple", [False, True])
@@ -384,6 +506,7 @@ def test_legacy_wrapper_instantiates_once_and_matches_explicit_class(monkeypatch
     )
     legacy = kd.design(factory, tile_size=4, **options)
     explicit = kd.KernelDesign(fn, **options).design()
+    assert repr(legacy.pop("owner")) == repr(explicit.pop("owner"))
     assert legacy == explicit
     factory.assert_called_once_with(tile_size=4)
 
@@ -424,3 +547,105 @@ def test_repeated_mlir_builds_isolate_buffers_and_preserve_parameter_values():
     assert "memref.view" in first
     assert "func.call @kd_poison_20" in first
     assert "stack_size = 1024" in first
+
+
+def test_mlir_generation_reuses_owner_facts_but_not_stage_state(monkeypatch):
+    counts = Counter()
+    facts = (
+        "_contract",
+        "_types",
+        "_tensor_positions",
+        "_fifo_plan",
+        "_out_tiles",
+        "_guarded",
+        "_kernel_frame_bytes",
+        "_depth",
+    )
+
+    class CountedDesign(kd.KernelDesign):
+        pass
+
+    def counted(name):
+        original = vars(kd.KernelDesign)[name].func
+
+        @cached_property
+        def fact(self):
+            counts[name] += 1
+            return original(self)
+
+        fact.__set_name__(CountedDesign, name)
+        return fact
+
+    for name in facts:
+        setattr(CountedDesign, name, counted(name))
+
+    measure = Mock(return_value=None)
+    monkeypatch.setattr(ExternalFunction, "measure", measure)
+    owner = CountedDesign(_kernel(), calls=2, guard=True)
+    owner.sample_inputs()
+    original_init = kd._KernelStage.__init__
+    stages = []
+
+    def initialize(stage, design, params):
+        assert design is owner
+        original_init(stage, design, params)
+        stages.append(stage)
+
+    monkeypatch.setattr(kd._KernelStage, "__init__", initialize)
+    signature = repr(owner)
+    first = owner.as_mlir()
+    assert first == owner.as_mlir()
+    assert first != owner.as_mlir(
+        trace_config=kd.TraceConfig(trace_size=1024, trace_file="trace.txt")
+    )
+    compiled = owner.design().compilable
+    assert first == str(compiled.mlir_generator(**compiled.compile_kwargs))
+    assert repr(owner) == signature
+    assert counts == Counter({name: 1 for name in facts})
+    assert measure.call_count == 2  # The measured kernel and the guard fill.
+    assert len(stages) == 3
+    assert len({id(stage.fifos_in[0]) for stage in stages}) == 3
+    assert len({id(stage.fifos_out[0]) for stage in stages}) == 3
+
+
+def test_owner_repr_and_recipe_hash_are_stable_across_processes():
+    script = """
+import numpy as np
+from aie.iron.algorithms.kernel_design import KernelDesign
+from aie.iron.device import NPU2Col1
+from aie.iron.kernel import ExternalFunction
+from aie.iron.kernels import KernelContract, Param
+from aie.utils.compile.jit import In, InOut
+from aie.utils.hostruntime import set_current_device
+
+set_current_device(NPU2Col1())
+tile = np.ndarray[(4,), np.dtype[np.int32]]
+initialize = ExternalFunction(
+    "stable_init", source_string="void stable_init() {}", arg_types=[tile]
+)
+fn = ExternalFunction(
+    "stable_owner",
+    source_string="void stable_owner() {}",
+    arg_types=[tile, np.int32, tile],
+    contract=KernelContract(
+        roles=(In, Param, InOut),
+        parameter_bindings=((1, 3),),
+        initializers=((2, lambda _fn: initialize),),
+    ),
+)
+owner = KernelDesign(fn, calls=2, guard=True, stack_bytes=1024)
+print(repr(owner))
+print(owner.design().compilable.recipe_hash)
+"""
+    results = [
+        subprocess.run(
+            [sys.executable, "-c", script],
+            env={**os.environ, "PYTHONHASHSEED": seed},
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout
+        for seed in ("1", "2")
+    ]
+    assert results[0] == results[1]
+    assert "object at 0x" not in results[0]

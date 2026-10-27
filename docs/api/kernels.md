@@ -125,7 +125,8 @@ kernel needs no test harness. See
 [Kernel Library](../programming_guide/kernels_library.md#adding-a-kernel) for
 the add-a-kernel procedure and the test tiers built on it.
 
-Give the call count and guard setting once, on the builder:
+Bind the target device before calling the kernel factory. Give the call count
+and guard setting once, on the builder:
 
 ```python
 from aie.iron import kernels

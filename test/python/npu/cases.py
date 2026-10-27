@@ -243,7 +243,7 @@ def inputs_for(case: Case, data_case: str, rng, *, design=None) -> list[np.ndarr
     fn = design.fn
     c = fn.contract
     inputs = design.sample_inputs(rng)
-    tensor_pos = design.tensor_positions[0]
+    tensor_pos = design._tensor_positions[0]
     if data_case != "random":
         if c.sample is not None:
             raise ValueError(
