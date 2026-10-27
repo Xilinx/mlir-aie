@@ -423,7 +423,8 @@ def main() -> None:
     failed = passed != len(images)
 
     if args.time:
-        tensor, on = dispatch_args(images[: args.batch])
+        group = images[: args.batch]
+        tensor, on = dispatch_args(group)
         bench = run_iters(
             yolo26n,
             tensor,
@@ -437,12 +438,12 @@ def main() -> None:
         )
         print_benchmark(bench)
         e2e = bench.e2e
-        us = e2e.min_us / args.batch
+        us = e2e.min_us / len(group)
         print(
-            f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {args.batch}, "
+            f"per-image: {us:.1f} us ({1e6 / us:.2f} fps) at batch {len(group)}, "
             f"fastest of {e2e.n} after {args.n_warmup} warmups; "
-            f"median {e2e.median_us / args.batch:.1f} us, "
-            f"MAD {e2e.mad_us / args.batch:.1f} us"
+            f"median {e2e.median_us / len(group):.1f} us, "
+            f"MAD {e2e.mad_us / len(group):.1f} us"
         )
         # The same dispatch with no image on: its segments' configurations
         # and the dispatch itself, which every dispatch pays once.
