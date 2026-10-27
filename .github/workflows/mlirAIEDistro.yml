@@ -56,7 +56,7 @@ jobs:
 
     name: Get canonical AIE Project commit
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     outputs:
       AIE_PROJECT_COMMIT: ${{ steps.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
@@ -104,7 +104,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
@@ -123,11 +123,11 @@ jobs:
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
-#          - OS: ubuntu-24.04
+#          - OS: ubuntu-26.04
 #            ARCH: aarch64
 #            ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
@@ -146,7 +146,7 @@ jobs:
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
-#          - OS: ubuntu-24.04
+#          - OS: ubuntu-26.04
 #            ARCH: aarch64
 #            ENABLE_RTTI: OFF
 
@@ -295,7 +295,7 @@ jobs:
     # build
 
     - name: build distro wheels
-      if: ${{ matrix.OS != 'ubuntu-24.04' || matrix.ARCH != 'aarch64' }}
+      if: ${{ matrix.OS != 'ubuntu-26.04' || matrix.ARCH != 'aarch64' }}
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
@@ -337,7 +337,7 @@ jobs:
         Remove-Item wheelhouse\repaired_wheel -Recurse -Force
 
     - name: build aarch ubuntu wheel
-      if: ${{ matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'aarch64' }}
+      if: ${{ matrix.OS == 'ubuntu-26.04' && matrix.ARCH == 'aarch64' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -402,7 +402,7 @@ jobs:
         echo "MLIR_AIE_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
-      if: (matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      if: (matrix.OS == 'ubuntu-26.04' && matrix.ARCH == 'x86_64') && (success() || failure())
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -438,14 +438,14 @@ jobs:
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
     # mean that the python bindings themselves will confusingly not work in other envs (!=3.12)
     - name: rename non-windows
-      if: ${{ matrix.OS == 'ubuntu-24.04' || matrix.OS == 'macos-12' || matrix.OS == 'macos-14' }}
+      if: ${{ matrix.OS == 'ubuntu-26.04' || matrix.OS == 'macos-12' || matrix.OS == 'macos-14' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
 
         rename 's/cp312-cp312/py3-none/' wheelhouse/mlir_aie*whl
 
-        if [ x"${{ matrix.OS }}" == x"ubuntu-24.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
+        if [ x"${{ matrix.OS }}" == x"ubuntu-26.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
           rename 's/x86_64/aarch64/' wheelhouse/mlir_aie*whl
         fi
 
@@ -472,7 +472,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
@@ -480,7 +480,7 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
@@ -527,7 +527,7 @@ jobs:
 
     needs: smoke_test_wheels
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     permissions:
       id-token: write
@@ -537,11 +537,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-#          - OS: ubuntu-24.04
+#          - OS: ubuntu-26.04
 #            ARCH: aarch64
 #            ENABLE_RTTI: ON
 
@@ -549,11 +549,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-#          - OS: ubuntu-24.04
+#          - OS: ubuntu-26.04
 #            ARCH: aarch64
 #            ENABLE_RTTI: OFF
 
