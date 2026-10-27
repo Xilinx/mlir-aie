@@ -331,6 +331,38 @@ def test_upload_derives_storage_without_building(monkeypatch):
     assert tensor.call_count == 3
 
 
+@pytest.mark.parametrize("provided_calls", [1, 3])
+def test_upload_rejects_input_element_counts_that_disagree_with_calls(
+    monkeypatch, provided_calls
+):
+    design = kd.KernelDesign(_kernel(), calls=2)
+    tensor = Mock()
+    monkeypatch.setattr(kd, "tensor", tensor)
+    inputs = [np.ones((provided_calls, 4), np.int32)] * 2
+    with pytest.raises(
+        ValueError, match="input buffer 0 needs 16 elements for calls=2"
+    ):
+        design.upload(inputs)
+    tensor.assert_not_called()
+
+
+def test_upload_checks_all_input_dtypes_before_device_allocation(monkeypatch):
+    fn = ExternalFunction(
+        "mixed_upload",
+        source_string="void mixed_upload() {}",
+        arg_types=[_tile(), _tile(np.float32), _tile()],
+        contract=KernelContract(roles=(In, In, Out)),
+    )
+    design = kd.KernelDesign(fn, calls=2)
+    tensor = Mock()
+    monkeypatch.setattr(kd, "tensor", tensor)
+    with pytest.raises(
+        ValueError, match="input buffer 1 expected dtype float32, got float64"
+    ):
+        design.upload([np.ones((2, 4), np.int32), np.ones((2, 4), np.float64)])
+    tensor.assert_not_called()
+
+
 class _Tensor:
     def __init__(self, a):
         self.array = a

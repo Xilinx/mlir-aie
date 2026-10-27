@@ -786,12 +786,29 @@ class KernelDesign:
         """Return design inputs and output tensor(s); splat multiple outputs.
 
         Sizes and dtypes follow the instance's call count, guarding and kernel
-        declarations.
+        declarations. Packed inputs must match their declared element counts
+        and dtypes before any device buffers are allocated.
         """
-        ins = [
-            tensor(a.reshape(-1), dtype=a.dtype, device="npu")
-            for a in self.host_layout(inputs)
-        ]
+        packed = self.host_layout(inputs)
+        args = self.host_args()
+        input_args = [arg for arg in args if arg.direction is In]
+        if len(packed) != len(input_args):
+            raise ValueError(
+                f"{self.fn.name}: expected {len(input_args)} packed input buffer(s), "
+                f"got {len(packed)}"
+            )
+        for j, (array, arg) in enumerate(zip(packed, input_args)):
+            if array.size != arg.n_elements:
+                raise ValueError(
+                    f"{self.fn.name}: input buffer {j} needs {arg.n_elements} elements "
+                    f"for calls={self.calls}, got {array.size}"
+                )
+            if array.dtype != np.dtype(arg.dtype):
+                raise ValueError(
+                    f"{self.fn.name}: input buffer {j} expected dtype "
+                    f"{np.dtype(arg.dtype)}, got {array.dtype}"
+                )
+        ins = [tensor(a.reshape(-1), dtype=a.dtype, device="npu") for a in packed]
         outs = [
             tensor(
                 (
@@ -802,7 +819,7 @@ class KernelDesign:
                 dtype=arg.dtype,
                 device="npu",
             )
-            for arg in self.host_args()
+            for arg in args
             if arg.direction is Out
         ]
         return ins, tuple(outs) if len(outs) > 1 else outs[0]
