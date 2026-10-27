@@ -64,7 +64,7 @@ env:
 jobs:
   seed-sweep:
     name: SA placer seed sweep (CPU-only)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-component-checks-${{ github.run_id }}
@@ -72,6 +72,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: "true"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
 
       - name: Setup virtual environment / prerequisites
         run: source ./utils/env_install.sh aie-venv --dev --extras
@@ -335,7 +339,7 @@ jobs:
     # its job timed out (GitHub reports a job timeout as cancelled): a check
     # that never finished publishes its failed placeholder.
     if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.seeds }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       actions: read  # the workflow's runs, to date each record by its start

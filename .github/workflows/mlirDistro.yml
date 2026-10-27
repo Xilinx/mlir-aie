@@ -80,7 +80,7 @@ jobs:
 
     name: Get latest LLVM commit
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     outputs:
       LLVM_PROJECT_COMMIT: ${{ steps.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }}
@@ -161,11 +161,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
@@ -173,11 +173,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 
@@ -270,7 +270,7 @@ jobs:
     # build
 
     - name: cibuildwheel
-      if: ${{ matrix.OS != 'ubuntu-24.04' || matrix.ARCH != 'aarch64' }}
+      if: ${{ matrix.OS != 'ubuntu-26.04' || matrix.ARCH != 'aarch64' }}
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
@@ -286,7 +286,7 @@ jobs:
         cibuildwheel --output-dir wheelhouse
 
     - name: build aarch ubuntu wheel
-      if: ${{ matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'aarch64' }}
+      if: ${{ matrix.OS == 'ubuntu-26.04' && matrix.ARCH == 'aarch64' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -334,7 +334,7 @@ jobs:
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
-      if: (matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      if: (matrix.OS == 'ubuntu-26.04' && matrix.ARCH == 'x86_64') && (success() || failure())
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -386,7 +386,7 @@ jobs:
           unzip -j wheelhouse/mlir*whl "mlir/bin/$TOOL" -d native_tools/
         done
 
-        if [ x"${{ matrix.OS }}" == x"ubuntu-24.04" ]; then
+        if [ x"${{ matrix.OS }}" == x"ubuntu-26.04" ]; then
           PLAT="linux"
         elif [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           PLAT="win"
@@ -436,7 +436,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
@@ -444,7 +444,7 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
@@ -484,17 +484,17 @@ jobs:
 
     needs: smoke_test_wheels
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
@@ -502,11 +502,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 

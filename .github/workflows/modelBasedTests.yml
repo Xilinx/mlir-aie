@@ -52,7 +52,7 @@ jobs:
   build:
     name: Build, allocator and router lit tests
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
 
     outputs:
@@ -92,7 +92,7 @@ jobs:
       - uses: ./.github/actions/setup_ccache
         id: setup_ccache
         with:
-          MATRIX_OS: ubuntu-24.04
+          MATRIX_OS: ubuntu-26.04
           MATRIX_ARCH: x86
           EXTRA_KEY: compile-and-test-llvm-assert=ON-rtti=ON
 
@@ -202,7 +202,7 @@ jobs:
     needs: build
     if: ${{ !cancelled() && needs.build.outputs.tools == 'success' }}
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
 
     strategy:
@@ -278,7 +278,7 @@ jobs:
     needs: [build, router]
     if: always()
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
 
     steps:
@@ -334,7 +334,7 @@ jobs:
       ${{ !cancelled() && github.ref == 'refs/heads/main'
       && !(inputs.allocator_seeds || inputs.allocator_bankres_seeds
       || inputs.router_seeds || inputs.mutation_seeds || inputs.first_seed) }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       actions: read  # the workflow's runs, to date each record by its start

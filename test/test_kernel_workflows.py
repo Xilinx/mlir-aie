@@ -40,6 +40,31 @@ def matrix_pairs(job):
     }
 
 
+@pytest.mark.parametrize(
+    "path",
+    sorted(WORKFLOWS.glob("*.yml"))
+    + [WORKFLOWS.parent / "actions/setup_base/action.yml"],
+    ids=lambda path: path.stem if path.parent == WORKFLOWS else "setup_base",
+)
+def test_hosted_ubuntu_runners_and_conditions_use_2604(path):
+    labels = re.findall(r"\bubuntu-(?:\d+\.\d+|latest)\b", path.read_text())
+    assert all(label == "ubuntu-26.04" for label in labels)
+
+
+def test_seed_sweep_provisions_python_before_creating_the_environment():
+    steps = workflow("nightlyComponentChecks.yml")["jobs"]["seed-sweep"]["steps"]
+    setup_index = next(
+        i
+        for i, step in enumerate(steps)
+        if step.get("uses", "").startswith("actions/setup-python@")
+    )
+    env_index = next(
+        i for i, step in enumerate(steps) if "env_install.sh" in step.get("run", "")
+    )
+    assert steps[setup_index]["with"]["python-version"] == "3.12"
+    assert setup_index < env_index
+
+
 def test_ryzen_wheel_publish_workflow_gates_on_both_os_builds():
     publish = workflow("buildRyzenWheels.yml")
     assert "pull_request" not in publish["on"]

@@ -34,7 +34,7 @@ jobs:
 
     name: Python and C/C++ Lint
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     permissions:
       contents: write
@@ -330,7 +330,7 @@ jobs:
 
     name: Check code format
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     permissions:
       contents: write
@@ -433,7 +433,7 @@ jobs:
 
     name: Check for AI comment slop
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     # Scoped to actual PR commits only. merge_group's HEAD carries commits from
     # every PR ahead of this one in the queue, so the diff would compare comments
@@ -477,7 +477,7 @@ jobs:
 
   license-compliance:
     name: License Compliance Check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout Repository
@@ -503,7 +503,7 @@ jobs:
 
   docs-build:
     name: Docs site build (mkdocs --strict)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Get the project repository
