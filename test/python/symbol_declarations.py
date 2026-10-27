@@ -31,7 +31,6 @@ from aie.helpers.dialects.func import call
 from aie.ir import Block, FlatSymbolRefAttr, InsertionPoint, StringAttr, SymbolTable
 from util import construct_and_print_module
 
-
 # CHECK-LABEL: symbolDeclarations
 # CHECK: aie.buffer @buffer(
 # CHECK: aie.external_buffer @buffer_0
@@ -39,6 +38,7 @@ from util import construct_and_print_module
 # CHECK: aie.lock @lock(
 # CHECK: aie.lock @lock_0(
 # CHECK: aie.objectfifo.register_external_buffers @external_fifo (%{{.*}}, [@buffer_0])
+
 # CHECK: aie.core(
 # CHECK: aie.get_buffer @buffer_1 : memref<16xi32>
 # CHECK: memref.load
@@ -48,6 +48,8 @@ from util import construct_and_print_module
 # CHECK: func.call @consume
 # CHECK: aie.get_buffer @buffer_1 : memref<16xi32>
 # CHECK: func.call @consume
+
+
 # CHECK: aie.get_buffer @buffer_1 : memref<16xi32>
 # CHECK: aievec.upd
 # CHECK: aie.use_lock(@lock_0, Acquire,
@@ -172,6 +174,8 @@ def symbolTableRename():
 # CHECK: aie.get_buffer @local
 # CHECK: aievec.upd
 # CHECK: aie.use_lock(@gate, Acquire,
+
+
 # CHECK: aie.core(
 # CHECK-NEXT: aie.end
 @construct_and_print_module

@@ -350,8 +350,8 @@ struct TxnEncoder {
   TxnEncoder(DeviceOp device, std::vector<uint32_t> &instructions,
              std::vector<TxnLocEntry> *locmap, bool foldDDRAddrOffset,
              NpuConfigCache &configs)
-      : device(device), tm(device.getTargetModel()),
-        configs(configs), instructions(instructions), locmap(locmap),
+      : device(device), tm(device.getTargetModel()), configs(configs),
+        instructions(instructions), locmap(locmap),
         foldDDRAddrOffset(foldDDRAddrOffset) {}
 
   void encode(Operation &o);

@@ -18,7 +18,11 @@ import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIssue]
-from ..dialects.aie import GetBufferOp, _as_buffer_value, external_func
+from ..dialects.aie import (
+    GetBufferOp,  # pyright: ignore[reportAttributeAccessIssue]
+    _as_buffer_value,
+    external_func,
+)
 from ..helpers.dialects.func import call
 from ..helpers.npdtypes import is_block_float, np_ndarray_type_of
 from ..helpers.sourceloc import SourceSite

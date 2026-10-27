@@ -1740,9 +1740,9 @@ def AIE_LockOp : AIE_Op<"lock", [TileElement, AIESymbol]> {
     TileOp getTileOp();
   }];
 
-  let builders = [OpBuilder<
-                      (ins "mlir::Value":$tile, "int":$lockID, "int":$init,
-                           "llvm::StringRef":$name), [{
+  let builders = [OpBuilder<(ins "mlir::Value":$tile, "int":$lockID,
+                                "int":$init, "llvm::StringRef":$name),
+                            [{
       build($_builder, $_state,
         tile,
         $_builder.getI32IntegerAttr(lockID),
@@ -1763,8 +1763,8 @@ def AIE_LockOp : AIE_Op<"lock", [TileElement, AIESymbol]> {
   let hasVerifier = 1;
 }
 
-def AIE_UseLockOp : AIE_Op<"use_lock",
-    [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+def AIE_UseLockOp
+    : AIE_Op<"use_lock", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "acquire/release lock op";
   let description = [{
     This operation uses a physical lock declaration named by a symbol reference.
@@ -1807,20 +1807,21 @@ def AIE_UseLockOp : AIE_Op<"use_lock",
         /*blocking=*/nullptr);
     }]>,
        OpBuilder<(ins "mlir::FlatSymbolRefAttr":$lock,
-                     "xilinx::AIE::LockAction":$action,
-                     "mlir::Value":$value),
+                     "xilinx::AIE::LockAction":$action, "mlir::Value":$value),
                  [{
       build($_builder, $_state, lock,
         LockActionAttr::get($_builder.getContext(), action), value,
         /*blocking=*/nullptr);
     }]>,
        OpBuilder<(ins "LockOp":$lock, "xilinx::AIE::LockAction":$action,
-                      "int32_t":$value), [{
+                     "int32_t":$value),
+                 [{
       build($_builder, $_state,
         mlir::FlatSymbolRefAttr::get(lock.getSymNameAttr()), action, value);
     }]>,
        OpBuilder<(ins "LockOp":$lock, "xilinx::AIE::LockAction":$action,
-                      "mlir::Value":$value), [{
+                     "mlir::Value":$value),
+                 [{
       build($_builder, $_state,
         mlir::FlatSymbolRefAttr::get(lock.getSymNameAttr()), action, value);
     }]>];
@@ -1842,10 +1843,9 @@ def AIE_UseLockOp : AIE_Op<"use_lock",
   }];
 }
 
-def AIE_BufferOp
-    : AIE_Op<
-          "buffer", [TileElement, IsTileWithMemory, AIESymbol,
-                     DeclareOpInterfaceMethods<BufferLike, ["getBufferTile"]>]> {
+def AIE_BufferOp : AIE_Op<"buffer", [TileElement, IsTileWithMemory, AIESymbol,
+                                     DeclareOpInterfaceMethods<
+                                         BufferLike, ["getBufferTile"]>]> {
   let summary = "Declare a buffer";
   let description = [{
     This operation instantiates a buffer that belongs to a Memory Module of a tile.
@@ -1881,8 +1881,7 @@ def AIE_BufferOp
   }];
 
   let arguments = (ins Index:$tile, SymbolNameAttr:$sym_name,
-      TypeAttrOf<AnyMemRef>:$buffer_type,
-      OptionalAttr<AIEI32Attr>:$address,
+      TypeAttrOf<AnyMemRef>:$buffer_type, OptionalAttr<AIEI32Attr>:$address,
       OptionalAttr<ElementsAttr>:$initial_value,
       OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
       UnitAttr:$bank_reserved, DefaultValuedAttr<BoolAttr, "true">:$aligned);
@@ -1914,22 +1913,22 @@ def AIE_BufferOp
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
   }];
-  let builders = [OpBuilder<(ins "mlir::Type":$type, "mlir::Value":$tile,
-      "mlir::StringAttr":$name,
-      CArg<"mlir::IntegerAttr", "nullptr">:$address,
-      CArg<"mlir::ElementsAttr", "nullptr">:$initialValue,
-      CArg<"mlir::IntegerAttr", "nullptr">:$memBank,
-      CArg<"mlir::UnitAttr", "nullptr">:$coreData,
-      CArg<"mlir::UnitAttr", "nullptr">:$bankReserved,
-      CArg<"mlir::BoolAttr", "nullptr">:$aligned), [{
+  let builders = [OpBuilder<
+      (ins "mlir::Type":$type, "mlir::Value":$tile, "mlir::StringAttr":$name,
+          CArg<"mlir::IntegerAttr", "nullptr">:$address,
+          CArg<"mlir::ElementsAttr", "nullptr">:$initialValue,
+          CArg<"mlir::IntegerAttr", "nullptr">:$memBank,
+          CArg<"mlir::UnitAttr", "nullptr">:$coreData,
+          CArg<"mlir::UnitAttr", "nullptr">:$bankReserved,
+          CArg<"mlir::BoolAttr", "nullptr">:$aligned),
+      [{
     build($_builder, $_state, tile, name, mlir::TypeAttr::get(type),
       address, initialValue, memBank, coreData, bankReserved,
       aligned ? aligned : $_builder.getBoolAttr(true));
   }]>];
 }
 
-def AIE_ExternalBufferOp
-    : AIE_Op<"external_buffer", [BufferLike, AIESymbol]> {
+def AIE_ExternalBufferOp : AIE_Op<"external_buffer", [BufferLike, AIESymbol]> {
   let summary = "Declare a buffer in external memory";
   let description = [{
     This operation represents a buffer that exists in some physical
@@ -1951,8 +1950,7 @@ def AIE_ExternalBufferOp
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name,
-      TypeAttrOf<AnyMemRef>:$buffer_type,
-      OptionalAttr<AIEI64Attr>:$address);
+      TypeAttrOf<AnyMemRef>:$buffer_type, OptionalAttr<AIEI64Attr>:$address);
 
   let assemblyFormat = [{ $sym_name attr-dict `:` $buffer_type }];
 
@@ -2886,9 +2884,10 @@ def AIE_ObjectFifoDmaEndpointOp
 }
 
 def AIE_ObjectFifoRegisterExternalBuffersOp
-    : AIE_Op<"objectfifo.register_external_buffers", [HasParent<"DeviceOp">,
-        DeclareOpInterfaceMethods<SymbolUserOpInterface>, TileElement,
-        IsShimNOCTile]> {
+    : AIE_Op<"objectfifo.register_external_buffers",
+             [HasParent<"DeviceOp">,
+              DeclareOpInterfaceMethods<SymbolUserOpInterface>, TileElement,
+              IsShimNOCTile]> {
   let summary = "Registers external buffers to an objectFifo's shim tile(s) "
                 "for use in the associated shim DMA(s)";
   let description = [{

@@ -9,7 +9,7 @@ module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
-    // CHECK: aie.buffer @[[buf:.+]]
+    // CHECK: aie.buffer @[[buf:[a-zA-Z0-9_]+]](
     aie.buffer @buf(%tile_0_2) : memref<8xi16>
 
     aie.bd_chain @simple_chain(%arg0: memref<8xi16>) {
@@ -28,7 +28,8 @@ module {
       // CHECK:   aie.dma_bd(%arg0 : memref<8xi16> offset = {{.*}} len = {{.*}})
       // CHECK:   aie.next_bd ^bb1
       // CHECK: ^bb1:
-      // CHECK:   aie.dma_bd(%[[buf]] : memref<8xi16> offset = {{.*}} len = {{.*}})
+      // CHECK:   %[[access:.+]] = aie.get_buffer @[[buf]] : memref<8xi16>
+      // CHECK:   aie.dma_bd(%[[access]] : memref<8xi16> offset = {{.*}} len = {{.*}})
       // CHECK:   aie.end
       // CHECK: }
       // CHECK: aiex.dma_start_task(%[[task1]])
@@ -36,4 +37,3 @@ module {
     }
   }
 }
-
