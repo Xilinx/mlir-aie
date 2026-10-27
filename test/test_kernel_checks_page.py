@@ -1411,9 +1411,11 @@ location.hash = '#view=components&metric=us_per_image';
 assert.equal(applyView(), 'performance');
 assert.equal($('performance').hidden, false);
 assert.equal($('placement').hidden, true);
+// "routing" was its own tab before the router joined placement's as
+// compiler checks.
 location.hash = '#view=routing';
-assert.equal(applyView(), 'routing');
-assert.equal($('routing').hidden, false);
+assert.equal(applyView(), 'placement');
+assert.equal($('placement').hidden, false);
 // "design" was the performance section's first name; an unrecognized
 // hash lands on the overview.
 location.hash = '#view=design';
@@ -2077,7 +2079,7 @@ assert.equal(hw.section, 'performance');
 const card = componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(card.className, 'verdict ok');
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every seed placed, compiled and verified. Placement cost 303 at seed 3 (default), 403 at seed 3 (full), 307 at seed 7 (default), 407 at seed 7 (full).');
+             "Every seed placed, compiled and verified. Seed 3's placement cost is 303; 307 to 407 at the other seeds and efforts.");
 // Only the section's metrics count as moves: seed 3's per-image regression is Performance's.
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:nothing moved past its threshold.');
 // A row per seed and effort: which placement, its cost, its compile, its runs.
@@ -2126,7 +2128,7 @@ const allocatorRecord = (id, date, sharing, extra) => ({ id, date, pmode: null, 
 
 def test_a_failed_router_night_names_each_failure_and_how_to_run_it_again(page):
     page(COMPONENT_RUNS + MODEL_NIGHTS + """
-assert.equal(router.section, 'routing');
+assert.equal(router.section, 'placement');
 const failed = ['npu2/properties/seed=20370000+2000/legality', 'npu1/hops-off/seed=20370012+1/mutator fanout illegal',
                 'npu1/hops-off/seed=20370040+1/kill amsel survived', 'npu1-hops-on: no report'];
 const latest = routerRecord('7', '2026-10-02T03:17:00Z', 1, { failed });
@@ -2242,12 +2244,13 @@ const loaded = [
   { check: hw, index: hwIndex, latest: hwAfter, previous: hwBefore },
 ];
 const tiles = overviewTiles(nightsNow, loaded, NOW);
-// In tab order: CI health, Kernels, then the sections, placement last.
-assert.deepEqual(tiles.map(t => t.href), ['#view=ci', '#view=night', '#view=performance', '#view=routing', '#view=placement']);
+// In tab order: CI health, Kernels, then the sections, placement
+// (now the compiler checks' tab, placement and routing together) last.
+assert.deepEqual(tiles.map(t => t.href), ['#view=ci', '#view=night', '#view=performance', '#view=placement']);
 // A row each: the name, one status word, one line, how long ago.
-assert.deepEqual(tiles.map(t => t.children.map(c => c.className)[0]), ['area-name', 'area-name', 'area-name', 'area-name', 'area-name']);
-assert.deepEqual(tiles.map(t => t.children[0].text), ['CI health', 'Kernels', 'Performance', 'Routing', 'Placement']);
-const [ciTile, kernels, perf, routing, placement] = tiles;
+assert.deepEqual(tiles.map(t => t.children.map(c => c.className)[0]), ['area-name', 'area-name', 'area-name', 'area-name']);
+assert.deepEqual(tiles.map(t => t.children[0].text), ['CI health', 'Kernels', 'Performance', 'Compiler checks']);
+const [ciTile, kernels, perf, placement] = tiles;
 // GitHub not asked yet.
 assert.equal(ciTile.children[1].text, 'Loading…');
 // A slower night is a warning on the overview too, not "All passing".
@@ -2255,9 +2258,10 @@ assert.equal(perf.level, 'warn');
 assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['Watch', 'MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.']);
 // The whole of each line is in the row's tooltip.
 assert.ok(perf.title.includes('MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.'));
-// A check that has not published yet: says so instead of a verdict.
-assert.equal(routing.level, 'none');
-assert.equal(routing.children[1].text, 'No results yet');
+// A section with one loaded, healthy band: its own headline, no prefix
+// (the overview rolls up headlines, not a band's quieter detail sentence).
+assert.equal(placement.level, 'ok');
+assert.equal(placement.children[2].text, 'Every seed placed, compiled and verified.');
 // Two days without a run: late and red, the line says so first.
 const late = overviewTiles(null, loaded, NOW + 2 * 86400 * 1000);
 assert.equal(late[2].level, 'bad');
@@ -2268,6 +2272,26 @@ const lateBand = componentBand(hw, hwIndex, hwAfter, NOW + 2 * 86400 * 1000, hwB
 assert.equal(one(lateBand, n => n.className === 'stale-line').text,
              'No run for 2 days 1 h: the numbers below are from 2 Oct, 06:30 UTC.');
 assert.equal(one(lateBand, n => n.className === 'headline').text.slice(0, 16), 'Every run passed');
+""")
+
+
+def test_a_section_tile_names_every_healthy_band_not_just_the_first(page):
+    page("""
+// Compiler checks now has four bands (seed sweep, hardware placement, the
+// allocator and the router); a healthy section must say so for each, or a
+// band that in fact ran and passed would read as silence.
+const lines = [{ level: 'ok', who: 'Seed sweep', text: 'Every seed placed.' },
+               { level: 'ok', who: 'Router', text: 'Every property held and every mutation was answered right.' }];
+const tile = sectionTile('placement', 'Compiler checks', 'about', lines, '2 h ago', '');
+assert.equal(tile.level, 'ok');
+assert.equal(tile.children[2].text, 'Seed sweep: Every seed placed; Router: Every property held and every mutation was answered right.');
+// A section with only one band keeps its bare headline: no redundant name.
+const solo = sectionTile('performance', 'Performance', 'about', [lines[0]], '2 h ago', '');
+assert.equal(solo.children[2].text, 'Every seed placed.');
+// A problem anywhere still only names the problems, as before.
+const mixed = sectionTile('placement', 'Compiler checks', 'about',
+  [{ level: 'warn', who: 'Buffer allocator', text: 'Bank sharing moved.' }, lines[0]], '2 h ago', '');
+assert.equal(mixed.children[2].text, 'Buffer allocator: Bank sharing moved.');
 """)
 
 
