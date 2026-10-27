@@ -801,6 +801,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       e2e_us_per_image: 'host time of one call, from Python, the fastest of 20, over the images in its batch',
       npu_us_per_image: 'NPU time: the fastest dispatch less the same run\'s empty-dispatch baseline (the fixed cost of submitting and completing any dispatch), over the images in its batch',
       host_overhead_us_per_image: 'host overhead: the fastest end-to-end call less the fastest dispatch, over the images in its batch -- the Python, argument and instruction work around the dispatch (its MAD is the two\'s summed, an upper bound)',
+      fps: 'images per second at the batch, from the end-to-end time per image',
       compile_s: 'wall time of the whole compile, from Python to xclbin, cold (a fresh NPU_CACHE_HOME, kernel objects built from scratch)',
       compile_peak_mib: 'peak memory of the whole cold compile, every process together (Python, aiecc and the kernel compiles beside it): the memory.peak of the systemd user scope it runs in, resident memory plus page cache; absent where the runner has no user systemd',
       compile_peak_rss_mb: 'peak resident memory of the largest single process in the cold compile (Python, aiecc or one kernel compile), not of them all together',
@@ -867,7 +868,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
                                                          [`not_correctly_rounded_${dtype}`, `Not correctly rounded (%, ${dtype})`]])),
       failed_seeds: 'Failed seeds', final_cost_mean: 'SA final cost (mean)', final_cost_max: 'SA final cost (worst)', cpu_ms_mean: 'CPU time (mean)',
       cpu_ms_max: 'CPU time (max)', peak_rss_mb_max: 'Peak memory', us_per_image: 'Dispatch / image', npu_us_per_image: 'NPU time / image', host_overhead_us_per_image: 'Host overhead / image',
-      e2e_us_per_image: 'End-to-end / image', compile_s: 'Compile time (cold)', compile_peak_mib: 'Compile memory (cold)', compile_peak_rss_mb: 'Largest process peak (cold)',
+      e2e_us_per_image: 'End-to-end / image', fps: 'Images / s', compile_s: 'Compile time (cold)', compile_peak_mib: 'Compile memory (cold)', compile_peak_rss_mb: 'Largest process peak (cold)',
       compile_s_warm: 'Compile time (warm)', compile_peak_mib_warm: 'Compile memory (warm)', compile_peak_rss_mb_warm: 'Largest process peak (warm)', placement_cost: 'Placement cost',
       failed_properties: 'Failed properties', unsolved: 'Unplaced', illegal: 'Illegal', avoidable_crossings: 'Avoidable crossings',
       bank_pair_sharing: 'Bank sharing (0–1)', wall_s: 'Wall time', unrouted: 'Unrouted', hop_ratio: 'Hops ÷ constructed',
@@ -1010,7 +1011,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       { id: 'sa-placer-hw', section: 'performance', title: 'MobileNet on npu2', short: 'MobileNet', ...HW_RUNS, passed: 'Every run passed.',
         about: 'MobileNet placed with seeds 3, 2 and 7, compiled once per seed and effort, then run and verified on an npu2 at 1 to 64 images per launch, every image checked.',
         metrics: ['npu_us_per_image', 'us_per_image', 'e2e_us_per_image', 'host_overhead_us_per_image', 'compile_s', 'compile_s_warm', 'compile_peak_mib', 'compile_peak_rss_mb'],
-        table: mobilenetTable, charts: () => [], summary: hardwareSummary,
+        table: mobilenetTable, charts: batchCharts, summary: hardwareSummary,
         trend: [{ id: 'npu_us_per_image', name: 'Time per image', per: 'batch', perWord: 'batch', axis: 'Time per image (µs, fastest of 20 launches)',
                   ...timeStack('npu_us_per_image', 'us_per_image', 'e2e_us_per_image'),
                   about: 'where one image\'s time goes at the chosen batch, the mean over the seeds at the design\'s default effort: the NPU\'s own time, '
@@ -1133,7 +1134,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // and `abs`, a floor in the metric's unit that a change must also reach
     // (and the only test from a zero baseline). Kept equal to thresholds.json
     // (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 1, "gated": true, "across_parts": true}, "cycles_per_kop": {"pct": 1, "derived": "cycles", "across_parts": true}, "kernel_object_bytes": {"pct": 1, "gated": true, "across_parts": true}, "max_ulp_bfloat16": {"abs": 1, "gated": true, "across_parts": true}, "max_ulp_float32": {"abs": 1, "gated": true, "across_parts": true}, "not_correctly_rounded_bfloat16": {"abs": 0.1, "gated": true, "across_parts": true}, "not_correctly_rounded_float32": {"abs": 0.1, "gated": true, "across_parts": true}, "dispatch_overhead_us": {"neutral": true}, "dispatch_us": {"pct": 15, "mad": 3}, "npu_us": {"pct": 10, "mad": 5, "abs": 2}, "us_per_image": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "npu_us_per_image": {"pct": 5, "mad": 3}, "host_overhead_us_per_image": {"pct": 10, "mad": 3}, "compile_s": {"pct": 15, "abs": 0.5}, "compile_peak_mib": {"pct": 10}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15, "abs": 0.5}, "compile_peak_mib_warm": {"pct": 10}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1, "across_parts": true}, "final_cost_mean": {"pct": 1, "across_parts": true}, "final_cost_max": {"pct": 1, "across_parts": true}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1, "across_parts": true}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1, "across_parts": true}, "amsels_per_design": {"pct": 10, "across_parts": true}, "ms_per_design": {"pct": 50}, "avoidable_crossings": {"abs": 1, "across_parts": true}, "failed_properties": {"abs": 1, "across_parts": true}, "illegal": {"abs": 1, "across_parts": true}, "unsolved": {"abs": 1, "across_parts": true}, "failed_mutations": {"abs": 1, "across_parts": true}, "survived_corruptions": {"abs": 1, "across_parts": true}, "unrouted": {"abs": 1, "across_parts": true}, "failed_seeds": {"abs": 1, "across_parts": true}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ttft_ms": {"pct": 10}, "ttft_min_ms": {"pct": 10}, "ttft_npu_dispatch_ms": {"pct": 10}, "ttft_host_ms": {"pct": 25, "abs": 1}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "prefill_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true, "across_parts": true}, "kl_bf16": {"pct": 15, "abs": 0.005, "gated": true}, "top1_bf16": {"abs": 9, "higher_is_better": true, "gated": true}, "xclbin_bytes": {"pct": 2, "across_parts": true}, "instr_bytes": {"pct": 2, "across_parts": true}, "elf_bytes": {"pct": 2, "across_parts": true}, "pdi_bytes": {"pct": 2, "across_parts": true}, "us_per_image_b1": {"pct": 5, "mad": 3}, "us_per_image_b8": {"pct": 5, "mad": 3}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "dispatch_us_per_image_b1": {"pct": 5, "mad": 3}, "dispatch_us_per_image_b8": {"pct": 5, "mad": 3}, "npu_us_per_image_b1": {"pct": 5, "mad": 3}, "npu_us_per_image_b8": {"pct": 5, "mad": 3}, "host_overhead_us_per_image_b1": {"pct": 10, "mad": 3}, "host_overhead_us_per_image_b8": {"pct": 10, "mad": 3}, "images_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ort_matches": {"pct": 1, "higher_is_better": true, "across_parts": true, "neutral": true}, "map50_coco128": {"abs": 0.01, "higher_is_better": true, "gated": true}, "compile_place_s": {"pct": 15, "abs": 0.5}, "compile_route_s": {"pct": 15, "abs": 0.5}, "compile_lower_s": {"pct": 15, "abs": 0.5}, "compile_kernels_s": {"pct": 15, "abs": 0.5}, "compile_codegen_s": {"pct": 15, "abs": 0.5}, "compile_link_s": {"pct": 15, "abs": 0.5}, "compile_package_s": {"pct": 15, "abs": 0.5}, "compile_other_s": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s": {"pct": 15, "abs": 0.5}, "compile_place_s_warm": {"pct": 15, "abs": 0.5}, "compile_route_s_warm": {"pct": 15, "abs": 0.5}, "compile_lower_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernels_s_warm": {"pct": 15, "abs": 0.5}, "compile_codegen_s_warm": {"pct": 15, "abs": 0.5}, "compile_link_s_warm": {"pct": 15, "abs": 0.5}, "compile_package_s_warm": {"pct": 15, "abs": 0.5}, "compile_other_s_warm": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s_warm": {"pct": 15, "abs": 0.5}};
+    const THRESHOLDS = {"cycles": {"pct": 1, "gated": true, "across_parts": true}, "cycles_per_kop": {"pct": 1, "derived": "cycles", "across_parts": true}, "kernel_object_bytes": {"pct": 1, "gated": true, "across_parts": true}, "max_ulp_bfloat16": {"abs": 1, "gated": true, "across_parts": true}, "max_ulp_float32": {"abs": 1, "gated": true, "across_parts": true}, "not_correctly_rounded_bfloat16": {"abs": 0.1, "gated": true, "across_parts": true}, "not_correctly_rounded_float32": {"abs": 0.1, "gated": true, "across_parts": true}, "dispatch_overhead_us": {"neutral": true}, "dispatch_us": {"pct": 15, "mad": 3}, "npu_us": {"pct": 10, "mad": 5, "abs": 2}, "us_per_image": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "npu_us_per_image": {"pct": 5, "mad": 3}, "host_overhead_us_per_image": {"pct": 10, "mad": 3}, "fps": {"pct": 5, "derived": "e2e_us_per_image", "higher_is_better": true}, "compile_s": {"pct": 15, "abs": 0.5}, "compile_peak_mib": {"pct": 10}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15, "abs": 0.5}, "compile_peak_mib_warm": {"pct": 10}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1, "across_parts": true}, "final_cost_mean": {"pct": 1, "across_parts": true}, "final_cost_max": {"pct": 1, "across_parts": true}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1, "across_parts": true}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1, "across_parts": true}, "amsels_per_design": {"pct": 10, "across_parts": true}, "ms_per_design": {"pct": 50}, "avoidable_crossings": {"abs": 1, "across_parts": true}, "failed_properties": {"abs": 1, "across_parts": true}, "illegal": {"abs": 1, "across_parts": true}, "unsolved": {"abs": 1, "across_parts": true}, "failed_mutations": {"abs": 1, "across_parts": true}, "survived_corruptions": {"abs": 1, "across_parts": true}, "unrouted": {"abs": 1, "across_parts": true}, "failed_seeds": {"abs": 1, "across_parts": true}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ttft_ms": {"pct": 10}, "ttft_min_ms": {"pct": 10}, "ttft_npu_dispatch_ms": {"pct": 10}, "ttft_host_ms": {"pct": 25, "abs": 1}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "prefill_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true, "across_parts": true}, "kl_bf16": {"pct": 15, "abs": 0.005, "gated": true}, "top1_bf16": {"abs": 9, "higher_is_better": true, "gated": true}, "xclbin_bytes": {"pct": 2, "across_parts": true}, "instr_bytes": {"pct": 2, "across_parts": true}, "elf_bytes": {"pct": 2, "across_parts": true}, "pdi_bytes": {"pct": 2, "across_parts": true}, "us_per_image_b1": {"pct": 5, "mad": 3}, "us_per_image_b8": {"pct": 5, "mad": 3}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "dispatch_us_per_image_b1": {"pct": 5, "mad": 3}, "dispatch_us_per_image_b8": {"pct": 5, "mad": 3}, "npu_us_per_image_b1": {"pct": 5, "mad": 3}, "npu_us_per_image_b8": {"pct": 5, "mad": 3}, "host_overhead_us_per_image_b1": {"pct": 10, "mad": 3}, "host_overhead_us_per_image_b8": {"pct": 10, "mad": 3}, "images_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ort_matches": {"pct": 1, "higher_is_better": true, "across_parts": true, "neutral": true}, "map50_coco128": {"abs": 0.01, "higher_is_better": true, "gated": true}, "compile_place_s": {"pct": 15, "abs": 0.5}, "compile_route_s": {"pct": 15, "abs": 0.5}, "compile_lower_s": {"pct": 15, "abs": 0.5}, "compile_kernels_s": {"pct": 15, "abs": 0.5}, "compile_codegen_s": {"pct": 15, "abs": 0.5}, "compile_link_s": {"pct": 15, "abs": 0.5}, "compile_package_s": {"pct": 15, "abs": 0.5}, "compile_other_s": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s": {"pct": 15, "abs": 0.5}, "compile_place_s_warm": {"pct": 15, "abs": 0.5}, "compile_route_s_warm": {"pct": 15, "abs": 0.5}, "compile_lower_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernels_s_warm": {"pct": 15, "abs": 0.5}, "compile_codegen_s_warm": {"pct": 15, "abs": 0.5}, "compile_link_s_warm": {"pct": 15, "abs": 0.5}, "compile_package_s_warm": {"pct": 15, "abs": 0.5}, "compile_other_s_warm": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s_warm": {"pct": 15, "abs": 0.5}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => (pct(metric) || 0) / 100;
@@ -3158,13 +3159,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const { seeds, failed, every } = hardwareRuns(record);
       const ends = [...new Set([every[0], every.at(-1)])].filter(b => b !== undefined);
       const heads = [...ends.map(b => columnHead(`NPU, b${b}`, 'npu_us_per_image')), ...ends.map(b => columnHead(`End to end, b${b}`, 'e2e_us_per_image')),
+                     ...ends.map(b => columnHead(`Images / s, b${b}`, 'fps')),
                      columnHead('Compile, cold', 'compile_s'), columnHead('Compile, warm', 'compile_s_warm'), ['Runs', 'whether the placed design compiled, ran and verified at each batch']];
       const rows = [...seeds].flatMap(([seed, efforts]) => [...efforts.keys()].map(effort => {
         const at = (b, metric) => failed.has(`mobilenet/seed=${seed}/batch=${b}/effort=${effort}`) ? { text: 'failed', bad: true }
           : figure(cases, `mobilenet/seed=${seed}/batch=${b}/effort=${effort}`, metric);
         const compiled = `mobilenet/seed=${seed}/effort=${effort}`;
         return { name: effortName(seed, effort), cells: [...ends.map(b => at(b, 'npu_us_per_image')), ...ends.map(b => at(b, 'e2e_us_per_image')),
-          figure(cases, compiled, 'compile_s'), figure(cases, compiled, 'compile_s_warm'), runsFigure(record, seed, effort)] };
+          ...ends.map(b => at(b, 'fps')), figure(cases, compiled, 'compile_s'), figure(cases, compiled, 'compile_s_warm'), runsFigure(record, seed, effort)] };
       }));
       return rows.length ? figureTable(heads, rows, `Times are per image, the fastest of 20 launches, at ${ends.map(b => `b${b}`).join(' and ')} `
         + `(${ends.join(' and ')} image${ends.at(-1) > 1 ? 's' : ''} per launch). One compile serves every batch.`) : null;
@@ -3207,9 +3209,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const run = (record.detail || []).find(d => d.case === kase) || {};
       const timed = ['b1', 'b8'].filter(b => figure(cases, kase, `us_per_image_${b}`));
       const times = timed.length ? figureTable(
-        [columnHead('NPU / image', 'npu_us_per_image_b1'), columnHead('Dispatch / image', 'dispatch_us_per_image_b1'), columnHead('Host / image', 'host_overhead_us_per_image_b1'),
-         columnHead('End to end / image', 'us_per_image_b1'), columnHead('Images / s', 'fps_b1')],
-        timed.map(b => ({ name: `batch ${b.slice(1)}`, cells: ['npu_us_per_image', 'dispatch_us_per_image', 'host_overhead_us_per_image', 'us_per_image', 'fps']
+        [columnHead('NPU / image', 'npu_us_per_image_b1'), columnHead('End to end / image', 'us_per_image_b1'), columnHead('Images / s', 'fps_b1')],
+        timed.map(b => ({ name: `batch ${b.slice(1)}`, cells: ['npu_us_per_image', 'us_per_image', 'fps']
           .map(m => figure(cases, kase, `${m}_${b}`)) }))) : null;
       const passed = figure(cases, kase, 'images_passed');
       const rest = [['Images verified', 'images_passed'], ['Match onnxruntime', 'ort_matches'], ['mAP@0.5 (coco128)', 'map50_coco128'],
@@ -3280,7 +3281,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const metric = runs.some(m => rows[m[0]].npu_us_per_image) ? 'npu_us_per_image' : 'us_per_image';
       const timed = runs.filter(m => m[1] === seed && rows[m[0]][metric]).sort((a, b) => a[2] - b[2]);
       if (!timed.length) return '';
-      const at = (m, per = '') => `${formatNumber(rows[m[0]][metric].value, 'us')}${per} at batch ${m[2]}`;
+      const at = (m, per = '') => {
+        const fps = rows[m[0]].fps ? ` (${formatNumber(rows[m[0]].fps.value, 'fps')})` : '';
+        return `${formatNumber(rows[m[0]][metric].value, 'us')}${fps}${per} at batch ${m[2]}`;
+      };
       const ends = timed.length > 1 ? `${at(timed[0], ' per image')}, ${at(timed.at(-1))}` : at(timed[0], ' per image');
       const what = metric === 'us_per_image' ? 'dispatch takes' : 'NPU time is';
       return ` Seed ${seed}'s ${what} ${ends}${effort === 'full' ? ' (full effort)' : ''}.`;
@@ -3401,6 +3405,68 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           });
         });
       });
+    }
+
+    // MobileNet's Batch scaling charts: last night only, every batch side by
+    // side, the mean over the seeds at the design's default effort (or the
+    // full-effort baseline where that is all a night measured). Separate
+    // from the trend tabs' per-batch picker, which is over nights at one
+    // batch; this is over batches at one night.
+    function batchCharts(record) {
+      const passed = (record.detail || []).filter(d => d.passed);
+      const effort = chartedEffort(passed.map(d => `mobilenet/seed=${d.seed}/batch=${d.batch}/effort=${d.effort_label}`));
+      const mine = passed.filter(d => d.effort_label === effort);
+      const batches = [...new Set(mine.map(d => d.batch))].sort((a, b) => a - b);
+      if (!batches.length) return [];
+      const mean = (b, metric) => {
+        const vs = mine.filter(d => d.batch === b && d[metric] !== null && d[metric] !== undefined).map(d => d[metric]);
+        return vs.length ? vs.reduce((a, v) => a + v, 0) / vs.length : null;
+      };
+      const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
+      const axis = (unit, log) => ({
+        x: { ticks: { color: fg, font: { size: 11 } }, grid: { display: false } },
+        y: { type: log ? 'logarithmic' : 'linear', beginAtZero: !log, grid: { color: grid },
+             ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: v => formatNumber(v, unit) } },
+      });
+      const time = bandChart('Time per image, by batch', 'the mean over the seeds at the design\'s default effort, last night: the NPU\'s own time and the whole end-to-end call', canvas => {
+        const npu = batches.map(b => mean(b, 'npu_us_per_image')), e2e = batches.map(b => mean(b, 'e2e_us_per_image'));
+        return lineChart(canvas, {
+          type: 'line',
+          data: {
+            labels: batches.map(b => `batch ${b}`),
+            datasets: [
+              { label: 'NPU', data: npu, borderColor: cssVar('--series-1', '#1f6fb8'), backgroundColor: cssVar('--series-1', '#1f6fb8'), borderWidth: 2, pointRadius: 3, tension: 0 },
+              { label: 'end to end', data: e2e, borderColor: cssVar('--series-2', '#5b6475'), backgroundColor: cssVar('--series-2', '#5b6475'), borderWidth: 2, pointRadius: 3, tension: 0 },
+            ],
+          },
+          options: {
+            animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+            scales: axis('us', true),
+            plugins: {
+              legend: { display: true, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 } } },
+              tooltip: { callbacks: { label: item => `${item.dataset.label}: ${formatNumber(item.raw, 'us')}` } },
+            },
+          },
+        });
+      });
+      const rate = bandChart('Images per second, by batch', 'the mean over the seeds at the design\'s default effort, last night, from the end-to-end time per image', canvas => {
+        const fps = batches.map(b => mean(b, 'fps'));
+        return lineChart(canvas, {
+          type: 'line',
+          data: { labels: batches.map(b => `batch ${b}`), datasets: [
+            { label: 'images / s', data: fps, borderColor: cssVar('--series-1', '#1f6fb8'), backgroundColor: cssVar('--series-1', '#1f6fb8'), borderWidth: 2, pointRadius: 3, tension: 0 },
+          ] },
+          options: {
+            animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+            scales: axis('fps', false),
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: item => `${item.dataset.label}: ${formatNumber(item.raw, 'fps')}` } },
+            },
+          },
+        });
+      });
+      return [time, rate];
     }
 
     // One band's verdict on its check's latest run: {run, level, headline,

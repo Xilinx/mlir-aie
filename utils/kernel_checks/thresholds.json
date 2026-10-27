@@ -34,6 +34,7 @@
   "e2e_us_per_image": {"pct": 10, "mad": 3},
   "npu_us_per_image": {"pct": 5, "mad": 3},
   "host_overhead_us_per_image": {"pct": 10, "mad": 3},
+  "fps": {"pct": 5, "derived": "e2e_us_per_image", "higher_is_better": true},
   "compile_s": {"pct": 15, "abs": 0.5},
   "compile_peak_mib": {"pct": 10},
   "compile_peak_rss_mb": {"pct": 10},

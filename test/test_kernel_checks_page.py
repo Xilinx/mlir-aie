@@ -1592,6 +1592,8 @@ HW_NIGHTS = """
 // 16 (default effort) is 7% slower in the latest, past its 5% and its MADs.
 // The full-effort numbers are fixed (not parameterized by b16) and clearly
 // distinct from default's, so a test can tell the two apart.
+const hwUs = (b16, seed, effort, batch) =>
+  batch === 1 ? 295.7 : (effort === 'default' && seed === 3 ? b16 : (effort === 'default' ? 99 : 120));
 const hwRecord = (id, date, b16, extra) => {
   const rows = {};
   for (const seed of [3, 7]) {
@@ -1604,19 +1606,30 @@ const hwRecord = (id, date, b16, extra) => {
         compile_s_warm: { value: effort === 'default' ? 4.6 : 25, unit: 's' },
         compile_peak_rss_mb_warm: { value: 700, unit: 'MB' },
       };
-      for (const [batch, us] of [[1, 295.7], [16, effort === 'default' && seed === 3 ? b16 : (effort === 'default' ? 99 : 120)]]) {
+      for (const batch of [1, 16]) {
+        const us = hwUs(b16, seed, effort, batch);
+        const e2e = us + 100;
         rows[`mobilenet/seed=${seed}/batch=${batch}/effort=${effort}`] = {
           us_per_image: { value: us, unit: 'us', range: `median ${us + 1}, MAD 0.20, p95 ${us + 2}` },
           npu_us_per_image: { value: Math.round((us - 47 / batch) * 10) / 10, unit: 'us', range: 'median 1, MAD 0.20, p95 2' },
           host_overhead_us_per_image: { value: 100, unit: 'us', range: 'median 101, MAD 0.40, p95 103' },
-          e2e_us_per_image: { value: us + 100, unit: 'us' },
+          e2e_us_per_image: { value: e2e, unit: 'us' },
+          fps: { value: Math.round(1e6 / e2e * 100) / 100, unit: 'fps' },
         };
       }
     }
   }
   rows.mobilenet = { failed_seeds: { value: 0, unit: 'seeds' } };
   const detail = [3, 7].flatMap(seed => ['default', 'full'].flatMap(effort_label =>
-    [1, 16].map(batch => ({ seed, batch, effort_label, passed: true, placement: '0123456789ab' }))));
+    [1, 16].map(batch => {
+      const us = hwUs(b16, seed, effort_label, batch);
+      const e2e = us + 100;
+      return {
+        seed, batch, effort_label, passed: true, placement: '0123456789ab',
+        npu_us_per_image: Math.round((us - 47 / batch) * 10) / 10,
+        e2e_us_per_image: e2e, fps: Math.round(1e6 / e2e * 100) / 100,
+      };
+    })));
   return { id, date, pmode: 'turbo', commit: { ...commit }, provenance: {}, rows, detail, ...(extra || {}) };
 };
 const hwBefore = hwRecord('6', '2026-10-01T06:30:00Z', 98);
@@ -1631,7 +1644,7 @@ const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 // Every run passed, but seed 3's batch 16 got slower: a warning, not "all passing".
 assert.equal(card.className, 'verdict warn');
 assert.equal(one(card, n => n.className === 'headline').text,
-             "Every run passed, but 2 measures got worse vs 1 Oct. Seed 3's NPU time is 248.7 µs per image at batch 1, 102 µs at batch 16.");
+             "Every run passed, but 2 measures got worse vs 1 Oct. Seed 3's NPU time is 248.7 µs (2,527.17 fps) per image at batch 1, 102 µs (4,880.43 fps) at batch 16.");
 const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open);
 // Shown: the verdict, what moved, the latest numbers and the trend chart's
@@ -1658,23 +1671,43 @@ assert.equal(one(empty, n => n.className === 'headline').text, 'No results publi
 
 def test_the_mobilenet_table_shows_each_seed_against_the_nightly_before(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
+// Chart.js configs are normally captured one at a time in `chart`; the
+// Batch scaling card draws two, so collect every one drawn here.
+const drawnCharts = [];
+global.Chart = function (_canvas, config) { drawnCharts.push(config); chart = config; };
+Chart.prototype.destroy = function () {};
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(one(card, n => n.className === 'moves').text,
              'Since 1 Oct:seed 3, batch 16, default effort NPU time / image +7.3%seed 3, batch 16, default effort dispatch / image +7.0%');
-// A row per seed and effort: the NPU's time and the end-to-end time per
-// image at the smallest and largest batch, the one compile that serves
-// them all, and how the batches fared; colored past the threshold only.
+// A row per seed and effort: the NPU's time, the end-to-end time and the
+// rate it gives per image at the smallest and largest batch, the one
+// compile that serves them all, and how the batches fared; colored past
+// the threshold only.
 assert.deepEqual(tableOf(card.table), [
-  ['', 'NPU, b1', 'NPU, b16', 'End to end, b1', 'End to end, b16', 'Compile, cold', 'Compile, warm', 'Runs'],
-  ["seed 3, default effort (the design's)", '248.7 µs 0.0%', '102 µs +7.3%', '395.7 µs 0.0%', '204.9 µs +3.5%', '40 s 0.0%', '4.6 s 0.0%', '2 of 2 passed'],
-  ['seed 3, full effort', '248.7 µs 0.0%', '117.1 µs 0.0%', '395.7 µs 0.0%', '220 µs 0.0%', '55 s 0.0%', '25 s 0.0%', '2 of 2 passed'],
-  ['seed 7, default effort', '248.7 µs 0.0%', '96.1 µs 0.0%', '395.7 µs 0.0%', '199 µs 0.0%', '40 s 0.0%', '4.6 s 0.0%', '2 of 2 passed'],
-  ['seed 7, full effort', '248.7 µs 0.0%', '117.1 µs 0.0%', '395.7 µs 0.0%', '220 µs 0.0%', '55 s 0.0%', '25 s 0.0%', '2 of 2 passed'],
+  ['', 'NPU, b1', 'NPU, b16', 'End to end, b1', 'End to end, b16', 'Images / s, b1', 'Images / s, b16', 'Compile, cold', 'Compile, warm', 'Runs'],
+  ["seed 3, default effort (the design's)", '248.7 µs 0.0%', '102 µs +7.3%', '395.7 µs 0.0%', '204.9 µs +3.5%', '2,527.17 fps 0.0%', '4,880.43 fps −3.4%', '40 s 0.0%', '4.6 s 0.0%', '2 of 2 passed'],
+  ['seed 3, full effort', '248.7 µs 0.0%', '117.1 µs 0.0%', '395.7 µs 0.0%', '220 µs 0.0%', '2,527.17 fps 0.0%', '4,545.45 fps 0.0%', '55 s 0.0%', '25 s 0.0%', '2 of 2 passed'],
+  ['seed 7, default effort', '248.7 µs 0.0%', '96.1 µs 0.0%', '395.7 µs 0.0%', '199 µs 0.0%', '2,527.17 fps 0.0%', '5,025.13 fps 0.0%', '40 s 0.0%', '4.6 s 0.0%', '2 of 2 passed'],
+  ['seed 7, full effort', '248.7 µs 0.0%', '117.1 µs 0.0%', '395.7 µs 0.0%', '220 µs 0.0%', '2,527.17 fps 0.0%', '4,545.45 fps 0.0%', '55 s 0.0%', '25 s 0.0%', '2 of 2 passed'],
 ]);
 assert.deepEqual(all(card.table, n => /^chg (worse|better)/.test(n.className || '')).map(n => n.className), ['chg worse']);
 assert.equal(all(card.table, n => n.tag === 'th' && n.text === 'NPU, b1')[0].title, COMPONENT_METRICS.npu_us_per_image);
-// The trend tabs are the view over nights: no batch-scaling snapshot chart.
-assert.equal(all(card, n => n.className === 'charts').length, 0);
+// The Batch scaling charts: last night, every batch on one machine, beside
+// the trend tabs' over-nights view.
+const charts = one(card, n => n.className === 'charts');
+const boxes = all(charts, n => n.className === 'chart');
+assert.equal(boxes.length, 2);
+assert.equal(all(boxes[0], n => n.tag === 'h3')[0].text.startsWith('Time per image, by batch'), true);
+assert.equal(all(boxes[1], n => n.tag === 'h3')[0].text.startsWith('Images per second, by batch'), true);
+const [timeCfg, rateCfg] = drawnCharts;
+assert.deepEqual(timeCfg.data.labels, ['batch 1', 'batch 16']);
+assert.deepEqual(timeCfg.data.datasets.map(d => d.label), ['NPU', 'end to end']);
+// Seeds 3 and 7 averaged, at the design's default effort, last night only.
+assert.deepEqual(timeCfg.data.datasets[0].data, [248.7, 99.05]);
+assert.deepEqual(timeCfg.data.datasets[1].data.map(v => Math.round(v * 100) / 100), [395.7, 201.95]);
+assert.deepEqual(rateCfg.data.labels, ['batch 1', 'batch 16']);
+assert.equal(rateCfg.data.datasets[0].label, 'images / s');
+assert.deepEqual(rateCfg.data.datasets[0].data.map(v => Math.round(v * 100) / 100), [2527.17, 4952.78]);
 """)
 
 
@@ -1693,8 +1726,8 @@ assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: see
 assert.ok(card.children.some(c => c.className === 'repro'));
 // The failed batch's cells say so, red, never the night before's number.
 const seed7default = tableOf(card.table).find(r => r[0] === 'seed 7, default effort');
-assert.deepEqual(seed7default, ['seed 7, default effort', '248.7 µs 0.0%', 'failed', '395.7 µs 0.0%', 'failed', '40 s 0.0%', '4.6 s 0.0%', 'failed at b16']);
-assert.equal(all(card.table, n => n.className === 'vals worse').length, 3);
+assert.deepEqual(seed7default, ['seed 7, default effort', '248.7 µs 0.0%', 'failed', '395.7 µs 0.0%', 'failed', '2,527.17 fps 0.0%', 'failed', '40 s 0.0%', '4.6 s 0.0%', 'failed at b16']);
+assert.equal(all(card.table, n => n.className === 'vals worse').length, 4);
 const repro = one(card, n => n.className === 'repro');
 // Beside the verdict, shut: a click away.
 assert.ok(!repro.open && card.children.includes(repro));
@@ -1864,7 +1897,7 @@ assert.equal(one(card, n => n.className === 'headline').text,
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n end-to-end / image (b1) +8.0%');
 // The times, a row per batch; then what it verified and its compile, a line each.
 const [times, checked] = all(card.table, n => n.tag === 'table');
-assert.deepEqual(tableOf(times).map(r => [r[0], r[4], r[5]]), [
+assert.deepEqual(tableOf(times).map(r => [r[0], r[2], r[3]]), [
   ['', 'End to end / image', 'Images / s'], ['batch 1', '5,400 µs +8.0%', '185.19 fps −7.4%'], ['batch 8', '3,000 µs 0.0%', '333.33 fps 0.0%']]);
 // Up is worse for time per image, down for images per second.
 assert.deepEqual(all(times, n => /^chg (worse|better)/.test(n.className || '')).map(n => n.className), ['chg worse', 'chg worse']);
@@ -2277,7 +2310,7 @@ const before = fullOnly(hwBefore), after = fullOnly(hwAfter);
 assert.equal(chartedEffort(Object.keys(after.rows)), 'full');
 assert.equal(chartedEffort(Object.keys(hwAfter.rows)), 'default');
 const summary = hardwareSummary(after.rows);
-assert.equal(summary, " Seed 3's NPU time is 248.7 µs per image at batch 1, 117.1 µs at batch 16 (full effort).");
+assert.equal(summary, " Seed 3's NPU time is 248.7 µs (2,527.17 fps) per image at batch 1, 117.1 µs (4,545.45 fps) at batch 16 (full effort).");
 // The trend chart draws the full effort's times.
 const trend = stackConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend[0]);
 assert.deepEqual(trend.data.keys, [1, 16]);
