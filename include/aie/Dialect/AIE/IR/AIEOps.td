@@ -1974,8 +1974,9 @@ def AIE_ExternalBufferOp
   }];
 }
 
-def AIE_GetBufferOp : AIE_Op<"get_buffer",
-    [Pure, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+def AIE_GetBufferOp
+    : AIE_Op<"get_buffer", [Pure,
+                            DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Access a declared tile or external buffer";
   let description = [{
     Produces a memref for an `aie.buffer` or `aie.external_buffer` symbol.
