@@ -5,7 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-create-pathfinder-flows %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --split-input-file --aie-objectFifo-stateful-transform --aie-create-pathfinder-flows %s > %t.out 2> %t.err
+// RUN: FileCheck %s --input-file=%t.out
+// RUN: FileCheck %s --check-prefix=ERR --input-file=%t.err
+// stdout and stderr are checked apart: how the IR printed for one split
+// interleaves with another's diagnostics depends on when stdout flushes.
 
 // A mem tile dispatches to two cores over one channel and merges their results
 // over another. Core a, stalled behind a full receiver, waits on the merge to
@@ -14,7 +18,7 @@
 // holds the merge waiting on core b. The flows route with no hazard.
 
 // CHECK-LABEL: module @hub
-// CHECK-NOT:   {{warning|error}}
+// ERR-NOT:     {{warning|error}}
 // CHECK:       aie.packet_rules
 module @hub {
   aie.device(npu2_1col) {
@@ -68,7 +72,7 @@ module @hub {
 // core can stop in the middle of a packet to wait for its next input, holding
 // the merge, so the cycle through core a is real and routing refuses it.
 
-// CHECK:       error: Flows can deadlock however they are routed: packet flow (0, 1) DMA:{{[0-9]+}} -> (0, 2) DMA:0 (id 0) can fill its receiver, and draining that waits on (0, 2) core, then (0, 2) MM2S 0, then (0, 1) S2MM 1, then (0, 3) core
+// ERR:         error: Flows can deadlock however they are routed: packet flow (0, 1) DMA:{{[0-9]+}} -> (0, 2) DMA:0 (id 0) can fill its receiver, and draining that waits on (0, 2) core, then (0, 2) MM2S 0, then (0, 1) S2MM 1, then (0, 3) core
 module @hub_core_sender {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)

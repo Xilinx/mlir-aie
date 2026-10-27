@@ -61,3 +61,19 @@ foreach(_aie_arch IN LISTS AIE_VITIS_COMPONENTS)
   endif()
 endforeach()
 
+
+# Kernels compile for every arch with Peano, whatever the Vitis components, and
+# a kernel pinning a static to a bank includes its arch's aie_bank_placement.h.
+foreach(_aie_arch AIE2 AIE2P)
+  set(_header ${CMAKE_CURRENT_SOURCE_DIR}/${_aie_arch}/aie_bank_placement.h)
+  if(NOT _aie_arch IN_LIST AIE_VITIS_COMPONENTS AND EXISTS ${_header})
+    set(_out ${CMAKE_CURRENT_BINARY_DIR}/${_aie_arch}/aie_bank_placement.h)
+    add_custom_target(aie-copy-${_aie_arch}-bank-placement ALL DEPENDS ${_out})
+    add_custom_command(OUTPUT ${_out}
+                       COMMAND ${CMAKE_COMMAND} -E copy ${_header} ${_out}
+                       DEPENDS ${_header})
+    add_dependencies(aie-runtime-libs aie-copy-${_aie_arch}-bank-placement)
+    install(FILES ${_header}
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/aie_runtime_lib/${_aie_arch})
+  endif()
+endforeach()

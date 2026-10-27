@@ -5,7 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --split-input-file --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --split-input-file --aie-objectFifo-stateful-transform %s > %t.out 2> %t.err
+// RUN: FileCheck %s --input-file=%t.out
+// RUN: FileCheck %s --check-prefix=ERR --input-file=%t.err
+// stdout and stderr are checked apart: how the IR printed for one split
+// interleaves with another's diagnostics depends on when stdout flushes.
 
 // Three runtime sequences, one per member of a pack, each fills its own end and
 // await nothing. One dispatch runs one sequence and finishes its transfers
@@ -101,7 +105,7 @@ module @awaited {
 // Awaiting a sending end proves nothing: a shim MM2S task reports itself
 // complete before its words leave the shim, so each fill may still be in
 // flight when the next starts, and none share.
-// CHECK: error: 'aie.tile' op number of output DMA channel exceeded!
+// ERR: error: 'aie.tile' op number of output DMA channel exceeded!
 module @sending_awaited {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -311,7 +315,7 @@ module @partly_awaited {
 
 // A loop issues each transfer again after the others' waits, so the ends
 // inside it are in flight across one another's turns, and none share.
-// CHECK: error: 'aie.tile' op number of output DMA channel exceeded!
+// ERR: error: 'aie.tile' op number of output DMA channel exceeded!
 module @looped {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -355,7 +359,7 @@ module @looped {
 // -----
 
 // Nothing is awaited, so all three may be in flight at once.
-// CHECK: error: 'aie.tile' op number of output DMA channel exceeded!
+// ERR: error: 'aie.tile' op number of output DMA channel exceeded!
 module @overlapping {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)

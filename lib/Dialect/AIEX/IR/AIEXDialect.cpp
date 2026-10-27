@@ -1408,8 +1408,11 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
                        "are connected to the memory-mapped NOC.");
         result = failure();
       }
-      // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
-      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
+      // DMABDOp::verify skips task BDs, so validate their packet header and
+      // out_of_order_id here too.
+      if (failed(AIE::verifyAssignedPacket(
+              bd, bd.getPacket().value_or(AIE::PacketInfoAttr()))) ||
+          failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
           failed(bd.verifyTransferInBounds()))
         result = failure();
       bds.push_back(bd);

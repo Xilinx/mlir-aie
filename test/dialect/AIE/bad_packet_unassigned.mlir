@@ -71,3 +71,21 @@ module {
     %tile00 = aie.tile(0, 0) {controller_id = #aie.packet_info<>}
   }
 }
+
+// -----
+
+// DMABDOp::verify skips a BD nested in a runtime-sequence DMA task, so the
+// task checks the BD's own header, even under a task-level header.
+module {
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.runtime_sequence(%arg0: memref<4xi32>) {
+      %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0, <pkt_type = 0, pkt_id = 2>) {
+        // expected-error@+1 {{'aie.dma_bd' op packet has no pkt_id}}
+        aie.dma_bd(%arg0 : memref<4xi32> offset = 0 len = 4) {bd_id = 0 : i32, packet = #aie.packet_info<>}
+        aie.end
+      }
+      aiex.dma_start_task(%t1)
+    }
+  }
+}

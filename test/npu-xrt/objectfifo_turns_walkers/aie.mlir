@@ -12,7 +12,9 @@
 // core takes a row of a before its loop and one of b after it, so the channel
 // repeats the loop's turns alone. Per image, out row 0 is a[0] + 4 c[0], row r
 // in 1..39 is a[2r-1] + 2 a[2r] + 3 b[r-1] + 4 c[r], and row 40 is
-// a[79] + 3 b[39].
+// a[79] + 3 b[39]. The core keeps two objects of a, not the three its
+// two-object acquire would give it: over pools of 3 and 2, the turns a, a, b
+// unroll to 18 descriptors, more than a core tile has.
 
 module {
   aie.device(NPUDEVICE) {
@@ -22,7 +24,7 @@ module {
     %t = aie.tile(0, 2)
 
     aie.objectfifo @a_in(%s, {%m}, [2 : i32, 40 : i32]) : !aie.objectfifo<memref<64xi32>>
-    aie.objectfifo @a(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @a(%m, {%t}, [2 : i32, 2 : i32]) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo.link [@a_in] -> [@a] ([] [])
     aie.objectfifo @b_in(%s1, {%m}, [2 : i32, 3 : i32]) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo @b(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<64xi32>>

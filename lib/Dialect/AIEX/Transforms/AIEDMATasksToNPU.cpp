@@ -499,6 +499,11 @@ struct AIEDMATasksToNPUPass
 
     auto info = bd_op.getPacket().value_or(packet.value_or(nullptr));
     if (info) {
+      if (!info.isAssigned()) {
+        bd_op.emitOpError("packet has no pkt_id; allocation assigns one, so a "
+                          "header at this level must carry it");
+        return failure();
+      }
       f.enable_packet = 1;
       f.packet_type = info.getPktType();
       f.packet_id = info.assignedId();
