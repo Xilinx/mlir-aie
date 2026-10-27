@@ -17,6 +17,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
@@ -49,59 +50,6 @@ static AIEArch decodeAIETarget(const std::string &target) {
       return AIEArch::UNKNOWN;
   }
   return AIEArch::AIE;
-}
-
-//============================================================================//
-//================== Common AIE canonicalization analysis ====================//
-//============================================================================//
-
-static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
-  if (op.getKind() != vector::CombiningKind::ADD)
-    return false;
-
-  // Get and check shape of operands
-  auto lhsShape = op.getLhsType().getShape();
-  auto rhsShape = op.getRhsType().getShape();
-  auto accShape = cast<ShapedType>(op.getAccType()).getShape();
-  if (lhsShape.size() < 2 || rhsShape.size() < 2 || accShape.size() < 2)
-    return false;
-
-  // Check that the innermost iterators match gemm-like iterators
-  SmallVector<vector::IteratorType> iterators = op.getIteratorTypesArray();
-  if (iterators.size() < 3)
-    return false;
-  auto innerMostIterators =
-      SmallVector<vector::IteratorType>(iterators.end() - 3, iterators.end());
-  if (vector::IteratorType::parallel != innerMostIterators[0] ||
-      vector::IteratorType::parallel != innerMostIterators[1] ||
-      vector::IteratorType::reduction != innerMostIterators[2])
-    return false;
-
-  // Get indexing maps of iterators for operands
-  SmallVector<AffineMap, 4> indexingMaps(op.getIndexingMapsArray());
-  SmallVector<int64_t> outerMostResults;
-  for (int64_t i = 0; i < indexingMaps[0].getNumResults() - 2; i++)
-    outerMostResults.push_back(i);
-
-  auto innerLhsMap = indexingMaps[0].dropResults(outerMostResults);
-  auto innerRhsMap = indexingMaps[1].dropResults(outerMostResults);
-  auto innerAccMap = indexingMaps[2].dropResults(outerMostResults);
-
-  // Check whether they conform to a "transposed B" gemm
-  auto *ctx = op.getContext();
-  auto mmAidxMap =
-      AffineMap::getPermutationMap(ArrayRef<unsigned>{1, 0, 2}, ctx)
-          .dropResults(0);
-  auto mmBidxMap =
-      AffineMap::getPermutationMap(ArrayRef<unsigned>{0, 1, 2}, ctx)
-          .dropResults(0);
-  auto mmCidxMap =
-      AffineMap::getPermutationMap(ArrayRef<unsigned>{2, 0, 1}, ctx)
-          .dropResults(0);
-  int64_t numOuterMostDims = indexingMaps[0].getNumDims() - 3;
-  return innerLhsMap == mmAidxMap.shiftDims(numOuterMostDims) &&
-         innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
-         innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
 }
 
 //============================================================================//
@@ -472,105 +420,6 @@ struct FlattenMultDimTransferWritePattern
   }
 };
 
-// This pattern extracts an implicit transposition of the 2 innermost
-// dimensions of `rhs` in a gemm-like contraction op, making it an explicit
-// `vector.transpose` op.
-// If `rhs` is coming from a widening op (`extf`/`extsi`/`extui`), the
-// transposition will be hoisted above the widening op.
-struct ExtractTransposeFromContractionOp
-    : public OpConversionPattern<vector::ContractionOp> {
-  using OpConversionPattern<vector::ContractionOp>::OpConversionPattern;
-
-  static VectorType getTransposedVectorType(VectorType vecTy) {
-    SmallVector<int64_t> shape{vecTy.getShape()};
-    auto nDim = shape.size();
-    int64_t dimNm1 = shape[nDim - 1];
-    shape[nDim - 1] = shape[nDim - 2];
-    shape[nDim - 2] = dimNm1;
-    auto elemTy = vecTy.getElementType();
-    return VectorType::get(shape, elemTy);
-  }
-
-  LogicalResult
-  matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    if (!isGemmBTransposedContractionOp(contractOp))
-      return failure();
-
-    Location loc = contractOp.getLoc();
-    auto *ctx = rewriter.getContext();
-
-    Value rhsVal = adaptor.getRhs();
-    VectorType rhsVecTy = contractOp.getRhsType();
-    Type rhsElemTy = rhsVecTy.getElementType();
-
-    bool doExtF = false, doExtSI = false, doExtUI = false;
-    if (auto extfRhsOp = rhsVal.getDefiningOp<arith::ExtFOp>()) {
-      rhsVal = extfRhsOp.getIn();
-      rhsVecTy = cast<VectorType>(rhsVal.getType());
-      doExtF = true;
-    } else if (auto extsiRhsOp = rhsVal.getDefiningOp<arith::ExtSIOp>()) {
-      rhsVal = extsiRhsOp.getIn();
-      rhsVecTy = cast<VectorType>(rhsVal.getType());
-      doExtSI = true;
-    } else if (auto extuiRhsOp = rhsVal.getDefiningOp<arith::ExtUIOp>()) {
-      rhsVal = extuiRhsOp.getIn();
-      rhsVecTy = cast<VectorType>(rhsVal.getType());
-      doExtUI = true;
-    }
-
-    int64_t nDim = rhsVecTy.getShape().size();
-    SmallVector<int64_t> rhsPermutation;
-    for (int64_t i = 0; i < nDim - 2; i++)
-      rhsPermutation.push_back(i);
-    rhsPermutation.push_back(nDim - 1);
-    rhsPermutation.push_back(nDim - 2);
-    auto transpRhsVecTy = getTransposedVectorType(rhsVecTy);
-    rhsVal = vector::TransposeOp::create(rewriter, loc, transpRhsVecTy, rhsVal,
-                                         rhsPermutation)
-                 .getResult();
-
-    if (doExtF)
-      rhsVal =
-          arith::ExtFOp::create(
-              rewriter, loc,
-              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal,
-              /*fastmath=*/nullptr)
-              .getOut();
-    if (doExtSI)
-      rhsVal =
-          arith::ExtSIOp::create(
-              rewriter, loc,
-              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
-              .getOut();
-    if (doExtUI)
-      rhsVal =
-          arith::ExtUIOp::create(
-              rewriter, loc,
-              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
-              .getOut();
-
-    SmallVector<AffineMap, 4> oldIdxMaps(contractOp.getIndexingMapsArray());
-
-    nDim = oldIdxMaps[1].getNumDims();
-    SmallVector<int64_t> innerDimPerm;
-    for (int64_t i = 0; i < nDim - 2; i++)
-      innerDimPerm.push_back(i);
-    innerDimPerm.push_back(nDim - 1);
-    innerDimPerm.push_back(nDim - 2);
-    auto transpPermMap = AffineMap::getPermutationMap(innerDimPerm, ctx);
-
-    auto newIdxMaps = rewriter.getAffineMapArrayAttr(
-        {oldIdxMaps[0], oldIdxMaps[1].compose(transpPermMap), oldIdxMaps[2]});
-
-    rewriter.replaceOpWithNewOp<vector::ContractionOp>(
-        contractOp, contractOp.getResult().getType(), adaptor.getLhs(), rhsVal,
-        adaptor.getAcc(), newIdxMaps, contractOp.getIteratorTypes());
-
-    return success();
-  }
-};
-
 /// Utility function to check if all provided indices are constant zero values.
 /// @return success() if all indices are constant zeros, failure() otherwise
 static LogicalResult isAllZeroOffsetAccess(mlir::OperandRange indices) {
@@ -696,6 +545,36 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
   }
 };
 
+// Carry an n-D vector through an scf.for loop as a rank-1 vector. The LLVM
+// lowering turns an n-D vector into an array of rank-1 rows, so a loop that
+// carries one splits it into rows and rebuilds it on every iteration instead
+// of keeping it in registers. AIE2P lowers n-D elementwise ops by flattening
+// them to rank 1, so the shape casts added here at the loop boundary fold
+// against the ones that flattening adds. Each match rewrites one iter_arg.
+struct FlattenVectorIterArgsPattern : OpRewritePattern<scf::ForOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
+                                PatternRewriter &rewriter) const override {
+    for (OpOperand &init : forOp.getInitArgsMutable()) {
+      auto vecType = dyn_cast<VectorType>(init.get().getType());
+      if (!vecType || vecType.getRank() < 2 || vecType.isScalable())
+        continue;
+      Value flat = vector::ShapeCastOp::create(rewriter, forOp.getLoc(),
+                                               getFlattenedVectorType(vecType),
+                                               init.get());
+      auto shapeCast = [](OpBuilder &builder, Location loc, Type type,
+                          Value source) -> Value {
+        return vector::ShapeCastOp::create(builder, loc, type, source);
+      };
+      rewriter.replaceOp(forOp, scf::replaceAndCastForOpIterArg(
+                                    rewriter, forOp, init, flat, shapeCast));
+      return success();
+    }
+    return failure();
+  }
+};
+
 //============================================================================//
 //============ AIE2 canonicalization conversion patterns ===============//
 //============================================================================//
@@ -792,19 +671,14 @@ static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target) {
       [](vector::TransferWriteOp op) {
         return cast<VectorType>(op.getVector().getType()).getRank() < 2;
       });
-  target.addDynamicallyLegalOp<vector::ContractionOp>(
-      [](vector::ContractionOp op) {
-        return !isGemmBTransposedContractionOp(op);
-      });
 }
 
 static void
 populateAIE2CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
                                                   256);
-  patterns
-      .add<ExtractTransposeFromContractionOp, FlattenMultDimTransferReadPattern,
-           FlattenMultDimTransferWritePattern>(patterns.getContext());
+  patterns.add<FlattenMultDimTransferReadPattern,
+               FlattenMultDimTransferWritePattern>(patterns.getContext());
 }
 
 //============================================================================//
@@ -1127,8 +1001,36 @@ std::unique_ptr<::mlir::Pass> xilinx::aievec::createBF16EmulationPass() {
   return std::make_unique<BF16EmulationPass>();
 }
 
+// A broadcast of a vector that only adds leading dims, as the vector repeated
+// by a 1-D shuffle (mask [i % n]). The AIE2P shuffle lowering then sees the
+// repetition, alone or together with a shuffle that reads it, as one gather.
+struct BroadcastLeadingDimsToRepeatPattern
+    : public OpRewritePattern<vector::BroadcastOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::BroadcastOp op,
+                                PatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(op.getSourceType());
+    VectorType resType = op.getResultVectorType();
+    if (!srcType || srcType.getRank() != 1 || resType.getRank() < 2 ||
+        resType.getShape().back() != srcType.getNumElements() ||
+        !srcType.getElementType().isIntOrFloat() || resType.isScalable())
+      return failure();
+    int64_t n = srcType.getNumElements();
+    SmallVector<int64_t> mask;
+    for (int64_t i = 0; i < resType.getNumElements(); ++i)
+      mask.push_back(i % n);
+    Value src = op.getSource();
+    Value flat =
+        vector::ShuffleOp::create(rewriter, op.getLoc(), src, src, mask);
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, resType, flat);
+    return success();
+  }
+};
+
 struct VectorBroadcastLoweringPass
     : public PassWrapper<VectorBroadcastLoweringPass, OperationPass<>> {
+  VectorBroadcastLoweringPass(bool aie2p = false) : aie2p(aie2p) {}
 
   void runOnOperation() override {
     auto *op = getOperation();
@@ -1137,13 +1039,21 @@ struct VectorBroadcastLoweringPass
     populateVectorBroadcastLoweringPatterns(patterns);
     patterns.add<ConvertLeadingUnitDimInsertToReshapePattern>(
         patterns.getContext());
+    // Ahead of the generic lowering, which builds the result a row at a time.
+    if (aie2p)
+      patterns.add<BroadcastLeadingDimsToRepeatPattern>(patterns.getContext(),
+                                                        /*benefit=*/2);
 
     (void)applyPatternsGreedily(op, std::move(patterns));
   }
+
+private:
+  bool aie2p;
 };
 
-static std::unique_ptr<::mlir::Pass> createVectorBroadcastLoweringPass() {
-  return std::make_unique<VectorBroadcastLoweringPass>();
+static std::unique_ptr<::mlir::Pass>
+createVectorBroadcastLoweringPass(bool aie2p = false) {
+  return std::make_unique<VectorBroadcastLoweringPass>(aie2p);
 }
 
 // This pass converts standard vector ops into a subset of `Vector` ops more
@@ -1217,6 +1127,8 @@ struct CanonicalizeVectorForAIEVecPass
       RewritePatternSet patterns(context);
       patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
                    CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
+      if (aieTarget == "aie2p")
+        patterns.add<FlattenVectorIterArgsPattern>(context);
       (void)applyPatternsGreedily(op, std::move(patterns));
     }
 
@@ -1274,6 +1186,6 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
 
   pm.addPass(createReorderOperationsPass());
   pm.addPass(createCopyRemovalPass());
-  pm.addPass(createVectorBroadcastLoweringPass());
+  pm.addPass(createVectorBroadcastLoweringPass(options.aieTarget == "aie2p"));
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
 }
