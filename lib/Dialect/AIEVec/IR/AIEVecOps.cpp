@@ -17,6 +17,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecMatMul.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecShuffleModes.h"
 
@@ -1230,6 +1231,224 @@ ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
 
   return parser.addTypeToList(resultType, result.types);
 }
+
+//===----------------------------------------------------------------------===//
+// MatMulOp and MatMulOp_AIE2P
+//===----------------------------------------------------------------------===//
+
+namespace {
+// One row of the recipe table. Element types are given by kind and width,
+// with 0 standing for bf16 operands or an f32 accumulator.
+struct MatMulRecipeEntry {
+  bool aie2p;
+  unsigned lhsWidth, rhsWidth, accWidth;
+  int64_t m, k, n;
+  MatMulRecipe recipe;
+};
+} // namespace
+
+// The lhs and rhs layouts in each row are those the multiply reads: the MAC
+// modes read lhs [m, k] and rhs [k, n]; bfp16 `8x8_8x8T` reads rhs [n, k],
+// since both of its operands share an exponent along k; the elementwise bf16
+// recipes broadcast the lhs a column at a time and so read it [k, m], except
+// that the 4-row one pads lhs [m, k] to 8 rows before transposing it itself.
+// A 1x8 rhs or 8x1 lhs reads the same either way.
+static ArrayRef<MatMulRecipeEntry> getMatMulRecipeTable() {
+  using K = MatMulRecipeKind;
+  // clang-format off
+  static const MatMulRecipeEntry table[] = {
+    // aie2p, lhs, rhs and acc widths, m, k, n, {kind, lhsKM, rhsNK}
+    {false,  8,  4, 32, 4, 16, 8, {K::AIE2_I8xI4_4x16x8, false, false}},
+    {false,  8,  8, 32, 4,  8, 8, {K::AIE2_I8xI8_4x8x8, false, false}},
+    {false, 16,  8, 32, 4,  4, 8, {K::AIE2_I16xI8_4x4x8, false, false}},
+    {false, 16, 16, 32, 4,  2, 8, {K::AIE2_I16xI16_4x2x8, false, false}},
+    {false, 16,  8, 64, 2,  8, 8, {K::AIE2_I16xI8_2x8x8_Acc64, false, false}},
+    {false, 16,  8, 64, 4,  8, 4, {K::AIE2_I16xI8_4x8x4_Acc64, false, false}},
+    {false, 16, 16, 64, 2,  4, 8, {K::AIE2_I16xI16_2x4x8_Acc64, false, false}},
+    {false, 16, 16, 64, 4,  4, 4, {K::AIE2_I16xI16_4x4x4_Acc64, false, false}},
+    {false, 32, 16, 64, 4,  2, 4, {K::AIE2_I32xI16_4x2x4_Acc64, false, false}},
+    {false,  0,  0,  0, 4,  8, 4, {K::AIE2_BF16_4x8x4, false, false}},
+    {true,   8,  8, 32, 8,  8, 8, {K::AIE2P_I8_8x8x8, false, false}},
+    {true,  16, 16, 32, 8,  2, 8, {K::AIE2P_I16_8x2x8, false, false}},
+    {true,   0,  0,  0, 8,  8, 8, {K::AIE2P_BFP16_8x8x8, false, true}},
+    {true,   0,  0,  0, 4,  8, 8, {K::AIE2P_BFP16_4x8x8, false, true}},
+    {true,   0,  0,  0, 8,  8, 4, {K::AIE2P_BF16Elem_8x8x4, true, false}},
+    {true,   0,  0,  0, 4,  8, 4, {K::AIE2P_BF16Elem_4x8x4, false, false}},
+    {true,   0,  0,  0, 8,  1, 8, {K::AIE2P_BF16Outer_8x1x8, false, false}},
+  };
+  // clang-format on
+  return table;
+}
+
+// The table width of an operand element type: its width for an integer, 0
+// for bf16, and nullopt for anything else.
+static std::optional<unsigned> getRecipeOperandWidth(Type t) {
+  if (auto intTy = dyn_cast<IntegerType>(t))
+    return intTy.getWidth();
+  if (t.isBF16())
+    return 0u;
+  return std::nullopt;
+}
+
+static std::optional<unsigned> getRecipeAccWidth(Type t) {
+  if (auto intTy = dyn_cast<IntegerType>(t))
+    return intTy.getWidth();
+  if (t.isF32())
+    return 0u;
+  return std::nullopt;
+}
+
+std::optional<MatMulRecipe>
+xilinx::aievec::getMatMulRecipe(bool aie2p, Type lhsElemTy, Type rhsElemTy,
+                                Type accElemTy, int64_t m, int64_t k,
+                                int64_t n) {
+  auto lhsWidth = getRecipeOperandWidth(lhsElemTy);
+  auto rhsWidth = getRecipeOperandWidth(rhsElemTy);
+  auto accWidth = getRecipeAccWidth(accElemTy);
+  if (!lhsWidth || !rhsWidth || !accWidth)
+    return std::nullopt;
+  // bf16 multiplies accumulate in f32, and integers in integers.
+  if ((*lhsWidth == 0 || *rhsWidth == 0 || *accWidth == 0) &&
+      (*lhsWidth | *rhsWidth | *accWidth) != 0)
+    return std::nullopt;
+  for (const MatMulRecipeEntry &e : getMatMulRecipeTable())
+    if (e.aie2p == aie2p && e.lhsWidth == *lhsWidth &&
+        e.rhsWidth == *rhsWidth && e.accWidth == *accWidth && e.m == m &&
+        e.k == k && e.n == n)
+      return e.recipe;
+  return std::nullopt;
+}
+
+std::optional<SmallVector<ShuffleMode, 2>>
+xilinx::aievec::getTileTransposeModes(bool aie2p, Type elemTy, int64_t rows,
+                                      int64_t cols) {
+  if (rows == 1 || cols == 1)
+    return SmallVector<ShuffleMode, 2>{};
+  if (!elemTy.isIntOrFloat())
+    return std::nullopt;
+  unsigned width = elemTy.getIntOrFloatBitWidth();
+  int64_t bits = rows * cols * width;
+  // Full 512-bit transposes, as AIE2 and AIE2P both provide them. Modes are
+  // named after the shape they read.
+  static const struct {
+    unsigned width;
+    int64_t rows, cols;
+    ShuffleMode mode;
+  } modes512[] = {
+      {8, 4, 16, ShuffleMode::T8_4X16},   {8, 8, 8, ShuffleMode::T8_8X8},
+      {8, 16, 4, ShuffleMode::T8_16X4},   {16, 2, 16, ShuffleMode::T16_2X16},
+      {16, 4, 8, ShuffleMode::T16_4X8},   {16, 8, 4, ShuffleMode::T16_8X4},
+      {16, 16, 2, ShuffleMode::T16_16X2}, {32, 4, 4, ShuffleMode::T32_4X4},
+  };
+  // AIE2P modes that transpose each 256-bit half of a register on its own.
+  static const struct {
+    unsigned width;
+    int64_t rows, cols;
+    ShuffleMode mode;
+  } modes256[] = {
+      {8, 4, 8, ShuffleMode::T8_4X8},   {8, 8, 4, ShuffleMode::T8_8X4},
+      {16, 2, 8, ShuffleMode::T16_2X8}, {16, 4, 4, ShuffleMode::T16_4X4},
+      {16, 8, 2, ShuffleMode::T16_8X2},
+  };
+  if (bits == 512) {
+    for (const auto &e : modes512)
+      if (e.width == width && e.rows == rows && e.cols == cols)
+        return SmallVector<ShuffleMode, 2>{e.mode};
+    return std::nullopt;
+  }
+  if (!aie2p)
+    return std::nullopt;
+  if (bits == 256) {
+    for (const auto &e : modes256)
+      if (e.width == width && e.rows == rows && e.cols == cols)
+        return SmallVector<ShuffleMode, 2>{e.mode};
+    return std::nullopt;
+  }
+  if (width == 16 && rows == 8 && cols == 8)
+    return SmallVector<ShuffleMode, 2>{ShuffleMode::T16_8X8_LO,
+                                       ShuffleMode::T16_8X8_HI};
+  return std::nullopt;
+}
+
+// checkMatMulTile, with the reason for a failure written to `os`.
+static std::optional<MatMulRecipe>
+checkMatMulTileImpl(bool aie2p, VectorType lhsTy, VectorType rhsTy,
+                    VectorType accTy, bool lhsTransposed, bool rhsTransposed,
+                    llvm::raw_ostream &os) {
+  if (lhsTy.getRank() != 2 || rhsTy.getRank() != 2 || accTy.getRank() != 2) {
+    os << "expects rank-2 operands";
+    return std::nullopt;
+  }
+  ArrayRef<int64_t> lhsShape = lhsTy.getShape(), rhsShape = rhsTy.getShape(),
+                    accShape = accTy.getShape();
+  int64_t m = lhsShape[lhsTransposed ? 1 : 0];
+  int64_t k = lhsShape[lhsTransposed ? 0 : 1];
+  int64_t rhsK = rhsShape[rhsTransposed ? 1 : 0];
+  int64_t n = rhsShape[rhsTransposed ? 0 : 1];
+  if (k != rhsK || accShape[0] != m || accShape[1] != n) {
+    os << "lhs " << lhsTy << (lhsTransposed ? " [k, m]" : " [m, k]")
+       << " times rhs " << rhsTy << (rhsTransposed ? " [n, k]" : " [k, n]")
+       << " is not a contraction into " << accTy;
+    return std::nullopt;
+  }
+  StringRef target = aie2p ? "AIE2P" : "AIE2";
+  std::optional<MatMulRecipe> recipe =
+      getMatMulRecipe(aie2p, lhsTy.getElementType(), rhsTy.getElementType(),
+                      accTy.getElementType(), m, k, n);
+  if (!recipe) {
+    os << "no " << target << " matrix multiply takes " << m << "x" << k << " "
+       << lhsTy.getElementType() << " times " << k << "x" << n << " "
+       << rhsTy.getElementType() << " into " << accTy.getElementType();
+    return std::nullopt;
+  }
+  auto layoutReachable = [&](VectorType ty, bool stored, bool native) {
+    return stored == native ||
+           getTileTransposeModes(aie2p, ty.getElementType(), ty.getDimSize(0),
+                                 ty.getDimSize(1));
+  };
+  if (!layoutReachable(lhsTy, lhsTransposed, recipe->lhsKM)) {
+    os << "the " << target << " " << m << "x" << k << "x" << n
+       << " multiply reads lhs as " << (recipe->lhsKM ? "[k, m]" : "[m, k]")
+       << ", and no shuffle transposes " << lhsTy;
+    return std::nullopt;
+  }
+  if (!layoutReachable(rhsTy, rhsTransposed, recipe->rhsNK)) {
+    os << "the " << target << " " << m << "x" << k << "x" << n
+       << " multiply reads rhs as " << (recipe->rhsNK ? "[n, k]" : "[k, n]")
+       << ", and no shuffle transposes " << rhsTy;
+    return std::nullopt;
+  }
+  return recipe;
+}
+
+std::optional<MatMulRecipe> xilinx::aievec::checkMatMulTile(
+    bool aie2p, VectorType lhsTy, VectorType rhsTy, VectorType accTy,
+    bool lhsTransposed, bool rhsTransposed,
+    llvm::function_ref<InFlightDiagnostic()> emitError) {
+  std::string message;
+  llvm::raw_string_ostream os(message);
+  std::optional<MatMulRecipe> recipe = checkMatMulTileImpl(
+      aie2p, lhsTy, rhsTy, accTy, lhsTransposed, rhsTransposed, os);
+  if (!recipe && emitError)
+    emitError() << message;
+  return recipe;
+}
+
+template <typename OpTy>
+static LogicalResult verifyMatMulOp(OpTy op, bool aie2p) {
+  auto lhsTy = cast<VectorType>(op.getLhs().getType());
+  auto rhsTy = cast<VectorType>(op.getRhs().getType());
+  auto accTy = cast<VectorType>(op.getAcc().getType());
+  if (!checkMatMulTile(aie2p, lhsTy, rhsTy, accTy, op.getLhsTransposed(),
+                       op.getRhsTransposed(),
+                       [&]() { return op.emitOpError(); }))
+    return failure();
+  return success();
+}
+
+LogicalResult MatMulOp::verify() { return verifyMatMulOp(*this, false); }
+
+LogicalResult MatMulOp_AIE2P::verify() { return verifyMatMulOp(*this, true); }
 
 //===----------------------------------------------------------------------===//
 // ShuffleOp

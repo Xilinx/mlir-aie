@@ -15,7 +15,7 @@ func.func @invalidElementType(%A : vector<4x8xf16>, %B : vector<8x4xf16>,
 
 func.func @invalidShape(%A : vector<4x4xbf16>, %B : vector<4x4xbf16>,
                         %C : vector<4x4xf32>) -> vector<4x4xf32> {
-  // expected-error @+1 {{op operand #0 must be a vector compatible with a lhs operand of matrix-multiply and accumulate, but got 'vector<4x4xbf16>'}}
+  // expected-error @+1 {{op no AIE2 matrix multiply takes 4x4 bf16 times 4x4 bf16 into f32}}
   %0 = aievec.matmul %A, %B, %C : vector<4x4xbf16>, vector<4x4xbf16>
                                   into vector<4x4xf32>
   return %0 : vector<4x4xf32>
@@ -25,7 +25,7 @@ func.func @invalidShape(%A : vector<4x4xbf16>, %B : vector<4x4xbf16>,
 
 func.func @invalidContraction(%A : vector<2x4xi16>, %B : vector<2x8xi16>,
                               %C : vector<4x8xi32>) -> vector<4x8xi32> {
-  // expected-error @+1 {{op failed to verify that [lhs x rhs = acc] is a valid contraction}}
+  // expected-error @+1 {{op lhs vector<2x4xi16> [m, k] times rhs vector<2x8xi16> [k, n] is not a contraction into vector<4x8xi32>}}
   %0 = aievec.matmul %A, %B, %C : vector<2x4xi16>, vector<2x8xi16>
                                   into vector<4x8xi32>
   return %0 : vector<4x8xi32>
@@ -35,7 +35,7 @@ func.func @invalidContraction(%A : vector<2x4xi16>, %B : vector<2x8xi16>,
 
 func.func @invalidAccumulatorType(%A : vector<2x4xi16>, %B : vector<4x8xi16>,
                                   %C : vector<2x8xi32>) -> vector<2x8xi32> {
-  // expected-error @+1 {{op operand #2 must be a vector compatible with an accumulator of matrix-multiply and accumulate, but got 'vector<2x8xi32>'}}
+  // expected-error @+1 {{op no AIE2 matrix multiply takes 2x4 i16 times 4x8 i16 into i32}}
   %0 = aievec.matmul %A, %B, %C : vector<2x4xi16>, vector<4x8xi16>
                                   into vector<2x8xi32>
   return %0 : vector<2x8xi32>
