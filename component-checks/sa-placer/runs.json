@@ -556,6 +556,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "40463972335",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40463972335",
+   "date": "2026-10-27T06:55:17+00:00",
+   "commit": {
+    "id": "1631e1b04cb22dfe3fb99eb910d6b679863a948c",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/1631e1b04cb22dfe3fb99eb910d6b679863a948c",
+    "message": "[AIEVec] AIE2P: elementwise ops at any lane count, exp2, flat loop-carried vectors (#3969)",
+    "timestamp": "2026-10-27T03:19:59Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "1631e1b04c",
+    "fixtures": "3aa7139253a0",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
