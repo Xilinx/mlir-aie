@@ -267,11 +267,11 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
   alignas(64) int32_t expq[kREP * kTB];
   alignas(64) float sv_b[kREP * kHD];
 
-  // Rows past n_rows (still inside the kTB-row block) give scores that the
-  // -1e30 select drops and e = 0, so pv = 0 whatever their v_scale.
+  // Rows past n_rows (still inside the kTB-row block, so block_i32 holds
+  // them) give scores that the -1e30 select drops and e = 0, so pv = 0
+  // whatever their v_scale; every row is loaded so no slot is left unread.
   const int groups = (n_rows + kLanes - 1) / kLanes;
-#pragma clang loop min_iteration_count(16)
-  for (int r = 0; r < groups * kLanes; r++) {
+  for (int r = 0; r < kTB; r++) {
     kslot[r] = block_i32[(r * kRowBytes + kKScaleOff) / 4];
     vslot[r] = block_i32[(r * kRowBytes + kVScaleOff) / 4];
   }
@@ -367,10 +367,11 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
     }
     float m_b = ::aie::reduce_max(max_v);
     lanes[h] = m_b;
-    // Two groups a call; a group past `groups` is never read.
+    // Two groups a call, over every row: scores past n_rows are already
+    // -1e30 (above), so their e underflows to 0, same as the pv mask below.
     ::aie::vector<float, 2 * kLanes> m_v =
         ::aie::broadcast<float, 2 * kLanes>(m_b);
-    for (int g = 0; g < groups; g += 2)
+    for (int g = 0; g < kTB / kLanes; g += 2)
       ::aie::store_v(expq + h * kTB + g * kLanes,
                      vec_exp_nonpos(::aie::sub(::aie::load_v<2 * kLanes>(
                                                    scores + g * kLanes)
@@ -416,7 +417,7 @@ void llama_attn_block(int8_t *restrict q_chunk, int32_t *restrict block_i32,
   // pv = (e * inv_sum) * v_slot per head and row, then its fixed-point P
   // against the head's largest live exponent field E: RNE(m * 2^(6 - sh)),
   // sh = E - e, as m * 2^(30 - sh) in acc64 rounded by 24 (0 for sh > 30,
-  // for a zero pv and past n_rows, whose expq may be stale).
+  // for a zero pv and past n_rows).
   static_assert(kTB == 64, "a head's pv is two 32-lane halves");
   alignas(64) int32_t emax[kREP];
   alignas(64) int32_t p[kREP * kTB];
