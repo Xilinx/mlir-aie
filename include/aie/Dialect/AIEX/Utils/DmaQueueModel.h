@@ -105,10 +105,9 @@ public:
   static void noteSpaceGuaranteed(ChannelState &q, uint32_t depth) {
     if (depth > 0 && q.pushes.size() > depth - 1) {
       auto end = q.pushes.end() - (depth - 1);
-      q.unknownTokens |= llvm::any_of(llvm::make_range(q.pushes.begin(), end),
-                                      [](const Push &p) {
-                                        return p.issuesToken;
-                                      });
+      q.unknownTokens |=
+          llvm::any_of(llvm::make_range(q.pushes.begin(), end),
+                       [](const Push &p) { return p.issuesToken; });
       q.pushes.erase(q.pushes.begin(), end);
       if (q.unknownTokens)
         llvm::fill(q.pushes, Push{});
@@ -121,9 +120,9 @@ public:
   /// channel's retirement order is no longer tracked, so nothing past that
   /// point can be proven complete.
   static bool isProvenComplete(const ChannelState &q, mlir::Operation *owner) {
-    return !q.unknownTokens &&
-           !llvm::any_of(q.pushes,
-                         [&](const Push &p) { return p.owner == owner; });
+    return !q.unknownTokens && !llvm::any_of(q.pushes, [&](const Push &p) {
+      return p.owner == owner;
+    });
   }
 
   bool wouldOverflow(const ChannelKey &key, uint32_t depth) const {

@@ -449,27 +449,26 @@ def AIELowerDynamicBDPool : Pass<"aie-lower-dynamic-bd-pool", "AIE::DeviceOp"> {
     runtime loop are diagnosed.
   }];
 
-  let options = [
-    Option<
-        "enforceQueueDepth", "enforce-queue-depth", "bool",
-        /*default=*/"true",
-        "Insert an aiex.npu.maskpoll before any dma_start_task in a "
-        "runtime-bound loop that could push onto a full DMA task queue. "
-        "The same option as on aie-dma-to-npu and "
-        "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
-        "of those reaches: a loop this pass deliberately keeps rolled.">,
-    Option<
-        "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
-        /*default=*/"false",
-        "Warn when a dma_free_task releases a buffer descriptor id with no "
-        "completion guarantee, so the runtime pool could hand it straight "
-        "back out before hardware has finished the freed transfer. The "
-        "same option and the same off-by-default reasoning as on "
-        "aie-assign-runtime-sequence-bd-ids: the pass can only reason "
-        "within the runtime sequence, so a design that proves completion "
-        "through the compute core or another tile looks unsafe without "
-        "being so.">
-  ];
+  let options =
+      [Option<
+           "enforceQueueDepth", "enforce-queue-depth", "bool",
+           /*default=*/"true",
+           "Insert an aiex.npu.maskpoll before any dma_start_task in a "
+           "runtime-bound loop that could push onto a full DMA task queue. "
+           "The same option as on aie-dma-to-npu and "
+           "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
+           "of those reaches: a loop this pass deliberately keeps rolled.">,
+       Option<
+           "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
+           /*default=*/"false",
+           "Warn when a dma_free_task releases a buffer descriptor id with no "
+           "completion guarantee, so the runtime pool could hand it straight "
+           "back out before hardware has finished the freed transfer. The "
+           "same option and the same off-by-default reasoning as on "
+           "aie-assign-runtime-sequence-bd-ids: the pass can only reason "
+           "within the runtime sequence, so a design that proves completion "
+           "through the compute core or another tile looks unsafe without "
+           "being so.">];
 
   let constructor = "xilinx::AIEX::createAIELowerDynamicBDPoolPass()";
   let dependentDialects = ["mlir::arith::ArithDialect", "mlir::scf::SCFDialect",
