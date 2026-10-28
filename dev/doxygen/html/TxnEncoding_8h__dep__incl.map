@@ -1,0 +1,7 @@
+<map id="include/aie/Runtime/TxnEncoding.h" name="include/aie/Runtime/TxnEncoding.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="138,5,290,45"/>
+<area shape="rect" id="Node000002" href="$AIEXToEmitC_8cpp.html" title=" " alt="" coords="5,93,199,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="180,56,128,95,125,91,176,52"/>
+<area shape="rect" id="Node000003" href="$AIETargetNPU_8cpp.html" title=" " alt="" coords="223,101,432,126"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="252,52,313,98,310,102,249,56"/>
+</map>
