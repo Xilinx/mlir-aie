@@ -4113,9 +4113,9 @@ requirement of that kernel's whole call subtree and stops the walk there. The
 value is a declaration, not a clamp: an explicit value replaces the computed
 one, even when it is smaller. An explicit <code>0</code> is legal.</p>
 <p>IRON spells it as a keyword on the kernel declaration:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">Kernel</span><span class="p">(</span><span class="s2">&quot;recursive_kernel&quot;</span><span class="p">,</span> <span class="s2">&quot;recursive.o&quot;</span><span class="p">,</span> <span class="p">[</span><span class="o">...</span><span class="p">],</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">ExternalFunction</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">external_func</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">Kernel</span><span class="p">(</span><span class="s2">"recursive_kernel"</span><span class="p">,</span> <span class="s2">"recursive.o"</span><span class="p">,</span> <span class="p">[</span><span class="o">...</span><span class="p">],</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">ExternalFunction</span><span class="p">(</span><span class="s2">"my_kernel"</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">external_func</span><span class="p">(</span><span class="s2">"my_kernel"</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="the-cores-own-sections-data_size">The core's own sections: <code>data_size</code><a class="headerlink" href="#the-cores-own-sections-data_size" title="Permanent link">&para;</a></h2>
 <p>Ordinary, unpinned <code>.data</code>, <code>.rodata</code> and <code>.bss</code> do not go wherever there is
@@ -4128,7 +4128,7 @@ described below.</p>
 </code></pre></div>
 <p><code>aie-assign-buffer-addresses</code> turns the reservation into an <code>aie.buffer</code> marked
 <code>core_data</code> and places it alongside the tile's other buffers:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>%core_data_0_2 = aie.buffer(%tile_0_2) {address = 49152 : i32, core_data, sym_name = &quot;core_data_0_2&quot;} : memref&lt;8192xi8&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>%core_data_0_2 = aie.buffer(%tile_0_2) {address = 49152 : i32, core_data, sym_name = "core_data_0_2"} : memref&lt;8192xi8&gt;
 </code></pre></div>
 <p><code>aie-translate</code> emits that buffer's extent as the <code>data</code> MEMORY region of the
 linker script. The buffer names no symbol, so nothing else refers to it.</p>
@@ -4177,7 +4177,7 @@ attributes (when both measurements are enabled). A <code>data_size</code> below
 <h2 id="bank-pinned-static-tables-and-lut-checks">Bank-pinned static tables and LUT checks<a class="headerlink" href="#bank-pinned-static-tables-and-lut-checks" title="Permanent link">&para;</a></h2>
 <p>For AIE2/AIE2P, include the installed <code>aie_bank_placement.h</code> in a kernel and
 annotate tables with <code>AIE_BANK_A</code> through <code>AIE_BANK_D</code>. For example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;aie_bank_placement.h&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">"aie_bank_placement.h"</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">alignas</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">table_ab</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="n">AIE_BANK_A</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">};</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">alignas</span><span class="p">(</span><span class="mi">64</span><span class="p">)</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">table_cd</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span><span class="w"> </span><span class="n">AIE_BANK_B</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">};</span>
@@ -4242,7 +4242,7 @@ statics through its own storage constraints rather than linker regions, so none
 of this applies there.</p>
 <p>A table larger than its bank still cannot be placed, and is now reported while
 reserving rather than by the linker:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>error: &#39;aie.buffer&#39; op this core&#39;s static data pinned to bank 1 requires 32768
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>error: 'aie.buffer' op this core's static data pinned to bank 1 requires 32768
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>bytes, which cannot fit in bank 1 (16384 bytes total)
 </code></pre></div>
 <p>The <strong>default placement check</strong> compares each unambiguous bank-annotated
@@ -4290,7 +4290,7 @@ because its addresses are chosen afterwards. A prebaked core is read for its
 <p><code>data_size</code> cannot express this: it is a size, and what a prebaked ELF occupies
 is a specific range. Declaring the range yourself still works, and is worth
 doing when the ELF is not where <code>aiecc</code> can read it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>%prebaked = aie.buffer(%tile_0_3) {sym_name = &quot;prebaked_data&quot;, address = 8192 : i32} : memref&lt;4096xi8&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>%prebaked = aie.buffer(%tile_0_3) {sym_name = "prebaked_data", address = 8192 : i32} : memref&lt;4096xi8&gt;
 </code></pre></div>
 <p>Either way the allocator treats the extent as occupied space, keeps every
 buffer it places clear of it, reports a collision against it by name, and lists

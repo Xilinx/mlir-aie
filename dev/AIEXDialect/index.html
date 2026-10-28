@@ -11060,14 +11060,14 @@ by MasterSets and PacketRules inside switchboxes.</p>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  %74 = AIE.tile(7, 4)
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  %63 = AIE.tile(6, 3)
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  %64 = AIE.tile(6, 4)
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  AIE.broadcast_packet(%70, &quot;DMA&quot; : 0){
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  AIE.broadcast_packet(%70, "DMA" : 0){
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    AIE.bp_id(0x0){
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>      AIE.bp_dest&lt;%73, &quot;DMA&quot; : 0&gt;
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>      AIE.bp_dest&lt;%63, &quot;DMA&quot; : 0&gt;
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>      AIE.bp_dest&lt;%73, "DMA" : 0&gt;
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>      AIE.bp_dest&lt;%63, "DMA" : 0&gt;
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    }
 <a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    AIE.bp_id(0x1){
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>      AIE.bp_dest&lt;%74, &quot;DMA&quot; : 0&gt;
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>      AIE.bp_dest&lt;%64, &quot;DMA&quot; : 0&gt;
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>      AIE.bp_dest&lt;%74, "DMA" : 0&gt;
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>      AIE.bp_dest&lt;%64, "DMA" : 0&gt;
 <a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>    }
 <a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>  }
 </code></pre></div></p>
@@ -11106,7 +11106,7 @@ from the current argument list.
 'num_entries' - the number of Shim DMA BD entries to patch
 'offset' - index into the argument list to the start of offset data</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>  memref.global &quot;private&quot; constant @bd_table : memref&lt;9xi32&gt; = dense&lt;[0, -2147483648, 256, 117440512, 4351, 1, 1, 1, 1024]&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>  memref.global "private" constant @bd_table : memref&lt;9xi32&gt; = dense&lt;[0, -2147483648, 256, 117440512, 4351, 1, 1, 1, 1024]&gt;
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  ...
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  cert.apply_offset_57(@bd_table, 1, 2)
 </code></pre></div></p>
@@ -12183,11 +12183,11 @@ route, it will be replaced by multiple flows.</p>
 <a id="__codelineno-60-3" name="__codelineno-60-3" href="#__codelineno-60-3"></a>  %74 = AIE.tile(7, 4)
 <a id="__codelineno-60-4" name="__codelineno-60-4" href="#__codelineno-60-4"></a>  %63 = AIE.tile(6, 3)
 <a id="__codelineno-60-5" name="__codelineno-60-5" href="#__codelineno-60-5"></a>  %64 = AIE.tile(6, 4)
-<a id="__codelineno-60-6" name="__codelineno-60-6" href="#__codelineno-60-6"></a>  aiex.multicast(%70, &quot;DMA&quot; : 0){
-<a id="__codelineno-60-7" name="__codelineno-60-7" href="#__codelineno-60-7"></a>    aiex.multi_dest&lt;%73, &quot;DMA&quot; : 0&gt;
-<a id="__codelineno-60-8" name="__codelineno-60-8" href="#__codelineno-60-8"></a>    aiex.multi_dest&lt;%74, &quot;DMA&quot; : 0&gt;
-<a id="__codelineno-60-9" name="__codelineno-60-9" href="#__codelineno-60-9"></a>    aiex.multi_dest&lt;%63, &quot;DMA&quot; : 0&gt;
-<a id="__codelineno-60-10" name="__codelineno-60-10" href="#__codelineno-60-10"></a>    aiex.multi_dest&lt;%64, &quot;DMA&quot; : 0&gt;
+<a id="__codelineno-60-6" name="__codelineno-60-6" href="#__codelineno-60-6"></a>  aiex.multicast(%70, "DMA" : 0){
+<a id="__codelineno-60-7" name="__codelineno-60-7" href="#__codelineno-60-7"></a>    aiex.multi_dest&lt;%73, "DMA" : 0&gt;
+<a id="__codelineno-60-8" name="__codelineno-60-8" href="#__codelineno-60-8"></a>    aiex.multi_dest&lt;%74, "DMA" : 0&gt;
+<a id="__codelineno-60-9" name="__codelineno-60-9" href="#__codelineno-60-9"></a>    aiex.multi_dest&lt;%63, "DMA" : 0&gt;
+<a id="__codelineno-60-10" name="__codelineno-60-10" href="#__codelineno-60-10"></a>    aiex.multi_dest&lt;%64, "DMA" : 0&gt;
 <a id="__codelineno-60-11" name="__codelineno-60-11" href="#__codelineno-60-11"></a>  }
 </code></pre></div></p>
 <p>Traits: <code>SingleBlockImplicitTerminator&lt;AIE::EndOp&gt;</code>, <code>SingleBlock</code></p>

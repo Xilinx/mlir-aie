@@ -3874,11 +3874,11 @@ without <code>HRX_*</code> variables. CMake does not search site-packages.</p>
 <p>For a source/release tree, fetch, checksum-verify, and extract the pinned HRX
 release (coordinates in <code>utils/hrx-release.env</code>) with the helper script, then
 source the environment it prints:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">source</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>utils/fetch-hrx-release.sh<span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># or, in one step:  eval &quot;$(utils/fetch-hrx-release.sh --print-env)&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">source</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>utils/fetch-hrx-release.sh<span class="k">)</span><span class="s2">"</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># or, in one step:  eval "$(utils/fetch-hrx-release.sh --print-env)"</span>
 </code></pre></div>
 <p>Verify HRX is discoverable (path-only probe — no <code>dlopen</code>, no device init):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import aie.utils as u; print(&#39;has_hrx:&#39;, u.has_hrx)&quot;</span><span class="w">   </span><span class="c1"># -&gt; True</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import aie.utils as u; print('has_hrx:', u.has_hrx)"</span><span class="w">   </span><span class="c1"># -&gt; True</span>
 </code></pre></div>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
 <p>The Python package

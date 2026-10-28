@@ -4957,7 +4957,7 @@ lock ids, BD ids and switchbox connections, each under a name that does
 not depend on where it was put. Where they differ, it fails, listing each
 differing resource and what to pin to keep it stable across shapes.</p>
 <h4 id="options_2">Options<a class="headerlink" href="#options_2" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>-image : The image&#39;s resolved module (its input_with_addresses.mlir)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>-image : The image's resolved module (its input_with_addresses.mlir)
 </code></pre></div>
 <h3 id="-aie-core-int-range-narrowing"><code>-aie-core-int-range-narrowing</code><a class="headerlink" href="#-aie-core-int-range-narrowing" title="Permanent link">&para;</a></h3>
 <p><em>Narrow index loops and arithmetic in core code to 32 bits where integer range analysis proves it safe</em></p>
@@ -5042,7 +5042,7 @@ that begin at a core/DMA and end on a core/DMA.</p>
 <p>For each column of AIE tiles being employed in the design, spawn a network of control packet
 streaming interconnects which overlay on top of the design.</p>
 <h4 id="options_6">Options<a class="headerlink" href="#options_6" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>-route-shim-to-tct       : Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: [&#39;shim-only&#39;, &#39;all-tiles&#39;, &#39;disable&#39;]. &#39;shim-only&#39; also routes any tile a runtime sequence task issues a token from.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>-route-shim-to-tct       : Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable']. 'shim-only' also routes any tile a runtime sequence task issues a token from.
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>-route-shim-to-tile-ctrl : Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>-emit-standalone-overlay : Emit a standalone @ctrl_pkt_overlay device (and tag source devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When false, the pass applies the overlay in place only.
 </code></pre></div>
@@ -5099,13 +5099,13 @@ accesses the lock through a different 'lock address space'.  This pass converts 
 conceptual global address space into a local index.  e.g.:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>%lock = AIE.lock(%tile, 2)
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>AIE.core(%tile) {
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  AIE.useLock(%lock, &quot;Acquire&quot;, 1)
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  AIE.useLock(%lock, "Acquire", 1)
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>}
 </code></pre></div>
 becomes
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>AIE.core(%tile) {
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  %lockindex = arith.constant ? : index
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  AIE.useLock(%lockindex, &quot;Acquire&quot;, 1)
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  AIE.useLock(%lockindex, "Acquire", 1)
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>}
 </code></pre></div></p>
 <h3 id="-aie-lower-cascade-flows"><code>-aie-lower-cascade-flows</code><a class="headerlink" href="#-aie-lower-cascade-flows" title="Permanent link">&para;</a></h3>
@@ -5151,7 +5151,7 @@ costs a copy of the loop body, so each peel is kept only where it turns the
 loop's lock values into constants.</p>
 <h4 id="options_8">Options<a class="headerlink" href="#options_8" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>-default-dynamic      : Default objectFifo lowering for cores that do not set the dynamic_objfifo_lowering attribute: true leaves loops rolled (dynamic), false unrolls them (static).
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>-peel-first-iteration : Peel the first iteration off objectFifo loops whose lock values are computed at run time, keeping the peel where it makes them constant: &quot;true&quot;, &quot;false&quot;, or &quot;auto&quot; (peel unless default-dynamic is set).
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>-peel-first-iteration : Peel the first iteration off objectFifo loops whose lock values are computed at run time, keeping the peel where it makes them constant: "true", "false", or "auto" (peel unless default-dynamic is set).
 </code></pre></div>
 <h3 id="-aie-objectfifo-allocate"><code>-aie-objectfifo-allocate</code><a class="headerlink" href="#-aie-objectfifo-allocate" title="Permanent link">&para;</a></h3>
 <p><em>Give pools and endpoints their buffers, locks and channels</em></p>
@@ -5283,7 +5283,7 @@ physical tile.</p>
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>-merge-logical-tiles     : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
 <a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>-spread-unanchored-tiles : When true (default), a non-core aie.logical_tile with no CoreTile peers to derive a routing centroid from is ranked by current DMA load rather than by distance to column 0. Affects only designs with no core anchors (e.g. pure DMA passthrough); CoreTile placement and anchored non-core placement are unaffected.
 <a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>-sa-seed                 : Random seed for SA placer (0 = non-deterministic).
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>-sa-effort               : Scales the SA placer&#39;s moves per temperature step and its greedy tail. Below 1.0 trades placement cost for compile time.
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>-sa-effort               : Scales the SA placer's moves per temperature step and its greedy tail. Below 1.0 trades placement cost for compile time.
 </code></pre></div>
 <h4 id="statistics_1">Statistics<a class="headerlink" href="#statistics_1" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>sa-final-cost : SA placer cost of the placement it kept
@@ -5328,11 +5328,11 @@ into a single aie.trace.reg operation with a combined mask and value.</p>
 2. Merge multiple writes to the same register with non-overlapping masks</p>
 <p>Example transformation:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>// Before:
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>aie.trace.reg register=&quot;Trace_Event0&quot; field=&quot;Trace_Event0&quot; value=33
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>aie.trace.reg register=&quot;Trace_Event0&quot; field=&quot;Trace_Event1&quot; value=34
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>aie.trace.reg register="Trace_Event0" field="Trace_Event0" value=33
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>aie.trace.reg register="Trace_Event0" field="Trace_Event1" value=34
 <a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>
 <a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>// After:
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>aie.trace.reg register=&quot;Trace_Event0&quot; value=0x22210000 mask=0xFFFF0000
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>aie.trace.reg register="Trace_Event0" value=0x22210000 mask=0xFFFF0000
 </code></pre></div></p>
 <p>It is an error for two aie.trace.reg in the same aie.trace block to have
 overlapping masks for the same register.</p>

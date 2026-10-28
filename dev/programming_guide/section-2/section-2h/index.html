@@ -3780,7 +3780,7 @@ enforces this).</p>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">wts</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">prod_ty</span><span class="p">,</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">depth</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;wts&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"wts"</span><span class="p">,</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">consumer_obj_type</span><span class="o">=</span><span class="n">cons_ty</span><span class="p">,</span>    <span class="c1"># 4:1 ratio — one prod fill, four cons acquires</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
 </code></pre></div>
@@ -3812,7 +3812,7 @@ consumer reads straight off the stream.</p>
 acquire/release:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">of_dout_L1L3</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">dout_ty</span><span class="p">,</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;of_dout_L1L3&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"of_dout_L1L3"</span><span class="p">,</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">aie_stream</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>            <span class="c1"># (end, port) — wire-only producer side</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span>
@@ -3847,13 +3847,13 @@ neighbor's L1.</p>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">tile</span><span class="o">=</span><span class="n">west_tile</span><span class="p">,</span>                      <span class="c1"># pinned to neighbor, not compute_tile</span>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="nb">type</span><span class="o">=</span><span class="n">lut_ty</span><span class="p">,</span>
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">initial_value</span><span class="o">=</span><span class="n">lut_data</span><span class="p">,</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;lut&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"lut"</span><span class="p">,</span>
 <a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">)</span>
 <a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
 <a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="n">worker</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span>
 <a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="n">body</span><span class="p">,</span>
 <a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>    <span class="n">fn_args</span><span class="o">=</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">lut_buf</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>         <span class="c1"># cross-tile Buffer reaches the kernel</span>
-<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="n">tile</span><span class="o">=</span><span class="n">compute_tile</span><span class="p">,</span>                   <span class="c1"># different tile — that&#39;s the point</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="n">tile</span><span class="o">=</span><span class="n">compute_tile</span><span class="p">,</span>                   <span class="c1"># different tile — that's the point</span>
 <a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="p">)</span>
 </code></pre></div>
 <p>The convenience path is unchanged: a <code>Buffer</code> with no <code>tile=</code> set

@@ -3770,7 +3770,7 @@
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="p">)</span>
 </code></pre></div>
 <p>In our example, one Worker writes zeros into a local <code>Buffer</code>. The Worker is pinned to compute tile (0, 2):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">buf</span> <span class="o">=</span> <span class="n">Buffer</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;buff&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">buf</span> <span class="o">=</span> <span class="n">Buffer</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"buff"</span><span class="p">)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">core_fn</span><span class="p">(</span><span class="n">buff</span><span class="p">):</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">range_</span><span class="p">(</span><span class="n">data_size</span><span class="p">):</span>

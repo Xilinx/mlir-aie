@@ -3688,7 +3688,7 @@ contain the new transaction operations sequence.</p>
 <p><em>Convert AIEVec dialect to LLVM dialect</em></p>
 <p>This pass converts AIEVec dialect ops to LLVM dialect calls to builtins.</p>
 <h4 id="options_2">Options<a class="headerlink" href="#options_2" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>-aie-target                   : Select AIE version: \&quot;aie\&quot;, \&quot;aie2\&quot;, or \&quot;aie2p\&quot;. This will determine which XLLVM intrinsics to use.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>-aie-target                   : Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will determine which XLLVM intrinsics to use.
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>-aie2-fp32-emulation-strategy : Set the AIE2 FP32 emulation strategy. Elementwise multiplication and matrix multiplication intrinsics for FP32 input type are emulated using bfloat16 data-path.
 </code></pre></div>
 <h3 id="-convert-aiex-to-emitc"><code>-convert-aiex-to-emitc</code><a class="headerlink" href="#-convert-aiex-to-emitc" title="Permanent link">&para;</a></h3>
@@ -3705,7 +3705,7 @@ runtime-valued operands can flow through to a single compiled xclbin.</p>
 a diagnostic; it is handled by later passes in the dynamic-sequences work.</p>
 <h4 id="options_3">Options<a class="headerlink" href="#options_3" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>-fold-ddr-addr-offset : Fold the AIE DDR-aperture offset into the arg_plus of DDR address patches for host arguments beyond the firmware-translated set (mirrors -aie-npu-fold-ddr-addr-offset on the static aie-npu-to-binary path). Required for the xclbin + instruction-buffer runtime; must be false for the full-ELF (xrt.ext.kernel) runtime and for HRX, which translate every host buffer address themselves.
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>-emit-dispatch-shim   : Also emit the extern &quot;C&quot; dispatch_abi() / dispatch_generate() entry points the JIT dispatch bridge loads via ctypes. Requires exactly one aie.runtime_sequence. Off by default: these are definitions, so a header including them twice would not link.
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>-emit-dispatch-shim   : Also emit the extern "C" dispatch_abi() / dispatch_generate() entry points the JIT dispatch bridge loads via ctypes. Requires exactly one aie.runtime_sequence. Off by default: these are definitions, so a header including them twice would not link.
 </code></pre></div>
 
 

@@ -3998,7 +3998,7 @@ anything, so it can't run as a bare per-file text check the way the
 formatting hooks do.</p>
 <p>If you already have a build (see <a href="../Building/">Building from source</a>),
 point the pre-push hook and CI at it — any build works, clang or GCC:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># If your build wasn&#39;t configured with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON,</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># If your build wasn't configured with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON,</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># generate compile_commands.json in place:</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>ninja<span class="w"> </span>-C<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>compdb<span class="w"> </span>&gt;<span class="w"> </span>build/compile_commands.json
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>

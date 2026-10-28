@@ -3961,11 +3961,11 @@ the full variable list.</p>
 </code></pre></div>
 <p><code>NPU_RUNTIME=hsa</code> selects <code>HSATensor</code> + <code>CachedHSAHostRuntime</code>. To confirm what
 was selected, and which ROCm won discovery:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">NPU_RUNTIME</span><span class="o">=</span>hsa<span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">NPU_RUNTIME</span><span class="o">=</span>hsa<span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="s2">from aie.utils.tensor_factory import DEFAULT_TENSOR_CLASS</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="s2">from aie.utils.hostruntime.hsaruntime import discovery</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="s2">print(DEFAULT_TENSOR_CLASS.__name__)   # -&gt; HSATensor</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="s2">print(discovery.find_libhsa())&quot;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="s2">print(discovery.find_libhsa())"</span>
 </code></pre></div>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
 <p><code>HSAContext</code> is a process-wide singleton owning the ROCR objects: the AIE and

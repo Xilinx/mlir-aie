@@ -11370,8 +11370,8 @@ switch is referred to as <code>switchbox</code> to avoid confusion with the
 This op is used as a pointer to select the arbiter for routing a packet-switched flow</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>    %a0_0 = aie.amsel&lt;5&gt;(3)
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    %m1 = aie.masterset(&quot;East&quot; : 0, %a0_0 )
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    aie.packet_rules(&quot;South&quot; : 0) {
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    %m1 = aie.masterset("East" : 0, %a0_0 )
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    aie.packet_rules("South" : 0) {
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>      aie.rule(0x1F, 0x10, %a0_0)
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    }
 </code></pre></div>
@@ -11579,7 +11579,7 @@ of the <code>aie.masterset</code> operations in the same switchbox.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>%tile = aie.tile(1, 1)
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>aie.switchbox(%tile) {
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  aie.connect&lt;&quot;West&quot; : 0, &quot;Core&quot; : 1&gt;
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  aie.connect&lt;"West" : 0, "Core" : 1&gt;
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>}
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;SwitchboxOp, ShimMuxOp&gt;</code></p>
@@ -11683,15 +11683,15 @@ removed).  Specifying both <code>link_with</code> and either <code>link_files</c
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>%tile = aie.tile(1, 1)
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>%lock11_8 = aie.lock(%tile, 8)
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>aie.core(%tile) {
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>  aie.use_lock(%lock11_8, &quot;Acquire&quot;, 1)
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>  aie.use_lock(%lock11_8, &quot;Release&quot;, 0)
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>  aie.use_lock(%lock11_8, "Acquire", 1)
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>  aie.use_lock(%lock11_8, "Release", 0)
 <a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>  aie.end
 <a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>}
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>%tile = aie.tile(3, 3)
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>aie.core(%tile) {
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  aie.end
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>} { stack_size = 2048 : i32, elf_file = &quot;core_33.elf&quot; }
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>} { stack_size = 2048 : i32, elf_file = "core_33.elf" }
 </code></pre></div></p>
 <p>Traits: <code>AutomaticAllocationScope</code>, <code>HasParent&lt;DeviceOp, ::mlir::ModuleOp&gt;</code>, <code>IsFlowEndPoint</code></p>
 <p>Interfaces: <code>InferTypeOpInterface</code>, <code>OpAsmOpInterface</code>, <code>TileElement</code></p>
@@ -11859,11 +11859,11 @@ what buffer to use, and optionally:</p>
 <div class="highlight"><pre><span></span><code>1. the offset into the buffer;
 2. the transfer length;
 3. the sizes and strides for n-d tensor addressing (described below);
-4. the &quot;bd_id&quot; with which to associate the buffer descriptor (most often left empty);
+4. the "bd_id" with which to associate the buffer descriptor (most often left empty);
 5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
 6. the burst length to use for the DMA operation. This option is only available for data movement between the host memory and Shim NOC tiles.
   The default value of 0 is interpreted as the maximum available burst length in the architecture.
-7. the raw 4-bit `AxCACHE` value to use for the DMA&#39;s AXI-MM transfers. This option is only available for
+7. the raw 4-bit `AxCACHE` value to use for the DMA's AXI-MM transfers. This option is only available for
   data movement between the host memory and Shim NOC tiles. If unset, `AIETargetModel::getDefaultAxCache()`
   supplies the value.
 </code></pre></div>
@@ -11877,16 +11877,16 @@ a "chain" of BDs (using <code>next_bd</code> as a "jump" to the next BB which co
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>  // this defines a BD that uses lock %lck0 and buffer %buf0
 <a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>  ^bd5:
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    aie.use_lock(%lck, &quot;Acquire&quot;, 0)
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    aie.use_lock(%lck, "Acquire", 0)
 <a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    // transfer the first 32 elements of the memref
 <a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    aie.dma_bd(%buf0 : memref&lt;128xi32&gt; offset = 0 len = 32)
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    aie.use_lock(%lck, &quot;Release&quot;, 1)
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    aie.use_lock(%lck, "Release", 1)
 <a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>    aie.next_bd ^bd6 // point to the next bb, which describes the next buffer descriptor
 <a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>  ^bd6:
-<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>    aie.use_lock(%lck, &quot;Acquire&quot;, 1)
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>    aie.use_lock(%lck, "Acquire", 1)
 <a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>    // transfer the last 32 elements of the memref
 <a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>    aie.dma_bd(%buf1 : memref&lt;128xi32&gt; offset = 96 len = 32)
-<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>    aie.use_lock(%lck, &quot;Release&quot;, 0)
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>    aie.use_lock(%lck, "Release", 0)
 <a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>    aie.next_bd ^end
 <a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>
 <a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>  ...
@@ -12084,10 +12084,10 @@ The block descriptor specifies what lock to use and the buffer configuration.</p
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>  // this defines a BD that uses lock %lck0 and buffer %buf0
 <a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>  ^bd5:
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>    aie.use_lock(%lck, &quot;Acquire&quot;, 0)
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>    aie.use_lock(%lck, "Acquire", 0)
 <a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>    aie.dma_bd_packet(0x4, 0xD)
 <a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>    aie.dma_bd(%buf0 : memref&lt;512xi32&gt; offset = 0 len = 512)
-<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a>    aie.use_lock(%lck, &quot;Release&quot;, 1)
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a>    aie.use_lock(%lck, "Release", 1)
 <a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a>    br ^bd6 // point to the next Block, which is also a different Block Descriptor
 </code></pre></div></p>
 <h4 id="attributes_9">Attributes:<a class="headerlink" href="#attributes_9" title="Permanent link">&para;</a></h4>
@@ -12107,11 +12107,11 @@ either a MemOp (representing a TileDMA), a MemTileDMAOp (representing a DMA in a
 or in a ShimDMAOp (representing a ShimDMA).
 A channel is defined by a direction (i.e., MM2S or S2MM) and an index.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>    aie.dma_start(&quot;MM2S&quot;, 0, ^bd0, ^end)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>    aie.dma_start("MM2S", 0, ^bd0, ^end)
 <a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>  ^bd0:
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>    aie.use_lock(%lock0, &quot;Acquire&quot;, 0)
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>    aie.use_lock(%lock0, "Acquire", 0)
 <a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    aie.dma_bd(%buffer : memref&lt;16xf32&gt; offset = 0 len = 16)
-<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>    aie.use_lock(%lock0, &quot;Release&quot;, 1)
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>    aie.use_lock(%lock0, "Release", 1)
 <a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>    br ^bd0
 <a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>  ^end:
 <a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>    aie.end
@@ -12261,8 +12261,8 @@ local flow for each pinned switchbox hop.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>  %00 = aie.tile(0, 0)
 <a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>  %11 = aie.tile(1, 1)
 <a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>  %01 = aie.tile(0, 1)
-<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>  aie.flow(%00, &quot;DMA&quot; : 0, %11, &quot;Core&quot; : 1)
-<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>  aie.flow(%00, &quot;DMA&quot; : 0, %11, &quot;Core&quot; : 1) via (%01 : South : 0 -&gt; North : 0)
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>  aie.flow(%00, "DMA" : 0, %11, "Core" : 1)
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>  aie.flow(%00, "DMA" : 0, %11, "Core" : 1) via (%01 : South : 0 -&gt; North : 0)
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;DeviceOp, ::mlir::ModuleOp&gt;</code></p>
 <h4 id="attributes_13">Attributes:<a class="headerlink" href="#attributes_13" title="Permanent link">&para;</a></h4>
@@ -12474,7 +12474,7 @@ Use <code>?</code> for unspecified coordinates.</p>
 This operation specifies the configuration for a master port.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>  %a0_m2 = aie.amsel&lt;0&gt;(2)
-<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>  aie.masterset(&quot;Core&quot; : 0, %a0_m2)
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>  aie.masterset("Core" : 0, %a0_m2)
 </code></pre></div></p>
 <p>The code will configure the master port &lt;"Core" : 0&gt; to use arbiter 0 with msel 2
 (see AMSelOp for more details regarding AMSel)</p>
@@ -12485,8 +12485,8 @@ a master port can be activated by different msels from one arbiter</p>
 <a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>  %a1_1 = aie.amsel&lt;1&gt;(1)
 <a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>  %a2_3 = aie.amsel&lt;2&gt;(3)
 <a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a>
-<a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a>  aie.masterset(&quot;West&quot; : 2, %a1_0, %a2_3) // this is illegal, please don&#39;t do this
-<a id="__codelineno-43-6" name="__codelineno-43-6" href="#__codelineno-43-6"></a>  aie.masterset(&quot;West&quot; : 3, %a1_0, %a1_1) // this is OK
+<a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a>  aie.masterset("West" : 2, %a1_0, %a2_3) // this is illegal, please don't do this
+<a id="__codelineno-43-6" name="__codelineno-43-6" href="#__codelineno-43-6"></a>  aie.masterset("West" : 3, %a1_0, %a1_1) // this is OK
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;SwitchboxOp&gt;</code></p>
 <p>Interfaces: <code>InferTypeOpInterface</code></p>
@@ -12538,11 +12538,11 @@ The region of a MemOp is used to setup the DMAs and Block Descriptors.
 See DMAStartOp and DMABdOp for more concrete examples on DMAs and Block Descriptors.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>  m73 = aie.mem(%t73) {
-<a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a>      %srcDma = aie.dma_start(&quot;S2MM&quot;, 0, ^bd0, ^end)
+<a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a>      %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
 <a id="__codelineno-45-3" name="__codelineno-45-3" href="#__codelineno-45-3"></a>    ^bd0:
-<a id="__codelineno-45-4" name="__codelineno-45-4" href="#__codelineno-45-4"></a>      aie.use_lock(%lock, &quot;Acquire&quot;, 0)
+<a id="__codelineno-45-4" name="__codelineno-45-4" href="#__codelineno-45-4"></a>      aie.use_lock(%lock, "Acquire", 0)
 <a id="__codelineno-45-5" name="__codelineno-45-5" href="#__codelineno-45-5"></a>      aie.dma_bd(%buf : memref&lt;64xi16&gt; offset = 0 len = 64)
-<a id="__codelineno-45-6" name="__codelineno-45-6" href="#__codelineno-45-6"></a>      aie.use_lock(%lock, &quot;Release&quot;, 1)
+<a id="__codelineno-45-6" name="__codelineno-45-6" href="#__codelineno-45-6"></a>      aie.use_lock(%lock, "Release", 1)
 <a id="__codelineno-45-7" name="__codelineno-45-7" href="#__codelineno-45-7"></a>      aie.next_bd ^bd0
 <a id="__codelineno-45-8" name="__codelineno-45-8" href="#__codelineno-45-8"></a>    ^end:
 <a id="__codelineno-45-9" name="__codelineno-45-9" href="#__codelineno-45-9"></a>      aie.end
@@ -12594,11 +12594,11 @@ xcve2302: row 1
 xcve2802: row 1 and 2</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>  m73 = aie.memtile_dma(%t71) {
-<a id="__codelineno-47-2" name="__codelineno-47-2" href="#__codelineno-47-2"></a>      %srcDma = aie.dma_start(&quot;S2MM&quot;, 0, ^bd0, ^end)
+<a id="__codelineno-47-2" name="__codelineno-47-2" href="#__codelineno-47-2"></a>      %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
 <a id="__codelineno-47-3" name="__codelineno-47-3" href="#__codelineno-47-3"></a>    ^bd0:
-<a id="__codelineno-47-4" name="__codelineno-47-4" href="#__codelineno-47-4"></a>      aie.use_lock(%lock, &quot;Acquire&quot;, 0)
+<a id="__codelineno-47-4" name="__codelineno-47-4" href="#__codelineno-47-4"></a>      aie.use_lock(%lock, "Acquire", 0)
 <a id="__codelineno-47-5" name="__codelineno-47-5" href="#__codelineno-47-5"></a>      aie.dma_bd(%buf : memref&lt;64xi16&gt; offset = 0 len = 64)
-<a id="__codelineno-47-6" name="__codelineno-47-6" href="#__codelineno-47-6"></a>      aie.use_lock(%lock, &quot;Release&quot;, 1)
+<a id="__codelineno-47-6" name="__codelineno-47-6" href="#__codelineno-47-6"></a>      aie.use_lock(%lock, "Release", 1)
 <a id="__codelineno-47-7" name="__codelineno-47-7" href="#__codelineno-47-7"></a>      aie.next_bd ^bd0
 <a id="__codelineno-47-8" name="__codelineno-47-8" href="#__codelineno-47-8"></a>    ^end:
 <a id="__codelineno-47-9" name="__codelineno-47-9" href="#__codelineno-47-9"></a>      aie.end
@@ -12648,11 +12648,11 @@ Note that unlike other terminators (like cf.br), canonicalization should not rem
 the <code>next_bd</code> terminator, since it would result in invalid buffer descriptors.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>  m73 = aie.mem(%t73) {
-<a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a>      %srcDma = aie.dma_start(&quot;S2MM&quot;, 0, ^bd0, ^end)
+<a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a>      %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
 <a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a>    ^bd0:
-<a id="__codelineno-49-4" name="__codelineno-49-4" href="#__codelineno-49-4"></a>      aie.use_lock(%lock, &quot;Acquire&quot;, 0)
+<a id="__codelineno-49-4" name="__codelineno-49-4" href="#__codelineno-49-4"></a>      aie.use_lock(%lock, "Acquire", 0)
 <a id="__codelineno-49-5" name="__codelineno-49-5" href="#__codelineno-49-5"></a>      aie.dma_bd(%buf : memref&lt;64xi16&gt; offset = 0 len = 64)
-<a id="__codelineno-49-6" name="__codelineno-49-6" href="#__codelineno-49-6"></a>      aie.use_lock(%lock, &quot;Release&quot;, 1)
+<a id="__codelineno-49-6" name="__codelineno-49-6" href="#__codelineno-49-6"></a>      aie.use_lock(%lock, "Release", 1)
 <a id="__codelineno-49-7" name="__codelineno-49-7" href="#__codelineno-49-7"></a>      aie.next_bd ^bd0
 <a id="__codelineno-49-8" name="__codelineno-49-8" href="#__codelineno-49-8"></a>    ^end:
 <a id="__codelineno-49-9" name="__codelineno-49-9" href="#__codelineno-49-9"></a>      aie.end
@@ -13312,8 +13312,8 @@ configuration.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-79-1" name="__codelineno-79-1" href="#__codelineno-79-1"></a>  %01 = aie.tile(0, 1)
 <a id="__codelineno-79-2" name="__codelineno-79-2" href="#__codelineno-79-2"></a>  // Claims 0x10 through 0x13: the mask ignores the low two bits.
 <a id="__codelineno-79-3" name="__codelineno-79-3" href="#__codelineno-79-3"></a>  aie.packet_flow(0x10, mask = 0x1c) {
-<a id="__codelineno-79-4" name="__codelineno-79-4" href="#__codelineno-79-4"></a>    aie.packet_source&lt;%01, &quot;Core&quot; : 0&gt;
-<a id="__codelineno-79-5" name="__codelineno-79-5" href="#__codelineno-79-5"></a>    aie.packet_dest&lt;%01, &quot;Core&quot; : 0&gt;
+<a id="__codelineno-79-4" name="__codelineno-79-4" href="#__codelineno-79-4"></a>    aie.packet_source&lt;%01, "Core" : 0&gt;
+<a id="__codelineno-79-5" name="__codelineno-79-5" href="#__codelineno-79-5"></a>    aie.packet_dest&lt;%01, "Core" : 0&gt;
 <a id="__codelineno-79-6" name="__codelineno-79-6" href="#__codelineno-79-6"></a>  }
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;DeviceOp, ::mlir::ModuleOp&gt;</code>, <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code></p>
@@ -13534,7 +13534,7 @@ whose BD ids are split between channels (a MemTile's by channel parity), it
 picks the free channel whose BDs have the most room left after the other
 channels' programs and runtime tasks.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-88-1" name="__codelineno-88-1" href="#__codelineno-88-1"></a>  aie.route_endpoint @in(%shim) DMA {fifoName = &quot;in&quot;}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-88-1" name="__codelineno-88-1" href="#__codelineno-88-1"></a>  aie.route_endpoint @in(%shim) DMA {fifoName = "in"}
 <a id="__codelineno-88-2" name="__codelineno-88-2" href="#__codelineno-88-2"></a>  aie.route_endpoint @out(%tile) Core {channelIndex = 0}
 <a id="__codelineno-88-3" name="__codelineno-88-3" href="#__codelineno-88-3"></a>  aie.route_endpoint @b_in(%memtile) DMA
 </code></pre></div></p>
@@ -13591,7 +13591,7 @@ Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-90-1" name="__codelineno-90-1" href="#__codelineno-90-1"></a>  %a4_1 = aie.amsel&lt;4&gt;(1)
 <a id="__codelineno-90-2" name="__codelineno-90-2" href="#__codelineno-90-2"></a>  %a3_2 = aie.amsel&lt;3&gt;(2)
 <a id="__codelineno-90-3" name="__codelineno-90-3" href="#__codelineno-90-3"></a>
-<a id="__codelineno-90-4" name="__codelineno-90-4" href="#__codelineno-90-4"></a>  aie.packet_rules(&quot;Core&quot; : 0) {
+<a id="__codelineno-90-4" name="__codelineno-90-4" href="#__codelineno-90-4"></a>  aie.packet_rules("Core" : 0) {
 <a id="__codelineno-90-5" name="__codelineno-90-5" href="#__codelineno-90-5"></a>    aie.rule(0x1F, 0x2, %a4_1)
 <a id="__codelineno-90-6" name="__codelineno-90-6" href="#__codelineno-90-6"></a>    aie.rule(0x1B, 0x1, %a3_2)
 <a id="__codelineno-90-7" name="__codelineno-90-7" href="#__codelineno-90-7"></a>  }
@@ -13765,7 +13765,7 @@ by code in its region, but can only contain connect operations</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-97-1" name="__codelineno-97-1" href="#__codelineno-97-1"></a>%tile = aie.tile(1, 1)
 <a id="__codelineno-97-2" name="__codelineno-97-2" href="#__codelineno-97-2"></a>aie.shim_mux(%tile) {
-<a id="__codelineno-97-3" name="__codelineno-97-3" href="#__codelineno-97-3"></a>  aie.connect&lt;&quot;North&quot; : 0, &quot;DMA&quot; : 1&gt;
+<a id="__codelineno-97-3" name="__codelineno-97-3" href="#__codelineno-97-3"></a>  aie.connect&lt;"North" : 0, "DMA" : 1&gt;
 <a id="__codelineno-97-4" name="__codelineno-97-4" href="#__codelineno-97-4"></a>}
 </code></pre></div></p>
 <p>Traits: <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code></p>
@@ -13810,7 +13810,7 @@ by code in its region, representing various connections</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-99-1" name="__codelineno-99-1" href="#__codelineno-99-1"></a>%tile = aie.tile(1, 1)
 <a id="__codelineno-99-2" name="__codelineno-99-2" href="#__codelineno-99-2"></a>aie.switchbox(%tile) {
-<a id="__codelineno-99-3" name="__codelineno-99-3" href="#__codelineno-99-3"></a>  aie.connect&lt;&quot;West&quot; : 0, &quot;Core&quot; : 1&gt;
+<a id="__codelineno-99-3" name="__codelineno-99-3" href="#__codelineno-99-3"></a>  aie.connect&lt;"West" : 0, "Core" : 1&gt;
 <a id="__codelineno-99-4" name="__codelineno-99-4" href="#__codelineno-99-4"></a>}
 </code></pre></div></p>
 <p>Traits: <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code></p>
@@ -13895,10 +13895,10 @@ within a <code>aie.runtime_sequence</code> block.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-102-1" name="__codelineno-102-1" href="#__codelineno-102-1"></a>%tile02 = aie.tile(0, 2)
 <a id="__codelineno-102-2" name="__codelineno-102-2" href="#__codelineno-102-2"></a>
 <a id="__codelineno-102-3" name="__codelineno-102-3" href="#__codelineno-102-3"></a>aie.trace @trace_tile02(%tile02) {
-<a id="__codelineno-102-4" name="__codelineno-102-4" href="#__codelineno-102-4"></a>  aie.trace.mode &quot;Event-Time&quot;
+<a id="__codelineno-102-4" name="__codelineno-102-4" href="#__codelineno-102-4"></a>  aie.trace.mode "Event-Time"
 <a id="__codelineno-102-5" name="__codelineno-102-5" href="#__codelineno-102-5"></a>  aie.trace.packet id=1 type=core
-<a id="__codelineno-102-6" name="__codelineno-102-6" href="#__codelineno-102-6"></a>  aie.trace.event&lt;&quot;INSTR_EVENT_0&quot;&gt;
-<a id="__codelineno-102-7" name="__codelineno-102-7" href="#__codelineno-102-7"></a>  aie.trace.event&lt;&quot;INSTR_VECTOR&quot;&gt;
+<a id="__codelineno-102-6" name="__codelineno-102-6" href="#__codelineno-102-6"></a>  aie.trace.event&lt;"INSTR_EVENT_0"&gt;
+<a id="__codelineno-102-7" name="__codelineno-102-7" href="#__codelineno-102-7"></a>  aie.trace.event&lt;"INSTR_VECTOR"&gt;
 <a id="__codelineno-102-8" name="__codelineno-102-8" href="#__codelineno-102-8"></a>  aie.trace.start broadcast=15
 <a id="__codelineno-102-9" name="__codelineno-102-9" href="#__codelineno-102-9"></a>  aie.trace.stop broadcast=14
 <a id="__codelineno-102-10" name="__codelineno-102-10" href="#__codelineno-102-10"></a>}
@@ -13947,18 +13947,18 @@ through slot 2 (combo of combo0 and combo1 results).</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-104-1" name="__codelineno-104-1" href="#__codelineno-104-1"></a>aie.trace @my_trace(%tile02) {
 <a id="__codelineno-104-2" name="__codelineno-104-2" href="#__codelineno-104-2"></a>  // Configure Combo 0: lock stalled AND NOT DMA active
-<a id="__codelineno-104-3" name="__codelineno-104-3" href="#__codelineno-104-3"></a>  aie.trace.combo_event&lt;0&gt; &lt;&quot;LOCK_STALL&quot;&gt; AND_NOT &lt;&quot;DMA_S2MM_0_STALLED&quot;&gt;
+<a id="__codelineno-104-3" name="__codelineno-104-3" href="#__codelineno-104-3"></a>  aie.trace.combo_event&lt;0&gt; &lt;"LOCK_STALL"&gt; AND_NOT &lt;"DMA_S2MM_0_STALLED"&gt;
 <a id="__codelineno-104-4" name="__codelineno-104-4" href="#__codelineno-104-4"></a>
 <a id="__codelineno-104-5" name="__codelineno-104-5" href="#__codelineno-104-5"></a>  // Configure Combo 1: instruction event OR vector operation
 <a id="__codelineno-104-6" name="__codelineno-104-6" href="#__codelineno-104-6"></a>  aie.trace.combo_event&lt;1&gt; &lt;CoreEventAIE2::INSTR_EVENT_0&gt; OR &lt;CoreEventAIE2::INSTR_VECTOR&gt;
 <a id="__codelineno-104-7" name="__codelineno-104-7" href="#__codelineno-104-7"></a>
 <a id="__codelineno-104-8" name="__codelineno-104-8" href="#__codelineno-104-8"></a>  // Configure Combo 2: (combo0) AND (combo1)
-<a id="__codelineno-104-9" name="__codelineno-104-9" href="#__codelineno-104-9"></a>  aie.trace.combo_event&lt;2&gt; &lt;&quot;COMBO_EVENT_0&quot;&gt; AND &lt;&quot;COMBO_EVENT_1&quot;&gt;
+<a id="__codelineno-104-9" name="__codelineno-104-9" href="#__codelineno-104-9"></a>  aie.trace.combo_event&lt;2&gt; &lt;"COMBO_EVENT_0"&gt; AND &lt;"COMBO_EVENT_1"&gt;
 <a id="__codelineno-104-10" name="__codelineno-104-10" href="#__codelineno-104-10"></a>
 <a id="__codelineno-104-11" name="__codelineno-104-11" href="#__codelineno-104-11"></a>  // Trace the combo results
-<a id="__codelineno-104-12" name="__codelineno-104-12" href="#__codelineno-104-12"></a>  aie.trace.event&lt;&quot;COMBO_EVENT_0&quot;&gt;
-<a id="__codelineno-104-13" name="__codelineno-104-13" href="#__codelineno-104-13"></a>  aie.trace.event&lt;&quot;COMBO_EVENT_1&quot;&gt;
-<a id="__codelineno-104-14" name="__codelineno-104-14" href="#__codelineno-104-14"></a>  aie.trace.event&lt;&quot;COMBO_EVENT_2&quot;&gt;
+<a id="__codelineno-104-12" name="__codelineno-104-12" href="#__codelineno-104-12"></a>  aie.trace.event&lt;"COMBO_EVENT_0"&gt;
+<a id="__codelineno-104-13" name="__codelineno-104-13" href="#__codelineno-104-13"></a>  aie.trace.event&lt;"COMBO_EVENT_1"&gt;
+<a id="__codelineno-104-14" name="__codelineno-104-14" href="#__codelineno-104-14"></a>  aie.trace.event&lt;"COMBO_EVENT_2"&gt;
 <a id="__codelineno-104-15" name="__codelineno-104-15" href="#__codelineno-104-15"></a>  ...
 <a id="__codelineno-104-16" name="__codelineno-104-16" href="#__codelineno-104-16"></a>}
 </code></pre></div></p>
@@ -14013,8 +14013,8 @@ addresses and values needed to configure trace hardware.</p>
 optimizations before final lowering to NPU register writes.</p>
 <p>Example (generated, not user-written):
 <div class="highlight"><pre><span></span><code><a id="__codelineno-106-1" name="__codelineno-106-1" href="#__codelineno-106-1"></a>aie.trace.config @trace_tile02_config(%tile02) {
-<a id="__codelineno-106-2" name="__codelineno-106-2" href="#__codelineno-106-2"></a>  aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Trace_Start_Event&quot; value=15
-<a id="__codelineno-106-3" name="__codelineno-106-3" href="#__codelineno-106-3"></a>  aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Mode&quot; value=&quot;Event-Time&quot;
+<a id="__codelineno-106-2" name="__codelineno-106-2" href="#__codelineno-106-2"></a>  aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15
+<a id="__codelineno-106-3" name="__codelineno-106-3" href="#__codelineno-106-3"></a>  aie.trace.reg register="Trace_Control0" field="Mode" value="Event-Time"
 <a id="__codelineno-106-4" name="__codelineno-106-4" href="#__codelineno-106-4"></a>}
 </code></pre></div></p>
 <p>Traits: <code>AttrBasedSymbolVisibility</code>, <code>HasParent&lt;DeviceOp&gt;</code>, <code>SingleBlockImplicitTerminator&lt;EndOp&gt;</code>, <code>SingleBlock</code>, <code>SymbolName</code></p>
@@ -14060,14 +14060,14 @@ that can be traced using aie.trace.event operations.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-107-1" name="__codelineno-107-1" href="#__codelineno-107-1"></a>aie.trace @my_trace(%tile02) {
 <a id="__codelineno-107-2" name="__codelineno-107-2" href="#__codelineno-107-2"></a>  // Configure Edge detector 0: count lock stalls (rising edges)
-<a id="__codelineno-107-3" name="__codelineno-107-3" href="#__codelineno-107-3"></a>  aie.trace.edge_event&lt;0&gt; event=&lt;&quot;LOCK_STALL&quot;&gt; trigger=RISING
+<a id="__codelineno-107-3" name="__codelineno-107-3" href="#__codelineno-107-3"></a>  aie.trace.edge_event&lt;0&gt; event=&lt;"LOCK_STALL"&gt; trigger=RISING
 <a id="__codelineno-107-4" name="__codelineno-107-4" href="#__codelineno-107-4"></a>
 <a id="__codelineno-107-5" name="__codelineno-107-5" href="#__codelineno-107-5"></a>  // Configure Edge detector 1: count DMA transitions (both edges)
 <a id="__codelineno-107-6" name="__codelineno-107-6" href="#__codelineno-107-6"></a>  aie.trace.edge_event&lt;1&gt; event=&lt;MemEventAIE2::DMA_MM2S_0_FINISHED_BD&gt; trigger=BOTH
 <a id="__codelineno-107-7" name="__codelineno-107-7" href="#__codelineno-107-7"></a>
 <a id="__codelineno-107-8" name="__codelineno-107-8" href="#__codelineno-107-8"></a>  // Trace the edge-detected events
-<a id="__codelineno-107-9" name="__codelineno-107-9" href="#__codelineno-107-9"></a>  aie.trace.event&lt;&quot;EDGE_DETECTION_EVENT_0&quot;&gt;
-<a id="__codelineno-107-10" name="__codelineno-107-10" href="#__codelineno-107-10"></a>  aie.trace.event&lt;&quot;EDGE_DETECTION_EVENT_1&quot;&gt;
+<a id="__codelineno-107-9" name="__codelineno-107-9" href="#__codelineno-107-9"></a>  aie.trace.event&lt;"EDGE_DETECTION_EVENT_0"&gt;
+<a id="__codelineno-107-10" name="__codelineno-107-10" href="#__codelineno-107-10"></a>  aie.trace.event&lt;"EDGE_DETECTION_EVENT_1"&gt;
 <a id="__codelineno-107-11" name="__codelineno-107-11" href="#__codelineno-107-11"></a>  ...
 <a id="__codelineno-107-12" name="__codelineno-107-12" href="#__codelineno-107-12"></a>}
 </code></pre></div></p>
@@ -14107,7 +14107,7 @@ that can be traced using aie.trace.event operations.</p>
 <p>Events can be specified as strings or enum values.</p>
 <p>Maximum 8 events per trace unit (verified at compile time).</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-109-1" name="__codelineno-109-1" href="#__codelineno-109-1"></a>aie.trace.event&lt;&quot;INSTR_EVENT_0&quot;&gt;  // String
+<div class="highlight"><pre><span></span><code><a id="__codelineno-109-1" name="__codelineno-109-1" href="#__codelineno-109-1"></a>aie.trace.event&lt;"INSTR_EVENT_0"&gt;  // String
 <a id="__codelineno-109-2" name="__codelineno-109-2" href="#__codelineno-109-2"></a>aie.trace.event&lt;CoreEventAIE::COMBO_EVENT_0&gt;    // Enum value
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
@@ -14173,7 +14173,7 @@ that can be traced using aie.trace.event operations.</p>
 </code></pre></div>
 <p>Specifies the trace mode. Default: "Event-Time"</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-113-1" name="__codelineno-113-1" href="#__codelineno-113-1"></a>aie.trace.mode &quot;Event-Time&quot;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-113-1" name="__codelineno-113-1" href="#__codelineno-113-1"></a>aie.trace.mode "Event-Time"
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_45">Attributes:<a class="headerlink" href="#attributes_45" title="Permanent link">&para;</a></h4>
@@ -14237,8 +14237,8 @@ channel number, and direction (S2MM=master, MM2S=slave).</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-117-1" name="__codelineno-117-1" href="#__codelineno-117-1"></a>aie.trace.port&lt;0&gt; port = North channel = 1 direction = S2MM
 <a id="__codelineno-117-2" name="__codelineno-117-2" href="#__codelineno-117-2"></a>aie.trace.port&lt;1&gt; port = DMA channel = 0 direction = MM2S
-<a id="__codelineno-117-3" name="__codelineno-117-3" href="#__codelineno-117-3"></a>aie.trace.event&lt;&quot;PORT_RUNNING_0&quot;&gt;  // Monitor NORTH:1 (S2MM)
-<a id="__codelineno-117-4" name="__codelineno-117-4" href="#__codelineno-117-4"></a>aie.trace.event&lt;&quot;PORT_IDLE_1&quot;&gt;     // Monitor DMA:0 (MM2S)
+<a id="__codelineno-117-3" name="__codelineno-117-3" href="#__codelineno-117-3"></a>aie.trace.event&lt;"PORT_RUNNING_0"&gt;  // Monitor NORTH:1 (S2MM)
+<a id="__codelineno-117-4" name="__codelineno-117-4" href="#__codelineno-117-4"></a>aie.trace.event&lt;"PORT_IDLE_1"&gt;     // Monitor DMA:0 (MM2S)
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_47">Attributes:<a class="headerlink" href="#attributes_47" title="Permanent link">&para;</a></h4>
@@ -14268,9 +14268,9 @@ is omitted, entire register is written.</p>
 set in the mask are written, and the value is assumed to already be shifted.
 This enables combining multiple field writes into a single register write.</p>
 <p>Example:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-119-1" name="__codelineno-119-1" href="#__codelineno-119-1"></a>aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Trace_Start_Event&quot; value=15
-<a id="__codelineno-119-2" name="__codelineno-119-2" href="#__codelineno-119-2"></a>aie.trace.reg register=&quot;Trace_Control0&quot; field=&quot;Mode&quot; value=0
-<a id="__codelineno-119-3" name="__codelineno-119-3" href="#__codelineno-119-3"></a>aie.trace.reg register=&quot;Trace_Control0&quot; value=0x12345678 mask=0xFF00
+<div class="highlight"><pre><span></span><code><a id="__codelineno-119-1" name="__codelineno-119-1" href="#__codelineno-119-1"></a>aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15
+<a id="__codelineno-119-2" name="__codelineno-119-2" href="#__codelineno-119-2"></a>aie.trace.reg register="Trace_Control0" field="Mode" value=0
+<a id="__codelineno-119-3" name="__codelineno-119-3" href="#__codelineno-119-3"></a>aie.trace.reg register="Trace_Control0" value=0x12345678 mask=0xFF00
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceConfigOp&gt;</code></p>
 <h4 id="attributes_48">Attributes:<a class="headerlink" href="#attributes_48" title="Permanent link">&para;</a></h4>
@@ -14289,7 +14289,7 @@ This enables combining multiple field writes into a single register write.</p>
 For multi-tile tracing, typically uses a broadcast event (default: 15).</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-120-1" name="__codelineno-120-1" href="#__codelineno-120-1"></a>aie.trace.start broadcast=15
-<a id="__codelineno-120-2" name="__codelineno-120-2" href="#__codelineno-120-2"></a>aie.trace.start event=&lt;&quot;TRUE&quot;&gt;
+<a id="__codelineno-120-2" name="__codelineno-120-2" href="#__codelineno-120-2"></a>aie.trace.start event=&lt;"TRUE"&gt;
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_49">Attributes:<a class="headerlink" href="#attributes_49" title="Permanent link">&para;</a></h4>
@@ -14336,7 +14336,7 @@ writes (npu_write32) that implement the trace configuration.</p>
 For multi-tile tracing, typically uses a broadcast event (default: 14).</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-123-1" name="__codelineno-123-1" href="#__codelineno-123-1"></a>aie.trace.stop broadcast=14
-<a id="__codelineno-123-2" name="__codelineno-123-2" href="#__codelineno-123-2"></a>aie.trace.stop event=&lt;&quot;USER_EVENT_0&quot;&gt;
+<a id="__codelineno-123-2" name="__codelineno-123-2" href="#__codelineno-123-2"></a>aie.trace.stop event=&lt;"USER_EVENT_0"&gt;
 </code></pre></div></p>
 <p>Traits: <code>HasParent&lt;TraceOp&gt;</code></p>
 <h4 id="attributes_51">Attributes:<a class="headerlink" href="#attributes_51" title="Permanent link">&para;</a></h4>
