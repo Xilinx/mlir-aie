@@ -693,7 +693,7 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
   }
 
   // A candidate that leaves no free core tile for one of this LTO's
-  // unplaced shared-L1 peers is tried only in the second pass. Each peer
+  // unplaced shared-L1 peers is tried only in the final pass. Each peer
   // claims its own tile; claiming greedily is exact when the peers share one
   // candidate set, as one owner's consumers do.
   auto leavesPeerRoom = [&](TileID candidate) {
@@ -717,18 +717,43 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
     return room;
   };
 
-  // Two passes: first prefer candidates that aren't reserved for an
-  // unrelated demand-bearing LTO's peers; fall back to reserved
-  // candidates only if nothing else fits.
-  for (bool allowReserved : {false, true}) {
+  auto fitsColumnStreams = [&](TileID candidate) {
+    StreamDemand demand = streamDemand.lookup(logicalTile);
+    StreamDemand used = columnStreamsUsed.lookup(candidate.col);
+    auto incoming = columnIncomingFifos.find(candidate.col);
+    if (incoming != columnIncomingFifos.end())
+      for (Operation *fifo : incomingFifos.lookup(logicalTile))
+        demand.southIn -= incoming->second.contains(fifo);
+    // Measure the bottleneck at the bottom compute row, not at a candidate
+    // in the middle of the column. Overflow can still route via other columns.
+    int bottomRow = candidate.row;
+    while (bottomRow > 0 &&
+           targetModel->isCoreTile(candidate.col, bottomRow - 1))
+      --bottomRow;
+    return (!demand.southIn ||
+            used.southIn + demand.southIn <=
+                static_cast<int>(targetModel->getNumSourceSwitchboxConnections(
+                    candidate.col, bottomRow, WireBundle::South))) &&
+           (!demand.southOut ||
+            used.southOut + demand.southOut <=
+                static_cast<int>(targetModel->getNumDestSwitchboxConnections(
+                    candidate.col, bottomRow, WireBundle::South)));
+  };
+
+  // First prefer columns with stream capacity, then allow overloaded columns
+  // while preserving peer room and reservations. Relax those only as a last
+  // resort.
+  for (int pass = 0; pass < 3; ++pass) {
     for (const TileID &candidate : orderedCandidates) {
       if (col && candidate.col != *col)
         continue;
       if (row && candidate.row != *row)
         continue;
-      if (!allowReserved &&
+      if (pass < 2 &&
           (inputs.isReservedForOther(logicalTile.getOperation(), candidate) ||
            !leavesPeerRoom(candidate)))
+        continue;
+      if (pass == 0 && !fitsColumnStreams(candidate))
         continue;
       result.sawConstraintMatch = true;
       if (!satisfiesAdjacency(logicalTile, candidate, inputs.bufferAdjacency,
@@ -1088,6 +1113,7 @@ void SequentialPlacer::recordPlacement(LogicalTileOp logicalTile, TileID tile,
                           << logicalTile.getLoc() << " at (" << tile.col << ", "
                           << tile.row << ")\n");
   if (logicalTile.getTileType() == AIETileType::CoreTile) {
+    recordColumnStreamUsage(logicalTile, tile.col);
     availability.removeTile(tile, AIETileType::CoreTile);
     ctx.reserveNeighborSlots(logicalTile.getOperation(), tile);
   }
@@ -1723,13 +1749,10 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     int requiredInputChannels, int requiredOutputChannels,
     AIETileType requestedType, Operation *logicalTile, bool withinBudgets) {
   // Choose a physical tile by lexicographic minimum of
-  //   (|col - targetCol|, current load, col, row).
-  // Distance-from-centroid comes first to preserve routing locality: a tile
-  // in the centroid column with any spare capacity beats an idle tile in an
-  // adjacent column. The load tiebreaker spreads logical tiles when more
-  // than one physical tile sits at the same distance (e.g. two centroid-
-  // adjacent columns), avoiding the first-match pile-up that filled a single
-  // column's non-core tile until DMA-full before trying anywhere else.
+  //   (|col - targetCol| + broadcast pressure, current load, col, row).
+  // A memtile's extra broadcast destinations penalize sharing its bandwidth,
+  // even when an idle tile is slightly farther from the centroid. Without
+  // broadcasts, and for shims or explicit column hints, distance still leads.
   // (col, row) is the final tiebreaker for determinism.
   //
   // Without a targetCol there is no routing anchor to measure against, so the
@@ -1758,6 +1781,9 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
         }))
       continue;
     int dist = targetCol ? std::abs(tile.col - *targetCol) : 0;
+    if (requestedType == AIETileType::MemTile &&
+        !cast<LogicalTileOp>(logicalTile).tryGetCol())
+      dist += broadcastFanoutUsed.lookup(tile);
     int load;
     if (targetCol ||
         (requiredInputChannels == 0 && requiredOutputChannels == 0)) {
@@ -1842,8 +1868,23 @@ bool SequentialPlacer::hasAvailableChannels(TileID tile, int inputChannels,
          (currentOut + outputChannels <= maxOut);
 }
 
+void SequentialPlacer::recordColumnStreamUsage(Operation *tile, int col) {
+  auto &incoming = columnIncomingFifos[col];
+  for (Operation *fifo : incomingFifos.lookup(tile))
+    incoming.insert(fifo);
+  auto &used = columnStreamsUsed[col];
+  used += streamDemand.lookup(tile);
+  used.southIn = incoming.size();
+}
+
 void SequentialPlacer::buildStreamDemand(
     ArrayRef<ObjectFifoCreateOp> objectFifos) {
+  streamDemand.clear();
+  columnStreamsUsed.clear();
+  incomingFifos.clear();
+  columnIncomingFifos.clear();
+  broadcastFanout.clear();
+  broadcastFanoutUsed.clear();
   // Rows rise from shims through memtiles to cores, so a stream to a higher
   // rank leaves through the North port and arrives through the South port.
   auto rank = [](Operation *op) -> std::optional<int> {
@@ -1859,6 +1900,9 @@ void SequentialPlacer::buildStreamDemand(
     std::optional<int> producerRank = rank(producer);
     if (!producerRank)
       continue;
+    if (*producerRank == 1)
+      broadcastFanout[producer] +=
+          std::max(0, static_cast<int>(of.getConsumerTiles().size()) - 1);
     bool north = false, south = false;
     for (Value consumerTile : of.getConsumerTiles()) {
       Operation *consumer = consumerTile.getDefiningOp();
@@ -1868,6 +1912,8 @@ void SequentialPlacer::buildStreamDemand(
       if (*consumerRank > *producerRank) {
         north = true;
         streamDemand[consumer].southIn++;
+        if (*consumerRank == 2)
+          incomingFifos[consumer].push_back(of.getOperation());
       } else {
         south = true;
         streamDemand[consumer].northIn++;
@@ -1878,6 +1924,13 @@ void SequentialPlacer::buildStreamDemand(
     if (south)
       streamDemand[producer].southOut++;
   }
+  for (auto &[op, demand] : streamDemand)
+    if (auto tile = dyn_cast<TileOp>(op))
+      if (tile.isCoreTile())
+        recordColumnStreamUsage(op, tile.getCol());
+  for (auto &[op, fanout] : broadcastFanout)
+    if (auto tile = dyn_cast<TileOp>(op))
+      broadcastFanoutUsed[{tile.getCol(), tile.getRow()}] += fanout;
 }
 
 void SequentialPlacer::buildRuntimeBdProfiles(
@@ -1985,6 +2038,7 @@ bool SequentialPlacer::fitsStreamAndBdBudgets(Operation *logicalTile,
 
 void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
                                               TileID tile) {
+  broadcastFanoutUsed[tile] += broadcastFanout.lookup(logicalTile);
   for (auto named : namedChannels.lookup(logicalTile))
     availability.namedChannelsUsed[tile].insert(named);
   if (auto it = streamDemand.find(logicalTile); it != streamDemand.end())
