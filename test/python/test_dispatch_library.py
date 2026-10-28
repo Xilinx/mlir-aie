@@ -59,6 +59,53 @@ def test_compile_mlir_module_writes_cpp_beside_device_outputs(tmp_path, emit_shi
         np.testing.assert_array_equal(patches[:, 10], 16)
 
 
+def _static_source(device="npu1_1col"):
+    """A sequence with a fixed (non-runtime-bound) trip count: unlike
+    `_source()`, this has a static TXN encoding, so it can pair with
+    `inst_path` as well as `npu_cpp_path`."""
+    return f"""module {{
+      aie.device({device}) {{
+        aie.runtime_sequence @seq() {{
+          %address = arith.constant 256 : i32
+          %value = arith.constant 17 : i32
+          aiex.npu.write32(%address, %value) : i32, i32
+        }}
+      }}
+    }}"""
+
+
+@pytest.mark.skipif(shutil.which("xclbinutil") is None, reason="xclbinutil")
+@pytest.mark.skipif(not os.path.isdir(configure.peano_install_dir), reason="Peano")
+def test_compilabledesign_compile_exposes_npu_cpp_path(tmp_path):
+    """A plain (non-DispatchTime[T]) design can request the C++ builder
+    directly through CompilableDesign.compile(), not only through
+    compile_mlir_module(); its output matches a direct aiecc invocation."""
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(_static_source())
+
+    reference_dir = tmp_path / "reference"
+    reference_dir.mkdir()
+    _run_aiecc(
+        str(mlir_path),
+        [
+            "--get-npu-cpp",
+            f"--npu-cpp-name={reference_dir / 'ref.cpp'}",
+            f"--output-dir={reference_dir}",
+            f"--tmpdir={reference_dir / 'work'}",
+        ],
+    )
+
+    design = CompilableDesign(mlir_path)
+    xclbin = tmp_path / "design.xclbin"
+    insts = tmp_path / "insts.bin"
+    cpp = tmp_path / "design.cpp"
+    design.compile(xclbin_path=xclbin, inst_path=insts, npu_cpp_path=cpp)
+
+    assert xclbin.stat().st_size > 0
+    assert insts.stat().st_size > 0
+    assert cpp.read_text() == (reference_dir / "ref.cpp").read_text()
+
+
 def _patch_bar_then_baz(
     *, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7
 ):

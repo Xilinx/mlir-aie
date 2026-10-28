@@ -165,6 +165,7 @@ linked into the final xclbin.
 | `final.xclbin` | the binary XRT loads onto the NPU |
 | `insts.bin` | NPU runtime instruction stream paired with the xclbin |
 | `insts.elf` | only present when `.compile(elf_path=...)` is set — `xrt::elf` variant of `insts.bin` |
+| `<name>.cpp` | only present when `.compile(npu_cpp_path=...)` is set — parameterized C++ TXN builder for the design's runtime sequence |
 | `main.pdi` | Programmable Device Image — config data packed by `bootgen`; locate via `get_pdi_path()` or name it with `.compile(pdi_path=...)` |
 | `main_aie_partition.json` | AIE partition manifest (which tiles, kernels, memory regions) |
 | `main_aie_cdo_init.bin` | CDO blob initialising tile / DMA registers |
@@ -211,12 +212,18 @@ my_design.specialize(N=4096).compile(
     inst_path="out/design.insts.bin",  # NPU instruction stream
     pdi_path="out/design.pdi",         # Programmable Device Image
     elf_path="out/design.insts.elf",   # xrt::elf-wrapped insts (optional)
+    npu_cpp_path="out/design.cpp",     # C++ TXN builder (optional)
 )
 ```
 
-`xclbin_path` and `inst_path` must be given together. `pdi_path` and
-`elf_path` each additionally require both of those — the cache path doesn't
-track caller-named PDI/ELF artifacts.
+`xclbin_path` and `inst_path` must be given together. `pdi_path`,
+`elf_path` and `npu_cpp_path` each additionally require both of those — the
+cache path doesn't track caller-named PDI/ELF/C++ builder artifacts.
+`npu_cpp_path` re-expresses the same overlay's runtime sequence as a function
+a native caller can invoke with its own runtime values, without recompiling —
+a "one overlay, many shapes" workflow. It is not available for
+`DispatchTime[T]` designs, which already build their own C++ builder as the
+dispatch bridge (retrieve it with `get_dispatch_lib_path()`).
 
 If you're using the default cache (no explicit paths) but still need the PDI,
 `aiecc` writes a `<device>.pdi` (`main.pdi` for `@iron.jit` designs) into the
@@ -337,6 +344,7 @@ example demonstrates this via its `--from-xclbin` / `--from-insts` flags.
 | `@iron.jit(use_cache=False)` | decoration | bypass on-disk cache; always rebuild (stage 4) |
 | `.compile(elf_path=...)` | compile call | also emit `insts.elf` for the `xrt::elf` testbench flow (stage 4); requires explicit `xclbin_path` + `inst_path` |
 | `.compile(pdi_path=...)` | compile call | write the PDI to a chosen path (stage 4); requires explicit `xclbin_path` + `inst_path` |
+| `.compile(npu_cpp_path=...)` | compile call | write the runtime sequence as a C++ TXN builder (stage 4); requires explicit `xclbin_path` + `inst_path`; unavailable for `DispatchTime[T]` designs |
 | `$NPU_CACHE_HOME` env var | process-wide | where `aiecc` reads/writes artifacts (stage 4) |
 | `trace_config=` kwarg at call-time | each call | forwarded to `NPUKernel.__init__` (stage 5); **not** a CompileTime[T] kwarg |
 | `iron.set_current_device(...)` | before generator runs | target architecture baked into the generator's `Program` (stage 3) |
@@ -348,7 +356,7 @@ example demonstrates this via its `--from-xclbin` / `--from-insts` flags.
 | The serialized MLIR (no NPU touched, no aiecc run) | `cd.as_mlir(**kwargs)` |
 | The cached artifact paths | `cd.compile(**kwargs)` returns `(xclbin_path, insts_path)` |
 | The PDI path (cache mode) | `cd.get_pdi_path()` (after a `compile()`) |
-| Artifacts at chosen paths | `cd.compile(xclbin_path=, inst_path=, pdi_path=, elf_path=)` |
+| Artifacts at chosen paths | `cd.compile(xclbin_path=, inst_path=, pdi_path=, elf_path=, npu_cpp_path=)` |
 | Run a pre-built xclbin + insts | `NPUKernel(xclbin, insts)(in_t, out_t)` |
 | The recipe hash (cache key) | `cd.compilable.recipe_hash` |
 | The artifact hash (freshness key) | `cd.compilable.artifact_hash` |

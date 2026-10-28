@@ -540,6 +540,7 @@ class CallableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
+        npu_cpp_path: Path | str | None = None,
     ) -> tuple[Path | None, Path | None]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
@@ -570,6 +571,15 @@ class CallableDesign:
         Device Image to that path. Requires explicit ``xclbin_path`` (and
         ``inst_path`` for static designs). In cache mode, use ``get_pdi_path``
         to locate the ``main.pdi`` aiecc emits.
+
+        ``npu_cpp_path`` is optional: when set, aiecc emits the runtime
+        sequence as a parameterized C++ TXN builder at that path instead of
+        (or alongside) the static instruction stream -- one compiled overlay's
+        sequence re-expressed as a function a native caller can invoke with
+        its own runtime values, without recompiling. Requires explicit
+        ``xclbin_path`` and is not available for ``DispatchTime[T]`` designs,
+        which already build their own C++ builder as the dispatch bridge
+        (retrieve it with ``get_dispatch_lib_path()``).
         """
         return self.compilable.compile(
             xclbin_path=xclbin_path,
@@ -577,6 +587,7 @@ class CallableDesign:
             elf_path=elf_path,
             full_elf_path=full_elf_path,
             pdi_path=pdi_path,
+            npu_cpp_path=npu_cpp_path,
         )
 
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:
