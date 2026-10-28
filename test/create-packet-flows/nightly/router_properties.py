@@ -1930,6 +1930,7 @@ class WaitGraph:
             for b, kind in self.edges[a]:
                 if (
                     taking
+                    and kind == self.STREAM
                     and (a, b) in self.receives
                     and (a, b) not in self.sends
                     and self.agents[b][2] == self.CHANNEL
