@@ -254,10 +254,9 @@ struct HoistVectorTransferPointersPattern
 
       // Each index must be coef * iv + (loop-invariant); the pointer then
       // advances by sum(coef * dimStride) * step elements per iteration.
-      std::optional<int64_t> step =
-          forOp.getConstantStep()
-              ? std::optional<int64_t>(forOp.getConstantStep()->getSExtValue())
-              : std::nullopt;
+      std::optional<int64_t> step;
+      if (std::optional<APInt> constantStep = forOp.getConstantStep())
+        step = constantStep->getSExtValue();
       bool analyzable = true;
       int64_t elementsPerIV = 0;
       int64_t dimStride = 1;
