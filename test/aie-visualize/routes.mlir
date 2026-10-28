@@ -8,14 +8,14 @@
 // Route views render vias, packet metadata, arbitration, semantic topology, and selected flows.
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=ALL
-// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=VIAS
-// RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
-// RUN: aie-visualize --emit-dot --contract=port,buffer --device=main %s | FileCheck %s --check-prefix=TOPOLOGY
-// RUN: aie-visualize --emit-dot --contract=port,buffer --tile-width=3.2 %s | FileCheck %s --check-prefix=WIDE
-// RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=ONLY
-// RUN: not aie-visualize --emit-dot --only-flow=9 %s 2>&1 | FileCheck %s --check-prefix=BAD-ID
-// RUN: not aie-visualize --emit-dot --contract=unknown %s 2>&1 | FileCheck %s --check-prefix=BAD-KIND
+// RUN: aie-visualize --emit-dot --scale=1 --split-packet-ports %s | FileCheck %s --check-prefix=ALL
+// RUN: aie-visualize --emit-dot --scale=1 --split-packet-ports %s | FileCheck %s --check-prefix=VIAS
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer --device=main %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer --tile-width=3.2 %s | FileCheck %s --check-prefix=WIDE
+// RUN: aie-visualize --emit-dot --scale=1 --only-flow=1 %s | FileCheck %s --check-prefix=ONLY
+// RUN: not aie-visualize --emit-dot --scale=1 --only-flow=9 %s 2>&1 | FileCheck %s --check-prefix=BAD-ID
+// RUN: not aie-visualize --emit-dot --scale=1 --contract=unknown %s 2>&1 | FileCheck %s --check-prefix=BAD-KIND
 
 // ALL: digraph aie_routes
 // ALL: graph [layout=neato, overlap=true, splines=curved, outputorder=nodesfirst
@@ -39,9 +39,9 @@
 // ALL-DAG: p_0_3_1_0_s -> buffer_1 {{.*}}class="buffer-link{{.*}}];
 // ALL-NOT: p_0_2_0_0
 
-// VIAS: p_0_2_5_0_k3 [shape=point, width=0.09, {{.*}} xlabel="N0"
+// VIAS: p_0_2_5_0_k3 [shape=point, width=0.090000, {{.*}} xlabel="N0"
 // VIAS-SAME: class="port detail-vias
-// VIAS: p_0_3_3_0_k3 [shape=point, width=0.09, {{.*}} xlabel="S0"
+// VIAS: p_0_3_3_0_k3 [shape=point, width=0.090000, {{.*}} xlabel="S0"
 // VIAS: arbitration_0 {{.*}} label="r0 pkt=3/31 -> A2.M0 header"
 // VIAS-SAME: tooltip="rule 0: packet ID & 31 = 3, arbiter 2, msel 0, keep packet header: yes, priority route: no, control overlay: no"
 // VIAS-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0"
@@ -70,8 +70,8 @@
 // TOPOLOGY: tile_0_4 -> tile_0_3
 
 // WIDE: tile_0_2 {{.*}}width=3.200000
-// WIDE: p_0_2_1_0_m {{.*}}width=0.82{{.*}}pos="-1.400000,
-// WIDE: buffer_0 {{.*}}width=1.750000{{.*}}pos="0.000000,
+// WIDE: p_0_2_1_0_m {{.*}}width=0.820000{{.*}}pos="-1.400000,
+// WIDE: buffer_0 {{.*}}width=1.000000{{.*}}pos="0.000000,
 
 // ONLY-NOT: F3 pkt=6
 // ONLY: F1 pkt=5/31

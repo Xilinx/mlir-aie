@@ -8,9 +8,16 @@
 // Runtime arguments and kernel calls connect to their DMA channels and buffers.
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=ALL
-// RUN: aie-visualize --emit-dot --skip-runtime %s | FileCheck %s --check-prefix=SKIP
-// RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --scale=1 %s | FileCheck %s --check-prefix=ALL
+// RUN: aie-visualize --emit-dot --scale=1 --skip-runtime %s | FileCheck %s --check-prefix=SKIP
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --scale=0.5 %s | FileCheck %s --check-prefix=HALF
+
+// A label keeps its point size however small the drawing is, so a box that
+// has to hold one keeps its size too and only the space between tiles
+// shrinks. Tile (0, 2) sits at 6.175 inches drawn full size.
+// HALF: tile_0_0 {{.*}} height=2.150000
+// HALF: tile_0_2 {{.*}} height=2.500000{{.*}}pos="0.000000,5.325000!"
 
 // ALL: tile_0_0 {{.*}} height=2.150000
 // ALL: p_0_0_1_0_m {{.*}} label="MM2S0"{{.*}} class="port flow src-3 dst-3"
@@ -22,9 +29,9 @@
 // ALL: runtime_arg_2 {{.*}} label="%endpoint_input"{{.*}} class="runtime-argument flow src-4 dst-3"
 // ALL: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow src-3 dst-3"
 // ALL: call_0 {{.*}} label="kernel"
-// ALL-SAME: class="call detail-calls flow src-2 dst-0"
+// ALL-SAME: class="call detail-calls flow src-2"
 // ALL: call_1 {{.*}} label="view_kernel"
-// ALL-SAME: class="call detail-calls flow src-1 dst-2"
+// ALL-SAME: class="call detail-calls flow src-1"
 // One argument feeding two shims keeps its origin on both links.
 // ALL-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-5 dst-3"
 // ALL-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow src-5 dst-4"
@@ -45,28 +52,30 @@
 // SKIP-NOT: runtime_arg_
 // SKIP-NOT: runtime_task_
 
-// TOPOLOGY: p_0_0_1_0_m {{.*}}label="MM2S0"{{.*}}class="port flow src-4 dst-3"
+// TOPOLOGY: p_0_0_1_0_m {{.*}}label="MM2S0"{{.*}}class="port flow src-4 dst-2"
 // TOPOLOGY: buffer_0 {{.*}}label="core_buffer"{{.*}}class="buffer detail-buffers flow src-0 dst-0"
-// TOPOLOGY: runtime_arg_0 {{.*}} label="%direct_input"{{.*}} class="runtime-argument flow src-6 dst-6"
-// TOPOLOGY: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow src-4 dst-3"
-// TOPOLOGY: call_0 {{.*}} label="kernel"{{.*}} class="call detail-calls flow src-2 dst-0"
-// TOPOLOGY: call_1 {{.*}} label="view_kernel"{{.*}} class="call detail-calls flow src-3 dst-2"
+// TOPOLOGY: runtime_arg_0 {{.*}} label="%direct_input"{{.*}} class="runtime-argument flow src-6 dst-5"
+// TOPOLOGY: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow src-4 dst-2"
+// TOPOLOGY: call_0 {{.*}} label="kernel"{{.*}} class="call detail-calls flow src-2"
+// TOPOLOGY: call_1 {{.*}} label="view_kernel"{{.*}} class="call detail-calls flow src-3"
 // A kernel writing a buffer is what feeds the flow that leaves it.
 // TOPOLOGY-DAG: call_0 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow src-2 dst-0"
 // TOPOLOGY-DAG: call_1 -> buffer_0 {{.*}}class="call-link detail-calls detail-buffers flow src-3 dst-0"
 // A DMA channel stands between a buffer and the tile it leaves for.
 // TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}class="buffer-link detail-buffers flow src-0 dst-0"
 // TOPOLOGY-DAG: p_0_2_1_0_m -> tile_0_3 {{.*}}class="route detail-packet-ids flow src-0 dst-0"
-// TOPOLOGY-DAG: call_1 -> p_0_2_1_1_m {{.*}}class="call-link detail-calls detail-buffers flow src-3 dst-4"
-// TOPOLOGY-DAG: p_0_2_1_1_m -> tile_0_4 {{.*}}class="route detail-packet-ids flow src-3 dst-4"
+// Contracting a buffer away leaves an edge with no buffer on it, which
+// hiding the buffers must leave alone.
+// TOPOLOGY-DAG: call_1 -> p_0_2_1_1_m {{.*}}class="call-link detail-calls flow src-3 dst-3"
+// TOPOLOGY-DAG: p_0_2_1_1_m -> tile_0_4 {{.*}}class="route detail-packet-ids flow src-3 dst-3"
 // Three arguments feed the same shim channel, and each keeps its own origin.
-// TOPOLOGY-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-6 dst-3"
-// TOPOLOGY-DAG: runtime_arg_1 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-7 dst-3"
-// TOPOLOGY-DAG: runtime_arg_2 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-5 dst-3"
-// TOPOLOGY-DAG: p_0_0_1_0_m -> p_0_0_1_1_s {{.*}}class="route detail-packet-ids flow src-4 dst-3"
-// TOPOLOGY-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow src-6 dst-5"
-// TOPOLOGY-DAG: p_1_0_1_0_m -> tile_1_2 {{.*}}class="route detail-packet-ids flow src-6 dst-5"
-// TOPOLOGY-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="runtime-link flow src-4 dst-3"
+// TOPOLOGY-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-6 dst-2"
+// TOPOLOGY-DAG: runtime_arg_1 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-7 dst-2"
+// TOPOLOGY-DAG: runtime_arg_2 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-5 dst-2"
+// TOPOLOGY-DAG: p_0_0_1_0_m -> p_0_0_1_1_s {{.*}}class="route detail-packet-ids flow src-4 dst-2"
+// TOPOLOGY-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow src-6 dst-4"
+// TOPOLOGY-DAG: p_1_0_1_0_m -> tile_1_2 {{.*}}class="route detail-packet-ids flow src-6 dst-4"
+// TOPOLOGY-DAG: p_0_0_1_1_s -> runtime_arg_3 {{.*}}class="runtime-link flow src-4 dst-2"
 // TOPOLOGY-NOT: topology_junction_
 
 module {

@@ -66,6 +66,19 @@ static cl::list<std::string> contractedNodeKinds(
 static cl::opt<std::string>
     deviceName("device", cl::desc("Select an aie.device by symbol name"),
                cl::value_desc("symbol"));
+static cl::opt<bool> splitPacketPorts(
+    "split-packet-ports",
+    cl::desc("Name a switchbox port for the packet crossing it, so two packet "
+             "flows sharing a port stay apart"));
+static cl::opt<bool> controlOverlay(
+    "control-overlay",
+    cl::desc("Draw the control packet overlay, which carries task completion "
+             "tokens rather than the data the design moves"));
+static cl::opt<double> drawingScale(
+    "scale",
+    cl::desc("How much smaller than its measurements to draw the picture, "
+             "leaving text and pen widths their size"),
+    cl::value_desc("factor"), cl::init(0.5));
 static cl::opt<std::string>
     runtimeSequenceName("runtime-sequence",
                         cl::desc("Select an aie.runtime_sequence by symbol"),
@@ -89,12 +102,12 @@ static cl::opt<double>
                  cl::init(7.0));
 static cl::opt<std::string> arrowStyle(
     "arrows",
-    cl::desc("How arrows run between tiles: straight (default) or channel, "
-             "which keeps them in the gaps and off the tiles"),
+    cl::desc("How arrows run between nodes: straight (default), channel, or "
+             "avoidance"),
     cl::value_desc("style"), cl::init("straight"));
 static cl::opt<std::string>
     colorScheme("colors",
-                cl::desc("Colour scheme: light (default) or mako, which is "
+                cl::desc("Color scheme: light (default) or mako, which is "
                          "seaborn's mako ramp on a black page"),
                 cl::value_desc("scheme"), cl::init("light"));
 static cl::opt<bool>
@@ -170,8 +183,10 @@ int main(int argc, char *argv[]) {
   AIE::VisualizeOptions options;
   if (arrowStyle == "channel") {
     options.arrows = AIE::ArrowStyle::Channel;
+  } else if (arrowStyle == "avoidance") {
+    options.arrows = AIE::ArrowStyle::Avoidance;
   } else if (arrowStyle != "straight") {
-    errs() << "--arrows expects 'straight' or 'channel'\n";
+    errs() << "--arrows expects 'straight', 'channel', or 'avoidance'\n";
     return 3;
   }
   if (colorScheme == "mako") {
@@ -186,6 +201,9 @@ int main(int argc, char *argv[]) {
   options.onlyFlows.assign(onlyFlows.begin(), onlyFlows.end());
   options.contractedNodeKinds.assign(contractedNodeKinds.begin(),
                                      contractedNodeKinds.end());
+  options.splitPacketPorts = splitPacketPorts;
+  options.controlOverlay = controlOverlay;
+  options.scale = drawingScale;
   options.weighEdges = weighEdges;
   options.minEdgeWidth = minEdgeWidth;
   options.maxEdgeWidth = maxEdgeWidth;

@@ -5,6 +5,7 @@
 
 add_mlir_library(AIEVisualize
   AIEVisualize.cpp
+  AvoidanceArrowRenderer.cpp
   ArrowRenderer.cpp
   ChannelArrowRenderer.cpp
 

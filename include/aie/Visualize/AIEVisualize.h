@@ -26,9 +26,11 @@ enum class ArrowStyle {
   Straight,
   /// Along the gaps between tiles, never over a tile's contents.
   Channel,
+  /// Searches clear space around nodes and penalizes bends and crossings.
+  Avoidance,
 };
 
-/// Which colours to draw in.
+/// Which colors to draw in.
 enum class ColorScheme {
   /// Dark ink on a white page.
   Light,
@@ -54,10 +56,21 @@ struct VisualizeOptions {
   /// runtime-argument, call. Contracting nothing draws every hop.
   std::vector<std::string> contractedNodeKinds;
 
+  /// Draw the control packet overlay that aie-generate-column-control-overlay
+  /// adds. These rules are marked aie.is_ctrl_pkt_overlay and carry task
+  /// completion tokens rather than the data the design moves.
+  bool controlOverlay = false;
+
+  /// Add the packet ID to the name of each switchbox port, so that two
+  /// packet flows crossing one port become two nodes and contract
+  /// separately. Without this they share a node, which shows that they share
+  /// the channel.
+  bool splitPacketPorts = false;
+
   /// How arrows are drawn between tiles.
   ArrowStyle arrows = ArrowStyle::Straight;
 
-  /// Which colours to draw in.
+  /// Which colors to draw in.
   ColorScheme colors = ColorScheme::Light;
 
   /// Scale edge width by the bytes each flow group moves per iteration.
@@ -75,6 +88,11 @@ struct VisualizeOptions {
   double tileGapX = 0.85;
   double tileGapY = 0.85;
   double localSpacing = 0.4;
+
+  /// How much smaller than its measurements the picture is drawn. Text and
+  /// pen widths keep their size, so lowering this leaves the labels reading
+  /// larger against everything else.
+  double scale = 0.5;
 };
 
 /// Writes a DOT route visualization of the device `options` selects. Reports

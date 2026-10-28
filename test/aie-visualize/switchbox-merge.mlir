@@ -14,7 +14,8 @@
 // physical view still draws from the routes, and so does not show this yet.
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot --contract=buffer %s | FileCheck %s
+// RUN: aie-visualize --emit-dot --contract=buffer --split-packet-ports %s | FileCheck %s
+// RUN: aie-visualize --emit-dot --contract=buffer %s | FileCheck %s --check-prefix=SHARED
 
 // The flow arrives on East 3 ...
 // CHECK-DAG: p_3_2_4_3_k0 -> p_2_2_6_3_k0
@@ -25,6 +26,13 @@
 // each can be followed through the slot they share.
 // CHECK-DAG: p_2_3_3_1_k1 -> p_2_2_5_1_k1
 // CHECK-DAG: p_2_2_5_1_k1 -> p_2_2_4_0_k1
+
+// Without --split-packet-ports both streams reach one egress port, which is
+// how the view shows that they share the channel.
+// SHARED-DAG: p_2_2_6_3 -> p_2_2_4_0
+// SHARED-DAG: p_2_2_5_1 -> p_2_2_4_0
+// SHARED-NOT: _k0
+// SHARED-NOT: _k1
 
 module {
   aie.device(npu2) {

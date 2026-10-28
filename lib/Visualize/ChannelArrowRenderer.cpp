@@ -14,18 +14,24 @@
 //
 // It gets that from two rules rather than from tuning.
 //
-// Every arrow is drawn the same way: a stub out of the box it leaves, one long
-// run, and a stub into the box it enters. The stubs are perpendicular to the
-// run and sit on their own box's line, so two stubs coincide only when they
-// leave the same box, which is a real join.
+// The free space between tiles is a grid of corridors: one vertical channel
+// per column, left of that column's switchboxes and clear for the whole
+// height of the array, one horizontal channel per row, and short strips
+// inside each tile and across each switchbox. Every arrow is a chain of
+// straight legs, each lying in one corridor, with a stub at either end
+// joining the chain to the box it meets. An arrow between two tiles in
+// different rows and columns runs down the source column's channel, across a
+// row channel, and up the destination column's channel. One between tiles in
+// the same row or the same column needs a single leg.
 //
-// Each long run lies in a corridor -- a strip of empty space between tiles,
-// inside a tile beside its contents, or across a switchbox. Corridors never
-// overlap, so runs in different corridors cannot merge. Within one corridor a
-// run is given a track, and tracks are handed out by interval colouring over
-// the stretch each run occupies: two runs share a track only when they do not
-// overlap along it. The corridor is as wide as its busiest point needs and no
-// wider.
+// Within a corridor a leg is given a track, and tracks are handed out by
+// interval coloring over the stretch each leg occupies: two legs share a
+// track only when they do not overlap along it. The corridor is as wide as
+// its busiest point needs and no wider. Corridors do not overlap, so legs in
+// different corridors cross but never merge.
+//
+// Where an arrow is free to choose a row channel to cross in, it takes the
+// one carrying least across the columns it spans.
 //
 //===----------------------------------------------------------------------===//
 
@@ -66,16 +72,14 @@ constexpr double kDMAInset = 0.06;
 constexpr double kSwitchInset = 1.45;
 constexpr double kSwitchHalfWidth = 0.30;
 constexpr double kEdgeMargin = 0.09;
-/// The widest a tile's buffer and call boxes are drawn.
-constexpr double kContentWidth = 1.75;
 /// However busy a tile is, it stops widening here.
 constexpr double kWidestTile = 7.5;
 
-double dmaCentreX(const LayoutGeometry &layout, int col) {
-  return layout.tileLeft(col) - kDMAInset - kDMAHalfWidth;
+double dmaCenterX(const LayoutGeometry &layout, int col) {
+  return layout.tileLeft(col) - kDMAInset - layout.text(kDMAHalfWidth);
 }
-double switchCentreX(const LayoutGeometry &layout, int col) {
-  return layout.tileLeft(col) - kChannel + kSwitchInset;
+double switchCenterX(const LayoutGeometry &layout, int col) {
+  return layout.tileLeft(col) - layout.tileGapX + kSwitchInset;
 }
 
 /// How tall a switchbox is. It has to hold a track for every flow passing
@@ -117,13 +121,20 @@ struct Corridor {
   double span = 0;
 };
 
-/// One arrow's long run, before it knows which track it is on.
-struct Run {
-  unsigned id = 0;
-  bool vertical = false;
+/// One straight piece of an arrow, before it knows which track it is on.
+struct Leg {
   CorridorKey corridor;
+  bool vertical = false;
   double lo = 0, hi = 0;
+  double cross = 0;
+};
+
+/// One arrow's chain of legs. Consecutive legs are perpendicular, and a stub
+/// at each end joins the chain to the box it meets.
+struct Path {
+  unsigned id = 0;
   Point from{0, 0}, to{0, 0};
+  SmallVector<Leg, 4> legs;
   bool valid = false;
 };
 
@@ -174,36 +185,45 @@ SmallVector<Point> toBezier(ArrayRef<Point> corners, double radius) {
 }
 
 /// Pulls an arrow's end back from a node's middle to the edge it arrives at.
-Point onEdge(const ArrowEnd &end, Point centre, Point toward) {
-  double dx = toward.first - centre.first;
-  double dy = toward.second - centre.second;
+Point onEdge(const ArrowEnd &end, Point center, Point toward) {
+  double dx = toward.first - center.first;
+  double dy = toward.second - center.second;
   if (std::abs(dx) < 1e-9 && std::abs(dy) < 1e-9)
-    return centre;
+    return center;
   double infinity = std::numeric_limits<double>::infinity();
   double scaleX = std::abs(dx) < 1e-9 ? infinity : end.halfWidth / std::abs(dx);
   double scaleY =
       std::abs(dy) < 1e-9 ? infinity : end.halfHeight / std::abs(dy);
-  return {centre.first + dx * std::min({scaleX, scaleY, 1.0}),
-          centre.second + dy * std::min({scaleX, scaleY, 1.0})};
+  return {center.first + dx * std::min({scaleX, scaleY, 1.0}),
+          center.second + dy * std::min({scaleX, scaleY, 1.0})};
 }
 
 class ChannelArrowRenderer : public ArrowRenderer {
 public:
-  std::optional<double> preferredTileGap() const override { return kChannel; }
+  bool suppliesLayout() const override { return true; }
+
+  std::optional<double> preferredTileGap(double textRoom) const override {
+    // The channel holds the DMA boxes, the switchbox and a corridor either
+    // side of it. Only the boxes have to keep their drawn size, so the
+    // channel grows by what they gain.
+    return kChannel + 2 * kDMAHalfWidth * (textRoom - 1);
+  }
 
   std::optional<double> widestLine() const override {
-    // Leave better than half the gap between neighbouring tracks clear, or
+    // Leave better than half the gap between neighboring tracks clear, or
     // two lines running side by side read as one thick one.
     return kTrack * 72.0 * 0.42;
   }
 
-  std::optional<double> preferredTileWidth(unsigned contents) const override {
+  std::optional<double> preferredTileWidth(unsigned contents,
+                                           double contentWidth,
+                                           double textRoom) const override {
     // Contents down the middle, and a lane either side wide enough that the
     // arrows between them each get a track of their own. A tile with more
     // arrows than that stops growing and packs them closer instead: past a
     // point a wider tile costs the whole picture more than it buys this one.
-    double wanted = kContentWidth + 2 * (contents * kTrack + 2 * kEdgeMargin);
-    return std::min(wanted, kWidestTile);
+    double wanted = contentWidth + 2 * (contents * kTrack + 2 * kEdgeMargin);
+    return std::min(wanted, kWidestTile * textRoom);
   }
 
   std::map<std::string, Point>
@@ -218,6 +238,7 @@ public:
   }
 
   SmallVector<ArrowPath> route(ArrayRef<ArrowRequest> requests,
+                               ArrayRef<RoutingObstacle> obstacles,
                                const LayoutGeometry &layout) override;
 
 private:
@@ -241,6 +262,10 @@ private:
     for (auto &[key, count] : sides)
       switches[key.first].halfHeight =
           std::max(switches[key.first].halfHeight, 0.2);
+    rowSwitchHalf.clear();
+    for (auto &[tile, size] : switches)
+      rowSwitchHalf[tile.second] =
+          std::max(rowSwitchHalf[tile.second], size.halfHeight);
   }
 
   void place(const ArrowEnd &end, const LayoutGeometry &layout,
@@ -249,7 +274,7 @@ private:
       return;
     auto [col, row] = end.tile;
     if (end.kind == EndKind::Switch) {
-      double cx = switchCentreX(layout, col);
+      double cx = switchCenterX(layout, col);
       double cy = layout.channelY(row);
       auto found = switches.find(end.tile);
       double half = found == switches.end() ? 0.2 : found->second.halfHeight;
@@ -258,7 +283,7 @@ private:
       auto spread = [&](Facing facing) {
         auto count = sides.find({end.tile, facing});
         int n = count == sides.end() ? 1 : count->second;
-        return (end.slot - (n - 1) / 2.0) * kPortPitch;
+        return (end.slot - (n - 1) / 2.0) * layout.text(kPortPitch);
       };
       // Ports step outwards as well as along their side. Sharing a side
       // would otherwise mean sharing the line an arrow leaves it on, which
@@ -285,9 +310,9 @@ private:
         break;
       }
     } else if (end.kind == EndKind::DMA) {
-      placed[end.node] = {dmaCentreX(layout, col), layout.tileTop(col, row) -
-                                                       0.5 -
-                                                       end.slot * kDMAPitch};
+      placed[end.node] = {dmaCenterX(layout, col),
+                          layout.tileTop(col, row) - layout.text(0.5) -
+                              end.slot * layout.text(kDMAPitch)};
     }
   }
 
@@ -298,12 +323,23 @@ private:
     return found == one.end() ? end.pinned : found->second;
   }
 
-  /// The strip a run lies in, and the stretch of it the run occupies.
-  Run classify(const ArrowRequest &request, const LayoutGeometry &layout) const;
+  /// The chain of corridors an arrow follows. `rowLoad` records the column
+  /// ranges already taken in each row channel, so that a path free to cross
+  /// in more than one row takes the emptiest.
+  Path
+  plan(const ArrowRequest &request, const LayoutGeometry &layout,
+       std::map<int, SmallVector<std::pair<double, double>>> &rowLoad) const;
   Corridor corridorOf(const CorridorKey &key,
                       const LayoutGeometry &layout) const;
+  double corridorMiddle(const CorridorKey &key,
+                        const LayoutGeometry &layout) const {
+    Corridor corridor = corridorOf(key, layout);
+    return corridor.base + corridor.span / 2;
+  }
 
   std::map<std::pair<int, int>, SwitchSize> switches;
+  /// The tallest switchbox in each row, which bounds the row's channel.
+  std::map<int, double> rowSwitchHalf;
   std::map<std::pair<std::pair<int, int>, Facing>, int> sides;
   /// How wide a tile's contents are, which bounds the corridors either side
   /// of them, and where the runtime arguments start.
@@ -311,55 +347,88 @@ private:
   double argumentsTop = 0;
 };
 
-Run ChannelArrowRenderer::classify(const ArrowRequest &request,
-                                   const LayoutGeometry &layout) const {
-  Run run;
-  run.id = request.id;
-  run.from = positionOf(request.from, layout);
-  run.to = positionOf(request.to, layout);
-  run.valid = true;
+/// Which strip inside a tile an end leaves through, so that an arrow reaches
+/// the column channel without crossing the tile's contents.
+Path ChannelArrowRenderer::plan(
+    const ArrowRequest &request, const LayoutGeometry &layout,
+    std::map<int, SmallVector<std::pair<double, double>>> &rowLoad) const {
+  Path path;
+  path.id = request.id;
+  path.from = positionOf(request.from, layout);
+  path.to = positionOf(request.to, layout);
+  path.valid = true;
   auto [col, row] = request.from.tile;
+  auto [destCol, destRow] = request.to.tile;
   bool sameTile = request.from.tile == request.to.tile;
   EndKind a = request.from.kind, b = request.to.kind;
 
-  auto span = [&](bool vertical) {
-    double lo = vertical ? std::min(run.from.second, run.to.second)
-                         : std::min(run.from.first, run.to.first);
-    double hi = vertical ? std::max(run.from.second, run.to.second)
-                         : std::max(run.from.first, run.to.first);
-    run.lo = lo;
-    run.hi = hi;
-    run.vertical = vertical;
+  auto add = [&](CorridorKind kind, int which, bool vertical) {
+    path.legs.push_back({{kind, which, 0}, vertical, 0, 0, 0});
   };
 
-  if (a == EndKind::External || b == EndKind::External) {
-    run.corridor = {CorridorKind::Arguments, 0, 0};
-    span(/*vertical=*/false);
-  } else if (sameTile && a == EndKind::Switch && b == EndKind::Switch) {
-    run.corridor = {CorridorKind::Switchbox, col, row};
-    span(/*vertical=*/false);
-  } else if (sameTile && (a == EndKind::DMA || b == EndKind::DMA) &&
-             (a == EndKind::Switch || b == EndKind::Switch)) {
-    run.corridor = {CorridorKind::DMAApproach, col, row};
-    span(/*vertical=*/true);
-  } else if (sameTile && (a == EndKind::DMA || b == EndKind::DMA)) {
-    run.corridor = {CorridorKind::TileIn, col, row};
-    span(/*vertical=*/true);
-  } else if (sameTile) {
-    run.corridor = {CorridorKind::TileOut, col, row};
-    span(/*vertical=*/true);
-  } else if (request.from.tile.second != request.to.tile.second) {
-    // Between switchboxes above and below: the step across happens beside the
-    // row that lies between them.
-    run.corridor = {CorridorKind::ColumnGap, col,
-                    std::max(request.from.tile.second, request.to.tile.second)};
-    span(/*vertical=*/true);
-  } else {
-    run.corridor = {CorridorKind::RowGap, row,
-                    std::min(request.from.tile.first, request.to.tile.first)};
-    span(/*vertical=*/false);
+  if (sameTile && a != EndKind::External && b != EndKind::External) {
+    if (a == EndKind::Switch && b == EndKind::Switch)
+      path.legs.push_back(
+          {{CorridorKind::Switchbox, col, row}, false, 0, 0, 0});
+    else if (a == EndKind::DMA || b == EndKind::DMA)
+      add(a == EndKind::Switch || b == EndKind::Switch
+              ? CorridorKind::DMAApproach
+              : CorridorKind::TileIn,
+          col, /*vertical=*/true);
+    else
+      add(CorridorKind::TileOut, col, /*vertical=*/true);
+    return path;
   }
-  return run;
+
+  // An end outside the array is reached along the strip below it, and from
+  // there every column channel is open.
+  if (a == EndKind::External || b == EndKind::External) {
+    int inside = a == EndKind::External ? destCol : col;
+    add(CorridorKind::Arguments, 0, /*vertical=*/false);
+    add(CorridorKind::ColumnGap, inside, /*vertical=*/true);
+    if (a == EndKind::External)
+      return path;
+    std::reverse(path.legs.begin(), path.legs.end());
+    return path;
+  }
+
+  if (col == destCol) {
+    add(CorridorKind::ColumnGap, col, /*vertical=*/true);
+    return path;
+  }
+  if (row == destRow) {
+    add(CorridorKind::RowGap, row, /*vertical=*/false);
+    return path;
+  }
+
+  // Down one column channel, across a row channel, up the other. Any row
+  // between the two ends will do, so take the one carrying least across the
+  // columns this path spans.
+  double left =
+      corridorMiddle({CorridorKind::ColumnGap, std::min(col, destCol)}, layout);
+  double right =
+      corridorMiddle({CorridorKind::ColumnGap, std::max(col, destCol)}, layout);
+  int bestRow = destRow;
+  unsigned bestCost = std::numeric_limits<unsigned>::max();
+  for (int candidate = std::min(row, destRow);
+       candidate <= std::max(row, destRow); ++candidate) {
+    unsigned crowding = 0;
+    for (auto [lo, hi] : rowLoad[candidate])
+      if (lo < right && hi > left)
+        ++crowding;
+    unsigned detour = std::abs(candidate - destRow) + std::abs(candidate - row);
+    unsigned cost = crowding * 4 + detour;
+    if (cost < bestCost) {
+      bestCost = cost;
+      bestRow = candidate;
+    }
+  }
+  rowLoad[bestRow].push_back({left, right});
+
+  add(CorridorKind::ColumnGap, col, /*vertical=*/true);
+  add(CorridorKind::RowGap, bestRow, /*vertical=*/false);
+  add(CorridorKind::ColumnGap, destCol, /*vertical=*/true);
+  return path;
 }
 
 Corridor ChannelArrowRenderer::corridorOf(const CorridorKey &key,
@@ -379,16 +448,16 @@ Corridor ChannelArrowRenderer::corridorOf(const CorridorKey &key,
     // The strip left of the switchboxes, which is clear the whole height of
     // the array, so a run passing a row has somewhere of its own to be.
     int col = key.a;
-    double hi = switchCentreX(layout, col) - kSwitchHalfWidth - kEdgeMargin;
-    double lo = layout.tileLeft(col) - kChannel + kEdgeMargin;
+    double hi = switchCenterX(layout, col) - kSwitchHalfWidth - kEdgeMargin;
+    double lo = layout.tileLeft(col) - layout.tileGapX + kEdgeMargin;
     corridor.base = hi;
     corridor.span = lo - hi;
     break;
   }
   case CorridorKind::RowGap: {
     int row = key.a;
-    auto found = switches.find({key.b, key.a});
-    double half = found == switches.end() ? 0.2 : found->second.halfHeight;
+    auto found = rowSwitchHalf.find(row);
+    double half = found == rowSwitchHalf.end() ? 0.2 : found->second;
     double hi = layout.channelY(row) - half - kEdgeMargin;
     // The channel below the bottom row is open, so it has no far edge.
     double lo = row > 0 ? layout.rowTop(row - 1) + kEdgeMargin
@@ -399,8 +468,9 @@ Corridor ChannelArrowRenderer::corridorOf(const CorridorKey &key,
   }
   case CorridorKind::DMAApproach: {
     int col = key.a;
-    double lo = switchCentreX(layout, col) + kSwitchHalfWidth + kEdgeMargin;
-    double hi = dmaCentreX(layout, col) - kDMAHalfWidth - kEdgeMargin;
+    double lo = switchCenterX(layout, col) + kSwitchHalfWidth + kEdgeMargin;
+    double hi =
+        dmaCenterX(layout, col) - layout.text(kDMAHalfWidth) - kEdgeMargin;
     corridor.base = lo;
     corridor.span = hi - lo;
     break;
@@ -434,6 +504,7 @@ Corridor ChannelArrowRenderer::corridorOf(const CorridorKey &key,
 
 SmallVector<ArrowPath>
 ChannelArrowRenderer::route(ArrayRef<ArrowRequest> requests,
+                            ArrayRef<RoutingObstacle> obstacles,
                             const LayoutGeometry &layout) {
   measure(requests);
 
@@ -449,27 +520,34 @@ ChannelArrowRenderer::route(ArrayRef<ArrowRequest> requests,
             std::max(argumentsTop, end->pinned.second + end->halfHeight);
     }
 
-  SmallVector<Run> runs;
-  runs.reserve(requests.size());
+  std::map<int, SmallVector<std::pair<double, double>>> rowLoad;
+  SmallVector<Path> plans;
+  plans.reserve(requests.size());
   for (const ArrowRequest &request : requests)
-    runs.push_back(classify(request, layout));
+    plans.push_back(plan(request, layout, rowLoad));
 
-  // Arrows meeting the same box would otherwise all run along its centre
+  // Arrows meeting the same box would otherwise all run along its center
   // line, which is the one place they cannot help but merge. Each takes its
   // own point on the edge it arrives at instead, so they stay apart until
   // they touch the box.
+  auto meetsSideways = [&](const Path &path, bool isFrom) {
+    if (path.legs.empty())
+      return true;
+    return isFrom ? path.legs.front().vertical : path.legs.back().vertical;
+  };
   std::map<std::pair<std::string, bool>, SmallVector<std::pair<unsigned, bool>>>
       arrivals;
   for (const ArrowRequest &request : requests) {
-    const Run &run = runs[request.id];
-    if (!run.valid)
+    const Path &path = plans[request.id];
+    if (!path.valid)
       continue;
-    // A run that is vertical meets its boxes on their left or right, so the
-    // points it may take are spread up and down; a horizontal one the other
-    // way round.
+    // An arrow leaving a box sideways may take any point up or down its edge;
+    // one leaving it above or below may take any point along the top or
+    // bottom.
     for (auto [end, isFrom] :
          {std::pair{&request.from, true}, std::pair{&request.to, false}})
-      arrivals[{end->node, run.vertical}].push_back({request.id, isFrom});
+      arrivals[{end->node, meetsSideways(path, isFrom)}].push_back(
+          {request.id, isFrom});
   }
   DenseMap<uint64_t, double> offsetOf;
   for (auto &[key, members] : arrivals) {
@@ -486,83 +564,95 @@ ChannelArrowRenderer::route(ArrayRef<ArrowRequest> requests,
       offsetOf[(uint64_t(id) << 1) | unsigned(isFrom)] = offset;
     }
   }
-  auto attach = [&](unsigned id, bool isFrom, Point at, bool vertical) {
+  auto attach = [&](unsigned id, bool isFrom, Point at, bool sideways) {
     auto found = offsetOf.find((uint64_t(id) << 1) | unsigned(isFrom));
     if (found == offsetOf.end())
       return at;
-    return vertical ? Point{at.first, at.second + found->second}
+    return sideways ? Point{at.first, at.second + found->second}
                     : Point{at.first + found->second, at.second};
   };
-  for (Run &run : runs) {
-    if (!run.valid)
+
+  // How far each leg reaches, measured between the middles of the corridors
+  // on either side of it. A track sits within a corridor, so this is within
+  // half a corridor's width of where the leg ends up.
+  for (Path &path : plans) {
+    if (!path.valid)
       continue;
-    run.from = attach(run.id, true, run.from, run.vertical);
-    run.to = attach(run.id, false, run.to, run.vertical);
-    double lo = run.vertical ? std::min(run.from.second, run.to.second)
-                             : std::min(run.from.first, run.to.first);
-    double hi = run.vertical ? std::max(run.from.second, run.to.second)
-                             : std::max(run.from.first, run.to.first);
-    run.lo = lo;
-    run.hi = hi;
+    path.from = attach(path.id, true, path.from, meetsSideways(path, true));
+    path.to = attach(path.id, false, path.to, meetsSideways(path, false));
+    for (auto [index, leg] : llvm::enumerate(path.legs)) {
+      double before =
+          index == 0 ? (leg.vertical ? path.from.second : path.from.first)
+                     : corridorMiddle(path.legs[index - 1].corridor, layout);
+      double after =
+          index + 1 == path.legs.size()
+              ? (leg.vertical ? path.to.second : path.to.first)
+              : corridorMiddle(path.legs[index + 1].corridor, layout);
+      leg.lo = std::min(before, after);
+      leg.hi = std::max(before, after);
+    }
   }
 
-  // Interval colouring: sorted by where each run starts, a run takes the
-  // lowest track no other run is still occupying. That is optimal here, and
-  // it is what keeps two parallel runs off the same line.
-  std::map<CorridorKey, SmallVector<unsigned>> byCorridor;
-  for (const Run &run : runs)
-    if (run.valid)
-      byCorridor[run.corridor].push_back(run.id);
-  DenseMap<unsigned, int> trackOf;
-  DenseMap<unsigned, unsigned> keyIndex;
-  DenseMap<unsigned, int> trackCount;
-  unsigned nextKey = 0;
+  // Interval coloring: sorted by where each leg starts, a leg takes the
+  // lowest track no other leg is still occupying. That is optimal here, and
+  // it is what keeps two parallel legs off the same line.
+  struct Slot {
+    unsigned path;
+    unsigned leg;
+  };
+  std::map<CorridorKey, SmallVector<Slot>> byCorridor;
+  for (const Path &path : plans)
+    if (path.valid)
+      for (auto [index, leg] : llvm::enumerate(path.legs))
+        byCorridor[leg.corridor].push_back({path.id, unsigned(index)});
   for (auto &[key, members] : byCorridor) {
-    unsigned index = nextKey++;
-    llvm::stable_sort(members, [&](unsigned a, unsigned b) {
-      return runs[a].lo < runs[b].lo;
+    llvm::stable_sort(members, [&](const Slot &a, const Slot &b) {
+      return plans[a.path].legs[a.leg].lo < plans[b.path].legs[b.leg].lo;
     });
     SmallVector<double> freeFrom;
-    for (unsigned id : members) {
-      keyIndex[id] = index;
-      int track = -1;
-      for (auto [slot, end] : llvm::enumerate(freeFrom))
-        if (end <= runs[id].lo + 1e-9) {
-          track = slot;
+    SmallVector<int> track(members.size(), 0);
+    for (auto [index, member] : llvm::enumerate(members)) {
+      Leg &leg = plans[member.path].legs[member.leg];
+      int slot = -1;
+      for (auto [candidate, end] : llvm::enumerate(freeFrom))
+        if (end <= leg.lo + 1e-9) {
+          slot = candidate;
           break;
         }
-      if (track < 0) {
-        track = freeFrom.size();
+      if (slot < 0) {
+        slot = freeFrom.size();
         freeFrom.push_back(0);
       }
-      freeFrom[track] = runs[id].hi;
-      trackOf[id] = track;
+      freeFrom[slot] = leg.hi;
+      track[index] = slot;
     }
-    trackCount[index] = freeFrom.size();
+    // Tracks share out the corridor's width, so a busy corridor packs them
+    // closer rather than spilling past its edge onto a tile.
+    Corridor corridor = corridorOf(key, layout);
+    int used = std::max<size_t>(1, freeFrom.size());
+    double step = std::min(kTrack, std::abs(corridor.span) / used);
+    for (auto [index, member] : llvm::enumerate(members))
+      plans[member.path].legs[member.leg].cross =
+          corridor.base + track[index] * std::copysign(step, corridor.span);
   }
 
   SmallVector<ArrowPath> paths;
   for (const ArrowRequest &request : requests) {
-    const Run &run = runs[request.id];
-    if (!run.valid)
+    const Path &path = plans[request.id];
+    if (!path.valid || path.legs.empty())
       continue;
-    Corridor corridor = corridorOf(run.corridor, layout);
-    int track = trackOf.lookup(request.id);
-    // Tracks share out the corridor's width, so a busy corridor packs them
-    // closer rather than spilling past its edge onto a tile.
-    int used = std::max(1, trackCount.lookup(keyIndex.lookup(request.id)));
-    double step = std::min(kTrack, std::abs(corridor.span) / used);
-    double cross = corridor.base + track * std::copysign(step, corridor.span);
 
-    SmallVector<Point> corners{run.from};
-    if (run.vertical) {
-      corners.push_back({cross, run.from.second});
-      corners.push_back({cross, run.to.second});
-    } else {
-      corners.push_back({run.from.first, cross});
-      corners.push_back({run.to.first, cross});
+    SmallVector<Point> corners{path.from};
+    Point cursor = path.from;
+    for (const Leg &leg : path.legs) {
+      cursor = leg.vertical ? Point{leg.cross, cursor.second}
+                            : Point{cursor.first, leg.cross};
+      corners.push_back(cursor);
     }
-    corners.push_back(run.to);
+    corners.push_back(path.legs.back().vertical
+                          ? Point{cursor.first, path.to.second}
+                          : Point{path.to.first, cursor.second});
+    corners.push_back(path.to);
 
     corners.front() = onEdge(request.from, corners.front(), corners[1]);
     corners.back() =
