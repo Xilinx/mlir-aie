@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generated_at": "2026-10-28T12:51:59+00:00",
+ "generated_at": "2026-10-28T18:52:18+00:00",
  "repo": "Xilinx/mlir-aie",
  "window_days": 14,
  "critical": [
@@ -10,7 +10,7 @@
    "every": 24,
    "legs": true,
    "why": "lit and IRON tests on npu1 and npu2; the only hardware test of main",
-   "runs": 412,
+   "runs": 432,
    "main": {
     "passed": 11,
     "failed": 0,
@@ -33,7 +33,22 @@
     "attempt": 1,
     "outcome": "passed",
     "waited": 270.1,
-    "took": 288.4
+    "took": 288.4,
+    "runners": [
+     {
+      "runner": "aie8",
+      "passed": true
+     },
+     {
+      "runner": "aie2",
+      "passed": true
+     },
+     {
+      "runner": "aie9",
+      "passed": true
+     }
+    ],
+    "runners_version": 1
    },
    "newest_main": {
     "id": 40610005793,
@@ -103,7 +118,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 270.1,
-     "took": 288.4
+     "took": 288.4,
+     "runners": [
+      {
+       "runner": "aie8",
+       "passed": true
+      },
+      {
+       "runner": "aie2",
+       "passed": true
+      },
+      {
+       "runner": "aie9",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 40428763881,
@@ -118,7 +148,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 40.6,
-     "took": 88.0
+     "took": 88.0,
+     "runners": [
+      {
+       "runner": "aie8",
+       "passed": true
+      },
+      {
+       "runner": "aie8",
+       "passed": true
+      },
+      {
+       "runner": "aie2",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 40251293664,
@@ -133,7 +178,22 @@
      "attempt": 1,
      "outcome": "timed_out",
      "waited": 0.2,
-     "took": 90.5
+     "took": 90.5,
+     "runners": [
+      {
+       "runner": "aie8",
+       "passed": false
+      },
+      {
+       "runner": "aie1",
+       "passed": false
+      },
+      {
+       "runner": "aie6",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 40148363212,
@@ -148,7 +208,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.2,
-     "took": 41.2
+     "took": 41.2,
+     "runners": [
+      {
+       "runner": "aie6",
+       "passed": true
+      },
+      {
+       "runner": "aie8",
+       "passed": true
+      },
+      {
+       "runner": "aie1",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 40046610276,
@@ -163,7 +238,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 41.4,
-     "took": 73.9
+     "took": 73.9,
+     "runners": [
+      {
+       "runner": "aie8",
+       "passed": true
+      },
+      {
+       "runner": "aie7",
+       "passed": true
+      },
+      {
+       "runner": "aie6",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39880376290,
@@ -178,7 +268,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 39.4
+     "took": 39.4,
+     "runners": [
+      {
+       "runner": "aie6",
+       "passed": true
+      },
+      {
+       "runner": "aie9",
+       "passed": true
+      },
+      {
+       "runner": "aie2",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39701809383,
@@ -193,7 +298,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 40.7
+     "took": 40.7,
+     "runners": [
+      {
+       "runner": "aie9",
+       "passed": true
+      },
+      {
+       "runner": "aie8",
+       "passed": true
+      },
+      {
+       "runner": "aie1",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39523432643,
@@ -208,7 +328,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 45.4,
-     "took": 67.7
+     "took": 67.7,
+     "runners": [
+      {
+       "runner": "aie6",
+       "passed": true
+      },
+      {
+       "runner": "aie10",
+       "passed": true
+      },
+      {
+       "runner": "aie9",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39349794704,
@@ -223,7 +358,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 12.0,
-     "took": 57.2
+     "took": 57.2,
+     "runners": [
+      {
+       "runner": "aie6",
+       "passed": true
+      },
+      {
+       "runner": "aie8",
+       "passed": true
+      },
+      {
+       "runner": "aie1",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39182673457,
@@ -238,7 +388,22 @@
      "attempt": 1,
      "outcome": "timed_out",
      "waited": 0.3,
-     "took": 39.6
+     "took": 39.6,
+     "runners": [
+      {
+       "runner": "aie8",
+       "passed": false
+      },
+      {
+       "runner": "aie6",
+       "passed": true
+      },
+      {
+       "runner": "aie7",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39084375223,
@@ -253,7 +418,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 40.4
+     "took": 40.4,
+     "runners": [
+      {
+       "runner": "aie9",
+       "passed": true
+      },
+      {
+       "runner": "aie6",
+       "passed": true
+      },
+      {
+       "runner": "aie1",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 38987940853,
@@ -268,7 +448,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 42.2
+     "took": 42.2,
+     "runners": [
+      {
+       "runner": "aie9",
+       "passed": true
+      },
+      {
+       "runner": "aie7",
+       "passed": true
+      },
+      {
+       "runner": "aie8",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 38831385965,
@@ -283,7 +478,22 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 33.5
+     "took": 33.5,
+     "runners": [
+      {
+       "runner": "aie9",
+       "passed": true
+      },
+      {
+       "runner": "aie2",
+       "passed": true
+      },
+      {
+       "runner": "aie6",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 38661915758,
@@ -298,23 +508,38 @@
      "attempt": 1,
      "outcome": "timed_out",
      "waited": 52.2,
-     "took": 81.8
+     "took": 81.8,
+     "runners": [
+      {
+       "runner": "aie9",
+       "passed": true
+      },
+      {
+       "runner": "aie10",
+       "passed": true
+      },
+      {
+       "runner": "aie6",
+       "passed": false
+      }
+     ],
+     "runners_version": 1
     }
    ],
    "pull_requests": {
-    "passed": 113,
-    "failed": 57,
-    "rate": 0.665
+    "passed": 124,
+    "failed": 56,
+    "rate": 0.689
    },
    "merge_queue": {
-    "passed": 53,
+    "passed": 57,
     "failed": 4,
-    "rate": 0.93
+    "rate": 0.934
    },
    "flaky": {
-    "commits": 398,
-    "flaky": 34,
-    "rate": 0.085
+    "commits": 416,
+    "flaky": 42,
+    "rate": 0.101
    },
    "minutes_median": 42.2,
    "minutes_p90": 88.0,
@@ -326,7 +551,7 @@
    "every": 24,
    "legs": true,
    "why": "the same on a Windows Strix Halo machine",
-   "runs": 412,
+   "runs": 432,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -349,7 +574,14 @@
     "attempt": 1,
     "outcome": "passed",
     "waited": 1.1,
-    "took": 45.4
+    "took": 45.4,
+    "runners": [
+     {
+      "runner": "ephemeral-devlab-x2-la03-s05-d01-122552206339",
+      "passed": true
+     }
+    ],
+    "runners_version": 1
    },
    "newest_main": {
     "id": 40608042905,
@@ -389,7 +621,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 1.1,
-     "took": 45.4
+     "took": 45.4,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s05-d01-122552206339",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 40426226618,
@@ -404,7 +643,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 43.7
+     "took": 43.7,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s02-d08-121932550039",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 40249327622,
@@ -419,7 +665,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.7,
-     "took": 47.1
+     "took": 47.1,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s05-d04-121337544430",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 40146727501,
@@ -434,7 +687,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 46.6
+     "took": 46.6,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s02-d08-121029553948",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 40044805484,
@@ -449,7 +709,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 1.7,
-     "took": 44.6
+     "took": 44.6,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s02-d01-120723971299",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39878027937,
@@ -464,7 +731,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 1.3,
-     "took": 43.8
+     "took": 43.8,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s05-d05-120168336969",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39699512584,
@@ -479,7 +753,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 1.5,
-     "took": 47.0
+     "took": 47.0,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s02-d05-119565047381",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39521059294,
@@ -494,7 +775,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.7,
-     "took": 46.7
+     "took": 46.7,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s02-d05-118964720032",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39347508062,
@@ -509,7 +797,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.7,
-     "took": 50.4
+     "took": 50.4,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s05-d04-118383565446",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39180803694,
@@ -524,7 +819,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 45.8
+     "took": 45.8,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s02-d04-117832934455",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 39082812307,
@@ -539,7 +841,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 45.0
+     "took": 45.0,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s02-d01-117543124080",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 38986207537,
@@ -554,7 +863,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 1.7,
-     "took": 45.8
+     "took": 45.8,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s05-d02-117258162235",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 38829198174,
@@ -569,7 +885,14 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 15.7,
-     "took": 44.4
+     "took": 44.4,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s05-d01-116743750327",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     },
     {
      "id": 38659783412,
@@ -584,23 +907,30 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 19.1,
-     "took": 44.8
+     "took": 44.8,
+     "runners": [
+      {
+       "runner": "ephemeral-devlab-x2-la03-s05-d07-116178040224",
+       "passed": true
+      }
+     ],
+     "runners_version": 1
     }
    ],
    "pull_requests": {
-    "passed": 118,
-    "failed": 72,
-    "rate": 0.621
+    "passed": 126,
+    "failed": 76,
+    "rate": 0.624
    },
    "merge_queue": {
-    "passed": 57,
+    "passed": 62,
     "failed": 2,
-    "rate": 0.966
+    "rate": 0.969
    },
    "flaky": {
-    "commits": 398,
-    "flaky": 40,
-    "rate": 0.101
+    "commits": 417,
+    "flaky": 47,
+    "rate": 0.113
    },
    "minutes_median": 45.4,
    "minutes_p90": 47.1,
@@ -612,7 +942,7 @@
    "every": 24,
    "legs": false,
    "why": "compilers, assertions and RTTI on Linux and Windows",
-   "runs": 439,
+   "runs": 459,
    "main": {
     "passed": 39,
     "failed": 2,
@@ -635,7 +965,9 @@
     "attempt": 1,
     "outcome": "passed",
     "waited": 0.5,
-    "took": 25.3
+    "took": 25.3,
+    "runners": [],
+    "runners_version": 1
    },
    "newest_main": {
     "id": 40608997171,
@@ -664,7 +996,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 25.3
+     "took": 25.3,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40427561344,
@@ -679,7 +1013,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 23.9
+     "took": 23.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40250360040,
@@ -694,7 +1030,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.2,
-     "took": 24.2
+     "took": 24.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40147584507,
@@ -709,7 +1047,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.2,
-     "took": 24.8
+     "took": 24.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40045743686,
@@ -724,7 +1064,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 24.3
+     "took": 24.3,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39879270202,
@@ -739,7 +1081,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 10.3
+     "took": 10.3,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39855912816,
@@ -754,7 +1098,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 14.3
+     "took": 14.3,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39800689646,
@@ -769,7 +1115,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 10.9
+     "took": 10.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39795312714,
@@ -784,7 +1132,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 79.7
+     "took": 79.7,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39793590228,
@@ -799,7 +1149,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 31.9
+     "took": 31.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39701551268,
@@ -814,7 +1166,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 21.8
+     "took": 21.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39700758741,
@@ -829,7 +1183,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 17.9
+     "took": 17.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39698780761,
@@ -844,7 +1200,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 23.9
+     "took": 23.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39677837349,
@@ -859,7 +1217,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 8.9
+     "took": 8.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39671724350,
@@ -874,7 +1234,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 8.6
+     "took": 8.6,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39667390916,
@@ -889,7 +1251,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 8.8
+     "took": 8.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39641569196,
@@ -904,7 +1268,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 23.6
+     "took": 23.6,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39579544946,
@@ -919,7 +1285,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 24.1
+     "took": 24.1,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39522321100,
@@ -934,7 +1302,9 @@
      "attempt": 1,
      "outcome": "failed",
      "waited": 0.3,
-     "took": 24.1
+     "took": 24.1,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39440969970,
@@ -949,7 +1319,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 23.6
+     "took": 23.6,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39362945440,
@@ -964,7 +1336,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 8.9
+     "took": 8.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39352604184,
@@ -979,7 +1353,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 11.4
+     "took": 11.4,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39348744804,
@@ -994,7 +1370,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 7.5
+     "took": 7.5,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39335472162,
@@ -1009,7 +1387,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 8.9
+     "took": 8.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39329297666,
@@ -1024,7 +1404,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 23.9
+     "took": 23.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39181814631,
@@ -1039,7 +1421,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 24.1
+     "took": 24.1,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39146192777,
@@ -1054,7 +1438,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 23.8
+     "took": 23.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39083623062,
@@ -1069,7 +1455,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 7.7
+     "took": 7.7,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39076160709,
@@ -1084,7 +1472,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 9.2
+     "took": 9.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39069215822,
@@ -1099,7 +1489,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 23.7
+     "took": 23.7,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38987143865,
@@ -1114,7 +1506,9 @@
      "attempt": 1,
      "outcome": "failed",
      "waited": 0.5,
-     "took": 7.5
+     "took": 7.5,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38961504647,
@@ -1129,7 +1523,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 23.8
+     "took": 23.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38830350454,
@@ -1144,7 +1540,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 7.8
+     "took": 7.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38805020293,
@@ -1159,7 +1557,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 23.8
+     "took": 23.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38802983462,
@@ -1174,7 +1574,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 27.0
+     "took": 27.0,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38678032055,
@@ -1189,7 +1591,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 12.6
+     "took": 12.6,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38665248502,
@@ -1204,7 +1608,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 8.5
+     "took": 8.5,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38660995152,
@@ -1219,7 +1625,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 12.0
+     "took": 12.0,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38660879735,
@@ -1234,7 +1642,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 7.2
+     "took": 7.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38657565209,
@@ -1249,7 +1659,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 8.4
+     "took": 8.4,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38641131340,
@@ -1264,23 +1676,25 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 24.5
+     "took": 24.5,
+     "runners": [],
+     "runners_version": 1
     }
    ],
    "pull_requests": {
-    "passed": 193,
-    "failed": 48,
-    "rate": 0.801
+    "passed": 200,
+    "failed": 53,
+    "rate": 0.791
    },
    "merge_queue": {
-    "passed": 59,
+    "passed": 65,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 398,
-    "flaky": 45,
-    "rate": 0.113
+    "commits": 418,
+    "flaky": 52,
+    "rate": 0.124
    },
    "minutes_median": 21.8,
    "minutes_p90": 25.3,
@@ -1292,7 +1706,7 @@
    "every": 24,
    "legs": false,
    "why": "the tests on each supported Python",
-   "runs": 439,
+   "runs": 459,
    "main": {
     "passed": 41,
     "failed": 0,
@@ -1315,7 +1729,9 @@
     "attempt": 1,
     "outcome": "passed",
     "waited": 0.6,
-    "took": 20.5
+    "took": 20.5,
+    "runners": [],
+    "runners_version": 1
    },
    "newest_main": {
     "id": 40606803061,
@@ -1344,7 +1760,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 20.5
+     "took": 20.5,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40424590729,
@@ -1359,7 +1777,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 19.2
+     "took": 19.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40248088684,
@@ -1374,7 +1794,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.2,
-     "took": 22.1
+     "took": 22.1,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40145716899,
@@ -1389,7 +1811,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.2,
-     "took": 18.6
+     "took": 18.6,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40043573386,
@@ -1404,7 +1828,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 19.3
+     "took": 19.3,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39876460081,
@@ -1419,7 +1845,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 8.6
+     "took": 8.6,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39855912819,
@@ -1434,7 +1862,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 15.1
+     "took": 15.1,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39800689233,
@@ -1449,7 +1879,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 11.8
+     "took": 11.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39795312564,
@@ -1464,7 +1896,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 32.7
+     "took": 32.7,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39793590094,
@@ -1479,7 +1913,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 30.3
+     "took": 30.3,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39701551357,
@@ -1494,7 +1930,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 17.5
+     "took": 17.5,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39698780751,
@@ -1509,7 +1947,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 18.5
+     "took": 18.5,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39697958026,
@@ -1524,7 +1964,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 20.2
+     "took": 20.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39677837453,
@@ -1539,7 +1981,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 8.2
+     "took": 8.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39671724449,
@@ -1554,7 +1998,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 8.4
+     "took": 8.4,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39667390772,
@@ -1569,7 +2015,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 8.2
+     "took": 8.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39641569223,
@@ -1584,7 +2032,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 20.2
+     "took": 20.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39579544908,
@@ -1599,7 +2049,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 18.9
+     "took": 18.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39519638712,
@@ -1614,7 +2066,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 20.1
+     "took": 20.1,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39440969780,
@@ -1629,7 +2083,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 20.0
+     "took": 20.0,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39362945514,
@@ -1644,7 +2100,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 8.9
+     "took": 8.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39352604171,
@@ -1659,7 +2117,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 8.7
+     "took": 8.7,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39346071349,
@@ -1674,7 +2134,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 7.7
+     "took": 7.7,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39335472215,
@@ -1689,7 +2151,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 8.2
+     "took": 8.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39329297617,
@@ -1704,7 +2168,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 19.5
+     "took": 19.5,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39179635468,
@@ -1719,7 +2185,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 18.2
+     "took": 18.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39146192736,
@@ -1734,7 +2202,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 18.1
+     "took": 18.1,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39081832790,
@@ -1749,7 +2219,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 7.2
+     "took": 7.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39076160724,
@@ -1764,7 +2236,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 8.5
+     "took": 8.5,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39069215805,
@@ -1779,7 +2253,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 18.7
+     "took": 18.7,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38985069158,
@@ -1794,7 +2270,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 7.0
+     "took": 7.0,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38961504726,
@@ -1809,7 +2287,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 18.1
+     "took": 18.1,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38827864036,
@@ -1824,7 +2304,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.7,
-     "took": 8.7
+     "took": 8.7,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38805020152,
@@ -1839,7 +2321,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 16.0
+     "took": 16.0,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38802983482,
@@ -1854,7 +2338,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 8.0
+     "took": 8.0,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38678032033,
@@ -1869,7 +2355,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 10.2
+     "took": 10.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38665248550,
@@ -1884,7 +2372,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 7.9
+     "took": 7.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38660995037,
@@ -1899,7 +2389,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 10.9
+     "took": 10.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38658449610,
@@ -1914,7 +2406,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 6.9
+     "took": 6.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38657565188,
@@ -1929,7 +2423,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 8.2
+     "took": 8.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38641131406,
@@ -1944,23 +2440,25 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 17.6
+     "took": 17.6,
+     "runners": [],
+     "runners_version": 1
     }
    ],
    "pull_requests": {
-    "passed": 200,
-    "failed": 47,
-    "rate": 0.81
+    "passed": 209,
+    "failed": 52,
+    "rate": 0.801
    },
    "merge_queue": {
-    "passed": 59,
+    "passed": 65,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 398,
-    "flaky": 46,
-    "rate": 0.116
+    "commits": 418,
+    "flaky": 54,
+    "rate": 0.129
    },
    "minutes_median": 16.0,
    "minutes_p90": 20.2,
@@ -1972,7 +2470,7 @@
    "every": 24,
    "legs": false,
    "why": "clang-tidy, pyright and the docs checks",
-   "runs": 412,
+   "runs": 432,
    "main": {
     "passed": 14,
     "failed": 0,
@@ -1995,7 +2493,9 @@
     "attempt": 1,
     "outcome": "passed",
     "waited": 0.6,
-    "took": 3.0
+    "took": 3.0,
+    "runners": [],
+    "runners_version": 1
    },
    "newest_main": {
     "id": 40606794823,
@@ -2024,7 +2524,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.6,
-     "took": 3.0
+     "took": 3.0,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40424594369,
@@ -2039,7 +2541,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 2.6
+     "took": 2.6,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40248075935,
@@ -2054,7 +2558,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.2,
-     "took": 2.2
+     "took": 2.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40145711098,
@@ -2069,7 +2575,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.2,
-     "took": 2.8
+     "took": 2.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 40043573438,
@@ -2084,7 +2592,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 2.9
+     "took": 2.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39876460304,
@@ -2099,7 +2609,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 2.5
+     "took": 2.5,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39697960710,
@@ -2114,7 +2626,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 3.0
+     "took": 3.0,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39519637408,
@@ -2129,7 +2643,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 2.8
+     "took": 2.8,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39346076691,
@@ -2144,7 +2660,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 2.9
+     "took": 2.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39179641920,
@@ -2159,7 +2677,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.3,
-     "took": 3.0
+     "took": 3.0,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 39081827914,
@@ -2174,7 +2694,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.2,
-     "took": 2.2
+     "took": 2.2,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38985069247,
@@ -2189,7 +2711,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.5,
-     "took": 2.9
+     "took": 2.9,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38827861079,
@@ -2204,7 +2728,9 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.7,
-     "took": 3.1
+     "took": 3.1,
+     "runners": [],
+     "runners_version": 1
     },
     {
      "id": 38658459040,
@@ -2219,23 +2745,25 @@
      "attempt": 1,
      "outcome": "passed",
      "waited": 0.4,
-     "took": 2.9
+     "took": 2.9,
+     "runners": [],
+     "runners_version": 1
     }
    ],
    "pull_requests": {
-    "passed": 170,
-    "failed": 104,
-    "rate": 0.62
+    "passed": 179,
+    "failed": 109,
+    "rate": 0.622
    },
    "merge_queue": {
-    "passed": 59,
+    "passed": 65,
     "failed": 0,
     "rate": 1.0
    },
    "flaky": {
-    "commits": 398,
-    "flaky": 44,
-    "rate": 0.111
+    "commits": 418,
+    "flaky": 52,
+    "rate": 0.124
    },
    "minutes_median": 2.9,
    "minutes_p90": 3.0,
@@ -2243,12 +2771,12 @@
   }
  ],
  "merge_time": {
-  "merged": 56,
-  "hours_median": 25.5,
-  "hours_p90": 1208.8,
-  "open": 63,
-  "open_drafts": 31,
-  "open_over_30_days": 37
+  "merged": 60,
+  "hours_median": 24.7,
+  "hours_p90": 1084.4,
+  "open": 62,
+  "open_drafts": 30,
+  "open_over_30_days": 36
  },
  "workflows": [
   {
@@ -3288,13 +3816,25 @@
    "why": "early warning that upstream LLVM broke the build",
    "runs": [
     {
-     "id": 40686572098,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40686572098",
+     "id": 40723835403,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40723835403",
      "status": "in_progress",
      "conclusion": null,
+     "created_at": "2026-10-28T16:13:29Z",
+     "run_started_at": "2026-10-28T16:13:29Z",
+     "updated_at": "2026-10-28T16:26:59Z",
+     "head_sha": "69ccad5708abf6771ebf0ddcc328afd41a660cd0",
+     "title": "MLIR Distro",
+     "attempt": 1
+    },
+    {
+     "id": 40686572098,
+     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40686572098",
+     "status": "completed",
+     "conclusion": "success",
      "created_at": "2026-10-28T12:17:19Z",
      "run_started_at": "2026-10-28T12:17:19Z",
-     "updated_at": "2026-10-28T12:18:03Z",
+     "updated_at": "2026-10-28T16:26:21Z",
      "head_sha": "8a579b0e8e4575e0f571e8ba4444e61001ef7656",
      "title": "MLIR Distro",
      "attempt": 1
@@ -3416,18 +3956,6 @@
      "run_started_at": "2026-10-26T20:16:16Z",
      "updated_at": "2026-10-27T00:45:58Z",
      "head_sha": "6f73deca839e79a170e7c90b9285b3be949ca781",
-     "title": "MLIR Distro",
-     "attempt": 1
-    },
-    {
-     "id": 40358038257,
-     "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40358038257",
-     "status": "completed",
-     "conclusion": "success",
-     "created_at": "2026-10-26T16:19:40Z",
-     "run_started_at": "2026-10-26T16:19:40Z",
-     "updated_at": "2026-10-26T17:24:43Z",
-     "head_sha": "b775c31bef7a359dc0ff0c371af053de1cb61566",
      "title": "MLIR Distro",
      "attempt": 1
     }
@@ -4351,6 +4879,113 @@
     }
    ],
    "jobs": null
+  }
+ ],
+ "runners": [
+  {
+   "name": "aie1",
+   "passed": 4,
+   "failed": 1
+  },
+  {
+   "name": "aie10",
+   "passed": 2,
+   "failed": 0
+  },
+  {
+   "name": "aie2",
+   "passed": 4,
+   "failed": 0
+  },
+  {
+   "name": "aie6",
+   "passed": 9,
+   "failed": 1
+  },
+  {
+   "name": "aie7",
+   "passed": 3,
+   "failed": 0
+  },
+  {
+   "name": "aie8",
+   "passed": 8,
+   "failed": 2
+  },
+  {
+   "name": "aie9",
+   "passed": 8,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s02-d01-117543124080",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s02-d01-120723971299",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s02-d04-117832934455",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s02-d05-118964720032",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s02-d05-119565047381",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s02-d08-121029553948",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s02-d08-121932550039",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s05-d01-116743750327",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s05-d01-122552206339",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s05-d02-117258162235",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s05-d04-118383565446",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s05-d04-121337544430",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s05-d05-120168336969",
+   "passed": 1,
+   "failed": 0
+  },
+  {
+   "name": "ephemeral-devlab-x2-la03-s05-d07-116178040224",
+   "passed": 1,
+   "failed": 0
   }
  ]
 }
