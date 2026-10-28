@@ -18,7 +18,7 @@
 // CHECK: <meta name="aie-visualize-title" content="">
 // CHECK: Query parameters override metadata: svg, json, source-root, title, and source.<file>.
 // CHECK: aside { min-height: 0; overflow-y: auto
-// CHECK: #source-pane { display: grid
+// CHECK: #source-pane { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0
 // CHECK: .source-line.highlighted
 // CHECK: svg.hide-detail-buffers g.detail-buffers
 // CHECK: svg.hide-detail-arbitration g.detail-arbitration
