@@ -104,7 +104,7 @@ _GENERATION_LOCK = threading.RLock()
 _MULTI_CONFIGURATION_OUTPUTS = (
     "A Program with more than one configuration, teardown or an init entry "
     "requires full-ELF compilation and does not produce xclbin, instruction, "
-    "wrapped-ELF, or standalone-PDI outputs."
+    "wrapped-ELF, standalone-PDI, or C++ builder outputs."
 )
 
 # The Program options forwarded to aiecc. Each is an ``iron.<name>`` module
@@ -649,6 +649,7 @@ class CompilableDesign:
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
         image: "CompilableDesign | Path | str | None" = None,
+        npu_cpp_path: Path | str | None = None,
     ) -> tuple[Path | None, Path | None]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
@@ -665,9 +666,11 @@ class CompilableDesign:
         When both are ``None`` (the default), behavior is unchanged: artifacts
         land in ``~/.npu/cache/<hash>/`` and the cache is consulted first.
 
-        Static designs require both paths or neither. Designs with active
-        ``DispatchTime[T]`` parameters instead accept ``xclbin_path`` alone
-        (plus optional ``pdi_path``), and return ``(xclbin_path, None)``.
+        Non-dispatch designs require both paths or neither, unless
+        ``npu_cpp_path`` replaces ``inst_path`` (returning ``(xclbin_path, None)``).
+        Designs with active ``DispatchTime[T]`` parameters instead accept
+        ``xclbin_path`` alone (plus optional ``pdi_path``), and return
+        ``(xclbin_path, None)``.
         They reject ``inst_path`` and ``elf_path`` because instructions are
         built per call. Their immutable dispatch library stays in
         ``<xclbin stem>.prj``; retrieve it with ``get_dispatch_lib_path()``.
@@ -688,9 +691,19 @@ class CompilableDesign:
 
         ``pdi_path`` is likewise optional: when set, aiecc writes the
         Programmable Device Image (config data packed by ``bootgen``) to that
-        path. It requires an explicit ``xclbin_path`` (and ``inst_path`` for
-        static designs). In default cache mode aiecc still emits a ``main.pdi``
-        into the cache directory — use `get_pdi_path` to locate it.
+        path. It requires an explicit ``xclbin_path``. In default cache mode
+        aiecc still emits a ``main.pdi`` into the cache directory — use
+        `get_pdi_path` to locate it.
+
+        ``npu_cpp_path`` is likewise optional: when set, aiecc emits the
+        runtime sequence as a parameterized C++ TXN builder at that path — the
+        same overlay's sequence re-expressed as a function a native caller can
+        invoke with its own runtime values, without recompiling, for a "one
+        overlay, many shapes" workflow. It requires an explicit ``xclbin_path``
+        but not ``inst_path``; omit ``inst_path`` for runtime-valued sequences
+        that cannot produce static instructions. It is not available for
+        ``DispatchTime[T]`` designs, which already build their own C++ builder
+        as the dispatch bridge (retrieve it with ``get_dispatch_lib_path()``).
 
         Instructions-only designs return ``(None, inst_path)``. ``image`` is
         the image such a stream will run on: a design compiled for it, or
@@ -723,9 +736,16 @@ class CompilableDesign:
                 "compile(): DispatchTime[T] designs have no static instructions; "
                 "inst_path and elf_path must be None."
             )
+        if has_dispatch and npu_cpp_path is not None:
+            raise ValueError(
+                "compile(): DispatchTime[T] designs already build their own "
+                "C++ TXN builder as the dispatch bridge; npu_cpp_path must be "
+                "None. Retrieve it with get_dispatch_lib_path()."
+            )
         full_elf = self.full_elf or full_elf_path is not None
         if self._inferred_full_elf and any(
-            path is not None for path in (xclbin_path, inst_path, elf_path, pdi_path)
+            path is not None
+            for path in (xclbin_path, inst_path, elf_path, pdi_path, npu_cpp_path)
         ):
             raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
         if full_elf and has_dispatch:
@@ -740,6 +760,12 @@ class CompilableDesign:
                 "xclbin + insts.bin path. Compile without full_elf for a "
                 "design with DispatchTime[T] parameters."
             )
+        if full_elf and npu_cpp_path is not None:
+            raise NotImplementedError(
+                "compile(): npu_cpp_path is not supported with full_elf=True; "
+                "a full ELF bakes one static instruction stream, leaving no "
+                "runtime sequence left to re-express as a C++ builder."
+            )
         if full_elf:
             return self._compile_full_elf(full_elf_path)
         if image is not None and not self.insts_only:
@@ -748,7 +774,12 @@ class CompilableDesign:
                 "runs on; this design builds its own."
             )
         if self.insts_only:
-            if xclbin_path is not None or elf_path is not None or pdi_path is not None:
+            if (
+                xclbin_path is not None
+                or elf_path is not None
+                or pdi_path is not None
+                or npu_cpp_path is not None
+            ):
                 raise ValueError(
                     "compile(): an insts_only design takes inst_path alone "
                     "(or nothing, for the JIT cache); it builds no image."
@@ -768,7 +799,11 @@ class CompilableDesign:
                 inst_path, None if image is None else Path(image).resolve()
             )
 
-        if not has_dispatch and (xclbin_path is None) != (inst_path is None):
+        if (
+            not has_dispatch
+            and (xclbin_path is None) != (inst_path is None)
+            and not (xclbin_path is not None and npu_cpp_path is not None)
+        ):
             raise ValueError(
                 "compile(): xclbin_path and inst_path must be set together "
                 "(both paths to write artifacts directly, or both None to use "
@@ -781,7 +816,7 @@ class CompilableDesign:
         build_key = ""
         outputs: dict[str, Path] = {}
 
-        if elf_path is not None and not explicit_paths:
+        if elf_path is not None and (not explicit_paths or inst_path is None):
             raise ValueError(
                 "compile(): elf_path requires explicit xclbin_path + inst_path "
                 "(the JIT cache does not track ELF artifacts)."
@@ -792,6 +827,13 @@ class CompilableDesign:
                 "compile(): pdi_path requires explicit xclbin_path "
                 "(the JIT cache does not track caller-named PDI artifacts; use "
                 "get_pdi_path() to locate the cache-mode main.pdi)."
+            )
+
+        if npu_cpp_path is not None and not explicit_paths:
+            raise ValueError(
+                "compile(): npu_cpp_path requires explicit xclbin_path "
+                "(the JIT cache does not track caller-named C++ builder "
+                "artifacts)."
             )
 
         if not isinstance(self.mlir_generator, Path):
@@ -813,6 +855,8 @@ class CompilableDesign:
                 elf_path = Path(elf_path).resolve()
             if pdi_path is not None:
                 pdi_path = Path(pdi_path).resolve()
+            if npu_cpp_path is not None:
+                npu_cpp_path = Path(npu_cpp_path).resolve()
             # Per-xclbin scratch dir (mirrors aiecc's default <input>.prj
             # naming) so two siblings sharing one build/ don't clobber each
             # other's input_with_addresses.mlir / .o files.
@@ -852,6 +896,7 @@ class CompilableDesign:
                         ("insts", inst_path),
                         ("elf", elf_path),
                         ("pdi", pdi_path),
+                        ("npu_cpp", npu_cpp_path),
                     )
                     if p is not None
                 }
@@ -961,7 +1006,9 @@ class CompilableDesign:
                     options=compiler_options or None,
                     fold_ddr_addr_offset=fold_ddr_addr_offset,
                     npu_cpp_path=(
-                        kernel_dir / "dispatch_gen.cpp" if has_dispatch else None
+                        kernel_dir / "dispatch_gen.cpp"
+                        if has_dispatch
+                        else npu_cpp_path
                     ),
                     npu_cpp_emit_dispatch_shim=has_dispatch,
                     device_cache_dir=self._device_cache_dir(),
@@ -979,6 +1026,8 @@ class CompilableDesign:
                     expected_outputs.append(Path(elf_path))
                 if pdi_path is not None:
                     expected_outputs.append(Path(pdi_path))
+                if npu_cpp_path is not None:
+                    expected_outputs.append(Path(npu_cpp_path))
                 missing = [p for p in expected_outputs if not p.exists()]
                 if missing:
                     raise RuntimeError(
