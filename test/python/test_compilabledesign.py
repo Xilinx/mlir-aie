@@ -2286,6 +2286,22 @@ def test_compile_mixed_explicit_paths_raises():
         cd.compile(xclbin_path=None, inst_path="/tmp/foo.bin")
 
 
+def test_compile_preserves_positional_image(tmp_path, monkeypatch):
+    design = CompilableDesign(_gemm_gen(), insts_only=True)
+    insts = tmp_path / "insts.bin"
+    image = tmp_path / "image.mlir"
+    calls = []
+    monkeypatch.setattr(
+        design,
+        "_compile_insts_only",
+        lambda inst_path, image_path: calls.append((inst_path, image_path)),
+    )
+
+    design.compile(None, insts, None, None, None, image)
+
+    assert calls == [(insts, image.resolve())]
+
+
 def test_non_full_elf_allows_raw_multi_device_mlir(tmp_path):
     mlir_path = tmp_path / "design.mlir"
     mlir_path.write_text("module { aie.device(npu1) @a {} aie.device(npu1) @b {} }")
@@ -2664,6 +2680,43 @@ def test_compile_elf_path_requires_explicit_paths():
         cd.compile(elf_path="/tmp/foo.elf")
 
 
+def test_compile_cpp_without_instructions_rejects_elf_path():
+    cd = CompilableDesign(_gemm_gen())
+    with pytest.raises(ValueError, match="elf_path requires explicit"):
+        cd.compile(
+            xclbin_path="/tmp/foo.xclbin",
+            npu_cpp_path="/tmp/foo.cpp",
+            elf_path="/tmp/foo.elf",
+        )
+
+
+def test_compile_npu_cpp_path_requires_explicit_paths():
+    """npu_cpp_path without explicit xclbin_path is rejected up front."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    with pytest.raises(ValueError, match="npu_cpp_path requires explicit"):
+        cd.compile(npu_cpp_path="/tmp/foo.cpp")
+
+
+def test_compile_full_elf_rejects_npu_cpp_path():
+    """A full-ELF design bakes one static stream, leaving no sequence to
+    re-express as a C++ builder."""
+    d = CompilableDesign(_gemm_gen(), full_elf=True)
+    with pytest.raises(NotImplementedError, match="npu_cpp_path"):
+        d.compile(npu_cpp_path="/tmp/foo.cpp")
+
+
+def test_compile_insts_only_rejects_npu_cpp_path():
+    """An insts_only design builds no image, so it has nothing for npu_cpp_path
+    to request the C++ builder of."""
+    d = CompilableDesign(_gemm_gen(), insts_only=True)
+    with pytest.raises(ValueError, match="insts_only design takes inst_path alone"):
+        d.compile(npu_cpp_path="/tmp/foo.cpp")
+
+
 def test_get_pdi_path_none_before_compile():
     """get_pdi_path() returns None when no compile has happened yet."""
 
@@ -2743,6 +2796,14 @@ def test_compile_dispatch_time_rejects_static_instruction_paths(extra):
     d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
     with pytest.raises(ValueError, match="no static instructions"):
         d.compile(xclbin_path="foo.xclbin", **extra)
+
+
+def test_compile_dispatch_time_rejects_npu_cpp_path():
+    """DispatchTime[T] designs already build their own C++ builder as the
+    dispatch bridge; a caller-supplied npu_cpp_path would collide with it."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    with pytest.raises(ValueError, match="dispatch bridge"):
+        d.compile(xclbin_path="foo.xclbin", npu_cpp_path="foo.cpp")
 
 
 def test_get_dispatch_lib_path_none_before_compile():

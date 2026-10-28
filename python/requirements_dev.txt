@@ -11,7 +11,9 @@ cibuildwheel
 # no Windows binary wheel and falls over building from source; gate the
 # marker explicitly so pip-compile carries it through to the lockfile.
 patchelf; platform_system == "Linux"
-pre-commit>=4.6.2,<5.0
+# Ryzen AI 1.3 uses Python 3.10; pre-commit 4.7+ requires Python 3.11.
+pre-commit>=4.6.2,<4.7; python_version < "3.11"
+pre-commit>=4.7.0,<5.0; python_version >= "3.11"
 black[jupyter]
 pyright
 ruff
