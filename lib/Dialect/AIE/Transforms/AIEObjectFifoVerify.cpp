@@ -197,6 +197,23 @@ struct AIEObjectFifoVerifyPass
       if (!reached.contains(dest))
         return endpoint.emitOpError("dispatches to @")
                << dest << ", but no route from it reaches there";
+
+    // Every turn moves the same chain through the dispatching endpoint, one
+    // object per turn, so each turn's destination must move as many elements
+    // as the dispatching endpoint itself does.
+    int64_t elements = transferElements(endpoint);
+    for (StringRef dest : turns) {
+      auto destEndpoint = dyn_cast_or_null<ObjectFifoDmaEndpointOp>(
+          SymbolTable::lookupNearestSymbolFrom(
+              device, StringAttr::get(device.getContext(), dest)));
+      if (!destEndpoint)
+        continue;
+      int64_t destElements = transferElements(destEndpoint);
+      if (destElements != elements)
+        return endpoint.emitOpError("dispatches, so every turn moves ")
+               << elements << " elements, but @" << dest << " moves "
+               << destElements;
+    }
     return success();
   }
 
