@@ -159,12 +159,28 @@ const std::string bgray("\033[48;5;239m");
 int main(int argc, char *argv[]) {
   cl::ParseCommandLineOptions(argc, argv);
 
-  if ((emitDot && emitJson) || (physical && emitJson)) {
-    errs() << "--emit-dot and --emit-json are mutually exclusive\n";
+  if (static_cast<unsigned>(emitDot) + static_cast<unsigned>(emitJson) +
+          static_cast<unsigned>(physical) >
+      1) {
+    errs()
+        << "--emit-dot, --emit-json, and --physical are mutually exclusive\n";
     return 3;
   }
   if (physical && !contractedNodeKinds.empty()) {
     errs() << "--physical does not support --contract\n";
+    return 3;
+  }
+  if (physical &&
+      (drawingScale.getNumOccurrences() || arrowStyle.getNumOccurrences() ||
+       colorScheme.getNumOccurrences() || weighEdges || tileRoles ||
+       contractBalancedFanout || minEdgeWidth.getNumOccurrences() ||
+       maxEdgeWidth.getNumOccurrences() ||
+       maxHeadlineKernels.getNumOccurrences() ||
+       tileWidth.getNumOccurrences() || minimumTileHeight.getNumOccurrences() ||
+       tileGapX.getNumOccurrences() || tileGapY.getNumOccurrences() ||
+       localSpacing.getNumOccurrences())) {
+    errs()
+        << "--physical does not support topology layout and styling options\n";
     return 3;
   }
 

@@ -9,6 +9,10 @@
 // RUN: aie-visualize --physical --split-packet-ports --device=npu1_device %s | FileCheck %s --check-prefix=NPU1 --implicit-check-not=physical_port_0_2_5_4_source --implicit-check-not=switchbox_4_0
 // RUN: aie-visualize --physical --device=npu2_device %s | FileCheck %s --check-prefix=NPU2 --implicit-check-not=switchbox_8_0
 // RUN: not aie-visualize --physical --contract=port %s 2>&1 | FileCheck %s --check-prefix=CONTRACT
+// RUN: not aie-visualize --physical --emit-dot %s 2>&1 | FileCheck %s --check-prefix=OUTPUT-MODES
+// RUN: not aie-visualize --physical --emit-json %s 2>&1 | FileCheck %s --check-prefix=OUTPUT-MODES
+// RUN: not aie-visualize --physical --scale=0.25 %s 2>&1 | FileCheck %s --check-prefix=PHYSICAL-OPTIONS
+// RUN: not aie-visualize --physical --contract-balanced-fanout %s 2>&1 | FileCheck %s --check-prefix=PHYSICAL-OPTIONS
 
 // The model supplies every switchbox and port, including unused resources.
 // NPU1-DAG: switchbox_0_2 [shape=box{{.*}}pos="0.000000,1008.000000!"
@@ -22,22 +26,29 @@
 // The used crosspoint is dark and wider. Other legal crosspoints stay faint.
 // NPU1-DAG: physical_port_0_2_0_0_source -> physical_port_0_2_5_0_dest [color="#c51b32", penwidth=1.6, class="physical-track used"]
 // NPU1-DAG: physical_port_0_2_0_0_source -> physical_port_0_2_5_1_dest [color="#e7eaed", penwidth=0.18, class="physical-track unused"]
+// NPU1-DAG: physical_port_0_2_5_0_dest -> physical_port_0_3_3_0_source [color="#c51b32", penwidth=1.6, class="physical-intertile-track used"]
+// NPU1-DAG: physical_port_0_2_6_0_dest -> physical_port_1_2_4_0_source [color="#e1e5e8", penwidth=0.22, class="physical-intertile-track unused"]
 
 // Packet aliases occupy the physical port coordinates rather than separate lanes.
 // NPU1-DAG: semantic_p_0_2_0_0_k3 {{.*}}pos="-104.400000,1112.400000!"
 // NPU1-DAG: semantic_p_0_2_0_0_k4 {{.*}}pos="-104.400000,1112.400000!"
 
 // DMA channels and all model-reported BDs occupy a box beside the tile.
-// NPU1-DAG: dma_box_0_1 {{.*}}label="DMA resources"
+// NPU1-DAG: dma_box_0_1 {{.*}}label=""
+// NPU1-DAG: dma_title_0_1 {{.*}}label="DMA resources"
 // NPU1-DAG: dma_s2mm_0_1_0 {{.*}}class="physical-dma-channel used"
 // NPU1-DAG: bd_0_1_7 {{.*}}color="#c51b32"{{.*}}class="physical-bd used"
 // NPU1-DAG: bd_0_1_47 [shape=box
+// NPU1-DAG: bd_group_0_1_0_24 {{.*}}label="channels 0, 2, 4: BD0-23"
+// NPU1-DAG: bd_group_0_1_24_48 {{.*}}label="channels 1, 3, 5: BD24-47"
 
 // Full NPU1 and NPU2 fixtures expose different target-model array extents.
 // NPU1-DAG: switchbox_3_5 [shape=box
 // NPU2-DAG: switchbox_7_5 [shape=box
 
 // CONTRACT: --physical does not support --contract
+// OUTPUT-MODES: --emit-dot, --emit-json, and --physical are mutually exclusive
+// PHYSICAL-OPTIONS: --physical does not support topology layout and styling options
 
 module {
   aie.device(npu1) @npu1_device {

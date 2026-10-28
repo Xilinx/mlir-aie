@@ -3286,11 +3286,18 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
       if (hasDMA) {
         output << "  dma_box_" << coordinate
                << " [shape=box, width=2.7, height=4.8, fixedsize=true, "
-                  "label=\"DMA resources\", color=\"#cdd2d7\", "
+                  "label=\"\", color=\"#cdd2d7\", "
                   "fontcolor=\"#7b838a\", pos=\""
                << physicalCoordinate(tileX + 3.8) << ','
                << physicalCoordinate(tileY) << "!\", "
                << "class=\"physical-dma-box\"];\n";
+        output
+            << "  dma_title_" << coordinate
+            << " [shape=plain, label=\"DMA resources\", fontcolor=\"#7b838a\", "
+               "pos=\""
+            << physicalCoordinate(tileX + 3.8) << ','
+            << physicalCoordinate(tileY + 2.28)
+            << "!\", class=\"physical-dma-title\"];\n";
         unsigned mm2sChannels = std::max(dmaSources, shimDmaSources);
         unsigned s2mmChannels = std::max(dmaDests, shimDmaDests);
         for (unsigned channel = 0; channel < mm2sChannels; ++channel) {
@@ -3319,6 +3326,24 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
                  << "!\", class=\"physical-dma-channel "
                  << (used ? "used" : "unused") << "\"];\n";
         }
+        std::map<std::pair<unsigned, unsigned>, std::vector<unsigned>> bdGroups;
+        for (unsigned channel = 0;
+             channel < std::max(mm2sChannels, s2mmChannels); ++channel)
+          bdGroups[model.getBdIdRangeForChannel(col, row, channel)].push_back(
+              channel);
+        unsigned bdGroupIndex = 0;
+        for (const auto &[range, channels] : bdGroups) {
+          if (range.first == range.second)
+            continue;
+          output << "  bd_group_" << coordinate << '_' << range.first << '_'
+                 << range.second << " [shape=plain, label=\"channels ";
+          llvm::interleaveComma(channels, output);
+          output << ": BD" << range.first << "-" << range.second - 1
+                 << "\", fontcolor=\"#7b838a\", pos=\""
+                 << physicalCoordinate(tileX + 3.8) << ','
+                 << physicalCoordinate(tileY + 2.05 - bdGroupIndex++ * 0.22)
+                 << "!\", class=\"physical-bd-group\"];\n";
+        }
         for (unsigned bd = 0; bd < numBDs; ++bd) {
           double x = tileX + 2.75 + static_cast<double>(bd % 4) * 0.68;
           double y = tileY + 1.65 - static_cast<double>(bd / 4) * 0.30;
@@ -3346,20 +3371,27 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
 
   for (int row = 0; row < model.rows(); ++row) {
     for (int col = 0; col < model.columns(); ++col) {
-      auto connectNeighbor = [&](AIE::WireBundle outputBundle,
-                                 AIE::WireBundle inputBundle, int nextCol,
-                                 int nextRow) {
-        if (!model.isValidTile({nextCol, nextRow}))
-          return;
+      for (AIE::WireBundle outputBundle :
+           {AIE::WireBundle::North, AIE::WireBundle::East}) {
         unsigned outputs =
             model.getNumDestSwitchboxConnections(col, row, outputBundle);
-        unsigned inputs = model.getNumSourceSwitchboxConnections(
-            nextCol, nextRow, inputBundle);
-        for (unsigned channel = 0; channel < std::min(outputs, inputs);
-             ++channel) {
+        for (unsigned channel = 0; channel < outputs; ++channel) {
+          std::optional<std::pair<AIE::TileID, AIE::Port>> endpoint =
+              AIE::getConnectingWireEndpoint(
+                  model, AIE::TileID{col, row},
+                  AIE::Port{outputBundle, static_cast<int>(channel)});
+          if (!endpoint)
+            continue;
+          if (endpoint->second.channel >=
+              static_cast<int>(model.getNumSourceSwitchboxConnections(
+                  endpoint->first.col, endpoint->first.row,
+                  endpoint->second.bundle)))
+            continue;
           PhysicalPort source{col, row, outputBundle, channel,
                               PhysicalPortRole::Dest};
-          PhysicalPort dest{nextCol, nextRow, inputBundle, channel,
+          PhysicalPort dest{endpoint->first.col, endpoint->first.row,
+                            endpoint->second.bundle,
+                            static_cast<unsigned>(endpoint->second.channel),
                             PhysicalPortRole::Source};
           bool used = usedTracks.count({source, dest});
           output << "  " << physicalPortID(source) << " -> "
@@ -3369,11 +3401,7 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
                  << ", class=\"physical-intertile-track "
                  << (used ? "used" : "unused") << "\"];\n";
         }
-      };
-      connectNeighbor(AIE::WireBundle::North, AIE::WireBundle::South, col,
-                      row + 1);
-      connectNeighbor(AIE::WireBundle::East, AIE::WireBundle::West, col + 1,
-                      row);
+      }
     }
   }
 
