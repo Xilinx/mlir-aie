@@ -6,7 +6,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="aie-visualize-svg" content="">
+<meta name="aie-visualize-json" content="">
+<meta name="aie-visualize-source-root" content="">
 <meta name="aie-visualize-title" content="">
+<!-- Query parameters override metadata: svg, json, source-root, title, and source.<file>. -->
 <title>AIE route visualization</title>
 <style>
 :root { color-scheme: light; font-family: "IBM Plex Sans", "DejaVu Sans", sans-serif; }
@@ -18,7 +21,7 @@ h1 { margin: 0; font-family: "IBM Plex Mono", "DejaVu Sans Mono", monospace; fon
 button { border: 1px solid #aab5b0; border-radius: 4px; padding: 5px 9px; background: #ffffff; color: inherit; cursor: pointer; }
 button:hover { background: #edf1ef; }
 input[type="file"] { display: none; }
-#workspace { display: grid; grid-template-columns: 168px minmax(0, 1fr); min-height: 0; }
+#workspace { display: grid; grid-template-columns: 168px minmax(320px, 1fr) minmax(320px, 38vw); min-height: 0; }
 aside { min-height: 0; overflow-y: auto; border-right: 1px solid #cbd3cf; padding: 10px 8px; background: #ffffff; }
 #flow-list { display: grid; gap: 2px; }
 .control-list { display: grid; gap: 2px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #dce2df; }
@@ -32,6 +35,16 @@ aside { min-height: 0; overflow-y: auto; border-right: 1px solid #cbd3cf; paddin
 .flow-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--flow-color, #777777); }
 main { overflow: hidden; cursor: grab; }
 main.dragging { cursor: grabbing; }
+#source-pane { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; border-left: 1px solid #cbd3cf; background: #ffffff; }
+#source-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 38px; padding: 6px 10px; border-bottom: 1px solid #dce2df; font-size: 12px; }
+#source-tabs { display: flex; min-width: 0; overflow-x: auto; border-bottom: 1px solid #dce2df; }
+.source-tab { flex: 0 0 auto; border: 0; border-right: 1px solid #dce2df; border-radius: 0; padding: 7px 10px; font: 12px "IBM Plex Mono", "DejaVu Sans Mono", monospace; }
+.source-tab.active { background: #dceae3; box-shadow: inset 0 -2px #247451; }
+#source-status { margin: auto; padding: 20px; color: #5d6b65; text-align: center; line-height: 1.5; }
+#source-code { min-height: 0; margin: 0; overflow: auto; padding: 8px 0; background: #f8faf9; font: 12px/1.55 "IBM Plex Mono", "DejaVu Sans Mono", monospace; tab-size: 2; }
+.source-line { display: grid; grid-template-columns: 52px minmax(0, 1fr); min-height: 18px; padding-right: 12px; white-space: pre; }
+.source-line-number { padding-right: 12px; color: #89958f; text-align: right; user-select: none; }
+.source-line.highlighted { background: #fff0a8; box-shadow: inset 3px 0 #c07700; }
 svg { width: 100%; height: 100%; display: block; user-select: none; }
 svg.hide-detail-buffers g.detail-buffers,
 svg.hide-detail-calls g.detail-calls,
@@ -43,6 +56,10 @@ svg.uniform-width g.edge.flow path { stroke-width: var(--uniform-width, 1px); }
 svg g.flow { opacity: 1; }
 svg.highlighting g.flow:not(.highlighted) { opacity: 0.07; }
 svg.highlighting g.flow.highlighted { opacity: 1; }
+@media (max-width: 900px) {
+  #workspace { grid-template-columns: 144px minmax(0, 1fr); grid-template-rows: minmax(280px, 58%) minmax(220px, 42%); }
+  #source-pane { grid-column: 1 / -1; border-left: 0; border-top: 1px solid #cbd3cf; }
+}
 </style>
 </head>
 <body>
@@ -58,12 +75,25 @@ svg.highlighting g.flow.highlighted { opacity: 1; }
     <div id="flow-list"></div>
   </aside>
   <main id="viewport"></main>
+  <section id="source-pane" aria-label="Source code">
+    <div id="source-toolbar">
+      <strong>Source</strong>
+      <label><input id="auto-scroll" type="checkbox" checked> Auto-scroll</label>
+    </div>
+    <div id="source-tabs" role="tablist"></div>
+    <div id="source-status">Point to or select a visualization element.</div>
+    <pre id="source-code" hidden></pre>
+  </section>
 </div>
 <script>
 const viewport = document.getElementById("viewport");
 const configList = document.getElementById("config-list");
 const flowList = document.getElementById("flow-list");
 const fileInput = document.getElementById("file");
+const sourceTabs = document.getElementById("source-tabs");
+const sourceStatus = document.getElementById("source-status");
+const sourceCode = document.getElementById("source-code");
+const autoScroll = document.getElementById("auto-scroll");
 let cleanupViewer = () => {};
 
 function inferredSVGURL() {
@@ -75,6 +105,27 @@ function inferredSVGURL() {
   url.hash = "";
   url.pathname = url.pathname.replace(/\.html$/, ".svg");
   return url.href;
+}
+
+function configuredURL(parameter, metaName, fallback) {
+  const page = new URL(location.href);
+  const configured = page.searchParams.get(parameter) ||
+    document.querySelector(`meta[name="${metaName}"]`)?.content;
+  return configured ? new URL(configured, page).href : fallback;
+}
+
+function inferredJSONURL(svgURL) {
+  return configuredURL("json", "aie-visualize-json",
+    svgURL.replace(/\.svg(?:$|(?=[?#]))/, ".json"));
+}
+
+function sourceURL(file) {
+  const page = new URL(location.href);
+  const override = page.searchParams.get(`source.${file}`);
+  if (override) return new URL(override, page).href;
+  const root = configuredURL("source-root", "aie-visualize-source-root",
+    new URL(".", page).href);
+  return new URL(file, root.endsWith("/") ? root : `${root}/`).href;
 }
 
 function setTitle(source) {
@@ -92,7 +143,93 @@ function parseSVG(text) {
   return document.documentElement;
 }
 
-function initializeViewer(svg) {
+function createSourceViewer(graph, graphError) {
+  const elements = new Map([...graph.nodes, ...graph.edges]
+    .map(element => [element.id, element.sources || []]));
+  const cache = new Map();
+  let activeSources = [];
+  let activeFile = null;
+  let activeElement = null;
+  let renderToken = 0;
+
+  const showStatus = message => {
+    sourceCode.hidden = true;
+    sourceStatus.hidden = false;
+    sourceStatus.textContent = message;
+  };
+  const loadSource = async file => {
+    if (!cache.has(file)) {
+      cache.set(file, fetch(sourceURL(file), {cache: "no-store"}).then(response => {
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        return response.text();
+      }));
+    }
+    return cache.get(file);
+  };
+  const renderFile = async file => {
+    activeFile = file;
+    const token = ++renderToken;
+    sourceTabs.querySelectorAll(".source-tab").forEach(tab =>
+      tab.classList.toggle("active", tab.dataset.file === file));
+    showStatus(`Loading ${file}...`);
+    try {
+      const text = await loadSource(file);
+      if (token !== renderToken) return;
+      const source = activeSources.find(entry => entry.file === file);
+      const highlighted = new Set(source?.lines || []);
+      const fragment = document.createDocumentFragment();
+      text.split(/\r?\n/).forEach((line, index) => {
+        const number = index + 1;
+        const row = document.createElement("span");
+        row.className = `source-line${highlighted.has(number) ? " highlighted" : ""}`;
+        row.dataset.line = number;
+        const lineNumber = document.createElement("span");
+        lineNumber.className = "source-line-number";
+        lineNumber.textContent = number;
+        const sourceText = document.createElement("span");
+        sourceText.textContent = line || " ";
+        row.append(lineNumber, sourceText);
+        fragment.appendChild(row);
+      });
+      sourceCode.replaceChildren(fragment);
+      sourceStatus.hidden = true;
+      sourceCode.hidden = false;
+      if (autoScroll.checked)
+        sourceCode.querySelector(".highlighted")?.scrollIntoView({block: "center"});
+    } catch (error) {
+      if (token !== renderToken) return;
+      showStatus(`Could not load ${file} from ${sourceURL(file)}. ${error.message}. Serve the viewer and sources from compatible origins or configure source-root.`);
+    }
+  };
+  const show = element => {
+    if ((element?.id || null) === activeElement) return;
+    activeElement = element?.id || null;
+    activeSources = elements.get(element?.id) || [];
+    sourceTabs.replaceChildren();
+    if (!activeSources.length) {
+      activeFile = null;
+      ++renderToken;
+      showStatus(graphError || (element ? "No source attribution for this element." :
+        "Point to or select a visualization element."));
+      return;
+    }
+    activeSources.forEach(source => {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "source-tab";
+      tab.dataset.file = source.file;
+      tab.textContent = `${source.file} (${source.lines.length})`;
+      tab.addEventListener("click", () => renderFile(source.file));
+      sourceTabs.appendChild(tab);
+    });
+    const file = activeSources.some(source => source.file === activeFile)
+      ? activeFile : activeSources[0].file;
+    renderFile(file);
+  };
+  return {show};
+}
+
+function initializeViewer(svg, graph, graphError) {
   cleanupViewer();
   configList.replaceChildren();
   flowList.replaceChildren();
@@ -107,6 +244,8 @@ function initializeViewer(svg) {
   let highlightIncoming = true;
   let highlightOutgoing = false;
   let selectedElement = null;
+  const sourceViewer = createSourceViewer(graph, graphError);
+  sourceViewer.show(null);
   const listeners = [];
   const listen = (target, event, handler, options) => {
     target.addEventListener(event, handler, options);
@@ -121,6 +260,7 @@ function initializeViewer(svg) {
   const boundaryClass = element => classMatching(element, /^boundary-/);
   const flowClasses = element => classesMatching(element, /^src-\d+$/);
   const outgoingClass = element => classMatching(element, /^src-\d+$/);
+  const interactiveElement = target => target?.closest?.("g.node, g.edge") || null;
   const overlaps = (first, second) => first.some(name => second.includes(name));
   const matchesDirection = (element, reference, relation, referenceClasses) => {
     const boundary = boundaryClass(reference)?.slice("boundary-".length);
@@ -149,6 +289,7 @@ function initializeViewer(svg) {
       row.classList.toggle("hover-active", hovered);
       row.querySelector("input").checked = selected;
     });
+    sourceViewer.show(reference);
   };
   const clearSelection = () => {
     selectedElement = null;
@@ -225,13 +366,13 @@ function initializeViewer(svg) {
     flowList.appendChild(row);
   });
   listen(svg, "pointerover", event => {
-    const element = event.target.closest("g.flow");
+    const element = interactiveElement(event.target);
     if (!element) return;
     hoveredElement = element;
     renderHighlight();
   });
   listen(svg, "pointerout", event => {
-    if (event.relatedTarget?.closest?.("g.flow")) return;
+    if (interactiveElement(event.relatedTarget)) return;
     hoveredElement = null;
     renderHighlight();
   });
@@ -250,7 +391,7 @@ function initializeViewer(svg) {
     setViewBox();
   }, {passive: false});
   listen(viewport, "pointerdown", event => {
-    const element = event.target.closest("g.flow");
+    const element = interactiveElement(event.target);
     drag = {x: event.clientX, y: event.clientY, viewBox: [...viewBox], moved: false,
       element};
     viewport.setPointerCapture(event.pointerId);
@@ -287,17 +428,29 @@ function initializeViewer(svg) {
   cleanupViewer = () => listeners.forEach(remove => remove());
 }
 
-function showSVG(text, source) {
+function showSVG(text, source, graph = {nodes: [], edges: []}, graphError = "") {
   const svg = document.importNode(parseSVG(text), true);
   viewport.replaceChildren(svg);
   setTitle(source);
-  initializeViewer(svg);
+  initializeViewer(svg, graph, graphError);
 }
 
 async function loadSVG(url) {
-  const response = await fetch(url, {cache: "no-store"});
-  if (!response.ok) throw new Error(`Could not load ${url}`);
-  showSVG(await response.text(), url);
+  const svgResponse = await fetch(url, {cache: "no-store"});
+  if (!svgResponse.ok) throw new Error(`Could not load ${url}`);
+  let graph = {nodes: [], edges: []};
+  let graphError = "";
+  const graphURL = inferredJSONURL(url);
+  try {
+    const graphResponse = await fetch(graphURL, {cache: "no-store"});
+    if (!graphResponse.ok) throw new Error(`${graphResponse.status} ${graphResponse.statusText}`);
+    graph = await graphResponse.json();
+    if (graph.format !== "aie-semantic-graph" || graph.version !== 2)
+      throw new Error("unsupported schema");
+  } catch (error) {
+    graphError = `Source attribution unavailable from ${graphURL}. ${error.message}. Serve the viewer and graph from compatible origins or configure json.`;
+  }
+  showSVG(await svgResponse.text(), url, graph, graphError);
 }
 
 document.getElementById("open").addEventListener("click", () => fileInput.click());

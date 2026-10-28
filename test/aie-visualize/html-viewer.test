@@ -13,8 +13,13 @@
 // RUN: dot -Tsvg %t.dot -o %t-topology.svg
 
 // CHECK: <meta name="aie-visualize-svg" content="">
+// CHECK: <meta name="aie-visualize-json" content="">
+// CHECK: <meta name="aie-visualize-source-root" content="">
 // CHECK: <meta name="aie-visualize-title" content="">
+// CHECK: Query parameters override metadata: svg, json, source-root, title, and source.<file>.
 // CHECK: aside { min-height: 0; overflow-y: auto
+// CHECK: #source-pane { display: grid
+// CHECK: .source-line.highlighted
 // CHECK: svg.hide-detail-buffers g.detail-buffers
 // CHECK: svg.hide-detail-arbitration g.detail-arbitration
 // CHECK: svg.hide-detail-packet-ids g.detail-packet-ids text
@@ -22,11 +27,23 @@
 // CHECK: svg.highlighting g.flow.highlighted { opacity: 1
 // CHECK: <button id="open" type="button">Open SVG</button>
 // CHECK: <aside aria-label="Visualization controls">
+// CHECK: <section id="source-pane" aria-label="Source code">
+// CHECK: <input id="auto-scroll" type="checkbox" checked>
+// CHECK: function inferredJSONURL(svgURL)
+// CHECK: function sourceURL(file)
+// CHECK: page.searchParams.get(`source.${file}`)
+// CHECK: function createSourceViewer(graph, graphError)
+// CHECK: const elements = new Map([...graph.nodes, ...graph.edges]
+// CHECK: const highlighted = new Set(source?.lines || [])
+// CHECK: row.className = `source-line${highlighted.has(number) ? " highlighted" : ""}`
+// CHECK: sourceCode.querySelector(".highlighted")?.scrollIntoView({block: "center"})
+// CHECK: Serve the viewer and sources from compatible origins or configure source-root.
 // CHECK: const incomingClasses = element => classesMatching(element, /^fate-/)
 // CHECK: const outgoingClasses = element => classesMatching(element, /^origin-/)
 // CHECK: const boundaryClass = element => classMatching(element, /^boundary-/)
 // CHECK: const flowClasses = element => classesMatching(element, /^src-\d+$/)
 // CHECK: const outgoingClass = element => classMatching(element, /^src-\d+$/)
+// CHECK: const interactiveElement = target => target?.closest?.("g.node, g.edge") || null
 // CHECK: const overlaps = (first, second) => first.some(name => second.includes(name))
 // CHECK: const matchesDirection = (element, reference, relation, referenceClasses)
 // CHECK: element.classList.contains(`${relation}-${boundary}`)
@@ -45,8 +62,13 @@
 // CHECK: ["arbitration", "Arbitration"]
 // CHECK: svg.classList.toggle(`hide-detail-${name}`
 // CHECK: row.innerHTML = `<input type="checkbox"
+// CHECK: const element = interactiveElement(event.target)
 // CHECK: hoveredElement = element
 // CHECK: (event.clientX - drag.x) / matrix.a
 // CHECK: if (!drag.moved && drag.element) toggleSelection(drag.element)
 // CHECK: listen(viewport, "click"
 // CHECK: fetch(url, {cache: "no-store"})
+// CHECK: graph.format !== "aie-semantic-graph" || graph.version !== 2
+// CHECK: Source attribution unavailable from ${graphURL}.
+// CHECK: Serve the viewer and graph from compatible origins or configure json.
+// CHECK: showSVG(await svgResponse.text(), url, graph, graphError)
