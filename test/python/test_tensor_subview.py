@@ -370,12 +370,35 @@ def test_subview_rejects_unaligned_offset():
             parent.subview(offset, (GRANULE,))
 
 
-def test_subview_rejects_unaligned_length():
-    """A view ending mid-line shares that line with its successor."""
+def test_a_view_may_end_mid_line():
+    """Its shape is the data's; only its start must be on a line."""
     parent = CPUOnlyTensor((4 * GRANULE,), dtype=np.uint8)
     for length in (1, GRANULE // 2, GRANULE + 1):
-        with pytest.raises(ValueError, match="coherence granule"):
-            parent.subview(0, (length,))
+        view = parent.subview(GRANULE, (length,))
+        assert view.shape == (length,)
+        assert view.nbytes == length
+
+
+def test_a_view_ending_mid_line_reconciles_through_the_end_of_that_line():
+    parent = CPUOnlyTensor((4 * GRANULE,), dtype=np.uint8)
+    assert parent.subview(GRANULE, (GRANULE + 1,))._extent == (GRANULE, 3 * GRANULE)
+    assert parent.subview(GRANULE, (GRANULE,))._extent == (GRANULE, 2 * GRANULE)
+
+
+def test_an_exact_view_of_a_line_padded_one_stays_inside_it():
+    """The case this exists for: a buffer padded to its line, then cut to its shape."""
+    parent = CPUOnlyTensor((4 * GRANULE,), dtype=np.uint8)
+    padded = parent.subview(GRANULE, (GRANULE,))
+    exact = padded.subview(0, (3, 5))
+    assert exact.shape == (3, 5)
+    assert exact._extent == padded._extent
+    exact.data[...] = 0x42
+    assert np.count_nonzero(parent.data) == 15
+
+
+def test_a_view_ending_mid_line_reconciles_against_the_end_of_the_allocation():
+    parent = CPUOnlyTensor((GRANULE + 8,), dtype=np.uint8)
+    assert parent.subview(GRANULE, (3,))._extent == (GRANULE, GRANULE + 8)
 
 
 def test_subview_allows_unaligned_tail_at_end_of_buffer():
@@ -389,6 +412,15 @@ def test_subview_allows_unaligned_tail_at_end_of_buffer():
     tail = parent.subview(GRANULE, (8,))
     tail.data[:] = 5
     assert np.array_equal(parent.data[GRANULE:], np.full(8, 5, dtype=np.uint8))
+
+
+def test_a_view_ending_mid_line_still_starts_on_one():
+    parent = CPUOnlyTensor((4 * GRANULE,), dtype=np.uint8)
+    exact = parent.subview(0, (GRANULE // 2,))
+    with pytest.raises(ValueError, match="coherence granule"):
+        parent.subview(GRANULE // 2, (GRANULE // 2,))
+    with pytest.raises(ValueError, match="out of bounds"):
+        exact.subview(GRANULE // 2, (1,))
 
 
 def test_alignment_composes_through_nested_views():
@@ -808,3 +840,63 @@ def test_a_mutate_that_completes_still_sees_current_contents():
     tensor.to("npu")
     assert (tensor.storage._transport.device_bytes[:GRANULE] == 0x11).all()
     assert (tensor.storage._transport.device_bytes[GRANULE:] == 0xEE).all()
+
+
+# ---------------------------------------------------------------------------
+# A view ending mid-line, over a buffer whose line it shares with no view
+# ---------------------------------------------------------------------------
+
+
+def device_written(nbytes, fill=0xEE):
+    """A tensor the device has written and the host has not read since."""
+    tensor = TwoMemoryTensor((nbytes,))
+    tensor.to("npu")
+    tensor.storage._transport.device_bytes[:] = fill
+    return tensor
+
+
+def test_a_view_ending_mid_line_reads_what_the_device_wrote():
+    tensor = device_written(2 * GRANULE)
+    assert (tensor.subview(0, (5,)).numpy() == 0xEE).all()
+
+
+def test_an_overwrite_ending_mid_line_keeps_the_device_s_bytes_past_it():
+    """The host claims the whole line, so it must hold the rest of it first."""
+    tensor = device_written(2 * GRANULE)
+    with tensor.subview(0, (5,)).overwrite() as array:
+        array[:] = 0x11
+    tensor.to("npu")
+    device = tensor.storage._transport.device_bytes
+    assert (device[:5] == 0x11).all()
+    assert (device[5:] == 0xEE).all()
+
+
+def test_a_numpy_view_ending_mid_line_keeps_the_device_s_bytes_past_it():
+    tensor = device_written(2 * GRANULE)
+    view = tensor.subview(0, (5,))
+    view.numpy_view()[:] = 0x11
+    view.to("npu")
+    device = tensor.storage._transport.device_bytes
+    assert (device[:5] == 0x11).all()
+    assert (device[5:] == 0xEE).all()
+
+
+def test_a_transfer_ending_mid_line_sends_the_host_s_writes_past_it():
+    tensor = TwoMemoryTensor((2 * GRANULE,))
+    with tensor.subview(0, (GRANULE,)).mutate() as line:
+        line[:] = 0x22
+    tensor.subview(0, (5,)).to("npu")
+    assert (tensor.storage._transport.device_bytes[:GRANULE] == 0x22).all()
+    assert tensor.storage.coherence.get(0, GRANULE) == "npu"
+
+
+def test_a_view_ending_mid_line_moves_residency_a_line_at_a_time():
+    tensor = device_written(2 * GRANULE)
+    view = tensor.subview(0, (5,))
+    view.to("cpu")
+    assert tensor.storage.coherence.ranges(0, 2 * GRANULE, "cpu") == [(0, GRANULE)]
+    with view.mutate() as array:
+        array[:] = 0x33
+    view.to("npu")
+    assert tensor.storage.coherence.uniform == "npu"
+    assert (tensor.storage._transport.device_bytes[5:] == 0xEE).all()
