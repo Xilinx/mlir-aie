@@ -1,9 +1,0 @@
-<map id="LongestConvMACChainAnalysis" name="LongestConvMACChainAnalysis">
-<area shape="rect" id="Node000001" title="This analysis builds the longest possible chain of MAC operations whose operands are a vector that ma..." alt="" coords="374,61,601,89"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="22,5,206,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="222,28,350,46,419,60,414,61,349,51,222,34"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,61,223,89"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="238,73,376,74,371,76,238,78"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="8,113,220,158"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="235,120,349,103,424,90,429,89,350,108,235,125"/>
-</map>
