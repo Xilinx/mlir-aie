@@ -340,8 +340,12 @@ struct DmaCompletionState {
   struct Push {
     bool issuesToken;
     unsigned owner;
+    // Stands in for the newest push of an unknown region, whose owners are
+    // all in forgottenOwners: none of them is proven complete while it is.
+    bool unknownRegion = false;
     bool operator==(const Push &other) const {
-      return issuesToken == other.issuesToken && owner == other.owner;
+      return issuesToken == other.issuesToken && owner == other.owner &&
+             unknownRegion == other.unknownRegion;
     }
   };
   llvm::SmallVector<unsigned> tasks;
@@ -384,14 +388,23 @@ struct DmaCompletionState {
         llvm::find_if(pushes, [](const Push &p) { return p.issuesToken; });
     if (tok != pushes.end()) {
       pushes.erase(pushes.begin(), std::next(tok));
-      forgottenOwners.clear();
+      forgetOwnersIfDrained();
     }
+  }
+
+  // Forgotten owners were pushed no later than any remaining unknown-region
+  // stand-in; they are complete once every such stand-in has drained too.
+  void forgetOwnersIfDrained() {
+    if (llvm::none_of(pushes, [](const Push &p) { return p.unknownRegion; }))
+      forgottenOwners.clear();
   }
 
   void noteIdle() {
     // Completion does not consume tokens; later awaits still see these pushes.
-    for (Push &push : pushes)
+    for (Push &push : pushes) {
       push.owner = 0;
+      push.unknownRegion = false;
+    }
     forgottenOwners.clear();
   }
 
@@ -400,17 +413,18 @@ struct DmaCompletionState {
   void bound(unsigned limit, bool spaceGuaranteed) {
     // Attempted pushes no longer bound FIFO progress after a possible drop.
     spaceGuaranteed &= !mayHaveDroppedPushes;
-    if (spaceGuaranteed && pushes.size() >= limit)
-      forgottenOwners.clear();
-    if (pushes.size() <= limit)
-      return;
-    auto end = pushes.end() - limit;
-    for (const Push &push : llvm::make_range(pushes.begin(), end)) {
-      unknownTokens |= push.issuesToken;
-      if (!spaceGuaranteed && push.owner)
-        forgottenOwners.insert(push.owner);
+    bool drained = spaceGuaranteed && pushes.size() >= limit;
+    if (pushes.size() > limit) {
+      auto end = pushes.end() - limit;
+      for (const Push &push : llvm::make_range(pushes.begin(), end)) {
+        unknownTokens |= push.issuesToken;
+        if (!spaceGuaranteed && push.owner)
+          forgottenOwners.insert(push.owner);
+      }
+      pushes.erase(pushes.begin(), end);
     }
-    pushes.erase(pushes.begin(), end);
+    if (drained)
+      forgetOwnersIfDrained();
   }
 
   bool isProvenComplete(unsigned owner) const {
@@ -663,6 +677,10 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
             for (unsigned owner : state.completion.tasks)
               if (owner)
                 state.completion.forgottenOwners.insert(owner);
+            // Later polls must count this push before crediting its owners.
+            state.completion.pushes.push_back(
+                {/*issuesToken=*/false, /*owner=*/0, /*unknownRegion=*/true});
+            state.completion.bound(depth + 1, /*spaceGuaranteed=*/false);
           }
           if (overflowing.insert(op))
             witnesses[op] = state.queue;
