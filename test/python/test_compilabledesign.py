@@ -2286,6 +2286,22 @@ def test_compile_mixed_explicit_paths_raises():
         cd.compile(xclbin_path=None, inst_path="/tmp/foo.bin")
 
 
+def test_compile_preserves_positional_image(tmp_path, monkeypatch):
+    design = CompilableDesign(_gemm_gen(), insts_only=True)
+    insts = tmp_path / "insts.bin"
+    image = tmp_path / "image.mlir"
+    calls = []
+    monkeypatch.setattr(
+        design,
+        "_compile_insts_only",
+        lambda inst_path, image_path: calls.append((inst_path, image_path)),
+    )
+
+    design.compile(None, insts, None, None, None, image)
+
+    assert calls == [(insts, image.resolve())]
+
+
 def test_non_full_elf_allows_raw_multi_device_mlir(tmp_path):
     mlir_path = tmp_path / "design.mlir"
     mlir_path.write_text("module { aie.device(npu1) @a {} aie.device(npu1) @b {} }")
@@ -2662,6 +2678,16 @@ def test_compile_elf_path_requires_explicit_paths():
     cd = CompilableDesign(gen)
     with pytest.raises(ValueError, match="elf_path requires explicit"):
         cd.compile(elf_path="/tmp/foo.elf")
+
+
+def test_compile_cpp_without_instructions_rejects_elf_path():
+    cd = CompilableDesign(_gemm_gen())
+    with pytest.raises(ValueError, match="elf_path requires explicit"):
+        cd.compile(
+            xclbin_path="/tmp/foo.xclbin",
+            npu_cpp_path="/tmp/foo.cpp",
+            elf_path="/tmp/foo.elf",
+        )
 
 
 def test_compile_npu_cpp_path_requires_explicit_paths():

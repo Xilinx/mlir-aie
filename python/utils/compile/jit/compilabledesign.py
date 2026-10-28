@@ -648,8 +648,8 @@ class CompilableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
-        npu_cpp_path: Path | str | None = None,
         image: "CompilableDesign | Path | str | None" = None,
+        npu_cpp_path: Path | str | None = None,
     ) -> tuple[Path | None, Path | None]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
@@ -666,9 +666,11 @@ class CompilableDesign:
         When both are ``None`` (the default), behavior is unchanged: artifacts
         land in ``~/.npu/cache/<hash>/`` and the cache is consulted first.
 
-        Static designs require both paths or neither. Designs with active
-        ``DispatchTime[T]`` parameters instead accept ``xclbin_path`` alone
-        (plus optional ``pdi_path``), and return ``(xclbin_path, None)``.
+        Non-dispatch designs require both paths or neither, unless
+        ``npu_cpp_path`` replaces ``inst_path`` (returning ``(xclbin_path, None)``).
+        Designs with active ``DispatchTime[T]`` parameters instead accept
+        ``xclbin_path`` alone (plus optional ``pdi_path``), and return
+        ``(xclbin_path, None)``.
         They reject ``inst_path`` and ``elf_path`` because instructions are
         built per call. Their immutable dispatch library stays in
         ``<xclbin stem>.prj``; retrieve it with ``get_dispatch_lib_path()``.
@@ -689,18 +691,19 @@ class CompilableDesign:
 
         ``pdi_path`` is likewise optional: when set, aiecc writes the
         Programmable Device Image (config data packed by ``bootgen``) to that
-        path. It requires an explicit ``xclbin_path`` (and ``inst_path`` for
-        static designs). In default cache mode aiecc still emits a ``main.pdi``
-        into the cache directory — use `get_pdi_path` to locate it.
+        path. It requires an explicit ``xclbin_path``. In default cache mode
+        aiecc still emits a ``main.pdi`` into the cache directory — use
+        `get_pdi_path` to locate it.
 
         ``npu_cpp_path`` is likewise optional: when set, aiecc emits the
         runtime sequence as a parameterized C++ TXN builder at that path — the
         same overlay's sequence re-expressed as a function a native caller can
         invoke with its own runtime values, without recompiling, for a "one
         overlay, many shapes" workflow. It requires an explicit ``xclbin_path``
-        and is not available for ``DispatchTime[T]`` designs, which already
-        build their own C++ builder as the dispatch bridge (retrieve it with
-        ``get_dispatch_lib_path()``).
+        but not ``inst_path``; omit ``inst_path`` for runtime-valued sequences
+        that cannot produce static instructions. It is not available for
+        ``DispatchTime[T]`` designs, which already build their own C++ builder
+        as the dispatch bridge (retrieve it with ``get_dispatch_lib_path()``).
 
         Instructions-only designs return ``(None, inst_path)``. ``image`` is
         the image such a stream will run on: a design compiled for it, or
@@ -796,7 +799,11 @@ class CompilableDesign:
                 inst_path, None if image is None else Path(image).resolve()
             )
 
-        if not has_dispatch and (xclbin_path is None) != (inst_path is None):
+        if (
+            not has_dispatch
+            and (xclbin_path is None) != (inst_path is None)
+            and not (xclbin_path is not None and npu_cpp_path is not None)
+        ):
             raise ValueError(
                 "compile(): xclbin_path and inst_path must be set together "
                 "(both paths to write artifacts directly, or both None to use "
@@ -809,7 +816,7 @@ class CompilableDesign:
         build_key = ""
         outputs: dict[str, Path] = {}
 
-        if elf_path is not None and not explicit_paths:
+        if elf_path is not None and (not explicit_paths or inst_path is None):
             raise ValueError(
                 "compile(): elf_path requires explicit xclbin_path + inst_path "
                 "(the JIT cache does not track ELF artifacts)."

@@ -552,11 +552,12 @@ class CallableDesign:
         directly to those paths instead of the cache, rebuilding them only
         when they are out of date — useful for build systems (e.g. Makefiles)
         that name their own outputs.
-        Static designs require both paths or neither. Active ``DispatchTime[T]``
-        designs accept ``xclbin_path`` alone, return ``(xclbin_path, None)``, and
-        reject ``inst_path`` and ``elf_path`` (there is no static instruction
-        stream). The immutable dispatch library remains in
-        ``<xclbin stem>.prj``; use ``get_dispatch_lib_path()``.
+        Non-dispatch designs require both paths or neither, unless
+        ``npu_cpp_path`` replaces ``inst_path`` (returning ``(xclbin_path, None)``).
+        Active ``DispatchTime[T]`` designs accept ``xclbin_path`` alone,
+        return ``(xclbin_path, None)``, and reject ``inst_path`` and ``elf_path``
+        (there is no static instruction stream). The immutable dispatch library
+        remains in ``<xclbin stem>.prj``; use ``get_dispatch_lib_path()``.
 
         ``elf_path`` is optional: when set, aiecc also wraps the NPU
         instructions into an ELF (via ``aiebu-asm``) at that path.  Needed by
@@ -568,16 +569,17 @@ class CallableDesign:
         xclbin + insts pair, and the return value is ``(elf_path, None)``.
 
         ``pdi_path`` is optional: when set, aiecc writes the Programmable
-        Device Image to that path. Requires explicit ``xclbin_path`` (and
-        ``inst_path`` for static designs). In cache mode, use ``get_pdi_path``
-        to locate the ``main.pdi`` aiecc emits.
+        Device Image to that path. Requires explicit ``xclbin_path``.
+        In cache mode, use ``get_pdi_path`` to locate the ``main.pdi`` aiecc emits.
 
         ``npu_cpp_path`` is optional: when set, aiecc emits the runtime
         sequence as a parameterized C++ TXN builder at that path instead of
         (or alongside) the static instruction stream -- one compiled overlay's
         sequence re-expressed as a function a native caller can invoke with
         its own runtime values, without recompiling. Requires explicit
-        ``xclbin_path`` and is not available for ``DispatchTime[T]`` designs,
+        ``xclbin_path`` but not ``inst_path``; omit ``inst_path`` for
+        runtime-valued sequences that cannot produce static instructions.
+        It is not available for ``DispatchTime[T]`` designs,
         which already build their own C++ builder as the dispatch bridge
         (retrieve it with ``get_dispatch_lib_path()``).
         """

@@ -216,12 +216,15 @@ my_design.specialize(N=4096).compile(
 )
 ```
 
-`xclbin_path` and `inst_path` must be given together. `pdi_path`,
-`elf_path` and `npu_cpp_path` each additionally require both of those — the
-cache path doesn't track caller-named PDI/ELF/C++ builder artifacts.
+`xclbin_path` and `inst_path` must be given together unless `npu_cpp_path`
+replaces `inst_path`. `elf_path` requires both paths; `pdi_path` and
+`npu_cpp_path` require explicit `xclbin_path` — the cache path doesn't track
+caller-named PDI/ELF/C++ builder artifacts.
 `npu_cpp_path` re-expresses the same overlay's runtime sequence as a function
 a native caller can invoke with its own runtime values, without recompiling —
-a "one overlay, many shapes" workflow. It is not available for
+a "one overlay, many shapes" workflow. Omit `inst_path` for runtime-valued
+sequences that cannot produce static instructions; the return value is then
+`(xclbin_path, None)`. It is not available for
 `DispatchTime[T]` designs, which already build their own C++ builder as the
 dispatch bridge (retrieve it with `get_dispatch_lib_path()`).
 
@@ -343,8 +346,8 @@ example demonstrates this via its `--from-xclbin` / `--from-insts` flags.
 | `@iron.jit(object_files=[...])` | decoration | pre-built kernel `.o` files linked into the design (stage 4) |
 | `@iron.jit(use_cache=False)` | decoration | bypass on-disk cache; always rebuild (stage 4) |
 | `.compile(elf_path=...)` | compile call | also emit `insts.elf` for the `xrt::elf` testbench flow (stage 4); requires explicit `xclbin_path` + `inst_path` |
-| `.compile(pdi_path=...)` | compile call | write the PDI to a chosen path (stage 4); requires explicit `xclbin_path` + `inst_path` |
-| `.compile(npu_cpp_path=...)` | compile call | write the runtime sequence as a C++ TXN builder (stage 4); requires explicit `xclbin_path` + `inst_path`; unavailable for `DispatchTime[T]` designs |
+| `.compile(pdi_path=...)` | compile call | write the PDI to a chosen path (stage 4); requires explicit `xclbin_path` (and `inst_path` unless emitting a C++ builder or using `DispatchTime[T]`) |
+| `.compile(npu_cpp_path=...)` | compile call | write the runtime sequence as a C++ TXN builder (stage 4); requires explicit `xclbin_path`, with optional `inst_path`; unavailable for `DispatchTime[T]` designs |
 | `$NPU_CACHE_HOME` env var | process-wide | where `aiecc` reads/writes artifacts (stage 4) |
 | `trace_config=` kwarg at call-time | each call | forwarded to `NPUKernel.__init__` (stage 5); **not** a CompileTime[T] kwarg |
 | `iron.set_current_device(...)` | before generator runs | target architecture baked into the generator's `Program` (stage 3) |

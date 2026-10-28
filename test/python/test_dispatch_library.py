@@ -59,15 +59,15 @@ def test_compile_mlir_module_writes_cpp_beside_device_outputs(tmp_path, emit_shi
         np.testing.assert_array_equal(patches[:, 10], 16)
 
 
-def _static_source(device="npu1_1col"):
-    """A sequence with a fixed (non-runtime-bound) trip count: unlike
-    `_source()`, this has a static TXN encoding, so it can pair with
-    `inst_path` as well as `npu_cpp_path`."""
+def _write32_source(device="npu1_1col", *, runtime_value=False):
+    """A write32 sequence with either a constant or a runtime scalar value."""
+    arguments = "%value: i32" if runtime_value else ""
+    value = "" if runtime_value else "%value = arith.constant 17 : i32"
     return f"""module {{
       aie.device({device}) {{
-        aie.runtime_sequence @seq() {{
+        aie.runtime_sequence @seq({arguments}) {{
           %address = arith.constant 256 : i32
-          %value = arith.constant 17 : i32
+          {value}
           aiex.npu.write32(%address, %value) : i32, i32
         }}
       }}
@@ -76,12 +76,13 @@ def _static_source(device="npu1_1col"):
 
 @pytest.mark.skipif(shutil.which("xclbinutil") is None, reason="xclbinutil")
 @pytest.mark.skipif(not os.path.isdir(configure.peano_install_dir), reason="Peano")
-def test_compilabledesign_compile_exposes_npu_cpp_path(tmp_path):
+@pytest.mark.parametrize("runtime_value", [False, True])
+def test_compilabledesign_compile_exposes_npu_cpp_path(tmp_path, runtime_value):
     """A plain (non-DispatchTime[T]) design can request the C++ builder
     directly through CompilableDesign.compile(), not only through
     compile_mlir_module(); its output matches a direct aiecc invocation."""
     mlir_path = tmp_path / "design.mlir"
-    mlir_path.write_text(_static_source())
+    mlir_path.write_text(_write32_source(runtime_value=runtime_value))
 
     reference_dir = tmp_path / "reference"
     reference_dir.mkdir()
@@ -97,12 +98,18 @@ def test_compilabledesign_compile_exposes_npu_cpp_path(tmp_path):
 
     design = CompilableDesign(mlir_path)
     xclbin = tmp_path / "design.xclbin"
-    insts = tmp_path / "insts.bin"
+    insts = None if runtime_value else tmp_path / "insts.bin"
     cpp = tmp_path / "design.cpp"
-    design.compile(xclbin_path=xclbin, inst_path=insts, npu_cpp_path=cpp)
+    assert design.compile(xclbin_path=xclbin, inst_path=insts, npu_cpp_path=cpp) == (
+        xclbin,
+        insts,
+    )
 
     assert xclbin.stat().st_size > 0
-    assert insts.stat().st_size > 0
+    if insts is not None:
+        assert insts.stat().st_size > 0
+    else:
+        assert not list(tmp_path.rglob("insts*.bin"))
     assert cpp.read_text() == (reference_dir / "ref.cpp").read_text()
 
 
