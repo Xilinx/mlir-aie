@@ -41,6 +41,7 @@
 // CHECK-DAG:             %[[VAL_27:.*]] = arith.constant 0 : index
 // CHECK:             aie.use_lock(%[[VAL_13]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             memref.store %[[VAL_26]], %[[VAL_10]]{{\[}}%[[VAL_27]]] : memref<3000xi32>
+// CHECK:             aie.use_lock(%[[VAL_12]], Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_28:.*]] = aie.core(%[[VAL_3]]) {
@@ -48,6 +49,7 @@
 // CHECK-DAG:             %[[VAL_30:.*]] = arith.constant 0 : index
 // CHECK:             aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             memref.store %[[VAL_29]], %[[VAL_4]]{{\[}}%[[VAL_30]]] : memref<3000xi32>
+// CHECK:             aie.use_lock(%[[VAL_8]], Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK-DAG:           aie.shim_dma_allocation @mem_in_shim_alloc(%[[VAL_0]], MM2S, 0)
@@ -187,6 +189,7 @@ module @link_test_broadcast {
 
             %subview_obj = aie.objectfifo.acquire @mem_in (Consume, 1) : memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
+            aie.objectfifo.release @mem_in (Consume, 1)
             aie.end
         }
 
@@ -196,6 +199,7 @@ module @link_test_broadcast {
 
             %subview_obj, %subview_obj1, %subview_obj2 = aie.objectfifo.acquire @mem_out (Consume, 3) : memref<3000xi32>, memref<3000xi32>, memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
+            aie.objectfifo.release @mem_out (Consume, 3)
             aie.end
         }
     }

@@ -54,6 +54,7 @@
 // CHECK:             func.call @some_work(%[[VAL_3]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_4]]) : (memref<16xi32>) -> ()
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[C0]])
+// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[C0]])
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_18:.*]] = aie.core(%[[VAL_1]]) {
@@ -112,6 +113,7 @@ module @multiCoreMixedFifo {
             %elem102, %elem112 = aie.objectfifo.acquire @of2 (Consume, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem102) : (memref<16xi32>) -> ()
             func.call @some_work(%elem112) : (memref<16xi32>) -> ()
+            aie.objectfifo.release @of2 (Consume, 1)
             aie.objectfifo.release @of2 (Consume, 1)
 
             aie.end

@@ -293,8 +293,8 @@ module {
 
 // -----
 
-// Weights sent once and held for the whole run: the one object fits the
-// pool's one free slot, so nothing waits.
+// Weights sent once, held while the core works and released at its end: one
+// object moved, one released.
 
 module {
   aie.device(npu1_1col) {
@@ -303,6 +303,7 @@ module {
     aie.objectfifo @w(%shim, {%tile}, 1 : i32) {iter_count = 1 : i32} : !aie.objectfifo<memref<16xi32>>
     %core = aie.core(%tile) {
       %o = aie.objectfifo.acquire @w (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @w (Consume, 1)
       aie.end
     }
   }
@@ -310,7 +311,8 @@ module {
 
 // -----
 
-// Held the same way, a second object has nowhere to go.
+// A core that releases nothing leaves room for only the pool's depth, so a
+// second object has nowhere to go.
 
 module {
   aie.device(npu1_1col) {

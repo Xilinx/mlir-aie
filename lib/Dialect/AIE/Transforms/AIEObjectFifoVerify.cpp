@@ -10,8 +10,10 @@
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
 
+#include <algorithm>
 #include <limits>
 #include <optional>
 
@@ -39,10 +41,11 @@ struct TransferBudget {
   int64_t objects;
 };
 
-/// A loop the frontend means to run forever has a bound no design counts to:
-/// IRON writes sys.maxsize, hand-written designs 2^32 - 1. From the AIE's
-/// 24-bit BD-loop saturation value up, a trip count is read as "forever"; below
-/// it, as a real bound.
+/// IRON's forever loop is an `scf.while` on a constant true condition. A
+/// hand-written `scf.for` meant to run forever has a bound no design counts
+/// to, such as sys.maxsize or 2^32 - 1. From the AIE's 24-bit BD-loop
+/// saturation value up, a trip count is read as "forever"; below it, as a real
+/// bound.
 static constexpr int64_t kRunsForever = (int64_t{1} << 24) - 2;
 
 static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
@@ -81,6 +84,53 @@ static std::optional<int64_t> staticExecutions(Operation *op) {
     count *= *trip;
   }
   return count;
+}
+
+/// Objects of the fifo `name` still held after `block` runs, entered holding
+/// `held`: an acquire holds at least its count, a release gives its count
+/// back. Unknown when an access sits under anything but a static loop, or a
+/// loop's count has not settled after two passes.
+static std::optional<int64_t> heldAfter(Block &block, StringRef name,
+                                        int64_t held) {
+  for (Operation &op : block) {
+    if (auto acquire = dyn_cast<ObjectFifoAcquireOp>(op)) {
+      if (acquire.getObjFifoName() == name)
+        held = std::max<int64_t>(held, acquire.acqNumber());
+      continue;
+    }
+    if (auto release = dyn_cast<ObjectFifoReleaseOp>(op)) {
+      if (release.getObjFifoName() == name)
+        held -= release.relNumber();
+      if (held < 0)
+        return std::nullopt;
+      continue;
+    }
+    bool touches = op.getNumRegions() != 0 &&
+                   op.walk([&](Operation *inner) {
+                       auto acquire = dyn_cast<ObjectFifoAcquireOp>(inner);
+                       auto release = dyn_cast<ObjectFifoReleaseOp>(inner);
+                       if ((acquire && acquire.getObjFifoName() == name) ||
+                           (release && release.getObjFifoName() == name))
+                         return WalkResult::interrupt();
+                       return WalkResult::advance();
+                     }).wasInterrupted();
+    if (!touches)
+      continue;
+    auto forOp = dyn_cast<scf::ForOp>(op);
+    std::optional<int64_t> trip =
+        forOp ? getStaticTripCount(forOp) : std::nullopt;
+    if (!trip)
+      return std::nullopt;
+    if (*trip == 0)
+      continue;
+    std::optional<int64_t> once = heldAfter(*forOp.getBody(), name, held);
+    if (!once)
+      return std::nullopt;
+    if (*trip > 1 && heldAfter(*forOp.getBody(), name, *once) != once)
+      return std::nullopt;
+    held = *once;
+  }
+  return held;
 }
 
 struct AIEObjectFifoVerifyPass
@@ -418,6 +468,47 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
+  /// A core that reaches its end still holding objects never gives their locks
+  /// back, and locks keep their counts until a PDI load, so the next run of
+  /// the configuration finds those objects taken. Only cores certain to end
+  /// are checked: one block, and no loop that may run forever.
+  LogicalResult verifyHeldAtEnd(DeviceOp device) {
+    for (auto core : device.getOps<CoreOp>()) {
+      Region &body = core.getBody();
+      if (!body.hasOneBlock())
+        continue;
+      bool mayNotEnd =
+          core.walk([](Operation *op) {
+                auto forOp = dyn_cast<scf::ForOp>(op);
+                std::optional<int64_t> trip =
+                    forOp ? getStaticTripCount(forOp) : std::nullopt;
+                if (isa<scf::WhileOp>(op) || (trip && *trip >= kRunsForever))
+                  return WalkResult::interrupt();
+                return WalkResult::advance();
+              })
+              .wasInterrupted();
+      if (mayNotEnd)
+        continue;
+      llvm::MapVector<StringRef, ObjectFifoAcquireOp> firstAcquire;
+      core.walk([&](ObjectFifoAcquireOp acquire) {
+        firstAcquire.insert({acquire.getObjFifoName(), acquire});
+      });
+      for (auto &[name, acquire] : firstAcquire) {
+        std::optional<int64_t> held = heldAfter(body.front(), name, 0);
+        if (!held || *held == 0)
+          continue;
+        InFlightDiagnostic diag =
+            core.emitOpError("ends with ")
+            << *held << " acquired from @" << name
+            << " never released, so their locks stay taken into the next run "
+               "of this configuration";
+        diag.attachNote(acquire.getLoc()) << "acquired here";
+        return failure();
+      }
+    }
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -455,7 +546,8 @@ struct AIEObjectFifoVerifyPass
 
     if (failed(verifyFlows(device)) || failed(verifyFanIn(device)) ||
         failed(verifyOverRelease(device)) ||
-        failed(verifyTransferBudgets(device))) {
+        failed(verifyTransferBudgets(device)) ||
+        failed(verifyHeldAtEnd(device))) {
       return signalPassFailure();
     }
   }
