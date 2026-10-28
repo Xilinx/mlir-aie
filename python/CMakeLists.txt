@@ -292,6 +292,7 @@ execute_process(
   ERROR_QUIET
 )
 if(_pybind11_cmakedir_result EQUAL 0)
+  set(pybind11_DIR "${_pybind11_cmakedir}" CACHE PATH "pybind11 CMake package directory" FORCE)
   find_package(pybind11 CONFIG REQUIRED
     PATHS "${_pybind11_cmakedir}"
     NO_DEFAULT_PATH

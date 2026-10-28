@@ -62,8 +62,8 @@ xrt-smi examine
 
 ### Install AIETools
 
-> This section is optional. The Peano (llvm-aie) compiler installed in the next
-> section builds and runs the full IRON/NPU flow on its own; `find_package(Vitis)`
+> This section is optional. The Peano (llvm-aie) compiler installed in the
+> build instructions below builds and runs the full IRON/NPU flow on its own; `find_package(Vitis)`
 > in the top-level `CMakeLists.txt` is not `REQUIRED`, so configuring without
 > Vitis AIE Essentials (or passing `-DAIE_BUILD_CHESS_CLANG=OFF`) builds the rest
 > of the tree normally. Vitis is only needed for the `xchesscc` backend and the
@@ -137,6 +137,11 @@ xrt-smi examine
    ```bash
    # Install basic Python requirements
    python3 -m pip install -r python/requirements.txt
+   ```
+
+1. Install the pinned Peano (llvm-aie) compiler:
+   ```bash
+   python3 -m pip install -r utils/peano-requirements.txt
    ```
 
 1. Install Python packages required for development and testing:

@@ -237,6 +237,14 @@ jobs:
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source aie-venv/bin/activate
 
+          # Each step starts with the runner environment, so sanitize it again.
+          unset AIETOOLS_ROOT VITIS_ROOT XILINX_VITIS XILINX_LOC
+          export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -i 'vitis\|aietools' | paste -sd:)"
+          if command -v v++ >/dev/null 2>&1 || command -v xchesscc >/dev/null 2>&1; then
+            echo "::error::Vitis/chess tools are still on PATH; this job must test without them"
+            exit 1
+          fi
+
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
           export XRT_CONTEXT_CACHE_SIZE=2
 
@@ -253,9 +261,9 @@ jobs:
           pushd programming_examples/basic/vector_scalar_add
           make clean
           if [ "${{ matrix.expected_npu }}" = "npu2" ]; then
-            NPU2=1 make run
+            NPU2=1 python3 "$GITHUB_WORKSPACE/utils/run_on_npu.py" npu2 make run
           else
-            make run
+            python3 "$GITHUB_WORKSPACE/utils/run_on_npu.py" npu1 make run
           fi
           popd
 
