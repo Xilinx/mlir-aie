@@ -3075,6 +3075,334 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   return success();
 }
 
+enum class PhysicalPortRole { Source, Dest };
+
+struct PhysicalPort {
+  int col;
+  int row;
+  AIE::WireBundle bundle;
+  unsigned channel;
+  PhysicalPortRole role;
+
+  auto asTuple() const {
+    return std::make_tuple(col, row, static_cast<int>(bundle), channel, role);
+  }
+  bool operator<(const PhysicalPort &other) const {
+    return asTuple() < other.asTuple();
+  }
+};
+
+static std::string physicalPortID(const PhysicalPort &port) {
+  return "physical_port_" + std::to_string(port.col) + "_" +
+         std::to_string(port.row) + "_" +
+         std::to_string(static_cast<int>(port.bundle)) + "_" +
+         std::to_string(port.channel) +
+         (port.role == PhysicalPortRole::Source ? "_source" : "_dest");
+}
+
+static std::pair<double, double>
+physicalPortPosition(const PhysicalPort &port) {
+  double tileX = static_cast<double>(port.col) * 8.0;
+  double tileY = static_cast<double>(port.row) * 7.0;
+  double offset = (static_cast<double>(port.channel) - 2.5) * 0.34;
+  double lane = port.role == PhysicalPortRole::Source ? 0.18 : -0.18;
+  switch (port.bundle) {
+  case AIE::WireBundle::North:
+    return {tileX + offset, tileY + 2.0 + lane};
+  case AIE::WireBundle::South:
+    return {tileX + offset, tileY - 2.0 - lane};
+  case AIE::WireBundle::East:
+    return {tileX + 2.0 + lane, tileY + offset};
+  case AIE::WireBundle::West:
+    return {tileX - 2.0 - lane, tileY + offset};
+  default:
+    return {tileX + (port.role == PhysicalPortRole::Source ? -1.45 : 1.45),
+            tileY + 1.45 -
+                static_cast<double>(static_cast<int>(port.bundle)) * 0.20 -
+                static_cast<double>(port.channel) * 0.14};
+  }
+}
+
+static std::string physicalCoordinate(double value) {
+  return formatv("{0:F6}", value).str();
+}
+
+static ArrayRef<AIE::WireBundle> physicalBundles() {
+  static const AIE::WireBundle bundles[] = {
+      AIE::WireBundle::Core,        AIE::WireBundle::DMA,
+      AIE::WireBundle::FIFO,        AIE::WireBundle::South,
+      AIE::WireBundle::West,        AIE::WireBundle::North,
+      AIE::WireBundle::East,        AIE::WireBundle::PLIO,
+      AIE::WireBundle::NOC,         AIE::WireBundle::Trace,
+      AIE::WireBundle::TileControl, AIE::WireBundle::Controller32};
+  return bundles;
+}
+
+static std::optional<PhysicalPortRole>
+semanticPortRole(StringRef id, const SemanticNode &node,
+                 const SemanticGraph &graph) {
+  if (!node.port)
+    return std::nullopt;
+  if (node.port->bundle == AIE::WireBundle::DMA)
+    return node.port->dmaDirection == AIE::DMAChannelDir::MM2S
+               ? PhysicalPortRole::Source
+               : PhysicalPortRole::Dest;
+  for (const auto &[key, attributes] : graph.edges) {
+    if (key.source != id && key.dest != id)
+      continue;
+    const SemanticNode &other =
+        graph.nodes.at(key.source == id ? key.dest : key.source);
+    if (!other.port || other.port->col != node.port->col ||
+        other.port->row != node.port->row)
+      continue;
+    return key.source == id ? PhysicalPortRole::Source : PhysicalPortRole::Dest;
+  }
+  return std::nullopt;
+}
+
+static LogicalResult
+emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
+                           AIE::RuntimeSequenceOp runtimeSequence,
+                           const AIE::VisualizeOptions &options) {
+  FailureOr<SemanticGraphAnalysis> analysis =
+      analyzeSemanticGraph(device, runtimeSequence, options);
+  if (failed(analysis))
+    return failure();
+
+  const AIE::AIETargetModel &model = device.getTargetModel();
+  std::set<PhysicalPort> usedPorts;
+  std::set<std::pair<PhysicalPort, PhysicalPort>> usedTracks;
+  std::map<std::string, PhysicalPort> semanticPorts;
+  std::set<std::tuple<int, int, unsigned>> allocatedBDs;
+  for (AIE::DmaBody program : device.getOps<AIE::DmaBody>()) {
+    auto tile =
+        dyn_cast_or_null<AIE::TileLike>(program.getTile().getDefiningOp());
+    if (!tile || !tile.tryGetCol() || !tile.tryGetRow())
+      continue;
+    program.getDmaBody().walk([&](AIE::DMABDOp descriptor) {
+      if (auto id = descriptor.getBdId())
+        allocatedBDs.insert(
+            {*tile.tryGetCol(), *tile.tryGetRow(), static_cast<unsigned>(*id)});
+    });
+  }
+  for (const auto &[id, node] : analysis->graph.nodes) {
+    std::optional<PhysicalPortRole> role =
+        semanticPortRole(id, node, analysis->graph);
+    if (!node.port || !role)
+      continue;
+    PhysicalPort port{node.port->col, node.port->row, node.port->bundle,
+                      static_cast<unsigned>(node.port->channel), *role};
+    semanticPorts[id] = port;
+    usedPorts.insert(port);
+  }
+  for (const auto &[key, attributes] : analysis->graph.edges) {
+    auto source = semanticPorts.find(key.source);
+    auto dest = semanticPorts.find(key.dest);
+    if (source != semanticPorts.end() && dest != semanticPorts.end())
+      usedTracks.insert({source->second, dest->second});
+  }
+
+  output << "digraph aie_physical {\n"
+            "  graph [layout=neato, overlap=true, splines=line, "
+            "outputorder=edgesfirst, bgcolor=white];\n"
+            "  node [fontname=Helvetica, fontsize=7, pin=true];\n"
+            "  edge [arrowsize=0.35];\n";
+  for (int row = 0; row < model.rows(); ++row) {
+    for (int col = 0; col < model.columns(); ++col) {
+      double tileX = static_cast<double>(col) * 8.0;
+      double tileY = static_cast<double>(row) * 7.0;
+      std::string coordinate = std::to_string(col) + "_" + std::to_string(row);
+      output << "  switchbox_" << coordinate
+             << " [shape=box, width=4.0, height=4.0, fixedsize=true, "
+                "label=\"switchbox ("
+             << col << ',' << row << ")\", color=\"#b8bec4\", "
+             << "fontcolor=\"#687078\", pos=\"" << physicalCoordinate(tileX)
+             << ',' << physicalCoordinate(tileY)
+             << "!\", class=\"physical-switchbox\"];\n";
+
+      std::vector<PhysicalPort> ports;
+      for (AIE::WireBundle bundle : physicalBundles()) {
+        for (unsigned channel = 0;
+             channel < model.getNumSourceSwitchboxConnections(col, row, bundle);
+             ++channel)
+          ports.push_back(
+              {col, row, bundle, channel, PhysicalPortRole::Source});
+        for (unsigned channel = 0;
+             channel < model.getNumDestSwitchboxConnections(col, row, bundle);
+             ++channel)
+          ports.push_back({col, row, bundle, channel, PhysicalPortRole::Dest});
+      }
+      for (const PhysicalPort &port : ports) {
+        auto [x, y] = physicalPortPosition(port);
+        bool used = usedPorts.count(port);
+        output << "  " << physicalPortID(port)
+               << " [shape=point, width=" << (used ? "0.09" : "0.045")
+               << ", color=\"" << (used ? "#c51b32" : "#d9dde1") << "\", pos=\""
+               << physicalCoordinate(x) << ',' << physicalCoordinate(y)
+               << "!\", xlabel=\""
+               << shortPortName({col, row, port.bundle,
+                                 static_cast<int>(port.channel),
+                                 port.bundle == AIE::WireBundle::DMA
+                                     ? std::optional<AIE::DMAChannelDir>(
+                                           port.role == PhysicalPortRole::Source
+                                               ? AIE::DMAChannelDir::MM2S
+                                               : AIE::DMAChannelDir::S2MM)
+                                     : std::nullopt})
+               << (port.role == PhysicalPortRole::Source ? " in" : " out")
+               << "\", class=\"physical-port " << (used ? "used" : "unused")
+               << "\"];\n";
+      }
+
+      for (const PhysicalPort &source : ports) {
+        if (source.role != PhysicalPortRole::Source)
+          continue;
+        for (const PhysicalPort &dest : ports) {
+          if (dest.role != PhysicalPortRole::Dest ||
+              !model.isLegalTileConnection(col, row, source.bundle,
+                                           source.channel, dest.bundle,
+                                           dest.channel))
+            continue;
+          bool used = usedTracks.count({source, dest});
+          output << "  " << physicalPortID(source) << " -> "
+                 << physicalPortID(dest) << " [color=\""
+                 << (used ? "#c51b32" : "#e7eaed")
+                 << "\", penwidth=" << (used ? "1.6" : "0.18")
+                 << ", class=\"physical-track " << (used ? "used" : "unused")
+                 << "\"];\n";
+        }
+      }
+
+      unsigned numBDs = model.getNumBDs(col, row);
+      unsigned dmaSources = model.getNumSourceSwitchboxConnections(
+          col, row, AIE::WireBundle::DMA);
+      unsigned dmaDests =
+          model.getNumDestSwitchboxConnections(col, row, AIE::WireBundle::DMA);
+      unsigned shimDmaSources =
+          model.getNumSourceShimMuxConnections(col, row, AIE::WireBundle::DMA);
+      unsigned shimDmaDests =
+          model.getNumDestShimMuxConnections(col, row, AIE::WireBundle::DMA);
+      bool hasDMA = dmaSources || dmaDests || shimDmaSources || shimDmaDests;
+      if (hasDMA) {
+        output << "  dma_box_" << coordinate
+               << " [shape=box, width=2.7, height=4.8, fixedsize=true, "
+                  "label=\"DMA resources\", color=\"#cdd2d7\", "
+                  "fontcolor=\"#7b838a\", pos=\""
+               << physicalCoordinate(tileX + 3.8) << ','
+               << physicalCoordinate(tileY) << "!\", "
+               << "class=\"physical-dma-box\"];\n";
+        unsigned mm2sChannels = std::max(dmaSources, shimDmaSources);
+        unsigned s2mmChannels = std::max(dmaDests, shimDmaDests);
+        for (unsigned channel = 0; channel < mm2sChannels; ++channel) {
+          PhysicalPort port{col, row, AIE::WireBundle::DMA, channel,
+                            PhysicalPortRole::Source};
+          bool used = usedPorts.count(port);
+          output << "  dma_mm2s_" << coordinate << '_' << channel
+                 << " [shape=box, width=0.55, height=0.2, fixedsize=true, "
+                    "label=\"M"
+                 << channel << "\", color=\"" << (used ? "#c51b32" : "#e1e4e7")
+                 << "\", pos=\"" << physicalCoordinate(tileX + 3.15) << ','
+                 << physicalCoordinate(tileY + 0.9 - channel * 0.3)
+                 << "!\", class=\"physical-dma-channel "
+                 << (used ? "used" : "unused") << "\"];\n";
+        }
+        for (unsigned channel = 0; channel < s2mmChannels; ++channel) {
+          PhysicalPort port{col, row, AIE::WireBundle::DMA, channel,
+                            PhysicalPortRole::Dest};
+          bool used = usedPorts.count(port);
+          output << "  dma_s2mm_" << coordinate << '_' << channel
+                 << " [shape=box, width=0.55, height=0.2, fixedsize=true, "
+                    "label=\"S"
+                 << channel << "\", color=\"" << (used ? "#c51b32" : "#e1e4e7")
+                 << "\", pos=\"" << physicalCoordinate(tileX + 4.45) << ','
+                 << physicalCoordinate(tileY + 0.9 - channel * 0.3)
+                 << "!\", class=\"physical-dma-channel "
+                 << (used ? "used" : "unused") << "\"];\n";
+        }
+        for (unsigned bd = 0; bd < numBDs; ++bd) {
+          double x = tileX + 2.75 + static_cast<double>(bd % 4) * 0.68;
+          double y = tileY + 1.65 - static_cast<double>(bd / 4) * 0.30;
+          bool allocated = allocatedBDs.count({col, row, bd});
+          output << "  bd_" << coordinate << '_' << bd
+                 << " [shape=box, width=0.45, height=0.18, fixedsize=true, "
+                    "label=\"BD"
+                 << bd << "\", color=\"" << (allocated ? "#c51b32" : "#e1e4e7")
+                 << "\", fontcolor=\"" << (allocated ? "#7e1422" : "#b0b5ba")
+                 << "\", " << "pos=\"" << physicalCoordinate(x) << ','
+                 << physicalCoordinate(y) << "!\", class=\"physical-bd "
+                 << (allocated ? "used" : "unused") << "\"];\n";
+        }
+      }
+      if (shimDmaSources || shimDmaDests) {
+        output << "  shim_mux_" << coordinate
+               << " [shape=box, width=2.2, height=1.0, fixedsize=true, "
+                  "label=\"shim mux\", color=\"#cdd2d7\", pos=\""
+               << physicalCoordinate(tileX) << ','
+               << physicalCoordinate(tileY - 3.0)
+               << "!\", class=\"physical-shim-mux\"];\n";
+      }
+    }
+  }
+
+  for (int row = 0; row < model.rows(); ++row) {
+    for (int col = 0; col < model.columns(); ++col) {
+      auto connectNeighbor = [&](AIE::WireBundle outputBundle,
+                                 AIE::WireBundle inputBundle, int nextCol,
+                                 int nextRow) {
+        if (!model.isValidTile({nextCol, nextRow}))
+          return;
+        unsigned outputs =
+            model.getNumDestSwitchboxConnections(col, row, outputBundle);
+        unsigned inputs = model.getNumSourceSwitchboxConnections(
+            nextCol, nextRow, inputBundle);
+        for (unsigned channel = 0; channel < std::min(outputs, inputs);
+             ++channel) {
+          PhysicalPort source{col, row, outputBundle, channel,
+                              PhysicalPortRole::Dest};
+          PhysicalPort dest{nextCol, nextRow, inputBundle, channel,
+                            PhysicalPortRole::Source};
+          bool used = usedTracks.count({source, dest});
+          output << "  " << physicalPortID(source) << " -> "
+                 << physicalPortID(dest) << " [color=\""
+                 << (used ? "#c51b32" : "#e1e5e8")
+                 << "\", penwidth=" << (used ? "1.6" : "0.22")
+                 << ", class=\"physical-intertile-track "
+                 << (used ? "used" : "unused") << "\"];\n";
+        }
+      };
+      connectNeighbor(AIE::WireBundle::North, AIE::WireBundle::South, col,
+                      row + 1);
+      connectNeighbor(AIE::WireBundle::East, AIE::WireBundle::West, col + 1,
+                      row);
+    }
+  }
+
+  for (const auto &[id, node] : analysis->graph.nodes) {
+    std::optional<std::pair<double, double>> position;
+    auto port = semanticPorts.find(id);
+    if (port != semanticPorts.end()) {
+      position = physicalPortPosition(port->second);
+    } else if (node.tile) {
+      double tileX = static_cast<double>(node.tile->first) * 8.0;
+      double tileY = static_cast<double>(node.tile->second) * 7.0;
+      position = node.kind == SemanticNodeKind::DMA
+                     ? std::make_pair(tileX + 3.8, tileY)
+                     : std::make_pair(tileX, tileY);
+    }
+    if (!position)
+      continue;
+    output << "  semantic_" << id
+           << " [shape=circle, width=0.13, height=0.13, fixedsize=true, "
+              "label=\"\", color=\"#c51b32\", fillcolor=\"#c51b32\", "
+              "style=filled, pos=\""
+           << physicalCoordinate(position->first) << ','
+           << physicalCoordinate(position->second)
+           << "!\", class=\"semantic-node physical-alias\", " << "tooltip=\""
+           << escapeDotLabel(id) << "\"];\n";
+  }
+  output << "}\n";
+  return success();
+}
+
 } // namespace
 
 static FailureOr<std::pair<AIE::DeviceOp, AIE::RuntimeSequenceOp>>
@@ -3135,6 +3463,16 @@ LogicalResult AIE::emitRouteDot(ModuleOp module, raw_ostream &output,
   if (failed(selected))
     return failure();
   return emitDeviceRouteDot(selected->first, output, selected->second, options);
+}
+
+LogicalResult AIE::emitPhysicalRouteDot(ModuleOp module, raw_ostream &output,
+                                        const AIE::VisualizeOptions &options) {
+  FailureOr<std::pair<AIE::DeviceOp, AIE::RuntimeSequenceOp>> selected =
+      selectDeviceAndRuntime(module, options);
+  if (failed(selected))
+    return failure();
+  return emitDevicePhysicalRouteDot(selected->first, output, selected->second,
+                                    options);
 }
 
 LogicalResult AIE::emitSemanticGraphJson(ModuleOp module, raw_ostream &output,
