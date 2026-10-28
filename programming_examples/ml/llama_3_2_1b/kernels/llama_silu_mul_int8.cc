@@ -21,24 +21,40 @@
 #define LLAMA_SILU_CHUNK 1024
 #endif
 
-static constexpr int kLanes = 16;
+static constexpr int kLanes = 32;
 static constexpr int kCols = LLAMA_SILU_MUL_COLS;
 static constexpr int kChunk = LLAMA_SILU_CHUNK;
 static_assert(kChunk % kLanes == 0 && kCols % kChunk == 0,
-              "LLAMA_SILU_CHUNK must be a multiple of 16 dividing the columns");
+              "LLAMA_SILU_CHUNK must be a multiple of 32 dividing the columns");
 
-// 1 / d for d in [1, 2]: the guess 24/17 - 8/17 d, within 1/17, then three
-// steps y += y (1 - d y).
+// 1 / d rounded to nearest even for d in [1, 2]: three fixed-point Newton
+// steps (Q30) from 24/17 - 8/17 d come within one of the rounded significand
+// for every such d, which vec_recip_rne_bits then corrects.
 static inline ::aie::vector<float, kLanes>
 recip_unit(::aie::vector<float, kLanes> d) {
-  const ::aie::vector<float, kLanes> one =
-      ::aie::broadcast<float, kLanes>(1.0f);
-  ::aie::vector<float, kLanes> y =
-      ::aie::sub(::aie::broadcast<float, kLanes>(24.0f / 17.0f),
-                 vec_mul_rne(::aie::broadcast<float, kLanes>(8.0f / 17.0f), d));
-  for (int i = 0; i < 3; i++)
-    y = ::aie::add(y, vec_mul_rne(y, ::aie::sub(one, vec_mul_rne(d, y))));
-  return y;
+  const ::aie::vector<int32, kLanes> db = d.template cast_to<int32>();
+  const ::aie::vector<int32, kLanes> x = ::aie::select(
+      ::aie::upshift(
+          ::aie::bit_or(int32(0x800000), ::aie::bit_and(int32(0x7fffff), db)),
+          6),
+      ::aie::broadcast<int32, kLanes>(1 << 30),
+      ::aie::eq(db, int32(0x40000000)));
+  ::aie::vector<int32, kLanes> y =
+      ::aie::sub(::aie::broadcast<int32, kLanes>(1515870810),
+                 ::aie::mul(x, ::aie::broadcast<int32, kLanes>(505290270))
+                     .template to_vector<int32>(29));
+  for (int i = 0; i < 3; i++) {
+    const ::aie::vector<int32, kLanes> t =
+        ::aie::mul(x, y).template to_vector<int32>(29);
+    // 2^31 - t, which is below 2^31, in wrapping int32 arithmetic.
+    y = ::aie::mul(y, ::aie::sub(::aie::broadcast<int32, kLanes>(INT32_MIN), t))
+            .template to_vector<int32>(30);
+  }
+  ::aie::accum<acc64, kLanes> ya;
+  ya.from_vector(y, 0);
+  return vec_recip_rne_bits(
+             db, ::aie::add(ya.template to_vector<int32>(6), int32(125 << 23)))
+      .template cast_to<float>();
 }
 
 extern "C" {
@@ -56,7 +72,7 @@ void llama_silu_gate(float *restrict gate, float *restrict h, int32_t chunk) {
     // -|g| as 0 - g where g is not negative: OR-ing in the sign bit folds
     // to a vector fneg that Peano cannot legalize on AIE2P.
     auto neg = ::aie::lt(g.template cast_to<int32>(), int32(0));
-    ::aie::vector<float, kLanes> e = vec_exp_nonpos(
+    ::aie::vector<float, kLanes> e = vec_exp_nonpos<kLanes>(
         ::aie::select(::aie::sub(::aie::zeros<float, kLanes>(), g), g, neg));
     ::aie::vector<float, kLanes> r =
         recip_unit(::aie::add(::aie::broadcast<float, kLanes>(1.0f), e));
@@ -98,12 +114,14 @@ void llama_silu_quant(float *restrict h, int8_t *restrict out) {
   const float absmax = __builtin_bit_cast(
       float, std::max(::aie::reduce_max(mag), kAbsmaxFloorBits));
   float out_scale = scalar_mul_rne(absmax, 1.0f / 127.0f);
-  ::aie::vector<float, kLanes> inv_v =
-      ::aie::broadcast<float, kLanes>(recip_rne(out_scale));
+  // |h| <= absmax, so |h * inv| stays near 127, as vec_requant_i8 needs.
+  const RequantFactor inv = requant_factor(recip_rne(out_scale));
   for (int c = 0; c < kCols / kLanes; c++)
-    ::aie::store_v(out + c * kLanes,
-                   vec_round_to_i8(vec_mul_rne(
-                       ::aie::load_v<kLanes>(h + c * kLanes), inv_v)));
+    ::aie::store_v(
+        out + c * kLanes,
+        vec_requant_i8(::aie::load_v<kLanes>(
+                           reinterpret_cast<const int32_t *>(h) + c * kLanes),
+                       inv));
   __builtin_memcpy(out + kCols, &out_scale, 4);
   int32_t zero = 0;
   __builtin_memcpy(out + kCols + 4, &zero, 4);

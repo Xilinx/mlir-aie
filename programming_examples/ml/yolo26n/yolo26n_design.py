@@ -30,7 +30,15 @@ from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingI
 from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.util import np_ndarray_type_to_memref_type
-from aie.iron import Buffer, ExternalFunction, ObjectFifo, TaskGroup, Worker, kernels
+from aie.iron import (
+    Buffer,
+    ExternalFunction,
+    ObjectFifo,
+    ScratchpadParameter,
+    TaskGroup,
+    Worker,
+    kernels,
+)
 from aie.iron.algorithms import sliding_3row
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.objectfifo import ObjectFifoHandle
@@ -164,23 +172,49 @@ class Fill:
     step: int = 0
     chunk: int = 1
 
-    def tap(self, total: int, offset: int) -> TensorAccessPattern:
-        """The pattern over a host buffer of `total` int32 words with the tensor at word `offset`."""
+    def taps(self, total: int, offset: int) -> list[tuple[TensorAccessPattern, int]]:
+        """The patterns over a host buffer of `total` int32 words with the
+        tensor at word `offset`, in order, each with the elements a runtime
+        length counts in (so a 0/1 length moves the pattern or nothing).
+
+        A runtime length continues a pattern's third dimension and repeats
+        on its outer one: the anchor-class walk's rows are that outer
+        dimension, at most 64 a pattern, and a repeated tensor is a linear
+        run repeated."""
         t = self.tensor
         if self.layout is Layout.ANCHOR_CLASSES:
             groups = t.channels8 // 8
-            return TensorAccessPattern(
-                (total,),
-                offset,
-                [t.height, t.width // self.chunk, groups, 2 * self.chunk],
-                [groups * t.width * 2, 2 * self.chunk, t.width * 2, 1],
-            )
+            row = groups * t.width * 2
+            return [
+                (
+                    TensorAccessPattern(
+                        (total,),
+                        offset + y * row,
+                        [
+                            min(64, t.height - y),
+                            t.width // self.chunk,
+                            groups,
+                            2 * self.chunk,
+                        ],
+                        [row, 2 * self.chunk, t.width * 2, 1],
+                    ),
+                    row,
+                )
+                for y in range(0, t.height, 64)
+            ]
         size = (IMAGE_ROW_BYTES if t.name == "images" else t.row_bytes) * t.height // 4
         if self.layout is Layout.REPEAT:
-            return TensorAccessPattern(
-                (total,), offset, [1, self.chunk, 1, size], [0, 0, 0, 1]
-            )
-        return TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1])
+            return [
+                (
+                    TensorAccessPattern(
+                        (total,), offset, [self.chunk, 1, 1, size], [0, 0, 0, 1]
+                    ),
+                    size,
+                )
+            ]
+        return [
+            (TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1]), size)
+        ]
 
 
 def pack_weights(op: Conv, weight: np.ndarray) -> np.ndarray:
@@ -418,18 +452,26 @@ class SegmentDesign:
             + [drain for drain, _ in self.staged]
         )
 
-    def transfer(self, handles: Sequence, locate: Callable[[Tensor], tuple]) -> None:
+    def transfer(
+        self,
+        handles: Sequence,
+        locate: Callable[[Tensor], tuple],
+        gate: ScratchpadParameter | None = None,
+    ) -> None:
         """The run's host transfers, inside its runtime sequence.
 
         `handles` are `handles()`' as the sequence received them; `locate`
         gives each tensor's host buffer, its size in int32 words and the
         tensor's word offset in it; a spill's rows are the tensor it carries.
+        With `gate`, a 0/1 parameter, every transfer moves its whole tap or
+        nothing, so a dispatch runs this image or skips it.
         Drains are issued first, then each spill's and each staged tensor's;
         then each fill step's transfers, every step but the last finishing
         before the next starts, and a step that reads a staged tensor
         starting once every staged drain is done; then each spill's fill,
         once its drain is done.
         """
+        gated = {} if gate is None else dict(length_parameter=gate)
         filled = dict(zip(self.in_fifos, handles))
         drains = TaskGroup()
         spilled = handles[
@@ -450,6 +492,7 @@ class SegmentDesign:
                 ),
                 wait=True,
                 group=staging,
+                **gated,
             )
         staged = {tensor.name for _, tensor in self.staged}
         refills = []
@@ -462,7 +505,7 @@ class SegmentDesign:
                 [0, 0, 0, 1],
             )
             group = TaskGroup()
-            drain.drain(buffer, tap, wait=True, group=group)
+            drain.drain(buffer, tap, wait=True, group=group, **gated)
             refills.append((group, back, buffer, tap))
         for tensor, handle in zip(self.outputs, handles[len(self.in_fifos) :]):
             buffer, total, offset = locate(tensor)
@@ -472,6 +515,7 @@ class SegmentDesign:
                 TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1]),
                 wait=True,
                 group=drains,
+                **gated,
             )
         steps = sorted({f.step for f in self.fills})
         fills = None
@@ -484,15 +528,20 @@ class SegmentDesign:
             fills = TaskGroup()
             for fill in (f for f in self.fills if f.step == step):
                 buffer, total, offset = locate(fill.tensor)
-                filled[fill.fifo].fill(
-                    buffer, fill.tap(total, offset), wait=step != steps[-1], group=fills
-                )
+                for tap, unit in fill.taps(total, offset):
+                    filled[fill.fifo].fill(
+                        buffer,
+                        tap,
+                        wait=step != steps[-1],
+                        group=fills,
+                        **({} if gate is None else dict(gated, length_unit=unit)),
+                    )
             if step != steps[-1]:
                 fills.finish()
         back_in = TaskGroup() if refills else None
         for group, back, buffer, tap in refills:
             group.finish()
-            back.fill(buffer, tap, wait=True, group=back_in)
+            back.fill(buffer, tap, wait=True, group=back_in, **gated)
         drains.finish()
         if fills is not None:
             fills.finish()

@@ -80,7 +80,7 @@ jobs:
 
     name: Get latest LLVM commit
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     outputs:
       LLVM_PROJECT_COMMIT: ${{ steps.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }}
@@ -161,11 +161,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
@@ -173,11 +173,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 
@@ -270,7 +270,7 @@ jobs:
     # build
 
     - name: cibuildwheel
-      if: ${{ matrix.OS != 'ubuntu-24.04' || matrix.ARCH != 'aarch64' }}
+      if: ${{ matrix.OS != 'ubuntu-26.04' || matrix.ARCH != 'aarch64' }}
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
@@ -286,7 +286,7 @@ jobs:
         cibuildwheel --output-dir wheelhouse
 
     - name: build aarch ubuntu wheel
-      if: ${{ matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'aarch64' }}
+      if: ${{ matrix.OS == 'ubuntu-26.04' && matrix.ARCH == 'aarch64' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -334,7 +334,7 @@ jobs:
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
-      if: (matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      if: (matrix.OS == 'ubuntu-26.04' && matrix.ARCH == 'x86_64') && (success() || failure())
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -386,7 +386,7 @@ jobs:
           unzip -j wheelhouse/mlir*whl "mlir/bin/$TOOL" -d native_tools/
         done
 
-        if [ x"${{ matrix.OS }}" == x"ubuntu-24.04" ]; then
+        if [ x"${{ matrix.OS }}" == x"ubuntu-26.04" ]; then
           PLAT="linux"
         elif [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           PLAT="win"
@@ -418,7 +418,7 @@ jobs:
 
     - name: Upload wheels
       if: github.event_name != 'schedule'
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
@@ -436,7 +436,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
@@ -444,7 +444,7 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
@@ -453,7 +453,7 @@ jobs:
             ENABLE_RTTI: OFF
 
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
         with:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
@@ -484,17 +484,17 @@ jobs:
 
     needs: smoke_test_wheels
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
@@ -502,11 +502,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-24.04
+          - OS: ubuntu-26.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 
@@ -519,7 +519,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir

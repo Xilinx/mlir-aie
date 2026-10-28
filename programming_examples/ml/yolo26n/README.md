@@ -74,7 +74,10 @@ LAST` names the range by its first and last ops instead.
   anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`.
 - `yolo26n.py` runs the network as four such segments (`SEGMENTS`), each its
   own device configuration in one full ELF, handing tensors on through a DDR
-  scratch buffer, in one dispatch.
+  scratch buffer. A dispatch runs up to `--capacity` images (8, the build's
+  buffers), each configuration all of them before the next: every image's
+  transfers are gated by a ScratchpadParameter (`image{i}`), so the images a
+  dispatch runs (`--batch`) are chosen when it is dispatched.
 
 ## Accuracy
 
@@ -99,8 +102,8 @@ exits 0 only when every image passes.
 
 ## Performance
 
-On Strix (NPU2), one 640x640 image takes 11.3 ms (88.5 fps) at batch 1 and
-6.22 ms per image (161 fps) at batch 8:
+On Strix (NPU2), one 640x640 image takes 12.2 ms (82.0 fps) at batch 1 and
+6.00 ms per image (167 fps) at batch 8, both from one build (`--capacity 8`):
 
 ```bash
 python yolo26n.py --synthetic 7 --n 8 --time              # batch 1
@@ -109,9 +112,15 @@ python yolo26n.py --synthetic 7 --n 8 --batch 8 --time    # batch 8
 
 Each number is the fastest of 20 calls after 10 warm-up calls, the host's
 wall time of the whole `yolo26n(...)` call divided by the batch; the line
-also prints the median and its MAD (medians 11.5 ms and 6.37 ms here). The
+also prints the median and its MAD (medians 13.6 ms and 6.10 ms here). The
 weights and images are synthetic, so no checkpoint is needed; real ones move
 the same data, but the postprocess's work depends on the scores, so their
-time can differ a little. The design runs as four device configurations of
-one full ELF. A batch-1 dispatch configures every segment's workers again,
-at roughly 60-110 us a worker, which a batch shares.
+time can differ a little.
+
+The design runs as four device configurations of one full ELF, so every
+dispatch configures all four segments again. `--time` also times a dispatch
+with no image on: 7.31 ms from a build of capacity 1, which is the four
+configurations, about 65% of that build's 11.3 ms an image at batch 1;
+batch 8 shares them. Each image slot a dispatch leaves unused still has its
+transfers issued and gated off, about 0.13 ms: capacity 8's empty dispatch
+takes 7.64 ms and its batch 1 12.2 ms.

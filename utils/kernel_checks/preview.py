@@ -14,23 +14,17 @@ so it runs where mlir_aie imports (``source utils/env_setup.sh``).
 
     python3 utils/kernel_checks/preview.py                 # real data
     python3 utils/kernel_checks/preview.py --fetch         # git fetch it first
-    python3 utils/kernel_checks/preview.py --scenario bad-night
-    python3 utils/kernel_checks/preview.py --site components --scenario refused-night
+    python3 utils/kernel_checks/preview.py --site components
 
-A scenario appends a synthetic run on top of the real data so the page's
-failure states can be seen; nothing is written back to the branch. On the
-kernels (``--site kernels``, the default), ``bad-night`` is an npu1 run with
-regressions and improvements in cycles and object size, a failing case, a
-timing failure, a truncated trace and a Peano bump, and ``refused-night`` an
-npu1 run that refused to measure in the wrong power mode. On the components,
-``bad-night`` fails sweep seeds 4 and 11 and the hardware run of seed 7 at
-batch 64, and ``refused-night`` is a hardware run that refused. Until the
-nightlies publish batch rows and per-seed detail, a few synthetic nights of
-both come first, so the component cards and charts have something to show.
+Nothing is written back to the branch. Until the nightlies publish batch
+rows and per-seed detail, a few synthetic nights come first, so the
+component cards and charts have something to show; the page's own failure
+states (a correctness failure, a timing failure, a refused run, a
+regression) are each covered directly by test/test_kernel_checks_page.py,
+against real recorded data rather than a run against the live branch.
 """
 
 import argparse
-import copy
 import datetime
 import functools
 import hashlib
@@ -78,6 +72,7 @@ HW_DETAIL = (
     "effort_label",
     "passed",
     *sa_placer_hw.TIMED,
+    "fps",
     "dispatch_overhead_us",
     "placement",
 )
@@ -272,49 +267,6 @@ def synthetic_ci_health(out: Path, days: int = 20) -> None:
     (out / "status.json").write_text(json.dumps(status, indent=1))
     (out / "history.json").write_text(json.dumps(history, indent=1))
     print("synthetic ci-health: no published one yet")
-
-
-def _synthetic(base: dict, run_id: str, message: str) -> dict:
-    """Copy the record ``base`` as a nightly run of now."""
-    run = copy.deepcopy(base)
-    run["id"] = run_id
-    run["url"] = ""
-    run["date"] = publish.iso(publish.now_utc())
-    run["event"] = "schedule"
-    run["commit"] = {
-        **run.get("commit", {}),
-        "id": "0" * 40,
-        "url": "",
-        "message": message,
-    }
-    return run
-
-
-def _store(out: Path, run: dict) -> None:
-    (out / "runs" / f"{run['id']}.json").write_text(json.dumps(run, indent=1))
-    publish.rebuild(out, publish.now_utc() + datetime.timedelta(seconds=1))
-
-
-def refused_night(out: Path) -> None:
-    """Append a run to ``out`` that refused to measure in the wrong power mode."""
-    run = _synthetic(
-        json.loads((out / "latest.json").read_text()),
-        "preview-refused-night",
-        "Preview: a synthetic refused night",
-    )
-    run.update(
-        pmode="default",
-        sane=None,
-        published=False,
-        n_rows=0,
-        exitstatus=1,
-        failed=[],
-        truncated=[],
-        rows={},
-        refused="power mode is default, required 'turbo'",
-    )
-    _store(out, run)
-    print(f"refused-night on {out.name}: {run['refused']}")
 
 
 def _hw_night(rng: random.Random) -> tuple[list, dict]:
@@ -593,108 +545,6 @@ def synthetic_components(site: Path, nights: int = 5) -> None:
         print(f"synthetic nights on {check}: {nights}")
 
 
-def bad_components(site: Path) -> None:
-    """Fail sweep seeds 4 and 11 and hardware seed 7 at batch 64, the sweep's costs up 8%."""
-    out = site / "sa-placer"
-    run = _synthetic(
-        json.loads((out / "latest.json").read_text()),
-        "preview-bad-night",
-        "Preview: a synthetic bad night",
-    )
-    detail = run["detail"]
-    for d in detail:
-        d["final_cost"] = round(d["final_cost"] * 1.08) if d["final_cost"] else None
-        if d["fixture"] == "mobilenet" and d["seed"] in (4, 11):
-            d.update(passed=False, final_cost=None)
-    run["rows"] = publish.rows_by_case(sa_placer.aggregate(detail))
-    run["failed"] = [
-        f"{d['fixture']}/seed{d['seed']}" for d in detail if not d["passed"]
-    ]
-    _store_failed(out, run)
-
-    out = site / "sa-placer-hw"
-    run = _synthetic(
-        json.loads((out / "latest.json").read_text()),
-        "preview-bad-night",
-        "Preview: a synthetic bad night",
-    )
-    failed = "mobilenet/seed=7/batch=64"
-    run["rows"].pop(failed, None)
-    run["rows"]["mobilenet"]["failed_seeds"]["value"] += 1
-    for d in run.get("detail", []):
-        if (d["seed"], d["batch"]) == (7, 64):
-            d["passed"] = False
-    run["failed"] = [failed]
-    _store_failed(out, run)
-
-
-def _store_failed(out: Path, run: dict) -> None:
-    run["exitstatus"] = 1
-    run["n_rows"] = sum(len(c) for c in run["rows"].values())
-    _store(out, run)
-    print(f"bad-night on {out.name}: failed {', '.join(run['failed'])}")
-
-
-def bad_night(site: Path, npu: str = "npu1", seed: int = 7) -> None:
-    """Append a synthetic run to ``npu`` with something wrong in every way."""
-    out = site / npu
-    latest = json.loads((out / "latest.json").read_text())
-    catalogue = json.loads((out / "catalogue.json").read_text())
-    rng = random.Random(seed)
-    run = copy.deepcopy(latest)
-    run["id"] = "preview-bad-night"
-    run["url"] = ""
-    now = publish.now_utc()
-    run["date"] = publish.iso(now)
-    run["commit"] = {
-        **run["commit"],
-        "id": "0" * 40,
-        "url": "",
-        "message": "Preview: a synthetic bad night",
-    }
-    run["provenance"] = {**run["provenance"], "peano": "22.0.0+preview1"}
-    cases = sorted(run["rows"])
-    picked = rng.sample(cases, 12)
-    slower, faster, bigger = picked[:6], picked[6:9], picked[9:10]
-    failing, timing = picked[10], picked[11]
-    for i, case in enumerate(slower):
-        cell = run["rows"][case]["cycles"]
-        cell["value"] = round(cell["value"] * (1.03 + 0.05 * i))
-    for case in faster:
-        cell = run["rows"][case]["cycles"]
-        cell["value"] = round(cell["value"] * 0.9)
-    for case in bigger:
-        cell = run["rows"][case].get("kernel_object_bytes")
-        if cell:
-            cell["value"] = round(cell["value"] * 1.12)
-    truncated = slower[0]
-    cyc = run["rows"][truncated]["cycles"]
-    spread = cyc.get("range") or f"median {cyc['value']} max {cyc['value']} n=16"
-    cyc["range"] = spread + "; truncated"
-    run["truncated"] = [truncated]
-    for case in (failing, timing):
-        run["rows"].pop(case, None)
-    run["failed"] = [f"test_kernels_perf.py::test_kernel_perf[{timing}]"]
-    run["n_rows"] = sum(len(c) for c in run["rows"].values())
-    for k in catalogue["kernels"]:
-        if k["factory"] == failing.split("/")[0]:
-            k["failed"] = sorted({*k.get("failed", []), failing})
-            k["passed"] = max(0, k.get("passed", 0) - 1)
-            k["timed"] = max(0, k.get("timed", 0) - 1)
-        if k["factory"] == timing.split("/")[0]:
-            k["timing_failed"] = sorted({*k.get("timing_failed", []), timing})
-            k["timed"] = max(0, k.get("timed", 0) - 1)
-    catalogue["date"] = run["date"]
-    run.update(publish._summary_of_catalogue(catalogue))
-    (out / "catalogue.json").write_text(json.dumps(catalogue, indent=1))
-    (out / "runs" / f"{run['id']}.json").write_text(json.dumps(run, indent=1))
-    publish.rebuild(out, now + datetime.timedelta(seconds=1))
-    print(
-        f"bad-night on {npu}: slower {len(slower)}, faster {len(faster)}, "
-        f"bigger {len(bigger)}, failing {failing}, timing failed {timing}"
-    )
-
-
 class Handler(http.server.SimpleHTTPRequestHandler):
     """Serve the scratch copy, but the page from the working tree."""
 
@@ -730,10 +580,7 @@ def main(argv=None) -> int:
         "--site",
         choices=["kernels", "components"],
         default="kernels",
-        help="which checks the scenario changes and the printed link opens",
-    )
-    parser.add_argument(
-        "--scenario", choices=["real", "bad-night", "refused-night"], default="real"
+        help="which page the printed link opens",
     )
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
@@ -743,22 +590,14 @@ def main(argv=None) -> int:
             ["git", "-C", str(ROOT), "fetch", "origin", "gh-pages"], check=True
         )
     scratch = Path(tempfile.mkdtemp(prefix="kernel-checks-"))
-    site = extract(args.ref, scratch)
+    extract(args.ref, scratch)
     components = scratch / "component-checks"
     synthetic_components(components)
     synthetic_ci_health(scratch / "ci-health")
-    if args.site == "kernels" and args.scenario == "bad-night":
-        bad_night(site)
-    elif args.site == "kernels" and args.scenario == "refused-night":
-        refused_night(site / "npu1")
-    elif args.scenario == "bad-night":
-        bad_components(components)
-    elif args.scenario == "refused-night":
-        refused_night(components / "sa-placer-hw")
     view = "#view=placement" if args.site == "components" else ""
     handler = functools.partial(Handler, directory=str(scratch))
     with http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler) as httpd:
-        print(f"Serving {args.ref} ({args.scenario}) with the working-tree page:")
+        print(f"Serving {args.ref} with the working-tree page:")
         print(f"  http://127.0.0.1:{args.port}/dashboard/{view}")
         httpd.serve_forever()
     return 0
