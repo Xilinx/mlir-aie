@@ -1,9 +1,0 @@
-<map id="LowerTruncOpPattern&lt; SrcOpTy &gt;" name="LowerTruncOpPattern&lt; SrcOpTy &gt;">
-<area shape="rect" id="Node000001" title=" " alt="" coords="96,99,254,144"/>
-<area shape="rect" id="Node000003" href="$structLowerTruncOpPattern.html" title=" " alt="" coords="5,217,164,262"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="118,152,104,170,93,193,88,218,83,215,88,191,100,166,114,155"/>
-<area shape="rect" id="Node000004" href="$structLowerTruncOpPattern.html" title=" " alt="" coords="188,217,346,262"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="224,151,240,166,255,191,264,218,259,216,250,193,236,170,223,156"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="96,5,254,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="176,63,178,100,173,98,174,68"/>
-</map>
