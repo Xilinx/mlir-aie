@@ -66,6 +66,23 @@ if [ "$actual_version" != "$UV_VERSION" ]; then
   echo "           pip install 'uv==${UV_VERSION}'" >&2
 fi
 
+# Locate a python3 with tomllib (stdlib since 3.11): plain `python3` on PATH
+# is not a reliable signal of this -- it resolves to whatever the caller's
+# shell defaults to, which is often an older system interpreter even on a box
+# that also has 3.11+ installed under a versioned name.
+PY=""
+for cand in python3 python3.12 python3.11; do
+  if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import tomllib' >/dev/null 2>&1; then
+    PY="$cand"
+    break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "error: no python3.11+ (tomllib) found on PATH." >&2
+  echo "       install one or put it first on PATH, e.g. python3.12." >&2
+  exit 1
+fi
+
 # Resolve repo root regardless of caller's cwd.
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -109,7 +126,7 @@ generate_requirements_in() {
 # utils/regenerate_lockfiles.sh generates this file from pyproject.toml's
 # [build-system].requires. Edit pyproject.toml, then rerun that script.
 EOF
-    python3 -c '
+    "$PY" -c '
 import sys, tomllib
 with open(sys.argv[1], "rb") as f:
     print(*tomllib.load(f)["build-system"]["requires"], sep="\n")
