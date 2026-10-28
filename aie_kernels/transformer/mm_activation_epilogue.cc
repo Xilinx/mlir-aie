@@ -76,8 +76,9 @@ static inline void mm_silu_hiprec_row(uint32_t n, const float *__restrict acc,
     aie::vector<bfloat16, 16> sig = aie::mul(tanh_p1, halfb);
     *it_out++ = mul_split(xs, sig);
   };
-  // Unrolled by 2, this loop gives wrong results on npu2 (llvm-aie#1328).
-  VERSIONED_LOOP(8, n / 16, body, AIE_LOOP_UNROLL(4));
+  // llvm-aie#1328 made this loop wrong at unroll 2 on npu2; fixed in the
+  // current pin.
+  VERSIONED_LOOP(8, n / 16, body, AIE_LOOP_UNROLL(2));
   event1();
 }
 
