@@ -245,6 +245,10 @@ jobs:
           set FAILED=
 
           echo ===== Running tests =====
+          REM Unlike the Linux device legs, no hosted Windows runner executes
+          REM check-aie (buildAndTestMulti.yml skips it on windows-2022), so
+          REM this is the only place the non-device Windows corpus runs.
+          REM Left unfiltered to keep that coverage.
           ninja check-aie
           if errorlevel 1 set FAILED=%FAILED% check-aie
 

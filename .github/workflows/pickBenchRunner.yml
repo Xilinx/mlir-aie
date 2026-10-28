@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   pick:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # Up to four hours for a busy primary to free up, and some to spare.
     timeout-minutes: 260
     permissions:
