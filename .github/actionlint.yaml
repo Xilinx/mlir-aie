@@ -15,6 +15,7 @@ self-hosted-runner:
     - npu2
     - ryzenai
     - strix-halo
+    - ubuntu-26.04   # Hosted image not yet known to actionlint v1.7.12
     - ubuntu-vitis   # Vitis toolchain image
 
 # GitHub supports concurrency.queue, but actionlint v1.7.12 does not yet.

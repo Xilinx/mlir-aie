@@ -33,7 +33,7 @@ from aie.iron import (
     WorkerRuntimeBarrier,
     sync_parameters,
 )
-from aie.iron.device import NPU2Col1, Tile
+from aie.iron.device import NPU2, NPU2Col1, Tile
 from aie.passmanager import PassManager
 from aie.utils.compile.jit.context import compile_context
 
@@ -915,6 +915,51 @@ def test_a_merged_step_waits_for_the_last_steps_transfers():
     sequence = text[text.index("aie.runtime_sequence") :]
     steps = re.findall(r"aiex\.dma_(start|await|free)_task", sequence)
     assert steps == ["start", "await", "free", "start", "free"]
+
+
+def step_runtimes(n, out_of_cons):
+    """``n`` Runtimes, each filling ``into`` and draining ``out_of``."""
+    of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
+    worker = Worker(lambda a, b: None, [of_in.cons(), of_out.prod()])
+
+    def step(a, b, into, out_of):
+        into.fill(a)
+        out_of.drain(b, wait=True)
+
+    steps = [
+        Runtime(step, [Line, Line, of_in.prod(), out_of_cons(of_out, k)], name=f"s{k}")
+        for k in range(n)
+    ]
+    return worker, steps
+
+
+def out_of_consumers(worker, steps, device):
+    config = DeviceConfiguration("pack", device, workers=[worker], runtimes=steps)
+    text = str(Program.compose([config], entry=steps[0]).resolve_program())
+    (consumers,) = re.findall(r"aie\.objectfifo @out_of\(%\w+, \{([^}]*)\}", text)
+    return consumers.split(", ")
+
+
+def test_runtimes_draining_one_fifo_share_its_shim_end():
+    steps = step_runtimes(3, lambda of, k: of.cons())
+    assert len(out_of_consumers(*steps, NPU2Col1())) == 1
+
+
+def test_runtimes_draining_one_fifo_to_distinct_shim_tiles_keep_both():
+    steps = step_runtimes(
+        2, lambda of, k: of.cons(tile=Tile(k, 0, tile_type=AIETileType.ShimNOCTile))
+    )
+    assert len(out_of_consumers(*steps, NPU2())) == 2
+
+
+def test_runtimes_draining_one_shim_end_at_different_depths_are_refused():
+    with pytest.raises(ValueError, match="'out_of' is drained to one shim end"):
+        step_runtimes(2, lambda of, k: of.cons(depth=k + 1))
+
+
+def test_runtimes_draining_one_shim_end_at_different_channels_are_refused():
+    with pytest.raises(ValueError, match="'out_of' is drained to one shim end"):
+        step_runtimes(2, lambda of, k: of.cons(channel=k))
 
 
 def test_merged_steps_may_each_use_only_explicit_groups():

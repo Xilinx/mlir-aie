@@ -5,6 +5,7 @@
 #
 
 add_mlir_dialect_library(MLIRAIEVecTransforms
+  AIE2PShufflePlanner.cpp
   ConvertVectorToAIEVec.cpp
   VectorToVectorConversions.cpp
   VectorToAIEVecConversions.cpp

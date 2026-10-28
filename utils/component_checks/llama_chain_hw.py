@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-r"""Build and run the Llama 3.2 1B decode on NPU2.
+r"""Build and run Llama 3.2 1B (decode and prefill) on NPU2.
 
-Does the full N=16 persistent, growing-KV decode still build, match its
-numpy oracle and run at the expected rate on real hardware. Compiles once,
-at a 128k-row KV cache, with the design's own CLI (aie2_decode.py), then runs
-that one full ELF through:
+Does the full N=16 persistent, growing-KV decode, with its prefill, still
+build, match its numpy oracle and run at the expected rate on real hardware.
+Compiles once, at a 128k-row KV cache, with the design's own CLI
+(aie2_llama.py: the decode and the prefill in one full ELF), then runs that
+one full ELF through:
 - test_decode.py --contexts: a dispatch of 4 tokens at
   DISPATCH_RATE_AT and at each of CONTEXTS, from one random KV prefix, every
   token, KV row and final residual checked against the oracle, then timed
@@ -24,7 +25,7 @@ that one full ELF through:
   top-1 agreement). Refuses (not skips) when the bf16 safetensors are
   missing, the same as for the INT8 weights.
 Every run must exit 0 and pass every token. One run, no seed sweep: the
-design pins its SA placer seed (aie2_decode.build's aiecc flags).
+design pins its SA placer seed (aie2_llama.build_llama's aiecc flags).
 
 Needs the real Llama 3.2 1B checkpoint where amd/IRON's examples keep it,
 ``$IRON_EXAMPLE_WEIGHTS_DIR/llama3.2-1b/`` (default ``/srv``; see
@@ -40,7 +41,7 @@ toolchain; ``--pmode`` refuses to measure in any other mode. Exits 1 when
 any run fails or the check refuses, after writing both. Reproduced, from
 programming_examples/ml/llama_3_2_1b, with
 
-    python3 aie2_decode.py --n-layers 16 --t 131072 --full-elf-path X.elf
+    python3 aie2_llama.py --n-layers 16 --t 131072 --full-elf-path X.elf
     python3 test_decode.py --n-layers 16 --t 131072 \
         --elf X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 \
         131068 --time
@@ -197,7 +198,7 @@ def compile_cold_warm(env: dict, cache_dir: str) -> dict:
     os.makedirs(os.path.join(_LLAMA_DIR, "build"), exist_ok=True)
     build = [
         sys.executable,
-        "aie2_decode.py",
+        "aie2_llama.py",
         *_SHAPE_ARGS,
         "--full-elf-path",
         _ELF,

@@ -34,7 +34,7 @@ on:
 jobs:
   build-docs:
     name: Generate Documentation
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
     permissions:
@@ -80,7 +80,7 @@ jobs:
               --requirements python/requirements.txt \
               --install-non-eudsl
           python -m pip install --require-hashes -r python/requirements_dev.lock
-          pip install -r docs/requirements-mkdocs.txt
+          python -m pip install --require-hashes -r docs/requirements-mkdocs.lock
 
       - name: Get Submodule Hash
         id: get-submodule-hash

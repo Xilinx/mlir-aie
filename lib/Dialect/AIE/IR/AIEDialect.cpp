@@ -208,12 +208,11 @@ std::string xilinx::AIE::NamedOpTable::uniqueName(llvm::StringRef prefix,
 LogicalResult
 xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   std::array<unsigned, 3> maxRanks = op.getArrayAttrMaxRanks();
-  if (!(op.getMixedOffsets().size() == 1 && maxRanks[0] == 1) && // NOLINT
-      op.getMixedOffsets().size() != op.getMixedSizes().size())
-    return op->emitError(
-               "expected mixed offsets rank to match mixed sizes rank (")
-           << op.getMixedOffsets().size() << " vs " << op.getMixedSizes().size()
-           << ") so the rank of the result type is well-formed.";
+  // Count checks FIRST, matching mlir::detail::verifyOffsetSizeAndStrideOp.
+  // getMixedOffsets()/getMixedSizes() assert that the number of dynamic
+  // operands equals the number of kDynamic sentinels in the static list, so
+  // running the rank comparison before these validates nothing and aborts on
+  // malformed input instead of diagnosing it.
   if (failed(verifyListOfOperandsOrIntegers(
           op, "offset", maxRanks[0], op.getStaticOffsets(), op.getOffsets())))
     return failure();
@@ -223,6 +222,15 @@ xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   if (failed(verifyListOfOperandsOrIntegers(
           op, "stride", maxRanks[2], op.getStaticStrides(), op.getStrides())))
     return failure();
+  // Each getMixed* call rebuilds its list, so read them once.
+  const size_t numMixedOffsets = op.getMixedOffsets().size();
+  const size_t numMixedSizes = op.getMixedSizes().size();
+  if (!(numMixedOffsets == 1 && maxRanks[0] == 1) && // NOLINT
+      numMixedOffsets != numMixedSizes)
+    return op->emitError(
+               "expected mixed offsets rank to match mixed sizes rank (")
+           << numMixedOffsets << " vs " << numMixedSizes
+           << ") so the rank of the result type is well-formed.";
   for (int64_t offset : op.getStaticOffsets())
     if (offset < 0 && !ShapedType::isDynamic(offset))
       return op->emitError("expected offsets to be non-negative, but got ")
@@ -1762,23 +1770,29 @@ LogicalResult ObjectFifoLinkOp::verify() {
                << std::to_string(minOutputBufferSize) << ".";
       }
     }
-
-    std::vector<int> repeat_counts;
-    for (auto fifoOut : getOutputObjectFifos()) {
-      if (auto repeatCount = fifoOut.getRepeatCount()) {
-        repeat_counts.push_back(*repeatCount);
-      } else {
-        repeat_counts.push_back(0);
-      }
-    }
-    for (auto repeat : repeat_counts)
-      if (repeat_counts[0] != repeat)
-        return emitError("repeat counts of output object FIFOs must be equal");
-
   } else {
     if (!getSrcOffsets().empty() && !getDstOffsets().empty())
       return emitOpError("all offsets should be empty if there is no "
                          "join or distribute");
+  }
+
+  // Distribute outputs drain one shared pool with a single repeat count.
+  // Join inputs repeat at independent producer pools.
+  if (isDistribute()) {
+    auto fifos = getOutputObjectFifos();
+    for (size_t i = 1; i < fifos.size(); ++i) {
+      ObjectFifoCreateOp first = fifos[0], fifo = fifos[i];
+      int repeat = first.getRepeatCount().value_or(1);
+      int otherRepeat = fifo.getRepeatCount().value_or(1);
+      if (repeat != otherRepeat)
+        return emitOpError()
+               << "distribute outputs must have equal effective repeat counts: "
+                  "@"
+               << first.name().getValue() << " has " << repeat
+               << (first.getRepeatCount() ? "" : " (default)") << ", @"
+               << fifo.name().getValue() << " has " << otherRepeat
+               << (fifo.getRepeatCount() ? "" : " (default)");
+    }
   }
 
   return success();
