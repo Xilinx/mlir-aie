@@ -160,6 +160,17 @@ module {
  aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
     %tile13 = aie.tile(1, 3)
+    // expected-error@+1 {{a Core end's stream port is 0 or 1, not 7}}
+    aie.objectfifo @of (%tile12, {%tile13}, 2 : i32) {prod_port = #aie.end_port<Core : 7>} : !aie.objectfifo<memref<16xi32>>
+ }
+}
+
+// -----
+
+module {
+ aie.device(xcve2302) {
+    %tile12 = aie.tile(1, 2)
+    %tile13 = aie.tile(1, 3)
     // expected-error@+1 {{`cons_ports` has 2 entries for 1 consumers}}
     aie.objectfifo @of (%tile12, {%tile13}, 2 : i32) {cons_ports = [#aie.end_port<DMA>, #aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
  }

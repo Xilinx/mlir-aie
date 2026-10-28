@@ -642,6 +642,9 @@ ObjectFifoEndPortAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                        << stringifyWireBundle(bundle);
   if (bundle == WireBundle::Core && !channel)
     return emitError() << "a Core end needs its stream port";
+  if (bundle == WireBundle::Core && *channel > 1)
+    return emitError() << "a Core end's stream port is 0 or 1, not "
+                       << *channel;
   return success();
 }
 
