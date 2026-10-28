@@ -33,6 +33,57 @@ def workflow(name):
 BASH = shutil.which("bash") or "bash"
 
 
+@pytest.mark.parametrize(
+    "available",
+    ["python3", "python3.14", "python3.13", "python3.12", "python3.11", None],
+)
+def test_lockfile_regeneration_finds_python_with_tomllib(available):
+    script = (WORKFLOWS.parents[1] / "utils/regenerate_lockfiles.sh").read_text()
+    setup = script.split("# Resolve repo root", 1)[0]
+    interpreters = ["python3", "python3.14", "python3.13", "python3.12", "python3.11"]
+    mocks = 'uv() { echo "uv 0.11.17"; }\n' + "\n".join(
+        f"{name}() {{ return {0 if name == available else 1}; }}"
+        for name in interpreters
+    )
+    result = subprocess.run(
+        [BASH, "-c", mocks + "\n" + setup + '\nprintf "%s" "$PY"'],
+        capture_output=True,
+        text=True,
+    )
+    if available is None:
+        assert result.returncode == 1
+        assert "no python3.11+ (tomllib) found" in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == available
+
+
+@pytest.mark.parametrize("download_status", [0, 22])
+def test_llvm_archive_download_handles_http_errors(download_status):
+    run = next(
+        step["run"]
+        for step in workflow("mlirDistro.yml")["jobs"]["build"]["steps"]
+        if step.get("name") == "Get LLVM"
+    )
+    run = re.sub(r"\$\{\{.*?\}\}", "abcdef01", run)
+    mocks = f"""
+curl() {{ printf '%s\\n' "$@"; return {download_status}; }}
+unzip() {{ echo unzipped; }}
+rm() {{ :; }}
+mv() {{ :; }}
+"""
+    result = subprocess.run(
+        [BASH, "-e", "-c", mocks + run], capture_output=True, text=True
+    )
+    assert result.returncode == download_status
+    args = result.stdout.splitlines()
+    assert "--fail" in args
+    assert "--location" in args
+    assert args[args.index("--retry") + 1] == "5"
+    assert "--show-error" in args
+    assert ("unzipped" in args) == (download_status == 0)
+
+
 def matrix_pairs(job):
     return {
         (entry["python_version"], entry["ENABLE_RTTI"])

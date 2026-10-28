@@ -59,6 +59,60 @@ def test_compile_mlir_module_writes_cpp_beside_device_outputs(tmp_path, emit_shi
         np.testing.assert_array_equal(patches[:, 10], 16)
 
 
+def _write32_source(device="npu1_1col", *, runtime_value=False):
+    """A write32 sequence with either a constant or a runtime scalar value."""
+    arguments = "%value: i32" if runtime_value else ""
+    value = "" if runtime_value else "%value = arith.constant 17 : i32"
+    return f"""module {{
+      aie.device({device}) {{
+        aie.runtime_sequence @seq({arguments}) {{
+          %address = arith.constant 256 : i32
+          {value}
+          aiex.npu.write32(%address, %value) : i32, i32
+        }}
+      }}
+    }}"""
+
+
+@pytest.mark.skipif(shutil.which("xclbinutil") is None, reason="xclbinutil")
+@pytest.mark.skipif(not os.path.isdir(configure.peano_install_dir), reason="Peano")
+@pytest.mark.parametrize("runtime_value", [False, True])
+def test_compilabledesign_compile_exposes_npu_cpp_path(tmp_path, runtime_value):
+    """A plain (non-DispatchTime[T]) design can request the C++ builder
+    directly through CompilableDesign.compile(), not only through
+    compile_mlir_module(); its output matches a direct aiecc invocation."""
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(_write32_source(runtime_value=runtime_value))
+
+    reference_dir = tmp_path / "reference"
+    reference_dir.mkdir()
+    _run_aiecc(
+        str(mlir_path),
+        [
+            "--get-npu-cpp",
+            f"--npu-cpp-name={reference_dir / 'ref.cpp'}",
+            f"--output-dir={reference_dir}",
+            f"--tmpdir={reference_dir / 'work'}",
+        ],
+    )
+
+    design = CompilableDesign(mlir_path)
+    xclbin = tmp_path / "design.xclbin"
+    insts = None if runtime_value else tmp_path / "insts.bin"
+    cpp = tmp_path / "design.cpp"
+    assert design.compile(xclbin_path=xclbin, inst_path=insts, npu_cpp_path=cpp) == (
+        xclbin,
+        insts,
+    )
+
+    assert xclbin.stat().st_size > 0
+    if insts is not None:
+        assert insts.stat().st_size > 0
+    else:
+        assert not list(tmp_path.rglob("insts*.bin"))
+    assert cpp.read_text() == (reference_dir / "ref.cpp").read_text()
+
+
 def _patch_bar_then_baz(
     *, bar: DispatchTime[np.int32] = 3, baz: DispatchTime[np.int32] = 7
 ):
@@ -286,6 +340,43 @@ def test_fold_ddr_addr_offset_reaches_translation(tmp_path, device, arg_idx):
         if arg_idx >= 5:
             expected[4:].reshape(n, 12)[:, 10] += np.uint32(0x80000000)
         np.testing.assert_array_equal(folded_words, expected)
+
+
+@pytest.mark.skipif(not os.path.isdir(configure.peano_install_dir), reason="Peano")
+@pytest.mark.parametrize("device", ["npu1_1col", "npu2"])
+@pytest.mark.parametrize("arg_idx", [4, 5])
+@pytest.mark.parametrize("fold", [False, True])
+@pytest.mark.parametrize("override", [None, False, True])
+def test_insts_only_backend_patch_semantics(
+    tmp_path, monkeypatch, npu2_device, device, arg_idx, fold, override
+):
+    monkeypatch.setattr(
+        CompilableDesign, "_resolve_fold_ddr_addr_offset", staticmethod(lambda: fold)
+    )
+    source = (
+        _source(arg_idx=arg_idx, device=device)
+        .replace(", %param: i32, %n: index", "")
+        .replace(
+            "%c0 =",
+            "%param = arith.constant 16 : i32\n" "%n = arith.constant 1 : index\n%c0 =",
+        )
+    )
+    mlir = tmp_path / "input.mlir"
+    mlir.write_text(source)
+    flags = (
+        [] if override is None else [f"--fold-ddr-addr-offset={str(override).lower()}"]
+    )
+    _, insts = CompilableDesign(
+        mlir, insts_only=True, use_cache=False, aiecc_flags=flags
+    ).compile(inst_path=tmp_path / "insts.bin")
+    words = np.fromfile(insts, dtype="<u4")
+    assert words.size == 16
+    patch = words[4:]
+    assert patch[0] == 0x81 and patch[1] == 48
+    assert patch[8] == arg_idx and patch[9] == 0
+    effective_fold = fold if override is None else override
+    assert patch[10] == 16 + (0x80000000 if effective_fold and arg_idx >= 5 else 0)
+    assert patch[11] == 0
 
 
 def test_aiecc_lowers_dynamic_dma_tasks(tmp_path):
