@@ -3553,6 +3553,8 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
     }
   }
 
+  std::map<std::string, std::pair<double, double>> semanticPositions;
+  std::set<std::string> emittedAliases;
   for (const auto &[id, node] : analysis->graph.nodes) {
     std::optional<std::pair<double, double>> position;
     auto port = semanticPorts.find(id);
@@ -3567,6 +3569,8 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
     }
     if (!position)
       continue;
+    semanticPositions[id] = *position;
+    emittedAliases.insert(id);
     output << "  physical_alias_" << id
            << " [shape=circle, width=0.13, height=0.13, fixedsize=true, "
               "label=\"\", color=\"#c51b32\", fillcolor=\"#c51b32\", "
@@ -3577,6 +3581,52 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
            << "\", class=\"semantic-node physical-alias semantic-id-" << id
            << "\", tooltip=\""
            << escapeDotLabel(id) << "\"];\n";
+  }
+  bool addedPosition;
+  do {
+    addedPosition = false;
+    for (const auto &[key, attributes] : analysis->graph.edges) {
+      auto source = semanticPositions.find(key.source);
+      auto dest = semanticPositions.find(key.dest);
+      if (source != semanticPositions.end() && dest == semanticPositions.end()) {
+        semanticPositions[key.dest] = source->second;
+        addedPosition = true;
+      } else if (source == semanticPositions.end() &&
+                 dest != semanticPositions.end()) {
+        semanticPositions[key.source] = dest->second;
+        addedPosition = true;
+      }
+    }
+  } while (addedPosition);
+  for (const auto &[id, position] : semanticPositions) {
+    if (emittedAliases.count(id))
+      continue;
+    output << "  physical_alias_" << id
+           << " [shape=circle, width=0.13, height=0.13, fixedsize=true, "
+              "label=\"\", color=\"#c51b32\", fillcolor=\"#c51b32\", "
+              "style=filled, pos=\""
+           << physicalCoordinate(position.first) << ','
+           << physicalCoordinate(position.second)
+           << "!\", id=\"physical_alias_" << id
+           << "\", class=\"semantic-node physical-alias semantic-id-" << id
+           << "\", tooltip=\"" << escapeDotLabel(id) << "\"];\n";
+  }
+  for (const auto &[key, attributes] : analysis->graph.edges) {
+    auto source = semanticPositions.find(key.source);
+    auto dest = semanticPositions.find(key.dest);
+    if (source == semanticPositions.end() || dest == semanticPositions.end())
+      continue;
+    std::string id = edgeID(key);
+    double x = (source->second.first + dest->second.first) / 2.0;
+    double y = (source->second.second + dest->second.second) / 2.0;
+    output << "  physical_alias_" << id
+           << " [shape=circle, width=0.09, height=0.09, fixedsize=true, "
+              "label=\"\", color=\"#c51b32\", fillcolor=\"#c51b32\", "
+              "style=filled, pos=\""
+           << physicalCoordinate(x) << ',' << physicalCoordinate(y)
+           << "!\", id=\"physical_alias_" << id
+           << "\", class=\"semantic-edge physical-alias semantic-id-" << id
+           << "\", tooltip=\"" << escapeDotLabel(id) << "\"];\n";
   }
   output << "}\n";
   return success();

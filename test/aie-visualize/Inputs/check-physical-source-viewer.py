@@ -116,9 +116,10 @@ def main() -> None:
                             "'escapes the configured source root'); } }",
                             source,
                         )
-                    page.goto(
-                        f"http://127.0.0.1:{server.server_address[1]}/index.html"
-                        "?svg=design.svg&source.%2Ftmp%2Fdesign.py=design.py"
+                    page.evaluate(
+                        "() => { const url = new URL(location.href); "
+                        "url.searchParams.set('source./tmp/design.py', 'design.py'); "
+                        "history.replaceState(null, '', url); }"
                     )
                     assert page.evaluate("sourceURL('/tmp/design.py')").endswith(
                         "/design.py"
@@ -161,6 +162,38 @@ def main() -> None:
                     polygon_alias.dispatch_event("pointerleave")
                     highlighted_line.wait_for()
                     assert page.locator(".source-line.highlighted").count() == 1
+                    page.locator("#reset").click()
+                    runtime_alias = page.locator("#physical_alias_runtime_arg_0 ellipse")
+                    runtime_alias.dispatch_event("pointerover")
+                    runtime_line = page.locator(
+                        '.source-line.highlighted[data-line="50"]'
+                    )
+                    runtime_line.wait_for()
+                    edge_alias = page.locator(
+                        "#physical_alias_edge__runtime_arg_0__p_0_0_1_0_m ellipse"
+                    )
+                    edge_alias.dispatch_event("pointerover")
+                    runtime_line.wait_for()
+                    edge_box = edge_alias.bounding_box()
+                    assert edge_box
+                    edge_alias.dispatch_event(
+                        "pointerdown",
+                        {
+                            "pointerId": 3,
+                            "clientX": edge_box["x"],
+                            "clientY": edge_box["y"],
+                        },
+                    )
+                    edge_alias.dispatch_event(
+                        "pointerup",
+                        {
+                            "pointerId": 3,
+                            "clientX": edge_box["x"],
+                            "clientY": edge_box["y"],
+                        },
+                    )
+                    edge_alias.dispatch_event("pointerleave")
+                    runtime_line.wait_for()
                     page.locator("#reset").click()
                     flow = page.locator("#test_flow_0 path")
                     flow.dispatch_event("pointerover")
