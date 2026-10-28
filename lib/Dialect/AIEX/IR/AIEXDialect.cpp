@@ -740,8 +740,12 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     return success();
   auto tile = allocOp.getTile().getDefiningOp<AIE::TileOp>();
   // Defer coordinate-dependent AIE1 checks until logical tiles are placed.
-  if (isAIE1 && !tile)
+  if (isAIE1 && !tile) {
+    if (hasLengthParameter)
+      return emitOpError("length_parameter is only supported on AIE2 and "
+                         "AIE2P devices");
     return success();
+  }
   if (!tile)
     return emitOpError("shim DMA allocation must reference a valid TileOp");
   int col = tile.getCol();
