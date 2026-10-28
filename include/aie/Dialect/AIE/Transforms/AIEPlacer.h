@@ -149,6 +149,11 @@ public:
   static Adjacency
   buildComputePeerAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
+  // Edge: (producer, consumer) per forcesSharedMemory() ObjectFifo with one
+  // consumer.
+  static Adjacency
+  buildSharedMemAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
   // Edge: (producer, consumer_i) per fifo.
   static Adjacency
   buildObjectFifoAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
@@ -197,8 +202,21 @@ inline void forEachPeer(mlir::Operation *op, const Placer::Adjacency &adjacency,
   }
 }
 
-// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that is a legal
-// shared-L1 mem-affinity neighbor per the target model.
+// Whether two compute tiles can share one memory module: unlike buffer
+// ownership (where only the consumer must reach the owner's module),
+// sharing has no owner/consumer asymmetry, so either tile reaching the
+// other's module is enough. isLegalMemAffinity itself is directional (see
+// AIETargetModel::getSharedMemory's None/First/Second/Either), so compute-
+// peer neighbor-ness -- what `--aie-objectfifo-split`'s auto transport
+// actually tests -- has to check both.
+inline bool isSharedComputeMemory(const AIETargetModel &targetModel, TileID a,
+                                  TileID b) {
+  return targetModel.isLegalMemAffinity(a.col, a.row, b.col, b.row) ||
+         targetModel.isLegalMemAffinity(b.col, b.row, a.col, a.row);
+}
+
+// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that can share
+// compute-peer memory with it per the target model.
 template <typename F>
 inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
                                        TileID at, F &&fn) {
@@ -212,7 +230,7 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
       continue;
     if (targetModel.getTileType(nc, nr) != AIETileType::CoreTile)
       continue;
-    if (!targetModel.isLegalMemAffinity(at.col, at.row, nc, nr))
+    if (!isSharedComputeMemory(targetModel, at, TileID{nc, nr}))
       continue;
     fn(TileID{nc, nr});
   }
@@ -444,6 +462,8 @@ private:
     llvm::function_ref<bool(TileID, TileID)> bufferPred;
     const Adjacency &cascadeAdjacency;
     llvm::function_ref<bool(TileID, TileID)> cascadePred;
+    const Adjacency &sharedMemAdjacency;
+    llvm::function_ref<bool(TileID, TileID)> sharedMemPred;
     const Adjacency &computePeerAdjacency;
     const llvm::DenseMap<mlir::Operation *, int> &needNeighborIn;
     const llvm::DenseMap<mlir::Operation *, int> &needNeighborOut;
