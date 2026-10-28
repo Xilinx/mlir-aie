@@ -2633,6 +2633,8 @@
       
         
       
+        
+      
     
     
     
@@ -2713,6 +2715,34 @@
 
               
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../skills/aie-code-creator/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 0: Write the Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -4056,7 +4086,7 @@ For native Windows, use <a href="../buildHostWinNative/">Native Windows Setup</a
 </code></pre></div>
 </li>
 <li>
-<p>[Optional] Build from source following regular get started instructions <a href="https://xilinx.github.io/mlir-aie/Building.html">https://xilinx.github.io/mlir-aie/Building.html</a></p>
+<p>[Optional] Build from source following the regular <a href="../Building/">getting started instructions</a>.</p>
 </li>
 <li>
 <p>Build XRT dll definition file to be used to create .lib needed for host code compilation with Visual Studio C/C++ compiler. After installing the updated Ryzen™ AI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the required link symbols. This step is needed to create an XRT dll def file that we can link against when we compile.
@@ -4174,7 +4204,7 @@ For native Windows, use <a href="../buildHostWinNative/">Native Windows Setup</a
 </code></pre></div>
 <h3 id="setupsh---option-b---built-from-source"><code>setup.sh</code> - Option B - Built from Source<a class="headerlink" href="#setupsh---option-b---built-from-source" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>cd &lt;yourPathToDesignsWithMLIR-AIE&gt;
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>source &lt;yourPathToBuildMLIR-AIE&gt;/sandbox/bin/activate
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>source &lt;yourPathToBuildMLIR-AIE&gt;/ironenv/bin/activate
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>source yourVitisSetupScript (example shown above)
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>source &lt;yourPathToBuildMLIR-AIE&gt;/utils/env_setup.sh &lt;yourPathToBuildMLIR-AIE&gt;/install
 </code></pre></div>

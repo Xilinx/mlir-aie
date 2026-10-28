@@ -2526,6 +2526,8 @@
       
         
       
+        
+      
     
     
     
@@ -2606,6 +2608,34 @@
 
               
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../skills/aie-code-creator/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 0: Write the Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -3782,9 +3812,9 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 <h1 id="building-on-a-non-ubuntu-distro-andor-with-the-in-tree-amdxdna-driver">Building on a non-Ubuntu distro (and/or with the in-tree <code>amdxdna</code> driver)<a class="headerlink" href="#building-on-a-non-ubuntu-distro-andor-with-the-in-tree-amdxdna-driver" title="Permanent link">&para;</a></h1>
-<p><a href="../buildHostLin/"><code>buildHostLin.md</code></a> targets <strong>Ubuntu 22.04+</strong> and walks the
-<em>out-of-tree</em> XDNA™ driver build. This guide covers the two deltas that come up
-on other setups:</p>
+<p>The <a href="../getting-started/#getting-started-for-amd-ryzen-ai-on-linux">Getting Started for AMD Ryzen™ AI on Linux</a>
+instructions target <strong>Ubuntu 24.04+</strong> and install the XDNA™ driver and XRT from
+the AMD PPA. This guide covers the two deltas that come up on other setups:</p>
 <ol>
 <li><strong>A distro without <code>apt</code></strong> (Arch, Void, Gentoo, Fedora-from-source, …) — you
    install build dependencies by <em>function</em> rather than by Ubuntu package name.</li>
@@ -3792,8 +3822,9 @@ on other setups:</p>
    e.g. Ubuntu 25.04, recent Fedora/Arch/Void). You then build <strong>only the XRT
    userspace SHIM</strong>, not a kernel module.</li>
 </ol>
-<p>Everything else (the wheels, Peano, running examples) is identical to
-<code>buildHostLin.md</code>. Worked example below: <strong>Void Linux, kernel 7.0, glibc 2.41</strong>,
+<p>Everything else (the wheels, Peano, running examples) is identical to the main
+<a href="../getting-started/#getting-started-for-amd-ryzen-ai-on-linux">Getting Started</a> flow.
+Worked example below: <strong>Void Linux, kernel 7.0, glibc 2.41</strong>,
 on a Ryzen™ AI "Phoenix" (XDNA1) laptop, using <strong>Peano only — no Vitis™</strong>.</p>
 <blockquote>
 <p>This is a community-contributed guide. Versions/paths are examples; adapt to
@@ -3866,7 +3897,8 @@ TGZ; for others, add your <code>/etc/os-release</code> <code>ID</code> to the <c
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>xrt-smi<span class="w"> </span>examine<span class="w">        </span><span class="c1"># -&gt; Device(s) Present: [....] RyzenAI-npu1  aie2 ...</span>
 </code></pre></div>
 <h2 id="3-iron-toolchain-wheels">3. IRON toolchain (wheels)<a class="headerlink" href="#3-iron-toolchain-wheels" title="Permanent link">&para;</a></h2>
-<p>Same as <code>buildHostLin.md</code>, but pick a Python that matches your <code>pyxrt</code> (above).
+<p>Same as the main <a href="../getting-started/#install-iron-for-amd-ryzen-ai-aie-application-development">Getting Started</a>
+flow, but pick a Python that matches your <code>pyxrt</code> (above).
 <code>uv</code> makes provisioning one easy:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>uv<span class="w"> </span>venv<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12<span class="w"> </span>ironenv<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">source</span><span class="w"> </span>ironenv/bin/activate
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>pip<span class="w"> </span>install<span class="w"> </span>mlir_aie<span class="w"> </span>-f<span class="w"> </span>https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4

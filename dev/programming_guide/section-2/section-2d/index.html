@@ -2426,6 +2426,8 @@
       
         
       
+        
+      
     
     
     
@@ -2506,6 +2508,34 @@
 
               
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../skills/aie-code-creator/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 0: Write the Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -3680,8 +3710,8 @@
 </li>
 </ul>
 <hr />
-<p>In the preceding sections, we looked at how we can describe data movement between tiles <em>within</em> the AIE-array. However, to do anything useful, we need to get data from outside the array, i.e., from the "host", into the AIE-array and back. On NPU devices, we can achieve this with the operations described in this section. </p>
-<p>The operations that will be described in this section must be placed in a separate <code>sequence()</code> of a <code>Runtime</code> class, or <code>aie.runtime_sequence</code> operation in the AIE dialect. The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array. <a href="../../section-3/">Section 3</a> contains an example.</p>
+<p>In the preceding sections, we looked at how we can describe data movement between tiles <em>within</em> the AIE-array. However, to do anything useful, we need to get data from outside the array, i.e., from the "host", into the AIE-array and back. On NPU devices, we can achieve this with the operations described in this section.</p>
+<p>The operations that will be described in this section must be placed in a separate function passed to the <code>Runtime</code> constructor (conventionally named <code>sequence</code>), or <code>aie.runtime_sequence</code> operation in the AIE dialect. The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array. <a href="../../section-3/">Section 3</a> contains an example.</p>
 <h3 id="guide-to-managing-runtime-data-movement-tofrom-host-memory">Guide to Managing Runtime Data Movement to/from Host Memory<a class="headerlink" href="#guide-to-managing-runtime-data-movement-tofrom-host-memory" title="Permanent link">&para;</a></h3>
 <p>In high-performance computing applications, efficiently managing data movement and synchronization is crucial. This guide provides a comprehensive overview of how to utilize IRON to manage data movement at runtime from/to host memory to/from the AIE array (for example, in the Ryzen™ AI NPU).</p>
 <p>For IRON constructs like <code>RuntimeTasks</code>, please continue with this <a href="RuntimeTasks/">reading</a>.</p>

@@ -2499,6 +2499,8 @@
       
         
       
+        
+      
     
     
     
@@ -2579,6 +2581,34 @@
 
               
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../skills/aie-code-creator/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 0: Write the Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -3734,10 +3764,10 @@ part of the actively-tested Ryzen™ AI (NPU) path.</p>
 </div>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>lld
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>cmake 3.20.6
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>cmake 3.30+
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>ninja 1.8.2
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>Xilinx Vitis 2023.2
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>python 3.8.x and pip
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>python 3.11+ and pip
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>virtualenv
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>pip3 install rich pybind11 numpy
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>clang/llvm 14+ from source https://github.com/llvm/llvm-project
@@ -3747,9 +3777,9 @@ part of the actively-tested Ryzen™ AI (NPU) path.</p>
 <p>NOTE: Using the Vitis recommended <code>settings64.sh</code> script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>export PATH=$PATH:&lt;Vitis_install_path&gt;/Vitis/2023.2/aietools/bin:&lt;Vitis_install_path&gt;/Vitis/2023.2/bin
 </code></pre></div>
-<p>The cmake and python packages prerequisites can be satisfied by sourcing the <code>utils/setup_python_packages.sh</code> script. See step 2 of the build instructions. 
+<p>The cmake and python packages prerequisites can be satisfied by sourcing the <code>utils/setup_python_packages.sh</code> script. See step 2 of the build instructions.
 This script requires <code>virtualenv</code>.</p>
-<p>clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions. </p>
+<p>clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions.</p>
 <h2 id="building-on-x86-for-mlir-aie-development">Building on X86 for mlir-aie development<a class="headerlink" href="#building-on-x86-for-mlir-aie-development" title="Permanent link">&para;</a></h2>
 <ol>
 <li>
@@ -3764,10 +3794,10 @@ directory of the <code>mlir-aie</code> repository cloned above.</strong></p>
 <p>Source <code>utils/setup_python_packages.sh</code> to setup the prerequisite python
     packages. This script creates and installs the python packages
     listed in <code>python/requirements.txt</code> and <code>python/requirements_dev.txt</code> in
-    a virtual python environment called 'sandbox', then it enters the sandbox:
+    a virtual python environment called <code>ironenv</code>, then it enters the environment:
     <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>source utils/setup_python_packages.sh
 </code></pre></div></p>
-<p>If you need to exit the sandbox later, type <code>deactivate</code>.  If you
+<p>If you need to exit the environment later, type <code>deactivate</code>.  If you
 have a recent Linux distribution, you might not need this, as you
 are able to have all the required packages from the distribution.</p>
 </li>
@@ -3807,8 +3837,8 @@ This will build LLVM in <code>llvm/build</code> and install the LLVM binaries un
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>source &lt;Vitis Install Path&gt;/settings64.sh
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>./utils/build-mlir-aie.sh &lt;llvm dir&gt;/&lt;build dir&gt;
 </code></pre></div>
-<p>This will create a <code>build</code> and <code>install</code> folder in the directory that you cloned MLIR AIE into. </p>
-<p>The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors. </p>
+<p>This will create a <code>build</code> and <code>install</code> folder in the directory that you cloned MLIR AIE into.</p>
+<p>The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors.</p>
 </li>
 <li>
 <p>In order to run all the tools, it is necessary to add some paths into your environment. This can be

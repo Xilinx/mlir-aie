@@ -2781,6 +2781,8 @@
       
         
       
+        
+      
     
     
     
@@ -2861,6 +2863,34 @@
 
               
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../skills/aie-code-creator/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 0: Write the Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -4418,7 +4448,7 @@ Accumulators are wider than the vector registers so that sums of products keep t
 <a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="w">  </span><span class="n">event1</span><span class="p">();</span>
 <a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="p">}</span>
 </code></pre></div></p>
-<p><a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/eltwise/scale.cc">scale.cc</a> also has a specialization for <code>int32_t</code>. It is the same loop with <code>vec_factor = 16</code> and an <code>acc64</code> accumulator.</p>
+<p><a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/eltwise/scale.cc">scale.cc</a> also has a specialization for <code>int32_t</code>, with an <code>acc64</code> accumulator. On AIE2P it uses <code>vec_factor = 32</code> (a 32-lane <code>acc64</code> accumulator, so a 16-lane multiply would leave half of it idle) plus a one-off remainder pass when <code>SCALE_ELEMS</code> isn't a multiple of 32; on AIE2 it falls back to <code>vec_factor = 16</code>.</p>
 <p>Instead of one multiply per element, each iteration now loads 32 elements, multiplies them in one vector operation, and stores 32 results, so the loop runs <code>SCALE_ELEMS / 32</code> times. <code>AIE_PREPARE_FOR_PIPELINING</code> is a loop pragma from <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/aie_kernel_utils.h">aie_kernel_utils.h</a>. What it does depends on the compiler, as we will see below.</p>
 <blockquote>
 <p><strong>NOTE</strong> - AIE kernels can also be written directly with the low-level intrinsics that the AIE API is built on. Intrinsics are specific to one AIE generation, while the AIE API is portable across them.</p>

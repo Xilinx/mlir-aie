@@ -2604,6 +2604,8 @@
       
         
       
+        
+      
     
     
     
@@ -2684,6 +2686,34 @@
 
               
             
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../skills/aie-code-creator/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 0: Write the Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
               
             
               
@@ -3982,7 +4012,7 @@ both lower into the same <code>aie.flow</code> / <code>aie.lock</code> / <code>a
   lifecycle (content-addressed caching, <code>iron.tensor</code> host I/O,
   <code>aiecc</code> lowering).</li>
 <li><strong>AIE dialect Python</strong> (<a href="#lowered-equivalent-dialect-aie-dialect-python">§Lowered-equivalent dialect</a>
-  at the end).  Raw <code>@mem</code> / <code>@memtile_dma</code> / <code>@shim_dma</code> /
+  at the end).  Raw <code>@mem</code> / <code>@memtile_dma</code> / <code>@shim_mem</code> /
   <code>aie.flow</code> / <code>aie.lock</code> decorators from
   <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/dialects/aie.py"><code>python/dialects/aie.py</code></a>.
   Useful for pure-dialect lit tests and for the rare design that
@@ -4059,7 +4089,7 @@ destination tiles.</p>
 <tr>
 <td><code>BdIteration(size, stride, current=0)</code></td>
 <td>The <code>iteration</code> state of one <code>aie.dma_bd</code>: the BD's base advances by <code>stride</code> elements per execution and wraps after <code>size</code></td>
-<td>same</td>
+<td><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/dialects/aie.py"><code>python/dialects/aie.py</code></a></td>
 </tr>
 <tr>
 <td><code>Acquire(lock, value=1, greater_equal=True)</code></td>
@@ -4321,7 +4351,7 @@ or when writing pure-dialect lit tests that bypass the IRON runtime.</p>
 <p>The three DMA region decorators pick by tile type:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nd">@mem</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>          <span class="c1"># compute tile DMA region</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nd">@memtile_dma</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>  <span class="c1"># mem tile DMA region</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nd">@shim_dma</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>     <span class="c1"># shim tile DMA region</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nd">@shim_mem</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>     <span class="c1"># shim tile DMA region</span>
 </code></pre></div>
 <p>A channel inside a region uses the unified <code>dma</code> constructor:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">dma</span><span class="p">(</span>
