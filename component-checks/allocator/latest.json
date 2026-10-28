@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "40444745386",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40444745386",
- "date": "2026-10-27T03:32:37+00:00",
+ "id": "40626491097",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40626491097",
+ "date": "2026-10-28T03:24:20+00:00",
  "commit": {
-  "id": "b60cba56cfab3b357aad7bbb36dfe31417888f11",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/b60cba56cfab3b357aad7bbb36dfe31417888f11",
-  "message": "[AIEVec] Lower contractions in their stored operand layouts (#3970)",
-  "timestamp": "2026-10-27T00:03:03Z"
+  "id": "17023441580999ba72e6e454edb124b91e314520",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/17023441580999ba72e6e454edb124b91e314520",
+  "message": "Migrate GitHub-hosted CI workflows to Ubuntu 26.04 (#3975)",
+  "timestamp": "2026-10-27T22:38:51Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V45 96-Core Processor",
+ "device": "INTEL(R) XEON(R) PLATINUM 8573C",
  "device_raw": null,
  "provenance": {
-  "commit": "b60cba56cf",
-  "cpu": "AMD EPYC 9V45 96-Core Processor"
+  "commit": "1702344158",
+  "cpu": "INTEL(R) XEON(R) PLATINUM 8573C"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 173.3,
+    "value": 145.5,
     "unit": "s"
    }
   }
@@ -102,7 +102,7 @@
   {
    "name": "stress",
    "ok": true,
-   "detail": "300/300 placed in 0.1s (max 30s)"
+   "detail": "300/300 placed in 0.0s (max 30s)"
   }
  ]
 }

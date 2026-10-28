@@ -1,28 +1,31 @@
 {
  "schema": 1,
  "target": "router",
- "id": "40444745386",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40444745386",
- "date": "2026-10-27T03:32:37+00:00",
+ "id": "40626491097",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40626491097",
+ "date": "2026-10-28T03:24:20+00:00",
  "commit": {
-  "id": "b60cba56cfab3b357aad7bbb36dfe31417888f11",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/b60cba56cfab3b357aad7bbb36dfe31417888f11",
-  "message": "[AIEVec] Lower contractions in their stored operand layouts (#3970)",
-  "timestamp": "2026-10-27T00:03:03Z"
+  "id": "17023441580999ba72e6e454edb124b91e314520",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/17023441580999ba72e6e454edb124b91e314520",
+  "message": "Migrate GitHub-hosted CI workflows to Ubuntu 26.04 (#3975)",
+  "timestamp": "2026-10-27T22:38:51Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 9V45 96-Core Processor",
+ "device": "INTEL(R) XEON(R) PLATINUM 8573C",
  "device_raw": null,
  "provenance": {
-  "commit": "b60cba56cf",
-  "cpu": "AMD EPYC 9V45 96-Core Processor"
+  "commit": "1702344158",
+  "cpu": "INTEL(R) XEON(R) PLATINUM 8573C"
  },
  "sane": true,
  "published": true,
  "n_rows": 24,
- "exitstatus": 0,
- "failed": [],
+ "exitstatus": 1,
+ "failed": [
+  "lit/create-packet-flows/nightly/hw_verdicts.py",
+  "lit/create-packet-flows/nightly/router_properties.py"
+ ],
  "truncated": [],
  "rows": {
   "npu1": {
@@ -43,11 +46,11 @@
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 14.986,
+    "value": 14.808,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 11.28,
+    "value": 17.01,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -73,15 +76,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0126,
+    "value": 1.0129,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.076,
+    "value": 15.082,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 18.12,
+    "value": 11.77,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -111,11 +114,11 @@
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 19.914,
+    "value": 17.918,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 172.78,
+    "value": 164.73,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -133,80 +136,83 @@
   {
    "run": "lit",
    "tests": 2,
-   "failed": []
+   "failed": [
+    "create-packet-flows/nightly/hw_verdicts.py",
+    "create-packet-flows/nightly/router_properties.py"
+   ]
   },
   {
    "device": "npu1",
    "run": "properties",
-   "first_seed": 207530000,
+   "first_seed": 207540000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu1",
    "run": "hops-on",
-   "first_seed": 207530000,
+   "first_seed": 207540000,
    "seeds": 400,
-   "killed": 2007,
+   "killed": 1905,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu1",
    "run": "hops-off",
-   "first_seed": 207530000,
+   "first_seed": 207540000,
    "seeds": 400,
-   "killed": 2002,
+   "killed": 1893,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "properties",
-   "first_seed": 207530000,
+   "first_seed": 207540000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu2",
    "run": "hops-on",
-   "first_seed": 207530000,
+   "first_seed": 207540000,
    "seeds": 400,
-   "killed": 1993,
+   "killed": 1890,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "hops-off",
-   "first_seed": 207530000,
+   "first_seed": 207540000,
    "seeds": 400,
-   "killed": 1988,
+   "killed": 1882,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "properties",
-   "first_seed": 207530000,
+   "first_seed": 207540000,
    "seeds": 500,
    "failed": []
   },
   {
    "device": "xcvc1902",
    "run": "hops-on",
-   "first_seed": 207530000,
+   "first_seed": 207540000,
    "seeds": 100,
-   "killed": 437,
+   "killed": 422,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "hops-off",
-   "first_seed": 207530000,
+   "first_seed": 207540000,
    "seeds": 100,
-   "killed": 435,
+   "killed": 422,
    "survived": 0,
    "failures": 0
   }
