@@ -78,8 +78,10 @@ public:
   std::optional<uint32_t> lookupEvent(llvm::StringRef name,
                                       llvm::StringRef module) const;
 
-  /// Encode a value for a specific bitfield
-  uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
+  /// Encode a value for a specific bitfield.
+  /// Return nullopt if value does not fit in the field's bit width.
+  std::optional<uint32_t> encodeFieldValue(const BitFieldInfo &field,
+                                           uint32_t value) const;
 
 private:
   RegisterDatabase() = default;
