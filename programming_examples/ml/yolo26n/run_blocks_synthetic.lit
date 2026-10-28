@@ -12,3 +12,10 @@
 // RUN: rm -rf %t && mkdir -p %t
 // RUN: %run_on_npu2% make -f %S/Makefile BUILD=%t run_blocks_synthetic | FileCheck %s
 // CHECK: yolo26n blocks: 6/6 PASS
+
+// The stem at --batch 2, against the numpy oracle per image: the only
+// PR-gating test to exercise SegmentDesign.transfer()'s cross-image
+// look-ahead/overlap pairing, which --batch 1 (above) never reaches.
+// RUN: %run_on_npu2% make -f %S/Makefile BUILD=%t run_blocks_synthetic_batch2 | FileCheck %s --check-prefix=BATCH2
+// BATCH2-NOT: FAIL
+// BATCH2: image 1 {{.*}}: PASS
