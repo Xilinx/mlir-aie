@@ -3124,7 +3124,8 @@ physicalPortPosition(const PhysicalPort &port) {
 }
 
 static std::string physicalCoordinate(double value) {
-  return formatv("{0:F6}", value).str();
+  constexpr double pointsPerInch = 72.0;
+  return formatv("{0:F6}", value * pointsPerInch).str();
 }
 
 static ArrayRef<AIE::WireBundle> physicalBundles() {

@@ -11,21 +11,21 @@
 // RUN: not aie-visualize --physical --contract=port %s 2>&1 | FileCheck %s --check-prefix=CONTRACT
 
 // The model supplies every switchbox and port, including unused resources.
-// NPU1-DAG: switchbox_0_2 [shape=box{{.*}}pos="0.000000,14.000000!"
+// NPU1-DAG: switchbox_0_2 [shape=box{{.*}}pos="0.000000,1008.000000!"
 // NPU1-DAG: physical_port_0_2_5_3_source [shape=point{{.*}}color="#d9dde1"{{.*}}class="physical-port unused"
 // NPU1-DAG: physical_port_0_2_5_5_dest [shape=point
 
 // Fixed positions depend only on the tile, bundle, channel, and direction.
-// NPU1-DAG: physical_port_0_2_0_0_source {{.*}} pos="-1.450000,15.450000!"
-// NPU1-DAG: physical_port_0_2_5_0_dest {{.*}} pos="-0.850000,15.820000!"
+// NPU1-DAG: physical_port_0_2_0_0_source {{.*}} pos="-104.400000,1112.400000!"
+// NPU1-DAG: physical_port_0_2_5_0_dest {{.*}} pos="-61.200000,1139.040000!"
 
 // The used crosspoint is dark and wider. Other legal crosspoints stay faint.
 // NPU1-DAG: physical_port_0_2_0_0_source -> physical_port_0_2_5_0_dest [color="#c51b32", penwidth=1.6, class="physical-track used"]
 // NPU1-DAG: physical_port_0_2_0_0_source -> physical_port_0_2_5_1_dest [color="#e7eaed", penwidth=0.18, class="physical-track unused"]
 
 // Packet aliases occupy the physical port coordinates rather than separate lanes.
-// NPU1-DAG: semantic_p_0_2_0_0_k3 {{.*}}pos="-1.450000,15.450000!"
-// NPU1-DAG: semantic_p_0_2_0_0_k4 {{.*}}pos="-1.450000,15.450000!"
+// NPU1-DAG: semantic_p_0_2_0_0_k3 {{.*}}pos="-104.400000,1112.400000!"
+// NPU1-DAG: semantic_p_0_2_0_0_k4 {{.*}}pos="-104.400000,1112.400000!"
 
 // DMA channels and all model-reported BDs occupy a box beside the tile.
 // NPU1-DAG: dma_box_0_1 {{.*}}label="DMA resources"
