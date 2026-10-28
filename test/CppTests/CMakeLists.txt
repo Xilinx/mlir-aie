@@ -13,7 +13,7 @@ add_executable(register_database  register_database.cpp)
 add_executable(device_cache device_cache.cpp)
 add_executable(stream_wait_graph stream_wait_graph.cpp)
 llvm_update_compile_flags(stream_wait_graph)
-target_link_libraries(stream_wait_graph PRIVATE AIETransforms MLIRParser)
+target_link_libraries(stream_wait_graph PRIVATE AIETransforms AIEX MLIRParser)
 add_test(NAME StreamWaitGraph COMMAND stream_wait_graph)
 # aiecc's headers define cl::opt globals, whose typeinfo must match LLVM's
 # RTTI setting; take aiecc's compile flags so rtti=OFF builds link.

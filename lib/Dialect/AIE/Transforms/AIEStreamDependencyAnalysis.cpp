@@ -23,6 +23,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 
+#include <algorithm>
 #include <deque>
 #include <set>
 #include <variant>
@@ -1136,48 +1137,62 @@ SmallVector<unsigned> StreamWaitGraph::drainersOf(unsigned agent) const {
 SmallVector<unsigned>
 StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
                            ArrayRef<unsigned> avoid) const {
-  // A state is an agent and whether the chain reached it as a receiver taking
-  // a sender's data, where its other DMA senders are no wait of its.
-  using State = std::pair<unsigned, bool>;
-  std::map<State, std::optional<State>> parent;
-  for (unsigned a : avoid) {
-    parent.try_emplace({a, false}, std::nullopt);
-    parent.try_emplace({a, true}, std::nullopt);
-  }
-  std::deque<State> worklist;
+  // A state is an agent, whether the chain reached it as a DMA receiver taking
+  // a sender's data, where its other DMA senders are no wait of its, and the
+  // receivers the chain reached that way, sorted. A chain through an agent
+  // twice would have it wait on itself. A shortest one never does but for a
+  // receiver reached taking and again later free, so only those are kept. A
+  // state is dropped when its agent was reached before, at least as free and
+  // with no more such receivers: it leads nowhere new.
+  struct State {
+    unsigned agent;
+    bool taking;
+    SmallVector<unsigned, 4> took;
+    std::optional<size_t> parent;
+  };
+  std::vector<State> states;
+  DenseMap<unsigned, SmallVector<size_t>> seen;
+  std::deque<size_t> worklist;
+  auto visit = [&](State next) {
+    for (size_t i : seen.lookup(next.agent)) {
+      const State &s = states[i];
+      if ((next.taking || !s.taking) &&
+          std::includes(next.took.begin(), next.took.end(), s.took.begin(),
+                        s.took.end()))
+        return;
+    }
+    seen[next.agent].push_back(states.size());
+    worklist.push_back(states.size());
+    states.push_back(std::move(next));
+  };
   for (unsigned a : from)
-    if (parent.try_emplace({a, false}, std::nullopt).second)
-      worklist.emplace_back(a, false);
+    if (!llvm::is_contained(avoid, a))
+      visit({a, false, {}, std::nullopt});
   while (!worklist.empty()) {
-    State state = worklist.front();
+    size_t index = worklist.front();
     worklist.pop_front();
-    auto [a, taking] = state;
+    unsigned a = states[index].agent;
     if (llvm::is_contained(targets, a)) {
       SmallVector<unsigned> chain;
-      for (std::optional<State> at = state; at; at = parent[*at])
-        chain.push_back(at->first);
+      for (std::optional<size_t> at = index; at; at = states[*at].parent)
+        chain.push_back(states[*at].agent);
       std::reverse(chain.begin(), chain.end());
       return chain;
     }
-    // Reached without restriction, the agent already waits on everything.
-    if (taking && parent.count({a, false}))
-      continue;
-    auto onChain = [&](unsigned agent) {
-      for (std::optional<State> at = state; at; at = parent[*at])
-        if (at->first == agent)
-          return true;
-      return false;
-    };
     for (const Edge &e : edges[a]) {
-      if (taking && agents[a].kind == Agent::Kind::Channel && e.receives &&
-          !e.sends && agents[e.to].kind == Agent::Kind::Channel)
+      const State &state = states[index];
+      if (state.taking && e.receives && !e.sends &&
+          agents[e.to].kind == Agent::Kind::Channel)
         continue;
-      // A chain through an agent twice would have it wait on itself.
-      if (parent.count({e.to, false}) || onChain(e.to))
+      if (llvm::is_contained(avoid, e.to) ||
+          llvm::is_contained(state.took, e.to))
         continue;
-      State next{e.to, e.kind == EdgeKind::Stream && e.sends};
-      if (parent.try_emplace(next, state).second)
-        worklist.push_back(next);
+      bool takes = e.kind == EdgeKind::Stream && e.sends &&
+                   agents[e.to].kind == Agent::Kind::Channel;
+      SmallVector<unsigned, 4> took = state.took;
+      if (takes)
+        took.insert(llvm::upper_bound(took, e.to), e.to);
+      visit({e.to, takes, std::move(took), index});
     }
   }
   return {};

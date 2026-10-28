@@ -1898,21 +1898,32 @@ class WaitGraph:
         return [b for b, kind in self.edges[a] if kind != self.STREAM]
 
     def wait_chain(self, frm, targets, avoid):
-        # A state is an agent and whether the chain reached it as a receiver
+        # A state is an agent, whether the chain reached it as a DMA receiver
         # taking a sender's data, where its other DMA senders are no wait of
-        # its: a DMA channel sends a packet whole once it starts.
-        parent = {}
-        for a in avoid:
-            parent[(a, False)] = None
-            parent[(a, True)] = None
-        work = deque()
+        # its (a DMA channel sends a packet whole once it starts), and the
+        # receivers the chain reached that way. A chain through an agent twice
+        # would have it wait on itself. A shortest one never does but for a
+        # receiver reached taking and again later free, so only those are
+        # kept. A state is dropped when its agent was reached before, at least
+        # as free and with no more such receivers: it leads nowhere new.
+        avoid = set(avoid)
+        parent, seen, work = {}, {}, deque()
+
+        def visit(state, before):
+            b, taking, took = state
+            for t, k in seen.get(b, ()):
+                if (taking or not t) and k <= took:
+                    return
+            seen.setdefault(b, []).append((taking, took))
+            parent[state] = before
+            work.append(state)
+
         for a in frm:
-            if (a, False) not in parent:
-                parent[(a, False)] = None
-                work.append((a, False))
+            if a not in avoid:
+                visit((a, False, frozenset()), None)
         while work:
             state = work.popleft()
-            a, taking = state
+            a, taking, took = state
             if a in targets:
                 chain = []
                 at = state
@@ -1920,29 +1931,23 @@ class WaitGraph:
                     chain.append(at[0])
                     at = parent[at]
                 return chain[::-1]
-            if taking and (a, False) in parent:
-                continue
-            on_chain = set()
-            at = state
-            while at is not None:
-                on_chain.add(at[0])
-                at = parent[at]
             for b, kind in self.edges[a]:
                 if (
                     taking
-                    and self.agents[a][2] == self.CHANNEL
                     and kind == self.STREAM
                     and (a, b) in self.receives
                     and (a, b) not in self.sends
                     and self.agents[b][2] == self.CHANNEL
                 ):
                     continue
-                if (b, False) in parent or b in on_chain:
+                if b in avoid or b in took:
                     continue
-                nxt = (b, kind == self.STREAM and (a, b) in self.sends)
-                if nxt not in parent:
-                    parent[nxt] = state
-                    work.append(nxt)
+                takes = (
+                    kind == self.STREAM
+                    and (a, b) in self.sends
+                    and self.agents[b][2] == self.CHANNEL
+                )
+                visit((b, takes, took | {b} if takes else took), state)
         return []
 
     def describe(self, a):

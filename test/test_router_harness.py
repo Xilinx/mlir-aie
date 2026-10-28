@@ -128,6 +128,27 @@ def test_wait_chain_preserves_non_stream_dependencies_on_a_dma_sender(kind):
     assert graph.wait_chain([s], [t], []) == [s, r, t]
 
 
+def test_wait_chain_reaches_a_dma_receiver_again_free():
+    # S's data reaches R first, taking, where T is no wait of R's; R reached
+    # again through C1, C2 and B is free, and waits on T.
+    d = rp.Design("npu1")
+    streams = [
+        rp.Stream((0, 2, rp.DMA, 0), (0, 3, rp.DMA, 0)),
+        rp.Stream((0, 4, rp.DMA, 0), (0, 3, rp.DMA, 0)),
+    ]
+    graph = rp.WaitGraph(d, streams, rp.Volumes(d, streams))
+    s = graph.agent_at(streams[0].src, True)
+    r = graph.agent_at(streams[0].dst, False)
+    t = graph.agent_at(streams[1].src, True)
+    c1, c2, b = (
+        graph.get_or_create((1, row), graph.CHANNEL, rp.MM2S, 0) for row in (2, 3, 4)
+    )
+    for p, q in [(s, c1), (c1, c2), (c2, b), (b, r), (r, b)]:
+        graph.add_edge(p, q, graph.LOCK)
+    assert graph.wait_chain([s], [t], []) == [s, c1, c2, b, r, t]
+    assert graph.wait_chain([s], [t], [c1]) == []
+
+
 def test_the_model_accepts_the_routers_overlay_marks(priority):
     d, routed = priority
     assert "aie.is_ctrl_pkt_overlay" in routed

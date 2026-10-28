@@ -951,6 +951,12 @@ def test_runtimes_draining_one_fifo_on_the_same_channel_share_its_shim_end():
     assert len(out_of_consumers(*steps, NPU2Col1())) == 1
 
 
+def test_runtimes_draining_one_fifo_on_unpinned_dma_ports_share_its_shim_end():
+    # cons() and cons(port=Port.dma()) both leave the channel to allocation.
+    steps = step_runtimes(2, lambda of, k: of.cons(port=Port.dma()) if k else of.cons())
+    assert len(out_of_consumers(*steps, NPU2Col1())) == 1
+
+
 def test_runtimes_draining_one_fifo_to_distinct_shim_tiles_keep_both():
     steps = step_runtimes(
         2, lambda of, k: of.cons(tile=Tile(k, 0, tile_type=AIETileType.ShimNOCTile))
