@@ -285,6 +285,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "llama-chain-hw",
+   "id": "40645408208",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40645408208",
+   "date": "2026-10-28T06:41:42+00:00",
+   "commit": {
+    "id": "951f616fc606cc7694c5b6fa62b08baad2433f93",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/951f616fc606cc7694c5b6fa62b08baad2433f93",
+    "message": "Make SequentialPlacer aware of broadcast load and column routing pressure (#3976)",
+    "timestamp": "2026-10-28T02:54:37Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "951f616fc6",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 72,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
