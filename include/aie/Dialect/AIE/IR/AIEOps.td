@@ -2111,9 +2111,10 @@ def AIE_ConfigureCascadeOp
       [{ `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict }];
 }
 
-def AIE_GetCascadeOp : AIE_Op<"get_cascade", []>,
-                       Results<(outs AnyTypeOf<[AnyInteger, AnyFloat,
-                                                AnyVectorOfAnyRank]>:$cascade_value)> {
+def AIE_GetCascadeOp
+    : AIE_Op<"get_cascade", []>,
+      Results<(outs AnyTypeOf<[AnyInteger, AnyFloat,
+                               AnyVectorOfAnyRank]>:$cascade_value)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
     An op to read from a cascading stream from a neighboring core.
