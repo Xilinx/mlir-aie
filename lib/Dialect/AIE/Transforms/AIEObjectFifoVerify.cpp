@@ -8,6 +8,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -139,46 +140,13 @@ static std::optional<int64_t> heldAfter(Block &block, StringRef name,
   return held;
 }
 
-/// Whether aie-objectfifo-allocate gives `pool` locks, as its `needsLocks`
-/// decides: not when synchronization is disabled, nor for a pool that starts
-/// full and is never refilled nor re-armed. Without locks nothing waits on a
-/// release, and nothing a core holds stays taken.
-static bool getsLocks(DeviceOp device, ObjectFifoPoolOp pool) {
-  if (pool.getDisableSynchronization())
-    return false;
-  std::optional<ArrayAttr> initValues = pool.getInitValues();
-  int64_t filled = initValues ? initValues->size() : 0;
-  if (filled != pool.getDepth() || filled <= 0)
-    return true;
-  for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
-    if (endpoint.getPoolOp() == pool && !endpoint.drains())
-      return true;
-  for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>())
-    if (endpoint.getPoolOp() == pool && !endpoint.drains())
-      return true;
-  std::optional<StringRef> fifo = pool.getFifoName();
-  if (!fifo)
-    return false;
-  return device
-      .walk([&](Operation *op) {
-        if (op->getName().getStringRef() != "aiex.dma_channel_reset_for")
-          return WalkResult::advance();
-        auto sym = op->getAttrOfType<FlatSymbolRefAttr>("objfifo");
-        if (!sym)
-          return WalkResult::advance();
-        StringRef name = sym.getValue();
-        if (auto endpoint = dyn_cast_or_null<RouteEndpoint>(
-                SymbolTable::lookupNearestSymbolFrom(device, sym.getAttr())))
-          if (std::optional<StringRef> fifoName = endpoint.getFifoName())
-            name = *fifoName;
-        return name == *fifo ? WalkResult::interrupt() : WalkResult::advance();
-      })
-      .wasInterrupted();
-}
-
 struct AIEObjectFifoVerifyPass
     : public xilinx::AIE::impl::AIEObjectFifoVerifyBase<
           AIEObjectFifoVerifyPass> {
+
+  /// Which pools get locks. Without locks nothing waits on a release, and
+  /// nothing a core holds stays taken.
+  std::optional<PoolLocks> poolLocks;
 
   /// Every segment needs an actor at each end, so that what one writes another
   /// reads. A segment may go unfilled when the pool's objects start full, and
@@ -489,7 +457,7 @@ struct AIEObjectFifoVerifyPass
 
       if (!acquired.contains(name) || uncounted.contains(name) ||
           dma.getSegments() || pool.getInitValues() ||
-          dma.drains() == endpoint.drains() || !getsLocks(device, pool)) {
+          dma.drains() == endpoint.drains() || !poolLocks->needsLocks(pool)) {
         continue;
       }
       int64_t reachable = endpoint.drains() ? count + depth : count;
@@ -534,14 +502,15 @@ struct AIEObjectFifoVerifyPass
         continue;
       llvm::MapVector<StringRef, ObjectFifoAcquireOp> firstAcquire;
       core.walk([&](ObjectFifoAcquireOp acquire) {
+        firstAcquire.insert({acquire.getObjFifoName(), acquire});
+      });
+      for (auto &[name, acquire] : firstAcquire) {
         auto endpoint =
             SymbolTable::lookupNearestSymbolFrom<ObjectFifoCoreEndpointOp>(
                 device, acquire.getObjFifoNameAttr());
-        ObjectFifoPoolOp pool = endpoint ? endpoint.getPoolOp() : nullptr;
-        if (!pool || getsLocks(device, pool))
-          firstAcquire.insert({acquire.getObjFifoName(), acquire});
-      });
-      for (auto &[name, acquire] : firstAcquire) {
+        if (endpoint && endpoint.getPoolOp() &&
+            !poolLocks->needsLocks(endpoint.getPoolOp()))
+          continue;
         std::optional<int64_t> held = heldAfter(body.front(), name, 0);
         if (!held || *held == 0)
           continue;
@@ -582,7 +551,7 @@ struct AIEObjectFifoVerifyPass
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
       if (!pool || pool.getInitValues() || endpoint.getSegments() ||
-          !getsLocks(device, pool))
+          !poolLocks->needsLocks(pool))
         continue;
       Operation *keepsMoving = nullptr;
       for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
@@ -755,7 +724,8 @@ struct AIEObjectFifoVerifyPass
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
-      if (!pool || pool.getInitValues() || endpoint.getSegments())
+      if (!pool || pool.getInitValues() || endpoint.getSegments() ||
+          !poolLocks->needsLocks(pool))
         continue;
       ObjectFifoDmaEndpointOp dma;
       bool single = true;
@@ -816,6 +786,7 @@ struct AIEObjectFifoVerifyPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
+    poolLocks.emplace(device);
 
     DenseMap<Operation *, SmallVector<SegmentActors>> actorsPerPool;
     for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
