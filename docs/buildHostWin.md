@@ -62,7 +62,7 @@ All steps in WSL Ubuntu terminal.
      # This configures your shell against the newly installed environment.
      ```
 
-   * [Optional] Build from source following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
+   * [Optional] Build from source following regular get started instructions [https://xilinx.github.io/mlir-aie/Building/](https://xilinx.github.io/mlir-aie/Building/)
 
 1. Build XRT dll definition file to be used to create .lib needed for host code compilation with Visual Studio C/C++ compiler. After installing the updated Ryzen™ AI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the required link symbols. This step is needed to create an XRT dll def file that we can link against when we compile.
     ```
@@ -182,7 +182,7 @@ source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh
 
 ```
 cd <yourPathToDesignsWithMLIR-AIE>
-source <yourPathToBuildMLIR-AIE>/sandbox/bin/activate
+source <yourPathToBuildMLIR-AIE>/ironenv/bin/activate
 source yourVitisSetupScript (example shown above)
 source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install
 ```
