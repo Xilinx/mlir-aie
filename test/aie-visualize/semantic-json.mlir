@@ -14,32 +14,39 @@
 // JSON: "routes": [
 // JSON-NEXT: 0
 // JSON: "source": "tile_0_2"
-// JSON: "sourceLocations": [
-// JSON: "column": 8
+// JSON: "sources": [
 // JSON: "file": "design.py"
-// JSON: "line": 30
+// JSON: "lines": [
+// JSON-NEXT: 30,
+// JSON-NEXT: 32
+// JSON: "file": "runtime.py"
+// JSON: "lines": [
+// JSON-NEXT: 7
 // JSON: "target": "tile_0_3"
 // JSON: "format": "aie-semantic-graph"
 // JSON: "id": "tile_0_2"
 // JSON: "kind": "tile"
 // JSON: "label": "(0,2)"
-// JSON: "column": 4
 // JSON: "file": "design.py"
-// JSON: "line": 10
-// JSON: "version": 1
+// JSON: "lines": [
+// JSON-NEXT: 10
+// JSON: "version": 2
 
 // DOT: tile_0_2 [shape=box, id="tile_0_2"
-// DOT-SAME: class="semantic-node source-location-10-4"
+// DOT-SAME: class="semantic-node"
 // DOT: tile_0_2 -> tile_0_3
 // DOT-SAME: id="edge__tile_0_2__tile_0_3"
-// DOT-SAME: source-location-30-8
 
 // FORMAT: --emit-dot and --emit-json are mutually exclusive
+
+#design_flow = loc("design.py":30:8)
+#design_followup = loc("design.py":32:2)
+#runtime_flow = loc("runtime.py":7:1)
 
 module {
   aie.device(npu1_1col) {
     %source = aie.tile(0, 2) loc("design.py":10:4)
     %dest = aie.tile(0, 3) loc("design.py":20:6)
-    aie.flow(%source, Core : 0, %dest, Core : 0) loc("design.py":30:8)
+    aie.flow(%source, Core : 0, %dest, Core : 0) loc(fused[#design_flow, #design_followup, #runtime_flow])
   }
 }
