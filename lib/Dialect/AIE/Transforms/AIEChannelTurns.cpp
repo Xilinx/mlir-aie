@@ -60,6 +60,8 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
                               bool coreDrains, std::string &reason) {
   this->coreDrains = coreDrains;
   ends = names.size();
+  loop = nullptr;
+  idle = false;
   DenseMap<StringAttr, unsigned> index;
   for (auto [i, name] : llvm::enumerate(names))
     index[name] = i;
@@ -204,7 +206,6 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
   };
   // The innermost loop whose body unrolls, branches folded, is the period. An
   // scf.while's condition region holds no uses.
-  Operation *loop = nullptr;
   for (Operation *candidate : candidates) {
     period.clear();
     counters.clear();
@@ -258,6 +259,7 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
     }
     if (!seen.emplace(start, round).second) {
       if (order.empty()) {
+        idle = true;
         reason = "the core's period moves none of their objects";
         return failure();
       }

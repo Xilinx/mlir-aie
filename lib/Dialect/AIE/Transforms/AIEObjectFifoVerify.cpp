@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -509,6 +510,78 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
+  /// A core whose loop repeats forever, and whose every repetition acquires
+  /// objects of a pool but releases none, keeps the same objects for good. The
+  /// end opposite it then stops once the pool is full, if it does not stop by
+  /// itself first: checked where that end is a DMA endpoint without an
+  /// iteration count, or a core that moves objects each time its own loop
+  /// repeats forever. A core holding an object acquired before its loop, for
+  /// the whole configuration, is left alone.
+  LogicalResult verifyAdvances(DeviceOp device) {
+    auto repeatsForever = [](Operation *loop) {
+      for (Operation *op = loop; op && !isa<CoreOp>(op);
+           op = op->getParentOp()) {
+        auto whileOp = dyn_cast<scf::WhileOp>(op);
+        auto forOp = dyn_cast<scf::ForOp>(op);
+        std::optional<int64_t> trip =
+            forOp ? getStaticTripCount(forOp) : std::nullopt;
+        if ((whileOp && isForeverLoop(whileOp)) ||
+            (trip && *trip >= kRunsForever))
+          return true;
+      }
+      return false;
+    };
+
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      if (!pool || pool.getInitValues() || endpoint.getSegments())
+        continue;
+      Operation *keepsMoving = nullptr;
+      for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
+        if (dma.getPoolOp() == pool && dma.drains() != endpoint.drains() &&
+            !dma.getIterCount() && !dma.getSegments())
+          keepsMoving = dma;
+      for (auto other : device.getOps<ObjectFifoCoreEndpointOp>()) {
+        if (keepsMoving || other.getPoolOp() != pool ||
+            other.drains() == endpoint.drains() || other.getSegments())
+          continue;
+        CoreTurns otherTurns;
+        std::string otherReason;
+        if (succeeded(otherTurns.read({other}, otherReason)) &&
+            repeatsForever(otherTurns.periodLoop()))
+          keepsMoving = other;
+      }
+      if (!keepsMoving)
+        continue;
+
+      CoreTurns turns;
+      std::string reason;
+      if (succeeded(turns.read({endpoint}, reason)) || !turns.movesNone() ||
+          !repeatsForever(turns.periodLoop()))
+        continue;
+      ObjectFifoAcquireOp acquire;
+      turns.periodLoop()->walk([&](ObjectFifoAcquireOp op) {
+        if (!acquire && op.getObjFifoName() == endpoint.getSymName())
+          acquire = op;
+      });
+      if (!acquire)
+        continue;
+      InFlightDiagnostic diag =
+          acquire.emitOpError("takes from @")
+          << endpoint.getSymName()
+          << " each time its loop repeats, but the loop releases none of "
+             "them, so ";
+      if (endpoint.drains())
+        diag << "the core keeps the same objects forever and the end "
+                "filling the pool stops once it is full";
+      else
+        diag << "nothing the core writes there is ever sent";
+      diag.attachNote(keepsMoving->getLoc()) << "the other end is here";
+      return failure();
+    }
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -547,7 +620,7 @@ struct AIEObjectFifoVerifyPass
     if (failed(verifyFlows(device)) || failed(verifyFanIn(device)) ||
         failed(verifyOverRelease(device)) ||
         failed(verifyTransferBudgets(device)) ||
-        failed(verifyHeldAtEnd(device))) {
+        failed(verifyHeldAtEnd(device)) || failed(verifyAdvances(device))) {
       return signalPassFailure();
     }
   }

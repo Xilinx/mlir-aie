@@ -41,6 +41,14 @@ public:
   /// core's steady state.
   llvm::ArrayRef<unsigned> turns() const { return order; }
 
+  /// The loop `read` took as the core's period, once it found one.
+  mlir::Operation *periodLoop() const { return loop; }
+
+  /// Whether `read` found a steady state in which the period moves none of
+  /// the objects: the core keeps what it holds and never takes or hands over
+  /// another. `read` fails then, since there are no turns to take.
+  bool movesNone() const { return idle; }
+
   /// Whether a channel moving objects in `turns()` order forever, through
   /// pools of `depths`, never has itself and the core both waiting. Settles
   /// `turns()` on the shortest such order cut from the period's.
@@ -58,8 +66,10 @@ private:
 
   llvm::SmallVector<Event> period;
   llvm::SmallVector<unsigned> order;
+  mlir::Operation *loop = nullptr;
   size_t ends = 0;
   bool coreDrains = true;
+  bool idle = false;
 };
 
 } // namespace xilinx::AIE
