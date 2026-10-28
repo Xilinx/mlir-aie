@@ -356,6 +356,25 @@ void Pathfinder::initialize(int maxCol, int maxRow,
                 dest.channel))
           return true;
       }
+      int sourceSouthChannels = targetModel.getNumDestShimMuxConnections(
+          col, row, WireBundle::South);
+      int destSouthChannels = targetModel.getNumSourceShimMuxConnections(
+          col, row, WireBundle::South);
+      for (int sourceSouth = 0; sourceSouth < sourceSouthChannels;
+           ++sourceSouth) {
+        if (!targetModel.isLegalShimMuxConnection(
+                col, row, source.bundle, source.channel, WireBundle::South,
+                sourceSouth))
+          continue;
+        for (int destSouth = 0; destSouth < destSouthChannels; ++destSouth)
+          if (targetModel.isLegalTileConnection(
+                  col, row, WireBundle::South, sourceSouth,
+                  WireBundle::South, destSouth) &&
+              targetModel.isLegalShimMuxConnection(
+                  col, row, WireBundle::South, destSouth, dest.bundle,
+                  dest.channel))
+            return true;
+      }
       return false;
     };
     for (auto [i, pIn] : llvm::enumerate(sb.srcPorts))
