@@ -41,6 +41,7 @@ module @window_beside_one_deep {
         aie.objectfifo.release @b(Consume, 1)
         aie.objectfifo.release @a(Consume, 1)
       }
+      aie.objectfifo.release @a(Consume, 2)
       aie.end
     }
   }
@@ -88,6 +89,7 @@ module @branch_on_data {
           aie.objectfifo.release @a(Consume, 1)
         }
       }
+      aie.objectfifo.release @a(Consume, 2)
       aie.end
     }
   }

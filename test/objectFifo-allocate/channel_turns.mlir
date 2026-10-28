@@ -99,6 +99,7 @@ module @window_beside_two_deep {
         aie.objectfifo.release @b(Consume, 1)
         aie.objectfifo.release @a(Consume, 1)
       }
+      aie.objectfifo.release @a(Consume, 2)
       aie.end
     }
   }

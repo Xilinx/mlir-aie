@@ -84,9 +84,27 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
     return it->second;
   };
 
+  // A draining core's release outside every loop, with no acquire after it,
+  // only gives objects back; the channel's order counts acquires, so it does
+  // not decide the period.
+  auto onceAfterLoops = [&](Operation *op) {
+    if (!coreDrains || !isa<ObjectFifoReleaseOp>(op) ||
+        op->getParentOfType<LoopLikeOpInterface>())
+      return false;
+    return llvm::none_of(
+        llvm::make_range(std::next(op->getIterator()), op->getBlock()->end()),
+        [&](Operation &later) {
+          return later
+              .walk([&](ObjectFifoAcquireOp acquire) {
+                return endOf(acquire) ? WalkResult::interrupt()
+                                      : WalkResult::advance();
+              })
+              .wasInterrupted();
+        });
+  };
   SmallVector<Operation *> uses;
   core.walk([&](Operation *op) {
-    if (endOf(op))
+    if (endOf(op) && !onceAfterLoops(op))
       uses.push_back(op);
   });
   if (uses.empty()) {
