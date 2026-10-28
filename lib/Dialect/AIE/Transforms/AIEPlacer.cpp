@@ -476,9 +476,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                        ? " (shared-L1 buffer adjacency unsatisfiable)"
                        : "")
                << (hasCascade ? " (cascade adjacency unsatisfiable)" : "")
-               << (hasSharedMem
-                       ? " (shared-memory transport unsatisfiable)"
-                       : "")
+               << (hasSharedMem ? " (shared-memory transport unsatisfiable)"
+                                : "")
                << (computePeerWasCause
                        ? " (compute-peer DMA budget unsatisfiable)"
                        : "");
@@ -820,8 +819,8 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       if (!satisfiesAdjacency(logicalTile, candidate, inputs.cascadeAdjacency,
                               inputs.cascadePred))
         continue;
-      if (!satisfiesAdjacency(logicalTile, candidate,
-                              inputs.sharedMemAdjacency, inputs.sharedMemPred))
+      if (!satisfiesAdjacency(logicalTile, candidate, inputs.sharedMemAdjacency,
+                              inputs.sharedMemPred))
         continue;
       if (!satisfiesComputePeer(
               logicalTile, candidate, inputs.computePeerAdjacency,
