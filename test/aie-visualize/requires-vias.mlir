@@ -10,6 +10,7 @@
 // REQUIRES: aie-visualize
 // RUN: not aie-visualize --emit-dot --scale=1 %s 2>&1 | FileCheck %s
 // RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-json %s | FileCheck %s --check-prefix=JSON
 
 // CHECK: error: flow carries no vias, so its route cannot be drawn
 
@@ -20,6 +21,11 @@
 // TOPOLOGY-DAG: tile_0_2 -> p_0_2_1_0_m
 // TOPOLOGY-DAG: p_0_2_1_0_m -> p_0_3_1_0_s
 // TOPOLOGY-DAG: p_0_3_1_0_s -> tile_0_3
+
+// JSON: "id": "edge__p_0_2_1_0_m__p_0_3_1_0_s"
+// JSON: "routes": [
+// JSON-NEXT: 0
+// JSON: "format": "aie-semantic-graph"
 
 module {
   aie.device(npu1_1col) {

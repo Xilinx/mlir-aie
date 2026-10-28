@@ -104,6 +104,11 @@ mlir::LogicalResult emitRouteDot(mlir::ModuleOp module,
                                  llvm::raw_ostream &output,
                                  const VisualizeOptions &options);
 
+/// Writes the selected device's semantic graph as JSON.
+mlir::LogicalResult emitSemanticGraphJson(mlir::ModuleOp module,
+                                          llvm::raw_ostream &output,
+                                          const VisualizeOptions &options);
+
 } // namespace xilinx::AIE
 
 #endif // AIE_VISUALIZE_AIEVISUALIZE_H

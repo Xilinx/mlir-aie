@@ -218,7 +218,7 @@ public:
                                const LayoutGeometry &layout) override;
 
 private:
-  static constexpr double kTrackPitch = 0.1;
+  static constexpr double kTrackPitch = 0.16;
 
   void buildGrid(ArrayRef<ArrowRequest> requests,
                  ArrayRef<RoutingObstacle> obstacles,
@@ -227,7 +227,7 @@ private:
   SmallVector<Gateway> gatewaysFor(const ArrowEnd &end, const ArrowEnd &other,
                                    unsigned requestID) const;
   double endpointSpread(StringRef node, unsigned requestID, double span) const;
-  RoutedPath routeOne(const ArrowRequest &request);
+  RoutedPath routeOne(const ArrowRequest &request, bool allowOccupied = false);
   void addUsage(const RoutedPath &path, int amount);
   double conflictScore(const RoutedPath &path) const;
   SmallVector<Point> cornersOf(const RoutedPath &path) const;
@@ -519,7 +519,8 @@ void AvoidanceArrowRenderer::buildGrid(ArrayRef<ArrowRequest> requests,
       }
     }
     if (obstacle.kind == ObstacleKind::Tile) {
-      for (double offset : {layout.text(0.12), layout.text(0.24)}) {
+      for (unsigned track = 2; track <= 5; ++track) {
+        double offset = track * trackPitch;
         xs.push_back(blocked.left - offset);
         xs.push_back(blocked.right + offset);
         ys.push_back(blocked.bottom - offset);
@@ -581,7 +582,8 @@ void AvoidanceArrowRenderer::buildGrid(ArrayRef<ArrowRequest> requests,
   generation = 0;
 }
 
-RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request) {
+RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request,
+                                            bool allowOccupied) {
   SmallVector<Gateway> sources =
       gatewaysFor(request.from, request.to, request.id);
   SmallVector<Gateway> targets =
@@ -681,6 +683,8 @@ RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request) {
         usage = verticalUsage[edge];
       }
       if (!open(*blockage, request))
+        continue;
+      if (usage != 0 && !allowOccupied)
         continue;
 
       double length = std::abs(xs[x] - xs[nextX]) + std::abs(ys[y] - ys[nextY]);
@@ -848,6 +852,12 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
   std::vector<RoutedPath> routed(requests.size());
   for (unsigned requestID : order) {
     routed[requestID] = routeOne(requests[requestID]);
+    addUsage(routed[requestID], 1);
+  }
+  for (unsigned requestID : order) {
+    if (routed[requestID].valid)
+      continue;
+    routed[requestID] = routeOne(requests[requestID], true);
     addUsage(routed[requestID], 1);
   }
 

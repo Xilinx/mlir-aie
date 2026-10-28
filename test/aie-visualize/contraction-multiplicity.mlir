@@ -10,15 +10,20 @@
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=DEFAULT
 // RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s
+// RUN: aie-visualize --emit-dot --contract=port,dma,buffer --contract-balanced-fanout %s | FileCheck %s --check-prefix=ALL
 // RUN: aie-visualize --emit-dot --contract-balanced-fanout %s | FileCheck %s --check-prefix=BALANCED
 
 // CHECK: call_0 {{.*}}label="consume"
-// CHECK-DAG: buffer_0 -> call_0
-// CHECK-DAG: buffer_1 -> call_0
 // CHECK-DAG: p_0_3_1_0_s -> buffer_0
 // CHECK-DAG: p_0_3_1_0_s -> buffer_1
 // CHECK-DAG: p_0_3_1_1_s -> buffer_0
 // CHECK-DAG: p_0_3_1_1_s -> buffer_1
+// CHECK-DAG: buffer_0 -> call_0
+// CHECK-DAG: buffer_1 -> call_0
+
+// ALL-NOT: buffer_0 [
+// ALL-NOT: buffer_1 [
+// ALL-DAG: p_0_2_0_0_in_r0 -> call_0 {{.*}}label={{.*}}&#215;4
 
 // DEFAULT-DAG: p_0_3_1_0_s -> buffer_0
 // DEFAULT-DAG: p_0_3_1_0_s -> buffer_1

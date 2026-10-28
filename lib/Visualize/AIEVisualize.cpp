@@ -22,6 +22,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/JSON.h"
 
 #include <algorithm>
 #include <cmath>
@@ -102,6 +103,7 @@ struct ArbitrationRule {
   bool keepsPacketHeader;
   bool priorityRoute;
   bool controlOverlay;
+  mlir::Location loc;
 };
 
 struct BufferInfo {
@@ -125,6 +127,7 @@ struct RuntimeArgumentInfo {
   unsigned id;
   std::string name;
   std::vector<DMAChannelKey> channels;
+  mlir::Location loc;
 };
 
 struct CallInfo {
@@ -134,7 +137,32 @@ struct CallInfo {
   unsigned tileIndex;
   std::string callee;
   std::vector<AIE::BufferOp> buffers;
+  mlir::Location loc;
 };
+
+struct SourceLocation {
+  std::string file;
+  unsigned line;
+  unsigned column;
+
+  bool operator<(const SourceLocation &other) const {
+    return std::tie(file, line, column) <
+           std::tie(other.file, other.line, other.column);
+  }
+};
+
+using SourceLocations = std::set<SourceLocation>;
+
+static SourceLocations sourceLocations(mlir::Location location) {
+  SourceLocations result;
+  location->walk([&](mlir::Location nested) {
+    if (auto file = llvm::dyn_cast<mlir::FileLineColLoc>(nested))
+      result.insert(
+          {file.getFilename().str(), file.getLine(), file.getColumn()});
+    return mlir::WalkResult::advance();
+  });
+  return result;
+}
 
 enum class SemanticNodeKind {
   Tile,
@@ -151,6 +179,8 @@ struct SemanticNode {
   SemanticNodeKind kind;
   std::optional<std::pair<int, int>> tile;
   std::optional<PortNode> port;
+  SourceLocations source;
+  std::string label;
 };
 
 /// Which two things an edge joins. That is its whole identity: what it
@@ -172,9 +202,11 @@ struct EdgeAttributes {
   std::set<unsigned> routes;
   /// How many equivalent paths this edge stands for.
   unsigned count = 1;
+  SourceLocations source;
 
   void absorb(const EdgeAttributes &other) {
     routes.insert(other.routes.begin(), other.routes.end());
+    source.insert(other.source.begin(), other.source.end());
   }
 };
 
@@ -186,15 +218,24 @@ struct SemanticGraph {
 
   void addNode(StringRef id, SemanticNodeKind kind,
                std::optional<std::pair<int, int>> tile = std::nullopt,
-               std::optional<PortNode> port = std::nullopt) {
-    nodes.try_emplace(id.str(), SemanticNode{kind, tile, port});
+               std::optional<PortNode> port = std::nullopt,
+               SourceLocations source = {}, StringRef label = {}) {
+    auto [entry, inserted] = nodes.try_emplace(
+        id.str(), SemanticNode{kind, tile, port, source, label.str()});
+    if (!inserted) {
+      entry->second.source.insert(source.begin(), source.end());
+      if (entry->second.label.empty())
+        entry->second.label = label.str();
+    }
   }
 
   void addEdge(StringRef source, StringRef dest,
-               std::optional<unsigned> route = std::nullopt) {
+               std::optional<unsigned> route = std::nullopt,
+               SourceLocations locations = {}) {
     EdgeAttributes &attributes = edges[{source.str(), dest.str()}];
     if (route)
       attributes.routes.insert(*route);
+    attributes.source.insert(locations.begin(), locations.end());
   }
 
   bool hasIncoming(StringRef node) const {
@@ -211,11 +252,8 @@ struct SemanticGraph {
     return edges.count({source.str(), dest.str()}) != 0;
   }
 
-  /// Splices out every node of a hidden kind that only passes things through:
-  /// one way in, one way out, and not back to where it came from. A node
-  /// where things branch, join, or start has a degree above one and stays,
-  /// which is what keeps the shape of the design visible however much detail
-  /// is asked away.
+  /// Splices out a hidden node that only passes one edge through. Fanout and
+  /// fan-in remain visible unless the balanced-region rewrite below matches.
   SemanticEdges contract(const std::set<SemanticNodeKind> &hiddenKinds,
                          bool contractBalancedFanout) const {
     SemanticEdges result = edges;
@@ -225,36 +263,39 @@ struct SemanticGraph {
       for (const auto &[id, node] : nodes) {
         if (!hiddenKinds.count(node.kind))
           continue;
-        const EdgeKey *incoming = nullptr;
-        const EdgeKey *outgoing = nullptr;
-        unsigned incomingCount = 0;
-        unsigned outgoingCount = 0;
+        SmallVector<EdgeKey> incoming;
+        SmallVector<EdgeKey> outgoing;
         for (const auto &[key, attributes] : result) {
-          if (key.dest == id) {
-            incoming = &key;
-            ++incomingCount;
-          }
-          if (key.source == id) {
-            outgoing = &key;
-            ++outgoingCount;
+          if (key.dest == id)
+            incoming.push_back(key);
+          if (key.source == id)
+            outgoing.push_back(key);
+        }
+        if (incoming.size() != 1 || outgoing.size() != 1)
+          continue;
+
+        SmallVector<std::pair<EdgeKey, EdgeAttributes>> spliced;
+        for (const EdgeKey &before : incoming) {
+          for (const EdgeKey &after : outgoing) {
+            if (before.source == after.dest)
+              continue;
+            EdgeAttributes merged = result.at(before);
+            merged.absorb(result.at(after));
+            merged.source.insert(node.source.begin(), node.source.end());
+            merged.count *= result.at(after).count;
+            spliced.push_back({{before.source, after.dest}, std::move(merged)});
           }
         }
-        if (incomingCount != 1 || outgoingCount != 1 ||
-            incoming->source == outgoing->dest)
-          continue;
-        EdgeAttributes merged = result.at(*incoming);
-        const EdgeAttributes &after = result.at(*outgoing);
-        merged.absorb(after);
-        merged.count = result.at(*incoming).count * after.count;
-        EdgeKey spliced{incoming->source, outgoing->dest};
-        result.erase(*incoming);
-        result.erase(*outgoing);
-        auto [entry, inserted] = result.try_emplace(spliced, merged);
-        if (!inserted) {
-          // Two paths now say the same thing, which is worth saying once
-          // and counting.
-          entry->second.absorb(merged);
-          entry->second.count += merged.count;
+        for (const EdgeKey &key : incoming)
+          result.erase(key);
+        for (const EdgeKey &key : outgoing)
+          result.erase(key);
+        for (auto &[key, attributes] : spliced) {
+          auto [entry, inserted] = result.try_emplace(key, attributes);
+          if (!inserted) {
+            entry->second.absorb(attributes);
+            entry->second.count += attributes.count;
+          }
         }
         changed = true;
         break;
@@ -344,6 +385,10 @@ struct SemanticGraph {
             EdgeKey first{branchSource.str(), second.source};
             EdgeAttributes path = result.at(first);
             path.absorb(result.at(second));
+            const SourceLocations &branchSourceLocations =
+                nodes.at(second.source).source;
+            path.source.insert(branchSourceLocations.begin(),
+                               branchSourceLocations.end());
             path.count *= result.at(second).count;
             attributes.absorb(path);
             attributes.count += path.count;
@@ -660,7 +705,8 @@ collectArbitrationRules(AIE::DeviceOp device) {
                            master.keepsPktHeader(),
                            rule->hasAttr("aie.priority_route"),
                            marksOverlay(rule) || marksOverlay(packetRules) ||
-                               marksOverlay(master)});
+                               marksOverlay(master),
+                           rule.getLoc()});
         }
         ++priority;
       }
@@ -984,7 +1030,8 @@ static std::vector<CallInfo> collectCalls(AIE::DeviceOp device) {
       std::pair<int, int> coordinate{tile.colIndex(), tile.rowIndex()};
       calls.push_back({static_cast<unsigned>(calls.size()), coordinate.first,
                        coordinate.second, tileCounts[coordinate]++,
-                       call.getCallee().str(), std::move(buffers)});
+                       call.getCallee().str(), std::move(buffers),
+                       call.getLoc()});
     });
   }
   return calls;
@@ -1456,8 +1503,11 @@ static void boundarySetBytes(const Provenance &provenance,
   }
 }
 
+static std::string bufferLabel(AIE::BufferOp buffer, unsigned id);
+
 static SemanticGraph buildSemanticGraph(
-    ArrayRef<FlowRoute> routes, ArrayRef<ArbitrationRule> arbitrationRules,
+    AIE::DeviceOp device, ArrayRef<FlowRoute> routes,
+    ArrayRef<ArbitrationRule> arbitrationRules,
     const std::map<PortNode, std::set<unsigned>> &portPackets,
     ArrayRef<std::pair<PortNode, PortNode>> wires, bool splitPacketPorts,
     const DMAChannelBuffers &channelBuffers,
@@ -1466,26 +1516,32 @@ static SemanticGraph buildSemanticGraph(
     const std::set<Operation *> &buffersFeedingDMA,
     const std::set<Operation *> &buffersFedByDMA) {
   SemanticGraph graph;
-  auto addPort = [&](const PortNode &port) {
+  std::map<std::pair<int, int>, SourceLocations> tileSources;
+  for (AIE::TileOp tile : device.getOps<AIE::TileOp>())
+    tileSources[{tile.colIndex(), tile.rowIndex()}] =
+        sourceLocations(tile.getLoc());
+  auto addPort = [&](const PortNode &port, SourceLocations source = {}) {
     std::string id = portNodeID(port);
     graph.addNode(id,
                   port.bundle == AIE::WireBundle::DMA ? SemanticNodeKind::DMA
                                                       : SemanticNodeKind::Port,
-                  std::make_pair(port.col, port.row), port);
+                  std::make_pair(port.col, port.row), port, std::move(source));
     return id;
   };
   auto addCircuitPort = [&](const PortNode &port, PortRole role,
-                            unsigned routeGroup) {
+                            unsigned routeGroup, SourceLocations source = {}) {
     std::string id = circuitPortNodeID(port, role, routeGroup);
     graph.addNode(id,
                   port.bundle == AIE::WireBundle::DMA ? SemanticNodeKind::DMA
                                                       : SemanticNodeKind::Port,
-                  std::make_pair(port.col, port.row), port);
+                  std::make_pair(port.col, port.row), port, std::move(source));
     return id;
   };
   auto addTile = [&](int col, int row) {
     std::string id = tileNodeID(col, row);
-    graph.addNode(id, SemanticNodeKind::Tile, std::make_pair(col, row));
+    graph.addNode(id, SemanticNodeKind::Tile, std::make_pair(col, row),
+                  std::nullopt, tileSources[{col, row}],
+                  "(" + std::to_string(col) + "," + std::to_string(row) + ")");
     return id;
   };
 
@@ -1494,6 +1550,7 @@ static SemanticGraph buildSemanticGraph(
   // them here rather than never collecting them.
   std::vector<unsigned> routeGroups = circuitRouteGroups(routes);
   for (const FlowRoute &route : routes) {
+    SourceLocations routeSource = sourceLocations(route.loc);
     for (auto [index, pair] : llvm::enumerate(
              llvm::zip_equal(ArrayRef(route.points).drop_back(),
                              ArrayRef(route.points).drop_front()))) {
@@ -1503,15 +1560,18 @@ static SemanticGraph buildSemanticGraph(
         if (route.packetID) {
           if (source == dest)
             continue;
-          graph.addEdge(addPort(source), addPort(dest), route.id);
+          graph.addEdge(addPort(source, routeSource),
+                        addPort(dest, routeSource), route.id, routeSource);
           continue;
         }
-        std::string sourceID = addCircuitPort(
-            source, circuitPointRole(route, index), routeGroups[route.id]);
-        std::string destID = addCircuitPort(
-            dest, circuitPointRole(route, index + 1), routeGroups[route.id]);
+        std::string sourceID =
+            addCircuitPort(source, circuitPointRole(route, index),
+                           routeGroups[route.id], routeSource);
+        std::string destID =
+            addCircuitPort(dest, circuitPointRole(route, index + 1),
+                           routeGroups[route.id], routeSource);
         if (sourceID != destID)
-          graph.addEdge(sourceID, destID, route.id);
+          graph.addEdge(sourceID, destID, route.id, routeSource);
       }
     }
     addTile(route.points.front().col, route.points.front().row);
@@ -1528,7 +1588,9 @@ static SemanticGraph buildSemanticGraph(
                          splitPacketPorts)) {
       if (portNodeID(ingress) == portNodeID(egress))
         continue;
-      graph.addEdge(addPort(ingress), addPort(egress));
+      SourceLocations ruleSource = sourceLocations(rule.loc);
+      graph.addEdge(addPort(ingress, ruleSource), addPort(egress, ruleSource),
+                    std::nullopt, ruleSource);
     }
   for (const auto &[from, to] : wires)
     for (const auto &[driven, read] :
@@ -1549,7 +1611,9 @@ static SemanticGraph buildSemanticGraph(
   for (const BufferInfo &buffer : buffers) {
     bufferIDs[buffer.op] = buffer.id;
     graph.addNode(bufferNodeID(buffer.id), SemanticNodeKind::Buffer,
-                  std::make_pair(buffer.col, buffer.row));
+                  std::make_pair(buffer.col, buffer.row), std::nullopt,
+                  sourceLocations(buffer.op->getLoc()),
+                  bufferLabel(buffer.op, buffer.id));
     addTile(buffer.col, buffer.row);
   }
   for (const auto &[key, channelBufferList] : channelBuffers) {
@@ -1567,7 +1631,9 @@ static SemanticGraph buildSemanticGraph(
 
   for (const RuntimeArgumentInfo &argument : runtimeArguments) {
     std::string argumentID = runtimeArgumentNodeID(argument.id);
-    graph.addNode(argumentID, SemanticNodeKind::RuntimeArgument);
+    SourceLocations argumentSource = sourceLocations(argument.loc);
+    graph.addNode(argumentID, SemanticNodeKind::RuntimeArgument, std::nullopt,
+                  std::nullopt, argumentSource, argument.name);
     for (const DMAChannelKey &key : argument.channels) {
       auto [col, row, direction, channel] = key;
       PortNode port{col, row, AIE::WireBundle::DMA, channel, direction};
@@ -1576,14 +1642,15 @@ static SemanticGraph buildSemanticGraph(
           direction == AIE::DMAChannelDir::MM2S ? argumentID : portID;
       std::string dest =
           direction == AIE::DMAChannelDir::MM2S ? portID : argumentID;
-      graph.addEdge(source, dest);
+      graph.addEdge(source, dest, std::nullopt, argumentSource);
     }
   }
 
   for (const CallInfo &call : calls) {
     std::string callID = callNodeID(call.id);
     graph.addNode(callID, SemanticNodeKind::Call,
-                  std::make_pair(call.col, call.row));
+                  std::make_pair(call.col, call.row), std::nullopt,
+                  sourceLocations(call.loc), call.callee);
     addTile(call.col, call.row);
     for (AIE::BufferOp buffer : call.buffers) {
       std::string bufferID = bufferNodeID(bufferIDs.at(buffer));
@@ -1722,27 +1789,281 @@ static std::string shortPortName(const PortNode &port) {
   }
 }
 
+static StringRef semanticNodeKindName(SemanticNodeKind kind) {
+  switch (kind) {
+  case SemanticNodeKind::Tile:
+    return "tile";
+  case SemanticNodeKind::Port:
+    return "port";
+  case SemanticNodeKind::DMA:
+    return "dma";
+  case SemanticNodeKind::Buffer:
+    return "buffer";
+  case SemanticNodeKind::RuntimeArgument:
+    return "runtime-argument";
+  case SemanticNodeKind::Call:
+    return "call";
+  }
+  llvm_unreachable("unknown semantic node kind");
+}
+
+static std::optional<SemanticNodeKind> parseSemanticNodeKind(StringRef kind) {
+  for (SemanticNodeKind candidate :
+       {SemanticNodeKind::Tile, SemanticNodeKind::Port, SemanticNodeKind::DMA,
+        SemanticNodeKind::Buffer, SemanticNodeKind::RuntimeArgument,
+        SemanticNodeKind::Call})
+    if (semanticNodeKindName(candidate) == kind)
+      return candidate;
+  return std::nullopt;
+}
+
+struct SelectedTopology {
+  SemanticEdges edges;
+  Provenance provenance;
+  TransitiveMembership membership;
+};
+
+static FailureOr<SelectedTopology>
+selectTopology(AIE::DeviceOp device, const SemanticGraph &graph,
+               const AIE::VisualizeOptions &options) {
+  std::set<SemanticNodeKind> contractKinds;
+  for (StringRef kind : options.contractedNodeKinds) {
+    std::optional<SemanticNodeKind> parsed = parseSemanticNodeKind(kind);
+    if (!parsed) {
+      device.emitOpError() << "--contract references unknown node kind '"
+                           << kind << "'";
+      return failure();
+    }
+    contractKinds.insert(*parsed);
+  }
+
+  SemanticEdges edges =
+      graph.contract(contractKinds, options.contractBalancedFanout);
+  Provenance provenance = computeProvenance(graph, edges);
+  TransitiveMembership membership = computeTransitiveMembership(graph, edges);
+  std::set<unsigned> only(options.onlyFlows.begin(), options.onlyFlows.end());
+  for (unsigned id : only) {
+    if (id < provenance.sourceSets.size())
+      continue;
+    device.emitOpError() << "--only-flow references unknown flow " << id
+                         << "; valid IDs are 0 through "
+                         << (provenance.sourceSets.empty()
+                                 ? 0
+                                 : provenance.sourceSets.size() - 1);
+    return failure();
+  }
+  if (!only.empty())
+    for (auto entry = edges.begin(); entry != edges.end();)
+      entry = only.count(provenance.sourceGroup.at(entry->first.source))
+                  ? std::next(entry)
+                  : edges.erase(entry);
+  return SelectedTopology{std::move(edges), std::move(provenance),
+                          std::move(membership)};
+}
+
+static json::Array sourceLocationsJson(const SourceLocations &locations) {
+  json::Array result;
+  for (const SourceLocation &location : locations)
+    result.push_back(json::Object{{"file", location.file},
+                                  {"line", location.line},
+                                  {"column", location.column}});
+  return result;
+}
+
+static std::string edgeID(const EdgeKey &key) {
+  return "edge__" + key.source + "__" + key.dest;
+}
+
+static std::string sourceClasses(const SourceLocations &locations) {
+  std::string classes;
+  for (const SourceLocation &location : locations)
+    classes += " source-location-" + std::to_string(location.line) + "-" +
+               std::to_string(location.column);
+  return classes;
+}
+
+static void writeSemanticGraphJson(AIE::DeviceOp device,
+                                   const SemanticGraph &graph,
+                                   const SelectedTopology &topology,
+                                   raw_ostream &output) {
+  std::set<std::string> selectedNodes;
+  for (const auto &[key, attributes] : topology.edges) {
+    selectedNodes.insert(key.source);
+    selectedNodes.insert(key.dest);
+  }
+
+  json::Array nodes;
+  for (const auto &[id, node] : graph.nodes) {
+    if (!selectedNodes.count(id))
+      continue;
+    json::Object object{{"id", id},
+                        {"kind", semanticNodeKindName(node.kind)},
+                        {"label", node.label.empty() ? id : node.label},
+                        {"sourceLocations", sourceLocationsJson(node.source)}};
+    if (node.tile)
+      object["tile"] = json::Array{node.tile->first, node.tile->second};
+    if (node.port) {
+      json::Object port{{"bundle", stringifyWireBundle(node.port->bundle)},
+                        {"channel", node.port->channel}};
+      if (node.port->dmaDirection)
+        port["direction"] = *node.port->dmaDirection == AIE::DMAChannelDir::MM2S
+                                ? "MM2S"
+                                : "S2MM";
+      if (node.port->packet)
+        port["packet"] = *node.port->packet;
+      object["port"] = std::move(port);
+    }
+    nodes.push_back(std::move(object));
+  }
+
+  json::Array edges;
+  for (const auto &[key, attributes] : topology.edges) {
+    json::Array routes;
+    for (unsigned route : attributes.routes)
+      routes.push_back(route);
+    edges.push_back(json::Object{
+        {"id", edgeID(key)},
+        {"source", key.source},
+        {"target", key.dest},
+        {"routes", std::move(routes)},
+        {"pathCount", attributes.count},
+        {"sourceLocations", sourceLocationsJson(attributes.source)}});
+  }
+
+  json::Object root{{"format", "aie-semantic-graph"},
+                    {"version", 1},
+                    {"device", device.getSymName().str()},
+                    {"nodes", std::move(nodes)},
+                    {"edges", std::move(edges)}};
+  output << formatv("{0:2}\n", json::Value(std::move(root)));
+}
+
+struct SemanticGraphAnalysis {
+  std::vector<FlowRoute> routes;
+  std::vector<ArbitrationRule> arbitrationRules;
+  std::vector<BufferInfo> buffers;
+  DMAChannelBuffers channelBuffers;
+  DMAChannelBytes channelBytes;
+  std::vector<CallInfo> calls;
+  std::vector<std::pair<PortNode, PortNode>> wires;
+  std::map<PortNode, std::set<unsigned>> portPackets;
+  std::vector<RuntimeArgumentInfo> runtimeArguments;
+  SemanticGraph graph;
+};
+
+static FailureOr<SemanticGraphAnalysis>
+analyzeSemanticGraph(AIE::DeviceOp device,
+                     AIE::RuntimeSequenceOp runtimeSequence,
+                     const AIE::VisualizeOptions &options) {
+  FailureOr<std::vector<FlowRoute>> routes = collectRoutes(device);
+  if (failed(routes))
+    return failure();
+  FailureOr<std::vector<BufferInfo>> buffers = collectBuffers(device);
+  if (failed(buffers))
+    return failure();
+
+  SemanticGraphAnalysis analysis;
+  analysis.routes = std::move(*routes);
+  analysis.buffers = std::move(*buffers);
+  analysis.arbitrationRules = collectArbitrationRules(device);
+  if (!options.controlOverlay)
+    llvm::erase_if(analysis.arbitrationRules, [](const ArbitrationRule &rule) {
+      return rule.controlOverlay;
+    });
+  analysis.channelBuffers = collectDMAChannelBuffers(device);
+  analysis.channelBytes = collectDMAChannelBytes(device);
+  analysis.calls = collectCalls(device);
+
+  assignCarriedPackets(analysis.routes, analysis.arbitrationRules);
+  const AIE::AIETargetModel &model = device.getTargetModel();
+  analysis.wires =
+      collectWires(model, analysis.routes, analysis.arbitrationRules);
+  analysis.portPackets = collectPortPackets(
+      analysis.routes, analysis.arbitrationRules, analysis.wires);
+
+  std::set<DMAChannelKey> activeChannels;
+  std::set<Operation *> buffersFeedingDMA;
+  std::set<Operation *> buffersFedByDMA;
+  auto noteChannel = [&](const PortNode &port) {
+    if (port.bundle != AIE::WireBundle::DMA || !port.dmaDirection)
+      return;
+    DMAChannelKey key{port.col, port.row, *port.dmaDirection, port.channel};
+    activeChannels.insert(key);
+    bool draining = *port.dmaDirection == AIE::DMAChannelDir::MM2S;
+    for (AIE::BufferOp buffer : analysis.channelBuffers[key])
+      (draining ? buffersFeedingDMA : buffersFedByDMA).insert(buffer);
+  };
+  auto noteSegment = [&](const PortNode &from, const PortNode &to) {
+    noteChannel(from);
+    noteChannel(to);
+  };
+  for (const FlowRoute &route : analysis.routes)
+    for (auto pair : llvm::zip_equal(ArrayRef(route.points).drop_back(),
+                                     ArrayRef(route.points).drop_front())) {
+      const auto &[from, to] = pair;
+      for (const auto &[source, dest] :
+           hopSegments(route, from, to, options.splitPacketPorts))
+        noteSegment(source, dest);
+    }
+  for (const ArbitrationRule &rule : analysis.arbitrationRules)
+    for (const auto &[ingress, egress] :
+         claimedSegments(analysis.portPackets, rule.segment, rule.mask,
+                         rule.value, options.splitPacketPorts))
+      noteSegment(ingress, egress);
+  for (const auto &[from, to] : analysis.wires)
+    for (const auto &[driven, read] :
+         wireSegments(analysis.portPackets, from, to, options.splitPacketPorts))
+      noteSegment(driven, read);
+
+  std::vector<RuntimeBufferUse> runtimeBufferUses =
+      collectRuntimeBufferUses(device, runtimeSequence);
+  std::map<unsigned, unsigned> argumentIDs;
+  for (const RuntimeBufferUse &use : runtimeBufferUses) {
+    auto [entry, inserted] = argumentIDs.try_emplace(
+        use.argumentIndex, analysis.runtimeArguments.size());
+    if (inserted)
+      analysis.runtimeArguments.push_back(
+          {use.argumentIndex, use.argument, {}, runtimeSequence.getLoc()});
+    RuntimeArgumentInfo &argument = analysis.runtimeArguments[entry->second];
+    if (!llvm::is_contained(argument.channels, use.channel))
+      argument.channels.push_back(use.channel);
+  }
+  llvm::sort(analysis.runtimeArguments, [](const RuntimeArgumentInfo &left,
+                                           const RuntimeArgumentInfo &right) {
+    return left.id < right.id;
+  });
+
+  analysis.graph = buildSemanticGraph(
+      device, analysis.routes, analysis.arbitrationRules, analysis.portPackets,
+      analysis.wires, options.splitPacketPorts, analysis.channelBuffers,
+      activeChannels, analysis.buffers, analysis.runtimeArguments,
+      analysis.calls, buffersFeedingDMA, buffersFedByDMA);
+  return analysis;
+}
+
 static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                                         raw_ostream &output,
                                         AIE::RuntimeSequenceOp runtimeSequence,
                                         const AIE::VisualizeOptions &options) {
-  FailureOr<std::vector<FlowRoute>> routes = collectRoutes(device);
-  if (failed(routes))
+  FailureOr<SemanticGraphAnalysis> analysis =
+      analyzeSemanticGraph(device, runtimeSequence, options);
+  if (failed(analysis))
     return failure();
-  std::vector<ArbitrationRule> arbitrationRules =
-      collectArbitrationRules(device);
-  if (!options.controlOverlay)
-    llvm::erase_if(arbitrationRules, [](const ArbitrationRule &rule) {
-      return rule.controlOverlay;
-    });
-  FailureOr<std::vector<BufferInfo>> buffers = collectBuffers(device);
-  if (failed(buffers))
-    return failure();
-  DMAChannelBuffers channelBuffers = collectDMAChannelBuffers(device);
-  std::vector<RuntimeBufferUse> runtimeBufferUses =
-      collectRuntimeBufferUses(device, runtimeSequence);
-  std::vector<CallInfo> calls = collectCalls(device);
-  DMAChannelBytes channelBytes = collectDMAChannelBytes(device);
+  auto *routes = &analysis->routes;
+  auto *buffers = &analysis->buffers;
+  auto &arbitrationRules = analysis->arbitrationRules;
+  auto &channelBytes = analysis->channelBytes;
+  auto &calls = analysis->calls;
+  auto &portPackets = analysis->portPackets;
+  auto &runtimeArguments = analysis->runtimeArguments;
+  auto &semanticGraph = analysis->graph;
+  bool drawsPorts = !llvm::is_contained(options.contractedNodeKinds, "port");
+  if (drawsPorts)
+    for (const FlowRoute &route : *routes)
+      if (route.points.size() < 3)
+        return mlir::emitError(route.loc)
+               << "flow carries no vias, so its route cannot be drawn; run "
+                  "aie-find-flows with emit-vias=true, or contract ports";
   const Palette &palette = paletteFor(options.colors);
   std::unique_ptr<ArrowRenderer> arrows;
   switch (options.arrows) {
@@ -1762,88 +2083,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     widest = std::min(widest, *room);
   widest *= options.scale;
 
-  std::set<unsigned> only(options.onlyFlows.begin(), options.onlyFlows.end());
-
-  std::set<SemanticNodeKind> contractKinds;
-  for (StringRef kind : options.contractedNodeKinds) {
-    if (kind == "tile")
-      contractKinds.insert(SemanticNodeKind::Tile);
-    else if (kind == "port")
-      contractKinds.insert(SemanticNodeKind::Port);
-    else if (kind == "dma")
-      contractKinds.insert(SemanticNodeKind::DMA);
-    else if (kind == "buffer")
-      contractKinds.insert(SemanticNodeKind::Buffer);
-    else if (kind == "runtime-argument")
-      contractKinds.insert(SemanticNodeKind::RuntimeArgument);
-    else if (kind == "call")
-      contractKinds.insert(SemanticNodeKind::Call);
-    else {
-      device.emitOpError() << "--contract references unknown node kind '"
-                           << kind << "'";
-      return failure();
-    }
-  }
-
-  // Drawing a flow's ports means drawing the switchboxes it passes through,
-  // which only a flow carrying its route can say. A view that contracts
-  // ports away never asks.
-  if (!contractKinds.count(SemanticNodeKind::Port))
-    for (const FlowRoute &route : *routes)
-      if (route.points.size() < 3)
-        return mlir::emitError(route.loc)
-               << "flow carries no vias, so its route cannot be drawn; run "
-                  "aie-find-flows with emit-vias=true, or contract ports";
-
   const AIE::AIETargetModel &model = device.getTargetModel();
-
-  // A merge inside a switchbox, and the wire out of one, reach ports that no
-  // flow names.
-  assignCarriedPackets(*routes, arbitrationRules);
-  std::vector<std::pair<PortNode, PortNode>> wires =
-      collectWires(model, *routes, arbitrationRules);
-  std::map<PortNode, std::set<unsigned>> portPackets =
-      collectPortPackets(*routes, arbitrationRules, wires);
-
-  std::set<PortNode> ports;
-  std::set<DMAChannelKey> activeChannels;
-  std::set<Operation *> buffersFeedingDMA;
-  std::set<Operation *> buffersFedByDMA;
-  // A DMA channel that a route or a rule reaches is one the design runs, and
-  // its buffers are the ones a kernel exchanges over the array.
-  auto noteChannel = [&](const PortNode &port) {
-    if (port.bundle != AIE::WireBundle::DMA || !port.dmaDirection)
-      return;
-    DMAChannelKey key{port.col, port.row, *port.dmaDirection, port.channel};
-    activeChannels.insert(key);
-    bool draining = *port.dmaDirection == AIE::DMAChannelDir::MM2S;
-    for (AIE::BufferOp buffer : channelBuffers[key])
-      (draining ? buffersFeedingDMA : buffersFedByDMA).insert(buffer);
-  };
-  auto noteSegment = [&](const PortNode &from, const PortNode &to) {
-    ports.insert(from);
-    ports.insert(to);
-    noteChannel(from);
-    noteChannel(to);
-  };
-  for (const FlowRoute &route : *routes) {
-    for (auto pair : llvm::zip_equal(ArrayRef(route.points).drop_back(),
-                                     ArrayRef(route.points).drop_front())) {
-      const auto &[from, to] = pair;
-      for (const auto &[source, dest] :
-           hopSegments(route, from, to, options.splitPacketPorts))
-        noteSegment(source, dest);
-    }
-  }
-  for (const ArbitrationRule &rule : arbitrationRules)
-    for (const auto &[ingress, egress] :
-         claimedSegments(portPackets, rule.segment, rule.mask, rule.value,
-                         options.splitPacketPorts))
-      noteSegment(ingress, egress);
-  for (const auto &[from, to] : wires)
-    for (const auto &[driven, read] :
-         wireSegments(portPackets, from, to, options.splitPacketPorts))
-      noteSegment(driven, read);
 
   std::set<std::pair<int, int>> designTiles;
   for (AIE::TileOp tile : device.getOps<AIE::TileOp>())
@@ -1853,50 +2093,13 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   std::map<Operation *, unsigned> bufferLocalIndices;
   std::map<unsigned, unsigned> callLocalIndices;
 
-  std::vector<RuntimeArgumentInfo> runtimeArguments;
-  std::map<unsigned, unsigned> argumentIDs;
-  for (const RuntimeBufferUse &use : runtimeBufferUses) {
-    auto [entry, inserted] =
-        argumentIDs.try_emplace(use.argumentIndex, runtimeArguments.size());
-    if (inserted)
-      runtimeArguments.push_back({use.argumentIndex, use.argument, {}});
-    RuntimeArgumentInfo &argument = runtimeArguments[entry->second];
-    if (!llvm::is_contained(argument.channels, use.channel))
-      argument.channels.push_back(use.channel);
-  }
-  llvm::sort(runtimeArguments, [](const RuntimeArgumentInfo &left,
-                                  const RuntimeArgumentInfo &right) {
-    return left.id < right.id;
-  });
-  // One graph describes the design; a view is a choice of what to contract
-  // out of it. Drawing every hop is contracting nothing.
-  SemanticGraph semanticGraph = buildSemanticGraph(
-      *routes, arbitrationRules, portPackets, wires, options.splitPacketPorts,
-      channelBuffers, activeChannels, *buffers, runtimeArguments, calls,
-      buffersFeedingDMA, buffersFedByDMA);
-  SemanticEdges topologyEdges =
-      semanticGraph.contract(contractKinds, options.contractBalancedFanout);
-  Provenance provenance = computeProvenance(semanticGraph, topologyEdges);
-  TransitiveMembership membership =
-      computeTransitiveMembership(semanticGraph, topologyEdges);
-
-  for (unsigned id : only) {
-    if (id < provenance.sourceSets.size())
-      continue;
-    device.emitOpError() << "--only-flow references unknown flow " << id
-                         << "; valid IDs are 0 through "
-                         << (provenance.sourceSets.empty()
-                                 ? 0
-                                 : provenance.sourceSets.size() - 1);
+  FailureOr<SelectedTopology> selected =
+      selectTopology(device, semanticGraph, options);
+  if (failed(selected))
     return failure();
-  }
-  // Asking for one flow is asking what it carries; the rest of the design
-  // would answer a question nobody put.
-  if (!only.empty())
-    for (auto entry = topologyEdges.begin(); entry != topologyEdges.end();)
-      entry = only.count(provenance.sourceGroup.at(entry->first.source))
-                  ? std::next(entry)
-                  : topologyEdges.erase(entry);
+  SemanticEdges &topologyEdges = selected->edges;
+  Provenance &provenance = selected->provenance;
+  TransitiveMembership &membership = selected->membership;
 
   auto boundaryOfNode = [&](const std::string &id) {
     Boundary boundary;
@@ -2072,7 +2275,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   layout.tileWidth = tileWidth;
   layout.tileGapX = gapX;
   layout.tileGapY = gapY;
-  bool compactTiles = !contractKinds.empty();
+  bool compactTiles = !options.contractedNodeKinds.empty();
   double minimumTileHeight =
       compactTiles ? 0.0 : layout.text(options.minimumTileHeight);
   layout.rowHeights.assign(model.rows(), minimumTileHeight);
@@ -2273,7 +2476,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     std::string label;
   };
   SmallVector<ArbitrationAnnotation> arbitrationAnnotations;
-  if (!contractKinds.count(SemanticNodeKind::Port)) {
+  if (drawsPorts) {
     std::map<Segment, unsigned> segmentAnnotationCounts;
     for (const ArbitrationRule &rule : arbitrationRules) {
       auto edge = topologyEdges.end();
@@ -2483,8 +2686,16 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << "  legend_" << index << "_from -> legend_" << index
              << "_to [penwidth=\""
              << llvm::format("%.2f", weightScale.width(bytes)) << "\", color=\""
-             << palette.legendRule
-             << "\", arrowhead=none, class=\"legend\"];\n";
+             << palette.legendRule;
+      if (layout.preLaidOut) {
+        Point from{legendX, y};
+        Point to{legendX + 1.1, y};
+        output << "\", pos=\"" << layout.pos(from.first, from.second) << ' '
+               << layout.pos(from.first + 1.1 / 3.0, from.second) << ' '
+               << layout.pos(from.first + 2.2 / 3.0, from.second) << ' '
+               << layout.pos(to.first, to.second);
+      }
+      output << "\", arrowhead=none, class=\"legend\"];\n";
     }
   }
   for (int col = 0; col < model.columns(); ++col) {
@@ -2501,7 +2712,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       auto roleClass = roleClasses.find({col, row});
       if (options.tileRoles && roleClass != roleClasses.end())
         fill = roleFill(palette, roleClass->second.id);
-      output << "  " << tileNodeID(col, row) << " [shape=box";
+      std::string id = tileNodeID(col, row);
+      auto semanticNode = semanticGraph.nodes.find(id);
+      output << "  " << id << " [shape=box, id=\"" << id << "\"";
       output << ", fixedsize=true, width=" << layout.size(tileWidth)
              << ", height=" << layout.size(layout.tileHeight(col, row))
              << ", pos=\""
@@ -2520,7 +2733,11 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       } else {
         output << '"';
       }
-      output << R"(, style="rounded,filled", fillcolor=")" << fill
+      output << R"(, class="semantic-node)"
+             << (semanticNode == semanticGraph.nodes.end()
+                     ? std::string()
+                     : sourceClasses(semanticNode->second.source))
+             << R"(", style="rounded,filled", fillcolor=")" << fill
              << "\", color=\"" << palette.tileEdge << "\", fontcolor=\""
              << palette.tileText << "\", penwidth=\"2.0\"];\n";
     }
@@ -2536,25 +2753,26 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << layout.size(layout.text(0.82))
              << ", height=" << layout.size(layout.text(0.18)) << ", pos=\""
              << layout.pos(x, y) << "\", label=\"" << shortPortName(port)
-             << "\", class=\""
+             << "\", id=\"" << id << "\", class=\""
              << flowClasses("port", boundaryOfNode(id), membershipOfNode(id))
+             << sourceClasses(node.source)
              << "\", fontsize=7, style=filled, fillcolor=\"" << palette.boxFill
-             << "\", fontcolor=\"" << palette.tileText << "\", "
-             << "color=\"" << palette.boxEdge << "\"];\n";
+             << "\", fontcolor=\"" << palette.tileText << "\", " << "color=\""
+             << palette.boxEdge << "\"];\n";
     } else {
       std::string kind = isVia(id) ? "port detail-vias" : "port";
       output << " [shape=point, width=" << layout.size(0.09) << ", pos=\""
              << layout.pos(x, y) << "\", color=\"" << palette.boxEdge
              << "\", xlabel=\"" << shortPortName(port)
              << "\", fontsize=7, fontcolor=\"" << palette.tileText
-             << "\", class=\""
+             << "\", id=\"" << id << "\", class=\""
              << flowClasses(kind, boundaryOfNode(id), membershipOfNode(id))
-             << "\"];\n";
+             << sourceClasses(node.source) << "\"];\n";
     }
   }
   // What a switchbox does with a packet can only be anchored where the
   // switchbox hops are still drawn.
-  if (!contractKinds.count(SemanticNodeKind::Port)) {
+  if (drawsPorts) {
     unsigned annotationID = 0;
     std::map<Segment, unsigned> segmentAnnotationCounts;
     for (const ArbitrationRule &rule : arbitrationRules) {
@@ -2648,12 +2866,14 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << layout.size(localNodeWidth)
            << ", height=" << layout.size(layout.text(0.34)) << ", pos=\""
            << layout.pos(x, y) << "\", label=\""
-           << bufferLabel(buffer.op, buffer.id) << "\", class=\""
+           << bufferLabel(buffer.op, buffer.id) << "\", id=\"" << id
+           << "\", class=\""
            << flowClasses("buffer detail-buffers", boundaryOfNode(id),
                           membershipOfNode(id))
+           << sourceClasses(semanticGraph.nodes.at(id).source)
            << "\", fontsize=8, style=filled, fillcolor=\"" << palette.boxFill
-           << "\", fontcolor=\"" << palette.tileText << "\", "
-           << "color=\"" << palette.boxEdge << "\"];\n";
+           << "\", fontcolor=\"" << palette.tileText << "\", " << "color=\""
+           << palette.boxEdge << "\"];\n";
   }
   for (auto [index, argument] : llvm::enumerate(runtimeArguments)) {
     std::string id = runtimeArgumentNodeID(argument.id);
@@ -2664,9 +2884,11 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << layout.size(localNodeWidth)
            << ", height=" << layout.size(layout.text(0.52)) << ", pos=\""
            << layout.pos(x, y) << "\", label=\"%"
-           << escapeDotLabel(argument.name) << "\", class=\""
+           << escapeDotLabel(argument.name) << "\", id=\"" << id
+           << "\", class=\""
            << flowClasses("runtime-argument", boundaryOfNode(id),
                           membershipOfNode(id))
+           << sourceClasses(semanticGraph.nodes.at(id).source)
            << R"(", fontsize=8, style="rounded,filled", fillcolor=")"
            << palette.argumentFill << "\", color=\"" << palette.argumentEdge
            << "\", fontcolor=\"" << palette.tileText << "\"];\n";
@@ -2681,9 +2903,10 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << layout.size(localNodeWidth)
            << ", height=" << layout.size(layout.text(0.3)) << ", pos=\""
            << layout.pos(x, y) << "\", label=\"" << escapeDotLabel(call.callee)
-           << "\", class=\""
+           << "\", id=\"" << id << "\", class=\""
            << flowClasses("call detail-calls", boundaryOfNode(id),
                           membershipOfNode(id))
+           << sourceClasses(semanticGraph.nodes.at(id).source)
            << R"(", fontsize=8, style="rounded,filled", fillcolor=")"
            << palette.callFill << "\", color=\"" << palette.callEdge
            << "\", fontcolor=\"" << palette.tileText << "\"];\n";
@@ -2808,8 +3031,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     Boundary boundary = boundaryOfEdge(*key);
     output << "  " << key->source << " -> " << key->dest << " [color=\"";
     writeColors(boundary);
-    output << "\", class=\""
-           << flowClasses(kind, boundary, membershipOfEdge(*key)) << '"';
+    output << "\", id=\"" << edgeID(*key) << "\", class=\""
+           << flowClasses(kind, boundary, membershipOfEdge(*key))
+           << sourceClasses(attributes.source) << '"';
     writeWeight(boundary);
     auto arrow = edgeArrows.find(*key);
     if (arrow != edgeArrows.end())
@@ -2853,8 +3077,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
 
 } // namespace
 
-LogicalResult AIE::emitRouteDot(ModuleOp module, raw_ostream &output,
-                                const AIE::VisualizeOptions &options) {
+static FailureOr<std::pair<AIE::DeviceOp, AIE::RuntimeSequenceOp>>
+selectDeviceAndRuntime(ModuleOp module, const AIE::VisualizeOptions &options) {
   SmallVector<AIE::DeviceOp> devices(module.getOps<AIE::DeviceOp>());
   AIE::DeviceOp device;
   if (!options.deviceName.empty()) {
@@ -2901,5 +3125,32 @@ LogicalResult AIE::emitRouteDot(ModuleOp module, raw_ostream &output,
     }
   }
 
-  return emitDeviceRouteDot(device, output, runtimeSequence, options);
+  return std::make_pair(device, runtimeSequence);
+}
+
+LogicalResult AIE::emitRouteDot(ModuleOp module, raw_ostream &output,
+                                const AIE::VisualizeOptions &options) {
+  FailureOr<std::pair<AIE::DeviceOp, AIE::RuntimeSequenceOp>> selected =
+      selectDeviceAndRuntime(module, options);
+  if (failed(selected))
+    return failure();
+  return emitDeviceRouteDot(selected->first, output, selected->second, options);
+}
+
+LogicalResult AIE::emitSemanticGraphJson(ModuleOp module, raw_ostream &output,
+                                         const AIE::VisualizeOptions &options) {
+  FailureOr<std::pair<AIE::DeviceOp, AIE::RuntimeSequenceOp>> selected =
+      selectDeviceAndRuntime(module, options);
+  if (failed(selected))
+    return failure();
+  FailureOr<SemanticGraphAnalysis> analysis =
+      analyzeSemanticGraph(selected->first, selected->second, options);
+  if (failed(analysis))
+    return failure();
+  FailureOr<SelectedTopology> topology =
+      selectTopology(selected->first, analysis->graph, options);
+  if (failed(topology))
+    return failure();
+  writeSemanticGraphJson(selected->first, analysis->graph, *topology, output);
+  return success();
 }

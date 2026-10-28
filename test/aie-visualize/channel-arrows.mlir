@@ -28,7 +28,7 @@
 
 // Avoidance tracks reserve enough room to keep uniform-width lines apart.
 // AVOIDANCE: graph [layout=nop2
-// AVOIDANCE-SAME: class="uniform-width-1.51"
+// AVOIDANCE-SAME: class="uniform-width-2.42"
 // AVOIDANCE: -> {{.*}}pos="
 
 // BADSTYLE: --arrows expects 'straight', 'channel', or 'avoidance'

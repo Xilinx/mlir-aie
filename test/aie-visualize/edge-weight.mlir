@@ -12,6 +12,7 @@
 // RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer %s | FileCheck %s --check-prefix=UNIFORM
 // RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer --weigh-edges %s | FileCheck %s --check-prefix=WEIGHED
 // RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer --weigh-edges --min-edge-width=1 --max-edge-width=3 %s | FileCheck %s --check-prefix=RANGE
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer --weigh-edges --arrows=avoidance %s | FileCheck %s --check-prefix=AVOIDANCE
 
 // Without the option every edge keeps the same width and carries no volume.
 // UNIFORM-NOT: legend_
@@ -29,6 +30,8 @@
 // The ends of the range follow the options.
 // RANGE-DAG: penwidth="1.00"{{.*}}tooltip="64 B per iteration"
 // RANGE-DAG: penwidth="3.00"{{.*}}tooltip="4.0 KiB per iteration"
+
+// AVOIDANCE: legend_0_from -> legend_0_to {{.*}}pos="{{[-0-9., ]+}}"{{.*}}class="legend"
 
 module {
   aie.device(npu1_1col) {

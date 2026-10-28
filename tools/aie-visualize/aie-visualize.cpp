@@ -52,6 +52,8 @@ static cl::opt<std::string> fileName(cl::Positional, cl::desc("<input mlir>"),
                                      cl::Required);
 static cl::opt<bool> emitDot("emit-dot",
                              cl::desc("Emit a DOT route visualization"));
+static cl::opt<bool> emitJson("emit-json",
+                              cl::desc("Emit the semantic graph as JSON"));
 static cl::opt<std::string> outputFilename("o", cl::desc("Output filename"),
                                            cl::value_desc("filename"),
                                            cl::init("-"));
@@ -153,6 +155,11 @@ const std::string bgray("\033[48;5;239m");
 int main(int argc, char *argv[]) {
   cl::ParseCommandLineOptions(argc, argv);
 
+  if (emitDot && emitJson) {
+    errs() << "--emit-dot and --emit-json are mutually exclusive\n";
+    return 3;
+  }
+
   MLIRContext ctx;
   ParserConfig pcfg(&ctx, /*verifyAfterParse=*/!skipVerify);
   SourceMgr srcMgr;
@@ -219,14 +226,17 @@ int main(int argc, char *argv[]) {
   options.tileGapY = tileGapY;
   options.localSpacing = localSpacing;
 
-  if (emitDot) {
+  if (emitDot || emitJson) {
     std::error_code error;
     ToolOutputFile output(outputFilename, error, sys::fs::OF_Text);
     if (error) {
       errs() << error.message() << '\n';
       return 3;
     }
-    if (failed(AIE::emitRouteDot(*owning, output.os(), options)))
+    LogicalResult emitted =
+        emitJson ? AIE::emitSemanticGraphJson(*owning, output.os(), options)
+                 : AIE::emitRouteDot(*owning, output.os(), options);
+    if (failed(emitted))
       return 4;
     output.keep();
     return 0;
