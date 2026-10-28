@@ -388,6 +388,13 @@ struct DmaCompletionState {
     }
   }
 
+  void noteIdle() {
+    // Completion does not consume tokens; later awaits still see these pushes.
+    for (Push &push : pushes)
+      push.owner = 0;
+    forgottenOwners.clear();
+  }
+
   // A real space poll leaves at most depth-1 queued tasks AND one running.
   // Abstract truncation instead retains every lost owner's uncertainty.
   void bound(unsigned limit, bool spaceGuaranteed) {
@@ -521,6 +528,16 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     llvm::SetVector<mlir::Operation *> unsafeFrees;
     std::map<mlir::Operation *, DmaQueueModel::ChannelState> witnesses;
     bool trackCompletion = warnUnsafeBdReuse;
+    auto warnUnsafeFree = [&](mlir::Operation *op) {
+      if (warnUnsafeBdReuse && unsafeFrees.insert(op)) {
+        auto diag = emitUnsafeBdReuseWarning(
+            op, key[0], key[1], static_cast<AIE::DMAChannelDir>(key[2]),
+            key[3]);
+        if (!trackCompletion)
+          diag.attachNote() << "task ownership analysis budget exhausted; "
+                               "completion is conservatively unproven";
+      }
+    };
     size_t completionWork = 0;
     auto equivalent = [&](const PathState &a, const PathState &b) {
       return a.queue == b.queue &&
@@ -602,21 +619,30 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
             .has_value();
 
     // Earlier passes may already have guarded a start. Credit only polls whose
-    // constant address and depth bit prove space on a channel tracked here.
-    auto pollsChannel = [&](NpuMaskPollOp poll) {
+    // constant address and mask prove space or idleness on a tracked channel.
+    enum class PollEffect { Ignore, Space, Idle };
+    auto pollEffectOf = [&](NpuMaskPollOp poll) {
       auto address = poll.getAbsoluteAddress();
       auto mask = getConstantIntOperand(poll.getMask());
       auto value = getConstantIntOperand(poll.getValue());
-      uint32_t fieldMask = tm.getDmaTaskQueueSizeMask();
-      if (!address || !mask || !value || !fieldMask ||
-          (depth & (depth - 1)) != 0)
-        return false;
-      uint32_t depthBit = depth << llvm::countr_zero(fieldMask);
+      if (!address || !mask || !value)
+        return PollEffect::Ignore;
       auto status = tm.getDmaStatusAddress(
           key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
-      return depthBit && status == address &&
-             (depthBit & fieldMask) == depthBit &&
-             (*mask & depthBit) == depthBit && (*value & depthBit) == 0;
+      if (status != address)
+        return PollEffect::Ignore;
+      uint32_t idleMask = tm.getDmaChannelIdleMask();
+      if (idleMask && (*mask & idleMask) == idleMask &&
+          (*value & idleMask) == 0)
+        return PollEffect::Idle;
+      uint32_t fieldMask = tm.getDmaTaskQueueSizeMask();
+      if (!fieldMask || (depth & (depth - 1)) != 0)
+        return PollEffect::Ignore;
+      uint32_t depthBit = depth << llvm::countr_zero(fieldMask);
+      return depthBit && (depthBit & fieldMask) == depthBit &&
+                     (*mask & depthBit) == depthBit && (*value & depthBit) == 0
+                 ? PollEffect::Space
+                 : PollEffect::Ignore;
     };
 
     // Unknown region semantics (including unstructured CFGs) must not credit
@@ -624,6 +650,8 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     auto unknownRegion = [&](mlir::Region &region, States states) {
       region.walk([&](mlir::Operation *op) {
         QueueEffect e = channelEffectOf(op);
+        if (e.kind == QueueEffect::Kind::Free)
+          warnUnsafeFree(op);
         if (e.kind != QueueEffect::Kind::Push)
           return;
         for (auto &state : states) {
@@ -711,11 +739,15 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
           states = unknownRegion(nested, std::move(states));
 
         if (auto poll = mlir::dyn_cast<NpuMaskPollOp>(&op))
-          if (pollsChannel(poll)) {
+          if (auto effect = pollEffectOf(poll); effect != PollEffect::Ignore) {
             for (auto &state : states) {
               DmaQueueModel::noteSpaceGuaranteed(state.queue, depth);
-              if (trackCompletion)
-                state.completion.bound(depth, /*spaceGuaranteed=*/true);
+              if (trackCompletion) {
+                if (effect == PollEffect::Idle)
+                  state.completion.noteIdle();
+                else
+                  state.completion.bound(depth, /*spaceGuaranteed=*/true);
+              }
             }
             dedupe(states);
           }
@@ -729,15 +761,7 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
               if (!trackCompletion ||
                   !state.completion.isProvenComplete(
                       state.completion.tasks[taskIndices.lookup(e.task)]))
-                if (unsafeFrees.insert(&op)) {
-                  auto diag = emitUnsafeBdReuseWarning(
-                      &op, key[0], key[1],
-                      static_cast<AIE::DMAChannelDir>(key[2]), key[3]);
-                  if (!trackCompletion)
-                    diag.attachNote()
-                        << "task ownership analysis budget exhausted; "
-                           "completion is conservatively unproven";
-                }
+                warnUnsafeFree(&op);
           continue;
         }
         for (auto &state : states) {
