@@ -6,17 +6,14 @@
 //===----------------------------------------------------------------------===//
 
 
-// RUN: not %aiecc %s 2>&1 | FileCheck %s
-// CHECK: error:
-// XFAIL: *
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
+// CHECK: error: 'aie.connect' op illegal shim mux connection
 
 module {
   aie.device(xcvc1902) {
     %30 = aie.tile(3, 0) // Shim-NOC
     aie.shim_mux(%30) {
-      // Can't connect DMA and NOC in same tile.
-      aie.connect<DMA: 0, North: 3>
-      aie.connect<NOC: 1, North: 6>
+      aie.connect<DMA: 0, NOC: 0>
     }
   }
 }

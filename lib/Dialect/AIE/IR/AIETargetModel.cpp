@@ -44,6 +44,41 @@ std::string getModuleForTileEvents(const AIETargetModel &model, TileID tile,
 
 AIETargetModel::~AIETargetModel() = default;
 
+bool AIETargetModel::isLegalShimMuxConnection(int col, int row,
+                                              WireBundle srcBundle, int srcChan,
+                                              WireBundle dstBundle,
+                                              int dstChan) const {
+  auto normalizeStreamSwitchSide = [](WireBundle bundle) {
+    return bundle == WireBundle::North ? WireBundle::South : bundle;
+  };
+  srcBundle = normalizeStreamSwitchSide(srcBundle);
+  dstBundle = normalizeStreamSwitchSide(dstBundle);
+  if (srcChan < 0 || dstChan < 0 ||
+      srcChan >= int(getNumSourceShimMuxConnections(col, row, srcBundle)) ||
+      dstChan >= int(getNumDestShimMuxConnections(col, row, dstBundle)))
+    return false;
+
+  auto isExternal = [](WireBundle bundle) {
+    return llvm::is_contained(
+        {WireBundle::DMA, WireBundle::NOC, WireBundle::PLIO}, bundle);
+  };
+  if (srcBundle == WireBundle::South && isExternal(dstBundle)) {
+    if (dstBundle == WireBundle::DMA)
+      return srcChan == (dstChan == 0 ? 2 : 3);
+    if (dstBundle == WireBundle::PLIO)
+      return srcChan == dstChan;
+    return srcChan == dstChan + 2;
+  }
+  if (isExternal(srcBundle) && dstBundle == WireBundle::South) {
+    if (srcBundle == WireBundle::DMA)
+      return dstChan == (srcChan == 0 ? 3 : 7);
+    if (srcBundle == WireBundle::PLIO)
+      return srcChan == dstChan;
+    return dstChan == (srcChan >= 2 ? srcChan + 4 : srcChan + 2);
+  }
+  return false;
+}
+
 // Base class implementations for register database
 
 std::unique_ptr<RegisterDatabase> AIETargetModel::loadRegisterDatabase() const {

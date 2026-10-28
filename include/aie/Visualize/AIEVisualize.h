@@ -50,6 +50,9 @@ struct VisualizeOptions {
   /// Omit runtime annotations rather than reading a runtime sequence.
   bool skipRuntime = false;
 
+  /// Draw the target model's complete physical switch and DMA resources.
+  bool physical = false;
+
   /// Draw only these grouped flows; empty draws all of them.
   std::vector<unsigned> onlyFlows;
   /// Node kinds to contract out of the graph: tile, port, dma, buffer,
@@ -103,6 +106,11 @@ struct VisualizeOptions {
 mlir::LogicalResult emitRouteDot(mlir::ModuleOp module,
                                  llvm::raw_ostream &output,
                                  const VisualizeOptions &options);
+
+/// Writes a fixed-coordinate physical resource view of the selected device.
+mlir::LogicalResult emitPhysicalRouteDot(mlir::ModuleOp module,
+                                         llvm::raw_ostream &output,
+                                         const VisualizeOptions &options);
 
 /// Writes the selected device's semantic graph as JSON.
 mlir::LogicalResult emitSemanticGraphJson(mlir::ModuleOp module,

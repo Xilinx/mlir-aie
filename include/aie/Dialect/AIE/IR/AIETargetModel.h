@@ -596,6 +596,13 @@ public:
   virtual uint32_t getNumSourceShimMuxConnections(int col, int row,
                                                   WireBundle bundle) const = 0;
 
+  /// Return true if the connection crosses a shim mux between its stream
+  /// switch side and a DMA, NOC, or PLIO port. ShimMux IR calls the stream
+  /// switch side North; target-model port counts call it South.
+  bool isLegalShimMuxConnection(int col, int row, WireBundle srcBundle,
+                                int srcChan, WireBundle dstBundle,
+                                int dstChan) const;
+
   /// Return the number of packet-rule slots per stream-switch slave port.
   virtual uint32_t getNumSlaveSlots() const = 0;
   /// Return the number of arbiters per stream switch.

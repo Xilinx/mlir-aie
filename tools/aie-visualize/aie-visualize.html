@@ -208,10 +208,14 @@ function createSourceViewer(graph, graphError) {
       showStatus(`Could not load ${file}${location}. ${error.message}. Serve the viewer and sources from compatible origins or configure source-root.`);
     }
   };
+  const semanticID = element => [...(element?.classList || [])]
+    .find(name => name.startsWith("semantic-id-"))?.slice("semantic-id-".length) ||
+    element?.id || null;
   const show = element => {
-    if ((element?.id || null) === activeElement) return;
-    activeElement = element?.id || null;
-    activeSources = elements.get(element?.id) || [];
+    const elementID = semanticID(element);
+    if (elementID === activeElement) return;
+    activeElement = elementID;
+    activeSources = elements.get(elementID) || [];
     sourceTabs.replaceChildren();
     if (!activeSources.length) {
       activeFile = null;
@@ -283,7 +287,8 @@ function initializeViewer(svg, graph, graphError) {
   const renderHighlight = () => {
     const reference = selectedElement || hoveredElement;
     const flows = svg.querySelectorAll("g.flow");
-    const active = reference && (highlightIncoming || highlightOutgoing);
+    const active = reference?.classList.contains("flow") &&
+      (highlightIncoming || highlightOutgoing);
     svg.classList.toggle("highlighting", Boolean(active));
     flows.forEach(element => {
       element.classList.toggle("highlighted", Boolean(active && matches(element, reference)));

@@ -34,9 +34,10 @@ precedence. The viewer fetches SVG, JSON, and source files, so the server must
 permit those requests through its same-origin or CORS policy. A `file:` URL may
 block these requests; serve the directory over HTTP when that occurs.
 
-Semantic JSON uses `format: "aie-semantic-graph"` and `version: 2`. Every node
-and edge has an `id` that equals the generated SVG group ID. Its `sources` array
-contains only source file names and sorted line sets:
+Semantic JSON uses `format: "aie-semantic-graph"` and `version: 2`. For a
+topology view, every node and edge has an `id` that equals the generated SVG
+group ID. Its `sources` array contains only source file names and sorted line
+sets:
 
 ```json
 {
@@ -50,3 +51,17 @@ contains only source file names and sorted line sets:
 
 Contraction unions the source line sets from removed nodes and edges into the
 replacement edge.
+
+For a physical view, generate the SVG and JSON from the same input and semantic
+options. Replace `--physical` with `--emit-json` for the JSON command:
+
+```shell
+aie-visualize --physical --split-packet-ports design.mlir > design.dot
+neato -Tsvg design.dot > design.svg
+aie-visualize --emit-json --split-packet-ports design.mlir > design.json
+```
+
+A physical SVG group has a unique alias ID and a `semantic-id-<id>` class. The
+class suffix equals a schema-v2 node or edge ID. Multiple groups may use the
+same semantic ID, including groups at the same coordinates. Consumers must not
+infer the mapping from the SVG shape or coordinates.

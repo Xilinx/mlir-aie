@@ -1,0 +1,12 @@
+//===- physical-source-viewer.test -----------------------------*- ShTest -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// REQUIRES: aie-visualize, playwright
+// RUN: aie-visualize --physical --split-packet-ports --device=npu1_device %S/physical-view.mlir -o %t.dot
+// RUN: neato -Tsvg %t.dot -o %t.svg
+// RUN: aie-visualize --emit-json --split-packet-ports --device=npu1_device %S/physical-view.mlir -o %t.json
+// RUN: %python %S/Inputs/check-physical-source-viewer.py %aie_tools_dir/aie-visualize.html %t.svg %t.json

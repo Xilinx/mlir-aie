@@ -75,3 +75,28 @@ module {
     }
   }
 }
+
+// -----
+
+// Same-shim external routes cross the shim mux twice and the stream switch
+// once.
+
+// CHECK-LABEL: module
+// CHECK:         aie.switchbox(%shim_noc_tile_1_0) {
+// CHECK-DAG:       aie.connect<South : 3, South : 2>
+// CHECK-DAG:       aie.connect<South : 0, South : 3>
+// CHECK:         }
+// CHECK:         aie.shim_mux(%shim_noc_tile_1_0) {
+// CHECK-DAG:       aie.connect<DMA : 0, North : 3>
+// CHECK-DAG:       aie.connect<North : 2, NOC : 0>
+// CHECK-DAG:       aie.connect<PLIO : 0, North : 0>
+// CHECK-DAG:       aie.connect<North : 3, DMA : 1>
+// CHECK:         }
+
+module {
+  aie.device(npu1) {
+    %t10 = aie.tile(1, 0)
+    aie.flow(%t10, DMA : 0, %t10, NOC : 0)
+    aie.flow(%t10, PLIO : 0, %t10, DMA : 1)
+  }
+}

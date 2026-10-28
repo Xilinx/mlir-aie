@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import importlib.util
 import os
 import shutil
 import sys
@@ -55,6 +56,7 @@ llvm_config.with_system_environment(
         "ROCM_PATH",
         "IRON_HSA_DEVICE",
         "IRON_HSA_TIMEOUT",
+        "PLAYWRIGHT_BROWSERS_PATH",
     ]
 )
 
@@ -154,6 +156,7 @@ LitConfigHelper.prepend_path(llvm_config, config.llvm_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, peano_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, config.aie_tools_dir)
 config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
+config.substitutions.append(("%aie_tools_dir", config.aie_tools_dir))
 
 tool_dirs = [config.aie_tools_dir]
 if early_peano_config.found:
@@ -215,6 +218,9 @@ if os.name != "nt":
 if shutil.which("aie-visualize", path=config.aie_tools_dir):
     config.available_features.add("aie-visualize")
     tools.append("aie-visualize")
+
+if importlib.util.find_spec("playwright"):
+    config.available_features.add("playwright")
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 

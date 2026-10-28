@@ -8,7 +8,7 @@
 // The HTML viewer loads generated SVGs and controls details and flow selection.
 
 // REQUIRES: aie-visualize
-// RUN: FileCheck %s < %S/../../build/bin/aie-visualize.html
+// RUN: FileCheck %s < %aie_tools_dir/aie-visualize.html
 // RUN: aie-visualize --emit-dot --contract=port,buffer %S/requires-vias.mlir -o %t.dot
 // RUN: dot -Tsvg %t.dot -o %t-topology.svg
 
@@ -41,6 +41,10 @@
 // CHECK: row.className = `source-line${highlighted.has(number) ? " highlighted" : ""}`
 // CHECK: sourceCode.querySelector(".highlighted")?.scrollIntoView({block: "center"})
 // CHECK: Serve the viewer and sources from compatible origins or configure source-root.
+// CHECK: const semanticID = element => [...(element?.classList || [])]
+// CHECK: .find(name => name.startsWith("semantic-id-"))?.slice("semantic-id-".length) ||
+// CHECK: const elementID = semanticID(element)
+// CHECK: activeSources = elements.get(elementID) || []
 // CHECK: sourceViewer.show(null)
 // CHECK: const incomingClasses = element => classesMatching(element, /^fate-/)
 // CHECK: const outgoingClasses = element => classesMatching(element, /^origin-/)
@@ -56,6 +60,7 @@
 // CHECK: matchesDirection(element, reference, "fate", incomingClasses)) ||
 // CHECK: (highlightOutgoing &&
 // CHECK: matchesDirection(element, reference, "origin", outgoingClasses))
+// CHECK: const active = reference?.classList.contains("flow") &&
 // CHECK: addSetting("Incoming"
 // CHECK: addSetting("Outgoing"
 // CHECK: /^uniform-width-([\d.]+)$/

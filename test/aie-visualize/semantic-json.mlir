@@ -37,7 +37,7 @@
 // DOT: tile_0_2 -> tile_0_3
 // DOT-SAME: id="edge__tile_0_2__tile_0_3"
 
-// FORMAT: --emit-dot and --emit-json are mutually exclusive
+// FORMAT: --emit-dot, --emit-json, and --physical are mutually exclusive
 
 #design_flow = loc("design.py":30:8)
 #design_followup = loc("design.py":32:2)

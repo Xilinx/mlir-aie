@@ -54,6 +54,10 @@ static cl::opt<bool> emitDot("emit-dot",
                              cl::desc("Emit a DOT route visualization"));
 static cl::opt<bool> emitJson("emit-json",
                               cl::desc("Emit the semantic graph as JSON"));
+static cl::opt<bool> physical(
+    "physical",
+    cl::desc(
+        "Draw all target-model switch and DMA resources at fixed positions"));
 static cl::opt<std::string> outputFilename("o", cl::desc("Output filename"),
                                            cl::value_desc("filename"),
                                            cl::init("-"));
@@ -155,8 +159,28 @@ const std::string bgray("\033[48;5;239m");
 int main(int argc, char *argv[]) {
   cl::ParseCommandLineOptions(argc, argv);
 
-  if (emitDot && emitJson) {
-    errs() << "--emit-dot and --emit-json are mutually exclusive\n";
+  if (static_cast<unsigned>(emitDot) + static_cast<unsigned>(emitJson) +
+          static_cast<unsigned>(physical) >
+      1) {
+    errs()
+        << "--emit-dot, --emit-json, and --physical are mutually exclusive\n";
+    return 3;
+  }
+  if (physical && !contractedNodeKinds.empty()) {
+    errs() << "--physical does not support --contract\n";
+    return 3;
+  }
+  if (physical &&
+      (drawingScale.getNumOccurrences() || arrowStyle.getNumOccurrences() ||
+       colorScheme.getNumOccurrences() || weighEdges || tileRoles ||
+       contractBalancedFanout || minEdgeWidth.getNumOccurrences() ||
+       maxEdgeWidth.getNumOccurrences() ||
+       maxHeadlineKernels.getNumOccurrences() ||
+       tileWidth.getNumOccurrences() || minimumTileHeight.getNumOccurrences() ||
+       tileGapX.getNumOccurrences() || tileGapY.getNumOccurrences() ||
+       localSpacing.getNumOccurrences())) {
+    errs()
+        << "--physical does not support topology layout and styling options\n";
     return 3;
   }
 
@@ -208,6 +232,7 @@ int main(int argc, char *argv[]) {
   options.deviceName = deviceName;
   options.runtimeSequenceName = runtimeSequenceName;
   options.skipRuntime = skipRuntime;
+  options.physical = physical;
   options.onlyFlows.assign(onlyFlows.begin(), onlyFlows.end());
   options.contractedNodeKinds.assign(contractedNodeKinds.begin(),
                                      contractedNodeKinds.end());
@@ -226,7 +251,7 @@ int main(int argc, char *argv[]) {
   options.tileGapY = tileGapY;
   options.localSpacing = localSpacing;
 
-  if (emitDot || emitJson) {
+  if (emitDot || emitJson || physical) {
     std::error_code error;
     ToolOutputFile output(outputFilename, error, sys::fs::OF_Text);
     if (error) {
@@ -234,8 +259,9 @@ int main(int argc, char *argv[]) {
       return 3;
     }
     LogicalResult emitted =
-        emitJson ? AIE::emitSemanticGraphJson(*owning, output.os(), options)
-                 : AIE::emitRouteDot(*owning, output.os(), options);
+        emitJson   ? AIE::emitSemanticGraphJson(*owning, output.os(), options)
+        : physical ? AIE::emitPhysicalRouteDot(*owning, output.os(), options)
+                   : AIE::emitRouteDot(*owning, output.os(), options);
     if (failed(emitted))
       return 4;
     output.keep();
