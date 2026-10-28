@@ -300,7 +300,7 @@ RegisterDatabase::encodeFieldValue(const BitFieldInfo &field,
   // Validate value fits in field width
   uint32_t width = field.getWidth();
   if (width == 0)
-    return 0;
+    return std::nullopt;
 
   uint64_t maxValue = width >= 32 ? std::numeric_limits<uint32_t>::max()
                                   : ((1ULL << width) - 1ULL);

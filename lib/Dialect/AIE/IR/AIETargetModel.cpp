@@ -79,7 +79,7 @@ AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
                                  uint32_t value) const {
   const auto *db = getRegisterDatabase();
   if (!db)
-    return 0;
+    return std::nullopt;
   return db->encodeFieldValue(field, value);
 }
 
