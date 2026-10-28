@@ -4289,6 +4289,10 @@ linked into the final xclbin.</p>
 <td>only present when <code>.compile(elf_path=...)</code> is set — <code>xrt::elf</code> variant of <code>insts.bin</code></td>
 </tr>
 <tr>
+<td><code>&lt;name&gt;.cpp</code></td>
+<td>only present when <code>.compile(npu_cpp_path=...)</code> is set — parameterized C++ TXN builder for the design's runtime sequence</td>
+</tr>
+<tr>
 <td><code>main.pdi</code></td>
 <td>Programmable Device Image — config data packed by <code>bootgen</code>; locate via <code>get_pdi_path()</code> or name it with <code>.compile(pdi_path=...)</code></td>
 </tr>
@@ -4376,11 +4380,20 @@ caller is presumed to own dependency tracking, e.g. a Makefile):</p>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">inst_path</span><span class="o">=</span><span class="s2">&quot;out/design.insts.bin&quot;</span><span class="p">,</span>  <span class="c1"># NPU instruction stream</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">pdi_path</span><span class="o">=</span><span class="s2">&quot;out/design.pdi&quot;</span><span class="p">,</span>         <span class="c1"># Programmable Device Image</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">elf_path</span><span class="o">=</span><span class="s2">&quot;out/design.insts.elf&quot;</span><span class="p">,</span>   <span class="c1"># xrt::elf-wrapped insts (optional)</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">npu_cpp_path</span><span class="o">=</span><span class="s2">&quot;out/design.cpp&quot;</span><span class="p">,</span>     <span class="c1"># C++ TXN builder (optional)</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="p">)</span>
 </code></pre></div>
-<p><code>xclbin_path</code> and <code>inst_path</code> must be given together. <code>pdi_path</code> and
-<code>elf_path</code> each additionally require both of those — the cache path doesn't
-track caller-named PDI/ELF artifacts.</p>
+<p><code>xclbin_path</code> and <code>inst_path</code> must be given together unless <code>npu_cpp_path</code>
+replaces <code>inst_path</code>. <code>elf_path</code> requires both paths; <code>pdi_path</code> and
+<code>npu_cpp_path</code> require explicit <code>xclbin_path</code> — the cache path doesn't track
+caller-named PDI/ELF/C++ builder artifacts.
+<code>npu_cpp_path</code> re-expresses the same overlay's runtime sequence as a function
+a native caller can invoke with its own runtime values, without recompiling —
+a "one overlay, many shapes" workflow. Omit <code>inst_path</code> for runtime-valued
+sequences that cannot produce static instructions; the return value is then
+<code>(xclbin_path, None)</code>. It is not available for
+<code>DispatchTime[T]</code> designs, which already build their own C++ builder as the
+dispatch bridge (retrieve it with <code>get_dispatch_lib_path()</code>).</p>
 <p>If you're using the default cache (no explicit paths) but still need the PDI,
 <code>aiecc</code> writes a <code>&lt;device&gt;.pdi</code> (<code>main.pdi</code> for <code>@iron.jit</code> designs) into the
 cache directory on every compile. Locate it without recompiling via
@@ -4518,7 +4531,12 @@ example demonstrates this via its <code>--from-xclbin</code> / <code>--from-inst
 <tr>
 <td><code>.compile(pdi_path=...)</code></td>
 <td>compile call</td>
-<td>write the PDI to a chosen path (stage 4); requires explicit <code>xclbin_path</code> + <code>inst_path</code></td>
+<td>write the PDI to a chosen path (stage 4); requires explicit <code>xclbin_path</code> (and <code>inst_path</code> unless emitting a C++ builder or using <code>DispatchTime[T]</code>)</td>
+</tr>
+<tr>
+<td><code>.compile(npu_cpp_path=...)</code></td>
+<td>compile call</td>
+<td>write the runtime sequence as a C++ TXN builder (stage 4); requires explicit <code>xclbin_path</code>, with optional <code>inst_path</code>; unavailable for <code>DispatchTime[T]</code> designs</td>
 </tr>
 <tr>
 <td><code>$NPU_CACHE_HOME</code> env var</td>
@@ -4560,7 +4578,7 @@ example demonstrates this via its <code>--from-xclbin</code> / <code>--from-inst
 </tr>
 <tr>
 <td>Artifacts at chosen paths</td>
-<td><code>cd.compile(xclbin_path=, inst_path=, pdi_path=, elf_path=)</code></td>
+<td><code>cd.compile(xclbin_path=, inst_path=, pdi_path=, elf_path=, npu_cpp_path=)</code></td>
 </tr>
 <tr>
 <td>Run a pre-built xclbin + insts</td>
