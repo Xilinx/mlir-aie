@@ -50,3 +50,18 @@ module {
     }
   }
 }
+
+// -----
+
+// CHECK: uC DMA chain symbol not found: missing_group_chain
+module {
+  aie.device(xcve3858) {
+    aiex.cert.attach_to_group(1) {
+      aiex.cert.page {
+        aiex.cert.job(1) {
+          aiex.cert.uc_dma_write_des_sync(@missing_group_chain)
+        }
+      }
+    }
+  }
+}

@@ -22,6 +22,7 @@
 #include "llvm/Support/Path.h"
 
 #include <map>
+#include <set>
 #include <vector>
 
 using namespace mlir;
@@ -445,7 +446,7 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
   std::vector<std::string> text;
   std::vector<std::string> data;
   std::vector<std::string> chains;
-  llvm::StringSet<> emittedGlobals;
+  std::map<uint32_t, llvm::StringSet<>> emittedGlobals;
 
   text.emplace_back("\n;\n; Code\n;\n\n");
   data.emplace_back("\n;\n; Data\n;\n\n");
@@ -477,21 +478,35 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
     return block;
   };
 
+  // AIEBU resolves labels within each controller's block. Record every group
+  // that needs a device-level chain; sections emit their own copies.
   llvm::StringSet<> sectionReferences;
-  llvm::StringSet<> otherReferences;
+  std::map<std::string, std::set<uint32_t>> chainUsers;
   deviceOp.walk([&](Operation *op) {
     StringRef name = referencedChain(op);
-    if (!name.empty()) {
-      auto &references = op->getParentOfType<CertSectionOp>()
-                             ? sectionReferences
-                             : otherReferences;
-      references.insert(name);
+    auto patch = dyn_cast<CertApplyOffset57Op>(op);
+    if (name.empty() && !patch)
+      return;
+    if (op->getParentOfType<CertSectionOp>()) {
+      if (!name.empty())
+        sectionReferences.insert(name);
+      return;
     }
-    if (auto patch = dyn_cast<CertApplyOffset57Op>(op))
-      if (!op->getParentOfType<CertSectionOp>() &&
-          failed(
-              emitGlobalData(op, patch.getSymbol(), data[0], emittedGlobals)))
+    auto group = op->getParentOfType<CertAttachToGroupOp>();
+    uint32_t groupId = group ? group.getGroupId() : 0;
+    if (patch) {
+      size_t block = blockFor(groupId);
+      if (failed(emitGlobalData(op, patch.getSymbol(), data[block],
+                                emittedGlobals[groupId])))
         result = failure();
+      return;
+    }
+    if (!deviceOp.lookupSymbol<CertUcDmaChainOp>(name)) {
+      op->emitError("uC DMA chain symbol not found: ") << name;
+      result = failure();
+      return;
+    }
+    chainUsers[name.str()].insert(groupId);
   });
 
   // Sections are hoisted ahead of the executable stream: they are labeled
@@ -518,11 +533,18 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
               emitAttachToGroupOp(grp, text[block], data[block], outputPath)))
         result = failure();
     } else if (auto chain = dyn_cast<CertUcDmaChainOp>(&op)) {
-      if (sectionReferences.contains(chain.getName()) &&
-          !otherReferences.contains(chain.getName()))
+      std::set<uint32_t> users = {0};
+      auto it = chainUsers.find(chain.getName().str());
+      if (it != chainUsers.end())
+        users = it->second;
+      else if (sectionReferences.contains(chain.getName()))
         continue;
-      if (failed(emitUcDmaChain(chain, chains[0], data[0], emittedGlobals)))
-        result = failure();
+      for (uint32_t groupId : users) {
+        size_t block = blockFor(groupId);
+        if (failed(emitUcDmaChain(chain, chains[block], data[block],
+                                  emittedGlobals[groupId])))
+          result = failure();
+      }
     }
   }
 
