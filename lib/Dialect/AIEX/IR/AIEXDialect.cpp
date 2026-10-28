@@ -1037,7 +1037,8 @@ template <typename OpTy>
 static LogicalResult
 verifyBufferWrite(OpTy op, std::optional<uint32_t> wordOffset,
                   uint64_t writeBytes, AIE::NamedOpTableCollection &names) {
-  if (!op.getBuffer())
+  auto bufferAttr = op.getBufferAttr();
+  if (!bufferAttr)
     return success();
   if (!wordOffset)
     return op.emitOpError("address must be constant when buffer is present");
@@ -1046,11 +1047,10 @@ verifyBufferWrite(OpTy op, std::optional<uint32_t> wordOffset,
     return op.emitOpError("must be inside a device when buffer is present");
   // The device's region verifier owns the index and has verified all child
   // invariants before dispatching these graph-dependent checks.
-  auto buffer =
-      names.lookupIn<AIE::BufferOp>(device, op.getBufferAttr().getAttr());
+  auto buffer = names.lookupIn<AIE::BufferOp>(device, bufferAttr.getAttr());
   if (!buffer)
     return op.emitOpError()
-           << "buffer '" << *op.getBuffer() << "' not found in device";
+           << "buffer '" << bufferAttr.getValue() << "' not found in device";
   auto bufferBytes = getStaticMemRefStorageBytes(buffer.getType(),
                                                  DataLayout::closest(buffer));
   if (!bufferBytes)
@@ -1064,7 +1064,7 @@ verifyBufferWrite(OpTy op, std::optional<uint32_t> wordOffset,
     return op.emitOpError("buffer-relative write range overflows 64-bit bytes");
   if (*end > *bufferBytes)
     return op.emitOpError() << "write range [" << offsetBytes << ", " << *end
-                            << ") exceeds buffer @" << *op.getBuffer()
+                            << ") exceeds buffer @" << bufferAttr.getValue()
                             << " size " << *bufferBytes << " bytes";
 
   auto tile = buffer.getTileLike();

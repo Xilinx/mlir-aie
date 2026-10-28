@@ -866,8 +866,9 @@ def AIE_NpuPushQueueOp : AIEX_Op<"npu.push_queue", []> {
 }
 
 // WRITE32
-def AIE_NpuWrite32Op : AIEX_Op<"npu.write32", [
-    DeclareOpInterfaceMethods<NamedOpUserOpInterface>]> {
+def AIE_NpuWrite32Op
+    : AIEX_Op<
+          "npu.write32", [DeclareOpInterfaceMethods<NamedOpUserOpInterface>]> {
   let summary = "write32 operator";
   let hasVerifier = 1;
   let arguments = (ins I32:$address, I32:$value,
@@ -934,8 +935,9 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
   }];
 }
 
-def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", [
-    DeclareOpInterfaceMethods<NamedOpUserOpInterface>]> {
+def AIE_NpuMaskWrite32Op
+    : AIEX_Op<"npu.maskwrite32", [DeclareOpInterfaceMethods<
+                                     NamedOpUserOpInterface>]> {
   let summary = "Write a masked 32-bit value to the AIE array";
   let hasVerifier = 1;
   let arguments = (ins I32:$address, I32:$value, I32:$mask,
@@ -970,8 +972,9 @@ def AIE_NpuMaskWrite32Op : AIEX_Op<"npu.maskwrite32", [
 }
 
 // BLOCKWRITE
-def AIE_NpuBlockWriteOp : AIEX_Op<"npu.blockwrite", [
-    DeclareOpInterfaceMethods<NamedOpUserOpInterface>]> {
+def AIE_NpuBlockWriteOp
+    : AIEX_Op<"npu.blockwrite", [DeclareOpInterfaceMethods<
+                                    NamedOpUserOpInterface>]> {
   let summary = "blockwrite operator";
   let hasVerifier = 1;
   let arguments = (ins UI32Attr:$address, AnyMemRef:$data,
