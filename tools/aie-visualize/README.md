@@ -24,6 +24,10 @@ URL when either contains reserved URL characters:
 &source.design.py=https%3A%2F%2Fexample.test%2Fsrc%2Fdesign.py
 ```
 
+Without an override, the viewer resolves each source file below `source-root`.
+It rejects absolute URLs and paths that escape that directory. Use a
+`source.<file>` override when a source file resides elsewhere.
+
 The equivalent HTML metadata names are `aie-visualize-svg`,
 `aie-visualize-json`, and `aie-visualize-source-root`. Query parameters take
 precedence. The viewer fetches SVG, JSON, and source files, so the server must

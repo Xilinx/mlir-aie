@@ -125,7 +125,11 @@ function sourceURL(file) {
   if (override) return new URL(override, page).href;
   const root = configuredURL("source-root", "aie-visualize-source-root",
     new URL(".", page).href);
-  return new URL(file, root.endsWith("/") ? root : `${root}/`).href;
+  const base = new URL(root.endsWith("/") ? root : `${root}/`);
+  const source = new URL(file, base);
+  if (source.origin !== base.origin || !source.pathname.startsWith(base.pathname))
+    throw new Error(`Source path ${file} escapes the configured source root`);
+  return source.href;
 }
 
 function setTitle(source) {
@@ -149,7 +153,7 @@ function createSourceViewer(graph, graphError) {
   const cache = new Map();
   let activeSources = [];
   let activeFile = null;
-  let activeElement = null;
+  let activeElement;
   let renderToken = 0;
 
   const showStatus = message => {
@@ -157,9 +161,9 @@ function createSourceViewer(graph, graphError) {
     sourceStatus.hidden = false;
     sourceStatus.textContent = message;
   };
-  const loadSource = async file => {
+  const loadSource = async (file, url) => {
     if (!cache.has(file)) {
-      cache.set(file, fetch(sourceURL(file), {cache: "no-store"}).then(response => {
+      cache.set(file, fetch(url, {cache: "no-store"}).then(response => {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
         return response.text();
       }));
@@ -172,8 +176,10 @@ function createSourceViewer(graph, graphError) {
     sourceTabs.querySelectorAll(".source-tab").forEach(tab =>
       tab.classList.toggle("active", tab.dataset.file === file));
     showStatus(`Loading ${file}...`);
+    let url;
     try {
-      const text = await loadSource(file);
+      url = sourceURL(file);
+      const text = await loadSource(file, url);
       if (token !== renderToken) return;
       const source = activeSources.find(entry => entry.file === file);
       const highlighted = new Set(source?.lines || []);
@@ -198,7 +204,8 @@ function createSourceViewer(graph, graphError) {
         sourceCode.querySelector(".highlighted")?.scrollIntoView({block: "center"});
     } catch (error) {
       if (token !== renderToken) return;
-      showStatus(`Could not load ${file} from ${sourceURL(file)}. ${error.message}. Serve the viewer and sources from compatible origins or configure source-root.`);
+      const location = url ? ` from ${url}` : "";
+      showStatus(`Could not load ${file}${location}. ${error.message}. Serve the viewer and sources from compatible origins or configure source-root.`);
     }
   };
   const show = element => {
@@ -437,7 +444,8 @@ function showSVG(text, source, graph = {nodes: [], edges: []}, graphError = "") 
 
 async function loadSVG(url) {
   const svgResponse = await fetch(url, {cache: "no-store"});
-  if (!svgResponse.ok) throw new Error(`Could not load ${url}`);
+  if (!svgResponse.ok)
+    throw new Error(`Could not load ${url}. ${svgResponse.status} ${svgResponse.statusText}`);
   let graph = {nodes: [], edges: []};
   let graphError = "";
   const graphURL = inferredJSONURL(url);
@@ -458,7 +466,12 @@ fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
   if (file) showSVG(await file.text(), file.name);
 });
-loadSVG(inferredSVGURL()).catch(() => fileInput.click());
+loadSVG(inferredSVGURL()).catch(error => {
+  sourceCode.hidden = true;
+  sourceStatus.hidden = false;
+  sourceStatus.textContent = `${error.message}. Serve the viewer and SVG from compatible origins or configure svg.`;
+  fileInput.click();
+});
 </script>
 </body>
 </html>
