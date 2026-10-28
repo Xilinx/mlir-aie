@@ -1,0 +1,8 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Tooling for utils/update_peano_version.py (nightly version comparison).
+# Source for utils/update_peano_tools.lock. After editing this file,
+# regenerate the .lock with:
+#   utils/regenerate_lockfiles.sh
+packaging

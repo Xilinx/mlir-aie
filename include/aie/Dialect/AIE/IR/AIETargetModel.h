@@ -181,11 +181,15 @@ public:
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
 
-  /// Number of aie2ps/aie4 microcontrollers (uC) per column
+  /// Number of microcontrollers (uC) per column
   virtual uint32_t getNumControllersPerColumn() const { return 0; }
 
-  /// Total number of aie2ps/aie4 microcontrollers (uC) in the device.
-  uint32_t getNumControllers() const {
+  /// Total number of microcontrollers (uC) in the device.
+  /// Defaults to columns() * getNumControllersPerColumn();
+  /// architectures with a single device-level uC (e.g. AIE2/AIE2P NPUs)
+  /// override this directly instead, since their controller count doesn't
+  /// scale with column count.
+  virtual uint32_t getNumControllers() const {
     return static_cast<uint32_t>(columns()) * getNumControllersPerColumn();
   }
 
@@ -1180,6 +1184,8 @@ public:
 
   uint32_t getNumMemTileRows() const override { return 1; }
 
+  uint32_t getNumControllers() const override { return 1; }
+
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1_1Col &&
            model->getKind() < TK_AIE2_NPU1_Last;
@@ -1251,6 +1257,8 @@ public:
   bool isSupportedBlockFormat(std::string const &format) const override;
 
   bool isMemTilePadValueSupported() const override { return true; }
+
+  uint32_t getNumControllers() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&

@@ -16,7 +16,7 @@ python3 -m venv ironenv
 source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 python3 -m pip install -r python/requirements.txt
-python3 -m pip install -r python/requirements_dev.txt
+python3 -m pip install --require-hashes -r python/requirements_dev.lock
 
 # This installs the pre-commit hooks defined in .pre-commit-config.yaml
 pre-commit install --hook-type pre-commit --hook-type pre-push
