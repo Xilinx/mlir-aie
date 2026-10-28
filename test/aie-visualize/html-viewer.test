@@ -32,12 +32,16 @@
 // CHECK: function inferredJSONURL(svgURL)
 // CHECK: function sourceURL(file)
 // CHECK: page.searchParams.get(`source.${file}`)
+// CHECK: source.origin !== base.origin || !source.pathname.startsWith(base.pathname)
+// CHECK: Source path ${file} escapes the configured source root
 // CHECK: function createSourceViewer(graph, graphError)
 // CHECK: const elements = new Map([...graph.nodes, ...graph.edges]
+// CHECK: let activeElement;
 // CHECK: const highlighted = new Set(source?.lines || [])
 // CHECK: row.className = `source-line${highlighted.has(number) ? " highlighted" : ""}`
 // CHECK: sourceCode.querySelector(".highlighted")?.scrollIntoView({block: "center"})
 // CHECK: Serve the viewer and sources from compatible origins or configure source-root.
+// CHECK: sourceViewer.show(null)
 // CHECK: const incomingClasses = element => classesMatching(element, /^fate-/)
 // CHECK: const outgoingClasses = element => classesMatching(element, /^origin-/)
 // CHECK: const boundaryClass = element => classMatching(element, /^boundary-/)
@@ -68,7 +72,10 @@
 // CHECK: if (!drag.moved && drag.element) toggleSelection(drag.element)
 // CHECK: listen(viewport, "click"
 // CHECK: fetch(url, {cache: "no-store"})
+// CHECK: Could not load ${url}. ${svgResponse.status} ${svgResponse.statusText}
 // CHECK: graph.format !== "aie-semantic-graph" || graph.version !== 2
 // CHECK: Source attribution unavailable from ${graphURL}.
 // CHECK: Serve the viewer and graph from compatible origins or configure json.
 // CHECK: showSVG(await svgResponse.text(), url, graph, graphError)
+// CHECK: loadSVG(inferredSVGURL()).catch(error => {
+// CHECK: Serve the viewer and SVG from compatible origins or configure svg.
