@@ -3567,13 +3567,15 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
     }
     if (!position)
       continue;
-    output << "  semantic_" << id
+    output << "  physical_alias_" << id
            << " [shape=circle, width=0.13, height=0.13, fixedsize=true, "
               "label=\"\", color=\"#c51b32\", fillcolor=\"#c51b32\", "
               "style=filled, pos=\""
            << physicalCoordinate(position->first) << ','
            << physicalCoordinate(position->second)
-           << "!\", class=\"semantic-node physical-alias\", " << "tooltip=\""
+           << "!\", id=\"physical_alias_" << id
+           << "\", class=\"semantic-node physical-alias semantic-id-" << id
+           << "\", tooltip=\""
            << escapeDotLabel(id) << "\"];\n";
   }
   output << "}\n";

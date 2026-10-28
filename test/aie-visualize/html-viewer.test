@@ -41,6 +41,10 @@
 // CHECK: row.className = `source-line${highlighted.has(number) ? " highlighted" : ""}`
 // CHECK: sourceCode.querySelector(".highlighted")?.scrollIntoView({block: "center"})
 // CHECK: Serve the viewer and sources from compatible origins or configure source-root.
+// CHECK: const semanticID = element => [...(element?.classList || [])]
+// CHECK: .find(name => name.startsWith("semantic-id-"))?.slice("semantic-id-".length) ||
+// CHECK: const elementID = semanticID(element)
+// CHECK: activeSources = elements.get(elementID) || []
 // CHECK: sourceViewer.show(null)
 // CHECK: const incomingClasses = element => classesMatching(element, /^fate-/)
 // CHECK: const outgoingClasses = element => classesMatching(element, /^origin-/)

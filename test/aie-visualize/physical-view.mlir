@@ -8,8 +8,11 @@
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --physical --split-packet-ports --device=npu1_device %s | FileCheck %s --check-prefix=NPU1 --implicit-check-not=physical_port_0_2_5_4_source --implicit-check-not=switchbox_4_0 --implicit-check-not="shim_mux_port_0_0_1_0_source -> shim_mux_port_0_0_8_0_dest"
 // RUN: aie-visualize --physical --device=npu2_device %s | FileCheck %s --check-prefix=NPU2 --implicit-check-not=switchbox_8_0
-// RUN: aie-visualize --physical --device=npu1_device %s -o %t.npu1.dot
+// RUN: aie-visualize --physical --split-packet-ports --device=npu1_device %s -o %t.npu1.dot
 // RUN: %python %S/Inputs/check-physical-resources.py %t.npu1.dot | FileCheck %s --check-prefix=NPU1-COUNTS
+// RUN: neato -Tsvg %t.npu1.dot -o %t.npu1.svg
+// RUN: aie-visualize --emit-json --split-packet-ports --device=npu1_device %s -o %t.npu1.json
+// RUN: %python %S/Inputs/check-physical-source-attribution.py %t.npu1.dot %t.npu1.svg %t.npu1.json p_0_2_0_0_k3=30 p_0_2_0_0_k4=40
 // RUN: aie-visualize --physical --device=npu2_device %s -o %t.npu2.dot
 // RUN: %python %S/Inputs/check-physical-resources.py %t.npu2.dot | FileCheck %s --check-prefix=NPU2-COUNTS
 // RUN: not aie-visualize --physical --contract=port %s 2>&1 | FileCheck %s --check-prefix=CONTRACT
@@ -65,9 +68,9 @@
 // NPU2-DAG: switchbox_7_5 [shape=box
 
 // Semantic aliases occupy their physical port coordinates.
-// NPU1-DAG: semantic_p_0_0_5_3{{.*}} pos="12.240000,-156.960000!"
-// NPU1-DAG: semantic_p_0_2_0_0_k3 {{.*}}pos="-104.400000,1112.400000!"
-// NPU1-DAG: semantic_p_0_2_0_0_k4 {{.*}}pos="-104.400000,1112.400000!"
+// NPU1-DAG: physical_alias_p_0_0_5_3_out_r3{{.*}}pos="12.240000,-156.960000!"{{.*}}id="physical_alias_p_0_0_5_3_out_r3"{{.*}}semantic-id-p_0_0_5_3_out_r3
+// NPU1-DAG: physical_alias_p_0_2_0_0_k3 {{.*}}pos="-104.400000,1112.400000!"{{.*}}id="physical_alias_p_0_2_0_0_k3"{{.*}}semantic-id-p_0_2_0_0_k3
+// NPU1-DAG: physical_alias_p_0_2_0_0_k4 {{.*}}pos="-104.400000,1112.400000!"{{.*}}id="physical_alias_p_0_2_0_0_k4"{{.*}}semantic-id-p_0_2_0_0_k4
 
 // CONTRACT: --physical does not support --contract
 // OUTPUT-MODES: --emit-dot, --emit-json, and --physical are mutually exclusive
@@ -94,12 +97,12 @@ module {
       aie.packet_source<%source, Core : 0>
       aie.packet_dest<%dest, Core : 0>
     } via (%source : Core : 0 -> North : 0,
-           %dest : South : 0 -> Core : 0)
+           %dest : South : 0 -> Core : 0) loc("design.py":30:8)
     aie.packet_flow(4, mask = 31) {
       aie.packet_source<%source, Core : 0>
       aie.packet_dest<%dest, Core : 0>
     } via (%source : Core : 0 -> North : 0,
-           %dest : South : 0 -> Core : 0)
+           %dest : South : 0 -> Core : 0) loc("design.py":40:8)
     aie.packet_flow(5, mask = 31) {
       aie.packet_source<%source, Core : 0>
       aie.packet_dest<%mem, DMA : 0>

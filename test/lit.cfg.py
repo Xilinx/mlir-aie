@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import importlib.util
 import os
 import shutil
 import sys
@@ -215,6 +216,9 @@ if os.name != "nt":
 if shutil.which("aie-visualize", path=config.aie_tools_dir):
     config.available_features.add("aie-visualize")
     tools.append("aie-visualize")
+
+if importlib.util.find_spec("playwright"):
+    config.available_features.add("playwright")
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
