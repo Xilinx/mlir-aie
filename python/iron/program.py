@@ -197,7 +197,7 @@ class Program:
                 written into the tail of the last output buffer, saving a host
                 buffer. Defaults to False.
             coretile_events (list | None, optional): List of up to 8 core tile trace events.
-                See [the AIEX dialect reference](../../docs/AIEXDialect.md) for available
+                See [the AIEX dialect reference](../AIEXDialect.md) for available
                 events under (type)EventAIE such as CoreEventAIE.
                 Defaults to None (uses hardware defaults).
             coremem_events (list | None, optional): List of up to 8 core memory trace events.

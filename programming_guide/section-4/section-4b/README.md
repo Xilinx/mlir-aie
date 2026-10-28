@@ -171,7 +171,7 @@ With the default (dedicated) mode, we can leave the parameters for `enable_trace
 
 Once the design is configured to a XRT buffer object, we turn our attention to the host code to read the DDR data and write it to a file.
 
-> **NOTE** In our example design, we provide a [Makefile](./Makefile) target `run` for standard build and `trace_cpp` / `trace_py` for trace-enabled build. The trace-enabled build passes the trace buffer size as an argument which is used under the hood to conditionally enable tracing as long as `trace_size` is > 0. This is also true for the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul).
+> **NOTE** In our example design, we provide a [Makefile](./Makefile) target `run` for standard build and `trace_cpp` / `trace_py` for trace-enabled build. The trace-enabled build passes the trace buffer size as an argument which is used under the hood to conditionally enable tracing as long as `trace_size` is > 0. The [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul) uses `trace` for the C++ host and `trace_py` for the Python host.
 
 ### <u>(2a) C/C++ Host code ([test.cpp](./test.cpp), [../../../runtime_lib/test_lib/xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h))</u>
 The main changes needed for the host code is declare a buffer object for trace data and pass that buffer object to the XRT kernel function call. This looks like the following snippets of code:
