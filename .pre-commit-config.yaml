@@ -130,7 +130,7 @@ repos:
       language: script
       entry: utils/regenerate_lockfiles.sh
       pass_filenames: false
-      files: ^(python/requirements_dev\.txt|utils/mlir_(aie_)?wheels/(requirements|ci-tools)\.(in|txt))$
+      files: ^(python/requirements_(dev|notebook)\.txt|utils/mlir_(aie_)?wheels/(requirements|ci-tools)\.(in|txt)|utils/update_peano_tools\.txt|docs/requirements-mkdocs\.txt|programming_examples/ml/yolo26n/requirements\.txt)$
 
     # REUSE compliance: every file must have a license/copyright notice (either
     # inline or declared in REUSE.toml). Scoped to the files being pushed via

@@ -9,10 +9,22 @@
 # "source" file via `uv pip compile`. Pairs:
 #
 #   python/requirements_dev.txt              -> python/requirements_dev.lock
+#   python/requirements_notebook.txt         -> python/requirements_notebook.lock
 #   utils/mlir_aie_wheels/requirements.txt   -> utils/mlir_aie_wheels/requirements.lock
 #   utils/mlir_aie_wheels/ci-tools.in        -> utils/mlir_aie_wheels/ci-tools.lock
 #   utils/mlir_wheels/requirements.in        -> utils/mlir_wheels/requirements.lock
 #   utils/mlir_wheels/ci-tools.in            -> utils/mlir_wheels/ci-tools.lock
+#   utils/update_peano_tools.txt             -> utils/update_peano_tools.lock
+#   docs/requirements-mkdocs.txt             -> docs/requirements-mkdocs.lock
+#   programming_examples/ml/yolo26n/requirements.txt -> .../requirements.lock
+#
+# python/requirements_ml.txt and utils/peano-requirements.txt are NOT in this
+# list: both resolve through a second index (--extra-index-url / -f), and uv
+# 0.11.17 generates an incomplete or wrong-platform hash for at least one
+# transitive package when it does (reproduced against markupsafe and against
+# llvm-aie's own multi-platform release assets -- repros kept out of tree).
+# Re-add them once that's fixed upstream; until then those two installs stay
+# version-pinned but not hash-pinned.
 #
 # uv version is pinned so the resolution (and the generated header comment)
 # stays deterministic across machines and CI.
@@ -70,7 +82,15 @@ compile() {
   echo "regenerating $lock_rel"
   (
     cd "$REPO_ROOT/$src_dir"
+    # unsafe-best-match: the default first-index strategy can stop at the first
+    # index that lists a transitive package and silently emit a hash from the
+    # wrong platform/version for it when a source carries --extra-index-url or
+    # -f (confirmed against python/requirements_ml.txt: default strategy wrote
+    # a single macOS-arm64 hash for a Linux-resolved markupsafe). --emit-*
+    # keeps the source's index/find-links directives in the lock itself, so
+    # installing the lock later needs no extra flags.
     "$UV" pip compile --universal --generate-hashes --python-version=3.11 \
+      --index-strategy unsafe-best-match --emit-index-url --emit-find-links \
       "$src_name" -o "$lock_name" --quiet
   )
 }
@@ -100,9 +120,13 @@ with open(sys.argv[1], "rb") as f:
 generate_requirements_in
 
 compile python/requirements_dev.txt              python/requirements_dev.lock
+compile python/requirements_notebook.txt         python/requirements_notebook.lock
 compile utils/mlir_aie_wheels/requirements.txt   utils/mlir_aie_wheels/requirements.lock
 compile utils/mlir_aie_wheels/ci-tools.in        utils/mlir_aie_wheels/ci-tools.lock
 compile utils/mlir_wheels/requirements.in        utils/mlir_wheels/requirements.lock
 compile utils/mlir_wheels/ci-tools.in            utils/mlir_wheels/ci-tools.lock
+compile utils/update_peano_tools.txt             utils/update_peano_tools.lock
+compile docs/requirements-mkdocs.txt             docs/requirements-mkdocs.lock
+compile programming_examples/ml/yolo26n/requirements.txt programming_examples/ml/yolo26n/requirements.lock
 
 echo "done"
