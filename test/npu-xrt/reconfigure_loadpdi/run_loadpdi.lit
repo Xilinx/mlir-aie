@@ -10,6 +10,8 @@
 //
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: cd %t.d
-// RUN: %aiecc -v --get-full-elf %S/aie.mlir
+// RUN: %aiecc -v --get-full-elf --get-npu-cpp --get=npu_insts_full_elf_{0}.bin %S/aie.mlir
+// RUN: %host_clang -std=c++17 -I%S/../../../include -DGEN_HDR='"npu_main_sequence.cpp"' -I. -DGEN_FN=generate_txn_main_sequence %S/../../aiecc/Inputs/npu_cpp_dump.cpp %host_link_flags -o cpp_builder
+// RUN: ./cpp_builder cpp_insts.bin && cmp cpp_insts.bin npu_insts_full_elf_main_sequence.bin
 // RUN: %host_clang -o test %S/test.cpp -std=c++17 %host_link_flags %xrt_flags
 // RUN: %run_on_npu2% ./test

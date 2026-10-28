@@ -537,16 +537,20 @@ struct AIEInsertTraceFlowsPass
               findNearestSpareColumn(shimCol, activeColumns, targetModel);
           if (spare >= 0) {
             shimInfo.shimTile = getOrCreateShim(device, builder, spare);
-            // Reset channel to default since spare shim is clean
-            shimInfo.channel = clShimChannel;
+            // A spare has no core but can still carry one flow; it is not
+            // full, so its other channel is free.
+            shimInfo.channel = usedChannels[spare].count(clShimChannel)
+                                   ? 1 - clShimChannel
+                                   : clShimChannel;
             continue;
           }
         }
         // No lateral available -- emit error
         device.emitError()
             << "no S2MM channels available on shim tile at column " << shimCol
-            << " (both channels in use by existing flows); enable "
-               "lateral-routing to redirect to a spare column";
+            << " (both channels in use by existing flows or objectFifos); "
+               "set egress_shim_col to a column with a free channel, or "
+               "enable lateral-routing to redirect to a spare column";
         return signalPassFailure();
       }
 
@@ -782,13 +786,17 @@ struct AIEInsertTraceFlowsPass
       if (!resetField)
         llvm::report_fatal_error(
             "Failed to lookup Reset_Event field in Timer_Control");
-      uint32_t timerCtrlValue =
+      auto timerCtrlValue =
           targetModel.encodeFieldValue(*resetField, *broadcastEvent);
+      if (!timerCtrlValue)
+        llvm::report_fatal_error("Broadcast event does not fit in "
+                                 "Timer_Control's Reset_Event field");
 
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(),
           AIEX::createConstantI32(builder, runtimeSeq.getLoc(), timerCtrlAddr),
-          AIEX::createConstantI32(builder, runtimeSeq.getLoc(), timerCtrlValue),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                  *timerCtrlValue),
           nullptr, builder.getI32IntegerAttr(col),
           builder.getI32IntegerAttr(row));
     }
@@ -860,8 +868,11 @@ struct AIEInsertTraceFlowsPass
         if (!ctrlIdField)
           llvm::report_fatal_error("Failed to lookup Controller_ID field in " +
                                    llvm::Twine(ctrlRegName));
-        uint32_t ctrlIdValue =
+        auto ctrlIdValue =
             targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.getPktId());
+        if (!ctrlIdValue)
+          llvm::report_fatal_error("Controller ID does not fit in the "
+                                   "Controller_ID field");
         auto ctrlIdMask = targetModel.getFieldMask(*ctrlIdField);
         if (!ctrlIdMask)
           llvm::report_fatal_error(
@@ -869,7 +880,7 @@ struct AIEInsertTraceFlowsPass
         xilinx::AIEX::NpuMaskWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(), ctrlAddr),
-            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), ctrlIdValue),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *ctrlIdValue),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *ctrlIdMask),
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
@@ -889,9 +900,18 @@ struct AIEInsertTraceFlowsPass
         if (!tokenField || !bdIdField)
           llvm::report_fatal_error(
               "Failed to lookup Enable_Token_Issue or Start_BD_ID fields");
-        uint32_t queueValue =
-            targetModel.encodeFieldValue(*tokenField, 1) |
+        auto tokenValue = targetModel.encodeFieldValue(*tokenField, 1);
+        auto bdIdValue =
             targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);
+        if (!tokenValue)
+          llvm::report_fatal_error("Enable_Token_Issue does not fit in the "
+                                   "field of " +
+                                   llvm::Twine(taskQueueRegName));
+        if (!bdIdValue)
+          llvm::report_fatal_error("BD ID does not fit in the Start_BD_ID "
+                                   "field of " +
+                                   llvm::Twine(taskQueueRegName));
+        uint32_t queueValue = *tokenValue | *bdIdValue;
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
@@ -920,14 +940,17 @@ struct AIEInsertTraceFlowsPass
         if (!shimResetField)
           llvm::report_fatal_error(
               "Failed to lookup Reset_Event in shim Timer_Control");
-        uint32_t shimTimerCtrlValue =
+        auto shimTimerCtrlValue =
             targetModel.encodeFieldValue(*shimResetField, *userEvent1);
+        if (!shimTimerCtrlValue)
+          llvm::report_fatal_error("USER_EVENT_1 does not fit in shim "
+                                   "Timer_Control's Reset_Event field");
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
                                     shimTimerCtrlAddr),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
-                                    shimTimerCtrlValue),
+                                    *shimTimerCtrlValue),
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
 
@@ -1103,8 +1126,8 @@ private:
   }
 
   /// Scan the device for existing S2MM channel claims on shim tiles.
-  /// Checks aie.flow destinations, aie.packet_flow destinations, and
-  /// ShimDMAAllocationOp declarations.
+  /// Checks aie.flow destinations, aie.packet_flow destinations,
+  /// ShimDMAAllocationOp declarations, and objectFifos that end at a shim.
   std::map<int, std::set<int>> scanUsedS2MMChannels(DeviceOp device) {
     std::map<int, std::set<int>> used; // shimCol -> set of used S2MM channels
 
@@ -1132,6 +1155,33 @@ private:
         used[tile.getCol()].insert(alloc.getChannelIndex());
       }
     });
+
+    // This pass runs before objectFifo lowering, so an objectFifo that ends
+    // at a shim has no flow yet. Claim what its lowering will: every
+    // cons_dma_channels pin first, then the lowest free S2MM channel for
+    // each unpinned consumer.
+    SmallVector<TileOp> unpinned;
+    device.walk([&](ObjectFifoCreateOp fifo) {
+      if (fifo.getPlio())
+        return;
+      auto pins = fifo.getConsDmaChannels();
+      for (auto [i, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
+        auto tile = dyn_cast_or_null<TileOp>(consumer.getDefiningOp());
+        if (!tile || !tile.isShimTile())
+          continue;
+        if (pins && i < pins->size() && (*pins)[i] >= 0)
+          used[tile.getCol()].insert((*pins)[i]);
+        else
+          unpinned.push_back(tile);
+      }
+    });
+    for (TileOp tile : unpinned) {
+      auto &channels = used[tile.getCol()];
+      int ch = 0;
+      while (channels.count(ch))
+        ++ch;
+      channels.insert(ch);
+    }
 
     return used;
   }

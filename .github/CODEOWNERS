@@ -25,6 +25,8 @@ runtime_lib/**                 @andrej @hunhoffe @jgmelber @stephenneuendorffer
 # Python frontend / bindings
 python/**                      @abisca @andrej @hunhoffe @jgmelber
 python/utils/hostruntime/hsaruntime/** @ypapadop-amd
+python/compiler/hsaco/**       @ypapadop-amd
+python/compiler/aie-hsaco*.py  @ypapadop-amd
 
 # Kernels
 aie_kernels/**                 @andrej @hunhoffe @jackl-xilinx @jgmelber
@@ -42,3 +44,4 @@ test/**                        @fifield @hunhoffe @jackl-xilinx @jgmelber @steph
 test/**/AIEVec*/**             @jsetoain
 test/unit_tests/aievec_tests/  @jsetoain
 test/python/test_hsa_*.py      @ypapadop-amd
+test/python/test_hsaco_*.py    @ypapadop-amd

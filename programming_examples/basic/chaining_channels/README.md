@@ -15,7 +15,7 @@ This [design](./chaining_channels.py) showcases advanced DMA programming techniq
 
 1. **MemTile Buffer Initialization**: A 1kB buffer in MemTile (row 1) is initialized with values 1-256 using the `initial_value` parameter.
 
-2. **Explicit DMA Control**: The MemTile DMA is controlled via explicit locks rather than automatic ObjectFifo management. The DMA waits for a lock release triggered by `npu_write32` in the runtime sequence.
+2. **Explicit DMA Control**: The MemTile DMA is controlled via explicit locks rather than automatic ObjectFifo management. The DMA waits for a lock release triggered by `memtile_lock.set(1)` in the runtime sequence.
 
 3. **Low-Level Runtime Sequence**: Uses explicit DMA buffer descriptor operations:
    - `npu_writebd` - Configure buffer descriptors with lock parameters
@@ -33,7 +33,7 @@ This [design](./chaining_channels.py) showcases advanced DMA programming techniq
 
 The design uses:
 - **ShimTile** (row 0) - Interfaces with external DDR memory
-- **MemTile** (row 1) - Stores initialized data, controlled by lock at address 0xC0000
+- **MemTile** (row 1) - Stores initialized data, controlled by `memtile_lock`
 - **ComputeTile** (row 2) - Receives data and toggles locks in an infinite loop
 - **Explicit Flows** - Connect MemTile→ShimTile and ShimTile→ComputeTile DMAs
 

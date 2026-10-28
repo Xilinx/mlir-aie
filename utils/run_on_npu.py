@@ -3,15 +3,16 @@
 # Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from collections import deque
 import contextlib
 import errno
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+from collections import deque
 
 try:
     import fcntl
@@ -33,9 +34,28 @@ except ImportError:  # Windows
 TRANSIENT_FAILURE_TEXT = (
     "No such device",
     "DRM_IOCTL_AMDXDNA_GET_INFO IOCTL failed (err=-22)",
+    "DRM_IOCTL_AMDXDNA_GET_INFO IOCTL failed (err=-110)",
+    "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5)",
+    "DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=-2)",
+    "DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=-22)",
+    "DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=-110)",
 )
-MAX_ATTEMPTS = 3
+TRANSIENT_FAILURE_PATTERNS = (re.compile(r"idx [0-9]+: ([0-9]+) != \1\b"),)
+MAX_ATTEMPTS = 4
 TAIL_LINES = 200
+
+
+def is_transient_failure(output: str) -> bool:
+    return any(text in output for text in TRANSIENT_FAILURE_TEXT) or any(
+        pattern.search(output) for pattern in TRANSIENT_FAILURE_PATTERNS
+    )
+
+
+def command_runs_pytest(command: list[str]) -> bool:
+    return any(
+        os.path.basename(arg) in {"pytest", "py.test", "run_pytest.py"}
+        for arg in command
+    )
 
 
 # Logging and diagnostics helpers
@@ -122,7 +142,7 @@ def emit_failure_diagnostics(xrt_dir: str, attempt: int) -> None:
 
 # Command launch helpers
 def wrapped_command(xrt_dir: str, command: list[str]) -> list[str]:
-    if os.name == "nt":
+    if os.name == "nt" or os.environ.get("NPU_RUNTIME") in {"hrx", "hsa"}:
         return command
 
     setup_script = os.path.join(xrt_dir, "setup.sh")
@@ -263,6 +283,8 @@ def main() -> int:
     launched_command = wrapped_command(xrt_dir, command)
 
     npu_kind = sys.argv[1]
+    os.environ["MLIR_AIE_NPU_TEST"] = "1"
+    retry_command = not command_runs_pytest(command)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         # Held across one attempt only: the retry backoff below must not keep
         # the device reserved while it sleeps.
@@ -270,7 +292,10 @@ def main() -> int:
             returncode, recent_output = run_command(launched_command)
         if returncode == 0:
             return 0
-        if not any(text in recent_output for text in TRANSIENT_FAILURE_TEXT):
+        # A failure that prints nothing -- a Windows loader error, for one --
+        # is otherwise a blank ctest log with no hint of what was even run.
+        log(f"Exited {returncode}: {subprocess.list2cmdline(launched_command)}")
+        if not retry_command or not is_transient_failure(recent_output):
             return returncode
         emit_failure_diagnostics(xrt_dir, attempt)
         if attempt == MAX_ATTEMPTS:

@@ -36,6 +36,10 @@ and paper cycle-counts are unreliable for this; a measured ablation isn't.
 A kernel contributing 4ms is not worth the same optimization effort as one
 contributing 99ms, even if the 4ms one looks the messier of the two.
 
+For the per-kernel form of the same idea (a cheap wrong op in place of one
+stage of a kernel), and for reading a kernel's trace interval counts, see
+[`aie-kernel-opt`](../aie-kernel-opt/SKILL.md) §Reading hardware rows.
+
 ## 2. If the model spans multiple dispatches, treat the boundary as the top-level placement decision
 
 A model too large to fit one dispatch (see `aie-model-baseline`) was

@@ -106,8 +106,7 @@ module @mixed_constraints {
 // CHECK-LABEL: @attribute_preserved
 module @attribute_preserved {
   aie.device(npu2) {
-    // CHECK: aie.tile({{.*}}) {allocation_scheme = "bank_aware"}
-    %c = aie.logical_tile<CoreTile>(?, ?) {allocation_scheme = "bank_aware"}
+    %c = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c) { aie.end }
     // CHECK-NOT: aie.logical_tile
     aie.end

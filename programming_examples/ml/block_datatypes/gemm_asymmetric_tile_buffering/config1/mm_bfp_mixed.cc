@@ -46,16 +46,8 @@ static_assert(m * rho == 512 && k == 64 && n == 128 && rho == 4);
 
 extern "C" {
 
-// MATMUL_ONLY / ZERO_ONLY gates — distinct ExternalFunction .o builds of
-// this TU emit exactly one symbol. Without any macro, both are emitted.
-#if !defined(MATMUL_ONLY) && !defined(ZERO_ONLY)
-#define MATMUL_ONLY
-#define ZERO_ONLY
-#endif
-
 static int g_counter = 0;
 
-#ifdef MATMUL_ONLY
 void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA_in,
                                            bfp16ebs8 *__restrict pB_in,
                                            bfloat16 *__restrict pC_curtile) {
@@ -166,16 +158,4 @@ void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA_in,
 
   event1();
 }
-#endif
-
-#ifdef ZERO_ONLY
-void zero_kernel_bf16(bfloat16 *__restrict cOut) {
-  constexpr int vec = 64; // bf16 elements per store (2x 512-bit)
-  const aie::vector<bfloat16, vec> zeros = aie::zeros<bfloat16, vec>();
-  bfloat16 __aie_dm_resource_c *__restrict p =
-      (bfloat16 __aie_dm_resource_c *)cOut;
-  for (int i = 0; i < m * n / vec; i++)
-    aie::store_v(p + i * vec, zeros);
-}
-#endif
 }

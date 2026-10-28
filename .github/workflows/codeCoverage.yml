@@ -24,7 +24,7 @@ jobs:
 
     name: C/C++ test code coverage
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
 
@@ -35,7 +35,7 @@ jobs:
           android: true
           dotnet: true
           haskell: true
-          large-packages: true
+          large-packages: false # The package list includes powershell, unavailable on Ubuntu 26.04.
           swap-storage: false
 
       - name: Get the project repository
@@ -130,7 +130,7 @@ jobs:
       # is an artifact instead of the PR comment lintAndFormat's PR-triggered
       # jobs post.
       - name: Upload coverage report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           path: build_release/report
           name: coverage-report

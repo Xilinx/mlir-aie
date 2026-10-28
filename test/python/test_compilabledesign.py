@@ -11,24 +11,41 @@ Tests that exercise compile() or end-to-end kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
+import builtins
+import importlib
 import json
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from types import CodeType
 
+import numpy as np
 import pytest
-
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
+from aie.iron import DeviceConfiguration, Program, Runtime, kernels
+from aie.iron.algorithms import _pipeline
+from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.jit import jit
+from aie.utils.compile.jit import _hash as _hash_mod
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+from aie.utils.compile.jit._hash import _compute_recipe_hash
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
-from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
+from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 from aie.utils.hostruntime import set_current_device
+
+
+@pytest.fixture(autouse=True)
+def bound_device():
+    """Bind a device for each test, so none opens the NPU to find one."""
+    with set_current_device(NPU2Col1()):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # Shared generator factories
@@ -62,6 +79,49 @@ def _inout_gen():
         pass
 
     return f
+
+
+def _dispatch_gen():
+    def f(a: In, c: Out, *, scale: DispatchTime[np.int32], N: CompileTime[int]):
+        pass
+
+    return f
+
+
+def _variadic_gen():
+    def stream(out: Out, *tensors: In, N: CompileTime[int]):
+        pass
+
+    return stream
+
+
+def _in_process(script, **env):
+    """Run `script` in a new interpreter and return the JSON it prints last.
+
+    The toolchain is configured through the environment, so a test of how
+    it is found starts a process with that environment rather than editing
+    this one. `env` is applied on top of this process's; None unsets a name.
+    The script can import this file's generator factories.
+    """
+    environment = dict(os.environ)
+    for name, value in env.items():
+        if value is None:
+            environment.pop(name, None)
+        else:
+            environment[name] = value
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import json, sys\nsys.path.insert(0, {str(Path(__file__).parent)!r})\n"
+            + textwrap.dedent(script),
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout.splitlines()[-1])
 
 
 # ---------------------------------------------------------------------------
@@ -116,11 +176,87 @@ def test_inout_classified_as_tensor():
     assert d.tensor_params == ["x"]
 
 
+def test_dispatch_params_classified():
+    d = CompilableDesign(_dispatch_gen())
+    assert d.dispatch_params == ["scale"]
+    # DispatchTime[T] params must not also land in scalar_params or compile_params.
+    assert d.scalar_params == []
+    assert d.compile_params == ["N"]
+
+
+def test_variadic_tensor_list_takes_the_remaining_positionals():
+    """``*tensors: In`` is one tensor parameter for every positional the named ones leave."""
+    d = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 4})
+    assert d.tensor_params == ["out", "tensors"]
+    assert d.variadic_tensor_param == "tensors"
+    kernel = Kernel("k", "k.o")
+    assert d.split_runtime_args(("o", "a", kernel, "b"), {}) == (["o", "a", "b"], {})
+    assert d.split_runtime_args(("o",), {}) == (["o"], {})
+    assert [d._tensor_arg_name(i) for i in range(3)] == [
+        "out",
+        "tensors[0]",
+        "tensors[1]",
+    ]
+    d.expected_tensor_sizes = [32, 32, 32]
+    ok, bad = np.zeros(1, np.int32), np.zeros(2, np.int32)
+    d.validate_tensor_args([ok, ok, ok])
+    with pytest.raises(RuntimeError, match=r"'tensors\[1\]' covers 8 bytes"):
+        d.validate_tensor_args([ok, ok, bad])
+    assert CompilableDesign(_gemm_gen()).variadic_tensor_param is None
+
+    def scalars(a: In, *args, N: CompileTime[int]):
+        pass
+
+    with pytest.raises(TypeError, match=r"\*args must be annotated In, Out or InOut"):
+        CompilableDesign(scalars, compile_kwargs={"N": 4})
+
+
 def test_path_generator_has_empty_param_lists():
     d = CompilableDesign(Path("/nonexistent/design.mlir"))
     assert d.compile_params == []
     assert d.tensor_params == []
+    assert d.dispatch_params == []
     assert d.scalar_params == []
+
+
+@pytest.mark.parametrize("actual_count", [0, 1, 2, 3, 4])
+@pytest.mark.parametrize("implicit_count", [0, 1, 2])
+@pytest.mark.parametrize("cache_hit", [False, True])
+def test_runtime_tensor_count_matches_compiled_signature(
+    tmp_path, actual_count, implicit_count, cache_hit
+):
+    signature = ["%out: memref<4xi32>", "%a: memref<4xi32>", "%b: memref<4xi32>"]
+    signature += ["%scale: i32"]
+    signature += [f"%trace{i}: memref<1024xi8>" for i in range(implicit_count)]
+    (tmp_path / "input_with_addresses.mlir").write_text(
+        "module { aie.device(npu1) { aie.runtime_sequence("
+        + ", ".join(signature)
+        + ") { } } }"
+    )
+    sizes = parse_dma_sizes(tmp_path)
+    assert sizes == [128] * 3 + [8192] * implicit_count
+    design = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 4})
+    if not cache_hit:
+        design.expected_tensor_sizes = sizes
+    tensors = [np.zeros(4, np.int32) for _ in range(actual_count)]
+    kwargs = dict(num_host_bos=len(sizes), implicit_tensor_count=implicit_count)
+    if actual_count == 3:
+        design.validate_tensor_args(tensors, **kwargs)
+    else:
+        with pytest.raises(
+            RuntimeError, match=f"expects 3 tensor argument.*received {actual_count}"
+        ):
+            design.validate_tensor_args(tensors, **kwargs)
+
+
+def test_runtime_tensor_count_distinguishes_empty_and_unavailable_signature():
+    design = CompilableDesign(_variadic_gen(), compile_kwargs={"N": 0})
+    tensor = np.zeros(1, np.int32)
+    design.validate_tensor_args([tensor])
+    design.expected_tensor_sizes = []
+    design.validate_tensor_args([])
+    with pytest.raises(RuntimeError, match="expects 0 tensor argument"):
+        design.validate_tensor_args([tensor])
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +344,124 @@ def test_hash_is_stable_across_two_constructions():
     assert hash(d1) == hash(d2)
 
 
+_SCALE_HELPER = """
+DEPTH = 2
+
+
+def depth():
+    return DEPTH
+"""
+
+_SCALE_DESIGN = """
+import numpy as np
+
+import scale_flags
+from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron.device import NPU2Col1
+from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import CompileTime, In, Out
+from scale_helper import depth
+
+SOURCE = "void scale(int *a, int *b) {}"
+
+
+def scale(a: In, b: Out, *, N: CompileTime[int]):
+    ty = np.ndarray[(N,), np.dtype[np.int32]]
+    kernel = ExternalFunction(
+        "scale",
+        object_file_name="scale.o",
+        source_string=SOURCE,
+        arg_types=[ty, ty],
+        compile_flags=scale_flags.FLAGS,
+    )
+    of_in = ObjectFifo(ty, depth=depth())
+    of_out = ObjectFifo(ty)
+
+    def core_fn(of_in, of_out, kernel):
+        elem_in = of_in.acquire(1)
+        elem_out = of_out.acquire(1)
+        kernel(elem_in, elem_out)
+        of_in.release(1)
+        of_out.release(1)
+
+    worker = Worker(core_fn, [of_in.cons(), of_out.prod(), kernel])
+
+    def sequence(a, b, a_in, b_out):
+        a_in.fill(a)
+        b_out.drain(b, wait=True)
+
+    rt = Runtime(sequence, [ty, ty, of_in.prod(), of_out.cons()])
+    return Program(NPU2Col1(), rt, workers=[worker]).resolve_program()
+"""
+
+_SCALE_FILES = {
+    "scale_design": _SCALE_DESIGN,
+    "scale_helper": _SCALE_HELPER,
+    "scale_flags": "FLAGS = []\n",
+}
+
+
+@pytest.fixture
+def scale_design(tmp_path):
+    """A design whose generator, helper and kernel flags live in their own module files."""
+    for name, text in _SCALE_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+    try:
+        yield tmp_path, importlib.import_module("scale_design").scale
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _SCALE_FILES:
+            sys.modules.pop(name, None)
+
+
+@pytest.mark.parametrize(
+    "module, old, new",
+    [
+        ("scale_helper", "DEPTH = 2", "DEPTH = 4  # deeper"),
+        ("scale_flags", "FLAGS = []", 'FLAGS = ["-O1"]'),
+        (
+            "scale_design",
+            "void scale(int *a, int *b) {}",
+            "void scale(int *a, int *b) { *b = *a; }",
+        ),
+    ],
+)
+def test_cache_key_covers_the_sources_the_generator_reaches(
+    scale_design, module, old, new
+):
+    """An edit to a module the generator reaches moves the key once it is imported."""
+    tmp_path, gen = scale_design
+
+    def key():
+        return CompilableDesign(gen, compile_kwargs={"N": 64})._compute_cache_hash()
+
+    path = tmp_path / f"{module}.py"
+    before = key()
+    path.write_text(path.read_text().replace(old, new))
+    assert key() == before, "the key follows the code that runs, not the disk"
+    importlib.reload(sys.modules[module])
+    assert key() != before
+
+
+def test_cache_key_does_not_generate_the_design():
+    def scale(a: In, *, N: CompileTime[int]):
+        raise AssertionError("the key generated the design")
+
+    CompilableDesign(scale, compile_kwargs={"N": 64})._compute_cache_hash()
+
+
+def test_unnamed_fifos_are_named_per_program(scale_design, npu2_device):
+    """The same design generates the same names however many came before it."""
+    _, gen = scale_design
+    first, second = (
+        CompilableDesign(gen, compile_kwargs={"N": 64})._generated.mlir_text
+        for _ in range(2)
+    )
+    assert first == second
+    assert "aie.objectfifo @of0(" in first and "aie.objectfifo @of1(" in first
+
+
 def test_hash_differs_for_different_kwargs_value():
     gen = _gemm_gen()
     d1 = CompilableDesign(gen, compile_kwargs={"M": 512})
@@ -275,34 +529,361 @@ def test_hash_differs_for_different_generators():
     assert hash(d1) != hash(d2)
 
 
-def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
+def test_hash_works_without_a_peano_compiler(tmp_path):
     """``hash(design)`` must not require Peano to be installed.
 
     The CI "Build and Test (Release, ...)" matrix doesn't install Peano,
     yet pytest still imports CompilableDesign and hashes designs as part
     of its membership / equality checks.  ``_compute_hash`` must fall back
     to the "absent" sentinel rather than letting the ``RuntimeError`` raised
-    by ``peano_cxx_path`` / ``peano_install_dir`` escape.
+    by ``peano_cxx_path`` escape. A Peano directory with no compiler in it
+    stands in for the missing install.
     """
-    import aie.utils.configure as _aiecc_configure
+    hashes = _in_process(
+        """
+        from aie.utils import config
+        from aie.utils.compile.jit.compilabledesign import CompilableDesign
+        from test_compilabledesign import _gemm_gen
 
-    monkeypatch.setattr(_aiecc_configure, "peano_install_dir", "peano_not_found")
+        try:
+            config.peano_cxx_path()
+        except RuntimeError as e:
+            assert "Peano compiler not found" in str(e), e
+        else:
+            raise AssertionError("Peano's compiler was found")
+        gen = _gemm_gen()
+        print(json.dumps([
+            hash(CompilableDesign(gen, compile_kwargs={"M": m}))
+            for m in (512, 512, 1024)
+        ]))
+        """,
+        PEANO_INSTALL_DIR=str(tmp_path),
+    )
 
-    gen = _gemm_gen()
-    d1 = CompilableDesign(gen, compile_kwargs={"M": 512})
-    d2 = CompilableDesign(gen, compile_kwargs={"M": 512})
-    d3 = CompilableDesign(gen, compile_kwargs={"M": 1024})
+    # Equal-keyed designs must still match, different-keyed designs differ.
+    assert hashes[0] == hashes[1] != hashes[2]
 
-    # Neither call should raise; equal-keyed designs must still match,
-    # different-keyed designs must still differ.
-    assert hash(d1) == hash(d2)
-    assert hash(d1) != hash(d3)
+
+def test_dispatch_defaults_do_not_change_recipe():
+    def make(default):
+        def gen(*, count: DispatchTime[np.int32] = default):
+            pass
+
+        return CompilableDesign(gen)
+
+    first, second = make(3), make(7)
+    assert first.recipe_hash == second.recipe_hash
+    assert first.split_runtime_args((), {}) == ([], {"count": 3})
+    assert second.split_runtime_args((), {}) == ([], {"count": 7})
+    assert (
+        first.specialize(count=5).recipe_hash == second.specialize(count=5).recipe_hash
+    )
+    assert first.recipe_hash != first.specialize(count=5).recipe_hash
+
+
+def test_compile_defaults_change_recipe_unless_explicitly_bound():
+    def make(default):
+        def gen(*, count: CompileTime[int] = default):
+            pass
+
+        return CompilableDesign(gen)
+
+    first, second = make(3), make(7)
+    assert first.recipe_hash != second.recipe_hash
+    assert (
+        first.specialize(count=5).recipe_hash == second.specialize(count=5).recipe_hash
+    )
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [DispatchTime[np.int32], DispatchTime[np.int64], CompileTime[np.int32], In, Out],
+)
+def test_recipe_uses_resolved_annotations(annotation):
+    def gen(*, count):
+        pass
+
+    def make(ann):
+        from types import FunctionType
+
+        clone = FunctionType(gen.__code__, {**gen.__globals__, "alias": annotation})
+        clone.__annotations__ = {"count": ann}
+        return CompilableDesign(clone)
+
+    assert make(annotation).recipe_hash == make("alias").recipe_hash
+    if annotation != DispatchTime[np.int32]:
+        assert make(annotation).recipe_hash != make(DispatchTime[np.int32]).recipe_hash
+
+
+def test_hash_differs_for_compile_time_change_with_dispatch_param_present():
+    """Contrast case.
+
+    CompileTime[T] changes still rehash even when the same generator also
+    declares a DispatchTime[T] param.
+    """
+    gen = _dispatch_gen()
+    d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
+    d2 = CompilableDesign(gen, compile_kwargs={"N": 1024})
+    assert hash(d1) != hash(d2)
+
+
+def test_dispatch_time_explicit_specialization_enters_hash():
+    gen = _dispatch_gen()
+    dynamic = CompilableDesign(gen, compile_kwargs={"N": 512})
+    static = dynamic.specialize(scale=np.int32(4))
+    assert static.dispatch_params == []
+    assert static.dispatch_param_types == []
+    assert static.compile_params == ["N", "scale"]
+    assert type(static.compile_kwargs["scale"]) is int
+    assert hash(static) != hash(dynamic)
+    assert hash(static) != hash(static.specialize(scale=5))
+    assert dynamic.dispatch_params == ["scale"]
+    restored = CompilableDesign.from_json(static.to_json(), gen)
+    assert restored.compile_kwargs == static.compile_kwargs
+    assert restored.dispatch_params == []
+
+
+@pytest.mark.parametrize("value", [1.0, 1.5, "4", None, True, np.bool_(False)])
+def test_dispatch_specialization_rejects_nonintegers(value):
+    with pytest.raises(TypeError, match="integer"):
+        CompilableDesign(_dispatch_gen()).specialize(scale=value)
+
+
+@pytest.mark.parametrize("value", [-(2**31) - 1, 2**31])
+def test_dispatch_specialization_rejects_overflow(value):
+    with pytest.raises(ValueError, match="out of range"):
+        CompilableDesign(_dispatch_gen()).specialize(scale=value)
+
+
+def test_dispatch_specialization_keyword_only_binding():
+    def gen(
+        a: In,
+        *,
+        first: DispatchTime[np.int32],
+        second: DispatchTime[np.int32],
+        last: DispatchTime[np.int32] = 7,
+    ):
+        pass
+
+    design = CompilableDesign(gen).specialize(first=4)
+    assert design.split_runtime_args(("tensor",), {"second": 6}) == (
+        ["tensor"],
+        {"second": 6, "last": 7},
+    )
+    assert design.split_runtime_args(("tensor",), {"second": 6, "last": 9}) == (
+        ["tensor"],
+        {"last": 9, "second": 6},
+    )
+    with pytest.raises(TypeError, match="specialized"):
+        design.split_runtime_args(("tensor",), {"second": 6, "first": 5})
+    with pytest.raises(TypeError, match="Multiple values"):
+        design.split_runtime_args(("tensor",), {"a": "another tensor"})
+    with pytest.raises(TypeError, match="too many positional"):
+        design.split_runtime_args(("tensor", 6), {})
+
+
+def test_tensor_type_binds_and_keys_the_design():
+    observed = []
+
+    def gen(a: In):
+        observed.append(a)
+
+    small = np.ndarray[(16, 32), np.dtype[np.int16]]
+    large = np.ndarray[(32, 32), np.dtype[np.int16]]
+    design = CompilableDesign(gen).specialize(a=small)
+    design.generate_mlir()
+    (a,) = observed
+    assert isinstance(a, In) and a.name == "a"
+    assert (a.shape, a.dtype, a.ndarray_type) == ((16, 32), np.int16, small)
+    assert design.split_runtime_args(("tensor",), {}) == (["tensor"], {})
+    assert (
+        design._compute_cache_hash()
+        == CompilableDesign(gen, compile_kwargs={"a": small})._compute_cache_hash()
+        == CompilableDesign(gen).specialize(a=a)._compute_cache_hash()
+    )
+    assert (
+        design._compute_cache_hash() != design.specialize(a=large)._compute_cache_hash()
+    )
+    assert design._compute_cache_hash() != CompilableDesign(gen)._compute_cache_hash()
+
+
+def test_unbound_tensor_parameter_names_specialize():
+    def gen(a: In):
+        a.shape
+
+    with pytest.raises(RuntimeError, match=r"specialize\(a=np.ndarray"):
+        CompilableDesign(gen).generate_mlir()
+
+
+def test_dispatch_keyword_only_specialization_generates_constant():
+    observed = []
+
+    def gen(a: In, *, count: DispatchTime[np.int32]):
+        observed.append(count)
+
+    design = CompilableDesign(gen).specialize(count=4)
+    design.generate_mlir()
+    assert observed == [4]
+    assert design.split_runtime_args(("tensor",), {}) == (["tensor"], {})
+
+
+def test_hash_works_when_dispatch_toolchain_is_missing(tmp_path):
+    """``hash(design)`` must not require the dispatch toolchain to be installed.
+
+    A host C++ compiler is needed to *compile* a DispatchTime[T] design, but
+    hashing it must still work without one.
+    """
+    hashes = _in_process(
+        """
+        from aie.utils import config
+        from aie.utils.compile.jit.compilabledesign import CompilableDesign
+        from test_compilabledesign import _dispatch_gen
+
+        try:
+            config.host_cxx_path()
+        except RuntimeError as e:
+            assert "CXX is set" in str(e), e
+        else:
+            raise AssertionError("a host compiler was found")
+        gen = _dispatch_gen()
+        print(json.dumps([
+            hash(CompilableDesign(gen, compile_kwargs={"N": 512})) for _ in range(2)
+        ]))
+        """,
+        CXX=str(tmp_path / "missing-c++"),
+    )
+    assert hashes[0] == hashes[1]
+
+
+_ARTIFACT_HASH = """
+from pathlib import Path
+from aie.utils import config
+from aie.utils.compile.jit._hash import _compute_artifact_hash
+from test_compilabledesign import _gemm_gen
+
+generator = {generator}
+dynamic = {dynamic}
+"""
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("generator_kind", ["callable", "path"])
+@pytest.mark.parametrize("tool", ["aiecc", "peano_cxx", "host_cxx"])
+@pytest.mark.parametrize("change", ["mtime", "size", "path"])
+def test_artifact_hash_tracks_active_compilers(
+    tmp_path, dynamic, generator_kind, tool, change
+):
+    exe = ".exe" if os.name == "nt" else ""
+    name = {"aiecc": "aiecc", "peano_cxx": "clang++", "host_cxx": "c++"}[tool]
+    resolve = {
+        "aiecc": "aiecc_path",
+        "peano_cxx": "peano_cxx_path",
+        "host_cxx": "host_cxx_path",
+    }[tool]
+    if generator_kind == "callable":
+        generator = "_gemm_gen()"
+    else:
+        (tmp_path / "design.mlir").write_text("module {}")
+        generator = f"Path({str(tmp_path / 'design.mlir')!r})"
+
+    def hash_with(compiler):
+        # The compiler is found as compilation finds it: aiecc and the host
+        # compiler through their variables, Peano's through its install.
+        variable, value = {
+            "aiecc": ("AIECC_PATH", str(compiler)),
+            "host_cxx": ("CXX", str(compiler)),
+            "peano_cxx": ("PEANO_INSTALL_DIR", str(compiler.parents[1])),
+        }[tool]
+        return _in_process(
+            _ARTIFACT_HASH.format(generator=generator, dynamic=dynamic)
+            + f"assert config.{resolve}() == {str(compiler)!r}\n"
+            + "print(json.dumps(_compute_artifact_hash(generator, [], [], True, dynamic)))\n",
+            **{variable: value},
+        )
+
+    compiler = tmp_path / "first" / "bin" / f"{name}{exe}"
+    compiler.parent.mkdir(parents=True)
+    compiler.write_text("compiler")
+    compiler.chmod(0o755)
+    before = hash_with(compiler)
+    stat = compiler.stat()
+    if change == "mtime":
+        # NTFS timestamps have 100 ns resolution.
+        os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns + 100))
+    elif change == "size":
+        compiler.write_text("different compiler")
+        os.utime(compiler, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    else:
+        replacement = tmp_path / "other" / "bin" / compiler.name
+        replacement.parent.mkdir(parents=True)
+        replacement.write_bytes(compiler.read_bytes())
+        replacement.chmod(0o755)
+        os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        compiler = replacement
+    after = hash_with(compiler)
+
+    assert (before != after) == (
+        tool != "host_cxx" or (dynamic and generator_kind == "callable")
+    )
+
+
+def test_artifact_hash_names_the_kernel_source_tree():
+    # A before/after run compiles one design against two kernel trees; the
+    # factories read the tree only once the generator runs.
+    script = _ARTIFACT_HASH.format(generator="_gemm_gen()", dynamic=False) + (
+        "print(json.dumps(_compute_artifact_hash(generator, [], [], True)))\n"
+    )
+    hashes = {
+        _in_process(script, MLIR_AIE_KERNEL_SOURCES=tree)
+        for tree in (None, "/trees/base", "/trees/change")
+    }
+    assert len(hashes) == 3
+
+
+def test_artifact_hash_reads_the_kernel_source_tree(tmp_path):
+    # A candidate edited in place under one tree must not reuse its old build.
+    script = _ARTIFACT_HASH.format(generator="_gemm_gen()", dynamic=False) + (
+        "print(json.dumps(_compute_artifact_hash(generator, [], [], True)))\n"
+    )
+    source = tmp_path / "aie_kernels" / "k.cc"
+    source.parent.mkdir()
+    source.write_text("int k;")
+    before = _in_process(script, MLIR_AIE_KERNEL_SOURCES=str(tmp_path))
+    source.write_text("int k2;")
+    assert _in_process(script, MLIR_AIE_KERNEL_SOURCES=str(tmp_path)) != before
 
 
 def test_hash_for_path_generator_uses_path_string():
     d1 = CompilableDesign(Path("/a/design.mlir"))
     d2 = CompilableDesign(Path("/b/design.mlir"))
     assert hash(d1) != hash(d2)
+
+
+@pytest.mark.parametrize("use_cache", [False, True])
+@pytest.mark.parametrize("current_outputs", [False, True])
+def test_explicit_outputs_discard_objects_when_cache_disabled(
+    tmp_path, use_cache, current_outputs
+):
+    from aie.utils.compile.jit import _manifest
+
+    kernel_dir = tmp_path / "work"
+    kernel_dir.mkdir()
+    obj = kernel_dir / "kernel.o"
+    obj.write_bytes(b"previous compilation")
+    output = tmp_path / "design.xclbin"
+    output.write_bytes(b"previous output")
+    _manifest.record(kernel_dir, [], [])
+    if current_outputs:
+        _manifest.record_outputs(kernel_dir, "build-key", [output])
+    assert _manifest.is_valid(kernel_dir)
+
+    design = CompilableDesign(_gemm_gen()).specialize(use_cache=use_cache)
+    reused = design._reuse_explicit_outputs(
+        kernel_dir, "build-key", {"xclbin": output}, shared=False
+    )
+
+    assert reused == (use_cache and current_outputs)
+    assert obj.exists() == use_cache
 
 
 def test_hash_for_existing_source_file_tracks_content(tmp_path):
@@ -392,19 +973,20 @@ def test_hash_changes_when_content_changes_under_a_preserved_mtime(tmp_path):
     assert hash(CompilableDesign(_gemm_gen(), source_files=[src])) != h1
 
 
-def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch):
+def test_hash_keys_on_the_aiecc_the_compile_uses(tmp_path):
     """aiecc must be resolved as compilation resolves it, not via PATH."""
-    import aie.utils.config as config
+    script = """
+        from aie.utils.compile.jit.compilabledesign import CompilableDesign
+        from test_compilabledesign import _gemm_gen
 
-    seen = []
-
-    def fake_aiecc_path():
-        seen.append(True)
-        return config.__file__  # any real file; only its mtime is consumed
-
-    monkeypatch.setattr(config, "aiecc_path", fake_aiecc_path)
-    CompilableDesign(_gemm_gen())._compute_cache_hash()
-    assert seen, "artifact hash did not consult config.aiecc_path()"
+        print(json.dumps(CompilableDesign(_gemm_gen())._compute_cache_hash()))
+        """
+    hashes = []
+    for build in ("first", "second"):
+        aiecc = tmp_path / build
+        aiecc.write_text(build)
+        hashes.append(_in_process(script, AIECC_PATH=str(aiecc)))
+    assert hashes[0] != hashes[1]
 
 
 def test_content_digest_streams_a_large_file(tmp_path):
@@ -414,8 +996,6 @@ def test_content_digest_streams_a_large_file(tmp_path):
     read is chunked; this pins that the chunked path agrees with hashlib.
     """
     import hashlib
-
-    from aie.utils.compile.jit import _hash as _hash_mod
 
     blob = tmp_path / "big.h"
     payload = (b"0123456789abcdef" * 64) * 1024 + b"tail"  # 1 MiB + 4, two reads
@@ -430,8 +1010,6 @@ def test_unreadable_input_does_not_alias_onto_a_readable_one(tmp_path):
     Skipping it would collapse "missing" and "empty" onto the same digest, so a
     design whose kernel disappeared would hit the entry built when it was there.
     """
-    from aie.utils.compile.jit import _hash as _hash_mod
-
     missing = tmp_path / "gone.cc"
     empty = tmp_path / "empty.cc"
     empty.write_bytes(b"")
@@ -441,20 +1019,25 @@ def test_unreadable_input_does_not_alias_onto_a_readable_one(tmp_path):
     assert absent != _hash_mod._content_digest(empty)
 
 
-def _design(body, name="design"):
+def _design(body, name="design", module="designs.probe"):
     """A generator built from source, so a pair can differ in exactly one way."""
-    ns = {"__name__": "designs.probe"}
+    ns = {"__name__": module}
     exec(body, ns)  # noqa: S102 -- controlling the source is the point
     return ns[name]
 
 
-def test_hash_is_stable_for_a_generator_with_a_nested_function(tmp_path):
+@pytest.mark.parametrize(
+    "signature", ["a, b", "a: In, *, count: DispatchTime[np.int32] = 3"]
+)
+def test_hash_is_stable_for_a_generator_with_a_nested_function(tmp_path, signature):
     """repr() of a nested code object embeds its address; the key must not."""
     script = tmp_path / "probe.py"
     script.write_text(
         "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "from aie.iron import DispatchTime, In\n"
+        "import numpy as np\n"
         "def make():\n"
-        "    def design(a, b):\n"
+        f"    def design({signature}):\n"
         "        def core(x):\n"
         "            return x + 1\n"
         "        return core\n"
@@ -504,12 +1087,13 @@ def test_hash_distinguishes_designs_calling_different_symbols():
             "    return core_body\n"
         )
 
-    def nested(fn):
-        return next(c for c in fn.__code__.co_consts if isinstance(c, CodeType))
-
     a, b = build("matmul_bf16"), build("matmul_i8")
+    nested_a, nested_b = (
+        next(c for c in fn.__code__.co_consts if isinstance(c, CodeType))
+        for fn in (a, b)
+    )
     assert (
-        nested(a).co_code == nested(b).co_code
+        nested_a.co_code == nested_b.co_code
     ), "nested bytecode differs; this test would not exercise co_names"
     assert _compute_hash(a, {}, [], [], [], []) != _compute_hash(b, {}, [], [], [], [])
 
@@ -551,6 +1135,98 @@ def test_hash_of_a_callable_compile_time_value_is_stable_and_not_blind():
 
     assert key(build(2)) == key(build(2))
     assert key(build(2)) != key(build(3))
+
+
+def test_hash_of_a_callable_compile_time_value_follows_its_callees():
+    """A callable compile-time value's helpers are followed like the generator's.
+
+    ``act`` calls ``helper`` from its own module; only recursion into the
+    callee's body (not just ``act``'s own bytecode, which only names
+    ``helper``) can tell the two builds apart.
+    """
+
+    def build(leaf):
+        return _design(
+            f"def helper(x):\n"
+            f"    return x + {leaf}\n"
+            "def act(x):\n"
+            "    return helper(x)\n",
+            name="act",
+        )
+
+    gen = _design("def design(a, b):\n    return a\n")
+
+    def key(act):
+        return _compute_hash(gen, {"act": act}, [], [], [], [])
+
+    assert key(build(1)) == key(build(1))
+    assert key(build(1)) != key(build(2))
+
+
+def test_hash_follows_a_generators_closure():
+    """A closure reaches its helper and constants through cells, not globals.
+
+    Both generators have identical bytecode and globals; only the captured
+    helper's body, or the captured constant, tells them apart.
+    """
+
+    def build(leaf, scale):
+        return _design(
+            "def make():\n"
+            "    def helper(x):\n"
+            f"        return x + {leaf}\n"
+            f"    scale = {scale}\n"
+            "    def design(a, b):\n"
+            "        return helper(a) * scale\n"
+            "    return design\n",
+            name="make",
+        )()
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    a, b, c = build(1, 2), build(2, 2), build(1, 3)
+    assert a.__code__.co_code == b.__code__.co_code == c.__code__.co_code
+    assert key(a) == key(build(1, 2))
+    assert key(a) != key(b)
+    assert key(a) != key(c)
+
+
+def _add_value(flag):
+    return ExternalFunction(
+        "add_value",
+        source_string="void add_value() {}",
+        arg_types=[],
+        compile_flags=[f"-DADD_VALUE={flag}"],
+    )
+
+
+def _via_global(flag):
+    ns = {"__name__": "designs.probe", "kernel": _add_value(flag)}
+    exec("def design(a, b):\n    return kernel(a, b)\n", ns)  # noqa: S102
+    return ns["design"]
+
+
+def _via_closure(flag):
+    kernel = _add_value(flag)
+
+    def design(a, b):
+        return kernel(a, b)
+
+    return design
+
+
+@pytest.mark.parametrize("build", [_via_global, _via_closure])
+def test_hash_follows_an_external_function_the_generator_reaches(build):
+    """A kernel's compile flags change neither the bytecode nor its sources."""
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    a, b = build(5), build(10)
+    assert a.__code__.co_code == b.__code__.co_code
+    assert key(a) == key(build(5))
+    assert key(a) != key(b)
 
 
 def test_hash_survives_a_move_of_the_design_file():
@@ -597,6 +1273,233 @@ def test_hash_distinguishes_bodies_nested_past_any_fixed_depth():
 def test_hash_handles_deeply_nested_functions():
     """The walk must terminate on pathological nesting."""
     assert len(_compute_hash(_nest("pass"), {}, [], [], [], [])) == 24
+
+
+def test_hash_follows_the_helpers_a_generator_calls():
+    """The generator's bytecode names a helper; the helper's body is elsewhere."""
+
+    def build(leaf, limit=4):
+        return _design(
+            f"LIMIT = {limit}\n"
+            "def helper(x):\n"
+            f"    return min(x + {leaf}, LIMIT)\n"
+            "def design(a):\n"
+            "    return helper(a)\n"
+        )
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    assert key(build(1)) == key(build(1))
+    assert key(build(1)) != key(build(2))
+    assert key(build(1)) != key(build(1, limit=8))
+
+
+def test_hash_follows_fileless_helpers_but_not_installed_packages():
+    """Code with no file is followed by its code; an installed package is not followed."""
+
+    def key(module, leaf):
+        gen = _design("def design(a):\n    return helper(a)\n")
+        helper = f"def helper(x):\n    return x + {leaf}\n"
+        gen.__globals__["helper"] = _design(helper, "helper", module)
+        return _compute_hash(gen, {}, [], [], [], [])
+
+    assert key("designs.util", 1) != key("designs.util", 2)
+    assert key("numpy", 1) == key("numpy", 2)
+
+
+def test_the_kernel_harness_key_covers_its_helper_modules():
+    """kernel_design's one generator builds every kernel test through helpers.
+
+    An edit to one used to keep the key, so a design cached before the edit
+    ran in place of the edited one.
+    """
+    reached = _hash_mod._python_identity([kd._stream.compilable.mlir_generator])
+    for module in (kd, _pipeline):
+        assert f"{module.__name__}@".encode() in reached
+
+
+def test_the_key_reaches_the_builtins_module():
+    """`builtins` is a module with no `__file__` attribute at all."""
+
+    def generator(x):
+        if not x:
+            raise builtins.AssertionError("x")
+
+    assert _hash_mod._python_identity([generator]) == _hash_mod._python_identity(
+        [generator]
+    )
+
+
+def test_the_key_of_a_generator_with_a_rewritten_assert():
+    """pytest rewrites `assert` to reach `AssertionError` through `builtins`."""
+
+    def generator(x):
+        assert x, "x"
+        raise ValueError("y")
+
+    assert _hash_mod._python_identity([generator]) == _hash_mod._python_identity(
+        [generator]
+    )
+
+
+def test_the_kernel_harness_key_is_the_same_in_every_process(tmp_path):
+    """Neither the hash seed nor what else the process imported moves the key.
+
+    Importing a submodule binds it on its package, which the key reaches.
+    """
+    script = tmp_path / "probe.py"
+    script.write_text(
+        "import sys\n"
+        "for name in sys.argv[1:]:\n"
+        "    __import__(name)\n"
+        "from aie.iron.algorithms import kernel_design as kd\n"
+        "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "print(_compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ()))\n"
+    )
+    seen = {
+        subprocess.run(
+            [sys.executable, str(script), *imports],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, "PYTHONHASHSEED": seed},
+        ).stdout.strip()
+        for seed, imports in (("1", ()), ("2", ("aie.utils.hostruntime.cli",)))
+    }
+    assert seen == {
+        _compute_recipe_hash(kd._stream.compilable.mlir_generator, {}, (), ())
+    }
+
+
+def test_a_design_run_as_a_script_keys_as_its_import(tmp_path):
+    """Running a design's file, by path or with -m, keys it as importing it does.
+
+    The file is keyed by its bytes: rewriting them with a later mtime is a
+    hit, an edit a miss.
+    """
+    (tmp_path / "scaled.py").write_text(
+        "from aie.iron.device import NPU2Col1\n"
+        "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "FACTOR = 3\n\n\n"
+        "def scale(x):\n"
+        "    return x * FACTOR\n\n\n"
+        "def design(a, b):\n"
+        "    return scale(a), NPU2Col1()\n\n\n"
+        "def key():\n"
+        "    return _compute_recipe_hash(design, {}, (), ())\n\n\n"
+        "if __name__ == '__main__':\n"
+        "    device = NPU2Col1()\n"
+        "    print(key())\n"
+    )
+    (tmp_path / "importer.py").write_text("import scaled\n\nprint(scaled.key())\n")
+
+    def key(*args):
+        return subprocess.run(
+            [sys.executable, *args],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    imported = key("importer.py")
+    assert key("scaled.py") == imported
+    assert key("-m", "scaled") == imported
+    scaled = tmp_path / "scaled.py"
+    stat = scaled.stat()
+    scaled.write_text(scaled.read_text())
+    os.utime(scaled, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**10))
+    assert key("scaled.py") == key("importer.py") == imported
+    (tmp_path / "scaled.py").write_text(
+        (tmp_path / "scaled.py").read_text().replace("FACTOR = 3", "FACTOR = 4")
+    )
+    assert key("scaled.py") == key("importer.py") != imported
+
+
+_LAZY_FILES = {
+    "lazy_impl": "class Impl:\n    pass\n",
+    "lazy_holder": (
+        "_instance = None\n\n\n"
+        "def load():\n"
+        "    global _instance\n"
+        "    from lazy_impl import Impl\n\n"
+        "    _instance = Impl()\n"
+    ),
+    "lazy_design": (
+        "import lazy_holder\n"
+        "from aie.utils.compile.jit.markers import CompileTime\n\n\n"
+        "def design(*, N: CompileTime[int]):\n"
+        "    lazy_holder.load()\n"
+    ),
+}
+
+
+def test_the_key_does_not_follow_an_instance_bound_after_import(tmp_path):
+    """A global bound lazily, as aie.utils binds its default NPU runtime, is state.
+
+    Following it made the key depend on whether the process had loaded the
+    runtime before the key first reached the module.
+    """
+    for name, text in _LAZY_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+
+    def key(load):
+        for name in _LAZY_FILES:
+            sys.modules.pop(name, None)
+        gen = importlib.import_module("lazy_design").design
+        if load:
+            sys.modules["lazy_holder"].load()
+        return _compute_recipe_hash(gen, {"N": 1}, (), ())
+
+    try:
+        assert key(load=True) == key(load=False)
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _LAZY_FILES:
+            sys.modules.pop(name, None)
+
+
+_SETTINGS_FILES = {
+    "eager_settings": "class Settings:\n    depth = 2\n\n\nSETTINGS = Settings()\n",
+    "eager_helper": (
+        "from eager_settings import SETTINGS\n\n\n"
+        "def depth():\n"
+        "    return SETTINGS.depth\n"
+    ),
+    "eager_design": (
+        "from eager_helper import depth\n"
+        "from aie.utils.compile.jit.markers import CompileTime\n\n\n"
+        "def design(*, N: CompileTime[int]):\n"
+        "    depth()\n"
+    ),
+}
+
+
+def test_the_key_follows_an_instance_bound_at_import(tmp_path):
+    """An instance a module imports is source: editing the module it comes
+    from changes the key.
+    """
+    for name, text in _SETTINGS_FILES.items():
+        (tmp_path / f"{name}.py").write_text(text)
+    sys.path.insert(0, str(tmp_path))
+
+    def key():
+        for name in _SETTINGS_FILES:
+            sys.modules.pop(name, None)
+        gen = importlib.import_module("eager_design").design
+        return _compute_recipe_hash(gen, {"N": 1}, (), ())
+
+    try:
+        before = key()
+        settings = tmp_path / "eager_settings.py"
+        settings.write_text(settings.read_text().replace("depth = 2", "depth = 32"))
+        assert key() != before
+    finally:
+        sys.path.remove(str(tmp_path))
+        for name in _SETTINGS_FILES:
+            sys.modules.pop(name, None)
 
 
 def test_hash_is_24_hex_chars():
@@ -738,6 +1641,7 @@ def test_to_json_contains_all_fields():
         source_files=["kernel.cc"],
         include_paths=["/opt/inc"],
         object_files=["add.o"],
+        insts_only=True,
     )
     data = json.loads(d.to_json())
     assert data["use_cache"] is False
@@ -751,6 +1655,8 @@ def test_to_json_contains_all_fields():
     assert "kernel.cc" in data["source_files"][0]
     assert "opt/inc" in data["include_paths"][0].replace("\\", "/")
     assert "add.o" in data["object_files"][0]
+    assert data["full_elf"] is False
+    assert data["insts_only"] is True
     assert "generator_name" in data
     assert "cache_hash" in data
 
@@ -790,6 +1696,15 @@ def test_from_json_restores_flags():
     assert d2.compile_flags == ("-O3",)
 
 
+@pytest.mark.parametrize("mode", ["full_elf", "insts_only"])
+def test_from_json_restores_compilation_mode(mode):
+    gen = _gemm_gen()
+    d2 = CompilableDesign.from_json(
+        CompilableDesign(gen, **{mode: True}).to_json(), generator=gen
+    )
+    assert getattr(d2, mode) is True
+
+
 def test_from_json_restores_source_and_include_paths():
     gen = _gemm_gen()
     d = CompilableDesign(gen, source_files=["k.cc"], include_paths=["/opt"])
@@ -815,7 +1730,7 @@ def test_from_json_compile_kwargs_round_trip_typed():
 
 
 # ---------------------------------------------------------------------------
-# _generate_mlir: compile param validation (no MLIR generation needed)
+# generate_mlir: compile param validation (no MLIR generation needed)
 # ---------------------------------------------------------------------------
 
 
@@ -828,7 +1743,7 @@ def test_generate_mlir_raises_type_error_for_missing_compile_param():
     d = CompilableDesign(gen, compile_kwargs={"M": 512})  # K missing
 
     with pytest.raises(TypeError, match="compile_kwargs do not match"):
-        d._generate_mlir(ExternalFunction)
+        d.generate_mlir()
 
 
 def test_generate_mlir_type_error_message_includes_generator_name():
@@ -839,7 +1754,7 @@ def test_generate_mlir_type_error_message_includes_generator_name():
     d = CompilableDesign(my_special_gen, compile_kwargs={})  # M missing
 
     with pytest.raises(TypeError, match="my_special_gen"):
-        d._generate_mlir(ExternalFunction)
+        d.generate_mlir()
 
 
 def test_generate_mlir_injects_compile_context():
@@ -857,32 +1772,31 @@ def test_generate_mlir_injects_compile_context():
         return ctx.module
 
     d = CompilableDesign(gen, compile_kwargs={"M": 256, "K": 64})
-    d._generate_mlir(ExternalFunction)
+    d.generate_mlir()
 
     assert observed["M"] == 256
     assert observed["K"] == 64
 
 
-def test_generate_mlir_clears_external_function_instances_before_call():
+def test_generate_mlir_leaves_earlier_external_function_instances_out():
     """Stale ExternalFunction instances must not leak into a new generation."""
 
     stale = object()
     ExternalFunction._instances.add(stale)
 
     def gen(*, M: CompileTime[int]):
-        # Verify the stale instance was cleared before we ran.
-        assert stale not in ExternalFunction._instances
+        assert stale not in get_compile_arg("_iron_kernel_registry")
 
         with mlir_mod_ctx() as ctx:
             pass
         return ctx.module
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
-    d._generate_mlir(ExternalFunction)
+    d.generate_mlir()
 
 
 def test_generate_mlir_unplaced_style_uses_return_value():
-    """When generator returns a module object, _generate_mlir must use it (not ctx.module).
+    """When generator returns a module object, generate_mlir must use it (not ctx.module).
 
     Option B memoization re-parses the cached MLIR text into a fresh Module
     per call, so identity is not preserved — content equivalence is the
@@ -898,24 +1812,28 @@ def test_generate_mlir_unplaced_style_uses_return_value():
         return real_module  # unplaced style
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
-    result = d._generate_mlir(ExternalFunction)
+    result = d.generate_mlir()
     assert str(result) == expected_text
 
 
 # ---------------------------------------------------------------------------
-# _generate_mlir: Guard 2-A and 2-B validation
+# generate_mlir: Guard 2-A and 2-B validation
 # ---------------------------------------------------------------------------
 
 
-def test_generate_mlir_guard_2a_tensor_name_in_compile_kwargs():
-    """compile_kwargs must not contain names annotated as In/Out/InOut."""
+def test_construction_rejects_tensor_name_in_compile_kwargs():
+    """compile_kwargs may hold only a type for a name annotated In/Out/InOut.
+
+    Rejected at construction, not generation: `a` is a real parameter, so the
+    design would otherwise be hashable and the misplaced key would reach the
+    cache key before anything generated.
+    """
 
     def gen(a: In, *, M: CompileTime[int]):
         pass
 
-    d = CompilableDesign(gen, compile_kwargs={"a": object(), "M": 1})
     with pytest.raises(TypeError, match="runtime tensors"):
-        d._generate_mlir(ExternalFunction)
+        CompilableDesign(gen, compile_kwargs={"a": object(), "M": 1})
 
 
 def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
@@ -926,22 +1844,109 @@ def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1, "NOSUCHPARAM": 99})
     with pytest.raises(TypeError, match="not in the generator signature"):
-        d._generate_mlir(ExternalFunction)
+        d.generate_mlir()
+
+
+def test_generate_mlir_dispatch_param_receives_identity(npu2_device):
+    """Dynamic parameters carry identity; specialization still supplies constants."""
+    from aie.iron import Program, Runtime
+    from aie.utils.compile.jit.markers import _DispatchParameter
+
+    observed = {}
+
+    def gen(*, scale: DispatchTime[np.int32], M: CompileTime[int]):
+        observed["scale"] = scale
+        return Program(
+            NPU2Col1(), Runtime(lambda value: None, [scale])
+        ).resolve_program()
+
+    d = CompilableDesign(gen, compile_kwargs={"M": 1})
+    d.generate_mlir()
+
+    assert isinstance(observed["scale"], _DispatchParameter)
+    assert observed["scale"].name == "scale"
+    assert observed["scale"].scalar_type is np.int32
+
+    static = d.specialize(scale=5)
+    static.generate_mlir()
+    assert observed["scale"] == 5
+    assert type(observed["scale"]) is np.int32
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64],
+)
+@pytest.mark.parametrize("boundary", ["min", "max"])
+def test_specialized_dispatch_runtime_constant_preserves_dtype(
+    dtype, boundary, npu2_device
+):
+    """Generate real IR for every scalar width, without a compiler or an NPU."""
+    from aie.helpers.util import np_dtype_to_mlir_type
+    from aie.ir import IntegerAttr
+    from aie.iron import Program, Runtime
+
+    observed = {}
+    literal = int(getattr(np.iinfo(dtype), boundary))
+
+    def gen(*, value: DispatchTime[dtype]):
+        assert type(value) is dtype
+
+        def sequence(scalar):
+            observed["type"] = str(scalar.type)
+            observed["expected_type"] = str(np_dtype_to_mlir_type(dtype))
+            observed["value"] = IntegerAttr(scalar.owner.attributes["value"]).value
+
+        return Program(NPU2Col1(), Runtime(sequence, [value])).resolve_program()
+
+    design = CompilableDesign(gen).specialize(value=literal)
+    module = design.generate_mlir()
+    assert module.operation.verify()
+    assert design.dispatch_params == []
+    assert type(design.compile_kwargs["value"]) is int
+    assert observed["type"] == observed["expected_type"]
+    # MLIR's signless/index attributes may print uint64's high bit as negative;
+    # compare exact bit patterns so neither narrowing nor sign extension passes.
+    mask = (1 << (np.dtype(dtype).itemsize * 8)) - 1
+    assert observed["value"] & mask == literal & mask
+
+
+def test_dispatch_default_remains_dynamic_during_generation(npu2_device):
+    from aie.iron import Program, Runtime
+    from aie.utils.compile.jit.markers import _DispatchParameter
+
+    observed = []
+
+    def gen(*, scale: DispatchTime[np.int32] = 3):
+        observed.append(scale)
+        return Program(
+            NPU2Col1(), Runtime(lambda value: None, [scale])
+        ).resolve_program()
+
+    design = CompilableDesign(gen)
+    design.generate_mlir()
+    assert len(observed) == 1
+    assert isinstance(observed[0], _DispatchParameter)
+    assert observed[0].scalar_type is np.int32
+    assert design.dispatch_params == ["scale"]
+    assert design.compile_kwargs == {}
+    assert design.split_runtime_args((), {}) == ([], {"scale": 3})
 
 
 def test_generate_mlir_raises_on_verification_failure():
-    """RuntimeError must be raised when the generated MLIR module fails verify()."""
-    from unittest.mock import MagicMock
-
-    bad_module = MagicMock()
-    bad_module.operation.verify.return_value = False
+    """A generated module that fails verify() is reported, not built."""
+    from aie.ir import IntegerType, MLIRError, Operation
 
     def gen(*, M: CompileTime[int]):
-        return bad_module  # unplaced style — returns a module directly
+        with mlir_mod_ctx() as ctx:
+            Operation.create(
+                "arith.addi", results=[IntegerType.get_signless(32)], operands=[]
+            )
+        return ctx.module
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
-    with pytest.raises(RuntimeError, match="MLIR verification failed"):
-        d._generate_mlir(ExternalFunction)
+    with pytest.raises(MLIRError, match="expected 2 operands"):
+        d.generate_mlir()
 
 
 def test_split_runtime_args_path_generator_filters_kernel_objects():
@@ -969,6 +1974,9 @@ def test_parse_dma_sizes_matches_real_mlir_format(tmp_path):
     sample_mlir = """\
 module {
   aie.device(npu1) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_in(%shim, MM2S, 0)
+    aie.shim_dma_allocation @of_out(%shim, S2MM, 0)
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -991,7 +1999,56 @@ module {
     mlir_path = tmp_path / "input_with_addresses.mlir"
     mlir_path.write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024, 1024], f"Expected [1024, 1024], got {sizes}"
+    assert sizes == [1024 * 32, 1024 * 32], f"Expected i32 bits, got {sizes}"
+
+
+def test_parse_dma_sizes_counts_a_block_type_by_its_block(tmp_path):
+    """A block float memref holds one element per block, not per value.
+
+    The host holds that buffer as bytes, so only a footprint in bits makes the
+    two comparable; counting elements made a bfp16ebs8 argument look nine times
+    smaller than the host tensor covering exactly the same memory.
+    """
+    sample_mlir = """\
+module {
+  aie.device(npu2) {
+    aie.runtime_sequence(%arg0: memref<2048x!aiex.bfp<"v8bfp16ebs8">>) {
+      aie.end
+    }
+  }
+}
+"""
+    mlir_path = tmp_path / "input_with_addresses.mlir"
+    mlir_path.write_text(sample_mlir)
+    sizes = parse_dma_sizes(tmp_path)
+    # 2048 blocks, 9 bytes each: the 18432 bytes the host encodes for 128x128.
+    assert sizes == [2048 * 72], f"Expected block bits, got {sizes}"
+    assert sizes[0] // 8 == 18432
+
+
+@pytest.mark.parametrize(
+    "signature,expected",
+    [
+        (
+            "%n: i32, %a: memref<16x32xi16>, %offset: index, "
+            "%b: memref<1024xi32>, %flags: ui64",
+            [512 * 16, 1024 * 32],
+        ),
+        (
+            "%a: memref<512xi32>, %unsupported: f32, %b: memref<1024xi32>",
+            None,
+        ),
+        ("%n: i32, %offset: index, %flags: ui64", None),
+    ],
+    ids=["interleaved-dispatch-scalars", "unsupported-float", "scalar-only"],
+)
+def test_parse_dma_sizes_keeps_only_supported_host_tensor_capacities(
+    tmp_path, signature, expected
+):
+    (tmp_path / "input_with_addresses.mlir").write_text(
+        "module { aie.device(npu1) { aie.runtime_sequence(" + signature + ") { } } }"
+    )
+    assert parse_dma_sizes(tmp_path) == expected
 
 
 def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
@@ -1004,6 +2061,9 @@ def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
     sample_mlir = """\
 module {
   aie.device(npu1) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_in(%shim, MM2S, 0)
+    aie.shim_dma_allocation @of_in_again(%shim, MM2S, 1)
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %c0_i32 = arith.constant 0 : i32
       %c1024_i32 = arith.constant 1024 : i32
@@ -1021,7 +2081,7 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024], f"Expected [1024] (signature-based), got {sizes}"
+    assert sizes == [1024 * 32], f"Expected i32 bits (signature-based), got {sizes}"
 
 
 def test_parse_dma_sizes_handles_disjoint_fan_out(tmp_path):
@@ -1033,6 +2093,9 @@ def test_parse_dma_sizes_handles_disjoint_fan_out(tmp_path):
     sample_mlir = """\
 module {
   aie.device(npu1) {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_in_a(%shim, MM2S, 0)
+    aie.shim_dma_allocation @of_in_b(%shim, MM2S, 1)
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %c0_i32 = arith.constant 0 : i32
       %c512_i32 = arith.constant 512 : i32
@@ -1050,7 +2113,7 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024], f"Expected [1024] (union), got {sizes}"
+    assert sizes == [1024 * 32], f"Expected i32 bits (union), got {sizes}"
 
 
 def test_parse_dma_sizes_picks_uncalled_root_when_helper_present(tmp_path):
@@ -1081,7 +2144,7 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024, 1024], f"Expected main's args [1024, 1024], got {sizes}"
+    assert sizes == [1024 * 32, 1024 * 32], f"Expected main's args in bits, got {sizes}"
 
 
 def test_parse_dma_sizes_returns_none_when_multi_device_has_multiple_roots(tmp_path):
@@ -1104,6 +2167,23 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     assert parse_dma_sizes(tmp_path) is None
+
+
+def test_parse_dma_sizes_selects_explicit_multi_device_entry(tmp_path):
+    sample_mlir = """\
+module {
+    aie.device(npu1) @first {
+        aie.runtime_sequence @run(%x: memref<1024xi32>) {
+    }
+    }
+    aie.device(npu2) @second {
+        aie.runtime_sequence @run(%y: memref<2048xi16>) {
+    }
+    }
+}
+"""
+    (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+    assert parse_dma_sizes(tmp_path, entry="second:run") == [2048 * 16]
 
 
 def test_parse_dma_sizes_returns_none_for_dynamic_shape_arg(tmp_path):
@@ -1147,19 +2227,13 @@ def test_compute_hash_changes_when_active_device_changes_arch():
     inline passthrough) hit cache collision until the hash started
     tracking the iron-active device.
     """
-    import aie.iron as iron
-
     gen = _gemm_gen()
     cd = CompilableDesign(gen, compile_kwargs={"M": 64, "K": 64, "N": 64})
 
-    set_current_device(NPU1Col1())
-    h_phx = cd._compute_cache_hash()
-
-    set_current_device(NPU2Col1())
-    h_strix = cd._compute_cache_hash()
-
-    # Restore Phoenix as the active device for any later test.
-    set_current_device(NPU1Col1())
+    with set_current_device(NPU1Col1()):
+        h_phx = cd._compute_cache_hash()
+    with set_current_device(NPU2Col1()):
+        h_strix = cd._compute_cache_hash()
 
     assert (
         h_phx != h_strix
@@ -1175,20 +2249,17 @@ def test_kernels_mm_mac_dims_per_arch():
     and silently produce garbage on AIE2P, which uses (4, 4, 8) for the
     same i16/i16 dtype combo.
     """
-    import numpy as np
     import aie.iron.kernels as kernels
+    import numpy as np
 
-    set_current_device(NPU1Col1())
-    mm_aie2 = kernels.mm(
-        dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
-    )
-
-    set_current_device(NPU2Col1())
-    mm_aie2p = kernels.mm(
-        dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
-    )
-
-    set_current_device(NPU1Col1())
+    with set_current_device(NPU1Col1()):
+        mm_aie2 = kernels.mm(
+            dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
+        )
+    with set_current_device(NPU2Col1()):
+        mm_aie2p = kernels.mm(
+            dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
+        )
 
     assert mm_aie2.mac_dims == (
         4,
@@ -1215,31 +2286,195 @@ def test_compile_mixed_explicit_paths_raises():
         cd.compile(xclbin_path=None, inst_path="/tmp/foo.bin")
 
 
-@pytest.mark.parametrize("full_elf", [False, True])
-def test_mlir_path_compile_forwards_include_paths_with_no_kernels(
-    tmp_path, monkeypatch, npu2_device, full_elf
+def test_non_full_elf_allows_raw_multi_device_mlir(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module { aie.device(npu1) @a {} aie.device(npu1) @b {} }")
+
+    design = CompilableDesign(mlir_path)
+    design.generate_mlir()
+
+    assert design.full_elf is False
+
+
+def test_inferred_full_elf_rejects_standard_paths_after_generation(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "main:sequence"} {}'
+    )
+    design = CompilableDesign(mlir_path)
+
+    design.generate_mlir()
+
+    with pytest.raises(ValueError, match="requires full-ELF compilation"):
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin",
+            inst_path=tmp_path / "insts.bin",
+        )
+
+
+def test_iron_jit_infers_full_elf_for_composed_program():
+    @jit
+    def generate():
+        runtime_a = Runtime(lambda: None, [])
+        runtime_b = Runtime(lambda: None, [])
+        configuration_a = DeviceConfiguration(NPU2Col1(), runtimes=[runtime_a])
+        configuration_b = DeviceConfiguration(NPU2Col1(), runtimes=[runtime_b])
+        return Program.compose(
+            [configuration_a, configuration_b], entry=runtime_a
+        ).resolve_program()
+
+    mlir = generate.as_mlir()
+
+    assert generate.compilable.full_elf is True
+    assert "iron.configuration_count = 2 : i32" in mlir
+
+
+@pytest.mark.parametrize("full_elf", [True, False])
+def test_no_full_elf_builds_for_a_device_that_cannot_dispatch_one(tmp_path, full_elf):
+    # Two configurations infer a full ELF; one asks for it.
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        "module attributes {iron.configuration_count = 2 : i32, "
+        'iron.entry = "a:sequence"} '
+        "{ aie.device(npu1_1col) @a {} aie.device(npu1_1col) @b {} }"
+        if not full_elf
+        else "module { aie.device(npu1_1col) @a {} }"
+    )
+    design = CompilableDesign(mlir_path, full_elf=full_elf)
+    with pytest.raises(ValueError, match="npu1_1col does not dispatch a full ELF"):
+        design.compile()
+
+
+@pytest.mark.parametrize(
+    "expand_load_pdis,expected",
+    [
+        (None, []),
+        (False, ["--expand-load-pdis=false"]),
+        (True, ["--expand-load-pdis=true"]),
+    ],
+)
+def test_program_attributes_select_aiecc_options(tmp_path, expand_load_pdis, expected):
+    attributes = (
+        ""
+        if expand_load_pdis is None
+        else f" attributes {{iron.expand_load_pdis = {str(expand_load_pdis).lower()}}}"
+    )
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(f"module{attributes} {{}}")
+    design = CompilableDesign(mlir_path)
+
+    assert design._generated_for(full_elf=True).aiecc_options == expected
+
+
+def test_scratchpad_parameters_ask_for_their_params_file(tmp_path):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module { aiex.scratchpad_parameter @n : i32 }")
+    design = CompilableDesign(mlir_path)
+
+    assert design._generated_for(full_elf=True).aiecc_options == [
+        "--get-scratchpad-parameters"
+    ]
+
+
+def test_program_reconfiguration_options_reach_aiecc(tmp_path):
+    runtime = Runtime(lambda: None, [])
+    with mlir_mod_ctx():
+        module = Program.compose(
+            [DeviceConfiguration(NPU2Col1(), runtimes=[runtime])],
+            entry=runtime,
+            reconfig_teardown=True,
+            reconfig_init_entry=False,
+        ).resolve_program()
+        mlir_path = tmp_path / "design.mlir"
+        mlir_path.write_text(str(module))
+    design = CompilableDesign(mlir_path)
+
+    assert design._generated_for(full_elf=True).aiecc_options == [
+        "--reconfig-teardown=true",
+        "--reconfig-init-entry=false",
+    ]
+
+
+def test_single_configuration_program_reconfiguration_options():
+    with mlir_mod_ctx():
+        module = Program(
+            NPU2Col1(),
+            Runtime(lambda: None, []),
+            reconfig_teardown=False,
+            reconfig_init_entry=True,
+        ).resolve_program()
+        attributes = module.operation.attributes
+        assert attributes["iron.reconfig_teardown"].value is False
+        assert attributes["iron.reconfig_init_entry"].value is True
+
+
+@pytest.mark.parametrize(
+    "attribute,inferred",
+    [
+        (None, False),
+        ("iron.reconfig_teardown = false", False),
+        ("iron.expand_load_pdis = true", False),
+        ("iron.reconfig_teardown = true", True),
+        ("iron.reconfig_init_entry = true", True),
+    ],
+)
+def test_reconfiguration_option_implies_full_elf(tmp_path, attribute, inferred):
+    mlir_path = tmp_path / "design.mlir"
+    attributes = "" if attribute is None else f" attributes {{{attribute}}}"
+    mlir_path.write_text(f"module{attributes} {{}}")
+    design = CompilableDesign(mlir_path)
+
+    assert design._infer_full_elf() is inferred
+    assert design.full_elf is inferred
+
+
+def test_reconfiguration_option_rejects_standard_paths_before_aiecc(
+    tmp_path, monkeypatch
 ):
     mlir_path = tmp_path / "design.mlir"
-    mlir_path.write_text("module {}")
-    include_path = tmp_path / "include"
-    calls = []
+    mlir_path.write_text("module attributes {iron.reconfig_teardown = true} {}")
+    monkeypatch.setattr(
+        compilabledesign_module,
+        "compile_mlir_module",
+        lambda **kwargs: pytest.fail("aiecc ran"),
+    )
+    design = CompilableDesign(mlir_path)
 
-    def fake_compile_external_kernels(
-        funcs, kernel_dir, target_arch, include_dirs=None
-    ):
-        calls.append((list(funcs), include_dirs))
+    with pytest.raises(ValueError, match="requires full-ELF compilation"):
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin",
+            inst_path=tmp_path / "insts.bin",
+        )
+
+
+def _write_full_elf_config(directory: Path, main_instances: list[str]) -> None:
+    (directory / "full_elf_config.json").write_text(
+        json.dumps(
+            {
+                "xrt-kernels": [
+                    {"name": "main", "instance": [{"id": i} for i in main_instances]}
+                ]
+            }
+        )
+    )
+
+
+def _compile_full_elf(tmp_path, monkeypatch, instances, aiecc_flags=(), attributes=""):
+    """Compile with aiecc faked to write a full ELF whose main device holds `instances`."""
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text(
+        f"module attributes {{{attributes}}} {{}}" if attributes else "module {}"
+    )
 
     def fake_compile_mlir_module(**kwargs):
-        if full_elf:
-            Path(kwargs["full_elf_path"]).touch()
-        else:
-            Path(kwargs["xclbin_path"]).touch()
-            Path(kwargs["insts_path"]).touch()
+        Path(kwargs["full_elf_path"]).touch()
+        _write_full_elf_config(kwargs["work_dir"], instances)
 
     monkeypatch.setattr(
         compilabledesign_module,
         "compile_external_kernels",
-        fake_compile_external_kernels,
+        lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
         compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
@@ -1247,21 +2482,84 @@ def test_mlir_path_compile_forwards_include_paths_with_no_kernels(
     monkeypatch.setattr(
         compilabledesign_module._manifest, "record", lambda *args, **kwargs: None
     )
-    monkeypatch.setattr(compilabledesign_module, "parse_dma_sizes", lambda *args: [])
+    design = CompilableDesign(mlir_path, aiecc_flags=list(aiecc_flags))
+    design.compile(full_elf_path=tmp_path / "design.elf")
+    return design
 
-    design = CompilableDesign(mlir_path, include_paths=[include_path])
-    if full_elf:
-        monkeypatch.setattr(
-            design, "_parse_full_elf_kernel_name", lambda *args: "main:sequence"
-        )
-        design.compile(full_elf_path=tmp_path / "design.elf")
-    else:
-        design.compile(
-            xclbin_path=tmp_path / "design.xclbin",
-            inst_path=tmp_path / "insts.bin",
-        )
 
-    assert calls == [([], (include_path,))]
+@pytest.mark.parametrize(
+    "aiecc_flags,attributes,init",
+    [
+        ([], "", False),
+        (["-reconfig-init-entry=1"], "", True),
+        # The Program's option follows aiecc_flags, so it wins.
+        (["--reconfig-init-entry"], "iron.reconfig_init_entry = false", False),
+    ],
+)
+def test_full_elf_init_entry_resolves_last_option(
+    tmp_path, monkeypatch, npu2_device, aiecc_flags, attributes, init
+):
+    design = _compile_full_elf(
+        tmp_path, monkeypatch, ["reconfig_init", "sequence"], aiecc_flags, attributes
+    )
+
+    assert design._full_elf_kernel_name == (
+        "main:sequence" if init else "main:reconfig_init"
+    )
+    assert design._full_elf_init_entry == init
+
+
+def test_full_elf_init_entry_recorded_only_if_built(tmp_path, monkeypatch, npu2_device):
+    # aiecc adds no init entry to a device without a load_pdi to expand.
+    design = _compile_full_elf(
+        tmp_path, monkeypatch, ["sequence"], ["--reconfig-init-entry"]
+    )
+
+    assert design._full_elf_kernel_name == "main:sequence"
+    assert design._full_elf_init_entry is False
+
+
+def test_full_elf_kernel_name_skips_init_entry(tmp_path):
+    _write_full_elf_config(tmp_path, ["reconfig_init", "sequence"])
+
+    parse = CompilableDesign._parse_full_elf_kernel_name
+    assert parse(tmp_path, init_entry=True) == "main:sequence"
+    # A sequence a design names reconfig_init is an entry like any other.
+    assert parse(tmp_path) == "main:reconfig_init"
+
+
+def test_full_elf_init_entry_round_trips_through_manifest(tmp_path):
+    manifest = compilabledesign_module._manifest
+    manifest.record(
+        tmp_path,
+        [],
+        [],
+        full_elf_kernel="main:sequence",
+        full_elf_init_entry=True,
+    )
+    assert manifest.resolve_full_elf_init_entry(tmp_path) is True
+    manifest.record(tmp_path, [], [], full_elf_kernel="main:sequence")
+    assert manifest.resolve_full_elf_init_entry(tmp_path) is False
+
+
+def test_full_elf_kernel_name_selects_explicit_entry(tmp_path):
+    (tmp_path / "full_elf_config.json").write_text(
+        json.dumps(
+            {
+                "xrt-kernels": [
+                    {"name": "first", "instance": [{"id": "run"}]},
+                    {"name": "entry", "instance": [{"id": "sequence"}]},
+                ]
+            }
+        )
+    )
+
+    assert (
+        CompilableDesign._parse_full_elf_kernel_name(tmp_path, "entry:sequence")
+        == "entry:sequence"
+    )
+    with pytest.raises(RuntimeError, match="does not contain entry"):
+        CompilableDesign._parse_full_elf_kernel_name(tmp_path, "missing:sequence")
 
 
 # ---------------------------------------------------------------------------
@@ -1281,6 +2579,7 @@ def test_config_param_names_matches_construction():
         "aiecc_flags",
         "object_files",
         "full_elf",
+        "insts_only",
     }
 
 
@@ -1311,6 +2610,17 @@ def test_specialize_preserves_other_config():
     assert s.aiecc_flags == ("--dynamic-objFifos",)
     assert s.use_cache is False
     assert s.compile_kwargs == {"M": 512}
+
+
+def test_specialize_preserves_updated_public_config():
+    d = CompilableDesign(_gemm_gen())
+    d.use_cache = False
+    d.aiecc_flags = ("--verbose",)
+
+    s = d.specialize(M=512)
+
+    assert s.use_cache is False
+    assert s.aiecc_flags == ("--verbose",)
 
 
 def test_specialize_mixes_config_and_compile_kwargs():
@@ -1372,3 +2682,108 @@ def test_get_pdi_paths_empty_before_compile():
 
     cd = CompilableDesign(gen)
     assert cd.get_pdi_paths() == []
+
+
+def test_get_cache_entry_none_before_compile():
+    def gen():
+        pass
+
+    assert CompilableDesign(gen).get_cache_entry() is None
+
+
+def test_get_cache_entry_names_what_the_directory_holds(tmp_path):
+    """The entry lists each output by path and leaves out what is absent,
+    whether the directory is a JIT-cache entry or a caller's <stem>.prj."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    cd._kernel_dir = tmp_path
+    cd._elf_path = tmp_path / "design.elf"
+    cd._full_elf_kernel_name = "main:sequence"
+    cd._xclbin_path = tmp_path / "final.xclbin"  # never written: left out
+    for name in ("design.elf", "params.txt", "input_with_addresses.mlir", "main.pdi"):
+        (tmp_path / name).write_bytes(b"x")
+    (tmp_path / "op0_kernel.o").write_bytes(b"o")
+
+    entry = cd.get_cache_entry()
+    assert entry.directory == tmp_path
+    assert entry.elf == tmp_path / "design.elf" and entry.xclbin is None
+    assert entry.full_elf_kernel == "main:sequence"
+    assert entry.insts is None and entry.dispatch_library is None
+    assert entry.pdis == (tmp_path / "main.pdi",)
+    assert entry.params == tmp_path / "params.txt"
+    assert entry.lowered_mlir == tmp_path / "input_with_addresses.mlir"
+    assert entry.objects == (tmp_path / "op0_kernel.o",)
+    assert entry.manifest is None
+
+
+# ---------------------------------------------------------------------------
+# compile(): DispatchTime[T] guards -- these raise before any subprocess runs
+# ---------------------------------------------------------------------------
+
+
+def test_compile_dispatch_time_rejects_full_elf():
+    """DispatchTime[T] + full_elf=True raises before any compilation is attempted."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512}, full_elf=True)
+    with pytest.raises(NotImplementedError, match="full_elf"):
+        d.compile()
+
+
+def test_compile_dispatch_time_rejects_full_elf_path_kwarg():
+    """Same guard via the full_elf_path= call-time kwarg, not just the config."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    with pytest.raises(NotImplementedError, match="full_elf"):
+        d.compile(full_elf_path="foo.elf")
+
+
+@pytest.mark.parametrize("extra", [{"inst_path": "foo.bin"}, {"elf_path": "foo.elf"}])
+def test_compile_dispatch_time_rejects_static_instruction_paths(extra):
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    with pytest.raises(ValueError, match="no static instructions"):
+        d.compile(xclbin_path="foo.xclbin", **extra)
+
+
+def test_get_dispatch_lib_path_none_before_compile():
+    """get_dispatch_lib_path() returns None when no compile has happened yet."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    assert d.get_dispatch_lib_path() is None
+
+
+def test_get_dispatch_lib_path_none_for_non_dispatch_design():
+    """get_dispatch_lib_path() returns None for a design with no DispatchTime[T] params."""
+    d = CompilableDesign(_gemm_gen())
+    assert d.get_dispatch_lib_path() is None
+
+
+@pytest.mark.parametrize("dtype", [int, bool, float, str, np.float32, np.bool_])
+def test_dispatch_time_rejects_unsupported_types_at_construction(dtype):
+    def gen(*, scale: DispatchTime[dtype]):
+        pass
+
+    with pytest.raises(TypeError, match="Unsupported DispatchTime.*NumPy integer"):
+        CompilableDesign(gen)
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.int8,
+        np.int16,
+        np.int32,
+        np.int64,
+        np.uint8,
+        np.uint16,
+        np.uint32,
+        np.uint64,
+        np.intc,
+        np.uintp,
+        np.longlong,
+    ],
+)
+def test_dispatch_time_accepts_runtime_integer_types(dtype):
+    def gen(*, scale: DispatchTime[dtype]):
+        pass
+
+    assert CompilableDesign(gen).dispatch_param_types == [dtype]

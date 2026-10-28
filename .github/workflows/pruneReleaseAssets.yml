@@ -28,7 +28,7 @@ jobs:
     # net-new assets that never collide with existing ones, so nothing is ever
     # replaced. Without this janitor we hit GitHub's 1000-asset-per-release cap
     # (already happened, see PR #3054).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Prune assets older than ${{ inputs.max_age_days || '30' }} days
         env:

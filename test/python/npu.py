@@ -3,6 +3,8 @@
 #
 
 # RUN: %python %s | FileCheck %s
+import sys
+
 import numpy as np
 from aie.extras.dialects import memref
 import aie.extras.types as T
@@ -57,7 +59,7 @@ def my_vector_scalar(module):
         @core(M)
         def core_body():
             # Effective while(1)
-            for _ in range_(0xFFFFFFFF):
+            for _ in range_(sys.maxsize):
                 # Number of sub-vector "tile" iterations
                 for _ in range_(N_div_n):
                     elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
@@ -117,9 +119,9 @@ def my_matmul(module):
     def device_body():
         func_type = "" if vectorized else "scalar_"
         zero = external_func(
-            f"zero_{func_type}i16",
+            "zero",
             inputs=[np.ndarray[(m, n), np.dtype[np.int16]]],
-            link_with="mm.o",
+            link_with="zero.o",
         )
         matmul = external_func(
             f"matmul_{func_type}i16_i16",
@@ -140,7 +142,7 @@ def my_matmul(module):
 
         @core(M)
         def core_body():
-            for _ in range_(0xFFFFFFFF):
+            for _ in range_(sys.maxsize):
                 for _ in range_(tiles):
                     elem_out = of_outC.acquire(ObjectFifoPort.Produce, 1)
                     zero(elem_out)

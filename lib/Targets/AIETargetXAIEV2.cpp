@@ -118,8 +118,20 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     // Owning storage for the folded dims; must outlive `dims` (used far below).
     SmallVector<BDDimLayoutAttr> dimsStorage;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
+    // A legacy dma_bd_packet op is read first so that a packet attribute on
+    // the dma_bd overrides it, matching AIERT.
+    for (auto op : block->getOps<DMABDPACKETOp>()) {
+      foundBdPacket = true;
+      packetType = op.getPacketType();
+      packetID = op.getPacketID();
+    }
     for (auto op : block->getOps<DMABDOp>()) {
       foundBd = true;
+      if (auto packetInfo = op.getPacket()) {
+        foundBdPacket = true;
+        packetType = packetInfo->getPktType();
+        packetID = packetInfo->getPktId();
+      }
       if (!targetModel.isShimNOCTile(col, row)) {
         std::optional<int32_t> bufferAddr = op.getBufferOp().getAddress();
         assert(bufferAddr && "buffer must have address assigned");
@@ -216,12 +228,6 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         // unreachable for current targets
         return op.emitOpError("unsupported lock action");
       }
-    }
-
-    for (auto op : block->getOps<DMABDPACKETOp>()) {
-      foundBdPacket = true;
-      packetType = op.getPacketType();
-      packetID = op.getPacketID();
     }
 
     int bdNum = blockMap[block];
@@ -400,6 +406,8 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
   if (!targetOp)
     return module.emitOpError("expected AIE.device operation at toplevel");
+  if (failed(verifyDMAChannelsResolved(targetOp)))
+    return failure();
   const auto &targetModel = targetOp.getTargetModel();
 
   collectTiles(targetOp, tiles);

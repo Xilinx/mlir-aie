@@ -4,31 +4,39 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-from typing import Sequence, get_origin
+import math
+from typing import TYPE_CHECKING, Sequence, get_origin
 
 import numpy as np
 
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+from ...dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
 from ...extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
     MemRefValue,
 )
-from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
-from ...helpers.util import (
+from ...helpers.npdtypes import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
+    np_ndarray_type_of,
 )
+from ...helpers.taplib import TensorAccessPattern
+
+if TYPE_CHECKING:
+    from ...utils.compile.jit.markers import In, InOut, Out
 
 
 class RuntimeData:
     """A handle to I/O data in the Runtime."""
 
-    def __init__(self, arr_type: type[np.ndarray]):
+    def __init__(self, arr_type: "type[np.ndarray] | In | Out | InOut"):
         """Construct a handle to a Runtime buffer.
 
         Args:
-            arr_type (type[np.ndarray]): The type of the I/O data.
+            arr_type: The type of the I/O data, or a generator's tensor
+                operand.
         """
-        self._arr_type = arr_type
+        self._arr_type = np_ndarray_type_of(arr_type)
         self._op = None
 
     @property
@@ -37,7 +45,7 @@ class RuntimeData:
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
-    def dtype(self) -> NpuDType:
+    def dtype(self) -> type[NpuDType]:
         """Return the per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._arr_type)
 
@@ -61,8 +69,58 @@ class RuntimeData:
 
     def default_tap(self) -> TensorAccessPattern:
         """Return a default access pattern for a linear transfer of the buffer."""
-        # TODO: what if not two dimensional?
-        return TensorTiler2D.simple_tiler(self.shape)[0]
+        return TensorAccessPattern.full(self.shape)
+
+    def __getitem__(self, key) -> TensorAccessPattern:
+        """Return the access pattern for a numpy-style slice of this buffer.
+
+        For example, ``flow.fill(a, tap=a[0::2, 1::2, ...])`` selects a transfer
+        region. ``TensorAccessPattern.full(shape)[key]`` computes element
+        offsets, sizes and strides directly from the shape and key, assuming C-order.
+        This returns metadata, not a numpy view or runtime values; indexing
+        cannot read the buffer's contents.
+        """
+        return TensorAccessPattern.full(self.shape)[key]
+
+    def window(self, offset: int, shape: Sequence[int]):
+        """Return a contiguous memref window for a runtime-sequence call."""
+        if len(self.shape) != 1:
+            raise ValueError("RuntimeData.window requires a one-dimensional source.")
+        shape = tuple(shape)
+        if not shape or any(size < 0 for size in shape):
+            raise ValueError(
+                f"RuntimeData.window requires a non-empty static shape: {shape}."
+            )
+        size = math.prod(shape)
+        if offset < 0 or offset + size > self.shape[0]:
+            raise ValueError(
+                f"RuntimeData.window [{offset}, {offset + size}) exceeds source "
+                f"shape {tuple(self.shape)}."
+            )
+
+        source_type = ir.MemRefType(self.op.type)
+        view = memref.subview(
+            self.op,
+            offsets=[offset],
+            sizes=[size],
+            strides=[1],
+        )
+        result_type = ir.MemRefType.get(
+            shape,
+            source_type.element_type,
+            memory_space=source_type.memory_space,
+        )
+        strides = [math.prod(shape[index + 1 :]) for index in range(len(shape))]
+        return memref.reinterpret_cast(
+            result_type,
+            view,
+            offsets=[],
+            sizes=[],
+            strides=[],
+            static_offsets=[0],
+            static_sizes=shape,
+            static_strides=strides,
+        )
 
     @property
     def op(self) -> MemRefValue:

@@ -1,0 +1,141 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Contract test for common.cmake's add_aie_design()/add_aie_run_test(). It
+// configures the fixture in this directory and asserts on the generated ctests
+// and build rules -- no NPU, no design compile, a few seconds, and identical on
+// Windows and Linux. See CMakeLists.txt for what each CASE sets up.
+//
+// Why this exists: the failure modes of these helpers are silent. A test that
+// is never registered still makes ctest exit 0, and an instruction stream of
+// the wrong kind only shows up as an abort inside XRT on real hardware. Both
+// have already happened once.
+//
+// REQUIRES: cmake_examples
+//
+//===----------------------------------------------------------------------===//
+// Positive: one configure, then assert the registered tests, their properties,
+// and the JIT rule.
+//===----------------------------------------------------------------------===//
+//
+// RUN: cmake -G Ninja -S %S -B %t.all -DAIE_DEVICE=npu2 -DPython3_EXECUTABLE=%python
+// RUN: ctest --test-dir %t.all -N -V | FileCheck %s --check-prefix=TESTS
+// RUN: ctest --test-dir %t.all --show-only=json-v1 | FileCheck %s --check-prefix=PROPS
+// RUN: cmake --build %t.all -- -t commands | FileCheck %s --check-prefix=JIT
+//
+// EXE, no USE_ELF: the host binary gets the raw instruction stream. DEVICE was
+// omitted, so this is ${AIE_DEVICE} == npu2.
+// TESTS: Test command: {{.*}}run_on_npu.py" "npu2" "{{.*}}host_exe{{.*}}" "-x" "{{.*}}final.xclbin" "-i" "{{.*}}insts.bin" "-k" "MLIR_AIE"
+// TESTS: Test #1: t_exe
+//
+// USE_ELF swaps insts.bin for final.elf -- an xrt::elf + xrt::module testbench
+// cannot load the raw stream.
+// TESTS: Test command: {{.*}}run_on_npu.py" "npu2" "{{.*}}host_exe{{.*}}" "-x" "{{.*}}final.xclbin" "-i" "{{.*}}final.elf" "-k" "MLIR_AIE"
+// TESTS: Test #2: t_exe_elf
+//
+// DEVICE npu overrides the cache variable and spells itself "npu1" to run_on_npu.py.
+// TESTS: Test command: {{.*}}run_on_npu.py" "npu1" "{{.*}}host_exe{{.*}}"
+// TESTS: Test #3: t_exe_npu1
+//
+// PY: the run_py shape -- python host script driven against the built artifacts,
+// with KERNEL and RUN_ARGS applied.
+// TESTS: Test command: {{.*}}run_on_npu.py" "npu2" "{{.*}}" "{{.*}}host.py" "--xclbin" "{{.*}}final.xclbin" "--instr" "{{.*}}insts.bin" "-k" "MY_KERNEL" "-l" "4096" "--op" "add"
+// TESTS: Environment variables:
+// TESTS: FIXTURE_VAR=fixture_value
+// TESTS: Test #4: t_py
+//
+// PY_STANDALONE: the script runs alone, with no artifact arguments.
+// TESTS: Test command: {{.*}}run_on_npu.py" "npu2" "{{.*}}" "{{.*}}design.py" "--trace"
+// TESTS: Test #5: t_standalone
+//
+// Exact count. An empty suite is the enable_testing()-in-a-function bug, and
+// ctest reports that as success.
+// TESTS: Total Tests: 5
+//
+// Every test is bounded, and the ones that consume artifacts declare them so a
+// missing xclbin is reported by ctest rather than aborting inside XRT.
+// PROPS: "name" : "REQUIRED_FILES"
+// PROPS: final.xclbin
+// PROPS: insts.bin
+// PROPS: "name" : "TIMEOUT"
+// PROPS: "value" : 300
+// PROPS: "name" : "TIMEOUT"
+// PROPS: "value" : 42
+//
+// The JIT rule passes the device, ARGS, and all three artifact paths.
+// JIT: design.py -d npu2 --fixture-arg 7 --xclbin-path={{.*}}final.xclbin --insts-path={{.*}}insts.bin --elf-path={{.*}}final.elf
+//
+//===----------------------------------------------------------------------===//
+// AIE_BUILD_DESIGN=OFF (what makefile-common's build_host_exe passes): no JIT
+// rule at all, but the host binary still builds.
+//===----------------------------------------------------------------------===//
+//
+// RUN: cmake -G Ninja -S %S -B %t.off -DAIE_DEVICE=npu2 -DPython3_EXECUTABLE=%python -DAIE_BUILD_DESIGN=OFF
+// RUN: cmake --build %t.off -- -t commands | FileCheck %s --check-prefix=NOJIT
+// RUN: cmake --build %t.off --target host_exe
+//
+// NOJIT-NOT: design.py
+//
+//===----------------------------------------------------------------------===//
+// Negative: every misuse must fail at configure time with a message that names
+// the problem. %t.err is primed with a successful configure first so the
+// compiler/XRT/Python probes are cached and each failing run is fast.
+//===----------------------------------------------------------------------===//
+//
+// RUN: cmake -G Ninja -S %S -B %t.err -DPython3_EXECUTABLE=%python
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_design_missing_py 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_DESIGN_PY
+// E_DESIGN_PY: add_aie_design: PY is required
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_design_bad_py 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_DESIGN_BAD_PY
+// E_DESIGN_BAD_PY: add_aie_design: design script not found:
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_design_bad_device 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_DESIGN_DEV
+// E_DESIGN_DEV: add_aie_design: DEVICE must be
+//
+// A bad -DAIE_DEVICE is caught where it is set, not at each use. This one gets
+// its own build dir: -D writes npu9 into the cache, so reusing %t.err would
+// make every later case fail on the device check instead of the case under test.
+// RUN: not cmake -G Ninja -S %S -B %t.errdev -DPython3_EXECUTABLE=%python -DAIE_DEVICE=npu9 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_CACHE_DEV
+// E_CACHE_DEV: -DAIE_DEVICE: DEVICE must be
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_design_unknown_keyword 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_DESIGN_KW
+// E_DESIGN_KW: add_aie_design: unrecognized argument(s): DEVICES npu
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_design_missing_value 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_DESIGN_VAL
+// E_DESIGN_VAL: add_aie_design: keyword(s) given without a value: DEVICE
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_missing_name 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_NAME
+// E_RUN_NAME: add_aie_run_test: NAME is required
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_no_host 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_NO_HOST
+// E_RUN_NO_HOST: add_aie_run_test(t): one of EXE or PY is required
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_two_hosts 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_TWO_HOSTS
+// E_RUN_TWO_HOSTS: add_aie_run_test(t): EXE and PY are mutually exclusive
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_exe_not_a_target 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_EXE
+// E_RUN_EXE: add_aie_run_test(t): EXE 'no_such_target' is not a target.
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_bad_py 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_BAD_PY
+// E_RUN_BAD_PY: add_aie_run_test(t): host script not found:
+//
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_standalone_without_py 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_STANDALONE
+// E_RUN_STANDALONE: add_aie_run_test(t): PY_STANDALONE requires PY
+//
+// The regression that mattered: USE_ELF against a design that never emits an ELF.
+// RUN: not cmake -G Ninja -S %S -B %t.err -DCASE=err_run_use_elf_without_elf_design 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=E_RUN_USE_ELF
+// E_RUN_USE_ELF: add_aie_run_test(t): USE_ELF requires a preceding add_aie_design(

@@ -92,8 +92,10 @@ func.func @multidim_vector_transfer(%in : memref<64x64x32x8xbf16>,
 // -----
 //
 
+// A contraction with rhs stored [n, k] is left as it is: the lowering to the
+// matmul ops takes each operand in the layout it is stored in.
 // CHECK: #[[IDXMAPA:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
-// CHECK: #[[IDXMAPB:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d1, d5, d4)>
+// CHECK: #[[IDXMAPB:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d1, d4, d5)>
 // CHECK: #[[IDXMAPC:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d1, d4, d5)>
@@ -107,15 +109,14 @@ func.func @vector_contract_permuted_b(%A : vector<1x1x4x8xbf16>,
                                       %B : vector<1x1x4x8xbf16>,
                                       %C : vector<1x1x4x4xf32>)
                                     -> vector<1x1x4x4xf32> {
-  // CHECK: %[[TRB:.*]] = vector.transpose %[[VB]], [0, 1, 3, 2] :
-  // CHECK-SAME:                 vector<1x1x4x8xbf16> to vector<1x1x8x4xbf16>
+  // CHECK-NOT: vector.transpose
   // CHECK: %[[RES:.*]] = vector.contract {
   // CHECK-SAME:    indexing_maps = [#[[IDXMAPA]], #[[IDXMAPB]], #[[IDXMAPC]]],
   // CHECK-SAME:    iterator_types = ["parallel", "parallel", "reduction",
   // CHECK-SAME:                      "parallel", "parallel", "reduction"],
   // CHECK-SAME:    kind = #vector.kind<add>}
-  // CHECK-SAME:    %[[VA]], %[[TRB]], %[[VC]] :
-  // CHECK-SAME:          vector<1x1x4x8xbf16>, vector<1x1x8x4xbf16>
+  // CHECK-SAME:    %[[VA]], %[[VB]], %[[VC]] :
+  // CHECK-SAME:          vector<1x1x4x8xbf16>, vector<1x1x4x8xbf16>
   // CHECK-SAME:          into vector<1x1x4x4xf32>
   %res = vector.contract {
               indexing_maps = [#map1, #map2, #map3],
@@ -130,8 +131,10 @@ func.func @vector_contract_permuted_b(%A : vector<1x1x4x8xbf16>,
 // -----
 //
 
+// A contraction with rhs stored [n, k] is left as it is: the lowering to the
+// matmul ops takes each operand in the layout it is stored in.
 // CHECK: #[[IDXMAPA:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
-// CHECK: #[[IDXMAPB:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d1, d5, d4)>
+// CHECK: #[[IDXMAPB:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d1, d4, d5)>
 // CHECK: #[[IDXMAPC:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d0, d3, d4)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
 #map2 = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d1, d4, d5)>
@@ -145,19 +148,19 @@ func.func @vector_contract_permuted_b(%A : vector<1x1x4x8xbf16>,
                                       %B : vector<1x1x4x8xbf16>,
                                       %C : vector<1x1x4x4xf32>)
                                     -> vector<1x1x4x4xf32> {
-  // CHECK: %[[LHS:.*]] = arith.extf %[[VA]] :
+  // CHECK-NOT: vector.transpose
+  // CHECK-DAG: %[[LHS:.*]] = arith.extf %[[VA]] :
   // CHECK-SAME:                 vector<1x1x4x8xbf16> to vector<1x1x4x8xf32>
-  // CHECK: %[[TRB:.*]] = vector.transpose %[[VB]], [0, 1, 3, 2] :
-  // CHECK-SAME:                 vector<1x1x4x8xbf16> to vector<1x1x8x4xbf16>
-  // CHECK: %[[RHS:.*]] = arith.extf %[[TRB]] :
-  // CHECK-SAME:                 vector<1x1x8x4xbf16> to vector<1x1x8x4xf32>
+  // CHECK-DAG: %[[RHS:.*]] = arith.extf %[[VB]] :
+  // CHECK-SAME:                 vector<1x1x4x8xbf16> to vector<1x1x4x8xf32>
+  // CHECK-NOT: vector.transpose
   // CHECK: %[[RES:.*]] = vector.contract {
   // CHECK-SAME:    indexing_maps = [#[[IDXMAPA]], #[[IDXMAPB]], #[[IDXMAPC]]],
   // CHECK-SAME:    iterator_types = ["parallel", "parallel", "reduction",
   // CHECK-SAME:                      "parallel", "parallel", "reduction"],
   // CHECK-SAME:    kind = #vector.kind<add>}
   // CHECK-SAME:    %[[LHS]], %[[RHS]], %[[VC]] :
-  // CHECK-SAME:          vector<1x1x4x8xf32>, vector<1x1x8x4xf32>
+  // CHECK-SAME:          vector<1x1x4x8xf32>, vector<1x1x4x8xf32>
   // CHECK-SAME:          into vector<1x1x4x4xf32>
   %lhs = arith.extf %A : vector<1x1x4x8xbf16> to vector<1x1x4x8xf32>
   %rhs = arith.extf %B : vector<1x1x4x8xbf16> to vector<1x1x4x8xf32>
