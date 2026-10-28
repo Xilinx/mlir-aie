@@ -1,0 +1,10 @@
+/scratch/roesti/worktrees/mlir-aie-no-overlap/artifacts/no-overlap-routing/matmul.dot
+  edges                        : 123
+  overlapping parallel pairs   : 1
+  edges crossing a foreign tile: 0
+  edges crossing a node box    : 0
+/scratch/roesti/worktrees/mlir-aie-no-overlap/artifacts/no-overlap-routing/gemma.dot
+  edges                        : 211
+  overlapping parallel pairs   : 3
+  edges crossing a foreign tile: 0
+  edges crossing a node box    : 0

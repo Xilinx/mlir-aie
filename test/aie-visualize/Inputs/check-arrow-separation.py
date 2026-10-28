@@ -9,9 +9,19 @@ from fractions import Fraction
 MINIMUM_GAP = Fraction("1.2")
 
 
+def is_straight(first, control1, control2, second):
+    dx = second[0] - first[0]
+    dy = second[1] - first[1]
+    return all(
+        (point[0] - first[0]) * dy == (point[1] - first[1]) * dx
+        for point in (control1, control2)
+    )
+
+
 def axis_runs(path):
     text = open(path, encoding="utf-8").read()
     runs = []
+    diagonals = []
     for edge, match in enumerate(re.finditer(
         r'^\s*(\w+) -> (\w+) \[(.*)\];$', text, re.MULTILINE
     )):
@@ -32,7 +42,8 @@ def axis_runs(path):
         ]
         points = [tuple(map(Fraction, field.split(","))) for field in fields]
         knots = points[::3] if len(points) >= 4 else points
-        for first, second in zip(knots, knots[1:]):
+        segments = list(zip(knots, knots[1:]))
+        for index, (first, second) in enumerate(segments):
             if first[1] == second[1]:
                 runs.append(
                     (
@@ -55,11 +66,16 @@ def axis_runs(path):
                         owner,
                     )
                 )
-    return runs
+            else:
+                if len(points) < 4 or is_straight(
+                    first, points[3 * index + 1], points[3 * index + 2], second
+                ):
+                    diagonals.append((owner, first, second))
+    return runs, diagonals
 
 
 def main():
-    runs = axis_runs(sys.argv[1])
+    runs, diagonals = axis_runs(sys.argv[1])
     collinear_overlaps = []
     narrow_gaps = []
     crossings = 0
@@ -105,15 +121,18 @@ def main():
                 narrow_gaps.append(conflict)
     print(
         f"collinear_overlaps={len(collinear_overlaps)} "
-        f"narrow_gaps={len(narrow_gaps)} crossings={crossings}"
+        f"narrow_gaps={len(narrow_gaps)} diagonals={len(diagonals)} "
+        f"crossings={crossings}"
     )
     for first, second, overlap, gap in collinear_overlaps + narrow_gaps:
         print(
             f"{first} | {second}: overlap={float(overlap):.2f} "
             f"gap={float(gap):.2f}"
         )
-    if collinear_overlaps or narrow_gaps:
-        raise RuntimeError("found overlapping or insufficiently separated arrow runs")
+    for owner, first, second in diagonals:
+        print(f"{owner}: diagonal={first} to {second}")
+    if collinear_overlaps or narrow_gaps or diagonals:
+        raise RuntimeError("found invalid arrow runs")
 
 
 if __name__ == "__main__":

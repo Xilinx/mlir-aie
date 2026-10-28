@@ -31,6 +31,7 @@ namespace {
 constexpr double kArcControl = 0.5523;
 constexpr double kCornerRadius = 0.10;
 constexpr double kEpsilon = 1e-9;
+constexpr double kMinimumRenderedGap = 1.2;
 constexpr uint64_t kNoParent = std::numeric_limits<uint64_t>::max();
 
 enum class Direction : uint8_t { East, West, North, South };
@@ -165,6 +166,13 @@ struct RoutedPath {
   bool valid = false;
 };
 
+struct StubUsage {
+  Point first;
+  Point second;
+  unsigned requestID = 0;
+  unsigned count = 0;
+};
+
 struct QueueEntry {
   double estimate;
   double cost;
@@ -231,6 +239,11 @@ private:
   void addUsage(const RoutedPath &path, int amount);
   double conflictScore(const RoutedPath &path) const;
   SmallVector<Point> cornersOf(const RoutedPath &path) const;
+  bool hasNearbyParallelUsage(unsigned x, unsigned y,
+                              Direction direction, unsigned requestID) const;
+  bool hasGatewayConflict(const Gateway &gateway, unsigned requestID) const;
+  bool sharesEndpoint(unsigned first, unsigned second) const;
+  void addStubUsage(Point first, Point second, unsigned requestID, int amount);
 
   unsigned vertex(unsigned x, unsigned y) const { return y * xs.size() + x; }
   std::pair<unsigned, unsigned> coordinates(unsigned vertex) const {
@@ -251,8 +264,11 @@ private:
   double overlapPenalty = 0.0;
   double proximityPenalty = 0.0;
   double trackPitch = 0.0;
+  double minimumGap = 0.0;
   std::vector<double> xs;
   std::vector<double> ys;
+  std::vector<std::pair<unsigned, unsigned>> nearbyXs;
+  std::vector<std::pair<unsigned, unsigned>> nearbyYs;
   std::vector<InflatedObstacle> scene;
   std::map<std::string, unsigned> obstacleByNode;
   std::map<std::pair<std::string, unsigned>, std::pair<unsigned, unsigned>>
@@ -262,8 +278,12 @@ private:
   std::vector<Blockage> verticalBlockage;
   std::vector<uint16_t> horizontalUsage;
   std::vector<uint16_t> verticalUsage;
+  std::vector<int32_t> horizontalOwner;
+  std::vector<int32_t> verticalOwner;
   std::vector<uint16_t> vertexHorizontalUsage;
   std::vector<uint16_t> vertexVerticalUsage;
+  std::vector<StubUsage> stubUsage;
+  std::vector<std::pair<unsigned, unsigned>> requestEndpoints;
   std::vector<double> routeDistance;
   std::vector<uint64_t> routeParent;
   std::vector<uint32_t> routeGeneration;
@@ -469,15 +489,25 @@ void AvoidanceArrowRenderer::buildGrid(ArrayRef<ArrowRequest> requests,
   overlapPenalty = 12.0;
   proximityPenalty = 0.3;
   trackPitch = layout.text(kTrackPitch);
+  minimumGap = kMinimumRenderedGap / (72.0 * layout.scale);
 
   scene.clear();
   obstacleByNode.clear();
   endpointRanks.clear();
+  requestEndpoints.clear();
   xs.clear();
   ys.clear();
   std::set<std::string> endpointNodes;
   std::map<std::string, SmallVector<unsigned>> endpointRequests;
+  std::map<std::string, unsigned> endpointIDs;
+  requestEndpoints.resize(requests.size());
   for (const ArrowRequest &request : requests) {
+    auto endpointID = [&](const std::string &node) {
+      auto [found, inserted] = endpointIDs.try_emplace(node, endpointIDs.size());
+      return found->second;
+    };
+    requestEndpoints[request.id] = {endpointID(request.from.node),
+                                    endpointID(request.to.node)};
     endpointNodes.insert(request.from.node);
     endpointNodes.insert(request.to.node);
     endpointRequests[request.from.node].push_back(request.id);
@@ -544,6 +574,23 @@ void AvoidanceArrowRenderer::buildGrid(ArrayRef<ArrowRequest> requests,
   ys.insert(ys.begin(), ys.front() - margin);
   ys.push_back(ys.back() + margin);
 
+  auto nearbyRanges = [&](ArrayRef<double> coordinates) {
+    std::vector<std::pair<unsigned, unsigned>> ranges;
+    ranges.reserve(coordinates.size());
+    for (double coordinate : coordinates) {
+      unsigned first = llvm::lower_bound(coordinates,
+                                         coordinate - minimumGap) -
+                       coordinates.begin();
+      unsigned last = llvm::upper_bound(coordinates,
+                                        coordinate + minimumGap) -
+                      coordinates.begin();
+      ranges.emplace_back(first, last);
+    }
+    return ranges;
+  };
+  nearbyXs = nearbyRanges(xs);
+  nearbyYs = nearbyRanges(ys);
+
   vertexBlockage.assign(xs.size() * ys.size(), {});
   horizontalBlockage.assign((xs.size() - 1) * ys.size(), {});
   verticalBlockage.assign(xs.size() * (ys.size() - 1), {});
@@ -573,8 +620,11 @@ void AvoidanceArrowRenderer::buildGrid(ArrayRef<ArrowRequest> requests,
 
   horizontalUsage.assign(horizontalBlockage.size(), 0);
   verticalUsage.assign(verticalBlockage.size(), 0);
+  horizontalOwner.assign(horizontalBlockage.size(), -1);
+  verticalOwner.assign(verticalBlockage.size(), -1);
   vertexHorizontalUsage.assign(vertexBlockage.size(), 0);
   vertexVerticalUsage.assign(vertexBlockage.size(), 0);
+  stubUsage.clear();
   routeDistance.resize(vertexBlockage.size() * 4);
   routeParent.resize(vertexBlockage.size() * 4);
   routeGeneration.assign(vertexBlockage.size() * 4, 0);
@@ -587,6 +637,14 @@ RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request,
       gatewaysFor(request.from, request.to, request.id);
   SmallVector<Gateway> targets =
       gatewaysFor(request.to, request.from, request.id);
+  if (!allowOccupied) {
+    llvm::erase_if(sources, [&](const Gateway &gateway) {
+      return hasGatewayConflict(gateway, request.id);
+    });
+    llvm::erase_if(targets, [&](const Gateway &gateway) {
+      return hasGatewayConflict(gateway, request.id);
+    });
+  }
   RoutedPath result;
   result.id = request.id;
   if (sources.empty() || targets.empty())
@@ -704,6 +762,9 @@ RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request,
         continue;
       if (usage != 0 && !allowOccupied)
         continue;
+        if (!allowOccupied &&
+          hasNearbyParallelUsage(x, y, step.direction, request.id))
+        continue;
 
       double length = std::abs(xs[x] - xs[nextX]) + std::abs(ys[y] - ys[nextY]);
       double cost = current.cost + length;
@@ -776,9 +837,129 @@ RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request,
   return result;
 }
 
+bool AvoidanceArrowRenderer::hasNearbyParallelUsage(
+  unsigned x, unsigned y, Direction direction, unsigned requestID) const {
+  if (horizontal(direction)) {
+    unsigned edgeX = direction == Direction::East ? x : x - 1;
+    auto [first, last] = nearbyYs[y];
+    for (unsigned otherY = first; otherY < last; ++otherY) {
+      unsigned edge = horizontalEdge(edgeX, otherY);
+      if (otherY != y && std::abs(ys[otherY] - ys[y]) < minimumGap &&
+          horizontalUsage[edge] != 0 &&
+          (horizontalUsage[edge] != 1 ||
+           !sharesEndpoint(requestID, horizontalOwner[edge])))
+          return true;
+    }
+    return false;
+  }
+
+  unsigned edgeY = direction == Direction::North ? y : y - 1;
+  auto [first, last] = nearbyXs[x];
+  for (unsigned otherX = first; otherX < last; ++otherX) {
+    unsigned edge = verticalEdge(otherX, edgeY);
+    if (otherX != x && std::abs(xs[otherX] - xs[x]) < minimumGap &&
+      verticalUsage[edge] != 0 &&
+        (verticalUsage[edge] != 1 ||
+         !sharesEndpoint(requestID, verticalOwner[edge])))
+      return true;
+  }
+  return false;
+}
+
+bool AvoidanceArrowRenderer::hasGatewayConflict(const Gateway &gateway,
+                                                unsigned requestID) const {
+  bool horizontalStub =
+      std::abs(gateway.anchor.second - gateway.point.second) < kEpsilon;
+  double cross = horizontalStub ? gateway.anchor.second : gateway.anchor.first;
+  double low = horizontalStub
+                   ? std::min(gateway.anchor.first, gateway.point.first)
+                   : std::min(gateway.anchor.second, gateway.point.second);
+  double high = horizontalStub
+                    ? std::max(gateway.anchor.first, gateway.point.first)
+                    : std::max(gateway.anchor.second, gateway.point.second);
+  const std::vector<double> &parallel = horizontalStub ? ys : xs;
+  const std::vector<double> &along = horizontalStub ? xs : ys;
+  auto first = llvm::lower_bound(parallel, cross - minimumGap);
+  auto last = llvm::upper_bound(parallel, cross + minimumGap);
+  unsigned alongFirst = llvm::upper_bound(along, low) - along.begin();
+  unsigned alongLast = std::min<unsigned>(
+      llvm::lower_bound(along, high) - along.begin(), along.size() - 1);
+  for (auto other = first; other != last; ++other) {
+    if (std::abs(*other - cross) >= minimumGap)
+      continue;
+    unsigned crossIndex = other - parallel.begin();
+    for (unsigned index = alongFirst; index <= alongLast && index > 0;
+         ++index) {
+      unsigned edge = horizontalStub
+                          ? horizontalEdge(index - 1, crossIndex)
+                          : verticalEdge(crossIndex, index - 1);
+        unsigned usage =
+          horizontalStub ? horizontalUsage[edge] : verticalUsage[edge];
+        int32_t owner =
+          horizontalStub ? horizontalOwner[edge] : verticalOwner[edge];
+        if (usage != 0 &&
+            (usage != 1 || !sharesEndpoint(requestID, owner)))
+        return true;
+    }
+  }
+  for (const StubUsage &stub : stubUsage) {
+    if (stub.count == 0 || sharesEndpoint(requestID, stub.requestID))
+      continue;
+    bool stubHorizontal =
+        std::abs(stub.first.second - stub.second.second) < kEpsilon;
+    if (stubHorizontal != horizontalStub)
+      continue;
+    double stubCross = stubHorizontal ? stub.first.second : stub.first.first;
+    double stubLow = stubHorizontal
+                         ? std::min(stub.first.first, stub.second.first)
+                         : std::min(stub.first.second, stub.second.second);
+    double stubHigh = stubHorizontal
+                          ? std::max(stub.first.first, stub.second.first)
+                          : std::max(stub.first.second, stub.second.second);
+    if (std::abs(stubCross - cross) < minimumGap &&
+        std::min(high, stubHigh) > std::max(low, stubLow) + kEpsilon)
+      return true;
+  }
+  return false;
+}
+
+bool AvoidanceArrowRenderer::sharesEndpoint(unsigned first,
+                                            unsigned second) const {
+  if (first >= requestEndpoints.size() || second >= requestEndpoints.size())
+    return false;
+  auto [firstSource, firstDest] = requestEndpoints[first];
+  auto [secondSource, secondDest] = requestEndpoints[second];
+  return firstSource == secondSource || firstSource == secondDest ||
+         firstDest == secondSource || firstDest == secondDest;
+}
+
+void AvoidanceArrowRenderer::addStubUsage(Point first, Point second,
+                                          unsigned requestID, int amount) {
+  if (std::hypot(first.first - second.first, first.second - second.second) <
+      kEpsilon)
+    return;
+  auto found = llvm::find_if(stubUsage, [&](const StubUsage &stub) {
+    return stub.first == first && stub.second == second &&
+           stub.requestID == requestID;
+  });
+  if (found == stubUsage.end()) {
+    assert(amount > 0 && "cannot remove an unknown gateway stub");
+    stubUsage.push_back({first, second, requestID, unsigned(amount)});
+  } else {
+    found->count += amount;
+  }
+}
+
 void AvoidanceArrowRenderer::addUsage(const RoutedPath &path, int amount) {
   if (!path.valid || path.vertices.size() < 2)
     return;
+  auto pointOf = [&](unsigned vertexID) {
+    auto [x, y] = coordinates(vertexID);
+    return Point{xs[x], ys[y]};
+  };
+  addStubUsage(path.sourceAnchor, pointOf(path.vertices.front()), path.id,
+               amount);
+  addStubUsage(pointOf(path.vertices.back()), path.destAnchor, path.id, amount);
   for (auto pair : llvm::zip_equal(ArrayRef(path.vertices).drop_back(),
                                    ArrayRef(path.vertices).drop_front())) {
     auto [from, to] = pair;
@@ -786,12 +967,18 @@ void AvoidanceArrowRenderer::addUsage(const RoutedPath &path, int amount) {
     auto [toX, toY] = coordinates(to);
     if (fromY == toY) {
       unsigned edge = horizontalEdge(std::min(fromX, toX), fromY);
+      uint16_t before = horizontalUsage[edge];
       horizontalUsage[edge] += amount;
+      horizontalOwner[edge] =
+          amount > 0 && before == 0 ? int32_t(path.id) : -1;
       vertexHorizontalUsage[from] += amount;
       vertexHorizontalUsage[to] += amount;
-    } else {
+    } else if (fromX == toX) {
       unsigned edge = verticalEdge(fromX, std::min(fromY, toY));
+      uint16_t before = verticalUsage[edge];
       verticalUsage[edge] += amount;
+      verticalOwner[edge] =
+          amount > 0 && before == 0 ? int32_t(path.id) : -1;
       vertexVerticalUsage[from] += amount;
       vertexVerticalUsage[to] += amount;
     }
