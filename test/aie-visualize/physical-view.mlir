@@ -12,7 +12,7 @@
 // RUN: %python %S/Inputs/check-physical-resources.py %t.npu1.dot | FileCheck %s --check-prefix=NPU1-COUNTS
 // RUN: neato -Tsvg %t.npu1.dot -o %t.npu1.svg
 // RUN: aie-visualize --emit-json --split-packet-ports --device=npu1_device %s -o %t.npu1.json
-// RUN: %python %S/Inputs/check-physical-source-attribution.py %t.npu1.dot %t.npu1.svg %t.npu1.json p_0_2_0_0_k3=30 p_0_2_0_0_k4=40
+// RUN: %python %S/Inputs/check-physical-source-attribution.py %t.npu1.dot %t.npu1.svg %t.npu1.json p_0_2_0_0_k3=30:packet-port p_0_2_0_0_k4=40:packet-port runtime_arg_0=50:runtime-link edge__runtime_arg_0__p_0_0_1_0_m=50:runtime-link
 // RUN: aie-visualize --physical --device=npu2_device %s -o %t.npu2.dot
 // RUN: %python %S/Inputs/check-physical-resources.py %t.npu2.dot | FileCheck %s --check-prefix=NPU2-COUNTS
 // RUN: not aie-visualize --physical --contract=port %s 2>&1 | FileCheck %s --check-prefix=CONTRACT
@@ -71,6 +71,8 @@
 // NPU1-DAG: physical_alias_p_0_0_5_3_out_r3{{.*}}pos="12.240000,-156.960000!"{{.*}}id="physical_alias_p_0_0_5_3_out_r3"{{.*}}semantic-id-p_0_0_5_3_out_r3
 // NPU1-DAG: physical_alias_p_0_2_0_0_k3 {{.*}}pos="-104.400000,1112.400000!"{{.*}}id="physical_alias_p_0_2_0_0_k3"{{.*}}semantic-id-p_0_2_0_0_k3
 // NPU1-DAG: physical_alias_p_0_2_0_0_k4 {{.*}}pos="-104.400000,1112.400000!"{{.*}}id="physical_alias_p_0_2_0_0_k4"{{.*}}semantic-id-p_0_2_0_0_k4
+// NPU1-DAG: physical_alias_runtime_arg_0 {{.*}}id="physical_alias_runtime_arg_0"{{.*}}semantic-id-runtime_arg_0
+// NPU1-DAG: physical_alias_edge__runtime_arg_0__p_0_0_1_0_m {{.*}}id="physical_alias_edge__runtime_arg_0__p_0_0_1_0_m"{{.*}}semantic-id-edge__runtime_arg_0__p_0_0_1_0_m
 
 // CONTRACT: --physical does not support --contract
 // OUTPUT-MODES: --emit-dot, --emit-json, and --physical are mutually exclusive
@@ -111,6 +113,15 @@ module {
     aie.flow(%shim, DMA : 0, %source, Core : 0)
       via (%shim : DMA : 0 -> North : 3,
            %source : South : 3 -> Core : 0)
+
+    aie.runtime_sequence @run(%input: memref<16xi32>) attributes {
+      runtime_arg_names = ["input"]
+    } {
+      %task = aiex.dma_configure_task(%shim, MM2S, 0) {
+        aie.dma_bd(%input : memref<16xi32> offset = 0 len = 16)
+        aie.end
+      }
+    } loc("design.py":50:8)
   }
 
   aie.device(npu2) @npu2_device {
