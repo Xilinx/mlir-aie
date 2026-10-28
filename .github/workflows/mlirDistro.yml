@@ -80,7 +80,7 @@ jobs:
 
     name: Get latest LLVM commit
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     outputs:
       LLVM_PROJECT_COMMIT: ${{ steps.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }}
@@ -229,6 +229,8 @@ jobs:
         MATRIX_OS: ${{ matrix.OS }}
         MATRIX_ARCH: ${{ matrix.ARCH }}
         EXTRA_KEY: mlir-distro-enable-rtti-${{ matrix.ENABLE_RTTI }}
+        # 0.9-1.5 GB per entry: one PR's saves would evict main's LLVM caches.
+        SAVE_FROM_PULL_REQUESTS: 'false'
 
     - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
       with:
@@ -482,7 +484,7 @@ jobs:
 
     needs: smoke_test_wheels
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false

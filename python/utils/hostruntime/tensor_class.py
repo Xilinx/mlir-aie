@@ -6,7 +6,7 @@
 """The host tensor: a shaped, typed view over a coherence-managed allocation.
 
 The allocation itself, its residency bookkeeping, and the torch bridge live in
-:mod:`buffer`, :mod:`coherence` and :mod:`torch_interop`. Each is re-exported
+`buffer`, `coherence` and `torch_interop`. Each is re-exported
 here, so ``from .tensor_class import Storage`` and friends keep resolving.
 """
 
@@ -57,13 +57,7 @@ def _as_shape(shape):
 
 
 def _unsupported_device_message(cls, device) -> str:
-    """Explain a device rejection, not just report it.
-
-    A class-attribute check can only see the string it rejected, so asking for
-    "npu" from a CPU-only tensor used to surface as a bare "Unsupported device"
-    -- indistinguishable from a typo. The reason the CPU-only class was selected
-    lives in aie.utils.probe; quote it here.
-    """
+    """Include the probe failure when the CPU-only backend rejects an NPU."""
     message = f"Unsupported device: {device}"
     if device != "npu" or "npu" in cls.DEVICES:
         return message
@@ -125,6 +119,43 @@ class _WriteBorrow:
         return False
 
 
+class TensorRegion:
+    """A region of a tensor's storage, bound as a kernel argument.
+
+    Unlike a `NpuTensor.subview`, a region may start and end inside a
+    coherence granule. That is safe because a region is never synchronized on
+    its own: a runtime binds a buffer at the region's first byte and reconciles
+    `tensor`, the tensor the region was carved from, as a whole. So a region has
+    no host data. Read what a kernel wrote through `tensor`, or through an
+    aligned `subview` of it.
+
+    Made by `NpuTensor.region`.
+
+    Attributes:
+        tensor (NpuTensor): The tensor this region was carved from. Held, so the
+            storage outlives the region.
+        storage_offset (int): Where the region starts in the allocation, in
+            bytes, measured like `NpuTensor.storage_offset`.
+        shape (tuple[int, ...]): Logical shape, in elements of ``dtype``.
+        dtype (np.dtype): Element type.
+        nbytes (int): Size of the region in bytes.
+    """
+
+    def __init__(self, tensor: "NpuTensor", storage_offset: int, shape, dtype):
+        self.tensor = tensor
+        self.storage_offset = storage_offset
+        self.shape = tuple(shape)
+        self.dtype = np.dtype(dtype)
+        self.nbytes = math.prod(self.shape) * self.dtype.itemsize
+
+    def __repr__(self):
+        return (
+            f"TensorRegion(storage_offset={self.storage_offset}, "
+            f"shape={self.shape}, dtype={self.dtype}, "
+            f"tensor={type(self.tensor).__name__})"
+        )
+
+
 class NpuTensor(ABC):
     """A host-mapped, device-resident buffer of fixed shape and dtype.
 
@@ -132,26 +163,26 @@ class NpuTensor(ABC):
     invariant is host/device coherence: the host and the device each hold a view
     of the same storage, and the two are reconciled only at the points this class
     defines. Everything else it offers (indexing, filling, the numpy and torch
-    bridges, :meth:`subview`) exists to keep that reconciliation correct while
+    bridges, `subview`) exists to keep that reconciliation correct while
     still letting callers treat the buffer as data.
 
     The invariant in full:
 
-    * Writes through the declared paths (:meth:`__setitem__`, :meth:`fill_`, and
+    * Writes through the declared paths (`__setitem__`, `fill_`, and
       the factories) are reconciled: the factories transfer as they construct,
-      and the in-place writes record the region so the next :meth:`to` sends it.
+      and the in-place writes record the region so the next `to` sends it.
       A write through the raw ``data`` array does neither, and is the one way to
       leave host and device disagreeing.
     * A method that spans regions in different states reconciles per region.
       Asking a whole tensor where it lives collapses a mixed extent to one
-      answer, which is the right answer for :meth:`to` and the wrong one to
+      answer, which is the right answer for `to` and the wrong one to
       transfer by.
-    * :meth:`to` moves residency and is a no-op when the buffer is already on the
+    * `to` moves residency and is a no-op when the buffer is already on the
       target device, so a caller that has written through a declared path never
       pays for a redundant transfer, and a caller that has bypassed one gets no
       transfer at all.
     * Reconciliation is not byte-granular. It acts on whole cache lines, which is
-      why :meth:`subview` requires its regions to be granule-aligned.
+      why `subview` requires its regions to be granule-aligned.
 
     Subclasses supply the storage and the two transfer primitives; the invariant
     itself lives here so every backend states it the same way.
@@ -172,10 +203,10 @@ class NpuTensor(ABC):
     # itself. Read by the JIT compile/cache path to pick the DDR-patch ABI.
     FOLDS_DDR_ADDR_OFFSET = True
 
-    # Alignment :meth:`subview` requires of a sub-region, in bytes. Left unset
+    # Alignment `subview` requires of a sub-region, in bytes. Left unset
     # so the module-level default is resolved per call rather than frozen into
     # the class at import; a backend whose host/device reconciliation has a
-    # different granularity sets its own. See :data:`COHERENCE_GRANULE`.
+    # different granularity sets its own. See `COHERENCE_GRANULE`.
     _coherence_granule: int | None = None
 
     # Set on views by the backend hook. Declared here rather than conjured onto
@@ -196,7 +227,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def _resolve_coherence_granule(cls):
-        """Alignment :meth:`subview` enforces for this backend, in bytes."""
+        """Alignment `subview` enforces for this backend, in bytes."""
         return (
             COHERENCE_GRANULE
             if cls._coherence_granule is None
@@ -281,7 +312,7 @@ class NpuTensor(ABC):
     def base(self):
         """The buffer that owns this one's storage, or None if it owns it itself.
 
-        Mirrors :attr:`numpy.ndarray.base`, including collapsing a chain of
+        Mirrors `numpy.ndarray.base`, including collapsing a chain of
         views: the base of a view of a view is the buffer that actually owns the
         storage, not the intermediate view. The intermediate is still referenced
         internally, so the whole chain stays alive for as long as any view of it
@@ -302,29 +333,33 @@ class NpuTensor(ABC):
 
     @property
     def storage_offset(self):
-        """Where this buffer starts within :attr:`base`'s storage, in bytes.
+        """Where this buffer starts within `base`'s storage, in bytes.
 
         Zero for a buffer that owns its storage. Accumulated through nesting, so
         it is always measured from the owner rather than from the view this one
-        was carved out of. Compare :meth:`torch.Tensor.storage_offset`, which is
+        was carved out of. Compare `torch.Tensor.storage_offset`, which is
         in elements; this is in bytes because a view may reinterpret the dtype.
         """
         return self._offset_bytes
 
-    def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="npu"):
+    def __init__(self, shape_or_data, dtype: npt.DTypeLike | None = None, device="npu"):
         """Initialize the tensor.
 
         Args:
             shape_or_data (tuple or array-like):
                 - If a tuple, creates a new tensor with the given shape and dtype.
                 - If array-like, wraps the data into a tensor with optional dtype casting.
-            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            dtype (np.dtype, optional): Element type. Taken from the data when
+                that is a typed array and this is omitted; ``np.uint32`` when
+                the tensor is built from a shape.
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
         if device not in self.__class__.DEVICES:
             raise ValueError(_unsupported_device_message(self.__class__, device))
         self._initial_device = device
-        self.dtype = dtype
+        if dtype is None:
+            dtype = getattr(shape_or_data, "dtype", None)
+        self.dtype = np.uint32 if dtype is None else dtype
 
     @property
     @abstractmethod
@@ -399,7 +434,7 @@ class NpuTensor(ABC):
 
         Note: this reconciles before the write so the untouched elements keep
         their current contents, and records the write rather than flushing it,
-        so a run of assignments costs one transfer at the next :meth:`to`.
+        so a run of assignments costs one transfer at the next `to`.
         """
         with self.mutate() as array:
             array[index] = value
@@ -501,13 +536,13 @@ class NpuTensor(ABC):
     def overwrite(self):
         """Borrow for a write that replaces every byte of this tensor.
 
-        The same as :meth:`mutate` without the reconcile on entry, which nothing
+        The same as `mutate` without the reconcile on entry, which nothing
         can observe if all of it is about to be replaced. Filling a buffer this
         way costs one transfer rather than two.
 
         The caller is promising to write the whole region. Bytes left unwritten
         keep whatever the host last had there and are sent to the device with
-        the rest, so use :meth:`mutate` for a partial update. This is the one
+        the rest, so use `mutate` for a partial update. This is the one
         promise here that cannot be checked; it is still narrower than reaching
         for ``data``, which makes the same promise and does not record the write.
         """
@@ -521,7 +556,7 @@ class NpuTensor(ABC):
         and synchronizes its own slice. It is a plain tensor of the same backend
         class, not a distinct type.
 
-        The region must be aligned to :data:`COHERENCE_GRANULE`, because host and
+        The region must be aligned to `COHERENCE_GRANULE`, because host and
         device are reconciled a cache line at a time, not a byte at a time. Two
         views sharing a line are not independent: synchronizing one acts on the
         other's bytes in that line, so a view whose host copy is stale can be
@@ -557,7 +592,7 @@ class NpuTensor(ABC):
         array's own dtype and torch reports ``storage_offset`` in elements.
         Bytes because that is the unit the thing being carved is measured in: a
         buffer has no dtype, the alignment rule below is in bytes, and
-        :attr:`storage_offset` reports bytes, so the argument going in and the
+        `storage_offset` reports bytes, so the argument going in and the
         value reported back are the same number. ``shape`` stays in elements of
         the view's dtype, since it describes the tensor rather than the region.
 
@@ -573,7 +608,7 @@ class NpuTensor(ABC):
 
         Raises:
             ValueError: If the region falls outside this tensor's buffer, or is
-                not aligned to :data:`COHERENCE_GRANULE`.
+                not aligned to `COHERENCE_GRANULE`.
         """
         if type(self)._subview is NpuTensor._subview:
             # Answer the capability question before complaining about a region
@@ -581,30 +616,14 @@ class NpuTensor(ABC):
             raise NotImplementedError(
                 f"{type(self).__name__} does not support subview()"
             )
-        view_dtype = np.dtype(dtype) if dtype is not None else np.dtype(self.dtype)
-        shape = _as_shape(shape)
-        try:
-            offset = operator.index(offset)
-        except TypeError:
-            raise TypeError(
-                f"subview() offset must be an integer number of bytes, got "
-                f"{offset!r}."
-            ) from None
-        offset_bytes = offset
-        # math.prod over validated ints: np.prod would accumulate in int64 and
-        # wrap silently, which defeats the bounds check below rather than
-        # tripping it.
-        nbytes = math.prod(shape) * view_dtype.itemsize
-        if offset_bytes < 0 or offset_bytes + nbytes > self.nbytes:
-            raise ValueError(
-                f"subview(offset={offset}, shape={shape}, dtype={view_dtype}) "
-                f"is out of bounds for a buffer of {self.nbytes} bytes"
-            )
+        offset_bytes, shape, view_dtype, nbytes = self._checked_region(
+            "subview", offset, shape, dtype
+        )
         granule = self._resolve_coherence_granule()
         ends_at_parent_end = offset_bytes + nbytes == self.nbytes
         if offset_bytes % granule or (nbytes % granule and not ends_at_parent_end):
             raise ValueError(
-                f"subview(offset={offset}, shape={tuple(shape)}, dtype={view_dtype}) "
+                f"subview(offset={offset_bytes}, shape={tuple(shape)}, dtype={view_dtype}) "
                 f"spans bytes [{offset_bytes}, {offset_bytes + nbytes}) of this "
                 f"buffer, which is not aligned to the {granule}-byte coherence "
                 f"granule. Host and device are reconciled a cache line at a time, "
@@ -614,6 +633,79 @@ class NpuTensor(ABC):
                 f"buffer ends) is a multiple of {granule} bytes long."
             )
         return self._subview(offset_bytes, tuple(shape), view_dtype)
+
+    def region(self, offset, shape, dtype=None):
+        """Return a region of this tensor's storage to bind as a kernel argument.
+
+        For an argument that starts or ends inside a coherence granule, which
+        `subview` refuses. The region has no host data of its own and is never
+        synchronized on its own: see `TensorRegion`.
+
+        Args:
+            offset: Start of the region, in bytes from the start of this
+                tensor's own region.
+            shape: Logical shape of the region.
+            dtype (np.dtype, optional): dtype to interpret the region as.
+                Defaults to this tensor's dtype.
+
+        Returns:
+            TensorRegion: The region, which holds this tensor.
+
+        Raises:
+            TypeError: If ``offset`` is not an integer.
+            ValueError: If the region falls outside this tensor, or does not
+                start on a 4-byte boundary of the allocation.
+        """
+        offset_bytes, shape, region_dtype, _ = self._checked_region(
+            "region", offset, shape, dtype
+        )
+        storage_offset = self.storage_offset + offset_bytes
+        # Shim DMA buffer descriptors address host memory in 32-bit words.
+        if storage_offset % 4:
+            raise ValueError(
+                f"region(offset={offset}, shape={shape}, dtype={region_dtype}) "
+                f"starts at byte {storage_offset} of its allocation, which is not "
+                f"a multiple of 4. The NPU's DMA addresses host memory in 32-bit "
+                f"words."
+            )
+        return TensorRegion(self, storage_offset, shape, region_dtype)
+
+    def _checked_region(self, method, offset, shape, dtype):
+        """Validate the arguments of `subview` or `region`.
+
+        Args:
+            method (str): The calling method's name, for the error messages.
+            offset: As given to the caller.
+            shape: As given to the caller.
+            dtype: As given to the caller.
+
+        Returns:
+            tuple: ``(offset, shape, dtype, nbytes)``, with ``offset`` an int,
+            ``shape`` a tuple of ints and ``dtype`` an ``np.dtype``.
+
+        Raises:
+            TypeError: If ``offset`` is not an integer.
+            ValueError: If the region falls outside this tensor.
+        """
+        view_dtype = np.dtype(dtype) if dtype is not None else np.dtype(self.dtype)
+        shape = _as_shape(shape)
+        try:
+            offset = operator.index(offset)
+        except TypeError:
+            raise TypeError(
+                f"{method}() offset must be an integer number of bytes, got "
+                f"{offset!r}."
+            ) from None
+        # math.prod over validated ints: np.prod would accumulate in int64 and
+        # wrap silently, which defeats the bounds check below rather than
+        # tripping it.
+        nbytes = math.prod(shape) * view_dtype.itemsize
+        if offset < 0 or offset + nbytes > self.nbytes:
+            raise ValueError(
+                f"{method}(offset={offset}, shape={shape}, dtype={view_dtype}) "
+                f"is out of bounds for a buffer of {self.nbytes} bytes"
+            )
+        return offset, shape, view_dtype, nbytes
 
     @abstractmethod
     def _sync_to_device(self):
@@ -632,7 +724,7 @@ class NpuTensor(ABC):
         ...
 
     def _subview(self, offset_bytes, shape, dtype):
-        """Backend hook for :meth:`subview`.
+        """Backend hook for `subview`.
 
         Build and return a tensor of the same backend class that shares this
         tensor's underlying storage starting at ``offset_bytes`` with the given
@@ -718,6 +810,21 @@ class NpuTensor(ABC):
             ImportError: If torch is not installed.
         """
         return _array_to_torch(self.numpy())
+
+    def numpy_view(self):
+        """Return a NumPy view of this buffer's host memory without syncing from device.
+
+        The write-path peer of ``numpy``, which syncs from the NPU first.
+        This does not, and marks the buffer CPU-resident so that a later
+        ``.to("npu")`` (or an NPU operator's implicit sync) pushes what was
+        written. Use it where the caller is about to overwrite the contents
+        and reading the device's current bytes would be wasted work.
+
+        Returns:
+            np.ndarray: A zero-copy NumPy view of the host-side buffer.
+        """
+        self.device = "cpu"  # mark dirty so next to("npu") will actually sync
+        return self.data
 
     def torch_view(self):
         """Return a torch tensor sharing this buffer's host memory without syncing from device.
@@ -1049,21 +1156,22 @@ class CPUOnlyTensor(NpuTensor):
     DEVICES = ["cpu"]
     DEFAULT_DEVICE = "cpu"
 
-    def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="cpu"):
+    def __init__(self, shape_or_data, dtype: npt.DTypeLike | None = None, device="cpu"):
         """Initialize the CPUOnlyTensor.
 
         Args:
             shape_or_data (tuple or array-like):
                 - If a tuple, creates a new tensor with the given shape and dtype.
                 - If array-like, wraps the data into a tensor with optional dtype casting.
-            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            dtype (np.dtype, optional): Element type. Taken from the data when
+                that is a typed array and this is omitted.
             device (str, optional): Device string identifier. Defaults to 'cpu'.
         """
         super().__init__(shape_or_data, dtype=dtype, device=device)
         if not isinstance(shape_or_data, tuple):
-            self._data = np.array(shape_or_data, dtype=dtype)
+            self._data = np.array(shape_or_data, dtype=self.dtype)
         else:
-            self._data = np.zeros(shape_or_data, dtype=dtype)
+            self._data = np.zeros(shape_or_data, dtype=self.dtype)
         self._shape = self._data.shape
         # Re-home the bytes in a buffer so views share one allocation and one
         # coherence map, then keep a typed view of the whole of it.
@@ -1082,7 +1190,7 @@ class CPUOnlyTensor(NpuTensor):
     def data(self):
         """Get the underlying numpy array.
 
-        Writes through this array are not reconciled; use :meth:`mutate` for a
+        Writes through this array are not reconciled; use `mutate` for a
         write that is. Kept as the unmediated handle for callers that manage
         their own synchronization.
 

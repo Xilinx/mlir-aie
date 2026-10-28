@@ -198,7 +198,7 @@ aie.device(xcve2302) {
    %tile22 = aie.tile(2, 2)
    %tile23 = aie.tile(2, 3)
 
-   aie.objectfifo @of_in1 (%tile22, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>> 
+   aie.objectfifo @of_in1 (%tile22, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
    aie.objectfifo @of_in2 (%tile23, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
    aie.objectfifo @of_out (%tile11 dimensionsToStream [<size = 8, stride = 1>,
                                            <size = 3, stride = 8>],
@@ -222,4 +222,52 @@ aie.device(xcve2302) {
    aie.objectfifo @of_out1 (%tile11, {%tile22}, 2 : i32) : !aie.objectfifo<memref<200xi32>>
    aie.objectfifo @of_out2 (%tile11, {%tile23}, 2 : i32) : !aie.objectfifo<memref<56xi32>>
    aie.objectfifo.link [ @of_in ] -> [ @of_out1, @of_out2 ] ([] [0, 200])
+}
+
+// -----
+
+// CHECK: src offsets must increase: input objectFifo 0 would transfer -12 elements
+
+aie.device(xcve2302) {
+   %tile10 = aie.tile(1, 0)
+   %tile11 = aie.tile(1, 1)
+   %tile22 = aie.tile(2, 2)
+   %tile23 = aie.tile(2, 3)
+
+   aie.objectfifo @of_in1 (%tile22, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
+   aie.objectfifo @of_in2 (%tile23, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
+   aie.objectfifo @of_out (%tile11, {%tile10}, 2 : i32) : !aie.objectfifo<memref<24xi32>>
+   aie.objectfifo.link [ @of_in1, @of_in2 ] -> [ @of_out ] ([12, 0] [])
+}
+
+// -----
+
+// CHECK: dst offsets must increase: output objectFifo 0 would transfer -12 elements
+
+aie.device(xcve2302) {
+   %tile10 = aie.tile(1, 0)
+   %tile11 = aie.tile(1, 1)
+   %tile22 = aie.tile(2, 2)
+   %tile23 = aie.tile(2, 3)
+
+   aie.objectfifo @of_in (%tile10, {%tile11}, 2 : i32) : !aie.objectfifo<memref<24xi32>>
+   aie.objectfifo @of_out1 (%tile11, {%tile22}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
+   aie.objectfifo @of_out2 (%tile11, {%tile23}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
+   aie.objectfifo.link [ @of_in ] -> [ @of_out1, @of_out2 ] ([] [12, 0])
+}
+
+// -----
+
+// CHECK: 'aie.objectfifo.link' op input @of_in1 has empty objects
+
+aie.device(npu2) {
+   %tile00 = aie.tile(0, 0)
+   %tile01 = aie.tile(0, 1)
+   %tile02 = aie.tile(0, 2)
+   %tile03 = aie.tile(0, 3)
+
+   aie.objectfifo @of_in1 (%tile02, {%tile01}, 2 : i32) : !aie.objectfifo<memref<0xi32>>
+   aie.objectfifo @of_in2 (%tile03, {%tile01}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+   aie.objectfifo @of_out (%tile01, {%tile00}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+   aie.objectfifo.link [ @of_in1, @of_in2 ] -> [ @of_out ] ([0, 16] [])
 }

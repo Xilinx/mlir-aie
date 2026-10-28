@@ -4,7 +4,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import math
 import re
+from typing import ClassVar
+
+import numpy as np
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -14,9 +18,14 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects.aie import (
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     LogicalTileOp,
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
+    dma_bd_fits,  # pyright: ignore[reportAttributeAccessIssue]
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
 )
+from ...dialects.aiex import shim_dims
+from ...helpers.taplib import TensorAccessPattern
+from ...helpers.util import np_dtype_to_mlir_type
 from ..resolvable import Resolvable
 from .tile import Tile
 
@@ -24,14 +33,39 @@ from .tile import Tile
 class Device(Resolvable):
     """A representation of a device of a specific type.
 
-    Provides device metadata (column/row counts) and emits
-    aie.logical_tile ops for Tile objects during resolve.
+    Provides device metadata and emits ``aie.logical_tile`` operations for Tile
+    objects. A DeviceConfiguration reconstructs this descriptor before it emits
+    an ``aie.device``, so the descriptor does not own one configuration's IR.
     """
+
+    _bd_context: ClassVar[ir.Context | None] = None
 
     def __init__(self, device: AIEDevice) -> None:
         self._device = device
         self._tm = get_target_model(device)
         self._resolved_tiles: dict[int, LogicalTileOp] = {}
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(AIEDevice.{self._device.name})"
+
+    def __eq__(self, other: object) -> bool:
+        # Two descriptors of one AIEDevice are one device; _resolved_tiles is
+        # emission scratch.
+        if not isinstance(other, Device):
+            return NotImplemented
+        return other._device == self._device
+
+    def __hash__(self) -> int:
+        return hash(self._device)
+
+    @property
+    def name(self) -> str:
+        """The device's name in the dialect: ``"npu2"``, ``"npu1_1col"``, ...
+
+        A name, not a family: a four-column NPU2 is ``"npu2_4col"``. Ask
+        :attr:`arch` which architecture a device is.
+        """
+        return self._device.name
 
     @property
     def cols(self) -> int:
@@ -48,6 +82,80 @@ class Device(Resolvable):
         """AIE architecture of the device (AIE1, AIE2, or AIE2p)."""
         return AIEArch(self._tm.get_target_arch())
 
+    @property
+    def can_dispatch_full_elf(self) -> bool:
+        """Whether a full ELF (PDIs and control code in one ELF) dispatches here: on AIE2p."""
+        # XRT sends an ELF with .pdi sections as a preemptible command, which
+        # amdxdna accepts only where the part supports preemption: not on npu1.
+        return self.arch is AIEArch.AIE2p
+
+    @property
+    def core_memory_bytes(self) -> int:
+        """Data memory local to one compute tile."""
+        return self._tm.get_local_memory_size()
+
+    @property
+    def core_memory_banks(self) -> int:
+        """Banks a compute tile's data memory is divided into, as the buffer allocator places buffers.
+
+        Each is two interleaved hardware banks on AIE2 and AIE2P (AM020, AM027).
+        """
+        return self._tm.get_num_banks(0, self.core_rows[0])
+
+    @property
+    def core_memory_bank_bytes(self) -> int:
+        """Bytes in one of `core_memory_banks`."""
+        return self.core_memory_bytes // self.core_memory_banks
+
+    @property
+    def default_core_stack_bytes(self) -> int:
+        """Stack a Worker gets when nothing it calls declares a larger need."""
+        return self._tm.get_default_core_stack_size()
+
+    @property
+    def core_rows(self) -> list[int]:
+        """Rows of compute tiles, bottom to top."""
+        return [
+            r
+            for r in range(self.rows)
+            if self.get_tile_type(0, r) is AIETileType.CoreTile
+        ]
+
+    @property
+    def core_dma_channels_in(self) -> int:
+        """Input DMA channels a compute tile has, and so the most fifos one can be fed."""
+        return self._tm.get_num_dest_switchbox_connections(
+            0, self.core_rows[0], WireBundle.DMA
+        )
+
+    @property
+    def core_dma_channels_out(self) -> int:
+        """Output DMA channels available on a compute tile."""
+        return self._tm.get_num_source_switchbox_connections(
+            0, self.core_rows[0], WireBundle.DMA
+        )
+
+    @property
+    def shim_dma_channels_in(self) -> int:
+        """DMA channels the shim tiles feed the array through, summed over them.
+
+        How many streams from the host the device carries at once.
+        """
+        return self._shim_dma(self._tm.get_num_source_shim_mux_connections)
+
+    @property
+    def shim_dma_channels_out(self) -> int:
+        """DMA channels the shim tiles drain the array through, summed over them."""
+        return self._shim_dma(self._tm.get_num_dest_shim_mux_connections)
+
+    def _shim_dma(self, connections) -> int:
+        return sum(
+            connections(col, row, WireBundle.DMA)
+            for col in range(self.cols)
+            for row in range(self.rows)
+            if self._tm.is_shim_noc_or_pl_tile(col, row)
+        )
+
     def _validate_coordinates(self, col, row):
         """Raise ValueError if coordinates are outside the device grid."""
         if col < 0 or col >= self._tm.columns() or row < 0 or row >= self._tm.rows():
@@ -60,6 +168,120 @@ class Device(Resolvable):
         """Return the AIETileType for the given device coordinates."""
         self._validate_coordinates(col, row)
         return AIETileType(self._tm.get_tile_type(col, row))
+
+    def get_dma_bd_wrap_bits(self, col, row) -> int:
+        """Wrap (size) field width, in bits."""
+        self._validate_coordinates(col, row)
+        return self._tm.get_dma_bd_wrap_bits(col, row)
+
+    def get_dma_bd_step_bits(self, col, row) -> int:
+        """Step (stride) field width, in bits. The field counts address granules."""
+        self._validate_coordinates(col, row)
+        return self._tm.get_dma_bd_step_bits(col, row)
+
+    def get_dma_bd_iter_bits(self, col, row) -> int:
+        """Return the iteration (repeat) field width, in bits."""
+        self._validate_coordinates(col, row)
+        return self._tm.get_dma_bd_iter_bits(col, row)
+
+    def dma_bd_fits(
+        self, col: int, row: int, tap: TensorAccessPattern, dtype: type
+    ) -> bool:
+        """Whether one DMA buffer descriptor of the tile at (`col`, `row`) holds `tap`.
+
+        Decided as the DMA lowerings verify a descriptor: a linear transfer,
+        or a contiguous one on a shim tile, in linear mode past the wrap
+        limits, and any other within the wrap, step and iteration limits;
+        either way, the three inner dimensions within the tile's buffer
+        length field. On a shim tile the tap is laid out as
+        `shim_dma_single_bd_task` lays it out: coalesced, and a leading
+        re-read kept in the iteration dimension. Elsewhere a tap of fewer
+        than four dimensions is padded in front with unit ones. The
+        descriptor's length is its three inner dimensions, and where that
+        is all of it, its unit dimensions go as `aie-normalize-dma-bd-dims`
+        drops them, which can move a large one into a wrap field.
+
+        Args:
+            col: Column of the tile.
+            row: Row of the tile.
+            tap: The access pattern, in elements of `dtype`.
+            dtype: The numpy element type the pattern moves.
+
+        Returns:
+            bool: False for more than four dimensions (after coalescing, on a
+            shim tile), padding on a shim tile, an offset that is not whole
+            address granules, or a pattern past the descriptor's limits.
+
+        Raises:
+            ValueError: The coordinates are outside the device.
+        """
+        self._validate_coordinates(col, row)
+        if self._tm.is_shim_noc_or_pl_tile(col, row):
+            if tap.padding is not None:
+                return False
+            offset, sizes, strides = shim_dims(tap)
+        else:
+            pad = 4 - len(tap.sizes)
+            offset = tap.offset
+            sizes = [1] * pad + list(tap.sizes)
+            strides = [0] * pad + list(tap.strides)
+        if len(sizes) > 4:
+            return False
+        # A fresh context costs ~4 ms, and resolving a design calls this thousands of times.
+        context = Device._bd_context
+        if context is None:
+            context = Device._bd_context = ir.Context()
+        with context, ir.Location.unknown():
+            return dma_bd_fits(
+                self._device.value,
+                col,
+                row,
+                np_dtype_to_mlir_type(np.dtype(dtype).type),
+                offset,
+                sizes,
+                strides,
+                math.prod(sizes[1:]),
+            )
+
+    @property
+    def address_gen_granularity(self) -> int:
+        """Address-generation granularity of the device, in bits."""
+        return self._tm.get_address_gen_granularity()
+
+    @property
+    def max_lock_value(self) -> int:
+        """Largest value a lock register holds."""
+        return self._tm.get_max_lock_value()
+
+    @property
+    def max_repeat_count(self) -> int:
+        """Largest repeat count one DMA task queue push carries (0 = none).
+
+        A task started with a larger repeat count is issued as several pushes
+        of the same task.
+        """
+        return self._tm.get_max_repeat_count()
+
+    @property
+    def dma_task_queue_depth(self) -> int:
+        """How many tasks one DMA channel's task queue holds (0 = no queue)."""
+        return self._tm.get_dma_task_queue_depth()
+
+    def get_num_bds(self, tile_type: AIETileType) -> int:
+        """Return how many DMA buffer descriptors (BDs) a tile of ``tile_type`` has.
+
+        The BD budget is per tile TYPE, not per coordinate, and it is not
+        uniform: on AIE2, a MemTile has 48 BDs while a CoreTile and a
+        ShimNOCTile both have 16 — the same count for two different roles.
+        Callers must name the tile type they mean rather than hardcode a
+        BD count, since "16" is only right for two of the three types and
+        silently wrong for the third.
+        """
+        for row in range(self.rows):
+            for col in range(self.cols):
+                if self.get_tile_type(col, row) == tile_type:
+                    return self._tm.get_num_bds(col, row)
+        raise ValueError(f"Device has no tile of type {tile_type!r}")
 
     def resolve_tile(
         self,
@@ -96,47 +318,63 @@ class Device(Resolvable):
             tile_type,
             col=tile.col,
             row=tile.row,
-            allocation_scheme=tile.allocation_scheme,
-            loc=loc,
+            loc=loc or tile._site.location(),
             ip=ip,
+            packet_type=tile.packet_type,
+            packet_id=tile.packet_id,
         )
         self._resolved_tiles[tile_id] = op
         tile.op = op
 
 
-def create_class(class_name, device):
+class NamedDevice(Device):
+    """A device of one fixed type, constructed without arguments: ``NPU2()``.
 
-    def _device__init__(self) -> None:
-        super(globals()[class_name], self).__init__(device=device)
+    One subclass per :class:`AIEDevice` is generated below (``NPU1``,
+    ``NPU2Col4``, ``XCVC1902``, ...).
+    """
 
-    def _device_resolve(
+    aie_device: AIEDevice
+
+    def __init__(self) -> None:
+        super().__init__(device=self.aie_device)
+
+    @staticmethod
+    def of(kind: AIEDevice) -> "NamedDevice":
+        """Return the named device of ``kind``, e.g. ``NPU2()`` for ``AIEDevice.npu2``."""
+        (named,) = (c for c in NamedDevice.__subclasses__() if c.aie_device == kind)
+        return named()
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}()"
+
+    def resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        return device
-
-    globals()[class_name] = type(
-        class_name,
-        (Device,),
-        {
-            "__init__": _device__init__,
-            "resolve": _device_resolve,
-            "__doc__": f"A representation of a device that resolves to {device}",
-        },
-    )
+    ) -> AIEDevice:  # pyright: ignore[reportIncompatibleMethodOverride]
+        return self.aie_device
 
 
 for device in AIEDevice:
     class_name = re.sub(r"NPU(\d+)_(\d+)COL", r"NPU\1Col\2", device.name.upper())
-    create_class(class_name, device)
+    globals()[class_name] = type(
+        class_name,
+        (NamedDevice,),
+        {
+            "aie_device": device,
+            "__doc__": f"A representation of a device that resolves to {device}",
+            "__module__": __name__,
+        },
+    )
 
 
-def __getattr__(name: str) -> type[Device]:
+def __getattr__(name: str) -> type[NamedDevice]:
     # The per-device subclasses (NPU1, NPU2Col4, XCVC1902, ...) are generated
     # from the AIEDevice enum by the loop above and live in module globals, so
     # this fallback only fires for names that were never generated. Raising
     # keeps real typos failing at import time; the annotation lets a static
-    # type checker resolve the generated names as Device subclasses without a
-    # hand-maintained list that would drift as devices are added.
+    # type checker resolve the generated names as NamedDevice subclasses,
+    # constructed without arguments, without a hand-maintained list that
+    # would drift as devices are added.
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

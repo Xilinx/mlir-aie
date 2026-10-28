@@ -15,7 +15,7 @@ The [programming examples](../../programming_examples) are a number of sample de
 
 The [passthrough](../../programming_examples/basic/passthrough_kernel/) example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only two important source files here.
 1. [`passthrough_kernel.py`](../../programming_examples/basic/passthrough_kernel/passthrough_kernel.py) The IRON structural design plus the host-side test driver. Decorated with `@iron.jit` so the first call compiles the design and runs it on the NPU, then verifies the result against the input. Also shows a simple use of the ObjectFifos described in [section 2](../section-2).
-1. [`passThrough.cc`](../../aie_kernels/generic/passThrough.cc)  This is a C++ file which performs the vectorized copy operation.
+1. [`passThrough.cc`](../../aie_kernels/eltwise/passThrough.cc)  This is a C++ file which performs the vectorized copy operation.
 
 The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) example shows an alternate method of performing a copy without involving the cores, and instead performing a loopback.
 

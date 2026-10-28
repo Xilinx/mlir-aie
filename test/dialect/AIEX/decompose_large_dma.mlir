@@ -106,3 +106,28 @@ module {
     aie.shim_dma_allocation @fifo (%tile_0_0, MM2S, 0)
   }
 }
+
+// -----
+
+// Test 5: MERGE — the outermost size 72 exceeds the 64-iteration slot, but d2
+// (stride 221184) continues d1 (96 x 2304) contiguously. Folding the pair into
+// one 768-row dimension frees the slot, so the walk stays a single transfer
+// with d2's offset carried into d1's (1 * 96).
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=MERGE
+
+// MERGE-LABEL: @merge_memcpy
+// MERGE:         aiex.npu.dma_memcpy_nd
+// MERGE-SAME:      [0, 0, 96, 0][1, 72, 768, 32][0, 32, 2304, 1]
+// MERGE-NOT:     aiex.npu.dma_memcpy_nd
+module {
+  aie.device(npu2) {
+    aie.runtime_sequence @merge_memcpy(%a : memref<2097152xi16>) {
+      aiex.npu.dma_memcpy_nd (%a[0, 1, 0, 0][72, 8, 96, 32][32, 221184, 2304, 1])
+        { metadata = @fifo, id = 0 : i64 } : memref<2097152xi16>
+    }
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @fifo (%tile_0_0, MM2S, 0)
+  }
+}

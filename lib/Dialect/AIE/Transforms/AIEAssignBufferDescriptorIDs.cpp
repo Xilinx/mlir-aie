@@ -44,14 +44,15 @@ BdIdGenerator::BdIdGenerator(int col, int row,
                              const AIETargetModel &targetModel)
     : col(col), row(row), targetModel(targetModel) {}
 
-std::optional<uint32_t> BdIdGenerator::nextBdId(int channelIndex) {
+std::optional<uint32_t> BdIdGenerator::nextBdId(int channelIndex,
+                                                uint32_t alignment) {
   uint32_t bdId = 0;
   uint32_t maxBdId = targetModel.getNumBDs(col, row) - 1;
   // Find the next free BD ID. This is not an efficient algorithm, but doesn't
   for (; (bdIdAlreadyAssigned(bdId) ||
           !targetModel.isBdChannelAccessible(col, row, bdId, channelIndex)) &&
          bdId <= maxBdId;
-       bdId++)
+       bdId += alignment)
     ;
   if (bdId > maxBdId) {
     return std::nullopt;
@@ -153,6 +154,8 @@ struct AIEAssignBufferDescriptorIDsPass
           AIEAssignBufferDescriptorIDsPass> {
   void runOnOperation() override {
     DeviceOp targetOp = getOperation();
+    if (failed(verifyDMAChannelsResolved(targetOp)))
+      return signalPassFailure();
     const AIETargetModel &targetModel = targetOp.getTargetModel();
 
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
@@ -328,12 +331,14 @@ struct AIEAssignBufferDescriptorIDsPass
             assert(llvm::range_size(block.getSuccessors()) == 1 &&
                    "should have only one successor block");
             Block *nextBlock = block.getSuccessor(0);
-            if (!blockBdIdMap.contains(nextBlock))
-              assert(nextBlock->getOperations().size() == 1 &&
-                     isa<EndOp>(nextBlock->getOperations().front()) &&
-                     "bb that's not in blockMap can only have aie.end");
-            else
+            if (blockBdIdMap.contains(nextBlock)) {
               nextBdId = blockBdIdMap[nextBlock];
+            } else if (nextBlock->getOperations().size() != 1 ||
+                       !isa<EndOp>(nextBlock->getOperations().front())) {
+              bd.emitOpError("must be followed by a block with a dma_bd or "
+                             "by a block with only aie.end");
+              return signalPassFailure();
+            }
             bd.setNextBdId(nextBdId);
           }
         }

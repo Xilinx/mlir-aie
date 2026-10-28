@@ -6,26 +6,24 @@
 """Single-core mixed bf16/bfp16 matmul — ``@iron.jit`` IRON design.
 
 One AIE2P core does a (bf16, bfp16) -> bf16 GEMM with on-shim shuffle
-into the bf16 mac layout via memtile dims_to_stream. Strix-only;
+into the bf16 mac layout via memtile to_stream. Strix-only;
 kernel is Peano-built.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
-    ExternalFunction,
     In,
     ObjectFifo,
     Out,
     Program,
     Runtime,
-    StreamDims,
     TaskGroup,
     Worker,
 )
@@ -36,10 +34,6 @@ from aie.utils.hostruntime.argparse import (
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from ml_dtypes import bfloat16
-
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp_mixed.cc"
-)
 
 
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
@@ -60,35 +54,21 @@ def single_core_mixed(
     N_div_n = N // n
     tiles = M_div_m * N_div_n
 
-    r, s, t = 8, 8, 8
-
     a_ty = np.ndarray[(m * k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(k * n // 8,), np.dtype[v8bfp16ebs8]]
     c_ty = np.ndarray[(m * n,), np.dtype[bfloat16]]
 
-    kernel_flags = [f"-DDIM_M={m}", f"-DDIM_K={k}", f"-DDIM_N={n}"]
-
-    zero_kernel = ExternalFunction(
-        "zero_kernel_bf16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[c_ty],
-        compile_flags=kernel_flags + ["-DZERO_ONLY"],
-    )
-    matmul_kernel = ExternalFunction(
-        "matmul_vectorized_different_datatypes",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[a_ty, b_ty, c_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-    )
+    matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n, mixed=True)
+    zero_kernel = kernels.zero(m * n, bfloat16)
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims: StreamDims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-    memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
+    a_dims = matmul_kernel.stream_dims.A
+    memA = inA.cons().forward(name="memA", to_stream=a_dims)
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
-    outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
+    c_dims = matmul_kernel.stream_dims.C
+    outC = memC.cons().forward(name="outC", to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
         for _ in range_(tiles) if tiles > 1 else range(1):
@@ -114,16 +94,11 @@ def single_core_mixed(
 
     rows_per_block = 4
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
-    )
-    b_tap = TensorTiler2D.group_tiler((N, K // 8), (n, k // 8), (N_div_n, K_div_k))[0]
-
-    C_tiles = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
-    c_index = 0
+    A_tiles = TensorAccessPattern.full((M, K)).tile((m, k))
+    b_tap = TensorAccessPattern.full((N, K // 8)).tile((n, k // 8))
+    C_tiles = TensorAccessPattern.full((M, N)).tile((m, n))
 
     def sequence(a, b, c, inA_h, inB_h, outC_h):
-        nonlocal c_index
         tgs = []
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
             for pingpong in [0, 1]:
@@ -135,11 +110,11 @@ def single_core_mixed(
                     break
                 tgs.append(TaskGroup())
                 for tile_row in range(num_tile_rows):
-                    tile_offset = (row_base + tile_row) % len(A_tiles)
-                    inA_h.fill(a, tap=A_tiles[tile_offset], group=tgs[-1])
+                    a_tap = A_tiles[row_base + tile_row].repeat(N_div_n)
+                    inA_h.fill(a, tap=a_tap, group=tgs[-1])
                     inB_h.fill(b, tap=b_tap, group=tgs[-1])
-                outC_h.drain(c, tap=C_tiles[c_index], group=tgs[-1], wait=True)
-                c_index += 1
+                c_tap = C_tiles[row_base : row_base + num_tile_rows]
+                outC_h.drain(c, tap=c_tap, group=tgs[-1], wait=True)
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
                     tgs[-2].finish()
                     del tgs[-2]

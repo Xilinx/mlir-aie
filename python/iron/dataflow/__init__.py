@@ -12,36 +12,53 @@ Lower-level (explicit routing + DMA programs; peers of the above):
 [`Flow`][iron.Flow], [`PacketFlow`][iron.PacketFlow],
 [`PacketDest`][iron.PacketDest], [`TileDma`][iron.TileDma],
 [`DmaChannel`][iron.DmaChannel], [`Bd`][iron.Bd],
-[`Acquire`][iron.Acquire], [`Release`][iron.Release]
+[`Acquire`][iron.Acquire], [`Release`][iron.Release],
+[`DmaEndpoint`][iron.DmaEndpoint], [`FlowEndpoint`][iron.FlowEndpoint],
+[`TileDmaTask`][iron.TileDmaTask]
+
+One end managed, the other written by hand:
+[`ObjectFifoPool`][iron.ObjectFifoPool], [`PoolSegment`][iron.PoolSegment]
 """
 
 from .cascadeflow import CascadeFlow
-from .flow import Flow, PacketDest, PacketFlow
+from .flow import Flow, FlowEndpoint, PacketDest, PacketFlow
 from .objectfifo import (
     ObjectFifo,
     ObjectFifoEndpoint,
     ObjectFifoHandle,
     ObjectFifoLink,
-    PadDims,
-    StreamDims,
 )
-from .tile_dma import Acquire, Bd, BdIteration, DmaChannel, Release, TileDma
+from .objectfifopool import ObjectFifoPool, ObjectFifoPoolHandle, PoolSegment
+from .tile_dma import (
+    Acquire,
+    Bd,
+    BdIteration,
+    DmaChannel,
+    DmaEndpoint,
+    Release,
+    TileDma,
+    TileDmaTask,
+)
 
 __all__ = [
+    "ObjectFifoPool",
+    "ObjectFifoPoolHandle",
+    "PoolSegment",
     "ObjectFifo",
     "ObjectFifoHandle",
     "ObjectFifoLink",
     "ObjectFifoEndpoint",
-    "PadDims",
-    "StreamDims",
     "CascadeFlow",
     "Flow",
+    "FlowEndpoint",
     "PacketDest",
     "PacketFlow",
     "Acquire",
     "Bd",
     "BdIteration",
     "DmaChannel",
+    "DmaEndpoint",
     "Release",
     "TileDma",
+    "TileDmaTask",
 ]

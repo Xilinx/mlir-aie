@@ -5,8 +5,8 @@
 #
 """Process-wide HSA device/queue context and dispatch orchestration.
 
-This is the mid-level layer between the raw C ABI (:mod:`._bindings`) and the
-IRON ``HostRuntime`` (:mod:`.hostruntime`): :class:`HSAContext` owns the single
+This is the mid-level layer between the raw C ABI (`._bindings`) and the
+IRON ``HostRuntime`` (`.hostruntime`): `HSAContext` owns the single
 AIE + CPU agents, the data and device-heap memory pools, and a dispatch queue, and
 issues/waits on AIE kernel-dispatch packets.
 """
@@ -416,12 +416,12 @@ class HSAContext:
         )
 
     def vmem_free(self, handle, va, size):
-        """Tear down a vmem allocation made by :meth:`vmem_alloc`.
+        """Tear down a vmem allocation made by `vmem_alloc`.
 
         Access must be revoked *before* unmapping. With an agent grant still in
         place ROCR refuses the unmap (HSA_STATUS_ERROR) and then the address
         free (HSA_STATUS_ERROR_RESOURCE_FREE), leaving the range mapped -- after
-        which the next :meth:`vmem_alloc` reserving that VA fails in
+        which the next `vmem_alloc` reserving that VA fails in
         ``hsa_amd_vmem_map``. Statuses are logged rather than raised: this runs
         from ``__del__`` and from ``finally`` cleanup, where raising would either
         be swallowed or mask the original error.
@@ -475,9 +475,9 @@ class HSAContext:
     def signal_in_flight(self) -> bool:
         """Whether the device may still decrement the current completion signal.
 
-        True once :meth:`ring` has submitted a packet carrying it. A failure
+        True once `ring` has submitted a packet carrying it. A failure
         before that point never reached the device, so the signal is still ours
-        and the next :meth:`arm_signal` can safely reuse it.
+        and the next `arm_signal` can safely reuse it.
         """
         return self._signal_published
 
@@ -490,7 +490,7 @@ class HSAContext:
         signal is deliberately leaked rather than destroyed -- the device still
         owns it (see HSATimeoutError).
 
-        Only call this when :meth:`signal_in_flight` is true. Discarding after a
+        Only call this when `signal_in_flight` is true. Discarding after a
         host-side failure that never reached the queue leaks one signal -- a
         kernel event -- per failure, which a caller retrying bad arguments in a
         loop turns into signal exhaustion.
@@ -530,7 +530,7 @@ class HSAContext:
 
         Takes pre-converted ints so that this cannot raise -- it runs after the
         queue write index has been reserved, where a failure would be unrecoverable
-        (see :meth:`enqueue`).
+        (see `enqueue`).
         """
         n = len(addrs)
         ka = (ctypes.c_uint64 * (2 * n)).from_address(va)
@@ -562,8 +562,8 @@ class HSAContext:
         Polls while the queue is full so an in-flight batch drains (wrap-around),
         sleeping ``_QUEUE_FULL_POLL_S`` between checks. When ``IRON_HSA_TIMEOUT``
         is set the poll is bounded by that timeout and raises
-        :class:`HSATimeoutError`; with the timeout disabled it waits indefinitely,
-        mirroring :meth:`wait`'s unbounded default.
+        `HSATimeoutError`; with the timeout disabled it waits indefinitely,
+        mirroring `wait`'s unbounded default.
         """
         # -- fallible section: nothing here has touched the queue yet ----------
         self._check_usable()

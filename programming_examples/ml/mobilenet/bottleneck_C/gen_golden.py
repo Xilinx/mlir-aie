@@ -4,7 +4,6 @@
 #
 
 import math
-import os
 from pathlib import Path
 
 import numpy as np
@@ -24,10 +23,11 @@ from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports
 from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
     calibrate,
 )
+from torchvision import transforms  # pyright: ignore[reportMissingImports]
 
 from .. import mb_utils
+from ..calibration import calibration_loader
 
-log_dir = str(Path(__file__).parent / "log") + "/"
 data_dir = str(Path(__file__).parent / "data") + "/"
 
 # Read the existing scale factors
@@ -104,9 +104,6 @@ wts_size = 2 * ((bneck_13_OutC1 * bneck_13_InC1) + (bneck_13_OutC2 * bneck_13_Ou
 def main():
 
     print("Running torch reference model for bottleneck_C ...")
-
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
 
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
@@ -272,10 +269,6 @@ def main():
         bn14_project=bneck_13_OutC3,
     )
 
-    import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
-    import torchvision  # pyright: ignore[reportMissingImports]
-    from torchvision import transforms  # pyright: ignore[reportMissingImports]
-
     # # Define the image preprocessing pipeline
     transform = transforms.Compose(
         [
@@ -287,13 +280,7 @@ def main():
         ]
     )
 
-    src_data = "/group/xrlabs2/imagenet/calibration"
-    dataset = torchvision.datasets.ImageFolder(src_data, transform)
-    indices = torch.arange(4)
-    val_sub = data_utils.Subset(dataset, indices)
-    calib_loader = torch.utils.data.DataLoader(
-        dataset=val_sub, batch_size=32, shuffle=False
-    )
+    calib_loader = calibration_loader(transform)
 
     calibrate(calib_loader, quant_bottleneck_model)
     quant_bottleneck_model.eval()
@@ -371,22 +358,38 @@ def main():
     print("combined_scale after conv3x3:", block_13_combined_scale2.item())
     print("combined_scale after conv1x1:", block_13_combined_scale3.item())
     print("combined_scale after skip add:", block_13_combined_scale_skip.item())
-    scale_factors["BN13"]["conv1x1_1"] = int(block_13_combined_scale1.item())
-    scale_factors["BN13"]["conv3x3"] = int(block_13_combined_scale2.item())
-    scale_factors["BN13"]["conv1x1_2"] = int(block_13_combined_scale3.item())
-    scale_factors["BN13"]["skip_add"] = int(block_13_combined_scale_skip.item())
+    scale_factors["BN13"]["conv1x1_1"] = mb_utils.shift_of(
+        block_13_combined_scale1, "BN13 conv1x1_1"
+    )
+    scale_factors["BN13"]["conv3x3"] = mb_utils.shift_of(
+        block_13_combined_scale2, "BN13 conv3x3"
+    )
+    scale_factors["BN13"]["conv1x1_2"] = mb_utils.shift_of(
+        block_13_combined_scale3, "BN13 conv1x1_2"
+    )
+    scale_factors["BN13"]["skip_add"] = mb_utils.shift_of(
+        block_13_combined_scale_skip, "BN13 skip_add"
+    )
 
     print("********************BN14*******************************")
     print("combined_scale after conv1x1:", block_14_combined_scale1.item())
     print("combined_scale after conv3x3:", block_14_combined_scale2.item())
     print("combined_scale after conv1x1:", block_14_combined_scale3.item())
     print("combined_scale after skip add:", block_14_combined_scale_skip.item())
-    scale_factors["BN14"]["conv1x1_1"] = int(block_14_combined_scale1.item())
-    scale_factors["BN14"]["conv3x3"] = int(block_14_combined_scale2.item())
-    scale_factors["BN14"]["conv1x1_2"] = int(block_14_combined_scale3.item())
-    scale_factors["BN14"]["skip_add"] = int(block_14_combined_scale_skip.item())
+    scale_factors["BN14"]["conv1x1_1"] = mb_utils.shift_of(
+        block_14_combined_scale1, "BN14 conv1x1_1"
+    )
+    scale_factors["BN14"]["conv3x3"] = mb_utils.shift_of(
+        block_14_combined_scale2, "BN14 conv3x3"
+    )
+    scale_factors["BN14"]["conv1x1_2"] = mb_utils.shift_of(
+        block_14_combined_scale3, "BN14 conv1x1_2"
+    )
+    scale_factors["BN14"]["skip_add"] = mb_utils.shift_of(
+        block_14_combined_scale_skip, "BN14 skip_add"
+    )
 
-    mb_utils.write_scale_factors(log_dir + scale_factor_file, scale_factors)
+    mb_utils.write_scale_factors(data_dir + scale_factor_file, scale_factors)
     # print("combined_scale after conv1x1:", ( block_0_relu_2 * block_0_weight_scale3).item())
     # ------------------------------------------------------
     # Reorder input data-layout
@@ -413,21 +416,13 @@ def main():
     )
 
     print("Writing golden output txt file.")
-    golden_output.tofile(log_dir + "golden_output.txt", sep=",", format="%d")
+    golden_output.tofile(data_dir + "golden_output.txt", sep=",", format="%d")
 
     ds = DataShaper()
 
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
     print("Writing input txt file.")
-    before_input.tofile(log_dir + "before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
-    if bneck_13_InW1 > 1 and bneck_13_InH1 == 1:
-        ifm_mem_fmt = ds.reorder_mat(before_input, "CXC8", "CX")
-    elif bneck_13_InW1 > 1 and bneck_13_InH1 > 1:
-        ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
-
-    else:
-        ifm_mem_fmt = ds.reorder_mat(before_input, "CC8", "C")
-    ifm_mem_fmt.tofile(log_dir + "after_ifm_mem_fmt.txt", sep=",", format="%d")
+    before_input.tofile(data_dir + "before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
 
     # **************************** bn13 ****************************
     # bn13_wts1 = ds.reorder_mat(
@@ -481,15 +476,15 @@ def main():
         "OIYX",
     )
     print("Writing weights txt files.")
-    bn13_wts1.tofile(log_dir + "bn13_1_chain.txt", sep=",", format="%d")
-    bn13_wts2.tofile(log_dir + "bn13_2_chain.txt", sep=",", format="%d")
-    bn13_wts3_put.tofile(log_dir + "bn13_3_put_chain.txt", sep=",", format="%d")
-    bn13_wts3_get.tofile(log_dir + "bn13_3_get_chain.txt", sep=",", format="%d")
+    bn13_wts1.tofile(data_dir + "bn13_1_chain.txt", sep=",", format="%d")
+    bn13_wts2.tofile(data_dir + "bn13_2_chain.txt", sep=",", format="%d")
+    bn13_wts3_put.tofile(data_dir + "bn13_3_put_chain.txt", sep=",", format="%d")
+    bn13_wts3_get.tofile(data_dir + "bn13_3_get_chain.txt", sep=",", format="%d")
 
-    bn14_wts1.tofile(log_dir + "bn14_1_chain.txt", sep=",", format="%d")
-    bn14_wts2.tofile(log_dir + "bn14_2_chain.txt", sep=",", format="%d")
-    bn14_wts3_put.tofile(log_dir + "bn14_3_put_chain.txt", sep=",", format="%d")
-    bn14_wts3_get.tofile(log_dir + "bn14_3_get_chain.txt", sep=",", format="%d")
+    bn14_wts1.tofile(data_dir + "bn14_1_chain.txt", sep=",", format="%d")
+    bn14_wts2.tofile(data_dir + "bn14_2_chain.txt", sep=",", format="%d")
+    bn14_wts3_put.tofile(data_dir + "bn14_3_put_chain.txt", sep=",", format="%d")
+    bn14_wts3_get.tofile(data_dir + "bn14_3_get_chain.txt", sep=",", format="%d")
 
     total_wts = np.concatenate(
         (
@@ -503,7 +498,6 @@ def main():
         axis=None,
     )
 
-    total_wts.tofile(log_dir + "after_weights_mem_fmt_final.txt", sep=",", format="%d")
     print(total_wts.shape)
 
     print("Done.")

@@ -5,7 +5,7 @@
 #
 """Logging setup for the ``aie`` namespace.
 
-Imported first (for its side effect) by :mod:`aie.utils` so the level is
+Imported first (for its side effect) by `aie.utils` so the level is
 configured before any ``aie.utils`` submodule import can itself emit a log
 record.
 """

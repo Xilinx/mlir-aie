@@ -1,0 +1,10 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// The decode (aie2_decode.py) at the model's 16 layers compiles, with no NPU
+// and no weights: its pinned memtiles (aie2_decode.MemtilePins) are fullest,
+// and its placement differs, at the layer count only the nightly runs.
+//
+// REQUIRES: peano
+//
+// RUN: %python %S/aie2_decode.py --n-layers 16 --full-elf-path %t.elf

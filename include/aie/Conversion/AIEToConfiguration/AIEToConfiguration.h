@@ -12,6 +12,10 @@
 #include "mlir/Pass/Pass.h"
 #include <memory>
 
+namespace xilinx::AIEX {
+class BlockwriteData;
+} // namespace xilinx::AIEX
+
 namespace xilinx::AIE {
 
 class DeviceOp;
@@ -37,14 +41,36 @@ convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                std::vector<uint8_t> &binary);
 
 // Generate transaction binary and insert configuration operations at the
-// current insertion point
+// current insertion point, their blockwrite payloads in `blockwriteData`'s
+// device.
 mlir::LogicalResult generateAndInsertConfigOps(
     mlir::OpBuilder &builder, xilinx::AIE::DeviceOp device,
-    llvm::StringRef clElfDir = "",
+    xilinx::AIEX::BlockwriteData &blockwriteData, llvm::StringRef clElfDir = "",
     AIEToConfigurationOutputType outputType =
         AIEToConfigurationOutputType::Transaction,
-    const std::string &blockwrite_prefix = "config_blockwrite_data_",
     bool skipCtrlPktOverlay = false);
+
+// Inserts, before each site in a runtime sequence, the configuration ops of
+// its device. They are generated once per device and sequence-holding device,
+// and a sequence's constants and payload globals are made once, at its head:
+// a device reloaded hundreds of times would otherwise repeat each per reload.
+// Control-packet output skips what is marked is_ctrl_pkt_overlay. A site that
+// is an aiex.npu.write_teardown gets the device's teardown ops instead.
+mlir::LogicalResult insertConfigOps(
+    llvm::ArrayRef<std::pair<mlir::Operation *, xilinx::AIE::DeviceOp>> sites,
+    AIEToConfigurationOutputType outputType);
+
+// Inlines each aiex.npu.write_config and write_teardown in `module`. The arith
+// and memref dialects must be loaded.
+mlir::LogicalResult inlineWriteConfigs(mlir::ModuleOp module);
+
+// Insert the ops of `device`'s teardown (see aiex.npu.write_teardown).
+mlir::LogicalResult
+generateAndInsertTeardownOps(mlir::OpBuilder &builder,
+                             xilinx::AIE::DeviceOp device,
+                             xilinx::AIEX::BlockwriteData &blockwriteData,
+                             AIEToConfigurationOutputType outputType =
+                                 AIEToConfigurationOutputType::Transaction);
 
 // --------------------------------------------------------------------------
 // Device reset

@@ -41,6 +41,7 @@ LitConfigHelper.setup_standard_environment(
 )
 
 LitConfigHelper.add_makefile_examples_feature(config)
+LitConfigHelper.add_cmake_examples_feature(config)
 
 # Basic substitutions
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
@@ -154,7 +155,19 @@ LitConfigHelper.apply_config_to_lit(
     },
 )
 
+LitConfigHelper.add_hrxxclbinutil_feature(config)
+
 LitConfigHelper.setup_host_compiler_substitutions(config)
+
+if LitConfigHelper.can_import_python_module(config, config.python_executable, "pyxrt"):
+    config.available_features.add("xrt_python_bindings")
+    if LitConfigHelper.python_module_has_attribute(
+        config,
+        config.python_executable,
+        "pyxrt",
+        ("run", "get_ctrl_scratchpad_bo"),
+    ):
+        config.available_features.add("xrt_python_ctrl_scratchpad_bo")
 LitConfigHelper.setup_aiecc_substitution(config)
 LitConfigHelper.setup_host_link_substitution(config)
 
@@ -174,7 +187,3 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
     config.parallelism_group = "board"
-
-# Opt-in serialization group for chess builds whose peak RSS is large enough
-# to OOM the CI runner under -j4. Tests opt in via a lit.local.cfg.
-lit_config.parallelism_groups["atb_chess"] = 1

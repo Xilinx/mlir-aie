@@ -17,8 +17,6 @@
 #ifndef AIECC_COMMANDLINEOPTIONS_H
 #define AIECC_COMMANDLINEOPTIONS_H
 
-#include "AIECCVersion.h"
-
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 
 #include "llvm/ADT/SmallString.h"
@@ -60,7 +58,38 @@ inline cl::opt<std::string>
     workDir("tmpdir",
             cl::desc("Intermediate workdir (default: <input>.prj in cwd)"),
             cl::init(""));
-inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
+// A DMA task queue does not backpressure: a push onto a full one is dropped and
+// its transfer never runs. By default the compiler waits for a free slot before
+// any push that could find the queue full, which stalls only where the DMA
+// cannot drain ahead of the pushes -- exactly where the alternative is a lost
+// transfer. This reverts to reporting the hazard as a warning.
+inline cl::opt<bool> noEnforceDmaQueueDepth(
+    "no-enforce-dma-queue-depth",
+    cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
+             "slot"));
+
+inline cl::opt<bool> allowDeadlockProneRouting(
+    "allow-deadlock-prone-routing",
+    cl::desc("Warn of, rather than fail on, flows the router finds can "
+             "deadlock however they are routed or through receivers packet "
+             "flows share"));
+
+// Out of BD ids, the compiler may take them back from a started task it can
+// prove finished by polling its channel. The poll hangs if that task's
+// completion depends on a push issued after it, which the compiler cannot see.
+inline cl::opt<bool> reclaimRuntimeBds(
+    "reclaim-runtime-bds",
+    cl::desc("Reuse the BD ids of started, unreleased runtime-sequence tasks "
+             "when a tile runs out, polling for their completion"));
+
+inline cl::opt<bool> verifyEach(
+    "verify-each",
+    cl::desc("Verify the IR after every pass, not once per pass pipeline "
+             "(slower; names the pass that produced invalid IR)"));
+
+inline cl::opt<bool>
+    verbose("verbose",
+            cl::desc("Verbose execution, with the compiler's remarks"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose));
 inline cl::opt<bool>
@@ -92,8 +121,16 @@ inline cl::opt<int>
     saSeed("sa-seed",
            cl::desc("Random seed for SA placer (0 = non-deterministic)"),
            cl::init(1));
-inline cl::opt<std::string> allocScheme("alloc-scheme",
-                                        cl::desc("Buffer allocation scheme"));
+inline cl::opt<double> saEffort(
+    "sa-effort",
+    cl::desc("Scale on the SA placer's search budget (1.0 = full; lower "
+             "trades placement cost for compile time)"),
+    cl::init(1.0));
+inline cl::opt<int64_t> placementBudget(
+    "placement-budget",
+    cl::desc("Buffer placements aie-assign-buffer-addresses may try per tile "
+             "before giving up"),
+    cl::init(100000));
 inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Dynamic objectFIFOs"),
                                      cl::init(true));
@@ -118,6 +155,16 @@ inline cl::opt<unsigned> optLevel("O", cl::Prefix,
                                   cl::init(2));
 inline cl::alias optLevelAlias("opt-level", cl::desc("Alias for -O"),
                                cl::aliasopt(optLevel));
+// Arguments for the Peano `opt` and `llc` that compile each core's program,
+// as clang's -Xclang: one argument per occurrence, never split at commas
+// (`-Xopt -opt-disable=licm,loop-unroll-full`), appended after aiecc's own, so
+// an option that aiecc sets takes the value given here.
+inline cl::list<std::string>
+    xoptArgs("Xopt", cl::value_desc("arg"),
+             cl::desc("Pass <arg> to opt when compiling a core (Peano only)"));
+inline cl::list<std::string>
+    xllcArgs("Xllc", cl::value_desc("arg"),
+             cl::desc("Pass <arg> to llc when compiling a core (Peano only)"));
 inline cl::opt<bool> expandLoadPdis(
     "expand-load-pdis",
     cl::desc("Expand `load_pdi { device_ref }` into explicit write sequences "
@@ -128,6 +175,18 @@ inline cl::opt<bool> loadPdiToCtrlPkt(
              "the device configuration as control packets (requires a control "
              "overlay; implies --generate-ctrl-pkt-overlay; mutually exclusive "
              "with --expand-load-pdis)"));
+inline cl::opt<bool> reconfigTeardown(
+    "reconfig-teardown",
+    cl::desc("Undo each configuration once it is done, in place of the reset "
+             "before the next one; only the first configuration of a runtime "
+             "sequence keeps its reset (requires full-ELF output and "
+             "--expand-load-pdis)"));
+inline cl::opt<bool> reconfigInitEntry(
+    "reconfig-init-entry",
+    cl::desc(
+        "Move the one reset to an argument-free <device>:reconfig_init entry, "
+        "which the host runs once per hardware context before the other "
+        "entries (requires --reconfig-teardown)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -160,6 +219,18 @@ inline cl::opt<bool> noMeasureDataSize(
     cl::desc("Skip the measurement of each core's static data (.data, .rodata "
              "and .bss) in its linked ELF and the check of data_size against "
              "it"));
+inline cl::opt<bool> noCheckBankPlacement(
+    "no-check-bank-placement",
+    cl::desc("Skip the check that a symbol a core places for a memory bank (a "
+             "chess_storage / __aie_dm_resource_* request) was linked into "
+             "that bank"));
+inline cl::opt<bool> checkLutBanks(
+    "check-lut-banks",
+    cl::desc("Check that the two tables of each aie::lut<4> are in different "
+             "memory banks. Requires embedded LLVM IR in object-linked "
+             "kernels; also checks merge-mode and generated core IR. Fails "
+             "when table placement cannot be verified. Off "
+             "by default because preserving that IR costs compile time"));
 inline cl::opt<int> defaultStackSize(
     "default-stack-size",
     cl::desc("Stack size in bytes to assume for any core that leaves "
@@ -174,6 +245,14 @@ inline cl::opt<int> defaultStackSize(
 inline cl::opt<std::string>
     sequenceName("sequence-name",
                  cl::desc("Runtime sequence name to compile (default: all)"));
+
+// The resolved module (input_with_addresses.mlir) of the image an instruction
+// stream will run on: the stream's static design must be that image's
+// (aie-check-against-image).
+inline cl::opt<std::string> checkAgainstImage(
+    "check-against-image",
+    cl::desc("Fail unless the static design matches that of the image "
+             "compiled to this resolved module, naming what to pin"));
 
 // Skip the aie-materialize-runtime-sequences pass in NPU lowering.
 inline cl::opt<bool> noMaterialize(
@@ -234,6 +313,17 @@ inline std::vector<std::string> hostPassthroughArgs;
 // artifact's filename template ({0} expands to the device / sequence key).
 
 inline bool generateNpuInsts = false;
+inline bool generateNpuCpp = false;
+inline cl::opt<std::string> npuCppName(
+    "npu-cpp-name",
+    cl::desc("Output C++ transaction builder filename template (use {0} for "
+             "device/sequence)"),
+    cl::init("npu_{0}.cpp"));
+inline cl::opt<bool> npuCppEmitDispatchShim(
+    "npu-cpp-emit-dispatch-shim",
+    cl::desc("Emit dispatch_abi/dispatch_generate C entry points in each NPU "
+             "C++ builder"),
+    cl::init(false));
 inline cl::opt<std::string> npuInstsName(
     "npu-insts-name",
     cl::desc("Output NPU insts filename template (use {0} for multi-device)"),
@@ -258,6 +348,10 @@ inline cl::opt<bool> foldDDRAddrOffsetOpt(
 inline bool generateCoreElfs = false;
 
 inline bool generateInputWithAddresses = false;
+
+// The same module before placement, which unlike input_with_addresses.mlir
+// needs no core compiler. See the placement edge in aiecc.cpp.
+inline bool generateInputWithSymbols = false;
 
 inline bool generateScratchpadParams = false;
 
@@ -372,9 +466,12 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
   static const OutputSelector table[] = {
       {"input-with-addresses", "input_with_addresses.mlir",
        &generateInputWithAddresses},
+      {"input-with-symbols", "input_with_symbols.mlir",
+       &generateInputWithSymbols},
       {"scratchpad-parameters", "params.txt", &generateScratchpadParams},
       {"core-elfs", "elfs_{0}.elf", &generateCoreElfs},
       {"npu-insts", "insts_{0}.bin", &generateNpuInsts},
+      {"npu-cpp", "npu_{0}.cpp", &generateNpuCpp},
       {"elf", "design.elf", &generateElf},
       {"cdo", "cdo_{0}", &generateCdo},
       {"pdi", "{0}.pdi", &generatePdi},
@@ -388,6 +485,31 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
   };
   return table;
 }
+
+inline void printOutputSelectorTable(llvm::raw_ostream &os) {
+  for (const OutputSelector &s : outputSelectors())
+    os << "  --get-" << s.niceName << "  (" << s.edgeName << ")\n";
+}
+
+// `--get-<name>` is resolved by applyOutputSelectorFlags() below before
+// llvm::cl ever parses argv, so the shorthands are never registered as a
+// cl::opt and are invisible to --help/--help-hidden without this.
+// cl::extrahelp appends the text after the normal --help output.
+inline std::string outputSelectorHelpText() {
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  os << "\nOUTPUT SELECTORS:\n"
+        "  Named shorthands for --get=<name> (see above), and the artifact "
+        "each\n  selects (relative to --output-dir):\n";
+  printOutputSelectorTable(os);
+  return text;
+}
+
+// cl::extrahelp only keeps a StringRef, so the backing std::string needs its
+// own storage; declared first so it is initialized before the extrahelp that
+// references it (declaration order fixes initialization order within a TU).
+inline const std::string kOutputSelectorHelpText = outputSelectorHelpText();
+inline llvm::cl::extrahelp outputSelectorExtraHelp(kOutputSelectorHelpText);
 
 // Resolve the `--get-<niceName>` shorthands in `args` before cl parsing: set
 // each recognized selector's bool and drop its token; a token after a `--`
@@ -412,9 +534,7 @@ inline bool applyOutputSelectorFlags(std::vector<std::string> &args) {
       if (!sel) {
         llvm::errs() << "aiecc: unknown output selector '--get-" << nice
                      << "'; available selectors are:\n";
-        for (const OutputSelector &s : outputSelectors())
-          llvm::errs() << "  --get-" << s.niceName << "  (" << s.edgeName
-                       << ")\n";
+        printOutputSelectorTable(llvm::errs());
         return false;
       }
       *sel->flag = true;
@@ -436,10 +556,16 @@ inline bool applyOutputSelectorFlags(std::vector<std::string> &args) {
 inline cl::opt<bool> showVersion("aie-version",
                                  cl::desc("Show version information and exit"));
 inline cl::opt<bool> dryRun("n", cl::desc("Dry run"));
-// Print the wall-clock time each edge took to execute at the end of the run.
-inline cl::opt<bool>
-    profile("profile",
-            cl::desc("Print a per-edge execution-time summary at the end"));
+// Print the wall-clock time and resident-memory cost of each edge at the end
+// of the run.
+inline cl::opt<bool> profile(
+    "profile",
+    cl::desc("Print a per-edge time and resident-memory summary at the end"));
+inline cl::opt<std::string> profileJson(
+    "profile-json",
+    cl::desc("Write the per-edge time and resident-memory summary --profile "
+             "prints to this file, as JSON"),
+    cl::value_desc("path"), cl::init(""));
 inline cl::opt<bool> progress(
     "progress",
     cl::desc("Show single-line execution progress: overwrite one status line "
@@ -448,6 +574,22 @@ inline cl::opt<bool> progress(
 inline cl::opt<bool> noProgress(
     "no-progress",
     cl::desc("Disable the default single-line execution progress output"));
+// Reuse each aie.device's compiled cores across builds; see DeviceCache.h.
+inline cl::opt<std::string> deviceCacheDir(
+    "device-cache",
+    cl::desc("Reuse the placement and linked core ELFs of any aie.device an "
+             "earlier build stored in this dir, and store the ones this build "
+             "compiles (Peano only)"),
+    cl::value_desc("dir"), cl::init(""));
+inline cl::opt<bool> noShareCoreObjects(
+    "no-share-core-objects",
+    cl::desc("Compile each core's program on its own, even where other cores "
+             "run the same program over their own buffers"));
+inline cl::opt<bool> awaitLinkFiles(
+    "await-link-files",
+    cl::desc("Lower the design, but read no file a core links (link_with, "
+             "link_files) until a line arrives on stdin, so a caller can build "
+             "them meanwhile; stdin closing first fails the build"));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
 // selected by `--cut` plus a `manifest.json` describing them into <dir> after a
 // successful run — a "prefix" of the build. `--resume=<manifest.json>` rebuilds
@@ -497,12 +639,31 @@ inline bool wantAiesim = false;
 inline bool doUnified = false;
 // Compile the host program (selected by --get-host).
 inline bool doCompileHost = false;
+// Whether the full ELF is among the outputs, by --get-full-elf or its edge.
+inline bool wantFullElf = false;
+
+// Resolve `option` to itself AND `met`. Asking for it explicitly when `met`
+// does not hold is an error; an option that is on by default turns off.
+inline bool resolveDependentOption(cl::opt<bool> &option, bool met,
+                                   llvm::StringRef requirement) {
+  if (!option || met)
+    return true;
+  if (option.getNumOccurrences()) {
+    llvm::errs() << "aiecc: --" << option.ArgStr << " requires " << requirement
+                 << "\n";
+    return false;
+  }
+  option = false;
+  return true;
+}
 
 // Resolve inter-option coupling and populate the resolved-option globals above.
+// `resuming` exempts the output-dependent requirements, since a --resume may
+// select other outputs than the build it continues.
 //
 // Returns false (after a diagnostic) if the requested combination is
 // impossible.
-inline bool resolveOptions() {
+inline bool resolveOptions(bool resuming = false) {
   // Each Chess flag implies the other, so that a bare --xchesscc does not hand
   // Chess-compiled objects to Peano's linker. State both to mix the two.
   if (xchesscc && !xbridge.getNumOccurrences())
@@ -519,18 +680,53 @@ inline bool resolveOptions() {
 
   doUnified = unified && !noUnified;
   doCompileHost = generateHost;
-  return true;
+
+  // --expand-load-pdis reconfigures via PDI swaps and routes the config branch
+  // through the NPU-lowered module; control-packet generation currently
+  // assumes it runs on the *pre*-NPU-lowering module. The two are incompatible
+  // as implemented.
+  if (expandLoadPdis && generateCtrlpkt) {
+    llvm::errs() << "aiecc: --expand-load-pdis and --get-ctrlpkt are "
+                    "mutually exclusive\n";
+    return false;
+  }
+
+  // --expand-load-pdis and --load-pdi-to-ctrl-pkt are two different reconfigure
+  // strategies for the same `load_pdi` ops (explicit write sequences vs.
+  // streamed control packets); at most one may apply.
+  if (expandLoadPdis && loadPdiToCtrlPkt) {
+    llvm::errs() << "aiecc: --expand-load-pdis and --load-pdi-to-ctrl-pkt are "
+                    "mutually exclusive\n";
+    return false;
+  }
+
+  // Disambiguate the full-ELF control packet flow and the standalone
+  // artifact flows.
+  if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
+    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
+                    "together also requires --load-pdi-to-ctrl-pkt\n";
+    return false;
+  }
+
+  wantFullElf = generateFullElf ||
+                llvm::is_contained(getOutputs, fullElfName.getValue()) ||
+                llvm::is_contained(cutOutputs, fullElfName.getValue());
+  bool fullElf = wantFullElf || resuming;
+  // The teardown disables every route a configuration sets, including the
+  // control packet routes --generate-ctrl-pkt-overlay adds to it.
+  return resolveDependentOption(reconfigTeardown, fullElf, "full-ELF output") &&
+         resolveDependentOption(reconfigTeardown, expandLoadPdis,
+                                "--expand-load-pdis") &&
+         resolveDependentOption(
+             reconfigTeardown, !ctrlPktOverlay,
+             "that --generate-ctrl-pkt-overlay is not set") &&
+         resolveDependentOption(reconfigInitEntry, reconfigTeardown,
+                                "--reconfig-teardown");
 }
 
 //===----------------------------------------------------------------------===//
 // Helper functions
 //===----------------------------------------------------------------------===//
-
-inline void printVersion(llvm::raw_ostream &os) {
-  os << "aiecc (mlir-aie declarative driver)\n";
-  os << "  git SHA:  " << AIECC_GIT_SHA << "\n";
-  os << "  compiled: " << __DATE__ << " " << __TIME__ << "\n";
-}
 
 // A positional argument is a host source file when it has a C/C++ extension.
 inline bool isHostSourceFile(llvm::StringRef name) {

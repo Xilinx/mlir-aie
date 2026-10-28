@@ -13,7 +13,7 @@ import aie.iron as iron
 import numpy as np
 from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_parallel
-from aie.utils.benchmark import run_iters
+from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.verify import assert_pass
 
 
@@ -57,14 +57,7 @@ def main():
     assert bench.npu is not None
     bandwidth_GBps = total_bytes / bench.npu.avg_us / 1e3  # (bytes / µs) → GB/s
 
-    print(
-        f"NPU time     (avg/min/max us): "
-        f"{bench.npu.avg_us:.1f} / {bench.npu.min_us:.1f} / {bench.npu.max_us:.1f}"
-    )
-    print(
-        f"End-to-end   (avg/min/max us): "
-        f"{bench.e2e.avg_us:.1f} / {bench.e2e.min_us:.1f} / {bench.e2e.max_us:.1f}"
-    )
+    print_benchmark(bench)
     print(f"Effective bandwidth (NPU avg): {bandwidth_GBps:.2f} GB/s")
 
     assert_pass(output.numpy(), input0.numpy(), fail_msg="memcpy output mismatch")
