@@ -1029,12 +1029,13 @@ class NpuTensor(ABC):
             random_val = generator.integers(low, high, size=size, dtype=dtype)
         else:
             random_val = np.random.randint(low, high, size=size, dtype=dtype)
-        if size == ():
-            t.data.fill(random_val)
-        else:
-            t.data[:] = random_val
+        with t.overwrite() as array:
+            if size == ():
+                array.fill(random_val)
+            else:
+                array[:] = random_val
         if device == "npu":
-            t._sync_to_device()
+            t.to("npu")
         return t
 
     @classmethod
@@ -1077,12 +1078,13 @@ class NpuTensor(ABC):
             max_val = np.nextafter(dtype(1.0), dtype(0.0))
             random_val = np.clip(random_val, 0.0, max_val)
 
-        if t.shape == ():
-            t.data.fill(random_val)
-        else:
-            t.data[:] = random_val
+        with t.overwrite() as array:
+            if t.shape == ():
+                array.fill(random_val)
+            else:
+                array[:] = random_val
         if device == "npu":
-            t._sync_to_device()
+            t.to("npu")
         return t
 
     @classmethod
@@ -1143,9 +1145,10 @@ class NpuTensor(ABC):
                 raise ValueError(
                     "Provided `out` tensor must match shape, dtype, and device"
                 )
-            out.data[...] = data
+            with out.overwrite() as array:
+                array[...] = data
             if device == "npu":
-                out._sync_to_device()
+                out.to("npu")
             return out
 
         t = cls(shape, dtype=dtype, device=device, **kwargs)

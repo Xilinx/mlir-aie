@@ -670,6 +670,39 @@ class TwoMemoryTensor(NpuTensor):
         return view
 
 
+@pytest.mark.parametrize("factory", ["randint", "rand", "arange"])
+@pytest.mark.parametrize("shape", [(), (5,)])
+@pytest.mark.parametrize("offset", [0, GRANULE])
+def test_factory_out_preserves_device_bytes_past_data(factory, shape, offset):
+    dtype = np.float32 if factory == "rand" else np.uint8
+    parent = TwoMemoryTensor((3 * GRANULE,))
+    device_bytes = parent.storage._transport.device_bytes
+    device_bytes[:] = 0xAA
+    view = parent.subview(offset, shape, dtype=dtype)
+    generator = np.random.default_rng(42)
+    expected_generator = np.random.default_rng(42)
+    kwargs = {"out": view, "dtype": dtype, "device": "npu"}
+    if factory == "randint":
+        result = parent.randint(0, 10, shape, generator=generator, **kwargs)
+        expected = expected_generator.integers(0, 10, size=shape, dtype=dtype)
+    elif factory == "rand":
+        result = parent.rand(shape, generator=generator, **kwargs)
+        expected = expected_generator.uniform(0.0, 1.0, size=shape).astype(dtype)
+    else:
+        size = int(np.prod(shape))
+        result = parent.arange(size, shape=shape, **kwargs)
+        expected = np.arange(size, dtype=dtype).reshape(shape)
+
+    assert result is view
+    assert result.device == "npu"
+    np.testing.assert_array_equal(view.data, expected)
+    expected_bytes = np.full(parent.nbytes, 0xAA, dtype=np.uint8)
+    expected_bytes[offset : offset + view.nbytes] = (
+        np.asarray(expected).reshape(-1).view(np.uint8)
+    )
+    np.testing.assert_array_equal(device_bytes, expected_bytes)
+
+
 def fragmented(fill=0xAA):
     """A tensor whose first window is host-written and whose second is not.
 
