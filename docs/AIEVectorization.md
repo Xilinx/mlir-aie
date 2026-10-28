@@ -47,7 +47,7 @@ The super-vectorizer blocks the loop by a factor of 8, replacing scalar operatio
 
 ## AIEngine-specific vector operations
 
-The ['AIE Vectorize' pass](https://xilinx.github.io/mlir-aie/AIEVecPasses/) in this repository transforms the above vector code into AIEngine-specific vector operations, represented in the [AIEVec Dialect](https://xilinx.github.io/mlir-aie/AIEVecDialect/).  These operations use types that are directly implementable in the AIEngine architecture and represent device specific features, such as the vector permute network.
+The ['AIE Vectorize' pass](AIEVecPasses.md) in this repository transforms the above vector code into AIEngine-specific vector operations, represented in the [AIEVec Dialect](AIEVecDialect.md).  These operations use types that are directly implementable in the AIEngine architecture and represent device specific features, such as the vector permute network.
 
 ```
 aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-vectorize < pointwise_mult_f32.mlir

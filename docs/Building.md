@@ -123,7 +123,6 @@ xrt-smi examine
    pre-commit and pre-push hooks defined in `.pre-commit-config.yaml`:
    ```bash
    source utils/env_install.sh --dev  # one time / first time
-   source utils/env_setup.sh          # every time you open a new shell
    ```
 
    > *Tip:* The `utils/env_install.sh` script also works as an update script.
@@ -133,6 +132,13 @@ xrt-smi examine
    will be built from source):
    ```bash
    ./utils/build-mlir-aie-from-wheels.sh
+   ```
+
+1. Configure the shell after the build has installed the compiler. In each
+   new shell, activate `ironenv` before running setup (from the repository root):
+   ```bash
+   source ironenv/bin/activate
+   source utils/env_setup.sh
    ```
 
 1. (Optional) Generate a compile database so the `clang-tidy` pre-push hook
