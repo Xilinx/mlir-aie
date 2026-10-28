@@ -136,6 +136,8 @@ module {
 
 // The producer side is bounded the same way: its DMA drains
 // `iter_count * depth` objects and stops, after which the pool never empties.
+// The pool's two free objects still take a fifth, so the core finishes and
+// that object is never sent.
 
 module {
   aie.device(npu1_1col) {
@@ -149,7 +151,32 @@ module {
       %c5 = arith.constant 5 : index
       scf.for %i = %c0 to %c5 step %c1 {
         %o = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
-        // expected-error@+1 {{releases 5 objects through @out_prod over the run, but the pool's DMA endpoint stops after 4}}
+        // expected-error@+1 {{releases 5 objects through @out_prod over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), leaving 1 in the pool unsent}}
+        aie.objectfifo.release @out (Produce, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Past the drained objects plus the pool's depth, the producer has nowhere to
+// put the seventh and waits forever.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    // expected-note@+1 {{the DMA endpoint is here}}
+    aie.objectfifo @out(%tile, {%shim}, 2 : i32) {iter_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c7 = arith.constant 7 : index
+      scf.for %i = %c0 to %c7 step %c1 {
+        %o = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
+        // expected-error@+1 {{releases 7 objects through @out_prod over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), so the core would wait forever for the rest}}
         aie.objectfifo.release @out (Produce, 1)
       }
       aie.end

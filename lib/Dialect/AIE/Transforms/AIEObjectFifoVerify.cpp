@@ -326,10 +326,11 @@ struct AIEObjectFifoVerifyPass
 
   /// A DMA endpoint with an iteration count stops after `iterCount * depth`
   /// objects, so a core that must release more through the same pool waits
-  /// forever for the rest. Only releases static loop bounds force are counted,
-  /// so what is reported is certain; a conditional release, or one in a loop
-  /// meant to run forever, is left out, since such a core stalling once the
-  /// data stops is how those designs end.
+  /// forever for the rest, or leaves objects it filled unsent. Only
+  /// releases static loop bounds force are counted, so what is reported is
+  /// certain; a conditional release, or one in a loop meant to run forever, is
+  /// left out, since such a core stalling once the data stops is how those
+  /// designs end.
   LogicalResult verifyTransferBudgets(DeviceOp device) {
     DenseMap<Operation *, TransferBudget> budgets;
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
@@ -369,14 +370,19 @@ struct AIEObjectFifoVerifyPass
         continue;
       }
       ObjectFifoDmaEndpointOp dma = budget->second.endpoint;
+      int64_t depth = endpoint.getPoolOp().getDepth();
       InFlightDiagnostic diag =
           blame.lookup(name).emitOpError("releases ")
           << count << " objects through @" << name
           << " over the run, but the pool's DMA endpoint stops after "
           << budget->second.objects << " (iterCount "
-          << budget->second.iterations << " x depth "
-          << endpoint.getPoolOp().getDepth()
-          << "), so the core would wait forever for the rest";
+          << budget->second.iterations << " x depth " << depth << ")";
+      // A producer finishes while the pool still has free objects to fill.
+      if (!endpoint.drains() && count <= budget->second.objects + depth)
+        diag << ", leaving " << count - budget->second.objects
+             << " in the pool unsent";
+      else
+        diag << ", so the core would wait forever for the rest";
       diag.attachNote(dma.getLoc()) << "the DMA endpoint is here";
       return failure();
     }
