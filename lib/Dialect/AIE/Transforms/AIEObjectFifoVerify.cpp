@@ -8,11 +8,13 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/Debug.h"
 
 #include <algorithm>
 #include <limits>
@@ -21,6 +23,8 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+
+#define DEBUG_TYPE "aie-objectfifo-verify"
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEOBJECTFIFOVERIFY
@@ -59,18 +63,19 @@ static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
   return std::nullopt;
 }
 
-/// How many times `op` runs when its core runs to completion, when static loop
-/// bounds alone decide that. Anything conditional between the op and the core,
-/// an `scf.if`, a loop with dynamic bounds or one meant to run forever, a block
-/// reached by branching, makes it unknown.
+/// How many times `op` runs when its core, or runtime sequence, runs to
+/// completion, when static loop bounds alone decide that. Anything conditional
+/// between the op and the core, an `scf.if`, a loop with dynamic bounds or one
+/// meant to run forever, a block reached by branching, makes it unknown.
 static std::optional<int64_t> staticExecutions(Operation *op) {
   int64_t count = 1;
-  for (Operation *cur = op; !isa<CoreOp>(cur); cur = cur->getParentOp()) {
+  for (Operation *cur = op; !isa<CoreOp, RuntimeSequenceOp>(cur);
+       cur = cur->getParentOp()) {
     if (cur->getBlock() != &cur->getParentRegion()->front()) {
       return std::nullopt;
     }
     Operation *parent = cur->getParentOp();
-    if (isa<CoreOp>(parent)) {
+    if (isa<CoreOp, RuntimeSequenceOp>(parent)) {
       break;
     }
     auto forOp = dyn_cast<scf::ForOp>(parent);
@@ -622,6 +627,193 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
+  /// Bytes one run of `sequence` moves through the shim endpoint `name`, when
+  /// every use of it is a DMA task whose executions, repeats and lengths are
+  /// static.
+  static std::optional<int64_t> hostBytes(RuntimeSequenceOp sequence,
+                                          StringAttr name) {
+    std::optional<SymbolTable::UseRange> uses =
+        SymbolTable::getSymbolUses(name, &sequence.getBody());
+    if (!uses)
+      return std::nullopt;
+    int64_t bytes = 0;
+    for (const SymbolTable::SymbolUse &use : *uses) {
+      auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(use.getUser());
+      std::optional<int64_t> runs =
+          task ? staticExecutions(task) : std::nullopt;
+      if (!runs || task.getRepeatCountVal())
+        return std::nullopt;
+      int64_t perRun = 0;
+      WalkResult result = task.getBody().walk([&](DMABDOp bd) {
+        if (bd.getLengthParameter() || !bd.getConstantLen())
+          return WalkResult::interrupt();
+        perRun += bd.getLenInBytes();
+        return WalkResult::advance();
+      });
+      if (result.wasInterrupted())
+        return std::nullopt;
+      bytes += *runs * (task.getRepeatCount() + 1) * perRun;
+    }
+    return bytes;
+  }
+
+  /// Bytes one object of `endpoint` carries over its channel.
+  static int64_t objectBytes(ObjectFifoDmaEndpointOp endpoint) {
+    auto type = cast<MemRefType>(endpoint.getPoolOp().getElemType());
+    return transferElements(endpoint) * type.getElementTypeBitWidth() / 8;
+  }
+
+  /// Objects the DMA endpoint `endpoint` moves in one run of `sequence`, traced
+  /// to the shim directly or through one pool with one DMA endpoint toward the
+  /// shim.
+  std::optional<int64_t> hostObjects(DeviceOp device,
+                                     RuntimeSequenceOp sequence,
+                                     ObjectFifoDmaEndpointOp endpoint,
+                                     bool throughPool) {
+    if (endpoint.getIterCount() || endpoint.getDispatch())
+      return std::nullopt;
+    StringRef name = endpoint.getSymName();
+    SmallVector<StringRef> peers;
+    for (auto route : device.getOps<RouteOp>()) {
+      if (endpoint.drains() ? route.namesAsSource(name)
+                            : route.namesAsDestination(name)) {
+        auto names = endpoint.drains() ? route.getDestinationNames()
+                                       : route.getSourceNames();
+        peers.append(names.begin(), names.end());
+      }
+    }
+    if (peers.size() != 1)
+      return std::nullopt;
+    Operation *peer = SymbolTable::lookupNearestSymbolFrom(
+        device, StringAttr::get(device.getContext(), peers.front()));
+    // A draining endpoint sends each object `getRepeat` times.
+    int64_t sent = objectBytes(endpoint) * endpoint.getRepeat();
+    int64_t perObject = endpoint.drains() ? sent : objectBytes(endpoint);
+
+    int64_t bytes;
+    if (auto shim = dyn_cast_or_null<RouteEndpointOp>(peer)) {
+      std::optional<int64_t> host = hostBytes(sequence, shim.getSymNameAttr());
+      if (!host)
+        return std::nullopt;
+      bytes = *host;
+    } else if (auto other = dyn_cast_or_null<ObjectFifoDmaEndpointOp>(peer);
+               other && throughPool && other.drains() != endpoint.drains()) {
+      ObjectFifoDmaEndpointOp toward;
+      for (auto candidate : device.getOps<ObjectFifoDmaEndpointOp>()) {
+        if (candidate == other || candidate.getPoolOp() != other.getPoolOp() ||
+            candidate.drains() == other.drains())
+          continue;
+        if (toward)
+          return std::nullopt;
+        toward = candidate;
+      }
+      if (!toward)
+        return std::nullopt;
+      std::optional<int64_t> objects =
+          hostObjects(device, sequence, toward, false);
+      if (!objects)
+        return std::nullopt;
+      bytes =
+          *objects * (other.drains() ? objectBytes(other) * other.getRepeat()
+                                     : objectBytes(other));
+    } else {
+      return std::nullopt;
+    }
+    if (perObject == 0 || bytes % perObject)
+      return std::nullopt;
+    return bytes / perObject;
+  }
+
+  /// A Worker whose forever loop waits for each dispatch's parameters runs
+  /// one pass of that loop per dispatch, so the objects one pass moves through
+  /// a fifo must be the objects one run of the runtime sequence moves through
+  /// it, or the core drifts out of step with the dispatches. Checked when one
+  /// runtime sequence syncs the parameters, so every dispatch runs it, and its
+  /// transfers on the fifo are static.
+  LogicalResult verifyDispatchVolumes(DeviceOp device) {
+    RuntimeSequenceOp sequence;
+    int64_t syncs = 0;
+    for (auto candidate : device.getOps<RuntimeSequenceOp>()) {
+      auto ops = candidate.getBody()
+                     .getOps<AIEX::SyncScratchpadParametersFromHostOp>();
+      int64_t count = std::distance(ops.begin(), ops.end());
+      // With a core waiting, --aie-lower-scratchpad-parameters syncs once in a
+      // sequence that has no sync of its own, unless the sequence opts out.
+      if (count == 0) {
+        BoolAttr preamble = candidate.getEmitParameterSyncPreambleAttr();
+        count = !preamble || preamble.getValue();
+      }
+      if (count == 0)
+        continue;
+      if (sequence)
+        return success();
+      sequence = candidate;
+      syncs = count;
+    }
+    if (!sequence)
+      return success();
+
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      if (!pool || pool.getInitValues() || endpoint.getSegments())
+        continue;
+      ObjectFifoDmaEndpointOp dma;
+      bool single = true;
+      for (auto candidate : device.getOps<ObjectFifoDmaEndpointOp>()) {
+        if (candidate.getPoolOp() != pool ||
+            candidate.drains() == endpoint.drains())
+          continue;
+        single = !dma;
+        dma = candidate;
+      }
+      if (!dma || !single || dma.getSegments())
+        continue;
+
+      CoreTurns turns;
+      std::string reason;
+      if (failed(turns.read({endpoint}, reason)))
+        continue;
+      auto loop = dyn_cast<scf::WhileOp>(turns.periodLoop());
+      if (!loop || !isForeverLoop(loop) ||
+          loop.getAfterBody()
+              ->getOps<AIEX::WaitScratchpadParametersOp>()
+              .empty())
+        continue;
+      std::optional<int64_t> objects = hostObjects(device, sequence, dma, true);
+      int64_t perDispatch = syncs * static_cast<int64_t>(turns.turns().size());
+      LLVM_DEBUG(llvm::dbgs()
+                 << "dispatch volume of @" << endpoint.getSymName()
+                 << ": the core moves " << perDispatch << ", @"
+                 << sequence.getSymName() << " moves "
+                 << (objects ? std::to_string(*objects) : "an unknown count")
+                 << "\n");
+      if (!objects || *objects == perDispatch)
+        continue;
+
+      ObjectFifoAcquireOp acquire;
+      loop.walk([&](ObjectFifoAcquireOp op) {
+        if (!acquire && op.getObjFifoName() == endpoint.getSymName())
+          acquire = op;
+      });
+      if (!acquire)
+        continue;
+      InFlightDiagnostic diag =
+          acquire.emitOpError()
+          << (endpoint.drains() ? "takes " : "hands over ") << perDispatch
+          << " objects through @" << endpoint.getSymName()
+          << " for each dispatch, one pass of a loop that waits for each "
+             "dispatch's parameters";
+      if (syncs > 1)
+        diag << " (synced " << syncs << " times per run)";
+      diag << ", but each run of runtime sequence @" << sequence.getSymName()
+           << " moves " << *objects
+           << ", so the core drifts out of step with the dispatches";
+      diag.attachNote(sequence.getLoc()) << "the runtime sequence is here";
+      return failure();
+    }
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -660,7 +852,8 @@ struct AIEObjectFifoVerifyPass
     if (failed(verifyFlows(device)) || failed(verifyFanIn(device)) ||
         failed(verifyOverRelease(device)) ||
         failed(verifyTransferBudgets(device)) ||
-        failed(verifyHeldAtEnd(device)) || failed(verifyAdvances(device))) {
+        failed(verifyHeldAtEnd(device)) || failed(verifyAdvances(device)) ||
+        failed(verifyDispatchVolumes(device))) {
       return signalPassFailure();
     }
   }
