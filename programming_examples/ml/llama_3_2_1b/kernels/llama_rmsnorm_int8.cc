@@ -91,13 +91,116 @@ static inline void vec_requant(const float *restrict x,
                        x + c * kLanes, gamma + c * kLanes, combined_v)));
 }
 
-extern "C" {
+// The norm's fast form, 32 lanes at a time, for a row whose products the
+// guards in rmsnorm_f32 keep normal and finite: each is rounded as in
+// x_bf16_mul (see there), srs by d, or d + 1 where it reaches 2^(d + 24). A
+// lane whose x or gamma has exponent field 0 gets 0: its products' sign
+// cannot reach the int8 row or the absmax. x's and gamma's
+// nonzero exponent fields are tracked (ExpRange).
 
-// xg: the fp32 residual x[kCols], then gamma bf16[kCols] (the decode stages
-// the two together). y: int8[kCols + 8], the normed row, then its fp32 scale
-// absmax/127 and 4 zero bytes.
-void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
-  event0();
+// sum(x^2) as vec_sum_sq_f32 adds it; x's exponent range into xr.
+static inline float sum_sq_fast(const int32_t *restrict x, ExpRange &xr) {
+  ::aie::vector<float, kLanes> acc = ::aie::zeros<float, kLanes>();
+  ::aie::accum<acc64, 32> init;
+  init.from_vector(::aie::broadcast<int32, 32>(-(1 << 23)), 24);
+  for (int c = 0; c < LLAMA_RMSNORM_COLS / 32; c++) {
+    ::aie::vector<int32, 32> xb = ::aie::load_v<32>(x + 32 * c);
+    XPlanes xp = x_planes(xb);
+    exp_range_add(xr, xp.h);
+    ::aie::accum<acc64, 32> p(sig24_mac<true>(xp.sig, xp.sig, init));
+    ::aie::vector<int32, 32> lo = p.template to_vector<int32>(23);
+    ::aie::vector<int32, 32> hi = p.template to_vector<int32>(24);
+    ::aie::vector<int32, 32> e = ::aie::bit_and(int32(0x7f800000), xb);
+    ::aie::vector<int32, 32> sq =
+        ::aie::add(::aie::add(::aie::add(e, e), int32(-(126 << 23))),
+                   ::aie::select(lo, hi, ::aie::ge(lo, int32(0))));
+    sq =
+        ::aie::select(sq, ::aie::zeros<int32, 32>(), ::aie::eq(xp.h, int16(0)));
+    acc = ::aie::add(acc, sq.extract<16>(0).cast_to<float>());
+    acc = ::aie::add(acc, sq.extract<16>(1).cast_to<float>());
+  }
+  alignas(64) float lanes[kLanes];
+  ::aie::store_v(lanes, acc);
+  float sum = lanes[0];
+  for (int l = 1; l < kLanes; l++)
+    sum += lanes[l];
+  return sum;
+}
+
+// (x * a) * gamma's bits, 32 lanes, where a's significand planes are a_sig
+// and its sign and exponent bits are folded into a0 and a1 (=
+// (a & mask) - (253 << 23), and that plus 2^23), x and gamma masked alike
+// (0x7f800000 for magnitudes, 0xff800000 for signed values).
+template <int32 kMask>
+static inline ::aie::vector<int32, 32>
+scale_gamma_fast(::aie::vector<int32, 32> xb, ::aie::vector<int16, 32> gv,
+                 Sig24 a_sig, int32 a0, int32 a1,
+                 const ::aie::accum<acc64, 32> &init_g) {
+  XPlanes xp = x_planes(xb);
+  ::aie::accum<acc64, 32> p(sig24_mac<false>(xp.sig, a_sig, v32acc64()));
+  ::aie::vector<int32, 32> lo = p.template to_vector<int32>(23);
+  ::aie::vector<int32, 32> hi = p.template to_vector<int32>(24);
+  auto wide = ::aie::ge(lo, int32(1 << 24));
+  ::aie::vector<int32, 32> e =
+      ::aie::add(::aie::bit_and(int32(kMask), xb), ::aie::select(a0, a1, wide));
+  ::aie::vector<int32, 16> gw = gv.cast_to<int32>();
+  auto [g_lo, g_hi] = ::aie::interleave_zip(::aie::zeros<int16, 32>(), gv, 1);
+  ::aie::vector<int32, 32> g32 =
+      ::aie::concat(g_lo.cast_to<int32>(), g_hi.cast_to<int32>());
+  ::aie::vector<int16, 32> gh =
+      ::aie::bit_and(int32(0x7f807f80), gw).cast_to<int16>();
+  v32int16 gs =
+      ::aie::bit_or(int32(0x00800080), ::aie::bit_and(int32(0x007f007f), gw))
+          .cast_to<int16>();
+  p = ::aie::accum<acc64, 32>(
+      sig24x8_mac(sig24_planes(::aie::select(lo, hi, wide)), gs, init_g));
+  lo = p.template to_vector<int32>(7);
+  hi = p.template to_vector<int32>(8);
+  ::aie::vector<int32, 32> v =
+      ::aie::add(::aie::add(e, ::aie::bit_and(int32(kMask), g32)),
+                 ::aie::select(lo, hi, ::aie::ge(lo, int32(0))));
+  return ::aie::select(v, ::aie::zeros<int32, 32>(),
+                       ::aie::eq(xp.h, int16(0)) | ::aie::eq(gh, int16(0)));
+}
+
+static inline int32_t absmax_fast(const int32_t *restrict x,
+                                  const int16_t *restrict gamma, float a,
+                                  const ::aie::accum<acc64, 32> &init_g) {
+  const int32_t ab = __builtin_bit_cast(int32_t, a);
+  const Sig24 a_sig =
+      sig24_planes(::aie::broadcast<int32, 32>((ab & 0x7fffff) | 0x800000));
+  const int32 a0 = (ab & 0x7f800000) - (253 << 23);
+  ::aie::vector<int32, 32> mag = ::aie::zeros<int32, 32>();
+  for (int c = 0; c < LLAMA_RMSNORM_COLS / 32; c++)
+    mag = ::aie::max(
+        mag, scale_gamma_fast<0x7f800000>(::aie::load_v<32>(x + 32 * c),
+                                          ::aie::load_v<32>(gamma + 32 * c),
+                                          a_sig, a0, a0 + (1 << 23), init_g));
+  return ::aie::reduce_max(mag);
+}
+
+static inline void requant_fast(const int32_t *restrict x,
+                                const int16_t *restrict gamma, float a,
+                                const ::aie::accum<acc64, 32> &init_g,
+                                int8_t *restrict y) {
+  const int32_t ab = __builtin_bit_cast(int32_t, a);
+  const Sig24 a_sig =
+      sig24_planes(::aie::broadcast<int32, 32>((ab & 0x7fffff) | 0x800000));
+  const int32 a0 = (int32_t)(ab & 0xff800000) - (253 << 23);
+  for (int c = 0; c < LLAMA_RMSNORM_COLS / 32; c++)
+    ::aie::store_v(
+        y + 32 * c,
+        vec_round_to_i8_bits(scale_gamma_fast<int32(0xff800000)>(
+            ::aie::load_v<32>(x + 32 * c), ::aie::load_v<32>(gamma + 32 * c),
+            a_sig, a0, a0 + (1 << 23), init_g)));
+}
+
+// The norm of the fp32 residual x[kCols] with gamma bf16[kCols] into y:
+// int8[kCols + 8], the normed row, then its fp32 scale absmax/127 and 4 zero
+// bytes.
+static inline void rmsnorm_f32(const float *restrict x,
+                               const bfloat16 *restrict gamma,
+                               int8_t *restrict y) {
   const ::aie::saturation_mode prev_sat =
       ::aie::swap_saturation(::aie::saturation_mode::saturate);
   const ::aie::rounding_mode prev_rnd =
@@ -106,19 +209,51 @@ void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
   constexpr int kCols = LLAMA_RMSNORM_COLS;
   static_assert(kCols % kLanes == 0,
                 "LLAMA_RMSNORM_COLS must be a multiple of 16");
-  const float *x = reinterpret_cast<const float *>(xg);
-  const bfloat16 *gamma = reinterpret_cast<const bfloat16 *>(xg + 4 * kCols);
 
-  float var = scalar_mul_rne(vec_sum_sq_f32(x, kCols), 1.0f / kCols);
+  const int32_t *xb = reinterpret_cast<const int32_t *>(x);
+  const int16_t *gb = reinterpret_cast<const int16_t *>(gamma);
+  ExpRange xr = exp_range_empty(), gr = exp_range_empty();
+  for (int c = 0; c < kCols / 32; c++)
+    exp_range_add(
+        gr,
+        ::aie::bit_and(int32(0x7f807f80),
+                       ::aie::load_v<32>(gb + 32 * c).template cast_to<int32>())
+            .template cast_to<int16>());
+  float sum_sq = sum_sq_fast(xb, xr);
+  int x_lo, x_hi, g_lo, g_hi;
+  exp_range_get(xr, x_lo, x_hi);
+  exp_range_get(gr, g_lo, g_hi);
+  const bool any = x_lo <= x_hi && g_lo <= g_hi;
+  // Every product of the fast forms, x * x and (x * a) * gamma, normal:
+  // exponent fields in [2, 253] before rounding (no flush, no overflow).
+  if (x_lo <= x_hi && !(2 * x_lo - 127 >= 2 && 2 * x_hi - 126 <= 253))
+    sum_sq = vec_sum_sq_f32(x, kCols);
+  auto chain_ok = [&](float a) {
+    const int e = __builtin_bit_cast(int32_t, a) >> 23;
+    const int lo = x_lo + e - 127, hi = x_hi + e - 126;
+    return e >= 1 && e <= 254 &&
+           (!any || (lo >= 2 && hi <= 253 && lo + g_lo - 127 >= 2 &&
+                     hi + g_hi - 126 <= 253));
+  };
+  ::aie::accum<acc64, 32> init_g;
+  init_g.from_vector(::aie::broadcast<int32, 32>(-(1 << 23)), 8);
+
+  float var = scalar_mul_rne(sum_sq, 1.0f / kCols);
   float inv_rms = sw_invsqrt(var + kEps);
 
-  const int32_t absmax_bits = vec_absmax_bits(
-      x, gamma, ::aie::broadcast<float, kLanes>(inv_rms), kCols);
+  const int32_t absmax_bits =
+      chain_ok(inv_rms)
+          ? absmax_fast(xb, gb, inv_rms, init_g)
+          : vec_absmax_bits(x, gamma, ::aie::broadcast<float, kLanes>(inv_rms),
+                            kCols);
   const float absmax =
       __builtin_bit_cast(float, std::max(absmax_bits, kAbsmaxFloorBits));
   float scale_dyn = scalar_mul_rne(absmax, 1.0f / 127.0f);
   float combined = scalar_mul_rne(inv_rms, recip_rne(scale_dyn));
-  vec_requant(x, gamma, y, ::aie::broadcast<float, kLanes>(combined), kCols);
+  if (chain_ok(combined))
+    requant_fast(xb, gb, combined, init_g, y);
+  else
+    vec_requant(x, gamma, y, ::aie::broadcast<float, kLanes>(combined), kCols);
 
   __builtin_memcpy(y + kCols, &scale_dyn, 4);
   int32_t zero = 0;
@@ -126,6 +261,26 @@ void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
 
   ::aie::set_rounding(prev_rnd);
   ::aie::set_saturation(prev_sat);
+}
+
+extern "C" {
+
+// xg: the fp32 residual x[kCols], then gamma bf16[kCols] (the decode stages
+// the two together), normed into y as rmsnorm_f32.
+void llama_rmsnorm_f32_packed(int8_t *restrict xg, int8_t *restrict y) {
+  event0();
+  rmsnorm_f32(reinterpret_cast<const float *>(xg),
+              reinterpret_cast<const bfloat16 *>(xg + 4 * LLAMA_RMSNORM_COLS),
+              y);
+  event1();
+}
+
+// The prefill's: x and gamma (bf16, then padding) in buffers of their own.
+void llama_rmsnorm_f32(int8_t *restrict x, int8_t *restrict gamma,
+                       int8_t *restrict y) {
+  event0();
+  rmsnorm_f32(reinterpret_cast<const float *>(x),
+              reinterpret_cast<const bfloat16 *>(gamma), y);
   event1();
 }
 
