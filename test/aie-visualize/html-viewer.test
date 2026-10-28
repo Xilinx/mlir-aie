@@ -19,25 +19,32 @@
 // CHECK: svg.hide-detail-arbitration g.detail-arbitration
 // CHECK: svg.hide-detail-packet-ids g.detail-packet-ids text
 // CHECK: svg g.flow { opacity: 1
-// CHECK: svg g.flow.hover-active { opacity: 1
+// CHECK: svg.highlighting g.flow.highlighted { opacity: 1
 // CHECK: <button id="open" type="button">Open SVG</button>
 // CHECK: <aside aria-label="Visualization controls">
-// CHECK: const selectedFlows = new Set()
-// CHECK: /^src-\d+$/.test(name)
-// CHECK: /^dst-\d+$/.test(name)
-// CHECK: const stack = (kind, matched)
-// CHECK: stack("node", true)
-// CHECK: stack("edge", false)
-// CHECK: stack("edge", true)
-// CHECK: const directionSettings = [
-// CHECK: ["incoming", "Incoming"
-// CHECK: ["outgoing", "Outgoing"
+// CHECK: const incomingClasses = element => classesMatching(element, /^fate-/)
+// CHECK: const outgoingClasses = element => classesMatching(element, /^origin-/)
+// CHECK: const boundaryClass = element => classMatching(element, /^boundary-/)
+// CHECK: const flowClasses = element => classesMatching(element, /^src-\d+$/)
+// CHECK: const outgoingClass = element => classMatching(element, /^src-\d+$/)
+// CHECK: const overlaps = (first, second) => first.some(name => second.includes(name))
+// CHECK: const matchesDirection = (element, reference, relation, referenceClasses)
+// CHECK: element.classList.contains(`${relation}-${boundary}`)
+// CHECK: const matches = (element, reference)
+// CHECK: (!highlightIncoming || matchesDirection(element, reference, "fate", incomingClasses))
+// CHECK: (!highlightOutgoing || matchesDirection(element, reference, "origin", outgoingClasses))
+// CHECK: addSetting("Incoming"
+// CHECK: addSetting("Outgoing"
+// CHECK: /^uniform-width-([\d.]+)$/
+// CHECK: svg.classList.add("uniform-width")
+// CHECK: addSetting("Line weight", false
 // CHECK: const detailSettings = [
 // CHECK: ["buffers", "Buffers"]
 // CHECK: ["arbitration", "Arbitration"]
 // CHECK: svg.classList.toggle(`hide-detail-${name}`
 // CHECK: row.innerHTML = `<input type="checkbox"
-// CHECK: hoveredFlows = matchKeys(element)
-// CHECK: if (!drag.moved && drag.flows.length) toggleFlows(drag.flows)
+// CHECK: hoveredElement = element
+// CHECK: (event.clientX - drag.x) / matrix.a
+// CHECK: if (!drag.moved && drag.element) toggleSelection(drag.element)
 // CHECK: listen(viewport, "click"
 // CHECK: fetch(url, {cache: "no-store"})

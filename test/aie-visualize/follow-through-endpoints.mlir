@@ -12,14 +12,14 @@
 // RUN: aie-visualize --emit-dot --only-flow=0 %s | FileCheck %s --check-prefix=FANOUT
 // RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=OTHER
 
-// FANOUT-DAG: p_0_2_1_0_m -> p_0_2_5_5 {{.*}}flow src-0 dst-0"
-// FANOUT-DAG: p_0_2_5_5 -> p_0_3_3_5 {{.*}}flow src-0 dst-0"
-// FANOUT-DAG: p_0_3_3_5 -> p_0_3_4_2 {{.*}}flow src-0 dst-1"
-// FANOUT-DAG: p_0_3_3_5 -> p_0_3_5_1 {{.*}}flow src-0 dst-2"
+// FANOUT-DAG: p_0_2_1_0_m -> p_0_2_5_5_out_r0 {{.*}}flow src-0 dst-0{{.*}}"
+// FANOUT-DAG: p_0_2_5_5_out_r0 -> p_0_3_3_5_in_r0 {{.*}}flow src-0 dst-0{{.*}}"
+// FANOUT-DAG: p_0_3_3_5_in_r0 -> p_0_3_4_2_out_r0 {{.*}}flow src-0 dst-1{{.*}}"
+// FANOUT-DAG: p_0_3_3_5_in_r0 -> p_0_3_5_1_out_r0 {{.*}}flow src-0 dst-2{{.*}}"
 // FANOUT-NOT: p_0_4_0_1
 
-// OTHER-DAG: p_0_4_0_0 -> p_0_4_3_0 {{.*}}flow src-1 dst-1"
-// OTHER-DAG: p_0_4_3_0 -> p_0_3_5_0 {{.*}}flow src-1 dst-1"
+// OTHER-DAG: p_0_4_0_0_in_r3 -> p_0_4_3_0_out_r3 {{.*}}flow src-1 dst-1{{.*}}"
+// OTHER-DAG: p_0_4_3_0_out_r3 -> p_0_3_5_0_in_r3 {{.*}}flow src-1 dst-1{{.*}}"
 // OTHER-NOT: p_0_2_1_0_m
 
 module {

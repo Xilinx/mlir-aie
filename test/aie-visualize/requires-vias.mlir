@@ -8,8 +8,8 @@
 // Physical views require route vias, while contracted semantic views use endpoints.
 
 // REQUIRES: aie-visualize
-// RUN: not aie-visualize --emit-dot %s 2>&1 | FileCheck %s
-// RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: not aie-visualize --emit-dot --scale=1 %s 2>&1 | FileCheck %s
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
 
 // CHECK: error: flow carries no vias, so its route cannot be drawn
 

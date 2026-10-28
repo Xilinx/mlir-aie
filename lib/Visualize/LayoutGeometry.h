@@ -23,6 +23,11 @@ struct LayoutGeometry {
   /// geometry needs the latter, since only `nop2` leaves edges alone.
   bool preLaidOut = false;
 
+  /// How much smaller than its measurements the picture is drawn. Text and
+  /// pen widths are in points and keep their size, so lowering this leaves
+  /// the labels reading larger against everything else.
+  double scale = 1.0;
+
   double tileWidth = 0.0;
   double tileGapX = 0.0;
   double tileGapY = 0.0;
@@ -36,7 +41,7 @@ struct LayoutGeometry {
 
   /// A tile is only as tall as its own contents. Sizing every tile to the
   /// tallest one in its row shrinks the text in all the others to fit a
-  /// neighbour's buffer list. Rows still reserve the tallest tile's height so
+  /// neighbor's buffer list. Rows still reserve the tallest tile's height so
   /// that boxes never overlap.
   double tileHeight(int col, int row) const {
     auto found = ownHeights.find({col, row});
@@ -45,10 +50,20 @@ struct LayoutGeometry {
 
   /// A position as graphviz should read it, in whichever units apply.
   std::string pos(double x, double y) const {
-    double scale = preLaidOut ? 72.0 : 1.0;
-    return std::to_string(x * scale) + "," + std::to_string(y * scale) +
+    double units = (preLaidOut ? 72.0 : 1.0) * scale;
+    return std::to_string(x * units) + "," + std::to_string(y * units) +
            (preLaidOut ? "" : "!");
   }
+
+  /// A box's measurement as graphviz should read it, always in inches.
+  std::string size(double inches) const {
+    return std::to_string(inches * scale);
+  }
+
+  /// What a measurement that has to hold text comes to in the drawing's own
+  /// units. A label keeps its point size however small the drawing is, so the
+  /// room it needs grows as the drawing shrinks.
+  double text(double inches) const { return inches / scale; }
 
   /// The band a row reserves, which is as tall as its tallest tile. Tiles
   /// hang from the top of their band and switchboxes sit below it, so both

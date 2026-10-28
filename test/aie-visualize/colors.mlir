@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A colour scheme names every colour the view draws in, so a dark page gets
+// A color scheme names every color the view draws in, so a dark page gets
 // light labels and a tile outline that steps off the background rather than
 // ruling a line across it.
 

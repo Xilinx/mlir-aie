@@ -6,20 +6,29 @@
 //===----------------------------------------------------------------------===//
 
 // Packet-flow labels include the matching arbitration rule and packet
-// metadata. Only the rule that claims the arriving packet is annotated: the
-// flow carries 2, which rule 1 claims and rule 0 does not.
+// metadata. The flow is declared with mask 30, so it claims every ID that
+// agrees with 2 on the bits that mask selects: 2 and 3. Rule 1 claims 2 and
+// rule 0 claims 3, so both rules are annotated and both packets reach the
+// channel at the far end.
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot %s | FileCheck %s
+// RUN: aie-visualize --emit-dot --split-packet-ports --control-overlay %s | FileCheck %s
+// RUN: aie-visualize --emit-dot --split-packet-ports %s | FileCheck %s --check-prefix=NO-OVERLAY
 
-// CHECK: arbitration_0 {{.*}} label="r1 pkt=2/30 -> A1.M1 header ctrl-overlay"
-// CHECK-SAME: tooltip="rule 1: packet ID & 30 = 2, arbiter 1, msel 1, keep packet header: yes, priority route: no, control overlay: yes"
-// CHECK-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0"
-// CHECK-NOT: arbitration_1
-// The port a packet crosses is named for that packet, so two flows sharing
-// one port stay apart.
-// CHECK: p_0_2_5_0_k2 -> p_0_3_3_0_k2
-// CHECK-SAME: F0 pkt=2/30 header priority
+// CHECK-DAG: arbitration_0 {{.*}} label="r0 pkt=3/31 -> A1.M0 header priority ctrl-overlay"
+// CHECK-DAG: arbitration_1 {{.*}} label="r1 pkt=2/30 -> A1.M1 header ctrl-overlay"
+// CHECK-DAG: tooltip="rule 1: packet ID & 30 = 2, arbiter 1, msel 1, keep packet header: yes, priority route: no, control overlay: yes"
+// The port a packet crosses is named for that packet, so the two the flow
+// carries stay apart all the way to the channel they share.
+// CHECK-DAG: p_0_2_5_0_k2 -> p_0_3_3_0_k2
+// CHECK-DAG: p_0_2_5_0_k3 -> p_0_3_3_0_k3
+// CHECK-DAG: p_0_3_3_0_k2 -> p_0_3_1_0_s
+// CHECK-DAG: p_0_3_3_0_k3 -> p_0_3_1_0_s
+
+// The rules here all carry aie.is_ctrl_pkt_overlay, so without
+// --control-overlay none of them is read. The flow itself still is.
+// NO-OVERLAY-NOT: arbitration_
+// NO-OVERLAY: p_0_2_5_0_k2 -> p_0_3_3_0_k2
 
 module {
   aie.device(npu1_1col) {

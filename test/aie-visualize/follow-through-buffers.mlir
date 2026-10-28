@@ -14,44 +14,44 @@
 // RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=FANOUT
 // RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
 
-// ALL-DAG: p_0_2_1_0_m -> p_0_2_5_0
-// ALL-DAG: p_0_2_5_0 -> p_0_3_3_0
-// ALL-DAG: p_0_3_1_0_m -> p_0_3_5_1
-// ALL-DAG: p_0_3_1_1_m -> p_0_3_3_3
-// ALL-DAG: p_0_3_5_1 -> p_0_4_3_1
-// ALL-DAG: p_0_3_5_2 -> p_0_3_1_1_s
-// ALL-DAG: p_0_4_1_1_m -> p_0_4_5_0
-// ALL-DAG: p_0_4_5_0 -> p_0_5_3_0
+// ALL-DAG: p_0_2_1_0_m -> p_0_2_5_0_out_r0
+// ALL-DAG: p_0_2_5_0_out_r0 -> p_0_3_3_0_in_r0
+// ALL-DAG: p_0_3_1_0_m -> p_0_3_5_1_out_r1
+// ALL-DAG: p_0_3_1_1_m -> p_0_3_3_3_out_r3
+// ALL-DAG: p_0_3_5_1_out_r1 -> p_0_4_3_1_in_r1
+// ALL-DAG: p_0_3_5_2_in_r2 -> p_0_3_1_1_s
+// ALL-DAG: p_0_4_1_1_m -> p_0_4_5_0_out_r4
+// ALL-DAG: p_0_4_5_0_out_r4 -> p_0_5_3_0_in_r4
 
 // Both channels the bridge feeds carry the origins that filled it, and differ
 // only in where they end up.
 // BRIDGE: label="bridge"
-// BRIDGE-DAG: buffer_0 -> p_0_3_1_0_m {{.*}}class="buffer-link detail-buffers flow src-0 dst-4"
-// BRIDGE-DAG: buffer_0 -> p_0_3_1_1_m {{.*}}class="buffer-link detail-buffers flow src-0 dst-3"
+// BRIDGE-DAG: buffer_0 -> p_0_3_1_0_m {{.*}}class="buffer-link detail-buffers flow src-0 dst-5{{.*}}"
+// BRIDGE-DAG: buffer_0 -> p_0_3_1_1_m {{.*}}class="buffer-link detail-buffers flow src-0 dst-3{{.*}}"
 // BRIDGE-NOT: label="fanout"
 
 // FANOUT: label="fanout"
-// FANOUT-DAG: buffer_1 -> p_0_5_1_0_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-2"
-// FANOUT-DAG: buffer_1 -> p_0_5_1_1_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-0"
+// FANOUT-DAG: buffer_1 -> p_0_5_1_0_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-4{{.*}}"
+// FANOUT-DAG: buffer_1 -> p_0_5_1_1_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-5{{.*}}"
 // FANOUT-NOT: label="bridge"
 
-// TOPOLOGY-DAG: buffer_0 {{.*}}label="bridge"{{.*}}class="buffer detail-buffers flow src-0 dst-0"
-// TOPOLOGY-DAG: buffer_1 {{.*}}label="fanout"{{.*}}class="buffer detail-buffers flow src-1 dst-1"
-// TOPOLOGY-DAG: buffer_2 {{.*}}label="join"{{.*}}class="buffer detail-buffers flow src-2 dst-2"
+// TOPOLOGY-DAG: buffer_0 {{.*}}label="bridge"{{.*}}class="buffer detail-buffers flow src-0 dst-0{{.*}}"
+// TOPOLOGY-DAG: buffer_1 {{.*}}label="fanout"{{.*}}class="buffer detail-buffers flow src-1 dst-1{{.*}}"
+// TOPOLOGY-DAG: buffer_2 {{.*}}label="join"{{.*}}class="buffer detail-buffers flow src-2 dst-2{{.*}}"
 // Two streams fill the join buffer, and each link states its own origin.
-// TOPOLOGY-DAG: p_0_2_1_0_s -> buffer_2 {{.*}}flow src-1 dst-2"
-// TOPOLOGY-DAG: p_0_2_1_1_s -> buffer_2 {{.*}}flow src-5 dst-2"
+// TOPOLOGY-DAG: p_0_2_1_0_s -> buffer_2 {{.*}}flow src-5 dst-2{{.*}}"
+// TOPOLOGY-DAG: p_0_2_1_1_s -> buffer_2 {{.*}}flow src-6 dst-2{{.*}}"
 // Arriving at a tile anchor is a different unknown from leaving it, so
 // provenance does not pass through one.
-// TOPOLOGY-DAG: p_0_4_1_0_s -> tile_0_4 {{.*}}flow src-0 dst-4"
-// TOPOLOGY-DAG: tile_0_4 -> p_0_4_1_1_m {{.*}}flow src-5 dst-2"
+// TOPOLOGY-DAG: p_0_4_1_0_s -> tile_0_4 {{.*}}flow src-0 dst-4{{.*}}"
+// TOPOLOGY-DAG: tile_0_4 -> p_0_4_1_1_m {{.*}}flow src-7 dst-6{{.*}}"
 // Contracting ports removes the switchbox hops a flow passes through, not
 // the DMA channel it leaves or arrives on, so a buffer reaches the channel
 // that drains it and the chain continues from there.
-// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_0_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-2"
-// TOPOLOGY-DAG: p_0_5_1_0_m -> p_0_2_1_0_s {{.*}}class="route detail-packet-ids flow src-1 dst-2"
-// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_1_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-0"
-// TOPOLOGY-DAG: p_0_5_1_1_m -> p_0_3_1_1_s {{.*}}class="route detail-packet-ids flow src-1 dst-0"
+// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_0_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-7{{.*}}"
+// TOPOLOGY-DAG: p_0_5_1_0_m -> tile_0_3 {{.*}}class="route detail-packet-ids flow src-1 dst-7{{.*}}"
+// TOPOLOGY-DAG: buffer_1 -> p_0_5_1_1_m {{.*}}class="buffer-link detail-buffers flow src-1 dst-4{{.*}}"
+// TOPOLOGY-DAG: p_0_5_1_1_m -> tile_0_4 {{.*}}class="route detail-packet-ids flow src-1 dst-4{{.*}}"
 // TOPOLOGY-NOT: topology_junction_
 // TOPOLOGY-NOT: tile_0_5 -> buffer_1
 // TOPOLOGY-NOT: buffer_2 -> tile_0_2

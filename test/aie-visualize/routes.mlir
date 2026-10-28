@@ -8,14 +8,14 @@
 // Route views render vias, packet metadata, arbitration, semantic topology, and selected flows.
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=ALL
-// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=VIAS
-// RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
-// RUN: aie-visualize --emit-dot --contract=port,buffer --device=main %s | FileCheck %s --check-prefix=TOPOLOGY
-// RUN: aie-visualize --emit-dot --contract=port,buffer --tile-width=3.2 %s | FileCheck %s --check-prefix=WIDE
-// RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=ONLY
-// RUN: not aie-visualize --emit-dot --only-flow=9 %s 2>&1 | FileCheck %s --check-prefix=BAD-ID
-// RUN: not aie-visualize --emit-dot --contract=unknown %s 2>&1 | FileCheck %s --check-prefix=BAD-KIND
+// RUN: aie-visualize --emit-dot --scale=1 --split-packet-ports %s | FileCheck %s --check-prefix=ALL
+// RUN: aie-visualize --emit-dot --scale=1 --split-packet-ports %s | FileCheck %s --check-prefix=VIAS
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer --device=main %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer --tile-width=3.2 %s | FileCheck %s --check-prefix=WIDE
+// RUN: aie-visualize --emit-dot --scale=1 --only-flow=1 %s | FileCheck %s --check-prefix=ONLY
+// RUN: not aie-visualize --emit-dot --scale=1 --only-flow=9 %s 2>&1 | FileCheck %s --check-prefix=BAD-ID
+// RUN: not aie-visualize --emit-dot --scale=1 --contract=unknown %s 2>&1 | FileCheck %s --check-prefix=BAD-KIND
 
 // ALL: digraph aie_routes
 // ALL: graph [layout=neato, overlap=true, splines=curved, outputorder=nodesfirst
@@ -23,7 +23,7 @@
 // ALL: tile_0_3 {{.*}} pos="0.000000,9.000000!"
 // ALL-NOT: tile_1_2
 // ALL: buffer_0 {{.*}} label="source"
-// ALL-SAME: class="buffer detail-buffers flow src-0 dst-0"
+// ALL-SAME: class="buffer detail-buffers flow src-0 dst-0{{.*}}"
 // ALL: buffer_1 {{.*}} label="dest"
 // ALL-NOT: memref
 // Two packet flows leave the same buffer and cross the same hop. The hop is
@@ -32,22 +32,22 @@
 // ALL-DAG: p_0_2_5_0_k3 -> p_0_3_3_0_k3 {{.*}} label=<<FONT COLOR="#d73027">F0 pkt=3/31</FONT>>
 // ALL-DAG: p_0_2_5_0_k4 -> p_0_3_3_0_k4 {{.*}} label=<<FONT COLOR="#d73027">F0 pkt=4/31</FONT>>
 // ALL-DAG: p_0_3_1_0_m -> p_0_3_1_1_s {{.*}} label=<<FONT COLOR="#984ea3">F3 pkt=6/31</FONT>>
-// ALL-DAG: p_0_4_0_0 -> p_0_4_3_2
-// ALL-DAG: p_0_4_3_2 -> p_0_3_5_2 {{.*}} label=<<FONT COLOR="#1a9850">F2</FONT>>
-// ALL-DAG: p_0_3_5_2 -> p_0_3_0_0
+// ALL-DAG: p_0_4_0_0_in_r4 -> p_0_4_3_2_out_r4
+// ALL-DAG: p_0_4_3_2_out_r4 -> p_0_3_5_2_in_r4 {{.*}} label=<<FONT COLOR="#1a9850">F2</FONT>>
+// ALL-DAG: p_0_3_5_2_in_r4 -> p_0_3_0_0_out_r4
 // ALL-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}class="buffer-link{{.*}}];
 // ALL-DAG: p_0_3_1_0_s -> buffer_1 {{.*}}class="buffer-link{{.*}}];
 // ALL-NOT: p_0_2_0_0
 
-// VIAS: p_0_2_5_0_k3 [shape=point, width=0.09, {{.*}} xlabel="N0"
+// VIAS: p_0_2_5_0_k3 [shape=point, width=0.090000, {{.*}} xlabel="N0"
 // VIAS-SAME: class="port detail-vias
-// VIAS: p_0_3_3_0_k3 [shape=point, width=0.09, {{.*}} xlabel="S0"
+// VIAS: p_0_3_3_0_k3 [shape=point, width=0.090000, {{.*}} xlabel="S0"
 // VIAS: arbitration_0 {{.*}} label="r0 pkt=3/31 -> A2.M0 header"
 // VIAS-SAME: tooltip="rule 0: packet ID & 31 = 3, arbiter 2, msel 0, keep packet header: yes, priority route: no, control overlay: no"
-// VIAS-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0"
+// VIAS-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0{{.*}}"
 // VIAS: arbitration_1 {{.*}} label="r1 pkt=4/31 -> A2.M1 header"
 // VIAS-SAME: tooltip="rule 1: packet ID & 31 = 4, arbiter 2, msel 1, keep packet header: yes, priority route: no, control overlay: no"
-// VIAS-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0"
+// VIAS-SAME: class="arbitration detail-arbitration detail-vias flow src-0 dst-0{{.*}}"
 // VIAS: p_0_2_1_0_m -> p_0_2_5_0_k3
 // VIAS-NOT: arrowhead=none
 
@@ -55,23 +55,23 @@
 // TOPOLOGY: tile_0_2 {{.*}} pos="0.000000,6.000000!"
 // TOPOLOGY: tile_0_3 {{.*}} pos="0.000000,9.000000!"
 // TOPOLOGY-NOT: tile_1_2
-// TOPOLOGY: buffer_0 {{.*}}label="source"{{.*}}class="buffer detail-buffers flow src-0 dst-0"
-// TOPOLOGY: buffer_1 {{.*}}label="dest"{{.*}}class="buffer detail-buffers flow src-0 dst-0"
+// TOPOLOGY: buffer_0 {{.*}}label="source"{{.*}}class="buffer detail-buffers flow src-0 dst-0{{.*}}"
+// TOPOLOGY: buffer_1 {{.*}}label="dest"{{.*}}class="buffer detail-buffers flow src-0 dst-0{{.*}}"
 // A switchbox hop that only passes things through is contracted away even
 // when several flows share it: they enter it from the same place and leave
 // it for the same place, so the edge that replaces it says what the hop
 // said. The DMA channels either end stay.
-// TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}flow src-0 dst-0"
-// TOPOLOGY-DAG: p_0_2_1_0_m -> p_0_3_1_0_s {{.*}}flow src-0 dst-0"
-// TOPOLOGY-DAG: p_0_3_1_0_s -> buffer_1 {{.*}}flow src-0 dst-0"
+// TOPOLOGY-DAG: buffer_0 -> p_0_2_1_0_m {{.*}}flow src-0 dst-0{{.*}}"
+// TOPOLOGY-DAG: p_0_2_1_0_m -> p_0_3_1_0_s {{.*}}flow src-0 dst-0{{.*}}"
+// TOPOLOGY-DAG: p_0_3_1_0_s -> buffer_1 {{.*}}flow src-0 dst-0{{.*}}"
 // TOPOLOGY-NOT: p_0_2_5_0 ->
 // TOPOLOGY-NOT: tile_0_2 -> buffer_0
 // TOPOLOGY-NOT: buffer_1 -> tile_0_3
 // TOPOLOGY: tile_0_4 -> tile_0_3
 
 // WIDE: tile_0_2 {{.*}}width=3.200000
-// WIDE: p_0_2_1_0_m {{.*}}width=0.82{{.*}}pos="-1.400000,
-// WIDE: buffer_0 {{.*}}width=1.750000{{.*}}pos="0.000000,
+// WIDE: p_0_2_1_0_m {{.*}}width=0.820000{{.*}}pos="-1.400000,
+// WIDE: buffer_0 {{.*}}width=1.000000{{.*}}pos="0.000000,
 
 // ONLY-NOT: F3 pkt=6
 // ONLY: F1 pkt=5/31

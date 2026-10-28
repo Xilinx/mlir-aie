@@ -13,7 +13,7 @@
 // RUN: aie-visualize --emit-dot --tile-roles %s | FileCheck %s --check-prefix=ROLES
 // RUN: aie-visualize --emit-dot --tile-roles --max-headline-kernels=1 %s | FileCheck %s --check-prefix=CAPPED
 
-// Without the option a tile is labelled by coordinate alone and keeps the
+// Without the option a tile is labeled by coordinate alone and keeps the
 // fill of its kind.
 // PLAIN: tile_0_2 [shape=box{{.*}}label="(0,2)"
 // PLAIN-SAME: fillcolor="#eef7ee"

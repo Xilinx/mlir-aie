@@ -39,13 +39,10 @@ svg.hide-detail-arbitration g.detail-arbitration,
 svg.hide-detail-vias g.node.detail-vias { display: none; }
 svg.hide-detail-vias g.edge.detail-vias polygon { display: none; }
 svg.hide-detail-packet-ids g.detail-packet-ids text { display: none; }
-svg g.flow { opacity: 1; transition: opacity 100ms linear; }
-svg g.flow.hover-muted { opacity: 0.07; }
-svg g.flow.hover-active { opacity: 1; }
-svg g.flow.hover-active.route path,
-svg g.flow.hover-active.buffer-link path,
-svg g.flow.hover-active.call-link path,
-svg g.flow.hover-active.runtime-link path { stroke-width: 3.2px; }
+svg.uniform-width g.edge.flow path { stroke-width: var(--uniform-width, 1px); }
+svg g.flow { opacity: 1; }
+svg.highlighting g.flow:not(.highlighted) { opacity: 0.07; }
+svg.highlighting g.flow.highlighted { opacity: 1; }
 </style>
 </head>
 <body>
@@ -106,71 +103,92 @@ function initializeViewer(svg) {
   let viewBox = [...originalViewBox];
   let drag = null;
   let suppressClick = false;
-  let hoveredFlows = [];
+  let hoveredElement = null;
   let highlightIncoming = true;
-  let highlightOutgoing = true;
-  const selectedFlows = new Set();
+  let highlightOutgoing = false;
+  let selectedElement = null;
   const listeners = [];
   const listen = (target, event, handler, options) => {
     target.addEventListener(event, handler, options);
     listeners.push(() => target.removeEventListener(event, handler, options));
   };
   const setViewBox = () => svg.setAttribute("viewBox", viewBox.join(" "));
-  const flowClasses = element =>
-    [...element.classList].filter(name => /^src-\d+$/.test(name));
-  // Hovering puts one of two questions: what shares this origin, and what
-  // shares this destination. The checkboxes choose which are asked.
-  const matchKeys = element =>
-    [...element.classList].filter(name =>
-      (highlightIncoming && /^src-\d+$/.test(name)) ||
-      (highlightOutgoing && /^dst-\d+$/.test(name)));
+  const classesMatching = (element, pattern) =>
+    [...element.classList].filter(name => pattern.test(name));
+  const classMatching = (element, pattern) => classesMatching(element, pattern)[0];
+  const incomingClasses = element => classesMatching(element, /^fate-/);
+  const outgoingClasses = element => classesMatching(element, /^origin-/);
+  const boundaryClass = element => classMatching(element, /^boundary-/);
+  const flowClasses = element => classesMatching(element, /^src-\d+$/);
+  const outgoingClass = element => classMatching(element, /^src-\d+$/);
+  const overlaps = (first, second) => first.some(name => second.includes(name));
+  const matchesDirection = (element, reference, relation, referenceClasses) => {
+    const boundary = boundaryClass(reference)?.slice("boundary-".length);
+    return boundary
+      ? element.classList.contains(`${relation}-${boundary}`)
+      : overlaps(referenceClasses(element), referenceClasses(reference));
+  };
+  const matches = (element, reference) =>
+    (!highlightIncoming || matchesDirection(element, reference, "fate", incomingClasses)) &&
+    (!highlightOutgoing || matchesDirection(element, reference, "origin", outgoingClasses));
   const renderHighlight = () => {
-    const names = [...new Set([...selectedFlows, ...hoveredFlows])];
+    const reference = selectedElement || hoveredElement;
     const flows = svg.querySelectorAll("g.flow");
-    const matches = element => names.some(name => element.classList.contains(name));
+    const active = reference && (highlightIncoming || highlightOutgoing);
+    svg.classList.toggle("highlighting", Boolean(active));
     flows.forEach(element => {
-      element.classList.toggle("hover-active", names.length > 0 && matches(element));
-      element.classList.toggle("hover-muted", names.length > 0 && !matches(element));
+      element.classList.toggle("highlighted", Boolean(active && matches(element, reference)));
     });
-    const stack = (kind, matched) => [...svg.querySelectorAll(`g.${kind}`)]
-      .filter(element => matches(element) === matched)
-      .forEach(element => element.parentNode.appendChild(element));
-    stack("node", false);
-    stack("node", true);
-    stack("edge", false);
-    stack("edge", true);
     flowList.querySelectorAll(".flow-row").forEach(row => {
       const name = row.dataset.flow;
-      row.classList.toggle("selected", selectedFlows.has(name));
-      row.classList.toggle("hover-active", hoveredFlows.includes(name));
-      row.querySelector("input").checked = selectedFlows.has(name);
+      const selected = selectedElement?.classList.contains(name) || false;
+      const hovered = !selectedElement && hoveredElement?.classList.contains(name);
+      row.classList.toggle("selected", selected);
+      row.classList.toggle("hover-active", hovered);
+      row.querySelector("input").checked = selected;
     });
   };
   const clearSelection = () => {
-    selectedFlows.clear();
-    hoveredFlows = [];
+    selectedElement = null;
     renderHighlight();
   };
-  const toggleFlows = names => {
-    const remove = names.every(name => selectedFlows.has(name));
-    names.forEach(name => remove ? selectedFlows.delete(name) : selectedFlows.add(name));
+  const toggleSelection = element => {
+    selectedElement = selectedElement === element ? null : element;
     renderHighlight();
   };
 
-  const directionSettings = [
-    ["incoming", "Incoming", value => { highlightIncoming = value; }],
-    ["outgoing", "Outgoing", value => { highlightOutgoing = value; }],
-  ];
-  directionSettings.forEach(([name, label, apply]) => {
+  const addSetting = (label, checked, apply) => {
     const row = document.createElement("label");
     row.className = "setting-row";
-    row.innerHTML = `<input type="checkbox" checked><span>${label}</span>`;
-    listen(row.querySelector("input"), "change", event => {
-      apply(event.target.checked);
-      renderHighlight();
-    });
+    row.innerHTML =
+      `<input type="checkbox"${checked ? " checked" : ""}><span>${label}</span>`;
+    listen(row.querySelector("input"), "change",
+      event => apply(event.target.checked));
     configList.appendChild(row);
+  };
+
+  // What a flow shares with the one pointed at: where it came from, where it
+  // ends up, or both.
+  addSetting("Incoming", highlightIncoming, value => {
+    highlightIncoming = value;
+    renderHighlight();
   });
+  addSetting("Outgoing", highlightOutgoing, value => {
+    highlightOutgoing = value;
+    renderHighlight();
+  });
+
+  // The drawing states the widest a line may be before it reaches the one
+  // beside it, which is the width to draw them all when their own is off.
+  const uniformWidth = [...(svg.querySelector("g.graph")?.classList ?? [])]
+    .map(name => /^uniform-width-([\d.]+)$/.exec(name)?.[1])
+    .find(Boolean);
+  if (uniformWidth && svg.querySelector("g.edge.flow [stroke-width]")) {
+    svg.style.setProperty("--uniform-width", `${uniformWidth}px`);
+    svg.classList.add("uniform-width");
+    addSetting("Line weight", false,
+      value => svg.classList.toggle("uniform-width", !value));
+  }
 
   const detailSettings = [
     ["buffers", "Buffers"],
@@ -181,13 +199,8 @@ function initializeViewer(svg) {
   ];
   detailSettings.forEach(([name, label]) => {
     if (!svg.querySelector(`g.detail-${name}`)) return;
-    const row = document.createElement("label");
-    row.className = "setting-row";
-    row.innerHTML = `<input type="checkbox" checked><span>${label}</span>`;
-    listen(row.querySelector("input"), "change", event => {
-      svg.classList.toggle(`hide-detail-${name}`, !event.target.checked);
-    });
-    configList.appendChild(row);
+    addSetting(label, true,
+      value => svg.classList.toggle(`hide-detail-${name}`, !value));
   });
   configList.hidden = !configList.children.length;
 
@@ -197,30 +210,33 @@ function initializeViewer(svg) {
     const row = document.createElement("label");
     row.className = "flow-row";
     row.dataset.flow = name;
-    const route = svg.querySelector(`g.route.${name} path`);
-    const color = route?.getAttribute("stroke") || "#777777";
+    // A flow that reaches no switchbox still has a color; take it from
+    // whatever edge the flow does have.
+    const line = svg.querySelector(`g.edge.${name} path[stroke]`);
+    const color = line?.getAttribute("stroke") || "#777777";
     row.style.setProperty("--flow-color", color.split(":")[0]);
     row.innerHTML = `<input type="checkbox"><span class="flow-swatch"></span><span>Flow ${name.slice(4)}</span>`;
-    listen(row.querySelector("input"), "change", () => toggleFlows([name]));
-    listen(row, "pointerenter", () => { hoveredFlows = [name]; renderHighlight(); });
-    listen(row, "pointerleave", () => { hoveredFlows = []; renderHighlight(); });
+    const representative = svg.querySelector(`g.flow.${name}`);
+    listen(row.querySelector("input"), "change", () => toggleSelection(representative));
+    listen(row, "pointerenter", () => { hoveredElement = representative; renderHighlight(); });
+    listen(row, "pointerleave", () => { hoveredElement = null; renderHighlight(); });
     flowList.appendChild(row);
   });
   listen(svg, "pointerover", event => {
     const element = event.target.closest("g.flow");
     if (!element) return;
-    hoveredFlows = matchKeys(element);
+    hoveredElement = element;
     renderHighlight();
   });
   listen(svg, "pointerout", event => {
     if (event.relatedTarget?.closest?.("g.flow")) return;
-    hoveredFlows = [];
+    hoveredElement = null;
     renderHighlight();
   });
-  listen(svg, "pointerleave", () => { hoveredFlows = []; renderHighlight(); });
+  listen(svg, "pointerleave", () => { hoveredElement = null; renderHighlight(); });
   listen(svg, "wheel", event => {
     event.preventDefault();
-    const scale = event.deltaY < 0 ? 0.86 : 1.16;
+    const scale = event.deltaY < 0 ? 0.93 : 1.075;
     const point = svg.createSVGPoint();
     point.x = event.clientX;
     point.y = event.clientY;
@@ -234,21 +250,22 @@ function initializeViewer(svg) {
   listen(viewport, "pointerdown", event => {
     const element = event.target.closest("g.flow");
     drag = {x: event.clientX, y: event.clientY, viewBox: [...viewBox], moved: false,
-      flows: element ? flowClasses(element) : []};
+      element};
     viewport.setPointerCapture(event.pointerId);
     viewport.classList.add("dragging");
   });
   listen(viewport, "pointermove", event => {
     if (!drag) return;
     drag.moved ||= Math.abs(event.clientX - drag.x) + Math.abs(event.clientY - drag.y) > 3;
-    viewBox[0] = drag.viewBox[0] - (event.clientX - drag.x) * viewBox[2] / viewport.clientWidth;
-    viewBox[1] = drag.viewBox[1] - (event.clientY - drag.y) * viewBox[3] / viewport.clientHeight;
+    const matrix = svg.getScreenCTM();
+    viewBox[0] = drag.viewBox[0] - (event.clientX - drag.x) / matrix.a;
+    viewBox[1] = drag.viewBox[1] - (event.clientY - drag.y) / matrix.d;
     setViewBox();
   });
   listen(viewport, "pointerup", event => {
     if (!drag) return;
-    if (!drag.moved && drag.flows.length) toggleFlows(drag.flows);
-    suppressClick = drag.moved || drag.flows.length > 0;
+    if (!drag.moved && drag.element) toggleSelection(drag.element);
+    suppressClick = drag.moved || Boolean(drag.element);
     drag = null;
     viewport.releasePointerCapture(event.pointerId);
     viewport.classList.remove("dragging");

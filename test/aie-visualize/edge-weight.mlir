@@ -9,13 +9,13 @@
 // design's own range, with a legend naming the lightest and heaviest.
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=UNIFORM
-// RUN: aie-visualize --emit-dot --contract=port,buffer --weigh-edges %s | FileCheck %s --check-prefix=WEIGHED
-// RUN: aie-visualize --emit-dot --contract=port,buffer --weigh-edges --min-edge-width=1 --max-edge-width=3 %s | FileCheck %s --check-prefix=RANGE
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer %s | FileCheck %s --check-prefix=UNIFORM
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer --weigh-edges %s | FileCheck %s --check-prefix=WEIGHED
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,buffer --weigh-edges --min-edge-width=1 --max-edge-width=3 %s | FileCheck %s --check-prefix=RANGE
 
 // Without the option every edge keeps the same width and carries no volume.
 // UNIFORM-NOT: legend_
-// UNIFORM: penwidth="2.4"
+// UNIFORM: penwidth="2.40"
 // UNIFORM-NOT: per iteration
 
 // The light flow moves 64 B and the heavy one 4096 B, so they take the ends of

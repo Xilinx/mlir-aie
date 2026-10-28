@@ -28,7 +28,7 @@ using Point = std::pair<double, double>;
 /// What an arrow ends on, which decides where a renderer may put it.
 enum class EndKind {
   /// A switchbox port: the stream side of a tile, which only ever reaches a
-  /// neighbouring switchbox or its own tile's DMA.
+  /// neighboring switchbox or its own tile's DMA.
   Switch,
   /// A DMA channel, facing the switchbox on one side and the tile's buffers
   /// on the other.
@@ -83,14 +83,18 @@ public:
   virtual ~ArrowRenderer();
 
   /// Extra space this renderer needs between tiles, in inches, or nothing to
-  /// keep the caller's spacing.
-  virtual std::optional<double> preferredTileGap() const {
+  /// keep the caller's spacing. `textRoom` is what one inch of a box that has
+  /// to hold a label comes to at the drawing's scale.
+  virtual std::optional<double> preferredTileGap(double textRoom) const {
     return std::nullopt;
   }
 
   /// How wide a tile has to be for the arrows drawn inside it to have room,
-  /// given the most buffers and calls any one tile holds.
-  virtual std::optional<double> preferredTileWidth(unsigned contents) const {
+  /// given the most buffers and calls any one tile holds and how wide those
+  /// are drawn.
+  virtual std::optional<double> preferredTileWidth(unsigned contents,
+                                                   double contentWidth,
+                                                   double textRoom) const {
     return std::nullopt;
   }
 
@@ -118,7 +122,7 @@ std::unique_ptr<ArrowRenderer> createStraightArrowRenderer();
 
 /// Keeps arrows in the gaps between tiles. A tile's switchbox ports gather at
 /// the channel junction off its corner, from which all four channels are
-/// reachable, so a hop to a neighbour is one straight run and a hop the
+/// reachable, so a hop to a neighbor is one straight run and a hop the
 /// switchbox makes within itself never crosses the tile. DMA channels stack
 /// along the tile's edge, a short stub from the buffers they serve.
 std::unique_ptr<ArrowRenderer> createChannelArrowRenderer();
