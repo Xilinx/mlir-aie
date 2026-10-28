@@ -63,6 +63,9 @@ struct AIERTControl {
                                         bool skipCtrlPktOverlay = false);
   mlir::LogicalResult addInitConfig(DeviceOp &targetOp,
                                     bool skipCtrlPktOverlay = false);
+  mlir::LogicalResult teardownSwitches(DeviceOp &targetOp);
+  mlir::LogicalResult disableCores(DeviceOp &targetOp);
+  mlir::LogicalResult resetDmaChannels(DeviceOp &targetOp);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);
   mlir::LogicalResult addAieElf(uint8_t col, uint8_t row,
                                 const mlir::StringRef elfPath, bool aieSim);

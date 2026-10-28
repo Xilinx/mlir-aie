@@ -3,7 +3,7 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Row-wise bias add — IRON API design with ``@iron.jit`` compilation.
+"""Row-wise bias add and affine cast — IRON API designs with ``@iron.jit``.
 
 The C++ kernel (``kernel.cc``) adds a per-column bias vector (``1 x N``)
 to every row of an ``M x N`` ``float32`` matrix.  Tiling is ``(m, n)``;
@@ -12,6 +12,11 @@ the kernel is parameterized at compile time on ``DIM_m`` / ``DIM_n``
 gets its own ``.o`` named with a content hash — no separate Makefile
 ``build/kernel.o`` step.
 
+``--op affine_cast`` selects a second design: a per-column affine transform
+(``out = in * gamma + beta``) narrowed to ``bfloat16``, built from the
+``aie.iron.kernels.affine_cast`` library kernel. ``gamma`` and ``beta`` are
+the two rows of one ``2 x N`` tensor, so they share one input DMA channel.
+
 Two invocation modes:
 
   * standalone:   ``python3 row_wise_bias_add.py``
@@ -19,17 +24,20 @@ Two invocation modes:
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.verify import assert_pass
+from aie.utils.verify import assert_pass, compare
+from ml_dtypes import bfloat16
 
 _KERNEL_SRC = str(Path(__file__).parent / "kernel.cc")
 
@@ -80,10 +88,9 @@ def row_wise_bias_add(
         fn_args=[in_fifo.cons(), bias_fifo.cons(), out_fifo.prod(), kernel_func],
     )
 
-    tap = TensorTiler2D.group_tiler(
-        (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
-    )[0]
-    bias_tap = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))[0]
+    # Walk the whole matrix one column of (m, n) tiles at a time.
+    tap = TensorAccessPattern.full((M, N)).tile((m, n)).permute((1, 0, 2, 3))
+    bias_tap = TensorAccessPattern.full((1, N))
 
     def sequence(a, b, c, in_h, bias_h, out_h):
         in_h.fill(a, tap)
@@ -98,9 +105,81 @@ def row_wise_bias_add(
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
+@iron.jit
+def row_wise_affine_cast(
+    inp: In,
+    gb: In,
+    out: Out,
+    *,
+    M: CompileTime[int] = 768,
+    N: CompileTime[int] = 2304,
+    m: CompileTime[int] = 96,
+    n: CompileTime[int] = 32,
+):
+    assert M % m == 0
+    assert N % n == 0
+
+    in_tile_ty = np.ndarray[(m * n,), np.dtype[np.float32]]
+    gb_tile_ty = np.ndarray[(2 * n,), np.dtype[np.float32]]
+    out_tile_ty = np.ndarray[(m * n,), np.dtype[bfloat16]]
+
+    kernel_func = kernels.affine_cast(rows=m, cols=n)
+
+    in_fifo = ObjectFifo(in_tile_ty, name="in_fifo")
+    gb_fifo = ObjectFifo(gb_tile_ty, name="gb_fifo")
+    out_fifo = ObjectFifo(out_tile_ty, name="out_fifo")
+
+    def core_fn(in_fifo, gb_fifo, out_fifo, kernel_func):
+        for _ in range_(N // n):
+            elem_gb = gb_fifo.acquire(1)
+            for _ in range_(M // m):
+                elem_in = in_fifo.acquire(1)
+                elem_out = out_fifo.acquire(1)
+                kernel_func(elem_in, elem_gb, elem_out, m, n)
+                out_fifo.release(1)
+                in_fifo.release(1)
+            gb_fifo.release(1)
+
+    worker = Worker(
+        core_fn,
+        fn_args=[in_fifo.cons(), gb_fifo.cons(), out_fifo.prod(), kernel_func],
+    )
+
+    tap = TensorAccessPattern.full((M, N)).tile((m, n)).permute((1, 0, 2, 3))
+    # A (2, n) tile of [gamma; beta] is gamma's column block, then beta's: the
+    # packing the kernel reads.
+    gb_tap = TensorAccessPattern.full((2, N)).tile((2, n))
+
+    def sequence(a, b, c, in_h, gb_h, out_h):
+        in_h.fill(a, tap)
+        gb_h.fill(b, gb_tap)
+        out_h.drain(c, tap, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [
+            np.ndarray[(M, N), np.dtype[np.float32]],
+            np.ndarray[(2, N), np.dtype[np.float32]],
+            np.ndarray[(M, N), np.dtype[bfloat16]],
+            in_fifo.prod(),
+            gb_fifo.prod(),
+            out_fifo.cons(),
+        ],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Row-Wise Bias Add")
     add_compile_args(p)
+    p.add_argument(
+        "--op",
+        choices=["bias_add", "affine_cast"],
+        default="bias_add",
+        help="bias_add: out = in + bias (float32). "
+        "affine_cast: out = bfloat16(in * gamma + beta)",
+    )
     p.add_argument("-M", "--M", type=int, default=768)
     p.add_argument("-N", "--N", type=int, default=2304)
     p.add_argument("-m", "--m", type=int, default=96)
@@ -127,13 +206,34 @@ def _run_and_verify(opts):
     assert_pass(actual, expected, fail_msg="output does not match in + bias (per-row)")
 
 
+def _run_and_verify_affine_cast(opts):
+    rng = np.random.default_rng(0)
+    in_np = rng.uniform(-4.0, 4.0, size=(opts.M, opts.N)).astype(np.float32)
+    gamma_np = rng.uniform(0.5, 2.0, size=opts.N).astype(np.float32)
+    beta_np = rng.uniform(-1.0, 1.0, size=opts.N).astype(np.float32)
+    in_t = iron.tensor(in_np, dtype=np.float32, device="npu")
+    gb_t = iron.tensor(np.stack([gamma_np, beta_np]), dtype=np.float32, device="npu")
+    out_t = iron.zeros((opts.M, opts.N), dtype=bfloat16, device="npu")
+
+    row_wise_affine_cast(in_t, gb_t, out_t, **_compile_kwargs(opts))
+
+    # ml_dtypes rounds to nearest even, as the kernel's conv_even store does.
+    expected = (in_np * gamma_np + beta_np).astype(bfloat16)
+    tolerance = kernels.affine_cast(rows=opts.m, cols=opts.n).contract.tolerance
+    verdict = compare(out_t.numpy(), expected, tolerance)
+    if not verdict.ok:
+        sys.exit(f"FAIL! output does not match in*gamma+beta: {verdict.detail}")
+    print("PASS!")
+
+
 def main():
     opts = _make_argparser().parse_args()
+    affine = opts.op == "affine_cast"
     run_design_cli(
-        row_wise_bias_add,
+        row_wise_affine_cast if affine else row_wise_bias_add,
         opts,
         compile_kwargs=_compile_kwargs,
-        run_and_verify=_run_and_verify,
+        run_and_verify=_run_and_verify_affine_cast if affine else _run_and_verify,
         device=device_from_args,
     )
 

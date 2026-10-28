@@ -9,7 +9,7 @@
 // sit where that link put them. Nothing reads those addresses back out of the
 // ELF, so a buffer at a fixed address is what declares them to the allocator.
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses %s | FileCheck %s
 
 // "prebaked_data" covers [8192, 12288), so "scratch" goes elsewhere and the
 // allocator keeps every buffer clear of the bytes the earlier link chose.

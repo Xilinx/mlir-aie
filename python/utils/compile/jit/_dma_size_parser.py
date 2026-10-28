@@ -3,19 +3,22 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Extract per-host-arg element counts from aiecc's lowered MLIR.
+"""Extract per-host-tensor bit counts from aiecc's lowered MLIR.
 
 aiecc writes ``input_with_addresses.mlir`` into the kernel directory as part
 of compilation.  The host-facing ``aie.runtime_sequence`` carries fully
-typed memref arguments — e.g.::
+typed memref arguments — e.g.:
 
-    aie.runtime_sequence @sequence(%arg0: memref<65536xbf16>,
-                                   %arg1: memref<65536xbf16>) {
-      ...
-    }
+```mlir
+aie.runtime_sequence @sequence(%arg0: memref<65536xbf16>,
+                               %arg1: memref<65536xbf16>) {
+  ...
+}
+```
 
 The argument types ARE the kernel's host-side contract, so we read each
-arg's memref shape and compute the element count.  No need to walk
+tensor's memref shape and compute its footprint in bits. Dispatch scalars
+are skipped. No need to walk
 ``aie.dma_bd`` ops, distinguish host-facing transfers from tile-internal
 DMAs, or fold multi-DMA patterns (fan-out / repeated load / InOut fill+drain)
 back together — the runtime_sequence signature already represents what the
@@ -42,25 +45,30 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
-    """Return per-host-arg element counts from ``input_with_addresses.mlir``.
+def parse_dma_sizes(kernel_dir: Path, entry: str | None = None) -> list[int] | None:
+    """Return per-host-arg footprints, in bits, from ``input_with_addresses.mlir``.
 
-    The returned list is indexed by ``aie.runtime_sequence`` argument
-    position.  Each entry is the element count (product of static dims) of
-    that arg's memref type.
+    The returned list follows ``aie.runtime_sequence`` tensor argument
+    order, skipping scalars. Each entry is the product of the static dims and
+    the element type's size under the data layout. Bits rather than elements because a
+    host buffer need not divide its bits into elements the way the memref
+    does, and bits rather than bytes so a sub-byte element type stays exact.
 
     Args:
         kernel_dir: Directory aiecc wrote its lowered MLIR into.
+        entry: The ``"device:sequence"`` host entry to inspect. If omitted,
+            the parser infers a unique call-graph root.
 
     Returns:
-        A list of per-arg element counts (length = number of entry-point
-        runtime_sequence args), or ``None`` when validation can't be
+        A list of per-tensor bit counts (scalar arguments are skipped),
+        or ``None`` when validation can't be
         performed safely:
 
         * file is absent or unparseable
         * no runtime_sequence found, or no unique call-graph root (e.g.
           multi-device modules with multiple top-level sequences)
-        * any arg has a non-memref type or a dynamic-shape dim
+        * any arg has an unsupported type, a dynamic-shape dim, or an element
+          type the data layout does not describe
     """
     mlir_path = kernel_dir / "input_with_addresses.mlir"
     if not mlir_path.exists():
@@ -73,8 +81,17 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         from aie._mlir_libs import (  # pyright: ignore[reportMissingImports]
             get_dialect_registry,  # pyright: ignore[reportAttributeAccessIssue]
         )
+        from aie._mlir_libs._aie import (  # pyright: ignore[reportMissingImports]
+            type_size_in_bits,
+        )
         from aie.dialects import aie as _aie  # noqa: F401
         from aie.dialects import aiex as _aiex  # noqa: F401
+
+        device_op_type = _aie.DeviceOp  # pyright: ignore[reportAttributeAccessIssue]
+        run_op_type = _aiex.RunOp  # pyright: ignore[reportAttributeAccessIssue]
+        runtime_sequence_op_type = (
+            _aie.RuntimeSequenceOp  # pyright: ignore[reportAttributeAccessIssue]
+        )
 
         ir_context = ir.Context  # pyright: ignore[reportAttributeAccessIssue]
         ir_location = ir.Location  # pyright: ignore[reportAttributeAccessIssue]
@@ -91,26 +108,45 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         # Pass 1: collect every runtime_sequence + record aiex.run call edges.
         all_sequences: list = []
         named_sequences: dict = {}  # sym_name -> op  (anonymous ones omitted)
+        qualified_sequences: dict = {}
         called: set = set()
         for op in _walk(module.operation):
-            if op.name == "aie.runtime_sequence":
-                all_sequences.append(op)
-                sym = _get_str_attr(op, "sym_name")
-                if sym is not None:
-                    named_sequences[sym] = op
-            elif op.name == "aiex.run":
-                target = _get_str_attr(op, "runtime_sequence_symbol")
-                if target is not None:
-                    called.add(target)
+            op_view = op.opview
+            if isinstance(op_view, runtime_sequence_op_type):
+                all_sequences.append(op_view)
+                try:
+                    sym = op_view.sym_name.value
+                except KeyError:
+                    continue
+                named_sequences[sym] = op_view
+                parent = op.parent
+                while parent is not None and not isinstance(
+                    parent.opview, device_op_type
+                ):
+                    parent = parent.parent
+                if parent is not None:
+                    device_op = parent.opview
+                    device = (
+                        device_op.sym_name.value
+                        if device_op.sym_name is not None
+                        else "main"
+                    )
+                    qualified_sequences[f"{device}:{sym}"] = op_view
+            elif isinstance(op_view, run_op_type):
+                called.add(op_view.runtime_sequence_symbol.value)
 
         if not all_sequences:
             return None
 
         # Pass 2: pick the entry point.
-        if len(all_sequences) == 1:
+        if entry is not None:
+            if entry not in qualified_sequences:
+                return None
+            selected_sequence = qualified_sequences[entry]
+        elif len(all_sequences) == 1:
             # Only one sequence in the module — trivially the root.  Works
             # whether or not it carries a sym_name.
-            entry = all_sequences[0]
+            selected_sequence = all_sequences[0]
         else:
             # Multiple sequences: each must be named so we can reason about
             # the call graph.  Entry point = the unique root (not called by
@@ -122,22 +158,35 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
                 # 0 roots => cyclic; >1 roots => multi-device or multiple
                 # top-level entries — can't unambiguously map host tensors.
                 return None
-            entry = roots[0]
+            selected_sequence = roots[0]
 
-        # Pass 3: read each arg's memref element count.
-        seq_block = entry.regions[0].blocks[0]
+        # Pass 3: read each arg's memref footprint, in bits.
+        seq_block = selected_sequence.operation.regions[0].blocks[0]
         sizes: list[int] = []
         memref_type = ir.MemRefType  # pyright: ignore[reportAttributeAccessIssue]
+        scalar_types = (
+            ir.IntegerType,  # pyright: ignore[reportAttributeAccessIssue]
+            ir.IndexType,  # pyright: ignore[reportAttributeAccessIssue]
+        )
         for arg in seq_block.arguments:
             t = arg.type
+            if isinstance(t, scalar_types):
+                continue
             if not isinstance(t, memref_type):
                 return None
             if not t.has_static_shape:
                 return None
+            # Bits, from the element type's own data layout: a host buffer and
+            # the memref agree on how many bits they cover but need not agree on
+            # how those bits are divided into elements. A v8bfp16ebs8 memref
+            # counts one element per 72-bit block where the host counts bytes.
+            bits = type_size_in_bits(t.element_type)
+            if not bits:
+                return None
             elems = 1
             for d in t.shape:
                 elems *= d
-            sizes.append(elems)
+            sizes.append(elems * bits)
         return sizes if sizes else None
     except Exception:
         # Any binding / parsing failure means validation is unavailable
@@ -158,16 +207,3 @@ def _walk(op):
         for block in region.blocks:
             for sub in block.operations:
                 yield from _walk(sub.operation)
-
-
-def _get_str_attr(op, name: str) -> str | None:
-    """Return the string value of attribute *name* on *op*, or ``None``.
-
-    Handles both ``StringAttr`` (``sym_name``) and ``FlatSymbolRefAttr``
-    (``aiex.run.runtime_sequence_symbol``); both expose the symbol as
-    ``.value``.
-    """
-    try:
-        return op.attributes[name].value
-    except (KeyError, AttributeError):
-        return None

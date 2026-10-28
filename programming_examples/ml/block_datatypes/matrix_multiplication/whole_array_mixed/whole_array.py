@@ -10,21 +10,19 @@ on AIE2P. Strix-only.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
-    ExternalFunction,
     In,
     ObjectFifo,
     Out,
     Program,
     Runtime,
-    StreamDims,
     TaskGroup,
     Worker,
 )
@@ -35,10 +33,6 @@ from aie.utils.hostruntime.argparse import (
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from ml_dtypes import bfloat16
-
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp_mixed.cc"
-)
 
 
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
@@ -57,8 +51,9 @@ def whole_array_mixed(
 ):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
-    # bfp16ebs8 matmul mac unit is 8x8x8; m/k/n must be multiples of these.
-    r, s, t = 8, 8, 8
+    matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n, mixed=True)
+    zero_kernel = kernels.zero(m * n, bfloat16)
+    r, s, t = matmul_kernel.mac_dims  # the bfp16ebs8 mmul is 8x8x8
     assert m % r == 0, f"m ({m}) must be a multiple of {r}"
     assert k % s == 0, f"k ({k}) must be a multiple of {s}"
     assert n % t == 0, f"n ({n}) must be a multiple of {t}"
@@ -75,21 +70,6 @@ def whole_array_mixed(
     B_l1_ty = np.ndarray[(k, n // 8), np.dtype[v8bfp16ebs8]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[bfloat16]]
 
-    kernel_flags = [f"-DDIM_M={m}", f"-DDIM_K={k}", f"-DDIM_N={n}"]
-
-    zero_kernel = ExternalFunction(
-        "zero_kernel_bf16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[C_l1_ty],
-        compile_flags=kernel_flags + ["-DZERO_ONLY"],
-    )
-    matmul_kernel = ExternalFunction(
-        "matmul_vectorized_different_datatypes",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-    )
-
     A_l3l2_fifos: list[ObjectFifo] = []
     A_l2l1_fifos: list[ObjectFifo] = []
     B_l3l2_fifos: list[ObjectFifo] = []
@@ -103,14 +83,12 @@ def whole_array_mixed(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        dims_to_stream: list[StreamDims] = [
-            [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-        ] * (stop_row - start_row)
+        to_stream = [matmul_kernel.stream_dims.A] * (stop_row - start_row)
         a_tmp_fifos = a_l3l2.cons().split(
             of_offsets,
             obj_types=[A_l1_ty] * (stop_row - start_row),
             names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-            dims_to_stream=dims_to_stream,
+            to_stream=to_stream,
         )
         A_l2l1_fifos.extend(a_tmp_fifos)
 
@@ -121,12 +99,12 @@ def whole_array_mixed(
             b_l3l2.cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}")
         )
 
-        c_l2l3_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+        c_l2l3_dims = matmul_kernel.stream_dims.C
         c_l2l3 = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=c_l2l3_dims,
+            to_stream=c_l2l3_dims,
         )
         C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n * i for i in range(n_aie_rows)]
@@ -173,60 +151,43 @@ def whole_array_mixed(
     C_ty = np.ndarray[(M * N,), np.dtype[bfloat16]]
 
     tb_max_n_rows = 4
-    tb_n_rows = tb_max_n_rows // 2
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K),
-        (m * n_A_tiles_per_shim, k),
-        (1, K // k),
-        pattern_repeat=N // n // n_aie_cols,
-    )
-    B_tiles = TensorTiler2D.step_tiler(
-        (N, K // 8),
-        (n, k // 8),
-        tile_group_repeats=(N // n // n_aie_cols, K // k),
-        tile_group_steps=(n_aie_cols, 1),
-    )
-    C_tiles = TensorTiler2D.step_tiler(
-        (M, N),
-        (m * n_aie_rows, n),
-        tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
-    )
-    c_index = 0
+    A_tiles = TensorAccessPattern.full((M, K)).tile((m * n_A_tiles_per_shim, k))
+    B_tiles = TensorAccessPattern.full((N, K // 8)).tile((n, k // 8))
+    C_tiles = TensorAccessPattern.full((M, N)).tile((m * n_aie_rows, n))
 
     def sequence(a, b, c, A_prods, B_prods, C_conses):
-        nonlocal c_index
         tg = TaskGroup()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
-                if c_index >= len(C_tiles):
-                    break
                 row_base = tb * tb_max_n_rows + pingpong * tb_max_n_rows // 2
                 current_tb_n_rows = min(
                     [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
                 )
+                if current_tb_n_rows <= 0:
+                    break
                 for col in range(n_aie_cols):
                     C_conses[col].drain(
                         c,
-                        tap=C_tiles[c_index],
+                        tap=C_tiles[
+                            row_base : row_base + current_tb_n_rows, col::n_aie_cols
+                        ],
                         wait=True,
                         group=tg,
                     )
-                    c_index += 1
                     for tile_row in range(current_tb_n_rows):
                         tile_offset = (
                             (row_base + tile_row) * n_shim_mem_A + col
-                        ) % len(A_tiles)
+                        ) % A_tiles.sizes[0]
                         if col < n_aie_rows:
                             A_prods[col].fill(
                                 a,
-                                tap=A_tiles[tile_offset],
+                                tap=A_tiles[tile_offset].repeat(N // n // n_aie_cols),
                                 group=tg,
                             )
                         B_prods[col].fill(
                             b,
-                            tap=B_tiles[col],
+                            tap=B_tiles[col::n_aie_cols],
                             group=tg,
                         )
                 if tb > 0 or (tb == 0 and pingpong > 0):

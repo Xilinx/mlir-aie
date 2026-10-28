@@ -140,3 +140,21 @@ module {
     aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
 }
+
+// -----
+
+// 256 runs of a zero-stride size 3: the iteration word (6) stays 0 and the
+// queue push carries repeat_count 255 (0xFF << 16).
+// CHECK-LABEL: @repeat_256
+// CHECK: dense<[32, 0, 0, 0, -2147483648, 33554432, 0, 33554432]>
+// CHECK: %[[CMD:.*]] = arith.constant 16711680 : i32
+// CHECK: aiex.npu.write32(%{{.*}}, %[[CMD]])
+module {
+  aie.device(npu1) @repeat_256 {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence(%arg0: memref<32xi32>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][256, 1, 1, 32][0, 0, 0, 1]) {id = 0 : i64, metadata = @alloc0} : memref<32xi32>
+    }
+  }
+}

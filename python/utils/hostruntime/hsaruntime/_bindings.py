@@ -6,12 +6,12 @@
 This module owns everything at the C-ABI boundary: the enum/flag constants and
 ``ctypes`` struct mirrors from ``hsa.h`` / ``hsa_ext_amd.h``, library discovery
 + ``dlopen``, and the bound ``hsa_*`` entry points. The higher-level device /
-memory / queue orchestration lives in :mod:`.context`, on :class:`HSAContext`.
+memory / queue orchestration lives in `.context`, on `HSAContext`.
 
 Importing this module is side-effect-free: it performs no ``dlopen`` and no
-device init. Binding is deferred to :meth:`_HsaLib._ensure`, which the first
+device init. Binding is deferred to `_HsaLib._ensure`, which the first
 ``HSAContext`` triggers. That is what lets the cheap ``hsa_available`` probe
-in ``aie.utils`` (which only imports the sibling :mod:`.discovery` module)
+in ``aie.utils`` (which only imports the sibling `.discovery` module)
 stay as cheap and safe as a plain import.
 """
 

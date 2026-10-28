@@ -7,7 +7,7 @@
 
 Applies ``lambda a: a + 1`` to each ``tile_size``-element tile of a
 single 1-D int32 tensor in place.  The design body delegates to
-:func:`aie.iron.algorithms.for_each`.
+``aie.iron.algorithms.for_each``.
 """
 
 import argparse

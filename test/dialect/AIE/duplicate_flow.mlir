@@ -58,7 +58,7 @@ module @flow_dup_logical {
 // -----
 
 // The same packet flow declared twice, as reported in issue #3706.
-// CHECK: error{{.*}}'aie.packet_flow' op duplicates an earlier packet flow; ID 0 is already declared between the same sources and destinations
+// CHECK: error{{.*}}'aie.packet_flow' op duplicates an earlier packet flow; ID 0 under mask 0x1F is already declared between the same sources and destinations
 // CHECK: note:{{.*}}the other packet flow is here
 module @packet_flow_dup {
   aie.device(npu2) {
@@ -81,7 +81,7 @@ module @packet_flow_dup {
 // same endpoints in a different order is still the same flow. Disagreeing
 // keep_pkt_header attributes make the redeclaration contradictory, not merely
 // redundant, so the attributes are deliberately not part of the key.
-// CHECK: error{{.*}}'aie.packet_flow' op duplicates an earlier packet flow; ID 3 is already declared between the same sources and destinations
+// CHECK: error{{.*}}'aie.packet_flow' op duplicates an earlier packet flow; ID 3 under mask 0x1F is already declared between the same sources and destinations
 module @packet_flow_dup_reordered {
   aie.device(npu2) {
     %shim = aie.tile(2, 0)
@@ -102,10 +102,59 @@ module @packet_flow_dup_reordered {
 
 // -----
 
+// A circuit sends every word its source port sends, and its destination port
+// takes no other stream, so neither end can also carry a packet flow.
+// CHECK: error{{.*}}'aie.packet_flow' op starts at (0, 3) DMA : 1, where a circuit flow starts; a port carries either one circuit or packets
+// CHECK: note:{{.*}}the circuit flow is here
+module @circuit_and_packet_same_source {
+  aie.device(npu1_1col) {
+    %c2 = aie.tile(0, 2)
+    %c3 = aie.tile(0, 3)
+    aie.flow(%c3, DMA : 1, %c2, DMA : 1)
+    aie.packet_flow(4) {
+      aie.packet_source<%c3, DMA : 1>
+      aie.packet_dest<%c2, DMA : 0>
+    }
+  }
+}
+
+// -----
+
+// CHECK: error{{.*}}'aie.packet_flow' op ends at (0, 2) DMA : 1, where a circuit flow ends; a port carries either one circuit or packets
+// CHECK: note:{{.*}}the circuit flow is here
+module @circuit_and_packet_same_dest {
+  aie.device(npu1_1col) {
+    %c2 = aie.tile(0, 2)
+    %c3 = aie.tile(0, 3)
+    aie.flow(%c3, DMA : 0, %c2, DMA : 1)
+    aie.packet_flow(4) {
+      aie.packet_source<%c3, DMA : 1>
+      aie.packet_dest<%c2, DMA : 1>
+    }
+  }
+}
+
+// -----
+
+// A master port in circuit mode selects a single slave port, so two circuits
+// cannot end at one port.
+// CHECK: error{{.*}}'aie.flow' op ends at (0, 3) DMA : 1, where another circuit flow ends; a port takes one circuit
+// CHECK: note:{{.*}}the other circuit flow is here
+module @circuit_fanin {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %c2 = aie.tile(0, 2)
+    %c3 = aie.tile(0, 3)
+    aie.flow(%c2, DMA : 0, %c3, DMA : 1)
+    aie.flow(%shim, DMA : 1, %c3, DMA : 1)
+  }
+}
+
+// -----
+
 // Distinct flows that only look similar must all be accepted: a shared source
-// broadcasting to different destinations, a shared destination fed from
-// different sources, the same endpoints on a different channel, and the same
-// endpoints in a different device.
+// broadcasting to different destinations, the same endpoints on a different
+// channel, and the same endpoints in a different device.
 // CHECK-NOT: error
 module @flow_no_false_positives {
   aie.device(npu2) @main {
@@ -115,7 +164,6 @@ module @flow_no_false_positives {
     aie.flow(%shim, DMA : 0, %c2, DMA : 0)
     aie.flow(%shim, DMA : 0, %c3, DMA : 0)
     aie.flow(%c2, DMA : 0, %c3, DMA : 1)
-    aie.flow(%shim, DMA : 1, %c3, DMA : 1)
     aie.flow(%shim, DMA : 1, %c2, DMA : 1)
   }
   aie.device(npu2) @second {
@@ -158,6 +206,27 @@ module @packet_flow_no_false_positives {
     aie.packet_flow(0) {
       aie.packet_source<%u0, DMA : 0>
       aie.packet_dest<%u1, DMA : 0>
+    }
+  }
+}
+
+// -----
+
+// Two flows carrying one ID between one pair of endpoints under different
+// masks claim different sets of packets, so neither duplicates the other.
+// The first claims 0x0 through 0x3, the second 0x0 alone.
+// CHECK-LABEL: @packet_flow_distinct_masks
+module @packet_flow_distinct_masks {
+  aie.device(npu2) {
+    %shim = aie.tile(2, 0)
+    %core = aie.tile(2, 2)
+    aie.packet_flow(0, mask = 28) {
+      aie.packet_source<%shim, DMA : 0>
+      aie.packet_dest<%core, DMA : 0>
+    }
+    aie.packet_flow(0) {
+      aie.packet_source<%shim, DMA : 0>
+      aie.packet_dest<%core, DMA : 0>
     }
   }
 }

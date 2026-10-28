@@ -20,6 +20,10 @@ if (DOXYGEN_FOUND)
     # "MLIR-AIE" instead of "MLIR-AIE unknown" when no version is resolvable.
     set(PACKAGE_VERSION "")
   endif()
+  # The dev count changes every commit, and the header carries it into every
+  # page, so each docs deploy would rewrite all of them.
+  string(REGEX REPLACE "\\.dev[0-9]+(\\+g[0-9a-f]+)?$" ".dev" PACKAGE_VERSION
+    "${PACKAGE_VERSION}")
 
   if (HAVE_DOT)
     set(DOT ${LLVM_PATH_DOT})

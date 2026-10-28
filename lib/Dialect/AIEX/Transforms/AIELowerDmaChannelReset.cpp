@@ -135,7 +135,7 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
     ArrayRef<int32_t> lockInits = binding.getLockInits();
     for (unsigned j = 0; j < locks.size(); ++j)
       SetLockOp::create(builder, loc, locks[j],
-                        builder.getI32IntegerAttr(lockInits[j]));
+                        createConstantI32(builder, loc, lockInits[j]));
 
     // 3. START_QUEUE re-push per endpoint, emitted as aiex.npu.push_queue so
     // the command-word encoding, the queue address, and the bd_id/repeat range
@@ -154,7 +154,8 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
                              builder.getI32IntegerAttr(ep.row),
                              DMAChannelDirAttr::get(ctx, ep.dir),
                              builder.getI32IntegerAttr(ep.channel),
-                             builder.getBoolAttr(issueToken), repeatVal, bdVal);
+                             builder.getBoolAttr(issueToken), repeatVal, bdVal,
+                             /*repeat_state_table_idx=*/nullptr);
     }
 
     toErase.push_back(op);
@@ -277,7 +278,9 @@ struct AIELowerDmaChannelResetPass
     RewritePatternSet patterns(&getContext());
     patterns.add<DmaChannelResetToMaskWrite32Pattern>(&getContext());
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns))))
+    SmallVector<Operation *> roots;
+    device.walk([&](DmaChannelResetOp op) { roots.push_back(op); });
+    if (failed(applyPartialConversion(roots, target, std::move(patterns))))
       signalPassFailure();
   }
 };

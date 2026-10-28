@@ -127,8 +127,7 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
     llvm::report_fatal_error("bd address must be 4B (32b) aligned");
   }
   output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
-         << tileDMAInstRefStr(col, row, bdNum) << ", "
-         << "&" << tensor << ", "
+         << tileDMAInstRefStr(col, row, bdNum) << ", " << "&" << tensor << ", "
          << "0x" << llvm::utohexstr(baseAddrA + offsetA) << ", "
          << " /* len */ " << lenA << "));\n";
 }
@@ -232,7 +231,8 @@ MemoryRun coreDataRegion(TileOp tile, llvm::ArrayRef<BufferOp> buffers) {
   const auto &targetModel = getTargetModel(tile);
   CoreOp core = tile.getCoreOp();
   llvm::SmallVector<std::pair<int64_t, int64_t>> occupied;
-  occupied.emplace_back(0, core ? core.getEffectiveStackSize() : 0);
+  MemoryRun stackRun = core ? core.getStackRun() : MemoryRun{};
+  occupied.emplace_back(stackRun.start, stackRun.end());
   for (auto buf : buffers) {
     int64_t base = getBufferBaseAddress(buf);
     occupied.emplace_back(base, base + buf.getAllocationSize());
@@ -240,6 +240,59 @@ MemoryRun coreDataRegion(TileOp tile, llvm::ArrayRef<BufferOp> buffers) {
   return largestFreeRun(
       targetModel.getLocalMemorySize(), std::move(occupied),
       std::max<int64_t>(targetModel.getComputeTileMaxVectorAlignBits() / 8, 1));
+}
+
+llvm::SmallVector<MemoryRun> coreBankRegions(TileOp tile,
+                                             llvm::ArrayRef<BufferOp> buffers,
+                                             MemoryRun dataRun) {
+  const auto &targetModel = getTargetModel(tile);
+  int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+  llvm::SmallVector<MemoryRun> regions;
+  if (numBanks <= 0) {
+    return regions;
+  }
+  int64_t memSize = targetModel.getLocalMemorySize();
+  int64_t bankSize = memSize / numBanks;
+  int64_t align =
+      std::max<int64_t>(targetModel.getComputeTileMaxVectorAlignBits() / 8, 1);
+
+  CoreOp core = tile.getCoreOp();
+  llvm::SmallVector<std::pair<int64_t, int64_t>> occupied;
+  MemoryRun stackRun = core ? core.getStackRun() : MemoryRun{};
+  occupied.emplace_back(stackRun.start, stackRun.end());
+  // A reservation held for a bank *is* that bank's region: the allocator set it
+  // aside for precisely the sections this function is sizing a region for.
+  // Counting it as occupied would hand the region back the space it was told to
+  // keep, and hand the section a hole somewhere else -- so it may be the
+  // largest free run in the bank while the reservation sits in a smaller one.
+  llvm::SmallVector<std::optional<MemoryRun>> reserved(numBanks, std::nullopt);
+  for (auto buf : buffers) {
+    int64_t base = getBufferBaseAddress(buf);
+    if (auto bank = buf.getMemBank();
+        buf.getBankReserved() && bank && *bank < numBanks) {
+      reserved[*bank] = MemoryRun{base, buf.getAllocationSize()};
+      continue;
+    }
+    occupied.emplace_back(base, base + buf.getAllocationSize());
+  }
+  // The unpinned region is spoken for, so a bank only offers what it leaves.
+  occupied.emplace_back(dataRun.start, dataRun.end());
+
+  for (int bank = 0; bank < numBanks; ++bank) {
+    if (auto region = reserved[bank]) {
+      regions.push_back(*region);
+      continue;
+    }
+    MemoryRun window{bankSize * bank, bankSize};
+    MemoryRun run = largestFreeRunIn(window, occupied, align);
+    // A bank with nothing spare still has to name its own base. Left at the
+    // default the region would report address 0, which is inside bank 0.
+    if (run.size == 0) {
+      run.start = window.start;
+    }
+    regions.push_back(run);
+  }
+  return regions;
 }
 
 } // namespace xilinx::AIE

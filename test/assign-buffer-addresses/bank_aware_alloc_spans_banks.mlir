@@ -10,10 +10,6 @@
 // a buffer may be. "a" therefore spans banks 0 and 1. It lands bank-aligned
 // (address 0), the placement touching the fewest banks for its size, and the
 // smaller buffers still spread round-robin over the remaining banks.
-//
-// fallback_alloc_error.mlir (an unsatisfiable mem_bank) and
-// fallback_routine_error.mlir (both schemes failing) cover the fallback to
-// basic-sequential allocation.
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 // CHECK-NOT: warning

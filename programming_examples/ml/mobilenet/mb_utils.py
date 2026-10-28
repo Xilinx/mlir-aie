@@ -47,3 +47,25 @@ def read_scale_factors(file_path):
 def write_scale_factors(file_path, scale_factors):
     with open(file_path, "w") as file:
         json.dump(scale_factors, file, indent=4)
+        file.write("\n")
+
+
+def shift_of(combined: torch.Tensor, what: str) -> int:
+    """Return the integer shift a combined scale, ``-log2`` of a scale ratio, stands for.
+
+    Args:
+        combined: The ``-log2`` of a ratio of power-of-two scales.
+        what: The layer it shifts, for the error.
+
+    Returns:
+        ``combined`` rounded to the nearest integer.
+
+    Raises:
+        ValueError: If ``combined`` is not an integer to within float error,
+            so no shift implements the ratio.
+    """
+    value = combined.item()
+    shift = round(value)
+    if abs(value - shift) > 1e-6:
+        raise ValueError(f"{what}: combined scale {value} is not an integer shift")
+    return shift

@@ -15,7 +15,9 @@
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
@@ -48,59 +50,6 @@ static AIEArch decodeAIETarget(const std::string &target) {
       return AIEArch::UNKNOWN;
   }
   return AIEArch::AIE;
-}
-
-//============================================================================//
-//================== Common AIE canonicalization analysis ====================//
-//============================================================================//
-
-static bool isGemmBTransposedContractionOp(vector::ContractionOp op) {
-  if (op.getKind() != vector::CombiningKind::ADD)
-    return false;
-
-  // Get and check shape of operands
-  auto lhsShape = op.getLhsType().getShape();
-  auto rhsShape = op.getRhsType().getShape();
-  auto accShape = cast<ShapedType>(op.getAccType()).getShape();
-  if (lhsShape.size() < 2 || rhsShape.size() < 2 || accShape.size() < 2)
-    return false;
-
-  // Check that the innermost iterators match gemm-like iterators
-  SmallVector<vector::IteratorType> iterators = op.getIteratorTypesArray();
-  if (iterators.size() < 3)
-    return false;
-  auto innerMostIterators =
-      SmallVector<vector::IteratorType>(iterators.end() - 3, iterators.end());
-  if (vector::IteratorType::parallel != innerMostIterators[0] ||
-      vector::IteratorType::parallel != innerMostIterators[1] ||
-      vector::IteratorType::reduction != innerMostIterators[2])
-    return false;
-
-  // Get indexing maps of iterators for operands
-  SmallVector<AffineMap, 4> indexingMaps(op.getIndexingMapsArray());
-  SmallVector<int64_t> outerMostResults;
-  for (int64_t i = 0; i < indexingMaps[0].getNumResults() - 2; i++)
-    outerMostResults.push_back(i);
-
-  auto innerLhsMap = indexingMaps[0].dropResults(outerMostResults);
-  auto innerRhsMap = indexingMaps[1].dropResults(outerMostResults);
-  auto innerAccMap = indexingMaps[2].dropResults(outerMostResults);
-
-  // Check whether they conform to a "transposed B" gemm
-  auto *ctx = op.getContext();
-  auto mmAidxMap =
-      AffineMap::getPermutationMap(ArrayRef<unsigned>{1, 0, 2}, ctx)
-          .dropResults(0);
-  auto mmBidxMap =
-      AffineMap::getPermutationMap(ArrayRef<unsigned>{0, 1, 2}, ctx)
-          .dropResults(0);
-  auto mmCidxMap =
-      AffineMap::getPermutationMap(ArrayRef<unsigned>{2, 0, 1}, ctx)
-          .dropResults(0);
-  int64_t numOuterMostDims = indexingMaps[0].getNumDims() - 3;
-  return innerLhsMap == mmAidxMap.shiftDims(numOuterMostDims) &&
-         innerRhsMap == mmBidxMap.shiftDims(numOuterMostDims) &&
-         innerAccMap == mmCidxMap.shiftDims(numOuterMostDims);
 }
 
 //============================================================================//
@@ -471,104 +420,6 @@ struct FlattenMultDimTransferWritePattern
   }
 };
 
-// This pattern extracts an implicit transposition of the 2 innermost
-// dimensions of `rhs` in a gemm-like contraction op, making it an explicit
-// `vector.transpose` op.
-// If `rhs` is coming from a widening op (`extf`/`extsi`/`extui`), the
-// transposition will be hoisted above the widening op.
-struct ExtractTransposeFromContractionOp
-    : public OpConversionPattern<vector::ContractionOp> {
-  using OpConversionPattern<vector::ContractionOp>::OpConversionPattern;
-
-  static VectorType getTransposedVectorType(VectorType vecTy) {
-    SmallVector<int64_t> shape{vecTy.getShape()};
-    auto nDim = shape.size();
-    int64_t dimNm1 = shape[nDim - 1];
-    shape[nDim - 1] = shape[nDim - 2];
-    shape[nDim - 2] = dimNm1;
-    auto elemTy = vecTy.getElementType();
-    return VectorType::get(shape, elemTy);
-  }
-
-  LogicalResult
-  matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    if (!isGemmBTransposedContractionOp(contractOp))
-      return failure();
-
-    Location loc = contractOp.getLoc();
-    auto *ctx = rewriter.getContext();
-
-    Value rhsVal = adaptor.getRhs();
-    VectorType rhsVecTy = contractOp.getRhsType();
-    Type rhsElemTy = rhsVecTy.getElementType();
-
-    bool doExtF = false, doExtSI = false, doExtUI = false;
-    if (auto extfRhsOp = rhsVal.getDefiningOp<arith::ExtFOp>()) {
-      rhsVal = extfRhsOp.getIn();
-      rhsVecTy = cast<VectorType>(rhsVal.getType());
-      doExtF = true;
-    } else if (auto extsiRhsOp = rhsVal.getDefiningOp<arith::ExtSIOp>()) {
-      rhsVal = extsiRhsOp.getIn();
-      rhsVecTy = cast<VectorType>(rhsVal.getType());
-      doExtSI = true;
-    } else if (auto extuiRhsOp = rhsVal.getDefiningOp<arith::ExtUIOp>()) {
-      rhsVal = extuiRhsOp.getIn();
-      rhsVecTy = cast<VectorType>(rhsVal.getType());
-      doExtUI = true;
-    }
-
-    int64_t nDim = rhsVecTy.getShape().size();
-    SmallVector<int64_t> rhsPermutation;
-    for (int64_t i = 0; i < nDim - 2; i++)
-      rhsPermutation.push_back(i);
-    rhsPermutation.push_back(nDim - 1);
-    rhsPermutation.push_back(nDim - 2);
-    auto transpRhsVecTy = getTransposedVectorType(rhsVecTy);
-    rhsVal = vector::TransposeOp::create(rewriter, loc, transpRhsVecTy, rhsVal,
-                                         rhsPermutation)
-                 .getResult();
-
-    if (doExtF)
-      rhsVal =
-          arith::ExtFOp::create(
-              rewriter, loc,
-              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
-              .getOut();
-    if (doExtSI)
-      rhsVal =
-          arith::ExtSIOp::create(
-              rewriter, loc,
-              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
-              .getOut();
-    if (doExtUI)
-      rhsVal =
-          arith::ExtUIOp::create(
-              rewriter, loc,
-              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
-              .getOut();
-
-    SmallVector<AffineMap, 4> oldIdxMaps(contractOp.getIndexingMapsArray());
-
-    nDim = oldIdxMaps[1].getNumDims();
-    SmallVector<int64_t> innerDimPerm;
-    for (int64_t i = 0; i < nDim - 2; i++)
-      innerDimPerm.push_back(i);
-    innerDimPerm.push_back(nDim - 1);
-    innerDimPerm.push_back(nDim - 2);
-    auto transpPermMap = AffineMap::getPermutationMap(innerDimPerm, ctx);
-
-    auto newIdxMaps = rewriter.getAffineMapArrayAttr(
-        {oldIdxMaps[0], oldIdxMaps[1].compose(transpPermMap), oldIdxMaps[2]});
-
-    rewriter.replaceOpWithNewOp<vector::ContractionOp>(
-        contractOp, contractOp.getResult().getType(), adaptor.getLhs(), rhsVal,
-        adaptor.getAcc(), newIdxMaps, contractOp.getIteratorTypes());
-
-    return success();
-  }
-};
-
 /// Utility function to check if all provided indices are constant zero values.
 /// @return success() if all indices are constant zeros, failure() otherwise
 static LogicalResult isAllZeroOffsetAccess(mlir::OperandRange indices) {
@@ -694,6 +545,36 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
   }
 };
 
+// Carry an n-D vector through an scf.for loop as a rank-1 vector. The LLVM
+// lowering turns an n-D vector into an array of rank-1 rows, so a loop that
+// carries one splits it into rows and rebuilds it on every iteration instead
+// of keeping it in registers. AIE2P lowers n-D elementwise ops by flattening
+// them to rank 1, so the shape casts added here at the loop boundary fold
+// against the ones that flattening adds. Each match rewrites one iter_arg.
+struct FlattenVectorIterArgsPattern : OpRewritePattern<scf::ForOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(scf::ForOp forOp,
+                                PatternRewriter &rewriter) const override {
+    for (OpOperand &init : forOp.getInitArgsMutable()) {
+      auto vecType = dyn_cast<VectorType>(init.get().getType());
+      if (!vecType || vecType.getRank() < 2 || vecType.isScalable())
+        continue;
+      Value flat = vector::ShapeCastOp::create(rewriter, forOp.getLoc(),
+                                               getFlattenedVectorType(vecType),
+                                               init.get());
+      auto shapeCast = [](OpBuilder &builder, Location loc, Type type,
+                          Value source) -> Value {
+        return vector::ShapeCastOp::create(builder, loc, type, source);
+      };
+      rewriter.replaceOp(forOp, scf::replaceAndCastForOpIterArg(
+                                    rewriter, forOp, init, flat, shapeCast));
+      return success();
+    }
+    return failure();
+  }
+};
+
 //============================================================================//
 //============ AIE2 canonicalization conversion patterns ===============//
 //============================================================================//
@@ -790,19 +671,14 @@ static void configureAIE2CanonicalizeLegalizations(ConversionTarget &target) {
       [](vector::TransferWriteOp op) {
         return cast<VectorType>(op.getVector().getType()).getRank() < 2;
       });
-  target.addDynamicallyLegalOp<vector::ContractionOp>(
-      [](vector::ContractionOp op) {
-        return !isGemmBTransposedContractionOp(op);
-      });
 }
 
 static void
 populateAIE2CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
                                                   256);
-  patterns
-      .add<ExtractTransposeFromContractionOp, FlattenMultDimTransferReadPattern,
-           FlattenMultDimTransferWritePattern>(patterns.getContext());
+  patterns.add<FlattenMultDimTransferReadPattern,
+               FlattenMultDimTransferWritePattern>(patterns.getContext());
 }
 
 //============================================================================//
@@ -823,6 +699,79 @@ static Value smartTruncF32ToBF16(PatternRewriter &rewriter, Location loc,
   }
   return arith::TruncFOp::create(rewriter, loc, bf16Type, val);
 }
+
+// `v` rounded to the nearest bf16, still in its own semantics.
+static APFloat roundedToBF16(APFloat v) {
+  bool losesInfo = false;
+  const llvm::fltSemantics &sem = v.getSemantics();
+  v.convert(APFloat::BFloat(), APFloat::rmNearestTiesToEven, &losesInfo);
+  v.convert(sem, APFloat::rmNearestTiesToEven, &losesInfo);
+  return v;
+}
+
+// True if `val` is an f32 vector whose elements are all bf16 values.
+static bool holdsBF16(Value val) {
+  if (auto extfOp = val.getDefiningOp<arith::ExtFOp>())
+    return getElementTypeOrSelf(extfOp.getIn().getType()).isBF16();
+  DenseFPElementsAttr dense;
+  return matchPattern(val, m_Constant(&dense)) &&
+         llvm::all_of(dense.getValues<APFloat>(), [](const APFloat &v) {
+           return roundedToBF16(v).bitwiseIsEqual(v);
+         });
+}
+
+// `val` rounded to bf16, still as f32. Constants are rounded here.
+static Value roundToBF16(PatternRewriter &rewriter, Location loc, Value val) {
+  if (holdsBF16(val))
+    return val;
+  auto vecType = cast<VectorType>(val.getType());
+  DenseFPElementsAttr dense;
+  if (matchPattern(val, m_Constant(&dense))) {
+    SmallVector<APFloat> values;
+    for (const APFloat &v : dense.getValues<APFloat>())
+      values.push_back(roundedToBF16(v));
+    return arith::ConstantOp::create(rewriter, loc,
+                                     DenseElementsAttr::get(vecType, values));
+  }
+  auto bf16VecType =
+      VectorType::get(vecType.getShape(), rewriter.getBF16Type());
+  Value bf16 = smartTruncF32ToBF16(rewriter, loc, val, bf16VecType);
+  return arith::ExtFOp::create(rewriter, loc, vecType, bf16,
+                               /*fastmath=*/nullptr);
+}
+
+static bool isF32Vector(Type type) {
+  auto vecType = dyn_cast<VectorType>(type);
+  return vecType && vecType.getElementType().isF32();
+}
+
+/// Pattern to drop `bf16 -> f32 -> bf16` round trips.
+///
+/// Arith used to fold these but no longer does: widening a signaling NaN quiets
+/// it, so the original bit pattern cannot be recovered. This pass has always
+/// made that trade anyway -- `smartTruncF32ToBF16` collapses the same pair on
+/// sight -- so fold here to keep the pipeline's pre-existing behavior rather
+/// than leaving the round trips for the backend.
+struct FoldBF16RoundTripPattern : public OpRewritePattern<arith::TruncFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::TruncFOp op,
+                                PatternRewriter &rewriter) const override {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    auto intermediateType = dyn_cast<VectorType>(op.getIn().getType());
+    if (!resultType || !intermediateType ||
+        !resultType.getElementType().isBF16() ||
+        !intermediateType.getElementType().isF32())
+      return failure();
+
+    auto extfOp = op.getIn().getDefiningOp<arith::ExtFOp>();
+    if (!extfOp || extfOp.getIn().getType() != resultType)
+      return failure();
+
+    rewriter.replaceOp(op, extfOp.getIn());
+    return success();
+  }
+};
 
 /// Pattern to emulate f32 binary vector arithmetic ops in bf16.
 /// For an op like: %r = arith.addf %a, %b : vector<16xf32>
@@ -852,7 +801,8 @@ struct EmulateBinaryF32InBF16Pattern : public OpRewritePattern<OpTy> {
 
     Value newResult =
         OpTy::create(rewriter, loc, bf16VecType, lhsBF16, rhsBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
@@ -907,38 +857,80 @@ struct EmulateSelectF32InBF16Pattern
 
     Value newResult = arith::SelectOp::create(rewriter, loc, op.getCondition(),
                                               trueValBF16, falseValBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
 };
 
-/// Pattern to emulate f32 vector.fma in bf16.
-/// All three operands (lhs, rhs, acc) are truncated.
+/// Pattern to emulate an f32 multiply with bf16 inputs. The product of two
+/// bf16 values fits in f32 except at the ends of the exponent range, so only
+/// the inputs are rounded:
+///   %r = arith.mulf %a, %b : vector<16xf32>
+/// becomes
+///   %r = arith.mulf (extf (truncf %a)), (extf (truncf %b)) : vector<16xf32>
+struct EmulateMulFInBF16Pattern : public OpRewritePattern<arith::MulFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::MulFOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isF32Vector(op.getType()) ||
+        (holdsBF16(op.getLhs()) && holdsBF16(op.getRhs())))
+      return failure();
+    Location loc = op.getLoc();
+    Value lhs = roundToBF16(rewriter, loc, op.getLhs());
+    Value rhs = roundToBF16(rewriter, loc, op.getRhs());
+    rewriter.replaceOpWithNewOp<arith::MulFOp>(op, lhs, rhs,
+                                               op.getFastmathAttr());
+    return success();
+  }
+};
+
+/// Pattern to fold an f32 multiply into the add that is its only user, as a
+/// vector.fma with bf16 inputs. Only when both ops allow contraction: the
+/// fused result can differ where the product underflows or overflows.
+struct FuseMulAddFInBF16Pattern : public OpRewritePattern<arith::AddFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::AddFOp op,
+                                PatternRewriter &rewriter) const override {
+    auto contracts = [](arith::FastMathFlagsAttr flags) {
+      return flags && bitEnumContainsAll(flags.getValue(),
+                                         arith::FastMathFlags::contract);
+    };
+    if (!isF32Vector(op.getType()) || !contracts(op.getFastmathAttr()))
+      return failure();
+    for (auto [mulOperand, acc] : {std::pair(op.getLhs(), op.getRhs()),
+                                   std::pair(op.getRhs(), op.getLhs())}) {
+      auto mulOp = mulOperand.getDefiningOp<arith::MulFOp>();
+      if (!mulOp || !mulOp->hasOneUse() || !contracts(mulOp.getFastmathAttr()))
+        continue;
+      Location loc = op.getLoc();
+      Value lhs = roundToBF16(rewriter, loc, mulOp.getLhs());
+      Value rhs = roundToBF16(rewriter, loc, mulOp.getRhs());
+      rewriter.replaceOpWithNewOp<vector::FMAOp>(op, lhs, rhs, acc);
+      rewriter.eraseOp(mulOp);
+      return success();
+    }
+    return failure();
+  }
+};
+
+/// Pattern to emulate f32 vector.fma with bf16 inputs. The accumulator stays
+/// f32.
 struct EmulateFMAF32InBF16Pattern : public OpRewritePattern<vector::FMAOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(vector::FMAOp op,
                                 PatternRewriter &rewriter) const override {
-    auto resultType = dyn_cast<VectorType>(op.getType());
-    if (!resultType || !resultType.getElementType().isF32())
+    if (!isF32Vector(op.getType()) ||
+        (holdsBF16(op.getLhs()) && holdsBF16(op.getRhs())))
       return failure();
-
     Location loc = op.getLoc();
-    auto bf16VecType =
-        VectorType::get(resultType.getShape(), rewriter.getBF16Type());
-
-    Value lhsBF16 =
-        smartTruncF32ToBF16(rewriter, loc, op.getLhs(), bf16VecType);
-    Value rhsBF16 =
-        smartTruncF32ToBF16(rewriter, loc, op.getRhs(), bf16VecType);
-    Value accBF16 =
-        smartTruncF32ToBF16(rewriter, loc, op.getAcc(), bf16VecType);
-
-    Value newResult =
-        vector::FMAOp::create(rewriter, loc, lhsBF16, rhsBF16, accBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
-    rewriter.replaceOp(op, extOp);
+    Value lhs = roundToBF16(rewriter, loc, op.getLhs());
+    Value rhs = roundToBF16(rewriter, loc, op.getRhs());
+    rewriter.replaceOpWithNewOp<vector::FMAOp>(op, lhs, rhs, op.getAcc());
     return success();
   }
 };
@@ -962,7 +954,8 @@ struct EmulateUnaryF32InBF16Pattern : public OpRewritePattern<OpTy> {
         smartTruncF32ToBF16(rewriter, loc, op->getOperand(0), bf16VecType);
 
     Value newResult = OpTy::create(rewriter, loc, bf16VecType, inputBF16);
-    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
+    auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult,
+                                       /*fastmath=*/nullptr);
     rewriter.replaceOp(op, extOp);
     return success();
   }
@@ -976,11 +969,11 @@ struct BF16EmulationPass
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
-    // Binary arithmetic ops
-    patterns.add<EmulateBinaryF32InBF16Pattern<arith::AddFOp>,
-                 EmulateBinaryF32InBF16Pattern<arith::SubFOp>,
-                 EmulateBinaryF32InBF16Pattern<arith::MulFOp>,
-                 EmulateBinaryF32InBF16Pattern<arith::MaximumFOp>,
+    // Multiplies take bf16 inputs; sums stay f32, which the accumulator
+    // adds natively.
+    patterns.add<FuseMulAddFInBF16Pattern>(context, /*benefit=*/2);
+    patterns.add<EmulateMulFInBF16Pattern, EmulateFMAF32InBF16Pattern>(context);
+    patterns.add<EmulateBinaryF32InBF16Pattern<arith::MaximumFOp>,
                  EmulateBinaryF32InBF16Pattern<arith::MinimumFOp>>(context);
 
     // Note: arith.divf is NOT demoted because bf16 vector divf is unsupported
@@ -990,11 +983,15 @@ struct BF16EmulationPass
     // and result lower to fp_to_bf16/bf16_to_fp which older Peano versions
     // cannot select on AIE2P; reductions are intentionally left in f32
     // to avoid these scalar bf16 conversions)
-    patterns.add<EmulateCmpFF32InBF16Pattern, EmulateSelectF32InBF16Pattern,
-                 EmulateFMAF32InBF16Pattern>(context);
+    patterns.add<EmulateCmpFF32InBF16Pattern, EmulateSelectF32InBF16Pattern>(
+        context);
 
     // Unary ops
-    patterns.add<EmulateUnaryF32InBF16Pattern<arith::NegFOp>>(context);
+    patterns.add<EmulateUnaryF32InBF16Pattern<arith::NegFOp>,
+                 EmulateUnaryF32InBF16Pattern<math::TanhOp>>(context);
+
+    // Clean up the round trips the demotion itself introduces.
+    patterns.add<FoldBF16RoundTripPattern>(context);
 
     (void)applyPatternsGreedily(op, std::move(patterns));
   }
@@ -1004,8 +1001,36 @@ std::unique_ptr<::mlir::Pass> xilinx::aievec::createBF16EmulationPass() {
   return std::make_unique<BF16EmulationPass>();
 }
 
+// A broadcast of a vector that only adds leading dims, as the vector repeated
+// by a 1-D shuffle (mask [i % n]). The AIE2P shuffle lowering then sees the
+// repetition, alone or together with a shuffle that reads it, as one gather.
+struct BroadcastLeadingDimsToRepeatPattern
+    : public OpRewritePattern<vector::BroadcastOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::BroadcastOp op,
+                                PatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(op.getSourceType());
+    VectorType resType = op.getResultVectorType();
+    if (!srcType || srcType.getRank() != 1 || resType.getRank() < 2 ||
+        resType.getShape().back() != srcType.getNumElements() ||
+        !srcType.getElementType().isIntOrFloat() || resType.isScalable())
+      return failure();
+    int64_t n = srcType.getNumElements();
+    SmallVector<int64_t> mask;
+    for (int64_t i = 0; i < resType.getNumElements(); ++i)
+      mask.push_back(i % n);
+    Value src = op.getSource();
+    Value flat =
+        vector::ShuffleOp::create(rewriter, op.getLoc(), src, src, mask);
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, resType, flat);
+    return success();
+  }
+};
+
 struct VectorBroadcastLoweringPass
     : public PassWrapper<VectorBroadcastLoweringPass, OperationPass<>> {
+  VectorBroadcastLoweringPass(bool aie2p = false) : aie2p(aie2p) {}
 
   void runOnOperation() override {
     auto *op = getOperation();
@@ -1014,13 +1039,21 @@ struct VectorBroadcastLoweringPass
     populateVectorBroadcastLoweringPatterns(patterns);
     patterns.add<ConvertLeadingUnitDimInsertToReshapePattern>(
         patterns.getContext());
+    // Ahead of the generic lowering, which builds the result a row at a time.
+    if (aie2p)
+      patterns.add<BroadcastLeadingDimsToRepeatPattern>(patterns.getContext(),
+                                                        /*benefit=*/2);
 
     (void)applyPatternsGreedily(op, std::move(patterns));
   }
+
+private:
+  bool aie2p;
 };
 
-static std::unique_ptr<::mlir::Pass> createVectorBroadcastLoweringPass() {
-  return std::make_unique<VectorBroadcastLoweringPass>();
+static std::unique_ptr<::mlir::Pass>
+createVectorBroadcastLoweringPass(bool aie2p = false) {
+  return std::make_unique<VectorBroadcastLoweringPass>(aie2p);
 }
 
 // This pass converts standard vector ops into a subset of `Vector` ops more
@@ -1094,6 +1127,8 @@ struct CanonicalizeVectorForAIEVecPass
       RewritePatternSet patterns(context);
       patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
                    CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
+      if (aieTarget == "aie2p")
+        patterns.add<FlattenVectorIterArgsPattern>(context);
       (void)applyPatternsGreedily(op, std::move(patterns));
     }
 
@@ -1151,6 +1186,6 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
 
   pm.addPass(createReorderOperationsPass());
   pm.addPass(createCopyRemovalPass());
-  pm.addPass(createVectorBroadcastLoweringPass());
+  pm.addPass(createVectorBroadcastLoweringPass(options.aieTarget == "aie2p"));
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
 }

@@ -72,6 +72,17 @@ int main() {
     check(count == kMaxBDsPerTile, "pop count is clamped to kMaxBDsPerTile");
   }
 
+  // A range pool, like a mem tile's odd-channel partition, hands out only its
+  // own ids, lowest first.
+  {
+    BdPool p = bd_pool_init_range(24, 27);
+    uint32_t id = 99;
+    for (uint32_t expect = 24; expect < 27; ++expect)
+      check(bd_pool_pop(p, id) && id == expect,
+            "range pool pops its ids lowest first");
+    check(!bd_pool_pop(p, id), "range pool holds only [lo, hi)");
+  }
+
   // Reserve removes an id from the middle of the pool without disturbing
   // pop's lowest-first order among the ids left behind.
   {

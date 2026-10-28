@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING
 from ...dialects.aie import (
     cascade_flow as _cascade_flow_op,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from ..resolvable import Resolvable
+from ...helpers.sourceloc import SourceSite
+from ..resolvable import PerDeviceConfigurationResolvable
 
 if TYPE_CHECKING:
     # Import guarded: worker.py imports from dataflow/, so a module-level
@@ -21,12 +22,14 @@ if TYPE_CHECKING:
     from ..worker import Worker
 
 
-class CascadeFlow(Resolvable):
+class CascadeFlow(PerDeviceConfigurationResolvable):
     """A directed cascade stream connection from one Worker to another.
 
-    Construct one of these for each cascade edge in your design::
+    Construct one of these for each cascade edge in your design:
 
-        CascadeFlow(producer_worker, consumer_worker)
+    ```python
+    CascadeFlow(producer_worker, consumer_worker)
+    ```
 
     Lowers to ``aie.cascade_flow(producer.tile, consumer.tile)`` after both
     Workers are placed. The kernel functions are responsible for using the
@@ -42,8 +45,8 @@ class CascadeFlow(Resolvable):
     * ShimTiles and MemTiles do not have cascade interfaces.
 
     Discovery: each newly-constructed CascadeFlow registers itself on its
-    *source* Worker's ``_outgoing_cascades`` list. ``Program.resolve()``
-    walks the runtime's workers and resolves each worker's outgoing
+    *source* Worker's ``_outgoing_cascades`` list. ``DeviceConfiguration.resolve()``
+    walks its workers and resolves each worker's outgoing
     cascades after placement — no global registry, no drain step.
     """
 
@@ -54,12 +57,17 @@ class CascadeFlow(Resolvable):
             src: Source `Worker` whose tile drives the cascade stream.
             dst: Destination `Worker` whose tile reads the cascade stream.
         """
+        self._site = SourceSite.capture()
         self._src = src
         self._dst = dst
-        # Self-register on the source Worker so Program.resolve() can find
-        # us by walking its workers (the same walk it already does).
+        # The source registration makes the edge part of its configuration's graph.
         src._outgoing_cascades.append(self)
 
     def resolve(self, loc=None, ip=None) -> None:
         """Emit ``aie.cascade_flow(src.tile, dst.tile)``."""
-        _cascade_flow_op(self._src.tile.op, self._dst.tile.op)
+        _cascade_flow_op(
+            self._src.tile.op,
+            self._dst.tile.op,
+            loc=loc or self._site.location(),
+            ip=ip,
+        )

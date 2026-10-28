@@ -19,12 +19,15 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -45,83 +48,114 @@ namespace {
 // Helper Functions
 //===----------------------------------------------------------------------===//
 
-/// Check if a value depends on the given loop induction variable
-/// Uses a cache to avoid exponential recursion on complex dependency chains
-static bool dependsOnLoopIVForHoist(Value val, Value loopIV,
-                                    DenseMap<Value, bool> &cache) {
-  // Check cache - return cached result if already computed
-  auto it = cache.find(val);
+/// The coefficient of `iv` in the linear expression `expr`, given the
+/// coefficient of each of the map's operands (dims first, then symbols).
+/// nullopt if `expr` is not linear in `iv`.
+static std::optional<int64_t> getExprCoefficient(AffineExpr expr,
+                                                 ArrayRef<int64_t> operandCoefs,
+                                                 unsigned numDims) {
+  if (auto dim = dyn_cast<AffineDimExpr>(expr))
+    return operandCoefs[dim.getPosition()];
+  if (auto sym = dyn_cast<AffineSymbolExpr>(expr))
+    return operandCoefs[numDims + sym.getPosition()];
+  if (isa<AffineConstantExpr>(expr))
+    return 0;
+  auto bin = dyn_cast<AffineBinaryOpExpr>(expr);
+  if (!bin)
+    return std::nullopt;
+  std::optional<int64_t> lhs =
+      getExprCoefficient(bin.getLHS(), operandCoefs, numDims);
+  std::optional<int64_t> rhs =
+      getExprCoefficient(bin.getRHS(), operandCoefs, numDims);
+  if (!lhs || !rhs)
+    return std::nullopt;
+  switch (bin.getKind()) {
+  case AffineExprKind::Add:
+    return *lhs + *rhs;
+  case AffineExprKind::Mul:
+    // In an affine expression one side of a multiplication is a constant.
+    if (auto c = dyn_cast<AffineConstantExpr>(bin.getRHS()))
+      return *lhs * c.getValue();
+    if (auto c = dyn_cast<AffineConstantExpr>(bin.getLHS()))
+      return *rhs * c.getValue();
+    return (*lhs == 0 && *rhs == 0) ? std::optional<int64_t>(0) : std::nullopt;
+  default:
+    // mod, floordiv and ceildiv are linear only if neither side depends on
+    // the IV.
+    return (*lhs == 0 && *rhs == 0) ? std::optional<int64_t>(0) : std::nullopt;
+  }
+}
+
+/// Writes `v` as `coef * iv + inv`, where `inv` does not change across
+/// iterations of `forOp` and can be recomputed before it, and returns `coef`.
+/// nullopt when `v` is not of that form: it reads an iter_arg, loads from
+/// memory, or depends on the IV non-linearly.
+static std::optional<int64_t>
+getIVCoefficient(Value v, scf::ForOp forOp,
+                 DenseMap<Value, std::optional<int64_t>> &cache) {
+  if (v == forOp.getInductionVar())
+    return 1;
+  if (forOp.isDefinedOutsideOfLoop(v))
+    return 0;
+  auto it = cache.find(v);
   if (it != cache.end())
     return it->second;
 
-  // Mark as being computed (assume false initially to handle recursion)
-  // This prevents infinite recursion in case of cycles (though SSA shouldn't
-  // have cycles)
-  cache[val] = false;
-
-  bool result = false;
-  if (val == loopIV) {
-    result = true;
-  } else if (auto *defOp = val.getDefiningOp()) {
-    // Check for operations that use the loop IV in their operands
-    for (Value operand : defOp->getOperands()) {
-      if (dependsOnLoopIVForHoist(operand, loopIV, cache)) {
-        result = true;
+  std::optional<int64_t> result;
+  Operation *def = v.getDefiningOp();
+  // A block argument other than the IV (an iter_arg) changes every iteration.
+  if (def && isPure(def)) {
+    SmallVector<int64_t> coefs;
+    bool linearOperands = true;
+    for (Value operand : def->getOperands()) {
+      std::optional<int64_t> c = getIVCoefficient(operand, forOp, cache);
+      if (!c) {
+        linearOperands = false;
         break;
+      }
+      coefs.push_back(*c);
+    }
+    if (linearOperands) {
+      bool invariant = llvm::all_of(coefs, [](int64_t c) { return c == 0; });
+      if (isa<arith::AddIOp>(def)) {
+        result = coefs[0] + coefs[1];
+      } else if (isa<arith::SubIOp>(def)) {
+        result = coefs[0] - coefs[1];
+      } else if (auto mul = dyn_cast<arith::MulIOp>(def)) {
+        if (std::optional<int64_t> c = getConstantIntValue(mul.getRhs()))
+          result = coefs[0] * *c;
+        else if (std::optional<int64_t> c = getConstantIntValue(mul.getLhs()))
+          result = coefs[1] * *c;
+        else if (invariant)
+          result = 0;
+      } else if (auto apply = dyn_cast<affine::AffineApplyOp>(def)) {
+        AffineMap map = apply.getAffineMap();
+        result = getExprCoefficient(map.getResult(0), coefs, map.getNumDims());
+      } else if (invariant) {
+        // Any other pure op over loop-invariant operands is loop-invariant.
+        result = 0;
       }
     }
   }
-
-  // Store the computed result in cache
-  cache[val] = result;
+  cache[v] = result;
   return result;
 }
 
-/// Wrapper for dependsOnLoopIVForHoist that manages the cache
-static bool dependsOnLoopIVForHoist(Value val, Value loopIV) {
-  DenseMap<Value, bool> cache;
-  return dependsOnLoopIVForHoist(val, loopIV, cache);
-}
-
-/// Clone an operation and its operands (recursively) that don't depend on the
-/// loop IV. Uses memoization via the mapping to avoid exponential recursion.
-static Value cloneOpAndOperands(Operation *op, Value loopIV, OpBuilder &builder,
-                                IRMapping &mapping) {
-  // Only handle operations with exactly one result
-  if (op->getNumResults() != 1)
-    return Value();
-
-  // If we've already cloned this operation, return the mapped result
-  // This is critical for avoiding exponential recursion
-  if (mapping.contains(op->getResult(0)))
-    return mapping.lookup(op->getResult(0));
-
-  // Check if this operation depends on the loop IV before trying to clone
-  if (dependsOnLoopIVForHoist(op->getResult(0), loopIV))
-    return Value();
-
-  // Clone operands recursively
-  SmallVector<Value> newOperands;
-  for (Value operand : op->getOperands()) {
-    if (auto *defOp = operand.getDefiningOp()) {
-      Value clonedOperand = cloneOpAndOperands(defOp, loopIV, builder, mapping);
-      if (!clonedOperand)
-        return Value(); // Failed to clone an operand
-      newOperands.push_back(clonedOperand);
-    } else {
-      // Operand is a block argument or constant (guaranteed not to be the
-      // loop IV due to the dependency check at line 91)
-      newOperands.push_back(operand);
-    }
-  }
-
-  // Clone the operation
-  Operation *clonedOp = builder.clone(*op);
-  clonedOp->setOperands(newOperands);
-
-  // Map the result to enable memoization
-  mapping.map(op->getResult(0), clonedOp->getResult(0));
-  return clonedOp->getResult(0);
+/// Recomputes `v` (of the form getIVCoefficient accepts) before `forOp` with
+/// the IV replaced by the loop's lower bound.
+static Value cloneAtLowerBound(Value v, scf::ForOp forOp, OpBuilder &builder,
+                               IRMapping &mapping) {
+  if (v == forOp.getInductionVar())
+    return forOp.getLowerBound();
+  if (forOp.isDefinedOutsideOfLoop(v))
+    return v;
+  if (Value mapped = mapping.lookupOrNull(v))
+    return mapped;
+  Operation *def = v.getDefiningOp();
+  for (Value operand : def->getOperands())
+    mapping.map(operand, cloneAtLowerBound(operand, forOp, builder, mapping));
+  builder.clone(*def, mapping);
+  return mapping.lookup(v);
 }
 
 /// Get the total number of elements in a vector type
@@ -156,11 +190,11 @@ struct HoistVectorTransferPointersPattern
 
   LogicalResult matchAndRewrite(scf::ForOp forOp,
                                 PatternRewriter &rewriter) const override {
-    Value loopIV = forOp.getInductionVar();
     Location loc = forOp.getLoc();
 
     // Collect all vector transfer operations with IV-dependent indices
     SmallVector<TransferOpInfo> transferOps;
+    DenseMap<Value, std::optional<int64_t>> ivCoefs;
 
     for (Operation &op : forOp.getBody()->without_terminator()) {
       Value base;
@@ -184,41 +218,62 @@ struct HoistVectorTransferPointersPattern
       if (!memrefType)
         continue;
 
-      // Check if any indices depend on loop IV and compute constant stride
-      bool hasIVDependentIndices = false;
-      int64_t constantStride = 0;
+      // The rewrite accesses the vector as one contiguous, unmasked, in-bounds
+      // run of the flattened buffer. Skip transfers that are not of that form.
+      auto xfer = cast<VectorTransferOpInterface>(op);
+      if (xfer.getMask() || !xfer.getPermutationMap().isMinorIdentity() ||
+          !llvm::all_of(xfer.getInBoundsValues(), [](bool b) { return b; }))
+        continue;
+      if (!memref::isStaticShapeAndContiguousRowMajor(memrefType))
+        continue;
+      // A vector<4x16> row block is contiguous only if each vector dim inside
+      // its outermost non-unit one spans its whole memref dim (so
+      // vector<1x1x8x8> of memref<4x8x8x8> is, vector<4x16> of memref<64x64>
+      // is not).
+      int64_t vecRank = vectorType.getRank();
+      int64_t memRank = memrefType.getRank();
+      if (vecRank > memRank)
+        continue;
+      int64_t outer = 0;
+      while (outer < vecRank - 1 && vectorType.getDimSize(outer) == 1)
+        ++outer;
+      bool contiguous = true;
+      for (int64_t i = outer + 1; i < vecRank; ++i)
+        if (vectorType.getDimSize(i) !=
+            memrefType.getDimSize(memRank - vecRank + i))
+          contiguous = false;
+      if (!contiguous)
+        continue;
+      // The flattened view is created before the loop.
+      if (!forOp.isDefinedOutsideOfLoop(base))
+        continue;
 
-      // Get the loop step to account for in stride calculation
-      auto stepCst = forOp.getConstantStep();
-      int64_t loopStep =
-          stepCst.has_value() ? stepCst.value().getSExtValue() : 1;
-
-      for (size_t dimIdx = 0; dimIdx < indices.size(); ++dimIdx) {
-        Value idx = indices[dimIdx];
-        if (dependsOnLoopIVForHoist(idx, loopIV)) {
-          hasIVDependentIndices = true;
-
-          // Calculate the stride for this dimension
-          int64_t dimStride = 1;
-          bool hasDynamicStride = false;
-          for (size_t j = dimIdx + 1;
-               j < static_cast<size_t>(memrefType.getRank()); ++j) {
-            int64_t dimSize = memrefType.getShape()[j];
-            if (dimSize == ShapedType::kDynamic) {
-              hasDynamicStride = true;
-              break;
-            }
-            dimStride *= dimSize;
-          }
-
-          // Multiply by loop step - the stride per iteration is:
-          // (elements per dimension) * (loop step)
-          if (!hasDynamicStride)
-            constantStride += dimStride * loopStep;
-          else
-            hasIVDependentIndices = false; // Can't hoist if stride is dynamic
+      // Each index must be coef * iv + (loop-invariant); the pointer then
+      // advances by sum(coef * dimStride) * step elements per iteration.
+      std::optional<int64_t> step =
+          forOp.getConstantStep()
+              ? std::optional<int64_t>(forOp.getConstantStep()->getSExtValue())
+              : std::nullopt;
+      bool analyzable = true;
+      int64_t elementsPerIV = 0;
+      int64_t dimStride = 1;
+      for (int64_t d = memRank - 1; d >= 0; --d) {
+        std::optional<int64_t> coef =
+            getIVCoefficient(indices[d], forOp, ivCoefs);
+        if (!coef) {
+          analyzable = false;
+          break;
         }
+        elementsPerIV += *coef * dimStride;
+        dimStride *= memrefType.getDimSize(d);
       }
+      if (!analyzable)
+        continue;
+      bool hasIVDependentIndices = elementsPerIV != 0;
+      if (hasIVDependentIndices && !step)
+        continue;
+      int64_t constantStride =
+          hasIVDependentIndices ? elementsPerIV * *step : 0;
 
       transferOps.push_back({&op, base, memrefType, vectorType, indices,
                              constantStride, hasIVDependentIndices});
@@ -291,42 +346,12 @@ struct HoistVectorTransferPointersPattern
       }
       auto linearMap = AffineMap::get(rank, 0, linearExpr);
 
-      // For IV-dependent indices, evaluate them at the loop's lower bound
-      // to preserve constant offsets (e.g., %iv+1 becomes lowerBound+1)
+      // Initial pointer: every index evaluated at the lower bound.
       SmallVector<Value> evaluatedIndices;
       IRMapping indexMapping;
-      for (Value idx : info.indices) {
-        if (dependsOnLoopIVForHoist(idx, loopIV)) {
-          // Clone the computation with the IV replaced by lower bound
-          if (auto affineOp = idx.getDefiningOp<affine::AffineApplyOp>()) {
-            SmallVector<Value> mappedOperands;
-            for (Value operand : affineOp.getMapOperands()) {
-              if (operand == loopIV)
-                mappedOperands.push_back(forOp.getLowerBound());
-              else
-                mappedOperands.push_back(operand);
-            }
-            Value evaluatedIdx = affine::AffineApplyOp::create(
-                rewriter, loc, affineOp.getAffineMap(), mappedOperands);
-            evaluatedIndices.push_back(evaluatedIdx);
-          } else {
-            // Direct IV usage - just use lower bound
-            evaluatedIndices.push_back(forOp.getLowerBound());
-          }
-        } else {
-          // Index doesn't depend on IV, clone it
-          if (auto *defOp = idx.getDefiningOp()) {
-            Value clonedIdx =
-                cloneOpAndOperands(defOp, loopIV, rewriter, indexMapping);
-            if (clonedIdx)
-              evaluatedIndices.push_back(clonedIdx);
-            else
-              evaluatedIndices.push_back(idx);
-          } else {
-            evaluatedIndices.push_back(idx);
-          }
-        }
-      }
+      for (Value idx : info.indices)
+        evaluatedIndices.push_back(
+            cloneAtLowerBound(idx, forOp, rewriter, indexMapping));
 
       Value basePointer = affine::AffineApplyOp::create(
           rewriter, loc, linearMap, evaluatedIndices);
