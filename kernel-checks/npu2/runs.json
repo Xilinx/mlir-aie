@@ -2017,6 +2017,53 @@
     "offered": 136,
     "checked": 121
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "40642575019",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40642575019",
+   "date": "2026-10-28T06:13:41+00:00",
+   "commit": {
+    "id": "93e38c1581074d0528110ec82d54e17929531135",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/93e38c1581074d0528110ec82d54e17929531135",
+    "message": "build(deps): bump the github-actions-minor-patch group across 1 directory with 5 updates (#3961)",
+    "timestamp": "2026-10-28T00:45:03Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "93e38c1581",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "804811e55156",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2507,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 879,
+    "failed": 0,
+    "timed": 422,
+    "timing_failed": 0,
+    "untimed": 457,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 136,
+    "checked": 121
+   }
   }
  ]
 }
