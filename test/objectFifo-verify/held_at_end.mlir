@@ -146,3 +146,35 @@ module {
     }
   }
 }
+
+// -----
+
+// Without synchronization the pool has no locks, so nothing stays taken.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A pool that starts full of constants and is never refilled has no locks
+// either.
+
+module {
+  aie.device(npu1_1col) {
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @c(%tile, {%tile}, 1 : i32) : !aie.objectfifo<memref<4xi32>> = [dense<[1, 2, 3, 4]> : memref<4xi32>]
+    %core = aie.core(%tile) {
+      %o = aie.objectfifo.acquire @c (Consume, 1) : memref<4xi32>
+      aie.end
+    }
+  }
+}

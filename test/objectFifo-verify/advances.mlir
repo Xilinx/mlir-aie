@@ -153,3 +153,51 @@ module {
     }
   }
 }
+
+// -----
+
+// Without synchronization the pool has no locks, so the DMA endpoint keeps
+// moving objects whatever the core holds.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @out(%tile, {%shim}, 2 : i32) {disable_synchronization = true} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %o = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// An acquire under a branch that is never taken never runs.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %false = arith.constant false
+        scf.if %false {
+          %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+        }
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}

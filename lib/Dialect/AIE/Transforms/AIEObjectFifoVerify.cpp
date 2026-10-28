@@ -134,6 +134,43 @@ static std::optional<int64_t> heldAfter(Block &block, StringRef name,
   return held;
 }
 
+/// Whether aie-objectfifo-allocate gives `pool` locks, as its `needsLocks`
+/// decides: not when synchronization is disabled, nor for a pool that starts
+/// full and is never refilled nor re-armed. Without locks nothing waits on a
+/// release, and nothing a core holds stays taken.
+static bool getsLocks(DeviceOp device, ObjectFifoPoolOp pool) {
+  if (pool.getDisableSynchronization())
+    return false;
+  std::optional<ArrayAttr> initValues = pool.getInitValues();
+  int64_t filled = initValues ? initValues->size() : 0;
+  if (filled != pool.getDepth() || filled <= 0)
+    return true;
+  for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
+    if (endpoint.getPoolOp() == pool && !endpoint.drains())
+      return true;
+  for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>())
+    if (endpoint.getPoolOp() == pool && !endpoint.drains())
+      return true;
+  std::optional<StringRef> fifo = pool.getFifoName();
+  if (!fifo)
+    return false;
+  return device
+      .walk([&](Operation *op) {
+        if (op->getName().getStringRef() != "aiex.dma_channel_reset_for")
+          return WalkResult::advance();
+        auto sym = op->getAttrOfType<FlatSymbolRefAttr>("objfifo");
+        if (!sym)
+          return WalkResult::advance();
+        StringRef name = sym.getValue();
+        if (auto endpoint = dyn_cast_or_null<RouteEndpoint>(
+                SymbolTable::lookupNearestSymbolFrom(device, sym.getAttr())))
+          if (std::optional<StringRef> fifoName = endpoint.getFifoName())
+            name = *fifoName;
+        return name == *fifo ? WalkResult::interrupt() : WalkResult::advance();
+      })
+      .wasInterrupted();
+}
+
 struct AIEObjectFifoVerifyPass
     : public xilinx::AIE::impl::AIEObjectFifoVerifyBase<
           AIEObjectFifoVerifyPass> {
@@ -447,7 +484,7 @@ struct AIEObjectFifoVerifyPass
 
       if (!acquired.contains(name) || uncounted.contains(name) ||
           dma.getSegments() || pool.getInitValues() ||
-          dma.drains() == endpoint.drains()) {
+          dma.drains() == endpoint.drains() || !getsLocks(device, pool)) {
         continue;
       }
       int64_t reachable = endpoint.drains() ? count + depth : count;
@@ -492,7 +529,12 @@ struct AIEObjectFifoVerifyPass
         continue;
       llvm::MapVector<StringRef, ObjectFifoAcquireOp> firstAcquire;
       core.walk([&](ObjectFifoAcquireOp acquire) {
-        firstAcquire.insert({acquire.getObjFifoName(), acquire});
+        auto endpoint =
+            SymbolTable::lookupNearestSymbolFrom<ObjectFifoCoreEndpointOp>(
+                device, acquire.getObjFifoNameAttr());
+        ObjectFifoPoolOp pool = endpoint ? endpoint.getPoolOp() : nullptr;
+        if (!pool || getsLocks(device, pool))
+          firstAcquire.insert({acquire.getObjFifoName(), acquire});
       });
       for (auto &[name, acquire] : firstAcquire) {
         std::optional<int64_t> held = heldAfter(body.front(), name, 0);
@@ -534,7 +576,8 @@ struct AIEObjectFifoVerifyPass
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
-      if (!pool || pool.getInitValues() || endpoint.getSegments())
+      if (!pool || pool.getInitValues() || endpoint.getSegments() ||
+          !getsLocks(device, pool))
         continue;
       Operation *keepsMoving = nullptr;
       for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
@@ -559,11 +602,8 @@ struct AIEObjectFifoVerifyPass
       if (succeeded(turns.read({endpoint}, reason)) || !turns.movesNone() ||
           !repeatsForever(turns.periodLoop()))
         continue;
-      ObjectFifoAcquireOp acquire;
-      turns.periodLoop()->walk([&](ObjectFifoAcquireOp op) {
-        if (!acquire && op.getObjFifoName() == endpoint.getSymName())
-          acquire = op;
-      });
+      auto acquire =
+          dyn_cast_or_null<ObjectFifoAcquireOp>(turns.periodAcquire());
       if (!acquire)
         continue;
       InFlightDiagnostic diag =

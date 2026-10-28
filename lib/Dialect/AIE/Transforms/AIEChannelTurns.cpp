@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -14,6 +15,7 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <map>
 #include <set>
@@ -29,6 +31,9 @@ namespace {
 constexpr size_t maxPeriodEvents = 4096;
 /// Periods simulated before giving up on a steady state.
 constexpr int maxPeriods = 256;
+/// From the AIE's 24-bit BD-loop saturation value up, an `scf.for` trip count
+/// is read as "forever", as aie-objectfifo-verify reads it.
+constexpr int64_t runsForever = (int64_t{1} << 24) - 2;
 } // namespace
 
 LogicalResult CoreTurns::read(ArrayRef<ObjectFifoCoreEndpointOp> ends,
@@ -104,10 +109,10 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
               .wasInterrupted();
         });
   };
-  SmallVector<Operation *> uses;
+  SmallVector<Operation *> uses, tails;
   core.walk([&](Operation *op) {
-    if (endOf(op) && !onceAfterLoops(op))
-      uses.push_back(op);
+    if (endOf(op))
+      (onceAfterLoops(op) ? tails : uses).push_back(op);
   });
   if (uses.empty()) {
     reason = "the core never acquires them";
@@ -158,10 +163,10 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
     for (Operation &op : block) {
       if (std::optional<unsigned> end = endOf(&op)) {
         if (auto acquire = dyn_cast<ObjectFifoAcquireOp>(op))
-          period.push_back({*end, acquire.acqNumber(), true});
+          period.push_back({*end, acquire.acqNumber(), true, &op});
         else
           period.push_back(
-              {*end, cast<ObjectFifoReleaseOp>(op).relNumber(), false});
+              {*end, cast<ObjectFifoReleaseOp>(op).relNumber(), false, &op});
         if (period.size() > maxPeriodEvents) {
           reason = "the core's period uses them too many times";
           return failure();
@@ -263,11 +268,70 @@ LogicalResult CoreTurns::read(CoreOp core, ArrayRef<StringAttr> names,
         reason = "the core's period moves none of their objects";
         return failure();
       }
-      return success();
+      if (tails.empty())
+        return success();
+      SmallVector<std::pair<ObjectFifoReleaseOp, unsigned>> releases;
+      for (Operation *op : llvm::concat<Operation *const>(uses, tails))
+        if (auto release = dyn_cast<ObjectFifoReleaseOp>(op))
+          if (std::optional<unsigned> end = endOf(op))
+            releases.push_back({release, *end});
+      return wholeRunKeepsTurns(core, releases, reason);
     }
   }
   reason = "the core never settles into a steady order";
   return failure();
+}
+
+LogicalResult CoreTurns::wholeRunKeepsTurns(
+    CoreOp core, ArrayRef<std::pair<ObjectFifoReleaseOp, unsigned>> releases,
+    std::string &reason) const {
+  // A tail release behind a loop that runs forever is never reached.
+  for (Operation *op = loop; op != core; op = op->getParentOp()) {
+    auto whileOp = dyn_cast<scf::WhileOp>(op);
+    auto forOp = dyn_cast<scf::ForOp>(op);
+    std::optional<APInt> trips =
+        forOp ? forOp.getStaticTripCount() : std::nullopt;
+    if ((whileOp && isForeverLoop(whileOp)) ||
+        (trips && trips->getSExtValue() >= runsForever))
+      return success();
+  }
+
+  // The channel keeps taking its turns from one run of the core to the next,
+  // so a finite core must move each pool's objects a whole number of turns'
+  // worth over its run; otherwise a later run starts out of step with the
+  // turns, and the channel can wait on a full pool while the core waits on
+  // another.
+  SmallVector<int64_t> moved(ends, 0);
+  for (auto [release, end] : releases) {
+    int64_t runs = release.relNumber();
+    for (Operation *parent = release->getParentOp(); parent != core;
+         parent = parent->getParentOp()) {
+      auto forOp = dyn_cast<scf::ForOp>(parent);
+      std::optional<APInt> trips =
+          forOp ? forOp.getStaticTripCount() : std::nullopt;
+      if (!trips || llvm::MulOverflow(runs, trips->getSExtValue(), runs)) {
+        reason = "the core's whole run does not move a static count of them";
+        return failure();
+      }
+    }
+    moved[end] += runs;
+  }
+  SmallVector<int64_t> counts(ends, 0);
+  for (unsigned end : order)
+    counts[end]++;
+  std::optional<int64_t> whole;
+  for (size_t i = 0; i < ends; i++) {
+    bool fits = counts[i] ? moved[i] % counts[i] == 0 &&
+                                (!whole || *whole == moved[i] / counts[i])
+                          : moved[i] == 0;
+    if (!fits) {
+      reason = "the core's whole run moves them out of step with the turns";
+      return failure();
+    }
+    if (counts[i])
+      whole = moved[i] / counts[i];
+  }
+  return success();
 }
 
 bool CoreTurns::keepsUp(ArrayRef<int64_t> depths) {
@@ -302,6 +366,13 @@ bool CoreTurns::keepsUp(ArrayRef<int64_t> depths) {
     }
   }
   return keepsUp(order, depths);
+}
+
+Operation *CoreTurns::periodAcquire() const {
+  for (const Event &event : period)
+    if (event.acquire)
+      return event.op;
+  return nullptr;
 }
 
 bool CoreTurns::keepsUp(ArrayRef<unsigned> order,

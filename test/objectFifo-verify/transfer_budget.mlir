@@ -327,3 +327,26 @@ module {
     }
   }
 }
+
+// -----
+
+// Without synchronization the pool has no locks, so the DMA endpoint never
+// waits on the core's releases.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) {disable_synchronization = true, iter_count = 4 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c3 = arith.constant 3 : index
+      scf.for %i = %c0 to %c3 step %c1 {
+        %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @in (Consume, 1)
+      }
+      aie.end
+    }
+  }
+}

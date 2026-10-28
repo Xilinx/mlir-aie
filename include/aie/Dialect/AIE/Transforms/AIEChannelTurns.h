@@ -49,6 +49,10 @@ public:
   /// another. `read` fails then, since there are no turns to take.
   bool movesNone() const { return idle; }
 
+  /// The first acquire the period runs, with its branches folded; null when
+  /// it runs none.
+  mlir::Operation *periodAcquire() const;
+
   /// Whether a channel moving objects in `turns()` order forever, through
   /// pools of `depths`, never has itself and the core both waiting. Settles
   /// `turns()` on the shortest such order cut from the period's.
@@ -57,11 +61,16 @@ public:
 private:
   bool keepsUp(llvm::ArrayRef<unsigned> order,
                llvm::ArrayRef<int64_t> depths) const;
+  mlir::LogicalResult wholeRunKeepsTurns(
+      CoreOp core,
+      llvm::ArrayRef<std::pair<ObjectFifoReleaseOp, unsigned>> releases,
+      std::string &reason) const;
 
   struct Event {
     unsigned end;
     int64_t count;
     bool acquire;
+    mlir::Operation *op;
   };
 
   llvm::SmallVector<Event> period;
