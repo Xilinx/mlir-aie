@@ -1290,6 +1290,7 @@ class CompilableDesign:
                     insts_path=inst_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
+                    fold_ddr_addr_offset=self._resolve_fold_ddr_addr_offset(),
                     options=[
                         *self.aiecc_flags,
                         *generated.entry_stream_options,

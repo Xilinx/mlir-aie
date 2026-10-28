@@ -288,6 +288,43 @@ def test_fold_ddr_addr_offset_reaches_translation(tmp_path, device, arg_idx):
         np.testing.assert_array_equal(folded_words, expected)
 
 
+@pytest.mark.skipif(not os.path.isdir(configure.peano_install_dir), reason="Peano")
+@pytest.mark.parametrize("device", ["npu1_1col", "npu2"])
+@pytest.mark.parametrize("arg_idx", [4, 5])
+@pytest.mark.parametrize("fold", [False, True])
+@pytest.mark.parametrize("override", [None, False, True])
+def test_insts_only_backend_patch_semantics(
+    tmp_path, monkeypatch, npu2_device, device, arg_idx, fold, override
+):
+    monkeypatch.setattr(
+        CompilableDesign, "_resolve_fold_ddr_addr_offset", staticmethod(lambda: fold)
+    )
+    source = (
+        _source(arg_idx=arg_idx, device=device)
+        .replace(", %param: i32, %n: index", "")
+        .replace(
+            "%c0 =",
+            "%param = arith.constant 16 : i32\n" "%n = arith.constant 1 : index\n%c0 =",
+        )
+    )
+    mlir = tmp_path / "input.mlir"
+    mlir.write_text(source)
+    flags = (
+        [] if override is None else [f"--fold-ddr-addr-offset={str(override).lower()}"]
+    )
+    _, insts = CompilableDesign(
+        mlir, insts_only=True, use_cache=False, aiecc_flags=flags
+    ).compile(inst_path=tmp_path / "insts.bin")
+    words = np.fromfile(insts, dtype="<u4")
+    assert words.size == 16
+    patch = words[4:]
+    assert patch[0] == 0x81 and patch[1] == 48
+    assert patch[8] == arg_idx and patch[9] == 0
+    effective_fold = fold if override is None else override
+    assert patch[10] == 16 + (0x80000000 if effective_fold and arg_idx >= 5 else 0)
+    assert patch[11] == 0
+
+
 def test_aiecc_lowers_dynamic_dma_tasks(tmp_path):
     source = (
         Path(__file__).parents[1] / "Targets/NPU/aie_npu_to_cpp_rolled_loop.mlir"
