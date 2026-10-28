@@ -10,10 +10,10 @@
 
 ```
 lld
-cmake 3.20.6
+cmake 3.30+
 ninja 1.8.2
 Xilinx Vitis 2023.2
-python 3.8.x and pip
+python 3.11+ and pip
 virtualenv
 pip3 install rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
@@ -24,15 +24,15 @@ Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https:/
 In order to successfully install Vitis on a fresh bare-bones Ubuntu install, some additional prerequisites are required, [documented here](https://support.xilinx.com/s/article/63794?language=en_US). For Ubuntu 20.04, the installation should succeed if you additionally install the following packages: `libncurses5 libtinfo5 libncurses5-dev libncursesw5-dev ncurses-compat-libs libstdc++6:i386 libgtk2.0-0:i386 dpkg-dev:i386 python3-pip` Further note that the above mentioned cmake prerequisite is _not_ satisfied by the package provided by Ubuntu; you will need to obtain a more current version.
 
 NOTE: Using the Vitis recommended `settings64.sh` script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
- 
+
 ```
 export PATH=$PATH:<Vitis_install_path>/Vitis/2023.2/aietools/bin:<Vitis_install_path>/Vitis/2023.2/bin
 ```
 
-The cmake and python packages prerequisites can be satisfied by sourcing the `utils/setup_python_packages.sh` script. See step 2 of the build instructions. 
+The cmake and python packages prerequisites can be satisfied by sourcing the `utils/setup_python_packages.sh` script. See step 2 of the build instructions.
 This script requires `virtualenv`.
 
-clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions. 
+clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions.
 
 ## Building on X86 for mlir-aie development
 
@@ -48,12 +48,12 @@ clang/llvm 14+ are recommended to be built with the provided scripts. See step 3
 2. Source `utils/setup_python_packages.sh` to setup the prerequisite python
     packages. This script creates and installs the python packages
     listed in `python/requirements.txt` and `python/requirements_dev.txt` in
-    a virtual python environment called 'sandbox', then it enters the sandbox:
+    a virtual python environment called `ironenv`, then it enters the environment:
     ```
     source utils/setup_python_packages.sh
     ```
 
-    If you need to exit the sandbox later, type `deactivate`.  If you
+    If you need to exit the environment later, type `deactivate`.  If you
     have a recent Linux distribution, you might not need this, as you
     are able to have all the required packages from the distribution.
 
@@ -101,9 +101,9 @@ clang/llvm 14+ are recommended to be built with the provided scripts. See step 3
     ./utils/build-mlir-aie.sh <llvm dir>/<build dir>
     ```
 
-    This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into. 
+    This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into.
 
-    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors. 
+    The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors.
 
 5. In order to run all the tools, it is necessary to add some paths into your environment. This can be
 done by sourcing the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie

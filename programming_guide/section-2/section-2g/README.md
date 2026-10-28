@@ -39,7 +39,7 @@ both lower into the same `aie.flow` / `aie.lock` / `aie.mem` /
   lifecycle (content-addressed caching, `iron.tensor` host I/O,
   `aiecc` lowering).
 * **AIE dialect Python** ([§Lowered-equivalent dialect](#lowered-equivalent-dialect-aie-dialect-python)
-  at the end).  Raw `@mem` / `@memtile_dma` / `@shim_dma` /
+  at the end).  Raw `@mem` / `@memtile_dma` / `@shim_mem` /
   `aie.flow` / `aie.lock` decorators from
   [`python/dialects/aie.py`](../../../python/dialects/aie.py).
   Useful for pure-dialect lit tests and for the rare design that
@@ -80,7 +80,7 @@ These classes live under `aie.iron`:
 | `TileDma(tile, channels=[DmaChannel(...)])` | `aie.mem` (compute), `aie.memtile_dma` (memtile), or `aie.shim_dma` (shim) — picked by tile type | [`python/iron/dataflow/tile_dma.py`](../../../python/iron/dataflow/tile_dma.py) |
 | `DmaChannel(direction, channel, bds=[Bd(...)], pad_value=0, repeat_count=0, out_of_order=False, loop=True)` | One `@dma(dir, ch)` chain inside the TileDma's region.  `channel` is an index or a `DmaEndpoint` such as `flow.endpoint(tile)` | same |
 | `Bd(buffer, tap=None, acquires=[...], releases=[...], next=None\|"self"\|int, packet=None, bd_id=None, iteration=None, out_of_order_id=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd`.  `tap` is a `TensorAccessPattern` over `buffer` (default: the whole buffer) | same |
-| `BdIteration(size, stride, current=0)` | The `iteration` state of one `aie.dma_bd`: the BD's base advances by `stride` elements per execution and wraps after `size` | same |
+| `BdIteration(size, stride, current=0)` | The `iteration` state of one `aie.dma_bd`: the BD's base advances by `stride` elements per execution and wraps after `size` | [`python/dialects/aie.py`](../../../python/dialects/aie.py) |
 | `Acquire(lock, value=1, greater_equal=True)` | `aie.use_lock(..., AcquireGreaterEqual\|Acquire)` at BD start | same |
 | `Release(lock, value=1)` | `aie.use_lock(..., Release)` at BD end | same |
 
@@ -367,7 +367,7 @@ The three DMA region decorators pick by tile type:
 ```python
 @mem(tile)          # compute tile DMA region
 @memtile_dma(tile)  # mem tile DMA region
-@shim_dma(tile)     # shim tile DMA region
+@shim_mem(tile)     # shim tile DMA region
 ```
 
 A channel inside a region uses the unified `dma` constructor:
