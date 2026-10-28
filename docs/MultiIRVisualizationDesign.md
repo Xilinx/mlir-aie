@@ -51,8 +51,10 @@ ObjectFIFO lineage.
 
 `lib/Visualize/AIEVisualize.cpp` defines `SemanticGraph`,
 `analyzeSemanticGraph`, `selectTopology`, and `writeSemanticGraphJson`.
-`writeSemanticGraphJson` emits `format: "aie-semantic-graph"` and `version: 1`.
-The root contains one device, one node array, and one edge array.
+At the proposal baseline, `writeSemanticGraphJson` emits
+`format: "aie-semantic-graph"` and `version: 1`. The root contains one device,
+one node array, and one edge array. The source-attribution work described below
+advances this schema to version 2.
 
 `SemanticGraph` uses presentation-oriented IDs such as tile coordinates,
 ports, buffer symbols, and `edge__<source>__<dest>`. These IDs work inside one
@@ -63,6 +65,77 @@ The `sourceLocations` helper walks nested MLIR locations and collects every
 `CallSiteLoc`. The emitted JSON flattens the location structure into a set of
 file, line, and column records. It therefore loses call-site order, fused-part
 grouping, names, and location metadata.
+
+### Source-attribution schema version 2
+
+The `coord/source-attribution-viewer` branch at
+`10c0d00a98d8507f490c5b6179858b573bb85394` advances
+`aie-semantic-graph` to version 2. Every rendered node and edge has a `sources`
+array. Each entry contains a file name and a sorted set of source lines:
+
+```json
+{
+  "id": "edge__tile_0_2__tile_0_3",
+  "sources": [
+    {"file": "design.py", "lines": [30, 32]},
+    {"file": "runtime.py", "lines": [7]}
+  ]
+}
+```
+
+The version 2 extractor walks every nested `FileLineColLoc`. Graph contraction
+unions source line sets from removed nodes and edges into the replacement edge.
+The viewer uses each graph node or edge ID as the matching SVG group ID. It uses
+`source-root` and per-file URL overrides to fetch source text.
+
+Each project stage should provide a `sourceContext`. Its file map should use the
+exact `sources[].file` string as the key. Its values should be project-relative
+paths, bundle references, or URLs. The resolver must not rewrite the file string
+inside a nested graph. Stage-local maps prevent equal relative file names from
+different compilation roots from colliding. Path validation should apply the
+same project-root and symlink rules as artifact validation.
+
+Each graph variant should also identify the matching SVG and the render options
+that produced both files. The version 2 ID contract applies only when semantic
+JSON and SVG use the same device, runtime sequence, topology, contraction, and
+route selection. A project must not pair independently generated files without
+verifying those values or a shared render digest.
+
+The project format must embed version 2 graphs without changing these fields.
+The project extractor must accept version 1 graphs as migration inputs. It must
+not synthesize empty `sources` arrays and relabel those graphs as version 2.
+The nested graph version states whether `sources` exists.
+
+Version 2 source line sets serve rendered selection and source-pane navigation.
+They do not provide stable identity or cross-stage provenance. Contraction can
+change graph IDs and can combine source sets. The source sets also omit columns,
+call-site roles, fused-location grouping, and location metadata. The project
+schema should therefore add structured locations to stage entities and
+provenance evidence. It should not replace or reinterpret the nested graph
+`sources` arrays.
+
+An entity-to-graph reference may connect the two contracts:
+
+```json
+{
+  "stage": "physical",
+  "entity": "device:npu/buffer:of_in_buff_0",
+  "graphNode": "buffer_of_in_buff_0",
+  "locations": [
+    {
+      "kind": "file",
+      "file": "design.py",
+      "line": 30,
+      "column": 8
+    }
+  ]
+}
+```
+
+The renderer should use the nested graph `sources` array for current source-pane
+selection. Cross-stage queries should use entity locations and explicit origin
+attributes. A later semantic graph version may add structured locations to
+graph nodes and edges. That change requires a separate graph schema revision.
 
 ### `aiecc` stages and artifacts
 
@@ -386,13 +459,30 @@ variants per runtime sequence:
     "kind": "mlir",
     "sha256": "..."
   },
+  "sourceContext": {
+    "root": "../src",
+    "files": {
+      "design.py": "design.py"
+    }
+  },
   "graphs": [
     {
       "device": "npu",
       "runtimeSequence": "main",
+      "rendering": {
+        "svg": {
+          "path": "input_physical.svg",
+          "sha256": "..."
+        },
+        "options": {
+          "contract": "port",
+          "topology": "routes"
+        },
+        "renderDigest": "sha256:..."
+      },
       "semanticGraph": {
         "format": "aie-semantic-graph",
-        "version": 1,
+        "version": 2,
         "device": "npu",
         "nodes": [],
         "edges": []
@@ -838,8 +928,10 @@ The current command remains valid:
 aie-visualize --emit-json input_physical.mlir
 ```
 
-Its JSON remains `aie-semantic-graph` version 1 during the first project
-release.
+Its JSON remains the current `aie-semantic-graph` version during the first
+project release. Integrate the source-attribution work first, so the current
+version is 2. Readers should continue to accept version 1 as an input during
+the migration period.
 
 Add an opt-in project command:
 
@@ -847,9 +939,9 @@ Add an opt-in project command:
 aie-visualize --emit-project-json --input input_physical.mlir
 ```
 
-This emits one project stage that embeds the existing graph unchanged. A
+This emits one project stage that embeds the version 2 graph unchanged. A
 consumer can therefore adopt the project wrapper without changing its graph
-renderer.
+renderer or source-pane logic.
 
 Later releases may add:
 
@@ -996,8 +1088,13 @@ after project JSON use shows a size problem.
 - Publish `aie-semantic-project` version `1.0.0`.
 - Define stage descriptors, nested graphs, entity references, provenance
   hyperedges, diagnostics, and version rules.
+- Define version 2 semantic graphs as the production nested graph contract.
+- Accept version 1 semantic graphs as migration inputs without inventing
+  version 2 source attribution.
+- Define structured entity locations separately from graph `sources` arrays.
 - Add fixtures for a linear project, branched keyed stages, a partial project,
-  and a provenance ambiguity.
+  a provenance ambiguity, a version 1 nested graph, and a version 2 nested
+  graph with contracted source line sets.
 - Add a validator that rejects dangling references and dependency cycles.
 
 This phase changes no compiler passes.
@@ -1006,7 +1103,7 @@ This phase changes no compiler passes.
 
 - Add repeated `--input` and `--emit-project-json`.
 - Preserve argument order.
-- Embed the current semantic graph without schema changes.
+- Embed the version 2 semantic graph without schema changes.
 - Derive inferred stage entities from symbols, coordinates, assigned resource
   IDs, and structured locations.
 - Emit provenance evidence and confidence.
@@ -1066,13 +1163,23 @@ This phase supplies exact stage discovery and order.
 
 An implementation branch should integrate in this order:
 
-1. Land the project schema and validator without compiler instrumentation.
-2. Land repeated-file extraction and single-stage compatibility tests.
-3. Land manifest and directory ingestion.
-4. Land ObjectFIFO origin attributes in a separate compiler change.
-5. Update project extraction to prefer explicit attributes.
-6. Land the `aiecc` artifact index in a separate driver change.
-7. Add watch mode after static project extraction stabilizes.
+1. Land or rebase onto `coord/source-attribution-viewer` so semantic graph
+  version 2 is the graph contract.
+2. Land the project schema and validator without compiler instrumentation.
+3. Land repeated-file extraction and single-stage compatibility tests.
+4. Land manifest and directory ingestion.
+5. Land ObjectFIFO origin attributes in a separate compiler change.
+6. Update project extraction to prefer explicit attributes.
+7. Land the `aiecc` artifact index in a separate driver change.
+8. Add watch mode after static project extraction stabilizes.
+
+The source-attribution branch and this proposal share commit
+`49e854a4ef938352bf132c0d5ff16d7c130c6ef9` as their base. Do not merge the
+proposal commit before reconciling its version 1 examples. Rebase this document
+onto the source-attribution branch, or cherry-pick the source-attribution
+commits before the project implementation. Resolve the graph version in favor
+of version 2. Preserve `sources` on every node and edge. Preserve the invariant
+that each graph ID equals its SVG group ID.
 
 Keep compiler instrumentation separate from UI work. This permits command-line
 and schema tests to review the provenance contract before a renderer depends on
