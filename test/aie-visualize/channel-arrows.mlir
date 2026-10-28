@@ -12,6 +12,7 @@
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=STRAIGHT
 // RUN: aie-visualize --emit-dot --arrows=channel %s | FileCheck %s --check-prefix=CHANNEL
+// RUN: aie-visualize --emit-dot --arrows=avoidance %s | FileCheck %s --check-prefix=AVOIDANCE
 // RUN: not aie-visualize --emit-dot --arrows=diagonal %s 2>&1 | FileCheck %s --check-prefix=BADSTYLE
 
 // Straight arrows leave the geometry to graphviz and pin nodes in inches.
@@ -24,6 +25,11 @@
 // CHANNEL: graph [layout=nop2
 // CHANNEL-NOT: pos="{{[-0-9.]+}},{{[-0-9.]+}}!"
 // CHANNEL: -> {{.*}}pos="
+
+// Avoidance tracks reserve enough room to keep uniform-width lines apart.
+// AVOIDANCE: graph [layout=nop2
+// AVOIDANCE-SAME: class="uniform-width-1.51"
+// AVOIDANCE: -> {{.*}}pos="
 
 // BADSTYLE: --arrows expects 'straight', 'channel', or 'avoidance'
 

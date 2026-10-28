@@ -14,8 +14,8 @@
 // CHECK: error: flow carries no vias, so its route cannot be drawn
 
 // TOPOLOGY: graph [layout=neato, overlap=true, splines=curved
-// TOPOLOGY: tile_0_2 {{.*}} pos="0.000000,6.000000!"
-// TOPOLOGY: tile_0_3 {{.*}} pos="0.000000,9.000000!"
+// TOPOLOGY: tile_0_2 {{.*}}height=0.900000{{.*}}pos="0.000000,2.150000!"
+// TOPOLOGY: tile_0_3 {{.*}}height=0.900000{{.*}}pos="0.000000,3.900000!"
 // Contracting ports keeps the DMA channels a flow leaves and arrives on.
 // TOPOLOGY-DAG: tile_0_2 -> p_0_2_1_0_m
 // TOPOLOGY-DAG: p_0_2_1_0_m -> p_0_3_1_0_s

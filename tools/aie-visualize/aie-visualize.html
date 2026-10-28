@@ -129,8 +129,10 @@ function initializeViewer(svg) {
       : overlaps(referenceClasses(element), referenceClasses(reference));
   };
   const matches = (element, reference) =>
-    (!highlightIncoming || matchesDirection(element, reference, "fate", incomingClasses)) &&
-    (!highlightOutgoing || matchesDirection(element, reference, "origin", outgoingClasses));
+    (highlightIncoming &&
+     matchesDirection(element, reference, "fate", incomingClasses)) ||
+    (highlightOutgoing &&
+     matchesDirection(element, reference, "origin", outgoingClasses));
   const renderHighlight = () => {
     const reference = selectedElement || hoveredElement;
     const flows = svg.querySelectorAll("g.flow");

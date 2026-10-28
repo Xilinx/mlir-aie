@@ -31,8 +31,10 @@
 // CHECK: const matchesDirection = (element, reference, relation, referenceClasses)
 // CHECK: element.classList.contains(`${relation}-${boundary}`)
 // CHECK: const matches = (element, reference)
-// CHECK: (!highlightIncoming || matchesDirection(element, reference, "fate", incomingClasses))
-// CHECK: (!highlightOutgoing || matchesDirection(element, reference, "origin", outgoingClasses))
+// CHECK: (highlightIncoming &&
+// CHECK: matchesDirection(element, reference, "fate", incomingClasses)) ||
+// CHECK: (highlightOutgoing &&
+// CHECK: matchesDirection(element, reference, "origin", outgoingClasses))
 // CHECK: addSetting("Incoming"
 // CHECK: addSetting("Outgoing"
 // CHECK: /^uniform-width-([\d.]+)$/

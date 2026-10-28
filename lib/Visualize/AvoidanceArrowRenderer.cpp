@@ -195,6 +195,10 @@ class AvoidanceArrowRenderer : public ArrowRenderer {
 public:
   bool suppliesLayout() const override { return true; }
 
+  std::optional<double> widestLine() const override {
+    return kTrackPitch * 72.0 * 0.42;
+  }
+
   std::optional<double> preferredTileGap(double textRoom) const override {
     return 1.6 * textRoom;
   }
@@ -214,12 +218,15 @@ public:
                                const LayoutGeometry &layout) override;
 
 private:
+  static constexpr double kTrackPitch = 0.1;
+
   void buildGrid(ArrayRef<ArrowRequest> requests,
                  ArrayRef<RoutingObstacle> obstacles,
                  const LayoutGeometry &layout);
   SmallVector<Side> sidesFor(const ArrowEnd &end, const ArrowEnd &other) const;
-  SmallVector<Gateway> gatewaysFor(const ArrowEnd &end,
-                                   const ArrowEnd &other) const;
+  SmallVector<Gateway> gatewaysFor(const ArrowEnd &end, const ArrowEnd &other,
+                                   unsigned requestID) const;
+  double endpointSpread(StringRef node, unsigned requestID, double span) const;
   RoutedPath routeOne(const ArrowRequest &request);
   void addUsage(const RoutedPath &path, int amount);
   double conflictScore(const RoutedPath &path) const;
@@ -243,10 +250,13 @@ private:
   double crossingPenalty = 0.0;
   double overlapPenalty = 0.0;
   double proximityPenalty = 0.0;
+  double trackPitch = 0.0;
   std::vector<double> xs;
   std::vector<double> ys;
   std::vector<InflatedObstacle> scene;
   std::map<std::string, unsigned> obstacleByNode;
+  std::map<std::pair<std::string, unsigned>, std::pair<unsigned, unsigned>>
+      endpointRanks;
   std::vector<Blockage> vertexBlockage;
   std::vector<Blockage> horizontalBlockage;
   std::vector<Blockage> verticalBlockage;
@@ -343,8 +353,8 @@ AvoidanceArrowRenderer::sidesFor(const ArrowEnd &end,
 }
 
 SmallVector<Gateway>
-AvoidanceArrowRenderer::gatewaysFor(const ArrowEnd &end,
-                                    const ArrowEnd &other) const {
+AvoidanceArrowRenderer::gatewaysFor(const ArrowEnd &end, const ArrowEnd &other,
+                                    unsigned requestID) const {
   auto found = obstacleByNode.find(end.node);
   if (found == obstacleByNode.end())
     return {};
@@ -366,25 +376,33 @@ AvoidanceArrowRenderer::gatewaysFor(const ArrowEnd &end,
     Gateway gateway;
     gateway.outward = directionOf(side);
     gateway.penalty = rank == 0 ? 0.0 : bendPenalty;
+    double horizontalSpread = endpointSpread(
+        end.node, requestID, obstacle.visible.right - obstacle.visible.left);
+    double verticalSpread = endpointSpread(
+        end.node, requestID, obstacle.visible.top - obstacle.visible.bottom);
     switch (side) {
     case Side::East:
       gateway.anchor = {obstacle.visible.right,
-                        (obstacle.visible.bottom + obstacle.visible.top) / 2};
+                        (obstacle.visible.bottom + obstacle.visible.top) / 2 +
+                            verticalSpread};
       gateway.point = {obstacle.blocked.right, gateway.anchor.second};
       break;
     case Side::West:
       gateway.anchor = {obstacle.visible.left,
-                        (obstacle.visible.bottom + obstacle.visible.top) / 2};
+                        (obstacle.visible.bottom + obstacle.visible.top) / 2 +
+                            verticalSpread};
       gateway.point = {obstacle.blocked.left, gateway.anchor.second};
       break;
     case Side::North:
       gateway.anchor = {(obstacle.visible.left + obstacle.visible.right) / 2,
                         obstacle.visible.top};
+      gateway.anchor.first += horizontalSpread;
       gateway.point = {gateway.anchor.first, obstacle.blocked.top};
       break;
     case Side::South:
       gateway.anchor = {(obstacle.visible.left + obstacle.visible.right) / 2,
                         obstacle.visible.bottom};
+      gateway.anchor.first += horizontalSpread;
       gateway.point = {gateway.anchor.first, obstacle.blocked.bottom};
       break;
     }
@@ -410,6 +428,17 @@ AvoidanceArrowRenderer::gatewaysFor(const ArrowEnd &end,
     gateways.push_back(gateway);
   }
   return gateways;
+}
+
+double AvoidanceArrowRenderer::endpointSpread(StringRef node,
+                                              unsigned requestID,
+                                              double span) const {
+  auto found = endpointRanks.find({node.str(), requestID});
+  if (found == endpointRanks.end() || found->second.second < 2)
+    return 0.0;
+  auto [rank, count] = found->second;
+  double pitch = std::min(trackPitch, span / count);
+  return (rank - (count - 1) / 2.0) * pitch;
 }
 
 bool AvoidanceArrowRenderer::exemptTile(int tile,
@@ -438,17 +467,28 @@ void AvoidanceArrowRenderer::buildGrid(ArrayRef<ArrowRequest> requests,
   clearance = layout.text(0.07) + maxWidth / (144.0 * layout.scale);
   bendPenalty = layout.text(1.0);
   crossingPenalty = layout.text(3.0);
-  overlapPenalty = 4.0;
+  overlapPenalty = 12.0;
   proximityPenalty = 0.3;
+  trackPitch = layout.text(kTrackPitch);
 
   scene.clear();
   obstacleByNode.clear();
+  endpointRanks.clear();
   xs.clear();
   ys.clear();
   std::set<std::string> endpointNodes;
+  std::map<std::string, SmallVector<unsigned>> endpointRequests;
   for (const ArrowRequest &request : requests) {
     endpointNodes.insert(request.from.node);
     endpointNodes.insert(request.to.node);
+    endpointRequests[request.from.node].push_back(request.id);
+    endpointRequests[request.to.node].push_back(request.id);
+  }
+  for (auto &[node, ids] : endpointRequests) {
+    llvm::sort(ids);
+    ids.erase(llvm::unique(ids), ids.end());
+    for (auto [rank, id] : llvm::enumerate(ids))
+      endpointRanks[{node, id}] = {rank, ids.size()};
   }
   for (const RoutingObstacle &obstacle : obstacles) {
     Rectangle blocked{
@@ -462,9 +502,21 @@ void AvoidanceArrowRenderer::buildGrid(ArrayRef<ArrowRequest> requests,
     xs.push_back(blocked.right);
     ys.push_back(blocked.bottom);
     ys.push_back(blocked.top);
+    xs.push_back(blocked.left - trackPitch);
+    xs.push_back(blocked.right + trackPitch);
+    ys.push_back(blocked.bottom - trackPitch);
+    ys.push_back(blocked.top + trackPitch);
     if (endpointNodes.count(obstacle.node)) {
-      xs.push_back((obstacle.bounds.left + obstacle.bounds.right) / 2);
-      ys.push_back((obstacle.bounds.bottom + obstacle.bounds.top) / 2);
+      double centerX = (obstacle.bounds.left + obstacle.bounds.right) / 2;
+      double centerY = (obstacle.bounds.bottom + obstacle.bounds.top) / 2;
+      for (unsigned id : endpointRequests[obstacle.node]) {
+        xs.push_back(centerX + endpointSpread(obstacle.node, id,
+                                              obstacle.bounds.right -
+                                                  obstacle.bounds.left));
+        ys.push_back(centerY + endpointSpread(obstacle.node, id,
+                                              obstacle.bounds.top -
+                                                  obstacle.bounds.bottom));
+      }
     }
     if (obstacle.kind == ObstacleKind::Tile) {
       for (double offset : {layout.text(0.12), layout.text(0.24)}) {
@@ -530,8 +582,10 @@ void AvoidanceArrowRenderer::buildGrid(ArrayRef<ArrowRequest> requests,
 }
 
 RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request) {
-  SmallVector<Gateway> sources = gatewaysFor(request.from, request.to);
-  SmallVector<Gateway> targets = gatewaysFor(request.to, request.from);
+  SmallVector<Gateway> sources =
+      gatewaysFor(request.from, request.to, request.id);
+  SmallVector<Gateway> targets =
+      gatewaysFor(request.to, request.from, request.id);
   RoutedPath result;
   result.id = request.id;
   if (sources.empty() || targets.empty())

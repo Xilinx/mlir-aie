@@ -271,6 +271,7 @@ struct SemanticGraph {
           continue;
 
         std::optional<std::string> sink;
+        SmallVector<std::string> sources;
         SmallVector<EdgeKey> secondLegs;
         bool balanced = true;
         for (const EdgeKey &first : outgoing) {
@@ -285,8 +286,17 @@ struct SemanticGraph {
             if (key.source == first.dest)
               leaving.push_back(key);
           }
-          if (incoming.size() != 1 || leaving.size() != 1 ||
-              incoming.front().source != source) {
+          if (incoming.empty() || leaving.size() != 1) {
+            balanced = false;
+            break;
+          }
+          SmallVector<std::string> branchSources;
+          llvm::transform(incoming, std::back_inserter(branchSources),
+                          [](const EdgeKey &key) { return key.source; });
+          if (sources.empty())
+            sources = branchSources;
+          if (sources != branchSources ||
+              !llvm::is_contained(sources, source)) {
             balanced = false;
             break;
           }
@@ -308,20 +318,44 @@ struct SemanticGraph {
         if (sinkDegree != outgoing.size())
           continue;
 
-        EdgeAttributes merged;
-        merged.count = 0;
-        for (auto [first, second] : llvm::zip_equal(outgoing, secondLegs)) {
-          EdgeAttributes path = result.at(first);
-          path.absorb(result.at(second));
-          path.count *= result.at(second).count;
-          merged.absorb(path);
-          merged.count += path.count;
+        for (StringRef branchSource : sources) {
+          SmallVector<std::string> destinations;
+          for (const auto &[key, attributes] : result)
+            if (key.source == branchSource)
+              destinations.push_back(key.dest);
+          SmallVector<std::string> branches;
+          llvm::transform(outgoing, std::back_inserter(branches),
+                          [](const EdgeKey &key) { return key.dest; });
+          llvm::sort(destinations);
+          llvm::sort(branches);
+          if (destinations != branches) {
+            balanced = false;
+            break;
+          }
         }
-        for (const EdgeKey &key : outgoing)
-          result.erase(key);
+        if (!balanced)
+          continue;
+
+        std::map<std::string, EdgeAttributes> merged;
+        for (StringRef branchSource : sources) {
+          EdgeAttributes &attributes = merged[branchSource.str()];
+          attributes.count = 0;
+          for (const EdgeKey &second : secondLegs) {
+            EdgeKey first{branchSource.str(), second.source};
+            EdgeAttributes path = result.at(first);
+            path.absorb(result.at(second));
+            path.count *= result.at(second).count;
+            attributes.absorb(path);
+            attributes.count += path.count;
+          }
+        }
+        for (StringRef branchSource : sources)
+          for (const EdgeKey &second : secondLegs)
+            result.erase({branchSource.str(), second.source});
         for (const EdgeKey &key : secondLegs)
           result.erase(key);
-        result[{source, sinkID}] = std::move(merged);
+        for (auto &[branchSource, attributes] : merged)
+          result[{branchSource, sinkID}] = std::move(attributes);
         changed = true;
         break;
       }
@@ -2038,13 +2072,15 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   layout.tileWidth = tileWidth;
   layout.tileGapX = gapX;
   layout.tileGapY = gapY;
-  layout.rowHeights.assign(model.rows(),
-                           layout.text(options.minimumTileHeight));
+  bool compactTiles = !contractKinds.empty();
+  double minimumTileHeight =
+      compactTiles ? 0.0 : layout.text(options.minimumTileHeight);
+  layout.rowHeights.assign(model.rows(), minimumTileHeight);
   double localSpacing = layout.text(options.localSpacing);
   for (const std::pair<int, int> &coordinate : designTiles) {
     auto count = localCounts.find(coordinate);
     double height =
-        std::max(layout.text(options.minimumTileHeight),
+        std::max(minimumTileHeight,
                  headroom(coordinate) + layout.text(0.45) +
                      (count == localCounts.end()
                           ? 0.0

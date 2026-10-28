@@ -52,8 +52,8 @@
 // VIAS-NOT: arrowhead=none
 
 // TOPOLOGY: graph [layout=neato, overlap=true, splines=curved
-// TOPOLOGY: tile_0_2 {{.*}} pos="0.000000,6.000000!"
-// TOPOLOGY: tile_0_3 {{.*}} pos="0.000000,9.000000!"
+// TOPOLOGY: tile_0_2 {{.*}}height=1.300000{{.*}}pos="0.000000,2.350000!"
+// TOPOLOGY: tile_0_3 {{.*}}height=1.300000{{.*}}pos="0.000000,4.500000!"
 // TOPOLOGY-NOT: tile_1_2
 // TOPOLOGY: buffer_0 {{.*}}label="source"{{.*}}class="buffer detail-buffers flow src-0 dst-0{{.*}}"
 // TOPOLOGY: buffer_1 {{.*}}label="dest"{{.*}}class="buffer detail-buffers flow src-0 dst-0{{.*}}"

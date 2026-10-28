@@ -52,6 +52,9 @@
 // SKIP-NOT: runtime_arg_
 // SKIP-NOT: runtime_task_
 
+// Contracted views size each tile from the local nodes that remain.
+// TOPOLOGY: tile_0_2 {{.*}}height=2.100000
+// TOPOLOGY: tile_1_0 {{.*}}height=0.900000
 // TOPOLOGY: p_0_0_1_0_m {{.*}}label="MM2S0"{{.*}}class="port flow src-4 dst-2{{.*}}"
 // TOPOLOGY: buffer_0 {{.*}}label="core_buffer"{{.*}}class="buffer detail-buffers flow src-0 dst-0{{.*}}"
 // TOPOLOGY: runtime_arg_0 {{.*}} label="%direct_input"{{.*}} class="runtime-argument flow src-7 dst-6{{.*}}"
