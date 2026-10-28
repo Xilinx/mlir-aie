@@ -191,6 +191,8 @@ static OpPassManager buildFoldPipeline() {
 
 struct AIEObjectFifoUnrollPass
     : xilinx::AIE::impl::AIEObjectFifoUnrollBase<AIEObjectFifoUnrollPass> {
+  using Base::Base;
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
     registry.insert<scf::SCFDialect>();
@@ -545,4 +547,10 @@ struct AIEObjectFifoUnrollPass
 std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
 xilinx::AIE::createAIEObjectFifoUnrollPass() {
   return std::make_unique<AIEObjectFifoUnrollPass>();
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+xilinx::AIE::createAIEObjectFifoUnrollPass(
+    const AIEObjectFifoUnrollOptions &options) {
+  return std::make_unique<AIEObjectFifoUnrollPass>(options);
 }

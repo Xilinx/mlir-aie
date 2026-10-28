@@ -130,6 +130,8 @@ struct AIEAssignTileCtrlIDsPass
 struct AIEGenerateColumnControlOverlayPass
     : xilinx::AIE::impl::AIEGenerateColumnControlOverlayBase<
           AIEGenerateColumnControlOverlayPass> {
+  using Base::Base;
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
     registry.insert<memref::MemRefDialect>();
@@ -931,6 +933,12 @@ std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignTileCtrlIDsPass() {
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
 AIE::createAIEGenerateColumnControlOverlayPass() {
   return std::make_unique<AIEGenerateColumnControlOverlayPass>();
+}
+
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
+AIE::createAIEGenerateColumnControlOverlayPass(
+    const AIEGenerateColumnControlOverlayOptions &options) {
+  return std::make_unique<AIEGenerateColumnControlOverlayPass>(options);
 }
 
 void populateAIEColumnControlOverlay(DeviceOp &device) {}
