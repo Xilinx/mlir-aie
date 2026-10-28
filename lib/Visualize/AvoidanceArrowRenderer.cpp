@@ -29,7 +29,7 @@ namespace xilinx::AIE {
 namespace {
 
 constexpr double kArcControl = 0.5523;
-constexpr double kCornerRadius = 0.05;
+constexpr double kCornerRadius = 0.10;
 constexpr double kEpsilon = 1e-9;
 constexpr uint64_t kNoParent = std::numeric_limits<uint64_t>::max();
 
@@ -218,7 +218,7 @@ public:
                                const LayoutGeometry &layout) override;
 
 private:
-  static constexpr double kTrackPitch = 0.16;
+  static constexpr double kTrackPitch = 0.45;
 
   void buildGrid(ArrayRef<ArrowRequest> requests,
                  ArrayRef<RoutingObstacle> obstacles,
@@ -437,8 +437,7 @@ double AvoidanceArrowRenderer::endpointSpread(StringRef node,
   if (found == endpointRanks.end() || found->second.second < 2)
     return 0.0;
   auto [rank, count] = found->second;
-  double pitch = std::min(trackPitch, span / count);
-  return (rank - (count - 1) / 2.0) * pitch;
+  return (rank - (count - 1) / 2.0) * trackPitch;
 }
 
 bool AvoidanceArrowRenderer::exemptTile(int tile,
@@ -593,6 +592,22 @@ RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request,
   if (sources.empty() || targets.empty())
     return result;
 
+  double minX = std::numeric_limits<double>::infinity();
+  double maxX = -std::numeric_limits<double>::infinity();
+  double minY = std::numeric_limits<double>::infinity();
+  double maxY = -std::numeric_limits<double>::infinity();
+  for (const Gateway &gateway : llvm::concat<Gateway>(sources, targets)) {
+    minX = std::min(minX, gateway.point.first);
+    maxX = std::max(maxX, gateway.point.first);
+    minY = std::min(minY, gateway.point.second);
+    maxY = std::max(maxY, gateway.point.second);
+  }
+  double corridorMargin = 2.0 * bendPenalty;
+  minX -= corridorMargin;
+  maxX += corridorMargin;
+  minY -= corridorMargin;
+  maxY += corridorMargin;
+
   if (++generation == 0) {
     llvm::fill(routeGeneration, 0);
     ++generation;
@@ -665,6 +680,9 @@ RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request,
       int nextY = int(y) + step.dy;
       if (nextX < 0 || nextY < 0 || nextX >= int(xs.size()) ||
           nextY >= int(ys.size()))
+        continue;
+      if (xs[nextX] < minX || xs[nextX] > maxX || ys[nextY] < minY ||
+          ys[nextY] > maxY)
         continue;
       unsigned nextVertex = vertex(nextX, nextY);
       if (!open(vertexBlockage[nextVertex], request))
@@ -790,10 +808,13 @@ double AvoidanceArrowRenderer::conflictScore(const RoutedPath &path) const {
     auto [fromX, fromY] = coordinates(from);
     auto [toX, toY] = coordinates(to);
     if (fromY == toY) {
-      score += horizontalUsage[horizontalEdge(std::min(fromX, toX), fromY)] - 1;
+      score += 1024.0 *
+               (horizontalUsage[horizontalEdge(std::min(fromX, toX), fromY)] -
+                1);
       score += vertexVerticalUsage[to];
     } else {
-      score += verticalUsage[verticalEdge(fromX, std::min(fromY, toY))] - 1;
+      score += 1024.0 *
+               (verticalUsage[verticalEdge(fromX, std::min(fromY, toY))] - 1);
       score += vertexHorizontalUsage[to];
     }
   }
@@ -861,7 +882,7 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
     addUsage(routed[requestID], 1);
   }
 
-  for (unsigned pass = 0; pass < 2; ++pass) {
+  for (unsigned pass = 0; pass < 1; ++pass) {
     llvm::stable_sort(order, [&](unsigned first, unsigned second) {
       return std::pair{-conflictScore(routed[first]), first} <
              std::pair{-conflictScore(routed[second]), second};
@@ -873,11 +894,7 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
       RoutedPath before = std::move(routed[requestID]);
       addUsage(before, -1);
       RoutedPath after = routeOne(requests[requestID]);
-      if (!after.valid) {
-        routed[requestID] = std::move(before);
-      } else {
-        routed[requestID] = std::move(after);
-      }
+      routed[requestID] = after.valid ? std::move(after) : std::move(before);
       addUsage(routed[requestID], 1);
     }
   }
@@ -886,8 +903,7 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
   for (const RoutedPath &path : routed) {
     if (!path.valid)
       continue;
-    SmallVector<Point> corners = cornersOf(path);
-    SmallVector<Point> bezier = toBezier(corners, kCornerRadius);
+    SmallVector<Point> bezier = toBezier(cornersOf(path), kCornerRadius);
     if (!bezier.empty())
       paths.push_back({path.id, std::move(bezier)});
   }
