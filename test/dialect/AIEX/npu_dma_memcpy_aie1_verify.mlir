@@ -128,3 +128,16 @@ module {
     }
   }
 }
+
+// -----
+
+// Coordinate-dependent AIE1 checks wait for logical tile placement.
+module {
+  aie.device(xcvc1902) {
+    %tile = aie.logical_tile<ShimNOCTile>(?, ?)
+    aie.shim_dma_allocation @dma (%tile, MM2S, 0)
+    aie.runtime_sequence(%arg0: memref<?xi32>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 2, 8][0, 0, 16, 1]) {id = 0 : i64, metadata = @dma} : memref<?xi32>
+    }
+  }
+}
