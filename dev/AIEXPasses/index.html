@@ -3296,6 +3296,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-cert-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-cert-verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-create-cores" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4102,6 +4113,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-cert-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-cert-verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-create-cores" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4663,6 +4685,14 @@
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>-warn-unsafe-bd-reuse : Warn when a BD id released by aiex.dma_free_task without any completion guarantee is later reused on the same tile. Off by default: the common fill/drain idiom frees tasks on one channel having awaited another, and that cross-channel reasoning runs through the compute core, which the runtime sequence cannot see, so this reports designs that are correct by an argument the compiler does not have. Useful when chasing a suspected BD aliasing hang.
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>-reclaim-bds          : When a tile runs out of BD ids, take them back from a started task that was never released instead of failing, inserting an aiex.npu.maskpoll that proves it finished if no existing poll does. Emits a remark for each inserted poll. Off by default: the poll hangs if the task&#39;s completion depends, through a core or another tile, on a push issued after it.
 </code></pre></div>
+<h3 id="-aie-cert-verify"><code>-aie-cert-verify</code><a class="headerlink" href="#-aie-cert-verify" title="Permanent link">&para;</a></h3>
+<p><em>Verify CERT ordering/placement legality invariants</em></p>
+<p>This pass checks the firmware-imposed legality invariants on cert
+operations. It performs no IR
+mutation; it only emits diagnostics for illegal cert programs.</p>
+<p>The uC (microcontroller / CERT group) of a cert op is the <code>group_id</code> of
+its nearest enclosing <code>cert.attach_to_group</code>, or 0 if the op is at device
+level (not inside any <code>cert.attach_to_group</code>).</p>
 <h3 id="-aie-create-cores"><code>-aie-create-cores</code><a class="headerlink" href="#-aie-create-cores" title="Permanent link">&para;</a></h3>
 <p><em>Create CoreOp, MemOp, and FlowOp of AIE dialect</em></p>
 <p>Lower toplevel 'call' operations with implicit data movement into
