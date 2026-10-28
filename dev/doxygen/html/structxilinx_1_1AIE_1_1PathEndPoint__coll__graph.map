@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::PathEndPoint" name="xilinx::AIE::PathEndPoint">
+<area shape="rect" id="Node000001" title=" " alt="" coords="318,70,497,97"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,219,84"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="234,58,320,71,315,72,234,63"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="93,108,131,136"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="146,115,317,92,318,98,147,120"/>
+</map>
