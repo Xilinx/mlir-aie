@@ -296,6 +296,7 @@ jobs:
             lib/Targets/AIETargetUcCert.cpp
             lib/Targets/AIETargetXAIEV2.cpp
             lib/Visualize/AIEVisualize.cpp
+            lib/Visualize/AvoidanceArrowRenderer.cpp
             lib/Visualize/ArrowRenderer.cpp
             lib/Visualize/ChannelArrowRenderer.cpp
             tools/aiecc/aiecc.cpp

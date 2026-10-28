@@ -67,6 +67,22 @@ struct ArrowRequest {
   double width = 1.0;
 };
 
+struct Rectangle {
+  double left = 0.0;
+  double right = 0.0;
+  double bottom = 0.0;
+  double top = 0.0;
+};
+
+enum class ObstacleKind { Tile, Node };
+
+struct RoutingObstacle {
+  std::string node;
+  std::optional<std::pair<int, int>> tile;
+  Rectangle bounds;
+  ObstacleKind kind = ObstacleKind::Node;
+};
+
 /// A drawn arrow: a cubic Bezier chain, as graphviz's edge `pos` spells it.
 /// `points` holds 3n+1 control points; straight runs repeat their endpoints.
 struct ArrowPath {
@@ -81,6 +97,8 @@ struct ArrowPath {
 class ArrowRenderer {
 public:
   virtual ~ArrowRenderer();
+
+  virtual bool suppliesLayout() const { return false; }
 
   /// Extra space this renderer needs between tiles, in inches, or nothing to
   /// keep the caller's spacing. `textRoom` is what one inch of a box that has
@@ -113,12 +131,15 @@ public:
 
   virtual llvm::SmallVector<ArrowPath>
   route(llvm::ArrayRef<ArrowRequest> requests,
+        llvm::ArrayRef<RoutingObstacle> obstacles,
         const LayoutGeometry &layout) = 0;
 };
 
 /// Draws nothing, leaving every arrow a straight line between the nodes it
 /// joins. What the viewer has always drawn.
 std::unique_ptr<ArrowRenderer> createStraightArrowRenderer();
+
+std::unique_ptr<ArrowRenderer> createAvoidanceArrowRenderer();
 
 /// Keeps arrows in the gaps between tiles. A tile's switchbox ports gather at
 /// the channel junction off its corner, from which all four channels are

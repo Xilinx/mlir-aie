@@ -19,6 +19,7 @@ namespace {
 class StraightArrowRenderer : public ArrowRenderer {
 public:
   llvm::SmallVector<ArrowPath> route(llvm::ArrayRef<ArrowRequest>,
+                                     llvm::ArrayRef<RoutingObstacle>,
                                      const LayoutGeometry &) override {
     return {};
   }

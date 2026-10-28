@@ -25,7 +25,7 @@
 // CHANNEL-NOT: pos="{{[-0-9.]+}},{{[-0-9.]+}}!"
 // CHANNEL: -> {{.*}}pos="
 
-// BADSTYLE: --arrows expects 'straight' or 'channel'
+// BADSTYLE: --arrows expects 'straight', 'channel', or 'avoidance'
 
 module {
   aie.device(npu1_1col) {

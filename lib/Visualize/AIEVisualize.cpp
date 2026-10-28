@@ -40,6 +40,7 @@ namespace {
 using xilinx::AIE::ArrowPath;
 using xilinx::AIE::ArrowRenderer;
 using xilinx::AIE::ArrowRequest;
+using xilinx::AIE::createAvoidanceArrowRenderer;
 using xilinx::AIE::createChannelArrowRenderer;
 using xilinx::AIE::createStraightArrowRenderer;
 using xilinx::AIE::LayoutGeometry;
@@ -1262,8 +1263,7 @@ static std::string circuitPortNodeID(const PortNode &port, PortRole role,
                                      unsigned routeGroup) {
   if (port.bundle == AIE::WireBundle::DMA)
     return portNodeID(port);
-  return portNodeID(port) +
-         (role == PortRole::Ingress ? "_in_r" : "_out_r") +
+  return portNodeID(port) + (role == PortRole::Ingress ? "_in_r" : "_out_r") +
          std::to_string(routeGroup);
 }
 
@@ -1289,16 +1289,15 @@ static std::vector<unsigned> circuitRouteGroups(ArrayRef<FlowRoute> routes) {
     for (const FlowRoute &second : routes.drop_front(first.id + 1)) {
       if (second.packetID)
         continue;
-        bool sameSource = first.points.front() == second.points.front() &&
-                circuitPointRole(first, 0) ==
-                  circuitPointRole(second, 0);
-        bool continues =
-          (first.points.back() == second.points.front() &&
-           circuitPointRole(first, first.points.size() - 1) ==
-             circuitPointRole(second, 0)) ||
-          (second.points.back() == first.points.front() &&
-           circuitPointRole(second, second.points.size() - 1) ==
-             circuitPointRole(first, 0));
+      bool sameSource =
+          first.points.front() == second.points.front() &&
+          circuitPointRole(first, 0) == circuitPointRole(second, 0);
+      bool continues = (first.points.back() == second.points.front() &&
+                        circuitPointRole(first, first.points.size() - 1) ==
+                            circuitPointRole(second, 0)) ||
+                       (second.points.back() == first.points.front() &&
+                        circuitPointRole(second, second.points.size() - 1) ==
+                            circuitPointRole(first, 0));
       if (sameSource || continues)
         unite(first.id, second.id);
     }
@@ -1394,9 +1393,9 @@ static SemanticGraph buildSemanticGraph(
   // them here rather than never collecting them.
   std::vector<unsigned> routeGroups = circuitRouteGroups(routes);
   for (const FlowRoute &route : routes) {
-    for (auto [index, pair] : llvm::enumerate(llvm::zip_equal(
-             ArrayRef(route.points).drop_back(),
-             ArrayRef(route.points).drop_front()))) {
+    for (auto [index, pair] : llvm::enumerate(
+             llvm::zip_equal(ArrayRef(route.points).drop_back(),
+                             ArrayRef(route.points).drop_front()))) {
       const auto &[from, to] = pair;
       for (const auto &[source, dest] :
            hopSegments(route, from, to, splitPacketPorts)) {
@@ -1644,10 +1643,18 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   std::vector<CallInfo> calls = collectCalls(device);
   DMAChannelBytes channelBytes = collectDMAChannelBytes(device);
   const Palette &palette = paletteFor(options.colors);
-  std::unique_ptr<ArrowRenderer> arrows =
-      options.arrows == AIE::ArrowStyle::Channel
-          ? createChannelArrowRenderer()
-          : createStraightArrowRenderer();
+  std::unique_ptr<ArrowRenderer> arrows;
+  switch (options.arrows) {
+  case AIE::ArrowStyle::Straight:
+    arrows = createStraightArrowRenderer();
+    break;
+  case AIE::ArrowStyle::Channel:
+    arrows = createChannelArrowRenderer();
+    break;
+  case AIE::ArrowStyle::Avoidance:
+    arrows = createAvoidanceArrowRenderer();
+    break;
+  }
 
   double widest = options.maxEdgeWidth;
   if (std::optional<double> room = arrows->widestLine())
@@ -1895,7 +1902,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   LayoutGeometry layout;
   // Only nop2 leaves supplied edge geometry alone; every laying-out engine
   // recomputes it.
-  layout.preLaidOut = options.arrows == AIE::ArrowStyle::Channel;
+  layout.preLaidOut = arrows->suppliesLayout();
   layout.scale = options.scale;
 
   // The headline sits inside the tile box, so the box reserves room for it
@@ -2022,13 +2029,13 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       break;
     }
     ends[id] = {id,
-          tile,
-          dma ? AIE::EndKind::DMA : AIE::EndKind::Switch,
-          dma ? dmaSlots[tile]++ : switchSlots[{tile, facing}]++,
-          portPosition(port, layout),
-          dma ? 0.41 : 0.045,
-          dma ? 0.09 : 0.045,
-          facing};
+                tile,
+                dma ? AIE::EndKind::DMA : AIE::EndKind::Switch,
+                dma ? dmaSlots[tile]++ : switchSlots[{tile, facing}]++,
+                portPosition(port, layout),
+                dma ? 0.41 : 0.045,
+                dma ? 0.09 : 0.045,
+                facing};
   }
 
   // The boxes fill the tile, leaving the arrows inside it a lane either side.
@@ -2129,8 +2136,177 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
 
   std::map<std::string, Point> placedNodes =
       arrows->nodePositions(arrowRequests, layout);
+  auto portPoint = [&](const PortNode &port) {
+    auto found = placedNodes.find(portNodeID(port));
+    return found == placedNodes.end() ? portPosition(port, layout)
+                                      : found->second;
+  };
+  auto semanticPortPoint = [&](StringRef id, const PortNode &port) {
+    auto found = placedNodes.find(id.str());
+    return found == placedNodes.end() ? portPosition(port, layout)
+                                      : found->second;
+  };
+
+  double legendX = layout.tileCenterX(0) - options.tileWidth / 2;
+  double legendY = (runtimeArguments.empty() ? layout.channelY(0)
+                                             : argumentPoint(0).second) -
+                   1.0;
+  std::vector<uint64_t> legendSamples;
+  if (weightScale.enabled) {
+    legendSamples = {weightScale.lightest, weightScale.heaviest};
+    if (weightScale.heaviest > weightScale.lightest)
+      legendSamples.insert(legendSamples.begin() + 1,
+                           static_cast<uint64_t>(std::sqrt(
+                               static_cast<double>(weightScale.lightest) *
+                               static_cast<double>(weightScale.heaviest))));
+    legendSamples.erase(llvm::unique(legendSamples), legendSamples.end());
+  }
+
+  struct ArbitrationAnnotation {
+    const ArbitrationRule *rule;
+    EdgeKey edge;
+    Point center;
+    std::string label;
+  };
+  SmallVector<ArbitrationAnnotation> arbitrationAnnotations;
+  if (!contractKinds.count(SemanticNodeKind::Port)) {
+    std::map<Segment, unsigned> segmentAnnotationCounts;
+    for (const ArbitrationRule &rule : arbitrationRules) {
+      auto edge = topologyEdges.end();
+      for (const auto &[ingress, egress] :
+           claimedSegments(portPackets, rule.segment, rule.mask, rule.value,
+                           options.splitPacketPorts)) {
+        edge = topologyEdges.find({portNodeID(ingress), portNodeID(egress)});
+        if (edge != topologyEdges.end())
+          break;
+      }
+      if (edge == topologyEdges.end())
+        continue;
+      bool usedByAnyRoute = false;
+      for (unsigned routeID : edge->second.routes) {
+        const FlowRoute &route = (*routes)[routeID];
+        if (!route.packetID)
+          continue;
+        bool usesRule = false;
+        for (unsigned packetID = 0; packetID <= 255; ++packetID) {
+          bool claimedByFlow =
+              route.packetMask
+                  ? (packetID & *route.packetMask) == *route.packetID
+                  : packetID == *route.packetID;
+          if (!claimedByFlow)
+            continue;
+          for (const ArbitrationRule &candidate : arbitrationRules) {
+            if (!(candidate.segment.source == rule.segment.source) ||
+                candidate.priority > rule.priority)
+              continue;
+            if ((packetID & candidate.mask) != candidate.value)
+              continue;
+            usesRule = candidate.priority == rule.priority;
+            break;
+          }
+          if (usesRule)
+            break;
+        }
+        if (usesRule)
+          usedByAnyRoute = true;
+      }
+      if (!usedByAnyRoute)
+        continue;
+
+      auto [sourceX, sourceY] = portPoint(rule.segment.source);
+      auto [destX, destY] = portPoint(rule.segment.dest);
+      unsigned offsetIndex = segmentAnnotationCounts[rule.segment]++;
+      Point center{(sourceX + destX) / 2, (sourceY + destY) / 2};
+      double deltaX = destX - sourceX;
+      double deltaY = destY - sourceY;
+      double length = std::hypot(deltaX, deltaY);
+      if (length > 0) {
+        double side = offsetIndex % 2 == 0 ? 1.0 : -1.0;
+        double offset = side * (0.8 + 0.28 * (offsetIndex / 2));
+        center.first -= deltaY / length * offset;
+        center.second += deltaX / length * offset;
+      }
+      std::string label = "r" + std::to_string(rule.priority) +
+                          " pkt=" + std::to_string(rule.value) + "/" +
+                          std::to_string(rule.mask) + " -> A" +
+                          std::to_string(rule.arbiter) + ".M" +
+                          std::to_string(rule.msel);
+      if (rule.keepsPacketHeader)
+        label += " header";
+      if (rule.priorityRoute)
+        label += " priority";
+      if (rule.controlOverlay)
+        label += " ctrl-overlay";
+      arbitrationAnnotations.push_back({&rule, edge->first, center, label});
+    }
+  }
+
+  SmallVector<AIE::RoutingObstacle> obstacles;
+  for (auto [col, row] : designTiles) {
+    double centerX = layout.tileCenterX(col);
+    double centerY = layout.tileCenterY(col, row);
+    double halfWidth = layout.tileWidth / 2;
+    double halfHeight = layout.tileHeight(col, row) / 2;
+    obstacles.push_back({tileNodeID(col, row),
+                         std::pair{col, row},
+                         {centerX - halfWidth, centerX + halfWidth,
+                          centerY - halfHeight, centerY + halfHeight},
+                         AIE::ObstacleKind::Tile});
+  }
+  for (const auto &[id, end] : ends) {
+    if (!topologyNodes.count(id) ||
+        semanticGraph.nodes.at(id).kind == SemanticNodeKind::Tile)
+      continue;
+    auto placed = placedNodes.find(id);
+    Point center = placed == placedNodes.end() ? end.pinned : placed->second;
+    double halfWidth = end.halfWidth;
+    double halfHeight = end.halfHeight;
+    SemanticNodeKind kind = semanticGraph.nodes.at(id).kind;
+    if (kind == SemanticNodeKind::DMA) {
+      halfWidth = layout.text(0.41);
+      halfHeight = layout.text(0.09);
+    } else if (kind == SemanticNodeKind::Buffer) {
+      halfHeight = layout.text(0.17);
+    } else if (kind == SemanticNodeKind::Call) {
+      halfHeight = layout.text(0.15);
+    } else if (kind == SemanticNodeKind::RuntimeArgument) {
+      halfHeight = layout.text(0.26);
+    }
+    obstacles.push_back(
+        {id,
+         end.kind == AIE::EndKind::External
+             ? std::nullopt
+             : std::optional<std::pair<int, int>>(end.tile),
+         {center.first - halfWidth, center.first + halfWidth,
+          center.second - halfHeight, center.second + halfHeight},
+         AIE::ObstacleKind::Node});
+  }
+  for (auto [index, annotation] : llvm::enumerate(arbitrationAnnotations)) {
+    double halfWidth = layout.text(
+        0.04 + 0.025 * static_cast<double>(annotation.label.size()));
+    double halfHeight = layout.text(0.08);
+    obstacles.push_back({"arbitration_" + std::to_string(index),
+                         std::pair{annotation.rule->segment.source.col,
+                                   annotation.rule->segment.source.row},
+                         {annotation.center.first - halfWidth,
+                          annotation.center.first + halfWidth,
+                          annotation.center.second - halfHeight,
+                          annotation.center.second + halfHeight},
+                         AIE::ObstacleKind::Node});
+  }
+  if (!legendSamples.empty()) {
+    double legendBottom = legendY -
+                          0.34 * static_cast<double>(legendSamples.size() - 1) -
+                          layout.text(0.12);
+    obstacles.push_back(
+        {"legend",
+         std::nullopt,
+         {legendX - layout.text(0.1), legendX + 1.55 + layout.text(0.45),
+          legendBottom, legendY + 0.45 + layout.text(0.12)},
+         AIE::ObstacleKind::Node});
+  }
   std::map<unsigned, ArrowPath> arrowPaths;
-  for (ArrowPath &path : arrows->route(arrowRequests, layout))
+  for (ArrowPath &path : arrows->route(arrowRequests, obstacles, layout))
     arrowPaths[path.id] = std::move(path);
   // Graphviz draws no arrowhead on a supplied spline unless it is told where
   // the tip goes. Only a hop that arrives somewhere is told: a head on every
@@ -2170,17 +2346,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     }
     output << '"';
   };
-  auto portPoint = [&](const PortNode &port) {
-    auto found = placedNodes.find(portNodeID(port));
-    return found == placedNodes.end() ? portPosition(port, layout)
-                                      : found->second;
-  };
-  auto semanticPortPoint = [&](StringRef id, const PortNode &port) {
-    auto found = placedNodes.find(id.str());
-    return found == placedNodes.end() ? portPosition(port, layout)
-                                      : found->second;
-  };
-
   output << "digraph aie_routes {\n"
          << (layout.preLaidOut ? "  graph [layout=nop2, overlap=true"
                                : "  graph [layout=neato, overlap=true")
@@ -2194,25 +2359,12 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
          << "  node [fontname=\"Helvetica\"];\n"
          << "  edge [fontname=\"Helvetica\", fontsize=9, arrowsize=0.65];\n";
   if (weightScale.enabled) {
-    // Anchored below the shim row, where no tile or runtime argument sits.
-    double legendX = layout.tileCenterX(0) - options.tileWidth / 2;
-    // Below everything else, including the runtime arguments.
-    double legendY = (runtimeArguments.empty() ? layout.channelY(0)
-                                               : argumentPoint(0).second) -
-                     1.0;
-    std::vector<uint64_t> samples{weightScale.lightest, weightScale.heaviest};
-    if (weightScale.heaviest > weightScale.lightest)
-      samples.insert(samples.begin() + 1,
-                     static_cast<uint64_t>(
-                         std::sqrt(static_cast<double>(weightScale.lightest) *
-                                   static_cast<double>(weightScale.heaviest))));
-    samples.erase(llvm::unique(samples), samples.end());
     output << "  legend_title [shape=plaintext, pos=\""
            << layout.pos(legendX + 0.75, legendY + 0.45)
            << "\", label=\"bytes moved per iteration\", fontsize=10, "
               "fontcolor=\""
            << palette.legendText << "\", class=\"legend\"];\n";
-    for (auto [index, bytes] : llvm::enumerate(samples)) {
+    for (auto [index, bytes] : llvm::enumerate(legendSamples)) {
       double y = legendY - static_cast<double>(index) * 0.34;
       output << "  legend_" << index << "_from [shape=point, width=0.01, "
              << R"(color="none", pos=")" << layout.pos(legendX, y)
@@ -2552,8 +2704,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     Boundary boundary = boundaryOfEdge(*key);
     output << "  " << key->source << " -> " << key->dest << " [color=\"";
     writeColors(boundary);
-        output << "\", class=\""
-          << flowClasses(kind, boundary, membershipOfEdge(*key)) << '"';
+    output << "\", class=\""
+           << flowClasses(kind, boundary, membershipOfEdge(*key)) << '"';
     writeWeight(boundary);
     auto arrow = edgeArrows.find(*key);
     if (arrow != edgeArrows.end())

@@ -14,11 +14,16 @@
 
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot --arrows=channel --contract=port,dma,buffer %s | FileCheck %s
+// RUN: aie-visualize --emit-dot --arrows=avoidance --contract=port,dma,buffer %s | FileCheck %s --check-prefix=AVOID
 
 // Two column channels and one row channel, so the arrow turns four times: it
 // repeats one x, then one y, then another x.
 // CHECK: buffer_0 -> buffer_1
 // CHECK-SAME: pos="{{[^"]*}}[[A:[-0-9.]+]],{{[-0-9.]+}} [[A]],{{[^"]*}},[[B:[-0-9.]+]] {{[-0-9.]+}},[[B]]{{[^"]*}}[[C:[-0-9.]+]],{{[-0-9.]+}} [[C]],
+
+// AVOID: graph [layout=nop2
+// AVOID: buffer_0 -> buffer_1
+// AVOID-SAME: pos="{{[^"]+}}"
 
 module {
   aie.device(npu1) {

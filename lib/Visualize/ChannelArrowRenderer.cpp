@@ -200,6 +200,8 @@ Point onEdge(const ArrowEnd &end, Point center, Point toward) {
 
 class ChannelArrowRenderer : public ArrowRenderer {
 public:
+  bool suppliesLayout() const override { return true; }
+
   std::optional<double> preferredTileGap(double textRoom) const override {
     // The channel holds the DMA boxes, the switchbox and a corridor either
     // side of it. Only the boxes have to keep their drawn size, so the
@@ -236,6 +238,7 @@ public:
   }
 
   SmallVector<ArrowPath> route(ArrayRef<ArrowRequest> requests,
+                               ArrayRef<RoutingObstacle> obstacles,
                                const LayoutGeometry &layout) override;
 
 private:
@@ -501,6 +504,7 @@ Corridor ChannelArrowRenderer::corridorOf(const CorridorKey &key,
 
 SmallVector<ArrowPath>
 ChannelArrowRenderer::route(ArrayRef<ArrowRequest> requests,
+                            ArrayRef<RoutingObstacle> obstacles,
                             const LayoutGeometry &layout) {
   measure(requests);
 

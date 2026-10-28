@@ -102,8 +102,8 @@ static cl::opt<double>
                  cl::init(7.0));
 static cl::opt<std::string> arrowStyle(
     "arrows",
-    cl::desc("How arrows run between tiles: straight (default) or channel, "
-             "which keeps them in the gaps and off the tiles"),
+    cl::desc("How arrows run between nodes: straight (default), channel, or "
+             "avoidance"),
     cl::value_desc("style"), cl::init("straight"));
 static cl::opt<std::string>
     colorScheme("colors",
@@ -183,8 +183,10 @@ int main(int argc, char *argv[]) {
   AIE::VisualizeOptions options;
   if (arrowStyle == "channel") {
     options.arrows = AIE::ArrowStyle::Channel;
+  } else if (arrowStyle == "avoidance") {
+    options.arrows = AIE::ArrowStyle::Avoidance;
   } else if (arrowStyle != "straight") {
-    errs() << "--arrows expects 'straight' or 'channel'\n";
+    errs() << "--arrows expects 'straight', 'channel', or 'avoidance'\n";
     return 3;
   }
   if (colorScheme == "mako") {

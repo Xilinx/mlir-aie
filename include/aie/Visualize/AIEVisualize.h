@@ -26,6 +26,8 @@ enum class ArrowStyle {
   Straight,
   /// Along the gaps between tiles, never over a tile's contents.
   Channel,
+  /// Searches clear space around nodes and penalizes bends and crossings.
+  Avoidance,
 };
 
 /// Which colors to draw in.
