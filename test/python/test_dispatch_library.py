@@ -288,6 +288,7 @@ def test_fold_ddr_addr_offset_reaches_translation(tmp_path, device, arg_idx):
         np.testing.assert_array_equal(folded_words, expected)
 
 
+@pytest.mark.skipif(not os.path.isdir(configure.peano_install_dir), reason="Peano")
 @pytest.mark.parametrize("device", ["npu1_1col", "npu2"])
 @pytest.mark.parametrize("arg_idx", [4, 5])
 @pytest.mark.parametrize("fold", [False, True])

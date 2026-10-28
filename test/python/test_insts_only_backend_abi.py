@@ -208,6 +208,7 @@ def test_insts_only_caller_fold_option_has_precedence(
         )
         Path(output).write_bytes(b"instructions")
 
+    monkeypatch.setattr(config.config, "peano_install_dir", str(tmp_path))
     monkeypatch.setattr(compile_utils, "_run_aiecc", aiecc)
     flag = f"--fold-ddr-addr-offset={str(override).lower()}"
     design = design_factory(fold, insts_only=True, aiecc_flags=[flag])
