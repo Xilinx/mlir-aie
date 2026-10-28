@@ -55,6 +55,9 @@ struct VisualizeOptions {
   /// Node kinds to contract out of the graph: tile, port, dma, buffer,
   /// runtime-argument, call. Contracting nothing draws every hop.
   std::vector<std::string> contractedNodeKinds;
+  /// Contract a set of parallel two-edge paths when they share one source and
+  /// one destination and account for the full fan-out and fan-in degrees.
+  bool contractBalancedFanout = false;
 
   /// Draw the control packet overlay that aie-generate-column-control-overlay
   /// adds. These rules are marked aie.is_ctrl_pkt_overlay and carry task

@@ -63,6 +63,9 @@ static cl::list<std::string> contractedNodeKinds(
     cl::desc("Contract semantic node kinds: tile, port, dma, buffer, "
              "runtime-argument, call"),
     cl::value_desc("kind"), cl::CommaSeparated, cl::ZeroOrMore);
+static cl::opt<bool> contractBalancedFanout(
+    "contract-balanced-fanout",
+    cl::desc("Contract balanced fan-out and fan-in regions into one edge"));
 static cl::opt<std::string>
     deviceName("device", cl::desc("Select an aie.device by symbol name"),
                cl::value_desc("symbol"));
@@ -201,6 +204,7 @@ int main(int argc, char *argv[]) {
   options.onlyFlows.assign(onlyFlows.begin(), onlyFlows.end());
   options.contractedNodeKinds.assign(contractedNodeKinds.begin(),
                                      contractedNodeKinds.end());
+  options.contractBalancedFanout = contractBalancedFanout;
   options.splitPacketPorts = splitPacketPorts;
   options.controlOverlay = controlOverlay;
   options.scale = drawingScale;

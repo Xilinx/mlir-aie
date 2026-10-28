@@ -8,39 +8,72 @@
 // Contraction combines equivalent buffer paths and records their multiplicity.
 
 // REQUIRES: aie-visualize
+// RUN: aie-visualize --emit-dot %s | FileCheck %s --check-prefix=DEFAULT
 // RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s
+// RUN: aie-visualize --emit-dot --contract-balanced-fanout %s | FileCheck %s --check-prefix=BALANCED
 
-// CHECK-NOT: buffer_
+// CHECK-NOT: buffer_0 [
+// CHECK-NOT: buffer_1 [
 // CHECK: call_0 {{.*}}label="consume"
-// CHECK-NOT: buffer_
+// CHECK-NOT: buffer_0 [
+// CHECK-NOT: buffer_1 [
 // The two buffers contract away; their multiplicity is carried by the DMA
 // channel both of them reach, which is where they genuinely meet.
-// CHECK-DAG: tile_0_2 -> p_0_3_1_0_s
+// CHECK-DAG: tile_0_2 -> p_0_2_0_0_in_r0
+// CHECK-DAG: p_0_2_0_0_in_r0 -> p_0_3_1_0_s
 // CHECK-DAG: p_0_3_1_0_s -> call_0 {{.*}}label={{.*}}&#215;2
-// CHECK-NOT: buffer_
+// CHECK-NOT: buffer_0 [
+// CHECK-NOT: buffer_1 [
+
+// DEFAULT-DAG: p_0_3_1_0_s -> buffer_0
+// DEFAULT-DAG: p_0_3_1_0_s -> buffer_1
+// DEFAULT-DAG: buffer_0 -> call_0
+// DEFAULT-DAG: buffer_1 -> call_0
+
+// BALANCED-NOT: buffer_0 [
+// BALANCED-NOT: buffer_1 [
+// BALANCED-DAG: buffer_2 -> call_1
+// BALANCED-DAG: buffer_3 -> call_2
+// BALANCED-DAG: p_0_3_1_0_s -> call_0 {{.*}}label={{.*}}&#215;2
+// BALANCED-DAG: p_0_3_1_1_s -> buffer_2
+// BALANCED-DAG: p_0_3_1_1_s -> buffer_3
 
 module {
   aie.device(npu1_1col) {
     func.func private @consume(memref<16xi32>, memref<16xi32>)
+    func.func private @other(memref<16xi32>)
+    func.func private @third(memref<16xi32>)
 
     %source = aie.tile(0, 2)
     %sink = aie.tile(0, 3)
     %buffer0 = aie.buffer(%sink) : memref<16xi32>
     %buffer1 = aie.buffer(%sink) : memref<16xi32>
+    %buffer2 = aie.buffer(%sink) : memref<16xi32>
+    %buffer3 = aie.buffer(%sink) : memref<16xi32>
 
     aie.core(%sink) {
       func.call @consume(%buffer0, %buffer1) : (memref<16xi32>, memref<16xi32>) -> ()
+      func.call @other(%buffer2) : (memref<16xi32>) -> ()
+      func.call @third(%buffer3) : (memref<16xi32>) -> ()
       aie.end
     }
 
     aie.mem(%sink) {
-      %0 = aie.dma_start(S2MM, 0, ^bd0, ^end)
+      %0 = aie.dma_start(S2MM, 0, ^bd0, ^ch1)
     ^bd0:
       aie.dma_bd(%buffer0 : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd1
     ^bd1:
       aie.dma_bd(%buffer1 : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^bd0
+    ^ch1:
+      %1 = aie.dma_start(S2MM, 1, ^other, ^end)
+    ^other:
+      aie.dma_bd(%buffer2 : memref<16xi32> offset = 0 len = 16)
+      aie.next_bd ^third
+    ^third:
+      aie.dma_bd(%buffer3 : memref<16xi32> offset = 0 len = 16)
+      aie.next_bd ^other
     ^end:
       aie.end
     }
@@ -48,5 +81,8 @@ module {
     aie.flow(%source, Core : 0, %sink, DMA : 0)
       via (%source : Core : 0 -> North : 0,
            %sink : South : 0 -> DMA : 0)
+    aie.flow(%source, Core : 0, %sink, DMA : 1)
+      via (%source : Core : 0 -> North : 1,
+           %sink : South : 1 -> DMA : 1)
   }
 }

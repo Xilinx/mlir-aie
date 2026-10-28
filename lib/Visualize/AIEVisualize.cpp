@@ -216,7 +216,8 @@ struct SemanticGraph {
   /// where things branch, join, or start has a degree above one and stays,
   /// which is what keeps the shape of the design visible however much detail
   /// is asked away.
-  SemanticEdges contract(const std::set<SemanticNodeKind> &hiddenKinds) const {
+  SemanticEdges contract(const std::set<SemanticNodeKind> &hiddenKinds,
+                         bool contractBalancedFanout) const {
     SemanticEdges result = edges;
     bool changed = true;
     while (changed) {
@@ -255,6 +256,72 @@ struct SemanticGraph {
           entry->second.absorb(merged);
           entry->second.count += merged.count;
         }
+        changed = true;
+        break;
+      }
+      if (changed || !contractBalancedFanout)
+        continue;
+
+      for (const auto &[source, sourceNode] : nodes) {
+        SmallVector<EdgeKey> outgoing;
+        for (const auto &[key, attributes] : result)
+          if (key.source == source)
+            outgoing.push_back(key);
+        if (outgoing.size() < 2)
+          continue;
+
+        std::optional<std::string> sink;
+        SmallVector<EdgeKey> secondLegs;
+        bool balanced = true;
+        for (const EdgeKey &first : outgoing) {
+          if (first.dest == source) {
+            balanced = false;
+            break;
+          }
+          SmallVector<EdgeKey> incoming, leaving;
+          for (const auto &[key, attributes] : result) {
+            if (key.dest == first.dest)
+              incoming.push_back(key);
+            if (key.source == first.dest)
+              leaving.push_back(key);
+          }
+          if (incoming.size() != 1 || leaving.size() != 1 ||
+              incoming.front().source != source) {
+            balanced = false;
+            break;
+          }
+          if (!sink)
+            sink = leaving.front().dest;
+          if (*sink != leaving.front().dest || *sink == source) {
+            balanced = false;
+            break;
+          }
+          secondLegs.push_back(leaving.front());
+        }
+        if (!balanced || !sink)
+          continue;
+
+        const std::string sinkID = *sink;
+        unsigned sinkDegree = llvm::count_if(result, [&](const auto &entry) {
+          return entry.first.dest == sinkID;
+        });
+        if (sinkDegree != outgoing.size())
+          continue;
+
+        EdgeAttributes merged;
+        merged.count = 0;
+        for (auto [first, second] : llvm::zip_equal(outgoing, secondLegs)) {
+          EdgeAttributes path = result.at(first);
+          path.absorb(result.at(second));
+          path.count *= result.at(second).count;
+          merged.absorb(path);
+          merged.count += path.count;
+        }
+        for (const EdgeKey &key : outgoing)
+          result.erase(key);
+        for (const EdgeKey &key : secondLegs)
+          result.erase(key);
+        result[{source, sinkID}] = std::move(merged);
         changed = true;
         break;
       }
@@ -1773,7 +1840,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       *routes, arbitrationRules, portPackets, wires, options.splitPacketPorts,
       channelBuffers, activeChannels, *buffers, runtimeArguments, calls,
       buffersFeedingDMA, buffersFedByDMA);
-  SemanticEdges topologyEdges = semanticGraph.contract(contractKinds);
+  SemanticEdges topologyEdges =
+      semanticGraph.contract(contractKinds, options.contractBalancedFanout);
   Provenance provenance = computeProvenance(semanticGraph, topologyEdges);
   TransitiveMembership membership =
       computeTransitiveMembership(semanticGraph, topologyEdges);
