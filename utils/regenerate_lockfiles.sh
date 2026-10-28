@@ -71,7 +71,7 @@ fi
 # shell defaults to, which is often an older system interpreter even on a box
 # that also has 3.11+ installed under a versioned name.
 PY=""
-for cand in python3 python3.12 python3.11; do
+for cand in python3 python3.14 python3.13 python3.12 python3.11; do
   if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import tomllib' >/dev/null 2>&1; then
     PY="$cand"
     break
