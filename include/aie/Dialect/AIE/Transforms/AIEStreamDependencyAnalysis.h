@@ -208,9 +208,10 @@ private:
 /// the host it is done. A channel with no program in the design may wait on
 /// anything on its tile. A receiving channel that takes in all it is sent
 /// before its locks run out waits on no lock. Program order within an agent
-/// is not modeled. A receiver taking one sender's data waits on none of its
-/// other DMA senders: a DMA channel sends a packet whole once it starts, so
-/// it never holds the receiver while waiting on anything.
+/// is not modeled. A DMA receiver taking one sender's data waits on none of
+/// its other DMA senders: a DMA channel sends a packet whole once it starts,
+/// so it never holds the receiver while waiting on anything. A core can pause
+/// one input while waiting on another.
 class StreamWaitGraph {
 public:
   /// A core, a DMA channel, or a tile's controller. A core's or controller's

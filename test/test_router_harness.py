@@ -95,6 +95,39 @@ def priority():
     return d, routed.stdout
 
 
+@pytest.mark.parametrize("receiver", [rp.CORE, rp.DMA])
+@pytest.mark.parametrize("sender", [rp.CORE, rp.DMA])
+def test_wait_chain_through_a_stream_receiver(receiver, sender):
+    d = rp.Design("npu1")
+    streams = [
+        rp.Stream((0, 2, rp.DMA, 0), (0, 3, receiver, 0)),
+        rp.Stream((0, 4, sender, 0), (0, 3, receiver, 1 if receiver == rp.CORE else 0)),
+    ]
+    graph = rp.WaitGraph(d, streams, rp.Volumes(d, streams))
+    s = graph.agent_at(streams[0].src, True)
+    r = graph.agent_at(streams[0].dst, False)
+    t = graph.agent_at(streams[1].src, True)
+    expected = [] if receiver == rp.DMA and sender == rp.DMA else [s, r, t]
+    assert graph.wait_chain([s], [t], []) == expected
+    assert graph.wait_chain([s], [t], [r]) == []
+    assert graph.wait_chain([r], [t], []) == [r, t]
+
+
+@pytest.mark.parametrize("kind", [rp.WaitGraph.LOCK, rp.WaitGraph.HOST])
+def test_wait_chain_preserves_non_stream_dependencies_on_a_dma_sender(kind):
+    d = rp.Design("npu1")
+    streams = [
+        rp.Stream((0, 2, rp.DMA, 0), (0, 3, rp.DMA, 0)),
+        rp.Stream((0, 4, rp.DMA, 0), (0, 3, rp.DMA, 0)),
+    ]
+    graph = rp.WaitGraph(d, streams, rp.Volumes(d, streams))
+    s = graph.agent_at(streams[0].src, True)
+    r = graph.agent_at(streams[0].dst, False)
+    t = graph.agent_at(streams[1].src, True)
+    graph.add_edge(r, t, kind)
+    assert graph.wait_chain([s], [t], []) == [s, r, t]
+
+
 def test_the_model_accepts_the_routers_overlay_marks(priority):
     d, routed = priority
     assert "aie.is_ctrl_pkt_overlay" in routed

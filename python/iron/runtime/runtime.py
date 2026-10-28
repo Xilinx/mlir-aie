@@ -483,10 +483,10 @@ class Runtime(DeviceResources, Resolvable):
                             or shared != arg.endpoint
                         ):
                             continue
-                        if (first.depth, first.from_stream, first.channel) != (
+                        if (first.depth, first.from_stream, first.port) != (
                             arg.depth,
                             arg.from_stream,
-                            arg.channel,
+                            arg.port,
                         ):
                             raise ValueError(
                                 f"ObjectFifo {fifo_obj.name!r} is drained to one "
