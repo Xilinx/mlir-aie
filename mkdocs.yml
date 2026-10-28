@@ -255,6 +255,7 @@ nav:
   - Agentic Programming:
     - Introduction: skills/agentic_programming.md
     - Agent Skills Overview: skills/README.md
+    - "Phase 0: Write the Design": skills/aie-code-creator/SKILL.md
     - "Phase 1: Model Baseline": skills/aie-model-baseline/SKILL.md
     - "Phase 2: Dataflow Pre-Sim": skills/aie-dataflow-presim/SKILL.md
     - "Phase 3: HW Bring-up": skills/aie-hw-bringup/SKILL.md
