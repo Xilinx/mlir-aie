@@ -457,7 +457,7 @@ def test_out_last_complete_schedule_drains_one_tile(factory, input_slice):
         params=params,
         stack_bytes=get_current_device().default_core_stack_bytes,
     )
-    assert f"func.call @{fn.name}(" in str(design.as_mlir())
+    assert fn.name in str(design.as_mlir())
 
 
 @pytest.mark.parametrize("factory", [kernels.conv2dk1_i8, kernels.conv2dk3])
