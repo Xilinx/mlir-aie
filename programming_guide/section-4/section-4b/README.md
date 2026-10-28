@@ -60,10 +60,10 @@ The `workers=[...]` argument picks the core tiles to trace.  To trace **mem tile
 
 The trace configuration chooses helpful default settings so you can trace your design with little additional customization. However, if you want more control over some of these configuration, additional arguments are available in `enable_trace`:
 * `reuse_output_buffer` - by default (`False`), the trace buffer is a dedicated host buffer appended as the last runtime_sequence argument, so enabling trace does not shift your data arguments' indices. Set to `True` to instead write trace data into the tail of the last output buffer, saving a host buffer. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
-* `coretile_events` - which 8 events do we use for all coretiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for CoreEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p).
-* `coremem_events` - which 8 events do we use for all core mem in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for MemEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memeventaie2p).
-* `memtile_events` - which 8 events do we use for all memtiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for MemTileEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memtileeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memtileeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memtileeventaie2p).
-* `shimtile_events` - which 8 events do we use for all shimtiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for ShimTileEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileeventaie2p).
+* `coretile_events` - which 8 events do we use for all coretiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect/) for CoreEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect/#coreeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect/#coreeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect/#coreeventaie2p).
+* `coremem_events` - which 8 events do we use for all core mem in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect/) for MemEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect/#memeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect/#memeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect/#memeventaie2p).
+* `memtile_events` - which 8 events do we use for all memtiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect/) for MemTileEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect/#memtileeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect/#memtileeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect/#memtileeventaie2p).
+* `shimtile_events` - which 8 events do we use for all shimtiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect/) for ShimTileEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect/#shimtileeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect/#shimtileeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect/#shimtileeventaie2p).
 * `core_trace_mode` - core-tile trace encoding. The default is `TraceMode.EventTime`; use `TraceMode.EventPC` from `aie.dialects.aie` to capture the program counter when a selected core event occurs.
 
     ```python
@@ -171,7 +171,7 @@ With the default (dedicated) mode, we can leave the parameters for `enable_trace
 
 Once the design is configured to a XRT buffer object, we turn our attention to the host code to read the DDR data and write it to a file.
 
-> **NOTE** In our example design, we provide a [Makefile](./Makefile) target `run` for standard build and `trace` for trace-enabled build. The trace-enabled build passes the trace buffer size as an argument which is used under the hood to conditionally enable tracing as long as `trace_size` is > 0. This is also true for the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul).
+> **NOTE** In our example design, we provide a [Makefile](./Makefile) target `run` for standard build and `trace_cpp` / `trace_py` for trace-enabled build. The trace-enabled build passes the trace buffer size as an argument which is used under the hood to conditionally enable tracing as long as `trace_size` is > 0. This is also true for the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul).
 
 ### <u>(2a) C/C++ Host code ([test.cpp](./test.cpp), [../../../runtime_lib/test_lib/xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h))</u>
 The main changes needed for the host code is declare a buffer object for trace data and pass that buffer object to the XRT kernel function call. This looks like the following snippets of code:
@@ -263,7 +263,7 @@ In our template host code [test.cpp](./test.cpp) for 2 inputs and 1 output, we c
 
 In the example simplified `vector_scalar_mul` design, we can build the complete design, including the C/C++ host code [test.cpp](./test.cpp) by running:
 ```bash
-make trace
+make trace_cpp
 ```
 
 
@@ -286,7 +286,7 @@ The relevant CLI arguments (added by `aie.utils.hostruntime.argparse.add_runtime
 - `--trace-file`: Path to write raw trace data (default: `trace.txt`).
 - `--ddr-id`: DDR buffer index for trace (0-4, or -1 to append after last tensor). Default is 4.
 
-> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` call, or buffer allocation will be incorrect.
+> **IMPORTANT**: `enable_trace()` has no `ddr_id` parameter — the trace buffer's host argument index is computed automatically: by default it's appended after your design's other buffers, or (with `reuse_output_buffer=True`) folded into the last output buffer. The `--ddr-id` value **must match** wherever that lands, or buffer allocation will be incorrect.
 
 #### TraceConfig (manual setup)
 
@@ -419,7 +419,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * For designs with packet-routing flows, check for correctly matching packet flow IDs. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed. Using the declarative trace API handles this automatically.
 
 ## <u>Exercises</u>
-1. Let's give tracing a try. In this directory, we will be examining a simplified version of the `vector scalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and runs `parse.py` to generate the `trace_4b.json` waveform file.
+1. Let's give tracing a try. In this directory, we will be examining a simplified version of the `vector scalar multiply` example. Run `make trace_py` (or `make trace_cpp` for the C++ host). This compiles the design, generates a trace data file, and runs `parse.py` to generate the `trace_4b.json` waveform file.
 
     Open this waveform json in http://ui.perfetto.dev. If you zoom into the region of interest with the keyboard shortcut keys W and S to zoom in and out respectively and A and D to pan left and right. You should see a wave like the following:
 
