@@ -62,6 +62,7 @@ add_mlir_dialect_library(
   MLIRAIEPassIncGen
 
   LINK_LIBS PUBLIC
+  AIEX
   MLIRAnalysis
   MLIRArithTransforms
   MLIRIR
