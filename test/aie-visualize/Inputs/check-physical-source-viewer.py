@@ -52,6 +52,21 @@ def write_alias_fixture(source: pathlib.Path, destination: pathlib.Path) -> None
             polygon.remove(child)
     ET.SubElement(polygon, f"{{{SVG}}}polygon", {"points": "-6,6 0,-6 6,6"})
     parent.append(polygon)
+
+    for index, x in enumerate((120, 140)):
+        flow = ET.SubElement(
+            parent,
+            f"{{{SVG}}}g",
+            {
+                "id": f"test_flow_{index}",
+                "class": f"edge flow src-{index} fate-test-{index}",
+            },
+        )
+        ET.SubElement(
+            flow,
+            f"{{{SVG}}}path",
+            {"d": f"M {x} 100 L {x + 10} 100", "stroke": "#000000"},
+        )
     tree.write(destination, encoding="unicode")
 
 
@@ -85,8 +100,12 @@ def main() -> None:
                     page = browser.new_page()
                     page.goto(
                         f"http://127.0.0.1:{server.server_address[1]}/index.html"
-                        "?svg=design.svg&json=design.json&source-root=."
+                        "?svg=design.svg&source-root=."
                     )
+                    ids = page.locator("[id]").evaluate_all(
+                        "elements => elements.map(element => element.id)"
+                    )
+                    assert len(ids) == len(set(ids))
                     path_alias = page.locator("#physical_alias_p_0_2_0_0_k3 path")
                     rectangle_alias = page.locator(
                         "#physical_alias_p_0_2_0_0_k3_rect rect"
@@ -107,11 +126,33 @@ def main() -> None:
                         '.source-line.highlighted[data-line="30"]'
                     )
                     highlighted_line.wait_for()
+                    assert not page.locator("#viewport svg").evaluate(
+                        "element => element.classList.contains('highlighting')"
+                    )
                     rectangle_alias.dispatch_event("pointerover")
                     highlighted_line.wait_for()
-                    polygon_alias.dispatch_event("click")
+                    polygon_alias.dispatch_event(
+                        "pointerdown", {"pointerId": 1, "clientX": 100, "clientY": 100}
+                    )
+                    polygon_alias.dispatch_event(
+                        "pointerup", {"pointerId": 1, "clientX": 100, "clientY": 100}
+                    )
+                    polygon_alias.dispatch_event("pointerleave")
                     highlighted_line.wait_for()
                     assert page.locator(".source-line.highlighted").count() == 1
+                    page.locator("#reset").click()
+                    flow = page.locator("#test_flow_0 path")
+                    flow.dispatch_event("pointerover")
+                    assert page.locator("#viewport svg.highlighting").count() == 1
+                    flow.dispatch_event(
+                        "pointerdown", {"pointerId": 2, "clientX": 120, "clientY": 100}
+                    )
+                    flow.dispatch_event(
+                        "pointerup", {"pointerId": 2, "clientX": 120, "clientY": 100}
+                    )
+                    flow.dispatch_event("pointerleave")
+                    assert page.locator("#viewport svg.highlighting").count() == 1
+                    assert page.locator(".flow-row.selected").count() == 1
                     browser.close()
             finally:
                 server.shutdown()

@@ -60,6 +60,7 @@
 // CHECK: matchesDirection(element, reference, "fate", incomingClasses)) ||
 // CHECK: (highlightOutgoing &&
 // CHECK: matchesDirection(element, reference, "origin", outgoingClasses))
+// CHECK: const active = reference?.classList.contains("flow") &&
 // CHECK: addSetting("Incoming"
 // CHECK: addSetting("Outgoing"
 // CHECK: /^uniform-width-([\d.]+)$/

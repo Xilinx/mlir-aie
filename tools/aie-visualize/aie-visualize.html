@@ -287,7 +287,8 @@ function initializeViewer(svg, graph, graphError) {
   const renderHighlight = () => {
     const reference = selectedElement || hoveredElement;
     const flows = svg.querySelectorAll("g.flow");
-    const active = reference && (highlightIncoming || highlightOutgoing);
+    const active = reference?.classList.contains("flow") &&
+      (highlightIncoming || highlightOutgoing);
     svg.classList.toggle("highlighting", Boolean(active));
     flows.forEach(element => {
       element.classList.toggle("highlighted", Boolean(active && matches(element, reference)));
