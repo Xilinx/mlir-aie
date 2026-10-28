@@ -140,28 +140,22 @@ struct CallInfo {
   mlir::Location loc;
 };
 
-struct SourceLocation {
-  std::string file;
-  unsigned line;
-  unsigned column;
-
-  bool operator<(const SourceLocation &other) const {
-    return std::tie(file, line, column) <
-           std::tie(other.file, other.line, other.column);
-  }
-};
-
-using SourceLocations = std::set<SourceLocation>;
+using SourceLocations = std::map<std::string, std::set<unsigned>>;
 
 static SourceLocations sourceLocations(mlir::Location location) {
   SourceLocations result;
   location->walk([&](mlir::Location nested) {
     if (auto file = llvm::dyn_cast<mlir::FileLineColLoc>(nested))
-      result.insert(
-          {file.getFilename().str(), file.getLine(), file.getColumn()});
+      result[file.getFilename().str()].insert(file.getLine());
     return mlir::WalkResult::advance();
   });
   return result;
+}
+
+static void absorbSourceLocations(SourceLocations &dest,
+                                  const SourceLocations &source) {
+  for (const auto &[file, lines] : source)
+    dest[file].insert(lines.begin(), lines.end());
 }
 
 enum class SemanticNodeKind {
@@ -206,7 +200,7 @@ struct EdgeAttributes {
 
   void absorb(const EdgeAttributes &other) {
     routes.insert(other.routes.begin(), other.routes.end());
-    source.insert(other.source.begin(), other.source.end());
+    absorbSourceLocations(source, other.source);
   }
 };
 
@@ -223,7 +217,7 @@ struct SemanticGraph {
     auto [entry, inserted] = nodes.try_emplace(
         id.str(), SemanticNode{kind, tile, port, source, label.str()});
     if (!inserted) {
-      entry->second.source.insert(source.begin(), source.end());
+      absorbSourceLocations(entry->second.source, source);
       if (entry->second.label.empty())
         entry->second.label = label.str();
     }
@@ -235,7 +229,7 @@ struct SemanticGraph {
     EdgeAttributes &attributes = edges[{source.str(), dest.str()}];
     if (route)
       attributes.routes.insert(*route);
-    attributes.source.insert(locations.begin(), locations.end());
+    absorbSourceLocations(attributes.source, locations);
   }
 
   bool hasIncoming(StringRef node) const {
@@ -281,7 +275,7 @@ struct SemanticGraph {
               continue;
             EdgeAttributes merged = result.at(before);
             merged.absorb(result.at(after));
-            merged.source.insert(node.source.begin(), node.source.end());
+            absorbSourceLocations(merged.source, node.source);
             merged.count *= result.at(after).count;
             spliced.push_back({{before.source, after.dest}, std::move(merged)});
           }
@@ -387,8 +381,7 @@ struct SemanticGraph {
             path.absorb(result.at(second));
             const SourceLocations &branchSourceLocations =
                 nodes.at(second.source).source;
-            path.source.insert(branchSourceLocations.begin(),
-                               branchSourceLocations.end());
+            absorbSourceLocations(path.source, branchSourceLocations);
             path.count *= result.at(second).count;
             attributes.absorb(path);
             attributes.count += path.count;
@@ -1863,23 +1856,18 @@ selectTopology(AIE::DeviceOp device, const SemanticGraph &graph,
 
 static json::Array sourceLocationsJson(const SourceLocations &locations) {
   json::Array result;
-  for (const SourceLocation &location : locations)
-    result.push_back(json::Object{{"file", location.file},
-                                  {"line", location.line},
-                                  {"column", location.column}});
+  for (const auto &[file, sourceLines] : locations) {
+    json::Array lines;
+    for (unsigned line : sourceLines)
+      lines.push_back(line);
+    result.push_back(
+        json::Object{{"file", file}, {"lines", std::move(lines)}});
+  }
   return result;
 }
 
 static std::string edgeID(const EdgeKey &key) {
   return "edge__" + key.source + "__" + key.dest;
-}
-
-static std::string sourceClasses(const SourceLocations &locations) {
-  std::string classes;
-  for (const SourceLocation &location : locations)
-    classes += " source-location-" + std::to_string(location.line) + "-" +
-               std::to_string(location.column);
-  return classes;
 }
 
 static void writeSemanticGraphJson(AIE::DeviceOp device,
@@ -1899,7 +1887,7 @@ static void writeSemanticGraphJson(AIE::DeviceOp device,
     json::Object object{{"id", id},
                         {"kind", semanticNodeKindName(node.kind)},
                         {"label", node.label.empty() ? id : node.label},
-                        {"sourceLocations", sourceLocationsJson(node.source)}};
+                        {"sources", sourceLocationsJson(node.source)}};
     if (node.tile)
       object["tile"] = json::Array{node.tile->first, node.tile->second};
     if (node.port) {
@@ -1927,11 +1915,11 @@ static void writeSemanticGraphJson(AIE::DeviceOp device,
         {"target", key.dest},
         {"routes", std::move(routes)},
         {"pathCount", attributes.count},
-        {"sourceLocations", sourceLocationsJson(attributes.source)}});
+        {"sources", sourceLocationsJson(attributes.source)}});
   }
 
   json::Object root{{"format", "aie-semantic-graph"},
-                    {"version", 1},
+                    {"version", 2},
                     {"device", device.getSymName().str()},
                     {"nodes", std::move(nodes)},
                     {"edges", std::move(edges)}};
@@ -2713,7 +2701,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       if (options.tileRoles && roleClass != roleClasses.end())
         fill = roleFill(palette, roleClass->second.id);
       std::string id = tileNodeID(col, row);
-      auto semanticNode = semanticGraph.nodes.find(id);
       output << "  " << id << " [shape=box, id=\"" << id << "\"";
       output << ", fixedsize=true, width=" << layout.size(tileWidth)
              << ", height=" << layout.size(layout.tileHeight(col, row))
@@ -2733,11 +2720,8 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
       } else {
         output << '"';
       }
-      output << R"(, class="semantic-node)"
-             << (semanticNode == semanticGraph.nodes.end()
-                     ? std::string()
-                     : sourceClasses(semanticNode->second.source))
-             << R"(", style="rounded,filled", fillcolor=")" << fill
+            output << R"(, class="semantic-node", style="rounded,filled", fillcolor=")"
+              << fill
              << "\", color=\"" << palette.tileEdge << "\", fontcolor=\""
              << palette.tileText << "\", penwidth=\"2.0\"];\n";
     }
@@ -2755,7 +2739,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << layout.pos(x, y) << "\", label=\"" << shortPortName(port)
              << "\", id=\"" << id << "\", class=\""
              << flowClasses("port", boundaryOfNode(id), membershipOfNode(id))
-             << sourceClasses(node.source)
              << "\", fontsize=7, style=filled, fillcolor=\"" << palette.boxFill
              << "\", fontcolor=\"" << palette.tileText << "\", " << "color=\""
              << palette.boxEdge << "\"];\n";
@@ -2767,7 +2750,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
              << "\", fontsize=7, fontcolor=\"" << palette.tileText
              << "\", id=\"" << id << "\", class=\""
              << flowClasses(kind, boundaryOfNode(id), membershipOfNode(id))
-             << sourceClasses(node.source) << "\"];\n";
+             << "\"];\n";
     }
   }
   // What a switchbox does with a packet can only be anchored where the
@@ -2870,7 +2853,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << "\", class=\""
            << flowClasses("buffer detail-buffers", boundaryOfNode(id),
                           membershipOfNode(id))
-           << sourceClasses(semanticGraph.nodes.at(id).source)
            << "\", fontsize=8, style=filled, fillcolor=\"" << palette.boxFill
            << "\", fontcolor=\"" << palette.tileText << "\", " << "color=\""
            << palette.boxEdge << "\"];\n";
@@ -2888,7 +2870,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << "\", class=\""
            << flowClasses("runtime-argument", boundaryOfNode(id),
                           membershipOfNode(id))
-           << sourceClasses(semanticGraph.nodes.at(id).source)
            << R"(", fontsize=8, style="rounded,filled", fillcolor=")"
            << palette.argumentFill << "\", color=\"" << palette.argumentEdge
            << "\", fontcolor=\"" << palette.tileText << "\"];\n";
@@ -2906,7 +2887,6 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << "\", id=\"" << id << "\", class=\""
            << flowClasses("call detail-calls", boundaryOfNode(id),
                           membershipOfNode(id))
-           << sourceClasses(semanticGraph.nodes.at(id).source)
            << R"(", fontsize=8, style="rounded,filled", fillcolor=")"
            << palette.callFill << "\", color=\"" << palette.callEdge
            << "\", fontcolor=\"" << palette.tileText << "\"];\n";
@@ -3032,8 +3012,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
     output << "  " << key->source << " -> " << key->dest << " [color=\"";
     writeColors(boundary);
     output << "\", id=\"" << edgeID(*key) << "\", class=\""
-           << flowClasses(kind, boundary, membershipOfEdge(*key))
-           << sourceClasses(attributes.source) << '"';
+          << flowClasses(kind, boundary, membershipOfEdge(*key)) << '"';
     writeWeight(boundary);
     auto arrow = edgeArrows.find(*key);
     if (arrow != edgeArrows.end())
