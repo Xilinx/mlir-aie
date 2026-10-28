@@ -3,7 +3,7 @@
 //
 // RUN: aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=true' \
 // RUN:   --verify-diagnostics --split-input-file %s
-// RUN: sed '/expected-warning/d' %s | aie-opt --aie-lower-dynamic-bd-pool \
+// RUN: sed '/expected-warning/d' %s | aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=false' \
 // RUN:   --verify-diagnostics --split-input-file
 
 // The poll before the fifth push leaves up to three queued tasks AND one

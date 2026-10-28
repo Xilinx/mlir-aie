@@ -4,6 +4,10 @@
 //
 // RUN: aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=true' \
 // RUN:         --verify-diagnostics --split-input-file %s
+// RUN: aie-opt --aie-lower-dynamic-bd-pool \
+// RUN:         --verify-diagnostics --split-input-file %s
+// RUN: sed '/expected-/d' %s | aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=false' \
+// RUN:         --verify-diagnostics --split-input-file
 
 // aiex.dma_free_task returns a buffer descriptor id to the runtime pool with
 // no completion guarantee, and the pool is free to hand that id straight back

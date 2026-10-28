@@ -3,7 +3,7 @@
 //
 // RUN: aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=true' \
 // RUN:   --verify-diagnostics --split-input-file %s
-// RUN: sed '/expected-warning/d' %s | aie-opt --aie-lower-dynamic-bd-pool --split-input-file 2>&1 \
+// RUN: sed '/expected-warning/d' %s | aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=false' --split-input-file 2>&1 \
 // RUN:   | FileCheck %s --implicit-check-not='with no completion guarantee'
 // CHECK: aie.runtime_sequence
 

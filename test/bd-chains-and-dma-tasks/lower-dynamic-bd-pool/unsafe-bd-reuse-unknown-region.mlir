@@ -3,7 +3,7 @@
 //
 // RUN: aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=true' \
 // RUN:   --verify-diagnostics --split-input-file %s
-// RUN: sed '/expected-warning/d' %s | aie-opt --aie-lower-dynamic-bd-pool \
+// RUN: sed '/expected-warning/d' %s | aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=false' \
 // RUN:   --verify-diagnostics --split-input-file
 
 // Unknown region semantics must not hide a nested release of a running task.

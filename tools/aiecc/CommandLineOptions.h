@@ -84,14 +84,13 @@ inline cl::opt<bool> reclaimRuntimeBds(
 
 // A dma_free_task releases BD ids with no completion guarantee; reusing one
 // before hardware has actually finished the freed transfer reprograms a BD
-// still in flight. Off by default: both the static and dynamic BD-id passes
-// can only reason within the runtime sequence, so a design that proves
-// completion through the compute core or another tile looks unsafe to them
-// without being so.
+// still in flight. Completion through the compute core or another tile is
+// invisible to both BD-id passes; such designs may need to disable the warning.
 inline cl::opt<bool> warnUnsafeBdReuse(
     "warn-unsafe-bd-reuse",
     cl::desc("Warn when a BD id a dma_free_task released with no completion "
-             "guarantee is later reused on the same tile"));
+             "guarantee is later reused on the same tile (enabled by default)"),
+    cl::init(true));
 
 inline cl::opt<bool> verifyEach(
     "verify-each",

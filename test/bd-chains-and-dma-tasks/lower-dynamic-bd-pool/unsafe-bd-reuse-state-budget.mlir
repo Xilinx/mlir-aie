@@ -1,19 +1,21 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// RUN: sed '/expected-/d' %s | aie-opt --aie-lower-dynamic-bd-pool 2>&1 \
-// RUN:   | FileCheck %s --check-prefix=DEFAULT
+// RUN: sed '/expected-/d' %s | aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=false' 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=DISABLED
+// RUN: aie-opt --aie-lower-dynamic-bd-pool \
+// RUN:   --verify-diagnostics %s | FileCheck %s --check-prefix=GUARD
 // RUN: aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=true' \
 // RUN:   --verify-diagnostics %s | FileCheck %s --check-prefix=GUARD
 
 // Rotation and a transposition generate all 8! permutations. The ownership
 // budget must fall back conservatively rather than enumerate them all, without
 // disabling queue-depth enforcement in subsequent loops.
-// DEFAULT-NOT: warning:
-// DEFAULT: aie.runtime_sequence
-// DEFAULT-NOT: warning:
-// DEFAULT: aiex.npu.maskpoll
-// DEFAULT-NOT: warning:
+// DISABLED-NOT: warning:
+// DISABLED: aie.runtime_sequence
+// DISABLED-NOT: warning:
+// DISABLED: aiex.npu.maskpoll
+// DISABLED-NOT: warning:
 // GUARD: aiex.npu.maskpoll
 aie.device(npu1) {
   %tile = aie.tile(0, 0)

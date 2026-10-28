@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // RUN: aie-opt --aie-lower-dynamic-bd-pool --verify-diagnostics %s
-// RUN: aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=true' --verify-diagnostics %s
+// RUN: aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=false' --verify-diagnostics %s
 
-// Neither the default occupancy analysis nor opt-in completion tracking should
+// Neither occupancy analysis alone nor default-on completion tracking should
 // distinguish dead branch-local task identities at joins or loop backedges.
 aie.device(npu1) {
   %tile = aie.tile(0, 0)
