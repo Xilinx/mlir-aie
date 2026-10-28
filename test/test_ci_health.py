@@ -73,6 +73,7 @@ def job(
     steps=3,
     runner="r1",
     hours_ago=5,
+    labels=("self-hosted",),
 ):
     return {
         "id": id,
@@ -85,6 +86,7 @@ def job(
         "completed_at": at(hours_ago - (waited + took) / 60),
         "steps": [{"name": f"step {i}"} for i in range(steps)],
         "runner_name": runner,
+        "labels": list(labels),
     }
 
 
@@ -312,6 +314,113 @@ def test_a_run_on_main_is_judged_by_its_jobs(
     assert counts["rate"] == (0.5 if outcome in ("failed", "timed_out") else 1.0)
 
 
+def test_judge_records_each_jobs_runner_and_whether_it_passed(ci, served):
+    get, _ = served(
+        [
+            (
+                r"/actions/runs/1/jobs",
+                {
+                    "jobs": [
+                        job("build", 30, runner="r1", conclusion="success"),
+                        # Never found a runner: not attributed to one.
+                        job("test", 0, runner="", conclusion="cancelled", id=2),
+                    ]
+                },
+            ),
+            (r"/check-runs/\d+/annotations", []),
+        ]
+    )
+    j = ci.judge(get, "o/r", run(1, 2, "push", "success"))
+    assert j["runners"] == [{"runner": "r1", "passed": True}]
+
+
+@pytest.mark.parametrize(
+    "conclusion, notes, expected",
+    [
+        ("success", "", True),
+        ("failure", "", False),
+        ("timed_out", "", False),
+        ("cancelled", TIMED_OUT, False),
+        ("cancelled", "The run was canceled by @someone.", None),
+        ("cancelled", "higher priority waiting request", None),
+        ("cancelled", "", None),
+        ("failure", RUNNER_LOST, None),
+        ("skipped", "", None),
+        ("neutral", "", None),
+    ],
+)
+def test_runner_results_use_job_outcomes(ci, served, conclusion, notes, expected):
+    get, _ = served(
+        [
+            (
+                r"/actions/runs/1/jobs",
+                {"jobs": [job("test", 30, conclusion=conclusion)]},
+            ),
+            (r"/check-runs/1/annotations", [{"message": notes}]),
+        ]
+    )
+    result = ci.judge(get, "o/r", run(1, 2, "push", conclusion))
+    assert result["runners"] == (
+        [] if expected is None else [{"runner": "r1", "passed": expected}]
+    )
+
+
+@pytest.mark.parametrize(
+    "labels, included",
+    [
+        (("self-hosted", "windows", "devlab-dispatch", "strix-halo"), True),
+        (("aie2-4col",), True),
+        (("aie2p-8col",), True),
+        (("ubuntu-24.04",), False),
+        (("windows-2022",), False),
+        ((), False),
+    ],
+)
+def test_only_self_hosted_jobs_enter_the_runner_table(ci, served, labels, included):
+    get, _ = served(
+        [
+            (
+                r"/actions/runs/1/jobs",
+                {"jobs": [job("test", 30, runner="named-runner", labels=labels)]},
+            )
+        ]
+    )
+    result = ci.judge(get, "o/r", run(1, 2, "push", "success"))
+    assert result["runners"] == (
+        [{"runner": "named-runner", "passed": True}] if included else []
+    )
+
+
+def test_runner_tally_counts_passed_and_failed_jobs(ci):
+    critical_wfs = [
+        {
+            "main_runs": [
+                {
+                    "runners": [
+                        {"runner": "r1", "passed": True},
+                        {"runner": "r2", "passed": False},
+                    ]
+                },
+                {"runners": [{"runner": "r1", "passed": False}]},
+            ]
+        },
+        {"main_runs": [{"runners": [{"runner": "r1", "passed": True}]}]},
+    ]
+    assert ci.runner_tally(critical_wfs) == {
+        "r1": {"passed": 2, "failed": 1},
+        "r2": {"passed": 0, "failed": 1},
+    }
+
+
+def test_runners_lists_each_one_named_in_the_critical_jobs(ci, served):
+    get, _ = served(critical_routes())
+    (crit,) = ci.critical(get, "o/r", [{"file": "crit.yml", "title": "Crit"}], NOW, {})
+    # r1 ran every job in the on-main runs: run 10 (1 failed), run 9 (2 passed).
+    assert ci.runners([crit]) == [{"name": "r1", "passed": 2, "failed": 1}]
+    # No critical workflows answered: no runners to name.
+    assert ci.runners([]) == []
+
+
 def test_a_run_judged_before_is_not_asked_about_again(ci, served):
     get, api = served(critical_routes())
     config = [{"file": "crit.yml", "title": "Crit"}]
@@ -322,6 +431,17 @@ def test_a_run_judged_before_is_not_asked_about_again(ci, served):
     assert again["main_runs"] == first["main_runs"]
     # Only the window's runs list again; no run's jobs.
     assert [p for p in api.asked[asked:] if "/jobs" in p] == []
+
+
+def test_old_runner_results_are_judged_again_once(ci, served):
+    get, api = served(critical_routes())
+    config = [{"file": "crit.yml", "title": "Crit"}]
+    (first,) = ci.critical(get, "o/r", config, NOW, {})
+    judged = {r["id"]: {**r, "runners_version": 0} for r in first["main_runs"]}
+    asked = len(api.asked)
+    (again,) = ci.critical(get, "o/r", config, NOW, judged)
+    assert again["main_runs"] == first["main_runs"]
+    assert len([p for p in api.asked[asked:] if "/jobs" in p]) == 2
 
 
 def test_runs_are_read_page_by_page_until_a_short_one(ci, served):

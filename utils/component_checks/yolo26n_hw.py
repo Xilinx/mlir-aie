@@ -16,8 +16,12 @@ to the example's
 own yolo26n.py CLI (no new Python API): ``--compile-only`` twice into one
 fresh NPU_CACHE_HOME, cold then warm, keeping only the cold compile's kernel
 objects for the warm one, as llama_chain_hw.py does; then a ``--time`` run
-from that cache and one at ``--batch 8``, each checking every image, their
-timing kept only when every image matched in both.
+from that cache and one at ``--batch 8``, the same build (images a dispatch
+are chosen when it is dispatched, up to its ``--capacity``), each checking
+every image, their timing kept only when every image matched in both. A
+``--time`` run also times a dispatch with no image on
+(``empty_dispatch_us``): every segment's configuration and the dispatch,
+which each dispatch pays once.
 
 The device's detections (already verified bit-exact against the numpy
 oracle) are also scored against coco128's own labels as mAP@0.5
@@ -113,6 +117,11 @@ _PER_IMAGE_RE = re.compile(
     r"^per-image: (?P<us>[\d.]+) us \((?P<fps>[\d.]+) fps\) at batch (?P<batch>\d+), "
     r"fastest of (?P<n>\d+) after \d+ warmups; "
     r"median (?P<median>[\d.]+) us, MAD (?P<mad>[\d.]+) us$",
+    re.MULTILINE,
+)
+_EMPTY_RE = re.compile(
+    r"^empty dispatch \(\d+ segment configurations, no image\): "
+    r"(?P<us>[\d.]+) us, median (?P<median>[\d.]+) us$",
     re.MULTILINE,
 )
 # aie.utils.benchmark.print_benchmark's lines for one call, by the field each times.
@@ -377,8 +386,10 @@ def parse_timing(out: str) -> dict:
         (the fastest call less the fastest dispatch), each with its
         ``median_``/``mad_`` pair (the overhead's MAD the two's summed, a
         bound), and ``dispatch_overhead_us_b<B>``, the empty dispatch's
-        fastest per call, None when the run had none to time. Empty when
-        it timed none.
+        fastest per call, None when the run had none to time. Then
+        ``empty_dispatch_us`` and its ``median_``: the fastest call with no
+        image on, which configures every segment and moves nothing. Empty
+        when it timed none.
     """
     timing: dict = {}
     bench = {
@@ -412,6 +423,9 @@ def parse_timing(out: str) -> dict:
             timing[f"{metric}_b{batch}"] = round(t["min"] / int(batch), 2)
             timing[f"median_{metric}_b{batch}"] = round(t["median"] / int(batch), 2)
             timing[f"mad_{metric}_b{batch}"] = round(t["mad"] / int(batch), 2)
+    if timing and (m := _EMPTY_RE.search(out)):
+        timing["empty_dispatch_us"] = float(m["us"])
+        timing["median_empty_dispatch_us"] = float(m["median"])
     return timing
 
 

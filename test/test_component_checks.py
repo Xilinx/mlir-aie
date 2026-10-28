@@ -250,6 +250,7 @@ def test_a_mobilenet_run_reports_its_times_per_image(hw):
         "host_overhead_us_per_image_range": "median 24.59, MAD 15.24, p95 37.76",
         "e2e_us_per_image": 89.47,
         "e2e_us_per_image_range": "median 108.57, MAD 13.81, p95 124.07",
+        "fps": 11176.93,
     }
 
 
@@ -358,14 +359,17 @@ def test_only_passing_runs_chart_their_times(hw):
         "mobilenet/seed=3/batch=1/effort=default/npu_us_per_image": 337.3,
         "mobilenet/seed=3/batch=1/effort=default/host_overhead_us_per_image": 96.5,
         "mobilenet/seed=3/batch=1/effort=default/e2e_us_per_image": 480.9,
+        "mobilenet/seed=3/batch=1/effort=default/fps": 2079.43,
         "mobilenet/seed=3/batch=16/effort=default/us_per_image": 81.48,
         "mobilenet/seed=3/batch=16/effort=default/npu_us_per_image": 78.56,
         "mobilenet/seed=3/batch=16/effort=default/host_overhead_us_per_image": 7.99,
         "mobilenet/seed=3/batch=16/effort=default/e2e_us_per_image": 89.47,
+        "mobilenet/seed=3/batch=16/effort=default/fps": 11176.93,
         "mobilenet/seed=2/batch=16/effort=default/us_per_image": 81.48,
         "mobilenet/seed=2/batch=16/effort=default/npu_us_per_image": 78.56,
         "mobilenet/seed=2/batch=16/effort=default/host_overhead_us_per_image": 7.99,
         "mobilenet/seed=2/batch=16/effort=default/e2e_us_per_image": 89.47,
+        "mobilenet/seed=2/batch=16/effort=default/fps": 11176.93,
     }
     ranges = {r["name"]: r.get("range") for r in rows}
     assert (

@@ -146,7 +146,8 @@ def parse_run(out: str, returncode: int, batch: int) -> dict:
     baseline, e2e_us_per_image the whole Python call, and
     host_overhead_us_per_image the fastest end-to-end call less the fastest
     dispatch (its median likewise, its MAD the sum of both).
-    dispatch_overhead_us is the baseline itself, per launch.
+    dispatch_overhead_us is the baseline itself, per launch. fps is images
+    per second, from e2e_us_per_image.
     """
     t = {}
     for field, pattern in _TIME_RES.items():
@@ -174,6 +175,9 @@ def parse_run(out: str, returncode: int, batch: int) -> dict:
             if x
             else None
         )
+    run["fps"] = (
+        round(1e6 / run["e2e_us_per_image"], 2) if run["e2e_us_per_image"] else None
+    )
     return run
 
 
@@ -332,6 +336,8 @@ def aggregate(
             for metric in TIMED
             if r[metric] is not None
         ]
+        if r["fps"] is not None:
+            out.append(row(case, "fps", r["fps"], "fps"))
     return out
 
 
@@ -506,6 +512,7 @@ def main(argv=None) -> int:
                 "passed",
                 *TIMED,
                 "dispatch_overhead_us",
+                "fps",
                 "placement",
             )
         }

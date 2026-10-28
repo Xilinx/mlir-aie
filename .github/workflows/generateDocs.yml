@@ -34,7 +34,7 @@ on:
 jobs:
   build-docs:
     name: Generate Documentation
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
     permissions:
