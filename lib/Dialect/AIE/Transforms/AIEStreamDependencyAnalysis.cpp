@@ -1170,8 +1170,7 @@ StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
     };
     for (const Edge &e : edges[a]) {
       if (taking && agents[a].kind == Agent::Kind::Channel && e.receives &&
-          !e.sends &&
-          agents[e.to].kind == Agent::Kind::Channel)
+          !e.sends && agents[e.to].kind == Agent::Kind::Channel)
         continue;
       // A chain through an agent twice would have it wait on itself.
       if (parent.count({e.to, false}) || onChain(e.to))
