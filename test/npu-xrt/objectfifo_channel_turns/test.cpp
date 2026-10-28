@@ -20,8 +20,8 @@
 
 constexpr int OBJ = 16;
 constexpr int STEPS = 8;
-constexpr int IN = 2 * OBJ * STEPS;
-constexpr int OUT = OBJ * STEPS;
+constexpr int IN_LEN = 2 * OBJ * STEPS;
+constexpr int OUT_LEN = OBJ * STEPS;
 
 int main(int argc, const char *argv[]) {
   cxxopts::Options options("objectfifo_channel_turns");
@@ -46,21 +46,21 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_a = xrt::bo(device, IN * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_a = xrt::bo(device, IN_LEN * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                       kernel.group_id(3));
-  auto bo_bc = xrt::bo(device, IN * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_bc = xrt::bo(device, IN_LEN * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                        kernel.group_id(4));
-  auto bo_out = xrt::bo(device, OUT * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(5));
+  auto bo_out = xrt::bo(device, OUT_LEN * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
-  std::vector<int32_t> a(IN), bc(IN);
-  for (int i = 0; i < IN; i++) {
+  std::vector<int32_t> a(IN_LEN), bc(IN_LEN);
+  for (int i = 0; i < IN_LEN; i++) {
     a[i] = 3 * i + 1;
     bc[i] = 7 * i - 50;
   }
-  std::memcpy(bo_a.map<int32_t *>(), a.data(), IN * sizeof(int32_t));
-  std::memcpy(bo_bc.map<int32_t *>(), bc.data(), IN * sizeof(int32_t));
-  std::memset(bo_out.map<int32_t *>(), 0xff, OUT * sizeof(int32_t));
+  std::memcpy(bo_a.map<int32_t *>(), a.data(), IN_LEN * sizeof(int32_t));
+  std::memcpy(bo_bc.map<int32_t *>(), bc.data(), IN_LEN * sizeof(int32_t));
+  std::memset(bo_out.map<int32_t *>(), 0xff, OUT_LEN * sizeof(int32_t));
   std::memcpy(bo_instr.map<void *>(), instr_v.data(),
               instr_v.size() * sizeof(int));
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);

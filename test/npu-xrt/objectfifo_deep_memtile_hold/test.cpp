@@ -20,8 +20,8 @@
 
 constexpr int ROW = 64;
 constexpr int ROWS = 80;
-constexpr int IN = ROW * ROWS;
-constexpr int OUT = ROW * ROWS;
+constexpr int IN_LEN = ROW * ROWS;
+constexpr int OUT_LEN = ROW * ROWS;
 
 int main(int argc, const char *argv[]) {
   cxxopts::Options options("objectfifo_deep_memtile_hold");
@@ -46,19 +46,19 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_a = xrt::bo(device, IN * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_a = xrt::bo(device, IN_LEN * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                       kernel.group_id(3));
-  auto bo_bc = xrt::bo(device, IN * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+  auto bo_bc = xrt::bo(device, IN_LEN * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
                        kernel.group_id(4));
-  auto bo_out = xrt::bo(device, OUT * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(5));
+  auto bo_out = xrt::bo(device, OUT_LEN * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
-  std::vector<int32_t> a(IN), bc(IN, 0);
-  for (int i = 0; i < IN; i++)
+  std::vector<int32_t> a(IN_LEN), bc(IN_LEN, 0);
+  for (int i = 0; i < IN_LEN; i++)
     a[i] = 7 * i - 3;
-  std::memcpy(bo_a.map<int32_t *>(), a.data(), IN * sizeof(int32_t));
-  std::memcpy(bo_bc.map<int32_t *>(), bc.data(), IN * sizeof(int32_t));
-  std::memset(bo_out.map<int32_t *>(), 0xff, OUT * sizeof(int32_t));
+  std::memcpy(bo_a.map<int32_t *>(), a.data(), IN_LEN * sizeof(int32_t));
+  std::memcpy(bo_bc.map<int32_t *>(), bc.data(), IN_LEN * sizeof(int32_t));
+  std::memset(bo_out.map<int32_t *>(), 0xff, OUT_LEN * sizeof(int32_t));
   std::memcpy(bo_instr.map<void *>(), instr_v.data(),
               instr_v.size() * sizeof(int));
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
