@@ -80,7 +80,7 @@ my_design(a, b)              # compile + run + sync back
 | What happens between `@iron.jit` and the NPU running | [Compilation stages](./compilation_stages.md) |
 | A routing error, or how flows become switch settings | [Routing](./routing.md) |
 | Ready-made compute kernels (matmul, conv, eltwise, vision) | [Kernel library](./kernels_library.md) |
-| Every control op you can put in a runtime sequence | [AIEX dialect reference](../AIEXDialect.md) |
+| Every control op you can put in a runtime sequence | [AIEX dialect reference](../docs/AIEXDialect.md) |
 
 ## Sections
 
@@ -179,7 +179,7 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 * [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049) — IEEE Hot Chips paper.
 * AIE architecture manuals: [AIE1 — AM009](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview), [AIE2 — AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview).
 * AIE register references: [AIE1 — AM015](https://docs.amd.com/r/en-US/am015-versal-aie-register-reference/Overview), [AIE2 — AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview).
-* [AIE API User Guide](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html) — the C++ header-only vector library for kernel code.
+* [AIE API User Guide](https://xilinx.github.io/aie_api/topics.html) — the C++ header-only vector library for kernel code.
 * [Summary documentation links (UG1076)](https://docs.amd.com/r/en-US/ug1076-ai-engine-environment/Documentation).
 
 -----
