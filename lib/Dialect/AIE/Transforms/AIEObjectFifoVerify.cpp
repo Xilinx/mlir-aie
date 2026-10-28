@@ -330,7 +330,9 @@ struct AIEObjectFifoVerifyPass
   /// releases static loop bounds force are counted, so what is reported is
   /// certain; a conditional release, or one in a loop meant to run forever, is
   /// left out, since such a core stalling once the data stops is how those
-  /// designs end.
+  /// designs end. When all of a core's releases are counted, the DMA endpoint
+  /// is bounded too: it cannot drain more than the core hands over, nor fill
+  /// more than the pool's depth plus what the core releases.
   LogicalResult verifyTransferBudgets(DeviceOp device) {
     DenseMap<Operation *, TransferBudget> budgets;
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
@@ -348,14 +350,20 @@ struct AIEObjectFifoVerifyPass
 
     DenseMap<StringRef, int64_t> released;
     DenseMap<StringRef, ObjectFifoReleaseOp> blame;
+    DenseSet<StringRef> uncounted;
     device.walk([&](ObjectFifoReleaseOp release) {
+      StringRef key = release.getObjFifoName();
       std::optional<int64_t> runs = staticExecutions(release);
       if (!runs) {
+        uncounted.insert(key);
         return;
       }
-      StringRef key = release.getObjFifoName();
       released[key] += *runs * release.relNumber();
       blame.try_emplace(key, release);
+    });
+    DenseSet<StringRef> acquired;
+    device.walk([&](ObjectFifoAcquireOp acquire) {
+      acquired.insert(acquire.getObjFifoName());
     });
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
@@ -366,24 +374,45 @@ struct AIEObjectFifoVerifyPass
       }
       StringRef name = endpoint.getSymName();
       int64_t count = released.lookup(name);
-      if (count <= budget->second.objects) {
+      ObjectFifoDmaEndpointOp dma = budget->second.endpoint;
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      int64_t depth = pool.getDepth();
+      if (count > budget->second.objects) {
+        InFlightDiagnostic diag =
+            blame.lookup(name).emitOpError("releases ")
+            << count << " objects through @" << name
+            << " over the run, but the pool's DMA endpoint stops after "
+            << budget->second.objects << " (iterCount "
+            << budget->second.iterations << " x depth " << depth << ")";
+        // A producer finishes while the pool still has free objects to fill.
+        if (!endpoint.drains() && count <= budget->second.objects + depth)
+          diag << ", leaving " << count - budget->second.objects
+               << " in the pool unsent";
+        else
+          diag << ", so the core would wait forever for the rest";
+        diag.attachNote(dma.getLoc()) << "the DMA endpoint is here";
+        return failure();
+      }
+
+      if (!acquired.contains(name) || uncounted.contains(name) ||
+          dma.getSegments() || pool.getInitValues() ||
+          dma.drains() == endpoint.drains()) {
         continue;
       }
-      ObjectFifoDmaEndpointOp dma = budget->second.endpoint;
-      int64_t depth = endpoint.getPoolOp().getDepth();
+      int64_t reachable = endpoint.drains() ? count + depth : count;
+      if (budget->second.objects <= reachable) {
+        continue;
+      }
       InFlightDiagnostic diag =
-          blame.lookup(name).emitOpError("releases ")
-          << count << " objects through @" << name
-          << " over the run, but the pool's DMA endpoint stops after "
-          << budget->second.objects << " (iterCount "
-          << budget->second.iterations << " x depth " << depth << ")";
-      // A producer finishes while the pool still has free objects to fill.
-      if (!endpoint.drains() && count <= budget->second.objects + depth)
-        diag << ", leaving " << count - budget->second.objects
-             << " in the pool unsent";
-      else
-        diag << ", so the core would wait forever for the rest";
-      diag.attachNote(dma.getLoc()) << "the DMA endpoint is here";
+          dma.emitOpError(dma.drains() ? "drains " : "fills ")
+          << budget->second.objects << " objects (iterCount "
+          << budget->second.iterations << " x depth " << depth
+          << ") before it stops, but the core releases exactly " << count
+          << " through @" << name;
+      if (endpoint.drains())
+        diag << ", leaving room for only " << reachable;
+      diag << ", so the DMA endpoint would wait forever for the rest";
+      diag.attachNote(endpoint.getLoc()) << "the core endpoint is here";
       return failure();
     }
     return success();
