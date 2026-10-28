@@ -3076,6 +3076,7 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
 }
 
 enum class PhysicalPortRole { Source, Dest };
+enum class PhysicalPortDomain { Switchbox, ShimMux };
 
 struct PhysicalPort {
   int col;
@@ -3083,9 +3084,11 @@ struct PhysicalPort {
   AIE::WireBundle bundle;
   unsigned channel;
   PhysicalPortRole role;
+  PhysicalPortDomain domain = PhysicalPortDomain::Switchbox;
 
   auto asTuple() const {
-    return std::make_tuple(col, row, static_cast<int>(bundle), channel, role);
+    return std::make_tuple(col, row, static_cast<int>(bundle), channel, role,
+                           domain);
   }
   bool operator<(const PhysicalPort &other) const {
     return asTuple() < other.asTuple();
@@ -3093,7 +3096,10 @@ struct PhysicalPort {
 };
 
 static std::string physicalPortID(const PhysicalPort &port) {
-  return "physical_port_" + std::to_string(port.col) + "_" +
+  StringRef prefix = port.domain == PhysicalPortDomain::ShimMux
+                         ? "shim_mux_port_"
+                         : "physical_port_";
+  return prefix.str() + std::to_string(port.col) + "_" +
          std::to_string(port.row) + "_" +
          std::to_string(static_cast<int>(port.bundle)) + "_" +
          std::to_string(port.channel) +
@@ -3106,6 +3112,24 @@ physicalPortPosition(const PhysicalPort &port) {
   double tileY = static_cast<double>(port.row) * 7.0;
   double offset = (static_cast<double>(port.channel) - 2.5) * 0.34;
   double lane = port.role == PhysicalPortRole::Source ? 0.18 : -0.18;
+  if (port.domain == PhysicalPortDomain::ShimMux) {
+    if (port.bundle == AIE::WireBundle::South)
+      return {tileX + offset,
+              tileY - 2.58 +
+                  (port.role == PhysicalPortRole::Source ? 0.08 : -0.08)};
+    double bundleOffset = 0.0;
+    if (port.bundle == AIE::WireBundle::DMA)
+      bundleOffset = -0.72;
+    else if (port.bundle == AIE::WireBundle::PLIO)
+      bundleOffset = -0.35;
+    else if (port.bundle == AIE::WireBundle::NOC)
+      bundleOffset = 0.35;
+    double externalOffset =
+        bundleOffset + (static_cast<double>(port.channel) - 2.5) * 0.09;
+    return {tileX + externalOffset,
+            tileY - 3.42 +
+                (port.role == PhysicalPortRole::Source ? 0.08 : -0.08)};
+  }
   switch (port.bundle) {
   case AIE::WireBundle::North:
     return {tileX + offset, tileY + 2.0 + lane};
@@ -3191,16 +3215,79 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
         semanticPortRole(id, node, analysis->graph);
     if (!node.port || !role)
       continue;
-    PhysicalPort port{node.port->col, node.port->row, node.port->bundle,
+    AIE::WireBundle bundle = node.port->bundle;
+    bool shimMuxStreamSwitchPort = false;
+    if (bundle == AIE::WireBundle::North &&
+        model.isShimNOCorPLTile(node.port->col, node.port->row)) {
+      for (const auto &[key, attributes] : analysis->graph.edges) {
+        if (key.source != id && key.dest != id)
+          continue;
+        const SemanticNode &other =
+            analysis->graph.nodes.at(key.source == id ? key.dest : key.source);
+        if (other.port && other.port->col == node.port->col &&
+            other.port->row == node.port->row &&
+            llvm::is_contained({AIE::WireBundle::DMA, AIE::WireBundle::NOC,
+                                AIE::WireBundle::PLIO},
+                               other.port->bundle)) {
+          shimMuxStreamSwitchPort = true;
+          break;
+        }
+      }
+    }
+    if (shimMuxStreamSwitchPort) {
+      bundle = AIE::WireBundle::South;
+      *role = *role == PhysicalPortRole::Source ? PhysicalPortRole::Dest
+                                                : PhysicalPortRole::Source;
+    }
+    PhysicalPort port{node.port->col, node.port->row, bundle,
                       static_cast<unsigned>(node.port->channel), *role};
+    if (model.isShimNOCorPLTile(port.col, port.row) &&
+        llvm::is_contained(
+            {AIE::WireBundle::DMA, AIE::WireBundle::NOC, AIE::WireBundle::PLIO},
+            port.bundle))
+      port.domain = PhysicalPortDomain::ShimMux;
     semanticPorts[id] = port;
     usedPorts.insert(port);
   }
   for (const auto &[key, attributes] : analysis->graph.edges) {
     auto source = semanticPorts.find(key.source);
     auto dest = semanticPorts.find(key.dest);
-    if (source != semanticPorts.end() && dest != semanticPorts.end())
-      usedTracks.insert({source->second, dest->second});
+    if (source == semanticPorts.end() || dest == semanticPorts.end())
+      continue;
+    const PhysicalPort &sourcePort = source->second;
+    const PhysicalPort &destPort = dest->second;
+    bool shimVia = sourcePort.col == destPort.col &&
+                   sourcePort.row == destPort.row &&
+                   model.isShimNOCorPLTile(sourcePort.col, sourcePort.row);
+    if (shimVia && sourcePort.domain == PhysicalPortDomain::ShimMux &&
+        destPort.bundle == AIE::WireBundle::South) {
+      PhysicalPort muxSouth{
+          sourcePort.col,         sourcePort.row,
+          AIE::WireBundle::South, destPort.channel,
+          PhysicalPortRole::Dest, PhysicalPortDomain::ShimMux};
+      PhysicalPort switchboxSouth{sourcePort.col, sourcePort.row,
+                                  AIE::WireBundle::South, destPort.channel,
+                                  PhysicalPortRole::Source};
+      usedPorts.insert(muxSouth);
+      usedPorts.insert(switchboxSouth);
+      usedTracks.insert({sourcePort, muxSouth});
+      usedTracks.insert({muxSouth, switchboxSouth});
+    } else if (shimVia && sourcePort.bundle == AIE::WireBundle::South &&
+               destPort.domain == PhysicalPortDomain::ShimMux) {
+      PhysicalPort switchboxSouth{sourcePort.col, sourcePort.row,
+                                  AIE::WireBundle::South, sourcePort.channel,
+                                  PhysicalPortRole::Dest};
+      PhysicalPort muxSouth{
+          sourcePort.col,           sourcePort.row,
+          AIE::WireBundle::South,   sourcePort.channel,
+          PhysicalPortRole::Source, PhysicalPortDomain::ShimMux};
+      usedPorts.insert(switchboxSouth);
+      usedPorts.insert(muxSouth);
+      usedTracks.insert({switchboxSouth, muxSouth});
+      usedTracks.insert({muxSouth, destPort});
+    } else {
+      usedTracks.insert({sourcePort, destPort});
+    }
   }
 
   output << "digraph aie_physical {\n"
@@ -3273,6 +3360,84 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
         }
       }
 
+      std::vector<PhysicalPort> shimMuxPorts;
+      for (AIE::WireBundle bundle : physicalBundles()) {
+        for (unsigned channel = 0;
+             channel < model.getNumSourceShimMuxConnections(col, row, bundle);
+             ++channel)
+          shimMuxPorts.push_back({col, row, bundle, channel,
+                                  PhysicalPortRole::Source,
+                                  PhysicalPortDomain::ShimMux});
+        for (unsigned channel = 0;
+             channel < model.getNumDestShimMuxConnections(col, row, bundle);
+             ++channel)
+          shimMuxPorts.push_back({col, row, bundle, channel,
+                                  PhysicalPortRole::Dest,
+                                  PhysicalPortDomain::ShimMux});
+      }
+      for (const PhysicalPort &port : shimMuxPorts) {
+        auto [x, y] = physicalPortPosition(port);
+        bool used = usedPorts.count(port);
+        output << "  " << physicalPortID(port)
+               << " [shape=point, width=" << (used ? "0.09" : "0.045")
+               << ", color=\"" << (used ? "#c51b32" : "#d9dde1") << "\", pos=\""
+               << physicalCoordinate(x) << ',' << physicalCoordinate(y)
+               << "!\", xlabel=\""
+               << shortPortName({col, row, port.bundle,
+                                 static_cast<int>(port.channel),
+                                 port.bundle == AIE::WireBundle::DMA
+                                     ? std::optional<AIE::DMAChannelDir>(
+                                           port.role == PhysicalPortRole::Source
+                                               ? AIE::DMAChannelDir::MM2S
+                                               : AIE::DMAChannelDir::S2MM)
+                                     : std::nullopt})
+               << (port.role == PhysicalPortRole::Source ? " in" : " out")
+               << "\", class=\"physical-shim-mux-port "
+               << (used ? "used" : "unused") << "\"];\n";
+      }
+      for (const PhysicalPort &source : shimMuxPorts) {
+        if (source.role != PhysicalPortRole::Source)
+          continue;
+        for (const PhysicalPort &dest : shimMuxPorts) {
+          if (dest.role != PhysicalPortRole::Dest ||
+              !model.isLegalShimMuxConnection(col, row, source.bundle,
+                                              source.channel, dest.bundle,
+                                              dest.channel))
+            continue;
+          bool used = usedTracks.count({source, dest});
+          output << "  " << physicalPortID(source) << " -> "
+                 << physicalPortID(dest) << " [color=\""
+                 << (used ? "#c51b32" : "#e7eaed")
+                 << "\", penwidth=" << (used ? "1.6" : "0.18")
+                 << ", class=\"physical-shim-mux-track "
+                 << (used ? "used" : "unused") << "\"];\n";
+        }
+      }
+      for (const PhysicalPort &muxPort : shimMuxPorts) {
+        if (muxPort.bundle != AIE::WireBundle::South)
+          continue;
+        PhysicalPort switchboxPort{col, row, AIE::WireBundle::South,
+                                   muxPort.channel,
+                                   muxPort.role == PhysicalPortRole::Source
+                                       ? PhysicalPortRole::Dest
+                                       : PhysicalPortRole::Source};
+        bool used = muxPort.role == PhysicalPortRole::Source
+                        ? usedTracks.count({switchboxPort, muxPort})
+                        : usedTracks.count({muxPort, switchboxPort});
+        output << "  "
+               << physicalPortID(muxPort.role == PhysicalPortRole::Source
+                                     ? switchboxPort
+                                     : muxPort)
+               << " -> "
+               << physicalPortID(muxPort.role == PhysicalPortRole::Source
+                                     ? muxPort
+                                     : switchboxPort)
+               << " [color=\"" << (used ? "#c51b32" : "#e1e5e8")
+               << "\", penwidth=" << (used ? "1.6" : "0.22")
+               << ", class=\"physical-shim-mux-link "
+               << (used ? "used" : "unused") << "\"];\n";
+      }
+
       unsigned numBDs = model.getNumBDs(col, row);
       unsigned dmaSources = model.getNumSourceSwitchboxConnections(
           col, row, AIE::WireBundle::DMA);
@@ -3303,6 +3468,8 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
         for (unsigned channel = 0; channel < mm2sChannels; ++channel) {
           PhysicalPort port{col, row, AIE::WireBundle::DMA, channel,
                             PhysicalPortRole::Source};
+          if (shimDmaSources)
+            port.domain = PhysicalPortDomain::ShimMux;
           bool used = usedPorts.count(port);
           output << "  dma_mm2s_" << coordinate << '_' << channel
                  << " [shape=box, width=0.55, height=0.2, fixedsize=true, "
@@ -3316,6 +3483,8 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
         for (unsigned channel = 0; channel < s2mmChannels; ++channel) {
           PhysicalPort port{col, row, AIE::WireBundle::DMA, channel,
                             PhysicalPortRole::Dest};
+          if (shimDmaDests)
+            port.domain = PhysicalPortDomain::ShimMux;
           bool used = usedPorts.count(port);
           output << "  dma_s2mm_" << coordinate << '_' << channel
                  << " [shape=box, width=0.55, height=0.2, fixedsize=true, "

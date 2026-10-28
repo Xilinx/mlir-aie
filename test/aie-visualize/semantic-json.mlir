@@ -34,7 +34,7 @@
 // DOT-SAME: id="edge__tile_0_2__tile_0_3"
 // DOT-SAME: source-location-30-8
 
-// FORMAT: --emit-dot and --emit-json are mutually exclusive
+// FORMAT: --emit-dot, --emit-json, and --physical are mutually exclusive
 
 module {
   aie.device(npu1_1col) {

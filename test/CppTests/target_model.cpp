@@ -396,6 +396,52 @@ void test() {
                                       true))
     throw std::runtime_error("Failed xcve3858 controller channel bounds");
 
+  for (auto dev :
+       {AIE::AIEDevice::xcvc1902, AIE::AIEDevice::npu1, AIE::AIEDevice::npu2}) {
+    const auto &model = AIE::getTargetModel(dev);
+     unsigned legalConnections = 0;
+        for (unsigned srcBundle = 0;
+          srcBundle <= AIE::getMaxEnumValForWireBundle();
+        ++srcBundle) {
+      auto source = AIE::symbolizeWireBundle(srcBundle).value();
+      for (uint32_t srcChannel = 0;
+          srcChannel <
+          model.getNumSourceShimMuxConnections(0, 0, source);
+          ++srcChannel) {
+        for (unsigned dstBundle = 0;
+           dstBundle <= AIE::getMaxEnumValForWireBundle(); ++dstBundle) {
+         auto dest = AIE::symbolizeWireBundle(dstBundle).value();
+         for (uint32_t dstChannel = 0;
+            dstChannel < model.getNumDestShimMuxConnections(0, 0, dest);
+            ++dstChannel)
+          legalConnections += model.isLegalShimMuxConnection(
+             0, 0, source, srcChannel, dest, dstChannel);
+        }
+      }
+     }
+    if (!model.isLegalShimMuxConnection(0, 0, AIE::WireBundle::DMA, 0,
+                                        AIE::WireBundle::South, 3) ||
+        !model.isLegalShimMuxConnection(0, 0, AIE::WireBundle::South, 2,
+                                        AIE::WireBundle::NOC, 0) ||
+        model.isLegalShimMuxConnection(0, 0, AIE::WireBundle::South, 2,
+                            AIE::WireBundle::NOC, 1) ||
+        model.isLegalShimMuxConnection(0, 0, AIE::WireBundle::NOC, 0,
+                            AIE::WireBundle::South, 3) ||
+        !model.isLegalShimMuxConnection(0, 0, AIE::WireBundle::PLIO, 0,
+                                        AIE::WireBundle::South, 0) ||
+        model.isLegalShimMuxConnection(0, 0, AIE::WireBundle::PLIO, 0,
+                                       AIE::WireBundle::South, 2) ||
+        model.isLegalShimMuxConnection(0, 0, AIE::WireBundle::DMA, 0,
+                                       AIE::WireBundle::South, 2) ||
+        model.isLegalShimMuxConnection(0, 0, AIE::WireBundle::DMA, 0,
+                                       AIE::WireBundle::NOC, 0) ||
+        model.isLegalShimMuxConnection(0, 0, AIE::WireBundle::DMA, 2,
+                                       AIE::WireBundle::South, 0) ||
+        legalConnections != 26)
+      throw std::runtime_error("Failed shim mux connection legality for " +
+                               stringifyAIEDevice(dev).str());
+  }
+
   // Cascade size
   if (ve3858.getAccumulatorCascadeSize() != 512) {
     throw std::runtime_error("Failed xcve3858 getAccumulatorCascadeSize");

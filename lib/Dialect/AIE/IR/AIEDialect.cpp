@@ -2912,11 +2912,18 @@ LogicalResult ShimMuxOp::verify() {
 
   Region &body = getConnections();
   DenseSet<Port> destset;
+  TileOp tile = getTileOp();
+  const AIETargetModel &targetModel = getTargetModel(*this);
   if (body.empty())
     return emitOpError("should have non-empty body");
 
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
+      if (!targetModel.isLegalShimMuxConnection(
+              tile.colIndex(), tile.rowIndex(), connectOp.getSourceBundle(),
+              connectOp.sourceIndex(), connectOp.getDestBundle(),
+              connectOp.destIndex()))
+        return connectOp.emitOpError("illegal shim mux connection");
       Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
       if (destset.count(dest))
         return connectOp.emitOpError("targets same destination ")

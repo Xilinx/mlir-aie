@@ -333,19 +333,37 @@ void Pathfinder::initialize(int maxCol, int maxRow,
       maxChannels[bundle] = channels;
     }
     sb.resize();
-    // A shim's mux reaches its DMA, NOC and PLIO ports from any port.
-    auto isMuxed = [&](Port p) {
-      return targetModel.isShimNOCorPLTile(col, row) &&
-             llvm::is_contained(
-                 {WireBundle::DMA, WireBundle::NOC, WireBundle::PLIO},
-                 p.bundle);
+    auto isMuxed = [&](Port source, Port dest) {
+      int southChannels = targetModel.getNumDestShimMuxConnections(
+          col, row, WireBundle::South);
+      for (int southChannel = 0; southChannel < southChannels; ++southChannel) {
+        if (targetModel.isLegalShimMuxConnection(
+                col, row, source.bundle, source.channel, WireBundle::South,
+                southChannel) &&
+            targetModel.isLegalTileConnection(
+                col, row, WireBundle::South, southChannel, dest.bundle,
+                dest.channel))
+          return true;
+      }
+      southChannels = targetModel.getNumSourceShimMuxConnections(
+          col, row, WireBundle::South);
+      for (int southChannel = 0; southChannel < southChannels; ++southChannel) {
+        if (targetModel.isLegalTileConnection(
+                col, row, source.bundle, source.channel, WireBundle::South,
+                southChannel) &&
+            targetModel.isLegalShimMuxConnection(
+                col, row, WireBundle::South, southChannel, dest.bundle,
+                dest.channel))
+          return true;
+      }
+      return false;
     };
     for (auto [i, pIn] : llvm::enumerate(sb.srcPorts))
       for (auto [j, pOut] : llvm::enumerate(sb.dstPorts))
         sb.at(i, j).available =
             targetModel.isLegalTileConnection(col, row, pIn.bundle, pIn.channel,
                                               pOut.bundle, pOut.channel) ||
-            isMuxed(pIn) || isMuxed(pOut);
+          isMuxed(pIn, pOut);
   };
 
   auto interconnect = [&](int col, int row, int targetCol, int targetRow,

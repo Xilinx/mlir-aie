@@ -6,8 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: aie-visualize
-// RUN: aie-visualize --physical --split-packet-ports --device=npu1_device %s | FileCheck %s --check-prefix=NPU1 --implicit-check-not=physical_port_0_2_5_4_source --implicit-check-not=switchbox_4_0
+// RUN: aie-visualize --physical --split-packet-ports --device=npu1_device %s | FileCheck %s --check-prefix=NPU1 --implicit-check-not=physical_port_0_2_5_4_source --implicit-check-not=switchbox_4_0 --implicit-check-not="shim_mux_port_0_0_1_0_source -> shim_mux_port_0_0_8_0_dest"
 // RUN: aie-visualize --physical --device=npu2_device %s | FileCheck %s --check-prefix=NPU2 --implicit-check-not=switchbox_8_0
+// RUN: aie-visualize --physical --device=npu1_device %s -o %t.npu1.dot
+// RUN: %python %S/Inputs/check-physical-resources.py %t.npu1.dot | FileCheck %s --check-prefix=NPU1-COUNTS
+// RUN: aie-visualize --physical --device=npu2_device %s -o %t.npu2.dot
+// RUN: %python %S/Inputs/check-physical-resources.py %t.npu2.dot | FileCheck %s --check-prefix=NPU2-COUNTS
 // RUN: not aie-visualize --physical --contract=port %s 2>&1 | FileCheck %s --check-prefix=CONTRACT
 // RUN: not aie-visualize --physical --emit-dot %s 2>&1 | FileCheck %s --check-prefix=OUTPUT-MODES
 // RUN: not aie-visualize --physical --emit-json %s 2>&1 | FileCheck %s --check-prefix=OUTPUT-MODES
@@ -29,9 +33,23 @@
 // NPU1-DAG: physical_port_0_2_5_0_dest -> physical_port_0_3_3_0_source [color="#c51b32", penwidth=1.6, class="physical-intertile-track used"]
 // NPU1-DAG: physical_port_0_2_6_0_dest -> physical_port_1_2_4_0_source [color="#e1e5e8", penwidth=0.22, class="physical-intertile-track unused"]
 
-// Packet aliases occupy the physical port coordinates rather than separate lanes.
-// NPU1-DAG: semantic_p_0_2_0_0_k3 {{.*}}pos="-104.400000,1112.400000!"
-// NPU1-DAG: semantic_p_0_2_0_0_k4 {{.*}}pos="-104.400000,1112.400000!"
+// Shim muxes expose all model ports, legal crosspoints, and stream-switch links.
+// NPU1-DAG: shim_mux_port_0_0_1_0_source {{.*}}class="physical-shim-mux-port used"
+// NPU1-DAG: shim_mux_port_0_0_8_3_dest {{.*}}class="physical-shim-mux-port unused"
+// NPU1-DAG: shim_mux_port_0_0_7_5_dest {{.*}}class="physical-shim-mux-port unused"
+// NPU1-DAG: shim_mux_port_0_0_1_0_source -> shim_mux_port_0_0_3_3_dest [color="#c51b32", penwidth=1.6, class="physical-shim-mux-track used"]
+// NPU1-DAG: shim_mux_port_0_0_8_0_source -> shim_mux_port_0_0_3_2_dest [color="#e7eaed", penwidth=0.18, class="physical-shim-mux-track unused"]
+// NPU1-DAG: shim_mux_port_0_0_3_3_dest -> physical_port_0_0_3_3_source [color="#c51b32", penwidth=1.6, class="physical-shim-mux-link used"]
+// NPU2-DAG: shim_mux_port_0_0_1_1_source {{.*}}class="physical-shim-mux-port used"
+// NPU2-DAG: shim_mux_port_0_0_3_7_dest {{.*}}class="physical-shim-mux-port used"
+// NPU2-DAG: shim_mux_port_0_0_1_1_source -> shim_mux_port_0_0_3_7_dest [color="#c51b32", penwidth=1.6, class="physical-shim-mux-track used"]
+
+// NPU1-COUNTS: physical-shim-mux-link total=56 used=1 unused=55
+// NPU1-COUNTS: physical-shim-mux-port total=160 used=2 unused=158
+// NPU1-COUNTS: physical-shim-mux-track total=104 used=1 unused=103
+// NPU2-COUNTS: physical-shim-mux-link total=112 used=1 unused=111
+// NPU2-COUNTS: physical-shim-mux-port total=320 used=2 unused=318
+// NPU2-COUNTS: physical-shim-mux-track total=208 used=1 unused=207
 
 // DMA channels and all model-reported BDs occupy a box beside the tile.
 // NPU1-DAG: dma_box_0_1 {{.*}}label=""
@@ -46,12 +64,18 @@
 // NPU1-DAG: switchbox_3_5 [shape=box
 // NPU2-DAG: switchbox_7_5 [shape=box
 
+// Semantic aliases occupy their physical port coordinates.
+// NPU1-DAG: semantic_p_0_0_5_3{{.*}} pos="12.240000,-156.960000!"
+// NPU1-DAG: semantic_p_0_2_0_0_k3 {{.*}}pos="-104.400000,1112.400000!"
+// NPU1-DAG: semantic_p_0_2_0_0_k4 {{.*}}pos="-104.400000,1112.400000!"
+
 // CONTRACT: --physical does not support --contract
 // OUTPUT-MODES: --emit-dot, --emit-json, and --physical are mutually exclusive
 // PHYSICAL-OPTIONS: --physical does not support topology layout and styling options
 
 module {
   aie.device(npu1) @npu1_device {
+    %shim = aie.tile(0, 0)
     %source = aie.tile(0, 2)
     %dest = aie.tile(0, 3)
     %mem = aie.tile(0, 1)
@@ -81,13 +105,20 @@ module {
       aie.packet_dest<%mem, DMA : 0>
     } via (%source : Core : 0 -> South : 1,
            %mem : North : 1 -> DMA : 0)
+    aie.flow(%shim, DMA : 0, %source, Core : 0)
+      via (%shim : DMA : 0 -> North : 3,
+           %source : South : 3 -> Core : 0)
   }
 
   aie.device(npu2) @npu2_device {
+    %shim = aie.tile(0, 0)
     %source = aie.tile(0, 2)
     %dest = aie.tile(0, 3)
     aie.flow(%source, Core : 0, %dest, Core : 0)
       via (%source : Core : 0 -> North : 0,
            %dest : South : 0 -> Core : 0)
+    aie.flow(%shim, DMA : 1, %source, Core : 0)
+      via (%shim : DMA : 1 -> North : 7,
+           %source : South : 3 -> Core : 0)
   }
 }
