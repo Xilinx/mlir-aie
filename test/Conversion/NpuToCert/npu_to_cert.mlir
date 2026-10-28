@@ -5,7 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-npu-to-cert -split-input-file %s | FileCheck %s
+// RUN: aie-opt --aie-npu-to-cert -split-input-file %s | FileCheck %s --implicit-check-not=memref.get_global --implicit-check-not=arith.constant
+// RUN: aie-opt --aie-npu-to-cert -split-input-file %s | aie-translate --aie-cert-to-asm -split-input-file
 
 // CHECK: aiex.cert.job
 // CHECK: aiex.cert.write32(12345, 65244)
@@ -20,10 +21,16 @@ aie.device(npu2) {
 
 // -----
 
+// The blockwrite's memref.get_global becomes dead once the op is converted
+// (the new op references the global by symbol, not by SSA value); it must be
+// cleaned up here, since CertJobOp's verifier rejects it and
+// cert-legalize-pages isn't guaranteed to run afterward. The
+// --implicit-check-not on the RUN line above catches a leak anywhere in this
+// file, not just here.
 // CHECK: aiex.cert.uc_dma_chain @chain_0 {
 // CHECK:   aiex.cert.uc_dma_bd @blockwrite_data, 4321, 11, false
 // CHECK: aiex.cert.job(1) {
-// CHECK:   aiex.cert.uc_dma_write_des_sync(@chain_0)
+// CHECK: aiex.cert.uc_dma_write_des_sync(@chain_0)
 aie.device(npu2) {
   memref.global "private" constant @blockwrite_data : memref<11xi32> = dense<[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]>
   aie.runtime_sequence @configure() {
@@ -67,13 +74,23 @@ aie.device(npu2) {
 
 // -----
 
-// CHECK: aiex.cert.uc_dma_chain @[[SYM:.*]] {
-// CHECK:   aiex.cert.uc_dma_bd @blockwrite_data0, 4321, 1, true
-// CHECK:   aiex.cert.uc_dma_bd @blockwrite_data1, 5432, 2, true
+// aie-npu-to-cert does NOT merge uc_dma chains: merging is speculative before
+// pages exist and can destroy split points the page splitter needs. Chains
+// pass through untouched here and are merged by cert-legalize-pages after the
+// split -- see merge_dma_chains.mlir.
+// CHECK: aiex.cert.uc_dma_chain @chain_0 {
+// CHECK:   aiex.cert.uc_dma_bd @blockwrite_data0, 4321, 1, false
+// CHECK: }
+// CHECK: aiex.cert.uc_dma_chain @chain_1 {
+// CHECK:   aiex.cert.uc_dma_bd @blockwrite_data1, 5432, 2, false
+// CHECK: }
+// CHECK: aiex.cert.uc_dma_chain @chain_2 {
 // CHECK:   aiex.cert.uc_dma_bd @blockwrite_data2, 6543, 3, false
 // CHECK: }
 // CHECK: aiex.cert.job(1) {
-// CHECK:   aiex.cert.uc_dma_write_des_sync(@[[SYM]])
+// CHECK:   aiex.cert.uc_dma_write_des_sync(@chain_0)
+// CHECK:   aiex.cert.uc_dma_write_des_sync(@chain_1)
+// CHECK:   aiex.cert.uc_dma_write_des_sync(@chain_2)
 // CHECK: }
 
 aie.device(npu2) {

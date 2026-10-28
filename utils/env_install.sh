@@ -106,12 +106,18 @@ fi
 source "$VENV_DIR/bin/activate"
 python3 -m pip install --upgrade pip
 if [ "$EXTRAS" = 1 ]; then
+  # requirements_ml.txt is not hash-pinned: it resolves through
+  # --extra-index-url, and uv 0.11.17 generates an incomplete hash set for at
+  # least one transitive package in that mode (see regenerate_lockfiles.sh).
   python3 -m pip install -U -r "$ROOT/python/requirements_ml.txt"
-  python3 -m pip install -U -r "$ROOT/python/requirements_notebook.txt"
+  python3 -m pip install --require-hashes -r "$ROOT/python/requirements_notebook.lock"
 fi
 
 # --- Peano (llvm-aie) --------------------------------------------------------
 # Pinned via utils/peano-requirements.txt (bumped by the update-peano workflow).
+# Not hash-pinned: resolves through -f against a multi-platform release page,
+# and uv 0.11.17 has the same incomplete-hash issue there (see
+# regenerate_lockfiles.sh).
 python3 -m pip install -U -r "$ROOT/utils/peano-requirements.txt"
 export PEANO_INSTALL_DIR="$(pip show llvm-aie | awk '/^Location:/ {print $2 "/llvm-aie"}')"
 
@@ -127,7 +133,7 @@ if [ "$DEV" = 1 ]; then
   # Contributor hooks defined in .pre-commit-config.yaml (pre-push runs
   # clang-format/black to catch formatting issues before CI).
   if [ "$NO_PRE_COMMIT" = 0 ]; then
-    python3 -m pip install pre-commit
+    # pre-commit is already installed hash-pinned above via requirements_dev.lock.
     pre-commit install --hook-type pre-commit --hook-type pre-push
   fi
 fi

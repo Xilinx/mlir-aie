@@ -553,6 +553,17 @@ def _compute_artifact_hash(
         h.update(_content_digest(of).encode())
 
     h.update(f"fold_ddr_addr_offset={fold_ddr_addr_offset}".encode())
+    if (
+        insts_only
+        and not full_elf
+        and not fold_ddr_addr_offset
+        and not any(
+            flag.split("=", 1)[0] in ("--fold-ddr-addr-offset", "-fold-ddr-addr-offset")
+            for flag in aiecc_flags
+        )
+    ):
+        # Backend-selected unfolded streams cannot reuse folded-default entries.
+        h.update(b"insts_only_unfolded_abi=1")
     # Static .mlir is target-agnostic; compiled kernels need a device identifier.
     # Missing components collapse to a constant + WARNING log so cross-target
     # cache collisions surface instead of silently aliasing.
