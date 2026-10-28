@@ -20,10 +20,14 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
+    from ..configuration import DeviceConfiguration
     from .runtime import ActiveSequence
 
 _active_sequence: ContextVar["ActiveSequence | None"] = ContextVar(
     "iron_active_sequence", default=None
+)
+_active_configuration: ContextVar["DeviceConfiguration | None"] = ContextVar(
+    "iron_active_configuration", default=None
 )
 
 
@@ -38,8 +42,9 @@ def active_sequence() -> "ActiveSequence":
     seq = _active_sequence.get()
     if seq is None:
         raise RuntimeError(
-            "No active runtime sequence: fill()/drain() and TaskGroup() must be "
-            "called from within the function passed to Runtime(seq_fn, fn_args)."
+            "No active runtime sequence: fill()/drain(), DmaEndpoint.task() and "
+            "TaskGroup() must be called from within the function passed to "
+            "Runtime(seq_fn, fn_args)."
         )
     return seq
 
@@ -52,3 +57,18 @@ def active_sequence_scope(seq: "ActiveSequence") -> Iterator["ActiveSequence"]:
         yield seq
     finally:
         _active_sequence.reset(token)
+
+
+def active_configuration() -> "DeviceConfiguration | None":
+    return _active_configuration.get()
+
+
+@contextmanager
+def active_configuration_scope(
+    configuration: "DeviceConfiguration",
+) -> Iterator["DeviceConfiguration"]:
+    token = _active_configuration.set(configuration)
+    try:
+        yield configuration
+    finally:
+        _active_configuration.reset(token)

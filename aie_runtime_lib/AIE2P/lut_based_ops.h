@@ -124,4 +124,31 @@ getTanhBf16(v16bfloat16 vInput) {
 
   return (v16bfloat16)output;
 }
+
+extern float gelu_lut_ab[];
+extern float gelu_lut_cd[];
+
+inline __attribute__((always_inline)) v16bfloat16
+getGeluBf16(v16bfloat16 vInput) {
+  aie::vector<bfloat16, 16> input = vInput;
+
+  int step_bits = -3;
+  int bias = 32;
+  int data_size = 16;
+  int LUT_elems = 64;
+  int shift_offset = 0; // unused
+
+  using lut_type = aie::lut<4, float, bfloat16>;
+
+  lut_type test_lut(LUT_elems, (bfloat16 *)gelu_lut_ab,
+                    (bfloat16 *)gelu_lut_cd);
+
+  aie::linear_approx<bfloat16, lut_type> lin_aprox(test_lut, step_bits, bias,
+                                                   shift_offset);
+
+  aie::vector<bfloat16, 16> output =
+      lin_aprox.compute(input).to_vector<bfloat16>();
+
+  return (v16bfloat16)output;
+}
 #endif //__LUT_BASED_OPS_H__

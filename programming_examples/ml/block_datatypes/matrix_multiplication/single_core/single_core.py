@@ -15,7 +15,7 @@ import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -98,18 +98,11 @@ def single_core_matmul(
 
     rows_per_block = 4
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K // 8), (m, k // 8), (1, K_div_k), pattern_repeat=N_div_n
-    )
-    b_tap = TensorTiler2D.group_tiler((N, K // 8), (n, k // 8), (N_div_n, K_div_k))[0]
-
-    C_tiles = TensorTiler2D.group_tiler(
-        (M, N // 8), (m, n // 8), (rows_per_block // 2, N_div_n)
-    )
-    c_index = 0
+    A_tiles = TensorAccessPattern.full((M, K // 8)).tile((m, k // 8))
+    b_tap = TensorAccessPattern.full((N, K // 8)).tile((n, k // 8))
+    C_tiles = TensorAccessPattern.full((M, N // 8)).tile((m, n // 8))
 
     def sequence(a, b, c, inA_h, inB_h, outC_h):
-        nonlocal c_index
         tgs = []
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
             for pingpong in [0, 1]:
@@ -121,11 +114,11 @@ def single_core_matmul(
                     break
                 tgs.append(TaskGroup())
                 for tile_row in range(num_tile_rows):
-                    tile_offset = (row_base + tile_row) % len(A_tiles)
-                    inA_h.fill(a, tap=A_tiles[tile_offset], group=tgs[-1])
+                    a_tap = A_tiles[row_base + tile_row].repeat(N_div_n)
+                    inA_h.fill(a, tap=a_tap, group=tgs[-1])
                     inB_h.fill(b, tap=b_tap, group=tgs[-1])
-                outC_h.drain(c, tap=C_tiles[c_index], group=tgs[-1], wait=True)
-                c_index += 1
+                c_tap = C_tiles[row_base : row_base + num_tile_rows]
+                outC_h.drain(c, tap=c_tap, group=tgs[-1], wait=True)
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
                     tgs[-2].finish()
                     del tgs[-2]

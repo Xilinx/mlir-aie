@@ -1,0 +1,57 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Pick bench runners
+
+# Called by the nightlies that time things on an NPU: for each runner type,
+# its nightly-primary runner when that is up, else its nightly-backup
+# (utils/kernel_checks/pick_runner.py). A series of numbers then comes from
+# one machine, and a machine that is down does not cost the night.
+
+on:
+  workflow_call:
+    inputs:
+      runner_types:
+        description: 'runner types to pick for, space-separated'
+        required: true
+        type: string
+      role:
+        description: 'auto probes the primaries; primary or backup picks without asking'
+        required: false
+        type: string
+        default: auto
+    outputs:
+      runs_on:
+        description: 'per runner type, the labels its leg runs on (JSON)'
+        value: ${{ jobs.pick.outputs.runs_on }}
+
+permissions:
+  contents: read
+
+jobs:
+  pick:
+    runs-on: ubuntu-24.04
+    # Up to four hours for a busy primary to free up, and some to spare.
+    timeout-minutes: 260
+    permissions:
+      contents: read
+      actions: write   # dispatch, find and cancel the probes
+    outputs:
+      runs_on: ${{ steps.pick.outputs.runs_on }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          sparse-checkout: utils/kernel_checks
+      - name: Pick
+        id: pick
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TYPES: ${{ inputs.runner_types }}
+          ROLE: ${{ inputs.role }}
+          REF: ${{ github.event.repository.default_branch }}
+        run: |
+          # The probe workflow is dispatched from the default branch: a pull
+          # request's head is not a ref it can run from.
+          read -ra types <<< "$TYPES"
+          python3 utils/kernel_checks/pick_runner.py --runner-types "${types[@]}" \
+            --run-id "$GITHUB_RUN_ID" --ref "$REF" --role "$ROLE"

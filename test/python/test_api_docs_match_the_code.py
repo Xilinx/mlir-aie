@@ -40,6 +40,22 @@ def test_documented_kernel_modules_and_members_exist():
     assert not missing, f"{_DOC.name} documents symbols that do not exist: {missing}"
 
 
+def test_every_kernel_module_is_documented():
+    """Each public module in ``iron.kernels`` has a block in the reference.
+
+    ``fused`` shipped without one, and nothing noticed: the check above only
+    looks at the blocks that are there.
+    """
+    package = Path(__file__).parents[2] / "python" / "iron" / "kernels"
+    documented = {module for module, _ in _blocks(_DOC.read_text())}
+    undocumented = [
+        f"iron.kernels.{p.stem}"
+        for p in sorted(package.glob("*.py"))
+        if not p.stem.startswith("_") and f"iron.kernels.{p.stem}" not in documented
+    ]
+    assert not undocumented, f"{_DOC.name} has no block for {undocumented}"
+
+
 def test_public_all_entries_resolve():
     """Public ``__all__`` exports must still resolve.
 

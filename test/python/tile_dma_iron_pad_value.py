@@ -4,13 +4,14 @@
 # RUN: %python %s | FileCheck %s
 
 # The IRON explicit-DMA API exposes DMA constant padding: per-BD pad geometry
-# via Bd(pad_dimensions=...) and the per-channel constant pad value via
+# via a padded Bd tap and the per-channel constant pad value via
 # DmaChannel(pad_value=...). Check both land on the right ops -- the geometry on
 # aie.dma_bd, the value on the aie.dma_start channel op.
 
 import aie.iron as iron
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Bd, Buffer, DmaChannel, Program, Runtime, TileDma
 from aie.iron.device import Tile, from_name
 
@@ -36,10 +37,7 @@ def build_module():
                 bds=[
                     Bd(
                         buffer=mem_buf,
-                        length=1024,
-                        sizes=[1, 512],
-                        strides=[512, 1],
-                        pad_dimensions=[(0, 1), (0, 0)],
+                        tap=TensorAccessPattern.full((1, 512)).pad([(0, 1), (0, 0)]),
                     ),
                 ],
             ),

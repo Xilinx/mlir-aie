@@ -9,7 +9,7 @@
 // RUN: aie-opt %s | FileCheck %s
 // CHECK: %[[T01:.*]] = aie.tile(0, 1)
 // CHECK: %[[T12:.*]] = aie.tile(1, 2)
-// CHECK: aie.flow(%[[T01]], DMA : 0, %[[T12]], Core : 1)
+// CHECK: aie.flow(%[[T01]], DMA : 0, %[[T12]], DMA : 0)
 
 module {
   aie.device(xcve2802) {
@@ -17,6 +17,6 @@ module {
     %12 = aie.tile(1, 2)
     %02 = aie.tile(0, 2)
     %lock = aie.lock(%12, 63) { sym_name = "lock1" }
-    aie.flow(%01, DMA : 0, %12, Core : 1)
+    aie.flow(%01, DMA : 0, %12, DMA : 0)
   }
 }

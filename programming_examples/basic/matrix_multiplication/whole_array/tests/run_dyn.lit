@@ -1,0 +1,9 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu1, peano
+//
+// One compiled design, run at shapes that change M, K and N between
+// dispatches, including a ragged row count and a return to the first shape.
+// RUN: %run_on_npu1% %python %S/../whole_array.py --dev npu --dtype_out i32 --dynamic 512x512x512 512x256x512 768x256x256 256x128x128 1024x64x512 512x512x512 -w 0 -i 1 | FileCheck %s
+// CHECK-COUNT-6: PASS!

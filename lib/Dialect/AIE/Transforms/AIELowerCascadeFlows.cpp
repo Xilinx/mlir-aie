@@ -35,7 +35,7 @@ struct AIELowerCascadeFlowsPass
     const auto &targetModel = device.getTargetModel();
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
-    std::set<TileOp> tilesWithCascadeFlow;
+    DenseSet<TileOp> tilesWithCascadeFlow;
     DenseMap<TileOp, WireBundle> cascadeInputsPerTile;
     DenseMap<TileOp, WireBundle> cascadeOutputsPerTile;
 
@@ -64,7 +64,9 @@ struct AIELowerCascadeFlowsPass
     }
 
     // generate configure cascade ops
-    for (TileOp tile : tilesWithCascadeFlow) {
+    for (TileOp tile : device.getOps<TileOp>()) {
+      if (!tilesWithCascadeFlow.contains(tile))
+        continue;
       WireBundle inputDir;
       if (cascadeInputsPerTile.find(tile) != cascadeInputsPerTile.end()) {
         inputDir = cascadeInputsPerTile[tile];

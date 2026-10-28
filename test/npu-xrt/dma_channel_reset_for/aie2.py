@@ -51,16 +51,12 @@ def build_design():
             tile_ty = np.ndarray[(TILE,), np.dtype[np.int32]]
 
             shim = tile(0, 0)
-            # Column 1 is load-bearing. With the memtile in array column 0 the
-            # first word of a resident initValues buffer reads back as
-            # 0x00CD0CD0 on every dispatch after the first; columns 1-7 are
-            # exact. Swept 0-7, 32 dispatches each, both orderings, on npu2.
-            # A memtile buffer filled from the shim through a link instead of
-            # initValues is exact in column 0, so this is specific to a
-            # resident compile-time-initialized buffer. The constant appears in
-            # no build artifact and is unidentified.
-            mem = tile(1, 1)
-            compute = tile(1, 2)
+            # Column 0 on purpose. The first word of this memtile reads back as
+            # 0x00CD0CD0 on every dispatch after the first, so the buffer
+            # allocator keeps a resident initValues buffer off it. 1000 exact
+            # dispatches here cover that too.
+            mem = tile(0, 1)
+            compute = tile(0, 2)
 
             weights = object_fifo(
                 "weights",

@@ -91,6 +91,13 @@ hardcoding for one NPU generation.  See
 [`iron_configuration.md`](./iron_configuration.md)
 §Arch-aware kernel introspection.
 
+`.k_tail(A, B, k_valid)`, a second symbol of the same object, zeroes A's
+columns and B's rows from `k_valid` (clamped to `[0, dim_k]`) on, in the
+blocking the matmul reads.
+Call it on the last K tile of a reduction whose length is not a multiple of
+`dim_k`: the matmul after it sums only the first `k_valid` of the tile's K,
+whatever the rest of the tile holds.
+
 ## Shared-buffer factory kwargs
 
 Some convolution factories accept an opt-in kwarg that decouples the
@@ -102,7 +109,6 @@ across multiple workers can share one weight tape between them:
 | `kernels.conv2dk3(weight_output_channels=)` | weight buffer total OCs | from per-call `output_channels` slice (the `channel_offset` runtime arg selects this worker's slice) |
 | `kernels.conv2dk1_skip_init(skip_input_channels=)` | skip-projection weights ICs | from main-conv `input_channels`; the two weight blocks are concatenated in one buffer |
 | `kernels.bn_conv2dk1_relu_xy_pool_padded(weight_chunk_count=)` | per-call weight tape chunk | from full `input_channels * output_channels` tile (for cascade / output-split streaming) |
-| `kernels.bn_fc_relu_ui16_pad(weight_chunk_count=)` | same as above for FC | (used by the MobileNet V3 classifier head) |
 
 Default behavior is unchanged — leave the kwarg unset and the
 buffer / call sizes match like always.
@@ -114,16 +120,23 @@ on each submodule's `__doc__`:
 
 | Submodule | What's in it |
 |-----------|--------------|
-| [`kernels.eltwise`](../python/iron/kernels/eltwise.py)       | element-wise: passthrough, scale, add, mul, mul_add, relu |
-| [`kernels.reduce`](../python/iron/kernels/reduce.py)         | reductions: reduce_add, reduce_min, reduce_max, compute_max |
-| [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, tanh, sigmoid, gelu, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec |
-| [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: axpy, convert_copy, expand, transpose |
+| [`kernels.eltwise`](../python/iron/kernels/eltwise.py) | element-wise: passthrough, scale, add (bf16, or int8 on power-of-two scales), mul, mul_add, relu, clamp, magnitude_f32 |
+| [`kernels.reduce`](../python/iron/kernels/reduce.py) | reductions: reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine, maxpool2d |
+| [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, tanh, sigmoid, gelu, gelu_erf, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec, log_f32, log10_clamp_f32 |
+| [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose |
 | [`kernels.zero`](../python/iron/kernels/zero.py) | target-vectorized zero fill, including partial vectors and packed BFP blocks |
+| [`kernels.core`](../python/iron/kernels/core.py) | set_rounding: the core's rounding-mode register, named by a contract's `setup` |
 | [`kernels.quant`](../python/iron/kernels/quant.py) | q4nx dequantization to GEMM-ordered bfp16ebs8 (AIE2P), with byte-exact verification |
-| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm, mv, cascade_mm, mm_bfp, mm_bfp_shuffle, mha |
-| [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
+| [`kernels.linalg`](../python/iron/kernels/linalg.py) | linear algebra: mm, mv, cascade_mm, mm_bfp, mm_bfp_shuffle, mha, attention_i8 (int8 attention for YOLO26n's PSA) |
+| [`kernels.fused`](../python/iron/kernels/fused.py) | fused_mm: one tile's fused GEMM init, reduction and drain |
+| [`kernels.conv`](../python/iron/kernels/conv.py) | convolutions: conv2dk1/3/14, conv2dk1_i8, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
+| [`kernels.norm`](../python/iron/kernels/norm.py) | normalization: rms_norm, rms_norm_eps, layer_norm, layer_norm_eps |
 | [`kernels.transformer`](../python/iron/kernels/transformer.py) | transformer blocks: rms_norm, layer_norm (bf16, f32, affine + cast), rope, mm_activation_epilogue |
-| [`kernels.vision`](../python/iron/kernels/vision.py)         | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted |
+| [`kernels.sample`](../python/iron/kernels/sample.py) | exact top-k next-token sampling split across columns: sample_select, sample_combine |
+| [`kernels.moe`](../python/iron/kernels/moe.py) | mixture of experts: router_top_k, experts |
+| [`kernels.ssm`](../python/iron/kernels/ssm.py) | state space models: selective_scan (Mamba2), gated_delta_rule (Gated DeltaNet) |
+| [`kernels.flm_gemma4`](../python/iron/kernels/flm_gemma4.py) | FastFlowLM's Gemma 4 cores (prefill attention, the q4nx LM head, the decode layer); not general building blocks |
+| [`kernels.vision`](../python/iron/kernels/vision.py) | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted, resample_peak, resample_quantize, resize |
 
 The submodule files are the authoritative catalog — each function has
 a complete docstring covering its kwargs, dtype constraints, and the
@@ -160,7 +173,23 @@ fn.contract.ops_per_call # 1024
 mm = kernels.mm(input_dtype=np.int16, output_dtype=np.int32)
 mm.contract.acc_dtype    # numpy.int64: accauto is acc64 for int16
 mm.contract.reduction    # 64: products summed per output per call (dim_k)
-kernels.mm.dtypes        # every (input_dtype, output_dtype) the factory supports
+kernels.DTYPES["mm"]     # every dtype combination the factory builds, as kwargs
+```
+
+Some kernels compute differently by build: `gelu` reads a LUT on AIE2 and
+uses AIE2P's tanh instruction, and `rms_norm` holds a bound measured on each
+NPU. Their contract lists one row per `Build` (an architecture, and whether
+`AIE_KERNELS_PORTABLE` compiled the untuned branch) in `contract.per_build`,
+and leaves `contract.reference` and `contract.tolerance` unset. The row is
+picked when an output is checked, for the build that produced it, so a kernel
+returned before any device was bound is still judged by the build that ran:
+
+```python
+fn = kernels.rms_norm()
+fn.contract.tolerance               # None: judged per build
+fn.contract_for().tolerance         # the bound device's row; raises if none is bound
+fn.contract_for("aie2p").tolerance  # one bf16 ulp, measured on npu2
+fn.expected(inputs, arch="aie2p")   # expected() and judge() take arch= too
 ```
 
 The contract is what lets `aie.iron.algorithms.kernel_design` build, run and check
@@ -244,8 +273,6 @@ A contract also declares the dtype facts an `arg_types` list leaves out:
   see [Rounding mode](#rounding-mode) below. The rounding setter is compiled
   as always-inline LLVM IR and merged into the core, avoiding an external
   function call; the setter therefore uses Peano, not Chess.
-- `stack_bytes`: the core stack a Worker calling this kernel needs, when
-  that is more than the target's default.
 - `unsupported`: why the generic builder cannot run this kernel, when it
   cannot; the reference still says what the kernel computes.
 
@@ -255,8 +282,8 @@ it does with NaN or subnormal inputs are *not* declared. The numpy
 clips, a denormal-flushing one flushes -- and `tolerance` is the slack
 allowed against it. Declaring the same fact in two places let the two
 drift.
-- `.dtypes` on the factory: the dtype combinations it builds. The host
-  contract test builds every entry.
+- `kernels.DTYPES["<factory>"]`: the dtype combinations a factory builds,
+  as kwargs dicts. The host contract test builds every entry.
 
 ## Standing in for a hand-built kernel
 
@@ -344,7 +371,8 @@ A new factory is complete when one line each in two places covers it:
    to the number of meaningful output elements. Say what the kernel
    accumulates in (`acc_dtype`, `reduction`), and model overflow and
    rounding in the reference from the C++ rather than from a guess.
-   A factory with more than one dtype lists them in a `.dtypes` table.
+   A factory with more than one dtype lists them in `DTYPES["<factory>"]`
+   above its definition.
    Bind fixed parameters explicitly with `parameter_bindings`, publish nontrivial
    storage with `layouts`, and initialize `InOut` tiles with `initializers`.
    Declare what the kernel's trace markers measure with `trace=`:
@@ -369,6 +397,17 @@ symbol reaches against `trace=`. Markers in a sibling kernel of the same
 file, around an inner loop, or skipped by an early return do not count as
 `whole_call`.
 
+A pull request that touches `aie_kernels/`, `python/iron/kernels/` or the
+case table gets one comment, updated on each push, that lists each new or
+changed factory with its contract, trace and cases, and what it still
+lacks. [`utils/kernel_checks/contribution.py`](../utils/kernel_checks/contribution.py)
+writes it by reading the files, never running them; it is a reminder and
+never fails the pull request. To see it before pushing:
+
+```bash
+python3 utils/kernel_checks/contribution.py --base origin/main --head HEAD
+```
+
 ## Testing, performance and static checks
 
 Every tier below reads the contract and the case table; none restates
@@ -380,6 +419,8 @@ what a kernel computes.
 | host, Peano | trace markers vs. the contract's `trace` | `test/python/test_kernel_trace_markers.py` | every PR (lit) |
 | device, smoke | the `smoke` cases on random data | `test/python/npu/test_kernels_e2e.py` | every PR on the NPU runners |
 | device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | nightly, before anything is timed |
+| device, dedicated | factories the generic harness cannot check, marked `@pytest.mark.kernel_check(*factories)` (e.g. `set_rounding`) | `test/python/npu/test_kernels_e2e.py`, `test_kernel_cascade_conv.py` | every PR and nightly on the NPU runners |
+| device, cascade | MobileNet cascade conv halves, each pair against a numpy model of the whole conv | `test/python/npu/test_bn_cascade_pairs.py` | every PR on the NPU2 runners |
 | host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | on demand |
 
 There is no compile-only tier: a design that will not build fails the tier
@@ -456,7 +497,12 @@ check prevents publication for the whole run. Each passing case records:
 
 - `cycles`: minimum kernel-call cycles for `Trace.whole_call()` contracts,
   excluding initializers; `cycles_per_kop` normalizes by work.
-- `npu_us`: median host-runtime timing, with median absolute deviation (MAD).
+- `dispatch_us`: median host time from submit to completion of a run, with
+  its median absolute deviation (MAD); the dispatch's fixed cost is in it.
+- `dispatch_overhead_us`: the same for an empty run on the same hardware
+  context, the fixed cost alone.
+- `npu_us`: each run's dispatch less the empty run's median, the time the NPU
+  spent on the kernel's calls.
 - `kernel_object_bytes`: the tested kernel's compiled `.o` size, excluding
   harness, initializer, instruction and runtime-container files. Inline-only
   kernels have no object-size row. This starts a new series rather than
@@ -469,23 +515,13 @@ power mode, which the bench runners set at boot. PR and filtered dispatch
 runs may measure another mode, but comparisons require a known, matching
 mode.
 
-The [Nightly Kernel Checks dashboard](https://xilinx.github.io/mlir-aie/kernel-checks/)
-shows run health, per-kernel correctness and timing, and metric histories,
-with warnings for truncated traces and toolchain, runtime or host changes.
-The dashboard and Peano-PR report share `utils/kernel_checks/thresholds.json`:
-2% for cycles and kernel object size; for `npu_us`, 10% and more than three
-times the larger MAD. Reports are informational, not PR gates.
-
-`utils/kernel_checks/publish.py` writes `gh-pages:kernel-checks/<npu>/`:
-`runs/<id>.json`, `runs.json`, `latest.json` (the last published PR baseline),
-and `history/<metric>.json`; `catalogue.json` lists available kernels and
-case outcomes. Runs older than 90 days thin to weekly. Readers reject newer
-schema versions instead of interpreting them.
+Nightly results, and how the nightly runs and publishes these checks, are on the
+[maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=night).
 
 ### Static checks
 
 `aie.utils.compile.remarks` compiles every factory build (defaults plus
-each `.dtypes` entry) exactly as the JIT does, with Peano's
+each `kernels.DTYPES` entry) exactly as the JIT does, with Peano's
 optimization-record flags, and turns the records into per-kernel series:
 each loop's II and whether it is a zero-overhead loop, program memory,
 missing-bank loads and dropped `#pragma`s. It then reads the object: the
@@ -493,21 +529,19 @@ loop counts and program memory cover only the functions the entry symbol
 reaches, which are the ones the core link keeps, and `libcalls` names the
 runtime-library routines it calls (`__divsf3`, `__mulsf3`, `__floatsisf`:
 on AIE2P, scalar float divide, multiply and int-to-float are software
-routines). `stack_bytes` is the deepest call path's frames from the entry,
-without those routines' own; above the contract's `stack_bytes` (else the
-target default) it prints a warning, since an overflow corrupts the
-neighbouring memory silently. Each build prints its entry symbol and
-source file, and `--meta` names its object (kept with `--keep DIR`). The record shapes and the
-regression rules are documented on the module
-([API](../api/kernels.md#static-checks)). These checks run on demand; there
+routines). `kernel_stack_bytes` is the deepest call path's frames from the
+entry, without those routines' own and without the core's `main`, which
+aiecc's measured stack also counts. aiecc sizes the core's stack from its own
+measurement of the linked core, so the row is for comparing builds. Each build
+prints its entry symbol and source file, and `--meta` names its object (kept
+with `--keep DIR`). The record shapes and the regression rules are documented on the module
+([API](../docs/api/kernels.md#static-checks)). These checks run on demand; there
 is no static-check CI workflow. When invoked in GitHub Actions, the tool
 emits a warning annotation for a dropped pragma and an error annotation
 for a kernel that fails to compile. With
 `MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
-`aie_kernels/` is compiled against an installed wheel. The separate
-`nightlyKernelChecks.yml` workflow runs the hardware correctness and
-performance checks nightly and on Peano-pin pull requests; it does not run these
-static checks.
+`aie_kernels/` is compiled against an installed wheel. The nightly
+hardware checks do not run these static checks.
 
 ### Kernels the generic builder cannot run
 
@@ -525,9 +559,10 @@ ones carry contracts with round-half-even integer references and run in the
 hardware sweeps at MobileNet V3 layer shapes; `bn_conv2dk1_relu_xy_pool_padded`
 accumulates into its output across calls, so its case zeroes that buffer
 first. The cascade halves (`bn_conv2dk1_partial_*` and
-`bn_conv2dk1_input_split_partial_*`) exist as one symbol per network block
-and are still validated only through the composed MobileNet designs; the
-contract test lists them by name as not judged.
+`bn_conv2dk1_input_split_partial_*`) exist as one symbol per network block;
+`test/python/npu/test_bn_cascade_pairs.py` builds each pair the way the
+MobileNet cascade block calls it and judges it against a numpy model of
+the whole conv, and the contract test lists them by name as not judged.
 
 `mm_bfp_shuffle` validates the forward permutation through declared plain-BFP
 input and blocked-BFP output codecs, comparing exactly the represented values.

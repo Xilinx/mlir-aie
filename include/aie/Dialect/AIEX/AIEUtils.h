@@ -5,7 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef AIEX_UTILS_H
+#define AIEX_UTILS_H
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
@@ -18,23 +22,27 @@ using namespace mlir;
 namespace xilinx {
 namespace AIEX {
 
-// Find (or create) a private constant `memref.global` in `dev` holding `words`.
-//
-// `dedupCache`/`nextId`, when provided, make repeated calls O(1): without them,
-// each call rescans every existing global for dedup and probes the symbol table
-// for a free name, which is O(n) per call. Callers lowering many BDs (e.g. NPU
-// DMA lowering of a large multi-column program) should pass both, seeded once
-// from the device's existing globals. `dedupCache` maps each initial-value to
-// its global; `*nextId` is the next free "blockwrite_data_<n>" index (one past
-// the max already present), which the helper post-increments per created
-// global. Seeding past the max guarantees unique names by construction (no
-// symbol-table probe). Both are scoped to one device's lowering and hold raw op
-// handles; discard them afterward.
-memref::GlobalOp getOrCreateDataMemref(
-    OpBuilder &builder, AIE::DeviceOp dev, mlir::Location loc,
-    ArrayRef<uint32_t> words,
-    llvm::DenseMap<mlir::Attribute, memref::GlobalOp> *dedupCache = nullptr,
-    unsigned *nextId = nullptr);
+// The private constant `memref.global`s holding a device's blockwrite payloads:
+// one per distinct payload, each new one named `<prefix><n>` past every symbol
+// of that form the device held when the table was made. It holds op handles,
+// so it lives no longer than one rewrite of the device.
+class BlockwriteData {
+public:
+  BlockwriteData(AIE::DeviceOp dev, llvm::StringRef prefix);
+
+  // The global holding `words`, created at `builder`'s insertion point if the
+  // device has none.
+  memref::GlobalOp getOrCreate(OpBuilder &builder, mlir::Location loc,
+                               ArrayRef<uint32_t> words);
+
+  AIE::DeviceOp getDevice() const { return dev; }
+
+private:
+  AIE::DeviceOp dev;
+  std::string prefix;
+  llvm::DenseMap<mlir::Attribute, memref::GlobalOp> byValue;
+  unsigned nextId = 0;
+};
 
 // Result of tracing through supported view/cast operations to a block argument
 // for traceSubviewToBlockArgument function.
@@ -61,6 +69,9 @@ std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
 // therefore over-counts them. Returns nullopt when `arg` is not a memref.
 std::optional<unsigned> getHostBufferArgIndex(BlockArgument arg);
 
+// The number of host buffers `block`'s arguments take: its memref arguments.
+unsigned getHostBufferCount(Block &block);
+
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset
 // (held in the scratchpad slot referenced by `bdOp`'s
 // `offset_state_table_idx` attribute, multiplied by the element size of
@@ -70,15 +81,45 @@ LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
                                                      BaseMemRefType bufType,
                                                      uint64_t registerAddr);
 
-// Emit the params.txt description of every `aiex.scratchpad_parameter` in
-// `moduleOp` (with their assigned `state_table_idx`/`kind`) to `os`.
-//
-// Format (one entry per line, easily parsed with std::ifstream >>):
-//   <num_parameters>
-//   <name> <state_table_idx> <type> <kind>
-//   ...
-// where kind is "core" (shift-2 encoded, for read_scratchpad_parameter) or
-// "addr" (raw, for offset_parameter on DMA ops).
+// Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime length
+// (held in the scratchpad slot referenced by `bdOp`'s
+// `length_state_table_idx` attribute, times `lengthUnit` elements of
+// `bufType`) into the buffer length register of BD `bdId` on tile
+// (`col`, `row`), which the firmware counts in 32-bit words. Fails if the tile
+// does not support a runtime length.
+LogicalResult
+emitUpdateBdLengthFromParameter(OpBuilder &builder, Operation *bdOp,
+                                BaseMemRefType bufType, int64_t lengthUnit,
+                                const AIE::AIETargetModel &targetModel, int col,
+                                int row, int bdId);
+
+// The configures a DMA task value can come from. A task carried through
+// runtime control flow is an scf.for iter_arg or an scf.for/scf.if result
+// rather than a configure result; this walks such a value back through every
+// region-branch operand that can feed it (a loop's init and back-edge, each
+// branch's yield), at any nesting depth. Each configure is listed once.
+// Returns false if some path ends at a value that is not a configure result.
+bool getReachableConfigures(Value task,
+                            SmallVectorImpl<DMAConfigureTaskOp> &configures);
+
+// The one configure a task value can come from, through runtime control flow
+// as above, or null if there is none or more than one.
+DMAConfigureTaskOp getUniqueReachableConfigure(Value task);
+
+// `device:sequence`, the name a host runs `seq` by.
+std::string scratchpadCommandName(AIE::RuntimeSequenceOp seq);
+
+// Write params.txt for every `aiex.scratchpad_parameter` in `moduleOp`, one
+// entry per line: `<num_parameters> <num_slots>`, then per parameter `<name>
+// <state_table_idx> <type> <kind> <min> <max>`; `<num_joint_bounds>`, then per
+// bound `<length> <offset> <length_step> <max>`; `<num_commands>`, then per
+// command `<device>:<sequence> <num_read> <name>...`. A slot of "-" means no
+// command reads the parameter. kind is core (shift-2 encoded), addr (raw) or
+// repeat; "- -" bounds mean unbounded. A joint bound requires offset +
+// length_step * length <= max. A command's slots are distinct; commands may
+// share slots. See runtime_lib/test_lib/parameter_scratchpad.h for the parser.
 void emitScratchpadParamsFile(mlir::ModuleOp moduleOp, llvm::raw_ostream &os);
 } // namespace AIEX
 } // namespace xilinx
+
+#endif // AIEX_UTILS_H

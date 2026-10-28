@@ -13,6 +13,8 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include <cmath>
+
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEPLACETILES
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -71,6 +73,7 @@ struct AIEPlaceTilesPass
 
     // Create placer
     std::shared_ptr<Placer> placer;
+    std::shared_ptr<SAPlacer> saPlacer;
     switch (clPlacerType) {
     case PlacerType::SequentialPlacer: {
       std::optional<int> coresPerCol = std::nullopt;
@@ -80,14 +83,25 @@ struct AIEPlaceTilesPass
           coresPerCol, clMergeLogicalTiles, clSpreadUnanchoredTiles);
       break;
     }
-    case PlacerType::SAPlacer:
-      placer = std::make_shared<SAPlacer>(clSASeed);
+    case PlacerType::SAPlacer: {
+      double effort = clSAEffort.getValue();
+      if (!std::isfinite(effort) || effort <= 0) {
+        device.emitError("sa-effort must be positive and finite, got ")
+            << effort;
+        return signalPassFailure();
+      }
+      SAConfig config;
+      config.effort = effort;
+      placer = saPlacer = std::make_shared<SAPlacer>(clSASeed, config);
       break;
+    }
     }
 
     placer->initialize(device.getTargetModel());
     if (failed(placer->place(device)))
       return signalPassFailure();
+    if (saPlacer)
+      saFinalCost += saPlacer->getFinalCost();
 
     ConversionTarget target(getContext());
     target.addLegalOp<TileOp>();

@@ -68,12 +68,28 @@ inline cl::opt<bool> noEnforceDmaQueueDepth(
     cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
              "slot"));
 
+inline cl::opt<bool> allowDeadlockProneRouting(
+    "allow-deadlock-prone-routing",
+    cl::desc("Warn of, rather than fail on, flows the router finds can "
+             "deadlock however they are routed or through receivers packet "
+             "flows share"));
+
+// Out of BD ids, the compiler may take them back from a started task it can
+// prove finished by polling its channel. The poll hangs if that task's
+// completion depends on a push issued after it, which the compiler cannot see.
+inline cl::opt<bool> reclaimRuntimeBds(
+    "reclaim-runtime-bds",
+    cl::desc("Reuse the BD ids of started, unreleased runtime-sequence tasks "
+             "when a tile runs out, polling for their completion"));
+
 inline cl::opt<bool> verifyEach(
     "verify-each",
     cl::desc("Verify the IR after every pass, not once per pass pipeline "
              "(slower; names the pass that produced invalid IR)"));
 
-inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
+inline cl::opt<bool>
+    verbose("verbose",
+            cl::desc("Verbose execution, with the compiler's remarks"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose));
 inline cl::opt<bool>
@@ -105,6 +121,16 @@ inline cl::opt<int>
     saSeed("sa-seed",
            cl::desc("Random seed for SA placer (0 = non-deterministic)"),
            cl::init(1));
+inline cl::opt<double> saEffort(
+    "sa-effort",
+    cl::desc("Scale on the SA placer's search budget (1.0 = full; lower "
+             "trades placement cost for compile time)"),
+    cl::init(1.0));
+inline cl::opt<int64_t> placementBudget(
+    "placement-budget",
+    cl::desc("Buffer placements aie-assign-buffer-addresses may try per tile "
+             "before giving up"),
+    cl::init(100000));
 inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Dynamic objectFIFOs"),
                                      cl::init(true));
@@ -129,6 +155,16 @@ inline cl::opt<unsigned> optLevel("O", cl::Prefix,
                                   cl::init(2));
 inline cl::alias optLevelAlias("opt-level", cl::desc("Alias for -O"),
                                cl::aliasopt(optLevel));
+// Arguments for the Peano `opt` and `llc` that compile each core's program,
+// as clang's -Xclang: one argument per occurrence, never split at commas
+// (`-Xopt -opt-disable=licm,loop-unroll-full`), appended after aiecc's own, so
+// an option that aiecc sets takes the value given here.
+inline cl::list<std::string>
+    xoptArgs("Xopt", cl::value_desc("arg"),
+             cl::desc("Pass <arg> to opt when compiling a core (Peano only)"));
+inline cl::list<std::string>
+    xllcArgs("Xllc", cl::value_desc("arg"),
+             cl::desc("Pass <arg> to llc when compiling a core (Peano only)"));
 inline cl::opt<bool> expandLoadPdis(
     "expand-load-pdis",
     cl::desc("Expand `load_pdi { device_ref }` into explicit write sequences "
@@ -139,6 +175,18 @@ inline cl::opt<bool> loadPdiToCtrlPkt(
              "the device configuration as control packets (requires a control "
              "overlay; implies --generate-ctrl-pkt-overlay; mutually exclusive "
              "with --expand-load-pdis)"));
+inline cl::opt<bool> reconfigTeardown(
+    "reconfig-teardown",
+    cl::desc("Undo each configuration once it is done, in place of the reset "
+             "before the next one; only the first configuration of a runtime "
+             "sequence keeps its reset (requires full-ELF output and "
+             "--expand-load-pdis)"));
+inline cl::opt<bool> reconfigInitEntry(
+    "reconfig-init-entry",
+    cl::desc(
+        "Move the one reset to an argument-free <device>:reconfig_init entry, "
+        "which the host runs once per hardware context before the other "
+        "entries (requires --reconfig-teardown)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -197,6 +245,14 @@ inline cl::opt<int> defaultStackSize(
 inline cl::opt<std::string>
     sequenceName("sequence-name",
                  cl::desc("Runtime sequence name to compile (default: all)"));
+
+// The resolved module (input_with_addresses.mlir) of the image an instruction
+// stream will run on: the stream's static design must be that image's
+// (aie-check-against-image).
+inline cl::opt<std::string> checkAgainstImage(
+    "check-against-image",
+    cl::desc("Fail unless the static design matches that of the image "
+             "compiled to this resolved module, naming what to pin"));
 
 // Skip the aie-materialize-runtime-sequences pass in NPU lowering.
 inline cl::opt<bool> noMaterialize(
@@ -505,6 +561,11 @@ inline cl::opt<bool> dryRun("n", cl::desc("Dry run"));
 inline cl::opt<bool> profile(
     "profile",
     cl::desc("Print a per-edge time and resident-memory summary at the end"));
+inline cl::opt<std::string> profileJson(
+    "profile-json",
+    cl::desc("Write the per-edge time and resident-memory summary --profile "
+             "prints to this file, as JSON"),
+    cl::value_desc("path"), cl::init(""));
 inline cl::opt<bool> progress(
     "progress",
     cl::desc("Show single-line execution progress: overwrite one status line "
@@ -520,6 +581,15 @@ inline cl::opt<std::string> deviceCacheDir(
              "earlier build stored in this dir, and store the ones this build "
              "compiles (Peano only)"),
     cl::value_desc("dir"), cl::init(""));
+inline cl::opt<bool> noShareCoreObjects(
+    "no-share-core-objects",
+    cl::desc("Compile each core's program on its own, even where other cores "
+             "run the same program over their own buffers"));
+inline cl::opt<bool> awaitLinkFiles(
+    "await-link-files",
+    cl::desc("Lower the design, but read no file a core links (link_with, "
+             "link_files) until a line arrives on stdin, so a caller can build "
+             "them meanwhile; stdin closing first fails the build"));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
 // selected by `--cut` plus a `manifest.json` describing them into <dir> after a
 // successful run — a "prefix" of the build. `--resume=<manifest.json>` rebuilds
@@ -569,12 +639,31 @@ inline bool wantAiesim = false;
 inline bool doUnified = false;
 // Compile the host program (selected by --get-host).
 inline bool doCompileHost = false;
+// Whether the full ELF is among the outputs, by --get-full-elf or its edge.
+inline bool wantFullElf = false;
+
+// Resolve `option` to itself AND `met`. Asking for it explicitly when `met`
+// does not hold is an error; an option that is on by default turns off.
+inline bool resolveDependentOption(cl::opt<bool> &option, bool met,
+                                   llvm::StringRef requirement) {
+  if (!option || met)
+    return true;
+  if (option.getNumOccurrences()) {
+    llvm::errs() << "aiecc: --" << option.ArgStr << " requires " << requirement
+                 << "\n";
+    return false;
+  }
+  option = false;
+  return true;
+}
 
 // Resolve inter-option coupling and populate the resolved-option globals above.
+// `resuming` exempts the output-dependent requirements, since a --resume may
+// select other outputs than the build it continues.
 //
 // Returns false (after a diagnostic) if the requested combination is
 // impossible.
-inline bool resolveOptions() {
+inline bool resolveOptions(bool resuming = false) {
   // Each Chess flag implies the other, so that a bare --xchesscc does not hand
   // Chess-compiled objects to Peano's linker. State both to mix the two.
   if (xchesscc && !xbridge.getNumOccurrences())
@@ -591,7 +680,48 @@ inline bool resolveOptions() {
 
   doUnified = unified && !noUnified;
   doCompileHost = generateHost;
-  return true;
+
+  // --expand-load-pdis reconfigures via PDI swaps and routes the config branch
+  // through the NPU-lowered module; control-packet generation currently
+  // assumes it runs on the *pre*-NPU-lowering module. The two are incompatible
+  // as implemented.
+  if (expandLoadPdis && generateCtrlpkt) {
+    llvm::errs() << "aiecc: --expand-load-pdis and --get-ctrlpkt are "
+                    "mutually exclusive\n";
+    return false;
+  }
+
+  // --expand-load-pdis and --load-pdi-to-ctrl-pkt are two different reconfigure
+  // strategies for the same `load_pdi` ops (explicit write sequences vs.
+  // streamed control packets); at most one may apply.
+  if (expandLoadPdis && loadPdiToCtrlPkt) {
+    llvm::errs() << "aiecc: --expand-load-pdis and --load-pdi-to-ctrl-pkt are "
+                    "mutually exclusive\n";
+    return false;
+  }
+
+  // Disambiguate the full-ELF control packet flow and the standalone
+  // artifact flows.
+  if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
+    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
+                    "together also requires --load-pdi-to-ctrl-pkt\n";
+    return false;
+  }
+
+  wantFullElf = generateFullElf ||
+                llvm::is_contained(getOutputs, fullElfName.getValue()) ||
+                llvm::is_contained(cutOutputs, fullElfName.getValue());
+  bool fullElf = wantFullElf || resuming;
+  // The teardown disables every route a configuration sets, including the
+  // control packet routes --generate-ctrl-pkt-overlay adds to it.
+  return resolveDependentOption(reconfigTeardown, fullElf, "full-ELF output") &&
+         resolveDependentOption(reconfigTeardown, expandLoadPdis,
+                                "--expand-load-pdis") &&
+         resolveDependentOption(
+             reconfigTeardown, !ctrlPktOverlay,
+             "that --generate-ctrl-pkt-overlay is not set") &&
+         resolveDependentOption(reconfigInitEntry, reconfigTeardown,
+                                "--reconfig-teardown");
 }
 
 //===----------------------------------------------------------------------===//

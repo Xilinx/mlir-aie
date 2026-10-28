@@ -37,6 +37,13 @@ If the IRON device is not set, many designs fetch it on demand from the [`Defaul
 <abc.NPU1 object at 0x722a65903a10>
 ```
 
+Used as a context manager, it selects the device for the block and restores
+the previous selection on exit, also when the block raises:
+```python
+with iron.set_current_device(iron.device.NPU2Col1()):
+    my_design.compile()
+```
+
 ### Cross-compiling for a different NPU
 
 The target architecture (`aie2` / `aie2p`) is part of the per-design
@@ -53,8 +60,8 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 
 # Same generator, two arches → two distinct cache dirs.
 for dev_cls in (NPU1Col1, NPU2Col1):
-    iron.set_current_device(dev_cls())
-    my_design.specialize(N=4096).compile()
+    with iron.set_current_device(dev_cls()):
+        my_design.specialize(N=4096).compile()
 ```
 
 Useful for building Strix binaries on Phoenix-only CI hosts (or vice
@@ -107,6 +114,60 @@ without relying on `PATH` search order.
 AIECC_PATH=/path/to/aiecc python my_script.py
 ```
 
+## External Tool Overrides
+
+`aie.utils.config` resolves the external tools below from an environment
+variable first, then the bundled bin directories (MLIR-AIE's, and for the LLVM
+tools also Peano's and that of the LLVM the build was configured against), then
+`PATH`. Set a variable to pin a specific binary.
+
+| Variable | Tool | Used for |
+|----------|------|----------|
+| `AIE_XCLBINUTIL` | `xclbinutil` | Packaging an xclbin in `aiecc`, and reading a PDI out of one in `aie-hsaco`. A bare name is looked up on `PATH`; a value that resolves to nothing is an error, never a silent fallback. |
+| `AIE_OBJCOPY_PATH` | `llvm-objcopy` | Renaming symbols in compiled kernel objects, and injecting the AIE section in `aie-hsaco`. |
+| `AIE_NM_PATH` | `llvm-nm` | Listing the symbols a compiled kernel object defines. |
+| `AIE_AR_PATH` | `llvm-ar` | Bundling compiled objects into a static archive. |
+| `AIE_READOBJ_PATH` | `llvm-readobj` | Reading kernel objects for the static kernel checks. |
+
+```bash
+AIE_XCLBINUTIL=/path/to/xclbinutil aie-hsaco ...
+```
+
+## Kernel Source Override (`MLIR_AIE_KERNEL_SOURCES`)
+
+The `aie.iron.kernels` factories compile their C++ from the installed
+`include/aie_kernels/` and `aie_runtime_lib/` by default, which is the
+checkout as of its last build or install. Set `MLIR_AIE_KERNEL_SOURCES` to a
+checkout's root to compile that checkout's `aie_kernels/` and
+`aie_runtime_lib/` instead, for example to try a kernel edit against an
+installed wheel without rebuilding. `aie.utils.config.aie_kernels_dir()` and
+`aie_runtime_lib_dir()` resolve the override, the JIT cache key includes the
+tree it names, and `aie.utils.benchmark` records it with its results.
+`python -m aie.utils.compile.remarks --sources DIR` is the same override for
+that tool, and its `--baseline-sources DIR` compiles each build a second time
+from another checkout to compare the two.
+
+```bash
+MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python my_script.py
+```
+
+## Kernel Precompiled Header (`AIE_KERNEL_PCH`)
+
+Peano adds its intrinsics header to every kernel compile, and parsing it is a
+large share of a small kernel's compile time. A Peano kernel compile therefore
+reads that header from a precompiled header (PCH) under
+`$NPU_CACHE_HOME/pch/`, built once for each compiler and target. A kernel whose
+own macros or include directories change what the header reads, or that
+passes other compiler flags, gets a PCH of its own. The object is the one a
+plain compile builds. A compile that fails against the PCH is run again
+without it, and a PCH the compiler refuses is rebuilt by the next compile. A
+command with a relative include directory, or with an `-include` of its own,
+compiles without a PCH. Set `AIE_KERNEL_PCH=0` to compile without one.
+
+```bash
+AIE_KERNEL_PCH=0 python my_script.py
+```
+
 ## IRON XRT Runtime Cache Size
 
 The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of this cache can be configured using the `XRT_CONTEXT_CACHE_SIZE` environment variable. This is particularly useful in CI environments where multiple tests run in parallel and might exhaust the available NPU contexts.
@@ -114,6 +175,10 @@ The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of t
 ```bash
 export XRT_CONTEXT_CACHE_SIZE=1
 ```
+
+The instruction streams it has loaded are cached apart from the contexts, up to
+`XRT_INSTS_CACHE_SIZE` of them (256 by default). They hold no hardware context,
+and a stream is released with the context it was loaded into.
 
 ## IRON HRX Runtime Cache Size
 

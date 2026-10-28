@@ -13,8 +13,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import aie.dialects.aiex  # noqa: F401  (registers the aiex.bfp type)
 import numpy as np
 import pytest
+from aie._mlir_libs._aie import (  # pyright: ignore[reportMissingImports]
+    type_size_in_bits,
+)
+from aie.helpers.npdtypes import v16bfp16ebs16
+from aie.helpers.util import np_dtype_to_mlir_type
+from aie.ir import Context  # pyright: ignore[reportMissingImports]
 from aie.utils import bfp
 from ml_dtypes import bfloat16
 
@@ -34,6 +41,19 @@ def test_dtype_metadata_uses_native_scalar_sizes():
         assert bfp.values_per_elem(dtype) == 1
     assert bfp.itemsize(bfp.v8bfp16ebs8) == 9
     assert bfp.values_per_elem(bfp.v8bfp16ebs8) == 8
+    assert bfp.dtype_name(bfp.v8bfp16ebs8) == "bfp16ebs8"
+    assert bfp.itemsize(v16bfp16ebs16) == 17
+    assert bfp.values_per_elem(v16bfp16ebs16) == 16
+    assert bfp.dtype_name(v16bfp16ebs16) == "bfp16ebs16"
+    assert bfp.is_bfp(bfp.v8bfp16ebs8) and not bfp.is_bfp(v16bfp16ebs16)
+
+
+@pytest.mark.parametrize("marker", [bfp.v8bfp16ebs8, v16bfp16ebs16])
+def test_block_layout_matches_the_mlir_type(marker):
+    with Context():
+        mlir_type = np_dtype_to_mlir_type(marker)
+        assert str(mlir_type) == f'!aiex.bfp<"{marker.__name__}">'
+        assert type_size_in_bits(mlir_type) == 8 * marker.block_bytes
 
 
 def test_decode_accepts_strided_and_empty_storage():

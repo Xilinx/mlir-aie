@@ -5,10 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -810,6 +813,8 @@ struct AIENpuToCertPass
     : xilinx::AIEX::impl::AIENpuToCertBase<AIENpuToCertPass> {
   void runOnOperation() override {
     auto moduleOp = getOperation();
+    if (failed(AIE::inlineWriteConfigs(moduleOp)))
+      return signalPassFailure();
 
     // Collect all devices
     llvm::SmallVector<AIE::DeviceOp, 4> devices;

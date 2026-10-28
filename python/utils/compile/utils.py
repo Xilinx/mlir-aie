@@ -8,6 +8,7 @@
 import concurrent.futures
 import contextlib
 import filecmp
+import functools
 import hashlib
 import json
 import logging
@@ -18,16 +19,15 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import weakref
-from pathlib import Path
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from pathlib import Path, PureWindowsPath
 
 import aie.utils.config as config
-
-if TYPE_CHECKING:
-    from aie.ir import (  # pyright: ignore[reportMissingImports]
-        Module,  # pyright: ignore[reportAttributeAccessIssue]
-    )
+from aie import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+from aie.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
+from aie.helpers.errors import attach_tool_location
 
 logger = logging.getLogger(__name__)
 
@@ -40,25 +40,70 @@ _DEFAULT_FILE_MODE = 0o666 & ~_UMASK
 _SYMBOL_PREFIX_STAMP_VERSION = 3
 
 
+AIECC_PROFILE_NAME = "aiecc_profile.json"
+KERNEL_PROFILE_NAME = "kernel_profile.json"
+
 SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
 SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
+
+
+def _msvc_style_driver(compiler: str) -> bool:
+    """Return whether ``compiler`` is ``clang-cl`` or ``cl``."""
+    # PureWindowsPath splits ``\`` and ``/``. pathlib.Path follows the host, so
+    # on Linux the stem of ``C:\LLVM\bin\clang-cl.exe`` is the whole string.
+    return PureWindowsPath(compiler).stem.lower() in {"clang-cl", "cl"}
+
+
+def _msvc_opt_flag(opt: str) -> str:
+    """Translate a GCC ``-O*`` level into the MSVC spelling."""
+    if opt == "-O0":
+        return "/Od"
+    if opt.startswith("-"):
+        return "/" + opt[1:]
+    return opt
+
+
+def _windows_reproducible_link_flag(compiler: str) -> str:
+    """Keep a GCC-driven Windows dispatch DLL from embedding a timestamp.
+
+    Identical builds must hash the same. A triple containing ``msvc`` takes
+    ``/Brepro``; every other GCC-style driver takes ``--no-insert-timestamp``.
+    ``clang-cl`` and ``cl`` do not use this helper.
+    """
+    target = subprocess.run(
+        [compiler, "-dumpmachine"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if "msvc" in target:
+        return "-Wl,/Brepro"
+    return "-Wl,--no-insert-timestamp"
 
 
 def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[str]:
     """Build a host shared library with the project's C++17 ABI."""
     compiler = config.host_cxx_path()
+    if _msvc_style_driver(compiler):
+        # clang-cl ignores -shared and -std=c++17, and it parses -Wl,/Brepro
+        # as a -W warning name. The generated transaction source is C++17.
+        # /Fo applies only to source files that follow it. Without it, cl
+        # writes dispatch_gen.obj in the process working directory.
+        return [
+            compiler,
+            "/LD",
+            _msvc_opt_flag(opt),
+            "/std:c++17",
+            *(f"/I{inc}" for inc in includes),
+            f"/Fo{out.with_suffix('.obj')}",
+            str(src),
+            f"/Fe:{out}",
+            "/link",
+            "/Brepro",
+        ]
     link_flags = []
     if SHARED_LIB_SUFFIX == ".dll":
-        target = subprocess.run(
-            [compiler, "-dumpmachine"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        # PE timestamps must not give identical dispatch builds different hashes.
-        link_flags.append(
-            "-Wl,/Brepro" if "msvc" in target else "-Wl,--no-insert-timestamp"
-        )
+        link_flags.append(_windows_reproducible_link_flag(compiler))
     return [
         compiler,
         *SHARED_LIB_FLAGS,
@@ -70,6 +115,262 @@ def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[
         "-o",
         str(out),
     ]
+
+
+# --- Precompiled header for the driver-injected intrinsics -------------------
+#
+# The AIE driver -includes its intrinsics header into every TU; for aie2p that is
+# 67k lines of inline definitions reparsed per kernel. Parsing it once into a
+# PCH, passed back with -mno-vitis-headers, builds a byte-identical object.
+#
+# The PCH source is an EMPTY header, so the driver injects into its TU exactly
+# what it would inject into a kernel's. A command that only adds macros and
+# search paths shares the PCH of the bare command when clang preprocesses the
+# injected headers alike under both; any other is built under its own command.
+#
+# Set AIE_KERNEL_PCH=0 to disable.
+_PCH_SOURCE = "<pch-source>"
+_PCH_OUTPUT = "<pch-output>"
+# A kernel library source that includes aie_api is compiled with these, so it
+# reads the header first and a PCH of the header stands in for it. Passed to
+# cc1 directly: the driver puts a plain -include ahead of the intrinsics header
+# it injects, which defines the __AIE_ARCH__ aie_api needs.
+AIE_API_PREFIX_FLAGS = ("-Xclang", "-include", "-Xclang", "aie_api/aie.hpp")
+# What clang reads from the environment that can change what a header reads;
+# none of it shows in the command, so it joins the key.
+_CLANG_SEARCH_PATHS = (
+    "CPATH",
+    "C_INCLUDE_PATH",
+    "CPLUS_INCLUDE_PATH",
+    "OBJC_INCLUDE_PATH",
+    "OBJCPLUS_INCLUDE_PATH",
+)
+_CLANG_ENVIRONMENT = (
+    *_CLANG_SEARCH_PATHS,
+    "CCC_OVERRIDE_OPTIONS",
+    "CLANG_NO_DEFAULT_CONFIG",
+)
+_SEARCH_PATH_FLAGS = ("-I", "-isystem", "-iquote", "-idirafter")
+
+
+@functools.lru_cache(maxsize=None)
+def _compiler_identity(cxx: str) -> str:
+    """Key on the compiler build, not on where it sits.
+
+    ``clang --version`` prints the llvm-aie git SHA, identical across installs of
+    one build; a path or an mtime is not (mlir-aie#3427 keyed aiecc by mtime and
+    made two installs of one commit disagree).  ``InstalledDir:`` is dropped for
+    the same reason.  Costs ~16 ms, once per process.
+    """
+    try:
+        out = subprocess.run([cxx, "--version"], capture_output=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    text = out.decode(errors="replace")
+    return "\n".join(
+        line for line in text.splitlines() if not line.startswith("InstalledDir:")
+    ).strip()
+
+
+def _pch_cache() -> Path | None:
+    """Return the directory PCHs live in, or None where it cannot be made."""
+    try:
+        # Deferred: aie.utils.compile.__init__ imports this module, so
+        # NPU_CACHE_HOME cannot be imported at module scope.
+        from aie.utils.compile import NPU_CACHE_HOME
+
+        cache = NPU_CACHE_HOME / "pch"
+        cache.mkdir(parents=True, exist_ok=True)
+    except (ImportError, OSError):
+        return None
+    return cache
+
+
+def _preprocessed(pch_cmd: tuple[str, ...]) -> tuple[str, frozenset[str]] | None:
+    """Preprocess what ``pch_cmd`` reads into its PCH.
+
+    Returns:
+        The digest of the preprocessed headers, and every macro name a header
+        #defines or #undefs; None if the preprocessor fails.
+    """
+    cache = _pch_cache()
+    if cache is None:
+        return None
+    empty = cache / "empty.h"
+    try:
+        if not empty.exists():
+            empty.write_text("")
+        ret = subprocess.run(
+            [
+                {_PCH_SOURCE: str(empty), _PCH_OUTPUT: "-"}.get(arg, arg)
+                for arg in pch_cmd
+            ]
+            + ["-E"],
+            capture_output=True,
+            check=False,
+            timeout=_PCH_BUILD_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if ret.returncode != 0:
+        return None
+    digest = hashlib.sha256(ret.stdout).hexdigest()
+    headers = _OUTPUT_HEADERS.get(digest)
+    if headers is None:
+        headers = _OUTPUT_HEADERS[digest] = frozenset(
+            re.findall(rb'^# \d+ "([^"<]+)"', ret.stdout, re.M)
+        )
+    directives: set[str] = set()
+    for header in headers:
+        try:
+            text = Path(os.fsdecode(header)).read_bytes()
+        except OSError:
+            continue
+        key = hashlib.sha256(text).digest()
+        names = _HEADER_DIRECTIVES.get(key)
+        if names is None:
+            names = _HEADER_DIRECTIVES[key] = frozenset(
+                name.decode()
+                for name in re.findall(
+                    rb"^[ \t]*#[ \t]*(?:define|undef)[ \t]+(\w+)", text, re.M
+                )
+            )
+        directives |= names
+    return digest, frozenset(directives)
+
+
+# Every kernel compile preprocesses, and most read the same headers: scanning
+# them is pure Python, so many threads at once serialize on it. Both memos are
+# keyed on content, so an edited header is still scanned again.
+_OUTPUT_HEADERS: dict[str, frozenset[bytes]] = {}
+_HEADER_DIRECTIVES: dict[bytes, frozenset[str]] = {}
+
+
+# The bare command's search paths are fixed; a caller's can gain a header at any
+# time, so only the bare command is preprocessed once per process.
+_BARE_PREPROCESSED: dict[tuple[str, ...], tuple[str, frozenset[str]] | None] = {}
+_BARE_PREPROCESSED_LOCKS: dict[tuple[str, ...], threading.Lock] = {}
+_BARE_PREPROCESSED_GUARD = threading.Lock()
+
+
+def _kernel_pch(pch_cmd: list[str]) -> str | None:
+    """Path to a PCH built by ``pch_cmd``, building it on first use.
+
+    ``pch_cmd`` names its source and output ``_PCH_SOURCE`` and ``_PCH_OUTPUT``.
+    Fails OPEN: every error returns None and the caller compiles normally.
+    Written under a temporary name and renamed into place, so a concurrent kernel
+    compile can never read a half-written PCH.
+    """
+    ident = _compiler_identity(pch_cmd[0])
+    if not ident:
+        return None
+    # The compiler's identity, not where it is installed, with the rest of the
+    # command and the environment it reads.
+    environment = [f"{name}={os.environ.get(name)}" for name in _CLANG_ENVIRONMENT]
+    key = hashlib.sha256(
+        "\0".join([ident, *pch_cmd[1:], *environment]).encode()
+    ).hexdigest()[:32]
+    cache = _pch_cache()
+    if cache is None:
+        return None
+
+    pch = cache / f"{key}.pch"
+    if pch.exists():
+        return str(pch)
+
+    # Everyone who reaches here missed, so build under a lock and re-check --
+    # otherwise every concurrent build spends ~2.7 s and ~180 MB producing the
+    # same 19 MB file. A thread lock alone covers only one process; kernel
+    # compiles inside one build AND separate builds on one machine both race.
+    from aie.utils.compile.cache.utils import file_lock
+
+    with _PCH_BUILD_LOCKS_GUARD:
+        lock = _PCH_BUILD_LOCKS.setdefault(key, threading.Lock())
+    # A build takes seconds; one held this long is stuck, and a PCH is an
+    # optimisation, so every wait is bounded and ends in compiling without it.
+    if not lock.acquire(timeout=_PCH_LOCK_TIMEOUT_SECONDS):
+        return None
+    try:
+        if pch.exists():
+            return str(pch)
+        with file_lock(
+            str(cache / f"{key}.lock"),
+            timeout_seconds=_PCH_LOCK_TIMEOUT_SECONDS,
+        ):
+            if pch.exists():
+                return str(pch)
+            return _build_kernel_pch(pch_cmd, cache, key, pch)
+    except (TimeoutError, OSError):
+        return None
+    finally:
+        lock.release()
+
+
+_PCH_LOCK_TIMEOUT_SECONDS = 30
+_PCH_BUILD_TIMEOUT_SECONDS = 120
+_PCH_BUILD_LOCKS: dict[str, threading.Lock] = {}
+_PCH_BUILD_LOCKS_GUARD = threading.Lock()
+
+
+def _build_kernel_pch(
+    pch_cmd: list[str], cache: Path, key: str, pch: Path
+) -> str | None:
+    tmp_path = None
+    try:
+        empty = cache / f"{key}.h"
+        empty.write_text("")
+        with tempfile.NamedTemporaryFile(
+            dir=cache, prefix=f"{key}.", suffix=".tmp", delete=False
+        ) as tmp:
+            tmp_path = tmp.name
+        ret = subprocess.run(
+            [
+                {_PCH_SOURCE: str(empty), _PCH_OUTPUT: tmp.name}.get(arg, arg)
+                for arg in pch_cmd
+            ],
+            cwd=cache,
+            capture_output=True,
+            check=False,
+            timeout=_PCH_BUILD_TIMEOUT_SECONDS,
+        )
+        if ret.returncode != 0 or not os.path.getsize(tmp_path):
+            logger.debug(
+                "PCH build failed; compiling without it:\n%s",
+                ret.stderr.decode(errors="replace"),
+            )
+            return None
+        os.replace(tmp_path, pch)
+        tmp_path = None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    finally:
+        # Nothing else ever names this file, so an early return would strand it
+        # in the shared cache directory.
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+    return str(pch)
+
+
+def _discard_pch(pch: str, used: os.stat_result) -> None:
+    """Remove ``pch`` if it is still the file a refused compile used.
+
+    Another process may have rebuilt it since; that one is left alone.
+    """
+    from aie.utils.compile.cache.utils import file_lock
+
+    with contextlib.suppress(OSError, TimeoutError):
+        with file_lock(
+            str(Path(pch).with_suffix(".lock")),
+            timeout_seconds=_PCH_LOCK_TIMEOUT_SECONDS,
+        ):
+            now = os.stat(pch)
+            if (now.st_ino, now.st_size, now.st_mtime_ns) == (
+                used.st_ino,
+                used.st_size,
+                used.st_mtime_ns,
+            ):
+                os.unlink(pch)
 
 
 def resolve_target_arch(device=None) -> str:
@@ -164,16 +465,25 @@ def _end_of_parameter_list(line: str, open_paren: int) -> int:
     return -1
 
 
-def _check_lut_banks_enabled(options) -> bool:
-    """Recognize LLVM boolean option spellings, not just the bare flag."""
+def _aiecc_bool_option(options, name: str) -> bool:
+    """Return the value aiecc gives boolean option ``name`` in ``options``.
+
+    Recognizes LLVM boolean option spellings, not just the bare flag; the last
+    occurrence wins, and an absent option is false.
+    """
     enabled = False
     for option in options:
         if option == "--":
             break
-        name, _, value = option.partition("=")
-        if name in ("--check-lut-banks", "-check-lut-banks"):
+        flag, _, value = option.partition("=")
+        if flag in (f"--{name}", f"-{name}"):
             enabled = value in ("", "1", "true", "True", "TRUE")
     return enabled
+
+
+def _check_lut_banks_enabled(options) -> bool:
+    """Return whether ``options`` turn on aiecc's ``--check-lut-banks``."""
+    return _aiecc_bool_option(options, "check-lut-banks")
 
 
 def _object_has_bitcode(output_path) -> bool:
@@ -236,12 +546,14 @@ def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
     ``linkonce_odr`` linkage (so the now-dead definition is DCE'd post-inline
     instead of being codegen'd).
 
-    Both edits have to respect the ``define`` grammar::
+    Both edits have to respect the ``define`` grammar:
 
-        define [linkage] [preemption] [visibility] [dll] [cconv] [ret attrs]
-               <ty> @<name>(<params>) [unnamed_addr] [addrspace(N)] [fn attrs]
-               [section] [partition] [comdat] [align] [gc] [prefix] [prologue]
-               [personality] (!name !N)* { ...
+    ```llvm
+    define [linkage] [preemption] [visibility] [dll] [cconv] [ret attrs]
+           <ty> @<name>(<params>) [unnamed_addr] [addrspace(N)] [fn attrs]
+           [section] [partition] [comdat] [align] [gc] [prefix] [prologue]
+           [personality] (!name !N)* { ...
+    ```
 
     so ``alwaysinline`` is inserted right after the parameter list (and any
     ``unnamed_addr`` / ``addrspace``), not next to the opening brace: placing a
@@ -506,13 +818,108 @@ def compile_cxx_core_function(
         inline=inline,
     )
 
-    logger.debug("Compiling with: %s", " ".join(cmd))
-    ret = subprocess.run(
-        cmd,
-        cwd=cwd,
-        check=False,
-        capture_output=True,
+    pch = None
+    if not use_chess and not inline and os.environ.get("AIE_KERNEL_PCH", "1") != "0":
+        args = list(compile_args or ())
+        prefix: list[str] = []
+        n = len(AIE_API_PREFIX_FLAGS)
+        for i in range(len(args) - n + 1):
+            if tuple(args[i : i + n]) == AIE_API_PREFIX_FLAGS:
+                prefix = list(AIE_API_PREFIX_FLAGS)
+                del args[i : i + n]
+                break
+        pch_cmds = []
+        for dirs, extra in (
+            (include_dirs, compile_args),
+            (None, prefix or None),
+        ):
+            pch_cmd = cxx_core_compile_command(
+                _PCH_SOURCE,
+                target_arch,
+                _PCH_OUTPUT,
+                include_dirs=dirs,
+                compile_args=extra,
+            )
+            i = pch_cmd.index("-MD")
+            del pch_cmd[i : i + 3]
+            pch_cmd[1:1] = ["-x", "c++-header"]
+            pch_cmds.append(pch_cmd)
+        own_cmd, bare_cmd = pch_cmds
+        search_paths = [str(d) for d in include_dirs or ()]
+        macros: list[str] = []
+        others: list[str] = []
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            for flag, found in (
+                ("-I", search_paths),
+                ("-isystem", search_paths),
+                ("-iquote", search_paths),
+                ("-idirafter", search_paths),
+                ("-D", macros),
+                ("-U", macros),
+            ):
+                if arg == flag and i + 1 < len(args):
+                    found.append(args[i + 1])
+                    i += 1
+                    break
+                if arg.startswith(flag) and arg != flag:
+                    found.append(arg[len(flag) :])
+                    break
+            else:
+                others.append(arg)
+            i += 1
+        names = {m.split("=", 1)[0] for m in macros}
+        # An empty entry names the working directory.
+        for name in _CLANG_SEARCH_PATHS:
+            if name in os.environ:
+                search_paths.extend(os.environ[name].split(os.pathsep))
+        # The PCH builds in its own directory, so a relative search path would
+        # name another one there; a caller's -include would be read twice
+        # (aie_api's own, taken out above, is guarded and part of the PCH).
+        if all(os.path.isabs(d) for d in search_paths) and not any(
+            arg.startswith(("-include", "-imacros")) for arg in others
+        ):
+            bare_key = tuple(bare_cmd)
+            with _BARE_PREPROCESSED_GUARD:
+                bare_lock = _BARE_PREPROCESSED_LOCKS.setdefault(
+                    bare_key, threading.Lock()
+                )
+            # Concurrent compiles of one design all need it: one runs it.
+            with bare_lock:
+                if bare_key not in _BARE_PREPROCESSED:
+                    _BARE_PREPROCESSED[bare_key] = _preprocessed(bare_key)
+            bare = _BARE_PREPROCESSED[bare_key]
+            own = _preprocessed(tuple(own_cmd))
+            shared = (
+                not others
+                and own is not None
+                and bare is not None
+                and own[0] == bare[0]
+                and not names & bare[1]
+            )
+            pch = _kernel_pch(bare_cmd if shared else own_cmd)
+
+    used = None
+    if pch is not None:
+        with contextlib.suppress(OSError):
+            used = os.stat(pch)
+    run = (
+        cmd
+        if used is None
+        else [cmd[0], "-mno-vitis-headers", "-include-pch", pch, *cmd[1:]]
     )
+    logger.debug("Compiling with: %s", " ".join(run))
+    ret = subprocess.run(run, cwd=cwd, check=False, capture_output=True)
+    if ret.returncode != 0 and used is not None:
+        # The key cannot see the headers' content, and clang refuses a PCH
+        # whose inputs changed since it was built. The plain compile tells
+        # the two apart, and its diagnostic is the kernel's own.
+        logger.debug("Retrying without the PCH: %s", " ".join(cmd))
+        ret = subprocess.run(cmd, cwd=cwd, check=False, capture_output=True)
+        if ret.returncode == 0:
+            assert pch is not None
+            _discard_pch(pch, used)
     if ret.stdout:
         logger.debug("%s", ret.stdout.decode())
     if ret.returncode != 0:
@@ -530,7 +937,10 @@ def compile_cxx_core_function(
             if cwd is not None and not failed_output.is_absolute():
                 failed_output = Path(cwd) / failed_output
             failed_output.unlink(missing_ok=True)
-            Path(f"{failed_output}.bc").unlink(missing_ok=True)
+            # The sidecar is never trusted, so one that cannot be removed must
+            # not hide why the compile failed.
+            with contextlib.suppress(OSError):
+                Path(f"{failed_output}.bc").unlink(missing_ok=True)
             raise
 
     if inline:
@@ -620,20 +1030,51 @@ def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
     return kept
 
 
-def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
+def _run_aiecc(
+    mlir_file: str,
+    args: list[str],
+    cwd: str | Path | None = None,
+    build_link_files: Callable[[], None] | None = None,
+):
     aiecc_bin = os.path.abspath(config.aiecc_path())
     cmd = [aiecc_bin, os.path.abspath(mlir_file)] + args
+    if build_link_files is not None:
+        cmd.append("--await-link-files")
     logger.debug("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
-    if result.stdout:
-        logger.debug("%s", result.stdout)
-    if result.stderr:
-        logger.debug("%s", result.stderr)
+    # Files rather than pipes: a pipe nobody reads while the link files build
+    # would fill and stall aiecc's lowering on its next write.
+    with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdin=(
+                subprocess.PIPE if build_link_files is not None else subprocess.DEVNULL
+            ),
+            stdout=out,
+            stderr=err,
+            text=True,
+        )
+        if build_link_files is not None:
+            try:
+                build_link_files()
+            except BaseException:
+                proc.kill()
+                proc.wait()
+                raise
+        proc.communicate("\n" if build_link_files is not None else None)
+        out.seek(0)
+        stdout = out.read()
+        err.seek(0)
+        stderr = err.read()
+    if stdout:
+        logger.debug("%s", stdout)
+    if stderr:
+        logger.debug("%s", stderr)
         # Diagnostics from a build that succeeded would otherwise be dropped:
         # debug logging is off by default and the failure path below only runs
         # on a non-zero exit.
-        if result.returncode == 0:
-            for line in result.stderr.splitlines():
+        if proc.returncode == 0:
+            for line in stderr.splitlines():
                 # Notes are the explanation, not decoration. A warning that
                 # queue-depth enforcement could not be applied says why in an
                 # attached note, so dropping notes leaves the generic overflow
@@ -644,20 +1085,22 @@ def _run_aiecc(mlir_file: str, args: list[str], cwd: str | Path | None = None):
                     for severity in ("warning", "error", "note")
                 ):
                     print(f"[aiecc] {line}", file=sys.stderr)
-    if result.returncode != 0:
-        error_msg = result.stderr if result.stderr else result.stdout
+    if proc.returncode != 0:
+        error_msg = stderr if stderr else stdout
         summary = "\n".join(aiecc_diagnostics(error_msg))
         # Lead with the diagnostics so a truncated traceback still names the
         # fix; keep the whole log after them for everything they leave out.
         detail = f"{summary}\n\n--- full aiecc log ---\n{error_msg}"
-        raise RuntimeError(
-            f"[aiecc] Compilation failed with exit code {result.returncode}:\n"
+        exc = RuntimeError(
+            f"[aiecc] Compilation failed with exit code {proc.returncode}:\n"
             f"{detail if summary else error_msg}"
         )
+        attach_tool_location(exc, error_msg)
+        raise exc
 
 
 def compile_mlir_module(
-    mlir_module: "str | Module",
+    mlir_module: "str | ir.Module",
     insts_path: str | Path | None = None,
     pdi_path: str | Path | None = None,
     xclbin_path: str | Path | None = None,
@@ -672,6 +1115,7 @@ def compile_mlir_module(
     npu_cpp_path: str | Path | None = None,
     npu_cpp_emit_dispatch_shim: bool = False,
     device_cache_dir: str | Path | None = None,
+    build_link_files: Callable[[], None] | None = None,
 ):
     """Compile MLIR to instruction, PDI, ELF, xclbin, or C++ files using aiecc.
 
@@ -705,8 +1149,9 @@ def compile_mlir_module(
             the target architecture (aie2 vs aie2p) for any
             `aie.iron.kernel.ExternalFunction` instances that have
             a ``source_file=`` and haven't been compiled yet.  When set
-            and ``work_dir`` is provided, those externals are auto-built
-            into ``work_dir`` before aiecc runs (matching the @iron.jit
+            and ``work_dir`` is provided, those externals are built into
+            ``work_dir`` while aiecc lowers the module, as
+            ``build_link_files`` would build them (matching the @iron.jit
             behavior).  Without this, low-level designs going through
             ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
             still need a Makefile-side ``.o`` rule.
@@ -718,7 +1163,21 @@ def compile_mlir_module(
         device_cache_dir: Directory aiecc keeps each ``aie.device``'s compiled
             cores in (``--device-cache``), so a later build of an unchanged
             device reuses them. Ignored with Chess.
+        build_link_files: Writes the files the module's cores link into
+            ``work_dir``. aiecc lowers the module meanwhile and reads none of
+            them until this returns (``--await-link-files``); if it raises,
+            aiecc is stopped and the exception propagates. Requires
+            ``work_dir``, and is given by ``device`` when that is set.
+
+    Raises:
+        ValueError: Both ``device`` and ``build_link_files`` are given, or
+            ``build_link_files`` without ``work_dir``.
     """
+    if device is not None and build_link_files is not None:
+        raise ValueError(
+            "device= builds the module's kernels as its build_link_files; "
+            "pass one of them."
+        )
     if work_dir:
         work_dir = os.path.abspath(work_dir)
     # --unified lowers each device once and carves out every core, where the
@@ -770,6 +1229,12 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
+    mlir_text = (
+        mlir_module
+        if isinstance(mlir_module, str)
+        else mlir_module.operation.get_asm(enable_debug_info=True)
+    )
+
     # Auto-build any source-bearing ExternalFunction kernels into work_dir
     # so aiecc's linker can find the .o referenced by link_with.  Mirrors
     # the loop in compilabledesign.py but for callers (e.g. low-level
@@ -779,17 +1244,28 @@ def compile_mlir_module(
         # so a module-level import here deadlocks on a cold aie.utils.compile entry.
         from aie.iron.kernel import ExternalFunction
 
-        target_arch = resolve_target_arch(device)
-        compile_external_kernels(
+        # ``_instances`` outlives any single compile: kernels can be reused,
+        # and shared by name, across designs (see ``resolve()``), so it is
+        # never cleared here. ``resolve()`` declares every kernel a module
+        # uses, so the module's declarations scope this compile: an instance
+        # left over from an earlier, unrelated design in the same process is
+        # neither built nor checked against this design's arch.
+        kernels = _select_declared_kernels(
             [
                 f
                 for f in ExternalFunction._instances
-                if getattr(f, "_source_file", None)
+                if f.source_file or f.source_string
             ],
-            str(work_dir),
-            target_arch,
-            embed_bitcode=_check_lut_banks_enabled(options or []),
+            _declared_objects(mlir_module),
         )
+        if kernels:
+            build_link_files = functools.partial(
+                compile_external_kernels,
+                kernels,
+                str(work_dir),
+                resolve_target_arch(device),
+                embed_bitcode=_check_lut_banks_enabled(options or []),
+            )
 
     # When work_dir is provided, invoke the aiecc binary as a subprocess so
     # that it resolves relative link_with paths (e.g. "add_one.o") against the
@@ -800,11 +1276,19 @@ def compile_mlir_module(
     if work_dir:
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
-            f.write(str(mlir_module))
-        _run_aiecc(mlir_file, args, cwd=work_dir)
+            f.write(mlir_text)
+        profile = os.path.abspath(os.path.join(work_dir, AIECC_PROFILE_NAME))
+        _run_aiecc(
+            mlir_file,
+            args + [f"--profile-json={profile}"],
+            cwd=work_dir,
+            build_link_files=build_link_files,
+        )
+    elif build_link_files is not None:
+        raise ValueError("build_link_files requires work_dir.")
     else:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".mlir", delete=False) as f:
-            f.write(str(mlir_module))
+            f.write(mlir_text)
             mlir_file = f.name
         try:
             _run_aiecc(mlir_file, args)
@@ -929,9 +1413,9 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     symbols = _defined_symbols(object_path)
 
     objcopy = config.objcopy_path()
-    with tempfile.TemporaryDirectory(
-        prefix="aie-symbol-map-", dir=os.path.dirname(os.path.abspath(object_path))
-    ) as tmpdir:
+    # Not beside the object: on NFS, a file deleted while its asynchronous
+    # close is in flight leaves a .nfs file that fails the cleanup.
+    with tempfile.TemporaryDirectory(prefix="aie-symbol-map-") as tmpdir:
         map_file = os.path.join(tmpdir, "symbols.map")
         with open(map_file, "w") as f:
             for symbol in symbols:
@@ -1101,6 +1585,61 @@ def _compiled_into(func, kernel_dir, embed_bitcode=False) -> bool:
     return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
 
 
+def _declared_objects(mlir_module: "str | ir.Module") -> dict[str, set[str | None]]:
+    """Map each function ``mlir_module`` declares to the objects it links with.
+
+    A module can hold several device symbol tables, each declaring a symbol
+    with its own ``link_with``; a declaration without one maps to ``None``.
+    """
+    if isinstance(mlir_module, str):
+        with ir.Context(), ir.Location.unknown():
+            return _declared_objects(ir.Module.parse(mlir_module))
+    declared: dict[str, set[str | None]] = {}
+
+    def collect(op):
+        decl = op.opview
+        if isinstance(decl, FuncOp) and decl.is_external:
+            attrs = decl.attributes
+            link_with = (
+                ir.StringAttr(attrs["link_with"]).value
+                if "link_with" in attrs
+                else None
+            )
+            declared.setdefault(decl.sym_name.value, set()).add(link_with)
+        return ir.WalkResult.ADVANCE
+
+    mlir_module.operation.walk(collect)
+    return declared
+
+
+def _select_declared_kernels(funcs, link_with: dict[str, set[str | None]]) -> list:
+    """Keep the kernels whose object is the one a declaration links a symbol with.
+
+    ``link_with`` is :func:`_declared_objects` of the module being compiled.
+    Instances can share a symbol: an inline library kernel keeps its bare name
+    across archs, and each arch's factory gives it its own object. The
+    declaration's ``link_with`` picks the one this module uses. A symbol no
+    instance links as declared (or declared without ``link_with``) keeps every
+    instance, so one built for another arch still reports that. When several
+    device symbol tables declare the symbol, every declared object is kept.
+    """
+    funcs = [f for f in funcs if f.name in link_with]
+    objects = {}
+    for f in funcs:
+        if None not in link_with[f.name]:
+            objects.setdefault(f.name, set()).add(f.object_file_name)
+    resolved = {
+        name
+        for name, declared in link_with.items()
+        if None not in declared and declared <= objects.get(name, set())
+    }
+    return [
+        f
+        for f in funcs
+        if f.name not in resolved or f.object_file_name in link_with[f.name]
+    ]
+
+
 def compile_external_kernels(
     funcs,
     kernel_dir,
@@ -1123,7 +1662,36 @@ def compile_external_kernels(
 
     ``object_cache`` (a ``KernelObjectCache``) shares compiled objects across
     work directories; see ``compile_external_kernel``.
+
+    Each kernel object's compile time is written to ``KERNEL_PROFILE_NAME`` in
+    ``kernel_dir``, beside aiecc's profile: ``{"wall_s": s, "jobs": n,
+    "kernels": [{"object": "x.o", "symbols": [...], "seconds": s,
+    "cached": bool}, ...]}``. ``seconds`` is the time spent producing the
+    object, compile or copy, and ``cached`` says no compiler ran for it (it
+    was already in ``kernel_dir`` or came from ``object_cache``). A design
+    with a dispatch library adds ``"dispatch_bridge_s"``, its host compile
+    (see ``compile_dispatch_bridge``).
+
+    Raises:
+        ValueError: When a library kernel was built for another architecture
+            (see ``ExternalFunction.check_target_arch``).
     """
+    start = time.perf_counter()
+    funcs = list(funcs)
+    for f in funcs:
+        f.check_target_arch(target_arch)
+    profile: dict[str, dict] = {}
+    for f in funcs:
+        entry = profile.setdefault(
+            f.object_file_name,
+            {
+                "object": f.object_file_name,
+                "symbols": [],
+                "seconds": 0.0,
+                "cached": True,
+            },
+        )
+        entry["symbols"].append(f._name)
     pending = []
     for f in funcs:
         # A checked compile can be replacing an already-owned object to add IR.
@@ -1131,8 +1699,15 @@ def compile_external_kernels(
         with _lock_compile_paths([os.path.join(kernel_dir, f.object_file_name)]):
             if not _compiled_into(f, kernel_dir, embed_bitcode):
                 pending.append(f)
-    if not pending:
-        return
+
+    def compile_one(f):
+        began = time.perf_counter()
+        compiled = compile_external_kernel(
+            f, kernel_dir, target_arch, include_dirs, embed_bitcode, object_cache
+        )
+        entry = profile[f.object_file_name]
+        entry["seconds"] += time.perf_counter() - began
+        entry["cached"] = entry["cached"] and not compiled
 
     outputs: dict[str, list] = {}
     for f in pending:
@@ -1150,48 +1725,45 @@ def compile_external_kernels(
     # Every compile in a batch shares one cwd (kernel_dir), and xchesscc keeps
     # per-invocation state there, so the Chess path runs serially.
     if any(getattr(f, "_use_chess", False) for f in pending):
-        for f in pending:
-            compile_external_kernel(
-                f, kernel_dir, target_arch, include_dirs, embed_bitcode, object_cache
-            )
-        return
-
-    groups = _kernel_compile_groups(
-        pending,
-        in_place=lambda f: object_cache is None or not object_cache.accepts(f),
-    )
-
+        groups = [pending]
+    else:
+        groups = _kernel_compile_groups(
+            pending,
+            in_place=lambda f: object_cache is None or not object_cache.accepts(f),
+        )
     try:
         jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
     except ValueError:
         jobs = 0
     if jobs <= 0:
         jobs = os.cpu_count() or 1
-    jobs = min(jobs, len(groups))
+    jobs = max(1, min(jobs, len(groups)))
 
     if jobs == 1:
         for group in groups:
             for f in group:
-                compile_external_kernel(
-                    f,
-                    kernel_dir,
-                    target_arch,
-                    include_dirs,
-                    embed_bitcode,
-                    object_cache,
-                )
-        return
+                compile_one(f)
+    else:
 
-    def _run(group):
-        for f in group:
-            compile_external_kernel(
-                f, kernel_dir, target_arch, include_dirs, embed_bitcode, object_cache
-            )
+        def _run(group):
+            for f in group:
+                compile_one(f)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-        # list() re-raises the first failure, after the others have finished --
-        # a compile error must not be swallowed by a sibling that succeeded.
-        list(pool.map(_run, groups))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            # list() re-raises the first failure, after the others have finished --
+            # a compile error must not be swallowed by a sibling that succeeded.
+            list(pool.map(_run, groups))
+
+    with open(os.path.join(kernel_dir, KERNEL_PROFILE_NAME), "w") as out:
+        json.dump(
+            {
+                "wall_s": time.perf_counter() - start,
+                "jobs": jobs,
+                "kernels": list(profile.values()),
+            },
+            out,
+            indent=1,
+        )
 
 
 def _kernel_compile_groups(funcs, in_place=lambda f: True):
@@ -1261,7 +1833,7 @@ def compile_external_kernel(
     include_dirs=None,
     embed_bitcode=False,
     object_cache=None,
-):
+) -> bool:
     """Compile an ExternalFunction to an object file in the kernel directory.
 
     The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
@@ -1289,6 +1861,9 @@ def compile_external_kernel(
         embed_bitcode: Preserve Peano kernel LLVM IR for ``--check-lut-banks``.
         object_cache: Optional ``KernelObjectCache`` that shares the compiled
             object across work directories.
+
+    Returns:
+        Whether a compiler ran: False when an existing object served.
     """
     if embed_bitcode and getattr(func, "_use_chess", False):
         raise ValueError("--check-lut-banks requires Peano kernels, not Chess")
@@ -1305,13 +1880,15 @@ def compile_external_kernel(
         paths.append(kernel_dir)
     with _lock_compile_paths(paths):
         if _compiled_into(func, kernel_dir, embed_bitcode):
-            return
+            return False
         owner = getattr(func, "object_file", None)
         try:
             if cache is not None:
-                cache.fetch(func, kernel_dir, target_arch, include_dirs, embed_bitcode)
+                compiled = cache.fetch(
+                    func, kernel_dir, target_arch, include_dirs, embed_bitcode
+                )
             else:
-                _compile_external_kernel(
+                compiled = _compile_external_kernel(
                     func, kernel_dir, target_arch, include_dirs, embed_bitcode
                 )
         except BaseException:
@@ -1333,11 +1910,16 @@ def compile_external_kernel(
             func._compiled = True
             func._compiled_dir = os.path.abspath(kernel_dir)
             func._compiled_embed_bitcode = embed_bitcode
+    return compiled
 
 
 def _compile_external_kernel(
-    func, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
-):
+    func,
+    kernel_dir,
+    target_arch,
+    include_dirs=None,
+    embed_bitcode=False,
+) -> bool:
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
     # ``define`` carries the un-prefixed _original_name. Object mode reconciles
@@ -1370,7 +1952,7 @@ def _compile_external_kernel(
             or _object_has_bitcode(output_file)
         )
     ):
-        return
+        return False
 
     # Invalidate before any writes, so a failed compile, rename, or stamp write
     # cannot leave a cache entry that a later invocation trusts.
@@ -1452,6 +2034,7 @@ def _compile_external_kernel(
                 f"define '{func._original_name}' (found {sorted(defined)})"
             )
         _write_symbol_prefix_stamp(output_file, prefix)
+    return True
 
 
 def _is_dispatch_library_name(name: str) -> bool:

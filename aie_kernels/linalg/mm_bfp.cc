@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "../aie_kernel_utils.h"
+#include "../common/store.h"
 #include <aie_api/aie.hpp>
 
 // bfp16ebs8 stores 8 mantissa bytes plus one shared exponent byte per 8
@@ -83,7 +84,8 @@ inline void copyRun(const uint8_t *__restrict src, size_t srcStride,
 
 // The same run, but ending at the end of the destination buffer: `groups`
 // triples then `singles` single blocks leave exactly one block, which is copied
-// at its own width so that nothing is written past `dst`.
+// at its own width so that nothing is written past it. The singles' stores
+// are end-anchored; see common/store.h.
 inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
                          uint8_t *__restrict dst, size_t groups,
                          size_t singles) {
@@ -93,7 +95,7 @@ inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
     dst += 3 * kBlockBytes;
   }
   for (size_t s = 0; s < singles; ++s) {
-    storeOne(src, dst);
+    store_unaligned_bounded(dst, aie::load_unaligned_v<16>(src), true);
     src += srcStride;
     dst += kBlockBytes;
   }
@@ -173,9 +175,10 @@ inline void copyRunAtEnd(const uint8_t *__restrict src, size_t srcStride,
 // Each block stream keeps its FIFO state in one of aie2p's two lf registers,
 // so A and B each get one stream that hops between the group's two rows with
 // pop_seek, popping two blocks per row between seeks, and C one output stream
-// for the call. On hardware a pop_seek right after a plain pop lands correctly
-// only for even block strides, so odd k seeks after every pop. The next
-// group's C is read before this group's is written.
+// for the call. A pop_seek right after a pop that read block 8n + 7 returns
+// the wrong data (Xilinx/aie_api#17). With even colA every pop reads an even
+// block, so only odd colA seeks after every pop. The next group's C is read
+// before this group's is written.
 template <unsigned rowA, unsigned colA, unsigned colB, unsigned r, unsigned s,
           unsigned t>
 void matmul_vectorized_2x2_bfp16(const bfp16ebs8 *__restrict pA,

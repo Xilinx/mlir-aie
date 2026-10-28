@@ -54,12 +54,12 @@ def single_core_no_tiling_mixed(
 
     inA = ObjectFifo(a_ty, name="inA")
     a_dims = matmul_kernel.stream_dims.A
-    memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
+    memA = inA.cons().forward(name="memA", to_stream=a_dims)
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
     memC = ObjectFifo(c_ty, name="memC")
     c_dims = matmul_kernel.stream_dims.C
-    outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
+    outC = memC.cons().forward(name="outC", to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
         elem_out = of_c.acquire(1)

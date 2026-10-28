@@ -26,7 +26,18 @@ class DMAChannelAnalysis {
   /// Keep the reserving operation so diagnostics retain its MLIR location.
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
       usedChannels;
-  mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> usedStreams;
+  /// DMA channels an explicit flow routes. First-free assignment skips them;
+  /// a pinned request may still claim one.
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
+      streamedChannels;
+  /// The first claimant of a core stream port, and whether only packets use
+  /// it; circuit occupancy is exclusive.
+  struct StreamClaim {
+    mlir::Operation *owner;
+    bool packet;
+  };
+  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, StreamClaim>
+      usedStreams;
 
 public:
   DMAChannelAnalysis(DeviceOp &device);
@@ -36,11 +47,16 @@ public:
                                 bool requiresAdjacentTileAccessChannels);
 
   /// Next free channel of `tile` in `dir`, or -1 when the tile has none left.
+  /// A channel an explicit flow routes is not free.
   /// A channel reaching an adjacent MemTile's memory must come from the
   /// target's restricted range at every compatible physical position.
   int getDMAChannelIndex(TileLike tile, DMAChannelDir dir,
                          bool requiresAdjacentTileAccessChannels,
                          mlir::Operation *owner = nullptr);
+
+  /// Whether first-free assignment could hand out `channel`: nothing reserves
+  /// it and no explicit flow routes it.
+  bool isChannelFree(TileLike tile, DMAChannelDir dir, int channel);
 
   /// Claim `channel` for (`tile`, `dir`) so first-free assignment cannot take
   /// it. Returns the channel, or -1 when it is out of range or already
@@ -48,12 +64,16 @@ public:
   int reservePinnedChannel(TileLike tile, DMAChannelDir dir, int channel,
                            mlir::Operation *owner = nullptr);
 
-  /// Operation reserving this channel, or null if unreserved or unattributed.
+  /// Operation reserving this channel, or else the flow routing it; null if
+  /// neither.
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
 
-  /// Claim a raw stream port, reporting on `tile` when it is already taken.
-  void checkAIEStreamIndex(TileLike tile, DMAChannel chan);
+  /// Claim a raw stream port for `user`, reporting on it when the port is
+  /// taken; packet users may share it with other packets.
+  mlir::LogicalResult checkAIEStreamIndex(TileLike tile, DMAChannel chan,
+                                          mlir::Operation *user,
+                                          bool packet = false);
 };
 
 } // namespace xilinx::AIE

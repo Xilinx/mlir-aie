@@ -5,8 +5,11 @@
 #
 """Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON."""
 
+from typing import get_args, get_origin
+
 import numpy as np
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.npdtypes import np_ndarray_type_of
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.kernel import ExternalFunction
@@ -16,12 +19,6 @@ from aie.iron.worker import Worker
 from aie.utils import get_current_device
 
 from ._pipeline import Stage, kernel_params, pipeline
-
-
-def _stack_size(func):
-    """Return the core stack a library kernel's contract asks for, or None."""
-    contract = getattr(func, "contract", None)
-    return contract.stack_bytes if contract is not None else None
 
 
 def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
@@ -103,7 +100,6 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
         held=kparams.fifos,
         constants=[func],
         iterations=N_div_n,
-        stack_size=_stack_size(func),
         trace=trace_size > 0,
     )
     # Host buffers: inputs, output, then the tensor params.
@@ -155,7 +151,7 @@ def _transform_parallel_gen(
         pass_size_to_kernel: When True (default), the kernel receives an extra
             trailing ``int`` argument equal to ``tile_size``.  Set False for
             kernels whose signature is just ``(*in_tiles, out_tile)`` (e.g.
-            ``iron.kernels.relu``, ``iron.kernels.add``).
+            ``iron.kernels.add``, ``iron.kernels.mul``).
     """
     if num_channels < 1:
         raise ValueError("num_channels must be positive")
@@ -325,27 +321,17 @@ def _transform_parallel_gen(
             + [of.cons() for of in param_of_list]
             + [of_outs[col][chan].prod()]
             + [func],
-            stack_size=_stack_size(func),
             trace=(1 if trace_size > 0 else 0),
         )
         for col in range(num_columns)
         for chan in range(num_channels)
     ]
 
-    # One TensorAccessPattern per (column, channel) — each carries its own
-    # disjoint sub-range of the input, addressed by its position in
-    # row-major (col, chan) order.
-    per_worker_elements = num_elements // (num_columns * num_channels)
-    taps = [
-        TensorAccessPattern(
-            (1, num_elements),
-            per_worker_elements * (col * num_channels + chan),
-            [1, 1, 1, per_worker_elements],
-            [0, 0, 0, 1],
-        )
-        for col in range(num_columns)
-        for chan in range(num_channels)
-    ]
+    # One chunk per (column, channel): equal, disjoint sub-ranges of the
+    # input in row-major (col, chan) order.
+    taps = TensorAccessPattern.full((num_elements,)).partition(
+        num_columns * num_channels
+    )
 
     # Runtime operations to move data to/from the AIE-array.
     # Pre-build the prod/cons handle grids so they can be registered via fn_args
@@ -421,12 +407,13 @@ def make_param_descriptor(tensor_ty):
     because params (e.g. a 1-element ``factor`` tensor) are passed through
     a dedicated ObjectFifo and aren't tiled.
     """
+    tensor_ty = np_ndarray_type_of(tensor_ty)
     try:
-        shape_arg, dtype_arg = tensor_ty.__args__
+        shape_arg, dtype_arg = get_args(tensor_ty)
         num_elements = 1
         for dim in shape_arg:
             num_elements *= dim
-        dtype = dtype_arg.__args__[0]
+        dtype = get_args(dtype_arg)[0]
     except Exception as exc:
         raise TypeError(
             f"make_param_descriptor expects a numpy ndarray type such as "
@@ -446,8 +433,9 @@ def make_param_descriptor(tensor_ty):
 
 
 def _expand_param(param):
-    """Allow callers to pass either a real tensor or a numpy ndarray type."""
-    if hasattr(param, "__args__") and len(getattr(param, "__args__", ())) == 2:
+    """Allow callers to pass a real tensor, a numpy ndarray type or an operand."""
+    param = np_ndarray_type_of(param)
+    if get_origin(param) is np.ndarray:
         return make_param_descriptor(param)
     return param
 
@@ -470,12 +458,13 @@ def _make_fake_tensor(tensor_ty, tile_size, fn_name):
     Returns:
         An object with ``.shape``, ``.size``, and ``.dtype``.
     """
+    tensor_ty = np_ndarray_type_of(tensor_ty)
     try:
-        shape_arg, dtype_arg = tensor_ty.__args__
+        shape_arg, dtype_arg = get_args(tensor_ty)
         num_elements = 1
         for dim in shape_arg:
             num_elements *= dim
-        dtype = dtype_arg.__args__[0]
+        dtype = get_args(dtype_arg)[0]
     except Exception as exc:
         raise TypeError(
             f"{fn_name} expects a numpy ndarray type such as "
@@ -506,13 +495,15 @@ def transform(func, tensor_ty, *params, tile_size=16, trace_size=0):
     Like [`transform`][iron.algorithms._transform.transform] but accepts a numpy ``ndarray`` type descriptor
     instead of a real tensor.  Intended for use inside ``@iron.jit`` generator
     bodies where the tensor's shape and dtype are expressed as ``CompileTime[T]``
-    parameters and the actual tensors are not yet available::
+    parameters and the actual tensors are not yet available:
 
-        @iron.jit
-        def my_design(inp: In, out: Out,
-                      N: CompileTime[int], dtype: CompileTime[type] = np.int32):
-            tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-            return iron.algorithms.transform(lambda x: x + 1, tensor_ty)
+    ```python
+    @iron.jit
+    def my_design(inp: In, out: Out,
+                  N: CompileTime[int], dtype: CompileTime[type] = np.int32):
+        tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+        return iron.algorithms.transform(lambda x: x + 1, tensor_ty)
+    ```
 
     Args:
         func: Function or `ExternalFunction` to apply.

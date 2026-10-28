@@ -25,7 +25,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -124,7 +124,10 @@ def vector_reduce_max(
         of_out = args[1]
         neighbor_of_in1s = args[2:-4]
 
-        for _ in range_(N_div_n):
+        elem_in1 = of_in1.acquire(1)
+        reduce_max_vector(elem_in1, c_buffer, tile_size)
+        of_in1.release(1)
+        for _ in range_(N_div_n - 1):
             elem_in1 = of_in1.acquire(1)
             reduce_max_vector(elem_in1, tmp_buffer, tile_size)
             compute_max(c_buffer, tmp_buffer, c_buffer)
@@ -160,9 +163,8 @@ def vector_reduce_max(
         my_workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
 
     # One TAP per core — each reads a contiguous ``chunk`` of the input
-    # tensor.  Equivalent to row-major iteration of ``(1, chunk)`` tiles
-    # across the ``(1, in_num_elements)`` tensor.
-    taps = TensorTiler2D.simple_tiler((1, in_num_elements), (1, chunk))
+    # tensor.
+    taps = TensorAccessPattern.full((in_num_elements,)).partition(num_cores)
 
     in_prods = [of_in1s[i].prod() for i in range(num_cores)]
     out_cons = of_outs[num_cores - 1].cons()

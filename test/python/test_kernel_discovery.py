@@ -75,6 +75,8 @@ def _generate(case):
         params=fn.param_values(kd.sample_inputs(fn, calls=case.calls)),
         calls=case.calls,
         scalars=case.scalars,
+        # A fixed stack lowers without compiling each kernel to read its frame.
+        stack_bytes=get_current_device().default_core_stack_bytes,
         **case.kwargs,
     ).compilable
     ExternalFunction._instances.clear()
@@ -90,16 +92,12 @@ def _generate(case):
 
 @pytest.fixture(scope="module")
 def corpus():
-    previous = get_current_device(probe_runtime=False)
     designs = {}
-    try:
-        for name, device in _DEVICES.items():
-            set_current_device(device())
+    for name, device in _DEVICES.items():
+        with set_current_device(device()):
             for case in CASES:
                 if not case.devices or name in case.devices:
                     designs[_label(name, case)] = _generate(case)
-    finally:
-        set_current_device(previous)
     return designs
 
 

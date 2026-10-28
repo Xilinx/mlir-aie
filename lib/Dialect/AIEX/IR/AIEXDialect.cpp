@@ -15,14 +15,18 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/TypeSize.h"
 
 #include <cstdint>
@@ -36,8 +40,13 @@ using namespace xilinx;
 
 #include "aie/Dialect/AIEX/IR/AIEXEnums.cpp.inc"
 
+#include "aie/Dialect/AIEX/IR/AIEXInterfaces.cpp.inc"
+
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
+
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.cpp.inc"
 
 namespace xilinx::AIEX {
 
@@ -51,9 +60,16 @@ void AIEXDialect::initialize() {
 #define GET_TYPEDEF_LIST
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
       >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "aie/Dialect/AIEX/IR/AIEXAttrDefs.cpp.inc"
+      >();
 }
 
 } // namespace xilinx::AIEX
+
+using xilinx::AIE::parseTypedDynamicIndexList;
+using xilinx::AIE::printTypedDynamicIndexList;
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
@@ -130,14 +146,15 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   }
 }
 
-mlir::LogicalResult
-AIEX::verifyStridesWraps(mlir::Operation *forOp,
-                         mlir::BaseMemRefType referencedBufType, int tileCol,
-                         int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
-                         llvm::SmallVector<int64_t, 4> inputStrides,
-                         llvm::SmallVector<int64_t, 4> hardwareSizes,
-                         llvm::SmallVector<int64_t, 4> hardwareStrides,
-                         bool skipTransformationChecks) {
+mlir::LogicalResult AIEX::verifyStridesWraps(
+    mlir::Operation *forOp,
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    mlir::BaseMemRefType referencedBufType, int tileCol, int tileRow,
+    llvm::SmallVector<int64_t, 4> inputSizes,
+    llvm::SmallVector<int64_t, 4> inputStrides,
+    llvm::SmallVector<int64_t, 4> hardwareSizes,
+    llvm::SmallVector<int64_t, 4> hardwareStrides,
+    bool skipTransformationChecks) {
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
   DataLayout dataLayout = DataLayout::closest(forOp);
@@ -148,17 +165,15 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
   if (!targetModel.isCoreTile(tileCol, tileRow) &&
       !targetModel.isMemTile(tileCol, tileRow) &&
       !targetModel.isShimNOCTile(tileCol, tileRow))
-    return forOp->emitOpError(
-        "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
-        std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
+    return emitError() << "Unsupported tile type at (" << tileCol << ", "
+                       << tileRow << ") Must be ShimNOC, Mem or Core.";
 
   uint32_t wrap_bits = targetModel.getDmaBdWrapBits(tileCol, tileRow);
   uint32_t step_bits = targetModel.getDmaBdStepBits(tileCol, tileRow);
-  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
 
   for (int i = 0; i < 4; i++) {
     if (inputSizes[i] <= 0) {
-      return forOp->emitOpError("Size ") << i << " must be a positive integer.";
+      return emitError() << "Size " << i << " must be a positive integer.";
     }
   }
 
@@ -169,7 +184,7 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
         << " bytes each equal " << (inputSizes[0] * elemWidth / 8)
         << " bytes, which is not divisible by " << (addressGranularity / 8)
         << ". ";
-    return forOp->emitOpError(msg.str());
+    return emitError() << msg.str();
   }
 
   for (int i = 0; i < 3; i++) {
@@ -177,14 +192,13 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
       // If inputSize[i] == 1, anything is allowable in the stride, since that
       // stride will never be applied. For any larger size, we must verify that
       // the stride is positive.
-      return forOp->emitOpError("Stride ")
-             << i << " must be a positive integer.";
+      return emitError() << "Stride " << i << " must be a positive integer.";
     }
   }
   // A value of zero is allowable for the fourth-dimension stride
   // (this indicates an interation stride for the repeat of 0)
   if (inputSizes[3] > 1 && inputStrides[3] < 0) {
-    return forOp->emitOpError("Stride 3 must be a non-negative integer.");
+    return emitError() << "Stride 3 must be a non-negative integer.";
   }
 
   for (int i = 0; i < 4; i++) {
@@ -199,35 +213,53 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
           << (elemWidth / 8) << " bytes = " << (inputStrides[i] * elemWidth / 8)
           << " bytes, which is not divisible by " << (addressGranularity / 8)
           << ". ";
-      return forOp->emitOpError(msg.str());
+      return emitError() << msg.str();
     }
   }
+  // The innermost dimension steps whole granules, so for elements of another
+  // width it can only be contiguous.
+  if (elemWidth != addressGranularity && inputSizes[0] > 1 &&
+      inputStrides[0] != 1)
+    return emitError() << "Stride 0 is " << inputStrides[0]
+                       << " elements, but must be 1 for " << (elemWidth / 8)
+                       << "-byte elements: the DMA moves whole "
+                       << (addressGranularity / 8) << "-byte words.";
 
-  if (!skipTransformationChecks && hardwareSizes[0] > (1 << wrap_bits) - 1)
-    return forOp->emitOpError(
-        "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
-        "] range.");
-  if (!skipTransformationChecks && hardwareSizes[1] > (1 << wrap_bits) - 1)
-    return forOp->emitOpError(
-        "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
-        "] range.");
-  if (hardwareSizes[3] > (1 << iter_bits) - 1)
-    return forOp->emitOpError(
-        "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
-  if (hardwareStrides[0] > (1 << step_bits) - 1)
-    return forOp->emitOpError("Stride 0 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[1] > (1 << step_bits) - 1)
-    return forOp->emitOpError("Stride 1 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[2] > (1 << step_bits) - 1)
-    return forOp->emitOpError("Stride 2 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
+  auto outOfRange = [&](const char *what, int dim, int64_t written,
+                        int64_t encoded, int64_t lo, int64_t hi) {
+    return emitError() << what << " " << dim << " is " << written
+                       << " (encoded as " << encoded << "), which exceeds the ["
+                       << lo << ":" << hi << "] range.";
+  };
+
+  int64_t maxWrap = (1 << wrap_bits) - 1;
+  int64_t maxStep = 1 << step_bits;
+
+  for (int dim : {0, 1}) {
+    if (!skipTransformationChecks && hardwareSizes[dim] > maxWrap)
+      return outOfRange("Size", dim, inputSizes[dim], hardwareSizes[dim], 0,
+                        maxWrap);
+  }
+  // A zero d3 stride is a pure repeat: the lowerings leave the iteration fields
+  // 0 and carry the count on the queue push, so the repeat limit applies.
+  bool pureRepeat = inputStrides[3] == 0;
+  int64_t maxCount =
+      pureRepeat ? targetModel.getMaxRepeatCount() + 1
+                 : 1LL << targetModel.getDmaBdIterBits(tileCol, tileRow);
+  if (inputSizes[3] > maxCount)
+    return emitError() << (pureRepeat ? "repeat count " : "iteration count ")
+                       << inputSizes[3] << " exceeds the [1:" << maxCount
+                       << "] range.";
+  for (int dim : {0, 1, 2}) {
+    if (hardwareStrides[dim] > maxStep - 1)
+      return outOfRange("Stride", dim, inputStrides[dim], hardwareStrides[dim],
+                        1, maxStep);
+  }
   // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
   // checked below
-  if (hardwareStrides[3] > (1 << step_bits) - 1 && hardwareSizes[3] > 0)
-    return forOp->emitOpError("Stride 3 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
+  if (hardwareStrides[3] > maxStep - 1 && hardwareSizes[3] > 0)
+    return outOfRange("Stride", 3, inputStrides[3], hardwareStrides[3], 1,
+                      maxStep);
 
   return success();
 }
@@ -338,6 +370,14 @@ bool AIEX::isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
   return true;
 }
 
+bool AIEX::isLinearModeTransfer(const AIE::AIETargetModel &targetModel, int col,
+                                int row, llvm::ArrayRef<int64_t> sizes,
+                                llvm::ArrayRef<int64_t> strides) {
+  return isLinearTransfer(sizes, strides) ||
+         (targetModel.isShimNOCTile(col, row) &&
+          isContiguousTransfer(sizes, strides));
+}
+
 // dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
 // specify any data layout transformation, but simply express a contiguous
 // transfer of `len`. The 4th dimension is excluded because a repeat count
@@ -438,19 +478,7 @@ struct LinearizeContiguousTransfer
                                                      linearOffset};
 
     rewriter.replaceOpWithNewOp<AIEX::NpuDmaMemcpyNdOp>(
-        op, op.getMemref(),
-        /*offsets=*/mlir::ValueRange{},
-        /*sizes=*/mlir::ValueRange{},
-        /*strides=*/mlir::ValueRange{},
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newOffsetsOuter),
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newSizesOuter),
-        mlir::DenseI64ArrayAttr::get(op.getContext(), newStridesOuter),
-        op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
-        op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
-        op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
-        op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+        op, op, newOffsetsOuter, newSizesOuter, newStridesOuter);
     return mlir::success();
   }
 };
@@ -496,11 +524,9 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
 // The scope here is exactly what the dynamic BD encoder (AIEDmaToNpu.cpp
 // lowerDynamic) can lower; runtime values are never silently masked.
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
-    const AIE::AIETargetModel &targetModel, mlir::BaseMemRefType buffer) {
+    const AIE::AIETargetModel &targetModel, mlir::BaseMemRefType buffer,
+    AIE::ShimDMAAllocationOp allocOp) {
   // Shim NOC only.
-  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-  auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
-      dev, getMetadata().getRootReference());
   if (!allocOp)
     return emitOpError(
         "runtime sizes/strides require a shim_dma_allocation to resolve the "
@@ -528,8 +554,8 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
 
   // The innermost stride may be runtime like any other dimension: the encoder
   // resolves its collapse-to-zero case with a select, and its realizability
-  // (unit stride, or granule-aligned) is enforced below for constants and by an
-  // assert_bd_divisible guard for runtime values.
+  // (unit stride, or granule-aligned) is enforced below for constants and by a
+  // host-side check (buildBdWords) for runtime values.
 
   // (The memref must also trace to a runtime-sequence block argument through
   // static subview/cast offsets; that structural check, with the same clean
@@ -562,29 +588,28 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   int64_t d1Hw = hwSize(sizesRev[1]);
   int64_t iterRaw = hwSize(sizesRev[3]);
   int64_t iterHw = iterRaw > 1 ? iterRaw - 1 : 0;
-  if (failed(checkSize(sizesRev[0], d0Hw, ShimBdFieldWidths::d0WrapMax(),
-                       "d0 size")) ||
-      failed(checkSize(sizesRev[1], d1Hw, ShimBdFieldWidths::d1WrapMax(),
-                       "d1 size")) ||
-      failed(checkSize(sizesRev[3], iterHw, ShimBdFieldWidths::iterWrapMax(),
-                       "iteration size")))
+  std::optional<int64_t> outerStride = getConstantIntValue(strides.front());
+  bool pureRepeat = outerStride && *outerStride == 0;
+  AIE::AIETileType tileType =
+      targetModel.getTileType(tile.getCol(), tile.getRow());
+  int64_t wrapMax = (1LL << targetModel.getDmaBdWrapBits(tileType)) - 1;
+  int64_t maxCount = pureRepeat ? targetModel.getMaxRepeatCount() + 1
+                                : 1LL << targetModel.getDmaBdIterBits(tileType);
+  if (failed(checkSize(sizesRev[0], d0Hw, wrapMax, "d0 size")) ||
+      failed(checkSize(sizesRev[1], d1Hw, wrapMax, "d1 size")) ||
+      failed(checkSize(sizesRev[3], iterHw, maxCount - 1,
+                       pureRepeat ? "repeat count" : "iteration size")))
     return failure();
 
   // Realizability of the CONSTANT size/stride operands (divisibility +
-  // positivity, innermost-first). Runtime operands get an assert_bd_divisible
-  // guard at lowering time. Shared with the dma_task path.
+  // positivity, innermost-first). Runtime operands get a host-side check at
+  // lowering time. Shared with the dma_task path.
   llvm::SmallVector<mlir::OpFoldResult, 4> stridesRev(llvm::reverse(strides));
   if (failed(verifyConstBdRealizability(getOperation(), sizesRev, stridesRev,
                                         elemWidth, gran)))
     return failure();
 
-  // A runtime size landing in a narrow BD field (d0/d1 wrap 10-bit, iteration
-  // 6-bit) could exceed the field and silently truncate on hardware. The TXN
-  // stream has no on-device trap, so the dynamic lowering emits a host-side
-  // bounds guard (npu.assert_bd_field -> generated-C++ early return of nullopt)
-  // for exactly those fields. Nothing to reject here: wide fields
-  // (buffer_length via linear mode, repeat_count) need no guard, and narrow
-  // fields are guarded at lowering time.
+  // Runtime fields are checked at dispatch instead; see buildBdWords.
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value())
@@ -624,12 +649,109 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return getConstantIntValue(s).has_value();
   });
 
-  // Dynamic path: any runtime size/stride/offset. A runtime offset flows into
-  // the address-patch arg_plus as arith (see AIEDmaToNpu.cpp emitBufferAddress-
-  // Patch); runtime sizes/strides use the dynamic BD-word encoder. The shared
-  // scope check enforces what the dynamic lowering can represent.
+  bool hasLengthParameter =
+      getLengthParameterAttr() || getLengthStateTableIdxAttr();
+  // Runtime offsets, sizes and strides lower only through EmitC, which has no
+  // scratchpad.
+  if (hasLengthParameter &&
+      (!allStridesConstant || !allSizesConstant || !allOffsetsConstant))
+    return emitOpError(
+        "length_parameter requires constant offsets, sizes and strides");
+
+  // The dynamic scope check needs the allocation resolved by verifySymbolUses.
   if (!allStridesConstant || !allSizesConstant || !allOffsetsConstant)
-    return verifyDynamicSizesStrides(targetModel, buffer);
+    return success();
+
+  llvm::SmallVector<int64_t, 4> inputSizes =
+      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  llvm::SmallVector<int64_t, 4> inputStrides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  int64_t offset = getOffsetInBytes();
+
+  auto errorMessage = checkBurstLength(targetModel, getBurstLength());
+  if (errorMessage.has_value()) {
+    return emitOpError(errorMessage.value());
+  }
+
+  if (hasLengthParameter) {
+    if (failed(AIE::verifyLengthParameter(
+            *this, getLengthUnit(), buffer,
+            inputSizes[0] * inputSizes[1] * inputSizes[2],
+            AIEX::isContiguousTransfer(inputSizes, inputStrides),
+            llvm::ArrayRef<int64_t>(inputSizes).take_front(3))))
+      return failure();
+  }
+
+  // The experimental HSA target uses this op on AIE1, skip all the AIE2
+  // specific checks
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return success();
+
+  if (offset % 4 != 0) {
+    return emitOpError("Offset must be 4-byte-aligned.");
+  }
+
+  // packet header
+  if (auto packetInfo = getPacket()) {
+    if (packetInfo->getPktType() > 7)
+      return emitOpError("Packet type field can only hold 3 bits.");
+    if (packetInfo->getPktId() > 31)
+      return emitOpError("Packet ID field can only hold 5 bits.");
+  }
+
+  return success();
+}
+
+// The verifier-owned collection shares the device symbol table across memcpy
+// checks without retaining allocation pointers between verification calls.
+LogicalResult
+AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  BaseMemRefType buffer = getMemref().getType();
+  const auto &targetModel = AIE::getTargetModel(*this);
+  bool allStridesConstant = llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allSizesConstant = llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allOffsetsConstant = llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool isDynamic =
+      !allStridesConstant || !allSizesConstant || !allOffsetsConstant;
+
+  bool hasLengthParameter =
+      getLengthParameterAttr() || getLengthStateTableIdxAttr();
+  // Static AIE1 transfers without a length parameter skip allocation checks,
+  // including on the compatibility target used outside a device.
+  if (!isDynamic && !hasLengthParameter &&
+      targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return success();
+
+  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
+      dev, getMetadata().getRootReference());
+  if (isDynamic)
+    return verifyDynamicSizesStrides(targetModel, buffer, allocOp);
+
+  // Static transfers can precede allocation lowering, so defer tile checks
+  // until metadata names a shim DMA allocation.
+  if (!allocOp)
+    return success();
+  AIE::TileOp tile = allocOp.getTileOp();
+  if (!tile)
+    return emitOpError("shim DMA allocation must reference a valid TileOp");
+  int col = tile.getCol();
+  int row = tile.getRow();
+  if (hasLengthParameter &&
+      failed(AIE::verifyLengthParameterTile(*this, targetModel, col, row)))
+    return failure();
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return success();
 
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -643,21 +765,6 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   llvm::SmallVector<int64_t, 4> hardwareStrides(4);
   getHardwareStridesWraps(targetModel, getOperation(), buffer, inputSizes,
                           inputStrides, hardwareSizes, hardwareStrides);
-  int64_t offset = getOffsetInBytes();
-
-  auto errorMessage = checkBurstLength(targetModel, getBurstLength());
-  if (errorMessage.has_value()) {
-    return emitOpError(errorMessage.value());
-  }
-
-  // The experimental HSA target uses this op on AIE1, skip all the AIE2
-  // specific checks
-  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
-    return success();
-
-  if (offset % 4 != 0) {
-    return emitOpError("Offset must be 4-byte-aligned.");
-  }
 
   // dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
   // specify any data layout transformation, but simply express a contiguous
@@ -665,48 +772,32 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   // even if it exceeds the maximum stride/wrap size of any one dimension,
   // and simply do not lower any data layout transformations, since there is
   // no other way to express this at the dma_memcpy_nd interface otherwise.
-  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-  if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
-          dev, getMetadata().getRootReference())) {
-    AIE::TileOp tile = allocOp.getTileOp();
-    if (!tile) {
-      return emitOpError("shim DMA allocation must reference a valid TileOp");
-    }
-    int col = tile.getCol();
-    int row = tile.getRow();
-    // A contiguous row-major ND access is also exempt from the ND wrap-size
-    // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0),
-    // and LinearizeContiguousTransfer canonicalizes it to explicit linear form.
-    bool skipTransformationChecks =
-        isLinearTransferWithoutTransformation() ||
-        (targetModel.isShimNOCTile(col, row) &&
-         AIEX::isContiguousTransfer(inputSizes, inputStrides));
-    // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
-    // split into hardware-legal sub-transfers is also allowed to verify: the
-    // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
-    // oversized strides) still fail below. isDecomposableNdDmaPattern
-    // suppresses its own diagnostics, so no stray error is emitted for the
-    // accepted case.
-    llvm::SmallVector<int64_t, 4> inputOffsets = llvm::map_to_vector(
-        llvm::reverse(getMixedOffsets()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    if (AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
-                                         col, row, inputOffsets, inputSizes,
-                                         inputStrides)) {
-      // ok: will be decomposed before lowering
-    } else if (failed(verifyStridesWraps(
-                   *this, buffer, col, row, inputSizes, inputStrides,
-                   hardwareSizes, hardwareStrides, skipTransformationChecks))) {
-      return failure();
-    }
-  }
-
-  // packet header
-  if (auto packetInfo = getPacket()) {
-    if (packetInfo->getPktType() > 7)
-      return emitOpError("Packet type field can only hold 3 bits.");
-    if (packetInfo->getPktId() > 31)
-      return emitOpError("Packet ID field can only hold 5 bits.");
+  // A contiguous row-major ND access is also exempt from the ND wrap-size
+  // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0),
+  // and LinearizeContiguousTransfer canonicalizes it to explicit linear form.
+  bool skipTransformationChecks = AIEX::isLinearModeTransfer(
+      targetModel, col, row, inputSizes, inputStrides);
+  // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
+  // split into hardware-legal sub-transfers is also allowed to verify: the
+  // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
+  // oversized strides) still fail below. isDecomposableNdDmaPattern
+  // suppresses its own diagnostics, so no stray error is emitted for the
+  // accepted case.
+  llvm::SmallVector<int64_t, 4> inputOffsets =
+      llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  // aie-decompose-large-dma-bd leaves a transfer with a runtime length
+  // alone, so it must be legal as written.
+  if (!hasLengthParameter && AIEX::isDecomposableNdDmaPattern(
+                                 getOperation(), buffer, targetModel, col, row,
+                                 inputOffsets, inputSizes, inputStrides)) {
+    // ok: will be decomposed before lowering
+  } else if (failed(verifyStridesWraps(
+                 *this, [&] { return emitOpError(); }, buffer, col, row,
+                 inputSizes, inputStrides, hardwareSizes, hardwareStrides,
+                 skipTransformationChecks))) {
+    return failure();
   }
 
   return success();
@@ -733,18 +824,40 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   // bd_id and repeat_count are SSA operands; range-check them only when they
-  // are compile-time constants. A runtime (non-constant) value is left
-  // unchecked here: bounds checking of runtime operands is not yet implemented
-  // (it belongs to the dynamic lowering path added in a later patch).
+  // are compile-time constants. A runtime repeat_count is checked on the host
+  // when lowered (AIEDmaToNpu); a runtime bd_id comes from the tile's BD pool.
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
-      bdId && *bdId > numBds)
+      bdId && *bdId >= numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   uint32_t maxRepeat = targetModel.getMaxRepeatCount();
-  if (std::optional<uint32_t> repeatCount =
-          getConstantIntOperand(getRepeatCount());
+  if (std::optional<uint64_t> repeatCount =
+          getConstantInt64Operand(getRepeatCount());
       repeatCount && *repeatCount > maxRepeat)
     return emitOpError("Repeat count exceeds the [0:")
            << maxRepeat << "] range.";
+  if (getRepeatStateTableIdxAttr()) {
+    AIE::AIEArch arch = targetModel.getTargetArch();
+    if (arch != AIE::AIEArch::AIE2 && arch != AIE::AIEArch::AIE2p)
+      return emitOpError("repeat_parameter is only supported on AIE2 and "
+                         "AIE2P devices");
+    if (!targetModel.isShimNOCTile(getColumn(), getRow()) &&
+        !targetModel.isMemTile(getColumn(), getRow()))
+      return emitOpError("repeat_parameter is only supported on shim NOC "
+                         "and mem tiles, got tile (")
+             << getColumn() << ", " << getRow() << ")";
+    if (getConstantInt64Operand(getRepeatCount()) != uint64_t{0})
+      return emitOpError("takes its repeat count from the scratchpad, so its "
+                         "repeat_count operand must be 0");
+    std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
+    if (!bdId)
+      return emitOpError("takes its repeat count from the scratchpad, so its "
+                         "bd_id must be a constant");
+    if (*bdId % 4 != 0)
+      return emitOpError("takes its repeat count from the scratchpad, whose "
+                         "update clears the low two bits of the queue word, "
+                         "so its bd_id must be a multiple of 4, got ")
+             << *bdId;
+  }
   return success();
 }
 
@@ -757,7 +870,7 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   bool isLinearTransfer =
       (getD0Size() >= 1) && (getD1Size() == 1) && (getIterationSize() == 0);
-  if (getBdId() > numBds)
+  if (getBdId() >= numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
   if (getPacketId() > 31)
     return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
@@ -800,6 +913,12 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
                          << "] range.";
   if (static_cast<uint32_t>(getIterationStride()) > maxStep)
     return emitOpError() << "Iteration Stride exceeds the [0:" << maxStep
+                         << "] range.";
+  // buffer_length is the full 32-bit word on a shim NOC tile but only 17 bits
+  // on a mem tile and 14 on a core tile, where the packer masks it.
+  uint64_t maxLen = targetModel.getDmaBdMaxLen(tileType);
+  if (getBufferLength() > maxLen)
+    return emitOpError() << "Buffer length exceeds the [0:" << maxLen
                          << "] range.";
   if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 3 dimensions of sizes.");
@@ -850,14 +969,18 @@ uint32_t AIEX::NpuWriteBdOp::getAxcacheOrDefault() {
 }
 
 std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
-  mlir::APInt cst;
-  if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
-    return std::nullopt;
-  return static_cast<uint32_t>(cst.getZExtValue());
+  if (std::optional<uint64_t> cst = getConstantInt64Operand(v))
+    return static_cast<uint32_t>(*cst);
+  return std::nullopt;
 }
 
 // Widthwise counterpart of getConstantIntOperand; see createConstantArgPlus.
 std::optional<uint64_t> AIEX::getConstantInt64Operand(mlir::Value v) {
+  // An arith.constant is read in place: the generic match folds the op, which
+  // dominates translating a sequence of a million writes.
+  if (auto constant = v.getDefiningOp<arith::ConstantOp>())
+    if (auto attr = dyn_cast<IntegerAttr>(constant.getValue()))
+      return attr.getValue().getZExtValue();
   mlir::APInt cst;
   if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
     return std::nullopt;
@@ -885,8 +1008,9 @@ mlir::Value AIEX::createConstantArgPlus(mlir::OpBuilder &builder,
 //===----------------------------------------------------------------------===//
 
 template <typename T>
-static std::optional<uint32_t> getAbsoluteAddress(T *op,
-                                                  uint32_t addressOffset) {
+static std::optional<uint32_t>
+getAbsoluteAddress(T *op, uint32_t addressOffset,
+                   const AIE::NamedOpTable *names) {
   AIE::DeviceOp device =
       op->getOperation()->template getParentOfType<AIE::DeviceOp>();
   if (!device) {
@@ -901,7 +1025,8 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
   // relative to the buffer's start address.
   if (auto bufferSym = op->getBuffer()) {
     AIE::BufferOp buffer =
-        AIE::lookupNamedOpIn<AIE::BufferOp>(device, *bufferSym);
+        names ? names->lookup<AIE::BufferOp>(op->getBufferAttr().getAttr())
+              : AIE::lookupNamedOpIn<AIE::BufferOp>(device, *bufferSym);
     if (!buffer) {
       op->emitError() << "buffer '" << *bufferSym << "' not found in device";
       return std::nullopt;
@@ -936,42 +1061,12 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
   return address;
 }
 
-std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
+std::optional<uint32_t>
+AIEX::NpuWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset);
-}
-
-//===----------------------------------------------------------------------===//
-// NpuAssertBdFieldOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
-  if (auto c = getConstantIntValue(getValue()))
-    if (*c < 0 || *c > (int64_t)getMax())
-      return emitOpError("constant value ")
-             << *c << " exceeds the guarded field range [0:" << getMax()
-             << "].";
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// NpuAssertBdDivisibleOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AIEX::NpuAssertBdDivisibleOp::verify() {
-  if (getDivisor() == 0)
-    return emitOpError("divisor must be non-zero.");
-  if (auto c = getConstantIntValue(getValue())) {
-    if (getAllowUnit() && *c == 1)
-      return success();
-    if (*c % (int64_t)getDivisor() != 0)
-      return emitOpError("constant value ")
-             << *c << " is not divisible by " << getDivisor()
-             << " (transfer is not a whole number of address-gen granules).";
-  }
-  return success();
+  return ::getAbsoluteAddress(this, *addressOffset, names);
 }
 
 //===----------------------------------------------------------------------===//
@@ -995,8 +1090,9 @@ LogicalResult AIEX::NpuAddressPatchOp::verify() {
 // NpuUpdateFromScratchpadOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this, getAddress());
+std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress(
+    const AIE::NamedOpTable *names) {
+  return ::getAbsoluteAddress(this, getAddress(), names);
 }
 
 LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
@@ -1066,9 +1162,8 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 
   NpuCreateScratchpadOp firstSeen;
   runtimeSeq.walk([&](NpuCreateScratchpadOp op) {
-    if (!firstSeen) {
-      firstSeen = op;
-    }
+    firstSeen = op;
+    return WalkResult::interrupt();
   });
   if (firstSeen != *this) {
     InFlightDiagnostic diag =
@@ -1086,30 +1181,33 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 // NpuMaskWrite32Op
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
+std::optional<uint32_t>
+AIEX::NpuMaskWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset);
+  return ::getAbsoluteAddress(this, *addressOffset, names);
 }
 
 //===----------------------------------------------------------------------===//
 // NpuMaskPollOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuMaskPollOp::getAbsoluteAddress() {
+std::optional<uint32_t>
+AIEX::NpuMaskPollOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
   if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this, *addressOffset);
+  return ::getAbsoluteAddress(this, *addressOffset, names);
 }
 
 //===----------------------------------------------------------------------===//
 // NpuBlockWriteOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::NpuBlockWriteOp::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this, getAddress());
+std::optional<uint32_t>
+AIEX::NpuBlockWriteOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
+  return ::getAbsoluteAddress(this, getAddress(), names);
 }
 
 DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
@@ -1211,6 +1309,14 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 // caps the total at 4, which the MemTile's 4 ND dimensions already reach. Both
 // branches therefore land on the same uniform 4-dimension cap enforced later by
 // AIEDMATasksToNPU.
+//
+// A BD whose sizes and strides are all constant may give more: every dimension
+// past the third is an iteration dimension, and aie-decompose-large-dma-bd
+// splits them off into descriptors of 4. With a runtime value among them it
+// cannot, so the cap applies here.
+//
+// A BD's `iteration` attribute claims that iteration register itself, so its
+// sizes/strides must leave it free: one dimension fewer, with no splitting.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                        Region &body) {
@@ -1225,15 +1331,29 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
       result = failure();
       return;
     }
-    if (bd.getIteration()) {
-      // See aie.dma_bd's ## BD iteration doc in AIEOps.td.
-      bd.emitOpError() << "the iteration attribute is not supported on the "
-                          "runtime-sequence path; express iteration via the "
-                          "outermost sizes/strides dimension instead";
+    if (failed(
+            AIE::verifyDMABDIteration(bd, targetModel.getTileType(col, row)))) {
       result = failure();
       return;
     }
     size_t numDims = bd.getMixedSizes().size();
+    if (bd.getIteration()) {
+      if (numDims + 1 > maxNDims) {
+        bd.emitOpError() << "Cannot give more than "
+                         << std::to_string(maxNDims - 1)
+                         << " dimensions for step sizes and wraps alongside "
+                            "the iteration attribute on this tile (got "
+                         << std::to_string(numDims) << " dimensions).";
+        result = failure();
+      }
+      return;
+    }
+    auto isConstant = [](OpFoldResult v) {
+      return getConstantIntValue(v).has_value();
+    };
+    if (numDims > maxNDims && llvm::all_of(bd.getMixedSizes(), isConstant) &&
+        llvm::all_of(bd.getMixedStrides(), isConstant))
+      return;
     if (numDims > maxNDims) {
       bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
                        << " dimensions for step sizes and wraps on this tile "
@@ -1285,7 +1405,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
         result = failure();
       }
       // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
-      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
+      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
+          failed(bd.verifyTransferInBounds()))
         result = failure();
       bds.push_back(bd);
     });
@@ -1307,26 +1428,357 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
+LogicalResult AIEX::DMAStartTaskOp::verify() {
+  if (getRepeatCountAttr() && getRepeatCountVal())
+    return emitOpError(
+        "takes repeat_count or a runtime repeat count, not both");
+  if (IntegerAttr rc = getRepeatCountAttr(); rc && rc.getInt() < 0)
+    return emitOpError("repeat_count must be non-negative, got ")
+           << rc.getInt();
+  if (hasRepeatParameter() && (getRepeatCountAttr() || getRepeatCountVal()))
+    return emitOpError("takes a repeat_parameter or a repeat count, not both");
+  if (getRepeatParameterAttr() && getRepeatStateTableIdxAttr())
+    return emitOpError("takes repeat_parameter or repeat_state_table_idx, "
+                       "not both");
+  return success();
+}
+
+// A BD's static length in bytes: the explicit or implicit (whole-buffer)
+// length, scaled by the element width. Nullopt for a runtime length, or one a
+// scratchpad parameter lengthens at run time (AIEOps.td's "Runtime length").
+static std::optional<int64_t> staticBdLenBytes(AIE::DMABDOp bd) {
+  if (bd.getLengthParameterAttr() || bd.getLengthStateTableIdxAttr())
+    return std::nullopt;
+  int64_t elems;
+  if (std::optional<int32_t> len = bd.getConstantLen()) {
+    // Zero-extended, as DMABDOp::getLenInBytes() reads the length.
+    elems = static_cast<uint32_t>(*len);
+  } else {
+    // With runtime sizes/strides, an omitted len is their inner extent
+    // (AIEDMATasksToNPU), not the whole buffer.
+    if (bd.hasLen() || !bd.getSizes().empty() || !bd.getStrides().empty())
+      return std::nullopt;
+    auto buffer = dyn_cast<MemRefType>(bd.getBuffer().getType());
+    if (!buffer || !buffer.hasStaticShape())
+      return std::nullopt;
+    elems = buffer.getNumElements();
+  }
+  return llvm::checkedMul(
+      elems, static_cast<int64_t>(bd.getBufferElementTypeWidthInBytes()));
+}
+
+// Bytes a task streams per dispatch, or nullopt when any extent, repeat or
+// start count is not static, or the total overflows.
+static std::optional<int64_t>
+staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
+  int64_t starts = 0;
+  for (Operation *user : task.getResult().getUsers()) {
+    auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
+    if (!start) {
+      if (isa<AIEX::DMAAwaitTaskOp, AIEX::DMAFreeTaskOp>(user))
+        continue;
+      // The task value is forwarded (a branch operand, a call, ...), so its
+      // starts elsewhere can't be counted.
+      return std::nullopt;
+    }
+    // A start outside the task's own block may run under a loop or a
+    // mutually-exclusive branch, either of which this static count can't see.
+    if (start->getBlock() != task->getBlock() || start.getRepeatCountAttr() ||
+        start.getRepeatCountVal() || start.hasRepeatParameter())
+      return std::nullopt;
+    ++starts;
+  }
+  if (starts == 0)
+    return 0;
+  std::optional<int64_t> repeat =
+      getConstantIntValue(task.getRepeatCountValue());
+  if (!repeat || *repeat < 0)
+    return std::nullopt;
+
+  Region &body = task.getBody();
+  if (body.empty())
+    return std::nullopt;
+  // The queue starts the chain at the entry block, so only blocks reachable
+  // from it stream. A cycle runs indefinitely, and a next_bd_id continues the
+  // chain outside the body.
+  std::optional<int64_t> moved = 0;
+  for (auto scc = llvm::scc_begin(&body.front()); !scc.isAtEnd(); ++scc) {
+    if (scc.hasCycle())
+      return std::nullopt;
+    for (AIE::DMABDOp bd : scc->front()->getOps<AIE::DMABDOp>()) {
+      std::optional<int64_t> len = staticBdLenBytes(bd);
+      if (!len || bd.getIteration() || bd.getNextBdId())
+        return std::nullopt;
+      moved = llvm::checkedAdd(*moved, *len);
+      if (!moved)
+        return std::nullopt;
+    }
+  }
+  std::optional<int64_t> runs = llvm::checkedAdd(*repeat, int64_t{1});
+  if (runs)
+    runs = llvm::checkedMul(*runs, starts);
+  return runs ? llvm::checkedMul(*moved, *runs) : std::nullopt;
+}
+
+namespace {
+// A far end's cyclic chain of BDs over one object: each segment's BD, in
+// order, sent `copies` times in a row.
+struct BdChain {
+  SmallVector<int64_t> segmentBytes;
+  int64_t copies;
+  int64_t objectBytes;
+
+  // Nullopt when the object's bytes overflow or a segment is empty.
+  static std::optional<BdChain> get(ArrayRef<int64_t> segmentBytes,
+                                    int64_t copies) {
+    if (segmentBytes.size() == 1)
+      copies = 1;
+    std::optional<int64_t> objectBytes = 0;
+    for (int64_t bytes : segmentBytes) {
+      std::optional<int64_t> run = llvm::checkedMul(bytes, copies);
+      if (bytes <= 0 || copies <= 0 || !run)
+        return std::nullopt;
+      objectBytes = llvm::checkedAdd(*objectBytes, *run);
+      if (!objectBytes)
+        return std::nullopt;
+    }
+    if (segmentBytes.empty())
+      return std::nullopt;
+    return BdChain{SmallVector<int64_t>(segmentBytes), copies, *objectBytes};
+  }
+
+  // True when `bytes` through the chain stop where one of its BDs ends.
+  bool endsOnBd(int64_t bytes) const {
+    int64_t rest = bytes % objectBytes;
+    int64_t start = 0;
+    for (int64_t segment : segmentBytes) {
+      if (rest < start + segment * copies)
+        return (rest - start) % segment == 0;
+      start += segment * copies;
+    }
+    return true;
+  }
+
+  bool operator==(const BdChain &other) const {
+    return segmentBytes == other.segmentBytes && copies == other.copies;
+  }
+};
+} // namespace
+
+// The far end of a shim transfer on an objectFIFO receives (or sends) whole
+// objects through BDs sized by the object type, or by its link pool's
+// segments, so transfers ending mid-BD never complete it and the fifo hangs.
+// Several transfers may share an object (concatenating host buffers into it, or
+// splitting it across them), so it is the runtime sequence's static total
+// through the fifo that must stop at a BD boundary.
+static LogicalResult
+verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
+                             AIE::ObjectFifoCreateOp fifo) {
+  if (fifo.getPadDimensions() || fifo.getAieStream())
+    return success();
+  std::optional<int64_t> moved = staticBytesStreamed(task);
+  if (!moved || *moved == 0)
+    return success();
+  DataLayout layout = DataLayout::closest(task);
+  // Bytes an object holds, or nullopt when that overflows.
+  auto objectBytesOf = [&](Type fifoType) -> std::optional<int64_t> {
+    MemRefType elem = cast<AIE::AIEObjectFifoType>(fifoType).getElementType();
+    return llvm::checkedMul(
+        elem.getNumElements(),
+        static_cast<int64_t>(layout.getTypeSize(elem.getElementType())));
+  };
+  // A linked fifo's far end on the link's shared tile is a chain of BDs over
+  // the link's pool, one per pool segment, sized by the pool owner whatever
+  // this fifo's own (or consumer) type. A join's or distribute's combined end
+  // steps through every segment in order, each small end through its own, and
+  // a plain link's single segment is the whole pool object. The link's
+  // repeat_count sends each of its output's segment BDs that many times in a
+  // row.
+  Value linkTile;
+  std::optional<BdChain> linkChain;
+  if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
+    for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
+      std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
+      std::vector<AIE::ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
+      if (!llvm::is_contained(ins, fifo) && !llvm::is_contained(outs, fifo))
+        continue;
+      std::optional<Value> sharedTile = link.getOptionalSharedTile();
+      if (ins.empty() || outs.empty() || !sharedTile)
+        return success();
+      linkTile = *sharedTile;
+      AIE::ObjectFifoCreateOp owner = link.getPoolOwner();
+      MemRefType pool =
+          cast<AIE::AIEObjectFifoType>(owner.getElemType()).getElementType();
+      auto width =
+          static_cast<int64_t>(layout.getTypeSize(pool.getElementType()));
+      SmallVector<std::pair<int64_t, int64_t>> segments =
+          link.getPoolSegments();
+      if (fifo != owner && (link.isJoin() || link.isDistribute())) {
+        std::vector<AIE::ObjectFifoCreateOp> &many = link.isJoin() ? ins : outs;
+        segments = {segments[llvm::find(many, fifo) - many.begin()]};
+      }
+      SmallVector<int64_t> segmentBytes;
+      for (auto [offset, size] : segments) {
+        std::optional<int64_t> bytes = llvm::checkedMul(size, width);
+        if (!bytes)
+          break;
+        segmentBytes.push_back(*bytes);
+      }
+      int64_t copies = llvm::is_contained(outs, fifo)
+                           ? link.getRepeatCount().value_or(1)
+                           : 1;
+      if (segmentBytes.size() == segments.size())
+        linkChain = BdChain::get(segmentBytes, copies);
+      break;
+    }
+  // Every far-end BD chain this transfer must leave at a BD boundary: the
+  // producer's, for a drain, and each consumer's other than the shim's own. A
+  // broadcast stalls on its slowest consumer, so a drain bounds what the
+  // others receive too. An end off the link tile is one BD over its own
+  // object.
+  SmallVector<BdChain> chains;
+  auto addChain = [&](Value tile, Type fifoType) {
+    std::optional<BdChain> chain;
+    if (linkTile && tile == linkTile)
+      chain = linkChain;
+    else if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
+      chain = BdChain::get({*bytes}, 1);
+    if (chain && !llvm::is_contained(chains, *chain))
+      chains.push_back(*chain);
+  };
+  auto producer =
+      dyn_cast_or_null<AIE::TileLike>(fifo.getProducerTile().getDefiningOp());
+  if (!producer)
+    return success();
+  if (!producer.isShimTile())
+    addChain(fifo.getProducerTile(), fifo.getElemType());
+  for (Value consumer : fifo.getConsumerTiles()) {
+    auto tile = dyn_cast_or_null<AIE::TileLike>(consumer.getDefiningOp());
+    if (!tile || !tile.isShimTile())
+      addChain(consumer, fifo.getConsumerElemTypeOrDefault());
+  }
+  if (chains.empty())
+    return success();
+
+  // Transfers in a loop or branch have no static count to sum.
+  auto sequence = task->getParentOfType<AIE::RuntimeSequenceOp>();
+  if (!sequence || task->getBlock() != &sequence.getBody().front())
+    return success();
+  // A dma_channel_reset_for re-arms the fifo's far ends and drops a partly
+  // filled object. It doesn't block, so which bytes land before it isn't
+  // static, and the transfers around it can't be summed.
+  if (llvm::any_of(task->getBlock()->getOps<AIEX::DmaChannelResetForOp>(),
+                   [&](AIEX::DmaChannelResetForOp reset) {
+                     return reset.getObjfifoAttr() == task.getAlloc();
+                   }))
+    return success();
+  // Segment boundaries don't add up the way whole objects do, so the
+  // sequence's total is checked whatever this transfer moves, once: by the
+  // first transfer through the fifo.
+  for (Operation *prev = task->getPrevNode(); prev; prev = prev->getPrevNode())
+    if (auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(prev);
+        other && other.getAlloc() == task.getAlloc() &&
+        staticBytesStreamed(other) != 0)
+      return success();
+  std::optional<int64_t> total = 0;
+  int64_t sharing = 0;
+  WalkResult walk = sequence.walk([&](Operation *op) {
+    // A dma_memcpy_nd or BD chain through the fifo also shares its objects;
+    // its extent is not summed here, so the sequence's total is unknown.
+    if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
+      return memcpy.getMetadata() == task.getAlloc() ? WalkResult::interrupt()
+                                                     : WalkResult::advance();
+    if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op))
+      return chain.getAllocAttr() == task.getAlloc() ? WalkResult::interrupt()
+                                                     : WalkResult::advance();
+    auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(op);
+    if (!other || other.getAlloc() != task.getAlloc())
+      return WalkResult::advance();
+    std::optional<int64_t> bytes = staticBytesStreamed(other);
+    // A task that is never started streams nothing, wherever it is.
+    if (bytes == 0)
+      return WalkResult::advance();
+    if (!bytes || other->getBlock() != task->getBlock())
+      return WalkResult::interrupt();
+    total = llvm::checkedAdd(*total, *bytes);
+    if (!total)
+      return WalkResult::interrupt();
+    ++sharing;
+    return WalkResult::advance();
+  });
+  if (walk.wasInterrupted())
+    return success();
+  const BdChain *partial = llvm::find_if(
+      chains, [&](const BdChain &chain) { return !chain.endsOnBd(*total); });
+  if (partial == chains.end())
+    return success();
+
+  InFlightDiagnostic error =
+      task.emitOpError() << "moves " << *moved << " bytes through objectFIFO @"
+                         << fifo.getSymName() << ", which";
+  if (sharing > 1)
+    error << ", with this runtime sequence's other transfers through it ("
+          << *total << " bytes in all),";
+  error << " is not a whole number of its " << partial->objectBytes
+        << "-byte objects";
+  if (partial->segmentBytes.size() == 1)
+    return error << "; the far end's buffer descriptor is sized by the "
+                    "object, so a partial one never completes";
+  std::string segments;
+  llvm::raw_string_ostream os(segments);
+  llvm::interleaveComma(partial->segmentBytes, os);
+  error << " and doesn't end on a segment boundary (segments of " << segments
+        << " bytes";
+  if (partial->copies > 1)
+    error << ", each sent " << partial->copies << " times in a row";
+  return error << "); the far end's buffer descriptors are sized by the "
+                  "segments, so a partial one never completes";
+}
+
 // Resolving the allocation symbol through the collection keeps the lookup off
 // the device's linear symbol scan, which a per-op verifier repeats after every
 // pass.
 LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
     SymbolTableCollection &symbolTable) {
-  // Recover the shim tile through the referenced shim DMA allocation symbol so
-  // the per-BD dimension limit can be enforced on the runtime-sequence path
-  // before the allocation is substituted into a concrete DMAConfigureTaskOp.
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
-      dev, getAlloc().getRootReference());
-  if (!allocOp)
-    return success(); // symbol resolved during a later pass; defer the check
-  // Do not call allocOp.getTileOp(): it hard-asserts when the allocation is
-  // still bound to an unplaced (logical) tile. Resolve the concrete tile
-  // defensively and defer the check until placement substitutes a real tile.
-  auto tile =
-      llvm::dyn_cast_or_null<AIE::TileOp>(allocOp.getTile().getDefiningOp());
+  Operation *target =
+      symbolTable.lookupSymbolIn(dev, getAlloc().getRootReference());
+  if (!target)
+    return emitOpError() << getAlloc() << " does not name a symbol";
+  // The tile is known once the name is a shim DMA allocation or a route
+  // endpoint, so the per-BD dimension limit can be enforced before the task
+  // becomes a concrete dma_configure_task. Before the objectFIFO lowering
+  // the name is the fifo's own, and the check waits.
+  Value tileValue;
+  LogicalResult named =
+      TypeSwitch<Operation *, LogicalResult>(target)
+          .Case([&](AIE::ShimDMAAllocationOp alloc) {
+            tileValue = alloc.getTile();
+            return success();
+          })
+          .Case([&](AIE::RouteEndpointOp endpoint) -> LogicalResult {
+            tileValue = endpoint.getTile();
+            if (endpoint.getBundle() == AIE::WireBundle::DMA)
+              return success();
+            return emitOpError() << getAlloc() << " names a "
+                                 << stringifyWireBundle(endpoint.getBundle())
+                                 << " port, not a DMA channel";
+          })
+          .Case([&](AIE::ObjectFifoCreateOp fifo) {
+            return verifyTaskCoversWholeObjects(*this, fifo);
+          })
+          .Default([&](Operation *) -> LogicalResult {
+            return emitOpError() << getAlloc()
+                                 << " must name an aie.shim_dma_allocation, an "
+                                    "aie.route_endpoint or an aie.objectfifo";
+          });
+  if (failed(named))
+    return failure();
+  // An allocation or endpoint on an unplaced (logical) tile waits for
+  // placement to substitute a real one.
+  auto tile = tileValue ? tileValue.getDefiningOp<AIE::TileOp>() : nullptr;
   if (!tile)
     return success();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
@@ -1393,9 +1845,13 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return emitOpError("SetLockOp is not supported on AIE1.");
 
-  if (getValue() > targetModel.getMaxLockValue())
-    return emitOpError("Lock value exceeds the maximum value of " +
-                       std::to_string(targetModel.getMaxLockValue()));
+  if (std::optional<int64_t> value = getConstantIntValue(getValue())) {
+    if (*value < 0)
+      return emitOpError("Lock value must be non-negative");
+    if (*value > targetModel.getMaxLockValue())
+      return emitOpError("Lock value exceeds the maximum value of " +
+                         std::to_string(targetModel.getMaxLockValue()));
+  }
 
   auto lockOp = getLockOp();
   auto lockIDOpt = getLockOp().getLockID();
@@ -1404,22 +1860,52 @@ LogicalResult AIEX::SetLockOp::verify() {
   if (!lockIDOpt) {
     return success();
   }
+  // A logical tile with a coordinate still unpinned waits for the
+  // post-placement re-verify for its range and address checks, as
+  // UsesAreAccessible's do.
+  std::optional<int> col = lockOp.getTileLike().tryGetCol();
+  std::optional<int> row = lockOp.getTileLike().tryGetRow();
+  if (!col || !row)
+    return success();
 
-  auto col = lockOp.colIndex();
-  auto row = lockOp.rowIndex();
   uint32_t lockID = lockOp.getLockIDValue();
 
-  if (lockID >= targetModel.getNumLocks(col, row)) {
+  if (lockID >= targetModel.getNumLocks(*col, *row)) {
     return emitOpError("Lock ID out of range for given tile. Max ID: " +
-                       std::to_string(targetModel.getNumLocks(col, row) - 1));
+                       std::to_string(targetModel.getNumLocks(*col, *row) - 1));
   }
 
-  if (!targetModel.getLocalLockAddress(lockID, lockOp.getTileID())) {
+  if (!targetModel.getLocalLockAddress(lockID, AIE::TileID{*col, *row})) {
     return emitOpError("Invalid lock ID and tile combination when trying to "
                        "retrieve the local lock address.");
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DMABdPoolPopOp / DMABdPoolPushOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verifyBdPoolPartition(Operation *op, int col, int row,
+                                           uint32_t begin, uint32_t end) {
+  uint32_t numBds = AIE::getTargetModel(op).getNumBDs(col, row);
+  if (begin >= end || end > numBds)
+    return op->emitOpError()
+           << "partition [" << begin << ", " << end
+           << ") is not a nonempty range of the " << numBds
+           << " buffer descriptors on tile (" << col << ", " << row << ")";
+  return success();
+}
+
+LogicalResult AIEX::DMABdPoolPopOp::verify() {
+  return verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
+                               getBdEnd());
+}
+
+LogicalResult AIEX::DMABdPoolPushOp::verify() {
+  return verifyBdPoolPartition(*this, getColumn(), getRow(), getBdBegin(),
+                               getBdEnd());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1621,6 +2107,13 @@ LogicalResult AIEX::ReadScratchpadParameterOp::verify() {
   return success();
 }
 
+LogicalResult AIEX::WaitScratchpadParametersOp::verify() {
+  if (!(*this)->getParentOfType<AIE::CoreOp>()) {
+    return emitOpError("must be inside an aie.core");
+  }
+  return success();
+}
+
 LogicalResult AIEX::ConfigureOp::verify() {
   AIE::DeviceOp parentDev = getOperation()->getParentOfType<AIE::DeviceOp>();
   AIE::DeviceOp referencedDev = getReferencedDeviceOp();
@@ -1650,7 +2143,8 @@ AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
   return referencedDevice;
 }
 
-AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
+AIE::RuntimeSequenceOp
+AIEX::RunOp::getCalleeRuntimeSequenceOp(AIE::NamedOpTableCollection *tables) {
   AIEX::ConfigureOp configureOp =
       getOperation()->getParentOfType<AIEX::ConfigureOp>();
   if (!configureOp) {
@@ -1661,19 +2155,11 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
     return nullptr;
   }
 
-  Operation *maybeRuntimeSequence =
-      SymbolTable::lookupSymbolIn(referencedDevice, getRuntimeSequenceSymbol());
-
-  if (!maybeRuntimeSequence) {
-    return nullptr;
+  StringAttr name = getRuntimeSequenceSymbolAttr().getAttr();
+  if (!tables) {
+    return AIE::lookupNamedOpIn<AIE::RuntimeSequenceOp>(referencedDevice, name);
   }
-  AIE::RuntimeSequenceOp runtimeSequence =
-      llvm::dyn_cast<AIE::RuntimeSequenceOp>(maybeRuntimeSequence);
-  if (!runtimeSequence) {
-    return nullptr;
-  }
-
-  return runtimeSequence;
+  return tables->lookupIn<AIE::RuntimeSequenceOp>(referencedDevice, name);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1703,4 +2189,156 @@ LogicalResult AIEX::NpuLoadPdiOp::canonicalize(AIEX::NpuLoadPdiOp op,
   }
 
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuWriteConfigOp
+//===----------------------------------------------------------------------===//
+
+static bool writesConfig(Operation *op) {
+  return isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
+             AIEX::NpuWriteTeardownOp>(op);
+}
+
+// Visits the load_pdi, write_config and write_teardown ops before `op` in its
+// block, nearest first, then those after it from the block's end, as the host
+// runs the sequence again on each dispatch, then `op` itself. Returns the first
+// for which `visit` returns true.
+static Operation *findConfigOpBefore(Operation *op,
+                                     function_ref<bool(Operation *)> visit) {
+  for (Operation *prev = op->getPrevNode(); prev; prev = prev->getPrevNode())
+    if (writesConfig(prev) && visit(prev))
+      return prev;
+  for (Operation &next : llvm::reverse(*op->getBlock())) {
+    if (&next == op)
+      break;
+    if (writesConfig(&next) && visit(&next))
+      return &next;
+  }
+  return visit(op) ? op : nullptr;
+}
+
+// The load_pdi that resets the array for `op`, or the write_teardown that
+// leaves it so, or null.
+static Operation *precedingReset(Operation *op) {
+  return findConfigOpBefore(op, [&](Operation *prev) {
+    return prev != op &&
+           isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteTeardownOp>(prev);
+  });
+}
+
+static bool loadsSamePdi(AIEX::NpuLoadPdiOp a, AIEX::NpuLoadPdiOp b) {
+  return a.getDeviceRefAttr() == b.getDeviceRefAttr() &&
+         a.getId() == b.getId() && a.getSize() == b.getSize() &&
+         a.getAddress() == b.getAddress();
+}
+
+LogicalResult AIEX::NpuWriteConfigOp::verify() {
+  Operation *found = precedingReset(*this);
+  if (!found)
+    return emitOpError("must follow the load_pdi that resets the array");
+  auto reset = dyn_cast<AIEX::NpuLoadPdiOp>(found);
+  if (!reset)
+    return success();
+  // The firmware skips the load if it loaded the same PDI last. That leaves
+  // the array as a reset does only if every configuration since is torn down.
+  bool tornDown = true;
+  Operation *later = reset;
+  auto before =
+      cast<AIEX::NpuLoadPdiOp>(findConfigOpBefore(reset, [&](Operation *op) {
+        if (isa<AIEX::NpuWriteConfigOp>(op) &&
+            !isa<AIEX::NpuWriteTeardownOp>(later))
+          tornDown = false;
+        later = op;
+        return isa<AIEX::NpuLoadPdiOp>(op);
+      }));
+  if (!loadsSamePdi(before, reset) || tornDown)
+    return success();
+  InFlightDiagnostic diag = emitOpError(
+      "follows a load_pdi the firmware skips, as it loads the PDI loaded "
+      "just before it, so the array is not reset");
+  diag.attachNote(before.getLoc()) << "the PDI is loaded here";
+  return diag;
+}
+
+LogicalResult
+AIEX::NpuLoadPdiOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  FlatSymbolRefAttr ref = getDeviceRefAttr();
+  if (!ref)
+    return success();
+  auto device = (*this)->getParentOfType<AIE::DeviceOp>();
+  Operation *scope = device ? device->getParentOp()
+                            : SymbolTable::getNearestSymbolTable(*this);
+  if (!isa_and_present<AIE::DeviceOp>(symbolTable.lookupSymbolIn(scope, ref)))
+    return emitOpError() << ref << " is not a device";
+  return success();
+}
+
+LogicalResult
+AIEX::NpuWriteConfigOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
+  if (!isa_and_present<AIE::DeviceOp>(
+          symbolTable.lookupSymbolIn(scope, getDeviceRefAttr())))
+    return emitOpError() << getDeviceRefAttr() << " is not a device";
+  auto reset = dyn_cast_or_null<AIEX::NpuLoadPdiOp>(precedingReset(*this));
+  FlatSymbolRefAttr resetRef = reset ? reset.getDeviceRefAttr() : nullptr;
+  auto empty = resetRef ? dyn_cast_or_null<AIE::DeviceOp>(
+                              symbolTable.lookupSymbolIn(scope, resetRef))
+                        : nullptr;
+  // The transaction conversion gives every device a `@configure` sequence; an
+  // empty one still configures nothing.
+  if (reset &&
+      (!empty ||
+       !llvm::all_of(empty.getBody()->without_terminator(), [](Operation &op) {
+         return isa<AIE::RuntimeSequenceOp>(op) &&
+                llvm::all_of(op.getRegion(0),
+                             [](Block &block) { return block.empty(); });
+       })))
+    return emitOpError("must follow a load_pdi of an empty device, which "
+                       "resets the array");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuWriteTeardownOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuWriteTeardownOp::verify() {
+  Operation *prev = (*this)->getPrevNode();
+  while (prev && !writesConfig(prev))
+    prev = prev->getPrevNode();
+  auto config = dyn_cast_or_null<AIEX::NpuWriteConfigOp>(prev);
+  if (!config || config.getDeviceRefAttr() != getDeviceRefAttr())
+    return emitOpError("must follow the write_config of ")
+           << getDeviceRefAttr() << ", with no load_pdi between";
+  return success();
+}
+
+LogicalResult
+AIEX::NpuWriteTeardownOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  Operation *scope = (*this)->getParentOfType<AIE::DeviceOp>()->getParentOp();
+  auto device = dyn_cast_or_null<AIE::DeviceOp>(
+      symbolTable.lookupSymbolIn(scope, getDeviceRefAttr()));
+  if (!device)
+    return emitOpError() << getDeviceRefAttr() << " is not a device";
+  Operation *shimStart = AIEX::findShimDmaStart(device);
+  if (!shimStart)
+    return success();
+  InFlightDiagnostic diag =
+      emitOpError() << getDeviceRefAttr()
+                    << " starts a shim DMA channel, which teardown cannot stop";
+  diag.attachNote(shimStart->getLoc()) << "started here";
+  return diag;
+}
+
+Operation *AIEX::findShimDmaStart(AIE::DeviceOp device) {
+  Operation *found = nullptr;
+  device.walk([&](Operation *op) {
+    if (!isa<AIE::DMAStartOp, AIE::DMAOp>(op) ||
+        !isa<AIE::ShimDMAOp>(op->getParentOp()))
+      return WalkResult::advance();
+    found = op;
+    return WalkResult::interrupt();
+  });
+  return found;
 }

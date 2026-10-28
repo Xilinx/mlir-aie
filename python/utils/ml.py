@@ -7,7 +7,6 @@
 
 * class `CSVLogger`
 * `load_class_label`
-* `unpickle`
 * `fuse_single_conv_bn_pair`
 * class `DataShaper`
 * `run_conv_torch_test`
@@ -69,14 +68,6 @@ def load_class_label(class_label_file: str, num_classes: int) -> list:
     class_label_list = [class_label[str(i)] for i in range(num_classes)]
 
     return class_label_list
-
-
-def unpickle(file):
-    import pickle
-
-    with open(file, "rb") as fo:
-        dict = pickle.load(fo, encoding="latin1")
-    return dict
 
 
 def fuse_single_conv_bn_pair(bn_mean, bn_var, bn_wts, bn_bias, conv_wts):

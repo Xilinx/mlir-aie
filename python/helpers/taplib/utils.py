@@ -1,160 +1,145 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from copy import deepcopy
+"""Validation and stride helpers shared by the access-pattern algebra."""
+
 from typing import Sequence
 
-import numpy as np
+from ._symbolic import IntLike, is_sym, require, show, sprod
 
 
 def validate_and_clean_sizes_strides(
-    sizes: Sequence[int] | None,
-    strides: Sequence[int] | None,
-    allow_none: bool = False,
-    expected_dims: int | None = None,
-) -> tuple[Sequence[int] | None, Sequence[int] | None]:
-    """Validate sizes and strides, and remove any unused values from upper dimensions if possible.
+    sizes: Sequence[IntLike], strides: Sequence[IntLike]
+) -> tuple[list[IntLike], list[IntLike]]:
+    """Validate sizes and strides, and zero the strides of leading unit dimensions.
+
+    A check on a staged value becomes a dispatch-time guard.
 
     Args:
-        sizes (Sequence[int] | None): The transformation strides, or None
-        strides (Sequence[int] | None): The transformation sizes, or None
-        allow_none (bool, optional): Allow sizes and/or strides to be None. Defaults to False.
-        expected_dims (int | None, optional): Number of dimensions expected for both sizes and strides. Defaults to None.
-
-    Raises:
-        ValueError: Validate sizes and strides
+        sizes (Sequence[IntLike]): Extent of each dimension, outermost first.
+        strides (Sequence[IntLike]): Element step of each dimension, outermost first.
 
     Returns:
-        tuple[Sequence[int] | None, Sequence[int] | None]: The 'cleaned' sizes and strides.
+        tuple[list[IntLike], list[IntLike]]: The sizes and the cleaned strides.
+
+    Raises:
+        ValueError: If the lists are empty or differ in length, a size is
+            below 1 or a stride below 0.
     """
-    if not allow_none:
-        if sizes is None:
-            raise ValueError("Sizes is None, but expected Sequence[int]")
-        if strides is None:
-            raise ValueError("Strides is None, but expected Sequence[int]")
-    # After this point can assume None is ok for sizes/strides
-
-    if expected_dims is not None:
-        if expected_dims < 1:
-            raise ValueError(f"Expected dimensions ({expected_dims}) should be >= 1")
-
-    if sizes is None and strides is None:
-        # nothing to do
-        return None, None
-
-    # Validate dimensions
-    if (sizes is not None) and len(sizes) == 0:
+    sizes, strides = list(sizes), list(strides)
+    if not sizes:
         raise ValueError("len(sizes) must be >0")
-    if (strides is not None) and len(strides) == 0:
-        raise ValueError("len(strides) must be >0")
-
-    if sizes and strides:
-        if expected_dims:
-            if len(sizes) != expected_dims:
-                raise ValueError(
-                    f"Num dimensions of sizes ({sizes}) is not expected number of dimensions ({expected_dims})"
-                )
-            if len(strides) != expected_dims:
-                raise ValueError(
-                    f"Num dimensions of strides ({strides}) is not expected number of dimensions ({expected_dims})"
-                )
-        elif len(strides) != len(sizes):
-            raise ValueError(
-                f"len(sizes) ({len(sizes)}) != len(strides) ({len(strides)})"
-            )
-    if strides:
-        num_dims = len(strides)
-    else:
-        assert sizes is not None
-        num_dims = len(sizes)
-
-    # Validate sizes/strides values
-    if sizes:
-        sizes = deepcopy(sizes)
-        for s in sizes:
-            if s < 1:
-                raise ValueError(f"All sizes must be >= 1, but got {sizes}")
-    if strides:
-        strides = deepcopy(strides)
-        for s in strides:
-            if s < 0:
-                raise ValueError(f"All strides must be >= 0, but got {strides}")
-
-    # Clean (set size=1, stride=0 for as many dims as possible)
-    if sizes and strides:
-        strides = list(strides)
-        # Leave last dimension strides as whatever it happens to be
-        for i in range(num_dims - 1):
-            if sizes[i] == 1:
-                strides[i] = 0
-            else:
-                break
-    return sizes, strides
+    if len(strides) != len(sizes):
+        raise ValueError(f"len(sizes) ({len(sizes)}) != len(strides) ({len(strides)})")
+    for s in sizes:
+        require(s >= 1, f"All sizes must be >= 1, but got {show(sizes)}")
+    for s in strides:
+        require(s >= 0, f"All strides must be >= 0, but got {show(strides)}")
+    return sizes, zero_leading_unit_strides(sizes, strides)
 
 
-def validate_tensor_dims(
-    tensor_dims: Sequence[int], expected_dims: int | None = None
-) -> Sequence[int]:
-    """Validate dimensions of tensors by ensuring each dimension is > 0 and the dimensionality is as expected.
+def zero_leading_unit_strides(
+    sizes: Sequence, strides: Sequence, start: int = 0
+) -> list:
+    """Zero the stride of each unit dimension from `start` up to the first that steps.
+
+    A unit dimension never steps, so this makes equal walks compare equal.
+    The innermost stride is left as is. Rank and unit-ness are structural,
+    so a staged size ends the scan.
 
     Args:
-        tensor_dims (Sequence[int]): Tensor dimensions to check
-        expected_dims (int | None, optional): Expected number of dimensions. Defaults to None.
-
-    Raises:
-        ValueError: Validate the tensor dimensions
+        sizes (Sequence): Extent of each dimension, outermost first.
+        strides (Sequence): Element step of each dimension, outermost first.
+        start (int, optional): The first dimension to consider. Defaults to 0.
 
     Returns:
-        Sequence[int]: The validated tensor dimensions.
+        list: The strides, with those of the leading unit dimensions zeroed.
     """
-    if expected_dims is not None:
-        if expected_dims < 1:
-            raise ValueError(f"Expected dimensions ({expected_dims}) should be >= 1")
-    tensor_dims = deepcopy(tensor_dims)
+    strides = list(strides)
+    for i in range(start, len(sizes) - 1):
+        if is_sym(sizes[i]) or sizes[i] != 1:
+            break
+        strides[i] = 0
+    return strides
 
-    # Validate tensor dims and offset, then set
-    if len(tensor_dims) == 0:
+
+def validate_tensor_dims(tensor_dims: Sequence[IntLike]) -> list[IntLike]:
+    """Check that a tensor has at least one dimension and every dimension is >= 1.
+
+    Args:
+        tensor_dims (Sequence[IntLike]): Tensor dimensions to check.
+
+    Returns:
+        list[IntLike]: The tensor dimensions.
+
+    Raises:
+        ValueError: If there are no dimensions or a dimension is below 1.
+    """
+    tensor_dims = list(tensor_dims)
+    if not tensor_dims:
         raise ValueError(
-            f"Number of tensor dimensions must be >= 1 (dimensions={tensor_dims})"
+            f"Number of tensor dimensions must be >= 1 (dimensions={show(tensor_dims)})"
         )
     for d in tensor_dims:
-        if d <= 0:
-            raise ValueError(
-                f"Each tensor dimension must be >= 1 (dimensions={tensor_dims})"
-            )
-
-    # We can treat a 1-dimensional tensor as a 2-dimensional tensor,
-    if len(tensor_dims) == 1:
-        tensor_dims = [1, tensor_dims[0]]
-
-    if expected_dims is not None and len(tensor_dims) != expected_dims:
-        raise ValueError(
-            f"Tensor dimension ({tensor_dims}) does not match expected dimension ({expected_dims})"
+        require(
+            d >= 1,
+            f"Each tensor dimension must be >= 1 (dimensions={show(tensor_dims)})",
         )
-
     return tensor_dims
 
 
-def validate_offset(offset: int, tensor_dims: Sequence[int] | None) -> int:
-    """Validate an offset into the tensor.
-
-    Primarily checks to see if the offset is a valid index to the tensor.
+def validate_offset(offset: IntLike, tensor_dims: Sequence[IntLike]) -> IntLike:
+    """Check that `offset` is an element index into a tensor of shape `tensor_dims`.
 
     Args:
-        offset (int): The offset to check.
-        tensor_dims (Sequence[int] | None): The dimensions of the tensor the offset corresponds to.
-
-    Raises:
-        ValueError: Validate the offset.
+        offset (IntLike): The offset to check.
+        tensor_dims (Sequence[IntLike]): Shape of the tensor.
 
     Returns:
-        int: The validated offset.
+        IntLike: The offset.
+
+    Raises:
+        ValueError: If the offset is negative or past the last element.
     """
-    if offset < 0:
-        raise ValueError(f"Offset must be >= 0 (offset={offset})")
-    if tensor_dims:
-        if offset >= np.prod(tensor_dims):
-            raise ValueError(
-                f"Offset too large: {offset}. Max value allowed for tensor: {np.prod(tensor_dims)}"
-            )
+    require(offset >= 0, f"Offset must be >= 0 (offset={show(offset)})")
+    numel = sprod(tensor_dims)
+    require(
+        offset < numel,
+        f"Offset too large: {show(offset)}. Max value allowed for tensor: {show(numel)}",
+    )
     return offset
+
+
+def row_major_strides(dims: Sequence) -> list:
+    """Row-major (C-order) element strides for a tensor of shape `dims`.
+
+    Args:
+        dims (Sequence): Tensor dimensions; entries may be staged values.
+
+    Returns:
+        list: One stride per dimension, outermost first.
+    """
+    strides: list = [1] * len(dims)
+    for axis in range(len(dims) - 2, -1, -1):
+        strides[axis] = strides[axis + 1] * dims[axis + 1]
+    return strides
+
+
+def validate_permutation(axes: Sequence[int], rank: int, what: str) -> tuple[int, ...]:
+    """Check that `axes` is a permutation of `range(rank)`.
+
+    Args:
+        axes (Sequence[int]): The permutation to check.
+        rank (int): Number of dimensions permuted.
+        what (str): Name of the argument, for the error message.
+
+    Returns:
+        tuple[int, ...]: The permutation as a tuple of ints.
+
+    Raises:
+        ValueError: If `axes` is not a permutation of `range(rank)`.
+    """
+    axes = tuple(int(a) for a in axes)
+    if sorted(axes) != list(range(rank)):
+        raise ValueError(f"{what} must be a permutation of range({rank}), got {axes}")
+    return axes

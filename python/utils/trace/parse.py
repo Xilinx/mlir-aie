@@ -208,11 +208,16 @@ def check_for_valid_trace(filename, trace_pkts):
 def make_event_lists(commands):
     events = {}
     ts = 0
+    last = None  # the last command that is not a Repeat
     for i, command in enumerate(commands):
         if command["type"] == "Start":
             ts = command["timer_value"]
         if command["type"] == "Event_Sync":
-            ts += 0x3FFFF  # Typo in spec
+            ts += EVENT_SYNC_CYCLES
+        if "Repeat" in command["type"] and last == "Event_Sync":
+            ts += int(command["repeats"]) * EVENT_SYNC_CYCLES
+        if "Repeat" not in command["type"]:
+            last = command["type"]
         if "Single" in command["type"]:
             ts += command["cycles"]
             if command["event"] in events:
@@ -364,8 +369,11 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
             multiple_list = list()
             event = None
             capture_index = 0
+            repeated = None  # the command a Repeat repeats
             for c in command:
                 t = c["type"]
+                if "Repeat" not in t:
+                    repeated = t
                 if t == "EventPC":
                     for event_slot in range(NUM_EVENTS):
                         if f"event{event_slot}" in c:
@@ -451,6 +459,11 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
                                 trace_events,
                                 events_module,
                             )
+
+                elif "Repeat" in t and repeated == "Event_Sync":
+                    # The hardware folds consecutive wraps into one Repeat of
+                    # the Event_Sync: each repeat is another full field range.
+                    timer = timer + int(c["repeats"]) * EVENT_SYNC_CYCLES
 
                 elif "Repeat" in t:
                     if (

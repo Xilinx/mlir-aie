@@ -23,7 +23,7 @@ import argparse
 import aie.iron as iron
 import aie.iron.kernels as kernels
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     In,
@@ -82,8 +82,8 @@ def cast_f32_bf16(
         for i in range(n_cores)
     ]
 
-    taps = TensorTiler2D.simple_tiler(
-        (n_vectors, vector_size), (rows_per_core, vector_size)
+    taps = TensorAccessPattern.full((n_vectors, vector_size)).tile(
+        (rows_per_core, vector_size)
     )
 
     def sequence(a, c, in_prods, out_conses):

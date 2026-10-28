@@ -1,0 +1,35 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Bench runner probe
+
+# Asks whether a runner type's nightly-primary bench runner is up: a job
+# that does nothing, queued on it. utils/kernel_checks/pick_runner.py
+# dispatches it for each NPU leg of a nightly, finds it by its run name, and
+# sends the leg to the nightly-backup runner when no runner takes it in time.
+
+run-name: Probe ${{ inputs.runner_type }} for run ${{ inputs.for_run }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_type:
+        description: 'runner type whose primary to probe'
+        required: true
+        type: choice
+        options: [aie2-4col, aie2p-8col]
+      for_run:
+        description: 'the nightly run that asked'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe (${{ inputs.runner_type }})
+    runs-on: [self-hosted, bench, "${{ inputs.runner_type }}", nightly-primary]
+    timeout-minutes: 5
+    steps:
+      - name: Report the runner
+        run: echo "$RUNNER_NAME is up"

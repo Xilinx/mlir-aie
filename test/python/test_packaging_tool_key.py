@@ -61,7 +61,10 @@ def _key(flow, bin_dir, generator="callable", flags=(), work_dir=None, **env):
 
 
 def _install(bin_dir, name, version):
-    tool = bin_dir / name
+    # A real tool is found by name on Windows only with its .exe suffix (the
+    # same spelling aiecc_tool_path's shutil.which lookup requires); a bare
+    # name there would never be resolved, hiding every version change below.
+    tool = bin_dir / (f"{name}.exe" if os.name == "nt" else name)
     tool.write_text(f"#!/bin/sh\n# {version}\n")
     tool.chmod(0o755)
     return tool

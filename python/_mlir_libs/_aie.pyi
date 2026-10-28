@@ -41,7 +41,7 @@ def type_size_in_bits(type: Type) -> int:
     Size of a type in bits under the default data layout, or 0 when the type does not describe one. A block floating-point type reports the bits one block occupies, not the bits of one value.
     """
 
-class ObjectFifoType:
+class ObjectFifoType(Type):
     @staticmethod
     def get(type: Type) -> ObjectFifoType:
         """
@@ -51,7 +51,7 @@ class ObjectFifoType:
     @staticmethod
     def isinstance(other: Type) -> bool: ...
 
-class blockFloatType:
+class blockFloatType(Type):
     """Custom Block Floating Point type."""
 
     @staticmethod

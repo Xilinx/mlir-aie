@@ -29,12 +29,6 @@ from .npdtypes import (
     v16bfp16ebs16,
 )
 
-
-def _block_float(name: str):
-    """Return the MLIR block-float type behind a ``v*bfp*`` marker."""
-    return lambda: CustomTypes.blockFloatType.get(name)
-
-
 _np_dtype_to_mlir_type_ctor = defaultdict(
     lambda: None,
     {
@@ -55,8 +49,8 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float64: T.f64,
         bfloat16: T.bf16,
         # Block floating point types
-        v8bfp16ebs8: _block_float("v8bfp16ebs8"),
-        v16bfp16ebs16: _block_float("v16bfp16ebs16"),
+        v8bfp16ebs8: lambda: CustomTypes.blockFloatType.get("v8bfp16ebs8"),
+        v16bfp16ebs16: lambda: CustomTypes.blockFloatType.get("v16bfp16ebs16"),
         # Index Types
         # Not strictly correct, but numpy casts Python scalars to these types by
         # default, so we map them to index type to support passing lists of ints.
@@ -67,10 +61,6 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
 # np.longlong aliases np.int64 on Windows. Keep the explicit i64 mapping
 # authoritative there while preserving the distinct index mapping elsewhere.
 _np_dtype_to_mlir_type_ctor.setdefault(np.longlong, T.index)
-
-
-def _mlir_type_ctor_to_np_dtype():
-    return {v: k for k, v in _np_dtype_to_mlir_type_ctor.items()}
 
 
 def np_dtype_to_mlir_type(np_dtype):

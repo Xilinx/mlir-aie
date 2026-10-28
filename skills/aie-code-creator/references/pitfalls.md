@@ -74,7 +74,7 @@ Using plain `range` for non-trivial counts will either OOM your build or generat
 transform_parallel_binary(kernels.add(tile_size=1024), tensor_ty, tile_size=1024)
 ```
 
-`pass_size_to_kernel` defaults to `True`, appending `tile_size` as a trailing `int` to every kernel call. That's right for `(in, out, n)` kernels like `kernels.passthrough`, and wrong for bare `(in, out)` kernels like `kernels.add`/`kernels.mul`/`kernels.relu`.
+`pass_size_to_kernel` defaults to `True`, appending `tile_size` as a trailing `int` to every kernel call. That's right for `(in, out, n)` kernels like `kernels.passthrough`, and wrong for bare `(in, out)` kernels like `kernels.add`/`kernels.mul`.
 
 **Fix**: set `pass_size_to_kernel=False` for bare-signature kernels. The failure surfaces as an MLIR verification error about argument count — annoying to read, but it does fail loudly rather than computing garbage.
 

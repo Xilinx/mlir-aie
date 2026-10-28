@@ -11,26 +11,21 @@
 
 A hand-placed memtile TileDma stages a 8-element int8 transfer and its MM2S
 channel pads it up to 16 (4 before, 4 after), filling the padded region with
-DmaChannel(pad_value=42) and the geometry via Bd(pad_dimensions=...). Pure DMA
-passthrough (no core), so the read-back directly exposes the pad fill.
+DmaChannel(pad_value=42) and the geometry via a padded Bd tap. Pure DMA
+passthrough (no core), so the read-back directly exposes the pad fill. The tap
+is also given a leading unit dimension, whose stride a pattern sets to 0.
 """
 
 import aie.iron as iron
 import numpy as np
+import pytest
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
-from aie.dialects.aie import EndOp
-from aie.dialects.aiex import (
-    bds,
-    dma_await_task,
-    dma_configure_task,
-    dma_free_task,
-    dma_start_task,
-    shim_dma_bd,
-)
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Acquire,
     Bd,
     Buffer,
+    CompileTime,
     DmaChannel,
     Flow,
     In,
@@ -51,12 +46,19 @@ PAD_VALUE = 42
 
 
 @iron.jit
-def tile_dma_pad(a: In, c: Out):
+def tile_dma_pad(a: In, c: Out, *, unit_dim: CompileTime[bool] = False):
     mem_ty = np.ndarray[(REAL,), np.dtype[np.int8]]
     shim = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
     mem = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
     mem_buf = Buffer(type=mem_ty, tile=mem, name="mem_buf")
     p, cl = Lock(tile=mem, init=1, name="p"), Lock(tile=mem, init=0, name="c")
+    flow_in, flow_out = Flow(shim, mem), Flow(mem, shim)
+
+    pad = (PAD_BEFORE, PAD_AFTER)
+    if unit_dim:
+        pad_tap = TensorAccessPattern.full((1, REAL)).pad([(0, 0), pad])
+    else:
+        pad_tap = TensorAccessPattern.full((REAL,)).pad([pad])
 
     # Bd carries the per-BD pad geometry; DmaChannel carries the per-channel value.
     mem_dma = TileDma(
@@ -64,11 +66,10 @@ def tile_dma_pad(a: In, c: Out):
         channels=[
             DmaChannel(
                 direction=DMAChannelDir.S2MM,
-                channel=0,
+                channel=flow_in.endpoint(mem),
                 bds=[
                     Bd(
                         buffer=mem_buf,
-                        length=REAL,
                         acquires=[Acquire(p)],
                         releases=[Release(cl)],
                     )
@@ -76,15 +77,12 @@ def tile_dma_pad(a: In, c: Out):
             ),
             DmaChannel(
                 direction=DMAChannelDir.MM2S,
-                channel=0,
+                channel=flow_out.endpoint(mem),
                 pad_value=PAD_VALUE,
                 bds=[
                     Bd(
                         buffer=mem_buf,
-                        length=REGION,
-                        sizes=[REAL],
-                        strides=[1],
-                        pad_dimensions=[(PAD_BEFORE, PAD_AFTER)],
+                        tap=pad_tap,
                         acquires=[Acquire(cl)],
                         releases=[Release(p)],
                     )
@@ -92,25 +90,10 @@ def tile_dma_pad(a: In, c: Out):
             ),
         ],
     )
-    flow_in = Flow(src=shim, dst=mem, src_channel=0, dst_channel=0)
-    flow_out = Flow(src=mem, dst=shim, src_channel=0, dst_channel=0)
 
     def seq(A, C):
-        a_task = dma_configure_task(shim.op, DMAChannelDir.MM2S, 0)
-        with bds(a_task) as bd:
-            with bd[0]:
-                shim_dma_bd(A.op, offset=0, sizes=[1, 1, 1, REAL], strides=[0, 0, 0, 1])
-                EndOp()
-        out_task = dma_configure_task(shim.op, DMAChannelDir.S2MM, 0, issue_token=True)
-        with bds(out_task) as bd:
-            with bd[0]:
-                shim_dma_bd(
-                    C.op, offset=0, sizes=[1, 1, 1, REGION], strides=[0, 0, 0, 1]
-                )
-                EndOp()
-        dma_start_task(a_task, out_task)
-        dma_await_task(out_task)
-        dma_free_task(a_task)
+        flow_in.fill(A)
+        flow_out.drain(C, wait=True)
 
     rt = Runtime(
         seq,
@@ -121,16 +104,15 @@ def tile_dma_pad(a: In, c: Out):
     )
     for f in (flow_in, flow_out):
         rt.add_flow(f)
-    for lk in (p, cl):
-        rt.add_lock(lk)
     rt.add_tile_dma(mem_dma)
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
-def test_tile_dma_pad_value():
-    a = iron.arange(REAL, dtype=np.int8)  # 0..12
+@pytest.mark.parametrize("unit_dim", [False, True])
+def test_tile_dma_pad_value(unit_dim):
+    a = iron.arange(REAL, dtype=np.int8)
     c = iron.zeros(REGION, dtype=np.int8, device="npu")
-    tile_dma_pad(a, c)
+    tile_dma_pad(a, c, unit_dim=unit_dim)
     c.to("cpu")
 
     expected = np.array(

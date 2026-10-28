@@ -43,8 +43,14 @@ layers are here for advanced designs, op-by-op construction, and compiler work.
 
     ---
 
-    `TensorAccessPattern`, `TensorAccessSequence`, and `TensorTiler2D` for
-    describing how data is tiled and streamed.
+    `TensorAccessPattern` for describing how data is tiled and streamed.
+
+-   :material-function: **[Operators and declarations](operators.md)**
+
+    ---
+
+    `Operator`, its parameters, operands and per-call values, read into a
+    `Declaration` from the class body.
 
 -   :material-library: **[Python Kernel Library](kernels.md)**
 

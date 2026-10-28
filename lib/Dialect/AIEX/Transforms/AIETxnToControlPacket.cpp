@@ -75,7 +75,14 @@ struct BlockWriteToControlPacketPattern
   }
 };
 
-/// Pattern to split control packets into smaller control packets
+// A control packet's data words land in one aligned line of `maxWords` words;
+// words past the line's end wrap to its start.
+static bool fitsInLine(AIEX::NpuControlPacketOp op, uint32_t maxWords) {
+  uint32_t wordInLine = (op.getAddress() / sizeof(uint32_t)) % maxWords;
+  return wordInLine + op.getDataAttr().size() <= maxWords;
+}
+
+// Splits a control packet's data into packets that each stay in one line.
 struct ControlPacketSplitPattern
     : public OpRewritePattern<AIEX::NpuControlPacketOp> {
   using OpRewritePattern<AIEX::NpuControlPacketOp>::OpRewritePattern;
@@ -86,35 +93,23 @@ struct ControlPacketSplitPattern
   LogicalResult matchAndRewrite(AIEX::NpuControlPacketOp op,
                                 PatternRewriter &rewriter) const override {
     auto data = op.getData();
-    if (!data)
-      return failure();
-
-    uint32_t numElements = op.getDataAttr().size();
-
-    if (numElements <= max_payload_size) {
+    if (!data || fitsInLine(op, max_payload_size))
       return failure(); // No splitting needed
-    }
 
-    auto chunks = llvm::divideCeil(numElements, max_payload_size);
     auto *context = op.getContext();
     auto loc = op.getLoc();
-    for (unsigned i = 0; i < chunks; ++i) {
-      uint32_t startIdx = i * max_payload_size;
-      uint32_t endIdx = std::min(startIdx + max_payload_size, numElements);
-
-      SmallVector<int32_t, 4> chunkData;
-      for (const auto *it = data->begin() + startIdx;
-           it != data->begin() + endIdx; ++it) {
-        chunkData.push_back(*it);
-      }
-
-      // Increment the address for each chunk
-      auto incrementedAddress = rewriter.getUI32IntegerAttr(
-          op.getAddress() + (i * 4 * sizeof(uint32_t)));
-
+    uint32_t address = op.getAddress();
+    for (const auto *it = data->begin(); it != data->end();) {
+      uint32_t wordInLine = (address / sizeof(uint32_t)) % max_payload_size;
+      uint32_t count =
+          std::min<uint32_t>(max_payload_size - wordInLine, data->end() - it);
+      SmallVector<int32_t, 4> chunkData(it, it + count);
       AIEX::NpuControlPacketOp::create(
-          rewriter, loc, incrementedAddress, nullptr, op.getOpcodeAttr(),
-          op.getStreamIdAttr(), DenseI32ArrayAttr::get(context, chunkData));
+          rewriter, loc, rewriter.getUI32IntegerAttr(address), nullptr,
+          op.getOpcodeAttr(), op.getStreamIdAttr(),
+          DenseI32ArrayAttr::get(context, chunkData));
+      address += count * sizeof(uint32_t);
+      it += count;
     }
 
     rewriter.eraseOp(op);
@@ -153,8 +148,7 @@ struct AIELegalizeControlPacketPass
     ConversionTarget target(getContext());
     target.addDynamicallyLegalOp<AIEX::NpuControlPacketOp>([](Operation *op) {
       auto packetOp = cast<AIEX::NpuControlPacketOp>(op);
-      // Check the data size
-      return packetOp.getDataAttr().size() <= 4;
+      return !packetOp.getData() || fitsInLine(packetOp, 4);
     });
 
     RewritePatternSet patterns(&getContext());

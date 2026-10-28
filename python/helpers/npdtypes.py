@@ -9,26 +9,49 @@ checks import without a built ``aie._mlir_libs``. ``aie.helpers.util`` holds
 the other half and builds on this one.
 """
 
-from typing import TypeVar, get_args
+from typing import TYPE_CHECKING, TypeVar, get_args
 
 import numpy as np
 from ml_dtypes import bfloat16
 
+if TYPE_CHECKING:
+    from ..utils.compile.jit.markers import In, InOut, Out
 
-class v8bfp16ebs8(np.generic):
+
+class _BlockFloat(np.generic):
+    """A block-floating-point marker: ``block_size`` values packed in ``block_bytes``.
+
+    The layout mirrors the ``aiex.bfp`` MLIR type of the same name, which
+    this module cannot query without the compiled bindings.
+    """
+
+    block_size: int
+    block_bytes: int
+
+
+class v8bfp16ebs8(_BlockFloat):
     """Block floating point: 8 eight-bit mantissas sharing one eight-bit exponent.
 
     Each block occupies 72 bits (9 bytes). A marker for the type an ndarray
     annotation carries; ``aie.helpers.util`` maps it to the MLIR block-float type.
     """
 
+    block_size, block_bytes = 8, 9
 
-class v16bfp16ebs16(np.generic):
+
+class v16bfp16ebs16(_BlockFloat):
     """Block floating point: 16 eight-bit mantissas sharing one eight-bit exponent.
 
     Each block occupies 136 bits (17 bytes). A marker for the type an ndarray
     annotation carries; ``aie.helpers.util`` maps it to the MLIR block-float type.
     """
+
+    block_size, block_bytes = 16, 17
+
+
+def is_block_float(dt) -> bool:
+    """Whether ``dt`` is a block-floating-point marker, which numpy has no dtype for."""
+    return isinstance(dt, type) and issubclass(dt, _BlockFloat)
 
 
 NpuDType = (
@@ -57,14 +80,41 @@ def ceildiv(a, b):
     return -(a // -b)
 
 
-def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
-    shape = get_args(ndarray_type)[0]
+_T = TypeVar("_T")
+
+
+def np_ndarray_type_of(tensor: "_T | In | Out | InOut") -> "_T | type[np.ndarray]":
+    """Return ``tensor``'s type, ``np.ndarray[shape, np.dtype[T]]``.
+
+    Args:
+        tensor: The ``In``/``Out``/``InOut`` operand a generator's tensor
+            parameter receives, or anything else, which is returned as is.
+
+    Returns:
+        The operand's tensor type, or ``tensor``.
+    """
+    # Imported lazily: JIT type introspection itself uses this module.
+    from ..utils.compile.jit.markers import In, InOut, Out
+
+    return tensor.ndarray_type if isinstance(tensor, (In, Out, InOut)) else tensor
+
+
+def np_ndarray_type_get_shape(
+    ndarray_type: "type[np.ndarray] | In | Out | InOut",
+) -> tuple[int, ...]:
+    shape = get_args(np_ndarray_type_of(ndarray_type))[0]
     # Imported lazily: JIT type introspection itself uses this module.
     from ..utils.compile.jit.markers import _DispatchParameter
+    from .taplib import Affine
 
     for elem in shape if isinstance(shape, tuple) else (shape,):
         if isinstance(elem, _DispatchParameter):
-            elem._misuse()
+            elem.refuse()
+        if isinstance(elem, Affine):
+            raise TypeError(
+                f"a shape cannot hold {elem}, which is computed per call; use "
+                "CompileTime or specialize"
+            )
     assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
     for elem in shape:
         assert isinstance(
@@ -73,8 +123,10 @@ def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]
     return shape
 
 
-def np_ndarray_type_get_dtype(ndarray_type: type[np.ndarray]) -> type[NpuDType]:
-    return get_args(get_args(ndarray_type)[1])[0]
+def np_ndarray_type_get_dtype(
+    ndarray_type: "type[np.ndarray] | In | Out | InOut",
+) -> type[NpuDType]:
+    return get_args(get_args(np_ndarray_type_of(ndarray_type))[1])[0]
 
 
 def pack_pad_value(value: int, elem_bytes: int) -> int:

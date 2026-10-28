@@ -7,11 +7,11 @@
 
 # Tiling Exploration
 
-This IRON design flow example, called "Tiling Exploration: Tile Group", demonstrates how data may be `tiled` into smaller chunks and grouped into collections of tiles and sent/received through the `runtime.sequence()` function. This is a common data transformation pattern, and this example is meant to be interactive.
+This IRON design flow example, called "Tiling Exploration: Tile Group", demonstrates how data may be `tiled` into smaller chunks and a whole collection of tiles sent/received through the `runtime.sequence()` function. This is a common data transformation pattern, and this example is meant to be interactive.
 
 ## Source Files Overview
 
-1. `tile_group.py`: An `@iron.jit`-decorated design that uses `TensorTiler2D` to specify `TensorAccessPattern`s (*taps*) of data to be transferred out of the design.  When invoked standalone, `@iron.jit` JIT-compiles to an xclbin/insts pair, runs on the NPU, and verifies the output against the expected tile-group pattern.
+1. `tile_group.py`: An `@iron.jit`-decorated design that uses `TensorAccessPattern.full(...).tile(...)` as a single access pattern (*tap*) that walks every tile of the output, one after another.  When invoked standalone, `@iron.jit` JIT-compiles to an xclbin/insts pair, runs on the NPU, and verifies the output against the expected tiled pattern.
 
 ## Design Overview
 

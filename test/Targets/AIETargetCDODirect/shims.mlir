@@ -7,6 +7,12 @@
 
 // RUN: aie-translate --aie-generate-cdo %s --cdo-debug=true | FileCheck %s
 
+// CHECK: (Write64): Address:  0x000000000403F010 Data:  0x8000000E
+// CHECK: (Write64): Address:  0x000000000403F138 Data:  0x80000000
+// CHECK: (MaskWrite64): Address: 0x000000000001F004  Mask: 0x00000030  Data: 0x00000010
+// CHECK: (MaskWrite64): Address: 0x000000000201F004  Mask: 0x00000030  Data: 0x00000010
+// CHECK: (MaskWrite64): Address: 0x000000000401F004  Mask: 0x00000030  Data: 0x00000010
+// CHECK: (MaskWrite64): Address: 0x000000000601F004  Mask: 0x00000030  Data: 0x00000010
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000001D000  Size: 8
 // CHECK:     Address: 0x000000000001D000  Data@ {{0x[0-9a-z]+}} is: 0x00000004
 // CHECK:     Address: 0x000000000001D004  Data@ {{0x[0-9a-z]+}} is: 0x00000000
@@ -69,12 +75,6 @@
 
 // CHECK: (Write64): Address:  0x000000000601D204 Data:  0x80000000
 // CHECK: (MaskWrite64): Address: 0x000000000601D200  Mask: 0x00000000  Data: 0x00000001
-// CHECK: (Write64): Address:  0x000000000403F010 Data:  0x8000000E
-// CHECK: (Write64): Address:  0x000000000403F138 Data:  0x80000000
-// CHECK: (MaskWrite64): Address: 0x000000000001F004  Mask: 0x00000030  Data: 0x00000010
-// CHECK: (MaskWrite64): Address: 0x000000000201F004  Mask: 0x00000030  Data: 0x00000010
-// CHECK: (MaskWrite64): Address: 0x000000000401F004  Mask: 0x00000030  Data: 0x00000010
-// CHECK: (MaskWrite64): Address: 0x000000000601F004  Mask: 0x00000030  Data: 0x00000010
 
 module {
  aie.device(npu1) {

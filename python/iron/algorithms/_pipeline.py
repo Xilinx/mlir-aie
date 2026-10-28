@@ -18,13 +18,14 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 import numpy as np
+from aie.dialects.aie import event  # pyright: ignore[reportAttributeAccessIssue]
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
 from aie.iron.device import Tile
 from aie.iron.kernel import ExternalFunction
 from aie.iron.program import Program
 from aie.iron.runtime import Runtime
-from aie.iron.worker import Worker
+from aie.iron.worker import Worker, WorkerRuntimeBarrier
 from aie.utils import get_current_device
 
 
@@ -40,7 +41,12 @@ class Stage:
     the same order. With ``outputs_span_iterations`` the outputs are
     acquired once around the loop instead. ``prologue(constants)`` runs
     before the loop and ``initialize(outs, constants)`` right after the
-    outputs are acquired.
+    outputs are acquired. A traced stage emits ``trace_flush`` ``event0``,
+    ``event1`` pairs after the loop: the trace unit sends only whole
+    packets, so without them the last intervals never leave the tile. A
+    traced stage with no input or held fifo has nothing that waits for the
+    sequence, so it waits on a barrier the sequence sets once the trace
+    has started.
     """
 
     body: Callable
@@ -55,16 +61,25 @@ class Stage:
     tile: Tile | None = None
     stack_size: int | None = None
     trace: bool = False
+    trace_flush: int = 0
     worker: Worker | None = field(default=None, init=False)
+    barrier: WorkerRuntimeBarrier | None = field(default=None, init=False)
 
     def _core(self):
         ni, no, nh = len(self.inputs), len(self.outputs), len(self.held)
+        nc = len(self.constants)
         counts = [n for _, n in self.inputs]
         spans = self.outputs_span_iterations
 
         def core(*args):
             f_in, f_out = args[:ni], args[ni : ni + no]
-            f_held, constants = args[ni + no : ni + no + nh], args[ni + no + nh :]
+            f_held = args[ni + no : ni + no + nh]
+            constants = args[ni + no + nh : ni + no + nh + nc]
+            if self.barrier is not None:
+                # Acquire leaves the lock at 1; the release lifts it to 2, so
+                # the next dispatch waits for the sequence's set again.
+                self.barrier.wait_for_value(1)
+                self.barrier.release_with_value(1)
             if self.prologue is not None:
                 self.prologue(constants)
             held = [f.acquire(1) for f in f_held]
@@ -97,16 +112,25 @@ class Stage:
                     f.release(1)
             for f in f_held:
                 f.release(1)
+            if self.trace:
+                # Back to back, a run of event1s is one event; alternating,
+                # each pair is one.
+                for _ in range(self.trace_flush):
+                    event(0)
+                    event(1)
 
         return core
 
     def build(self) -> Worker:
+        if self.trace and not self.inputs and not self.held:
+            self.barrier = WorkerRuntimeBarrier()
         self.worker = Worker(
             self._core(),
             [f.cons() for f, _ in self.inputs]
             + [f.prod() for f in self.outputs]
             + [f.cons() for f in self.held]
-            + list(self.constants),
+            + list(self.constants)
+            + ([self.barrier] if self.barrier is not None else []),
             tile=self.tile,
             stack_size=self.stack_size,
             trace=1 if self.trace else 0,
@@ -153,13 +177,14 @@ def kernel_params(func, params, first: int) -> KernelParams:
     return result
 
 
-def pipeline(stages, host_types, transfers, *, trace_size=0):
+def pipeline(stages, host_types, transfers, *, trace_size=0, coretile_events=None):
     """Build the stages' Workers and the sequence that moves their host buffers.
 
     ``host_types`` are the design's host buffers in argument order and
     ``transfers`` the ``(fifo, "fill" | "drain", host index)`` triples that
     connect them; fills are issued first, then drains, each in the order
-    given. A positive ``trace_size`` traces the stages that asked for it.
+    given. A positive ``trace_size`` traces the stages that asked for it,
+    with ``coretile_events`` in place of the default core events if given.
     """
     device = get_current_device()
     if device is None:
@@ -176,6 +201,9 @@ def pipeline(stages, host_types, transfers, *, trace_size=0):
 
     def sequence(*args):
         hosts, handles = args[:n_host], args[n_host:]
+        for stage in stages:
+            if stage.barrier is not None:
+                stage.barrier.set(1)
         for handle, (_, kind, index) in zip(handles, endpoints):
             if kind == "fill":
                 handle.fill(hosts[index])
@@ -189,5 +217,9 @@ def pipeline(stages, host_types, transfers, *, trace_size=0):
         # The placer fills shims from column 0, where a kernel with two
         # outputs takes both S2MM channels; the far column leaves the trace
         # one.
-        prog.enable_trace(trace_size, egress_shim_col=device.cols - 1)
+        prog.enable_trace(
+            trace_size,
+            egress_shim_col=device.cols - 1,
+            coretile_events=coretile_events,
+        )
     return prog.resolve_program()

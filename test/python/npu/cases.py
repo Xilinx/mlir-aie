@@ -27,8 +27,12 @@ from aie.iron import In, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import from_name
 from aie.iron.kernels import Param
+from aie.iron.kernels._common import ARCH_TRAITS
 from aie.utils import bfp, get_current_device
+from aie.utils.accuracy import all_bf16, error_stats
+from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.hostruntime import set_current_device
+from ml_dtypes import bfloat16
 
 
 @contextmanager
@@ -37,8 +41,9 @@ def device_for(devices: tuple[str, ...]):
 
     Factories pick their source through the current device; an npu2-only one
     (``exp2f_vec``) refuses to build under npu1. Naming and describing such a
-    case on a host with no device set must still work, so the case binds the
-    first device it supports around the factory call.
+    case on a host with no device set must still work, so unless the bound
+    device is one the case supports, the case binds the first one it supports
+    around the factory call.
     """
     if not devices:
         yield
@@ -47,11 +52,19 @@ def device_for(devices: tuple[str, ...]):
         previous = get_current_device(probe_runtime=False)
     except Exception:  # noqa: BLE001 - no device bound
         previous = None
-    set_current_device(from_name(devices[0], n_cols=1))
     try:
+        bound = (
+            None
+            if previous is None
+            else ARCH_TRAITS[resolve_target_arch(previous)].device
+        )
+    except RuntimeError:  # an AIE1 device, which no case supports
+        bound = None
+    if bound in devices:
         yield
-    finally:
-        set_current_device(previous)
+        return
+    with set_current_device(from_name(devices[0], n_cols=1)):
+        yield
 
 
 def _product_extents(contract) -> tuple[int, ...] | None:
@@ -81,7 +94,10 @@ class Case:
     generations whose kernels exist (``("npu2",)``), as IRON's
     ``supported_devices`` marker does; empty means every device.
     ``smoke`` marks the one case per kernel the per-PR device test runs;
-    the extensive sweep runs them all.
+    the extensive sweep runs them all. ``arg_byte_offsets`` binds tensor
+    ``Param`` arguments at a byte offset (``((1, 16),)``: argument 1 sits 16
+    bytes past an aligned address), as a design packing several weights
+    into one buffer hands them; the name carries ``arg1@16``.
     """
 
     factory: str
@@ -94,13 +110,17 @@ class Case:
     smoke: bool = False
     data_cases: tuple[str, ...] | None = None  # None: derived from the contract
     devices: tuple[str, ...] = ()
+    arg_byte_offsets: tuple = ()
 
     def fn(self):
         with device_for(self.devices):
             return getattr(kernels, self.factory)(**self.kwargs)
 
     def harness_opts(self) -> dict:
-        return dict(calls=self.calls, scalars=self.scalars)
+        opts = dict(calls=self.calls, scalars=self.scalars)
+        if self.arg_byte_offsets:
+            opts["arg_byte_offsets"] = self.arg_byte_offsets
+        return opts
 
     # Factory kwargs that the dims / dtype segments of the name already encode.
     # skip_dtype is absent on purpose: it types neither the first input nor
@@ -153,6 +173,7 @@ class Case:
             for k, v in sorted(self.kwargs.items())
             if k not in self._NAMED_KWARGS
         ]
+        extra += [f"arg{i}@{offset}" for i, offset in self.arg_byte_offsets]
         parts = [self.factory, dims, dtypes, *extra] + ([self.tag] if self.tag else [])
         return "/".join(parts)
 
@@ -185,15 +206,15 @@ class Case:
 
 
 # Data cases every kernel of a kind should survive. Random data finds nothing
-# a vectorized tail, a saturating add or a NaN path gets wrong. The policy
-# is derived from each contract by `data_policy`: integer kernels get the
-# extremes (inside `input_limit`); float kernels get subnormal inputs only
-# when the contract says what the core does with them (`subnormals`) and
-# NaN / inf only when it declares they propagate (`nonfinite`); widening a
-# kernel's data is therefore a contract change, not a table edit. Matmul
-# operands skip NaN (the reference accumulates them into every output) and
-# bfp16ebs8 operands skip "max" too (3e38 products overflow the float
-# reference; what the core's bfp16 store makes of an inf is unknown).
+# a vectorized tail, a saturating add or a NaN path gets wrong. `data_policy`
+# picks them from each contract's input dtype: integer kernels get the
+# extremes (inside `input_limit`), float kernels FLOAT_BASE, and a kernel
+# with a `sample` only random data. Subnormal, NaN and inf inputs are a
+# claim about one kernel's behaviour, so a case names them in its own
+# `data_cases` (kernel_cases.IEEE_FLOAT) where that claim is exercised.
+# Matmul operands skip NaN (the reference accumulates them into every
+# output) and bfp16ebs8 operands skip "max" too (3e38 products overflow the
+# float reference; what the core's bfp16 store makes of an inf is unknown).
 INT_DATA = ("random", "zeros", "max", "min", "alternating")
 FLOAT_BASE = ("random", "zeros", "ones", "large", "alternating")
 MATRIX_DATA = ("random", "zeros", "ones", "alternating", "max")
@@ -258,8 +279,12 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
                 edge = rng.standard_normal(shape)
                 edge.flat[0], edge.flat[-1] = np.nan, np.inf
                 edge.flat[edge.size // 2] = -np.inf
+            elif data_case == "neg_inf":
+                edge = np.full(shape, -np.inf)
             elif data_case == "large":
                 edge = rng.standard_normal(shape) * 1e4
+            elif data_case == "all_bf16":
+                edge = np.resize(all_bf16(nan=False, inf=False), shape)
             else:
                 raise KeyError(data_case)
             if is_int:
@@ -280,6 +305,85 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     return inputs
 
 
+_FLOATS = {np.dtype(t) for t in (bfloat16, np.float16, np.float32, np.float64)}
+
+
+def _reference_outputs(fn, reference, inputs, scalars, widen: bool) -> list[np.ndarray]:
+    wide = [
+        a.astype(np.float64) if widen and a.dtype in _FLOATS else a
+        for a in map(np.asarray, inputs)
+    ]
+    result = reference(*fn._reference_args(wide, tuple(scalars)))
+    multiple = len(fn.contract.out_indices) > 1
+    return [np.asarray(r) for r in (result if multiple else (result,))]
+
+
+def error_report(fn, got, inputs, *, calls: int, scalars=()) -> list[dict]:
+    """Error stats of each floating output against the function the kernel computes.
+
+    That is the contract's ``true_function`` where the reference models the
+    kernel (a LUT build's), else the reference, run on the inputs widened to
+    float64. ``reference`` in each entry names what its values fit:
+    ``float64``, or ``float32`` when every value is a float32 (a reference
+    that computes in float32, or an exact result). A reference that cannot
+    take float64 inputs, or returns other shapes for them, runs on the inputs
+    as given and is named by the dtype it returns. ``modeled`` says whether
+    ``judge`` holds this build to a model of the kernel instead, and
+    ``reference_max_ulp`` is how far that judged reference (on the inputs as
+    given, in the output dtype) is from the one measured against. ``got`` is
+    what ``judge`` takes, normalized the same way: decoded, per call, padding
+    trimmed.
+    """
+    c = fn.contract
+    judged_by = fn.contract_for().reference
+    function = judged_by if c.true_function is None else c.true_function
+    plain = _reference_outputs(fn, judged_by, inputs, scalars, widen=False)
+    as_given = _reference_outputs(fn, function, inputs, scalars, widen=False)
+    try:
+        refs = _reference_outputs(fn, function, inputs, scalars, widen=True)
+        if [r.shape for r in refs] != [r.shape for r in as_given]:
+            refs = as_given
+    except Exception:  # noqa: BLE001 - a reference written for its own dtype
+        refs = as_given
+    actuals = got if len(c.out_indices) > 1 else (got,)
+    entries = []
+    for k, (i, actual, ref, own) in enumerate(zip(c.out_indices, actuals, refs, plain)):
+        dt = np.dtype(fn.arg_dtype(i)) if not bfp.is_bfp(fn.arg_dtype(i)) else None
+        if dt not in _FLOATS or ref.dtype not in _FLOATS:
+            continue
+        layout = c.layouts[i] if c.layouts else None
+        actual = layout.decode(actual, calls=calls) if layout else np.asarray(actual)
+        actual = actual.reshape(calls, -1)
+        if c.out_valid is not None:
+            actual = actual[:, : c.out_valid]
+        if In not in c.roles and ref.size == actual.shape[1]:
+            ref = np.broadcast_to(ref.reshape(1, -1), actual.shape)
+            own = np.broadcast_to(own.reshape(1, -1), actual.shape)
+        else:
+            ref, own = ref.reshape(calls, -1), own.reshape(calls, -1)
+        ref64 = ref.astype(np.float64)
+        if ref.dtype != np.float64:
+            precision = ref.dtype.name
+        else:
+            with np.errstate(over="ignore"):
+                narrow = ref.astype(np.float32).astype(np.float64)
+            fits = (narrow == ref64) | np.isnan(ref64)
+            precision = "float32" if fits.all() else "float64"
+        stats = error_stats(actual, ref64, dt)
+        judged = error_stats(own.astype(np.float64), ref64, dt)
+        entries.append(
+            dict(
+                output=k,
+                arg=i,
+                reference=precision,
+                modeled=judged_by is not function,
+                reference_max_ulp=judged.max_ulp,
+                **stats.as_dict(),
+            )
+        )
+    return entries
+
+
 __all__ = [
     "Case",
     "INT_DATA",
@@ -287,5 +391,6 @@ __all__ = [
     "MATRIX_DATA",
     "data_policy",
     "device_for",
+    "error_report",
     "inputs_for",
 ]
