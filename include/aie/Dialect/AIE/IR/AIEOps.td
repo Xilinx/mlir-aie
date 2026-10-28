@@ -2111,8 +2111,10 @@ def AIE_ConfigureCascadeOp
       [{ `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict }];
 }
 
-def AIE_GetCascadeOp : AIE_Op<"get_cascade", []>,
-                       Results<(outs AnyType:$cascade_value)> {
+def AIE_GetCascadeOp
+    : AIE_Op<"get_cascade", []>,
+      Results<(outs AnyTypeOf<[AnyInteger, AnyFloat,
+                               AnyVectorOfAnyRank]>:$cascade_value)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
     An op to read from a cascading stream from a neighboring core.
@@ -2131,7 +2133,8 @@ def AIE_PutCascadeOp : AIE_Op<"put_cascade", []> {
     which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
   }];
 
-  let arguments = (ins AnyType:$cascade_value);
+  let arguments = (ins AnyTypeOf<[AnyInteger, AnyFloat,
+                                  AnyVectorOfAnyRank]>:$cascade_value);
   let hasVerifier = 1;
   let assemblyFormat =
       [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
