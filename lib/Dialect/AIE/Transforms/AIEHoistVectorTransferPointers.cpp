@@ -244,7 +244,11 @@ struct HoistVectorTransferPointersPattern
           contiguous = false;
       if (!contiguous)
         continue;
-      // The flattened view is created before the loop.
+      // The flattened view is created before the loop. A buffer accessor has
+      // no operands, so one inside the loop can be hoisted to provide it.
+      if (auto getBuffer = base.getDefiningOp<GetBufferOp>();
+          getBuffer && !forOp.isDefinedOutsideOfLoop(base))
+        getBuffer->moveBefore(forOp);
       if (!forOp.isDefinedOutsideOfLoop(base))
         continue;
 

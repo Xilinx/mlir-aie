@@ -469,7 +469,7 @@ struct AIELowerScratchpadParametersPass
       auto buf =
           BufferOp::create(builder, readOp.getLoc(), bufType, tile,
                            builder.getStringAttr(bufName), /*address=*/nullptr,
-                           /*initial_value=*/nullptr, /*mem_bank=*/nullptr);
+                           /*initialValue=*/nullptr, /*memBank=*/nullptr);
       names.insert(buf);
       seen[key] = buf;
 

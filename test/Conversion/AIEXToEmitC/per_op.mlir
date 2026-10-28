@@ -212,3 +212,22 @@ module {
     }
   }
 }
+
+// -----
+
+// An unused buffer accessor left in the sequence is not a transaction op.
+// CHECK-LABEL: emitc.func @generate_txn_main_seq_unused_get_buffer
+// CHECK-NOT: aie.get_buffer
+// CHECK: call_opaque "aie_runtime::txn_append_write32"
+module {
+  aie.device(npu1_1col) {
+    %tile = aie.tile(0, 0)
+    aie.external_buffer @ext : memref<8xi32>
+    aie.runtime_sequence @seq_unused_get_buffer(%arg0: memref<8xi32>) {
+      %buf = aie.get_buffer @ext : memref<8xi32>
+      %addr = arith.constant 119300 : i32
+      %val = arith.constant 42 : i32
+      aiex.npu.write32(%addr, %val) : i32, i32
+    }
+  }
+}

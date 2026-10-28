@@ -414,3 +414,30 @@ func.func @masked_transfer_untouched(%arg0: memref<256xf32>, %mask: vector<16xi1
   }
   return
 }
+
+// -----
+
+// A buffer accessor inside the loop is hoisted so its view can be flattened.
+// CHECK-LABEL: aie.device(npu2)
+// CHECK: aie.core
+// CHECK: %[[BUF:.*]] = aie.get_buffer @buf : memref<16x16xf32>
+// CHECK: memref.collapse_shape %[[BUF]] {{\[}}[0, 1]{{\]}}
+// CHECK: scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[PTR:.*]] = %{{.*}})
+// CHECK-NOT: aie.get_buffer
+// CHECK: vector.transfer_read %{{.*}}[%[[PTR]]]{{.*}}{in_bounds = [true]}
+aie.device(npu2) {
+  %tile = aie.tile(0, 2)
+  aie.buffer @buf(%tile) : memref<16x16xf32>
+  %core = aie.core(%tile) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c16 = arith.constant 16 : index
+    %cst = arith.constant 0.0 : f32
+    scf.for %i = %c0 to %c16 step %c1 {
+      %buf = aie.get_buffer @buf : memref<16x16xf32>
+      %v = vector.transfer_read %buf[%i, %c0], %cst {in_bounds = [true]} : memref<16x16xf32>, vector<16xf32>
+      vector.transfer_write %v, %buf[%c0, %c0] {in_bounds = [true]} : vector<16xf32>, memref<16x16xf32>
+    }
+    aie.end
+  }
+}

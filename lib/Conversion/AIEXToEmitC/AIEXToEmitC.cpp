@@ -152,13 +152,15 @@ public:
   // op increments it instead and the returned count is unused.
   std::optional<uint32_t> run() {
     // DMA lowering consumes buffer views but can leave dead subview/cast
-    // chains behind (notably after configure/run materialization). They are
-    // not transaction operations and must not reach the C++ converter.
+    // chains and buffer accessors behind (notably after configure/run
+    // materialization). They are not transaction operations and must not
+    // reach the C++ converter.
     bool erased;
     do {
       erased = false;
       funcOp.walk([&](Operation *op) {
-        if (isa<memref::MemRefDialect>(op->getDialect()) &&
+        if ((isa<memref::MemRefDialect>(op->getDialect()) ||
+             isa<AIE::GetBufferOp>(op)) &&
             isOpTriviallyDead(op)) {
           op->erase();
           erased = true;

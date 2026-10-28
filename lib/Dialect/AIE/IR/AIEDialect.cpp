@@ -1930,13 +1930,13 @@ TileOp ObjectFifoRegisterExternalBuffersOp::getTileOp() {
 }
 
 LogicalResult ObjectFifoRegisterExternalBuffersOp::verifySymbolUses(
-    SymbolTableCollection &symbols) {
-  if (!symbols.lookupNearestSymbolFrom<ObjectFifoCreateOp>(
+    SymbolTableCollection &symbolTable) {
+  if (!symbolTable.lookupNearestSymbolFrom<ObjectFifoCreateOp>(
           *this, getObjFifoNameAttr()))
     return emitOpError(
         "objectFIFO must reference an aie.objectfifo declaration");
   for (Attribute buffer : getExternalBuffers())
-    if (!symbols.lookupNearestSymbolFrom<ExternalBufferOp>(
+    if (!symbolTable.lookupNearestSymbolFrom<ExternalBufferOp>(
             *this, cast<FlatSymbolRefAttr>(buffer)))
       return emitOpError("externalBuffers must reference "
                          "aie.external_buffer declarations");
@@ -4673,15 +4673,13 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
     auto markEquivalent = [&](Value lhs, Value rhs) {
       equivalentValues[lhs] = rhs;
     };
-    if (!llvm::all_of(llvm::zip_equal(b1OpRange, b2OpRange),
-                      [&](std::tuple<Operation &, Operation &> pair) {
-                        return OperationEquivalence::isEquivalentTo(
-                            &std::get<0>(pair), &std::get<1>(pair),
-                            checkEquivalent, markEquivalent,
-                            OperationEquivalence::IgnoreLocations);
-                      }))
-      return false;
-    return true;
+    return llvm::all_of(llvm::zip_equal(b1OpRange, b2OpRange),
+                        [&](std::tuple<Operation &, Operation &> pair) {
+                          return OperationEquivalence::isEquivalentTo(
+                              &std::get<0>(pair), &std::get<1>(pair),
+                              checkEquivalent, markEquivalent,
+                              OperationEquivalence::IgnoreLocations);
+                        });
   };
 
   // Get a vector of unique BDs.
@@ -5523,10 +5521,10 @@ LogicalResult ObjectFifoRearmBindingOp::verify() {
 }
 
 LogicalResult
-ObjectFifoRearmBindingOp::verifySymbolUses(SymbolTableCollection &symbols) {
+ObjectFifoRearmBindingOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   for (Attribute lock : getLocks())
-    if (!symbols.lookupNearestSymbolFrom<LockOp>(*this,
-                                                 cast<SymbolRefAttr>(lock)))
+    if (!symbolTable.lookupNearestSymbolFrom<LockOp>(*this,
+                                                     cast<SymbolRefAttr>(lock)))
       return emitOpError("locks must reference aie.lock declarations");
   return success();
 }

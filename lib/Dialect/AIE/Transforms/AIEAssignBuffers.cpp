@@ -115,10 +115,10 @@ static void materializeCoreDataBuffers(DeviceOp device) {
     auto buffer =
         BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
                          builder.getStringAttr(name), /*address=*/nullptr,
-                         /*initial_value=*/nullptr,
-                         /*mem_bank=*/nullptr,
-                         /*core_data=*/builder.getUnitAttr(),
-                         /*bank_reserved=*/nullptr,
+                         /*initialValue=*/nullptr,
+                         /*memBank=*/nullptr,
+                         /*coreData=*/builder.getUnitAttr(),
+                         /*bankReserved=*/nullptr,
                          /*aligned=*/nullptr);
     table.insert(buffer);
   }
@@ -139,7 +139,9 @@ static void materializeBankReservations(DeviceOp device) {
       continue;
     }
     auto tile = cast<TileOp>(core.getTile().getDefiningOp());
-    for (auto [bank, size] : llvm::enumerate(*sizes)) {
+    for (auto indexedSize : llvm::enumerate(*sizes)) {
+      size_t bank = indexedSize.index();
+      auto size = indexedSize.value();
       if (size <= 0) {
         continue;
       }
@@ -163,10 +165,10 @@ static void materializeBankReservations(DeviceOp device) {
       auto buffer =
           BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
                            builder.getStringAttr(name), /*address=*/nullptr,
-                           /*initial_value=*/nullptr,
-                           /*mem_bank=*/builder.getI32IntegerAttr(bank),
-                           /*core_data=*/nullptr,
-                           /*bank_reserved=*/builder.getUnitAttr(),
+                           /*initialValue=*/nullptr,
+                           /*memBank=*/builder.getI32IntegerAttr(bank),
+                           /*coreData=*/nullptr,
+                           /*bankReserved=*/builder.getUnitAttr(),
                            /*aligned=*/nullptr);
       table.insert(buffer);
     }
@@ -218,10 +220,10 @@ static void materializePrebakedRanges(DeviceOp device) {
           BufferOp::create(builder, core.getLoc(), type, tile.getResult(),
                            builder.getStringAttr(name),
                            /*address=*/builder.getI32IntegerAttr(address),
-                           /*initial_value=*/nullptr,
-                           /*mem_bank=*/nullptr,
-                           /*core_data=*/nullptr,
-                           /*bank_reserved=*/builder.getUnitAttr(),
+                           /*initialValue=*/nullptr,
+                           /*memBank=*/nullptr,
+                           /*coreData=*/nullptr,
+                           /*bankReserved=*/builder.getUnitAttr(),
                            /*aligned=*/builder.getBoolAttr(false));
       table.insert(buffer);
     }

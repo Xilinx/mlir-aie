@@ -649,6 +649,13 @@ class buffer(BufferOp):
         self.use_write_rtp = use_write_rtp
         if not (initial_value is None):
             assert isinstance(initial_value, np.ndarray)
+            shape = tuple(self.type.shape)
+            if initial_value.shape != shape:
+                # The declaration requires an initializer of the buffer's
+                # shape; broadcast smaller (e.g. single-element) initializers.
+                initial_value = np.ascontiguousarray(
+                    np.broadcast_to(initial_value, shape)
+                )
             initial_value = DenseElementsAttr.get(
                 initial_value,
                 type=self.type.element_type,
