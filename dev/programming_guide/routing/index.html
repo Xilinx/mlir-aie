@@ -4044,7 +4044,8 @@ their packets take turns.</p>
 <li><code>priority_route</code> routes the flow before the others; see
   <a href="#priority-routes-and-the-control-overlay">Priority routes and the control overlay</a>.</li>
 </ul>
-<p>In IRON, <code>ObjectFifo(..., packet=True)</code> routes a fifo as a packet flow, and
+<p>In IRON, <code>ObjectFifo(..., transport=Transport.dma(packet=Packet()))</code> routes a
+fifo as a packet flow, and
 <code>PacketFlow</code> declares one directly (see
 <a href="../section-2/section-2g/">Section 2g</a>).</p>
 <h2 id="arbiters-and-deadlock">Arbiters and deadlock<a class="headerlink" href="#arbiters-and-deadlock" title="Permanent link">&para;</a></h2>

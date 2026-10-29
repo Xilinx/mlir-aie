@@ -1255,6 +1255,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#merge-and-dispatch-taking-turns-with-whole-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge and Dispatch: taking turns with whole objects
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3687,6 +3698,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#merge-and-dispatch-taking-turns-with-whole-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge and Dispatch: taking turns with whole objects
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3832,6 +3854,7 @@ The <code>forward()</code> function creates a new ObjectFifo to which the user c
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">of_out</span> <span class="o">=</span> <span class="n">of_in</span><span class="o">.</span><span class="n">cons</span><span class="p">()</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">obj_type</span><span class="o">=</span><span class="n">line_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"out"</span><span class="p">)</span>
 </code></pre></div>
 Where a consumer <code>ObjectFifoHandle</code> to <code>of_in</code> is forwarded to <code>of_out</code> as its producer.</p>
+<p>A forwarded fifo's <code>to_stream</code> may also walk the whole stream of <code>of_in</code>'s objects to cut overlapping windows out of it, for example the rows a 3x3 convolution reads for each output row; see <a href="../../section-2c/#overlapping-windows-over-a-forwarded-stream">Overlapping Windows over a Forwarded Stream</a>.</p>
 <p>This functionality is also available at the dialect level. The ObjectFifo API provides an implicit copy via an <code>object_fifo_link</code>, which can be initialized using its class constructor (defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/dialects/aie.py">aie.py</a>):
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">object_fifo_link</span><span class="p">(</span><span class="n">ObjectFifoLinkOp</span><span class="p">):</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
@@ -3939,6 +3962,18 @@ Only <code>ObjectFifoHandle</code>s of type producer can be joined. The <code>ob
 <a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">object_fifo_link</span><span class="p">([</span><span class="n">of1</span><span class="p">,</span> <span class="n">of2</span><span class="p">],</span> <span class="n">of0</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">128</span><span class="p">],</span> <span class="p">[])</span>
 </code></pre></div></p>
 <p>A full design example that uses these features is available in Section 2f: <a href="../../section-2f/05_join_L2/">05_join_L2</a>.</p>
+<h3 id="merge-and-dispatch-taking-turns-with-whole-objects">Merge and Dispatch: taking turns with whole objects<a class="headerlink" href="#merge-and-dispatch-taking-turns-with-whole-objects" title="Permanent link">&para;</a></h3>
+<p>Distribute and join split every object between the fifos, and each fifo gets a channel of its own on the shared tile. <code>merge()</code> and <code>dispatch()</code> share the objects in time instead: the fifos take turns with whole objects of the same type, and they share one channel on the shared tile.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">hub_in</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">obj_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"hub_in"</span><span class="p">)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">from_s1</span><span class="p">,</span> <span class="n">from_s2</span> <span class="o">=</span> <span class="n">hub_in</span><span class="o">.</span><span class="n">prod</span><span class="p">()</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="s2">"from_s1"</span><span class="p">,</span> <span class="s2">"from_s2"</span><span class="p">])</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">hub_out</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">obj_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"hub_out"</span><span class="p">)</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">to_s2</span><span class="p">,</span> <span class="n">to_host</span> <span class="o">=</span> <span class="n">hub_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()</span><span class="o">.</span><span class="n">dispatch</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="s2">"to_s2"</span><span class="p">,</span> <span class="s2">"to_host"</span><span class="p">])</span>
+</code></pre></div>
+<ul>
+<li><code>merge(n)</code> on a producer handle creates <code>n</code> fifos whose objects all arrive on one channel of the shared tile, in whatever order their producers send them.</li>
+<li><code>dispatch(n)</code> on a consumer handle creates <code>n</code> fifos and sends object k to fifo k mod n over one channel; each of them has one consumer.</li>
+</ul>
+<p>The fifos sharing a channel are packet-switched, since a packet header is what tells the turns apart; <code>transports=</code> sets one per fifo, for example to pin a header. In MLIR this is <code>aie.objectfifo.link ... {mode = #aie.link_mode&lt;time&gt;}</code>. When the order objects reach a merge matters, the design has to keep the producers in turn, for example by issuing the next input only once the previous result is back.</p>
 <hr />
 <p><a href="../02_Broadcast/">Prev</a> &middot; <a href="..">Top</a> &middot; <a href="../04_Repeat/">Next</a></p>
 

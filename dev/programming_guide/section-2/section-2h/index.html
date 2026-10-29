@@ -1847,10 +1847,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#direct-aie-stream-objectfifo-aie_streamend-port" class="md-nav__link">
+  <a href="#direct-aie-stream-end-portportstreamn" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Direct AIE-stream ObjectFifo: aie_stream=(end, port)
+        Direct AIE-stream end: port=Port.stream(n)
       
     </span>
   </a>
@@ -3664,10 +3664,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#direct-aie-stream-objectfifo-aie_streamend-port" class="md-nav__link">
+  <a href="#direct-aie-stream-end-portportstreamn" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Direct AIE-stream ObjectFifo: aie_stream=(end, port)
+        Direct AIE-stream end: port=Port.stream(n)
       
     </span>
   </a>
@@ -3832,20 +3832,20 @@ separate fifos and a join.</p>
   — production use feeding the MobileNet FC tiles a different chunk size
   than the upstream weight stream produces.</li>
 </ul>
-<h2 id="direct-aie-stream-objectfifo-aie_streamend-port"><u>Direct AIE-stream <code>ObjectFifo</code>: <code>aie_stream=(end, port)</code></u><a class="headerlink" href="#direct-aie-stream-objectfifo-aie_streamend-port" title="Permanent link">&para;</a></h2>
-<p><code>aie_stream=(end, port)</code> marks the fifo as a <em>direct AIE-stream</em>
-connection — the underlying <code>aie.objectfifo</code> op gets the <code>aie_stream</code> /
-<code>aie_stream_port</code> attributes stamped on it, telling the lowering to
-treat the producer side as wire-only.  No L1 buffer is allocated; the
-consumer reads straight off the stream.</p>
+<h2 id="direct-aie-stream-end-portportstreamn"><u>Direct AIE-stream end: <code>port=Port.stream(n)</code></u><a class="headerlink" href="#direct-aie-stream-end-portportstreamn" title="Permanent link">&para;</a></h2>
+<p><code>prod(port=Port.stream(n))</code> or <code>cons(port=Port.stream(n))</code> wires that end
+of the fifo to the core's stream port <code>n</code> instead of a DMA channel. The
+underlying <code>aie.objectfifo</code> op gets <code>prod_port = #aie.end_port&lt;Core : n&gt;</code>
+or <code>cons_ports = [#aie.end_port&lt;Core : n&gt;]</code>, telling the lowering to treat
+that end as wire-only. No L1 buffer is allocated there; the other end reads
+or writes straight off the stream.</p>
 <p>Pair it with kernels that emit per-element via <code>put_ms()</code> instead of
 acquire/release:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">of_dout_L1L3</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">dout_ty</span><span class="p">,</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">"of_dout_L1L3"</span><span class="p">,</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">aie_stream</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>            <span class="c1"># (end, port) — wire-only producer side</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">of_dout_L1L3</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">dout_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"of_dout_L1L3"</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">worker</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">core_body</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">fn_args</span><span class="o">=</span><span class="p">[</span><span class="n">of_din_L2L1</span><span class="o">.</span><span class="n">cons</span><span class="p">(),</span> <span class="n">of_dout_L1L3</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">port</span><span class="o">=</span><span class="n">Port</span><span class="o">.</span><span class="n">stream</span><span class="p">(</span><span class="mi">0</span><span class="p">)),</span> <span class="o">...</span><span class="p">],</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">)</span>
 </code></pre></div>
 <p>The kernel's C++ body owns the writes (<code>aie::stream::put_ms(value)</code>)
 and the core body never acquires or releases the producer handle:</p>
@@ -3857,7 +3857,7 @@ and the core body never acquires or releases the producer handle:</p>
 </code></pre></div>
 <p>Lowered MLIR (extract from <code>magika/group2.py --emit-mlir</code>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aie.objectfifo @of_dout_L1L3(%logical_core, {%logical_shim_noc}, 2 : i32)
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    {aie_stream = 0 : i32, aie_stream_port = 0 : i32}
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    {prod_port = #aie.end_port&lt;Core : 0&gt;}
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    : !aie.objectfifo&lt;memref&lt;214xi32&gt;&gt;
 </code></pre></div>
 <p>Canonical demo:
