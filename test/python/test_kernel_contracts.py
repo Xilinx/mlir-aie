@@ -888,6 +888,18 @@ def test_a_specialized_design_builds_what_it_was_specialized_to():
         one.specialize(plan=()).as_mlir()
 
 
+def test_free_scalar_specialization_preserves_the_plan():
+    fn = kernels.leaky_relu()
+    original = kd.KernelDesign(fn, scalars=(0.5,)).design()
+    specialized = original.specialize(scalars=(0.25,))
+    expected = kd.KernelDesign(fn, scalars=(0.25,)).design()
+
+    assert original.compilable.recipe_hash != specialized.compilable.recipe_hash
+    assert specialized.compilable.recipe_hash == expected.compilable.recipe_hash
+    assert str(specialized.as_mlir()) == str(expected.as_mlir())
+    assert str(original.as_mlir()) != str(specialized.as_mlir())
+
+
 def test_a_contract_alone_changes_the_cache_key():
     tile = np.ndarray[(64,), np.dtype[np.int32]]
 

@@ -657,7 +657,13 @@ class KernelDesign:
         kernels += [self._setter] if self._setter else []
         return (
             tuple(r.__name__ for r in c.roles),
-            tuple(sorted(self._scalar_values.items())),
+            tuple(
+                sorted(
+                    (i, value)
+                    for i, value in c.parameter_bindings
+                    if not _is_tensor_type(self._types[i])
+                )
+            ),
             tuple(i for i, _ in self._initializers),
             c.out_offset,
             c.call_index,
