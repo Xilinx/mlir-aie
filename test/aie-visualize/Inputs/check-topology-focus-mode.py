@@ -29,7 +29,25 @@ def main() -> None:
             f'<g id="flow-{index}" class="edge flow authored-{index} src-{index} fate-destination" '
             f'opacity="{0.8 - index * 0.1}">'
             f'<path d="M 190 {100 + index * 18} L 700 {100 + index * 18}" '
-            f'stroke="{color}" stroke-width="{width}"/></g>'
+            f'stroke="{color}" stroke-width="{width}" opacity="0.75"/>'
+            f'<polygon points="700,{96 + index * 18} 708,{100 + index * 18} '
+            f'700,{104 + index * 18}" fill="{color}" opacity="0.75"/></g>'
+            for index, (color, width) in enumerate((("#b2182b", 4), ("#2166ac", 3), ("#1b7837", 2), ("#762a83", 3)))
+        )
+        fates = "".join(
+            f'<g id="fate-{index}" class="edge flow fate-destination semantic-id-flow-{index}" opacity="0.5">'
+            f'<path d="M 708 {100 + index * 18} L 730 {100 + index * 18}" '
+            f'stroke="{color}" stroke-width="{width}" opacity="0.65"/>'
+            f'<polygon points="730,{96 + index * 18} 738,{100 + index * 18} '
+            f'730,{104 + index * 18}" fill="{color}" opacity="0.65"/></g>'
+            for index, (color, width) in enumerate((("#b2182b", 4), ("#2166ac", 3), ("#1b7837", 2), ("#762a83", 3)))
+        )
+        terminals = "".join(
+            f'<g id="terminal-{index}" class="edge flow src-{index} fate-terminal-{index}" opacity="0.45">'
+            f'<path d="M 738 {100 + index * 18} L 760 {100 + index * 18}" '
+            f'stroke="{color}" stroke-width="{width}" opacity="0.55"/>'
+            f'<polygon points="760,{96 + index * 18} 768,{100 + index * 18} '
+            f'760,{104 + index * 18}" fill="{color}" opacity="0.55"/></g>'
             for index, (color, width) in enumerate((("#b2182b", 4), ("#2166ac", 3), ("#1b7837", 2), ("#762a83", 3)))
         )
         (root / "design.svg").write_text(
@@ -37,7 +55,7 @@ def main() -> None:
             '<g class="graph uniform-width-1"><g id="source" class="node">'
             '<rect x="40" y="70" width="150" height="120" fill="#dceae3"/>'
             '<text x="65" y="135" font-size="24">Sources</text></g>'
-            f'{flows}<g id="destination" class="node semantic-id-destination">'
+            f'{flows}{fates}{terminals}<g id="destination" class="node semantic-id-destination">'
             '<rect x="700" y="70" width="70" height="120" fill="#fff0a8"/>'
             '<text x="712" y="135" font-size="18">Tile</text></g></g></svg>',
             encoding="utf-8",
@@ -72,9 +90,13 @@ def main() -> None:
                     page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html?svg=design.svg&source-root=.")
                     routes = page.locator("#viewport svg g.flow")
                     paths = page.locator("#viewport svg g.flow path")
+                    shapes = page.locator("#viewport svg g.flow path, #viewport svg g.flow polygon")
                     original_paths = paths.evaluate_all("elements => elements.map(element => element.getAttribute('d'))")
                     original_classes = routes.evaluate_all("elements => elements.map(element => element.getAttribute('class'))")
                     original_opacities = routes.evaluate_all("elements => elements.map(element => element.getAttribute('opacity'))")
+                    original_shape_opacities = shapes.evaluate_all(
+                        "elements => elements.map(element => element.getAttribute('opacity') || '1')"
+                    )
 
                     def assert_authored_opacity() -> None:
                         rendered = routes.evaluate_all(
@@ -84,7 +106,44 @@ def main() -> None:
                             abs(float(value) - float(authored)) < 1e-6
                             for value, authored in zip(rendered, original_opacities)
                         ), f"rendered opacity {rendered}, authored opacity {original_opacities}"
-                    assert routes.count() == 4
+                        rendered_shapes = shapes.evaluate_all(
+                            "elements => elements.map(element => getComputedStyle(element).opacity)"
+                        )
+                        assert rendered_shapes == original_shape_opacities
+
+                    def assert_selected_shapes() -> None:
+                        selected = page.locator("#viewport svg g.flow.highlighted")
+                        assert selected.count() == 9
+                        rendered = selected.locator("path, polygon").evaluate_all(
+                            "elements => elements.map(element => ({"
+                            "tag: element.tagName, opacity: getComputedStyle(element).opacity, "
+                            "authoredOpacity: element.getAttribute('opacity') || '1', "
+                            "stroke: getComputedStyle(element).stroke, authoredStroke: element.getAttribute('stroke'), "
+                            "width: getComputedStyle(element).strokeWidth, authoredWidth: element.getAttribute('stroke-width'), "
+                            "fill: getComputedStyle(element).fill, authoredFill: element.getAttribute('fill')}))"
+                        )
+                        assert all(shape["opacity"] == shape["authoredOpacity"] for shape in rendered)
+                        assert all(
+                            shape["stroke"] == page.evaluate(
+                                "color => { const value = document.createElement('span'); "
+                                "value.style.color = color; document.body.append(value); "
+                                "const result = getComputedStyle(value).color; value.remove(); return result; }",
+                                shape["authoredStroke"],
+                            )
+                            and shape["width"] == f'{shape["authoredWidth"]}px'
+                            for shape in rendered if shape["tag"] == "path"
+                        )
+                        assert all(
+                            shape["fill"] == page.evaluate(
+                                "color => { const value = document.createElement('span'); "
+                                "value.style.color = color; document.body.append(value); "
+                                "const result = getComputedStyle(value).color; value.remove(); return result; }",
+                                shape["authoredFill"],
+                            )
+                            for shape in rendered if shape["tag"] == "polygon"
+                        )
+
+                    assert routes.count() == 12
                     assert all(
                         float(opacity) == 0.12 for opacity in routes.evaluate_all("elements => elements.map(element => getComputedStyle(element).opacity)")
                     )
@@ -106,17 +165,13 @@ def main() -> None:
                     page.locator("#destination rect").dispatch_event("pointerover")
                     page.locator('.source-line.highlighted[data-line="2"]').wait_for()
                     page.locator("#destination rect").dispatch_event("pointerleave")
-                    page.locator(".flow-row").first.click()
-                    assert page.locator(".flow-row.selected").count() == 1
-                    assert page.locator("#viewport svg.highlighting").count() == 1
-                    assert_authored_opacity()
-                    assert paths.evaluate_all("elements => elements.map(element => getComputedStyle(element).stroke)") == [
-                        "rgb(178, 24, 43)",
-                        "rgb(33, 102, 172)",
-                        "rgb(27, 120, 55)",
-                        "rgb(118, 42, 131)",
-                    ]
-                    assert paths.evaluate_all("elements => elements.map(element => getComputedStyle(element).strokeWidth)") == ["4px", "3px", "2px", "3px"]
+                    flow_rows = page.locator(".flow-row")
+                    assert flow_rows.count() == 4
+                    for index in range(flow_rows.count()):
+                        flow_rows.nth(index).click()
+                        assert page.locator(".flow-row.selected").count() == 1
+                        assert page.locator("#viewport svg.highlighting").count() == 1
+                        assert_selected_shapes()
                     page.locator("#destination rect").dispatch_event("pointerover")
                     assert page.locator(".flow-row.selected").count() == 1
                     assert paths.evaluate_all("elements => elements.map(element => element.getAttribute('d'))") == original_paths
@@ -127,7 +182,7 @@ def main() -> None:
                     assert page.get_by_role("region", name="Source code").is_visible()
                     if screenshot_directory:
                         page.screenshot(path=screenshot_directory / "focus-reset.png")
-                        page.locator(".flow-row").first.click()
+                        page.locator(".flow-row").first.dispatch_event("click")
                         page.locator("#viewport svg").dispatch_event("wheel", {"deltaY": -300, "clientX": 700, "clientY": 300})
                         page.screenshot(path=screenshot_directory / "focus-selected.png")
 
