@@ -62,6 +62,7 @@ int main(int argc, const char *argv[]) {
       return 1;
     }
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    out = bo_out.map<uint32_t *>();
     for (int i = 0; i < BUF_SIZE; i++) {
       uint32_t want = 100 + i;
       if (out[i] != want) {
