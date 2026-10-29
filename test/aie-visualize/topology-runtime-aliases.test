@@ -1,0 +1,12 @@
+//===- topology-runtime-aliases.test ---------------------------*- ShTest -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// REQUIRES: aie-visualize, playwright
+// RUN: aie-visualize --emit-dot --scale=1 --contract=port,dma,buffer --contract-balanced-fanout %S/runtime-and-calls.mlir -o %t.dot
+// RUN: aie-visualize --emit-json --contract=port,dma,buffer --contract-balanced-fanout %S/runtime-and-calls.mlir -o %t.json
+// RUN: neato -n2 -Tsvg %t.dot -o %t.svg
+// RUN: %python %S/Inputs/check-topology-runtime-aliases.py %aie_tools_dir/aie-visualize.html %t.dot %t.json %t.svg
