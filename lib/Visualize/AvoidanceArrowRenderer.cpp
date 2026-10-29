@@ -16,8 +16,9 @@
 #include <array>
 #include <chrono>
 #include <cmath>
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
+#include <functional>
 #include <limits>
 #include <map>
 #include <numeric>
@@ -35,6 +36,7 @@ constexpr double kArcControl = 0.5523;
 constexpr double kCornerRadius = 0.10;
 constexpr double kEpsilon = 1e-9;
 constexpr double kMinimumRenderedGap = 1.2;
+constexpr uint64_t kLaneSearchCap = 250000;
 constexpr uint64_t kNoParent = std::numeric_limits<uint64_t>::max();
 
 enum class Direction : uint8_t { East, West, North, South };
@@ -108,7 +110,8 @@ Point unitBetween(Point a, Point b) {
   return length < kEpsilon ? Point{0, 0} : Point{dx / length, dy / length};
 }
 
-SmallVector<Point> toBezier(ArrayRef<Point> corners, double radius) {
+SmallVector<Point> toBezier(ArrayRef<Point> corners, double radius,
+                            double minimumRoundedReach = 0.0) {
   SmallVector<Point> out;
   if (corners.size() < 2)
     return out;
@@ -124,6 +127,10 @@ SmallVector<Point> toBezier(ArrayRef<Point> corners, double radius) {
          std::hypot(corners[index + 1].first - corners[index].first,
                     corners[index + 1].second - corners[index].second) /
              2});
+    if (reach < minimumRoundedReach) {
+      lineTo(out, corners[index]);
+      continue;
+    }
     Point enter{corners[index].first - incoming.first * reach,
                 corners[index].second - incoming.second * reach};
     Point leave{corners[index].first + outgoing.first * reach,
@@ -168,6 +175,95 @@ struct RoutedPath {
   double cost = 0.0;
   bool valid = false;
 };
+
+struct LaneSolveResult {
+  std::vector<SmallVector<Point>> corners;
+  unsigned components = 0;
+  unsigned acceptedComponents = 0;
+  unsigned largestComponent = 0;
+  unsigned corridorComponents = 0;
+  unsigned largestCorridor = 0;
+  unsigned variables = 0;
+  uint64_t examinedAssignments = 0;
+  bool searchCapped = false;
+};
+
+struct LaneRun {
+  unsigned route = 0;
+  unsigned segment = 0;
+  bool horizontal = false;
+  double cross = 0.0;
+  double low = 0.0;
+  double high = 0.0;
+};
+
+struct LaneVariable {
+  unsigned run = 0;
+  std::vector<double> offsets;
+};
+
+struct LaneChoice {
+  double offset = 0.0;
+  SmallVector<LaneRun> runs;
+  unsigned fixedSeparationDefects = 0;
+  unsigned obstacleHits = 0;
+  std::set<std::array<unsigned, 4>> crossingPairs;
+};
+
+struct LaneScore {
+  unsigned separationDefects = 0;
+  unsigned obstacleHits = 0;
+  unsigned crossings = 0;
+  double addedLength = 0.0;
+
+  auto tie() const {
+    return std::tie(separationDefects, obstacleHits, crossings, addedLength);
+  }
+  bool operator<(const LaneScore &other) const { return tie() < other.tie(); }
+};
+
+LaneRun makeLaneRun(unsigned route, unsigned segment, Point first,
+                    Point second) {
+  bool isHorizontal = std::abs(first.second - second.second) < kEpsilon;
+  return {route,
+          segment,
+          isHorizontal,
+          isHorizontal ? first.second : first.first,
+          isHorizontal ? std::min(first.first, second.first)
+                       : std::min(first.second, second.second),
+          isHorizontal ? std::max(first.first, second.first)
+                       : std::max(first.second, second.second)};
+}
+
+SmallVector<LaneRun> shiftedLaneRuns(const LaneRun &run, double offset) {
+  LaneRun shifted = run;
+  shifted.cross += offset;
+  SmallVector<LaneRun> result{shifted};
+  if (std::abs(offset) < kEpsilon)
+    return result;
+  for (double coordinate : {run.low, run.high})
+    result.push_back({run.route, run.segment, !run.horizontal, coordinate,
+                      std::min(run.cross, shifted.cross),
+                      std::max(run.cross, shifted.cross)});
+  return result;
+}
+
+bool intervalsOverlap(const LaneRun &first, const LaneRun &second) {
+  return std::min(first.high, second.high) >
+         std::max(first.low, second.low) + kEpsilon;
+}
+
+bool segmentHitsRectangle(const LaneRun &run, const Rectangle &rectangle) {
+  if (run.horizontal)
+    return run.cross > rectangle.bottom + kEpsilon &&
+           run.cross < rectangle.top - kEpsilon &&
+           run.high > rectangle.left + kEpsilon &&
+           run.low < rectangle.right - kEpsilon;
+  return run.cross > rectangle.left + kEpsilon &&
+         run.cross < rectangle.right - kEpsilon &&
+         run.high > rectangle.bottom + kEpsilon &&
+         run.low < rectangle.top - kEpsilon;
+}
 
 struct StubUsage {
   Point first;
@@ -244,6 +340,9 @@ private:
   void addUsage(const RoutedPath &path, int amount);
   double conflictScore(const RoutedPath &path) const;
   SmallVector<Point> cornersOf(const RoutedPath &path) const;
+  LaneSolveResult solveLanes(ArrayRef<ArrowRequest> requests,
+                             ArrayRef<SmallVector<Point>> baseCorners,
+                             double scale) const;
   bool hasNearbyParallelUsage(unsigned x, unsigned y,
                               Direction direction, unsigned requestID) const;
   bool hasGatewayConflict(const Gateway &gateway, unsigned requestID) const;
@@ -1082,6 +1181,511 @@ AvoidanceArrowRenderer::cornersOf(const RoutedPath &path) const {
   return corners;
 }
 
+LaneSolveResult
+AvoidanceArrowRenderer::solveLanes(ArrayRef<ArrowRequest> requests,
+                                   ArrayRef<SmallVector<Point>> baseCorners,
+                                   double scale) const {
+  LaneSolveResult result;
+  result.corners.assign(baseCorners.begin(), baseCorners.end());
+
+  SmallVector<LaneRun> baseRuns;
+  std::vector<SmallVector<unsigned>> routeRuns(baseCorners.size());
+  for (auto [route, corners] : llvm::enumerate(baseCorners)) {
+    for (unsigned segment = 0; segment + 1 < corners.size(); ++segment) {
+      Point first = corners[segment];
+      Point second = corners[segment + 1];
+      bool horizontal = std::abs(first.second - second.second) < kEpsilon;
+      bool vertical = std::abs(first.first - second.first) < kEpsilon;
+      if ((!horizontal && !vertical) ||
+          std::hypot(first.first - second.first, first.second - second.second) <
+              kEpsilon)
+        continue;
+      Point direction = unitBetween(first, second);
+      double segmentLength =
+          std::hypot(second.first - first.first, second.second - first.second);
+      if (segment > 0) {
+        Point previous = corners[segment - 1];
+        double reach = std::min({kCornerRadius,
+                                 std::hypot(first.first - previous.first,
+                                            first.second - previous.second) /
+                                     2,
+                                 segmentLength / 2});
+        first.first += direction.first * reach;
+        first.second += direction.second * reach;
+      }
+      if (segment + 2 < corners.size()) {
+        Point following = corners[segment + 2];
+        double reach = std::min({kCornerRadius, segmentLength / 2,
+                                 std::hypot(following.first - second.first,
+                                            following.second - second.second) /
+                                     2});
+        second.first -= direction.first * reach;
+        second.second -= direction.second * reach;
+      }
+      auto quantize = [scale](double coordinate) {
+        return std::round(coordinate * 72.0 * scale * 100.0) /
+               (72.0 * scale * 100.0);
+      };
+      first = {quantize(first.first), quantize(first.second)};
+      second = {quantize(second.first), quantize(second.second)};
+      routeRuns[route].push_back(baseRuns.size());
+      baseRuns.push_back(makeLaneRun(route, segment, first, second));
+    }
+  }
+
+  auto exemptPair = [&](unsigned first, unsigned second) {
+    return first == second ||
+           requests[first].flowGroup == requests[second].flowGroup ||
+           sharesEndpoint(first, second);
+  };
+  auto separationDefect = [&](const LaneRun &first, const LaneRun &second) {
+    return !exemptPair(first.route, second.route) &&
+           first.horizontal == second.horizontal &&
+           intervalsOverlap(first, second) &&
+           std::abs(first.cross - second.cross) + kEpsilon < minimumGap;
+  };
+
+  std::set<unsigned> conflictRuns;
+  for (unsigned first = 0; first < baseRuns.size(); ++first) {
+    for (unsigned second = first + 1; second < baseRuns.size(); ++second) {
+      if (!separationDefect(baseRuns[first], baseRuns[second]))
+        continue;
+      conflictRuns.insert(first);
+      conflictRuns.insert(second);
+    }
+  }
+  if (conflictRuns.empty())
+    return result;
+
+  auto buildRuns = [&](ArrayRef<int> variableByRun, ArrayRef<double> offsets) {
+    SmallVector<LaneRun> runs;
+    for (auto [index, run] : llvm::enumerate(baseRuns)) {
+      int variable = variableByRun[index];
+      if (variable < 0) {
+        runs.push_back(run);
+        continue;
+      }
+      llvm::append_range(runs, shiftedLaneRuns(run, offsets[variable]));
+    }
+    return runs;
+  };
+  auto crossingPair =
+      [&](const LaneRun &first,
+          const LaneRun &second) -> std::optional<std::array<unsigned, 4>> {
+    if (exemptPair(first.route, second.route) ||
+        first.horizontal == second.horizontal)
+      return std::nullopt;
+    const LaneRun &horizontal = first.horizontal ? first : second;
+    const LaneRun &vertical = first.horizontal ? second : first;
+    if (horizontal.low + kEpsilon < vertical.cross &&
+        vertical.cross < horizontal.high - kEpsilon &&
+        vertical.low + kEpsilon < horizontal.cross &&
+        horizontal.cross < vertical.high - kEpsilon)
+      return std::min(
+          std::array{first.route, first.segment, second.route, second.segment},
+          std::array{second.route, second.segment, first.route, first.segment});
+    return std::nullopt;
+  };
+  std::set<std::array<unsigned, 4>> baselineCrossingPairs;
+  for (unsigned first = 0; first < baseRuns.size(); ++first)
+    for (unsigned second = first + 1; second < baseRuns.size(); ++second)
+      if (auto crossing = crossingPair(baseRuns[first], baseRuns[second]))
+        baselineCrossingPairs.insert(*crossing);
+  auto routeExemptsObstacle = [&](unsigned route,
+                                  const InflatedObstacle &obstacle) {
+    const ArrowRequest &request = requests[route];
+    if (obstacle.node == request.from.node || obstacle.node == request.to.node)
+      return true;
+    return obstacle.kind == ObstacleKind::Tile && obstacle.tile &&
+           ((request.from.kind != EndKind::External &&
+             *obstacle.tile == request.from.tile) ||
+            (request.to.kind != EndKind::External &&
+             *obstacle.tile == request.to.tile));
+  };
+  auto scoreRuns = [&](ArrayRef<LaneRun> runs, double addedLength) {
+    LaneScore score;
+    score.addedLength = addedLength;
+    std::set<std::array<unsigned, 4>> crossingPairs;
+    for (unsigned first = 0; first < runs.size(); ++first) {
+      for (unsigned second = first + 1; second < runs.size(); ++second) {
+        score.separationDefects += separationDefect(runs[first], runs[second]);
+        if (auto crossing = crossingPair(runs[first], runs[second]))
+          crossingPairs.insert(*crossing);
+      }
+    }
+    score.crossings = crossingPairs.size();
+    for (const LaneRun &run : runs)
+      for (const InflatedObstacle &obstacle : scene)
+        if (!routeExemptsObstacle(run.route, obstacle) &&
+            segmentHitsRectangle(run, obstacle.visible))
+          ++score.obstacleHits;
+    return score;
+  };
+
+  LaneScore baseline = scoreRuns(baseRuns, 0.0);
+  std::vector<LaneVariable> variables;
+  variables.reserve(conflictRuns.size());
+  for (unsigned runIndex : conflictRuns) {
+    const LaneRun &run = baseRuns[runIndex];
+    std::vector<double> offsets{0.0};
+    double maximumOffset = minimumGap * (8.0 / 1.2);
+    for (const LaneRun &other : baseRuns) {
+      if (run.horizontal != other.horizontal || !intervalsOverlap(run, other))
+        continue;
+      for (double offset : {other.cross - minimumGap - run.cross,
+                            other.cross + minimumGap - run.cross})
+        if (std::abs(offset) <= maximumOffset + kEpsilon)
+          offsets.push_back(offset);
+    }
+    llvm::sort(offsets, [](double first, double second) {
+      return std::pair{std::abs(first), first} <
+             std::pair{std::abs(second), second};
+    });
+    offsets.erase(llvm::unique(offsets,
+                               [](double first, double second) {
+                                 return std::abs(first - second) < kEpsilon;
+                               }),
+                  offsets.end());
+    variables.push_back({runIndex, std::move(offsets)});
+  }
+  llvm::sort(variables, [&](const LaneVariable &first,
+                            const LaneVariable &second) {
+    return std::tie(baseRuns[first.run].route, baseRuns[first.run].segment) <
+           std::tie(baseRuns[second.run].route, baseRuns[second.run].segment);
+  });
+  result.variables = variables.size();
+
+  std::vector<int> variableByRun(baseRuns.size(), -1);
+  for (auto [index, variable] : llvm::enumerate(variables))
+    variableByRun[variable.run] = index;
+  SmallVector<LaneRun> fixedRuns;
+  for (auto [index, run] : llvm::enumerate(baseRuns))
+    if (variableByRun[index] < 0)
+      fixedRuns.push_back(run);
+
+  std::vector<std::vector<LaneChoice>> choices(variables.size());
+  for (auto [variableIndex, variable] : llvm::enumerate(variables)) {
+    for (double offset : variable.offsets) {
+      LaneChoice choice;
+      choice.offset = offset;
+      choice.runs = shiftedLaneRuns(baseRuns[variable.run], offset);
+      for (const LaneRun &run : choice.runs) {
+        for (const LaneRun &fixed : fixedRuns) {
+          choice.fixedSeparationDefects += separationDefect(run, fixed);
+          if (auto crossing = crossingPair(run, fixed);
+              crossing && !baselineCrossingPairs.count(*crossing))
+            choice.crossingPairs.insert(*crossing);
+        }
+        for (const InflatedObstacle &obstacle : scene)
+          if (!routeExemptsObstacle(run.route, obstacle) &&
+              segmentHitsRectangle(run, obstacle.visible))
+            ++choice.obstacleHits;
+      }
+      if (choice.fixedSeparationDefects != 0 || choice.obstacleHits != 0)
+        continue;
+      choices[variableIndex].push_back(std::move(choice));
+    }
+    if (choices[variableIndex].empty())
+      return result;
+  }
+
+  std::vector<SmallVector<unsigned>> interactionAdjacency(variables.size());
+  for (unsigned first = 0; first < variables.size(); ++first) {
+    for (unsigned second = first + 1; second < variables.size(); ++second) {
+      bool interacts = false;
+      for (const LaneChoice &left : choices[first]) {
+        for (const LaneChoice &right : choices[second]) {
+          for (const LaneRun &leftRun : left.runs) {
+            for (const LaneRun &rightRun : right.runs) {
+              auto crossing = crossingPair(leftRun, rightRun);
+              if (separationDefect(leftRun, rightRun) ||
+                  (crossing && !baselineCrossingPairs.count(*crossing))) {
+                interacts = true;
+                break;
+              }
+            }
+            if (interacts)
+              break;
+          }
+          if (interacts)
+            break;
+        }
+        if (interacts)
+          break;
+      }
+      if (!interacts)
+        continue;
+      interactionAdjacency[first].push_back(second);
+      interactionAdjacency[second].push_back(first);
+    }
+  }
+
+  std::set<unsigned> unseenVariables;
+  for (unsigned index = 0; index < variables.size(); ++index)
+    unseenVariables.insert(index);
+  std::vector<SmallVector<unsigned>> components;
+  while (!unseenVariables.empty()) {
+    SmallVector<unsigned> pending{*unseenVariables.begin()};
+    SmallVector<unsigned> component;
+    std::set<unsigned> routes;
+    while (!pending.empty()) {
+      unsigned variable = pending.pop_back_val();
+      if (!unseenVariables.erase(variable))
+        continue;
+      component.push_back(variable);
+      routes.insert(baseRuns[variables[variable].run].route);
+      llvm::append_range(pending, interactionAdjacency[variable]);
+    }
+    llvm::sort(component);
+    result.largestComponent =
+        std::max<unsigned>(result.largestComponent, routes.size());
+    components.push_back(std::move(component));
+  }
+  result.components = components.size();
+
+  std::vector<SmallVector<unsigned>> corridorAdjacency(variables.size());
+  for (unsigned first = 0; first < variables.size(); ++first) {
+    for (unsigned second = first + 1; second < variables.size(); ++second) {
+      const LaneRun &firstRun = baseRuns[variables[first].run];
+      const LaneRun &secondRun = baseRuns[variables[second].run];
+      bool sameAxis = firstRun.horizontal == secondRun.horizontal;
+      bool interacts =
+          sameAxis && llvm::is_contained(interactionAdjacency[first], second);
+      bool sharesCorridor = sameAxis &&
+                            sharesEndpoint(firstRun.route, secondRun.route) &&
+                            intervalsOverlap(firstRun, secondRun);
+      if (!interacts && !sharesCorridor)
+        continue;
+      corridorAdjacency[first].push_back(second);
+      corridorAdjacency[second].push_back(first);
+    }
+  }
+  std::set<unsigned> unseenCorridorVariables;
+  for (unsigned index = 0; index < variables.size(); ++index)
+    unseenCorridorVariables.insert(index);
+  std::vector<std::set<unsigned>> atomicCorridorRoutes;
+  while (!unseenCorridorVariables.empty()) {
+    SmallVector<unsigned> pending{*unseenCorridorVariables.begin()};
+    std::set<unsigned> routes;
+    while (!pending.empty()) {
+      unsigned variable = pending.pop_back_val();
+      if (!unseenCorridorVariables.erase(variable))
+        continue;
+      routes.insert(baseRuns[variables[variable].run].route);
+      llvm::append_range(pending, corridorAdjacency[variable]);
+    }
+    atomicCorridorRoutes.push_back(std::move(routes));
+  }
+  result.corridorComponents = atomicCorridorRoutes.size();
+  for (const std::set<unsigned> &routes : atomicCorridorRoutes)
+    result.largestCorridor =
+        std::max<unsigned>(result.largestCorridor, routes.size());
+  for (unsigned first = 0; first < atomicCorridorRoutes.size(); ++first) {
+    for (unsigned second = first + 1; second < atomicCorridorRoutes.size();
+         ++second) {
+      bool joins =
+          llvm::any_of(atomicCorridorRoutes[first], [&](unsigned left) {
+            return llvm::any_of(
+                atomicCorridorRoutes[second],
+                [&](unsigned right) { return sharesEndpoint(left, right); });
+          });
+      if (!joins)
+        continue;
+      std::set<unsigned> routes = atomicCorridorRoutes[first];
+      routes.insert(atomicCorridorRoutes[second].begin(),
+                    atomicCorridorRoutes[second].end());
+      result.largestCorridor =
+          std::max<unsigned>(result.largestCorridor, routes.size());
+    }
+  }
+
+  std::map<unsigned, double> selectedOffsets;
+  for (const SmallVector<unsigned> &component : components) {
+    SmallVector<unsigned> order(component.begin(), component.end());
+    llvm::stable_sort(order, [&](unsigned first, unsigned second) {
+      const LaneRun &firstRun = baseRuns[variables[first].run];
+      const LaneRun &secondRun = baseRuns[variables[second].run];
+      return std::tuple{choices[first].size(),
+                        -static_cast<int>(interactionAdjacency[first].size()),
+                        firstRun.route, firstRun.segment} <
+             std::tuple{choices[second].size(),
+                        -static_cast<int>(interactionAdjacency[second].size()),
+                        secondRun.route, secondRun.segment};
+    });
+    std::vector<unsigned> selectedChoices(variables.size(), 0);
+    std::vector<unsigned> bestChoices = selectedChoices;
+    LaneScore bestScore;
+    bool haveBest = false;
+    bool foundImprovement = false;
+
+    std::function<void(unsigned, LaneScore, std::set<std::array<unsigned, 4>>)>
+        visit = [&](unsigned position, LaneScore partial,
+                    std::set<std::array<unsigned, 4>> crossingPairs) {
+          if (result.searchCapped)
+            return;
+          if (position == order.size()) {
+            if (++result.examinedAssignments > kLaneSearchCap) {
+              result.searchCapped = true;
+              return;
+            }
+            partial.crossings = crossingPairs.size();
+            if (!haveBest || partial < bestScore) {
+              bestScore = partial;
+              bestChoices = selectedChoices;
+              haveBest = true;
+            }
+            return;
+          }
+          unsigned variable = order[position];
+          SmallVector<unsigned> rankedChoices;
+          for (unsigned choice = 0; choice < choices[variable].size(); ++choice)
+            rankedChoices.push_back(choice);
+          llvm::sort(rankedChoices, [&](unsigned first, unsigned second) {
+            const LaneChoice &firstChoice = choices[variable][first];
+            const LaneChoice &secondChoice = choices[variable][second];
+            bool horizontal = baseRuns[variables[variable].run].horizontal;
+            auto newCrossings = [&](const LaneChoice &choice) {
+              return llvm::count_if(choice.crossingPairs,
+                                    [&](const auto &crossing) {
+                                      return !crossingPairs.count(crossing);
+                                    });
+            };
+            return std::tuple{
+                       newCrossings(firstChoice), std::abs(firstChoice.offset),
+                       horizontal ? -firstChoice.offset : firstChoice.offset} <
+                   std::tuple{newCrossings(secondChoice),
+                              std::abs(secondChoice.offset),
+                              horizontal ? -secondChoice.offset
+                                         : secondChoice.offset};
+          });
+          for (unsigned choiceIndex : rankedChoices) {
+            const LaneChoice &choice = choices[variable][choiceIndex];
+            LaneScore candidate = partial;
+            candidate.separationDefects += choice.fixedSeparationDefects;
+            candidate.obstacleHits += choice.obstacleHits;
+            candidate.addedLength += 2.0 * std::abs(choice.offset);
+            auto candidateCrossings = crossingPairs;
+            candidateCrossings.insert(choice.crossingPairs.begin(),
+                                      choice.crossingPairs.end());
+            bool compatible = true;
+            for (unsigned prior = 0; prior < position; ++prior) {
+              unsigned other = order[prior];
+              const LaneChoice &otherChoice =
+                  choices[other][selectedChoices[other]];
+              for (const LaneRun &first : choice.runs)
+                for (const LaneRun &second : otherChoice.runs) {
+                  if (separationDefect(first, second)) {
+                    compatible = false;
+                    break;
+                  }
+                  if (auto crossing = crossingPair(first, second);
+                      crossing && !baselineCrossingPairs.count(*crossing))
+                    candidateCrossings.insert(*crossing);
+                }
+              if (!compatible)
+                break;
+            }
+            if (!compatible)
+              continue;
+            selectedChoices[variable] = choiceIndex;
+            visit(position + 1, candidate, std::move(candidateCrossings));
+            if (result.searchCapped)
+              return;
+          }
+        };
+    visit(0, {}, {});
+    if (result.searchCapped) {
+      result.acceptedComponents = 0;
+      return result;
+    }
+    if (!haveBest)
+      continue;
+
+    foundImprovement =
+        bestScore.separationDefects == 0 && bestScore.obstacleHits == 0 &&
+        llvm::any_of(component, [&](unsigned variable) {
+          return std::abs(choices[variable][bestChoices[variable]].offset) >=
+                 kEpsilon;
+        });
+    if (!foundImprovement)
+      continue;
+    ++result.acceptedComponents;
+    for (unsigned variable : component) {
+      const LaneChoice &choice = choices[variable][bestChoices[variable]];
+      if (std::abs(choice.offset) >= kEpsilon)
+        selectedOffsets[variables[variable].run] =
+            choice.offset + std::copysign(0.02 / (72.0 * scale), choice.offset);
+    }
+  }
+
+  if (selectedOffsets.empty())
+    return result;
+  std::vector<int> finalVariableByRun(baseRuns.size(), -1);
+  std::vector<double> finalOffsets;
+  for (auto [run, offset] : selectedOffsets) {
+    finalVariableByRun[run] = finalOffsets.size();
+    finalOffsets.push_back(offset);
+  }
+  double finalAddedLength = 0.0;
+  for (double offset : finalOffsets)
+    finalAddedLength += 2.0 * std::abs(offset);
+  if (!(scoreRuns(buildRuns(finalVariableByRun, finalOffsets),
+                  finalAddedLength) < baseline)) {
+    result.acceptedComponents = 0;
+    return result;
+  }
+
+  for (auto [route, corners] : llvm::enumerate(baseCorners)) {
+    if (corners.empty())
+      continue;
+    SmallVector<Point> moved{corners.front()};
+    for (unsigned segment = 0; segment + 1 < corners.size(); ++segment) {
+      auto run = llvm::find_if(routeRuns[route], [&](unsigned runIndex) {
+        return baseRuns[runIndex].segment == segment;
+      });
+      auto selected = run == routeRuns[route].end()
+                          ? selectedOffsets.end()
+                          : selectedOffsets.find(*run);
+      Point first = corners[segment];
+      Point second = corners[segment + 1];
+      if (selected == selectedOffsets.end()) {
+        moved.push_back(second);
+        continue;
+      }
+      double offset = selected->second;
+      bool horizontal = std::abs(first.second - second.second) < kEpsilon;
+      Point shiftedFirst = horizontal
+                               ? Point{first.first, first.second + offset}
+                               : Point{first.first + offset, first.second};
+      Point shiftedSecond = horizontal
+                                ? Point{second.first, second.second + offset}
+                                : Point{second.first + offset, second.second};
+      moved.append({shiftedFirst, shiftedSecond, second});
+    }
+    SmallVector<Point> simplified;
+    for (Point point : moved) {
+      if (!simplified.empty() &&
+          std::hypot(point.first - simplified.back().first,
+                     point.second - simplified.back().second) < kEpsilon)
+        continue;
+      while (simplified.size() >= 2) {
+        Point first = simplified[simplified.size() - 2];
+        Point second = simplified.back();
+        bool sameX = std::abs(first.first - second.first) < kEpsilon &&
+                     std::abs(second.first - point.first) < kEpsilon;
+        bool sameY = std::abs(first.second - second.second) < kEpsilon &&
+                     std::abs(second.second - point.second) < kEpsilon;
+        if (!sameX && !sameY)
+          break;
+        simplified.pop_back();
+      }
+      simplified.push_back(point);
+    }
+    result.corners[route] = std::move(simplified);
+  }
+  return result;
+}
+
 SmallVector<ArrowPath>
 AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
                               ArrayRef<RoutingObstacle> obstacles,
@@ -1145,6 +1749,13 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
   }
   auto conflictsRouted = Clock::now();
 
+  std::vector<SmallVector<Point>> baseCorners(requests.size());
+  for (const RoutedPath &path : routed)
+    if (path.valid)
+      baseCorners[path.id] = cornersOf(path);
+  LaneSolveResult laneResult = solveLanes(requests, baseCorners, layout.scale);
+  auto lanesSolved = Clock::now();
+
   if (::getenv("AIE_VISUALIZE_GRAPH_STATS")) {
     auto milliseconds = [](Clock::duration duration) {
       return std::chrono::duration<double, std::milli>(duration).count();
@@ -1157,14 +1768,26 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
                  << " grid_ms=" << milliseconds(gridBuilt - start)
                  << " initial_ms=" << milliseconds(initiallyRouted - gridBuilt)
                  << " conflict_ms="
-                 << milliseconds(conflictsRouted - initiallyRouted) << '\n';
+                 << milliseconds(conflictsRouted - initiallyRouted)
+                 << " lane_components=" << laneResult.components
+                 << " lane_accepted=" << laneResult.acceptedComponents
+                 << " lane_largest=" << laneResult.largestComponent
+                 << " lane_corridors=" << laneResult.corridorComponents
+                 << " lane_corridor_largest=" << laneResult.largestCorridor
+                 << " lane_variables=" << laneResult.variables
+                 << " lane_assignments=" << laneResult.examinedAssignments
+                 << " lane_capped=" << laneResult.searchCapped
+                 << " lane_ms=" << milliseconds(lanesSolved - conflictsRouted)
+                 << '\n';
   }
 
   SmallVector<ArrowPath> paths;
   for (const RoutedPath &path : routed) {
     if (!path.valid)
       continue;
-    SmallVector<Point> bezier = toBezier(cornersOf(path), kCornerRadius);
+    SmallVector<Point> bezier =
+        toBezier(laneResult.corners[path.id], kCornerRadius,
+                 0.25 / (72.0 * layout.scale));
     if (!bezier.empty())
       paths.push_back({path.id, std::move(bezier)});
   }
