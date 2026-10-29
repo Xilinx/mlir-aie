@@ -355,3 +355,206 @@ def test_padding_is_never_drawn(vocab, cores, chunk, padded):
     )
     np.testing.assert_array_equal(token.numpy(), expected)
     np.testing.assert_array_equal(record.numpy(), expected)
+
+
+@jit
+def sample_positions_with_ranges(
+    logits_in: In,
+    select_draws_in: In,
+    combine_draws_in: In,
+    token_out: Out,
+    record_out: Out,
+    *,
+    vocab: CompileTime[int] = 512,
+    cores: CompileTime[int] = 2,
+    chunk: CompileTime[int] = 256,
+    k_max: CompileTime[int] = 16,
+    max_ranges: CompileTime[int] = 2,
+    positions: CompileTime[int] = 1,
+):
+    """``positions`` draws with ``max_ranges`` per-call suppress ranges, equal
+    slices, one chunk per slice (so one call makes every select pass).
+
+    Ranges are select-only (sample.select_row_words), so select and combine
+    read different-shaped rows: select_draws_in is draw_row's words then the
+    ranges, combine_draws_in draw_row's words alone, both filled from the
+    same per-position values.
+    """
+    slice_size = vocab // cores
+    row_words = sample.select_row_words(max_ranges=max_ranges)
+    combine = sample.sample_combine(columns=cores, slice_size=slice_size, k_max=k_max)
+    words = sample.summary_words(slice_size, k_max)
+
+    one = np.ndarray[(1,), I32]
+    of_select_draw = ObjectFifo(
+        np.ndarray[(row_words,), I32], name="select_draw", depth=1
+    )
+    of_combine_draw = ObjectFifo(
+        np.ndarray[(sample.ROW_WORDS,), I32], name="combine_draw", depth=1
+    )
+    of_token = ObjectFifo(one, name="token", depth=1)
+    of_record = ObjectFifo(one, name="record", depth=1)
+    of_summaries = ObjectFifo(
+        np.ndarray[(cores * words,), I32], name="summaries", depth=1
+    )
+    of_summary = of_summaries.prod().join(
+        [words * c for c in range(cores)],
+        obj_types=[np.ndarray[(words,), I32]] * cores,
+        names=[f"summary_{c}" for c in range(cores)],
+        depths=[1] * cores,
+    )
+
+    def select_body(of_x, of_row, of_sum, kernel, state, calls):
+        for _ in range_(positions):
+            row = of_row.acquire(1)
+            summary = of_sum.acquire(1)
+            for _ in range_(calls):
+                x = of_x.acquire(1)
+                kernel(x, row, state, summary)
+                of_x.release(1)
+            of_sum.release(1)
+            of_row.release(1)
+
+    def combine_body(of_sums, of_row, of_tok, of_rec, kernel):
+        for _ in range_(positions):
+            summaries = of_sums.acquire(1)
+            row = of_row.acquire(1)
+            token = of_tok.acquire(1)
+            record = of_rec.acquire(1)
+            kernel(summaries, row, token, record)
+            of_sums.release(1)
+            of_row.release(1)
+            of_tok.release(1)
+            of_rec.release(1)
+
+    of_logits = []
+    workers = []
+    for c in range(cores):
+        of_x = ObjectFifo(
+            np.ndarray[(chunk,), np.dtype[bfloat16]], name=f"x{c}", depth=2
+        )
+        of_logits.append(of_x.prod())
+        state = Buffer(
+            np.ndarray[(sample.SELECT_STATE_WORDS,), I32],
+            initial_value=np.zeros(sample.SELECT_STATE_WORDS, dtype=np.int32),
+            name=f"select_state_{c}",
+        )
+        workers.append(
+            Worker(
+                select_body,
+                [
+                    of_x.cons(),
+                    of_select_draw.cons(),
+                    of_summary[c].prod(),
+                    sample.sample_select(
+                        slice_size=slice_size,
+                        chunk=chunk,
+                        k_max=k_max,
+                        base=c * slice_size,
+                        max_ranges=max_ranges,
+                    ),
+                    state,
+                    sample.select_streams(slice_size, chunk) * slice_size // chunk,
+                ],
+            )
+        )
+    workers.append(
+        Worker(
+            combine_body,
+            [
+                of_summaries.cons(),
+                of_combine_draw.cons(),
+                of_token.prod(),
+                of_record.prod(),
+                combine,
+            ],
+        )
+    )
+
+    host = [
+        np.ndarray[(positions * vocab,), np.dtype[bfloat16]],
+        np.ndarray[(positions * row_words,), I32],
+        np.ndarray[(positions * sample.ROW_WORDS,), I32],
+        np.ndarray[(positions,), I32],
+        np.ndarray[(positions,), I32],
+    ]
+
+    def sequence(
+        logits_h,
+        select_draws_h,
+        combine_draws_h,
+        token_h,
+        record_h,
+        select_draw,
+        combine_draw,
+        token,
+        record,
+        *xs,
+    ):
+        for c, x in enumerate(xs):
+            rows = TensorAccessPattern.full((positions, vocab))
+            start = c * slice_size
+            x.fill(logits_h, tap=rows[:, start : start + slice_size])
+        select_draw.fill(select_draws_h)
+        combine_draw.fill(combine_draws_h)
+        token.drain(token_h, wait=True)
+        record.drain(record_h, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [
+            *host,
+            of_select_draw.prod(),
+            of_combine_draw.prod(),
+            of_token.cons(),
+            of_record.cons(),
+            *of_logits,
+        ],
+    )
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+
+
+def test_device_draws_match_ranges():
+    vocab, cores, chunk, k_max, max_ranges = 512, 2, 256, 16, 2
+    slice_size = vocab // cores
+    rng = np.random.default_rng(99)
+    cases = [
+        [(10, 20)],  # entirely within column 0
+        [(slice_size - 5, slice_size + 15)],  # straddles columns 0 and 1
+        [(slice_size - 5, slice_size + 15), (3, 6)],  # straddling plus a second
+        [],  # no ranges: today's behavior
+    ]
+    logits_rows, select_draws, combine_draws, expected = [], [], [], []
+    for ranges in cases:
+        logits = rng.normal(0, 3, vocab).astype(bfloat16)
+        n53 = int(rng.integers(0, 1 << 53))
+        logits_rows.append(logits)
+        select_draws.append(
+            np.concatenate(
+                [
+                    sample.draw_row(1.0, k_max, n53),
+                    sample.range_words(ranges, max_ranges),
+                ]
+            )
+        )
+        combine_draws.append(sample.draw_row(1.0, k_max, n53))
+        expected.append(sample.sample_ref(logits, 1.0, k_max, n53, ranges=ranges))
+    positions = len(expected)
+    expected = np.array(expected, dtype=np.int32)
+    token = iron.full((positions,), -1, dtype=np.int32)
+    record = iron.full((positions,), -1, dtype=np.int32)
+    sample_positions_with_ranges(
+        iron.tensor(np.stack(logits_rows).reshape(-1), dtype=bfloat16),
+        iron.tensor(np.stack(select_draws).reshape(-1), dtype=np.int32),
+        iron.tensor(np.stack(combine_draws).reshape(-1), dtype=np.int32),
+        token,
+        record,
+        vocab=vocab,
+        cores=cores,
+        chunk=chunk,
+        k_max=k_max,
+        max_ranges=max_ranges,
+        positions=positions,
+    )
+    np.testing.assert_array_equal(token.numpy(), expected)
+    np.testing.assert_array_equal(record.numpy(), expected)
