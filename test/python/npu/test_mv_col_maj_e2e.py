@@ -22,7 +22,8 @@ adder is not IEEE, so no host model reproduces either kernel's bits.
 import aie.iron as iron
 import numpy as np
 import pytest
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.buffer import Buffer
 from ml_dtypes import bfloat16

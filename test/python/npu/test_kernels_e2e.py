@@ -527,6 +527,24 @@ def test_guard_poisons_the_core_tile():
     )
 
 
+def test_run_refuses_a_kernel_that_writes_past_its_tile():
+    tile = np.ndarray[(64,), np.dtype[np.int32]]
+    fn = iron.ExternalFunction(
+        "writes_past_its_tile",
+        source_string="""extern "C" {
+void writes_past_its_tile(int *in, int *out) {
+  for (int i = 0; i < 68; i++)
+    out[i] = in[i % 64];
+}
+}""",
+        arg_types=[tile, tile],
+        contract=kernels.KernelContract(roles=(In, Out), reference=lambda x: x),
+    )
+    x = np.arange(2 * 64, dtype=np.int32).reshape(2, 64) + 1
+    with pytest.raises(RuntimeError, match=r"changed 32 guard byte\(s\)"):
+        kd.KernelDesign(fn, calls=2, guard=True).run([x])
+
+
 def _adds_param(vector_loads=False):
     # The scalar loop reads w wherever it sits; aie::load_v assumes a
     # 64-byte aligned w and rounds a misaligned address down.
@@ -558,12 +576,7 @@ def _run_adds_param(vector_loads, offset):
     fn = _adds_param(vector_loads)
     x = np.arange(calls * 64, dtype=np.int32).reshape(calls, 64)
     w = np.arange(64, dtype=np.int32) * 1000 + 7
-    design = kd.KernelDesign(
-        fn,
-        calls=calls,
-        params=[w],
-        arg_byte_offsets=((1, offset),),
-    )
+    design = kd.KernelDesign(fn, calls=calls, arg_byte_offsets=((1, offset),))
     got = design.run([x, w])
     return got.reshape(calls, 64), x + w
 

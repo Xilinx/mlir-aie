@@ -44,10 +44,10 @@ import numpy as np
 import pytest
 from aie.iron import ExternalFunction
 from aie.iron.algorithms import kernel_design as kd
+from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
 from aie.utils.compile.readobj import linked
 from aie.utils.compile.remarks import current_kernel_sources
-from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
 

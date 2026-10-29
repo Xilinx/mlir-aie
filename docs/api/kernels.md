@@ -125,8 +125,9 @@ kernel needs no test harness. See
 [Kernel Library](../programming_guide/kernels_library.md#adding-a-kernel) for
 the add-a-kernel procedure and the test tiers built on it.
 
-Bind the target device before calling the kernel factory. Give the call count
-and guard setting once, on the builder:
+Bind the target device before calling the kernel factory, and give the call
+count and guard once, to the `KernelDesign`; every method sizes, builds and
+checks from them:
 
 ```python
 from aie.iron import kernels
@@ -135,19 +136,14 @@ from aie.iron.algorithms import KernelDesign
 kd = KernelDesign(kernels.relu(tile_size=1024), calls=4, guard=True)
 inputs = kd.sample_inputs()
 outputs = kd.run(inputs)
-assert kd.check(outputs, inputs)
+verdict = kd.check(outputs, inputs)
+assert verdict, verdict.detail
 ```
-
-`kd.design()` exposes the underlying JIT design, and `kd.as_mlir()` generates its
-MLIR. `kd.host_args()`, `kd.output_size()` and `kd.upload(inputs)` share the same
-configuration. `kd.cycles_per_call(inputs)` measures the declared trace intervals.
-The exported `design(factory, **kwargs)` remains a compatibility wrapper.
 
 ::: iron.algorithms.kernel_design
     options:
       show_root_heading: false
       members:
-        - design
         - KernelDesign
         - CallCycles
         - split_intervals

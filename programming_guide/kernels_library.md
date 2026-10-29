@@ -206,12 +206,12 @@ verdict = kd.check(outputs, inputs)
 assert verdict, verdict.detail
 ```
 
-`KernelDesign(..., guard=True)` also catches writes past an output. Each output
-tile gets 64 bytes of `0x55` after it, which the kernel never sees.
-`kd.run(inputs)` checks these guards and returns only the data. For manual
-execution, size the output with `kd.output_size()` and split it with
-`kd.strip_guard(out.numpy())`, which returns the data and the number of changed
-guard bytes. bfp outputs are not guarded.
+`guard=True` also catches writes past an output. Each output tile gets
+`GUARD_BYTES` (64) of `0x55` after it, which the kernel never sees, and
+`kd.run` raises when the kernel changed any of them. bfp outputs are not
+guarded. To run the design by hand, `kd.upload(inputs)` sizes the buffers and
+`kd.strip_guard(outputs)` returns the data and the number of changed guard
+bytes.
 
 Every design validates independent tile calls, including matrix kernels.
 `KernelDesign(kernels.mm(), calls=16)` repeats sixteen tile products, initializing

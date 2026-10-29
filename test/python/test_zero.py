@@ -65,7 +65,7 @@ def test_zero_harness_builds_without_input_fifos(npu2_device):
     args = design.host_args()
     assert len(args) == 1 and args[0].direction is Out
     assert args[0].n_elements == 192
-    mlir = str(design.design().as_mlir())
+    mlir = str(design.as_mlir())
     assert fn.name in mlir
     assert "func.call" in mlir
 

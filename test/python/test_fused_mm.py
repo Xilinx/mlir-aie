@@ -192,7 +192,7 @@ def test_fused_reference_and_generic_lowering(device, epilogue):
         rtol=2e-6,
     )
     design = kd.KernelDesign(fn, calls=2)
-    assert "fused_mm_tile" in str(design.design().as_mlir())
+    assert "fused_mm_tile" in str(design.as_mlir())
 
 
 @pytest.mark.parametrize(

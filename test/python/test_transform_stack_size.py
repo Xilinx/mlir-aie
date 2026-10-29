@@ -14,14 +14,15 @@ import sys
 
 import numpy as np
 import pytest
+from ml_dtypes import bfloat16
+
 from aie.iron import In, Out, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.algorithms._transform import transform, transform_parallel
-from aie.iron.device import NPU1Col1
 from aie.iron.kernel import ExternalFunction
+from aie.iron.device import NPU1Col1
 from aie.utils import config
 from aie.utils.hostruntime import set_current_device
-from ml_dtypes import bfloat16
 
 try:
     config.peano_cxx_path()
@@ -60,7 +61,7 @@ def test_transform_leaves_the_stack_to_aiecc(npu1_device):
 
 
 def test_kernel_design_leaves_the_stack_to_aiecc(npu1_device):
-    mlir = str(kd.KernelDesign(kernels.gelu(tile_size=1024)).design().as_mlir())
+    mlir = str(kd.KernelDesign(kernels.gelu(tile_size=1024)).as_mlir())
     assert "stack_size" not in mlir
 
 
@@ -112,7 +113,7 @@ extern "C" void table_add(const int32_t *in, int32_t *out) {{
 def test_kernel_design_budgets_the_kernels_static_data(npu2_device):
     # Two sets of tiles fit beside the stack (49 KB of 64), not beside the
     # table as well (69 KB): one set does (45 KB).
-    mlir = str(kd.KernelDesign(table_add()).design().as_mlir())
+    mlir = str(kd.KernelDesign(table_add()).as_mlir())
     depths = re.findall(r"aie\.objectfifo @out0\([^)]*?(\d+) : i32\)", mlir)
     assert depths == ["1"]
 
@@ -139,9 +140,6 @@ def test_kernel_design_reads_frames_through_the_design_cache(tmp_path, use_cache
 
 
 def test_kernel_design_keeps_an_explicit_stack(npu1_device):
-    mlir = str(
-        kd.KernelDesign(kernels.gelu(tile_size=1024), stack_bytes=4096)
-        .design()
-        .as_mlir()
-    )
+    design = kd.KernelDesign(kernels.gelu(tile_size=1024), stack_bytes=4096)
+    mlir = str(design.as_mlir())
     assert re.findall(r"stack_size = (\d+) : i32", mlir) == ["4096"]

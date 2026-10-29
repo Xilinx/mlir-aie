@@ -56,18 +56,10 @@ def _with_initializer(trace):
 
 
 def test_a_traced_initializer_is_one_more_interval_per_call():
-    assert (
-        kd.KernelDesign(
-            _with_initializer(Trace.whole_call()), calls=4
-        ).traced_intervals()
-        == 8
-    )
-    assert (
-        kd.KernelDesign(
-            _with_initializer(Trace.none("no markers")), calls=4
-        ).traced_intervals()
-        == 4
-    )
+    timed = kd.KernelDesign(_with_initializer(Trace.whole_call()), calls=4)
+    untimed = kd.KernelDesign(_with_initializer(Trace.none("no markers")), calls=4)
+    assert timed.traced_intervals() == 8
+    assert untimed.traced_intervals() == 4
 
 
 def test_the_library_mm_is_zeroed_then_timed_each_call(npu2_device):

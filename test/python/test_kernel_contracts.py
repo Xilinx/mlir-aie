@@ -293,7 +293,7 @@ def test_harness_lowers_a_design_to_mlir(case_id):
     stack = get_current_device().default_core_stack_bytes
     harness = kd.KernelDesign(fn, stack_bytes=stack, **opts)
     ins = harness.sample_inputs()
-    d = harness.design(params=fn.param_values(ins))
+    d = harness.design(fn.param_values(ins))
     ref = fn.expected(ins, scalars=opts.get("scalars", ()))
     mlir = d.as_mlir()
     assert "func.call" in str(mlir) or "aie.core" in str(mlir)
@@ -410,12 +410,11 @@ def test_out_last_rejects_incomplete_or_excess_calls(factory, calls):
     )
     fn = factory(**kwargs)
     opts = {} if calls is None else dict(calls=calls)
+    design = kd.KernelDesign(fn, **opts)
     message = r"out_last requires exactly 8 call\(s\)"
-    with pytest.raises(ValueError, match=message):
-        kd.design(factory, **kwargs, **opts)
-    for helper in (kd.output_size, kd.host_args):
+    for method in (design.design, design.output_size, design.host_args):
         with pytest.raises(ValueError, match=message):
-            helper(fn, **opts)
+            method()
 
 
 @pytest.mark.parametrize("factory", [kernels.conv2dk1_i8, kernels.conv2dk3])
@@ -431,38 +430,30 @@ def test_out_last_complete_schedule_drains_one_tile(factory, input_slice):
     fn = factory(**kwargs)
     calls = 64 // input_slice
     assert fn.contract.required_calls == calls
-    assert kd.output_size(fn, calls=calls) == 64
-    assert kd.host_args(fn, calls=calls)[-1].n_elements == 64
-    params = fn.param_values(kd.sample_inputs(fn, calls=calls))
     scalars = (
         (8, 64, 8, 12) if factory is kernels.conv2dk1_i8 else (8, 64, 8, 3, 3, 1, 12)
     )
-    stage = kd._stage(
+    design = kd.KernelDesign(
         fn,
-        calls,
-        scalars,
-        kd._encode_params(fn, params),
-        get_current_device().default_core_stack_bytes,
-    )
-    assert stage.iterations == calls
-    assert stage.outputs_span_iterations
-    design = kd.design(
-        factory,
-        **kwargs,
         calls=calls,
         scalars=scalars,
-        params=params,
         stack_bytes=get_current_device().default_core_stack_bytes,
     )
-    assert fn.name in str(design.as_mlir())
+    assert design.output_size() == 64
+    assert design.host_args()[-1].n_elements == 64
+    params = fn.param_values(design.sample_inputs())
+    stage = design._stage(design._encode_params(params))
+    assert stage.iterations == calls
+    assert stage.outputs_span_iterations
+    assert fn.name in str(design.design(params).as_mlir())
 
 
 @pytest.mark.parametrize("factory", [kernels.conv2dk1_i8, kernels.conv2dk3])
 def test_unsliced_convolution_keeps_independent_calls(factory):
     fn = factory(input_width=8, output_channels=8, bias=True)
     assert fn.contract.required_calls is None
-    assert kd.output_size(fn) == 64
-    assert kd.output_size(fn, calls=3) == 3 * 64
+    assert kd.KernelDesign(fn).output_size() == 64
+    assert kd.KernelDesign(fn, calls=3).output_size() == 3 * 64
 
 
 @pytest.mark.parametrize("required_calls", [None, 0, -1, 1.5, True])
@@ -747,12 +738,12 @@ def test_mixed_params_infer_scalar_and_tensor_abi():
     assert [a.direction for a in design.host_args()] == [In, Out, Out]
     assert len(design.host_layout(inputs)) == 1
     with pytest.raises(ValueError, match="expected 1 scalar"):
-        kd.KernelDesign(fn, params=fn.param_values(inputs)).as_mlir()
+        kd.KernelDesign(fn).design(fn.param_values(inputs)).as_mlir()
     with pytest.raises(ValueError, match="expected scalar parameter"):
-        kd.KernelDesign(
-            fn, params=fn.param_values(inputs), scalars=(np.ones(4),)
+        kd.KernelDesign(fn, scalars=(np.ones(4),)).design(
+            fn.param_values(inputs)
         ).as_mlir()
-    module = design.design(params=fn.param_values(inputs)).as_mlir()
+    module = design.design(fn.param_values(inputs)).as_mlir()
     assert "mixed_params" in str(module)
     assert "param0" in str(module) and "param1" in str(module)
 
@@ -806,9 +797,7 @@ def test_parameter_only_kernel_can_have_multiple_outputs():
     assert fn.judge(actuals, refs, calls=3)
     actuals[1][-1, -1] += 1
     assert not fn.judge(actuals, refs, calls=3)
-    assert "param_outputs" in str(
-        design.design(params=fn.param_values(inputs)).as_mlir()
-    )
+    assert "param_outputs" in str(design.design(fn.param_values(inputs)).as_mlir())
 
 
 def test_fifo_plan_groups_hashable_numpy_abi_types():
@@ -822,7 +811,7 @@ def test_fifo_plan_groups_hashable_numpy_abi_types():
         "typed_groups", source_string="", arg_types=[i16, i32, same_i16, i16]
     )
     fn.contract = KernelContract(roles=(In, In, In, Out))
-    assert kd.KernelDesign(fn)._fifo_plan == ([[0, 2], [1]], [0, 1, 2], [])
+    assert kd.KernelDesign(fn)._fifo_plan == ([[0, 2], [1]], [0, 1, 2])
 
 
 def test_per_tile_matrix_references_agree_with_the_whole_problem_ones():
@@ -874,12 +863,12 @@ def test_designs_for_different_kernels_do_not_share_a_cache_key():
             kd.KernelDesign(kernels.reduce_max(), calls=4).design(),
             kd.KernelDesign(kernels.reduce_max(dtype=bfloat16), calls=4).design(),
             kd.KernelDesign(kernels.add(), calls=4).design(),
-            kd.KernelDesign(
-                kernels.scale(dtype=np.int32), calls=4, params=[np.array([3])]
-            ).design(),
-            kd.KernelDesign(
-                kernels.scale(dtype=np.int32), calls=4, params=[np.array([5])]
-            ).design(),
+            kd.KernelDesign(kernels.scale(dtype=np.int32), calls=4).design(
+                [np.array([3])]
+            ),
+            kd.KernelDesign(kernels.scale(dtype=np.int32), calls=4).design(
+                [np.array([5])]
+            ),
         )
     )
     assert add != mul
@@ -889,6 +878,39 @@ def test_designs_for_different_kernels_do_not_share_a_cache_key():
     assert p3 != p5
     with pytest.raises(ValueError, match=r"expected 1 param value\(s\)"):
         kd.KernelDesign(kernels.scale(dtype=np.int32), calls=4).design()
+
+
+def test_a_specialized_design_builds_what_it_was_specialized_to():
+    one = kd.KernelDesign(kernels.add(), calls=1).design()
+    four = kd.KernelDesign(kernels.add(), calls=4).as_mlir()
+    assert str(one.specialize(calls=4).as_mlir()) == str(four)
+    with pytest.raises(ValueError, match="plan does not match"):
+        one.specialize(plan=()).as_mlir()
+
+
+def test_a_contract_alone_changes_the_cache_key():
+    tile = np.ndarray[(64,), np.dtype[np.int32]]
+
+    def recipe_hash(**contract):
+        fn = ExternalFunction(
+            "kd_one_source",
+            source_string='extern "C" void kd_one_source() {}',
+            arg_types=[tile, np.int32, tile],
+            contract=KernelContract(roles=(In, Param, Out), **contract),
+        )
+        design = kd.KernelDesign(fn, calls=2, stack_bytes=1024).design()
+        return design.compilable.recipe_hash
+
+    zero = recipe_hash(parameter_bindings=((1, 0),))
+    assert zero == recipe_hash(parameter_bindings=((1, 0),))
+    assert zero != recipe_hash(parameter_bindings=((1, 7),))
+    assert zero != recipe_hash(parameter_bindings=((1, 0),), out_offset=(1, 32))
+
+
+def test_upload_refuses_inputs_sampled_for_another_call_count():
+    design = kd.KernelDesign(kernels.add(), calls=2)
+    with pytest.raises(ValueError, match="holds 2048 bfloat16; 2 call"):
+        design.upload(kd.KernelDesign(kernels.add()).sample_inputs())
 
 
 def test_packed_inputs_and_baked_params_leave_the_host_side_small():

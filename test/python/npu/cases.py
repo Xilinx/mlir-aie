@@ -117,11 +117,13 @@ class Case:
             return getattr(kernels, self.factory)(**self.kwargs)
 
     def kernel_design(self, *, guard=False):
-        """Bind this case's harness configuration once."""
-        opts = dict(calls=self.calls, scalars=self.scalars)
-        if self.arg_byte_offsets:
-            opts["arg_byte_offsets"] = self.arg_byte_offsets
-        return kd.KernelDesign(self.fn(), guard=guard, **opts)
+        return kd.KernelDesign(
+            self.fn(),
+            calls=self.calls,
+            scalars=self.scalars,
+            guard=guard,
+            arg_byte_offsets=self.arg_byte_offsets,
+        )
 
     # Factory kwargs that the dims / dtype segments of the name already encode.
     # skip_dtype is absent on purpose: it types neither the first input nor
@@ -243,7 +245,7 @@ def inputs_for(case: Case, data_case: str, rng, *, design=None) -> list[np.ndarr
     fn = design.fn
     c = fn.contract
     inputs = design.sample_inputs(rng)
-    tensor_pos = design._tensor_positions[0]
+    tensor_pos = design._tensor_positions
     if data_case != "random":
         if c.sample is not None:
             raise ValueError(
