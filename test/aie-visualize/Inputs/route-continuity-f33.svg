@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 80">
+  <g class="graph">
+    <g id="node1" class="node"><title>source</title><rect fill="white" x="10" y="25" width="20" height="20"/></g>
+    <g id="node2" class="node"><title>target</title><rect fill="white" x="121" y="25" width="20" height="20"/></g>
+    <g id="edge_f33" class="edge flow src-33 fate-target">
+      <title>source-&gt;target</title>
+      <path fill="none" d="M30,35 C45,35 50,35 55,35 M86,35 C100,35 110,35 121,35"/>
+    </g>
+  </g>
+</svg>

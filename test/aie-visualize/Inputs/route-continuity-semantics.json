@@ -1,0 +1,6 @@
+{
+  "edges": [
+    {"id": "edge_in", "source": "source", "target": "relay"},
+    {"id": "edge_out", "source": "relay", "target": "target"}
+  ]
+}

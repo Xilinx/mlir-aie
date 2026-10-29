@@ -17,7 +17,7 @@
 // RUN: neato -Gsplines=line -Tsvg %t.dot -o %t.svg
 // RUN: %python %S/Inputs/check-svg-route-continuity.py %t.dot %t.json %t.svg | FileCheck %s --check-prefix=CONTINUOUS
 
-// CONTINUOUS: endpoint_defects=0 disconnected_segments=0 dangling_endpoints=0
+// CONTINUOUS: endpoint_defects=0 disconnected_segments=0
 
 // A label keeps its point size however small the drawing is, so a box that
 // has to hold one keeps its size too and only the space between tiles

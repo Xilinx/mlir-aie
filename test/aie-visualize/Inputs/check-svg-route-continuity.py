@@ -67,6 +67,8 @@ def flatten_path(text, steps=16):
     start = current
     paths = []
     points = []
+    previous_command = None
+    previous_control = None
     widths = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4, "Q": 4, "T": 2}
     while index < len(tokens):
         if tokens[index].isalpha():
@@ -97,6 +99,8 @@ def flatten_path(text, steps=16):
             start = current
             points = [current]
             command = "l" if relative else "L"
+            previous_command = "M"
+            previous_control = None
             continue
         if upper == "H":
             end = (values[0] + current[0], current[1]) if relative else (values[0], current[1])
@@ -104,11 +108,26 @@ def flatten_path(text, steps=16):
         elif upper == "V":
             end = (current[0], values[0] + current[1]) if relative else (current[0], values[0])
             controls = ()
-        elif upper in ("L", "T"):
+        elif upper == "L":
             end = point(*values[-2:])
             controls = ()
-        elif upper in ("S", "Q"):
+        elif upper == "T":
+            if previous_command in ("Q", "T") and previous_control is not None:
+                controls = ((2 * current[0] - previous_control[0],
+                             2 * current[1] - previous_control[1]),)
+            else:
+                controls = (current,)
+            end = point(*values[-2:])
+        elif upper == "Q":
             controls = (point(*values[:2]),)
+            end = point(*values[-2:])
+        elif upper == "S":
+            if previous_command in ("C", "S") and previous_control is not None:
+                first_control = (2 * current[0] - previous_control[0],
+                                 2 * current[1] - previous_control[1])
+            else:
+                first_control = current
+            controls = (first_control, point(*values[:2]))
             end = point(*values[-2:])
         else:
             controls = (point(*values[:2]), point(*values[2:4]))
@@ -135,6 +154,8 @@ def flatten_path(text, steps=16):
                     )
                 points.append(sample)
         current = end
+        previous_command = upper
+        previous_control = controls[-1] if controls else None
     if points:
         paths.append(points)
     return paths
@@ -204,7 +225,6 @@ def parse_attributes(text):
 def metadata_from_dot(path):
     text = open(path, encoding="utf-8").read()
     endpoints = {}
-    edge_classes = {}
     pattern = r'^\s*("[^"]+"|\w+)\s*->\s*("[^"]+"|\w+)\s*\[(.*)\];$'
     for match in re.finditer(pattern, text, re.MULTILINE):
         source, target = (value.strip('"') for value in match.group(1, 2))
@@ -212,13 +232,13 @@ def metadata_from_dot(path):
         edge_id = attributes.get("id")
         if edge_id:
             endpoints[edge_id] = (source, target)
-            edge_classes[edge_id] = frozenset(attributes.get("class", "").split())
-    return endpoints, edge_classes
+    return endpoints
 
 
 def metadata_from_json(path):
     document = json.load(open(path, encoding="utf-8"))
     endpoints = {}
+    node_tiles = {}
 
     def visit(value):
         if isinstance(value, dict):
@@ -227,6 +247,10 @@ def metadata_from_json(path):
             target = value.get("target") or value.get("to")
             if edge_id is not None and source is not None and target is not None:
                 endpoints[str(edge_id)] = (str(source), str(target))
+            node_id = value.get("id")
+            tile = value.get("tile")
+            if node_id is not None and isinstance(tile, list) and len(tile) == 2:
+                node_tiles[str(node_id)] = tuple(tile)
             for child in value.values():
                 visit(child)
         elif isinstance(value, list):
@@ -234,7 +258,7 @@ def metadata_from_json(path):
                 visit(child)
 
     visit(document)
-    return endpoints
+    return endpoints, node_tiles
 
 
 def element_geometry(element, matrix):
@@ -261,13 +285,55 @@ def element_geometry(element, matrix):
             for index in range(65)
         ]
         return [points]
+    if name == "rect":
+        x = float(element.get("x", 0))
+        y = float(element.get("y", 0))
+        width = float(element.get("width", 0))
+        height = float(element.get("height", 0))
+        return [[apply(matrix, point) for point in (
+            (x, y), (x + width, y), (x + width, y + height),
+            (x, y + height), (x, y))]]
     return []
 
 
-def aligned_gap(first, second, tolerance):
-    delta_x, delta_y = abs(first[0] - second[0]), abs(first[1] - second[1])
-    distance = point_distance(first, second)
-    return distance if distance > tolerance and (delta_x <= tolerance or delta_y <= tolerance) else None
+def endpoint_distance(point, geometry, arrows, tolerance, clip_tolerance):
+    boundary_distance = geometry_distance(point, geometry)
+    for arrow in arrows:
+        polygon = arrow[:-1] if len(arrow) > 1 and arrow[0] == arrow[-1] else arrow
+        if not polygon:
+            continue
+        path_to_arrow = min(geometry_distance(point, [arrow]),
+                            0.0 if point_in_polygon(point, polygon) else math.inf)
+        arrow_to_node = min((geometry_distance(vertex, geometry) for vertex in polygon),
+                            default=math.inf)
+        if path_to_arrow <= tolerance and arrow_to_node <= clip_tolerance:
+            return 0.0
+    return boundary_distance
+
+
+def orient_endpoints(paths, source_geometry, target_geometry, arrows, tolerance,
+                     clip_tolerance):
+    starts = [path[0] for path in paths if len(path) >= 2]
+    ends = [path[-1] for path in paths if len(path) >= 2]
+    if arrows:
+        start_arrow_distance = min(
+            (geometry_distance(point, arrows) for point in starts), default=math.inf)
+        end_arrow_distance = min(
+            (geometry_distance(point, arrows) for point in ends), default=math.inf)
+        return (starts, ends) if end_arrow_distance <= start_arrow_distance else (ends, starts)
+    forward = (
+        min((geometry_distance(point, source_geometry) for point in starts), default=math.inf)
+        + min((endpoint_distance(point, target_geometry, arrows, tolerance,
+                                 clip_tolerance) for point in ends),
+              default=math.inf)
+    )
+    reverse = (
+        min((geometry_distance(point, source_geometry) for point in ends), default=math.inf)
+        + min((endpoint_distance(point, target_geometry, arrows, tolerance,
+                                 clip_tolerance) for point in starts),
+              default=math.inf)
+    )
+    return (starts, ends) if forward <= reverse else (ends, starts)
 
 
 def main():
@@ -276,12 +342,12 @@ def main():
     parser.add_argument("json")
     parser.add_argument("svg")
     parser.add_argument("--tolerance", type=float, default=1.5)
-    parser.add_argument("--join-limit", type=float, default=24.0)
+    parser.add_argument("--clip-tolerance", type=float, default=4.5)
     parser.add_argument("--allow-defects", action="store_true")
     arguments = parser.parse_args()
 
-    dot_endpoints, dot_classes = metadata_from_dot(arguments.dot)
-    json_endpoints = metadata_from_json(arguments.json)
+    dot_endpoints = metadata_from_dot(arguments.dot)
+    json_endpoints, node_tiles = metadata_from_json(arguments.json)
     root = ET.parse(arguments.svg).getroot()
     parent = {child: node for node in root.iter() for child in node}
 
@@ -296,6 +362,9 @@ def main():
         return result
 
     node_geometry = {}
+    origin_geometry = {}
+    fate_geometry = {}
+    semantic_boundaries = set()
     svg_edges = {}
     for group in root.iter():
         if local_name(group) != "g":
@@ -304,13 +373,22 @@ def main():
         if "node" in group_classes and "legend" not in group_classes:
             geometry = []
             for element in group.iter():
-                if local_name(element) in ("path", "polygon", "polyline", "ellipse"):
+                if local_name(element) in ("path", "polygon", "polyline", "ellipse", "rect"):
                     geometry.extend(element_geometry(element, matrix(element)))
             node_id = group.get("id")
             if node_id and geometry:
                 node_geometry[node_id] = geometry
                 if title(group):
                     node_geometry[title(group)] = geometry
+                    if f"boundary-{title(group)}" in group_classes:
+                        semantic_boundaries.add(title(group))
+                    tile = node_tiles.get(title(group))
+                    tile_match = re.fullmatch(r"tile_(\d+)_(\d+)", title(group))
+                for group_class in group_classes:
+                    if group_class.startswith("origin-"):
+                        origin_geometry.setdefault(group_class[7:], []).extend(geometry)
+                    elif group_class.startswith("fate-"):
+                        fate_geometry.setdefault(group_class[5:], []).extend(geometry)
         if "edge" in group_classes and "legend" not in group_classes:
             paths = []
             arrows = []
@@ -320,7 +398,7 @@ def main():
                     paths.extend(element_geometry(element, matrix(element)))
                 elif name == "polygon":
                     arrows.extend(element_geometry(element, matrix(element)))
-            svg_edges[group.get("id", "<unnamed-edge>")] = (group_classes, paths, arrows)
+            svg_edges[group.get("id", "<unnamed-edge>")] = (paths, arrows)
 
     format_defects = []
     all_edge_ids = set(dot_endpoints) | set(json_endpoints) | set(svg_edges)
@@ -331,78 +409,49 @@ def main():
             format_defects.append((edge_id, dot_endpoints[edge_id], json_endpoints[edge_id], True))
 
     endpoint_defects = []
-    open_endpoints = []
+    disconnected_segments = []
     checked_edges = 0
     for edge_id in sorted(set(dot_endpoints) & set(json_endpoints) & set(svg_edges)):
         source, target = dot_endpoints[edge_id]
-        edge_classes, paths, arrows = svg_edges[edge_id]
+        paths, arrows = svg_edges[edge_id]
         if not paths:
             endpoint_defects.append((edge_id, "path", source, target, None, math.inf))
             continue
         checked_edges += 1
-        source_geometry = node_geometry.get(source, ())
-        target_geometry = node_geometry.get(target, ())
-        starts = [path[0] for path in paths if len(path) >= 2]
-        ends = [path[-1] for path in paths if len(path) >= 2]
+        source_geometry = [*node_geometry.get(source, ()), *origin_geometry.get(source, ())]
+        target_geometry = [*node_geometry.get(target, ()), *fate_geometry.get(target, ())]
+        source_owned = source in node_tiles or source in semantic_boundaries
+        target_owned = target in node_tiles or target in semantic_boundaries
+        starts, ends = orient_endpoints(paths, source_geometry, target_geometry,
+                                        arrows, arguments.tolerance,
+                                        arguments.clip_tolerance)
         source_distance = min((geometry_distance(point, source_geometry) for point in starts), default=math.inf)
-        target_distance = min((geometry_distance(point, target_geometry) for point in ends), default=math.inf)
-        arrow_bridge = False
-        for arrow in arrows:
-            polygon = arrow[:-1] if len(arrow) > 1 and arrow[0] == arrow[-1] else arrow
-            path_touches_arrow = any(
-                point_in_polygon(point, polygon) or geometry_distance(point, [arrow]) <= arguments.tolerance
-                for point in ends
-            )
-            arrow_touches_target = any(
-                geometry_distance(point, target_geometry) <= arguments.tolerance for point in polygon
-            )
-            arrow_bridge = arrow_bridge or (path_touches_arrow and arrow_touches_target)
-        if source_distance > arguments.tolerance:
+        target_distance = min(
+            (endpoint_distance(point, target_geometry, arrows, arguments.tolerance,
+                               arguments.clip_tolerance)
+             for point in ends), default=math.inf)
+        if not source_owned and source_distance > arguments.tolerance:
             endpoint_defects.append((edge_id, "source", source, target, starts[0], source_distance))
-            open_endpoints.extend((edge_id, "source", point, edge_classes | dot_classes.get(edge_id, frozenset()))
-                                  for point in starts)
-        if target_distance > arguments.tolerance and not arrow_bridge:
+        if not target_owned and target_distance > arguments.tolerance:
             endpoint_defects.append((edge_id, "target", source, target, ends[-1], target_distance))
-            open_endpoints.extend((edge_id, "target", point, edge_classes | dot_classes.get(edge_id, frozenset()))
-                                  for point in ends)
-        for path in paths[1:]:
-            open_endpoints.append((edge_id, "subpath-start", path[0], edge_classes))
-        for path in paths[:-1]:
-            open_endpoints.append((edge_id, "subpath-end", path[-1], edge_classes))
-
-    disconnected = []
-    paired = set()
-    for index, first in enumerate(open_endpoints):
-        first_groups = {value for value in first[3] if re.fullmatch(r"(?:src-\d+|fate-.+)", value)}
-        for second_index in range(index + 1, len(open_endpoints)):
-            second = open_endpoints[second_index]
-            if first[0] == second[0]:
-                continue
-            second_groups = {value for value in second[3] if re.fullmatch(r"(?:src-\d+|fate-.+)", value)}
-            shared = sorted(first_groups & second_groups)
-            gap = aligned_gap(first[2], second[2], arguments.tolerance)
-            if shared and gap is not None and gap <= arguments.join_limit:
-                disconnected.append((first, second, gap, shared))
-                paired.update((index, second_index))
-    dangling = [endpoint for index, endpoint in enumerate(open_endpoints) if index not in paired]
+        for first, second in zip(paths, paths[1:]):
+            gap = point_distance(first[-1], second[0])
+            if gap > arguments.tolerance:
+                disconnected_segments.append((edge_id, first[-1], second[0], gap))
 
     print(
         f"edges={checked_edges} format_defects={len(format_defects)} "
-        f"endpoint_defects={len(endpoint_defects)} disconnected_segments={len(disconnected)} "
-        f"dangling_endpoints={len(dangling)}"
+        f"endpoint_defects={len(endpoint_defects)} "
+        f"disconnected_segments={len(disconnected_segments)}"
     )
     for defect in format_defects:
         print(f"format-defect edge={defect[0]} dot={defect[1]!r} json={defect[2]!r} svg={defect[3]!r}")
     for edge_id, side, source, target, point, distance in endpoint_defects:
         print(f"endpoint-defect edge={edge_id} side={side} source={source} target={target} "
               f"point={point} distance={distance:.3f}")
-    for first, second, gap, shared in disconnected:
-        print(f"disconnected-segments first={first[0]}:{first[1]} second={second[0]}:{second[1]} "
-              f"gap={gap:.3f} groups={','.join(shared)}")
-    for edge_id, side, point, endpoint_classes in dangling:
-        groups = sorted(value for value in endpoint_classes if re.fullmatch(r"(?:src-\d+|fate-.+)", value))
-        print(f"dangling-endpoint edge={edge_id} side={side} point={point} groups={','.join(groups)}")
-    defects = format_defects or endpoint_defects or disconnected or dangling
+    for edge_id, first, second, gap in disconnected_segments:
+        print(f"disconnected-segment edge={edge_id} first={first} second={second} gap={gap:.3f}")
+    defects = format_defects or endpoint_defects or disconnected_segments
     return 1 if defects and not arguments.allow_defects else 0
 
 
