@@ -885,11 +885,12 @@ SequentialPlacer::buildChannelRequirements(
 
   // A link's tile is the one producing its dest fifos (each fifo has one
   // producer). The link loop below credits it with (#sources input + #dests
-  // output), so the per-fifo loop skips that tile's side of each linked fifo,
-  // and only that tile's: a linked source fifo can have other consumers, such
-  // as a shim that also drains it, and those still need their own channels.
+  // output), so the per-fifo loop skips the side of each linked fifo on a tile
+  // of a link reading it, and only those: a linked source fifo can have other
+  // consumers, such as a shim that also drains it, and those still need their
+  // own channels.
   llvm::DenseMap<Operation *, Operation *> linkTileOf;
-  llvm::StringMap<Operation *> linkTileOfSource;
+  llvm::StringMap<SmallVector<Operation *>> linkTilesOfSource;
   llvm::DenseSet<llvm::StringRef> linkedAsDest;
   for (auto linkOp : objectFifoLinks) {
     Operation *linkTileOp = nullptr;
@@ -901,19 +902,22 @@ SequentialPlacer::buildChannelRequirements(
           linkTileOp = it->second.getProducerTile().getDefiningOp();
       }
     linkTileOf[linkOp.getOperation()] = linkTileOp;
+    if (!linkTileOp)
+      continue;
     for (auto srcFifoAttr : linkOp.getFifoIns())
       if (auto sym = dyn_cast<FlatSymbolRefAttr>(srcFifoAttr))
-        linkTileOfSource[sym.getValue()] = linkTileOp;
+        linkTilesOfSource[sym.getValue()].push_back(linkTileOp);
   }
 
   chainedLinkTiles.clear();
   for (auto ofOp : objectFifos) {
-    Operation *into = linkTileOfSource.lookup(ofOp.getSymName());
-    if (!into || !linkedAsDest.contains(ofOp.getSymName()))
+    if (!linkedAsDest.contains(ofOp.getSymName()))
       continue;
     Operation *from = ofOp.getProducerTile().getDefiningOp();
-    chainedLinkTiles[from].push_back(into);
-    chainedLinkTiles[into].push_back(from);
+    for (Operation *into : linkTilesOfSource.lookup(ofOp.getSymName())) {
+      chainedLinkTiles[from].push_back(into);
+      chainedLinkTiles[into].push_back(from);
+    }
   }
 
   // Count channels for every ObjectFifo, omitting only the link-tile side of
@@ -921,7 +925,8 @@ SequentialPlacer::buildChannelRequirements(
   // produces a linked source fifo consumes an MM2S channel; a core that
   // consumes a linked dest fifo consumes an S2MM channel.
   for (auto ofOp : objectFifos) {
-    Operation *linkConsumer = linkTileOfSource.lookup(ofOp.getSymName());
+    SmallVector<Operation *> linkConsumers =
+        linkTilesOfSource.lookup(ofOp.getSymName());
     bool skipProducerSide = linkedAsDest.count(ofOp.getSymName());
 
     Value producerTile = ofOp.getProducerTile();
@@ -944,9 +949,9 @@ SequentialPlacer::buildChannelRequirements(
           ofOp.getConsumerTiles().size() == 1)
         continue;
 
-      // This consumer needs a DMA channel (unless it's the link tile, which
+      // This consumer needs a DMA channel (unless it's a link's tile, which
       // the link loop credits separately).
-      if (consumerOp && consumerOp != linkConsumer)
+      if (consumerOp && !llvm::is_contained(linkConsumers, consumerOp))
         channelRequirements[consumerOp].first++; // input++
 
       producerNeedsDMA = true;
