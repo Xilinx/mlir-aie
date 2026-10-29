@@ -207,7 +207,7 @@ struct LaneChoice {
   SmallVector<LaneRun> runs;
   unsigned fixedSeparationDefects = 0;
   unsigned obstacleHits = 0;
-  std::set<std::array<unsigned, 4>> crossingPairs;
+  std::set<std::array<unsigned, 2>> crossingPairs;
 };
 
 struct LaneScore {
@@ -1271,7 +1271,7 @@ AvoidanceArrowRenderer::solveLanes(ArrayRef<ArrowRequest> requests,
   };
   auto crossingPair =
       [&](const LaneRun &first,
-          const LaneRun &second) -> std::optional<std::array<unsigned, 4>> {
+          const LaneRun &second) -> std::optional<std::array<unsigned, 2>> {
     if (exemptPair(first.route, second.route) ||
         first.horizontal == second.horizontal)
       return std::nullopt;
@@ -1281,12 +1281,11 @@ AvoidanceArrowRenderer::solveLanes(ArrayRef<ArrowRequest> requests,
         vertical.cross < horizontal.high - kEpsilon &&
         vertical.low + kEpsilon < horizontal.cross &&
         horizontal.cross < vertical.high - kEpsilon)
-      return std::min(
-          std::array{first.route, first.segment, second.route, second.segment},
-          std::array{second.route, second.segment, first.route, first.segment});
+      return std::array{std::min(first.route, second.route),
+                        std::max(first.route, second.route)};
     return std::nullopt;
   };
-  std::set<std::array<unsigned, 4>> baselineCrossingPairs;
+  std::set<std::array<unsigned, 2>> baselineCrossingPairs;
   for (unsigned first = 0; first < baseRuns.size(); ++first)
     for (unsigned second = first + 1; second < baseRuns.size(); ++second)
       if (auto crossing = crossingPair(baseRuns[first], baseRuns[second]))
@@ -1305,7 +1304,7 @@ AvoidanceArrowRenderer::solveLanes(ArrayRef<ArrowRequest> requests,
   auto scoreRuns = [&](ArrayRef<LaneRun> runs, double addedLength) {
     LaneScore score;
     score.addedLength = addedLength;
-    std::set<std::array<unsigned, 4>> crossingPairs;
+    std::set<std::array<unsigned, 2>> crossingPairs;
     for (unsigned first = 0; first < runs.size(); ++first) {
       for (unsigned second = first + 1; second < runs.size(); ++second) {
         score.separationDefects += separationDefect(runs[first], runs[second]);
@@ -1518,16 +1517,16 @@ AvoidanceArrowRenderer::solveLanes(ArrayRef<ArrowRequest> requests,
     bool haveBest = false;
     bool foundImprovement = false;
 
-    std::function<void(unsigned, LaneScore, std::set<std::array<unsigned, 4>>)>
+    std::function<void(unsigned, LaneScore, std::set<std::array<unsigned, 2>>)>
         visit = [&](unsigned position, LaneScore partial,
-                    std::set<std::array<unsigned, 4>> crossingPairs) {
+                    std::set<std::array<unsigned, 2>> crossingPairs) {
           if (result.searchCapped)
             return;
+          if (++result.examinedAssignments > kLaneSearchCap) {
+            result.searchCapped = true;
+            return;
+          }
           if (position == order.size()) {
-            if (++result.examinedAssignments > kLaneSearchCap) {
-              result.searchCapped = true;
-              return;
-            }
             partial.crossings = crossingPairs.size();
             if (!haveBest || partial < bestScore) {
               bestScore = partial;
