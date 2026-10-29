@@ -969,6 +969,42 @@ def test_merge_run_issues_chained_steps_in_one_group():
     ]
 
 
+def syncing_step(name):
+    """A core reading its own parameter, and a step that syncs and drains it."""
+    count = ScratchpadParameter(f"count_{name}", np.int32)
+    of_out = ObjectFifo(Line, name=f"out_{name}")
+
+    def core(out, count):
+        elem = out.acquire(1)
+        elem[0] = count.read()
+        out.release(1)
+
+    def sequence(c, out):
+        sync_parameters()
+        out.drain(c, wait=True)
+
+    worker = Worker(core, [of_out.prod(), count], while_true=False)
+    return worker, Runtime(sequence, [Line, of_out.cons()])
+
+
+def test_merged_steps_sync_their_parameters_once():
+    (worker_a, step_a), (worker_b, step_b) = syncing_step("a"), syncing_step("b")
+    merged = Runtime.merge([step_a, step_b])
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker_a, worker_b], runtimes=[merged]
+    )
+    module = Program.compose([config], entry=merged).resolve_program()
+    PassManager.parse(
+        "builtin.module(aie-resource-stages,aie-lower-scratchpad-parameters)",
+        module.context,
+    ).run(module.operation)
+    text = str(module)
+    sequence = text[text.index("aie.runtime_sequence") :]
+    assert sequence.count("aiex.npu.create_scratchpad") == 1
+    # One release of each core's sync lock.
+    assert sequence.count("aiex.set_lock") == 2
+
+
 def step_runtimes(n, out_of_cons):
     """``n`` Runtimes, each filling ``into`` and draining ``out_of``."""
     of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")

@@ -88,6 +88,7 @@ class ActiveSequence:
         self._open_task_groups: list[TaskGroup] = []
         self._used_default = False
         self._used_explicit = False
+        self.synced_parameters = False
 
     @property
     def runtime(self) -> "Runtime":
@@ -776,7 +777,12 @@ def sync_parameters() -> None:
     """Emit ``aiex.sync_scratchpad_parameters_from_host`` in the sequence body.
 
     Call after all scratchpad parameters have been written on the host side and
-    before starting workers that read them.
+    before starting workers that read them. A sequence syncs once: the sync
+    stages every parameter of the device and releases every core waiting on
+    one, so a later call in the same sequence (a merged step's) emits nothing.
     """
-    active_sequence()  # ensure we're inside a sequence body
+    seq = active_sequence()
+    if seq.synced_parameters:
+        return
+    seq.synced_parameters = True
     _SyncParametersTask().resolve()
