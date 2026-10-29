@@ -26,7 +26,8 @@ def main() -> None:
         root = pathlib.Path(directory)
         (root / "index.html").write_text(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), encoding="utf-8")
         flows = "".join(
-            f'<g id="flow-{index}" class="edge flow src-{index} fate-destination">'
+            f'<g id="flow-{index}" class="edge flow authored-{index} src-{index} fate-destination" '
+            f'opacity="{0.8 - index * 0.1}">'
             f'<path d="M 190 {100 + index * 18} L 700 {100 + index * 18}" '
             f'stroke="{color}" stroke-width="{width}"/></g>'
             for index, (color, width) in enumerate((("#b2182b", 4), ("#2166ac", 3), ("#1b7837", 2), ("#762a83", 3)))
@@ -61,7 +62,7 @@ def main() -> None:
 
         handler = functools.partial(QuietHandler, directory=directory)
         with socketserver.TCPServer(("127.0.0.1", 0), handler) as server:
-            thread = threading.Thread(target=server.serve_forever)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
                 with sync_playwright() as playwright:
@@ -72,6 +73,17 @@ def main() -> None:
                     routes = page.locator("#viewport svg g.flow")
                     paths = page.locator("#viewport svg g.flow path")
                     original_paths = paths.evaluate_all("elements => elements.map(element => element.getAttribute('d'))")
+                    original_classes = routes.evaluate_all("elements => elements.map(element => element.getAttribute('class'))")
+                    original_opacities = routes.evaluate_all("elements => elements.map(element => element.getAttribute('opacity'))")
+
+                    def assert_authored_opacity() -> None:
+                        rendered = routes.evaluate_all(
+                            "elements => elements.map(element => getComputedStyle(element).opacity)"
+                        )
+                        assert all(
+                            abs(float(value) - float(authored)) < 1e-6
+                            for value, authored in zip(rendered, original_opacities)
+                        ), f"rendered opacity {rendered}, authored opacity {original_opacities}"
                     assert routes.count() == 4
                     assert all(
                         float(opacity) == 0.12 for opacity in routes.evaluate_all("elements => elements.map(element => getComputedStyle(element).opacity)")
@@ -83,7 +95,11 @@ def main() -> None:
                     checkbox.focus()
                     page.keyboard.press("Space")
                     assert checkbox.is_checked()
-                    assert all(float(opacity) == 1 for opacity in routes.evaluate_all("elements => elements.map(element => getComputedStyle(element).opacity)"))
+                    assert_authored_opacity()
+                    assert routes.evaluate_all("elements => elements.map(element => element.getAttribute('class'))") == original_classes
+                    assert routes.evaluate_all("elements => elements.map(element => element.getAttribute('opacity'))") == original_opacities
+                    if screenshot_directory:
+                        page.screenshot(path=screenshot_directory / "focus-show-all.png")
                     page.keyboard.press("Space")
                     assert not checkbox.is_checked()
 
@@ -93,7 +109,7 @@ def main() -> None:
                     page.locator(".flow-row").first.click()
                     assert page.locator(".flow-row.selected").count() == 1
                     assert page.locator("#viewport svg.highlighting").count() == 1
-                    assert all(float(opacity) == 1 for opacity in routes.evaluate_all("elements => elements.map(element => getComputedStyle(element).opacity)"))
+                    assert_authored_opacity()
                     assert paths.evaluate_all("elements => elements.map(element => getComputedStyle(element).stroke)") == [
                         "rgb(178, 24, 43)",
                         "rgb(33, 102, 172)",
@@ -108,11 +124,37 @@ def main() -> None:
                     assert page.locator(".flow-row.selected").count() == 0
                     assert page.locator("#viewport svg.route-focus").count() == 1
                     assert not checkbox.is_checked()
+                    assert page.get_by_role("region", name="Source code").is_visible()
                     if screenshot_directory:
                         page.screenshot(path=screenshot_directory / "focus-reset.png")
                         page.locator(".flow-row").first.click()
                         page.locator("#viewport svg").dispatch_event("wheel", {"deltaY": -300, "clientX": 700, "clientY": 300})
                         page.screenshot(path=screenshot_directory / "focus-selected.png")
+
+                    page.locator("#reset").click()
+                    page.emulate_media(media="print")
+                    assert all(float(opacity) == 0.12 for opacity in routes.evaluate_all("elements => elements.map(element => getComputedStyle(element).opacity)"))
+                    page.emulate_media(media="screen")
+                    page.set_viewport_size({"width": 390, "height": 844})
+                    assert page.get_by_role("checkbox", name="Show all routes", exact=True).is_visible()
+                    page.get_by_role("checkbox", name="Show all routes", exact=True).check()
+                    assert_authored_opacity()
+                    assert page.get_by_role("region", name="Source code").is_visible()
+                    if screenshot_directory:
+                        page.screenshot(path=screenshot_directory / "focus-mobile-show-all.png")
+
+                    physical_svg = (
+                        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">'
+                        '<g class="graph"><g id="physical-track" class="edge physical-track used">'
+                        '<path d="M 100 100 L 700 100" stroke="#c51b32" stroke-width="1.6"/>'
+                        '</g></g></svg>'
+                    )
+                    page.evaluate("svg => showSVG(svg, 'physical.svg')", physical_svg)
+                    assert page.locator("#viewport svg.route-focus").count() == 1
+                    physical_path = page.locator("#physical-track path")
+                    assert physical_path.evaluate("element => getComputedStyle(element).stroke") == "rgb(197, 27, 50)"
+                    assert physical_path.evaluate("element => getComputedStyle(element).opacity") == "1"
+                    assert page.get_by_role("checkbox", name="Show all routes", exact=True).is_checked() is False
                     browser.close()
             finally:
                 server.shutdown()

@@ -59,15 +59,14 @@ svg.hide-detail-vias g.node.detail-vias { display: none; }
 svg.hide-detail-vias g.edge.detail-vias polygon { display: none; }
 svg.hide-detail-packet-ids g.detail-packet-ids text { display: none; }
 svg.uniform-width g.edge.flow path { stroke-width: var(--uniform-width, 1px); }
-svg g.flow { opacity: 1; }
 svg.route-focus g.flow { opacity: 0.12; }
 svg.route-focus g.flow [stroke]:not([stroke="none"]) { stroke: #66736d; }
 svg.route-focus g.flow [fill]:not([fill="none"]) { fill: #66736d; }
-svg.route-focus.highlighting g.flow.highlighted { opacity: 1; }
+svg.route-focus.highlighting g.flow.highlighted { opacity: var(--route-opacity, 1); }
 svg.route-focus.highlighting g.flow.highlighted [stroke] { stroke: var(--route-stroke); }
 svg.route-focus.highlighting g.flow.highlighted [fill] { fill: var(--route-fill); }
 svg.uniform-width.route-focus.highlighting g.edge.flow.highlighted path[stroke-width] { stroke-width: var(--route-width); }
-svg.show-all-routes g.flow { opacity: 1 !important; }
+svg.show-all-routes g.flow { opacity: var(--route-opacity, 1) !important; }
 svg.show-all-routes g.flow [stroke] { stroke: var(--route-stroke); }
 svg.show-all-routes g.flow [fill] { fill: var(--route-fill); }
 svg.highlighting g.flow:not(.highlighted) { opacity: 0.07; }
@@ -305,6 +304,8 @@ function initializeViewer(svg, graph, graphError) {
   let highlightIncoming = true;
   let highlightOutgoing = false;
   let selectedElement = null;
+  svg.querySelectorAll("g.flow").forEach(element =>
+    element.style.setProperty("--route-opacity", getComputedStyle(element).opacity));
   svg.querySelectorAll("g.flow [stroke]").forEach(element =>
     element.style.setProperty("--route-stroke", element.getAttribute("stroke")));
   svg.querySelectorAll("g.flow [fill]").forEach(element =>
