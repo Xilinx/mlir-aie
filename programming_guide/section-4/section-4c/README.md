@@ -130,7 +130,7 @@ void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
 }
 ```
 
-[scale.cc](../../../aie_kernels/eltwise/scale.cc) also has a specialization for `int32_t`. It is the same loop with `vec_factor = 16` and an `acc64` accumulator.
+[scale.cc](../../../aie_kernels/eltwise/scale.cc) also has a specialization for `int32_t`, with an `acc64` accumulator. On AIE2P it uses `vec_factor = 32` (a 32-lane `acc64` accumulator, so a 16-lane multiply would leave half of it idle) plus a one-off remainder pass when `SCALE_ELEMS` isn't a multiple of 32; on AIE2 it falls back to `vec_factor = 16`.
 
 Instead of one multiply per element, each iteration now loads 32 elements, multiplies them in one vector operation, and stores 32 results, so the loop runs `SCALE_ELEMS / 32` times. `AIE_PREPARE_FOR_PIPELINING` is a loop pragma from [aie_kernel_utils.h](../../../aie_kernels/aie_kernel_utils.h). What it does depends on the compiler, as we will see below.
 
