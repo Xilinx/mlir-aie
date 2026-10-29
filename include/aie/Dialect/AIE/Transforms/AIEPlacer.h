@@ -811,6 +811,8 @@ private:
   static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
   // Ends of fifos that ask for shared memory, which must share a module.
   Adjacency sharedMemAdjacency;
+  // Links joined by a fifo must occupy distinct tiles.
+  Adjacency chainedLinkAdjacency;
 
   // SA loop state
   int totalCost = 0;
@@ -846,6 +848,7 @@ private:
   int computeDMAChannelPenalty() const;
   int computeBDCountPenalty() const;
   int computeDelegatePenalty() const;
+  int computeChainedLinkPenalty() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
   int computeAdjacencyPenalty(const Adjacency &adj,
