@@ -239,6 +239,15 @@ class Declaration:
             raise TypeError(
                 f"{where}: a Select() with a None branch picks no stream, so it is an obj_shape, not a dimension"
             )
+        for s in _selects(m.dims):
+            if (
+                not isinstance(s.flag, OperatorParam)
+                or _foreign(s.flag, owner)
+                or s.flag.tunable
+            ):
+                raise TypeError(
+                    f"{where}: Select() flag {s.flag!r} must be a param() of {owner.__name__}; a host shape may not depend on tuning"
+                )
         for leaf in _leaves(m.dims):
             if _foreign(leaf, owner):
                 raise TypeError(
@@ -274,10 +283,12 @@ class Declaration:
             raise TypeError(
                 f"{where}: a Select() with a None branch is the whole obj_shape, the stream it gives or not"
             )
-        for d in (
-            *_leaves(obj_dims),
-            *(d.flag for d in obj_dims if isinstance(d, Select)),
-        ):
+        for s in _selects(obj_dims):
+            if not isinstance(s.flag, OperatorParam) or _foreign(s.flag, owner):
+                raise TypeError(
+                    f"{where}: obj_shape Select() flag {s.flag!r} is not a param() or a tunable() of {owner.__name__}"
+                )
+        for d in _leaves(obj_dims):
             if _foreign(d, owner):
                 raise TypeError(
                     f"{where}: obj_shape dimension {d!r} is not a param(), a tunable() or an integer"

@@ -154,6 +154,12 @@ M.name, T.name, F.name = "M", "T", "F"
         (In(M, 2.0), "dimension 2.0 is not a param\\(\\) of Bad or an integer"),
         (In(Select(M, (T,), (1,))), "dimension T is a tunable\\(\\)"),
         (In(Select(M, (Select(M, (T,), (1,)),), (1,))), "dimension T is a tunable"),
+        (In(Select(T, (M,), (1,))), "flag <tunable T> must be a param\\(\\) of Bad"),
+        (In(Select(1, (M,), (1,))), "flag 1 must be a param\\(\\) of Bad"),
+        (
+            In(Select(M, (Select(GEMV.b_col_maj, (M,), (1,)),), (1,))),
+            "flag <param b_col_maj> must be a param\\(\\) of Bad",
+        ),
         (In(F, M, F), "at most one T | None dimension"),
         (In(M, when=T), "when=<tunable T> must be a param\\(\\)"),
         (In(M, when=True), "when=True must be a param\\(\\)"),
@@ -180,6 +186,14 @@ M.name, T.name, F.name = "M", "T", "F"
         (
             In(M, obj_shape=Select(M, (Select(M, (M,), None),), None)),
             "is the whole obj_shape",
+        ),
+        (
+            In(M, obj_shape=Select(M, (Select(GEMV.b_col_maj, (M,), (2,)),), (M,))),
+            "obj_shape Select\\(\\) flag <param b_col_maj> is not a param\\(\\)",
+        ),
+        (
+            In(M, obj_shape=Select(1, (M,), None)),
+            "obj_shape Select\\(\\) flag 1 is not",
         ),
         (In(M, per=3), "per=3 must be a param\\(\\) or tunable\\(\\)"),
         (In(GEMV.M), "dimension <param M> is not a param\\(\\) of Bad"),
