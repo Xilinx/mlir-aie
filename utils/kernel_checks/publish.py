@@ -49,7 +49,8 @@ removed), upgrades any older run record (``upgrade``: a static
 ``sa-placer-hw`` record's cases, a kernel check's ``measurement``), rebuilds
 ``runs.json``, ``latest.json`` and the history from
 the run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
-ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
+ones one per ISO week plus the selected comparison pair, ``MAX_RUNS`` at most.
+``rebuild --drop-pmode MODE``
 also deletes the records of every run measured in ``MODE``, for retiring a
 power mode nobody should compare against; ``--keep-pmode MODE`` deletes
 those of every run that charted numbers in any other mode, keeping a run
@@ -584,8 +585,11 @@ def _stands_for_week(record: dict) -> tuple:
 
 
 def prune(records: list[dict], now: datetime.datetime) -> list[dict]:
-    """Every run of the last ``KEEP_DAYS``; then, for ``KEEP_WEEKS`` more, one
-    run each ISO week (the one that best stands for it); none older."""
+    """Keep recent runs and weekly representatives within the horizon.
+
+    Keep every run of the last ``KEEP_DAYS``; then, for ``KEEP_WEEKS`` more,
+    one run each ISO week (the one that best stands for it); none older.
+    """
     records = sorted(records, key=lambda r: r["date"])
     recent, weekly = [], {}
     for r in records:
@@ -633,14 +637,13 @@ def rebuild(
     for r in records:
         if dropped(r):
             (runs_dir / f"{r['id']}.json").unlink()
-    records = [r for r in records if not dropped(r)]
-    kept = prune(records, now)
-    keep_ids = {r["id"] for r in kept}
-    for r in records:
-        if r["id"] not in keep_ids:
-            (runs_dir / f"{r['id']}.json").unlink(missing_ok=True)
-    target = kept[-1]["target"] if kept else out.name
-    published = [r for r in kept if r.get("published") and r.get("rows")]
+    records = sorted((r for r in records if not dropped(r)), key=lambda r: r["date"])
+    eligible = [
+        r
+        for r in records
+        if (now - parse_date(r["date"])).days < KEEP_DAYS + 7 * KEEP_WEEKS
+    ]
+    published = [r for r in eligible if r.get("published") and r.get("rows")]
     # The newest nightly is the baseline; only manual runs, the newest of those.
     baseline = [r for r in published if is_nightly(r)] or published
     selected = baseline[-1] if baseline else None
@@ -651,7 +654,7 @@ def rebuild(
         needed.add(selected["id"])
         before = [
             r
-            for r in reversed(kept[: kept.index(selected)])
+            for r in reversed(eligible[: eligible.index(selected)])
             if r.get("published")
             and r.get("pmode") == selected.get("pmode")
             and is_nightly(r)
@@ -666,6 +669,20 @@ def rebuild(
         )
         if previous:
             needed.add(previous["id"])
+    # Select before weekly thinning: two comparison nights can share a week,
+    # and a long tail of refusals or manual runs must not evict their details.
+    protected = [r for r in eligible if r["id"] in needed]
+    others = [r for r in prune(records, now) if r["id"] not in needed]
+    slots = MAX_RUNS - len(protected)
+    kept = sorted(
+        protected + (others[-slots:] if slots else []), key=lambda r: r["date"]
+    )
+    keep_ids = {r["id"] for r in kept}
+    for r in records:
+        if r["id"] not in keep_ids:
+            (runs_dir / f"{r['id']}.json").unlink(missing_ok=True)
+    target = kept[-1]["target"] if kept else out.name
+    published = [r for r in kept if r.get("published") and r.get("rows")]
     for r in kept:
         old = (now - parse_date(r["date"])).days >= KEEP_DAYS
         if old and r["id"] not in needed and any(f in r for f in HEAVY_FIELDS):

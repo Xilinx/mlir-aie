@@ -66,7 +66,7 @@ SHIM = """<script>
 
 
 def kept(paths: list[str], metadata: dict) -> list[str]:
-    """The JSON files the page reads: all but the older per-run records."""
+    """Select JSON files, retaining the page's comparison and recent runs."""
     runs: dict[str, list[str]] = {}
     out = []
     for p in paths:
@@ -113,7 +113,7 @@ def kept(paths: list[str], metadata: dict) -> list[str]:
 
 
 def from_ref(ref: str) -> dict:
-    """The published files at a git ref: {path: parsed JSON}."""
+    """Read published files at a git ref as {path: parsed JSON}."""
     git = ["git", "-C", str(ROOT)]
     listed = subprocess.run(
         [*git, "ls-tree", "-r", "--name-only", ref, "--", *DIRS],
@@ -137,7 +137,7 @@ def from_ref(ref: str) -> dict:
 
 
 def from_dir(root: Path) -> dict:
-    """The published files under a directory laid out as the branch is."""
+    """Read published files under a directory laid out as the branch is."""
     listed = [
         p.relative_to(root).as_posix()
         for d in DIRS
@@ -156,7 +156,7 @@ def from_dir(root: Path) -> dict:
 
 
 def snapshot(page: str, files: dict, view: str = "") -> str:
-    """The page with its data in it."""
+    """Embed the data in the page."""
     blob = base64.b64encode(
         gzip.compress(json.dumps(files, separators=(",", ":")).encode(), 9)
     ).decode()
