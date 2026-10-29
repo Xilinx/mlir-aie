@@ -552,9 +552,12 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
       auto consumers = owner.getConsumerTiles();
       size_t earlier = linkedConsumerEnd.lookup({owner, *sharedTile}).size();
       int index = -1;
-      for (size_t seen = 0; seen <= earlier;)
+      for (size_t seen = 0; seen <= earlier;) {
+        assert(static_cast<size_t>(index + 1) < consumers.size() &&
+               "fewer consumer tiles than already-linked pools for this tile");
         if (consumers[++index] == *sharedTile)
           seen++;
+      }
       name = (owner.name().getValue() +
               (consumers.size() > 1 ? "_" + std::to_string(index) + "_cons_pool"
                                     : "_cons_pool"))
