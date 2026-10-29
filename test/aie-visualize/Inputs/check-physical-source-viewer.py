@@ -108,6 +108,9 @@ def main() -> None:
                     for source in (
                         "/tmp/design.py",
                         "../design.py",
+                        "%2ftmp%2fdesign.py",
+                        "dir%2f..%2f..%2fdesign.py",
+                        "dir%5c..%5c..%5cdesign.py",
                         "https://example.com/design.py",
                     ):
                         assert page.evaluate(
