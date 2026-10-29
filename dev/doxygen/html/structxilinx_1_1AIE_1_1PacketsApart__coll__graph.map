@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::PacketsApart" name="xilinx::AIE::PacketsApart">
+<area shape="rect" id="Node000001" title=" " alt="" coords="60,106,238,134"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,163,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="102,44,143,105,138,106,99,48"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="187,5,245,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="201,45,160,107,156,103,196,47"/>
+</map>
