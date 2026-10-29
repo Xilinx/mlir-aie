@@ -536,6 +536,21 @@ AvoidanceArrowRenderer::gatewaysFor(const ArrowEnd &end, const ArrowEnd &other,
       gateway.point = {gateway.anchor.first, obstacle.blocked.bottom};
       break;
     }
+    if (end.kind == EndKind::External) {
+      double centerX = (obstacle.visible.left + obstacle.visible.right) / 2;
+      double centerY = (obstacle.visible.bottom + obstacle.visible.top) / 2;
+      double radiusX = (obstacle.visible.right - obstacle.visible.left) / 2;
+      double radiusY = (obstacle.visible.top - obstacle.visible.bottom) / 2;
+      if (side == Side::East || side == Side::West) {
+        double normalized = (gateway.anchor.second - centerY) / radiusY;
+        double offset = radiusX * std::sqrt(std::max(0.0, 1 - normalized * normalized));
+        gateway.anchor.first = centerX + (side == Side::East ? offset : -offset);
+      } else {
+        double normalized = (gateway.anchor.first - centerX) / radiusX;
+        double offset = radiusY * std::sqrt(std::max(0.0, 1 - normalized * normalized));
+        gateway.anchor.second = centerY + (side == Side::North ? offset : -offset);
+      }
+    }
     std::optional<unsigned> x = coordinateIndex(xs, gateway.point.first);
     std::optional<unsigned> y = coordinateIndex(ys, gateway.point.second);
     if (!x || !y)
@@ -578,7 +593,8 @@ double AvoidanceArrowRenderer::endpointSpread(StringRef node,
   if (found == endpointRanks.end() || found->second.second < 2)
     return 0.0;
   auto [rank, count] = found->second;
-  double pitch = std::min(trackPitch, span / (count - 1));
+  double usableSpan = std::max(0.0, span - 2 * clearance);
+  double pitch = std::min(trackPitch, usableSpan / (count - 1));
   return (rank - (count - 1) / 2.0) * pitch;
 }
 

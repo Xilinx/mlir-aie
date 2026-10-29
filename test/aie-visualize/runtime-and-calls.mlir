@@ -12,6 +12,12 @@
 // RUN: aie-visualize --emit-dot --scale=1 --skip-runtime %s | FileCheck %s --check-prefix=SKIP
 // RUN: aie-visualize --emit-dot --scale=1 --contract=port,dma,buffer --contract-balanced-fanout %s | FileCheck %s --check-prefix=TOPOLOGY
 // RUN: aie-visualize --emit-dot --scale=0.5 %s | FileCheck %s --check-prefix=HALF
+// RUN: aie-visualize --emit-dot --arrows=avoidance %s -o %t.dot
+// RUN: aie-visualize --emit-json --arrows=avoidance %s -o %t.json
+// RUN: neato -Gsplines=line -Tsvg %t.dot -o %t.svg
+// RUN: %python %S/Inputs/check-svg-route-continuity.py %t.dot %t.json %t.svg | FileCheck %s --check-prefix=CONTINUOUS
+
+// CONTINUOUS: endpoint_defects=0 disconnected_segments=0 dangling_endpoints=0
 
 // A label keeps its point size however small the drawing is, so a box that
 // has to hold one keeps its size too and only the space between tiles

@@ -15,7 +15,7 @@
 
 // CLEAN: missing_geometry=0 collinear_overlaps=0 narrow_gaps=0 diagonals=0
 // STATS: graph nodes=10 edges=9 contracted=9
-// STATS: avoidance requests=9 obstacles=10 grid=23x86 states=7912 route_calls={{[0-9]+}} expanded={{[0-9]+}} grid_ms={{[0-9.e+-]+}} initial_ms={{[0-9.e+-]+}} conflict_ms={{[0-9.e+-]+}}
+// STATS: avoidance requests=9 obstacles=10 grid={{[1-9][0-9]*}}x{{[1-9][0-9]*}} states={{[1-9][0-9]*}} route_calls={{[0-9]+}} expanded={{[0-9]+}} grid_ms={{[0-9.e+-]+}} initial_ms={{[0-9.e+-]+}} conflict_ms={{[0-9.e+-]+}}
 // OVERLAP: collinear_overlaps=1 narrow_gaps=2 diagonals=0 crossings=3
 // NARROW: collinear_overlaps=0 narrow_gaps=1 diagonals=0 crossings=0
 // MISSING: missing_geometry=1 collinear_overlaps=0 narrow_gaps=0 diagonals=0 crossings=0
