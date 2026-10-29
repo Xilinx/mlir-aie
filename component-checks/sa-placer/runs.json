@@ -612,6 +612,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "40830742333",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40830742333",
+   "date": "2026-10-29T06:41:33+00:00",
+   "commit": {
+    "id": "20fb8dec1b35f6ef898d847efb5ccde34882e94b",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/20fb8dec1b35f6ef898d847efb5ccde34882e94b",
+    "message": "test: build the cascade and tile-mapped tests with Peano [LOW] (#3642)",
+    "timestamp": "2026-10-29T05:16:08Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "20fb8dec1b",
+    "fixtures": "3aa7139253a0",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

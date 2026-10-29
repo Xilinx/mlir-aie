@@ -319,6 +319,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "yolo26n-hw",
+   "id": "40830742333",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40830742333",
+   "date": "2026-10-29T06:41:33+00:00",
+   "commit": {
+    "id": "20fb8dec1b35f6ef898d847efb5ccde34882e94b",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/20fb8dec1b35f6ef898d847efb5ccde34882e94b",
+    "message": "test: build the cascade and tile-mapped tests with Peano [LOW] (#3642)",
+    "timestamp": "2026-10-29T05:16:08Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "20fb8dec1b",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "fe6bbfa5a65f",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 42,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
