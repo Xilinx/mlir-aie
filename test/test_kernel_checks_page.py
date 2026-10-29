@@ -2497,13 +2497,15 @@ const loaded = [
   { check: hw, index: hwIndex, latest: hwAfter, previous: hwBefore },
 ];
 const tiles = overviewTiles(nightsNow, loaded, NOW);
-// In tab order: CI health, Kernels, then the sections, placement
-// (now the compiler checks' tab, placement and routing together) last.
-assert.deepEqual(tiles.map(t => t.href), ['#view=ci', '#view=night', '#view=performance', '#view=placement']);
+// In tab order: CI health, then the stack bottom up: code health, the
+// compiler checks (placement and routing together), kernels, performance.
+assert.deepEqual(tiles.map(t => t.href), ['#view=ci', '#view=health', '#view=placement', '#view=night', '#view=performance']);
 // A row each: the name, one status word, one line, how long ago.
-assert.deepEqual(tiles.map(t => t.children.map(c => c.className)[0]), ['area-name', 'area-name', 'area-name', 'area-name']);
-assert.deepEqual(tiles.map(t => t.children[0].text), ['CI health', 'Kernels', 'Performance', 'Compiler checks']);
-const [ciTile, kernels, perf, placement] = tiles;
+assert.deepEqual(tiles.map(t => t.children.map(c => c.className)[0]), ['area-name', 'area-name', 'area-name', 'area-name', 'area-name']);
+assert.deepEqual(tiles.map(t => t.children[0].text), ['CI health', 'Code health', 'Compiler checks', 'Kernels', 'Performance']);
+const [ciTile, healthTile, placement, kernels, perf] = tiles;
+// Not read yet.
+assert.equal(healthTile.children[1].text, 'Loading…');
 // GitHub not asked yet.
 assert.equal(ciTile.children[1].text, 'Loading…');
 // A slower night is a warning on the overview too, not "All passing".
@@ -2518,9 +2520,9 @@ assert.equal(placement.level, 'ok');
 assert.equal(placement.children[2].text, '');
 // Two days without a run: late and red, the line says so first.
 const late = overviewTiles(null, loaded, NOW + 2 * 86400 * 1000);
-assert.equal(late[2].level, 'bad');
-assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. 2 measures got worse vs 1 Oct.');
-assert.equal(late[1].children[1].text, 'Loading…');
+assert.equal(late[4].level, 'bad');
+assert.equal(late[4].children[2].text, 'MobileNet: No run for 2 days 1 h. 2 measures got worse vs 1 Oct.');
+assert.equal(late[3].children[1].text, 'Loading…');
 // The band says it above its verdict.
 const lateBand = componentBand(hw, hwIndex, hwAfter, NOW + 2 * 86400 * 1000, hwBefore);
 assert.equal(one(lateBand, n => n.className === 'stale-line').text,
@@ -3256,3 +3258,110 @@ assert.deepEqual(row.children.slice(2).map(c => [c.className, c.text]),
   [['num faint', '—'], ['num', '2.0 KiB → 4.0 KiB (+100.0%)Since 1 Jan']]);
 assert.equal(rows[0].children[0].children[0].title, 'mm/1/f32/gelu\\nmm/1/f32/relu');
 """)
+
+
+HEALTH = """
+const all = (n, f) => typeof n === 'string' ? [] : [...(f(n) ? [n] : []), ...n.children.flatMap(c => all(c, f))];
+const NIGHT = Date.parse('2026-10-29T04:00:00Z');
+const point = (day, extra) => ({ date: new Date(NIGHT - day * 86400000).toISOString(), run: 1000 - day, sha: 'abc1234def',
+  lines: 62.5, functions: 69, 'asan-ubsan': { findings: 0, by: {}, failed: 0 }, tsan: { findings: 0, by: {}, failed: 0 },
+  code_scanning: { open: 3, by_severity: { note: 3 }, by_language: { python: 3 } }, 'clang-tidy': { enabled: 0, outside: 400, enabled_files: 115, files: 186 }, ...(extra || {}) });
+const clean = { check: 'asan-ubsan', tests: 10, ran: 9, findings: [], finding_count: 0, failed_without_report: [], failed_without_report_count: 0 };
+const healthy = () => ({
+  schema: 1, generated_at: new Date(NIGHT).toISOString(), run: { id: 1000, url: 'https://example.com/run/1000', sha: 'abc1234def' },
+  coverage: { lines: { hit: 625, total: 1000 }, functions: { hit: 69, total: 100 }, lost: [],
+              areas: [{ area: 'lib/Dialect/AIE', lines: [500, 800], functions: [50, 70] }, { area: 'lib/Targets', lines: [125, 200], functions: [19, 30] }] },
+  'asan-ubsan': { ...clean }, tsan: { ...clean, check: 'tsan' },
+  code_scanning: { open: 3, new: 0, fixed: 0, by_severity: { note: 3 }, by_language: { python: 3 },
+                   alerts: [1, 2, 3].map(n => ({ number: n, rule: 'py/x', description: 'Something', severity: 'note', language: 'python', file: 'python/a.py', line: n, new: false })) },
+  'clang-tidy': { check: 'clang-tidy', files: 186, enabled_files: 115, enabled_findings: [], enabled_finding_count: 0, outside_count: 400,
+                  outside_by_check: { 'modernize-use-auto': 400 }, outside_by_file: { 'lib/X.cpp': 400 }, ready: ['lib/Y.cpp'], could_not_parse: [] },
+});
+const points = [point(2), point(1), point(0)];
+"""
+
+
+def test_a_healthy_code_health_night_says_nothing(page):
+    page(HEALTH + """
+const loaded = { status: healthy(), points, unread: null, newer: false };
+location.hash = '#view=health';
+const rows = renderHealth(loaded, NIGHT + 3600000);
+assert.deepEqual(rows.map(r => r.level), ['ok', 'ok', 'ok', 'ok', 'ok']);
+// No news is good news: no sentence on any row, only the figures.
+assert.deepEqual(rows.map(r => r.children[2].text), ['', '', '', '', '']);
+assert.equal(rows[0].children[3].text, '62.5% of lines · 69.0% of functions');
+assert.equal(rows[4].children[3].text, '115 of 186 files enforced · 400 findings in the rest');
+assert.equal($('health-findings-block').hidden, true);
+assert.equal($('health-status').text, '');
+assert.equal(healthSummary(loaded, NIGHT + 3600000), '');
+// A chart per history: coverage, sanitizers, alerts, clang-tidy.
+assert.equal($('health-trends').children.length, 4);
+// The most uncovered lines first, each with its share.
+assert.deepEqual(all($('health-areas'), n => n.className === 'a-pct').map(n => n.text), ['63%', '63%']);
+// The overview's tile: its state word alone.
+const tile = overviewTiles(null, [], NIGHT + 3600000, null, loaded).find(t => t.href === '#view=health');
+assert.equal(tile.level, 'ok');
+assert.equal(tile.children[2].text, '');
+""")
+
+
+def test_code_health_names_what_is_new_and_what_stays_open(page):
+    page(HEALTH + """
+const st = healthy();
+st.coverage.lines.hit = 620;
+st.coverage.lost = [{ file: 'lib/Targets/AIETargetNPU.cpp', before: 90, after: 85, lines_lost: 5 }];
+st['asan-ubsan'].findings = [
+  { sanitizer: 'asan', kind: 'heap-use-after-free', message: 'heap-use-after-free', key: 'a', new: true, since: '2026-10-29',
+    where: { file: 'lib/Dialect/AIE/Transforms/AIEPathFinder.cpp', line: 412, function: 'xilinx::AIE::Pathfinder::findPaths(int)' },
+    tests: ['AIE :: create-flows/a.mlir'], test_count: 3, excerpt: '==1==ERROR: AddressSanitizer: heap-use-after-free' },
+  { sanitizer: 'ubsan', kind: 'shift exponent N is too large', message: "shift exponent 32 is too large for 32-bit type 'uint32_t'", key: 'u', new: false, since: '2026-10-12',
+    where: { file: 'lib/Dialect/AIEX/Transforms/AIEDmaToNpu.cpp', line: 233, function: 'xilinx::AIEX::appendWriteBd(int)' }, tests: ['AIE :: b.mlir'], test_count: 1, excerpt: '' },
+];
+st['asan-ubsan'].finding_count = 2;
+st['asan-ubsan'].failed_without_report = [{ test: 'AIE :: slow.mlir', code: 'TIMEOUT' }];
+st['asan-ubsan'].failed_without_report_count = 1;
+st.tsan = { check: 'tsan', missing: true };
+st.code_scanning.alerts.unshift({ number: 9, rule: 'cpp/unbounded-write', description: 'Unbounded write', severity: 'high', language: 'cpp', file: 'lib/Targets/AIETargetCDODirect.cpp', line: 141, new: true });
+st.code_scanning.open = 4;
+st['clang-tidy'].enabled_findings = [{ file: 'lib/Dialect/AIE/IR/AIEDialect.cpp', line: 10, check: 'modernize-use-auto', message: 'use auto' }];
+st['clang-tidy'].enabled_finding_count = 1;
+const loaded = { status: st, points: [point(2), point(1, { lines: 62.5 }), point(0, { lines: 62 })], unread: null, newer: false };
+location.hash = '#view=health';
+const rows = renderHealth(loaded, NIGHT + 3600000);
+assert.deepEqual(rows.map(r => r.level), ['warn', 'bad', 'bad', 'bad', 'bad']);
+assert.equal(rows[0].children[2].text, '−0.50 points since the night before: AIETargetNPU.cpp lost 5 covered lines.');
+assert.equal(rows[1].children[2].text,
+  "New: ASan heap-use-after-free in Pathfinder::findPaths; still open since 12 Oct: UBSan shift exponent 32 is too large for 32-bit type 'uint32_t' in AIEX::appendWriteBd; 1 test failed with no report.");
+assert.equal(rows[2].children[2].text, 'No result last night: its job failed before it summarized.');
+assert.equal(rows[3].children[2].text, 'New: Unbounded write in AIETargetCDODirect.cpp.');
+assert.equal(rows[4].children[2].text, '1 finding in files the lint gate enforces: modernize-use-auto in AIEDialect.cpp.');
+// A finding per bug, the new one first, each linking its line at the night's commit.
+assert.equal($('health-findings-block').hidden, false);
+const cards = $('health-findings').children.filter(c => c.className && c.className.startsWith('finding'));
+assert.deepEqual(cards.map(c => c.className), ['finding new', 'finding']);
+assert.ok(all(cards[0], n => n.tag === 'a').some(a => a.href === 'https://github.com/Xilinx/mlir-aie/blob/abc1234def/lib/Dialect/AIE/Transforms/AIEPathFinder.cpp#L412'));
+assert.ok(cards[0].text.includes('lit -v build/test/create-flows/a.mlir'));
+assert.equal(healthSummary(loaded, NIGHT + 3600000),
+  'New ASan heap-use-after-free in Pathfinder::findPaths; 1 older open sanitizer finding; no TSan result; 1 new high alert; 1 clang-tidy finding in enforced files; coverage −0.50 points.');
+// Two days without a nightly: said first.
+const late = renderHealth(loaded, NIGHT + 2 * 86400000);
+assert.equal($('health-status').className, 'bad');
+assert.ok($('health-status').textContent.startsWith('No nightly for 2 days'));
+""")
+
+
+def test_a_sparkline_breaks_where_a_night_has_no_result(page):
+    page(HEALTH + """
+const svg = sparkline([1, 2, null, 3, 4]);
+assert.equal((svg.match(/M/g) || []).length, 2);
+assert.ok(svg.includes('<circle'));
+assert.equal(sparkline([5]), '');
+""")
+
+
+def test_the_overview_lists_areas_in_the_order_of_the_tabs():
+    html = PAGE.read_text(encoding="utf-8")
+    nav = html.split('<nav aria-label="sections">', 1)[1].split("</nav>", 1)[0]
+    tabs = re.findall(r'href="#view=([\w-]+)"', nav)
+    order = json.loads(re.search(r"const TAB_ORDER = (\[.*?\]);", html)[1].replace("'", '"'))
+    assert tabs == ["overview", *order]

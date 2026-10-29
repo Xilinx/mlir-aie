@@ -4,7 +4,8 @@
 """Write the maintainer dashboard as one self-contained HTML file.
 
 The page is this working tree's ``utils/kernel_checks/index.html``; its data
-is the published ``ci-health/``, ``kernel-checks/`` and ``component-checks/``
+is the published ``ci-health/``, ``code-health/``, ``kernel-checks/`` and
+``component-checks/``
 of the publication branch (``origin/gh-pages`` by default), or of a directory
 laid out the same way. The data goes into the file, gzipped, behind a
 ``fetch`` that answers the page's relative requests from it, so the file
@@ -15,6 +16,7 @@ with no network the page draws its charts as SVG.
     python3 utils/kernel_checks/snapshot.py               # dashboard-snapshot.html
     python3 utils/kernel_checks/snapshot.py --fetch -o /tmp/d.html
     python3 utils/kernel_checks/snapshot.py --view performance
+    python3 utils/kernel_checks/snapshot.py --view health --with /tmp/sample   # over the published
 
 Unlike preview.py, it needs nothing but Python and git: no mlir_aie, no
 synthetic nights, no server. A run's per-run records are many and large, so
@@ -33,7 +35,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 PAGE = HERE / "index.html"
-DIRS = ("ci-health", "kernel-checks", "component-checks")
+DIRS = ("ci-health", "code-health", "kernel-checks", "component-checks")
 # The page reads a check's latest record and the published one before it.
 RUNS_KEPT = 3
 
@@ -132,12 +134,18 @@ def main(argv=None) -> int:
         "--dir", type=Path, help="a directory laid out as the branch is"
     )
     parser.add_argument(
+        "--with",
+        dest="overlay",
+        type=Path,
+        help="a directory laid out as the branch is whose files replace or add to the published ones",
+    )
+    parser.add_argument(
         "--fetch", action="store_true", help="git fetch origin gh-pages first"
     )
     parser.add_argument(
         "--view",
         default="",
-        help="the tab to open on: overview, ci, night, performance, placement",
+        help="the tab to open on: overview, ci, night, performance, placement, health",
     )
     parser.add_argument(
         "-o", "--out", type=Path, default=Path("dashboard-snapshot.html")
@@ -148,6 +156,8 @@ def main(argv=None) -> int:
             ["git", "-C", str(ROOT), "fetch", "origin", "gh-pages"], check=True
         )
     files = from_dir(args.dir) if args.dir else from_ref(args.ref)
+    if args.overlay:
+        files.update(from_dir(args.overlay))
     html = snapshot(PAGE.read_text(encoding="utf-8"), files, args.view)
     args.out.write_text(html, encoding="utf-8")
     size = len(html) / 1e6

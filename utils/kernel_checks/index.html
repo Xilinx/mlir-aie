@@ -307,6 +307,56 @@
     details.howto { margin-top: 28px; }
     .verdict .headline { margin-bottom: 8px; }
 
+    /* Code health: a row per check (dot, name, what is wrong, its figure, a
+       sparkline of its nights), then the findings, the trends and where
+       coverage is thin. */
+    .h-row { display: grid; grid-template-columns: 10px minmax(130px, 190px) minmax(0, 1fr) auto 120px; gap: 4px 16px; align-items: center;
+             padding: 8px 14px; border-top: 1px solid var(--rule); font-size: 13px; }
+    .h-row:first-child { border-top: 0; }
+    .h-row .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--none); }
+    .h-row.ok .dot { background: var(--ok); }
+    .h-row.bad .dot { background: transparent; border-radius: 0; color: var(--bad); font-size: 11px; font-weight: 800; line-height: 9px; text-align: center; }
+    .h-row.bad .dot::before { content: '✕'; }
+    .h-row.warn .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--warn); }
+    .h-row .wf-name { font-weight: 600; color: var(--ink); }
+    .h-row .h-what { min-width: 0; }
+    .h-row.bad .h-what { color: var(--bad); }
+    .h-row.warn .h-what { color: var(--warn); }
+    .h-row .h-fig { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+    .h-row svg.spark { width: 120px; height: 22px; display: block; }
+    .spark path { fill: none; stroke: var(--series-1); stroke-width: 1.5; }
+    .spark circle { fill: var(--series-1); }
+    .finding { background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--warn); border-radius: 4px 8px 8px 4px; margin-top: 8px; }
+    .finding.new { border-left-color: var(--bad); }
+    .finding > summary { cursor: pointer; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; font-size: 13px; }
+    .finding > summary .f-kind { font-weight: 650; }
+    .finding > summary .f-where { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+    .finding > summary .f-tests { color: var(--faint); font-size: 12px; margin-left: auto; }
+    .finding .f-body { padding: 0 12px 10px; font-size: 13px; }
+    .finding pre { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-size: 11.5px; line-height: 1.45; margin: 6px 0; }
+    .finding ul { margin: 4px 0; padding-left: 18px; font-family: var(--mono); font-size: 12px; }
+    .pill.new { background: var(--bad-soft); color: var(--bad); }
+    .pill.since { background: var(--warn-soft); color: var(--warn); }
+    .areas { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 6px 14px; }
+    .area-bar { display: grid; grid-template-columns: minmax(150px, 260px) minmax(80px, 1fr) 62px 130px; gap: 12px; align-items: center; padding: 4px 0; font-size: 13px; }
+    .area-bar .a-name { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .area-bar .a-track { height: 10px; border-radius: 5px; background: color-mix(in srgb, var(--series-1) 14%, transparent); overflow: hidden; }
+    .area-bar .a-fill { height: 100%; background: var(--series-1); }
+    .area-bar .a-pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .area-bar .a-miss { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+    #health-status { margin: 10px 0 12px; font-size: 13px; }
+    #health-status.bad { color: var(--bad); font-weight: 600; }
+    .sev { font-weight: 650; text-transform: capitalize; }
+    .sev.critical, .sev.high, .sev.error { color: var(--bad); }
+    .sev.medium, .sev.warning { color: var(--warn); }
+    @media (max-width: 760px) {
+      .h-row { grid-template-columns: 10px minmax(0, 1fr) auto; }
+      .h-row .h-what { grid-column: 2 / -1; grid-row: 2; }
+      .h-row svg.spark { display: none; }
+      .area-bar { grid-template-columns: minmax(0, 1fr) 80px 52px; }
+      .area-bar .a-miss { display: none; }
+    }
+
     /* CI health: the runners table, the healthy in one line, the merge
        figures; tiles and tables under Details. */
     .ci-row .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--none); }
@@ -465,11 +515,15 @@
       <p>Nightly checks of the kernels, the compiler and whole designs on Ryzen AI NPUs</p>
     </div>
     <nav aria-label="sections">
+      <!-- CI first (machines down explain stale numbers everywhere), then the
+           stack bottom up: the source, the compiler, the kernels, whole designs.
+           TAB_ORDER in the script lists the same. -->
       <a id="nav-overview" href="#view=overview">Overview</a>
       <a id="nav-ci" href="#view=ci">CI health</a>
+      <a id="nav-health" href="#view=health">Code health</a>
+      <a id="nav-placement" href="#view=placement">Compiler checks</a>
       <a id="nav-kernels" href="#view=night">Kernels</a>
       <a id="nav-performance" href="#view=performance">Performance</a>
-      <a id="nav-placement" href="#view=placement">Compiler checks</a>
     </nav>
     <div class="links">
       <a href="https://github.com/Xilinx/mlir-aie">Repository</a>
@@ -493,6 +547,7 @@
             <dt>component-checks/&lt;check&gt;/</dt><dd>the performance and compiler checks, per check: <code>sa-placer</code> and <code>sa-placer-hw</code>, written by <code>nightlyComponentChecks.yml</code>;
               <code>allocator</code> and <code>router</code>, written by <code>modelBasedTests.yml</code></dd>
             <dt>ci-health/</dt><dd><code>status.json</code>, the critical test workflows' figures, merge time and the scheduled workflows' recent runs, and <code>history.json</code>, a point a day of those figures; written every six hours by <code>publishCiHealth.yml</code> (<code>utils/kernel_checks/ci_health.py</code>)</dd>
+            <dt>code-health/</dt><dd><code>status.json</code>, last night's coverage, sanitizer findings, code scanning alerts and clang-tidy findings, and <code>history.json</code>, a point a night; written by <code>nightlyCodeHealth.yml</code> (<code>utils/kernel_checks/code_health.py</code>)</dd>
           </dl>
           <p>Both are written by <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/publish.py"><code>utils/kernel_checks/publish.py</code></a> in one format:
             <code>runs/&lt;id&gt;.json</code> (one run's record), <code>runs.json</code> (a summary per run), <code>latest.json</code> (the newest record that published numbers;
@@ -776,6 +831,62 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
             that failed, the designs left unplaced or placed illegally, the bank crossings a better placement avoids, the bank pairs cores share, and the run's wall time.</p>
           <pre>python test/assign-buffer-addresses/allocator_properties.py --seeds 5000 --bankres-seeds 200000</pre>
           <p>How to choose the placer and a seed for your own design is in <a href="https://xilinx.github.io/mlir-aie/dev/programming_guide/section-1/">section 1 of the programming guide</a>.</p>
+        </div>
+      </details>
+    </section>
+
+    <section id="health" hidden>
+      <div class="section-head">
+        <h2>Code health</h2>
+        <p>Main, nightly: how much of it the tests reach, what the sanitizers catch them doing, and what static analysis finds.</p>
+        <span class="runs"><a id="health-run" href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyCodeHealth.yml">Actions runs</a><a href="https://github.com/Xilinx/mlir-aie/security/code-scanning">Code scanning</a></span>
+      </div>
+      <p id="health-status" class="dim"></p>
+      <div id="health-rows" class="ci-rows"></div>
+      <section class="block" id="health-findings-block" hidden>
+        <div class="block-head"><h3>Sanitizer findings</h3><p>One per bug, however many tests reach it; open one for the report and how to reproduce it.</p></div>
+        <div id="health-findings"></div>
+      </section>
+      <section class="block">
+        <div class="block-head"><h3>Over the nights</h3></div>
+        <div id="health-trends" class="charts"></div>
+      </section>
+      <section class="block">
+        <div class="block-head"><h3>Where the tests do not reach</h3><p>Line coverage of check-aie per part of the tree, the most uncovered lines first.</p></div>
+        <div id="health-areas"></div>
+      </section>
+      <section class="block" id="health-alerts-block" hidden>
+        <div class="block-head"><h3>Code scanning alerts</h3></div>
+        <div id="health-alerts"></div>
+      </section>
+      <section class="block" id="health-tidy-block" hidden>
+        <div class="block-head"><h3>clang-tidy</h3></div>
+        <div id="health-tidy"></div>
+      </section>
+      <details class="howto">
+        <summary>How this section works</summary>
+        <div>
+          <p><a href="https://github.com/Xilinx/mlir-aie/actions/workflows/nightlyCodeHealth.yml"><code>nightlyCodeHealth.yml</code></a> runs on main every night and
+            <a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/kernel_checks/code_health.py"><code>utils/kernel_checks/code_health.py</code></a> writes
+            <code>code-health/status.json</code> and <code>history.json</code> beside this page. Nothing here gates a merge.</p>
+          <p><b>Coverage</b>: check-aie built with clang's source-based coverage (<code>codeCoverage.yml</code>), counted over aie-opt, aie-translate and aiecc
+            for lib/, include/, tools/ and python/. Amber when last night covered fewer lines than the night before, by
+            <span id="health-cov-threshold"></span> points or more; the files that lost covered lines are named.</p>
+          <p><b>ASan and UBSan</b>, <b>TSan</b>: check-aie (and, under TSan, check-aie-concurrency) on a build of this repository with
+            <code>-fsanitize=address,undefined</code> or <code>-fsanitize=thread</code>. Every test's output is read, a passing one's too, since a test that
+            expects a tool to fail passes when a sanitizer aborts it. A report is one finding per sanitizer, kind and the function in this repository's
+            code it names first, however many tests reach it. Red for a finding new last night; amber for one still open, dated by the night it appeared.
+            A test that failed with no report is listed apart: instrumented tools run several times slower, so that is usually a time-out.
+            The prebuilt MLIR is not instrumented: a bug inside it goes unseen, and under TSan its atomics can read as races, so a TSan finding
+            whose stack is mostly MLIR's wants a second look. Leak checking is off for now: the Python tests' interpreter leaks by design at exit.</p>
+          <p><b>Code scanning</b>: the repository's open alerts, CodeQL's Python analysis (<code>codeql.yml</code>, on every push) and its C++ analysis
+            (traced on the ASan build each night). Red for a new alert of high or critical severity, amber for a new one of any other.</p>
+          <p><b>clang-tidy</b> over every C++ file in lib/ and tools/, with the repository's <code>.clang-tidy</code>. lintAndFormat.yml enforces it only on
+            the files the <code>clang-tidy</code> hook in <code>.pre-commit-config.yaml</code> lists; a finding in one of those got past that gate and is red.
+            The rest are counted, by check, and a file outside the list with none is ready to join it.</p>
+          <pre>cmake ... -DCMAKE_CXX_FLAGS="-O1 -g -fsanitize=address,undefined -shared-libsan" ...   # as nightlyCodeHealth.yml
+ASAN_OPTIONS=detect_leaks=0 lit -v build/test/&lt;test&gt;
+MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         </div>
       </details>
     </section>
@@ -4821,6 +4932,440 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     }
 
     // ------------------------------------------------------------------
+    // Code health
+    // ------------------------------------------------------------------
+
+    // Where nightlyCodeHealth.yml writes (utils/kernel_checks/code_health.py).
+    const HEALTH_DIR = '../code-health';
+    // A nightly: past a day and a half it has missed one.
+    const HEALTH_STALE_AFTER_MS = 36 * HOUR_MS;
+    // Line coverage lost since the night before, in percentage points, worth
+    // a line: about 50 of check-aie's covered lines.
+    const COVERAGE_DROP_POINTS = 0.1;
+    const HEALTH_CHECKS = [
+      { id: 'coverage', title: 'Coverage', series: p => p.lines },
+      { id: 'asan-ubsan', title: 'ASan and UBSan', series: p => p['asan-ubsan'] ? p['asan-ubsan'].findings : null },
+      { id: 'tsan', title: 'TSan', series: p => p.tsan ? p.tsan.findings : null },
+      { id: 'code_scanning', title: 'Code scanning', series: p => p.code_scanning ? p.code_scanning.open : null },
+      { id: 'clang-tidy', title: 'clang-tidy', series: p => p['clang-tidy'] ? p['clang-tidy'].outside : null },
+    ];
+    const SANITIZER_NAMES = { asan: 'ASan', ubsan: 'UBSan', lsan: 'LSan', tsan: 'TSan' };
+    const HIGH_SEVERITIES = ['critical', 'high', 'error'];
+    const SPARK_POINTS = 30;
+
+    // The published status and history, read once per page load.
+    let healthLoad = null;
+    function loadHealth() {
+      healthLoad ||= Promise.all([fetchJson(`${HEALTH_DIR}/status.json`), fetchJson(`${HEALTH_DIR}/history.json`)]).then(([raw, hist]) => {
+        const status = readable(raw);
+        const unread = raw instanceof Unread ? raw : hist instanceof Unread ? hist : null;
+        return { status, unread, newer: Boolean(raw) && !unread && !status, points: ((readable(hist) || {}).points) || [] };
+      });
+      return healthLoad;
+    }
+
+    const baseName = path => (path || '').split('/').pop();
+    // "xilinx::AIE::Pathfinder::findPaths(int)" -> "Pathfinder::findPaths".
+    const shortFunc = f => (f || '').replace(/\(.*$/, '').split('::').slice(-2).join('::');
+    const sourceLink = (sha, file, line, text) => link(`${REPO}/blob/${sha || 'main'}/${file}${line ? `#L${line}` : ''}`, text);
+    // What a finding is, in the report's words for its first occurrence:
+    // "heap-use-after-free", "shift exponent 32 is too large for 32-bit type 'uint32_t'".
+    const kindText = f => f.message || f.kind;
+    const findingText = f => `${SANITIZER_NAMES[f.sanitizer] || f.sanitizer} ${kindText(f)} in ${shortFunc((f.where || {}).function) || baseName((f.where || {}).file) || 'an unknown frame'}`;
+    const dayText = d => shortDate(Date.parse(`${d}T00:00:00Z`));
+    const andMore = (n, word) => n > 0 ? ` and ${n} more${word ? ` ${n === 1 ? word : `${word}s`}` : ''}` : '';
+
+    // The history point before the status's own, the newest with `key`.
+    function priorPoint(points, status, key) {
+      const own = status && status.run ? points.findIndex(p => p.run === status.run.id && p.run !== null) : -1;
+      const before = own >= 0 ? points.slice(0, own) : points.slice(0, -1);
+      return [...before].reverse().find(p => p[key] !== undefined && p[key] !== null) || null;
+    }
+
+    // One check's verdict: {level, text, figure}; `text` only when something
+    // is wrong or changed.
+    const missing = what => ({ level: 'bad', text: `No ${what} last night: its job failed before it summarized.`, figure: '' });
+
+    function coverageVerdict(cov, points, status) {
+      if (!cov || cov.missing || !cov.lines || !cov.lines.total) return missing('coverage');
+      const lines = 100 * cov.lines.hit / cov.lines.total;
+      const fns = cov.functions && cov.functions.total ? 100 * cov.functions.hit / cov.functions.total : null;
+      const figure = `${lines.toFixed(1)}% of lines${fns === null ? '' : ` · ${fns.toFixed(1)}% of functions`}`;
+      const prior = priorPoint(points, status, 'lines');
+      if (prior && prior.lines - lines >= COVERAGE_DROP_POINTS) {
+        const lost = cov.lost || [];
+        const named = lost.length ? `: ${baseName(lost[0].file)} lost ${plural(lost[0].lines_lost, 'covered line')}${andMore(lost.length - 1, 'file')}` : '';
+        return { level: 'warn', text: `${(lines - prior.lines).toFixed(2).replace('-', '−')} points since the night before${named}.`, figure };
+      }
+      return { level: 'ok', text: '', figure };
+    }
+
+    function sanitizerVerdict(s) {
+      if (!s || s.missing) return missing('result');
+      const findings = s.findings || [];
+      const fresh = findings.filter(f => f.new), open = findings.filter(f => !f.new);
+      const parts = [];
+      if (fresh.length) parts.push(`new: ${findingText(fresh[0])}${andMore(fresh.length - 1)}`);
+      if (open.length) {
+        const oldest = open.map(f => f.since).sort()[0];
+        parts.push(`${fresh.length ? 'still open' : 'open'} since ${dayText(oldest)}: ${findingText(open[0])}${andMore(open.length - 1)}`);
+      }
+      if (s.failed_without_report_count) parts.push(`${plural(s.failed_without_report_count, 'test')} failed with no report`);
+      const level = fresh.length ? 'bad' : parts.length ? 'warn' : 'ok';
+      return { level, text: parts.length ? `${cap(parts.join('; '))}.` : '', figure: '' };
+    }
+
+    function scanningVerdict(cs) {
+      if (!cs || cs.missing) return { level: 'none', text: '', figure: '' };
+      if (cs.error) return { level: 'bad', text: `GitHub did not answer: ${cs.error}.`, figure: '' };
+      const alerts = cs.alerts || [];
+      const fresh = alerts.filter(a => a.new);
+      const high = alerts.filter(a => HIGH_SEVERITIES.includes(a.severity)).length;
+      const level = fresh.some(a => HIGH_SEVERITIES.includes(a.severity)) ? 'bad' : fresh.length ? 'warn' : 'ok';
+      const text = fresh.length ? `New: ${fresh[0].description || fresh[0].rule} in ${baseName(fresh[0].file)}${andMore(fresh.length - 1)}.` : '';
+      const figure = cs.open ? `${cs.open} open${high ? `, ${high} high` : ''}` : '';
+      return { level, text, figure };
+    }
+
+    function tidyVerdict(t) {
+      if (!t || t.missing) return missing('result');
+      const parts = [];
+      let level = 'ok';
+      if (t.enabled_finding_count) {
+        const f = t.enabled_findings[0];
+        parts.push(`${plural(t.enabled_finding_count, 'finding')} in files the lint gate enforces: ${f.check} in ${baseName(f.file)}`);
+        level = 'bad';
+      }
+      if ((t.could_not_parse || []).length) {
+        parts.push(`could not parse ${plural(t.could_not_parse.length, 'file')}`);
+        if (level === 'ok') level = 'warn';
+      }
+      return { level, text: parts.length ? `${cap(parts.join('; '))}.` : '',
+               figure: `${t.enabled_files} of ${t.files} files enforced · ${t.outside_count.toLocaleString('en-US')} findings in the rest` };
+    }
+
+    function healthVerdict(id, loaded) {
+      const s = loaded.status;
+      if (id === 'coverage') return coverageVerdict(s.coverage, loaded.points, s);
+      if (id === 'code_scanning') return scanningVerdict(s.code_scanning);
+      if (id === 'clang-tidy') return tidyVerdict(s['clang-tidy']);
+      return sanitizerVerdict(s[id]);
+    }
+
+    // What the published file says about itself: {level, text}.
+    function healthStatus(loaded, now) {
+      const { status, newer, unread } = loaded;
+      if (unread) return { level: 'bad', text: `${cap(unread.text)}.` };
+      if (newer) return { level: 'bad', text: 'The code health file was written by a newer version of this page: reload it.' };
+      if (!status) return { level: 'bad', text: 'Nothing published yet: nightlyCodeHealth.yml writes code-health/status.json each night.' };
+      const at = Date.parse(status.generated_at);
+      if (now - at > HEALTH_STALE_AFTER_MS) return { level: 'bad', text: `No nightly for ${ago(at, now)}: these are the answers of ${formatWhen(at)}.` };
+      return { level: '', text: '' };
+    }
+
+    // A check's last nights as a line, its latest a dot: an SVG string.
+    function sparkline(values) {
+      const vs = values.slice(-SPARK_POINTS);
+      const known = vs.filter(v => v !== null && v !== undefined);
+      if (known.length < 2) return '';
+      const W = 120, H = 22, P = 3;
+      const lo = Math.min(...known), hi = Math.max(...known);
+      const y = v => hi === lo ? H / 2 : H - P - (v - lo) / (hi - lo) * (H - 2 * P);
+      const x = i => P + i * (W - 2 * P) / Math.max(1, vs.length - 1);
+      let d = '', pen = false;
+      vs.forEach((v, i) => {
+        if (v === null || v === undefined) { pen = false; return; }
+        d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+        pen = true;
+      });
+      const last = vs.length - 1;
+      const dot = vs[last] === null || vs[last] === undefined ? '' : `<circle cx="${x(last).toFixed(1)}" cy="${y(vs[last]).toFixed(1)}" r="2.2"/>`;
+      return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${d}"/>${dot}</svg>`;
+    }
+
+    function healthRow(check, v, loaded) {
+      const run = loaded.status.run || {};
+      const spark = el('span', { className: 'h-spark', title: `the last ${SPARK_POINTS} nights` });
+      spark.innerHTML = sparkline(loaded.points.map(check.series));
+      const row = el('div', { className: `h-row ${v.level}` }, el('span', { className: 'dot' }),
+        link(check.id === 'code_scanning' ? `${REPO}/security/code-scanning` : run.url || `${REPO}/actions/workflows/nightlyCodeHealth.yml`, check.title, { className: 'wf-name' }),
+        el('span', { className: 'h-what' }, v.text), el('span', { className: 'h-fig' }, v.figure || ''), spark);
+      row.level = v.level;
+      return row;
+    }
+
+    // A finding: what, where, since when; open for the report, the tests
+    // that reach it and how to run one.
+    function findingCard(f, sha) {
+      const w = f.where || {};
+      const card = el('details', { className: `finding${f.new ? ' new' : ''}` });
+      const tests = f.tests || [];
+      const first = tests[0] ? tests[0].replace(/^[^:]+ :: /, '') : '';
+      card.append(
+        el('summary', {},
+          el('span', { className: `pill ${f.new ? 'new' : 'since'}` }, f.new ? 'new' : `since ${dayText(f.since)}`),
+          el('span', { className: 'f-kind' }, `${SANITIZER_NAMES[f.sanitizer] || f.sanitizer}: ${kindText(f)}`),
+          el('span', { className: 'f-where' }, `${shortFunc(w.function)}${w.function ? ' · ' : ''}`, w.file ? sourceLink(sha, w.file, w.line, `${baseName(w.file)}:${w.line || '?'}`) : 'no frame in this repository'),
+          el('span', { className: 'f-tests' }, plural(f.test_count || tests.length, 'test'))),
+        el('div', { className: 'f-body' },
+          el('pre', {}, f.excerpt || ''),
+          el('div', {}, el('b', {}, 'Tests that reach it'), el('ul', {}, ...tests.map(t => el('li', {}, t))),
+            (f.test_count || 0) > tests.length ? el('p', { className: 'dim' }, `and ${f.test_count - tests.length} more`) : ''),
+          first ? el('p', {}, 'Reproduce on a sanitized build: ', el('code', {}, `lit -v build/test/${first}`)) : ''));
+      return card;
+    }
+
+    function renderFindings(loaded) {
+      const s = loaded.status;
+      const sha = (s.run || {}).sha;
+      const all = ['asan-ubsan', 'tsan'].flatMap(id => (s[id] && s[id].findings) || []);
+      all.sort((a, b) => (b.new - a.new) || (a.since < b.since ? -1 : a.since > b.since ? 1 : 0));
+      const failed = ['asan-ubsan', 'tsan'].filter(id => s[id] && s[id].failed_without_report_count).map(id => {
+        const piece = s[id];
+        const title = HEALTH_CHECKS.find(c => c.id === id).title;
+        return el('details', { className: 'band-more' },
+          el('summary', {}, `${plural(piece.failed_without_report_count, 'test')} failed under ${title} with no report`),
+          el('div', { className: 'table-wrap' }, el('table', {}, el('tbody', {}, ...piece.failed_without_report.map(t =>
+            el('tr', {}, el('td', {}, el('code', {}, t.test)), el('td', { className: 'num' }, t.code.toLowerCase())))))));
+      });
+      $('health-findings-block').hidden = !all.length && !failed.length;
+      $('health-findings').replaceChildren(...all.map(f => findingCard(f, sha)), ...failed);
+    }
+
+    // A night-by-night chart of the history: a Chart.js config.
+    function healthChartConfig(points, series, yTitle, fmt, zero = true) {
+      const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
+      const dates = points.map(p => Date.parse(p.date));
+      const years = spansYears(dates);
+      const datasets = series.map(s => {
+        const color = cssVar(`--series-${s.color}`, '#5b6475');
+        return { label: s.label, data: points.map(s.value), borderColor: color, backgroundColor: color, borderWidth: 2,
+                 // The latest night's point drawn, so a change last night is not just an edge.
+                 tension: 0, stepped: Boolean(s.stepped), spanGaps: false, pointRadius: points.map((_, i) => i === points.length - 1 ? 3 : 0), pointHoverRadius: 4 };
+      });
+      const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
+      return { type: 'line', data: { labels: dates.map(d => shortDate(d, years)), datasets }, options: {
+        animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        onClick: (_event, elements) => {
+          const p = elements && elements.length ? points[elements[0].index] : null;
+          if (p && p.run) window.open(`${REPO}/actions/runs/${p.run}`, '_blank', 'noopener');
+        },
+        scales: {
+          x: { ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 8 }, grid: { display: false } },
+          y: { type: 'linear', beginAtZero: zero, title: title(yTitle), grid: { color: grid },
+               ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: fmt, ...(fmt === countText ? { precision: 0 } : {}) } },
+        },
+        plugins: {
+          legend: { display: series.length > 1, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 12 } } },
+          tooltip: { callbacks: {
+            title: items => items.length ? `${formatWhen(dates[items[0].dataIndex])}${points[items[0].dataIndex].sha ? `, ${points[items[0].dataIndex].sha.slice(0, 7)}` : ''}` : '',
+            label: item => `${item.dataset.label}: ${item.raw === null || item.raw === undefined ? 'no result' : fmt(item.raw)}`,
+            footer: () => 'Click for the run',
+          } },
+        },
+      } };
+    }
+
+    const countText = v => Number.isInteger(v) ? v.toLocaleString('en-US') : '';
+    // A count from a history point's check: 0 when the check ran and found
+    // none of it, null when the check has no result that night.
+    const countOf = (key, sub, inner) => p => !p[key] ? null : p[key][sub] && p[key][sub][inner] !== undefined ? p[key][sub][inner] : 0;
+    const HEALTH_CHARTS = [
+      { title: 'Coverage', y: 'Covered, %', fmt: v => `${Math.round(v * 10) / 10}%`, series: [
+        { label: 'Lines', value: p => p.lines ?? null, color: 1 },
+        { label: 'Functions', value: p => p.functions ?? null, color: 3 }] },
+      { title: 'Sanitizer findings', y: 'Open findings', fmt: countText, series: [
+        { label: 'ASan', value: countOf('asan-ubsan', 'by', 'asan'), color: 2, stepped: true },
+        { label: 'UBSan', value: countOf('asan-ubsan', 'by', 'ubsan'), color: 7, stepped: true },
+        { label: 'TSan', value: countOf('tsan', 'by', 'tsan'), color: 4, stepped: true }] },
+      { title: 'Open code scanning alerts', y: 'Open alerts', fmt: countText, series: [
+        { label: 'C++', value: countOf('code_scanning', 'by_language', 'cpp'), color: 1, stepped: true },
+        { label: 'Python', value: countOf('code_scanning', 'by_language', 'python'), color: 3, stepped: true }] },
+      { title: 'clang-tidy findings outside the enforced files', y: 'Findings', fmt: countText, series: [
+        { label: 'Findings', value: p => p['clang-tidy'] ? p['clang-tidy'].outside : null, color: 1 }] },
+    ];
+
+    let healthCharts = [];
+    function renderHealthTrends(loaded) {
+      for (const c of healthCharts) if (c && c.destroy) c.destroy();
+      healthCharts = [];
+      const points = loaded.points.slice(-120);
+      if (points.length < 2) { $('health-trends').replaceChildren(el('p', { className: 'dim' }, 'Charted from the second night on.')); return []; }
+      const boxes = HEALTH_CHARTS.map(c => {
+        const canvas = el('canvas', { role: 'img', ariaLabel: `${c.title}, night by night` });
+        return { c, canvas, box: el('div', { className: 'chart trend' }, el('h3', {}, c.title), el('div', { className: 'canvas' }, canvas)) };
+      });
+      $('health-trends').replaceChildren(...boxes.map(b => b.box));
+      healthCharts = boxes.map(b => lineChart(b.canvas, healthChartConfig(points, b.c.series, b.c.y, b.c.fmt)));
+      return healthCharts;
+    }
+
+    const AREAS_SHOWN = 12;
+    function areaBar(a) {
+      const [hit, total] = a.lines;
+      const p = total ? 100 * hit / total : 0;
+      const fill = el('div', { className: 'a-fill' });
+      if (typeof fill.setAttribute === 'function') fill.setAttribute('style', `width:${p.toFixed(1)}%`);
+      return el('div', { className: 'area-bar', title: `${a.area}: ${hit.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} lines` },
+        el('span', { className: 'a-name' }, a.area), el('div', { className: 'a-track' }, fill),
+        el('span', { className: 'a-pct' }, `${Math.round(p)}%`), el('span', { className: 'a-miss' }, `${(total - hit).toLocaleString('en-US')} lines missed`));
+    }
+
+    function renderAreas(loaded) {
+      const cov = loaded.status.coverage;
+      if (!cov || cov.missing || !cov.areas) { $('health-areas').replaceChildren(el('p', { className: 'dim' }, 'No coverage last night.')); return; }
+      const areas = cov.areas.filter(a => a.lines[1]);
+      const sha = (loaded.status.run || {}).sha;
+      const parts = [el('div', { className: 'areas' }, ...areas.slice(0, AREAS_SHOWN).map(areaBar))];
+      if (areas.length > AREAS_SHOWN) {
+        parts.push(el('details', { className: 'band-more' }, el('summary', {}, plural(areas.length - AREAS_SHOWN, 'more part')),
+          el('div', { className: 'areas' }, ...areas.slice(AREAS_SHOWN).map(areaBar))));
+      }
+      if ((cov.lost || []).length) {
+        parts.unshift(el('details', { className: 'band-more', open: true }, el('summary', {}, `${plural(cov.lost.length, 'file')} lost covered lines last night`),
+          el('div', { className: 'table-wrap' }, el('table', {},
+            el('thead', {}, el('tr', {}, el('th', {}, 'File'), el('th', { className: 'num' }, 'Before'), el('th', { className: 'num' }, 'After'), el('th', { className: 'num' }, 'Lines lost'))),
+            el('tbody', {}, ...cov.lost.map(f => el('tr', {}, el('td', {}, sourceLink(sha, f.file, 0, f.file)),
+              el('td', { className: 'num' }, `${f.before.toFixed(1)}%`), el('td', { className: 'num' }, `${f.after.toFixed(1)}%`),
+              el('td', { className: 'num' }, f.lines_lost.toLocaleString('en-US')))))))));
+      }
+      $('health-areas').replaceChildren(...parts);
+    }
+
+    function alertTable(alerts) {
+      return el('div', { className: 'table-wrap' }, el('table', {},
+        el('thead', {}, el('tr', {}, el('th', {}, 'Severity'), el('th', {}, 'Alert'), el('th', {}, 'Where'), el('th', { className: 'num' }, 'Since'))),
+        el('tbody', {}, ...alerts.map(a => el('tr', {},
+          el('td', {}, el('span', { className: `sev ${a.severity}` }, a.severity)),
+          el('td', {}, link(a.url, a.description || a.rule), el('span', { className: 'tag' }, a.language === 'cpp' ? 'C++' : a.language === 'python' ? 'Python' : a.language)),
+          el('td', {}, el('code', {}, `${a.file || '?'}${a.line ? `:${a.line}` : ''}`)),
+          el('td', { className: 'num' }, a.created_at ? shortDate(Date.parse(a.created_at)) : ''))))));
+    }
+
+    function renderAlerts(loaded) {
+      const cs = loaded.status.code_scanning;
+      const alerts = (cs && cs.alerts) || [];
+      $('health-alerts-block').hidden = !alerts.length;
+      if (!alerts.length) { $('health-alerts').replaceChildren(); return; }
+      const fresh = alerts.filter(a => a.new);
+      const parts = [];
+      if (fresh.length) parts.push(el('p', {}, el('b', {}, 'New last night')), alertTable(fresh));
+      parts.push(el('details', { className: 'band-more' }, el('summary', {}, `All ${plural(cs.open, 'open alert')}`), alertTable(alerts)));
+      $('health-alerts').replaceChildren(...parts);
+    }
+
+    function renderTidy(loaded) {
+      const t = loaded.status['clang-tidy'];
+      $('health-tidy-block').hidden = !t || t.missing;
+      if (!t || t.missing) { $('health-tidy').replaceChildren(); return; }
+      const sha = (loaded.status.run || {}).sha;
+      const parts = [];
+      if (t.enabled_finding_count) {
+        parts.push(el('div', { className: 'table-wrap' }, el('table', {},
+          el('thead', {}, el('tr', {}, el('th', {}, 'Where'), el('th', {}, 'Check'), el('th', {}, 'Finding'))),
+          el('tbody', {}, ...t.enabled_findings.map(f => el('tr', {},
+            el('td', {}, sourceLink(sha, f.file, f.line, `${f.file}:${f.line}`)), el('td', {}, el('code', {}, f.check)), el('td', {}, f.message)))))));
+      }
+      if ((t.ready || []).length) {
+        parts.push(el('details', { className: 'band-more' },
+          el('summary', {}, `${plural(t.ready.length, 'file')} outside the enforced list ${t.ready.length === 1 ? 'has' : 'have'} no findings and could join it`),
+          el('ul', {}, ...t.ready.map(f => el('li', {}, el('code', {}, f))))));
+      }
+      const byCheck = Object.entries(t.outside_by_check || {});
+      if (byCheck.length) {
+        parts.push(el('details', { className: 'band-more' }, el('summary', {}, 'Findings outside the enforced files, by check and by file'),
+          el('div', { className: 'charts' },
+            el('div', { className: 'table-wrap' }, el('table', {},
+              el('thead', {}, el('tr', {}, el('th', {}, 'Check'), el('th', { className: 'num' }, 'Findings'))),
+              el('tbody', {}, ...byCheck.map(([c, n]) => el('tr', {}, el('td', {}, el('code', {}, c)), el('td', { className: 'num' }, n.toLocaleString('en-US'))))))),
+            el('div', { className: 'table-wrap' }, el('table', {},
+              el('thead', {}, el('tr', {}, el('th', {}, 'File'), el('th', { className: 'num' }, 'Findings'))),
+              el('tbody', {}, ...Object.entries(t.outside_by_file || {}).map(([f, n]) => el('tr', {}, el('td', {}, el('code', {}, f)), el('td', { className: 'num' }, n.toLocaleString('en-US'))))))))));
+      }
+      if ((t.could_not_parse || []).length) {
+        parts.push(el('details', { className: 'band-more', open: true }, el('summary', {}, `clang-tidy could not parse ${plural(t.could_not_parse.length, 'file')}`),
+          el('ul', {}, ...t.could_not_parse.map(f => el('li', {}, el('code', {}, f))))));
+      }
+      $('health-tidy').replaceChildren(...parts);
+    }
+
+    function renderHealth(loaded, now) {
+      const s = healthStatus(loaded, now);
+      $('health-status').className = s.level === 'bad' ? 'bad' : 'dim';
+      $('health-status').textContent = s.text;
+      $('health-status').hidden = !s.text;
+      $('health-cov-threshold').textContent = String(COVERAGE_DROP_POINTS);
+      if (!loaded.status) {
+        $('health-rows').replaceChildren();
+        for (const id of ['health-findings-block', 'health-alerts-block', 'health-tidy-block']) $(id).hidden = true;
+        $('health-trends').replaceChildren();
+        $('health-areas').replaceChildren();
+        return [];
+      }
+      if (loaded.status.run && loaded.status.run.url) $('health-run').href = loaded.status.run.url;
+      const rows = HEALTH_CHECKS.map(c => healthRow(c, healthVerdict(c.id, loaded), loaded));
+      $('health-rows').replaceChildren(...rows);
+      renderFindings(loaded);
+      renderHealthTrends(loaded);
+      renderAreas(loaded);
+      renderAlerts(loaded);
+      renderTidy(loaded);
+      return rows;
+    }
+
+    let healthToken = 0;
+    async function showHealth() {
+      const token = ++healthToken;
+      if (!$('health-rows').children.length) $('health-rows').replaceChildren(el('p', { className: 'dim' }, 'Reading the published code health…'));
+      const loaded = await loadHealth();
+      if (token !== healthToken || currentView() !== 'health') return null;
+      return renderHealth(loaded, Date.now());
+    }
+
+    // Code health in one line for the overview: what is new first, then
+    // what stays open, in a few words each.
+    function healthSummary(loaded, now) {
+      const s = loaded.status;
+      if (!s) return '';
+      const parts = [];
+      const st = healthStatus(loaded, now);
+      if (st.level === 'bad') parts.push(`no nightly for ${ago(Date.parse(s.generated_at), now)}`);
+      const sans = ['asan-ubsan', 'tsan'];
+      const findings = sans.flatMap(id => (s[id] && s[id].findings) || []);
+      const fresh = findings.filter(f => f.new);
+      const word = f => f.sanitizer === 'ubsan' ? 'undefined behavior' : f.kind;
+      if (fresh.length) parts.push(`new ${SANITIZER_NAMES[fresh[0].sanitizer]} ${word(fresh[0])} in ${shortFunc(fresh[0].where.function) || baseName(fresh[0].where.file)}${andMore(fresh.length - 1)}`);
+      const open = findings.length - fresh.length;
+      if (open) parts.push(plural(open, `${fresh.length ? 'older ' : ''}open sanitizer finding`));
+      for (const id of sans) if (!s[id] || s[id].missing) parts.push(`no ${HEALTH_CHECKS.find(c => c.id === id).title} result`);
+      const cs = s.code_scanning || {};
+      const newAlerts = (cs.alerts || []).filter(a => a.new);
+      if (newAlerts.length) {
+        const high = newAlerts.filter(a => HIGH_SEVERITIES.includes(a.severity)).length;
+        parts.push(high ? plural(high, 'new high alert') : plural(newAlerts.length, 'new alert'));
+      }
+      const tidy = s['clang-tidy'] || {};
+      if (tidy.missing) parts.push('no clang-tidy result');
+      else if (tidy.enabled_finding_count) parts.push(`${plural(tidy.enabled_finding_count, 'clang-tidy finding')} in enforced files`);
+      const cov = coverageVerdict(s.coverage, loaded.points, s);
+      if (cov.level === 'bad') parts.push('no coverage');
+      else if (cov.level === 'warn') parts.push(`coverage ${cov.text.split(' points')[0]} points`);
+      return parts.length ? `${cap(parts.join('; '))}.` : '';
+    }
+
+    // The overview's lines: each check, worst first, with what is wrong.
+    function healthLines(loaded, now) {
+      if (!loaded.status) return [];
+      const lines = HEALTH_CHECKS.map(c => {
+        const v = healthVerdict(c.id, loaded);
+        return { level: v.level, who: c.title, text: v.text || '' };
+      });
+      const s = healthStatus(loaded, now);
+      if (s.level === 'bad') lines.unshift({ level: 'bad', who: 'Code health', text: s.text });
+      return lines.sort((a, b) => (LEVEL_RANK[a.level] ?? 3) - (LEVEL_RANK[b.level] ?? 3));
+    }
+
+    // ------------------------------------------------------------------
     // Overview
     // ------------------------------------------------------------------
 
@@ -4841,6 +5386,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const tile = link(hashFor({ view }), '', { className: `area ${level}`, title: [title, ...lines.map(l => `${l.who}: ${l.text}`), when].filter(Boolean).join('\n') });
       tile.level = level;
       tile.lines = lines;
+      tile.view = view;
       tile.append(el('span', { className: 'area-name' }, title),
         el('span', { className: 'state' }, empty || STATE_WORDS[level]),
         el('span', { className: 'area-what' }, said),
@@ -4853,10 +5399,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       return known.length ? `${ago(Math.max(...known), now)} ago` : '';
     };
 
-    // A tile per section, in the order of the tabs: CI health's workflows
-    // that need a look, the kernels' verdict per NPU, then each section's
-    // bands, each band's verdict. `ci` is null while GitHub is asked.
-    function overviewTiles(kernelNights, loaded, now, ci = null) {
+    // A tile per section, in the order of the tabs (TAB_ORDER): CI health's
+    // workflows that need a look, code health's checks, the kernels'
+    // verdict per NPU, each section's bands' verdicts. `ci` and `health`
+    // are null while they are read.
+    // The tabs after the overview, in the nav's order.
+    const TAB_ORDER = ['ci', 'health', 'placement', 'night', 'performance'];
+    function overviewTiles(kernelNights, loaded, now, ci = null, health = null) {
       const tiles = [];
       const reached = Boolean(ci && ci.status);
       const at = reached ? Date.parse(ci.status.generated_at) : NaN;
@@ -4880,7 +5429,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         tiles.push(sectionTile(id, s.title, s.about, lines, lastRunText(verdicts.map(v => v.run.date), now),
           !has ? 'Not tracked yet' : loaded ? '' : 'Loading…'));
       }
-      return tiles;
+      const healthAt = health && health.status ? Date.parse(health.status.generated_at) : NaN;
+      tiles.push(sectionTile('health', 'Code health', 'Coverage, sanitizers and static analysis of main, nightly.',
+        health ? health.unread ? [{ level: 'bad', who: 'Code health', text: `${cap(health.unread.text)}.` }] : healthLines(health, now) : [],
+        Number.isFinite(healthAt) ? `${ago(healthAt, now)} ago` : '', !health ? 'Loading…' : health.status || health.unread ? '' : 'Not published yet',
+        health && health.status ? healthSummary(health, now) : ''));
+      // In the order of the tabs.
+      const rank = view => { const k = TAB_ORDER.indexOf(view); return k < 0 ? TAB_ORDER.length : k; };
+      return tiles.sort((x, y) => rank(x.view) - rank(y.view));
     }
 
     // The kernels in one line: per NPU, what is wrong in a few words.
@@ -4902,9 +5458,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const token = ++overviewToken;
       const now = Date.now();
       if (!$('overview-tiles').children.length) $('overview-tiles').replaceChildren(...overviewTiles(started ? nights : null, null, now));
-      const [loaded, ci] = await Promise.all([loadComponents(), loadCi()]);
+      const [loaded, ci, health] = await Promise.all([loadComponents(), loadCi(), loadHealth()]);
       if (token !== overviewToken || currentView() !== 'overview') return null;
-      const tiles = overviewTiles(started ? nights : null, loaded, now, ci);
+      const tiles = overviewTiles(started ? nights : null, loaded, now, ci, health);
       $('overview-tiles').replaceChildren(...tiles);
       return tiles;
     }
@@ -4915,7 +5471,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
 
     // The kernels' views, then the other sections'.
     const KERNEL_VIEWS = ['night', 'kernels', 'kernel'];
-    const VIEWS = ['overview', 'ci', ...KERNEL_VIEWS, ...Object.keys(SECTIONS)];
+    const VIEWS = ['overview', 'ci', ...KERNEL_VIEWS, ...Object.keys(SECTIONS), 'health'];
 
     function currentView() {
       const want = readHash();
@@ -4935,6 +5491,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const inKernels = KERNEL_VIEWS.includes(view);
       $('overview').hidden = view !== 'overview';
       $('ci').hidden = view !== 'ci';
+      $('health').hidden = view !== 'health';
       $('kernels-section').hidden = !inKernels;
       $('dashboard').hidden = view !== 'night';
       $('kernels').hidden = view !== 'kernels';
@@ -4948,6 +5505,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       for (const v of KERNEL_VIEWS) mark($(`tab-${v}`), v === view);
       mark($('nav-overview'), view === 'overview');
       mark($('nav-ci'), view === 'ci');
+      mark($('nav-health'), view === 'health');
       mark($('nav-kernels'), inKernels);
       for (const s of Object.keys(SECTIONS)) mark($(`nav-${s}`), view === s);
       return view;
@@ -5030,6 +5588,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (SECTIONS[view]) showSection(view);
       if (view === 'overview') renderOverview();
       if (view === 'ci') showCi();
+      if (view === 'health') showHealth();
       if (!started) return view;
       if (view === 'kernel') showKernel((readHash().kernel || '').split('/')[0]);
       if (view === 'kernels') applyKernelsFilter();
@@ -5077,6 +5636,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         historyCache.clear();
         componentsLoad = null;
         ciLoad = null;
+        healthLoad = null;
         await refreshKernels();
         showView();
       } finally { refreshing = false; }
@@ -5087,6 +5647,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       $('theme').addEventListener('click', () => {
         applyTheme(isDark() ? 'light' : 'dark');
         if (SECTIONS[currentView()]) showSection(currentView());
+        if (currentView() === 'health') showHealth();
         if (!started) return;
         // Canvases read their colors when drawn.
         if (currentView() === 'kernel') showKernel((readHash().kernel || '').split('/')[0]);
