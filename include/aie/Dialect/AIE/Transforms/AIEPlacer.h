@@ -326,6 +326,11 @@ private:
   // index. Two logical tiles naming the same one cannot share a physical tile.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
       namedChannels;
+  // The link tiles at either end of a fifo that chains two links, by each
+  // other: they cannot share a physical tile, or the fifo would loop back
+  // into the one it leaves.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Operation *>>
+      chainedLinkTiles;
   void buildRuntimeBdProfiles(DeviceOp device,
                               llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 

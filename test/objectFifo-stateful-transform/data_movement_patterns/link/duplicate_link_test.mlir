@@ -7,7 +7,9 @@
 
 // RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
 
-// CHECK:   error: 'aie.objectfifo' op objectfifo cannot be in more than one ObjectFifoLinkOp
+// A fifo may chain two links (one's output, the other's input), but not be
+// the input of two.
+// CHECK:   error: 'aie.objectfifo' op objectfifo cannot be in more than one ObjectFifoLinkOp, except as one link's output and another's input
 
 module @duplicate_link {
     aie.device(xcve2302) {
@@ -18,9 +20,9 @@ module @duplicate_link {
 
         aie.objectfifo @of0 (%tile20, {%tile21}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo @of1 (%tile21, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-        aie.objectfifo @of2 (%tile22, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @of2 (%tile21, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
         aie.objectfifo.link [@of0] -> [@of1] ([][])
-        aie.objectfifo.link [@of1] -> [@of2] ([][])
+        aie.objectfifo.link [@of0] -> [@of2] ([][])
     }
 }

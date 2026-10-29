@@ -839,6 +839,16 @@ SequentialPlacer::buildChannelRequirements(
         linkTileOfSource[sym.getValue()] = linkTileOp;
   }
 
+  chainedLinkTiles.clear();
+  for (auto ofOp : objectFifos) {
+    Operation *into = linkTileOfSource.lookup(ofOp.getSymName());
+    if (!into || !linkedAsDest.contains(ofOp.getSymName()))
+      continue;
+    Operation *from = ofOp.getProducerTile().getDefiningOp();
+    chainedLinkTiles[from].push_back(into);
+    chainedLinkTiles[into].push_back(from);
+  }
+
   // Count channels for every ObjectFifo, omitting only the link-tile side of
   // linked fifos. The off-link-tile endpoint still needs DMA: a shim that
   // produces a linked source fifo consumes an MM2S channel; a core that
@@ -1636,6 +1646,11 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
       continue;
     if (llvm::any_of(namedChannels.lookup(logicalTile), [&](auto named) {
           return availability.namedChannelsUsed[tile].contains(named);
+        }))
+      continue;
+    if (llvm::any_of(chainedLinkTiles.lookup(logicalTile), [&](auto *other) {
+          auto placed = result.find(other);
+          return placed != result.end() && placed->second == tile;
         }))
       continue;
     int dist = targetCol ? std::abs(tile.col - *targetCol) : 0;

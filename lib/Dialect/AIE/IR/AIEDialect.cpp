@@ -1604,7 +1604,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
   };
 
   // A fifo passes its objects to exactly one place, so it belongs to at most
-  // one link.
+  // one link, or chains two: one link's output and another's input, each on
+  // its own tile, the objects crossing from one link's pool to the other's.
   for (auto other :
        (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
     if (other == *this) {
@@ -1612,9 +1613,21 @@ LogicalResult ObjectFifoLinkOp::verify() {
     }
     for (ObjectFifoCreateOp mine : participants(*this)) {
       for (ObjectFifoCreateOp theirs : participants(other)) {
-        if (mine == theirs) {
+        if (mine != theirs) {
+          continue;
+        }
+        bool chains = (llvm::is_contained(getOutputObjectFifos(), mine) &&
+                       llvm::is_contained(other.getInputObjectFifos(), mine)) ||
+                      (llvm::is_contained(getInputObjectFifos(), mine) &&
+                       llvm::is_contained(other.getOutputObjectFifos(), mine));
+        if (!chains) {
           return mine.emitOpError(
-              "objectfifo cannot be in more than one ObjectFifoLinkOp");
+              "objectfifo cannot be in more than one ObjectFifoLinkOp, "
+              "except as one link's output and another's input");
+        }
+        if (getOptionalSharedTile() == other.getOptionalSharedTile()) {
+          return mine.emitOpError("objectfifo chains two ObjectFifoLinkOps "
+                                  "on one tile; they must be on two");
         }
       }
     }
