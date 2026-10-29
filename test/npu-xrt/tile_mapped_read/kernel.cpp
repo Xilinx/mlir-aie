@@ -9,13 +9,11 @@
 
 extern "C" {
 
-constexpr uint32_t tm_start_addr = 0x80000;
-
 void read_processor_bus(uint32_t *data, uint32_t addr, uint32_t size,
                         uint32_t stride) {
   for (uint32_t i = 0; i < size; i++) {
     uint32_t offset = addr + (i * stride);
-    data[i] = read_tm(tm_start_addr + offset);
+    data[i] = read_tm(offset);
   }
 }
 
