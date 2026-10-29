@@ -350,7 +350,8 @@ def main(argv=None):
         "--split",
         action="store_true",
         help="also generate the first dispatch's tokens one per dispatch, from the "
-        "same inputs; the records, KV cache and stage must be byte-identical",
+        "same inputs; the records, KV cache, seed, final hidden and sampler "
+        "state must be byte-identical",
     )
     p.add_argument(
         "--prompt-tokens",
@@ -650,7 +651,15 @@ def main(argv=None):
         ]
         kv_t.to("cpu")
         stage_t.to("cpu")
+        stage_split = stage_t.numpy()
         n_rec = passes * REC_BYTES
+        # Stage scratch includes unused output bytes; only the carried state
+        # and final residual have a defined value across dispatch boundaries.
+        stage_ranges = {
+            "seed": (shape.seed_at, RROW),
+            "final hidden": (shape.final_at, RROW),
+            "sampler state": (shape.stage.rng, RROW),
+        }
         checks = {
             "records": np.array_equal(
                 whole[:n_rec], np.concatenate([r[:REC_BYTES] for r in recs])
@@ -658,7 +667,12 @@ def main(argv=None):
             "untouched records": not np.any(whole[n_rec:])
             and not any(np.any(r[REC_BYTES:]) for r in recs),
             "KV cache": np.array_equal(kv_whole, kv_t.numpy()),
-            "stage": np.array_equal(stage_whole, stage_t.numpy()),
+            **{
+                name: np.array_equal(
+                    stage_whole[at : at + size], stage_split[at : at + size]
+                )
+                for name, (at, size) in stage_ranges.items()
+            },
         }
         for name, same in checks.items():
             print(
