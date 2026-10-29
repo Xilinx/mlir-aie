@@ -181,8 +181,10 @@ class _Operand(Member):
 
     @property
     def streamed(self) -> bool:
-        """Whether the tensor streams: on a class, whether it may; on an
-        operator, also whether an obj_shape ``Select`` picks a stream there.
+        """Return whether the tensor streams.
+
+        On a class, whether it may; on an operator, also whether an
+        obj_shape ``Select`` picks a stream there.
         """
         if self.obj_dims is None:
             return False
@@ -194,6 +196,7 @@ class _Operand(Member):
     def obj_shape(self) -> tuple[int, ...]:
         if not self.streamed:
             raise TypeError(f"{self.name} has no obj_shape here: no stream")
+        assert self.obj_dims is not None
         return resolve(self.obj_dims, self.op)
 
     @property

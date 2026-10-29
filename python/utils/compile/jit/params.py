@@ -307,7 +307,12 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
     out: list[int] = []
     for d in dims:
         if isinstance(d, Select):
-            out.extend(resolve(d.branch(op), op))
+            branch = d.branch(op)
+            if branch is None:
+                raise TypeError(
+                    "a Select() with a None branch picks no stream, not a dimension"
+                )
+            out.extend(resolve(branch, op))
         elif not isinstance(d, OperatorParam):
             out.append(int(d))
         elif (value := getattr(op, d.name)) is not None:

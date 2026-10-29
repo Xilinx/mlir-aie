@@ -127,19 +127,30 @@ def test_a_replicated_operand_needs_a_split():
         In(Op.M, replicate=True)
 
 
-class MaybeStreamed(Operator):
-    K: int = param()
-    fed: bool = tunable(default=False, domain=(False, True))
-    x = In(K, obj_shape=Select(fed, (K,), None))
+@pytest.mark.parametrize("stream_when_true", [False, True])
+def test_a_select_obj_shape_streams_only_where_its_flag_picks_a_shape(
+    stream_when_true,
+):
+    class MaybeStreamed(Operator):
+        K: int = param()
+        fed: bool = tunable(default=False, domain=(False, True))
+        x = In(
+            K,
+            obj_shape=Select(
+                fed,
+                (K,) if stream_when_true else None,
+                None if stream_when_true else (K,),
+            ),
+        )
 
-
-def test_a_select_obj_shape_streams_only_where_its_flag_picks_a_shape():
     assert MaybeStreamed.x.streamed
-    off = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=False))
+    off = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=not stream_when_true))
     assert not off.streamed
     with pytest.raises(TypeError, match="x has no obj_shape here: no stream"):
         off.lanes
-    on = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=True))
+    with pytest.raises(TypeError, match="x has no obj_shape here: no stream"):
+        off.obj_shape
+    on = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=stream_when_true))
     assert on.streamed and on.obj_shape == (64,) and on.lanes == 1
 
 

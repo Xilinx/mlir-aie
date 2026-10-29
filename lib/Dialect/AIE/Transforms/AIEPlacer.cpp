@@ -1865,8 +1865,8 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
         }))
       continue;
     if (llvm::any_of(chainedLinkTiles.lookup(logicalTile), [&](auto *other) {
-          auto placed = result.find(other);
-          return placed != result.end() && placed->second == tile;
+          auto placed = resolvePeerPosition(cast<TileLike>(other), result);
+          return placed && *placed == tile;
         }))
       continue;
     int dist = targetCol ? std::abs(tile.col - *targetCol) : 0;

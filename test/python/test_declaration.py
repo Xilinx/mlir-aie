@@ -160,7 +160,27 @@ M.name, T.name, F.name = "M", "T", "F"
         (per_call(bounds=3), "per_call\\(bounds=3\\) must name a param\\(\\)"),
         (In(M, obj_shape=(2.5,)), "obj_shape dimension 2.5 is not"),
         (In(Select(M, (M,), None)), "so it is an obj_shape, not a dimension"),
+        (
+            In(Select(M, (Select(M, (M,), None),), (M,))),
+            "so it is an obj_shape, not a dimension",
+        ),
+        (
+            In(Select(M, (M,), (Select(M, None, (M,)),))),
+            "so it is an obj_shape, not a dimension",
+        ),
         (In(M, obj_shape=(Select(M, (M,), None), 2)), "is the whole obj_shape"),
+        (
+            In(M, obj_shape=Select(M, (Select(M, (M,), None),), (M,))),
+            "is the whole obj_shape",
+        ),
+        (
+            In(M, obj_shape=Select(M, (M,), (Select(M, None, (M,)),))),
+            "is the whole obj_shape",
+        ),
+        (
+            In(M, obj_shape=Select(M, (Select(M, (M,), None),), None)),
+            "is the whole obj_shape",
+        ),
         (In(M, per=3), "per=3 must be a param\\(\\) or tunable\\(\\)"),
         (In(GEMV.M), "dimension <param M> is not a param\\(\\) of Bad"),
         (Out(like=GEMV.a), "like=In\\(batches, M, K\\) must be an input of Bad"),

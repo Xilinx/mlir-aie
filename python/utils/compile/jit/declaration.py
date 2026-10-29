@@ -54,6 +54,14 @@ def _leaves(dims):
             yield d
 
 
+def _selects(dims):
+    """Yield every selection in ``dims``, including nested branches."""
+    for d in dims:
+        if isinstance(d, Select):
+            yield d
+            yield from _selects((d.when_true or ()) + (d.when_false or ()))
+
+
 class Declaration:
     """What an operator declares, read from a class body or a generator's signature.
 
@@ -227,10 +235,7 @@ class Declaration:
             raise TypeError(
                 f"{where}: like={m.like!r} must be an input of {owner.__name__} with no when="
             )
-        if any(
-            isinstance(d, Select) and None in (d.when_true, d.when_false)
-            for d in m.dims
-        ):
+        if any(None in (d.when_true, d.when_false) for d in _selects(m.dims)):
             raise TypeError(
                 f"{where}: a Select() with a None branch picks no stream, so it is an obj_shape, not a dimension"
             )
@@ -261,12 +266,11 @@ class Declaration:
                 f"{where}: when={m.when!r} must be a param(), the flag the operand exists under"
             )
         obj_dims = m.obj_dims or ()
-        optional = [
-            d
-            for d in obj_dims
-            if isinstance(d, Select) and None in (d.when_true, d.when_false)
-        ]
-        if optional and len(obj_dims) != 1:
+        if any(
+            None in (d.when_true, d.when_false)
+            and (len(obj_dims) != 1 or d is not obj_dims[0])
+            for d in _selects(obj_dims)
+        ):
             raise TypeError(
                 f"{where}: a Select() with a None branch is the whole obj_shape, the stream it gives or not"
             )
@@ -416,7 +420,9 @@ class Declaration:
                     raise ValueError(
                         f"{self.name}: {d.flag.name} selects {m.name}'s shape and has no default; pass it explicitly"
                     )
-                dims[:0] = d.when_true if value else d.when_false
+                branch = d.when_true if value else d.when_false
+                assert branch is not None
+                dims[:0] = branch
             dims = expanded
             if len(dims) == 1 and len(shape) != 1:
                 # A flat operand takes a tensor of any rank: its one
