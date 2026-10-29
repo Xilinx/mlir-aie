@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">
+  <g class="node semantic-node" id="tile_1_0"><title>tile_1_0</title><polygon fill="white" points="40,10 60,10 60,50 40,50"/></g>
+  <g class="edge flow src-1" id="edge_foreign"><title>source-&gt;target</title><path fill="none" d="M10,30 L90,30"/></g>
+</svg>
