@@ -4043,6 +4043,16 @@
  ```</p>
 </blockquote>
 <h3 id="install-aietools">Install AIETools<a class="headerlink" href="#install-aietools" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p>This section is optional. The Peano (llvm-aie) compiler installed in the
+build instructions below builds and runs the full IRON/NPU flow on its own; <code>find_package(Vitis)</code>
+in the top-level <code>CMakeLists.txt</code> is not <code>REQUIRED</code>, so configuring without
+Vitis AIE Essentials (or passing <code>-DAIE_BUILD_CHESS_CLANG=OFF</code>) builds the rest
+of the tree normally. Vitis is only needed for the <code>xchesscc</code> backend and the
+small number of tests and kernels tagged <code>REQUIRES: chess</code>. Skip straight to
+<a href="#install-iron-and-mlir-aie-prerequisites">Install IRON and MLIR-AIE Prerequisites</a>
+if you don't need it.</p>
+</blockquote>
 <ol>
 <li>Install Vitis™ AIE Essentials from <a href="https://account.amd.com/en/member/ryzenai-sw-ea.html">Ryzen AI Software 1.3 Early Access</a>. We will assume you use the installation directory, <code>/tools/ryzen_ai-1.3.0/vitis_aie_essentials</code>.</li>
 </ol>
