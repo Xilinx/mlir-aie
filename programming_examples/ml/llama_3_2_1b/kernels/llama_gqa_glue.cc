@@ -112,12 +112,14 @@ extern "C" void llama_af_quant(int8_t *restrict sv, int8_t *restrict af_out) {
   const float absmax = __builtin_bit_cast(
       float, std::max(::aie::reduce_max(mag), kAbsmaxFloorBits));
   float o_act_scale = scalar_mul_rne(absmax, 1.0f / 127.0f);
-  ::aie::vector<float, kVec> inv_v =
-      ::aie::broadcast<float, kVec>(recip_rne(o_act_scale));
-  for (int c = 0; c < kQD / kVec; c++)
+  // |x| <= absmax, so |x * inv| stays near 127, as vec_requant_i8 needs.
+  const RequantFactor inv = requant_factor(recip_rne(o_act_scale));
+  for (int c = 0; c < kQD / 32; c++)
     ::aie::store_v(
-        af_out + c * kVec,
-        vec_round_to_i8(vec_mul_rne(::aie::load_v<kVec>(x + c * kVec), inv_v)));
+        af_out + c * 32,
+        vec_requant_i8(
+            ::aie::load_v<32>(reinterpret_cast<const int32_t *>(x) + c * 32),
+            inv));
 
   __builtin_memcpy(af_out + kQD, &o_act_scale, 4);
   int32_t zero = 0;

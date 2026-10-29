@@ -20,7 +20,7 @@ SEED ?= 7
 N ?= 8
 
 .PHONY: all clean export data verify_oracle \
-	run_block run_blocks_synthetic run run_synthetic
+	run_block run_blocks_synthetic run_blocks_synthetic_batch2 run run_synthetic
 
 all: run_blocks_synthetic
 
@@ -35,7 +35,8 @@ SYNTHETIC_PARAMS := ${BUILD}/yolo26n_params_synthetic${SEED}.npz
 verify_oracle:
 	cd ${srcdir} && python3 verify_oracle.py --n ${N} $(if ${IMAGES},--images ${IMAGES})
 
-# One operator range on the real weights, e.g. BLOCK=52:59; OUTPUTS names the
+# One operator range on the real weights, e.g. BLOCK=57:73, starting and ending
+# on fused-run boundaries (FUSED in yolo26n_design.py); OUTPUTS names the
 # tensors to drain when the range ends in more than one, SYNTHETIC=SEED swaps
 # in seeded weights.
 run_block:
@@ -44,15 +45,16 @@ run_block:
 		$(if ${OUTPUTS},--outputs ${OUTPUTS}) \
 		$(if ${SYNTHETIC},--synthetic ${SYNTHETIC} --params ${BUILD}/yolo26n_params_synthetic${SYNTHETIC}.npz)
 
-# One range of each block kind, by its first and last op's names: the stem
-# and C3k2, SPPF, C2PSA attention, an upsample/concat neck stage, one Detect
-# level with both branches, and the postprocess. FIRST:LAST=T1,T2 drains T1
-# and T2 instead of the last op's output.
+# One range of each block kind, by its first and last op's names, each a run
+# of whole fused runs: the stem and C3k2, SPPF's pools, SPPF's cv2 and C2PSA
+# attention, an upsample/concat neck stage, one Detect level with both
+# branches, and the postprocess. FIRST:LAST=T1,T2 drains T1 and T2 instead of
+# the last op's output.
 DETECT0 := /model.23/one2one_cv2.0/one2one_cv2.0.2/Conv,/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv
 SYNTHETIC_BLOCKS := \
 	images:/model.2/cv2/conv/Conv \
-	/model.9/cv1/conv/Conv:/model.9/Add \
-	/model.10/cv1/conv/Conv:/model.10/cv2/conv/Conv \
+	/model.8/m.0/cv2/conv/Conv:/model.9/m_2/MaxPool \
+	/model.9/cv2/conv/Conv:/model.10/cv2/conv/Conv \
 	/model.14/Resize:/model.16/cv2/conv/Conv \
 	/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv:/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv=${DETECT0} \
 	/model.23:/model.23
@@ -73,6 +75,14 @@ run_blocks_synthetic:
 	done; \
 	echo "yolo26n blocks: $$passed/$$total PASS"; \
 	test $$passed -eq $$total
+
+# The stem, batched: run_blocks_synthetic always runs at --batch 1, so
+# SegmentDesign.transfer()'s cross-image look-ahead/overlap pairing (what
+# the batch 2/4/8/16 performance numbers in README.md depend on) is
+# otherwise never exercised by a PR-gating test.
+run_blocks_synthetic_batch2:
+	cd ${srcdir} && python3 bringup.py --span images /model.2/cv2/conv/Conv \
+		--batch 2 --synthetic ${SEED} --params ${SYNTHETIC_PARAMS}
 
 run:
 	cd ${srcdir} && python3 yolo26n.py --n ${N} $(if ${IMAGES},--images ${IMAGES})

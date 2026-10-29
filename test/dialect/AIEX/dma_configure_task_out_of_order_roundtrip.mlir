@@ -28,7 +28,7 @@ module {
 // -----
 
 // A task-level packet (rather than a per-BD aie.dma_bd_packet) works.
-// CHECK: aiex.dma_configure_task({{.*}}, S2MM, 0, <pkt_type = 0, pkt_id = 1>) {
+// CHECK: aiex.dma_configure_task({{.*}}, S2MM, 0, <pkt_id = 1>) {
 module {
   aie.device(npu2) {
     %tile = aie.tile(0, 1)

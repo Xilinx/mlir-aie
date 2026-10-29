@@ -29,6 +29,11 @@ no browser asks GitHub itself.
   that failed or never found a runner can be named. A workflow is in one
   list or the other, never both.
 
+* **Self-hosted runners**: each one named in the critical workflows' jobs
+  in the window, and how many it ran that passed or failed. No separate
+  request: GitHub's API does not say which runners are online without a
+  repository-administrator token, which the publisher does not have.
+
 It also keeps ``history.json``: one point a day of the critical workflows'
 and merge time's figures, so the page can chart them. Pass the published
 one with ``--history``; today's point is replaced as the day goes on. Pass
@@ -66,6 +71,9 @@ RUN_PAGES = 10
 PULL_PAGES = 5
 # A conclusion that counts against a pass rate; cancelled and skipped do not.
 FAILED = ("failure", "timed_out", "startup_failure")
+# The critical workflows use these custom labels without "self-hosted".
+SELF_HOSTED_LABELS = {"self-hosted", "aie2-4col", "aie2p-8col"}
+RUNNERS_VERSION = 1
 # A run on main's outcome, from its jobs. The first two count against its
 # pass rate, the next two are the runners', and a cancel counts neither way.
 OUTCOMES = ("failed", "timed_out", "runner_lost", "no_runner", "cancelled")
@@ -101,7 +109,7 @@ JOB_FIELDS = {
 }
 # What publishing keeps of a run on main beyond RUN_FIELDS, judged from its
 # jobs once it finished.
-JUDGED = ("outcome", "waited", "took")
+JUDGED = ("outcome", "waited", "took", "runners", "runners_version")
 
 
 def load_workflows(path: Path = WORKFLOWS) -> dict:
@@ -217,15 +225,16 @@ def judge(get, repo: str, run: dict) -> dict:
     run that did not pass with no job to say why is cancelled if GitHub
     says so and failed otherwise); its wait the longest any job waited for
     a runner, and its time from its first job's start to its end, in
-    minutes.
+    minutes. ``runners`` records passed, failed and timed-out jobs on
+    self-hosted runners, excluding cancellations and infrastructure loss.
     """
     jobs = get(f"/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100").get(
         "jobs", []
     )
+    outcomes = [job_outcome(get, repo, j) for j in jobs]
     if run.get("conclusion") == "success":
         outcome = "passed"
     else:
-        outcomes = {job_outcome(get, repo, j) for j in jobs}
         unexplained = "cancelled" if run.get("conclusion") == "cancelled" else "failed"
         outcome = next((o for o in OUTCOMES if o in outcomes), unexplained)
         if outcome == "cancelled" and run.get("conclusion") in FAILED:
@@ -242,6 +251,15 @@ def judge(get, repo: str, run: dict) -> dict:
         "took": (
             rounded(minutes(min(started), run.get("updated_at"))) if started else None
         ),
+        "runners": [
+            {"runner": j["runner_name"], "passed": result == "passed"}
+            for j, result in zip(jobs, outcomes)
+            if j.get("runner_name")
+            and SELF_HOSTED_LABELS.intersection(j.get("labels") or [])
+            and j.get("conclusion") not in ("skipped", "neutral")
+            and result in ("passed", "failed", "timed_out")
+        ],
+        "runners_version": RUNNERS_VERSION,
     }
 
 
@@ -362,7 +380,11 @@ def critical(
             main_runs = []
             for r in on_main:
                 seen = judged.get(r["id"])
-                if not seen or seen.get("updated_at") != r.get("updated_at"):
+                if (
+                    not seen
+                    or seen.get("updated_at") != r.get("updated_at")
+                    or seen.get("runners_version") != RUNNERS_VERSION
+                ):
                     seen = judge(get, repo, r)
                 main_runs.append(
                     {**pick(r, RUN_FIELDS), **{k: seen[k] for k in JUDGED}}
@@ -454,6 +476,38 @@ def merge_time(get, repo: str, now: datetime.datetime) -> dict:
 
 
 # ----------------------------------------------------------------------
+# Self-hosted runners
+# ----------------------------------------------------------------------
+
+
+def runner_tally(critical: list) -> dict:
+    """Count each self-hosted runner's passed and failed jobs.
+
+    From the critical workflows' runs on main in the window, already
+    fetched to judge them: no extra requests. Returns
+    ``{runner_name: {"passed", "failed"}}``.
+    """
+    tally = {}
+    for wf in critical:
+        for main_run in wf.get("main_runs") or []:
+            for j in main_run.get("runners") or []:
+                counts = tally.setdefault(j["runner"], {"passed": 0, "failed": 0})
+                counts["passed" if j["passed"] else "failed"] += 1
+    return tally
+
+
+def runners(critical: list) -> list:
+    """Each self-hosted runner named in the critical workflows' jobs.
+
+    No request: ``runner_tally``'s counts, one entry per runner, by name.
+    """
+    return [
+        {"name": name, **counts}
+        for name, counts in sorted(runner_tally(critical).items())
+    ]
+
+
+# ----------------------------------------------------------------------
 # History
 # ----------------------------------------------------------------------
 
@@ -506,6 +560,7 @@ def collect(
         for r in w.get("main_runs") or []
         if all(k in r for k in JUDGED)
     }
+    critical_wfs = critical(get, repo, config.get("critical", []), now, judged)
     return {
         "schema": SCHEMA,
         "generated_at": now.astimezone(datetime.timezone.utc).isoformat(
@@ -513,9 +568,10 @@ def collect(
         ),
         "repo": repo,
         "window_days": WINDOW_DAYS,
-        "critical": critical(get, repo, config.get("critical", []), now, judged),
+        "critical": critical_wfs,
         "merge_time": merge_time(get, repo, now),
         "workflows": scheduled(get, repo, config.get("workflows", [])),
+        "runners": runners(critical_wfs),
     }
 
 
@@ -570,6 +626,7 @@ def main(argv=None, now: datetime.datetime | None = None) -> int:
     )
     for w in status["workflows"]:
         print(f"scheduled {w['file']}: " + (w.get("error") or f"{len(w['runs'])} runs"))
+    print(f"runners: {len(status['runners'])} named in the window")
     errors = [w for w in status["critical"] + status["workflows"] if w.get("error")]
     # Everything failing means the token or the API is broken: say so with
     # the job's color. Some failing still publishes the rest.

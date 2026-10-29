@@ -12,9 +12,9 @@ and the token→embedding feedback. The device is bit-exact to its numpy oracle
 (`llama_oracle.py`); Accuracy scores that arithmetic against the bf16 Hugging
 Face model.
 
-> Status: on NPU2 (Strix), decode and prefill run on the device, prefill in
-> batches of up to 4 prompt tokens (`generate.py`: prompt in, text out), every
-> token checked against the oracle. Current timings are on the
+> Status: on NPU2 (Strix), decode and prefill run on the device, prefill 64
+> prompt tokens a dispatch through all 16 layers (`generate.py`: prompt in,
+> text out), every token checked against the oracle. Current timings are on the
 > [dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
 
 ---
@@ -110,6 +110,28 @@ a row at a time. Only the prompt's last batch runs the lm_head and sampler
 (`lm{t}`), for its last row. The host's part is tokenization and splitting the
 prompt into batches (`DecodeShape.batches`).
 
+Longer prompts go through a prefill design of their own
+(`aie2_prefill_layer.py`, host side `llama_prefill.py`): a pass runs up to
+64 prompt rows of one KV block through all 16 layers, its GEMM array
+(`aie2_prefill.py`) taking each projection's weights once for the 64 rows.
+A pass's rows are chosen when it is queued, a multiple of 4: the glue cores
+take them in turn and loop over as many as the pass has, every per-row
+transfer's length is a ScratchpadParameter, and the attention runs only the
+sub-batches of 16 queries the rows reach; the GEMMs run their 64-row tiles,
+the rows past the pass's not read. A pass starts with its embed commands,
+up to 28 rows each, which read each row's token's lm_head slot straight from
+the lm_head weights (one ScratchpadParameter a row) and make its embed seed;
+then each layer is its own command. A pass's commands are queued back to
+back on the hardware context, so a command's work stays at most one layer's
+however long the prompt, and the next pass's commands queue behind them.
+The prefill and the decode are two devices of one full ELF (`aie2_llama.py`)
+on one hardware context, sharing the weights, lm_head and KV cache buffers;
+a request's first prefill command and its first decode command each load
+their device's PDI. The prefill takes the prompt's rows up to the last
+multiple of 4 short of its last token; the decode runs the rest, 1 to 4
+tokens in one batch, the last one's sample being the first generated token
+(`Prefiller.plan`).
+
 ### INT8 recipe (W8A8-dynamic)
 
 - **Weights:** symmetric per-output-channel INT8 (`gen_llama_data.py`), streamed
@@ -119,13 +141,17 @@ prompt into batches (`DecodeShape.batches`).
 - **Residual stream in fp32:** each add is fp32, and each norm reads the
   residual requantized per token. An int8 residual would let BOS's massive
   activation (|x| ~ 146) crush the token's other channels.
-- **Gate, up and Q in fp32:** SiLU runs on the fp32 gate (`exp_nonpos` and a
-  Newton reciprocal) times the fp32 up, and Q is roped in fp32 before its
-  per-head quantization.
+- **Gate, up and Q in fp32:** SiLU runs on the fp32 gate (`exp_nonpos` and
+  1 / (1 + e)) times the fp32 up, and Q is roped in fp32 before its per-head
+  quantization.
 - **Glue in fp32:** rmsnorm, rope, softmax and silu, each written so the numpy
   oracle reproduces it exactly: attention's and the sampler's exp is
   `exp_nonpos`, the inverse square root a Quake seed and two Newton steps, and
   reciprocals round as IEEE division.
+- **Attention's PV on the matrix unit:** per block, each head's weights
+  (softmax times v_scale) become 30-bit fixed point against the block's
+  largest, the sum over the block's rows with the int8 V is exact in acc64
+  (`mmul<4, 2, 8>`, int32 x int16), and each output rounds to fp32 once.
 - **Norm input and attention output:** RMSNorm reads the fp32 residual
   directly, and the attention output is quantized once, for the o projection.
 
@@ -144,18 +170,22 @@ with the live context: each token reads every live KV block, and its
 score-to-probability step is the oracle's exact polynomial
 (`vec_exp_nonpos`), so the device stays bit-exact.
 
-**Tokens per dispatch.** amdxdna times a dispatch out after about 5 s. The host
-picks each dispatch's token count from its first position
-(`DecodeShape.passes_for` in `llama_decode.py`): as many of the 4 as fit a 4 s
-budget by a cost model (4.7 ms of lm_head a token, plus per layer 1.16 ms and
-0.097 ms per 1k rows of context). At 16 layers that is 4 tokens all the way to
-128k.
+**Tokens per command.** A request generates any number of tokens: each
+decode command generates up to `--p-max` (4) of them, and the host queues the
+commands back to back on the hardware context, four at most (amdxdna holds
+four started commands), reading each one's tokens as it completes
+(`Decoder.generate` in `llama_decode.py`). A command is at most 4 tokens of
+work, 0.72 s at 128k (180.5 ms a token), well inside amdxdna's ~5 s timeout. Four
+tokens a command measured 44.5 tok/s against 40.0 for one: a decode command
+carries about 2.5 ms of its own. The first generated token is read before the
+generation's commands start: amdxdna reports the commands started behind a
+PDI load (the prefill-to-decode switch) only as they all end.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
-> **TTFT** (time to first token). Prefill runs one dispatch of up to 4 prompt
-> tokens at a time, each a full 16-layer pass, so TTFT scales with the number
-> of dispatches rather than with one big batched op; larger prefill batches
-> (What's next) are the lever.
+> **TTFT** (time to first token). A prefill pass runs 64 prompt tokens through
+> the 16 layers: about 10.3 ms a layer of weights and glue, plus 0.75 ms a
+> layer for each KV block its attention reads, so long prompts are bound by
+> attention, which runs the decode's per-query kernel.
 
 ---
 
@@ -232,10 +262,11 @@ python gen_llama_data.py      # writes data/: INT8 weights, scales, gammas, toke
 
 The bf16 reference reads the safetensors directly.
 
-The decode test, `test_decode.py`, compiles `aie2_decode.py`
-with `@iron.jit` to a full ELF (cached under `NPU_CACHE_HOME`, so a rerun
-reuses it), or runs a prebuilt one (`--elf`, from
-`python aie2_decode.py ... --full-elf-path X`, which the same JIT key reuses).
+The decode test, `test_decode.py`, compiles the model's one design,
+`aie2_llama.py` (the decode and the prefill, each a device of one full ELF),
+with `@iron.jit` (cached under `NPU_CACHE_HOME`, so a rerun reuses it), or
+runs a prebuilt one (`--elf`, from `python aie2_llama.py ... --full-elf-path
+X`, which the same JIT key reuses). `generate.py` runs the same build.
 
 `run_llama.lit` runs the decode test's cases at 2 layers on synthetic
 weights (`--synthetic-weights`): from an empty cache, across dispatches,
@@ -269,6 +300,10 @@ python bench_quality.py --path numpy --bf16-ref
 # numpy_llama_ref
 python generate.py --prompt "The capital of France is" --max-new 32 --check
 
+# time to first token at 2048 prompt tokens, through the 64-row prefill
+# (--prefill decode runs the prompt through the decode alone, for comparison)
+python generate.py --prompt-tokens 2048 --t 2112 --max-new 8
+
 # prefill and predict each prompt on the NPU, vs bf16
 python bench_quality.py --bf16-ref
 ```
@@ -291,7 +326,7 @@ taskset -c 2-23 python test_decode.py --n-layers 16 --time
 
 # the context sweep of section 2: one build at 128k, each context checked
 # and timed (the oracle takes about 100 s a token at 128k)
-python aie2_decode.py --n-layers 16 --t 131072 --full-elf-path build/X.elf
+python aie2_llama.py --n-layers 16 --t 131072 --full-elf-path build/X.elf
 taskset -c 2-23 python test_decode.py --n-layers 16 --t 131072 \
     --elf build/X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 131068 --time
 
@@ -313,7 +348,7 @@ CompileTime values; `bench_quality.py` takes the first two.
 | `--t` | KV cache length (default 128) |
 | `--kset` | the sampler's top-k set size (at most 8, default 8) |
 
-The rest of `build()` in `aie2_decode.py` is on its CLI too: `--p-max`, the
+The rest of `build_llama()` in `aie2_llama.py` is on its CLI too: `--p-max`, the
 tokens a dispatch can generate (1 to 4, default 4). Per dispatch,
 as ScratchpadParameters, go the tokens it generates (`--passes`, default by
 `passes_for`), the first token's position (`--start-pos`) and the sampler's
@@ -345,15 +380,13 @@ Constraints that shape the design:
 
 ## 7. What's next
 
-One compiled design serves decode and batched prefill, with the per-call
+One compiled design serves decode and a prompt's last tokens, with the per-call
 values (passes, a batch's rows, position, live context, the sampler's
 settings) as ScratchpadParameters. Next:
 
 - **Glue fused into the GEMV array's epilogues.**
-- **Larger prefill batches**: the mma tile has 8 activation slots and the
-  design fills 4, its per-row parameters (`pg{m}`, `gat{m}`) sharing the
-  32-parameter budget with the passes'. One dispatch per 4 prompt tokens
-  means a 2048-token prompt pays 512 dispatches' worth of per-dispatch
-  overhead.
+- **Prefill attention as a GEMM**: the 64-row prefill runs the decode's
+  per-query attention kernel, 0.75 ms a layer per KV block, which is most
+  of a long prompt's time to first token.
 - **Long-context attention**, which dominates a token's time at long
   context.

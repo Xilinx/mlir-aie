@@ -9,9 +9,11 @@
 #ifndef AIEX_PASSES_H
 #define AIEX_PASSES_H
 
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassOptions.h"
 
 namespace xilinx::AIEX {
 
@@ -32,6 +34,7 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEDecomposeLargeDmaBdPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIENpuToCertPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECertPagesPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECertVerifyPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEXToStandardPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIESCFToControlFlowPass();
@@ -95,6 +98,71 @@ createAIELowerScratchpadParametersPass(
 
 /// Name of the runtime sequence aie-expand-load-pdi{init-entry} adds.
 inline constexpr llvm::StringLiteral initEntrySequenceName = "reconfig_init";
+
+/// aiecc's stages that give a design its tiles, locks, BD IDs, buffers and
+/// routes, in its order. aiecc runs them as separate steps; the
+/// `aie-resource-stages` pipeline runs them back to back. Each anchors on the
+/// module.
+void addPlacementStage(mlir::OpPassManager &pm,
+                       const AIE::AIEPlaceTilesOptions &options);
+void addTraceStage(mlir::OpPassManager &pm);
+/// Affine lowering through `aie-prepare-buffers`.
+void addLoweringStage(mlir::OpPassManager &pm, bool dynamicObjFifos,
+                      bool packetSwObjFifos, bool ctrlPktOverlay,
+                      bool loadPdiToCtrlPkt, bool skipObjectFifoVerify);
+void addBufferAddressStage(mlir::OpPassManager &pm, int64_t placementBudget);
+void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne);
+
+/// Options of `aie-resource-stages`, named and defaulted as aiecc's flags.
+struct AIEResourceStagesOptions
+    : public mlir::PassPipelineOptions<AIEResourceStagesOptions> {
+  Option<AIE::PlacerType> placer{
+      *this, "placer", llvm::cl::desc("Placement algorithm to use"),
+      llvm::cl::values(clEnumValN(AIE::PlacerType::SequentialPlacer,
+                                  "sequential_placer",
+                                  "Sequential column-major placement"),
+                       clEnumValN(AIE::PlacerType::SAPlacer, "sa_placer",
+                                  "Simulated annealing placement")),
+      llvm::cl::init(AIE::PlacerType::SequentialPlacer)};
+  Option<int> coresPerCol{*this, "cores-per-col",
+                          llvm::cl::desc("Max cores per column"),
+                          llvm::cl::init(-1)};
+  Option<int> saSeed{
+      *this, "sa-seed",
+      llvm::cl::desc("Random seed for SA placer (0 = non-deterministic)"),
+      llvm::cl::init(1)};
+  Option<double> saEffort{
+      *this, "sa-effort",
+      llvm::cl::desc("Scale on the SA placer's search budget"),
+      llvm::cl::init(1.0)};
+  Option<bool> dynamicObjFifos{*this, "dynamic-objFifos",
+                               llvm::cl::desc("Dynamic objectFIFOs"),
+                               llvm::cl::init(true)};
+  Option<bool> packetSwObjFifos{*this, "packet-sw-objFifos",
+                                llvm::cl::desc("Packet-switched objectFIFOs"),
+                                llvm::cl::init(false)};
+  Option<bool> ctrlPktOverlay{
+      *this, "generate-ctrl-pkt-overlay",
+      llvm::cl::desc("Route shim-to-tile control overlay"),
+      llvm::cl::init(false)};
+  Option<bool> loadPdiToCtrlPkt{
+      *this, "load-pdi-to-ctrl-pkt",
+      llvm::cl::desc("Load PDIs over control packets"), llvm::cl::init(false)};
+  Option<bool> skipObjectFifoVerify{
+      *this, "skip-objectFifo-verify",
+      llvm::cl::desc("Skip structural verification of split objectFifo IR"),
+      llvm::cl::init(false)};
+  Option<int64_t> placementBudget{
+      *this, "placement-budget",
+      llvm::cl::desc("Buffer placements to try per tile before giving up"),
+      llvm::cl::init(100000)};
+  Option<bool> allowDeadlockProneRouting{
+      *this, "allow-deadlock-prone-routing",
+      llvm::cl::desc("Warn of, rather than fail on, deadlock-prone flows"),
+      llvm::cl::init(false)};
+};
+
+void registerAIEResourceStagesPipeline();
 
 } // namespace xilinx::AIEX
 

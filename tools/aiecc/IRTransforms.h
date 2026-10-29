@@ -1383,22 +1383,15 @@ getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
   opts.clCoresPerCol = coresPerCol;
   opts.clSASeed = saSeed;
   opts.clSAEffort = saEffort;
-  pm->nest<xilinx::AIE::DeviceOp>().addPass(
-      xilinx::AIE::createAIEPlaceTilesPass(opts));
+  xilinx::AIEX::addPlacementStage(*pm, opts);
   return pm;
 }
 
-// Trace flow + trace-config emission. -aie-fuse-trace-buffers is module-level:
-// it rewrites callers and callees together.
+// Trace flow + trace-config emission.
 inline std::unique_ptr<mlir::PassManager>
 getTracePipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
-  dpm.addPass(xilinx::AIE::createAIEInsertTraceFlowsPass());
-  dpm.addPass(xilinx::AIE::createAIETraceToConfigPass());
-  dpm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
-  dpm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
-  pm->addPass(xilinx::AIEX::createAIEFuseTraceBuffersPass());
+  xilinx::AIEX::addTraceStage(*pm);
   return pm;
 }
 
@@ -1429,84 +1422,12 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
       return nullptr;
     }
   }
-  pm->addPass(mlir::createLowerAffinePass());
-  pm->addPass(createAIECanonicalizeDevicePass());
-  // Lower scratchpad runtime parameters (module-level). Must run before
-  // AIEAssignLockIDs (new locks need IDs) and before address assignment (new
-  // buffers need addresses). params.txt is materialized as a separate graph
-  // edge, so no `outputParamsFile` is set here.
-  pm->addPass(X::createAIELowerScratchpadParametersPass());
-
-  // The control-overlay pass is module-level (it may emit a standalone
-  // `@ctrl_pkt_overlay` device). With `ctrlPktOverlay` it must run BEFORE
-  // objectFIFO lowering so the overlay claims its shim DMA channels first and
-  // the objectFIFO transform (DMAChannelAnalysis) works around them. Otherwise
-  // it runs after objectFIFO + tile-ctrl-id assignment (below).
-  if (ctrlPktOverlay) {
-    if (mlir::failed(mlir::parsePassPipeline(
-            llvm::formatv(
-                "aie-generate-column-control-overlay{{route-shim-to-tile-ctrl="
-                "true emit-standalone-overlay={0}}",
-                loadPdiToCtrlPkt)
-                .str(),
-            *pm))) {
-      return nullptr;
-    }
-  }
-
-  mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
-  // The stateful transform always emits the dynamic (runtime) buffer addressing
-  // and lock bookkeeping. When dynamic objectFifos are disabled, the
-  // aie-objectFifo-unroll pass below unrolls the loops that carry objectFifo
-  // accesses and folds the (now loop-invariant) runtime bookkeeping into a
-  // static, unrolled lowering.
-  if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv(
-              "aie-objectFifo-stateful-transform{{packet-sw-objFifos={0} "
-              "skip-verify={1}}",
-              packetSwObjFifos, skipObjectFifoVerify)
-              .str(),
-          dpm))) {
-    return nullptr;
-  }
-  // Unroll the objectFifo loops (folding the runtime bookkeeping into the
-  // static lowering). `default-dynamic=true` flips the default to the
-  // loop-preserving form; per-core `dynamic_objfifo_lowering` attributes
-  // override it either way. Either way the unroll hints are stripped.
-  if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv("aie-objectFifo-unroll{{default-dynamic={0}}",
-                        dynamicObjFifos)
-              .str(),
-          dpm))) {
-    return nullptr;
-  }
-  dpm.addPass(createAIENormalizeDmaBdDimsPass());
-  // Assign IDs to the ID-less locks the objectFifo lowering creates (and to any
-  // user locks without an ID).
-  dpm.addPass(createAIEAssignLockIDsPass());
-  dpm.addPass(X::createAIEReserveRuntimeBDIDsPass());
-  dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
-  dpm.addPass(createAIELowerCascadeFlowsPass());
-  dpm.addPass(X::createAIEBroadcastPacketPass());
-  dpm.addPass(X::createAIELowerMulticastPass());
-  dpm.addPass(createAIEAssignTileCtrlIDsPass());
-
-  // Without `ctrlPktOverlay`, the (module-level) overlay pass runs here, after
-  // tile-ctrl-id assignment. Break out of the device nest to run it, then
-  // resume with a new device nest for the remaining per-device passes.
-  if (!ctrlPktOverlay) {
-    if (mlir::failed(
-            mlir::parsePassPipeline("aie-generate-column-control-overlay{route-"
-                                    "shim-to-tile-ctrl=false}",
-                                    *pm))) {
-      return nullptr;
-    }
-  }
+  // params.txt is materialized as a separate graph edge, so the scratchpad
+  // lowering in this stage writes no `outputParamsFile`.
+  X::addLoweringStage(*pm, dynamicObjFifos, packetSwObjFifos, ctrlPktOverlay,
+                      loadPdiToCtrlPkt, skipObjectFifoVerify);
 
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
-  // A buffer's name becomes a symbol in its core's object, so aie-prepare-
-  // buffers names the unnamed buffers before the core compiles.
-  dpm2.addPass(createAIEPrepareBuffersPass());
   if (assignAddresses) {
     dpm2.addPass(createAIEAssignBufferAddressesPass());
   }
@@ -1692,11 +1613,7 @@ getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
 inline std::unique_ptr<mlir::PassManager>
 getRoutingPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  mlir::OpPassManager &dpm = pm->nest<xilinx::AIE::DeviceOp>();
-  dpm.addPass(xilinx::AIE::createAIESplitFlowViasPass());
-  xilinx::AIE::AIERoutePathfinderFlowsOptions options;
-  options.clAllowDeadlockProne = cli::allowDeadlockProneRouting;
-  dpm.addPass(xilinx::AIE::createAIEPathfinderPass(options));
+  xilinx::AIEX::addRoutingStage(*pm, cli::allowDeadlockProneRouting);
   return pm;
 }
 

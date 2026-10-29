@@ -9,10 +9,14 @@
 // use is an estimate checked exactly by later passes, so going over it warns
 // and the placement is kept.
 
-// RUN: not aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=42' %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=42' %s > %t.out 2> %t.err
+// RUN: FileCheck %s --input-file=%t.out
+// RUN: FileCheck %s --check-prefix=ERR --input-file=%t.err
+// stdout and stderr are checked apart: how the IR printed for one split
+// interleaves with another's diagnostics depends on when stdout flushes.
 
 // (7, 2) has no core to its east or south, so the cascade cannot be placed.
-// CHECK: error: SA placer failed to find a legal placement (cascade penalty={{[1-9][0-9]*}}, delegate penalty=0)
+// ERR: error: SA placer failed to find a legal placement (cascade and shared memory penalty={{[1-9][0-9]*}}, delegate penalty=0)
 module @cascade_unplaceable {
   aie.device(npu2) {
     %src = aie.logical_tile<CoreTile>(7, 2)
@@ -25,7 +29,7 @@ module @cascade_unplaceable {
 
 // -----
 
-// CHECK: warning: SA placer's resource estimate is over capacity
+// ERR: warning: SA placer's resource estimate is over capacity
 // CHECK-LABEL: module @core_memory_over_estimate
 // CHECK: aie.tile(
 // CHECK-NOT: aie.logical_tile

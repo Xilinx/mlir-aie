@@ -43,54 +43,6 @@ __attribute__((noinline)) static void half_sums(const int8_t *restrict act,
   }
 }
 
-// The f32 epilogue on activations 4h..4h+3's 32 sums (lane (m - 4h)*8 + n,
-// act_scales[m - 4h]), bias added, to out[m*ostride + row0 + n] for the
-// first m_count activations: on 32 lanes when every scale's exponent field
-// is in [kLo, kHi] and every sum is within +-2^23, else per element.
-__attribute__((noinline)) static void
-half_epilogue(::aie::vector<int32, 32> sums, const float *restrict act_scales,
-              const int8_t *restrict w, int8_t *restrict out, int h,
-              int32_t ostride, int32_t row0, int32_t m_count) {
-  const int32_t *bias = reinterpret_cast<const int32_t *>(w + kTrailer);
-  const float *w_scales = reinterpret_cast<const float *>(w + kTrailer + 32);
-  const int m_end = m_count - 4 * h < 4 ? m_count - 4 * h : 4;
-  const uint32_t kLo = 80, kHi = 174;
-  bool ok = true;
-  for (int i = 0; i < 4 + 8; i++) {
-    float f = i < 4 ? act_scales[i] : w_scales[i - 4];
-    ok &= (uint32_t)(((__builtin_bit_cast(int32_t, f) >> 23) & 0xff) - kLo) <=
-          kHi - kLo;
-  }
-  ::aie::vector<float, 8> w8 = ::aie::load_v<8>(w_scales);
-  ::aie::vector<float, 32> w_v = ::aie::concat(w8, w8, w8, w8);
-  ::aie::vector<float, 32> a_v =
-      ::aie::concat(::aie::broadcast<float, 8>(act_scales[0]),
-                    ::aie::broadcast<float, 8>(act_scales[1]),
-                    ::aie::broadcast<float, 8>(act_scales[2]),
-                    ::aie::broadcast<float, 8>(act_scales[3]));
-  ::aie::vector<int32, 8> b8 = ::aie::load_v<8>(bias);
-  sums = ::aie::add(sums, ::aie::concat(b8, b8, b8, b8));
-  ok &=
-      (::aie::ge(sums, int32(-(1 << 23) + 1)) & ::aie::lt(sums, int32(1 << 23)))
-          .count() == 32;
-  ::aie::vector<float, 32> fp;
-  if (ok)
-    fp = vec_mul_rne(vec_mul_rne(::aie::to_float<float>(sums, 0), a_v), w_v);
-  for (int m = 0; m < m_end; m++)
-    for (int n = 0; n < 8; n++) {
-      const int lane = m * 8 + n;
-      float out_val;
-      if (ok) {
-        out_val = fp.get(lane);
-      } else {
-        out_val = scalar_mul_rne(
-            scalar_mul_rne((float)sums.get(lane), act_scales[m]), w_scales[n]);
-      }
-      reinterpret_cast<float *>(out)[(4 * h + m) * ostride + row0 + n] =
-          out_val;
-    }
-}
-
 static inline void epilogue(const int8_t *restrict act,
                             const int8_t *restrict w,
                             const int32_t *restrict part, int8_t *restrict out,
@@ -103,11 +55,11 @@ static inline void epilogue(const int8_t *restrict act,
   const aie::rounding_mode saved_rnd =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
   const float *act_scales = reinterpret_cast<const float *>(act + kScalesOff);
-  half_epilogue(::aie::load_v<32>(sums), act_scales, w, out, 0, ostride, row0,
-                m_count);
+  half_epilogue(::aie::load_v<32>(sums), act_scales, w + kTrailer, out, 0,
+                ostride, row0, m_count);
   if (m_count > 4)
-    half_epilogue(::aie::load_v<32>(sums + 32), act_scales + 4, w, out, 1,
-                  ostride, row0, m_count);
+    half_epilogue(::aie::load_v<32>(sums + 32), act_scales + 4, w + kTrailer,
+                  out, 1, ostride, row0, m_count);
   aie::set_rounding(saved_rnd);
   aie::set_saturation(saved_sat);
 }
@@ -260,8 +212,8 @@ void llama_mma_lm_topk(int8_t *restrict act, int8_t *restrict w,
       ::aie::swap_saturation(aie::saturation_mode::saturate);
   const aie::rounding_mode saved_rnd =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
-  half_epilogue(sums, act_scales, w, reinterpret_cast<int8_t *>(logits), 0, 0,
-                0, 1);
+  half_epilogue(sums, act_scales, w + kTrailer,
+                reinterpret_cast<int8_t *>(logits), 0, 0, 0, 1);
   aie::set_rounding(saved_rnd);
   aie::set_saturation(saved_sat);
 

@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %python %s --device npu1 | FileCheck %s
-# RUN: %python %s --device npu2 | FileCheck %s
-# RUN: %python %s --device xcvc1902 | FileCheck %s
+# RUN: %PYTHON %s --device npu1 | FileCheck %s
+# RUN: %PYTHON %s --device npu2 | FileCheck %s
+# RUN: %PYTHON %s --device xcvc1902 | FileCheck %s
 
 """Model-based property test for --aie-create-pathfinder-flows.
 
@@ -1685,6 +1685,8 @@ class WaitGraph:
 
     def __init__(self, d, streams, volumes):
         self.agents, self.edges, self.ids, self.modeled = [], [], {}, set()
+        # Stream edges from a sender to its receiver, and the reverse.
+        self.sends, self.receives = set(), set()
         never_full = {
             (*s.dst[:2], s.dst[3])
             for s in streams
@@ -1743,6 +1745,8 @@ class WaitGraph:
                 continue
             self.add_edge(a, b, self.STREAM)
             self.add_edge(b, a, self.STREAM)
+            self.sends.add((a, b))
+            self.receives.add((b, a))
 
         def by_symbol(sym):
             a = d.allocs.get(sym)
@@ -1894,25 +1898,56 @@ class WaitGraph:
         return [b for b, kind in self.edges[a] if kind != self.STREAM]
 
     def wait_chain(self, frm, targets, avoid):
-        parent = {a: None for a in avoid}
-        work = deque()
+        # A state is an agent, whether the chain reached it as a DMA receiver
+        # taking a sender's data, where its other DMA senders are no wait of
+        # its (a DMA channel sends a packet whole once it starts), and the
+        # receivers the chain reached that way. A chain through an agent twice
+        # would have it wait on itself. A shortest one never does but for a
+        # receiver reached taking and again later free, so only those are
+        # kept. A state is dropped when its agent was reached before, at least
+        # as free and with no more such receivers: it leads nowhere new.
+        avoid = set(avoid)
+        parent, seen, work = {}, {}, deque()
+
+        def visit(state, before):
+            b, taking, took = state
+            for t, k in seen.get(b, ()):
+                if (taking or not t) and k <= took:
+                    return
+            seen.setdefault(b, []).append((taking, took))
+            parent[state] = before
+            work.append(state)
+
         for a in frm:
-            if a not in parent:
-                parent[a] = None
-                work.append(a)
+            if a not in avoid:
+                visit((a, False, frozenset()), None)
         while work:
-            a = work.popleft()
+            state = work.popleft()
+            a, taking, took = state
             if a in targets:
                 chain = []
-                at = a
+                at = state
                 while at is not None:
-                    chain.append(at)
+                    chain.append(at[0])
                     at = parent[at]
                 return chain[::-1]
-            for b, _ in self.edges[a]:
-                if b not in parent:
-                    parent[b] = a
-                    work.append(b)
+            for b, kind in self.edges[a]:
+                if (
+                    taking
+                    and kind == self.STREAM
+                    and (a, b) in self.receives
+                    and (a, b) not in self.sends
+                    and self.agents[b][2] == self.CHANNEL
+                ):
+                    continue
+                if b in avoid or b in took:
+                    continue
+                takes = (
+                    kind == self.STREAM
+                    and (a, b) in self.sends
+                    and self.agents[b][2] == self.CHANNEL
+                )
+                visit((b, takes, took | {b} if takes else took), state)
         return []
 
     def describe(self, a):

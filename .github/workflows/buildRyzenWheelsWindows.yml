@@ -167,6 +167,7 @@ jobs:
           source aie-venv/Scripts/activate
 
           python -m pip install --upgrade pip
+          # requirements_ml.txt is not hash-pinned; see regenerate_lockfiles.sh.
           pip install -r python/requirements_ml.txt
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
@@ -231,7 +232,7 @@ jobs:
           popd
 
           # Try to repair the wheel on Windows using delvewheel (closest auditwheel equivalent).
-          pip install delvewheel
+          # Already installed hash-pinned above via ci-tools.lock.
           python -m delvewheel repair --ignore-existing --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
 
       - name: Validate wheel metadata
@@ -255,7 +256,7 @@ jobs:
           subject-path: wheelhouse/repaired_wheel/mlir_aie*whl
 
       - name: Upload mlir_aie
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_windows_rtti_${{ env.ENABLE_RTTI }}-${{ env.BUILD_PYTHON_VERSION }}
@@ -413,6 +414,7 @@ jobs:
           source aie-venv/Scripts/activate
 
           python -m pip install --upgrade pip
+          # requirements_ml.txt is not hash-pinned; see regenerate_lockfiles.sh.
           pip install -r python/requirements_ml.txt
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
@@ -477,7 +479,7 @@ jobs:
           popd
 
           # Try to repair the wheel on Windows using delvewheel (closest auditwheel equivalent).
-          pip install delvewheel
+          # Already installed hash-pinned above via ci-tools.lock.
           python -m delvewheel repair --ignore-existing --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
 
       - name: Validate wheel metadata
@@ -501,7 +503,7 @@ jobs:
           subject-path: wheelhouse/repaired_wheel/mlir_aie*whl
 
       - name: Upload mlir_aie
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_windows_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
@@ -529,7 +531,7 @@ jobs:
           submodules: "true"
 
       - name: Download same-commit mlir_aie wheel
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           name: mlir_aie_windows_rtti_ON-3.13
           path: wheelhouse

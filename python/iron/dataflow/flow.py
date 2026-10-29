@@ -252,7 +252,7 @@ class _Route(PerDeviceConfigurationResolvable):
                 ip=ip,
             )
         self._op = _route_op(
-            self._end_symbol(0),
+            [self._end_symbol(0)],
             [self._end_symbol(end) for end in range(1, len(self._channels))],
             **route_attrs,
             loc=loc,
@@ -632,7 +632,7 @@ class PacketFlow(_Route):
         self._endpoints: dict[int, FlowEndpoint] = {}
         self._keep_pkt_header = keep_pkt_header
         self._route_attrs = dict(
-            packet=True, packet_id=pkt_id, keep_pkt_header=keep_pkt_header or None
+            packet=(0, pkt_id), keep_pkt_header=keep_pkt_header or None
         )
         self._shim_symbol = shim_symbol
         self._shim_ends: set[int] = set()

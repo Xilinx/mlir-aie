@@ -1,4 +1,4 @@
-// RUN: aie-opt --split-input-file --aie-objectfifo-allocate --verify-diagnostics %s -o /dev/null
+// RUN: aie-opt --split-input-file --aie-assign-packet-ids --aie-objectfifo-allocate --verify-diagnostics %s -o /dev/null
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -35,9 +35,9 @@ module @packet_source_program {
     %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
     aie.route_endpoint @spray(%mt) DMA
     aie.route_endpoint @catch(%core) DMA
-    aie.route from @spray to [@catch] {packet}
+    aie.route from @spray to [@catch] {packet = #aie.packet_info<>}
     aie.memtile_dma(%mt) {
-      // expected-error @+1 {{names @spray, the source of a packet-switched route without a pinned packet_id; pin packet_id on each route it sources and state that header in each of the program's BDs}}
+      // expected-error @+1 {{names @spray, the source of a packet-switched route without a pinned pkt_id; pin pkt_id on each route it sources and state that header in each of the program's BDs}}
       aie.dma_start(MM2S, @spray, ^bd0, ^end)
     ^bd0:
       aie.dma_bd(%b : memref<64xi32> offset = 0 len = 64)
@@ -59,7 +59,7 @@ module @packet_source_without_header {
     %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
     aie.route_endpoint @spray(%mt) DMA
     aie.route_endpoint @catch(%core) DMA
-    aie.route from @spray to [@catch] {packet, packet_id = 3 : i8}
+    aie.route from @spray to [@catch] {packet = #aie.packet_info<pkt_id = 3>}
     aie.memtile_dma(%mt) {
       aie.dma_start(MM2S, @spray, ^bd0, ^end)
     ^bd0:
@@ -86,8 +86,8 @@ module @shared_source_task_without_header {
     aie.route_endpoint @host(%shim) DMA
     aie.route_endpoint @a(%mt) DMA
     aie.route_endpoint @b(%mt) DMA
-    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
-    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.route from @host to [@a] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @host to [@b] {packet = #aie.packet_info<pkt_id = 2>}
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       %t = aiex.dma_configure_task_for @host {
         // expected-error @+1 {{sends on @host without the packet header of one of its flows, ids 1, 2}}
@@ -249,8 +249,8 @@ module @shared_source_memcpy_without_header {
     aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
     aie.route_endpoint @a(%mt) DMA
     aie.route_endpoint @b(%mt) DMA
-    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
-    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.route from @host to [@a] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @host to [@b] {packet = #aie.packet_info<pkt_id = 2>}
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       // expected-error @+1 {{sends on @host, a source several packet routes share, which has no one header to stamp; it needs a packet header of its own, one of ids 1, 2}}
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @host} : memref<64xi32>
@@ -271,8 +271,8 @@ module @shared_source_bd_packet_wrong_id {
     aie.route_endpoint @scatter(%mt) DMA
     aie.route_endpoint @a_in(%a) DMA
     aie.route_endpoint @b_in(%b) DMA
-    aie.route from @scatter to [@a_in] {packet, packet_id = 1 : i8}
-    aie.route from @scatter to [@b_in] {packet, packet_id = 2 : i8}
+    aie.route from @scatter to [@a_in] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @scatter to [@b_in] {packet = #aie.packet_info<pkt_id = 2>}
     aie.memtile_dma(%mt) {
       aie.dma_start(MM2S, @scatter, ^bd0, ^end)
     ^bd0:
@@ -297,8 +297,8 @@ module @shared_source_bd_chain_without_header {
     aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
     aie.route_endpoint @a(%mt) DMA
     aie.route_endpoint @b(%mt) DMA
-    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
-    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.route from @host to [@a] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @host to [@b] {packet = #aie.packet_info<pkt_id = 2>}
     aie.bd_chain @chain(%buf: memref<64xi32>) {
       aie.dma_bd(%buf : memref<64xi32> offset = 0 len = 32) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
       aie.next_bd ^b1
@@ -323,8 +323,8 @@ module @shared_source_bd_chain_unresolved {
     aie.route_endpoint @host(%shim) DMA {fifoName = "host"}
     aie.route_endpoint @a(%mt) DMA
     aie.route_endpoint @b(%mt) DMA
-    aie.route from @host to [@a] {packet, packet_id = 1 : i8}
-    aie.route from @host to [@b] {packet, packet_id = 2 : i8}
+    aie.route from @host to [@a] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @host to [@b] {packet = #aie.packet_info<pkt_id = 2>}
     aie.runtime_sequence(%arg0: memref<64xi32>) {
       // expected-error @+1 {{symbol does not reference valid BD chain}}
       %t = aiex.dma_start_bd_chain_for @missing(%arg0) : (memref<64xi32>) for @host

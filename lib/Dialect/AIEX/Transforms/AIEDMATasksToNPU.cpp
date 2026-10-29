@@ -499,9 +499,14 @@ struct AIEDMATasksToNPUPass
 
     auto info = bd_op.getPacket().value_or(packet.value_or(nullptr));
     if (info) {
+      if (!info.isAssigned()) {
+        bd_op.emitOpError("packet has no pkt_id; allocation assigns one, so a "
+                          "header at this level must carry it");
+        return failure();
+      }
       f.enable_packet = 1;
       f.packet_type = info.getPktType();
-      f.packet_id = info.getPktId();
+      f.packet_id = info.assignedId();
     }
 
     if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
@@ -1119,13 +1124,18 @@ struct AIEDMATasksToNPUPass
       return op.emitOpError()
              << ctrlRegName
              << " Enable_Out_of_Order field does not fit in a 32-bit register";
+    std::optional<uint32_t> oooValue = tm.encodeFieldValue(*oooField, 1);
+    if (!oooValue)
+      return op.emitOpError()
+             << ctrlRegName
+             << " Enable_Out_of_Order field value does not fit in its bit "
+                "width";
 
     Location loc = op.getLoc();
     IntegerAttr colAttr = builder.getI32IntegerAttr(col);
     IntegerAttr rowAttr = builder.getI32IntegerAttr(row);
     Value addr = createConstantI32(builder, loc, ctrlAddrLocal);
-    Value val =
-        createConstantI32(builder, loc, tm.encodeFieldValue(*oooField, 1));
+    Value val = createConstantI32(builder, loc, *oooValue);
     Value mask = createConstantI32(builder, loc, *oooMask);
     NpuMaskWrite32Op::create(builder, loc, addr, val, mask, nullptr, colAttr,
                              rowAttr);

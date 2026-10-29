@@ -59,6 +59,6 @@
 // RUN: %run_on_npu2% %python %S/test_kernel_edges.py | FileCheck --check-prefix=EDGES %s
 // EDGES: mma per-element epilogue: 0 words differ, sums past 2^23, {{.*}}: PASS
 // EDGES: mma vector epilogue: 0 words differ, sums within 2^23, {{.*}}: PASS
-// EDGES: attention sv_head: 0 words differ, blocks take ['fast', 'fast'], {{.*}}: PASS
-// EDGES: attention sv_head_low: 0 words differ, blocks take ['low', 'fast'], {{.*}}: PASS
-// EDGES: attention per-row sv: 0 words differ, blocks take ['slow', 'fast'], {{.*}}: PASS
+// EDGES: attention plain: 0 words differ, blocks take ['plain', 'plain'], {{.*}}: PASS
+// EDGES: attention dropped rows: 0 words differ, blocks take ['drop', 'plain'], {{.*}}: PASS
+// EDGES: attention top of range: 0 words differ, blocks take ['top', 'plain'], {{.*}}: PASS
