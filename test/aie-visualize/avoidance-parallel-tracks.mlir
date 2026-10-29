@@ -19,10 +19,12 @@
 // STATS: avoidance requests=9 obstacles=10 grid=23x92 states=8464 route_calls={{[0-9]+}} expanded={{[0-9]+}} grid_ms={{[0-9.e+-]+}} initial_ms={{[0-9.e+-]+}} conflict_ms={{[0-9.e+-]+}}
 // OVERLAP: collinear_overlaps=1 narrow_gaps=2 diagonals=0 crossings=3
 // NARROW: collinear_overlaps=0 narrow_gaps=1 diagonals=0 crossings=0
-// SVG: edges=3 diagonals=1 curved_bends=0 node_intersections=3 collinear_overlaps=1 narrow_gaps=2
+// SVG: edges=4 diagonals=1 curved_bends=0 foreign_tile_crossings=2 node_intersections=3 collinear_overlaps=1 narrow_gaps=2 crossings=3
 // SVG: non-orthogonal edge=edge_defect class='edge route flow src-1 dst-2' command=1
+// SVG: foreign-tile-crossing edge=edge_narrow class='edge route flow src-3 dst-4' tile=tile_0_0
 // SVG: node-intersection edge=edge_defect class='edge route flow src-1 dst-2' node=obstacle title='obstacle'
 // SVG: edge-separation first=edge_defect second=edge_overlap overlap=50.00 gap=0.00
+// SVG: edge-crossing first=edge_crossing second=edge_defect at=(75.0, 40.0)
 
 module {
   aie.device(npu1_1col) {

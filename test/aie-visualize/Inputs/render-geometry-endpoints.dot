@@ -2,5 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 digraph render_geometry_endpoints {
-  p_0_0_1_0_m -> p_1_0_1_0_s [id="edge_defect"];
+  call_source [id="call_source", kind="call", tile="0,0"];
+  buffer_target [id="buffer_target", kind="buffer", tile="1,0"];
+  call_source -> buffer_target [id="edge_defect"];
 }

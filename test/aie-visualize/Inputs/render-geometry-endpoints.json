@@ -1,9 +1,13 @@
 {
+  "nodes": [
+    {"id": "call_source", "kind": "call", "tile": [0, 0]},
+    {"id": "buffer_target", "kind": "buffer", "tile": [1, 0]}
+  ],
   "edges": [
     {
       "id": "edge_defect",
-      "source": "p_0_0_1_0_m",
-      "target": "p_1_0_1_0_s"
+      "source": "call_source",
+      "target": "buffer_target"
     }
   ]
 }
