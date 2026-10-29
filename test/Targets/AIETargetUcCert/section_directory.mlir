@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Section files must be siblings of the assembly that includes them.
+// Honor the section directory; default to the current working directory.
 // RUN: rm -rf section_directory && mkdir -p section_directory/into section_directory/cwd
 // RUN: cd section_directory/cwd && aie-translate --aie-cert-to-asm --cert-section-dir=../into %s -o ../into/main.asm
 // RUN: FileCheck %s --check-prefix=MAIN < ../into/main.asm

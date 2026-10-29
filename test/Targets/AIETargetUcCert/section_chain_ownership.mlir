@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Shared chains resolve separately in each section and in the main stream.
+// Shared chains resolve separately in sections and each consuming group.
 // RUN: rm -rf section_chain_ownership && mkdir -p section_chain_ownership
 // RUN: aie-translate --aie-cert-to-asm --cert-section-dir=section_chain_ownership %s -o section_chain_ownership/main.asm
 // RUN: FileCheck %s --check-prefix=MAIN < section_chain_ownership/main.asm
@@ -19,6 +19,15 @@
 // MAIN: UC_DMA_BD {{.*}}@data
 // MAIN: data:
 // MAIN: .long           0x00000001
+// MAIN-NEXT: .long           0x00000002
+// MAIN-NOT: data:
+// MAIN: .attach_to_group 1
+// MAIN: uC_DMA_WRITE_DES_SYNC  @section_shared
+// MAIN: EOF
+// MAIN: section_shared:
+// MAIN: UC_DMA_BD {{.*}}@data
+// MAIN: data:
+// MAIN-NEXT: .long           0x00000001
 // MAIN-NEXT: .long           0x00000002
 // MAIN-NOT: data:
 
@@ -74,6 +83,13 @@ module {
     aiex.cert.section @second {
       aiex.cert.page {
         aiex.cert.job(2) {
+          aiex.cert.uc_dma_write_des_sync(@section_shared)
+        }
+      }
+    }
+    aiex.cert.attach_to_group(1) {
+      aiex.cert.page {
+        aiex.cert.job(4) {
           aiex.cert.uc_dma_write_des_sync(@section_shared)
         }
       }

@@ -4,11 +4,7 @@
 // Absorbed devices become same-named cert.sections in the main device. Payload
 // globals that collide with a device name must be renamed, wherever they live,
 // and only payload references may follow the rename.
-// RUN: aie-opt --aie-npu-to-cert --split-input-file %s | FileCheck %s
-// RUN: aie-opt --aie-npu-to-cert --split-input-file %s | FileCheck %s --check-prefix=REFS
-
-// No load_pdi may follow a payload rename.
-// REFS-NOT: load_pdi({{.*}}_{{[0-9]+}})
+// RUN: aie-opt --aie-npu-to-cert --split-input-file %s | FileCheck %s --implicit-check-not='load_pdi({{.*}}_{{[0-9]+}})'
 
 // An absorbed device holds a global named after a device it also loads. The
 // global is renamed and its blockwrite follows; both load_pdi refs stay on the
@@ -49,21 +45,32 @@ module {
 
 // -----
 
-// The main device's own global collides with a device name. It is renamed too,
-// along with its blockwrite, and the load still gets its section.
+// Rename the main device's payload in NPU and existing CERT uses, preserving
+// the load_pdi device reference.
 //
 // CHECK-LABEL: aie.device(xcve3858)
-// CHECK-DAG: memref.global "private" constant @[[M:seg_cfg_[0-9]+]] : memref<2xi32> = dense<[1, 2]>
+// CHECK-DAG: memref.global "private" constant @[[M:seg_cfg_[0-9]+]] : memref<9xi32> = dense<1>
 // CHECK-DAG: aiex.cert.uc_dma_bd @[[M]], 16384
+// CHECK-DAG: aiex.cert.uc_dma_bd @[[M]], 8192
+// CHECK-DAG: aiex.cert.apply_offset_57(@[[M]], 1, 0)
 // CHECK: aiex.cert.load_pdi({{[0-9]+}}, @seg_cfg)
 // CHECK: aiex.cert.section @seg_cfg {
 // CHECK-NOT: aie.device(xcve3858) @
 module {
   aie.device(xcve3858) @main {
-    memref.global "private" constant @seg_cfg : memref<2xi32> = dense<[1, 2]>
+    memref.global "private" constant @seg_cfg : memref<9xi32> = dense<1>
+    aiex.cert.uc_dma_chain @existing {
+      aiex.cert.uc_dma_bd @seg_cfg, 8192, 9, false
+    }
+    aiex.cert.page {
+      aiex.cert.job(7) {
+        aiex.cert.apply_offset_57(@seg_cfg, 1, 0)
+        aiex.cert.uc_dma_write_des_sync(@existing)
+      }
+    }
     aie.runtime_sequence @main_seq() {
-      %g = memref.get_global @seg_cfg : memref<2xi32>
-      aiex.npu.blockwrite(%g) {address = 16384 : ui32} : memref<2xi32>
+      %g = memref.get_global @seg_cfg : memref<9xi32>
+      aiex.npu.blockwrite(%g) {address = 16384 : ui32} : memref<9xi32>
       aiex.npu.load_pdi {device_ref = @seg_cfg}
     }
   }

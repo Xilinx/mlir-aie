@@ -896,11 +896,9 @@ struct AIENpuToCertPass
     }
   }
 
-  // Absorbed configure bodies must retain their payloads when source devices
-  // are erased. Rename uses before cloning them into the surviving device.
-  // Device names are reserved because absorbed devices become same-named
-  // sections, and processDevice skips a section whose name already resolves.
-  // That includes the main device's own globals.
+  // Move globals into the surviving device and rename payload references before
+  // cloning configure bodies. Reserve device names for sections, including when
+  // renaming the main device's globals: processDevice skips names that resolve.
   void migrateGlobalsIntoMainDevice(AIE::DeviceOp mainDevice,
                                     ArrayRef<AIE::DeviceOp> devices) {
     auto isDeviceName = [&](StringRef candidate) {
