@@ -1133,10 +1133,7 @@ Placer::buildComputePeerAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
         dyn_cast_or_null<LogicalTileOp>(ofOp.getProducerTile().getDefiningOp());
     if (!producer || producer.getTileType() != AIETileType::CoreTile)
       continue;
-    // A broadcast moves by DMA wherever its ends sit (requiresDMAs in
-    // AIEObjectFifoSplit shares memory only with a lone consumer): one MM2S
-    // on the producer, routed to every consumer, and an S2MM on each, which
-    // buildChannelRequirements counts. No neighbor saves a channel.
+    // A broadcast always moves by DMA (dmaReason in AIEObjectFifoSplit).
     if (ofOp.getConsumerTiles().size() != 1)
       continue;
     for (Value consumerVal : ofOp.getConsumerTiles()) {
