@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">
+  <g class="edge flow src-1" id="edge_horizontal"><title>a-&gt;b</title><path fill="none" d="M10,30 L90,30"/></g>
+  <g class="edge flow src-2" id="edge_vertical"><title>c-&gt;d</title><path fill="none" d="M50,10 L50,50"/></g>
+</svg>
