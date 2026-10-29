@@ -10,10 +10,13 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -288,6 +291,8 @@ private:
   std::vector<uint64_t> routeParent;
   std::vector<uint32_t> routeGeneration;
   uint32_t generation = 0;
+  uint64_t routeCalls = 0;
+  uint64_t expandedStates = 0;
 };
 
 std::map<std::string, Point>
@@ -707,6 +712,7 @@ RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request,
     if (routeGeneration[current.state] != generation ||
         current.cost > routeDistance[current.state] + kEpsilon)
       continue;
+    ++expandedStates;
     unsigned currentVertex = current.state / 4;
     Direction incoming = static_cast<Direction>(current.state % 4);
     for (const Gateway &target : targets)
@@ -989,6 +995,19 @@ double AvoidanceArrowRenderer::conflictScore(const RoutedPath &path) const {
   if (!path.valid || path.vertices.size() < 2)
     return 0.0;
   double score = 0.0;
+  auto pointOf = [&](unsigned vertexID) {
+    auto [x, y] = coordinates(vertexID);
+    return Point{xs[x], ys[y]};
+  };
+  for (auto [anchor, point] :
+       {std::pair{path.sourceAnchor, pointOf(path.vertices.front())},
+        std::pair{path.destAnchor, pointOf(path.vertices.back())}}) {
+    Direction outward = std::abs(anchor.first - point.first) < kEpsilon
+                            ? Direction::North
+                            : Direction::East;
+    if (hasGatewayConflict({anchor, point, outward}, path.id))
+      score += 1024.0;
+  }
   for (auto pair : llvm::zip_equal(ArrayRef(path.vertices).drop_back(),
                                    ArrayRef(path.vertices).drop_front())) {
     auto [from, to] = pair;
@@ -998,10 +1017,16 @@ double AvoidanceArrowRenderer::conflictScore(const RoutedPath &path) const {
       score += 1024.0 *
                (horizontalUsage[horizontalEdge(std::min(fromX, toX), fromY)] -
                 1);
+      Direction direction = fromX < toX ? Direction::East : Direction::West;
+      if (hasNearbyParallelUsage(fromX, fromY, direction, path.id))
+        score += 1024.0;
       score += vertexVerticalUsage[to];
     } else {
       score += 1024.0 *
                (verticalUsage[verticalEdge(fromX, std::min(fromY, toY))] - 1);
+      Direction direction = fromY < toY ? Direction::North : Direction::South;
+      if (hasNearbyParallelUsage(fromX, fromY, direction, path.id))
+        score += 1024.0;
       score += vertexHorizontalUsage[to];
     }
   }
@@ -1044,7 +1069,12 @@ SmallVector<ArrowPath>
 AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
                               ArrayRef<RoutingObstacle> obstacles,
                               const LayoutGeometry &layout) {
+  using Clock = std::chrono::steady_clock;
+  auto start = Clock::now();
+  routeCalls = 0;
+  expandedStates = 0;
   buildGrid(requests, obstacles, layout);
+  auto gridBuilt = Clock::now();
   std::vector<unsigned> order(requests.size());
   std::iota(order.begin(), order.end(), 0);
   llvm::stable_sort(order, [&](unsigned first, unsigned second) {
@@ -1059,17 +1089,20 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
 
   std::vector<RoutedPath> routed(requests.size());
   for (unsigned requestID : order) {
+    ++routeCalls;
     routed[requestID] = routeOne(requests[requestID]);
     addUsage(routed[requestID], 1);
   }
   for (unsigned requestID : order) {
     if (routed[requestID].valid)
       continue;
+    ++routeCalls;
     routed[requestID] = routeOne(requests[requestID], true);
     addUsage(routed[requestID], 1);
   }
+  auto initiallyRouted = Clock::now();
 
-  for (unsigned pass = 0; pass < 1; ++pass) {
+  for (unsigned pass = 0; pass < 2; ++pass) {
     llvm::stable_sort(order, [&](unsigned first, unsigned second) {
       return std::pair{-conflictScore(routed[first]), first} <
              std::pair{-conflictScore(routed[second]), second};
@@ -1080,10 +1113,27 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
         break;
       RoutedPath before = std::move(routed[requestID]);
       addUsage(before, -1);
+      ++routeCalls;
       RoutedPath after = routeOne(requests[requestID]);
       routed[requestID] = after.valid ? std::move(after) : std::move(before);
       addUsage(routed[requestID], 1);
     }
+  }
+  auto conflictsRouted = Clock::now();
+
+  if (::getenv("AIE_VISUALIZE_GRAPH_STATS")) {
+    auto milliseconds = [](Clock::duration duration) {
+      return std::chrono::duration<double, std::milli>(duration).count();
+    };
+    llvm::errs() << "avoidance requests=" << requests.size()
+                 << " obstacles=" << obstacles.size() << " grid=" << xs.size()
+                 << 'x' << ys.size() << " states=" << routeDistance.size()
+                 << " route_calls=" << routeCalls
+                 << " expanded=" << expandedStates
+                 << " grid_ms=" << milliseconds(gridBuilt - start)
+                 << " initial_ms=" << milliseconds(initiallyRouted - gridBuilt)
+                 << " conflict_ms="
+                 << milliseconds(conflictsRouted - initiallyRouted) << '\n';
   }
 
   SmallVector<ArrowPath> paths;
