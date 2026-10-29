@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 100">
+  <g class="graph" transform="translate(10 90) scale(1 -1)">
+    <g id="source" class="node"><title>source</title><ellipse fill="white" cx="10" cy="50" rx="8" ry="8"/></g>
+    <g id="target" class="node"><title>target</title><path fill="white" d="M90,42 L110,42 L110,58 L90,58 Z"/></g>
+    <g id="edge_good" class="edge flow src-1 fate-target">
+      <g><a><path fill="none" d="M18,50 C40,50 65,50 87,50"/><polygon fill="black" points="90,50 86,47 86,53"/></a></g>
+    </g>
+  </g>
+</svg>
