@@ -2053,6 +2053,22 @@ struct AIEObjectFifoAllocatePass
     lockUsers.clear();
     lockPlacements.clear();
     spillTiles.clear();
+    dispatchHeaders.clear();
+    channelSharers.clear();
+    plannedMemory.clear();
+    bufferPlacements.clear();
+    channelAssignments.clear();
+    endpointStarts.clear();
+    endpointTasks.clear();
+    fixedBDs.clear();
+    taskBDs.clear();
+    channelDemand.clear();
+    structuralRank.clear();
+    channelFailure = nullptr;
+    bufferFailure = nullptr;
+    unplacedAtFailure = 0;
+    lockFailure = nullptr;
+    lockAccessFailure = nullptr;
 
     if (failed(collectFixedMemory()) || failed(checkStreamPorts()))
       return signalPassFailure();
