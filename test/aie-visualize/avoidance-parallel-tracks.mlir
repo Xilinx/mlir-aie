@@ -11,16 +11,18 @@
 // RUN: env AIE_VISUALIZE_GRAPH_STATS=1 aie-visualize --emit-dot --arrows=avoidance --contract=port %s -o %t 2>&1 | FileCheck %s --check-prefix=STATS
 // RUN: not %python %S/Inputs/check-arrow-separation.py %S/Inputs/overlapping-arrows.dot 2>&1 | FileCheck %s --check-prefix=OVERLAP
 // RUN: not %python %S/Inputs/check-arrow-separation.py %S/Inputs/narrow-gap-arrows.dot 2>&1 | FileCheck %s --check-prefix=NARROW
-// RUN: not %python %S/Inputs/check-svg-render-geometry.py %S/Inputs/render-geometry-defects.svg 2>&1 | FileCheck %s --check-prefix=SVG
+// RUN: not %python %S/Inputs/check-svg-render-geometry.py %S/Inputs/render-geometry-defects.svg --dot %S/Inputs/render-geometry-endpoints.dot 2>&1 | FileCheck %s --check-prefix=SVG
+// RUN: not %python %S/Inputs/check-svg-render-geometry.py %S/Inputs/render-geometry-defects.svg --json %S/Inputs/render-geometry-endpoints.json 2>&1 | FileCheck %s --check-prefix=SVG
 
 // CLEAN: collinear_overlaps=0 narrow_gaps=0 diagonals=0
 // STATS: graph nodes=10 edges=9 contracted=9
 // STATS: avoidance requests=9 obstacles=10 grid=23x92 states=8464 route_calls={{[0-9]+}} expanded={{[0-9]+}} grid_ms={{[0-9.e+-]+}} initial_ms={{[0-9.e+-]+}} conflict_ms={{[0-9.e+-]+}}
 // OVERLAP: collinear_overlaps=1 narrow_gaps=2 diagonals=0 crossings=3
 // NARROW: collinear_overlaps=0 narrow_gaps=1 diagonals=0 crossings=0
-// SVG: edges=1 diagonals=1 curved_bends=0 node_intersections=1
+// SVG: edges=3 diagonals=1 curved_bends=0 node_intersections=3 collinear_overlaps=1 narrow_gaps=2
 // SVG: non-orthogonal edge=edge_defect class='edge route flow src-1 dst-2' command=1
 // SVG: node-intersection edge=edge_defect class='edge route flow src-1 dst-2' node=obstacle title='obstacle'
+// SVG: edge-separation first=edge_defect second=edge_overlap overlap=50.00 gap=0.00
 
 module {
   aie.device(npu1_1col) {
