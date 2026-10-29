@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # Measuring the buffer allocator on real designs
 
 Status: proposal (2026-10-29). Nothing here is implemented yet.

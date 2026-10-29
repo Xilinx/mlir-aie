@@ -49,7 +49,7 @@ jobs:
             flags: -fsanitize=address,undefined -fno-sanitize=vptr,function -fno-sanitize-recover=undefined
             runtime: asan
             options: ASAN_OPTIONS=detect_leaks=0:abort_on_error=0:symbolize=1 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
-            suites: check-aie
+            filter-out: 'slow_test|python-concurrency'
             codeql: true
           # TSan sees races in this repo's code; the prebuilt MLIR it links
           # is not instrumented, so a race inside MLIR goes unseen and its
@@ -59,7 +59,7 @@ jobs:
             flags: -fsanitize=thread
             runtime: tsan
             options: TSAN_OPTIONS=halt_on_error=0:second_deadlock_stack=1:report_signal_unsafe=0
-            suites: check-aie check-aie-concurrency
+            filter-out: slow_test
             codeql: false
     steps:
       - name: Free disk space
@@ -158,10 +158,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/lit"
           export ${{ matrix.options }}
-          for suite in ${{ matrix.suites }}; do
-            LIT_OPTS="-sv --timeout 1800 --filter-out slow_test -o $RUNNER_TEMP/lit/$suite.json" \
-              ninja -C build "$suite" || echo "$suite: some tests failed"
-          done
+          lit -sv --timeout 1800 --filter-out '${{ matrix.filter-out }}' \
+            -o "$RUNNER_TEMP/lit/tests.json" build/test \
+            || echo "some tests failed"
 
       - name: Summarize
         if: ${{ !cancelled() }}

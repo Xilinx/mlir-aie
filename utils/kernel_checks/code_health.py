@@ -80,7 +80,7 @@ def stamp(t: datetime.datetime) -> str:
 
 
 def relative(path: str, root: str) -> str:
-    """A path inside the checkout as the repository names it."""
+    """Return a path inside the checkout as the repository names it."""
     path = os.path.normpath(path) if path else path
     if root and path.startswith(root.rstrip("/") + "/"):
         return path[len(root.rstrip("/")) + 1 :]
@@ -108,7 +108,10 @@ TSAN = re.compile(r"WARNING: ThreadSanitizer: ([^(\n]+?)\s*(?:\(|$)", re.M)
 UBSAN = re.compile(r"^(.+?):(\d+):\d+: runtime error: (.+)$", re.M)
 # "    #3 0x55d1 in mlir::Foo::bar() /src/lib/X.cpp:12:5" (ASan) or
 # "    #3 mlir::Foo::bar() /src/lib/X.cpp:12:5 (aie-opt+0x1234)" (TSan).
-FRAME = re.compile(r"^\s*#(\d+) (?:0x[0-9a-f]+ in )?(.+?) ((?:/|[A-Za-z]:)[^\s:]+):(\d+)(?::\d+)?", re.M)
+FRAME = re.compile(
+    r"^\s*#(\d+) (?:0x[0-9a-f]+ in )?(.+?) ((?:/|[A-Za-z]:)[^\s:]+):(\d+)(?::\d+)?",
+    re.M,
+)
 REPORT_END = re.compile(r"^(SUMMARY: \w+Sanitizer.*|==\d+==ABORTING)$", re.M)
 
 
@@ -121,7 +124,7 @@ def ubsan_kind(message: str) -> str:
 
 
 def reports(output: str, root: str) -> list[dict]:
-    """The sanitizer reports in one test's output, as findings (no tests)."""
+    """Extract sanitizer reports from one test's output as findings (no tests)."""
     found = []
     starts = []
     for rx, sanitizer in ((ASAN, "asan"), (LSAN, "lsan"), (TSAN, "tsan")):
@@ -135,43 +138,64 @@ def reports(output: str, root: str) -> list[dict]:
         tail = REPORT_END.search(output, at, end)
         text = output[at : tail.end() if tail else end]
         where = {}
+        ub = UBSAN.match(output, at) if sanitizer == "ubsan" else None
         if sanitizer == "ubsan":
-            m = UBSAN.match(output, at)
-            where = {"file": relative(m.group(1), root), "line": int(m.group(2))}
+            assert ub is not None
+            where = {"file": relative(ub.group(1), root), "line": int(ub.group(2))}
             # UBSan's own line is the place; a stack, if printed, says who.
             frames = [f for f in FRAME.finditer(text)]
-            func = next((f.group(2) for f in frames if relative(f.group(3), root) == where["file"]), "")
+            func = next(
+                (
+                    f.group(2)
+                    for f in frames
+                    if relative(f.group(3), root) == where["file"]
+                ),
+                "",
+            )
             if func:
                 where["function"] = func
         else:
             for f in FRAME.finditer(text):
                 path = relative(f.group(3), root)
                 if ours(path):
-                    where = {"file": path, "line": int(f.group(4)), "function": f.group(2)}
+                    where = {
+                        "file": path,
+                        "line": int(f.group(4)),
+                        "function": f.group(2),
+                    }
                     break
             if not where:
                 first = FRAME.search(text)
                 if first:
-                    where = {"file": relative(first.group(3), root), "line": int(first.group(4)),
-                             "function": first.group(2), "outside": True}
+                    where = {
+                        "file": relative(first.group(3), root),
+                        "line": int(first.group(4)),
+                        "function": first.group(2),
+                        "outside": True,
+                    }
         lines = text.strip("\n").splitlines()
         # The report's own words for its first occurrence, values and all:
         # "shift exponent 32 is too large for 32-bit type 'uint32_t'".
         message = kind
-        if sanitizer == "ubsan":
-            message = re.sub(r" \(aka '[^']*'\)", "", UBSAN.match(output, at).group(3)).strip()
-        found.append({
-            "sanitizer": sanitizer,
-            "kind": kind,
-            "message": message,
-            "where": where,
-            "excerpt": "\n".join(clip(l.replace(root.rstrip("/") + "/", "") if root else l) for l in lines[:EXCERPT_LINES]),
-        })
+        if ub is not None:
+            message = re.sub(r" \(aka '[^']*'\)", "", ub.group(3)).strip()
+        found.append(
+            {
+                "sanitizer": sanitizer,
+                "kind": kind,
+                "message": message,
+                "where": where,
+                "excerpt": "\n".join(
+                    clip(line.replace(root.rstrip("/") + "/", "") if root else line)
+                    for line in lines[:EXCERPT_LINES]
+                ),
+            }
+        )
     return found
 
 
 def finding_key(f: dict) -> str:
-    """The same bug from night to night: not its line, which edits move."""
+    """Identify the same bug across nights, ignoring lines that edits move."""
     w = f.get("where") or {}
     func = re.sub(r"\(.*$", "", w.get("function", ""))
     # A template's name can run to kilobytes: such a key carries its digest.
@@ -185,7 +209,7 @@ RAN = {"PASS", "FAIL", "TIMEOUT", "XFAIL", "XPASS", "UNRESOLVED"}
 
 
 def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
-    """lit's reports of one sanitizer build as one piece of the status."""
+    """Summarize lit's reports of one sanitizer build as one status piece."""
     findings: dict[str, dict] = {}
     failed, tests, ran = [], 0, 0
     for lit in lits:
@@ -196,7 +220,9 @@ def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
             found = reports(t.get("output", ""), root)
             for f in found:
                 key = finding_key(f)
-                seen = findings.setdefault(key, {**f, "key": key, "tests": [], "test_count": 0})
+                seen = findings.setdefault(
+                    key, {**f, "key": key, "tests": [], "test_count": 0}
+                )
                 if t["name"] not in seen["tests"]:
                     seen["test_count"] += 1
                     if len(seen["tests"]) < KEEP_TESTS:
@@ -229,12 +255,12 @@ DIAG = re.compile(r"^(.+?):(\d+):(\d+): (warning|error): (.*?) \[([\w.,-]+)\]$",
 
 
 def enabled_pattern(config: Path) -> re.Pattern:
-    """The ``files:`` regex of the clang-tidy hook in .pre-commit-config.yaml."""
+    """Read the clang-tidy hook's ``files:`` regex from .pre-commit-config.yaml."""
     text = config.read_text(encoding="utf-8")
     m = re.search(r"- id: clang-tidy\n(?:.*\n)*?(\s+)files: \|\n((?:\1\s+.*\n)+)", text)
     if not m:
         raise ValueError(f"no clang-tidy hook with a files: block in {config}")
-    return re.compile(m.group(2))
+    return re.compile(m.group(2).strip())
 
 
 def summarize_tidy(log: str, files: list[str], enabled: re.Pattern, root: str) -> dict:
@@ -257,11 +283,22 @@ def summarize_tidy(log: str, files: list[str], enabled: re.Pattern, root: str) -
             continue
         by_file[path] = by_file.get(path, 0) + 1
         if enabled.fullmatch(path) or enabled.match(path):
-            in_enabled.append({"file": path, "line": int(m.group(2)), "check": check, "message": clip(m.group(5))})
+            in_enabled.append(
+                {
+                    "file": path,
+                    "line": int(m.group(2)),
+                    "check": check,
+                    "message": clip(m.group(5)),
+                }
+            )
         else:
             by_check[check] = by_check.get(check, 0) + 1
     on = [f for f in files if enabled.match(f)]
-    ready = [f for f in files if not enabled.match(f) and f not in by_file and f not in broken]
+    ready = [
+        f
+        for f in files
+        if not enabled.match(f) and f not in by_file and f not in broken
+    ]
     outside = {f: n for f, n in by_file.items() if not enabled.match(f)}
     return {
         "check": "clang-tidy",
@@ -270,8 +307,12 @@ def summarize_tidy(log: str, files: list[str], enabled: re.Pattern, root: str) -
         "enabled_findings": in_enabled[:KEEP_FINDINGS],
         "enabled_finding_count": len(in_enabled),
         "outside_count": sum(outside.values()),
-        "outside_by_check": dict(sorted(by_check.items(), key=lambda kv: (-kv[1], kv[0]))),
-        "outside_by_file": dict(sorted(outside.items(), key=lambda kv: (-kv[1], kv[0]))[:60]),
+        "outside_by_check": dict(
+            sorted(by_check.items(), key=lambda kv: (-kv[1], kv[0]))
+        ),
+        "outside_by_file": dict(
+            sorted(outside.items(), key=lambda kv: (-kv[1], kv[0]))[:60]
+        ),
         "ready": sorted(ready),
         "could_not_parse": sorted(broken),
     }
@@ -283,7 +324,7 @@ def summarize_tidy(log: str, files: list[str], enabled: re.Pattern, root: str) -
 
 
 def area_of(path: str) -> str:
-    """The part of the tree a file is in: lib/Dialect/AIE, lib/Targets, tools/aiecc."""
+    """Find a file's area: lib/Dialect/AIE, lib/Targets, or tools/aiecc."""
     parts = path.split("/")
     if parts[0] == "lib" and len(parts) > 3 and parts[1] in ("Dialect", "Conversion"):
         return "/".join(parts[:3])
@@ -295,7 +336,7 @@ def area_of(path: str) -> str:
 
 
 def read_lcov(text: str, root: str) -> dict:
-    """lcov as {file: [lines hit, lines, functions hit, functions]}."""
+    """Read lcov as {file: [lines hit, lines, functions hit, functions]}."""
     files: dict[str, list[int]] = {}
     cur = None
     for line in text.splitlines():
@@ -333,14 +374,22 @@ def coverage_status(files: dict, previous: dict | None) -> dict:
             was = before[f][0] / before[f][1]
             now = v[0] / v[1]
             if now < was - 1e-9 and before[f][0] - v[0] > 0:
-                lost.append({"file": f, "before": round(100 * was, 2), "after": round(100 * now, 2),
-                             "lines_lost": before[f][0] - v[0]})
+                lost.append(
+                    {
+                        "file": f,
+                        "before": round(100 * was, 2),
+                        "after": round(100 * now, 2),
+                        "lines_lost": before[f][0] - v[0],
+                    }
+                )
     lost.sort(key=lambda x: -x["lines_lost"])
     return {
         "lines": {"hit": total[0], "total": total[1]},
         "functions": {"hit": total[2], "total": total[3]},
-        "areas": [{"area": a, "lines": [v[0], v[1]], "functions": [v[2], v[3]]}
-                  for a, v in sorted(areas.items(), key=lambda kv: -(kv[1][1] - kv[1][0]))],
+        "areas": [
+            {"area": a, "lines": [v[0], v[1]], "functions": [v[2], v[3]]}
+            for a, v in sorted(areas.items(), key=lambda kv: -(kv[1][1] - kv[1][0]))
+        ],
         "files": files,
         "lost": lost[:30],
     }
@@ -352,42 +401,66 @@ def coverage_status(files: dict, previous: dict | None) -> dict:
 
 
 def language_of(alert: dict) -> str:
-    cat = ((alert.get("most_recent_instance") or {}).get("category") or "")
+    cat = (alert.get("most_recent_instance") or {}).get("category") or ""
     m = re.search(r"language:([\w-]+)", cat)
     if m:
         return {"c-cpp": "cpp", "cpp": "cpp"}.get(m.group(1), m.group(1))
-    path = (((alert.get("most_recent_instance") or {}).get("location") or {}).get("path") or "")
-    return "python" if path.endswith(".py") else "cpp" if re.search(r"\.(c|cc|cpp|h|hpp)$", path) else "other"
+    path = ((alert.get("most_recent_instance") or {}).get("location") or {}).get(
+        "path"
+    ) or ""
+    return (
+        "python"
+        if path.endswith(".py")
+        else "cpp" if re.search(r"\.(c|cc|cpp|h|hpp)$", path) else "other"
+    )
 
 
 def scanning_status(get, repo: str, previous: dict | None) -> dict:
     alerts, page = [], 1
     while True:
-        batch = get(f"/repos/{repo}/code-scanning/alerts?state=open&per_page=100&page={page}")
+        batch = get(
+            f"/repos/{repo}/code-scanning/alerts?state=open&per_page=100&page={page}"
+        )
         alerts += batch
-        if len(batch) < 100 or page >= 20:
+        if len(batch) < 100:
             break
         page += 1
-    known = {a["number"] for a in ((previous or {}).get("alerts") or [])}
-    had = bool(previous and "alerts" in previous)
+    known = set(
+        (previous or {}).get(
+            "alert_ids", [a["number"] for a in ((previous or {}).get("alerts") or [])]
+        )
+    )
+    had = bool(previous and ("alert_ids" in previous or "alerts" in previous))
     out = []
     for a in alerts:
         rule = a.get("rule") or {}
-        loc = ((a.get("most_recent_instance") or {}).get("location") or {})
-        out.append({
-            "number": a["number"],
-            "rule": rule.get("id"),
-            "description": clip(rule.get("description") or ""),
-            "severity": rule.get("security_severity_level") or rule.get("severity") or "note",
-            "tool": (a.get("tool") or {}).get("name"),
-            "language": language_of(a),
-            "file": loc.get("path"),
-            "line": loc.get("start_line"),
-            "url": a.get("html_url"),
-            "created_at": a.get("created_at"),
-            "new": had and a["number"] not in known,
-        })
-    rank = {"critical": 0, "high": 1, "error": 1, "medium": 2, "warning": 2, "low": 3, "note": 4}
+        loc = (a.get("most_recent_instance") or {}).get("location") or {}
+        out.append(
+            {
+                "number": a["number"],
+                "rule": rule.get("id"),
+                "description": clip(rule.get("description") or ""),
+                "severity": rule.get("security_severity_level")
+                or rule.get("severity")
+                or "note",
+                "tool": (a.get("tool") or {}).get("name"),
+                "language": language_of(a),
+                "file": loc.get("path"),
+                "line": loc.get("start_line"),
+                "url": a.get("html_url"),
+                "created_at": a.get("created_at"),
+                "new": had and a["number"] not in known,
+            }
+        )
+    rank = {
+        "critical": 0,
+        "high": 1,
+        "error": 1,
+        "medium": 2,
+        "warning": 2,
+        "low": 3,
+        "note": 4,
+    }
     out.sort(key=lambda a: (rank.get(a["severity"], 5), -a["number"]))
     by: dict[str, int] = {}
     for a in out:
@@ -396,8 +469,15 @@ def scanning_status(get, repo: str, previous: dict | None) -> dict:
     for a in out:
         langs[a["language"]] = langs.get(a["language"], 0) + 1
     fixed = len(known - {a["number"] for a in out}) if had else 0
-    return {"open": len(out), "by_severity": by, "by_language": langs, "alerts": out[:KEEP_ALERTS],
-            "new": sum(a["new"] for a in out), "fixed": fixed}
+    return {
+        "open": len(out),
+        "by_severity": by,
+        "by_language": langs,
+        "alert_ids": sorted(a["number"] for a in out),
+        "alerts": out[:KEEP_ALERTS],
+        "new": sum(a["new"] for a in out),
+        "fixed": fixed,
+    }
 
 
 # ----------------------------------------------------------------------
@@ -420,13 +500,22 @@ def run_info(env=os.environ) -> dict:
     server = env.get("GITHUB_SERVER_URL", "https://github.com")
     repo = env.get("GITHUB_REPOSITORY", "Xilinx/mlir-aie")
     rid = env.get("GITHUB_RUN_ID")
-    return {"id": int(rid) if rid and rid.isdigit() else None,
-            "url": f"{server}/{repo}/actions/runs/{rid}" if rid else None,
-            "sha": env.get("GITHUB_SHA"), "event": env.get("GITHUB_EVENT_NAME")}
+    return {
+        "id": int(rid) if rid and rid.isdigit() else None,
+        "url": f"{server}/{repo}/actions/runs/{rid}" if rid else None,
+        "sha": env.get("GITHUB_SHA"),
+        "event": env.get("GITHUB_EVENT_NAME"),
+    }
 
 
-def build_status(pieces: dict, coverage: dict | None, scanning, previous: dict | None,
-                 now: datetime.datetime, run: dict) -> dict:
+def build_status(
+    pieces: dict,
+    coverage: dict | None,
+    scanning,
+    previous: dict | None,
+    now: datetime.datetime,
+    run: dict,
+) -> dict:
     prev = previous if previous and previous.get("schema", 1) <= SCHEMA else None
     today = now.date().isoformat()
     status = {"schema": SCHEMA, "generated_at": stamp(now), "run": run}
@@ -455,7 +544,11 @@ def pct(hit_total) -> float | None:
 
 def history_point(status: dict) -> dict:
     cov, cs, tidy = status["coverage"], status["code_scanning"], status["clang-tidy"]
-    point = {"date": status["generated_at"], "run": status["run"].get("id"), "sha": status["run"].get("sha")}
+    point = {
+        "date": status["generated_at"],
+        "run": status["run"].get("id"),
+        "sha": status["run"].get("sha"),
+    }
     if not cov.get("missing"):
         point["lines"] = pct((cov["lines"]["hit"], cov["lines"]["total"]))
         point["functions"] = pct((cov["functions"]["hit"], cov["functions"]["total"]))
@@ -465,17 +558,33 @@ def history_point(status: dict) -> dict:
             by: dict[str, int] = {}
             for f in s["findings"]:
                 by[f["sanitizer"]] = by.get(f["sanitizer"], 0) + 1
-            point[name] = {"findings": s["finding_count"], "by": by, "failed": s["failed_without_report_count"]}
+            point[name] = {
+                "findings": s["finding_count"],
+                "by": by,
+                "failed": s["failed_without_report_count"],
+            }
     if not cs.get("missing") and not cs.get("error"):
-        point["code_scanning"] = {"open": cs["open"], "by_severity": cs["by_severity"], "by_language": cs["by_language"]}
+        point["code_scanning"] = {
+            "open": cs["open"],
+            "by_severity": cs["by_severity"],
+            "by_language": cs["by_language"],
+        }
     if not tidy.get("missing"):
-        point["clang-tidy"] = {"enabled": tidy["enabled_finding_count"], "outside": tidy["outside_count"],
-                               "enabled_files": tidy["enabled_files"], "files": tidy["files"]}
+        point["clang-tidy"] = {
+            "enabled": tidy["enabled_finding_count"],
+            "outside": tidy["outside_count"],
+            "enabled_files": tidy["enabled_files"],
+            "files": tidy["files"],
+        }
     return point
 
 
 def update_history(old: dict | None, point: dict) -> dict:
-    points = [p for p in ((old or {}).get("points") or []) if p.get("run") != point.get("run") or point.get("run") is None]
+    points = [
+        p
+        for p in ((old or {}).get("points") or [])
+        if p.get("run") != point.get("run") or point.get("run") is None
+    ]
     points.append(point)
     return {"schema": SCHEMA, "points": points[-HISTORY_POINTS:]}
 
@@ -495,10 +604,14 @@ def write_json(path: Path, data) -> None:
 
 
 def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--source-root", default=os.environ.get("GITHUB_WORKSPACE", str(ROOT)))
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
+    parser.add_argument(
+        "--source-root", default=os.environ.get("GITHUB_WORKSPACE", str(ROOT))
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("sanitizer", help="summarize lit's JSON reports of a sanitizer build")
+    s = sub.add_parser(
+        "sanitizer", help="summarize lit's JSON reports of a sanitizer build"
+    )
     s.add_argument("--name", required=True, choices=["asan-ubsan", "tsan"])
     s.add_argument("--out", type=Path, required=True)
     s.add_argument("lit", nargs="*", type=Path)
@@ -507,31 +620,50 @@ def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
     t.add_argument("--config", type=Path, default=ROOT / ".pre-commit-config.yaml")
     t.add_argument("--out", type=Path, required=True)
     t.add_argument("log", type=Path)
-    p = sub.add_parser("publish", help="fold the night into status.json and history.json")
+    p = sub.add_parser(
+        "publish", help="fold the night into status.json and history.json"
+    )
     p.add_argument("--coverage", type=Path)
     p.add_argument("--piece", type=Path, action="append", default=[])
     p.add_argument("--code-scanning", action="store_true")
     p.add_argument("--previous", type=Path)
     p.add_argument("--history", type=Path)
     p.add_argument("--out", type=Path, required=True)
+    for command in (s, t, p):
+        command.add_argument("--source-root", default=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     root = args.source_root
 
     if args.cmd == "sanitizer":
         lits = [j for j in (read_json(p) for p in args.lit) if j]
+        if not lits:
+            print(
+                "no lit reports loaded; no sanitizer summary written", file=sys.stderr
+            )
+            return 1
         piece = summarize_sanitizer(args.name, lits, root)
         write_json(args.out, piece)
-        print(f"{args.name}: {piece['finding_count']} findings in {piece['ran']} tests run; "
-              f"{piece['failed_without_report_count']} failed with no report", file=sys.stderr)
+        print(
+            f"{args.name}: {piece['finding_count']} findings in {piece['ran']} tests run; "
+            f"{piece['failed_without_report_count']} failed with no report",
+            file=sys.stderr,
+        )
         return 0
 
     if args.cmd == "tidy":
         files = [f for f in args.files.read_text(encoding="utf-8").split() if f]
-        log = args.log.read_text(encoding="utf-8", errors="replace") if args.log.is_file() else ""
+        log = (
+            args.log.read_text(encoding="utf-8", errors="replace")
+            if args.log.is_file()
+            else ""
+        )
         piece = summarize_tidy(log, files, enabled_pattern(args.config), root)
         write_json(args.out, piece)
-        print(f"clang-tidy: {piece['enabled_finding_count']} in enabled files, "
-              f"{piece['outside_count']} outside; {len(piece['ready'])} files ready to enable", file=sys.stderr)
+        print(
+            f"clang-tidy: {piece['enabled_finding_count']} in enabled files, "
+            f"{piece['outside_count']} outside; {len(piece['ready'])} files ready to enable",
+            file=sys.stderr,
+        )
         return 0
 
     now = now or utcnow()
@@ -542,28 +674,38 @@ def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
         if piece and piece.get("check") in CHECKS:
             pieces[piece["check"]] = piece
         else:
-            print(f"{path}: no summary (its job failed or was skipped)", file=sys.stderr)
+            print(
+                f"{path}: no summary (its job failed or was skipped)", file=sys.stderr
+            )
     coverage = None
     if args.coverage and args.coverage.is_file():
-        coverage = coverage_status(read_lcov(args.coverage.read_text(encoding="utf-8"), root),
-                                   (previous or {}).get("coverage"))
+        coverage = coverage_status(
+            read_lcov(args.coverage.read_text(encoding="utf-8"), root),
+            (previous or {}).get("coverage"),
+        )
     scanning = None
     if args.code_scanning:
         from ci_health import ApiError, github
 
         get = get or github(os.environ.get("GITHUB_TOKEN", ""))
         try:
-            scanning = scanning_status(get, os.environ.get("GITHUB_REPOSITORY", "Xilinx/mlir-aie"),
-                                       (previous or {}).get("code_scanning"))
+            scanning = scanning_status(
+                get,
+                os.environ.get("GITHUB_REPOSITORY", "Xilinx/mlir-aie"),
+                (previous or {}).get("code_scanning"),
+            )
         except ApiError as e:
             scanning = str(e)
     status = build_status(pieces, coverage, scanning, previous, now, run_info())
     history = update_history(read_json(args.history), history_point(status))
     write_json(args.out / "status.json", status)
     write_json(args.out / "history.json", history)
-    print(f"code health: {', '.join(sorted(pieces)) or 'no pieces'}"
-          f"{', coverage' if coverage else ''}{', code scanning' if args.code_scanning else ''}; "
-          f"{len(history['points'])} history points", file=sys.stderr)
+    print(
+        f"code health: {', '.join(sorted(pieces)) or 'no pieces'}"
+        f"{', coverage' if coverage else ''}{', code scanning' if args.code_scanning else ''}; "
+        f"{len(history['points'])} history points",
+        file=sys.stderr,
+    )
     return 0
 
 

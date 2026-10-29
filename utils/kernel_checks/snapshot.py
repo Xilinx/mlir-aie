@@ -20,7 +20,8 @@ with no network the page draws its charts as SVG.
 
 Unlike preview.py, it needs nothing but Python and git: no mlir_aie, no
 synthetic nights, no server. A run's per-run records are many and large, so
-only each check's latest few are kept; the page reads no older one.
+each check keeps at most five: the newest three and the selected latest
+published run and its nightly, power-mode/device-aware comparison.
 """
 
 import argparse
@@ -36,7 +37,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 PAGE = HERE / "index.html"
 DIRS = ("ci-health", "code-health", "kernel-checks", "component-checks")
-# The page reads a check's latest record and the published one before it.
+# Keep a small recent tail as well as the page's selected comparison pair.
 RUNS_KEPT = 3
 
 SHIM = """<script>
@@ -64,7 +65,7 @@ SHIM = """<script>
 """
 
 
-def kept(paths: list[str]) -> list[str]:
+def kept(paths: list[str], metadata: dict) -> list[str]:
     """The JSON files the page reads: all but the older per-run records."""
     runs: dict[str, list[str]] = {}
     out = []
@@ -77,9 +78,37 @@ def kept(paths: list[str]) -> list[str]:
         else:
             out.append(p)
     # Run ids are GitHub's, which grow: the newest last.
-    for group in runs.values():
+    for directory, group in runs.items():
         group.sort(key=lambda p: [int(n) for n in re.findall(r"\d+", Path(p).stem)])
-        out += group[-RUNS_KEPT:]
+        needed = set(group[-RUNS_KEPT:])
+        latest = metadata.get(f"{directory}/latest.json")
+        if latest:
+            needed.add(f"{directory}/runs/{latest['id']}.json")
+            index = metadata.get(f"{directory}/runs.json", {}).get("runs", [])
+            at = next(
+                (i for i, r in enumerate(index) if r["id"] == latest["id"]),
+                len(index),
+            )
+            before = [
+                r
+                for r in reversed(index[:at])
+                if r.get("published")
+                and r.get("pmode") == latest.get("pmode")
+                and r.get("event") != "workflow_dispatch"
+            ]
+            # Match index.html's previousPublished: prefer the same part,
+            # falling back to the last nightly in this power mode.
+            previous = next(
+                (
+                    r
+                    for r in before
+                    if latest.get("device") and r.get("device") == latest["device"]
+                ),
+                before[0] if before else None,
+            )
+            if previous:
+                needed.add(f"{directory}/runs/{previous['id']}.json")
+        out += [p for p in group if p in needed]
     return sorted(out)
 
 
@@ -92,13 +121,18 @@ def from_ref(ref: str) -> dict:
         capture_output=True,
         text=True,
     ).stdout.split()
-    return {
-        p: json.loads(
+
+    def read(p):
+        return json.loads(
             subprocess.run(
                 [*git, "show", f"{ref}:{p}"], check=True, capture_output=True
             ).stdout
         )
-        for p in kept(listed)
+
+    metadata = {p: read(p) for p in listed if p.endswith(".json") and "/runs/" not in p}
+    return {
+        **metadata,
+        **{p: read(p) for p in kept(listed, metadata) if p not in metadata},
     }
 
 
@@ -110,8 +144,14 @@ def from_dir(root: Path) -> dict:
         if (root / d).is_dir()
         for p in (root / d).rglob("*.json")
     ]
+
+    def read(p):
+        return json.loads((root / p).read_text(encoding="utf-8"))
+
+    metadata = {p: read(p) for p in listed if "/runs/" not in p}
     return {
-        p: json.loads((root / p).read_text(encoding="utf-8")) for p in kept(listed)
+        **metadata,
+        **{p: read(p) for p in kept(listed, metadata) if p not in metadata},
     }
 
 
@@ -127,7 +167,7 @@ def snapshot(page: str, files: dict, view: str = "") -> str:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--ref", default="origin/gh-pages", help="publication ref")
     source.add_argument(

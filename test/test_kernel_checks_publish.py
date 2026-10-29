@@ -539,12 +539,20 @@ def test_a_thinned_week_keeps_its_published_nightly(publish):
     records = [
         run("nightly", monday - 1, published=True, rows={"a": {}}),
         run("refused", monday - 2, published=False, rows={}),
-        run("manual", monday - 3, published=True, rows={"a": {}},
-            event="workflow_dispatch"),
+        run(
+            "manual",
+            monday - 3,
+            published=True,
+            rows={"a": {}},
+            event="workflow_dispatch",
+        ),
     ]
     assert [r["id"] for r in publish.prune(records, now)] == ["nightly"]
     # A week with no published run keeps its newest.
-    only_refused = [run("r1", monday - 1, published=False), run("r2", monday - 2, published=False)]
+    only_refused = [
+        run("r1", monday - 1, published=False),
+        run("r2", monday - 2, published=False),
+    ]
     assert [r["id"] for r in publish.prune(only_refused, now)] == ["r2"]
 
 
@@ -602,6 +610,73 @@ def test_old_records_shed_their_detail_and_retired_cases_leave_the_history(
     # one missing a few nights stays.
     cost = json.loads((out / "history/cost.json").read_text())
     assert sorted(cost["series"]) == ["gap", "kept"]
+
+
+@pytest.mark.parametrize(
+    "changes, selected, needed",
+    [
+        (
+            [
+                {"event": "schedule"},
+                {"event": "schedule"},
+                {"event": "workflow_dispatch"},
+                {"event": "workflow_dispatch"},
+            ],
+            "2",
+            {"1", "2"},
+        ),
+        ([{}, {"pmode": "performance"}, {}], "3", {"1", "3"}),
+        ([{}, {"device": "Phoenix"}, {}], "3", {"1", "3"}),
+        ([{"device": "Phoenix"}, {"device": "Strix Halo"}, {}], "3", {"2", "3"}),
+        ([{}, {}, {"published": False, "rows": {}}], "2", {"1", "2"}),
+        (
+            [{"event": "workflow_dispatch"} for _ in range(4)],
+            "4",
+            {"4"},
+        ),
+        (
+            [{}, {"event": "workflow_dispatch"}, {}],
+            "3",
+            {"1", "3"},
+        ),
+    ],
+    ids=[
+        "manual-after",
+        "power",
+        "same-device",
+        "new-device",
+        "refused",
+        "manual-only",
+        "manual-before",
+    ],
+)
+def test_old_detail_follows_the_pages_selected_comparison(
+    publish, tmp_path, changes, selected, needed
+):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    for i, change in enumerate(changes, 1):
+        record = hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=160 - 7 * i)),
+            "full",
+            builds={"kernel": "built"},
+            **change,
+        )
+        (out / "runs" / f"{i}.json").write_text(json.dumps(record))
+
+    publish.rebuild(out, now)
+    latest = json.loads((out / "latest.json").read_text())
+    assert latest["id"] == selected
+    assert latest["detail"] and latest["builds"]
+    for i in range(1, len(changes) + 1):
+        record = json.loads((out / "runs" / f"{i}.json").read_text())
+        assert ("detail" in record) == (str(i) in needed)
+        assert ("builds" in record) == (str(i) in needed)
+    before = {p: p.read_text() for p in out.rglob("*.json")}
+    publish.rebuild(out, now)
+    assert {p: p.read_text() for p in out.rglob("*.json")} == before
 
 
 def test_rebuild_drops_pruned_run_files_and_stale_histories(publish, tmp_path):

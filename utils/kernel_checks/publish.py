@@ -641,9 +641,31 @@ def rebuild(
             (runs_dir / f"{r['id']}.json").unlink(missing_ok=True)
     target = kept[-1]["target"] if kept else out.name
     published = [r for r in kept if r.get("published") and r.get("rows")]
+    # The newest nightly is the baseline; only manual runs, the newest of those.
+    baseline = [r for r in published if is_nightly(r)] or published
+    selected = baseline[-1] if baseline else None
     # A record past KEEP_DAYS sheds what only the latest runs are read for;
-    # the last two published (the page's latest and the one before) never do.
-    needed = {r["id"] for r in published[-2:]}
+    # protect the actual latest.json and its index.html previousPublished.
+    needed = set()
+    if selected:
+        needed.add(selected["id"])
+        before = [
+            r
+            for r in reversed(kept[: kept.index(selected)])
+            if r.get("published")
+            and r.get("pmode") == selected.get("pmode")
+            and is_nightly(r)
+        ]
+        previous = next(
+            (
+                r
+                for r in before
+                if selected.get("device") and r.get("device") == selected["device"]
+            ),
+            before[0] if before else None,
+        )
+        if previous:
+            needed.add(previous["id"])
     for r in kept:
         old = (now - parse_date(r["date"])).days >= KEEP_DAYS
         if old and r["id"] not in needed and any(f in r for f in HEAVY_FIELDS):
@@ -651,10 +673,8 @@ def rebuild(
                 r.pop(f, None)
             (runs_dir / f"{r['id']}.json").write_text(json.dumps(r, indent=1))
     latest = out / "latest.json"
-    # The newest nightly is the baseline; only manual runs, the newest of those.
-    baseline = [r for r in published if is_nightly(r)] or published
-    if baseline:
-        latest.write_text(json.dumps(baseline[-1], indent=1))
+    if selected:
+        latest.write_text(json.dumps(selected, indent=1))
     elif latest.exists():
         latest.unlink()
 

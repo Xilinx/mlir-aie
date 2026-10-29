@@ -463,7 +463,7 @@ def _yolo_night(rng: random.Random) -> tuple[list, dict]:
     # One run per batch, as the check makes them: the dispatch ~157 us under
     # the call and the empty dispatch ~88 us, as on Strix.
     timing = {}
-    for us, b in ((one, 1), (batched, yolo26n_hw.BATCH)):
+    for us, b in ((one, 1), (batched, max(yolo26n_hw.BATCHES))):
         call, dispatch = us * b, us * b - 157 * rng.uniform(0.95, 1.05)
         empty = 88 * rng.uniform(0.95, 1.05)
         timing |= yolo26n_hw.parse_timing(

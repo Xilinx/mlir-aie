@@ -27,6 +27,28 @@ def workflow(name):
     )
 
 
+@pytest.mark.parametrize("index", [0, 1])
+def test_code_health_sanitizers_do_not_stop_after_one_failure(tmp_path, index):
+    job = workflow("nightlyCodeHealth.yml")["jobs"]["sanitizer"]
+    entry = job["strategy"]["matrix"]["include"][index]
+    script = next(s["run"] for s in job["steps"] if s.get("name") == "Test")
+    script = script.replace("${{ matrix.options }}", entry["options"]).replace(
+        "${{ matrix.filter-out }}", entry["filter-out"]
+    )
+    result = subprocess.run(
+        [BASH, "-e", "-c", 'lit() { printf "%s\\n" "$@"; return 1; }\n' + script],
+        env={**os.environ, "RUNNER_TEMP": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    args = result.stdout.splitlines()
+    assert "--max-failures" not in args
+    assert args[args.index("--filter-out") + 1] == entry["filter-out"]
+    assert args[args.index("-o") + 1] == str(tmp_path / "lit/tests.json")
+    assert "build/test" in args
+
+
 # Resolve bash in PATH order: a bare "bash" argv[0] goes through CreateProcess's
 # search, which checks System32 before PATH and so finds Windows' WSL launcher
 # stub instead of Git for Windows' bash.
