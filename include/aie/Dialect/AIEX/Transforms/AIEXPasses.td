@@ -356,15 +356,11 @@ def AIEAssignRuntimeSequenceBDIDs
            "that report no pollable occupancy register fall back to warning.">,
        Option<
            "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
-           /*default=*/"false",
+           /*default=*/"true",
            "Warn when a BD id released by aiex.dma_free_task without any "
-           "completion guarantee is later reused on the same tile. Off by "
-           "default: the common fill/drain idiom frees tasks on one channel "
-           "having awaited another, and that cross-channel reasoning runs "
-           "through the compute core, which the runtime sequence cannot see, "
-           "so this reports designs that are correct by an argument the "
-           "compiler does not have. Useful when chasing a suspected BD "
-           "aliasing hang.">,
+           "completion guarantee is later reused on the same tile. On by "
+           "default; disable when completion is guaranteed through the compute "
+           "core or another tile, which the runtime sequence cannot see.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
               "When a tile runs out of BD ids, take them back from a started "
@@ -467,14 +463,26 @@ def AIELowerDynamicBDPool : Pass<"aie-lower-dynamic-bd-pool", "AIE::DeviceOp"> {
     runtime loop are diagnosed.
   }];
 
-  let options = [Option<
-      "enforceQueueDepth", "enforce-queue-depth", "bool",
-      /*default=*/"true",
-      "Insert an aiex.npu.maskpoll before any dma_start_task in a "
-      "runtime-bound loop that could push onto a full DMA task queue. "
-      "The same option as on aie-dma-to-npu and "
-      "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
-      "of those reaches: a loop this pass deliberately keeps rolled.">];
+  let options =
+      [Option<
+           "enforceQueueDepth", "enforce-queue-depth", "bool",
+           /*default=*/"true",
+           "Insert an aiex.npu.maskpoll before any dma_start_task in a "
+           "runtime-bound loop that could push onto a full DMA task queue. "
+           "The same option as on aie-dma-to-npu and "
+           "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
+           "of those reaches: a loop this pass deliberately keeps rolled.">,
+       Option<
+           "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
+           /*default=*/"true",
+           "Warn when a dma_free_task releases a buffer descriptor id with no "
+           "completion guarantee, so the runtime pool could hand it straight "
+           "back out before hardware has finished the freed transfer. The "
+           "same default-on option as on "
+           "aie-assign-runtime-sequence-bd-ids: the pass can only reason "
+           "within the runtime sequence, so a design that proves completion "
+           "through the compute core or another tile looks unsafe without "
+           "being so.">];
 
   let constructor = "xilinx::AIEX::createAIELowerDynamicBDPoolPass()";
   let dependentDialects = ["mlir::arith::ArithDialect", "mlir::scf::SCFDialect",

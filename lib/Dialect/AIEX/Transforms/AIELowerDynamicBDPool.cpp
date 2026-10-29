@@ -598,7 +598,11 @@ struct AIELowerDynamicBDPoolPass
     return success();
   }
 
-  // Guard pushes that can land on a full task queue.
+  // Guard pushes that can land on a full task queue, and (opt-in) warn at a
+  // dma_free_task whose own push is not yet proven complete. Must run before
+  // frees are erased below -- it is the only point where this pass still has
+  // both the dma_free_task ops and the origin-configure metadata they resolve
+  // through.
   //
   // A sequence lowered here keeps its scf.for rolled, so the static allocator
   // skips it. Guard while task metadata is available; aie-dma-to-npu later
@@ -608,18 +612,73 @@ struct AIELowerDynamicBDPoolPass
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
 
     auto effectOf = [&](Operation *op) -> QueueEffect {
+      if (auto push = dyn_cast<NpuPushQueueOp>(op))
+        return QueueEffect::push({static_cast<int>(push.getColumn()),
+                                  static_cast<int>(push.getRow()),
+                                  static_cast<int>(push.getDirection()),
+                                  static_cast<int>(push.getChannel())},
+                                 push.getIssueToken());
+      if (auto sync = dyn_cast<NpuSyncOp>(op)) {
+        if (auto key = syncChannelKey(sync))
+          return QueueEffect::await(*key);
+        return {};
+      }
+      if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+        auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
+            seq->getParentOfType<AIE::DeviceOp>(),
+            copy.getMetadata().getRootReference());
+        if (allocation)
+          if (AIE::TileOp tile = allocation.getTileOp())
+            return QueueEffect::push(
+                DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
+                                     allocation.getChannelIndex()),
+                copy.getIssueToken() ||
+                    allocation.getChannelDir() == AIE::DMAChannelDir::S2MM);
+        return {};
+      }
+      if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
+        auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
+            seq->getParentOfType<AIE::DeviceOp>(), wait.getSymbol());
+        if (allocation)
+          if (AIE::TileOp tile = allocation.getTileOp())
+            return QueueEffect::await(
+                DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
+                                     allocation.getChannelIndex()));
+        return {};
+      }
       DMAConfigureTaskOp cfg;
+      Value task;
+      bool isConfigure = false;
       bool isPush = false;
       bool issuesToken = false;
       if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
-        cfg = originConfigure.lookup(start.getTask());
+        task = start.getTask();
+        cfg = originConfigure.lookup(task);
         isPush = true;
         issuesToken = cfg && start.getPushIssueToken(cfg);
+      } else if (auto configure = dyn_cast<DMAConfigureTaskOp>(op)) {
+        if (!warnUnsafeBdReuse)
+          return {};
+        cfg = configure;
+        task = configure.getResult();
+        isConfigure = true;
       } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
         cfg = originConfigure.lookup(await.getTask());
         // Only a token-issuing await retires anything.
         if (cfg && !cfg.getIssueToken())
           return {};
+      } else if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
+        if (!warnUnsafeBdReuse)
+          return {};
+        cfg = originConfigure.lookup(freeOp.getTask());
+        if (!cfg)
+          return {};
+        AIE::TileOp tile = cfg.tryGetTileOp();
+        if (!tile)
+          return {};
+        return QueueEffect::free(
+            DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel()),
+            freeOp.getTask());
       } else {
         return {};
       }
@@ -630,13 +689,16 @@ struct AIELowerDynamicBDPoolPass
         return {};
       DmaQueueModel::ChannelKey key =
           DmaQueueModel::keyOf(tile, cfg.getDirection(), cfg.getChannel());
-      return isPush ? QueueEffect::push(key, issuesToken)
+      if (isConfigure)
+        return QueueEffect::configure(key, task);
+      return isPush ? QueueEffect::push(key, issuesToken,
+                                        warnUnsafeBdReuse ? task : Value{})
                     : QueueEffect::await(key);
     };
 
     DmaQueueModel queue;
     guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
-                            effectOf);
+                            warnUnsafeBdReuse, effectOf);
   }
 
   void runOnOperation() override {
@@ -746,11 +808,13 @@ struct AIELowerDynamicBDPoolPass
       });
       if (r.wasInterrupted())
         return WalkResult::interrupt();
+      // Only once this sequence has lowered cleanly: guarding or reporting a
+      // queue on a design that is already being rejected just buries the
+      // error. Guard before erasing the frees above -- it still needs to see
+      // them, resolved through originConfigure, to check reuse safety.
+      guardQueueDepth(seq);
       for (Operation *op : toErase)
         op->erase();
-      // Only once this sequence has lowered cleanly: guarding or reporting a
-      // queue on a design that is already being rejected just buries the error.
-      guardQueueDepth(seq);
       return WalkResult::advance();
     });
     if (wr.wasInterrupted())
