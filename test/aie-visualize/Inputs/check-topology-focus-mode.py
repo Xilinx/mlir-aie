@@ -50,12 +50,20 @@ def main() -> None:
             f'760,{104 + index * 18}" fill="{color}" opacity="0.55"/></g>'
             for index, (color, width) in enumerate((("#b2182b", 4), ("#2166ac", 3), ("#1b7837", 2), ("#762a83", 3)))
         )
+        terminal_fates = "".join(
+            f'<g id="terminal-fate-{index}" class="edge flow fate-terminal-{index}" opacity="0.4">'
+            f'<path d="M 768 {100 + index * 18} L 780 {100 + index * 18}" '
+            f'stroke="{color}" stroke-width="{width}" opacity="0.5"/>'
+            f'<polygon points="780,{96 + index * 18} 788,{100 + index * 18} '
+            f'780,{104 + index * 18}" fill="{color}" opacity="0.5"/></g>'
+            for index, (color, width) in enumerate((("#b2182b", 4), ("#2166ac", 3), ("#1b7837", 2), ("#762a83", 3)))
+        )
         (root / "design.svg").write_text(
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">'
             '<g class="graph uniform-width-1"><g id="source" class="node">'
             '<rect x="40" y="70" width="150" height="120" fill="#dceae3"/>'
             '<text x="65" y="135" font-size="24">Sources</text></g>'
-            f'{flows}{fates}{terminals}<g id="destination" class="node semantic-id-destination">'
+            f'{flows}{fates}{terminals}{terminal_fates}<g id="destination" class="node semantic-id-destination">'
             '<rect x="700" y="70" width="70" height="120" fill="#fff0a8"/>'
             '<text x="712" y="135" font-size="18">Tile</text></g></g></svg>',
             encoding="utf-8",
@@ -113,7 +121,7 @@ def main() -> None:
 
                     def assert_selected_shapes() -> None:
                         selected = page.locator("#viewport svg g.flow.highlighted")
-                        assert selected.count() == 9
+                        assert selected.count() == 10
                         rendered = selected.locator("path, polygon").evaluate_all(
                             "elements => elements.map(element => ({"
                             "tag: element.tagName, opacity: getComputedStyle(element).opacity, "
@@ -143,7 +151,7 @@ def main() -> None:
                             for shape in rendered if shape["tag"] == "polygon"
                         )
 
-                    assert routes.count() == 12
+                    assert routes.count() == 16
                     assert all(
                         float(opacity) == 0.12 for opacity in routes.evaluate_all("elements => elements.map(element => getComputedStyle(element).opacity)")
                     )
