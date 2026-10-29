@@ -25,12 +25,61 @@
 #error "SAMPLE_K_MAX (the largest top-k) must be defined"
 #endif
 
+// Per-call suppress ranges (sample_select only): SAMPLE_MAX_RANGES (lo, hi)
+// pairs, global row coordinates, written per call after SAMPLE_DRAW_ROW_WORDS.
+// sample_select clips each to its own slice with SAMPLE_BASE, its global
+// offset into the row; lo >= hi (after clipping) excludes nothing. 0 is the
+// default: no ranges, and sample_select's row is the four words it always
+// was.
+#ifndef SAMPLE_MAX_RANGES
+#define SAMPLE_MAX_RANGES 0
+#endif
+#ifndef SAMPLE_BASE
+#define SAMPLE_BASE 0
+#endif
+// The forced-timestamp probability rule (sample_select and sample_combine);
+// see sample_reduction_word. Off by default, bit-identical to a build that
+// predates it.
+#ifndef SAMPLE_PROB_RULE
+#define SAMPLE_PROB_RULE 0
+#endif
+
+// draw_row's own four words; not a SAMPLE_ROW_* name, so
+// test_constants_match_the_c_sources's digit-valued scan skips it.
+#define SAMPLE_DRAW_ROW_WORDS 4
+
 enum sample_row_word {
   SAMPLE_ROW_TEMPERATURE = 0, // float32 bits; 0 or -0 takes the first argmax
   SAMPLE_ROW_TOP_K = 1,       // clamped to [1, SAMPLE_K_MAX]
   SAMPLE_ROW_N53_LO = 2,      // u = n53 * 2^-53, n53 < 2^53
   SAMPLE_ROW_N53_HI = 3,
+  SAMPLE_ROW_RANGES = SAMPLE_DRAW_ROW_WORDS,
+  SAMPLE_ROW_SPLIT = SAMPLE_ROW_RANGES + 2 * SAMPLE_MAX_RANGES,
 };
+
+// A finite stand-in for -inf: a mask row at this value is unaffected by
+// argmax and underflows to exactly 0 under the softmax draw, so it composes
+// safely with a 0/1 scale (0 * -inf would be NaN). bf16(-1e30), matching
+// NEG_BIG in iron/applications/whisper/model.py.
+#define SAMPLE_NEG_BIG_BITS 0xf14a
+
+// sample_select's per-call reduction output (SAMPLE_PROB_RULE only), one
+// column's partial evidence for sample_combine's forced-timestamp compare.
+// Every word is a float32 bit pattern; SAMPLE_REDUCTION_MAX_TEXT and
+// SAMPLE_REDUCTION_MAX_TS are -inf where this column's slice does not reach
+// that side of the split, so a column missing one side still merges cleanly.
+enum sample_reduction_word {
+  SAMPLE_REDUCTION_MAX_TEXT = 0, // max over this slice's [0, split) part
+  SAMPLE_REDUCTION_MAX_TS = 1,   // running max over [split, vocab)'s part
+  SAMPLE_REDUCTION_SUM_TS = 2,   // sum(exp(v - SAMPLE_REDUCTION_MAX_TS)) there
+  SAMPLE_REDUCTION_WORDS = 3,
+};
+
+// The bf16 bits of a logit, widened exactly to float (not via a signed key:
+// the reduction needs the logit's own value, not its order).
+static inline float sample_logit(uint16_t bits) {
+  return __builtin_bit_cast(float, (uint32_t)bits << 16);
+}
 
 enum sample_summary_word {
   SAMPLE_TAU = 0,     // the column's k-th largest key

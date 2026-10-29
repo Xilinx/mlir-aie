@@ -12,9 +12,14 @@
 // pass 1 writes keys > tau as (index, key) and keys == tau as bitmap bits.
 // The state (a worker-local buffer, zero before the first call) is back where
 // it started after the last call, so the next position needs no reset.
+//
+// SAMPLE_MAX_RANGES and SAMPLE_PROB_RULE (sample.h) add per-call suppress
+// ranges and the forced-timestamp rule's second top-k and reduction; see
+// apply_ranges and mask_restricted below.
 
 #include <aie_api/aie.hpp>
 
+#include "exp64.h"
 #include "sample.h"
 
 #ifndef SAMPLE_CHUNK
@@ -243,15 +248,103 @@ void end_pass(select_state *s, int32_t *summary) {
   s->phase = 1 - s->phase;
 }
 
+inline int32_t clamp_range(int32_t v, int32_t hi) {
+  if (v < 0)
+    return 0;
+  return v > hi ? hi : v;
+}
+
+#if SAMPLE_MAX_RANGES > 0
+// Every SAMPLE_MAX_RANGES (lo, hi) pair, global row coordinates, clipped to
+// this call's chunk of this column's slice and masked to SAMPLE_NEG_BIG_BITS.
+void apply_ranges(uint16_t *x, const int32_t *row, int32_t pos) {
+  for (int32_t r = 0; r < SAMPLE_MAX_RANGES; ++r) {
+    const int32_t lo =
+        clamp_range(row[SAMPLE_ROW_RANGES + 2 * r] - SAMPLE_BASE, SAMPLE_SLICE);
+    const int32_t hi = clamp_range(
+        row[SAMPLE_ROW_RANGES + 2 * r + 1] - SAMPLE_BASE, SAMPLE_SLICE);
+    const int32_t from = lo > pos ? lo : pos;
+    const int32_t to = hi < pos + SAMPLE_CHUNK ? hi : pos + SAMPLE_CHUNK;
+    for (int32_t i = from; i < to; ++i)
+      x[i - pos] = (uint16_t)SAMPLE_NEG_BIG_BITS;
+  }
+}
+#endif
+
+#if SAMPLE_PROB_RULE
+// This call's chunk, additionally masked below the split, for a second,
+// independent top-k (restricted_state/restricted_summary): discarding that
+// choice here instead, by excluding entries below the split from the
+// ordinary top-k's own surviving candidates, would lose exactly the
+// candidates this column's cut() already dropped below its local tau before
+// the split was even known. restricted_x is the caller's own
+// SAMPLE_CHUNK-wide scratch (too wide for the stack).
+void mask_restricted(uint16_t *restricted_x, const uint16_t *x, int32_t pos,
+                     int32_t local_split) {
+  for (int32_t i = 0; i < SAMPLE_CHUNK; ++i)
+    restricted_x[i] = x[i];
+  const int32_t to =
+      local_split < pos + SAMPLE_CHUNK ? local_split : pos + SAMPLE_CHUNK;
+  for (int32_t i = pos; i < to; ++i)
+    restricted_x[i - pos] = (uint16_t)SAMPLE_NEG_BIG_BITS;
+}
+
+void begin_reduction(int32_t *reduction) {
+  reduction[SAMPLE_REDUCTION_MAX_TEXT] = (int32_t)0xff800000; // -inf
+  reduction[SAMPLE_REDUCTION_MAX_TS] = (int32_t)0xff800000;   // -inf
+  reduction[SAMPLE_REDUCTION_SUM_TS] = 0;                     // 0.0f
+}
+
+// Folds every logit of this call's chunk (x, already ranges-masked) into
+// reduction's running max over its own [0, local_split) part and running
+// (max, sum of exp) over its [local_split, SAMPLE_SLICE) part, float32
+// throughout; exp64 (float64) evaluates each exp so only the fold back into
+// the float32 accumulator rounds.
+void reduce_chunk(const uint16_t *x, int32_t pos, int32_t local_split,
+                  int32_t *reduction) {
+  float max_text =
+      __builtin_bit_cast(float, (uint32_t)reduction[SAMPLE_REDUCTION_MAX_TEXT]);
+  float max_ts =
+      __builtin_bit_cast(float, (uint32_t)reduction[SAMPLE_REDUCTION_MAX_TS]);
+  float sum_ts =
+      __builtin_bit_cast(float, (uint32_t)reduction[SAMPLE_REDUCTION_SUM_TS]);
+  for (int32_t i = 0; i < SAMPLE_CHUNK; ++i) {
+    const float v = sample_logit(x[i]);
+    if (pos + i < local_split) {
+      if (v > max_text)
+        max_text = v;
+    } else if (v <= max_ts) {
+      sum_ts = (float)((double)sum_ts + exp64((double)(v - max_ts)));
+    } else {
+      sum_ts = (float)((double)sum_ts * exp64((double)(max_ts - v)) + 1.0);
+      max_ts = v;
+    }
+  }
+  reduction[SAMPLE_REDUCTION_MAX_TEXT] = __builtin_bit_cast(int32_t, max_text);
+  reduction[SAMPLE_REDUCTION_MAX_TS] = __builtin_bit_cast(int32_t, max_ts);
+  reduction[SAMPLE_REDUCTION_SUM_TS] = __builtin_bit_cast(int32_t, sum_ts);
+}
+#endif
+
 } // namespace
 
 extern "C" {
 
 // x: SAMPLE_CHUNK bf16 logits; row: the draw row; state: this column's
 // state; summary: SAMPLE_SUMMARY_WORDS, the same buffer for all of a
-// position's calls.
+// position's calls. With SAMPLE_PROB_RULE: restricted_state/
+// restricted_summary mirror state/summary for the split-restricted top-k;
+// restricted_x is this column's own SAMPLE_CHUNK-wide scratch; reduction is
+// SAMPLE_REDUCTION_WORDS, this column's partial evidence for the rule's
+// compare.
 void sample_select(uint16_t *x, const int32_t *row, int32_t *state,
-                   int32_t *summary) {
+                   int32_t *summary
+#if SAMPLE_PROB_RULE
+                   ,
+                   int32_t *restricted_state, int32_t *restricted_summary,
+                   uint16_t *restricted_x, int32_t *reduction
+#endif
+) {
   event0();
   select_state *s = (select_state *)state;
   // Padding is no token's: -inf, which no draw takes.
@@ -259,6 +352,19 @@ void sample_select(uint16_t *x, const int32_t *row, int32_t *state,
     for (int32_t i = SAMPLE_VALID - s->pos; i < SAMPLE_CHUNK; ++i)
       if (i >= 0)
         x[i] = 0xff80;
+#if SAMPLE_MAX_RANGES > 0
+  apply_ranges(x, row, s->pos);
+#endif
+#if SAMPLE_PROB_RULE
+  select_state *s2 = (select_state *)restricted_state;
+  const int32_t local_split =
+      clamp_range(row[SAMPLE_ROW_SPLIT] - SAMPLE_BASE, SAMPLE_SLICE);
+  mask_restricted(restricted_x, x, s->pos, local_split);
+  if (s->phase == 0 && s->pos == 0)
+    begin_reduction(reduction);
+  if (s->phase == 0)
+    reduce_chunk(x, s->pos, local_split, reduction);
+#endif
   do {
     if (s->phase == 0 && s->pos == 0)
       begin(s, row, summary);
@@ -266,9 +372,24 @@ void sample_select(uint16_t *x, const int32_t *row, int32_t *state,
       scan(s, x);
     else
       collect(s, x, summary);
+#if SAMPLE_PROB_RULE
+    if (s2->phase == 0 && s2->pos == 0)
+      begin(s2, row, restricted_summary);
+    if (s2->phase == 0)
+      scan(s2, restricted_x);
+    else
+      collect(s2, restricted_x, restricted_summary);
+#endif
     s->pos += SAMPLE_CHUNK;
-    if (s->pos == SAMPLE_SLICE)
+#if SAMPLE_PROB_RULE
+    s2->pos += SAMPLE_CHUNK;
+#endif
+    if (s->pos == SAMPLE_SLICE) {
       end_pass(s, summary);
+#if SAMPLE_PROB_RULE
+      end_pass(s2, restricted_summary);
+#endif
+    }
   } while (SAMPLE_CHUNK == SAMPLE_SLICE && s->phase == 1);
   event1();
 }

@@ -523,6 +523,214 @@ def test_reference_rejects_a_non_finite_scaled_maximum():
         sample.sample_weights(logits, 1e-3, 1)
 
 
+# --- suppress ranges ---------------------------------------------------------
+
+
+def test_row_words_default_to_draw_rows_width():
+    assert sample.select_row_words() == sample.ROW_WORDS
+    assert sample.combine_row_words() == sample.ROW_WORDS
+    assert sample.select_row_words(max_ranges=3) == sample.ROW_WORDS + 6
+    assert sample.select_row_words(probability_rule=True) == sample.ROW_WORDS + 1
+    assert (
+        sample.select_row_words(max_ranges=3, probability_rule=True)
+        == sample.ROW_WORDS + 7
+    )
+    assert sample.combine_row_words(probability_rule=True) == sample.ROW_WORDS + 1
+
+
+def test_range_words_packs_pairs_and_pads_unused_slots():
+    words = sample.range_words([(10, 20), (100, 200)], max_ranges=4)
+    assert words.dtype == np.int32 and words.shape == (8,)
+    np.testing.assert_array_equal(words, [10, 20, 100, 200, 0, 0, 0, 0])
+
+
+def test_range_words_rejects_too_many_ranges():
+    with pytest.raises(ValueError, match="exceeds max_ranges"):
+        sample.range_words([(0, 1), (1, 2)], max_ranges=1)
+
+
+def test_split_word():
+    assert sample.split_word(1500).tolist() == [1500]
+    assert sample.split_word(1500).dtype == np.int32
+
+
+def test_apply_ranges_ref_masks_to_neg_big():
+    logits = np.arange(16).astype(bfloat16)
+    masked = sample.apply_ranges_ref(logits, [(3, 6), (10, 11)])
+    want = logits.copy()
+    want[3:6] = sample.NEG_BIG
+    want[10:11] = sample.NEG_BIG
+    np.testing.assert_array_equal(masked.view(np.uint16), want.view(np.uint16))
+    # Unmasked positions are untouched, not just unequal to NEG_BIG.
+    np.testing.assert_array_equal(masked[6:10], logits[6:10])
+
+
+def test_sample_ref_ranges_exclude_exactly():
+    rng = np.random.default_rng(0)
+    logits = _logits(rng, 300, ties=5)
+    ranges = [(40, 90), (200, 210)]
+    excluded = np.zeros(300, bool)
+    for lo, hi in ranges:
+        excluded[lo:hi] = True
+    for n53 in rng.integers(0, 1 << 53, 50, dtype=np.int64):
+        drawn = sample.sample_ref(logits, 1.0, 64, int(n53), ranges=ranges)
+        assert not excluded[drawn]
+        # Matches masking by hand and drawing with the plain reference.
+        want = sample.sample_ref(
+            sample.apply_ranges_ref(logits, ranges), 1.0, 64, int(n53)
+        )
+        assert drawn == want
+    # Temperature 0 (argmax) honors ranges too.
+    logits = np.zeros(20, dtype=bfloat16)
+    logits[5] = 10.0
+    assert sample.sample_ref(logits, 0.0, 1, 0, ranges=[(5, 6)]) != 5
+
+
+def test_sample_ref_ranges_default_to_todays_behavior():
+    rng = np.random.default_rng(1)
+    logits = _logits(rng, 128, ties=2)
+    for n53 in rng.integers(0, 1 << 53, 10, dtype=np.int64):
+        assert sample.sample_ref(logits, 0.7, 16, int(n53)) == sample.sample_ref(
+            logits, 0.7, 16, int(n53), ranges=[]
+        )
+
+
+# --- the forced-timestamp probability rule -----------------------------------
+
+
+def _independent_logsumexp_compare(logits, split):
+    """max(logits[:split]) and logsumexp(logits[split:]), float64, no streaming:
+    shares no code with logsumexp_reduction_ref/forced_timestamp_ref."""
+    values = np.asarray(logits, dtype=bfloat16).astype(np.float64)
+    text_max = values[:split].max(initial=-np.inf)
+    ts = values[split:]
+    if ts.size == 0:
+        return text_max, -np.inf
+    m = ts.max()
+    return text_max, m + math.log(float(np.sum(np.exp(ts - m))))
+
+
+@pytest.mark.parametrize("split", [0, 1, 37, 200, 256])
+def test_logsumexp_reduction_ref_matches_an_independent_formula(split):
+    rng = np.random.default_rng(split)
+    logits = _logits(rng, 256, ties=3, scale=5.0)
+    text_max, max_ts, sum_ts = sample.logsumexp_reduction_ref(logits, split)
+    want_text_max, want_logsumexp = _independent_logsumexp_compare(logits, split)
+    assert text_max == np.float32(want_text_max) or (
+        np.isneginf(text_max) and np.isneginf(want_text_max)
+    )
+    if split == 256:
+        assert np.isneginf(max_ts) and sum_ts == 0.0
+    else:
+        got_logsumexp = float(max_ts) + math.log(float(sum_ts))
+        assert abs(got_logsumexp - want_logsumexp) < 1e-4
+
+
+def test_logsumexp_reduction_ref_empty_sides():
+    logits = _logits(np.random.default_rng(2), 64)
+    max_text, max_ts, sum_ts = sample.logsumexp_reduction_ref(logits, 0)
+    assert np.isneginf(max_text)
+    assert not np.isneginf(max_ts) and sum_ts > 0
+    max_text, max_ts, sum_ts = sample.logsumexp_reduction_ref(logits, 64)
+    assert not np.isneginf(max_text)
+    assert np.isneginf(max_ts) and sum_ts == 0.0
+
+
+def test_forced_timestamp_ref_fires_and_not():
+    # logsumexp(ts) well above max_text: fires.
+    assert sample.forced_timestamp_ref(
+        [(np.float32(0.0), np.float32(10.0), np.float32(1.0))]
+    )
+    # logsumexp(ts) well below max_text: does not.
+    assert not sample.forced_timestamp_ref(
+        [(np.float32(10.0), np.float32(0.0), np.float32(1.0))]
+    )
+    # A column with no fold on either side drops out cleanly.
+    neg_inf = np.float32(-np.inf)
+    assert sample.forced_timestamp_ref(
+        [
+            (neg_inf, neg_inf, np.float32(0.0)),
+            (np.float32(0.0), np.float32(10.0), np.float32(1.0)),
+        ]
+    )
+
+
+def test_forced_timestamp_ref_boundary_is_strict():
+    # sum_ts * exp(max_ts - max_text) exactly 1.0: not strictly above.
+    assert not sample.forced_timestamp_ref(
+        [(np.float32(0.0), np.float32(0.0), np.float32(1.0))]
+    )
+    # The smallest float32 nudge above 1.0 fires; exactly 1.0 does not.
+    above = np.float32(1.0) + np.finfo(np.float32).eps
+    assert above > np.float32(1.0)
+    assert sample.forced_timestamp_ref([(np.float32(0.0), np.float32(0.0), above)])
+
+
+@pytest.mark.parametrize("columns", [1, 2, 4])
+def test_sample_ref_probability_rule_forces_timestamp_range(columns):
+    vocab, split = 256, 192
+    rng = np.random.default_rng(columns)
+    # The timestamp range dominates: every draw must land at or past split.
+    logits = rng.normal(0, 1, vocab).astype(bfloat16)
+    logits[split:] = np.float32(20.0)
+    for n53 in rng.integers(0, 1 << 53, 20, dtype=np.int64):
+        drawn = sample.sample_ref(
+            logits,
+            1.0,
+            vocab,
+            int(n53),
+            probability_rule_split=split,
+            columns=columns,
+        )
+        assert drawn >= split
+    # The text range dominates: the rule never fires, draws are unrestricted.
+    logits = rng.normal(0, 1, vocab).astype(bfloat16)
+    logits[:split] = np.float32(20.0)
+    logits[split:] = np.float32(-20.0)
+    seen_below_split = False
+    for n53 in rng.integers(0, 1 << 53, 20, dtype=np.int64):
+        drawn = sample.sample_ref(
+            logits,
+            1.0,
+            vocab,
+            int(n53),
+            probability_rule_split=split,
+            columns=columns,
+        )
+        seen_below_split |= drawn < split
+    assert seen_below_split
+
+
+def test_sample_ref_probability_rule_off_matches_todays_behavior():
+    rng = np.random.default_rng(3)
+    logits = _logits(rng, 128, ties=2)
+    for n53 in rng.integers(0, 1 << 53, 10, dtype=np.int64):
+        assert sample.sample_ref(logits, 0.7, 16, int(n53)) == sample.sample_ref(
+            logits, 0.7, 16, int(n53), probability_rule_split=None
+        )
+
+
+def test_ranges_straddle_core_slice_boundaries():
+    # A range split across 3 columns' slices, each clipped to its own
+    # SAMPLE_BASE as sample_select's apply_ranges does, reproduces the same
+    # mask as applying the range to the whole row at once.
+    rng = np.random.default_rng(4)
+    vocab, columns = 300, 3
+    slice_size = vocab // columns
+    logits = _logits(rng, vocab, ties=4)
+    lo, hi = slice_size - 5, slice_size + 15  # straddles columns 0 and 1
+    want = sample.apply_ranges_ref(logits, [(lo, hi)])
+    got = logits.copy()
+    for c in range(columns):
+        base = c * slice_size
+        local_lo = min(max(lo - base, 0), slice_size)
+        local_hi = min(max(hi - base, 0), slice_size)
+        got[base : base + slice_size] = sample.apply_ranges_ref(
+            logits[base : base + slice_size], [(local_lo, local_hi)]
+        )
+    np.testing.assert_array_equal(got.view(np.uint16), want.view(np.uint16))
+
+
 # --- factory metadata ------------------------------------------------------
 
 
@@ -545,6 +753,32 @@ def test_select_factory_metadata(arch):
     assert all(fn.arg_dtype(i) == np.int32 for i in (1, 2, 3))
     assert fn.contract.roles == (In, In, InOut, InOut)
     assert fn == kernels.sample_select(slice_size=2048, chunk=512, k_max=32)
+    # Defaults (no ranges, no rule) carry none of the new compile flags, and
+    # the exact same identity as a build that predates them.
+    for flag in fn._compile_flags:
+        assert not flag.startswith(("-DSAMPLE_BASE", "-DSAMPLE_MAX_RANGES"))
+        assert flag != "-DSAMPLE_PROB_RULE=1"
+
+
+def test_select_factory_with_ranges_and_rule(arch):
+    fn = kernels.sample_select(
+        slice_size=2048, chunk=512, k_max=32, base=2048, max_ranges=2
+    )
+    assert "-DSAMPLE_BASE=2048" in fn._compile_flags
+    assert "-DSAMPLE_MAX_RANGES=2" in fn._compile_flags
+    assert fn.arg_shape(1) == (sample.select_row_words(max_ranges=2),)
+    assert len(fn.contract.roles) == 4
+
+    fn = kernels.sample_select(
+        slice_size=2048, chunk=512, k_max=32, probability_rule=True
+    )
+    assert "-DSAMPLE_PROB_RULE=1" in fn._compile_flags
+    assert fn.arg_shape(1) == (sample.select_row_words(probability_rule=True),)
+    assert fn.arg_shape(4) == (sample.SELECT_STATE_WORDS,)  # restricted_state
+    assert fn.arg_shape(5) == (sample.summary_words(2048, 32),)  # restricted_summary
+    assert fn.arg_shape(6) == (512,) and fn.arg_dtype(6) == bfloat16  # restricted_x
+    assert fn.arg_shape(7) == (sample.REDUCTION_WORDS,)  # reduction
+    assert fn.contract.roles == (In, In, InOut, InOut, InOut, InOut, InOut, InOut)
 
 
 def test_combine_factory_metadata(arch):
@@ -563,6 +797,20 @@ def test_combine_factory_metadata(arch):
     assert fn.arg_shape(2) == fn.arg_shape(3) == (1,)
     assert all(fn.arg_dtype(i) == np.int32 for i in range(4))
     assert fn.contract.roles == (In, In, Out, Out)
+    for flag in fn._compile_flags:
+        assert flag != "-DSAMPLE_PROB_RULE=1"
+
+
+def test_combine_factory_with_rule(arch):
+    fn = kernels.sample_combine(
+        columns=3, slice_size=2048, k_max=32, probability_rule=True
+    )
+    assert "-DSAMPLE_PROB_RULE=1" in fn._compile_flags
+    assert fn.arg_shape(1) == (sample.combine_row_words(probability_rule=True),)
+    assert fn.arg_shape(2) == (3 * sample.summary_words(2048, 32),)  # restricted
+    assert fn.arg_shape(3) == (3 * sample.REDUCTION_WORDS,)  # reductions
+    assert fn.arg_shape(4) == fn.arg_shape(5) == (1,)
+    assert fn.contract.roles == (In, In, In, In, Out, Out)
 
 
 # --- builds ----------------------------------------------------------------
@@ -582,6 +830,39 @@ def _peano_available() -> bool:
         ("sample_select", dict(slice_size=2048, chunk=512, k_max=32)),
         ("sample_select", dict(slice_size=1024, chunk=1024, k_max=64)),
         ("sample_combine", dict(columns=3, slice_size=2048, k_max=32)),
+        # Ranges, no probability rule.
+        (
+            "sample_select",
+            dict(slice_size=2048, chunk=512, k_max=32, base=2048, max_ranges=2),
+        ),
+        (
+            "sample_select",
+            dict(slice_size=1024, chunk=1024, k_max=64, base=1024, max_ranges=1),
+        ),
+        # The probability rule, with and without ranges, one chunk and many.
+        (
+            "sample_select",
+            dict(slice_size=2048, chunk=512, k_max=32, probability_rule=True),
+        ),
+        (
+            "sample_select",
+            dict(slice_size=1024, chunk=1024, k_max=64, probability_rule=True),
+        ),
+        (
+            "sample_select",
+            dict(
+                slice_size=2048,
+                chunk=512,
+                k_max=32,
+                base=2048,
+                max_ranges=2,
+                probability_rule=True,
+            ),
+        ),
+        (
+            "sample_combine",
+            dict(columns=3, slice_size=2048, k_max=32, probability_rule=True),
+        ),
     ],
 )
 def test_kernels_build_for_every_architecture(arch, factory, kwargs, tmp_path):

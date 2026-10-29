@@ -12,6 +12,8 @@
 // random operands differ). The helpers stay out of line and the product's
 // loops rolled: with the builtins and exp64's table the core's 16 KB of
 // program memory is nearly full.
+//
+// SAMPLE_PROB_RULE (sample.h) adds forced_timestamp below.
 
 #include <aie_api/aie.hpp>
 
@@ -227,6 +229,39 @@ __attribute__((noinline)) int32_t visit(const int32_t *summaries, weights *t,
   return last;
 }
 
+#if SAMPLE_PROB_RULE
+// Whether the rule forces the text range to -inf: whether the drawn
+// probability mass at or above the split exceeds the best logit below it.
+// logsumexp(ts) > max_text, with logsumexp(ts) = max_ts_all + ln(sum_c
+// sum_ts_c * exp(max_ts_c - max_ts_all)), holds exactly where sum_c sum_ts_c
+// * exp(max_ts_c - max_text) > 1 (take max_text, not max_ts_all, as the
+// reference the sum is scaled to: the inequality is against max_text
+// either way, and this skips a log).
+bool forced_timestamp(const int32_t *reductions) {
+  float max_text = __builtin_bit_cast(float, (uint32_t)0xff800000); // -inf
+  for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
+    const float v = __builtin_bit_cast(
+        float,
+        (uint32_t)
+            reductions[c * SAMPLE_REDUCTION_WORDS + SAMPLE_REDUCTION_MAX_TEXT]);
+    if (v > max_text)
+      max_text = v;
+  }
+  double total = 0.0;
+  for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
+    const int32_t *r = reductions + c * SAMPLE_REDUCTION_WORDS;
+    const float sum_ts =
+        __builtin_bit_cast(float, (uint32_t)r[SAMPLE_REDUCTION_SUM_TS]);
+    if (sum_ts == 0.0f)
+      continue;
+    const float max_ts =
+        __builtin_bit_cast(float, (uint32_t)r[SAMPLE_REDUCTION_MAX_TS]);
+    total += (double)sum_ts * exp64((double)(max_ts - max_text));
+  }
+  return total > 1.0;
+}
+#endif
+
 int32_t combine(const int32_t *summaries, const int32_t *row) {
   int32_t max_key = -1;
   int32_t argmax = 0;
@@ -263,11 +298,22 @@ extern "C" {
 
 // summaries: SAMPLE_COLUMNS summaries, column 0 first; row: the draw row;
 // token and record: the drawn token, twice (the next step's input and the
-// position's record).
+// position's record). restricted_summaries, reductions: SAMPLE_PROB_RULE
+// only, sample_select's own same-named outputs, gathered in column order.
 void sample_combine(const int32_t *summaries, const int32_t *row,
+#if SAMPLE_PROB_RULE
+                    const int32_t *restricted_summaries,
+                    const int32_t *reductions,
+#endif
                     int32_t *token, int32_t *record) {
   event0();
-  const int32_t drawn = combine(summaries, row);
+#if SAMPLE_PROB_RULE
+  const int32_t *active =
+      forced_timestamp(reductions) ? restricted_summaries : summaries;
+#else
+  const int32_t *active = summaries;
+#endif
+  const int32_t drawn = combine(active, row);
   *token = drawn;
   *record = drawn;
   event1();
