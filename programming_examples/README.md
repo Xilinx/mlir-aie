@@ -7,7 +7,7 @@
 
 # <ins>Programming Examples</ins>
 
-These programming examples are provided so that application programmers can learn how to leverage the IRON design flow with mlir-aie python bindings, and the mlir-aie intermediate representation directly to build applications targeting AI Engines. 
+These programming examples are provided so that application programmers can learn how to leverage the IRON design flow with mlir-aie python bindings, and the mlir-aie intermediate representation directly to build applications targeting AI Engines.
 
 Most examples are a single `<example_name>.py` design driven by `@iron.jit` — one file describes the AIE-array dataflow, JIT-compiles to xclbin/insts, and runs end-to-end (or feeds the prebuilt artifacts to a C++ host).
 
@@ -23,20 +23,16 @@ Higher-level algorithm templates (transform, for_each, and parallel variants) th
 
 ## [basic](./basic)
 
-Basic building blocks to understand the NPU architecture and first steps towards building applications for the NPU in Ryzen™ AI. 
+Basic building blocks to understand the NPU architecture and first steps towards building applications for the NPU in Ryzen™ AI.
 
 ## [ml](./ml)
 
-Machine learning building blocks, design components, and reference designs for the NPU in Ryzen™ AI. 
+Machine learning building blocks, design components, and reference designs for the NPU in Ryzen™ AI.
 
 ## [vision](./vision)
 
 Computer vision processing pipeline designs for the NPU in Ryzen™ AI.
 
-## [mlir](./mlir)
-
-MLIR-based reference designs expressed in the MLIR-AIE dialect intermediate representation.
-
 ## [utils](./utils)
 
-Utility functions leveraged in the programming examples. 
+Utility functions leveraged in the programming examples.

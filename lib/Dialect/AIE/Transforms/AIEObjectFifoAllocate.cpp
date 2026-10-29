@@ -1271,12 +1271,28 @@ struct AIEObjectFifoAllocatePass
   /// many ends share as the tile needs. A circuit carries one stream, so the
   /// ends at the routes' other ends take the same turns.
   bool planTurnSharing(TileLike exhausted, DMAChannelDir dir) {
+    // `coreEndOf`/`circuitPeer` each rescan the whole device; neither's
+    // domain (core endpoints, routes) changes within this function (only
+    // pool `contiguous` flags and endpoints' `turns` attrs do), so caching
+    // them once here turns every lookup below from O(device size) into O(1).
+    DenseMap<Operation *, ObjectFifoCoreEndpointOp> coreEndCache;
+    DenseMap<Operation *, ObjectFifoDmaEndpointOp> circuitPeerCache;
+    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      coreEndCache[dma] = coreEndOf(dma);
+      circuitPeerCache[dma] = circuitPeer(dma);
+    }
+    auto cachedCoreEnd = [&](ObjectFifoDmaEndpointOp dma) {
+      return coreEndCache.lookup(dma);
+    };
+    auto cachedCircuitPeer = [&](ObjectFifoDmaEndpointOp dma) {
+      return circuitPeerCache.lookup(dma);
+    };
     SmallVector<ObjectFifoDmaEndpointOp> candidates;
     for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
       if (sameTile(dma.getTile(), exhausted->getResult(0)) &&
-          dma.getRouteDirection() == dir && coreEndOf(dma) &&
+          dma.getRouteDirection() == dir && cachedCoreEnd(dma) &&
           canTakeTurns(dma.getTurns() ? turnEndpoints(dma).front() : dma) &&
-          canTakeTurns(circuitPeer(dma)))
+          canTakeTurns(cachedCircuitPeer(dma)))
         candidates.push_back(dma);
     llvm::stable_sort(candidates, [&](Operation *a, Operation *b) {
       return structuralRank.lookup(a) < structuralRank.lookup(b);
@@ -1288,9 +1304,9 @@ struct AIEObjectFifoAllocatePass
         if (sameTile(dma.getTile(), exhausted->getResult(0)) &&
             dma.getRouteDirection() == dir)
           llvm::dbgs() << "  " << dma.getSymName() << ": core end "
-                       << bool(coreEndOf(dma)) << ", takes turns "
+                       << bool(cachedCoreEnd(dma)) << ", takes turns "
                        << canTakeTurns(dma) << ", peer takes turns "
-                       << canTakeTurns(circuitPeer(dma)) << "\n";
+                       << canTakeTurns(cachedCircuitPeer(dma)) << "\n";
     });
     auto groupOf = [](ObjectFifoDmaEndpointOp end) {
       SmallVector<ObjectFifoDmaEndpointOp> group = turnEndpoints(end);
@@ -1306,8 +1322,8 @@ struct AIEObjectFifoAllocatePass
         SmallVector<ObjectFifoDmaEndpointOp> peers;
         SmallVector<int64_t> depths;
         for (ObjectFifoDmaEndpointOp end : group) {
-          cores.push_back(coreEndOf(end));
-          peers.push_back(circuitPeer(end));
+          cores.push_back(cachedCoreEnd(end));
+          peers.push_back(cachedCircuitPeer(end));
           depths.push_back(end.getPoolOp().getDepth());
         }
         if (llvm::any_of(peers, [&](ObjectFifoDmaEndpointOp peer) {

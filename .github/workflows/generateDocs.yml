@@ -179,9 +179,10 @@ jobs:
             echo "aliases=latest" >> $GITHUB_OUTPUT
             echo "ref=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
-            # main push -> "dev" docs; source links point at main.
+            # main push -> "dev" docs, also re-aliased "latest" so the site
+            # root tracks main between releases; source links point at main.
             echo "label=dev" >> $GITHUB_OUTPUT
-            echo "aliases=" >> $GITHUB_OUTPUT
+            echo "aliases=latest" >> $GITHUB_OUTPUT
             echo "ref=main" >> $GITHUB_OUTPUT
           fi
 
@@ -202,8 +203,9 @@ jobs:
           fi
 
           # Ensure the root index.html redirects to the default version.
-          # "latest" takes priority when it exists (i.e. after a tagged release);
-          # otherwise fall back to "dev" for main-branch pushes.
+          # "latest" takes priority once it exists (now re-aliased on every
+          # main push, not just tagged releases); "dev" is only the fallback
+          # for the very first deploy, before "latest" has ever been created.
           if mike list | grep -q "latest"; then
             mike set-default --push latest
           else

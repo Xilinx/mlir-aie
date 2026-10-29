@@ -89,6 +89,8 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoUnrollPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoUnrollPass(const AIEObjectFifoUnrollOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoSplitPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoVerifyPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignPacketIdsPass();
@@ -125,6 +127,11 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+
+/// Adds the passes of `aie-objectFifo-stateful-transform` to `pm`, which
+/// anchors on DeviceOp.
+void addObjectFifoLoweringPasses(mlir::OpPassManager &pm, bool packetSwitched,
+                                 bool skipVerify);
 
 /// Register `aie-objectFifo-stateful-transform` as a pipeline over the passes
 /// that lower `aie.objectfifo`.

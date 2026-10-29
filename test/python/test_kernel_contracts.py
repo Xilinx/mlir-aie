@@ -401,6 +401,90 @@ def test_design_rejects_invalid_call_count(calls):
         kd.design(kernels.add, calls=calls)
 
 
+@pytest.mark.parametrize("factory", [kernels.conv2dk1_i8, kernels.conv2dk3])
+@pytest.mark.parametrize("calls", [None, 1, 7, 9, 16])
+def test_out_last_rejects_incomplete_or_excess_calls(factory, calls):
+    kwargs = dict(
+        input_width=8,
+        input_channels=64,
+        output_channels=8,
+        bias=True,
+        input_slice=8,
+    )
+    fn = factory(**kwargs)
+    opts = {} if calls is None else dict(calls=calls)
+    message = r"out_last requires exactly 8 call\(s\)"
+    with pytest.raises(ValueError, match=message):
+        kd.design(factory, **kwargs, **opts)
+    for helper in (kd.output_size, kd.host_args):
+        with pytest.raises(ValueError, match=message):
+            helper(fn, **opts)
+
+
+@pytest.mark.parametrize("factory", [kernels.conv2dk1_i8, kernels.conv2dk3])
+@pytest.mark.parametrize("input_slice", [8, 16, 32])
+def test_out_last_complete_schedule_drains_one_tile(factory, input_slice):
+    kwargs = dict(
+        input_width=8,
+        input_channels=64,
+        output_channels=8,
+        bias=True,
+        input_slice=input_slice,
+    )
+    fn = factory(**kwargs)
+    calls = 64 // input_slice
+    assert fn.contract.required_calls == calls
+    assert kd.output_size(fn, calls=calls) == 64
+    assert kd.host_args(fn, calls=calls)[-1].n_elements == 64
+    params = fn.param_values(kd.sample_inputs(fn, calls=calls))
+    scalars = (
+        (8, 64, 8, 12) if factory is kernels.conv2dk1_i8 else (8, 64, 8, 3, 3, 1, 12)
+    )
+    stage = kd._stage(
+        fn,
+        calls,
+        scalars,
+        kd._encode_params(fn, params),
+        get_current_device().default_core_stack_bytes,
+    )
+    assert stage.iterations == calls
+    assert stage.outputs_span_iterations
+    design = kd.design(
+        factory,
+        **kwargs,
+        calls=calls,
+        scalars=scalars,
+        params=params,
+        stack_bytes=get_current_device().default_core_stack_bytes,
+    )
+    assert fn.name in str(design.as_mlir())
+
+
+@pytest.mark.parametrize("factory", [kernels.conv2dk1_i8, kernels.conv2dk3])
+def test_unsliced_convolution_keeps_independent_calls(factory):
+    fn = factory(input_width=8, output_channels=8, bias=True)
+    assert fn.contract.required_calls is None
+    assert kd.output_size(fn) == 64
+    assert kd.output_size(fn, calls=3) == 3 * 64
+
+
+@pytest.mark.parametrize("required_calls", [None, 0, -1, 1.5, True])
+def test_out_last_contract_requires_positive_integer_call_count(required_calls):
+    with pytest.raises(ValueError, match="positive integer required_calls"):
+        KernelContract(
+            roles=(In, Out, Param),
+            parameter_bindings=((2, 0),),
+            call_index=2,
+            out_last=True,
+            required_calls=required_calls,
+        )
+
+
+def test_required_calls_contract_needs_out_last():
+    with pytest.raises(ValueError, match="required_calls needs out_last"):
+        KernelContract(roles=(In, Out), required_calls=8)
+
+
 def test_matrix_design_repeats_independent_calls():
     fn = kernels.mm()
     inputs = kd.sample_inputs(fn, calls=2)

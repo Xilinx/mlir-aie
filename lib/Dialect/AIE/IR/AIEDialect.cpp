@@ -640,8 +640,13 @@ ObjectFifoEndPortAttr::verify(function_ref<InFlightDiagnostic()> emitError,
     return emitError() << "an objectFifo end is driven by a DMA channel or a "
                           "Core stream port, not "
                        << stringifyWireBundle(bundle);
-  if (bundle == WireBundle::Core && !channel)
-    return emitError() << "a Core end needs its stream port";
+  if (bundle == WireBundle::Core) {
+    if (!channel)
+      return emitError() << "a Core end needs its stream port";
+    if (*channel > 1)
+      return emitError() << "a Core end's stream port is 0 or 1, not "
+                         << *channel;
+  }
   return success();
 }
 

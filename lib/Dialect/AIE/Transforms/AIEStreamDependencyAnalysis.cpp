@@ -20,6 +20,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SparseBitVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 
@@ -1137,17 +1138,19 @@ SmallVector<unsigned> StreamWaitGraph::drainersOf(unsigned agent) const {
 SmallVector<unsigned>
 StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
                            ArrayRef<unsigned> avoid) const {
-  // A state is an agent, whether the chain reached it as a DMA receiver taking
-  // a sender's data, where its other DMA senders are no wait of its, and the
-  // receivers the chain reached that way, sorted. A chain through an agent
-  // twice would have it wait on itself. A shortest one never does but for a
-  // receiver reached taking and again later free, so only those are kept. A
-  // state is dropped when its agent was reached before, at least as free and
-  // with no more such receivers: it leads nowhere new.
+  // A state is an agent plus `took`, the subset of channel agents already
+  // waited on to reach it, and `taking`, whether it was reached as a DMA
+  // receiver still taking data. A state is dropped once a prior state at the
+  // same agent is at least as free and took a subset of the same agents: it
+  // leads nowhere new. Live states per agent therefore form an antichain in
+  // that subset lattice, so by Sperner's theorem their count can be
+  // exponential in the worst case -- a known, understood limitation, not an
+  // oversight. No smaller *exact* representation preserves this dominance
+  // search's soundness.
   struct State {
     unsigned agent;
     bool taking;
-    SmallVector<unsigned, 4> took;
+    llvm::SparseBitVector<> took;
     std::optional<size_t> parent;
   };
   std::vector<State> states;
@@ -1156,7 +1159,7 @@ StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
   auto visit = [&](State next) {
     for (size_t i : seen.lookup(next.agent)) {
       const State &s = states[i];
-      if ((next.taking || !s.taking) && llvm::includes(next.took, s.took))
+      if ((next.taking || !s.taking) && next.took.contains(s.took))
         return;
     }
     seen[next.agent].push_back(states.size());
@@ -1182,14 +1185,13 @@ StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
       if (state.taking && e.receives && !e.sends &&
           agents[e.to].kind == Agent::Kind::Channel)
         continue;
-      if (llvm::is_contained(avoid, e.to) ||
-          llvm::is_contained(state.took, e.to))
+      if (llvm::is_contained(avoid, e.to) || state.took.test(e.to))
         continue;
       bool takes = e.kind == EdgeKind::Stream && e.sends &&
                    agents[e.to].kind == Agent::Kind::Channel;
-      SmallVector<unsigned, 4> took = state.took;
+      llvm::SparseBitVector<> took = state.took;
       if (takes)
-        took.insert(llvm::upper_bound(took, e.to), e.to);
+        took.set(e.to);
       visit({e.to, takes, std::move(took), index});
     }
   }

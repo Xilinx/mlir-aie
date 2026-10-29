@@ -5,6 +5,7 @@
 #
 
 add_mlir_dialect_library(AIEXTransforms
+  AIEResourceStages.cpp
   AIEXToStandard.cpp
   AIESCFToControlFlow.cpp
   AIECreateCores.cpp
@@ -49,6 +50,7 @@ add_mlir_dialect_library(AIEXTransforms
 
   LINK_LIBS PUBLIC
   AIE
+  MLIRAffineToStandard
   MLIRAnalysis
   AIETransforms
   MLIRAIEToConfiguration

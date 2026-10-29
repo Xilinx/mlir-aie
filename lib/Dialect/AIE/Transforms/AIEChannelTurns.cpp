@@ -349,17 +349,28 @@ bool CoreTurns::keepsUp(ArrayRef<int64_t> depths) {
     if (llvm::any_of(counts, [&](int64_t c) { return c % repeats; }))
       continue;
     std::set<SmallVector<unsigned>> tried;
+    // Counts for the window order[start, start + length), maintained
+    // incrementally across start (one element leaves, one enters per step)
+    // instead of recomputed from scratch, so the cheap proportionality
+    // filter below runs before a window is ever materialized, deduped or
+    // simulated, not after.
+    SmallVector<int64_t> runCounts(ends, 0);
+    for (size_t i = 0; i < length; i++)
+      runCounts[order[i]]++;
     for (size_t start = 0; start + length <= order.size(); start++) {
-      SmallVector<unsigned> run(order.begin() + start,
-                                order.begin() + start + length);
-      SmallVector<int64_t> runCounts(ends, 0);
-      for (unsigned end : run)
-        runCounts[end]++;
+      if (start > 0) {
+        runCounts[order[start - 1]]--;
+        runCounts[order[start + length - 1]]++;
+      }
       bool proportional = true;
       for (size_t i = 0; i < ends; i++)
         proportional &=
             runCounts[i] * static_cast<int64_t>(repeats) == counts[i];
-      if (!proportional || !tried.insert(run).second || !keepsUp(run, depths))
+      if (!proportional)
+        continue;
+      SmallVector<unsigned> run(order.begin() + start,
+                                order.begin() + start + length);
+      if (!tried.insert(run).second || !keepsUp(run, depths))
         continue;
       order = run;
       return true;

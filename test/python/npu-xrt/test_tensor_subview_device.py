@@ -219,3 +219,25 @@ def test_adjacent_subviews_are_independent(source, expected):
 
     np.testing.assert_array_equal(first.numpy(), expected)
     np.testing.assert_array_equal(second.numpy(), expected)
+
+
+def test_a_view_ending_mid_line_keeps_the_device_s_bytes_past_it(source, expected):
+    """A host write through a view of five elements leaves the rest of its line
+    as the device wrote it, and a view of five reads what the device wrote.
+
+    The host caches the line before the device writes it, so a write that
+    claimed the line without pulling it first would send that stale copy back.
+    """
+    out = XRTTensor((_N,), dtype=np.int32, device="npu")
+    np.testing.assert_array_equal(out.data[:_PAD], np.zeros(_PAD, np.int32))
+    add_const(source, out)
+    with out.subview(0, (5,)).overwrite() as array:
+        array[:] = -_ADD
+    again = XRTTensor((_N,), dtype=np.int32, device="npu")
+    add_const(out, again)
+    want = expected + _ADD
+    want[:5] = 0
+    np.testing.assert_array_equal(again.numpy(), want)
+    np.testing.assert_array_equal(
+        out.subview(_PAD_BYTES, (5,)).numpy(), expected[_PAD : _PAD + 5]
+    )

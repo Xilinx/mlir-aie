@@ -1093,6 +1093,7 @@ def _conv2dk3_bias(
             parameter_bindings=bindings,
             call_index=call_index,
             out_last=input_slice is not None,
+            required_calls=input_channels // input_slice if input_slice else None,
         ),
     )
 
@@ -1315,6 +1316,7 @@ def conv2dk1_i8(
             parameter_bindings=bindings,
             call_index=call_index,
             out_last=bool(input_slice),
+            required_calls=input_channels // input_slice if input_slice else None,
         ),
     )
 

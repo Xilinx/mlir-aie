@@ -188,7 +188,8 @@ struct AIEObjectFifoVerifyPass
   }
 
   /// An endpoint that is not connected carries data nowhere.
-  LogicalResult verifyFlows(DeviceOp device) {
+  LogicalResult verifyFlows(DeviceOp device,
+                            SymbolTableCollection &symbolTables) {
     DenseMap<StringRef, int> appearances;
     for (auto flow : device.getOps<RouteOp>()) {
       for (StringRef source : flow.getSourceNames()) {
@@ -207,7 +208,7 @@ struct AIEObjectFifoVerifyPass
       }
       if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(*endpoint);
           dma && dma.getDispatch()) {
-        if (failed(verifyDispatch(device, dma)))
+        if (failed(verifyDispatch(device, dma, symbolTables)))
           return failure();
         continue;
       }
@@ -226,7 +227,8 @@ struct AIEObjectFifoVerifyPass
   /// destination it takes turns between, and of nothing else. A second route to
   /// the same destination is refused there, by the count every endpoint gets.
   LogicalResult verifyDispatch(DeviceOp device,
-                               ObjectFifoDmaEndpointOp endpoint) {
+                               ObjectFifoDmaEndpointOp endpoint,
+                               SymbolTableCollection &symbolTables) {
     StringRef name = endpoint.getSymName();
     llvm::SmallSetVector<StringRef, 4> turns;
     for (StringRef dest :
@@ -258,6 +260,22 @@ struct AIEObjectFifoVerifyPass
       if (!reached.contains(dest))
         return endpoint.emitOpError("dispatches to @")
                << dest << ", but no route from it reaches there";
+
+    // Every turn moves the same chain through the dispatching endpoint, one
+    // object per turn, so each turn's destination must move as many elements
+    // as the dispatching endpoint itself does.
+    int64_t elements = transferElements(endpoint);
+    for (StringRef dest : turns) {
+      auto destEndpoint = symbolTables.lookupSymbolIn<ObjectFifoDmaEndpointOp>(
+          device, StringAttr::get(device.getContext(), dest));
+      if (!destEndpoint)
+        continue;
+      int64_t destElements = transferElements(destEndpoint);
+      if (destElements != elements)
+        return endpoint.emitOpError("dispatches, so every turn moves ")
+               << elements << " elements, but @" << dest << " moves "
+               << destElements;
+    }
     return success();
   }
 
@@ -290,16 +308,16 @@ struct AIEObjectFifoVerifyPass
   /// arrives, and a packet is one pass of its sender's chain, so every end has
   /// to move the same number of elements or two senders share an object. A
   /// route endpoint's transfers are the runtime's and are not checked here.
-  LogicalResult verifyFanIn(DeviceOp device) {
+  LogicalResult verifyFanIn(DeviceOp device,
+                            SymbolTableCollection &symbolTables) {
     for (auto flow : device.getOps<RouteOp>()) {
       if (!flow.isFanIn()) {
         continue;
       }
       std::optional<std::pair<StringRef, int64_t>> first;
       auto check = [&](StringRef name) -> LogicalResult {
-        auto endpoint = dyn_cast_or_null<ObjectFifoDmaEndpointOp>(
-            SymbolTable::lookupNearestSymbolFrom(
-                device, StringAttr::get(device.getContext(), name)));
+        auto endpoint = symbolTables.lookupSymbolIn<ObjectFifoDmaEndpointOp>(
+            device, StringAttr::get(device.getContext(), name));
         if (!endpoint) {
           return success();
         }
@@ -820,7 +838,9 @@ struct AIEObjectFifoVerifyPass
       }
     }
 
-    if (failed(verifyFlows(device)) || failed(verifyFanIn(device)) ||
+    SymbolTableCollection symbolTables;
+    if (failed(verifyFlows(device, symbolTables)) ||
+        failed(verifyFanIn(device, symbolTables)) ||
         failed(verifyOverRelease(device)) ||
         failed(verifyTransferBudgets(device)) ||
         failed(verifyHeldAtEnd(device)) || failed(verifyAdvances(device)) ||

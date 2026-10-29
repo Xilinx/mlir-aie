@@ -190,6 +190,11 @@ def _out_tiles(fn, calls):
     """Output tiles a run drains: one per call, or one for all of them."""
     c = _contract(fn)
     if c.out_last:
+        if calls != c.required_calls:
+            raise ValueError(
+                f"{fn.name}: out_last requires exactly {c.required_calls} call(s), "
+                f"got {calls}"
+            )
         return 1
     if c.out_offset is None:
         return calls
@@ -569,6 +574,7 @@ def design(
         raise ValueError(
             f"{fn.name}: the generic harness cannot build this kernel: {c.unsupported}"
         )
+    _out_tiles(fn, calls)
     _fifo_plan(fn)  # the DMA channel budget is checked before anything builds
     offsets = _byte_offsets(fn, arg_byte_offsets)
     flags: list[str] = list(aiecc_flags or ())

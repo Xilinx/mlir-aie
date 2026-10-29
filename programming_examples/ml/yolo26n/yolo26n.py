@@ -162,6 +162,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.batch < 1 or not args.compile_only and args.n % args.batch:
         parser.error(f"--batch {args.batch} does not divide --n {args.n}")
+    if args.ahead < 0:
+        parser.error(f"--ahead {args.ahead} is negative")
     if args.n_iters < 1 or args.n_warmup < 0:
         parser.error("--n-iters must be at least 1 and --n-warmup at least 0")
     paths = sorted(args.images.glob("*.jpg"))[: args.n]

@@ -29,19 +29,26 @@ struct ObjectFifoLoweringOptions
 };
 } // namespace
 
+void xilinx::AIE::addObjectFifoLoweringPasses(OpPassManager &pm,
+                                              bool packetSwitched,
+                                              bool skipVerify) {
+  pm.addPass(createAIEObjectFifoSplitPass());
+  if (!skipVerify) {
+    pm.addPass(createAIEObjectFifoVerifyPass());
+  }
+  pm.addPass(createAIEAssignPacketIdsPass(packetSwitched));
+  pm.addPass(createAIEObjectFifoAllocatePass());
+  pm.addPass(createAIEObjectFifoLowerDMAsPass());
+  pm.addPass(createAIEObjectFifoLowerCoresPass());
+  pm.addPass(createAIEObjectFifoErasePoolsPass());
+}
+
 void xilinx::AIE::registerAIEObjectFifoPipeline() {
   PassPipelineRegistration<ObjectFifoLoweringOptions>(
       "aie-objectFifo-stateful-transform",
       "Lower aie.objectfifo to buffers, locks, flows and DMA programs",
       [](OpPassManager &pm, const ObjectFifoLoweringOptions &options) {
-        pm.addPass(createAIEObjectFifoSplitPass());
-        if (!options.skipVerify) {
-          pm.addPass(createAIEObjectFifoVerifyPass());
-        }
-        pm.addPass(createAIEAssignPacketIdsPass(options.packetSwitched));
-        pm.addPass(createAIEObjectFifoAllocatePass());
-        pm.addPass(createAIEObjectFifoLowerDMAsPass());
-        pm.addPass(createAIEObjectFifoLowerCoresPass());
-        pm.addPass(createAIEObjectFifoErasePoolsPass());
+        addObjectFifoLoweringPasses(pm, options.packetSwitched,
+                                    options.skipVerify);
       });
 }

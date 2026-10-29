@@ -193,6 +193,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto bufferAdjacency =
       buildBufferAdjacency(logicalTiles, collected.objectFifoAllocates);
   auto computePeerAdjacency = buildComputePeerAdjacency(objectFifos);
+  auto sharedMemAdjacency = buildSharedMemAdjacency(objectFifos);
 
   // Phase 2b: Build channel requirements from ObjectFifo and Flow connectivity,
   // and cascade adjacency constraints from CascadeFlow connectivity.
@@ -209,6 +210,27 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
+  // A forced-shared-mem peer is already in `computePeerAdjacency`; this
+  // tallies which of a tile's peers are forced, to floor its neighbor
+  // demand below regardless of DMA channel headroom.
+  llvm::DenseMap<Operation *, int> forcedSharedMemIn, forcedSharedMemOut;
+  for (auto ofOp : objectFifos) {
+    if (!ofOp.forcesSharedMemory() || ofOp.getConsumerTiles().size() != 1)
+      continue;
+    auto producer =
+        dyn_cast_or_null<LogicalTileOp>(ofOp.getProducerTile().getDefiningOp());
+    auto consumer = dyn_cast_or_null<LogicalTileOp>(
+        ofOp.getConsumerTiles()[0].getDefiningOp());
+    if (!producer || producer.getTileType() != AIETileType::CoreTile)
+      continue;
+    if (!consumer || consumer.getTileType() != AIETileType::CoreTile)
+      continue;
+    if (producer.getOperation() == consumer.getOperation())
+      continue;
+    ++forcedSharedMemOut[producer.getOperation()];
+    ++forcedSharedMemIn[consumer.getOperation()];
+  }
+
   // Phase 2c: For every compute LTO, compute the minimum number of its
   // compute-peer producers/consumers that must land on physical neighbors so
   // the LTO fits its DMA channel budget. A compute→compute ObjectFifo can use
@@ -218,7 +240,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // channel and already appear in `channelRequirements`, so the headroom left
   // for compute-peer fifos is (DMA-budget − channelRequirements). If a
   // Worker has more compute-peer fifos than that headroom, the surplus MUST
-  // come from neighbors.
+  // come from neighbors -- and a peer forcing shared memory always must,
+  // budget or not.
   llvm::DenseMap<Operation *, int> needNeighborIn, needNeighborOut;
   for (auto lt : logicalTiles) {
     if (lt.getTileType() != AIETileType::CoreTile)
@@ -230,9 +253,11 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     auto [nonPeerIn, nonPeerOut] =
         channelRequirements.lookup(lt.getOperation());
     needNeighborIn[lt.getOperation()] =
-        std::max(0, peerIn - (inBudget - nonPeerIn));
+        std::max({0, peerIn - (inBudget - nonPeerIn),
+                  forcedSharedMemIn.lookup(lt.getOperation())});
     needNeighborOut[lt.getOperation()] =
-        std::max(0, peerOut - (outBudget - nonPeerOut));
+        std::max({0, peerOut - (outBudget - nonPeerOut),
+                  forcedSharedMemOut.lookup(lt.getOperation())});
     LLVM_DEBUG(llvm::dbgs()
                << DEBUG_TYPE << ": LTO " << lt.getLoc() << " peerIn=" << peerIn
                << " peerOut=" << peerOut << " nonPeerIn=" << nonPeerIn
@@ -273,6 +298,20 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto cascadeLabel = [](bool thisIsSrc) -> StringRef {
     return thisIsSrc ? "cascade destination" : "cascade source";
   };
+  // Shared memory: unlike buffer ownership, either end satisfying
+  // isLegalMemAffinity to the other is enough -- a shared_mem objectFifo
+  // has no owner/consumer asymmetry, it just needs both ends on tiles that
+  // share a memory module. Same bidirectional check as SAPlacer's own
+  // shared-memory penalty.
+  auto sharedMemPred = [this](TileID aPos, TileID bPos) {
+    return targetModel->isLegalMemAffinity(aPos.col, aPos.row, bPos.col,
+                                           bPos.row) ||
+           targetModel->isLegalMemAffinity(bPos.col, bPos.row, aPos.col,
+                                           aPos.row);
+  };
+  auto sharedMemLabel = [](bool thisIsProducer) -> StringRef {
+    return thisIsProducer ? "shared-memory consumer" : "shared-memory producer";
+  };
 
   AdjacencyKind bufferKind{
       bufferAdjacency, bufferPred, bufferLabel, "shared-L1 buffer",
@@ -283,6 +322,12 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       cascadeAdjacency, cascadePred, cascadeLabel, "cascade",
       "cascade adjacency requires the destination tile to be one row "
       "South or one column East of the source tile"};
+  AdjacencyKind sharedMemKind{
+      sharedMemAdjacency, sharedMemPred, sharedMemLabel,
+      "shared-memory transport",
+      "a `shared_mem` objectFifo requires its producer and consumer to "
+      "land on tiles that share a memory module (N/S neighbor, or W "
+      "neighbor per the device's checkerboard rule)"};
 
   // Phase 3: Place constrained tiles then compute tiles.
   //
@@ -377,6 +422,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return failure();
       if (failed(enforceAdjacency(logicalTile, tile, cascadeKind)))
         return failure();
+      if (failed(enforceAdjacency(logicalTile, tile, sharedMemKind)))
+        return failure();
       if (failed(validateAndUpdateChannelUsage(
               logicalTile, tile, channelRequirements, PlacementOrigin::Pinned)))
         return failure();
@@ -395,6 +442,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       UnpinnedPlacementInputs inputs{
           bufferAdjacency,      bufferPred,
           cascadeAdjacency,     cascadePred,
+          sharedMemAdjacency,   sharedMemPred,
           computePeerAdjacency, needNeighborIn,
           needNeighborOut,      isReservedForOtherBound,
           preferredCols};
@@ -411,6 +459,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
             sawConstraintMatch && allConstraintMatchesFailedAdjacency &&
             bufferAdjacency.hasEdges(logicalTile.getOperation());
         bool hasCascade = cascadeAdjacency.hasEdges(logicalTile.getOperation());
+        bool hasSharedMem =
+            sharedMemAdjacency.hasEdges(logicalTile.getOperation());
         InFlightDiagnostic diag = logicalTile.emitError();
         if (col || row) {
           diag << "no compute tile available matching constraint ("
@@ -418,6 +468,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                << (row ? std::to_string(*row) : "?") << ")"
                << (adjacencyWasCause ? " and shared-L1 buffer adjacency" : "")
                << (hasCascade ? " and cascade adjacency" : "")
+               << (hasSharedMem ? " and shared-memory transport" : "")
                << (computePeerWasCause ? " and compute-peer DMA budget" : "");
         } else {
           diag << "no available compute tiles for placement"
@@ -425,6 +476,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                        ? " (shared-L1 buffer adjacency unsatisfiable)"
                        : "")
                << (hasCascade ? " (cascade adjacency unsatisfiable)" : "")
+               << (hasSharedMem ? " (shared-memory transport unsatisfiable)"
+                                : "")
                << (computePeerWasCause
                        ? " (compute-peer DMA budget unsatisfiable)"
                        : "");
@@ -444,6 +497,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         if (hasCascade)
           attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
+        if (hasSharedMem)
+          attachPeerNotes(diag, logicalTile, sharedMemAdjacency,
+                          sharedMemLabel);
         if (computePeerWasCause) {
           attachPeerNotes(diag, logicalTile, computePeerAdjacency,
                           [](bool thisIsProducer) -> StringRef {
@@ -763,6 +819,9 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       if (!satisfiesAdjacency(logicalTile, candidate, inputs.cascadeAdjacency,
                               inputs.cascadePred))
         continue;
+      if (!satisfiesAdjacency(logicalTile, candidate, inputs.sharedMemAdjacency,
+                              inputs.sharedMemPred))
+        continue;
       if (!satisfiesComputePeer(
               logicalTile, candidate, inputs.computePeerAdjacency,
               inputs.needNeighborIn, inputs.needNeighborOut)) {
@@ -1073,6 +1132,16 @@ Placer::buildComputePeerAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
   return adjacency;
 }
 
+Placer::Adjacency
+Placer::buildSharedMemAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
+  Adjacency adjacency;
+  for (auto ofOp : objectFifos)
+    if (ofOp.forcesSharedMemory() && ofOp.getConsumerTiles().size() == 1)
+      adjacency.addEdgeFromValues(ofOp.getProducerTile(),
+                                  ofOp.getConsumerTiles()[0]);
+  return adjacency;
+}
+
 bool SequentialPlacer::satisfiesAdjacency(
     LogicalTileOp logicalTile, TileID candidate, const Adjacency &adjacency,
     llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred) const {
@@ -1155,8 +1224,8 @@ bool SequentialPlacer::satisfiesComputePeer(
                 auto peerPos = resolvePeerPosition(peer, result);
                 if (!peerPos)
                   return;
-                bool isNeighbor = targetModel->isLegalMemAffinity(
-                    candidate.col, candidate.row, peerPos->col, peerPos->row);
+                bool isNeighbor =
+                    isSharedComputeMemory(*targetModel, candidate, *peerPos);
                 bool thisIsConsumer = !thisIsFirst;
                 if (isNeighbor) {
                   if (thisIsConsumer)
@@ -1243,17 +1312,14 @@ bool SequentialPlacer::satisfiesComputePeer(
               if (peerPeer.getOperation() == logicalTile.getOperation()) {
                 // For the edge currently being decided, score candidate
                 // against peerPos.
-                if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row,
-                                                     candidate.col,
-                                                     candidate.row))
+                if (!isSharedComputeMemory(*targetModel, *peerPos, candidate))
                   ++peerNonNeighborDir;
                 return;
               }
               auto pp = resolvePeerPosition(peerPeer, result);
               if (!pp)
                 return;
-              if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row,
-                                                   pp->col, pp->row))
+              if (!isSharedComputeMemory(*targetModel, *peerPos, *pp))
                 ++peerNonNeighborDir;
             });
         if (peerNonNeighborDir > peerSlackDir)

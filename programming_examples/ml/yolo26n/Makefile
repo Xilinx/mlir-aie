@@ -20,7 +20,7 @@ SEED ?= 7
 N ?= 8
 
 .PHONY: all clean export data verify_oracle \
-	run_block run_blocks_synthetic run run_synthetic
+	run_block run_blocks_synthetic run_blocks_synthetic_batch2 run run_synthetic
 
 all: run_blocks_synthetic
 
@@ -75,6 +75,14 @@ run_blocks_synthetic:
 	done; \
 	echo "yolo26n blocks: $$passed/$$total PASS"; \
 	test $$passed -eq $$total
+
+# The stem, batched: run_blocks_synthetic always runs at --batch 1, so
+# SegmentDesign.transfer()'s cross-image look-ahead/overlap pairing (what
+# the batch 2/4/8/16 performance numbers in README.md depend on) is
+# otherwise never exercised by a PR-gating test.
+run_blocks_synthetic_batch2:
+	cd ${srcdir} && python3 bringup.py --span images /model.2/cv2/conv/Conv \
+		--batch 2 --synthetic ${SEED} --params ${SYNTHETIC_PARAMS}
 
 run:
 	cd ${srcdir} && python3 yolo26n.py --n ${N} $(if ${IMAGES},--images ${IMAGES})
