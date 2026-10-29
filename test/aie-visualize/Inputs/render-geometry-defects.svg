@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80">
+  <g class="graph" transform="translate(10 70) scale(1 -1)">
+    <g id="source" class="node"><title>source</title><polygon fill="white" points="0,20 20,20 20,40 0,40"/></g>
+    <g id="obstacle" class="node tile"><title>obstacle</title><polygon fill="white" points="40,20 60,20 60,40 40,40"/></g>
+    <g id="target" class="node"><title>target</title><polygon fill="white" points="80,20 100,20 100,40 80,40"/></g>
+    <g id="edge_defect" class="edge route flow src-1 dst-2">
+      <title>source-&gt;target</title>
+      <path fill="none" d="M20,30 L80,30 M20,20 C35,25 65,35 80,40"/>
+      <polygon fill="black" points="80,30 75,27 75,33"/>
+    </g>
+  </g>
+</svg>
