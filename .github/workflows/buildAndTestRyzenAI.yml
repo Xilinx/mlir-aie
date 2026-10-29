@@ -171,6 +171,108 @@ jobs:
           rm -rf $NPU_CACHE_HOME
           rm -rf $PIP_CACHE_DIR
 
+  build-and-test-peano-only:
+    name: Peano-Only Build and Test, no Vitis/chess (${{ matrix.runner_type }})
+    # Smoke test for the configuration open-source Ryzen AI users rely on:
+    # Peano (llvm-aie) as the only AIE backend compiler, with Vitis AIE
+    # Essentials never on PATH. find_package(Vitis) (FindVitis.cmake) only
+    # probes PATH for `v++`, so this reproduces that configuration on the same
+    # runners the job above uses, without needing a separate no-Vitis runner.
+    # Scheduled only, not on every PR/merge: this exercises a second build
+    # configuration end-to-end on the same scarce self-hosted NPUs the job
+    # above already saturates per PR.
+    if: github.event_name == 'schedule'
+    runs-on: ${{ matrix.runner_type }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner_type: aie2-4col
+            expected_npu: npu1
+          - runner_type: aie2p-8col
+            expected_npu: npu2
+    env:
+      AIE_EXPECTED_NPU: ${{ matrix.expected_npu }}
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-peano-only-${{ matrix.runner_type }}-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-peano-only-${{ matrix.runner_type }}-${{ github.run_id }}
+      # Override the workflow-level Vitis env for this job only.
+      VITIS: ""
+      XILINXD_LICENSE_FILE: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Print hostname
+        run: hostname
+
+      - name: Setup virtual environment / prerequisites
+        run: source ./utils/env_install.sh aie-venv --dev --extras
+
+      - name: Build from source (no Vitis on PATH, chess-clang off)
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+
+          # This runner also hosts the Vitis-based job above, so strip any
+          # Vitis/AIETools bin dirs a login profile might add to PATH and
+          # unset the env vars some runners export globally. The real gate is
+          # AIE_BUILD_CHESS_CLANG=OFF below plus the check that v++/xchesscc
+          # are unreachable.
+          unset AIETOOLS_ROOT VITIS_ROOT XILINX_VITIS XILINX_LOC
+          export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -i 'vitis\|aietools' | paste -sd:)"
+          if command -v v++ >/dev/null 2>&1 || command -v xchesscc >/dev/null 2>&1; then
+            echo "::error::Vitis/chess tools are still on PATH; this job must build without them"
+            exit 1
+          fi
+
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) -DXRT_ROOT=/opt/xilinx/xrt -DAIE_BUILD_CHESS_CLANG=OFF"
+          ./utils/build-mlir-aie-from-wheels.sh "" build install
+
+      - name: Run NPU smoke tests (no Vitis/chess)
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+
+          # Each step starts with the runner environment, so sanitize it again.
+          unset AIETOOLS_ROOT VITIS_ROOT XILINX_VITIS XILINX_LOC
+          export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -i 'vitis\|aietools' | paste -sd:)"
+          if command -v v++ >/dev/null 2>&1 || command -v xchesscc >/dev/null 2>&1; then
+            echo "::error::Vitis/chess tools are still on PATH; this job must test without them"
+            exit 1
+          fi
+
+          rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
+          export XRT_CONTEXT_CACHE_SIZE=2
+
+          pushd build
+          # REQUIRES: chess tests (e.g. cascade flows) are expected to show up
+          # as Unsupported here, not silently absent -- --show-unsupported
+          # makes a regression that filtered out this whole job's coverage
+          # visible in the log instead of a quiet, all-green no-op.
+          LIT_FILTER='npu-xrt' ninja check-aie
+          popd
+
+          export PATH="$PWD/install/bin:$PATH"
+          export PYTHONPATH="$PWD/install/python:$PYTHONPATH"
+          pushd programming_examples/basic/vector_scalar_add
+          make clean
+          if [ "${{ matrix.expected_npu }}" = "npu2" ]; then
+            NPU2=1 python3 "$GITHUB_WORKSPACE/utils/run_on_npu.py" npu2 make run
+          else
+            python3 "$GITHUB_WORKSPACE/utils/run_on_npu.py" npu1 make run
+          fi
+          popd
+
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        run: |
+          rm -rf $NPU_CACHE_HOME
+          rm -rf $PIP_CACHE_DIR
+
   build-and-test-pure-hrx:
     name: Pure HRX Build and Run (XRT-free packaging + libhrx dispatch)
     # This job exercises the XRT-free flow end to end on XDNA2 hardware:
