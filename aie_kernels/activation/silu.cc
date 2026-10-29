@@ -1,153 +1,52 @@
-//===- silu.cc --------------------------------------------*- C++
-//-*-===//
+//===- silu.cc --------------------------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-//===-------------------------------------------------- --------===//
+//===----------------------------------------------------------------------===//
 
 #include "../aie_kernel_utils.h"
-#include "../common/activations.h" // tanh_bf16_v16
-#include "sigmoid_lut.h"
+#include "../common/tanh_f32.h"
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 
-using namespace aie;
-
 #ifndef SILU_ELEMS
-#define SILU_ELEMS vector_size
+#define SILU_ELEMS n
 #endif
 
-// silu(x) = x * 0.5 * (1 + tanh(x/2)), one vector register per iteration.
-// tanh runs 16 lanes at a time whatever the register width, so the 32-wide
-// iteration splits and re-concatenates and the 16-wide one does neither.
-// Templated on the lane count so `if constexpr` genuinely discards the branch
-// this architecture does not take. In a plain function both branches still
-// have to be well-formed, and the 16-lane one is not at 32 lanes.
-//
-// See sigmoid.cc for the 0.5 * (1 + tanh) mac. The unroll fills the native
-// vtanh's latency chain; the LUT tanh is bound by its table loads instead.
-// x is clamped at -8 before it multiplies the sigmoid, as in silu_aie2. On
-// AIE2P the clamp in the tanh loop takes it from II 24 to 59 per four
-// vectors, so the sigmoid goes to the output and a second pass at II 1
-// multiplies it by the clamped x.
-template <int lanes>
-static inline void silu_impl(bfloat16 *restrict input_vector,
-                             bfloat16 *restrict output_vector,
-                             const int32_t vector_size) {
-  const int num_elems = SILU_ELEMS;
-  auto it_in = aie::begin_restrict_vector<lanes>((bfloat16 *)input_vector);
-  auto it_out = aie::begin_restrict_vector<lanes>((bfloat16 *)output_vector);
-
-  aie::vector<bfloat16, 16> register_0_5 = aie::broadcast<bfloat16, 16>(0.5f);
-  aie::vector<bfloat16, lanes> register_0_5_wide =
-      aie::broadcast<bfloat16, lanes>(0.5f);
-  aie::accum<accfloat, lanes> half;
-  half.from_vector(register_0_5_wide);
+// x sigmoid(x) of bf16 from sigmoid_f32, its factor x held at +-184, so -inf
+// gives -0; past 128, where sigmoid is 1, and for NaN, x passes through.
+static inline void silu_f32(const bfloat16 *restrict x, bfloat16 *restrict y,
+                            int32_t n) {
+  aie::rounding_mode saved = aie::swap_rounding(aie::rounding_mode::conv_even);
+  const bf16_vec top = aie::broadcast<bfloat16, f32_lanes>(184.0f);
+  const bf16_vec bottom = aie::broadcast<bfloat16, f32_lanes>(-184.0f);
+  const bf16_vec zero = aie::zeros<bfloat16, f32_lanes>();
+  const auto top_bits = aie::broadcast<int16_t, f32_lanes>(0x4300);
+  const auto magnitude = aie::broadcast<uint16_t, f32_lanes>(0x7fff);
+  const auto nan_floor = aie::broadcast<uint16_t, f32_lanes>(0x7f80);
   AIE_PREPARE_FOR_PIPELINING
-#if ACTIVATIONS_NATIVE_TANH
-  AIE_LOOP_UNROLL(4)
-#endif
-  for (int i = 0; i < num_elems; i += lanes) {
-    auto input = *it_in++;
-
-    aie::vector<bfloat16, lanes> tanh_half_x;
-    if constexpr (lanes == 32) {
-      auto lo =
-          tanh_bf16_v16(aie::mul(input.template extract<16>(0), register_0_5));
-      auto hi =
-          tanh_bf16_v16(aie::mul(input.template extract<16>(1), register_0_5));
-      tanh_half_x = aie::concat(lo, hi);
-    } else {
-      tanh_half_x = tanh_bf16_v16(aie::mul(input, register_0_5));
-    }
-
-    aie::vector<bfloat16, lanes> sigmoid_approx =
-        aie::mac(half, tanh_half_x, register_0_5_wide)
-            .template to_vector<bfloat16>();
-#if AIE_TUNED_AIE2P
-    *it_out++ = sigmoid_approx;
-#else
-    auto mul_output =
-        aie::mul(aie::max(input, bfloat16(-8.0f)), sigmoid_approx);
-
-    *it_out++ = mul_output.template to_vector<bfloat16>();
-#endif
+  for (int i = 0; i < SILU_ELEMS; i += f32_lanes) {
+    const bf16_vec xv = aie::load_v<f32_lanes>(x + i);
+    f32_acc xa;
+    xa.from_vector(xv);
+    const Limbs<f32_lanes> f{aie::max(aie::min(xv, top), bottom), zero, zero};
+    const bf16_vec out = sigmoid_f32(xa, f).to_vector<bfloat16>();
+    const auto pass =
+        aie::gt(xv.cast_to<int16_t>(), top_bits) |
+        aie::gt(aie::bit_and(xv.cast_to<uint16_t>(), magnitude), nan_floor);
+    aie::store_v(y + i, aie::select(out, xv, pass));
   }
-#if AIE_TUNED_AIE2P
-  auto it_x = aie::begin_restrict_vector<lanes>((bfloat16 *)input_vector);
-  auto it_sig = aie::begin_vector<lanes>((bfloat16 *)output_vector);
-  auto it_y = aie::begin_vector<lanes>((bfloat16 *)output_vector);
-#pragma clang loop pipeline_initiation_interval(1)
-  for (int i = 0; i < num_elems; i += lanes)
-    *it_y++ = aie::mul(aie::max(*it_x++, bfloat16(-8.0f)), *it_sig++)
-                  .template to_vector<bfloat16>();
-#endif
-}
-
-#if AIE_TUNED_AIE2
-// The sigmoid is exactly 0 from x = -8 down, so x is clamped there before it
-// multiplies it, which keeps -inf from making -inf * 0.
-static inline void silu_aie2(bfloat16 *restrict input_vector,
-                             bfloat16 *restrict output_vector,
-                             const int32_t vector_size) {
-  // Three vectors a trip pipeline (II 38, two stages); four left II 70 flat.
-  lut_map_bf16<3>(
-      input_vector, output_vector, SILU_ELEMS, [](aie::vector<bfloat16, 16> x) {
-        return aie::vector<bfloat16, 16>(
-            aie::mul(aie::max(x, bfloat16(-8.0f)), sigmoid_lut_bf16(x))
-                .to_vector<bfloat16>());
-      });
-}
-#endif
-
-#if AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
-// sigmoid.cc's table to the output, then x times it, clamped at -8 as in
-// silu_aie2, in a second pass at II 1.
-static inline void silu_lut_aie2p(bfloat16 *restrict input_vector,
-                                  bfloat16 *restrict output_vector,
-                                  const int32_t vector_size) {
-  const int num_elems = SILU_ELEMS;
-  auto it_in = aie::begin_restrict_vector<32>(input_vector);
-  auto it_sig = aie::begin_restrict_vector<32>(output_vector);
-#pragma clang loop pipeline_initiation_interval(16)
-  for (int i = 0; i < num_elems; i += 32) {
-    const aie::vector<bfloat16, 32> x = *it_in++;
-    *it_sig++ = aie::concat(sigmoid_lut_bf16(x.extract<16>(0)),
-                            sigmoid_lut_bf16(x.extract<16>(1)));
-  }
-
-  auto it_x = aie::begin_restrict_vector<32>(input_vector);
-  auto it_s = aie::begin_vector<32>(output_vector);
-  auto it_out = aie::begin_vector<32>(output_vector);
-#pragma clang loop pipeline_initiation_interval(1)
-  for (int i = 0; i < num_elems; i += 32)
-    *it_out++ = aie::mul(aie::max(*it_x++, bfloat16(-8.0f)), *it_s++)
-                    .to_vector<bfloat16>();
-}
-#endif
-
-void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
-                           bfloat16 *restrict output_vector,
-                           const int32_t vector_size) {
-  event0();
-#if AIE_TUNED_AIE2
-  silu_aie2(input_vector, output_vector, vector_size);
-#elif AIE_TUNED_AIE2P && !ACTIVATIONS_NATIVE_TANH
-  silu_lut_aie2p(input_vector, output_vector, vector_size);
-#else
-  silu_impl<AIE_BF16_LANES>(input_vector, output_vector, vector_size);
-#endif
-  event1();
-
-  return;
+  aie::set_rounding(saved);
 }
 
 extern "C" {
 
 void silu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
                     int32_t input_size) {
-  silu_tanh_approx_bf16(input, output, input_size);
+  event0();
+  silu_f32(input, output, input_size);
+  event1();
 }
 
 } // extern "C"

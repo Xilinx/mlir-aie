@@ -19,6 +19,7 @@ import ml_dtypes
 import numpy as np
 import pytest
 from aie.iron import kernels
+from aie.iron.kernels.activation import soft_cap_bound
 from aie.utils.accuracy import all_bf16, round_to
 from ml_dtypes import bfloat16
 
@@ -26,9 +27,9 @@ _TRUE = {
     "tanh_ref": np.tanh,
     "sigmoid_ref": lambda x: 1.0 / (1.0 + np.exp(-x)),
     "silu_ref": lambda x: x / (1.0 + np.exp(-x)),
-    "gelu_ref": lambda x: 0.5
-    * x
-    * (1.0 + np.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x**3))),
+    # x sigmoid(2u): 0.5 x (1 + tanh(u)) cancels in float64 from x = -5 down.
+    "gelu_ref": lambda x: x
+    / (1.0 + np.exp(-2.0 * math.sqrt(2.0 / math.pi) * (x + 0.044715 * x**3))),
     # The kernel clamps before its table lookup. float32 gave 936 at
     # x = 6.84375, where exp is 938.00005 and rounds up to 940.
     "bf16_exp_ref": lambda x: np.exp(np.clip(x, -88.0, 88.0)),
@@ -91,69 +92,6 @@ def test_ref_keeps_the_tail_float32_loses(name):
     assert (getattr(kernels, name)(x).astype(np.float64) != 0).all()
 
 
-def test_sigmoid_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
-    # 0.5 * (1 + tanh(x/2)) with tanh rounded to bf16 first is -1, and the
-    # sigmoid 0, from x = -7.5 to -6.9; the table is not. It is 0 below -7.5,
-    # its flat end segment.
-    x = all_bf16(nan=False)
-    x = x[(x >= -8) & (x < -2)]
-    true = 1.0 / (1.0 + np.exp(-x.astype(np.float64)))
-    tail = x >= -7.5
-    table = kernels.sigmoid_table_ref(x).astype(np.float64)
-    assert (table[~tail] == 0).all()
-    # At worst 7.05% off, at x = -7.
-    assert (np.abs(table[tail] - true[tail]) <= 0.071 * true[tail]).all()
-
-
-def test_silu_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
-    x = all_bf16(nan=False)
-    x = x[(x >= -8) & (x < -2)]
-    xf = x.astype(np.float64)
-    true = xf / (1.0 + np.exp(-xf))
-    tail = x >= -7.5
-    table = kernels.silu_table_ref(x).astype(np.float64)
-    assert (table[~tail] == 0).all()
-    # At worst 7.17% off, at x = -7.
-    assert (np.abs(table[tail] - true[tail]) <= 0.072 * np.abs(true[tail])).all()
-    assert kernels.silu_table_ref(np.array([-np.inf], bfloat16))[0] == 0
-
-
-def test_swiglu_table_keeps_the_tail_the_tanh_path_rounds_to_zero():
-    x = all_bf16(nan=False)
-    x = x[(x >= -8) & (x < -2)]
-    one = np.ones_like(x)
-    tail = x >= -7.5
-    table = kernels.swiglu_table_ref(x, one, one).astype(np.float64)
-    assert (table[~tail] == 0).all()
-    assert (table[tail] > 0).all()
-    ninf = np.array([-np.inf], bfloat16)
-    assert kernels.swiglu_table_ref(-ninf, np.array([1], bfloat16), ninf)[0] == 0
-
-
-def test_lut_models_flush_subnormal_products():
-    # The accumulator flushes a subnormal product to zero before storing it.
-    # Without that, a silu model gave 506 subnormals over every bf16 where
-    # npu2 gave 0.
-    x = all_bf16()
-    one = np.ones_like(x)
-    with np.errstate(over="ignore", invalid="ignore"):
-        outs = {
-            "silu_table_ref(x)": kernels.silu_table_ref(x),
-            "swiglu_table_ref(x, 1, 1)": kernels.swiglu_table_ref(x, one, one),
-            "swiglu_table_ref(1, 1, x)": kernels.swiglu_table_ref(one, one, x),
-            "gelu_lut_ref(x)": kernels.gelu_lut_ref(x),
-            "gelu_aie2_lut_ref(x)": kernels.gelu_aie2_lut_ref(x),
-        }
-    for name, got in outs.items():
-        a = np.abs(got.astype(np.float32))
-        sub = (a > 0) & (a < 2.0**-126)
-        assert not sub.any(), f"{name}: {sub.sum()} subnormal outputs"
-    # x * w2 = 2**-128 flushes, so silu is 0 and the gate zeroes the output
-    # however large x * w1 is.
-    x, w1, w2 = (np.array([v], bfloat16) for v in (2.0**-64, 2.0**100, 2.0**-64))
-    assert kernels.swiglu_table_ref(x, w1, w2)[0] == 0
-
-
 def test_swiglu_ref_rounds_the_products_then_is_float64():
     rng = np.random.default_rng(0)
     x, w1, w2 = (
@@ -205,3 +143,19 @@ def test_softmax_ref_soft_cap_saturates():
     x[0] = 1e4
     got = kernels.softmax_ref(x, tile_size=32, soft_cap=30.0).astype(np.float64)
     assert np.isclose(got[0] / got[1], np.exp(60.0), rtol=1e-6)
+
+
+@pytest.mark.parametrize("cap", [0.5, 30.0, 50.0])
+def test_soft_cap_bound_is_one_ulp_only_near_ties(cap):
+    x = all_bf16(nan=False, inf=False)
+    ref = kernels.soft_cap_ref(x, cap=cap).astype(np.float64)
+    bound = soft_cap_bound(x, cap=cap)
+    slack = bound > 2.0**-126
+    assert (
+        bound[slack] <= np.exp2(np.floor(np.log2(np.abs(ref[slack]))) - 7) + 2.0**-126
+    ).all()
+    assert slack.mean() < 0.02
+    assert kernels.soft_cap_ref(np.array([np.inf, -np.inf]), cap=cap).tolist() == [
+        cap,
+        -cap,
+    ]

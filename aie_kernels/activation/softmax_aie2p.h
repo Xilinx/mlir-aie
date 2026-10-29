@@ -12,6 +12,7 @@
 
 #include "../common/exp2_bf16.h"
 #include "../common/f32_split.h"
+#include "../common/tanh_f32.h"
 
 #define SM_VEC_LEN 32   // 32
 #define log2e 1.4453125 // 1.44269504089
@@ -274,8 +275,6 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
                                       bf16_splat<SM_VEC_LEN>(0xbb2c),
                                       bf16_splat<SM_VEC_LEN>(0x36ec)};
   constexpr float cap = SOFTMAX_SOFT_CAP;
-  // cap * tanh(|s| / cap) * log2(e) = k0 (2r - 1), r = 1 / (1 + 2^a) with
-  // a = -|s| * 2 log2(e) / cap <= 0; 2^a flushing to 0 saturates it at k0.
   constexpr float k0 = cap * 1.44269504088896341f;
   const Limbs<SM_VEC_LEN> a_limbs =
       bf16_limbs(splat(cap > 0.0f ? 2.88539008177792682f / cap : 0.0f));
@@ -307,44 +306,7 @@ static void softmax_f32_row(float *__restrict x, const float *__restrict addend,
       s = aie::add(s, aie::load_v<SM_VEC_LEN>(addend + c));
     Acc z;
     if constexpr (cap > 0.0f) {
-      // The sign by the bits' compare and -s in the accumulator: Peano
-      // cannot legalize a 32-lane f32 fneg or 1024-bit OR.
-      const auto sv = s.to_vector<float>();
-      const auto negative =
-          aie::lt(sv.cast_to<int32_t>(), aie::zeros<int32_t, SM_VEC_LEN>());
-      const auto neg = aie::sub(aie::zeros<accfloat, SM_VEC_LEN>(), sv);
-      const Acc neg_abs(aie::select(neg.to_vector<float>(), sv, negative));
-      const aie::vector<float, SM_VEC_LEN> a =
-          mac_limbs(aie::zeros<accfloat, SM_VEC_LEN>(), bf16_limbs(neg_abs),
-                    a_limbs)
-              .to_vector<float>();
-      const Exp2F32 e2a = exp2_f32_32(a);
-      const Acc d = aie::add(
-          splat(1.0f), aie::select(e2a.bits.cast_to<float>(),
-                                   aie::zeros<float, SM_VEC_LEN>(), e2a.below));
-
-      // r = 1 / d, d in [1, 2]: a quadratic within 2%, then two Newton steps
-      // r -= r (d r - 1), the first from r in bf16.
-      const Limbs<SM_VEC_LEN> dl = bf16_limbs(d);
-      const auto q =
-          aie::mac(splat(-1.4515766f), dl.hi, bf16_splat<SM_VEC_LEN>(0x3ea5))
-              .to_vector<bfloat16>();
-      const auto r0 =
-          aie::mac(splat(2.1190739f), q, dl.hi).to_vector<bfloat16>();
-      Limbs<SM_VEC_LEN> e = bf16_limbs(aie::mac(
-          aie::mac(aie::mac(splat(-1.0f), dl.hi, r0), dl.mid, r0), dl.lo, r0));
-      const Acc r1 = aie::msc(aie::msc(Acc(r0), r0, e.hi), r0, e.mid);
-      const Limbs<SM_VEC_LEN> rl = bf16_limbs(r1);
-      e = bf16_limbs(mac_limbs(splat(-1.0f), dl, rl));
-      const Acc r = aie::msc(aie::msc(aie::msc(r1, rl.hi, e.hi), rl.hi, e.mid),
-                             rl.mid, e.hi);
-
-      const auto t = mac_limbs(splat(-k0), bf16_limbs(r), k1_limbs);
-      z = Acc(aie::select(
-          t.to_vector<float>(),
-          aie::sub(aie::zeros<accfloat, SM_VEC_LEN>(), t.to_vector<float>())
-              .to_vector<float>(),
-          negative));
+      z = scaled_tanh_f32(s, a_limbs, k0, k1_limbs);
       if (mask) {
         const auto m = aie::load_v<SM_VEC_LEN>(mask + c);
         z = aie::mac(z, m, log2e_limbs.hi);

@@ -32,6 +32,10 @@ from ._common import (
 
 DTYPES: dict[str, tuple[dict, ...]] = {}
 
+#: The bf16 entries of a ``levels`` table: three channels' 256, the four
+#: fill values, padded to whole 64-byte vectors.
+LEVELS_TABLE = 3 * 256 + 32
+
 
 def _color_convert_kernel(
     func_name: str,
@@ -303,6 +307,237 @@ def add_weighted(
             ops_per_call=3 * line_width,
         ),
     )
+
+
+def levels(
+    in_bytes: int = 3 * 1920, out_width: int = 1920, *, bgr: bool = False
+) -> ExternalFunction:
+    """Map a row of uint8 RGB pixels through per-channel tables to bf16 pixels of four channels.
+
+    ``levelsLine(in, table, out, first, count, at, row, lo, hi)`` writes
+    ``count`` pixels of the row ``in``, from pixel ``first``, to the row
+    ``out`` from pixel ``at``, each channel's level looked up in its own 256
+    entries of ``table``; every other pixel of ``out`` is the four fill
+    values after them. Output row ``row`` places its run only for ``lo <=
+    row < hi``, so a design's core can take every row of an image whatever
+    rows a call places. A run past either row is cut at its end, and a
+    negative ``first`` or ``at`` writes the fill alone. The tables hold whatever a host maps a
+    level to, such as an image processor's rescale and normalization,
+    computed once and exactly; with ``bgr`` the first output channel reads
+    the input's blue.
+
+    Args:
+        in_bytes: The input row's bytes, three a pixel; a multiple of 4.
+        out_width: The output row's pixels.
+        bgr: Whether the output's channels are blue, green, red.
+
+    Returns:
+        ExternalFunction for ``levelsLine``.
+
+    Raises:
+        ValueError: When ``in_bytes`` is not a positive multiple of 4 or
+            ``out_width`` is below 1.
+    """
+    if in_bytes < 4 or in_bytes % 4:
+        raise ValueError(
+            f"levels() needs in_bytes a positive multiple of 4, got {in_bytes}."
+        )
+    if out_width < 1:
+        raise ValueError(f"levels() needs out_width >= 1, got {out_width}.")
+    return _make_extern(
+        "levelsLine",
+        _kernel_source("vision/levels.cc"),
+        [
+            np.ndarray[(in_bytes,), np.dtype[np.uint8]],
+            np.ndarray[(LEVELS_TABLE,), np.dtype[bfloat16]],
+            np.ndarray[(4 * out_width,), np.dtype[bfloat16]],
+        ]
+        + [np.int32] * 6,
+        compile_flags=[
+            f"-DIN_BYTES={in_bytes}",
+            f"-DOUT_WIDTH={out_width}",
+            f"-DBGR={int(bgr)}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out) + (Param,) * 6,
+            reference=lambda rows, table, first, count, at, row, lo, hi: levels_ref(
+                rows,
+                table,
+                first,
+                count,
+                at,
+                row,
+                lo,
+                hi,
+                out_width=out_width,
+                bgr=bgr,
+            ),
+            tolerance=Tolerance.exact(note="a table lookup"),
+            ops_per_call=0,
+        ),
+    )
+
+
+def grid_decode(
+    width: int = 52,
+    channels: int = 144,
+    *,
+    obj_at: int = 16,
+    cls_at: int = 48,
+    classes: int = 80,
+) -> ExternalFunction:
+    """Decode a row of an anchor-free detector's prediction map into float32 boxes.
+
+    ``grid_decode(in, out, y, stride)`` reads ``width`` cells of
+    ``channels`` bf16, a cell's box ``(dx, dy, dw, dh)`` first, its
+    objectness at ``obj_at`` and ``classes`` scores from ``cls_at``, and
+    writes a row of ``5 + classes`` float32 for each: ``(dx + x) * stride``,
+    ``(dy + y) * stride``, ``exp(dw) * stride``, ``exp(dh) * stride``, then
+    the objectness and scores, as YOLOX's ``decode_outputs`` computes them
+    in float32 for grid cell ``(x, y)`` of a map of ``stride``, a power of
+    two. Each sum rounds once; the exponential is ``exp_f32``.
+
+    Args:
+        width: The cells of a row.
+        channels: The bf16 channels of a cell.
+        obj_at: The objectness's channel.
+        cls_at: The first class score's channel.
+        classes: The class scores of a cell.
+
+    Returns:
+        ExternalFunction for ``grid_decode``.
+
+    Raises:
+        ValueError: When a field lies past a cell's channels or inside its
+            box, or ``width`` or ``classes`` is below 1.
+    """
+    if width < 1 or classes < 1:
+        raise ValueError(
+            f"grid_decode() needs width >= 1 and classes >= 1, got {width} and {classes}."
+        )
+    if max(obj_at + 1, cls_at + classes) > channels or min(obj_at, cls_at) < 4:
+        raise ValueError(
+            f"grid_decode() needs objectness at {obj_at} and {classes} scores from "
+            f"{cls_at} inside {channels} channels, after the box."
+        )
+    return _make_extern(
+        "grid_decode",
+        _kernel_source("vision/grid_decode.cc"),
+        [
+            np.ndarray[(width * channels,), np.dtype[bfloat16]],
+            np.ndarray[(width * (5 + classes),), np.dtype[np.float32]],
+            np.int32,
+            np.int32,
+        ],
+        compile_flags=[
+            f"-DWIDTH={width}",
+            f"-DCHANNELS={channels}",
+            f"-DOBJ={obj_at}",
+            f"-DCLS={cls_at}",
+            f"-DCLASSES={classes}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param),
+            reference=lambda cells, y, stride: grid_decode_ref(
+                cells,
+                y,
+                stride,
+                width=width,
+                channels=channels,
+                obj_at=obj_at,
+                cls_at=cls_at,
+                classes=classes,
+            ),
+            acc_dtype=np.float32,
+            tolerance=Tolerance.relative(
+                1e-6,
+                note="exp_f32 is within 9.41 float32 ulps (5.6e-7) over every "
+                "input, numpy's exp within one; the sums round once, as the "
+                "reference's, and the stride and the copies are exact",
+            ),
+        ),
+    )
+
+
+class _ResizeLinearKernel(ExternalFunction):
+    resize_linear_setup: Kernel
+    resize_linear_emit: Kernel
+    resize_linear_finish: Kernel
+
+
+def resize_linear(in_bytes: int = 3072, out_bytes: int = 1248) -> _ResizeLinearKernel:
+    """Resize a uint8 RGB image as OpenCV's INTER_LINEAR does, a row at a time.
+
+    Bit for bit OpenCV's fixed-point path on the CPU (resizeGeneric_ with
+    11-bit weights, as ``cv2.setUseOptimized(False)`` runs it): each source
+    row's horizontal pass exact in int32, each output row's vertical pass
+    OpenCV's 8-bit one, ``((b0 * (s0 >> 4)) >> 16) + ((b1 * (s1 >> 4)) >>
+    16) + 2 >> 2``, the same on every element. Four entry points
+    share one core's state, and a core runs:
+
+    ```text
+    resize_linear_setup(counts, rows, columns, out_rows, out_columns)
+    for each of counts[0] source rows:
+        resize_linear_take(row, counts)
+        for counts[1] output rows: resize_linear_emit(out)
+    resize_linear_finish(counts)
+    for counts[1] output rows: resize_linear_emit(out)
+    ```
+
+    An output row is ``out_bytes``, zeros past ``3 * out_columns``. Sizes
+    the kernel refuses (below 1, or past ``in_bytes`` or ``out_bytes``)
+    take every source row and emit ``out_rows`` rows of zeros, so a
+    design's streams stay in step; every call emits ``out_rows`` rows.
+    [`resize_linear_ref`][iron.kernels.vision.resize_linear_ref] is the
+    arithmetic.
+
+    Args:
+        in_bytes: A source row's bytes; a multiple of 4 up to 32764.
+        out_bytes: An output row's bytes; a multiple of 4 holding whole
+            pixels' worth up to 32764.
+
+    Returns:
+        ExternalFunction for ``resize_linear_take``, with
+        ``resize_linear_setup``, ``resize_linear_emit`` and
+        ``resize_linear_finish`` bound on its object.
+
+    Raises:
+        ValueError: When either row's bytes are not a multiple of 4 from 4
+            to 32764.
+    """
+    for name, n in (("in_bytes", in_bytes), ("out_bytes", out_bytes)):
+        if n % 4 or not 4 <= n <= 32764:
+            raise ValueError(
+                f"resize_linear() needs {name} a multiple of 4 from 4 to 32764, got {n}."
+            )
+    counts_ty = np.ndarray[(2,), np.dtype[np.int32]]
+    fn = _make_extern(
+        "resize_linear_take",
+        _kernel_source("vision/resize_linear.cc"),
+        [np.ndarray[(in_bytes,), np.dtype[np.uint8]], counts_ty],
+        compile_flags=[f"-DIN_BYTES={in_bytes}", f"-DOUT_BYTES={out_bytes}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out),
+            unsupported=(
+                "four entry points share one core's state, driven by counts "
+                "they write; test_resize_linear_e2e.py drives and judges them"
+            ),
+            ops_per_call=0,
+        ),
+        cls=_ResizeLinearKernel,
+    )
+    lib = fn.object_file
+    fn.resize_linear_setup = lib.bind(
+        "resize_linear_setup", [counts_ty, np.int32, np.int32, np.int32, np.int32]
+    )
+    fn.resize_linear_emit = lib.bind(
+        "resize_linear_emit", [np.ndarray[(out_bytes,), np.dtype[np.uint8]]]
+    )
+    fn.resize_linear_finish = lib.bind("resize_linear_finish", [counts_ty])
+    return fn
 
 
 def _check_resample(owner: str, words: int, cores: int, slots: int | None) -> None:
@@ -614,6 +849,98 @@ def rgba2hue_ref(rgba):
         ),
     )
     return (np.where(d == 0, 0, h) & 0xFF).astype(np.uint8)
+
+
+def grid_decode_ref(
+    cells,
+    y,
+    stride,
+    *,
+    width: int,
+    channels: int,
+    obj_at: int,
+    cls_at: int,
+    classes: int,
+):
+    """Numpy reference for [`grid_decode`][iron.kernels.vision.grid_decode].
+
+    YOLOX's ``decode_outputs`` in float32.
+    """
+    p = np.asarray(cells).astype(np.float32).reshape(-1, width, channels)
+    s = np.float32(stride)
+    out = np.empty((p.shape[0], width, 5 + classes), np.float32)
+    out[..., 0] = (p[..., 0] + np.arange(width, dtype=np.float32)) * s
+    out[..., 1] = (p[..., 1] + np.float32(y)) * s
+    with np.errstate(over="ignore"):
+        out[..., 2:4] = np.exp(p[..., 2:4]) * s
+    out[..., 4] = p[..., obj_at]
+    out[..., 5:] = p[..., cls_at : cls_at + classes]
+    return out.reshape(p.shape[0], width * (5 + classes))
+
+
+def resize_linear_ref(rows, columns, out_rows, out_columns, image, *, out_bytes: int):
+    """Numpy reference for [`resize_linear`][iron.kernels.vision.resize_linear].
+
+    ``image`` holds the source rows, ``3 * columns`` bytes of each used;
+    returns ``out_rows`` rows of ``out_bytes``. Exact.
+    """
+    image = np.asarray(image, np.uint8)
+    h, w, oh, ow = int(rows), int(columns), int(out_rows), int(out_columns)
+    out = np.zeros((max(oh, 0), out_bytes), np.uint8)
+    if min(h, w, oh, ow) < 1 or 3 * w > image.shape[1] or 3 * ow > out_bytes:
+        return out
+    coef = np.float32(2048)
+
+    def axis(n_in, n_out):
+        scale = 1.0 / (n_out / n_in)
+        f = ((np.arange(n_out) + 0.5) * scale - 0.5).astype(np.float32)
+        s = np.floor(f).astype(np.int64)
+        return s, (f - s.astype(np.float32)).astype(np.float32)
+
+    sx, fx = axis(w, ow)
+    under = sx < 0
+    fx[under], sx[under] = 0, 0
+    past = sx + 1 >= w
+    xmax = int(np.argmax(past)) if past.any() else ow
+    over = sx >= w - 1
+    fx[over], sx[over] = 0, w - 1
+    a0 = np.rint((np.float32(1) - fx) * coef).astype(np.int64)
+    a1 = np.rint(fx * coef).astype(np.int64)
+    src = image[:h, : 3 * w].reshape(h, w, 3).astype(np.int64)
+    nxt = np.minimum(sx + 1, w - 1)
+    inner = (np.arange(ow) < xmax)[None, :, None]
+    hor = np.where(
+        inner,
+        src[:, sx] * a0[None, :, None] + src[:, nxt] * a1[None, :, None],
+        src[:, sx] * 2048,
+    ).reshape(h, 3 * ow)
+    sy, fy = axis(h, oh)
+    b0 = np.rint((np.float32(1) - fy) * coef).astype(np.int64)[:, None]
+    b1 = np.rint(fy * coef).astype(np.int64)[:, None]
+    s0, s1 = hor[np.clip(sy, 0, h - 1)], hor[np.clip(sy + 1, 0, h - 1)]
+    resized = (((b0 * (s0 >> 4)) >> 16) + ((b1 * (s1 >> 4)) >> 16) + 2) >> 2
+    out[:, : 3 * ow] = resized
+    return out
+
+
+def levels_ref(
+    rows, table, first, count, at, row, lo, hi, *, out_width: int, bgr: bool = False
+):
+    """Numpy reference for [`levels`][iron.kernels.vision.levels]. Exact."""
+    rows = np.asarray(rows, np.uint8)
+    table = np.asarray(table).astype(bfloat16)
+    first, count, at = int(first), int(count), int(at)
+    out = np.empty((rows.shape[0], out_width, 4), bfloat16)
+    out[:] = table[3 * 256 : 3 * 256 + 4]
+    if first < 0 or at < 0 or not int(lo) <= int(row) < int(hi):
+        count = 0
+    count = max(0, min(count, out_width - at, rows.shape[1] // 3 - first))
+    pixels = rows[:, 3 * first : 3 * (first + count)].reshape(rows.shape[0], count, 3)
+    if bgr:
+        pixels = pixels[..., ::-1]
+    for c in range(3):
+        out[:, at : at + count, c] = table[c * 256 + pixels[..., c].astype(np.int64)]
+    return out.reshape(rows.shape[0], 4 * out_width)
 
 
 def threshold_ref(x, thresh, maxval, ttype):

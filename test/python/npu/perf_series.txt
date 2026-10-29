@@ -36,6 +36,8 @@ argmax_combine/2x16/int32
 argmax_combine/2x16/int32/bfloat16-values
 axpy/1024x16/bfloat16
 axpy/1024x256/bfloat16
+axpy/1024x4/bfloat16/f32-a
+axpy/1024x4/bfloat16/f32-a-negative
 axpy/1024x4/bfloat16/inexact-a
 axpy/64x4/bfloat16/short-row
 bf16_exp/1024x16/bfloat16
@@ -274,9 +276,7 @@ fused_mm/64x32x128x4/bfloat16/band_m=64/bfp16_b=True/chunk_k=32/out_chunk=512
 fused_mm/16x512x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=64/mmul_shape=(8, 8, 8)/out_chunk=128/long-k
 fused_mm/16x512x16x4/bfloat16/band_m=16/chunk_k=64/out_chunk=128/long-k
 gelu/1024x16/bfloat16
-gelu/1024x16/bfloat16/use_lut=True/lut
 gelu/1024x256/bfloat16
-gelu/160x4/bfloat16/use_lut=True/lut-unroll-tail
 gelu/160x4/bfloat16/unroll-tail
 gelu/32x4/bfloat16/edge-tiny
 gelu/96x4/bfloat16/short-trip
@@ -546,19 +546,20 @@ scale/32x4/int16/edge-one-vector
 scale/48x4/int32/edge-tail
 scale/64x4/int32/edge-tiny
 sigmoid/1024x16/bfloat16
-sigmoid/1024x16/bfloat16/use_lut=True/lut
 sigmoid/1024x256/bfloat16
 sigmoid/1056x4/bfloat16/tail
 silu/1024x16/bfloat16
-silu/1024x16/bfloat16/use_lut=True/lut
 silu/1024x256/bfloat16
 silu/1024x16/bfloat16/llama-decode
 silu/160x4/bfloat16/unroll-tail
 silu/32x4/bfloat16/edge-tiny
 silu/4096x16/bfloat16/llama-prefill
 silu/96x4/bfloat16/short-trip
-silu/160x4/bfloat16/use_lut=True/lut-unroll-tail
-silu/4096x16/bfloat16/use_lut=True/llama-prefill-lut
+soft_cap/1024x16/bfloat16/cap=30.0
+soft_cap/1024x256/bfloat16/cap=30.0
+soft_cap/1024x4/bfloat16/cap=0.5
+soft_cap/1024x4/bfloat16/cap=50.0
+soft_cap/32x4/bfloat16/cap=0.5
 softmax/1024x16/bfloat16
 softmax/1024x16/bfloat16/accurate_exp2=True/accurate
 softmax/1024x256/bfloat16
@@ -577,10 +578,8 @@ softmax/32x8/float32_bfloat16/masked=True/f32
 softmax/32x8/float32_bfloat16/masked=True/soft_cap=7.888609052210118e-31/f32
 softmax/32x8/float32_bfloat16/soft_cap=50.0/f32
 swiglu/1024x16/bfloat16
-swiglu/1024x16/bfloat16/use_lut=True/lut
 swiglu/1024x256/bfloat16
 tanh/1024x16/bfloat16
-tanh/1024x16/bfloat16/use_lut=True/lut
 tanh/1024x256/bfloat16
 tanh/1056x4/bfloat16/tail
 threshold/1920x16/int16

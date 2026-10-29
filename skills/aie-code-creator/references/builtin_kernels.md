@@ -27,8 +27,8 @@ maintaining a slower copy of a kernel that already exists.
 | element-wise `a+b` / `a*b` | `kernels.add(...)` / `kernels.mul(...)` | bf16, `tile_size` fixed at 1024; `add` also takes `dtype=np.int8` (ONNX QLinearAdd on power-of-two scales, `tile_size` a multiple of 32) |
 | ReLU | `kernels.relu(tile_size)` | bf16, `tile_size` a multiple of 32 |
 | softmax | `kernels.softmax(tile_size)` | bf16 or float32 in, bf16 out; `tile_size` a multiple of 32, trailing size |
-| gelu / silu | `kernels.gelu(tile_size)`, `.silu(tile_size)`, `.gelu_erf(tile_size)` | bf16, any whole-vector `tile_size` (multiple of 16 on AIE2, 32 on AIE2P), trailing size; AIE2P's `vtanh` unless `use_lut=True`; `gelu_erf` is exact GELU, `tile_size` a multiple of 32 |
-| swiglu / exp | `kernels.swiglu`, `.bf16_exp` | bf16, `tile_size` fixed at 1024, LUT-based |
+| gelu / silu / tanh / sigmoid | `kernels.gelu(tile_size)`, `.silu`, `.tanh`, `.sigmoid`, `.gelu_erf` | bf16, `tile_size` a multiple of 32, trailing size; f32 on `common/tanh_f32.h`, rounded once; `gelu_erf` is exact GELU |
+| swiglu / exp | `kernels.swiglu`, `.bf16_exp` | bf16, `tile_size` fixed at 1024; swiglu on `common/tanh_f32.h`, `bf16_exp` LUT-based on AIE2 |
 | sum / min / max over a tile | `kernels.reduce_add`, `.reduce_min`, `.reduce_max` | |
 | running max | `kernels.compute_max(dtype)` | |
 | matrix multiply `C += A*B` | `kernels.mm(dim_m, dim_k, dim_n, input_dtype, output_dtype)` | see MMUL geometry below |
