@@ -558,3 +558,181 @@ def test_device_draws_match_ranges():
     )
     np.testing.assert_array_equal(token.numpy(), expected)
     np.testing.assert_array_equal(record.numpy(), expected)
+
+
+@jit
+def sample_position_with_rule(
+    logits_in: In,
+    draws_in: In,
+    token_out: Out,
+    record_out: Out,
+    *,
+    vocab: CompileTime[int] = 256,
+    chunk: CompileTime[int] = 256,
+    k_max: CompileTime[int] = 16,
+    positions: CompileTime[int] = 1,
+):
+    """``positions`` draws, one column, SAMPLE_PROB_RULE on: the device's own
+    second top-k and reduction, not just their numpy mirror.
+
+    One column needs no join for the restricted summary or the reduction, so
+    this reuses sample_positions' single shared draw row: with no ranges,
+    select_row_words(probability_rule=True) equals combine_row_words(True).
+    """
+    row_words = sample.select_row_words(probability_rule=True)
+    combine = sample.sample_combine(
+        columns=1, slice_size=vocab, k_max=k_max, probability_rule=True
+    )
+    words = sample.summary_words(vocab, k_max)
+
+    one = np.ndarray[(1,), I32]
+    of_draw = ObjectFifo(np.ndarray[(row_words,), I32], name="draw", depth=1)
+    of_token = ObjectFifo(one, name="token", depth=1)
+    of_record = ObjectFifo(one, name="record", depth=1)
+    of_summary = ObjectFifo(np.ndarray[(words,), I32], name="summary", depth=1)
+    of_restricted_summary = ObjectFifo(
+        np.ndarray[(words,), I32], name="restricted_summary", depth=1
+    )
+    of_reduction = ObjectFifo(
+        np.ndarray[(sample.REDUCTION_WORDS,), I32], name="reduction", depth=1
+    )
+
+    def select_body(
+        of_x, of_row, of_sum, of_rsum, of_red, kernel, state, rstate, rx, calls
+    ):
+        for _ in range_(positions):
+            row = of_row.acquire(1)
+            summary = of_sum.acquire(1)
+            rsummary = of_rsum.acquire(1)
+            reduction = of_red.acquire(1)
+            for _ in range_(calls):
+                x = of_x.acquire(1)
+                kernel(x, row, state, summary, rstate, rsummary, rx, reduction)
+                of_x.release(1)
+            of_red.release(1)
+            of_rsum.release(1)
+            of_sum.release(1)
+            of_row.release(1)
+
+    def combine_body(of_sum, of_rsum, of_red, of_row, of_tok, of_rec, kernel):
+        for _ in range_(positions):
+            summary = of_sum.acquire(1)
+            rsummary = of_rsum.acquire(1)
+            reduction = of_red.acquire(1)
+            row = of_row.acquire(1)
+            token = of_tok.acquire(1)
+            record = of_rec.acquire(1)
+            kernel(summary, row, rsummary, reduction, token, record)
+            of_sum.release(1)
+            of_rsum.release(1)
+            of_red.release(1)
+            of_row.release(1)
+            of_tok.release(1)
+            of_rec.release(1)
+
+    of_x = ObjectFifo(np.ndarray[(chunk,), np.dtype[bfloat16]], name="x", depth=4)
+    state = Buffer(
+        np.ndarray[(sample.SELECT_STATE_WORDS,), I32],
+        initial_value=np.zeros(sample.SELECT_STATE_WORDS, dtype=np.int32),
+        name="select_state",
+    )
+    rstate = Buffer(
+        np.ndarray[(sample.SELECT_STATE_WORDS,), I32],
+        initial_value=np.zeros(sample.SELECT_STATE_WORDS, dtype=np.int32),
+        name="restricted_state",
+    )
+    rx = Buffer(
+        np.ndarray[(chunk,), np.dtype[bfloat16]],
+        initial_value=np.zeros(chunk, dtype=bfloat16),
+        name="restricted_x",
+    )
+    workers = [
+        Worker(
+            select_body,
+            [
+                of_x.cons(),
+                of_draw.cons(),
+                of_summary.prod(),
+                of_restricted_summary.prod(),
+                of_reduction.prod(),
+                sample.sample_select(
+                    slice_size=vocab, chunk=chunk, k_max=k_max, probability_rule=True
+                ),
+                state,
+                rstate,
+                rx,
+                sample.select_streams(vocab, chunk) * vocab // chunk,
+            ],
+        ),
+        Worker(
+            combine_body,
+            [
+                of_summary.cons(),
+                of_restricted_summary.cons(),
+                of_reduction.cons(),
+                of_draw.cons(),
+                of_token.prod(),
+                of_record.prod(),
+                combine,
+            ],
+        ),
+    ]
+
+    host = [
+        np.ndarray[(positions * vocab,), np.dtype[bfloat16]],
+        np.ndarray[(positions * row_words,), I32],
+        np.ndarray[(positions,), I32],
+        np.ndarray[(positions,), I32],
+    ]
+
+    def sequence(logits_h, draws_h, token_h, record_h, draw, token, record, x):
+        x.fill(logits_h)
+        draw.fill(draws_h)
+        token.drain(token_h, wait=True)
+        record.drain(record_h, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [*host, of_draw.prod(), of_token.cons(), of_record.cons(), of_x.prod()],
+    )
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+
+
+@pytest.mark.parametrize(
+    "fires",
+    [
+        True,  # the timestamp range dominates: the rule forces it
+        False,  # the text range dominates: it never fires
+    ],
+)
+def test_device_draws_match_the_probability_rule(fires):
+    vocab, split, k_max = 256, 192, 16
+    rng = np.random.default_rng(split + fires)
+    logits = rng.normal(0, 1, vocab).astype(bfloat16)
+    if fires:
+        logits[split:] = bfloat16(20.0)
+    else:
+        logits[:split] = bfloat16(20.0)
+        logits[split:] = bfloat16(-20.0)
+    n53 = int(rng.integers(0, 1 << 53))
+    draws = np.concatenate([sample.draw_row(1.0, k_max, n53), sample.split_word(split)])
+    expected = np.array(
+        [sample.sample_ref(logits, 1.0, k_max, n53, probability_rule_split=split)],
+        dtype=np.int32,
+    )
+    token = iron.full((1,), -1, dtype=np.int32)
+    record = iron.full((1,), -1, dtype=np.int32)
+    sample_position_with_rule(
+        iron.tensor(logits, dtype=bfloat16),
+        iron.tensor(draws, dtype=np.int32),
+        token,
+        record,
+        vocab=vocab,
+        k_max=k_max,
+    )
+    np.testing.assert_array_equal(token.numpy(), expected)
+    np.testing.assert_array_equal(record.numpy(), expected)
+    if fires:
+        assert int(token.numpy()[0]) >= split
+    else:
+        assert int(token.numpy()[0]) < split
