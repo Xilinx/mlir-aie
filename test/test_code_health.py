@@ -203,3 +203,36 @@ def test_the_nightly_publishes_what_the_page_reads():
     listed = json.loads((ROOT / "utils/kernel_checks/ci_workflows.json").read_text())
     files = [w["file"] for k in ("critical", "workflows") for w in listed[k]]
     assert "nightlyCodeHealth.yml" in files and "codeCoverage.yml" not in files
+
+
+def test_a_flood_of_findings_stays_within_the_budget(tmp_path):
+    """However bad a night, status.json stays bounded; history.json keeps a
+    year of points and no more."""
+    frame = "xilinx::AIE::" + "Template<" * 400 + "int" + ">" * 400 + "::run(int)"
+    out = "\n".join(
+        f"==1==ERROR: AddressSanitizer: heap-use-after-free on address 0x{i:x}\n"
+        + "\n".join(f"    #{k} 0x1 in {frame}{i} {SRC}/lib/F{i}.cpp:{k}:1" for k in range(60))
+        for i in range(400)
+    )
+    piece = ch.summarize_sanitizer("asan-ubsan", [lit(*[(f"AIE :: t{n}.mlir", "FAIL", out) for n in range(3)])], SRC)
+    assert piece["finding_count"] == 400 and len(piece["findings"]) == ch.KEEP_FINDINGS
+    assert sum(bool(f["excerpt"]) for f in piece["findings"]) == ch.EXCERPTS_KEPT
+    tidy = "".join(f"{SRC}/lib/F{i}.cpp:{i}:1: error: {'x' * 5000} [modernize-use-auto,-warnings-as-errors]\n" for i in range(5000))
+    tidy_piece = ch.summarize_tidy(tidy, [f"lib/F{i}.cpp" for i in range(5000)], re.compile(r"lib/F\d\d?\.cpp$"), SRC)
+    many = [alert(n, "high", "c-cpp", "lib/a.cpp") for n in range(1, 2001)]
+    for a in many:
+        a["rule"]["description"] = "d" * 5000
+    pages = {k + 1: many[100 * k : 100 * (k + 1)] for k in range(20)}
+    get = lambda path: pages.get(int(re.search(r"[?&]page=(\d+)", path).group(1)), [])
+    scanning = ch.scanning_status(get, "Xilinx/mlir-aie", None)
+    files = {f"lib/Dialect/X/F{i}.cpp": [i, 1000, 1, 10] for i in range(400)}
+    status = ch.build_status({"asan-ubsan": piece, "tsan": {**piece, "check": "tsan"}, "clang-tidy": tidy_piece},
+                             ch.coverage_status(files, None), scanning, None,
+                             datetime.datetime(2026, 10, 29, tzinfo=datetime.timezone.utc), {"id": 1})
+    size = len(json.dumps(status, separators=(",", ":")))
+    assert size < ch.STATUS_BUDGET, size
+    history = None
+    for n in range(800):
+        history = ch.update_history(history, {**ch.history_point(status), "run": n})
+    assert len(history["points"]) == ch.HISTORY_POINTS
+    assert len(json.dumps(history, separators=(",", ":"))) < ch.HISTORY_BUDGET

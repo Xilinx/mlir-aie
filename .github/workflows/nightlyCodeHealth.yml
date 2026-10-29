@@ -265,6 +265,7 @@ jobs:
       # Each into its own directory; a job that failed left none, and its
       # check reads as missing.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        continue-on-error: true
         with:
           pattern: code-health-*
           path: ${{ runner.temp }}/in
@@ -304,4 +305,7 @@ jobs:
           git diff --cached --quiet || git -c user.name=code-health \
             -c user.email=github@users.noreply.github.com \
             commit -q -m "Publish code health for ${GITHUB_SHA:0:10}"
-          git push origin gh-pages:gh-pages
+          git checkout -q -
+
+      - name: Push
+        run: git push origin gh-pages:gh-pages

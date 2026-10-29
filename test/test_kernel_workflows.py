@@ -798,6 +798,7 @@ def test_the_docs_deploy_keeps_what_the_nightlies_publish(tmp_path):
         "kernel-checks/npu1/runs.json",
         "component-checks/sa-placer/runs.json",
         "ci-health/status.json",
+        "code-health/status.json",
         "dev/index.html",
         "index.html",
         "versions.json",
@@ -1014,3 +1015,67 @@ def test_the_picker_step_runs_the_script_with_the_types_split():
     assert '--runner-types "${types[@]}"' in step["run"]
     outputs = workflow("pickBenchRunner.yml")["on"]["workflow_call"]["outputs"]
     assert outputs["runs_on"]["value"] == "${{ jobs.pick.outputs.runs_on }}"
+
+
+def test_code_health_publishes_its_files_and_the_page(tmp_path):
+    """nightlyCodeHealth.yml's Publish step, on a local repository: its two
+    files and the page, under the lock every gh-pages writer takes."""
+    job = workflow("nightlyCodeHealth.yml")["jobs"]["publish"]
+    assert job["concurrency"] == {
+        "group": "gh-pages-publish",
+        "cancel-in-progress": "false",
+        "queue": "max",
+    }
+    assert job["permissions"] == {"contents": "write", "security-events": "read"}
+    # A failed check still publishes the others; a cancelled run does not.
+    assert set(job["needs"]) == {"coverage", "sanitizer", "clang-tidy"}
+    assert "!cancelled()" in job["if"] and "refs/heads/main" in job["if"]
+    run = next(step["run"] for step in job["steps"] if step.get("name") == "Publish")
+    repo = tmp_path / "repo"
+    (repo / "utils/kernel_checks").mkdir(parents=True)
+    page = WORKFLOWS.parents[1] / "utils/kernel_checks/index.html"
+    (repo / "utils/kernel_checks/index.html").write_bytes(page.read_bytes())
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "main")
+    git(repo, "switch", "-q", "--orphan", "gh-pages")
+    (repo / "ci-health").mkdir()
+    (repo / "ci-health/status.json").write_text("{}")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "pages")
+    git(repo, "switch", "-q", "main")
+    temp = tmp_path / "runner-temp"
+    (temp / "code-health").mkdir(parents=True)
+    (temp / "code-health/status.json").write_text('{"schema": 1}')
+    (temp / "code-health/history.json").write_text('{"schema": 1, "points": []}')
+    env = {
+        **os.environ,
+        "RUNNER_TEMP": str(temp),
+        "GITHUB_SHA": "0123456789abcdef",
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+    }
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+    assert git(repo, "branch", "--show-current").strip() == "main"
+    files = set(git(repo, "ls-tree", "-r", "--name-only", "gh-pages").split())
+    assert files == {
+        "ci-health/status.json",
+        "code-health/status.json",
+        "code-health/history.json",
+        "dashboard/index.html",
+    }
+    assert (
+        git(repo, "log", "-1", "--format=%s", "gh-pages").strip()
+        == "Publish code health for 0123456789"
+    )
+    # The coverage job is the coverage workflow itself, called.
+    assert workflow("nightlyCodeHealth.yml")["jobs"]["coverage"]["uses"] == (
+        "./.github/workflows/codeCoverage.yml"
+    )
+    assert "workflow_call" in workflow("codeCoverage.yml")["on"]

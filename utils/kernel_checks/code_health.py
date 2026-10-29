@@ -37,6 +37,7 @@ one's output into a small summary, then folds the night's summaries into
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -48,14 +49,23 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
 SCHEMA = 1
-# A point a night for a year.
+# gh-pages stays bounded: status.json is replaced each night and history.json
+# keeps a point a night for a year, so neither grows with time; the caps
+# below bound status.json however bad a night is (test_code_health.py checks
+# STATUS_BUDGET against a flood of findings).
 HISTORY_POINTS = 366
-# What a status keeps of long lists: the page shows the first few.
 KEEP_TESTS = 25
 KEEP_FAILED = 100
-KEEP_ALERTS = 300
-KEEP_FINDINGS = 200
+KEEP_ALERTS = 200
+KEEP_FINDINGS = 100
+# The report itself for the first few findings of a check; the rest keep
+# their kind, place and tests.
+EXCERPTS_KEPT = 10
 EXCERPT_LINES = 30
+# A C++ template frame can run to kilobytes.
+LINE_CHARS = 240
+STATUS_BUDGET = 1_000_000
+HISTORY_BUDGET = 400_000
 
 # This repository's code, as a frame's or a finding's path starts.
 OWN = ("lib/", "include/", "tools/", "python/", "runtime_lib/", "aie_runtime_lib/")
@@ -77,6 +87,10 @@ def relative(path: str, root: str) -> str:
     # Outside the checkout (a system or prebuilt-MLIR header) stays
     # absolute, so it is never taken for this repository's code.
     return path
+
+
+def clip(text: str, n: int = LINE_CHARS) -> str:
+    return text if len(text) <= n else text[: n - 1] + "…"
 
 
 def ours(path: str) -> bool:
@@ -151,7 +165,7 @@ def reports(output: str, root: str) -> list[dict]:
             "kind": kind,
             "message": message,
             "where": where,
-            "excerpt": "\n".join(l.replace(root.rstrip("/") + "/", "") if root else l for l in lines[:EXCERPT_LINES]),
+            "excerpt": "\n".join(clip(l.replace(root.rstrip("/") + "/", "") if root else l) for l in lines[:EXCERPT_LINES]),
         })
     return found
 
@@ -160,7 +174,10 @@ def finding_key(f: dict) -> str:
     """The same bug from night to night: not its line, which edits move."""
     w = f.get("where") or {}
     func = re.sub(r"\(.*$", "", w.get("function", ""))
-    return "|".join([f["sanitizer"], f["kind"], w.get("file", "?"), func])
+    # A template's name can run to kilobytes: such a key carries its digest.
+    if len(func) > 160:
+        func = func[:80] + "#" + hashlib.sha1(func.encode()).hexdigest()[:12]
+    return "|".join([f["sanitizer"], clip(f["kind"], 160), w.get("file", "?"), func])
 
 
 FAILED = {"FAIL", "TIMEOUT", "UNRESOLVED", "XPASS"}
@@ -187,6 +204,12 @@ def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
             if code in FAILED and not found:
                 failed.append({"test": t["name"], "code": code})
     order = sorted(findings.values(), key=lambda f: (-f["test_count"], f["key"]))
+    for i, f in enumerate(order):
+        f["message"] = clip(f["message"])
+        if "function" in f["where"]:
+            f["where"]["function"] = clip(f["where"]["function"])
+        if i >= EXCERPTS_KEPT:
+            f["excerpt"] = ""
     return {
         "check": name,
         "tests": tests,
@@ -234,7 +257,7 @@ def summarize_tidy(log: str, files: list[str], enabled: re.Pattern, root: str) -
             continue
         by_file[path] = by_file.get(path, 0) + 1
         if enabled.fullmatch(path) or enabled.match(path):
-            in_enabled.append({"file": path, "line": int(m.group(2)), "check": check, "message": m.group(5)})
+            in_enabled.append({"file": path, "line": int(m.group(2)), "check": check, "message": clip(m.group(5))})
         else:
             by_check[check] = by_check.get(check, 0) + 1
     on = [f for f in files if enabled.match(f)]
@@ -354,7 +377,7 @@ def scanning_status(get, repo: str, previous: dict | None) -> dict:
         out.append({
             "number": a["number"],
             "rule": rule.get("id"),
-            "description": rule.get("description"),
+            "description": clip(rule.get("description") or ""),
             "severity": rule.get("security_severity_level") or rule.get("severity") or "note",
             "tool": (a.get("tool") or {}).get("name"),
             "language": language_of(a),
