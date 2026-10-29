@@ -3,8 +3,12 @@
 
 // RUN: not %python %S/Inputs/check-svg-route-continuity.py %S/Inputs/route-continuity.dot %S/Inputs/route-continuity.json %S/Inputs/route-continuity.svg 2>&1 | FileCheck %s
 // RUN: %python %S/Inputs/check-svg-route-continuity.py %S/Inputs/route-continuity-good.dot %S/Inputs/route-continuity-good.json %S/Inputs/route-continuity-good.svg | FileCheck %s --check-prefix=GOOD
+// RUN: not %python %S/Inputs/check-svg-route-continuity.py %S/Inputs/route-continuity-f33.dot %S/Inputs/route-continuity-f33.json %S/Inputs/route-continuity-f33.svg 2>&1 | FileCheck %s --check-prefix=F33
+// RUN: %python %S/Inputs/check-svg-route-continuity.py %S/Inputs/route-continuity-semantics.dot %S/Inputs/route-continuity-semantics.json %S/Inputs/route-continuity-semantics.svg | FileCheck %s --check-prefix=SEMANTICS
 
-// CHECK: edges=4 format_defects=0 endpoint_defects=3 disconnected_segments=1 dangling_endpoints=1
-// CHECK: disconnected-segments first=edge_gap_first:target second=edge_gap_second:source gap=6.000 groups=fate-target,src-2
-// CHECK: dangling-endpoint edge=edge_dangling side=target
-// GOOD: edges=1 format_defects=0 endpoint_defects=0 disconnected_segments=0 dangling_endpoints=0
+// CHECK: edges=4 format_defects=0 endpoint_defects=3 disconnected_segments=0
+// CHECK: endpoint-defect edge=edge_dangling side=target
+// GOOD: edges=1 format_defects=0 endpoint_defects=0 disconnected_segments=0
+// F33: edges=1 format_defects=0 endpoint_defects=0 disconnected_segments=1
+// F33: disconnected-segment edge=edge_f33 first=(55.0, 35.0) second=(86.0, 35.0) gap=31.000
+// SEMANTICS: edges=2 format_defects=0 endpoint_defects=0 disconnected_segments=0
