@@ -15,11 +15,15 @@
 // RUN: aie-visualize --emit-dot --contract=port,buffer %s | FileCheck %s --check-prefix=TOPOLOGY
 // RUN: env AIE_VISUALIZE_GRAPH_STATS=1 aie-visualize --emit-dot --skip-verify --arrows=avoidance %s -o %t 2>&1 | FileCheck %s --check-prefix=LANES
 // RUN: %python %S/Inputs/check-arrow-separation.py %t | FileCheck %s --check-prefix=CLEAN
+// RUN: env AIE_VISUALIZE_GRAPH_STATS=1 MLIR_AIE_TEST_LANE_SEARCH_CAP=5 aie-visualize --emit-dot --skip-verify --arrows=avoidance %s -o %t.capped 2>&1 | FileCheck %s --check-prefix=CAPPED
+// RUN: env MLIR_AIE_TEST_LANE_SEARCH_CAP=0 aie-visualize --emit-dot --skip-verify --arrows=avoidance %s -o %t.fallback
+// RUN: cmp %t.capped %t.fallback
 
 // LANES: lane_components={{[1-9][0-9]*}} lane_accepted={{[1-9][0-9]*}}
 // LANES-SAME: lane_largest={{[1-9][0-9]*}} lane_corridors={{[1-9][0-9]*}} lane_corridor_largest={{[1-9][0-9]*}}
 // LANES-SAME: lane_variables={{[1-9][0-9]*}} lane_assignments={{[1-9][0-9]*}} lane_capped=0
 // CLEAN: missing_geometry=0 collinear_overlaps=0 narrow_gaps=0 diagonals=0
+// CAPPED: lane_variables={{[1-9][0-9]*}} lane_assignments=5 lane_capped=1
 
 // ALL-DAG: p_0_2_1_0_m -> p_0_2_5_0_out_r0
 // ALL-DAG: p_0_2_5_0_out_r0 -> p_0_3_3_0_in_r0

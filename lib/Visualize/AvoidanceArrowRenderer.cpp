@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ArrowRenderer.h"
+#include "LaneSolverUtils.h"
 #include "LayoutGeometry.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -38,6 +39,15 @@ constexpr double kEpsilon = 1e-9;
 constexpr double kMinimumRenderedGap = 1.2;
 constexpr uint64_t kLaneSearchCap = 250000;
 constexpr uint64_t kNoParent = std::numeric_limits<uint64_t>::max();
+
+uint64_t laneSearchCap() {
+  const char *testCap = std::getenv("MLIR_AIE_TEST_LANE_SEARCH_CAP");
+  if (!testCap)
+    return kLaneSearchCap;
+  char *end = nullptr;
+  uint64_t cap = std::strtoull(testCap, &end, 10);
+  return end != testCap && *end == '\0' ? cap : kLaneSearchCap;
+}
 
 enum class Direction : uint8_t { East, West, North, South };
 enum class Side : uint8_t { East, West, North, South };
@@ -188,14 +198,7 @@ struct LaneSolveResult {
   bool searchCapped = false;
 };
 
-struct LaneRun {
-  unsigned route = 0;
-  unsigned segment = 0;
-  bool horizontal = false;
-  double cross = 0.0;
-  double low = 0.0;
-  double high = 0.0;
-};
+using LaneRun = detail::LaneRun;
 
 struct LaneVariable {
   unsigned run = 0;
@@ -1256,6 +1259,7 @@ AvoidanceArrowRenderer::solveLanes(ArrayRef<ArrowRequest> requests,
   }
   if (conflictRuns.empty())
     return result;
+  const uint64_t searchCap = laneSearchCap();
 
   auto buildRuns = [&](ArrayRef<int> variableByRun, ArrayRef<double> offsets) {
     SmallVector<LaneRun> runs;
@@ -1272,18 +1276,8 @@ AvoidanceArrowRenderer::solveLanes(ArrayRef<ArrowRequest> requests,
   auto crossingPair =
       [&](const LaneRun &first,
           const LaneRun &second) -> std::optional<std::array<unsigned, 2>> {
-    if (exemptPair(first.route, second.route) ||
-        first.horizontal == second.horizontal)
-      return std::nullopt;
-    const LaneRun &horizontal = first.horizontal ? first : second;
-    const LaneRun &vertical = first.horizontal ? second : first;
-    if (horizontal.low + kEpsilon < vertical.cross &&
-        vertical.cross < horizontal.high - kEpsilon &&
-        vertical.low + kEpsilon < horizontal.cross &&
-        horizontal.cross < vertical.high - kEpsilon)
-      return std::array{std::min(first.route, second.route),
-                        std::max(first.route, second.route)};
-    return std::nullopt;
+    return detail::crossingRoutePair(
+        first, second, exemptPair(first.route, second.route), kEpsilon);
   };
   std::set<std::array<unsigned, 2>> baselineCrossingPairs;
   for (unsigned first = 0; first < baseRuns.size(); ++first)
@@ -1520,12 +1514,9 @@ AvoidanceArrowRenderer::solveLanes(ArrayRef<ArrowRequest> requests,
     std::function<void(unsigned, LaneScore, std::set<std::array<unsigned, 2>>)>
         visit = [&](unsigned position, LaneScore partial,
                     std::set<std::array<unsigned, 2>> crossingPairs) {
-          if (result.searchCapped)
+          if (!detail::enterSearchState(searchCap, result.examinedAssignments,
+                                        result.searchCapped))
             return;
-          if (++result.examinedAssignments > kLaneSearchCap) {
-            result.searchCapped = true;
-            return;
-          }
           if (position == order.size()) {
             partial.crossings = crossingPairs.size();
             if (!haveBest || partial < bestScore) {
