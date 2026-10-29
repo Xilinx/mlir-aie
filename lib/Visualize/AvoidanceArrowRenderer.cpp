@@ -578,7 +578,8 @@ double AvoidanceArrowRenderer::endpointSpread(StringRef node,
   if (found == endpointRanks.end() || found->second.second < 2)
     return 0.0;
   auto [rank, count] = found->second;
-  return (rank - (count - 1) / 2.0) * trackPitch;
+  double pitch = std::min(trackPitch, span / (count - 1));
+  return (rank - (count - 1) / 2.0) * pitch;
 }
 
 bool AvoidanceArrowRenderer::exemptTile(int tile,

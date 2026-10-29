@@ -14,6 +14,7 @@ TRANSFORM = re.compile(r"([A-Za-z]+)\s*\(([^)]*)\)")
 EPSILON = 1e-6
 COLLINEAR_TOLERANCE = 0.05
 MINIMUM_GAP = 1.2
+ENDPOINT_TOLERANCE = 0.05
 
 
 def multiply(left, right):
@@ -216,6 +217,13 @@ def segment_hits_box(first, second, box, inset=0.25):
     return upper - lower > EPSILON
 
 
+def distance_to_box(point, box):
+    low_x, low_y, high_x, high_y = box
+    delta_x = max(low_x - point[0], 0.0, point[0] - high_x)
+    delta_y = max(low_y - point[1], 0.0, point[1] - high_y)
+    return math.hypot(delta_x, delta_y)
+
+
 def metadata_from_json(path):
     document = json.load(open(path, encoding="utf-8"))
     endpoints = {}
@@ -298,6 +306,7 @@ def main():
         return result
 
     nodes = []
+    node_boxes = {}
     for group in root.iter():
         if group.tag.rsplit("}", 1)[-1] != "g" or "node" not in classes(group) or "legend" in classes(group):
             continue
@@ -308,14 +317,21 @@ def main():
                     continue
                 points.extend(apply(matrix(shape), point) for point in shape_points(shape))
         if points:
-            nodes.append((group.get("id", "<unnamed-node>"), title(group), (
+            node_id = group.get("id", "<unnamed-node>")
+            node_title = title(group)
+            box = (
                 min(point[0] for point in points), min(point[1] for point in points),
                 max(point[0] for point in points), max(point[1] for point in points),
-            )))
+            )
+            nodes.append((node_id, node_title, box))
+            node_boxes[node_id] = box
+            if node_title:
+                node_boxes[node_title] = box
     diagonal_defects = []
     curved_defects = []
     tile_intersection_defects = set()
     node_intersection_defects = set()
+    endpoint_attachment_defects = []
     runs = []
     edge_count = 0
     for group in root.iter():
@@ -334,11 +350,14 @@ def main():
         )
         flow_classes = sorted(value for value in edge_classes if re.fullmatch(r"src-\d+", value))
         flow_id = flow_classes[0] if flow_classes else edge_id
+        endpoint_points = []
         for path in descendants(group, "path"):
             path_segments = parse_path(path.get("d", ""))
             path_matrix = matrix(path)
             transformed = [(command, tuple(apply(path_matrix, point) for point in points))
                            for command, points in path_segments]
+            if transformed:
+                endpoint_points.extend((transformed[0][1][0], transformed[-1][1][-1]))
             for command_index, segment in enumerate(transformed):
                 if not is_axis_aligned(segment[1]):
                     defect = (edge_id, class_text, command_index, segment[1][0], segment[1][-1])
@@ -371,6 +390,17 @@ def main():
                     tile_intersection_defects.add(defect)
                 else:
                     node_intersection_defects.add(defect)
+        for polygon in descendants(group, "polygon"):
+            endpoint_points.extend(
+                apply(matrix(polygon), point) for point in shape_points(polygon)
+            )
+        for endpoint in endpoints:
+            box = node_boxes.get(endpoint)
+            if box is None or not endpoint_points:
+                continue
+            gap = min(distance_to_box(point, box) for point in endpoint_points)
+            if gap > ENDPOINT_TOLERANCE:
+                endpoint_attachment_defects.append((edge_id, endpoint, gap))
 
     overlap_defects = []
     narrow_gap_defects = []
@@ -401,7 +431,8 @@ def main():
     print(
         f"edges={edge_count} diagonals={len(diagonal_defects)} "
         f"curved_bends={len(curved_defects)} foreign_tile_crossings={len(tile_intersection_defects)} "
-        f"node_intersections={len(node_intersection_defects)} collinear_overlaps={len(overlap_defects)} "
+        f"node_intersections={len(node_intersection_defects)} endpoint_gaps={len(endpoint_attachment_defects)} "
+        f"collinear_overlaps={len(overlap_defects)} "
         f"narrow_gaps={len(narrow_gap_defects)} crossings={len(crossing_defects)}"
     )
     for edge_id, class_text, command_index, first, second in diagonal_defects:
@@ -410,11 +441,14 @@ def main():
         print(f"foreign-tile-crossing edge={edge_id} class={class_text!r} tile={node_id} title={node_title!r}")
     for edge_id, class_text, node_id, node_title in sorted(node_intersection_defects):
         print(f"node-intersection edge={edge_id} class={class_text!r} node={node_id} title={node_title!r}")
+    for edge_id, endpoint, gap in endpoint_attachment_defects:
+        print(f"endpoint-gap edge={edge_id} endpoint={endpoint} gap={gap:.2f}")
     for first_edge, second_edge, overlap, gap in overlap_defects + narrow_gap_defects:
         print(f"edge-separation first={first_edge} second={second_edge} overlap={overlap:.2f} gap={gap:.2f}")
     for first_edge, second_edge, point in sorted(crossing_defects):
         print(f"edge-crossing first={first_edge} second={second_edge} at={point}")
     defects = (diagonal_defects or tile_intersection_defects or node_intersection_defects
+               or endpoint_attachment_defects
                or overlap_defects or narrow_gap_defects or crossing_defects)
     if defects and not arguments.allow_defects:
         return 1

@@ -19,7 +19,7 @@
 // RUN: not %python %S/Inputs/check-svg-render-geometry.py %S/Inputs/render-geometry-crossing.svg 2>&1 | FileCheck %s --check-prefix=CROSSING
 // RUN: %python %S/Inputs/check-svg-render-geometry.py --allow-defects --json %S/Inputs/render-geometry-endpoints.json %S/Inputs/render-geometry-defects.svg | FileCheck %s --check-prefix=JSON-OWNERSHIP
 
-// CLEAN: edges={{[1-9][0-9]*}} diagonals=0 curved_bends={{[0-9]+}} foreign_tile_crossings=0 node_intersections=0 collinear_overlaps=0 narrow_gaps=0 crossings=0
+// CLEAN: edges={{[1-9][0-9]*}} diagonals=0 curved_bends={{[0-9]+}} foreign_tile_crossings=0 node_intersections=0 endpoint_gaps=0 collinear_overlaps=0 narrow_gaps=0 crossings=0
 // OWNERSHIP: "id": "buffer_0"
 // OWNERSHIP: "kind": "buffer"
 // OWNERSHIP: "tile": [

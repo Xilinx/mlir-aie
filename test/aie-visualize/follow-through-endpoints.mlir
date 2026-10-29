@@ -11,6 +11,10 @@
 // REQUIRES: aie-visualize
 // RUN: aie-visualize --emit-dot --only-flow=0 %s | FileCheck %s --check-prefix=FANOUT
 // RUN: aie-visualize --emit-dot --only-flow=1 %s | FileCheck %s --check-prefix=OTHER
+// RUN: aie-visualize --emit-dot --arrows=avoidance --only-flow=0 %s -o %t.dot
+// RUN: aie-visualize --emit-json --arrows=avoidance --only-flow=0 %s -o %t.json
+// RUN: neato -Gsplines=line -Tsvg %t.dot -o %t.svg
+// RUN: %python %S/Inputs/check-svg-render-geometry.py --json %t.json %t.svg | FileCheck %s --check-prefix=CONTINUOUS
 
 // FANOUT-DAG: p_0_2_1_0_m -> p_0_2_5_5_out_r0 {{.*}}flow src-0 dst-0{{.*}}"
 // FANOUT-DAG: p_0_2_5_5_out_r0 -> p_0_3_3_5_in_r0 {{.*}}flow src-0 dst-0{{.*}}"
@@ -21,6 +25,8 @@
 // OTHER-DAG: p_0_4_0_0_in_r3 -> p_0_4_3_0_out_r3 {{.*}}flow src-1 dst-1{{.*}}"
 // OTHER-DAG: p_0_4_3_0_out_r3 -> p_0_3_5_0_in_r3 {{.*}}flow src-1 dst-1{{.*}}"
 // OTHER-NOT: p_0_2_1_0_m
+
+// CONTINUOUS: endpoint_gaps=0
 
 module {
   aie.device(npu1_1col) {
