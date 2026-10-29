@@ -6,7 +6,8 @@ r"""Build + run the YOLO26n 640x640 detector on NPU2 over real COCO images.
 The whole detector end to end: does it still build, does every image's
 detection match the numpy oracle and onnxruntime (all but ``--ort-mismatches``
 images, the ones known to land off a softmax rounding boundary), and how
-long one image takes at batch 1 and at batch 8: the fastest of ``N_ITERS``
+long one image takes at each of ``BATCHES`` (1, 2, 4, 8 and 16 images a
+dispatch, as MobileNet sweeps its batches): the fastest of ``N_ITERS``
 calls after ``N_WARMUP``, host wall time of the whole ``yolo26n(...)`` call,
 with the median and MAD beside it, and that time split into the dispatch
 (submit to completion), its NPU time (the dispatch less the same run's
@@ -16,9 +17,10 @@ to the example's
 own yolo26n.py CLI (no new Python API): ``--compile-only`` twice into one
 fresh NPU_CACHE_HOME, cold then warm, keeping only the cold compile's kernel
 objects for the warm one, as llama_chain_hw.py does; then a ``--time`` run
-from that cache and one at ``--batch 8``, the same build (images a dispatch
-are chosen when it is dispatched, up to its ``--capacity``), each checking
-every image, their timing kept only when every image matched in both. A
+from that cache at each of ``BATCHES``. The batch is fixed when the design
+is compiled, so each batch past the first is its own build, from the same
+cache's kernel objects (a few seconds each). Every run checks every image;
+the timing is kept only when every image matched at every batch. A
 ``--time`` run also times a dispatch with no image on
 (``empty_dispatch_us``): every segment's configuration and the dispatch,
 which each dispatch pays once.
@@ -30,8 +32,8 @@ beside the images: a host-side, numpy mAP matching Ultralytics 8.4's
 validator (``yolo26n/coco_map.py``). ``--n-images`` defaults to all 128
 coco128 images, not 8: mAP on 8 images (30 labelled objects) is noise (the
 int8 model scores higher than fp32 there); on all 128 it costs about a
-minute of extra host time per run (two runs: batch 1 and batch 8), each
-still the oracle check it already did. The fp32 ONNX model's own mAP50
+minute of extra host time per run (one run per batch), each still the
+oracle check it already did. The fp32 ONNX model's own mAP50
 on the same 128 images, 0.6365, is a fixed reference the page shows beside
 the nightly's: see ``utils/kernel_checks/index.html``'s ``map50_coco128``
 description for how it was computed and from where.
@@ -89,7 +91,9 @@ _TIMED_PREFIXES = (
 )
 N_ITERS = 20
 N_WARMUP = 10
-BATCH = 8
+# The images a dispatch carries, each its own build and checked run: the
+# curve per image as the batch amortizes a dispatch, as MobileNet's sweep.
+BATCHES = (1, 2, 4, 8, 16)
 # Seconds each command may take before the check kills it and fails: the
 # parameter extraction, one compile, and one checked and timed run.
 EXTRACT_TIMEOUT = 1800
@@ -550,9 +554,10 @@ def main(argv=None) -> int:
     parser.add_argument("--out", required=True, help="perf.json to write")
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
-    if args.n_images < BATCH or args.n_images % BATCH:
+    largest = max(BATCHES)
+    if args.n_images < largest or args.n_images % largest:
         parser.error(
-            f"--n-images {args.n_images} is not a positive multiple of {BATCH}"
+            f"--n-images {args.n_images} is not a positive multiple of {largest}"
         )
     if not 0 <= args.ort_mismatches <= args.n_images:
         parser.error(f"--ort-mismatches {args.ort_mismatches} is not in 0..--n-images")
@@ -608,23 +613,31 @@ def main(argv=None) -> int:
                 ran.stdout, ran.returncode, args.ort_mismatches
             )
             if correctness["passed"]:
-                batched = run_timed(
-                    images, onnx, params, args.n_images, BATCH, run_env
-                ).process
-                in_batches = parse_correctness(
-                    batched.stdout, batched.returncode, args.ort_mismatches
-                )
-                if in_batches["passed"]:
-                    timing = parse_timing(ran.stdout) | parse_timing(batched.stdout)
-                    map50_b1, map50_b8 = (
-                        parse_map50(ran.stdout),
-                        parse_map50(batched.stdout),
+                # Every further batch, checked in full; the first to fail stops
+                # the sweep and is the run's verdict.
+                outputs = [ran.stdout]
+                for batch in BATCHES[1:]:
+                    batched = run_timed(
+                        images, onnx, params, args.n_images, batch, run_env
+                    ).process
+                    in_batches = parse_correctness(
+                        batched.stdout, batched.returncode, args.ort_mismatches
                     )
-                    if map50_b1 or map50_b8:
-                        timing["map50_coco128_disagrees"] = map50_b1 != map50_b8
-                        timing |= map50_b1 or map50_b8
+                    if not in_batches["passed"]:
+                        correctness = in_batches
+                        break
+                    outputs.append(batched.stdout)
                 else:
-                    correctness = in_batches
+                    for out in outputs:
+                        timing |= parse_timing(out)
+                    # The same bit-exact detections at every batch: one score.
+                    scores = [parse_map50(out) for out in outputs]
+                    scored = [m for m in scores if m]
+                    if scored:
+                        timing["map50_coco128_disagrees"] = any(
+                            m != scored[0] for m in scores
+                        )
+                        timing |= scored[0]
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
 
@@ -635,7 +648,7 @@ def main(argv=None) -> int:
         args.meta,
         {
             **meta,
-            "measurement_sane": measurement_sane(correctness, timing, [1, BATCH]),
+            "measurement_sane": measurement_sane(correctness, timing, list(BATCHES)),
             "detail": [
                 {
                     "case": CASE,

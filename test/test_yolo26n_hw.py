@@ -426,7 +426,7 @@ def test_n_images_must_be_a_positive_multiple_of_the_batch(
             ]
         )
     assert exited.value.code == 2
-    assert "positive multiple of 8" in capsys.readouterr().err
+    assert "positive multiple of 16" in capsys.readouterr().err
     assert not (tmp_path / "meta.json").exists()
 
 

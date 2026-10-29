@@ -697,7 +697,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
           <p><a href="https://github.com/Xilinx/mlir-aie/blob/main/utils/component_checks/yolo26n_hw.py"><code>utils/component_checks/yolo26n_hw.py</code></a>
             runs after it, on the same NPU. The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/ml/yolo26n">YOLO26n</a>
             640×640 detector is compiled twice in one fresh cache, cold then warm, run on 8 COCO128 images, each checked against the numpy
-            oracle and, for information, onnxruntime, then timed at batch 1 and checked and timed again at batch 8.</p>
+            oracle and, for information, onnxruntime, then timed at batch 1 and checked and timed again at batches of 2, 4, 8 and 16 images, each its own build (the batch is fixed when the design is compiled).</p>
           <h3>What each run records</h3>
           <dl id="performance-metrics"></dl>
           <p>Dispatch and end-to-end per image are the fastest of 20 launches, over the images in the launch. Records from before one
@@ -834,6 +834,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       ['outside_aiecc', 'outside aiecc', 'the rest of the compile: Python import and the trace, the dispatch bridge\'s build and process exit (with an aiecc that reports its own time; before, aiecc\'s parse and graph build too)'],
     ];
 
+    // YOLO26n's batches, each its own build and checked run (yolo26n_hw.py's
+    // BATCHES); an older night has only some of them.
+    const YOLO_BATCHES = [1, 2, 4, 8, 16];
     const COMPONENT_METRICS = {
       failed_seeds: 'seeds that did not place (the sweep), or did not compile, run and verify (hardware)',
       final_cost_mean: 'the SA placer\'s final cost (aie-opt\'s sa-final-cost) on the fixture, mean over the seeds that placed; lower is a tighter placement',
@@ -931,6 +934,21 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         [`compile_kernel_objects_s${suffix}`, `Kernel objects (parallel compile wall, ${suffix ? 'warm' : 'cold'})`],
       ])),
     };
+    // Every YOLO26n batch past the first, said as batch 8's were.
+    for (const b of YOLO_BATCHES.slice(1)) {
+      Object.assign(COMPONENT_METRICS, {
+        [`us_per_image_b${b}`]: `the same for one call on ${b} images, over the ${b}, as yolo26n.py --time --batch ${b} reports it`,
+        [`dispatch_us_per_image_b${b}`]: `the same for one call on ${b} images, over the ${b}`,
+        [`npu_us_per_image_b${b}`]: `the same for one call on ${b} images, over the ${b}`,
+        [`host_overhead_us_per_image_b${b}`]: `the same at batch ${b}, over its ${b} images`,
+        [`fps_b${b}`]: `images per second at batch ${b}, from the time per image`,
+      });
+      Object.assign(LABELS, {
+        [`us_per_image_b${b}`]: `End-to-end / image (b${b})`, [`fps_b${b}`]: `Images / s (b${b})`,
+        [`dispatch_us_per_image_b${b}`]: `Dispatch / image (b${b})`, [`npu_us_per_image_b${b}`]: `NPU time / image (b${b})`,
+        [`host_overhead_us_per_image_b${b}`]: `Host overhead / image (b${b})`,
+      });
+    }
     // Where the kernel checks and the component checks publish, beside this
     // page's directory (dashboard/).
     const KERNELS_DIR = '../kernel-checks';
@@ -1148,25 +1166,24 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       { id: 'yolo26n-hw', section: 'performance', title: 'YOLO26n detection on npu2', short: 'YOLO26n', failure: 'run',
         passed: 'Every image matched the oracle.',
         about: 'the whole 640×640 int8 detector, compiled cold and then warm, run on all 128 COCO128 images and checked image by image against the numpy oracle '
-          + '(and, for information, onnxruntime) on an npu2, then timed at batch 1 and checked and timed again at batch 8. mAP@0.5 is scored from the NPU\'s own detections.',
+          + '(and, for information, onnxruntime) on an npu2, then timed at batch 1 and checked and timed again at 2, 4, 8 and 16 images a dispatch. mAP@0.5 is scored from the NPU\'s own detections.',
         tableFolded: 'Last night\'s figures',
         script: 'utils/component_checks/yolo26n_hw.py',
         whole: 'python utils/component_checks/yolo26n_hw.py --out perf.json --meta meta.json',
         failedId: /^yolo26n\/640$/,
         repro: () => 'cd programming_examples/ml/yolo26n && python yolo26n.py --images $IRON_EXAMPLE_WEIGHTS_DIR/yolo26n/coco128/images/train2017 --n 128',
         say: () => 'the 640×640 detector',
-        metrics: ['npu_us_per_image_b1', 'npu_us_per_image_b8', 'dispatch_us_per_image_b1', 'dispatch_us_per_image_b8', 'us_per_image_b1', 'us_per_image_b8',
+        metrics: [...YOLO_BATCHES.flatMap(b => [`npu_us_per_image_b${b}`, `dispatch_us_per_image_b${b}`, `us_per_image_b${b}`]),
                   'images_passed', 'map50_coco128', 'compile_s', 'compile_s_warm', 'elf_bytes'],
         table: yoloTable, charts: () => [], summary: yoloSummary,
         trend: [{ id: 'npu_us_per_image_b1', name: 'NPU time', axis: 'NPU time per image (µs, fastest call)',
-                  lines: [['batch 1', ['npu_us_per_image_b1'], false, 0], ['batch 8', ['npu_us_per_image_b8'], false, 3]],
+                  log: true, lines: YOLO_BATCHES.map((b, i) => [`batch ${b}`, [`npu_us_per_image_b${b}`], false, i]),
                   about: 'the NPU\'s own time per image at each batch, the fastest dispatch less an empty one' },
                 { id: 'us_per_image_b1', name: 'End to end', axis: 'End-to-end time per image (µs, fastest call)',
-                  lines: [['batch 1', ['us_per_image_b1'], false, 0], ['batch 8', ['us_per_image_b8'], false, 3]],
+                  log: true, lines: YOLO_BATCHES.map((b, i) => [`batch ${b}`, [`us_per_image_b${b}`], false, i]),
                   about: 'the whole call per image at each batch, NPU, launch and host together' },
                 { id: 'yolo_time_stack', name: 'Where the time goes', axis: 'Time per image (µs, fastest call)',
-                  variants: [['batch 1', timeStack('npu_us_per_image_b1', 'dispatch_us_per_image_b1', 'us_per_image_b1')],
-                             ['batch 8', timeStack('npu_us_per_image_b8', 'dispatch_us_per_image_b8', 'us_per_image_b8')]],
+                  variants: YOLO_BATCHES.map(b => [`batch ${b}`, timeStack(`npu_us_per_image_b${b}`, `dispatch_us_per_image_b${b}`, `us_per_image_b${b}`)]),
                   about: 'where one image\'s time goes at the chosen batch, night by night; the key below says what each shade is and how it is measured' },
                 { id: 'map50_coco128', name: 'Accuracy', axis: 'mAP@0.5 on coco128', zero: true, lines: [['NPU (int8)', ['map50_coco128']]],
                   reference: { value: 0.6365, label: 'fp32 ONNX (offline, same 128 images)' },
@@ -1237,7 +1254,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // and `abs`, a floor in the metric's unit that a change must also reach
     // (and the only test from a zero baseline). Kept equal to thresholds.json
     // (which pr_report.py reads) by the page test.
-    const THRESHOLDS = {"cycles": {"pct": 1, "gated": true, "across_parts": true}, "cycles_per_kop": {"pct": 1, "derived": "cycles", "across_parts": true}, "kernel_object_bytes": {"pct": 1, "gated": true, "across_parts": true}, "max_ulp_bfloat16": {"abs": 1, "gated": true, "across_parts": true}, "max_ulp_float32": {"abs": 1, "gated": true, "across_parts": true}, "not_correctly_rounded_bfloat16": {"abs": 0.1, "gated": true, "across_parts": true}, "not_correctly_rounded_float32": {"abs": 0.1, "gated": true, "across_parts": true}, "dispatch_overhead_us": {"neutral": true}, "dispatch_us": {"pct": 15, "mad": 3}, "npu_us": {"pct": 10, "mad": 5, "abs": 2}, "us_per_image": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "npu_us_per_image": {"pct": 5, "mad": 3}, "host_overhead_us_per_image": {"pct": 10, "mad": 3}, "fps": {"pct": 5, "derived": "e2e_us_per_image", "higher_is_better": true}, "compile_s": {"pct": 15, "abs": 0.5}, "compile_peak_mib": {"pct": 10}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15, "abs": 0.5}, "compile_peak_mib_warm": {"pct": 10}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1, "across_parts": true}, "final_cost_mean": {"pct": 1, "across_parts": true}, "final_cost_max": {"pct": 1, "across_parts": true}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1, "across_parts": true}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1, "across_parts": true}, "amsels_per_design": {"pct": 10, "across_parts": true}, "ms_per_design": {"pct": 50}, "avoidable_crossings": {"abs": 1, "across_parts": true}, "failed_properties": {"abs": 1, "across_parts": true}, "illegal": {"abs": 1, "across_parts": true}, "unsolved": {"abs": 1, "across_parts": true}, "failed_mutations": {"abs": 1, "across_parts": true}, "survived_corruptions": {"abs": 1, "across_parts": true}, "unrouted": {"abs": 1, "across_parts": true}, "failed_seeds": {"abs": 1, "across_parts": true}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ttft_ms": {"pct": 10}, "ttft_min_ms": {"pct": 10}, "ttft_npu_dispatch_ms": {"pct": 10}, "ttft_host_ms": {"pct": 25, "abs": 1}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "prefill_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true, "across_parts": true}, "kl_bf16": {"pct": 15, "abs": 0.005, "gated": true}, "top1_bf16": {"abs": 9, "higher_is_better": true, "gated": true}, "xclbin_bytes": {"pct": 2, "across_parts": true}, "instr_bytes": {"pct": 2, "across_parts": true}, "elf_bytes": {"pct": 2, "across_parts": true}, "pdi_bytes": {"pct": 2, "across_parts": true}, "us_per_image_b1": {"pct": 5, "mad": 3}, "us_per_image_b8": {"pct": 5, "mad": 3}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "dispatch_us_per_image_b1": {"pct": 5, "mad": 3}, "dispatch_us_per_image_b8": {"pct": 5, "mad": 3}, "npu_us_per_image_b1": {"pct": 5, "mad": 3}, "npu_us_per_image_b8": {"pct": 5, "mad": 3}, "host_overhead_us_per_image_b1": {"pct": 10, "mad": 3}, "host_overhead_us_per_image_b8": {"pct": 10, "mad": 3}, "images_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ort_matches": {"pct": 1, "higher_is_better": true, "across_parts": true, "neutral": true}, "map50_coco128": {"abs": 0.01, "higher_is_better": true, "gated": true}, "compile_place_s": {"pct": 15, "abs": 0.5}, "compile_route_s": {"pct": 15, "abs": 0.5}, "compile_lower_s": {"pct": 15, "abs": 0.5}, "compile_kernels_s": {"pct": 15, "abs": 0.5}, "compile_codegen_s": {"pct": 15, "abs": 0.5}, "compile_link_s": {"pct": 15, "abs": 0.5}, "compile_package_s": {"pct": 15, "abs": 0.5}, "compile_other_s": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s": {"pct": 15, "abs": 0.5}, "compile_place_s_warm": {"pct": 15, "abs": 0.5}, "compile_route_s_warm": {"pct": 15, "abs": 0.5}, "compile_lower_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernels_s_warm": {"pct": 15, "abs": 0.5}, "compile_codegen_s_warm": {"pct": 15, "abs": 0.5}, "compile_link_s_warm": {"pct": 15, "abs": 0.5}, "compile_package_s_warm": {"pct": 15, "abs": 0.5}, "compile_other_s_warm": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s_warm": {"pct": 15, "abs": 0.5}};
+    const THRESHOLDS = {"cycles": {"pct": 1, "gated": true, "across_parts": true}, "cycles_per_kop": {"pct": 1, "derived": "cycles", "across_parts": true}, "kernel_object_bytes": {"pct": 1, "gated": true, "across_parts": true}, "max_ulp_bfloat16": {"abs": 1, "gated": true, "across_parts": true}, "max_ulp_float32": {"abs": 1, "gated": true, "across_parts": true}, "not_correctly_rounded_bfloat16": {"abs": 0.1, "gated": true, "across_parts": true}, "not_correctly_rounded_float32": {"abs": 0.1, "gated": true, "across_parts": true}, "dispatch_overhead_us": {"neutral": true}, "dispatch_us": {"pct": 15, "mad": 3}, "npu_us": {"pct": 10, "mad": 5, "abs": 2}, "us_per_image": {"pct": 5, "mad": 3}, "e2e_us_per_image": {"pct": 10, "mad": 3}, "npu_us_per_image": {"pct": 5, "mad": 3}, "host_overhead_us_per_image": {"pct": 10, "mad": 3}, "fps": {"pct": 5, "derived": "e2e_us_per_image", "higher_is_better": true}, "compile_s": {"pct": 15, "abs": 0.5}, "compile_peak_mib": {"pct": 10}, "compile_peak_rss_mb": {"pct": 10}, "compile_s_warm": {"pct": 15, "abs": 0.5}, "compile_peak_mib_warm": {"pct": 10}, "compile_peak_rss_mb_warm": {"pct": 10}, "placement_cost": {"pct": 1, "across_parts": true}, "final_cost_mean": {"pct": 1, "across_parts": true}, "final_cost_max": {"pct": 1, "across_parts": true}, "cpu_ms_mean": {"pct": 25}, "cpu_ms_max": {"pct": 40}, "peak_rss_mb_max": {"pct": 10}, "bank_pair_sharing": {"pct": 1, "across_parts": true}, "wall_s": {"pct": 50}, "hop_ratio": {"pct": 1, "across_parts": true}, "amsels_per_design": {"pct": 10, "across_parts": true}, "ms_per_design": {"pct": 50}, "avoidable_crossings": {"abs": 1, "across_parts": true}, "failed_properties": {"abs": 1, "across_parts": true}, "illegal": {"abs": 1, "across_parts": true}, "unsolved": {"abs": 1, "across_parts": true}, "failed_mutations": {"abs": 1, "across_parts": true}, "survived_corruptions": {"abs": 1, "across_parts": true}, "unrouted": {"abs": 1, "across_parts": true}, "failed_seeds": {"abs": 1, "across_parts": true}, "tok_s": {"pct": 5, "higher_is_better": true}, "ms_per_token": {"pct": 5, "derived": "tok_s"}, "dma_floor_ratio": {"pct": 5, "derived": "tok_s"}, "tokens_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ttft_ms": {"pct": 10}, "ttft_min_ms": {"pct": 10}, "ttft_npu_dispatch_ms": {"pct": 10}, "ttft_host_ms": {"pct": 25, "abs": 1}, "decode_tok_s": {"pct": 10, "higher_is_better": true}, "prefill_tok_s": {"pct": 10, "higher_is_better": true}, "greedy_agree": {"pct": 1, "higher_is_better": true, "across_parts": true}, "kl_bf16": {"pct": 15, "abs": 0.005, "gated": true}, "top1_bf16": {"abs": 9, "higher_is_better": true, "gated": true}, "xclbin_bytes": {"pct": 2, "across_parts": true}, "instr_bytes": {"pct": 2, "across_parts": true}, "elf_bytes": {"pct": 2, "across_parts": true}, "pdi_bytes": {"pct": 2, "across_parts": true}, "us_per_image_b1": {"pct": 5, "mad": 3}, "us_per_image_b8": {"pct": 5, "mad": 3}, "us_per_image_b2": {"pct": 5, "mad": 3}, "us_per_image_b4": {"pct": 5, "mad": 3}, "us_per_image_b16": {"pct": 5, "mad": 3}, "fps_b1": {"pct": 5, "derived": "us_per_image_b1", "higher_is_better": true}, "fps_b8": {"pct": 5, "derived": "us_per_image_b8", "higher_is_better": true}, "fps_b2": {"pct": 5, "derived": "us_per_image_b2", "higher_is_better": true}, "fps_b4": {"pct": 5, "derived": "us_per_image_b4", "higher_is_better": true}, "fps_b16": {"pct": 5, "derived": "us_per_image_b16", "higher_is_better": true}, "dispatch_us_per_image_b1": {"pct": 5, "mad": 3}, "dispatch_us_per_image_b8": {"pct": 5, "mad": 3}, "dispatch_us_per_image_b2": {"pct": 5, "mad": 3}, "dispatch_us_per_image_b4": {"pct": 5, "mad": 3}, "dispatch_us_per_image_b16": {"pct": 5, "mad": 3}, "npu_us_per_image_b1": {"pct": 5, "mad": 3}, "npu_us_per_image_b8": {"pct": 5, "mad": 3}, "npu_us_per_image_b2": {"pct": 5, "mad": 3}, "npu_us_per_image_b4": {"pct": 5, "mad": 3}, "npu_us_per_image_b16": {"pct": 5, "mad": 3}, "host_overhead_us_per_image_b1": {"pct": 10, "mad": 3}, "host_overhead_us_per_image_b8": {"pct": 10, "mad": 3}, "host_overhead_us_per_image_b2": {"pct": 10, "mad": 3}, "host_overhead_us_per_image_b4": {"pct": 10, "mad": 3}, "host_overhead_us_per_image_b16": {"pct": 10, "mad": 3}, "images_passed": {"pct": 1, "higher_is_better": true, "across_parts": true}, "ort_matches": {"pct": 1, "higher_is_better": true, "across_parts": true, "neutral": true}, "map50_coco128": {"abs": 0.01, "higher_is_better": true, "gated": true}, "compile_place_s": {"pct": 15, "abs": 0.5}, "compile_route_s": {"pct": 15, "abs": 0.5}, "compile_lower_s": {"pct": 15, "abs": 0.5}, "compile_kernels_s": {"pct": 15, "abs": 0.5}, "compile_codegen_s": {"pct": 15, "abs": 0.5}, "compile_link_s": {"pct": 15, "abs": 0.5}, "compile_package_s": {"pct": 15, "abs": 0.5}, "compile_other_s": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s": {"pct": 15, "abs": 0.5}, "compile_place_s_warm": {"pct": 15, "abs": 0.5}, "compile_route_s_warm": {"pct": 15, "abs": 0.5}, "compile_lower_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernels_s_warm": {"pct": 15, "abs": 0.5}, "compile_codegen_s_warm": {"pct": 15, "abs": 0.5}, "compile_link_s_warm": {"pct": 15, "abs": 0.5}, "compile_package_s_warm": {"pct": 15, "abs": 0.5}, "compile_other_s_warm": {"pct": 15, "abs": 0.5}, "compile_outside_aiecc_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_wall_s_warm": {"pct": 15, "abs": 0.5}, "compile_aiecc_outside_graph_s_warm": {"pct": 15, "abs": 0.5}, "compile_kernel_objects_s_warm": {"pct": 15, "abs": 0.5}};
     const DEFAULT_THRESHOLD = 10;
     const pct = metric => THRESHOLDS[metric] ? THRESHOLDS[metric].pct : DEFAULT_THRESHOLD;
     const threshold = metric => (pct(metric) || 0) / 100;
@@ -1894,7 +1911,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       });
       // What got worse, by kernel and measure, the largest first: "mm cycles
       // +3.1%, mm_activation_epilogue object size +5.1% (4 cases)".
-      const named = xs => {
+      const movesOf = xs => {
         const groups = new Map();
         for (const x of xs) {
           const key = `${x.series.factory || x.series.kase.split('/')[0]}|${x.series.metric}`;
@@ -1919,10 +1936,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           const by = top.change === undefined ? moveWord(top.series.metric, 0) : `${inSentence(top.series.metric)} ${formatChange(top.change, top.after - top.before, top.series.unit)}`;
           return { size: size(top), text: `${factory} ${by}${cases}` };
         }).sort((a, b) => b.size - a.size);
-        if (!parts.length) return [];
-        const shown = parts.slice(0, 2).map(p => p.text);
-        return [`${shown.join(', ')}${parts.length > 2 ? ` and ${parts.length - 2} more` : ''}`];
+        return parts.map(p => p.text);
       };
+      // The largest `shown` moves by name, the rest counted.
+      const said2 = (texts, shown) => texts.length
+        ? `${texts.slice(0, shown).join(', ')}${texts.length > shown ? ` and ${texts.length - shown} more` : ''}` : '';
+      const named = xs => { const t = said2(movesOf(xs), 2); return t ? [t] : []; };
+      // The overview's: the largest move alone, the rest counted.
+      const brief = xs => said2(movesOf(xs), 1);
       // Lateness is said above the verdict; the verdict is the run's own.
       const stale = staleness(run.date, now);
       const hard = warnings.find(w => w.level === 'bad' && !/^no run since /.test(w.text));
@@ -1944,8 +1965,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           : warnings.some(w => w.level === 'warn' && !/changed since the previous run/.test(w.text)) ? 'warn' : 'ok';
         if (problems.length) {
           const text = problems.join(', ');
+          const short = [brief(worse), ...problems.slice(moves.length)].filter(Boolean).join(', ');
           // A kernel's name leads as it is spelled (mm, relu), a count capitalized.
-          return { level, headline: `${moves.length ? text : cap(text)}.`, quiet };
+          return { level, headline: `${moves.length ? text : cap(text)}.`, brief: `${moves.length ? short : cap(short)}.`, quiet };
         }
         const timed = counts.known ? counts.timed : (night.latest.cases.size || 0);
         const compared = moved && night.since ? ` Nothing got slower or bigger${vs}.` : ' No earlier nightly to compare with yet.';
@@ -2923,7 +2945,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     // shaded behind a line of one metric. A time measured on more than one
     // part draws a line per part; provenance changes are marked. A Chart.js
     // config.
-    function trendConfig(data, tab) {
+    function trendConfig(data, tab, choice = {}) {
       const metrics = tabMetrics(tab);
       const mine = seedMeans(data).series.filter(s => metrics.includes(s.metric));
       const effort = chartedEffort(mine.filter(s => !s.kase.endsWith('/dispatch=static')).map(s => s.kase));
@@ -2960,7 +2982,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const parts = lines.flatMap(l => l.parts);
       const mode = parts.some(s => s.byMode.has(EXPECTED_PMODE)) ? EXPECTED_PMODE
         : parts.length ? [...parts[0].byMode.keys()][0] : EXPECTED_PMODE;
-      const runs = [...new Map(parts.flatMap(s => (s.byMode.get(mode) || []).map(p => [p.id, p]))).values()].sort((a, b) => a.date - b.date);
+      const measured = [...new Map(parts.flatMap(s => (s.byMode.get(mode) || []).map(p => [p.id, p]))).values()].sort((a, b) => a.date - b.date);
+      // A time measured on several machines (a hosted runner's CPU changes
+      // night to night) is charted one machine at a time, the latest
+      // night's unless another is chosen: dots from different machines on
+      // one line would be the machines' differences, not the code's.
+      const machines = chartParts(measured, metrics[0]);
+      const machine = machines.includes(choice.part) ? choice.part : machines.length ? (measured.at(-1).device || machines.at(-1)) : null;
+      const runs = machine ? measured.filter(p => p.device === machine) : measured;
       // Each run's commit, from the run it was measured in.
       const observed = new Map((data.order || []).map(o => [o.id, o]));
       const commits = runs.map(p => (observed.get(p.id) || {}).commit || {});
@@ -2970,7 +2999,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       // compile's stages), so each line's moves read the same size there.
       const log = (tab.per === 'batch' && unit === 'us') || Boolean(tab.log);
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
-      const devices = chartParts(runs, metrics[0]);
+      const devices = [];
       const markers = markersFor(runs.map(p => observed.get(p.id) || {}));
       const datasets = [];
       for (const line of lines) {
@@ -2980,7 +3009,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           for (const s of line.parts) {
             for (const p of s.byMode.get(mode) || []) {
               const i = at.get(p.id);
-              if (part && runs[i].device !== part) continue;
+              // Another machine's night: not on this chart.
+              if (i === undefined || (part && runs[i].device !== part)) continue;
               values[i] = (values[i] ?? 0) + p.row.value;
               if (line.parts.length === 1) rows[i] = p.row;
             }
@@ -3007,7 +3037,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         .map(s => [s.kase, new Map((s.byMode.get(mode) || []).map(p => [p.id, p.row]))]) : []);
       const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
       const years = spansYears(runs.map(p => p.date));
-      return { type: 'line', data: { labels: runs.map(p => shortDate(p.date, years)), datasets, commits, runs }, options: {
+      return { type: 'line', data: { labels: runs.map(p => shortDate(p.date, years)), datasets, commits, runs, parts: machines, part: machine }, options: {
         animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
         // A point opens its run's commit.
         onClick: (_event, elements) => {
@@ -3015,7 +3045,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           if (c && (c.url || c.id)) window.open(c.url || `${REPO}/commit/${c.id}`, '_blank', 'noopener');
         },
         scales: {
-          x: { title: title('Nightly run (weekly past 90 days)'), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
+          x: { title: title(`Nightly run (weekly past 90 days)${machine ? `, on ${partName(machine)}` : ''}`), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
           y: { type: log ? 'logarithmic' : 'linear', grid: { color: grid }, title: title(axisTitle(tab.axis, metrics[0])),
                ...(tab.zero && !log ? { beginAtZero: true } : {}), ...(tab.max !== undefined ? { suggestedMax: tab.max } : {}),
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
@@ -3336,13 +3366,13 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const eff = variant ? { ...tab, ...variant[1], variants: null } : tab;
         // A `design` tab charts the design as it ships: its own seed and effort, not the mean over seeds.
         const src = eff.design ? designOnly(data) : data;
-        const config = eff.stack ? stackConfig(src, eff, choice) : trendConfig(src, eff);
+        const config = eff.stack ? stackConfig(src, eff, choice) : trendConfig(src, eff, choice);
         const rows = [];
         if (usable.length > 1) rows.push(pickRow('Show', usable.map(([name]) => name), variant[0], v => v, v => { choice.variant = v; draw(tab.id); }));
         if (eff.stack && config.data.keys.length > 1) {
           rows.push(pickRow(cap(eff.perWord || eff.per), config.data.keys, config.data.key, String, v => { choice.key = v; draw(tab.id); }));
         }
-        if (eff.stack && config.data.parts.length > 1) {
+        if (config.data.parts && config.data.parts.length > 1) {
           rows.push(pickRow('Machine', config.data.parts, config.data.part, partName, v => { choice.part = v; draw(tab.id); }));
         }
         picks.replaceChildren(...rows);
@@ -3495,7 +3525,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const kase = Object.keys(record.rows).find(k => /^yolo26n\/\d+$/.test(k));
       if (!kase) return null;
       const run = (record.detail || []).find(d => d.case === kase) || {};
-      const timed = ['b1', 'b8'].filter(b => figure(cases, kase, `us_per_image_${b}`));
+      const timed = YOLO_BATCHES.map(b => `b${b}`).filter(b => figure(cases, kase, `us_per_image_${b}`));
       const times = timed.length ? figureTable(
         [columnHead('NPU / image', 'npu_us_per_image_b1'), columnHead('End to end / image', 'us_per_image_b1'), columnHead('Images / s', 'fps_b1')],
         timed.map(b => ({ name: `batch ${b.slice(1)}`, cells: ['npu_us_per_image', 'us_per_image', 'fps']
@@ -3869,7 +3899,8 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function namedMoves(xs, common, shown = 2) {
       const named = xs.slice(0, shown).map(x => `${moveWhat(x, common)} ${formatChange(x.change, x.after - x.before, x.series.unit)}`);
       const rest = xs.length - named.length;
-      return named.length > 1 || rest ? `${named.slice(0, -1).join(', ')}${rest ? `, ${named.at(-1)} and ${rest} more` : ` and ${named.at(-1)}`}` : named[0];
+      if (rest) return `${named.join(', ')} and ${rest} more`;
+      return named.length > 1 ? `${named.slice(0, -1).join(', ')} and ${named.at(-1)}` : named[0];
     }
 
     function moveLine(x, tag, common = []) {
@@ -3955,7 +3986,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           : `${check.passed.replace(/\.$/, '')}, but ${plural(worse.length, 'measure')} got worse vs ${shortDate(own.at(-2).date)}.`)
         : check.passed;
       const quiet = run.date !== null && !failed.length && !hard && !newsOnly && latest && latest.rows ? check.summary(latest.rows) : '';
-      return { run, level, headline, quiet, warnings: warnings.filter(w => !w.stale), shown, ids, stale, newsOnly,
+      // The overview's one line: the largest move and how many more, or the headline.
+      const brief = trend && worse.length && !failed.length && !hard ? `${namedMoves(worse, trend.common, 1)}.` : headline;
+      return { run, level, headline, brief, quiet, warnings: warnings.filter(w => !w.stale), shown, ids, stale, newsOnly,
                recent, own, trend, moved: [...worse, ...improved.filter(counted)] };
     }
 
@@ -4770,7 +4803,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const mine = (loaded || []).filter(l => l.check.section === id);
         const verdicts = mine.map(l => componentVerdict(l.check, l.index, l.latest, now, l.previous, l.history));
         const lines = verdicts.map((v, i) => ({ level: v.level, who: mine[i].check.short || mine[i].check.title,
-                                                text: `${v.stale ? `${v.stale.short} ` : ''}${v.headline}` }));
+                                                text: `${v.stale ? `${v.stale.short} ` : ''}${v.brief || v.headline}` }));
         const has = BANDS.some(b => b.section === id);
         tiles.push(sectionTile(id, s.title, s.about, lines, lastRunText(verdicts.map(v => v.run.date), now),
           !has ? 'Not tracked yet' : loaded ? '' : 'Loading…'));
@@ -4782,13 +4815,14 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function kernelSummary(kernelNights, now) {
       const parts = kernelNights.map(n => {
         const v = verdictOf(n, now);
+        if (v.level === 'ok' && !v.stale) return '';
         const said = [];
         if (v.stale) said.push(`no run for ${ago(n.run.date, now)}`);
         if (n.run.refused) said.push(`${v.stale ? 'the last ' : ''}refused to time`);
-        if (!said.length) said.push(v.headline.replace(/\.$/, '').replace(/^./, c => c.toLowerCase()));
+        if (!said.length) said.push((v.brief || v.headline).replace(/\.$/, ''));
         return `${n.npu}: ${said.join('; ')}`;
-      });
-      return `${parts.join('. ')}.`;
+      }).filter(Boolean);
+      return parts.length ? `${parts.join('; ')}.` : '';
     }
 
     let overviewToken = 0;

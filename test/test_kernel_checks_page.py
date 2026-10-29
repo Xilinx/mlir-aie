@@ -264,14 +264,19 @@ assert.deepEqual(latestMove(series('tok_s'), ['turbo']).since, Date.parse(swaps[
 assert.equal(latestMove(series('tok_s'), ['turbo']).cls, 'worse');
 assert.deepEqual(latestMove(series('elf_bytes'), ['turbo']).since, Date.parse(swaps[1].date));
 assert.deepEqual(movedSeries(data, 'llama-chain-hw').regressed.map(x => x.series.metric), ['tok_s']);
-// The trend: a line per part, the second dashed; each provenance change marked.
+// The trend: one machine at a time, the latest night's unless another is
+// chosen, the others offered; each provenance change marked.
 const rate = trendConfig(data, llama.trend.find(t => t.id === 'decode_by_context'));
 const lines = rate.data.datasets.filter(d => !d.band);
-assert.deepEqual(lines.map(d => [d.label, d.data, d.borderDash.length > 0]), [
-  ['64 context · Strix', [4.7, null, 4.37], false], ['64 context · Krackan', [null, 4, null], true]]);
+assert.deepEqual(lines.map(d => [d.label, d.data]), [['64 context', [4.7, 4.37]]]);
+assert.deepEqual([rate.data.parts, rate.data.part], [['Strix', 'Krackan 1'], 'Strix']);
+assert.equal(rate.options.scales.x.title.text, 'Nightly run (weekly past 90 days), on Strix');
+const other = trendConfig(data, llama.trend.find(t => t.id === 'decode_by_context'), { part: 'Krackan 1' });
+assert.deepEqual(other.data.datasets.filter(d => !d.band).map(d => d.data), [[4]]);
 assert.deepEqual(rate.plugins, [MARKERS]);
-assert.deepEqual(rate.options.plugins.markers.at.map(m => m.label), ['device NPU Krackan 1, kernels k2', 'device NPU Strix, kernels k3']);
-assert.deepEqual(rate.options.plugins.tooltip.callbacks.title([{ dataIndex: 1 }]), ['2 Oct, 06:30 UTC', 'changed: device NPU Krackan 1, kernels k2']);
+// One machine's nights: only what changed between them is marked.
+assert.deepEqual(rate.options.plugins.markers.at.map(m => m.label), ['kernels k3']);
+assert.deepEqual(rate.options.plugins.tooltip.callbacks.title([{ dataIndex: 1 }]), ['3 Oct, 06:30 UTC', 'changed: kernels k3']);
 // Compile time moves with the part's host too: its stack is one machine's,
 // the latest run's unless another is chosen, and offers the others.
 const compile = stackConfig(data, { ...COMPILE_TABS[0], stack: COMPILE_TABS[0].split, missingIsZero: true });
@@ -1706,6 +1711,18 @@ assert.equal(tableOf(componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore)
 """)
 
 
+def test_moves_are_named_largest_first_and_the_rest_counted(page):
+    page("""
+const mv = (metric, kase, before, after) => ({ series: { metric, kase, unit: 'bytes' }, before, after, change: (after - before) / before });
+const xs = [mv('elf_bytes', 'llama/N=16', 100, 184), mv('compile_s', 'llama/N=16', 10, 16), mv('compile_s_warm', 'llama/N=16', 10, 15)];
+// The overview's: one by name, no stray separator.
+assert.equal(namedMoves(xs, [], 1), 'N 16, full ELF +84.0% and 2 more');
+assert.equal(namedMoves(xs.slice(0, 1), [], 1), 'N 16, full ELF +84.0%');
+assert.equal(namedMoves(xs, ['N 16'], 2), 'full ELF +84.0%, compile time (cold) +60.0% and 1 more');
+assert.equal(namedMoves(xs.slice(0, 2), ['N 16'], 2), 'full ELF +84.0% and compile time (cold) +60.0%');
+""")
+
+
 def test_a_failed_sweep_names_its_seeds_and_how_to_run_each_again(page):
     page(COMPONENT_RUNS + """
 const failed = ['test_sa_effort/seed4', 'mobilenet/seed11', 'mobilenet/seed12', 'mobilenet/seed13', 'mobilenet/seed14'];
@@ -2204,7 +2221,10 @@ const yoloData = collect(historiesOf('yolo26n-hw', [withSplit(yoloBefore, null, 
 // The same tabs as MobileNet's: NPU time, end to end, where the time goes, accuracy, compile.
 assert.deepEqual(yolo.trend.map(t => t.name), ['NPU time', 'End to end', 'Where the time goes', 'Accuracy', 'Compile time', 'Compile memory']);
 const yoloStack = yolo.trend.find(t => t.id === 'yolo_time_stack');
-const [b1, b8] = yoloStack.variants.map(([, v]) => stackConfig(yoloData, { ...yoloStack, ...v, variants: null }));
+// A variant per batch of the sweep; this fixture's nights timed 1 and 8.
+assert.deepEqual(yoloStack.variants.map(([name]) => name), ['batch 1', 'batch 2', 'batch 4', 'batch 8', 'batch 16']);
+const stackAt = name => { const [, v] = yoloStack.variants.find(([n]) => n === name); return stackConfig(yoloData, { ...yoloStack, ...v, variants: null }); };
+const [b1, b8] = [stackAt('batch 1'), stackAt('batch 8')];
 assert.deepEqual(b1.data.datasets.map(d => [d.label, d.data]), [
   ['NPU work', [null, 4310]], ['launch overhead', [null, 90]], ['host: Python and buffer syncs', [null, 1000]], ['end to end', [5000, 5400]]]);
 assert.deepEqual(b8.data.datasets.map(d => [d.label, d.data]), [
@@ -2216,6 +2236,7 @@ const yoloBox = trendBox(yoloData, yolo.trend, '');
 const shownConfig = yoloBox.draw('npu_us_per_image_b1');
 assert.deepEqual(shownConfig.data.datasets.filter(d => !d.band).map(d => [d.label, d.data.at(-1)]), [['batch 1', 4310], ['batch 8', 2850]]);
 yoloBox.draw('yolo_time_stack');
+// Only the batches this history timed are offered.
 assert.equal(yoloBox.children[1].text, 'Show batch 1batch 8');
 assert.equal(trendBox(yoloData, yolo.trend, 'map50_coco128').metric(), 'map50_coco128');
 // mAP@0.5: the metric's own nights (only the second one published it, as
