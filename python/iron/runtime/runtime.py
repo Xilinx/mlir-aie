@@ -334,7 +334,12 @@ class Runtime(DeviceResources, Resolvable):
         self._task_group_index = itertools.count()
 
     @classmethod
-    def merge(cls, runtimes: Sequence[Runtime], name: str | None = None) -> Runtime:
+    def merge(
+        cls,
+        runtimes: Sequence[Runtime],
+        name: str | None = None,
+        run: Callable[[Sequence[tuple[Runtime, tuple]]], None] | None = None,
+    ) -> Runtime:
         """Return one Runtime whose sequence runs the bodies of ``runtimes`` in order.
 
         For steps that run back to back on one configuration: they issue one
@@ -343,9 +348,17 @@ class Runtime(DeviceResources, Resolvable):
         with a DispatchTime parameter several steps forward kept once, and it
         registers their flows, locks, tile DMAs and scratchpad parameters.
 
+        Each step's task groups close before the next step issues, which frees
+        its transfers it did not await. That suits steps that each await what
+        they need; steps joined on-chip, where a step's input completes only
+        once a later step drains, give ``run`` to issue them together.
+
         Args:
             runtimes: The steps, in the order their bodies run.
             name: The merged Runtime's name, or None to have one given.
+            run: Called inside the merged sequence with each step and the
+                arguments it takes, in order, in place of running the bodies
+                one after another; None runs them so.
 
         Returns:
             The merged Runtime.
@@ -377,8 +390,15 @@ class Runtime(DeviceResources, Resolvable):
                     fn_args.append(arg)
 
         def body(*args):
-            for runtime, slot in zip(runtimes, slots):
-                runtime._seq_fn(*(args[i] for i in slot))
+            calls = [
+                (runtime, tuple(args[i] for i in slot))
+                for runtime, slot in zip(runtimes, slots)
+            ]
+            if run is not None:
+                run(calls)
+                return
+            for runtime, step_args in calls:
+                runtime._seq_fn(*step_args)
                 # Closing the step's task groups awaits its wait=True
                 # transfers before the next step issues; the rest are freed.
                 active_sequence().finalize(runtime._strict_task_groups)

@@ -917,6 +917,58 @@ def test_a_merged_step_waits_for_the_last_steps_transfers():
     assert steps == ["start", "await", "free", "start", "free"]
 
 
+def chained_steps():
+    """A step that only fills and one that drains what the core makes of it."""
+    of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
+    worker = Worker(lambda a, b: None, [of_in.cons(), of_out.prod()])
+    fill = Runtime(lambda c, h: h.fill(c), [Line, of_in.prod()])
+    drain = Runtime(lambda c, h: h.drain(c, wait=True), [Line, of_out.cons()])
+    return worker, fill, drain
+
+
+def merged_transfers(worker, merged):
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker], runtimes=[merged]
+    )
+    text = str(Program.compose([config], entry=merged).resolve_program())
+    sequence = text[text.index("aie.runtime_sequence") :]
+    return re.findall(r"aiex\.dma_(start|await|free)_task", sequence)
+
+
+def test_merged_steps_close_their_groups_in_turn():
+    # The fill is freed before the drain that completes it is issued.
+    worker, fill, drain = chained_steps()
+    merged = Runtime.merge([fill, drain])
+    assert merged_transfers(worker, merged) == [
+        "start",
+        "free",
+        "start",
+        "await",
+        "free",
+    ]
+
+
+def test_merge_run_issues_chained_steps_in_one_group():
+    worker, fill, drain = chained_steps()
+
+    def together(calls):
+        (_, (a, into)), (_, (b, out_of)) = calls
+        tg = TaskGroup()
+        into.fill(a, group=tg)
+        out_of.drain(b, wait=True, group=tg)
+        tg.finish()
+
+    merged = Runtime.merge([fill, drain], run=together)
+    assert merged.arg_types == [Line, Line]
+    assert merged_transfers(worker, merged) == [
+        "start",
+        "start",
+        "await",
+        "free",
+        "free",
+    ]
+
+
 def step_runtimes(n, out_of_cons):
     """``n`` Runtimes, each filling ``into`` and draining ``out_of``."""
     of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")
