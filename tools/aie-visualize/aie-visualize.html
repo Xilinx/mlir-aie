@@ -15,14 +15,20 @@
 :root { color-scheme: light; font-family: "IBM Plex Sans", "DejaVu Sans", sans-serif; }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { display: grid; grid-template-rows: 48px minmax(0, 1fr); background: #f4f6f5; color: #1c2622; }
-header { display: flex; align-items: center; gap: 18px; padding: 0 18px; border-bottom: 1px solid #cbd3cf; background: #ffffff; }
+body { display: grid; grid-template-rows: auto minmax(0, 1fr); background: #f4f6f5; color: #1c2622; }
+header { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 18px; border-bottom: 1px solid #cbd3cf; background: #ffffff; }
 h1 { margin: 0; font-family: "IBM Plex Mono", "DejaVu Sans Mono", monospace; font-size: 14px; font-weight: 600; }
 button { border: 1px solid #aab5b0; border-radius: 4px; padding: 5px 9px; background: #ffffff; color: inherit; cursor: pointer; }
 button:hover { background: #edf1ef; }
+.pane-toggle { width: 30px; height: 30px; padding: 0; font: 20px/1 "DejaVu Sans", sans-serif; }
+.header-spacer { flex: 1; }
 input[type="file"] { display: none; }
 #workspace { display: grid; grid-template-columns: 168px minmax(320px, 1fr) minmax(320px, 38vw); min-height: 0; }
-aside { min-height: 0; overflow-y: auto; border-right: 1px solid #cbd3cf; padding: 10px 8px; background: #ffffff; }
+#workspace.flow-collapsed { grid-template-columns: 0 minmax(320px, 1fr) minmax(320px, 38vw); }
+#workspace.source-collapsed { grid-template-columns: 168px minmax(320px, 1fr) 0; }
+#workspace.flow-collapsed.source-collapsed { grid-template-columns: 0 minmax(320px, 1fr) 0; }
+[hidden] { display: none !important; }
+aside { grid-column: 1; min-height: 0; overflow-y: auto; border-right: 1px solid #cbd3cf; padding: 10px 8px; background: #ffffff; }
 #flow-list { display: grid; gap: 2px; }
 .control-list { display: grid; gap: 2px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #dce2df; }
 .flow-row, .setting-row { display: grid; align-items: center; min-height: 30px; padding: 3px 6px; }
@@ -33,9 +39,9 @@ aside { min-height: 0; overflow-y: auto; border-right: 1px solid #cbd3cf; paddin
 .flow-row.selected { font-weight: 600; }
 .flow-row input, .setting-row input { margin: 0; }
 .flow-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--flow-color, #777777); }
-main { overflow: hidden; cursor: grab; }
+main { grid-column: 2; overflow: hidden; cursor: grab; }
 main.dragging { cursor: grabbing; }
-#source-pane { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0; border-left: 1px solid #cbd3cf; background: #ffffff; }
+#source-pane { display: grid; grid-column: 3; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0; border-left: 1px solid #cbd3cf; background: #ffffff; }
 #source-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 38px; padding: 6px 10px; border-bottom: 1px solid #dce2df; font-size: 12px; }
 #source-tabs { display: flex; min-width: 0; overflow-x: auto; border-bottom: 1px solid #dce2df; }
 .source-tab { flex: 0 0 auto; border: 0; border-right: 1px solid #dce2df; border-radius: 0; padding: 7px 10px; font: 12px "IBM Plex Mono", "DejaVu Sans Mono", monospace; }
@@ -58,19 +64,29 @@ svg.highlighting g.flow:not(.highlighted) { opacity: 0.07; }
 svg.highlighting g.flow.highlighted { opacity: 1; }
 @media (max-width: 900px) {
   #workspace { grid-template-columns: 144px minmax(0, 1fr); grid-template-rows: minmax(280px, 58%) minmax(220px, 42%); }
-  #source-pane { grid-column: 1 / -1; border-left: 0; border-top: 1px solid #cbd3cf; }
+  #workspace.flow-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+  #workspace.source-collapsed { grid-template-columns: 144px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 0; }
+  #workspace.flow-collapsed.source-collapsed { grid-template-columns: 0 minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 0; }
+  aside, main { grid-row: 1; }
+  #source-pane { grid-column: 1 / -1; grid-row: 2; border-left: 0; border-top: 1px solid #cbd3cf; }
+  header { flex-wrap: wrap; }
+  h1 { flex: 1 1 calc(100% - 80px); }
+  .header-spacer { display: none; }
 }
 </style>
 </head>
 <body>
 <header>
   <h1>AIE route visualization</h1>
+  <span class="header-spacer"></span>
+  <button id="toggle-flow" class="pane-toggle" type="button" aria-controls="flow-sidebar" aria-expanded="true" aria-label="Hide flow sidebar" title="Hide flow sidebar"><span aria-hidden="true">‹</span></button>
   <button id="open" type="button">Open SVG</button>
   <input id="file" type="file" accept="image/svg+xml,.svg">
   <button id="reset" type="button">Reset view</button>
+  <button id="toggle-source" class="pane-toggle" type="button" aria-controls="source-pane" aria-expanded="true" aria-label="Hide source pane" title="Hide source pane"><span aria-hidden="true">›</span></button>
 </header>
 <div id="workspace">
-  <aside aria-label="Visualization controls">
+  <aside id="flow-sidebar" aria-label="Visualization controls">
     <div id="config-list" class="control-list"></div>
     <div id="flow-list"></div>
   </aside>
@@ -95,6 +111,27 @@ const sourceStatus = document.getElementById("source-status");
 const sourceCode = document.getElementById("source-code");
 const autoScroll = document.getElementById("auto-scroll");
 let cleanupViewer = () => {};
+
+function configurePaneToggle(buttonID, paneID, collapsedClass, names, icons) {
+  const button = document.getElementById(buttonID);
+  const pane = document.getElementById(paneID);
+  const workspace = document.getElementById("workspace");
+  button.addEventListener("click", () => {
+    const collapsed = workspace.classList.toggle(collapsedClass);
+    pane.hidden = collapsed;
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.setAttribute("aria-label", collapsed ? names.show : names.hide);
+    button.title = collapsed ? names.show : names.hide;
+    button.querySelector("span").textContent = collapsed ? icons.show : icons.hide;
+  });
+}
+
+configurePaneToggle("toggle-flow", "flow-sidebar", "flow-collapsed",
+  {show: "Show flow sidebar", hide: "Hide flow sidebar"},
+  {show: "›", hide: "‹"});
+configurePaneToggle("toggle-source", "source-pane", "source-collapsed",
+  {show: "Show source pane", hide: "Hide source pane"},
+  {show: "‹", hide: "›"});
 
 function inferredSVGURL() {
   const url = new URL(location.href);

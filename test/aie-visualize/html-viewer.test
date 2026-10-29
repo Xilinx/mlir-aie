@@ -7,8 +7,9 @@
 
 // The HTML viewer loads generated SVGs and controls details and flow selection.
 
-// REQUIRES: aie-visualize
+// REQUIRES: aie-visualize, playwright
 // RUN: FileCheck %s < %aie_tools_dir/aie-visualize.html
+// RUN: %python %S/Inputs/check-collapsible-panes.py %aie_tools_dir/aie-visualize.html
 // RUN: aie-visualize --emit-dot --contract=port,buffer %S/requires-vias.mlir -o %t.dot
 // RUN: dot -Tsvg %t.dot -o %t-topology.svg
 
@@ -17,18 +18,26 @@
 // CHECK: <meta name="aie-visualize-source-root" content="">
 // CHECK: <meta name="aie-visualize-title" content="">
 // CHECK: Query parameters override metadata: svg, json, source-root, title, and source.<file>.
-// CHECK: aside { min-height: 0; overflow-y: auto
-// CHECK: #source-pane { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0
+// CHECK: #workspace.flow-collapsed { grid-template-columns: 0 minmax(320px, 1fr) minmax(320px, 38vw); }
+// CHECK: #workspace.source-collapsed { grid-template-columns: 168px minmax(320px, 1fr) 0; }
+// CHECK: aside { grid-column: 1; min-height: 0; overflow-y: auto
+// CHECK: main { grid-column: 2; overflow: hidden
+// CHECK: #source-pane { display: grid; grid-column: 3; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0
 // CHECK: .source-line.highlighted
 // CHECK: svg.hide-detail-buffers g.detail-buffers
 // CHECK: svg.hide-detail-arbitration g.detail-arbitration
 // CHECK: svg.hide-detail-packet-ids g.detail-packet-ids text
 // CHECK: svg g.flow { opacity: 1
 // CHECK: svg.highlighting g.flow.highlighted { opacity: 1
+// CHECK: <button id="toggle-flow" class="pane-toggle" type="button" aria-controls="flow-sidebar" aria-expanded="true" aria-label="Hide flow sidebar"
 // CHECK: <button id="open" type="button">Open SVG</button>
-// CHECK: <aside aria-label="Visualization controls">
+// CHECK: <button id="toggle-source" class="pane-toggle" type="button" aria-controls="source-pane" aria-expanded="true" aria-label="Hide source pane"
+// CHECK: <aside id="flow-sidebar" aria-label="Visualization controls">
 // CHECK: <section id="source-pane" aria-label="Source code">
 // CHECK: <input id="auto-scroll" type="checkbox" checked>
+// CHECK: function configurePaneToggle(buttonID, paneID, collapsedClass, names, icons)
+// CHECK: pane.hidden = collapsed
+// CHECK: button.setAttribute("aria-expanded", String(!collapsed))
 // CHECK: function inferredJSONURL(svgURL)
 // CHECK: function sourceURL(file)
 // CHECK: page.searchParams.get(`source.${file}`)
