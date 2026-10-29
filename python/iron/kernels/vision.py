@@ -558,6 +558,7 @@ class _ResizeKernel(ExternalFunction):
     resize_take: Kernel
     resize_band: Kernel
     resize_emit: Kernel
+    resize_emit_row: Kernel
     resize_finish: Kernel
 
 
@@ -724,7 +725,26 @@ def resize(
     Returns:
         ExternalFunction for ``resize_consume(image_chunk, height_chunk)``,
         with ``resize_setup``, ``resize_take``, ``resize_band``,
-        ``resize_emit`` and ``resize_finish`` bound on its object.
+        ``resize_emit``, ``resize_emit_row`` and ``resize_finish`` bound on
+        its object. ``resize_emit_row(out, i)`` writes the same band and
+        patch column as ``resize_emit(out, i)`` -- a 16-row, 16-pixel-wide
+        block, not a slice of a full-width raster row -- as 16 rows of
+        ``SIDE`` interleaved uint8 RGB pixels (row 0's ``3 * SIDE`` bytes,
+        then row 1's, ...) rather than a bf16 u8 / 255 patch, for
+        [`vision.levels`][iron.kernels.vision.levels] to read. Because core
+        ``c`` owns patch columns ``c, c + cores, ...`` (strided, not
+        contiguous), a true output row needs every core's blocks for that
+        band: row ``y``'s pixels at columns ``(core + i * cores) * SIDE``
+        on are call ``i``'s byte range ``3 * SIDE * y`` on. A per-core
+        strided drain -- call ``i``'s 16 chunks of ``3 * SIDE`` bytes to
+        destination row ``band * SIDE + j`` at column byte offset ``(core +
+        i * cores) * 3 * SIDE``, stride ``3 * out_columns`` between chunks
+        -- assembles one shared ``(out_rows, out_columns, 3)`` raster the
+        same way the patches path already gathers ``patches`` from every
+        core's stream; a crop on that raster (``levels``'s ``first`` /
+        ``count`` / ``at`` on columns, ``row`` / ``lo`` / ``hi`` on rows)
+        is then free-form, not limited to this kernel's ``SIDE``- or
+        ``cores * SIDE``-pixel block boundaries.
 
     Raises:
         ValueError: When ``words`` holds no window of 1 to 64 taps,
@@ -779,6 +799,10 @@ def resize(
     fn.resize_emit = lib.bind(
         "resize_emit",
         [np.ndarray[(_RESIZE_SIDE * _RESIZE_SIDE * 3,), np.dtype[bfloat16]], np.int32],
+    )
+    fn.resize_emit_row = lib.bind(
+        "resize_emit_row",
+        [np.ndarray[(_RESIZE_SIDE * _RESIZE_SIDE * 3,), np.dtype[np.uint8]], np.int32],
     )
     fn.resize_finish = lib.bind("resize_finish", [counts_ty])
     return fn
@@ -1218,6 +1242,7 @@ def resize_ref(
     chunk: int = 4096,
     patch_columns: int = 8,
     cores: int = 16,
+    as_rows: bool = False,
 ) -> np.ndarray:
     """Numpy reference for [`resize`][iron.kernels.vision.resize].
 
@@ -1236,14 +1261,18 @@ def resize_ref(
         chunk: The bytes of an image chunk.
         patch_columns: The most patch columns one core holds.
         cores: The cores the patch columns are dealt to.
+        as_rows: When ``True``, [`resize_emit_row`][iron.kernels.vision.resize]'s
+            raster instead of [`resize_emit`][iron.kernels.vision.resize]'s patches.
 
     Returns:
-        ``(bands * pad, 768)`` bf16: band ``b``'s patch column ``j`` is row
-        ``b * pad + j``, ``pad = (out_columns // 16 // cores + 1) * cores``,
-        and patch columns past the image are zeros. Sizes the kernel
-        refuses zero every patch, a width chunk a core refuses zeros that
-        core's patch columns, and a height chunk refused, or a band whose
-        rows read past the image's, zeros every patch from that band on.
+        With ``as_rows``, ``(out_rows, out_columns, 3)`` uint8, zero past a
+        band or patch column the kernel refuses. Otherwise ``(bands * pad,
+        768)`` bf16: band ``b``'s patch column ``j`` is row ``b * pad + j``,
+        ``pad = (out_columns // 16 // cores + 1) * cores``, and patch
+        columns past the image are zeros. Sizes the kernel refuses zero
+        every patch, a width chunk a core refuses zeros that core's patch
+        columns, and a height chunk refused, or a band whose rows read past
+        the image's, zeros every patch from that band on.
     """
     side = _RESIZE_SIDE
     win_cap = 2 * ((words - _RESAMPLE_HEADER) // side - 2) - 1
@@ -1261,6 +1290,8 @@ def resize_ref(
         and pad // cores <= patch_columns
     )
     if not sized:
+        if as_rows:
+            return np.zeros((max(bands, 0) * side, max(strips, 0) * side, 3), np.uint8)
         return _RESIZE_PIXELS[out.reshape(bands * pad, -1)]
 
     cpr = -(-3 * columns // chunk)
@@ -1341,4 +1372,7 @@ def resize_ref(
         for c in range(cores):
             for k in range(c, strips, cores) if ok[c] else ():
                 out[b, k] = hold[:, k]
+    if as_rows:
+        raster = out[:, :strips].transpose(0, 2, 1, 3, 4)
+        return raster.reshape(bands * side, strips * side, 3)
     return _RESIZE_PIXELS[out.reshape(bands * pad, -1)]

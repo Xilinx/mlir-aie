@@ -360,6 +360,31 @@ extern "C" void resize_emit(uint16_t *out, int32_t i) {
   }
 }
 
+// Patch column core + i * CORES of the band as 16 rows of SIDE interleaved
+// uint8 RGB pixels (row 0's 48 bytes, then row 1's, ...), zeros past the
+// image: the same data resize_emit writes, before its bf16 u8/255 patch
+// lookup, for vision.levels to read rather than a vision tower's patches.
+// Still a 16x16 block, not a full-width row: a true raster row needs every
+// core's blocks for the band, each at its own column offset (vision.py's
+// resize() docstring says how a drain assembles one).
+extern "C" void resize_emit_row(uint8_t *out, int32_t i) {
+  if (next < SIDE)
+    ok = false;
+  if (!ok || i >= owned) {
+    zero_vectorized<uint8_t, SIDE * SIDE * 3, 1, false>(out);
+    return;
+  }
+  uint8_t *o = out;
+  for (int y = 0; y < SIDE; y++) {
+    const uint8_t *row = hold[y] + 3 * i * SIDE;
+    for (int x = 0; x < SIDE; x++, o += 3) {
+      o[0] = row[x];
+      o[1] = row[SIDE + x];
+      o[2] = row[2 * SIDE + x];
+    }
+  }
+}
+
 extern "C" void resize_finish(int32_t *counts) {
   counts[4] = rows * cpr - consumed;
 }
