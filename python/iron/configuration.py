@@ -477,19 +477,6 @@ class DeviceConfiguration(DeviceResources):
                 delegate = fifo._delegate_tile
                 if delegate is not None:
                     all_tiles.append(delegate)
-            # A fifo between two links (a join of joins) has no worker or
-            # runtime end, so its links' tiles are reached only through them.
-            reached = list(dict.fromkeys(h._object_fifo for h in all_fifos))
-            for fifo in reached:
-                for end in (fifo._prod, *fifo._cons):
-                    link = None if end is None else end.endpoint
-                    if isinstance(link, ObjectFifoLink):
-                        for linked in (*link._srcs, *link._dsts):
-                            if linked._object_fifo not in reached:
-                                reached.append(linked._object_fifo)
-                                all_tiles.extend(
-                                    e.tile for e in linked.all_of_endpoints()
-                                )
             for handle in all_pools:
                 self._claim(handle.pool, owners)
                 all_tiles.extend(handle.tiles())
