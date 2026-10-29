@@ -2064,6 +2064,53 @@
     "offered": 136,
     "checked": 121
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "40827958087",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40827958087",
+   "date": "2026-10-29T06:13:52+00:00",
+   "commit": {
+    "id": "851d18edf69affde6bf3395000a96ab893cc544e",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/851d18edf69affde6bf3395000a96ab893cc544e",
+    "message": "Nightly CI for Peano-only builds with no Vitis/chess, docs update, and a pybind11 ABI fix (#3988)",
+    "timestamp": "2026-10-29T04:12:28Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "851d18edf6",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "fe6bbfa5a65f",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2507,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 879,
+    "failed": 0,
+    "timed": 422,
+    "timing_failed": 0,
+    "untimed": 457,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 136,
+    "checked": 121
+   }
   }
  ]
 }
