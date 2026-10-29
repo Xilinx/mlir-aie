@@ -169,6 +169,16 @@ struct RoutedPath {
   bool valid = false;
 };
 
+struct ExplicitRoute {
+  unsigned id = 0;
+  unsigned flowGroup = 0;
+  std::string from;
+  std::string to;
+  std::pair<int, int> fromTile;
+  std::pair<int, int> toTile;
+  SmallVector<Point> corners;
+};
+
 struct StubUsage {
   Point first;
   Point second;
@@ -244,6 +254,7 @@ private:
   void addUsage(const RoutedPath &path, int amount);
   double conflictScore(const RoutedPath &path) const;
   SmallVector<Point> cornersOf(const RoutedPath &path) const;
+  void deconflict(SmallVectorImpl<ExplicitRoute> &routes) const;
   bool hasNearbyParallelUsage(unsigned x, unsigned y,
                               Direction direction, unsigned requestID) const;
   bool hasGatewayConflict(const Gateway &gateway, unsigned requestID) const;
@@ -1082,6 +1093,294 @@ AvoidanceArrowRenderer::cornersOf(const RoutedPath &path) const {
   return corners;
 }
 
+void AvoidanceArrowRenderer::deconflict(
+    SmallVectorImpl<ExplicitRoute> &routes) const {
+  struct Segment {
+    unsigned route = 0;
+    unsigned index = 0;
+    bool horizontal = false;
+    double cross = 0.0;
+    double low = 0.0;
+    double high = 0.0;
+  };
+
+  auto segments = [&]() {
+    SmallVector<Segment> result;
+    for (unsigned route = 0; route < routes.size(); ++route) {
+      ArrayRef<Point> corners = routes[route].corners;
+      for (unsigned index = 0; index + 1 < corners.size(); ++index) {
+        Point first = corners[index];
+        Point second = corners[index + 1];
+        bool isHorizontal = std::abs(first.second - second.second) < kEpsilon;
+        result.push_back({route, index, isHorizontal,
+                          isHorizontal ? first.second : first.first,
+                          isHorizontal ? std::min(first.first, second.first)
+                                       : std::min(first.second, second.second),
+                          isHorizontal
+                              ? std::max(first.first, second.first)
+                              : std::max(first.second, second.second)});
+      }
+    }
+    return result;
+  };
+  auto segmentsOf = [&](unsigned route) {
+    SmallVector<Segment> result;
+    ArrayRef<Point> corners = routes[route].corners;
+    for (unsigned index = 0; index + 1 < corners.size(); ++index) {
+      Point first = corners[index];
+      Point second = corners[index + 1];
+      bool isHorizontal = std::abs(first.second - second.second) < kEpsilon;
+      result.push_back({route, index, isHorizontal,
+                        isHorizontal ? first.second : first.first,
+                        isHorizontal ? std::min(first.first, second.first)
+                                     : std::min(first.second, second.second),
+                        isHorizontal ? std::max(first.first, second.first)
+                                     : std::max(first.second, second.second)});
+    }
+    return result;
+  };
+  auto related = [&](unsigned first, unsigned second) {
+    const ExplicitRoute &a = routes[first];
+    const ExplicitRoute &b = routes[second];
+    return a.flowGroup == b.flowGroup || a.from == b.from || a.from == b.to ||
+           a.to == b.from || a.to == b.to;
+  };
+  auto conflicts = [&](const Segment &first, const Segment &second) {
+    return first.horizontal == second.horizontal &&
+           !related(first.route, second.route) &&
+           std::min(first.high, second.high) - std::max(first.low, second.low) >
+               kEpsilon &&
+           std::abs(first.cross - second.cross) < minimumGap - kEpsilon;
+  };
+  auto crosses = [](const Segment &first, const Segment &second) {
+    if (first.horizontal == second.horizontal)
+      return false;
+    const Segment &horizontal = first.horizontal ? first : second;
+    const Segment &vertical = first.horizontal ? second : first;
+    return horizontal.low + kEpsilon < vertical.cross &&
+           vertical.cross < horizontal.high - kEpsilon &&
+           vertical.low + kEpsilon < horizontal.cross &&
+           horizontal.cross < vertical.high - kEpsilon;
+  };
+  auto blocked = [&](Point first, Point second, const ExplicitRoute &route) {
+    for (const InflatedObstacle &obstacle : scene) {
+      if (obstacle.node == route.from || obstacle.node == route.to)
+        continue;
+      if (obstacle.kind == ObstacleKind::Tile && obstacle.tile &&
+          (*obstacle.tile == route.fromTile || *obstacle.tile == route.toTile))
+        continue;
+      const Rectangle &box = obstacle.blocked;
+      if (std::abs(first.second - second.second) < kEpsilon) {
+        double low = std::min(first.first, second.first);
+        double high = std::max(first.first, second.first);
+        if (box.bottom + kEpsilon < first.second &&
+            first.second < box.top - kEpsilon && low < box.right - kEpsilon &&
+            high > box.left + kEpsilon)
+          return true;
+      } else {
+        double low = std::min(first.second, second.second);
+        double high = std::max(first.second, second.second);
+        if (box.left + kEpsilon < first.first &&
+            first.first < box.right - kEpsilon && low < box.top - kEpsilon &&
+            high > box.bottom + kEpsilon)
+          return true;
+      }
+    }
+    return false;
+  };
+  auto countConflicts = [&](ArrayRef<Segment> routeSegments,
+                            ArrayRef<Segment> all) {
+    unsigned count = 0;
+    for (const Segment &first : routeSegments)
+      for (const Segment &second : all)
+        if (second.route != first.route && conflicts(first, second))
+          ++count;
+    return count;
+  };
+  auto crossingCount = [&](ArrayRef<Segment> routeSegments,
+                           ArrayRef<Segment> all) {
+    unsigned count = 0;
+    for (const Segment &first : routeSegments)
+      for (const Segment &second : all)
+        if (second.route != first.route &&
+            !related(first.route, second.route) && crosses(first, second))
+          ++count;
+    return count;
+  };
+
+  std::set<std::tuple<unsigned, unsigned, unsigned, unsigned>> rejected;
+  unsigned movedCount = 0;
+  while (movedCount < 64 && rejected.size() < 64) {
+    SmallVector<Segment> before = segments();
+    std::optional<std::pair<unsigned, unsigned>> conflictIndices;
+    for (bool horizontal : {false, true}) {
+      SmallVector<unsigned> ordered;
+      for (unsigned index = 0; index < before.size(); ++index)
+        if (before[index].horizontal == horizontal)
+          ordered.push_back(index);
+      llvm::sort(ordered, [&](unsigned first, unsigned second) {
+        return std::pair{before[first].cross, first} <
+               std::pair{before[second].cross, second};
+      });
+      for (unsigned first = 0; first < ordered.size(); ++first) {
+        for (unsigned second = first + 1; second < ordered.size(); ++second) {
+          unsigned firstIndex = ordered[first];
+          unsigned secondIndex = ordered[second];
+          if (before[secondIndex].cross - before[firstIndex].cross >=
+              minimumGap - kEpsilon)
+            break;
+          auto [lowIndex, highIndex] = std::minmax(firstIndex, secondIndex);
+          if (conflicts(before[lowIndex], before[highIndex]) &&
+              !rejected.count({before[lowIndex].route, before[lowIndex].index,
+                               before[highIndex].route,
+                               before[highIndex].index}) &&
+              (!conflictIndices ||
+               std::pair{lowIndex, highIndex} < *conflictIndices))
+            conflictIndices = {lowIndex, highIndex};
+        }
+      }
+    }
+    if (!conflictIndices)
+      break;
+    std::pair<Segment, Segment> conflict{before[conflictIndices->first],
+                                         before[conflictIndices->second]};
+
+    bool moved = false;
+    for (auto [selected, fixed] :
+         {std::pair{conflict.second, conflict.first},
+          std::pair{conflict.first, conflict.second}}) {
+      ExplicitRoute &route = routes[selected.route];
+      SmallVector<Point> original = route.corners;
+      SmallVector<Segment> originalSegments = segmentsOf(selected.route);
+      unsigned originalConflicts = countConflicts(originalSegments, before);
+      unsigned originalCrossings = crossingCount(originalSegments, before);
+      unsigned originalBlocked = 0;
+      for (auto pair : llvm::zip_equal(ArrayRef(original).drop_back(),
+                                       ArrayRef(original).drop_front()))
+        originalBlocked += blocked(std::get<0>(pair), std::get<1>(pair), route);
+      double laneGap = minimumGap * 1.01;
+      double overlapLow = selected.low;
+      double overlapHigh = selected.high;
+      SmallVector<double> lanes;
+      for (unsigned distance = 1; distance <= 2; ++distance)
+        for (double center : {selected.cross, fixed.cross})
+          for (double direction : {-1.0, 1.0})
+            lanes.push_back(center + direction * distance * laneGap);
+      for (const Segment &nearby : before) {
+        if (nearby.horizontal != selected.horizontal ||
+            std::min(nearby.high, selected.high) <=
+                std::max(nearby.low, selected.low) + kEpsilon)
+          continue;
+        lanes.push_back(nearby.cross - laneGap);
+        lanes.push_back(nearby.cross + laneGap);
+      }
+      llvm::sort(lanes, [&](double first, double second) {
+        return std::pair{std::abs(first - selected.cross), first} <
+               std::pair{std::abs(second - selected.cross), second};
+      });
+      lanes.erase(llvm::unique(lanes,
+                               [](double first, double second) {
+                                 return std::abs(first - second) < kEpsilon;
+                               }),
+                  lanes.end());
+      unsigned evaluatedCandidates = 0;
+      for (double lane : lanes) {
+        if (selected.index > 0 && selected.index + 2 < original.size()) {
+          SmallVector<Point> candidate = original;
+          Point &first = candidate[selected.index];
+          Point &second = candidate[selected.index + 1];
+          if (selected.horizontal)
+            first.second = second.second = lane;
+          else
+            first.first = second.first = lane;
+          unsigned blockedCount = 0;
+          for (auto pair : llvm::zip_equal(ArrayRef(candidate).drop_back(),
+                                           ArrayRef(candidate).drop_front()))
+            blockedCount +=
+                blocked(std::get<0>(pair), std::get<1>(pair), route);
+          if (blockedCount <= originalBlocked) {
+            route.corners = std::move(candidate);
+            SmallVector<Segment> candidateSegments = segmentsOf(selected.route);
+            if (countConflicts(candidateSegments, before) < originalConflicts &&
+                crossingCount(candidateSegments, before) <=
+                    originalCrossings + 1) {
+              moved = true;
+              ++movedCount;
+              break;
+            }
+            route.corners = original;
+          }
+        }
+        for (auto [spanLow, spanHigh] : {std::pair{overlapLow, overlapHigh}}) {
+          bool occupied = llvm::any_of(before, [&](const Segment &nearby) {
+            return nearby.route != selected.route &&
+                   nearby.horizontal == selected.horizontal &&
+                   !related(nearby.route, selected.route) &&
+                   std::min(nearby.high, spanHigh) >
+                       std::max(nearby.low, spanLow) + kEpsilon &&
+                   std::abs(nearby.cross - lane) < minimumGap - kEpsilon;
+          });
+          if (occupied)
+            continue;
+          if (evaluatedCandidates++ >= 64)
+            break;
+          Point first = original[selected.index];
+          Point second = original[selected.index + 1];
+          bool forward = selected.horizontal ? first.first < second.first
+                                             : first.second < second.second;
+          double start = forward ? spanLow : spanHigh;
+          double end = forward ? spanHigh : spanLow;
+          Point doglegStart = selected.horizontal ? Point{start, first.second}
+                                                  : Point{first.first, start};
+          Point shiftedFirst =
+              selected.horizontal ? Point{start, lane} : Point{lane, start};
+          Point shiftedSecond =
+              selected.horizontal ? Point{end, lane} : Point{lane, end};
+          Point doglegEnd = selected.horizontal ? Point{end, second.second}
+                                                : Point{second.first, end};
+          SmallVector<Point> candidate;
+          candidate.append(original.begin(), original.begin() + selected.index);
+          candidate.push_back(first);
+          candidate.push_back(doglegStart);
+          candidate.push_back(shiftedFirst);
+          candidate.push_back(shiftedSecond);
+          candidate.push_back(doglegEnd);
+          candidate.push_back(second);
+          candidate.append(original.begin() + selected.index + 2,
+                           original.end());
+          unsigned blockedCount = 0;
+          for (auto pair : llvm::zip_equal(ArrayRef(candidate).drop_back(),
+                                           ArrayRef(candidate).drop_front()))
+            blockedCount +=
+                blocked(std::get<0>(pair), std::get<1>(pair), route);
+          if (blockedCount > originalBlocked)
+            continue;
+          route.corners = std::move(candidate);
+          SmallVector<Segment> candidateSegments = segmentsOf(selected.route);
+          unsigned candidateConflicts =
+              countConflicts(candidateSegments, before);
+          unsigned candidateCrossings =
+              crossingCount(candidateSegments, before);
+          if (candidateConflicts < originalConflicts &&
+              candidateCrossings <= originalCrossings + 1) {
+            moved = true;
+            ++movedCount;
+            break;
+          }
+          route.corners = original;
+        }
+        if (moved)
+          break;
+      }
+      if (moved)
+        break;
+    }
+    if (!moved)
+      rejected.insert({conflict.first.route, conflict.first.index,
+                       conflict.second.route, conflict.second.index});
+  }
+}
+
 SmallVector<ArrowPath>
 AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
                               ArrayRef<RoutingObstacle> obstacles,
@@ -1160,13 +1459,23 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
                  << milliseconds(conflictsRouted - initiallyRouted) << '\n';
   }
 
-  SmallVector<ArrowPath> paths;
-  for (const RoutedPath &path : routed) {
+  SmallVector<ExplicitRoute> explicitRoutes;
+  for (unsigned requestID = 0; requestID < routed.size(); ++requestID) {
+    const RoutedPath &path = routed[requestID];
     if (!path.valid)
       continue;
-    SmallVector<Point> bezier = toBezier(cornersOf(path), kCornerRadius);
+    const ArrowRequest &request = requests[requestID];
+    explicitRoutes.push_back({path.id, request.flowGroup, request.from.node,
+                              request.to.node, request.from.tile,
+                              request.to.tile, cornersOf(path)});
+  }
+  deconflict(explicitRoutes);
+
+  SmallVector<ArrowPath> paths;
+  for (ExplicitRoute &route : explicitRoutes) {
+    SmallVector<Point> bezier = toBezier(route.corners, kCornerRadius);
     if (!bezier.empty())
-      paths.push_back({path.id, std::move(bezier)});
+      paths.push_back({route.id, std::move(bezier)});
   }
   return paths;
 }

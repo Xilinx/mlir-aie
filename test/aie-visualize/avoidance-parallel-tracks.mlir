@@ -22,7 +22,7 @@
 // NARROW: collinear_overlaps=0 narrow_gaps=1 diagonals=0 crossings=0
 // MISSING: missing_geometry=1 collinear_overlaps=0 narrow_gaps=0 diagonals=0 crossings=0
 // MISSING: source -> dest #0: missing pos
-// SVG: edges=3 diagonals=1 curved_bends=0 node_intersections=3 collinear_overlaps=1 narrow_gaps=2
+// SVG: edges=3 diagonals=1 curved_bends=0 node_intersections=5 collinear_overlaps=1 narrow_gaps=2
 // SVG: non-orthogonal edge=edge_defect class='edge route flow src-1 dst-2' command=1
 // SVG: node-intersection edge=edge_defect class='edge route flow src-1 dst-2' node=obstacle title='obstacle'
 // SVG: edge-separation first=edge_defect second=edge_overlap overlap=50.00 gap=0.00
