@@ -1,0 +1,8 @@
+{
+  "edges": [
+    {"id": "edge_good", "source": "source", "target": "target"},
+    {"id": "edge_gap_first", "source": "source", "target": "target"},
+    {"id": "edge_gap_second", "source": "source", "target": "target"},
+    {"id": "edge_dangling", "source": "source", "target": "target"}
+  ]
+}
