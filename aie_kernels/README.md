@@ -181,6 +181,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [resize_linear.cc](./vision/resize_linear.cc) | Generic C | OpenCV's INTER_LINEAR resize of a uint8 RGB image, bit for bit its fixed-point path, a source row in and each output row out once both its rows are in (YOLOX's letterbox) | `uint8_t` |
 | [resample_peak.cc](./vision/resample_peak.cc) | Generic C | The largest normalized weight of one core's share of a resize axis's filter table (torch's antialiased bicubic, IEEE float64), and `resample_join`, the larger of two; shared with [resample.h](./vision/resample.h) | `int32_t` |
 | [resample_quantize.cc](./vision/resample_quantize.cc) | Generic C | One chunk of that table: each output's first sample, tap count and int16 weights at the precision the peak sets, bit for bit as torch on the CPU | `int32_t` |
+| [nms.cc](./vision/nms.cc) | Generic C | A detector's score threshold and class-aware NMS, bit for bit torchvision's CPU `nms` under `batched_nms`'s coordinate-offset trick (YOLOX's `postprocess`): `nms_score` thresholds and compacts a row of [grid_decode](./vision/grid_decode.cc)'s boxes, `nms_finish` sorts and suppresses every candidate of one image | `float` |
 | [resize.cc](./vision/resize.cc) | AIE API | A uint8 RGB image resized with those tables, across then down, each pass rounded to uint8 as torch on the CPU, and written as 16x16 patches of `u8 / 255`; six entry points share one core's state | `uint8_t` → `bfloat16` |
 
 ## zero

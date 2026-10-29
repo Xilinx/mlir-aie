@@ -19,6 +19,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    _STRICT_FP,
     KernelContract,
     Param,
     Trace,
@@ -461,6 +462,96 @@ def grid_decode(
     )
 
 
+class _NmsKernel(ExternalFunction):
+    nms_setup: Kernel
+    nms_finish: Kernel
+
+
+def nms(width: int = 52, classes: int = 80, cap: int = 320) -> _NmsKernel:
+    """Score-threshold and class-aware NMS over an anchor-free detector's boxes.
+
+    Bit for bit torchvision's CPU ``nms`` under ``batched_nms``'s own
+    choice of path (see ``nms_ref``, the full arithmetic model). Three
+    entry points share one core's state, and a core runs, once per image:
+
+    ```text
+    nms_setup(conf_thre)
+    for each row of each pyramid level: nms_score(row, width)
+    nms_finish(out, count, nms_thre, class_agnostic)
+    ```
+
+    ``row`` is [`grid_decode`][iron.kernels.vision.grid_decode]'s output
+    row: ``width`` cells of ``5 + classes`` float32, a cell's box ``(cx,
+    cy, w, h)``, its objectness, then ``classes`` scores; ``width`` is a
+    runtime count up to this build's ``width``, so one build serves every
+    pyramid level. A cell survives at ``objectness * its best class's
+    score``, ties to the lowest class id. Past ``cap`` survivors, a new
+    one only replaces the held one of the lowest score (ties to the
+    latest arrival), so a core always holds the top ``cap`` survivors by
+    score and ``nms_finish``'s output equals torchvision's unbounded one
+    for every detection ranked within that top ``cap``, at any survivor
+    count. ``out`` is ``cap`` rows of ``x1, y1, x2, y2, score, class``
+    (class as float32), zeros past ``count[0]``'s kept detections, in
+    descending score order; ``count[1]`` is every survivor seen, cap or
+    not, and also what picks ``class_agnostic`` 0's path between
+    ``batched_nms``'s coordinate-offset trick (1000 survivors or fewer)
+    and its vanilla per-class one (nonzero ``class_agnostic`` always runs
+    plain ``nms`` instead, regardless of ``count[1]``, as YOLOX does).
+
+    Args:
+        width: The widest pyramid level's cells; a row's compile size.
+        classes: The class scores of a cell.
+        cap: The candidates one core holds. 320 leaves headroom under the
+            ~373 the default `width` and `classes` allow in 64 KiB of
+            core memory (measured; see the commit for the arithmetic).
+
+    Returns:
+        ExternalFunction for ``nms_score``, with ``nms_setup`` and
+        ``nms_finish`` bound on its object.
+
+    Raises:
+        ValueError: When ``width``, ``classes`` or ``cap`` is below 1, or
+            ``cap`` is above 1000, torchvision's own cutover to its
+            vanilla path.
+    """
+    if min(width, classes, cap) < 1:
+        raise ValueError(
+            "nms() needs width, classes and cap >= 1, got "
+            f"width={width}, classes={classes}, cap={cap}."
+        )
+    if cap > 1000:
+        raise ValueError(f"nms() needs cap <= 1000, got {cap}.")
+    row_ty = np.ndarray[(width * (5 + classes),), np.dtype[np.float32]]
+    out_ty = np.ndarray[(cap * 6,), np.dtype[np.float32]]
+    count_ty = np.ndarray[(2,), np.dtype[np.int32]]
+    fn = _make_extern(
+        "nms_score",
+        _kernel_source("vision/nms.cc"),
+        [row_ty, np.int32],
+        compile_flags=_STRICT_FP
+        + [
+            f"-DNMS_WIDTH={width}",
+            f"-DNMS_CLASSES={classes}",
+            f"-DNMS_CAP={cap}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param),
+            unsupported=(
+                "three entry points share one core's state, driven by a "
+                "running candidate count nms_finish reads; test_nms_e2e.py "
+                "drives and judges them"
+            ),
+            ops_per_call=0,
+        ),
+        cls=_NmsKernel,
+    )
+    lib = fn.object_file
+    fn.nms_setup = lib.bind("nms_setup", [np.float32])
+    fn.nms_finish = lib.bind("nms_finish", [out_ty, count_ty, np.float32, np.int32])
+    return fn
+
+
 class _ResizeLinearKernel(ExternalFunction):
     resize_linear_setup: Kernel
     resize_linear_emit: Kernel
@@ -900,6 +991,125 @@ def grid_decode_ref(
     out[..., 4] = p[..., obj_at]
     out[..., 5:] = p[..., cls_at : cls_at + classes]
     return out.reshape(p.shape[0], width * (5 + classes))
+
+
+def nms_ref(rows, conf_thre, nms_thre, class_agnostic, *, classes: int, cap: int):
+    """Numpy reference for [`nms`][iron.kernels.vision.nms].
+
+    torchvision's CPU ``nms`` under ``batched_nms``'s own choice of path:
+    the coordinate-offset trick at 1000 survivors or fewer, its vanilla
+    per-class one past it, as YOLOX's ``postprocess`` calls ``batched_nms``
+    (``class_agnostic`` calls plain ``nms`` instead, regardless of
+    survivor count).
+
+    ``rows`` is ``(row, width)`` pairs, each row ``width`` cells of ``5 +
+    classes`` float32 as [`grid_decode`][iron.kernels.vision.grid_decode]
+    writes them, in call order. A cell survives at ``conf_thre`` or above
+    (``objectness * its best class's confidence``, ties to the lowest
+    class id); past ``cap`` survivors, only the top ``cap`` by score
+    survive (ties to the earliest of them). Suppression then visits them
+    descending by score (ties to the lowest index), each unsuppressed one
+    kept and checked against every later one it can suppress, strict
+    ``ovr > nms_thre``. The coordinate-offset trick shifts every box by
+    its class times one past every survivor's largest coordinate
+    (``boxes.max()`` over all of them, not only the top ``cap``) before
+    this, so cross-class pairs never overlap; the vanilla path runs no
+    shift and only ever compares same-class pairs instead;
+    ``class_agnostic`` runs neither. Kept detections (the original,
+    unshifted boxes) are written in score order.
+
+    Returns:
+        ``(detections, count, survivors)``: ``detections`` is ``cap * 6``
+        float32 (``x1, y1, x2, y2, score, class``), zeros past ``count``;
+        ``survivors`` is every candidate that reached ``conf_thre``, cap or
+        not.
+    """
+    x1s, y1s, x2s, y2s, scores, classes_ = [], [], [], [], [], []
+    thre = np.float32(conf_thre)
+    for row, row_width in rows:
+        cells = np.asarray(row, np.float32).reshape(-1, 5 + classes)
+        for i in range(int(row_width)):
+            cx, cy, w, h, obj = (
+                cells[i, 0],
+                cells[i, 1],
+                cells[i, 2],
+                cells[i, 3],
+                cells[i, 4],
+            )
+            class_scores = cells[i, 5:]
+            best_c = int(np.argmax(class_scores))
+            score = obj * class_scores[best_c]
+            if score >= thre:
+                x1s.append(cx - w / np.float32(2))
+                y1s.append(cy - h / np.float32(2))
+                x2s.append(cx + w / np.float32(2))
+                y2s.append(cy + h / np.float32(2))
+                scores.append(score)
+                classes_.append(np.float32(best_c))
+
+    out = np.zeros(cap * 6, np.float32)
+    survivors = len(scores)
+    if survivors == 0:
+        return out, 0, survivors
+    x1 = np.array(x1s, np.float32)
+    y1 = np.array(y1s, np.float32)
+    x2 = np.array(x2s, np.float32)
+    y2 = np.array(y2s, np.float32)
+    score_arr = np.array(scores, np.float32)
+    class_arr = np.array(classes_, np.float32)
+
+    # torchvision's boxes.max(): over every survivor, before the top-cap
+    # selection below picks which of them this kernel ever holds.
+    max_coord = max(x1.max(), y1.max(), x2.max(), y2.max())
+    vanilla = not class_agnostic and survivors > 1000
+    offset_trick = not class_agnostic and not vanilla
+
+    # Every survivor, stably by descending score; the first `cap` of them
+    # are what nms_score's eviction keeps, in the same order.
+    rank = np.argsort(-score_arr, kind="stable")[:cap]
+    x1, y1, x2, y2 = x1[rank], y1[rank], x2[rank], y2[rank]
+    score_arr, class_arr = score_arr[rank], class_arr[rank]
+    n = len(rank)
+
+    if offset_trick:
+        offset = class_arr * (max_coord + np.float32(1))
+        bx1, by1, bx2, by2 = x1 + offset, y1 + offset, x2 + offset, y2 + offset
+    else:
+        bx1, by1, bx2, by2 = x1, y1, x2, y2
+    area = (bx2 - bx1) * (by2 - by1)
+
+    # rank is already stable descending, so the suppression order is i, j itself.
+    suppressed = np.zeros(n, dtype=bool)
+    kept = []
+    with np.errstate(invalid="ignore", divide="ignore"):
+        for i in range(n):
+            if suppressed[i]:
+                continue
+            kept.append(i)
+            for j in range(i + 1, n):
+                if suppressed[j]:
+                    continue
+                if vanilla and class_arr[j] != class_arr[i]:
+                    continue
+                xx1, yy1 = max(bx1[i], bx1[j]), max(by1[i], by1[j])
+                xx2, yy2 = min(bx2[i], bx2[j]), min(by2[i], by2[j])
+                w = max(np.float32(0), xx2 - xx1)
+                h = max(np.float32(0), yy2 - yy1)
+                inter = w * h
+                ovr = inter / (area[i] + area[j] - inter)
+                if ovr > nms_thre:
+                    suppressed[j] = True
+
+    for k, i in enumerate(kept):
+        out[k * 6 : k * 6 + 6] = (
+            x1[i],
+            y1[i],
+            x2[i],
+            y2[i],
+            score_arr[i],
+            class_arr[i],
+        )
+    return out, len(kept), survivors
 
 
 def resize_linear_ref(rows, columns, out_rows, out_columns, image, *, out_bytes: int):

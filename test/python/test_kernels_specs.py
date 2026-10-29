@@ -695,6 +695,23 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         shape_checks=[(dict(in_bytes=1920), 0, (1920,))],
     ),
+    KernelSpec(
+        name="nms",
+        factory=kernels.nms,
+        kwargs={},
+        arg_count=2,  # row, width
+        expected_name="nms_score",
+        invalid_kwargs=[
+            (dict(width=0), "width, classes and cap >= 1"),
+            (dict(classes=0), "width, classes and cap >= 1"),
+            (dict(cap=0), "width, classes and cap >= 1"),
+            (dict(cap=1001), "cap <= 1000"),
+        ],
+        shape_checks=[
+            (dict(), 0, (52 * 85,)),
+            (dict(width=13, classes=3), 0, (13 * 8,)),
+        ],
+    ),
     # ----- linalg -----
     KernelSpec(
         name="mm",
