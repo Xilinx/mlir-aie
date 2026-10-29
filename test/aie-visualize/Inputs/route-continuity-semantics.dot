@@ -1,0 +1,10 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+digraph route_continuity_semantics {
+  source [id="source"];
+  relay [id="relay"];
+  target [id="target"];
+  source -> relay [id="edge_in", class="flow src-7 fate-relay"];
+  relay -> target [id="edge_out", class="flow src-7 fate-target"];
+}

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 100">
+  <g class="graph" transform="translate(10 90) scale(1 -1)">
+    <g id="node1" class="node"><title>source</title><ellipse fill="white" cx="10" cy="50" rx="8" ry="8"/></g>
+    <g id="node2" class="node"><title>relay</title><rect fill="white" x="70" y="42" width="20" height="16"/></g>
+    <g id="node3" class="node"><title>target</title><path fill="white" d="M140,42 L160,42 L160,58 L140,58 Z"/></g>
+    <g id="edge_in" class="edge flow src-7 fate-relay">
+      <title>source-&gt;relay</title>
+      <path fill="none" d="M18,50 C35,50 52,50 67,50"/>
+      <polygon fill="black" points="70,50 66,47 66,53"/>
+    </g>
+    <g id="edge_out" class="edge flow src-7 fate-target">
+      <title>relay-&gt;target</title>
+      <path fill="none" d="M137,50 S115,50 90,50"/>
+      <polygon fill="black" points="140,50 136,47 136,53"/>
+    </g>
+  </g>
+</svg>
