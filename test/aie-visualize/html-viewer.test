@@ -32,6 +32,7 @@
 // CHECK: function inferredJSONURL(svgURL)
 // CHECK: function sourceURL(file)
 // CHECK: page.searchParams.get(`source.${file}`)
+// CHECK: file.startsWith("/") || file.split(/[\\/]/).includes("..")
 // CHECK: source.origin !== base.origin || !source.pathname.startsWith(base.pathname)
 // CHECK: Source path ${file} escapes the configured source root
 // CHECK: function createSourceViewer(graph, graphError)

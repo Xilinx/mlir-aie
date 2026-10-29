@@ -123,6 +123,8 @@ function sourceURL(file) {
   const page = new URL(location.href);
   const override = page.searchParams.get(`source.${file}`);
   if (override) return new URL(override, page).href;
+  if (file.startsWith("/") || file.split(/[\\/]/).includes(".."))
+    throw new Error(`Source path ${file} escapes the configured source root`);
   const root = configuredURL("source-root", "aie-visualize-source-root",
     new URL(".", page).href);
   const base = new URL(root.endsWith("/") ? root : `${root}/`);

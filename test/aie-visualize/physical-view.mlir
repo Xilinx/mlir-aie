@@ -22,6 +22,7 @@
 // RUN: not aie-visualize --physical --contract-balanced-fanout %s 2>&1 | FileCheck %s --check-prefix=PHYSICAL-OPTIONS
 
 // The model supplies every switchbox and port, including unused resources.
+// NPU2: graph [layout=neato, overlap=true, splines=line, inputscale=72,
 // NPU1-DAG: switchbox_0_2 [shape=box{{.*}}pos="0.000000,1008.000000!"
 // NPU1-DAG: physical_port_0_2_5_3_source [shape=point{{.*}}color="#d9dde1"{{.*}}class="physical-port unused"
 // NPU1-DAG: physical_port_0_2_5_5_dest [shape=point

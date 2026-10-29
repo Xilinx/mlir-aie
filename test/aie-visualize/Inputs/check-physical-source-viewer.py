@@ -102,6 +102,27 @@ def main() -> None:
                         f"http://127.0.0.1:{server.server_address[1]}/index.html"
                         "?svg=design.svg&source-root=."
                     )
+                    assert page.evaluate("sourceURL('design.py')").endswith(
+                        "/design.py"
+                    )
+                    for source in (
+                        "/tmp/design.py",
+                        "../design.py",
+                        "https://example.com/design.py",
+                    ):
+                        assert page.evaluate(
+                            "source => { try { sourceURL(source); return false; } "
+                            "catch (error) { return error.message.includes("
+                            "'escapes the configured source root'); } }",
+                            source,
+                        )
+                    page.goto(
+                        f"http://127.0.0.1:{server.server_address[1]}/index.html"
+                        "?svg=design.svg&source.%2Ftmp%2Fdesign.py=design.py"
+                    )
+                    assert page.evaluate("sourceURL('/tmp/design.py')").endswith(
+                        "/design.py"
+                    )
                     ids = page.locator("[id]").evaluate_all(
                         "elements => elements.map(element => element.id)"
                     )

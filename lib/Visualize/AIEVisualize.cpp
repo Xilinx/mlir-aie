@@ -3270,7 +3270,7 @@ emitDevicePhysicalRouteDot(AIE::DeviceOp device, raw_ostream &output,
   }
 
   output << "digraph aie_physical {\n"
-            "  graph [layout=neato, overlap=true, splines=line, "
+            "  graph [layout=neato, overlap=true, splines=line, inputscale=72, "
             "outputorder=edgesfirst, bgcolor=white];\n"
             "  node [fontname=Helvetica, fontsize=7, pin=true];\n"
             "  edge [arrowsize=0.35];\n";
