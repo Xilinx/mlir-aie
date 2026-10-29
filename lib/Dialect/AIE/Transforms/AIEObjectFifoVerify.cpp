@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <optional>
 
 using namespace mlir;
@@ -146,7 +147,7 @@ struct AIEObjectFifoVerifyPass
 
   /// Which pools get locks. Without locks nothing waits on a release, and
   /// nothing a core holds stays taken.
-  std::optional<PoolLocks> poolLocks;
+  std::shared_ptr<PoolLocks> poolLocks;
 
   /// Every segment needs an actor at each end, so that what one writes another
   /// reads. A segment may go unfilled when the pool's objects start full, and
@@ -804,7 +805,7 @@ struct AIEObjectFifoVerifyPass
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    poolLocks.emplace(device);
+    poolLocks = std::make_shared<PoolLocks>(device);
 
     DenseMap<Operation *, SmallVector<SegmentActors>> actorsPerPool;
     for (auto pool : device.getOps<ObjectFifoPoolOp>()) {

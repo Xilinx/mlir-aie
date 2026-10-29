@@ -23,6 +23,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Debug.h"
 
+#include <memory>
 #include <set>
 
 #define DEBUG_TYPE "aie-objectfifo-allocate"
@@ -48,7 +49,7 @@ struct AIEObjectFifoAllocatePass
   /// The last buffer or lock this pass placed on each tile.
   DenseMap<Value, Operation *> lastPlaced;
   /// Which pools get locks, and the resets re-arming each fifo.
-  std::optional<PoolLocks> poolLocks;
+  std::shared_ptr<PoolLocks> poolLocks;
   /// Flows already lowered. A route endpoint reads its direction off the
   /// flow naming it, so these outlive the walk that replaces them.
   SmallVector<Operation *> loweredFlows;
@@ -2040,7 +2041,7 @@ struct AIEObjectFifoAllocatePass
       pools[slot] = pool;
     }
 
-    poolLocks.emplace(device);
+    poolLocks = std::make_shared<PoolLocks>(device);
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
       collectLockUsers(endpoint);
