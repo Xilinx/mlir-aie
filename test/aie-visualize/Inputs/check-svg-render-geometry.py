@@ -1,6 +1,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+import json
 import math
 import re
 import sys
@@ -12,6 +13,7 @@ PATH_TOKEN = re.compile(rf"[A-Za-z]|{NUMBER}")
 TRANSFORM = re.compile(r"([A-Za-z]+)\s*\(([^)]*)\)")
 EPSILON = 1e-6
 COLLINEAR_TOLERANCE = 0.05
+MINIMUM_GAP = 1.2
 
 
 def multiply(left, right):
@@ -214,11 +216,72 @@ def segment_hits_box(first, second, box, inset=0.25):
     return upper - lower > EPSILON
 
 
+def endpoint_tile(node_id):
+    match = re.match(r"(?:p|tile)_(\d+)_(\d+)(?:_|$)", node_id)
+    return f"tile_{match.group(1)}_{match.group(2)}" if match else None
+
+
+def dot_endpoints(path):
+    text = open(path, encoding="utf-8").read()
+    mapping = {}
+    edge_pattern = r'^\s*("[^"]+"|\w+)\s*->\s*("[^"]+"|\w+)\s*\[(.*)\];$'
+    for match in re.finditer(edge_pattern, text, re.MULTILINE):
+        attributes = match.group(3)
+        edge_id = re.search(r'\bid="([^"]+)"', attributes)
+        if edge_id:
+            mapping[edge_id.group(1)] = tuple(value.strip('"') for value in match.group(1, 2))
+    return mapping
+
+
+def json_endpoints(path):
+    document = json.load(open(path, encoding="utf-8"))
+    mapping = {}
+
+    def visit(value):
+        if isinstance(value, dict):
+            edge_id = value.get("id") or value.get("edge_id")
+            source = value.get("source") or value.get("from")
+            target = value.get("target") or value.get("to")
+            if edge_id is not None and source is not None and target is not None:
+                mapping[str(edge_id)] = (str(source), str(target))
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(document)
+    return mapping
+
+
+def edge_endpoints(group, external_mapping):
+    edge_title = title(group) or ""
+    if "->" in edge_title:
+        return tuple(edge_title.split("->", 1))
+    return external_mapping.get(group.get("id"), ())
+
+
+def axis_run(first, second, edge_id, flow_id, endpoints):
+    endpoint_set = frozenset(endpoints)
+    if abs(first[1] - second[1]) <= EPSILON:
+        return ("h", first[1], *sorted((first[0], second[0])), flow_id, edge_id, endpoint_set)
+    if abs(first[0] - second[0]) <= EPSILON:
+        return ("v", first[0], *sorted((first[1], second[1])), flow_id, edge_id, endpoint_set)
+    return None
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument("svg")
+    parser.add_argument("--dot")
+    parser.add_argument("--json")
     parser.add_argument("--allow-defects", action="store_true")
     arguments = parser.parse_args()
+    external_mapping = {}
+    if arguments.dot:
+        external_mapping.update(dot_endpoints(arguments.dot))
+    if arguments.json:
+        external_mapping.update(json_endpoints(arguments.json))
     root = ET.parse(arguments.svg).getroot()
     parent = {child: node for node in root.iter() for child in node}
 
@@ -247,14 +310,10 @@ def main():
                 min(point[0] for point in points), min(point[1] for point in points),
                 max(point[0] for point in points), max(point[1] for point in points),
             )))
-    node_boxes = {node_title: box for _, node_title, box in nodes}
-    tile_boxes = {
-        node_title: box for node_id, node_title, box in nodes if node_id.startswith("tile_")
-    }
-
     diagonal_defects = []
     curved_defects = []
     intersection_defects = []
+    runs = []
     edge_count = 0
     for group in root.iter():
         edge_classes = classes(group)
@@ -263,19 +322,11 @@ def main():
         edge_count += 1
         edge_id = group.get("id", "<unnamed-edge>")
         class_text = group.get("class", "")
-        edge_title = title(group) or ""
-        endpoints = edge_title.split("->", 1) if "->" in edge_title else []
+        endpoints = edge_endpoints(group, external_mapping)
         endpoint_regions = set(endpoints)
-        for endpoint in endpoints:
-            box = node_boxes.get(endpoint)
-            if box is None:
-                continue
-            center = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
-            endpoint_regions.update(
-                tile_title
-                for tile_title, tile_box in tile_boxes.items()
-                if tile_box[0] <= center[0] <= tile_box[2] and tile_box[1] <= center[1] <= tile_box[3]
-            )
+        endpoint_regions.update(filter(None, (endpoint_tile(endpoint) for endpoint in endpoints)))
+        flow_classes = sorted(value for value in edge_classes if re.fullmatch(r"src-\d+", value))
+        flow_id = flow_classes[0] if flow_classes else edge_id
         for path in descendants(group, "path"):
             path_segments = parse_path(path.get("d", ""))
             path_matrix = matrix(path)
@@ -285,27 +336,65 @@ def main():
                 if not is_axis_aligned(segment[1]):
                     defect = (edge_id, class_text, command_index, segment[1][0], segment[1][-1])
                     (diagonal_defects if is_straight(segment[1]) else curved_defects).append(defect)
+                elif is_straight(segment[1]):
+                    run = axis_run(segment[1][0], segment[1][-1], edge_id, flow_id, endpoints)
+                    if run:
+                        runs.append(run)
             lines = []
             for segment in transformed:
                 points = flatten(segment)
                 lines.extend(zip(points, points[1:]))
+            path_box = (
+                min(point[0] for line in lines for point in line),
+                min(point[1] for line in lines for point in line),
+                max(point[0] for line in lines for point in line),
+                max(point[1] for line in lines for point in line),
+            )
             for node_id, node_title, box in nodes:
-                if node_title in endpoint_regions:
+                if node_id in endpoint_regions or node_title in endpoint_regions:
+                    continue
+                if (box[2] < path_box[0] or box[0] > path_box[2]
+                        or box[3] < path_box[1] or box[1] > path_box[3]):
                     continue
                 hits = [index for index, line in enumerate(lines) if segment_hits_box(*line, box)]
                 if not hits:
                     continue
                 intersection_defects.append((edge_id, class_text, node_id, node_title))
 
+    overlap_defects = []
+    narrow_gap_defects = []
+    for index, first in enumerate(runs):
+        first_axis, first_cross, first_low, first_high = first[:4]
+        first_flow, first_edge, first_endpoints = first[4:]
+        for second in runs[index + 1:]:
+            second_axis, second_cross, second_low, second_high = second[:4]
+            second_flow, second_edge, second_endpoints = second[4:]
+            if (first_edge == second_edge or first_flow == second_flow or first_axis != second_axis
+                    or first_endpoints & second_endpoints):
+                continue
+            overlap = min(first_high, second_high) - max(first_low, second_low)
+            if overlap <= EPSILON:
+                continue
+            gap = abs(first_cross - second_cross)
+            defect = (first_edge, second_edge, overlap, gap)
+            if gap <= EPSILON:
+                overlap_defects.append(defect)
+            elif gap < MINIMUM_GAP:
+                narrow_gap_defects.append(defect)
+
     print(
         f"edges={edge_count} diagonals={len(diagonal_defects)} "
-        f"curved_bends={len(curved_defects)} node_intersections={len(intersection_defects)}"
+        f"curved_bends={len(curved_defects)} node_intersections={len(intersection_defects)} "
+        f"collinear_overlaps={len(overlap_defects)} narrow_gaps={len(narrow_gap_defects)}"
     )
     for edge_id, class_text, command_index, first, second in diagonal_defects:
         print(f"non-orthogonal edge={edge_id} class={class_text!r} command={command_index} from={first} to={second}")
     for edge_id, class_text, node_id, node_title in intersection_defects:
         print(f"node-intersection edge={edge_id} class={class_text!r} node={node_id} title={node_title!r}")
-    if (diagonal_defects or intersection_defects) and not arguments.allow_defects:
+    for first_edge, second_edge, overlap, gap in overlap_defects + narrow_gap_defects:
+        print(f"edge-separation first={first_edge} second={second_edge} overlap={overlap:.2f} gap={gap:.2f}")
+    defects = diagonal_defects or intersection_defects or overlap_defects or narrow_gap_defects
+    if defects and not arguments.allow_defects:
         return 1
     return 0
 
