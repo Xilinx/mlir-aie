@@ -441,17 +441,25 @@ AvoidanceArrowRenderer::gatewaysFor(const ArrowEnd &end, const ArrowEnd &other,
     bool blocked = llvm::any_of(scene, [&](const InflatedObstacle &candidate) {
       if (candidate.node == end.node || candidate.kind == ObstacleKind::Tile)
         return false;
-        if (allowEndpointObstacles && end.kind != EndKind::External &&
-          candidate.tile == end.tile)
-        return false;
+      bool useVisibleBounds = allowEndpointObstacles &&
+                              end.kind != EndKind::External &&
+                              candidate.tile == end.tile;
       double left = std::min(gateway.anchor.first, gateway.point.first);
       double right = std::max(gateway.anchor.first, gateway.point.first);
       double bottom = std::min(gateway.anchor.second, gateway.point.second);
       double top = std::max(gateway.anchor.second, gateway.point.second);
-      return left < candidate.blocked.right - kEpsilon &&
-             right > candidate.blocked.left + kEpsilon &&
-             bottom < candidate.blocked.top - kEpsilon &&
-             top > candidate.blocked.bottom + kEpsilon;
+      return left < (useVisibleBounds ? candidate.visible.right
+                                      : candidate.blocked.right) -
+                        kEpsilon &&
+             right > (useVisibleBounds ? candidate.visible.left
+                                       : candidate.blocked.left) +
+                         kEpsilon &&
+             bottom < (useVisibleBounds ? candidate.visible.top
+                                        : candidate.blocked.top) -
+                          kEpsilon &&
+             top > (useVisibleBounds ? candidate.visible.bottom
+                                     : candidate.blocked.bottom) +
+                       kEpsilon;
     });
     if (blocked)
       continue;
@@ -1123,7 +1131,7 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
       return std::pair{-conflictScore(routed[first]), first} <
              std::pair{-conflictScore(routed[second]), second};
     });
-    size_t rerouteLimit = std::min<size_t>(32, order.size());
+    size_t rerouteLimit = std::min<size_t>(384, order.size());
     for (unsigned requestID : ArrayRef(order).take_front(rerouteLimit)) {
       if (conflictScore(routed[requestID]) <= 0)
         break;
