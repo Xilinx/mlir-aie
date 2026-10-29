@@ -31,9 +31,11 @@
 // CHECK: svg.route-focus g.flow { opacity: 0.12; }
 // CHECK: svg.route-focus g.flow [stroke]:not([stroke="none"]) { stroke: #66736d; }
 // CHECK: svg.route-focus.highlighting g.flow.highlighted { opacity: var(--route-opacity, 1); }
+// CHECK: svg.route-focus.highlighting g.flow.highlighted :is(path, polygon) { opacity: var(--route-opacity, 1); }
 // CHECK: svg.route-focus.highlighting g.flow.highlighted [stroke] { stroke: var(--route-stroke); }
 // CHECK: svg.uniform-width.route-focus.highlighting g.edge.flow.highlighted path[stroke-width] { stroke-width: var(--route-width); }
 // CHECK: svg.show-all-routes g.flow { opacity: var(--route-opacity, 1) !important; }
+// CHECK: svg.show-all-routes g.flow :is(path, polygon) { opacity: var(--route-opacity, 1); }
 // CHECK: svg.highlighting g.flow.highlighted { opacity: 1
 // CHECK: <button id="toggle-flow" class="pane-toggle" type="button" aria-controls="flow-sidebar" aria-expanded="true" aria-label="Hide flow sidebar"
 // CHECK: <button id="open" type="button">Open SVG</button>
