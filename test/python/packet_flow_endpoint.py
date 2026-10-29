@@ -51,7 +51,7 @@ def build():
 # CHECK: aie.dma_start(S2MM, 1,
 # CHECK-LABEL: aie.runtime_sequence
 # CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 2) {
-# CHECK: aie.dma_bd(%staged : memref<256xi32>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
+# CHECK: aie.dma_bd(%staged : memref<256xi32>) {packet = #aie.packet_info<pkt_id = 4>}
 # CHECK: aie.packet_flow(3)
 # CHECK: aie.packet_flow(4)
 print(build())

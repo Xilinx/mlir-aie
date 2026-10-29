@@ -1013,7 +1013,11 @@ class CompilableDesign:
                     npu_cpp_emit_dispatch_shim=has_dispatch,
                     device_cache_dir=self._device_cache_dir(),
                     build_link_files=functools.partial(
-                        self._build_kernels, kernel_dir, external_kernels, digests
+                        self._build_kernels,
+                        kernel_dir,
+                        external_kernels,
+                        digests,
+                        generated.devices,
                     ),
                 )
 
@@ -1212,7 +1216,11 @@ class CompilableDesign:
                 options=aiecc_options or None,
                 device_cache_dir=self._device_cache_dir(),
                 build_link_files=functools.partial(
-                    self._build_kernels, kernel_dir, external_kernels, digests
+                    self._build_kernels,
+                    kernel_dir,
+                    external_kernels,
+                    digests,
+                    generated.devices,
                 ),
             )
 
@@ -1351,7 +1359,11 @@ class CompilableDesign:
                     # placed them, and that placement reserves each bank's
                     # kernel data, which only the built objects show.
                     build_link_files=functools.partial(
-                        self._build_kernels, kernel_dir, external_kernels, digests
+                        self._build_kernels,
+                        kernel_dir,
+                        external_kernels,
+                        digests,
+                        generated.devices,
                     ),
                 )
                 if not inst_path.exists():
@@ -1412,7 +1424,11 @@ class CompilableDesign:
         return parse_dma_sizes(self._kernel_dir, self._full_elf_kernel_name)
 
     def _build_kernels(
-        self, kernel_dir: Path, external_kernels: list, digests: dict[str, str]
+        self,
+        kernel_dir: Path,
+        external_kernels: list,
+        digests: dict[str, str],
+        devices: tuple = (),
     ) -> None:
         """Build the design's kernels' objects into `kernel_dir`.
 
@@ -1420,11 +1436,16 @@ class CompilableDesign:
             kernel_dir: The directory aiecc links the objects from.
             external_kernels: The design's `ExternalFunction` kernels.
             digests: The build's input digests, shared with its manifest.
+            devices: The design's `aie.device` kinds, whose architecture the
+                kernels target when no device is bound.
         """
         # aie.utils imports this module before it defines this name.
         from aie.utils import get_current_device
 
-        target_arch = resolve_target_arch(get_current_device(probe_runtime=False))
+        device = get_current_device(probe_runtime=False)
+        if device is None and devices:
+            device = devices[0]
+        target_arch = resolve_target_arch(device)
         compile_external_kernels(
             external_kernels,
             kernel_dir,

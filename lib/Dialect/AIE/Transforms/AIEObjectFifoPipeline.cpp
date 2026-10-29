@@ -36,7 +36,8 @@ void xilinx::AIE::addObjectFifoLoweringPasses(OpPassManager &pm,
   if (!skipVerify) {
     pm.addPass(createAIEObjectFifoVerifyPass());
   }
-  pm.addPass(createAIEObjectFifoAllocatePass(packetSwitched));
+  pm.addPass(createAIEAssignPacketIdsPass(packetSwitched));
+  pm.addPass(createAIEObjectFifoAllocatePass());
   pm.addPass(createAIEObjectFifoLowerDMAsPass());
   pm.addPass(createAIEObjectFifoLowerCoresPass());
   pm.addPass(createAIEObjectFifoErasePoolsPass());

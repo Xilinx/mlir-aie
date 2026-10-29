@@ -50,7 +50,7 @@ assert str(module).count("aie.shim_dma_allocation ") == 3
 
 # CHECK-LABEL: stamps_packet_ids_on_a_shared_channel
 # CHECK: aiex.dma_configure_task_for @packetflow0_src
-# CHECK:   aie.dma_bd({{.*}} len = 256 {{.*}}) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 0>}
+# CHECK:   aie.dma_bd({{.*}} len = 256 {{.*}}) {packet = #aie.packet_info<pkt_id = 0>}
 # CHECK: aiex.dma_configure_task_for @packetflow1_src
 # CHECK:   aie.dma_bd({{.*}} offset = 128 len = 128 {{.*}}) {packet = #aie.packet_info<pkt_type = 3, pkt_id = 1>}
 # CHECK: aiex.dma_configure_task_for @packetflow2_dst
@@ -72,7 +72,7 @@ assert str(module).count("aie.shim_dma_allocation ") == 1
 
 # CHECK-LABEL: fills_a_packet_broadcast
 # CHECK: aiex.dma_configure_task_for @[[SYM:packetflow[0-9]+_src]]
-# CHECK: aie.dma_bd({{.*}} len = 256 {{.*}}) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 0>}
+# CHECK: aie.dma_bd({{.*}} len = 256 {{.*}}) {packet = #aie.packet_info<pkt_id = 0>}
 # CHECK: aie.packet_flow(0)
 # CHECK: aie.packet_source
 # CHECK: aie.packet_dest
@@ -152,7 +152,7 @@ print(module)
 
 # CHECK-LABEL: controls_one_shim_from_another
 # CHECK: aiex.dma_configure_task_for @ctrl
-# CHECK: aie.dma_bd({{.*}}) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 7>}
+# CHECK: aie.dma_bd({{.*}}) {packet = #aie.packet_info<pkt_id = 7>}
 # CHECK: aiex.dma_configure_task_for @feed_dst
 # CHECK: aie.packet_flow(7)
 # CHECK: aie.packet_dest<%[[FEED:[a-z_0-9]+]], TileControl : 0>

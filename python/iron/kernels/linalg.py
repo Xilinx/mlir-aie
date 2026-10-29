@@ -27,8 +27,10 @@ from ._common import (
     Trace,
     _arch_traits,
     _detect_arch,
+    _include_dirs,
     _kernel_source,
     _make_extern,
+    _runtime_lib_include,
 )
 from .core import conv_even
 from .zero import zero
@@ -1261,16 +1263,23 @@ def attention_i8(
     v_ty = np.ndarray[(seq_len * head_dim,), np.dtype[np.int8]]
     table_ty = np.ndarray[(256,), np.dtype[np.int32]]
     out_ty = np.ndarray[(head_dim * width,), np.dtype[np.int8]]
+    compile_flags = [
+        f"-DATTN_SEQ={seq_len}",
+        f"-DATTN_KEY_DIM={key_dim}",
+        f"-DATTN_HEAD_DIM={head_dim}",
+        f"-DATTN_WIDTH={width}",
+    ]
+    if _detect_arch() == "aie2p":
+        # Peano hangs at -O2/-O3 compiling the aie2p LUT path below for some
+        # shapes (seq_len=256, key_dim=64, head_dim=32, width=16 reproduces
+        # it); -O1 is verified bit-exact and compiles in seconds.
+        compile_flags.append("-O1")
     fn = _make_extern(
         "attention_i8",
         _kernel_source("linalg/attention_i8.cc"),
         [q_ty, kt_ty, v_ty, table_ty, out_ty] + [np.int32] * 5,
-        compile_flags=[
-            f"-DATTN_SEQ={seq_len}",
-            f"-DATTN_KEY_DIM={key_dim}",
-            f"-DATTN_HEAD_DIM={head_dim}",
-            f"-DATTN_WIDTH={width}",
-        ],
+        compile_flags=compile_flags,
+        include_dirs=[*_include_dirs(), _runtime_lib_include()],
         contract=KernelContract(
             trace=Trace.whole_call(),
             roles=(In, Param, Param, Param, Out) + (Param,) * 5,

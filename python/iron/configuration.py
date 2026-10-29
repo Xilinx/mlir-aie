@@ -216,13 +216,15 @@ class DeviceConfiguration(DeviceResources):
         self._claim(resource, self._owners)
         self._claim(resource.tile, self._owners)
 
-    def _claim_fifo_graph(self, handle, owners, visited=None) -> None:
+    def _claim_fifo_graph(self, handle, owners, visited=None, reached=None) -> None:
         if visited is None:
             visited = set()
         fifo = handle._object_fifo
         if id(fifo) in visited:
             return
         visited.add(id(fifo))
+        if reached is not None:
+            reached.append(fifo)
         self._claim(fifo, owners)
         runtime_handles = {
             runtime_handle
@@ -252,7 +254,7 @@ class DeviceConfiguration(DeviceResources):
                 self._claim(endpoint, owners)
                 for linked in [*endpoint._srcs, *endpoint._dsts]:
                     if linked._object_fifo is not fifo:
-                        self._claim_fifo_graph(linked, owners, visited)
+                        self._claim_fifo_graph(linked, owners, visited, reached)
 
     @property
     def name(self) -> str | None:
@@ -460,12 +462,19 @@ class DeviceConfiguration(DeviceResources):
                     if isinstance(arg, Resolvable):
                         self._claim(arg, owners)
                         all_tiles.extend(arg.tiles())
+            reached = []
             for handle in all_fifos:
-                self._claim_fifo_graph(handle, owners)
+                self._claim_fifo_graph(handle, owners, reached=reached)
                 all_tiles.extend(
                     [endpoint.tile for endpoint in handle.all_of_endpoints()]
                 )
-                delegate = handle._object_fifo._delegate_tile
+            # A fifo reached only through links, as the middle of a chain of
+            # forwards is, has endpoints no worker or runtime names.
+            for fifo in reached:
+                for candidate in [fifo._prod, *fifo._cons]:
+                    if candidate and candidate.endpoint is not None:
+                        all_tiles.append(candidate.endpoint.tile)
+                delegate = fifo._delegate_tile
                 if delegate is not None:
                     all_tiles.append(delegate)
             # A fifo between two links (a join of joins) has no worker or

@@ -16,9 +16,13 @@ against the oracle on its own.
 
 from __future__ import annotations
 
+import itertools
+import math
+from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from operator import attrgetter
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +30,12 @@ from aie.dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
 from aie.dialects.arith import (  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
     index_cast,
 )
-from aie.extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from aie.extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
+    constant,
+    maxsi,
+    minsi,
+    select,
+)
 from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.helpers.util import np_ndarray_type_to_memref_type
@@ -34,17 +43,19 @@ from aie.iron import (
     Buffer,
     ExternalFunction,
     ObjectFifo,
-    ScratchpadParameter,
     TaskGroup,
+    Transport,
     Worker,
     kernels,
 )
-from aie.iron.algorithms import sliding_3row
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import else_, if_, range_
+from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.dataflow.objectfifo import ObjectFifoHandle
+from aie.iron.device import AnyComputeTile, AnyMemTile, Tile
 from aie.utils.config import aie_kernels_dir
 from yolo_params import Params
 from yolo_spec import (
+    IMAGE_SIZE,
     Add,
     Attention,
     Concat,
@@ -60,63 +71,68 @@ from yolo_spec import (
 )
 
 KERNELS_DIR = Path(__file__).resolve().parent / "kernels"
-IMAGE_ROW_BYTES = 640 * 3
+IMAGE_ROW_BYTES = IMAGE_SIZE * 3
 L1_BYTES = 64 * 1024
-# The stack and the core's own sections, and the allocator's alignment slack.
+# The stack and the core's own sections, and the allocator's alignment slack:
+# enough beside two table kernels' tables.
 L1_RESERVE = 3 * 1024
+# A table kernel's table, in the core's own data; a tile counts those past two.
+TABLE_BYTES = 1024
+# A table kernel's second copy of its table, which makes its table map about
+# 1.5x faster. A tile takes the copies where its plan leaves twice their 1 KB,
+# beside two tables, and 2 KB more for each table past them: each copy is
+# pinned to a bank of its own, which the allocator then packs around.
+TABLE_COPY_BYTES = 2 * 1024
 L1_LAG_BYTES = 12 * 1024
-# A memtile channel has 24 buffer descriptors, one per staged row.
-MEMTILE_LAG_ROWS = 8
-# What one buffering worker's ring takes of its tile.
-BUFFER_TILE_BYTES = 48 * 1024
+# Rows one memtile hold takes: a semaphore lock counts at most 63 objects,
+# and they take at most half of a memtile's 512 KB, leaving it room for others.
+MEMTILE_HOLD_ROWS = 63
+MEMTILE_HOLD_BYTES = 256 * 1024
 # Runs of operators, by the names of their first and last ops, that one
-# worker computes row by row (see SegmentDesign.fuse): the bottlenecks of model.2, 4 and
-# 8, the C3k blocks of model.6, 13, 16 and 19, the PSA blocks' FFNs, and
-# the Detect head's P3 box branch and P4 and P5 branches. P3's class
-# branch stays apart: fused, its run is its segment's slowest worker.
+# worker computes row by row (see SegmentDesign.fuse). Packed so the whole
+# network takes 30 of NPU2's 32 tiles in one configuration, with the two
+# attention workers and the postprocess, each core's program within its 16 KB.
 FUSED = (
-    ("/model.2/m.0/cv1/conv/Conv", "/model.2/m.0/Add"),
-    ("/model.4/m.0/cv1/conv/Conv", "/model.4/m.0/Add"),
-    ("/model.6/m.0/cv1/conv/Conv", "/model.6/m.0/m/m.0/Add"),
-    ("/model.6/m.0/m/m.1/cv1/conv/Conv", "/model.6/m.0/cv3/conv/Conv"),
-    ("/model.8/m.0/m/m.0/cv1/conv/Conv", "/model.8/m.0/m/m.0/Add"),
-    ("/model.8/m.0/m/m.1/cv1/conv/Conv", "/model.8/m.0/m/m.1/Add"),
-    ("/model.10/m/m.0/attn/Add", "/model.10/m/m.0/attn/proj/conv/Conv"),
-    ("/model.10/m/m.0/ffn/ffn.0/conv/Conv", "/model.10/m/m.0/Add_1"),
-    ("/model.13/m.0/cv1/conv/Conv", "/model.13/m.0/m/m.0/Add"),
-    ("/model.13/m.0/m/m.1/cv1/conv/Conv", "/model.13/m.0/cv3/conv/Conv"),
-    ("/model.16/m.0/cv1/conv/Conv", "/model.16/m.0/m/m.0/Add"),
-    ("/model.16/m.0/m/m.1/cv1/conv/Conv", "/model.16/m.0/cv3/conv/Conv"),
-    ("/model.19/m.0/cv1/conv/Conv", "/model.19/m.0/m/m.0/Add"),
-    ("/model.19/m.0/m/m.1/cv1/conv/Conv", "/model.19/m.0/cv3/conv/Conv"),
-    ("/model.22/m.0/m.0.1/attn/Add", "/model.22/m.0/m.0.1/attn/proj/conv/Conv"),
-    ("/model.22/m.0/m.0.1/ffn/ffn.0/conv/Conv", "/model.22/m.0/m.0.1/Add_1"),
+    ("images", "/model.1/conv/Conv"),
+    ("/model.2/cv1/conv/Conv", "/model.2/cv2/conv/Conv"),
+    ("/model.3/conv/Conv", "/model.3/conv/Conv"),
+    ("/model.4/cv1/conv/Conv", "/model.4/cv2/conv/Conv"),
+    ("/model.5/conv/Conv", "/model.6/cv1/conv/Conv"),
+    ("/model.6/m.0/cv1/conv/Conv", "/model.6/m.0/cv3/conv/Conv"),
+    ("/model.6/cv2/conv/Conv", "/model.7/conv/Conv"),
+    ("/model.8/cv1/conv/Conv", "/model.8/m.0/m/m.1/Add"),
+    ("/model.8/m.0/cv2/conv/Conv", "/model.9/m/MaxPool"),
+    ("/model.9/m_1/MaxPool", "/model.9/m_2/MaxPool"),
+    ("/model.9/cv2/conv/Conv", "/model.10/m/m.0/attn/qkv/conv/Conv"),
+    ("/model.10/m/m.0/attn/proj/conv/Conv", "/model.10/cv2/conv/Conv"),
+    ("/model.13/cv1/conv/Conv", "/model.13/m.0/cv1/conv/Conv"),
+    ("/model.13/m.0/m/m.0/cv1/conv/Conv", "/model.13/cv2/conv/Conv"),
+    ("/model.16/cv1/conv/Conv", "/model.16/cv1/conv/Conv"),
+    ("/model.16/m.0/cv1/conv/Conv", "/model.16/m.0/cv1/conv/Conv"),
+    ("/model.16/m.0/m/m.0/cv1/conv/Conv", "/model.16/cv2/conv/Conv"),
+    ("/model.17/conv/Conv", "/model.19/m.0/cv1/conv/Conv"),
+    ("/model.19/m.0/m/m.0/cv1/conv/Conv", "/model.19/cv2/conv/Conv"),
+    ("/model.20/conv/Conv", "/model.22/cv1/conv/Conv"),
+    ("/model.22/m.0/m.0.0/cv1/conv/Conv", "/model.22/m.0/m.0.1/attn/qkv/conv/Conv"),
+    ("/model.22/m.0/m.0.1/attn/proj/conv/Conv", "/model.22/cv2/conv/Conv"),
     (
         "/model.23/one2one_cv2.0/one2one_cv2.0.0/conv/Conv",
-        "/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv",
+        "/model.23/one2one_cv3.0/one2one_cv3.0.0/one2one_cv3.0.0.0/conv/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.0/one2one_cv3.0.0/one2one_cv3.0.0.1/conv/Conv",
+        "/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv",
     ),
     (
         "/model.23/one2one_cv2.1/one2one_cv2.1.0/conv/Conv",
-        "/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv",
-    ),
-    (
-        "/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.0/conv/Conv",
-        "/model.23/one2one_cv3.1/one2one_cv3.1.0/one2one_cv3.1.0.1/conv/Conv",
-    ),
-    (
         "/model.23/one2one_cv3.1/one2one_cv3.1.1/one2one_cv3.1.1.0/conv/Conv",
-        "/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv",
+    ),
+    (
+        "/model.23/one2one_cv3.1/one2one_cv3.1.1/one2one_cv3.1.1.1/conv/Conv",
+        "/model.23/one2one_cv2.2/one2one_cv2.2.0/conv/Conv",
     ),
     (
         "/model.23/one2one_cv2.2/one2one_cv2.2.1/conv/Conv",
-        "/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv",
-    ),
-    (
-        "/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.0/conv/Conv",
-        "/model.23/one2one_cv3.2/one2one_cv3.2.0/one2one_cv3.2.0.1/conv/Conv",
-    ),
-    (
-        "/model.23/one2one_cv3.2/one2one_cv3.2.1/one2one_cv3.2.1.0/conv/Conv",
         "/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv",
     ),
 )
@@ -163,7 +179,8 @@ class Layout(Enum):
 class Fill:
     """One host transfer into a fifo: a tensor, in `layout`, at sequence step `step`.
 
-    A step's transfers finish before the next step's start.
+    Transfers are issued in step order, so one fifo's go in that order; none
+    waits for an earlier step's to finish.
     """
 
     fifo: ObjectFifo
@@ -172,49 +189,37 @@ class Fill:
     step: int = 0
     chunk: int = 1
 
-    def taps(self, total: int, offset: int) -> list[tuple[TensorAccessPattern, int]]:
-        """The patterns over a host buffer of `total` int32 words with the
-        tensor at word `offset`, in order, each with the elements a runtime
-        length counts in (so a 0/1 length moves the pattern or nothing).
-
-        A runtime length continues a pattern's third dimension and repeats
-        on its outer one: the anchor-class walk's rows are that outer
-        dimension, at most 64 a pattern, and a repeated tensor is a linear
-        run repeated."""
+    def tap(self, total: int, offset: int) -> TensorAccessPattern:
+        """The pattern over a host buffer of `total` int32 words with the tensor at word `offset`."""
         t = self.tensor
         if self.layout is Layout.ANCHOR_CLASSES:
             groups = t.channels8 // 8
-            row = groups * t.width * 2
-            return [
-                (
-                    TensorAccessPattern(
-                        (total,),
-                        offset + y * row,
-                        [
-                            min(64, t.height - y),
-                            t.width // self.chunk,
-                            groups,
-                            2 * self.chunk,
-                        ],
-                        [row, 2 * self.chunk, t.width * 2, 1],
-                    ),
-                    row,
-                )
-                for y in range(0, t.height, 64)
-            ]
+            return TensorAccessPattern(
+                (total,),
+                offset,
+                [t.height, t.width // self.chunk, groups, 2 * self.chunk],
+                [groups * t.width * 2, 2 * self.chunk, t.width * 2, 1],
+            )
         size = (IMAGE_ROW_BYTES if t.name == "images" else t.row_bytes) * t.height // 4
         if self.layout is Layout.REPEAT:
-            return [
-                (
-                    TensorAccessPattern(
-                        (total,), offset, [self.chunk, 1, 1, size], [0, 0, 0, 1]
-                    ),
-                    size,
-                )
-            ]
-        return [
-            (TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1]), size)
-        ]
+            return TensorAccessPattern(
+                (total,), offset, [1, self.chunk, 1, size], [0, 0, 0, 1]
+            )
+        return TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1])
+
+
+@dataclass
+class Pending:
+    """An image `transfer_fill` has issued: its fifo handles, its open staged drains, and the group its output drains and fills join."""
+
+    filled: dict[ObjectFifo, ObjectFifoHandle]
+    staging: TaskGroup | None
+    drains: TaskGroup
+
+
+def stream_bytes_of(tensor: Tensor) -> int:
+    """The bytes of a row of `tensor`'s stream: the image comes as RGB pixels."""
+    return IMAGE_ROW_BYTES if tensor.name == "images" else tensor.row_bytes
 
 
 def pack_weights(op: Conv, weight: np.ndarray) -> np.ndarray:
@@ -232,105 +237,12 @@ def pack_weights(op: Conv, weight: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(w.transpose(0, 2, 4, 5, 3, 1)).reshape(-1)
 
 
-def view(element, offset: int, size: int, dtype: type = np.int8):
-    """`size` elements of `dtype` in an int8 buffer (an acquired element or a Buffer) from byte `offset`."""
+def view(element, offset, size: int, dtype: type = np.int8):
+    """`size` elements of `dtype` in an int8 buffer (an acquired element or a Buffer) from byte `offset`, an int or an index value."""
     source = element.op if isinstance(element, Buffer) else element
     kind = np.ndarray[(size,), np.dtype[dtype]]
-    return memref.view(
-        np_ndarray_type_to_memref_type(kind), source, constant(offset, index=True), []
-    )
-
-
-class RowInput:
-    """How a row-wise worker gets one input tensor's row at each step.
-
-    The worker steps through `period` output rows per iteration: 2 when a
-    part is upsampled, whose source row then serves both.
-    """
-
-    def __init__(
-        self, design: SegmentDesign, tensor: Tensor, into_output: bool = False
-    ) -> None:
-        self.parts = design.parts(tensor)
-        self.sources = list(dict.fromkeys(p.source for p in self.parts))
-        self.handles: list = []
-        self.period = 2 if any(p.upsample for p in self.parts) else 1
-        self.assembled = into_output or len(self.parts) > 1 or self.parts[0].upsample
-        self.copiers = [design.copier(p) for p in self.parts] if self.assembled else []
-        self.buffer = (
-            [Buffer(row(tensor.row_bytes))]
-            if self.assembled and not into_output
-            else []
-        )
-
-    def windows(self, height: int) -> list[tuple[Tensor, np.ndarray, np.ndarray]]:
-        """Each source stream's rows held for output rows `0..height`, as (source, lo, hi)."""
-        y = np.arange(height)
-        out = []
-        for source in self.sources:
-            upsampled = any(p.upsample for p in self.parts if p.source == source)
-            rows = y // 2 if upsampled else y
-            out.append((source, rows, rows))
-        return out
-
-    def connect(self, design: SegmentDesign, depths: dict[str, int]) -> None:
-        self.handles = [design.consumer(s, depths[s.name], 2) for s in self.sources]
-
-    @property
-    def fn_args(self) -> list:
-        return [*self.handles, *self.copiers, *self.buffer]
-
-    def bind(self, args: list) -> BoundRowInput:
-        n = len(self.handles)
-        handles = dict(zip(self.sources, args[:n]))
-        copiers = args[n : n + len(self.copiers)]
-        buffer = args[n + len(self.copiers)] if self.buffer else None
-        del args[: len(self.fn_args)]
-        return BoundRowInput(self, handles, copiers, buffer)
-
-
-class BoundRowInput:
-    """A RowInput inside its worker's body, on the worker's own handles."""
-
-    def __init__(self, spec: RowInput, handles: dict, copiers: list, buffer) -> None:
-        self.spec = spec
-        self.handles = handles
-        self.copiers = copiers
-        self.buffer = buffer
-        self.held: dict = {}
-
-    def acquire(self, phase: int, into=None):
-        """Take this step's rows and return the assembled one, built in `into` if given."""
-        rows = {}
-        for source, handle in self.handles.items():
-            upsampled = any(p.upsample for p in self.spec.parts if p.source == source)
-            if phase == 0 or not upsampled:
-                rows[source] = handle.acquire(1)
-            else:
-                rows[source] = self.held[source]
-        self.held = rows
-        if not self.spec.assembled:
-            part = self.spec.parts[0]
-            element = rows[part.source]
-            return element if part.whole else view(element, part.offset, part.size)
-        target = self.buffer if into is None else into
-        at = 0
-        for part, copier in zip(self.spec.parts, self.copiers):
-            element = rows[part.source]
-            whole = part.offset == 0 and part.size == part.source.row_bytes
-            size = 2 * part.size if part.upsample else part.size
-            copier(
-                element if whole else view(element, part.offset, part.size),
-                view(target, at, size),
-            )
-            at += size
-        return target
-
-    def release(self, phase: int) -> None:
-        for source, handle in self.handles.items():
-            upsampled = any(p.upsample for p in self.spec.parts if p.source == source)
-            if phase == self.spec.period - 1 or not upsampled:
-                handle.release(1)
+    at = constant(offset, index=True) if isinstance(offset, int) else offset
+    return memref.view(np_ndarray_type_to_memref_type(kind), source, at, [])
 
 
 class SegmentDesign:
@@ -343,7 +255,15 @@ class SegmentDesign:
         outputs: Tensors to drain to the host.
         fused: Runs of operators, each by its first and last op's names,
             that one worker each computes row by row; see `fuse`. Runs
-            wholly outside `ops` are left to the runs that hold them.
+            wholly outside `ops` are left to the runs that hold them; every
+            operator outside them is a view, an attention block with its
+            positional conv and add, or the Detect postprocess.
+        holds: Rows each of a tensor's held readers waits for, from an
+            earlier build; see `planned`.
+        resident_bytes: The largest step of a fused worker's weight chunks a
+            memtile holds.
+        reads: Per tensor, its readers sharing its fifo and those taking rows
+            over shared memory, from an earlier build; see `planned`.
 
     Attributes:
         inputs: Tensors filled from the host, in fill order; the image when
@@ -365,8 +285,35 @@ class SegmentDesign:
         ops: Sequence[Op],
         outputs: Sequence[Tensor],
         fused: Sequence[tuple[str, str]] = FUSED,
+        holds: dict[str, set[int]] | None = None,
+        resident_bytes: int = 200 * 1024,
+        reads: dict[str, tuple[int, int]] | None = None,
     ) -> None:
         self.params = params
+        # A fused worker's step of weight chunks up to this size rests in a
+        # memtile, which sends it over and over; larger ones come from DDR.
+        self.resident_bytes = resident_bytes
+        self.resident: list[int] = []
+        self.weight_streams = 0
+        self.holds = 0
+        # Rows each of a tensor's held readers waits for, from an earlier build
+        # of the same run, so the first consumer makes the whole chain; and
+        # what this build asks for.
+        self.planned_holds = dict(holds or {})
+        self.hold_rows: dict[str, set[int]] = {}
+        self.read_stages: set[ObjectFifo] = set()
+        # The memtile each chain of holds ends in, where a worker's own.
+        self.stage_hubs: dict[ObjectFifo, Tile | None] = {}
+        # Per tensor, how many readers share its fifo and how many take rows
+        # over shared memory, each a fifo of its own, from an earlier build;
+        # and what this build asks for. The producer copies each row into
+        # the private fifos beyond its own, which serves a private reader
+        # when no other reads it.
+        self.planned_reads = dict(reads or {})
+        self.shared_reads: dict[str, int] = {}
+        self.private_reads: dict[str, int] = {}
+        self.private_taken: dict[str, int] = {}
+        self.private_fifos: dict[str, list[ObjectFifo]] = {}
         self.producer = {op.dst.name: op for op in network.ops}
         self.local = {op.dst.name for op in ops}
         self.fifos: dict[str, ObjectFifo] = {}
@@ -375,20 +322,9 @@ class SegmentDesign:
         self.fills: list[Fill] = []
         self.workers: list[Worker] = []
         self.stages: dict[str, list[tuple[ObjectFifo, int]]] = {}
-        # Tensors that travel inside another stream's rows, as SPPF's pools do,
-        # or across several, as attention's heads do.
-        self.alias: dict[str, Part] = {}
-        self.virtual: dict[str, list[Part]] = {}
         self.heights: dict[str, int] = {}
         # need[t][u][y]: the row of upstream stream u that row y of stream t waits for.
         self.need: dict[str, dict[str, np.ndarray]] = {}
-        # Tensors whose rows a memtile joins from several workers' channel
-        # slices: already the output of a link, so a lagging consumer's rows
-        # wait in buffering workers instead of a memtile stage.
-        self.joined: set[str] = set()
-        # Streams held through DDR: the shim's drain of the source, the fifo
-        # filled back, and the rows' shape for the host buffer.
-        self.spills: list[tuple[ObjectFifoHandle, ObjectFifo, Tensor]] = []
         # Tensors this run makes and then reads back from DDR in a layout of
         # their own, as the Detect postprocess reads its records: drained, and
         # filled once every such drain is done.
@@ -408,6 +344,26 @@ class SegmentDesign:
         runs = [(a, b) for a, b in spans if set(range(a, b)) <= mine]
         groups = {first: network.ops[first:stop] for first, stop in runs}
         inside = {i for first, stop in runs for i in range(first, stop)}
+        # An attention worker holds every value, so it also makes the
+        # positional conv over them and adds it in, as PSA does next.
+        self.tails: dict[str, tuple[Conv, Add]] = {}
+        for i in sorted(mine):
+            op = network.ops[i]
+            if not isinstance(op, Attention):
+                continue
+            pe, add = network.ops[i + 1 : i + 3]
+            if not (
+                isinstance(pe, Conv)
+                and pe.src.name == op.values.name
+                and isinstance(add, Add)
+                and {add.a.name, add.b.name} == {op.dst.name, pe.dst.name}
+                and {i + 1, i + 2} <= mine
+            ):
+                raise NotImplementedError(f"{op.name}: no positional conv and add next")
+            if {i + 1, i + 2} & inside:
+                raise ValueError(f"{pe.name}: the attention worker makes it")
+            self.tails[op.name] = (pe, add)
+            inside |= {i + 1, i + 2}
         drained = {t.name for t in outputs}
         for op in ops:
             i = index[op.dst.name]
@@ -418,14 +374,6 @@ class SegmentDesign:
             if i in inside:
                 continue
             match op:
-                case InputQuant():
-                    self.input_quant(op)
-                case Conv():
-                    self.conv(op)
-                case Add():
-                    self.add(op)
-                case MaxPool():
-                    self.maxpool(op)
                 case Attention():
                     self.attention(op)
                 case DetectPost():
@@ -433,50 +381,62 @@ class SegmentDesign:
                 case Concat() | Slice() | Upsample():
                     pass
                 case _:
-                    raise NotImplementedError(f"{type(op).__name__} is not lowered yet")
+                    raise ValueError(f"{op.name}: in no fused run")
         self.outputs = list(outputs)
         self.out_fifos = {t.name: self.fifo(t) for t in self.outputs}
         self.in_fifos = list(dict.fromkeys(f.fifo for f in self.fills))
+        for name, (shared, private) in self.planned_reads.items():
+            if private > (shared == 0) and name not in self.private_fifos:
+                raise NotImplementedError(
+                    f"{name}: its producer copies no rows to private readers"
+                )
 
-    @property
-    def in_ddr(self) -> list[Tensor]:
-        """The tensors this run holds in DDR: each spill's rows, then each staged."""
-        return [rows for _, _, rows in self.spills] + [t for _, t in self.staged]
+    @classmethod
+    def planned(
+        cls,
+        network: Network,
+        params: Params,
+        ops: Sequence[Op],
+        outputs: Sequence[Tensor],
+        **options,
+    ) -> SegmentDesign:
+        """The run built twice: the second time every tensor's chain of holds is
+        made whole by its first consumer, a stage ending at each reader's rows,
+        and every producer makes the fifos its readers take."""
+        design = cls(network, params, ops, outputs, **options)
+        reads = {
+            name: (design.shared_reads.get(name, 0), design.private_reads.get(name, 0))
+            for name in design.shared_reads.keys() | design.private_reads.keys()
+        }
+        return cls(
+            network,
+            params,
+            ops,
+            outputs,
+            holds=design.hold_rows,
+            reads=reads,
+            **options,
+        )
 
     def handles(self) -> list:
-        """The runtime sequence's fifo handles: every filled fifo, every drained one, then each spill's drain and fill."""
+        """The runtime sequence's fifo handles: every filled fifo, every drained one, then each staged tensor's drain."""
         return (
             [fifo.prod() for fifo in self.in_fifos]
             + [self.out_fifos[t.name].cons() for t in self.outputs]
-            + [h for drain, back, _ in self.spills for h in (drain, back.prod(depth=2))]
             + [drain for drain, _ in self.staged]
         )
 
-    def transfer(
-        self,
-        handles: Sequence,
-        locate: Callable[[Tensor], tuple],
-        gate: ScratchpadParameter | None = None,
-    ) -> None:
-        """The run's host transfers, inside its runtime sequence.
+    def transfer_fill(
+        self, handles: Sequence, locate: Callable[[Tensor], tuple]
+    ) -> Pending:
+        """Issue one image's drains and every fill that reads no staged rows; await nothing.
 
-        `handles` are `handles()`' as the sequence received them; `locate`
-        gives each tensor's host buffer, its size in int32 words and the
-        tensor's word offset in it; a spill's rows are the tensor it carries.
-        With `gate`, a 0/1 parameter, every transfer moves its whole tap or
-        nothing, so a dispatch runs this image or skips it.
-        Drains are issued first, then each spill's and each staged tensor's;
-        then each fill step's transfers, every step but the last finishing
-        before the next starts, and a step that reads a staged tensor
-        starting once every staged drain is done; then each spill's fill,
-        once its drain is done.
+        `handles` and `locate` are as `transfer`'s. The fills join the
+        output drains' group, freed once those drains are awaited: by then
+        the network has read every filled row.
         """
-        gated = {} if gate is None else dict(length_parameter=gate)
         filled = dict(zip(self.in_fifos, handles))
         drains = TaskGroup()
-        spilled = handles[
-            len(self.in_fifos) + len(self.outputs) : len(handles) - len(self.staged)
-        ]
         staging = TaskGroup() if self.staged else None
         for (_, tensor), drain in zip(
             self.staged, handles[len(handles) - len(self.staged) :]
@@ -492,21 +452,7 @@ class SegmentDesign:
                 ),
                 wait=True,
                 group=staging,
-                **gated,
             )
-        staged = {tensor.name for _, tensor in self.staged}
-        refills = []
-        for (_, _, rows), drain, back in zip(self.spills, spilled[0::2], spilled[1::2]):
-            buffer, total, offset = locate(rows)
-            tap = TensorAccessPattern(
-                (total,),
-                offset,
-                [1, 1, 1, rows.row_bytes * rows.height // 4],
-                [0, 0, 0, 1],
-            )
-            group = TaskGroup()
-            drain.drain(buffer, tap, wait=True, group=group, **gated)
-            refills.append((group, back, buffer, tap))
         for tensor, handle in zip(self.outputs, handles[len(self.in_fifos) :]):
             buffer, total, offset = locate(tensor)
             size = self.host_bytes(tensor) // 4
@@ -515,38 +461,67 @@ class SegmentDesign:
                 TensorAccessPattern((total,), offset, [1, 1, 1, size], [0, 0, 0, 1]),
                 wait=True,
                 group=drains,
-                **gated,
             )
-        steps = sorted({f.step for f in self.fills})
-        fills = None
-        for step in steps:
-            if staging is not None and any(
-                f.tensor.name in staged for f in self.fills if f.step == step
-            ):
-                staging.finish()
-                staging = None
-            fills = TaskGroup()
-            for fill in (f for f in self.fills if f.step == step):
+        staged = {tensor.name for _, tensor in self.staged}
+        for fill in sorted(self.fills, key=attrgetter("step")):
+            if fill.tensor.name not in staged:
                 buffer, total, offset = locate(fill.tensor)
-                for tap, unit in fill.taps(total, offset):
-                    filled[fill.fifo].fill(
-                        buffer,
-                        tap,
-                        wait=step != steps[-1],
-                        group=fills,
-                        **({} if gate is None else dict(gated, length_unit=unit)),
-                    )
-            if step != steps[-1]:
-                fills.finish()
-        back_in = TaskGroup() if refills else None
-        for group, back, buffer, tap in refills:
-            group.finish()
-            back.fill(buffer, tap, wait=True, group=back_in, **gated)
-        drains.finish()
-        if fills is not None:
-            fills.finish()
-        if back_in is not None:
-            back_in.finish()
+                filled[fill.fifo].fill(buffer, fill.tap(total, offset), group=drains)
+        return Pending(filled, staging, drains)
+
+    def transfer_tail(
+        self,
+        pending: Pending,
+        locate: Callable[[Tensor], tuple],
+        previous: TaskGroup | None,
+    ) -> TaskGroup:
+        """Await one image's staged drains and the image before's outputs, then issue the fills reading the staged rows back.
+
+        Returns the image's output-drains group, left unfinished. The image
+        before's postprocess is done long before this image's staged drains
+        are, and awaiting it first frees its records' BDs before this
+        image's take more.
+        """
+        if pending.staging is not None:
+            pending.staging.finish()
+        if previous is not None:
+            previous.finish()
+        staged = {tensor.name for _, tensor in self.staged}
+        for fill in sorted(self.fills, key=attrgetter("step")):
+            if fill.tensor.name in staged:
+                buffer, total, offset = locate(fill.tensor)
+                pending.filled[fill.fifo].fill(
+                    buffer, fill.tap(total, offset), group=pending.drains
+                )
+        return pending.drains
+
+    def transfer(
+        self,
+        handles: Sequence,
+        locates: Sequence[Callable[[Tensor], tuple]],
+        ahead: int,
+    ) -> None:
+        """A batch's host transfers, inside its runtime sequence, image after image.
+
+        Args:
+            handles: The runtime sequence's arguments for `handles()`.
+            locates: Per image, where each tensor it reads or writes sits in
+                the host buffers: `(buffer, total int32 words, word offset)`.
+            ahead: How many images' fills are issued before an image's
+                staged drains are awaited, so the network starts on those
+                images while it waits.
+
+        An image's outputs are awaited once the next image's staged drains
+        are, so its postprocess runs alongside the next image's network.
+        """
+        pending = deque(self.transfer_fill(handles, at) for at in locates[:ahead])
+        outputs = None
+        for i, locate in enumerate(locates):
+            if i + ahead < len(locates):
+                pending.append(self.transfer_fill(handles, locates[i + ahead]))
+            outputs = self.transfer_tail(pending.popleft(), locate, outputs)
+        if outputs is not None:
+            outputs.finish()
 
     def host_bytes(self, tensor: Tensor) -> int:
         """How many bytes `tensor` takes in a host buffer."""
@@ -559,11 +534,56 @@ class SegmentDesign:
     def fifo(self, tensor: Tensor) -> ObjectFifo:
         if tensor.name not in self.fifos:
             size = IMAGE_ROW_BYTES if tensor.name == "images" else tensor.row_bytes
-            self.fifos[tensor.name] = ObjectFifo(row(size), name=f"t{len(self.fifos)}")
+            shared, private = self.planned_reads.get(tensor.name, (0, 0))
+            # A fifo not read over shared memory goes by DMA even between
+            # neighbours: each end then holds the objects its plan counts,
+            # where one shared pool would sit in either tile.
+            self.fifos[tensor.name] = ObjectFifo(
+                row(size),
+                name=f"t{len(self.fifos)}",
+                transport=(
+                    Transport.shared_mem()
+                    if private and not shared
+                    else Transport.dma()
+                ),
+            )
             if tensor.name not in self.local:
                 self.inputs.append(tensor)
                 self.fills.append(Fill(self.fifos[tensor.name], tensor))
         return self.fifos[tensor.name]
+
+    def reader(self, tensor: Tensor) -> ObjectFifo:
+        """`tensor`'s fifo, for one more reader sharing it."""
+        self.shared_reads[tensor.name] = self.shared_reads.get(tensor.name, 0) + 1
+        return self.fifo(tensor)
+
+    def private(self, tensor: Tensor) -> ObjectFifo:
+        """A fifo of `tensor`'s rows for one reader alone, over shared memory."""
+        name = tensor.name
+        self.private_reads[name] = self.private_reads.get(name, 0) + 1
+        shared, private = self.planned_reads.get(name, (0, 0))
+        if not private:
+            return self.fifo(tensor)
+        taken = self.private_taken.get(name, 0)
+        self.private_taken[name] = taken + 1
+        if not shared:
+            return self.fifo(tensor) if taken == 0 else self.copies(tensor)[taken - 1]
+        return self.copies(tensor)[taken]
+
+    def copies(self, tensor: Tensor) -> list[ObjectFifo]:
+        """The private fifos `tensor`'s producer copies each of its rows into."""
+        name = tensor.name
+        if name not in self.private_fifos:
+            shared, private = self.planned_reads.get(name, (0, 0))
+            self.private_fifos[name] = [
+                ObjectFifo(
+                    row(tensor.row_bytes),
+                    name=f"{self.fifo(tensor).name}_p{i}",
+                    transport=Transport.shared_mem(),
+                )
+                for i in range(private - (shared == 0))
+            ]
+        return self.private_fifos[name]
 
     def schedule(
         self,
@@ -643,136 +663,130 @@ class SegmentDesign:
             else window
         )
 
-    def consumer(self, tensor: Tensor, depth: int, window: int):
+    def consumer(
+        self, tensor: Tensor, depth: int, window: int, hub: Tile | None = None
+    ):
         """A consumer handle on `tensor`'s rows, `depth` deep.
 
         Rows a worker only holds while another of its inputs catches up wait
         past the worker's own window once they would take more than
-        `L1_LAG_BYTES` of its tile: in a memtile while they are few, since
-        each row takes a buffer descriptor of the memtile's channel, and
-        otherwise in the tile of a worker that only buffers them.
+        `L1_LAG_BYTES` of its tile: in memtile holds, the last of them in
+        memtile `hub` where given, so one worker's held inputs can take turns
+        on one channel. Such a worker's rows that do not wait come over
+        shared memory, so its channels are left to the held rows and its
+        weights.
         """
-        if self.l1_rows(tensor, depth, window) == depth:
-            return self.fifo(tensor).cons(depth=depth)
-        # A fifo joins one memtile link, so the consumers that stage share
-        # the stage, and one needing more lag extends it.
-        lag = depth - window
-        stages = self.stages.setdefault(tensor.name, [])
-        base = max(
-            (st for st in stages if st[1] <= lag), key=lambda st: st[1], default=None
-        )
-        if base is None or base[1] < lag:
-            source, held = (self.fifo(tensor), 0) if base is None else base
-            if depth >= tensor.height - 1:
-                # The consumer waits for the whole map (its last row clamped,
-                # all but one): hold it in DDR.
-                staged = self.spill(
-                    self.fifo(tensor),
-                    Tensor(f"{tensor.name}/spill", *tensor.shape),
-                )
-            elif (
-                not stages
-                and lag <= MEMTILE_LAG_ROWS
-                and tensor.name not in self.joined
-            ):
-                staged = source.cons(depth=lag).forward(
-                    depth=2, name=f"lag{sum(map(len, self.stages.values()))}"
-                )
-            else:
-                staged = self.buffer(
-                    source, tensor.row_bytes, tensor.height, lag - held
-                )
-            stages.append((staged, lag))
-            base = stages[-1]
-        staged = base[0]
-        return staged.cons(depth=window)
-
-    def weights(self, op: Conv, packed: np.ndarray, chunk_bytes: int) -> ObjectFifo:
-        """`op`'s packed weight chunks, each with its bias, sent from DDR once an output row.
-
-        Read from the host's weights buffer rather than set up with the
-        configuration: configuring the array costs what it loads.
-        """
-        fifo = ObjectFifo(row(chunk_bytes), name=f"weights{len(self.loads)}")
-        tensor = Tensor(f"{op.name}/weights", 8, 1, packed.size // 8)
-        self.loads.append((tensor, packed))
-        self.fills.append(Fill(fifo, tensor, Layout.REPEAT, chunk=op.dst.height))
-        return fifo
-
-    def spill(self, source: ObjectFifo, rows: Tensor) -> ObjectFifo:
-        """`source`'s rows held in DDR: drained as they come, filled back once all have.
-
-        For a consumer that waits for the whole map anyway, as one across an
-        attention barrier does: no tile holds them, and the runtime sequence
-        starts the fill once the drain is done. `rows` names the stream and
-        gives its row size and height for the host buffer.
-        """
-        back = ObjectFifo(row(rows.row_bytes), name=f"spill{len(self.spills)}")
-        self.spills.append((source.cons(depth=2), back, rows))
-        return back
-
-    def buffer(
-        self, source: ObjectFifo, size: int, height: int, lag: int
-    ) -> ObjectFifo:
-        """Workers that hold `lag` rows of `source` in their tiles and pass each on that much later.
-
-        A compute tile's DMA has 16 buffer descriptors, so the rows wait in a
-        ring buffer of the worker's own rather than in a deep fifo: it reads
-        rows until it holds `lag`, then passes the oldest on as each new one
-        arrives. A lag beyond one tile is spread over a chain of them.
-        """
-        workers = -(-lag * size // BUFFER_TILE_BYTES)
-        for i in range(workers):
-            held = lag // workers + (i < lag % workers)
-            out = ObjectFifo(row(size), name=f"held{len(self.workers)}")
-            copy = self.copier(Part(Tensor("rows", 0, 0, 0), 0, size))
-
-            def body(src, dst, copy, ring, held=held):
-                def emit(r):
-                    o = dst.acquire(1)
-                    copy(view(ring, (r % held) * size, size), o)
-                    dst.release(1)
-
-                def take(r):
-                    i = src.acquire(1)
-                    copy(i, view(ring, (r % held) * size, size))
-                    src.release(1)
-                    if r >= held - 1:
-                        emit(r - held + 1)
-
-                # Row r's slot repeats every `held` rows, so the steady state
-                # rolls a group of `held` rows with every slot known.
-                steady = (height - held + 1) // held
-                for r in range(held - 1):
-                    take(r)
-                for _ in range_(steady):
-                    for r in range(held - 1, 2 * held - 1):
-                        take(r)
-                for r in range(held - 1 + steady * held, height):
-                    take(r)
-                for r in range(height - held + 1, height):
-                    emit(r)
-
-            self.workers.append(
-                Worker(
-                    body,
-                    [
-                        source.cons(depth=1),
-                        out.prod(depth=1),
-                        copy,
-                        Buffer(row(held * size)),
-                    ],
-                )
+        # An image row lands by phase, word k of every 4 pixels together (see
+        # yolo_input.cc); the DMA writing L1 scatters it, as DDR reads that
+        # gather it go a word at a time.
+        quads = IMAGE_ROW_BYTES // 12
+        from_stream = (
+            TensorAccessPattern(
+                (IMAGE_ROW_BYTES,), 0, [1, quads, 3, 4], [0, 4, 4 * quads, 1]
             )
-            source = out
-        return source
+            if tensor.name == "images"
+            else None
+        )
+        if self.l1_rows(tensor, depth, window) == depth:
+            if hub is not None and tensor.name not in self.local:
+                # Rows the host fills come through the hub too: a shim shares
+                # no memory, and the worker's channels are taken.
+                fill = (
+                    self.reader(tensor)
+                    .cons(depth=2)
+                    .forward(tile=hub, depth=2, name=f"fill{self.holds}")
+                )
+                self.holds += 1
+                return fill.cons(depth=depth, from_stream=from_stream)
+            if hub is not None:
+                return self.private(tensor).cons(depth=depth)
+            return self.reader(tensor).cons(depth=depth, from_stream=from_stream)
+        stage = self.held(tensor, depth - window, hub)
+        # A stage another worker or the chain's next stage reads would
+        # broadcast, which takes no turns: a worker with a hub takes its own
+        # forward of it there unless the stage is in that hub.
+        if hub is not None and (
+            stage in self.read_stages or self.stage_hubs.get(stage) != hub
+        ):
+            stage = stage.cons(depth=2).forward(
+                tile=hub, depth=2, name=f"{stage.name}_{len(self.read_stages)}"
+            )
+        self.read_stages.add(stage)
+        return stage.cons(depth=window)
+
+    def held(self, tensor: Tensor, rows: int, hub: Tile | None = None) -> ObjectFifo:
+        """A stage of `tensor`'s one chain of memtile holds holding at least `rows`.
+
+        The first stage holding enough, more being only room to spare, or a
+        new one extending the chain: a fifo feeds one link at most. The first
+        reader makes the chain whole, a stage ending at each planned reader's
+        rows: a stage's rows go on to every branch at once, so a reader taking
+        them early must leave the chain before the rows a later one waits for.
+        """
+        # A reader waiting for most of a map is still reading it while the
+        # next image's rows arrive: a quarter map more keeps them coming.
+        if 4 * rows >= 3 * tensor.height:
+            rows += tensor.height // 4
+        self.hold_rows.setdefault(tensor.name, set()).add(rows)
+        stages = self.stages.setdefault(tensor.name, [])
+        if not stages:
+            source, before = self.reader(tensor), 0
+            for want in sorted(self.planned_holds.get(tensor.name, set()) | {rows}):
+                source = self.hold(
+                    source,
+                    want - before,
+                    stream_bytes_of(tensor),
+                    hub=hub if want == rows else None,
+                )
+                stages.append((source, want))
+                before = want
+        fit = min(
+            (st for st in stages if st[1] >= rows), key=lambda st: st[1], default=None
+        )
+        if fit is None:
+            source, before = (
+                max(stages, key=lambda st: st[1])
+                if stages
+                else (self.reader(tensor), 0)
+            )
+            fit = (
+                self.hold(source, rows - before, stream_bytes_of(tensor), hub=hub),
+                rows,
+            )
+            stages.append(fit)
+        return fit[0]
+
+    def hold(
+        self,
+        source: ObjectFifo,
+        rows: int,
+        row_bytes: int,
+        hub: Tile | None = None,
+        stage_bytes: int = MEMTILE_HOLD_BYTES,
+    ) -> ObjectFifo:
+        """`source`'s rows of `row_bytes` held in memtiles, `rows` of them at once.
+
+        A chain of memtile forwards, each holding at most MEMTILE_HOLD_ROWS
+        (a lock's count) and `stage_bytes`: a pool deeper than its
+        memtile's descriptors allow is walked whole by one descriptor a side.
+        The last sends from memtile `hub`, where given.
+        """
+        fifo = source
+        most = min(MEMTILE_HOLD_ROWS, max(1, stage_bytes // row_bytes))
+        while rows > 0:
+            take = min(rows, most)
+            rows -= take
+            fifo = fifo.cons(depth=take).forward(
+                tile=AnyMemTile if rows or hub is None else hub,
+                depth=2,
+                name=f"hold{self.holds}",
+            )
+            self.holds += 1
+        self.stage_hubs[fifo] = hub
+        return fifo
 
     def parts(self, tensor: Tensor) -> list[Part]:
         """Where each row of `tensor` comes from, with views, concatenations and upsamples resolved."""
-        if tensor.name in self.alias:
-            return [self.alias[tensor.name]]
-        if tensor.name in self.virtual:
-            return self.virtual[tensor.name]
         op = self.producer.get(tensor.name) if tensor.name in self.local else None
         match op:
             case Slice():
@@ -846,7 +860,8 @@ class SegmentDesign:
             [*flags, f"-DYOLO_ROWS_SYMBOL={name}"],
         )
 
-    def input_quant(self, op: InputQuant) -> None:
+    def input_quant_kernel(self, op: InputQuant) -> ExternalFunction:
+        """The kernel taking a row of uint8 RGB pixels to a row of the network input."""
         table = self.params.of(op.name, "table").astype(np.int64)
         pixels = np.arange(256)
         # The quantizer as a vector multiply and a rounding, saturating shift.
@@ -861,7 +876,7 @@ class SegmentDesign:
         if not found:
             raise ValueError(f"{op.name}: no multiply and shift gives its table")
         mul, shift = found[0]
-        k = self.function(
+        return self.function(
             "yolo_input_quant",
             "yolo_input.cc",
             [row(IMAGE_ROW_BYTES), row(op.dst.row_bytes)],
@@ -871,377 +886,87 @@ class SegmentDesign:
                 f"-DYOLO_INPUT_SHIFT={shift}",
             ],
         )
-        images = Tensor("images", 3, op.dst.height, op.dst.width)
-        rows = np.arange(op.dst.height)
-        depths = self.schedule(op.dst, [(images, rows, rows)])
-        image = self.consumer(images, depths["images"], 2)
-
-        def body(src, out, k):
-            for _ in range_(op.dst.height):
-                pixels = src.acquire(1)
-                o = out.acquire(1)
-                k(pixels, o)
-                src.release(1)
-                out.release(1)
-
-        self.workers.append(Worker(body, [image, self.fifo(op.dst).prod(depth=2), k]))
-
-    def assemble(self, tensor: Tensor) -> Tensor:
-        """A worker that copies `tensor`'s parts into rows of a stream of their own."""
-        assembled = Tensor(f"{tensor.name}/assembled", *tensor.shape)
-        self.local.add(assembled.name)
-        src = RowInput(self, tensor, into_output=True)
-        # Double-buffered if that fits the tile, else one row at a time.
-        for double in (True, False):
-            depths = self.schedule(assembled, src.windows(tensor.height), double)
-            held = sum(
-                self.l1_rows(t, depths[t.name], 1) * t.row_bytes for t in src.sources
-            )
-            if held + (1 + double) * tensor.row_bytes <= L1_BYTES - L1_RESERVE:
-                break
-        src.connect(self, depths)
-
-        def body(*args):
-            args = list(args)
-            inp = src.bind(args)
-            (out,) = args
-            for _ in range_(tensor.height // src.period):
-                for phase in range(src.period):
-                    o = out.acquire(1)
-                    inp.acquire(phase, into=o)
-                    inp.release(phase)
-                    out.release(1)
-
-        self.workers.append(
-            Worker(body, [*src.fn_args, self.fifo(assembled).prod(depth=1 + double)])
-        )
-        return assembled
-
-    def conv(self, op: Conv) -> None:
-        p = self.params
-        shift = int(p.of(op.name, "shift"))
-        ic, oc = op.src.channels8, op.dst.channels8
-        weights = pack_weights(op, p.of(op.name, "weight"))
-        bias = np.zeros(oc, np.int32)
-        bias[: op.dst.channels] = p.of(op.name, "bias")
-        table = p.of(op.name, "table").astype(np.int8) if op.act else None
-        src_tensor = op.src
-        pieces: list[Part] = []
-        while True:
-            reader: RowInput | Part
-            if op.kernel == 1:
-                reader = RowInput(self, src_tensor)
-                if len(reader.sources) > 2:
-                    src_tensor = self.assemble(src_tensor)
-                    continue
-                windows = reader.windows(op.dst.height)
-                local_bytes = src_tensor.row_bytes if reader.assembled else 0
-            else:
-                parts = self.parts(src_tensor)
-                # A depthwise conv computes each part of one stream apart, into
-                # its channels of the output row; others read one whole part.
-                apart = (
-                    op.groups > 1
-                    and len({part.source for part in parts}) == 1
-                    and not any(part.upsample for part in parts)
-                )
-                if not apart and (len(parts) > 1 or parts[0].upsample):
-                    src_tensor = self.assemble(src_tensor)
-                    continue
-                pieces = parts
-                reader = parts[0]
-                y = np.arange(op.dst.height)
-                lo = np.maximum(op.stride * y - 1, 0)
-                windows = [(reader.source, lo, op.stride * y + 1)]
-                local_bytes = 0
-            # Double-buffered if the weights then fit, else one row at a time.
-            for double in (True, False):
-                depths = dict(self.schedule(op.dst, windows, double))
-                window = 2 if op.kernel == 1 else 3
-                if double and op.stride > 1:
-                    # The worker holds its whole window while it computes, so
-                    # the producer runs ahead only into rows past it.
-                    depths[windows[0][0].name] += op.stride
-                held = sum(
-                    self.l1_rows(s, depths[s.name], window) * s.row_bytes
-                    for s, _, _ in windows
-                )
-                free = (
-                    L1_BYTES
-                    - L1_RESERVE
-                    - held
-                    - local_bytes
-                    - (1 + double) * op.dst.row_bytes
-                    - 256 * op.act
-                )
-                chunk = oc
-                while (
-                    chunk
-                    and (weights.nbytes + bias.nbytes)
-                    * chunk
-                    // oc
-                    * (1 if chunk == oc else 2)
-                    > free
-                ):
-                    chunk = next((c for c in range(chunk - 8, 0, -8) if oc % c == 0), 0)
-                if chunk:
-                    break
-            if chunk == oc or len(windows) == 1:
-                break
-            # A streamed conv needs its second input channel for the weights.
-            src_tensor = self.assemble(src_tensor)
-        if chunk == 0:
-            raise ValueError(
-                f"{op.name}: no output-channel chunk of its weights fits beside {held} B of rows"
-            )
-
-        if chunk == oc:
-            per = 0
-            constants = [
-                Buffer(initial_value=weights),
-                Buffer(initial_value=bias),
-                *([Buffer(initial_value=table)] if op.act else []),
-            ]
-        else:
-            n = oc // chunk
-            per = weights.nbytes // n
-            # Every chunk, each followed by its bias, sent a chunk at a time.
-            packed = np.concatenate(
-                [
-                    np.concatenate(
-                        [
-                            weights[c * per : (c + 1) * per],
-                            bias[c * chunk : (c + 1) * chunk].view(np.int8),
-                        ]
-                    )
-                    for c in range(n)
-                ]
-            )
-            wts = self.weights(op, packed, per + 4 * chunk)
-            constants = [
-                wts.cons(depth=2),
-                *([Buffer(initial_value=table)] if op.act else []),
-            ]
-        out_part = op.dst.width * chunk
-
-        def call(k, x, consts, o, *scalars):
-            """One output row: the whole conv, or chunk by chunk with each chunk's weights acquired."""
-            if chunk == oc:
-                k(*x, *consts, o, *scalars)
-                return
-            wts, *rest = consts
-            for c in range(oc // chunk):
-                wc = wts.acquire(1)
-                k(
-                    *x,
-                    view(wc, 0, per),
-                    view(wc, per, chunk, np.int32),
-                    *rest,
-                    view(o, c * out_part, out_part),
-                    *scalars,
-                )
-                wts.release(1)
-
-        if isinstance(reader, RowInput):
-            src = reader
-            k = kernels.conv2dk1_i8(
-                src_tensor.width,
-                ic,
-                chunk,
-                bias=True,
-                table=op.act,
-                rounding="conv_even",
-            )
-            src.connect(self, depths)
-            # After the inputs' handles: the order fifos are made in steers
-            # placement, and this one measured faster.
-            out = self.fifo(op.dst).prod(depth=1 + double)
-
-            def body1(*args):
-                args = list(args)
-                inp = src.bind(args)
-                out, k, *consts = args
-                for _ in range_(op.dst.height // src.period):
-                    for phase in range(src.period):
-                        x = inp.acquire(phase)
-                        o = out.acquire(1)
-                        call(k, [x], consts, o, src_tensor.width, ic, chunk, shift)
-                        inp.release(phase)
-                        out.release(1)
-
-            self.workers.append(Worker(body1, [*src.fn_args, out, k, *constants]))
-            return
-
-        part = reader
-        if len(pieces) > 1:
-            self.depthwise_apart(op, pieces, depths, double, shift, table)
-            return
-        if op.groups == 1:
-            k = kernels.conv2dk3(
-                src_tensor.width,
-                ic,
-                chunk,
-                bias=True,
-                table=op.act,
-                stride=op.stride,
-                rounding="conv_even",
-            )
-        elif chunk == oc:
-            k = kernels.bn_conv2dk3_dw(
-                src_tensor.width, ic, oc, bias=True, table=op.act, rounding="conv_even"
-            )
-        else:
-            raise NotImplementedError(f"{op.name}: a streamed depthwise conv")
-        source = self.consumer(part.source, depths[part.source.name], 3)
-        out = self.fifo(op.dst).prod(depth=1 + double)
-
-        def body3(src, out, k, *consts):
-            def step(top, mid, bot, o, _wts, check):
-                rows = [top, mid, bot]
-                if not part.whole:
-                    rows = [view(r, part.offset, part.size) for r in rows]
-                call(
-                    k,
-                    rows,
-                    consts,
-                    o,
-                    src_tensor.width,
-                    ic,
-                    chunk,
-                    3,
-                    3,
-                    check,
-                    shift,
-                    0,
-                )
-
-            if op.stride == 1:
-                sliding_3row(src, out, n_out_rows=op.dst.height, do_kernel=step)
-                return
-            rows = src.acquire(2)
-            o = out.acquire(1)
-            step(rows[0], rows[0], rows[1], o, None, 0)
-            out.release(1)
-            src.release(1)
-            for _ in range_(op.dst.height - 1):
-                rows = src.acquire(3)
-                o = out.acquire(1)
-                step(rows[0], rows[1], rows[2], o, None, 1)
-                out.release(1)
-                src.release(2)
-            src.release(1)
-
-        self.workers.append(Worker(body3, [source, out, k, *constants]))
-
-    def depthwise_apart(
-        self,
-        op: Conv,
-        pieces: list[Part],
-        depths: dict[str, int],
-        double: bool,
-        shift: int,
-        table: np.ndarray | None,
-    ) -> None:
-        """A depthwise 3x3 conv over parts of one stream, each part computed on its own channels."""
-        p = self.params
-        width = op.src.width
-        sizes = {part.size for part in pieces}
-        if len(sizes) > 1 or op.stride != 1:
-            raise NotImplementedError(
-                f"{op.name}: depthwise parts of unequal size, or strided"
-            )
-        channels = sizes.pop() // width
-        weights = pack_weights(op, p.of(op.name, "weight"))
-        bias = np.zeros(op.dst.channels8, np.int32)
-        bias[: op.dst.channels] = p.of(op.name, "bias")
-        per = 9 * channels
-        consts = []
-        for i in range(len(pieces)):
-            consts += [
-                Buffer(initial_value=weights[i * per : (i + 1) * per]),
-                Buffer(initial_value=bias[i * channels : (i + 1) * channels]),
-            ]
-        if op.act:
-            consts.append(Buffer(initial_value=table))
-        k = kernels.bn_conv2dk3_dw(
-            width, channels, channels, bias=True, table=op.act, rounding="conv_even"
-        )
-        source = self.consumer(pieces[0].source, depths[pieces[0].source.name], 3)
-        out = self.fifo(op.dst).prod(depth=1 + double)
-        size = channels * width
-
-        def body(src, out, k, *consts):
-            weights, rest = consts[: 2 * len(pieces)], consts[2 * len(pieces) :]
-
-            def step(rows, check):
-                o = out.acquire(1)
-                for i, part in enumerate(pieces):
-                    k(
-                        *[view(r, part.offset, part.size) for r in rows],
-                        weights[2 * i],
-                        weights[2 * i + 1],
-                        *rest,
-                        view(o, i * size, size),
-                        width,
-                        channels,
-                        channels,
-                        3,
-                        3,
-                        check,
-                        shift,
-                        0,
-                    )
-                out.release(1)
-
-            rows = src.acquire(2)
-            step([rows[0], rows[0], rows[1]], 0)
-            for _ in range_(op.dst.height - 2):
-                rows = src.acquire(3)
-                step([rows[0], rows[1], rows[2]], 1)
-                src.release(1)
-            rows = src.acquire(2)
-            step([rows[0], rows[1], rows[1]], 2)
-            src.release(2)
-
-        self.workers.append(Worker(body, [source, out, k, *consts]))
 
     def fuse(self, group: Sequence[Op], later: Sequence[Op], drained: set[str]) -> None:
-        """One worker computing a run of same-height operators row by row.
+        """One worker computing a run of operators row by row, each at its own rate.
 
         Every tensor the run reads or makes for itself waits in a ring of
         rows in the worker's tile; a row from another worker is copied into
-        its ring as it arrives. A tensor leads the run's outputs by the rows
-        its readers look ahead (a 3x3 conv one, a 1x1 or an add none), and at
-        step s each operator computes its row s - top + lead, in network
-        order. Rings are a power of two rows, so the steady state rolls with
-        a period of the largest and every slot is known.
+        its ring as it arrives. The run steps at the rate of its shortest
+        tensor, so at each step a tensor of `rate` times that height takes
+        `rate` rows: another worker's arrive, and an operator computes its
+        own, in network order, `delay` steps after the run starts. Delays are
+        the latest that keep every reader's rows in, so rings stay short.
+        Every step runs in one loop, so a ring is just the rows it holds at
+        once.
         """
         p = self.params
-        height = group[-1].dst.height
         made = {op.dst.name: op for op in group}
-        steps: list[tuple[Op, list[tuple[list[Part], int]]]] = []
+        # Per operator, its inputs: the parts read, how far a row's window
+        # reaches, the stride, and the height of the tensor read.
+        steps: list[tuple[Op, list[tuple[list[Part], int, int, int]]]] = []
         for op in group:
             match op:
-                case Conv() if op.stride == 1:
-                    steps.append((op, [(self.parts(op.src), op.kernel // 2)]))
+                case Conv():
+                    steps.append(
+                        (
+                            op,
+                            [
+                                (
+                                    self.parts(op.src),
+                                    op.kernel // 2,
+                                    op.stride,
+                                    op.src.height,
+                                )
+                            ],
+                        )
+                    )
                 case Add():
-                    steps.append((op, [(self.parts(op.a), 0), (self.parts(op.b), 0)]))
-                case Slice() | Concat():
+                    steps.append(
+                        (
+                            op,
+                            [
+                                (self.parts(op.a), 0, 1, op.a.height),
+                                (self.parts(op.b), 0, 1, op.b.height),
+                            ],
+                        )
+                    )
+                case MaxPool():
+                    steps.append((op, [(self.parts(op.src), 2, 1, op.src.height)]))
+                case InputQuant():
+                    images = Tensor("images", 3, op.dst.height, op.dst.width)
+                    steps.append(
+                        (
+                            op,
+                            [([Part(images, 0, IMAGE_ROW_BYTES)], 0, 1, op.dst.height)],
+                        )
+                    )
+                case Slice() | Concat() | Upsample():
                     pass
                 case _:
                     raise NotImplementedError(f"{op.name}: not fused yet")
         tensors: dict[str, Tensor] = {}
+        readers: dict[str, list[tuple[Op, Part, int, int, int]]] = {}
         for op, inputs in steps:
-            if op.dst.height != height:
-                raise NotImplementedError(f"{op.name}: a fused run changes height")
             tensors[op.dst.name] = op.dst
-            for parts, reach in inputs:
-                if reach and len(parts) > 1:
-                    raise NotImplementedError(f"{op.name}: a 3x3 conv of a concat")
+            for parts, reach, stride, height_in in inputs:
+                apart = (
+                    isinstance(op, Conv)
+                    and op.groups > 1
+                    and op.stride == 1
+                    and len({part.size for part in parts}) == 1
+                )
+                if reach and len(parts) > 1 and not apart:
+                    raise NotImplementedError(f"{op.name}: a window over a concat")
                 for part in parts:
-                    if part.upsample:
-                        raise NotImplementedError(f"{op.name}: a fused upsample")
+                    if reach and part.upsample:
+                        raise NotImplementedError(
+                            f"{op.name}: a window over an upsample"
+                        )
                     tensors[part.source.name] = part.source
+                    readers.setdefault(part.source.name, []).append(
+                        (op, part, reach, stride, height_in)
+                    )
 
         outs = drained & made.keys()
         for op in later:
@@ -1264,64 +989,124 @@ class SegmentDesign:
             }
         if not outs <= {op.dst.name for op, _ in steps}:
             raise NotImplementedError(f"{group[0].name}: a fused run hands on a view")
+        # In run order, so the design's fifos come out the same every build.
+        outs = [name for name in made if name in outs]
 
-        lead = dict.fromkeys(outs, 0)
-        for op, inputs in reversed(steps):
-            if op.dst.name not in lead:
+        for op, _ in steps:
+            if op.dst.name not in readers and op.dst.name not in outs:
                 raise ValueError(f"{op.name}: nothing reads it")
-            for parts, reach in inputs:
-                for part in parts:
-                    name = part.source.name
-                    lead[name] = max(lead.get(name, 0), lead[op.dst.name] + reach)
-        top = max(lead.values())
-        oldest: dict[str, int] = {}
+        shortest = min(t.height for t in tensors.values())
+        if any(t.height % shortest for t in tensors.values()):
+            raise NotImplementedError(f"{group[0].name}: heights not multiples")
+        rate = {name: t.height // shortest for name, t in tensors.items()}
+        external = [name for name in tensors if name not in made]
+
+        def window(part: Part, reach: int, stride: int, height_in: int, y: int):
+            lo = max(stride * y - reach, 0)
+            hi = min(stride * y + reach, height_in - 1)
+            return (lo // 2, hi // 2) if part.upsample else (lo, hi)
+
+        delay = dict.fromkeys(external, 0)
+
+        def last(name: str, s: int) -> int:
+            """The newest row of `name` in by the end of step `s`."""
+            m = rate[name]
+            return min(m * (s - delay[name]) + m - 1, tensors[name].height - 1)
+
+        def ready(op: Op, inputs, d: int) -> bool:
+            m = rate[op.dst.name]
+            return all(
+                window(part, reach, stride, height_in, y)[1]
+                <= last(part.source.name, d + y // m)
+                for y in range(op.dst.height)
+                for parts, reach, stride, height_in in inputs
+                for part in parts
+            )
+
         for op, inputs in steps:
-            for parts, reach in inputs:
-                for part in parts:
-                    name = part.source.name
-                    oldest[name] = min(
-                        oldest.get(name, lead[name]), lead[op.dst.name] - reach
-                    )
-        need = {name: lead[name] - oldest[name] + 1 for name in oldest}
-        external = [name for name in need if name not in made]
+            d = 0
+            while not ready(op, inputs, d):
+                d += 1
+            delay[op.dst.name] = d
+        # Then each tensor as late as its readers allow, the last made first.
+        for name in [op.dst.name for op, _ in reversed(steps)] + external:
+            if name not in readers:
+                continue
+            m = rate[name]
+            delay[name] = min(
+                (m * (delay[op.dst.name] + y // rate[op.dst.name]) + m - 1 - hi) // m
+                for op, part, reach, stride, height_in in readers[name]
+                for y in range(op.dst.height)
+                for hi in [window(part, reach, stride, height_in, y)[1]]
+            )
+        total = max(delay[name] + shortest for name in tensors)
+
+        # Rows each tensor must hold at once: from the oldest a reader still
+        # reads to the newest in.
+        need: dict[str, int] = {}
+        for name, uses in readers.items():
+            most = 1
+            for s in range(total):
+                newest = last(name, s)
+                if newest < 0:
+                    continue
+                oldest = [
+                    window(part, reach, stride, height_in, max(y, 0))[0]
+                    for op, part, reach, stride, height_in in uses
+                    for y in [rate[op.dst.name] * (s - delay[op.dst.name])]
+                    if y < op.dst.height
+                ]
+                if oldest:
+                    most = max(most, newest - min(oldest) + 1)
+            need[name] = most
         # A row another worker sends that is read only as it arrives is read
         # in place, in the fifo's own element.
-        direct = {name for name in external if need[name] == 1}
+        direct = {name for name in external if need[name] == 1 and rate[name] == 1}
+        # So is a faster stream that one operator of its rate reads row for
+        # row: each row taken as the operator computes from it.
+        per_row = {
+            name
+            for name in external
+            if need[name] == rate[name] > 1 and len(readers[name]) == 1
+            for op, part, reach, stride, _ in readers[name]
+            if reach == 0
+            and stride == 1
+            and not part.upsample
+            and rate[op.dst.name] == rate[name]
+        }
+        direct |= per_row
+        # Operators of one delay next to each other in the run's order: each
+        # such stretch computes under one guard, so a row read in place must
+        # be read within one stretch of its own delay.
+        stretches = [
+            list(stretch)
+            for _, stretch in itertools.groupby(
+                steps, key=lambda step: delay[step[0].dst.name]
+            )
+        ]
+        direct = {
+            name
+            for name in direct
+            if any(
+                delay[stretch[0][0].dst.name] == delay[name]
+                and {op.name for op, *_ in readers[name]}
+                <= {op.name for op, _ in stretch}
+                for stretch in stretches
+            )
+        }
         # A ring holds the bytes of a row its readers read: a tensor the run
         # makes, whole; another worker's, the span of the parts read.
         span: dict[str, tuple[int, int]] = {}
-        for op, inputs in steps:
+        for op, _ in steps:
             span[op.dst.name] = (0, op.dst.row_bytes)
-        for op, inputs in steps:
-            for parts, _ in inputs:
-                for part in parts:
-                    name = part.source.name
-                    if name not in made:
-                        lo, hi = span.get(name, (part.offset, part.offset))
-                        span[name] = (
-                            min(lo, part.offset),
-                            max(hi, part.offset + part.size),
-                        )
+        for name, uses in readers.items():
+            if name not in made:
+                span[name] = (
+                    min(part.offset for _, part, *_ in uses),
+                    max(part.offset + part.size for _, part, *_ in uses),
+                )
         kept = {name: hi - lo for name, (lo, hi) in span.items()}
-        wanted = {name: rows for name, rows in need.items() if name not in direct}
-
-        # The steady state rolls `period` steps, each ring the least divisor of
-        # it that holds its rows, so every slot is known; the period is the
-        # one, up to 8 steps, that takes the least memory.
-        def sized(period: int) -> dict[str, int]:
-            return {
-                name: next(d for d in range(rows, period + 1) if period % d == 0)
-                for name, rows in wanted.items()
-            }
-
-        most = max(wanted.values(), default=1)
-        period = min(
-            range(most, max(most, 8) + 1),
-            key=lambda n: sum(rows * kept[name] for name, rows in sized(n).items()),
-        )
-        rings = sized(period)
-        if len(external) > 2:
-            raise NotImplementedError(f"{group[0].name}: a core has two input channels")
+        rings = {name: rows for name, rows in need.items() if name not in direct}
 
         args: list = []
         at: dict = {}
@@ -1333,32 +1118,32 @@ class SegmentDesign:
 
         # All inputs in one schedule, so two that share an upstream stream
         # hold the rows one waits for while the other's path catches up.
-        y = np.arange(height)
         depths: dict[str, int] = {}
         for out in outs:
-            windows = [
-                (tensors[name], y + lead[name] - lead[out], y + lead[name] - lead[out])
-                for name in external
-            ]
+            y = np.arange(tensors[out].height)
+            steps_at = delay[out] + y // rate[out]
+            windows = []
+            for name in external:
+                pulled = np.array([max(last(name, int(s)), 0) for s in steps_at])
+                windows.append((tensors[name], pulled, pulled))
             for name, depth in self.schedule(tensors[out], windows).items():
                 depths[name] = max(depths.get(name, 0), depth)
+
+        # A worker's several held inputs come from one memtile, taking turns
+        # on one channel (its weights take the other).
+        hub = AnyMemTile.copy() if len(external) > 1 else None
         for name in external:
             source = tensors[name]
-            arg(("in", name), self.consumer(source, depths[name], 1))
+            arg(("in", name), self.consumer(source, depths[name], 1, hub))
             if name not in direct:
                 lo, _ = span[name]
-                arg(("copy", kept[name]), self.copier(Part(source, lo, kept[name])))
-        for name in outs:
-            arg(("out", name), self.fifo(tensors[name]).prod(depth=2))
-            if name in rings:
-                size = tensors[name].row_bytes
-                arg(("copy", size), self.copier(Part(tensors[name], 0, size)))
-        for name, rows in rings.items():
-            arg(("ring", name), Buffer(row(rows * kept[name])))
-        # A conv's weights stream from a memtile a chunk of output channels at
-        # a time when the run's rows and other weights leave too little room:
-        # the largest set only, as a core has two input channels.
+                arg(
+                    ("copy", kept[name], False),
+                    self.copier(Part(source, lo, kept[name])),
+                )
         convs = [op for op, _ in steps if isinstance(op, Conv)]
+        conv_of = {op.name: op for op in convs}
+        tables = sum(1 for op in convs if op.act)
         weights_of = {
             op.name: pack_weights(op, p.of(op.name, "weight")) for op in convs
         }
@@ -1366,54 +1151,264 @@ class SegmentDesign:
             op.name: weights_of[op.name].nbytes + 4 * op.dst.channels8 + 256 * op.act
             for op in convs
         }
-        free = (
-            L1_BYTES
-            - L1_RESERVE
-            - sum(rows * kept[name] for name, rows in rings.items())
-            - sum(
-                self.l1_rows(tensors[name], depths[name], 1) * tensors[name].row_bytes
-                for name in external
+        parts_of = {
+            op.name: parts
+            for op, ((parts, *_),) in ((o, i) for o, i in steps if isinstance(o, Conv))
+        }
+        concats = {
+            name
+            for name, parts in parts_of.items()
+            if len(parts) > 1 or parts[0].upsample
+        }
+        # Where its row does not fit assembled, a 1x1 conv over a concat
+        # reads each part where it waits, 8 output channels at a time (see
+        # conv2dk1_i8_bias_slices_ref), at a call and a table map per chunk.
+        concat_slices: dict[str, int] = {}
+        for name in concats:
+            op = conv_of[name]
+            width = math.gcd(
+                *(part.size // part.source.width for part in parts_of[name])
             )
-            - sum(2 * tensors[name].row_bytes for name in outs)
-            - sum(
-                op.src.row_bytes
-                for op, ((parts, _),) in (
-                    (o, i) for o, i in steps if isinstance(o, Conv)
+            if op.kernel == 1 and width % 8 == 0 and width < op.src.channels8:
+                concat_slices[name] = width
+        upsampled = {
+            name: [part for part in parts_of[name] if part.upsample]
+            for name in parts_of
+        }
+
+        # Outputs leaving by DMA past a core's two channels take turns on one,
+        # in the order the steps make them, so one a run makes before another
+        # holds the rows it makes until the other's first.
+        sent = [name for name in outs if self.planned_reads.get(name, (0, 0))[0]]
+        ahead = {name: 0 for name in outs}
+        if len(sent) > 2:
+            latest = max(delay[name] for name in sent)
+            for name in sent:
+                ahead[name] = (latest - delay[name]) * rate[name]
+
+        def plan(
+            buffered: int, level: int
+        ) -> tuple[dict[str, int], int, dict[str, int]] | None:
+            """Weights to stream, what that leaves and the convs sliced, with outputs `buffered` deep.
+
+            Weights stream from DDR a chunk of output channels at a time when
+            the run's rows leave too little room: the largest sets first, each
+            then taking two chunks of the tile instead of all its channels, and
+            the chunks as large as what is left allows. At `level` 2 or 4 a
+            streamed conv takes that fraction of its input channels a call,
+            8 output channels at a time, so its chunks shrink as much.
+            """
+            slice_of = dict(sliced)
+
+            def object_bytes(name: str) -> int:
+                if name in slice_of:
+                    return (conv_of[name].kernel ** 2 * slice_of[name] + 4) * 8
+                return per_channel[name] * 8
+
+            spare = (
+                L1_BYTES
+                - L1_RESERVE
+                - sum(rows * kept[name] for name, rows in rings.items())
+                - sum(
+                    self.l1_rows(tensors[name], depths[name], 1)
+                    * stream_bytes_of(tensors[name])
+                    for name in external
                 )
-                if len(parts) > 1
+                - sum(
+                    (
+                        buffered * (1 + private - (shared == 0) if private else 1)
+                        + ahead[name]
+                    )
+                    * tensors[name].row_bytes
+                    for name in outs
+                    for shared, private in [self.planned_reads.get(name, (0, 0))]
+                )
+                - sum(conv_of[name].src.row_bytes for name in assembled)
+                - TABLE_BYTES * max(tables - 2, 0)
+                - sum(
+                    4 * conv_of[name].dst.width * 8
+                    + sum(2 * part.size for part in upsampled[name])
+                    for name in sliced
+                )
+                - sum(held.values())
             )
-            - sum(held.values())
+            # The weights stream holds two of its largest chunk.
+            streamed: dict[str, int] = {}
+
+            def stream_bytes(chunks: dict[str, int]) -> int:
+                return 2 * max(
+                    (object_bytes(n) * c // 8 for n, c in chunks.items()), default=0
+                )
+
+            for op in sorted(
+                (op for op in convs if op.groups == 1), key=lambda op: -held[op.name]
+            ):
+                if spare - stream_bytes(streamed) >= 0:
+                    break
+                streamed[op.name] = 8
+                spare += held[op.name] - 256 * op.act
+                ic = op.src.channels8
+                # A slice call reads its lines from where they wait, which an
+                # assembled row's parts do not line up with.
+                if (
+                    level > 1
+                    and op.name not in slice_of
+                    and op.name not in assembled
+                    and (ic // level) % 8 == 0
+                ):
+                    slice_of[op.name] = ic // level
+                    spare -= 4 * op.dst.width * 8
+            spare -= stream_bytes(streamed)
+            if spare < 0:
+                return None
+            for name in [n for n in streamed if n not in slice_of]:
+                oc = conv_of[name].dst.channels8
+                for c in range(oc - 8, streamed[name], -8):
+                    grown = dict(streamed, **{name: c})
+                    extra = stream_bytes(grown) - stream_bytes(streamed)
+                    if oc % c == 0 and extra <= spare:
+                        spare -= extra
+                        streamed[name] = c
+                        break
+            return streamed, spare, slice_of
+
+        # Concats' rows assembled where that fits. Then outputs double-buffered
+        # where that fits, else one row at a time: a row drains in a few
+        # thousand cycles of the tens of thousands it takes. Then thinner
+        # slices of the streamed weights, each costing cycles.
+        for sliced in ({}, concat_slices):
+            assembled = concats - sliced.keys()
+            per_channel = {
+                op.name: (
+                    sliced[op.name] + 4
+                    if op.name in sliced
+                    else weights_of[op.name].nbytes // op.dst.channels8 + 4
+                )
+                for op in convs
+            }
+            fits = {}
+            for level in (1, 2, 4):
+                fits = {b: got for b in (2, 1) if (got := plan(b, level)) is not None}
+                if fits:
+                    break
+            if fits:
+                break
+        # Two copies of the tables before double-buffered outputs: a table
+        # map is most of a SiLU conv's cycles and reads its two halves from
+        # two copies at once, while an output row drains long before the
+        # step that makes the next is done.
+        buffered = next(
+            (
+                b
+                for b in (2, 1)
+                if b in fits and fits[b][1] >= TABLE_COPY_BYTES * max(tables - 1, 1)
+            ),
+            max(fits, default=1),
         )
-        streamed: dict[str, int] = {}
-        if free < 0:
-            if len(external) > 1:
-                raise NotImplementedError(
-                    f"{group[0].name}: two inputs leave no channel for its weights"
-                )
-            big = max(
-                (op for op in convs if op.groups == 1), key=lambda op: held[op.name]
+        planned = fits.get(buffered)
+        if planned is None:
+            raise ValueError(
+                f"{group[0].name}: no chunks of its weights fit beside its rows"
+                f" (KB: rings {sum(r * kept[n] for n, r in rings.items()) / 1024:.1f},"
+                f" inputs {sum(self.l1_rows(tensors[n], depths[n], 1) * tensors[n].row_bytes for n in external) / 1024:.1f},"
+                f" outputs {sum(tensors[n].row_bytes for n in outs) / 1024:.1f},"
+                f" weights {sum(held.values()) / 1024:.1f}, of {(L1_BYTES - L1_RESERVE) / 1024:.0f};"
+                f" largest rings: {sorted(((r * kept[n] // 1024, r, n.split('/')[-3:]) for n, r in rings.items()), reverse=True)[:3]})"
             )
-            oc = big.dst.channels8
-            room = free + held[big.name] - 256 * big.act
-            per_channel = weights_of[big.name].nbytes // oc + 4
-            chunk = next(
-                (
-                    c
-                    for c in range(oc - 8, 0, -8)
-                    if oc % c == 0 and 2 * per_channel * c <= room
-                ),
-                0,
+        streamed, spare, sliced = planned
+        for name in outs:
+            arg(
+                ("out", name),
+                self.fifo(tensors[name]).prod(depth=buffered + ahead[name]),
             )
-            if not chunk:
-                raise ValueError(
-                    f"{group[0].name}: no chunk of {big.name}'s weights fits beside its rows"
-                )
-            streamed[big.name] = chunk
+            privates = self.copies(tensors[name])
+            for i, fifo in enumerate(privates):
+                arg(("private", name, i), fifo.prod(depth=buffered))
+            if name in rings or privates:
+                size = tensors[name].row_bytes
+                arg(("copy", size, False), self.copier(Part(tensors[name], 0, size)))
+        for name, rows in rings.items():
+            arg(("ring", name), Buffer(row(rows * kept[name])))
+        copies = 2 if spare >= TABLE_COPY_BYTES * max(tables - 1, 1) else 1
         calls = {}
+        kernel_of = {}
         # Per streamed conv: its chunks, each chunk's weight bytes, its channels.
         streams: dict[str, tuple[int, int, int]] = {}
+        # Per streamed conv: its chunks, each its weights and then its bias.
+        pieces: dict[str, np.ndarray] = {}
         for op, inputs in steps:
             match op:
+                case Conv() if op.name in sliced:
+                    width, ic, oc = op.src.width, op.src.channels8, op.dst.channels8
+                    width_in = sliced[op.name]
+                    bias = np.zeros(oc, np.int32)
+                    bias[: op.dst.channels] = p.of(op.name, "bias")
+                    table = (
+                        [Buffer(initial_value=p.of(op.name, "table").astype(np.int8))]
+                        if op.act
+                        else []
+                    )
+                    # [OC/8][slice][slice/8][ky][kx][ic8][oc8]: a call's weights in a row.
+                    blocks = weights_of[op.name].reshape(
+                        oc // 8, ic // width_in, op.kernel**2 * width_in * 8
+                    )
+                    if op.name in streamed:
+                        pieces[op.name] = np.stack(
+                            [
+                                np.concatenate(
+                                    [block, bias[8 * c : 8 * c + 8].view(np.int8)]
+                                )
+                                for c in range(oc // 8)
+                                for block in blocks[c]
+                            ]
+                        )
+                        consts = table
+                    else:
+                        consts = [
+                            Buffer(initial_value=blocks.reshape(-1)),
+                            Buffer(initial_value=bias.view(np.int8)),
+                            *table,
+                        ]
+                    k = (
+                        kernels.conv2dk1_i8(
+                            width,
+                            ic,
+                            8,
+                            bias=True,
+                            table=op.act,
+                            rounding="conv_even",
+                            table_copies=copies,
+                            input_slice=width_in,
+                        )
+                        if op.kernel == 1
+                        else kernels.conv2dk3(
+                            width,
+                            ic,
+                            8,
+                            bias=True,
+                            table=op.act,
+                            stride=op.stride,
+                            rounding="conv_even",
+                            table_copies=copies,
+                            input_slice=width_in,
+                        )
+                    )
+                    arg(
+                        ("sums", op.name),
+                        Buffer(np.ndarray[(op.dst.width * 8,), np.dtype[np.int32]]),
+                    )
+                    for part in upsampled[op.name]:
+                        arg(
+                            ("upsampled", op.name, part.source.name, part.offset),
+                            Buffer(row(2 * part.size)),
+                        )
+                        arg(("copy", part.size, True), self.copier(part))
+                    shift = int(p.of(op.name, "shift"))
+                    scalars = (
+                        [width, ic, 8, shift]
+                        if op.kernel == 1
+                        else [width, ic, 8, 3, 3, None, shift]
+                    )
                 case Conv():
                     width, ic, oc = op.src.width, op.src.channels8, op.dst.channels8
                     weights = weights_of[op.name]
@@ -1444,8 +1439,8 @@ class SegmentDesign:
                                 for c in range(oc // chunk)
                             ]
                         )
-                        wts = self.weights(op, packed, per + 4 * chunk)
-                        consts = [wts.cons(depth=2), *table]
+                        pieces[op.name] = packed.reshape(oc // chunk, per + 4 * chunk)
+                        consts = table
                         streams[op.name] = (oc // chunk, per, chunk)
                     if op.kernel == 1:
                         k = kernels.conv2dk1_i8(
@@ -1455,6 +1450,7 @@ class SegmentDesign:
                             bias=True,
                             table=op.act,
                             rounding="conv_even",
+                            table_copies=copies,
                         )
                     elif op.groups == 1:
                         k = kernels.conv2dk3(
@@ -1463,18 +1459,42 @@ class SegmentDesign:
                             chunk,
                             bias=True,
                             table=op.act,
-                            stride=1,
+                            stride=op.stride,
                             rounding="conv_even",
+                            table_copies=copies,
+                        )
+                    elif op.stride == 1:
+                        # Over a concat, each part on its own channels.
+                        ((parts, *_),) = inputs
+                        channels = parts[0].size // width
+                        if len(parts) > 1:
+                            per = 9 * channels
+                            consts = [
+                                Buffer(initial_value=c)
+                                for i in range(len(parts))
+                                for c in (
+                                    weights[i * per : (i + 1) * per],
+                                    bias[i * channels : (i + 1) * channels],
+                                )
+                            ] + table
+                        k = kernels.bn_conv2dk3_dw(
+                            width,
+                            channels,
+                            channels,
+                            bias=True,
+                            table=op.act,
+                            rounding="conv_even",
+                            table_copies=copies,
                         )
                     else:
-                        k = kernels.bn_conv2dk3_dw(
-                            width, ic, oc, bias=True, table=op.act, rounding="conv_even"
+                        raise NotImplementedError(
+                            f"{op.name}: a strided depthwise conv"
                         )
-                    ((parts, _),) = inputs
-                    if len(parts) > 1:
+                    ((parts, *_),) = inputs
+                    if op.name in assembled:
                         arg(("assembled", op.name), Buffer(row(op.src.row_bytes)))
                         for part in parts:
-                            arg(("copy", part.size), self.copier(part))
+                            arg(("copy", part.size, part.upsample), self.copier(part))
                     scalars = (
                         [width, ic, chunk, int(p.of(op.name, "shift"))]
                         if op.kernel == 1
@@ -1499,12 +1519,86 @@ class SegmentDesign:
                     k = kernels.add(op.dst.row_bytes, dtype=np.int8)
                     consts = []
                     scalars = [sa - base, sb - base, so - base]
+                case MaxPool():
+                    k = kernels.maxpool2d(op.dst.width, op.dst.channels8)
+                    consts = []
+                    scalars = []
+                case InputQuant():
+                    k = self.input_quant_kernel(op)
+                    consts = []
+                    scalars = []
                 case _:
                     raise NotImplementedError(op.name)
             arg(("kernel", op.name), k)
+            kernel_of[op.name] = k
             for i, c in enumerate(consts):
                 arg(("const", op.name, i), c)
             calls[op.name] = (len(consts), scalars)
+
+        streams_sliced = {name for name in sliced if name in streamed}
+        # Packed as many chunks to a largest-chunk-sized slot as fit, each at
+        # its kernel's alignment: padded one to a slot, small chunks tripled
+        # the weight traffic.
+        size = max((chunks.shape[1] for chunks in pieces.values()), default=0)
+        packs: dict[str, int] = {}
+        pitches: dict[str, int] = {}
+        for name, chunks in pieces.items():
+            count, piece = chunks.shape
+            # A call's rows come first: a 3x3 conv's three, a 1x1's one.
+            weights_at = conv_of[name].kernel
+            align = max(
+                (
+                    a
+                    for i, a in kernel_of[name].contract.alignments
+                    if i in (weights_at, weights_at + 1)
+                ),
+                default=4,
+            )
+            pitches[name] = -(-piece // align) * align
+            lines = (
+                conv_of[name].src.channels8 // sliced[name]
+                if name in streams_sliced
+                else count
+            )
+            packs[name] = max(
+                g
+                for g in range(1, count + 1)
+                if (g - 1) * pitches[name] + piece <= size
+                and count % g == 0
+                and (lines % g == 0 or g % lines == 0)
+            )
+        if pieces:
+            each = [
+                (op.name, pieces[op.name][o : o + packs[op.name]])
+                for op, _ in steps
+                if op.name in pieces
+                for _ in range(rate[op.dst.name])
+                for o in range(0, len(pieces[op.name]), packs[op.name])
+            ]
+            sequence = np.zeros((len(each), size), np.int8)
+            for i, (name, chunks) in enumerate(each):
+                for j, chunk in enumerate(chunks):
+                    at_chunk = j * pitches[name]
+                    sequence[i, at_chunk : at_chunk + chunk.size] = chunk
+            sequence = sequence.reshape(-1)
+            name = f"weights{self.weight_streams}"
+            self.weight_streams += 1
+            if sequence.size <= self.resident_bytes:
+                wts = ObjectFifo(
+                    row(sequence.size),
+                    depth=1,
+                    name=name,
+                    consumer_obj_type=row(size),
+                    init_values=[sequence],
+                )
+                wts.prod().endpoint = ObjectFifoEndpoint(AnyMemTile.copy())
+                self.resident.append(sequence.size)
+            else:
+                wts = ObjectFifo(row(size), name=name)
+                tensor = Tensor(f"{group[0].name}/weights", 8, 1, sequence.size // 8)
+                self.loads.append((tensor, sequence))
+                self.fills.append(Fill(wts, tensor, Layout.REPEAT, chunk=total))
+            arg(("weights",), wts.cons(depth=2))
 
         def body(*values):
             arrived = {}
@@ -1527,198 +1621,324 @@ class SegmentDesign:
                     length,
                 )
 
+            def borders(center, height_in, y, height, stride):
+                """The rows above and below `center`, clamped at the map's edges, and a 3x3 kernel's border check for output row `y` of `height`."""
+                above = maxsi(center - 1, constant(0, index=True))
+                below = minsi(center + 1, constant(height_in - 1, index=True))
+                inner = (
+                    select(
+                        y == height - 1,
+                        constant(2, type=i32()),
+                        constant(1, type=i32()),
+                    )
+                    if stride == 1
+                    else constant(1, type=i32())
+                )
+                return above, below, select(y == 0, constant(0, type=i32()), inner)
+
             def convolve(op, k, rows, consts, target, scalars):
                 if op.name not in streams:
                     k(*rows, *consts, target, *scalars)
                     return
                 chunks, per, chunk = streams[op.name]
                 size = op.dst.width * chunk
-                wts, *rest = consts
-                for c in range(chunks):
+                piece = pitches[op.name]
+                g = packs[op.name]
+                wts = values[at[("weights",)]]
+                for o in range_(chunks // g):
                     wc = wts.acquire(1)
-                    k(
-                        *rows,
-                        view(wc, 0, per),
-                        view(wc, per, chunk, np.int32),
-                        *rest,
-                        view(target, c * size, size),
-                        *scalars,
-                    )
+                    for j in range_(g) if g > 1 else [0]:
+                        k(
+                            *rows,
+                            view(wc, j * piece, per),
+                            view(wc, j * piece + per, chunk, np.int32),
+                            *consts,
+                            view(target, (o * g + j) * size, size),
+                            *scalars,
+                        )
                     wts.release(1)
 
-            def step(s, steady):
-                arrived.clear()
-                for name in external:
-                    r = s - top + lead[name]
-                    if steady or 0 <= r < height:
-                        handle = values[at[("in", name)]]
-                        x = handle.acquire(1)
-                        if name in direct:
-                            arrived[name] = x
-                            continue
-                        lo = span[name][0]
-                        if kept[name] != tensors[name].row_bytes:
-                            x = view(x, lo, kept[name])
-                        values[at[("copy", kept[name])]](x, slot(name, r))
-                        handle.release(1)
-                for op, inputs in steps:
-                    name = op.dst.name
-                    y = s - top + lead[name]
-                    if not (steady or 0 <= y < height):
-                        continue
-                    count, scalars = calls[op.name]
-                    k = values[at[("kernel", op.name)]]
-                    consts = [values[at[("const", op.name, i)]] for i in range(count)]
-                    handle = values[at[("out", name)]] if name in outs else None
-                    o = handle.acquire(1) if handle is not None else None
-                    target = slot(name, y) if name in rings else o
-                    match op:
-                        case Conv() if op.kernel == 3:
-                            (((part,), _),) = inputs
-                            check = (
-                                1
-                                if steady or 0 < y < height - 1
-                                else (0 if y == 0 else 2)
+            def compute(op, inputs, y, target):
+                count, scalars = calls[op.name]
+                k = values[at[("kernel", op.name)]]
+                consts = [values[at[("const", op.name, i)]] for i in range(count)]
+                match op:
+                    case Conv() if op.name in sliced:
+                        ((parts, _, stride, height_in),) = inputs
+                        width_in = sliced[op.name]
+                        size = width_in * op.src.width
+                        # Per slice, the rows a call reads: a 1x1 its row, a
+                        # 3x3 its three lines.
+                        lines = []
+                        tail = list(scalars)
+                        if op.kernel == 3:
+                            ((part,),) = [parts]
+                            center = stride * y
+                            above, below, check = borders(
+                                center, height_in, y, op.dst.height, op.stride
                             )
-                            above = y if check == 0 else y - 1
-                            below = y if check == 2 else y + 1
+                            tail = [*scalars[:5], check, scalars[6]]
                             rows = [
                                 slot(part.source.name, r, part)
-                                for r in (above, y, below)
+                                for r in (above, center, below)
                             ]
-                            convolve(
-                                op,
-                                k,
-                                rows,
-                                consts,
-                                target,
-                                [*scalars[:5], check, *scalars[6:]],
-                            )
-                        case Conv():
-                            ((parts, _),) = inputs
-                            if len(parts) == 1:
-                                x = slot(parts[0].source.name, y, parts[0])
-                            else:
-                                x = values[at[("assembled", op.name)]]
-                                offset = 0
-                                for part in parts:
-                                    values[at[("copy", part.size)]](
-                                        slot(part.source.name, y, part),
-                                        view(x, offset, part.size),
+                            lines = [
+                                [view(r, i * size, size) for r in rows]
+                                for i in range(part.size // size)
+                            ]
+                        for part in parts if op.kernel == 1 else []:
+                            r = stride * y // 2 if part.upsample else stride * y
+                            source = slot(part.source.name, r, part)
+                            if part.upsample:
+                                up = values[
+                                    at[
+                                        (
+                                            "upsampled",
+                                            op.name,
+                                            part.source.name,
+                                            part.offset,
+                                        )
+                                    ]
+                                ]
+                                values[at[("copy", part.size, True)]](source, up)
+                                source = up
+                            count_in = (2 if part.upsample else 1) * part.size
+                            lines += [
+                                [view(source, i * size, size)]
+                                for i in range(count_in // size)
+                            ]
+                        sums = values[at[("sums", op.name)]]
+                        wts = (
+                            values[at[("weights",)]]
+                            if op.name in streams_sliced
+                            else None
+                        )
+                        size_out = op.dst.width * 8
+                        block = op.kernel**2 * width_in * 8
+                        piece = pitches.get(op.name, 0)
+                        # An object holds `g` slices of one group of 8 output
+                        # channels, or `h` whole groups.
+                        g = packs.get(op.name, 1)
+                        h = max(g // len(lines), 1)
+                        # Rolled over the output channels: a call per chunk of
+                        # 8 and slice is too much program to unroll.
+                        for o in range_(op.dst.channels8 // 8 // h):
+                            wc = wts.acquire(1) if wts is not None and h > 1 else None
+                            for hh in range_(h) if h > 1 else [0]:
+                                c = o * h + hh
+                                for i, x in enumerate(lines):
+                                    if wts is None:
+                                        w = view(
+                                            consts[0],
+                                            c * (len(lines) * block) + i * block,
+                                            block,
+                                        )
+                                        b = view(consts[1], c * 32, 8, np.int32)
+                                        rest = consts[2:]
+                                    else:
+                                        if h == 1 and i % g == 0:
+                                            wc = wts.acquire(1)
+                                        at_piece = (
+                                            (hh * len(lines) + i) * piece
+                                            if h > 1
+                                            else (i % g) * piece
+                                        )
+                                        w = view(wc, at_piece, block)
+                                        b = view(wc, at_piece + block, 8, np.int32)
+                                        rest = consts
+                                    k(
+                                        *x,
+                                        w,
+                                        b,
+                                        *rest,
+                                        sums,
+                                        view(target, c * size_out, size_out),
+                                        *tail,
+                                        i,
                                     )
-                                    offset += part.size
-                            convolve(op, k, [x], consts, target, scalars)
-                        case Add():
-                            ((pa,), _), ((pb,), _) = inputs
+                                    if wts is not None and h == 1 and i % g == g - 1:
+                                        wts.release(1)
+                            if wts is not None and h > 1:
+                                wts.release(1)
+                    case Conv() if op.kernel == 3 and len(inputs[0][0]) > 1:
+                        ((parts, _, stride, height_in),) = inputs
+                        above, below, check = borders(y, height_in, y, op.dst.height, 1)
+                        size = parts[0].size
+                        channels = size // op.src.width
+                        weights, rest = (
+                            consts[: 2 * len(parts)],
+                            consts[2 * len(parts) :],
+                        )
+                        for i, part in enumerate(parts):
                             k(
-                                slot(pa.source.name, y, pa),
-                                slot(pb.source.name, y, pb),
-                                target,
-                                *scalars,
+                                *[
+                                    slot(part.source.name, r, part)
+                                    for r in (above, y, below)
+                                ],
+                                weights[2 * i],
+                                weights[2 * i + 1],
+                                *rest,
+                                view(target, i * size, size),
+                                op.src.width,
+                                channels,
+                                channels,
+                                3,
+                                3,
+                                check,
+                                *scalars[6:],
                             )
-                    if handle is not None:
-                        if name in rings:
-                            values[at[("copy", tensors[name].row_bytes)]](
-                                slot(name, y), o
+                    case Conv() if op.kernel == 3:
+                        (((part,), _, stride, height_in),) = inputs
+                        center = stride * y
+                        above, below, check = borders(
+                            center, height_in, y, op.dst.height, op.stride
+                        )
+                        rows = [
+                            slot(part.source.name, r, part)
+                            for r in (above, center, below)
+                        ]
+                        convolve(
+                            op,
+                            k,
+                            rows,
+                            consts,
+                            target,
+                            [*scalars[:5], check, *scalars[6:]],
+                        )
+                    case Conv():
+                        ((parts, _, stride, _),) = inputs
+                        if op.name not in assembled:
+                            x = slot(parts[0].source.name, stride * y, parts[0])
+                        else:
+                            x = values[at[("assembled", op.name)]]
+                            offset = 0
+                            for part in parts:
+                                r = stride * y // 2 if part.upsample else stride * y
+                                width = 2 * part.size if part.upsample else part.size
+                                values[at[("copy", part.size, part.upsample)]](
+                                    slot(part.source.name, r, part),
+                                    view(x, offset, width),
+                                )
+                                offset += width
+                        convolve(op, k, [x], consts, target, scalars)
+                    case Add():
+                        ((pa,), *_), ((pb,), *_) = inputs
+                        k(
+                            slot(pa.source.name, y, pa),
+                            slot(pb.source.name, y, pb),
+                            target,
+                            *scalars,
+                        )
+                    case InputQuant():
+                        (((part,), *_),) = inputs
+                        k(slot(part.source.name, y, part), target)
+                    case MaxPool():
+                        (((part,), *_),) = inputs
+                        top = op.src.height - 1
+                        lines = [
+                            slot(
+                                part.source.name,
+                                minsi(
+                                    maxsi(r, constant(0, index=True)),
+                                    constant(top, index=True),
+                                ),
+                                part,
                             )
-                        handle.release(1)
-                for name in arrived:
-                    values[at[("in", name)]].release(1)
+                            for r in [y + d for d in range(-2, 3)]
+                        ]
+                        k(*lines, target)
 
-            # Rows every operator computes as a middle row, in every ring.
-            first, last = 0, height - 1 + top
-            for name in external:
-                first = max(first, top - lead[name])
-                last = min(last, height - 1 + top - lead[name])
-            for op, inputs in steps:
-                edge = 1 if isinstance(op, Conv) and op.kernel == 3 else 0
-                first = max(first, edge + top - lead[op.dst.name])
-                last = min(last, height - 1 - edge + top - lead[op.dst.name])
-            groups = max(0, (last - first + 1) // period)
-            for s in range(first):
-                step(s, False)
-            if groups:
-                for _ in range_(groups):
-                    for i in range(period):
-                        step(first + i, True)
-            for s in range(first + groups * period, height + top):
-                step(s, False)
+            def stepped(s):
+                """Step `s`, an index value: each row it takes, and each stretch of operators, under a guard that its rows are in their maps."""
+                for name in external:
+                    if name in direct:
+                        continue
+                    m = rate[name]
+                    for j in range(m):
+                        r = s * m + (j - m * delay[name])
+                        with if_((r >= 0) & (r < tensors[name].height)):
+                            handle = values[at[("in", name)]]
+                            x = handle.acquire(1)
+                            if kept[name] != tensors[name].row_bytes:
+                                x = view(x, span[name][0], kept[name])
+                            values[at[("copy", kept[name], False)]](x, slot(name, r))
+                            handle.release(1)
+                for stretch in stretches:
+                    d = delay[stretch[0][0].dst.name]
+                    names = {op.name for op, _ in stretch}
+                    reads = [
+                        name
+                        for name in external
+                        if name in direct
+                        and name not in per_row
+                        and delay[name] == d
+                        and readers[name][0][0].name in names
+                    ]
+                    # Every tensor's height is its rate times the shortest's.
+                    with if_((s >= d) & (s < d + shortest)) as branch:
+                        for name in reads:
+                            arrived[name] = values[at[("in", name)]].acquire(1)
+                        for op, inputs in stretch:
+                            name = op.dst.name
+                            m = rate[name]
+                            rows = [
+                                n
+                                for n in external
+                                if n in per_row and readers[n][0][0] is op
+                            ]
+                            for j in range(m):
+                                y = s * m + (j - m * d)
+                                handle = (
+                                    values[at[("out", name)]] if name in outs else None
+                                )
+                                o = handle.acquire(1) if handle is not None else None
+                                target = slot(name, y) if name in rings else o
+                                for n in rows:
+                                    arrived[n] = values[at[("in", n)]].acquire(1)
+                                compute(op, inputs, y, target)
+                                for n in rows:
+                                    values[at[("in", n)]].release(1)
+                                    del arrived[n]
+                                if handle is None:
+                                    continue
+                                copy = ("copy", tensors[name].row_bytes, False)
+                                if name in rings:
+                                    values[at[copy]](slot(name, y), o)
+                                for i in range(len(self.private_fifos[name])):
+                                    private = values[at[("private", name, i)]]
+                                    values[at[copy]](o, private.acquire(1))
+                                    private.release(1)
+                                handle.release(1)
+                        for name in reads:
+                            values[at[("in", name)]].release(1)
+                            del arrived[name]
+                    drained = sum(
+                        rate[op.dst.name] * len(pieces[op.name]) // packs[op.name]
+                        for op, _ in stretch
+                        if op.name in pieces
+                    )
+                    if drained:
+                        with else_(branch):
+                            wts = values[at[("weights",)]]
+                            for _ in range_(drained):
+                                wts.acquire(1)
+                                wts.release(1)
+
+            # The steps run as one loop: unrolled, the steps at either end of
+            # a map take more program than a tile has.
+            for s in range_(total):
+                stepped(s)
 
         self.workers.append(Worker(body, args))
 
-    def maxpool(self, op: MaxPool) -> None:
-        """A 5x5 pool; a pool of a pool carries its input's rows along in front of its own.
-
-        SPPF concatenates the input of a chain of three pools with all three
-        outputs. Carrying each pool's input along in its output stream makes
-        the three outputs one stream, so the concat reads two streams.
-        """
-        (part,) = self.parts(op.src)
-        if part.upsample:
-            raise NotImplementedError(f"{op.name}: a pool of an upsample")
-        carry = isinstance(self.producer.get(op.src.name), MaxPool)
-        if carry:
-            carried = part.source
-            stream = Tensor(
-                f"{op.name}/carry",
-                carried.channels + op.dst.channels,
-                op.dst.height,
-                op.dst.width,
-            )
-            for name, alias in list(self.alias.items()):
-                if alias.source == carried:
-                    self.alias[name] = Part(stream, alias.offset, alias.size)
-            if op.src.name not in self.alias:
-                self.alias[op.src.name] = Part(stream, 0, carried.row_bytes)
-            self.alias[op.dst.name] = Part(stream, carried.row_bytes, op.dst.row_bytes)
-        else:
-            stream = op.dst
-        self.local.add(stream.name)
-        height = op.dst.height
-        y = np.arange(height)
-        lo, hi = np.maximum(y - 2, 0), np.minimum(y + 2, height - 1)
-        depths = self.schedule(stream, [(part.source, lo, y + 2)])
-        k = kernels.maxpool2d(op.dst.width, op.dst.channels8)
-        copy = (
-            [self.copier(Part(part.source, 0, part.source.row_bytes))] if carry else []
-        )
-        source = self.consumer(part.source, depths[part.source.name], 5)
-        pooled_at = stream.row_bytes - op.dst.row_bytes
-
-        def body(src, out, k, *copy):
-            # The rows are few (20), so the window walks unrolled.
-            held = 0
-            for row in range(height):
-                if row and lo[row] > lo[row - 1]:
-                    src.release(int(lo[row] - lo[row - 1]))
-                rows = src.acquire(int(hi[row] - lo[row] + 1))
-                rows = rows if isinstance(rows, list) else [rows]
-                lines = [
-                    rows[min(max(r, 0), height - 1) - int(lo[row])]
-                    for r in range(row - 2, row + 3)
-                ]
-                if not part.whole:
-                    lines = [view(line, part.offset, part.size) for line in lines]
-                o = out.acquire(1)
-                k(*lines, view(o, pooled_at, op.dst.row_bytes) if carry else o)
-                if carry:
-                    copy[0](rows[row - int(lo[row])], view(o, 0, pooled_at))
-                out.release(1)
-                held = int(hi[row] - lo[row] + 1)
-            src.release(held)
-
-        self.workers.append(
-            Worker(body, [source, self.fifo(stream).prod(depth=2), k, *copy])
-        )
-
     def attention(self, op: Attention) -> None:
-        """Two workers per head: each stores the map's keys and values, then answers every other row of queries.
+        """One worker for every head, with PSA's positional conv and add after it.
 
-        A memtile splits each qkv row into every head's queries and its keys
-        and values. A head answers its first query only once it has every
-        key, so its queries wait in a tile of their own. A memtile joins the
-        two workers' rows in pairs, and the head's consumers take them a row
-        at a time.
+        Whole qkv rows come in as they are made, to store each head's keys
+        and values; the map's queries wait in a memtile, only their columns
+        sent on, and come once every key is in. The worker then makes the
+        positional conv over the values it stores and adds it in: its row is
+        the add's.
         """
         p = self.params
         (part,) = self.parts(op.qkv)
@@ -1728,23 +1948,6 @@ class SegmentDesign:
         height, width = qkv.height, qkv.width
         kd, hd = op.key_dim, op.head_dim
         per_head = (2 * kd + hd) * width
-        offsets, types = [], []
-        for h in range(op.heads):
-            offsets += [h * per_head, h * per_head + kd * width]
-            types += [row(kd * width), row((kd + hd) * width)]
-        pieces = (
-            self.fifo(qkv)
-            .cons(depth=2)
-            .split(
-                offsets,
-                obj_types=types,
-                depths=[2] * len(types),
-                names=[
-                    f"{self.fifo(qkv).name}_head{i // 2}{'kv' if i % 2 else 'q'}"
-                    for i in range(len(types))
-                ],
-            )
-        )
         s_qkv, s_q = p.scale(qkv.name), int(p.of(op.name, "q_scale"))
         s_s, s_p = int(p.of(op.name, "score_scale")), int(p.of(op.name, "prob_scale"))
         q_mul = int(p.of(op.name, "q_mul"))
@@ -1760,89 +1963,169 @@ class SegmentDesign:
         upstream = {qkv.name: np.full(height, height - 1)}
         for name, rows in self.need.get(qkv.name, {}).items():
             upstream[name] = np.full(height, rows[height - 1])
-        if height % 2:
-            raise NotImplementedError(f"{op.name}: an odd number of query rows")
-        # A memtile joins every worker's rows into pairs of the whole output
-        # row, the heads side by side; consumers take a row at a time.
-        self.need[op.dst.name] = upstream
-        self.heights[op.dst.name] = height
-        self.heights[qkv.name] = height
         size = hd * width
-        whole = op.dst.row_bytes
-        self.fifos[op.dst.name] = ObjectFifo(
-            row(2 * whole), name=f"t{len(self.fifos)}", consumer_obj_type=row(whole)
-        )
-        self.joined.add(op.dst.name)
-        name = self.fifo(op.dst).name
-        # In offset order: a join's inputs fill its object in turn.
-        rows = (
-            self.fifo(op.dst)
-            .prod(depth=2)
-            .join(
-                [j * whole + h * size for j in range(2) for h in range(op.heads)],
-                obj_types=[row(size)] * (2 * op.heads),
-                depths=[2] * (2 * op.heads),
-                names=[
-                    f"{name}_head{h}_rows{j}" for j in range(2) for h in range(op.heads)
-                ],
+        pe, add = self.tails[op.name]
+        if pe.kernel != 3 or pe.stride != 1 or pe.groups != pe.src.channels:
+            raise NotImplementedError(f"{pe.name}: not a 3x3 depthwise conv")
+        if pe.act:
+            raise NotImplementedError(f"{pe.name}: an activation")
+        self.need[add.dst.name] = upstream
+        self.heights[add.dst.name] = height
+        self.heights[qkv.name] = height
+        self.fifo(add.dst)
+        # A walk over the map's stream of rows: its memtile holds them all.
+        queries = (
+            self.reader(qkv)
+            .cons(depth=height)
+            .forward(
+                depth=2,
+                name=f"queries{self.holds}",
+                obj_type=row(op.heads * kd * width),
+                to_stream=TensorAccessPattern(
+                    (height * qkv.row_bytes,),
+                    0,
+                    [height, op.heads, kd * width],
+                    [qkv.row_bytes, per_head, 1],
+                ),
             )
         )
-        for h in range(op.heads):
-            halves = rows[h :: op.heads]
-            # Queries wait for every key, in DDR.
-            queries = self.spill(
-                pieces[2 * h], Tensor(f"{op.name}/head{h}/queries", kd, height, width)
+        pe_weights = pack_weights(pe, p.of(pe.name, "weight"))
+        pe_bias = np.zeros(pe.dst.channels8, np.int32)
+        pe_bias[: pe.dst.channels] = p.of(pe.name, "bias")
+        pe_shift = int(p.of(pe.name, "shift"))
+        k_pe = kernels.bn_conv2dk3_dw(width, 8, 8, bias=True, rounding="conv_even")
+        sa, sb, so = (
+            p.scale(add.a.name),
+            p.scale(add.b.name),
+            p.scale(add.dst.name),
+        )
+        base = min(sa, sb, so)
+        k_add = kernels.add(add.dst.row_bytes, dtype=np.int8)
+        attended_first = add.a.name == op.dst.name
+        # The map's stores outgrow one tile: the keys stay in the worker's
+        # own, the values go to a neighbour that runs no core. Placement
+        # cannot see a core's pinned tables before it is compiled, so a
+        # store beside another worker could overfill that tile.
+        home, store = AnyComputeTile.copy(), AnyComputeTile.copy()
+        stores = [
+            ObjectFifo(
+                np.ndarray[(height * width * n,), np.dtype[np.int8]],
+                depth=1,
+                name=f"{name}{h}_{self.holds}",
+                disable_synchronization=True,
+                delegate_tile=tile,
             )
-            for j, half in enumerate(halves):
-
-                def body(queries, keys, out, k, load, table, kt, v, j=j):
-                    # The rows are few (20), so the store walks unrolled.
-                    for r in range(height):
-                        kv = keys.acquire(1)
-                        load(
-                            view(kv, 0, kd * width),
-                            view(kv, kd * width, hd * width),
-                            kt,
-                            v,
-                            r,
-                        )
-                        keys.release(1)
-                    for _ in range_(height // 2):
-                        for i in range(2):
-                            q = queries.acquire(1)
-                            if i == j:
-                                o = out.acquire(1)
-                                k(q, kt, v, table, o, q_mul, *shifts)
-                                out.release(1)
-                            queries.release(1)
-
-                self.workers.append(
-                    Worker(
-                        body,
-                        [
-                            queries.cons(depth=2),
-                            pieces[2 * h + 1].cons(depth=2),
-                            half.prod(),
-                            k,
-                            k.load_kv,
-                            Buffer(
-                                initial_value=p.of(op.name, "exp_table").astype(
-                                    np.int32
-                                )
-                            ),
-                            Buffer(
-                                np.ndarray[(height * width * kd,), np.dtype[np.int8]]
-                            ),
-                            Buffer(
-                                np.ndarray[(height * width * hd,), np.dtype[np.int8]]
-                            ),
-                        ],
-                    )
-                )
-        self.virtual[op.values.name] = [
-            Part(qkv, h * per_head + 2 * kd * width, hd * width)
+            for name, n, tile in (("keys", kd, home), ("values", hd, store))
             for h in range(op.heads)
         ]
+
+        copies = self.copies(add.dst)
+
+        def together(rows, queries, out, k, load, k_pe, k_add, *rest):
+            table, w, b, attended, encoded = rest[:5]
+            filled = [s.acquire(1) for s in rest[5 : 5 + 2 * op.heads]]
+            for r in range_(height):
+                x = rows.acquire(1)
+                for h in range(op.heads):
+                    load(
+                        view(x, h * per_head + kd * width, kd * width),
+                        view(x, h * per_head + 2 * kd * width, hd * width),
+                        filled[h],
+                        filled[op.heads + h],
+                        index_cast(i32(), r),
+                    )
+                rows.release(1)
+            stored = [s.acquire(1) for s in rest[5 + 2 * op.heads : 5 + 4 * op.heads]]
+            copier = rest[5 + 4 * op.heads : 6 + 4 * op.heads]
+            privates = rest[6 + 4 * op.heads :]
+            kts, vs = stored[: op.heads], stored[op.heads :]
+
+            def answer(lines, check):
+                q = queries.acquire(1)
+                o = out.acquire(1)
+                for h in range(op.heads):
+                    k(
+                        view(q, h * kd * width, kd * width),
+                        kts[h],
+                        vs[h],
+                        table,
+                        view(attended, h * size, size),
+                        q_mul,
+                        *shifts,
+                    )
+                    # A store keeps each 8 values of a row together.
+                    for g in range_(hd // 8):
+                        k_pe(
+                            *[
+                                view(vs[h], g * (height * width * 8) + y, width * 8)
+                                for y in lines
+                            ],
+                            view(w, g * 72 + h * hd * 9, 72),
+                            view(b, g * 32 + h * hd * 4, 8, np.int32),
+                            view(encoded, g * (width * 8) + h * size, width * 8),
+                            width,
+                            8,
+                            8,
+                            3,
+                            3,
+                            check,
+                            pe_shift,
+                            0,
+                        )
+                pair = (attended, encoded) if attended_first else (encoded, attended)
+                k_add(*pair, o, sa - base, sb - base, so - base)
+                for private in privates:
+                    copier[0](o, private.acquire(1))
+                    private.release(1)
+                queries.release(1)
+                out.release(1)
+
+            line = width * 8
+            answer([0, 0, line], 0)
+            for r in range_(1, height - 1):
+                answer([(r - 1) * line, r * line, (r + 1) * line], 1)
+            answer([(height - 2) * line, (height - 1) * line, (height - 1) * line], 2)
+
+        self.workers.append(
+            Worker(
+                together,
+                [
+                    # One of each a time: the stores fill the tile. The next
+                    # image's rows wait in memtiles while this one's answers
+                    # are made, in half-map stages the memtiles have room for.
+                    self.hold(
+                        self.reader(qkv),
+                        height,
+                        qkv.row_bytes,
+                        stage_bytes=height // 2 * qkv.row_bytes,
+                    ).cons(depth=1),
+                    queries.cons(depth=1),
+                    self.fifo(add.dst).prod(depth=2),
+                    k,
+                    k.load_kv,
+                    k_pe,
+                    k_add,
+                    Buffer(initial_value=p.of(op.name, "exp_table").astype(np.int32)),
+                    Buffer(initial_value=pe_weights),
+                    Buffer(initial_value=pe_bias.view(np.int8)),
+                    Buffer(row(op.dst.row_bytes)),
+                    Buffer(row(pe.dst.row_bytes)),
+                    *[s.prod() for s in stores],
+                    *[s.cons() for s in stores],
+                    *(
+                        [self.copier(Part(add.dst, 0, add.dst.row_bytes))]
+                        + [fifo.prod(depth=2) for fifo in copies]
+                        if copies
+                        else []
+                    ),
+                ],
+                # aiecc measures a 6.4 KB stack and 6.1 KB of the kernel's
+                # own tables; stated, placement counts them beside the keys.
+                stack_size=7 * 1024,
+                data_size=13 * 512,
+                tile=home,
+            )
+        )
 
     def detect(self, op: DetectPost) -> None:
         """The end-to-end postprocess on one worker, from per-anchor records the host sends twice.
@@ -1888,7 +2171,7 @@ class SegmentDesign:
             raise NotImplementedError(f"{op.name}: some Detect outputs made here")
         first = 1 if made else 0
         for tensor in made:
-            self.staged.append((self.fifo(tensor).cons(depth=2), tensor))
+            self.staged.append((self.reader(tensor).cons(depth=2), tensor))
         for step in (first, first + 1):
             for tensor in op.scores:
                 self.fills.append(
@@ -2014,43 +2297,4 @@ class SegmentDesign:
                     *buffers,
                 ],
             )
-        )
-
-    def add(self, op: Add) -> None:
-        p = self.params
-        sa, sb, so = p.scale(op.a.name), p.scale(op.b.name), p.scale(op.dst.name)
-        base = min(sa, sb, so)
-        a_shift, b_shift, out_shift = sa - base, sb - base, so - base
-        k = kernels.add(op.dst.row_bytes, dtype=np.int8)
-        a, b = RowInput(self, op.a), RowInput(self, op.b)
-        # A core has two input DMA channels.
-        if len(a.sources) + len(b.sources) > 2:
-            if len(a.sources) > 1:
-                a = RowInput(self, self.assemble(op.a))
-            if len(b.sources) > 1:
-                b = RowInput(self, self.assemble(op.b))
-        if a.period != 1 or b.period != 1:
-            raise NotImplementedError(f"{op.name}: an add of an upsample")
-        if set(a.sources) & set(b.sources):
-            raise NotImplementedError(f"{op.name}: both operands read one stream")
-        depths = self.schedule(
-            op.dst, a.windows(op.dst.height) + b.windows(op.dst.height)
-        )
-        a.connect(self, depths)
-        b.connect(self, depths)
-
-        def body(*args):
-            args = list(args)
-            x, y = a.bind(args), b.bind(args)
-            out, k = args
-            for _ in range_(op.dst.height):
-                u, v = x.acquire(0), y.acquire(0)
-                o = out.acquire(1)
-                k(u, v, o, a_shift, b_shift, out_shift)
-                x.release(0)
-                y.release(0)
-                out.release(1)
-
-        self.workers.append(
-            Worker(body, [*a.fn_args, *b.fn_args, self.fifo(op.dst).prod(depth=2), k])
         )

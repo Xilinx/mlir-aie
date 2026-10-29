@@ -588,6 +588,12 @@ class TensorAccessPattern:
         is set on the fifo). Padding is applied last: a padded pattern cannot
         be reshaped further.
 
+        A forwarded ObjectFifo's `to_stream` that walks the whole stream of
+        input objects (overlapping windows, see `ObjectFifoHandle.forward`)
+        may pad only its outermost dimension, and there `(before, after)`
+        counts zero input objects ahead of and behind the stream rather than
+        constant elements around each pass.
+
         Args:
             padding (Sequence[Sequence[int]]): One `(before, after)` pair per
                 dimension, outermost first, as compile-time ints.

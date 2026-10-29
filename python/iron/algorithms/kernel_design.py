@@ -189,6 +189,13 @@ def _layout(c, i):
 def _out_tiles(fn, calls):
     """Output tiles a run drains: one per call, or one for all of them."""
     c = _contract(fn)
+    if c.out_last:
+        if calls != c.required_calls:
+            raise ValueError(
+                f"{fn.name}: out_last requires exactly {c.required_calls} call(s), "
+                f"got {calls}"
+            )
+        return 1
     if c.out_offset is None:
         return calls
     step = c.out_offset[1]
@@ -440,7 +447,7 @@ def _stage(fn, calls, scalars, params, stack_bytes, guard=False, arg_byte_offset
         + shifts
         + ([setter] if setter else []),
         iterations=calls,
-        outputs_span_iterations=offset is not None,
+        outputs_span_iterations=offset is not None or c.out_last,
         prologue=(lambda constants: constants[-1]()) if setter else None,
         initialize=initialize if initializers or guarded else None,
         stack_size=stack_bytes,
@@ -567,6 +574,7 @@ def design(
         raise ValueError(
             f"{fn.name}: the generic harness cannot build this kernel: {c.unsupported}"
         )
+    _out_tiles(fn, calls)
     _fifo_plan(fn)  # the DMA channel budget is checked before anything builds
     offsets = _byte_offsets(fn, arg_byte_offsets)
     flags: list[str] = list(aiecc_flags or ())

@@ -7,9 +7,8 @@
 
 // RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
 
-// A fifo may chain two links (one's output, the other's input), but not be
-// the input of two.
-// CHECK:   error: 'aie.objectfifo' op objectfifo cannot be in more than one ObjectFifoLinkOp, except as one link's output and another's input
+// Two links on one tile cannot both read a fifo with one consumer end there.
+// CHECK:   error: 'aie.objectfifo' op objectfifo is read by more ObjectFifoLinkOps on a tile than it has consumer ends there
 
 module @duplicate_link {
     aie.device(xcve2302) {

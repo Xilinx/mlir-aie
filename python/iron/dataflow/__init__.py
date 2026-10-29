@@ -20,6 +20,7 @@ One end managed, the other written by hand:
 [`ObjectFifoPool`][iron.ObjectFifoPool], [`PoolSegment`][iron.PoolSegment]
 """
 
+from ...dialects.aie import Packet, Port
 from .cascadeflow import CascadeFlow
 from .flow import Flow, FlowEndpoint, PacketDest, PacketFlow
 from .objectfifo import (
@@ -27,6 +28,7 @@ from .objectfifo import (
     ObjectFifoEndpoint,
     ObjectFifoHandle,
     ObjectFifoLink,
+    Transport,
 )
 from .objectfifopool import ObjectFifoPool, ObjectFifoPoolHandle, PoolSegment
 from .tile_dma import (
@@ -45,6 +47,9 @@ __all__ = [
     "ObjectFifoPoolHandle",
     "PoolSegment",
     "ObjectFifo",
+    "Packet",
+    "Port",
+    "Transport",
     "ObjectFifoHandle",
     "ObjectFifoLink",
     "ObjectFifoEndpoint",

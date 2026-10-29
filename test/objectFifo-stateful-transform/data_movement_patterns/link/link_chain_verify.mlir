@@ -58,7 +58,7 @@ module @output_of_two_links {
     %core13 = aie.tile(1, 3)
     aie.objectfifo @a (%core12, {%mem11}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b (%core13, {%mem11}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    // expected-error@+1 {{'aie.objectfifo' op objectfifo cannot be in more than one ObjectFifoLinkOp, except as one link's output and another's input}}
+    // expected-error@+1 {{'aie.objectfifo' op objectfifo cannot be filled by more than one ObjectFifoLinkOp}}
     aie.objectfifo @out (%mem11, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@a] -> [@out] ([] [])
     aie.objectfifo.link [@b] -> [@out] ([] [])

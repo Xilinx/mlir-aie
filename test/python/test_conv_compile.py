@@ -79,7 +79,7 @@ def test_convolution_compile_and_bounds(arch, name, dtype, mode, scalar):
         fn.source_file,
         arch,
         "-",
-        include_dirs=[str(_ROOT / "third_party/aie_api/include")],
+        include_dirs=[str(_ROOT / "third_party/aie_api/include"), *fn.include_dirs],
         compile_args=[*flags, "-fno-discard-value-names"],
         inline=True,
     )
@@ -104,7 +104,7 @@ def test_convolution_compile_and_bounds(arch, name, dtype, mode, scalar):
         fn.source_file,
         arch,
         "-",
-        include_dirs=[str(_ROOT / "third_party/aie_api/include")],
+        include_dirs=[str(_ROOT / "third_party/aie_api/include"), *fn.include_dirs],
         compile_args=flags,
     )
     obj = subprocess.run(command, capture_output=True)
