@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %python %s --device npu1 | FileCheck %s
-# RUN: %python %s --device npu2 | FileCheck %s
-# RUN: %python %s --device xcvc1902 | FileCheck %s
+# RUN: %PYTHON %s --device npu1 | FileCheck %s
+# RUN: %PYTHON %s --device npu2 | FileCheck %s
+# RUN: %PYTHON %s --device xcvc1902 | FileCheck %s
 
 """Model-based property test for --aie-create-pathfinder-flows.
 

@@ -62,6 +62,15 @@ xrt-smi examine
 
 ### Install AIETools
 
+> This section is optional. The Peano (llvm-aie) compiler installed in the
+> build instructions below builds and runs the full IRON/NPU flow on its own; `find_package(Vitis)`
+> in the top-level `CMakeLists.txt` is not `REQUIRED`, so configuring without
+> Vitis AIE Essentials (or passing `-DAIE_BUILD_CHESS_CLANG=OFF`) builds the rest
+> of the tree normally. Vitis is only needed for the `xchesscc` backend and the
+> small number of tests and kernels tagged `REQUIRES: chess`. Skip straight to
+> [Install IRON and MLIR-AIE Prerequisites](#install-iron-and-mlir-aie-prerequisites)
+> if you don't need it.
+
 1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
    > This is an early access lounge, you must register and be granted access at this time.
