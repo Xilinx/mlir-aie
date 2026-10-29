@@ -66,7 +66,7 @@ from ml_dtypes import bfloat16
 from ....helpers.npdtypes import np_ndarray_type_get_dtype, np_ndarray_type_get_shape
 from ....helpers.taplib import PerCall
 from ... import bfp
-from .params import Member, OperatorParam, _text, resolve
+from .params import Member, OperatorParam, Select, _text, resolve
 
 T = TypeVar("T")
 
@@ -181,19 +181,26 @@ class _Operand(Member):
 
     @property
     def streamed(self) -> bool:
-        return self.obj_dims is not None
+        """Whether the tensor streams: on a class, whether it may; on an
+        operator, also whether an obj_shape ``Select`` picks a stream there.
+        """
+        if self.obj_dims is None:
+            return False
+        return self.op is None or not any(
+            isinstance(d, Select) and d.branch(self.op) is None for d in self.obj_dims
+        )
 
     @property
     def obj_shape(self) -> tuple[int, ...]:
-        if self.obj_dims is None:
-            raise TypeError(f"{self.name} is declared without an obj_shape=: no stream")
+        if not self.streamed:
+            raise TypeError(f"{self.name} has no obj_shape here: no stream")
         return resolve(self.obj_dims, self.op)
 
     @property
     def lanes(self) -> int:
         """The stream's ObjectFifos."""
-        if self.obj_dims is None:
-            raise TypeError(f"{self.name} is declared without an obj_shape=: no stream")
+        if not self.streamed:
+            raise TypeError(f"{self.name} has no obj_shape here: no stream")
         return 1 if self.per is None else math.prod(resolve(self.per, self.op))
 
     def __repr__(self) -> str:

@@ -270,14 +270,15 @@ def per_call(
 class Select:
     """A shape chosen by a flag the caller gives or defaults, never inferred.
 
-    ``Select(b_col_maj, (N, K), (K, N))``.
+    ``Select(b_col_maj, (N, K), (K, N))``. As an operand's whole
+    ``obj_shape``, a None branch is no stream: ``Select(feed_b, (K,), None)``.
     """
 
     flag: OperatorParam
-    when_true: tuple
-    when_false: tuple
+    when_true: tuple | None
+    when_false: tuple | None
 
-    def branch(self, op) -> tuple:
+    def branch(self, op) -> tuple | None:
         """Return the dimensions the flag picks on ``op``."""
         flag = getattr(op, self.flag.name)
         if flag is None:
@@ -325,10 +326,11 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
 def _text(d) -> str:
     """Return a declared dimension as its declaration spells it."""
     if isinstance(d, Select):
-        true, false = ", ".join(map(_text, d.when_true)), ", ".join(
-            map(_text, d.when_false)
+        true, false = (
+            "None" if b is None else f"({', '.join(map(_text, b))})"
+            for b in (d.when_true, d.when_false)
         )
-        return f"Select({d.flag.name}, ({true}), ({false}))"
+        return f"Select({d.flag.name}, {true}, {false})"
     return d.name if isinstance(d, OperatorParam) else repr(d)
 
 

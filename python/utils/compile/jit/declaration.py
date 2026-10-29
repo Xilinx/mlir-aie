@@ -41,7 +41,7 @@ def _names(dims) -> set[str]:
         if isinstance(d, OperatorParam):
             out.add(d.name)
         elif isinstance(d, Select):
-            out |= _names((d.flag, *d.when_true, *d.when_false))
+            out |= _names((d.flag, *(d.when_true or ()), *(d.when_false or ())))
     return out
 
 
@@ -49,7 +49,7 @@ def _leaves(dims):
     """Yield the dimensions ``dims`` may resolve to, through nested ``Select``."""
     for d in dims:
         if isinstance(d, Select):
-            yield from _leaves(d.when_true + d.when_false)
+            yield from _leaves((d.when_true or ()) + (d.when_false or ()))
         else:
             yield d
 
@@ -227,6 +227,13 @@ class Declaration:
             raise TypeError(
                 f"{where}: like={m.like!r} must be an input of {owner.__name__} with no when="
             )
+        if any(
+            isinstance(d, Select) and None in (d.when_true, d.when_false)
+            for d in m.dims
+        ):
+            raise TypeError(
+                f"{where}: a Select() with a None branch picks no stream, so it is an obj_shape, not a dimension"
+            )
         for leaf in _leaves(m.dims):
             if _foreign(leaf, owner):
                 raise TypeError(
@@ -253,7 +260,20 @@ class Declaration:
             raise TypeError(
                 f"{where}: when={m.when!r} must be a param(), the flag the operand exists under"
             )
-        for d in m.obj_dims or ():
+        obj_dims = m.obj_dims or ()
+        optional = [
+            d
+            for d in obj_dims
+            if isinstance(d, Select) and None in (d.when_true, d.when_false)
+        ]
+        if optional and len(obj_dims) != 1:
+            raise TypeError(
+                f"{where}: a Select() with a None branch is the whole obj_shape, the stream it gives or not"
+            )
+        for d in (
+            *_leaves(obj_dims),
+            *(d.flag for d in obj_dims if isinstance(d, Select)),
+        ):
             if _foreign(d, owner):
                 raise TypeError(
                     f"{where}: obj_shape dimension {d!r} is not a param(), a tunable() or an integer"

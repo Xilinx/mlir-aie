@@ -127,11 +127,27 @@ def test_a_replicated_operand_needs_a_split():
         In(Op.M, replicate=True)
 
 
+class MaybeStreamed(Operator):
+    K: int = param()
+    fed: bool = tunable(default=False, domain=(False, True))
+    x = In(K, obj_shape=Select(fed, (K,), None))
+
+
+def test_a_select_obj_shape_streams_only_where_its_flag_picks_a_shape():
+    assert MaybeStreamed.x.streamed
+    off = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=False))
+    assert not off.streamed
+    with pytest.raises(TypeError, match="x has no obj_shape here: no stream"):
+        off.lanes
+    on = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=True))
+    assert on.streamed and on.obj_shape == (64,) and on.lanes == 1
+
+
 def test_an_unstreamed_operand_has_no_element_or_lanes():
     c = Streams.c.of(streams())
-    with pytest.raises(TypeError, match="c is declared without an obj_shape="):
+    with pytest.raises(TypeError, match="c has no obj_shape here: no stream"):
         c.obj_shape
-    with pytest.raises(TypeError, match="c is declared without an obj_shape="):
+    with pytest.raises(TypeError, match="c has no obj_shape here: no stream"):
         c.lanes
 
 
