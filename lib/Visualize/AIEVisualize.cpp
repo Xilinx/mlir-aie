@@ -175,6 +175,7 @@ struct SemanticNode {
   std::optional<PortNode> port;
   SourceLocations source;
   std::string label;
+  std::string semanticID;
 };
 
 /// Which two things an edge joins. That is its whole identity: what it
@@ -213,9 +214,11 @@ struct SemanticGraph {
   void addNode(StringRef id, SemanticNodeKind kind,
                std::optional<std::pair<int, int>> tile = std::nullopt,
                std::optional<PortNode> port = std::nullopt,
-               SourceLocations source = {}, StringRef label = {}) {
+               SourceLocations source = {}, StringRef label = {},
+               StringRef semanticID = {}) {
     auto [entry, inserted] = nodes.try_emplace(
-        id.str(), SemanticNode{kind, tile, port, source, label.str()});
+        id.str(),
+        SemanticNode{kind, tile, port, source, label.str(), semanticID.str()});
     if (!inserted) {
       absorbSourceLocations(entry->second.source, source);
       if (entry->second.label.empty())
@@ -1460,6 +1463,20 @@ static std::string runtimeArgumentNodeID(unsigned id) {
   return "runtime_arg_" + std::to_string(id);
 }
 
+static std::map<int, std::string>
+runtimeArgumentNodeIDs(const RuntimeArgumentInfo &argument) {
+  std::set<int> columns;
+  for (const DMAChannelKey &channel : argument.channels)
+    columns.insert(std::get<0>(channel));
+  std::map<int, std::string> result;
+  std::string semanticID = runtimeArgumentNodeID(argument.id);
+  for (int column : columns)
+    result[column] = columns.size() == 1
+                         ? semanticID
+                         : semanticID + "_col_" + std::to_string(column);
+  return result;
+}
+
 /// How far back from the tip an arrowhead's base sits, in inches: ten
 /// points of head at the 0.65 arrowsize the edges are drawn with.
 static constexpr double kArrowLength = 10.0 * 0.65 / 72.0;
@@ -1623,14 +1640,18 @@ static SemanticGraph buildSemanticGraph(
   }
 
   for (const RuntimeArgumentInfo &argument : runtimeArguments) {
-    std::string argumentID = runtimeArgumentNodeID(argument.id);
+    std::string semanticID = runtimeArgumentNodeID(argument.id);
+    std::map<int, std::string> argumentIDs = runtimeArgumentNodeIDs(argument);
     SourceLocations argumentSource = sourceLocations(argument.loc);
-    graph.addNode(argumentID, SemanticNodeKind::RuntimeArgument, std::nullopt,
-                  std::nullopt, argumentSource, argument.name);
+    for (const auto &[column, argumentID] : argumentIDs)
+      graph.addNode(argumentID, SemanticNodeKind::RuntimeArgument,
+                    std::make_pair(column, 0), std::nullopt, argumentSource,
+                    argument.name, semanticID);
     for (const DMAChannelKey &key : argument.channels) {
       auto [col, row, direction, channel] = key;
       PortNode port{col, row, AIE::WireBundle::DMA, channel, direction};
       std::string portID = addPort(port);
+      const std::string &argumentID = argumentIDs.at(col);
       std::string source =
           direction == AIE::DMAChannelDir::MM2S ? argumentID : portID;
       std::string dest =
@@ -1888,6 +1909,8 @@ static void writeSemanticGraphJson(AIE::DeviceOp device,
                         {"kind", semanticNodeKindName(node.kind)},
                         {"label", node.label.empty() ? id : node.label},
                         {"sources", sourceLocationsJson(node.source)}};
+    if (!node.semanticID.empty())
+      object["semanticId"] = node.semanticID;
     if (node.tile)
       object["tile"] = json::Array{node.tile->first, node.tile->second};
     if (node.port) {
@@ -2337,21 +2360,28 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   double localNodeWidth = std::max(
       layout.text(0.8), std::min(contentWidth, tileWidth - layout.text(0.4)));
 
-  auto argumentPoint = [&, localNodeWidth](size_t index) -> Point {
-    std::set<int> designColumns;
-    for (auto [col, row] : designTiles)
-      designColumns.insert(col);
-    double designLeft = layout.tileCenterX(*designColumns.begin());
-    double designRight = layout.tileCenterX(*designColumns.rbegin());
-    double center = (designLeft + designRight) / 2;
-    double spacing = localNodeWidth + layout.text(0.3);
-    if (runtimeArguments.size() > 1)
-      spacing = std::max(spacing, (designRight - designLeft) /
-                                      (runtimeArguments.size() - 1));
-    double left = center - spacing * (runtimeArguments.size() - 1) / 2;
-    // Far enough below the array to leave a band the runs reaching an
-    // argument can travel along without touching the arguments themselves.
-    return {left + index * spacing, layout.channelY(0) - layout.tileGapY * 1.3};
+  struct RuntimeArgumentAlias {
+    const RuntimeArgumentInfo *argument;
+    std::string id;
+    std::string semanticID;
+    int column;
+  };
+  std::vector<RuntimeArgumentAlias> argumentAliases;
+  for (const RuntimeArgumentInfo &argument : runtimeArguments) {
+    std::string semanticID = runtimeArgumentNodeID(argument.id);
+    for (const auto &[column, id] : runtimeArgumentNodeIDs(argument))
+      if (topologyNodes.count(id))
+        argumentAliases.push_back({&argument, id, semanticID, column});
+  }
+  std::map<int, unsigned> aliasesPerColumn;
+  std::map<std::string, unsigned> aliasSlot;
+  for (const RuntimeArgumentAlias &alias : argumentAliases)
+    aliasSlot[alias.id] = aliasesPerColumn[alias.column]++;
+  auto argumentPoint = [&](const RuntimeArgumentAlias &alias) {
+    double spacing = layout.text(0.72);
+    return Point{layout.tileLeft(alias.column) - layout.text(0.7),
+                 layout.channelY(0) - layout.tileGapY * 1.3 -
+                     aliasSlot.at(alias.id) * spacing};
   };
 
   std::map<Operation *, unsigned> bufferIDs;
@@ -2389,15 +2419,10 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
                 localNodeWidth / 2,
                 0.15};
   }
-  for (auto [index, argument] : llvm::enumerate(runtimeArguments)) {
-    std::string id = runtimeArgumentNodeID(argument.id);
-    ends[id] = {id,
-                {0, 0},
-                AIE::EndKind::External,
-                0,
-                argumentPoint(index),
-                localNodeWidth / 2,
-                0.15};
+  for (const RuntimeArgumentAlias &alias : argumentAliases) {
+    ends[alias.id] = {alias.id, {alias.column, 0},    AIE::EndKind::External,
+                      0,        argumentPoint(alias), localNodeWidth / 2,
+                      0.15};
   }
   // A flow with no stated source or destination is anchored to the tile it
   // leaves from or arrives at, so it has somewhere to come from rather than
@@ -2443,8 +2468,9 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
   };
 
   double legendX = layout.tileCenterX(0) - options.tileWidth / 2;
-  double legendY = (runtimeArguments.empty() ? layout.channelY(0)
-                                             : argumentPoint(0).second) -
+  double legendY = (argumentAliases.empty()
+                        ? layout.channelY(0)
+                        : argumentPoint(argumentAliases.front()).second) -
                    1.0;
   std::vector<uint64_t> legendSamples;
   if (weightScale.enabled) {
@@ -2857,19 +2883,16 @@ static LogicalResult emitDeviceRouteDot(AIE::DeviceOp device,
            << "\", fontcolor=\"" << palette.tileText << "\", " << "color=\""
            << palette.boxEdge << "\"];\n";
   }
-  for (auto [index, argument] : llvm::enumerate(runtimeArguments)) {
-    std::string id = runtimeArgumentNodeID(argument.id);
-    if (!topologyNodes.count(id))
-      continue;
-    auto [x, y] = argumentPoint(index);
-    output << "  " << id << " [shape=ellipse, fixedsize=true, width="
+  for (const RuntimeArgumentAlias &alias : argumentAliases) {
+    auto [x, y] = argumentPoint(alias);
+    output << "  " << alias.id << " [shape=ellipse, fixedsize=true, width="
            << layout.size(localNodeWidth)
            << ", height=" << layout.size(layout.text(0.52)) << ", pos=\""
            << layout.pos(x, y) << "\", label=\"%"
-           << escapeDotLabel(argument.name) << "\", id=\"" << id
+           << escapeDotLabel(alias.argument->name) << "\", id=\"" << alias.id
            << "\", class=\""
-           << flowClasses("runtime-argument", boundaryOfNode(id),
-                          membershipOfNode(id))
+           << flowClasses("runtime-argument semantic-id-" + alias.semanticID,
+                          boundaryOfNode(alias.id), membershipOfNode(alias.id))
            << R"(", fontsize=8, style="rounded,filled", fillcolor=")"
            << palette.argumentFill << "\", color=\"" << palette.argumentEdge
            << "\", fontcolor=\"" << palette.tileText << "\"];\n";

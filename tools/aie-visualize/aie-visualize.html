@@ -56,6 +56,8 @@ svg.uniform-width g.edge.flow path { stroke-width: var(--uniform-width, 1px); }
 svg g.flow { opacity: 1; }
 svg.highlighting g.flow:not(.highlighted) { opacity: 0.07; }
 svg.highlighting g.flow.highlighted { opacity: 1; }
+svg g.semantic-selected > :not(title),
+svg g.semantic-hovered > :not(title) { filter: brightness(0.82); }
 @media (max-width: 900px) {
   #workspace { grid-template-columns: 144px minmax(0, 1fr); grid-template-rows: minmax(280px, 58%) minmax(220px, 42%); }
   #source-pane { grid-column: 1 / -1; border-left: 0; border-top: 1px solid #cbd3cf; }
@@ -151,8 +153,12 @@ function parseSVG(text) {
 }
 
 function createSourceViewer(graph, graphError) {
-  const elements = new Map([...graph.nodes, ...graph.edges]
-    .map(element => [element.id, element.sources || []]));
+  const elements = new Map();
+  [...graph.nodes, ...graph.edges].forEach(element => {
+    elements.set(element.id, element.sources || []);
+    if (element.semanticId)
+      elements.set(element.semanticId, element.sources || []);
+  });
   const cache = new Map();
   let activeSources = [];
   let activeFile = null;
@@ -267,8 +273,17 @@ function initializeViewer(svg, graph, graphError) {
   };
   const setViewBox = () => svg.setAttribute("viewBox", viewBox.join(" "));
   const classesMatching = (element, pattern) =>
-    [...element.classList].filter(name => pattern.test(name));
+    [...(element?.classList || [])].filter(name => pattern.test(name));
   const classMatching = (element, pattern) => classesMatching(element, pattern)[0];
+  const semanticClass = element => classMatching(element, /^semantic-id-/);
+  const sameSemanticObject = (first, second) => {
+    const semantic = semanticClass(first);
+    return semantic ? second?.classList.contains(semantic) : first === second;
+  };
+  const semanticObjects = element => {
+    const semantic = semanticClass(element);
+    return semantic ? [...svg.querySelectorAll(`g.${semantic}`)] : [element];
+  };
   const incomingClasses = element => classesMatching(element, /^fate-/);
   const outgoingClasses = element => classesMatching(element, /^origin-/);
   const boundaryClass = element => classMatching(element, /^boundary-/);
@@ -282,11 +297,11 @@ function initializeViewer(svg, graph, graphError) {
       ? element.classList.contains(`${relation}-${boundary}`)
       : overlaps(referenceClasses(element), referenceClasses(reference));
   };
-  const matches = (element, reference) =>
+  const matches = (element, reference) => semanticObjects(reference).some(alias =>
     (highlightIncoming &&
-     matchesDirection(element, reference, "fate", incomingClasses)) ||
+     matchesDirection(element, alias, "fate", incomingClasses)) ||
     (highlightOutgoing &&
-     matchesDirection(element, reference, "origin", outgoingClasses));
+     matchesDirection(element, alias, "origin", outgoingClasses)));
   const renderHighlight = () => {
     const reference = selectedElement || hoveredElement;
     const flows = svg.querySelectorAll("g.flow");
@@ -296,10 +311,20 @@ function initializeViewer(svg, graph, graphError) {
     flows.forEach(element => {
       element.classList.toggle("highlighted", Boolean(active && matches(element, reference)));
     });
+    svg.querySelectorAll("g.node, g.edge").forEach(element => {
+      element.classList.toggle("semantic-selected",
+        Boolean(selectedElement && sameSemanticObject(element, selectedElement)));
+      element.classList.toggle("semantic-hovered",
+        Boolean(!selectedElement && hoveredElement &&
+          sameSemanticObject(element, hoveredElement)));
+    });
     flowList.querySelectorAll(".flow-row").forEach(row => {
       const name = row.dataset.flow;
-      const selected = selectedElement?.classList.contains(name) || false;
-      const hovered = !selectedElement && hoveredElement?.classList.contains(name);
+      const selected = selectedElement && semanticObjects(selectedElement)
+        .some(element => element.classList.contains(name));
+      const hovered = !selectedElement && hoveredElement &&
+        semanticObjects(hoveredElement)
+          .some(element => element.classList.contains(name));
       row.classList.toggle("selected", selected);
       row.classList.toggle("hover-active", hovered);
       row.querySelector("input").checked = selected;
@@ -311,7 +336,7 @@ function initializeViewer(svg, graph, graphError) {
     renderHighlight();
   };
   const toggleSelection = element => {
-    selectedElement = selectedElement === element ? null : element;
+    selectedElement = sameSemanticObject(selectedElement, element) ? null : element;
     renderHighlight();
   };
 

@@ -36,7 +36,10 @@
 // CHECK: source.origin !== base.origin || !source.pathname.startsWith(base.pathname)
 // CHECK: Source path ${file} escapes the configured source root
 // CHECK: function createSourceViewer(graph, graphError)
-// CHECK: const elements = new Map([...graph.nodes, ...graph.edges]
+// CHECK: const elements = new Map()
+// CHECK: elements.set(element.id, element.sources || [])
+// CHECK: if (element.semanticId)
+// CHECK-NEXT: elements.set(element.semanticId, element.sources || [])
 // CHECK: let activeElement;
 // CHECK: const highlighted = new Set(source?.lines || [])
 // CHECK: row.className = `source-line${highlighted.has(number) ? " highlighted" : ""}`
@@ -58,9 +61,9 @@
 // CHECK: element.classList.contains(`${relation}-${boundary}`)
 // CHECK: const matches = (element, reference)
 // CHECK: (highlightIncoming &&
-// CHECK: matchesDirection(element, reference, "fate", incomingClasses)) ||
+// CHECK: matchesDirection(element, alias, "fate", incomingClasses)) ||
 // CHECK: (highlightOutgoing &&
-// CHECK: matchesDirection(element, reference, "origin", outgoingClasses))
+// CHECK: matchesDirection(element, alias, "origin", outgoingClasses))
 // CHECK: const active = reference?.classList.contains("flow") &&
 // CHECK: addSetting("Incoming"
 // CHECK: addSetting("Outgoing"

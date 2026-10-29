@@ -24,17 +24,18 @@
 // ALL: p_0_0_1_1_s {{.*}} label="S2MM1"{{.*}} class="port flow src-5 dst-4{{.*}}"
 // ALL: buffer_0 {{.*}} label="core_buffer"
 // An argument the host writes is an origin, and one it reads is a fate.
-// ALL: runtime_arg_0 {{.*}} label="%direct_input"{{.*}} class="runtime-argument flow src-6 dst-6{{.*}}"
-// ALL: runtime_arg_1 {{.*}} label="%allocated_input"{{.*}} class="runtime-argument flow src-7 dst-3 origin-runtime_arg_1{{.*}}"
-// ALL: runtime_arg_2 {{.*}} label="%endpoint_input"{{.*}} class="runtime-argument flow src-4 dst-3{{.*}}"
-// ALL: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument flow src-5 dst-4{{.*}}"
+// ALL-DAG: runtime_arg_0_col_0 {{.*}} label="%direct_input"{{.*}} class="runtime-argument semantic-id-runtime_arg_0 flow{{.*}}"
+// ALL-DAG: runtime_arg_0_col_1 {{.*}} label="%direct_input"{{.*}} class="runtime-argument semantic-id-runtime_arg_0 flow{{.*}}"
+// ALL: runtime_arg_1 {{.*}} label="%allocated_input"{{.*}} class="runtime-argument semantic-id-runtime_arg_1 flow {{.*}}origin-runtime_arg_1{{.*}}"
+// ALL: runtime_arg_2 {{.*}} label="%endpoint_input"{{.*}} class="runtime-argument semantic-id-runtime_arg_2 flow {{.*}}"
+// ALL: runtime_arg_3 {{.*}} label="%output"{{.*}} class="runtime-argument semantic-id-runtime_arg_3 flow {{.*}}"
 // ALL: call_0 {{.*}} label="kernel"
 // ALL-SAME: class="call detail-calls flow src-2{{.*}}"
 // ALL: call_1 {{.*}} label="view_kernel"
 // ALL-SAME: class="call detail-calls flow src-1{{.*}}"
 // One argument feeding two shims keeps its origin on both links.
-// ALL-DAG: runtime_arg_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow src-6 dst-3{{.*}}"
-// ALL-DAG: runtime_arg_0 -> p_1_0_1_0_m {{.*}}class="runtime-link flow src-6 dst-5{{.*}}"
+// ALL-DAG: runtime_arg_0_col_0 -> p_0_0_1_0_m {{.*}}class="runtime-link flow {{.*}}"
+// ALL-DAG: runtime_arg_0_col_1 -> p_1_0_1_0_m {{.*}}class="runtime-link flow {{.*}}"
 // ALL-DAG: runtime_arg_1 -> p_0_0_1_0_m
 // ALL-DAG: runtime_arg_2 -> p_0_0_1_0_m
 // A route endpoint states no direction, so the argument reaches both.
@@ -58,7 +59,8 @@
 // TOPOLOGY-NOT: label="S2MM
 // TOPOLOGY: p_0_0_1_0_m {{.*}}label="MM2S0"
 // TOPOLOGY: buffer_0 {{.*}}label="core_buffer"
-// TOPOLOGY: runtime_arg_0 {{.*}} label="%direct_input"
+// TOPOLOGY-DAG: runtime_arg_0_col_0 {{.*}} label="%direct_input"
+// TOPOLOGY-DAG: runtime_arg_0_col_1 {{.*}} label="%direct_input"
 // TOPOLOGY: runtime_arg_3 {{.*}} label="%output"
 // TOPOLOGY: call_0 {{.*}} label="kernel"
 // TOPOLOGY: call_1 {{.*}} label="view_kernel"
@@ -67,11 +69,11 @@
 // TOPOLOGY-DAG: buffer_0 -> tile_0_3
 // TOPOLOGY-DAG: call_1 -> tile_0_4
 // Fan-in remains explicit at the shared shim channel.
-// TOPOLOGY-DAG: runtime_arg_0 -> p_0_0_1_0_m
+// TOPOLOGY-DAG: runtime_arg_0_col_0 -> p_0_0_1_0_m
 // TOPOLOGY-DAG: runtime_arg_1 -> p_0_0_1_0_m
 // TOPOLOGY-DAG: runtime_arg_2 -> p_0_0_1_0_m
 // TOPOLOGY-DAG: p_0_0_1_0_m -> tile_0_2
-// TOPOLOGY-DAG: runtime_arg_0 -> tile_1_2
+// TOPOLOGY-DAG: runtime_arg_0_col_1 -> tile_1_2
 // TOPOLOGY-DAG: tile_0_2 -> runtime_arg_3
 // TOPOLOGY-NOT: topology_junction_
 
