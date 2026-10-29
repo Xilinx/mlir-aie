@@ -127,7 +127,8 @@ struct AIEObjectFifoVerifyPass
   }
 
   /// An endpoint that is not connected carries data nowhere.
-  LogicalResult verifyFlows(DeviceOp device, SymbolTableCollection &symbolTables) {
+  LogicalResult verifyFlows(DeviceOp device,
+                            SymbolTableCollection &symbolTables) {
     DenseMap<StringRef, int> appearances;
     for (auto flow : device.getOps<RouteOp>()) {
       for (StringRef source : flow.getSourceNames()) {
@@ -246,7 +247,8 @@ struct AIEObjectFifoVerifyPass
   /// arrives, and a packet is one pass of its sender's chain, so every end has
   /// to move the same number of elements or two senders share an object. A
   /// route endpoint's transfers are the runtime's and are not checked here.
-  LogicalResult verifyFanIn(DeviceOp device, SymbolTableCollection &symbolTables) {
+  LogicalResult verifyFanIn(DeviceOp device,
+                            SymbolTableCollection &symbolTables) {
     for (auto flow : device.getOps<RouteOp>()) {
       if (!flow.isFanIn()) {
         continue;
