@@ -1,0 +1,5 @@
+{
+  "edges": [
+    {"id": "edge_good", "source": "source", "target": "target"}
+  ]
+}
