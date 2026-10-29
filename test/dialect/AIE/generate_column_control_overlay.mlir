@@ -122,14 +122,14 @@ aie.device(npu1_2col) {
 // round-robin shim dma channel assignment to cover all 5 tiles in a column
 
 // CHECK-LABEL: module {
-// CHECK: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
-// CHECK: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
-// CHECK: %[[tile_0_2:.*]] = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// CHECK: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-// CHECK: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
-// CHECK: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
-// CHECK: %[[tile_1_0:.*]] = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// CHECK: %[[tile_1_1:.*]] = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 7>}
+// CHECK: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_id = 4>}
+// CHECK: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_id = 3>}
+// CHECK: %[[tile_0_2:.*]] = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_id = 5>}
+// CHECK: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_id = 1>}
+// CHECK: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_id = 6>}
+// CHECK: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_id = 2>}
+// CHECK: %[[tile_1_0:.*]] = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_id = 5>}
+// CHECK: %[[tile_1_1:.*]] = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_id = 7>}
 // CHECK: aie.packet_flow(4) {
 // CHECK:   aie.packet_source<%[[tile_0_0]], TileControl : 0>
 // CHECK:   aie.packet_dest<%[[tile_0_0]], South : 0>
@@ -139,14 +139,14 @@ aie.device(npu1_2col) {
 // CHECK:   aie.packet_dest<%[[tile_1_0]], South : 0>
 // CHECK: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // TCTALLTILES-LABEL: module {
-// TCTALLTILES: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
-// TCTALLTILES: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
-// TCTALLTILES: %[[tile_0_2:.*]] = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// TCTALLTILES: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-// TCTALLTILES: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
-// TCTALLTILES: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
-// TCTALLTILES: %[[tile_1_0:.*]] = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// TCTALLTILES: %[[tile_1_1:.*]] = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 7>}
+// TCTALLTILES: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_id = 4>}
+// TCTALLTILES: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_id = 3>}
+// TCTALLTILES: %[[tile_0_2:.*]] = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_id = 5>}
+// TCTALLTILES: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_id = 1>}
+// TCTALLTILES: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_id = 6>}
+// TCTALLTILES: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_id = 2>}
+// TCTALLTILES: %[[tile_1_0:.*]] = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_id = 5>}
+// TCTALLTILES: %[[tile_1_1:.*]] = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_id = 7>}
 // TCTALLTILES: aie.packet_flow(4) {
 // TCTALLTILES:   aie.packet_source<%[[tile_0_0]], TileControl : 0>
 // TCTALLTILES:   aie.packet_dest<%[[tile_0_0]], South : 0>
@@ -180,14 +180,14 @@ aie.device(npu1_2col) {
 // TCTALLTILES:   aie.packet_dest<%[[tile_1_0]], South : 0>
 // TCTALLTILES: }{{.*}}keep_pkt_header = true{{.*}}priority_route = true
 // CTRLPKT-LABEL: module {
-// CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
-// CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
-// CTRLPKT: %[[tile_0_2:.*]] = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// CTRLPKT: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
-// CTRLPKT: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 6>}
-// CTRLPKT: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 2>}
-// CTRLPKT: %[[tile_1_0:.*]] = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
-// CTRLPKT: %[[tile_1_1:.*]] = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 7>}
+// CTRLPKT: %[[tile_0_0:.*]] = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_id = 4>}
+// CTRLPKT: %[[tile_0_1:.*]] = aie.tile(0, 1) {controller_id = #aie.packet_info<pkt_id = 3>}
+// CTRLPKT: %[[tile_0_2:.*]] = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_id = 5>}
+// CTRLPKT: %[[tile_0_3:.*]] = aie.tile(0, 3) {controller_id = #aie.packet_info<pkt_id = 1>}
+// CTRLPKT: %[[tile_0_4:.*]] = aie.tile(0, 4) {controller_id = #aie.packet_info<pkt_id = 6>}
+// CTRLPKT: %[[tile_0_5:.*]] = aie.tile(0, 5) {controller_id = #aie.packet_info<pkt_id = 2>}
+// CTRLPKT: %[[tile_1_0:.*]] = aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_id = 5>}
+// CTRLPKT: %[[tile_1_1:.*]] = aie.tile(1, 1) {controller_id = #aie.packet_info<pkt_id = 7>}
 // CTRLPKT: aie.packet_flow(4) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_0]], TileControl : 0>

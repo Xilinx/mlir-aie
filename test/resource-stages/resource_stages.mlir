@@ -12,6 +12,7 @@
 
 // RUN: aie-opt --pass-pipeline='builtin.module(aie-resource-stages)' %s | FileCheck %s
 // RUN: aie-opt --pass-pipeline='builtin.module(aie-resource-stages{placer=sa_placer dynamic-objFifos=false})' %s | FileCheck %s
+// RUN: aie-opt --pass-pipeline='builtin.module(aie-resource-stages{packet-sw-objFifos=true})' %s | FileCheck %s
 
 // CHECK: aie.device(npu1_1col)
 // CHECK-DAG: %[[SHIM:.*]] = aie.tile(0, 0)

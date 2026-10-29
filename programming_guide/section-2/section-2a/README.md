@@ -98,7 +98,7 @@ class object_fifo:
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
         initValues=None,
-        via_DMA=None,
+        transport=None,
         plio=None,
         disable_synchronization=None,
     )
@@ -304,7 +304,7 @@ class object_fifo:
     def __init__(
         ...
         initValues=None,
-        via_DMA=None,
+        transport=None,
         plio=None,
         disable_synchronization=None,
     )
@@ -333,7 +333,7 @@ When an ObjectFifo is initialized upon creation, the underlying synchronization 
 
 **The remaining inputs of the ObjectFifo are considered an advanced topic and are not required to understand the rest of this guide.**
 
-The `via_DMA` input of the ObjectFifo is used mostly for debug or benchmarking purposes. It can be set to true to enforce that the lowered data movement configuration use the Direct Memory Access channels (or "DMAs") of the tiles. The DMAs are described further in the Advanced Topic section below. For further information about the ObjectFifo lowering and how the `via_DMA` attribute influences it please see [Section 2g - Data Movement Without ObjectFifos](../section-2g/), which covers the DMAs, buffer descriptors, and stream routing the lowering produces.
+The `transport` input of the ObjectFifo chooses the hardware path its objects take. Left unset, the lowering uses shared memory when both ends reach one memory module and the Direct Memory Access channels (or "DMAs") of the tiles otherwise. `Transport.dma()` enforces the DMAs, which is mostly useful for debug or benchmarking, and `Transport.shared_mem()` insists on shared memory. `Transport.dma(packet=Packet())` routes the connection as a packet flow that shares the stream with other packet flows. The DMAs are described further in the Advanced Topic section below. For further information about the ObjectFifo lowering and how the transport influences it please see [Section 2g - Data Movement Without ObjectFifos](../section-2g/), which covers the DMAs, buffer descriptors, and stream routing the lowering produces.
 
 The `plio` input is used to provide information about the data movement configuration to the ObjectFifo lowering. When the ObjectFifo is lowered the communication flows which are established between its tiles will be wired through a dedicated `plio` port.
 

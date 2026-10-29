@@ -42,42 +42,41 @@ make run_blocks_synthetic   # one range of each block kind on the NPU, no checkp
 make run N=8                # the whole model on coco128 images
 ```
 
-`make run_block BLOCK=52:59` runs any range of `Network.yolo26n().ops` on
-the NPU against the oracle (`SYNTHETIC=7` for seeded weights, `OUTPUTS=a,b`
-to drain more than the last op's output); `python bringup.py --span FIRST
-LAST` names the range by its first and last ops instead.
+`make run_block BLOCK=57:73` runs a range of `Network.yolo26n().ops` that
+starts and ends on fused-run boundaries on the NPU against the oracle
+(`SYNTHETIC=7` for seeded weights, `OUTPUTS=a,b` to drain more than the last
+op's output); `python bringup.py --span FIRST LAST` names the range by its
+first and last ops instead, and `--batch N` pipelines N images through it.
 
 ## Design
 
 - `yolo_spec.py` lays out the network as 168 integer operators, each named
   after the ONNX node it stands for. `yolo26n_numpy.py` is the oracle,
   `gen_yolo_data.py` binds parameters by those names.
-- `yolo26n_design.py` lowers any contiguous range of operators onto one
-  array. Activations stream one image row at a time as `[C/8][W][8]` int8
-  through ObjectFifos, from the producing worker to each consumer.
+- `yolo26n_design.py` maps the whole network onto NPU2's 32 tiles in one
+  device configuration: 30 workers and two tiles that only store attention
+  values. Activations stream one image row at a time as `[C/8][W][8]` int8
+  through ObjectFifos, from the producing worker to each consumer. Any range
+  of operators that starts and ends on fused-run boundaries builds the same
+  way, for bring-up.
+- Runs of operators (`FUSED`, `SegmentDesign.fuse`) run fused, one worker
+  each, every operator at its own rate on one clock; the run's steps roll
+  into one loop, with guards on the rows each step takes and makes.
 - Where two paths rejoin (a residual add, a concat), a schedule over which
   upstream rows each output row waits for sizes the fifo depths so neither
-  path stalls the other. Rows held longer than a compute tile can buffer are
-  staged in a memtile, or in a ring buffer on chained workers when they need
-  more buffer descriptors than a memtile channel has; rows a consumer holds
-  for the whole map, as across an attention barrier, go to DDR and back.
-- Runs of operators (the C3k blocks and bottlenecks, the PSA FFNs, the
-  Detect branches) run fused, one worker each, their rows in rings in its
-  tile (`FUSED`, `SegmentDesign.fuse`).
-- A conv whose weights do not fit beside its rows streams them from the
-  host's weights buffer one output-channel chunk at a time, each chunk
-  followed by its bias, once an output row.
-- C2PSA attention runs two workers per head, each answering every other row
-  of queries; a memtile splits each qkv row into the heads' queries, keys
-  and values, and another joins every worker's rows into the output.
+  path stalls the other. Rows a consumer holds past its own window wait in
+  chains of memtile holds, a stage ending at each reader's lag; rows between
+  neighbouring workers go over shared memory.
+- Each fused worker reads one stream of weight chunks: resident in a memtile
+  where a step's chunks fit, else streamed from the host's weights buffer.
+- C2PSA attention runs on one worker per block for every head, which also
+  makes PSA's positional conv and add. Its keys stay in its own tile, its
+  values in a neighbour that runs no core, and its queries wait in a memtile
+  that walks the stream of qkv rows.
 - The Detect postprocess (best class per anchor, top 300 anchors, top 300
-  anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`.
-- `yolo26n.py` runs the network as four such segments (`SEGMENTS`), each its
-  own device configuration in one full ELF, handing tensors on through a DDR
-  scratch buffer. A dispatch runs up to `--capacity` images (8, the build's
-  buffers), each configuration all of them before the next: every image's
-  transfers are gated by a ScratchpadParameter (`image{i}`), so the images a
-  dispatch runs (`--batch`) are chosen when it is dispatched.
+  anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`,
+  reading the Detect outputs back from a DDR scratch buffer.
+- `yolo26n.py` runs the network in one dispatch.
 
 ## Accuracy
 
@@ -102,25 +101,21 @@ exits 0 only when every image passes.
 
 ## Performance
 
-On Strix (NPU2), one 640x640 image takes 12.2 ms (82.0 fps) at batch 1 and
-6.00 ms per image (167 fps) at batch 8, both from one build (`--capacity 8`):
+On Strix Halo (NPU2), in one device configuration of 30 workers, per
+640x640 image (`python yolo26n.py --n 16 --batch B --time`, 16 coco128
+images, every one bit-exact against the oracle and ONNX Runtime):
 
-```bash
-python yolo26n.py --synthetic 7 --n 8 --time              # batch 1
-python yolo26n.py --synthetic 7 --n 8 --batch 8 --time    # batch 8
-```
+| batch | fastest | fps | median |
+|---:|---:|---:|---:|
+| 1 | 6.83 ms | 146 | 7.24 ms |
+| 2 | 4.29 ms | 233 | 4.48 ms |
+| 4 | 3.12 ms | 321 | 3.26 ms |
+| 8 | 2.58 ms | 388 | 2.62 ms |
+| 16 | 2.27 ms | 441 | 2.30 ms |
 
-Each number is the fastest of 20 calls after 10 warm-up calls, the host's
-wall time of the whole `yolo26n(...)` call divided by the batch; the line
-also prints the median and its MAD (medians 13.6 ms and 6.10 ms here). The
-weights and images are synthetic, so no checkpoint is needed; real ones move
-the same data, but the postprocess's work depends on the scores, so their
-time can differ a little.
-
-The design runs as four device configurations of one full ELF, so every
-dispatch configures all four segments again. `--time` also times a dispatch
-with no image on: 7.31 ms from a build of capacity 1, which is the four
-configurations, about 65% of that build's 11.3 ms an image at batch 1;
-batch 8 shares them. Each image slot a dispatch leaves unused still has its
-transfers issued and gated off, about 0.13 ms: capacity 8's empty dispatch
-takes 7.64 ms and its batch 1 12.2 ms.
+Each is the fastest of 20 calls after 10 warm-up calls, the host's wall
+time of the whole `yolo26n(...)` call divided by the batch, beside the
+median. A batch pipelines its images through the array, fills issued three
+images ahead. mAP@0.5 on those 16 images against coco128's labels is
+0.868. Compiling takes about 7 minutes, nearly all of it placing the
+workers.

@@ -23,6 +23,7 @@ from aie.iron import (
     ObjectFifo,
     PacketFlow,
     PerDeviceConfigurationResolvable,
+    Port,
     Program,
     Resolvable,
     Runtime,
@@ -945,6 +946,17 @@ def test_runtimes_draining_one_fifo_share_its_shim_end():
     assert len(out_of_consumers(*steps, NPU2Col1())) == 1
 
 
+def test_runtimes_draining_one_fifo_on_the_same_channel_share_its_shim_end():
+    steps = step_runtimes(3, lambda of, k: of.cons(port=Port.dma(0)))
+    assert len(out_of_consumers(*steps, NPU2Col1())) == 1
+
+
+def test_runtimes_draining_one_fifo_on_unpinned_dma_ports_share_its_shim_end():
+    # cons() and cons(port=Port.dma()) both leave the channel to allocation.
+    steps = step_runtimes(2, lambda of, k: of.cons(port=Port.dma()) if k else of.cons())
+    assert len(out_of_consumers(*steps, NPU2Col1())) == 1
+
+
 def test_runtimes_draining_one_fifo_to_distinct_shim_tiles_keep_both():
     steps = step_runtimes(
         2, lambda of, k: of.cons(tile=Tile(k, 0, tile_type=AIETileType.ShimNOCTile))
@@ -959,7 +971,7 @@ def test_runtimes_draining_one_shim_end_at_different_depths_are_refused():
 
 def test_runtimes_draining_one_shim_end_at_different_channels_are_refused():
     with pytest.raises(ValueError, match="'out_of' is drained to one shim end"):
-        step_runtimes(2, lambda of, k: of.cons(channel=k))
+        step_runtimes(2, lambda of, k: of.cons(port=Port.dma(k)))
 
 
 def test_merged_steps_may_each_use_only_explicit_groups():

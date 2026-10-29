@@ -20,9 +20,11 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SparseBitVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 
+#include <algorithm>
 #include <deque>
 #include <set>
 #include <variant>
@@ -224,7 +226,7 @@ std::map<TileDMAChannel, std::set<int>> collectSentPacketIDs(DeviceOp device) {
       continue;
     forEachInProgram<DMABDOp>(p, [&](DMABDOp bd) {
       if (std::optional<PacketInfoAttr> packet = bd.getPacket())
-        ids[p.dma].insert(packet->getPktId());
+        ids[p.dma].insert(packet->assignedId());
     });
   }
   for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
@@ -233,7 +235,7 @@ std::map<TileDMAChannel, std::set<int>> collectSentPacketIDs(DeviceOp device) {
     if (packet && tile)
       ids[{*tile, alloc.getChannelDir(),
            static_cast<int>(alloc.getChannelIndex())}]
-          .insert(packet->getPktId());
+          .insert(packet->assignedId());
   }
   device.walk([&](AIEX::NpuDmaMemcpyNdOp memcpy) {
     std::optional<PacketInfoAttr> packet = memcpy.getPacket();
@@ -241,7 +243,7 @@ std::map<TileDMAChannel, std::set<int>> collectSentPacketIDs(DeviceOp device) {
       return;
     if (std::optional<TileDMAChannel> key =
             channelOfSymbol(device, memcpy.getMetadata().getRootReference()))
-      ids[*key].insert(packet->getPktId());
+      ids[*key].insert(packet->assignedId());
   });
   return ids;
 }
@@ -939,8 +941,8 @@ StreamWaitGraph::StreamWaitGraph(DeviceOp device,
       to = getOrCreate(*agent);
     if (!from || !to || *from == *to)
       continue;
-    addEdge(*from, *to, EdgeKind::Stream);
-    addEdge(*to, *from, EdgeKind::Stream);
+    addEdge(*from, *to, EdgeKind::Stream, /*sends=*/true);
+    addEdge(*to, *from, EdgeKind::Stream, /*sends=*/false, /*receives=*/true);
   }
 
   // The host issues a channel's transfer only after every wait before it in
@@ -1104,11 +1106,16 @@ std::optional<unsigned> StreamWaitGraph::lookup(const Agent &agent) const {
   return it->second;
 }
 
-void StreamWaitGraph::addEdge(unsigned from, unsigned to, EdgeKind kind) {
-  if (llvm::none_of(edges[from], [&](const Edge &e) {
-        return e.to == to && e.kind == kind;
-      }))
-    edges[from].push_back({to, kind});
+void StreamWaitGraph::addEdge(unsigned from, unsigned to, EdgeKind kind,
+                              bool sends, bool receives) {
+  for (Edge &e : edges[from]) {
+    if (e.to == to && e.kind == kind) {
+      e.sends |= sends;
+      e.receives |= receives;
+      return;
+    }
+  }
+  edges[from].push_back({to, kind, sends, receives});
 }
 
 std::optional<unsigned> StreamWaitGraph::agentAt(const StreamEndpoint &endpoint,
@@ -1131,26 +1138,62 @@ SmallVector<unsigned> StreamWaitGraph::drainersOf(unsigned agent) const {
 SmallVector<unsigned>
 StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
                            ArrayRef<unsigned> avoid) const {
-  llvm::DenseMap<unsigned, std::optional<unsigned>> parent;
-  for (unsigned a : avoid)
-    parent.try_emplace(a, std::nullopt);
-  std::deque<unsigned> worklist;
+  // A state is an agent plus `took`, the subset of channel agents already
+  // waited on to reach it, and `taking`, whether it was reached as a DMA
+  // receiver still taking data. A state is dropped once a prior state at the
+  // same agent is at least as free and took a subset of the same agents: it
+  // leads nowhere new. Live states per agent therefore form an antichain in
+  // that subset lattice, so by Sperner's theorem their count can be
+  // exponential in the worst case -- a known, understood limitation, not an
+  // oversight. No smaller *exact* representation preserves this dominance
+  // search's soundness.
+  struct State {
+    unsigned agent;
+    bool taking;
+    llvm::SparseBitVector<> took;
+    std::optional<size_t> parent;
+  };
+  std::vector<State> states;
+  DenseMap<unsigned, SmallVector<size_t>> seen;
+  std::deque<size_t> worklist;
+  auto visit = [&](State next) {
+    for (size_t i : seen.lookup(next.agent)) {
+      const State &s = states[i];
+      if ((next.taking || !s.taking) && next.took.contains(s.took))
+        return;
+    }
+    seen[next.agent].push_back(states.size());
+    worklist.push_back(states.size());
+    states.push_back(std::move(next));
+  };
   for (unsigned a : from)
-    if (parent.try_emplace(a, std::nullopt).second)
-      worklist.push_back(a);
+    if (!llvm::is_contained(avoid, a))
+      visit({a, false, {}, std::nullopt});
   while (!worklist.empty()) {
-    unsigned a = worklist.front();
+    size_t index = worklist.front();
     worklist.pop_front();
+    unsigned a = states[index].agent;
     if (llvm::is_contained(targets, a)) {
       SmallVector<unsigned> chain;
-      for (std::optional<unsigned> at = a; at; at = parent.lookup(*at))
-        chain.push_back(*at);
+      for (std::optional<size_t> at = index; at; at = states[*at].parent)
+        chain.push_back(states[*at].agent);
       std::reverse(chain.begin(), chain.end());
       return chain;
     }
-    for (const Edge &e : edges[a])
-      if (parent.try_emplace(e.to, a).second)
-        worklist.push_back(e.to);
+    for (const Edge &e : edges[a]) {
+      const State &state = states[index];
+      if (state.taking && e.receives && !e.sends &&
+          agents[e.to].kind == Agent::Kind::Channel)
+        continue;
+      if (llvm::is_contained(avoid, e.to) || state.took.test(e.to))
+        continue;
+      bool takes = e.kind == EdgeKind::Stream && e.sends &&
+                   agents[e.to].kind == Agent::Kind::Channel;
+      llvm::SparseBitVector<> took = state.took;
+      if (takes)
+        took.set(e.to);
+      visit({e.to, takes, std::move(took), index});
+    }
   }
   return {};
 }

@@ -48,6 +48,8 @@ of_out = of_in.cons().forward(obj_type=line_type, name="out")
 ```
 Where a consumer `ObjectFifoHandle` to `of_in` is forwarded to `of_out` as its producer.
 
+A forwarded fifo's `to_stream` may also walk the whole stream of `of_in`'s objects to cut overlapping windows out of it, for example the rows a 3x3 convolution reads for each output row; see [Overlapping Windows over a Forwarded Stream](../../section-2c/README.md#overlapping-windows-over-a-forwarded-stream).
+
 This functionality is also available at the dialect level. The ObjectFifo API provides an implicit copy via an `object_fifo_link`, which can be initialized using its class constructor (defined in [aie.py](../../../../python/dialects/aie.py)):
 ```python
 class object_fifo_link(ObjectFifoLinkOp):
@@ -183,6 +185,22 @@ object_fifo_link([of1, of2], of0, [0, 128], [])
 ```
 
 A full design example that uses these features is available in Section 2f: [05_join_L2](../../section-2f/05_join_L2/).
+
+### Merge and Dispatch: taking turns with whole objects
+
+Distribute and join split every object between the fifos, and each fifo gets a channel of its own on the shared tile. `merge()` and `dispatch()` share the objects in time instead: the fifos take turns with whole objects of the same type, and they share one channel on the shared tile.
+
+```python
+hub_in = ObjectFifo(obj_ty, name="hub_in")
+from_s1, from_s2 = hub_in.prod().merge(2, names=["from_s1", "from_s2"])
+hub_out = ObjectFifo(obj_ty, name="hub_out")
+to_s2, to_host = hub_out.cons().dispatch(2, names=["to_s2", "to_host"])
+```
+
+- `merge(n)` on a producer handle creates `n` fifos whose objects all arrive on one channel of the shared tile, in whatever order their producers send them.
+- `dispatch(n)` on a consumer handle creates `n` fifos and sends object k to fifo k mod n over one channel; each of them has one consumer.
+
+The fifos sharing a channel are packet-switched, since a packet header is what tells the turns apart; `transports=` sets one per fifo, for example to pin a header. In MLIR this is `aie.objectfifo.link ... {mode = #aie.link_mode<time>}`. When the order objects reach a merge matters, the design has to keep the producers in turn, for example by issuing the next input only once the previous result is back.
 
 -----
 [Prev](../02_Broadcast/) &middot; [Top](..) &middot; [Next](../04_Repeat/)

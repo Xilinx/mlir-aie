@@ -195,6 +195,14 @@ class KernelContract:
             call's index, 0 first, for a kernel whose state carries from one
             call to the next and restarts at 0. The reference sees every
             call at once, in order. ``None``: the bound value holds.
+        out_last: Whether only the last of the calls writes the one ``Out``,
+            the earlier ones building up state the core keeps (with
+            ``call_index``), as a reduction split across calls does. The
+            builder hands every call the same output tile and drains it
+            once, and the reference returns that one tile.
+        required_calls: The exact positive number of calls needed to produce
+            the output of an ``out_last`` kernel; required when ``out_last``
+            is set, otherwise ``None``.
         even_calls: Whether every call does the same work. Timing then
             reports the cheapest call, the rest being the core waiting;
             calls of unequal work (each its own chunk of a resample) report
@@ -231,6 +239,8 @@ class KernelContract:
     initializers: tuple[tuple[int, Callable], ...] = ()
     out_offset: tuple[int, int] | None = None
     call_index: int | None = None
+    out_last: bool = False
+    required_calls: int | None = None
     even_calls: bool = True
     trace: Trace | None = None
     uses_lut: bool = False
@@ -282,6 +292,24 @@ class KernelContract:
             raise ValueError(
                 "call_index needs a bound Param that out_offset does not set"
             )
+        if self.out_last and (
+            self.call_index is None
+            or self.out_offset is not None
+            or self.roles.count(Out) != 1
+            or InOut in self.roles
+        ):
+            raise ValueError(
+                "out_last needs call_index, exactly one Out and no out_offset"
+            )
+        if self.out_last:
+            if (
+                not isinstance(self.required_calls, (int, np.integer))
+                or isinstance(self.required_calls, (bool, np.bool_))
+                or self.required_calls < 1
+            ):
+                raise ValueError("out_last needs a positive integer required_calls")
+        elif self.required_calls is not None:
+            raise ValueError("required_calls needs out_last")
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
         if self.unsupported is not None and not self.unsupported:

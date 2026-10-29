@@ -152,7 +152,7 @@ aie.device(npu1) {
   aie.route_endpoint @b(%shim0) DMA
   aie.route_endpoint @sink(%shim1) DMA
 
-  aie.route from @a to [@sink] {packet}
+  aie.route from @a to [@sink] {packet = #aie.packet_info<>}
   aie.route from @b to [@sink]
 }
 
@@ -160,7 +160,7 @@ aie.device(npu1) {
 
 // A shared source's BDs state each header, so they must know each id.
 
-// CHECK: 'aie.route_endpoint' op sends several packet flows, so each must pin its packet_id for the BDs to state it
+// CHECK: 'aie.route_endpoint' op sends several packet flows, so each must pin its pkt_id for the BDs to state it
 
 aie.device(npu1) {
   %shim0 = aie.tile(0, 0)
@@ -170,13 +170,13 @@ aie.device(npu1) {
   aie.route_endpoint @a(%shim1) DMA
   aie.route_endpoint @b(%shim1) DMA
 
-  aie.route from @src to [@a] {packet, packet_id = 1 : i8}
-  aie.route from @src to [@b] {packet}
+  aie.route from @src to [@a] {packet = #aie.packet_info<pkt_id = 1>}
+  aie.route from @src to [@b] {packet = #aie.packet_info<>}
 }
 
 // -----
 
-// CHECK: 'aie.route' op packet_id and keep_pkt_header are only meaningful on a packet flow
+// CHECK: 'aie.route' op keep_pkt_header is only meaningful on a packet flow
 
 aie.device(npu1) {
   %shim0 = aie.tile(0, 0)
@@ -190,23 +190,9 @@ aie.device(npu1) {
 
 // -----
 
-// CHECK: 'aie.route' op packet_id and keep_pkt_header are only meaningful on a packet flow
-
-aie.device(npu1) {
-  %shim0 = aie.tile(0, 0)
-  %shim1 = aie.tile(1, 0)
-
-  aie.route_endpoint @src(%shim0) DMA
-  aie.route_endpoint @dst(%shim1) DMA
-
-  aie.route from @src to [@dst] {packet_id = 3 : i8}
-}
-
-// -----
-
 // A shared source's BDs tell its flows apart by id.
 
-// CHECK: 'aie.route_endpoint' op sends several packet flows, two of which pin the same packet_id 1; each needs its own
+// CHECK: 'aie.route_endpoint' op sends several packet flows, two of which pin the same pkt_id 1; each needs its own
 
 aie.device(npu1) {
   %shim0 = aie.tile(0, 0)
@@ -216,8 +202,8 @@ aie.device(npu1) {
   aie.route_endpoint @a(%shim1) DMA
   aie.route_endpoint @b(%shim1) DMA
 
-  aie.route from @src to [@a] {packet, packet_id = 1 : i8}
-  aie.route from @src to [@b] {packet, packet_id = 1 : i8}
+  aie.route from @src to [@a] {packet = #aie.packet_info<pkt_id = 1>}
+  aie.route from @src to [@b] {packet = #aie.packet_info<pkt_id = 1>}
 }
 
 // -----
@@ -234,13 +220,13 @@ aie.device(npu1) {
   aie.route_endpoint @b(%shim0) DMA
   aie.route_endpoint @sink(%shim1) DMA
 
-  aie.route from @a to [@sink] {keep_pkt_header, packet}
-  aie.route from @b to [@sink] {packet}
+  aie.route from @a to [@sink] {keep_pkt_header, packet = #aie.packet_info<>}
+  aie.route from @b to [@sink] {packet = #aie.packet_info<>}
 }
 
 // -----
 
-// CHECK: 'aie.route_endpoint' op is named twice by one flow
+// CHECK: 'aie.route' op names '@sink' more than once
 
 aie.device(npu1) {
   %shim0 = aie.tile(0, 0)
@@ -249,5 +235,5 @@ aie.device(npu1) {
   aie.route_endpoint @a(%shim0) DMA
   aie.route_endpoint @sink(%shim1) DMA
 
-  aie.route from @a to [@sink, @sink] {packet}
+  aie.route from @a to [@sink, @sink] {packet = #aie.packet_info<>}
 }

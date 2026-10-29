@@ -80,10 +80,10 @@ def build():
 
 # CHECK-DAG: aie.route_endpoint @packetflow0_dst(%{{.*}}) DMA
 # CHECK-DAG: aie.route_endpoint @packetflow2_src(%{{.*}}) DMA
-# CHECK-DAG: aie.route from @packetflow0_src to [@packetflow0_dst] {keep_pkt_header, packet, packet_id = 1 : i8}
-# CHECK-DAG: aie.route from @packetflow1_src to [@packetflow0_dst] {keep_pkt_header, packet, packet_id = 2 : i8}
-# CHECK-DAG: aie.route from @packetflow2_src to [@packetflow2_dst] {packet, packet_id = 1 : i8}
-# CHECK-DAG: aie.route from @packetflow2_src to [@packetflow3_dst] {packet, packet_id = 2 : i8}
+# CHECK-DAG: aie.route from @packetflow0_src to [@packetflow0_dst] {keep_pkt_header, packet = #aie.packet_info<pkt_id = 1>}
+# CHECK-DAG: aie.route from @packetflow1_src to [@packetflow0_dst] {keep_pkt_header, packet = #aie.packet_info<pkt_id = 2>}
+# CHECK-DAG: aie.route from @packetflow2_src to [@packetflow2_dst] {packet = #aie.packet_info<pkt_id = 1>}
+# CHECK-DAG: aie.route from @packetflow2_src to [@packetflow3_dst] {packet = #aie.packet_info<pkt_id = 2>}
 
 # ALLOC-LABEL: aie.memtile_dma
 # ALLOC-DAG: aie.dma_start(S2MM, 0,

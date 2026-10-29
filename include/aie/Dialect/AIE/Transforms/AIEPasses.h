@@ -93,10 +93,11 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoUnrollPass(const AIEObjectFifoUnrollOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoSplitPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoVerifyPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignPacketIdsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEAssignPacketIdsPass(bool packetSwitched);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoAllocatePass();
-std::unique_ptr<mlir::OperationPass<DeviceOp>>
-createAIEObjectFifoAllocatePass(bool packetSwitched);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLowerDMAsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

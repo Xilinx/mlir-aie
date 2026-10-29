@@ -39,6 +39,7 @@ def design_factory(tmp_path, monkeypatch, npu2_device):
                 external_kernels=[],
                 mlir_text="module {}",
                 entry_stream_options=[],
+                devices=(),
             ),
         )
         return design

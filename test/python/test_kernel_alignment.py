@@ -181,9 +181,10 @@ def test_bn_conv3x3_vector_args(factory, kwargs, needs, device):
 # Bytes each array argument of every npu2 build needs, portable too; npu1
 # needs at most 32.
 _VECTOR_ARGS = [
-    # 8 pixels (64 bytes) a vector at a width of 8k, else 4.
+    # Whole 64-byte words at any width on AIE2P: a width of 8k + 4 runs two
+    # channel blocks' rows as one.
     ("bn_conv2dk3_dw", dict(bias=True, input_width=16), {0: 64, 2: 64, 4: 32, 5: 64}),
-    ("bn_conv2dk3_dw", dict(bias=True, input_width=20), {0: 32, 2: 32, 4: 32, 5: 32}),
+    ("bn_conv2dk3_dw", dict(bias=True, input_width=20), {0: 64, 2: 64, 4: 32, 5: 64}),
     ("selective_scan", {}, {0: 64, 2: 64, 3: 32}),
     ("selective_scan", dict(rows=1, state=128), {0: 32, 2: 64, 3: 32}),
     ("gated_delta_rule", {}, {0: 32, 2: 64, 3: 32}),

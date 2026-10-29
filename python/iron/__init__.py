@@ -83,12 +83,15 @@ from .dataflow import (
     ObjectFifo,
     ObjectFifoPool,
     ObjectFifoPoolHandle,
+    Packet,
     PacketDest,
     PacketFlow,
     PoolSegment,
+    Port,
     Release,
     TileDma,
     TileDmaTask,
+    Transport,
 )
 from .device import Device
 from .dtype import dtype_to_str, str_to_dtype
@@ -123,6 +126,9 @@ __all__ = [
     "Task",
     "sync_parameters",
     "ObjectFifo",
+    "Packet",
+    "Port",
+    "Transport",
     # Lower-level explicit-routing primitives
     "Acquire",
     "Bd",

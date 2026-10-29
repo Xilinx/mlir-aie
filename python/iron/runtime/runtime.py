@@ -27,6 +27,7 @@ from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAcces
 from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     RuntimeSequenceOp,
 )
+from ...dialects.aie import Port
 from ...dialects.aiex import (
     dma_await_task,
     dma_free_task,
@@ -483,11 +484,11 @@ class Runtime(DeviceResources, Resolvable):
                             or shared != arg.endpoint
                         ):
                             continue
-                        if (first.depth, first.from_stream, first.channel) != (
-                            arg.depth,
-                            arg.from_stream,
-                            arg.channel,
-                        ):
+                        if (
+                            first.depth,
+                            first.from_stream,
+                            first.port or Port.dma(),
+                        ) != (arg.depth, arg.from_stream, arg.port or Port.dma()):
                             raise ValueError(
                                 f"ObjectFifo {fifo_obj.name!r} is drained to one "
                                 "shim end through consumer handles with different "
