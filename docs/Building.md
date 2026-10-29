@@ -8,7 +8,7 @@ These instructions will guide you through everything required for building and e
 
   > Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See [here](#update-bios).
 
-If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+ by installing the Hardware Enablement (HWE) stack:
+If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.17+ by installing the Hardware Enablement (HWE) stack:
 
   ```bash
   sudo apt update
@@ -62,7 +62,7 @@ xrt-smi examine
 
 ### Install AIETools
 
-1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
+1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
    > This is an early access lounge, you must register and be granted access at this time.
 
@@ -117,44 +117,34 @@ xrt-smi examine
    git submodule update --init --recursive
    ```
 
-1. Setup a virtual environment:
+1. Set up the development environment. This creates an `ironenv` virtual
+   environment, installs the pinned Peano (`llvm-aie`) wheel, and installs
+   the Python requirements needed for development and testing, including the
+   pre-commit and pre-push hooks defined in `.pre-commit-config.yaml`:
    ```bash
-   python3 -m venv ironenv
+   source utils/env_install.sh --dev  # one time / first time
+   ```
+
+   > *Tip:* The `utils/env_install.sh` script also works as an update script.
+
+1. Build the compiler (`_from_wheels.sh` in this case refers to the LLVM
+   installation being pulled from a wheel; MLIR-AIE links against LLVM, but
+   will be built from source):
+   ```bash
+   ./utils/build-mlir-aie-from-wheels.sh
+   ```
+
+1. Configure the shell after the build has installed the compiler. In each
+   new shell, activate `ironenv` before running setup (from the repository root):
+   ```bash
    source ironenv/bin/activate
-   python3 -m pip install --upgrade pip
-   ```
-
-1. Install required Python packages:
-   ```bash
-   # Install basic Python requirements
-   python3 -m pip install -r python/requirements.txt
-   ```
-
-1. Install Python packages required for development and testing:
-   ```bash
-   # Install Python requirements for development and testing
-   python3 -m pip install -r python/requirements_dev.txt
-
-   # Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml
-   # (pre-push runs clang-format/black/ruff/clang-tidy to catch formatting and
-   # lint issues before CI)
-   pre-commit install
-   ```
-
-1. Use scripted mlir-aie build process. This script downloads llvm/mlir from wheels before building.
-   ```bash
-   bash ./utils/build-mlir-aie-from-wheels.sh
+   source utils/env_setup.sh
    ```
 
 1. (Optional) Generate a compile database so the `clang-tidy` pre-push hook
    can run (see [CONTRIBUTING.md](../CONTRIBUTING.md#static-analysis-for-c-clang-tidy)):
    ```bash
    ninja -C build -t compdb > build/compile_commands.json
-   ```
-
-1. Setup environment
-   ```bash
-   source utils/env_setup.sh install
    ```
 
 ## Run an IRON Design on the AMD Ryzen™ AI NPU on Linux

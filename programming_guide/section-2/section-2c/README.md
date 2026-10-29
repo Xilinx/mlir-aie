@@ -22,20 +22,16 @@ While the ObjectFifo primitive aims to reduce the complexity tied to data moveme
 
 Tile DMAs interact directly with the memory modules of their tiles and are responsible for pushing and retrieving data to and from the AXI stream interconnect. When data is pushed onto the stream, the user can program the DMA's n-dimensional address generation scheme such that the data's layout when pushed may be different than how it is stored in the tile's local memory. In the same way, a user can also specify in what layout a DMA should store the data retrieved from the AXI stream.
 
-DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR and have their own auto-generated Python binding (available under `<MLIR_AIE_INSTALL_PATH>/python/aie/dialects/_aie_ops_gen.py` after the repository is built):
+DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR, wrapped by a hand-written Python builder in [`python/dialects/aie.py`](../../../python/dialects/aie.py):
 ```python
-def dma_bd
-    (
-        buffer,
-        *,
-        offset=None,
-        len=None,
-        dimensions=None,
-        bd_id=None,
-        next_bd_id=None,
-        loc=None,
-        ip=None
-    )
+def dma_bd(
+    buffer,
+    sizes=None,
+    strides=None,
+    offset=None,
+    transfer_len=None,
+    **kwargs,
+)
 ```
 It is not necessary to understand these low-level operations in order to use the data layout transformations with the ObjectFifo primitive.
 

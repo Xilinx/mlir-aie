@@ -217,10 +217,11 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
 //      placementPriority. For each LTO: validate buffer/cascade/compute-peer
 //      constraints and channel budget, then claim the tile, trying first
 //      the columns that keep its group together. Unpinned candidates are
-//      tried in two passes: first the slots not soft-reserved for another
-//      demand-bearing LTO's peers, then a fallback pass that accepts
-//      reserved slots. Each placement of a demand-bearing LTO soft-reserves
-//      its mem-affinity neighbor slots for that LTO's compute peers.
+//      tried in two passes: first the slots with column stream capacity and
+//      not soft-reserved for another demand-bearing LTO's peers, then a
+//      fallback accepting overloaded columns and reserved slots. Placing a
+//      demand-bearing LTO soft-reserves its mem-affinity neighbor slots for
+//      that LTO's compute peers.
 //   4. Place each remaining non-core (mem/shim) LTO near the column
 //      centroid of its placed-core peers. With mergeLogicalTiles == true
 //      (default) several non-core LTOs may share one physical tile when
@@ -302,9 +303,19 @@ private:
 
   void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
 
-  // North/South streams of each non-core LTO's ObjectFifos: a memtile has 6
+  // North/South streams of each tile's ObjectFifos: a memtile has 6
   // DMA inputs but only 4 streams from the core above, and no East/West.
   llvm::DenseMap<mlir::Operation *, StreamDemand> streamDemand;
+  // Aggregate traffic between a column's cores and the tiles below them.
+  llvm::DenseMap<int, StreamDemand> columnStreamsUsed;
+  // Broadcast consumers in one column share a single incoming stream.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Operation *>>
+      incomingFifos;
+  llvm::DenseMap<int, llvm::DenseSet<mlir::Operation *>> columnIncomingFifos;
+  void recordColumnStreamUsage(mlir::Operation *tile, int col);
+  // Extra broadcast destinations beyond the first, which uses one DMA channel.
+  llvm::DenseMap<mlir::Operation *, int> broadcastFanout;
+  llvm::DenseMap<TileID, int> broadcastFanoutUsed;
   void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
   // Live runtime-sequence BDs of each ShimNOCTile LTO after every task event,

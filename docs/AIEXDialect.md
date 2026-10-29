@@ -10,3 +10,17 @@
     `make docs` in a cmake build directory.
 
     See the [live site](https://xilinx.github.io/mlir-aie/) for the rendered version.
+
+<!-- Preserve generated event anchors for strict builds using this placeholder. -->
+<span id="coreeventaie"></span>
+<span id="coreeventaie2"></span>
+<span id="coreeventaie2p"></span>
+<span id="memeventaie"></span>
+<span id="memeventaie2"></span>
+<span id="memeventaie2p"></span>
+<span id="memtileeventaie"></span>
+<span id="memtileeventaie2"></span>
+<span id="memtileeventaie2p"></span>
+<span id="shimtileeventaie"></span>
+<span id="shimtileeventaie2"></span>
+<span id="shimtileeventaie2p"></span>
