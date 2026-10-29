@@ -1,0 +1,5 @@
+<map id="xilinx::AIE::DmaBdField" name="xilinx::AIE::DmaBdField">
+<area shape="rect" id="Node000001" title="Bits [shift, shift + width) of register word in a buffer descriptor&#39;s register block." alt="" coords="5,151,179,178"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="59,5,125,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="94,48,95,151,89,150,90,50"/>
+</map>
