@@ -600,7 +600,7 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
         </section>
 
         <section class="block">
-          <div class="block-head"><h3>Changed over two weeks</h3><span id="window-compare"></span></div>
+          <div class="block-head"><h3>Open changes</h3><span id="window-compare"></span></div>
           <p class="note" id="window-about"></p>
           <div id="window-changes"><p class="dim">Reading the history…</p></div>
         </section>
@@ -650,10 +650,12 @@ python3 -m pytest test/test_kernel_checks_page.py                # the page's co
             so it only counts past three times its run-to-run spread, and only against a night on the same part. A dashed line on a chart marks a change of
             Peano, part, host, runtime, driver, kernel sources or measurement between nights; nothing is compared across a change of measurement.</p>
           <h3>The views</h3>
-          <p><b>Summary</b>: a verdict per NPU against the nightly before, whose date it names; what needs a look (failures, the cases that got slower
-            or bigger last night, and any of the timing harness's own tests that failed); and every case whose cycles or object size moved past its
-            threshold since the nightly before, as the two numbers and their dates. Its <b>Window</b> switch compares each case's first and latest
-            nightly of the last 30 instead.
+          <p><b>Summary</b>: a verdict per NPU naming this week's steps that are still open (a case that got slower or bigger past its threshold
+            on some night of the last seven, outside the week before's range, and has not recovered), each with its date; the Overview says the same.
+            What needs a look: failures, those steps (each with any toolchain, driver or kernel-source change that night), and any of the timing
+            harness's own tests that failed. <b>Open changes</b>: every case still past its threshold against its first nightly of the last 30, dated by
+            the night it crossed, open until it recovers or the window moves past it. A change in how cycles are taken (<code>measurement</code> in a run's
+            provenance) is never compared across: it is marked on the charts instead.
             <b>All kernels</b>: a line per kernel with, per NPU, its state last night, its cases' cycles now, and how many got slower or faster over
             the last 30 nightlies, since the first night one of them moved; those that need a look first.
             A kernel's own page (<code>#view=kernel&amp;kernel=&lt;factory&gt;</code>) charts each of its cases' actual cycles (or size, or host time)
@@ -1797,7 +1799,15 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         (run.published && published.last && String(published.last.run) === String(run.id))) ? published : null;
       // With the history: a case worse than the night before but inside
       // the week before's range is back to its usual, not a regression.
-      if (moved && history) moved = { ...moved, regressed: moved.regressed.filter(x => !withinItsWeek(history, npu, x, moved.last)) };
+      // With the history: what got worse is every step of the last week
+      // still open, each dated (a step a few nights ago is still news; one
+      // older is the Summary table's), not just last night's.
+      const weekly = Boolean(moved && history);
+      if (weekly) {
+        const latestDate = moved.last ? moved.last.date : 0;
+        const steps = GATED.flatMap(m => kernelSteps(history, npu, m)).filter(x => latestDate - x.since < 7 * 86400000);
+        moved = { ...moved, regressed: steps };
+      }
       const latest = recent ? latestCases(recent, npu) : { last: null, cases: new Map() };
       // Gated moves by case, for the map, the tables and the kernel page.
       const flagged = new Map();
@@ -1811,7 +1821,47 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const last = latest.last;
       const own = last ? recent.order.filter(o => o.npu === npu && o.mode === last.mode) : [];
       const since = own.length > 1 ? own[own.length - 2].date : null;
-      return { npu, run, catalogue, moved, latest, flagged, since, counts: catalogueCounts(catalogue), runs };
+      return { npu, run, catalogue, moved, latest, flagged, since, weekly, counts: catalogueCounts(catalogue), runs };
+    }
+
+    // What changed under a step: the toolchain, the driver or the kernels'
+    // sources between the night before and the night it stepped, from each
+    // run's provenance: "Peano 83ba9ea9 → 4f5df13d", or ''.
+    const TOOLCHAIN = [['peano', 'Peano'], ['xrt', 'XRT'], ['xdna', 'driver'], ['kernels', 'kernel sources']];
+    const shortVersion = v => String(v).replace(/^.*\+/, '');
+    function toolchainNote(before, after) {
+      const a = (before && before.provenance) || {}, b = (after && after.provenance) || {};
+      return TOOLCHAIN.filter(([k]) => a[k] && b[k] && a[k] !== b[k])
+        .map(([k, name]) => k === 'kernels' ? 'kernel sources changed' : `${name} ${shortVersion(a[k])} → ${shortVersion(b[k])}`).join(', ');
+    }
+
+    // Each case's open step on one NPU: the last nightly it got worse past
+    // its threshold from the night before, outside the week before's range,
+    // and has stayed past it since (not recovered). [{series, before, after,
+    // change, cls, since, note}], `note` what changed under it.
+    function kernelSteps(db, npu, metric) {
+      const runs = nightValues(db, npu, metric);
+      const unit = (db && (db.series.find(x => x.metric === metric) || {}).unit) || '';
+      const sign = worseSign(metric);
+      const out = [];
+      for (const kase of new Set(runs.flatMap(r => [...r.values.keys()]))) {
+        const measured = runs.filter(r => r.values.has(kase));
+        if (measured.length < 2 || measured.at(-1) !== runs.at(-1)) continue;
+        const part = measured.at(-1).device;
+        const seen = measured.filter(r => (!partBound(metric) || !r.device || !part || r.device === part) && sameMeasurement(r, measured.at(-1)));
+        const v = seen.map(r => r.values.get(kase));
+        for (let j = v.length - 1; j >= 1; j--) {
+          const before = v[j - 1];
+          if (changeClass(before, v[j], metric) !== 'worse') continue;
+          if (!v.slice(Math.max(0, j - STEP_NIGHTS), j).every(x => (v[j] - x) * sign > 0)) continue;
+          if (v.slice(j).every(x => changeClass(before, x, metric) === 'worse')) {
+            out.push({ series: { kase, factory: kase.split('/')[0], metric, unit, npu }, before, after: v.at(-1),
+                       change: relative(before, v.at(-1)), cls: 'worse', since: seen[j].date, note: toolchainNote(seen[j - 1], seen[j]) });
+          }
+          break;
+        }
+      }
+      return out;
     }
 
     // Whether a move's latest value is inside the range of the week of
@@ -1934,7 +1984,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
           if (key.endsWith('|accuracy')) return { size: Infinity, text: `${factory} less accurate${cases}` };
           // A move without its numbers (a hand-made record) is named by its word: "b slower".
           const by = top.change === undefined ? moveWord(top.series.metric, 0) : `${inSentence(top.series.metric)} ${formatChange(top.change, top.after - top.before, top.series.unit)}`;
-          return { size: size(top), text: `${factory} ${by}${cases}` };
+          // A step of this week is dated: it may not be last night's.
+          const when = top.since && night.weekly ? ` on ${shortDate(top.since)}` : '';
+          return { size: size(top), text: `${factory} ${by}${cases}${when}` };
         }).sort((a, b) => b.size - a.size);
         return parts.map(p => p.text);
       };
@@ -1951,7 +2003,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       const v = verdictOfRun();
       return stale ? { ...v, level: 'bad', stale } : v;
       function verdictOfRun() {
-        const vs = night.since ? ` vs ${shortDate(night.since)}` : '';
+        const vs = night.since && !night.weekly ? ` vs ${shortDate(night.since)}` : '';
         const moves = named(worse);
         const problems = moves.length ? [`${moves.join(', ')}${vs}`] : [];
         if (counts.failing.length) problems.push(`${counts.failing.length} failing correctness`);
@@ -2107,10 +2159,12 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (worse.length) {
         // Each regression named, with how far it moved, its kernel a click away.
         const ul = el('ul', { className: 'cases' });
+        // A step of this week says its night, and what changed under it.
         worse.slice(0, LIST).forEach(x => ul.append(el('li', {}, caseName(x.series.kase, kernelLink(x.series.factory)), ' ',
-          el('span', { className: 'dim' }, inSentence(x.series.metric)), ' ', changeSpan(x.change, x.cls, true, x.series.metric, x.after - x.before, x.series.unit))));
+          el('span', { className: 'dim' }, inSentence(x.series.metric)), ' ', changeSpan(x.change, x.cls, true, x.series.metric, x.after - x.before, x.series.unit),
+          night.weekly && x.since ? el('span', { className: 'dim' }, ` on ${shortDate(x.since)}${x.note ? `, with ${x.note}` : ''}`) : '')));
         if (worse.length > LIST) ul.append(el('li', {}, link(hashFor({ view: 'kernels', problems: '1' }), `and ${worse.length - LIST} more`)));
-        const vs = night.since ? ` vs ${shortDate(night.since)}` : '';
+        const vs = night.weekly ? ' this week, still open' : night.since ? ` vs ${shortDate(night.since)}` : '';
         const kinds = [...new Set(worse.map(x => moveWord(x.series.metric, 0)))].join(' or ');
         const n = new Set(worse.map(x => x.series.kase)).size;
         items.push({ level: 'bad', npu, body: [`${plural(n, 'case')} got ${kinds} past ${n === 1 ? 'its' : 'their'} threshold${vs}:`, ul] });
@@ -2293,7 +2347,20 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const part = measured.length ? measured.at(-1).device : null;
         const seen = measured.filter(r => (!partBound(metric) || !r.device || !part || r.device === part) && sameMeasurement(r, measured.at(-1)));
         // Last night's change is only a case's that ran last night.
-        if (seen.length < 2 || ((compare === 'last' || compare === 'moves') && seen.at(-1) !== runs.at(-1))) continue;
+        if (seen.length < 2 || ((compare === 'last' || compare === 'moves' || compare === 'open') && seen.at(-1) !== runs.at(-1))) continue;
+        if (compare === 'open') {
+          // Open: still past the threshold against its first nightly of the
+          // window (30 back), dated by the night it crossed for good, with
+          // what changed under it that night.
+          const v = seen.map(r => r.values.get(kase)), base = v[0], now = v.at(-1);
+          const cls = changeClass(base, now, metric);
+          let j = v.length - 1;
+          while (cls && j > 1 && changeClass(base, v[j - 1], metric) === cls) j--;
+          out.push({ kase, factory: kase.split('/')[0], npu, metric, unit, then: base, thenDate: seen[0].date, now, nowDate: seen.at(-1).date,
+                     change: relative(base, now), cls, kind: cls ? 'open' : '', movedOn: cls ? seen[j].date : null,
+                     note: cls ? toolchainNote(seen[j - 1], seen[j]) : '' });
+          continue;
+        }
         if (compare === 'moves') {
           // Two weeks, as Performance judges them: a step is last night past
           // the threshold and outside the week before's range; a creep, the
@@ -2354,9 +2421,10 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
     function renderWindowChanges(db, npus) {
       const target = $('window-changes');
       if (!target) return [];
-      // One list over two weeks, steps and creeps, as Performance's: no
-      // switch between last night and the window to remember to press.
-      const compare = 'moves';
+      // One list: every case still worse (or better) than 30 nightlies ago,
+      // dated by when it moved; no switch to remember to press. Last week's
+      // steps are also the Summary's verdicts and the Overview's.
+      const compare = 'open';
       if ($('window-compare')) $('window-compare').replaceChildren();
       const span = windowDates(db, npus, 'last');
       if (!span || span.nights < 2) {
@@ -2364,10 +2432,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         target.replaceChildren();
         return [];
       }
-      $('window-about').textContent = `Each case's cycles and object size over its last two weeks of nightlies, up to ${shortDate(span.last)}. `
-        + 'A step is the latest nightly past the threshold and outside the week before\'s range (a case back to its usual does not count); '
-        + 'a creep, the median of the last three nightlies past it from the first three\'s. Each cell shows the case that moved most; '
-        + 'a dash where nothing moved. Hover a cell for every case.';
+      $('window-about').textContent = `Each case still past its threshold against its first nightly of the last ${WINDOW_NIGHTS}, up to ${shortDate(span.last)}: `
+        + 'open until it recovers or the window moves past it. Each is dated by the night it crossed, with any toolchain, driver or kernel-source '
+        + 'change that night. Each cell shows the case that moved most; a dash where nothing moved. Hover a cell for every case.';
       // A row per kernel and NPU where any case moved past its threshold in
       // cycles or in size; a column per measure, each "then → now (change)"
       // over the kernel's cases, greyed when that measure did not move.
@@ -2407,7 +2474,9 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         const td = el('td', { className: `num${quiet ? ' quiet' : ''}`, title: xs.map(x => `${x.kase}: ${formatNumber(x.then, x.unit)} → ${formatNumber(x.now, x.unit)} (${formatChange(x.change, x.now - x.then, x.unit)})`).join('\n') },
           `${formatNumber(shown.then, shown.unit)} → `, el('b', {}, formatNumber(shown.now, shown.unit)), ' (',
           quiet ? formatChange(shown.change, shown.now - shown.then, shown.unit) : changeSpan(shown.change, shown.cls, true, metric, shown.now - shown.then, shown.unit), ')',
-          shown.kind ? el('span', { className: `tag ${shown.kind === 'step' ? 'step' : 'trend'} ${shown.cls}` }, shown.kind === 'step' ? `Step ${shortDate(shown.nowDate)}` : `Since ${shortDate(shown.thenDate)}`) : '');
+          shown.kind ? el('span', { className: `tag ${shown.kind === 'creep' ? 'trend' : 'step'} ${shown.cls}`, title: shown.note || '' },
+            shown.kind === 'step' ? `Step ${shortDate(shown.nowDate)}` : shown.kind === 'open' ? `Since ${shortDate(shown.movedOn)}` : `Since ${shortDate(shown.thenDate)}`) : '',
+          shown.note ? el('span', { className: 'sub why' }, `with ${shown.note}`) : '');
         if (xs.length > 1) td.append(el('span', { className: 'sub' }, quiet ? `none of ${xs.length} cases moved` : `${moved(xs).length} of ${xs.length} cases moved`));
         return td;
       };
@@ -2421,7 +2490,7 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
         return el('tr', {}, el('td', {}, name), el('td', {}, g.npu), ...columns.map(m => cell(g.by.get(m), m)));
       });
       if (!rows.length) {
-        target.replaceChildren(el('p', { className: 'empty' }, 'Nothing stepped or crept past its threshold in two weeks.'));
+        target.replaceChildren(el('p', { className: 'empty' }, `Nothing is past its threshold against ${WINDOW_NIGHTS} nightlies ago.`));
         return [];
       }
       target.replaceChildren(el('div', { className: 'table-wrap' }, el('table', { className: 'changes' },
@@ -3926,8 +3995,11 @@ python utils/router_testing/router_mutation.py --device npu2 [--hops-off] --seed
       if (lines.length) box.append(el('ul', { className: 'move-list' }, ...lines));
       const from = t.before && t.before.commit && t.before.commit.id, to = t.last.commit && t.last.commit.id;
       if (t.steps.length && from && to && from !== to) {
+        // And with a toolchain or driver change that night, if there was one.
+        const under = toolchainNote(t.before, t.last);
         box.append(el('p', { className: 'note' }, 'The step came in with one of ',
-          link(`${REPO}/compare/${from.slice(0, 12)}...${to.slice(0, 12)}`, `the commits between ${shortDate(t.before.date)} and ${shortDate(t.last.date)}`), '.'));
+          link(`${REPO}/compare/${from.slice(0, 12)}...${to.slice(0, 12)}`, `the commits between ${shortDate(t.before.date)} and ${shortDate(t.last.date)}`),
+          under ? `, and with ${under}.` : '.'));
       }
       if (t.blips.length) {
         // A band judging the design alone has batches, not seeds.

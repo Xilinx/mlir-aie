@@ -1270,13 +1270,13 @@ const rows = renderWindowChanges(db, ['npu1', 'npu2']);
 // One row per kernel and NPU; a column per measure, "then → now (change)",
 // tagged a step on the night it moved.
 assert.deepEqual(rows.map(r => r.children.map(c => c.text)),
-  [['softmax/1024/bfloat16', 'npu1', '1,000 → 1,100 (+10.0%)Step 1 Jan', '—']]);
+  [['softmax/1024/bfloat16', 'npu1', '1,000 → 1,100 (+10.0%)Since 1 Jan', '—']]);
 assert.equal(rows[0].children[0].children[0].children[0].href, '#view=kernel&kernel=softmax');
-assert.ok($('window-about').text.startsWith("Each case's cycles and object size over its last two weeks of nightlies"));
+assert.ok($('window-about').text.startsWith("Each case still past its threshold against its first nightly of the last 30"));
 // Nothing moved: said so.
 const flat = fromRecords({ npu1: [rec('1', 1, 'turbo', { 'a/1/i8/cycles': ['cycles', 100] }), rec('2', 2, 'turbo', { 'a/1/i8/cycles': ['cycles', 100] })] });
 assert.deepEqual(renderWindowChanges(flat, ['npu1']), []);
-assert.equal($('window-changes').text, 'Nothing stepped or crept past its threshold in two weeks.');
+assert.equal($('window-changes').text, 'Nothing is past its threshold against 30 nightlies ago.');
 // Runs started by hand are not nightlies: left out.
 const manual = fromRecords({ npu1: [rec('1', 1, 'turbo', { 'a/1/i8/cycles': ['cycles', 10] }),
   { ...rec('2', 2, 'turbo', { 'a/1/i8/cycles': ['cycles', 20] }), event: 'workflow_dispatch' }] });
@@ -3177,25 +3177,55 @@ assert.ok(!$('attention-list').text.includes('timing harness'));
 """)
 
 
-def test_the_change_table_lists_steps_and_creeps_over_two_weeks(page):
+def test_the_change_table_lists_what_is_open_against_thirty_nightlies_ago(page):
     page(RUNS + """
-// Fourteen nightlies, a day apart. d steps last night (100 for a week,
-// then 110); e creeps (2% a night for a week, never a step); a comes back
-// to where it was (100, 90 for a night, 100): neither.
+// Fourteen nightlies, a day apart. d steps last night (100 for a week, then
+// 110), with a Peano bump that night; e creeps (2% a night for a week); a
+// comes back to where it was (100, 90 for a night, 100): not open.
 const day = d => 86400000 * d;
 const flat = n => Array.from({ length: n }, () => 100);
 const dV = [...flat(13), 110], eV = [...flat(7), 102, 104, 106, 108, 110, 112, 112], aV = [...flat(12), 90, 100];
 const db3 = fromRecords({ npu1: dV.map((_, i) => rec(String(i + 1), day(10 + i), 'turbo',
-  { 'd/1/i8/cycles': ['cycles', dV[i]], 'e/1/i8/cycles': ['cycles', eV[i]], 'a/1/i8/cycles': ['cycles', aV[i]] })) });
+  { 'd/1/i8/cycles': ['cycles', dV[i]], 'e/1/i8/cycles': ['cycles', eV[i]], 'a/1/i8/cycles': ['cycles', aV[i]] },
+  { peano: i < 13 ? '22.0.0+83ba9ea9' : '22.0.0+4f5df13d' })) });
 location.hash = '#view=night';
 const rows = renderWindowChanges(db3, ['npu1']).map(r => r.children.map(c => c.text));
+// Dated by the night each crossed for good; d with what changed under it.
 assert.deepEqual(rows, [
-  ['e/1/i8', 'npu1', '100 → 112 (+12.0%)Since 11 Jan', '—'],
-  ['d/1/i8', 'npu1', '100 → 110 (+10.0%)Step 24 Jan', '—'],
+  ['e/1/i8', 'npu1', '100 → 112 (+12.0%)Since 18 Jan', '—'],
+  ['d/1/i8', 'npu1', '100 → 110 (+10.0%)Since 24 Jan' + 'with Peano 83ba9ea9 → 4f5df13d', '—'],
 ]);
 // No toggle to press: one list.
 assert.equal($('window-compare').children.length, 0);
-assert.ok($('window-about').text.includes('A step is the latest nightly past the threshold'));
+// The open steps, each dated, with what changed under them: d's; e's last
+// move (110 -> 112) is itself one; a, back to its usual, is not.
+const steps = kernelSteps(db3, 'npu1', 'cycles');
+assert.deepEqual(steps.map(x => [x.series.kase, x.before, x.after, x.note]).sort(),
+                 [['d/1/i8', 100, 110, 'Peano 83ba9ea9 → 4f5df13d'], ['e/1/i8', 110, 112, '']]);
+assert.equal(toolchainNote({ provenance: { xrt: '2.25.0', kernels: 'a' } }, { provenance: { xrt: '2.26.0', kernels: 'b' } }),
+             'XRT 2.25.0 → 2.26.0, kernel sources changed');
+assert.equal(toolchainNote({ provenance: {} }, { provenance: { peano: 'x' } }), '');
+""")
+
+
+def test_the_kernels_verdict_names_this_weeks_open_steps_by_date(page):
+    page(RUNS + """
+// A step four nights ago, still open: last night's comparison alone would
+// miss it; with the history, the verdict names it, dated.
+const day = d => 86400000 * d;
+const vals = [100, 100, 100, 100, 100, 100, 100, 120, 120, 120, 120];
+const records = vals.map((v, i) => rec(String(i + 1), day(10 + i), 'turbo', { 'mm/1/bf16/cycles': ['cycles', v] }));
+const weekHist = fromRecords({ npu1: records });
+const lastTwo = fromRecords({ npu1: records.slice(-2) });
+const night = nightOf('npu1', null, lastTwo, null, weekHist);
+assert.ok(night.weekly);
+assert.equal(verdictOf(night, day(21)).headline, 'mm cycles +20.0% on 18 Jan.');
+// Without the history: last night's comparison, which saw nothing move.
+assert.equal(verdictOf(nightOf('npu1', null, lastTwo, null), day(21)).level, 'ok');
+// A step older than a week leaves the verdict (it stays in the Summary's table).
+const later = [...vals, 120, 120, 120, 120];
+const recs2 = later.map((v, i) => rec(String(i + 1), day(10 + i), 'turbo', { 'mm/1/bf16/cycles': ['cycles', v] }));
+assert.equal(verdictOf(nightOf('npu1', null, fromRecords({ npu1: recs2.slice(-2) }), null, fromRecords({ npu1: recs2 })), day(25)).level, 'ok');
 """)
 
 def test_a_kernels_cases_that_moved_together_are_one_row(page):
@@ -3211,8 +3241,8 @@ const rows = renderWindowChanges(db, ['npu2']);
 const head = $('window-changes').children[0].children[0].children[0].children[0];
 assert.deepEqual(head.children.map(c => c.text), ['Case', 'NPU', 'Cyclesthen → now (change)', 'Object sizethen → now (change)']);
 assert.deepEqual(rows.map(r => r.children.map(c => c.text)), [
-  ['mm 2 cases', 'npu2', '—', '2.0 KiB → 4.3 KiB (+115.0%)Step 1 Jan2 of 2 cases moved'],
-  ['swiglu/1/bf16', 'npu2', '—', '8.8 KiB → 16.3 KiB (+85.6%)Step 1 Jan'],
+  ['mm 2 cases', 'npu2', '—', '2.0 KiB → 4.3 KiB (+115.0%)Since 1 Jan2 of 2 cases moved'],
+  ['swiglu/1/bf16', 'npu2', '—', '8.8 KiB → 16.3 KiB (+85.6%)Since 1 Jan'],
 ]);
 // Hover gives each case.
 assert.equal(rows[0].children[3].title, 'mm/1/f32/gelu: 2.0 KiB → 4.3 KiB (+115.0%)\\nmm/1/f32/relu: 2.0 KiB → 4.2 KiB (+110.0%)');
@@ -3223,6 +3253,6 @@ const both = fromRecords({ npu2: [
 ] });
 const [row] = renderWindowChanges(both, ['npu2']);
 assert.deepEqual(row.children.slice(2).map(c => [c.className, c.text]),
-  [['num faint', '—'], ['num', '2.0 KiB → 4.0 KiB (+100.0%)Step 1 Jan']]);
+  [['num faint', '—'], ['num', '2.0 KiB → 4.0 KiB (+100.0%)Since 1 Jan']]);
 assert.equal(rows[0].children[0].children[0].title, 'mm/1/f32/gelu\\nmm/1/f32/relu');
 """)
