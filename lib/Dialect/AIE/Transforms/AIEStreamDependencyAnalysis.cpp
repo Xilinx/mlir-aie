@@ -1164,7 +1164,7 @@ StreamWaitGraph::waitChain(ArrayRef<unsigned> from, ArrayRef<unsigned> targets,
   auto visit = [&](State next) {
     for (size_t i : seen.lookup(next.agent)) {
       const State &s = states[i];
-      if ((next.taking || !s.taking) && s.took.contains(next.took))
+      if ((next.taking || !s.taking) && next.took.contains(s.took))
         return;
     }
     seen[next.agent].push_back(states.size());
