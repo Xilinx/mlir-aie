@@ -1,31 +1,28 @@
 {
  "schema": 1,
  "target": "router",
- "id": "40626491097",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40626491097",
- "date": "2026-10-28T03:24:20+00:00",
+ "id": "40811928758",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40811928758",
+ "date": "2026-10-29T03:24:08+00:00",
  "commit": {
-  "id": "17023441580999ba72e6e454edb124b91e314520",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/17023441580999ba72e6e454edb124b91e314520",
-  "message": "Migrate GitHub-hosted CI workflows to Ubuntu 26.04 (#3975)",
-  "timestamp": "2026-10-27T22:38:51Z"
+  "id": "74e7e8303e8d4bff7ea393cafb0bcb9aaa4a000e",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/74e7e8303e8d4bff7ea393cafb0bcb9aaa4a000e",
+  "message": "Fix Python interpreter in router nightly lit tests (#3990)",
+  "timestamp": "2026-10-28T23:37:28Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "INTEL(R) XEON(R) PLATINUM 8573C",
+ "device": "AMD EPYC 9V45 96-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "1702344158",
-  "cpu": "INTEL(R) XEON(R) PLATINUM 8573C"
+  "commit": "74e7e8303e",
+  "cpu": "AMD EPYC 9V45 96-Core Processor"
  },
  "sane": true,
  "published": true,
  "n_rows": 24,
- "exitstatus": 1,
- "failed": [
-  "lit/create-packet-flows/nightly/hw_verdicts.py",
-  "lit/create-packet-flows/nightly/router_properties.py"
- ],
+ "exitstatus": 0,
+ "failed": [],
  "truncated": [],
  "rows": {
   "npu1": {
@@ -42,15 +39,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0137,
+    "value": 1.0119,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 14.808,
+    "value": 15.121,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 17.01,
+    "value": 16.75,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -76,15 +73,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0129,
+    "value": 1.0121,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 15.082,
+    "value": 15.365,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 11.77,
+    "value": 16.44,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -110,15 +107,15 @@
     "unit": "routings"
    },
    "hop_ratio": {
-    "value": 1.0106,
+    "value": 1.0159,
     "unit": "\u00d7"
    },
    "amsels_per_design": {
-    "value": 17.918,
+    "value": 18.732,
     "unit": "amsels"
    },
    "ms_per_design": {
-    "value": 164.73,
+    "value": 238.21,
     "unit": "ms"
    },
    "failed_mutations": {
@@ -136,83 +133,80 @@
   {
    "run": "lit",
    "tests": 2,
-   "failed": [
-    "create-packet-flows/nightly/hw_verdicts.py",
-    "create-packet-flows/nightly/router_properties.py"
-   ]
+   "failed": []
   },
   {
    "device": "npu1",
    "run": "properties",
-   "first_seed": 207540000,
+   "first_seed": 207550000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu1",
    "run": "hops-on",
-   "first_seed": 207540000,
+   "first_seed": 207550000,
    "seeds": 400,
-   "killed": 1905,
+   "killed": 1948,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu1",
    "run": "hops-off",
-   "first_seed": 207540000,
+   "first_seed": 207550000,
    "seeds": 400,
-   "killed": 1893,
+   "killed": 1944,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "properties",
-   "first_seed": 207540000,
+   "first_seed": 207550000,
    "seeds": 2000,
    "failed": []
   },
   {
    "device": "npu2",
    "run": "hops-on",
-   "first_seed": 207540000,
+   "first_seed": 207550000,
    "seeds": 400,
-   "killed": 1890,
+   "killed": 1960,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "npu2",
    "run": "hops-off",
-   "first_seed": 207540000,
+   "first_seed": 207550000,
    "seeds": 400,
-   "killed": 1882,
+   "killed": 1954,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "properties",
-   "first_seed": 207540000,
+   "first_seed": 207550000,
    "seeds": 500,
    "failed": []
   },
   {
    "device": "xcvc1902",
    "run": "hops-on",
-   "first_seed": 207540000,
+   "first_seed": 207550000,
    "seeds": 100,
-   "killed": 422,
+   "killed": 416,
    "survived": 0,
    "failures": 0
   },
   {
    "device": "xcvc1902",
    "run": "hops-off",
-   "first_seed": 207540000,
+   "first_seed": 207550000,
    "seeds": 100,
-   "killed": 422,
+   "killed": 413,
    "survived": 0,
    "failures": 0
   }

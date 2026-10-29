@@ -364,6 +364,33 @@
     "lit/create-packet-flows/nightly/router_properties.py"
    ],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "40811928758",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40811928758",
+   "date": "2026-10-29T03:24:08+00:00",
+   "commit": {
+    "id": "74e7e8303e8d4bff7ea393cafb0bcb9aaa4a000e",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/74e7e8303e8d4bff7ea393cafb0bcb9aaa4a000e",
+    "message": "Fix Python interpreter in router nightly lit tests (#3990)",
+    "timestamp": "2026-10-28T23:37:28Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "74e7e8303e",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

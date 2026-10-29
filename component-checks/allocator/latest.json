@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "40626491097",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40626491097",
- "date": "2026-10-28T03:24:20+00:00",
+ "id": "40811928758",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40811928758",
+ "date": "2026-10-29T03:24:08+00:00",
  "commit": {
-  "id": "17023441580999ba72e6e454edb124b91e314520",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/17023441580999ba72e6e454edb124b91e314520",
-  "message": "Migrate GitHub-hosted CI workflows to Ubuntu 26.04 (#3975)",
-  "timestamp": "2026-10-27T22:38:51Z"
+  "id": "74e7e8303e8d4bff7ea393cafb0bcb9aaa4a000e",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/74e7e8303e8d4bff7ea393cafb0bcb9aaa4a000e",
+  "message": "Fix Python interpreter in router nightly lit tests (#3990)",
+  "timestamp": "2026-10-28T23:37:28Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "INTEL(R) XEON(R) PLATINUM 8573C",
+ "device": "AMD EPYC 9V45 96-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "1702344158",
-  "cpu": "INTEL(R) XEON(R) PLATINUM 8573C"
+  "commit": "74e7e8303e",
+  "cpu": "AMD EPYC 9V45 96-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 145.5,
+    "value": 237.2,
     "unit": "s"
    }
   }
@@ -102,7 +102,7 @@
   {
    "name": "stress",
    "ok": true,
-   "detail": "300/300 placed in 0.0s (max 30s)"
+   "detail": "300/300 placed in 0.1s (max 30s)"
   }
  ]
 }
