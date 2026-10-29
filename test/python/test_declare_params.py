@@ -154,6 +154,19 @@ def test_a_select_obj_shape_streams_only_where_its_flag_picks_a_shape(
     assert on.streamed and on.obj_shape == (64,) and on.lanes == 1
 
 
+def test_a_select_of_two_shapes_streams_before_its_flag_resolves():
+    class Tiled(Operator):
+        K: int = param()
+        wide: bool = tunable(default=False, domain=(False, True))
+        cores: int = tunable(default=2)
+        x = In(K, obj_shape=Select(wide, (K,), (1,)), per=cores)
+
+    op = Tiled(K=64)
+    vars(op).update(wide=None)
+    x = Tiled.x.of(op)
+    assert x.streamed and x.lanes == 2
+
+
 def test_an_unstreamed_operand_has_no_element_or_lanes():
     c = Streams.c.of(streams())
     with pytest.raises(TypeError, match="c has no obj_shape here: no stream"):

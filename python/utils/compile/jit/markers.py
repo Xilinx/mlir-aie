@@ -189,7 +189,10 @@ class _Operand(Member):
         if self.obj_dims is None:
             return False
         return self.op is None or not any(
-            isinstance(d, Select) and d.branch(self.op) is None for d in self.obj_dims
+            isinstance(d, Select)
+            and None in (d.when_true, d.when_false)
+            and d.branch(self.op) is None
+            for d in self.obj_dims
         )
 
     @property
