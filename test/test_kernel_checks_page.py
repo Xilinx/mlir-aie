@@ -179,7 +179,7 @@ assert.ok(!/the median of/.test(COMPONENT_METRICS.us_per_image_b1 + trendOf('yol
 assert.ok(COMPONENT_METRICS.tok_s.includes('fastest 4-token dispatch of 20'));
 assert.ok(COMPONENT_METRICS.ms_per_token.includes('fastest 4-token dispatch of 20'));
 assert.ok(COMPONENT_METRICS.decode_tok_s.includes('the median of its 5 requests'));
-assert.ok(trendOf('llama-chain-hw')[1].axis.includes('fastest of 20 dispatches'));
+assert.ok(trendOf('llama-chain-hw')[0].axis.includes('fastest of 20 dispatches'));
 assert.ok(!/median dispatch|dispatch: median/.test(trendOf('llama-chain-hw').map(t => t.axis + ' ' + (t.about || '')).join(' ')));
 // A host-observed dispatch is never called NPU time; NPU time is the dispatch less its baseline.
 assert.ok(!/NPU time/.test(COMPONENT_METRICS.us_per_image + COMPONENT_METRICS.ms_per_token + COMPONENT_METRICS.dispatch_us_per_image_b1));
@@ -265,21 +265,21 @@ assert.equal(latestMove(series('tok_s'), ['turbo']).cls, 'worse');
 assert.deepEqual(latestMove(series('elf_bytes'), ['turbo']).since, Date.parse(swaps[1].date));
 assert.deepEqual(movedSeries(data, 'llama-chain-hw').regressed.map(x => x.series.metric), ['tok_s']);
 // The trend: a line per part, the second dashed; each provenance change marked.
-const rate = trendConfig(data, llama.trend[0]);
+const rate = trendConfig(data, llama.trend.find(t => t.id === 'decode_by_context'));
 const lines = rate.data.datasets.filter(d => !d.band);
 assert.deepEqual(lines.map(d => [d.label, d.data, d.borderDash.length > 0]), [
-  ['dispatch only (fastest of 20) · Strix', [4.7, null, 4.37], false], ['dispatch only (fastest of 20) · Krackan', [null, 4, null], true]]);
+  ['64 context · Strix', [4.7, null, 4.37], false], ['64 context · Krackan', [null, 4, null], true]]);
 assert.deepEqual(rate.plugins, [MARKERS]);
 assert.deepEqual(rate.options.plugins.markers.at.map(m => m.label), ['device NPU Krackan 1, kernels k2', 'device NPU Strix, kernels k3']);
 assert.deepEqual(rate.options.plugins.tooltip.callbacks.title([{ dataIndex: 1 }]), ['2 Oct, 06:30 UTC', 'changed: device NPU Krackan 1, kernels k2']);
 // Compile time moves with the part's host too: its stack is one machine's,
 // the latest run's unless another is chosen, and offers the others.
-const compile = stackConfig(data, COMPILE_TABS[0]);
+const compile = stackConfig(data, { ...COMPILE_TABS[0], stack: COMPILE_TABS[0].split, missingIsZero: true });
 assert.deepEqual([compile.data.parts, compile.data.part], [['Strix', 'Krackan 1'], 'Strix']);
 assert.deepEqual(compile.data.datasets.filter(d => !d.part).map(d => [d.label, d.data]),
-                 [['whole cold compile', [60.5, 60.5]], ['whole warm compile', [1.2, 1.2]]]);
+                 [['cold (nothing cached)', [60.5, 60.5]], ['warm (kernel objects kept)', [1.2, 1.2]]]);
 assert.equal(compile.options.scales.x.title.text, 'Nightly run, on Strix');
-assert.deepEqual(stackConfig(data, COMPILE_TABS[0], { part: 'Krackan 1' }).data.labels, ['2 Oct']);
+assert.deepEqual(stackConfig(data, { ...COMPILE_TABS[0], stack: COMPILE_TABS[0].split, missingIsZero: true }, { part: 'Krackan 1' }).data.labels, ['2 Oct']);
 // The part is named on the band. A runner that alternates parts is
 // compared with its own part's last night: no change to warn of.
 const card = componentBand(llama, { target: 'llama-chain-hw', runs: swaps.map(n => night(n.id, n.date, 'turbo', { device: n.device, provenance: n.provenance })) },
@@ -376,7 +376,7 @@ assert.deepEqual(['max_ulp_bfloat16', 'not_correctly_rounded_float32'].map(label
 assert.ok(METRICS.max_ulp_bfloat16.includes('correctly rounded value of the function the kernel computes'));
 assert.ok(METRICS.max_ulp_bfloat16.includes("never a LUT build's model of itself"));
 const ulp = kernelTrendConfig(db, 'npu2', 'softmax', 'max_ulp_bfloat16');
-assert.equal(ulp.options.scales.y.title.text, 'Max error (ULP, bfloat16, worst result) · ↓ better');
+assert.equal(ulp.options.scales.y.title.text, 'Max error (ULP) · ↓ better');
 assert.deepEqual(ulp.data.datasets[0].data, [0, 0, 5]);
 // Hover says which reference the error is against.
 assert.equal(ulp.options.plugins.tooltip.callbacks.label({ dataset: ulp.data.datasets[0], dataIndex: 2, raw: 5 }),
@@ -390,11 +390,11 @@ assert.deepEqual(moved.regressed.map(x => [x.series.metric, x.before, x.after]),
 assert.equal(formatChange(moved.regressed[0].change, 5, 'ulp'), '+5 ulp');
 // Gated, they read in the verdict as their own kind of move.
 const night = nightOf('npu2', null, db, cat2);
-assert.equal(verdictOf(night, Date.parse('2026-10-03T07:00:00Z')).headline, '1 case less accurate vs 2 Oct.');
+assert.equal(verdictOf(night, Date.parse('2026-10-03T07:00:00Z')).headline, 'softmax less accurate vs 2 Oct.');
 // Cycles lead the sentence, whatever order the moves came in.
 const mixed = { ...night, moved: { regressed: [
   { series: { metric: 'kernel_object_bytes', kase: 'a/1' } }, { series: { metric: 'cycles', kase: 'b/1' } }], improved: [] } };
-assert.equal(verdictOf(mixed, Date.parse('2026-10-03T07:00:00Z')).headline, '1 case slower, 1 bigger vs 2 Oct.');
+assert.equal(verdictOf(mixed, Date.parse('2026-10-03T07:00:00Z')).headline, 'a bigger, b slower vs 2 Oct.');
 const item = attentionFor(night, Date.parse('2026-10-03T07:00:00Z')).find(i => i.level === 'bad');
 assert.ok(item.body[0].startsWith('1 case got less accurate past its threshold vs 2 Oct:'));
 // The Summary's table gains a column for an error metric only when one moved.
@@ -402,7 +402,7 @@ location.hash = '#view=night';
 renderWindowChanges(db, ['npu2']);
 const head = $('window-changes').children[0].children[0].children[0].children[0];
 assert.deepEqual(head.children.map(c => c.text.split('1 Oct')[0].split('2 Oct')[0]),
-  ['Case', 'NPU', 'Cycles', 'Object size', 'Max error (ULP, bfloat16)', 'Not correctly rounded (%, bfloat16)']);
+  ['Case', 'NPU', 'Cyclesthen → now (change)', 'Object sizethen → now (change)', 'Max error (ULP, bfloat16)then → now (change)', 'Not correctly rounded (%, bfloat16)then → now (change)']);
 """)
 
 
@@ -412,9 +412,10 @@ def test_a_link_to_a_metric_opens_the_tab_that_charts_it(page):
 const data = collect(historiesOf('llama-chain-hw', [llamaBefore, llamaAfter]));
 assert.equal(trendBox(data, llama.trend, 'decode_tok_s').metric(), 'tok_s');
 assert.equal(trendBox(data, llama.trend, 'compile_s').metric(), 'compile_s');
-assert.equal(trendBox(data, llama.trend, 'compile_peak_rss_mb_warm').metric(), 'compile_peak_rss_mb');
+// The fixture's nights recorded no whole-compile peak: no memory tab, so the first tab.
+assert.equal(trendBox(data, llama.trend, 'compile_peak_mib_warm').metric(), 'decode_by_context');
 // A metric no tab charts opens the first tab.
-assert.equal(trendBox(data, llama.trend, 'dma_floor_ratio').metric(), 'tok_s');
+assert.equal(trendBox(data, llama.trend, 'dma_floor_ratio').metric(), 'decode_by_context');
 // Every metric a band judges has a label to show it by.
 for (const band of BANDS) for (const m of band.metrics) assert.ok(m in LABELS, `${band.id} ${m}`);
 // The band's trend is scrolled to.
@@ -470,24 +471,24 @@ const swept = (id, date, night) => {
 };
 const data = collect(historiesOf('llama-chain-hw', [swept('6', llamaBefore.date, 0), swept('7', llamaAfter.date, 1)]));
 const tab = llama.trend.find(t => t.id === 'decode_by_context');
-assert.equal(tab.name, 'Decode by context');
+assert.equal(tab.name, 'Decode');
 const config = trendConfig(data, tab);
 // The dispatch rate per context, higher is better, as mlir-air and FastFlowLM tabulate decode.
 const lines = config.data.datasets.filter(d => !d.band);
 assert.deepEqual(lines.map(d => [d.label, d.data.map(v => Math.round(v * 100) / 100)]),
-  [['1k context', [19.23, 17.48]], ['8k context', [14.29, 12.99]], ['128k context', [2.56, 2.33]]]);
+  [['64 context', [4.37, 4.37]], ['1k context', [19.23, 17.48]], ['8k context', [14.29, 12.99]], ['128k context', [2.56, 2.33]]]);
 assert.equal(config.options.scales.y.type, 'logarithmic');
-assert.equal(config.options.scales.y.title.text, 'Dispatch rate, tokens per second (fastest of 20 dispatches) · ↑ better');
+assert.equal(config.options.scales.y.title.text, 'Decode, tokens / s · ↑ better');
 // The time per token on hover.
-assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[2], dataIndex: 1, raw: 1000 / 429 }),
+assert.equal(config.options.plugins.tooltip.callbacks.label({ dataset: lines[3], dataIndex: 1, raw: 1000 / 429 }),
              '128k context: 2.33 tok/s, dispatch / token 429 ms');
 // The plain decode tab charts the timed run alone, not the sweep summed in.
 assert.deepEqual(trendConfig(data, llama.trend.find(t => t.id === 'tok_s')).data.datasets.filter(d => !d.band).map(d => d.data), [[4.37, 4.37]]);
 assert.deepEqual(trendBox(data, llama.trend, '').children[0].children[0].children.map(b => b.textContent).slice(0, 3),
-  ['Decode speed', 'Decode by context', 'Compile time']);
+  ['Decode', 'End to end', 'Compile time']);
 // The table and the summary stay on the timed run.
 const card = componentBand(llama, llamaIndex, swept('7', llamaAfter.date, 1), NOW, swept('6', llamaBefore.date, 0));
-assert.equal(tableOf(card.table).find(r => r[0] === 'Decode, dispatch only')[1], '4.37 tok/s 0.0%');
+assert.equal(tableOf(card.table).find(r => r[0] === 'Decode, dispatch only')[1], '4.37 tok/s');
 """)
 
 
@@ -507,15 +508,15 @@ const swept = (id, date, night) => {
 };
 const data = collect(historiesOf('llama-chain-hw', [swept('6', llamaBefore.date, 0), swept('7', llamaAfter.date, 1)]));
 const tab = llama.trend.find(t => t.id === 'ttft_by_prompt');
-assert.equal(tab.name, 'TTFT by prompt length');
+assert.equal(tab.name, 'Time to first token');
 const config = trendConfig(data, tab);
 const lines = config.data.datasets.filter(d => !d.band);
-assert.deepEqual(lines.map(d => d.label), ['512 tokens', '1k tokens', '2k tokens']);
-assert.deepEqual(lines.map(d => d.data), [[8060, 8100], [17110, 17200], [37430, 37600]]);
+// generate.py's own short prompt first, then the sweep's.
+assert.deepEqual(lines.map(d => d.label), ['short prompt (6 tokens)', '512 token prompt', '1k token prompt', '2k token prompt']);
+assert.deepEqual(lines.map(d => d.data), [[124.6, 124.6], [8060, 8100], [17110, 17200], [37430, 37600]]);
 assert.equal(config.options.scales.y.type, 'logarithmic');
-// The plain TTFT tab charts the fixed-prompt run alone, not the sweep summed in.
-assert.deepEqual(trendConfig(data, llama.trend.find(t => t.id === 'ttft_ms')).data.datasets.filter(d => !d.band).map(d => d.data),
-  [[124.6, 124.6]]);
+// The short prompt is its own line, not summed into the sweep's.
+assert.equal(lines[0].data[0], 124.6);
 """)
 
 
@@ -536,8 +537,8 @@ location.hash = '#view=performance&metric=e2e_us_per_image';
   await showSection('performance');
   await new Promise(resolve => setTimeout(resolve, 0));
   const [band] = $('performance-bands').children;
-  // The end-to-end time is the top of the time-per-image stack.
-  assert.equal(band.trend.children[0].metric(), 'npu_us_per_image');
+  // The end-to-end time has its own tab, every batch a line.
+  assert.equal(band.trend.children[0].metric(), 'e2e_us_per_image');
   assert.ok(band.trend.scrolled);
 })().catch(e => { console.error(e); process.exit(1); });
 """)
@@ -620,7 +621,7 @@ const holder = document.createElement('div');
 const canvas = document.createElement('canvas');
 holder.append(canvas);
 document.createElement('div').append(holder);
-const drawn = lineChart(canvas, trendConfig(data, { ...sweep.trend[0], only: 'mobilenet', variants: null }));
+const drawn = lineChart(canvas, trendConfig(data, { ...sweep.trend[0], variants: null }));
 assert.ok(drawn.svg.some(p => p.startsWith('<polyline')));
 assert.deepEqual(drawn.legend, ['mean of the seeds', 'worst seed']);
 assert.ok(canvas.hidden);
@@ -677,7 +678,7 @@ const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
 const box = trendBox(data, hw.trend, 'us_per_image');
 const canvas = all(box, n => n.tag === 'canvas')[0];
 assert.equal(canvas.role, 'img');
-assert.equal(canvas.ariaLabel, 'Time per image, Time per image (µs, fastest of 20 launches), over recent nightlies');
+assert.equal(canvas.ariaLabel, 'Where the time goes, Time per image (µs, fastest of 20 launches), over recent nightlies');
 // A run with no link still names itself.
 const strip = nightStrip({ runs: [{ id: '1', date: '2026-10-01T06:30:00Z', pmode: 'turbo', published: true }], run: { id: '1' } });
 assert.equal(strip.children[1].role, 'img');
@@ -869,6 +870,25 @@ assert.deepEqual(markersFor(db.order), [
 ]);
 // What changed is in the tooltip's title, not drawn over the chart.
 assert.deepEqual(changedTitle('3 Jan', markersFor(db.order), 2), ['3 Jan', 'changed: peano 22.0.0+bbbb, kernels k2']);
+""")
+
+
+def test_a_kernel_back_to_its_usual_is_not_a_regression(page):
+    page("""
+// conv2dk1 on npu2: 343 cycles for a week, 336 for two nights, 343 again;
+// mm: 414 for a week, then 427. Night over night both got slower; only mm
+// left the week's range.
+const week = [343, 343, 343, 343, 343, 336, 336, 343];
+const mmWeek = [414, 414, 414, 414, 414, 414, 414, 427];
+const records = week.map((v, i) => rec(String(i + 1), (i + 1) * 86400000, 'turbo',
+  { 'conv2dk1/2048x8/uint8/cycles': ['cycles', v], 'mm/32x64/bfloat16/cycles': ['cycles', mmWeek[i]] }));
+const history = fromRecords({ npu2: records });
+const lastTwo = fromRecords({ npu2: records.slice(-2) });
+const without = nightOf('npu2', null, lastTwo, null);
+assert.deepEqual(without.moved.regressed.map(x => x.series.kase).sort(), ['conv2dk1/2048x8/uint8', 'mm/32x64/bfloat16']);
+const withWeek = nightOf('npu2', null, lastTwo, null, history);
+assert.deepEqual(withWeek.moved.regressed.map(x => x.series.kase), ['mm/32x64/bfloat16']);
+assert.deepEqual([...withWeek.flagged.keys()], ['mm/32x64/bfloat16']);
 """)
 
 
@@ -1111,7 +1131,7 @@ const [v1, v2] = $('verdicts').children;
 assert.equal(v1.className, 'verdict bad');
 const headline = v1.children.find(c => c.className === 'headline');
 // The comparison names its baseline.
-assert.equal(headline.text, '1 case slower vs 1 Jan, 1 failing correctness, 1 failed timing. 1 faster.');
+assert.equal(headline.text, 'relu cycles +3.0% vs 1 Jan, 1 failing correctness, 1 failed timing. 1 faster.');
 // The counts are under Run details, shut.
 const runMore = v1.children.find(c => c.className === 'band-more');
 assert.ok(!runMore.open);
@@ -1241,17 +1261,17 @@ assert.equal(moved[0].change.toFixed(2), '0.10');
 assert.ok(!moved.some(x => x.kase.startsWith('softmax/64') || x.kase.startsWith('softmax_mask')));
 // The Summary's table over the window: case, NPU, measure, then and now
 // with their dates, the change.
-location.hash = '#view=night&changes=window';
 const rows = renderWindowChanges(db, ['npu1', 'npu2']);
-// One row per kernel and NPU; a column per measure, "then → now (change)".
+// One row per kernel and NPU; a column per measure, "then → now (change)",
+// tagged a step on the night it moved.
 assert.deepEqual(rows.map(r => r.children.map(c => c.text)),
-  [['softmax/1024/bfloat16', 'npu1', '1,000 → 1,100 (+10.0%)', '—']]);
+  [['softmax/1024/bfloat16', 'npu1', '1,000 → 1,100 (+10.0%)Step 1 Jan', '—']]);
 assert.equal(rows[0].children[0].children[0].children[0].href, '#view=kernel&kernel=softmax');
-assert.ok($('window-about').text.startsWith("Each case's cycles and object size on its first nightly from 1 Jan against its latest"));
+assert.ok($('window-about').text.startsWith("Each case's cycles and object size over its last two weeks of nightlies"));
 // Nothing moved: said so.
 const flat = fromRecords({ npu1: [rec('1', 1, 'turbo', { 'a/1/i8/cycles': ['cycles', 100] }), rec('2', 2, 'turbo', { 'a/1/i8/cycles': ['cycles', 100] })] });
 assert.deepEqual(renderWindowChanges(flat, ['npu1']), []);
-assert.equal($('window-changes').text, 'Nothing moved past its threshold over these nightlies.');
+assert.equal($('window-changes').text, 'Nothing stepped or crept past its threshold in two weeks.');
 // Runs started by hand are not nightlies: left out.
 const manual = fromRecords({ npu1: [rec('1', 1, 'turbo', { 'a/1/i8/cycles': ['cycles', 10] }),
   { ...rec('2', 2, 'turbo', { 'a/1/i8/cycles': ['cycles', 20] }), event: 'workflow_dispatch' }] });
@@ -1473,7 +1493,7 @@ assert.equal(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1
 // The tooltip always repeats the axis tick's own formatting of the value.
 assert.ok(tips.label({ dataset: config.data.datasets[1], dataIndex: 1, raw: 1100 }).includes(config.options.scales.y.ticks.callback(1100)));
 assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
-assert.equal(config.options.scales.y.title.text, 'Cycles per call (fastest traced call) · ↓ better');
+assert.equal(config.options.scales.y.title.text, 'Cycles per call · ↓ better');
 // 50 and 1,100 differ over ten times: a log axis, so both lines' moves show.
 assert.equal(config.options.scales.y.type, 'logarithmic');
 assert.equal(kernelTrendConfig(db, 'npu2', 'softmax', 'cycles').options.scales.y.type, 'linear');
@@ -1608,6 +1628,84 @@ const NOW = Date.parse('2026-10-02T07:00:00Z');
 """
 
 
+def test_component_bands_judge_steps_and_trends_over_two_weeks(page):
+    page(COMPONENT_RUNS + """
+{
+const yolo = BANDS.find(b => b.id === 'yolo26n-hw');
+// Fourteen nightlies, a day apart, each its own commit.
+const days = Array.from({ length: 14 }, (_, i) => ({ id: String(i + 1), date: new Date(Date.parse('2026-10-01T06:30:00Z') + i * 86400000).toISOString(),
+  commit: { id: `${String(i + 1).padStart(2, '0')}`.repeat(20) }, pmode: 'turbo', provenance: {} }));
+const file = (target, metric, unit, series) => ({ schema: 1, target, metric, unit, runs: days, series: Object.fromEntries(
+  Object.entries(series).map(([k, values]) => [k, { values }])) });
+const flat = (v, n = 14) => Array.from({ length: n }, (_, i) => v + (i % 3) * 0.004 * v);
+const steady = flat(11600);
+const db = collect([
+  // A step last night: outside the whole week before, past 5%.
+  file('yolo26n-hw', 'npu_us_per_image_b1', 'us', { 'yolo26n/640': [...flat(11600, 13), 12400] }),
+  // A creep: 2% a night for a week, never a step on its own.
+  file('yolo26n-hw', 'us_per_image_b1', 'us', { 'yolo26n/640': [...flat(12500, 7), 12750, 13000, 13260, 13530, 13800, 14080, 14080] }),
+  // Within its usual bounce: nothing.
+  file('yolo26n-hw', 'us_per_image_b8', 'us', { 'yolo26n/640': [6000, 6400, 6000, 6400, 6000, 6400, 6000, 6400, 6000, 6400, 6000, 6400, 6000, 6400] }),
+  // Better: listed as such.
+  file('yolo26n-hw', 'compile_s', 's', { 'yolo26n/640': [...flat(33, 13), 20] }),
+]);
+const t = trendMoves(db, yolo);
+assert.deepEqual(t.steps.map(x => [x.series.metric, x.kind]), [['npu_us_per_image_b1', 'step']]);
+assert.deepEqual(t.trends.map(x => [x.series.metric, x.kind, x.since]), [['us_per_image_b1', 'trend', Date.parse(days[0].date)]]);
+assert.deepEqual(t.better.map(x => x.series.metric), ['compile_s']);
+assert.equal(t.blips.length, 0);
+// The band: amber, saying both, with the commits behind the step.
+const latest = { id: '14', date: days[13].date, rows: { 'yolo26n/640': { npu_us_per_image_b1: { value: 12400, unit: 'us' }, images_passed: { value: 128, unit: 'images' } } } };
+const index = { target: 'yolo26n-hw', runs: days.map(d => night(d.id, d.date, 'turbo')) };
+const card = componentBand(yolo, index, latest, Date.parse(days[13].date) + 3600000, null, db);
+assert.equal(card.className, 'verdict warn');
+assert.ok(one(card, n => n.className === 'headline').text.includes('NPU time / image (b1) +6.5% stepped worse on 14 Oct; end-to-end / image (b1) +12.2% crept worse over two weeks.'), one(card, n => n.className === 'headline').text);
+const changes = one(card, n => n.className === 'changes');
+assert.deepEqual(all(changes, n => n.className && n.className.startsWith('tag ')).map(n => n.text), ['Step 14 Oct', 'Since 1 Oct', 'Better 14 Oct']);
+const compare = one(changes, n => n.tag === 'a');
+assert.equal(compare.href, 'https://github.com/Xilinx/mlir-aie/compare/131313131313...141414141414');
+// Each line has its two weeks as bars, the last the step's.
+const spark = one(changes.children[0].children[0], n => n.className === 'spark worse');
+assert.equal(spark.children.length, 14);
+assert.equal(spark.children.at(-1).className, 'last');
+
+// One batch of many moving while the rest held: a blip, folded away, and the band stays green.
+const seeds = {};
+for (const seed of [2, 3, 7]) for (const b of [1, 2, 4, 8, 16, 64]) seeds[`mobilenet/seed=${seed}/batch=${b}/effort=default`] = flat(90);
+seeds['mobilenet/seed=3/batch=1/effort=default'] = [...flat(90, 13), 180];
+// Another seed's moves are the placer's, not Performance's: not judged here at all.
+seeds['mobilenet/seed=2/batch=8/effort=default'] = [...flat(90, 13), 400];
+const hwDb = collect([file('sa-placer-hw', 'host_overhead_us_per_image', 'us', seeds)]);
+const ht = trendMoves(hwDb, hw);
+assert.deepEqual([ht.steps.length, ht.trends.length, ht.blips.length], [0, 0, 1]);
+assert.equal(ht.blips[0].series.kase, 'mobilenet/seed=3/batch=1/effort=default');
+const blipBox = changesBlock(ht, hw);
+assert.equal(one(blipBox, n => n.tag === 'summary').text, '1 move on one batch only, the rest held: likely noise');
+// Without a history (an older publish): the night before, as it was.
+assert.equal(trendMoves(null, yolo).steps.length, 0);
+}
+""")
+
+
+def test_the_mobilenet_card_shows_the_sweeps_mobilenet_beside_its_placements(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+// The seed sweep's MobileNet snapshot: 20 seeds, one failed.
+const sweepLatest = { id: '7', date: hwAfter.date, rows: { mobilenet: {
+  final_cost_mean: { value: 294.6, unit: 'cost' }, final_cost_max: { value: 305, unit: 'cost' } } },
+  detail: Array.from({ length: 20 }, (_, i) => ({ fixture: 'mobilenet', seed: i + 1, passed: i !== 10 })) };
+const card = componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore, null, new Map([['sa-placer', sweepLatest]]));
+const last = tableOf(card.table).at(-1);
+assert.deepEqual([last[0], last[1], last[2], last.at(-1)], ['seeds 1–20, full effort (sweep)', 'snapshot', '294.6 mean, 305 worst', '19 of 20 placed']);
+assert.equal(all(card.table, n => n.className === 'vals worse').length, 1);
+// One card for MobileNet's placement: its tabs, the sweep's history among them.
+assert.equal(hwPlacement.title, 'MobileNet placement');
+assert.deepEqual(hwPlacement.trend.map(t => t.name), ['Placement cost', 'Seed sweep', 'Compile time', 'Compile memory']);
+assert.deepEqual(hwPlacement.alsoFrom, { check: 'sa-placer', fixture: 'mobilenet' });
+// Without the sweep's record, no row.
+assert.equal(tableOf(componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore).table).at(-1)[0], 'seed 7, full effort');
+""")
+
+
 def test_a_failed_sweep_names_its_seeds_and_how_to_run_each_again(page):
     page(COMPONENT_RUNS + """
 const failed = ['test_sa_effort/seed4', 'mobilenet/seed11', 'mobilenet/seed12', 'mobilenet/seed13', 'mobilenet/seed14'];
@@ -1626,9 +1724,9 @@ assert.ok(!card.text.includes('power mode'));
 assert.deepEqual(tableOf(card.table), [
   ['', 'Seeds placed', 'Cost, mean', 'Cost, worst', 'CPU, mean', 'CPU, slowest', 'Peak memory'],
   ['test_sa_effort', '1', '12.3', '—', '—', '—', '—'],
-  ['mobilenet', '4', '—', '—', '—', '21,000 ms', '—'],
 ]);
-assert.ok(all(card.table, n => n.className === 'vals worse').length === 2);
+// MobileNet's sweep is on the MobileNet card; its failures still fail this one.
+assert.ok(all(card.table, n => n.className === 'vals worse').length === 1);
 // A record without detail, as published before it, has no Seeds chart.
 assert.equal(all(card, n => n.className === 'charts').length, 0);
 const repro = one(card, n => n.className === 'repro');
@@ -1651,12 +1749,12 @@ assert.deepEqual(one(repro, n => n.tag === 'pre').text.split('\\n'), [
 SWEEP_NIGHTS = """
 // Two sweep nightlies of one fixture over seeds 1..4: the latest costs
 // more at seed 2 and fails seed 4.
-const seedRuns = (costs, cpu) => costs.map((final_cost, i) => ({ fixture: 'mobilenet', seed: i + 1,
+const seedRuns = (costs, cpu) => costs.map((final_cost, i) => ({ fixture: 'test_sa_effort', seed: i + 1,
   passed: final_cost !== null, final_cost, cpu_ms: cpu, peak_rss_mb: 200 }));
 const sweepRecord = (id, date, costs, cpu) => {
   const passed = costs.filter(c => c !== null);
   const cell = (value, unit) => ({ value, unit });
-  return { id, date, pmode: null, commit: { ...commit }, provenance: {}, detail: seedRuns(costs, cpu), rows: { mobilenet: {
+  return { id, date, pmode: null, commit: { ...commit }, provenance: {}, detail: seedRuns(costs, cpu), rows: { test_sa_effort: {
     failed_seeds: cell(costs.length - passed.length, 'seeds'),
     final_cost_mean: cell(passed.reduce((a, b) => a + b, 0) / passed.length, 'cost'),
     final_cost_max: cell(Math.max(...passed), 'cost'),
@@ -1665,7 +1763,7 @@ const sweepRecord = (id, date, costs, cpu) => {
 };
 const before = sweepRecord('6', '2026-10-01T06:30:00Z', [100, 100, 100, 100], 2000);
 const after = sweepRecord('7', '2026-10-02T06:30:00Z', [100, 110, 100, null], 2100);
-const sweepIndex = { target: 'sa-placer', runs: [night('6', before.date, null), night('7', after.date, null, { failed: ['mobilenet/seed4'] })] };
+const sweepIndex = { target: 'sa-placer', runs: [night('6', before.date, null), night('7', after.date, null, { failed: ['test_sa_effort/seed4'] })] };
 """
 
 
@@ -1673,20 +1771,20 @@ def test_the_sweep_table_and_seeds_chart_compare_with_the_nightly_before(page):
     page(COMPONENT_RUNS + SWEEP_NIGHTS + """
 assert.equal(previousPublished(sweepIndex, after).id, '6');
 const card = componentBand(sweep, sweepIndex, after, NOW, before);
-assert.equal(one(card, n => n.className === 'headline').text, '1 seed failed: mobilenet/seed4.');
+assert.equal(one(card, n => n.className === 'headline').text, '1 seed failed: test_sa_effort/seed4.');
 // The worst cost moved 10%, past its 1%; CPU time 5%, within its 25%.
 const moves = one(card, n => n.className === 'moves');
 // A seed that failed is a count from zero: its floor of 1 flags it.
-assert.equal(moves.text, 'Since 1 Oct:mobilenet failed seeds +1mobilenet SA final cost (worst) +10.0%mobilenet SA final cost (mean) +3.3%');
+assert.equal(moves.text, 'Since 1 Oct:test_sa_effort failed seeds +1test_sa_effort SA final cost (worst) +10.0%test_sa_effort SA final cost (mean) +3.3%');
 // A row per fixture: how many seeds placed, then each figure and its change.
 assert.deepEqual(tableOf(card.table), [
   ['', 'Seeds placed', 'Cost, mean', 'Cost, worst', 'CPU, mean', 'CPU, slowest', 'Peak memory'],
-  ['mobilenet', '3 of 4', '103.3 +3.3%', '110 +10.0%', '2,100 ms +5.0%', '2,100 ms +5.0%', '200 MiB 0.0%'],
+  ['test_sa_effort', '3 of 4', '103.3 +3.3%', '110 +10.0%', '2,100 ms', '2,100 ms', '200 MiB'],
 ]);
-assert.equal(all(card.table, n => n.tag === 'tbody')[0].children[0].children[0].title, 'utils/component_checks/fixtures/mobilenet.mlir');
-// Past the cost's 1%: strong; the CPU's 5% within its 25%: flat.
+assert.equal(all(card.table, n => n.tag === 'tbody')[0].children[0].children[0].title, 'test/place-tiles/sa_placer/test_sa_effort.mlir');
+// Past the cost's 1%: strong; the CPU's 5% within its 25%: noise, not shown.
 assert.deepEqual(all(card.table, n => /^chg /.test(n.className || '')).map(n => n.className),
-                 ['chg worse strong', 'chg worse strong', 'chg flat', 'chg flat', 'chg flat']);
+                 ['chg worse strong', 'chg worse strong']);
 assert.ok(all(card.table, n => n.className === 'vals worse').length === 1);
 // The Seeds chart: a dot per seed on a zoomed axis (no bars measured from its floor),
 // the nightly before as ticks, seed 4 a ✕.
@@ -1761,13 +1859,16 @@ const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 // Every run passed, but seed 3's batch 16 got slower: a warning, not "all passing".
 assert.equal(card.className, 'verdict warn');
 assert.equal(one(card, n => n.className === 'headline').text,
-             "Every run passed, but 2 measures got worse vs 1 Oct. Seed 3's NPU time is 248.7 µs (2,527.17 fps) per image at batch 1, 102 µs (4,880.43 fps) at batch 16.");
+             '2 measures got worse vs 1 Oct.');
 const repro = one(card, n => n.className === 'repro');
 assert.ok(!repro.open);
 // Shown: the verdict, what moved, the latest numbers and the trend chart's
 // slot. Behind About: what the check does, how to run it, the run.
 const top = card.children.map(c => c.className);
-assert.deepEqual(top, ['verdict-top', 'headline', 'moves', 'band-table', 'trend-slot', 'band-more']);
+assert.deepEqual(top, ['verdict-top', 'headline', 'moves', 'trend-slot', 'band-fold', 'band-more']);
+// The batch table: after the chart, folded.
+assert.equal(card.children[4].children[0].text, 'Every batch, last night');
+assert.ok(!card.children[4].open && card.children[4].children[1] === card.table);
 const more = card.children.at(-1);
 assert.ok(!more.open);
 assert.equal(more.children[0].text, 'About this check, and how to run it');
@@ -1775,7 +1876,8 @@ assert.ok(all(more, n => n.className === 'repro').length === 1);
 assert.equal(card.trend.className, 'trend-slot');
 // A quiet night: "nothing moved" is detail too.
 const quiet = componentBand(hw, hwIndex, hwRecord('7', hwAfter.date, 98), NOW, hwBefore);
-assert.deepEqual(quiet.children.map(c => c.className), ['verdict-top', 'headline', 'band-table', 'trend-slot', 'band-more']);
+// A quiet night says nothing: no news is good news.
+assert.deepEqual(quiet.children.map(c => c.className), ['verdict-top', 'trend-slot', 'band-fold', 'band-more']);
 assert.equal(quiet.className, 'verdict ok');
 assert.ok(one(repro, n => n.tag === 'pre').text.includes('python -m mobilenet.aie2_mobilenet_iron --sa-seed N --sa-effort 0.05 --dynamic 1 16 -w 20 -i 20'));
 assert.ok(card.text.includes('turbo mode'));
@@ -1799,19 +1901,17 @@ Chart.prototype.destroy = function () {};
 const card = componentBand(hw, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(one(card, n => n.className === 'moves').text,
              'Since 1 Oct:seed 3, batch 16, default effort NPU time / image +7.3%seed 3, batch 16, default effort dispatch / image +7.0%');
-// A row per seed and effort: the NPU's time, the end-to-end time and the
-// rate it gives per image at the smallest and largest batch, the one
-// compile that serves them all, and how the batches fared; colored past
-// the threshold only.
+// The design as it ships, a row per batch: the NPU's time, the end-to-end
+// time and the rate per image, and whether it verified; colored past the
+// threshold only. The other seeds are Compiler checks'.
 assert.deepEqual(tableOf(card.table), [
-  ['', 'NPU, b1', 'NPU, b16', 'End to end, b1', 'End to end, b16', 'Images / s, b1', 'Images / s, b16', 'Compile, cold', 'Compile, warm', 'Runs'],
-  ["seed 3, default effort (the design's)", '248.7 µs 0.0%', '102 µs +7.3%', '395.7 µs 0.0%', '204.9 µs +3.5%', '2,527.17 fps 0.0%', '4,880.43 fps −3.4%', '40 s 0.0%', '4.6 s 0.0%', '2 of 2 passed'],
-  ['seed 3, full effort', '248.7 µs 0.0%', '117.1 µs 0.0%', '395.7 µs 0.0%', '220 µs 0.0%', '2,527.17 fps 0.0%', '4,545.45 fps 0.0%', '55 s 0.0%', '25 s 0.0%', '2 of 2 passed'],
-  ['seed 7, default effort', '248.7 µs 0.0%', '96.1 µs 0.0%', '395.7 µs 0.0%', '199 µs 0.0%', '2,527.17 fps 0.0%', '5,025.13 fps 0.0%', '40 s 0.0%', '4.6 s 0.0%', '2 of 2 passed'],
-  ['seed 7, full effort', '248.7 µs 0.0%', '117.1 µs 0.0%', '395.7 µs 0.0%', '220 µs 0.0%', '2,527.17 fps 0.0%', '4,545.45 fps 0.0%', '55 s 0.0%', '25 s 0.0%', '2 of 2 passed'],
+  ['', 'NPU / image', 'End to end / image', 'Images / s'],
+  ['batch 1', '248.7 µs', '395.7 µs', '2,527.17 fps'],
+  ['batch 16', '102 µs +7.3%', '204.9 µs', '4,880.43 fps'],
 ]);
+assert.ok(!card.table.text.includes('seed 7'));
 assert.deepEqual(all(card.table, n => /^chg (worse|better)/.test(n.className || '')).map(n => n.className), ['chg worse']);
-assert.equal(all(card.table, n => n.tag === 'th' && n.text === 'NPU, b1')[0].title, COMPONENT_METRICS.npu_us_per_image);
+assert.equal(all(card.table, n => n.tag === 'th' && n.text === 'NPU / image')[0].title, COMPONENT_METRICS.npu_us_per_image);
 // The Batch scaling charts: last night, every batch on one machine, beside
 // the trend tabs' over-nights view.
 const charts = one(card, n => n.className === 'charts');
@@ -1822,12 +1922,12 @@ assert.equal(all(boxes[1], n => n.tag === 'h3')[0].text.startsWith('Images per s
 const [timeCfg, rateCfg] = drawnCharts;
 assert.deepEqual(timeCfg.data.labels, ['batch 1', 'batch 16']);
 assert.deepEqual(timeCfg.data.datasets.map(d => d.label), ['NPU', 'end to end']);
-// Seeds 3 and 7 averaged, at the design's default effort, last night only.
-assert.deepEqual(timeCfg.data.datasets[0].data, [248.7, 99.05]);
-assert.deepEqual(timeCfg.data.datasets[1].data.map(v => Math.round(v * 100) / 100), [395.7, 201.95]);
+// The design's own placement (seed 3, default effort), last night only.
+assert.deepEqual(timeCfg.data.datasets[0].data, [248.7, 102]);
+assert.deepEqual(timeCfg.data.datasets[1].data.map(v => Math.round(v * 100) / 100), [395.7, 204.9]);
 assert.deepEqual(rateCfg.data.labels, ['batch 1', 'batch 16']);
 assert.equal(rateCfg.data.datasets[0].label, 'images / s');
-assert.deepEqual(rateCfg.data.datasets[0].data.map(v => Math.round(v * 100) / 100), [2527.17, 4952.78]);
+assert.deepEqual(rateCfg.data.datasets[0].data.map(v => Math.round(v * 100) / 100), [2527.17, 4880.43]);
 """)
 
 
@@ -1839,15 +1939,21 @@ failedAt.detail.find(d => d.seed === 7 && d.batch === 16 && d.effort_label === '
 failedAt.failed = ['mobilenet/seed=7/batch=16/effort=default'];
 const index = { target: 'sa-placer-hw', runs: [night('6', hwBefore.date, 'turbo'),
   night('7', hwAfter.date, 'turbo', { failed: ['mobilenet/seed=7/batch=16/effort=default'] })] };
-const card = componentBand(hw, index, failedAt, NOW, hwBefore);
+// Seed 7 is not the design's placement: Performance stays on the design, a
+// line pointing at Compiler checks, no seed named.
+const perfCard = componentBand(hw, index, failedAt, NOW, hwBefore);
+assert.equal(perfCard.className, 'verdict warn');
+assert.equal(one(perfCard, n => n.className === 'headline').text, '2 measures got worse vs 1 Oct.');
+assert.ok(perfCard.text.includes("1 run of another seed or effort failed; the design's own placement is fine: see Compiler checks."));
+assert.ok(!perfCard.table.text.includes('seed 7'));
+// Compiler checks names it, red, with the repro beside the verdict.
+const card = componentBand(hwPlacement, index, failedAt, NOW, hwBefore);
 assert.equal(card.className, 'verdict bad');
 assert.equal(one(card, n => n.className === 'headline').text, '1 run failed: seed 7 at batch 16, default effort.');
-// A failure's repro is beside the verdict, outside Details.
 assert.ok(card.children.some(c => c.className === 'repro'));
-// The failed batch's cells say so, red, never the night before's number.
+// The failed seed's row says where, red, never the night before's number.
 const seed7default = tableOf(card.table).find(r => r[0] === 'seed 7, default effort');
-assert.deepEqual(seed7default, ['seed 7, default effort', '248.7 µs 0.0%', 'failed', '395.7 µs 0.0%', 'failed', '2,527.17 fps 0.0%', 'failed', '40 s 0.0%', '4.6 s 0.0%', 'failed at b16']);
-assert.equal(all(card.table, n => n.className === 'vals worse').length, 4);
+assert.deepEqual([seed7default[4], seed7default.at(-1)], ['failed', 'failed at b16']);
 const repro = one(card, n => n.className === 'repro');
 // Beside the verdict, shut: a click away.
 assert.ok(!repro.open && card.children.includes(repro));
@@ -1902,7 +2008,7 @@ const stages = { compile_s: 20.6, compile_place_s: 1.09, compile_route_s: 0.03, 
 const night = (id, day, drop) => rec(id, Date.parse(`2026-10-0${day}T06:00:00Z`), 'turbo',
   Object.fromEntries(Object.entries(stages).filter(([k]) => k !== drop).map(([k, v]) => [`yolo26n/640/${k}`, ['s', v]])));
 const data = fromRecords({ 'yolo26n-hw': [night('1', 1), night('2', 2, 'compile_kernels_s')] });
-const config = stackConfig(data, COMPILE_TABS[0]);
+const config = stackConfig(data, { ...COMPILE_TABS[0], stack: COMPILE_TABS[0].split, missingIsZero: true });
 const parts = config.data.datasets.filter(d => d.part);
 // Six parts in pipeline order, each filled on the one below it.
 assert.deepEqual(parts.map(d => d.label), COMPILE_GROUPS.map(([name]) => name));
@@ -1912,7 +2018,7 @@ assert.deepEqual(parts.map(d => d.data), [[1.09, 1.09], [0.45, 0.45], [15.85, 0]
 // The wall times are lines over the stack, not added to it.
 const lines = config.data.datasets.filter(d => !d.part);
 assert.deepEqual(lines.map(d => [d.label, d.data, d.borderDash.length > 0]),
-                 [['whole cold compile', [20.6, 20.6], false], ['whole warm compile', [4.3, 4.3], true]]);
+                 [['cold (nothing cached)', [20.6, 20.6], false], ['warm (kernel objects kept)', [4.3, 4.3], true]]);
 assert.ok(new Set(config.data.datasets.map(d => d.stack)).size === 3);
 // The tooltip lists the top part first, as the stack reads.
 assert.ok(config.options.plugins.tooltip.itemSort({ datasetIndex: 1 }, { datasetIndex: 2 }) > 0);
@@ -1923,7 +2029,7 @@ const canvas = new El('canvas'); holder.append(canvas);
 const drawn = svgChart(canvas, config);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polygon')).length, 6);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polyline')).length, 2);
-assert.deepEqual(drawn.legend, [...COMPILE_GROUPS.map(([name]) => name), 'whole cold compile', 'whole warm compile']);
+assert.deepEqual(drawn.legend, [...COMPILE_GROUPS.map(([name]) => name), 'cold (nothing cached)', 'warm (kernel objects kept)']);
 """)
 
 
@@ -1932,7 +2038,7 @@ def test_the_llama_table_reads_decode_rate_higher_as_better(page):
 assert.equal(llama.section, 'performance');
 const card = componentBand(llama, llamaIndex, llamaAfter, NOW, llamaBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every decoded token matched the oracle, but 1 measure got worse vs 1 Oct. 16 layers: a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
+             '1 measure got worse vs 1 Oct.');
 // generate.py's end-to-end decode rate leads when the night has it; the dispatch rate follows.
 assert.equal(llamaSummary({ [LLAMA]: { ...llamaAfter.rows[LLAMA], decode_tok_s: { value: 4.2, unit: 'tok/s' } } }),
              ' 16 layers decode at 4.2 tok/s end to end; a dispatch runs at 4.37 tok/s, 228.8 ms per token, 20.36× the DMA floor (compute-bound).');
@@ -1940,10 +2046,9 @@ assert.equal(llamaSummary({ [LLAMA]: { ...llamaAfter.rows[LLAMA], decode_tok_s: 
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:persist_grow, N 16 dispatch rate −7.0%');
 // One case: its figures on their side, a line each, said for what they are.
 assert.deepEqual(tableOf(card.table), [
-  ['Decode, end to end', '—'], ['Decode, dispatch only', '4.37 tok/s −7.0%'], ['Dispatch per token', '228.8 ms +7.6%'],
-  ['Over the DMA floor', '20.36× 0.0%'], ['Tokens verified', '4 0.0%'], ['Time to first token', '—'],
-  ['KL vs bf16 (host, from the oracle)', '—'], ['Top-1 vs bf16 (host, from the oracle)', '—'],
-  ['Compile, cold', '60.5 s 0.0%'], ['Compile, warm', '1.2 s 0.0%'], ['Full ELF', '20.5 MiB ±0.0 KiB'],
+  ['Decode, dispatch only', '4.37 tok/s −7.0%'], ['Dispatch per token', '228.8 ms +7.6%'],
+  ['Over the DMA floor', '20.36×'], ['Tokens verified', '4'],
+  ['Compile, cold', '60.5 s'], ['Compile, warm', '1.2 s'], ['Full ELF', '20.5 MiB'],
 ]);
 // Down is worse for tokens per second, up is worse for time per token.
 assert.deepEqual(all(card.table, n => /^chg (worse|better)/.test(n.className || '')).map(n => n.className), ['chg worse', 'chg worse']);
@@ -2012,18 +2117,19 @@ def test_the_yolo26n_table_shows_each_batch_and_what_it_verified(page):
 assert.equal(yolo.section, 'performance');
 const card = componentBand(yolo, yoloIndex, yoloAfter, NOW, yoloBefore);
 assert.equal(one(card, n => n.className === 'headline').text,
-             'Every image matched the oracle, but 1 measure got worse vs 1 Oct. End to end, one image takes 5,400 µs (185.19 fps) at batch 1, 3,000 µs at batch 8.');
+             '1 measure got worse vs 1 Oct.');
 // The frame rate repeats the time per image and is not listed twice.
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n end-to-end / image (b1) +8.0%');
 // The times, a row per batch; then what it verified and its compile, a line each.
 const [times, checked] = all(card.table, n => n.tag === 'table');
 assert.deepEqual(tableOf(times).map(r => [r[0], r[2], r[3]]), [
-  ['', 'End to end / image', 'Images / s'], ['batch 1', '5,400 µs +8.0%', '185.19 fps −7.4%'], ['batch 8', '3,000 µs 0.0%', '333.33 fps 0.0%']]);
+  ['', 'End to end / image', 'Images / s'], ['batch 1', '5,400 µs +8.0%', '185.19 fps −7.4%'], ['batch 8', '3,000 µs', '333.33 fps']]);
 // Up is worse for time per image, down for images per second.
 assert.deepEqual(all(times, n => /^chg (worse|better)/.test(n.className || '')).map(n => n.className), ['chg worse', 'chg worse']);
-assert.deepEqual(tableOf(checked).map(r => r[0]), ['Images verified', 'Match onnxruntime', 'mAP@0.5 (coco128)', 'Compile, cold', 'Compile, warm', 'Full ELF']);
-assert.equal(tableOf(checked).find(r => r[0] === 'Full ELF')[1], '3.0 MiB ±0.0 KiB');
-assert.equal(tableOf(checked).find(r => r[0] === 'Compile, cold')[1], '95.5 s 0.0%');
+// A measure the night did not record (mAP here) is left out.
+assert.deepEqual(tableOf(checked).map(r => r[0]), ['Images verified', 'Match onnxruntime', 'Compile, cold', 'Compile, warm', 'Full ELF']);
+assert.equal(tableOf(checked).find(r => r[0] === 'Full ELF')[1], '3.0 MiB');
+assert.equal(tableOf(checked).find(r => r[0] === 'Compile, cold')[1], '95.5 s');
 // One case: no batch chart.
 assert.equal(all(card, n => n.className === 'charts').length, 0);
 // A run that timed batch 1 alone says so, and has one row of times.
@@ -2071,20 +2177,20 @@ const staged = { decode_tok_s: { value: 4.2, unit: 'tok/s' }, compile_place_s: {
 const llamaData = collect(historiesOf('llama-chain-hw', [llamaBefore, { ...llamaAfter, rows: { [LLAMA]: { ...llamaAfter.rows[LLAMA], ...staged } } }]));
 // A tab with no history is left out; generate's rate is a second line beside the timed decode's.
 const box = trendBox(llamaData, llama.trend, '');
-assert.deepEqual(box.children[0].children[0].children.map(b => b.textContent), ['Decode speed', 'Compile time', 'Compile memory']);
-const rate = trendConfig(llamaData, llama.trend[0]);
+assert.deepEqual(box.children[0].children[0].children.map(b => b.textContent), ['Decode', 'End to end', 'Compile time']);
+const rate = trendConfig(llamaData, llama.trend.find(t => t.id === 'tok_s'));
 assert.deepEqual(rate.data.datasets.map(d => [d.label, d.data]),
-                 [['end to end (generate.py, median of 5)', [null, 4.2]], ['dispatch only (fastest of 20)', [4.7, 4.37]]]);
+                 [['generate.py, end to end (median of 5)', [null, 4.2]], ['the NPU\\'s dispatches alone, at 64 context', [4.7, 4.37]]]);
 // One line needs no legend; two do.
 assert.equal(trendConfig(llamaData, { id: 'tok_s', axis: 'x', lines: [['', ['tok_s']]] }).options.plugins.legend.display, false);
 assert.equal(rate.options.plugins.legend.display, true);
 // The compile's stack starts with the night that profiled its stages; the
 // night before has its wall time alone.
-const stages = stackConfig(llamaData, COMPILE_TABS[0]);
+const stages = stackConfig(llamaData, { ...COMPILE_TABS[0], stack: COMPILE_TABS[0].split, missingIsZero: true });
 assert.deepEqual(stages.data.datasets.map(d => [d.label, d.data]), [
   ['place', [null, 1]], ['lower', [null, 0]], ['waiting on kernels', [null, 0]], ['codegen and link', [null, 0]],
   ["route, package, aiecc's own", [null, 0.1]], ['outside aiecc', [null, 0]],
-  ['whole cold compile', [60.5, 60.5]], ['whole warm compile', [1.2, 1.2]]]);
+  ['cold (nothing cached)', [60.5, 60.5]], ['warm (kernel objects kept)', [1.2, 1.2]]]);
 // YOLO26n: where an image's time goes, batch 1 or batch 8, then mAP and the compile.
 // The first night predates the empty-dispatch baseline: no stack, only its end-to-end line.
 const split = (npu, dispatch, host, map50) => ({ ...(npu ? { npu_us_per_image_b1: { value: npu, unit: 'us' }, npu_us_per_image_b8: { value: 2850, unit: 'us' } } : {}),
@@ -2095,29 +2201,33 @@ const withSplit = (record, npu, dispatch, host, map50) => ({ ...record, rows: { 
 // map50_coco128 is itself a newly added metric: its history, like the NPU
 // time's, starts partway through.
 const yoloData = collect(historiesOf('yolo26n-hw', [withSplit(yoloBefore, null, 4400, 600), withSplit(yoloAfter, 4310, 4400, 1000, 0.5859)]));
-assert.deepEqual(yolo.trend.map(t => t.name), ['Time per image', 'mAP@0.5', 'Compile time', 'Compile memory']);
-const [b1, b8] = yolo.trend[0].variants.map(([, v]) => stackConfig(yoloData, { ...yolo.trend[0], ...v, variants: null }));
+// The same tabs as MobileNet's: NPU time, end to end, where the time goes, accuracy, compile.
+assert.deepEqual(yolo.trend.map(t => t.name), ['NPU time', 'End to end', 'Where the time goes', 'Accuracy', 'Compile time', 'Compile memory']);
+const yoloStack = yolo.trend.find(t => t.id === 'yolo_time_stack');
+const [b1, b8] = yoloStack.variants.map(([, v]) => stackConfig(yoloData, { ...yoloStack, ...v, variants: null }));
 assert.deepEqual(b1.data.datasets.map(d => [d.label, d.data]), [
-  ['NPU', [null, 4310]], ['dispatch fixed cost', [null, 90]], ['host', [null, 1000]], ['end to end', [5000, 5400]]]);
+  ['NPU work', [null, 4310]], ['launch overhead', [null, 90]], ['host: Python and buffer syncs', [null, 1000]], ['end to end', [5000, 5400]]]);
 assert.deepEqual(b8.data.datasets.map(d => [d.label, d.data]), [
-  ['NPU', [null, 2850]], ['dispatch fixed cost', [null, 50]], ['host', [null, 100]], ['end to end', [3000, 3000]]]);
-assert.equal(b1.options.scales.y.title.text, 'Time per image (µs, fastest call) · ↓ better');
+  ['NPU work', [null, 2850]], ['launch overhead', [null, 50]], ['host: Python and buffer syncs', [null, 100]], ['end to end', [3000, 3000]]]);
+assert.equal(b1.options.scales.y.title.text, 'Time per image (µs) · ↓ better');
 // The box offers the two batches; a link to mAP opens its tab.
 const yoloBox = trendBox(yoloData, yolo.trend, '');
+// NPU time: batch 1 and batch 8 as two lines, no picker.
 const shownConfig = yoloBox.draw('npu_us_per_image_b1');
-assert.equal(shownConfig.data.datasets[0].data[1], 4310);
+assert.deepEqual(shownConfig.data.datasets.filter(d => !d.band).map(d => [d.label, d.data.at(-1)]), [['batch 1', 4310], ['batch 8', 2850]]);
+yoloBox.draw('yolo_time_stack');
 assert.equal(yoloBox.children[1].text, 'Show batch 1batch 8');
 assert.equal(trendBox(yoloData, yolo.trend, 'map50_coco128').metric(), 'map50_coco128');
 // mAP@0.5: the metric's own nights (only the second one published it, as
 // every tab's x-axis already does), plus a flat dashed reference line over
 // the same nights, with its own label.
-const map = trendConfig(yoloData, yolo.trend[1]);
+const map = trendConfig(yoloData, yolo.trend.find(t => t.id === 'map50_coco128'));
 assert.deepEqual(map.data.datasets.filter(d => !d.band).map(d => [d.label, d.data]),
                  [['NPU (int8)', [0.5859]], ['fp32 ONNX (offline, same 128 images)', [0.6365]]]);
 const ref = map.data.datasets.find(d => d.label === 'fp32 ONNX (offline, same 128 images)');
 assert.deepEqual(ref.borderDash, [6, 4]);
 assert.equal(ref.pointRadius, 0);
-assert.equal(map.options.scales.y.title.text, 'Mean average precision at IoU 0.5 (coco128) · ↑ better');
+assert.equal(map.options.scales.y.title.text, 'mAP@0.5 on coco128 · ↑ better');
 """)
 
 
@@ -2196,25 +2306,30 @@ assert.equal(hwPlacement.section, 'placement');
 assert.equal(hw.section, 'performance');
 const card = componentBand(hwPlacement, hwIndex, hwAfter, NOW, hwBefore);
 assert.equal(card.className, 'verdict ok');
-assert.equal(one(card, n => n.className === 'headline').text,
-             "Every seed placed, compiled and verified. Seed 3's placement cost is 303; 307 to 407 at the other seeds and efforts.");
+// No news is good news: a passing card says nothing, its table has the costs.
+assert.equal(all(card, n => n.className === 'headline').length, 0);
 // Only the section's metrics count as moves: seed 3's per-image regression is Performance's.
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:nothing moved past its threshold.');
-// A row per seed and effort: which placement, its cost, its compile, its runs.
+// A row per seed and effort: which placement, its cost, how fast it runs
+// on the NPU, its compile and its runs: how to judge a seed. Performance
+// has the design's own placement at every batch, not the seeds.
 assert.deepEqual(tableOf(card.table), [
-  ['', 'Placement', 'SA cost', 'Compile, cold', 'Runs'],
-  ["seed 3, default effort (the design's)", '0123456789ab', '303 0.0%', '40 s 0.0%', '2 of 2 passed'],
-  ['seed 3, full effort', '0123456789ab', '403 0.0%', '55 s 0.0%', '2 of 2 passed'],
-  ['seed 7, default effort', '0123456789ab', '307 0.0%', '40 s 0.0%', '2 of 2 passed'],
-  ['seed 7, full effort', '0123456789ab', '407 0.0%', '55 s 0.0%', '2 of 2 passed'],
+  ['', 'Placement', 'SA cost', 'NPU, b1', 'NPU, b16', 'Compile, cold', 'Compile, warm', 'Runs'],
+  ["seed 3, default effort (the design's)", '0123456789ab', '303', '248.7 µs', '102 µs +7.3%', '40 s', '4.6 s', '2 of 2 passed'],
+  ['seed 3, full effort', '0123456789ab', '403', '248.7 µs', '117.1 µs', '55 s', '25 s', '2 of 2 passed'],
+  ['seed 7, default effort', '0123456789ab', '307', '248.7 µs', '96.1 µs', '40 s', '4.6 s', '2 of 2 passed'],
+  ['seed 7, full effort', '0123456789ab', '407', '248.7 µs', '117.1 µs', '55 s', '25 s', '2 of 2 passed'],
 ]);
+// No seed rows on Performance.
+assert.deepEqual(tableOf(componentBand(hw, hwIndex, hwAfter, NOW, hwBefore).table).map(r => r[0]), ['', 'batch 1', 'batch 16']);
 // A failed run is named on its seed, red.
 const failedAt = hwRecord('7', hwAfter.date, 104.9);
 failedAt.detail.find(d => d.seed === 7 && d.batch === 16 && d.effort_label === 'default').passed = false;
 failedAt.failed = ['mobilenet/seed=7/batch=16/effort=default'];
 const bad = componentBand(hwPlacement, hwIndex, failedAt, NOW, hwBefore);
-assert.deepEqual(tableOf(bad.table)[3], ['seed 7, default effort', '0123456789ab', '307 0.0%', '40 s 0.0%', 'failed at b16']);
-assert.equal(all(bad.table, n => n.className === 'vals worse').length, 1);
+// The failed seed's row: its runs say where, red.
+assert.equal(tableOf(bad.table)[3].at(-1), 'failed at b16');
+assert.equal(all(bad.table, n => n.className === 'vals worse').length, 2);
 """)
 
 
@@ -2278,8 +2393,7 @@ assert.equal(all(card.table, n => n.className === 'vals worse').length, 4);
 assert.equal(all(card.table, n => n.title === 'the verifier caught 1999 of 2000 corruptions').length, 1);
 // Run by hand with no failure: how to run the whole check.
 const quiet = componentBand(router, { target: 'router', runs: [night('7', latest.date, null)] }, routerRecord('7', latest.date, 0), NOW);
-assert.equal(one(quiet, n => n.className === 'headline').text,
-             'Every property held and every mutation was answered right. On npu2, routes are 1.5% longer than the known routing, at 13.1 ms per design.');
+assert.equal(all(quiet, n => n.className === 'headline').length, 0);
 assert.equal(one(quiet, n => n.tag === 'pre').text.split('\\n')[1],
              'python test/create-packet-flows/nightly/router_properties.py --device npu2 --seeds 2000 --first-seed N');
 """)
@@ -2323,10 +2437,10 @@ assert.deepEqual(one(card, n => n.tag === 'pre').text.split('\\n'), [
 // Its figures a line each; the counts are correctness, red past zero.
 assert.deepEqual(tableOf(card.table), [
   ['Properties held', '1 of 3'], ['Unplaced', '0'], ['Illegal', '0'], ['Avoidable crossings', '0'],
-  ['Bank sharing (0–1)', '0.253 +4.1%'], ['Wall time', '103 s 0.0%']]);
+  ['Bank sharing (0–1)', '0.253 +4.1%'], ['Wall time', '103 s']]);
 assert.equal(all(card.table, n => n.className === 'vals worse').length, 1);
 const quiet = componentBand(allocator, { target: 'allocator', runs: [night('6', before.date, null)] }, before, NOW);
-assert.ok(one(quiet, n => n.className === 'headline').text.endsWith('Bank sharing 0.243 (0 = most even split); the run took 103 s.'));
+assert.equal(all(quiet, n => n.className === 'headline').length, 0);
 assert.equal(plural(2, 'property'), '2 properties');
 assert.equal(plural(2, 'day'), '2 days');
 """)
@@ -2373,45 +2487,42 @@ const [ciTile, kernels, perf, placement] = tiles;
 assert.equal(ciTile.children[1].text, 'Loading…');
 // A slower night is a warning on the overview too, not "All passing".
 assert.equal(perf.level, 'warn');
-assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['Watch', 'MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.']);
+assert.deepEqual(perf.children.slice(1, 3).map(c => c.text), ['Watch', 'MobileNet: 2 measures got worse vs 1 Oct.']);
 // The whole of each line is in the row's tooltip.
-assert.ok(perf.title.includes('MobileNet: Every run passed, but 2 measures got worse vs 1 Oct.'));
+assert.ok(perf.title.includes('MobileNet: 2 measures got worse vs 1 Oct.'));
 // A section with one loaded, healthy band: its own headline, no prefix
 // (the overview rolls up headlines, not a band's quieter detail sentence).
 assert.equal(placement.level, 'ok');
-assert.equal(placement.children[2].text, 'Every seed placed, compiled and verified.');
+// Healthy: the state word alone, no sentence.
+assert.equal(placement.children[2].text, '');
 // Two days without a run: late and red, the line says so first.
 const late = overviewTiles(null, loaded, NOW + 2 * 86400 * 1000);
 assert.equal(late[2].level, 'bad');
-assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. Every run passed, but 2 measures got worse vs 1 Oct.');
+assert.equal(late[2].children[2].text, 'MobileNet: No run for 2 days 1 h. 2 measures got worse vs 1 Oct.');
 assert.equal(late[1].children[1].text, 'Loading…');
 // The band says it above its verdict.
 const lateBand = componentBand(hw, hwIndex, hwAfter, NOW + 2 * 86400 * 1000, hwBefore);
 assert.equal(one(lateBand, n => n.className === 'stale-line').text,
              'No run for 2 days 1 h: the numbers below are from 2 Oct, 06:30 UTC.');
-assert.equal(one(lateBand, n => n.className === 'headline').text.slice(0, 16), 'Every run passed');
+assert.equal(one(lateBand, n => n.className === 'headline').text, '2 measures got worse vs 1 Oct.');
 """)
 
 
-def test_a_section_tile_names_every_healthy_band_not_just_the_first(page):
+def test_a_healthy_tile_says_nothing_but_its_state(page):
     page("""
-// Compiler checks now has four bands (seed sweep, hardware placement, the
-// allocator and the router); a healthy section must say so for each, or a
-// band that in fact ran and passed would read as silence.
+// No news is good news: a healthy area shows its state word alone, a
+// problem anywhere names only the problems.
 const lines = [{ level: 'ok', who: 'Seed sweep', text: 'Every seed placed.' },
                { level: 'ok', who: 'Router', text: 'Every property held and every mutation was answered right.' }];
 const tile = sectionTile('placement', 'Compiler checks', 'about', lines, '2 h ago', '');
 assert.equal(tile.level, 'ok');
-assert.equal(tile.children[2].text, 'Seed sweep: Every seed placed; Router: Every property held and every mutation was answered right.');
-// A section with only one band keeps its bare headline: no redundant name.
-const solo = sectionTile('performance', 'Performance', 'about', [lines[0]], '2 h ago', '');
-assert.equal(solo.children[2].text, 'Every seed placed.');
-// A problem anywhere still only names the problems, as before.
+assert.deepEqual([tile.children[1].text, tile.children[2].text], ['All passing', '']);
+// Each band is still named on hover.
+assert.ok(tile.title.includes('Router: Every property held'));
 const mixed = sectionTile('placement', 'Compiler checks', 'about',
   [{ level: 'warn', who: 'Buffer allocator', text: 'Bank sharing moved.' }, lines[0]], '2 h ago', '');
 assert.equal(mixed.children[2].text, 'Buffer allocator: Bank sharing moved.');
 """)
-
 
 def test_performance_trends_chart_each_batch_as_the_mean_over_seeds(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
@@ -2434,12 +2545,12 @@ assert.deepEqual(compiled.byMode.get('turbo').map(p => p.row.value), [40, 40]);
 // Series that are not per seed pass through.
 assert.ok(data.series.some(s => s.kase === 'mobilenet' && s.metric === 'failed_seeds'));
 // The compile tab draws that series' wall times, cold beside warm.
-const trend = stackConfig(read, COMPILE_TABS[0]);
-assert.deepEqual(trend.data.datasets.filter(d => !d.part).map(d => [d.label, d.data]), [['whole cold compile', [40, 40]], ['whole warm compile', [4.6, 4.6]]]);
+const trend = stackConfig(read, { ...COMPILE_TABS[0], stack: COMPILE_TABS[0].split, missingIsZero: true });
+assert.deepEqual(trend.data.datasets.filter(d => !d.part).map(d => [d.label, d.data]), [['cold (nothing cached)', [40, 40]], ['warm (kernel objects kept)', [4.6, 4.6]]]);
 // The time per image at batch 16: each part the mean over the seeds, adding up to the mean end to end.
-const b16Stack = stackConfig(read, hw.trend[0], { key: 16 });
+const b16Stack = stackConfig(read, hw.trend.find(t => t.stack), { key: 16 });
 assert.deepEqual(b16Stack.data.datasets.map(d => [d.label, d.data]), [
-  ['NPU', [95.6, 99.05]], ['dispatch fixed cost', [2.9, 2.9]], ['host', [100, 100]], ['end to end', [198.5, 201.95]]]);
+  ['NPU work', [95.6, 99.05]], ['launch overhead', [2.9, 2.9]], ['host: Python and buffer syncs', [100, 100]], ['end to end', [198.5, 201.95]]]);
 """)
 
 
@@ -2452,9 +2563,9 @@ const before = fullOnly(hwBefore), after = fullOnly(hwAfter);
 assert.equal(chartedEffort(Object.keys(after.rows)), 'full');
 assert.equal(chartedEffort(Object.keys(hwAfter.rows)), 'default');
 const summary = hardwareSummary(after.rows);
-assert.equal(summary, " Seed 3's NPU time is 248.7 µs (2,527.17 fps) per image at batch 1, 117.1 µs (4,545.45 fps) at batch 16 (full effort).");
+assert.equal(summary, " NPU time is 248.7 µs (2,527.17 fps) per image at batch 1, 117.1 µs (4,545.45 fps) at batch 16 (full effort).");
 // The trend chart draws the full effort's times.
-const trend = stackConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend[0]);
+const trend = stackConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend.find(t => t.stack));
 assert.deepEqual(trend.data.keys, [1, 16]);
 assert.deepEqual(trend.data.datasets.find(d => d.label === 'end to end').data, [395.7, 395.7]);
 """)
@@ -2474,10 +2585,10 @@ const statics = seedMeans(read).series.filter(s => s.kase.endsWith('/dispatch=st
 assert.deepEqual(statics.map(s => [s.kase, s.byMode.get('turbo').map(p => p.row.value)]).sort(),
                  [['mobilenet/batch=1/dispatch=static', [305]], ['mobilenet/batch=16/dispatch=static', [102]]]);
 // Another design: never stacked with the current one's times, nor joined to them.
-const trend = stackConfig(read, hw.trend[0]);
+const trend = stackConfig(read, hw.trend.find(t => t.stack));
 assert.deepEqual(trend.data.labels, ['1 Oct', '2 Oct']);
 // Only the static history: nothing to stack.
-const onlyOld = stackConfig(collect(historiesOf('sa-placer-hw', [old])), hw.trend[0]);
+const onlyOld = stackConfig(collect(historiesOf('sa-placer-hw', [old])), hw.trend.find(t => t.stack));
 assert.deepEqual([onlyOld.data.labels, onlyOld.data.datasets.filter(d => !d.part).length], [[], 0]);
 """)
 
@@ -2488,13 +2599,14 @@ const batches = [1, 2, 4, 8, 16, 32, 64];
 const rows = { mobilenet: { failed_seeds: { value: 0, unit: 'seeds' } } };
 for (const b of batches) rows[`mobilenet/seed=3/batch=${b}/effort=default`] = { us_per_image: { value: 90 + 300 / b, unit: 'us' } };
 const powers = { ...hwAfter, rows, detail: batches.map(batch => ({ seed: 3, batch, effort_label: 'default', passed: true, placement: '0123456789ab' })) };
-// The table shows the smallest and the largest batch.
+// The table has every batch, a row each; the seeds' table the smallest and the largest.
 const card = componentBand(hw, hwIndex, powers, NOW, hwBefore);
-assert.deepEqual(tableOf(card.table)[0].slice(1, 5), ['NPU, b1', 'NPU, b64', 'End to end, b1', 'End to end, b64']);
+assert.deepEqual(tableOf(card.table).slice(1).map(r => r[0]), batches.map(b => `batch ${b}`));
+assert.deepEqual(tableOf(componentBand(hwPlacement, hwIndex, powers, NOW, hwBefore).table)[0].slice(3, 5), ['NPU, b1', 'NPU, b64']);
 // The trend offers every batch to choose from, the smallest first.
 const powersOn = id => ({ ...powers, id, date: id === '6' ? hwBefore.date : hwAfter.date });
 const read = collect(historiesOf('sa-placer-hw', [powersOn('6'), powersOn('7')]));
-assert.deepEqual(tabKeys(read, hw.trend[0]), batches);
+assert.deepEqual(tabKeys(read, hw.trend.find(t => t.stack)), batches);
 """)
 
 
@@ -2837,25 +2949,76 @@ assert.deepEqual(config.data.datasets[0].pointBackgroundColor,
 """)
 
 
-def test_ci_health_runners_are_a_table_of_recent_job_counts(page):
+def test_ci_health_machines_are_judged_on_their_latest_jobs(page):
     page(CI_RUNS + """
-const runners = [
-  { name: 'bench-npu2-a', passed: 11, failed: 1 },
-  { name: 'bench-npu1-a', passed: 9, failed: 0 },
-];
-const box = runnerTable(loadedOf(status({ runners })), NOW);
-const [tableWrap, note, fresh] = box.children;
-const [, tbody] = tableWrap.children[0].children;
-// Sorted by name.
-assert.deepEqual(tbody.children.map(tr => tr.children[0].text), ['bench-npu1-a', 'bench-npu2-a']);
-const [name, passed, failed] = tbody.children[1].children;
-assert.deepEqual([name.text, passed.text, failed.text], ['bench-npu2-a', '11', '1']);
-assert.equal(note.text, 'Counts its jobs among the tests that gate a merge, over the last two weeks.');
+// Runs on main, each naming its machines' jobs; newest first, as published.
+const onMain = (id, h, runners) => ({ ...run(id, h, 'completed', 'success'), updated_at: at(h), runners });
+const ok = name => ({ runner: name, passed: true, outcome: 'passed' });
+const no = (name, outcome = 'failed') => ({ runner: name, passed: false, outcome });
+const machines = (mainRuns, jobs = []) => loadedOf(status({
+  critical: [crit({ main_runs: mainRuns })],
+  workflows: [{ ...nightly, runs: [run(1, 6, 'completed', 'success')], jobs }],
+}));
+const rowsOf = l => runnerRows(l, NOW, NOW).map(r => [r.name, r.level, r.text]);
+// Two jobs in a row not passing: red, worst first; one failing where the
+// others passed: amber, said; passing: when.
+assert.deepEqual(rowsOf(machines([
+  onMain(3, 10, [no('aie8'), ok('aie2'), no('aie1')]),
+  onMain(2, 34, [no('aie8', 'timed_out'), ok('aie2'), ok('aie1')]),
+  onMain(1, 58, [ok('aie8'), ok('aie2'), ok('aie1')]),
+])), [
+  ['aie8', 'bad', 'Its last 2 jobs did not pass, the latest 10 h ago (Linux hardware tests)'],
+  ['aie1', 'warn', 'Its latest job failed 10 h ago (Linux hardware tests)'],
+  ['aie2', 'ok', 'Latest job passed 10 h ago'],
+]);
+assert.equal(rowsOf(machines([onMain(2, 10, [no('aie1'), ok('aie2')]), onMain(1, 34, [ok('aie1'), ok('aie2')])]))[0][2],
+             'Its latest job failed 10 h ago, where the other machines passed (Linux hardware tests)');
+// A lost runner is the machine's: red at once.
+assert.deepEqual(rowsOf(machines([onMain(1, 4, [no('aie9', 'runner_lost')])]))[0].slice(0, 2), ['aie9', 'bad']);
+// Quiet for three days while the others ran: is it online? A nightly leg counts as a job.
+const quiet = rowsOf(machines([onMain(2, 10, [ok('aie2')]), onMain(1, 100, [ok('aie7'), ok('aie2')])],
+  [{ ...job('Kernel checks (aie2-4col)', 7, 'completed', 'success'), runner: 'aie2', started_at: at(7) }]));
+assert.deepEqual(quiet[0], ['aie7', 'warn', 'No job since 2 Oct, 4 days ago, while the others ran: is it online?']);
+assert.deepEqual(quiet[1], ['aie2', 'ok', 'Latest job passed 7 h ago']);
+// One-off cloud machines: one row, never a reboot.
+const pool = runnerRows(machines([onMain(1, 5, [ok('ephemeral-devlab-x2-la03-s02-d01-117543124080'), ok('ephemeral-devlab-x2-la03-s05-d02-122552206339')])]), NOW, NOW);
+assert.deepEqual(pool.map(r => [r.name, r.level, r.machines]), [['ephemeral-devlab-x2-la03-*', 'none', 2]]);
+// The rows: a strip of each machine's jobs, oldest first, the latest marked.
+const box = runnerTable(machines([onMain(2, 10, [no('aie8')]), onMain(1, 34, [ok('aie8')])]), NOW);
+const [rows, fresh] = box.children;
+const [dot, name, state, strip] = rows.children[0].children;
+assert.deepEqual([rows.children[0].className, name.text], ['ci-row warn', 'aie8']);
+assert.equal(state.children[1].text, '1 of 2 jobs passed in two weeks · 1 failed');
+assert.deepEqual(strip.children.map(n => n.className), ['night ok', 'night bad latest']);
 assert.equal(fresh.children[0].text, 'Read from GitHub 6 Oct, 11:30 UTC by publishCiHealth.yml, which runs every six hours.');
+// The overview names a machine that wants a reboot.
+const p = ciProblems(machines([onMain(2, 10, [no('aie8')]), onMain(1, 34, [no('aie8')])]), NOW);
+assert.deepEqual(p.problems.map(x => [x.level, x.who]), [['bad', 'aie8']]);
 // No self-hosted runner named in the window.
 assert.equal(runnerTable(loadedOf(status({ runners: [] })), NOW).children[0].text, 'No self-hosted runner named in a run in the window.');
 // Nothing published at all.
 assert.equal(runnerTable(loadedOf(null), NOW).children[0].text, 'No CI health published yet.');
+""")
+
+
+def test_ci_lateness_is_judged_when_the_publisher_looked(page):
+    page(CI_RUNS + """
+// Every four hours, its last run 5 h before the publisher looked: on time
+// then, though the reader comes 3 h later and 1.5 periods (6 h) have passed.
+const fourHourly = { ...nightly, every: 4 };
+const published = status({ workflows: [{ ...fourHourly, runs: [run(1, 5.5, 'completed', 'success')], jobs: [] }] });
+const later = NOW + 3 * H;
+assert.equal(ciSeen(loadedOf(published), later), NOW - 0.5 * H);
+assert.equal(ciVerdict(fourHourly, published.workflows[0].runs, [], later, ciSeen(loadedOf(published), later)).late, false);
+assert.equal(ciProblems(loadedOf(published), later).problems.length, 0);
+// Late as of the publisher's look: still late.
+const stopped = status({ workflows: [{ ...fourHourly, runs: [run(1, 7, 'completed', 'success')], jobs: [] }] });
+assert.equal(ciProblems(loadedOf(stopped), later).problems[0].who, 'Kernel checks');
+""")
+
+
+def test_ci_health_rows_have_one_state_each(page):
+    page(CI_RUNS + """
 // The rows: one state each (nightlyRow and criticalTile's own cases are
 // test_nightly_jobs_are_a_row_each_with_their_recent_runs and
 // test_critical_workflows_judge_main_now_and_show_their_normal's).
@@ -2867,43 +3030,69 @@ assert.equal(jobName('build-and-test (aie2p-8col)', 'Linux hardware tests'), 'bu
 """)
 
 
+def test_performance_charts_the_design_every_batch_and_keys_its_colors(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + """
+const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
+// NPU time: a line per batch, every batch, of seed 3 at the default effort
+// alone (seed 7's 96.1 µs at batch 16 is the placer's, under Compiler checks).
+const npuTab = hw.trend.find(t => t.id === 'npu_us_per_image');
+const config = trendConfig(designOnly(data), npuTab);
+const lines = config.data.datasets.filter(d => !d.band);
+assert.deepEqual(lines.map(d => d.label), ['batch 1', 'batch 16']);
+assert.deepEqual(lines[1].data, [95.1, 102]);
+// A stack's key: each color, what it is, and its latest value.
+const stack = hw.trend.find(t => t.stack);
+const key = stackKey(stack, stackConfig(designOnly(data), stack));
+assert.deepEqual(key.filter(n => n.tag === 'dt').map(n => n.children[1]), ['end to end', 'host: Python and buffer syncs', 'launch overhead', 'NPU work']);
+assert.ok(key.find(n => n.tag === 'dd').text.startsWith('line: the whole Python call'));
+assert.ok(Object.keys(COMPILE_KEY).every(k => COMPILE_GROUPS.some(([g]) => g === k) || /^whole (cold|warm) compile$/.test(k)));
+assert.ok(COMPILE_GROUPS.every(([g]) => g in COMPILE_KEY));
+""")
+
+
 def test_performance_time_is_one_stack_per_batch(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
-const config = stackConfig(data, hw.trend[0]);
+const config = stackConfig(data, hw.trend.find(t => t.stack));
 // Where an image's time goes at the smallest batch, the mean over the seeds;
 // the batches to choose from.
-assert.deepEqual(config.data.datasets.map(d => d.label), ['NPU', 'dispatch fixed cost', 'host', 'end to end']);
+assert.deepEqual(config.data.datasets.map(d => d.label), ['NPU work', 'launch overhead', 'host: Python and buffer syncs', 'end to end']);
 assert.deepEqual([config.data.keys, config.data.key], [[1, 16], 1]);
 // The caption says what it is and that it is the mean over the seeds.
 const box = trendBox(data, hw.trend, 'us_per_image');
-assert.ok(box.children[2].textContent.endsWith("The mean over the seeds at the design's default effort."), box.children[2].textContent);
+// The design's own placement, not a mean over seeds.
+assert.ok(!box.children[2].textContent.includes('mean over the seeds'), box.children[2].textContent);
 // One point per nightly, by date; a plain axis from zero, so the parts read as shares.
 assert.deepEqual(config.data.labels, ['1 Oct', '2 Oct']);
 assert.equal(config.options.scales.y.type, 'linear');
-assert.equal(config.options.scales.y.title.text, 'Time per image (µs, fastest of 20 launches) · ↓ better');
+assert.equal(config.options.scales.y.title.text, 'Time per image (µs) · ↓ better');
 assert.equal(config.options.scales.x.title.text, 'Nightly run');
 // Hover names the run's commit; a click opens it.
 const tips = config.options.plugins.tooltip.callbacks;
 assert.equal(tips.afterTitle([{ dataIndex: 1 }]), 'abcdef1 same revision');
 assert.equal(tips.footer([{ dataIndex: 1 }]), 'Click for the commit');
-assert.equal(tips.label({ dataset: config.data.datasets[0], raw: 245.8 }), 'NPU: 245.8 µs');
+assert.equal(tips.label({ dataset: config.data.datasets[0], raw: 245.8 }), 'NPU work: 245.8 µs');
 config.options.onClick(null, [{ index: 1 }]);
 assert.deepEqual(opened, ['https://github.com/Xilinx/mlir-aie/commit/abcdef123456', '_blank', 'noopener']);
 assert.equal(commitLine({ id: '0123456789abcdef', message: 'x'.repeat(100) + '\\nbody' }), `0123456 ${'x'.repeat(71)}…`);
 // Compile time, seconds, on a plain axis.
-const compile = stackConfig(data, COMPILE_TABS[0]);
-assert.equal(compile.options.scales.y.title.text, 'Cold compile time (s, one compile) · ↓ better');
-// Compile peak memory: records from before the whole compile was measured keep their largest-process lines.
+const compile = stackConfig(data, { ...COMPILE_TABS[0], stack: COMPILE_TABS[0].split, missingIsZero: true });
+assert.equal(compile.options.scales.y.title.text, 'Compile time (s) · ↓ better');
+// Compile peak memory: the whole compile's alone, cold and warm, from zero.
+// Records from before the whole compile was measured have no point on it.
+assert.deepEqual(COMPILE_TABS[1].lines.map(([name, ms]) => [name, ms]), [['cold', ['compile_peak_mib']], ['warm', ['compile_peak_mib_warm']]]);
 const memory = trendConfig(data, COMPILE_TABS[1]);
 assert.equal(memory.options.scales.y.type, 'linear');
-assert.equal(memory.options.scales.y.title.text, 'Peak memory (MiB, one compile each) · ↓ better');
-assert.deepEqual(memory.data.datasets.filter(d => !d.band).map(d => d.label), ['largest process, cold', 'largest process, warm']);
+assert.equal(memory.options.scales.y.beginAtZero, true);
+assert.equal(memory.options.scales.y.title.text, 'Peak memory (MiB) · ↓ better');
+assert.deepEqual(memory.data.datasets.filter(d => !d.band).map(d => d.label), []);
 // The box: a switch for the tab; a link to a warm metric opens the tab that draws it.
-const warm = trendBox(data, hw.trend, 'compile_s_warm');
-assert.equal(warm.metric(), 'compile_s');
+// MobileNet's compile is charted under Compiler checks, beside its placement.
+assert.equal(trendBox(data, hwPlacement.trend, 'compile_s').metric(), 'compile_s');
+// Each tab its own id, so the switch tells them apart.
+assert.equal(new Set(hwPlacement.trend.map(t => t.id)).size, hwPlacement.trend.length);
 const seg = box.children[0].children[0];
-assert.deepEqual(seg.children.map(b => b.textContent), ['Time per image', 'Compile time', 'Compile memory']);
+assert.deepEqual(seg.children.map(b => b.textContent), ['NPU time', 'End to end', 'Where the time goes']);
 // Its batches to choose from; a click redraws at that batch.
 const batchRow = box.children[1].children[0];
 assert.equal(batchRow.text, 'Batch 116');
@@ -2930,13 +3119,13 @@ const canvas = document.createElement('canvas');
 canvas.parentNode = holder;
 holder.append(canvas);
 const data = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
-const drawn = svgChart(canvas, stackConfig(data, hw.trend[0]));
+const drawn = svgChart(canvas, stackConfig(data, hw.trend.find(t => t.stack)));
 // A filled area per part, the end-to-end line over them, the legend naming each.
-assert.deepEqual(drawn.legend, ['NPU', 'dispatch fixed cost', 'host', 'end to end']);
+assert.deepEqual(drawn.legend, ['NPU work', 'launch overhead', 'host: Python and buffer syncs', 'end to end']);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polyline')).length, 1);
 assert.equal(drawn.svg.filter(p => p.startsWith('<polygon')).length, 3);
 // The axis titles, as the Chart.js chart has them.
-assert.ok(drawn.svg.some(p => p.includes('rotate(-90)') && p.includes('Time per image (µs, fastest of 20 launches) · ↓ better')));
+assert.ok(drawn.svg.some(p => p.includes('rotate(-90)') && p.includes('Time per image (µs) · ↓ better')));
 assert.ok(drawn.svg.some(p => p.includes('>Nightly run<')));
 // Each point: hover text with the commit, and a link to it.
 assert.ok(drawn.svg.some(p => p.includes('<title>2 Oct, 06:30 UTC\\nabcdef1 same revision\\nend to end: ') && p.includes('href="https://github.com/Xilinx/mlir-aie/commit/abcdef123456"')));
@@ -2967,51 +3156,26 @@ assert.ok(!$('attention-list').text.includes('timing harness'));
 """)
 
 
-def test_the_change_table_compares_last_night_by_default_or_the_window(page):
+def test_the_change_table_lists_steps_and_creeps_over_two_weeks(page):
     page(RUNS + """
-// Case a moved last night only (100, 90, 100); case b over the window only
-// (100, 120, 121: +0.8% last night, under the 2% threshold); case c moved,
-// then was not measured last night, so it has no last-night change.
+// Fourteen nightlies, a day apart. d steps last night (100 for a week,
+// then 110); e creeps (2% a night for a week, never a step); a comes back
+// to where it was (100, 90 for a night, 100): neither.
 const day = d => 86400000 * d;
-const db3 = fromRecords({ npu1: [
-  rec('1', day(10), 'turbo', { 'a/1/i8/cycles': ['cycles', 100], 'b/1/i8/cycles': ['cycles', 100], 'c/1/i8/cycles': ['cycles', 100] }),
-  rec('2', day(20), 'turbo', { 'a/1/i8/cycles': ['cycles', 90], 'b/1/i8/cycles': ['cycles', 120], 'c/1/i8/cycles': ['cycles', 150] }),
-  rec('3', day(21), 'turbo', { 'a/1/i8/cycles': ['cycles', 100], 'b/1/i8/cycles': ['cycles', 121] }),
-] });
-const shown = () => $('window-changes').children[0].children[0];
-const header = () => shown().children[0].children[0].children[2].text;
-const rowsOf = rendered => rendered.map(r => r.children.map(c => c.text));
-// Last night, by default: the latest nightly against the one before it.
+const flat = n => Array.from({ length: n }, () => 100);
+const dV = [...flat(13), 110], eV = [...flat(7), 102, 104, 106, 108, 110, 112, 112], aV = [...flat(12), 90, 100];
+const db3 = fromRecords({ npu1: dV.map((_, i) => rec(String(i + 1), day(10 + i), 'turbo',
+  { 'd/1/i8/cycles': ['cycles', dV[i]], 'e/1/i8/cycles': ['cycles', eV[i]], 'a/1/i8/cycles': ['cycles', aV[i]] })) });
 location.hash = '#view=night';
-assert.deepEqual(rowsOf(renderWindowChanges(db3, ['npu1'])), [['a/1/i8', 'npu1', '90 → 100 (+11.1%)', '—']]);
-assert.equal(header(), 'Cycles21 Jan → 22 Jan (change)');
-assert.ok($('window-about').text.startsWith("Each case's cycles and object size on its latest nightly, up to 22 Jan, against the nightly before it, 21 Jan for most cases."));
-const buttons = $('window-compare').children;
-assert.deepEqual(buttons.map(b => [b.textContent, b.className]), [['Last night', 'on'], ['Window', '']]);
-// The window: its first nightly against the latest, the choice in the hash.
-buttons[1].on.click();
-assert.equal(location.hash, '#view=night&changes=window');
-assert.deepEqual(rowsOf(renderWindowChanges(db3, ['npu1'])), [['c/1/i8', 'npu1', '100 → 150 (+50.0%)', '—'], ['b/1/i8', 'npu1', '100 → 121 (+21.0%)', '—']]);
-assert.equal(header(), 'Cycles11 Jan → 22 Jan (change)');
-assert.ok($('window-about').text.startsWith("Each case's cycles and object size on its first nightly from 11 Jan against its latest, up to 22 Jan: 3 nightlies."));
-assert.deepEqual($('window-compare').children.map(b => b.className), ['', 'on']);
-// Back from the hash, and an unknown value is last night.
-location.hash = '#view=night&changes=last';
-assert.deepEqual(rowsOf(renderWindowChanges(db3, ['npu1'])).map(r => r[0]), ['a/1/i8']);
-location.hash = '#view=night&changes=bogus';
-assert.deepEqual(rowsOf(renderWindowChanges(db3, ['npu1'])).map(r => r[0]), ['a/1/i8']);
-// One night only: nothing to compare yet, in either mode.
-const one = fromRecords({ npu1: [rec('1', day(10), 'turbo', { 'a/1/i8/cycles': ['cycles', 100] })] });
-assert.deepEqual(renderWindowChanges(one, ['npu1']), []);
-assert.equal($('window-about').text, "Each case's latest nightly will be compared with an earlier one once there are two.");
-// Nothing moved last night: said so in its terms.
-const quiet = fromRecords({ npu1: [rec('1', day(10), 'turbo', { 'a/1/i8/cycles': ['cycles', 100] }),
-                                   rec('2', day(11), 'turbo', { 'a/1/i8/cycles': ['cycles', 100] })] });
-location.hash = '';
-assert.deepEqual(renderWindowChanges(quiet, ['npu1']), []);
-assert.equal($('window-changes').text, 'Nothing moved past its threshold since the nightly before.');
+const rows = renderWindowChanges(db3, ['npu1']).map(r => r.children.map(c => c.text));
+assert.deepEqual(rows, [
+  ['e/1/i8', 'npu1', '100 → 112 (+12.0%)Since 11 Jan', '—'],
+  ['d/1/i8', 'npu1', '100 → 110 (+10.0%)Step 24 Jan', '—'],
+]);
+// No toggle to press: one list.
+assert.equal($('window-compare').children.length, 0);
+assert.ok($('window-about').text.includes('A step is the latest nightly past the threshold'));
 """)
-
 
 def test_a_kernels_cases_that_moved_together_are_one_row(page):
     page(RUNS + """
@@ -3024,10 +3188,10 @@ db = fromRecords({ npu2: [
 const rows = renderWindowChanges(db, ['npu2']);
 // Cycles, then object size; the dates in the header.
 const head = $('window-changes').children[0].children[0].children[0].children[0];
-assert.deepEqual(head.children.map(c => c.text), ['Case', 'NPU', 'Cycles1 Jan → 1 Jan (change)', 'Object size1 Jan → 1 Jan (change)']);
+assert.deepEqual(head.children.map(c => c.text), ['Case', 'NPU', 'Cyclesthen → now (change)', 'Object sizethen → now (change)']);
 assert.deepEqual(rows.map(r => r.children.map(c => c.text)), [
-  ['mm 2 cases', 'npu2', '—', '2.0 KiB → 4.3 KiB (+115.0%)2 of 2 cases moved'],
-  ['swiglu/1/bf16', 'npu2', '—', '8.8 KiB → 16.3 KiB (+85.6%)'],
+  ['mm 2 cases', 'npu2', '—', '2.0 KiB → 4.3 KiB (+115.0%)Step 1 Jan2 of 2 cases moved'],
+  ['swiglu/1/bf16', 'npu2', '—', '8.8 KiB → 16.3 KiB (+85.6%)Step 1 Jan'],
 ]);
 // Hover gives each case.
 assert.equal(rows[0].children[3].title, 'mm/1/f32/gelu: 2.0 KiB → 4.3 KiB (+115.0%)\\nmm/1/f32/relu: 2.0 KiB → 4.2 KiB (+110.0%)');
@@ -3038,6 +3202,6 @@ const both = fromRecords({ npu2: [
 ] });
 const [row] = renderWindowChanges(both, ['npu2']);
 assert.deepEqual(row.children.slice(2).map(c => [c.className, c.text]),
-  [['num quiet', '100 → 101 (+0.5%)'], ['num', '2.0 KiB → 4.0 KiB (+100.0%)']]);
+  [['num faint', '—'], ['num', '2.0 KiB → 4.0 KiB (+100.0%)Step 1 Jan']]);
 assert.equal(rows[0].children[0].children[0].title, 'mm/1/f32/gelu\\nmm/1/f32/relu');
 """)
