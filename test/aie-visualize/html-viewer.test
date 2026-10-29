@@ -74,13 +74,16 @@
 // CHECK: const outgoingClass = element => classMatching(element, /^src-\d+$/)
 // CHECK: const interactiveElement = target => target?.closest?.("g.node, g.edge") || null
 // CHECK: const overlaps = (first, second) => first.some(name => second.includes(name))
-// CHECK: const matchesDirection = (element, reference, relation, referenceClasses)
+// CHECK: const relatedClasses = (reference, referenceClasses)
+// CHECK: .filter(candidate => overlaps(flowClasses(candidate), referenceFlows))
+// CHECK: .flatMap(referenceClasses)
+// CHECK: const matchesDirection = (element, reference, relation, referenceClasses,
 // CHECK: element.classList.contains(`${relation}-${boundary}`)
-// CHECK: const matches = (element, reference)
+// CHECK: const matches = (element, reference, relatedIncoming, relatedOutgoing)
 // CHECK: (highlightIncoming &&
-// CHECK: matchesDirection(element, reference, "fate", incomingClasses)) ||
+// CHECK: matchesDirection(element, reference, "fate", incomingClasses,
 // CHECK: (highlightOutgoing &&
-// CHECK: matchesDirection(element, reference, "origin", outgoingClasses))
+// CHECK: matchesDirection(element, reference, "origin", outgoingClasses,
 // CHECK: const active = reference?.classList.contains("flow") &&
 // CHECK: addSetting("Incoming"
 // CHECK: addSetting("Outgoing"
