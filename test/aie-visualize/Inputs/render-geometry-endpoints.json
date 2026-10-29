@@ -1,0 +1,9 @@
+{
+  "edges": [
+    {
+      "id": "edge_defect",
+      "source": "p_0_0_1_0_m",
+      "target": "p_1_0_1_0_s"
+    }
+  ]
+}
