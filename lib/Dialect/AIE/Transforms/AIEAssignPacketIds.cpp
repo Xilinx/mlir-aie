@@ -62,25 +62,28 @@ struct AIEAssignPacketIdsPass
       });
     }
 
+    // A DMA program states its BDs' header itself, so it cannot use an id
+    // handed out here. Indexed once instead of a device-wide
+    // SymbolTable::getSymbolUses walk per unpinned route's source: the first
+    // DMAStartOp naming a given endpoint is all the loop below needs.
+    DenseMap<StringRef, DMAStartOp> dmaStartByEndpoint;
+    device.walk([&](DMAStartOp start) {
+      if (FlatSymbolRefAttr name = start.getEndpoint())
+        dmaStartByEndpoint.try_emplace(name.getValue(), start);
+    });
+
     for (auto route : unpinned) {
       std::optional<PacketInfoAttr> packet = route.getPacket();
-      // A DMA program states its BDs' header itself, so it cannot use an id
-      // handed out here.
       for (StringRef source : route.getSourceNames()) {
-        auto uses = SymbolTable::getSymbolUses(
-            StringAttr::get(device.getContext(), source), device);
-        if (!uses)
+        auto it = dmaStartByEndpoint.find(source);
+        if (it == dmaStartByEndpoint.end())
           continue;
-        for (const SymbolTable::SymbolUse &use : *uses) {
-          if (auto start = dyn_cast<DMAStartOp>(use.getUser())) {
-            start.emitOpError("names @")
-                << source
-                << ", the source of a packet-switched route without a pinned "
-                   "pkt_id; pin pkt_id on each route it sources and state that "
-                   "header in each of the program's BDs";
-            return signalPassFailure();
-          }
-        }
+        it->second.emitOpError("names @")
+            << source
+            << ", the source of a packet-switched route without a pinned "
+               "pkt_id; pin pkt_id on each route it sources and state that "
+               "header in each of the program's BDs";
+        return signalPassFailure();
       }
       std::optional<int> id = space.takeLowestFrom();
       if (!id) {
