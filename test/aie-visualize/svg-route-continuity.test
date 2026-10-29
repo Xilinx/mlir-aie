@@ -1,0 +1,8 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// RUN: not %python %S/Inputs/check-svg-route-continuity.py %S/Inputs/route-continuity.dot %S/Inputs/route-continuity.json %S/Inputs/route-continuity.svg 2>&1 | FileCheck %s
+
+// CHECK: edges=4 format_defects=0 endpoint_defects=3 disconnected_segments=1 dangling_endpoints=1
+// CHECK: disconnected-segments first=edge_gap_first:target second=edge_gap_second:source gap=6.000 groups=fate-target,src-2
+// CHECK: dangling-endpoint edge=edge_dangling side=target
