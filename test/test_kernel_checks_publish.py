@@ -521,6 +521,89 @@ def test_old_runs_thin_to_one_a_week(publish):
     assert kept[-1]["id"] == "0"
 
 
+def test_a_thinned_week_keeps_its_published_nightly(publish):
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+
+    def run(rid, days, **extra):
+        return {
+            "id": rid,
+            "date": publish.iso(now - datetime.timedelta(days=days)),
+            **extra,
+        }
+
+    # One old ISO week: a published nightly, then a newer refused night and
+    # a newer published run started by hand. The week's charted point is the
+    # nightly's: neither newer run may stand in for it.
+    week = publish.parse_date(publish.iso(now - datetime.timedelta(days=120)))
+    monday = 120 + week.weekday()
+    records = [
+        run("nightly", monday - 1, published=True, rows={"a": {}}),
+        run("refused", monday - 2, published=False, rows={}),
+        run("manual", monday - 3, published=True, rows={"a": {}},
+            event="workflow_dispatch"),
+    ]
+    assert [r["id"] for r in publish.prune(records, now)] == ["nightly"]
+    # A week with no published run keeps its newest.
+    only_refused = [run("r1", monday - 1, published=False), run("r2", monday - 2, published=False)]
+    assert [r["id"] for r in publish.prune(only_refused, now)] == ["r2"]
+
+
+def test_runs_past_a_year_of_weeks_are_dropped(publish):
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    horizon = publish.KEEP_DAYS + 7 * publish.KEEP_WEEKS
+    records = [
+        {"id": str(d), "date": publish.iso(now - datetime.timedelta(days=d))}
+        for d in (0, horizon - 10, horizon + 10, horizon + 400)
+    ]
+    assert [r["id"] for r in publish.prune(records, now)] == [str(horizon - 10), "0"]
+
+
+def test_old_records_shed_their_detail_and_retired_cases_leave_the_history(
+    publish, tmp_path
+):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    # Twenty nights, oldest first (one 200 days ago, then the last 19): case
+    # "kept" every night; "retired" only in the first five; "gap" every night
+    # but the last three.
+    days = [200, *range(18, -1, -1)]
+    for i, d in enumerate(days):
+        rows = {"kept": {"cost": {"value": i, "unit": "cost"}}}
+        if i < 5:
+            rows["retired"] = {"cost": {"value": i, "unit": "cost"}}
+        if i < len(days) - 3:
+            rows["gap"] = {"cost": {"value": i, "unit": "cost"}}
+        record = {
+            "target": "sa-placer-hw",
+            "id": f"r{i:02}",
+            "url": "",
+            "commit": {},
+            "date": publish.iso(now - datetime.timedelta(days=d)),
+            "pmode": "turbo",
+            "provenance": {},
+            "sane": True,
+            "published": True,
+            "n_rows": 1,
+            "failed": [],
+            "truncated": [],
+            "rows": rows,
+            "detail": [{"seed": 3}],
+            "builds": {"x": 1},
+        }
+        (out / "runs" / f"r{i:02}.json").write_text(json.dumps(record))
+    publish.rebuild(out, now)
+    # The 200-day-old record sheds what only the latest runs are read for;
+    # a recent one keeps it.
+    old = json.loads((out / "runs/r00.json").read_text())
+    assert "detail" not in old and "builds" not in old and old["rows"]
+    assert "detail" in json.loads((out / "runs/r19.json").read_text())
+    # A case not measured in the last RETIRED_AFTER runs leaves the history;
+    # one missing a few nights stays.
+    cost = json.loads((out / "history/cost.json").read_text())
+    assert sorted(cost["series"]) == ["gap", "kept"]
+
+
 def test_rebuild_drops_pruned_run_files_and_stale_histories(publish, tmp_path):
     out = tmp_path / "npu2"
     (out / "runs").mkdir(parents=True)
