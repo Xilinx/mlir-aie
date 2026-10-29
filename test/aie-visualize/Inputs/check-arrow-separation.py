@@ -22,6 +22,7 @@ def axis_runs(path):
     text = open(path, encoding="utf-8").read()
     runs = []
     diagonals = []
+    missing_geometry = []
     for edge, match in enumerate(re.finditer(
         r'^\s*(\w+) -> (\w+) \[(.*)\];$', text, re.MULTILINE
     )):
@@ -30,6 +31,7 @@ def axis_runs(path):
             continue
         position = re.search(r'pos="([^"]+)"', attributes)
         if not position:
+            missing_geometry.append(f"{match.group(1)} -> {match.group(2)} #{edge}")
             continue
         owner = f"{match.group(1)} -> {match.group(2)} #{edge}"
         endpoints = frozenset((match.group(1), match.group(2)))
@@ -71,11 +73,11 @@ def axis_runs(path):
                     first, points[3 * index + 1], points[3 * index + 2], second
                 ):
                     diagonals.append((owner, first, second))
-    return runs, diagonals
+    return runs, diagonals, missing_geometry
 
 
 def main():
-    runs, diagonals = axis_runs(sys.argv[1])
+    runs, diagonals, missing_geometry = axis_runs(sys.argv[1])
     collinear_overlaps = []
     narrow_gaps = []
     crossings = 0
@@ -120,6 +122,7 @@ def main():
             elif gap < MINIMUM_GAP:
                 narrow_gaps.append(conflict)
     print(
+        f"missing_geometry={len(missing_geometry)} "
         f"collinear_overlaps={len(collinear_overlaps)} "
         f"narrow_gaps={len(narrow_gaps)} diagonals={len(diagonals)} "
         f"crossings={crossings}"
@@ -131,7 +134,9 @@ def main():
         )
     for owner, first, second in diagonals:
         print(f"{owner}: diagonal={first} to {second}")
-    if collinear_overlaps or narrow_gaps or diagonals:
+    for owner in missing_geometry:
+        print(f"{owner}: missing pos")
+    if missing_geometry or collinear_overlaps or narrow_gaps or diagonals:
         raise RuntimeError("found invalid arrow runs")
 
 

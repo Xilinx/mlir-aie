@@ -236,9 +236,11 @@ private:
                  const LayoutGeometry &layout);
   SmallVector<Side> sidesFor(const ArrowEnd &end, const ArrowEnd &other) const;
   SmallVector<Gateway> gatewaysFor(const ArrowEnd &end, const ArrowEnd &other,
-                                   unsigned requestID) const;
+                                  unsigned requestID,
+                                  bool allowEndpointObstacles) const;
   double endpointSpread(StringRef node, unsigned requestID, double span) const;
-  RoutedPath routeOne(const ArrowRequest &request, bool allowOccupied = false);
+  RoutedPath routeOne(const ArrowRequest &request, bool allowOccupied = false,
+                      bool allowEndpointObstacles = false);
   void addUsage(const RoutedPath &path, int amount);
   double conflictScore(const RoutedPath &path) const;
   SmallVector<Point> cornersOf(const RoutedPath &path) const;
@@ -379,7 +381,8 @@ AvoidanceArrowRenderer::sidesFor(const ArrowEnd &end,
 
 SmallVector<Gateway>
 AvoidanceArrowRenderer::gatewaysFor(const ArrowEnd &end, const ArrowEnd &other,
-                                    unsigned requestID) const {
+                                    unsigned requestID,
+                                    bool allowEndpointObstacles) const {
   auto found = obstacleByNode.find(end.node);
   if (found == obstacleByNode.end())
     return {};
@@ -437,6 +440,9 @@ AvoidanceArrowRenderer::gatewaysFor(const ArrowEnd &end, const ArrowEnd &other,
       continue;
     bool blocked = llvm::any_of(scene, [&](const InflatedObstacle &candidate) {
       if (candidate.node == end.node || candidate.kind == ObstacleKind::Tile)
+        return false;
+        if (allowEndpointObstacles && end.kind != EndKind::External &&
+          candidate.tile == end.tile)
         return false;
       double left = std::min(gateway.anchor.first, gateway.point.first);
       double right = std::max(gateway.anchor.first, gateway.point.first);
@@ -637,11 +643,14 @@ void AvoidanceArrowRenderer::buildGrid(ArrayRef<ArrowRequest> requests,
 }
 
 RoutedPath AvoidanceArrowRenderer::routeOne(const ArrowRequest &request,
-                                            bool allowOccupied) {
+                      bool allowOccupied,
+                      bool allowEndpointObstacles) {
   SmallVector<Gateway> sources =
-      gatewaysFor(request.from, request.to, request.id);
+    gatewaysFor(request.from, request.to, request.id,
+          allowEndpointObstacles);
   SmallVector<Gateway> targets =
-      gatewaysFor(request.to, request.from, request.id);
+    gatewaysFor(request.to, request.from, request.id,
+          allowEndpointObstacles);
   if (!allowOccupied) {
     llvm::erase_if(sources, [&](const Gateway &gateway) {
       return hasGatewayConflict(gateway, request.id);
@@ -1097,7 +1106,14 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
     if (routed[requestID].valid)
       continue;
     ++routeCalls;
-    routed[requestID] = routeOne(requests[requestID], true);
+    routed[requestID] = routeOne(requests[requestID], false, true);
+    addUsage(routed[requestID], 1);
+  }
+  for (unsigned requestID : order) {
+    if (routed[requestID].valid)
+      continue;
+    ++routeCalls;
+    routed[requestID] = routeOne(requests[requestID], true, true);
     addUsage(routed[requestID], 1);
   }
   auto initiallyRouted = Clock::now();
@@ -1107,7 +1123,7 @@ AvoidanceArrowRenderer::route(ArrayRef<ArrowRequest> requests,
       return std::pair{-conflictScore(routed[first]), first} <
              std::pair{-conflictScore(routed[second]), second};
     });
-    size_t rerouteLimit = std::min<size_t>(128, order.size());
+    size_t rerouteLimit = std::min<size_t>(32, order.size());
     for (unsigned requestID : ArrayRef(order).take_front(rerouteLimit)) {
       if (conflictScore(routed[requestID]) <= 0)
         break;
