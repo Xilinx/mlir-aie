@@ -106,6 +106,9 @@ class Declaration:
                     named.add(m.declared_dtype.name)
                 if m.when is not None:
                     named.add(m.when.name)
+            for given in (m.declared_coded, m.declared_capacity):
+                if isinstance(given, OperatorParam):
+                    named.add(given.name)
         self.key = tuple(n for n in params if n in named)
 
     @property
@@ -296,6 +299,19 @@ class Declaration:
         for ref in m.per or ():
             if not isinstance(ref, OperatorParam) or _foreign(ref, owner):
                 raise TypeError(f"{where}: per={ref!r} must be a param() or tunable()")
+        for keyword, given, kind in (
+            ("coded", m.declared_coded, bool),
+            ("capacity", m.declared_capacity, int),
+        ):
+            if isinstance(given, OperatorParam):
+                if _foreign(given, owner):
+                    raise TypeError(
+                        f"{where}: {keyword}={given!r} is not a param() or a tunable() of {owner.__name__}"
+                    )
+            elif not isinstance(given, kind):
+                raise TypeError(
+                    f"{where}: {keyword}= takes a {kind.__name__} or a param(), not {given!r}"
+                )
 
     def __repr__(self) -> str:
         """Return what was declared and inferred, a line a kind."""
