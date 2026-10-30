@@ -19,7 +19,7 @@ class NPUKernel:
 
     def __init__(
         self,
-        xclbin_path=None,
+        xclbin_path: str | Path | None = None,
         insts_path=None,
         device_index=0,
         kernel_name="MLIR_AIE",
@@ -97,7 +97,7 @@ class NPUKernel:
         return self._trace_config
 
     @property
-    def xclbin_path(self):
+    def xclbin_path(self) -> str | Path | None:
         """Get the path to the xclbin file.
 
         Returns:

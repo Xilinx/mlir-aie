@@ -63,7 +63,7 @@ def _color_convert_kernel(
 def _bitwise_kernel(
     op: str, line_width: int, dtype, use_chess: bool = False
 ) -> ExternalFunction:
-    """Shared implementation for [`bitwise_or`][iron.kernels.vision.bitwise_or] and [`bitwise_and`][iron.kernels.vision.bitwise_and]."""
+    """Shared implementation for [`bitwise_or`][aie.iron.kernels.vision.bitwise_or] and [`bitwise_and`][aie.iron.kernels.vision.bitwise_and]."""
     bit_width = _dtype_to_bit_width(dtype, factory_name=f"bitwise{op}")
     _require_vector_alignment(
         f"bitwise{op}", line_width, 512 // bit_width, param="line_width"
@@ -665,7 +665,7 @@ def resample_peak(
     One axis of torch's antialiased bicubic resize (``in`` samples to
     ``out``) is a table of ``words``-int32 chunks, ``cores`` cores taking
     chunks ``core, core + cores, ...``; see
-    [`resample_quantize`][iron.kernels.vision.resample_quantize].
+    [`resample_quantize`][aie.iron.kernels.vision.resample_quantize].
     ``resample_peak(peak, in, out, core, chunks)`` writes the largest
     normalized weight over the outputs of the core's ``chunks`` chunks as
     float64 bits in ``peak`` (two int32), 0 when the table cannot hold the
@@ -723,7 +723,7 @@ def resample_quantize(
     ``outputs`` slots from output ``first`` on, each ``[start, count]`` and
     the window's int16 weights two to a word, the rest zero. The precision
     is the one the largest normalized weight ``peak`` (float64 bits, from
-    [`resample_peak`][iron.kernels.vision.resample_peak]) sets, as torch
+    [`resample_peak`][aie.iron.kernels.vision.resample_peak]) sets, as torch
     picks it. A size the table cannot hold (a size below 1, a window no
     slot of ``words`` holds, too few chunks) writes ``[-1, window, 0, 0]``.
 
@@ -783,7 +783,7 @@ def resize(
     The image is resized across, then down, each pass rounded to uint8 as
     torch does it on the CPU, and written as 16x16 patches of ``u8 / 255``
     in bf16, channels last. The filters are
-    [`resample_quantize`][iron.kernels.vision.resample_quantize] tables at
+    [`resample_quantize`][aie.iron.kernels.vision.resample_quantize] tables at
     16 slots, one chunk a patch column (width) or a band of 16 rows
     (height). ``cores`` cores receive every ``chunk``-byte image chunk, each
     image row padded to whole chunks; core ``c`` owns patch columns ``c, c +
@@ -807,7 +807,7 @@ def resize(
     zeros. The counts are the same on every core whatever the input, so the
     broadcast streams stay in step; sizes or a table the kernel refuses
     write zeros from there on, where
-    [`resize_ref`][iron.kernels.vision.resize_ref] says. amd/IRON's
+    [`resize_ref`][aie.iron.kernels.vision.resize_ref] says. amd/IRON's
     ``Resample`` runs it for EmbeddingGemma 2's image processor.
 
     Args:
@@ -915,7 +915,7 @@ def resize(
 
 
 def gray2rgba_ref(y):
-    """Numpy reference for [`gray2rgba`][iron.kernels.vision.gray2rgba]: ``(y, y, y, 255)`` per pixel."""
+    """Numpy reference for [`gray2rgba`][aie.iron.kernels.vision.gray2rgba]: ``(y, y, y, 255)`` per pixel."""
     y = np.asarray(y, dtype=np.uint8)
     out = np.empty(y.shape[:-1] + (y.shape[-1] * 4,), dtype=np.uint8)
     px = out.reshape(*y.shape, 4)
@@ -930,7 +930,7 @@ _GRAY_WEIGHTS = (round(0.299 * 2**15), round(0.587 * 2**15), round(0.114 * 2**15
 
 
 def rgba2gray_ref(rgba):
-    """Numpy reference for [`rgba2gray`][iron.kernels.vision.rgba2gray]: fixed-point BT.470 luma.
+    """Numpy reference for [`rgba2gray`][aie.iron.kernels.vision.rgba2gray]: fixed-point BT.470 luma.
 
     ``Y = (9798 R + 19235 G + 3736 B + 2**14) >> 15``, saturated to ``uint8``;
     alpha is ignored. Within one LSB of the kernel (rounding of the final
@@ -944,7 +944,7 @@ def rgba2gray_ref(rgba):
 
 
 def rgba2hue_ref(rgba):
-    """Numpy reference for [`rgba2hue`][iron.kernels.vision.rgba2hue]: full-range hue.
+    """Numpy reference for [`rgba2hue`][aie.iron.kernels.vision.rgba2hue]: full-range hue.
 
     ``rgba2hue.cc`` multiplies by a Q7.9 reciprocal rather than dividing, so
     with ``d = max - min`` of R, G, B and ``inv = 85 * 512 / d`` the hue is
@@ -1189,7 +1189,7 @@ def levels_ref(
 
 
 def threshold_ref(x, thresh, maxval, ttype):
-    """Numpy reference for [`threshold`][iron.kernels.vision.threshold] (OpenCV semantics).
+    """Numpy reference for [`threshold`][aie.iron.kernels.vision.threshold] (OpenCV semantics).
 
     ``ttype``: 0 binary (``x > thresh ? maxval : 0``), 1 binary inverted,
     2 truncate (``min(x, thresh)``), 3 to-zero (``x > thresh ? x : 0``),
@@ -1213,17 +1213,17 @@ def threshold_ref(x, thresh, maxval, ttype):
 
 
 def bitwise_or_ref(a, b):
-    """Numpy reference for [`bitwise_or`][iron.kernels.vision.bitwise_or]. Exact."""
+    """Numpy reference for [`bitwise_or`][aie.iron.kernels.vision.bitwise_or]. Exact."""
     return np.bitwise_or(np.asarray(a), np.asarray(b))
 
 
 def bitwise_and_ref(a, b):
-    """Numpy reference for [`bitwise_and`][iron.kernels.vision.bitwise_and]. Exact."""
+    """Numpy reference for [`bitwise_and`][aie.iron.kernels.vision.bitwise_and]. Exact."""
     return np.bitwise_and(np.asarray(a), np.asarray(b))
 
 
 def add_weighted_ref(a, b, alpha, beta, gamma):
-    """Numpy reference for [`add_weighted`][iron.kernels.vision.add_weighted]: Q2.14 blend.
+    """Numpy reference for [`add_weighted`][aie.iron.kernels.vision.add_weighted]: Q2.14 blend.
 
     ``out = sat(((alpha * a + beta * b) >> 14) + gamma)`` with ``alpha`` and
     ``beta`` as Q2.14 fixed point (``8192`` is 0.5) and ``gamma`` in output
@@ -1240,7 +1240,7 @@ def add_weighted_ref(a, b, alpha, beta, gamma):
 
 
 def filter2d_ref(line0, line1, line2, kernel):
-    """Numpy reference for [`filter2d`][iron.kernels.vision.filter2d]: 3x3 correlation of three lines.
+    """Numpy reference for [`filter2d`][aie.iron.kernels.vision.filter2d]: 3x3 correlation of three lines.
 
     Produces the middle line. The vector path keeps only the top byte of
     each ``int16`` coefficient (``k >> 8`` as ``int8``) and shifts the sum by
@@ -1347,7 +1347,7 @@ def resample_peak_ref(
     cores: int = 16,
     slots: int | None = None,
 ) -> np.ndarray:
-    """Numpy reference for [`resample_peak`][iron.kernels.vision.resample_peak].
+    """Numpy reference for [`resample_peak`][aie.iron.kernels.vision.resample_peak].
 
     Args:
         in_size: The input samples on the axis.
@@ -1389,7 +1389,7 @@ def resample_quantize_ref(
     cores: int = 16,
     slots: int | None = None,
 ) -> np.ndarray:
-    """Numpy reference for [`resample_quantize`][iron.kernels.vision.resample_quantize].
+    """Numpy reference for [`resample_quantize`][aie.iron.kernels.vision.resample_quantize].
 
     Args:
         peak: ``(calls, 2)`` int32, each call's peak as float64 bits; call
@@ -1465,7 +1465,7 @@ def resize_ref(
     cores: int = 16,
     as_rows: bool = False,
 ) -> np.ndarray:
-    """Numpy reference for [`resize`][iron.kernels.vision.resize].
+    """Numpy reference for [`resize`][aie.iron.kernels.vision.resize].
 
     Args:
         image: The image chunks, ``(n, chunk)`` uint8: row ``r``'s ``3 *

@@ -196,7 +196,7 @@ class Runtime(DeviceResources, Resolvable):
     """The host-side sequence of data-movement operations that execute an IRON design.
 
     A Runtime describes what the host does at runtime: filling input
-    [`ObjectFifo`][iron.ObjectFifo]s with data and draining results back to host
+    [`ObjectFifo`][aie.iron.ObjectFifo]s with data and draining results back to host
     buffers. The sequence is the ``seq_fn`` callback passed to the
     constructor; its body reads the runtime buffers as parameters and moves
     data with ``fifo.fill(...)`` / ``fifo.drain(...)``.
@@ -213,7 +213,7 @@ class Runtime(DeviceResources, Resolvable):
     ) -> None:
         """Create a runtime from its sequence body and fn_args.
 
-        Mirrors [`Worker`][iron.Worker]``(core_fn, fn_args)``: ``seq_fn`` runs
+        Mirrors [`Worker`][aie.iron.Worker]``(core_fn, fn_args)``: ``seq_fn`` runs
         inside ``@runtime_sequence`` at resolve time, called as
         ``seq_fn(*fn_args)``, and can use native ``range_``/``if_`` and
         ``fifo.fill``/``fifo.drain``. Objects in ``fn_args`` (ObjectFifoHandles,
@@ -503,16 +503,16 @@ class Runtime(DeviceResources, Resolvable):
     def add_flow(self, flow) -> None:
         """Register a flow for resolution alongside the ObjectFifos.
 
-        Accepts a [`Flow`][iron.Flow] or [`PacketFlow`][iron.PacketFlow].
+        Accepts a [`Flow`][aie.iron.Flow] or [`PacketFlow`][aie.iron.PacketFlow].
         """
         super().add_flow(flow)
         if self._configuration is not None:
             self._configuration.add_flow(flow)
 
     def add_lock(self, lock) -> None:
-        """Register an explicit [`Lock`][iron.Lock] no TileDma, task or Worker reaches.
+        """Register an explicit [`Lock`][aie.iron.Lock] no TileDma, task or Worker reaches.
 
-        Locks a [`TileDma`][iron.TileDma]'s or a task's Bds use are found
+        Locks a [`TileDma`][aie.iron.TileDma]'s or a task's Bds use are found
         from them, and a Worker's from its ``fn_args``.
         """
         super().add_lock(lock)
@@ -581,17 +581,17 @@ class Runtime(DeviceResources, Resolvable):
             loc: Optional MLIR source location for the generated ops.
             ip: Optional MLIR insertion point for the generated ops.
             trace_size: Forwarded from
-                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                [`Program.enable_trace`][aie.iron.program.Program.enable_trace]; see
                 there. ``None``/``0`` disables tracing.
             reuse_output_buffer: Forwarded from
-                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                [`Program.enable_trace`][aie.iron.program.Program.enable_trace]; see
                 there.
             egress_shim_col: Forwarded from
-                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                [`Program.enable_trace`][aie.iron.program.Program.enable_trace]; see
                 there.
             implicit_configure_device_ref: The enclosing device symbol for an
                 implicit full-ELF ``aiex.npu.load_pdi``. ``None`` on the xclbin path.
-            device: The [`Device`][iron.Device] that places tiles the body
+            device: The [`Device`][aie.iron.Device] that places tiles the body
                 reaches first, such as a buffer only a runtime task names.
         """
         # A runtime_sequence block arg per runtime (type) input; folded-constant

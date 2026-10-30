@@ -5,11 +5,11 @@
 #
 """A pool of buffers and locks that a core reaches through acquire and release.
 
-An [`ObjectFifo`][iron.ObjectFifo] states both ends of a transfer and generates
+An [`ObjectFifo`][aie.iron.ObjectFifo] states both ends of a transfer and generates
 the buffers, the locks and the DMA programs at each end. A
-[`ObjectFifoPool`][iron.ObjectFifoPool] states one end only. The other end belongs to a
+[`ObjectFifoPool`][aie.iron.ObjectFifoPool] states one end only. The other end belongs to a
 DMA program the author writes, so a design keeps an ordered multi-BD
-[`TileDma`][iron.TileDma] and still lets its core read like any other fifo
+[`TileDma`][aie.iron.TileDma] and still lets its core read like any other fifo
 consumer.
 """
 
@@ -52,7 +52,7 @@ def _named(thing, what: str) -> str:
 
 
 class PoolSegment:
-    """One slice of an [`ObjectFifoPool`][iron.ObjectFifoPool]'s object, and its locks.
+    """One slice of an [`ObjectFifoPool`][aie.iron.ObjectFifoPool]'s object, and its locks.
 
     Segments partition the object in increasing offset order and together
     cover it exactly. Each carries a produce and a consume lock, so several
@@ -354,14 +354,14 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
 
 
 class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
-    """What a Worker acquires and releases an [`ObjectFifoPool`][iron.ObjectFifoPool]'s objects through.
+    """What a Worker acquires and releases an [`ObjectFifoPool`][aie.iron.ObjectFifoPool]'s objects through.
 
     Obtain one from
-    [`ObjectFifoPool.cons()`][iron.dataflow.objectfifopool.ObjectFifoPool.cons]
+    [`ObjectFifoPool.cons()`][aie.iron.dataflow.objectfifopool.ObjectFifoPool.cons]
     or
-    [`ObjectFifoPool.prod()`][iron.dataflow.objectfifopool.ObjectFifoPool.prod]
-    and pass it to a [`Worker`][iron.Worker] as a function argument, as for an
-    [`ObjectFifoHandle`][iron.dataflow.objectfifo.ObjectFifoHandle]. A core
+    [`ObjectFifoPool.prod()`][aie.iron.dataflow.objectfifopool.ObjectFifoPool.prod]
+    and pass it to a [`Worker`][aie.iron.Worker] as a function argument, as for an
+    [`ObjectFifoHandle`][aie.iron.dataflow.objectfifo.ObjectFifoHandle]. A core
     body takes either and cannot tell them apart.
     """
 

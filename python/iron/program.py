@@ -25,8 +25,8 @@ class Program:
     """One compilation unit and host-visible execution graph.
 
     A Program emits one MLIR module. It composes one or more
-    [`DeviceConfiguration`][iron.configuration.DeviceConfiguration] images and selects the
-    entry [`Runtime`][iron.Runtime] that orchestrates one run. Each device
+    [`DeviceConfiguration`][aie.iron.configuration.DeviceConfiguration] images and selects the
+    entry [`Runtime`][aie.iron.Runtime] that orchestrates one run. Each device
     configuration owns the resources inside one ``aie.device`` operation;
     Program owns module creation, entry selection, and cross-configuration
     validation.
@@ -46,7 +46,7 @@ class Program:
 
         !!! note
             MLIR verification (`ctx.module.operation.verify()`) is performed inside
-            [`resolve_program`][iron.program.Program.resolve_program], not during construction.
+            [`resolve_program`][aie.iron.program.Program.resolve_program], not during construction.
 
         Args:
             device (Device): The device used to generate the final MLIR for the design.

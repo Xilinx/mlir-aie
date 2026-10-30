@@ -177,14 +177,14 @@ def layer_norm_eps(
 
 
 def rms_norm_ref(x, *, eps: float = 1e-5):
-    """Numpy reference for [`rms_norm`][iron.kernels.norm.rms_norm]: ``x / sqrt(mean(x**2) + eps)``."""
+    """Numpy reference for [`rms_norm`][aie.iron.kernels.norm.rms_norm]: ``x / sqrt(mean(x**2) + eps)``."""
     xf = x.astype(np.float32)
     ms = np.mean(xf * xf, axis=-1, keepdims=True)
     return (xf / np.sqrt(ms + eps)).astype(x.dtype)
 
 
 def layer_norm_ref(x, *, eps: float = 1e-5):
-    """Numpy reference for [`layer_norm`][iron.kernels.norm.layer_norm]: ``(x - mean) / sqrt(var + eps)``."""
+    """Numpy reference for [`layer_norm`][aie.iron.kernels.norm.layer_norm]: ``(x - mean) / sqrt(var + eps)``."""
     xf = x.astype(np.float32)
     mean = np.mean(xf, axis=-1, keepdims=True)
     var = np.mean((xf - mean) ** 2, axis=-1, keepdims=True)

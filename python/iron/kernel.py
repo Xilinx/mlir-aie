@@ -259,7 +259,7 @@ class ObjectFile(KernelObject):
 class Kernel(Resolvable):
     """An AIE core function backed by a pre-compiled object file.
 
-    Use [`ExternalFunction`][iron.ExternalFunction] instead when you want to
+    Use [`ExternalFunction`][aie.iron.ExternalFunction] instead when you want to
     compile from C/C++ source at JIT time.
 
     `resolve()` emits a `func.func private` declaration with a
@@ -306,7 +306,7 @@ class Kernel(Resolvable):
                 an indirect call, or for a ``link_with_mode="merge"`` kernel,
                 which aiecc's stack analysis reads as part of the core rather
                 than as a separate object. See
-                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
+                [`Kernel.stack_size_override`][aie.iron.kernel.Kernel.stack_size_override].
         """
         self._init_identity(name, arg_types)
         if isinstance(object_file_name, KernelObject):
@@ -520,7 +520,7 @@ class Kernel(Resolvable):
         """Return the first dimension of the array argument at `arg_index`.
 
         Convenience wrapper over
-        [`arg_shape`][iron.kernel.Kernel.arg_shape] for the common case of
+        [`arg_shape`][aie.iron.kernel.Kernel.arg_shape] for the common case of
         a 1-D buffer argument. `tile_size(i)` is equivalent to
         `arg_shape(i)[0]`.
 
@@ -598,7 +598,7 @@ class ExternalFunction(Kernel):
     set, so registrations from a previous (possibly failed) run stay out of it;
     outside one, instances go to the process-wide `_instances`.
 
-    Use the base [`Kernel`][iron.Kernel] class instead when you have a
+    Use the base [`Kernel`][aie.iron.Kernel] class instead when you have a
     pre-built object file.
     """
 
@@ -800,7 +800,7 @@ class ExternalFunction(Kernel):
         """Return reference output(s), cast to each output argument's dtype.
 
         ``arch`` names the architecture the output to judge came from; see
-        [`contract_for`][iron.kernel.ExternalFunction.contract_for].
+        [`contract_for`][aie.iron.kernel.ExternalFunction.contract_for].
         """
         c = self.contract_for(arch)
         if c.reference is None:
@@ -866,7 +866,7 @@ class ExternalFunction(Kernel):
         A tolerance that is a function of the inputs needs the ``inputs`` and
         ``scalars`` the reference was given. Without ``tolerance``, the
         contract's is that of the build ``arch`` names; see
-        [`contract_for`][iron.kernel.ExternalFunction.contract_for].
+        [`contract_for`][aie.iron.kernel.ExternalFunction.contract_for].
         """
         from aie.utils.compile.jit.markers import In
         from aie.utils.verify import Tolerance, Verdict, compare
@@ -991,7 +991,7 @@ class ExternalFunction(Kernel):
                 Chess/xchesscc toolchain cannot llvm-link).
             stack_size_override: Declared upper bound, in bytes, on the stack
                 that this kernel's call subtree uses. See
-                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
+                [`Kernel.stack_size_override`][aie.iron.kernel.Kernel.stack_size_override].
                 With ``inline=True``, the merged kernel has no separate object,
                 so this bound is the one input aiecc's stack analysis reads for
                 this kernel.
