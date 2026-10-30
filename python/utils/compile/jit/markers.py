@@ -250,13 +250,14 @@ class _Operand(Member):
         obj = resolve(self.obj_dims, self.op)
         if not self.coded:
             return obj
-        row = self.logical_shape[-1]
+        # The row alone: a core's build may read no other extent.
+        row = resolve(self.dims[-1:], self.op)[-1]
         if not obj or obj[-1] != row:
             raise ValueError(
                 f"{self.name}: a coded stream moves whole rows of {row}, but its "
                 f"obj_shape is {obj}"
             )
-        return (*obj[:-1], self.shape[-1])
+        return (*obj[:-1], coded.row_bytes(row, self.capacity))
 
     @property
     def lanes(self) -> int:
