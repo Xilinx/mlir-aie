@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/MapVector.h"
@@ -557,20 +558,49 @@ struct AIEObjectFifoVerifyPass
   /// itself first: checked where that end is a DMA endpoint without an
   /// iteration count, or a core that moves objects each time its own loop
   /// repeats forever. A core holding an object acquired before its loop, for
-  /// the whole configuration, is left alone.
+  /// the whole configuration, is left alone, as is a loop the core may never
+  /// reach.
   LogicalResult verifyAdvances(DeviceOp device) {
-    auto repeatsForever = [](Operation *loop) {
-      for (Operation *op = loop; op && !isa<CoreOp>(op);
-           op = op->getParentOp()) {
-        auto whileOp = dyn_cast<scf::WhileOp>(op);
+    auto runsForever = [](Operation *op) {
+      auto whileOp = dyn_cast<scf::WhileOp>(op);
+      auto forOp = dyn_cast<scf::ForOp>(op);
+      std::optional<int64_t> trip =
+          forOp ? getStaticTripCount(forOp) : std::nullopt;
+      return (whileOp && isForeverLoop(whileOp)) ||
+             (trip && *trip >= kRunsForever);
+    };
+    // Whether `loop` runs, and repeats forever: it or a loop around it runs
+    // forever, and nothing on the way from the core may skip it.
+    auto repeatsForever = [&](Operation *loop) {
+      bool forever = false;
+      for (Operation *op = loop; !isa<CoreOp>(op); op = op->getParentOp()) {
+        Block *block = op->getBlock();
+        if (block != &op->getParentRegion()->front() ||
+            llvm::any_of(
+                llvm::make_range(block->begin(), op->getIterator()),
+                [&](Operation &before) { return runsForever(&before); }))
+          return false;
         auto forOp = dyn_cast<scf::ForOp>(op);
+        auto whileOp = dyn_cast<scf::WhileOp>(op);
         std::optional<int64_t> trip =
             forOp ? getStaticTripCount(forOp) : std::nullopt;
-        if ((whileOp && isForeverLoop(whileOp)) ||
-            (trip && *trip >= kRunsForever))
-          return true;
+        if ((forOp && (!trip || *trip == 0)) ||
+            (whileOp && !isForeverLoop(whileOp)))
+          return false;
+        forever |= runsForever(op);
+        Operation *parent = op->getParentOp();
+        if (auto ifOp = dyn_cast<scf::IfOp>(parent)) {
+          bool inThen = op->getParentRegion() == &ifOp.getThenRegion();
+          if (!matchPattern(ifOp.getCondition(), inThen ? m_One() : m_Zero()))
+            return false;
+        } else if (auto parentWhile = dyn_cast<scf::WhileOp>(parent)) {
+          if (op->getParentRegion() != &parentWhile.getAfter())
+            return false;
+        } else if (!isa<scf::ForOp, CoreOp>(parent)) {
+          return false;
+        }
       }
-      return false;
+      return forever;
     };
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
