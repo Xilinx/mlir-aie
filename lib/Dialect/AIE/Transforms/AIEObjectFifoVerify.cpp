@@ -21,8 +21,10 @@
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 
 using namespace mlir;
@@ -151,6 +153,106 @@ static std::optional<int64_t> heldAfter(Block &block, StringRef name,
     held = *once;
   }
   return held;
+}
+
+/// Objects of the fifo `in` a core newly takes, and of `out` it releases, in
+/// one pass of the innermost loop around their accesses, when that pass takes
+/// its share of `in` ahead of each release: then once the core has released
+/// r objects of `out`, it has taken at least r * in / out of `in`, whatever
+/// the loop's own trip count. Unknown when the pass holds objects across
+/// passes, or reaches them under a branch or a loop of unknown count.
+static std::optional<std::pair<int64_t, int64_t>>
+passRatio(CoreOp core, StringRef in, StringRef out) {
+  auto fifoOf = [](Operation *op) -> StringRef {
+    if (auto acquire = dyn_cast<ObjectFifoAcquireOp>(op))
+      return acquire.getObjFifoName();
+    if (auto release = dyn_cast<ObjectFifoReleaseOp>(op))
+      return release.getObjFifoName();
+    return {};
+  };
+  SmallVector<Operation *> uses;
+  core.walk([&](Operation *op) {
+    StringRef fifo = fifoOf(op);
+    if (fifo == in || fifo == out)
+      uses.push_back(op);
+  });
+  if (uses.empty())
+    return std::nullopt;
+  Operation *loop = nullptr;
+  for (Operation *op = uses.front()->getParentOp(); op != core && !loop;
+       op = op->getParentOp())
+    if (isa<LoopLikeOpInterface>(op) && llvm::all_of(uses, [&](Operation *use) {
+          return op->isProperAncestor(use);
+        }))
+      loop = op;
+  if (!loop)
+    return std::nullopt;
+
+  struct Event {
+    bool ofIn, acquire;
+    int64_t count;
+  };
+  constexpr size_t maxPassEvents = 4096;
+  SmallVector<Event> pass;
+  std::function<bool(Block &)> unroll = [&](Block &block) {
+    for (Operation &op : block) {
+      StringRef fifo = fifoOf(&op);
+      if (fifo == in || fifo == out) {
+        auto acquire = dyn_cast<ObjectFifoAcquireOp>(op);
+        pass.push_back({fifo == in, static_cast<bool>(acquire),
+                        acquire ? acquire.acqNumber()
+                                : cast<ObjectFifoReleaseOp>(op).relNumber()});
+        if (pass.size() > maxPassEvents)
+          return false;
+        continue;
+      }
+      if (llvm::none_of(
+              uses, [&](Operation *use) { return op.isProperAncestor(use); }))
+        continue;
+      auto forOp = dyn_cast<scf::ForOp>(op);
+      std::optional<int64_t> trip =
+          forOp ? getStaticTripCount(forOp) : std::nullopt;
+      if (!trip || *trip > static_cast<int64_t>(maxPassEvents))
+        return false;
+      for (int64_t i = 0; i < *trip; i++)
+        if (!unroll(*forOp.getBody()))
+          return false;
+    }
+    return true;
+  };
+  for (Region *region : cast<LoopLikeOpInterface>(loop).getLoopRegions())
+    for (Block &block : *region)
+      if (!unroll(block))
+        return std::nullopt;
+
+  // The first walk totals the pass; the second checks each release against
+  // those totals.
+  int64_t taken = 0, released = 0;
+  for (int walk = 0; walk < 2; walk++) {
+    int64_t totalTaken = taken, totalReleased = released;
+    int64_t heldIn = 0, heldOut = 0;
+    taken = released = 0;
+    for (const Event &event : pass) {
+      int64_t &held = event.ofIn ? heldIn : heldOut;
+      if (event.acquire) {
+        if (event.ofIn)
+          taken += std::max<int64_t>(0, event.count - held);
+        held = std::max(held, event.count);
+        continue;
+      }
+      if (event.count > held)
+        return std::nullopt;
+      held -= event.count;
+      if (event.ofIn)
+        continue;
+      released += event.count;
+      if (walk == 1 && released * totalTaken > taken * totalReleased)
+        return std::nullopt;
+    }
+    if (heldIn || heldOut || !taken || !released)
+      return std::nullopt;
+  }
+  return std::make_pair(taken, released);
 }
 
 struct AIEObjectFifoVerifyPass
@@ -858,6 +960,130 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
+  using PoolActors = DenseMap<Operation *, SmallVector<SegmentActors>>;
+
+  /// Where the bytes the endpoint `from` sends end up, when every hop passes
+  /// them on one to one: one route to one destination, and each pool on the
+  /// way one segment with no initial objects, filled by that destination
+  /// alone and drained by one end that neither pads, repeats, dispatches nor
+  /// splits them. The far end is a core endpoint draining the last pool, or
+  /// a shim's route endpoint; null wherever another source's bytes could
+  /// mix in or bytes could be added or duplicated.
+  Operation *carries(DeviceOp device, StringAttr from,
+                     const PoolActors &actors) {
+    auto passesOn = [](ObjectFifoDmaEndpointOp dma) {
+      return !dma.getSegments() && !dma.getPadDimensions() &&
+             !dma.getDispatch() && dma.getRepeat() == 1;
+    };
+    llvm::SmallPtrSet<Operation *, 8> visited;
+    while (true) {
+      RouteOp route;
+      for (auto candidate : device.getOps<RouteOp>()) {
+        if (!candidate.namesAsSource(from.getValue()))
+          continue;
+        if (route)
+          return nullptr;
+        route = candidate;
+      }
+      if (!route || route.getSources().size() != 1 ||
+          route.getDestinations().size() != 1)
+        return nullptr;
+      Operation *dest = SymbolTable::lookupNearestSymbolFrom(
+          device, cast<FlatSymbolRefAttr>(route.getDestinations()[0]));
+      if (auto shim = dyn_cast_or_null<RouteEndpointOp>(dest))
+        return shim.getBundle() == WireBundle::DMA &&
+                       shim.getTileLike().isShimTile()
+                   ? shim
+                   : nullptr;
+      auto fill = dyn_cast_or_null<ObjectFifoDmaEndpointOp>(dest);
+      if (!fill || fill.drains() || !passesOn(fill))
+        return nullptr;
+      ObjectFifoPoolOp pool = fill.getPoolOp();
+      if (!pool || pool.getInitValues() || !poolLocks->needsLocks(pool) ||
+          !visited.insert(pool).second)
+        return nullptr;
+      auto it = actors.find(pool);
+      if (it == actors.end() || it->second.size() != 1 ||
+          it->second.front().fillers.size() != 1 ||
+          it->second.front().drainers.size() != 1)
+        return nullptr;
+      Operation *drainer = it->second.front().drainers.front();
+      if (auto core = dyn_cast<ObjectFifoCoreEndpointOp>(drainer))
+        return core.getSegments() ? nullptr : core;
+      auto next = cast<ObjectFifoDmaEndpointOp>(drainer);
+      if (!passesOn(next))
+        return nullptr;
+      from = next.getSymNameAttr();
+    }
+  }
+
+  /// Records on each shim input the shim outputs whose progress proves it
+  /// consumed (#aie.consumed_by). Its bytes reach such an output directly,
+  /// one to one; or they reach a core that, in each pass of the loop around
+  /// its accesses, takes its share of them before each release into a fifo
+  /// whose bytes reach the output one to one. A shim input sends a byte
+  /// before anything downstream can take it, and the host receives a byte
+  /// only after the core released it, so once the output has received R
+  /// bytes the input's first R * in / out have been taken.
+  void recordConsumption(DeviceOp device, const PoolActors &actors) {
+    MLIRContext *ctx = device.getContext();
+    auto objectBytes = [](ObjectFifoPoolOp pool) {
+      auto type = cast<MemRefType>(pool.getElemType());
+      return type.getNumElements() *
+             static_cast<int64_t>(
+                 DataLayout::closest(pool).getTypeSize(type.getElementType()));
+    };
+    for (auto input : device.getOps<RouteEndpointOp>()) {
+      if (input.getBundle() != WireBundle::DMA ||
+          !input.getTileLike().isShimTile())
+        continue;
+      SmallVector<Attribute> proofs;
+      auto prove = [&](RouteEndpointOp output, int64_t in, int64_t out) {
+        int64_t common = std::gcd(in, out);
+        proofs.push_back(ConsumedByAttr::get(
+            ctx, FlatSymbolRefAttr::get(output.getSymNameAttr()), in / common,
+            out / common));
+      };
+      Operation *far = carries(device, input.getSymNameAttr(), actors);
+      if (auto output = dyn_cast_or_null<RouteEndpointOp>(far))
+        prove(output, 1, 1);
+      if (auto consumer = dyn_cast_or_null<ObjectFifoCoreEndpointOp>(far)) {
+        CoreOp core;
+        for (Operation *user : consumer.getTile().getUsers())
+          if (auto candidate = dyn_cast<CoreOp>(user))
+            core = candidate;
+        for (auto producer : device.getOps<ObjectFifoCoreEndpointOp>()) {
+          ObjectFifoPoolOp pool = producer.getPoolOp();
+          if (!core || producer.drains() || producer.getSegments() ||
+              producer.getTile() != consumer.getTile() || !pool ||
+              pool.getInitValues() || !poolLocks->needsLocks(pool))
+            continue;
+          auto it = actors.find(pool);
+          if (it == actors.end() || it->second.size() != 1 ||
+              it->second.front().fillers.size() != 1 ||
+              it->second.front().drainers.size() != 1)
+            continue;
+          auto drainer = dyn_cast<ObjectFifoDmaEndpointOp>(
+              it->second.front().drainers.front());
+          auto output = dyn_cast_or_null<RouteEndpointOp>(
+              drainer ? carries(device, drainer.getSymNameAttr(), actors)
+                      : nullptr);
+          std::optional<std::pair<int64_t, int64_t>> ratio =
+              output ? passRatio(core, consumer.getSymName(),
+                                 producer.getSymName())
+                     : std::nullopt;
+          if (ratio)
+            prove(output, ratio->first * objectBytes(consumer.getPoolOp()),
+                  ratio->second * objectBytes(pool));
+        }
+      }
+      if (proofs.empty())
+        input.removeConsumedByAttr();
+      else
+        input.setConsumedByAttr(ArrayAttr::get(ctx, proofs));
+    }
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
     poolLocks = std::make_shared<PoolLocks>(device);
@@ -903,6 +1129,7 @@ struct AIEObjectFifoVerifyPass
         failed(verifyDispatchVolumes(device))) {
       return signalPassFailure();
     }
+    recordConsumption(device, actorsPerPool);
   }
 };
 

@@ -1914,6 +1914,9 @@ struct AIEObjectFifoAllocatePass
         }
       }
       if (create) {
+        // The proof names other shim endpoints, which replaceAllSymbolUses
+        // renames to their allocations as each is reached.
+        auto routeEndpoint = dyn_cast<RouteEndpointOp>(endpoint.getOperation());
         ShimDMAAllocationOp::create(
             builder, endpoint.getLoc(), builder.getStringAttr(name),
             endpoint.getTile(),
@@ -1921,7 +1924,8 @@ struct AIEObjectFifoAllocatePass
                                    endpoint.getRouteDirection()),
             builder.getI64IntegerAttr(*channel),
             builder.getBoolAttr(endpoint.getRouteBundle() == WireBundle::PLIO),
-            endpoint->getAttrOfType<PacketInfoAttr>("packet"));
+            endpoint->getAttrOfType<PacketInfoAttr>("packet"),
+            routeEndpoint ? routeEndpoint.getConsumedByAttr() : ArrayAttr());
       }
       // The runtime sequence reaches the fifo through this record.
       (void)SymbolTable::replaceAllSymbolUses(

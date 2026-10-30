@@ -2186,7 +2186,10 @@ def AIE_RouteEndpointOp
       OptionalAttr<PacketInfoAttr>:$packet,
       // If lowered from a high-level ObjectFifo, the name of that fifo.
       // Used to group ops lowered by the same ObjectFifo.
-      OptionalAttr<StrAttr>:$fifoName);
+      OptionalAttr<StrAttr>:$fifoName,
+      // On a shim input, the outputs whose progress proves it consumed; see
+      // #aie.consumed_by. Allocation moves it to the shim_dma_allocation.
+      OptionalAttr<ConsumedByArrayAttr>:$consumed_by);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $bundle attr-dict
@@ -2294,7 +2297,10 @@ def AIE_ShimDMAAllocationOp
       DMAChannelDir:$channel_dir, AIEI64Attr:$channel_index,
       // If this is set we are using the PLIO in this ShimTile
       DefaultValuedAttr<BoolAttr, "false">:$plio,
-      OptionalAttr<PacketInfoAttr>:$packet);
+      OptionalAttr<PacketInfoAttr>:$packet,
+      // On an input, the outputs whose progress proves it consumed; see
+      // #aie.consumed_by.
+      OptionalAttr<ConsumedByArrayAttr>:$consumed_by);
 
   let results = (outs);
 
