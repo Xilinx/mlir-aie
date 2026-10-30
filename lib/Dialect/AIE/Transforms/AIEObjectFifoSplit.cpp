@@ -575,8 +575,12 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
     bool disableSynchronization = llvm::any_of(ins, asksToSkipLocks) ||
                                   llvm::any_of(outs, asksToSkipLocks);
 
-    auto pool = createPool(linkOp.getLoc(), name, *sharedTile, depth, elemType,
-                           owner, extents,
+    // The pool holds every participant's objects, so it is located at each.
+    SmallVector<Location> locs{linkOp.getLoc()};
+    for (ObjectFifoCreateOp fifo : llvm::concat<ObjectFifoCreateOp>(ins, outs))
+      locs.push_back(fifo.getLoc());
+    auto pool = createPool(FusedLoc::get(linkOp.getContext(), locs), name,
+                           *sharedTile, depth, elemType, owner, extents,
                            /*holdsInitialContents=*/ownerIsOutput,
                            linkOp.getRepeatCount(), disableSynchronization);
     if (window) {

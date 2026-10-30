@@ -20,6 +20,10 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 AIE_ROOT = Path(__file__).parent.parent
 # normcase: Windows paths compare without regard to case.
 _AIE_PREFIX = os.path.normcase(f"{AIE_ROOT}{os.sep}")
+# A `with` block over an `aie` @contextmanager enters through contextlib, whose
+# frame sits between the package and the user's `with` statement.
+CONTEXTLIB_FILE = contextlib.__file__
+_PASSTHROUGH = (_AIE_PREFIX, os.path.normcase(CONTEXTLIB_FILE))
 
 
 def is_internal_file(filename: str) -> bool:
@@ -58,12 +62,16 @@ class SourceSite:
             internal.
         """
         frame = inspect.currentframe()
-        while frame is not None and is_internal_file(frame.f_code.co_filename):
+        while frame is not None and os.path.normcase(
+            frame.f_code.co_filename
+        ).startswith(_PASSTHROUGH):
             frame = frame.f_back
         if frame is None:
             return cls(None)
         return cls(
-            frame.f_code.co_filename,
+            # co_filename is relative for a module imported through a relative
+            # sys.path entry, which a reader of the IR cannot resolve.
+            os.path.abspath(frame.f_code.co_filename),
             frame.f_lineno,
             _column(frame.f_code, frame.f_lasti),
         )

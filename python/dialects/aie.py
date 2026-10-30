@@ -84,6 +84,8 @@ register_dialect(get_dialect_registry())
 assert _cext.globals._check_dialect_module_loaded("aie")
 # Lets ir.loc_tracebacks() skip this package; the exclusion is a path prefix.
 _cext.globals.register_traceback_file_exclusion(f"{AIE_ROOT}{os.sep}")
+# And contextlib, which a `with` over one of its @contextmanagers runs through.
+_cext.globals.register_traceback_file_exclusion(contextlib.__file__)
 
 # The generated `use_lock` builder takes the lock value as an SSA i32 operand.
 # Wrap it so callers may still pass a plain Python int (materialized as an
