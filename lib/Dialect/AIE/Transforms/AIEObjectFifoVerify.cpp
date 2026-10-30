@@ -751,11 +751,12 @@ struct AIEObjectFifoVerifyPass
   /// one pass of that loop per dispatch, so the objects one pass moves through
   /// a fifo must be the objects one run of the runtime sequence moves through
   /// it, or the core drifts out of step with the dispatches. Checked when one
-  /// runtime sequence syncs the parameters, so every dispatch runs it, and its
-  /// transfers on the fifo are static.
+  /// runtime sequence syncs the parameters, so every dispatch runs it, and
+  /// its transfers on the fifo are static. A sync sets the core's lock rather
+  /// than adding to it, so where a run syncs twice the core may take only
+  /// one, and nothing is checked.
   LogicalResult verifyDispatchVolumes(DeviceOp device) {
     RuntimeSequenceOp sequence;
-    int64_t syncs = 0;
     for (auto candidate : device.getOps<RuntimeSequenceOp>()) {
       auto ops = candidate.getBody()
                      .getOps<AIEX::SyncScratchpadParametersFromHostOp>();
@@ -768,10 +769,9 @@ struct AIEObjectFifoVerifyPass
       }
       if (count == 0)
         continue;
-      if (sequence)
+      if (sequence || count > 1)
         return success();
       sequence = candidate;
-      syncs = count;
     }
     if (!sequence)
       return success();
@@ -804,7 +804,7 @@ struct AIEObjectFifoVerifyPass
               .empty())
         continue;
       std::optional<int64_t> objects = hostObjects(device, sequence, dma, true);
-      int64_t perDispatch = syncs * static_cast<int64_t>(turns.turns().size());
+      auto perDispatch = static_cast<int64_t>(turns.turns().size());
       LLVM_DEBUG(llvm::dbgs()
                  << "dispatch volume of @" << endpoint.getSymName()
                  << ": the core moves " << perDispatch << ", @"
@@ -826,12 +826,9 @@ struct AIEObjectFifoVerifyPass
           << (endpoint.drains() ? "takes " : "hands over ") << perDispatch
           << " objects through @" << endpoint.getSymName()
           << " for each dispatch, one pass of a loop that waits for each "
-             "dispatch's parameters";
-      if (syncs > 1)
-        diag << " (synced " << syncs << " times per run)";
-      diag << ", but each run of runtime sequence @" << sequence.getSymName()
-           << " moves " << *objects
-           << ", so the core drifts out of step with the dispatches";
+             "dispatch's parameters, but each run of runtime sequence @"
+          << sequence.getSymName() << " moves " << *objects
+          << ", so the core drifts out of step with the dispatches";
       diag.attachNote(sequence.getLoc()) << "the runtime sequence is here";
       return failure();
     }
