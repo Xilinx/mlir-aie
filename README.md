@@ -412,9 +412,9 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [Device Descriptions](docs/Devices.md)
 
-[AMD XDNA NPU Architecture Cheatsheet](skills/aie-code-creator/references/architecture.md) — device/tile layout, memory hierarchy, vector register widths, MMUL shapes and divisibility constraints, routing/placement limits, and per-tile performance ballparks
+[AMD XDNA NPU Architecture Cheatsheet](skills/aie-iron-design/references/architecture.md) — device/tile layout, memory hierarchy, vector register widths, MMUL shapes and divisibility constraints, routing/placement limits, and per-tile performance ballparks
 
-[AIE C++ Kernel Intrinsics Cheatsheet](skills/aie-code-creator/references/kernel_intrinsics.md) — AIE API boilerplate, loop-pipelining annotations, vector load/store, MMUL usage, and common intrinsic quick-reference tables
+[AIE C++ Kernel Intrinsics Cheatsheet](skills/aie-iron-design/references/kernel_intrinsics.md) — AIE API boilerplate, loop-pipelining annotations, vector load/store, MMUL usage, and common intrinsic quick-reference tables
 
 Working with a coding agent instead? The [Agent Skills](skills/README.md) in this repo teach an agent (e.g. Claude Code) to write and optimize IRON designs the same way the Programming Guide teaches a person — see [Agentic Programming](skills/agentic_programming.md) for how the two fit together.
 

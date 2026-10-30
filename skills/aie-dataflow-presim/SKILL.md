@@ -12,7 +12,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Pre-hardware dataflow simulation (the "brainstorm without the NPU" phase)
 
 Third of five porting phases (see `aie-model-baseline` for phase 1, the
-numeric oracle this phase validates against; `aie-code-creator` for phase 2,
+numeric oracle this phase validates against; `aie-iron-design` for phase 2,
 writing the design this phase validates; `aie-hw-bringup` for phase 4;
 `aie-kernel-opt`/`aie-dataflow-opt` for phase 5, optimization once it's correct).
 

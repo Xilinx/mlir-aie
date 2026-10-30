@@ -31,7 +31,7 @@ skill:
 1. **Prepare the model** ([`aie-model-baseline`](aie-model-baseline/SKILL.md)) —
    lock a quantization scheme, export ONNX, extract a deployment manifest,
    build a bit-exact numeric oracle to check everything else against.
-2. **Write the design** ([`aie-code-creator`](aie-code-creator/SKILL.md)) —
+2. **Write the design** ([`aie-iron-design`](aie-iron-design/SKILL.md)) —
    an IRON Python design (tiles, ObjectFifos, Workers, Runtime) and the C++
    AIE kernels it calls, library-first.
 3. **Validate the dataflow before hardware** ([`aie-dataflow-presim`](aie-dataflow-presim/SKILL.md)) —

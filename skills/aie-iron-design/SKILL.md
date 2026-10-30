@@ -1,5 +1,5 @@
 ---
-name: aie-code-creator
+name: aie-iron-design
 description: Write efficient IRON Python designs and C++ AIE kernels for AMD XDNA NPUs (AIE2 / AIE2P architectures, e.g., Ryzen AI Phoenix, Hawk, Strix, Krackan Point). Use whenever the user asks about IRON, ObjectFifo, Worker/Program/Runtime, NPU programming, AIE kernels, MLIR-AIE, iron.jit, iron.kernels or iron.algorithms, CompileTime/In/Out design signatures, vectorizing for AIE, MMUL or mac_dims, bfloat16/int8 on NPU, NPU1/NPU2 devices, AIE_PREPARE_FOR_PIPELINING, or wants help writing/debugging a design that targets AMD's XDNA NPU — even if they don't name "IRON" explicitly.
 ---
 
@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 
-# AIE Code Creator — AMD XDNA NPU Programming
+# IRON Design: Writing the Dataflow and Its Kernels
 
 Second of five phases in porting a model to AIE/NPU (see `aie-model-baseline` for phase 1,
 the numeric oracle a design is validated against; `aie-dataflow-presim` for phase 3;

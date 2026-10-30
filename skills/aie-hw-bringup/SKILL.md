@@ -12,7 +12,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Hardware bring-up against a reference (the "minimal functional version" phase)
 
 Fourth of five porting phases (see `aie-model-baseline` for phase 1, the
-oracle this phase compares against; `aie-code-creator` for phase 2, the
+oracle this phase compares against; `aie-iron-design` for phase 2, the
 design being brought up; `aie-dataflow-presim` for phase 3, the simulation
 that should already have caught topology/deadlock bugs before this phase
 starts; `aie-kernel-opt`/`aie-dataflow-opt` for phase 5, optimization

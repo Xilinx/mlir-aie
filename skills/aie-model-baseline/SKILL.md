@@ -15,7 +15,7 @@ This is the first of five phases in porting a model to AIE/NPU:
 
 1. **Model baseline & numeric oracle** (this skill) — get a validated software
    reference and a quantization spec before touching hardware or dataflow.
-2. **Write the design** (`aie-code-creator`) — an IRON Python design and the
+2. **Write the design** (`aie-iron-design`) — an IRON Python design and the
    C++ AIE kernels it calls, library-first.
 3. **Pre-hardware dataflow simulation** (`aie-dataflow-presim`) — validate the
    *design* (FIFOs, kernels, novel mechanisms) against the oracle in software.
@@ -141,7 +141,7 @@ against it, and hardware bring-up (phase 4) validates against it again on
 real silicon. Time spent making it trustworthy now pays off three times
 over.
 
-## Checklist before moving to phase 2 (`aie-code-creator`)
+## Checklist before moving to phase 2 (`aie-iron-design`)
 
 - [ ] Quantization scheme chosen and its granularity validated on the full
       model with real data (not just random-input op tests)

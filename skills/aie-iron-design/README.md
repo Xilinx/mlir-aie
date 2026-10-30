@@ -3,7 +3,7 @@ Copyright (C) 2026 Advanced Micro Devices, Inc.
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-# AIE Code Creator
+# IRON Design: Writing the Dataflow and Its Kernels
 
 Second of five phases in porting a model to AIE/NPU (see `aie-model-baseline` for phase 1,
 the numeric oracle a design is validated against; `aie-dataflow-presim` for phase 3;
@@ -35,13 +35,13 @@ When asked for a complete design, it delivers the Python design file, a build/ru
 Invoke when writing or modifying IRON / NPU code:
 
 ```text
-Using the aie-code-creator skill, write a multi-core bfloat16 element-wise add for NPU2
+Using the aie-iron-design skill, write a multi-core bfloat16 element-wise add for NPU2
 ```
 
 ```text
-Using the aie-code-creator skill, generate an MMUL-based matmul kernel and the matching Python design
+Using the aie-iron-design skill, generate an MMUL-based matmul kernel and the matching Python design
 ```
 
 ```text
-Using the aie-code-creator skill, add a broadcast ObjectFifo to this design so all four workers see the same weights
+Using the aie-iron-design skill, add a broadcast ObjectFifo to this design so all four workers see the same weights
 ```
