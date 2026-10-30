@@ -1845,7 +1845,8 @@ struct AIEObjectFifoAllocatePass
         builder.getI32IntegerAttr(channel),
         builder.getBoolAttr(task.getIssueToken()),
         builder.getI32IntegerAttr(task.getRepeatCount()),
-        task.getRepeatCountVal(), endpoint.getPacketAttr());
+        task.getRepeatCountVal(), endpoint.getPacketAttr(),
+        /*out_of_order=*/UnitAttr(), /*alloc=*/FlatSymbolRefAttr());
     task.getResult().replaceAllUsesWith(configured.getResult());
     configured.getBody().takeBody(task.getBody());
     task.erase();

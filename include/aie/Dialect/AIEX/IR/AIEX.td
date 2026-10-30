@@ -1465,7 +1465,7 @@ def AIE_DMAConfigureTaskOp
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
-            /*packet=*/nullptr, /*out_of_order=*/nullptr);
+            /*packet=*/nullptr, /*out_of_order=*/nullptr, /*alloc=*/nullptr);
     }]>];
 }
 

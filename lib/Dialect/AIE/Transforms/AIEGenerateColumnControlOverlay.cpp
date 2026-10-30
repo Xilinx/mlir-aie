@@ -894,7 +894,7 @@ struct AIEGenerateColumnControlOverlayPass
 
       AIE::ShimDMAAllocationOp::create(
           builder, tOp.getLoc(), StringRef(dma_name), shimTile.getResult(), dir,
-          rowToShimChanMap[tOp.rowIndex()], false, nullptr);
+          rowToShimChanMap[tOp.rowIndex()], false, nullptr, nullptr);
     }
     return success();
   }

@@ -311,7 +311,8 @@ struct AIEObjectFifoSplitPass
         WireBundleAttr::get(builder.getContext(), bundle),
         channelIndex ? builder.getI32IntegerAttr(*channelIndex) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
-        builder.getStringAttr(from.name().getValue()));
+        builder.getStringAttr(from.name().getValue()),
+        /*consumed_by=*/ArrayAttr());
   }
 
   /// External buffers registered against a fifo's shim end form a pool in DDR.
