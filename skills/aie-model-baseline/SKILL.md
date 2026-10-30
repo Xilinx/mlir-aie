@@ -11,15 +11,17 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # Model baseline & numeric oracle (the "before you write any IRON" phase)
 
-This is the first of four phases in porting a model to AIE/NPU:
+This is the first of five phases in porting a model to AIE/NPU:
 
 1. **Model baseline & numeric oracle** (this skill) — get a validated software
    reference and a quantization spec before touching hardware or dataflow.
-2. **Pre-hardware dataflow simulation** (`aie-dataflow-presim`) — validate the
+2. **Write the design** (`aie-code-creator`) — an IRON Python design and the
+   C++ AIE kernels it calls, library-first.
+3. **Pre-hardware dataflow simulation** (`aie-dataflow-presim`) — validate the
    *design* (FIFOs, kernels, novel mechanisms) against the oracle in software.
-3. **Hardware bring-up against reference** (`aie-hw-bringup`) — get a minimal
+4. **Hardware bring-up against reference** (`aie-hw-bringup`) — get a minimal
    version running on real silicon, comparing against the oracle at every step.
-4. **Kernel optimization** (`aie-kernel-opt`) and **dataflow optimization**
+5. **Kernel optimization** (`aie-kernel-opt`) and **dataflow optimization**
    (`aie-dataflow-opt`) — once it's correct, make it fast.
 
 Skipping this phase doesn't save time — it moves the cost downstream, where
@@ -134,12 +136,12 @@ just a floating-point approximation. Then validate:
   test and only appears running real text/images through the whole model).
 
 This oracle is not throwaway scaffolding — it's the reference every later
-phase compares against: the software dataflow simulator (phase 2) validates
-against it, and hardware bring-up (phase 3) validates against it again on
+phase compares against: the software dataflow simulator (phase 3) validates
+against it, and hardware bring-up (phase 4) validates against it again on
 real silicon. Time spent making it trustworthy now pays off three times
 over.
 
-## Checklist before moving to phase 2 (`aie-dataflow-presim`)
+## Checklist before moving to phase 2 (`aie-code-creator`)
 
 - [ ] Quantization scheme chosen and its granularity validated on the full
       model with real data (not just random-input op tests)

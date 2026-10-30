@@ -24,12 +24,12 @@ each skill below covers one:
 
 | Skill | What it covers |
 |-------|----------------|
-| [`aie-code-creator`](aie-code-creator/SKILL.md) | Phase 0 — writing the design: an IRON Python design (tiles, ObjectFifos, Workers, Runtime) and the C++ AIE kernels it calls, library-first — checking `aie.iron.kernels` and `aie.iron.algorithms` before writing kernel code by hand. |
 | [`aie-model-baseline`](aie-model-baseline/SKILL.md) | Phase 1 — preparing a model for deployment: locking a quantization scheme, exporting ONNX, extracting a deployment manifest, and building a bit-exact numeric oracle. |
-| [`aie-dataflow-presim`](aie-dataflow-presim/SKILL.md) | Phase 2 — validating an IRON dataflow design in software before hardware: a threaded ObjectFifo mock for deadlock/depth bugs, bit-exact validation against the oracle, probing novel mechanisms in isolation, and capacity/regime modeling. |
-| [`aie-hw-bringup`](aie-hw-bringup/SKILL.md) | Phase 3 — bringing up a design on real hardware for the first time: sequential block-by-block bring-up against the reference, methodical bisection, and memory-budget tile splits. |
-| [`aie-kernel-opt`](aie-kernel-opt/SKILL.md) | Phase 4 (micro) — making one Peano-compiled kernel faster: the remarks report and its base-arm diff, a mutation-proven gate, a back-to-back traced A/B on the NPU, the levers that measured faster and the Peano traps. |
-| [`aie-dataflow-opt`](aie-dataflow-opt/SKILL.md) | Phase 4 (macro) — optimizing the dataflow around already-correct kernels: NOOP-ablation-driven prioritization, regime-aware placement/overlays, and DMA bandwidth/compression modeling. |
+| [`aie-code-creator`](aie-code-creator/SKILL.md) | Phase 2 — writing the design: an IRON Python design (tiles, ObjectFifos, Workers, Runtime) and the C++ AIE kernels it calls, library-first — checking `aie.iron.kernels` and `aie.iron.algorithms` before writing kernel code by hand. |
+| [`aie-dataflow-presim`](aie-dataflow-presim/SKILL.md) | Phase 3 — validating an IRON dataflow design in software before hardware: a threaded ObjectFifo mock for deadlock/depth bugs, bit-exact validation against the oracle, probing novel mechanisms in isolation, and capacity/regime modeling. |
+| [`aie-hw-bringup`](aie-hw-bringup/SKILL.md) | Phase 4 — bringing up a design on real hardware for the first time: sequential block-by-block bring-up against the reference, methodical bisection, and memory-budget tile splits. |
+| [`aie-kernel-opt`](aie-kernel-opt/SKILL.md) | Phase 5 (micro) — making one Peano-compiled kernel faster: the remarks report and its base-arm diff, a mutation-proven gate, a back-to-back traced A/B on the NPU, the levers that measured faster and the Peano traps. |
+| [`aie-dataflow-opt`](aie-dataflow-opt/SKILL.md) | Phase 5 (macro) — optimizing the dataflow around already-correct kernels: NOOP-ablation-driven prioritization, regime-aware placement/overlays, and DMA bandwidth/compression modeling. |
 
 ## Using a skill
 

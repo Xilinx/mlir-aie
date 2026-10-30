@@ -11,9 +11,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # Pre-hardware dataflow simulation (the "brainstorm without the NPU" phase)
 
-Second of four porting phases (see `aie-model-baseline` for phase 1, the
-numeric oracle this phase validates against; `aie-hw-bringup` for phase 3;
-`aie-kernel-opt`/`aie-dataflow-opt` for optimization once it's correct).
+Third of five porting phases (see `aie-model-baseline` for phase 1, the
+numeric oracle this phase validates against; `aie-code-creator` for phase 2,
+writing the design this phase validates; `aie-hw-bringup` for phase 4;
+`aie-kernel-opt`/`aie-dataflow-opt` for phase 5, optimization once it's correct).
 
 The point of this phase: a deadlock, a wrong FIFO depth, or a math error in
 a new design is cheap to find in a Python simulation that runs in seconds
@@ -93,7 +94,7 @@ If the workload has more than one regime (e.g. a compute-bound prefill
 pass and a bandwidth-bound decode pass in an autoregressive model), model
 each separately — a single average cost model will mask both.
 
-## Checklist before moving to phase 3 (`aie-hw-bringup`)
+## Checklist before moving to phase 4 (`aie-hw-bringup`)
 
 - [ ] Every block/layer simulated bit-exact against the phase-1 oracle,
       individually before chaining

@@ -11,6 +11,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # AIE kernel optimization
 
+Fifth of five porting phases, alongside `aie-dataflow-opt` (see
+`aie-model-baseline` for phase 1, `aie-code-creator` for phase 2,
+`aie-dataflow-presim` for phase 3, and `aie-hw-bringup` for phase 4, getting
+to a correct baseline on real hardware — this phase assumes that baseline
+already exists and is correct).
+
 This skill makes **one compiled kernel** faster. It assumes the kernel is
 already correct on hardware (`aie-hw-bringup`) and worth the work
 (`aie-dataflow-opt` ranks kernels by ablation).

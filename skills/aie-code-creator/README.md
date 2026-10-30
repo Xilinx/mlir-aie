@@ -5,6 +5,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # AIE Code Creator
 
+Second of five phases in porting a model to AIE/NPU (see `aie-model-baseline` for phase 1,
+the numeric oracle a design is validated against; `aie-dataflow-presim` for phase 3;
+`aie-hw-bringup` for phase 4; `aie-kernel-opt`/`aie-dataflow-opt` for phase 5, optimization
+once it's correct).
+
 ## Description
 
 This skill teaches how to write efficient designs for AMD XDNA NPUs (AIE2 in Phoenix / Hawk Point, AIE2P in Strix / Krackan Point) using the IRON Python API together with the C++ AIE kernels that run on the compute tiles.
@@ -20,8 +25,8 @@ The skill provides:
 
 - **Defaults** for kernel source, API level, target device, data type, and parallelism so designs can be produced without exhaustive clarification
 - A **step-by-step workflow** from computation shape to complete design (built-in check -> pattern -> kernel template -> wiring -> sizing -> pitfalls check)
-- **Reference files** loaded on demand covering the built-in kernel/algorithm libraries and `In`/`Out`/`CompileTime[T]` jit signatures, hardware architecture, the Python API (`Program`, `Worker`, `ObjectFifo`, `Runtime`, `Kernel`, `Buffer`, `iron.jit`), copy-ready design patterns, C++ kernel intrinsics, build/test harness, and known pitfalls
-- A pointer to upstream mlir-aie's phased skill family (`aie-model-baseline`, `aie-dataflow-presim`, `aie-hw-bringup`, `aie-kernel-opt`, `aie-dataflow-opt`) for the phases before and after design creation
+- **Reference files** loaded on demand covering hardware architecture, copy-ready design patterns, C++ kernel intrinsics, and known pitfalls — the built-in kernel/algorithm libraries, `In`/`Out`/`CompileTime[T]` jit signatures, and the full `Program`/`Worker`/`ObjectFifo`/`Runtime`/`Kernel`/`Buffer`/`iron.jit` Python API live in the [Programming Guide](../../programming_guide/) this skill points at, so there's one canonical copy
+- A pointer to the rest of this directory's phased skill family (`aie-model-baseline`, `aie-dataflow-presim`, `aie-hw-bringup`, `aie-kernel-opt`, `aie-dataflow-opt`) for the phases before and after design creation
 
 When asked for a complete design, it delivers the Python design file, a build/run snippet, and the C++ kernel file where one had to be written.
 

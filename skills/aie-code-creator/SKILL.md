@@ -11,6 +11,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # AIE Code Creator — AMD XDNA NPU Programming
 
+Second of five phases in porting a model to AIE/NPU (see `aie-model-baseline` for phase 1,
+the numeric oracle a design is validated against; `aie-dataflow-presim` for phase 3;
+`aie-hw-bringup` for phase 4; `aie-kernel-opt`/`aie-dataflow-opt` for phase 5, optimization
+once it's correct).
+
 This skill teaches you how to write efficient designs for AMD XDNA NPUs (AIE2 in Phoenix/Hawk, AIE2P in Strix/Krackan) using the IRON Python API and write the C++ AIE kernels that run on the compute tiles.
 
 An IRON design has two halves:
@@ -24,7 +29,14 @@ The design is compiled to MLIR, then linked against the C++ kernel objects and a
 
 **Two libraries, one boundary.** The IRON API, `@iron.jit`, `aie.iron.kernels`, `aie.iron.algorithms`, and the `aie.iron` / `aie.helpers` packages all ship in the base **`Xilinx/mlir-aie`** toolchain (the `mlir_aie` wheel) — everything in this skill runs on that alone, *except* where noted. The **`amd/IRON`** repo is a separate downstream operator library (package `iron`, e.g. `iron.common`, `iron.operators`); its helpers — `MLIROperator`, `AIEContext`, `run_test`, `verify_buffer`, `AIERuntimeArgSpec` — are **not** in the wheel and require an `amd/IRON` checkout. When you use one of those, say so, and prefer wheel-only equivalents unless the user is working inside `amd/IRON`.
 
-**Targets mlir-aie 1.4.0.** Version 1.4.0 reworked the `Runtime`/`Program` API into an eager-callback style (`Runtime(seq_fn, fn_args)`, `fill`/`drain` as `ObjectFifoHandle` methods, `Program(device, rt, workers=[...])`) — a breaking change from 1.3.x's `Runtime()`/`rt.sequence()`/`rt.fill()`/`rt.start()` style. This skill's wheel-only examples assume 1.4.0 throughout; older pinned versions are out of scope. The one deliberate exception is the `amd/IRON` `MLIROperator` pattern (see `complete_examples.md` Example 8), which still pins an older wheel and intentionally keeps the old Runtime API — don't "fix" that snippet to the new style.
+**Targets this checkout's `aie.iron` API.** The `Runtime`/`Program` API here is the
+eager-callback style (`Runtime(seq_fn, fn_args)`, `fill`/`drain` as `ObjectFifoHandle` methods,
+`Program(device, rt, workers=[...])`) — a breaking change from the pre-1.4 `Runtime()`/
+`rt.sequence()`/`rt.fill()`/`rt.start()` style. This skill's wheel-only examples assume the
+current API throughout; older pinned versions are out of scope. The one deliberate exception is
+the `amd/IRON` `MLIROperator` pattern (see `complete_examples.md` Example 8), which still pins an
+older wheel and intentionally keeps the old Runtime API — don't "fix" that snippet to the new
+style.
 
 Three other 1.3.x names are gone in 1.4.0 and show up in stale examples across the internet: **`aie.iron.placers` / `SequentialPlacer`** (placement is now the `--aie-place-tiles` compiler pass; `resolve_program()` takes no placer), **`Worker(placement=...)`** (the kwarg is `tile=`), and **`NpuTensor.cpu()`** (use `.numpy()`, or `.to("cpu")` to move residency). If you catch yourself writing any of them, you're pattern-matching on old code.
 
@@ -106,17 +118,17 @@ Load the ones you need; don't pre-read all of them.
 
 ## Where this skill stops
 
-This skill covers getting a **correct, reasonable first design** written. Upstream mlir-aie
-ships a phased skill family (`mlir-aie/skills/`) for what comes before and after — don't
-re-derive their methodology here, point at it:
+This skill covers getting a **correct, reasonable first design** written. The rest of this
+directory's phased skill family covers what comes before and after — don't re-derive their
+methodology here, point at it:
 
 | Phase | Skill | Covers |
 |-------|-------|--------|
-| Prepare the model | `aie-model-baseline` | Quantization scheme, ONNX export, bit-exact numeric oracle |
-| Validate pre-hardware | `aie-dataflow-presim` | Threaded ObjectFifo mock for deadlock/depth bugs; prove novel decompositions in numpy first |
-| First hardware bring-up | `aie-hw-bringup` | Block-by-block bring-up against the oracle, methodical bisection |
-| Optimize (micro) | `aie-kernel-opt` | Make one compiled kernel faster: the remarks report, then a back-to-back A/B on the NPU |
-| Optimize (macro) | `aie-dataflow-opt` | NOOP-ablation ranking, placement/overlays, DMA bandwidth modeling |
+| 1 — Prepare the model | `aie-model-baseline` | Quantization scheme, ONNX export, bit-exact numeric oracle |
+| 3 — Validate pre-hardware | `aie-dataflow-presim` | Threaded ObjectFifo mock for deadlock/depth bugs; prove novel decompositions in numpy first |
+| 4 — First hardware bring-up | `aie-hw-bringup` | Block-by-block bring-up against the oracle, methodical bisection |
+| 5 — Optimize (micro) | `aie-kernel-opt` | Make one compiled kernel faster: the remarks report, then a back-to-back A/B on the NPU |
+| 5 — Optimize (macro) | `aie-dataflow-opt` | NOOP-ablation ranking, placement/overlays, DMA bandwidth modeling |
 
 Two habits from those skills are worth carrying into design time, because they're cheap now
 and expensive later: **validate one block at a time against a reference** rather than wiring
