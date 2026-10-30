@@ -3352,6 +3352,32 @@ assert.ok($('health-status').textContent.startsWith('No nightly for 2 days'));
 """)
 
 
+def test_sanitizer_counts_are_of_every_finding_not_the_display(page):
+    page(HEALTH + """
+const st = healthy();
+const finding = (n, isNew, since) => ({ sanitizer: 'asan', kind: 'heap-use-after-free', message: 'heap-use-after-free', key: `k${n}`, new: isNew, since,
+  where: { file: `lib/F${n}.cpp`, line: 1, function: `xilinx::AIE::f${n}()` }, tests: ['AIE :: t.mlir'], test_count: 1, excerpt: '' });
+// code_health.py shows the new findings first and caps the list; the
+// counts and the first nights are of all 150.
+st['asan-ubsan'].findings = [finding(1, true, '2026-10-29'), finding(2, false, '2026-10-12')];
+st['asan-ubsan'].finding_count = 150;
+st['asan-ubsan'].new_count = 3;
+st['asan-ubsan'].known = { a: '2026-10-29', b: '2026-10-12', c: '2026-10-01' };
+const loaded = { status: st, points, unread: null, newer: false };
+location.hash = '#view=health';
+const rows = renderHealth(loaded, NIGHT + 3600000);
+assert.equal(rows[1].level, 'bad');
+assert.equal(rows[1].children[2].text,
+  'New: ASan heap-use-after-free in AIE::f1 and 2 more; still open since 1 Oct: ASan heap-use-after-free in AIE::f2 and 146 more.');
+assert.equal(healthSummary(loaded, NIGHT + 3600000),
+  'New ASan heap-use-after-free in AIE::f1 and 2 more; 147 older open sanitizer findings.');
+// A night whose display holds only new findings still counts the old ones.
+st['asan-ubsan'].findings = [finding(1, true, '2026-10-29')];
+assert.equal(renderHealth(loaded, NIGHT + 3600000)[1].children[2].text,
+  'New: ASan heap-use-after-free in AIE::f1 and 2 more; still open since 1 Oct: 147 findings.');
+""")
+
+
 def test_a_sparkline_breaks_where_a_night_has_no_result(page):
     page(HEALTH + """
 const svg = sparkline([1, 2, null, 3, 4]);

@@ -5004,14 +5004,18 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       if (!s || s.missing) return missing('result');
       const findings = s.findings || [];
       const fresh = findings.filter(f => f.new), open = findings.filter(f => !f.new);
+      // The list is capped for display; the counts are of every finding.
+      const freshCount = s.new_count ?? fresh.length;
+      const openCount = (s.finding_count ?? findings.length) - freshCount;
       const parts = [];
-      if (fresh.length) parts.push(`new: ${findingText(fresh[0])}${andMore(fresh.length - 1)}`);
-      if (open.length) {
-        const oldest = open.map(f => f.since).sort()[0];
-        parts.push(`${fresh.length ? 'still open' : 'open'} since ${dayText(oldest)}: ${findingText(open[0])}${andMore(open.length - 1)}`);
+      if (freshCount) parts.push(`new: ${findingText(fresh[0])}${andMore(freshCount - 1)}`);
+      if (openCount) {
+        const oldest = [...Object.values(s.known || {}), ...open.map(f => f.since)].sort()[0];
+        const first = open.length ? `: ${findingText(open[0])}${andMore(openCount - 1)}` : `: ${plural(openCount, 'finding')}`;
+        parts.push(`${freshCount ? 'still open' : 'open'} since ${dayText(oldest)}${first}`);
       }
       if (s.failed_without_report_count) parts.push(`${plural(s.failed_without_report_count, 'test')} failed with no report`);
-      const level = fresh.length ? 'bad' : parts.length ? 'warn' : 'ok';
+      const level = freshCount ? 'bad' : parts.length ? 'warn' : 'ok';
       return { level, text: parts.length ? `${cap(parts.join('; '))}.` : '', figure: '' };
     }
 
@@ -5331,12 +5335,14 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       const st = healthStatus(loaded, now);
       if (st.level === 'bad') parts.push(`no nightly for ${ago(Date.parse(s.generated_at), now)}`);
       const sans = ['asan-ubsan', 'tsan'];
-      const findings = sans.flatMap(id => (s[id] && s[id].findings) || []);
-      const fresh = findings.filter(f => f.new);
+      const pieces = sans.map(id => s[id]).filter(p => p && !p.missing);
+      const fresh = pieces.flatMap(p => (p.findings || []).filter(f => f.new));
+      const freshCount = pieces.reduce((n, p) => n + (p.new_count ?? (p.findings || []).filter(f => f.new).length), 0);
+      const total = pieces.reduce((n, p) => n + (p.finding_count ?? (p.findings || []).length), 0);
       const word = f => f.sanitizer === 'ubsan' ? 'undefined behavior' : f.kind;
-      if (fresh.length) parts.push(`new ${SANITIZER_NAMES[fresh[0].sanitizer]} ${word(fresh[0])} in ${shortFunc(fresh[0].where.function) || baseName(fresh[0].where.file)}${andMore(fresh.length - 1)}`);
-      const open = findings.length - fresh.length;
-      if (open) parts.push(plural(open, `${fresh.length ? 'older ' : ''}open sanitizer finding`));
+      if (freshCount) parts.push(`new ${SANITIZER_NAMES[fresh[0].sanitizer]} ${word(fresh[0])} in ${shortFunc(fresh[0].where.function) || baseName(fresh[0].where.file)}${andMore(freshCount - 1)}`);
+      const open = total - freshCount;
+      if (open) parts.push(plural(open, `${freshCount ? 'older ' : ''}open sanitizer finding`));
       for (const id of sans) if (!s[id] || s[id].missing) parts.push(`no ${HEALTH_CHECKS.find(c => c.id === id).title} result`);
       const cs = s.code_scanning || {};
       const newAlerts = (cs.alerts || []).filter(a => a.new);

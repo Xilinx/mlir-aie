@@ -123,9 +123,10 @@ def test_a_finding_keeps_its_first_night():
         ]
     }
     ch.date_findings(piece, before, "2026-10-29")
+    # The new one first.
     assert [(f["since"], f["new"]) for f in piece["findings"]] == [
-        ("2026-10-20", False),
         ("2026-10-29", True),
+        ("2026-10-20", False),
     ]
 
 
@@ -172,7 +173,7 @@ def test_sanitizer_history_counts_every_finding():
         ],
         SRC,
     )
-    assert all(f["sanitizer"] == "asan" for f in piece["findings"])
+    assert all(f["sanitizer"] == "asan" for f in piece["findings"][: ch.KEEP_FINDINGS])
     status = ch.build_status(
         {"asan-ubsan": piece},
         None,
@@ -207,12 +208,50 @@ def test_a_missing_night_keeps_the_first_nights():
     assert (f["since"], f["new"]) == ("2026-10-20", False)
 
 
-def test_a_finding_past_the_display_keeps_its_first_night():
-    before = {"known": {ch.known_id("k"): "2026-10-20"}}
-    piece = {"findings": [], "ids": [ch.known_id("k")]}
-    ch.date_findings(piece, before, "2026-10-29")
-    assert piece["known"] == {ch.known_id("k"): "2026-10-20"}
-    assert "ids" not in piece
+def test_a_new_finding_past_the_display_is_shown_and_counted():
+    many = "\n".join(
+        f"==1==ERROR: AddressSanitizer: heap-use-after-free on address 0x{i:x}\n"
+        f"    #0 0x1 in f{i}() {SRC}/lib/F{i}.cpp:1:1"
+        for i in range(ch.KEEP_FINDINGS + 1)
+    )
+    asan = [(f"AIE :: t{n}.mlir", "FAIL", many) for n in range(2)]
+
+    def night(day, tests, previous):
+        piece = ch.summarize_sanitizer("asan-ubsan", [lit(*tests)], SRC)
+        now = datetime.datetime(2026, 10, day, tzinfo=datetime.timezone.utc)
+        status = ch.build_status(
+            {"asan-ubsan": piece}, None, None, previous, now, {"id": day}
+        )
+        return json.loads(json.dumps(status))["asan-ubsan"]
+
+    first = night(20, asan, None)
+    # Reached from one test, the new UBSan bug ranks below every ASan one.
+    second = night(
+        21, [*asan, ("AIE :: u.mlir", "FAIL", UBSAN_OUT)], {"asan-ubsan": first}
+    )
+    assert second["finding_count"] == ch.KEEP_FINDINGS + 2
+    assert len(second["findings"]) == ch.KEEP_FINDINGS
+    assert second["new_count"] == 1
+    assert (second["findings"][0]["sanitizer"], second["findings"][0]["new"]) == (
+        "ubsan",
+        True,
+    )
+    assert second["findings"][0]["excerpt"]
+    assert len(second["known"]) == ch.KEEP_FINDINGS + 2
+    # Past the display, an ASan finding keeps its first night.
+    assert (
+        second["known"][
+            ch.known_id(
+                f"asan|heap-use-after-free|lib/F{ch.KEEP_FINDINGS}.cpp|f{ch.KEEP_FINDINGS}"
+            )
+        ]
+        == "2026-10-20"
+    )
+    third = night(
+        22, [*asan, ("AIE :: u.mlir", "FAIL", UBSAN_OUT)], {"asan-ubsan": second}
+    )
+    assert third["new_count"] == 0
+    assert third["known"][ch.known_id(second["findings"][0]["key"])] == "2026-10-21"
 
 
 def test_code_scanning_outage_keeps_the_alert_inventory():
@@ -511,8 +550,7 @@ def test_a_flood_of_findings_stays_within_the_budget(tmp_path):
         [lit(*[(f"AIE :: t{n}.mlir", "FAIL", out) for n in range(3)])],
         SRC,
     )
-    assert piece["finding_count"] == 400 and len(piece["findings"]) == ch.KEEP_FINDINGS
-    assert sum(bool(f["excerpt"]) for f in piece["findings"]) == ch.EXCERPTS_KEPT
+    assert piece["finding_count"] == 400 and len(piece["findings"]) == 400
     tidy = "".join(
         f"{SRC}/lib/F{i}.cpp:{i}:1: error: {'x' * 5000} [modernize-use-auto,-warnings-as-errors]\n"
         for i in range(5000)
@@ -542,6 +580,10 @@ def test_a_flood_of_findings_stays_within_the_budget(tmp_path):
         datetime.datetime(2026, 10, 29, tzinfo=datetime.timezone.utc),
         {"id": 1},
     )
+    for name in ("asan-ubsan", "tsan"):
+        shown = status[name]["findings"]
+        assert len(shown) == ch.KEEP_FINDINGS
+        assert sum(bool(f["excerpt"]) for f in shown) == ch.EXCERPTS_KEPT
     size = len(json.dumps(status, separators=(",", ":")))
     assert size < ch.STATUS_BUDGET, size
     history = None

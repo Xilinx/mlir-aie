@@ -251,20 +251,18 @@ def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
     by_sanitizer: dict[str, int] = {}
     for f in order:
         by_sanitizer[f["sanitizer"]] = by_sanitizer.get(f["sanitizer"], 0) + 1
-    for i, f in enumerate(order):
+    for f in order:
         f["message"] = clip(f["message"])
         if "function" in f["where"]:
             f["where"]["function"] = clip(f["where"]["function"])
-        if i >= EXCERPTS_KEPT:
-            f["excerpt"] = ""
+    # Every finding, displayed or not: which are new is only known at publish.
     return {
         "check": name,
         "tests": tests,
         "ran": ran,
-        "findings": order[:KEEP_FINDINGS],
+        "findings": order[:KEEP_KNOWN],
         "finding_count": len(order),
         "by_sanitizer": by_sanitizer,
-        "ids": [known_id(f["key"]) for f in order[:KEEP_KNOWN]],
         "failed_without_report": failed[:KEEP_FAILED],
         "failed_without_report_count": len(failed),
     }
@@ -535,14 +533,17 @@ def known_findings(before: dict | None) -> dict:
 def date_findings(piece: dict, before: dict | None, today: str) -> dict:
     """Each finding's first night, carried from the last status."""
     since = known_findings(before)
-    for f in piece.get("findings", []):
+    findings = piece.get("findings", [])
+    for f in findings:
         i = known_id(f["key"])
         f["since"] = since.get(i) or today
         f["new"] = i not in since
-    ids = piece.pop("ids", None)
-    if ids is None:
-        ids = [known_id(f["key"]) for f in piece.get("findings", [])]
-    piece["known"] = {i: since.get(i) or today for i in ids[:KEEP_KNOWN]}
+    findings.sort(key=lambda f: not f["new"])
+    for f in findings[EXCERPTS_KEPT:]:
+        f["excerpt"] = ""
+    piece["new_count"] = sum(f["new"] for f in findings)
+    piece["known"] = {known_id(f["key"]): f["since"] for f in findings}
+    piece["findings"] = findings[:KEEP_FINDINGS]
     return piece
 
 
