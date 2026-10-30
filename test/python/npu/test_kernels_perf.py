@@ -42,7 +42,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from aie.iron import ExternalFunction, kernels
+from aie.iron import ExternalFunction
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
@@ -106,32 +106,17 @@ def _measure(
     is the result's ``"failed"`` (None when it passed). Not ``timed``, it
     only runs once.
     """
-    fn = case.fn()
-    factory = getattr(kernels, case.factory)
-    inputs = inputs_for(case, "random", np.random.default_rng(0))
-    design = kd.design(
-        factory,
-        **case.harness_opts(),
-        params=fn.param_values(inputs),
-        **case.kwargs,
-    )
-
-    ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kd.output_size(fn, calls=case.calls)
-    out_dt = fn.output_dtype()
-    ins, out = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
+    harness = case.kernel_design()
+    fn = harness.fn
+    inputs = inputs_for(case, "random", np.random.default_rng(0), design=harness)
+    design = harness.design(params=fn.param_values(inputs))
+    ins, out = harness.upload(inputs, poison=True)
     outputs = out if isinstance(out, tuple) else (out,)
 
     design(*ins, *outputs)
     # Copies: numpy() views the device buffer, which dies with this frame.
     got = tuple(o.numpy().copy() for o in outputs)
-    verdict = fn.judge(
-        got if len(got) > 1 else got[0],
-        ref,
-        calls=case.calls,
-        inputs=inputs,
-        scalars=case.scalars,
-    )
+    verdict = harness.check(got if len(got) > 1 else got[0], inputs)
     assert verdict or not strict, f"{case.name}: {verdict.detail}"
     measured: dict = {
         "outputs": got,
@@ -157,17 +142,11 @@ def _measure(
     # A compiler bug can leave a kernel right on its first run and wrong after
     # many, so check it once more after the timing loop, into fresh poisoned
     # outputs (the timed runs' outputs could hide a run that wrote nothing).
-    _, again = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
+    _, again = harness.upload(inputs, poison=True)
     again = again if isinstance(again, tuple) else (again,)
     design(*ins, *again)
     got = tuple(o.numpy().copy() for o in again)
-    verdict = fn.judge(
-        got if len(got) > 1 else got[0],
-        ref,
-        calls=case.calls,
-        inputs=inputs,
-        scalars=case.scalars,
-    )
+    verdict = harness.check(got if len(got) > 1 else got[0], inputs)
     runs = 2 + config.getoption("--warmup") + config.getoption("--iters")
     if not verdict:
         measured["failed"] = verdict.detail
@@ -176,18 +155,13 @@ def _measure(
     ), f"{case.name}: wrong on run {runs} (right on the first): {verdict.detail}"
     if not config.getoption("--no-cycles"):
         # A separate traced run: tracing perturbs the timing above.
-        intervals = kd.traced_intervals(fn, calls=case.calls)
+        intervals = harness.traced_intervals()
         trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * intervals)
         for attempt in range(1 + TRACE_RETRIES):
-            traced = kd.cycles_per_call(
-                design,
+            traced = harness.cycles_per_call(
                 inputs,
-                out_n,
-                out_dt,
                 trace_size=trace_size,
                 workdir=workdir,
-                fn=fn,
-                calls=case.calls,
             )
             # Every kernel checked here is timed; one that is not would chart
             # only wall clock and still pass.

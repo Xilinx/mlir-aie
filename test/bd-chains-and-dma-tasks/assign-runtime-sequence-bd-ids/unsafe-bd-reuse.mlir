@@ -5,6 +5,10 @@
 
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unsafe-bd-reuse=true' \
 // RUN:         --verify-diagnostics --split-input-file %s
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids \
+// RUN:         --verify-diagnostics --split-input-file %s
+// RUN: sed '/expected-/d' %s | aie-opt --aie-assign-runtime-sequence-bd-ids='warn-unsafe-bd-reuse=false' \
+// RUN:         --verify-diagnostics --split-input-file
 
 // aiex.dma_free_task returns BD ids to the allocator with no completion
 // guarantee, and nextBdId scans upward from 0, so a just-freed low id is the

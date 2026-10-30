@@ -1912,11 +1912,13 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   // below skips it. Straight-line sequences fall through unchanged.
   X::AIELowerDynamicBDPoolOptions poolOpts;
   poolOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  poolOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
   dpm.addPass(X::createAIELowerDynamicBDPoolPass(poolOpts));
   dpm.addPass(mlir::createCanonicalizerPass(canonicalize));
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
+  bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
@@ -1986,6 +1988,7 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
+  bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   // Without region simplification; see getNpuDmaLoweringPipeline.
   mlir::GreedyRewriteConfig canonicalize;

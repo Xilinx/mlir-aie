@@ -192,31 +192,29 @@ fn.contract_for("aie2p").tolerance  # one bf16 ulp, measured on npu2
 fn.expected(inputs, arch="aie2p")   # expected() and judge() take arch= too
 ```
 
-The contract is what lets `aie.iron.algorithms.kernel_design` build, run and check
+The contract is what lets `aie.iron.algorithms.KernelDesign` build, run and check
 a kernel without a hand-written design:
 
 ```python
-from aie.iron.algorithms import kernel_design as kd
+from aie.iron.algorithms import KernelDesign
 
 fn = kernels.reduce_max(dtype=np.int32)
-design = kd.design(kernels.reduce_max, calls=16, dtype=np.int32)
-inputs = kd.sample_inputs(fn, calls=16)
-ins, out = kd.upload(
-    inputs, kd.output_size(fn, calls=16), fn.output_dtype(np.int32), fn=fn, poison=True
-)
-design(*ins, out)
-verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
+kd = KernelDesign(fn, calls=16, guard=True)
+inputs = kd.sample_inputs()
+outputs = kd.run(inputs)
+verdict = kd.check(outputs, inputs)
 assert verdict, verdict.detail
 ```
 
-`kd.design(..., guard=True)` also catches writes past an output. Each output
-tile gets `kd.GUARD_BYTES` of `0x55` after it, which the kernel never sees.
-Size the output with `kd.output_size(fn, calls=16, guard=True)` and split the
-result with `kd.strip_guard(fn, out.numpy(), calls=16)`, which returns the
-data and the number of changed guard bytes. bfp outputs are not guarded.
+`guard=True` also catches writes past an output. Each output tile gets
+`GUARD_BYTES` (64) of `0x55` after it, which the kernel never sees, and
+`kd.run` raises when the kernel changed any of them. bfp outputs are not
+guarded. To run the design by hand, `kd.upload(inputs)` sizes the buffers and
+`kd.strip_guard(outputs)` returns the data and the number of changed guard
+bytes.
 
 Every design validates independent tile calls, including matrix kernels.
-`kd.design(kernels.mm, calls=16)` repeats sixteen tile products, initializing
+`KernelDesign(kernels.mm(), calls=16)` repeats sixteen tile products, initializing
 each output before its call. The factory's dimensions size a tile; `calls`
 does not change its reduction length. Whole-problem `shape=` is rejected:
 algorithm integration tests own global iteration and accumulation.
@@ -315,7 +313,7 @@ Three things make this work for more than one kernel per design:
   from the same object with the prefix applied. Chess-built
   kernels are the exception: `llvm-objcopy` corrupts xchesscc objects, so
   they keep bare symbols and only one variant may appear in a design.
-- **`host_args`.** `kernel_design.host_args(fn, calls=)`
+- **`host_args`.** `KernelDesign(fn, calls=...).host_args()`
   reports the direction, shape, dtype and element count of each host buffer the
   design takes, in the layout the device expects: packed tiles from each
   argument's layout codec, encoded bytes for a bfp16ebs8 operand,
