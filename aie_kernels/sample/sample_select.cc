@@ -256,7 +256,7 @@ inline int32_t clamp_range(int32_t v, int32_t hi) {
 
 #if SAMPLE_MAX_RANGES > 0
 // Every SAMPLE_MAX_RANGES (lo, hi) pair, global row coordinates, clipped to
-// this call's chunk of this column's slice and masked to SAMPLE_NEG_BIG_BITS.
+// this call's chunk of this column's slice and masked to SAMPLE_NEG_INF_BITS.
 void apply_ranges(uint16_t *x, const int32_t *row, int32_t pos) {
   for (int32_t r = 0; r < SAMPLE_MAX_RANGES; ++r) {
     const int32_t lo =
@@ -266,7 +266,7 @@ void apply_ranges(uint16_t *x, const int32_t *row, int32_t pos) {
     const int32_t from = lo > pos ? lo : pos;
     const int32_t to = hi < pos + SAMPLE_CHUNK ? hi : pos + SAMPLE_CHUNK;
     for (int32_t i = from; i < to; ++i)
-      x[i - pos] = (uint16_t)SAMPLE_NEG_BIG_BITS;
+      x[i - pos] = (uint16_t)SAMPLE_NEG_INF_BITS;
   }
 }
 #endif
@@ -286,7 +286,7 @@ void mask_restricted(uint16_t *restricted_x, const uint16_t *x, int32_t pos,
   const int32_t to =
       local_split < pos + SAMPLE_CHUNK ? local_split : pos + SAMPLE_CHUNK;
   for (int32_t i = pos; i < to; ++i)
-    restricted_x[i - pos] = (uint16_t)SAMPLE_NEG_BIG_BITS;
+    restricted_x[i - pos] = (uint16_t)SAMPLE_NEG_INF_BITS;
 }
 
 void begin_reduction(int32_t *reduction) {
@@ -315,7 +315,7 @@ void reduce_chunk(const uint16_t *x, int32_t pos, int32_t local_split,
         max_text = v;
     } else if (v <= max_ts) {
       // -inf weighs exactly 0; folding it before a finite max is -inf - -inf.
-      if (x[i] != 0xff80)
+      if (x[i] != SAMPLE_NEG_INF_BITS)
         sum_ts = (float)((double)sum_ts + exp64((double)(v - max_ts)));
     } else {
       sum_ts = (float)((double)sum_ts * exp64((double)(max_ts - v)) + 1.0);
@@ -353,7 +353,7 @@ void sample_select(uint16_t *x, const int32_t *row, int32_t *state,
   if (SAMPLE_VALID < SAMPLE_SLICE)
     for (int32_t i = SAMPLE_VALID - s->pos; i < SAMPLE_CHUNK; ++i)
       if (i >= 0)
-        x[i] = 0xff80;
+        x[i] = SAMPLE_NEG_INF_BITS;
 #if SAMPLE_MAX_RANGES > 0
   apply_ranges(x, row, s->pos);
 #endif

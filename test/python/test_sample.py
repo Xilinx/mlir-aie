@@ -554,15 +554,46 @@ def test_split_word():
     assert sample.split_word(1500).dtype == np.int32
 
 
-def test_apply_ranges_ref_masks_to_neg_big():
+def test_apply_ranges_ref_masks_to_neg_inf():
     logits = np.arange(16).astype(bfloat16)
     masked = sample.apply_ranges_ref(logits, [(3, 6), (10, 11)])
     want = logits.copy()
-    want[3:6] = sample.NEG_BIG
-    want[10:11] = sample.NEG_BIG
+    want[3:6] = -np.inf
+    want[10:11] = -np.inf
     np.testing.assert_array_equal(masked.view(np.uint16), want.view(np.uint16))
-    # Unmasked positions are untouched, not just unequal to NEG_BIG.
+    # Unmasked positions are untouched, not just unequal to -inf.
     np.testing.assert_array_equal(masked[6:10], logits[6:10])
+
+
+@pytest.mark.parametrize(
+    "ranges, masked",
+    [
+        ([(-10, 5)], range(0, 5)),
+        ([(-10, -5)], range(0)),
+        ([(14, 40)], range(14, 16)),
+        ([(9, 3)], range(0)),
+    ],
+)
+def test_apply_ranges_ref_clamps_endpoints_to_the_row(ranges, masked):
+    # As sample_select's apply_ranges clamps each to its slice: no wraparound.
+    got = sample.apply_ranges_ref(np.arange(16).astype(bfloat16), ranges)
+    assert np.flatnonzero(np.isneginf(got.astype(np.float32))).tolist() == list(masked)
+
+
+def test_sample_ref_never_draws_a_mask_below_finite_logits():
+    # Unmasked logits far below any finite sentinel still outrank a mask.
+    logits = np.full(32, -2e30, np.float32).astype(bfloat16)
+    logits[4:8] = 10.0
+    for temperature in (0.0, 1.0):
+        assert (
+            not 4 <= sample.sample_ref(logits, temperature, 8, 0, ranges=[(4, 8)]) < 8
+        )
+
+
+def test_sample_ref_clamps_the_split():
+    # A split below 0 masks nothing when the rule fires, as each column clamps it.
+    logits = np.linspace(1, 0, 8).astype(bfloat16)
+    assert sample.sample_ref(logits, 0.0, 1, 0, probability_rule_split=-1) == 0
 
 
 def test_sample_ref_ranges_exclude_exactly():

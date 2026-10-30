@@ -57,11 +57,9 @@ enum sample_row_word {
   SAMPLE_ROW_SPLIT = SAMPLE_ROW_RANGES + 2 * SAMPLE_MAX_RANGES,
 };
 
-// A finite stand-in for -inf: a mask row at this value is unaffected by
-// argmax and underflows to exactly 0 under the softmax draw, so it composes
-// safely with a 0/1 scale (0 * -inf would be NaN). bf16(-1e30), matching
-// NEG_BIG in iron/applications/whisper/model.py.
-#define SAMPLE_NEG_BIG_BITS 0xf14a
+// bf16 -inf, what padding and every mask write: it ranks below every finite
+// logit, so no masked token is drawn while an unmasked one is finite.
+#define SAMPLE_NEG_INF_BITS 0xff80
 
 // sample_select's per-call reduction output (SAMPLE_PROB_RULE only), one
 // column's partial evidence for sample_combine's forced-timestamp compare.

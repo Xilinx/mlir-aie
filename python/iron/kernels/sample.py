@@ -66,9 +66,6 @@ K_MAX_LIMIT = 128
 # only (sample.h): a running max over the text range and a running (max, sum
 # of exp) over the timestamp range.
 REDUCTION_WORDS = 3
-# bf16(-1e30): a finite stand-in for -inf a suppressed logit is set to,
-# matching NEG_BIG in iron/applications/whisper/model.py.
-NEG_BIG = np.float32(-1e30).astype(bfloat16)
 
 
 def summary_words(slice_size: int, k_max: int) -> int:
@@ -206,8 +203,8 @@ def sample_select(
     does not change ``row``'s own shape. ``max_ranges`` (default 0: none)
     accepts that many ``(lo, hi)`` pairs per call (``range_words``, appended
     to ``row`` after ``draw_row``'s ``ROW_WORDS``), each masking ``[lo, hi)``
-    to a finite stand-in for -inf before either pass reads it, so it is
-    excluded from the draw exactly as if it had never been in the row.
+    (clamped to the row) to -inf before either pass reads it, as padding is:
+    while any unmasked logit is finite, no masked one is drawn.
 
     ``probability_rule`` (default off, bit-identical to a build without it)
     additionally takes ``row``'s one split word (``split_word``, after the
@@ -527,15 +524,16 @@ def select_summary_ref(logits, k_max: int) -> np.ndarray:
 
 
 def apply_ranges_ref(logits, ranges) -> np.ndarray:
-    """Return bf16 ``logits``, ``(lo, hi)`` ranges masked to ``NEG_BIG``.
+    """Return bf16 ``logits``, ``(lo, hi)`` ranges masked to -inf.
 
     As ``sample_select``'s own masking does before either of its passes
-    reads them: ``select_summary_ref`` (or ``sample_ref``) of the result
-    already excludes them from the draw exactly as the device would.
+    reads them, each endpoint clamped to the row as each column clamps it
+    to its slice: ``select_summary_ref`` (or ``sample_ref``) of the result
+    draws as the device would.
     """
     row = np.ascontiguousarray(logits, dtype=bfloat16).copy()
     for lo, hi in ranges:
-        row[lo:hi] = NEG_BIG
+        row[min(max(lo, 0), row.size) : min(max(hi, 0), row.size)] = -np.inf
     return row
 
 
@@ -714,7 +712,7 @@ def sample_ref(
     multi-core device build would, so the rule's fold order matches bit for
     bit), each slice's own ``logsumexp_reduction_ref``, merged as
     ``forced_timestamp_ref`` does, additionally masks ``[0,
-    probability_rule_split)`` where it fires.
+    probability_rule_split)`` (the split clamped to the row) where it fires.
     """
     _positive("sample_ref", top_k=top_k)
     n53 = _check_n53(n53)
@@ -724,8 +722,8 @@ def sample_ref(
     if ranges or probability_rule_split is not None:
         logits = apply_ranges_ref(logits, ranges)
         if probability_rule_split is not None:
-            split = probability_rule_split
             n = len(logits)
+            split = min(max(probability_rule_split, 0), n)
             _positive("sample_ref", columns=columns)
             if n % columns:
                 raise ValueError("sample_ref: columns must divide the row")
@@ -739,7 +737,7 @@ def sample_ref(
             ]
             if forced_timestamp_ref(reductions):
                 logits = logits.copy()
-                logits[:split] = NEG_BIG
+                logits[:split] = -np.inf
     if np.float32(temperature).view(np.uint32) & 0x7FFFFFFF == 0:
         return int(np.argmax(order_keys(_row(logits))))
     candidates, weights = sample_weights(logits, temperature, top_k)
