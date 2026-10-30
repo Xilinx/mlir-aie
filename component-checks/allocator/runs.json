@@ -381,6 +381,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "40997152406",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40997152406",
+   "date": "2026-10-30T03:23:56+00:00",
+   "commit": {
+    "id": "e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
+    "message": "Convert aie.iron.algorithms.kernel_design into a class (#3977)",
+    "timestamp": "2026-10-30T01:15:10Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "e28f6dc7e5",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
