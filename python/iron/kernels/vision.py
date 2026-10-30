@@ -1476,28 +1476,32 @@ def resize_ref(
             raster instead of [`resize_emit`][iron.kernels.vision.resize]'s patches.
 
     Returns:
-        With ``as_rows``, ``(out_rows, out_columns, 3)`` uint8, zero past a
-        band or patch column the kernel refuses. Otherwise ``(bands * pad,
-        768)`` bf16: band ``b``'s patch column ``j`` is row ``b * pad + j``,
-        ``pad = (out_columns // 16 // cores + 1) * cores``, and patch
-        columns past the image are zeros. Sizes the kernel refuses zero
-        every patch, a width chunk a core refuses zeros that core's patch
-        columns, and a height chunk refused, or a band whose rows read past
-        the image's, zeros every patch from that band on.
+        With ``as_rows``, ``(bands * 16, strips * 16, 3)`` uint8 -- out_rows
+        and out_columns rounded up to whole 16-pixel blocks, as the kernel's
+        own granularity is -- zero past ``out_rows`` or ``out_columns`` (the
+        last band's or strip's unreal rows or columns) and past a band or
+        patch column the kernel refuses. Otherwise ``(bands * pad, 768)``
+        bf16: band ``b``'s patch column ``j`` is row ``b * pad + j``, ``pad
+        = (strips // cores + 1) * cores``, and patch columns past the image
+        are zeros. Sizes the kernel refuses zero every patch, a width chunk
+        a core refuses zeros that core's patch columns, and a height chunk
+        refused, or a band whose rows read past the image's, zeros every
+        patch from that band on. Neither ``out_rows`` nor ``out_columns``
+        need be a multiple of 16: the last strip or band is however many of
+        its 16 outputs are real, the rest zero, as the kernel's last chunk
+        of either axis is.
     """
     side = _RESIZE_SIDE
     win_cap = 2 * ((words - _RESAMPLE_HEADER) // side - 2) - 1
-    strips = out_columns // side if out_columns > 0 else 0
-    bands = out_rows // side if out_rows > 0 else 0
+    strips = -(-out_columns // side) if out_columns > 0 else 0
+    bands = -(-out_rows // side) if out_rows > 0 else 0
     pad = (strips // cores + 1) * cores
     out = np.zeros((bands, pad, side, side, 3), np.uint8)
     sized = (
         rows >= 1
         and columns >= 1
-        and out_rows >= side
-        and out_columns >= side
-        and out_rows % side == 0
-        and out_columns % side == 0
+        and out_rows >= 1
+        and out_columns >= 1
         and pad // cores <= patch_columns
     )
     if not sized:
@@ -1519,18 +1523,21 @@ def resize_ref(
         for k in range(c, strips, cores):
             t = np.asarray(taps_w[k], np.int32)
             p, win = int(t[0]), int(t[1])
+            # The last strip's real outputs, past which a chunk's slots are
+            # unwritten, zero-headered padding, not taps to read.
+            n = side if (k + 1) * side <= out_columns else out_columns - k * side
             if not (1 <= p <= 22 and 1 <= win <= win_cap) or (
-                t[2] != k * side or t[3] != side
+                t[2] != k * side or t[3] != n
             ):
                 ok[c] = False
                 break
             start, count, weights = _resize_slots(t, win)
-            first, end = int(start[0]), int(start[-1] + count[-1])
+            first, end = int(start[0]), int(start[n - 1] + count[n - 1])
             if (
-                (start < first).any()
-                or (count < 0).any()
-                or (count > win).any()
-                or (start + count > end).any()
+                (start[:n] < first).any()
+                or (count[:n] < 0).any()
+                or (count[:n] > win).any()
+                or (start[:n] + count[:n] > end).any()
                 or first < 0
                 or end > columns
                 or end - first > 5 * win_cap + 8
@@ -1538,7 +1545,7 @@ def resize_ref(
                 ok[c] = False
                 break
             hweight = np.zeros((side, 64), np.int64)
-            for o in range(side):
+            for o in range(n):
                 hweight[o, : count[o]] = weights[o][: count[o]]
             filters.append((k, start, hweight, p, win))
         if not ok[c] or not filters:
@@ -1555,16 +1562,22 @@ def resize_ref(
     for b in range(bands):
         vt = np.asarray(taps_h[b], np.int32)
         p, win = int(vt[0]), int(vt[1])
+        # The last band's real rows, past which a chunk's slots are
+        # unwritten, zero-headered padding, not taps to read.
+        real_rows = side if (b + 1) * side <= out_rows else out_rows - b * side
         if not (1 <= p <= 22 and 1 <= win <= win_cap) or (
-            vt[2] != b * side or vt[3] != side
+            vt[2] != b * side or vt[3] != real_rows
         ):
             break
         start, count, weights = _resize_slots(vt, win)
-        e = min(max(int(start[-1] + count[-1]), 0), rows)
+        e = min(max(int(start[real_rows - 1] + count[real_rows - 1]), 0), rows)
         hold = np.zeros((side, strips, side, 3), np.int64)
         done, failed = 0, False
         for now in range(arrived, max(arrived, e) + 1):
             for o in range(done, side):
+                if o >= real_rows:
+                    done = o + 1  # past the real rows: already zero
+                    continue
                 s, n = int(start[o]), int(count[o])
                 if s + n > now:
                     break

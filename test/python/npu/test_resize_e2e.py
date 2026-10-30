@@ -113,7 +113,7 @@ def resize_patches(
 
     image_bytes = taps_words = patch_rows = 0
     for rows, columns, out_rows, out_columns in sizes:
-        strips, bands = out_columns // SIDE, out_rows // SIDE
+        strips, bands = -(-out_columns // SIDE), -(-out_rows // SIDE)
         image_bytes += rows * -(-3 * columns // chunk) * chunk
         taps_words += (strips + bands) * words
         patch_rows += bands * (strips // cores + 1) * cores
@@ -170,7 +170,7 @@ def _image(rows, columns, out_rows, out_columns, tables, expect, **build):
     """One image's inputs and its expected patches, checked to say what ``expect`` does."""
     words, chunk, cores = build["words"], build["chunk"], build["cores"]
     width_in, height_in = tables or (None, None)
-    strips, bands = out_columns // SIDE, out_rows // SIDE
+    strips, bands = -(-out_columns // SIDE), -(-out_rows // SIDE)
     taps_w = _table(width_in or columns, out_columns, words)[:strips]
     taps_h = _table(height_in or rows, out_rows, words)[:bands]
     cpr = -(-3 * columns // chunk)
@@ -210,8 +210,11 @@ def _image(rows, columns, out_rows, out_columns, tables, expect, **build):
         ([(300, 400, 64, 96, None, "all")], 4, 4096, 8),
         # Identity over every byte value: the bf16 of each u8 / 255.
         ([(32, 48, 32, 48, None, "identity")], 2, 4096, 8),
-        # Sizes refused: 100 rows out are no whole band.
-        ([(37, 53, 100, 144, None, "none")], 2, 4096, 8),
+        # Neither axis a multiple of 16: the last strip and the last band
+        # are each however many of their 16 outputs are real.
+        ([(480, 640, 256, 341, None, "all")], 16, 4096, 3),
+        ([(640, 480, 341, 256, None, "all")], 16, 4096, 3),
+        ([(300, 300, 250, 250, None, "all")], 16, 4096, 3),
         # 9 patch columns over 2 cores is 5 a core; a core holds 2.
         ([(37, 53, 96, 144, None, "none")], 2, 4096, 2),
         # 9 patch columns over 4 cores, core 0 holding all 3 it can: a line
@@ -223,13 +226,13 @@ def _image(rows, columns, out_rows, out_columns, tables, expect, **build):
         # A height table for 60 rows: the bands past the 37th row.
         ([(37, 53, 96, 144, (None, 60), "some bands")], 2, 4096, 8),
         # One build, three images in turn, as a per-call size runs it: fewer
-        # patch columns than the first, then sizes refused, each leaving
+        # patch columns than the first, then an empty image, each leaving
         # nothing of the one before.
         (
             [
                 (37, 53, 96, 144, None, "all"),
                 (37, 53, 96, 32, None, "all"),
-                (37, 53, 100, 144, None, "none"),
+                (0, 53, 96, 144, None, "none"),
             ],
             2,
             64,
@@ -251,6 +254,93 @@ def test_device_patches_match_resize_ref(images, cores, chunk, patch_columns):
         ),
         patches,
         sizes=tuple(spec[:4] for spec in images),
+        **build,
+    )
+    got = patches.numpy().reshape(expected.shape)
+    np.testing.assert_array_equal(got.view(np.uint16), expected.view(np.uint16))
+
+
+def _capacity_table(in_size, real_out, capacity_out, words):
+    """A ``capacity_out // SIDE``-chunk table, valid only up to ``real_out``'s
+    ``ResampleTaps.filled()`` rounding, zero past it: a table built for less
+    than a call's stated ``out_columns``.
+    """
+    filled = 16 * -(-real_out // (16 * SIDE))
+    table = np.zeros((capacity_out // SIDE, words), np.int32)
+    table[:filled] = _table(in_size, real_out, words)[:filled]
+    return table
+
+
+def test_device_patches_wo_past_table_refuses():
+    """``wo`` (``resize_setup``'s and ``resize_ref``'s ``out_columns``) is the
+    call's real resized target, not a build capacity a table only partly
+    covers: a caller that states 512 while its table is only valid for its
+    first 256-pixel round -- as ResNet-50's preprocessing used to, always
+    stating its build's capacity rather than a photo's real target width
+    (``/proj/rdi/staff/ehunhoff/issues-to-file/vision-resize-portrait-target-zeros.md``)
+    -- gets a hard, all-zero refusal, device and resize_ref alike, not a
+    silent truncation to the table's real content.
+    """
+    build = dict(words=356, chunk=4096, patch_columns=3, cores=16)
+    rows, columns, out_rows, real_out_columns, out_columns = 256, 1024, 256, 256, 512
+    taps_w = _capacity_table(columns, real_out_columns, out_columns, build["words"])
+    taps_h = _table(rows, out_rows, build["words"])[: out_rows // SIDE]
+    rng = np.random.default_rng(rows * columns)
+    image = rng.integers(
+        0,
+        256,
+        (rows, -(-3 * columns // build["chunk"]) * build["chunk"]),
+        dtype=np.uint8,
+    )
+    expected = vision.resize_ref(
+        image, taps_w, taps_h, rows, columns, out_rows, out_columns, **build
+    )
+    assert not (expected.view(np.uint16) != 0).any(), "a mismatched wo refuses"
+    patches = iron.full((expected.size,), 1.0, dtype=bfloat16)
+    resize_patches(
+        iron.tensor(image.reshape(-1), dtype=np.uint8),
+        iron.tensor(np.concatenate([taps_w, taps_h]).reshape(-1), dtype=np.int32),
+        patches,
+        sizes=((rows, columns, out_rows, out_columns),),
+        **build,
+    )
+    got = patches.numpy().reshape(expected.shape)
+    np.testing.assert_array_equal(got.view(np.uint16), expected.view(np.uint16))
+
+
+def test_device_patches_zero_chunk_inside_target_refuses():
+    """A header-zeroed chunk inside the call's real target (``k < strips``,
+    not past it) is a malformed table, not padding: it still refuses its
+    own core alone (``ok`` is per core, as every other malformed chunk
+    leaves it), not the whole call -- core 5's patch column comes out zero
+    while the rest resize normally.
+    """
+    build = dict(words=356, chunk=4096, patch_columns=3, cores=16)
+    rows, columns, out_rows, out_columns = 256, 1024, 256, 256
+    strips, bands = out_columns // SIDE, out_rows // SIDE
+    taps_w = _table(columns, out_columns, build["words"])[:strips]
+    taps_w[5] = 0  # a chunk inside the target (strips = 16), zero-headered
+    taps_h = _table(rows, out_rows, build["words"])[:bands]
+    rng = np.random.default_rng(rows * columns)
+    image = rng.integers(
+        0,
+        256,
+        (rows, -(-3 * columns // build["chunk"]) * build["chunk"]),
+        dtype=np.uint8,
+    )
+    expected = vision.resize_ref(
+        image, taps_w, taps_h, rows, columns, out_rows, out_columns, **build
+    )
+    pad = (strips // build["cores"] + 1) * build["cores"]
+    live = (expected.reshape(bands, pad, -1).view(np.uint16) != 0).any(axis=-1)
+    assert not live[:, 5].any(), "core 5's own chunk is malformed, so it refuses"
+    assert live[:, :5].all() and live[:, 6:strips].all(), "every other core resizes"
+    patches = iron.full((expected.size,), 1.0, dtype=bfloat16)
+    resize_patches(
+        iron.tensor(image.reshape(-1), dtype=np.uint8),
+        iron.tensor(np.concatenate([taps_w, taps_h]).reshape(-1), dtype=np.int32),
+        patches,
+        sizes=((rows, columns, out_rows, out_columns),),
         **build,
     )
     got = patches.numpy().reshape(expected.shape)

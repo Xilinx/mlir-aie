@@ -108,7 +108,7 @@ def resize_rows(
 
     image_bytes = taps_words = patch_rows = 0
     for rows, columns, out_rows, out_columns in sizes:
-        strips, bands = out_columns // SIDE, out_rows // SIDE
+        strips, bands = -(-out_columns // SIDE), -(-out_rows // SIDE)
         image_bytes += rows * -(-3 * columns // chunk) * chunk
         taps_words += (strips + bands) * words
         patch_rows += bands * (strips // cores + 1) * cores
@@ -161,7 +161,7 @@ def _image(rows, columns, out_rows, out_columns, **build):
     """One image's inputs and its expected rows (resize_ref(as_rows=True)), as
     patch-column-shaped slices in the same layout the device streams write."""
     words, chunk, cores = build["words"], build["chunk"], build["cores"]
-    strips, bands = out_columns // SIDE, out_rows // SIDE
+    strips, bands = -(-out_columns // SIDE), -(-out_rows // SIDE)
     taps_w = _table(columns, out_columns, words)[:strips]
     taps_h = _table(rows, out_rows, words)[:bands]
     cpr = -(-3 * columns // chunk)
@@ -197,6 +197,11 @@ def _image(rows, columns, out_rows, out_columns, **build):
         ([(37, 53, 96, 144)], 4, 4096, 3),
         # One build, two images in turn, as a per-call size runs it.
         ([(37, 53, 96, 144), (37, 53, 96, 32)], 2, 64, 8),
+        # Neither axis a multiple of 16: the last strip and the last band
+        # are each however many of their 16 outputs are real.
+        ([(480, 640, 256, 341)], 16, 4096, 3),
+        ([(640, 480, 341, 256)], 16, 4096, 3),
+        ([(300, 300, 250, 250)], 16, 4096, 3),
     ],
 )
 def test_device_rows_match_resize_ref(images, cores, chunk, patch_columns):
@@ -216,4 +221,106 @@ def test_device_rows_match_resize_ref(images, cores, chunk, patch_columns):
         **build,
     )
     got = rows.numpy().reshape(expected.shape)
+    np.testing.assert_array_equal(got, expected)
+
+
+def test_device_rows_wo_past_table_refuses():
+    """``wo`` (``resize_setup``'s and ``resize_ref``'s ``out_columns``) is the
+    call's real resized target, not a build capacity a table only partly
+    covers: a caller that states 512 while its table is only valid for its
+    first 256-pixel round -- as ResNet-50's preprocessing used to, always
+    stating its build's capacity rather than a photo's real target width
+    (``/proj/rdi/staff/ehunhoff/issues-to-file/vision-resize-portrait-target-zeros.md``)
+    -- gets a hard, all-zero refusal, device and resize_ref alike, not a
+    silent truncation to the table's real content.
+    """
+    build = dict(words=356, chunk=4096, patch_columns=3, cores=16)
+    rows, columns, out_rows, real_out_columns, out_columns = 256, 1024, 256, 256, 512
+    strips, bands = out_columns // SIDE, out_rows // SIDE
+    filled = 16 * -(-real_out_columns // (16 * SIDE))
+    taps_w = np.zeros((strips, build["words"]), np.int32)
+    taps_w[:filled] = _table(columns, real_out_columns, build["words"])[:filled]
+    taps_h = _table(rows, out_rows, build["words"])[:bands]
+    rng = np.random.default_rng(rows * columns)
+    chunk = build["chunk"]
+    image = rng.integers(
+        0, 256, (rows, -(-3 * columns // chunk) * chunk), dtype=np.uint8
+    )
+    raster = vision.resize_ref(
+        image,
+        taps_w,
+        taps_h,
+        rows,
+        columns,
+        out_rows,
+        out_columns,
+        as_rows=True,
+        **build,
+    )
+    assert not (raster != 0).any(), "a mismatched wo refuses"
+    pad = (strips // build["cores"] + 1) * build["cores"]
+    expected = np.zeros((bands, pad, SIDE, SIDE, 3), np.uint8)
+    expected[:, :strips] = raster.reshape(bands, SIDE, strips, SIDE, 3).transpose(
+        0, 2, 1, 3, 4
+    )
+    expected = expected.reshape(bands * pad, -1)
+    out = iron.full((expected.size,), 1, dtype=np.uint8)
+    resize_rows(
+        iron.tensor(image.reshape(-1), dtype=np.uint8),
+        iron.tensor(np.concatenate([taps_w, taps_h]).reshape(-1), dtype=np.int32),
+        out,
+        sizes=((rows, columns, out_rows, out_columns),),
+        **build,
+    )
+    got = out.numpy().reshape(expected.shape)
+    np.testing.assert_array_equal(got, expected)
+
+
+def test_device_rows_zero_chunk_inside_target_refuses():
+    """A header-zeroed chunk inside the call's real target (``k < strips``,
+    not past it) is a malformed table, not padding: it still refuses its
+    own core alone (``ok`` is per core, as every other malformed chunk
+    leaves it), not the whole call -- core 5's patch column comes out zero
+    while the rest resize normally.
+    """
+    build = dict(words=356, chunk=4096, patch_columns=3, cores=16)
+    rows, columns, out_rows, out_columns = 256, 1024, 256, 256
+    strips, bands = out_columns // SIDE, out_rows // SIDE
+    taps_w = _table(columns, out_columns, build["words"])[:strips]
+    taps_w[5] = 0  # a chunk inside the target (strips = 16), zero-headered
+    taps_h = _table(rows, out_rows, build["words"])[:bands]
+    rng = np.random.default_rng(rows * columns)
+    chunk = build["chunk"]
+    image = rng.integers(
+        0, 256, (rows, -(-3 * columns // chunk) * chunk), dtype=np.uint8
+    )
+    raster = vision.resize_ref(
+        image,
+        taps_w,
+        taps_h,
+        rows,
+        columns,
+        out_rows,
+        out_columns,
+        as_rows=True,
+        **build,
+    )
+    pad = (strips // build["cores"] + 1) * build["cores"]
+    expected = np.zeros((bands, pad, SIDE, SIDE, 3), np.uint8)
+    expected[:, :strips] = raster.reshape(bands, SIDE, strips, SIDE, 3).transpose(
+        0, 2, 1, 3, 4
+    )
+    live = (expected != 0).any(axis=(2, 3, 4))
+    assert not live[:, 5].any(), "core 5's own chunk is malformed, so it refuses"
+    assert live[:, :5].all() and live[:, 6:strips].all(), "every other core resizes"
+    expected = expected.reshape(bands * pad, -1)
+    out = iron.full((expected.size,), 1, dtype=np.uint8)
+    resize_rows(
+        iron.tensor(image.reshape(-1), dtype=np.uint8),
+        iron.tensor(np.concatenate([taps_w, taps_h]).reshape(-1), dtype=np.int32),
+        out,
+        sizes=((rows, columns, out_rows, out_columns),),
+        **build,
+    )
+    got = out.numpy().reshape(expected.shape)
     np.testing.assert_array_equal(got, expected)

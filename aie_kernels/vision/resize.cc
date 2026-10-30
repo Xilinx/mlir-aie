@@ -76,7 +76,7 @@ const uint16_t PIXEL[256] = {
     0x3f74, 0x3f75, 0x3f76, 0x3f77, 0x3f78, 0x3f79, 0x3f7a, 0x3f7b, 0x3f7c,
     0x3f7d, 0x3f7e, 0x3f7f, 0x3f80};
 
-int rows, columns, cpr, owned, core;
+int rows, columns, cpr, owned, core, strips, outw, outh, bandrows;
 // part: the next image chunk's in its row; ring: that row's in mid.
 int consumed, part, ring, arrived, opened, next, hp, hwin;
 bool ok;
@@ -182,7 +182,9 @@ void split(const uint8_t *__restrict src, uint8_t *__restrict red,
   }
 }
 
-// The band's output rows whose input rows have all come, in order.
+// The band's output rows whose input rows have all come, in order; a row
+// past bandrows (the last band's real count) is zero, not a tap sum: its
+// slot is resample_quantize's unwritten padding, not one to read.
 void down(const int32_t *vt) {
   if (!ok)
     return;
@@ -191,6 +193,11 @@ void down(const int32_t *vt) {
   const auto bias = aie::broadcast<int32_t, 32>(1 << (p - 1));
   const uint8_t *in[WIN];
   for (; next < SIDE; next++) {
+    if (next >= bandrows) {
+      for (int b = 0; b < n; b += 32)
+        aie::store_v(hold[next] + b, aie::zeros<uint8_t, 32>());
+      continue;
+    }
     const int32_t *t = vt + HEADER + next * slot;
     int s = t[0], c = t[1];
     if (s + c > arrived)
@@ -224,37 +231,45 @@ extern "C" void resize_setup(int32_t *counts, int32_t h, int32_t w, int32_t ho,
   rows = h;
   columns = w;
   core = c;
+  outw = wo;
+  outh = ho;
   cpr = w > 0 ? (3 * w + CHUNK - 1) / CHUNK : 0;
-  int strips = wo > 0 ? wo / SIDE : 0;
+  strips = wo > 0 ? (wo + SIDE - 1) / SIDE : 0;
   // A column past the patches at least, so the last of every band is zeros.
   int nmax = strips / CORES + 1;
   owned = c < strips ? (strips - c + CORES - 1) / CORES : 0;
-  ok = h >= 1 && w >= 1 && ho >= SIDE && wo >= SIDE && ho % SIDE == 0 &&
-       wo % SIDE == 0 && nmax <= COLS;
+  ok = h >= 1 && w >= 1 && ho >= 1 && wo >= 1 && nmax <= COLS;
   consumed = part = ring = arrived = opened = next = 0;
   counts[0] = strips;
-  counts[1] = ho > 0 ? ho / SIDE : 0;
+  counts[1] = ho > 0 ? (ho + SIDE - 1) / SIDE : 0;
   counts[2] = 0;
   counts[3] = nmax;
   counts[4] = 0;
 }
 
-// Width chunk k is patch column k, this core's when k % CORES == core.
+// Width chunk k is patch column k, this core's when k % CORES == core. wo
+// is the call's real resized target, not a build capacity past it, and
+// need not be a multiple of SIDE: the last strip (k == strips - 1) is
+// outw - k * SIDE outputs wide, its chunk's unused slots left at
+// resample_quantize's zero init, not real taps. A zero or otherwise
+// malformed header among the real slots still fails the whole call, as
+// before; a chunk past strips (k >= strips) is not this call's.
 extern "C" void resize_take(int32_t *chunk, int32_t k) {
-  if (!ok || k % CORES != core)
+  if (!ok || k >= strips || k % CORES != core)
     return;
   int i = k / CORES, p = chunk[0], win = chunk[1];
+  int n = (k + 1) * SIDE <= outw ? SIDE : outw - k * SIDE;
   if (p < 1 || p > 22 || win < 1 || win > WIN || chunk[2] != k * SIDE ||
-      chunk[3] != SIDE) {
+      chunk[3] != n) {
     ok = false;
     return;
   }
   hp = p;
   hwin = win;
   int slot = 2 + (win + 1) / 2;
-  const int32_t *last = chunk + HEADER + (SIDE - 1) * slot;
+  const int32_t *last = chunk + HEADER + (n - 1) * slot;
   int first = chunk[HEADER], end = last[0] + last[1];
-  for (int o = 0; o < SIDE; o++) {
+  for (int o = 0; o < n; o++) {
     const int32_t *t = chunk + HEADER + o * slot;
     const int16_t *w = (const int16_t *)(t + 2);
     hstart[i][o] = t[0];
@@ -263,6 +278,14 @@ extern "C" void resize_take(int32_t *chunk, int32_t k) {
     for (int j = 0; j < 64; j++)
       hweight[i][o][j] = j < t[1] ? w[j] : 0;
   }
+  // Past the real outputs: a safe, in-bounds start and a zero weight, so
+  // across()'s sum for these lanes is bias >> hp (zero) without reading
+  // them as taps.
+  for (int o = n; o < SIDE; o++) {
+    hstart[i][o] = first;
+    for (int j = 0; j < 64; j++)
+      hweight[i][o][j] = 0;
+  }
   span0[i] = first;
   span[i] = end - first;
   if (first < 0 || end > columns || span[i] > SPAN)
@@ -270,12 +293,15 @@ extern "C" void resize_take(int32_t *chunk, int32_t k) {
 }
 
 // The next height chunk opens: the image chunks up to the last input row its
-// outputs read.
+// outputs read. The last band (opened == bands - 1) is outh - opened * SIDE
+// rows, its chunk's unused slots left at resample_quantize's zero init, not
+// real taps: down() zeros them past bandrows rather than reading them so.
 extern "C" void resize_band(int32_t *vt, int32_t *counts) {
   int win = vt[1], e = rows;
+  bandrows = (opened + 1) * SIDE <= outh ? SIDE : outh - opened * SIDE;
   if (vt[0] >= 1 && vt[0] <= 22 && win >= 1 && win <= WIN &&
-      vt[2] == opened * SIDE && vt[3] == SIDE) {
-    const int32_t *t = vt + HEADER + (SIDE - 1) * (2 + (win + 1) / 2);
+      vt[2] == opened * SIDE && vt[3] == bandrows) {
+    const int32_t *t = vt + HEADER + (bandrows - 1) * (2 + (win + 1) / 2);
     e = t[0] + t[1];
     e = e < 0 ? 0 : e > rows ? rows : e;
   } else {
