@@ -10,13 +10,15 @@ one's output into a small summary, then folds the night's summaries into
 
 * ``sanitizer``: lit's JSON report (``lit -o``) of check-aie built under
   AddressSanitizer with UndefinedBehaviorSanitizer, or under
-  ThreadSanitizer. Every test's output is read, a passing one's too: a test
-  that expects a tool to fail (``not aie-opt``) passes on a sanitizer's
-  abort. Each report becomes a finding, keyed by its sanitizer, its kind and
-  the first frame in this repository's code, so the same bug reached from
-  forty tests is one finding with forty tests. A test that failed with no
-  report (usually a time-out: instrumented tools are slower) is listed
-  apart.
+  ThreadSanitizer, and the sanitizers' own report files (``--logs``). The
+  nightly gives each test its own ``log_path`` (``SanitizerLogShTest`` in
+  python/aie_lit_utils), so a report a test pipes into FileCheck, or one
+  from a tool it expects to fail (``not aie-opt``), is still read and still
+  names its test; every test's output is read too, a passing one's as well.
+  Each report becomes a finding, keyed by its sanitizer, its kind and the
+  first frame in this repository's code, so the same bug reached from forty
+  tests is one finding with forty tests. A test that failed with no report
+  (usually a time-out: instrumented tools are slower) is listed apart.
 * ``tidy``: clang-tidy's output over every C++ file in lib/ and tools/.
   lintAndFormat.yml enforces clang-tidy on the files the ``clang-tidy`` hook
   in .pre-commit-config.yaml lists (enabled): a finding in one of them got
@@ -29,7 +31,7 @@ one's output into a small summary, then folds the night's summaries into
   The previously published status dates each finding (``since``) and says
   which alerts are new; the history gains a point.
 
-    code_health.py sanitizer --name asan-ubsan --out asan.json lit/*.json
+    code_health.py sanitizer --name asan-ubsan --logs DIR --out asan.json lit/*.json
     code_health.py tidy --files files.txt --exit-code N --out tidy.json tidy.log
     code_health.py publish --coverage coverage.lcov --piece asan.json ... \
         --code-scanning --previous status.json --history history.json --out DIR
@@ -224,8 +226,22 @@ def known_id(key: str) -> str:
     return hashlib.sha1(key.encode()).hexdigest()[:16]
 
 
-def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
-    """Summarize lit's reports of one sanitizer build as one status piece."""
+def summarize_sanitizer(
+    name: str, lits: list[dict], root: str, logs: dict[str, list[str]] | None = None
+) -> dict:
+    """Summarize one sanitizer build's reports as one status piece.
+
+    Args:
+        name: The check, ``asan-ubsan`` or ``tsan``.
+        lits: lit's JSON reports; each test's output is read.
+        root: The checkout the reports' paths start with.
+        logs: The ``log_path`` files' texts by prefix, the SHA-1 of the lit
+            test name that wrote them (``SanitizerLogShTest``).
+
+    Returns:
+        The piece, every finding listed with the tests that reach it.
+    """
+    unclaimed = dict(logs or {})
     findings: dict[str, dict] = {}
     counted: dict[str, set] = {}
     failed, tests, ran = [], 0, 0
@@ -234,7 +250,10 @@ def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
             tests += 1
             code = t.get("code", "")
             ran += code in RAN
-            found = reports(t.get("output", ""), root)
+            texts = unclaimed.pop(hashlib.sha1(t["name"].encode()).hexdigest()[:16], [])
+            found = [
+                f for text in (t.get("output", ""), *texts) for f in reports(text, root)
+            ]
             for f in found:
                 key = finding_key(f)
                 seen = findings.setdefault(
@@ -248,6 +267,11 @@ def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
                         seen["tests"].append(t["name"])
             if code in FAILED and not found:
                 failed.append({"test": t["name"], "code": code})
+    # A log no test in the reports wrote: its finding names no test.
+    for text in (text for texts in unclaimed.values() for text in texts):
+        for f in reports(text, root):
+            key = finding_key(f)
+            findings.setdefault(key, {**f, "key": key, "tests": [], "test_count": 0})
     order = sorted(findings.values(), key=lambda f: (-f["test_count"], f["key"]))
     by_sanitizer: dict[str, int] = {}
     for f in order:
@@ -691,6 +715,11 @@ def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
         "sanitizer", help="summarize lit's JSON reports of a sanitizer build"
     )
     s.add_argument("--name", required=True, choices=["asan-ubsan", "tsan"])
+    s.add_argument(
+        "--logs",
+        type=Path,
+        help="the directory of the sanitizers' log_path files (AIE_SANITIZER_LOG_DIR)",
+    )
     s.add_argument("--out", type=Path, required=True)
     s.add_argument("lit", nargs="*", type=Path)
     t = sub.add_parser("tidy", help="summarize clang-tidy's output")
@@ -725,7 +754,13 @@ def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
                 "no lit reports loaded; no sanitizer summary written", file=sys.stderr
             )
             return 1
-        piece = summarize_sanitizer(args.name, lits, root)
+        logs: dict[str, list[str]] = {}
+        if args.logs and args.logs.is_dir():
+            for path in sorted(p for p in args.logs.iterdir() if p.is_file()):
+                logs.setdefault(path.name.split(".")[0], []).append(
+                    path.read_text(encoding="utf-8", errors="replace")
+                )
+        piece = summarize_sanitizer(args.name, lits, root, logs)
         write_json(args.out, piece)
         print(
             f"{args.name}: {piece['finding_count']} findings in {piece['ran']} tests run; "

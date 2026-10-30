@@ -35,8 +35,9 @@ def test_code_health_sanitizers_do_not_stop_after_one_failure(tmp_path, index):
     script = script.replace("${{ matrix.options }}", entry["options"]).replace(
         "${{ matrix.filter-out }}", entry["filter-out"]
     )
+    lit = 'lit() { printf "%s\\n" "$@" "LOGS=$AIE_SANITIZER_LOG_DIR"; return 1; }\n'
     result = subprocess.run(
-        [BASH, "-e", "-c", 'lit() { printf "%s\\n" "$@"; return 1; }\n' + script],
+        [BASH, "-e", "-c", lit + script],
         env={**os.environ, "RUNNER_TEMP": str(tmp_path)},
         capture_output=True,
         text=True,
@@ -48,6 +49,11 @@ def test_code_health_sanitizers_do_not_stop_after_one_failure(tmp_path, index):
     # The script joins with "/" whatever separator RUNNER_TEMP uses.
     assert args[args.index("-o") + 1] == f"{tmp_path}/lit/tests.json"
     assert "build/test" in args
+    # Each test's sanitizer logs land where the summary reads them.
+    assert f"LOGS={tmp_path}/sanitizer-logs" in args
+    assert (tmp_path / "sanitizer-logs").is_dir()
+    summarize = next(s["run"] for s in job["steps"] if s.get("name") == "Summarize")
+    assert '--logs "$RUNNER_TEMP/sanitizer-logs"' in summarize
 
 
 @pytest.mark.skipif(

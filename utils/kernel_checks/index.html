@@ -5111,11 +5111,13 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
           el('span', { className: `pill ${f.new ? 'new' : 'since'}` }, f.new ? 'new' : `since ${dayText(f.since)}`),
           el('span', { className: 'f-kind' }, `${SANITIZER_NAMES[f.sanitizer] || f.sanitizer}: ${kindText(f)}`),
           el('span', { className: 'f-where' }, `${shortFunc(w.function)}${w.function ? ' · ' : ''}`, w.file ? sourceLink(sha, w.file, w.line, `${baseName(w.file)}:${w.line || '?'}`) : 'no frame in this repository'),
-          el('span', { className: 'f-tests' }, plural(f.test_count || tests.length, 'test'))),
+          el('span', { className: 'f-tests' }, tests.length ? plural(f.test_count || tests.length, 'test') : 'no test named')),
         el('div', { className: 'f-body' },
           el('pre', {}, f.excerpt || ''),
-          el('div', {}, el('b', {}, 'Tests that reach it'), el('ul', {}, ...tests.map(t => el('li', {}, t))),
-            (f.test_count || 0) > tests.length ? el('p', { className: 'dim' }, `and ${f.test_count - tests.length} more`) : ''),
+          tests.length
+            ? el('div', {}, el('b', {}, 'Tests that reach it'), el('ul', {}, ...tests.map(t => el('li', {}, t))),
+              (f.test_count || 0) > tests.length ? el('p', { className: 'dim' }, `and ${f.test_count - tests.length} more`) : '')
+            : el('p', { className: 'dim' }, 'Found in a sanitizer log that no test in the lit report wrote.'),
           first ? el('p', {}, 'Reproduce on a sanitized build: ', el('code', {}, `lit -v build/test/${first}`)) : ''));
       return card;
     }

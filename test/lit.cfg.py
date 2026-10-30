@@ -18,7 +18,7 @@ import lit.util
 from lit.llvm import llvm_config
 from lit.llvm.subst import ToolSubst
 from lit.llvm.subst import FindTool
-from aie_lit_utils import LitConfigHelper
+from aie_lit_utils import LitConfigHelper, SanitizerLogShTest
 
 # Configuration file for the 'lit' test runner.
 
@@ -76,6 +76,10 @@ llvm_config.with_system_environment(
 )
 if os.environ.get("AIE_SANITIZER_PRELOAD"):
     config.environment["LD_PRELOAD"] = os.environ["AIE_SANITIZER_PRELOAD"]
+if os.environ.get("AIE_SANITIZER_LOG_DIR"):
+    config.test_format = SanitizerLogShTest(
+        os.path.abspath(os.environ["AIE_SANITIZER_LOG_DIR"])
+    )
 _pytest_wrapper = os.path.join(config.aie_src_root, "utils", "run_pytest.py")
 config.substitutions.append(
     (

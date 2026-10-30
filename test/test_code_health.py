@@ -8,6 +8,7 @@
 import datetime
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -505,6 +506,65 @@ def test_missing_lit_report_does_not_publish_a_healthy_summary(tmp_path, content
     out = tmp_path / "summary.json"
     assert ch.main(["sanitizer", "--name", "tsan", "--out", str(out), str(report)]) == 1
     assert not out.exists()
+
+
+# A sanitizer's log_path file holds the report as it would print it.
+ASAN_LOG = ASAN_OUT.split("--\n", 1)[1]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="the sanitizer nightly runs on Linux"
+)
+def test_a_report_piped_into_filecheck_is_read_from_its_log(tmp_path):
+    suite, logs = tmp_path / "suite", tmp_path / "logs"
+    suite.mkdir()
+    logs.mkdir()
+    (suite / "lit.cfg.py").write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(ROOT / 'python')!r})\n"
+        "from aie_lit_utils import SanitizerLogShTest\n"
+        'config.name = "AIE"\n'
+        f"config.test_format = SanitizerLogShTest({str(logs)!r})\n"
+        'config.suffixes = [".test"]\n'
+        'config.environment["ASAN_OPTIONS"] = "detect_leaks=0"\n',
+        encoding="utf-8",
+    )
+    show = f'"{sys.executable}" -c "import os; print(os.environ[\'ASAN_OPTIONS\'])"'
+    # Split so the outer lit doesn't read these as this file's own RUN lines.
+    for name in ("seen.test", "piped.test"):
+        (suite / name).write_text(f"# RUN" f": {show}\n", encoding="utf-8")
+    report = tmp_path / "lit.json"
+    subprocess.run(
+        [sys.executable, "-c", "from lit.main import main; main()"]
+        + ["-q", "-o", str(report), str(suite)],
+        check=True,
+        capture_output=True,
+    )
+    results = json.loads(report.read_text(encoding="utf-8"))
+    tests = {t["name"]: t for t in results["tests"]}
+    log_path = {
+        name: re.search(r"detect_leaks=0:log_path=(\S+)", t["output"])[1]
+        for name, t in tests.items()
+    }
+    assert {Path(p).parent for p in log_path.values()} == {logs}
+    assert len(set(log_path.values())) == 2
+    # One test printed its report, which lit kept; the other piped the same
+    # bug into FileCheck, so only the sanitizer's file has it.
+    tests["AIE :: seen.test"]["output"] += ASAN_OUT
+    report.write_text(json.dumps(results), encoding="utf-8")
+    Path(log_path["AIE :: piped.test"] + ".4242").write_text(ASAN_LOG, encoding="utf-8")
+    # A log no test in the report wrote, as the runtime names it.
+    (logs / "0123456789abcdef.777").write_text(UBSAN_OUT, encoding="utf-8")
+    out = tmp_path / "asan.json"
+    argv = ["--source-root", SRC, "sanitizer", "--name", "asan-ubsan"]
+    assert ch.main([*argv, "--logs", str(logs), "--out", str(out), str(report)]) == 0
+    piece = json.loads(out.read_text(encoding="utf-8"))
+    assert piece["finding_count"] == 2
+    asan, ubsan = piece["findings"]
+    assert asan["sanitizer"] == "asan" and asan["test_count"] == 2
+    assert sorted(asan["tests"]) == ["AIE :: piped.test", "AIE :: seen.test"]
+    assert ubsan["sanitizer"] == "ubsan"
+    assert (ubsan["test_count"], ubsan["tests"]) == (0, [])
 
 
 def test_sanitizer_uses_available_reports(tmp_path):

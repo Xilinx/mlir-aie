@@ -3380,6 +3380,22 @@ assert.equal(renderHealth(loaded, NIGHT + 3600000)[1].children[2].text,
 """)
 
 
+def test_a_finding_only_a_log_holds_names_no_test(page):
+    page(HEALTH + """
+const st = healthy();
+st['asan-ubsan'].findings = [{ sanitizer: 'ubsan', kind: 'shift exponent N is too large', message: 'shift exponent 32 is too large', key: 'u', new: false, since: '2026-10-12',
+  where: { file: 'lib/Dialect/AIEX/Transforms/AIEDmaToNpu.cpp', line: 233, function: 'xilinx::AIEX::appendWriteBd(int)' }, tests: [], test_count: 0, excerpt: '' }];
+st['asan-ubsan'].finding_count = 1;
+const loaded = { status: st, points, unread: null, newer: false };
+location.hash = '#view=health';
+renderHealth(loaded, NIGHT + 3600000);
+const [card] = $('health-findings').children.filter(c => c.className && c.className.startsWith('finding'));
+assert.ok(card.text.includes('no test named'));
+assert.ok(card.text.includes('Found in a sanitizer log that no test in the lit report wrote.'));
+assert.ok(!card.text.includes('Reproduce'));
+""")
+
+
 def test_code_scanning_counts_are_of_every_alert_not_the_display(page):
     page(HEALTH + """
 const st = healthy();

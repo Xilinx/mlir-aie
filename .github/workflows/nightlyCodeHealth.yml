@@ -155,10 +155,13 @@ jobs:
       # A test that fails here and passes in the plain build is what this job
       # is for; the summary sorts the sanitizers' reports from the rest, so
       # the step itself never fails the job.
+      # Each test's sanitizer reports go to files of its own (test/lit.cfg.py),
+      # so a report a test pipes into FileCheck is still read.
       - name: Test
         run: |
-          mkdir -p "$RUNNER_TEMP/lit"
+          mkdir -p "$RUNNER_TEMP/lit" "$RUNNER_TEMP/sanitizer-logs"
           export ${{ matrix.options }}
+          export AIE_SANITIZER_LOG_DIR="$RUNNER_TEMP/sanitizer-logs"
           lit -sv --timeout 1800 --filter-out '${{ matrix.filter-out }}' \
             -o "$RUNNER_TEMP/lit/tests.json" build/test \
             || echo "some tests failed"
@@ -167,8 +170,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           python3 utils/kernel_checks/code_health.py sanitizer --name ${{ matrix.name }} \
-            --source-root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/${{ matrix.name }}.json" \
-            "$RUNNER_TEMP"/lit/*.json
+            --source-root "$GITHUB_WORKSPACE" --logs "$RUNNER_TEMP/sanitizer-logs" \
+            --out "$RUNNER_TEMP/${{ matrix.name }}.json" "$RUNNER_TEMP"/lit/*.json
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: ${{ !cancelled() }}
