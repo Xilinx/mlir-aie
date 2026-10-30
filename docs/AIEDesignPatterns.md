@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 ﻿
 # AIE Basic Design Patterns
 
-This document is an introduction to using the AIE dialect in practice and provides basic patterns that one would use in order to generate low level configurations for the AI engine. 
+This document is an introduction to using the AIE dialect in practice and provides basic patterns that one would use in order to generate low level configurations for the AI engine.
 
 ## Using AIE Cores
 
@@ -110,7 +110,7 @@ Set up switchboxes to connect the stream to DMA
 Define the locks and buffers
 ```
 %lock71 = AIE.lock(%t71, 0)  // Tile, Lock Number (0-15)
-%lock72 = AIE.lock(%t72, 0) 
+%lock72 = AIE.lock(%t72, 0)
 
 %buf71 = AIE.buffer(%t71) { sym_name = "a71" } : memref<512xi32>
 %buf72 = AIE.buffer(%t72) { sym_name = "a72" } : memref<512xi32>
@@ -124,7 +124,7 @@ Start the Memory Map to Stream DMA from the source:
 		AIE.use_lock(%lock71, "Acquire", 0) // Acquire in State 0
 		AIE.dma_bd(%buf71 : memref<512xi32> offset = 0 len = 512)
 		AIE.use_lock(%lock71, "Release", 1) // Release in State 1
-		br ^end 
+		br ^end
 	^end:
 	AIE.end
 }
@@ -138,7 +138,7 @@ Start the Stream to Memory Map DMA from the destination:
 		AIE.use_lock(%lock72, "Acquire", 0)
 		AIE.dma_bd(%buf72 : memref<512xi32> offset = 0 len = 512)
 		AIE.use_lock(%lock72, "Release", 1)
-		br ^end 
+		br ^end
 	^end:
 	AIE.end
 }
@@ -152,7 +152,7 @@ We can also perform some operations in the AIE core using the same locks. When t
 	%val1 = constant 7 : i32
 	%idx1 = constant 3 : index
 	%2 = addi %val1, %val1 : i32
-	
+
 	AIE.use_lock(%lock72, "Acquire", 1) // acquire for consume in the core
 	memref.store %2, %buf72[%idx1] : memref<512xi32> //Store operation
 	AIE.use_lock(%lock72, "Release", 0) // release back to the memory
@@ -166,8 +166,8 @@ At the end, we release the lock back in state 0. This allows for the memory to r
 
 This example uses the same setup as the previous. For Tile (7,2) we can define an additional lock and buffer and change the buffers to be half the size:
 ```
-%lock72_0 = AIE.lock(%t72, 0) 
-%lock72_1 = AIE.lock(%t72, 1) 
+%lock72_0 = AIE.lock(%t72, 0)
+%lock72_1 = AIE.lock(%t72, 1)
 
 %buf72_0 = AIE.buffer(%t72) { sym_name = "a72" } : memref<256xi32>
 %buf72_1 = AIE.buffer(%t72) { sym_name = "b72" } : memref<256xi32>
@@ -201,11 +201,11 @@ We can use the core in a similar fashion, using the two locks to perform operati
 	%idx2 = constant 10 : index
 
 	%2 = addi %val1, %val1 : i32
-	
+
 	AIE.use_lock(%lock72_0, "Acquire", 1) // acquire for consume in the core
 	memref.store %2, %buf72[%idx1] : memref<512xi32> // store operation
 	AIE.use_lock(%lock72_0, "Release", 0) // release back to the memory
-	
+
 	AIE.use_lock(%lock72_1, "Acquire", 1) // acquire for consume in the core
 	memref.store %2, %buf72[%idx2] : memref<512xi32> // store operation
 	AIE.use_lock(%lock72_1, "Release", 0) // release back to the memory
@@ -223,7 +223,7 @@ We use a similar example to the single buffered communication:
 
 ```
 %lock71 = AIE.lock(%t71, 0)  // Tile, Lock Number (0-15)
-%lock72 = AIE.lock(%t72, 0) 
+%lock72 = AIE.lock(%t72, 0)
 
 %buf71 = AIE.buffer(%t71) { sym_name = "a71" } : memref<512xi32>
 %buf72 = AIE.buffer(%t72) { sym_name = "a72" } : memref<512xi32>
@@ -237,7 +237,7 @@ Start the Memory Map to Stream DMA from the source:
 		AIE.use_lock(%lock71, "Acquire", 1) // Acquire in State 0
 		AIE.dma_bd(%buf71 : memref<512xi32> offset = 0 len = 512)
 		AIE.use_lock(%lock71, "Release", 1) // Release in State 1
-		br ^end 
+		br ^end
 	^end:
 	AIE.end
 }
@@ -251,7 +251,7 @@ Start the Stream to Memory Map DMA from the destination:
 		AIE.use_lock(%lock72, "Acquire", 0)
 		AIE.dma_bd(%buf72 : memref<512xi32> offset = 0 len = 512)
 		AIE.use_lock(%lock72, "Release", 1)
-		br ^end 
+		br ^end
 	^end:
 	AIE.end
 }
@@ -294,7 +294,7 @@ We can then use the shim_dma to read/write from that location:
 		AIE.use_lock(%lock70 , "Acquire", 0)
 		AIE.dma_bd(%ext_buffer : memref<512xi32> offset = 0 len = 512)
 		AIE.use_lock(%lock70, "Release", 1)
-		br ^end 
+		br ^end
 	^end:
 	AIE.end
 }
@@ -407,7 +407,7 @@ XAieTile_LockRelease(&(TileInst[7][2]), 1, 0x1, 0);
 [ObjectFIFO Example](https://github.com/Xilinx/mlir-aie/tree/main/test/objectFifo-stateful-transform/base/non_adjacency_test_1.mlir)
 
 An objectFIFO can be established between two or more tiles. Broadcast is possible from one producer tile to multiple consumer tiles.
-Unlike a typical FIFO, elements are not pushed to nor popped from the objectFIFO. Instead, a pool of memory elements is allocated to the objectFIFO by the objectFIFO lowering pass, i.e., AIEObjectFifoStatefulTransform.mlir. 
+Unlike a typical FIFO, elements are not pushed to nor popped from the objectFIFO. Instead, a pool of memory elements is allocated to the objectFIFO by the objectFIFO lowering pass, i.e., AIEObjectFifoStatefulTransform.mlir.
 
 Processes can then write to and read from these memory elements after acquiring them.
 
@@ -420,7 +420,7 @@ AIE.objectfifo @of0 (%tile12, {tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32
 After subsequent conversion passes, each of the objectFifo elements is instantiated as an AIE.buffer with an AIE.lock.
 
 objectFIFO operations have a 'port' attribute which indicates whether a tile is a 'producer' or a 'consumer' of that objectFIFO.
-Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO, which returns one memref per element, then released: 
+Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO, which returns one memref per element, then released:
 ```
 %core12 = AIE.core(%tile12) {
 	%c0 = arith.constant 0 : index
@@ -432,7 +432,7 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Produce, 1)
 	}
-	
+
 	AIE.end
 }
 
@@ -441,12 +441,12 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 	%c1 = arith.constant 1 : index
 	%height = arith.constant 12 : index
 
-	scf.for %indexInHeight = %c0 to %height step %c1 { 
+	scf.for %indexInHeight = %c0 to %height step %c1 {
 		%elem0 = AIE.objectfifo.acquire @of0 (Consume, 1) : memref<16xi32>
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Consume, 1)
 	}
-	
+
 	AIE.end
 }
 ```
@@ -469,15 +469,15 @@ In the default lowering, loops that contain objectFIFO operations are unrolled b
 		call @some_work(%elem10) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Produce, 1)
 	}
-	
+
 	AIE.end
 }
 ```
 
 Another lowering technique keeps the loops rolled and tracks the acquire / release patterns at runtime. Each core keeps the objects of the objectFIFO in rotation order in a few small slots: an acquire reads the object at the front, and a release rotates the released objects to the back. The previous code in core12 becomes:
 ```
-%of0__buf0 = aie.buffer(%tile_0_2) {sym_name = "of0__buf0"} : memref<16xi32> 
-%of0__buf1 = aie.buffer(%tile_0_2) {sym_name = "of0__buf1"} : memref<16xi32> 
+%of0__buf0 = aie.buffer(%tile_0_2) {sym_name = "of0__buf0"} : memref<16xi32>
+%of0__buf1 = aie.buffer(%tile_0_2) {sym_name = "of0__buf1"} : memref<16xi32>
 %of0__prodlock0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of0__prodlock0"}
 %of0__conslock0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of0__conslock0"}
 %core_0_2 = aie.core(%tile_0_2) {
@@ -519,7 +519,7 @@ module @objectFIFO  {
 }
 ```
 
-It is possible to copy data from one objectFifo to another. This copy can be done explicitly within the AIE cores, or implicitly using the tile DMAs. The latter case is not as much a copy as it is re-using the same memory buffers when receiving data on an input channel and sending the data out on an output channel. At the objectFIFO abstraction, this is called 'linking' two objectFIFOs. It is most commonly done inside of Mem tiles which have more memory than AIE tiles. 
+It is possible to copy data from one objectFifo to another. This copy can be done explicitly within the AIE cores, or implicitly using the tile DMAs. The latter case is not as much a copy as it is re-using the same memory buffers when receiving data on an input channel and sending the data out on an output channel. At the objectFIFO abstraction, this is called 'linking' two objectFIFOs. It is most commonly done inside of Mem tiles which have more memory than AIE tiles.
 ```
 module @objectFIFO  {
     %tile20 = AIE.tile(2, 0)
@@ -539,10 +539,10 @@ module @objectFIFO  {
 
 The broadcast_packet operation is a logical connection that combines broadcast and packet-switch data transferring mechanism.
 
-In this operation, the data streams with different packet-IDs will time-multiplexed use the single source port to broadcast 
+In this operation, the data streams with different packet-IDs will time-multiplexed use the single source port to broadcast
 data to multiple destinations.
 
-The following example shows that two streams of data with different packet-ID (0x0 and 0x1) will time-multiplexed share the same 
+The following example shows that two streams of data with different packet-ID (0x0 and 0x1) will time-multiplexed share the same
 source port (%t72, "DMA" : 0) to broadcast data to %t73, %t63(ID: 0x0) and %t74, %t64(ID: 0x1).
 
 Define tiles
@@ -555,7 +555,7 @@ Define tiles
 
 ```
 
-broadcast_packet 
+broadcast_packet
 ```
 AIE.broadcast_packet(%t72, "DMA" : 0){
   AIE.bp_id(0x0){
