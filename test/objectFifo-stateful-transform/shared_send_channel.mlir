@@ -32,8 +32,8 @@ module @shared_send {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_4 = aie.tile(0, 4)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @a(%tile_0_2, {%tile_0_4}, 2 : i32) {packet, packet_id = 3 : i8, prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, packet_id = 4 : i8, prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%tile_0_2, {%tile_0_4}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%tile_0_2, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
       %c4 = arith.constant 4 : index

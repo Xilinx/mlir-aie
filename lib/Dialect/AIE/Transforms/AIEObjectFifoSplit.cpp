@@ -447,7 +447,9 @@ struct AIEObjectFifoSplitPass
     DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
         onChannel;
     for (ObjectFifoCreateOp fifo : fifos) {
-      std::optional<int32_t> channel = fifo.getProdDmaChannel();
+      ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
+      std::optional<int> channel =
+          port && !port.isCore() ? port.channelIndex() : std::nullopt;
       auto tile = fifo.getProducerTile().getDefiningOp<TileOp>();
       if (!channel || !tile)
         continue;

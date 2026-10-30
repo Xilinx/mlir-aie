@@ -13,7 +13,17 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import (
+    In,
+    ObjectFifo,
+    Out,
+    Packet,
+    Port,
+    Program,
+    Runtime,
+    Transport,
+    Worker,
+)
 from aie.helpers.dialects.scf import _for as range_
 
 LINE_LEN = 8
@@ -63,14 +73,22 @@ def shared_send_channel(in_tensor: In, even_tensor: Out, odd_tensor: Out):
     of_in = ObjectFifo(LINE_TY, depth=2, name="in")
     # Both leave the splitter over channel 0, which selects push_queue: the
     # core pushes the descriptor of each buffer it releases.
-    of_even = ObjectFifo(LINE_TY, depth=2, name="even", packet=True, via_DMA=True)
-    of_odd = ObjectFifo(LINE_TY, depth=2, name="odd", packet=True, via_DMA=True)
+    of_even = ObjectFifo(
+        LINE_TY, depth=2, name="even", transport=Transport.dma(packet=Packet())
+    )
+    of_odd = ObjectFifo(
+        LINE_TY, depth=2, name="odd", transport=Transport.dma(packet=Packet())
+    )
     of_even_out = ObjectFifo(LINE_TY, depth=2, name="even_out")
     of_odd_out = ObjectFifo(LINE_TY, depth=2, name="odd_out")
 
     splitter = Worker(
         split_lines,
-        fn_args=[of_in.cons(), of_even.prod(channel=0), of_odd.prod(channel=0)],
+        fn_args=[
+            of_in.cons(),
+            of_even.prod(port=Port.dma(0)),
+            of_odd.prod(port=Port.dma(0)),
+        ],
     )
     even_worker = Worker(add(1), fn_args=[of_even.cons(), of_even_out.prod()])
     odd_worker = Worker(add(2), fn_args=[of_odd.cons(), of_odd_out.prod()])

@@ -20,8 +20,8 @@ module @shared_send_channel {
     %tile32 = aie.tile(3, 2)
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @of1 (%tile12, {%tile32}, 2 : i32) {prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of2 (%tile12, {%tile33}, 2 : i32) {prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of1 (%tile12, {%tile32}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of2 (%tile12, {%tile33}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
   }
 }
 
@@ -35,6 +35,6 @@ module @out_of_range {
     %tile12 = aie.tile(1, 2)
     %tile32 = aie.tile(3, 2)
 
-    aie.objectfifo @of1 (%tile12, {%tile32}, 2 : i32) {prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of1 (%tile12, {%tile32}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
   }
 }

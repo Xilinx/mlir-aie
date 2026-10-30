@@ -163,7 +163,7 @@ module @assume_space {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, out_of_order} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, out_of_order} : !aie.objectfifo<memref<16xi32>>
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
       %c4 = arith.constant 4 : index

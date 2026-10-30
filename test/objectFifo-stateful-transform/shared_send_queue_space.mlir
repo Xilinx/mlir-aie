@@ -12,8 +12,8 @@ module @shared_exceeds {
     %src = aie.tile(0, 2)
     %dst_a = aie.tile(0, 4)
     %dst_b = aie.tile(1, 4)
-    aie.objectfifo @a(%src, {%dst_a}, [3, 2]) {packet, packet_id = 3 : i8, prod_dma_channel = 0 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%src, {%dst_b}, [2, 2]) {packet, packet_id = 4 : i8, prod_dma_channel = 0 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%src, {%dst_a}, [3, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%src, {%dst_b}, [2, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
     %core0 = aie.core(%src) {
       // CHECK: aie.dma_poll_for_queue_space(MM2S : 0)
       // CHECK-NEXT: aie.dma_push_queue(MM2S : 0) bd_id 0
@@ -67,8 +67,8 @@ module @shared_fits {
     %src = aie.tile(0, 2)
     %dst_a = aie.tile(0, 4)
     %dst_b = aie.tile(1, 4)
-    aie.objectfifo @a(%src, {%dst_a}, [2, 2]) {packet, packet_id = 3 : i8, prod_dma_channel = 0 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%src, {%dst_b}, [2, 2]) {packet, packet_id = 4 : i8, prod_dma_channel = 0 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%src, {%dst_a}, [2, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%src, {%dst_b}, [2, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
     %core0 = aie.core(%src) {
       %c0 = arith.constant 0 : index
       %c6 = arith.constant 6 : index
@@ -117,8 +117,8 @@ module @separate_channels {
     %src = aie.tile(0, 2)
     %dst_a = aie.tile(0, 4)
     %dst_b = aie.tile(1, 4)
-    aie.objectfifo @a(%src, {%dst_a}, [3, 2]) {packet, packet_id = 3 : i8, prod_dma_channel = 0 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%src, {%dst_b}, [3, 2]) {packet, packet_id = 4 : i8, prod_dma_channel = 1 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%src, {%dst_a}, [3, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%src, {%dst_b}, [3, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 1>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
     %core0 = aie.core(%src) {
       %c0 = arith.constant 0 : index
       %c6 = arith.constant 6 : index
@@ -170,8 +170,8 @@ module @separate_tiles {
     %other = aie.tile(1, 2)
     %dst_a = aie.tile(0, 4)
     %dst_b = aie.tile(1, 4)
-    aie.objectfifo @a(%src, {%dst_a}, [3, 2]) {packet, packet_id = 3 : i8, prod_dma_channel = 0 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%other, {%dst_b}, [3, 2]) {packet, packet_id = 4 : i8, prod_dma_channel = 0 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%src, {%dst_a}, [3, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%other, {%dst_b}, [3, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
     %core0 = aie.core(%src) {
       %c0 = arith.constant 0 : index
       %c6 = arith.constant 6 : index
@@ -240,8 +240,8 @@ module @assume_space {
     %src = aie.tile(0, 2)
     %dst_a = aie.tile(0, 4)
     %dst_b = aie.tile(1, 4)
-    aie.objectfifo @a(%src, {%dst_a}, [3, 2]) {packet, packet_id = 3 : i8, prod_dma_channel = 0 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%src, {%dst_b}, [2, 2]) {packet, packet_id = 4 : i8, prod_dma_channel = 0 : i32, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%src, {%dst_a}, [3, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%src, {%dst_b}, [2, 2]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>, release_strategy = #aie.release_strategy<push_queue>} : !aie.objectfifo<memref<16xi32>>
     %core0 = aie.core(%src) {
       %c0 = arith.constant 0 : index
       %c6 = arith.constant 6 : index
@@ -278,4 +278,3 @@ module @assume_space {
     }
   }
 }
-
