@@ -83,8 +83,9 @@ def yolo26n(
     """The network's workers, and one entry `b<B>` for each batch `B` in `batches`.
 
     Entry `b<B>` runs the first `B` images in turn, `ahead` images' fills
-    ahead. Every entry takes host buffers for `max(batches)` images, so one
-    build serves them all; a call picks one with `entry=f"b{B}"`.
+    ahead. Every entry declares host buffers for `max(batches)` images, so one
+    build serves them all, and touches only its first `B` images' regions of
+    them; a call picks one with `entry=f"b{B}"`.
     """
     del params_digest  # keys the compile cache on the parameter file's contents
     network = Network.yolo26n()
@@ -260,9 +261,15 @@ def main() -> None:
             )
             images.append((path.name, image, truth))
     oracle = Oracle(params, network)
-    scratch = iron.zeros(capacity * plan.words, dtype=np.int32)
-    detections = iron.zeros(capacity * DETECTION_WORDS, dtype=np.int32)
-    pixels = np.zeros(capacity * IMAGE_WORDS * 4, np.uint8)
+    # Allocated for the largest batch and never filled whole: a call moves
+    # only its own batch's images, scratch and detections.
+    image_tensor = iron.tensor((capacity * IMAGE_WORDS,), dtype=np.int32)
+    scratch = iron.tensor((capacity * plan.words,), dtype=np.int32)
+    detections = iron.tensor((capacity * DETECTION_WORDS,), dtype=np.int32)
+    batch_image = image_tensor.subview(0, (args.batch * IMAGE_WORDS,))
+    scratch.subview(0, (args.batch * plan.words,)).fill_(0)
+    batch_detections = detections.subview(0, (args.batch * DETECTION_WORDS,))
+    batch_detections.fill_(0)
     weights = iron.tensor(plan.weights.view(np.int32))
     session = None
     if args.synthetic is None and args.onnx.exists():
@@ -276,20 +283,19 @@ def main() -> None:
     scored = MeanAP50()
     for start in range(0, len(images), args.batch):
         group = images[start : start + args.batch]
-        pixels[: args.batch * IMAGE_WORDS * 4] = np.concatenate(
-            [image.reshape(-1) for _, image, _ in group]
-        )
+        with batch_image.overwrite() as words:
+            words[:] = np.concatenate(
+                [image.reshape(-1) for _, image, _ in group]
+            ).view(np.int32)
         yolo26n(
-            iron.tensor(pixels.view(np.int32)),
+            image_tensor,
             scratch,
             detections,
             weights,
             entry=f"b{args.batch}",
             **kwargs,
         )
-        found = detections.numpy()[: args.batch * DETECTION_WORDS].reshape(
-            args.batch, MAX_DETECTIONS, 6
-        )
+        found = batch_detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
         for (name, image, truth), mine in zip(group, found):
             want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
             if start == 0:
@@ -316,13 +322,13 @@ def main() -> None:
     failed = passed != len(images)
 
     if args.time:
-        pixels[: args.batch * IMAGE_WORDS * 4] = np.concatenate(
-            [image.reshape(-1) for _, image, _ in images[: args.batch]]
-        )
-        tensor = iron.tensor(pixels.view(np.int32))
+        with batch_image.overwrite() as words:
+            words[:] = np.concatenate(
+                [image.reshape(-1) for _, image, _ in images[: args.batch]]
+            ).view(np.int32)
         bench = run_iters(
             yolo26n,
-            tensor,
+            image_tensor,
             scratch,
             detections,
             weights,
@@ -340,9 +346,7 @@ def main() -> None:
             f"median {e2e.median_us / args.batch:.1f} us, "
             f"MAD {e2e.mad_us / args.batch:.1f} us"
         )
-        timed = detections.numpy()[: args.batch * DETECTION_WORDS].reshape(
-            args.batch, MAX_DETECTIONS, 6
-        )
+        timed = batch_detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
         same = all(np.array_equal(t, w) for t, w in zip(timed, first))
         print(f"timed dispatch: {'PASS' if same else 'FAIL'}")
         failed |= not same

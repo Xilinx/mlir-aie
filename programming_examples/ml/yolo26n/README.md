@@ -78,7 +78,9 @@ first and last ops instead, and `--batch N` pipelines N images through it.
   reading the Detect outputs back from a DDR scratch buffer.
 - `yolo26n.py` runs the network in one dispatch. One build serves every
   batch of 1 to 64 images: each batch is an entry of the design, its own
-  instruction stream beside the one xclbin, and `--batch` picks it.
+  instruction stream beside the one xclbin, and `--batch` picks it. The
+  host buffers are declared for 64 images, but a batch of B writes, moves
+  and reads back only its own B images.
 
 ## Accuracy
 
