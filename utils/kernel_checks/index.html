@@ -1236,6 +1236,8 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         about: 'MobileNet as it ships (seed 3 at the design\'s default effort), run and verified on an npu2 at 1 to 64 images per launch, every image checked. '
           + 'The same nightly also places and runs seeds 2 and 7 and full effort; how those compare is under Compiler checks.',
         metrics: ['npu_us_per_image', 'us_per_image', 'e2e_us_per_image', 'host_overhead_us_per_image'],
+        // Its per-image and per-launch times are µs in the published data and history; shown as ms, which reads better at these magnitudes.
+        displayUnit: 'ms',
         table: mobilenetTable, charts: batchCharts, summary: hardwareSummary, cases: isDesignCase,
         trend: [{ id: 'npu_us_per_image', name: 'NPU time', per: 'batch', design: true, axis: 'NPU time per image (µs, fastest of 20 launches)',
                   about: 'the NPU\'s own time per image at each batch, the fastest dispatch less an empty one, for the design\'s own placement (seed 3, default effort)' },
@@ -1288,6 +1290,8 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         say: () => 'the 640×640 detector',
         metrics: [...YOLO_BATCHES.flatMap(b => [`npu_us_per_image_b${b}`, `dispatch_us_per_image_b${b}`, `us_per_image_b${b}`]),
                   'images_passed', 'map50_coco128', 'compile_s', 'compile_s_warm', 'elf_bytes'],
+        // Its per-image and per-launch times are µs in the published data and history; shown as ms, which reads better at these magnitudes.
+        displayUnit: 'ms',
         table: yoloTable, charts: () => [], summary: yoloSummary,
         trend: [{ id: 'npu_us_per_image_b1', name: 'NPU time', axis: 'NPU time per image (µs, fastest call)',
                   log: true, lines: YOLO_BATCHES.map((b, i) => [`batch ${b}`, [`npu_us_per_image_b${b}`], false, i]),
@@ -1385,11 +1389,13 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
     // A vertical axis has room for a name and a unit: "NPU time per image
     // (µs)", the rest of a tab's axis text being its caption's.
     const AXIS_UNIT = /^(µs|ms|s|MiB|MB|KiB|GiB|bytes|tok\/s|fps|%|cost|ULP)$/;
-    const shortAxis = text => text.replace(/\s*\(([^()]*)\)\s*$/, (_m, inner) => {
+    const shortAxis = (text, displayUnit) => text.replace(/\s*\(([^()]*)\)\s*$/, (_m, inner) => {
       const unit = inner.split(/,\s*/)[0];
+      // A check's own display unit overrides µs at the axis, the data itself staying µs.
+      if (displayUnit === 'ms' && unit === 'µs') return ` (${displayUnit})`;
       return AXIS_UNIT.test(unit) ? ` (${unit})` : '';
     });
-    const axisTitle = (text, metric) => `${shortAxis(text)} · ${higherIsBetter(metric) ? '↑' : '↓'} better`;
+    const axisTitle = (text, metric, displayUnit) => `${shortAxis(text, displayUnit)} · ${higherIsBetter(metric) ? '↑' : '↓'} better`;
     const GATED = Object.keys(THRESHOLDS).filter(m => THRESHOLDS[m].gated);
     // Provenance fields whose change between runs is marked on the charts:
     // the toolchain, the machine and its part, how cycles are taken
@@ -1744,10 +1750,12 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
     // symbol (µs, ms, s, KiB, MiB), a ratio with ×, a count, cost or
     // fraction bare, since its label names it. The checks' "MB" is
     // ru_maxrss / 1024, so MiB.
-    function formatNumber(value, unit) {
+    function formatNumber(value, unit, displayUnit) {
       if (unit === 'bytes') return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MiB` : `${(value / 1024).toFixed(1)} KiB`;
       if (['tok/s', 'fps'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unit}`;
       if (['x', '×'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 3 })}×`;
+      // A check's own display unit (MobileNet and YOLO26n, ms): µs in thousands reads worse than ms with 2 decimals.
+      if (unit === 'us' && displayUnit === 'ms') return `${(value / 1000).toLocaleString('en-US', { maximumFractionDigits: 2 })} ms`;
       if (unit === 'us') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} µs`;
       if (['MB', 'MiB'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} MiB`;
       if (['s', 'ms'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`;
@@ -1763,8 +1771,8 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
 
     // A change as a percentage; from a zero baseline, as the signed
     // difference in the metric's unit ("+2").
-    function formatChange(d, delta, unit) {
-      const text = Number.isFinite(d) ? `${Math.abs(100 * d).toFixed(1)}%` : formatNumber(Math.abs(delta), unit);
+    function formatChange(d, delta, unit, displayUnit) {
+      const text = Number.isFinite(d) ? `${Math.abs(100 * d).toFixed(1)}%` : formatNumber(Math.abs(delta), unit, displayUnit);
       return d > 0 ? `+${text}` : d < 0 ? `−${text}` : text;
     }
 
@@ -1840,8 +1848,8 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
 
     // A change beside a value: colored only past the metric's threshold,
     // gray when the value is from an earlier night than the latest.
-    function changeSpan(d, cls, current, metric, delta, unit) {
-      return el('span', { className: `chg ${toneOf(d, cls, current, metric)}`, textContent: formatChange(d, delta, unit) });
+    function changeSpan(d, cls, current, metric, delta, unit, displayUnit) {
+      return el('span', { className: `chg ${toneOf(d, cls, current, metric)}`, textContent: formatChange(d, delta, unit, displayUnit) });
     }
 
     // A change's classes: 'flat' within the threshold, 'worse' or 'better'
@@ -2392,22 +2400,22 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
 
     // "value change", or the value alone with nothing to compare. The value
     // before is in the tooltip: the change is what reads.
-    function glanceValues(m, metric, current) {
+    function glanceValues(m, metric, current, displayUnit) {
       const after = el('span', { className: `after${metric === 'cycles' ? ' cyc' : ''}${current === false ? ' stale' : ''}`,
-                                 textContent: formatNumber(m.value, m.unit) });
+                                 textContent: formatNumber(m.value, m.unit, displayUnit) });
       if (current === false) after.title = 'not measured in the latest nightly; this is from an earlier one';
       if (m.change === null || m.change === undefined) return el('span', { className: 'vals' }, after);
       const tone = toneOf(m.change, m.cls, current, metric);
-      const was = `was ${formatNumber(m.value - m.delta, m.unit)} ${Number.isFinite(m.since) ? `on ${shortDate(m.since)}` : 'the nightly before'}`;
+      const was = `was ${formatNumber(m.value - m.delta, m.unit, displayUnit)} ${Number.isFinite(m.since) ? `on ${shortDate(m.since)}` : 'the nightly before'}`;
       // No news is good news: a change within the measure's threshold is
       // noise, not shown; hovering the value still gives it.
       if (tone === 'flat') {
-        after.title = [after.title, `${formatChange(m.change, m.delta, m.unit)}, within noise; ${was}`].filter(Boolean).join('\n');
+        after.title = [after.title, `${formatChange(m.change, m.delta, m.unit, displayUnit)}, within noise; ${was}`].filter(Boolean).join('\n');
         return el('span', { className: 'vals', title: after.title }, after);
       }
       const change = m.unit === 'bytes'
-        ? el('span', { className: `chg ${tone}`, title: `${formatChange(m.change, m.delta, m.unit)}; ${was}` }, formatBytesDelta(m.delta))
-        : el('span', { className: `chg ${tone}`, title: was }, formatChange(m.change, m.delta, m.unit));
+        ? el('span', { className: `chg ${tone}`, title: `${formatChange(m.change, m.delta, m.unit, displayUnit)}; ${was}` }, formatBytesDelta(m.delta))
+        : el('span', { className: `chg ${tone}`, title: was }, formatChange(m.change, m.delta, m.unit, displayUnit));
       return el('span', { className: 'vals', title: [after.title, was].filter(Boolean).join('\n') }, after, ' ', change);
     }
 
@@ -3211,7 +3219,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
                         borderColor: fg, backgroundColor: fg, borderWidth: 1.5, borderDash: [6, 4],
                         pointRadius: 0, pointHoverRadius: 0, tension: 0, spanGaps: true });
       }
-      const tick = v => formatNumber(v, unit);
+      const tick = v => formatNumber(v, unit, tab.displayUnit);
       // A tab's `beside` metric, of the same case and run, for the tooltip.
       const beside = new Map(tab.beside ? seedMeans(data).series.filter(s => s.metric === tab.beside)
         .map(s => [s.kase, new Map((s.byMode.get(mode) || []).map(p => [p.id, p.row]))]) : []);
@@ -3226,7 +3234,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         },
         scales: {
           x: { title: title(`Nightly run (weekly past 90 days)${machine ? `, on ${partName(machine)}` : ''}`), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
-          y: { type: log ? 'logarithmic' : 'linear', grid: { color: grid }, title: title(axisTitle(tab.axis, metrics[0])),
+          y: { type: log ? 'logarithmic' : 'linear', grid: { color: grid }, title: title(axisTitle(tab.axis, metrics[0], tab.displayUnit)),
                ...(tab.zero && !log ? { beginAtZero: true } : {}), ...(tab.max !== undefined ? { suggestedMax: tab.max } : {}),
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
         },
@@ -3318,7 +3326,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
           stack: `line ${name}`, fill: false, borderColor: ink, backgroundColor: ink, borderWidth: 2, borderDash: dashed ? [5, 4] : [],
           tension: 0, spanGaps: true, pointRadius: 2.5 })).filter(d => d.data.some(v => v !== null)),
       ];
-      const tick = v => formatNumber(v, unit);
+      const tick = v => formatNumber(v, unit, tab.displayUnit);
       const markers = markersFor(runs.map(p => observed.get(p.id) || {}));
       const years = spansYears(runs.map(p => p.date));
       const title = text => ({ display: true, text, color: fg, font: { size: 12, weight: '600' } });
@@ -3330,7 +3338,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         },
         scales: {
           x: { title: title(`Nightly run${part ? `, on ${partName(part)}` : ''}`), ticks: { color: fg, font: { size: 11 }, maxTicksLimit: 10 }, grid: { display: false } },
-          y: { type: 'linear', stacked: true, beginAtZero: true, grid: { color: grid }, title: title(axisTitle(tab.axis, metrics[0])),
+          y: { type: 'linear', stacked: true, beginAtZero: true, grid: { color: grid }, title: title(axisTitle(tab.axis, metrics[0], tab.displayUnit)),
                ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: tick } },
         },
         plugins: {
@@ -3505,11 +3513,11 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         const last = [...d.data].reverse().find(v => v !== null && v !== undefined);
         const swatch = el('span', { className: `swatch${d.part ? '' : ' line'}${d.borderDash && d.borderDash.length ? ' dashed' : ''}`,
                                     style: `--c:${d.part ? d.backgroundColor : d.borderColor}` });
-        return [el('dt', {}, swatch, d.label, last !== undefined ? el('span', { className: 'dim' }, ` ${formatNumber(last, unit)}`) : ''), el('dd', {}, tab.key[d.label])];
+        return [el('dt', {}, swatch, d.label, last !== undefined ? el('span', { className: 'dim' }, ` ${formatNumber(last, unit, tab.displayUnit)}`) : ''), el('dd', {}, tab.key[d.label])];
       });
     }
 
-    function trendBox(data, tabs, want) {
+    function trendBox(data, tabs, want, displayUnit) {
       const shown = tabs.filter(t => tabShown(data, t));
       if (!shown.length) return el('p', { className: 'dim' }, 'No history published yet.');
       const named = id => shown.find(t => t.id === id);
@@ -3543,7 +3551,8 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         segment(seg, shown.map(t => t.id), id, draw, v => named(v).name || label(v));
         const usable = (tab.variants || []).filter(([, v]) => tabShown(data, { ...tab, ...v, variants: null, hideIfZero: false }));
         const variant = usable.find(([name]) => name === choice.variant) || usable[0];
-        const eff = variant ? { ...tab, ...variant[1], variants: null } : tab;
+        // A check's own display unit (set on its tab configs above) travels with each tab and its variants.
+        const eff = variant ? { displayUnit, ...tab, ...variant[1], variants: null } : { displayUnit, ...tab };
         // A `design` tab charts the design as it ships: its own seed and effort, not the mean over seeds.
         const src = eff.design ? designOnly(data) : data;
         const config = eff.stack ? stackConfig(src, eff, choice) : trendConfig(src, eff, choice);
@@ -3586,7 +3595,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
     function figureTable(heads, rows, note = '') {
       const value = c => {
         if (!c) return el('span', { className: 'faint' }, '—');
-        const v = c.m ? glanceValues(c.m, c.metric, c.current) : el('span', { className: 'vals' }, c.text);
+        const v = c.m ? glanceValues(c.m, c.metric, c.current, c.displayUnit) : el('span', { className: 'vals' }, c.text);
         if (c.bad) v.className += ' worse';
         if (c.title) v.title = c.title;
         return v;
@@ -3632,7 +3641,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
     // end-to-end time per image, the rate, and whether it verified. Its
     // seed is the design's (3) at the default effort; the other seeds are
     // the placer's question, under Compiler checks.
-    function mobilenetTable(record, cases) {
+    function mobilenetTable(record, cases, _siblings, displayUnit) {
       const { seeds, failed } = hardwareRuns(record);
       const effort = 'default';
       const seed = seeds.has(DESIGN_SEED) ? DESIGN_SEED : [...seeds.keys()][0];
@@ -3640,7 +3649,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       const heads = [columnHead('NPU / image', 'npu_us_per_image'), columnHead('End to end / image', 'e2e_us_per_image'), columnHead('Images / s', 'fps')];
       const rows = batches.map(b => {
         const kase = `mobilenet/seed=${seed}/batch=${b}/effort=${effort}`;
-        const at = metric => failed.has(kase) ? { text: 'failed', bad: true } : figure(cases, kase, metric);
+        const at = metric => failed.has(kase) ? { text: 'failed', bad: true } : figure(cases, kase, metric, { displayUnit });
         return { name: `batch ${b}`, cells: [at('npu_us_per_image'), at('e2e_us_per_image'), at('fps')] };
       });
       return rows.length ? figureTable(heads, rows, el('span', {}, `Seed ${seed} at the default effort, the design's own placement. Times are per image, the fastest of 20 launches. `
@@ -3701,7 +3710,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
 
     // YOLO26n's times at each batch, a row each, then what it verified and
     // its compile, one per line.
-    function yoloTable(record, cases) {
+    function yoloTable(record, cases, _siblings, displayUnit) {
       const kase = Object.keys(record.rows).find(k => /^yolo26n\/\d+$/.test(k));
       if (!kase) return null;
       const run = (record.detail || []).find(d => d.case === kase) || {};
@@ -3709,7 +3718,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       const times = timed.length ? figureTable(
         [columnHead('NPU / image', 'npu_us_per_image_b1'), columnHead('End to end / image', 'us_per_image_b1'), columnHead('Images / s', 'fps_b1')],
         timed.map(b => ({ name: `batch ${b.slice(1)}`, cells: ['npu_us_per_image', 'us_per_image', 'fps']
-          .map(m => figure(cases, kase, `${m}_${b}`)) }))) : null;
+          .map(m => figure(cases, kase, `${m}_${b}`, { displayUnit })) }))) : null;
       const passed = figure(cases, kase, 'images_passed');
       const rest = [['Images verified', 'images_passed'], ['Match onnxruntime', 'ort_matches'], ['mAP@0.5 (coco128)', 'map50_coco128'],
                     ['Compile, cold', 'compile_s'], ['Compile, warm', 'compile_s_warm'], ['Full ELF', 'elf_bytes']];
@@ -3771,7 +3780,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
     // The hardware check in a sentence: the default seed's NPU (or
     // dispatch) time per image at its smallest and largest batch, at the
     // charted effort.
-    function hardwareSummary(rows) {
+    function hardwareSummary(rows, displayUnit) {
       const effort = chartedEffort(Object.keys(rows));
       const runs = Object.keys(rows).map(k => /^mobilenet\/seed=(\d+)\/batch=(\d+)\/effort=(\w+)$/.exec(k)).filter(m => m && m[3] === effort);
       const seeds = [...new Set(runs.map(m => m[1]))];
@@ -3782,7 +3791,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       if (!timed.length) return '';
       const at = (m, per = '') => {
         const fps = rows[m[0]].fps ? ` (${formatNumber(rows[m[0]].fps.value, 'fps')})` : '';
-        return `${formatNumber(rows[m[0]][metric].value, 'us')}${fps}${per} at batch ${m[2]}`;
+        return `${formatNumber(rows[m[0]][metric].value, 'us', displayUnit)}${fps}${per} at batch ${m[2]}`;
       };
       const ends = timed.length > 1 ? `${at(timed[0], ' per image')}, ${at(timed.at(-1))}` : at(timed[0], ' per image');
       const what = metric === 'us_per_image' ? 'dispatch takes' : 'NPU time is';
@@ -3804,12 +3813,12 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
     }
 
     // The yolo26n check in a sentence: one image's time at each batch.
-    function yoloSummary(rows) {
+    function yoloSummary(rows, displayUnit) {
       const r = rows[Object.keys(rows).find(k => /^yolo26n\/\d+$/.test(k))];
       if (!r || !r.us_per_image_b1) return '';
       const fps = r.fps_b1 ? ` (${formatNumber(r.fps_b1.value, 'fps')})` : '';
-      const b8 = r.us_per_image_b8 ? `, ${formatNumber(r.us_per_image_b8.value, 'us')} at batch 8` : '';
-      return ` End to end, one image takes ${formatNumber(r.us_per_image_b1.value, 'us')}${fps} at batch 1${b8}.`;
+      const b8 = r.us_per_image_b8 ? `, ${formatNumber(r.us_per_image_b8.value, 'us', displayUnit)} at batch 8` : '';
+      return ` End to end, one image takes ${formatNumber(r.us_per_image_b1.value, 'us', displayUnit)}${fps} at batch 1${b8}.`;
     }
 
     // The sweep in a sentence: the costliest fixture's cost and CPU time.
@@ -3911,7 +3920,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
     // full-effort baseline where that is all a night measured). Separate
     // from the trend tabs' per-batch picker, which is over nights at one
     // batch; this is over batches at one night.
-    function batchCharts(record) {
+    function batchCharts(record, _previous, displayUnit) {
       const passed = (record.detail || []).filter(d => d.passed);
       const effort = chartedEffort(passed.map(d => `mobilenet/seed=${d.seed}/batch=${d.batch}/effort=${d.effort_label}`));
       const atEffort = passed.filter(d => d.effort_label === effort);
@@ -3923,10 +3932,10 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         return vs.length ? vs.reduce((a, v) => a + v, 0) / vs.length : null;
       };
       const fg = cssVar('--muted', '#5b6475'), grid = cssVar('--grid', 'rgba(0,0,0,0.08)');
-      const axis = (unit, log) => ({
+      const axis = (unit, log, unitDisplay) => ({
         x: { ticks: { color: fg, font: { size: 11 } }, grid: { display: false } },
         y: { type: log ? 'logarithmic' : 'linear', beginAtZero: !log, grid: { color: grid },
-             ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: v => formatNumber(v, unit) } },
+             ticks: { color: fg, maxTicksLimit: 6, font: { size: 11 }, callback: v => formatNumber(v, unit, unitDisplay) } },
       });
       const time = bandChart('Time per image, by batch', 'the design\'s own placement (seed 3, default effort), last night: the NPU\'s own time and the whole end-to-end call', canvas => {
         const npu = batches.map(b => mean(b, 'npu_us_per_image')), e2e = batches.map(b => mean(b, 'e2e_us_per_image'));
@@ -3941,10 +3950,10 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
           },
           options: {
             animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-            scales: axis('us', true),
+            scales: axis('us', true, displayUnit),
             plugins: {
               legend: { display: true, align: 'end', labels: { color: fg, boxWidth: 12, boxHeight: 2, font: { size: 11 } } },
-              tooltip: { callbacks: { label: item => `${item.dataset.label}: ${formatNumber(item.raw, 'us')}` } },
+              tooltip: { callbacks: { label: item => `${item.dataset.label}: ${formatNumber(item.raw, 'us', displayUnit)}` } },
             },
           },
         });
@@ -4060,8 +4069,9 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
     }
 
     // A value in its unit, short: "2.5 MiB", "45.3 s", "12,378 µs".
-    function shortValue(v, unit) {
+    function shortValue(v, unit, displayUnit) {
       if (unit === 'bytes' || unit === 'B') return v >= 1048576 ? `${(v / 1048576).toFixed(2)} MiB` : `${(v / 1024).toFixed(1)} KiB`;
+      if (unit === 'us' && displayUnit === 'ms') return formatNumber(v, unit, displayUnit);
       const n = Math.abs(v) >= 100 ? Math.round(v).toLocaleString('en-US') : Number(v.toPrecision(3)).toLocaleString('en-US');
       return unit ? `${n} ${unit.replace(/^us$/, 'µs')}` : n;
     }
@@ -4076,20 +4086,20 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
 
     // The largest moves by name, the rest counted: "full ELF +84.1%,
     // compile time (cold) +63.5% and 1 more".
-    function namedMoves(xs, common, shown = 2) {
-      const named = xs.slice(0, shown).map(x => `${moveWhat(x, common)} ${formatChange(x.change, x.after - x.before, x.series.unit)}`);
+    function namedMoves(xs, common, shown = 2, displayUnit) {
+      const named = xs.slice(0, shown).map(x => `${moveWhat(x, common)} ${formatChange(x.change, x.after - x.before, x.series.unit, displayUnit)}`);
       const rest = xs.length - named.length;
       if (rest) return `${named.join(', ')} and ${rest} more`;
       return named.length > 1 ? `${named.slice(0, -1).join(', ')} and ${named.at(-1)}` : named[0];
     }
 
-    function moveLine(x, tag, common = []) {
+    function moveLine(x, tag, common = [], displayUnit) {
       const what = cap(moveWhat(x, common));
       return el('li', { className: `move-line ${x.cls}`, title: x.series.kase },
         el('span', { className: `tag ${x.kind}` }, tag),
         el('span', { className: 'what' }, what),
-        el('span', { className: 'fromto' }, `${shortValue(x.before, x.series.unit)} → ${shortValue(x.after, x.series.unit)} `,
-          changeSpan(x.change, x.cls, true, x.series.metric, x.after - x.before, x.series.unit)),
+        el('span', { className: 'fromto' }, `${shortValue(x.before, x.series.unit, displayUnit)} → ${shortValue(x.after, x.series.unit, displayUnit)} `,
+          changeSpan(x.change, x.cls, true, x.series.metric, x.after - x.before, x.series.unit, displayUnit)),
         sparkBars(x.values, x.series.metric, x.cls));
     }
 
@@ -4099,9 +4109,9 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       const box = el('div', { className: 'changes' });
       const common = t.common || [];
       const lines = [
-        ...t.steps.map(x => moveLine(x, `Step ${shortDate(t.last.date)}`, common)),
-        ...t.trends.map(x => moveLine(x, `Since ${shortDate(x.since)}`, common)),
-        ...t.better.slice(0, 4).map(x => moveLine(x, x.kind === 'step' ? `Better ${shortDate(t.last.date)}` : 'Better', common)),
+        ...t.steps.map(x => moveLine(x, `Step ${shortDate(t.last.date)}`, common, check.displayUnit)),
+        ...t.trends.map(x => moveLine(x, `Since ${shortDate(x.since)}`, common, check.displayUnit)),
+        ...t.better.slice(0, 4).map(x => moveLine(x, x.kind === 'step' ? `Better ${shortDate(t.last.date)}` : 'Better', common, check.displayUnit)),
       ];
       if (lines.length) box.append(el('ul', { className: 'move-list' }, ...lines));
       const from = t.before && t.before.commit && t.before.commit.id, to = t.last.commit && t.last.commit.id;
@@ -4116,7 +4126,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         // A band judging the design alone has batches, not seeds.
         const one = check.cases ? 'one batch' : 'one seed or batch';
         const d = el('details', { className: 'blips' }, el('summary', {}, `${plural(t.blips.length, 'move')} on ${one} only, the rest held: likely noise`));
-        d.append(el('ul', { className: 'move-list' }, ...t.blips.map(x => moveLine(x, x.cls === 'better' ? 'Blip, better' : 'Blip', common))));
+        d.append(el('ul', { className: 'move-list' }, ...t.blips.map(x => moveLine(x, x.cls === 'better' ? 'Blip, better' : 'Blip', common, check.displayUnit))));
         box.append(d);
       }
       if (t.better.length > 4) box.append(el('p', { className: 'note' }, `And ${t.better.length - 4} more better.`));
@@ -4156,8 +4166,8 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       // Named, so the overview says what: "full ELF +84.1%, compile time
       // (cold) +63.5% and 1 more stepped worse on 29 Oct".
       const moves = trend ? [
-        trend.steps.length ? `${namedMoves(trend.steps, trend.common)} stepped worse on ${shortDate(trend.last.date)}` : '',
-        trend.trends.length ? `${namedMoves(trend.trends, trend.common)} crept worse over two weeks` : ''].filter(Boolean).join('; ') : '';
+        trend.steps.length ? `${namedMoves(trend.steps, trend.common, 2, check.displayUnit)} stepped worse on ${shortDate(trend.last.date)}` : '',
+        trend.trends.length ? `${namedMoves(trend.trends, trend.common, 2, check.displayUnit)} crept worse over two weeks` : ''].filter(Boolean).join('; ') : '';
       const headline = run.date === null ? (run.unread ? `${cap(run.unread.text)}.` : 'No results published yet.')
         // A check that stopped before it measured anything says why (the
         // placeholder record it wrote first, e.g. "did not finish").
@@ -4168,9 +4178,9 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         : worse.length ? (newsOnly ? `${plural(worse.length, 'measure')} got worse vs ${shortDate(own.at(-2).date)}.`.replace(/^./, c => c.toUpperCase())
           : `${check.passed.replace(/\.$/, '')}, but ${plural(worse.length, 'measure')} got worse vs ${shortDate(own.at(-2).date)}.`)
         : check.passed;
-      const quiet = run.date !== null && !failed.length && !hard && !newsOnly && latest && latest.rows ? check.summary(latest.rows) : '';
+      const quiet = run.date !== null && !failed.length && !hard && !newsOnly && latest && latest.rows ? check.summary(latest.rows, check.displayUnit) : '';
       // The overview's one line: the largest move and how many more, or the headline.
-      const brief = trend && worse.length && !failed.length && !hard ? `${namedMoves(worse, trend.common, 1)}.` : headline;
+      const brief = trend && worse.length && !failed.length && !hard ? `${namedMoves(worse, trend.common, 1, check.displayUnit)}.` : headline;
       return { run, level, headline, brief, quiet, warnings: warnings.filter(w => !w.stale), shown, ids, stale, newsOnly,
                recent, own, trend, moved: [...worse, ...improved.filter(counted)] };
     }
@@ -4209,20 +4219,20 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
             const c = caseParts(x.series.kase);
             list.append(el('span', { className: 'move', title: x.series.kase },
               `${c.params.length ? c.params.join(', ') : c.factory} ${inSentence(x.series.metric)} `,
-              changeSpan(x.change, x.cls, true, x.series.metric, x.after - x.before, x.series.unit)));
+              changeSpan(x.change, x.cls, true, x.series.metric, x.after - x.before, x.series.unit, check.displayUnit)));
           }
           if (moved.length > 8) list.append(el('span', { className: 'dim' }, `and ${moved.length - 8} more`));
           // A move is news; "nothing moved" is detail.
           (moved.length ? band : more).append(list);
         }
-        const table = check.table(latest, latestCases(recent, check.id).cases, siblings);
+        const table = check.table(latest, latestCases(recent, check.id).cases, siblings, check.displayUnit);
         // A band whose chart says it all keeps its table a click away, after the chart.
         const folded = table && check.tableFolded ? el('details', { className: 'band-fold' }, el('summary', {}, check.tableFolded), table) : null;
         if (table && !folded) band.append(band.table = table);
         // The check's trend chart, drawn once its histories are read.
         if (check.trend) band.append(band.trend = el('div', { className: 'trend-slot' }, el('p', { className: 'dim' }, 'Reading the history…')));
         if (folded) { band.table = table; band.append(folded); }
-        const charts = check.charts(latest, previous);
+        const charts = check.charts(latest, previous, check.displayUnit);
         if (charts.length) more.append(el('div', { className: 'charts' }, ...charts));
         if (String(latest.id) !== String(run.id)) {
           more.append(el('p', { className: 'note' }, `Numbers from the run of ${formatWhen(Date.parse(latest.date))}, the latest that published any.`));
@@ -4285,7 +4295,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       };
       mine.forEach((l, i) => historiesOf(l).then(data => {
         if (token !== componentToken || !bands[i].trend) return;
-        bands[i].trend.replaceChildren(trendBox(data, l.check.trend, want));
+        bands[i].trend.replaceChildren(trendBox(data, l.check.trend, want, l.check.displayUnit));
         if (i === owner) revealTrend(bands[i].trend);
       }));
       return bands;

@@ -1921,10 +1921,11 @@ assert.equal(one(card, n => n.className === 'moves').text,
 // The design as it ships, a row per batch: the NPU's time, the end-to-end
 // time and the rate per image, and whether it verified; colored past the
 // threshold only. The other seeds are Compiler checks'.
+// MobileNet's own times are shown in ms (its per-image µs would read in the thousands at real magnitudes).
 assert.deepEqual(tableOf(card.table), [
   ['', 'NPU / image', 'End to end / image', 'Images / s'],
-  ['batch 1', '248.7 µs', '395.7 µs', '2,527.17 fps'],
-  ['batch 16', '102 µs +7.3%', '204.9 µs', '4,880.43 fps'],
+  ['batch 1', '0.25 ms', '0.4 ms', '2,527.17 fps'],
+  ['batch 16', '0.1 ms +7.3%', '0.2 ms', '4,880.43 fps'],
 ]);
 assert.ok(!card.table.text.includes('seed 7'));
 assert.deepEqual(all(card.table, n => /^chg (worse|better)/.test(n.className || '')).map(n => n.className), ['chg worse']);
@@ -2139,8 +2140,9 @@ assert.equal(one(card, n => n.className === 'headline').text,
 assert.equal(one(card, n => n.className === 'moves').text, 'Since 1 Oct:yolo26n end-to-end / image (b1) +8.0%');
 // The times, a row per batch; then what it verified and its compile, a line each.
 const [times, checked] = all(card.table, n => n.tag === 'table');
+// YOLO26n's own times are shown in ms, like MobileNet's.
 assert.deepEqual(tableOf(times).map(r => [r[0], r[2], r[3]]), [
-  ['', 'End to end / image', 'Images / s'], ['batch 1', '5,400 µs +8.0%', '185.19 fps −7.4%'], ['batch 8', '3,000 µs', '333.33 fps']]);
+  ['', 'End to end / image', 'Images / s'], ['batch 1', '5.4 ms +8.0%', '185.19 fps −7.4%'], ['batch 8', '3 ms', '333.33 fps']]);
 // Up is worse for time per image, down for images per second.
 assert.deepEqual(all(times, n => /^chg (worse|better)/.test(n.className || '')).map(n => n.className), ['chg worse', 'chg worse']);
 // A measure the night did not record (mAP here) is left out.
@@ -2265,7 +2267,7 @@ assert.equal(one(card, n => n.className === 'headline').text, `The run refused t
 // The refusal once, as the headline; the power mode as a warning.
 assert.deepEqual(all(card, n => /^note /.test(n.className || '')).map(n => n.className), ['note warn']);
 assert.ok(card.text.includes('Numbers from the run of'));
-assert.ok(card.table.text.includes('395.7 µs'));
+assert.ok(card.table.text.includes('0.4 ms'));
 """)
 
 
@@ -2592,6 +2594,43 @@ assert.equal(summary, " NPU time is 248.7 µs (2,527.17 fps) per image at batch 
 const trend = stackConfig(collect(historiesOf('sa-placer-hw', [before, after])), hw.trend.find(t => t.stack));
 assert.deepEqual(trend.data.keys, [1, 16]);
 assert.deepEqual(trend.data.datasets.find(d => d.label === 'end to end').data, [395.7, 395.7]);
+""")
+
+
+def test_mobilenet_and_yolo26n_times_show_in_ms(page):
+    page(COMPONENT_RUNS + HW_NIGHTS + YOLO_NIGHTS + LLAMA_NIGHTS + """
+// MobileNet and YOLO26n carry their own display unit; the published data,
+// history and thresholds stay µs, converted only where the page shows it.
+assert.equal(hw.displayUnit, 'ms');
+assert.equal(yolo.displayUnit, 'ms');
+assert.equal(llama.displayUnit, undefined);
+
+// The overview sentence.
+assert.equal(hardwareSummary(hwAfter.rows, hw.displayUnit),
+             " NPU time is 0.25 ms (2,527.17 fps) per image at batch 1, 0.1 ms (4,880.43 fps) at batch 16.");
+assert.equal(yoloSummary(yoloAfter.rows, yolo.displayUnit),
+             " End to end, one image takes 5.4 ms (185.19 fps) at batch 1, 3 ms at batch 8.");
+
+// The trend chart's axis title, as the real page wires it (trendBox reads the check's displayUnit).
+const hwData = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
+const hwBox = trendBox(hwData, hw.trend, 'npu_us_per_image', hw.displayUnit);
+assert.equal(hwBox.draw('npu_us_per_image').options.scales.y.title.text, 'NPU time per image (ms) · ↓ better');
+
+const yoloData = collect(historiesOf('yolo26n-hw', [yoloBefore, yoloAfter]));
+const yoloBox = trendBox(yoloData, yolo.trend, 'us_per_image_b1', yolo.displayUnit);
+assert.equal(yoloBox.draw('us_per_image_b1').options.scales.y.title.text, 'End-to-end time per image (ms) · ↓ better');
+
+// A kernel chart (its own code path, no check or displayUnit involved) keeps µs.
+const kdb = fromRecords({ npu2: [
+  rec('1', Date.parse('2026-10-01T06:00:00Z'), 'turbo', { 'softmax/1024/bfloat16/dispatch_us': ['us', 80] }),
+  rec('2', Date.parse('2026-10-02T06:00:00Z'), 'turbo', { 'softmax/1024/bfloat16/dispatch_us': ['us', 81] }),
+] });
+assert.equal(kernelTrendConfig(kdb, 'npu2', 'softmax', 'dispatch_us').options.scales.y.ticks.callback(80), '80 µs');
+
+// A llama value: already its own unit (ms, tok/s), untouched by MobileNet's and YOLO26n's displayUnit.
+const llamaData = collect(historiesOf('llama-chain-hw', [llamaBefore, llamaAfter]));
+const llamaBox = trendBox(llamaData, llama.trend, 'tok_s', llama.displayUnit);
+assert.equal(llamaBox.draw('tok_s').options.scales.y.title.text, 'Tokens / s · ↑ better');
 """)
 
 
