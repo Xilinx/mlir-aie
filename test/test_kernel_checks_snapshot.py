@@ -4,9 +4,12 @@
 # RUN: %pytest %s
 """utils/kernel_checks/snapshot.py: the dashboard as one self-contained file."""
 
+import base64
+import gzip
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -43,7 +46,7 @@ def published(root: Path) -> None:
 
 def test_only_the_latest_run_records_are_kept(snap, tmp_path):
     published(tmp_path)
-    files = snap.from_dir(tmp_path)
+    files = snap.collect(snap.Directory(tmp_path))
     # Run ids sort as numbers: 9 is older than 10. HTML is not data.
     assert sorted(p for p in files if "/runs/" in p) == [
         "kernel-checks/npu1/runs/10.json",
@@ -123,7 +126,7 @@ def test_required_comparison_records_survive_a_long_refusal_tail(
             dest = tmp_path / path
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(json.dumps(value))
-        files = snap.from_dir(tmp_path)
+        files = snap.collect(snap.Directory(tmp_path))
     else:
 
         def git(command, **kwargs):
@@ -138,7 +141,7 @@ def test_required_comparison_records_survive_a_long_refusal_tail(
             return SimpleNamespace(stdout=json.dumps(data[path]).encode())
 
         monkeypatch.setattr(snap.subprocess, "run", git)
-        files = snap.from_ref("publication")
+        files = snap.collect(snap.GitRef("publication"))
         assert set(read) == set(files)
         assert len(read) == len(files)
     kept = {Path(p).stem for p in files if "/runs/" in p}
@@ -146,6 +149,31 @@ def test_required_comparison_records_survive_a_long_refusal_tail(
     assert len(kept) <= snap.RUNS_KEPT + 2
     for run_id in expected:
         assert files[f"{directory}/runs/{run_id}.json"]["detail"] == [run_id]
+
+
+def test_an_overlays_latest_keeps_the_records_it_points_at(snap, tmp_path):
+    base, overlay, out = tmp_path / "base", tmp_path / "overlay", tmp_path / "d.html"
+    runs = [
+        {"id": str(i), "published": True, "pmode": "performance", "device": "Strix"}
+        for i in range(1, 11)
+    ]
+    data = {
+        (base, "kernel-checks/npu2/latest.json"): runs[-1],
+        (base, "kernel-checks/npu2/runs.json"): {"runs": runs},
+        **{(base, f"kernel-checks/npu2/runs/{r['id']}.json"): r for r in runs},
+        (overlay, "kernel-checks/npu2/latest.json"): runs[4],
+        (overlay, "kernel-checks/npu2/runs/5.json"): {**runs[4], "from": "overlay"},
+    }
+    for (root, path), value in data.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(json.dumps(value), encoding="utf-8")
+    assert snap.main(["--dir", str(base), "--with", str(overlay), "-o", str(out)]) == 0
+    blob = re.search(r"atob\((\"[^\"]+\")\)", out.read_text(encoding="utf-8"))
+    files = json.loads(gzip.decompress(base64.b64decode(json.loads(blob.group(1)))))
+    assert files["kernel-checks/npu2/latest.json"]["id"] == "5"
+    # The overlay's latest and its comparison, as well as the newest three.
+    assert {Path(p).stem for p in files if "/runs/" in p} == {"4", "5", "8", "9", "10"}
+    assert files["kernel-checks/npu2/runs/5.json"]["from"] == "overlay"
 
 
 def test_a_latest_missing_from_the_index_searches_all_earlier_runs(snap):
@@ -165,7 +193,9 @@ def test_the_page_reads_its_data_from_the_file(snap, tmp_path):
         pytest.skip("node is required to run the snapshot's fetch")
     published(tmp_path)
     html = snap.snapshot(
-        "<html><head><title>t</title></head></html>", snap.from_dir(tmp_path), "ci"
+        "<html><head><title>t</title></head></html>",
+        snap.collect(snap.Directory(tmp_path)),
+        "ci",
     )
     assert html.index("snapshot.py") < html.index("<title>")
     script = html.split("<script>", 1)[1].split("</script>", 1)[0]

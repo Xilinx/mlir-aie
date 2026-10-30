@@ -37,6 +37,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 PAGE = HERE / "index.html"
 DIRS = ("ci-health", "code-health", "kernel-checks", "component-checks")
+VIEWS = ("overview", "ci", "health", "placement", "night", "kernels", "performance")
 # Keep a small recent tail as well as the page's selected comparison pair.
 RUNS_KEPT = 3
 
@@ -112,50 +113,82 @@ def kept(paths: list[str], metadata: dict) -> list[str]:
     return sorted(out)
 
 
-def from_ref(ref: str) -> dict:
-    """Read published files at a git ref as {path: parsed JSON}."""
-    git = ["git", "-C", str(ROOT)]
-    listed = subprocess.run(
-        [*git, "ls-tree", "-r", "--name-only", ref, "--", *DIRS],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.split()
+class GitRef:
+    """Published files at a git ref.
 
-    def read(p):
+    Args:
+        ref: The publication ref, e.g. ``origin/gh-pages``.
+        repo: The repository holding ``ref``.
+    """
+
+    def __init__(self, ref: str, repo: Path = ROOT):
+        self.ref = ref
+        self.repo = repo
+        self.paths = subprocess.run(
+            ["git", "-C", str(repo), "ls-tree", "-r", "--name-only", ref, "--", *DIRS],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.split()
+
+    def read(self, path: str):
+        """Return the parsed JSON at ``path``."""
         return json.loads(
             subprocess.run(
-                [*git, "show", f"{ref}:{p}"], check=True, capture_output=True
+                ["git", "-C", str(self.repo), "show", f"{self.ref}:{path}"],
+                check=True,
+                capture_output=True,
             ).stdout
         )
 
-    metadata = {p: read(p) for p in listed if p.endswith(".json") and "/runs/" not in p}
+
+class Directory:
+    """Published files under a directory laid out as the branch is.
+
+    Args:
+        root: The directory holding ``ci-health/``, ``kernel-checks/``, ...
+    """
+
+    def __init__(self, root: Path):
+        self.root = root
+        self.paths = [
+            p.relative_to(root).as_posix()
+            for d in DIRS
+            if (root / d).is_dir()
+            for p in (root / d).rglob("*.json")
+        ]
+
+    def read(self, path: str):
+        """Return the parsed JSON at ``path``."""
+        return json.loads((self.root / path).read_text(encoding="utf-8"))
+
+
+def collect(*sources: GitRef | Directory) -> dict:
+    """Read the files the page needs as {path: parsed JSON}.
+
+    A later source's file replaces an earlier one's, and the run records kept
+    are chosen from the merged metadata, so an overlay's ``latest.json`` keeps
+    the records it points at.
+
+    Args:
+        *sources: Where the files come from, base first.
+
+    Returns:
+        Every metadata file and the kept run records.
+    """
+    owner = {p: s for s in sources for p in s.paths if p.endswith(".json")}
+    metadata = {p: s.read(p) for p, s in owner.items() if "/runs/" not in p}
     return {
         **metadata,
-        **{p: read(p) for p in kept(listed, metadata) if p not in metadata},
+        **{
+            p: owner[p].read(p)
+            for p in kept(list(owner), metadata)
+            if p not in metadata
+        },
     }
 
 
-def from_dir(root: Path) -> dict:
-    """Read published files under a directory laid out as the branch is."""
-    listed = [
-        p.relative_to(root).as_posix()
-        for d in DIRS
-        if (root / d).is_dir()
-        for p in (root / d).rglob("*.json")
-    ]
-
-    def read(p):
-        return json.loads((root / p).read_text(encoding="utf-8"))
-
-    metadata = {p: read(p) for p in listed if "/runs/" not in p}
-    return {
-        **metadata,
-        **{p: read(p) for p in kept(listed, metadata) if p not in metadata},
-    }
-
-
-def snapshot(page: str, files: dict, view: str = "") -> str:
+def snapshot(page: str, files: dict, view: str | None = None) -> str:
     """Embed the data in the page."""
     blob = base64.b64encode(
         gzip.compress(json.dumps(files, separators=(",", ":")).encode(), 9)
@@ -180,24 +213,24 @@ def main(argv=None) -> int:
         help="a directory laid out as the branch is whose files replace or add to the published ones",
     )
     parser.add_argument(
-        "--fetch", action="store_true", help="git fetch origin gh-pages first"
+        "--repo", type=Path, default=ROOT, help="the git repository holding --ref"
     )
     parser.add_argument(
-        "--view",
-        default="",
-        help="the tab to open on: overview, ci, night, performance, placement, health",
+        "--fetch", action="store_true", help="git fetch origin gh-pages first"
     )
+    parser.add_argument("--view", choices=VIEWS, help="the tab to open on")
     parser.add_argument(
         "-o", "--out", type=Path, default=Path("dashboard-snapshot.html")
     )
     args = parser.parse_args(argv)
     if args.fetch and not args.dir:
         subprocess.run(
-            ["git", "-C", str(ROOT), "fetch", "origin", "gh-pages"], check=True
+            ["git", "-C", str(args.repo), "fetch", "origin", "gh-pages"], check=True
         )
-    files = from_dir(args.dir) if args.dir else from_ref(args.ref)
+    sources = [Directory(args.dir) if args.dir else GitRef(args.ref, args.repo)]
     if args.overlay:
-        files.update(from_dir(args.overlay))
+        sources.append(Directory(args.overlay))
+    files = collect(*sources)
     html = snapshot(PAGE.read_text(encoding="utf-8"), files, args.view)
     args.out.write_text(html, encoding="utf-8")
     size = len(html) / 1e6
