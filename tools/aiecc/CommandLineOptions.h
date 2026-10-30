@@ -199,15 +199,19 @@ inline cl::opt<bool> reconfigInitEntry(
              "<device>:reconfig_init entry, which the host runs once per "
              "hardware context before the other entries (requires "
              "--reconfig-teardown)"));
-inline cl::opt<bool> ctrlpktAutoPacketize(
-    "ctrlpkt-auto-packetize",
-    cl::desc("Packet-switch an objectFIFO input where a column's inputs take "
-             "every shim MM2S channel, to share it with the control packets "
-             "(default: on)"));
-inline cl::opt<bool> ctrlpktAdaptivePin(
-    "ctrlpkt-adaptive-pin",
-    cl::desc("Route the control overlay around the switch ports the "
-             "configurations' data takes (default: off)"));
+inline cl::opt<bool>
+    ctrlpktShareChannels("ctrlpkt-share-channels",
+                         cl::desc("Share fixed control channels with "
+                                  "application DMA endpoints (default: on)"));
+inline cl::alias ctrlpktShareChannelsAlias("ctrlpkt-auto-packetize",
+                                           cl::aliasopt(ctrlpktShareChannels),
+                                           cl::Hidden);
+inline cl::opt<bool> ctrlpktAdaptiveOverlay(
+    "ctrlpkt-adaptive-overlay",
+    cl::desc("Choose the control overlay around application resources; false "
+             "uses channel 0 and default routes (default: on)"));
+inline cl::alias ctrlpktAdaptiveOverlayAlias(
+    "ctrlpkt-adaptive-pin", cl::aliasopt(ctrlpktAdaptiveOverlay), cl::Hidden);
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
@@ -735,8 +739,10 @@ inline bool resolveOptions(bool resuming = false) {
   bool fullElf = wantFullElf || resuming;
   if (!reconfigTeardown.getNumOccurrences())
     reconfigTeardown = loadPdiToCtrlPkt && wantFullElf;
-  if (!ctrlpktAutoPacketize.getNumOccurrences())
-    ctrlpktAutoPacketize = loadPdiToCtrlPkt;
+  if (!ctrlpktShareChannels.getNumOccurrences())
+    ctrlpktShareChannels = loadPdiToCtrlPkt;
+  if (!ctrlpktAdaptiveOverlay.getNumOccurrences())
+    ctrlpktAdaptiveOverlay = loadPdiToCtrlPkt;
   // Under --expand-load-pdis, the teardown disables every route a
   // configuration sets, including the control packet routes
   // --generate-ctrl-pkt-overlay adds to it.
@@ -749,9 +755,9 @@ inline bool resolveOptions(bool resuming = false) {
              "that --generate-ctrl-pkt-overlay is not set") &&
          resolveDependentOption(reconfigInitEntry, reconfigTeardown,
                                 "--reconfig-teardown") &&
-         resolveDependentOption(ctrlpktAutoPacketize, loadPdiToCtrlPkt,
+         resolveDependentOption(ctrlpktShareChannels, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt") &&
-         resolveDependentOption(ctrlpktAdaptivePin, loadPdiToCtrlPkt,
+         resolveDependentOption(ctrlpktAdaptiveOverlay, loadPdiToCtrlPkt,
                                 "--load-pdi-to-ctrl-pkt");
 }
 

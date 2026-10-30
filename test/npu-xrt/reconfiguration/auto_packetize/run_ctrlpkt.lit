@@ -11,8 +11,8 @@
 // RUN: %run_on_npu2% ./test
 
 // CHECK-LABEL: aie.device(npu2) @cfg_add
-// CHECK-DAG: aie.shim_dma_allocation @{{.+}}(%{{.+}}, MM2S, 0, <pkt_type = 0, pkt_id = {{[0-9]+}}>)
+// CHECK-DAG: aie.shim_dma_allocation @{{.+}}(%{{.+}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
 // CHECK-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%{{.+}}, MM2S, 0)
 // CHECK-LABEL: aie.device(npu2) @cfg_sub
-// CHECK-DAG: aie.shim_dma_allocation @{{.+}}(%{{.+}}, MM2S, 0, <pkt_type = 0, pkt_id = {{[0-9]+}}>)
+// CHECK-DAG: aie.shim_dma_allocation @{{.+}}(%{{.+}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
 // CHECK-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%{{.+}}, MM2S, 0)

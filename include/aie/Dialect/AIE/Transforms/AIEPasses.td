@@ -811,31 +811,6 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
   ];
 }
 
-def AIEAutoPacketizeShimInput
-    : Pass<"aie-auto-packetize-shim-input", "mlir::ModuleOp"> {
-  let summary = "Share a shim MM2S channel between data and control packets";
-  let description = [{
-    Gives control packets a shim MM2S channel in every column whose objectFIFO
-    inputs leave none free across the module's devices. The control channel is
-    the lowest one no device holds with circuit-switched data. In each device an
-    objectFIFO input already packet-switched there is pinned to it; otherwise
-    the input with the fewest consumers is made packet-switched and pinned to
-    it. The other inputs are pinned to the other channels. An input this pass
-    makes packet-switched that went straight to a compute tile is relayed by the
-    column's memory tile, so past the shim the data stays circuit-switched. Each
-    device gets the overlay's `ctrlpkt_*` shim DMA allocation for the channel,
-    marked `aie.is_ctrl_pkt_overlay`. Runs before objectFIFO lowering.
-  }];
-
-  let constructor = "xilinx::AIE::createAIEAutoPacketizeShimInputPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
-  let options = [ListOption<"clControlChannels", "control-channels",
-                            "std::string",
-                            "<column>:<channel> entries overriding a column's "
-                            "control channel, as aiecc's retries do">,
-  ];
-}
-
 def AIEControlOverlayAvoidData
     : Pass<"aie-control-overlay-avoid-data", "mlir::ModuleOp"> {
   let summary = "Record the switch ports the configurations' data takes, for "
@@ -862,8 +837,7 @@ def AIEGenerateColumnControlOverlay
 
     With route-shim-to-tile-ctrl, each covered column's control packets enter
     through one shim MM2S DMA channel, the one of the column's
-    `aie.is_ctrl_pkt_overlay` allocation (aie-auto-packetize-shim-input
-    declares one), else the lowest one no device of the module moves data
+    `aie.is_ctrl_pkt_overlay` allocation, else the lowest one no device of the module moves data
     through, and reach every row of the column.
   }];
 
@@ -886,6 +860,10 @@ def AIEGenerateColumnControlOverlay
               "Emit a standalone @ctrl_pkt_overlay device (and tag source "
               "devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When "
               "false, the pass applies the overlay in place only.">,
+       Option<"clPlanChannels", "plan-channels", "bool", "false",
+              "Select fixed control channels before application allocation.">,
+       Option<"clAdaptiveChannels", "adaptive-channels", "bool", "true",
+              "Choose control channels around application reservations; otherwise use channel 0.">,
        ListOption<"clCoverColumns", "cover-columns", "int",
                   "With route-shim-to-tile-ctrl, also cover these columns. "
                   "aiecc adds each column outside the occupied range that the "

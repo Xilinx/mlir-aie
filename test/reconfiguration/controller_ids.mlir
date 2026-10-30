@@ -6,8 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 // The column control overlay routes control packets on the tile controller IDs
-// (15 for an npu2 shim). aiecc adds it after objectFIFO lowering, so the
-// lowering keeps those IDs off the design's packet flows. With IDs 0-14 taken,
+// (15 for an npu2 shim). Packet ID assignment keeps those IDs off the
+// design's packet flows. With IDs 0-14 taken,
 // @in0 gets 16, not 15. @in0 leaves from column 1, so each column keeps a shim
 // channel free for its control packets.
 
@@ -20,7 +20,7 @@
 // PLAIN-NEXT:     aie.packet_source<%shim_noc_tile_1_0, DMA : 0>
 // RESERVED-NOT:   aie.packet_flow(15) {
 // RESERVED:       aie.packet_flow(16) {
-// RESERVED-NEXT:    aie.packet_source<%shim_noc_tile_1_0, DMA : 0>
+// RESERVED-NEXT:    aie.packet_source<%shim_noc_tile_1_0, DMA : {{[01]}}>
 
 module {
   aie.device(npu2) @design {
@@ -28,7 +28,7 @@ module {
     %comp = aie.tile(0, 2)
     %shim1 = aie.tile(1, 0)
     %comp1 = aie.tile(1, 2)
-    aie.objectfifo @in0 (%shim1, {%comp1}, 1 : i32) {packet} : !aie.objectfifo<memref<4xi32>>
+    aie.objectfifo @in0 (%shim1, {%comp1}, 1 : i32) {transport = #aie.transport<auto, packet = #aie.packet_info<>>} : !aie.objectfifo<memref<4xi32>>
     aie.objectfifo @out (%comp1, {%shim1}, 1 : i32) : !aie.objectfifo<memref<4xi32>>
     aie.core(%comp1) {
       %e0 = aie.objectfifo.acquire @in0 (Consume, 1) : memref<4xi32>

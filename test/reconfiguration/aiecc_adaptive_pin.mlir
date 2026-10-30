@@ -5,15 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-// --ctrlpkt-adaptive-pin in aiecc, under --load-pdi-to-ctrl-pkt. The overlay
+// --ctrlpkt-adaptive-overlay in aiecc, under --load-pdi-to-ctrl-pkt. The overlay
 // is routed around the data of @a and @b (control_overlay_avoid_data.mlir
 // checks how), so it leaves (1, 4) on another channel, the same in every
 // device; the router consumes aie.ctrl_pkt_overlay_avoid.
 
 // RUN: rm -rf %t && mkdir -p %t/blind %t/adapt
-// RUN: cd %t/blind && %aiecc --load-pdi-to-ctrl-pkt --get=input_physical.mlir %s
+// RUN: cd %t/blind && %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-adaptive-overlay=false --get=input_physical.mlir %s
 // RUN: FileCheck %s --check-prefix=BLIND < %t/blind/input_physical.mlir
-// RUN: cd %t/adapt && %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-adaptive-pin --get=input_physical.mlir %s
+// RUN: cd %t/adapt && %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-adaptive-overlay --get=input_physical.mlir %s
 // RUN: FileCheck %s --check-prefix=ADAPT < %t/adapt/input_physical.mlir
 
 // BLIND-LABEL: aie.device(npu2) @a
@@ -58,7 +58,7 @@ module {
   aie.device(npu2) @a {
     %s00 = aie.tile(0, 0)
     %t14 = aie.tile(1, 4)
-    aie.flow(%s00, DMA : 0, %t14, DMA : 1)
+    aie.flow(%s00, DMA : 1, %t14, DMA : 1)
     aie.runtime_sequence @a_run(%x : memref<4xi32>) {
     }
   }

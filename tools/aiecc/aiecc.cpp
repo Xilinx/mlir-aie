@@ -1016,14 +1016,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
        ctrl = ctrlOverlay, ldpdi = loadPdiToCtrlPkt.getValue(),
        bf16 = bf16Emulation.getValue(),
        skipVerify = skipObjectFifoVerify.getValue(), opt = optLevel.getValue(),
-       autoPacketize = ctrlpktAutoPacketize.getValue()](
+       shareChannels = ctrlpktShareChannels.getValue(),
+       adaptiveOverlay = ctrlpktAdaptiveOverlay.getValue()](
           mlir::MLIRContext *ctx, mlir::ModuleOp mod,
-          llvm::ArrayRef<int> coverColumns,
-          const std::map<int, int> &controlChannels) {
+          llvm::ArrayRef<int> coverColumns) {
         return getInputWithAddressesPipeline(
             ctx, mod, dyn, pkt, ctrl, bf16, opt, ldpdi, skipVerify,
-            /*assignAddresses=*/false, coverColumns, autoPacketize,
-            controlChannels);
+            /*assignAddresses=*/false, coverColumns, shareChannels,
+            adaptiveOverlay);
       };
   auto routedCache = std::make_shared<RoutedCache>();
   using ModEdge = EdgeWithTypedOutput<ModRef>;
@@ -1037,7 +1037,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 PassPipeline{&context,
                              [withSymbolsPipeline](mlir::MLIRContext *ctx,
                                                    mlir::ModuleOp mod) {
-                               return withSymbolsPipeline(ctx, mod, {}, {});
+                               return withSymbolsPipeline(ctx, mod, {});
                              }}));
 
   // Scratchpad run-time parameters sidecar file

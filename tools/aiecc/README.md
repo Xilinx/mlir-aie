@@ -96,15 +96,47 @@ For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 
 ### Control packet reconfiguration
 
-`--load-pdi-to-ctrl-pkt` loads each configuration as control packets sent
-through the control overlay (`@ctrl_pkt_overlay`), which every configuration
-keeps on the same routes. Two options adjust it; each requires it:
+`--load-pdi-to-ctrl-pkt` loads each configuration through a common
+`@ctrl_pkt_overlay` device. The module pass `aie-create-control-overlay` runs
+on placed endpoint and route IR before application allocation, after splitting
+any ObjectFIFOs. It chooses the overlay once across all configurations; channel sharing never relocates it.
 
-- `--ctrlpkt-auto-packetize` (on by default): where a column's objectFIFO
-  inputs take every shim MM2S channel, one input becomes packet-switched and
-  shares its channel with the control packets (`aie-auto-packetize-shim-input`).
-- `--ctrlpkt-adaptive-pin` (off by default): the overlay routes around the
-  switchbox ports the configurations' data takes. See [routing](../../programming_guide/routing.md#priority-routes-and-the-control-overlay).
+- `--ctrlpkt-adaptive-overlay` (on by default) chooses shim channels around
+  fixed application reservations and packet demand, and uses trial application
+  routing to prefer switchbox ports the applications do not need. Set it to
+  `false` for channel 0 and the default overlay routes.
+- `--ctrlpkt-share-channels` (on by default) allows the resource allocator to
+  put application endpoints on the overlay's fixed channels. It automatically
+  adds packet headers to shared data routes. It does not insert memory-tile
+  relays. Set it to `false` to require dedicated control channels.
+
+The aliases `--ctrlpkt-adaptive-pin` and `--ctrlpkt-auto-packetize` are accepted.
+Both options require `--load-pdi-to-ctrl-pkt`.
+
+For direct pass use:
+
+```sh
+aie-opt --aie-objectfifo-split --aie-create-control-overlay='adaptive=false' \
+  --aie-assign-packet-ids --aie-objectfifo-allocate design.mlir
+```
+
+Overlay creation materializes runtime sequences in an analysis copy. Sharing
+uses configuration boundaries (`load_pdi`, `write_config`, `write_teardown`)
+and transfer lifetimes, without interpreting `aiex.configure`. An ordinary
+entry's initial configuration precedes its dispatch. Explicit control-packet
+batches complete before the following operation; arbitrary data sends are not
+assumed complete merely because a shim MM2S task was awaited.
+
+Application endpoints also carry pairwise sharing permissions from the
+materialized schedules, so callees that run in one dispatch are checked
+together.
+
+Fixed shim reservations carry `aie.fixed` and an `aie.shareable_with` list of
+endpoints admitted by lifetime analysis. Their channel numbers are immutable;
+application endpoints may share only with permission and only when their own
+transfers are mutually disjoint. Unknown transfer lifetimes remain exclusive.
+The overlay's packet IDs and routing settings remain protected during reload
+and teardown.
 
 ### Parameterized C++ transaction builders
 

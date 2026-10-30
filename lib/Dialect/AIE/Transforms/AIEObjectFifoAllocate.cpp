@@ -61,6 +61,7 @@ struct AIEObjectFifoAllocatePass
   /// Ends that take another end's channel, by the end they take it from:
   /// shim ends never in flight together, and ends taking turns.
   llvm::MapVector<Operation *, Operation *> channelSharers;
+  DenseMap<Operation *, ShimDMAAllocationOp> fixedSharers;
   DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -977,6 +978,7 @@ struct AIEObjectFifoAllocatePass
       // A core's stream port is named by the design, not drawn from the tile's
       // DMA channels; checkStreamPorts has claimed it.
       if (endpoint.getRouteBundle() == WireBundle::Core ||
+          fixedSharers.count(endpoint.getOperation()) ||
           channelSharers.count(endpoint.getOperation()))
         continue;
 
@@ -1083,6 +1085,17 @@ struct AIEObjectFifoAllocatePass
       channelAssignments[endpoint.getOperation()] = channel;
       noteDemand(endpoint, channel);
     }
+    DenseSet<Operation *> claimedFixed;
+    for (auto [endpoint, alloc] : fixedSharers) {
+      auto end = cast<RouteEndpoint>(endpoint);
+      int channel = alloc.getChannelIndex();
+      if (claimedFixed.insert(alloc).second &&
+          channels.reservePinnedChannel(tileOf(end), alloc.getChannelDir(),
+                                        channel, endpoint, true) < 0)
+        return failure();
+      channelAssignments[endpoint] = channel;
+      noteDemand(end, channel);
+    }
     for (auto [sharer, owner] : channelSharers)
       channelAssignments[sharer] = channelAssignments.lookup(owner);
     // Runtime tasks did not steer the choice, but they hold BDs while they
@@ -1114,24 +1127,84 @@ struct AIEObjectFifoAllocatePass
         [&](StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
           auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
               device, symbol);
-          if (!endpoint || !endpoint.getFifoName())
+          if (!endpoint)
             return std::nullopt;
-          return ShimTransferSpans::End{endpoint.getFifoNameAttr(),
-                                        endpoint.getRouteDirection() ==
-                                            DMAChannelDir::MM2S};
+          ShimTransferSpans::End end{
+              endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
+                                         : endpoint.getSymNameAttr(),
+              endpoint.getRouteDirection() == DMAChannelDir::MM2S};
+          if (auto channel = endpoint.getChannelIndex())
+            if (auto tile =
+                    dyn_cast<TileOp>(endpoint.getTile().getDefiningOp()))
+              end.channel = std::make_tuple(
+                  tile.colIndex(), tile.rowIndex(),
+                  static_cast<int>(endpoint.getRouteDirection()), *channel);
+          return end;
         });
+    auto canShare = [&](RouteEndpointOp a, RouteEndpointOp b) {
+      if (auto allowed = a->getAttrOfType<ArrayAttr>("aie.shareable_with"))
+        return llvm::is_contained(allowed,
+                                  FlatSymbolRefAttr::get(b.getSymNameAttr()));
+      return spans.apart(
+          a.getFifoNameAttr() ? a.getFifoNameAttr() : a.getSymNameAttr(),
+          b.getFifoNameAttr() ? b.getFifoNameAttr() : b.getSymNameAttr());
+    };
     SmallVector<Operation *> candidates;
     SmallVector<StringAttr> fifos;
     for (auto endpoint : device.getOps<RouteEndpointOp>()) {
       if (endpoint.getBundle() != WireBundle::DMA ||
-          endpoint.getChannelIndex() || !endpoint.getFifoName() ||
+          endpoint.getChannelIndex() ||
+          fixedSharers.count(endpoint.getOperation()) ||
           endpoint.getTile() != exhausted->getResult(0) ||
           endpoint.getRouteDirection() != dir)
         continue;
       candidates.push_back(endpoint);
-      fifos.push_back(endpoint.getFifoNameAttr());
+      fifos.push_back(endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
+                                                 : endpoint.getSymNameAttr());
     }
-    for (auto &members : spans.groups(fifos))
+    for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
+      auto allowed = alloc->getAttrOfType<ArrayAttr>("aie.shareable_with");
+      if (!alloc->hasAttr("aie.fixed") || !allowed ||
+          alloc.getTile() != exhausted->getResult(0) ||
+          alloc.getChannelDir() != dir)
+        continue;
+      for (Operation *candidate : candidates) {
+        auto endpoint = cast<RouteEndpointOp>(candidate);
+        if (fixedSharers.count(candidate) || channelSharers.count(candidate) ||
+            llvm::none_of(allowed, [&](Attribute attr) {
+              auto symbol = dyn_cast<FlatSymbolRefAttr>(attr);
+              return symbol && symbol.getValue() == endpoint.getSymName();
+            }))
+          continue;
+        if (llvm::any_of(fixedSharers, [&](const auto &entry) {
+              if (entry.second != alloc)
+                return false;
+              auto other = cast<RouteEndpointOp>(entry.first);
+              return !canShare(endpoint, other);
+            }))
+          continue;
+        fixedSharers[candidate] = alloc;
+        return true;
+      }
+    }
+    auto order = llvm::to_vector(llvm::seq<unsigned>(0, candidates.size()));
+    llvm::stable_sort(order, [&](unsigned a, unsigned b) {
+      return fifos[a].getValue() < fifos[b].getValue();
+    });
+    SmallVector<SmallVector<unsigned>> groups;
+    for (unsigned candidate : order) {
+      auto *group = llvm::find_if(groups, [&](ArrayRef<unsigned> members) {
+        return llvm::all_of(members, [&](unsigned member) {
+          return canShare(cast<RouteEndpointOp>(candidates[candidate]),
+                          cast<RouteEndpointOp>(candidates[member]));
+        });
+      });
+      if (group == groups.end())
+        groups.push_back({candidate});
+      else
+        group->push_back(candidate);
+    }
+    for (auto &members : groups)
       for (unsigned sharer : llvm::drop_begin(members))
         if (channelSharers
                 .insert({candidates[sharer], candidates[members.front()]})
@@ -1466,6 +1539,8 @@ struct AIEObjectFifoAllocatePass
       channelOf[sharer] = owner;
       channelOf[owner] = owner;
     }
+    for (auto [endpoint, alloc] : fixedSharers)
+      channelOf[endpoint] = alloc.getOperation();
     auto channelsOf = [&](RouteOp route) {
       SmallVector<Operation *> channels;
       auto note = [&](StringRef name) {
@@ -1942,6 +2017,9 @@ struct AIEObjectFifoAllocatePass
     llvm::StringMap<unsigned> shimEndsSeen;
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       std::optional<StringRef> fifoName = endpoint.getFifoName();
+      if (!fifoName)
+        if (auto named = dyn_cast<RouteEndpointOp>(endpoint.getOperation()))
+          fifoName = named.getSymName();
       std::optional<int> channel = endpoint.getRouteChannel();
       if (!tileOf(endpoint).isShimTile() || !fifoName || !channel) {
         continue;
@@ -2051,6 +2129,8 @@ struct AIEObjectFifoAllocatePass
     builder = OpBuilder(device.getContext());
     // One pass instance serves every device in the module, and none of this
     // state means anything outside the device it was gathered from.
+    channelSharers.clear();
+    fixedSharers.clear();
     lastPlaced.clear();
     filledPools.clear();
     rearmUsers.clear();
@@ -2133,7 +2213,8 @@ struct AIEObjectFifoAllocatePass
       tried.clear();
       allocated = planAllocation(pools, tried);
     }
-    if (succeeded(allocated) && !channelSharers.empty() &&
+    if (succeeded(allocated) &&
+        (!channelSharers.empty() || !fixedSharers.empty()) &&
         failed(headShimSharingRoutes()))
       return signalPassFailure();
     if (failed(allocated)) {

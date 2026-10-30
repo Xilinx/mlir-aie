@@ -30,8 +30,7 @@ class DMAChannelAnalysis {
   /// a pinned request may still claim one.
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
       streamedChannels;
-  /// Channels of shim DMA allocations marked is_ctrl_pkt_overlay. A
-  /// packet-switched transfer may share one; nothing else may.
+  /// Fixed reservations admit packet endpoints listed by lifetime analysis.
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
       controlChannels;
   /// The first claimant of a core stream port, and whether only packets use

@@ -102,7 +102,9 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   // Shim allocations reserve channels outside the DMA bodies above.
   AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    (overlay.isAttrPresent(allocOp) ? controlChannels : usedChannels)
+    ((overlay.isAttrPresent(allocOp) || allocOp->hasAttr("aie.fixed"))
+         ? controlChannels
+         : usedChannels)
         .try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
                                      allocOp.getChannelDir(),
                                      (int)allocOp.getChannelIndex()),
@@ -174,8 +176,21 @@ int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
     return -1;
   }
   auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
-  if (!packet && controlChannels.contains(key))
-    return -1;
+  if (auto *reservation = controlChannels.lookup(key)) {
+    if (!packet)
+      return -1;
+    if (reservation->hasAttr("aie.fixed")) {
+      auto allowed =
+          reservation->getAttrOfType<ArrayAttr>("aie.shareable_with");
+      auto name =
+          owner ? owner->getAttrOfType<StringAttr>("sym_name") : StringAttr();
+      if (!allowed || !name || llvm::none_of(allowed, [&](Attribute attr) {
+            auto symbol = dyn_cast<FlatSymbolRefAttr>(attr);
+            return symbol && symbol.getAttr() == name;
+          }))
+        return -1;
+    }
+  }
   return usedChannels.try_emplace(key, owner).second ? channel : -1;
 }
 

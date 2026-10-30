@@ -1,45 +1,13 @@
-//===- aiecc_auto_packetize.mlir -------------------------------*- MLIR -*-===//
-//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
 
-// Auto-packetization in aiecc, under --load-pdi-to-ctrl-pkt.
-//
-// Without the packet flows below, the design's two inputs hold both shim MM2S
-// channels of column 0 as circuits. By default one becomes packet-switched and
-// shares channel 0 with the control packets; with --ctrlpkt-auto-packetize=false
-// the overlay has no channel.
+// RUN: rm -rf %t && mkdir -p %t/adaptive %t/fixed
+// RUN: cd %t/adaptive && %aiecc --load-pdi-to-ctrl-pkt --get=input_physical.mlir %s
+// RUN: FileCheck %s < %t/adaptive/input_physical.mlir
+// RUN: cd %t/fixed && not %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-adaptive-overlay=false --get=input_physical.mlir %s 2>&1 | FileCheck %s --check-prefix=FIXED
 
-// RUN: rm -rf %t && mkdir -p %t/circuit %t/circuit_off %t/retry %t/pinned
-// RUN: sed -e '/aie.packet_flow/d' -e 's/ {packet}//' %s > %t/circuit.mlir
-// RUN: cd %t/circuit && %aiecc --load-pdi-to-ctrl-pkt --get=input_physical.mlir %t/circuit.mlir
-// RUN: FileCheck %s --check-prefix=CIRCUIT < %t/circuit/input_physical.mlir
-// RUN: cd %t/circuit_off && not %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-auto-packetize=false --get=input_physical.mlir %t/circuit.mlir 2>&1 | FileCheck %s --check-prefix=OFF
-
-// CIRCUIT-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%{{.+}}, MM2S, 0)
-// CIRCUIT-DAG: aie.shim_dma_allocation @in1_shim_alloc(%{{.+}}, MM2S, 0, <pkt_type = 0, pkt_id = {{[0-9]+}}>)
-// CIRCUIT-DAG: aie.shim_dma_allocation @in0_shim_alloc(%{{.+}}, MM2S, 1)
-
-// OFF: error: {{.*}}every shim mm2s dma channel of column 0 moves data, so none is left for its control packets
-
-// As written, both inputs are packet-switched and the packet flows below leave
-// shim DMA 0 for eleven destinations. Control on channel 0, beside @in0 and
-// those flows, does not route (the pinned run, where the pass is told channel 0
-// and aiecc is told not to retry); aiecc retries column 0 on channel 1, which
-// routes.
-
-// RUN: cd %t/retry && %aiecc --load-pdi-to-ctrl-pkt --get=input_physical.mlir %s
-// RUN: FileCheck %s --check-prefix=RETRIED < %t/retry/input_physical.mlir
-// RUN: aie-opt --aie-auto-packetize-shim-input="control-channels=0:0" %s -o %t/pinned.mlir
-// RUN: cd %t/pinned && not %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-auto-packetize=false --get=input_physical.mlir %t/pinned.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
-
-// RETRIED-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(%{{.+}}, MM2S, 1)
-// RETRIED-DAG: aie.shim_dma_allocation @in0_shim_alloc(%{{.+}}, MM2S, 1, <pkt_type = 0, pkt_id = {{[0-9]+}}>)
-// RETRIED-DAG: aie.shim_dma_allocation @in1_shim_alloc(%{{.+}}, MM2S, 0, <pkt_type = 0, pkt_id = {{[0-9]+}}>)
-
-// PINNED: error: Unable to find a legal routing
+// CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1
+// FIXED: Unable to find a legal routing
 
 module {
   aie.device(npu2_1col) {
@@ -49,8 +17,8 @@ module {
     %t3 = aie.tile(0, 3)
     %t4 = aie.tile(0, 4)
     %t5 = aie.tile(0, 5)
-    aie.objectfifo @in0 (%shim, {%comp}, 1 : i32) {packet} : !aie.objectfifo<memref<4xi32>>
-    aie.objectfifo @in1 (%shim, {%comp}, 1 : i32) {packet} : !aie.objectfifo<memref<4xi32>>
+    aie.objectfifo @in0 (%shim, {%comp}, 1 : i32) {transport = #aie.transport<auto, packet = #aie.packet_info<>>} : !aie.objectfifo<memref<4xi32>>
+    aie.objectfifo @in1 (%shim, {%comp}, 1 : i32) {prod_port = #aie.end_port<DMA : 0>, transport = #aie.transport<auto, packet = #aie.packet_info<>>} : !aie.objectfifo<memref<4xi32>>
     aie.objectfifo @out (%comp, {%shim}, 1 : i32) : !aie.objectfifo<memref<4xi32>>
     aie.core(%comp) {
       %e0 = aie.objectfifo.acquire @in0 (Consume, 1) : memref<4xi32>

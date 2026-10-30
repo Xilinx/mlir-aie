@@ -15,6 +15,7 @@
 #include "llvm/ADT/SmallVector.h"
 
 #include <optional>
+#include <tuple>
 
 namespace xilinx::AIE {
 
@@ -25,7 +26,9 @@ namespace xilinx::AIE {
 /// must all be awaited or freed before the other's first, and a loop spans
 /// its body; a sending end stays in flight to the end of its sequence, as a
 /// shim MM2S task reports itself complete before its words leave the shim.
-/// Ends are known by their objectFIFO's name, before or after split.
+/// An optional configuration identity partitions lifetimes at materialized
+/// configuration boundaries and accounts for synchronized control packets.
+/// Ends are known by their symbolic identity, before or after allocation.
 /// The placer and objectFIFO allocation both decide by this, so they agree.
 class ShimTransferSpans {
 public:
@@ -34,16 +37,20 @@ public:
     mlir::StringAttr fifo;
     /// An MM2S end, sending into the array.
     bool sends;
+    std::optional<std::tuple<int, int, int, int>> channel = std::nullopt;
   };
 
   /// `endOf` maps a symbol a runtime sequence transfers through to the
   /// objectFIFO end it belongs to, or nothing when it belongs to none.
   ShimTransferSpans(
       DeviceOp device,
-      llvm::function_ref<std::optional<End>(mlir::StringAttr)> endOf);
+      llvm::function_ref<std::optional<End>(mlir::StringAttr)> endOf,
+      mlir::StringAttr configuration = {});
 
   /// Whether the ends of `a` and `b` are never in flight together.
   bool apart(mlir::StringAttr a, mlir::StringAttr b) const;
+
+  bool isUsed(mlir::StringAttr end) const;
 
   /// Splits `ends` into groups whose members are pairwise apart, each group
   /// taking one channel: first fit, in name order. Returns indices into `ends`.
