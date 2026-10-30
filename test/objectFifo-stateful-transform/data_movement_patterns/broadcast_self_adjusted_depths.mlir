@@ -133,6 +133,8 @@
 // CHECK:               func.call @some_work(%[[VAL_16]]) : (memref<16xi32>) -> ()
 // CHECK:               aie.use_lock(%[[VAL_22]], Release, %{{.*}})
 // CHECK:             }
+// CHECK:             aie.use_lock(%[[VAL_19]], Release, %{{.*}})
+// CHECK:             aie.use_lock(%[[VAL_20]], Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_58:.*]] = aie.core(%[[VAL_4]]) {
@@ -154,6 +156,7 @@
 // CHECK:               func.call @some_work(%[[VAL_23]]) : (memref<16xi32>) -> ()
 // CHECK:               aie.use_lock(%[[VAL_28]], Release, %{{.*}})
 // CHECK:             }
+// CHECK:             aie.use_lock(%[[VAL_26]], Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_64:.*]] = aie.mem(%[[VAL_1]]) {
@@ -322,6 +325,7 @@ module @broadcast {
             func.call @some_work(%elem2) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)
         }
+        aie.objectfifo.release @broadcast_of (Consume, 2)
 
         aie.end
     }
@@ -337,6 +341,7 @@ module @broadcast {
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)
         }
+        aie.objectfifo.release @broadcast_of (Consume, 1)
 
         aie.end
     }

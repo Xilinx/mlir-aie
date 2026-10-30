@@ -63,6 +63,8 @@
 // CHECK:               func.call @some_work(%[[VAL_5]]) : (memref<16xi32>) -> ()
 // CHECK:               aie.use_lock(%[[VAL_9]], Release, %{{.*}})
 // CHECK:             }
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %{{.*}})
+// CHECK:             aie.use_lock(%[[VAL_7]], Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_27:.*]] = aie.mem(%[[VAL_0]]) {
@@ -142,6 +144,7 @@ module @non_adjacency {
                 func.call @some_work(%elem0) : (memref<16xi32>) -> ()
                 aie.objectfifo.release @objfifo (Consume, 1)
             }
+            aie.objectfifo.release @objfifo (Consume, 2)
 
             aie.end
         }

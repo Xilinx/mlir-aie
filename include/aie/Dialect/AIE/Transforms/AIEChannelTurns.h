@@ -41,6 +41,18 @@ public:
   /// core's steady state.
   llvm::ArrayRef<unsigned> turns() const { return order; }
 
+  /// The loop `read` took as the core's period, once it found one.
+  mlir::Operation *periodLoop() const { return loop; }
+
+  /// Whether `read` found a steady state in which the period moves none of
+  /// the objects: the core keeps what it holds and never takes or hands over
+  /// another. `read` fails then, since there are no turns to take.
+  bool movesNone() const { return idle; }
+
+  /// The first acquire the period runs, with its branches folded; null when
+  /// it runs none.
+  mlir::Operation *periodAcquire() const;
+
   /// Whether a channel moving objects in `turns()` order forever, through
   /// pools of `depths`, never has itself and the core both waiting. Settles
   /// `turns()` on the shortest such order cut from the period's.
@@ -49,17 +61,24 @@ public:
 private:
   bool keepsUp(llvm::ArrayRef<unsigned> order,
                llvm::ArrayRef<int64_t> depths) const;
+  mlir::LogicalResult wholeRunKeepsTurns(
+      CoreOp core,
+      llvm::ArrayRef<std::pair<ObjectFifoReleaseOp, unsigned>> releases,
+      std::string &reason) const;
 
   struct Event {
     unsigned end;
     int64_t count;
     bool acquire;
+    mlir::Operation *op;
   };
 
   llvm::SmallVector<Event> period;
   llvm::SmallVector<unsigned> order;
+  mlir::Operation *loop = nullptr;
   size_t ends = 0;
   bool coreDrains = true;
+  bool idle = false;
 };
 
 } // namespace xilinx::AIE

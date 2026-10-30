@@ -304,6 +304,37 @@ CASES: list[Case] = [
     # the pipelined path.
     check("softmax", dict(tile_size=32), tag="short-trip", smoke=True),
     check("softmax", dict(tile_size=160), tag="min-pipelined", smoke=True),
+    # The single bf16 scale * log2(e) scales every exponent argument as it
+    # does the maximum; aie2 takes a scale only with accurate_exp2.
+    check(
+        "softmax",
+        dict(tile_size=32, scale=0.25),
+        tag="scaled",
+        devices=("npu2",),
+        smoke=True,
+    ),
+    # A live span [lo, hi) is the design's scalars, one for every call.
+    check(
+        "softmax",
+        dict(tile_size=32, span=True, accurate_exp2=True),
+        scalars=(3, 29),
+        tag="span",
+        smoke=True,
+    ),
+    # Scale 0 gives a masked input the same 0 argument as a live one, so only
+    # zeroing its exponential keeps it out of the row.
+    *[
+        check(
+            "softmax",
+            dict(tile_size=32, span=True, scale=0.0, **kw),
+            scalars=bounds,
+            tag=f"span-{tag}",
+            devices=devices,
+            smoke=True,
+        )
+        for kw, devices in ((dict(accurate_exp2=True), ()), ({}, ("npu2",)))
+        for bounds, tag in (((0, 1), "one"), ((5, 27), "mid"))
+    ],
     Case(
         "softmax",
         dict(accurate_exp2=True),
