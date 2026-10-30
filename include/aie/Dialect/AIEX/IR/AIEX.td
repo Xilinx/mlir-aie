@@ -1407,6 +1407,11 @@ def AIE_DMAConfigureTaskOp
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
 
     An `aie.dma_bd` in a task may give more than 4 dimensions when all are constant; `aie-decompose-large-dma-bd` iterates every one past the innermost three.
+
+    `alloc` names the `aie.shim_dma_allocation` the task was configured for,
+    when `aie-substitute-shim-dma-allocations` made it from an
+    `aiex.dma_configure_task_for`. `aie-assign-runtime-sequence-bd-ids` reads
+    that allocation's `consumed_by`.
   }];
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
@@ -1416,7 +1421,7 @@ def AIE_DMAConfigureTaskOp
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
-      UnitAttr:$out_of_order);
+      UnitAttr:$out_of_order, OptionalAttr<FlatSymbolRefAttr>:$alloc);
 
   let regions = (region AnyRegion:$body);
 
