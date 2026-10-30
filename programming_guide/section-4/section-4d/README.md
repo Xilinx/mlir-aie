@@ -35,14 +35,14 @@ All of them honour `MLIR_AIE_KERNEL_SOURCES` (see [section 4c](../section-4c#bef
 
 ## <u>Markers come first</u>
 
-A cycle count needs `event0()` before the work and `event1()` after it in the kernel source ([section 4b](../section-4b)). `test_kernels_perf.py` measures cycles with [`kd.cycles_per_call`](../../../python/iron/algorithms/kernel_design.py), and only for kernels whose `KernelContract` declares `trace=Trace.whole_call()`: **exactly one** `event0()`/`event1()` pair brackets **exactly one** whole call of the entry symbol. A kernel whose markers sit around an inner loop or behind an early return declares `Trace.partial(reason)`, and one without markers `Trace.none(reason)`. A timed case whose kernel declares either fails rather than charting wall clock alone, and the declaration must be right, because a wrong one produces a clean-looking wrong number (see [Cycles you can trust](#cycles-you-can-trust)).
+A cycle count needs `event0()` before the work and `event1()` after it in the kernel source ([section 4b](../section-4b)). `test_kernels_perf.py` measures cycles with [`KernelDesign.cycles_per_call`](../../../python/iron/algorithms/kernel_design.py), and only for kernels whose `KernelContract` declares `trace=Trace.whole_call()`: **exactly one** `event0()`/`event1()` pair brackets **exactly one** whole call of the entry symbol. A kernel whose markers sit around an inner loop or behind an early return declares `Trace.partial(reason)`, and one without markers `Trace.none(reason)`. A timed case whose kernel declares either fails rather than charting wall clock alone, and the declaration must be right, because a wrong one produces a clean-looking wrong number (see [Cycles you can trust](#cycles-you-can-trust)).
 
 Before you declare `Trace.whole_call()` on a kernel's contract (in `python/iron/kernels/`, in the Python package your tests import):
 
 1. Find the symbol the factory actually compiles, and the file it lives in. The remarks tool prints it for every build: for the `add` factory it is `eltwise_add_bf16_vector` in [add.cc](../../../aie_kernels/eltwise/add.cc).
 2. Check that the symbol's body has one marker pair around the whole call. [`test_kernel_trace_markers.py`](../../../test/python/test_kernel_trace_markers.py) does this for every library build without a device: it compiles each build to optimized IR and fails when the markers its entry symbol reaches do not match the contract's `trace`.
 
-An initializer on the same core (such as `zero`) may have markers of its own. The harness calls the initializers and then the kernel in a fixed order, so `cycles_per_call` splits the intervals by position and returns each kernel's population separately (`kd.CallCycles`). A stream with more intervals than the contracts declare means some kernel emits markers it does not declare, and `cycles_per_call` raises instead of returning a number:
+An initializer on the same core (such as `zero`) may have markers of its own. The harness calls the initializers and then the kernel in a fixed order, so `cycles_per_call` splits the intervals by position and returns each kernel's population separately (`CallCycles`). A stream with more intervals than the contracts declare means some kernel emits markers it does not declare, and `cycles_per_call` raises instead of returning a number:
 
 ```
 RuntimeError: expected <N> trace intervals, got <M>; a kernel on the core emits markers its contract's trace does not declare
@@ -356,7 +356,7 @@ Make sure every number comes from the source you think it does.
     390 and 150 cycles; II 12 and II 18, both with `NS=1`. The wall-clock `dispatch_us` does not move beyond noise, because the core is busy for about 1.5% of the device time.
     </details>
 
-1. The performance check sizes the trace buffer from the number of intervals the contracts declare (`kd.traced_intervals`). Call `kd.cycles_per_call` for the `add/1024x256/bfloat16` case with `trace_size=16384` instead. What comes back, and how can you tell?
+1. The performance check sizes the trace buffer from the number of intervals the contracts declare (`KernelDesign.traced_intervals()`). Call the instance's `cycles_per_call` for the `add/1024x256/bfloat16` case with `trace_size=16384` instead. What comes back, and how can you tell?
     <details markdown="1"><summary>Show answer</summary>
     A 16 KB buffer fills after 91 intervals of this design, so `kernel` holds the first 91 calls and `truncated` is `True`. Those 91 are still labelled correctly, because the buffer keeps the start of the stream in call order. In a performance row, `truncated` appears in the `range`.
     </details>

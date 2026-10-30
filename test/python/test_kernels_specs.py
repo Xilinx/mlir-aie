@@ -1474,8 +1474,9 @@ def test_gelu_erf_refuses_a_tile_with_a_tail():
 
 def test_gelu_erf_device_case_fails_a_tanh_gelu(kernel_arch):
     fn = kernels.gelu_erf()
+    design = kd.KernelDesign(fn, calls=16)
     for seed in range(1000, 1004):  # the device test's random seeds
-        (x,) = kd.sample_inputs(fn, calls=16, rng=np.random.default_rng(seed))
+        (x,) = design.sample_inputs(np.random.default_rng(seed))
         ref = fn.expected([x])
         assert fn.judge(ref.ravel(), ref, calls=16)
         assert not fn.judge(kernels.gelu_ref(x).ravel(), ref, calls=16)

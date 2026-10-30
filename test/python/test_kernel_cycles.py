@@ -22,8 +22,8 @@ def _kernel(name, contract, arg_types=()):
 
 
 def _run(fn, tmp_path, calls=1):
-    return kd.cycles_per_call(
-        None, [], 1, int, fn=fn, trace_size=1024, workdir=tmp_path, calls=calls
+    return kd.KernelDesign(fn, calls=calls).cycles_per_call(
+        [], trace_size=1024, workdir=tmp_path
     )
 
 
@@ -33,7 +33,7 @@ def _run(fn, tmp_path, calls=1):
 def test_an_untimed_contract_returns_its_reason_without_running(tmp_path, trace):
     fn = _kernel("untimed", KernelContract(roles=(), trace=trace))
     assert _run(fn, tmp_path) == kd.CallCycles(untimed=trace.reason)
-    assert kd.traced_intervals(fn, calls=4) == 0
+    assert kd.KernelDesign(fn, calls=4).traced_intervals() == 0
 
 
 def test_an_undeclared_trace_is_refused(tmp_path):
@@ -56,17 +56,17 @@ def _with_initializer(trace):
 
 
 def test_a_traced_initializer_is_one_more_interval_per_call():
-    assert kd.traced_intervals(_with_initializer(Trace.whole_call()), calls=4) == 8
-    assert (
-        kd.traced_intervals(_with_initializer(Trace.none("no markers")), calls=4) == 4
-    )
+    timed = kd.KernelDesign(_with_initializer(Trace.whole_call()), calls=4)
+    untimed = kd.KernelDesign(_with_initializer(Trace.none("no markers")), calls=4)
+    assert timed.traced_intervals() == 8
+    assert untimed.traced_intervals() == 4
 
 
 def test_the_library_mm_is_zeroed_then_timed_each_call(npu2_device):
     # zero's markers bracket its call, so every mm call emits two intervals;
     # set_rounding, the eltwise setup, emits none.
-    assert kd.traced_intervals(kernels.mm(), calls=4) == 8
-    assert kd.traced_intervals(kernels.add(), calls=4) == 4
+    assert kd.KernelDesign(kernels.mm(), calls=4).traced_intervals() == 8
+    assert kd.KernelDesign(kernels.add(), calls=4).traced_intervals() == 4
 
 
 def test_a_partial_initializer_cannot_be_split_off(tmp_path):
@@ -143,7 +143,7 @@ def test_two_pairs_per_call_are_not_flushes():
 def test_an_inputless_kernel_waits_for_the_trace(tmp_path, npu2_device):
     # Without the barrier zero's first calls run before the sequence starts
     # the trace, and the flush pairs are read as calls.
-    design = kd.design(kernels.zero, tile_size=64, calls=4)
+    design = kd.KernelDesign(kernels.zero(tile_size=64), calls=4).design()
     traced = design.as_mlir(
         None,
         trace_config=TraceConfig(
