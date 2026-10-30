@@ -400,13 +400,22 @@ extern "C" void resize_emit_row(uint8_t *out, int32_t i) {
     zero_vectorized<uint8_t, SIDE * SIDE * 3, 1, false>(out);
     return;
   }
+  // Word-aligned memcpy, not row[x]/row[SIDE + x] byte loads: the same
+  // chained-pointer shape resize_emit's own comment above says llvm-aie
+  // miscompiles. row's alignment is resize_emit's own (same formula).
   uint8_t *o = out;
   for (int y = 0; y < SIDE; y++) {
     const uint8_t *row = hold[y] + 3 * i * SIDE;
-    for (int x = 0; x < SIDE; x++, o += 3) {
-      o[0] = row[x];
-      o[1] = row[SIDE + x];
-      o[2] = row[2 * SIDE + x];
+    for (int x = 0; x < SIDE; x += 4, o += 12) {
+      uint32_t r, g, b;
+      __builtin_memcpy(&r, __builtin_assume_aligned(row + x, 4), 4);
+      __builtin_memcpy(&g, __builtin_assume_aligned(row + SIDE + x, 4), 4);
+      __builtin_memcpy(&b, __builtin_assume_aligned(row + 2 * SIDE + x, 4), 4);
+      for (int k = 0; k < 4; k++) {
+        o[3 * k + 0] = (uint8_t)(r >> (8 * k));
+        o[3 * k + 1] = (uint8_t)(g >> (8 * k));
+        o[3 * k + 2] = (uint8_t)(b >> (8 * k));
+      }
     }
   }
 }
