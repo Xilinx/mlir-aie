@@ -3996,31 +3996,31 @@
 </thead>
 <tbody>
 <tr>
-<td><a href="../api/iron/#iron.worker.Worker"><strong>Worker</strong></a></td>
+<td><a href="../api/iron/#aie.iron.worker.Worker"><strong>Worker</strong></a></td>
 <td>The IRON object describing the code that runs on one compute tile. Prefer "Worker" over "process" or "task".</td>
 </tr>
 <tr>
-<td><a href="../api/iron/#iron.dataflow.objectfifo.ObjectFifo"><strong>ObjectFifo</strong></a></td>
+<td><a href="../api/iron/#aie.iron.dataflow.objectfifo.ObjectFifo"><strong>ObjectFifo</strong></a></td>
 <td>The synchronized streaming-data primitive between two endpoints (host↔tile or tile↔tile). Producers and consumers <code>acquire</code> / <code>release</code> its elements. Reserve "channel" for AXI stream channels.</td>
 </tr>
 <tr>
-<td><a href="../api/iron/#iron.dataflow.objectfifo.ObjectFifoHandle"><strong>ObjectFifoHandle</strong></a></td>
+<td><a href="../api/iron/#aie.iron.dataflow.objectfifo.ObjectFifoHandle"><strong>ObjectFifoHandle</strong></a></td>
 <td>A producer or consumer handle to an ObjectFifo, obtained via <code>of.prod()</code> / <code>of.cons()</code>. Worker core functions call <code>acquire</code> / <code>release</code> on it.</td>
 </tr>
 <tr>
-<td><a href="../api/iron/#iron.runtime.runtime.Runtime"><strong>Runtime</strong></a></td>
+<td><a href="../api/iron/#aie.iron.runtime.runtime.Runtime"><strong>Runtime</strong></a></td>
 <td>The host-side description of <code>fill</code> / <code>drain</code> operations, defined by the body passed to <code>Runtime(seq, fn_args)</code>. Workers are passed to <code>Program(workers=...)</code>. Distinct from "host code" (the C++/Python testbench that calls the design).</td>
 </tr>
 <tr>
-<td><a href="../api/iron/#iron.program.Program"><strong>Program</strong></a></td>
+<td><a href="../api/iron/#aie.iron.program.Program"><strong>Program</strong></a></td>
 <td>The top-level container that binds a device and a Runtime and resolves the design to MLIR.</td>
 </tr>
 <tr>
-<td><a href="../api/iron/#iron.buffer.Buffer"><strong>Buffer</strong></a></td>
+<td><a href="../api/iron/#aie.iron.buffer.Buffer"><strong>Buffer</strong></a></td>
 <td>A named memory region on a tile, used for Worker-local scratch storage or runtime parameters. Prefer it over a self-connected ObjectFifo when sequential kernel calls in one Worker share an intermediate result; use ObjectFifos when producer/consumer synchronization is needed.</td>
 </tr>
 <tr>
-<td><a href="../api/iron/#iron.kernel.Kernel"><strong>Kernel</strong></a> / <a href="../api/iron/#iron.kernel.ExternalFunction"><strong>ExternalFunction</strong></a></td>
+<td><a href="../api/iron/#aie.iron.kernel.Kernel"><strong>Kernel</strong></a> / <a href="../api/iron/#aie.iron.kernel.ExternalFunction"><strong>ExternalFunction</strong></a></td>
 <td>Wrappers for AIE core functions: <code>Kernel</code> for a pre-compiled object file, <code>ExternalFunction</code> for C/C++ source compiled at JIT time.</td>
 </tr>
 <tr>
@@ -4028,15 +4028,15 @@
 <td>A description of how a tensor is sliced and streamed to/from the NPU across multiple DMA transfers. Passed as <code>tap=</code> to <code>fifo.fill()</code> / <code>fifo.drain()</code>.</td>
 </tr>
 <tr>
-<td><a href="../api/iron/#iron.dataflow.flow.Flow"><strong>Flow</strong></a> / <a href="../api/iron/#iron.dataflow.flow.PacketFlow"><strong>PacketFlow</strong></a></td>
+<td><a href="../api/iron/#aie.iron.dataflow.flow.Flow"><strong>Flow</strong></a> / <a href="../api/iron/#aie.iron.dataflow.flow.PacketFlow"><strong>PacketFlow</strong></a></td>
 <td>Lower-level explicit-routing primitives: <code>Flow</code> for circuit-switched routes, <code>PacketFlow</code> for packet-switched routes with caller-controlled packet IDs.</td>
 </tr>
 <tr>
-<td><a href="../api/iron/#iron.dataflow.tile_dma.TileDma"><strong>TileDma</strong></a></td>
+<td><a href="../api/iron/#aie.iron.dataflow.tile_dma.TileDma"><strong>TileDma</strong></a></td>
 <td>A lower-level explicit per-tile DMA program, used when the ObjectFifo abstraction hides too much.</td>
 </tr>
 <tr>
-<td><a href="../api/iron/#iron.runtime.runtime.Runtime"><strong>Runtime sequence</strong></a></td>
+<td><a href="../api/iron/#aie.iron.runtime.runtime.Runtime"><strong>Runtime sequence</strong></a></td>
 <td>The sequence body passed to <code>Runtime(seq, fn_args)</code> in which <code>fill</code> / <code>drain</code> operations are declared.</td>
 </tr>
 </tbody>
