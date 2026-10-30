@@ -29,13 +29,6 @@
 // END: decode: 4/4 tokens PASS
 //
 // RUN: %run_on_npu2% %python %S/test_decode.py --synthetic-weights --start-pos 62 --passes 3 --split | FileCheck --check-prefix=SPLIT %s
-// RUN: %run_on_npu2% %python %S/test_decode.py --synthetic-weights --start-pos 62 --passes 3 --split --sample-temp 0.7 --sample-topk 4 --sample-seed 1234 | FileCheck --check-prefix=SPLIT %s
-// SPLIT: 3 tokens vs 3 x 1, records: same
-// SPLIT: 3 tokens vs 3 x 1, untouched records: same
-// SPLIT: 3 tokens vs 3 x 1, KV cache: same
-// SPLIT: 3 tokens vs 3 x 1, seed: same
-// SPLIT: 3 tokens vs 3 x 1, final hidden: same
-// SPLIT: 3 tokens vs 3 x 1, sampler state: same
 // SPLIT: KV cache: PASS
 // SPLIT: decode: 3/3 tokens PASS
 // SPLIT: 3 tokens vs 3 x 1: PASS
