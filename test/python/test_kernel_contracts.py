@@ -1945,7 +1945,7 @@ def test_softmax_span_builds_softmax_span_bf16():
 def test_softmax_span_masks_outside_the_live_region():
     rng = np.random.default_rng(0)
     fn = kernels.softmax(32, span=True, accurate_exp2=True)
-    x, lo, hi = fn.contract.sample(rng, 6)
+    x, lo, hi = softmax_span_sample(rng, 6, tile_size=32)
     ref = fn.contract.reference(x, lo, hi)
     cols = np.arange(32)[None, :]
     live = (cols >= lo[:, None]) & (cols < hi[:, None])
@@ -1955,6 +1955,21 @@ def test_softmax_span_masks_outside_the_live_region():
     assert np.allclose(ref.astype(np.float32).sum(axis=1), 1.0, atol=2**-8)
     assert compare(ref, ref, fn.contract.tolerance)
     assert not compare(np.zeros_like(ref), ref, fn.contract.tolerance)
+
+
+def test_softmax_span_contract_takes_its_bounds_as_scalars():
+    # The contract samples the tile alone; lo and hi are the scalars a design
+    # gives every call, which the reference spreads over the rows.
+    fn = kernels.softmax(32, span=True, accurate_exp2=True)
+    sampled = fn.contract.sample(np.random.default_rng(2), 3)
+    assert len(sampled) == 1
+    (x,) = sampled
+    got = fn.expected([x], scalars=(3, 29))
+    want = softmax_span_ref(x, np.full(3, 3), np.full(3, 29), tile_size=32)
+    assert np.array_equal(got, want)
+    probabilities = got.astype(np.float32)
+    assert (probabilities[:, :3] == 0).all() and (probabilities[:, 29:] == 0).all()
+    assert (probabilities[:, 3:29] > 0).any(axis=1).all()
 
 
 def test_softmax_span_sample_keeps_one_full_and_one_single_element_row():

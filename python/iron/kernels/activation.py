@@ -638,9 +638,11 @@ def _softmax_span_bf16(
                     "only an exact zero outside [lo, hi)",
                 )
             ),
+            # The bounds are the scalars a design gives, one pair for every
+            # call; only the tile is an input array.
             sample=lambda rng, calls: softmax_span_sample(
                 rng, calls, tile_size=tile_size
-            ),
+            )[:1],
             setup=(
                 conv_even if _tuned_arch() == "aie2" and not accurate_exp2 else None
             ),
@@ -1703,14 +1705,14 @@ def softmax_span_ref(x, lo, hi, *, tile_size: int, scale: float | None = None):
 
     ``softmax_ref``, each row masked to its own ``[lo, hi)`` first with
     bf16's most negative value, as the kernel's ``mask_head_bf16`` and
-    ``mask_bf16`` do.
+    ``mask_bf16`` do. ``lo`` and ``hi`` are one bound for every row, as the
+    kernel's scalars, or one per row.
     """
-    lo = np.asarray(lo)
-    hi = np.asarray(hi)
-    cols = np.arange(tile_size)[None, :]
-    live = (cols >= lo[:, None]) & (cols < hi[:, None])
-    masked = np.where(live, x, finfo(bfloat16).min).astype(x.dtype)
-    return softmax_ref(masked, tile_size=tile_size, scale=scale)
+    rows = np.asarray(x).reshape(-1, tile_size)
+    cols = np.arange(tile_size)
+    live = (cols >= np.reshape(lo, (-1, 1))) & (cols < np.reshape(hi, (-1, 1)))
+    masked = np.where(live, rows, finfo(bfloat16).min).astype(x.dtype)
+    return softmax_ref(masked.reshape(np.shape(x)), tile_size=tile_size, scale=scale)
 
 
 def softmax_span_sample(rng, calls: int, *, tile_size: int) -> list:

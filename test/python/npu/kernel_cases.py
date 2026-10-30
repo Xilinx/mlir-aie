@@ -313,6 +313,14 @@ CASES: list[Case] = [
         devices=("npu2",),
         smoke=True,
     ),
+    # A live span [lo, hi) is the design's scalars, one for every call.
+    check(
+        "softmax",
+        dict(tile_size=32, span=True, accurate_exp2=True),
+        scalars=(3, 29),
+        tag="span",
+        smoke=True,
+    ),
     Case(
         "softmax",
         dict(accurate_exp2=True),
