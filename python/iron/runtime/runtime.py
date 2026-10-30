@@ -17,6 +17,7 @@ bounds) elaborates to a flat binary sequence.
 
 from __future__ import annotations
 
+import inspect
 import itertools
 import logging
 from typing import TYPE_CHECKING, Callable, Sequence, get_origin
@@ -716,6 +717,12 @@ class Runtime(DeviceResources, Resolvable):
                 else:
                     body_args.append(arg)
 
+            # Each buffer is named after the sequence parameter it arrives as,
+            # which names the transfers that move it.
+            for name, rt_data in zip(_parameter_names(self._seq_fn), self._rt_data):
+                if rt_data is not None:
+                    rt_data.name = name
+
             with active_sequence_scope(active):
                 with traced_body(self._seq_fn):
                     self._seq_fn(*body_args)
@@ -787,6 +794,23 @@ class Runtime(DeviceResources, Resolvable):
                         )
             for r in to_remove:
                 fifo_obj._cons.remove(r)
+
+
+def _parameter_names(fn) -> list[str]:
+    """Return `fn`'s positional parameter names, or none if it has no fixed ones."""
+    try:
+        parameters = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return []
+    names = []
+    for parameter in parameters:
+        if parameter.kind not in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            break
+        names.append(parameter.name)
+    return names
 
 
 class _SyncParametersTask(Resolvable):

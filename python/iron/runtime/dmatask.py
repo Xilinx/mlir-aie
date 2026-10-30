@@ -7,6 +7,7 @@
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects.aiex import dma_start_task, shim_dma_single_bd_task
+from ...helpers.sourceloc import iron_name
 from ...helpers.taplib import TensorAccessPattern
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence
@@ -110,6 +111,23 @@ class DMATask(RuntimeTask):
             packet=self._packet,  # pyright: ignore[reportArgumentType]
         )
         dma_start_task(self._task, repeat_parameter=self._repeat_parameter)
+        # Named after the buffer and the channel it moves through
+        # ("iron:A@of_in"), so the sequence's tasks and BDs read like the source.
+        if self._rt_data.name is not None:
+            name = iron_name(f"{self._rt_data.name}@{self._alloc}")
+            # The task, its BDs, and the start pushing it (its only use yet).
+            ops = [self._task.operation]
+            ops += [use.owner for use in self._task.result.uses]
+            for op in ops:
+                _name_op(op, name)
+
+
+def _name_op(op: ir.Operation, name: str) -> None:
+    op.location = ir.Location.name(name, childLoc=op.location)
+    for region in op.regions:
+        for block in region.blocks:
+            for child in block.operations:
+                _name_op(child.operation, name)
 
 
 def emit_shim_transfer(
