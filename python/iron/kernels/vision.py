@@ -483,7 +483,7 @@ def nms(width: int = 52, classes: int = 80, cap: int = 320) -> _NmsKernel:
     nms_finish(out, count, nms_thre, class_agnostic)
     ```
 
-    ``row`` is [`grid_decode`][iron.kernels.vision.grid_decode]'s output
+    ``row`` is [`grid_decode`][aie.iron.kernels.vision.grid_decode]'s output
     row: ``width`` cells of ``5 + classes`` float32, a cell's box ``(cx,
     cy, w, h)``, its objectness, then ``classes`` scores; ``width`` is a
     runtime count up to this build's ``width``, so one build serves every
@@ -585,7 +585,7 @@ def resize_linear(in_bytes: int = 3072, out_bytes: int = 1248) -> _ResizeLinearK
     the kernel refuses (below 1, or past ``in_bytes`` or ``out_bytes``)
     take every source row and emit ``out_rows`` rows of zeros, so a
     design's streams stay in step; every call emits ``out_rows`` rows.
-    [`resize_linear_ref`][iron.kernels.vision.resize_linear_ref] is the
+    [`resize_linear_ref`][aie.iron.kernels.vision.resize_linear_ref] is the
     arithmetic.
 
     Args:
@@ -826,7 +826,7 @@ def resize(
         block, not a slice of a full-width raster row -- as 16 rows of
         ``SIDE`` interleaved uint8 RGB pixels (row 0's ``3 * SIDE`` bytes,
         then row 1's, ...) rather than a bf16 u8 / 255 patch, for
-        [`vision.levels`][iron.kernels.vision.levels] to read. Because core
+        [`vision.levels`][aie.iron.kernels.vision.levels] to read. Because core
         ``c`` owns patch columns ``c, c + cores, ...`` (strided, not
         contiguous), a true output row needs every core's blocks for that
         band: row ``y``'s pixels at columns ``(core + i * cores) * SIDE``
@@ -986,7 +986,7 @@ def grid_decode_ref(
     cls_at: int,
     classes: int,
 ):
-    """Numpy reference for [`grid_decode`][iron.kernels.vision.grid_decode].
+    """Numpy reference for [`grid_decode`][aie.iron.kernels.vision.grid_decode].
 
     YOLOX's ``decode_outputs`` in float32.
     """
@@ -1005,7 +1005,7 @@ def grid_decode_ref(
 def nms_ref(
     rows, conf_thre, nms_thre, class_agnostic, *, classes: int, cap: int
 ) -> tuple[np.ndarray, int, int]:
-    """Numpy reference for [`nms`][iron.kernels.vision.nms].
+    """Numpy reference for [`nms`][aie.iron.kernels.vision.nms].
 
     torchvision's CPU ``nms`` under ``batched_nms``'s own choice of path:
     the coordinate-offset trick at 1000 survivors or fewer, its vanilla
@@ -1014,7 +1014,7 @@ def nms_ref(
     survivor count).
 
     ``rows`` is ``(row, width)`` pairs, each row ``width`` cells of ``5 +
-    classes`` float32 as [`grid_decode`][iron.kernels.vision.grid_decode]
+    classes`` float32 as [`grid_decode`][aie.iron.kernels.vision.grid_decode]
     writes them, in call order. A cell survives at ``conf_thre`` or above
     (``objectness * its best class's confidence``, ties to the lowest
     class id); past ``cap`` survivors, only the top ``cap`` by score
@@ -1124,7 +1124,7 @@ def nms_ref(
 
 
 def resize_linear_ref(rows, columns, out_rows, out_columns, image, *, out_bytes: int):
-    """Numpy reference for [`resize_linear`][iron.kernels.vision.resize_linear].
+    """Numpy reference for [`resize_linear`][aie.iron.kernels.vision.resize_linear].
 
     ``image`` holds the source rows, ``3 * columns`` bytes of each used;
     returns ``out_rows`` rows of ``out_bytes``. Exact.
@@ -1171,7 +1171,7 @@ def resize_linear_ref(rows, columns, out_rows, out_columns, image, *, out_bytes:
 def levels_ref(
     rows, table, first, count, at, row, lo, hi, *, out_width: int, bgr: bool = False
 ):
-    """Numpy reference for [`levels`][iron.kernels.vision.levels]. Exact."""
+    """Numpy reference for [`levels`][aie.iron.kernels.vision.levels]. Exact."""
     rows = np.asarray(rows, np.uint8)
     table = np.asarray(table).astype(bfloat16)
     first, count, at = int(first), int(count), int(at)
@@ -1482,8 +1482,8 @@ def resize_ref(
         chunk: The bytes of an image chunk.
         patch_columns: The most patch columns one core holds.
         cores: The cores the patch columns are dealt to.
-        as_rows: When ``True``, [`resize_emit_row`][iron.kernels.vision.resize]'s
-            raster instead of [`resize_emit`][iron.kernels.vision.resize]'s patches.
+        as_rows: When ``True``, [`resize_emit_row`][aie.iron.kernels.vision.resize]'s
+            raster instead of [`resize_emit`][aie.iron.kernels.vision.resize]'s patches.
 
     Returns:
         With ``as_rows``, ``(bands * 16, strips * 16, 3)`` uint8 -- out_rows

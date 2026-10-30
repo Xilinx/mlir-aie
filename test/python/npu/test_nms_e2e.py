@@ -9,7 +9,7 @@
 """Score threshold and class-aware NMS with ``nms``'s three entry points.
 
 Each case is one image: ``nms_setup`` once, ``nms_score`` once a row (one
-pyramid level's worth of cells, [`grid_decode`][iron.kernels.vision.grid_decode]'s
+pyramid level's worth of cells, [`grid_decode`][aie.iron.kernels.vision.grid_decode]'s
 output layout), then ``nms_finish``. Every case is judged against
 ``vision.nms_ref`` exactly: nothing reaching the threshold, overlapping
 boxes down to one survivor, tied scores, an IoU exactly at the threshold,
