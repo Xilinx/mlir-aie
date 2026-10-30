@@ -1052,7 +1052,7 @@ LogicalResult xilinx::AIE::AIERTControl::addCoreEnable(DeviceOp &targetOp) {
       // A core reaching its own tile's registers goes through the processor
       // bus, which starts disabled: an access made before this stalls the
       // core. Only the cores that ask for it pay for it.
-      if (coreOp->hasAttr(kProcessorBusAttrName))
+      if (coreOp.getProcessorBus())
         TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreProcessorBusEnable,
                                 &aiert->devInst, tileLoc);
       TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &aiert->devInst,

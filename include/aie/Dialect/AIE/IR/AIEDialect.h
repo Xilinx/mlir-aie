@@ -30,13 +30,6 @@
 
 namespace xilinx::AIE {
 
-/// Set on an aie.core that reaches its own tile's registers. The
-/// configuration enables the processor bus for such a core before starting
-/// it; the bus starts disabled and an access made before that stalls the
-/// core.
-inline constexpr llvm::StringLiteral kProcessorBusAttrName =
-    "aie.processor_bus";
-
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
 template <typename ConcreteType>

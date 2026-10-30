@@ -210,21 +210,18 @@ def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "mlir::ModuleOp"> {
 
 def AIELowerCoreIssuedConfiguration
     : Pass<"aie-lower-core-issued-configuration", "xilinx::AIE::DeviceOp"> {
-  let summary = "Lower the configuration a core makes onto its own stores";
+  let summary = "Lower core-issued DMA queue operations to register accesses";
   let description = [{
-    Replace each `aie.dma_push_queue` with the register writes that push a
-    task onto its channel's queue, and each `aie.dma_poll_for_queue_space`
-    with the loop that reads that queue's size, as accesses the core makes to
-    its own tile over the processor bus.
+    Lowers `aie.dma_push_queue` to register writes and
+    `aie.dma_poll_for_queue_space` to a loop that reads the DMA queue status.
+    The accesses execute on the core and address registers on its own tile
+    through the processor bus. The pass sets `processor_bus` on each affected
+    `aie.core` so device configuration enables the bus before core startup.
 
-    The writes come from aie-rt: the push runs inside a transaction and the
-    transaction is read back, so this pass carries no copy of the register
-    map. A push that writes outside the core's own tile, or that takes
-    anything other than plain writes, is an error rather than a store the
-    core cannot make.
-
-    The lowerings of `aiex.dma_configure_task` and `aiex.dma_start_task` onto
-    a core belong here too, once a core issues those.
+    For pushes, the pass records an aie-rt transaction and extracts its
+    register writes, avoiding a separate implementation of the DMA register
+    encoding. It rejects transactions containing writes outside the core's
+    tile or operations other than plain register writes.
   }];
   let constructor = "xilinx::AIE::createAIELowerCoreIssuedConfigurationPass()";
   let dependentDialects = ["mlir::func::FuncDialect",
@@ -236,20 +233,23 @@ def AIELowerCoreIssuedConfiguration
 def AIEObjectFifoInsertCoreQueuePushes
     : Pass<"aie-objectfifo-insert-core-queue-pushes",
            "xilinx::AIE::DeviceOp"> {
-  let summary = "Push onto an out-of-order channel's queue as its core goes";
+  let summary = "Insert core-issued tasks to replenish out-of-order receive queues";
   let description = [{
-    An out-of-order S2MM channel takes the objects its queue was pushed for
-    and then stops: it walks no chain that would carry it round. A fifo that
-    names no iter_count receives objects without end, so its channel has to
-    be pushed again as it goes.
+    An out-of-order S2MM task accepts a finite number of objects. For FIFOs
+    without `iter_count`, this pass inserts additional tasks so reception can
+    continue beyond the tasks submitted during device configuration.
 
-    This counts, per channel, the objects the core takes out of the fifos
-    that channel fills, and emits one `aie.dma_push_queue` for every run of
-    objects an arming holds. One push covers 256 objects, so the count the
-    core carries costs far less than a push per object would.
+    After channel allocation, the pass creates a runtime counter for each
+    receiving channel used by a core. Consumer releases decrement that
+    counter across all FIFOs sharing the channel. The first release submits
+    an additional task; subsequent pushes occur once per
+    `getMaxRepeatCount() + 1` released objects (256 on current supported
+    targets). A release of multiple objects carries any excess into the next
+    counter interval. Each pushed task accepts that same number of objects.
 
-    A core that pushes for its own receiving channel can deadlock against a
-    sender running at another rate; see `aie.dma_push_queue`.
+    With `check-queue-space=true`, a queue-space poll precedes each push.
+    The program must still avoid circular waits between core synchronization
+    and DMA progress; polling only prevents task-queue overflow.
   }];
   let options = [Option<
       "checkQueueSpace", "check-queue-space", "bool", /*default=*/"true",

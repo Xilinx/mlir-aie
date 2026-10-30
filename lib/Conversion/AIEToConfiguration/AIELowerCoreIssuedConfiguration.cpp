@@ -144,7 +144,7 @@ struct AIELowerCoreIssuedConfigurationPass
             pushWrites(op, tile.getCol(), tile.getRow(), targetModel, writes)))
       return failure();
     // The configuration enables the bus for this core before it runs.
-    core->setAttr(kProcessorBusAttrName, UnitAttr::get(op.getContext()));
+    core.setProcessorBus(true);
 
     OpBuilder builder(op);
     Type i32 = builder.getI32Type();
@@ -177,7 +177,7 @@ struct AIELowerCoreIssuedConfigurationPass
     if (mask == 0)
       return op.emitOpError(
           "this tile reports no task-queue field in its DMA status");
-    core->setAttr(kProcessorBusAttrName, UnitAttr::get(op.getContext()));
+    core.setProcessorBus(true);
 
     OpBuilder builder(op);
     Location loc = op.getLoc();

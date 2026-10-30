@@ -22,7 +22,7 @@
 // CHECK:       aie.core({{.*}}) {
 // CHECK:         llvm.inttoptr
 // CHECK:         func.call @llvm.aie2p.write.tm
-// CHECK:       } {aie.processor_bus}
+// CHECK:       } {processor_bus}
 // CHECK-NOT:   aie.dma_push_queue
 module @push {
   aie.device(npu2_1col) {
@@ -59,7 +59,7 @@ module @push {
 // CHECK:           func.call @llvm.aie2p.read.tm
 // CHECK:           arith.andi
 // CHECK:           arith.cmpi eq
-// CHECK:       } {aie.processor_bus}
+// CHECK:       } {processor_bus}
 // CHECK-NOT:   aie.dma_poll_for_queue_space
 module @poll {
   aie.device(npu2_1col) {
