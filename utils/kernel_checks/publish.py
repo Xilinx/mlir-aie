@@ -584,11 +584,14 @@ def _stands_for_week(record: dict) -> tuple:
     return (published, is_nightly(record), record["date"])
 
 
-def prune(records: list[dict], now: datetime.datetime) -> list[dict]:
+def prune(
+    records: list[dict], now: datetime.datetime, max_runs: int = MAX_RUNS
+) -> list[dict]:
     """Keep recent runs and weekly representatives within the horizon.
 
     Keep every run of the last ``KEEP_DAYS``; then, for ``KEEP_WEEKS`` more,
-    one run each ISO week (the one that best stands for it); none older.
+    one run each ISO week (the one that best stands for it); none older,
+    and ``max_runs`` at most.
     """
     records = sorted(records, key=lambda r: r["date"])
     recent, weekly = [], {}
@@ -603,7 +606,7 @@ def prune(records: list[dict], now: datetime.datetime) -> list[dict]:
             ):
                 weekly[week] = r
     kept = sorted(weekly.values(), key=lambda r: r["date"]) + recent
-    return kept[-MAX_RUNS:]
+    return kept[-max_runs:]
 
 
 def rebuild(
@@ -611,13 +614,14 @@ def rebuild(
     now: datetime.datetime | None = None,
     drop_pmode: str | None = None,
     keep_pmode: str | None = None,
+    max_runs: int = MAX_RUNS,
 ) -> dict:
     """Rewrite the derived files from ``runs/*.json``, pruning old runs.
 
     A record still using older case ids is upgraded in place first. With
     ``drop_pmode``, the records of runs measured in that power mode are
     deleted first; with ``keep_pmode``, those of runs that charted numbers in
-    any other mode.
+    any other mode. At most ``max_runs`` records are kept.
     """
     now = now or now_utc()
     runs_dir = out / "runs"
@@ -672,8 +676,8 @@ def rebuild(
     # Select before weekly thinning: two comparison nights can share a week,
     # and a long tail of refusals or manual runs must not evict their details.
     protected = [r for r in eligible if r["id"] in needed]
-    others = [r for r in prune(records, now) if r["id"] not in needed]
-    slots = MAX_RUNS - len(protected)
+    others = [r for r in prune(records, now, max_runs) if r["id"] not in needed]
+    slots = max_runs - len(protected)
     kept = sorted(
         protected + (others[-slots:] if slots else []), key=lambda r: r["date"]
     )

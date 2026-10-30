@@ -690,12 +690,12 @@ def test_old_detail_follows_the_pages_selected_comparison(
     ids=["same-week", "power", "same-device", "new-device"],
 )
 def test_comparison_survives_weekly_thinning_and_the_run_limit(
-    publish, tmp_path, monkeypatch, middle, latest, previous
+    publish, tmp_path, middle, latest, previous
 ):
     out = tmp_path / "sa-placer-hw"
     (out / "runs").mkdir(parents=True)
     now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
-    monkeypatch.setattr(publish, "MAX_RUNS", 6)
+    max_runs = 6
     records = [
         hardware_record(
             str(i),
@@ -722,20 +722,20 @@ def test_comparison_survives_weekly_thinning_and_the_run_limit(
     # File enumeration order is not chronology.
     for r in reversed(records):
         (out / "runs" / f"{r['id']}.json").write_text(json.dumps(r))
-    publish.rebuild(out, now)
+    publish.rebuild(out, now, max_runs=max_runs)
 
     selected = json.loads((out / "latest.json").read_text())
     assert selected["id"] == "3" and selected["detail"] and selected["builds"]
     index = json.loads((out / "runs.json").read_text())["runs"]
     assert [r["id"] for r in index] == [previous, "3", "20", "21", "22", "23"]
-    assert len(index) == publish.MAX_RUNS
+    assert len(index) == max_runs
     assert [r["date"] for r in index] == sorted(r["date"] for r in index)
     for run_id in (previous, "3"):
         detail = json.loads((out / "runs" / f"{run_id}.json").read_text())
         assert detail["detail"] and detail["builds"]
-    assert len(list((out / "runs").glob("*.json"))) == publish.MAX_RUNS
+    assert len(list((out / "runs").glob("*.json"))) == max_runs
     before = {p: p.read_text() for p in out.rglob("*.json")}
-    publish.rebuild(out, now)
+    publish.rebuild(out, now, max_runs=max_runs)
     assert {p: p.read_text() for p in out.rglob("*.json")} == before
 
 
