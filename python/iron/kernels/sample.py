@@ -262,7 +262,15 @@ def sample_select(
         arg_types,
         compile_flags=compile_flags,
         contract=KernelContract(
-            trace=Trace.whole_call(), roles=tuple(roles), ops_per_call=0
+            trace=Trace.whole_call(),
+            roles=tuple(roles),
+            ops_per_call=0,
+            # A position's calls are not equal work: the first of each pass
+            # (begin(), zeroing the bitmap, and a cut=0 scan keeping every
+            # key) and the last (end_pass()) do more than the steady-state
+            # calls between them, and pass 0 (scan) and pass 1 (collect)
+            # are different code.
+            even_calls=False,
         ),
     )
 

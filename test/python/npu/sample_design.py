@@ -193,12 +193,17 @@ def sample_positions(
         sequence,
         [*host, of_draw.prod(), of_token.cons(), of_record.cons(), *of_logits],
     )
-    prog = Program(iron.get_current_device(), rt, workers=workers)
+    dev = iron.get_current_device()
+    prog = Program(dev, rt, workers=workers)
     if trace_config is not None:
         prog.enable_trace(
             trace_size=trace_config.trace_size,
             workers=workers,
             coretile_events=[CoreEvent.INSTR_EVENT_0, CoreEvent.INSTR_EVENT_1],
-            egress_shim_col=cores,
+            # The device's last column, as kernel_design.py's own pipeline()
+            # does -- not a fixed column, since cores (this build's select
+            # column count) is not a device's own column count, and was
+            # invalid on npu1 (4 columns, cores=4 here).
+            egress_shim_col=dev.cols - 1,
         )
     return prog.resolve_program()

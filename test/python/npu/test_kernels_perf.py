@@ -56,6 +56,7 @@ from aie.utils.trace.utils import get_cycles_summary
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
 from ml_dtypes import bfloat16
+from nms_design import TRACE_FLUSH as NMS_TRACE_FLUSH
 from nms_design import build_case as nms_build_case
 from nms_design import nms_detect
 from nms_design import realistic_pyramid as nms_realistic_pyramid
@@ -395,23 +396,32 @@ def test_measurement_is_sane(request, record_perf, workdir):
 NMS_CASE = Case(
     "nms", dict(width=52, classes=80, cap=320), calls=91, tag="realistic_pyramid"
 )
+NMS_FINISH_CASE = Case(
+    "nms",
+    dict(width=52, classes=80, cap=320),
+    calls=1,
+    tag="realistic_pyramid_finish",
+)
 
 
 @pytest.mark.perf
 def test_nms_cycles(request, record_perf, workdir):
-    """``nms_score``'s per-row cost over a full YOLOX-Nano pyramid (91 rows).
+    """``nms_score``'s per-row cost and ``nms_finish``'s own, over a full
+    YOLOX-Nano pyramid (91 rows).
 
     Checked first, as every other case here is: ``nms``'s own kernel is
     judged by ``test_nms_e2e.py``'s dedicated e2e file, not this harness, so
     this re-runs that same check (against ``vision.nms_ref``) before timing.
-    Only ``nms_score`` declares ``Trace.whole_call()``, so a traced run
-    emits one interval per row; a flush emitted right after the last row
-    (before ``nms_finish``'s own, untraced work) pushes that interval's
-    packet out, as ``kernel_design.py``'s generic designs flush theirs. What
-    follows -- a few more near-zero flush pairs, then one very large gap
-    while the core idles for a dispatch that never comes -- is measurement
-    harness noise, not kernel cost, so only the first ``calls`` intervals,
-    confirmed present, are kept.
+    ``nms_score`` and ``nms_finish`` both declare ``Trace.whole_call()``
+    (``nms.cc``; ``test_kernel_trace_markers.py -k nms`` checks both), so a
+    traced run's stream is 91 row intervals, a flush (pushed right after
+    the last row, before ``nms_finish``'s own work would otherwise land
+    between them), one ``nms_finish`` interval, then a second flush and,
+    past that, the core idling for a dispatch that never comes --
+    measurement harness noise, not kernel cost. ``nms_finish`` is worth its
+    own series: its O(candidates^2) suppression is exactly where a 35x
+    Peano regression was once found (see ``nms``'s own commit message), so
+    the generic score-only number would not have moved if it had come back.
     """
     meta = request.config._perf_meta
     rows, classes = nms_realistic_pyramid()
@@ -452,8 +462,11 @@ def test_nms_cycles(request, record_perf, workdir):
         iters=request.config.getoption("--iters"),
         **kwargs,
     )
+    finish_m: dict = {"failed": failed}
     if not request.config.getoption("--no-cycles"):
-        trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * calls)
+        finish_at = calls + NMS_TRACE_FLUSH
+        needed = finish_at + 1
+        trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * needed)
         tdir = workdir / "nms"
         tdir.mkdir(parents=True, exist_ok=True)
         cfg = TraceConfig(trace_size=trace_size, trace_file=str(tdir / "trace.txt"))
@@ -465,12 +478,16 @@ def test_nms_cycles(request, record_perf, workdir):
         trace_json = tdir / "trace.json"
         cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
         durations = [d for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
-        assert (
-            len(durations) >= calls
-        ), f"{NMS_CASE.name}: only {len(durations)} of {calls} rows traced"
+        assert len(durations) >= needed, (
+            f"{NMS_CASE.name}: only {len(durations)} of {needed} rows + "
+            "flush + nms_finish traced"
+        )
         m["cycles"] = kd.CallCycles(kernel=tuple(durations[:calls]))
         m["trace_size"] = trace_size
+        finish_m["cycles"] = kd.CallCycles(kernel=(durations[finish_at],))
+        finish_m["trace_size"] = trace_size
     _record(record_perf, NMS_CASE, m, meta)
+    _record(record_perf, NMS_FINISH_CASE, finish_m, meta)
 
 
 # sample_select/sample_combine only make sense together (NOT_JUDGED: the

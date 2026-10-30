@@ -54,9 +54,13 @@ def nms_detect(
 
     ``trace_config``, given, traces the worker: ``nms_score``'s contract
     declares ``Trace.whole_call()``, so one marker pair per row lands in the
-    stream; ``nms_setup``/``nms_finish`` declare none and emit nothing. Events
-    are restricted to ``INSTR_EVENT_0``/``INSTR_EVENT_1``, as the generic
-    kernel harness restricts them, so no other default event fills the buffer.
+    stream. ``nms_setup`` declares none and emits nothing, but
+    ``nms_finish`` does carry its own ``event0()``/``event1()`` pair
+    (``nms.cc``; confirmed by ``test_kernel_trace_markers.py -k nms``), so a
+    traced run's stream is ``len(widths)`` row intervals, a flush, one
+    ``nms_finish`` interval, then a second flush. Events are restricted to
+    ``INSTR_EVENT_0``/``INSTR_EVENT_1``, as the generic kernel harness
+    restricts them, so no other default event fills the buffer.
     """
     fn = vision.nms(width, classes, cap)
     row_ty = np.ndarray[(width * (5 + classes),), np.dtype[np.float32]]
@@ -84,6 +88,11 @@ def nms_detect(
         finish(d, c, nms_thre, class_agnostic)
         det.release(1)
         count.release(1)
+        if trace_config is not None:
+            # nms_finish's own interval, same reason as the first flush.
+            for _ in range(TRACE_FLUSH):
+                event(0)
+                event(1)
 
     worker = Worker(
         core_body,

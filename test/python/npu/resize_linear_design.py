@@ -3,17 +3,24 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""``resize_linear``'s design, shared by its correctness and cycle tests.
+"""``resize_linear``'s design, shared by its correctness test and a future
+cycle test.
 
-``test_resize_linear_e2e.py`` judges it; ``test_kernels_perf.py`` times it.
-Both build the same ``resize_rows``, so a cycle count comes from the exact
-design the correctness suite already checked.
+``test_resize_linear_e2e.py`` judges it. No cycle test reads it yet:
+``resize_linear_emit``'s own compiled code also carries
+``event0()``/``event1()`` markers (``resize_linear.cc``), and a call's
+``take``/``emit`` calls interleave in a data-dependent way (``take``
+decides, per row, how many output rows are now ready, and ``emit`` fires
+that many times immediately after) -- a traced run of the letterbox case
+(480 rows) captures 792 real intervals, not 480, take's and emit's costs
+blended under one label. Telling them apart needs either replicating
+``resize_linear``'s row-completion accounting in Python or a kernel-source
+change, neither attempted here.
 """
 
 import numpy as np
 
 import aie.iron as iron
-from aie.dialects.aie import event  # pyright: ignore[reportAttributeAccessIssue]
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -28,13 +35,6 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.kernels import vision
-from aie.utils.trace import TraceConfig
-from aie.utils.trace.events import CoreEvent
-
-# The trace unit sends only whole packets, so without a few more marker
-# pairs after the last real one, its interval never leaves the tile
-# (kernel_design.py's pipeline() stages flush the same way).
-TRACE_FLUSH = 16
 
 
 @jit
@@ -45,18 +45,8 @@ def resize_rows(
     sizes: CompileTime[tuple],
     in_bytes: CompileTime[int],
     out_bytes: CompileTime[int],
-    trace_config: CompileTime[TraceConfig | None] = None,
 ):
-    """Each of ``sizes``' images in turn: its source rows in, its output rows out.
-
-    ``trace_config``, given, traces the worker: only ``resize_linear_take``'s
-    contract declares ``Trace.whole_call()``, so one marker pair lands per
-    source row taken (``counts[0]`` of them, each image); ``setup``/
-    ``emit``/``finish`` declare none and emit nothing. A flush emitted right
-    after the last image's last ``take`` (before that image's own trailing
-    ``emit`` calls and ``finish``) pushes the last row's interval out, as
-    the generic kernel harness's own designs do.
-    """
+    """Each of ``sizes``' images in turn: its source rows in, its output rows out."""
     fn = vision.resize_linear(in_bytes, out_bytes)
     counts_ty = np.ndarray[(2,), np.dtype[np.int32]]
     in_ty = np.ndarray[(in_bytes,), np.dtype[np.uint8]]
@@ -65,7 +55,7 @@ def resize_rows(
     of_out = ObjectFifo(out_ty, name="rows_out", depth=2)
 
     def core_body(source, resized, counts, take, setup, emit, finish):
-        for n, (rows, columns, out_rows, out_columns) in enumerate(sizes):
+        for rows, columns, out_rows, out_columns in sizes:
             setup(counts, rows, columns, out_rows, out_columns)
             for _ in range_(counts[0]):
                 take(source.acquire(1), counts)
@@ -73,10 +63,6 @@ def resize_rows(
                 for _ in range_(counts[1]):
                     emit(resized.acquire(1))
                     resized.release(1)
-            if trace_config is not None and n == len(sizes) - 1:
-                for _ in range(TRACE_FLUSH):
-                    event(0)
-                    event(1)
             finish(counts)
             for _ in range_(counts[1]):
                 emit(resized.acquire(1))
@@ -93,7 +79,6 @@ def resize_rows(
             fn.resize_linear_emit,
             fn.resize_linear_finish,
         ],
-        trace=1 if trace_config else None,
     )
     total_in = sum(max(h, 0) for h, _, _, _ in sizes)
     total_out = sum(max(oh, 0) for _, _, oh, _ in sizes)
@@ -109,12 +94,4 @@ def resize_rows(
         tg.finish()
 
     rt = Runtime(sequence, [*host, of_in.prod(), of_out.cons()])
-    prog = Program(iron.get_current_device(), rt, workers=[worker])
-    if trace_config is not None:
-        prog.enable_trace(
-            trace_size=trace_config.trace_size,
-            workers=[worker],
-            coretile_events=[CoreEvent.INSTR_EVENT_0, CoreEvent.INSTR_EVENT_1],
-            egress_shim_col=1,
-        )
-    return prog.resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
