@@ -174,7 +174,8 @@ collectUnchainedBlocks(const llvm::SetVector<Block *> &blockVector) {
         continue;
       }
       Block *b = startOp.getDest();
-      while (b && unchainedBlocks.insert(b).second && b->getNumSuccessors() > 0) {
+      while (b && unchainedBlocks.insert(b).second &&
+             b->getNumSuccessors() > 0) {
         Block *next = b->getSuccessor(0);
         // Another channel's head or this own channel's head.
         if (channelHeads.contains(next)) {

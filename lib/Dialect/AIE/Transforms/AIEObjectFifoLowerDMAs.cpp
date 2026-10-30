@@ -270,7 +270,8 @@ struct AIEObjectFifoLowerDMAsPass
   /// A `dma_start` of `channel` on the endpoint's tile, chained after the
   /// tile's others; returns the first BD's block and the program's end block.
   std::pair<Block *, Block *> startChain(ObjectFifoDmaEndpointOp endpoint,
-                                         int channel, int taskCount, bool corePushes = false) {
+                                         int channel, int taskCount,
+                                         bool corePushes = false) {
     Location loc = endpoint.getLoc();
     DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
     Block *endBlock = findEndOpBlock(program.getDmaBody());
@@ -373,8 +374,7 @@ struct AIEObjectFifoLowerDMAsPass
     // on its own, so a pool whose buffers do not map one-to-one onto them
     // leaves the core no descriptor to name.
     bool corePushes =
-        drains && endpoint.getReleaseStrategy() ==
-                      ObjectFifoRelease::PushQueue;
+        drains && endpoint.getReleaseStrategy() == ObjectFifoRelease::PushQueue;
     if (corePushes) {
       if (static_cast<int64_t>(descriptors.size()) != pool.getDepth())
         return endpoint.emitOpError("sends ")
@@ -403,7 +403,8 @@ struct AIEObjectFifoLowerDMAsPass
           "dispatches from a contiguous pool, which has no per-object BDs");
     int64_t depth = pool.getDepth();
 
-    auto [bdBlock, endBlock] = startChain(endpoint, channel, taskCount, corePushes);
+    auto [bdBlock, endBlock] =
+        startChain(endpoint, channel, taskCount, corePushes);
     bool binaryLocks = !device.getTargetModel().hasProperty(
         AIETargetModel::UsesSemaphoreLocks);
     size_t total = descriptors.size() * copies * passes;

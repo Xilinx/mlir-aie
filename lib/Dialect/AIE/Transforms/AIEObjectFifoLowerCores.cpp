@@ -226,10 +226,9 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
     // A pool's locks bound its outstanding tasks, but all pools on this
     // channel contribute to the same queue. Poll unless their combined bound
     // fits in the hardware queue.
-    bool waitForRoom =
-        !assumeQueueSpace &&
-        ctx.sendQueueObjects.lookup({core.getTile(), *channel}) >
-            ctx.device.getTargetModel().getDmaTaskQueueDepth();
+    bool waitForRoom = !assumeQueueSpace &&
+                       ctx.sendQueueObjects.lookup({core.getTile(), *channel}) >
+                           ctx.device.getTargetModel().getDmaTaskQueueDepth();
     Value current =
         memref::LoadOp::create(rewriter, loc, slot.getResult(), ValueRange{});
     Value depthValue = arith::ConstantIndexOp::create(rewriter, loc, depth);
@@ -262,8 +261,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
         DmaPollForQueueSpaceOp::create(rewriter, loc, DMAChannelDir::MM2S,
                                        channel);
       DmaPushQueueOp::create(rewriter, loc, DMAChannelDir::MM2S, channel,
-                             /*bd_id=*/nullptr,
-                             rewriter.getI32IntegerAttr(tag),
+                             /*bd_id=*/nullptr, rewriter.getI32IntegerAttr(tag),
                              /*repeat_count=*/0, /*out_of_order=*/false);
       scf::YieldOp::create(rewriter, loc);
     };
