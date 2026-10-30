@@ -1030,6 +1030,61 @@ def test_sync_under_a_branch_is_refused():
         Program.compose([config], entry=rt).resolve_program()
 
 
+def waiting_worker(name, hops=0):
+    """Build a Worker that waits for its parameter each pass, and the fifo the host drains.
+
+    Args:
+        name: Suffix for the parameter and fifo names.
+        hops: Memtile forwards between the core and the host's fifo.
+
+    Returns:
+        The Worker and the ObjectFifo the host drains.
+    """
+    count = ScratchpadParameter(f"count_{name}", np.int32)
+    of_out = ObjectFifo(Line, name=f"out_{name}")
+
+    def core(out, count):
+        elem = out.acquire(1)
+        elem[0] = count.read()
+        out.release(1)
+
+    worker = Worker(core, [of_out.prod(), count], wait_for_parameters=True)
+    for hop in range(hops):
+        of_out = of_out.cons().forward(name=f"out_{name}_{hop}")
+    return worker, of_out
+
+
+def syncing_drain(of_out):
+    def sequence(c, out):
+        sync_parameters()
+        out.drain(c, wait=True)
+
+    return Runtime(sequence, [Line, of_out.cons()])
+
+
+@pytest.mark.parametrize("hops", [0, 2])
+def test_merge_refuses_two_syncing_steps_on_one_waiting_worker(hops):
+    worker, of_out = waiting_worker("w", hops)
+    merged = Runtime.merge([syncing_drain(of_out), syncing_drain(of_out)])
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker], runtimes=[merged]
+    )
+    with pytest.raises(
+        ValueError, match=r"steps 0 \(.*\) and 1 \(.*\) both sync parameters"
+    ):
+        Program.compose([config], entry=merged).resolve_program()
+
+
+def test_merge_keeps_syncing_steps_on_different_waiting_workers():
+    (worker_a, of_a), (worker_b, of_b) = waiting_worker("a"), waiting_worker("b")
+    merged = Runtime.merge([syncing_drain(of_a), syncing_drain(of_b)])
+    config = DeviceConfiguration(
+        "pack", NPU2Col1(), workers=[worker_a, worker_b], runtimes=[merged]
+    )
+    text = str(Program.compose([config], entry=merged).resolve_program())
+    assert text.count("aiex.sync_scratchpad_parameters_from_host") == 1
+
+
 def step_runtimes(n, out_of_cons):
     """``n`` Runtimes, each filling ``into`` and draining ``out_of``."""
     of_in, of_out = ObjectFifo(Line, name="into"), ObjectFifo(Line, name="out_of")

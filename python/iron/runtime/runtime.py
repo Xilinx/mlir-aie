@@ -45,7 +45,8 @@ from ...helpers.util import (
 )
 from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
-from ..dataflow.objectfifo import ObjectFifoHandle
+from ..dataflow.objectfifo import ObjectFifoHandle, ObjectFifoLink
+from ..dataflow.objectfifopool import ObjectFifoPoolHandle
 from ..resolvable import DeviceResources, Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_configuration, active_sequence, active_sequence_scope
@@ -89,7 +90,10 @@ class ActiveSequence:
         self._open_task_groups: list[TaskGroup] = []
         self._used_default = False
         self._used_explicit = False
-        self.synced_parameters = False
+        # sync_parameters() calls so far; only the first emits a sync.
+        self.sync_requests = 0
+        # The merged step whose body is running, if any (Runtime.merge).
+        self.step: Runtime | None = None
 
     @property
     def runtime(self) -> "Runtime":
@@ -102,8 +106,13 @@ class ActiveSequence:
         return self._seq_op.body.blocks[0]
 
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
-        """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
+        """Record that ``handle`` is driven from the runtime (its shim endpoint).
+
+        A merged step running records it as its own as well.
+        """
         self._runtime._fifos[handle] = None
+        if self.step is not None:
+            self.step._fifos[handle] = None
 
     def resolve_in_device(self, resolvable) -> None:
         """Resolve a Buffer or Lock the body reaches first, ahead of the sequence.
@@ -371,7 +380,9 @@ class Runtime(DeviceResources, Resolvable):
             The merged Runtime.
 
         Raises:
-            ValueError: One of ``runtimes`` already belongs to a configuration.
+            ValueError: One of ``runtimes`` already belongs to a configuration;
+                or, once the sequence is emitted, two steps that sync parameters
+                drive one Worker that waits for them each pass.
             TypeError: The steps forward DispatchTime parameters of different
                 designs.
         """
@@ -401,14 +412,24 @@ class Runtime(DeviceResources, Resolvable):
                 (runtime, tuple(args[i] for i in slot))
                 for runtime, slot in zip(runtimes, slots)
             ]
+            seq = active_sequence()
             if run is not None:
                 run(calls)
-                return
-            for runtime, step_args in calls:
-                runtime._seq_fn(*step_args)
-                # Closing the step's task groups awaits its wait=True
-                # transfers before the next step issues; the rest are freed.
-                active_sequence().finalize(runtime._strict_task_groups)
+                # run issues the steps together, so once the sequence asks for
+                # a second sync any step may be one that asked.
+                synced = [seq.sync_requests > 1] * len(calls)
+            else:
+                synced = []
+                for runtime, step_args in calls:
+                    requests = seq.sync_requests
+                    seq.step = runtime
+                    runtime._seq_fn(*step_args)
+                    seq.step = None
+                    synced.append(seq.sync_requests > requests)
+                    # Closing the step's task groups awaits its wait=True
+                    # transfers before the next step issues; the rest are freed.
+                    seq.finalize(runtime._strict_task_groups)
+            _refuse_a_worker_synced_twice(runtimes, synced, seq)
 
         merged = cls(
             body,
@@ -788,7 +809,9 @@ def sync_parameters() -> None:
     cannot go under ``range_`` or ``if_``. A sequence syncs once: the sync
     stages every parameter of the device and releases every core waiting on
     one, so a later call in the same sequence (a merged step's) emits nothing,
-    the earlier sync having already run ahead of it.
+    the earlier sync having already run ahead of it. A Worker that waits for
+    parameters each pass therefore makes one pass per sequence, and
+    ``Runtime.merge`` refuses two syncing steps that both drive one.
 
     Raises:
         ValueError: The call is inside a ``range_`` or ``if_`` of the body.
@@ -801,7 +824,75 @@ def sync_parameters() -> None:
             "aiex.sync_scratchpad_parameters_from_host sits directly in its "
             "aie.runtime_sequence"
         )
-    if seq.synced_parameters:
+    seq.sync_requests += 1
+    if seq.sync_requests == 1:
+        _SyncParametersTask().resolve()
+
+
+def _refuse_a_worker_synced_twice(
+    steps: list[Runtime], synced: list[bool], seq: ActiveSequence
+) -> None:
+    """Refuse two syncing merged steps that drive one Worker waiting each pass.
+
+    The merged sequence syncs once, and a ``while_true`` Worker with
+    ``wait_for_parameters`` makes one pass per sync, so the second step's
+    pass would never start. A step drives the Workers its fifos reach,
+    through any chain of links; a fifo the sequence moves that no step
+    declares may be any step's. A pool handle states one end only, so a
+    Worker holding one counts as driven by every syncing step.
+
+    Args:
+        steps: The merged steps, in order.
+        synced: Whether each step asked for a sync.
+        seq: The merged sequence.
+
+    Raises:
+        ValueError: Two syncing steps drive one such Worker.
+    """
+    configuration = seq.runtime.configuration
+    waiting = [
+        worker
+        for worker in (configuration.workers if configuration is not None else [])
+        if worker.while_true and worker.wait_for_parameters
+    ]
+    if sum(synced) < 2 or not waiting:
         return
-    seq.synced_parameters = True
-    _SyncParametersTask().resolve()
+    declared = {handle for step in steps for handle in step.fifos}
+    stray = [handle for handle in seq.runtime.fifos if handle not in declared]
+    reached: list[list] = []
+    for step in steps:
+        endpoints = []
+        seen = set()
+        fifos = [handle._object_fifo for handle in [*step.fifos, *stray]]
+        while fifos:
+            fifo = fifos.pop()
+            if id(fifo) in seen:
+                continue
+            seen.add(id(fifo))
+            for handle in [fifo._prod, *fifo._cons]:
+                endpoint = handle.endpoint if handle is not None else None
+                endpoints.append(endpoint)
+                if isinstance(endpoint, ObjectFifoLink):
+                    fifos.extend(
+                        linked._object_fifo
+                        for linked in [*endpoint._srcs, *endpoint._dsts]
+                    )
+        reached.append(endpoints)
+    for worker in waiting:
+        untraced = any(isinstance(h, ObjectFifoPoolHandle) for h in worker.fifos)
+        driving = [
+            i
+            for i, endpoints in enumerate(reached)
+            if synced[i]
+            and (untraced or any(endpoint is worker for endpoint in endpoints))
+        ]
+        if len(driving) > 1:
+            first, second = (steps[i] for i in driving[:2])
+            raise ValueError(
+                f"Runtime.merge: steps {driving[0]} ({first.name}) and "
+                f"{driving[1]} ({second.name}) both sync parameters and drive "
+                f"the Worker running {worker.core_fn!r} on {worker.tile}, which "
+                "waits for parameters each pass of its loop. A sequence syncs "
+                "once, so that Worker would make one pass where the steps need "
+                "two; run them as separate dispatches."
+            )

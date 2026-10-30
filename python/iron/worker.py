@@ -290,6 +290,16 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         return self._tile
 
     @property
+    def while_true(self) -> bool:
+        """Whether the core loops until reconfiguration rather than running once."""
+        return self._while_true
+
+    @property
+    def wait_for_parameters(self) -> bool:
+        """Whether each pass of the core's loop waits for a dispatch's parameters."""
+        return self._wait_for_parameters
+
+    @property
     def flat_fn_args(self) -> list:
         """fn_args with any nested lists/tuples flattened to their leaves.
 
