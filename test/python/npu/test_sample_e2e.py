@@ -244,7 +244,8 @@ def sample_positions_with_ranges(
     positions: CompileTime[int] = 1,
 ):
     """``positions`` draws with ``max_ranges`` per-call suppress ranges, equal
-    slices, one chunk per slice (so one call makes every select pass).
+    slices of ``chunk``-logit calls. The host holds each position's row once
+    per select stream, as sample_design.sample_positions does.
 
     Ranges are select-only (sample.select_row_words), so select and combine
     read different-shaped rows: select_draws_in is draw_row's words then the
@@ -252,6 +253,7 @@ def sample_positions_with_ranges(
     same per-position values.
     """
     slice_size = vocab // cores
+    streams = sample.select_streams(slice_size, chunk)
     row_words = sample.select_row_words(max_ranges=max_ranges)
     combine = sample.sample_combine(columns=cores, slice_size=slice_size, k_max=k_max)
     words = sample.summary_words(slice_size, k_max)
@@ -325,7 +327,7 @@ def sample_positions_with_ranges(
                         max_ranges=max_ranges,
                     ),
                     state,
-                    sample.select_streams(slice_size, chunk) * slice_size // chunk,
+                    streams * slice_size // chunk,
                 ],
             )
         )
@@ -343,7 +345,7 @@ def sample_positions_with_ranges(
     )
 
     host = [
-        np.ndarray[(positions * vocab,), np.dtype[bfloat16]],
+        np.ndarray[(positions * streams * vocab,), np.dtype[bfloat16]],
         np.ndarray[(positions * row_words,), I32],
         np.ndarray[(positions * sample.ROW_WORDS,), I32],
         np.ndarray[(positions,), I32],
@@ -363,7 +365,7 @@ def sample_positions_with_ranges(
         *xs,
     ):
         for c, x in enumerate(xs):
-            rows = TensorAccessPattern.full((positions, vocab))
+            rows = TensorAccessPattern.full((positions * streams, vocab))
             start = c * slice_size
             x.fill(logits_h, tap=rows[:, start : start + slice_size])
         select_draw.fill(select_draws_h)
@@ -385,16 +387,27 @@ def sample_positions_with_ranges(
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
-def test_device_draws_match_ranges():
-    vocab, cores, chunk, k_max, max_ranges = 512, 2, 256, 16, 2
+@pytest.mark.parametrize(
+    "vocab,cores,chunk",
+    [
+        (512, 2, 256),  # one chunk per slice: one call makes both passes
+        (2048, 2, 256),  # four calls a pass, two passes: masks by each call's pos
+    ],
+)
+def test_device_draws_match_ranges(vocab, cores, chunk):
+    k_max, max_ranges = 16, 2
     slice_size = vocab // cores
+    streams = sample.select_streams(slice_size, chunk)
     rng = np.random.default_rng(99)
     # Every unmasked logit finite but below -1e30, the largest masked: a
     # mask must rank below any finite logit, not just ordinary ones.
     deep = np.full(vocab, -2e30, np.float32)
     deep[100:110] = 10.0
     spike = rng.normal(0, 3, vocab)
-    spike[280] = 50.0
+    spike[slice_size + 24] = 50.0
+    # The row's max on both sides of a chunk edge, all of it masked.
+    edge = rng.normal(0, 3, vocab)
+    edge[chunk - 6 : chunk + 6] = 40.0
     cases = [
         ([(10, 20)], None, 1.0),  # entirely within column 0
         ([(slice_size - 5, slice_size + 15)], None, 1.0),  # straddles columns
@@ -406,9 +419,15 @@ def test_device_draws_match_ranges():
         # them to its own slice: (-10, 5) masks 0..4, (-10, -5) nothing.
         ([(-10, 5), (vocab - 3, vocab + 50)], None, 0.0),
         ([(-10, -5)], None, 0.0),
-        # A start at INT32_MIN still masks column 1's [256, 300), its row
-        # max at 280: no column's offset from it may overflow int32.
-        ([(-(1 << 31), 300)], spike, 0.0),
+        # A start at INT32_MIN still masks column 1's first 44, its row max
+        # among them: no column's offset from it may overflow int32.
+        ([(-(1 << 31), slice_size + 44)], spike, 0.0),
+        ([(chunk - 6, chunk + 6)], edge, 0.0),
+        ([(chunk - 6, chunk + 6)], edge, 1.0),
+        # One range across a chunk edge inside column 1, one across column
+        # 0's last chunk edge and into column 1.
+        ([(slice_size + chunk - 3, slice_size + 2 * chunk + 3)], None, 1.0),
+        ([(slice_size - chunk // 2, slice_size + chunk // 2)], None, 0.0),
     ]
     logits_rows, select_draws, combine_draws, expected = [], [], [], []
     for ranges, logits, temperature in cases:
@@ -434,7 +453,10 @@ def test_device_draws_match_ranges():
     token = iron.full((positions,), -1, dtype=np.int32)
     record = iron.full((positions,), -1, dtype=np.int32)
     sample_positions_with_ranges(
-        iron.tensor(np.stack(logits_rows).reshape(-1), dtype=bfloat16),
+        iron.tensor(
+            np.repeat(np.stack(logits_rows), streams, axis=0).reshape(-1),
+            dtype=bfloat16,
+        ),
         iron.tensor(np.stack(select_draws).reshape(-1), dtype=np.int32),
         iron.tensor(np.stack(combine_draws).reshape(-1), dtype=np.int32),
         token,
@@ -459,13 +481,15 @@ def sample_positions_with_rule(
     *,
     vocab: CompileTime[int] = 256,
     cores: CompileTime[int] = 1,
+    chunk: CompileTime[int] = 256,
     k_max: CompileTime[int] = 16,
     positions: CompileTime[int] = 1,
 ):
     """``positions`` draws over ``cores`` equal columns, SAMPLE_PROB_RULE on:
     the device's own second top-k and reductions, merged across columns.
 
-    One chunk per slice. A compute tile has two output and two input DMA
+    Each slice in ``chunk``-logit calls, the host holding each position's row
+    once per select stream. A compute tile has two output and two input DMA
     channels, so each select core writes its summary, restricted summary and
     reduction as views of one buffer (sample.rule_column_words), one stream
     per column into the memtile, and combine reads them all as one stream
@@ -473,6 +497,7 @@ def sample_positions_with_rule(
     combine_row_words(True), so one draw row feeds both.
     """
     slice_size = vocab // cores
+    streams = sample.select_streams(slice_size, chunk)
     row_words = sample.select_row_words(probability_rule=True)
     combine = sample.sample_combine(
         columns=cores, slice_size=slice_size, k_max=k_max, probability_rule=True
@@ -500,7 +525,7 @@ def sample_positions_with_rule(
         depths=[1] * cores,
     )
 
-    def select_body(of_x, of_row, of_col, kernel, state, rstate, rx):
+    def select_body(of_x, of_row, of_col, kernel, state, rstate, rx, calls):
         for _ in range_(positions):
             row = of_row.acquire(1)
             column = of_col.acquire(1)
@@ -513,9 +538,10 @@ def sample_positions_with_rule(
                 )
                 for t, at in pieces
             )
-            x = of_x.acquire(1)
-            kernel(x, row, state, summary, rstate, rsummary, rx, reduction)
-            of_x.release(1)
+            for _ in range_(calls):
+                x = of_x.acquire(1)
+                kernel(x, row, state, summary, rstate, rsummary, rx, reduction)
+                of_x.release(1)
             of_col.release(1)
             of_row.release(1)
 
@@ -545,7 +571,7 @@ def sample_positions_with_rule(
     workers = []
     for c in range(cores):
         of_x = ObjectFifo(
-            np.ndarray[(slice_size,), np.dtype[bfloat16]], name=f"x{c}", depth=1
+            np.ndarray[(chunk,), np.dtype[bfloat16]], name=f"x{c}", depth=2
         )
         of_logits.append(of_x.prod())
         state, rstate = (
@@ -557,8 +583,8 @@ def sample_positions_with_rule(
             for name in ("select_state", "restricted_state")
         )
         rx = Buffer(
-            np.ndarray[(slice_size,), np.dtype[bfloat16]],
-            initial_value=np.zeros(slice_size, dtype=bfloat16),
+            np.ndarray[(chunk,), np.dtype[bfloat16]],
+            initial_value=np.zeros(chunk, dtype=bfloat16),
             name=f"restricted_x_{c}",
         )
         workers.append(
@@ -570,7 +596,7 @@ def sample_positions_with_rule(
                     of_column[c].prod(),
                     sample.sample_select(
                         slice_size=slice_size,
-                        chunk=slice_size,
+                        chunk=chunk,
                         k_max=k_max,
                         base=c * slice_size,
                         probability_rule=True,
@@ -578,6 +604,7 @@ def sample_positions_with_rule(
                     state,
                     rstate,
                     rx,
+                    streams * slice_size // chunk,
                 ],
             )
         )
@@ -595,7 +622,7 @@ def sample_positions_with_rule(
     )
 
     host = [
-        np.ndarray[(positions * vocab,), np.dtype[bfloat16]],
+        np.ndarray[(positions * streams * vocab,), np.dtype[bfloat16]],
         np.ndarray[(positions * row_words,), I32],
         np.ndarray[(positions,), I32],
         np.ndarray[(positions,), I32],
@@ -603,7 +630,7 @@ def sample_positions_with_rule(
 
     def sequence(logits_h, draws_h, token_h, record_h, draw, token, record, *xs):
         for c, x in enumerate(xs):
-            rows = TensorAccessPattern.full((positions, vocab))
+            rows = TensorAccessPattern.full((positions * streams, vocab))
             start = c * slice_size
             x.fill(logits_h, tap=rows[:, start : start + slice_size])
         draw.fill(draws_h)
@@ -617,8 +644,9 @@ def sample_positions_with_rule(
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
+@pytest.mark.parametrize("chunk", [256, 64])
 @pytest.mark.parametrize("cores", [1, 2, 4])
-def test_device_draws_match_the_probability_rule(cores):
+def test_device_draws_match_the_probability_rule(cores, chunk):
     """In every ``add`` row the text token (5.0 at index 10, column 0) is the
     ordinary top-1, so a draw at or past the split is the rule firing, and only
     sample_select's own second top-k over [split, vocab) has a candidate
@@ -655,6 +683,14 @@ def test_device_draws_match_the_probability_rule(cores):
     # Every logit finite but below -1e30, the timestamps above the text
     # token: the restricted pass's mask must rank below them all.
     add(192, np.arange(192, 256), -2e30, True, text=-3e30)
+    # A split inside a call (at chunk 64, mid [192, 256)), and six
+    # timestamps at 3.0 in each of two calls of one column: together 3 +
+    # ln(12) =~ 5.48 fires, so the reduction must carry its sum across
+    # calls; three in each, 3 + ln(6) =~ 4.79, holds off.
+    add(200, np.arange(200, 256), 4.0, True)
+    across = np.r_[130:136, 250:256]
+    add(130, across, 3.0, True)
+    add(130, across[[0, 1, 2, 6, 7, 8]], 3.0, False)
     # A split at INT32_MIN: every token is a timestamp in every column, so
     # the draw is the row's top-1, 5.0 in the last column. A column whose
     # local split wrapped past its base would read itself as all text,
@@ -689,13 +725,15 @@ def test_device_draws_match_the_probability_rule(cores):
     positions = len(rows)
     token = iron.full((positions,), -1, dtype=np.int32)
     record = iron.full((positions,), -1, dtype=np.int32)
+    streams = sample.select_streams(slice_size, chunk)
     sample_positions_with_rule(
-        iron.tensor(logits.reshape(-1), dtype=bfloat16),
+        iron.tensor(np.repeat(logits, streams, axis=0).reshape(-1), dtype=bfloat16),
         iron.tensor(draws.reshape(-1), dtype=np.int32),
         token,
         record,
         vocab=vocab,
         cores=cores,
+        chunk=chunk,
         k_max=k_max,
         positions=positions,
     )
@@ -756,13 +794,17 @@ def select_reductions(
     columns_out: Out,
     *,
     slice_size: CompileTime[int] = 4096,
+    chunk: CompileTime[int] = 4096,
     k_max: CompileTime[int] = 16,
     positions: CompileTime[int] = 1,
 ):
     """``positions`` calls of one SAMPLE_PROB_RULE select core, each call's
     column (summary, restricted summary, reduction) drained to the host, so
-    its reduction can be held to logsumexp_reduction_ref bit for bit.
+    its reduction can be held to logsumexp_reduction_ref bit for bit. Each
+    slice in ``chunk``-logit calls, held once per select stream.
     """
+    streams = sample.select_streams(slice_size, chunk)
+    calls = streams * slice_size // chunk
     row_words = sample.select_row_words(probability_rule=True)
     words = sample.summary_words(slice_size, k_max)
     column_bytes = 4 * sample.rule_column_words(slice_size, k_max)
@@ -772,7 +814,7 @@ def select_reductions(
         (np.ndarray[(sample.REDUCTION_WORDS,), I32], 8 * words),
     ]
     I8 = np.dtype[np.int8]
-    of_x = ObjectFifo(np.ndarray[(slice_size,), np.dtype[bfloat16]], name="x", depth=1)
+    of_x = ObjectFifo(np.ndarray[(chunk,), np.dtype[bfloat16]], name="x", depth=2)
     of_draw = ObjectFifo(np.ndarray[(row_words,), I32], name="draw", depth=1)
     of_column = ObjectFifo(np.ndarray[(column_bytes,), I8], name="column", depth=1)
 
@@ -789,9 +831,10 @@ def select_reductions(
                 )
                 for t, at in pieces
             )
-            x = of_x.acquire(1)
-            kernel(x, row, state, summary, rstate, rsummary, rx, reduction)
-            of_x.release(1)
+            for _ in range_(calls):
+                x = of_x.acquire(1)
+                kernel(x, row, state, summary, rstate, rsummary, rx, reduction)
+                of_x.release(1)
             of_col.release(1)
             of_row.release(1)
 
@@ -804,8 +847,8 @@ def select_reductions(
         for name in ("select_state", "restricted_state")
     )
     rx = Buffer(
-        np.ndarray[(slice_size,), np.dtype[bfloat16]],
-        initial_value=np.zeros(slice_size, dtype=bfloat16),
+        np.ndarray[(chunk,), np.dtype[bfloat16]],
+        initial_value=np.zeros(chunk, dtype=bfloat16),
         name="restricted_x",
     )
     worker = Worker(
@@ -816,7 +859,7 @@ def select_reductions(
             of_column.prod(),
             sample.sample_select(
                 slice_size=slice_size,
-                chunk=slice_size,
+                chunk=chunk,
                 k_max=k_max,
                 probability_rule=True,
             ),
@@ -826,7 +869,7 @@ def select_reductions(
         ],
     )
     host = [
-        np.ndarray[(positions * slice_size,), np.dtype[bfloat16]],
+        np.ndarray[(positions * streams * slice_size,), np.dtype[bfloat16]],
         np.ndarray[(positions * row_words,), I32],
         np.ndarray[(positions * column_bytes,), I8],
     ]
@@ -840,7 +883,8 @@ def select_reductions(
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
-def test_device_reduction_matches_logsumexp_reduction_ref_bit_for_bit():
+@pytest.mark.parametrize("chunk", [4096, 512])
+def test_device_reduction_matches_logsumexp_reduction_ref_bit_for_bit(chunk):
     """The rule's per-column reduction, not just the draws it decides.
 
     Logits scaled by as much as 2^-30 beside a maximum near 10 make most
@@ -878,11 +922,13 @@ def test_device_reduction_matches_logsumexp_reduction_ref_bit_for_bit():
     )
     words = sample.rule_column_words(slice_size, k_max)
     columns = iron.full((positions * 4 * words,), 0, dtype=np.int8)
+    streams = sample.select_streams(slice_size, chunk)
     select_reductions(
-        iron.tensor(logits.reshape(-1), dtype=bfloat16),
+        iron.tensor(np.repeat(logits, streams, axis=0).reshape(-1), dtype=bfloat16),
         iron.tensor(draws.reshape(-1), dtype=np.int32),
         columns,
         slice_size=slice_size,
+        chunk=chunk,
         k_max=k_max,
         positions=positions,
     )
