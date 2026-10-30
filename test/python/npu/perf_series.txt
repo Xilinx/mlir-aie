@@ -3,7 +3,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Every Case.name in kernel_cases.py, which is the series key the published
+# Every Case.name in kernel_cases.py and test_kernels_perf.py's
+# _DEDICATED_CASES, which is the series key the published
 # performance charts are keyed on: a row is named "<this>/<metric>". A name
 # that changes starts a new series and orphans the history behind the old one,
 # so test_perf_series_names.py pins them here. Adding a case adds a line;
@@ -288,6 +289,9 @@ gray2rgba/112x4/uint8/line_width=112/short-row
 gray2rgba/144x4/uint8/line_width=144/tail
 gray2rgba/1920x16/uint8
 gray2rgba/48x4/uint8/line_width=48/tail-only
+grid_decode/1872x4/bfloat16_float32/width=13/stride-32
+grid_decode/3744x4/bfloat16_float32/width=26/stride-16
+grid_decode/7488x4/bfloat16_float32
 layer_norm/1008x16/bfloat16/cols=1008/row-tail
 layer_norm/1024x16/bfloat16/cols=1024
 layer_norm/208x16/bfloat16/cols=208/row-tail
@@ -305,6 +309,13 @@ leaky_relu/1024x16/bfloat16
 leaky_relu/1024x256/bfloat16
 leaky_relu/1024x4/bfloat16/inexact-alpha
 leaky_relu/160x4/bfloat16/unroll-tail
+levels/1024x1/uint8_bfloat16/in_bytes=1024/out_width=230
+levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/fill-only
+levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/past-input
+levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/past-output
+levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/row-after
+levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/row-before
+levels/1248x4/uint8_bfloat16/bgr=True/in_bytes=1248/out_width=416/bgr
 limbs_f32/160x16/float32_bfloat16
 limbs_f32/320x16/float32_bfloat16
 limbs_f32/320x256/float32_bfloat16
@@ -439,6 +450,8 @@ mv/8192x256/bfloat16/output_rows=256/vec_size=64/llama-decode-ffn-down
 mv/8192x4/bfloat16/a_col_maj=True/vec_size=32/edge-eight-vectors
 mv/8192x4/bfloat16/a_col_maj=True/vec_size=64
 mv/2x3072x16/bfloat16/vec_size=64/llama-3b-decode
+nms/4420x1/float32/cap=320/classes=80/width=52/realistic_pyramid_finish
+nms/4420x91/float32/cap=320/classes=80/width=52/realistic_pyramid
 passthrough/1024x16/int16
 passthrough/128x4/int16/edge-tiny
 passthrough/16x4/int32/edge-one-vector
@@ -537,6 +550,8 @@ row_addresses/16x4/int32_uint32/row_bytes=4096/rows=16/table_rows=16/unsigned-wo
 row_addresses/16x4/int32_uint32/row_bytes=4100/rows=16/table_rows=1048576/past-4-gib
 row_addresses/1x16/int32_uint32/row_bytes=4096/rows=1/table_rows=128256
 row_addresses/64x16/int32_uint32/row_bytes=260/rows=64/table_rows=1000
+sample_combine/4552x8/int32_int32+int32/columns=4/k_max=64/slice_size=32064/llama_vocab
+sample_select/5344x96/bfloat16_int32+int32/chunk=5344/k_max=64/slice_size=32064/llama_vocab
 scale/1024x16/int16
 scale/1024x16/int32
 scale/1024x16/int32/edge-negfactor

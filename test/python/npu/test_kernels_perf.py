@@ -519,6 +519,8 @@ SAMPLE_COMBINE_CASE = Case(
     calls=SAMPLE_POSITIONS,
     tag="llama_vocab",
 )
+# The series the dedicated tests above record, outside kernel_cases.CASES.
+_DEDICATED_CASES = (NMS_CASE, NMS_FINISH_CASE, SAMPLE_SELECT_CASE, SAMPLE_COMBINE_CASE)
 
 
 @pytest.mark.perf

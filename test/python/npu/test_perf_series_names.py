@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from cases import Case, device_for  # noqa: E402
 from kernel_cases import CASES  # noqa: E402
 from test_kernels_perf import (  # noqa: E402
+    _DEDICATED_CASES,
     _PERF_CASES,
     SMOKE_TEST,
     _differing_words,
@@ -51,7 +52,7 @@ def _recorded() -> list[str]:
 
 def _current() -> list[str]:
     names = []
-    for case in CASES:
+    for case in (*CASES, *_DEDICATED_CASES):
         with device_for(case.devices):
             names.append(case.name)
     return sorted(names)
