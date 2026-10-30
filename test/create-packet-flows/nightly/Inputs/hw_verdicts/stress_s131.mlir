@@ -348,7 +348,7 @@ module {
     %switchbox_3_0 = aie.switchbox(%shim_noc_tile_3_0) {
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<5> (3)
-      %2 = aie.masterset(South : 3, %1) {aie.is_ctrl_pkt_overlay}
+      %2 = aie.masterset(South : 3, %1) {aie.priority_route}
       %3 = aie.masterset(North : 2, %0)
       aie.packet_rules(West : 1) {
         aie.rule(17, 16, %0)
@@ -358,7 +358,7 @@ module {
       }
       aie.packet_rules(West : 0) {
         aie.rule(31, 25, %1)
-      } {aie.is_ctrl_pkt_overlay}
+      } {aie.priority_route}
     }
     %switchbox_3_5 = aie.switchbox(%tile_3_5) {
       %0 = aie.amsel<0> (0)
@@ -382,16 +382,16 @@ module {
       %5 = aie.amsel<5> (3)
       %6 = aie.masterset(DMA : 1, %3, %4) {keep_pkt_header = false}
       %7 = aie.masterset(DMA : 4, %2) {keep_pkt_header = true}
-      %8 = aie.masterset(South : 0, %5) {aie.is_ctrl_pkt_overlay}
+      %8 = aie.masterset(South : 0, %5) {aie.priority_route}
       %9 = aie.masterset(South : 1, %0, %4)
-      %10 = aie.masterset(South : 2, %5) {aie.is_ctrl_pkt_overlay}
+      %10 = aie.masterset(South : 2, %5) {aie.priority_route}
       %11 = aie.masterset(North : 0, %1)
-      %12 = aie.masterset(North : 2, %5) {aie.is_ctrl_pkt_overlay}
+      %12 = aie.masterset(North : 2, %5) {aie.priority_route}
       aie.packet_rules(DMA : 3) {
         aie.rule(31, 18, %0)
       }
       aie.packet_rules(DMA : 1) {
-        aie.rule(31, 25, %5) {aie.is_ctrl_pkt_overlay, aie.priority_route}
+        aie.rule(31, 25, %5) {aie.priority_route, aie.priority_route}
         aie.rule(21, 16, %1)
       }
       aie.packet_rules(North : 1) {
@@ -417,7 +417,7 @@ module {
       %6 = aie.masterset(South : 0, %0, %3)
       %7 = aie.masterset(South : 1, %0, %4)
       %8 = aie.masterset(North : 1, %0, %2)
-      %9 = aie.masterset(East : 0, %5) {aie.is_ctrl_pkt_overlay}
+      %9 = aie.masterset(East : 0, %5) {aie.priority_route}
       %10 = aie.masterset(East : 2, %1)
       %11 = aie.masterset(East : 3, %3)
       aie.packet_rules(North : 2) {
@@ -426,7 +426,7 @@ module {
       }
       aie.packet_rules(South : 2) {
         aie.rule(31, 25, %5)
-      } {aie.is_ctrl_pkt_overlay}
+      } {aie.priority_route}
       aie.packet_rules(DMA : 0) {
         aie.rule(31, 28, %3)
         aie.rule(31, 23, %0)
@@ -458,7 +458,7 @@ module {
       %1 = aie.amsel<1> (0)
       %2 = aie.amsel<2> (0)
       %3 = aie.amsel<5> (3)
-      %4 = aie.masterset(DMA : 1, %3) {aie.is_ctrl_pkt_overlay}
+      %4 = aie.masterset(DMA : 1, %3) {aie.priority_route}
       %5 = aie.masterset(South : 0, %1)
       %6 = aie.masterset(South : 3, %2)
       %7 = aie.masterset(North : 5, %0)
@@ -470,7 +470,7 @@ module {
       }
       aie.packet_rules(West : 0) {
         aie.rule(31, 25, %3)
-      } {aie.is_ctrl_pkt_overlay}
+      } {aie.priority_route}
       aie.packet_rules(West : 3) {
         aie.rule(31, 28, %2)
       }
@@ -481,16 +481,16 @@ module {
       %1 = aie.amsel<0> (1)
       %2 = aie.amsel<4> (3)
       %3 = aie.amsel<5> (3)
-      %4 = aie.masterset(South : 2, %2) {aie.is_ctrl_pkt_overlay}
-      %5 = aie.masterset(East : 0, %3) {aie.is_ctrl_pkt_overlay}
+      %4 = aie.masterset(South : 2, %2) {aie.priority_route}
+      %5 = aie.masterset(East : 0, %3) {aie.priority_route}
       %6 = aie.masterset(East : 1, %0, %1)
       %7 = aie.masterset(East : 3, %0)
       aie.packet_rules(North : 0) {
         aie.rule(31, 25, %3)
-      } {aie.is_ctrl_pkt_overlay}
+      } {aie.priority_route}
       aie.packet_rules(North : 2) {
         aie.rule(31, 25, %2)
-      } {aie.is_ctrl_pkt_overlay}
+      } {aie.priority_route}
       aie.packet_rules(North : 1) {
         aie.rule(31, 18, %0)
         aie.rule(31, 28, %1)

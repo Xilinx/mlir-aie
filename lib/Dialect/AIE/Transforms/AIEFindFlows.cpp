@@ -573,7 +573,7 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
                       const std::vector<PacketConnection> &endpoints,
                       bool emitVias, bool dropIntraTile, int idMask,
                       FlowKeySet &seen, LiftedOps &lifted) {
-  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(rewriter.getContext());
+  AIEDialect::IsCtrlOverlayAttrHelper overlay(rewriter.getContext());
   AIEDialect::PriorityRouteAttrHelper prioritizedRule(rewriter.getContext());
   for (const PacketConnection &c : endpoints) {
     Operation *destOp = c.portConnection.op;
@@ -583,17 +583,15 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     if (!destTile) {
       continue;
     }
-    // The routing of a priority_route flow carries the is_ctrl_pkt_overlay
-    // marker. The control overlay's flows, which start or end at a TileControl
-    // port, stay materialized, since a lifted flow cannot rebuild the overlay.
+    // A lifted flow cannot reproduce the overlay's fixed switch settings.
     bool marked = llvm::any_of(c.usedOps, [&](Operation *op) {
       Operation *rulesParent =
           isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
-      return (op && overlay.isAttrPresent(op)) ||
+      return (isa_and_nonnull<MasterSetOp, PacketRuleOp>(op) &&
+              overlay.isAttrPresent(op)) ||
              (rulesParent && overlay.isAttrPresent(rulesParent));
     });
-    if (marked && (srcBundle == WireBundle::TileControl ||
-                   destPort.bundle == WireBundle::TileControl)) {
+    if (marked) {
       for (Operation *op : c.usedOps) {
         if (op) {
           lifted.kept.insert(op);
@@ -632,21 +630,21 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
       // flow that has both is a priority_route one or comes from the same
       // source as one, which routes the same.
       BoolAttr keepPktHeader, priorityRoute;
-      bool markedDest = false, markedSource = false;
+      bool markedDest = false;
+      std::optional<bool> markedSource;
       for (Operation *op : c.usedOps) {
         if (auto ms = dyn_cast_or_null<MasterSetOp>(op)) {
           if (ms.getDestBundle() == destPort.bundle &&
               ms.getDestChannel() == destPort.channel) {
             keepPktHeader = ms.getKeepPktHeaderAttr();
-            markedDest = overlay.isAttrPresent(ms);
+            markedDest = prioritizedRule.isAttrPresent(ms);
           }
         }
-        if (isa_and_nonnull<PacketRuleOp>(op) &&
-            prioritizedRule.isAttrPresent(op)) {
-          markedSource = true;
-        }
+        if (!markedSource && isa_and_nonnull<PacketRuleOp>(op))
+          markedSource = prioritizedRule.isAttrPresent(op) ||
+                         prioritizedRule.isAttrPresent(op->getParentOp());
       }
-      if (markedDest && markedSource) {
+      if (markedDest && markedSource.value_or(false)) {
         priorityRoute = rewriter.getBoolAttr(true);
       }
       // The rules along the path accept every id that agrees with value on the

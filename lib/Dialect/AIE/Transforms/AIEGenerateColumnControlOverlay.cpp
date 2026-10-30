@@ -49,7 +49,7 @@ std::string getCtrlPktAllocName(int col, bool isShimMM2S, int chan) {
 }
 
 ShimDMAAllocationOp getCtrlPktShimAlloc(DeviceOp device, int col) {
-  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
+  AIEDialect::IsCtrlOverlayAttrHelper overlay(device.getContext());
   for (auto alloc : device.getOps<AIE::ShimDMAAllocationOp>())
     if (overlay.isAttrPresent(alloc) &&
         alloc.getChannelDir() == AIE::DMAChannelDir::MM2S &&
@@ -115,73 +115,24 @@ struct AIEGenerateColumnControlOverlayPass
     ModuleOp module = getOperation();
     OpBuilder builder(module.getContext());
 
-    // Gather source devices in module order. Skip a previously-generated
-    // overlay device so the pass is idempotent on its own output.
-    SmallVector<DeviceOp> sourceDevices;
-    for (auto dev : module.getOps<DeviceOp>()) {
-      if (dev.getSymName() == "ctrl_pkt_overlay")
-        continue;
-      sourceDevices.push_back(dev);
-    }
-
-    // Devices that receive the overlay: those that have not opted out via
-    // `needs_ctrl_pkt_overlay = false`.
     SmallVector<DeviceOp> participating;
-    for (auto dev : sourceDevices) {
-      if (deviceOptedOut(dev)) {
-        if (clEmitStandaloneOverlay) {
-          dev.setHasCtrlPktOverlay(false);
-        }
+    for (auto device : module.getOps<DeviceOp>()) {
+      if (device->hasAttr("aie.is_ctrl_overlay") || device.getOverlayAttr())
         continue;
-      }
-      // A device that already carries a control overlay must not receive a
-      // second one.
-      if (deviceHasControlOverlay(dev)) {
-        if (clEmitStandaloneOverlay) {
-          dev.setHasCtrlPktOverlay(true);
-        }
-        continue;
-      }
-      participating.push_back(dev);
+      participating.push_back(device);
     }
-
-    // The overlay's shape must not depend on which device it is routed in, so
-    // the channels are read from every device that carries it, before any of
-    // them changes.
-    SmallVector<DeviceOp> overlaid;
-    for (auto dev : sourceDevices)
-      if (!deviceOptedOut(dev))
-        overlaid.push_back(dev);
-    collectShimMM2SUses(overlaid);
-
-    // A standalone `@ctrl_pkt_overlay` device references a single overlay
-    // shape, so every participating device must expose the same set of tiles
-    // for that shape to be identical across them.
-    // The same holds for the tiles whose task-complete tokens need a route.
-    llvm::SmallSet<AIE::TileID, 4> sharedTokenTiles;
-    if (clEmitStandaloneOverlay) {
-      shareTilesAcrossDevices(participating);
-      sharedTokenTiles = collectTokenIssuingTiles(participating);
-    }
-
-    // Apply the overlay in-place to participating devices.
-    for (auto dev : participating) {
-      llvm::SmallSet<AIE::TileID, 4> tokenTiles =
-          clEmitStandaloneOverlay ? sharedTokenTiles
-                                  : collectTokenIssuingTiles(dev);
-      if (failed(applyOverlayToDevice(dev, tokenTiles)))
-        return signalPassFailure();
-      if (clEmitStandaloneOverlay)
-        dev.setHasCtrlPktOverlay(true);
-    }
-
-    // Emit standalone `@ctrl_pkt_overlay` device.
+    collectShimMM2SUses(participating);
     if (clEmitStandaloneOverlay) {
       if (failed(createOverlayDevice(module, builder, participating,
-                                     sharedTokenTiles))) {
+                                     collectTokenIssuingTiles(participating))))
         return signalPassFailure();
-      }
+      return;
     }
+    for (auto device : participating)
+      if (!deviceHasControlOverlay(device) &&
+          failed(
+              applyOverlayToDevice(device, collectTokenIssuingTiles(device))))
+        return signalPassFailure();
   }
 
   // Per column, the shim MM2S channels the designs move data through, and the
@@ -198,7 +149,7 @@ struct AIEGenerateColumnControlOverlayPass
     fixedCircuits.clear();
     declaredCtrlChans.clear();
     ctrlChans.clear();
-    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(&getContext());
+    AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
     auto shimCol = [](Value tile) -> std::optional<int> {
       auto tOp = dyn_cast_or_null<TileOp>(tile.getDefiningOp());
       if (!tOp || !tOp.isShimNOCorPLTile())
@@ -346,16 +297,6 @@ struct AIEGenerateColumnControlOverlayPass
     }
   }
 
-  // Give every device in `devices` the union of their tiles, so an overlay
-  // routed onto any of them has the same shape (routes, shim_dma_allocations).
-  static void shareTilesAcrossDevices(ArrayRef<DeviceOp> devices) {
-    llvm::SmallSetVector<AIE::TileID, 8> unionTiles;
-    llvm::DenseMap<AIE::TileID, AIE::TileOp> prototypeTile;
-    collectTileUnion(devices, unionTiles, prototypeTile);
-    for (auto dev : devices)
-      cloneMissingTiles(dev, unionTiles, prototypeTile);
-  }
-
   // Emit a standalone `@ctrl_pkt_overlay` device holding only the overlay and
   // the union of tiles it references. Downstream consumers compile it on its
   // own to ship a reconfigure-only PDI.
@@ -386,7 +327,8 @@ struct AIEGenerateColumnControlOverlayPass
     builder.setInsertionPointToEnd(module.getBody());
     Location loc = firstDev.getLoc();
     auto overlayDevice = AIE::DeviceOp::create(
-        builder, loc, refDevice, builder.getStringAttr("ctrl_pkt_overlay"));
+        builder, loc, refDevice, builder.getStringAttr("ctrl_pkt_overlay"),
+        nullptr);
     overlayDevice.getRegion().emplaceBlock();
     builder.setInsertionPointToEnd(&overlayDevice.getRegion().front());
     AIE::EndOp::create(builder, loc);
@@ -401,7 +343,16 @@ struct AIEGenerateColumnControlOverlayPass
     if (failed(applyOverlayToDevice(overlayDevice, tokenTiles)))
       return failure();
 
-    overlayDevice.setHasCtrlPktOverlay(true);
+    overlayDevice->setAttr("aie.is_ctrl_overlay", builder.getUnitAttr());
+    auto flows = collectExistingCtrlFlows(overlayDevice);
+    for (DeviceOp device : participating) {
+      device.setOverlayAttr(
+          FlatSymbolRefAttr::get(overlayDevice.getSymNameAttr()));
+      auto declared = collectExistingCtrlFlows(device);
+      for (auto &[key, flow] : declared)
+        if (flows.count(key))
+          flow.erase();
+    }
     return success();
   }
 
@@ -540,13 +491,6 @@ struct AIEGenerateColumnControlOverlayPass
     return tiles;
   }
 
-  // Return true when the user has explicitly disabled overlay generation for
-  // this device via `needs_ctrl_pkt_overlay = false`.
-  static bool deviceOptedOut(DeviceOp device) {
-    auto attr = device->getAttrOfType<BoolAttr>("needs_ctrl_pkt_overlay");
-    return attr && !attr.getValue();
-  }
-
   // A one-source, one-destination packet flow reduced to a comparable key:
   // the packet ID plus both endpoints as (col, row, bundle, channel). This is
   // the shape every control flow below has, and keying on coordinates rather
@@ -611,12 +555,12 @@ struct AIEGenerateColumnControlOverlayPass
 
   // True when packets with ID `pktID` entering the switchbox of `from` on any
   // of `startPorts` are routed to `toPort` of `to`'s switchbox, through a
-  // connect or master marked is_ctrl_pkt_overlay. The ID is traced through the
+  // prioritized or overlay-owned connection. The ID is traced through the
   // routed switchboxes rather than inferred from the final rule.
   static bool hasRoutedPacket(DeviceOp device, int pktID, TileID from,
                               ArrayRef<Port> startPorts, TileID to,
                               Port toPort) {
-    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
+    AIEDialect::IsCtrlOverlayAttrHelper overlay(device.getContext());
     DenseMap<TileID, AIE::SwitchboxOp> switchboxes;
     for (auto switchbox : device.getOps<AIE::SwitchboxOp>()) {
       auto tile = dyn_cast<TileLike>(switchbox.getTile().getDefiningOp());
@@ -665,7 +609,7 @@ struct AIEGenerateColumnControlOverlayPass
 
       for (auto [dest, op] : outputs) {
         if (tileID == to && dest == toPort) {
-          if (overlay.isAttrPresent(op))
+          if (overlay.isAttrPresent(op) || op->hasAttr("aie.priority_route"))
             return true;
           continue;
         }
@@ -681,7 +625,7 @@ struct AIEGenerateColumnControlOverlayPass
 
   // A routed response must actually connect TileControl:0 of `src` to South:0
   // on its column's shim. A priority request ending at TileControl is not a
-  // response, even though pathfinder marks it is_ctrl_pkt_overlay.
+  // response, even though it is prioritized.
   static bool hasRoutedResponse(DeviceOp device, TileOp src,
                                 DenseMap<TileID, int> &tileIDMap) {
     int col = src.colIndex();
@@ -934,7 +878,7 @@ struct AIEGenerateColumnControlOverlayPass
         alloc = AIE::ShimDMAAllocationOp::create(
             builder, tOp.getLoc(), StringRef(dma_name), shimTile.getResult(),
             dir, shimChan, false, nullptr);
-      AIEDialect::IsCtrlPktOverlayAttrHelper(device.getContext())
+      AIEDialect::IsCtrlOverlayAttrHelper(device.getContext())
           .setAttr(alloc, UnitAttr::get(device.getContext()));
       if (clPlanChannels)
         alloc->setAttr("aie.fixed", builder.getUnitAttr());

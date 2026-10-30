@@ -5,10 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// --ctrlpkt-adaptive-overlay in aiecc, under --load-pdi-to-ctrl-pkt. The overlay
-// is routed around the data of @a and @b (control_overlay_avoid_data.mlir
-// checks how), so it leaves (1, 4) on another channel, the same in every
-// device; the router consumes aie.ctrl_pkt_overlay_avoid.
+// Adaptive creation routes the common overlay off application data paths.
 
 // RUN: rm -rf %t && mkdir -p %t/blind %t/adapt
 // RUN: cd %t/blind && %aiecc --load-pdi-to-ctrl-pkt --ctrlpkt-adaptive-overlay=false --get=input_physical.mlir %s
@@ -17,30 +14,30 @@
 // RUN: FileCheck %s --check-prefix=ADAPT < %t/adapt/input_physical.mlir
 
 // BLIND-LABEL: aie.device(npu2) @a
-// BLIND:       aie.switchbox(%tile_1_4)
+// BLIND:       aie.switchbox(%tile_0_2)
 // BLIND-NOT:   aie.switchbox
-// BLIND:       aie.masterset(North : 3, %{{.+}}) {aie.is_ctrl_pkt_overlay}
+// BLIND:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_overlay}
 // BLIND-LABEL: aie.device(npu2) @b
-// BLIND:       aie.switchbox(%tile_1_4)
+// BLIND:       aie.switchbox(%tile_0_2)
 // BLIND-NOT:   aie.switchbox
-// BLIND:       aie.masterset(North : 3, %{{.+}}) {aie.is_ctrl_pkt_overlay}
+// BLIND:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_overlay}
 // BLIND-LABEL: aie.device(npu2) @ctrl_pkt_overlay
-// BLIND:       aie.switchbox(%tile_1_4)
+// BLIND:       aie.switchbox(%tile_0_2)
 // BLIND-NOT:   aie.switchbox
-// BLIND:       aie.masterset(North : 3, %{{.+}}) {aie.is_ctrl_pkt_overlay}
+// BLIND:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_overlay}
 
 // ADAPT-LABEL: aie.device(npu2) @a
-// ADAPT:       aie.switchbox(%tile_1_4)
+// ADAPT:       aie.switchbox(%tile_0_2)
 // ADAPT-NOT:   aie.switchbox
-// ADAPT:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_pkt_overlay}
+// ADAPT:       aie.masterset(North : 5, %{{.+}}) {aie.is_ctrl_overlay}
 // ADAPT-LABEL: aie.device(npu2) @b
-// ADAPT:       aie.switchbox(%tile_1_4)
+// ADAPT:       aie.switchbox(%tile_0_2)
 // ADAPT-NOT:   aie.switchbox
-// ADAPT:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_pkt_overlay}
+// ADAPT:       aie.masterset(North : 5, %{{.+}}) {aie.is_ctrl_overlay}
 // ADAPT-LABEL: aie.device(npu2) @ctrl_pkt_overlay
-// ADAPT:       aie.switchbox(%tile_1_4)
+// ADAPT:       aie.switchbox(%tile_0_2)
 // ADAPT-NOT:   aie.switchbox
-// ADAPT:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_pkt_overlay}
+// ADAPT:       aie.masterset(North : 5, %{{.+}}) {aie.is_ctrl_overlay}
 
 // ADAPT-NOT: aie.ctrl_pkt_overlay_avoid
 

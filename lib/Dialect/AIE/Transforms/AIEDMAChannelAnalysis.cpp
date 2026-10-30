@@ -100,7 +100,7 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   }
 
   // Shim allocations reserve channels outside the DMA bodies above.
-  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
+  AIEDialect::IsCtrlOverlayAttrHelper overlay(device.getContext());
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
     ((overlay.isAttrPresent(allocOp) || allocOp->hasAttr("aie.fixed"))
          ? controlChannels

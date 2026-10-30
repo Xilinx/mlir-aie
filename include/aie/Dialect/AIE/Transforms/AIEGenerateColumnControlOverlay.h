@@ -23,7 +23,7 @@ void populateAIEColumnControlOverlay(DeviceOp &device);
 // control packets through.
 std::string getCtrlPktAllocName(int col, bool isShimMM2S, int chan);
 
-// Found by its is_ctrl_pkt_overlay mark, not by name; null if none.
+// Found by its is_ctrl_overlay mark, not by name; null if none.
 ShimDMAAllocationOp getCtrlPktShimAlloc(DeviceOp device, int col);
 
 // AIE arch-specific tile id to controller id mapping. Users can use those

@@ -199,14 +199,14 @@ module @pinned_task_demand {
 
 // -----
 
-// A shim endpoint without a fifoName gets no shim allocation, so its runtime
-// task is configured on the shim's channel directly too. The source of a
-// packet-switched route stamps its header on the task it becomes.
+// Named shim endpoints retain a channel reservation for subsequent allocation.
+// The source of a packet-switched route stamps its header on the runtime task.
 
 // CHECK-LABEL: @shim_and_packet
 // CHECK: aie.runtime_sequence
 // CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
 // CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0, <pkt_id = 0>) {
+// CHECK: aie.shim_dma_allocation @host_shim_alloc(%{{.*}}, MM2S, 0)
 // CHECK-NOT: aie.shim_dma_allocation
 module @shim_and_packet {
   aie.device(npu2) {

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.h"
+#include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "mlir/IR/IRMapping.h"
@@ -69,7 +70,7 @@ struct AIECreateControlOverlayPass
         if (!endpoint) {
           auto alloc =
               device.lookupSymbol<ShimDMAAllocationOp>(symbol.getValue());
-          AIEDialect::IsCtrlPktOverlayAttrHelper overlay(&getContext());
+          AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
           if (!alloc || !overlay.isAttrPresent(alloc))
             return std::nullopt;
           return ShimTransferSpans::End{
@@ -121,7 +122,7 @@ struct AIECreateControlOverlayPass
       endpoint->setAttr("aie.shareable_with",
                         ArrayAttr::get(&getContext(), allowed));
     }
-    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(&getContext());
+    AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
     for (DeviceOp device : module.getOps<DeviceOp>()) {
       for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
         if (!alloc->hasAttr("aie.fixed") || !overlay.isAttrPresent(alloc))
@@ -141,26 +142,49 @@ struct AIECreateControlOverlayPass
     return success();
   }
 
-  void preferApplicationRoutes(ModuleOp module) {
+  std::vector<std::pair<TileID, Port>> applicationPorts(ModuleOp module) {
     OwningOpRef<ModuleOp> trial = cast<ModuleOp>(module->clone());
+    for (DeviceOp device :
+         llvm::make_early_inc_range(trial->getOps<DeviceOp>())) {
+      if (device->hasAttr("aie.is_ctrl_overlay"))
+        device.erase();
+      else
+        device.removeOverlayAttr();
+    }
     PassManager pm(&getContext());
     auto &dpm = pm.nest<DeviceOp>();
     dpm.addPass(createAIEAssignPacketIdsPass());
     dpm.addPass(createAIEObjectFifoAllocatePass());
     dpm.addPass(createAIEObjectFifoLowerDMAsPass());
-    pm.addPass(createAIEControlOverlayAvoidDataPass());
-    // Failure to route the preference model leaves the default routes
-    // available.
     ScopedDiagnosticHandler quiet(&getContext(),
                                   [](Diagnostic &) { return success(); });
     if (failed(pm.run(*trial)))
-      return;
-    auto source = trial->getOps<DeviceOp>().begin();
-    for (DeviceOp dest : module.getOps<DeviceOp>()) {
-      if (auto avoid = (*source)->getAttr("aie.ctrl_pkt_overlay_avoid"))
-        dest->setAttr("aie.ctrl_pkt_overlay_avoid", avoid);
-      ++source;
+      return {};
+    std::set<std::pair<TileID, Port>> ports;
+    for (DeviceOp device : trial->getOps<DeviceOp>()) {
+      for (SwitchboxOp box : device.getOps<SwitchboxOp>()) {
+        for (ConnectOp connect : box.getOps<ConnectOp>())
+          ports.insert({box.getTileOp().getTileID(), connect.destPort()});
+        for (MasterSetOp master : box.getOps<MasterSetOp>())
+          ports.insert({box.getTileOp().getTileID(), master.destPort()});
+      }
+      DynamicTileAnalysis analysis;
+      llvm::Error error = analysis.runAnalysis(device);
+      if (error) {
+        llvm::consumeError(std::move(error));
+        continue;
+      }
+      auto collect = [&](const SwitchSettings &settings) {
+        for (const auto &[tile, setting] : settings)
+          for (Port output : setting.dsts)
+            ports.insert({tile, output});
+      };
+      for (const auto &[_, settings] : analysis.routing.settings)
+        collect(settings);
+      for (const auto &[_, settings] : analysis.routing.idSettings)
+        collect(settings);
     }
+    return {ports.begin(), ports.end()};
   }
 
   void runOnOperation() override {
@@ -175,10 +199,28 @@ struct AIECreateControlOverlayPass
     pm.addPass(createAIEGenerateColumnControlOverlayPass(options));
     if (failed(runPipeline(pm, module)))
       return signalPassFailure();
-    if (failed(sharingConstraints(module)))
+    auto avoided = adaptive ? applicationPorts(module)
+                            : std::vector<std::pair<TileID, Port>>{};
+    for (DeviceOp overlay : module.getOps<DeviceOp>()) {
+      if (!overlay->hasAttr("aie.is_ctrl_overlay") ||
+          overlay.getOps<PacketFlowOp>().empty())
+        continue;
+      OpPassManager routing(DeviceOp::getOperationName());
+      routing.addPass(createAIEAssignTileCtrlIDsPass());
+      routing.addPass(createAIEPathfinderPass({}, avoided));
+      if (failed(runPipeline(routing, overlay)))
+        return signalPassFailure();
+      overlay.walk([&](Operation *op) {
+        op->removeAttr("aie.priority_route");
+        if (!isa<DeviceOp, EndOp, PacketRulesOp>(op))
+          op->setAttr("aie.is_ctrl_overlay", UnitAttr::get(&getContext()));
+      });
+    }
+    OpPassManager imports(ModuleOp::getOperationName());
+    imports.addPass(createAIEImportOverlayPass());
+    if (failed(runPipeline(imports, module)) ||
+        failed(sharingConstraints(module)))
       return signalPassFailure();
-    if (adaptive)
-      preferApplicationRoutes(module);
   }
 };
 } // namespace

@@ -760,8 +760,9 @@ def AIECreateControlOverlay : Pass<"aie-create-control-overlay", "mlir::ModuleOp
   let summary = "Create a common, fixed control overlay before resource allocation";
   let description = [{
     Operates on placed, split ObjectFIFO IR. Chooses one control channel per
-    column across all devices and emits @ctrl_pkt_overlay. Application endpoints
-    may share its fixed channels when materialized runtime sequences establish
+    column across all devices, routes @ctrl_pkt_overlay once, and imports its
+    resources into devices carrying an `overlay` symbol reference. Application
+    endpoints may share its fixed channels when materialized runtime sequences establish
     disjoint configuration and execution phases. With adaptive=false, use
     channel zero and the default overlay routes. With adaptive=true, avoid
     application reservations and prefer routes away from application traffic.

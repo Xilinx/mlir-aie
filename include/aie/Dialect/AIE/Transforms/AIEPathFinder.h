@@ -276,9 +276,8 @@ struct RoutingFaults {
   // Sources whose tree waits on an arbiter it holds itself; they stop
   // trunking (see RouteState::trunked).
   std::vector<PathEndPoint> untrunk;
-  // Whether the connections all break the overlay's master sets; see
-  // RouteState::overlayMasters.
-  bool onlyOverlayMasters = false;
+  // Whether every rejected connection would change a pinned master set.
+  bool onlyPriorityMasters = false;
 };
 
 // A routing findPaths found.

@@ -12,15 +12,15 @@
 // packet_flow. The shim mux connect both use is kept, and routing the result
 // again routes flow 9.
 
-// RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s --check-prefixes=CHECK,FIND
-// RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows %s | FileCheck %s --check-prefixes=CHECK,ROUTE
+// RUN: aie-opt --aie-create-control-overlay --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s --check-prefixes=CHECK,FIND
+// RUN: aie-opt --aie-create-control-overlay --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows %s | FileCheck %s --check-prefixes=CHECK,ROUTE
 
 // CHECK:      aie.shim_mux
-// CHECK-NEXT:   aie.connect<DMA : 0, North : 3>
+// CHECK-NEXT:   aie.connect<DMA : 0, North : 3> {aie.is_ctrl_overlay}
 // CHECK-NEXT: }
 // CHECK:      aie.packet_rules(South : 3) {
-// CHECK-NEXT:   aie.rule(24, 24, %{{.*}}) {aie.is_ctrl_pkt_overlay, aie.priority_route}
-// CHECK-NEXT:   aie.rule(31, 15, %{{.*}}) {aie.is_ctrl_pkt_overlay, aie.priority_route}
+// CHECK-NEXT:   aie.rule(24, 24, %{{.*}}) {aie.is_ctrl_overlay}
+// CHECK-NEXT:   aie.rule(31, 15, %{{.*}}) {aie.is_ctrl_overlay}
 // FIND-NEXT:  }
 // ROUTE-NEXT:   aie.rule(31, 9,
 // CHECK:      aie.switchbox(%{{.*}}tile_0_2)

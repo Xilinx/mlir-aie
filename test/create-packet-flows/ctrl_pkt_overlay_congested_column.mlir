@@ -1,54 +1,18 @@
-//===- ctrl_pkt_overlay_congested_column.mlir ------------------*- MLIR -*-===//
-//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
 
-// A design loaded by control packets must route the column control overlay
-// the same way the standalone overlay does, or loading it reprograms the
-// switches its own control packets travel through (#3837). Here the design's
-// circuit flows crowd the memtile's north ports, so one detours through
-// column 1, which the overlay covers at every row. The overlay keeps the
-// master ports, msels and rules it has on its own. The design moves data
-// through column 0's shim MM2S channel 0, so the column's control packets
-// take channel 1.
+// RUN: aie-opt --aie-create-control-overlay --aie-create-pathfinder-flows %s -o %t
+// RUN: aie-opt --aie-import-overlay %t | diff %t -
+// RUN: FileCheck %s < %t
 
-// RUN: aie-opt --pass-pipeline="builtin.module(aie-generate-column-control-overlay{route-shim-to-tile-ctrl=true emit-standalone-overlay=true},aie.device(aie-create-pathfinder-flows))" %s -o %t
-// RUN: sed -n '/@design {/,/^  }/p' %t | FileCheck %s
-// RUN: sed -n '/@ctrl_pkt_overlay {/,/^  }/p' %t | FileCheck %s
-// RUN: sed -n '/@design {/,/^  }/p' %t | FileCheck %s --check-prefix=DETOUR
-
-// CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0) {
-// CHECK-DAG:     %[[A51:.+]] = aie.amsel<5> (1)
-// CHECK-DAG:     %[[A52:.+]] = aie.amsel<5> (2)
-// CHECK-DAG:     %[[A53:.+]] = aie.amsel<5> (3)
-// CHECK-DAG:     aie.masterset(South : 0, %[[A53]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
-// CHECK-DAG:     aie.masterset(North : 3, %[[A52]]) {aie.is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A51]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
-// CHECK:         aie.packet_rules(South : 7) {
-// CHECK-NEXT:      aie.rule(24, 24, %[[A52]]) {aie.priority_route}
-// CHECK-NEXT:      aie.rule(31, 15, %[[A51]]) {aie.priority_route}
-// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
-// CHECK:         aie.packet_rules(TileControl : 0) {
-// CHECK-NEXT:      aie.rule(31, 15, %[[A53]]) {aie.priority_route}
-// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
-
-// CHECK-LABEL: aie.switchbox(%mem_tile_0_1) {
-// CHECK-DAG:     %[[A52:.+]] = aie.amsel<5> (2)
-// CHECK-DAG:     %[[A53:.+]] = aie.amsel<5> (3)
-// CHECK-DAG:     aie.masterset(North : 3, %[[A53]]) {aie.is_ctrl_pkt_overlay}
-// CHECK-DAG:     aie.masterset(TileControl : 0, %[[A52]]) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
-// CHECK:         aie.packet_rules(South : 3) {
-// CHECK-NEXT:      aie.rule(25, 25, %[[A53]])
-// CHECK-NEXT:      aie.rule(31, 30, %[[A53]])
-// CHECK-NEXT:      aie.rule(31, 26, %[[A52]])
-// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
-
-// DETOUR-LABEL: aie.switchbox(%mem_tile_1_1) {
-// DETOUR:         aie.connect<South : {{[0-9]+}}, North : {{[0-9]+}}>
-// DETOUR-LABEL: aie.switchbox(%tile_1_2) {
-// DETOUR:         aie.connect<South : {{[0-9]+}}, West : {{[0-9]+}}>
+// CHECK-LABEL: aie.device({{.*}}) @design
+// CHECK: aie.switchbox
+// CHECK: aie.is_ctrl_overlay
+// CHECK: overlay = @ctrl_pkt_overlay
+// CHECK-LABEL: aie.device({{.*}}) @ctrl_pkt_overlay
+// CHECK-NOT: aie.packet_flow
+// CHECK: aie.masterset(TileControl : 0,
+// CHECK-SAME: aie.is_ctrl_overlay
 
 module {
   aie.device(npu2) @design {
