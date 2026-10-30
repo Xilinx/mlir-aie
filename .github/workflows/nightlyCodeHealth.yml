@@ -115,7 +115,8 @@ jobs:
 
       # Everything links the shared sanitizer runtime (-shared-libsan), so a
       # tool started from a Python test and the aie extension that test
-      # imported share one runtime; lit preloads it into the interpreter
+      # imported share one runtime; lit preloads it into every test's
+      # processes, the uninstrumented interpreter among them
       # (AIE_SANITIZER_PRELOAD, test/lit.cfg.py).
       - name: Build
         run: |
@@ -233,10 +234,16 @@ jobs:
           files = [f for f in files if f.endswith(".cpp") and f.split("/")[0] in ("lib", "tools")]
           open(sys.argv[1], "w").write("\n".join(files) + "\n")
           EOF
-          MLIR_AIE_BUILD_DIR="$PWD/build" xargs -a "$RUNNER_TEMP/files.txt" utils/run_clang_tidy.sh \
-            > "$RUNNER_TEMP/tidy.log" 2>&1 || true
+          # One invocation, so its exit status is clang-tidy's own: a finding
+          # (123) is a result, anything else an analysis that did not finish,
+          # which the summary refuses to report as clean.
+          mapfile -t FILES < "$RUNNER_TEMP/files.txt"
+          rc=0
+          MLIR_AIE_BUILD_DIR="$PWD/build" utils/run_clang_tidy.sh "${FILES[@]}" \
+            > "$RUNNER_TEMP/tidy.log" 2>&1 || rc=$?
           python3 utils/kernel_checks/code_health.py tidy --source-root "$GITHUB_WORKSPACE" \
-            --files "$RUNNER_TEMP/files.txt" --out "$RUNNER_TEMP/clang-tidy.json" "$RUNNER_TEMP/tidy.log"
+            --files "$RUNNER_TEMP/files.txt" --exit-code "$rc" \
+            --out "$RUNNER_TEMP/clang-tidy.json" "$RUNNER_TEMP/tidy.log"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: ${{ !cancelled() }}

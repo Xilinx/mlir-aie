@@ -129,6 +129,130 @@ def test_a_finding_keeps_its_first_night():
     ]
 
 
+def test_unnamed_namespace_functions_stay_apart():
+    def at(func):
+        return {
+            "sanitizer": "asan",
+            "kind": "heap-use-after-free",
+            "where": {"file": "lib/X.cpp", "function": func},
+        }
+
+    a = ch.finding_key(at("(anonymous namespace)::appendSync(mlir::OpBuilder&)"))
+    b = ch.finding_key(at("(anonymous namespace)::appendWait(int) const"))
+    assert a != b
+    assert a.endswith("|(anonymous namespace)::appendSync")
+
+
+def test_a_test_reporting_one_bug_often_counts_once():
+    reports = [(f"AIE :: t{n}.mlir", "FAIL", ASAN_OUT) for n in range(ch.KEEP_TESTS)]
+    # Past the kept sample, the same tests report the same bug again.
+    more = [(f"AIE :: t{n}.mlir", "FAIL", ASAN_OUT) for n in range(ch.KEEP_TESTS + 5)]
+    piece = ch.summarize_sanitizer(
+        "asan-ubsan", [lit(*reports), lit(*more), lit(*more)], SRC
+    )
+    (f,) = piece["findings"]
+    assert f["test_count"] == ch.KEEP_TESTS + 5
+    assert len(f["tests"]) == ch.KEEP_TESTS
+
+
+def test_sanitizer_history_counts_every_finding():
+    out = "\n".join(
+        f"==1==ERROR: AddressSanitizer: heap-use-after-free on address 0x{i:x}\n"
+        f"    #0 0x1 in f{i}() {SRC}/lib/F{i}.cpp:1:1"
+        for i in range(ch.KEEP_FINDINGS + 1)
+    )
+    # The least frequent kind sorts past the displayed findings.
+    piece = ch.summarize_sanitizer(
+        "asan-ubsan",
+        [
+            lit(
+                *[(f"AIE :: t{n}.mlir", "FAIL", out) for n in range(2)],
+                ("AIE :: u.mlir", "FAIL", UBSAN_OUT),
+            )
+        ],
+        SRC,
+    )
+    assert all(f["sanitizer"] == "asan" for f in piece["findings"])
+    status = ch.build_status(
+        {"asan-ubsan": piece},
+        None,
+        None,
+        None,
+        datetime.datetime(2026, 10, 29, tzinfo=datetime.timezone.utc),
+        {"id": 1},
+    )
+    by = ch.history_point(status)["asan-ubsan"]["by"]
+    assert by == {"asan": ch.KEEP_FINDINGS + 1, "ubsan": 1}
+
+
+def test_a_missing_night_keeps_the_first_nights():
+    def night(day, pieces, previous):
+        now = datetime.datetime(2026, 10, day, tzinfo=datetime.timezone.utc)
+        return json.loads(
+            json.dumps(ch.build_status(pieces, None, None, previous, now, {"id": day}))
+        )
+
+    def piece():
+        return ch.summarize_sanitizer(
+            "tsan", [lit(("AIE :: p.py", "FAIL", TSAN_OUT))], SRC
+        )
+
+    first = night(20, {"tsan": piece()}, None)
+    assert first["tsan"]["findings"][0]["new"]
+    gone = night(21, {}, first)
+    assert gone["tsan"]["missing"] and "findings" not in gone["tsan"]
+    gone = night(22, {}, gone)
+    back = night(23, {"tsan": piece()}, gone)
+    (f,) = back["tsan"]["findings"]
+    assert (f["since"], f["new"]) == ("2026-10-20", False)
+
+
+def test_a_finding_past_the_display_keeps_its_first_night():
+    before = {"known": {ch.known_id("k"): "2026-10-20"}}
+    piece = {"findings": [], "ids": [ch.known_id("k")]}
+    ch.date_findings(piece, before, "2026-10-29")
+    assert piece["known"] == {ch.known_id("k"): "2026-10-20"}
+    assert "ids" not in piece
+
+
+def test_code_scanning_outage_keeps_the_alert_inventory():
+    pages = {1: [alert(1, "high", "c-cpp", "lib/a.cpp")]}
+    get = lambda path: pages.get(int(re.search(r"[?&]page=(\d+)", path).group(1)), [])
+    now = datetime.datetime(2026, 10, 29, tzinfo=datetime.timezone.utc)
+    first = ch.build_status(
+        {}, None, ch.scanning_status(get, "r", None), None, now, {"id": 1}
+    )
+    down = ch.build_status({}, None, "HTTP 502", first, now, {"id": 2})
+    assert down["code_scanning"] == {"error": "HTTP 502", "alert_ids": [1]}
+    down = ch.build_status({}, None, "HTTP 502", down, now, {"id": 3})
+    pages[1].append(alert(2, "high", "c-cpp", "lib/b.cpp"))
+    back = ch.scanning_status(get, "r", down["code_scanning"])
+    assert back["new"] == 1 and back["fixed"] == 0
+    assert [a["number"] for a in back["alerts"] if a["new"]] == [2]
+
+
+@pytest.mark.parametrize(
+    "exit_code, log, written",
+    [
+        (0, "", True),
+        (123, "lib/Clean.cpp:1:1: error: x [modernize-use-auto]", True),
+        (1, "error: no compile_commands.json found", False),
+        (125, "", False),
+        (123, "Stack dump:\n0. Program arguments: clang-tidy", False),
+    ],
+)
+def test_an_unfinished_clang_tidy_run_is_not_reported(
+    tmp_path, exit_code, log, written
+):
+    files = tmp_path / "files.txt"
+    files.write_text("lib/Clean.cpp\n")
+    (tmp_path / "tidy.log").write_text(log)
+    out = tmp_path / "tidy.json"
+    argv = ["tidy", "--files", str(files), "--exit-code", str(exit_code)]
+    rc = ch.main([*argv, "--out", str(out), str(tmp_path / "tidy.log")])
+    assert (rc == 0) == written and out.exists() == written
+
+
 TIDY_LOG = f"""{SRC}/lib/Dialect/AIE/IR/AIEDialect.cpp:10:3: error: use auto when initializing with a cast [modernize-use-auto,-warnings-as-errors]
 {SRC}/lib/Dialect/AIE/IR/AIEDialect.cpp:10:3: error: use auto when initializing with a cast [modernize-use-auto,-warnings-as-errors]
 {SRC}/lib/Dialect/AIE/Transforms/AIEFoo.cpp:5:1: error: variable 'x' is not initialized [cppcoreguidelines-init-variables,-warnings-as-errors]

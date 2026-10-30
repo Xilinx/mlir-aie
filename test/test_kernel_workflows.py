@@ -45,8 +45,63 @@ def test_code_health_sanitizers_do_not_stop_after_one_failure(tmp_path, index):
     args = result.stdout.splitlines()
     assert "--max-failures" not in args
     assert args[args.index("--filter-out") + 1] == entry["filter-out"]
-    assert args[args.index("-o") + 1] == str(tmp_path / "lit/tests.json")
+    # The script joins with "/" whatever separator RUNNER_TEMP uses.
+    assert args[args.index("-o") + 1] == f"{tmp_path}/lit/tests.json"
     assert "build/test" in args
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the step runs on a Linux runner and reads POSIX paths",
+)
+@pytest.mark.parametrize(
+    "tidy_exit, crash, written",
+    [
+        (0, False, True),
+        (123, False, True),
+        (125, False, False),
+        (1, False, False),
+        (123, True, False),
+    ],
+)
+def test_code_health_tidy_reports_only_a_finished_analysis(
+    tmp_path, tidy_exit, crash, written
+):
+    job = workflow("nightlyCodeHealth.yml")["jobs"]["clang-tidy"]
+    script = next(s["run"] for s in job["steps"] if s.get("name") == "clang-tidy")
+    root = Path(__file__).resolve().parents[1]
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build/compile_commands.json").write_text(
+        json.dumps([{"file": str(tmp_path / "lib/A.cpp")}])
+    )
+    (tmp_path / "utils/kernel_checks").mkdir(parents=True)
+    shutil.copy(
+        root / "utils/kernel_checks/code_health.py", tmp_path / "utils/kernel_checks"
+    )
+    shutil.copy(root / ".pre-commit-config.yaml", tmp_path)
+    tidy = tmp_path / "utils/run_clang_tidy.sh"
+    tidy.write_text(
+        "#!/usr/bin/env bash\n"
+        f"echo \"$*\" > {json.dumps(str(tmp_path / 'args.txt'))}\n"
+        + ("echo 'Stack dump:'\n" if crash else "")
+        + f"exit {tidy_exit}\n"
+    )
+    tidy.chmod(0o755)
+    py = Path(sys.executable).as_posix()
+    result = subprocess.run(
+        [BASH, "-e", "-c", f'python3() {{ "{py}" "$@"; }}\n' + script],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "RUNNER_TEMP": str(tmp_path),
+            "GITHUB_WORKSPACE": str(tmp_path),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert (tmp_path / "args.txt").read_text().split() == ["lib/A.cpp"]
+    assert (result.returncode == 0) == written, result.stderr
+    assert (tmp_path / "clang-tidy.json").exists() == written
 
 
 # Resolve bash in PATH order: a bare "bash" argv[0] goes through CreateProcess's

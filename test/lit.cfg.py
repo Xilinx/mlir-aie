@@ -6,7 +6,6 @@
 #
 
 import os
-import shlex
 import shutil
 import sys
 
@@ -70,14 +69,13 @@ _python_with_test_cache = LitConfigHelper._run_with_test_cache_wrap(config.aie_s
 # A sanitized build (nightlyCodeHealth.yml) links its tools and the aie
 # extension against the shared sanitizer runtime; the interpreter itself is
 # not instrumented, so the runtime must be loaded before it imports aie.
+# Preloaded through the test environment, so every interpreter a RUN line
+# starts gets it (%PYTHON, %pytest and lit's own %python alike).
 llvm_config.with_system_environment(
     ["ASAN_OPTIONS", "UBSAN_OPTIONS", "TSAN_OPTIONS", "LSAN_OPTIONS"]
 )
 if os.environ.get("AIE_SANITIZER_PRELOAD"):
-    _python_with_test_cache = (
-        f"env LD_PRELOAD={shlex.quote(os.environ['AIE_SANITIZER_PRELOAD'])} "
-        f"{_python_with_test_cache}"
-    )
+    config.environment["LD_PRELOAD"] = os.environ["AIE_SANITIZER_PRELOAD"]
 _pytest_wrapper = os.path.join(config.aie_src_root, "utils", "run_pytest.py")
 config.substitutions.append(
     (

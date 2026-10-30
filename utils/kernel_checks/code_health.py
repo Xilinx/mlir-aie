@@ -30,7 +30,7 @@ one's output into a small summary, then folds the night's summaries into
   which alerts are new; the history gains a point.
 
     code_health.py sanitizer --name asan-ubsan --out asan.json lit/*.json
-    code_health.py tidy --files files.txt --out tidy.json tidy.log
+    code_health.py tidy --files files.txt --exit-code N --out tidy.json tidy.log
     code_health.py publish --coverage coverage.lcov --piece asan.json ... \
         --code-scanning --previous status.json --history history.json --out DIR
 """
@@ -40,6 +40,7 @@ import datetime
 import hashlib
 import json
 import os
+import posixpath
 import re
 import sys
 from pathlib import Path
@@ -58,6 +59,9 @@ KEEP_TESTS = 25
 KEEP_FAILED = 100
 KEEP_ALERTS = 200
 KEEP_FINDINGS = 100
+# Every finding's identity and first night, displayed or not, so a finding
+# past KEEP_FINDINGS or one a missing night hid keeps its date.
+KEEP_KNOWN = 2000
 # The report itself for the first few findings of a check; the rest keep
 # their kind, place and tests.
 EXCERPTS_KEPT = 10
@@ -81,7 +85,8 @@ def stamp(t: datetime.datetime) -> str:
 
 def relative(path: str, root: str) -> str:
     """Return a path inside the checkout as the repository names it."""
-    path = os.path.normpath(path) if path else path
+    # Reports come from Linux runners; keep their separators on any host.
+    path = posixpath.normpath(path) if path else path
     if root and path.startswith(root.rstrip("/") + "/"):
         return path[len(root.rstrip("/")) + 1 :]
     # Outside the checkout (a system or prebuilt-MLIR header) stays
@@ -194,10 +199,15 @@ def reports(output: str, root: str) -> list[dict]:
     return found
 
 
+ANONYMOUS = "(anonymous namespace)"
+
+
 def finding_key(f: dict) -> str:
     """Identify the same bug across nights, ignoring lines that edits move."""
     w = f.get("where") or {}
-    func = re.sub(r"\(.*$", "", w.get("function", ""))
+    # Drop the parameter list, not an unnamed namespace's qualifier.
+    func = w.get("function", "").replace(ANONYMOUS, "\0")
+    func = re.sub(r"\(.*$", "", func).replace("\0", ANONYMOUS)
     # A template's name can run to kilobytes: such a key carries its digest.
     if len(func) > 160:
         func = func[:80] + "#" + hashlib.sha1(func.encode()).hexdigest()[:12]
@@ -208,9 +218,15 @@ FAILED = {"FAIL", "TIMEOUT", "UNRESOLVED", "XPASS"}
 RAN = {"PASS", "FAIL", "TIMEOUT", "XFAIL", "XPASS", "UNRESOLVED"}
 
 
+def known_id(key: str) -> str:
+    """Digest a finding key for the identities kept across nights."""
+    return hashlib.sha1(key.encode()).hexdigest()[:16]
+
+
 def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
     """Summarize lit's reports of one sanitizer build as one status piece."""
     findings: dict[str, dict] = {}
+    counted: dict[str, set] = {}
     failed, tests, ran = [], 0, 0
     for lit in lits:
         for t in lit.get("tests", []):
@@ -223,13 +239,18 @@ def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
                 seen = findings.setdefault(
                     key, {**f, "key": key, "tests": [], "test_count": 0}
                 )
-                if t["name"] not in seen["tests"]:
+                names = counted.setdefault(key, set())
+                if t["name"] not in names:
+                    names.add(t["name"])
                     seen["test_count"] += 1
                     if len(seen["tests"]) < KEEP_TESTS:
                         seen["tests"].append(t["name"])
             if code in FAILED and not found:
                 failed.append({"test": t["name"], "code": code})
     order = sorted(findings.values(), key=lambda f: (-f["test_count"], f["key"]))
+    by_sanitizer: dict[str, int] = {}
+    for f in order:
+        by_sanitizer[f["sanitizer"]] = by_sanitizer.get(f["sanitizer"], 0) + 1
     for i, f in enumerate(order):
         f["message"] = clip(f["message"])
         if "function" in f["where"]:
@@ -242,6 +263,8 @@ def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
         "ran": ran,
         "findings": order[:KEEP_FINDINGS],
         "finding_count": len(order),
+        "by_sanitizer": by_sanitizer,
+        "ids": [known_id(f["key"]) for f in order[:KEEP_KNOWN]],
         "failed_without_report": failed[:KEEP_FAILED],
         "failed_without_report_count": len(failed),
     }
@@ -261,6 +284,23 @@ def enabled_pattern(config: Path) -> re.Pattern:
     if not m:
         raise ValueError(f"no clang-tidy hook with a files: block in {config}")
     return re.compile(m.group(2).strip())
+
+
+# utils/run_clang_tidy.sh hands its files to xargs: 0 is a clean run and 123
+# one in which some clang-tidy reported a finding. Any other status is a run
+# that did not finish: the script's own checks failed, or a clang-tidy
+# crashed (xargs stops there), could not start, or exited 255.
+TIDY_COMPLETED = (0, 123)
+TIDY_CRASH = re.compile(r"^(?:Stack dump:|PLEASE submit a bug report)", re.M)
+
+
+def tidy_incomplete(log: str, exit_code: int) -> str | None:
+    """Say why clang-tidy's run did not cover every file, or None if it did."""
+    if exit_code not in TIDY_COMPLETED:
+        return f"utils/run_clang_tidy.sh exited {exit_code}"
+    if TIDY_CRASH.search(log):
+        return "clang-tidy crashed"
+    return None
 
 
 def summarize_tidy(log: str, files: list[str], enabled: re.Pattern, root: str) -> dict:
@@ -425,12 +465,9 @@ def scanning_status(get, repo: str, previous: dict | None) -> dict:
         if len(batch) < 100:
             break
         page += 1
-    known = set(
-        (previous or {}).get(
-            "alert_ids", [a["number"] for a in ((previous or {}).get("alerts") or [])]
-        )
-    )
-    had = bool(previous and ("alert_ids" in previous or "alerts" in previous))
+    ids = alert_ids(previous)
+    known = set(ids or [])
+    had = ids is not None
     out = []
     for a in alerts:
         rule = a.get("rule") or {}
@@ -487,13 +524,36 @@ def scanning_status(get, repo: str, previous: dict | None) -> dict:
 CHECKS = ("asan-ubsan", "tsan", "clang-tidy")
 
 
+def known_findings(before: dict | None) -> dict:
+    """Return the last published finding identities and their first nights."""
+    before = before or {}
+    if isinstance(before.get("known"), dict):
+        return dict(before["known"])
+    return {known_id(f["key"]): f.get("since") for f in before.get("findings") or []}
+
+
 def date_findings(piece: dict, before: dict | None, today: str) -> dict:
     """Each finding's first night, carried from the last status."""
-    since = {f["key"]: f.get("since") for f in ((before or {}).get("findings") or [])}
+    since = known_findings(before)
     for f in piece.get("findings", []):
-        f["since"] = since.get(f["key"]) or today
-        f["new"] = f["key"] not in since
+        i = known_id(f["key"])
+        f["since"] = since.get(i) or today
+        f["new"] = i not in since
+    ids = piece.pop("ids", None)
+    if ids is None:
+        ids = [known_id(f["key"]) for f in piece.get("findings", [])]
+    piece["known"] = {i: since.get(i) or today for i in ids[:KEEP_KNOWN]}
     return piece
+
+
+def alert_ids(before: dict | None) -> list | None:
+    """Return the last known open alerts, or None if none were ever published."""
+    before = before or {}
+    if "alert_ids" in before:
+        return before["alert_ids"]
+    if "alerts" in before:
+        return [a["number"] for a in before["alerts"] or []]
+    return None
 
 
 def run_info(env=os.environ) -> dict:
@@ -523,17 +583,28 @@ def build_status(
         piece = pieces.get(name)
         if piece is None:
             status[name] = {"check": name, "missing": True}
+            # A failed night shows no findings but forgets none: when the
+            # check comes back, what it finds is dated from before.
+            known = known_findings((prev or {}).get(name))
+            if name != "clang-tidy" and known:
+                status[name]["known"] = known
         elif name == "clang-tidy":
             status[name] = piece
         else:
             status[name] = date_findings(piece, (prev or {}).get(name), today)
     status["coverage"] = coverage if coverage is not None else {"missing": True}
-    if isinstance(scanning, str):
-        status["code_scanning"] = {"error": scanning}
-    elif scanning is not None:
+    if scanning is not None and not isinstance(scanning, str):
         status["code_scanning"] = scanning
     else:
-        status["code_scanning"] = {"missing": True}
+        # Without an answer the alerts are not shown, but their identities
+        # are kept, so the next answer says which alerts are new and fixed.
+        cs: dict = (
+            {"error": scanning} if isinstance(scanning, str) else {"missing": True}
+        )
+        ids = alert_ids((prev or {}).get("code_scanning"))
+        if ids is not None:
+            cs["alert_ids"] = ids
+        status["code_scanning"] = cs
     return status
 
 
@@ -555,9 +626,11 @@ def history_point(status: dict) -> dict:
     for name in ("asan-ubsan", "tsan"):
         s = status[name]
         if not s.get("missing"):
-            by: dict[str, int] = {}
-            for f in s["findings"]:
-                by[f["sanitizer"]] = by.get(f["sanitizer"], 0) + 1
+            by = s.get("by_sanitizer")
+            if by is None:
+                by = {}
+                for f in s["findings"]:
+                    by[f["sanitizer"]] = by.get(f["sanitizer"], 0) + 1
             point[name] = {
                 "findings": s["finding_count"],
                 "by": by,
@@ -619,6 +692,12 @@ def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
     t.add_argument("--files", type=Path, required=True)
     t.add_argument("--config", type=Path, default=ROOT / ".pre-commit-config.yaml")
     t.add_argument("--out", type=Path, required=True)
+    t.add_argument(
+        "--exit-code",
+        type=int,
+        default=0,
+        help="utils/run_clang_tidy.sh's exit status; an unfinished run writes nothing",
+    )
     t.add_argument("log", type=Path)
     p = sub.add_parser(
         "publish", help="fold the night into status.json and history.json"
@@ -657,6 +736,13 @@ def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
             if args.log.is_file()
             else ""
         )
+        why = tidy_incomplete(log, args.exit_code)
+        if why:
+            print(
+                f"{why}; analysis incomplete, no clang-tidy summary written",
+                file=sys.stderr,
+            )
+            return 1
         piece = summarize_tidy(log, files, enabled_pattern(args.config), root)
         write_json(args.out, piece)
         print(

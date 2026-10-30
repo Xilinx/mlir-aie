@@ -2547,6 +2547,7 @@ const mixed = sectionTile('placement', 'Compiler checks', 'about',
 assert.equal(mixed.children[2].text, 'Buffer allocator: Bank sharing moved.');
 """)
 
+
 def test_performance_trends_chart_each_batch_as_the_mean_over_seeds(page):
     page(COMPONENT_RUNS + HW_NIGHTS + """
 const read = collect(historiesOf('sa-placer-hw', [hwBefore, hwAfter]));
@@ -3230,6 +3231,7 @@ const recs2 = later.map((v, i) => rec(String(i + 1), day(10 + i), 'turbo', { 'mm
 assert.equal(verdictOf(nightOf('npu1', null, fromRecords({ npu1: recs2.slice(-2) }), null, fromRecords({ npu1: recs2 })), day(25)).level, 'ok');
 """)
 
+
 def test_a_kernels_cases_that_moved_together_are_one_row(page):
     page(RUNS + """
 db = fromRecords({ npu2: [
@@ -3363,5 +3365,7 @@ def test_the_overview_lists_areas_in_the_order_of_the_tabs():
     html = PAGE.read_text(encoding="utf-8")
     nav = html.split('<nav aria-label="sections">', 1)[1].split("</nav>", 1)[0]
     tabs = re.findall(r'href="#view=([\w-]+)"', nav)
-    order = json.loads(re.search(r"const TAB_ORDER = (\[.*?\]);", html)[1].replace("'", '"'))
+    order = json.loads(
+        re.search(r"const TAB_ORDER = (\[.*?\]);", html)[1].replace("'", '"')
+    )
     assert tabs == ["overview", *order]
