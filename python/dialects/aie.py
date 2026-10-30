@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Tuple, Dict, Any, TypeVar, Union, overload
+from typing import List, Tuple, Dict, Any, Union, overload
 import contextlib
 import os
 from enum import Enum, IntEnum
@@ -56,7 +56,7 @@ from ..extras.util import (
     region_adder,
 )
 from ..helpers.sourceloc import AIE_ROOT, user_code_location
-from ..helpers.taplib import TensorAccessPattern
+from ..helpers.taplib import PerCall, TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
 from ..ir import (
@@ -120,15 +120,12 @@ class npu_write_rtp(NpuWriteRTPOp):
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
 
 
-_ScalarT = TypeVar("_ScalarT")
-
-
 @overload
 def _as_i32(v: None) -> None: ...
 @overload
-def _as_i32(v: Union[int, np.integer]) -> Value: ...
+def _as_i32(v: Union[int, np.integer, Value]) -> Value: ...
 @overload
-def _as_i32(v: _ScalarT) -> _ScalarT: ...
+def _as_i32(v: PerCall) -> PerCall: ...
 def _as_i32(v):
     """Materialize an arith.constant i32 from a Python/NumPy int, pass a Value
     (or a sequence-builder scalar such as a DispatchTime PerCall) through
