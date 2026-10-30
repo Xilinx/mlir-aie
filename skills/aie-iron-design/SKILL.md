@@ -11,10 +11,14 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # IRON Design: Writing the Dataflow and Its Kernels
 
-Second of five phases in porting a model to AIE/NPU (see `aie-model-baseline` for phase 1,
-the numeric oracle a design is validated against; `aie-dataflow-presim` for phase 3;
-`aie-hw-bringup` for phase 4; `aie-kernel-opt`/`aie-dataflow-opt` for phase 5, optimization
-once it's correct).
+Third of five phases in porting a model to AIE/NPU: it realizes, in IRON, the dataflow plan
+`aie-dataflow-presim` (phase 2) already proved bit-exact in software (see `aie-model-baseline`
+for phase 1, the numeric oracle behind both; `aie-hw-bringup` for phase 4; `aie-kernel-opt`/
+`aie-dataflow-opt` for phase 5, optimization once it's correct).
+
+This skill is also the direct entry point for work that isn't a full model port — one kernel,
+or a small standalone design — where phases 1 and 2 shrink down to simply knowing what to
+compute.
 
 This skill teaches you how to write efficient designs for AMD XDNA NPUs (AIE2 in Phoenix/Hawk, AIE2P in Strix/Krackan) using the IRON Python API and write the C++ AIE kernels that run on the compute tiles.
 
@@ -125,7 +129,7 @@ methodology here, point at it:
 | Phase | Skill | Covers |
 |-------|-------|--------|
 | 1 — Prepare the model | `aie-model-baseline` | Quantization scheme, ONNX export, bit-exact numeric oracle |
-| 3 — Validate pre-hardware | `aie-dataflow-presim` | Threaded ObjectFifo mock for deadlock/depth bugs; prove novel decompositions in numpy first |
+| 2 — Plan the dataflow | `aie-dataflow-presim` | Threaded ObjectFifo mock for deadlock/depth bugs; prove the dataflow plan and novel decompositions in numpy first |
 | 4 — First hardware bring-up | `aie-hw-bringup` | Block-by-block bring-up against the oracle, methodical bisection |
 | 5 — Optimize (micro) | `aie-kernel-opt` | Make one compiled kernel faster: the remarks report, then a back-to-back A/B on the NPU |
 | 5 — Optimize (macro) | `aie-dataflow-opt` | NOOP-ablation ranking, placement/overlays, DMA bandwidth modeling |
@@ -152,3 +156,12 @@ mechanism you haven't built before** instead of debugging it inside the full des
 | "My fix changed nothing" | [`pitfalls.md`](references/pitfalls.md) §Stale JIT/xclbin cache |
 | "Slow / not pipelining" | [`pitfalls.md`](references/pitfalls.md) §Missing __restrict, then the `aie-kernel-opt` skill |
 | "How do I run / test this?" | [`programming_guide/section-3/README.md`](../../programming_guide/section-3/README.md) |
+
+## Checklist before moving to phase 4 (`aie-hw-bringup`)
+
+- [ ] Built-in kernels/algorithms checked first ([`kernels_library.md`](../../programming_guide/kernels_library.md)); hand-written C++ only where nothing fit, and that choice stated explicitly
+- [ ] Design resolves to MLIR and compiles without verifier errors
+- [ ] Topology and FIFO depths match the plan `aie-dataflow-presim` validated — any divergence re-checked against that plan, not assumed harmless
+- [ ] Every `acquire`/`release` pair balanced; argument lists and tile placements match what each `Worker`/`Kernel` expects
+- [ ] Data sizes respect the hardware divisibility/alignment constraints in [`references/architecture.md`](references/architecture.md)
+- [ ] Checked against [`references/pitfalls.md`](references/pitfalls.md) before declaring done

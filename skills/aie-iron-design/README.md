@@ -5,10 +5,14 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # IRON Design: Writing the Dataflow and Its Kernels
 
-Second of five phases in porting a model to AIE/NPU (see `aie-model-baseline` for phase 1,
-the numeric oracle a design is validated against; `aie-dataflow-presim` for phase 3;
-`aie-hw-bringup` for phase 4; `aie-kernel-opt`/`aie-dataflow-opt` for phase 5, optimization
-once it's correct).
+Third of five phases in porting a model to AIE/NPU: it realizes, in IRON, the dataflow plan
+`aie-dataflow-presim` (phase 2) already proved bit-exact in software (see `aie-model-baseline`
+for phase 1, the numeric oracle behind both; `aie-hw-bringup` for phase 4; `aie-kernel-opt`/
+`aie-dataflow-opt` for phase 5, optimization once it's correct).
+
+This skill is also the direct entry point for work that isn't a full model port — one kernel,
+or a small standalone design — where phases 1 and 2 shrink down to simply knowing what to
+compute.
 
 ## Description
 

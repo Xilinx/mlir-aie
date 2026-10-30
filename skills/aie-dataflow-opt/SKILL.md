@@ -12,10 +12,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Dataflow optimization (the "make the whole design fast" phase)
 
 Fifth of five porting phases, alongside `aie-kernel-opt` (see
-`aie-model-baseline` for phase 1, the oracle; `aie-iron-design` for phase 2,
-writing the design; `aie-dataflow-presim` for phase 3, pre-hardware
-validation; `aie-hw-bringup` for phase 4, getting to a correct baseline on
-real hardware — this phase assumes that baseline already exists and is
+`aie-model-baseline` for phase 1, the oracle; `aie-dataflow-presim` for
+phase 2, planning the dataflow; `aie-iron-design` for phase 3, writing it;
+`aie-hw-bringup` for phase 4, getting to a correct baseline on real
+hardware — this phase assumes that baseline already exists and is
 correct).
 
 **This skill is macro; `aie-kernel-opt` is micro.** `aie-kernel-opt`
