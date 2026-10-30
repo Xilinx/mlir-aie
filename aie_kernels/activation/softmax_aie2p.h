@@ -552,8 +552,8 @@ void mask_head_bf16(bfloat16 *inout, const int32_t valid_from) {
 // lo and hi each within one vector of 0 and input_size -- a causal row needs
 // only hi short of input_size, a sliding window both edges.
 void softmax_span_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
-                        const int32_t input_size, const int32_t lo,
-                        const int32_t hi) {
+                       const int32_t input_size, const int32_t lo,
+                       const int32_t hi) {
   event0();
   mask_head_bf16(input, lo);
   mask_bf16(input, hi, input_size);
