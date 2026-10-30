@@ -149,18 +149,18 @@ def mm_acc_dtype(input_dtype):
 
 
 def mm_ref(a, b):
-    """Numpy reference for [`mm`][iron.kernels.linalg.mm]: ``a @ b`` accumulated in int64 or float64."""
+    """Numpy reference for [`mm`][aie.iron.kernels.linalg.mm]: ``a @ b`` accumulated in int64 or float64."""
     acc = np.int64 if np.issubdtype(a.dtype, np.integer) else np.float64
     return a.astype(acc) @ b.astype(acc)
 
 
 def mv_ref(a, b):
-    """Numpy reference for [`mv`][iron.kernels.linalg.mv]: ``a @ b`` accumulated in int64."""
+    """Numpy reference for [`mv`][aie.iron.kernels.linalg.mv]: ``a @ b`` accumulated in int64."""
     return a.astype(np.int64) @ b.astype(np.int64)
 
 
 def mm_bfp_ref(a, b):
-    """Numpy reference for [`mm_bfp`][iron.kernels.linalg.mm_bfp]: ``a @ b`` on bfp16ebs8-quantized operands.
+    """Numpy reference for [`mm_bfp`][aie.iron.kernels.linalg.mm_bfp]: ``a @ b`` on bfp16ebs8-quantized operands.
 
     ``a`` is ``(M, K)`` and ``b`` ``(K, N)`` float; each is quantized the way
     the host encodes it for the kernel (blocks of 8 along ``K``, see
@@ -175,12 +175,12 @@ def mm_bfp_ref(a, b):
 
 
 def mm_bfp_mixed_ref(a, b):
-    """Numpy reference for [`mm_bfp`][iron.kernels.linalg.mm_bfp] with ``mixed=True``.
+    """Numpy reference for [`mm_bfp`][aie.iron.kernels.linalg.mm_bfp] with ``mixed=True``.
 
     ``a`` arrives bf16 and the core converts it, under the rounding mode
     ``mm_bfp_mixed.cc`` pins, so it is quantized ``conv_even`` here. ``b`` is
     encoded by the host, which truncates, so it keeps the default as in
-    [`mm_bfp_ref`][iron.kernels.linalg.mm_bfp_ref].
+    [`mm_bfp_ref`][aie.iron.kernels.linalg.mm_bfp_ref].
 
     Pairing A with the wrong mode is the difference between 10 mismatching
     outputs and 2791, on a 64x64x64 tile of large inputs; leaving A
@@ -203,7 +203,7 @@ def mm_bfp_mixed_ref(a, b):
 
 
 def mm_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int):
-    """One [`mm`][iron.kernels.linalg.mm] call: a ``(dim_m, dim_k)`` tile times a ``(dim_k, dim_n)`` one.
+    """One [`mm`][aie.iron.kernels.linalg.mm] call: a ``(dim_m, dim_k)`` tile times a ``(dim_k, dim_n)`` one.
 
     Tiles arrive flattened as ``(calls, ...)``, one row per call, and one
     ``(dim_m * dim_n,)`` row comes back per call.
@@ -216,19 +216,19 @@ def mm_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int):
 
 
 def mv_tile_ref(a, b, *, dim_m: int, dim_k: int):
-    """One [`mv`][iron.kernels.linalg.mv] call: a ``(dim_m, dim_k)`` tile times a ``(dim_k,)`` vector."""
+    """One [`mv`][aie.iron.kernels.linalg.mv] call: a ``(dim_m, dim_k)`` tile times a ``(dim_k,)`` vector."""
     a = np.asarray(a).reshape(-1, dim_m, dim_k).astype(np.int64)
     b = np.asarray(b).reshape(-1, dim_k).astype(np.int64)
     return np.einsum("cmk,ck->cm", a, b)
 
 
 def mm_bfp_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int, mixed: bool = False):
-    """One [`mm_bfp`][iron.kernels.linalg.mm_bfp] call, on operands quantized as the host encodes them.
+    """One [`mm_bfp`][aie.iron.kernels.linalg.mm_bfp] call, on operands quantized as the host encodes them.
 
     Blocks of 8 run along K for both operands, so B is quantized transposed.
     With ``mixed`` the A tile stays bf16 and the core converts it itself, with
     a rounding this does not model -- which is what the wider mixed tolerance
-    covers. See [`mm_bfp_mixed_ref`][iron.kernels.linalg.mm_bfp_mixed_ref] for
+    covers. See [`mm_bfp_mixed_ref`][aie.iron.kernels.linalg.mm_bfp_mixed_ref] for
     why modelling it as a host-side quantize is worse, not better.
     """
     from aie.utils import bfp
@@ -777,7 +777,7 @@ def mv(
             inputs, ``bfloat16`` for ``bfloat16`` inputs.
         vectorized: If ``True`` use the vectorized variant.
         use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
-            instead of Peano.  See [`mm`][iron.kernels.linalg.mm] for the design-level
+            instead of Peano.  See [`mm`][aie.iron.kernels.linalg.mm] for the design-level
             constraint (all EFs in one design must agree).
         vec_size: bf16 only: the kernel's ``VEC_SIZE`` accumulation width;
             16, 32 or 64 with ``a_col_maj``.
@@ -857,7 +857,7 @@ MV_COL_MAJ_LAST = 2
 def _mv_bf16(
     dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj
 ) -> ExternalFunction:
-    """bf16 matvec from ``aie_kernels/linalg/mv_bf16.cc`` (see [`mv`][iron.kernels.linalg.mv])."""
+    """bf16 matvec from ``aie_kernels/linalg/mv_bf16.cc`` (see [`mv`][aie.iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
         raise ValueError(
             f"mv(): dim_k ({dim_k}) must be a positive multiple of vec_size ({vec_size})"
@@ -954,7 +954,7 @@ def _mv_bf16(
 
 
 def mv_bf16_ref(m, row_offset, a, b):
-    """Numpy reference for the bf16 [`mv`][iron.kernels.linalg.mv]: ``a @ b`` over ``m`` rows, accumulated in float32.
+    """Numpy reference for the bf16 [`mv`][aie.iron.kernels.linalg.mv]: ``a @ b`` over ``m`` rows, accumulated in float32.
 
     ``a`` is row-major ``(rows, K)``; only the first ``m`` rows are computed,
     and the kernel writes them at ``row_offset`` into ``c``.
@@ -1152,7 +1152,7 @@ def attention_i8_ref(
     head_dim: int,
     width: int,
 ):
-    """Numpy reference for [`attention_i8`][iron.kernels.linalg.attention_i8]: one row of queries.
+    """Numpy reference for [`attention_i8`][aie.iron.kernels.linalg.attention_i8]: one row of queries.
 
     ``q_row`` is ``[key_dim/8][width][8]`` int8 (``(calls, n)`` of them),
     ``kt`` the keys as ``[seq_len/8][key_dim][8]``, ``v`` the values as
@@ -1228,7 +1228,7 @@ def attention_i8(
     maximum, each probability rounded exactly to ``2**-prob_shift`` steps),
     and the value product shifted to int8, all rounding half to even. Not
     flash attention: every key's scores of a query fit the tile at once, so
-    there is no running state, unlike [`mha`][iron.kernels.linalg.mha].
+    there is no running state, unlike [`mha`][aie.iron.kernels.linalg.mha].
 
     Arguments: a ``[key_dim/8][width][8]`` row of queries, the keys
     ``[seq_len/8][key_dim][8]``, the values ``[head_dim/8][seq_len][8]``, the
@@ -1327,8 +1327,8 @@ def mha(
     exports the symbols an attention dataflow composes over one micro-tile.
     The returned kernel is one of the toolkit's two matmuls, both
     accumulating into ``C``, so it is a
-    [`MatrixKernel`][iron.kernels.linalg.MatrixKernel] judged like
-    [`mm`][iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
+    [`MatrixKernel`][aie.iron.kernels.linalg.MatrixKernel] judged like
+    [`mm`][aie.iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
     ``matmul_bf16_bf16_wrapper``, ``mm_aie2p.h``'s bf16 product on its 4x8x8
     micro-tile behind an ``idx_buffer`` gate (the call runs when key block
     ``idx[0]`` holds a key some row of query block ``idx[1]``, its first row
@@ -1361,18 +1361,18 @@ def mha(
         b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the ``QK^T``
             product consumes ``K`` as stored, ``(n, k)``, rather than
             transposed.  ``matmul_bf16_bf16_rowmaj`` is row-major either way.
-        emulate_bf16_mmul_with_bfp16: As for [`mm`][iron.kernels.linalg.mm]:
+        emulate_bf16_mmul_with_bfp16: As for [`mm`][aie.iron.kernels.linalg.mm]:
             both products use BFP16-based emulation, and ``QK^T``'s
             micro-tile becomes (8, 8, 8).  Ignored on AIE2.
-        accurate_exp2: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]:
+        accurate_exp2: As for [`mha_softmax`][aie.iron.kernels.linalg.mha_softmax]:
             ``partial_softmax`` and the running-state update take 2^x from a
             polynomial rather than AIE2P's exp2 instruction or AIE2's cubic.
-        causal: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
+        causal: As for [`mha_softmax`][aie.iron.kernels.linalg.mha_softmax]: a
             query keeps no key past its own position.
-        window: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: a
+        window: As for [`mha_softmax`][aie.iron.kernels.linalg.mha_softmax]: a
             query keeps no key more than ``window`` positions from it; 0 is
             no window.
-        packed: As for [`mha_softmax`][iron.kernels.linalg.mha_softmax]:
+        packed: As for [`mha_softmax`][aie.iron.kernels.linalg.mha_softmax]:
             every row is a query at the last key. ``matmul_bf16_bf16_wrapper``
             then computes every block.
         f32_scores: Keep the ``QK^T`` scores in float32 (``-DMHA_F32_SCORES``):
@@ -1730,7 +1730,7 @@ def mha_softmax_ref(
     window=0,
     packed=False,
 ):
-    """Numpy reference for [`mha_softmax`][iron.kernels.linalg.mha_softmax]: ``(P, scale_buffer)``.
+    """Numpy reference for [`mha_softmax`][aie.iron.kernels.linalg.mha_softmax]: ``(P, scale_buffer)``.
 
     True ``exp2`` rather than the device's interpolant, from a zeroed
     running state. ``m`` is the unscaled maximum, as the kernel stores it. A
@@ -1769,7 +1769,7 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
     prefill dataflow composes over one query chunk. The returned kernel is the
     ``y += S*V`` step, ``mm.cc``-style bf16 products on the native 8x8x8
     micro-tile accumulating into a float32 y, so it is sampled and judged like
-    [`mm`][iron.kernels.linalg.mm]. Its key-chunk index ``j`` is bound to 0.
+    [`mm`][aie.iron.kernels.linalg.mm]. Its key-chunk index ``j`` is bound to 0.
 
     Bind the others from the same object with
     ``fn.object_file.bind(symbol, arg_types)``: ``prefill_round_begin``,
@@ -1867,14 +1867,14 @@ def prefill_fv(head_dim: int = 512) -> ExternalFunction:
 
 
 def prefill_fv_ref(s, v, *, dim_m: int, dim_k: int, dim_n: int):
-    """Numpy reference for [`prefill_fv`][iron.kernels.linalg.prefill_fv]: one ``y += S @ V`` key chunk.
+    """Numpy reference for [`prefill_fv`][aie.iron.kernels.linalg.prefill_fv]: one ``y += S @ V`` key chunk.
 
     ``y`` is not an argument: it is ``InOut``, so the contract's initializer
     zeroes it before each independent call and the reference computes the
     whole product.
 
     Accumulated in **float32**, not the float64 of
-    [`mm_tile_ref`][iron.kernels.linalg.mm_tile_ref]. The kernel's y is
+    [`mm_tile_ref`][aie.iron.kernels.linalg.mm_tile_ref]. The kernel's y is
     float32 and its MMUL accumulates there, so a float64 reference is more
     precise than the kernel is defined to be and the comparison measures that
     gap rather than correctness. The difference is invisible when the product
@@ -1902,7 +1902,7 @@ def _f32_sum_order_bound(s, v, *, dim_m: int, dim_k: int, dim_n: int):
 
 
 def mm_bfp_shuffle_ref(tile, tile_width, tile_height, unshuffle):
-    """Numpy reference for [`mm_bfp_shuffle`][iron.kernels.linalg.mm_bfp_shuffle]: ``aie.utils.bfp.shuffle`` of one tile's bytes.
+    """Numpy reference for [`mm_bfp_shuffle`][aie.iron.kernels.linalg.mm_bfp_shuffle]: ``aie.utils.bfp.shuffle`` of one tile's bytes.
 
     ``tile`` is the encoded ``(tile_height, tile_width)`` tile as bytes
     (``tile_width`` in values); returns the reordered bytes.
@@ -1926,7 +1926,7 @@ def cascade_mm(
     cascade_mm.cc emits all three cascade variants (``get_only``,
     ``put_only``, ``put_get``) in one object. This binds ``get_only`` (also
     available as ``.get_only``), with ``.put_only`` and ``.put_get`` siblings;
-    [`cascade_mm_put`][iron.kernels.linalg.cascade_mm_put] is the PUT half
+    [`cascade_mm_put`][aie.iron.kernels.linalg.cascade_mm_put] is the PUT half
     that feeds it, and ``put_get`` serves longer chains:
     ``fn.object_file.bind("matmul_scalar_cascade_put_get_<dtype>", fn.arg_types())``.
     ``.zero`` initializes accumulators using independent ``kernels.zero``.
@@ -2018,7 +2018,7 @@ def cascade_mm_put(
     output_dtype: type = np.int16,
     use_chess: bool = False,
 ) -> MatrixKernel:
-    """Build the PUT half of [`cascade_mm`][iron.kernels.linalg.cascade_mm]: ``A * B`` onto the cascade stream.
+    """Build the PUT half of [`cascade_mm`][aie.iron.kernels.linalg.cascade_mm]: ``A * B`` onto the cascade stream.
 
     Same object and arguments as the GET half. ``put_only`` never touches
     its third argument (the ABI just mirrors ``get_only``), so the contract

@@ -137,11 +137,11 @@ class Buffer(PerDeviceConfigurationResolvable):
     def tiles(self) -> list:
         """Tile dependency for DeviceConfiguration tile discovery.
 
-        Pinned Buffers (e.g. a compute [`Worker`][iron.Worker] reading a
+        Pinned Buffers (e.g. a compute [`Worker`][aie.iron.Worker] reading a
         neighbor tile's L1 directly) need their tile registered with the
         Device before `resolve` runs. Worker-attached Buffers without an
         explicit placement get pinned to the Worker's tile in
-        [`Worker`][iron.Worker]'s constructor, which is already discoverable
+        [`Worker`][aie.iron.Worker]'s constructor, which is already discoverable
         via `Worker.tile`; this method exposes any extra cross-tile
         placements.
         """

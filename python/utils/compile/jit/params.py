@@ -225,7 +225,12 @@ class PerCallMember(Member):
             and the build is sized for the parameter's.
     """
 
-    def __init__(self, dtype, derive, bounds):
+    def __init__(
+        self,
+        dtype: Any,
+        derive: Callable[[Any], Any] | None,
+        bounds: OperatorParam | None,
+    ) -> None:
         self.dtype = dtype
         self.derive = derive
         self.bounds = bounds
@@ -235,7 +240,7 @@ def per_call(
     dtype: Any = np.int32,
     *,
     derive: Callable[[Any], Any] | None = None,
-    bounds: OperatorParam | None = None,
+    bounds: Any = None,
 ) -> Any:
     """Declare a value the cores read that may change every call without a rebuild.
 
@@ -273,7 +278,8 @@ class Select:
     ``Select(b_col_maj, (N, K), (K, N))``.
     """
 
-    flag: OperatorParam
+    # A class body's param(), typed there as its annotation (bool).
+    flag: Any
     when_true: tuple
     when_false: tuple
 

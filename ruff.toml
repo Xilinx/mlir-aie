@@ -47,6 +47,8 @@ include = [
   "programming_examples/ml/yolo26n/**/*.py",
   "utils/kernel_checks/**/*.py",
   "utils/component_checks/**/*.py",
+  "test/python/test_declaration.py",
+  "test/python/test_declare_params.py",
 ]
 
 # Same generated/vendored dirs excluded from the black pre-commit hook.
