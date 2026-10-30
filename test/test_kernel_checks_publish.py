@@ -739,6 +739,32 @@ def test_comparison_survives_weekly_thinning_and_the_run_limit(
     assert {p: p.read_text() for p in out.rglob("*.json")} == before
 
 
+def test_a_run_limit_below_the_comparison_keeps_only_the_comparison(publish, tmp_path):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    records = [
+        hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=10 - i)),
+            "full",
+            event="schedule" if i < 3 else "workflow_dispatch",
+            published=i < 3,
+            **({} if i < 3 else {"rows": {}}),
+        )
+        for i in range(1, 8)
+    ]
+    for r in records:
+        (out / "runs" / f"{r['id']}.json").write_text(json.dumps(r))
+    with pytest.raises(ValueError, match="max_runs must be at least 1"):
+        publish.rebuild(out, now, max_runs=0)
+    assert len(list((out / "runs").glob("*.json"))) == len(records)
+    publish.rebuild(out, now, max_runs=1)
+    index = json.loads((out / "runs.json").read_text())["runs"]
+    assert [r["id"] for r in index] == ["1", "2"]
+    assert sorted(p.stem for p in (out / "runs").glob("*.json")) == ["1", "2"]
+
+
 def test_comparison_protection_does_not_extend_the_retention_horizon(publish, tmp_path):
     out = tmp_path / "sa-placer-hw"
     (out / "runs").mkdir(parents=True)

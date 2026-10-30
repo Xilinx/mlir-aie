@@ -621,8 +621,14 @@ def rebuild(
     A record still using older case ids is upgraded in place first. With
     ``drop_pmode``, the records of runs measured in that power mode are
     deleted first; with ``keep_pmode``, those of runs that charted numbers in
-    any other mode. At most ``max_runs`` records are kept.
+    any other mode. At most ``max_runs`` records are kept, beyond the latest
+    published run and its comparison.
+
+    Raises:
+        ValueError: ``max_runs`` is below 1.
     """
+    if max_runs < 1:
+        raise ValueError(f"max_runs must be at least 1, not {max_runs}")
     now = now or now_utc()
     runs_dir = out / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -679,7 +685,7 @@ def rebuild(
     others = [r for r in prune(records, now, max_runs) if r["id"] not in needed]
     slots = max_runs - len(protected)
     kept = sorted(
-        protected + (others[-slots:] if slots else []), key=lambda r: r["date"]
+        protected + (others[-slots:] if slots > 0 else []), key=lambda r: r["date"]
     )
     keep_ids = {r["id"] for r in kept}
     for r in records:
