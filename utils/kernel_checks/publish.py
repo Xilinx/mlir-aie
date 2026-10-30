@@ -91,8 +91,9 @@ from pathlib import Path
 KEEP_DAYS = 90
 KEEP_WEEKS = 52
 MAX_RUNS = 200
-# A case none of the last RETIRED_AFTER published runs measured is retired:
-# its series leaves the history rather than trailing nulls for a year.
+# A case no published run measured since the last RETIRED_AFTER published
+# nightlies began is retired: its series leaves the history rather than
+# trailing nulls for a year.
 RETIRED_AFTER = 14
 # What a record carries for the page's latest and previous run only (a
 # hardware check's per-seed detail, a kernel leg's builds): a record thinned
@@ -738,15 +739,18 @@ def rebuild(
         }
         for r in published
     ]
-    # A case the last RETIRED_AFTER published runs did not measure is retired;
-    # a metric left with no case goes with it.
-    if len(published) >= RETIRED_AFTER:
+    # Counted in nightlies: a manual run may measure a subset, so a run of
+    # them must not retire what the nightly still measures. A metric left
+    # with no case goes with its cases.
+    nightlies = [i for i, r in enumerate(published) if is_nightly(r)]
+    if len(nightlies) >= RETIRED_AFTER:
+        since = nightlies[-RETIRED_AFTER]
         for metric in list(metrics):
             series = metrics[metric]["series"]
             for case in [
                 c
                 for c, s in series.items()
-                if all(v is None for v in s["values"][-RETIRED_AFTER:])
+                if all(v is None for v in s["values"][since:])
             ]:
                 del series[case]
             if not series:

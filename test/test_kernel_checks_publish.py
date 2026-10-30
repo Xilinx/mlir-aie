@@ -612,6 +612,29 @@ def test_old_records_shed_their_detail_and_retired_cases_leave_the_history(
     assert sorted(cost["series"]) == ["gap", "kept"]
 
 
+def test_manual_publishes_of_a_subset_retire_nothing(publish, tmp_path):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    nights = publish.RETIRED_AFTER
+    for i in range(2 * nights):
+        manual = i >= nights
+        rows = {"subset": {"cost": {"value": i, "unit": "cost"}}}
+        if not manual:
+            rows["nightly"] = {"cost": {"value": i, "unit": "cost"}}
+        record = hardware_record(
+            f"r{i:02}",
+            publish.iso(now - datetime.timedelta(hours=2 * nights - i)),
+            "full",
+            event="workflow_dispatch" if manual else "schedule",
+        )
+        record["rows"] = rows
+        (out / "runs" / f"r{i:02}.json").write_text(json.dumps(record))
+    publish.rebuild(out, now)
+    cost = json.loads((out / "history/cost.json").read_text())
+    assert sorted(cost["series"]) == ["nightly", "subset"]
+
+
 @pytest.mark.parametrize(
     "changes, selected, needed",
     [
