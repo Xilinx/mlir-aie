@@ -198,13 +198,16 @@ def _image(rows, columns, out_rows, out_columns, **build):
         # One build, two images in turn, as a per-call size runs it.
         ([(37, 53, 96, 144), (37, 53, 96, 32)], 2, 64, 8),
         # Neither axis a multiple of 16: the last strip and the last band
-        # are each however many of their 16 outputs are real.
-        ([(480, 640, 256, 341)], 16, 4096, 3),
-        ([(640, 480, 341, 256)], 16, 4096, 3),
-        ([(300, 300, 250, 250)], 16, 4096, 3),
+        # are each however many of their 16 outputs are real. None: two
+        # cores a column, as IRON's resample splits it (one drain per shim
+        # channel: 16 on npu2, 8 on npu1).
+        ([(480, 640, 256, 341)], None, 4096, 3),
+        ([(640, 480, 341, 256)], None, 4096, 3),
+        ([(300, 300, 250, 250)], None, 4096, 3),
     ],
 )
 def test_device_rows_match_resize_ref(images, cores, chunk, patch_columns):
+    cores = cores or 2 * iron.get_current_device().cols
     build = dict(words=356, chunk=chunk, patch_columns=patch_columns, cores=cores)
     parts = [_image(*spec, **build) for spec in images]
     expected = np.concatenate([e for _, _, e in parts])
@@ -234,8 +237,11 @@ def test_device_rows_wo_past_table_refuses():
     -- gets a hard, all-zero refusal, device and resize_ref alike, not a
     silent truncation to the table's real content.
     """
-    build = dict(words=356, chunk=4096, patch_columns=3, cores=16)
     rows, columns, out_rows, real_out_columns, out_columns = 256, 1024, 256, 256, 512
+    cores = 2 * iron.get_current_device().cols
+    # Room for every stated column, so the refusal is the table's, not capacity's.
+    patch_columns = out_columns // SIDE // cores + 1
+    build = dict(words=356, chunk=4096, patch_columns=patch_columns, cores=cores)
     strips, bands = out_columns // SIDE, out_rows // SIDE
     filled = 16 * -(-real_out_columns // (16 * SIDE))
     taps_w = np.zeros((strips, build["words"]), np.int32)
@@ -280,10 +286,11 @@ def test_device_rows_zero_chunk_inside_target_refuses():
     """A header-zeroed chunk inside the call's real target (``k < strips``,
     not past it) is a malformed table, not padding: it still refuses its
     own core alone (``ok`` is per core, as every other malformed chunk
-    leaves it), not the whole call -- core 5's patch column comes out zero
+    leaves it), not the whole call -- core 5's patch columns come out zero
     while the rest resize normally.
     """
-    build = dict(words=356, chunk=4096, patch_columns=3, cores=16)
+    cores = 2 * iron.get_current_device().cols
+    build = dict(words=356, chunk=4096, patch_columns=3, cores=cores)
     rows, columns, out_rows, out_columns = 256, 1024, 256, 256
     strips, bands = out_columns // SIDE, out_rows // SIDE
     taps_w = _table(columns, out_columns, build["words"])[:strips]
@@ -311,8 +318,9 @@ def test_device_rows_zero_chunk_inside_target_refuses():
         0, 2, 1, 3, 4
     )
     live = (expected != 0).any(axis=(2, 3, 4))
-    assert not live[:, 5].any(), "core 5's own chunk is malformed, so it refuses"
-    assert live[:, :5].all() and live[:, 6:strips].all(), "every other core resizes"
+    core_5 = np.arange(strips) % cores == 5
+    assert not live[:, :strips][:, core_5].any(), "core 5's chunk is malformed"
+    assert live[:, :strips][:, ~core_5].all(), "every other core resizes"
     expected = expected.reshape(bands * pad, -1)
     out = iron.full((expected.size,), 1, dtype=np.uint8)
     resize_rows(

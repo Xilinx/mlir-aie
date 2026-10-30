@@ -211,10 +211,12 @@ def _image(rows, columns, out_rows, out_columns, tables, expect, **build):
         # Identity over every byte value: the bf16 of each u8 / 255.
         ([(32, 48, 32, 48, None, "identity")], 2, 4096, 8),
         # Neither axis a multiple of 16: the last strip and the last band
-        # are each however many of their 16 outputs are real.
-        ([(480, 640, 256, 341, None, "all")], 16, 4096, 3),
-        ([(640, 480, 341, 256, None, "all")], 16, 4096, 3),
-        ([(300, 300, 250, 250, None, "all")], 16, 4096, 3),
+        # are each however many of their 16 outputs are real. None: two
+        # cores a column, as IRON's resample splits it (one drain per shim
+        # channel: 16 on npu2, 8 on npu1).
+        ([(480, 640, 256, 341, None, "all")], None, 4096, 3),
+        ([(640, 480, 341, 256, None, "all")], None, 4096, 3),
+        ([(300, 300, 250, 250, None, "all")], None, 4096, 3),
         # 9 patch columns over 2 cores is 5 a core; a core holds 2.
         ([(37, 53, 96, 144, None, "none")], 2, 4096, 2),
         # 9 patch columns over 4 cores, core 0 holding all 3 it can: a line
@@ -241,6 +243,7 @@ def _image(rows, columns, out_rows, out_columns, tables, expect, **build):
     ],
 )
 def test_device_patches_match_resize_ref(images, cores, chunk, patch_columns):
+    cores = cores or 2 * iron.get_current_device().cols
     build = dict(words=356, chunk=chunk, patch_columns=patch_columns, cores=cores)
     parts = [_image(*spec, **build) for spec in images]
     expected = np.concatenate([e for _, _, e in parts])
@@ -281,8 +284,11 @@ def test_device_patches_wo_past_table_refuses():
     -- gets a hard, all-zero refusal, device and resize_ref alike, not a
     silent truncation to the table's real content.
     """
-    build = dict(words=356, chunk=4096, patch_columns=3, cores=16)
     rows, columns, out_rows, real_out_columns, out_columns = 256, 1024, 256, 256, 512
+    cores = 2 * iron.get_current_device().cols
+    # Room for every stated column, so the refusal is the table's, not capacity's.
+    patch_columns = out_columns // SIDE // cores + 1
+    build = dict(words=356, chunk=4096, patch_columns=patch_columns, cores=cores)
     taps_w = _capacity_table(columns, real_out_columns, out_columns, build["words"])
     taps_h = _table(rows, out_rows, build["words"])[: out_rows // SIDE]
     rng = np.random.default_rng(rows * columns)
@@ -312,10 +318,11 @@ def test_device_patches_zero_chunk_inside_target_refuses():
     """A header-zeroed chunk inside the call's real target (``k < strips``,
     not past it) is a malformed table, not padding: it still refuses its
     own core alone (``ok`` is per core, as every other malformed chunk
-    leaves it), not the whole call -- core 5's patch column comes out zero
+    leaves it), not the whole call -- core 5's patch columns come out zero
     while the rest resize normally.
     """
-    build = dict(words=356, chunk=4096, patch_columns=3, cores=16)
+    cores = 2 * iron.get_current_device().cols
+    build = dict(words=356, chunk=4096, patch_columns=3, cores=cores)
     rows, columns, out_rows, out_columns = 256, 1024, 256, 256
     strips, bands = out_columns // SIDE, out_rows // SIDE
     taps_w = _table(columns, out_columns, build["words"])[:strips]
@@ -331,10 +338,11 @@ def test_device_patches_zero_chunk_inside_target_refuses():
     expected = vision.resize_ref(
         image, taps_w, taps_h, rows, columns, out_rows, out_columns, **build
     )
-    pad = (strips // build["cores"] + 1) * build["cores"]
+    pad = (strips // cores + 1) * cores
     live = (expected.reshape(bands, pad, -1).view(np.uint16) != 0).any(axis=-1)
-    assert not live[:, 5].any(), "core 5's own chunk is malformed, so it refuses"
-    assert live[:, :5].all() and live[:, 6:strips].all(), "every other core resizes"
+    core_5 = np.arange(strips) % cores == 5
+    assert not live[:, :strips][:, core_5].any(), "core 5's chunk is malformed"
+    assert live[:, :strips][:, ~core_5].all(), "every other core resizes"
     patches = iron.full((expected.size,), 1.0, dtype=bfloat16)
     resize_patches(
         iron.tensor(image.reshape(-1), dtype=np.uint8),
