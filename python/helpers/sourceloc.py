@@ -81,18 +81,26 @@ class SourceSite:
     `ir.Location` at resolve time, once a Context exists.
     """
 
+    # How many helper functions an object may be returned through and still
+    # be named after the statement that assigns it.
+    RETURN_DEPTH = 4
+
     def __init__(
         self,
         filename: str | None,
         line: int = 0,
         col: int = 0,
         callers: tuple[tuple[str, int, int], ...] = (),
+        returned_to: tuple = (),
     ):
         self.filename = filename
         self.line = line
         self.col = col
         # (filename, line, col) of each calling user statement, innermost first.
         self.callers = callers
+        # (filename, line, col) of each user frame that called the one
+        # before it, innermost first.
+        self.returned_to = returned_to
 
     @classmethod
     def capture(cls) -> "SourceSite":
@@ -120,7 +128,29 @@ class SourceSite:
             frame = frame.f_back
         if not frames:
             return cls(None)
-        return cls(*frames[0], callers=tuple(frames[1:]))
+        # The frames a helper may have returned the object through: the
+        # user frames that directly called the declaring one.
+        returned_to = []
+        frame = inspect.currentframe()
+        while frame is not None and not _is_user_frame(frame.f_code.co_filename):
+            frame = frame.f_back
+        caller = frame.f_back if frame is not None else None
+        while (
+            caller is not None
+            and len(returned_to) < cls.RETURN_DEPTH
+            and _is_user_frame(caller.f_code.co_filename)
+        ):
+            returned_to.append(
+                (
+                    caller.f_code.co_filename,
+                    caller.f_lineno,
+                    _column(caller.f_code, caller.f_lasti),
+                )
+            )
+            caller = caller.f_back
+        return cls(
+            *frames[0], callers=tuple(frames[1:]), returned_to=tuple(returned_to)
+        )
 
     def assigned_name(self) -> str | None:
         """Return the name the declaring statement assigns the object to.
@@ -129,12 +159,33 @@ class SourceSite:
         `act_in[i] = ...`, the first target of `act_in = other = ...` and the
         matching element of `act_in, other = ObjectFifo(...), ...`. Only the
         constructing statement counts: a later `alias = act_in` does not.
-        None when the object is not assigned where it is built (a `return`,
-        an argument, a comprehension), or the source cannot be read.
+        An object a helper returns, as `return Buffer(...)` or as one element
+        of `return Buffer(...), offsets`, is named where the helper's caller
+        assigns it: `wts = load(...)`, or `wts, offsets = pack(...)`.
+        None when the object is not assigned where it is built or returned to
+        (an argument, a comprehension), or the source cannot be read.
         """
         if self.filename is None:
             return None
-        return _assigned_name(self.filename, self.line, self.col)
+        # The element of a returned tuple the object is, if it is one.
+        index = None
+        for site in ((self.filename, self.line, self.col),) + self.returned_to:
+            binding = _binding(*site)
+            if binding is None:
+                return None
+            kind, element, names = binding
+            if kind == "assign":
+                if index is None:
+                    return names[0] if len(names) == 1 else None
+                # `a, b = helper()` unpacks the tuple the helper returned.
+                if len(names) > 1 and len(names) > index:
+                    return names[index]
+                return None
+            # A return passes the object to the caller's statement.
+            if index is not None and element is not None:
+                return None
+            index = element if index is None else index
+        return None
 
     def location(self, name: str | None = None) -> "ir.Location":
         """Return this site as an `ir.Location` in the current Context.
@@ -168,9 +219,16 @@ def _target_name(target: ast.AST) -> str | None:
     return None
 
 
+# Parsed rather than read from bytecode: how a list, comprehension or
+# conditional element reaches its store differs between Python versions.
 @functools.lru_cache(maxsize=64)
-def _assignments(filename: str) -> tuple:
-    """Each assignment of a call in `filename`: (call node, target name)."""
+def _statements(filename: str) -> tuple:
+    """Each assignment and return of a value in `filename`.
+
+    Entries are (kind, target names, value, unpacks): kind "assign" or
+    "return", and whether the statement takes a tuple apart element by
+    element, as `a, b = X(), Y()` and `return X(), offsets` do.
+    """
     try:
         with open(filename) as f:
             tree = ast.parse(f.read(), filename)
@@ -178,24 +236,21 @@ def _assignments(filename: str) -> tuple:
         return ()
     found = []
     for node in ast.walk(tree):
+        if isinstance(node, ast.Return) and node.value is not None:
+            found.append(("return", (), node.value, isinstance(node.value, ast.Tuple)))
+            continue
         if isinstance(node, ast.Assign):
             targets, value = node.targets, node.value
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
             targets, value = [node.target], node.value
         else:
             continue
-        # `a = b = ObjectFifo(...)` is named after the first target.
+        # `a = b = ObjectFifo(...)` is named after the first target, and
+        # `a, b = ...` after the element in the object's place.
         target = targets[0]
-        if isinstance(target, (ast.Tuple, ast.List)):
-            # `a, b = ObjectFifo(...), ObjectFifo(...)` pairs them up.
-            if isinstance(value, (ast.Tuple, ast.List)) and len(value.elts) == len(
-                target.elts
-            ):
-                for elt_target, elt_value in zip(target.elts, value.elts):
-                    if (name := _target_name(elt_target)) is not None:
-                        found.append((elt_value, name))
-        elif (name := _target_name(target)) is not None:
-            found.append((value, name))
+        unpacks = isinstance(target, (ast.Tuple, ast.List))
+        elts = target.elts if unpacks else [target]
+        found.append(("assign", tuple(_target_name(t) for t in elts), value, unpacks))
     return tuple(found)
 
 
@@ -220,22 +275,49 @@ def _spine(value: ast.AST) -> list:
 
 
 @functools.lru_cache(maxsize=4096)
-def _assigned_name(filename: str, line: int, col: int) -> str | None:
-    for value, name in _assignments(filename):
+def _binding(filename: str, line: int, col: int) -> tuple | None:
+    """How the statement at a call site binds the call's result.
+
+    Returns:
+        (kind, element, names): `kind` is "assign" or "return"; `element` is
+        the call's place in a tuple value, `a, b = X(...), Y(...)` or
+        `return X(...), offsets`, else None; `names` are an assignment's
+        targets. None when the call's result is not the statement's value
+        or an element of it, e.g. an argument to another call.
+    """
+    for kind, names, value, unpacks in _statements(filename):
         if not _contains(value, line, col):
             continue
+        element = None
+        if unpacks and isinstance(value, (ast.Tuple, ast.List)):
+            element = next(
+                (i for i, e in enumerate(value.elts) if _contains(e, line, col)),
+                None,
+            )
+            if element is None:
+                return None
+            # `a, b = X(), Y()` pairs elements with targets; any other
+            # assignment of a tuple names no one element.
+            if kind == "assign" and len(names) != len(value.elts):
+                return None
+            value = value.elts[element]
+        elif kind == "assign" and len(names) != 1:
+            # `a, b = helper()`: the caller unpacks a returned tuple.
+            if not isinstance(value, ast.Call) or not _contains(value, line, col):
+                return None
         # The object is the statement's value, not built inside an argument
         # of it: the innermost call around the site must be on the value's
-        # chain of calls.
+        # chain of calls. ast.walk goes outside in, so the last call around
+        # the site is the innermost one.
         innermost = None
-        # ast.walk goes outside in, so the last call around the site is the
-        # innermost one.
         for node in ast.walk(value):
             if isinstance(node, ast.Call) and _contains(node, line, col):
                 innermost = node
-        if innermost is not None and any(innermost is c for c in _spine(value)):
-            return name
-        return None
+        if innermost is None or not any(innermost is c for c in _spine(value)):
+            return None
+        if kind == "assign" and element is not None:
+            return kind, None, (names[element],)
+        return kind, element, names
     return None
 
 
