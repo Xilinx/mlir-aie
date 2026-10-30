@@ -40,8 +40,11 @@ WINDOW = 8
 HEADER = 4
 ENTRY = 4
 ALIGN = 64
+# Bump with any change to the bytes encode_rows writes: a cache of coded
+# tensors keys on it.
+FORMAT = 1
 
-__all__ = ["row_bytes", "encode_rows", "decode_rows"]
+__all__ = ["FORMAT", "row_bytes", "encode_rows", "decode_rows"]
 
 # Keeps per-chunk temporaries (idx, dpos, dneg, code, ...) within ~100 MB
 # regardless of K, so the LM head (128256 x 2048) packs without blowing up
