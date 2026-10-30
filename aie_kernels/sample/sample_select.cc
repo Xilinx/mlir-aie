@@ -248,10 +248,12 @@ void end_pass(select_state *s, int32_t *summary) {
   s->phase = 1 - s->phase;
 }
 
-inline int32_t clamp_range(int32_t v, int32_t hi) {
-  if (v < 0)
+// A global row coordinate as this column's own, clamped to [0, SAMPLE_SLICE].
+// Compared before subtracting: v - SAMPLE_BASE overflows for v near INT32_MIN.
+inline int32_t local_coordinate(int32_t v) {
+  if (v <= SAMPLE_BASE)
     return 0;
-  return v > hi ? hi : v;
+  return v - SAMPLE_BASE > SAMPLE_SLICE ? SAMPLE_SLICE : v - SAMPLE_BASE;
 }
 
 #if SAMPLE_MAX_RANGES > 0
@@ -259,10 +261,8 @@ inline int32_t clamp_range(int32_t v, int32_t hi) {
 // this call's chunk of this column's slice and masked to SAMPLE_NEG_INF_BITS.
 void apply_ranges(uint16_t *x, const int32_t *row, int32_t pos) {
   for (int32_t r = 0; r < SAMPLE_MAX_RANGES; ++r) {
-    const int32_t lo =
-        clamp_range(row[SAMPLE_ROW_RANGES + 2 * r] - SAMPLE_BASE, SAMPLE_SLICE);
-    const int32_t hi = clamp_range(
-        row[SAMPLE_ROW_RANGES + 2 * r + 1] - SAMPLE_BASE, SAMPLE_SLICE);
+    const int32_t lo = local_coordinate(row[SAMPLE_ROW_RANGES + 2 * r]);
+    const int32_t hi = local_coordinate(row[SAMPLE_ROW_RANGES + 2 * r + 1]);
     const int32_t from = lo > pos ? lo : pos;
     const int32_t to = hi < pos + SAMPLE_CHUNK ? hi : pos + SAMPLE_CHUNK;
     for (int32_t i = from; i < to; ++i)
@@ -359,8 +359,7 @@ void sample_select(uint16_t *x, const int32_t *row, int32_t *state,
 #endif
 #if SAMPLE_PROB_RULE
   select_state *s2 = (select_state *)restricted_state;
-  const int32_t local_split =
-      clamp_range(row[SAMPLE_ROW_SPLIT] - SAMPLE_BASE, SAMPLE_SLICE);
+  const int32_t local_split = local_coordinate(row[SAMPLE_ROW_SPLIT]);
   mask_restricted(restricted_x, x, s->pos, local_split);
   if (s->phase == 0 && s->pos == 0)
     begin_reduction(reduction);

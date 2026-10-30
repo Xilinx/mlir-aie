@@ -393,6 +393,8 @@ def test_device_draws_match_ranges():
     # mask must rank below any finite logit, not just ordinary ones.
     deep = np.full(vocab, -2e30, np.float32)
     deep[100:110] = 10.0
+    spike = rng.normal(0, 3, vocab)
+    spike[280] = 50.0
     cases = [
         ([(10, 20)], None, 1.0),  # entirely within column 0
         ([(slice_size - 5, slice_size + 15)], None, 1.0),  # straddles columns
@@ -404,6 +406,9 @@ def test_device_draws_match_ranges():
         # them to its own slice: (-10, 5) masks 0..4, (-10, -5) nothing.
         ([(-10, 5), (vocab - 3, vocab + 50)], None, 0.0),
         ([(-10, -5)], None, 0.0),
+        # A start at INT32_MIN still masks column 1's [256, 300), its row
+        # max at 280: no column's offset from it may overflow int32.
+        ([(-(1 << 31), 300)], spike, 0.0),
     ]
     logits_rows, select_draws, combine_draws, expected = [], [], [], []
     for ranges, logits, temperature in cases:
@@ -614,8 +619,8 @@ def sample_positions_with_rule(
 
 @pytest.mark.parametrize("cores", [1, 2, 4])
 def test_device_draws_match_the_probability_rule(cores):
-    """Every row's text token (5.0 at index 10, column 0) is the ordinary
-    top-1, so a draw at or past the split is the rule firing, and only
+    """In every ``add`` row the text token (5.0 at index 10, column 0) is the
+    ordinary top-1, so a draw at or past the split is the rule firing, and only
     sample_select's own second top-k over [split, vocab) has a candidate
     there. Each row also says whether the rule fires, which sample_ref must
     agree with.
@@ -650,6 +655,14 @@ def test_device_draws_match_the_probability_rule(cores):
     # Every logit finite but below -1e30, the timestamps above the text
     # token: the restricted pass's mask must rank below them all.
     add(192, np.arange(192, 256), -2e30, True, text=-3e30)
+    # A split at INT32_MIN: every token is a timestamp in every column, so
+    # the draw is the row's top-1, 5.0 in the last column. A column whose
+    # local split wrapped past its base would read itself as all text,
+    # holding the text max, and 4.9 + ln(64) would force a draw in column 0.
+    logits = np.full(vocab, -np.inf, dtype=np.float32)
+    logits[100:164] = 4.9
+    logits[last + 44] = 5.0
+    rows.append((logits.astype(bfloat16), -(1 << 31), True))
 
     logits = np.stack([r[0] for r in rows])
     n53s = rng.integers(0, 1 << 53, len(rows)).tolist()
@@ -671,6 +684,7 @@ def test_device_draws_match_the_probability_rule(cores):
     splits = np.array([split for _, split, _ in rows])
     fires = np.array([f for _, _, f in rows])
     np.testing.assert_array_equal(expected >= splits, fires)
+    assert expected[-1] == last + 44
 
     positions = len(rows)
     token = iron.full((positions,), -1, dtype=np.int32)
