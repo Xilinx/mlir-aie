@@ -286,5 +286,6 @@ nav:
   - Community:
     - Used in / Cited in: UsedIn.md
     - Contributing: CONTRIBUTING.md
+    - Maintainer Dashboard: https://xilinx.github.io/mlir-aie/dashboard/
     - Roadmap: ROADMAP.md
     - Security: SECURITY.md

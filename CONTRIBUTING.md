@@ -53,9 +53,11 @@ to make sure it isn't already listed.
    Fill in the description and checklist, and link the related issue with
    `Fixes #123`.
 6. **Get CI green and work with your reviewer.** CI runs builds, tests, linting,
-   and type checks. A maintainer reviews once it passes; push follow-up commits
-   to the same branch to address feedback. We'll let you know once your change
-   is merged.
+   and type checks. If a check fails in code you didn't touch, the
+   [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=ci)
+   shows whether it is failing on `main` too. A maintainer reviews once it
+   passes; push follow-up commits to the same branch to address feedback.
+   We'll let you know once your change is merged.
 
 Small, self-contained PRs with a clear description are the easiest to review and
 the fastest to merge.

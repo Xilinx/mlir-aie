@@ -11,7 +11,7 @@
 [![Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie?cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/graphs/contributors)
 [![Discord](https://img.shields.io/badge/Discord-ROCm--NPU-5865F2?logo=discord&logoColor=white)](https://discord.gg/UbXzGdXsR5)
 
-📖 **[Documentation](https://xilinx.github.io/mlir-aie/)** &nbsp;·&nbsp; 🚀 **[Programming Guide](programming_guide/)** &nbsp;·&nbsp; 🐍 **[Python API](https://xilinx.github.io/mlir-aie/api/)** &nbsp;·&nbsp; 💡 **[Examples](programming_examples/)**
+📖 **[Documentation](https://xilinx.github.io/mlir-aie/)** &nbsp;·&nbsp; 🚀 **[Programming Guide](programming_guide/)** &nbsp;·&nbsp; 🐍 **[Python API](https://xilinx.github.io/mlir-aie/api/)** &nbsp;·&nbsp; 💡 **[Examples](programming_examples/)** &nbsp;·&nbsp; 📊 **[Dashboard](https://xilinx.github.io/mlir-aie/dashboard/)**
 
 Write Python. Run it on the NPU. IRON compiles your Python design straight to
 the AI Engine array inside AMD Ryzen™ AI processors — you control tile
