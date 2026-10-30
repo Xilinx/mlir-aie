@@ -31,7 +31,8 @@ extern "C" {
 void grid_decode(const bfloat16 *__restrict in, float *__restrict out,
                  int32_t y, int32_t stride) {
   event0();
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  const ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   const aie::vector<bfloat16, N> one = aie::broadcast<bfloat16, N>(1.0f);
   const float s = (float)stride, gy = (float)y;
   for (int x0 = 0; x0 < WIDTH; x0 += N) {
@@ -60,6 +61,7 @@ void grid_decode(const bfloat16 *__restrict in, float *__restrict out,
         row[5 + c] = (float)cell[CLS + c];
     }
   }
+  ::aie::set_rounding(saved_rounding);
   event1();
 }
 
