@@ -41,6 +41,7 @@ module @window_beside_one_deep {
         aie.objectfifo.release @b(Consume, 1)
         aie.objectfifo.release @a(Consume, 1)
       }
+      aie.objectfifo.release @a(Consume, 2)
       aie.end
     }
   }
@@ -88,6 +89,50 @@ module @branch_on_data {
           aie.objectfifo.release @a(Consume, 1)
         }
       }
+      aie.objectfifo.release @a(Consume, 2)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The window beside a two-deep b, in a core that ends: each run moves 66 of
+// a's objects and 64 of b's, so a channel taking a and b in turn starts the
+// next run out of step with the core, and both can wait.
+
+// CHECK: error: 'aie.tile' op number of input DMA channel exceeded! requires at least 3 S2MM channels, but capacity is 2
+module @window_tail_out_of_step {
+  aie.device(npu2) {
+    %s = aie.tile(0, 0)
+    %s1 = aie.tile(1, 0)
+    %m = aie.tile(0, 1)
+    %t = aie.tile(0, 2)
+    aie.objectfifo @a_in(%s, {%m}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%m, {%t}, 3 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@a_in] -> [@a] ([] [])
+    aie.objectfifo @b_in(%s, {%m}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@b_in] -> [@b] ([] [])
+    aie.objectfifo @c_in(%s1, {%m}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%m, {%t}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@c_in] -> [@c] ([] [])
+    aie.core(%t) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c64 = arith.constant 64 : index
+      scf.for %i = %c0 to %c64 step %c1 {
+        %a0, %a1, %a2 = aie.objectfifo.acquire @a(Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
+        %b0 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
+        %first = arith.cmpi eq, %i, %c0 : index
+        scf.if %first {
+          %c0_ = aie.objectfifo.acquire @c(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @c(Consume, 1)
+        }
+        aie.objectfifo.release @b(Consume, 1)
+        aie.objectfifo.release @a(Consume, 1)
+      }
+      aie.objectfifo.release @a(Consume, 2)
       aie.end
     }
   }

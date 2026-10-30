@@ -8,7 +8,8 @@
 // A DMA endpoint with an iteration count moves `iterCount * depth` objects and
 // stops. A core that must release more through the same pool waits forever
 // for the rest, so the verifier rejects it. Only releases static loop bounds
-// force are counted.
+// force are counted. When all of them are, the DMA endpoint is held to the
+// core's count as well.
 
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-objectfifo-split --aie-objectfifo-verify %s
 
@@ -136,6 +137,8 @@ module {
 
 // The producer side is bounded the same way: its DMA drains
 // `iter_count * depth` objects and stops, after which the pool never empties.
+// The pool's two free objects still take a fifth, so the core finishes and
+// that object is never sent.
 
 module {
   aie.device(npu1_1col) {
@@ -149,7 +152,32 @@ module {
       %c5 = arith.constant 5 : index
       scf.for %i = %c0 to %c5 step %c1 {
         %o = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
-        // expected-error@+1 {{releases 5 objects through @out_prod over the run, but the pool's DMA endpoint stops after 4}}
+        // expected-error@+1 {{releases 5 objects through @out_prod over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), leaving 1 in the pool unsent}}
+        aie.objectfifo.release @out (Produce, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Past the drained objects plus the pool's depth, the producer has nowhere to
+// put the seventh and waits forever.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    // expected-note@+1 {{the DMA endpoint is here}}
+    aie.objectfifo @out(%tile, {%shim}, 2 : i32) {iter_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c7 = arith.constant 7 : index
+      scf.for %i = %c0 to %c7 step %c1 {
+        %o = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
+        // expected-error@+1 {{releases 7 objects through @out_prod over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), so the core would wait forever for the rest}}
         aie.objectfifo.release @out (Produce, 1)
       }
       aie.end
@@ -185,6 +213,138 @@ module {
       scf.for %i = %c0 to %c8 step %c1 {
         %o = aie.objectfifo.acquire @rep (Consume, 1) : memref<16xi32>
         aie.objectfifo.release @rep (Consume, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The other way round: the DMA fills 8 objects, but the core releases exactly
+// 3, so only the pool's 2 free objects and those 3 ever have room.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    // expected-error@+2 {{fills 8 objects (iterCount 4 x depth 2) before it stops, but the core releases exactly 3 through @in_cons, leaving room for only 5, so the DMA endpoint would wait forever for the rest}}
+    // expected-note@+1 {{the core endpoint is here}}
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) {iter_count = 4 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c3 = arith.constant 3 : index
+      scf.for %i = %c0 to %c3 step %c1 {
+        %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @in (Consume, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Releasing 6 of 8 leaves room for all 8: the DMA finishes and the core leaves
+// the last two unread.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) {iter_count = 4 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c6 = arith.constant 6 : index
+      scf.for %i = %c0 to %c6 step %c1 {
+        %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @in (Consume, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A draining DMA endpoint needs every object it drains handed over first.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    // expected-error@+2 {{drains 4 objects (iterCount 2 x depth 2) before it stops, but the core releases exactly 3 through @out_prod, so the DMA endpoint would wait forever for the rest}}
+    // expected-note@+1 {{the core endpoint is here}}
+    aie.objectfifo @out(%tile, {%shim}, 2 : i32) {iter_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c3 = arith.constant 3 : index
+      scf.for %i = %c0 to %c3 step %c1 {
+        %o = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out (Produce, 1)
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Weights sent once, held while the core works and released at its end: one
+// object moved, one released.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @w(%shim, {%tile}, 1 : i32) {iter_count = 1 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %o = aie.objectfifo.acquire @w (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @w (Consume, 1)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A core that releases nothing leaves room for only the pool's depth, so a
+// second object has nowhere to go.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    // expected-error@+2 {{fills 2 objects (iterCount 2 x depth 1) before it stops, but the core releases exactly 0 through @w_cons, leaving room for only 1}}
+    // expected-note@+1 {{the core endpoint is here}}
+    aie.objectfifo @w(%shim, {%tile}, 1 : i32) {iter_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %o = aie.objectfifo.acquire @w (Consume, 1) : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Without synchronization the pool has no locks, so the DMA endpoint never
+// waits on the core's releases.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) {disable_synchronization = true, iter_count = 4 : i32} : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c3 = arith.constant 3 : index
+      scf.for %i = %c0 to %c3 step %c1 {
+        %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @in (Consume, 1)
       }
       aie.end
     }

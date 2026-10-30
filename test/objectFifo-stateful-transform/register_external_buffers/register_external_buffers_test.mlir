@@ -30,6 +30,7 @@
 // CHECK:             aie.use_lock(%[[VAL_6]], Acquire, %{{.*}})
 // CHECK:             func.call @some_work(%[[VAL_2]], %[[VAL_3]]) : (memref<16xi32>, memref<16xi32>) -> ()
 // CHECK:             aie.use_lock(%[[VAL_5]], Release, %{{.*}})
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK-DAG:           aie.shim_dma_allocation @ext_of_shim_alloc(%[[VAL_1]], MM2S, 0)
@@ -86,6 +87,7 @@ module @register_external_buffers {
 
         %elem0, %elem1 = aie.objectfifo.acquire @ext_of (Consume, 2) : memref<16xi32>, memref<16xi32>
         func.call @some_work(%elem0, %elem1) : (memref<16xi32>, memref<16xi32>) -> ()
+        aie.objectfifo.release @ext_of (Consume, 1)
         aie.objectfifo.release @ext_of (Consume, 1)
 
         aie.end

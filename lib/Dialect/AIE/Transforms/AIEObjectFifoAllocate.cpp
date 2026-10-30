@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -22,6 +23,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Debug.h"
 
+#include <memory>
 #include <set>
 
 #define DEBUG_TYPE "aie-objectfifo-allocate"
@@ -46,10 +48,8 @@ struct AIEObjectFifoAllocatePass
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
   /// The last buffer or lock this pass placed on each tile.
   DenseMap<Value, Operation *> lastPlaced;
-  /// Pools some endpoint writes into.
-  DenseSet<Operation *> filledPools;
-  /// The `aiex.dma_channel_reset_for` ops naming each fifo.
-  llvm::StringMap<SmallVector<Operation *>> rearmUsers;
+  /// Which pools get locks, and the resets re-arming each fifo.
+  std::shared_ptr<PoolLocks> poolLocks;
   /// Flows already lowered. A route endpoint reads its direction off the
   /// flow naming it, so these outlive the walk that replaces them.
   SmallVector<Operation *> loweredFlows;
@@ -432,24 +432,6 @@ struct AIEObjectFifoAllocatePass
     return lock;
   }
 
-  bool needsLocks(ObjectFifoPoolOp pool) {
-    if (pool.getDisableSynchronization()) {
-      return false;
-    }
-
-    int depth = pool.getDepth();
-    auto initValues = pool.getInitValues();
-    int filled = initValues ? initValues->size() : 0;
-
-    // A pool that starts full and is never refilled holds constants: its
-    // readers have nothing to wait for. Locks would also let it be read only
-    // as many times as they count, so a second launch would hang, unless a
-    // `dma_channel_reset_for` re-arms them each launch.
-    std::optional<StringRef> fifo = pool.getFifoName();
-    return filled != depth || filled <= 0 || filledPools.contains(pool) ||
-           (fifo && rearmUsers.contains(*fifo));
-  }
-
   LogicalResult planLocks(ArrayRef<ObjectFifoPoolOp> pools) {
     lockFailure = {};
     lockAccessFailure = nullptr;
@@ -508,7 +490,7 @@ struct AIEObjectFifoAllocatePass
       return failure();
     };
     for (auto pool : pools) {
-      if (!needsLocks(pool))
+      if (!poolLocks->needsLocks(pool))
         continue;
       if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
         if (!pool.getLocks() && failed(place(pool, pool, pool.getDepth())))
@@ -542,7 +524,7 @@ struct AIEObjectFifoAllocatePass
   /// gives each segment a counting pair, the producer's lock counting free
   /// objects and the consumer's counting full ones.
   void allocateLocks(ObjectFifoPoolOp pool) {
-    if (!needsLocks(pool))
+    if (!poolLocks->needsLocks(pool))
       return;
     StringRef base = pool.getBaseName();
     int depth = pool.getDepth();
@@ -611,7 +593,7 @@ struct AIEObjectFifoAllocatePass
     if (pool.getDepth() == 0)
       return tiles;
     if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
-      if (needsLocks(pool) && !pool.getLocks())
+      if (poolLocks->needsLocks(pool) && !pool.getLocks())
         tiles.push_back(lockPlacement(pool, pool));
       else
         for (auto lock : pool.getLockOps())
@@ -619,7 +601,7 @@ struct AIEObjectFifoAllocatePass
       return tiles;
     }
     for (auto segment : endpoint.getSelectedSegments()) {
-      if (needsLocks(pool) &&
+      if (poolLocks->needsLocks(pool) &&
           !(segment.getProduceLock() && segment.getConsumeLock())) {
         tiles.push_back(lockPlacement(pool, segment));
         continue;
@@ -1699,36 +1681,16 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  void collectRearmUsers() {
-    device.walk([&](Operation *op) {
-      if (op->getName().getStringRef() != "aiex.dma_channel_reset_for") {
-        return;
-      }
-      auto sym = op->getAttrOfType<FlatSymbolRefAttr>("objfifo");
-      if (!sym) {
-        return;
-      }
-      // Split may already have pointed this at the fifo's shim endpoint.
-      StringRef name = sym.getValue();
-      if (auto endpoint = lookupEndpoint(sym.getValue())) {
-        if (auto fifoName = endpoint.getFifoName()) {
-          name = *fifoName;
-        }
-      }
-      rearmUsers[name].push_back(op);
-    });
-  }
-
   /// An `aiex.dma_channel_reset_for` outlives the fifo it names, so record the
   /// channels and locks it has to re-arm and point it at that record. Shim
   /// endpoints are left out: the host re-pushes those itself.
   LogicalResult bindRearmTargets() {
-    if (rearmUsers.empty()) {
+    if (poolLocks->rearms().empty()) {
       return success();
     }
 
     builder.setInsertionPoint(device.getBody()->getTerminator());
-    for (auto &[fifoName, users] : rearmUsers) {
+    for (auto &[fifoName, users] : poolLocks->rearms()) {
       SmallVector<Value> channelTiles, lockValues;
       SmallVector<int32_t> channelDirs, channelIndices, lockInits;
 
@@ -1754,10 +1716,10 @@ struct AIEObjectFifoAllocatePass
       }
 
       if (channelTiles.empty() && lockValues.empty()) {
-        for (Operation *user : users) {
-          user->emitOpError() << "objectFIFO '" << fifoName
-                              << "' has no resident core/mem DMA channels or "
-                                 "locks to re-arm";
+        for (AIEX::DmaChannelResetForOp user : users) {
+          user.emitOpError() << "objectFIFO '" << fifoName
+                             << "' has no resident core/mem DMA channels or "
+                                "locks to re-arm";
         }
         return failure();
       }
@@ -1778,8 +1740,8 @@ struct AIEObjectFifoAllocatePass
           /*head_bd_ids=*/DenseI32ArrayAttr(),
           /*repeat_counts=*/DenseI32ArrayAttr());
       auto target = FlatSymbolRefAttr::get(builder.getContext(), name);
-      for (Operation *user : users) {
-        user->setAttr("objfifo", target);
+      for (AIEX::DmaChannelResetForOp user : users) {
+        user.setObjfifoAttr(target);
       }
     }
     return success();
@@ -2044,8 +2006,6 @@ struct AIEObjectFifoAllocatePass
     // One pass instance serves every device in the module, and none of this
     // state means anything outside the device it was gathered from.
     lastPlaced.clear();
-    filledPools.clear();
-    rearmUsers.clear();
     loweredFlows.clear();
     sourcedFlows.clear();
     localPools.clear();
@@ -2081,20 +2041,14 @@ struct AIEObjectFifoAllocatePass
       pools[slot] = pool;
     }
 
-    collectRearmUsers();
+    poolLocks = std::make_shared<PoolLocks>(device);
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
       collectLockUsers(endpoint);
-      if (!endpoint.drains()) {
-        filledPools.insert(endpoint.getPoolOp());
-      }
     }
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
       poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
       collectLockUsers(endpoint);
-      if (!endpoint.drains()) {
-        filledPools.insert(endpoint.getPoolOp());
-      }
     }
     for (auto &[group, users] : lockUsers)
       llvm::stable_sort(users, [&](Operation *a, Operation *b) {
