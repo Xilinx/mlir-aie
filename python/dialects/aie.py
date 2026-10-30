@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Tuple, Dict, Any, Union
+from typing import List, Tuple, Dict, Any, TypeVar, Union, overload
 import contextlib
 import os
 from enum import Enum, IntEnum
@@ -120,10 +120,20 @@ class npu_write_rtp(NpuWriteRTPOp):
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
 
 
+_ScalarT = TypeVar("_ScalarT")
+
+
+@overload
+def _as_i32(v: None) -> None: ...
+@overload
+def _as_i32(v: Union[int, np.integer]) -> Value: ...
+@overload
+def _as_i32(v: _ScalarT) -> _ScalarT: ...
 def _as_i32(v):
     """Materialize an arith.constant i32 from a Python/NumPy int, pass a Value
-    through unchanged, or return None for None. Shared by the npu scalar op
-    wrappers in aiex.py (imported from this module)."""
+    (or a sequence-builder scalar such as a DispatchTime PerCall) through
+    unchanged, or return None for None. Shared by the npu scalar op wrappers
+    in aiex.py (imported from this module)."""
     if v is None:
         return None
     if isinstance(v, (int, np.integer)):

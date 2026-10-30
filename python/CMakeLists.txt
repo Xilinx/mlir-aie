@@ -271,6 +271,17 @@ add_custom_command(
   COMMENT "Staging MLIR core type stubs for pyright"
 )
 
+# Ship the staged stubs in the install tree, and so the wheel.
+install(
+  FILES
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/__init__.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/ir.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/passmanager.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/rewrite.pyi"
+  DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs/_mlir"
+  COMPONENT aie-python
+)
+
 ################################################################################
 # ParameterScratchpad pybind11 module (uses a raw buffer)
 ################################################################################

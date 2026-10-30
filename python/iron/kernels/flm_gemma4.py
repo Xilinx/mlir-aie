@@ -2745,7 +2745,7 @@ def _lm_head_zero(fn) -> ExternalFunction:
 
 def flm_gemma4_q4nx_lm_head(
     *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
-) -> ExternalFunction:
+) -> _LmHeadKernel:
     """AIE2P logits from a q4nx vocabulary, from ``flm_gemma4/q4nx_lm_head.cc``.
 
     One core owns ``m_tile`` out-features at a time and streams their q4nx
