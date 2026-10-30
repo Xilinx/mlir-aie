@@ -1017,43 +1017,43 @@
   {
    "date": "2026-10-30",
    "merge": {
-    "merged": 67,
+    "merged": 68,
     "hours_median": 25.5,
     "hours_p90": 1429.0,
     "open": 53
    },
    "critical": {
     "buildAndTestRyzenAI.yml": {
-     "main": 0.846,
-     "pull_requests": 0.647,
+     "main": 0.786,
+     "pull_requests": 0.635,
      "flaky": 0.104,
      "minutes_median": 57.2,
      "queued_median": 0.5
     },
     "buildAndTestRyzenAIWindows.yml": {
      "main": 1.0,
-     "pull_requests": 0.593,
-     "flaky": 0.119,
+     "pull_requests": 0.58,
+     "flaky": 0.117,
      "minutes_median": 45.8,
      "queued_median": 0.7
     },
     "buildAndTestMulti.yml": {
      "main": 0.941,
-     "pull_requests": 0.737,
-     "flaky": 0.133,
+     "pull_requests": 0.731,
+     "flaky": 0.132,
      "minutes_median": 23.6,
      "queued_median": 0.4
     },
     "buildAndTestPythons.yml": {
      "main": 1.0,
-     "pull_requests": 0.748,
+     "pull_requests": 0.742,
      "flaky": 0.139,
      "minutes_median": 18.2,
      "queued_median": 0.3
     },
     "lintAndFormat.yml": {
      "main": 1.0,
-     "pull_requests": 0.599,
+     "pull_requests": 0.596,
      "flaky": 0.137,
      "minutes_median": 2.8,
      "queued_median": 0.3
