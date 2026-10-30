@@ -350,6 +350,9 @@ measured 78 / 134); if they disagree, find out which is wrong first.
   `$NPU_CACHE_HOME/objects/<key>/` holds a copy of every `.cc` it compiled
   (the `.o.d` depfiles name them), so diff those against `git show
   <rev>:<path>`. When two numbers conflict, compare digests first.
+- The nightly kernel checks and their history are on the [maintainer
+  dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=night); the
+  numbers in this skill's case studies are dated evidence, not today's.
 - Several agents on one NPU: wrap every hardware command in `flock` on one
   shared lock file, and build base arms by copying the live tree.
 - Keep every `extern "C"` name, signature and buffer layout. Leave

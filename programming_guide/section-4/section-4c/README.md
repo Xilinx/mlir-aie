@@ -154,6 +154,8 @@ The operations used most often in kernel code:
 
 ## <u>Vectorization Exercises</u>
 
+The cycle counts in these exercises are a worked example from when this section was written; today's figures for this kernel (`scale` in `aie.iron.kernels`) are on [its page](https://xilinx.github.io/mlir-aie/dashboard/#view=kernel&kernel=scale) under the maintainer dashboard's Kernels tab.
+
 1. Let's trace the scalar kernel first. Set `vectorized: CompileTime[bool] = False` in [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) and build the 32-bit version of the design with `make clean; make int_bit_width=32 trace`. The `int_bit_width` argument sets the data type and buffer sizes in both the design (`vector_scalar_mul.py`) and the host code (`test.cpp`). Open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the time between `event 0` and `event 1`. In the Perfetto waveform, 1 us is one clock cycle. How many cycles did you measure?
     <details markdown="1"><summary>Show answer</summary>
     10761 cycles with Peano (10245 with Chess). That is about 10.5 cycles per element.
