@@ -3595,7 +3595,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       if (rows.length === 1 && !rows[0].name) {
         table.className += ' sideways';
         // A measure the night did not record is left out, not a dash.
-        table.append(el('tbody', {}, ...heads.map(([text, title], i) => rows[0].cells[i] ? 
+        table.append(el('tbody', {}, ...heads.map(([text, title], i) => rows[0].cells[i] ?
           el('tr', {}, el('th', { title: title || '' }, text), el('td', { className: 'num' }, value(rows[0].cells[i]))) : null).filter(Boolean)));
       } else {
         table.append(el('thead', {}, el('tr', {}, el('th', {}, ''), ...heads.map(([text, title]) => el('th', { className: 'num', title: title || '' }, text)))),
