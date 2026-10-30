@@ -303,14 +303,15 @@ module @rtp_row {
     %barrier = aie.lock(%core)
     aie.core(%core) {
       %c0 = arith.constant 0 : index
+      %one = arith.constant 1 : i32
       %c1 = arith.constant 1 : index
       scf.while : () -> () {
         %true = arith.constant true
         scf.condition(%true)
       } do {
-        aie.use_lock(%barrier, AcquireGreaterEqual, 1)
+        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
         %n = memref.load %rtp[%c0] : memref<1xi32>
-        aie.use_lock(%barrier, Release, 1)
+        aie.use_lock(%barrier, Release, %one)
         %cols = arith.index_cast %n : i32 to index
         %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
         scf.for %j = %c0 to %cols step %c1 {
@@ -353,14 +354,15 @@ module @rtp_two_values {
     %barrier = aie.lock(%core)
     aie.core(%core) {
       %c0 = arith.constant 0 : index
+      %one = arith.constant 1 : i32
       %c1 = arith.constant 1 : index
       scf.while : () -> () {
         %true = arith.constant true
         scf.condition(%true)
       } do {
-        aie.use_lock(%barrier, AcquireGreaterEqual, 1)
+        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
         %n = memref.load %rtp[%c0] : memref<1xi32>
-        aie.use_lock(%barrier, Release, 1)
+        aie.use_lock(%barrier, Release, %one)
         %cols = arith.index_cast %n : i32 to index
         %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
         scf.for %j = %c0 to %cols step %c1 {
@@ -409,14 +411,15 @@ module @rtp_set_before_write {
     %barrier = aie.lock(%core)
     aie.core(%core) {
       %c0 = arith.constant 0 : index
+      %one = arith.constant 1 : i32
       %c1 = arith.constant 1 : index
       scf.while : () -> () {
         %true = arith.constant true
         scf.condition(%true)
       } do {
-        aie.use_lock(%barrier, AcquireGreaterEqual, 1)
+        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
         %n = memref.load %rtp[%c0] : memref<1xi32>
-        aie.use_lock(%barrier, Release, 1)
+        aie.use_lock(%barrier, Release, %one)
         %cols = arith.index_cast %n : i32 to index
         %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
         scf.for %j = %c0 to %cols step %c1 {
