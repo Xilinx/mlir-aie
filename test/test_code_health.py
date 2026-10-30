@@ -111,7 +111,7 @@ def test_tsan_names_the_race_in_our_code():
     assert f["where"]["file"] == "lib/Dialect/AIE/IR/AIETargetModel.cpp"
 
 
-# Two real ASan reports (clang 18, a double free and a free of a stack
+# Two real ASan reports (GCC 13, a double free and a free of a stack
 # object), their frames moved into this repository's code.
 ASAN_DOUBLE_FREE = f"""\
 ==715658==ERROR: AddressSanitizer: attempting double-free on 0x502000000010 in thread T0:
