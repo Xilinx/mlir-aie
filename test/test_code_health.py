@@ -431,6 +431,7 @@ def test_code_scanning_says_what_is_new_and_fixed():
         (3, "python", False),
     ]
     assert cs["by_severity"] == {"high": 1, "note": 1}
+    assert cs["new_by_severity"] == {"high": 1}
     # The first publish has nothing to call new.
     assert ch.scanning_status(get, "Xilinx/mlir-aie", None)["new"] == 0
 

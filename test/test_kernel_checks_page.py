@@ -3413,6 +3413,21 @@ assert.equal(healthSummary(loaded, NIGHT + 3600000), '3 new alerts.');
 """)
 
 
+def test_a_new_high_alert_outside_the_display_still_turns_it_red(page):
+    page(HEALTH + """
+const st = healthy();
+const shown = number => ({ number, rule: 'cpp/x', description: 'Unbounded write', severity: 'critical', language: 'cpp', file: 'lib/a.cpp', line: 1, new: false });
+st.code_scanning = { open: 201, new: 1, new_by_severity: { high: 1 }, fixed: 0, by_severity: { critical: 200, high: 1 },
+                     by_language: { cpp: 201 }, alerts: Array.from({ length: 200 }, (_, i) => shown(i + 1)) };
+const loaded = { status: st, points, unread: null, newer: false };
+location.hash = '#view=health';
+const rows = renderHealth(loaded, NIGHT + 3600000);
+assert.equal(rows[3].level, 'bad');
+assert.equal(rows[3].children[2].text, '1 new alert.');
+assert.equal(healthSummary(loaded, NIGHT + 3600000), '1 new high alert.');
+""")
+
+
 def test_a_sparkline_breaks_where_a_night_has_no_result(page):
     page(HEALTH + """
 const svg = sparkline([1, 2, null, 3, 4]);

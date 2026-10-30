@@ -5019,6 +5019,14 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       return { level, text: parts.length ? `${cap(parts.join('; '))}.` : '', figure: '' };
     }
 
+    function newHighAlerts(cs) {
+      // Files from before new_by_severity count from the capped list.
+      if (cs.new_by_severity) {
+        return HIGH_SEVERITIES.reduce((n, s) => n + (cs.new_by_severity[s] || 0), 0);
+      }
+      return (cs.alerts || []).filter(a => a.new && HIGH_SEVERITIES.includes(a.severity)).length;
+    }
+
     function scanningVerdict(cs) {
       if (!cs || cs.missing) return { level: 'none', text: '', figure: '' };
       if (cs.error) return { level: 'bad', text: `GitHub did not answer: ${cs.error}.`, figure: '' };
@@ -5026,8 +5034,10 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       // code_health.py lists new alerts first; the counts are of every alert.
       const fresh = alerts.filter(a => a.new);
       const high = HIGH_SEVERITIES.reduce((n, s) => n + ((cs.by_severity || {})[s] || 0), 0);
-      const level = fresh.some(a => HIGH_SEVERITIES.includes(a.severity)) ? 'bad' : cs.new ? 'warn' : 'ok';
-      const text = cs.new ? `New: ${fresh[0].description || fresh[0].rule} in ${baseName(fresh[0].file)}${andMore(cs.new - 1)}.` : '';
+      const level = newHighAlerts(cs) ? 'bad' : cs.new ? 'warn' : 'ok';
+      const text = !cs.new ? ''
+        : fresh.length ? `New: ${fresh[0].description || fresh[0].rule} in ${baseName(fresh[0].file)}${andMore(cs.new - 1)}.`
+        : `${cap(plural(cs.new, 'new alert'))}.`;
       const figure = cs.open ? `${cs.open} open${high ? `, ${high} high` : ''}` : '';
       return { level, text, figure };
     }
@@ -5349,7 +5359,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       for (const id of sans) if (!s[id] || s[id].missing) parts.push(`no ${HEALTH_CHECKS.find(c => c.id === id).title} result`);
       const cs = s.code_scanning || {};
       if (cs.new) {
-        const high = (cs.alerts || []).filter(a => a.new && HIGH_SEVERITIES.includes(a.severity)).length;
+        const high = newHighAlerts(cs);
         parts.push(high ? plural(high, 'new high alert') : plural(cs.new, 'new alert'));
       }
       const tidy = s['clang-tidy'] || {};

@@ -526,8 +526,11 @@ def scanning_status(get, repo: str, previous: dict | None) -> dict:
     }
     out.sort(key=lambda a: (not a["new"], rank.get(a["severity"], 5), -a["number"]))
     by: dict[str, int] = {}
+    new_by: dict[str, int] = {}
     for a in out:
         by[a["severity"]] = by.get(a["severity"], 0) + 1
+        if a["new"]:
+            new_by[a["severity"]] = new_by.get(a["severity"], 0) + 1
     langs: dict[str, int] = {}
     for a in out:
         langs[a["language"]] = langs.get(a["language"], 0) + 1
@@ -539,6 +542,7 @@ def scanning_status(get, repo: str, previous: dict | None) -> dict:
         "alert_ids": sorted(a["number"] for a in out),
         "alerts": out[:KEEP_ALERTS],
         "new": sum(a["new"] for a in out),
+        "new_by_severity": new_by,
         "fixed": fixed,
     }
 
