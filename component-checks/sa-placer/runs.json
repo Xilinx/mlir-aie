@@ -640,6 +640,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "41015600379",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41015600379",
+   "date": "2026-10-30T06:41:56+00:00",
+   "commit": {
+    "id": "e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
+    "message": "Convert aie.iron.algorithms.kernel_design into a class (#3977)",
+    "timestamp": "2026-10-30T01:15:10Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 9V45 96-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "e28f6dc7e5",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 9V45 96-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

@@ -38,12 +38,14 @@
   "host_overhead_us_per_image_b1",
   "host_overhead_us_per_image_b8",
   "images_passed",
+  "instr_bytes",
   "map50_coco128",
   "npu_us_per_image_b1",
   "npu_us_per_image_b8",
   "ort_matches",
   "us_per_image_b1",
-  "us_per_image_b8"
+  "us_per_image_b8",
+  "xclbin_bytes"
  ],
  "runs": [
   {
@@ -350,6 +352,40 @@
    "sane": true,
    "published": true,
    "n_rows": 42,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "yolo26n-hw",
+   "id": "41015600379",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41015600379",
+   "date": "2026-10-30T06:41:56+00:00",
+   "commit": {
+    "id": "e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
+    "message": "Convert aie.iron.algorithms.kernel_design into a class (#3977)",
+    "timestamp": "2026-10-30T01:15:10Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "e28f6dc7e5",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "8ee98c1c8fb7",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 43,
    "exitstatus": 0,
    "failed": [],
    "truncated": []
