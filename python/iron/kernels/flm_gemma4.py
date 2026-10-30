@@ -2584,7 +2584,7 @@ DTYPES["flm_gemma4_pli_gelu_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}]
 def flm_gemma4_pli_gelu_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
-    """``_activate`` of [`flm_gemma4_decode_gate_layer_embedding`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_gate_layer_embedding]: GELU over ``pli_d`` values.
+    """``_activate`` of [`flm_gemma4_decode_gate_layer_embedding`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_gate_layer_embedding]: GELU over ``pli_d``.
 
     ``pli_gelu_core(x, y)``: copies ``x`` into ``y`` and applies GELU there,
     through aie_runtime_lib's table (``getGeluBf16``). Both are ``pli_d``
