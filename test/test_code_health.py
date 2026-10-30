@@ -408,6 +408,21 @@ def test_code_scanning_says_what_is_new_and_fixed():
     assert ch.scanning_status(get, "Xilinx/mlir-aie", None)["new"] == 0
 
 
+def test_a_new_low_alert_is_kept_ahead_of_known_high_ones():
+    known = [alert(n, "high", "c-cpp", "lib/a.cpp") for n in range(ch.KEEP_ALERTS + 49)]
+    fresh = alert(ch.KEEP_ALERTS + 49, None, "python", "python/b.py")
+    pages = {1: known[:100], 2: known[100:200], 3: [*known[200:], fresh]}
+    get = lambda path: pages.get(int(re.search(r"[?&]page=(\d+)", path).group(1)), [])
+    previous = {"alert_ids": [a["number"] for a in known]}
+    cs = ch.scanning_status(get, "Xilinx/mlir-aie", previous)
+    assert cs["new"] == 1 and len(cs["alerts"]) == ch.KEEP_ALERTS
+    assert (cs["alerts"][0]["number"], cs["alerts"][0]["new"]) == (
+        fresh["number"],
+        True,
+    )
+    assert cs["by_severity"] == {"high": ch.KEEP_ALERTS + 49, "note": 1}
+
+
 @pytest.mark.parametrize("count", [ch.KEEP_ALERTS + 1, 2001])
 def test_code_scanning_keeps_all_identities_for_churn(count):
     alerts = [alert(n, "high", "c-cpp", "lib/a.cpp") for n in range(count)]

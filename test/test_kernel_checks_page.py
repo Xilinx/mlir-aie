@@ -3325,6 +3325,8 @@ st['asan-ubsan'].failed_without_report_count = 1;
 st.tsan = { check: 'tsan', missing: true };
 st.code_scanning.alerts.unshift({ number: 9, rule: 'cpp/unbounded-write', description: 'Unbounded write', severity: 'high', language: 'cpp', file: 'lib/Targets/AIETargetCDODirect.cpp', line: 141, new: true });
 st.code_scanning.open = 4;
+st.code_scanning.new = 1;
+st.code_scanning.by_severity = { high: 1, note: 3 };
 st['clang-tidy'].enabled_findings = [{ file: 'lib/Dialect/AIE/IR/AIEDialect.cpp', line: 10, check: 'modernize-use-auto', message: 'use auto' }];
 st['clang-tidy'].enabled_finding_count = 1;
 const loaded = { status: st, points: [point(2), point(1, { lines: 62.5 }), point(0, { lines: 62 })], unread: null, newer: false };
@@ -3375,6 +3377,23 @@ assert.equal(healthSummary(loaded, NIGHT + 3600000),
 st['asan-ubsan'].findings = [finding(1, true, '2026-10-29')];
 assert.equal(renderHealth(loaded, NIGHT + 3600000)[1].children[2].text,
   'New: ASan heap-use-after-free in AIE::f1 and 2 more; still open since 1 Oct: 147 findings.');
+""")
+
+
+def test_code_scanning_counts_are_of_every_alert_not_the_display(page):
+    page(HEALTH + """
+const st = healthy();
+const shown = (number, severity, isNew) => ({ number, rule: 'cpp/x', description: 'Unbounded write', severity, language: 'cpp', file: 'lib/a.cpp', line: 1, new: isNew });
+// code_health.py keeps 200 of 253, the new ones first.
+st.code_scanning = { open: 253, new: 3, fixed: 0, by_severity: { high: 250, note: 3 }, by_language: { cpp: 253 },
+                     alerts: [shown(253, 'note', true), shown(252, 'high', false)] };
+const loaded = { status: st, points, unread: null, newer: false };
+location.hash = '#view=health';
+const rows = renderHealth(loaded, NIGHT + 3600000);
+assert.equal(rows[3].level, 'warn');
+assert.equal(rows[3].children[2].text, 'New: Unbounded write in a.cpp and 2 more.');
+assert.equal(rows[3].children[3].text, '253 open, 250 high');
+assert.equal(healthSummary(loaded, NIGHT + 3600000), '3 new alerts.');
 """)
 
 

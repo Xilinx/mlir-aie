@@ -496,7 +496,7 @@ def scanning_status(get, repo: str, previous: dict | None) -> dict:
         "low": 3,
         "note": 4,
     }
-    out.sort(key=lambda a: (rank.get(a["severity"], 5), -a["number"]))
+    out.sort(key=lambda a: (not a["new"], rank.get(a["severity"], 5), -a["number"]))
     by: dict[str, int] = {}
     for a in out:
         by[a["severity"]] = by.get(a["severity"], 0) + 1
