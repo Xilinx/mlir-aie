@@ -72,7 +72,7 @@ repos:
           programming_examples/ml/(block_datatypes|mobilenet|bottleneck|cast_f32_bf16|conv2d|conv2d_14x14|dwconv1d|eltwise|eltwise_unary|llama_3_2_1b|magika|mm_activation_epilogue|norm|resnet|rope|scale_shift|softmax|swiglu|yolo26n)/.*\.py|
           utils/kernel_checks/.*\.py|
           utils/component_checks/.*\.py|
-          test/python/test_declare(ation|_params)\.py
+          test/python/test_declar(ation|e_params)\.py
         )$
 
 # Baseline hygiene: validators run on every commit, fixers gated to pre-push
