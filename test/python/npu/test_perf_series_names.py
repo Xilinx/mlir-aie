@@ -90,7 +90,7 @@ def test_cycle_efficiency_is_independent_of_call_count():
         rows = []
         traced = kd.CallCycles(kernel=(270,) * calls)
         _record(lambda *row: rows.append(row), case, {"cycles": traced})
-        assert rows[1][1:] == ("cycles_per_kop", "cycles/1k-ops", 131.836)
+        assert rows[1][1:] == ("cycles_per_kop", "cycles/1k-ops", 131.836, None)
 
 
 def test_cycles_row_is_the_kernel_min_with_its_spread_beside_it():
