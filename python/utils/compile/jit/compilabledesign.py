@@ -1491,11 +1491,7 @@ class CompilableDesign:
         if self._kernel_dir is None:
             return None
         # Entries take identical arguments, so the default entry's stand for all.
-        entries = _manifest.resolve_entries(self._kernel_dir)
-        return parse_dma_sizes(
-            self._kernel_dir,
-            self._full_elf_kernel_name or (entries[0] if entries else None),
-        )
+        return parse_dma_sizes(self._kernel_dir, self._dispatched_entry(None))
 
     def _build_kernels(
         self,
@@ -1599,6 +1595,22 @@ class CompilableDesign:
                 f"found {available}."
             )
         raise RuntimeError(f"{config_path} names no runtime sequence.")
+
+    def _dispatched_entry(self, entry: str | None) -> str | None:
+        """Return the ``"device:sequence"`` a call naming ``entry`` runs.
+
+        Args:
+            entry: The entry the call names, or None for the default entry.
+
+        Returns:
+            The qualified entry, or None for a one-entry xclbin build, whose
+            sequence the build alone holds.
+        """
+        if entry is not None:
+            return self._qualified_entry(entry)
+        assert self._kernel_dir is not None, "compile() runs first"
+        entries = _manifest.resolve_entries(self._kernel_dir)
+        return self._full_elf_kernel_name or (entries[0] if entries else None)
 
     def _qualified_entry(self, entry: str) -> str:
         """Return the last build's ``"device:sequence"`` entry named ``entry``.

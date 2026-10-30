@@ -189,18 +189,21 @@ def test_a_wrongly_sized_buffer_is_refused(design):
 
 
 @pytest.mark.parametrize("full_elf", [False, True])
-def test_a_traced_entry_decodes_against_its_own_sequence(full_elf, tmp_path):
+@pytest.mark.parametrize("entry, runs", [(None, "whole"), ("half", "half")])
+def test_a_traced_entry_decodes_against_its_own_sequence(
+    full_elf, entry, runs, tmp_path
+):
     trace_config = TraceConfig(trace_size=8192)
     data = iron.arange(_N, dtype=np.int32)
     output = iron.tensor(np.full(_N, _SENTINEL, np.int32), device="npu")
     traced_entries.specialize(full_elf=full_elf)(
-        data, output, N=_N, trace_config=trace_config, entry="half"
+        data, output, N=_N, trace_config=trace_config, entry=entry
     )
     output.to("cpu")
-    np.testing.assert_array_equal(output.numpy(), _expected(data.numpy(), "half"))
-    assert trace_config.kernel == "main:half"
+    np.testing.assert_array_equal(output.numpy(), _expected(data.numpy(), runs))
+    assert trace_config.kernel == f"main:{runs}"
     assert trace_config.trace_to_json(
-        trace_config.physical_mlir_path, str(tmp_path / "half.json")
+        trace_config.physical_mlir_path, str(tmp_path / f"{runs}.json")
     )
 
 
