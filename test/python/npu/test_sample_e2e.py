@@ -47,6 +47,10 @@ from aie.iron.kernels import sample
 from ml_dtypes import bfloat16
 from sample_design import sample_positions
 
+# The nightly checks run this file as sample_select's and sample_combine's
+# correctness; their timed series publish only when every test here passed.
+pytestmark = pytest.mark.kernel_check("sample_select", "sample_combine")
+
 I32 = np.dtype[np.int32]
 
 

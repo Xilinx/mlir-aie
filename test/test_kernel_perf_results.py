@@ -301,3 +301,92 @@ def test_dedicated_failure_only_excludes_its_factories(finish, tmp_path, outcome
     assert all(row["name"].startswith("relu/") for row in rows)
     assert meta["failed"] == ["test_kernels_e2e::test_special_pair[shape]"]
     assert "correctness_error" not in meta
+
+
+def checks(tmp_path, tests):
+    """A correctness report whose tests carry ``kernel_check`` factories.
+
+    ``tests`` is ``(name, outcome, factories)``; the outcome is as ``report``'s.
+    """
+    path = report(tmp_path, [(name, outcome) for name, outcome, _ in tests])
+    tree = ET.parse(path)
+    for test, (_, _, factories) in zip(tree.iter("testcase"), tests):
+        if factories:
+            props = ET.SubElement(test, "properties")
+            for factory in factories:
+                ET.SubElement(props, "property", name="kernel_check", value=factory)
+    tree.write(path)
+    return path
+
+
+DEDICATED_ROWS = [
+    {"name": f"{case}/cycles"}
+    for case in (
+        "softmax/1024x16/bfloat16",
+        "nms/4420x91/float32/cap=320/classes=80/width=52/realistic_pyramid",
+        "sample_select/5344x96/bfloat16_int32+int32/chunk=5344/llama_vocab",
+    )
+]
+SOFTMAX_SWEEP = "test_kernel_extensive[softmax/1024x16/bfloat16/random/s0]"
+
+
+def test_a_dedicated_series_publishes_on_its_factory_checks(hooks, tmp_path):
+    path = checks(
+        tmp_path,
+        [
+            (SOFTMAX_SWEEP, None, ()),
+            ("test_device_nms_matches_nms_ref[x]", None, ("nms",)),
+            (
+                "test_device_draws_match_ranges",
+                None,
+                ("sample_select", "sample_combine"),
+            ),
+        ],
+    )
+    kept, failed = hooks._publishable(DEDICATED_ROWS, path)
+    assert kept == DEDICATED_ROWS and failed == []
+
+
+@pytest.mark.parametrize("outcome", ["failure", "error"])
+def test_one_failed_factory_check_withholds_its_dedicated_series(
+    hooks, tmp_path, outcome
+):
+    path = checks(
+        tmp_path,
+        [
+            (SOFTMAX_SWEEP, None, ()),
+            ("test_device_nms_matches_nms_ref[x]", None, ("nms",)),
+            ("test_device_nms_matches_nms_ref[y]", outcome, ("nms",)),
+            ("test_device_draws_match_ranges", None, ("sample_select",)),
+        ],
+    )
+    kept, failed = hooks._publishable(DEDICATED_ROWS, path)
+    assert [row["name"].split("/", 1)[0] for row in kept] == [
+        "softmax",
+        "sample_select",
+    ]
+    assert failed == ["test_kernels_e2e::test_device_nms_matches_nms_ref[y]"]
+
+
+def test_a_dedicated_series_without_a_run_check_is_withheld(hooks, tmp_path):
+    path = checks(
+        tmp_path,
+        [
+            (SOFTMAX_SWEEP, None, ()),
+            ("test_device_nms_matches_nms_ref[x]", "skipped", ("nms",)),
+        ],
+    )
+    kept, _ = hooks._publishable(DEDICATED_ROWS, path)
+    assert [row["name"].split("/", 1)[0] for row in kept] == ["softmax"]
+
+
+def test_a_factory_check_does_not_rescue_a_case_the_sweep_failed(hooks, tmp_path):
+    path = checks(
+        tmp_path,
+        [
+            (SOFTMAX_SWEEP, "failure", ()),
+            ("test_softmax_special", None, ("softmax",)),
+        ],
+    )
+    kept, _ = hooks._publishable(DEDICATED_ROWS[:1], path)
+    assert kept == []

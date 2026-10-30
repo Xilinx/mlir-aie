@@ -25,6 +25,10 @@ import pytest
 import aie.iron as iron
 from nms_design import _cell, _one_class, build_case, nms_detect, realistic_pyramid
 
+# The nightly checks run this file as nms's correctness; its timed series
+# (test_kernels_perf.py) publish only when every test here passed.
+pytestmark = pytest.mark.kernel_check("nms")
+
 
 def _run(kwargs, flat):
     det = iron.full((kwargs["cap"] * 6,), -1.0, dtype=np.float32)
