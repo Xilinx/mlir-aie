@@ -4,8 +4,14 @@
 // RUN: %aiecc -n --tmpdir %t.default --get-npu-insts --npu-insts-name=%t.default.bin %s 2>&1 | FileCheck %s --check-prefix=ENABLED
 // RUN: %aiecc -n --tmpdir %t.disabled --get-npu-insts --npu-insts-name=%t.disabled.bin --warn-unsafe-bd-reuse=false %s 2>&1 | FileCheck %s --check-prefix=DISABLED --allow-empty
 //
+// The warning carries no "see current operation" note: printing the reused
+// BD for one verifies the whole device, once per warning, which a full ELF's
+// materialized runtime sequence turns into minutes per compile.
+// ENABLED-NOT: see current operation
 // ENABLED: warning: {{.*}}reuses buffer descriptor ID 0
+// ENABLED-NOT: see current operation
 // ENABLED: note: released here
+// ENABLED-NOT: see current operation
 // DISABLED-NOT: warning:
 
 module {

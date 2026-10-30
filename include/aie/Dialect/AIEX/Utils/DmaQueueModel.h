@@ -182,7 +182,9 @@ inline mlir::InFlightDiagnostic
 emitQueueOverflowWarning(mlir::Operation *op, int col, int row,
                          AIE::DMAChannelDir dir, uint32_t channel,
                          uint32_t depth, size_t outstanding) {
-  return op->emitWarning()
+  // Not op->emitWarning(): its "see current operation" note verifies and
+  // numbers the whole device for each warning, quadratic in the sequence.
+  return mlir::emitWarning(op->getLoc())
          << "pushes a DMA task onto tile (" << col << "," << row << ") "
          << AIE::stringifyDMAChannelDir(dir) << " channel " << channel
          << ", whose task queue is only " << depth << " deep, with "
@@ -202,7 +204,8 @@ emitQueueOverflowWarning(mlir::Operation *op, int col, int row,
 inline mlir::InFlightDiagnostic
 emitUnsafeBdReuseWarning(mlir::Operation *freeOp, int col, int row,
                          AIE::DMAChannelDir dir, uint32_t channel) {
-  return freeOp->emitWarning()
+  // Not freeOp->emitWarning(), as in emitQueueOverflowWarning.
+  return mlir::emitWarning(freeOp->getLoc())
          << "frees a task on tile (" << col << "," << row << ") "
          << AIE::stringifyDMAChannelDir(dir) << " channel " << channel
          << " with no completion guarantee, so its buffer descriptor id "
