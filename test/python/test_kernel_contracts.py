@@ -1933,7 +1933,9 @@ def test_softmax_span_masks_outside_the_live_region():
     cols = np.arange(32)[None, :]
     live = (cols >= lo[:, None]) & (cols < hi[:, None])
     assert (ref.astype(np.float32)[~live] == 0).all()
-    assert np.allclose(ref.astype(np.float32).sum(axis=1), 1.0, atol=2e-3)
+    # Each probability is rounded to bf16 (2**-9 of itself) after its
+    # exponential was rounded too, so a row sums to 1 within twice that.
+    assert np.allclose(ref.astype(np.float32).sum(axis=1), 1.0, atol=2**-8)
     assert compare(ref, ref, fn.contract.tolerance)
     assert not compare(np.zeros_like(ref), ref, fn.contract.tolerance)
 
