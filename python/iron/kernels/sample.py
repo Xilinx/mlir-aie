@@ -232,7 +232,10 @@ def sample_select(
         np.ndarray[(SELECT_STATE_WORDS,), np.dtype[np.int32]],
         np.ndarray[summary_shape, np.dtype[np.int32]],
     ]
-    roles = [In if valid == slice_size else InOut, In, InOut, InOut]
+    # x is written in place: by the padding fill below valid, and by
+    # apply_ranges (sample_select.cc) masking a range's span to -inf bits,
+    # whether or not padding also applies.
+    roles = [In if valid == slice_size and not max_ranges else InOut, In, InOut, InOut]
     if probability_rule:
         arg_types += [
             np.ndarray[(SELECT_STATE_WORDS,), np.dtype[np.int32]],

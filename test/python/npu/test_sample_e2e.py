@@ -567,19 +567,32 @@ def sample_position_with_rule(
 @pytest.mark.parametrize(
     "fires",
     [
-        True,  # the timestamp range dominates: the rule forces it
-        False,  # the text range dominates: it never fires
+        True,  # logsumexp(timestamp range) > the one text token: the rule
+        # forces it despite no single timestamp logit outscoring the text
+        # one -- the case an independent second top-k is for, not a
+        # fires=True that just sets every timestamp logit far above noise,
+        # which an always-false forced_timestamp() would also pass.
+        False,  # the text token dominates: it never fires
     ],
 )
 def test_device_draws_match_the_probability_rule(fires):
-    vocab, split, k_max = 256, 192, 16
-    rng = np.random.default_rng(split + fires)
-    logits = rng.normal(0, 1, vocab).astype(bfloat16)
+    # top_k=1: the ordinary pass keeps only the single highest logit.
+    vocab, split, k_max = 256, 192, 1
+    logits = np.full(vocab, -np.inf, dtype=np.float32)
     if fires:
-        logits[split:] = bfloat16(20.0)
+        # logsumexp(64 tokens at 4.0) = 4 + ln(64) =~ 8.16 > 5: with
+        # top_k=1, the ordinary pass keeps only the text token (5.0, the
+        # single highest logit), so drawing from its surviving candidates
+        # once the rule decides to fire would have nothing from the
+        # timestamp range at all -- only sample_select's own, independent
+        # second top-k over [split, vocab) has one.
+        logits[10] = 5.0
+        logits[split : split + 64] = 4.0
     else:
-        logits[:split] = bfloat16(20.0)
-        logits[split:] = bfloat16(-20.0)
+        logits[10] = 20.0
+        logits[split : split + 64] = -20.0
+    logits = logits.astype(bfloat16)
+    rng = np.random.default_rng(split + fires)
     n53 = int(rng.integers(0, 1 << 53))
     draws = np.concatenate([sample.draw_row(1.0, k_max, n53), sample.split_word(split)])
     expected = np.array(
