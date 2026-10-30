@@ -204,7 +204,7 @@ def test_a_norm_built_unbound_keeps_the_bound_measured_where_it_ran(
     no_device, factory, kwargs, scalars, npu1, npu2
 ):
     fn = factory(**kwargs)
-    inputs = kd.sample_inputs(fn, calls=2)
+    inputs = kd.KernelDesign(fn, calls=2).sample_inputs()
     for device, measured in ((NPU1Col1(), npu1), (NPU2Col1(), npu2)):
         set_current_device(device)
         assert fn.contract_for().tolerance is measured
@@ -218,7 +218,7 @@ def test_a_norm_built_unbound_keeps_the_bound_measured_where_it_ran(
 
 def test_gelu_erf_is_judged_correctly_rounded_on_both_npus(no_device):
     fn = kernels.gelu_erf()
-    inputs = kd.sample_inputs(fn, calls=2)
+    inputs = kd.KernelDesign(fn, calls=2).sample_inputs()
     for device in (NPU1Col1(), NPU2Col1()):
         set_current_device(device)
         assert fn.contract_for().tolerance is _GELU_ERF_ROUNDED
@@ -229,7 +229,7 @@ def test_gelu_erf_is_judged_correctly_rounded_on_both_npus(no_device):
 
 def test_an_f32_layer_norm_built_unbound_keeps_its_measured_bound(no_device):
     fn = kernels.layer_norm_f32(cols=1024)
-    inputs = kd.sample_inputs(fn, calls=2)
+    inputs = kd.KernelDesign(fn, calls=2).sample_inputs()
     for device, measured in (
         (NPU1Col1(), _NORM_F32_AIE2),
         (NPU2Col1(), _NORM_F32_AIE2P),
@@ -248,7 +248,7 @@ def test_a_per_build_contract_names_no_build_it_was_not_given(no_device):
     assert fn.contract.reference is None and fn.contract.tolerance is None
     with pytest.raises(ValueError, match="bind the device it ran on, or pass arch="):
         fn.contract_for()
-    x = kd.sample_inputs(fn)
+    x = kd.KernelDesign(fn).sample_inputs()
     with pytest.raises(ValueError, match="bind the device it ran on"):
         fn.expected(x)
     ref = fn.expected(x, arch="aie2p")
@@ -257,7 +257,7 @@ def test_a_per_build_contract_names_no_build_it_was_not_given(no_device):
     assert fn.judge(ref.ravel(), ref, tolerance=_NORM_BF16)
     # A contract the same for every build needs none either.
     add = kernels.add()
-    ref = add.expected(kd.sample_inputs(add))
+    ref = add.expected(kd.KernelDesign(add).sample_inputs())
     assert add.judge(ref.ravel(), ref)
 
 

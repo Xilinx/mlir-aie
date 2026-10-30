@@ -117,7 +117,7 @@ def test_size_records_the_bytes_the_tested_entry_links():
     with set_current_device(NPU2Col1()):
         for dtype in (np.int32, bfloat16):
             fn = kernels.reduce_max(dtype=dtype)
-            design = kd.design(kernels.reduce_max, calls=1, dtype=dtype)
+            design = kd.KernelDesign(fn).design()
             design.compilable.compile()
             obj = design.compilable.get_cache_entry().directory / fn.object_file_name
             sizes[dtype] = _kernel_object_size(design, fn)

@@ -48,8 +48,8 @@ the same for a kernel in your own design; only the drivers change:
 |---|---|---|
 | Static report (1, 4) | `python -m aie.utils.compile.remarks --cases ...` | `remarks.analyze(ef, "aie2p", Path(dir))` (`aie.utils.compile.remarks`) returns the same `StaticReport`: `loops` (`ii`, `ns`, `zol`, `trips`, `bundle_count`), `libcalls`, `kernel_stack_bytes`, `pass_failed`. `remarks.compile_command(ef, ...)` gives the exact clang++ line |
 | Arms (3) | `MLIR_AIE_KERNEL_SOURCES=$BASE`, `--baseline-sources $BASE` | Two copies of your `.cc`, one `ExternalFunction` per copy (`source_file=`); run `analyze` on each and compare the reports |
-| Gate (2) | `test_kernels_e2e.py -m extensive` | Attach a `KernelContract` (`aie.iron.kernels`: roles, a single-pass reference, tolerance, `trace=`) and drive it with `aie.iron.algorithms.kernel_design` (`kd.design(my_factory, calls=N, guard=True)` with `my_factory` a module-level function returning the kernel, `kd.sample_inputs`, `kd.upload(..., poison=True)`), or keep your design's own test with poisoned outputs |
-| Measure (6) | `test_kernels_perf.py --baseline-sources` | `kd.cycles_per_call` on each arm's design for a `Trace.whole_call()` contract, or `event0()`/`event1()` markers around the call in your design traced with `TraceConfig`; alternate the arms back to back |
+| Gate (2) | `test_kernels_e2e.py -m extensive` | Attach a `KernelContract` (`aie.iron.kernels`: roles, a single-pass reference, tolerance, `trace=`) and drive it with `aie.iron.algorithms.KernelDesign` (`kd = KernelDesign(my_kernel, calls=N, guard=True)`, then `kd.run(kd.sample_inputs())` and `kd.check`), or keep your design's own test with poisoned outputs |
+| Measure (6) | `test_kernels_perf.py --baseline-sources` | `kd.cycles_per_call` on each arm's `KernelDesign` for a `Trace.whole_call()` contract, or `event0()`/`event1()` markers around the call in your design traced with `TraceConfig`; alternate the arms back to back |
 | Whole design | MobileNet in the examples below | Your design's own end-to-end timing, same rules (warm up, min, back to back) |
 
 Every rule and lever holds either way. The MobileNet, ResNet and llama
@@ -134,8 +134,8 @@ pytest test/python/npu/test_kernels_e2e.py -m extensive -k "$CASE" --seeds 3 \
   arg_byte_offsets=((idx, 16),))` (c7d229b9316), and run it on the base
   kernels first so it fails. Declare `alignments` in the contract for
   what the fast path loads (d8e877d26fc).
-- Keep outputs poisoned (`kd.upload(..., poison=True)`; the core's output
-  tile is poisoned too, 36bd3b637a7) and guarded (`kd.design(...,
+- Keep outputs poisoned (`kd.run` poisons them; the core's output tile is
+  poisoned too, 36bd3b637a7) and guarded (`KernelDesign(...,
   guard=True)`), so an unwritten output or a write past a tile's end fails.
   Gate every entry point alone, and the composition once.
 
