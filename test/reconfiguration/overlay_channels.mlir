@@ -12,12 +12,11 @@
 // channel that is the source of a circuit flow (column 0) or of a packet flow
 // (column 1), or that a shim DMA allocation names (column 2).
 
-// CHECK-LABEL: aie.device(npu2) @a
+// CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 // CHECK-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(%{{.*}}, MM2S, 1)
 // CHECK-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan1(%{{.*}}, MM2S, 1)
 // CHECK-DAG: aie.shim_dma_allocation @ctrlpkt_col2_mm2s_chan1(%{{.*}}, MM2S, 1)
 // CHECK-NOT: mm2s_chan0
-// CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 module {
   aie.device(npu2) @a {
     %t00 = aie.tile(0, 0)
@@ -40,9 +39,9 @@ module {
 // moves no data through column 0, but @a moves data through its channel 0.
 
 // CHECK-LABEL: aie.device(npu2) @a
-// CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(%{{.*}}, MM2S, 1)
+// CHECK: overlay = @ctrl_pkt_overlay
 // CHECK-LABEL: aie.device(npu2) @b
-// CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(%{{.*}}, MM2S, 1)
+// CHECK: overlay = @ctrl_pkt_overlay
 // CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(%{{.*}}, MM2S, 1)
 module {
@@ -62,7 +61,7 @@ module {
 // A column's control packets reach every row through its one channel, rows a
 // design does not use included.
 
-// CHECK-LABEL: aie.device(npu2) @a
+// CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 // CHECK:      aie.packet_source<%shim_noc_tile_0_0, DMA : 0>
 // CHECK-NEXT: aie.packet_dest<%shim_noc_tile_0_0, TileControl : 0>
 // CHECK:      aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim_noc_tile_0_0, MM2S, 0)
@@ -77,7 +76,6 @@ module {
 // CHECK:      aie.packet_source<%shim_noc_tile_0_0, DMA : 0>
 // CHECK-NEXT: aie.packet_dest<%tile_0_5, TileControl : 0>
 // CHECK-NOT: mm2s_chan1
-// CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 module {
   aie.device(npu2) @a {
     %t00 = aie.tile(0, 0)

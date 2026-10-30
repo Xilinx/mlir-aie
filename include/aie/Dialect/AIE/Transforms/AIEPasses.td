@@ -811,21 +811,15 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
   ];
 }
 
-def AIEControlOverlayAvoidData
-    : Pass<"aie-control-overlay-avoid-data", "mlir::ModuleOp"> {
-  let summary = "Record the switch ports the configurations' data takes, for "
-                "the control overlay to avoid";
+def AIEImportOverlay : Pass<"aie-import-overlay", "mlir::ModuleOp"> {
+  let summary = "Import a referenced device's fixed routing resources";
   let description = [{
-    Routes each configuration's data without the control overlay and records the
-    switchbox output ports it takes, across all configurations, as
-    `aie.ctrl_pkt_overlay_avoid` on @ctrl_pkt_overlay and on each configuration.
-    aie-create-pathfinder-flows removes it and routes the overlay off those
-    ports where it can, the same way in every device. Runs before routing; does
-    nothing without @ctrl_pkt_overlay.
+    Materializes each device's `overlay` reference as tiles, switchboxes, shim
+    muxes, wires and DMA reservations before application allocation and routing.
+    The referenced device must already be routed and use the same target.
   }];
-
-  let constructor = "xilinx::AIE::createAIEControlOverlayAvoidDataPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+  let constructor = "xilinx::AIE::createAIEImportOverlayPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
 def AIEGenerateColumnControlOverlay
@@ -837,7 +831,7 @@ def AIEGenerateColumnControlOverlay
 
     With route-shim-to-tile-ctrl, each covered column's control packets enter
     through one shim MM2S DMA channel, the one of the column's
-    `aie.is_ctrl_pkt_overlay` allocation, else the lowest one no device of the module moves data
+    `aie.is_ctrl_overlay` allocation, else the lowest one no device of the module moves data
     through, and reach every row of the column.
   }];
 
@@ -857,8 +851,8 @@ def AIEGenerateColumnControlOverlay
               "ports, for configuration.">,
        Option<"clEmitStandaloneOverlay", "emit-standalone-overlay", "bool",
               /*default=*/"false",
-              "Emit a standalone @ctrl_pkt_overlay device (and tag source "
-              "devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When "
+              "Emit a standalone @ctrl_pkt_overlay device and reference it "
+              "from application devices for the load-pdi-to-ctrl-pkt reconfigure flow. When "
               "false, the pass applies the overlay in place only.">,
        Option<"clPlanChannels", "plan-channels", "bool", "false",
               "Select fixed control channels before application allocation.">,

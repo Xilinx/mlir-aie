@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // A routed design already carries the overlay if its switchboxes mark a
-// TileControl port is_ctrl_pkt_overlay. A priority_route flow between DMAs is
+// TileControl port is_ctrl_overlay. A priority_route flow between DMAs is
 // marked the same way, but it is not the overlay, and skipping the overlay for
 // it drops the shim's control response route, which hangs on hardware.
 

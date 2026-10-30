@@ -1,44 +1,18 @@
-//===- ctrl_pkt_overlay_user_priority_flow.mlir ----------------*- MLIR -*-===//
-//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
 
-// A control-packet reload keeps only the flows @ctrl_pkt_overlay holds, those
-// to and from TileControl ports. The design's own prioritized flow is not one
-// of them, so the reload configures it: its rules are not marked, and the
-// overlay's rules beside it stay as @ctrl_pkt_overlay sets them (#3837). The
-// design's request to the shim's TileControl (flow 15) puts the overlay on the
-// flow's shim channel, so on the shim's slave port its rule follows the
-// overlay's, and the overlay keeps the route it takes alone.
+// RUN: aie-opt --aie-create-control-overlay='adaptive=false' --aie-create-pathfinder-flows %s -o %t
+// RUN: aie-opt --aie-import-overlay %t | diff %t -
+// RUN: FileCheck %s < %t
 
-// RUN: aie-opt --pass-pipeline="builtin.module(aie-generate-column-control-overlay{route-shim-to-tile-ctrl=true emit-standalone-overlay=true},aie.device(aie-create-pathfinder-flows))" %s -o %t
-// RUN: sed -n '/@design {/,/^  }/p' %t | FileCheck %s
-// RUN: aie-opt --pass-pipeline="builtin.module(aie-materialize-runtime-sequences,aie-expand-load-pdi{ctrl-pkt=true})" %t | FileCheck %s --check-prefix=RELOAD
-
-// CHECK:      aie.switchbox(%mem_tile_0_1) {
-// CHECK:        aie.packet_rules(South : 3) {
-// CHECK:        } {aie.is_ctrl_pkt_overlay}
-// CHECK-NEXT:   aie.packet_rules(South : 5) {
-// CHECK-NEXT:     aie.rule(31, 5, %{{.+}}){{$}}
-// CHECK-NEXT:   }{{$}}
-// CHECK:      aie.switchbox(%shim_noc_tile_0_0) {
-// CHECK:        aie.packet_rules(South : 3) {
-// CHECK-NEXT:     aie.rule(24, 24, %{{.+}}) {aie.is_ctrl_pkt_overlay, aie.priority_route}
-// CHECK-NEXT:     aie.rule(31, 15, %{{.+}}) {aie.is_ctrl_pkt_overlay, aie.priority_route}
-// CHECK-NEXT:     aie.rule(31, 5, %{{.+}}) {aie.priority_route}
-// CHECK-NEXT:   }{{$}}
-// CHECK:      aie.switchbox(%tile_0_2) {
-// CHECK-NEXT:   %[[DMA:.+]] = aie.amsel<0> (0)
-// CHECK:        aie.masterset(DMA : 0, %[[DMA]]){{$}}
-// CHECK:        aie.packet_rules(South : 3) {
-// CHECK:        } {aie.is_ctrl_pkt_overlay}
-// CHECK-NEXT:   aie.packet_rules(South : 5) {
-// CHECK-NEXT:     aie.rule(31, 5, %[[DMA]]){{$}}
-// CHECK-NEXT:   }{{$}}
-
-// RELOAD: aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay
+// CHECK-LABEL: aie.device({{.*}}) @design
+// CHECK: aie.switchbox
+// CHECK: aie.is_ctrl_overlay
+// CHECK: overlay = @ctrl_pkt_overlay
+// CHECK-LABEL: aie.device({{.*}}) @ctrl_pkt_overlay
+// CHECK-NOT: aie.packet_flow
+// CHECK: aie.masterset(TileControl : 0,
+// CHECK-SAME: aie.is_ctrl_overlay
 
 module {
   aie.device(npu2) @main {

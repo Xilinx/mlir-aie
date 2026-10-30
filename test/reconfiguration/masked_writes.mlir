@@ -39,13 +39,13 @@ module {
     aie.shim_mux(%shim) {
       aie.connect<DMA : 1, North : 7>
     }
-  }
+  } {overlay = @ctrl_pkt_overlay}
   aie.device(npu2_1col) @mux_0 {
     %shim = aie.tile(0, 0)
     aie.shim_mux(%shim) {
       aie.connect<DMA : 0, North : 3>
     }
-  }
+  } {overlay = @ctrl_pkt_overlay}
   aie.device(npu2_1col) @main {
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aiex.npu.load_pdi { device_ref = @mux_1 }

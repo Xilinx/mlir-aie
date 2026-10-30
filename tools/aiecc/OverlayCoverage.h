@@ -5,11 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// The columns a control packet overlay covers. The router refuses a detour
-// through a column the overlay misses, so on a routing failure OverlayCoverage
-// covers the columns the design routes through without the overlay and reruns
-// overlay creation. CachedRouting reuses
-// its routed result.
+// Extend control-overlay coverage to any columns application routing uses.
+// CachedRouting reuses the successful trial routing.
 //
 //===----------------------------------------------------------------------===//
 
@@ -159,10 +156,11 @@ struct OverlayCoverage {
   // destinations).
   static std::set<int> coveredColumns(mlir::ModuleOp mod) {
     std::set<int> cols;
-    mod.walk([&](xilinx::AIE::PacketDestOp dest) {
-      if (dest.getBundle() == xilinx::AIE::WireBundle::TileControl)
-        if (auto tile = dest.getTile().getDefiningOp<xilinx::AIE::TileOp>())
-          cols.insert(tile.colIndex());
+    mod.walk([&](xilinx::AIE::MasterSetOp master) {
+      if (master.getDestBundle() == xilinx::AIE::WireBundle::TileControl &&
+          master->hasAttr("aie.is_ctrl_overlay"))
+        cols.insert(
+            master->getParentOfType<xilinx::AIE::SwitchboxOp>().colIndex());
     });
     return cols;
   }
@@ -247,6 +245,18 @@ struct OverlayCoverage {
         routingDiags = std::move(routing.diags);
       }
       if (routes) {
+        std::set<int> covered = coveredColumns(*trial);
+        bool grew = false;
+        for (const auto &[col, why] : configuredColumns(*routed))
+          if (!covered.count(col) && !llvm::is_contained(cover, col)) {
+            cover.push_back(col);
+            result.added.try_emplace(col, why);
+            grew = true;
+          }
+        if (grew) {
+          llvm::sort(cover);
+          continue;
+        }
         mlir::OwningOpRef<mlir::ModuleOp> chosen = copyInto(*trial, ctx);
         mlir::OwningOpRef<mlir::ModuleOp> routedHere = copyInto(*routed, ctx);
         if (chosen && routedHere) {
@@ -268,30 +278,7 @@ struct OverlayCoverage {
         result.diags = std::move(pipelineDiags);
       }
 
-      // Where the design routes when the overlay leaves every tile free.
-      mlir::OwningOpRef<mlir::ModuleOp> free(trial->clone());
-      free->walk([](xilinx::AIE::DeviceOp device) {
-        device->removeAttr("has_ctrl_pkt_overlay");
-      });
-      bool freeRoutes;
-      {
-        CapturedDiagnostics quiet(tctx, ctx);
-        freeRoutes =
-            mlir::succeeded(runPasses(*getRoutingPipeline(tctx), *free));
-      }
-      bool grew = false;
-      if (freeRoutes) {
-        std::set<int> covered = coveredColumns(*trial);
-        for (const auto &[col, why] : configuredColumns(*free))
-          if (!covered.count(col) && !llvm::is_contained(cover, col)) {
-            cover.push_back(col);
-            result.added.try_emplace(col, why);
-            grew = true;
-          }
-      }
-      if (!grew)
-        return result;
-      llvm::sort(cover);
+      return result;
     }
   }
 

@@ -19,7 +19,7 @@ module {
   }
   aie.device(npu2_1col) @design {
     %t = aie.tile(0, 0)
-  }
+  } {overlay = @ctrl_pkt_overlay}
   aie.device(npu2_1col) @main {
     // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<1xi32>)
     // CHECK:     aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay,
@@ -40,7 +40,7 @@ module {
   }
   aie.device(npu2_1col) @design {
     %t = aie.tile(0, 0)
-  }
+  } {overlay = @ctrl_pkt_overlay}
   aie.device(npu2_1col) @main {
     // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<1xi32>)
     // CHECK:     aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay,
@@ -64,7 +64,7 @@ module {
   }
   aie.device(npu2_1col) @design {
     %t = aie.tile(0, 0)
-  }
+  } {overlay = @ctrl_pkt_overlay}
   aie.device(npu2_1col) @main {
     // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<1xi32>)
     // CHECK:     aiex.npu.load_pdi {device_ref = @design, expand_mode = 0

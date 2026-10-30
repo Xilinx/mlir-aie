@@ -8,7 +8,7 @@
 // RUN: aie-opt %s -aie-ctrl-packet-to-dma -verify-diagnostics
 
 // A control packet to a column without a shim DMA allocation marked
-// is_ctrl_pkt_overlay has no channel to go through, whatever the column's
+// is_ctrl_overlay has no channel to go through, whatever the column's
 // allocations are named.
 
 aie.device(npu2) {

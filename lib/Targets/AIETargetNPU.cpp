@@ -403,7 +403,7 @@ LogicalResult TxnEncoder::encodeConfig(DeviceOp configured, bool teardown,
   builder.setInsertionPointToStart(scratch->getBody());
   auto holder =
       DeviceOp::create(builder, device.getLoc(), configured.getDevice(),
-                       configured.getSymName());
+                       configured.getSymName(), nullptr);
   holder.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(holder.getBodyRegion(), builder, device.getLoc());
   builder.setInsertionPointToStart(holder.getBody());

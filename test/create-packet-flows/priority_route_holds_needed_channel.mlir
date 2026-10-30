@@ -11,8 +11,7 @@
 // it reaches (0,1) over (1,2) and down from (0,2), but four circuit flows
 // need all four channels down from (0,2) to (0,1). Memtiles have no East or
 // West ports, so the packet goes down through the shims instead, over (1,0)
-// and (0,0) into (0,1) from the South. Without a control-packet reload, a
-// prioritized flow that cannot keep the route it takes alone routes like the
+// and (0,0) into (0,1) from the South. A prioritized flow that cannot keep the route it takes alone routes like the
 // others, so the first design routes as the second does, where the flow is
 // not prioritized.
 
@@ -86,7 +85,7 @@ module {
 
 // The control overlay goes up the column to every tile's TileControl, so it
 // takes one of the six channels up from (0,1) to (0,2) the six circuit flows
-// need, wherever a control-packet reload would let it go.
+// need, wherever it is routed.
 
 module {
   // expected-error@+1 {{Unable to find a legal routing: the circuit flows from (0, 1) DMA:0, (0, 1) DMA:1, (0, 1) DMA:2, (0, 1) DMA:3 and 2 more, with packet flows, cross from row 1 to row 2, which takes 7 channels across, and it has 6 channels.}}
@@ -104,5 +103,5 @@ module {
     aie.flow(%t_0_1, DMA : 4, %t_0_5, DMA : 0)
     aie.flow(%t_0_1, DMA : 5, %t_0_5, DMA : 1)
     aie.packet_flow(0) { aie.packet_source<%t_0_0, DMA : 0> aie.packet_dest<%t_0_0, TileControl : 0> aie.packet_dest<%t_0_1, TileControl : 0> aie.packet_dest<%t_0_2, TileControl : 0> aie.packet_dest<%t_0_3, TileControl : 0> aie.packet_dest<%t_0_4, TileControl : 0> aie.packet_dest<%t_0_5, TileControl : 0> } {priority_route = true}
-  } {has_ctrl_pkt_overlay = true}
+  }
 }

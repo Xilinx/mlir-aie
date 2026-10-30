@@ -88,6 +88,9 @@ createAIECoreIntRangeNarrowingPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options);
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options,
+                        llvm::ArrayRef<std::pair<TileID, Port>> avoidedPorts);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoUnrollPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoUnrollPass(const AIEObjectFifoUnrollOptions &options);
@@ -115,7 +118,7 @@ createAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLivenessPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIEControlOverlayAvoidDataPass();
+createAIEImportOverlayPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEGenerateColumnControlOverlayPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

@@ -9,12 +9,12 @@
 
 // priority_route_holds_needed_channel.mlir with the shim's control response.
 // Packet id 0 cannot keep the route it takes alone, so the prioritized flows
-// route like the others. The response route still carries the overlay
+// route like the others. The response route carries the priority
 // marker, so the overlay pass finds it routed and adds a response flow only
 // for the other shim.
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0)
-// CHECK:         aie.masterset(South : 0, %{{.*}}) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
+// CHECK:         aie.masterset(South : 0, %{{.*}}) {aie.priority_route, keep_pkt_header = true}
 // CHECK-NOT:     aie.packet_source<%shim_noc_tile_0_0, TileControl : 0>
 // CHECK:         aie.packet_flow(15) {
 // CHECK-NEXT:      aie.packet_source<%shim_noc_tile_1_0, TileControl : 0>

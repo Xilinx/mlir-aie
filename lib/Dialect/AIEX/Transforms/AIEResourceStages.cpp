@@ -51,6 +51,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
     options.coverColumns = llvm::to_vector(coverColumns);
     pm.addPass(createAIECreateControlOverlayPass(options));
   }
+  pm.addPass(createAIEImportOverlayPass());
   OpPassManager &dpm = pm.nest<DeviceOp>();
   dpm.addPass(createAIEAssignPacketIdsPass(packetSwObjFifos, ctrlPktOverlay));
   dpm.addPass(createAIEObjectFifoAllocatePass());

@@ -99,7 +99,13 @@ For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 `--load-pdi-to-ctrl-pkt` loads each configuration through a common
 `@ctrl_pkt_overlay` device. The module pass `aie-create-control-overlay` runs
 on placed endpoint and route IR before application allocation, after splitting
-any ObjectFIFOs. It chooses the overlay once across all configurations; channel sharing never relocates it.
+any ObjectFIFOs. It routes one standalone overlay across all configurations and attaches
+`overlay = @ctrl_pkt_overlay` references to its users. `aie-import-overlay`
+imports its routed switchboxes, wires, shim muxes and DMA reservations before
+application allocation. The application router treats them as fixed resources.
+`aie.is_ctrl_overlay` marks settings that application configuration and teardown
+must leave untouched; application rules can occupy free slots on shared inputs.
+Sharing an imported output masterset is not currently supported.
 
 - `--ctrlpkt-adaptive-overlay` (on by default) chooses shim channels around
   fixed application reservations and packet demand, and uses trial application
