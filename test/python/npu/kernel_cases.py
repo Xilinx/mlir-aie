@@ -321,6 +321,20 @@ CASES: list[Case] = [
         tag="span",
         smoke=True,
     ),
+    # Scale 0 gives a masked input the same 0 argument as a live one, so only
+    # zeroing its exponential keeps it out of the row.
+    *[
+        check(
+            "softmax",
+            dict(tile_size=32, span=True, scale=0.0, **kw),
+            scalars=bounds,
+            tag=f"span-{tag}",
+            devices=devices,
+            smoke=True,
+        )
+        for kw, devices in ((dict(accurate_exp2=True), ()), ({}, ("npu2",)))
+        for bounds, tag in (((0, 1), "one"), ((5, 27), "mid"))
+    ],
     Case(
         "softmax",
         dict(accurate_exp2=True),

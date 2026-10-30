@@ -505,9 +505,10 @@ def softmax(
             Finite and non-negative; 0 weighs every element alike.
         span: bf16 input only: ``softmax_span_bf16(x, y, n, lo, hi)`` in
             place of ``softmax_bf16``. ``lo``/``hi`` are per-call scalars
-            bounding the row's live span: ``[0, lo)`` and ``[hi, n)`` are
-            masked to zero after normalization, so a causal row gives only
-            ``hi`` short of ``n`` and a sliding window gives both.
+            bounding the row's live span: ``[0, lo)`` and ``[hi, n)`` come
+            out exactly 0 at any ``scale``, the span normalised alone, so a
+            causal row gives only ``hi`` short of ``n`` and a sliding window
+            gives both.
 
     Returns:
         ExternalFunction configured for the softmax kernel.
@@ -1703,16 +1704,20 @@ def softmax_ref(
 def softmax_span_ref(x, lo, hi, *, tile_size: int, scale: float | None = None):
     """Numpy reference for [`softmax`][aie.iron.kernels.activation.softmax]'s ``span`` path.
 
-    ``softmax_ref``, each row masked to its own ``[lo, hi)`` first with
-    bf16's most negative value, as the kernel's ``mask_head_bf16`` and
-    ``mask_bf16`` do. ``lo`` and ``hi`` are one bound for every row, as the
-    kernel's scalars, or one per row.
+    ``softmax_ref`` of each row's live ``[lo, hi)`` alone: ``scale *
+    logits`` there, and exactly 0 outside it at any scale, as the kernel
+    zeroes those exponentials. ``lo`` and ``hi`` are one bound for every
+    row, as the kernel's scalars, or one per row.
     """
-    rows = np.asarray(x).reshape(-1, tile_size)
+    logits = _softmax_logits(x, None, None, tile_size=tile_size, soft_cap=None)
+    if scale is not None:
+        logits = logits * scale
     cols = np.arange(tile_size)
     live = (cols >= np.reshape(lo, (-1, 1))) & (cols < np.reshape(hi, (-1, 1)))
-    masked = np.where(live, rows, finfo(bfloat16).min).astype(x.dtype)
-    return softmax_ref(masked.reshape(np.shape(x)), tile_size=tile_size, scale=scale)
+    peak = np.where(live, logits, -np.inf).max(axis=1, keepdims=True)
+    exp = np.exp(np.where(live, logits - peak, -np.inf))
+    out = exp / exp.sum(axis=1, keepdims=True)
+    return _rounded(out.reshape(np.shape(x)), x)
 
 
 def softmax_span_sample(rng, calls: int, *, tile_size: int) -> list:

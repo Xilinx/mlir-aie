@@ -1988,6 +1988,19 @@ def test_softmax_span_ref_agrees_with_a_masked_softmax_ref():
     assert np.array_equal(got, want)
 
 
+@pytest.mark.parametrize("scale", [0.0, 1e-37])
+def test_softmax_span_ref_drops_masked_elements_at_any_scale(scale):
+    # The span is applied after scaling. Masking the input to lowest first,
+    # scale 0 would weigh all 32 elements alike, and 1e-37 would leave the
+    # masked ones a weight of about 2^-49 each.
+    x = np.random.default_rng(3).standard_normal((2, 32)).astype(bfloat16)
+    lo, hi = np.array([0, 5]), np.array([1, 27])
+    got = softmax_span_ref(x, lo, hi, tile_size=32, scale=scale).astype(np.float32)
+    assert got[0, 0] == 1.0 and (got[0, 1:] == 0).all()
+    assert (got[1, :5] == 0).all() and (got[1, 27:] == 0).all()
+    assert np.allclose(got[1, 5:27], 1 / 22, rtol=2**-8)
+
+
 def test_softmax_rejects_scale_and_span_on_aie2_without_accurate_exp2():
     with set_current_device(NPU1Col1()):
         with pytest.raises(ValueError, match="softmax_aie2.h instead"):
