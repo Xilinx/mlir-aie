@@ -141,3 +141,50 @@ module @shared_channel {
     }
   }
 }
+
+// -----
+
+// CHECK-LABEL: @assume_space
+// CHECK: aie.objectfifo.release {assume_queue_space} @of_cons(1)
+// CHECK-NOT: aie.dma_poll_for_queue_space
+// CHECK: scf.if
+// CHECK-NEXT: aie.dma_push_queue(S2MM : 0) bd_id 0 {out_of_order, repeat_count = 255 : i32}
+// CHECK: aie.objectfifo.release @of_cons(1)
+// CHECK: scf.if
+// CHECK-NEXT: aie.dma_poll_for_queue_space(S2MM : 0)
+// CHECK-NEXT: aie.dma_push_queue(S2MM : 0)
+// NOCHECK-LABEL: @assume_space
+// NOCHECK-NOT: aie.dma_poll_for_queue_space
+// NOCHECK: aie.dma_push_queue(S2MM : 0)
+// NOCHECK-NOT: aie.dma_poll_for_queue_space
+// NOCHECK: aie.dma_push_queue(S2MM : 0)
+// NOCHECK-NOT: aie.dma_poll_for_queue_space
+module @assume_space {
+  aie.device(npu2) {
+    %tile_0_2 = aie.tile(0, 2)
+    %tile_0_5 = aie.tile(0, 5)
+    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, out_of_order} : !aie.objectfifo<memref<16xi32>>
+    %core_0_2 = aie.core(%tile_0_2) {
+      %c0 = arith.constant 0 : index
+      %c4 = arith.constant 4 : index
+      %c1 = arith.constant 1 : index
+      scf.for %arg0 = %c0 to %c4 step %c1 {
+        %1 = aie.objectfifo.acquire @of(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @of(Produce, 1)
+      }
+      aie.end
+    }
+    %core_0_5 = aie.core(%tile_0_5) {
+      %c0 = arith.constant 0 : index
+      %c4 = arith.constant 4 : index
+      %c1 = arith.constant 1 : index
+      scf.for %arg0 = %c0 to %c4 step %c1 {
+        %1 = aie.objectfifo.acquire @of(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release {assume_queue_space} @of(Consume, 1)
+        %next = aie.objectfifo.acquire @of(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @of(Consume, 1)
+      }
+      aie.end
+    }
+  }
+}

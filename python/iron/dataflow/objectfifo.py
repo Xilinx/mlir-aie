@@ -574,10 +574,12 @@ class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
         self,
         port: ObjectFifoPort,
         num_elem: int,
+        *,
+        assume_queue_space: bool = False,
     ):
         if num_elem < 1:
             raise ValueError("Must produce at least one element")
-        self.op.release(port, num_elem)
+        self.op.release(port, num_elem, assume_queue_space=assume_queue_space)
 
 
 class ObjectFifoHandle(PerDeviceConfigurationResolvable):
@@ -665,11 +667,19 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     def release(
         self,
         num_elem: int,
+        *,
+        assume_queue_space: bool = False,
     ) -> None:
         """Release access to some elements of the ObjectFifo, allowing the other endpoint of the ObjectFifo to acquire them.
 
         Args:
             num_elem (int): Number of elements to release.
+            assume_queue_space (bool): Assert that every DMA queue push generated
+                by this release has room, omitting its queue-space polling.
+                Applies to sending tasks and out-of-order receive replenishment.
+                Buffer synchronization and the pushes remain. The programmer
+                must guarantee room on every execution; a full queue can discard
+                a task and prevent progress. Defaults to False.
 
         Raises:
             ValueError: Number of elements cannot exceed ObjectFifo depth.
@@ -678,7 +688,9 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             raise ValueError(
                 f"Number of elements to release {num_elem} must be smaller than depth {self._depth}"
             )
-        self._object_fifo._release(self._fifo_port, num_elem)
+        self._object_fifo._release(
+            self._fifo_port, num_elem, assume_queue_space=assume_queue_space
+        )
 
     @property
     def name(self) -> str | None:

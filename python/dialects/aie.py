@@ -909,8 +909,14 @@ class object_fifo(ObjectFifoCreateOp):
             return acq.objects[0]
         return list(acq.objects)
 
-    def release(self, port, num_elem):
-        return objectfifo_release(self.sym_name.value, num_elem, port=port)
+    def release(self, port, num_elem, *, assume_queue_space: bool = False):
+        """Release objects, optionally asserting room for all generated DMA pushes."""
+        return objectfifo_release(
+            self.sym_name.value,
+            num_elem,
+            port=port,
+            assume_queue_space=assume_queue_space,
+        )
 
     def register_external_buffers(self, tile, external_buffers):
         return objectfifo_register_external_buffers(

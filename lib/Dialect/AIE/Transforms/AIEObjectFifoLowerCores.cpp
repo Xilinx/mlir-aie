@@ -19,6 +19,8 @@
 #include "mlir/Transforms/Mem2Reg.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
+#include "llvm/ADT/DenseSet.h"
+
 #include <numeric>
 
 using namespace mlir;
@@ -146,6 +148,9 @@ struct LoweringContext {
   /// The slot a core-pushed endpoint releases next, where the core pushes the
   /// descriptor of each object it releases.
   DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> sendSlot{};
+  /// Maximum outstanding objects across all pools sharing a tile's MM2S
+  /// queue. S2MM queues are independent and do not participate in this bound.
+  DenseMap<std::pair<Value, int>, int64_t> sendQueueObjects{};
   bool sawError = false;
 
   ObjectFifoCoreEndpointOp endpointOf(Operation *op, StringRef name) {
@@ -196,7 +201,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
   /// descriptors, so an object the core does not push is never sent.
   void emitSendPushes(PatternRewriter &rewriter, Location loc, CoreOp core,
                       ObjectFifoCoreEndpointOp endpoint, ObjectFifoPoolOp pool,
-                      int size) const {
+                      int size, bool assumeQueueSpace) const {
     std::optional<ArrayRef<int32_t>> tags = pool.getSendTags();
     if (!tags || endpoint.drains())
       return;
@@ -218,12 +223,13 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
       ctx.sendSlot[key] = slot;
     }
 
-    // One push per object, so the queue holds at most as many tasks as the
-    // pool holds objects: the core cannot run ahead of a lock it has not got
-    // back. A deeper pool than the queue holds needs the wait.
+    // A pool's locks bound its outstanding tasks, but all pools on this
+    // channel contribute to the same queue. Poll unless their combined bound
+    // fits in the hardware queue.
     bool waitForRoom =
-        depth > static_cast<int>(
-                    ctx.device.getTargetModel().getDmaTaskQueueDepth());
+        !assumeQueueSpace &&
+        ctx.sendQueueObjects.lookup({core.getTile(), *channel}) >
+            ctx.device.getTargetModel().getDmaTaskQueueDepth();
     Value current =
         memref::LoadOp::create(rewriter, loc, slot.getResult(), ValueRange{});
     Value depthValue = arith::ConstantIndexOp::create(rewriter, loc, depth);
@@ -318,7 +324,8 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
                               ValueRange{});
     }
 
-    emitSendPushes(rewriter, loc, core, endpoint, pool, releaseOp.getSize());
+    emitSendPushes(rewriter, loc, core, endpoint, pool, releaseOp.getSize(),
+                   releaseOp.getAssumeQueueSpace());
 
     if (index) {
       emitAdvanceObjectIndex(rewriter, loc, index.getResult(), pool.getDepth(),
@@ -632,6 +639,19 @@ struct AIEObjectFifoLowerCoresPass
 
     LoweringContext ctx{device, device.getTargetModel().hasProperty(
                                     AIETargetModel::UsesSemaphoreLocks)};
+
+    // Count each sending pool once, even when several core endpoints name
+    // its segments. The core endpoint identifies the tile issuing the push;
+    // the pool's buffers may reside in a neighbouring tile's memory.
+    llvm::DenseSet<std::pair<Value, Operation *>> countedSendPools;
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      if (endpoint.drains() || !pool.getSendTags())
+        continue;
+      std::optional<int32_t> channel = pool.getSendChannel();
+      if (channel && countedSendPools.insert({endpoint.getTile(), pool}).second)
+        ctx.sendQueueObjects[{endpoint.getTile(), *channel}] += pool.getDepth();
+    }
 
     annotateUnrollHints(device, ctx, builder);
     for (auto coreOp : device.getOps<CoreOp>()) {
