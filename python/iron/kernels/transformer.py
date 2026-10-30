@@ -121,7 +121,7 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
     """Row-wise LayerNorm on float32 in and out (gamma = 1, beta = 0, eps 1e-5).
 
     A separate factory rather than a dtype of
-    [`layer_norm`][iron.kernels.norm.layer_norm]: this one is held to atol 2e-6
+    [`layer_norm`][aie.iron.kernels.norm.layer_norm]: this one is held to atol 2e-6
     (1e-3 in the portable build) instead of the bf16 tolerance, which its
     reference meets only by computing the variance two-pass in float64.
     Merging them would put that numerical difference behind a dtype switch.
@@ -240,7 +240,7 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
 
 
 def layer_norm_f32_ref(x):
-    """Numpy reference for [`layer_norm_f32`][iron.kernels.transformer.layer_norm_f32].
+    """Numpy reference for [`layer_norm_f32`][aie.iron.kernels.transformer.layer_norm_f32].
 
     Centered two-pass variance in float64 so it stays exact on the
     non-zero-mean input the f32 kernel is exercised with.
@@ -252,7 +252,7 @@ def layer_norm_f32_ref(x):
 
 
 def layer_norm_affine_cast_ref(x, gamma_beta):
-    """Numpy reference for [`layer_norm_affine_cast`][iron.kernels.transformer.layer_norm_affine_cast].
+    """Numpy reference for [`layer_norm_affine_cast`][aie.iron.kernels.transformer.layer_norm_affine_cast].
 
     ``gamma_beta`` is ``gamma`` then ``beta``, each ``cols`` float32 values.
     """
@@ -266,7 +266,7 @@ def layer_norm_affine_cast_ref(x, gamma_beta):
 
 
 def mm_activation_epilogue_ref(x, mode):
-    """Numpy reference for [`mm_activation_epilogue`][iron.kernels.transformer.mm_activation_epilogue].
+    """Numpy reference for [`mm_activation_epilogue`][aie.iron.kernels.transformer.mm_activation_epilogue].
 
     ``mode`` 0 identity, 1 ``x * sigmoid(x)``, 2 tanh-approximation GELU,
     3 ``max(x, 0)``.
@@ -290,10 +290,10 @@ def mm_activation_epilogue_ref(x, mode):
 
 
 def mm_activation_epilogue_lut_ref(x, mode):
-    """Model of [`mm_activation_epilogue`][iron.kernels.transformer.mm_activation_epilogue] on aie2.
+    """Model of [`mm_activation_epilogue`][aie.iron.kernels.transformer.mm_activation_epilogue] on aie2.
 
     Follows mm_activation_epilogue.cc's roundings around getTanhBf16
-    ([`tanh_lut_ref`][iron.kernels.activation.tanh_lut_ref]). SiLU splits
+    ([`tanh_lut_ref`][aie.iron.kernels.activation.tanh_lut_ref]). SiLU splits
     ``x`` into ``hi``, its top 16 bits, and ``lo``, ``bf16(x - hi)``, and
     multiplies each by the bf16 sigmoid ``(bf16(t + 1)) / 2``, where ``t`` is
     the table's tanh of ``bf16(x) / 2`` narrowed to bf16. ``hi`` is finite for

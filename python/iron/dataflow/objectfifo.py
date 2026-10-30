@@ -90,11 +90,11 @@ def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
 
 
 class ObjectFifo(PerDeviceConfigurationResolvable):
-    """A synchronized, explicit dataflow channel between IRON program components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
+    """A synchronized, explicit dataflow channel between IRON program components such as [`Worker`][aie.iron.Worker]s and the [`Runtime`][aie.iron.Runtime].
 
     Internally, an ObjectFifo is a circular buffer with a given depth and
     element type. Its users are explicitly either a *producer* or a
-    *consumer*, and each user holds an [`ObjectFifoHandle`][iron.dataflow.objectfifo.ObjectFifoHandle]
+    *consumer*, and each user holds an [`ObjectFifoHandle`][aie.iron.dataflow.objectfifo.ObjectFifoHandle]
     carrying its (possibly unplaced) tile.
 
     Example:
@@ -169,8 +169,8 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 ``Packet(id=7)`` pins the 5-bit header for designs that route on it. None
                 leaves the choice to the lowering, which is the same as ``Transport.auto()``.
                 What drives each end, a DMA channel or a core stream port, is the ``port``
-                of [`prod`][iron.dataflow.objectfifo.ObjectFifo.prod] and
-                [`cons`][iron.dataflow.objectfifo.ObjectFifo.cons].
+                of [`prod`][aie.iron.dataflow.objectfifo.ObjectFifo.prod] and
+                [`cons`][aie.iron.dataflow.objectfifo.ObjectFifo.cons].
                 Lowers to the ``transport`` attribute on the underlying ``aie.objectfifo`` op.
                 Defaults to None.
             init_values (list[np.ndarray] | None, optional): Per-buffer static initial values
@@ -576,14 +576,14 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
 
 
 class ObjectFifoHandle(PerDeviceConfigurationResolvable):
-    """A handle to an [`ObjectFifo`][iron.ObjectFifo], of type *producer* or *consumer*.
+    """A handle to an [`ObjectFifo`][aie.iron.ObjectFifo], of type *producer* or *consumer*.
 
-    Producer and consumer handles are what [`Worker`][iron.Worker] core
-    functions call [`acquire`][iron.dataflow.objectfifo.ObjectFifoHandle.acquire]
-    and [`release`][iron.dataflow.objectfifo.ObjectFifoHandle.release] on to
+    Producer and consumer handles are what [`Worker`][aie.iron.Worker] core
+    functions call [`acquire`][aie.iron.dataflow.objectfifo.ObjectFifoHandle.acquire]
+    and [`release`][aie.iron.dataflow.objectfifo.ObjectFifoHandle.release] on to
     move data through the fifo. Obtain them via
-    [`ObjectFifo.prod()`][iron.dataflow.objectfifo.ObjectFifo.prod] and
-    [`ObjectFifo.cons()`][iron.dataflow.objectfifo.ObjectFifo.cons].
+    [`ObjectFifo.prod()`][aie.iron.dataflow.objectfifo.ObjectFifo.prod] and
+    [`ObjectFifo.cons()`][aie.iron.dataflow.objectfifo.ObjectFifo.cons].
     """
 
     def __init__(
@@ -765,7 +765,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
 
         Bind the shim endpoint, register the fifo with the active runtime
         sequence, then emit the transfer on the shim allocation this fifo's name
-        declares. Returns a [`Task`][iron.runtime.dmataskhandle.Task] handle to
+        declares. Returns a [`Task`][aie.iron.runtime.dmataskhandle.Task] handle to
         the transfer (carry it as a ``range_`` iter_arg;
         ``.free()``/``.await_()`` it). See ``emit_shim_transfer`` for the
         arguments.
@@ -813,9 +813,9 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
 
-        Call from within a [`Runtime`][iron.Runtime] sequence body on a producer
+        Call from within a [`Runtime`][aie.iron.Runtime] sequence body on a producer
         handle. See ``_emit_transfer`` for the shared arguments; returns a
-        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
+        [`Task`][aie.iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
@@ -848,9 +848,9 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     ):
         """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.
 
-        Call from within a [`Runtime`][iron.Runtime] sequence body on a consumer
+        Call from within a [`Runtime`][aie.iron.Runtime] sequence body on a consumer
         handle. See ``_emit_transfer`` for the shared arguments; returns a
-        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
+        [`Task`][aie.iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         if self._is_prod:
             raise ValueError("drain() is only valid on a consumer ObjectFifoHandle")

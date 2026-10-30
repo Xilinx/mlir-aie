@@ -39,7 +39,7 @@ Submodules:
 - `tables` — exp_lut, silu_lut and the C headers that compile them into a kernel
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, dwconv1d, dwconv1d_channels_first, dwconv1d_channels_last, bn_*
 
-Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
+Every factory attaches a [`KernelContract`][aie.iron.kernels.KernelContract] as
 ``.contract``: the role of each argument (``In``, ``Out``, ``InOut``,
 ``Param``), a numpy reference, a tolerance and the dtype facts a signature
 cannot say. A kernel whose arithmetic differs by ``Build`` declares the

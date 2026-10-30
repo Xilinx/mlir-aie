@@ -229,19 +229,19 @@ GEMM's `tests/dispatch_txn.py` are complete examples.
 
 ## API reference
 
-::: helpers.taplib.tap.TensorAccessPattern
+::: aie.helpers.taplib.tap.TensorAccessPattern
     options:
       show_root_heading: true
       heading_level: 3
 
 ### Utilities
 
-::: helpers.taplib.utils
+::: aie.helpers.taplib.utils
     options:
       show_root_heading: false
 
 ### Instruction-stream tracing
 
-::: utils.txn_trace
+::: aie.utils.txn_trace
     options:
       show_root_heading: false

@@ -43,7 +43,7 @@ _BF16_ROUNDTRIP = Tolerance.bf16_ulps(
 
 
 def axpy_ref(x, y, a):
-    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
+    """Numpy reference for [`axpy`][aie.iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
 
     The kernel broadcasts ``a`` as bf16, so it is rounded to bf16 here.
     """
@@ -52,7 +52,7 @@ def axpy_ref(x, y, a):
 
 
 def convert_copy_ref(x):
-    """Numpy reference for [`convert_copy`][iron.kernels.datamovement.convert_copy].
+    """Numpy reference for [`convert_copy`][aie.iron.kernels.datamovement.convert_copy].
 
     ``ml_dtypes`` rounds f32 -> bf16 half-to-even, exactly as the kernel's
     ``conv_even`` does, so the cast is the reference and the match is
@@ -62,7 +62,7 @@ def convert_copy_ref(x):
 
 
 def affine_cast_ref(x, gamma_beta):
-    """Numpy reference for [`affine_cast`][iron.kernels.datamovement.affine_cast].
+    """Numpy reference for [`affine_cast`][aie.iron.kernels.datamovement.affine_cast].
 
     ``gamma_beta`` is ``gamma`` then ``beta``, ``cols`` float32 values each;
     ``x`` is row-major with ``cols`` per row. The multiply and add round in
@@ -76,7 +76,7 @@ def affine_cast_ref(x, gamma_beta):
 
 
 def expand_ref(payload, *, tile_size: int, group_size: int):
-    """Numpy reference for [`expand`][iron.kernels.datamovement.expand].
+    """Numpy reference for [`expand`][aie.iron.kernels.datamovement.expand].
 
     ``payload`` holds, per tile, ``tile_size`` packed uint4 values
     (``tile_size // 2`` bytes, low nibble first) followed by one bf16 scale per
@@ -104,7 +104,7 @@ def expand_sample(rng, calls: int, *, tile_size: int, group_size: int) -> list:
 
 
 def transpose_ref(x, *, dim_m: int, dim_n: int, subtile: int):
-    """Numpy reference for [`transpose`][iron.kernels.datamovement.transpose].
+    """Numpy reference for [`transpose`][aie.iron.kernels.datamovement.transpose].
 
     Transposes each ``subtile`` x ``subtile`` block of the ``dim_n`` x ``dim_m``
     matrix in place -- the blocks move, the matrix does not.
@@ -227,7 +227,7 @@ def limbs_f32_split(x):
 
 
 def limbs_f32_ref(x):
-    """Numpy reference for [`limbs_f32`][iron.kernels.datamovement.limbs_f32].
+    """Numpy reference for [`limbs_f32`][aie.iron.kernels.datamovement.limbs_f32].
 
     The six planes ``(hi, mid, hi, lo, mid, hi)`` of each call's limbs,
     concatenated along the last axis.
@@ -277,7 +277,7 @@ def limbs_f32(tile_size: int = 320) -> ExternalFunction:
 
     Takes ``(x, y, size)``: ``tile_size`` float32 in, ``6 * tile_size`` bf16
     out. Each element splits exactly into ``hi + mid + lo``
-    ([`limbs_f32_split`][iron.kernels.datamovement.limbs_f32_split]), and
+    ([`limbs_f32_split`][aie.iron.kernels.datamovement.limbs_f32_split]), and
     ``y`` holds the planes ``(hi, mid, hi, lo, mid, hi)``, ``tile_size``
     each. A bf16 matmul of those planes against a second operand's limbs
     stacked ``(hi, hi, mid, hi, mid, lo)`` along K sums the six largest of a
@@ -330,7 +330,7 @@ def affine_cast(rows: int = 96, cols: int = 32) -> ExternalFunction:
     Works on a row-major ``rows`` x ``cols`` float32 tile; ``gamma`` and
     ``beta`` hold one float32 value per column and arrive packed in one
     ``2 * cols`` buffer, ``gamma`` first. The bf16 store rounds with
-    ``conv_even``, as [`convert_copy`][iron.kernels.datamovement.convert_copy]
+    ``conv_even``, as [`convert_copy`][aie.iron.kernels.datamovement.convert_copy]
     does, and the kernel restores the core's rounding mode on exit.
 
     Args:
@@ -433,7 +433,7 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
 def merge_rows_ref(
     ids, *, audio_token: int, image_token: int, audio_at: int, vision_at: int
 ):
-    """Numpy reference for [`merge_rows`][iron.kernels.datamovement.merge_rows].
+    """Numpy reference for [`merge_rows`][aie.iron.kernels.datamovement.merge_rows].
 
     ``ids`` is ``(calls, block)``, block ``b`` of one sequence per call: the
     j-th ``audio_token`` of the sequence takes row ``audio_at + j``, the j-th
@@ -546,7 +546,7 @@ def merge_rows(
 def patch_positions_ref(
     count, ho, wo, *, block: int, side: int, pool: int, positions: int, cores: int
 ):
-    """Numpy reference for [`patch_positions`][iron.kernels.datamovement.patch_positions].
+    """Numpy reference for [`patch_positions`][aie.iron.kernels.datamovement.patch_positions].
 
     Returns ``(count, 5 * block)``, one record per block: ``xy`` (``2 * block``),
     the x positions, the y positions plus ``positions``, and the raster rows.
@@ -721,7 +721,7 @@ def rope_ref(x, lut, *, two_halves: bool = False):
 def row_addresses_ref(
     ids, lo, hi, *, table_rows: int, row_bytes: int, low_bits: int, aperture: int
 ):
-    """Numpy reference for [`row_addresses`][iron.kernels.datamovement.row_addresses].
+    """Numpy reference for [`row_addresses`][aie.iron.kernels.datamovement.row_addresses].
 
     The table sits at ``(hi << low_bits) + lo``, each word read as unsigned; an
     id past the table is clipped to its first or last row and a negative one

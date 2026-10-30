@@ -5,19 +5,19 @@
 #
 """IRON-level circuit- and packet-switched route primitives.
 
-Two classes live here: [`Flow`][iron.Flow] (circuit-switched) and
-[`PacketFlow`][iron.PacketFlow] (packet-switched, with explicit packet IDs),
-plus the small [`PacketDest`][iron.PacketDest] dataclass PacketFlow uses for
-its destination list, and [`FlowEndpoint`][iron.FlowEndpoint], one end of a
+Two classes live here: [`Flow`][aie.iron.Flow] (circuit-switched) and
+[`PacketFlow`][aie.iron.PacketFlow] (packet-switched, with explicit packet IDs),
+plus the small [`PacketDest`][aie.iron.PacketDest] dataclass PacketFlow uses for
+its destination list, and [`FlowEndpoint`][aie.iron.FlowEndpoint], one end of a
 Flow as the DMA on that end's tile sees it. Flow and PacketFlow share how they
 name their ends and how the runtime sequence fills or drains a shim end.
 
-Both are peers of [`ObjectFifo`][iron.ObjectFifo] in the dataflow namespace.
+Both are peers of [`ObjectFifo`][aie.iron.ObjectFifo] in the dataflow namespace.
 ObjectFifo wraps *route + buffers + locks + DMA* into one
 circular-buffer abstraction; `Flow` / `PacketFlow` are the
 lower-level "just declare the route" primitives, paired with explicit
-[`TileDma`][iron.TileDma] programs (and [`Buffer`][iron.Buffer] /
-[`Lock`][iron.Lock] shared state) for designs that need direct control.
+[`TileDma`][aie.iron.TileDma] programs (and [`Buffer`][aie.iron.Buffer] /
+[`Lock`][aie.iron.Lock] shared state) for designs that need direct control.
 """
 
 from dataclasses import dataclass
@@ -138,9 +138,9 @@ class _Route(PerDeviceConfigurationResolvable):
     def endpoint(self, tile: Tile) -> "FlowEndpoint":
         """Return this route's end on ``tile``.
 
-        Pass it as a [`DmaChannel`][iron.DmaChannel]'s ``channel``, or build a
+        Pass it as a [`DmaChannel`][aie.iron.DmaChannel]'s ``channel``, or build a
         runtime-sequence task on it with
-        [`task`][iron.dataflow.tile_dma.DmaEndpoint.task]. Its channel is the
+        [`task`][aie.iron.dataflow.tile_dma.DmaEndpoint.task]. Its channel is the
         one given to the route, or else the one the compiler assigns. An end
         that shares another route's channel returns that route's end, so one
         channel is one endpoint.
@@ -294,10 +294,10 @@ class _Route(PerDeviceConfigurationResolvable):
     def drain(self, dest, **kwargs):
         """Receive data from this route into the ``dest`` runtime buffer.
 
-        Call from within a [`Runtime`][iron.Runtime] sequence body, on a route
+        Call from within a [`Runtime`][aie.iron.Runtime] sequence body, on a route
         whose one destination is a shim tile; the source may be a shim too. See
         ``emit_shim_transfer`` for the keyword arguments; returns a
-        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
+        [`Task`][aie.iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         return self._transfer(dest, DMAChannelDir.S2MM, **kwargs)
 
@@ -305,15 +305,15 @@ class _Route(PerDeviceConfigurationResolvable):
 class FlowEndpoint(DmaEndpoint):
     """One end of a Flow or PacketFlow, seen from the DMA on that end's tile.
 
-    Obtained from [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint] or
-    [`PacketFlow.endpoint`][iron.dataflow.flow.PacketFlow.endpoint]. The end
+    Obtained from [`Flow.endpoint`][aie.iron.dataflow.flow.Flow.endpoint] or
+    [`PacketFlow.endpoint`][aie.iron.dataflow.flow.PacketFlow.endpoint]. The end
     knows its tile, its direction (MM2S at the source, S2MM at a destination)
     and its channel: the one the route gives, or else the one the compiler
-    assigns. Like any [`DmaEndpoint`][iron.DmaEndpoint] it stands in for a
-    [`DmaChannel`][iron.DmaChannel]'s ``channel`` and builds runtime-sequence
-    tasks with [`task`][iron.dataflow.tile_dma.DmaEndpoint.task].
+    assigns. Like any [`DmaEndpoint`][aie.iron.DmaEndpoint] it stands in for a
+    [`DmaChannel`][aie.iron.DmaChannel]'s ``channel`` and builds runtime-sequence
+    tasks with [`task`][aie.iron.dataflow.tile_dma.DmaEndpoint.task].
 
-    It is not an [`ObjectFifo`][iron.ObjectFifo] endpoint: those are the
+    It is not an [`ObjectFifo`][aie.iron.ObjectFifo] endpoint: those are the
     Workers and runtime a fifo attaches to and places, whereas this names one
     DMA channel of a route between tiles the design already has.
     """
@@ -331,7 +331,7 @@ class FlowEndpoint(DmaEndpoint):
     def sync(self) -> None:
         """Wait until this end's tasks have issued their completion tokens.
 
-        Called in a [`Runtime`][iron.Runtime] sequence body, as
+        Called in a [`Runtime`][aie.iron.Runtime] sequence body, as
         ``DmaEndpoint.sync`` is.
 
         A shim end the sequence waits on is driven at run time, so it gets its
@@ -376,12 +376,12 @@ class Flow(_Route):
     Connects ``(src_tile, src_port, src_channel)`` to
     ``(dst_tile, dst_port, dst_channel)``. With both channels given, it lowers
     to a single `aie.flow` op, and the user arranges matching
-    [`TileDma`][iron.TileDma] channels on the producer and consumer ends.
+    [`TileDma`][aie.iron.TileDma] channels on the producer and consumer ends.
 
     A channel left as ``None`` (the default) is assigned by the compiler: the
     Flow then lowers to one ``aie.route_endpoint`` per end and an
     ``aie.route``, and a DMA program reaches an end through
-    [`endpoint`][iron.dataflow.flow.Flow.endpoint] rather than an index. That is
+    [`endpoint`][aie.iron.dataflow.flow.Flow.endpoint] rather than an index. That is
     also how a list of destinations (a circuit-switched broadcast) lowers.
     """
 
@@ -491,10 +491,10 @@ class Flow(_Route):
     def fill(self, source, **kwargs):
         """Send data from the ``source`` runtime buffer into this route.
 
-        Call from within a [`Runtime`][iron.Runtime] sequence body, on a Flow
+        Call from within a [`Runtime`][aie.iron.Runtime] sequence body, on a Flow
         whose source is a shim tile; a destination may be a shim too. See
         ``emit_shim_transfer`` for the keyword arguments; returns a
-        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
+        [`Task`][aie.iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         return self._transfer(source, DMAChannelDir.MM2S, **kwargs)
 
@@ -529,7 +529,7 @@ class Flow(_Route):
 
 @dataclass
 class PacketDest:
-    """One destination endpoint of a [`PacketFlow`][iron.PacketFlow].
+    """One destination endpoint of a [`PacketFlow`][aie.iron.PacketFlow].
 
     Held as a small dataclass so the PacketFlow constructor's destination list
     reads cleanly when there are multiple sinks (uncommon, but the underlying op
@@ -546,14 +546,14 @@ class PacketFlow(_Route):
 
     Connects ``(src_tile, src_port, src_channel)`` to each destination
     endpoint, tagging the stream with `pkt_id`. The user arranges matching
-    [`TileDma`][iron.TileDma] channels on the producer and consumer ends, which
-    [`endpoint`][iron.dataflow.flow.PacketFlow.endpoint] names.
+    [`TileDma`][aie.iron.TileDma] channels on the producer and consumer ends, which
+    [`endpoint`][aie.iron.dataflow.flow.PacketFlow.endpoint] names.
 
     Each end's channel is an index, ``None`` for the compiler to assign, or
     another PacketFlow's end on the same tile and side, whose channel this end
     then shares: several flows merging into one receiving channel, or one
     channel sending several ids. With every channel an index it lowers to one
-    `aie.packet_flow`; otherwise to an `aie.route` as a [`Flow`][iron.Flow]
+    `aie.packet_flow`; otherwise to an `aie.route` as a [`Flow`][aie.iron.Flow]
     does.
     """
 
@@ -581,22 +581,22 @@ class PacketFlow(_Route):
                 ID for downstream routing).
             src: Source tile.
             dst: Primary destination tile.
-            src_port: Source port bundle (as for [`Flow`][iron.Flow]).
+            src_port: Source port bundle (as for [`Flow`][aie.iron.Flow]).
             src_channel: Source channel: an index (default 0), ``None`` for
                 the compiler to assign, or another PacketFlow's source end on
                 ``src`` to share.
-            dst_port: Destination port bundle (as for [`Flow`][iron.Flow]).
+            dst_port: Destination port bundle (as for [`Flow`][aie.iron.Flow]).
             dst_channel: Destination channel, as ``src_channel`` is, sharing
                 another PacketFlow's destination end on ``dst``.
             extra_dsts: Additional destination endpoints if this packet needs
-                to fan out. Each is a [`PacketDest`][iron.PacketDest].
+                to fan out. Each is a [`PacketDest`][aie.iron.PacketDest].
             keep_pkt_header: If `True`, downstream tile receives the 4-byte
                 packet header alongside the payload (useful when the receiver
                 needs to re-emit with the same pkt_id). Defaults to `False`.
-            shim_symbol: Same meaning as on [`Flow`][iron.Flow] — emit a
+            shim_symbol: Same meaning as on [`Flow`][aie.iron.Flow] — emit a
                 matching `aie.shim_dma_allocation` of that name at the shim
                 source, else at the one shim destination.
-            name: Same meaning as on [`Flow`][iron.Flow]; left ``None``, it is
+            name: Same meaning as on [`Flow`][aie.iron.Flow]; left ``None``, it is
                 named ``packetflow{n}``.
         """
         self._site = SourceSite.capture()
@@ -655,12 +655,12 @@ class PacketFlow(_Route):
     def fill(self, source, pkt_type: int = 0, **kwargs):
         """Send data from the ``source`` runtime buffer into this route.
 
-        Call from within a [`Runtime`][iron.Runtime] sequence body, on a
+        Call from within a [`Runtime`][aie.iron.Runtime] sequence body, on a
         PacketFlow whose src is a shim tile. The shim stamps every packet with
         ``pkt_type`` and this route's ``pkt_id``, so several PacketFlows leaving
         one shim channel each fill their own route. See ``emit_shim_transfer``
         for the keyword arguments; returns a
-        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
+        [`Task`][aie.iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         return self._transfer(
             source, DMAChannelDir.MM2S, packet=(pkt_type, self._pkt_id), **kwargs
