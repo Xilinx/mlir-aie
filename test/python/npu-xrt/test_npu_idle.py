@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# RUN: %run_on_npu2% %pytest %s
+# RUN: env AIE_NPU_EXCLUSIVE_DEVICE=1 %run_on_npu2% %pytest %s
 # REQUIRES: xrt_python_bindings, system-linux
 
 """On-device test that a measurement waits out another process on the NPU.
@@ -12,6 +12,9 @@ A second process runs a copy on the NPU, keeps its context for ``HOLD``
 seconds and exits. ``xrt-smi`` reports its pid while it holds the context, so
 ``other_npu_users`` names it, ``wait_idle`` returns once it is gone, and
 ``run_interleaved(idle=True)`` times nothing until then.
+
+The device is taken whole (AIE_NPU_EXCLUSIVE_DEVICE), since another test's
+context would be one more NPU user for ``wait_idle`` to wait out.
 """
 
 import argparse
