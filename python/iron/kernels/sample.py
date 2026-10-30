@@ -261,7 +261,9 @@ def sample_select(
         _kernel_source("sample/sample_select.cc"),
         arg_types,
         compile_flags=compile_flags,
-        contract=KernelContract(trace=Trace.whole_call(), roles=tuple(roles)),
+        contract=KernelContract(
+            trace=Trace.whole_call(), roles=tuple(roles), ops_per_call=0
+        ),
     )
 
 
@@ -342,7 +344,9 @@ def sample_combine(
         _kernel_source("sample/sample_combine.cc"),
         arg_types,
         compile_flags=compile_flags,
-        contract=KernelContract(trace=Trace.whole_call(), roles=tuple(roles)),
+        contract=KernelContract(
+            trace=Trace.whole_call(), roles=tuple(roles), ops_per_call=0
+        ),
     )
 
 

@@ -46,6 +46,7 @@ import pytest
 import aie.iron as iron
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
+from aie.iron.kernels import sample
 from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
 from aie.utils.compile.readobj import linked
@@ -54,9 +55,11 @@ from aie.utils.trace import TraceConfig
 from aie.utils.trace.utils import get_cycles_summary
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
+from ml_dtypes import bfloat16
 from nms_design import build_case as nms_build_case
 from nms_design import nms_detect
 from nms_design import realistic_pyramid as nms_realistic_pyramid
+from sample_design import sample_positions
 
 # Bump with any change to how a published metric is taken: publish.py and the
 # page compare a series only within one measurement.
@@ -494,6 +497,160 @@ def test_nms_cycles(request, record_perf, workdir):
         m["cycles"] = kd.CallCycles(kernel=tuple(durations[:calls]))
         m["trace_size"] = trace_size
     _record(record_perf, NMS_CASE, m, meta)
+
+
+# sample_select/sample_combine only make sense together (NOT_JUDGED: the
+# generic builder cannot draw sample_combine's own summaries), but each
+# runs on its own core, so -- unlike resize_rows's single-core take/emit --
+# a traced run's streams never interleave: select's calls and combine's are
+# labeled by core (get_cycles_summary groups by tile), not by position in
+# one shared stream.
+SAMPLE_VOCAB, SAMPLE_CORES, SAMPLE_CHUNK, SAMPLE_K_MAX = 128256, 4, 5344, 64
+SAMPLE_POSITIONS = 8
+SAMPLE_SELECT_CASE = Case(
+    "sample_select",
+    dict(
+        slice_size=SAMPLE_VOCAB // SAMPLE_CORES, chunk=SAMPLE_CHUNK, k_max=SAMPLE_K_MAX
+    ),
+    calls=SAMPLE_POSITIONS
+    * sample.select_streams(SAMPLE_VOCAB // SAMPLE_CORES, SAMPLE_CHUNK)
+    * (SAMPLE_VOCAB // SAMPLE_CORES)
+    // SAMPLE_CHUNK,
+    tag="llama_vocab",
+)
+SAMPLE_COMBINE_CASE = Case(
+    "sample_combine",
+    dict(
+        columns=SAMPLE_CORES,
+        slice_size=SAMPLE_VOCAB // SAMPLE_CORES,
+        k_max=SAMPLE_K_MAX,
+    ),
+    calls=SAMPLE_POSITIONS,
+    tag="llama_vocab",
+)
+
+
+@pytest.mark.perf
+def test_sample_cycles(request, record_perf, workdir):
+    """``sample_select``'s and ``sample_combine``'s per-position cost, Llama
+    3.2's vocabulary split the way IRON's Sample operator splits it.
+
+    Checked first, as every other case here is: ``test_sample_e2e.py``'s
+    dedicated e2e file is what judges these kernels, not this harness, so
+    this re-runs the same check (against ``sample.sample_ref``) over
+    ``SAMPLE_POSITIONS`` positions before timing. Both kernels declare
+    ``Trace.whole_call()``; a traced run gives each select core
+    ``positions * calls`` intervals and the combine core ``positions``, each
+    on its own stream (confirmed: every stream's length is exactly that
+    count plus the flush, with nothing to untangle). Only one select core's
+    stream is charted (the four slice the same vocabulary the same way).
+    """
+    meta = request.config._perf_meta
+    slice_size = SAMPLE_VOCAB // SAMPLE_CORES
+    streams = sample.select_streams(slice_size, SAMPLE_CHUNK)
+    select_calls = streams * slice_size // SAMPLE_CHUNK
+    rng = np.random.default_rng(0)
+    logits = rng.normal(0, 3.0, SAMPLE_VOCAB).astype(bfloat16)
+    n53s = [int(rng.integers(0, 1 << 53)) for _ in range(SAMPLE_POSITIONS)]
+    draws = np.stack([sample.draw_row(1.0, SAMPLE_K_MAX, n) for n in n53s])
+    expected = np.array(
+        [sample.sample_ref(logits, 1.0, SAMPLE_K_MAX, n) for n in n53s], dtype=np.int32
+    )
+
+    def _tensors():
+        return (
+            iron.tensor(np.tile(logits, SAMPLE_POSITIONS * streams), dtype=bfloat16),
+            iron.tensor(draws.reshape(-1), dtype=np.int32),
+            iron.full((SAMPLE_POSITIONS,), -1, dtype=np.int32),
+            iron.full((SAMPLE_POSITIONS,), -1, dtype=np.int32),
+        )
+
+    logits_t, draws_t, token, record = _tensors()
+    sample_positions(
+        logits_t,
+        draws_t,
+        token,
+        record,
+        vocab=SAMPLE_VOCAB,
+        cores=SAMPLE_CORES,
+        chunk=SAMPLE_CHUNK,
+        k_max=SAMPLE_K_MAX,
+        positions=SAMPLE_POSITIONS,
+    )
+    failed = None
+    if not np.array_equal(token.numpy(), expected) or not np.array_equal(
+        record.numpy(), expected
+    ):
+        failed = f"draws {token.numpy()} / {record.numpy()} != ref {expected}"
+    assert failed is None, failed
+
+    select_m: dict = {"failed": failed}
+    combine_m: dict = {"failed": failed}
+    select_m["wall"] = combine_m["wall"] = run_iters(
+        sample_positions,
+        *_tensors(),
+        warmup=request.config.getoption("--warmup"),
+        iters=request.config.getoption("--iters"),
+        vocab=SAMPLE_VOCAB,
+        cores=SAMPLE_CORES,
+        chunk=SAMPLE_CHUNK,
+        k_max=SAMPLE_K_MAX,
+        positions=SAMPLE_POSITIONS,
+    )
+    if not request.config.getoption("--no-cycles"):
+        select_total = SAMPLE_POSITIONS * select_calls
+        trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * (select_total + 16))
+        tdir = workdir / "sample"
+        tdir.mkdir(parents=True, exist_ok=True)
+        cfg = TraceConfig(trace_size=trace_size, trace_file=str(tdir / "trace.txt"))
+        logits_t, draws_t, token, record = _tensors()
+        sample_positions(
+            logits_t,
+            draws_t,
+            token,
+            record,
+            vocab=SAMPLE_VOCAB,
+            cores=SAMPLE_CORES,
+            chunk=SAMPLE_CHUNK,
+            k_max=SAMPLE_K_MAX,
+            positions=SAMPLE_POSITIONS,
+            trace_config=cfg,
+        )
+        assert (
+            cfg.physical_mlir_path is not None
+        ), f"{SAMPLE_SELECT_CASE.name}: the traced run recorded no physical MLIR path"
+        trace_json = tdir / "trace.json"
+        cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
+        streams_found = {row[0]: row[1:] for row in get_cycles_summary(str(trace_json))}
+        assert len(streams_found) == SAMPLE_CORES + 1, (
+            f"expected {SAMPLE_CORES} select cores and one combine core, "
+            f"got streams {sorted(streams_found)}"
+        )
+        # Select's stream is select_total + flush long; combine's is
+        # SAMPLE_POSITIONS + flush, much shorter (SAMPLE_POSITIONS <
+        # select_total for any configuration a real decode uses) -- told
+        # apart by length, not name, since tile naming does not sort cores
+        # before the combine tile.
+        by_length = sorted(streams_found.values(), key=len)
+        combine_durations = by_length[0]
+        select_durations = by_length[-1]
+        assert len(select_durations) >= select_total, (
+            f"{SAMPLE_SELECT_CASE.name}: only {len(select_durations)} of "
+            f"{select_total} calls traced"
+        )
+        assert len(combine_durations) >= SAMPLE_POSITIONS, (
+            f"{SAMPLE_COMBINE_CASE.name}: only {len(combine_durations)} of "
+            f"{SAMPLE_POSITIONS} calls traced"
+        )
+        select_m["cycles"] = kd.CallCycles(
+            kernel=tuple(select_durations[:select_total])
+        )
+        combine_m["cycles"] = kd.CallCycles(
+            kernel=tuple(combine_durations[:SAMPLE_POSITIONS])
+        )
+        select_m["trace_size"] = combine_m["trace_size"] = trace_size
+    _record(record_perf, SAMPLE_SELECT_CASE, select_m, meta)
+    _record(record_perf, SAMPLE_COMBINE_CASE, combine_m, meta)
 
 
 def _differing_words(a: np.ndarray, b: np.ndarray) -> int:
