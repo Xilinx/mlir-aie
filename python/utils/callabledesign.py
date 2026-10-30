@@ -141,6 +141,12 @@ class CallableDesign:
                     "'parameters', which a call takes for its ScratchpadParameter "
                     "values; name it otherwise"
                 )
+            if "entry" in signature.parameters:
+                raise TypeError(
+                    f"{self.compilable.generator_name!r} names a parameter "
+                    "'entry', which a call takes for the entry runtime it "
+                    "dispatches; name it otherwise"
+                )
 
         # Pre-build the named wrapper object used as the cache-key identity for
         # Path-based generators.  Creating it once here avoids allocating a new
@@ -241,10 +247,13 @@ class CallableDesign:
         compilable: CompilableDesign,
         cache_key,
         trace_config,
+        entry: str | None = None,
     ) -> NPUKernel:
         from aie.utils.npukernel import NPUKernel
 
         xclbin_path, inst_path = compilable.compile()
+        if entry is not None and not compilable.full_elf:
+            inst_path = compilable.entry_insts_path(entry)
         if trace_config is not None and compilable._kernel_dir is not None:
             physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
@@ -267,14 +276,18 @@ class CallableDesign:
                 compilable._elf_path is not None
                 and compilable._full_elf_kernel_name is not None
             )
-            entry = compilable.get_cache_entry()
+            cache_entry = compilable.get_cache_entry()
             kernel = NPUKernel(
                 elf_path=compilable._elf_path,
-                kernel_name=compilable._full_elf_kernel_name,
+                kernel_name=(
+                    compilable.entry_kernel_name(entry)
+                    if entry is not None
+                    else compilable._full_elf_kernel_name
+                ),
                 init_entry=compilable._full_elf_init_entry,
                 trace_config=trace_config,
                 num_host_bos=num_host_bos,
-                params_path=entry.params if entry is not None else None,
+                params_path=cache_entry.params if cache_entry is not None else None,
             )
         else:
             kernel = NPUKernel(
@@ -301,22 +314,29 @@ class CallableDesign:
         Args:
             *runtime_args: Runtime tensor and/or scalar positional arguments.
             **runtime_kwargs: Mix of call-time ``CompileTime[T]`` params and
-                runtime scalar kernel arguments, and ``parameters``: the
+                runtime scalar kernel arguments; ``parameters``: the
                 design's ScratchpadParameter values for this call, a mapping
                 by name, written to the run's ctrl scratchpad before it
-                starts (the design compiles to a full ELF, ``full_elf=True``).
+                starts (the design compiles to a full ELF, ``full_elf=True``);
+                and ``entry``: the name of the Program entry runtime to
+                dispatch, from the same build (default: its first).
 
         Returns:
             The result of ``NPUKernel.__call__``.
 
         Raises:
-            TypeError: ``parameters`` is not a mapping.
+            TypeError: ``parameters`` is not a mapping, or ``entry`` not a string.
         """
         parameters = runtime_kwargs.pop("parameters", None)
         if parameters is not None and not isinstance(parameters, Mapping):
             raise TypeError(
                 f"parameters must map ScratchpadParameter names to values, not "
                 f"{type(parameters).__name__}"
+            )
+        entry = runtime_kwargs.pop("entry", None)
+        if entry is not None and not isinstance(entry, str):
+            raise TypeError(
+                f"entry names an entry runtime, not a {type(entry).__name__}"
             )
         # --- Split call-time CompileTime[T] params from runtime scalar kwargs ---
         # trace_config is handled specially: if annotated as CompileTime[object] on
@@ -418,7 +438,8 @@ class CallableDesign:
         # ever asking. The on-disk cache still serves the artifacts, so this
         # re-reads rather than rebuilds.
         use_kernel_cache = compilable.use_cache and trace_config is None
-        kernel = self._kernel_cache.get(cache_key) if use_kernel_cache else None
+        kernel_key = (cache_key, entry)
+        kernel = self._kernel_cache.get(kernel_key) if use_kernel_cache else None
         if kernel is not None:
             if kernel.elf_path is not None:
                 artifacts_present = Path(kernel.elf_path).is_file()
@@ -438,12 +459,14 @@ class CallableDesign:
                     and Path(kernel.insts_path).is_file()
                 )
             if not artifacts_present:
-                self._kernel_cache.pop(cache_key, None)
+                self._kernel_cache.pop(kernel_key, None)
                 kernel = None
         if kernel is None:
-            kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
+            kernel = self._compile_and_build_kernel(
+                compilable, cache_key, trace_config, entry
+            )
             if use_kernel_cache:
-                self._kernel_cache[cache_key] = kernel
+                self._kernel_cache[kernel_key] = kernel
 
         # After compile(): validation reads expected_tensor_sizes.
         implicit_tensor_count = 0
@@ -477,7 +500,7 @@ class CallableDesign:
                 msg,
             )
 
-            self._kernel_cache.pop(cache_key, None)
+            self._kernel_cache.pop(kernel_key, None)
             # compile() returns the primary artifact path first (xclbin, or the
             # full ELF in full-ELF mode) -- the same path the context cache is
             # keyed on, so it is the correct eviction key either way.
@@ -489,9 +512,11 @@ class CallableDesign:
 
             if DefaultNPURuntime is not None:
                 DefaultNPURuntime.evict_context(primary_artifact)
-            kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
+            kernel = self._compile_and_build_kernel(
+                compilable, cache_key, trace_config, entry
+            )
             if use_kernel_cache:
-                self._kernel_cache[cache_key] = kernel
+                self._kernel_cache[kernel_key] = kernel
             return kernel(*tensor_args, parameters=parameters, **remaining_scalars)
 
     def specialize(self, **overrides) -> "CallableDesign":
