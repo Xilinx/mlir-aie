@@ -1281,7 +1281,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       { id: 'yolo26n-hw', section: 'performance', title: 'YOLO26n detection on npu2', short: 'YOLO26n', failure: 'run',
         passed: 'Every image matched the oracle.',
         about: 'the whole 640×640 int8 detector, compiled cold and then warm, run on all 128 COCO128 images and checked image by image against the numpy oracle '
-          + '(and, for information, onnxruntime) on an npu2, then timed at batch 1 and checked and timed again at 2, 4, 8 and 16 images a dispatch. mAP@0.5 is scored from the NPU\'s own detections.',
+          + '(and, for information, onnxruntime) on an npu2, then timed at batch 1 and checked and timed again at 2, 4, 8, 16, 32 and 64 images a dispatch, all from one build. mAP@0.5 is scored from the NPU\'s own detections.',
         tableFolded: 'Last night\'s figures',
         script: 'utils/component_checks/yolo26n_hw.py',
         whole: 'python utils/component_checks/yolo26n_hw.py --out perf.json --meta meta.json',

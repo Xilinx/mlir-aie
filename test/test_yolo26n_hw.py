@@ -410,6 +410,15 @@ def test_a_sweep_that_passes_every_batch_times_every_batch(yolo):
     assert yolo.measurement_sane(sweep.correctness, timing, list(yolo.BATCHES))
 
 
+def test_the_page_describes_the_sweep_the_check_runs(yolo):
+    page = (ROOT / "utils/kernel_checks/index.html").read_text(encoding="utf-8")
+    *rest, last = [str(b) for b in yolo.BATCHES[1:]]
+    swept = f"{', '.join(rest)} and {last}"
+    descriptions = [line for line in page.splitlines() if "timed again at" in line]
+    assert len(descriptions) == 2
+    assert all(swept in line for line in descriptions), descriptions
+
+
 @pytest.mark.parametrize("failing", [1, 2, 4, 16])
 def test_the_first_failing_batch_ends_the_sweep_and_withholds_all_timing(yolo, failing):
     sweep = yolo.BatchSweep(0)
