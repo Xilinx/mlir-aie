@@ -135,6 +135,17 @@ def same_named_entries(data: InOut):
     return Program.compose([left, right], entry=[left_run, right_run]).resolve_program()
 
 
+@iron.jit
+def one_traced_entry(
+    data: InOut, *, trace_config: CompileTime[TraceConfig | None] = None
+):
+    left, left_run = _adding_configuration("left", 2)
+    right, right_run = _adding_configuration("right", 3)
+    if trace_config is not None:
+        right.enable_trace(trace_config.trace_size, workers=right.workers)
+    return Program.compose([left, right], entry=[left_run, right_run]).resolve_program()
+
+
 def _builds() -> set:
     if not NPU_CACHE_HOME.is_dir():
         return set()
@@ -215,6 +226,19 @@ def test_same_named_entries_are_dispatched_by_qualified_name():
         np.testing.assert_array_equal(data.numpy(), np.arange(4) + value)
     with pytest.raises(ValueError, match="several entries named 'run'"):
         same_named_entries(iron.arange(4, dtype=np.int32, device="npu"), entry="run")
+
+
+def test_a_traced_entry_is_checked_against_its_own_signature(tmp_path):
+    """Only ``right`` is traced, so only its lowered sequence takes a trace buffer."""
+    trace_config = TraceConfig(trace_size=8192)
+    data = iron.arange(4, dtype=np.int32, device="npu")
+    one_traced_entry(data, trace_config=trace_config, entry="right:run")
+    data.to("cpu")
+    np.testing.assert_array_equal(data.numpy(), np.arange(4) + 3)
+    assert trace_config.kernel == "right:run"
+    assert trace_config.trace_to_json(
+        trace_config.physical_mlir_path, str(tmp_path / "right.json")
+    )
 
 
 def test_a_missing_entry_stream_is_rebuilt():

@@ -265,7 +265,11 @@ class CallableDesign:
         # the kernels.json boN slot count which aiecc floors to the firmware
         # command-chain minimum -- so this is what host buffer counts are
         # validated against.
-        expected_sizes = compilable.expected_tensor_sizes
+        expected_sizes = (
+            compilable.expected_tensor_sizes
+            if entry is None
+            else compilable.entry_tensor_sizes(entry)
+        )
         num_host_bos = len(expected_sizes) if expected_sizes is not None else None
         if compilable.full_elf:
             # Full-ELF: compile() returns (elf_path, None). The kernel is loaded
@@ -480,6 +484,7 @@ class CallableDesign:
             tensor_args,
             num_host_bos=kernel.num_host_bos,
             implicit_tensor_count=implicit_tensor_count,
+            entry=entry,
         )
 
         try:
