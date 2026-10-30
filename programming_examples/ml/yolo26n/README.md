@@ -76,7 +76,9 @@ first and last ops instead, and `--batch N` pipelines N images through it.
 - The Detect postprocess (best class per anchor, top 300 anchors, top 300
   anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`,
   reading the Detect outputs back from a DDR scratch buffer.
-- `yolo26n.py` runs the network in one dispatch.
+- `yolo26n.py` runs the network in one dispatch. One build serves every
+  batch of 1 to 64 images: each batch is an entry of the design, its own
+  instruction stream beside the one xclbin, and `--batch` picks it.
 
 ## Accuracy
 

@@ -13,7 +13,8 @@ With real images, the device's detections are also scored against the
 images' YOLO labels (``--labels``) as mAP@0.5.
 
 The whole network is one device configuration: every operator's rows stream
-from worker to worker on chip. Every image's detections are compared with
+from worker to worker on chip. One build serves every batch in ``BATCHES``,
+each an entry of the design that ``--batch`` picks. Every image's detections are compared with
 the oracle bit for bit; with the quantized ONNX at hand, also with ONNX
 Runtime's.
 """
@@ -24,6 +25,7 @@ import argparse
 import hashlib
 import sys
 from pathlib import Path
+from typing import Any
 
 import aie.iron as iron
 import numpy as np
@@ -38,6 +40,8 @@ from yolo_spec import IMAGE_SIZE, MAX_DETECTIONS, Network
 
 IMAGE_WORDS = IMAGE_SIZE * IMAGE_SIZE * 3 // 4
 DETECTION_WORDS = 6 * MAX_DETECTIONS
+# The batches one build serves, each an entry of the design's Program.
+BATCHES = (1, 2, 4, 8, 16, 32, 64)
 
 
 class Plan:
@@ -71,46 +75,65 @@ def yolo26n(
     detections: Out,
     weights: In,
     *,
-    batch: CompileTime[int],
+    batches: CompileTime[tuple[int, ...]] = BATCHES,
     params_path: CompileTime[str],
     params_digest: CompileTime[str],
     ahead: CompileTime[int] = 3,
 ):
-    """The network's workers, and a sequence running the `batch` images in turn, `ahead` images' fills ahead."""
+    """The network's workers, and one entry `b<B>` for each batch `B` in `batches`.
+
+    Entry `b<B>` runs the first `B` images in turn, `ahead` images' fills
+    ahead. Every entry takes host buffers for `max(batches)` images, so one
+    build serves them all; a call picks one with `entry=f"b{B}"`.
+    """
     del params_digest  # keys the compile cache on the parameter file's contents
     network = Network.yolo26n()
     plan = Plan(network, Params.load(Path(params_path)))
     design = plan.design
-    image_ty = np.ndarray[(batch * IMAGE_WORDS,), np.dtype[np.int32]]
-    scratch_ty = np.ndarray[(batch * plan.words,), np.dtype[np.int32]]
-    det_ty = np.ndarray[(batch * DETECTION_WORDS,), np.dtype[np.int32]]
+    capacity = max(batches)
+    image_ty = np.ndarray[(capacity * IMAGE_WORDS,), np.dtype[np.int32]]
+    scratch_ty = np.ndarray[(capacity * plan.words,), np.dtype[np.int32]]
+    det_ty = np.ndarray[(capacity * DETECTION_WORDS,), np.dtype[np.int32]]
     weights_ty = np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]]
+    handles = design.handles()
 
-    def sequence(img, scr, det, wts, *handles):
-        def locate_for(i):
-            def locate(tensor):
-                if tensor.name == "images":
-                    return img, batch * IMAGE_WORDS, i * IMAGE_WORDS
-                if tensor.name in plan.weight_offset:
-                    return wts, plan.weights.size // 4, plan.weight_offset[tensor.name]
-                if tensor.name in plan.offset:
-                    return (
-                        scr,
-                        batch * plan.words,
-                        i * plan.words + plan.offset[tensor.name],
-                    )
-                if tensor.name == network.ops[-1].dst.name:
-                    return det, batch * DETECTION_WORDS, i * DETECTION_WORDS
-                raise ValueError(f"no host buffer holds {tensor.name}")
+    def sequence_of(batch):
+        def sequence(img, scr, det, wts, *bound):
+            def locate_for(i):
+                def locate(tensor):
+                    if tensor.name == "images":
+                        return img, capacity * IMAGE_WORDS, i * IMAGE_WORDS
+                    if tensor.name in plan.weight_offset:
+                        return (
+                            wts,
+                            plan.weights.size // 4,
+                            plan.weight_offset[tensor.name],
+                        )
+                    if tensor.name in plan.offset:
+                        return (
+                            scr,
+                            capacity * plan.words,
+                            i * plan.words + plan.offset[tensor.name],
+                        )
+                    if tensor.name == network.ops[-1].dst.name:
+                        return det, capacity * DETECTION_WORDS, i * DETECTION_WORDS
+                    raise ValueError(f"no host buffer holds {tensor.name}")
 
-            return locate
+                return locate
 
-        design.transfer(handles, [locate_for(i) for i in range(batch)], ahead)
+            design.transfer(bound, [locate_for(i) for i in range(batch)], ahead)
 
-    rt = Runtime(
-        sequence, [image_ty, scratch_ty, det_ty, weights_ty, *design.handles()]
-    )
-    return Program(NPU2(), rt, workers=design.workers).resolve_program()
+        return sequence
+
+    entries = [
+        Runtime(
+            sequence_of(batch),
+            [image_ty, scratch_ty, det_ty, weights_ty, *handles],
+            name=f"b{batch}",
+        )
+        for batch in batches
+    ]
+    return Program(NPU2(), entries, workers=design.workers).resolve_program()
 
 
 def onnx_detections(session, image: np.ndarray) -> np.ndarray:
@@ -133,7 +156,11 @@ def main() -> None:
     )
     parser.add_argument("--n", type=int, default=4, help="images to run")
     parser.add_argument(
-        "--batch", type=int, default=1, help="images per dispatch (divides --n)"
+        "--batch",
+        type=int,
+        default=1,
+        choices=BATCHES,
+        help="images per dispatch (divides --n), an entry of the one build",
     )
     parser.add_argument(
         "--params",
@@ -160,7 +187,7 @@ def main() -> None:
         "--compile-only", action="store_true", help="build the ELF and stop"
     )
     args = parser.parse_args()
-    if args.batch < 1 or not args.compile_only and args.n % args.batch:
+    if not args.compile_only and args.n % args.batch:
         parser.error(f"--batch {args.batch} does not divide --n {args.n}")
     if args.ahead < 0:
         parser.error(f"--ahead {args.ahead} is negative")
@@ -184,17 +211,18 @@ def main() -> None:
         params_path = args.params or DATA_DIR / "yolo26n_params.npz"
     params = Params.load(params_path)
     plan = Plan(network, params)
-    kwargs = dict(
-        batch=args.batch,
+    capacity = max(BATCHES)
+    kwargs: dict[str, Any] = dict(
+        batches=BATCHES,
         params_path=str(params_path),
         params_digest=hashlib.sha1(params_path.read_bytes()).hexdigest(),
         ahead=args.ahead,
     )
     if args.compile_only:
         yolo26n.specialize(
-            image=np.ndarray[(args.batch * IMAGE_WORDS,), np.dtype[np.int32]],
-            scratch=np.ndarray[(args.batch * plan.words,), np.dtype[np.int32]],
-            detections=np.ndarray[(args.batch * DETECTION_WORDS,), np.dtype[np.int32]],
+            image=np.ndarray[(capacity * IMAGE_WORDS,), np.dtype[np.int32]],
+            scratch=np.ndarray[(capacity * plan.words,), np.dtype[np.int32]],
+            detections=np.ndarray[(capacity * DETECTION_WORDS,), np.dtype[np.int32]],
             weights=np.ndarray[(plan.weights.size // 4,), np.dtype[np.int32]],
             **kwargs,
         ).compile()
@@ -232,8 +260,9 @@ def main() -> None:
             )
             images.append((path.name, image, truth))
     oracle = Oracle(params, network)
-    scratch = iron.zeros(args.batch * plan.words, dtype=np.int32)
-    detections = iron.zeros(args.batch * DETECTION_WORDS, dtype=np.int32)
+    scratch = iron.zeros(capacity * plan.words, dtype=np.int32)
+    detections = iron.zeros(capacity * DETECTION_WORDS, dtype=np.int32)
+    pixels = np.zeros(capacity * IMAGE_WORDS * 4, np.uint8)
     weights = iron.tensor(plan.weights.view(np.int32))
     session = None
     if args.synthetic is None and args.onnx.exists():
@@ -247,11 +276,20 @@ def main() -> None:
     scored = MeanAP50()
     for start in range(0, len(images), args.batch):
         group = images[start : start + args.batch]
-        pixels = np.concatenate([image.reshape(-1) for _, image, _ in group])
-        yolo26n(
-            iron.tensor(pixels.view(np.int32)), scratch, detections, weights, **kwargs
+        pixels[: args.batch * IMAGE_WORDS * 4] = np.concatenate(
+            [image.reshape(-1) for _, image, _ in group]
         )
-        found = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
+        yolo26n(
+            iron.tensor(pixels.view(np.int32)),
+            scratch,
+            detections,
+            weights,
+            entry=f"b{args.batch}",
+            **kwargs,
+        )
+        found = detections.numpy()[: args.batch * DETECTION_WORDS].reshape(
+            args.batch, MAX_DETECTIONS, 6
+        )
         for (name, image, truth), mine in zip(group, found):
             want = oracle.run(image)[network.ops[-1].dst.name].view(np.int32)
             if start == 0:
@@ -278,7 +316,7 @@ def main() -> None:
     failed = passed != len(images)
 
     if args.time:
-        pixels = np.concatenate(
+        pixels[: args.batch * IMAGE_WORDS * 4] = np.concatenate(
             [image.reshape(-1) for _, image, _ in images[: args.batch]]
         )
         tensor = iron.tensor(pixels.view(np.int32))
@@ -290,6 +328,7 @@ def main() -> None:
             weights,
             warmup=args.n_warmup,
             iters=args.n_iters,
+            entry=f"b{args.batch}",
             **kwargs,
         )
         print_benchmark(bench)
@@ -301,7 +340,9 @@ def main() -> None:
             f"median {e2e.median_us / args.batch:.1f} us, "
             f"MAD {e2e.mad_us / args.batch:.1f} us"
         )
-        timed = detections.numpy().reshape(args.batch, MAX_DETECTIONS, 6)
+        timed = detections.numpy()[: args.batch * DETECTION_WORDS].reshape(
+            args.batch, MAX_DETECTIONS, 6
+        )
         same = all(np.array_equal(t, w) for t, w in zip(timed, first))
         print(f"timed dispatch: {'PASS' if same else 'FAIL'}")
         failed |= not same

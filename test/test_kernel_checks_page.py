@@ -2222,7 +2222,7 @@ const yoloData = collect(historiesOf('yolo26n-hw', [withSplit(yoloBefore, null, 
 assert.deepEqual(yolo.trend.map(t => t.name), ['NPU time', 'End to end', 'Where the time goes', 'Accuracy', 'Compile time', 'Compile memory']);
 const yoloStack = yolo.trend.find(t => t.id === 'yolo_time_stack');
 // A variant per batch of the sweep; this fixture's nights timed 1 and 8.
-assert.deepEqual(yoloStack.variants.map(([name]) => name), ['batch 1', 'batch 2', 'batch 4', 'batch 8', 'batch 16']);
+assert.deepEqual(yoloStack.variants.map(([name]) => name), ['batch 1', 'batch 2', 'batch 4', 'batch 8', 'batch 16', 'batch 32', 'batch 64']);
 const stackAt = name => { const [, v] = yoloStack.variants.find(([n]) => n === name); return stackConfig(yoloData, { ...yoloStack, ...v, variants: null }); };
 const [b1, b8] = [stackAt('batch 1'), stackAt('batch 8')];
 assert.deepEqual(b1.data.datasets.map(d => [d.label, d.data]), [
