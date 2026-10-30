@@ -48,7 +48,9 @@ void grid_decode(const bfloat16 *__restrict in, float *__restrict out,
     for (int i = 0; i < N && x0 + i < WIDTH; i++) {
       const bfloat16 *cell = in + (x0 + i) * CHANNELS;
       float *row = out + (x0 + i) * OUT;
-      // A power of two scales each exactly; the sums round once.
+      // A power of two scales each exactly; the sum ahead of it is one
+      // native float add, not correctly rounded on AIE2P (nms.cc says
+      // why), which the contract's 1e-6 relative tolerance covers.
       row[0] = ((float)cell[0] + (float)(x0 + i)) * s;
       row[1] = ((float)cell[1] + gy) * s;
       row[2] = w[i] * s;

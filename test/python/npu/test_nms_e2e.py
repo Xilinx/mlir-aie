@@ -59,6 +59,26 @@ CASES["nothing_above_threshold"] = dict(
     ],
 )
 
+# A NaN score (from NaN objectness) rejected like anything below
+# conf_thre, not kept: `score < conf_thre` is false for NaN under IEEE
+# comparison, which nms_ref's `score >= thre` (also false for NaN, so also
+# rejected) does not share unless the kernel's own test is written the
+# same way.
+CASES["nan_score_rejected"] = dict(
+    width=4,
+    classes=2,
+    cap=8,
+    conf_thre=0.1,
+    nms_thre=0.45,
+    class_agnostic=0,
+    rows=[
+        [
+            _cell(2, 50, 50, 10, 10, np.nan, _one_class(2, 0, 0.9)),
+            _cell(2, 10, 10, 10, 10, 0.5, _one_class(2, 0, 0.9)),
+        ]
+    ],
+)
+
 # Four same-class boxes nested around one centre, each inside the last's
 # footprint: every one but the highest-scoring is suppressed.
 CASES["everything_suppressed"] = dict(

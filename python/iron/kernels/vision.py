@@ -397,7 +397,9 @@ def grid_decode(
     ``(dy + y) * stride``, ``exp(dw) * stride``, ``exp(dh) * stride``, then
     the objectness and scores, as YOLOX's ``decode_outputs`` computes them
     in float32 for grid cell ``(x, y)`` of a map of ``stride``, a power of
-    two. Each sum rounds once; the exponential is ``exp_f32``.
+    two (so the multiply is exact); the exponential is ``exp_f32``. Each
+    sum is one native float add, not correctly rounded on AIE2P (``nms``'s
+    own kernel says why), which the contract's tolerance covers.
 
     Args:
         width: The cells of a row.
@@ -455,8 +457,9 @@ def grid_decode(
             tolerance=Tolerance.relative(
                 1e-6,
                 note="exp_f32 is within 9.41 float32 ulps (5.6e-7) over every "
-                "input, numpy's exp within one; the sums round once, as the "
-                "reference's, and the stride and the copies are exact",
+                "input, numpy's exp within one; each sum is one native float "
+                "add, not correctly rounded on AIE2P (nms.cc), and the stride "
+                "and the copies are exact",
             ),
         ),
     )

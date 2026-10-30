@@ -75,7 +75,10 @@ void nms_score(const float *__restrict row, int32_t width) {
     }
     const float obj = cell[4];
     const float score = obj * best;
-    if (score < conf_thre_stored)
+    // Not `score < conf_thre_stored`: IEEE comparisons with NaN are false,
+    // so that form lets a NaN score through. nms_ref rejects one (`score
+    // >= thre` is false for NaN), so this is the same test negated.
+    if (!(score >= conf_thre_stored))
       continue;
     const float cx = cell[0], cy = cell[1], w = cell[2], h = cell[3];
     const float half_w = w * 0.5f, half_h = h * 0.5f;
