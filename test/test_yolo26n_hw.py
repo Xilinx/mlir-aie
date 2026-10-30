@@ -396,6 +396,41 @@ def test_a_run_whose_numbers_cannot_stand_is_not_sane(yolo, edit, returncode):
     assert not yolo.measurement_sane(correctness, timing, [1, 8])
 
 
+def test_a_sweep_that_passes_every_batch_times_every_batch(yolo):
+    # The recorded batch-8 run, as it prints at each batch.
+    sweep = yolo.BatchSweep(0)
+    assert all(
+        sweep.add(YOLO_BATCHED_OUTPUT.replace("batch 8", f"batch {b}") + ORT_LINE, 0)
+        for b in yolo.BATCHES
+    )
+    timing = sweep.timing()
+    assert {k for k in timing if k.startswith("us_per_image_b")} == {
+        f"us_per_image_b{b}" for b in yolo.BATCHES
+    }
+    assert yolo.measurement_sane(sweep.correctness, timing, list(yolo.BATCHES))
+
+
+@pytest.mark.parametrize("failing", [1, 2, 4, 16])
+def test_the_first_failing_batch_ends_the_sweep_and_withholds_all_timing(yolo, failing):
+    sweep = yolo.BatchSweep(0)
+    went_on = []
+    for batch in yolo.BATCHES:
+        out = YOLO_BATCHED_OUTPUT.replace("batch 8", f"batch {batch}") + ORT_LINE
+        if batch == failing:
+            out = out.replace("random3: PASS (0/1800", "random3: FAIL (9/1800")
+            out = out.replace("8/8 images PASS", "7/8 images PASS")
+        went_on.append(sweep.add(out, 1 if batch == failing else 0))
+        if not went_on[-1]:
+            break
+    assert went_on[-1] is False
+    assert len(went_on) == yolo.BATCHES.index(failing) + 1
+    assert sweep.correctness["failed_images"] == ["random3"]
+    assert sweep.timing() == {}
+    assert not yolo.measurement_sane(
+        sweep.correctness, sweep.timing(), list(yolo.BATCHES)
+    )
+
+
 def test_the_elf_size_is_the_design_elfs(yolo, tmp_path):
     (tmp_path / "design.elf").write_bytes(b"\0" * 300)
     # aiecc's per-core ELFs share the directory and sort first.

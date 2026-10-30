@@ -464,6 +464,52 @@ def measurement_sane(correctness: dict, timing: dict, batches: list[int]) -> boo
     return True
 
 
+class BatchSweep:
+    """The verdict of the runs at each of ``BATCHES``, taken in order.
+
+    The first run to fail ends the sweep and is its verdict; timing is
+    published only when every batch passed.
+
+    Args:
+        ort_mismatches: As for ``parse_correctness``.
+    """
+
+    def __init__(self, ort_mismatches: int):
+        self.ort_mismatches = ort_mismatches
+        self.correctness = parse_correctness("", 1, ort_mismatches)
+        self.outputs: list[str] = []
+
+    def add(self, out: str, returncode: int) -> bool:
+        """Take the next batch's run.
+
+        Args:
+            out: The run's stdout and stderr.
+            returncode: Its exit code.
+
+        Returns:
+            Whether it passed, so the sweep goes on to the next batch.
+        """
+        self.correctness = parse_correctness(out, returncode, self.ort_mismatches)
+        if self.correctness["passed"]:
+            self.outputs.append(out)
+        return self.correctness["passed"]
+
+    def timing(self) -> dict:
+        """Every batch's ``parse_timing`` and the one mAP@0.5, or nothing unless all passed."""
+        if not self.correctness["passed"] or len(self.outputs) != len(BATCHES):
+            return {}
+        timing: dict = {}
+        for out in self.outputs:
+            timing |= parse_timing(out)
+        # The same bit-exact detections at every batch: one score.
+        scores = [parse_map50(out) for out in self.outputs]
+        scored = [m for m in scores if m]
+        if scored:
+            timing["map50_coco128_disagrees"] = any(m != scored[0] for m in scores)
+            timing |= scored[0]
+        return timing
+
+
 def artifact_stats(build_dir: str | None) -> dict:
     """Sizes of the files the warm build actually produced.
 
@@ -601,45 +647,21 @@ def main(argv=None) -> int:
         )
     cache_dir = tempfile.mkdtemp(prefix="component-checks-yolo26n-")
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
-    correctness = parse_correctness("", 1, args.ort_mismatches)
-    timing = parse_timing("")
+    sweep = BatchSweep(args.ort_mismatches)
     artifacts: dict = {}
     try:
         compiled = compile_cold_warm(images, onnx, params, env, cache_dir)
         if compiled["built"].returncode == 0:
             artifacts = artifact_stats(compiled["build_dir"])
-            ran = run_timed(images, onnx, params, args.n_images, 1, run_env).process
-            correctness = parse_correctness(
-                ran.stdout, ran.returncode, args.ort_mismatches
-            )
-            if correctness["passed"]:
-                # Every further batch, checked in full; the first to fail stops
-                # the sweep and is the run's verdict.
-                outputs = [ran.stdout]
-                for batch in BATCHES[1:]:
-                    batched = run_timed(
-                        images, onnx, params, args.n_images, batch, run_env
-                    ).process
-                    in_batches = parse_correctness(
-                        batched.stdout, batched.returncode, args.ort_mismatches
-                    )
-                    if not in_batches["passed"]:
-                        correctness = in_batches
-                        break
-                    outputs.append(batched.stdout)
-                else:
-                    for out in outputs:
-                        timing |= parse_timing(out)
-                    # The same bit-exact detections at every batch: one score.
-                    scores = [parse_map50(out) for out in outputs]
-                    scored = [m for m in scores if m]
-                    if scored:
-                        timing["map50_coco128_disagrees"] = any(
-                            m != scored[0] for m in scores
-                        )
-                        timing |= scored[0]
+            for batch in BATCHES:
+                ran = run_timed(
+                    images, onnx, params, args.n_images, batch, run_env
+                ).process
+                if not sweep.add(ran.stdout, ran.returncode):
+                    break
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
+    correctness, timing = sweep.correctness, sweep.timing()
 
     failed = [] if correctness["passed"] else [CASE]
 
