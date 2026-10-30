@@ -5,16 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles --split-input-file %s | FileCheck %s
+// RUN: aie-opt --aie-place-tiles %s | FileCheck %s
 
 // @mid is one link's output and the next link's input. The two links fit one
-// memtile's channels (3 in, 2 out), but sharing it would loop @mid back into
-// the tile it leaves, so they land on two.
+// memtile's channels (3 in, 2 out), so they share it.
 
-// CHECK-LABEL: module @chained_links_on_two_memtiles
-// CHECK: aie.objectfifo @mid(%mem_tile_0_1, {%mem_tile_1_1}, 2 : i32)
-// CHECK: aie.objectfifo @out(%mem_tile_1_1, {%shim_noc_tile_1_0}, 2 : i32)
-module @chained_links_on_two_memtiles {
+// CHECK-LABEL: module @chained_links_share_a_memtile
+// CHECK: aie.objectfifo @mid(%mem_tile_0_1, {%mem_tile_0_1}, 2 : i32)
+// CHECK: aie.objectfifo @out(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32)
+module @chained_links_share_a_memtile {
   aie.device(npu2) {
     %shim = aie.logical_tile<ShimNOCTile>(?, ?)
     %join = aie.logical_tile<MemTile>(?, ?)
@@ -27,78 +26,5 @@ module @chained_links_on_two_memtiles {
     aie.objectfifo @out (%fwd, {%shim}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
     aie.objectfifo.link [@a, @b] -> [@mid] ([0, 16] [])
     aie.objectfifo.link [@mid] -> [@out] ([] [])
-  }
-}
-
-// -----
-
-// CHECK-LABEL: module @chain_from_physical_memtile
-// CHECK-DAG: %[[FROM:.*]] = aie.tile(0, 1)
-// CHECK-DAG: %[[INTO:.*]] = aie.tile(1, 1)
-// CHECK: aie.objectfifo @mid(%[[FROM]], {%[[INTO]]}, 2 : i32)
-module @chain_from_physical_memtile {
-  aie.device(npu2) {
-    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
-    %join = aie.tile(0, 1)
-    %fwd = aie.logical_tile<MemTile>(?, ?)
-    %c0 = aie.tile(0, 2)
-    %c1 = aie.tile(0, 3)
-    aie.objectfifo @a (%c0, {%join}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b (%c1, {%join}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @mid (%join, {%fwd}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo @out (%fwd, {%shim}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo.link [@a, @b] -> [@mid] ([0, 16] [])
-    aie.objectfifo.link [@mid] -> [@out] ([] [])
-  }
-}
-
-// -----
-
-// CHECK-LABEL: module @chain_into_physical_memtile
-// CHECK-DAG: %[[FROM:.*]] = aie.tile(1, 1)
-// CHECK-DAG: %[[INTO:.*]] = aie.tile(0, 1)
-// CHECK: aie.objectfifo @mid(%[[FROM]], {%[[INTO]]}, 2 : i32)
-module @chain_into_physical_memtile {
-  aie.device(npu2) {
-    %shim = aie.tile(0, 0)
-    %join = aie.logical_tile<MemTile>(?, ?)
-    %fwd = aie.tile(0, 1)
-    %c0 = aie.tile(0, 2)
-    %c1 = aie.tile(0, 3)
-    aie.objectfifo @a (%c0, {%join}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b (%c1, {%join}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @mid (%join, {%fwd}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo @out (%fwd, {%shim}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo.link [@mid] -> [@out] ([] [])
-    aie.objectfifo.link [@a, @b] -> [@mid] ([0, 16] [])
-  }
-}
-
-// -----
-
-// Two links read @mid, each on its own memtile; neither may share @mid's
-// producer.
-
-// CHECK-LABEL: module @chain_read_by_two_links
-// CHECK: aie.objectfifo @mid(%[[SRC:mem_tile_[0-9]+_1]], {%[[M2:mem_tile_[0-9]+_1]], %[[M3:mem_tile_[0-9]+_1]]}, 2 : i32)
-// CHECK-NOT: aie.objectfifo @x(%[[SRC]],
-// CHECK: aie.objectfifo @x(%[[M2]],
-// CHECK-NOT: aie.objectfifo @y(%[[SRC]],
-// CHECK: aie.objectfifo @y(%[[M3]],
-module @chain_read_by_two_links {
-  aie.device(npu2) {
-    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
-    %src = aie.logical_tile<MemTile>(?, ?)
-    %m2 = aie.logical_tile<MemTile>(?, ?)
-    %m3 = aie.logical_tile<MemTile>(?, ?)
-    %c0 = aie.logical_tile<CoreTile>(?, ?)
-    %c1 = aie.logical_tile<CoreTile>(?, ?)
-    aie.objectfifo @in (%shim, {%src}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo @mid (%src, {%m2, %m3}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo @x (%m2, {%c0}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo @y (%m3, {%c1}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
-    aie.objectfifo.link [@in] -> [@mid] ([] [])
-    aie.objectfifo.link [@mid] -> [@x] ([] [])
-    aie.objectfifo.link [@mid] -> [@y] ([] [])
   }
 }

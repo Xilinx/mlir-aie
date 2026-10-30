@@ -378,11 +378,6 @@ private:
   // index. Two logical tiles naming the same one cannot share a physical tile.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
       namedChannels;
-  // The link tiles at either end of a fifo that chains two links, by each
-  // other: they cannot share a physical tile, or the fifo would loop back
-  // into the one it leaves.
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Operation *>>
-      chainedLinkTiles;
   void buildRuntimeBdProfiles(DeviceOp device,
                               llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
@@ -811,8 +806,6 @@ private:
   static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
   // Ends of fifos that ask for shared memory, which must share a module.
   Adjacency sharedMemAdjacency;
-  // Links joined by a fifo must occupy distinct tiles.
-  Adjacency chainedLinkAdjacency;
 
   // SA loop state
   int totalCost = 0;
@@ -848,7 +841,6 @@ private:
   int computeDMAChannelPenalty() const;
   int computeBDCountPenalty() const;
   int computeDelegatePenalty() const;
-  int computeChainedLinkPenalty() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
   int computeAdjacencyPenalty(const Adjacency &adj,

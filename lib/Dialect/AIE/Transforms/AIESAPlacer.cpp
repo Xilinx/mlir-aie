@@ -629,18 +629,7 @@ int SAPlacer::computeMemoryPressure() const {
 int SAPlacer::computePenalty() const {
   return computeMemSpilloverPenalty() + computeCoreOverflowPenalty() +
          computeDMAChannelPenalty() + computeBDCountPenalty() +
-         computeDelegatePenalty() + computeChainedLinkPenalty();
-}
-
-int SAPlacer::computeChainedLinkPenalty() const {
-  int penalty = 0;
-  for (auto [from, into] : chainedLinkAdjacency.edges) {
-    auto fromPos = positionOf(from.getOperation());
-    auto intoPos = positionOf(into.getOperation());
-    if (fromPos && intoPos && *fromPos == *intoPos)
-      penalty += config.sharedMemWeightPerDist;
-  }
-  return penalty;
+         computeDelegatePenalty();
 }
 
 // Both ends of a fifo with an aie.objectfifo.allocate must reach the delegate
@@ -1416,20 +1405,6 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
       sharedMemAdjacency.addEdgeFromValues(fifo.getProducerTile(),
                                            fifo.getConsumerTiles()[0]);
 
-  DenseSet<Operation *> linkedOutputs;
-  for (auto link : objectFifoLinks)
-    for (auto fifo : link.getOutputObjectFifos())
-      linkedOutputs.insert(fifo.getOperation());
-  for (auto link : objectFifoLinks) {
-    auto outputs = link.getOutputObjectFifos();
-    if (outputs.empty())
-      continue;
-    for (auto fifo : link.getInputObjectFifos())
-      if (linkedOutputs.contains(fifo.getOperation()))
-        chainedLinkAdjacency.addEdgeFromValues(
-            fifo.getProducerTile(), outputs.front().getProducerTile());
-  }
-
   return success();
 }
 
@@ -2043,11 +2018,6 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
   // exactly, so an overrun here is a warning.
   int finalPairing = computePairingPenalty();
   int finalDelegate = computeDelegatePenalty();
-  if (computeChainedLinkPenalty() != 0) {
-    device.emitError("SA placer failed to separate chained ObjectFifo links; "
-                     "try increasing --sa-effort");
-    return failure();
-  }
   if (finalPairing != 0 || finalDelegate != 0) {
     device.emitError("SA placer failed to find a legal placement (cascade and "
                      "shared memory penalty=")

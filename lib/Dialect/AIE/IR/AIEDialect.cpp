@@ -1992,16 +1992,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (other == *this) {
       break;
     }
-    if (other.getOptionalSharedTile() == sharedTile) {
-      for (ObjectFifoCreateOp fifo : getInputObjectFifos())
-        if (llvm::is_contained(other.getOutputObjectFifos(), fifo))
-          return fifo.emitOpError("objectfifo chains two ObjectFifoLinkOps "
-                                  "on one tile; they must be on two");
-      for (ObjectFifoCreateOp fifo : getOutputObjectFifos())
-        if (llvm::is_contained(other.getInputObjectFifos(), fifo))
-          return fifo.emitOpError("objectfifo chains two ObjectFifoLinkOps "
-                                  "on one tile; they must be on two");
-    }
     for (ObjectFifoCreateOp fifo : getOutputObjectFifos())
       if (llvm::is_contained(other.getOutputObjectFifos(), fifo))
         return fifo.emitOpError(

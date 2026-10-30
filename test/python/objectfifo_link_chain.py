@@ -4,12 +4,12 @@
 # RUN: %pytest %s
 
 """Fifos that chain two ObjectFifoLinks: one link's output and the next's
-input. aie.iron resolves the links' tiles through them, the placer keeps
-each pair of chained links on two memtiles, and two links on one tile are
-refused."""
+input. aie.iron resolves the links' tiles through them, and the placer puts
+chained links on one memtile where its channels allow."""
+
+import re
 
 import numpy as np
-import pytest
 from aie import ir
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
@@ -66,11 +66,12 @@ def place(text: str) -> ir.Module:
         return module
 
 
-def test_join_of_joins_places_each_link_on_its_own_memtile():
+def test_join_of_joins_shares_a_memtile_where_its_channels_allow():
+    # The outer join and one inner join take a memtile's six inputs.
     text = gather([2, 4])
     assert text.count("aie.objectfifo.link") == 3
     placed = str(place(text))
-    assert placed.count("aie.memtile_dma(") == 3
+    assert placed.count("aie.memtile_dma(") == 2
 
 
 def test_a_chain_of_three_links_resolves():
@@ -81,7 +82,11 @@ def test_a_chain_of_three_links_resolves():
     place(text)
 
 
-def test_two_chained_links_on_one_tile_are_refused():
+def test_chained_links_on_one_tile_loop_through_its_switch():
     shared = Tile(1, 1, tile_type=AIETileType.MemTile)
-    with pytest.raises(ir.MLIRError, match="chains two ObjectFifoLinkOps on one tile"):
-        gather([2, 2], tile=shared)
+    placed = str(place(gather([2, 2], tile=shared)))
+    assert placed.count("aie.memtile_dma(") == 1
+    assert (
+        len(re.findall(r"aie\.flow\(%mem_tile_1_1, DMA : \d+, %mem_tile_1_1,", placed))
+        == 2
+    )
