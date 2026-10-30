@@ -1755,7 +1755,8 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       if (['tok/s', 'fps'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unit}`;
       if (['x', '×'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 3 })}×`;
       // A check's own display unit (MobileNet and YOLO26n, ms): µs in thousands reads worse than ms with 2 decimals.
-      if (unit === 'us' && displayUnit === 'ms') return `${(value / 1000).toLocaleString('en-US', { maximumFractionDigits: 2 })} ms`;
+      // Below 1 ms a third decimal keeps MobileNet's tens of µs from rounding together.
+      if (unit === 'us' && displayUnit === 'ms') return `${(value / 1000).toLocaleString('en-US', { maximumFractionDigits: Math.abs(value) < 1000 ? 3 : 2 })} ms`;
       if (unit === 'us') return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} µs`;
       if (['MB', 'MiB'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} MiB`;
       if (['s', 'ms'].includes(unit)) return `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`;

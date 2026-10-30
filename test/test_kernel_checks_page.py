@@ -1924,8 +1924,8 @@ assert.equal(one(card, n => n.className === 'moves').text,
 // MobileNet's own times are shown in ms (its per-image µs would read in the thousands at real magnitudes).
 assert.deepEqual(tableOf(card.table), [
   ['', 'NPU / image', 'End to end / image', 'Images / s'],
-  ['batch 1', '0.25 ms', '0.4 ms', '2,527.17 fps'],
-  ['batch 16', '0.1 ms +7.3%', '0.2 ms', '4,880.43 fps'],
+  ['batch 1', '0.249 ms', '0.396 ms', '2,527.17 fps'],
+  ['batch 16', '0.102 ms +7.3%', '0.205 ms', '4,880.43 fps'],
 ]);
 assert.ok(!card.table.text.includes('seed 7'));
 assert.deepEqual(all(card.table, n => /^chg (worse|better)/.test(n.className || '')).map(n => n.className), ['chg worse']);
@@ -2267,7 +2267,7 @@ assert.equal(one(card, n => n.className === 'headline').text, `The run refused t
 // The refusal once, as the headline; the power mode as a warning.
 assert.deepEqual(all(card, n => /^note /.test(n.className || '')).map(n => n.className), ['note warn']);
 assert.ok(card.text.includes('Numbers from the run of'));
-assert.ok(card.table.text.includes('0.4 ms'));
+assert.ok(card.table.text.includes('0.396 ms'));
 """)
 
 
@@ -2607,7 +2607,7 @@ assert.equal(llama.displayUnit, undefined);
 
 // The overview sentence.
 assert.equal(hardwareSummary(hwAfter.rows, hw.displayUnit),
-             " NPU time is 0.25 ms (2,527.17 fps) per image at batch 1, 0.1 ms (4,880.43 fps) at batch 16.");
+             " NPU time is 0.249 ms (2,527.17 fps) per image at batch 1, 0.102 ms (4,880.43 fps) at batch 16.");
 assert.equal(yoloSummary(yoloAfter.rows, yolo.displayUnit),
              " End to end, one image takes 5.4 ms (185.19 fps) at batch 1, 3 ms at batch 8.");
 
