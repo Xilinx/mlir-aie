@@ -15,7 +15,7 @@ Face model.
 > Status: on NPU2 (Strix), decode and prefill run on the device, prefill 64
 > prompt tokens a dispatch through all 16 layers (`generate.py`: prompt in,
 > text out), every token checked against the oracle. Current timings are on the
-> [dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
+> [dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=performance).
 
 ---
 
@@ -161,7 +161,7 @@ tokens in one batch, the last one's sample being the first generated token
 
 Per-token decode time at each context, time to first token by prompt
 length, and the generation rate are measured every night on Strix and
-charted on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/)
+charted on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=performance)
 (`utils/component_checks/llama_chain_hw.py`; section 4 has the commands).
 
 **What bounds it.** The layers' weights stream over the array's eight lanes
@@ -175,15 +175,15 @@ decode command generates up to `--p-max` (4) of them, and the host queues the
 commands back to back on the hardware context, four at most (amdxdna holds
 four started commands), reading each one's tokens as it completes
 (`Decoder.generate` in `llama_decode.py`). A command is at most 4 tokens of
-work, 0.72 s at 128k (180.5 ms a token), well inside amdxdna's ~5 s timeout. Four
-tokens a command measured 44.5 tok/s against 40.0 for one: a decode command
-carries about 2.5 ms of its own. The first generated token is read before the
+work, well inside amdxdna's ~5 s timeout even at 128k. Four tokens a command
+beat one, because each decode command carries a fixed cost of its own. The
+first generated token is read before the
 generation's commands start: amdxdna reports the commands started behind a
 PDI load (the prefill-to-decode switch) only as they all end.
 
 > Decode controls **TPS** (sustained generation throughput). Prefill controls
 > **TTFT** (time to first token). A prefill pass runs 64 prompt tokens through
-> the 16 layers: about 10.3 ms a layer of weights and glue, plus 0.75 ms a
+> the 16 layers: a fixed cost a layer for weights and glue, plus a cost a
 > layer for each KV block its attention reads, so long prompts are bound by
 > attention, which runs the decode's per-query kernel.
 
@@ -202,7 +202,7 @@ is the true Llama 3.2 1B **bf16** checkpoint, loaded from the safetensors
 
 On running prose (`accuracy_vs_hf.py`'s default sample), the nightly scores
 the device's arithmetic against bf16 (next-token top-1 agreement and mean
-KL(bf16 ‖ model)) and charts both on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
+KL(bf16 ‖ model)) and charts both on the [dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=performance).
 `accuracy_vs_hf.py --model recipe` scores the INT8 recipe
 (`numpy_llama_ref.py`) the same way: its gap to bf16 is the quantization's
 own cost.
@@ -325,7 +325,7 @@ python test_decode.py --n-layers 16 --sample-temp 0.7 --sample-topk 4
 taskset -c 2-23 python test_decode.py --n-layers 16 --time
 
 # the context sweep of section 2: one build at 128k, each context checked
-# and timed (the oracle takes about 100 s a token at 128k)
+# and timed (the oracle takes over a minute a token at 128k)
 python aie2_llama.py --n-layers 16 --t 131072 --full-elf-path build/X.elf
 taskset -c 2-23 python test_decode.py --n-layers 16 --t 131072 \
     --elf build/X.elf --contexts 64 1024 2048 4096 8192 16384 32768 65536 131068 --time
@@ -386,7 +386,7 @@ settings) as ScratchpadParameters. Next:
 
 - **Glue fused into the GEMV array's epilogues.**
 - **Prefill attention as a GEMM**: the 64-row prefill runs the decode's
-  per-query attention kernel, 0.75 ms a layer per KV block, which is most
-  of a long prompt's time to first token.
+  per-query attention kernel, a cost a layer for each KV block, which is
+  most of a long prompt's time to first token.
 - **Long-context attention**, which dominates a token's time at long
   context.
