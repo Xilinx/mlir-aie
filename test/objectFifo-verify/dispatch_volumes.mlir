@@ -186,7 +186,8 @@ module {
 
 // -----
 
-// Syncing twice per run is two passes per run: two objects match.
+// A sync sets the core's lock rather than adding to it, so two syncs in a run
+// may give the core one pass or two: nothing is checked.
 
 module {
   aiex.scratchpad_parameter @n : i32
@@ -206,11 +207,11 @@ module {
       }
       aie.end
     }
-    aie.runtime_sequence @sequence(%arg0: memref<4xi32>) {
+    aie.runtime_sequence @sequence(%arg0: memref<2xi32>) {
       aiex.sync_scratchpad_parameters_from_host
       aiex.sync_scratchpad_parameters_from_host
       %t = aiex.dma_configure_task_for @out {
-        aie.dma_bd(%arg0 : memref<4xi32> offset = 0 len = 4 sizes = [1, 1, 1, 4] strides = [0, 0, 0, 1])
+        aie.dma_bd(%arg0 : memref<2xi32> offset = 0 len = 2 sizes = [1, 1, 1, 2] strides = [0, 0, 0, 1])
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)
