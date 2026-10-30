@@ -58,7 +58,7 @@ exp2_arg(aie::vector<bfloat16, SM_VEC_LEN> x,
 #ifdef EXP2_BF16_ACCURATE
   return aie::add(scale_log2e(x), neg_m);
 #else
-  return aie::mac(neg_m, x, (bfloat16)log2e);
+  return aie::mac(neg_m, x, (bfloat16)SOFTMAX_SCALE_LOG2E);
 #endif
 }
 

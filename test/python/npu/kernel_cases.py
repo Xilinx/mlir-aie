@@ -304,6 +304,15 @@ CASES: list[Case] = [
     # the pipelined path.
     check("softmax", dict(tile_size=32), tag="short-trip", smoke=True),
     check("softmax", dict(tile_size=160), tag="min-pipelined", smoke=True),
+    # The single bf16 scale * log2(e) scales every exponent argument as it
+    # does the maximum; aie2 takes a scale only with accurate_exp2.
+    check(
+        "softmax",
+        dict(tile_size=32, scale=0.25),
+        tag="scaled",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case(
         "softmax",
         dict(accurate_exp2=True),
