@@ -16,21 +16,37 @@
 #define SM_VEC_LEN 32   // 32
 #define log2e 1.4453125 // 1.44269504089
 
+// A build's own macros fold a runtime-chosen scale into log2(e): the three
+// bf16 limbs (or the single one) of scale * log2(e), host-split the same way
+// (python/iron/kernels/datamovement.py's limbs_f32_split) as log2(e) alone
+// below. Left undefined, these default to exactly log2(e), so a build that
+// asks for no scale keeps today's bits.
+#ifndef SOFTMAX_SCALE_LOG2E_HI
+#define SOFTMAX_SCALE_LOG2E_HI 0x3fb9
+#define SOFTMAX_SCALE_LOG2E_MID 0xbb2c
+#define SOFTMAX_SCALE_LOG2E_LO 0x36ec
+#endif
+#ifndef SOFTMAX_SCALE_LOG2E
+#define SOFTMAX_SCALE_LOG2E log2e
+#endif
+
 using namespace aie;
 
-// x * log2(e) in f32. Under EXP2_BF16_ACCURATE log2(e) is three bf16 limbs,
-// to 2^-26, summed smallest product first; otherwise it is bf16(log2(e)),
-// 1.8e-3 low. A row's maximum is scaled through this too, so its own exponent
+// x * scale * log2(e) in f32 (scale 1 unless a build's macros say otherwise,
+// above). Under EXP2_BF16_ACCURATE it is three bf16 limbs, to 2^-26, summed
+// smallest product first; otherwise it is a single bf16 constant, 1.8e-3 low
+// at scale 1. A row's maximum is scaled through this too, so its own exponent
 // argument is exactly 0.
 static inline aie::accum<accfloat, SM_VEC_LEN>
 scale_log2e(aie::vector<bfloat16, SM_VEC_LEN> x) {
 #ifdef EXP2_BF16_ACCURATE
   aie::accum<accfloat, SM_VEC_LEN> t =
-      aie::mul(x, bf16_splat<SM_VEC_LEN>(0x36ec));
-  t = aie::mac(t, x, bf16_splat<SM_VEC_LEN>(0xbb2c));
-  return aie::mac(t, x, bf16_splat<SM_VEC_LEN>(0x3fb9));
+      aie::mul(x, bf16_splat<SM_VEC_LEN>(SOFTMAX_SCALE_LOG2E_LO));
+  t = aie::mac(t, x, bf16_splat<SM_VEC_LEN>(SOFTMAX_SCALE_LOG2E_MID));
+  return aie::mac(t, x, bf16_splat<SM_VEC_LEN>(SOFTMAX_SCALE_LOG2E_HI));
 #else
-  return aie::mul(x, aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e));
+  return aie::mul(
+      x, aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)SOFTMAX_SCALE_LOG2E));
 #endif
 }
 
@@ -519,6 +535,30 @@ void mask_bf16(bfloat16 *inout, const int32_t unmasked_size,
   for (int32_t i = unmasked_size; i < total_size; i++) {
     inout[i] = std::numeric_limits<bfloat16>::lowest();
   }
+}
+
+// Fill [0, valid_from) with -inf: mask_bf16's head, for a sliding window's
+// lower edge.
+void mask_head_bf16(bfloat16 *inout, const int32_t valid_from) {
+  for (int32_t i = 0; i < valid_from; i++) {
+    inout[i] = std::numeric_limits<bfloat16>::lowest();
+  }
+}
+
+// softmax_bf16 over the row's valid span [lo, hi) of input_size elements:
+// [0, lo) and [hi, input_size) are masked to lowest first, so they exp2 to
+// exactly 0 and stay exactly 0 once normalized. The live-region sequencing
+// that calls this already trims whole dead vectors from input_size, leaving
+// lo and hi each within one vector of 0 and input_size -- a causal row needs
+// only hi short of input_size, a sliding window both edges.
+void softmax_span_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
+                        const int32_t input_size, const int32_t lo,
+                        const int32_t hi) {
+  event0();
+  mask_head_bf16(input, lo);
+  mask_bf16(input, hi, input_size);
+  softmax_simple_bf16(input, output, input_size);
+  event1();
 }
 
 // softmax_bf16 over `rows` rows of `row_len` each.

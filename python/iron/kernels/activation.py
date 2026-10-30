@@ -32,6 +32,7 @@ from ._common import (
     _tuned_arch,
 )
 from .core import conv_even
+from .datamovement import limbs_f32_split
 
 DTYPES: dict[str, tuple[dict, ...]] = {}
 
@@ -423,6 +424,27 @@ _SOFT_CAP_ERR = 1e-5 / 2 + 2.0**-20
 DTYPES["softmax"] = tuple(({"input_dtype": bfloat16}, {"input_dtype": np.float32}))
 
 
+def _softmax_scale_flags(scale: float | None, accurate_exp2: bool) -> list[str]:
+    """Compile flags folding ``scale`` into softmax's exp2 argument as ``scale * log2(e)``.
+
+    Split the same way (`limbs_f32_split`) as `softmax_aie2p.h`'s own
+    log2(e) limbs, so ``scale=None`` and ``scale=1.0`` embed the identical
+    bit patterns the kernel already defaults to -- a build that does not ask
+    for a scale keeps the macros undefined, so its bits cannot move.
+    """
+    if scale is None:
+        return []
+    v = np.float32(scale) * np.float32(math.log2(math.e))
+    if accurate_exp2:
+        hi, mid, lo = (int(limb.view(np.uint16)) for limb in limbs_f32_split(v))
+        return [
+            f"-DSOFTMAX_SCALE_LOG2E_HI={hi:#x}",
+            f"-DSOFTMAX_SCALE_LOG2E_MID={mid:#x}",
+            f"-DSOFTMAX_SCALE_LOG2E_LO={lo:#x}",
+        ]
+    return [f"-DSOFTMAX_SCALE_LOG2E={float(bfloat16(v))!r}f"]
+
+
 def softmax(
     tile_size: int = 1024,
     accurate_exp2: bool = False,
@@ -432,11 +454,14 @@ def softmax(
     addend: bool = False,
     window: int | None = None,
     period: int | None = None,
+    scale: float | None = None,
+    span: bool = False,
 ) -> ExternalFunction:
     """Softmax over a row of ``tile_size`` elements, into bf16.
 
-    With bf16 input this is ``softmax_bf16(x, y, n)``. With float32 input it
-    is ``softmax_f32_bf16(x, [addend], [mask], y, n)``, which computes
+    With bf16 input this is ``softmax_bf16(x, y, n)``, or with ``span``
+    ``softmax_span_bf16(x, y, n, lo, hi)``. With float32 input it is
+    ``softmax_f32_bf16(x, [addend], [mask], y, n)``, which computes
     ``softmax(cap * tanh((x + addend) / cap) + mask)`` with the logits in
     float32 and overwrites ``x``. With ``window`` and ``period`` it is
     instead ``softmax_rows_banded_f32_bf16(x, addend, y, 1, n, window,
@@ -470,6 +495,18 @@ def softmax(
             ``j < window + q % 2``.
         period: Float input only, with ``window``: the band wraps every
             ``period`` rows (EG2 tiles one band over every attention head).
+        scale: bf16 input only: fold a scale (1/sqrt(d) for attention) into
+            the exp2 argument as ``scale * log2(e)``, host-split into the
+            same bf16 limbs (or the single one, without ``accurate_exp2``)
+            log2(e) alone takes, exact to the same 2^-26 relative bound for
+            any value -- a pre-scaled q is exact only at a power-of-two
+            scale. None keeps log2(e) itself, bit for bit the unscaled
+            kernel; so does ``scale=1.0``, computed rather than skipped.
+        span: bf16 input only: ``softmax_span_bf16(x, y, n, lo, hi)`` in
+            place of ``softmax_bf16``. ``lo``/``hi`` are per-call scalars
+            bounding the row's live span: ``[0, lo)`` and ``[hi, n)`` are
+            masked to zero after normalization, so a causal row gives only
+            ``hi`` short of ``n`` and a sliding window gives both.
 
     Returns:
         ExternalFunction configured for the softmax kernel.
@@ -477,12 +514,19 @@ def softmax(
     Raises:
         ValueError: A ``tile_size`` that is not a positive multiple of 32, an
             ``input_dtype`` other than the two, a float-only option with bf16
-            input, a ``soft_cap`` outside [2^-100, 2^10], ``window`` or
-            ``period`` without the other, or either with ``masked``.
+            input, ``scale`` or ``span`` with float32 ``input_dtype`` or with
+            an aie2 non-accurate build, a ``soft_cap`` outside
+            [2^-100, 2^10], ``window`` or ``period`` without the other, or
+            either with ``masked``.
     """
     _require_vector_alignment("softmax", tile_size, _RUNTIME_VECTOR_WIDTH)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     if np.dtype(input_dtype) == np.dtype(np.float32):
+        if scale is not None or span:
+            raise ValueError(
+                "softmax: scale and span are the bf16 input path's options; "
+                "the float32 path masks through masked/window instead"
+            )
         if window is not None or period is not None:
             if masked:
                 raise ValueError(
@@ -505,13 +549,24 @@ def softmax(
             "softmax: soft_cap, masked, addend, window and period are "
             "options of the float32 input path; pass input_dtype=np.float32"
         )
+    if (scale is not None or span) and _tuned_arch() == "aie2" and not accurate_exp2:
+        raise ValueError(
+            "softmax: scale and span fold into softmax_aie2p.h's scale_log2e "
+            "and mask_head_bf16, which aie2's non-accurate build does not "
+            "compile (softmax_aie2.h instead); pass accurate_exp2=True, or "
+            "build for aie2p"
+        )
+    scale_flags = _softmax_scale_flags(scale, accurate_exp2)
+    if span:
+        return _softmax_span_bf16(tile_size, accurate_exp2, scale, scale_flags)
     return _create_lut_kernel(
         "softmax_bf16",
         "softmax.cc",
         [tile_ty, tile_ty, np.int32],
-        compile_flags=["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else None,
+        compile_flags=(["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else [])
+        + scale_flags,
         contract=_unary_lut_contract(
-            lambda x: softmax_ref(x, tile_size=tile_size),
+            lambda x: softmax_ref(x, tile_size=tile_size, scale=scale),
             count=tile_size,
             # Softmax outputs sum to 1 over the tile, so a typical element is
             # about 1 / tile_size and the generic LUT floor of 0.05 would
@@ -536,6 +591,53 @@ def softmax(
             setup=(
                 conv_even if _tuned_arch() == "aie2" and not accurate_exp2 else None
             ),
+        ),
+    )
+
+
+def _softmax_span_bf16(
+    tile_size: int,
+    accurate_exp2: bool,
+    scale: float | None,
+    scale_flags: list[str],
+) -> ExternalFunction:
+    """[`softmax`][iron.kernels.activation.softmax]'s bf16 ``span`` path.
+
+    ``softmax_span_bf16(x, y, n, lo, hi)``: ``n`` is bound to ``tile_size``;
+    ``lo`` and ``hi`` are the caller's per-call scalars.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "softmax_span_bf16",
+        "softmax.cc",
+        [tile_ty, tile_ty, np.int32, np.int32, np.int32],
+        compile_flags=(["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else [])
+        + scale_flags,
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param, Param),
+            parameter_bindings=((2, tile_size),),
+            reference=lambda x, lo, hi: softmax_span_ref(
+                x, lo, hi, tile_size=tile_size, scale=scale
+            ),
+            tolerance=(
+                _SOFTMAX_ACCURATE_TOLERANCE
+                if accurate_exp2
+                else Tolerance.relative(
+                    0.04,
+                    0.1 / tile_size,
+                    note="same arithmetic as softmax(span=False); span adds "
+                    "only an exact zero outside [lo, hi)",
+                )
+            ),
+            sample=lambda rng, calls: softmax_span_sample(
+                rng, calls, tile_size=tile_size
+            ),
+            setup=(
+                conv_even if _tuned_arch() == "aie2" and not accurate_exp2 else None
+            ),
+            acc_dtype=bfloat16,
+            uses_lut=True,
         ),
     )
 
@@ -1559,7 +1661,13 @@ def _softmax_rows(f, addend: bool, masked: bool, **kw) -> Callable:
 
 
 def softmax_ref(
-    x, addend=None, mask=None, *, tile_size: int = 1024, soft_cap: float | None = None
+    x,
+    addend=None,
+    mask=None,
+    *,
+    tile_size: int = 1024,
+    soft_cap: float | None = None,
+    scale: float | None = None,
 ):
     """Numpy reference for [`softmax`][iron.kernels.activation.softmax].
 
@@ -1567,15 +1675,51 @@ def softmax_ref(
     tile (no cross-tile reduction), so the reference splits ``x`` the same
     way before applying the softmax, in float64.  ``x.size`` must be a
     multiple of ``tile_size``. The logits are ``x + addend``, as
-    ``cap * tanh(. / cap)`` under a ``soft_cap``, plus ``mask``; the result
-    is rounded to ``x``'s dtype, float32 for the float path, whose bf16
-    output its contract judges by a bound.
+    ``cap * tanh(. / cap)`` under a ``soft_cap``, plus ``mask`` -- float path
+    options, never given alongside ``scale`` -- then ``scale * logits`` where
+    ``scale`` is given (bf16 input only); the result is rounded to ``x``'s
+    dtype, float32 for the float path, whose bf16 output its contract judges
+    by a bound.
     """
     flat = _softmax_logits(x, addend, mask, tile_size=tile_size, soft_cap=soft_cap)
+    if scale is not None:
+        flat = flat * scale
     flat = flat - flat.max(axis=1, keepdims=True)
     exp = np.exp(flat)
     out = exp / exp.sum(axis=1, keepdims=True)
     return _rounded(out.reshape(np.shape(x)), x)
+
+
+def softmax_span_ref(x, lo, hi, *, tile_size: int, scale: float | None = None):
+    """Numpy reference for [`softmax`][iron.kernels.activation.softmax]'s ``span`` path.
+
+    ``softmax_ref``, each row masked to its own ``[lo, hi)`` first with
+    bf16's most negative value, as the kernel's ``mask_head_bf16`` and
+    ``mask_bf16`` do.
+    """
+    lo = np.asarray(lo)
+    hi = np.asarray(hi)
+    cols = np.arange(tile_size)[None, :]
+    live = (cols >= lo[:, None]) & (cols < hi[:, None])
+    masked = np.where(live, x, finfo(bfloat16).min).astype(x.dtype)
+    return softmax_ref(masked, tile_size=tile_size, scale=scale)
+
+
+def softmax_span_sample(rng, calls: int, *, tile_size: int) -> list:
+    """``span`` path inputs: a tile a call, with a random live ``[lo, hi)`` each.
+
+    The first call (when there are at least two) is unmasked, ``[0,
+    tile_size)``; the second keeps a single element, ``[0, 1)``, the
+    narrowest live span a row has.
+    """
+    x = (rng.uniform(-1.0, 1.0, (calls, tile_size)) * 20.0).astype(bfloat16)
+    lo = rng.integers(0, tile_size, calls)
+    span = rng.integers(1, tile_size + 1 - lo)
+    hi = lo + span
+    if calls >= 2:
+        lo[0], hi[0] = 0, tile_size
+        lo[1], hi[1] = 0, 1
+    return [x, lo.astype(np.int32), hi.astype(np.int32)]
 
 
 def _softmax_logits(x, addend, mask, *, tile_size: int, soft_cap: float | None):
