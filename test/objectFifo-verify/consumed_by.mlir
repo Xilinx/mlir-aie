@@ -438,3 +438,75 @@ module @rtp_set_before_write {
     }
   }
 }
+
+// -----
+
+// The pass takes its input under a branch on data, so it may release an
+// output without taking anything.
+
+// CHECK-LABEL: module @take_under_branch
+// CHECK-NOT: consumed_by
+module @take_under_branch {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %flag = aie.buffer(%core) : memref<1xi32>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c0_i32 = arith.constant 0 : i32
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %f = memref.load %flag[%c0] : memref<1xi32>
+        %take = arith.cmpi ne, %f, %c0_i32 : i32
+        scf.if %take {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+        }
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The pass takes its input in a loop whose count is a word nothing fixes, so
+// how much it takes per output is unknown.
+
+// CHECK-LABEL: module @take_in_unknown_loop
+// CHECK-NOT: consumed_by
+module @take_in_unknown_loop {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %count = aie.buffer(%core) : memref<1xi32>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %n = memref.load %count[%c0] : memref<1xi32>
+        %takes = arith.index_cast %n : i32 to index
+        scf.for %j = %c0 to %takes step %c1 {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+        }
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}

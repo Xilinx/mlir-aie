@@ -116,3 +116,64 @@ module {
     }
   }
 }
+
+// -----
+
+// The core takes its input under a branch on data, so the verifier proves
+// nothing and the reuse still warns.
+module {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %flag = aie.buffer(%core) : memref<1xi32>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c0_i32 = arith.constant 0 : i32
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %f = memref.load %flag[%c0] : memref<1xi32>
+        %take = arith.cmpi ne, %f, %c0_i32 : i32
+        scf.if %take {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+        }
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @rounds(%a: memref<32xi32>, %c: memref<32xi32>) {
+      %in0 = aiex.dma_configure_task_for @in {
+        aie.dma_bd(%a : memref<32xi32> offset = 0 len = 16)
+        aie.end
+      }
+      aiex.dma_start_task(%in0)
+      %out0 = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%c : memref<32xi32> offset = 0 len = 16)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%out0)
+      aiex.dma_await_task(%out0)
+      // expected-note@+1 {{released here}}
+      aiex.dma_free_task(%in0)
+      %in1 = aiex.dma_configure_task_for @in {
+        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        aie.dma_bd(%a : memref<32xi32> offset = 16 len = 16)
+        aie.end
+      }
+      aiex.dma_start_task(%in1)
+      %out1 = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%c : memref<32xi32> offset = 16 len = 16)
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%out1)
+      aiex.dma_await_task(%out1)
+      aiex.dma_free_task(%in1)
+    }
+  }
+}
