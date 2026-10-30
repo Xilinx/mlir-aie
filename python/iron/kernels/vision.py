@@ -830,16 +830,21 @@ def resize(
         ``c`` owns patch columns ``c, c + cores, ...`` (strided, not
         contiguous), a true output row needs every core's blocks for that
         band: row ``y``'s pixels at columns ``(core + i * cores) * SIDE``
-        on are call ``i``'s byte range ``3 * SIDE * y`` on. A per-core
-        strided drain -- call ``i``'s 16 chunks of ``3 * SIDE`` bytes to
-        destination row ``band * SIDE + j`` at column byte offset ``(core +
-        i * cores) * 3 * SIDE``, stride ``3 * out_columns`` between chunks
-        -- assembles one shared ``(out_rows, out_columns, 3)`` raster the
-        same way the patches path already gathers ``patches`` from every
-        core's stream; a crop on that raster (``levels``'s ``first`` /
+        on are call ``i``'s byte range ``3 * SIDE * y`` on. Every block is
+        whole, 16 by 16, even past a target that is not a multiple of 16,
+        and each core emits ``strips // cores + 1`` of them a band, zeros
+        past the real strips. So the drain's destination is a padded
+        staging raster of ``bands * SIDE`` rows and ``pad = (strips //
+        cores + 1) * cores`` blocks across: a per-core strided drain --
+        call ``i``'s 16 chunks of ``3 * SIDE`` bytes to staging row ``band
+        * SIDE + j`` at column byte offset ``(core + i * cores) * 3 *
+        SIDE``, stride ``3 * SIDE * pad`` between rows -- fills it the way
+        the patches path gathers ``patches`` from every core's stream. The
+        resized image is that raster's first ``out_rows`` rows and
+        ``out_columns`` pixels, and a crop of it (``levels``'s ``first`` /
         ``count`` / ``at`` on columns, ``row`` / ``lo`` / ``hi`` on rows)
-        is then free-form, not limited to this kernel's ``SIDE``- or
-        ``cores * SIDE``-pixel block boundaries.
+        is free-form, not limited to this kernel's ``SIDE``- or ``cores *
+        SIDE``-pixel block boundaries.
 
     Raises:
         ValueError: When ``words`` holds no window of 1 to 64 taps,
