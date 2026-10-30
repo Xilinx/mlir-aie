@@ -25,9 +25,7 @@
     "SAMPLE_COLUMNS (the columns whose summaries are combined) must be defined"
 #endif
 
-// The words between one column's summary and the next: with SAMPLE_PROB_RULE,
-// a column is its summary, restricted summary and reduction, back to back, so
-// one stream per column carries all three.
+// A column's stride in summaries: see sample_combine below.
 #if SAMPLE_PROB_RULE
 #define SAMPLE_COLUMN_WORDS (2 * SAMPLE_SUMMARY_WORDS + SAMPLE_REDUCTION_WORDS)
 #else
