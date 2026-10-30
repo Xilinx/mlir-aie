@@ -289,3 +289,115 @@ module {
     }
   }
 }
+
+// -----
+
+// Only the chain from the task's entry runs: a block nothing reaches moves
+// nothing, so one object per dispatch matches.
+
+module {
+  aiex.scratchpad_parameter @n : i32
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @out(%tile, {%shim}, 2 : i32) : !aie.objectfifo<memref<2xi32>>
+    %core = aie.core(%tile) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aiex.wait_scratchpad_parameters
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<2xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @sequence(%arg0: memref<4xi32>) {
+      aiex.sync_scratchpad_parameters_from_host
+      %t = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%arg0 : memref<4xi32> offset = 0 len = 2 sizes = [1, 1, 1, 2] strides = [0, 0, 0, 1])
+        aie.end
+      ^unreached:
+        aie.dma_bd(%arg0 : memref<4xi32> offset = 2 len = 2 sizes = [1, 1, 1, 2] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A task moves once per start: one object's task started twice moves the two
+// objects each pass hands over.
+
+module {
+  aiex.scratchpad_parameter @n : i32
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @out(%tile, {%shim}, 2 : i32) : !aie.objectfifo<memref<2xi32>>
+    %core = aie.core(%tile) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aiex.wait_scratchpad_parameters
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<2xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        %p = aie.objectfifo.acquire @out(Produce, 1) : memref<2xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @sequence(%arg0: memref<2xi32>) {
+      aiex.sync_scratchpad_parameters_from_host
+      %t = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%arg0 : memref<2xi32> offset = 0 len = 2 sizes = [1, 1, 1, 2] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A sub-byte element takes a whole byte on the channel, as a buffer
+// descriptor's length counts it: four i4 is one four-byte object.
+
+module {
+  aiex.scratchpad_parameter @n : i32
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @out(%tile, {%shim}, 2 : i32) : !aie.objectfifo<memref<4xi4>>
+    %core = aie.core(%tile) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aiex.wait_scratchpad_parameters
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<4xi4>
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @sequence(%arg0: memref<4xi4>) {
+      aiex.sync_scratchpad_parameters_from_host
+      %t = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%arg0 : memref<4xi4> offset = 0 len = 4 sizes = [1, 1, 1, 4] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+    }
+  }
+}

@@ -1529,6 +1529,10 @@ def AIE_DMAConfigureTaskForOp
       return mlir::IntegerAttr::get(
           mlir::IntegerType::get(getContext(), 32), getRepeatCount());
     }
+    // Bytes the task streams each time its block runs, counting each start
+    // and the chain reachable from the body's entry; nullopt when any extent,
+    // repeat or start count is not static, or the total overflows.
+    std::optional<int64_t> getStaticBytesStreamed();
   }];
 }
 

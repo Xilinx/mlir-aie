@@ -12,9 +12,11 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
@@ -620,7 +622,7 @@ struct AIEObjectFifoVerifyPass
   }
 
   /// Bytes one run of `sequence` moves through the shim endpoint `name`, when
-  /// every use of it is a DMA task whose executions, repeats and lengths are
+  /// every use of it is a DMA task whose starts, repeats and lengths are
   /// static.
   static std::optional<int64_t> hostBytes(RuntimeSequenceOp sequence,
                                           StringAttr name) {
@@ -628,31 +630,30 @@ struct AIEObjectFifoVerifyPass
         SymbolTable::getSymbolUses(name, &sequence.getBody());
     if (!uses)
       return std::nullopt;
-    int64_t bytes = 0;
+    std::optional<int64_t> bytes = 0;
     for (const SymbolTable::SymbolUse &use : *uses) {
       auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(use.getUser());
       std::optional<int64_t> runs =
           task ? staticExecutions(task) : std::nullopt;
-      if (!runs || task.getRepeatCountVal())
+      std::optional<int64_t> streamed =
+          runs ? task.getStaticBytesStreamed() : std::nullopt;
+      if (!streamed)
         return std::nullopt;
-      int64_t perRun = 0;
-      WalkResult result = task.getBody().walk([&](DMABDOp bd) {
-        if (bd.getLengthParameter() || !bd.getConstantLen())
-          return WalkResult::interrupt();
-        perRun += bd.getLenInBytes();
-        return WalkResult::advance();
-      });
-      if (result.wasInterrupted())
+      std::optional<int64_t> moved = llvm::checkedMul(*runs, *streamed);
+      bytes = moved ? llvm::checkedAdd(*bytes, *moved) : std::nullopt;
+      if (!bytes)
         return std::nullopt;
-      bytes += *runs * (task.getRepeatCount() + 1) * perRun;
     }
     return bytes;
   }
 
-  /// Bytes one object of `endpoint` carries over its channel.
+  /// Bytes one object of `endpoint` carries over its channel, its elements
+  /// sized as a buffer descriptor's length counts them.
   static int64_t objectBytes(ObjectFifoDmaEndpointOp endpoint) {
     auto type = cast<MemRefType>(endpoint.getPoolOp().getElemType());
-    return transferElements(endpoint) * type.getElementTypeBitWidth() / 8;
+    return transferElements(endpoint) *
+           static_cast<int64_t>(DataLayout::closest(endpoint).getTypeSize(
+               type.getElementType()));
   }
 
   /// Objects the DMA endpoint `endpoint` moves in one run of `sequence`, traced
