@@ -687,41 +687,23 @@ int SAPlacer::computeMemSpilloverPenalty() const {
   llvm::SmallVector<std::pair<int64_t, int>> allBufs;
   llvm::SmallVector<int64_t> memTileBaseline(numCols, 0);
 
+  auto addBuffers = [&](Operation *tile, int64_t bytes, int depth) {
+    auto posIt = currentPlacement.find(tile);
+    auto typeIt = tileTypes.find(tile);
+    if (posIt == currentPlacement.end() || typeIt == tileTypes.end() ||
+        typeIt->second != AIETileType::MemTile)
+      return;
+    for (int d = 0; d < depth; d++)
+      allBufs.push_back({bytes, posIt->second.col});
+  };
+
   for (const auto &fb : fifoBuffers) {
-    if (!fb.producer)
-      continue;
-    auto prodIt = currentPlacement.find(fb.producer);
-    if (prodIt == currentPlacement.end())
-      continue;
-    TileID prodPos = prodIt->second;
-    auto prodTypeIt = tileTypes.find(fb.producer);
-    if (prodTypeIt == tileTypes.end())
-      continue;
-    if (prodTypeIt->second != AIETileType::MemTile)
-      continue;
-    if (fb.linkSharedProd)
-      continue;
-
-    int col = prodPos.col;
-    for (int d = 0; d < fb.producerDepth; d++)
-      allBufs.push_back({fb.producerSizeBytes, col});
-
-    for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
-      auto *cons = fb.consumers[ci];
-      if (!cons)
-        continue;
-      auto consIt = currentPlacement.find(cons);
-      if (consIt == currentPlacement.end())
-        continue;
-      auto consTypeIt = tileTypes.find(cons);
-      if (consTypeIt == tileTypes.end() ||
-          consTypeIt->second != AIETileType::MemTile)
-        continue;
-      int consCol = consIt->second.col;
-      int consDepth = fb.consumerDepthAt(ci);
-      for (int d = 0; d < consDepth; d++)
-        allBufs.push_back({fb.consumerSizeBytes, consCol});
-    }
+    // A linked output aliases only its producer pool, not its consumers' pools.
+    if (!fb.linkSharedProd)
+      addBuffers(fb.producer, fb.producerSizeBytes, fb.producerDepth);
+    for (size_t ci = 0; ci < fb.consumers.size(); ci++)
+      addBuffers(fb.consumers[ci], fb.consumerSizeBytes,
+                 fb.consumerDepthAt(ci));
   }
 
   // Static buffers as baseline (non-spillable).
