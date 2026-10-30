@@ -114,6 +114,21 @@ def test_a_declaration_names_a_partial_domain_by_its_function():
     assert "cores in widths" in repr(Partial.declaration)
 
 
+class Banded(Base):
+    M: int = param()
+    rows: int = tunable(default=4)
+    a = In(M)
+    c = Out(M)
+    edges = per_call(count=lambda op: op.rows, derive=lambda op: (0,) * op.rows)
+
+
+def test_a_declaration_records_a_per_call_vectors_count():
+    d = Banded.declaration
+    assert [m.name for m in d.per_calls] == ["edges"]
+    assert d.per_calls[0].count(Banded(M=8)) == 4
+    assert "  per_call  edges[f(op)]" in repr(d)
+
+
 def declare(body: dict, annotations: dict | None = None, base: type = Base):
     return type("Bad", (base,), {**body, "__annotations__": annotations or {}})
 

@@ -223,12 +223,18 @@ class PerCallMember(Member):
             None for one every call gives.
         bounds: The parameter it bounds: a call may give a smaller value,
             and the build is sized for the parameter's.
+        count: None for a single value; a positive int, or a function of
+            the operator computing one, for a short fixed-length vector of
+            that many words instead -- a row block's causal or window edge,
+            where one scalar does not hold for every row. ``derive``, given
+            with ``count``, returns that many host values, not one.
     """
 
-    def __init__(self, dtype, derive, bounds):
+    def __init__(self, dtype, derive, bounds, count=None):
         self.dtype = dtype
         self.derive = derive
         self.bounds = bounds
+        self.count = count
 
 
 def per_call(
@@ -236,25 +242,32 @@ def per_call(
     *,
     derive: Callable[[Any], Any] | None = None,
     bounds: OperatorParam | None = None,
+    count: int | Callable[[Any], int] | None = None,
 ) -> Any:
     """Declare a value the cores read that may change every call without a rebuild.
 
     A value no build fixes (no `derive`, no `bounds`) is given every call:
     an operator with a dispatch library takes it as a dispatch scalar,
-    which rebuilds the instruction stream around it.
+    which rebuilds the instruction stream around it. ``count`` makes it a
+    vector of that many words instead of one, each its own per-call integer.
 
     Args:
         dtype: An integer type.
-        derive: A function of the operator computing it once per build.
+        derive: A function of the operator computing it once per build; with
+            ``count``, it returns that many host values, not one.
         bounds: A ``param()`` this value bounds per call: ``valid =
             per_call(bounds=M)``.
+        count: None for a single value; a positive int, or a function of the
+            operator computing one, for a fixed-length vector of words.
 
     Returns:
         The ``PerCallMember`` the class body binds to the value's name.
 
     Raises:
-        TypeError: `dtype` is not an integer type, or both `derive` and
-            `bounds` are given.
+        TypeError: `dtype` is not an integer type, both `derive` and
+            `bounds` are given, both `bounds` and `count` are given (a
+            vector bounds no single parameter, one word at a time), or
+            `count` is neither a callable nor a positive int.
     """
     if np.dtype(dtype).kind not in "iu":
         raise TypeError(
@@ -263,7 +276,23 @@ def per_call(
         )
     if derive is not None and bounds is not None:
         raise TypeError("per_call(derive=, bounds=): give one, not both")
-    return PerCallMember(dtype, derive, bounds)
+    if count is not None and bounds is not None:
+        raise TypeError(
+            "per_call(count=, bounds=): a vector bounds no single param(), one "
+            "word at a time"
+        )
+    if count is not None and not callable(count):
+        bad = (
+            isinstance(count, bool)
+            or not isinstance(count, (int, np.integer))
+            or count < 1
+        )
+        if bad:
+            raise TypeError(
+                f"per_call(count={count!r}): give a positive int or a "
+                "function of the operator computing one"
+            )
+    return PerCallMember(dtype, derive, bounds, count)
 
 
 @dataclass(frozen=True)

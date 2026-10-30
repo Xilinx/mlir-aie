@@ -489,4 +489,7 @@ def _member(m: Member) -> str:
     if isinstance(m, _Operand):
         per = "" if m.per is None else f" per [{', '.join(map(_text, m.per))}]"
         return f"{type(m).__name__:<9} {m.name} [{', '.join(map(_text, m.dims))}]{per}"
+    if isinstance(m, PerCallMember) and m.count is not None:
+        count = m.count if isinstance(m.count, int) else "f(op)"
+        return f"{'per_call':<9} {m.name}[{count}]"
     return f"{'per_call':<9} {m.name}"

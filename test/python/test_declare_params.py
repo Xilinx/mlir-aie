@@ -31,6 +31,7 @@ class Op:
     tile = tunable(default=64, domain=(32, 64))
     count = per_call(derive=lambda op: op.M // 4)
     valid = per_call(bounds=M)
+    edges = per_call(count=4, derive=lambda op: tuple(i * op.M for i in range(4)))
     b_col_maj = param(default=False, array=True)
     shape = Select(b_col_maj, (M, 1), (1, M))
 
@@ -73,6 +74,29 @@ def test_a_per_call_value_is_an_integer_with_one_source():
         per_call(np.float32)
     with pytest.raises(TypeError, match="give one, not both"):
         per_call(derive=lambda op: 1, bounds=Op.M)
+
+
+def test_a_per_call_vector_is_a_fixed_word_count():
+    op = Op()
+    vars(op)["M"] = 8
+    assert Op.edges.count == 4
+    assert Op.edges.derive(op) == (0, 8, 16, 24)
+    counted = per_call(count=lambda op: op.M // 2)
+    assert counted.count(op) == 4
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        (dict(count=4, bounds=Op.M), "a vector bounds no single param"),
+        (dict(count=0), "give a positive int or a function"),
+        (dict(count=-1), "give a positive int or a function"),
+        (dict(count=True), "give a positive int or a function"),
+    ],
+)
+def test_a_per_call_vector_rejects_bounds_and_a_non_positive_count(kwargs, message):
+    with pytest.raises(TypeError, match=message):
+        per_call(**kwargs)
 
 
 def test_a_select_picks_by_its_flag():
