@@ -916,7 +916,9 @@ SequentialPlacer::buildChannelRequirements(
   llvm::DenseMap<std::tuple<int, int, int>, ObjectFifoCreateOp> sharedOut;
   auto sharesProducerChannel = [&](ObjectFifoCreateOp fifo,
                                    LogicalTileOp logicalTile) -> bool {
-    std::optional<int> pinned = fifo.getProdDmaChannel();
+    ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
+    std::optional<int> pinned =
+        port && !port.isCore() ? port.channelIndex() : std::nullopt;
     if (!pinned || !logicalTile)
       return false;
     std::optional<uint32_t> col = logicalTile.getCol();
@@ -936,11 +938,15 @@ SequentialPlacer::buildChannelRequirements(
                        << other.getSymName() << ", but " << why;
       return false;
     };
-    if (!fifo.getPacket() || !other.getPacket())
+    if (!fifo.packetHeader() || !other.packetHeader())
       return reject("a shared channel carries both at once, which only "
                     "packet-switched routes tell apart");
-    std::optional<uint8_t> id = fifo.getPacketId();
-    std::optional<uint8_t> otherId = other.getPacketId();
+    std::optional<uint16_t> id = fifo.packetHeader()
+                                     ? fifo.packetHeader().getPktId()
+                                     : std::nullopt;
+    std::optional<uint16_t> otherId = other.packetHeader()
+                                          ? other.packetHeader().getPktId()
+                                          : std::nullopt;
     if (id && otherId && *id == *otherId)
       return reject(Twine("both pin packet id ") +
                     Twine(static_cast<unsigned>(*id)));
@@ -953,10 +959,10 @@ SequentialPlacer::buildChannelRequirements(
   auto sharesConsumerChannel = [&](ObjectFifoCreateOp fifo, Operation *tileOp,
                                    unsigned consumer) -> bool {
     auto logicalTile = dyn_cast_or_null<LogicalTileOp>(tileOp);
-    std::optional<ArrayRef<int>> pinned = fifo.getConsDmaChannels();
-    if (!logicalTile || !pinned || consumer >= pinned->size())
+    ObjectFifoEndPortAttr port = fifo.getConsumerPort(consumer);
+    if (!logicalTile || !port || port.isCore() || !port.channelIndex())
       return false;
-    int channel = (*pinned)[consumer];
+    int channel = *port.channelIndex();
     std::optional<uint32_t> col = logicalTile.getCol();
     std::optional<uint32_t> row = logicalTile.getRow();
     if (channel < 0 || !col || !row)
@@ -974,8 +980,12 @@ SequentialPlacer::buildChannelRequirements(
     if (!fifo.getOutOfOrder() || !other.getOutOfOrder())
       return reject("a channel its fifos receive in turn holds their order; "
                     "out_of_order puts that order in each object's header");
-    std::optional<uint8_t> id = fifo.getPacketId();
-    std::optional<uint8_t> otherId = other.getPacketId();
+    std::optional<uint16_t> id = fifo.packetHeader()
+                                     ? fifo.packetHeader().getPktId()
+                                     : std::nullopt;
+    std::optional<uint16_t> otherId = other.packetHeader()
+                                          ? other.packetHeader().getPktId()
+                                          : std::nullopt;
     if (id && otherId && *id == *otherId)
       return reject(Twine("both pin packet id ") +
                     Twine(static_cast<unsigned>(*id)));

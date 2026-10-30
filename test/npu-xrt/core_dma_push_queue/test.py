@@ -15,7 +15,7 @@ import time
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Out, Packet, Program, Runtime, Transport, Worker
 from aie.helpers.dialects.scf import _for as range_
 
 LINE_LEN = 8
@@ -66,9 +66,8 @@ def core_dma_push_queue(in_tensor: In, out_tensor: Out):
         LINE_TY,
         depth=2,
         name="mid",
-        packet=True,
+        transport=Transport.dma(packet=Packet()),
         out_of_order=True,
-        via_DMA=True,
     )
     of_out = ObjectFifo(LINE_TY, depth=2, name="out")
 

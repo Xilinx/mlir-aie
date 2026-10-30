@@ -18,7 +18,7 @@ module @unequal_depth {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_5 = aie.tile(0, 5)
     // expected-error @+1 {{sends out of order from}}
-    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, [2, 3]) {packet, packet_id = 3 : i8, out_of_order, iter_count = 1 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, [2, 3]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, out_of_order, iter_count = 1 : i32} : !aie.objectfifo<memref<16xi32>>
     %core_0_2 = aie.core(%tile_0_2) {
       %1 = aie.objectfifo.acquire @a(Produce, 1) : memref<16xi32>
       aie.objectfifo.release @a(Produce, 1)
@@ -41,7 +41,7 @@ module @unequal_size {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_5 = aie.tile(0, 5)
     // expected-error @+1 {{sends out of order from}}
-    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, [2, 4]) {packet, packet_id = 3 : i8, out_of_order, iter_count = 1 : i32} : !aie.objectfifo<memref<16xi32>> -> !aie.objectfifo<memref<4xi32>>
+    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, [2, 4]) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, out_of_order, iter_count = 1 : i32} : !aie.objectfifo<memref<16xi32>> -> !aie.objectfifo<memref<4xi32>>
     %core_0_2 = aie.core(%tile_0_2) {
       %1 = aie.objectfifo.acquire @a(Produce, 1) : memref<16xi32>
       aie.objectfifo.release @a(Produce, 1)

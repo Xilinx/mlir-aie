@@ -695,7 +695,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
            << consPorts.size() << " entries for " << getConsumerTiles().size()
            << " consumers";
 
-  if (getOutOfOrder() && !getPacket()) {
+  if (getOutOfOrder() && !packetHeader()) {
     return emitOpError("out_of_order names each object's buffer in the packet "
                        "header, so it needs a packet objectfifo");
   }

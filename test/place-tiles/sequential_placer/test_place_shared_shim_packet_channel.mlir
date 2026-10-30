@@ -26,9 +26,9 @@ module @shared_shim_channel {
     %c1 = aie.logical_tile<CoreTile>(0, 3)
     %c2 = aie.logical_tile<CoreTile>(0, 4)
     %shim = aie.logical_tile<ShimNOCTile>(0, 0)
-    aie.objectfifo @a(%shim, {%c0}, 2 : i32) {packet, prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%shim, {%c1}, 2 : i32) {packet, prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @c(%shim, {%c2}, 2 : i32) {packet, prod_dma_channel = 1 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%shim, {%c0}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%shim, {%c1}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%shim, {%c2}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 1>} : !aie.objectfifo<memref<16xi32>>
   }
 }
 
@@ -52,10 +52,10 @@ module @shared_across_logical_tiles {
     %s1 = aie.logical_tile<ShimNOCTile>(0, 0)
     %s2 = aie.logical_tile<ShimNOCTile>(0, 0)
     %s3 = aie.logical_tile<ShimNOCTile>(0, 0)
-    aie.objectfifo @a(%s0, {%c0}, 2 : i32) {packet, packet_id = 12 : i8, prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%s1, {%c1}, 2 : i32) {packet, packet_id = 13 : i8, prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @c(%s2, {%c2}, 2 : i32) {packet, packet_id = 12 : i8, prod_dma_channel = 1 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @d(%s3, {%c3}, 2 : i32) {packet, packet_id = 13 : i8, prod_dma_channel = 1 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%s0, {%c0}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 12>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%s1, {%c1}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 13>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%s2, {%c2}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 12>>, prod_port = #aie.end_port<DMA : 1>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @d(%s3, {%c3}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 13>>, prod_port = #aie.end_port<DMA : 1>} : !aie.objectfifo<memref<16xi32>>
   }
 }
 
@@ -67,9 +67,9 @@ module @shared_needs_packet {
     %c0 = aie.logical_tile<CoreTile>(0, 2)
     %c1 = aie.logical_tile<CoreTile>(0, 3)
     %shim = aie.logical_tile<ShimNOCTile>(0, 0)
-    aie.objectfifo @a(%shim, {%c0}, 2 : i32) {packet, prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%shim, {%c0}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
     // expected-error@+1 {{shares MM2S channel 0 with @a, but a shared channel carries both at once, which only packet-switched routes tell apart}}
-    aie.objectfifo @b(%shim, {%c1}, 2 : i32) {prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%shim, {%c1}, 2 : i32) {prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
   }
 }
 
@@ -81,8 +81,8 @@ module @shared_needs_distinct_ids {
     %c0 = aie.logical_tile<CoreTile>(0, 2)
     %c1 = aie.logical_tile<CoreTile>(0, 3)
     %shim = aie.logical_tile<ShimNOCTile>(0, 0)
-    aie.objectfifo @a(%shim, {%c0}, 2 : i32) {packet, packet_id = 4 : i8, prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%shim, {%c0}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
     // expected-error@+1 {{shares MM2S channel 0 with @a, but both pin packet id 4}}
-    aie.objectfifo @b(%shim, {%c1}, 2 : i32) {packet, packet_id = 4 : i8, prod_dma_channel = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%shim, {%c1}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
   }
 }

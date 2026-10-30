@@ -18,7 +18,7 @@
 // fifo with an iter_count receives that many passes and no more. One without
 // runs on, and is armed for as many objects as one arming holds.
 
-// RUN: aie-opt --split-input-file --verify-diagnostics --aie-objectfifo-split --aie-objectfifo-allocate --aie-objectfifo-lower-cores --aie-objectfifo-lower-dmas --aie-assign-lock-ids --aie-assign-buffer-addresses --aie-assign-bd-ids %s | FileCheck %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate --aie-objectfifo-lower-cores --aie-objectfifo-lower-dmas --aie-assign-lock-ids --aie-assign-buffer-addresses --aie-assign-bd-ids %s | FileCheck %s
 
 // The header has to reach the receiving DMA, which reads the buffer out of it.
 // CHECK-LABEL: @out_of_order
@@ -38,7 +38,7 @@ module @out_of_order {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, out_of_order, iter_count = 4 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, out_of_order, iter_count = 4 : i32} : !aie.objectfifo<memref<16xi32>>
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
       %c4 = arith.constant 4 : index
@@ -84,7 +84,7 @@ module @runs_on {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, out_of_order} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, out_of_order} : !aie.objectfifo<memref<16xi32>>
   }
 }
 
@@ -97,6 +97,6 @@ module @beyond_one_arming {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_5 = aie.tile(0, 5)
     // expected-error@+1 {{objects out of order, but a channel arms for at most}}
-    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, out_of_order, iter_count = 200 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, out_of_order, iter_count = 200 : i32} : !aie.objectfifo<memref<16xi32>>
   }
 }

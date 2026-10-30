@@ -961,10 +961,11 @@ struct AIEObjectFifoAllocatePass
     if (!tileOf(endpoint).isShimTile())
       return false;
     for (auto flow : device.getOps<RouteOp>()) {
-      if (!flow.getPacket() && !clPacketSwObjectFifos)
+      if (!flow.getPacket())
         continue;
-      if (lookupEndpoint(flow.getSourceAttr()).getOperation() ==
-          endpoint.getOperation())
+      if (llvm::any_of(flow.getSourceNames(), [&](StringRef name) {
+            return lookupEndpoint(name).getOperation() == endpoint.getOperation();
+          }))
         return true;
     }
     return false;
@@ -1179,7 +1180,7 @@ struct AIEObjectFifoAllocatePass
            llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
                         [&](ObjectFifoDmaEndpointOp end) {
                           return end.getPoolOp() != pool ||
-                                 (!end.getDispatch() &&
+                                 (!end.getOutOfOrder() && !end.getDispatch() &&
                                   (!end.getTurns() ||
                                    llvm::is_contained(regrouped, end)));
                         });
@@ -1641,7 +1642,7 @@ struct AIEObjectFifoAllocatePass
     // An out-of-order receiver reads the buffer it should fill out of the
     // header, so the header has to reach its DMA.
     bool keepHeader = flow.getKeepPktHeader();
-    for (auto destName : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+    for (StringRef destName : flow.getDestinationNames())
       if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(
               lookupEndpoint(destName).getOperation()))
         keepHeader |= dma.getOutOfOrder();
@@ -1667,7 +1668,7 @@ struct AIEObjectFifoAllocatePass
       // chain, so its descriptors carry the id too.
       if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(dest.getOperation()))
         if (dma.getOutOfOrder())
-          dest.setRoutePacket(info);
+          dest.setRoutePacket(header);
       PacketDestOp::create(builder, flow.getLoc(), dest.getTile(),
                            dest.getRouteBundle(), channelOf(dest));
     }
@@ -2209,14 +2210,16 @@ struct AIEObjectFifoAllocatePass
     // ends still exist, and let that pass turn the names into ids.
     int32_t nextTag = 0;
     for (auto flow : device.getOps<RouteOp>()) {
-      RouteEndpoint sender = lookupEndpoint(flow.getSourceAttr());
+      if (flow.getSources().size() != 1)
+        continue;
+      RouteEndpoint sender = lookupEndpoint(*flow.getSourceNames().begin());
       auto src =
           sender ? dyn_cast<ObjectFifoDmaEndpointOp>(sender.getOperation())
                  : nullptr;
       if (!src || !src.getOutOfOrder())
         continue;
       for (auto destName :
-           flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+           flow.getDestinationNames()) {
         RouteEndpoint receiver = lookupEndpoint(destName);
         auto dst =
             receiver ? dyn_cast<ObjectFifoDmaEndpointOp>(receiver.getOperation())

@@ -10,8 +10,8 @@
 // goes. The core counts the objects it frees and pushes once per run of as
 // many objects as one task's repeat count holds.
 
-// RUN: aie-opt --split-input-file --aie-objectfifo-split --aie-objectfifo-allocate --aie-objectfifo-insert-core-queue-pushes %s | FileCheck %s
-// RUN: aie-opt --split-input-file --aie-objectfifo-split --aie-objectfifo-allocate --aie-objectfifo-insert-core-queue-pushes=check-queue-space=false %s | FileCheck %s --check-prefix=NOCHECK
+// RUN: aie-opt --split-input-file --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate --aie-objectfifo-insert-core-queue-pushes %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate --aie-objectfifo-insert-core-queue-pushes=check-queue-space=false %s | FileCheck %s --check-prefix=NOCHECK
 
 // The count starts at one, so the first release pushes the run that follows
 // the one the configuration pushed, and a push covers 256 objects.
@@ -40,7 +40,7 @@ module @runs_on {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, out_of_order} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, out_of_order} : !aie.objectfifo<memref<16xi32>>
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
       %c4 = arith.constant 4 : index
@@ -74,7 +74,7 @@ module @bounded {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, out_of_order, iter_count = 4 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of(%tile_0_2, {%tile_0_5}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, out_of_order, iter_count = 4 : i32} : !aie.objectfifo<memref<16xi32>>
     %core_0_5 = aie.core(%tile_0_5) {
       %c0 = arith.constant 0 : index
       %c4 = arith.constant 4 : index
@@ -125,8 +125,8 @@ module @shared_channel {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_3 = aie.tile(0, 3)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @of0(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, packet_id = 3 : i8, out_of_order, cons_dma_channels = array<i32: 1>} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of1(%tile_0_3, {%tile_0_5}, 2 : i32) {packet, packet_id = 4 : i8, out_of_order, cons_dma_channels = array<i32: 1>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of0(%tile_0_2, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, out_of_order, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of1(%tile_0_3, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, out_of_order, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
     %core_0_5 = aie.core(%tile_0_5) {
       %c0 = arith.constant 0 : index
       %c4 = arith.constant 4 : index

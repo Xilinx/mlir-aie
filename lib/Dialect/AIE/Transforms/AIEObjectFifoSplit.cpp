@@ -407,13 +407,11 @@ struct AIEObjectFifoSplitPass
     DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
         onChannel;
     for (ObjectFifoCreateOp fifo : fifos) {
-      std::optional<ArrayRef<int32_t>> channels = fifo.getConsDmaChannels();
-      if (!channels)
-        continue;
       for (auto [index, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
-        if (index >= channels->size())
-          break;
-        int32_t channel = (*channels)[index];
+        ObjectFifoEndPortAttr port = fifo.getConsumerPort(index);
+        if (!port || port.isCore() || !port.channelIndex())
+          continue;
+        int channel = *port.channelIndex();
         auto tile = consumer.getDefiningOp<TileOp>();
         if (channel < 0 || !tile)
           continue;
@@ -424,7 +422,7 @@ struct AIEObjectFifoSplitPass
       if (sharing.size() < 2)
         continue;
       for (ObjectFifoCreateOp fifo : sharing) {
-        if (!fifo.getPacket())
+        if (!fifo.packetHeader())
           return fifo.emitOpError(
               "shares a receiving channel, which it can only do out of order, "
               "naming each object's buffer in a packet header; make it a "

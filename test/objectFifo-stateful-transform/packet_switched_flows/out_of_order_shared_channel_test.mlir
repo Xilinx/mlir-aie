@@ -12,7 +12,7 @@
 // The fifos take disjoint runs of bd ids, and each sender names the ids its own
 // receiver holds. Both fifos here receive on channel 1 of tile (0, 5).
 
-// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles --aie-objectfifo-split --aie-objectfifo-allocate --aie-objectfifo-lower-cores --aie-objectfifo-lower-dmas --aie-assign-lock-ids --aie-assign-buffer-addresses --aie-assign-bd-ids %s | FileCheck %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-place-tiles --aie-objectfifo-split --aie-assign-packet-ids --aie-objectfifo-allocate --aie-objectfifo-lower-cores --aie-objectfifo-lower-dmas --aie-assign-lock-ids --aie-assign-buffer-addresses --aie-assign-bd-ids %s | FileCheck %s
 
 // CHECK-LABEL: @shared_s2mm
 // @a receives into the first run of ids, and its sender names them.
@@ -32,8 +32,8 @@ module @shared_s2mm {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_3 = aie.tile(0, 3)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, 2 : i32) {packet, packet_id = 3 : i8, out_of_order, iter_count = 1 : i32, cons_dma_channels = array<i32: 1>} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @b(%tile_0_3, {%tile_0_5}, 2 : i32) {packet, packet_id = 4 : i8, out_of_order, iter_count = 1 : i32, cons_dma_channels = array<i32: 1>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, out_of_order, iter_count = 1 : i32, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%tile_0_3, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, out_of_order, iter_count = 1 : i32, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
     %core_0_2 = aie.core(%tile_0_2) {
       %1 = aie.objectfifo.acquire @a(Produce, 1) : memref<16xi32>
       aie.objectfifo.release @a(Produce, 1)

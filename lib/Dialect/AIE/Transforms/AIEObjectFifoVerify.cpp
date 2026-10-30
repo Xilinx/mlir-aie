@@ -417,7 +417,10 @@ struct AIEObjectFifoVerifyPass
       return (type.getNumElements() * type.getElementTypeBitWidth() + 7) / 8;
     };
     for (auto flow : device.getOps<RouteOp>()) {
-      ObjectFifoDmaEndpointOp src = lookup(flow.getSourceAttr());
+      if (flow.getSources().size() != 1)
+        continue;
+      ObjectFifoDmaEndpointOp src =
+          lookup(cast<FlatSymbolRefAttr>(flow.getSources()[0]));
       if (!src || !src.getOutOfOrder())
         continue;
       for (auto destName :
