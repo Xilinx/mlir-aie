@@ -565,6 +565,12 @@ softmax/1024x256/bfloat16
 softmax/160x4/bfloat16/min-pipelined
 softmax/2048x16/bfloat16/llama-prefill
 softmax/32x4/bfloat16/accurate_exp2=True/accurate-short
+softmax/32x4/bfloat16/accurate_exp2=True/scale=0.0/span=True/span-mid
+softmax/32x4/bfloat16/accurate_exp2=True/scale=0.0/span=True/span-one
+softmax/32x4/bfloat16/accurate_exp2=True/span=True/span
+softmax/32x4/bfloat16/scale=0.0/span=True/span-mid
+softmax/32x4/bfloat16/scale=0.0/span=True/span-one
+softmax/32x4/bfloat16/scale=0.25/scaled
 softmax/32x4/bfloat16/short-trip
 softmax/1024x8/float32_bfloat16/addend=True/masked=True/soft_cap=30.0/f32
 softmax/1024x8/float32_bfloat16/addend=True/soft_cap=1024.0/f32
