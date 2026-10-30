@@ -17,17 +17,17 @@
 // The two ingest chains fill their own slice and carry no transform.
 // CHECK:         aie.memtile_dma(%{{.*}}mem_tile_2_1)
 // CHECK:           aie.dma_start(S2MM, 0
-// CHECK:           aie.dma_bd(%{{.*}}of_out_buff_0 : memref<32xi32> offset = 0 len = 16)
+// CHECK:           aie.dma_bd(%{{.*}}of_out__buf0 : memref<32xi32> offset = 0 len = 16)
 // CHECK:           aie.dma_start(S2MM, 1
-// CHECK:           aie.dma_bd(%{{.*}}of_out_buff_0 : memref<32xi32> offset = 16 len = 16)
+// CHECK:           aie.dma_bd(%{{.*}}of_out__buf0 : memref<32xi32> offset = 16 len = 16)
 
 // The drain chain visits both slices of both objects, and every one of its
 // descriptors carries the output transform.
 // CHECK:           aie.dma_start(MM2S, 0
-// CHECK:           aie.dma_bd(%{{.*}}of_out_buff_0 : memref<32xi32> offset = 0 len = 16 sizes = [2, 4] strides = [4, 1])
-// CHECK:           aie.dma_bd(%{{.*}}of_out_buff_0 : memref<32xi32> offset = 16 len = 16 sizes = [2, 4] strides = [4, 1])
-// CHECK:           aie.dma_bd(%{{.*}}of_out_buff_1 : memref<32xi32> offset = 0 len = 16 sizes = [2, 4] strides = [4, 1])
-// CHECK:           aie.dma_bd(%{{.*}}of_out_buff_1 : memref<32xi32> offset = 16 len = 16 sizes = [2, 4] strides = [4, 1])
+// CHECK:           aie.dma_bd(%{{.*}}of_out__buf0 : memref<32xi32> offset = 0 len = 16 sizes = [2, 4] strides = [4, 1])
+// CHECK:           aie.dma_bd(%{{.*}}of_out__buf0 : memref<32xi32> offset = 16 len = 16 sizes = [2, 4] strides = [4, 1])
+// CHECK:           aie.dma_bd(%{{.*}}of_out__buf1 : memref<32xi32> offset = 0 len = 16 sizes = [2, 4] strides = [4, 1])
+// CHECK:           aie.dma_bd(%{{.*}}of_out__buf1 : memref<32xi32> offset = 16 len = 16 sizes = [2, 4] strides = [4, 1])
 
 module @joinOutputDims {
  aie.device(xcve2302) {

@@ -18,8 +18,8 @@
 // CHECK-NOT: aie.objectfifo.allocate @data(%[[WTS]])
 // CHECK: aie.objectfifo.allocate @data(
 
-// ADDR-DAG: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "data_buff_0"}
-// ADDR-DAG: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "data_buff_1"}
+// ADDR-DAG: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "data__buf0"}
+// ADDR-DAG: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "data__buf1"}
 // ADDR-DAG: {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "weights"}
 module @shared_mem_pool_avoids_static_buffers {
   aie.device(npu2) {

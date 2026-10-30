@@ -976,7 +976,7 @@ SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {
 
 StringRef ObjectFifoPoolOp::getBaseName() {
   StringRef name = getSymName();
-  return name.consume_back("_pool") ? name : getSymName();
+  return name.consume_back("__pool") ? name : getSymName();
 }
 
 //===----------------------------------------------------------------------===//

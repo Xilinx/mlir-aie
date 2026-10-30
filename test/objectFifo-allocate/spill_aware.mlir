@@ -26,10 +26,10 @@ module @pinned_local {
 // CHECK-LABEL: module @pinned_local
 // CHECK-DAG: %[[H:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[N:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[H]]) {sym_name = "small_buff_0"}
-// CHECK-DAG: aie.buffer(%[[H]]) {sym_name = "small_buff_1"}
-// CHECK-DAG: aie.buffer(%[[H]]) {sym_name = "large_buff_0"}
-// CHECK-DAG: aie.buffer(%[[N]]) {sym_name = "large_buff_1"}
+// CHECK-DAG: aie.buffer(%[[H]]) {sym_name = "small__buf0"}
+// CHECK-DAG: aie.buffer(%[[H]]) {sym_name = "small__buf1"}
+// CHECK-DAG: aie.buffer(%[[H]]) {sym_name = "large__buf0"}
+// CHECK-DAG: aie.buffer(%[[N]]) {sym_name = "large__buf1"}
 // CHECK: @large_dma(%[[H]]) fills @large {channelIndex = 0 : i32}
 // CHECK: @small_dma(%[[H]]) fills @small {channelIndex = 5 : i32}
 
@@ -82,8 +82,8 @@ module @shared_spill {
 }
 // CHECK-LABEL: module @shared_spill
 // CHECK: %[[LEFT:.*]] = aie.tile(0, 1)
-// CHECK-DAG: aie.buffer(%[[LEFT]]) {sym_name = "shared_buff_0"}
-// CHECK-DAG: aie.buffer(%[[LEFT]]) {sym_name = "shared_buff_1"}
+// CHECK-DAG: aie.buffer(%[[LEFT]]) {sym_name = "shared__buf0"}
+// CHECK-DAG: aie.buffer(%[[LEFT]]) {sym_name = "shared__buf1"}
 // CHECK: @reader(%[[LEFT]]) drains @shared {channelIndex = 5 : i32}
 
 // -----
@@ -120,14 +120,14 @@ module @reserved_channels {
     %home = aie.tile(0, 1)
     %reserved = aie.buffer(%home) : memref<196608xi8>
     %fixed = aie.buffer(%home) {sym_name = "fixed"} : memref<16xi32>
-    aie.objectfifo.pool @fixed_pool(%home) {
+    aie.objectfifo.pool @fixed__pool(%home) {
       depth = 1 : i32, buffers = [@fixed]
     } : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
-    aie.objectfifo.dma_endpoint @r0(%home) drains @fixed_pool {channelIndex = 0 : i32}
-    aie.objectfifo.dma_endpoint @r1(%home) drains @fixed_pool {channelIndex = 1 : i32}
-    aie.objectfifo.dma_endpoint @r2(%home) drains @fixed_pool {channelIndex = 2 : i32}
+    aie.objectfifo.dma_endpoint @r0(%home) drains @fixed__pool {channelIndex = 0 : i32}
+    aie.objectfifo.dma_endpoint @r1(%home) drains @fixed__pool {channelIndex = 1 : i32}
+    aie.objectfifo.dma_endpoint @r2(%home) drains @fixed__pool {channelIndex = 2 : i32}
     aie.objectfifo.pool @large(%home) {depth = 2 : i32} : memref<147456xi8> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 147456 : i32}
     }
@@ -142,9 +142,9 @@ module @reserved_channels {
   }
 }
 // CHECK-LABEL: module @reserved_channels
-// CHECK: @r0({{.*}}) drains @fixed_pool {channelIndex = 0 : i32}
-// CHECK: @r1({{.*}}) drains @fixed_pool {channelIndex = 1 : i32}
-// CHECK: @r2({{.*}}) drains @fixed_pool {channelIndex = 2 : i32}
+// CHECK: @r0({{.*}}) drains @fixed__pool {channelIndex = 0 : i32}
+// CHECK: @r1({{.*}}) drains @fixed__pool {channelIndex = 1 : i32}
+// CHECK: @r2({{.*}}) drains @fixed__pool {channelIndex = 2 : i32}
 // CHECK: @a_dma({{.*}}) drains @a {channelIndex = 3 : i32}
 // CHECK: @b_dma({{.*}}) drains @b {channelIndex = 4 : i32}
 
@@ -166,9 +166,9 @@ module @shared_local_channel {
 // CHECK-LABEL: module @shared_local_channel
 // CHECK-DAG: %[[LOCKS:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[READER:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.lock(%[[READER]]) {{.*}}sym_name = "shared_prod_lock_0"
-// CHECK-DAG: aie.buffer(%[[READER]]) {sym_name = "shared_buff_0"}
-// CHECK-DAG: aie.buffer(%[[READER]]) {sym_name = "shared_buff_1"}
+// CHECK-DAG: aie.lock(%[[READER]]) {{.*}}sym_name = "shared__prodlock0"
+// CHECK-DAG: aie.buffer(%[[READER]]) {sym_name = "shared__buf0"}
+// CHECK-DAG: aie.buffer(%[[READER]]) {sym_name = "shared__buf1"}
 // CHECK: @reader(%[[READER]]) drains @shared {channelIndex = 5 : i32}
 // CHECK: @writer(%[[LOCKS]]) fills @shared {channelIndex = 0 : i32}
 
@@ -188,7 +188,7 @@ module @unplaced_shared {
 }
 // CHECK-LABEL: module @unplaced_shared
 // CHECK: %[[UNPLACED:.*]] = aie.logical_tile<MemTile>(?, ?)
-// CHECK: aie.buffer(%[[UNPLACED]]) {sym_name = "shared_buff_0"}
+// CHECK: aie.buffer(%[[UNPLACED]]) {sym_name = "shared__buf0"}
 // CHECK: @reader({{.*}}) drains @shared {channelIndex = 0 : i32}
 
 // -----

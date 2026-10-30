@@ -266,17 +266,20 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
         """
         for index, buffer in enumerate(self._buffers or []):
             if buffer.name is None:
-                buffer._name = claim(f"{self.name}_buff_{index}")
+                buffer._name = claim(f"{self.name}__buf{index}")
         for index, segment in enumerate(self._segments):
             for lock, role in (
                 (segment.produce_lock, "prod"),
                 (segment.consume_lock, "cons"),
             ):
                 if lock is not None and lock.name is None:
-                    lock._name = claim(f"{self.name}_{role}_lock_{index}")
+                    lock._name = claim(f"{self.name}__{role}lock{index}")
         for handle in self._handles:
             if handle.name is None:
-                handle._name = claim(f"{self.name}_{handle.verb}")
+                peers = [h for h in self._handles if h.verb == handle.verb]
+                index = peers.index(handle)
+                suffix = "" if index == 0 else str(index)
+                handle._name = claim(f"{self.name}__{handle.verb}{suffix}")
 
     @property
     def op(self):
@@ -465,8 +468,8 @@ class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
             # them before this, and only a pool resolved outside one lands here.
             peers = [h for h in self._pool.handles if h.verb == self.verb]
             index = peers.index(self)
-            suffix = "" if index == 0 else f"_{index}"
-            self._name = f"{base}_{self.verb}{suffix}"
+            suffix = "" if index == 0 else str(index)
+            self._name = f"{base}__{self.verb}{suffix}"
         segments = self._pool._segment_names(self._segments)
         # The core that took this handle is the one that reaches the objects,
         # so the endpoint sits on its tile; the verifier rejects an endpoint

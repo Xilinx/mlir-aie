@@ -476,24 +476,24 @@ In the default lowering, loops that contain objectFIFO operations are unrolled b
 
 Another lowering technique keeps the loops rolled and tracks the acquire / release patterns at runtime. Each core keeps the objects of the objectFIFO in rotation order in a few small slots: an acquire reads the object at the front, and a release rotates the released objects to the back. The previous code in core12 becomes:
 ```
-%of0_buff_0 = aie.buffer(%tile_0_2) {sym_name = "of0_buff_0"} : memref<16xi32> 
-%of0_buff_1 = aie.buffer(%tile_0_2) {sym_name = "of0_buff_1"} : memref<16xi32> 
-%of0_prod_lock_0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of0_prod_lock_0"}
-%of0_cons_lock_0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
+%of0__buf0 = aie.buffer(%tile_0_2) {sym_name = "of0__buf0"} : memref<16xi32> 
+%of0__buf1 = aie.buffer(%tile_0_2) {sym_name = "of0__buf1"} : memref<16xi32> 
+%of0__prodlock0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of0__prodlock0"}
+%of0__conslock0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of0__conslock0"}
 %core_0_2 = aie.core(%tile_0_2) {
 	%c0 = arith.constant 0 : index
 	%c1 = arith.constant 1 : index
 	%c12 = arith.constant 12 : index
 	%c1_i32 = arith.constant 1 : i32
 	%alloca = memref.alloca() : memref<memref<16xi32>>
-	memref.store %of0_buff_0, %alloca[] : memref<memref<16xi32>>
+	memref.store %of0__buf0, %alloca[] : memref<memref<16xi32>>
 	%alloca_0 = memref.alloca() : memref<memref<16xi32>>
-	memref.store %of0_buff_1, %alloca_0[] : memref<memref<16xi32>>
+	memref.store %of0__buf1, %alloca_0[] : memref<memref<16xi32>>
 	scf.for %arg0 = %c0 to %c12 step %c1 {
-		aie.use_lock(%of0_prod_lock_0, AcquireGreaterEqual, %c1_i32)
+		aie.use_lock(%of0__prodlock0, AcquireGreaterEqual, %c1_i32)
 		%0 = memref.load %alloca[] : memref<memref<16xi32>>
 		func.call @some_work(%0) : (memref<16xi32>) -> ()
-		aie.use_lock(%of0_cons_lock_0, Release, %c1_i32)
+		aie.use_lock(%of0__conslock0, Release, %c1_i32)
 		%1 = memref.load %alloca[] : memref<memref<16xi32>>
 		%2 = memref.load %alloca_0[] : memref<memref<16xi32>>
 		memref.store %2, %alloca[] : memref<memref<16xi32>>

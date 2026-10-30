@@ -9,7 +9,7 @@
 
 // A shared_mem transport between neighbours gets one pool and no route.
 // CHECK-LABEL: module @granted
-// CHECK:       aie.objectfifo.pool @of_pool
+// CHECK:       aie.objectfifo.pool @of__pool
 // CHECK-NOT:   aie.route
 module @granted {
  aie.device(xcve2302) {

@@ -11,9 +11,9 @@
 // CHECK-DAG:  aie.flow(%{{.*}}tile_2_2, DMA : 0, %{{.*}}tile_2_0, PLIO : 0)
 // CHECK-DAG:  aie.flow(%{{.*}}tile_2_2, DMA : 0, %{{.*}}tile_2_3, DMA : 0)
 // CHECK-DAG:  aie.flow(%{{.*}}tile_2_2, DMA : 1, %{{.*}}tile_2_0, PLIO : 1)
-// CHECK-DAG:  aie.shim_dma_allocation @of_0_shim_alloc(%shim_noc_tile_2_0, MM2S, 0) {plio = true}
-// CHECK-DAG:  aie.shim_dma_allocation @of_1_shim_alloc(%shim_noc_tile_2_0, S2MM, 1) {plio = true}
-// CHECK-DAG:  aie.shim_dma_allocation @of_2_shim_alloc(%shim_noc_tile_2_0, S2MM, 0) {plio = true}
+// CHECK-DAG:  aie.shim_dma_allocation @of_0__shim_alloc(%shim_noc_tile_2_0, MM2S, 0) {plio = true}
+// CHECK-DAG:  aie.shim_dma_allocation @of_1__shim_alloc(%shim_noc_tile_2_0, S2MM, 1) {plio = true}
+// CHECK-DAG:  aie.shim_dma_allocation @of_2__shim_alloc(%shim_noc_tile_2_0, S2MM, 0) {plio = true}
 
 module @plio {
     aie.device(xcve2302) {

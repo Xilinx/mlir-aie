@@ -13,14 +13,14 @@
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(3, 3)
-// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
-// CHECK-DAG:           %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo_cons_lock_1"}
-// CHECK-DAG:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_0"}
-// CHECK-DAG:           %[[VAL_9:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_1"}
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo__cons__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo__cons__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo__cons__lock0"}
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo__cons__lock1"}
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo__lock0"}
+// CHECK-DAG:           %[[VAL_9:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo__lock1"}
 // CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK:           func.func @some_work(%[[VAL_10:.*]]: memref<16xi32>) {
 // CHECK:             return

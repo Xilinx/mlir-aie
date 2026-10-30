@@ -18,15 +18,15 @@
 // CHECK-DAG:       %[[C2:.*]] = arith.constant 2 : i32
 
 // One acquire covers the whole region, and neither arm takes another lock.
-// CHECK:           aie.use_lock(%{{.*}}fifo_cons_cons_lock_0, AcquireGreaterEqual, %[[C2]])
+// CHECK:           aie.use_lock(%{{.*}}fifo__cons__conslock0, AcquireGreaterEqual, %[[C2]])
 // CHECK:           scf.if
 // CHECK-NOT:         AcquireGreaterEqual
-// CHECK:             aie.use_lock(%{{.*}}fifo_cons_prod_lock_0, Release, %[[C1]])
+// CHECK:             aie.use_lock(%{{.*}}fifo__cons__prodlock0, Release, %[[C1]])
 // CHECK:           } else {
 // CHECK-NOT:         AcquireGreaterEqual
-// CHECK:             aie.use_lock(%{{.*}}fifo_cons_prod_lock_0, Release, %[[C1]])
+// CHECK:             aie.use_lock(%{{.*}}fifo__cons__prodlock0, Release, %[[C1]])
 // CHECK:           }
-// CHECK:           aie.use_lock(%{{.*}}fifo_cons_prod_lock_0, Release, %[[C1]])
+// CHECK:           aie.use_lock(%{{.*}}fifo__cons__prodlock0, Release, %[[C1]])
 // CHECK:           aie.end
 
 module @conditionalAcquireSubsumption {

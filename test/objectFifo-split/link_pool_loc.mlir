@@ -22,7 +22,7 @@ module @link_pool_loc {
   }
 }
 
-// CHECK:     aie.objectfifo.pool @in_cons_pool(
+// CHECK:     aie.objectfifo.pool @in__cons__pool(
 // CHECK-NEXT:  aie.objectfifo.segment @s0
 // CHECK-NEXT:  aie.objectfifo.segment @s1
 // CHECK-NEXT: {{^ *}}} loc(#[[POOL:loc[0-9]*]])

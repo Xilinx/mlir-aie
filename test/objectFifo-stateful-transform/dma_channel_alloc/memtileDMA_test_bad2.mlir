@@ -9,7 +9,7 @@
 
 // CHECK:   error: 'aie.tile' op number of output DMA channel exceeded!
 // CHECK-SAME: requires at least 7 MM2S channels, but capacity is 6
-// CHECK: note: DMA endpoint @objfifo_prod_dma for ObjectFifo @objfifo
+// CHECK: note: DMA endpoint @objfifo__prod__dma for ObjectFifo @objfifo
 
 module @memtileDMA_channels {
     aie.device(xcve2302) {

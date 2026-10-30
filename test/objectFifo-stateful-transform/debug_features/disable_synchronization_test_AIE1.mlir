@@ -11,11 +11,11 @@
 // CHECK:   aie.device(xcvc1902) {
 // CHECK-DAG:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK-DAG:     %{{.*}}tile_3_3 = aie.tile(3, 3)
-// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK-DAG:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_1"} : memref<16xi32>
-// CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1__cons__buf0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1__cons__buf1"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1__buf0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1__buf1"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0__buf0"} : memref<16xi32>
 // CHECK-DAG:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_3_3, DMA : 0)
 // CHECK:     %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)

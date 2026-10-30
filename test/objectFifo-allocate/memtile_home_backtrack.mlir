@@ -29,5 +29,5 @@ module @home_backtrack {
 // CHECK-LABEL: module @home_backtrack
 // CHECK-DAG: %[[M0:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[M1:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[M0]]) {sym_name = "free_buff_0"}
-// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "pinned_buff_0"}
+// CHECK-DAG: aie.buffer(%[[M0]]) {sym_name = "free__buf0"}
+// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "pinned__buf0"}
