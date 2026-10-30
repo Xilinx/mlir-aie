@@ -93,7 +93,12 @@ def design_error(exc: BaseException) -> BaseException:
             match = _FILE_LOC.search(loc)
             if match is not None:
                 named = _NAMED_LOC.match(loc)
-                name = named.group(1).rpartition(".")[2] if named else "<design>"
+                name = "<design>"
+                if named:
+                    # "iron:act_in" or "py:build.<locals>.core_fn": the frame
+                    # reads as the object or function, without its kind.
+                    name = named.group(1).partition(":")[2] or named.group(1)
+                    name = name.rpartition(".")[2]
                 _attach_source_frame(exc, match.group(1), int(match.group(2)), name)
                 break
     return exc

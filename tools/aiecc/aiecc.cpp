@@ -91,6 +91,36 @@ using namespace xilinx::aiecc::cli;
 
 namespace {
 
+// IRON names the objects a design declares in their locations
+// (loc("iron:act_in"(...)), see python/helpers/sourceloc.py). A diagnostic
+// located at one is reported as the design's: it opens with the object's name,
+// and the dump of the op it was emitted on is dropped, since the location
+// already points at the Python statement that declared it.
+constexpr llvm::StringLiteral ironPrefix = "iron:";
+
+mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag) {
+  llvm::SmallVector<llvm::StringRef> names;
+  diag.getLocation()->walk([&](mlir::Location loc) {
+    if (auto named = llvm::dyn_cast<mlir::NameLoc>(loc)) {
+      llvm::StringRef name = named.getName().getValue();
+      if (name.consume_front(ironPrefix) && !llvm::is_contained(names, name))
+        names.push_back(name);
+    }
+    return mlir::WalkResult::advance();
+  });
+  mlir::Diagnostic renamed(diag.getLocation(), diag.getSeverity());
+  if (!names.empty())
+    renamed << llvm::join(names, ", ") << ": ";
+  renamed << diag.str();
+  for (mlir::Diagnostic &note : diag.getNotes()) {
+    if (!names.empty() &&
+        llvm::StringRef(note.str()).starts_with("see current operation"))
+      continue;
+    renamed.attachNote(note.getLocation()) << note.str();
+  }
+  return renamed;
+}
+
 // A remark says what the compiler chose (a poll it inserted, an allocation
 // order it fell back to): worth reading when tuning or when a compile fails,
 // noise otherwise. So remarks print with --verbose, or once a compile fails.
@@ -109,7 +139,8 @@ public:
         return;
       }
       auto log = endProgressLine();
-      emitDiagnostic(diag);
+      mlir::Diagnostic named = nameAfterDesign(diag);
+      emitDiagnostic(named);
     });
   }
 
@@ -117,8 +148,10 @@ public:
   void releaseRemarks() {
     std::lock_guard<std::mutex> lock(heldMutex);
     auto log = endProgressLine();
-    for (mlir::Diagnostic &diag : held)
-      emitDiagnostic(diag);
+    for (mlir::Diagnostic &diag : held) {
+      mlir::Diagnostic named = nameAfterDesign(diag);
+      emitDiagnostic(named);
+    }
     held.clear();
   }
 
