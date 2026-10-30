@@ -2575,12 +2575,12 @@ def AIE_ObjectFifoCreateOp
           : !aie.objectfifo<memref<16xi32>>
     ```
 
-    With `out_of_order`, the sender sets each packet's `out_of_order_id` to
-    select a receiving buffer descriptor. The S2MM channel uses that ID instead
-    of advancing through a fixed BD chain, allowing multiple packet FIFOs to
-    share the channel. Packet transport is required. The current lowering
-    requires matching descriptor counts and object byte sizes at the sending
-    and receiving pools.
+    With `out_of_order = true` in `transport`, the sender sets each packet's
+    `out_of_order_id` to select a receiving buffer descriptor. The S2MM channel
+    uses that ID instead of advancing through a fixed BD chain, allowing
+    multiple packet FIFOs to share the channel. Packet transport is required.
+    The current lowering requires matching descriptor counts and object byte
+    sizes at the sending and receiving pools.
 
     This changes descriptor selection, not packet arrival order. A packet
     targeting a buffer whose lock is unavailable stalls the channel and all
@@ -2618,11 +2618,7 @@ def AIE_ObjectFifoCreateOp
       OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
       // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-      OptionalAttr<AIEI32Attr>:$iter_count,
-      // Select receiving BDs through packet headers, allowing packet FIFOs to
-      // share an S2MM channel. Requires packet transport; see the description
-      // for buffer compatibility and synchronization requirements.
-      UnitAttr:$out_of_order);
+      OptionalAttr<AIEI32Attr>:$iter_count);
 
   let assemblyFormat = [{
     $sym_name
@@ -2672,6 +2668,13 @@ def AIE_ObjectFifoCreateOp
 
     bool forcesSharedMemory() {
       return getTransportMode() == ObjectFifoTransportMode::SharedMem;
+    }
+
+    /// Whether the requested DMA transport selects receiving BDs by packet.
+    bool getOutOfOrder() {
+      if (ObjectFifoTransportAttr t = getTransportAttr())
+        return t.getOutOfOrder();
+      return false;
     }
 
     /// What drives consumer `index`'s end, or null for a DMA channel
@@ -3148,7 +3151,7 @@ def AIE_ObjectFifoDmaEndpointOp
       OptionalAttr<FlatSymbolRefArrayAttr>:$turns,
       // On a filling (S2MM) endpoint, enable out-of-order reception. On a
       // draining (MM2S) endpoint, set the receiving BD ID in each packet's
-      // header. See aie.objectfifo's out_of_order attribute.
+      // header. See aie.objectfifo's transport attribute.
       UnitAttr:$out_of_order);
 
   let assemblyFormat = [{

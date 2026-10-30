@@ -20,7 +20,7 @@ module @shared_selects_out_of_order {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_3 = aie.tile(0, 3)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, out_of_order, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>, out_of_order = false>, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b(%tile_0_3, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
   }
 }
@@ -34,7 +34,7 @@ module @shared_needs_packet {
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_3 = aie.tile(0, 3)
     %tile_0_5 = aie.tile(0, 5)
-    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>, out_of_order, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%tile_0_2, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>, out_of_order = true>, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
     // expected-error@+1 {{shares a receiving channel, which it can only do out of order}}
     aie.objectfifo @b(%tile_0_3, {%tile_0_5}, 2 : i32) {cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
   }

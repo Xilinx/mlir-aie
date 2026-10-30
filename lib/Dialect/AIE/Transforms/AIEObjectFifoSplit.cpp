@@ -430,7 +430,10 @@ struct AIEObjectFifoSplitPass
               "shares a receiving channel, which it can only do out of order, "
               "naming each object's buffer in a packet header; make it a "
               "packet objectfifo");
-        fifo.setOutOfOrder(true);
+        auto transport = fifo.getTransportAttr();
+        fifo.setTransportAttr(ObjectFifoTransportAttr::get(
+            fifo.getContext(), transport.getMode(), transport.getPacket(),
+            /*out_of_order=*/true));
       }
     }
     return success();

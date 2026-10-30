@@ -99,3 +99,18 @@ module @linked {
     aie.objectfifo.link [@in] -> [@out] ([] [])
  }
 }
+
+// -----
+
+// With auto, packet-directed reception does not force DMA between neighbours.
+// CHECK-LABEL: module @auto_out_of_order
+// CHECK: aie.objectfifo.pool @of_pool
+// CHECK-NOT: aie.objectfifo.dma_endpoint
+// CHECK-NOT: aie.route
+module @auto_out_of_order {
+  aie.device(npu2) {
+    %src = aie.tile(0, 2)
+    %dst = aie.tile(0, 3)
+    aie.objectfifo @of(%src, {%dst}, 2 : i32) {transport = #aie.transport<auto, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+  }
+}

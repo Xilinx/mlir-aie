@@ -66,8 +66,7 @@ def core_dma_push_queue(in_tensor: In, out_tensor: Out):
         LINE_TY,
         depth=2,
         name="mid",
-        transport=Transport.dma(packet=Packet()),
-        out_of_order=True,
+        transport=Transport.dma(packet=Packet(), out_of_order=True),
     )
     of_out = ObjectFifo(LINE_TY, depth=2, name="out")
 

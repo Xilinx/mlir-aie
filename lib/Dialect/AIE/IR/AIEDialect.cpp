@@ -619,12 +619,14 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 LogicalResult
 ObjectFifoTransportAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                                 ObjectFifoTransportMode mode,
-                                PacketInfoAttr packet) {
+                                PacketInfoAttr packet, bool out_of_order) {
   // A packet header rides a stream-switch connection the DMAs drive, so only
   // the paths that may use the DMAs can honour one.
   if (packet && mode == ObjectFifoTransportMode::SharedMem)
     return emitError() << "`packet` belongs to a dma or auto transport, not "
                        << stringifyObjectFifoTransportMode(mode);
+  if (out_of_order && !packet)
+    return emitError() << "`out_of_order` requires a packet transport";
   return success();
 }
 
@@ -666,6 +668,8 @@ LogicalResult ObjectFifoCreateOp::verify() {
   // quietly take the default path instead. Name them to fail that loudly.
   static constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
       replaced[] = {
+          {"out_of_order", "transport = #aie.transport<dma, packet = "
+                           "#aie.packet_info<>, out_of_order = true>"},
           {"via_DMA", "transport = #aie.transport<dma>"},
           {"packet", "transport = #aie.transport<dma, packet = "
                      "#aie.packet_info<>>"},
@@ -694,11 +698,6 @@ LogicalResult ObjectFifoCreateOp::verify() {
     return emitOpError("`cons_ports` has ")
            << consPorts.size() << " entries for " << getConsumerTiles().size()
            << " consumers";
-
-  if (getOutOfOrder() && !packetHeader()) {
-    return emitOpError("out_of_order names each object's buffer in the packet "
-                       "header, so it needs a packet objectfifo");
-  }
 
   // Helper to get tile interface from Value
   auto getTileLikeFromValue = [](Value v) -> TileLike {

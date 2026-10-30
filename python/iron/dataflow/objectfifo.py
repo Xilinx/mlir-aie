@@ -121,7 +121,6 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         transport: Transport | str | None = None,
         init_values: list[np.ndarray] | None = None,
         consumer_obj_type: type[np.ndarray] | In | Out | InOut | None = None,
-        out_of_order: bool = False,
     ):
         """Construct an ObjectFifo.
 
@@ -167,8 +166,11 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 share memory, and ``Transport.shared_mem()`` insists on shared memory.
                 ``Transport.dma(packet=Packet())`` routes the fifo as an
                 ``aie.packet_flow`` sharing the stream with other packet flows, and
-                ``Packet(id=7)`` pins the 5-bit header for designs that route on it. None
-                leaves the choice to the lowering, which is the same as ``Transport.auto()``.
+                ``Packet(id=7)`` pins the 5-bit header for designs that route on it.
+                ``Transport.dma(packet=Packet(), out_of_order=True)`` selects receiving
+                buffer descriptors through packet headers, allowing FIFOs to share an
+                S2MM channel. None leaves the choice to the lowering, which is the same
+                as ``Transport.auto()``.
                 What drives each end, a DMA channel or a core stream port, is the ``port``
                 of [`prod`][aie.iron.dataflow.objectfifo.ObjectFifo.prod] and
                 [`cons`][aie.iron.dataflow.objectfifo.ObjectFifo.cons].
@@ -184,13 +186,6 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 transfers and the consumer receives consumer_obj_type-sized transfers.
                 Producer element count must be an integer multiple of consumer element count.
                 Defaults to None.
-            out_of_order (bool, optional): Receive each object into the buffer its sender
-                names in the packet header's ``out_of_order_id`` field, rather than walking
-                the pool in a fixed BD chain. The consumer's channel then carries no order
-                of its own, which is what lets several fifos share one S2MM channel. The
-                field is 6 bits and separate from ``packet_id``, so a pool costs ids out of
-                its own space, not out of the 5-bit routing one. Requires packet transport.
-                Defaults to False.
 
         Raises:
             TypeError: If a stream walk is not a ``TensorAccessPattern``.
@@ -227,7 +222,6 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         self._delegate_tile: Tile | None = delegate_tile
         self._transport: Transport | None = Transport.coerce(transport)
         self._init_values: list[np.ndarray] | None = init_values
-        self._out_of_order: bool = out_of_order
 
     @property
     def depth(self) -> int | None:
@@ -538,7 +532,6 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 transport=self._transport,
                 initValues=self._init_values,
                 consumer_datatype=consumer_datatype,
-                out_of_order=self._out_of_order or None,
                 loc=ir.Location.name(self.name, childLoc=loc or self._site.location()),
                 ip=ip,
             )
@@ -837,7 +830,8 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
 
-        if self._object_fifo._out_of_order and out_of_order_id is None:
+        transport = self._object_fifo._transport
+        if transport and transport.out_of_order and out_of_order_id is None:
             raise ValueError(
                 f"ObjectFifo '{self.name}' is out_of_order, so each fill names "
                 "the buffer it lands in: pass out_of_order_id"
