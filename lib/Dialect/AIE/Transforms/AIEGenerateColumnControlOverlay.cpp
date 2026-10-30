@@ -189,9 +189,13 @@ struct AIEGenerateColumnControlOverlayPass
   llvm::DenseMap<int, llvm::SmallSet<int, 2>> dataChans, declaredCtrlChans;
   // getCtrlChan's cache.
   llvm::DenseMap<int, int> ctrlChans;
+  llvm::DenseMap<std::pair<int, int>, unsigned> packetDemand;
+  llvm::DenseMap<int, llvm::SmallSet<int, 2>> fixedCircuits;
 
   void collectShimMM2SUses(ArrayRef<DeviceOp> devices) {
     dataChans.clear();
+    packetDemand.clear();
+    fixedCircuits.clear();
     declaredCtrlChans.clear();
     ctrlChans.clear();
     AIEDialect::IsCtrlPktOverlayAttrHelper overlay(&getContext());
@@ -202,6 +206,40 @@ struct AIEGenerateColumnControlOverlayPass
       return tOp.colIndex();
     };
     for (DeviceOp device : devices) {
+      for (auto endpoint : device.getOps<RouteEndpointOp>()) {
+        auto col = shimCol(endpoint.getTile());
+        if (!col || endpoint.getBundle() != WireBundle::DMA ||
+            endpoint.getRouteDirection() != DMAChannelDir::MM2S ||
+            !endpoint.getChannelIndex())
+          continue;
+        bool packet =
+            llvm::any_of(device.getOps<RouteOp>(), [&](RouteOp route) {
+              return route.namesAsSource(endpoint.getSymName()) &&
+                     route.getPacket();
+            });
+        int channel = *endpoint.getChannelIndex();
+        if (packet)
+          ++packetDemand[{*col, channel}];
+        else
+          fixedCircuits[*col].insert(channel);
+      }
+      for (auto flow : device.getOps<FlowOp>())
+        if (flow.getSourceBundle() == WireBundle::DMA)
+          if (auto col = shimCol(flow.getSource()))
+            fixedCircuits[*col].insert(flow.getSourceChannel());
+      for (auto alloc : device.getOps<ShimDMAAllocationOp>())
+        if (alloc.getChannelDir() == DMAChannelDir::MM2S &&
+            !overlay.isAttrPresent(alloc) &&
+            alloc.getSymName() !=
+                getCtrlPktAllocName(alloc.getTileOp().colIndex(), true,
+                                    alloc.getChannelIndex()))
+          fixedCircuits[alloc.getTileOp().colIndex()].insert(
+              alloc.getChannelIndex());
+      for (auto mux : device.getOps<ShimMuxOp>())
+        for (auto connect : mux.getConnections().front().getOps<ConnectOp>())
+          if (connect.getSourceBundle() == WireBundle::DMA)
+            fixedCircuits[mux.getTileOp().colIndex()].insert(
+                connect.sourceIndex());
       for (auto alloc : device.getOps<AIE::ShimDMAAllocationOp>()) {
         if (alloc.getChannelDir() != AIE::DMAChannelDir::MM2S)
           continue;
@@ -226,9 +264,12 @@ struct AIEGenerateColumnControlOverlayPass
             });
         for (auto src : flow.getOps<AIE::PacketSourceOp>())
           if (src.getBundle() == WireBundle::DMA)
-            if (auto col = shimCol(src.getTile()))
+            if (auto col = shimCol(src.getTile())) {
               (control ? declaredCtrlChans : dataChans)[*col].insert(
                   src.channelIndex());
+              if (!control)
+                ++packetDemand[{*col, src.channelIndex()}];
+            }
       }
       for (auto mux : device.getOps<AIE::ShimMuxOp>())
         for (auto connect :
@@ -250,6 +291,21 @@ struct AIEGenerateColumnControlOverlayPass
     }
     int numChans = targetModel.getNumSourceShimMuxConnections(
         col, 0, AIE::WireBundle::DMA);
+    if (clPlanChannels) {
+      if (!clAdaptiveChannels)
+        return it->second = fixedCircuits.lookup(col).contains(0) ? -1 : 0;
+      unsigned best = std::numeric_limits<unsigned>::max();
+      for (int chan = 0; chan < numChans; ++chan) {
+        if (fixedCircuits.lookup(col).contains(chan))
+          continue;
+        unsigned cost = packetDemand.lookup({col, chan});
+        if (cost < best) {
+          best = cost;
+          it->second = chan;
+        }
+      }
+      return it->second;
+    }
     for (int chan = 0; chan < numChans; chan++)
       if (!dataChans.lookup(col).contains(chan)) {
         it->second = chan;
@@ -880,6 +936,8 @@ struct AIEGenerateColumnControlOverlayPass
             dir, shimChan, false, nullptr);
       AIEDialect::IsCtrlPktOverlayAttrHelper(device.getContext())
           .setAttr(alloc, UnitAttr::get(device.getContext()));
+      if (clPlanChannels)
+        alloc->setAttr("aie.fixed", builder.getUnitAttr());
     }
     return success();
   }

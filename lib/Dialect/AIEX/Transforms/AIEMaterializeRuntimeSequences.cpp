@@ -636,6 +636,7 @@ verifyRunOpsInConfigureOp(ConfigureOp configureOp, AIE::DeviceOp referencedDev,
 struct AIEMaterializeRuntimeSequencesPass
     : xilinx::AIEX::impl::AIEMaterializeRuntimeSequencesBase<
           AIEMaterializeRuntimeSequencesPass> {
+  using Base::Base;
 
   // After inlining, a runtime sequence may contain multiple
   // npu.create_scratchpad ops (one from the sequence itself and one from each
@@ -681,7 +682,8 @@ struct AIEMaterializeRuntimeSequencesPass
       // Verify all runtime sequences before materialization
       for (AIE::RuntimeSequenceOp runtimeSequenceOp :
            deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
-        if (failed(runtimeSequenceOp.verifyBeforeMaterialization())) {
+        if (!analysisOnly &&
+            failed(runtimeSequenceOp.verifyBeforeMaterialization())) {
           return signalPassFailure();
         }
 
@@ -827,4 +829,10 @@ struct AIEMaterializeRuntimeSequencesPass
 std::unique_ptr<OperationPass<ModuleOp>>
 AIEX::createAIEMaterializeRuntimeSequencesPass() {
   return std::make_unique<AIEMaterializeRuntimeSequencesPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+AIEX::createAIEMaterializeRuntimeSequencesPass(
+    const AIEMaterializeRuntimeSequencesOptions &options) {
+  return std::make_unique<AIEMaterializeRuntimeSequencesPass>(options);
 }

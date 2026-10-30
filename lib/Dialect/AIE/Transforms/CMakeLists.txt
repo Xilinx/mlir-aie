@@ -43,7 +43,6 @@ add_mlir_dialect_library(
   AIEObjectFifoVerify.cpp
   AIEObjectFifoUnroll.cpp
   AIELowerCascadeFlows.cpp
-  AIEAutoPacketizeShimInput.cpp
   AIEGenerateColumnControlOverlay.cpp
   AIEControlOverlayAvoidData.cpp
   AIETraceToConfig.cpp

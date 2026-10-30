@@ -33,8 +33,7 @@ class DMAChannelAnalysis {
   /// Channels whose claimants all share them. Several packet-switched sources
   /// coexist on one; a circuit claim is exclusive.
   mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> sharedChannels;
-  /// Channels of shim DMA allocations marked is_ctrl_pkt_overlay. A
-  /// packet-switched transfer may share one; nothing else may.
+  /// Fixed reservations admit packet endpoints listed by lifetime analysis.
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
       controlChannels;
   /// The first claimant of a core stream port, and whether only packets use

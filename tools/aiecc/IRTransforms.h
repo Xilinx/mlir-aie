@@ -1405,9 +1405,8 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
     bool skipObjectFifoVerify = false, bool assignAddresses = true,
-    llvm::ArrayRef<int> coverColumns = {}, bool autoPacketize = false,
-    const std::map<int, int> &controlChannels = {},
-    bool checkQueueSpace = true) {
+    llvm::ArrayRef<int> coverColumns = {}, bool shareChannels = true,
+    bool adaptiveOverlay = true, bool checkQueueSpace = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -1430,7 +1429,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // lowering in this stage writes no `outputParamsFile`.
   X::addLoweringStage(*pm, dynamicObjFifos, packetSwObjFifos, ctrlPktOverlay,
                       loadPdiToCtrlPkt, skipObjectFifoVerify, coverColumns,
-                      checkQueueSpace);
+                      adaptiveOverlay, shareChannels, checkQueueSpace);
 
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   if (assignAddresses) {
@@ -1618,7 +1617,7 @@ getAssignBufferAddressesPipeline(mlir::MLIRContext *ctx,
 inline std::unique_ptr<mlir::PassManager>
 getRoutingPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  xilinx::AIEX::addRoutingStage(*pm, cli::allowDeadlockProneRouting, cli::ctrlpktAdaptivePin);
+  xilinx::AIEX::addRoutingStage(*pm, cli::allowDeadlockProneRouting);
   return pm;
 }
 

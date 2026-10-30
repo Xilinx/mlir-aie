@@ -28,11 +28,11 @@
 // RUN: not %aiecc --get-full-elf --expand-load-pdis --reconfig-init-entry %s 2>&1 | FileCheck %s --check-prefix=INIT-TEARDOWN
 // INIT-TEARDOWN: aiecc: --reconfig-init-entry requires --reconfig-teardown
 
-// RUN: not %aiecc --ctrlpkt-auto-packetize %s 2>&1 | FileCheck %s --check-prefix=PACKETIZE-LDPDI-CTRLPKT
-// PACKETIZE-LDPDI-CTRLPKT: aiecc: --ctrlpkt-auto-packetize requires --load-pdi-to-ctrl-pkt
+// RUN: not %aiecc --ctrlpkt-share-channels %s 2>&1 | FileCheck %s --check-prefix=PACKETIZE-LDPDI-CTRLPKT
+// PACKETIZE-LDPDI-CTRLPKT: aiecc: --ctrlpkt-share-channels requires --load-pdi-to-ctrl-pkt
 
-// RUN: not %aiecc --ctrlpkt-adaptive-pin %s 2>&1 | FileCheck %s --check-prefix=ADAPTIVE-LDPDI-CTRLPKT
-// ADAPTIVE-LDPDI-CTRLPKT: aiecc: --ctrlpkt-adaptive-pin requires --load-pdi-to-ctrl-pkt
+// RUN: not %aiecc --ctrlpkt-adaptive-overlay %s 2>&1 | FileCheck %s --check-prefix=ADAPTIVE-LDPDI-CTRLPKT
+// ADAPTIVE-LDPDI-CTRLPKT: aiecc: --ctrlpkt-adaptive-overlay requires --load-pdi-to-ctrl-pkt
 
 // Under --load-pdi-to-ctrl-pkt the teardown is on by default with full-ELF
 // output, and off without it.
@@ -50,7 +50,7 @@
 // RUN: %aiecc -n --get=aie.elf --expand-load-pdis --reconfig-teardown --reconfig-init-entry %s
 
 // Turning an option off explicitly is never an error.
-// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-auto-packetize=false --ctrlpkt-adaptive-pin=false %s
+// RUN: %aiecc -n --reconfig-teardown=false --reconfig-init-entry=false --ctrlpkt-share-channels=false --ctrlpkt-adaptive-overlay=false %s
 
 module {
   aie.device(npu2) @main {

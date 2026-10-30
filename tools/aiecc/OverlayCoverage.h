@@ -8,7 +8,7 @@
 // The columns a control packet overlay covers. The router refuses a detour
 // through a column the overlay misses, so on a routing failure OverlayCoverage
 // covers the columns the design routes through without the overlay and reruns
-// the edge, then retries auto-packetize's other channels. CachedRouting reuses
+// overlay creation. CachedRouting reuses
 // its routed result.
 //
 //===----------------------------------------------------------------------===//
@@ -145,11 +145,9 @@ struct RoutedCache {
 };
 
 struct OverlayCoverage {
-  // Builds the edge's pipeline with the given cover-columns and the control
-  // channels aie-auto-packetize-shim-input is told to use.
+  // Builds the edge's pipeline with the required overlay coverage.
   using Build = std::function<std::unique_ptr<mlir::PassManager>(
-      mlir::MLIRContext *, mlir::ModuleOp, llvm::ArrayRef<int>,
-      const std::map<int, int> &)>;
+      mlir::MLIRContext *, mlir::ModuleOp, llvm::ArrayRef<int>)>;
   mlir::MLIRContext *ctx;
   Build build;
   std::shared_ptr<RoutedCache> cache;
@@ -190,48 +188,6 @@ struct OverlayCoverage {
     return cols;
   }
 
-  // Per column auto-packetize chose a control channel in (its marked
-  // `ctrlpkt_*` allocation's channel also carries data packets), that channel
-  // and the column's other shim MM2S channels.
-  static std::map<int, std::pair<int, std::vector<int>>>
-  controlChannelAlternatives(mlir::ModuleOp mod) {
-    namespace AIE = xilinx::AIE;
-    std::map<int, std::pair<int, std::vector<int>>> cols;
-    for (auto device : mod.getOps<AIE::DeviceOp>()) {
-      std::set<std::pair<int, int>> dataChans;
-      for (auto flow : device.getOps<AIE::PacketFlowOp>()) {
-        if (llvm::all_of(
-                flow.getOps<AIE::PacketDestOp>(), [](AIE::PacketDestOp dest) {
-                  return dest.getBundle() == AIE::WireBundle::TileControl;
-                }))
-          continue;
-        for (auto src : flow.getOps<AIE::PacketSourceOp>())
-          if (src.getBundle() == AIE::WireBundle::DMA)
-            if (auto tile = llvm::dyn_cast_or_null<AIE::TileOp>(
-                    src.getTile().getDefiningOp()))
-              if (tile.isShimNOCorPLTile())
-                dataChans.insert({tile.colIndex(), src.channelIndex()});
-      }
-      AIE::AIEDialect::IsCtrlPktOverlayAttrHelper overlay(mod.getContext());
-      for (auto alloc : device.getOps<AIE::ShimDMAAllocationOp>()) {
-        int col = alloc.getTileOp().colIndex();
-        int chan = static_cast<int>(alloc.getChannelIndex());
-        if (!overlay.isAttrPresent(alloc) ||
-            alloc.getChannelDir() != AIE::DMAChannelDir::MM2S ||
-            !dataChans.count({col, chan}) || cols.count(col))
-          continue;
-        int numChans = device.getTargetModel().getNumSourceShimMuxConnections(
-            col, 0, AIE::WireBundle::DMA);
-        auto &[controlChan, others] = cols[col];
-        controlChan = chan;
-        for (int other = 0; other < numChans; ++other)
-          if (other != controlChan)
-            others.push_back(other);
-      }
-    }
-    return cols;
-  }
-
   static mlir::Location columnLocation(mlir::ModuleOp mod, int col) {
     mlir::Location loc = mod.getLoc();
     mod.walk([&](xilinx::AIE::TileOp tile) {
@@ -256,8 +212,7 @@ struct OverlayCoverage {
 
   // Runs in a trial context, and returns its module and diagnostics in the
   // shared one.
-  Attempt attempt(mlir::ModuleOp base,
-                  const std::map<int, int> &controlChans) const {
+  Attempt attempt(mlir::ModuleOp base) const {
     Attempt result;
     std::vector<int> cover;
     TrialContext trialCtx(ctx);
@@ -272,7 +227,7 @@ struct OverlayCoverage {
       std::vector<CapturedDiagnostics::Diag> pipelineDiags;
       {
         CapturedDiagnostics pipeline(tctx, ctx);
-        auto pm = build(tctx, *trial, cover, controlChans);
+        auto pm = build(tctx, *trial, cover);
         if (!pm || mlir::failed(runPasses(*pm, *trial)))
           trial = {};
         pipelineDiags = std::move(pipeline.diags);
@@ -349,28 +304,7 @@ struct OverlayCoverage {
       llvm::errs() << "aiecc: OverlayCoverage could not obtain input module\n";
       return mlir::failure();
     }
-    Attempt chosen = attempt(*base, {});
-    // When the design does not route, a column auto-packetize made room in
-    // may route with control on another of its channels; one column at a
-    // time, in column order.
-    if (!chosen.routes && !chosen.pipelineFailed)
-      for (const auto &[col, choice] :
-           controlChannelAlternatives(*chosen.module)) {
-        for (int other : choice.second) {
-          Attempt alt = attempt(*base, {{col, other}});
-          if (!alt.routes)
-            continue;
-          ctx->getDiagEngine().emit(columnLocation(*alt.module, col),
-                                    mlir::DiagnosticSeverity::Remark)
-              << "auto-packetize: column " << col << " takes control packets "
-              << "on shim MM2S channel " << other << ": on channel "
-              << choice.first << " the design does not route";
-          chosen = std::move(alt);
-          break;
-        }
-        if (chosen.routes)
-          break;
-      }
+    Attempt chosen = attempt(*base);
     CapturedDiagnostics::replay(ctx, chosen.diags);
     if (chosen.pipelineFailed)
       return mlir::failure();

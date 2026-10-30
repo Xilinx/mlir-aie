@@ -1,0 +1,194 @@
+//===- AIECreateControlOverlay.cpp -----------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#include "aie/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.h"
+#include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "mlir/IR/IRMapping.h"
+#include "mlir/Pass/PassManager.h"
+
+using namespace mlir;
+using namespace xilinx;
+using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
+
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIECREATECONTROLOVERLAY
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+namespace {
+struct AIECreateControlOverlayPass
+    : xilinx::AIEX::impl::AIECreateControlOverlayBase<
+          AIECreateControlOverlayPass> {
+  using Base::Base;
+
+  LogicalResult sharingConstraints(ModuleOp module) {
+    IRMapping mapping;
+    OwningOpRef<ModuleOp> schedules = cast<ModuleOp>(module->clone(mapping));
+    SmallVector<RouteEndpointOp> endpoints;
+    for (DeviceOp device : module.getOps<DeviceOp>())
+      for (auto endpoint : device.getOps<RouteEndpointOp>()) {
+        if (endpoint.getBundle() != WireBundle::DMA ||
+            !endpoint.getTileLike().isShimTile())
+          continue;
+        auto copy = mapping.lookup(endpoint.getOperation());
+        copy->setAttr("aie.sharing_id",
+                      IntegerAttr::get(IntegerType::get(&getContext(), 32),
+                                       endpoints.size()));
+        copy->setAttr(
+            "aie.sharing_sends",
+            BoolAttr::get(&getContext(),
+                          endpoint.getRouteDirection() == DMAChannelDir::MM2S));
+        endpoints.push_back(endpoint);
+      }
+    PassManager materialize(&getContext());
+    // Inlined symbolic endpoints have no local routes in this analysis copy.
+    materialize.enableVerifier(false);
+    AIEMaterializeRuntimeSequencesOptions options;
+    options.analysisOnly = true;
+    materialize.addPass(createAIEMaterializeRuntimeSequencesPass(options));
+    if (failed(materialize.run(*schedules)))
+      return failure();
+
+    SmallVector<bool> seen(endpoints.size(), false),
+        blocked(endpoints.size(), false);
+    DenseSet<std::pair<unsigned, unsigned>> blockedPairs;
+    SmallVector<StringAttr> keys;
+    for (unsigned i = 0; i < endpoints.size(); ++i)
+      keys.push_back(StringAttr::get(&getContext(), std::to_string(i)));
+    StringAttr config = StringAttr::get(&getContext(), "configuration");
+    for (DeviceOp device : schedules->getOps<DeviceOp>()) {
+      auto resolve =
+          [&](StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
+        auto endpoint = device.lookupSymbol<RouteEndpointOp>(symbol.getValue());
+        if (!endpoint) {
+          auto alloc =
+              device.lookupSymbol<ShimDMAAllocationOp>(symbol.getValue());
+          AIEDialect::IsCtrlPktOverlayAttrHelper overlay(&getContext());
+          if (!alloc || !overlay.isAttrPresent(alloc))
+            return std::nullopt;
+          return ShimTransferSpans::End{
+              config, false,
+              std::make_tuple(alloc.getTileOp().colIndex(),
+                              alloc.getTileOp().rowIndex(),
+                              static_cast<int>(alloc.getChannelDir()),
+                              static_cast<int>(alloc.getChannelIndex()))};
+        }
+        auto id = endpoint->getAttrOfType<IntegerAttr>("aie.sharing_id");
+        auto sends = endpoint->getAttrOfType<BoolAttr>("aie.sharing_sends");
+        if (!id || !sends)
+          return std::nullopt;
+        ShimTransferSpans::End end{
+            StringAttr::get(&getContext(), std::to_string(id.getInt())),
+            sends.getValue()};
+        if (auto channel = endpoint.getChannelIndex()) {
+          auto tile = dyn_cast<TileOp>(endpoint.getTile().getDefiningOp());
+          if (tile)
+            end.channel = std::make_tuple(
+                tile.colIndex(), tile.rowIndex(),
+                static_cast<int>(sends.getValue() ? DMAChannelDir::MM2S
+                                                  : DMAChannelDir::S2MM),
+                *channel);
+        }
+        return end;
+      };
+      ShimTransferSpans spans(device, resolve, config);
+      for (unsigned i = 0; i < endpoints.size(); ++i) {
+        auto key = keys[i];
+        if (spans.isUsed(key)) {
+          seen[i] = true;
+          blocked[i] = blocked[i] || !spans.apart(key, config);
+          for (unsigned j = i + 1; j < endpoints.size(); ++j)
+            if (spans.isUsed(keys[j]) && !spans.apart(key, keys[j]))
+              blockedPairs.insert({i, j});
+        }
+      }
+    }
+    for (auto [i, endpoint] : llvm::enumerate(endpoints)) {
+      SmallVector<Attribute> allowed;
+      for (auto [j, other] : llvm::enumerate(endpoints))
+        if (i != j && seen[i] && seen[j] &&
+            endpoint->getParentOp() == other->getParentOp() &&
+            endpoint.getTile() == other.getTile() &&
+            endpoint.getRouteDirection() == other.getRouteDirection() &&
+            !blockedPairs.contains({std::min(i, j), std::max(i, j)}))
+          allowed.push_back(FlatSymbolRefAttr::get(other.getSymNameAttr()));
+      endpoint->setAttr("aie.shareable_with",
+                        ArrayAttr::get(&getContext(), allowed));
+    }
+    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(&getContext());
+    for (DeviceOp device : module.getOps<DeviceOp>()) {
+      for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
+        if (!alloc->hasAttr("aie.fixed") || !overlay.isAttrPresent(alloc))
+          continue;
+        SmallVector<Attribute> allowed;
+        for (auto [i, endpoint] : llvm::enumerate(endpoints))
+          if (shareChannels && seen[i] && !blocked[i] &&
+              endpoint->getParentOp() == device &&
+              endpoint.getTile() == alloc.getTile() &&
+              endpoint.getRouteDirection() == alloc.getChannelDir())
+            allowed.push_back(
+                FlatSymbolRefAttr::get(endpoint.getSymNameAttr()));
+        alloc->setAttr("aie.shareable_with",
+                       ArrayAttr::get(&getContext(), allowed));
+      }
+    }
+    return success();
+  }
+
+  void preferApplicationRoutes(ModuleOp module) {
+    OwningOpRef<ModuleOp> trial = cast<ModuleOp>(module->clone());
+    PassManager pm(&getContext());
+    auto &dpm = pm.nest<DeviceOp>();
+    dpm.addPass(createAIEAssignPacketIdsPass());
+    dpm.addPass(createAIEObjectFifoAllocatePass());
+    dpm.addPass(createAIEObjectFifoLowerDMAsPass());
+    pm.addPass(createAIEControlOverlayAvoidDataPass());
+    // Failure to route the preference model leaves the default routes
+    // available.
+    ScopedDiagnosticHandler quiet(&getContext(),
+                                  [](Diagnostic &) { return success(); });
+    if (failed(pm.run(*trial)))
+      return;
+    auto source = trial->getOps<DeviceOp>().begin();
+    for (DeviceOp dest : module.getOps<DeviceOp>()) {
+      if (auto avoid = (*source)->getAttr("aie.ctrl_pkt_overlay_avoid"))
+        dest->setAttr("aie.ctrl_pkt_overlay_avoid", avoid);
+      ++source;
+    }
+  }
+
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    AIEGenerateColumnControlOverlayOptions options;
+    options.clRouteShimDmaToTileCTRL = true;
+    options.clEmitStandaloneOverlay = true;
+    options.clPlanChannels = true;
+    options.clAdaptiveChannels = adaptive;
+    options.clCoverColumns = llvm::to_vector(coverColumns);
+    OpPassManager pm(ModuleOp::getOperationName());
+    pm.addPass(createAIEGenerateColumnControlOverlayPass(options));
+    if (failed(runPipeline(pm, module)))
+      return signalPassFailure();
+    if (failed(sharingConstraints(module)))
+      return signalPassFailure();
+    if (adaptive)
+      preferApplicationRoutes(module);
+  }
+};
+} // namespace
+
+std::unique_ptr<OperationPass<ModuleOp>>
+AIEX::createAIECreateControlOverlayPass() {
+  return std::make_unique<AIECreateControlOverlayPass>();
+}
+std::unique_ptr<OperationPass<ModuleOp>>
+AIEX::createAIECreateControlOverlayPass(
+    const AIECreateControlOverlayOptions &options) {
+  return std::make_unique<AIECreateControlOverlayPass>(options);
+}
