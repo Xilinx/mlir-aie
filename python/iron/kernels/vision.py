@@ -543,6 +543,7 @@ def nms(width: int = 52, classes: int = 80, cap: int = 320) -> _NmsKernel:
                 "drives and judges them"
             ),
             ops_per_call=0,
+            even_calls=False,
         ),
         cls=_NmsKernel,
     )

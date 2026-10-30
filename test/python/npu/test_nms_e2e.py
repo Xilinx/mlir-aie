@@ -23,127 +23,7 @@ import numpy as np
 import pytest
 
 import aie.iron as iron
-from aie.iron import (
-    CompileTime,
-    In,
-    ObjectFifo,
-    Out,
-    Program,
-    Runtime,
-    TaskGroup,
-    Worker,
-    jit,
-)
-from aie.iron.kernels import vision
-
-
-@jit
-def nms_detect(
-    rows_in: In,
-    det_out: Out,
-    count_out: Out,
-    *,
-    width: CompileTime[int],
-    classes: CompileTime[int],
-    cap: CompileTime[int],
-    conf_thre: CompileTime[float],
-    nms_thre: CompileTime[float],
-    class_agnostic: CompileTime[int],
-    widths: CompileTime[tuple],
-):
-    """One image: ``nms_setup``, ``len(widths)`` rows of ``nms_score``, ``nms_finish``."""
-    fn = vision.nms(width, classes, cap)
-    row_ty = np.ndarray[(width * (5 + classes),), np.dtype[np.float32]]
-    det_ty = np.ndarray[(cap * 6,), np.dtype[np.float32]]
-    count_ty = np.ndarray[(2,), np.dtype[np.int32]]
-    of_rows = ObjectFifo(row_ty, name="rows", depth=2)
-    of_det = ObjectFifo(det_ty, name="det", depth=1)
-    of_count = ObjectFifo(count_ty, name="count", depth=1)
-
-    def core_body(rows, det, count, setup, score, finish):
-        setup(conf_thre)
-        for w in widths:
-            score(rows.acquire(1), w)
-            rows.release(1)
-        d = det.acquire(1)
-        c = count.acquire(1)
-        finish(d, c, nms_thre, class_agnostic)
-        det.release(1)
-        count.release(1)
-
-    worker = Worker(
-        core_body,
-        [
-            of_rows.cons(),
-            of_det.prod(),
-            of_count.prod(),
-            fn.nms_setup,
-            fn,
-            fn.nms_finish,
-        ],
-    )
-    host = [
-        np.ndarray[(len(widths) * width * (5 + classes),), np.dtype[np.float32]],
-        det_ty,
-        count_ty,
-    ]
-
-    def sequence(rows_h, det_h, count_h, rin, rdet, rcount):
-        tg = TaskGroup()
-        rin.fill(rows_h, group=tg)
-        rdet.drain(det_h, wait=True, group=tg)
-        rcount.drain(count_h, wait=True, group=tg)
-        tg.finish()
-
-    rt = Runtime(sequence, [*host, of_rows.prod(), of_det.cons(), of_count.cons()])
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
-
-
-def _cell(classes, cx, cy, w, h, obj, class_scores):
-    """One cell of ``5 + classes`` float32, ``class_scores`` from channel 5."""
-    row = np.zeros(5 + classes, np.float32)
-    row[0], row[1], row[2], row[3], row[4] = cx, cy, w, h, obj
-    scores = np.zeros(classes, np.float32)
-    for c, v in class_scores.items():
-        scores[c] = v
-    row[5:] = scores
-    return row
-
-
-def _one_class(classes, cls, score):
-    return {cls: np.float32(score)}
-
-
-def _rows_of(cells_per_row, width, classes):
-    """``(row_tile, valid_width)`` pairs, zero-padded to ``width`` cells."""
-    out = []
-    for cells in cells_per_row:
-        tile = np.zeros((width, 5 + classes), np.float32)
-        if cells:
-            tile[: len(cells)] = np.stack(cells)
-        out.append((tile.reshape(-1), len(cells)))
-    return out
-
-
-def _build_case(width, classes, cap, conf_thre, nms_thre, class_agnostic, rows):
-    """``rows``: list of per-row-call cell lists. Returns kwargs plus the host input."""
-    padded = _rows_of(rows, width, classes)
-    widths = tuple(w for _, w in padded)
-    flat = np.concatenate([r for r, _ in padded]) if padded else np.zeros(0, np.float32)
-    ref_rows = [(r, w) for r, w in padded]
-    det_ref, count_ref, survivors_ref = vision.nms_ref(
-        ref_rows, conf_thre, nms_thre, class_agnostic, classes=classes, cap=cap
-    )
-    kwargs = dict(
-        width=width,
-        classes=classes,
-        cap=cap,
-        conf_thre=conf_thre,
-        nms_thre=nms_thre,
-        class_agnostic=class_agnostic,
-        widths=widths,
-    )
-    return kwargs, flat, det_ref, count_ref, survivors_ref
+from nms_design import _cell, _one_class, build_case, nms_detect, realistic_pyramid
 
 
 def _run(kwargs, flat):
@@ -371,39 +251,10 @@ CASES["survivors_over_1000_vanilla_path"] = dict(
 )
 
 
-def _realistic_pyramid(seed=416):
-    """YOLOX-Nano's three 416x416 maps (52, 26, 13), 80 classes, random boxes.
-
-    Objectness and class scores are drawn ``Beta(1.5, 6)`` / ``Beta(1.2, 6)``:
-    mostly low, a long tail, so ``conf_thre=0.3`` keeps about a hundred of
-    the 3549 anchors -- comfortably inside ``cap`` but not trivially empty.
-    """
-    rng = np.random.default_rng(seed)
-    classes = 80
-    rows = []
-    for level_width in (52, 26, 13):
-        stride = 416 / level_width
-        for y in range(level_width):
-            cells = []
-            for x in range(level_width):
-                cx = (x + 0.5) * stride
-                cy = (y + 0.5) * stride
-                w = rng.uniform(8, 4 * stride)
-                h = rng.uniform(8, 4 * stride)
-                obj = rng.beta(1.5, 6.0)
-                class_scores = rng.beta(1.2, 6.0, classes)
-                row = np.zeros(5 + classes, np.float32)
-                row[0], row[1], row[2], row[3], row[4] = cx, cy, w, h, obj
-                row[5:] = class_scores
-                cells.append(row)
-            rows.append(cells)
-    return rows, classes
-
-
 @pytest.mark.parametrize("case", list(CASES))
 def test_device_nms_matches_nms_ref(case):
     cfg = CASES[case]
-    kwargs, flat, det_ref, count_ref, survivors_ref = _build_case(**cfg)
+    kwargs, flat, det_ref, count_ref, survivors_ref = build_case(**cfg)
     det, count, survivors = _run(kwargs, flat)
     assert count == count_ref, f"{case}: count"
     assert survivors == survivors_ref, f"{case}: survivors"
@@ -412,8 +263,8 @@ def test_device_nms_matches_nms_ref(case):
 
 def test_device_nms_matches_nms_ref_realistic_pyramid():
     """416x416's three levels in one run; conf_thre keeps survivors under cap."""
-    rows, classes = _realistic_pyramid()
-    kwargs, flat, det_ref, count_ref, survivors_ref = _build_case(
+    rows, classes = realistic_pyramid()
+    kwargs, flat, det_ref, count_ref, survivors_ref = build_case(
         width=52,
         classes=classes,
         cap=320,

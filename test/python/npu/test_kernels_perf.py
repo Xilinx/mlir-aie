@@ -42,14 +42,21 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
+import aie.iron as iron
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
 from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
 from aie.utils.compile.readobj import linked
 from aie.utils.compile.remarks import current_kernel_sources
+from aie.utils.trace import TraceConfig
+from aie.utils.trace.utils import get_cycles_summary
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
+from nms_design import build_case as nms_build_case
+from nms_design import nms_detect
+from nms_design import realistic_pyramid as nms_realistic_pyramid
 
 # Bump with any change to how a published metric is taken: publish.py and the
 # page compare a series only within one measurement.
@@ -402,6 +409,91 @@ def test_measurement_is_sane(request, record_perf, workdir):
         assert lo <= cycles <= hi, f"{cycles} cycles is outside {band}"
     meta["measurement_sane"] = True
     _record(record_perf, SMOKE_TEST, m, meta)
+
+
+# nms's three entry points share one core's state across a run (NOT_JUDGED:
+# the generic single-call harness above cannot build or time it), so this
+# builds nms_detect directly -- the same design test_nms_e2e.py judges --
+# rather than through kd.design, and times it with its own tracing.
+NMS_CASE = Case(
+    "nms", dict(width=52, classes=80, cap=320), calls=91, tag="realistic_pyramid"
+)
+
+
+@pytest.mark.perf
+def test_nms_cycles(request, record_perf, workdir):
+    """``nms_score``'s per-row cost over a full YOLOX-Nano pyramid (91 rows).
+
+    Checked first, as every other case here is: ``nms``'s own kernel is
+    judged by ``test_nms_e2e.py``'s dedicated e2e file, not this harness, so
+    this re-runs that same check (against ``vision.nms_ref``) before timing.
+    Only ``nms_score`` declares ``Trace.whole_call()``, so a traced run
+    emits one interval per row; a flush emitted right after the last row
+    (before ``nms_finish``'s own, untraced work) pushes that interval's
+    packet out, as ``kernel_design.py``'s generic designs flush theirs. What
+    follows -- a few more near-zero flush pairs, then one very large gap
+    while the core idles for a dispatch that never comes -- is measurement
+    harness noise, not kernel cost, so only the first ``calls`` intervals,
+    confirmed present, are kept.
+    """
+    meta = request.config._perf_meta
+    rows, classes = nms_realistic_pyramid()
+    kwargs, flat, det_ref, count_ref, survivors_ref = nms_build_case(
+        width=52,
+        classes=classes,
+        cap=320,
+        conf_thre=0.3,
+        nms_thre=0.45,
+        class_agnostic=0,
+        rows=rows,
+    )
+    calls = len(kwargs["widths"])
+    assert calls == NMS_CASE.calls, f"the pyramid now has {calls} rows, not 91"
+
+    def _tensors():
+        return (
+            iron.tensor(flat, dtype=np.float32),
+            iron.full((kwargs["cap"] * 6,), -1.0, dtype=np.float32),
+            iron.full((2,), -1, dtype=np.int32),
+        )
+
+    rows_t, det, count = _tensors()
+    nms_detect(rows_t, det, count, **kwargs)
+    got = (int(count.numpy()[0]), int(count.numpy()[1]))
+    failed = None
+    if got != (count_ref, survivors_ref):
+        failed = f"count/survivors {got} != ref {(count_ref, survivors_ref)}"
+    elif not np.array_equal(det.numpy(), det_ref):
+        failed = "detections differ from nms_ref"
+    assert failed is None, failed
+
+    m: dict = {"failed": failed}
+    m["wall"] = run_iters(
+        nms_detect,
+        *_tensors(),
+        warmup=request.config.getoption("--warmup"),
+        iters=request.config.getoption("--iters"),
+        **kwargs,
+    )
+    if not request.config.getoption("--no-cycles"):
+        trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * calls)
+        tdir = workdir / "nms"
+        tdir.mkdir(parents=True, exist_ok=True)
+        cfg = TraceConfig(trace_size=trace_size, trace_file=str(tdir / "trace.txt"))
+        rows_t, det, count = _tensors()
+        nms_detect(rows_t, det, count, **kwargs, trace_config=cfg)
+        assert (
+            cfg.physical_mlir_path is not None
+        ), f"{NMS_CASE.name}: the traced run recorded no physical MLIR path"
+        trace_json = tdir / "trace.json"
+        cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
+        durations = [d for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
+        assert (
+            len(durations) >= calls
+        ), f"{NMS_CASE.name}: only {len(durations)} of {calls} rows traced"
+        m["cycles"] = kd.CallCycles(kernel=tuple(durations[:calls]))
+        m["trace_size"] = trace_size
+    _record(record_perf, NMS_CASE, m, meta)
 
 
 def _differing_words(a: np.ndarray, b: np.ndarray) -> int:
