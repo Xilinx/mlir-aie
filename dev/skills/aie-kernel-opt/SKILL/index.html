@@ -4105,12 +4105,12 @@ the same for a kernel in your own design; only the drivers change:</p>
 <tr>
 <td>Gate (2)</td>
 <td><code>test_kernels_e2e.py -m extensive</code></td>
-<td>Attach a <code>KernelContract</code> (<code>aie.iron.kernels</code>: roles, a single-pass reference, tolerance, <code>trace=</code>) and drive it with <code>aie.iron.algorithms.kernel_design</code> (<code>kd.design(my_factory, calls=N, guard=True)</code> with <code>my_factory</code> a module-level function returning the kernel, <code>kd.sample_inputs</code>, <code>kd.upload(..., poison=True)</code>), or keep your design's own test with poisoned outputs</td>
+<td>Attach a <code>KernelContract</code> (<code>aie.iron.kernels</code>: roles, a single-pass reference, tolerance, <code>trace=</code>) and drive it with <code>aie.iron.algorithms.KernelDesign</code> (<code>kd = KernelDesign(my_kernel, calls=N, guard=True)</code>, then <code>kd.run(kd.sample_inputs())</code> and <code>kd.check</code>), or keep your design's own test with poisoned outputs</td>
 </tr>
 <tr>
 <td>Measure (6)</td>
 <td><code>test_kernels_perf.py --baseline-sources</code></td>
-<td><code>kd.cycles_per_call</code> on each arm's design for a <code>Trace.whole_call()</code> contract, or <code>event0()</code>/<code>event1()</code> markers around the call in your design traced with <code>TraceConfig</code>; alternate the arms back to back</td>
+<td><code>kd.cycles_per_call</code> on each arm's <code>KernelDesign</code> for a <code>Trace.whole_call()</code> contract, or <code>event0()</code>/<code>event1()</code> markers around the call in your design traced with <code>TraceConfig</code>; alternate the arms back to back</td>
 </tr>
 <tr>
 <td>Whole design</td>
@@ -4195,8 +4195,8 @@ requirements; the short hashes cite the mlir-aie commits that measured them
   arg_byte_offsets=((idx, 16),))</code> (c7d229b9316), and run it on the base
   kernels first so it fails. Declare <code>alignments</code> in the contract for
   what the fast path loads (d8e877d26fc).</li>
-<li>Keep outputs poisoned (<code>kd.upload(..., poison=True)</code>; the core's output
-  tile is poisoned too, 36bd3b637a7) and guarded (<code>kd.design(...,
+<li>Keep outputs poisoned (<code>kd.run</code> poisons them; the core's output tile is
+  poisoned too, 36bd3b637a7) and guarded (<code>KernelDesign(...,
   guard=True)</code>), so an unwritten output or a write past a tile's end fails.
   Gate every entry point alone, and the composition once.</li>
 </ul>

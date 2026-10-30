@@ -4313,27 +4313,25 @@ returned before any device was bound is still judged by the build that ran:</p>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">fn</span><span class="o">.</span><span class="n">contract_for</span><span class="p">(</span><span class="s2">"aie2p"</span><span class="p">)</span><span class="o">.</span><span class="n">tolerance</span>  <span class="c1"># one bf16 ulp, measured on npu2</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">fn</span><span class="o">.</span><span class="n">expected</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">arch</span><span class="o">=</span><span class="s2">"aie2p"</span><span class="p">)</span>   <span class="c1"># expected() and judge() take arch= too</span>
 </code></pre></div>
-<p>The contract is what lets <code>aie.iron.algorithms.kernel_design</code> build, run and check
+<p>The contract is what lets <code>aie.iron.algorithms.KernelDesign</code> build, run and check
 a kernel without a hand-written design:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.algorithms</span><span class="w"> </span><span class="kn">import</span> <span class="n">kernel_design</span> <span class="k">as</span> <span class="n">kd</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.algorithms</span><span class="w"> </span><span class="kn">import</span> <span class="n">KernelDesign</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">fn</span> <span class="o">=</span> <span class="n">kernels</span><span class="o">.</span><span class="n">reduce_max</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">design</span> <span class="o">=</span> <span class="n">kd</span><span class="o">.</span><span class="n">design</span><span class="p">(</span><span class="n">kernels</span><span class="o">.</span><span class="n">reduce_max</span><span class="p">,</span> <span class="n">calls</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">inputs</span> <span class="o">=</span> <span class="n">kd</span><span class="o">.</span><span class="n">sample_inputs</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">calls</span><span class="o">=</span><span class="mi">16</span><span class="p">)</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">ins</span><span class="p">,</span> <span class="n">out</span> <span class="o">=</span> <span class="n">kd</span><span class="o">.</span><span class="n">upload</span><span class="p">(</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">inputs</span><span class="p">,</span> <span class="n">kd</span><span class="o">.</span><span class="n">output_size</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">calls</span><span class="o">=</span><span class="mi">16</span><span class="p">),</span> <span class="n">fn</span><span class="o">.</span><span class="n">output_dtype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span> <span class="n">fn</span><span class="o">=</span><span class="n">fn</span><span class="p">,</span> <span class="n">poison</span><span class="o">=</span><span class="kc">True</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">)</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="n">design</span><span class="p">(</span><span class="o">*</span><span class="n">ins</span><span class="p">,</span> <span class="n">out</span><span class="p">)</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="n">verdict</span> <span class="o">=</span> <span class="n">fn</span><span class="o">.</span><span class="n">judge</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">fn</span><span class="o">.</span><span class="n">expected</span><span class="p">(</span><span class="n">inputs</span><span class="p">),</span> <span class="n">calls</span><span class="o">=</span><span class="mi">16</span><span class="p">)</span>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="k">assert</span> <span class="n">verdict</span><span class="p">,</span> <span class="n">verdict</span><span class="o">.</span><span class="n">detail</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">kd</span> <span class="o">=</span> <span class="n">KernelDesign</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">calls</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span> <span class="n">guard</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">inputs</span> <span class="o">=</span> <span class="n">kd</span><span class="o">.</span><span class="n">sample_inputs</span><span class="p">()</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">outputs</span> <span class="o">=</span> <span class="n">kd</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">verdict</span> <span class="o">=</span> <span class="n">kd</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">outputs</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="k">assert</span> <span class="n">verdict</span><span class="p">,</span> <span class="n">verdict</span><span class="o">.</span><span class="n">detail</span>
 </code></pre></div>
-<p><code>kd.design(..., guard=True)</code> also catches writes past an output. Each output
-tile gets <code>kd.GUARD_BYTES</code> of <code>0x55</code> after it, which the kernel never sees.
-Size the output with <code>kd.output_size(fn, calls=16, guard=True)</code> and split the
-result with <code>kd.strip_guard(fn, out.numpy(), calls=16)</code>, which returns the
-data and the number of changed guard bytes. bfp outputs are not guarded.</p>
+<p><code>guard=True</code> also catches writes past an output. Each output tile gets
+<code>GUARD_BYTES</code> (64) of <code>0x55</code> after it, which the kernel never sees, and
+<code>kd.run</code> raises when the kernel changed any of them. bfp outputs are not
+guarded. To run the design by hand, <code>kd.upload(inputs)</code> sizes the buffers and
+<code>kd.strip_guard(outputs)</code> returns the data and the number of changed guard
+bytes.</p>
 <p>Every design validates independent tile calls, including matrix kernels.
-<code>kd.design(kernels.mm, calls=16)</code> repeats sixteen tile products, initializing
+<code>KernelDesign(kernels.mm(), calls=16)</code> repeats sixteen tile products, initializing
 each output before its call. The factory's dimensions size a tile; <code>calls</code>
 does not change its reduction length. Whole-problem <code>shape=</code> is rejected:
 algorithm integration tests own global iteration and accumulation.</p>
@@ -4423,7 +4421,7 @@ elsewhere.</p>
   from the same object with the prefix applied. Chess-built
   kernels are the exception: <code>llvm-objcopy</code> corrupts xchesscc objects, so
   they keep bare symbols and only one variant may appear in a design.</li>
-<li><strong><code>host_args</code>.</strong> <code>kernel_design.host_args(fn, calls=)</code>
+<li><strong><code>host_args</code>.</strong> <code>KernelDesign(fn, calls=...).host_args()</code>
   reports the direction, shape, dtype and element count of each host buffer the
   design takes, in the layout the device expects: packed tiles from each
   argument's layout codec, encoded bytes for a bfp16ebs8 operand,
