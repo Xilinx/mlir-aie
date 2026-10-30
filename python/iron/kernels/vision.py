@@ -997,7 +997,9 @@ def grid_decode_ref(
     return out.reshape(p.shape[0], width * (5 + classes))
 
 
-def nms_ref(rows, conf_thre, nms_thre, class_agnostic, *, classes: int, cap: int):
+def nms_ref(
+    rows, conf_thre, nms_thre, class_agnostic, *, classes: int, cap: int
+) -> tuple[np.ndarray, int, int]:
     """Numpy reference for [`nms`][iron.kernels.vision.nms].
 
     torchvision's CPU ``nms`` under ``batched_nms``'s own choice of path:
@@ -1023,10 +1025,10 @@ def nms_ref(rows, conf_thre, nms_thre, class_agnostic, *, classes: int, cap: int
     unshifted boxes) are written in score order.
 
     Returns:
-        ``(detections, count, survivors)``: ``detections`` is ``cap * 6``
-        float32 (``x1, y1, x2, y2, score, class``), zeros past ``count``;
-        ``survivors`` is every candidate that reached ``conf_thre``, cap or
-        not.
+        detections: ``cap * 6`` float32 (``x1, y1, x2, y2, score, class``),
+            zeros past ``count``.
+        count: How many detections were kept.
+        survivors: How many candidates reached ``conf_thre``, cap or not.
     """
     x1s, y1s, x2s, y2s, scores, classes_ = [], [], [], [], [], []
     thre = np.float32(conf_thre)
