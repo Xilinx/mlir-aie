@@ -13,6 +13,10 @@
 // A stored (K, M), the transpose, a chunk of its stored rows per call. It
 // sums in the row-major kernel's order, operation for operation, so the two
 // layouts give the same bits (see matvec_vectorized_col_maj).
+//
+// Built with -DA_CODED, it exports the coded-rows variant instead: A arrives
+// as aie.utils.coded rows, which the core decodes into a scratch tile for
+// the row-major kernel, so it returns that kernel's bits.
 
 #define NOCPP
 
@@ -159,6 +163,76 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
   ::aie::set_rounding(saved_rounding);
 }
 
+#ifdef A_CODED
+
+#ifndef CAPACITY
+#define CAPACITY 15
+#endif
+
+// One coded row of k weights (aie.utils.coded): k low bytes, k / 2 code
+// nibbles, then 64-byte aligned base_pos, base_neg and the exception count,
+// then CAPACITY exceptions of (index, u16; high byte; pad). The row is a
+// multiple of 64 bytes, so every row's planes stay 64-byte aligned.
+template <uint32_t k>
+constexpr uint32_t coded_tail_at = (3 * k / 2 + 63) / 64 * 64;
+
+template <uint32_t k>
+constexpr uint32_t coded_row_bytes =
+    coded_tail_at<k> + (4 + 4 * CAPACITY + 63) / 64 * 64;
+
+// hi = code < 8 ? base_pos + code : base_neg + code - 8, then the bytes
+// interleaved into little-endian bf16 words, then the exceptions patched in.
+template <uint32_t k>
+static inline void decode_coded_rows(uint32_t m, const uint8_t *__restrict a,
+                                     bfloat16 *__restrict out) {
+  static_assert(k % 64 == 0);
+  for (uint32_t row = 0; row < m; row++) {
+    const uint8_t *__restrict lo = a + row * coded_row_bytes<k>;
+    const uint8_t *__restrict tail = lo + coded_tail_at<k>;
+    uint8_t *__restrict o = (uint8_t *)(out + row * k);
+    const aie::vector<uint8, 64> pos = aie::broadcast<uint8, 64>(tail[0]);
+    const aie::vector<uint8, 64> neg =
+        aie::broadcast<uint8, 64>((uint8_t)(tail[1] - 8));
+    // Stepped pointers, not offsets from j: Peano then folds the code load
+    // into vldb.unpack and pipelines 64 weights in 5 cycles.
+    const uint8_t *__restrict pl = lo;
+    const uint8_t *__restrict pc = lo + k;
+    uint8_t *__restrict po = o;
+    AIE_LOOP_MIN_ITERATION_COUNT(k / 64)
+    for (uint32_t j = 0; j < k / 64; j++, pl += 64, pc += 32, po += 128) {
+      aie::vector<uint8, 64> c = aie::load_v<64>((const uint4 *)pc).unpack();
+      aie::vector<uint8, 64> hi =
+          aie::add(c, aie::select(neg, pos, aie::lt(c, (uint8_t)8)));
+      auto [w0, w1] = aie::interleave_zip(aie::load_v<64>(pl), hi, 1);
+      aie::store_v(po, w0);
+      aie::store_v(po + 64, w1);
+    }
+    const uint32_t *__restrict e = (const uint32_t *)(tail + 4);
+    for (uint32_t n = tail[2]; n > 0; n--, e++)
+      o[2 * (*e & 0xFFFF) + 1] = (uint8_t)(*e >> 16);
+  }
+}
+
+extern "C" {
+
+// a_scratch holds the decoded rows, which feed the unchanged matvec, so the
+// result is plain mv's on the decoded matrix, bit for bit.
+void matvec_coded_bf16_bf16(uint32_t m, uint32_t row_offset,
+                            const uint8_t *__restrict a_coded,
+                            bfloat16 *__restrict a_scratch,
+                            const bfloat16 *__restrict b_in,
+                            bfloat16 *__restrict c_out) {
+  event0();
+  c_out += row_offset;
+  decode_coded_rows<DIM_K>(m, a_coded, a_scratch);
+  matvec_vectorized<VEC_SIZE, DIM_K>(m, a_scratch, b_in, c_out);
+  event1();
+}
+
+} // extern "C"
+
+#else // A_CODED
+
 extern "C" {
 
 /* The row offset parameter in the functions below is a workaround. The output
@@ -187,6 +261,8 @@ void matvec_vectorized_bf16_bf16(uint32_t m, uint32_t row_offset,
 }
 
 } // extern "C"
+
+#endif // A_CODED
 
 #else // A_COL_MAJ
 

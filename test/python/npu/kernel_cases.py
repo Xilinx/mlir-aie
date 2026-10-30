@@ -1314,6 +1314,32 @@ CASES: list[Case] = [
             (16, 32, 16, "edge-narrowest"),
         )
     ],
+    # The coded matvec (a_coded) at llama 3.2 1B's two decode GEMV shapes on
+    # npu2, as the plain kernel's cases above run them, so its cycles read
+    # against theirs. Bit identity with the plain kernel is
+    # test_mv_coded_e2e.py's.
+    *[
+        Case(
+            "mv",
+            dict(
+                dim_m=dim_m,
+                dim_k=dim_k,
+                input_dtype=bfloat16,
+                output_dtype=bfloat16,
+                vec_size=64,
+                output_rows=output_rows,
+                a_coded=True,
+            ),
+            calls=output_rows // dim_m,
+            tag=tag,
+            devices=("npu2",),
+            smoke=smoke,
+        )
+        for dim_m, dim_k, output_rows, tag, smoke in (
+            (4, 2048, 64, "", True),
+            (1, 8192, 256, "llama-decode-ffn-down", False),
+        )
+    ],
     # reduce companion, gated activation
     Case("compute_max", calls=16, smoke=True),
     Case("compute_max", _bf16, calls=16, smoke=True),
