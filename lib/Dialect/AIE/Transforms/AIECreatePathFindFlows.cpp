@@ -1292,25 +1292,27 @@ static void lowerShimDMAPorts(DeviceOp device, OpBuilder &builder,
     TileOp tileOp = switchbox.getTileOp();
     if (!tileOp.isShimNOCTile())
       continue;
-    auto connectInMux = [&](Port src, Port dst) {
+    auto connectInMux = [&](Location loc, Port src, Port dst) {
       builder.setInsertionPointAfter(tileOp);
       ShimMuxOp shimMux = analyzer.getShimMux(builder, tileOp.colIndex());
       builder.setInsertionPointToStart(&shimMux.getConnections().front());
-      getOrCreateConnect(builder, shimMux, tileOp.getLoc(), src.bundle,
-                         src.channel, dst.bundle, dst.channel);
+      getOrCreateConnect(builder, shimMux, loc, src.bundle, src.channel,
+                         dst.bundle, dst.channel);
     };
     for (Operation &op : switchbox.getConnections().front()) {
       if (auto rules = dyn_cast<PacketRulesOp>(op);
           rules && rules.getSourceBundle() == WireBundle::DMA) {
         int ch = shimMuxChannelFrom(rules.sourcePort());
-        connectInMux(rules.sourcePort(), {WireBundle::North, ch});
+        connectInMux(rules.getLoc(), rules.sourcePort(),
+                     {WireBundle::North, ch});
         rules.setSourceBundle(WireBundle::South);
         rules.setSourceChannel(ch);
       }
       if (auto masterSet = dyn_cast<MasterSetOp>(op);
           masterSet && masterSet.getDestBundle() == WireBundle::DMA) {
         int ch = shimMuxChannelTo(masterSet.destPort());
-        connectInMux({WireBundle::North, ch}, masterSet.destPort());
+        connectInMux(masterSet.getLoc(), {WireBundle::North, ch},
+                     masterSet.destPort());
         masterSet.setDestBundle(WireBundle::South);
         masterSet.setDestChannel(ch);
       }
@@ -1335,6 +1337,14 @@ struct PacketPlan {
   // port they enter.
   std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
+  // Where the packet flows entering each slave port with each ID were
+  // written, so the routing they become points back at them.
+  std::map<std::pair<PhysPort, int>, SmallVector<Location, 1>> slaveFlowLocs;
+  // The packet flows' locations in the order the flows were written.
+  DenseMap<Location, unsigned> flowLocOrder;
+  // The flows behind `slaveFlows`, fused, or `fallback` if none.
+  Location locOf(ArrayRef<std::pair<PhysPort, int>> slaveFlows,
+                 Location fallback) const;
   // Flag to keep packet header at packet flow destination
   DenseMap<PhysPort, BoolAttr> keepPktHeaderAttr;
   // The slave ports and IDs that carry prioritized packets. A switchbox routes
@@ -1607,6 +1617,10 @@ void PacketFlowRouting::collectFlows() {
               if (!llvm::is_contained(slaveFlowStreams[slaveFlow], stream))
                 slaveFlowStreams[slaveFlow].push_back(stream);
             slaveFlowSources[slaveFlow][srcPoint].insert(dest);
+            if (!llvm::is_contained(slaveFlowLocs[slaveFlow],
+                                    pktFlowOp.getLoc()))
+              slaveFlowLocs[slaveFlow].push_back(pktFlowOp.getLoc());
+            flowLocOrder.try_emplace(pktFlowOp.getLoc(), flowLocOrder.size());
             if (std::optional<uint8_t> mask = pktFlowOp.getMask()) {
               pinnedMasks[{{currTile, {src.bundle, src.channel}}, flowID}]
                   .insert(*mask);
@@ -1641,6 +1655,22 @@ void PacketFlowRouting::collectFlows() {
 // The rules the flows through `slaveFlow` state. A full-width mask selects the
 // id alone, which the cover states just as well, so only a wider claim becomes
 // a rule of its own.
+Location PacketPlan::locOf(ArrayRef<std::pair<PhysPort, int>> slaveFlows,
+                           Location fallback) const {
+  SmallVector<Location, 2> locs;
+  for (const auto &flow : slaveFlows)
+    if (auto found = slaveFlowLocs.find(flow); found != slaveFlowLocs.end())
+      for (Location loc : found->second)
+        if (!llvm::is_contained(locs, loc))
+          locs.push_back(loc);
+  if (locs.empty())
+    return fallback;
+  llvm::sort(locs, [&](Location a, Location b) {
+    return flowLocOrder.lookup(a) < flowLocOrder.lookup(b);
+  });
+  return FusedLoc::get(fallback.getContext(), locs);
+}
+
 SmallVector<std::pair<int, int>, 2>
 PacketPlan::statedCubes(const std::pair<PhysPort, int> &slaveFlow,
                         int idMask) const {
@@ -2769,9 +2799,14 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
     builder.setInsertionPoint(b.getTerminator());
 
     if (auto hops = circuitHops.find(tileId); hops != circuitHops.end())
-      for (const Connect &hop : hops->second)
-        ConnectOp::create(builder, tileLoc, hop.src.bundle, hop.src.channel,
-                          hop.dst.bundle, hop.dst.channel);
+      for (const Connect &hop : hops->second) {
+        SmallVector<std::pair<PhysPort, int>, 4> passing;
+        for (const auto &flow : llvm::make_first_range(slaveFlowLocs))
+          if (flow.first == PhysPort{tileId, hop.src})
+            passing.push_back(flow);
+        ConnectOp::create(builder, locOf(passing, tileLoc), hop.src.bundle,
+                          hop.src.channel, hop.dst.bundle, hop.dst.channel);
+      }
 
     // The master sets of this tile, in port order, and the amsels they take.
     auto tileMastersets =
@@ -2791,9 +2826,14 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
       SmallVector<Value, 4> amsels;
       for (int msel : msels)
         amsels.push_back(amselOps.at(msel));
+      SmallVector<std::pair<PhysPort, int>, 4> feeding;
+      for (const auto &[flow, dests] : packetFlows)
+        if (llvm::is_contained(dests, master))
+          feeding.push_back(flow);
       auto msOp = MasterSetOp::create(
-          builder, tileLoc, builder.getIndexType(), master.second.bundle,
-          master.second.channel, amsels, keepPktHeaderAttr.lookup(master));
+          builder, locOf(feeding, tileLoc), builder.getIndexType(),
+          master.second.bundle, master.second.channel, amsels,
+          keepPktHeaderAttr.lookup(master));
       if (ctrlPktOverlayMasterPorts.contains(master))
         overlay.setAttr(msOp, unit);
     }
@@ -2911,14 +2951,17 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
 
       PacketRulesOp packetrules = slaveRules.lookup(slave);
       if (!packetrules) {
-        packetrules = PacketRulesOp::create(builder, tileLoc, slave.bundle,
-                                            slave.channel);
+        packetrules = PacketRulesOp::create(builder, locOf(group, tileLoc),
+                                            slave.bundle, slave.channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         tileLoc);
         slaveRules[slave] = packetrules;
       } else {
-        // After the amsels its new rules use.
+        // After the amsels its new rules use, and located at their flows too.
         packetrules->moveBefore(b.getTerminator());
+        if (Location more = locOf(group, tileLoc); more != tileLoc)
+          packetrules->setLoc(FusedLoc::get(builder.getContext(),
+                                            {packetrules->getLoc(), more}));
       }
 
       Block &rules = packetrules.getRules().front();
@@ -2933,7 +2976,7 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
         const PortRule &r = plan.rules[plan.emitted];
         const auto &ruleGroup = slaveGroups[plan.groups[r.group]];
         auto rule = PacketRuleOp::create(
-            builder, tileLoc, r.mask, r.value,
+            builder, locOf(ruleGroup, tileLoc), r.mask, r.value,
             amselOps.at(slaveAMSels.at(ruleGroup.front())));
         if (llvm::all_of(ruleGroup, [&](const auto &member) {
               return markedFlows.contains(member);
