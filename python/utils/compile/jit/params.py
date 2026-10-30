@@ -223,6 +223,11 @@ class PerCallMember(Member):
             None for one every call gives.
         bounds: The parameter it bounds: a call may give a smaller value,
             and the build is sized for the parameter's.
+        count: None for a single value; a positive int, or a function of
+            the operator computing one, for a short fixed-length vector of
+            that many words instead -- a row block's causal or window edge,
+            where one scalar does not hold for every row. ``derive``, given
+            with ``count``, returns that many host values, not one.
     """
 
     def __init__(
@@ -230,10 +235,12 @@ class PerCallMember(Member):
         dtype: Any,
         derive: Callable[[Any], Any] | None,
         bounds: OperatorParam | None,
+        count: int | Callable[[Any], int] | None = None,
     ) -> None:
         self.dtype = dtype
         self.derive = derive
         self.bounds = bounds
+        self.count = count
 
 
 def per_call(
@@ -241,25 +248,32 @@ def per_call(
     *,
     derive: Callable[[Any], Any] | None = None,
     bounds: Any = None,
+    count: int | Callable[[Any], int] | None = None,
 ) -> Any:
     """Declare a value the cores read that may change every call without a rebuild.
 
     A value no build fixes (no `derive`, no `bounds`) is given every call:
     an operator with a dispatch library takes it as a dispatch scalar,
-    which rebuilds the instruction stream around it.
+    which rebuilds the instruction stream around it. ``count`` makes it a
+    vector of that many words instead of one, each its own per-call integer.
 
     Args:
         dtype: An integer type.
-        derive: A function of the operator computing it once per build.
+        derive: A function of the operator computing it once per build; with
+            ``count``, it returns that many host values, not one.
         bounds: A ``param()`` this value bounds per call: ``valid =
             per_call(bounds=M)``.
+        count: None for a single value; a positive int, or a function of the
+            operator computing one, for a fixed-length vector of words.
 
     Returns:
         The ``PerCallMember`` the class body binds to the value's name.
 
     Raises:
-        TypeError: `dtype` is not an integer type, or both `derive` and
-            `bounds` are given.
+        TypeError: `dtype` is not an integer type, both `derive` and
+            `bounds` are given, both `bounds` and `count` are given (a
+            vector bounds no single parameter, one word at a time), or
+            `count` is neither a callable nor a positive int.
     """
     if np.dtype(dtype).kind not in "iu":
         raise TypeError(
@@ -268,22 +282,39 @@ def per_call(
         )
     if derive is not None and bounds is not None:
         raise TypeError("per_call(derive=, bounds=): give one, not both")
-    return PerCallMember(dtype, derive, bounds)
+    if count is not None and bounds is not None:
+        raise TypeError(
+            "per_call(count=, bounds=): a vector bounds no single param(), one "
+            "word at a time"
+        )
+    if count is not None and not callable(count):
+        bad = (
+            isinstance(count, bool)
+            or not isinstance(count, (int, np.integer))
+            or count < 1
+        )
+        if bad:
+            raise TypeError(
+                f"per_call(count={count!r}): give a positive int or a "
+                "function of the operator computing one"
+            )
+    return PerCallMember(dtype, derive, bounds, count)
 
 
 @dataclass(frozen=True)
 class Select:
     """A shape chosen by a flag the caller gives or defaults, never inferred.
 
-    ``Select(b_col_maj, (N, K), (K, N))``.
+    ``Select(b_col_maj, (N, K), (K, N))``. As an operand's whole
+    ``obj_shape``, a None branch is no stream: ``Select(feed_b, (K,), None)``.
     """
 
     # A class body's param(), typed there as its annotation (bool).
     flag: Any
-    when_true: tuple
-    when_false: tuple
+    when_true: tuple | None
+    when_false: tuple | None
 
-    def branch(self, op) -> tuple:
+    def branch(self, op) -> tuple | None:
         """Return the dimensions the flag picks on ``op``."""
         flag = getattr(op, self.flag.name)
         if flag is None:
@@ -312,7 +343,12 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
     out: list[int] = []
     for d in dims:
         if isinstance(d, Select):
-            out.extend(resolve(d.branch(op), op))
+            branch = d.branch(op)
+            if branch is None:
+                raise TypeError(
+                    "a Select() with a None branch picks no stream, not a dimension"
+                )
+            out.extend(resolve(branch, op))
         elif not isinstance(d, OperatorParam):
             out.append(int(d))
         elif (value := getattr(op, d.name)) is not None:
@@ -331,10 +367,11 @@ def resolve(dims: tuple, op) -> tuple[int, ...]:
 def _text(d) -> str:
     """Return a declared dimension as its declaration spells it."""
     if isinstance(d, Select):
-        true, false = ", ".join(map(_text, d.when_true)), ", ".join(
-            map(_text, d.when_false)
+        true, false = (
+            "None" if b is None else f"({', '.join(map(_text, b))})"
+            for b in (d.when_true, d.when_false)
         )
-        return f"Select({d.flag.name}, ({true}), ({false}))"
+        return f"Select({d.flag.name}, {true}, {false})"
     return d.name if isinstance(d, OperatorParam) else repr(d)
 
 

@@ -31,6 +31,7 @@ class Op:
     tile = tunable(default=64, domain=(32, 64))
     count = per_call(derive=lambda op: op.M // 4)
     valid = per_call(bounds=M)
+    edges = per_call(count=4, derive=lambda op: tuple(i * op.M for i in range(4)))
     b_col_maj = param(default=False, array=True)
     shape = Select(b_col_maj, (M, 1), (1, M))
 
@@ -73,6 +74,29 @@ def test_a_per_call_value_is_an_integer_with_one_source():
         per_call(np.float32)
     with pytest.raises(TypeError, match="give one, not both"):
         per_call(derive=lambda op: 1, bounds=Op.M)
+
+
+def test_a_per_call_vector_is_a_fixed_word_count():
+    op = Op()
+    vars(op)["M"] = 8
+    assert Op.edges.count == 4
+    assert Op.edges.derive(op) == (0, 8, 16, 24)
+    counted = per_call(count=lambda op: op.M // 2)
+    assert counted.count(op) == 4
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        (dict(count=4, bounds=Op.M), "a vector bounds no single param"),
+        (dict(count=0), "give a positive int or a function"),
+        (dict(count=-1), "give a positive int or a function"),
+        (dict(count=True), "give a positive int or a function"),
+    ],
+)
+def test_a_per_call_vector_rejects_bounds_and_a_non_positive_count(kwargs, message):
+    with pytest.raises(TypeError, match=message):
+        per_call(**kwargs)
 
 
 def test_a_select_picks_by_its_flag():
@@ -127,11 +151,51 @@ def test_a_replicated_operand_needs_a_split():
         In(Op.M, replicate=True)
 
 
+@pytest.mark.parametrize("stream_when_true", [False, True])
+def test_a_select_obj_shape_streams_only_where_its_flag_picks_a_shape(
+    stream_when_true,
+):
+    class MaybeStreamed(Operator):
+        K: int = param()
+        fed: bool = tunable(default=False, domain=(False, True))
+        x = In(
+            K,
+            obj_shape=Select(
+                fed,
+                (K,) if stream_when_true else None,
+                None if stream_when_true else (K,),
+            ),
+        )
+
+    assert MaybeStreamed.x.streamed
+    off = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=not stream_when_true))
+    assert not off.streamed
+    with pytest.raises(TypeError, match="x has no obj_shape here: no stream"):
+        off.lanes
+    with pytest.raises(TypeError, match="x has no obj_shape here: no stream"):
+        off.obj_shape
+    on = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=stream_when_true))
+    assert on.streamed and on.obj_shape == (64,) and on.lanes == 1
+
+
+def test_a_select_of_two_shapes_streams_before_its_flag_resolves():
+    class Tiled(Operator):
+        K: int = param()
+        wide: bool = tunable(default=False, domain=(False, True))
+        cores: int = tunable(default=2)
+        x = In(K, obj_shape=Select(wide, (K,), (1,)), per=cores)
+
+    op = Tiled(K=64)
+    vars(op).update(wide=None)
+    x = Tiled.x.of(op)
+    assert x.streamed and x.lanes == 2
+
+
 def test_an_unstreamed_operand_has_no_element_or_lanes():
     c = Streams.c.of(streams())
-    with pytest.raises(TypeError, match="c is declared without an obj_shape="):
+    with pytest.raises(TypeError, match="c has no obj_shape here: no stream"):
         c.obj_shape
-    with pytest.raises(TypeError, match="c is declared without an obj_shape="):
+    with pytest.raises(TypeError, match="c has no obj_shape here: no stream"):
         c.lanes
 
 
