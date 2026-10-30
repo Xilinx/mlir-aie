@@ -312,7 +312,7 @@ def InitValuesArrayAttr
 
 def ObjectFifoRelease
     : I32EnumAttr<"ObjectFifoRelease",
-                  "What a release on the sending end starts",
+                  "ObjectFifo sending DMA task submission strategy",
                   [I32EnumAttrCase<"CycleBuffers", 0, "cycle_buffers">,
                    I32EnumAttrCase<"PushQueue", 1, "push_queue">]> {
   let cppNamespace = "xilinx::AIE";
@@ -322,7 +322,20 @@ def ObjectFifoRelease
 }
 
 def ObjectFifoReleaseAttr
-    : EnumAttr<AIE_Dialect, ObjectFifoRelease, "release_strategy">;
+    : EnumAttr<AIE_Dialect, ObjectFifoRelease, "release_strategy"> {
+  let summary = "Select cyclic DMA execution or core-issued send tasks";
+  let description = [{
+    Controls how an ObjectFifo's sending DMA receives work. `cycle_buffers`
+    uses a cyclic BD chain synchronized by buffer locks. `push_queue` has the
+    producer core submit a task for each released object, allowing several
+    FIFOs to share one MM2S channel. Both strategies retain buffer-lock
+    synchronization.
+
+    This attribute can be attached to `aie.objectfifo` or its draining
+    `aie.objectfifo.dma_endpoint`. See those operations for defaults and
+    lowering requirements.
+  }];
+}
 
 def ObjectFifoRole
     : I32EnumAttr<"ObjectFifoRole",

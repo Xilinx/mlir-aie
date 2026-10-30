@@ -243,8 +243,9 @@ def AIEObjectFifoInsertCoreQueuePushes
     targets). A release of multiple objects carries any excess into the next
     counter interval. Each pushed task accepts that same number of objects.
 
-    With `check-queue-space=true`, a queue-space poll precedes each push.
-    The program must still avoid circular waits between core synchronization
+    With `check-queue-space=true`, a queue-space poll precedes each push unless
+    the corresponding release has `assume_queue_space`. The program must still
+    avoid circular waits between core synchronization
     and DMA progress; polling only prevents task-queue overflow.
   }];
   let options = [Option<"checkQueueSpace", "check-queue-space", "bool",
