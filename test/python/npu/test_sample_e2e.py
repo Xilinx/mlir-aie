@@ -701,3 +701,49 @@ def test_device_draws_match_the_probability_rule(cores):
     )
     np.testing.assert_array_equal(token.numpy(), expected)
     np.testing.assert_array_equal(record.numpy(), expected)
+
+
+def test_device_rule_fires_on_one_timestamp_just_above_the_text():
+    """One timestamp 2^-60 above the text max fires the rule; one equal to it
+    does not (logsumexp of one logit is that logit).
+
+    exp(2^-60) is 1.0 in float64, so a merge that only compares
+    sum_ts * exp(max_ts - max_text) against 1 misses the first. top_k=2 at
+    u = 0 draws the text token whenever the rule holds off, so firing is
+    visible; each row names its token outright, so a fault shared with
+    sample_ref cannot pass unseen.
+    """
+    vocab, cores, k_max, split = 512, 2, 2, 300
+    rows = []
+    for ts, want in ((2.0**-60, split), (0.0, 10)):
+        logits = np.full(vocab, -np.inf, dtype=np.float32)
+        logits[10] = 0.0
+        logits[split] = ts
+        rows.append((logits.astype(bfloat16), want))
+    assert np.float32(2.0**-60).astype(bfloat16) == 2.0**-60
+    draws = np.stack(
+        [np.concatenate([sample.draw_row(1.0, k_max, 0), sample.split_word(split)])]
+        * len(rows)
+    )
+    expected = np.array([want for _, want in rows], dtype=np.int32)
+    for lg, want in rows:
+        assert (
+            sample.sample_ref(
+                lg, 1.0, k_max, 0, probability_rule_split=split, columns=cores
+            )
+            == want
+        )
+    token = iron.full((len(rows),), -1, dtype=np.int32)
+    record = iron.full((len(rows),), -1, dtype=np.int32)
+    sample_positions_with_rule(
+        iron.tensor(np.stack([lg for lg, _ in rows]).reshape(-1), dtype=bfloat16),
+        iron.tensor(draws.reshape(-1), dtype=np.int32),
+        token,
+        record,
+        vocab=vocab,
+        cores=cores,
+        k_max=k_max,
+        positions=len(rows),
+    )
+    np.testing.assert_array_equal(token.numpy(), expected)
+    np.testing.assert_array_equal(record.numpy(), expected)

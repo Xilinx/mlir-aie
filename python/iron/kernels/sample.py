@@ -581,8 +581,11 @@ def forced_timestamp_ref(reductions) -> bool:
     columns without a log: with ``max_text`` the largest of every column's
     own text-range max, the compare holds exactly where ``sum_c sum_ts_c *
     exp(max_ts_c - max_text) > 1``. A column with no fold on a side
-    (``sum_ts == 0``) drops out of the sum; ``exp64_ref`` (float64) matches
-    ``sample_combine``'s own merge.
+    (``sum_ts == 0``) drops out of the sum. A column whose ``max_ts`` is
+    above ``max_text`` holds at least that one logit (``sum_ts >= 1``), so
+    the compare holds outright, before an exp that rounds a small excess to
+    1; ``exp64_ref`` (float64) of a float64 difference matches
+    ``sample_combine``'s own merge for the rest.
     """
     max_text = np.float32(-np.inf)
     for text, _, _ in reductions:
@@ -592,6 +595,8 @@ def forced_timestamp_ref(reductions) -> bool:
     for _, max_ts, sum_ts in reductions:
         if sum_ts == np.float32(0.0):
             continue
+        if max_ts > max_text:
+            return True
         total += (
             float(sum_ts) * exp64_ref(np.float64(max_ts) - np.float64(max_text)).item()
         )

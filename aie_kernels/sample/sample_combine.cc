@@ -263,7 +263,12 @@ bool forced_timestamp(const int32_t *reductions) {
       continue;
     const float max_ts =
         __builtin_bit_cast(float, (uint32_t)r[SAMPLE_REDUCTION_MAX_TS]);
-    total += (double)sum_ts * exp64((double)(max_ts - max_text));
+    // This column holds max_ts itself (sum_ts >= 1), so the rule holds
+    // before an exp that would round a small excess to 1.
+    if (max_ts > max_text)
+      return true;
+    // A float64 difference: float subtraction is not IEEE here (see above).
+    total += (double)sum_ts * exp64((double)max_ts - (double)max_text);
   }
   return total > 1.0;
 }

@@ -686,14 +686,36 @@ def test_logsumexp_reduction_ref_folds_leading_neg_inf_as_zero():
     assert sample.logsumexp_reduction_ref(logits, 1) == (2.0, 3.0, 2.0)
     max_text, max_ts, sum_ts = sample.logsumexp_reduction_ref(logits[:3], 1)
     assert np.isneginf(max_ts) and sum_ts == 0.0
+    # Beside it, a column below the text max: e^-1 alone holds off, 3 e^-1
+    # fires; a NaN from the all -inf column would hold off both.
     assert not sample.forced_timestamp_ref(
-        [(np.float32(2.0), np.float32(3.0), np.float32(0.1))]
+        [(np.float32(3.0), np.float32(2.0), np.float32(1.0))]
         + [sample.logsumexp_reduction_ref(logits[:3], 1)]
     )
     assert sample.forced_timestamp_ref(
-        [(np.float32(2.0), np.float32(3.0), np.float32(1.0))]
+        [(np.float32(3.0), np.float32(2.0), np.float32(3.0))]
         + [sample.logsumexp_reduction_ref(logits[:3], 1)]
     )
+
+
+@pytest.mark.parametrize("columns", [1, 2])
+@pytest.mark.parametrize("excess", [2.0**-60, 2.0**-24, 0.0])
+def test_one_timestamp_above_the_text_fires_however_small_the_excess(columns, excess):
+    # exp(2**-60) is 1.0 in float64; the compare must not lean on it.
+    logits = np.full(16, -np.inf, np.float32)
+    logits[2] = 0.0
+    logits[12] = excess
+    logits = logits.astype(bfloat16)
+    text_max, logsumexp = _independent_logsumexp_compare(logits, 10)
+    reductions = [
+        sample.logsumexp_reduction_ref(
+            logits[c * 16 // columns : (c + 1) * 16 // columns],
+            min(max(10 - c * 16 // columns, 0), 16 // columns),
+        )
+        for c in range(columns)
+    ]
+    assert sample.forced_timestamp_ref(reductions) == (logsumexp > text_max)
+    assert sample.forced_timestamp_ref(reductions) == (excess > 0)
 
 
 def test_forced_timestamp_ref_fires_and_not():
