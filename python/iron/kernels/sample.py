@@ -532,8 +532,9 @@ def logsumexp_reduction_ref(
     exp(v - max))`` over ``logits[split:]``, each folded index by index as
     the device does (so a near-tie rounds the same way): float32
     throughout, ``exp64_ref`` (float64) evaluating each exp before its single
-    rounding into the float32 sum. ``-inf``/``-inf``/``0.0`` where a side is
-    empty, matching ``sample_select``'s own ``begin_reduction``.
+    rounding into the float32 sum. A ``-inf`` logit weighs 0 and is not
+    folded. ``-inf``/``-inf``/``0.0`` where a side is empty (or all
+    ``-inf``), matching ``sample_select``'s own ``begin_reduction``.
     """
     values = np.ascontiguousarray(logits, dtype=bfloat16).astype(np.float32)
     max_text = np.float32(-np.inf)
@@ -543,6 +544,8 @@ def logsumexp_reduction_ref(
     max_ts = np.float32(-np.inf)
     sum_ts = np.float32(0.0)
     for v in values[split:]:
+        if v == -np.inf:
+            continue
         if v <= max_ts:
             sum_ts = np.float32(
                 np.float64(sum_ts) + exp64_ref(np.float64(v - max_ts)).item()

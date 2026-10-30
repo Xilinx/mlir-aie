@@ -314,7 +314,9 @@ void reduce_chunk(const uint16_t *x, int32_t pos, int32_t local_split,
       if (v > max_text)
         max_text = v;
     } else if (v <= max_ts) {
-      sum_ts = (float)((double)sum_ts + exp64((double)(v - max_ts)));
+      // -inf weighs exactly 0; folding it before a finite max is -inf - -inf.
+      if (x[i] != 0xff80)
+        sum_ts = (float)((double)sum_ts + exp64((double)(v - max_ts)));
     } else {
       sum_ts = (float)((double)sum_ts * exp64((double)(max_ts - v)) + 1.0);
       max_ts = v;

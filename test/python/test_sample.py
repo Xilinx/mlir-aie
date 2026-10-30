@@ -636,6 +636,22 @@ def test_logsumexp_reduction_ref_empty_sides():
     assert np.isneginf(max_ts) and sum_ts == 0.0
 
 
+def test_logsumexp_reduction_ref_folds_leading_neg_inf_as_zero():
+    # A -inf ahead of the side's first finite logit weighs 0, not NaN.
+    logits = np.array([2.0, -np.inf, -np.inf, 3.0, -np.inf, 3.0], dtype=bfloat16)
+    assert sample.logsumexp_reduction_ref(logits, 1) == (2.0, 3.0, 2.0)
+    max_text, max_ts, sum_ts = sample.logsumexp_reduction_ref(logits[:3], 1)
+    assert np.isneginf(max_ts) and sum_ts == 0.0
+    assert not sample.forced_timestamp_ref(
+        [(np.float32(2.0), np.float32(3.0), np.float32(0.1))]
+        + [sample.logsumexp_reduction_ref(logits[:3], 1)]
+    )
+    assert sample.forced_timestamp_ref(
+        [(np.float32(2.0), np.float32(3.0), np.float32(1.0))]
+        + [sample.logsumexp_reduction_ref(logits[:3], 1)]
+    )
+
+
 def test_forced_timestamp_ref_fires_and_not():
     # logsumexp(ts) well above max_text: fires.
     assert sample.forced_timestamp_ref(
