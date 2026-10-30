@@ -630,6 +630,7 @@ class XRTHostRuntime(HostRuntime):
         # Another context's dispatch may have reset the array since this
         # context last ran, so a full ELF's init entry runs again.
         if kernel_handle.context is not self._dispatched_context:
+            self._dispatched_context = None
             if kernel_handle.is_full_elf:
                 self._run_init_entry(
                     kernel_handle.context, kernel_handle.init_name, kernel_handle.name
