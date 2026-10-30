@@ -40,8 +40,13 @@ holder = Holder()
 slots = [None, None]
 slots[0] = ObjectFifo(line_type)
 slots[1] = ObjectFifo(line_type)
-# Built inside an argument: not named after the outer statement.
-passed = [ObjectFifo(line_type)]
+# Elements of a list display: named after the list, numbered.
+listed = [ObjectFifo(line_type), *([ObjectFifo(line_type)] if True else [])]
+# Comprehension elements and either branch of a conditional likewise.
+made = [ObjectFifo(line_type) for _ in range(2)]
+chosen = ObjectFifo(line_type) if True else None
+# Built inside an argument to a call: not named after the outer statement.
+passed = list((ObjectFifo(line_type),))
 # Reassignment later does not rename it either.
 reused = ObjectFifo(line_type)
 reused_first = reused
@@ -57,6 +62,11 @@ fifos = [
     holder.held,
     slots[0],
     slots[1],
+    listed[0],
+    listed[1],
+    made[0],
+    made[1],
+    chosen,
     passed[0],
     reused_first,
 ]
@@ -90,6 +100,11 @@ expected = {
     "slots",
     "slots_1",
     "reused",
+    "listed",
+    "listed_1",
+    "made",
+    "made_1",
+    "chosen",
 }
 assert expected <= set(symbols), sorted(symbols)
 (fallback,) = set(symbols) - expected

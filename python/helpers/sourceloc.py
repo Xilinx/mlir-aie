@@ -159,11 +159,16 @@ class SourceSite:
         `act_in[i] = ...`, the first target of `act_in = other = ...` and the
         matching element of `act_in, other = ObjectFifo(...), ...`. Only the
         constructing statement counts: a later `alias = act_in` does not.
+        Each object an element of a list or tuple display builds, as in
+        `consts = [Buffer(w), Buffer(b), *([Buffer(t)] if act else [])]` or
+        `bufs = [Buffer(t) for t in ts]`, is named after the list (then
+        numbered: consts, consts_1, ...), as is either branch of
+        `x = A() if c else B()`.
         An object a helper returns, as `return Buffer(...)` or as one element
         of `return Buffer(...), offsets`, is named where the helper's caller
         assigns it: `wts = load(...)`, or `wts, offsets = pack(...)`.
         None when the object is not assigned where it is built or returned to
-        (an argument, a comprehension), or the source cannot be read.
+        (an argument to a call), or the source cannot be read.
         """
         if self.filename is None:
             return None
@@ -254,15 +259,15 @@ def _statements(filename: str) -> tuple:
     return tuple(found)
 
 
-def _contains(node: ast.AST, line: int, col: int) -> bool:
+def _contains(node: ast.expr, line: int, col: int) -> bool:
     if col == 0:  # Before Python 3.11 there are no columns; match the line.
-        return node.lineno <= line <= node.end_lineno
+        return node.lineno <= line <= (node.end_lineno or node.lineno)
     start = (node.lineno, node.col_offset)
     end = (node.end_lineno, node.end_col_offset)
     return start <= (line, col) <= end
 
 
-def _spine(value: ast.AST) -> list:
+def _spine(value: ast.expr) -> list:
     """Return the calls `value` chains: both calls of `a.cons().forward()`."""
     calls = []
     while isinstance(value, (ast.Call, ast.Attribute)):
@@ -272,6 +277,34 @@ def _spine(value: ast.AST) -> list:
         else:
             value = value.value
     return calls
+
+
+def _element(value: ast.expr, line: int, col: int) -> ast.expr | None:
+    """Return the part of an assigned value that holds the site.
+
+    Goes into the element of a list, tuple or set display (`[A(), *rest]`),
+    the element expression of a comprehension (`[A(t) for t in ts]`) and the
+    chosen branch of a conditional (`[A()] if c else []`), so the object an
+    element builds counts as the value. Returns None when the site is in a
+    conditional's test or a comprehension's iterable.
+    """
+    while True:
+        if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+            inner = next((e for e in value.elts if _contains(e, line, col)), None)
+        elif isinstance(value, ast.Starred):
+            inner = value.value
+        elif isinstance(value, ast.IfExp):
+            inner = next(
+                (b for b in (value.body, value.orelse) if _contains(b, line, col)),
+                None,
+            )
+        elif isinstance(value, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+            inner = value.elt if _contains(value.elt, line, col) else None
+        else:
+            return value
+        if inner is None:
+            return None
+        value = inner
 
 
 @functools.lru_cache(maxsize=4096)
@@ -304,6 +337,12 @@ def _binding(filename: str, line: int, col: int) -> tuple | None:
         elif kind == "assign" and len(names) != 1:
             # `a, b = helper()`: the caller unpacks a returned tuple.
             if not isinstance(value, ast.Call) or not _contains(value, line, col):
+                return None
+        elif kind == "assign" and not unpacks:
+            # `consts = [Buffer(...), Buffer(...)]`: each element is named
+            # after the list.
+            value = _element(value, line, col)
+            if value is None:
                 return None
         # The object is the statement's value, not built inside an argument
         # of it: the innermost call around the site must be on the value's

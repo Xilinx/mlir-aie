@@ -74,5 +74,6 @@ assert not any(s.startswith("of") for s in symbols if s not in expected), sorted
 )
 
 cores = [op.location.name_str for op in ops if op.name == "aie.core"]
-assert cores == ["iron:producer", "iron:worker0"], cores
+# An element of a list is named after the list.
+assert cores == ["iron:producer", "iron:workers"], cores
 print("PASS: names from source")
