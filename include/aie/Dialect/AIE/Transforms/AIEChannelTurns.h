@@ -55,16 +55,18 @@ public:
 
   /// Whether a channel moving objects in `turns()` order forever, through
   /// pools of `depths`, never has itself and the core both waiting. Settles
-  /// `turns()` on the shortest such order cut from the period's.
+  /// `turns()` on the shortest such order cut from the period's. A core that
+  /// ends must move a whole number of that order over its run.
   bool keepsUp(llvm::ArrayRef<int64_t> depths);
 
 private:
   bool keepsUp(llvm::ArrayRef<unsigned> order,
                llvm::ArrayRef<int64_t> depths) const;
-  mlir::LogicalResult wholeRunKeepsTurns(
+  mlir::LogicalResult readWholeRun(
       CoreOp core,
       llvm::ArrayRef<std::pair<ObjectFifoReleaseOp, unsigned>> releases,
-      std::string &reason) const;
+      std::string &reason);
+  bool wholeRunFits(llvm::ArrayRef<int64_t> counts) const;
 
   struct Event {
     unsigned end;
@@ -75,6 +77,9 @@ private:
 
   llvm::SmallVector<Event> period;
   llvm::SmallVector<unsigned> order;
+  /// Objects of each end a finite core moves over its whole run; empty when
+  /// the run never ends or has no release after its loops.
+  llvm::SmallVector<int64_t> wholeRun;
   mlir::Operation *loop = nullptr;
   size_t ends = 0;
   bool coreDrains = true;
