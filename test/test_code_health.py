@@ -483,12 +483,14 @@ def test_publish_writes_status_and_history(tmp_path):
 
 
 def test_the_nightly_publishes_what_the_page_reads():
-    wf = (ROOT / ".github/workflows/nightlyCodeHealth.yml").read_text()
+    wf = (ROOT / ".github/workflows/nightlyCodeHealth.yml").read_text(encoding="utf-8")
     assert "code_health.py publish" in wf and "code-health/" in wf
     assert "group: gh-pages-publish" in wf
-    page = (ROOT / "utils/kernel_checks/index.html").read_text()
+    page = (ROOT / "utils/kernel_checks/index.html").read_text(encoding="utf-8")
     assert "'../code-health'" in page
-    listed = json.loads((ROOT / "utils/kernel_checks/ci_workflows.json").read_text())
+    listed = json.loads(
+        (ROOT / "utils/kernel_checks/ci_workflows.json").read_text(encoding="utf-8")
+    )
     files = [w["file"] for k in ("critical", "workflows") for w in listed[k]]
     assert "nightlyCodeHealth.yml" in files and "codeCoverage.yml" not in files
 
