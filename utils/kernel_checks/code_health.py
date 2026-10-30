@@ -48,6 +48,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+from ci_health import ApiError, github  # noqa: E402
 
 SCHEMA = 1
 # gh-pages stays bounded: status.json is replaced each night and history.json
@@ -775,8 +776,6 @@ def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
         )
     scanning = None
     if args.code_scanning:
-        from ci_health import ApiError, github
-
         get = get or github(os.environ.get("GITHUB_TOKEN", ""))
         try:
             scanning = scanning_status(

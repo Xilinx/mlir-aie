@@ -75,9 +75,10 @@ def test_code_health_tidy_reports_only_a_finished_analysis(
         json.dumps([{"file": str(tmp_path / "lib/A.cpp")}])
     )
     (tmp_path / "utils/kernel_checks").mkdir(parents=True)
-    shutil.copy(
-        root / "utils/kernel_checks/code_health.py", tmp_path / "utils/kernel_checks"
-    )
+    for script_name in ("code_health.py", "ci_health.py"):
+        shutil.copy(
+            root / "utils/kernel_checks" / script_name, tmp_path / "utils/kernel_checks"
+        )
     shutil.copy(root / ".pre-commit-config.yaml", tmp_path)
     tidy = tmp_path / "utils/run_clang_tidy.sh"
     tidy.write_text(
