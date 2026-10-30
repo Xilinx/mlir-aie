@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 #### Use the Notebook
 * Start a jupyter server at the root directory of your clone of `mlir-aie`.
-  Make sure you use a terminal that has run the `utils/setup_env.sh` script
+  Make sure you use a terminal that has run the `utils/env_setup.sh` script
   so that the correct environment variables are percolated to jupyter.
   Below is an example of how to start a jupyter server:
   ```bash
