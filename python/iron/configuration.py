@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import collections
 import itertools
 from collections.abc import Sequence
 from contextlib import contextmanager
@@ -414,17 +415,27 @@ class DeviceConfiguration(DeviceResources):
             taken.add(preferred)
             return preferred
 
+        # How many unnamed objects each source name would go to, so that a
+        # name several share is numbered from 0 on every one of them.
+        unnamed = [fifo for fifo in fifos if fifo.name is None]
+        unnamed += [b for b in rtps + buffers if b._name is None]
+        unnamed += [lock for lock in locks if lock._name is None]
+        unnamed += [flow for flow in self._flows if flow.name is None]
+        unnamed += [worker for worker in self._workers if worker.name is None]
+        unnamed += [pool for pool in pools if pool.name is None]
+        shared = collections.Counter(obj._site.assigned_name() for obj in unnamed)
+
         def from_source(obj, prefix):
             # Named after the variable the user's statement assigns it to,
-            # numbered when several share one, else after its kind (or left
-            # unnamed, with no kind).
+            # numbered from 0 when several share one, else after its kind (or
+            # left unnamed, with no kind).
             base = obj._site.assigned_name()
             if base is None:
                 return fresh(prefix) if prefix else None
-            if base not in taken:
+            if shared[base] == 1 and base not in taken:
                 taken.add(base)
                 return base
-            return fresh(base + "_", start=1)
+            return fresh(base + "_")
 
         for fifo in fifos:
             if fifo.name is None:

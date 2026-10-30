@@ -36,11 +36,11 @@ chained = also_chained = ObjectFifo(line_type)
 left, right = ObjectFifo(line_type), ObjectFifo(line_type)
 # Attribute target: the attribute.
 holder = Holder()
-# Subscript target: the container, numbered on repeats.
+# Subscript target: the container, numbered from 0 on repeats.
 slots = [None, None]
 slots[0] = ObjectFifo(line_type)
 slots[1] = ObjectFifo(line_type)
-# Elements of a list display: named after the list, numbered.
+# Elements of a list display: named after the list, numbered from 0.
 listed = [ObjectFifo(line_type), *([ObjectFifo(line_type)] if True else [])]
 # Comprehension elements and either branch of a conditional likewise.
 made = [ObjectFifo(line_type) for _ in range(2)]
@@ -97,12 +97,12 @@ expected = {
     "left",
     "right",
     "held",
-    "slots",
+    "slots_0",
     "slots_1",
     "reused",
-    "listed",
+    "listed_0",
     "listed_1",
-    "made",
+    "made_0",
     "made_1",
     "chosen",
 }

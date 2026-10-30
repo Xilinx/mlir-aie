@@ -67,7 +67,7 @@ symbols = {
 }
 for symbol, loc_name in symbols.items():
     assert loc_name == "iron:" + symbol, (symbol, loc_name)
-expected = {"act_in", "out_fifo", "out_fifo_1", "named_by_hand", "forwarded"}
+expected = {"act_in", "out_fifo_0", "out_fifo_1", "named_by_hand", "forwarded"}
 assert expected <= set(symbols), sorted(symbols)
 assert not any(s.startswith("of") for s in symbols if s not in expected), sorted(
     symbols

@@ -4,8 +4,8 @@
 # RUN: %PYTHON %s
 
 # A variable that shares its name with a symbol IRON declares for something
-# else, here a kernel, does not take that symbol: the object is numbered past
-# it, and the design still resolves.
+# else, here a kernel, does not take that symbol: the object is numbered,
+# from 0, and the design still resolves.
 
 import numpy as np
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
@@ -38,5 +38,5 @@ module.operation.verify()
 
 text = str(module)
 assert "func.func private @passthrough(" in text, text
-assert "aie.objectfifo @passthrough_1(" in text, text
+assert "aie.objectfifo @passthrough_0(" in text, text
 print("PASS: source names clear of kernel symbols")
