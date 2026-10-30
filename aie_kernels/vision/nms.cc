@@ -68,7 +68,8 @@ void nms_score(const float *__restrict row, int32_t width) {
     int32_t best_c = 0;
     for (int32_t c = 1; c < CLASSES; c++) {
       const float v = cell[5 + c];
-      if (v > best) {
+      // A NaN class is the best, as np.argmax and torch.max take it.
+      if (v > best || __builtin_isnan(v)) {
         best = v;
         best_c = c;
       }

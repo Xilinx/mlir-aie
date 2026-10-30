@@ -79,6 +79,25 @@ CASES["nan_score_rejected"] = dict(
     ],
 )
 
+# A NaN class score makes the best class NaN, wherever it sits, as
+# nms_ref's np.argmax and YOLOX's torch.max take it: its cell is rejected.
+# A NaN after class 0 is the one a plain `v > best` scan skips.
+CASES["nan_class_rejected"] = dict(
+    width=4,
+    classes=2,
+    cap=8,
+    conf_thre=0.1,
+    nms_thre=0.45,
+    class_agnostic=0,
+    rows=[
+        [
+            _cell(2, 50, 50, 10, 10, 1.0, {0: 0.9, 1: np.nan}),
+            _cell(2, 90, 90, 10, 10, 1.0, {0: np.nan, 1: 0.9}),
+            _cell(2, 10, 10, 10, 10, 0.5, _one_class(2, 0, 0.9)),
+        ]
+    ],
+)
+
 # Four same-class boxes nested around one centre, each inside the last's
 # footprint: every one but the highest-scoring is suppressed.
 CASES["everything_suppressed"] = dict(
@@ -279,6 +298,11 @@ def test_device_nms_matches_nms_ref(case):
     assert count == count_ref, f"{case}: count"
     assert survivors == survivors_ref, f"{case}: survivors"
     np.testing.assert_array_equal(det, det_ref, err_msg=f"{case}: detections")
+
+
+def test_nms_ref_rejects_a_nan_class_anywhere():
+    *_, count_ref, survivors_ref = build_case(**CASES["nan_class_rejected"])
+    assert (count_ref, survivors_ref) == (1, 1)
 
 
 def test_device_nms_matches_nms_ref_realistic_pyramid():
