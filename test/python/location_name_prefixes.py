@@ -5,7 +5,7 @@
 
 # A NameLoc's name says what it names: "iron:" an IRON object (a fifo, a
 # Worker's core), "py:" the Python function a traced statement ran in. Workers
-# without a name are named worker0, worker1, ... in their configuration.
+# without a name are named after their variable, else worker0, worker1, ...
 
 import numpy as np
 from aie.ir import CallSiteLoc, FusedLoc, NameLoc
@@ -61,7 +61,7 @@ assert names(fifo.location) == ["iron:of_in"], fifo.location
 cores = [op for op in ops if op.name == "aie.core"]
 assert [names(core.location)[0] for core in cores] == [
     "iron:consumer",
-    "iron:worker0",
+    "iron:unnamed",
 ], [core.location for core in cores]
 
 acquire = next(op for op in ops if op.name == "aie.objectfifo.acquire")

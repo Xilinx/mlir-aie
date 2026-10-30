@@ -5,6 +5,7 @@
 #
 """Source locations for IRON objects, recorded where the user declares them."""
 
+import ast
 import contextlib
 import functools
 import inspect
@@ -121,6 +122,20 @@ class SourceSite:
             return cls(None)
         return cls(*frames[0], callers=tuple(frames[1:]))
 
+    def assigned_name(self) -> str | None:
+        """Return the name the declaring statement assigns the object to.
+
+        `act_in = ObjectFifo(...)` gives "act_in", as do `self.act_in = ...`,
+        `act_in[i] = ...`, the first target of `act_in = other = ...` and the
+        matching element of `act_in, other = ObjectFifo(...), ...`. Only the
+        constructing statement counts: a later `alias = act_in` does not.
+        None when the object is not assigned where it is built (a `return`,
+        an argument, a comprehension), or the source cannot be read.
+        """
+        if self.filename is None:
+            return None
+        return _assigned_name(self.filename, self.line, self.col)
+
     def location(self, name: str | None = None) -> "ir.Location":
         """Return this site as an `ir.Location` in the current Context.
 
@@ -140,6 +155,88 @@ class SourceSite:
                 loc, [ir.Location.file(*caller) for caller in self.callers]
             )
         return ir.Location.name(iron_name(name), childLoc=loc) if name else loc
+
+
+def _target_name(target: ast.AST) -> str | None:
+    """`x` for `x = ...`, `self.x = ...` and `x[i] = ...`."""
+    while isinstance(target, ast.Subscript):
+        target = target.value
+    if isinstance(target, ast.Name):
+        return target.id
+    if isinstance(target, ast.Attribute):
+        return target.attr
+    return None
+
+
+@functools.lru_cache(maxsize=64)
+def _assignments(filename: str) -> tuple:
+    """Each assignment of a call in `filename`: (call node, target name)."""
+    try:
+        with open(filename) as f:
+            tree = ast.parse(f.read(), filename)
+    except (OSError, SyntaxError, ValueError):
+        return ()
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+        # `a = b = ObjectFifo(...)` is named after the first target.
+        target = targets[0]
+        if isinstance(target, (ast.Tuple, ast.List)):
+            # `a, b = ObjectFifo(...), ObjectFifo(...)` pairs them up.
+            if isinstance(value, (ast.Tuple, ast.List)) and len(value.elts) == len(
+                target.elts
+            ):
+                for elt_target, elt_value in zip(target.elts, value.elts):
+                    if (name := _target_name(elt_target)) is not None:
+                        found.append((elt_value, name))
+        elif (name := _target_name(target)) is not None:
+            found.append((value, name))
+    return tuple(found)
+
+
+def _contains(node: ast.AST, line: int, col: int) -> bool:
+    if col == 0:  # Before Python 3.11 there are no columns; match the line.
+        return node.lineno <= line <= node.end_lineno
+    start = (node.lineno, node.col_offset)
+    end = (node.end_lineno, node.end_col_offset)
+    return start <= (line, col) <= end
+
+
+def _spine(value: ast.AST) -> list:
+    """Return the calls `value` chains: both calls of `a.cons().forward()`."""
+    calls = []
+    while isinstance(value, (ast.Call, ast.Attribute)):
+        if isinstance(value, ast.Call):
+            calls.append(value)
+            value = value.func
+        else:
+            value = value.value
+    return calls
+
+
+@functools.lru_cache(maxsize=4096)
+def _assigned_name(filename: str, line: int, col: int) -> str | None:
+    for value, name in _assignments(filename):
+        if not _contains(value, line, col):
+            continue
+        # The object is the statement's value, not built inside an argument
+        # of it: the innermost call around the site must be on the value's
+        # chain of calls.
+        innermost = None
+        # ast.walk goes outside in, so the last call around the site is the
+        # innermost one.
+        for node in ast.walk(value):
+            if isinstance(node, ast.Call) and _contains(node, line, col):
+                innermost = node
+        if innermost is not None and any(innermost is c for c in _spine(value)):
+            return name
+        return None
+    return None
 
 
 def user_code_location() -> "ir.Location | None":
