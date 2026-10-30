@@ -13,9 +13,13 @@
 // k * high is exact for |k| < 512), e^r by its Taylor series to r^7 (6e-9 at
 // the ends), with 2^k added into the exponent. 0 below the smallest normal,
 // infinity past overflow, NaN through. The caller sets conv_even.
-template <unsigned W>
+//
+// Scaled returns exp(x) * 2^log2_scale (0 to 127), the scale added into the
+// same exponent, so a result normal only once scaled is not flushed first;
+// both cut-offs move by log2_scale ln 2. Unscaled is the code it always was.
+template <unsigned W, bool Scaled = false>
 static inline __attribute__((always_inline)) aie::accum<accfloat, W>
-exp_f32(aie::accum<accfloat, W> x) {
+exp_f32(aie::accum<accfloat, W> x, int32_t log2_scale = 0) {
   using acc_t = aie::accum<accfloat, W>;
   using f_t = aie::vector<float, W>;
   auto acc = [](float c) { return acc_t(aie::broadcast<float, W>(c)); };
@@ -28,8 +32,14 @@ exp_f32(aie::accum<accfloat, W> x) {
   const auto is_nan =
       aie::gt(aie::bit_and(xi, aie::broadcast<int32_t, W>(INT32_MAX)),
               aie::broadcast<int32_t, W>(0x7f800000));
-  const auto below = aie::gt(xu, bits(-87.33654f).template cast_to<uint32_t>());
-  const auto above = aie::gt(xi, bits(88.72283f));
+  float lowest = -87.33654f, highest = 88.72283f;
+  if constexpr (Scaled) {
+    // In double: a float subtraction is not IEEE on Peano's vector unit.
+    lowest = (float)((double)lowest - log2_scale * 0.6931471805599453);
+    highest = (float)((double)highest - log2_scale * 0.6931471805599453);
+  }
+  const auto below = aie::gt(xu, bits(lowest).template cast_to<uint32_t>());
+  const auto above = aie::gt(xi, bits(highest));
 
   // k = round(x log2 e) through the 1.5 * 2^23 rounding (exp2_poly.h).
   const f_t magic = aie::broadcast<float, W>(12582912.0f);
@@ -50,8 +60,10 @@ exp_f32(aie::accum<accfloat, W> x) {
   // 2^k scales p through its exponent field. k << 23 is k * 2^23, which fits
   // int32 for |k| <= 128; a shift here is a vector G_SHL Peano cannot
   // legalize once its amount is hoisted out of the caller's loop.
-  const auto k_int = aie::sub(tm.template cast_to<int32_t>(),
-                              aie::broadcast<int32_t, W>(0x4b400000));
+  auto k_int = aie::sub(tm.template cast_to<int32_t>(),
+                        aie::broadcast<int32_t, W>(0x4b400000));
+  if constexpr (Scaled)
+    k_int = aie::add(k_int, aie::broadcast<int32_t, W>(log2_scale));
   f_t e =
       aie::add(p.template to_vector<float>().template cast_to<int32_t>(),
                aie::mul(k_int, int32_t(1 << 23)).template to_vector<int32_t>())

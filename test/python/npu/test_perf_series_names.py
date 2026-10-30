@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from cases import Case, device_for  # noqa: E402
 from kernel_cases import CASES  # noqa: E402
 from test_kernels_perf import (  # noqa: E402
+    _DEDICATED_CASES,
     _PERF_CASES,
     SMOKE_TEST,
     _differing_words,
@@ -51,7 +52,7 @@ def _recorded() -> list[str]:
 
 def _current() -> list[str]:
     names = []
-    for case in CASES:
+    for case in (*CASES, *_DEDICATED_CASES):
         with device_for(case.devices):
             names.append(case.name)
     return sorted(names)
@@ -90,7 +91,7 @@ def test_cycle_efficiency_is_independent_of_call_count():
         rows = []
         traced = kd.CallCycles(kernel=(270,) * calls)
         _record(lambda *row: rows.append(row), case, {"cycles": traced})
-        assert rows[1][1:] == ("cycles_per_kop", "cycles/1k-ops", 131.836)
+        assert rows[1][1:] == ("cycles_per_kop", "cycles/1k-ops", 131.836, None)
 
 
 def test_cycles_row_is_the_kernel_min_with_its_spread_beside_it():

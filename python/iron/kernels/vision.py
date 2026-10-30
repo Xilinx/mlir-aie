@@ -19,6 +19,7 @@ from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    _STRICT_FP,
     KernelContract,
     Param,
     Trace,
@@ -31,6 +32,10 @@ from ._common import (
 )
 
 DTYPES: dict[str, tuple[dict, ...]] = {}
+
+#: The bf16 entries of a ``levels`` table: three channels' 256, the four
+#: fill values, padded to whole 64-byte vectors.
+LEVELS_TABLE = 3 * 256 + 32
 
 
 def _color_convert_kernel(
@@ -305,6 +310,331 @@ def add_weighted(
     )
 
 
+def levels(
+    in_bytes: int = 3 * 1920, out_width: int = 1920, *, bgr: bool = False
+) -> ExternalFunction:
+    """Map a row of uint8 RGB pixels through per-channel tables to bf16 pixels of four channels.
+
+    ``levelsLine(in, table, out, first, count, at, row, lo, hi)`` writes
+    ``count`` pixels of the row ``in``, from pixel ``first``, to the row
+    ``out`` from pixel ``at``, each channel's level looked up in its own 256
+    entries of ``table``; every other pixel of ``out`` is the four fill
+    values after them. Output row ``row`` places its run only for ``lo <=
+    row < hi``, so a design's core can take every row of an image whatever
+    rows a call places. A run past either row is cut at its end, and a
+    negative ``first`` or ``at`` writes the fill alone. The tables hold whatever a host maps a
+    level to, such as an image processor's rescale and normalization,
+    computed once and exactly; with ``bgr`` the first output channel reads
+    the input's blue.
+
+    Args:
+        in_bytes: The input row's bytes, three a pixel; a multiple of 4.
+        out_width: The output row's pixels.
+        bgr: Whether the output's channels are blue, green, red.
+
+    Returns:
+        ExternalFunction for ``levelsLine``.
+
+    Raises:
+        ValueError: When ``in_bytes`` is not a positive multiple of 4 or
+            ``out_width`` is below 1.
+    """
+    if in_bytes < 4 or in_bytes % 4:
+        raise ValueError(
+            f"levels() needs in_bytes a positive multiple of 4, got {in_bytes}."
+        )
+    if out_width < 1:
+        raise ValueError(f"levels() needs out_width >= 1, got {out_width}.")
+    return _make_extern(
+        "levelsLine",
+        _kernel_source("vision/levels.cc"),
+        [
+            np.ndarray[(in_bytes,), np.dtype[np.uint8]],
+            np.ndarray[(LEVELS_TABLE,), np.dtype[bfloat16]],
+            np.ndarray[(4 * out_width,), np.dtype[bfloat16]],
+        ]
+        + [np.int32] * 6,
+        compile_flags=[
+            f"-DIN_BYTES={in_bytes}",
+            f"-DOUT_WIDTH={out_width}",
+            f"-DBGR={int(bgr)}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param, Out) + (Param,) * 6,
+            reference=lambda rows, table, first, count, at, row, lo, hi: levels_ref(
+                rows,
+                table,
+                first,
+                count,
+                at,
+                row,
+                lo,
+                hi,
+                out_width=out_width,
+                bgr=bgr,
+            ),
+            tolerance=Tolerance.exact(note="a table lookup"),
+            ops_per_call=0,
+        ),
+    )
+
+
+def grid_decode(
+    width: int = 52,
+    channels: int = 144,
+    *,
+    obj_at: int = 16,
+    cls_at: int = 48,
+    classes: int = 80,
+) -> ExternalFunction:
+    """Decode a row of an anchor-free detector's prediction map into float32 boxes.
+
+    ``grid_decode(in, out, y, stride)`` reads ``width`` cells of
+    ``channels`` bf16, a cell's box ``(dx, dy, dw, dh)`` first, its
+    objectness at ``obj_at`` and ``classes`` scores from ``cls_at``, and
+    writes a row of ``5 + classes`` float32 for each: ``(dx + x) * stride``,
+    ``(dy + y) * stride``, ``exp(dw) * stride``, ``exp(dh) * stride``, then
+    the objectness and scores, as YOLOX's ``decode_outputs`` computes them
+    in float32 for grid cell ``(x, y)`` of a map of ``stride``, a power of
+    two (so the multiply is exact); the exponential is ``exp_f32``. Each
+    sum is one native float add, not correctly rounded on AIE2P (``nms``'s
+    own kernel says why), which the contract's tolerance covers.
+
+    Args:
+        width: The cells of a row.
+        channels: The bf16 channels of a cell.
+        obj_at: The objectness's channel.
+        cls_at: The first class score's channel.
+        classes: The class scores of a cell.
+
+    Returns:
+        ExternalFunction for ``grid_decode``.
+
+    Raises:
+        ValueError: When a field lies past a cell's channels or inside its
+            box, or ``width`` or ``classes`` is below 1.
+    """
+    if width < 1 or classes < 1:
+        raise ValueError(
+            f"grid_decode() needs width >= 1 and classes >= 1, got {width} and {classes}."
+        )
+    if max(obj_at + 1, cls_at + classes) > channels or min(obj_at, cls_at) < 4:
+        raise ValueError(
+            f"grid_decode() needs objectness at {obj_at} and {classes} scores from "
+            f"{cls_at} inside {channels} channels, after the box."
+        )
+    return _make_extern(
+        "grid_decode",
+        _kernel_source("vision/grid_decode.cc"),
+        [
+            np.ndarray[(width * channels,), np.dtype[bfloat16]],
+            np.ndarray[(width * (5 + classes),), np.dtype[np.float32]],
+            np.int32,
+            np.int32,
+        ],
+        compile_flags=[
+            f"-DWIDTH={width}",
+            f"-DCHANNELS={channels}",
+            f"-DOBJ={obj_at}",
+            f"-DCLS={cls_at}",
+            f"-DCLASSES={classes}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out, Param, Param),
+            reference=lambda cells, y, stride: grid_decode_ref(
+                cells,
+                y,
+                stride,
+                width=width,
+                channels=channels,
+                obj_at=obj_at,
+                cls_at=cls_at,
+                classes=classes,
+            ),
+            acc_dtype=np.float32,
+            tolerance=Tolerance.relative(
+                1e-6,
+                note="exp_f32 is within 9.41 float32 ulps (5.6e-7) over every "
+                "input, numpy's exp within one; each sum is one native float "
+                "add, not correctly rounded on AIE2P (nms.cc), and the stride "
+                "and the copies are exact",
+            ),
+        ),
+    )
+
+
+class _NmsKernel(ExternalFunction):
+    nms_setup: Kernel
+    nms_finish: Kernel
+
+
+def nms(width: int = 52, classes: int = 80, cap: int = 320) -> _NmsKernel:
+    """Score-threshold and class-aware NMS over an anchor-free detector's boxes.
+
+    Bit for bit torchvision's CPU ``nms`` under ``batched_nms``'s own
+    choice of path (see ``nms_ref``, the full arithmetic model). Three
+    entry points share one core's state, and a core runs, once per image:
+
+    ```text
+    nms_setup(conf_thre)
+    for each row of each pyramid level: nms_score(row, width)
+    nms_finish(out, count, nms_thre, class_agnostic)
+    ```
+
+    ``row`` is [`grid_decode`][aie.iron.kernels.vision.grid_decode]'s output
+    row: ``width`` cells of ``5 + classes`` float32, a cell's box ``(cx,
+    cy, w, h)``, its objectness, then ``classes`` scores; ``width`` is a
+    runtime count up to this build's ``width``, so one build serves every
+    pyramid level. A cell survives at ``objectness * its best class's
+    score``, ties to the lowest class id. Past ``cap`` survivors, a new
+    one only replaces the held one of the lowest score (ties to the
+    latest arrival), so a core always holds the top ``cap`` survivors by
+    score and ``nms_finish``'s output equals torchvision's unbounded one
+    for every detection ranked within that top ``cap``, at any survivor
+    count. ``out`` is ``cap`` rows of ``x1, y1, x2, y2, score, class``
+    (class as float32), zeros past ``count[0]``'s kept detections, in
+    descending score order; ``count[1]`` is every survivor seen, cap or
+    not, and also what picks ``class_agnostic`` 0's path between
+    ``batched_nms``'s coordinate-offset trick (1000 survivors or fewer)
+    and its vanilla per-class one (nonzero ``class_agnostic`` always runs
+    plain ``nms`` instead, regardless of ``count[1]``, as YOLOX does).
+
+    Args:
+        width: The widest pyramid level's cells; a row's compile size.
+        classes: The class scores of a cell.
+        cap: The candidates one core holds. 320 leaves headroom under the
+            ~373 the default `width` and `classes` allow in 64 KiB of
+            core memory (measured; see the commit for the arithmetic).
+
+    Returns:
+        ExternalFunction for ``nms_score``, with ``nms_setup`` and
+        ``nms_finish`` bound on its object.
+
+    Raises:
+        ValueError: When ``width``, ``classes`` or ``cap`` is below 1, or
+            ``cap`` is above 1000, torchvision's own cutover to its
+            vanilla path.
+    """
+    if min(width, classes, cap) < 1:
+        raise ValueError(
+            "nms() needs width, classes and cap >= 1, got "
+            f"width={width}, classes={classes}, cap={cap}."
+        )
+    if cap > 1000:
+        raise ValueError(f"nms() needs cap <= 1000, got {cap}.")
+    row_ty = np.ndarray[(width * (5 + classes),), np.dtype[np.float32]]
+    out_ty = np.ndarray[(cap * 6,), np.dtype[np.float32]]
+    count_ty = np.ndarray[(2,), np.dtype[np.int32]]
+    fn = _make_extern(
+        "nms_score",
+        _kernel_source("vision/nms.cc"),
+        [row_ty, np.int32],
+        compile_flags=_STRICT_FP
+        + [
+            f"-DNMS_WIDTH={width}",
+            f"-DNMS_CLASSES={classes}",
+            f"-DNMS_CAP={cap}",
+        ],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Param),
+            unsupported=(
+                "three entry points share one core's state, driven by a "
+                "running candidate count nms_finish reads; test_nms_e2e.py "
+                "drives and judges them"
+            ),
+            ops_per_call=0,
+            even_calls=False,
+        ),
+        cls=_NmsKernel,
+    )
+    lib = fn.object_file
+    fn.nms_setup = lib.bind("nms_setup", [np.float32])
+    fn.nms_finish = lib.bind("nms_finish", [out_ty, count_ty, np.float32, np.int32])
+    return fn
+
+
+class _ResizeLinearKernel(ExternalFunction):
+    resize_linear_setup: Kernel
+    resize_linear_emit: Kernel
+    resize_linear_finish: Kernel
+
+
+def resize_linear(in_bytes: int = 3072, out_bytes: int = 1248) -> _ResizeLinearKernel:
+    """Resize a uint8 RGB image as OpenCV's INTER_LINEAR does, a row at a time.
+
+    Bit for bit OpenCV's fixed-point path on the CPU (resizeGeneric_ with
+    11-bit weights, as ``cv2.setUseOptimized(False)`` runs it): each source
+    row's horizontal pass exact in int32, each output row's vertical pass
+    OpenCV's 8-bit one, ``((b0 * (s0 >> 4)) >> 16) + ((b1 * (s1 >> 4)) >>
+    16) + 2 >> 2``, the same on every element. Four entry points
+    share one core's state, and a core runs:
+
+    ```text
+    resize_linear_setup(counts, rows, columns, out_rows, out_columns)
+    for each of counts[0] source rows:
+        resize_linear_take(row, counts)
+        for counts[1] output rows: resize_linear_emit(out)
+    resize_linear_finish(counts)
+    for counts[1] output rows: resize_linear_emit(out)
+    ```
+
+    An output row is ``out_bytes``, zeros past ``3 * out_columns``. Sizes
+    the kernel refuses (below 1, or past ``in_bytes`` or ``out_bytes``)
+    take every source row and emit ``out_rows`` rows of zeros, so a
+    design's streams stay in step; every call emits ``out_rows`` rows.
+    [`resize_linear_ref`][aie.iron.kernels.vision.resize_linear_ref] is the
+    arithmetic.
+
+    Args:
+        in_bytes: A source row's bytes; a multiple of 4 up to 32764.
+        out_bytes: An output row's bytes; a multiple of 4 holding whole
+            pixels' worth up to 32764.
+
+    Returns:
+        ExternalFunction for ``resize_linear_take``, with
+        ``resize_linear_setup``, ``resize_linear_emit`` and
+        ``resize_linear_finish`` bound on its object.
+
+    Raises:
+        ValueError: When either row's bytes are not a multiple of 4 from 4
+            to 32764.
+    """
+    for name, n in (("in_bytes", in_bytes), ("out_bytes", out_bytes)):
+        if n % 4 or not 4 <= n <= 32764:
+            raise ValueError(
+                f"resize_linear() needs {name} a multiple of 4 from 4 to 32764, got {n}."
+            )
+    counts_ty = np.ndarray[(2,), np.dtype[np.int32]]
+    fn = _make_extern(
+        "resize_linear_take",
+        _kernel_source("vision/resize_linear.cc"),
+        [np.ndarray[(in_bytes,), np.dtype[np.uint8]], counts_ty],
+        compile_flags=[f"-DIN_BYTES={in_bytes}", f"-DOUT_BYTES={out_bytes}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(In, Out),
+            unsupported=(
+                "four entry points share one core's state, driven by counts "
+                "they write; test_resize_linear_e2e.py drives and judges them"
+            ),
+            ops_per_call=0,
+        ),
+        cls=_ResizeLinearKernel,
+    )
+    lib = fn.object_file
+    fn.resize_linear_setup = lib.bind(
+        "resize_linear_setup", [counts_ty, np.int32, np.int32, np.int32, np.int32]
+    )
+    fn.resize_linear_emit = lib.bind(
+        "resize_linear_emit", [np.ndarray[(out_bytes,), np.dtype[np.uint8]]]
+    )
+    fn.resize_linear_finish = lib.bind("resize_linear_finish", [counts_ty])
+    return fn
+
+
 def _check_resample(owner: str, words: int, cores: int, slots: int | None) -> None:
     if words < _RESAMPLE_HEADER + 5 or cores < 1 or (slots is not None and slots < 1):
         raise ValueError(
@@ -323,6 +653,7 @@ class _ResizeKernel(ExternalFunction):
     resize_take: Kernel
     resize_band: Kernel
     resize_emit: Kernel
+    resize_emit_row: Kernel
     resize_finish: Kernel
 
 
@@ -489,7 +820,31 @@ def resize(
     Returns:
         ExternalFunction for ``resize_consume(image_chunk, height_chunk)``,
         with ``resize_setup``, ``resize_take``, ``resize_band``,
-        ``resize_emit`` and ``resize_finish`` bound on its object.
+        ``resize_emit``, ``resize_emit_row`` and ``resize_finish`` bound on
+        its object. ``resize_emit_row(out, i)`` writes the same band and
+        patch column as ``resize_emit(out, i)`` -- a 16-row, 16-pixel-wide
+        block, not a slice of a full-width raster row -- as 16 rows of
+        ``SIDE`` interleaved uint8 RGB pixels (row 0's ``3 * SIDE`` bytes,
+        then row 1's, ...) rather than a bf16 u8 / 255 patch, for
+        [`vision.levels`][aie.iron.kernels.vision.levels] to read. Because core
+        ``c`` owns patch columns ``c, c + cores, ...`` (strided, not
+        contiguous), a true output row needs every core's blocks for that
+        band: row ``y``'s pixels at columns ``(core + i * cores) * SIDE``
+        on are call ``i``'s byte range ``3 * SIDE * y`` on. Every block is
+        whole, 16 by 16, even past a target that is not a multiple of 16,
+        and each core emits ``strips // cores + 1`` of them a band, zeros
+        past the real strips. So the drain's destination is a padded
+        staging raster of ``bands * SIDE`` rows and ``pad = (strips //
+        cores + 1) * cores`` blocks across: a per-core strided drain --
+        call ``i``'s 16 chunks of ``3 * SIDE`` bytes to staging row ``band
+        * SIDE + j`` at column byte offset ``(core + i * cores) * 3 *
+        SIDE``, stride ``3 * SIDE * pad`` between rows -- fills it the way
+        the patches path gathers ``patches`` from every core's stream. The
+        resized image is that raster's first ``out_rows`` rows and
+        ``out_columns`` pixels, and a crop of it (``levels``'s ``first`` /
+        ``count`` / ``at`` on columns, ``row`` / ``lo`` / ``hi`` on rows)
+        is free-form, not limited to this kernel's ``SIDE``- or ``cores *
+        SIDE``-pixel block boundaries.
 
     Raises:
         ValueError: When ``words`` holds no window of 1 to 64 taps,
@@ -544,6 +899,10 @@ def resize(
     fn.resize_emit = lib.bind(
         "resize_emit",
         [np.ndarray[(_RESIZE_SIDE * _RESIZE_SIDE * 3,), np.dtype[bfloat16]], np.int32],
+    )
+    fn.resize_emit_row = lib.bind(
+        "resize_emit_row",
+        [np.ndarray[(_RESIZE_SIDE * _RESIZE_SIDE * 3,), np.dtype[np.uint8]], np.int32],
     )
     fn.resize_finish = lib.bind("resize_finish", [counts_ty])
     return fn
@@ -614,6 +973,219 @@ def rgba2hue_ref(rgba):
         ),
     )
     return (np.where(d == 0, 0, h) & 0xFF).astype(np.uint8)
+
+
+def grid_decode_ref(
+    cells,
+    y,
+    stride,
+    *,
+    width: int,
+    channels: int,
+    obj_at: int,
+    cls_at: int,
+    classes: int,
+):
+    """Numpy reference for [`grid_decode`][aie.iron.kernels.vision.grid_decode].
+
+    YOLOX's ``decode_outputs`` in float32.
+    """
+    p = np.asarray(cells).astype(np.float32).reshape(-1, width, channels)
+    s = np.float32(stride)
+    out = np.empty((p.shape[0], width, 5 + classes), np.float32)
+    out[..., 0] = (p[..., 0] + np.arange(width, dtype=np.float32)) * s
+    out[..., 1] = (p[..., 1] + np.float32(y)) * s
+    with np.errstate(over="ignore"):
+        out[..., 2:4] = np.exp(p[..., 2:4]) * s
+    out[..., 4] = p[..., obj_at]
+    out[..., 5:] = p[..., cls_at : cls_at + classes]
+    return out.reshape(p.shape[0], width * (5 + classes))
+
+
+def nms_ref(
+    rows, conf_thre, nms_thre, class_agnostic, *, classes: int, cap: int
+) -> tuple[np.ndarray, int, int]:
+    """Numpy reference for [`nms`][aie.iron.kernels.vision.nms].
+
+    torchvision's CPU ``nms`` under ``batched_nms``'s own choice of path:
+    the coordinate-offset trick at 1000 survivors or fewer, its vanilla
+    per-class one past it, as YOLOX's ``postprocess`` calls ``batched_nms``
+    (``class_agnostic`` calls plain ``nms`` instead, regardless of
+    survivor count).
+
+    ``rows`` is ``(row, width)`` pairs, each row ``width`` cells of ``5 +
+    classes`` float32 as [`grid_decode`][aie.iron.kernels.vision.grid_decode]
+    writes them, in call order. A cell survives at ``conf_thre`` or above
+    (``objectness * its best class's confidence``, ties to the lowest
+    class id); past ``cap`` survivors, only the top ``cap`` by score
+    survive (ties to the earliest of them). Suppression then visits them
+    descending by score (ties to the lowest index), each unsuppressed one
+    kept and checked against every later one it can suppress, strict
+    ``ovr > nms_thre``. The coordinate-offset trick shifts every box by
+    its class times one past every survivor's largest coordinate
+    (``boxes.max()`` over all of them, not only the top ``cap``) before
+    this, so cross-class pairs never overlap; the vanilla path runs no
+    shift and only ever compares same-class pairs instead;
+    ``class_agnostic`` runs neither. Kept detections (the original,
+    unshifted boxes) are written in score order.
+
+    Returns:
+        detections: ``cap * 6`` float32 (``x1, y1, x2, y2, score, class``),
+            zeros past ``count``.
+        count: How many detections were kept.
+        survivors: How many candidates reached ``conf_thre``, cap or not.
+    """
+    x1s, y1s, x2s, y2s, scores, classes_ = [], [], [], [], [], []
+    thre = np.float32(conf_thre)
+    for row, row_width in rows:
+        cells = np.asarray(row, np.float32).reshape(-1, 5 + classes)
+        for i in range(int(row_width)):
+            cx, cy, w, h, obj = (
+                cells[i, 0],
+                cells[i, 1],
+                cells[i, 2],
+                cells[i, 3],
+                cells[i, 4],
+            )
+            class_scores = cells[i, 5:]
+            best_c = int(np.argmax(class_scores))
+            score = obj * class_scores[best_c]
+            if score >= thre:
+                x1s.append(cx - w / np.float32(2))
+                y1s.append(cy - h / np.float32(2))
+                x2s.append(cx + w / np.float32(2))
+                y2s.append(cy + h / np.float32(2))
+                scores.append(score)
+                classes_.append(np.float32(best_c))
+
+    out = np.zeros(cap * 6, np.float32)
+    survivors = len(scores)
+    if survivors == 0:
+        return out, 0, survivors
+    x1 = np.array(x1s, np.float32)
+    y1 = np.array(y1s, np.float32)
+    x2 = np.array(x2s, np.float32)
+    y2 = np.array(y2s, np.float32)
+    score_arr = np.array(scores, np.float32)
+    class_arr = np.array(classes_, np.float32)
+
+    # torchvision's boxes.max(): over every survivor, before the top-cap
+    # selection below picks which of them this kernel ever holds.
+    max_coord = max(x1.max(), y1.max(), x2.max(), y2.max())
+    vanilla = not class_agnostic and survivors > 1000
+    offset_trick = not class_agnostic and not vanilla
+
+    # Every survivor, stably by descending score; the first `cap` of them
+    # are what nms_score's eviction keeps, in the same order.
+    rank = np.argsort(-score_arr, kind="stable")[:cap]
+    x1, y1, x2, y2 = x1[rank], y1[rank], x2[rank], y2[rank]
+    score_arr, class_arr = score_arr[rank], class_arr[rank]
+    n = len(rank)
+
+    if offset_trick:
+        offset = class_arr * (max_coord + np.float32(1))
+        bx1, by1, bx2, by2 = x1 + offset, y1 + offset, x2 + offset, y2 + offset
+    else:
+        bx1, by1, bx2, by2 = x1, y1, x2, y2
+    area = (bx2 - bx1) * (by2 - by1)
+
+    # rank is already stable descending, so the suppression order is i, j itself.
+    suppressed = np.zeros(n, dtype=bool)
+    kept = []
+    with np.errstate(invalid="ignore", divide="ignore"):
+        for i in range(n):
+            if suppressed[i]:
+                continue
+            kept.append(i)
+            for j in range(i + 1, n):
+                if suppressed[j]:
+                    continue
+                if vanilla and class_arr[j] != class_arr[i]:
+                    continue
+                xx1, yy1 = max(bx1[i], bx1[j]), max(by1[i], by1[j])
+                xx2, yy2 = min(bx2[i], bx2[j]), min(by2[i], by2[j])
+                w = max(np.float32(0), xx2 - xx1)
+                h = max(np.float32(0), yy2 - yy1)
+                inter = w * h
+                ovr = inter / (area[i] + area[j] - inter)
+                if ovr > nms_thre:
+                    suppressed[j] = True
+
+    for k, i in enumerate(kept):
+        out[k * 6 : k * 6 + 6] = (
+            x1[i],
+            y1[i],
+            x2[i],
+            y2[i],
+            score_arr[i],
+            class_arr[i],
+        )
+    return out, len(kept), survivors
+
+
+def resize_linear_ref(rows, columns, out_rows, out_columns, image, *, out_bytes: int):
+    """Numpy reference for [`resize_linear`][aie.iron.kernels.vision.resize_linear].
+
+    ``image`` holds the source rows, ``3 * columns`` bytes of each used;
+    returns ``out_rows`` rows of ``out_bytes``. Exact.
+    """
+    image = np.asarray(image, np.uint8)
+    h, w, oh, ow = int(rows), int(columns), int(out_rows), int(out_columns)
+    out = np.zeros((max(oh, 0), out_bytes), np.uint8)
+    if min(h, w, oh, ow) < 1 or 3 * w > image.shape[1] or 3 * ow > out_bytes:
+        return out
+    coef = np.float32(2048)
+
+    def axis(n_in, n_out):
+        scale = 1.0 / (n_out / n_in)
+        f = ((np.arange(n_out) + 0.5) * scale - 0.5).astype(np.float32)
+        s = np.floor(f).astype(np.int64)
+        return s, (f - s.astype(np.float32)).astype(np.float32)
+
+    sx, fx = axis(w, ow)
+    under = sx < 0
+    fx[under], sx[under] = 0, 0
+    past = sx + 1 >= w
+    xmax = int(np.argmax(past)) if past.any() else ow
+    over = sx >= w - 1
+    fx[over], sx[over] = 0, w - 1
+    a0 = np.rint((np.float32(1) - fx) * coef).astype(np.int64)
+    a1 = np.rint(fx * coef).astype(np.int64)
+    src = image[:h, : 3 * w].reshape(h, w, 3).astype(np.int64)
+    nxt = np.minimum(sx + 1, w - 1)
+    inner = (np.arange(ow) < xmax)[None, :, None]
+    hor = np.where(
+        inner,
+        src[:, sx] * a0[None, :, None] + src[:, nxt] * a1[None, :, None],
+        src[:, sx] * 2048,
+    ).reshape(h, 3 * ow)
+    sy, fy = axis(h, oh)
+    b0 = np.rint((np.float32(1) - fy) * coef).astype(np.int64)[:, None]
+    b1 = np.rint(fy * coef).astype(np.int64)[:, None]
+    s0, s1 = hor[np.clip(sy, 0, h - 1)], hor[np.clip(sy + 1, 0, h - 1)]
+    resized = (((b0 * (s0 >> 4)) >> 16) + ((b1 * (s1 >> 4)) >> 16) + 2) >> 2
+    out[:, : 3 * ow] = resized
+    return out
+
+
+def levels_ref(
+    rows, table, first, count, at, row, lo, hi, *, out_width: int, bgr: bool = False
+):
+    """Numpy reference for [`levels`][aie.iron.kernels.vision.levels]. Exact."""
+    rows = np.asarray(rows, np.uint8)
+    table = np.asarray(table).astype(bfloat16)
+    first, count, at = int(first), int(count), int(at)
+    out = np.empty((rows.shape[0], out_width, 4), bfloat16)
+    out[:] = table[3 * 256 : 3 * 256 + 4]
+    if first < 0 or at < 0 or not int(lo) <= int(row) < int(hi):
+        count = 0
+    count = max(0, min(count, out_width - at, rows.shape[1] // 3 - first))
+    pixels = rows[:, 3 * first : 3 * (first + count)].reshape(rows.shape[0], count, 3)
+    if bgr:
+        pixels = pixels[..., ::-1]
+    for c in range(3):
+        out[:, at : at + count, c] = table[c * 256 + pixels[..., c].astype(np.int64)]
+    return out.reshape(rows.shape[0], 4 * out_width)
 
 
 def threshold_ref(x, thresh, maxval, ttype):
@@ -891,6 +1463,7 @@ def resize_ref(
     chunk: int = 4096,
     patch_columns: int = 8,
     cores: int = 16,
+    as_rows: bool = False,
 ) -> np.ndarray:
     """Numpy reference for [`resize`][aie.iron.kernels.vision.resize].
 
@@ -909,31 +1482,41 @@ def resize_ref(
         chunk: The bytes of an image chunk.
         patch_columns: The most patch columns one core holds.
         cores: The cores the patch columns are dealt to.
+        as_rows: When ``True``, [`resize_emit_row`][aie.iron.kernels.vision.resize]'s
+            raster instead of [`resize_emit`][aie.iron.kernels.vision.resize]'s patches.
 
     Returns:
-        ``(bands * pad, 768)`` bf16: band ``b``'s patch column ``j`` is row
-        ``b * pad + j``, ``pad = (out_columns // 16 // cores + 1) * cores``,
-        and patch columns past the image are zeros. Sizes the kernel
-        refuses zero every patch, a width chunk a core refuses zeros that
-        core's patch columns, and a height chunk refused, or a band whose
-        rows read past the image's, zeros every patch from that band on.
+        With ``as_rows``, ``(bands * 16, strips * 16, 3)`` uint8 -- out_rows
+        and out_columns rounded up to whole 16-pixel blocks, as the kernel's
+        own granularity is -- zero past ``out_rows`` or ``out_columns`` (the
+        last band's or strip's unreal rows or columns) and past a band or
+        patch column the kernel refuses. Otherwise ``(bands * pad, 768)``
+        bf16: band ``b``'s patch column ``j`` is row ``b * pad + j``, ``pad
+        = (strips // cores + 1) * cores``, and patch columns past the image
+        are zeros. Sizes the kernel refuses zero every patch, a width chunk
+        a core refuses zeros that core's patch columns, and a height chunk
+        refused, or a band whose rows read past the image's, zeros every
+        patch from that band on. Neither ``out_rows`` nor ``out_columns``
+        need be a multiple of 16: the last strip or band is however many of
+        its 16 outputs are real, the rest zero, as the kernel's last chunk
+        of either axis is.
     """
     side = _RESIZE_SIDE
     win_cap = 2 * ((words - _RESAMPLE_HEADER) // side - 2) - 1
-    strips = out_columns // side if out_columns > 0 else 0
-    bands = out_rows // side if out_rows > 0 else 0
+    strips = -(-out_columns // side) if out_columns > 0 else 0
+    bands = -(-out_rows // side) if out_rows > 0 else 0
     pad = (strips // cores + 1) * cores
     out = np.zeros((bands, pad, side, side, 3), np.uint8)
     sized = (
         rows >= 1
         and columns >= 1
-        and out_rows >= side
-        and out_columns >= side
-        and out_rows % side == 0
-        and out_columns % side == 0
+        and out_rows >= 1
+        and out_columns >= 1
         and pad // cores <= patch_columns
     )
     if not sized:
+        if as_rows:
+            return np.zeros((max(bands, 0) * side, max(strips, 0) * side, 3), np.uint8)
         return _RESIZE_PIXELS[out.reshape(bands * pad, -1)]
 
     cpr = -(-3 * columns // chunk)
@@ -950,18 +1533,21 @@ def resize_ref(
         for k in range(c, strips, cores):
             t = np.asarray(taps_w[k], np.int32)
             p, win = int(t[0]), int(t[1])
+            # The last strip's real outputs, past which a chunk's slots are
+            # unwritten, zero-headered padding, not taps to read.
+            n = side if (k + 1) * side <= out_columns else out_columns - k * side
             if not (1 <= p <= 22 and 1 <= win <= win_cap) or (
-                t[2] != k * side or t[3] != side
+                t[2] != k * side or t[3] != n
             ):
                 ok[c] = False
                 break
             start, count, weights = _resize_slots(t, win)
-            first, end = int(start[0]), int(start[-1] + count[-1])
+            first, end = int(start[0]), int(start[n - 1] + count[n - 1])
             if (
-                (start < first).any()
-                or (count < 0).any()
-                or (count > win).any()
-                or (start + count > end).any()
+                (start[:n] < first).any()
+                or (count[:n] < 0).any()
+                or (count[:n] > win).any()
+                or (start[:n] + count[:n] > end).any()
                 or first < 0
                 or end > columns
                 or end - first > 5 * win_cap + 8
@@ -969,7 +1555,7 @@ def resize_ref(
                 ok[c] = False
                 break
             hweight = np.zeros((side, 64), np.int64)
-            for o in range(side):
+            for o in range(n):
                 hweight[o, : count[o]] = weights[o][: count[o]]
             filters.append((k, start, hweight, p, win))
         if not ok[c] or not filters:
@@ -986,16 +1572,22 @@ def resize_ref(
     for b in range(bands):
         vt = np.asarray(taps_h[b], np.int32)
         p, win = int(vt[0]), int(vt[1])
+        # The last band's real rows, past which a chunk's slots are
+        # unwritten, zero-headered padding, not taps to read.
+        real_rows = side if (b + 1) * side <= out_rows else out_rows - b * side
         if not (1 <= p <= 22 and 1 <= win <= win_cap) or (
-            vt[2] != b * side or vt[3] != side
+            vt[2] != b * side or vt[3] != real_rows
         ):
             break
         start, count, weights = _resize_slots(vt, win)
-        e = min(max(int(start[-1] + count[-1]), 0), rows)
+        e = min(max(int(start[real_rows - 1] + count[real_rows - 1]), 0), rows)
         hold = np.zeros((side, strips, side, 3), np.int64)
         done, failed = 0, False
         for now in range(arrived, max(arrived, e) + 1):
             for o in range(done, side):
+                if o >= real_rows:
+                    done = o + 1  # past the real rows: already zero
+                    continue
                 s, n = int(start[o]), int(count[o])
                 if s + n > now:
                     break
@@ -1014,4 +1606,7 @@ def resize_ref(
         for c in range(cores):
             for k in range(c, strips, cores) if ok[c] else ():
                 out[b, k] = hold[:, k]
+    if as_rows:
+        raster = out[:, :strips].transpose(0, 2, 1, 3, 4)
+        return raster.reshape(bands * side, strips * side, 3)
     return _RESIZE_PIXELS[out.reshape(bands * pad, -1)]

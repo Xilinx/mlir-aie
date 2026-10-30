@@ -101,6 +101,8 @@ NOT_JUDGED = {
     "sample_select": "a state machine across a position's select_streams * slice / chunk calls; test_sample_e2e.py judges it",
     "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; test_sample_e2e.py judges the pair",
     "resize": "six entry points share one core's state, driven by counts they write; test_resize_e2e.py judges them",
+    "resize_linear": "four entry points share one core's state, driven by counts they write; test_resize_linear_e2e.py judges them",
+    "nms": "three entry points share one core's state, driven by a running candidate count nms_finish reads; test_nms_e2e.py drives and judges them",
     **{
         name: "one half of a MobileNet bottleneck cascade pair; test_bn_cascade_pairs.py builds and judges the pair"
         for name in (
