@@ -36,6 +36,15 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
                             bool loadPdiToCtrlPkt, bool skipObjectFifoVerify) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(createAIECanonicalizeDevicePass());
+  // The verifier checks a parameter-waiting Worker's fifo volume per dispatch
+  // from the aiex.wait_scratchpad_parameters and parameter syncs that the
+  // scratchpad lowering below replaces. Split is idempotent, so the lowering
+  // after it splits again and does not verify twice.
+  if (!skipObjectFifoVerify) {
+    OpPassManager &verify = pm.nest<DeviceOp>();
+    verify.addPass(createAIEObjectFifoSplitPass());
+    verify.addPass(createAIEObjectFifoVerifyPass());
+  }
   // Before lock IDs and buffer addresses, which its new locks and buffers need.
   pm.addPass(createAIELowerScratchpadParametersPass());
 
@@ -49,7 +58,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
     pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
 
   OpPassManager &dpm = pm.nest<DeviceOp>();
-  addObjectFifoLoweringPasses(dpm, packetSwObjFifos, skipObjectFifoVerify);
+  addObjectFifoLoweringPasses(dpm, packetSwObjFifos, /*skipVerify=*/true);
   AIEObjectFifoUnrollOptions unroll;
   unroll.clDefaultDynamic = dynamicObjFifos;
   dpm.addPass(createAIEObjectFifoUnrollPass(unroll));
