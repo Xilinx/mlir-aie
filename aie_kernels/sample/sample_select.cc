@@ -41,6 +41,13 @@ static_assert(SAMPLE_VALID >= SAMPLE_K_MAX && SAMPLE_VALID <= SAMPLE_SLICE,
 #define SAMPLE_SELECT_STATE_WORDS 272
 #define SAMPLE_SELECT_PASSES 2
 
+#if SAMPLE_PROB_RULE
+// Peano lowers a float `a - b` to the vector unit's vsub.f, which keeps a
+// bit too few where the difference borrows into a lower binade and flushes
+// subnormals; the reduction must match its IEEE reference bit for bit.
+extern "C" float __subsf3(float, float);
+#endif
+
 namespace {
 
 constexpr int32_t LANES = 32;
@@ -279,8 +286,9 @@ void apply_ranges(uint16_t *x, const int32_t *row, int32_t pos) {
 // candidates this column's cut() already dropped below its local tau before
 // the split was even known. restricted_x is the caller's own
 // SAMPLE_CHUNK-wide scratch (too wide for the stack).
-void mask_restricted(uint16_t *restricted_x, const uint16_t *x, int32_t pos,
-                     int32_t local_split) {
+AIE2_MINSIZE __attribute__((noinline)) void
+mask_restricted(uint16_t *restricted_x, const uint16_t *x, int32_t pos,
+                int32_t local_split) {
   for (int32_t i = 0; i < SAMPLE_CHUNK; ++i)
     restricted_x[i] = x[i];
   const int32_t to =
@@ -289,7 +297,8 @@ void mask_restricted(uint16_t *restricted_x, const uint16_t *x, int32_t pos,
     restricted_x[i - pos] = (uint16_t)SAMPLE_NEG_INF_BITS;
 }
 
-void begin_reduction(int32_t *reduction) {
+AIE2_MINSIZE __attribute__((noinline)) void
+begin_reduction(int32_t *reduction) {
   reduction[SAMPLE_REDUCTION_MAX_TEXT] = (int32_t)0xff800000; // -inf
   reduction[SAMPLE_REDUCTION_MAX_TS] = (int32_t)0xff800000;   // -inf
   reduction[SAMPLE_REDUCTION_SUM_TS] = 0;                     // 0.0f
@@ -300,8 +309,10 @@ void begin_reduction(int32_t *reduction) {
 // (max, sum of exp) over its [local_split, SAMPLE_SLICE) part, float32
 // throughout; exp64 (float64) evaluates each exp so only the fold back into
 // the float32 accumulator rounds.
-void reduce_chunk(const uint16_t *x, int32_t pos, int32_t local_split,
-                  int32_t *reduction) {
+AIE2_MINSIZE __attribute__((noinline)) void reduce_chunk(const uint16_t *x,
+                                                         int32_t pos,
+                                                         int32_t local_split,
+                                                         int32_t *reduction) {
   float max_text =
       __builtin_bit_cast(float, (uint32_t)reduction[SAMPLE_REDUCTION_MAX_TEXT]);
   float max_ts =
@@ -316,9 +327,10 @@ void reduce_chunk(const uint16_t *x, int32_t pos, int32_t local_split,
     } else if (v <= max_ts) {
       // -inf weighs exactly 0; folding it before a finite max is -inf - -inf.
       if (x[i] != SAMPLE_NEG_INF_BITS)
-        sum_ts = (float)((double)sum_ts + exp64((double)(v - max_ts)));
+        sum_ts = (float)((double)sum_ts + exp64((double)__subsf3(v, max_ts)));
     } else {
-      sum_ts = (float)((double)sum_ts * exp64((double)(max_ts - v)) + 1.0);
+      sum_ts =
+          (float)((double)sum_ts * exp64((double)__subsf3(max_ts, v)) + 1.0);
       max_ts = v;
     }
   }

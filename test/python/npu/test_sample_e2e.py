@@ -747,3 +747,152 @@ def test_device_rule_fires_on_one_timestamp_just_above_the_text():
     )
     np.testing.assert_array_equal(token.numpy(), expected)
     np.testing.assert_array_equal(record.numpy(), expected)
+
+
+@jit
+def select_reductions(
+    logits_in: In,
+    draws_in: In,
+    columns_out: Out,
+    *,
+    slice_size: CompileTime[int] = 4096,
+    k_max: CompileTime[int] = 16,
+    positions: CompileTime[int] = 1,
+):
+    """``positions`` calls of one SAMPLE_PROB_RULE select core, each call's
+    column (summary, restricted summary, reduction) drained to the host, so
+    its reduction can be held to logsumexp_reduction_ref bit for bit.
+    """
+    row_words = sample.select_row_words(probability_rule=True)
+    words = sample.summary_words(slice_size, k_max)
+    column_bytes = 4 * sample.rule_column_words(slice_size, k_max)
+    pieces = [
+        (np.ndarray[(words,), I32], 0),
+        (np.ndarray[(words,), I32], 4 * words),
+        (np.ndarray[(sample.REDUCTION_WORDS,), I32], 8 * words),
+    ]
+    I8 = np.dtype[np.int8]
+    of_x = ObjectFifo(np.ndarray[(slice_size,), np.dtype[bfloat16]], name="x", depth=1)
+    of_draw = ObjectFifo(np.ndarray[(row_words,), I32], name="draw", depth=1)
+    of_column = ObjectFifo(np.ndarray[(column_bytes,), I8], name="column", depth=1)
+
+    def body(of_x, of_row, of_col, kernel, state, rstate, rx):
+        for _ in range_(positions):
+            row = of_row.acquire(1)
+            column = of_col.acquire(1)
+            summary, rsummary, reduction = (
+                memref.view(
+                    np_ndarray_type_to_memref_type(t),
+                    column,
+                    constant(at, index=True),
+                    [],
+                )
+                for t, at in pieces
+            )
+            x = of_x.acquire(1)
+            kernel(x, row, state, summary, rstate, rsummary, rx, reduction)
+            of_x.release(1)
+            of_col.release(1)
+            of_row.release(1)
+
+    state, rstate = (
+        Buffer(
+            np.ndarray[(sample.SELECT_STATE_WORDS,), I32],
+            initial_value=np.zeros(sample.SELECT_STATE_WORDS, dtype=np.int32),
+            name=name,
+        )
+        for name in ("select_state", "restricted_state")
+    )
+    rx = Buffer(
+        np.ndarray[(slice_size,), np.dtype[bfloat16]],
+        initial_value=np.zeros(slice_size, dtype=bfloat16),
+        name="restricted_x",
+    )
+    worker = Worker(
+        body,
+        [
+            of_x.cons(),
+            of_draw.cons(),
+            of_column.prod(),
+            sample.sample_select(
+                slice_size=slice_size,
+                chunk=slice_size,
+                k_max=k_max,
+                probability_rule=True,
+            ),
+            state,
+            rstate,
+            rx,
+        ],
+    )
+    host = [
+        np.ndarray[(positions * slice_size,), np.dtype[bfloat16]],
+        np.ndarray[(positions * row_words,), I32],
+        np.ndarray[(positions * column_bytes,), I8],
+    ]
+
+    def sequence(logits_h, draws_h, columns_h, x, draw, column):
+        x.fill(logits_h)
+        draw.fill(draws_h)
+        column.drain(columns_h, wait=True)
+
+    rt = Runtime(sequence, [*host, of_x.prod(), of_draw.prod(), of_column.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+def test_device_reduction_matches_logsumexp_reduction_ref_bit_for_bit():
+    """The rule's per-column reduction, not just the draws it decides.
+
+    Logits scaled by as much as 2^-30 beside a maximum near 10 make most
+    ``v - max_ts`` differences inexact in float32; each split leaves both
+    sides populated. Then pairs alone in their timestamp side, in either
+    fold order: a power-of-two maximum and a tiny value whose difference
+    borrows into the binade below, where a plain C float subtraction
+    (Peano's vsub.f) keeps one bit too few. Each pair was found on npu2 to
+    round otherwise than IEEE by enough to change the float32 sum_ts.
+    """
+    pairs = [(0.5, 8.940696716308594e-08), (1.0, 3.003515303134918e-08)]
+    pairs += [(2.0, 7.7858567237854e-07), (4.0, 5.036592483520508e-06)]
+    slice_size, k_max, wide = 4096, 16, 16
+    positions = wide + 2 * len(pairs)
+    rng = np.random.default_rng(2026)
+    logits = np.full((positions, slice_size), -np.inf, np.float32)
+    logits[:wide] = rng.normal(0, 3, (wide, slice_size)) * 2.0 ** rng.integers(
+        -30, 2, (wide, slice_size)
+    )
+    splits = np.concatenate(
+        [rng.integers(0, slice_size // 2, wide), [16] * 2 * len(pairs)]
+    )
+    for p, (top, tiny) in zip(range(wide, positions, 2), pairs):
+        logits[p : p + 2, 3] = 8.0  # the text side's max
+        logits[p, [100, 200]] = [top, tiny]
+        logits[p + 1, [100, 200]] = [tiny, top]
+    pair_rows = logits[wide:]
+    assert np.array_equal(pair_rows.astype(bfloat16).astype(np.float32), pair_rows)
+    logits = logits.astype(bfloat16)
+    draws = np.stack(
+        [
+            np.concatenate([sample.draw_row(1.0, k_max, 0), sample.split_word(s)])
+            for s in splits
+        ]
+    )
+    words = sample.rule_column_words(slice_size, k_max)
+    columns = iron.full((positions * 4 * words,), 0, dtype=np.int8)
+    select_reductions(
+        iron.tensor(logits.reshape(-1), dtype=bfloat16),
+        iron.tensor(draws.reshape(-1), dtype=np.int32),
+        columns,
+        slice_size=slice_size,
+        k_max=k_max,
+        positions=positions,
+    )
+    got = columns.numpy().view(np.int32).reshape(positions, words)[:, -3:]
+    want = np.array(
+        [
+            np.array(sample.logsumexp_reduction_ref(lg, int(s)), np.float32).view(
+                np.int32
+            )
+            for lg, s in zip(logits, splits)
+        ]
+    )
+    np.testing.assert_array_equal(got, want)
