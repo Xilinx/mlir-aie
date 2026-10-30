@@ -5,10 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A Worker whose forever loop waits for each dispatch's parameters runs one
-// pass of that loop per dispatch, so one pass must move through a fifo what
-// one run of the runtime sequence moves through it. Checked when one runtime
-// sequence syncs the parameters and its transfers on the fifo are static.
+// A Worker whose forever loop waits once for each dispatch's parameters runs
+// one pass of that loop per dispatch, so one pass must move through a fifo
+// what one run of the runtime sequence moves through it. Checked when one
+// runtime sequence syncs the parameters once and its transfers on the fifo
+// are static.
 
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-objectfifo-split --aie-objectfifo-verify %s
 
@@ -395,6 +396,86 @@ module {
       aiex.sync_scratchpad_parameters_from_host
       %t = aiex.dma_configure_task_for @out {
         aie.dma_bd(%arg0 : memref<4xi4> offset = 0 len = 4 sizes = [1, 1, 1, 4] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
+// The waiting loop runs an inner loop over the fifo twice a pass, so each
+// dispatch hands over two objects where the host drains one.
+
+module {
+  aiex.scratchpad_parameter @n : i32
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @out(%tile, {%shim}, 2 : i32) : !aie.objectfifo<memref<2xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aiex.wait_scratchpad_parameters
+        scf.for %i = %c0 to %c2 step %c1 {
+          // expected-error@+1 {{hands over 2 objects through @out_prod for each dispatch, one pass of a loop that waits for each dispatch's parameters, but each run of runtime sequence @sequence moves 1, so the core drifts out of step with the dispatches}}
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<2xi32>
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        scf.yield
+      }
+      aie.end
+    }
+    // expected-note@+1 {{the runtime sequence is here}}
+    aie.runtime_sequence @sequence(%arg0: memref<2xi32>) {
+      aiex.sync_scratchpad_parameters_from_host
+      %t = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%arg0 : memref<2xi32> offset = 0 len = 2 sizes = [1, 1, 1, 2] strides = [0, 0, 0, 1])
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
+// A pass that waits twice serves two dispatches, so its two objects are not
+// one dispatch's: nothing is checked.
+
+module {
+  aiex.scratchpad_parameter @n : i32
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @out(%tile, {%shim}, 2 : i32) : !aie.objectfifo<memref<2xi32>>
+    %core = aie.core(%tile) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aiex.wait_scratchpad_parameters
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<2xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        aiex.wait_scratchpad_parameters
+        %p = aie.objectfifo.acquire @out(Produce, 1) : memref<2xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @sequence(%arg0: memref<2xi32>) {
+      aiex.sync_scratchpad_parameters_from_host
+      %t = aiex.dma_configure_task_for @out {
+        aie.dma_bd(%arg0 : memref<2xi32> offset = 0 len = 2 sizes = [1, 1, 1, 2] strides = [0, 0, 0, 1])
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)

@@ -68,6 +68,16 @@ static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
   return std::nullopt;
 }
 
+/// Whether `op` is a loop meant to run forever.
+static bool runsForever(Operation *op) {
+  auto whileOp = dyn_cast<scf::WhileOp>(op);
+  auto forOp = dyn_cast<scf::ForOp>(op);
+  std::optional<int64_t> trip =
+      forOp ? getStaticTripCount(forOp) : std::nullopt;
+  return (whileOp && isForeverLoop(whileOp)) ||
+         (trip && *trip >= kRunsForever);
+}
+
 /// How many times `op` runs when its core, or runtime sequence, runs to
 /// completion, when static loop bounds alone decide that. Anything conditional
 /// between the op and the core, an `scf.if`, a loop with dynamic bounds or one
@@ -561,17 +571,9 @@ struct AIEObjectFifoVerifyPass
   /// the whole configuration, is left alone, as is a loop the core may never
   /// reach.
   LogicalResult verifyAdvances(DeviceOp device) {
-    auto runsForever = [](Operation *op) {
-      auto whileOp = dyn_cast<scf::WhileOp>(op);
-      auto forOp = dyn_cast<scf::ForOp>(op);
-      std::optional<int64_t> trip =
-          forOp ? getStaticTripCount(forOp) : std::nullopt;
-      return (whileOp && isForeverLoop(whileOp)) ||
-             (trip && *trip >= kRunsForever);
-    };
     // Whether `loop` runs, and repeats forever: it or a loop around it runs
     // forever, and nothing on the way from the core may skip it.
-    auto repeatsForever = [&](Operation *loop) {
+    auto repeatsForever = [](Operation *loop) {
       bool forever = false;
       for (Operation *op = loop; !isa<CoreOp>(op); op = op->getParentOp()) {
         Block *block = op->getBlock();
@@ -747,14 +749,16 @@ struct AIEObjectFifoVerifyPass
     return bytes / perObject;
   }
 
-  /// A Worker whose forever loop waits for each dispatch's parameters runs
-  /// one pass of that loop per dispatch, so the objects one pass moves through
-  /// a fifo must be the objects one run of the runtime sequence moves through
-  /// it, or the core drifts out of step with the dispatches. Checked when one
-  /// runtime sequence syncs the parameters, so every dispatch runs it, and
-  /// its transfers on the fifo are static. A sync sets the core's lock rather
-  /// than adding to it, so where a run syncs twice the core may take only
-  /// one, and nothing is checked.
+  /// A Worker whose forever loop waits once for each dispatch's parameters
+  /// runs one pass of that loop per dispatch, so the objects one pass moves
+  /// through a fifo must be the objects one run of the runtime sequence moves
+  /// through it, or the core drifts out of step with the dispatches. A pass
+  /// runs the fifo's period, an inner loop where that is the innermost loop
+  /// around its accesses, as often as the static loops between them repeat.
+  /// Checked when one runtime sequence syncs the parameters, so every
+  /// dispatch runs it, and its transfers on the fifo are static. A sync sets
+  /// the core's lock rather than adding to it, so where a run syncs twice the
+  /// core may take only one, and nothing is checked.
   LogicalResult verifyDispatchVolumes(DeviceOp device) {
     RuntimeSequenceOp sequence;
     for (auto candidate : device.getOps<RuntimeSequenceOp>()) {
@@ -797,25 +801,45 @@ struct AIEObjectFifoVerifyPass
       std::string reason;
       if (failed(turns.read({endpoint}, reason)))
         continue;
-      auto loop = dyn_cast<scf::WhileOp>(turns.periodLoop());
-      if (!loop || !isForeverLoop(loop) ||
-          loop.getAfterBody()
-              ->getOps<AIEX::WaitScratchpadParametersOp>()
-              .empty())
+      Operation *loop = turns.periodLoop();
+      std::optional<int64_t> periods = 1;
+      for (; periods && !isa<CoreOp>(loop) && !runsForever(loop);
+           loop = loop->getParentOp()) {
+        auto forOp = dyn_cast<scf::ForOp>(loop);
+        std::optional<int64_t> trip =
+            forOp ? getStaticTripCount(forOp) : std::nullopt;
+        periods = trip && loop->getBlock() == &loop->getParentRegion()->front()
+                      ? llvm::checkedMul(*periods, *trip)
+                      : std::nullopt;
+      }
+      if (!periods || isa<CoreOp>(loop))
+        continue;
+      // Two waits a pass serve two dispatches, and a wait under a branch or an
+      // inner loop may serve none or several.
+      auto whileLoop = dyn_cast<scf::WhileOp>(loop);
+      Block *body = whileLoop ? whileLoop.getAfterBody()
+                              : cast<scf::ForOp>(loop).getBody();
+      int64_t waits = 0;
+      loop->walk([&](AIEX::WaitScratchpadParametersOp) { waits++; });
+      if (waits != 1 ||
+          body->getOps<AIEX::WaitScratchpadParametersOp>().empty())
+        continue;
+      std::optional<int64_t> perDispatch = llvm::checkedMul(
+          *periods, static_cast<int64_t>(turns.turns().size()));
+      if (!perDispatch)
         continue;
       std::optional<int64_t> objects = hostObjects(device, sequence, dma, true);
-      auto perDispatch = static_cast<int64_t>(turns.turns().size());
       LLVM_DEBUG(llvm::dbgs()
                  << "dispatch volume of @" << endpoint.getSymName()
-                 << ": the core moves " << perDispatch << ", @"
+                 << ": the core moves " << *perDispatch << ", @"
                  << sequence.getSymName() << " moves "
                  << (objects ? std::to_string(*objects) : "an unknown count")
                  << "\n");
-      if (!objects || *objects == perDispatch)
+      if (!objects || *objects == *perDispatch)
         continue;
 
       ObjectFifoAcquireOp acquire;
-      loop.walk([&](ObjectFifoAcquireOp op) {
+      loop->walk([&](ObjectFifoAcquireOp op) {
         if (!acquire && op.getObjFifoName() == endpoint.getSymName())
           acquire = op;
       });
@@ -823,7 +847,7 @@ struct AIEObjectFifoVerifyPass
         continue;
       InFlightDiagnostic diag =
           acquire.emitOpError()
-          << (endpoint.drains() ? "takes " : "hands over ") << perDispatch
+          << (endpoint.drains() ? "takes " : "hands over ") << *perDispatch
           << " objects through @" << endpoint.getSymName()
           << " for each dispatch, one pass of a loop that waits for each "
              "dispatch's parameters, but each run of runtime sequence @"
