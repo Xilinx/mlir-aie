@@ -32,7 +32,9 @@ static void describe(Operation *op, llvm::raw_ostream &os) {
       continue;
     os << ' ' << attr.getName();
     if (attr.getName() != "fifoName")
-      os << '=' << attr.getValue();
+      os << '=' << attr.getValue().replace([&](SymbolRefAttr) {
+        return FlatSymbolRefAttr::get(op->getContext(), "");
+      });
   }
 }
 
@@ -112,15 +114,11 @@ StructuralGraph StructuralGraph::of(DeviceOp device) {
           graph.link(node, def, at + ":" + std::to_string(index));
       }
       for (NamedAttribute attr : nested->getAttrs()) {
-        if (!isSymbolReference(attr.getValue()))
-          continue;
         SmallVector<SymbolRefAttr> refs;
-        if (auto ref = dyn_cast<SymbolRefAttr>(attr.getValue()))
+        attr.getValue().walk<WalkOrder::PreOrder>([&](SymbolRefAttr ref) {
           refs.push_back(ref);
-        else
-          llvm::append_range(
-              refs,
-              cast<ArrayAttr>(attr.getValue()).getAsRange<SymbolRefAttr>());
+          return WalkResult::skip();
+        });
         for (auto [index, ref] : llvm::enumerate(refs)) {
           auto it =
               position.find(SymbolTable::lookupNearestSymbolFrom(nested, ref));
