@@ -1910,6 +1910,23 @@ def test_softmax_scale_multiplies_the_logits_before_centering():
     assert np.allclose(got, want, atol=1e-3)
 
 
+@pytest.mark.parametrize("scale", [-1.0, -(2.0**-10), float("nan"), float("inf")])
+def test_softmax_rejects_a_negative_or_non_finite_scale(scale):
+    # The kernel centres on the largest raw logit; under a negative scale the
+    # smallest is the largest scaled one, and a row holding 0 and 128 would
+    # exp2 its 0 to infinity.
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        kernels.softmax(32, accurate_exp2=True, scale=scale)
+
+
+def test_softmax_takes_a_zero_scale():
+    fn = kernels.softmax(32, accurate_exp2=True, scale=0.0)
+    x = np.random.default_rng(0).standard_normal((2, 32)).astype(bfloat16)
+    assert np.array_equal(
+        fn.expected([x]).astype(np.float32), np.full((2, 32), 1 / 32, np.float32)
+    )
+
+
 def test_softmax_span_builds_softmax_span_bf16():
     # (x, y, n, lo, hi): n bound to tile_size, lo and hi the free scalars.
     fn = kernels.softmax(32, span=True, accurate_exp2=True)

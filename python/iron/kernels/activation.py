@@ -502,6 +502,7 @@ def softmax(
             any value -- a pre-scaled q is exact only at a power-of-two
             scale. None keeps log2(e) itself, bit for bit the unscaled
             kernel; so does ``scale=1.0``, computed rather than skipped.
+            Finite and non-negative; 0 weighs every element alike.
         span: bf16 input only: ``softmax_span_bf16(x, y, n, lo, hi)`` in
             place of ``softmax_bf16``. ``lo``/``hi`` are per-call scalars
             bounding the row's live span: ``[0, lo)`` and ``[hi, n)`` are
@@ -515,7 +516,8 @@ def softmax(
         ValueError: A ``tile_size`` that is not a positive multiple of 32, an
             ``input_dtype`` other than the two, a float-only option with bf16
             input, ``scale`` or ``span`` with float32 ``input_dtype`` or with
-            an aie2 non-accurate build, a ``soft_cap`` outside
+            an aie2 non-accurate build, a negative or non-finite ``scale``,
+            a ``soft_cap`` outside
             [2^-100, 2^10], ``window`` or ``period`` without the other, or
             either with ``masked``.
     """
@@ -548,6 +550,12 @@ def softmax(
         raise ValueError(
             "softmax: soft_cap, masked, addend, window and period are "
             "options of the float32 input path; pass input_dtype=np.float32"
+        )
+    if scale is not None and not (math.isfinite(scale) and scale >= 0):
+        raise ValueError(
+            f"softmax: scale must be finite and non-negative, got {scale}: the "
+            "kernel centres on the row's largest logit, which is the largest "
+            "scaled one only at such a scale"
         )
     if (scale is not None or span) and _tuned_arch() == "aie2" and not accurate_exp2:
         raise ValueError(
