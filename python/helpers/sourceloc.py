@@ -41,40 +41,74 @@ def _column(code: CodeType, lasti: int) -> int:
     return next(positions)[2] or 0
 
 
+# User frames an IRON object records: its declaring statement, then the calls
+# that led there, so objects a helper builds tell apart which call built them.
+# 1 records the statement alone.
+DEFAULT_DEPTH = 4
+DEPTH_ENV = "AIE_SOURCE_LOC_DEPTH"
+
+
+def _depth() -> int:
+    try:
+        return max(1, int(os.environ.get(DEPTH_ENV, DEFAULT_DEPTH)))
+    except ValueError:
+        return DEFAULT_DEPTH
+
+
+def _is_user_frame(filename: str) -> bool:
+    # "<frozen runpy>", "<string>": no file a reader could open.
+    return not filename.startswith("<") and not os.path.normcase(filename).startswith(
+        _PASSTHROUGH
+    )
+
+
 class SourceSite:
-    """The user statement that declared an IRON object.
+    """The user statement that declared an IRON object, and its callers.
 
     Recorded while the declaring frame is live, then turned into an
     `ir.Location` at resolve time, once a Context exists.
     """
 
-    def __init__(self, filename: str | None, line: int = 0, col: int = 0):
+    def __init__(
+        self,
+        filename: str | None,
+        line: int = 0,
+        col: int = 0,
+        callers: tuple[tuple[str, int, int], ...] = (),
+    ):
         self.filename = filename
         self.line = line
         self.col = col
+        # (filename, line, col) of each calling user statement, innermost first.
+        self.callers = callers
 
     @classmethod
     def capture(cls) -> "SourceSite":
-        """Record the innermost frame outside the `aie` package.
+        """Record the innermost user frames outside the `aie` package.
 
         Returns:
             The site, or one with no `filename` when the whole stack is
             internal.
         """
+        frames = []
+        depth = _depth()
         frame = inspect.currentframe()
-        while frame is not None and os.path.normcase(
-            frame.f_code.co_filename
-        ).startswith(_PASSTHROUGH):
+        while frame is not None and len(frames) < depth:
+            if _is_user_frame(frame.f_code.co_filename):
+                frames.append(
+                    (
+                        # co_filename is relative for a module imported through
+                        # a relative sys.path entry, which a reader of the IR
+                        # cannot resolve.
+                        os.path.abspath(frame.f_code.co_filename),
+                        frame.f_lineno,
+                        _column(frame.f_code, frame.f_lasti),
+                    )
+                )
             frame = frame.f_back
-        if frame is None:
+        if not frames:
             return cls(None)
-        return cls(
-            # co_filename is relative for a module imported through a relative
-            # sys.path entry, which a reader of the IR cannot resolve.
-            os.path.abspath(frame.f_code.co_filename),
-            frame.f_lineno,
-            _column(frame.f_code, frame.f_lasti),
-        )
+        return cls(*frames[0], callers=tuple(frames[1:]))
 
     def location(self, name: str | None = None) -> "ir.Location":
         """Return this site as an `ir.Location` in the current Context.
@@ -83,11 +117,17 @@ class SourceSite:
             name: Wraps the location in a `NameLoc`, e.g. the object's symbol.
 
         Returns:
-            The location, or the ambient one when there is no user site.
+            The statement's file location, as the callee of a `CallSiteLoc`
+            when callers were recorded, or the ambient location when there is
+            no user site.
         """
         if self.filename is None:
             return ir.Location.current
         loc = ir.Location.file(self.filename, self.line, self.col)
+        if self.callers:
+            loc = ir.Location.callsite(
+                loc, [ir.Location.file(*caller) for caller in self.callers]
+            )
         return ir.Location.name(name, childLoc=loc) if name else loc
 
 

@@ -13,7 +13,7 @@ import os
 from aie.extras import types as T
 from aie.extras.dialects.arith import constant
 from aie.helpers.dialects.scf import if_
-from aie.ir import Context, InsertionPoint, Location, Module
+from aie.ir import CallSiteLoc, Context, InsertionPoint, Location, Module, NameLoc
 from aie.iron import Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
 
@@ -30,8 +30,11 @@ def walk(op):
 
 def located_here(op, statement):
     loc = op.location
-    if hasattr(loc, "child_loc"):
+    if isinstance(loc, NameLoc):
         loc = loc.child_loc
+    # The statement is the callee; its callers follow.
+    if isinstance(loc, CallSiteLoc):
+        loc = loc.callee
     assert loc.filename == __file__, (op.name, loc)
     assert statement in SOURCE[loc.start_line - 1], (op.name, loc)
 

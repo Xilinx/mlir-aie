@@ -22,6 +22,12 @@ module @link_pool_loc {
   }
 }
 
-// CHECK: aie.objectfifo.pool @in_cons_pool({{.*}}) loc(#[[POOL:loc[0-9]*]])
-// CHECK: #[[LINK:loc[0-9]*]] = loc("design.py":20:8)
-// CHECK: #[[POOL]] = loc(fused[#[[LINK]], #[[IN:loc[0-9]*]], #[[OUT0:loc[0-9]*]], #[[OUT1:loc[0-9]*]]])
+// CHECK:     aie.objectfifo.pool @in_cons_pool(
+// CHECK-NEXT:  aie.objectfifo.segment @s0
+// CHECK-NEXT:  aie.objectfifo.segment @s1
+// CHECK-NEXT: {{^ *}}} loc(#[[POOL:loc[0-9]*]])
+// CHECK-DAG: #[[LINK:loc[0-9]*]] = loc("design.py":20:8)
+// CHECK-DAG: #[[IN:loc[0-9]*]] = loc("in"(
+// CHECK-DAG: #[[OUT0:loc[0-9]*]] = loc("out0"(
+// CHECK-DAG: #[[OUT1:loc[0-9]*]] = loc("out1"(
+// CHECK-DAG: #[[POOL]] = loc(fused[#[[LINK]], #[[IN]], #[[OUT0]], #[[OUT1]]])

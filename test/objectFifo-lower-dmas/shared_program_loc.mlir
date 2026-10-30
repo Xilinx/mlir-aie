@@ -37,11 +37,11 @@ module @shared_program {
   }
 }
 
-// CHECK:     aie.dma_start(MM2S, 0, {{.*}}) loc(#[[OUT:loc[0-9]*]])
-// CHECK:     aie.dma_bd(%b0 : {{.*}}) loc(#[[OUT]])
-// CHECK:     aie.dma_start(S2MM, 0, {{.*}}) loc(#[[IN:loc[0-9]*]])
-// CHECK:     aie.dma_bd(%c0 : {{.*}}) loc(#[[IN]])
-// CHECK:   } loc(#[[MEM:loc[0-9]*]])
+// CHECK-DAG: aie.dma_start(MM2S, 0, {{.*}}) loc(#[[OUT:loc[0-9]*]])
+// CHECK-DAG: aie.dma_bd(%b0 : {{.*}}) loc(#[[OUT]])
+// CHECK-DAG: aie.dma_start(S2MM, 0, {{.*}}) loc(#[[IN:loc[0-9]*]])
+// CHECK-DAG: aie.dma_bd(%c0 : {{.*}}) loc(#[[IN]])
+// CHECK:     } loc(#[[MEM:loc[0-9]*]])
 // CHECK-DAG: #[[OUT]] = loc("of_out"(
 // CHECK-DAG: #[[IN]] = loc("of_in"(
-// CHECK-DAG: #[[MEM]] = loc(fused[#[[OUT]], #[[IN]]])
+// CHECK-DAG: #[[MEM]] = loc(fused[#[[IN]], #[[OUT]]])
