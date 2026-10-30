@@ -11,7 +11,10 @@
 #include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
@@ -155,14 +158,94 @@ static std::optional<int64_t> heldAfter(Block &block, StringRef name,
   return held;
 }
 
+/// The trip count of `forOp`: static, or an upper bound the host writes as
+/// one constant for every dispatch. That is a word of an `aie.buffer` the
+/// cores only load, which every runtime sequence of the device writes with
+/// the same constant (`aiex.npu.rtp_write`) before it sets a lock
+/// (`aiex.set_lock`) the core acquires ahead of the load. The lock starts at
+/// 0 and the core gives it back only after taking it, so every load follows
+/// a write.
+static std::optional<int64_t> tripCount(scf::ForOp forOp, DeviceOp device) {
+  if (std::optional<int64_t> trip = getStaticTripCount(forOp))
+    return trip;
+  std::optional<int64_t> lower = getConstantIntValue(forOp.getLowerBound());
+  std::optional<int64_t> step = getConstantIntValue(forOp.getStep());
+  Value bound = forOp.getUpperBound();
+  if (auto cast = bound.getDefiningOp<arith::IndexCastOp>())
+    bound = cast.getIn();
+  auto load = bound.getDefiningOp<memref::LoadOp>();
+  if (!lower || !step || *step <= 0 || !load || load.getIndices().size() != 1)
+    return std::nullopt;
+  std::optional<int64_t> index = getConstantIntValue(load.getIndices().front());
+  auto buffer = load.getMemRef().getDefiningOp<BufferOp>();
+  if (!index || !buffer || !buffer.getSymName() || buffer.getInitialValue() ||
+      llvm::any_of(buffer->getUsers(),
+                   [](Operation *user) { return !isa<memref::LoadOp>(user); }))
+    return std::nullopt;
+
+  auto acquiredBefore = [](Operation *op, Value lock) {
+    for (Operation *prev = op->getPrevNode(); prev; prev = prev->getPrevNode())
+      if (auto use = dyn_cast<UseLockOp>(prev);
+          use && use.getLock() == lock &&
+          use.getAction() != LockAction::Release)
+        return true;
+    return false;
+  };
+  LockOp lock;
+  for (Operation *prev = load->getPrevNode(); prev && !lock;
+       prev = prev->getPrevNode())
+    if (auto use = dyn_cast<UseLockOp>(prev);
+        use && use.getAction() != LockAction::Release)
+      lock = use.getLock().getDefiningOp<LockOp>();
+  if (!lock || lock.getInit().value_or(0) != 0)
+    return std::nullopt;
+  for (Operation *user : lock->getUsers()) {
+    if (isa<AIEX::SetLockOp>(user))
+      continue;
+    auto use = dyn_cast<UseLockOp>(user);
+    if (!use || use.getAction() != LockAction::Release)
+      continue;
+    if (!acquiredBefore(use, lock.getResult()))
+      return std::nullopt;
+  }
+
+  std::optional<int64_t> value;
+  for (auto sequence : device.getOps<RuntimeSequenceOp>()) {
+    bool written = false;
+    WalkResult walk = sequence.walk([&](Operation *op) {
+      if (auto write = dyn_cast<AIEX::NpuWriteRTPOp>(op)) {
+        if (write.getBuffer() != *buffer.getSymName() ||
+            write.getIndex() != *index)
+          return WalkResult::advance();
+        std::optional<int64_t> word = getConstantIntValue(write.getValue());
+        if (!word || (value && *value != *word))
+          return WalkResult::interrupt();
+        value = word;
+        written = true;
+        return WalkResult::advance();
+      }
+      auto set = dyn_cast<AIEX::SetLockOp>(op);
+      if (set && set.getLock() == lock.getResult() && !written)
+        return WalkResult::interrupt();
+      return WalkResult::advance();
+    });
+    if (walk.wasInterrupted())
+      return std::nullopt;
+  }
+  if (!value)
+    return std::nullopt;
+  return *value > *lower ? (*value - *lower + *step - 1) / *step : 0;
+}
+
 /// Objects of the fifo `in` a core newly takes, and of `out` it releases, in
 /// one pass of the innermost loop around their accesses, when that pass takes
 /// its share of `in` ahead of each release: then once the core has released
 /// r objects of `out`, it has taken at least r * in / out of `in`, whatever
 /// the loop's own trip count. Unknown when the pass holds objects across
-/// passes, or reaches them under a branch or a loop of unknown count.
+/// passes, or reaches them under a branch or a loop whose count `tripCount`
+/// cannot tell.
 static std::optional<std::pair<int64_t, int64_t>>
-passRatio(CoreOp core, StringRef in, StringRef out) {
+passRatio(DeviceOp device, CoreOp core, StringRef in, StringRef out) {
   auto fifoOf = [](Operation *op) -> StringRef {
     if (auto acquire = dyn_cast<ObjectFifoAcquireOp>(op))
       return acquire.getObjFifoName();
@@ -211,7 +294,7 @@ passRatio(CoreOp core, StringRef in, StringRef out) {
         continue;
       auto forOp = dyn_cast<scf::ForOp>(op);
       std::optional<int64_t> trip =
-          forOp ? getStaticTripCount(forOp) : std::nullopt;
+          forOp ? tripCount(forOp, device) : std::nullopt;
       if (!trip || *trip > static_cast<int64_t>(maxPassEvents))
         return false;
       for (int64_t i = 0; i < *trip; i++)
@@ -1069,7 +1152,7 @@ struct AIEObjectFifoVerifyPass
               drainer ? carries(device, drainer.getSymNameAttr(), actors)
                       : nullptr);
           std::optional<std::pair<int64_t, int64_t>> ratio =
-              output ? passRatio(core, consumer.getSymName(),
+              output ? passRatio(device, core, consumer.getSymName(),
                                  producer.getSymName())
                      : std::nullopt;
           if (ratio)
