@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "utils" / "kernel_checks"))
 
 import code_health as ch  # noqa: E402
+from test_ci_health import Served  # noqa: E402
 
 SRC = "/home/runner/work/mlir-aie/mlir-aie"
 
@@ -51,6 +52,29 @@ WARNING: ThreadSanitizer: data race (pid=777)
 SUMMARY: ThreadSanitizer: data race {SRC}/lib/Dialect/AIE/IR/AIETargetModel.cpp:57:12 in xilinx::AIE::DeviceModel::cache(int)
 ==================
 """
+
+
+@pytest.fixture
+def scanning():
+    """Serve open code-scanning alerts locally, paged as GitHub pages them, or
+    an HTTP status for every page, and return the real client that reads them."""
+    servers = []
+
+    def serve(alerts: list | int):
+        if isinstance(alerts, int):
+            routes = [(r"[?&]page=\d+$", alerts)]
+        else:
+            pages = [alerts[i : i + 100] for i in range(0, len(alerts), 100)]
+            routes = [
+                *((rf"[?&]page={n}$", page) for n, page in enumerate(pages, 1)),
+                (r"[?&]page=\d+$", []),
+            ]
+        servers.append(Served(routes))
+        return ch.github("", api=servers[-1].url)
+
+    yield serve
+    for s in servers:
+        s.server.shutdown()
 
 
 def lit(*tests):
@@ -297,18 +321,23 @@ def test_a_new_finding_past_the_display_is_shown_and_counted():
     assert third["known"][ch.known_id(second["findings"][0]["key"])] == "2026-10-21"
 
 
-def test_code_scanning_outage_keeps_the_alert_inventory():
-    pages = {1: [alert(1, "high", "c-cpp", "lib/a.cpp")]}
-    get = lambda path: pages.get(int(re.search(r"[?&]page=(\d+)", path).group(1)), [])
+def test_code_scanning_outage_keeps_the_alert_inventory(scanning):
+    known = [alert(1, "high", "c-cpp", "lib/a.cpp")]
     now = datetime.datetime(2026, 10, 29, tzinfo=datetime.timezone.utc)
     first = ch.build_status(
-        {}, None, ch.scanning_status(get, "r", None), None, now, {"id": 1}
+        {}, None, ch.scanning_status(scanning(known), "r", None), None, now, {"id": 1}
     )
-    down = ch.build_status({}, None, "HTTP 502", first, now, {"id": 2})
-    assert down["code_scanning"] == {"error": "HTTP 502", "alert_ids": [1]}
-    down = ch.build_status({}, None, "HTTP 502", down, now, {"id": 3})
-    pages[1].append(alert(2, "high", "c-cpp", "lib/b.cpp"))
-    back = ch.scanning_status(get, "r", down["code_scanning"])
+    with pytest.raises(ch.ApiError) as outage:
+        ch.scanning_status(scanning(502), "r", first["code_scanning"])
+    error = str(outage.value)
+    down = ch.build_status({}, None, error, first, now, {"id": 2})
+    assert down["code_scanning"] == {"error": error, "alert_ids": [1]}
+    down = ch.build_status({}, None, error, down, now, {"id": 3})
+    back = ch.scanning_status(
+        scanning([*known, alert(2, "high", "c-cpp", "lib/b.cpp")]),
+        "r",
+        down["code_scanning"],
+    )
     assert back["new"] == 1 and back["fixed"] == 0
     assert [a["number"] for a in back["alerts"] if a["new"]] == [2]
 
@@ -456,14 +485,13 @@ def alert(n, severity, lang, path):
     }
 
 
-def test_code_scanning_says_what_is_new_and_fixed():
-    pages = {
-        1: [
+def test_code_scanning_says_what_is_new_and_fixed(scanning):
+    get = scanning(
+        [
             alert(7, "high", "c-cpp", "lib/a.cpp"),
             alert(3, None, "python", "python/b.py"),
         ]
-    }
-    get = lambda path: pages.get(int(re.search(r"[?&]page=(\d+)", path).group(1)), [])
+    )
     cs = ch.scanning_status(
         get, "Xilinx/mlir-aie", {"alerts": [{"number": 3}, {"number": 1}]}
     )
@@ -478,13 +506,11 @@ def test_code_scanning_says_what_is_new_and_fixed():
     assert ch.scanning_status(get, "Xilinx/mlir-aie", None)["new"] == 0
 
 
-def test_a_new_low_alert_is_kept_ahead_of_known_high_ones():
+def test_a_new_low_alert_is_kept_ahead_of_known_high_ones(scanning):
     known = [alert(n, "high", "c-cpp", "lib/a.cpp") for n in range(ch.KEEP_ALERTS + 49)]
     fresh = alert(ch.KEEP_ALERTS + 49, None, "python", "python/b.py")
-    pages = {1: known[:100], 2: known[100:200], 3: [*known[200:], fresh]}
-    get = lambda path: pages.get(int(re.search(r"[?&]page=(\d+)", path).group(1)), [])
     previous = {"alert_ids": [a["number"] for a in known]}
-    cs = ch.scanning_status(get, "Xilinx/mlir-aie", previous)
+    cs = ch.scanning_status(scanning([*known, fresh]), "Xilinx/mlir-aie", previous)
     assert cs["new"] == 1 and len(cs["alerts"]) == ch.KEEP_ALERTS
     assert (cs["alerts"][0]["number"], cs["alerts"][0]["new"]) == (
         fresh["number"],
@@ -494,13 +520,9 @@ def test_a_new_low_alert_is_kept_ahead_of_known_high_ones():
 
 
 @pytest.mark.parametrize("count", [ch.KEEP_ALERTS + 1, 2001])
-def test_code_scanning_keeps_all_identities_for_churn(count):
+def test_code_scanning_keeps_all_identities_for_churn(scanning, count):
     alerts = [alert(n, "high", "c-cpp", "lib/a.cpp") for n in range(count)]
-
-    def get(path):
-        page = int(re.search(r"[?&]page=(\d+)", path).group(1))
-        return alerts[(page - 1) * 100 : page * 100]
-
+    get = scanning(alerts)
     previous = ch.scanning_status(get, "Xilinx/mlir-aie", None)
     assert previous["open"] == count
     assert len(previous["alerts"]) == ch.KEEP_ALERTS
@@ -508,9 +530,11 @@ def test_code_scanning_keeps_all_identities_for_churn(count):
     unchanged = ch.scanning_status(get, "Xilinx/mlir-aie", previous)
     assert unchanged["new"] == unchanged["fixed"] == 0
     # Alert zero was omitted from the display, but must still count as fixed.
-    alerts.pop(0)
-    alerts.append(alert(count, "high", "c-cpp", "lib/a.cpp"))
-    changed = ch.scanning_status(get, "Xilinx/mlir-aie", unchanged)
+    changed = ch.scanning_status(
+        scanning([*alerts[1:], alert(count, "high", "c-cpp", "lib/a.cpp")]),
+        "Xilinx/mlir-aie",
+        unchanged,
+    )
     assert changed["new"] == changed["fixed"] == 1
 
 
@@ -678,7 +702,7 @@ def test_the_nightly_publishes_what_the_page_reads():
     assert "nightlyCodeHealth.yml" in files and "codeCoverage.yml" not in files
 
 
-def test_a_flood_of_findings_stays_within_the_budget(tmp_path):
+def test_a_flood_of_findings_stays_within_the_budget(scanning, tmp_path):
     """However bad a night, status.json stays bounded; history.json keeps a
     year of points and no more."""
     frame = "xilinx::AIE::" + "Template<" * 400 + "int" + ">" * 400 + "::run(int)"
@@ -708,9 +732,7 @@ def test_a_flood_of_findings_stays_within_the_budget(tmp_path):
     many = [alert(n, "high", "c-cpp", "lib/a.cpp") for n in range(1, 2001)]
     for a in many:
         a["rule"]["description"] = "d" * 5000
-    pages = {k + 1: many[100 * k : 100 * (k + 1)] for k in range(20)}
-    get = lambda path: pages.get(int(re.search(r"[?&]page=(\d+)", path).group(1)), [])
-    scanning = ch.scanning_status(get, "Xilinx/mlir-aie", None)
+    scanned = ch.scanning_status(scanning(many), "Xilinx/mlir-aie", None)
     files = {f"lib/Dialect/X/F{i}.cpp": [i, 1000, 1, 10] for i in range(400)}
     status = ch.build_status(
         {
@@ -719,7 +741,7 @@ def test_a_flood_of_findings_stays_within_the_budget(tmp_path):
             "clang-tidy": tidy_piece,
         },
         ch.coverage_status(files, None),
-        scanning,
+        scanned,
         None,
         datetime.datetime(2026, 10, 29, tzinfo=datetime.timezone.utc),
         {"id": 1},

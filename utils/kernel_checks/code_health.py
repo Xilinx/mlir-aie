@@ -78,14 +78,6 @@ HISTORY_BUDGET = 400_000
 OWN = ("lib/", "include/", "tools/", "python/", "runtime_lib/", "aie_runtime_lib/")
 
 
-def utcnow() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
-
-
-def stamp(t: datetime.datetime) -> str:
-    return t.isoformat().replace("+00:00", "Z")
-
-
 def relative(path: str, root: str) -> str:
     """Return a path inside the checkout as the repository names it."""
     # Reports come from Linux runners; keep their separators on any host.
@@ -99,10 +91,6 @@ def relative(path: str, root: str) -> str:
 
 def clip(text: str, n: int = LINE_CHARS) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
-
-
-def ours(path: str) -> bool:
-    return path.startswith(OWN) and "/third_party/" not in path
 
 
 # ----------------------------------------------------------------------
@@ -169,7 +157,7 @@ def reports(output: str, root: str) -> list[dict]:
         else:
             for f in FRAME.finditer(text):
                 path = relative(f.group(3), root)
-                if ours(path):
+                if path.startswith(OWN) and "/third_party/" not in path:
                     where = {
                         "file": path,
                         "line": int(f.group(4)),
@@ -349,10 +337,10 @@ def summarize_tidy(log: str, files: list[str], enabled: re.Pattern, root: str) -
         seen.add((path, m.group(2), check))
         if check == "clang-diagnostic-error":
             continue
-        if not ours(path):
+        if not path.startswith(OWN) or "/third_party/" in path:
             continue
         by_file[path] = by_file.get(path, 0) + 1
-        if enabled.fullmatch(path) or enabled.match(path):
+        if enabled.match(path):
             in_enabled.append(
                 {
                     "file": path,
@@ -615,7 +603,11 @@ def build_status(
 ) -> dict:
     prev = previous if previous and previous.get("schema", 1) <= SCHEMA else None
     today = now.date().isoformat()
-    status = {"schema": SCHEMA, "generated_at": stamp(now), "run": run}
+    status = {
+        "schema": SCHEMA,
+        "generated_at": now.isoformat().replace("+00:00", "Z"),
+        "run": run,
+    }
     for name in CHECKS:
         piece = pieces.get(name)
         if piece is None:
@@ -713,7 +705,7 @@ def write_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, separators=(",", ":")) + "\n", encoding="utf-8")
 
 
-def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
+def main(argv=None, now: datetime.datetime | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     parser.add_argument(
         "--source-root", default=os.environ.get("GITHUB_WORKSPACE", str(ROOT))
@@ -800,7 +792,7 @@ def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
         )
         return 0
 
-    now = now or utcnow()
+    now = now or datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
     previous = read_json(args.previous)
     pieces = {}
     for path in args.piece:
@@ -819,10 +811,9 @@ def main(argv=None, now: datetime.datetime | None = None, get=None) -> int:
         )
     scanning = None
     if args.code_scanning:
-        get = get or github(os.environ.get("GITHUB_TOKEN", ""))
         try:
             scanning = scanning_status(
-                get,
+                github(os.environ.get("GITHUB_TOKEN", "")),
                 os.environ.get("GITHUB_REPOSITORY", "Xilinx/mlir-aie"),
                 (previous or {}).get("code_scanning"),
             )
