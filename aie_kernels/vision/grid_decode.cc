@@ -35,6 +35,11 @@ void grid_decode(const bfloat16 *__restrict in, float *__restrict out,
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
   const aie::vector<bfloat16, N> one = aie::broadcast<bfloat16, N>(1.0f);
   const float s = (float)stride, gy = (float)y;
+  // The stride's power of two goes into exp's own exponent: a width or
+  // height whose exp alone is subnormal can be normal once scaled.
+  int32_t log2_stride = 0;
+  while ((1 << log2_stride) < stride)
+    log2_stride++;
   for (int x0 = 0; x0 < WIDTH; x0 += N) {
     aie::vector<bfloat16, N> dw, dh;
     for (int i = 0; i < N; i++) {
@@ -43,9 +48,11 @@ void grid_decode(const bfloat16 *__restrict in, float *__restrict out,
       dh[i] = in[x * CHANNELS + 3];
     }
     const aie::vector<float, N> w =
-        exp_f32(aie::mul(dw, one)).template to_vector<float>();
+        exp_f32<N, true>(aie::mul(dw, one), log2_stride)
+            .template to_vector<float>();
     const aie::vector<float, N> h =
-        exp_f32(aie::mul(dh, one)).template to_vector<float>();
+        exp_f32<N, true>(aie::mul(dh, one), log2_stride)
+            .template to_vector<float>();
     for (int i = 0; i < N && x0 + i < WIDTH; i++) {
       const bfloat16 *cell = in + (x0 + i) * CHANNELS;
       float *row = out + (x0 + i) * OUT;
@@ -54,8 +61,8 @@ void grid_decode(const bfloat16 *__restrict in, float *__restrict out,
       // why), which the contract's 1e-6 relative tolerance covers.
       row[0] = ((float)cell[0] + (float)(x0 + i)) * s;
       row[1] = ((float)cell[1] + gy) * s;
-      row[2] = w[i] * s;
-      row[3] = h[i] * s;
+      row[2] = w[i];
+      row[3] = h[i];
       row[4] = (float)cell[OBJ];
       for (int c = 0; c < CLASSES; c++)
         row[5 + c] = (float)cell[CLS + c];

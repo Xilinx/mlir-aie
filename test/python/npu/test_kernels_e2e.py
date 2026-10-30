@@ -512,6 +512,34 @@ def test_a_kernel_leaves_the_rounding_mode_as_it_found_it(first, kept, odd_below
     )
 
 
+@pytest.mark.kernel_check("grid_decode")
+@pytest.mark.parametrize("stride", [8, 16, 32])
+def test_grid_decode_keeps_a_tiny_exp_through_the_stride(stride):
+    """exp(dw) * stride near float32's ends, every bf16 dw and dh there.
+
+    Below ln(FLT_MIN) exp alone is subnormal, but times the stride it can be
+    normal again (exp(-88) * 32 =~ 1.9e-37), so flushing exp to zero before
+    the stride misses the contract's relative tolerance; near 88 the
+    product overflows first. Random data almost never lands in either band.
+    """
+    fn = kernels.grid_decode()
+    band = np.arange(1 << 16, dtype=np.uint32).astype(np.uint16).view(bfloat16)
+    band = band[np.isfinite(band.astype(np.float32))]
+    band = band[(np.abs(band.astype(np.float32)) >= 80) & (np.abs(band) <= 105)]
+    width, channels = 52, 144
+    calls = -(-band.size // width)
+    design = kd.KernelDesign(fn, calls=calls, scalars=(3, stride))
+    inputs = design.sample_inputs(np.random.default_rng(stride))
+    cells = inputs[0].reshape(calls, width, channels)
+    flat = np.zeros(calls * width, bfloat16)
+    flat[: band.size] = band
+    cells[..., 2] = flat.reshape(calls, width)
+    cells[..., 3] = flat[::-1].reshape(calls, width)
+    got = design.run(inputs)
+    verdict = design.check(got, inputs)
+    assert verdict, verdict.detail
+
+
 def _skips_first_vector():
     tile = np.ndarray[(64,), np.dtype[np.int32]]
     return iron.ExternalFunction(
