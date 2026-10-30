@@ -20,7 +20,7 @@ from ...dialects.aie import (
     LogicalTileOp,
     WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     dma_bd_fits,  # pyright: ignore[reportAttributeAccessIssue]
-    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+    get_target_model,
     logical_tile,
 )
 from ...dialects.aiex import shim_dims
@@ -57,6 +57,14 @@ class Device(Resolvable):
 
     def __hash__(self) -> int:
         return hash(self._device)
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> AIEDevice:  # pyright: ignore[reportIncompatibleMethodOverride]
+        """Return the ``AIEDevice`` this descriptor already wraps."""
+        return self._device
 
     @property
     def name(self) -> str:
@@ -347,13 +355,6 @@ class NamedDevice(Device):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}()"
-
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> AIEDevice:  # pyright: ignore[reportIncompatibleMethodOverride]
-        return self.aie_device
 
 
 for device in AIEDevice:

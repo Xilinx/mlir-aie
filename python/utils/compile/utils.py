@@ -380,9 +380,7 @@ def resolve_target_arch(device=None) -> str:
     from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
         AIEArch,
     )
-    from aie.dialects.aie import (
-        get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
-    )
+    from aie.dialects.aie import get_target_model
     from aie.iron.device import Device
 
     if isinstance(device, Device):

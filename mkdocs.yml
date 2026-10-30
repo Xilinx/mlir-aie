@@ -126,7 +126,9 @@ plugins:
           # objects.inv). The build is strict (see `strict: true` above), so a
           # fetch failure/403 from those hosts would abort the whole docs
           # deploy. Internal iron cross-references don't need them.
-          paths: [python]
+          # utils/pyright_stubs/aie links to python/, so objects carry the
+          # aie.* names users import and objects.inv publishes.
+          paths: [utils/pyright_stubs]
           options:
             # Headings / structure
             show_root_heading: true

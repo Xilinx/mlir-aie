@@ -32,11 +32,11 @@ def test_documented_kernel_modules_and_members_exist():
     missing = []
     for module, members in _blocks(_DOC.read_text()):
         try:
-            mod = importlib.import_module(f"aie.{module}")
+            mod = importlib.import_module(module)
         except ImportError as exc:  # a doc naming a module that moved
-            missing.append(f"aie.{module}: {exc}")
+            missing.append(f"{module}: {exc}")
             continue
-        missing += [f"aie.{module}.{m}" for m in members if not hasattr(mod, m)]
+        missing += [f"{module}.{m}" for m in members if not hasattr(mod, m)]
     assert not missing, f"{_DOC.name} documents symbols that do not exist: {missing}"
 
 
@@ -49,9 +49,9 @@ def test_every_kernel_module_is_documented():
     package = Path(__file__).parents[2] / "python" / "iron" / "kernels"
     documented = {module for module, _ in _blocks(_DOC.read_text())}
     undocumented = [
-        f"iron.kernels.{p.stem}"
+        f"aie.iron.kernels.{p.stem}"
         for p in sorted(package.glob("*.py"))
-        if not p.stem.startswith("_") and f"iron.kernels.{p.stem}" not in documented
+        if not p.stem.startswith("_") and f"aie.iron.kernels.{p.stem}" not in documented
     ]
     assert not undocumented, f"{_DOC.name} has no block for {undocumented}"
 
