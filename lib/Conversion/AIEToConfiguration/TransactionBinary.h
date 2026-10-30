@@ -5,12 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Reading back the register writes aie-rt recorded. A pass that wants the
-// writes some aie-rt call makes -- rather than a restatement of the register
-// map -- runs the call inside a transaction, exports it, and parses it here.
+// Private transaction parser shared by configuration conversion and
+// core-issued DMA lowering. The latter records aie-rt calls as transactions
+// and reuses this parser to extract the register writes executed by the core.
 
-#ifndef AIE_RUNTIME_TRANSACTIONBINARY_H
-#define AIE_RUNTIME_TRANSACTIONBINARY_H
+#ifndef AIE_CONVERSION_AIETOCONFIGURATION_TRANSACTIONBINARY_H
+#define AIE_CONVERSION_AIETOCONFIGURATION_TRANSACTIONBINARY_H
 
 #include "mlir/IR/Location.h"
 
@@ -19,7 +19,9 @@
 #include <vector>
 
 extern "C" {
-#include "xaiengine.h"
+#include "xaiengine/xaiegbl.h"
+// xaie_txn.h needs the types and declarations from xaiegbl.h first.
+#include "xaiengine/xaie_txn.h"
 }
 
 namespace xilinx::AIE {
@@ -80,4 +82,4 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
 
 } // namespace xilinx::AIE
 
-#endif // AIE_RUNTIME_TRANSACTIONBINARY_H
+#endif // AIE_CONVERSION_AIETOCONFIGURATION_TRANSACTIONBINARY_H

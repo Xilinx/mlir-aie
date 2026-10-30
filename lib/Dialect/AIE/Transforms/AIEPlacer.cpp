@@ -941,12 +941,10 @@ SequentialPlacer::buildChannelRequirements(
     if (!fifo.packetHeader() || !other.packetHeader())
       return reject("a shared channel carries both at once, which only "
                     "packet-switched routes tell apart");
-    std::optional<uint16_t> id = fifo.packetHeader()
-                                     ? fifo.packetHeader().getPktId()
-                                     : std::nullopt;
-    std::optional<uint16_t> otherId = other.packetHeader()
-                                          ? other.packetHeader().getPktId()
-                                          : std::nullopt;
+    std::optional<uint16_t> id =
+        fifo.packetHeader() ? fifo.packetHeader().getPktId() : std::nullopt;
+    std::optional<uint16_t> otherId =
+        other.packetHeader() ? other.packetHeader().getPktId() : std::nullopt;
     if (id && otherId && *id == *otherId)
       return reject(Twine("both pin packet id ") +
                     Twine(static_cast<unsigned>(*id)));
@@ -980,12 +978,10 @@ SequentialPlacer::buildChannelRequirements(
     if (!fifo.getOutOfOrder() || !other.getOutOfOrder())
       return reject("a channel its fifos receive in turn holds their order; "
                     "out_of_order puts that order in each object's header");
-    std::optional<uint16_t> id = fifo.packetHeader()
-                                     ? fifo.packetHeader().getPktId()
-                                     : std::nullopt;
-    std::optional<uint16_t> otherId = other.packetHeader()
-                                          ? other.packetHeader().getPktId()
-                                          : std::nullopt;
+    std::optional<uint16_t> id =
+        fifo.packetHeader() ? fifo.packetHeader().getPktId() : std::nullopt;
+    std::optional<uint16_t> otherId =
+        other.packetHeader() ? other.packetHeader().getPktId() : std::nullopt;
     if (id && otherId && *id == *otherId)
       return reject(Twine("both pin packet id ") +
                     Twine(static_cast<unsigned>(*id)));

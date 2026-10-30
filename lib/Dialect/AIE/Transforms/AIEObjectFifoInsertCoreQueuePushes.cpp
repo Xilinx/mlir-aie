@@ -68,13 +68,13 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
     Value left = memref::LoadOp::create(builder, loc, counter, ValueRange{});
     Value step = arith::ConstantOp::create(builder, loc, i32,
                                            builder.getI32IntegerAttr(released));
-    Value zero =
-        arith::ConstantOp::create(builder, loc, i32, builder.getI32IntegerAttr(0));
+    Value zero = arith::ConstantOp::create(builder, loc, i32,
+                                           builder.getI32IntegerAttr(0));
     Value run = arith::ConstantOp::create(builder, loc, i32,
                                           builder.getI32IntegerAttr(perPush));
     Value rest = arith::SubIOp::create(builder, loc, left, step);
-    Value spent = arith::CmpIOp::create(builder, loc,
-                                        arith::CmpIPredicate::sle, rest, zero);
+    Value spent = arith::CmpIOp::create(builder, loc, arith::CmpIPredicate::sle,
+                                        rest, zero);
     auto push = scf::IfOp::create(builder, loc, spent, /*withElse=*/false);
     {
       OpBuilder::InsertionGuard guard(builder);
@@ -117,8 +117,9 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
       DenseMap<int, SmallVector<std::pair<ObjectFifoReleaseOp, int32_t>>>
           releasesOfChannel;
       WalkResult walked = core.walk([&](ObjectFifoReleaseOp release) {
-        auto endpoint = SymbolTable::lookupNearestSymbolFrom<
-            ObjectFifoCoreEndpointOp>(device, release.getObjFifoNameAttr());
+        auto endpoint =
+            SymbolTable::lookupNearestSymbolFrom<ObjectFifoCoreEndpointOp>(
+                device, release.getObjFifoNameAttr());
         if (!endpoint || !endpoint.drains())
           return WalkResult::advance();
         auto it = receiverOfPool.find(endpoint.getPool());
@@ -130,8 +131,7 @@ struct AIEObjectFifoInsertCoreQueuePushesPass
                                  "run --aie-objectfifo-allocate first");
           return WalkResult::interrupt();
         }
-        releasesOfChannel[*channel].emplace_back(release,
-                                                release.relNumber());
+        releasesOfChannel[*channel].emplace_back(release, release.relNumber());
         return WalkResult::advance();
       });
       if (walked.wasInterrupted())

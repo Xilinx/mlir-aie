@@ -12,9 +12,10 @@
 // replayed as stores the core makes over its processor bus. A restatement of
 // the register map would be one more copy to keep in step with aie-rt.
 
+#include "TransactionBinary.h"
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-#include "aie/Runtime/TransactionBinary.h"
 #include "aie/Targets/AIERT.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -69,8 +70,8 @@ pushWrites(DmaPushQueueOp op, int col, int row,
   // this pushes onto is already configured and running.
   if (failed(ctl.pushToBdQueueAndEnable(
           *op.getOperation(), col, row, op.getChannel(), op.getDirection(),
-          op.getBdId(), op.getRepeatCount(), /*padValue=*/0,
-          op.getOutOfOrder(), /*configureChannel=*/false)))
+          op.getBdId(), op.getRepeatCount(), /*padValue=*/0, op.getOutOfOrder(),
+          /*configureChannel=*/false)))
     return failure();
 
   std::vector<uint8_t> txn = ctl.exportSerializedTransaction();
@@ -182,17 +183,18 @@ struct AIELowerCoreIssuedConfigurationPass
     OpBuilder builder(op);
     Location loc = op.getLoc();
     Type i32 = builder.getI32Type();
-    uint32_t localAddr =
-        *statusAddr & ((1u << targetModel.getRowShift()) - 1);
+    uint32_t localAddr = *statusAddr & ((1u << targetModel.getRowShift()) - 1);
     Value addrPtr = tilePointer(builder, loc, localAddr);
     Value maskOp = arith::ConstantOp::create(
-        builder, loc, i32, builder.getI32IntegerAttr(static_cast<int32_t>(mask)));
+        builder, loc, i32,
+        builder.getI32IntegerAttr(static_cast<int32_t>(mask)));
     // The field counts the tasks the queue holds, so it reads the depth
     // exactly when the queue has no room left.
     uint32_t full = targetModel.getDmaTaskQueueDepth()
                     << llvm::countr_zero(mask);
     Value fullOp = arith::ConstantOp::create(
-        builder, loc, i32, builder.getI32IntegerAttr(static_cast<int32_t>(full)));
+        builder, loc, i32,
+        builder.getI32IntegerAttr(static_cast<int32_t>(full)));
 
     // Read the field until it falls below the depth. The core does nothing
     // else meanwhile.
@@ -200,9 +202,8 @@ struct AIELowerCoreIssuedConfigurationPass
     OpBuilder::InsertionGuard guard(builder);
     Block *before = builder.createBlock(&loop.getBefore());
     builder.setInsertionPointToStart(before);
-    Value status =
-        func::CallOp::create(builder, loc, read, ValueRange{addrPtr})
-            .getResult(0);
+    Value status = func::CallOp::create(builder, loc, read, ValueRange{addrPtr})
+                       .getResult(0);
     Value size = arith::AndIOp::create(builder, loc, status, maskOp);
     Value isFull = arith::CmpIOp::create(builder, loc, arith::CmpIPredicate::eq,
                                          size, fullOp);

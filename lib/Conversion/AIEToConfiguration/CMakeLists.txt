@@ -11,6 +11,7 @@ add_mlir_conversion_library(MLIRAIEToConfiguration
   DEPENDS
   MLIRAIEConversionPassIncGen
   MLIRAIEPassIncGen
+  xaienginecdo_static-headers
 
   LINK_COMPONENTS
   Core

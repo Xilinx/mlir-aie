@@ -409,9 +409,12 @@ struct AIEObjectFifoSplitPass
     for (ObjectFifoCreateOp fifo : fifos) {
       for (auto [index, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
         ObjectFifoEndPortAttr port = fifo.getConsumerPort(index);
-        if (!port || port.isCore() || !port.channelIndex())
+        if (!port || port.isCore())
           continue;
-        int channel = *port.channelIndex();
+        std::optional<int> pinnedChannel = port.channelIndex();
+        if (!pinnedChannel)
+          continue;
+        int channel = *pinnedChannel;
         auto tile = consumer.getDefiningOp<TileOp>();
         if (channel < 0 || !tile)
           continue;

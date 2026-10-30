@@ -109,7 +109,8 @@ void addTraceStage(mlir::OpPassManager &pm);
 /// Affine lowering through `aie-prepare-buffers`.
 void addLoweringStage(mlir::OpPassManager &pm, bool dynamicObjFifos,
                       bool packetSwObjFifos, bool ctrlPktOverlay,
-                      bool loadPdiToCtrlPkt, bool skipObjectFifoVerify, bool checkQueueSpace = true);
+                      bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
+                      bool checkQueueSpace = true);
 void addBufferAddressStage(mlir::OpPassManager &pm, int64_t placementBudget);
 void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne);
 

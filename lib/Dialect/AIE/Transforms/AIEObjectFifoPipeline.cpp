@@ -36,7 +36,8 @@ struct ObjectFifoLoweringOptions
 
 void xilinx::AIE::addObjectFifoLoweringPasses(OpPassManager &pm,
                                               bool packetSwitched,
-                                              bool skipVerify, bool checkQueueSpace) {
+                                              bool skipVerify,
+                                              bool checkQueueSpace) {
   pm.addPass(createAIEObjectFifoSplitPass());
   if (!skipVerify) {
     pm.addPass(createAIEObjectFifoVerifyPass());
@@ -57,6 +58,7 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
       "Lower aie.objectfifo to buffers, locks, flows and DMA programs",
       [](OpPassManager &pm, const ObjectFifoLoweringOptions &options) {
         addObjectFifoLoweringPasses(pm, options.packetSwitched,
-                                    options.skipVerify, options.checkQueueSpace);
+                                    options.skipVerify,
+                                    options.checkQueueSpace);
       });
 }

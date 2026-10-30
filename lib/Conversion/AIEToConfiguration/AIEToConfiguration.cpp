@@ -6,12 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "../PassDetail.h"
+#include "TransactionBinary.h"
 
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/Runtime/TransactionBinary.h"
 #include "aie/Targets/AIERT.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"

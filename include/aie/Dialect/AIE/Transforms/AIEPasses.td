@@ -225,15 +225,14 @@ def AIELowerCoreIssuedConfiguration
   }];
   let constructor = "xilinx::AIE::createAIELowerCoreIssuedConfigurationPass()";
   let dependentDialects = ["mlir::func::FuncDialect",
-                           "mlir::arith::ArithDialect",
-                           "mlir::scf::SCFDialect",
+                           "mlir::arith::ArithDialect", "mlir::scf::SCFDialect",
                            "mlir::LLVM::LLVMDialect"];
 }
 
 def AIEObjectFifoInsertCoreQueuePushes
-    : Pass<"aie-objectfifo-insert-core-queue-pushes",
-           "xilinx::AIE::DeviceOp"> {
-  let summary = "Insert core-issued tasks to replenish out-of-order receive queues";
+    : Pass<"aie-objectfifo-insert-core-queue-pushes", "xilinx::AIE::DeviceOp"> {
+  let summary =
+      "Insert core-issued tasks to replenish out-of-order receive queues";
   let description = [{
     An out-of-order S2MM task accepts a finite number of objects. For FIFOs
     without `iter_count`, this pass inserts additional tasks so reception can
@@ -251,9 +250,9 @@ def AIEObjectFifoInsertCoreQueuePushes
     The program must still avoid circular waits between core synchronization
     and DMA progress; polling only prevents task-queue overflow.
   }];
-  let options = [Option<
-      "checkQueueSpace", "check-queue-space", "bool", /*default=*/"true",
-      "Wait for room on the task queue before each push.">];
+  let options = [Option<"checkQueueSpace", "check-queue-space", "bool",
+                        /*default=*/"true",
+                        "Wait for room on the task queue before each push.">];
   let constructor =
       "xilinx::AIE::createAIEObjectFifoInsertCoreQueuePushesPass()";
   let dependentDialects = ["mlir::arith::ArithDialect",

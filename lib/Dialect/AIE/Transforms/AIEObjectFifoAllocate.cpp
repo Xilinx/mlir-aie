@@ -964,7 +964,8 @@ struct AIEObjectFifoAllocatePass
       if (!flow.getPacket())
         continue;
       if (llvm::any_of(flow.getSourceNames(), [&](StringRef name) {
-            return lookupEndpoint(name).getOperation() == endpoint.getOperation();
+            return lookupEndpoint(name).getOperation() ==
+                   endpoint.getOperation();
           }))
         return true;
     }
@@ -2213,17 +2214,17 @@ struct AIEObjectFifoAllocatePass
       if (flow.getSources().size() != 1)
         continue;
       RouteEndpoint sender = lookupEndpoint(*flow.getSourceNames().begin());
-      auto src =
-          sender ? dyn_cast<ObjectFifoDmaEndpointOp>(sender.getOperation())
-                 : nullptr;
+      auto src = sender
+                     ? dyn_cast<ObjectFifoDmaEndpointOp>(sender.getOperation())
+                     : nullptr;
       if (!src || !src.getOutOfOrder())
         continue;
-      for (auto destName :
-           flow.getDestinationNames()) {
+      for (auto destName : flow.getDestinationNames()) {
         RouteEndpoint receiver = lookupEndpoint(destName);
         auto dst =
-            receiver ? dyn_cast<ObjectFifoDmaEndpointOp>(receiver.getOperation())
-                     : nullptr;
+            receiver
+                ? dyn_cast<ObjectFifoDmaEndpointOp>(receiver.getOperation())
+                : nullptr;
         if (!dst)
           continue;
         ObjectFifoPoolOp from = src.getPoolOp(), to = dst.getPoolOp();
@@ -2238,7 +2239,8 @@ struct AIEObjectFifoAllocatePass
           to.setOutOfOrderTagsAttr(
               DenseI32ArrayAttr::get(to.getContext(), tags));
         }
-        from.setOutOfOrderTagsAttr(DenseI32ArrayAttr::get(from.getContext(), tags));
+        from.setOutOfOrderTagsAttr(
+            DenseI32ArrayAttr::get(from.getContext(), tags));
       }
     }
 
