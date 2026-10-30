@@ -12,8 +12,8 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -93,7 +93,7 @@ def test_only_the_latest_run_records_are_kept(snap, tmp_path):
     ],
 )
 def test_required_comparison_records_survive_a_long_refusal_tail(
-    snap, tmp_path, monkeypatch, source, directory, changes, selected, previous
+    snap, tmp_path, source, directory, changes, selected, previous
 ):
     runs = [
         {
@@ -120,30 +120,29 @@ def test_required_comparison_records_survive_a_long_refusal_tail(
     expected = {"27", "28", "29", selected}
     if previous:
         expected.add(previous)
-    read = []
+    for path, value in data.items():
+        dest = tmp_path / path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(value), encoding="utf-8")
     if source == "dir":
-        for path, value in data.items():
-            dest = tmp_path / path
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(json.dumps(value))
         files = snap.collect(snap.Directory(tmp_path))
     else:
-
-        def git(command, **kwargs):
-            assert command[:3] == ["git", "-C", str(snap.ROOT)]
-            if command[3] == "ls-tree":
-                assert command[6] == "publication"
-                return SimpleNamespace(stdout="\n".join(data))
-            assert command[3] == "show"
-            ref, path = command[4].split(":", 1)
-            assert ref == "publication"
-            read.append(path)
-            return SimpleNamespace(stdout=json.dumps(data[path]).encode())
-
-        monkeypatch.setattr(snap.subprocess, "run", git)
-        files = snap.collect(snap.GitRef("publication"))
-        assert set(read) == set(files)
-        assert len(read) == len(files)
+        # A publication branch with a page beside the data and a file outside it.
+        (tmp_path / directory / "index.html").write_text("<html></html>")
+        (tmp_path / "README.md").write_text("not published data")
+        for args in (
+            ["init", "-q", "-b", "publication"],
+            ["add", "-A"],
+            ["commit", "-q", "-m", "publication"],
+        ):
+            subprocess.run(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+                cwd=tmp_path,
+                check=True,
+                capture_output=True,
+            )
+        files = snap.collect(snap.GitRef("publication", tmp_path))
+        assert set(files) <= set(data)
     kept = {Path(p).stem for p in files if "/runs/" in p}
     assert kept == expected
     assert len(kept) <= snap.RUNS_KEPT + 2
@@ -224,9 +223,12 @@ def test_a_page_without_a_head_is_refused(snap):
         snap.snapshot("<html></html>", {})
 
 
-def test_help_without_a_module_docstring(snap, monkeypatch, capsys):
-    monkeypatch.setattr(snap, "__doc__", None)
-    with pytest.raises(SystemExit) as result:
-        snap.main(["--help"])
-    assert result.value.code == 0
-    assert "--ref" in capsys.readouterr().out
+def test_help_without_a_module_docstring():
+    # -OO strips docstrings.
+    result = subprocess.run(
+        [sys.executable, "-OO", ROOT / "utils/kernel_checks/snapshot.py", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--ref" in result.stdout
