@@ -65,7 +65,8 @@ if __name__ == "__main__":
 
 Swap `kernels.add` for `kernels.mul`, or switch to `transform_parallel` +
 `kernels.relu`/`kernels.softmax`/`kernels.gelu` for a unary op. Full catalog and the dtype /
-tile-size limits of each kernel are in [`builtin_kernels.md`](builtin_kernels.md).
+tile-size limits of each kernel are in
+[`programming_guide/kernels_library.md`](../../../programming_guide/kernels_library.md).
 
 ---
 
