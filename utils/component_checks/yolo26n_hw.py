@@ -575,7 +575,8 @@ def main(argv=None) -> int:
         "--n-images",
         type=int,
         default=128,
-        help="COCO images to run, a multiple of 8 (default: 128, all of coco128: "
+        help=f"COCO images to run, a multiple of {max(BATCHES)}, the largest batch "
+        "(default: 128, all of coco128: "
         "mAP50 on 8 images is noise -- the int8 model even beats fp32 there)",
     )
     parser.add_argument(

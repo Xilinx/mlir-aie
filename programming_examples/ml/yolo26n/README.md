@@ -108,12 +108,13 @@ weights over coco128, and records per image the end-to-end and NPU time
 and the frame rate, with mAP@0.5 against coco128's labels. The current
 figures and their history are on the
 [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=performance).
-To time it yourself:
+To time it yourself, with `B` one of `BATCHES` (1 to 64):
 
 ```bash
-python yolo26n.py --n 16 --batch B --time
+python yolo26n.py --n 64 --batch B --time
 ```
 
+Every batch is an entry of the same build, so only the first run compiles.
 Each time is the fastest of 20 calls after 10 warm-up calls, the host's wall
 time of the whole `yolo26n(...)` call divided by the batch, beside the
 median. A batch pipelines its images through the array, fills issued three

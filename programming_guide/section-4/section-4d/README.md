@@ -54,7 +54,7 @@ Adding markers has a cost of its own: on AIE2P they grew one kernel's stack fram
 
 ## <u>A worked example: `add`</u>
 
-The bf16 [add.cc](../../../aie_kernels/eltwise/add.cc) kernel used to run one load/add/store chain per loop iteration. On AIE2P it now runs four. Here is how that change looks through each tool.
+The bf16 [add.cc](../../../aie_kernels/eltwise/add.cc) kernel once ran one load/add/store chain per loop iteration, and a change made it run four on AIE2P. Here is how that change looks through each tool. (The kernel has moved on since; the end of this example says where it stands now.)
 
 **Hardware first.** The `add` contract declares `Trace.whole_call()`, so the performance check times it. Time the 16-call case with the kernel in your checkout and, in the same run, with a snapshot of the old one. Run from the root of the checkout:
 
@@ -120,9 +120,11 @@ Now check the arithmetic: the old loop does one vector (32 elements) per iterati
 
 Twelve bundles do four useful things. Both inputs are loaded with `vlda.conv.fp32.bf16`, a load that converts bf16 to float on the way in and exists only on load unit A, so the two loads take two bundles instead of sharing one. The `vadd.f` then waits out the load latency, and the store waits for the add. Nothing else is available to fill the gaps: the loop is **latency-bound**, not limited by any unit.
 
-The shipped loop gives the scheduler four independent chains. Its 18 bundles start with eight `vlda.conv` loads back to back, and the adds and stores of earlier chains fill the bundles that were empty. 4.5 bundles per vector instead of 12. The loads on unit A now set a floor of 2 bundles per vector, so there is still some room, but the easy win is taken.
+The four-chain loop gives the scheduler four independent chains. Its 18 bundles start with eight `vlda.conv` loads back to back, and the adds and stores of earlier chains fill the bundles that were empty. 4.5 bundles per vector instead of 12. The loads on unit A now set a floor of 2 bundles per vector, so there is still some room, but the easy win is taken.
 
 AIE2 took the opposite route. There the four-chain body needs more bundles than the pipeliner's limit (`SwpMaxMii` 27), so it ran unoverlapped. The AIE2 branch of `add.cc` keeps one chain under `AIE_LOOP_NO_UNROLL` with `__restrict` pointers, and the pipeliner overlaps its iterations to one vector per cycle: 342 → 78 cycles on an npu1.
+
+Both branches have since converged on one chain that removes the floor itself. The tuned AIE2 and AIE2P paths run `eltwise_vadd_mac`: only `a` converts on load, `b` loads as bf16 on load unit B and is added as `b * 1` in a `mac`, so the two loads no longer queue on unit A and the loop pipelines to one vector per cycle (II1 on AIE2P). The four-chain loop above is now the untuned branch, which a build with `AIE_KERNELS_PORTABLE=1` compiles; set it to reproduce this example's numbers.
 
 This is the pattern for the rest of the section: hardware says whether it got faster, the remarks say what the compiler did, and the bundles say why.
 

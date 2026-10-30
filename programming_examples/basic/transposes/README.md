@@ -29,11 +29,11 @@ Each `@iron.jit` function in [`transposes.py`](./transposes.py) raises `ValueErr
 Standalone (JIT + verify on NPU, no C++):
 
 ```shell
-python3 transposes.py -d npu2 -s dma          # int32 64x64
-python3 transposes.py -d npu2 -s dma_packet   # int32 64x32
+python3 transposes.py -d npu2 -s dma          # uint32 64x64
+python3 transposes.py -d npu2 -s dma_packet   # uint32 64x32
 python3 transposes.py -d npu2 -s shuffle      # uint8 16x16
-python3 transposes.py -d npu2 -s combined     # int32 128x128, m=n=32, s=8
-python3 transposes.py -d npu2 -s dyn          # bf16 48x37 (deliberately not a power of 2)
+python3 transposes.py -d npu2 -s combined     # uint32 128x128, m=n=32, s=8
+python3 transposes.py -d npu2 -s dyn          # uint16 48x37 (deliberately not a power of 2)
 ```
 
 Pick `--dtype-bytes 1|2|4`, `-M`, `-K`, plus `-m`/`-n`/`--ss` for `combined`.  Strategies that can't satisfy the request fail fast with a clear `ValueError`.

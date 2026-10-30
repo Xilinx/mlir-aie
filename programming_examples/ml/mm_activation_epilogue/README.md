@@ -24,12 +24,10 @@ instead compiles all four epilogue bodies into one resident program and
 switches between them with an `aiex.npu.rtp_write`-class dispatch: same
 xclbin, same `hw_context`, no reload.
 
-On NPU2, identity/SiLU/GELU dispatch clean: identity is bit-exact against
-the reference, and SiLU and GELU hold the `atol=0.05` gate over a `[-8, 8]`
-sweep. ReLU has not been run on NPU2 hardware; over that same `[-8, 8]`
-range it matches `numpy.maximum` bit-exactly in host emulation, which is
-weaker evidence than the other three modes carry but is what a pure
-comparison with no SFU transcendental is expected to give.
+On NPU2 hardware (`run_strix.lit`), all four modes are checked: identity
+and ReLU are bit-exact against the reference (ReLU against `numpy.maximum`),
+and SiLU and GELU hold the `atol=0.05` gate, on inputs drawn uniformly from
+`[-8, 8]`.
 
 On NPU1, where AIE2 has no tanh instruction, SiLU and GELU take tanh from
 the `getTanhBf16` lookup table in `aie_runtime_lib/AIE2/`. All four modes
