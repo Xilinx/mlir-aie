@@ -619,12 +619,14 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 LogicalResult
 ObjectFifoTransportAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                                 ObjectFifoTransportMode mode,
-                                PacketInfoAttr packet) {
+                                PacketInfoAttr packet, bool out_of_order) {
   // A packet header rides a stream-switch connection the DMAs drive, so only
   // the paths that may use the DMAs can honour one.
   if (packet && mode == ObjectFifoTransportMode::SharedMem)
     return emitError() << "`packet` belongs to a dma or auto transport, not "
                        << stringifyObjectFifoTransportMode(mode);
+  if (out_of_order && !packet)
+    return emitError() << "`out_of_order` requires a packet transport";
   return success();
 }
 
@@ -666,6 +668,8 @@ LogicalResult ObjectFifoCreateOp::verify() {
   // quietly take the default path instead. Name them to fail that loudly.
   static constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
       replaced[] = {
+          {"out_of_order", "transport = #aie.transport<dma, packet = "
+                           "#aie.packet_info<>, out_of_order = true>"},
           {"via_DMA", "transport = #aie.transport<dma>"},
           {"packet", "transport = #aie.transport<dma, packet = "
                      "#aie.packet_info<>>"},
@@ -3746,6 +3750,49 @@ LogicalResult PacketFlowOp::verify() {
 // CoreOp
 //===----------------------------------------------------------------------===//
 
+/// The channels a core's own tile has in `direction`.
+static uint32_t channelsOfOwnTile(CoreOp core, DMAChannelDir direction,
+                                  const AIETargetModel &targetModel) {
+  TileOp tile = core.getTileOp();
+  int col = tile.getCol(), row = tile.getRow();
+  if (direction == DMAChannelDir::MM2S)
+    return targetModel.getNumSourceSwitchboxConnections(col, row,
+                                                        WireBundle::DMA);
+  return targetModel.getNumDestSwitchboxConnections(col, row, WireBundle::DMA);
+}
+
+LogicalResult DmaPushQueueOp::verify() {
+  auto core = (*this)->getParentOfType<CoreOp>();
+  TileOp tile = core.getTileOp();
+  const AIETargetModel &targetModel = getTargetModel(*this);
+  uint32_t channels = channelsOfOwnTile(core, getDirection(), targetModel);
+  if (getChannel() >= static_cast<int32_t>(channels))
+    return emitOpError("pushes onto ")
+           << stringifyDMAChannelDir(getDirection()) << " channel "
+           << getChannel() << ", but tile (" << tile.getCol() << ", "
+           << tile.getRow() << ") has " << channels;
+  uint32_t maxRepeat = targetModel.getMaxRepeatCount();
+  if (getRepeatCount() < 0 ||
+      static_cast<uint32_t>(getRepeatCount()) > maxRepeat)
+    return emitOpError("repeat_count must be in [0, ") << maxRepeat << "]";
+  return success();
+}
+
+LogicalResult DmaPollForQueueSpaceOp::verify() {
+  auto core = (*this)->getParentOfType<CoreOp>();
+  TileOp tile = core.getTileOp();
+  const AIETargetModel &targetModel = getTargetModel(*this);
+  uint32_t channels = channelsOfOwnTile(core, getDirection(), targetModel);
+  if (getChannel() >= static_cast<int32_t>(channels))
+    return emitOpError("waits on ")
+           << stringifyDMAChannelDir(getDirection()) << " channel "
+           << getChannel() << ", but tile (" << tile.getCol() << ", "
+           << tile.getRow() << ") has " << channels;
+  if (targetModel.getDmaTaskQueueDepth() == 0)
+    return emitOpError("waits on a task queue, which this device has none of");
+  return success();
+}
+
 LogicalResult CoreOp::verify() {
   if (getBody().empty())
     return emitOpError("should have non-empty body");
@@ -4466,6 +4513,8 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
         /*out_of_order_id=*/nullptr,
+        /*bd_tag=*/nullptr,
+        /*out_of_order_tag=*/nullptr,
         /*burst_length=*/nullptr,
         /*axcache=*/nullptr,
         /*iteration=*/nullptr,

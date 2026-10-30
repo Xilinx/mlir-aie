@@ -429,7 +429,9 @@ def AIE_CoreOp
           OptionalAttr<ConfinedAttr<
               AIEI32Attr, [IntMinValue<1>]>>:$measured_data_alignment,
           // Start alignment for each bank reservation, indexed like its size.
-          OptionalAttr<DenseI32ArrayAttr>:$measured_bank_alignments);
+          OptionalAttr<DenseI32ArrayAttr>:$measured_bank_alignments,
+          // Enable the processor bus before starting this core.
+          UnitAttr:$processor_bus);
   let summary = "Declare a core module";
   let description = [{
     This operation represents an AIEngine processor core belonging to a tile.
@@ -442,6 +444,14 @@ def AIE_CoreOp
     present in the core; in that case, the binary file linked dictates what
     will run in the core. The path specified should is relative to the MLIR
     file.
+
+    The `processor_bus` unit attribute requires the device configuration to
+    enable this core's processor bus before starting the core. The bus provides
+    access to the tile's memory-mapped registers; accessing them while it is
+    disabled stalls the core. `--aie-lower-core-issued-configuration` sets this
+    attribute when it lowers DMA queue pushes or queue-space polls. Set it
+    explicitly when external kernel code needs the same register access.
+    Omitting the attribute does not request processor-bus enablement.
 
     This op has an optional `stack_size` attribute, to control the amount of memory (in bytes)
     reserved for the stack.  When absent the reservation is the larger of the
@@ -1216,6 +1226,13 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       only once unless it is pushed with a `repeat_count`, set on the task or
       on its `aiex.dma_start_task`; this is not specific to the runtime
       length, but a runtime length makes it easy to miss.
+
+    `bd_tag` and `out_of_order_tag` are temporary compiler attributes used
+    before hardware BD IDs are assigned. `bd_tag` identifies a descriptor;
+    a sender's `out_of_order_tag` references the receiving descriptor by that
+    tag. `--aie-assign-bd-ids` resolves the reference to `out_of_order_id` and
+    removes both temporary attributes. Tags are compiler identifiers, not
+    packet-routing IDs or hardware BD IDs.
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,
@@ -1242,6 +1259,12 @@ def AIE_DMABDOp : AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // Sender-side id stamped into the packet header. Selects which receive
       // BD (by bd id) an out-of-order S2MM channel places this data into.
       OptionalAttr<AIEI32Attr>:$out_of_order_id,
+      // Compiler-assigned identifier for references to this descriptor before
+      // --aie-assign-bd-ids assigns its hardware BD ID.
+      OptionalAttr<AIEI32Attr>:$bd_tag,
+      // The receiving descriptor's bd_tag. --aie-assign-bd-ids replaces this
+      // reference with that descriptor's hardware ID in out_of_order_id.
+      OptionalAttr<AIEI32Attr>:$out_of_order_tag,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
       // AxCACHE is shim-NOC-only, like burst_length. It is left unset (rather
       // than DefaultValuedOptionalAttr, whose value must be a TableGen literal)
@@ -2011,6 +2034,78 @@ def AIE_EventOp : AIE_Op<"event", []> {
   }];
 }
 
+def AIE_DmaPushQueueOp : AIE_Op<"dma_push_queue", [HasAncestor<"CoreOp">]> {
+  let summary = "Enqueue a DMA task from the core on the same tile";
+  let description = [{
+    Enqueues a task on the specified DMA `channel` and `direction` of the
+    enclosing core's tile. This operation submits work to an already configured
+    channel; it does not configure buffer descriptors or wait for completion.
+
+    In normal mode, `bd_id` selects the first descriptor of the task's BD
+    chain. The task executes the chain `repeat_count + 1` times. In
+    `out_of_order` mode (S2MM only), each incoming packet selects its receiving
+    descriptor through the packet header, and the task accepts
+    `repeat_count + 1` objects. The hardware ignores `bd_id` in that mode.
+
+    An out-of-order channel stops receiving when it has consumed all queued
+    tasks. Additional pushes are needed to continue receiving. A cyclic BD
+    chain in normal mode can instead continue without further core-issued
+    pushes.
+
+    The target's `getDmaTaskQueueDepth()` gives the queue capacity. Pushing
+    onto a full queue discards the task and sets the sticky overflow bit,
+    which can leave the program waiting for a transfer that will never run.
+    Use `aie.dma_poll_for_queue_space` before pushing unless queue space is
+    guaranteed by the program's synchronization.
+
+    The program must avoid circular dependencies: if the core blocks waiting
+    for a DMA transfer before submitting the task needed to complete that
+    transfer, neither can progress. Queue-space polling does not resolve such
+    dependencies.
+
+    Lowering emits processor-bus register writes and sets `processor_bus` on
+    the enclosing `aie.core`, so device configuration enables the bus before
+    the core starts.
+  }];
+  let arguments = (ins DMAChannelDir:$direction,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$bd_id,
+      // Encodes one less than the number of chain executions, or received
+      // objects in out-of-order mode. Zero requests one execution/object.
+      DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count, UnitAttr:$out_of_order);
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $direction `:` $channel `)` `bd_id` $bd_id attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_DmaPollForQueueSpaceOp
+    : AIE_Op<"dma_poll_for_queue_space", [HasAncestor<"CoreOp">]> {
+  let summary = "Poll a DMA task queue on the core's tile until it has space";
+  let description = [{
+    Repeatedly reads the task-queue status of the specified DMA `channel` and
+    `direction` on the enclosing core's tile. Returns when the number of
+    queued tasks is below the target's queue capacity. The core performs no
+    other work while this operation waits.
+
+    This operation neither enqueues a task nor reserves a queue slot. If
+    another issuer can push to the same queue between this poll and a later
+    push, the program must synchronize those issuers separately.
+
+    Lowering emits a loop containing processor-bus register reads and sets
+    `processor_bus` on the enclosing `aie.core`, so device configuration
+    enables the bus before the core starts.
+  }];
+  let arguments = (ins DMAChannelDir:$direction,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel);
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $direction `:` $channel `)` attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
 def AIE_GetStreamOp : AIE_Op<"get_stream", [HasParent<"CoreOp">]>,
                       Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
   let summary = "An op to read from a stream channel/port of a switchbox";
@@ -2479,6 +2574,19 @@ def AIE_ObjectFifoCreateOp
            prod_port = #aie.end_port<DMA : 1>}
           : !aie.objectfifo<memref<16xi32>>
     ```
+
+    With `out_of_order = true` in `transport`, the sender sets each packet's
+    `out_of_order_id` to select a receiving buffer descriptor. The S2MM channel
+    uses that ID instead of advancing through a fixed BD chain, allowing
+    multiple packet FIFOs to share the channel. Packet transport is required.
+    The current lowering requires matching descriptor counts and object byte
+    sizes at the sending and receiving pools.
+
+    This changes descriptor selection, not packet arrival order. A packet
+    targeting a buffer whose lock is unavailable stalls the channel and all
+    packets behind it, including packets for other FIFOs. The program must
+    arrange its acquire/release order and buffering to avoid circular waits;
+    matching average producer and consumer rates alone is not sufficient.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,
@@ -2560,6 +2668,13 @@ def AIE_ObjectFifoCreateOp
 
     bool forcesSharedMemory() {
       return getTransportMode() == ObjectFifoTransportMode::SharedMem;
+    }
+
+    /// Whether the requested DMA transport selects receiving BDs by packet.
+    bool getOutOfOrder() {
+      if (ObjectFifoTransportAttr t = getTransportAttr())
+        return t.getOutOfOrder();
+      return false;
     }
 
     /// What drives consumer `index`'s end, or null for a DMA channel
@@ -2842,6 +2957,12 @@ def AIE_ObjectFifoPoolOp
                                     produceLock = @prod, consumeLock = @cons}
       }
     ```
+
+    `out_of_order_tags` is a compiler-generated array of receiving BD tags,
+    indexed by buffer slot. Both pools of an out-of-order transfer carry the
+    receiving pool's tags. DMA lowering attaches each tag as `bd_tag` to the
+    receiving descriptor and as `out_of_order_tag` to the matching sending
+    descriptor. BD ID assignment later resolves these references.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile, AIEI32Attr:$depth,
@@ -2862,7 +2983,11 @@ def AIE_ObjectFifoPoolOp
       UnitAttr:$contiguous,
       // On a contiguous pool, `[before, after]` objects of zeros around the
       // `depth` objects in its buffer, which no endpoint fills.
-      OptionalAttr<DenseI32ArrayAttr>:$zeroObjects);
+      OptionalAttr<DenseI32ArrayAttr>:$zeroObjects,
+      // Receiving BD tags indexed by buffer slot. The sender and receiver
+      // pools carry the same tags to pair their descriptors before BD IDs
+      // are assigned.
+      OptionalAttr<DenseI32ArrayAttr>:$out_of_order_tags);
 
   let regions = (region SizedRegion<1>:$segments);
 
@@ -2999,6 +3124,12 @@ def AIE_ObjectFifoDmaEndpointOp
       aie.objectfifo.dma_endpoint @a_in(%core) fills @a {turns = [@a_in, @a_in, @b_in]}
       aie.objectfifo.dma_endpoint @b_in(%core) fills @b {turns = [@a_in, @a_in, @b_in]}
     ```
+
+    `out_of_order` has direction-specific behavior. A filling endpoint
+    receives over S2MM and enables packet-directed BD selection. A draining
+    endpoint sends over MM2S and places the matching receiving BD ID in each
+    packet header. Both endpoints use their pools' `out_of_order_tags` to
+    associate the sending and receiving descriptors before ID assignment.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
@@ -3017,7 +3148,11 @@ def AIE_ObjectFifoDmaEndpointOp
       OptionalAttr<StrAttr>:$fifoName,
       OptionalAttr<FlatSymbolRefArrayAttr>:$dispatch,
       OptionalAttr<PacketInfoArrayAttr>:$dispatchPackets,
-      OptionalAttr<FlatSymbolRefArrayAttr>:$turns);
+      OptionalAttr<FlatSymbolRefArrayAttr>:$turns,
+      // On a filling (S2MM) endpoint, enable out-of-order reception. On a
+      // draining (MM2S) endpoint, set the receiving BD ID in each packet's
+      // header. See aie.objectfifo's transport attribute.
+      UnitAttr:$out_of_order);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict

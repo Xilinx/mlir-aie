@@ -693,20 +693,30 @@ class Transport:
     Lowers to the ``transport`` attribute on ``aie.objectfifo``. Build one with
     `auto`, `shared_mem` or `dma`, for example ``Transport.dma()`` or
     ``Transport.dma(packet=Packet(id=3))``.
+
+    ``out_of_order=True`` requires a ``Packet`` and makes packet headers select
+    receiving buffer descriptors, allowing FIFOs to share an S2MM channel.
+    It changes descriptor selection, not packet arrival order. The receiving
+    BD ID is separate from the packet ID used for routing. With ``auto``, these
+    settings apply only when DMA is selected. False leaves the lowering free
+    to enable out-of-order reception for FIFOs pinned to one receiving channel.
     """
 
     mode: str
     packet: Packet | None = None
+    out_of_order: bool = False
 
     @staticmethod
-    def auto(packet: Packet | None = None) -> "Transport":
+    def auto(
+        packet: Packet | None = None, *, out_of_order: bool = False
+    ) -> "Transport":
         """Leave the path to the lowering.
 
         It uses shared memory when both ends reach one memory module and
         nothing else forces DMAs. A packet header only matters if the DMAs end
         up carrying the fifo.
         """
-        return Transport("auto", packet)
+        return Transport("auto", packet, out_of_order)
 
     @staticmethod
     def shared_mem() -> "Transport":
@@ -714,14 +724,16 @@ class Transport:
         return Transport("shared_mem")
 
     @staticmethod
-    def dma(packet: Packet | None = None) -> "Transport":
+    def dma(packet: Packet | None = None, *, out_of_order: bool = False) -> "Transport":
         """The DMAs, packet-switched when given a `Packet`."""
-        return Transport("dma", packet)
+        return Transport("dma", packet, out_of_order)
 
     def __str__(self) -> str:
         fields = [self.mode]
         if self.packet is not None:
             fields.append(f"packet = {self.packet}")
+        if self.out_of_order:
+            fields.append("out_of_order = true")
         return f"#aie.transport<{', '.join(fields)}>"
 
     def to_attr(self) -> Attribute:

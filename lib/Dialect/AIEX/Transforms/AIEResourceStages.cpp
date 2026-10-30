@@ -33,7 +33,8 @@ void AIEX::addTraceStage(OpPassManager &pm) {
 
 void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
                             bool packetSwObjFifos, bool ctrlPktOverlay,
-                            bool loadPdiToCtrlPkt, bool skipObjectFifoVerify) {
+                            bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
+                            bool checkQueueSpace) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(createAIECanonicalizeDevicePass());
   // Before lock IDs and buffer addresses, which its new locks and buffers need.
@@ -49,7 +50,8 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
     pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
 
   OpPassManager &dpm = pm.nest<DeviceOp>();
-  addObjectFifoLoweringPasses(dpm, packetSwObjFifos, skipObjectFifoVerify);
+  addObjectFifoLoweringPasses(dpm, packetSwObjFifos, skipObjectFifoVerify,
+                              checkQueueSpace);
   AIEObjectFifoUnrollOptions unroll;
   unroll.clDefaultDynamic = dynamicObjFifos;
   dpm.addPass(createAIEObjectFifoUnrollPass(unroll));
@@ -57,6 +59,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   dpm.addPass(createAIEAssignLockIDsPass());
   dpm.addPass(createAIEReserveRuntimeBDIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
+  dpm.addPass(createAIELowerCoreIssuedConfigurationPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(createAIEBroadcastPacketPass());
   dpm.addPass(createAIELowerMulticastPass());

@@ -26,18 +26,27 @@ struct ObjectFifoLoweringOptions
       *this, "skip-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR."),
       llvm::cl::init(false)};
+  Option<bool> checkQueueSpace{
+      *this, "check-queue-space",
+      llvm::cl::desc("Wait for room on the task queue before each push a core "
+                     "makes onto an out-of-order channel."),
+      llvm::cl::init(true)};
 };
 } // namespace
 
 void xilinx::AIE::addObjectFifoLoweringPasses(OpPassManager &pm,
                                               bool packetSwitched,
-                                              bool skipVerify) {
+                                              bool skipVerify,
+                                              bool checkQueueSpace) {
   pm.addPass(createAIEObjectFifoSplitPass());
   if (!skipVerify) {
     pm.addPass(createAIEObjectFifoVerifyPass());
   }
   pm.addPass(createAIEAssignPacketIdsPass(packetSwitched));
   pm.addPass(createAIEObjectFifoAllocatePass());
+  AIEObjectFifoInsertCoreQueuePushesOptions pushOptions;
+  pushOptions.checkQueueSpace = checkQueueSpace;
+  pm.addPass(createAIEObjectFifoInsertCoreQueuePushesPass(pushOptions));
   pm.addPass(createAIEObjectFifoLowerDMAsPass());
   pm.addPass(createAIEObjectFifoLowerCoresPass());
   pm.addPass(createAIEObjectFifoErasePoolsPass());
@@ -49,6 +58,7 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
       "Lower aie.objectfifo to buffers, locks, flows and DMA programs",
       [](OpPassManager &pm, const ObjectFifoLoweringOptions &options) {
         addObjectFifoLoweringPasses(pm, options.packetSwitched,
-                                    options.skipVerify);
+                                    options.skipVerify,
+                                    options.checkQueueSpace);
       });
 }

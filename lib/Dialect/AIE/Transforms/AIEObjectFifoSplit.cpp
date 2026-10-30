@@ -239,7 +239,8 @@ struct AIEObjectFifoSplitPass
         disableSynchronization || from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr(),
-        /*contiguous=*/false, /*zeroObjects=*/nullptr);
+        /*contiguous=*/false, /*zeroObjects=*/nullptr,
+        /*out_of_order_tags=*/DenseI32ArrayAttr());
     createSegments(pool, loc, extents);
     return pool;
   }
@@ -297,7 +298,8 @@ struct AIEObjectFifoSplitPass
         iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()), /*dispatch=*/ArrayAttr(),
-        /*dispatchPackets=*/ArrayAttr(), /*turns=*/ArrayAttr());
+        /*dispatchPackets=*/ArrayAttr(), /*turns=*/ArrayAttr(),
+        from.getOutOfOrder() ? builder.getUnitAttr() : UnitAttr());
   }
 
   /// An end with no pool behind it: a shim whose transfers the runtime issues,
@@ -342,7 +344,8 @@ struct AIEObjectFifoSplitPass
         fifo.getDisableSynchronization(),
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr(), /*contiguous=*/false,
-        /*zeroObjects=*/nullptr);
+        /*zeroObjects=*/nullptr,
+        /*out_of_order_tags=*/DenseI32ArrayAttr());
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }
@@ -391,6 +394,46 @@ struct AIEObjectFifoSplitPass
           return fifo.emitOpError("consumer tile is not a placed aie.tile; run "
                                   "--aie-place-tiles before this pass");
         }
+      }
+    }
+    return success();
+  }
+
+  /// Two fifos pinned to one receiving channel can only share it out of
+  /// order, since a channel walking a chain holds one fifo's order, so
+  /// pinning them together selects it.
+  LogicalResult
+  selectOutOfOrderForSharedChannels(ArrayRef<ObjectFifoCreateOp> fifos) {
+    DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
+        onChannel;
+    for (ObjectFifoCreateOp fifo : fifos) {
+      for (auto [index, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
+        ObjectFifoEndPortAttr port = fifo.getConsumerPort(index);
+        if (!port || port.isCore())
+          continue;
+        std::optional<int> pinnedChannel = port.channelIndex();
+        if (!pinnedChannel)
+          continue;
+        int channel = *pinnedChannel;
+        auto tile = consumer.getDefiningOp<TileOp>();
+        if (channel < 0 || !tile)
+          continue;
+        onChannel[{tile.getCol(), tile.getRow(), channel}].push_back(fifo);
+      }
+    }
+    for (auto &[channel, sharing] : onChannel) {
+      if (sharing.size() < 2)
+        continue;
+      for (ObjectFifoCreateOp fifo : sharing) {
+        if (!fifo.packetHeader())
+          return fifo.emitOpError(
+              "shares a receiving channel, which it can only do out of order, "
+              "naming each object's buffer in a packet header; make it a "
+              "packet objectfifo");
+        auto transport = fifo.getTransportAttr();
+        fifo.setTransportAttr(ObjectFifoTransportAttr::get(
+            fifo.getContext(), transport.getMode(), transport.getPacket(),
+            /*out_of_order=*/true));
       }
     }
     return success();
@@ -664,7 +707,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
   SmallVector<ObjectFifoCreateOp> fifos(device.getOps<ObjectFifoCreateOp>());
 
   if (failed(verifyTilesArePlaced()) || failed(verifyStreamPortAccesses()) ||
-      failed(verifyLinkAccesses())) {
+      failed(verifyLinkAccesses()) ||
+      failed(selectOutOfOrderForSharedChannels(fifos))) {
     return signalPassFailure();
   }
 

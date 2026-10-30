@@ -906,6 +906,88 @@ SequentialPlacer::buildChannelRequirements(
         linkTileOfSource[sym.getValue()] = linkTileOp;
   }
 
+  // Endpoints that pin the same channel share it, so the tile pays for that
+  // channel once. AIEObjectFifoAllocate's sharesChannel() states which
+  // channels may be shared, and why.
+  //
+  // Keyed on the physical tile, not the logical one: each endpoint pinned to a
+  // tile gets a logical tile of its own, and they share the channel all the
+  // same. An unpinned logical tile has no physical tile yet and cannot share.
+  llvm::DenseMap<std::tuple<int, int, int>, ObjectFifoCreateOp> sharedOut;
+  auto sharesProducerChannel = [&](ObjectFifoCreateOp fifo,
+                                   LogicalTileOp logicalTile) -> bool {
+    ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
+    std::optional<int> pinned =
+        port && !port.isCore() ? port.channelIndex() : std::nullopt;
+    if (!pinned || !logicalTile)
+      return false;
+    std::optional<uint32_t> col = logicalTile.getCol();
+    std::optional<uint32_t> row = logicalTile.getRow();
+    if (!col || !row)
+      return false;
+    AIETileType type = logicalTile.getTileType();
+    if (type != AIETileType::ShimNOCTile && type != AIETileType::ShimPLTile)
+      return false;
+    auto [it, fresh] = sharedOut.try_emplace(
+        {static_cast<int>(*col), static_cast<int>(*row), *pinned}, fifo);
+    if (fresh)
+      return false;
+    ObjectFifoCreateOp other = it->second;
+    auto reject = [&](const Twine &why) {
+      fifo.emitError() << "shares MM2S channel " << *pinned << " with @"
+                       << other.getSymName() << ", but " << why;
+      return false;
+    };
+    if (!fifo.packetHeader() || !other.packetHeader())
+      return reject("a shared channel carries both at once, which only "
+                    "packet-switched routes tell apart");
+    std::optional<uint16_t> id =
+        fifo.packetHeader() ? fifo.packetHeader().getPktId() : std::nullopt;
+    std::optional<uint16_t> otherId =
+        other.packetHeader() ? other.packetHeader().getPktId() : std::nullopt;
+    if (id && otherId && *id == *otherId)
+      return reject(Twine("both pin packet id ") +
+                    Twine(static_cast<unsigned>(*id)));
+    return true;
+  };
+
+  // The receiving counterpart: out-of-order fifos pinned to one S2MM channel
+  // of a tile share it, and the packet ids keep their objects apart.
+  llvm::DenseMap<std::tuple<int, int, int>, ObjectFifoCreateOp> sharedIn;
+  auto sharesConsumerChannel = [&](ObjectFifoCreateOp fifo, Operation *tileOp,
+                                   unsigned consumer) -> bool {
+    auto logicalTile = dyn_cast_or_null<LogicalTileOp>(tileOp);
+    ObjectFifoEndPortAttr port = fifo.getConsumerPort(consumer);
+    if (!logicalTile || !port || port.isCore() || !port.channelIndex())
+      return false;
+    int channel = *port.channelIndex();
+    std::optional<uint32_t> col = logicalTile.getCol();
+    std::optional<uint32_t> row = logicalTile.getRow();
+    if (channel < 0 || !col || !row)
+      return false;
+    auto [it, fresh] = sharedIn.try_emplace(
+        {static_cast<int>(*col), static_cast<int>(*row), channel}, fifo);
+    if (fresh)
+      return false;
+    ObjectFifoCreateOp other = it->second;
+    auto reject = [&](const Twine &why) {
+      fifo.emitError() << "shares S2MM channel " << channel << " with @"
+                       << other.getSymName() << ", but " << why;
+      return false;
+    };
+    if (!fifo.getOutOfOrder() || !other.getOutOfOrder())
+      return reject("a channel its fifos receive in turn holds their order; "
+                    "out_of_order puts that order in each object's header");
+    std::optional<uint16_t> id =
+        fifo.packetHeader() ? fifo.packetHeader().getPktId() : std::nullopt;
+    std::optional<uint16_t> otherId =
+        other.packetHeader() ? other.packetHeader().getPktId() : std::nullopt;
+    if (id && otherId && *id == *otherId)
+      return reject(Twine("both pin packet id ") +
+                    Twine(static_cast<unsigned>(*id)));
+    return true;
+  };
+
   // Count channels for every ObjectFifo, omitting only the link-tile side of
   // linked fifos. The off-link-tile endpoint still needs DMA: a shim that
   // produces a linked source fifo consumes an MM2S channel; a core that
@@ -921,7 +1003,8 @@ SequentialPlacer::buildChannelRequirements(
     // Check if ANY consumer is a different tile type (needs DMA channel)
     bool producerNeedsDMA = false;
 
-    for (Value consumerTile : ofOp.getConsumerTiles()) {
+    for (auto [consumerIndex, consumerTile] :
+         llvm::enumerate(ofOp.getConsumerTiles())) {
       auto *consumerOp = consumerTile.getDefiningOp();
       auto consumerLogicalTile = dyn_cast_or_null<LogicalTileOp>(consumerOp);
 
@@ -933,16 +1016,20 @@ SequentialPlacer::buildChannelRequirements(
         continue;
 
       // This consumer needs a DMA channel (unless it's the link tile, which
-      // the link loop credits separately).
-      if (consumerOp && consumerOp != linkConsumer)
+      // the link loop credits separately, or it shares an already-counted
+      // channel with another fifo).
+      if (consumerOp && consumerOp != linkConsumer &&
+          !sharesConsumerChannel(ofOp, consumerOp, consumerIndex))
         channelRequirements[consumerOp].first++; // input++
 
       producerNeedsDMA = true;
     }
 
     // Producer needs ONE output channel if any consumer needs DMA (unless the
-    // producer IS the link tile of an outgoing linked dest fifo).
-    if (producerNeedsDMA && producerOp && !skipProducerSide)
+    // producer IS the link tile of an outgoing linked dest fifo, or it shares
+    // an already-counted shim channel).
+    if (producerNeedsDMA && producerOp && !skipProducerSide &&
+        !sharesProducerChannel(ofOp, producerLogicalTile))
       channelRequirements[producerOp].second++; // output++
   }
 

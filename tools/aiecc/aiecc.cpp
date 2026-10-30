@@ -1016,11 +1016,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
            ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
            ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
            skipVerify = skipObjectFifoVerify.getValue(),
-           opt = optLevel.getValue()](mlir::MLIRContext *ctx,
-                                      mlir::ModuleOp mod) {
-            return getInputWithAddressesPipeline(ctx, mod, dyn, pkt, ctrl, bf16,
-                                                 opt, ldpdi, skipVerify,
-                                                 /*assignAddresses=*/false);
+           queueSpace = checkQueueSpace.getValue(), opt = optLevel.getValue()](
+              mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
+            return getInputWithAddressesPipeline(
+                ctx, mod, dyn, pkt, ctrl, bf16, opt, ldpdi, skipVerify,
+                /*assignAddresses=*/false, queueSpace);
           }});
 
   // Scratchpad run-time parameters sidecar file
