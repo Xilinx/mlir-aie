@@ -16,6 +16,17 @@ from types import CodeType, FunctionType
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
+# A NameLoc's name says what it names: an IRON object ("iron:of0") or the
+# Python function a traced statement ran in ("py:core_fn").
+IRON_PREFIX = "iron:"
+PYTHON_PREFIX = "py:"
+
+
+def iron_name(name: str) -> str:
+    """Return the NameLoc name for the IRON object called `name`."""
+    return IRON_PREFIX + name
+
+
 # Unresolved, like co_filename: a dev build symlinks build/python/aie to source.
 AIE_ROOT = Path(__file__).parent.parent
 # normcase: Windows paths compare without regard to case.
@@ -128,7 +139,7 @@ class SourceSite:
             loc = ir.Location.callsite(
                 loc, [ir.Location.file(*caller) for caller in self.callers]
             )
-        return ir.Location.name(name, childLoc=loc) if name else loc
+        return ir.Location.name(iron_name(name), childLoc=loc) if name else loc
 
 
 def user_code_location() -> "ir.Location | None":
@@ -145,18 +156,54 @@ def user_code_location() -> "ir.Location | None":
     return site.location() if site.filename else None
 
 
-def traced_body(fn) -> contextlib.AbstractContextManager:
-    """Return the scope that gives each op `fn` emits its own source statement.
+def _python_names(loc: "ir.Location") -> "ir.Location":
+    """Return `loc` with each unprefixed NameLoc name marked as a function."""
+    if isinstance(loc, ir.NameLoc):
+        name = loc.name_str
+        if not name.startswith((IRON_PREFIX, PYTHON_PREFIX)):
+            name = PYTHON_PREFIX + name
+        return ir.Location.name(name, childLoc=_python_names(loc.child_loc))
+    if isinstance(loc, ir.CallSiteLoc):
+        return ir.Location.callsite(
+            _python_names(loc.callee), [_python_names(loc.caller)]
+        )
+    if isinstance(loc, ir.FusedLoc):
+        return ir.Location.fused(
+            [_python_names(child) for child in loc.locations], loc.metadata
+        )
+    return loc
+
+
+def _mark_python_names(op: "ir.Operation") -> None:
+    op.location = _python_names(op.location)
+    for region in op.regions:
+        for block in region.blocks:
+            for child in block.operations:
+                _mark_python_names(child.operation)
+
+
+@contextlib.contextmanager
+def traced_body(fn):
+    """Give each op `fn` emits its own source statement.
+
+    `ir.loc_tracebacks` names each statement's location after the function it
+    ran in; those names are marked as Python functions ("py:") on exit, so a
+    reader can tell them from IRON objects' names ("iron:").
 
     Args:
         fn: A Worker or Runtime body about to run.
 
-    Returns:
-        A traceback-location scope, or a null one when IRON wrote `fn`, whose
-        ops then take the declaring object's location.
+    Yields:
+        Nothing. When IRON wrote `fn`, its ops take the declaring object's
+        location instead.
     """
     if isinstance(fn, FunctionType) and is_internal_file(fn.__code__.co_filename):
-        return contextlib.nullcontext()
-    return ir.loc_tracebacks(
+        yield
+        return
+    block = ir.InsertionPoint.current.block
+    with ir.loc_tracebacks(
         max_depth=1, on_explicit_actn=ir.OnExplicitAction.USE_TRACEBACK
-    )
+    ):
+        yield
+    for op in block.operations:
+        _mark_python_names(op.operation)

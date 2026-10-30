@@ -23,7 +23,7 @@ from ..dialects.aiex import (
 )
 from ..helpers.dialects.scf import _for as range_
 from ..helpers.dialects.scf import forever_
-from ..helpers.sourceloc import SourceSite, traced_body
+from ..helpers.sourceloc import SourceSite, iron_name, traced_body
 from ..helpers.taplib import Affine
 from ..helpers.util import flatten_fn_args
 from ..utils.compile.jit.markers import _DispatchParameter
@@ -57,6 +57,7 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
         wait_for_parameters: bool = False,
+        name: str | None = None,
     ):
         """Construct a Worker.
 
@@ -91,12 +92,16 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
                 one iteration of a ``while_true`` Worker is one dispatch; without
                 it the Worker waits only once, before its first iteration.
                 Requires a ScratchpadParameter in ``fn_args``. Defaults to False.
+            name (str | None, optional): Names the Worker's core in its source
+                location (``iron:<name>``). None lets its configuration name it
+                ``worker<N>``. Defaults to None.
 
         Raises:
             ValueError: Parameters are validated.
             TypeError: An argument is computed per call.
         """
         self._site = SourceSite.capture()
+        self.name = name
         for arg in flatten_fn_args(
             [
                 fn_args or [],
@@ -343,27 +348,36 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
                 barrier_lock = lock(my_tile)
                 barrier.worker_locks.append(barrier_lock)
 
-            @core(
-                my_tile,
-                stack_size=self.stack_size,
-                data_size=self.data_size,
-                dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
+            # The core is named after the Worker; its body's statements keep
+            # their own locations.
+            core_loc = (
+                ir.Location.name(iron_name(self.name), childLoc=ir.Location.current)
+                if self.name
+                else ir.Location.current
             )
-            def core_body():
-                # A Worker that runs until reconfiguration loops with no counter.
-                # A single-shot Worker still wraps its body in an scf.for with
-                # bound 1 so the lowered MLIR matches expectations downstream (the
-                # lower-level aie dialect uses the same pattern). Using Python
-                # range(1) here would emit the body inline with no scf.for wrapper,
-                # which the dataflow lowerer treats differently and can cause
-                # runtime hangs.
-                for setup in self._setup_kernels:
-                    setup()
-                for _ in forever_() if self._while_true else range_(1):
-                    if self._wait_for_parameters:
-                        wait_scratchpad_parameters()
-                    with traced_body(self.core_fn):
-                        self.core_fn(*self.fn_args)
+            with core_loc:
+
+                @core(
+                    my_tile,
+                    stack_size=self.stack_size,
+                    data_size=self.data_size,
+                    dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
+                )
+                def core_body():
+                    # A Worker that runs until reconfiguration loops with no counter.
+                    # A single-shot Worker still wraps its body in an scf.for with
+                    # bound 1 so the lowered MLIR matches expectations downstream (the
+                    # lower-level aie dialect uses the same pattern). Using Python
+                    # range(1) here would emit the body inline with no scf.for wrapper,
+                    # which the dataflow lowerer treats differently and can cause
+                    # runtime hangs.
+                    for setup in self._setup_kernels:
+                        setup()
+                    for _ in forever_() if self._while_true else range_(1):
+                        if self._wait_for_parameters:
+                            wait_scratchpad_parameters()
+                        with traced_body(self.core_fn):
+                            self.core_fn(*self.fn_args)
 
 
 class WorkerRuntimeBarrier(PerDeviceConfiguration):

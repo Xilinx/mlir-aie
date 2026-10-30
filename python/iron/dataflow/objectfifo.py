@@ -28,7 +28,7 @@ from ...helpers.npdtypes import (
     pack_pad_value,
     single_elem_or_list_to_list,
 )
-from ...helpers.sourceloc import SourceSite
+from ...helpers.sourceloc import SourceSite, iron_name
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
@@ -507,6 +507,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 if self._consumer_obj_type is not None
                 else None
             )
+            assert self.name is not None
             op = object_fifo(
                 self.name,
                 self._prod_tile_op(),
@@ -529,7 +530,9 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 transport=self._transport,
                 initValues=self._init_values,
                 consumer_datatype=consumer_datatype,
-                loc=ir.Location.name(self.name, childLoc=loc or self._site.location()),
+                loc=ir.Location.name(
+                    iron_name(self.name), childLoc=loc or self._site.location()
+                ),
                 ip=ip,
             )
             self._op = op
