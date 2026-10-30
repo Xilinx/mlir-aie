@@ -96,6 +96,11 @@ class ActiveSequence:
         """The Runtime whose sequence body is running."""
         return self._runtime
 
+    @property
+    def body(self) -> ir.Block:
+        """The sequence's entry block, which holds the body's top-level ops."""
+        return self._seq_op.body.blocks[0]
+
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
         """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
         self._runtime._fifos[handle] = None
@@ -778,11 +783,24 @@ def sync_parameters() -> None:
     """Emit ``aiex.sync_scratchpad_parameters_from_host`` in the sequence body.
 
     Call after all scratchpad parameters have been written on the host side and
-    before starting workers that read them. A sequence syncs once: the sync
+    before starting workers that read them, at the top level of the sequence
+    body: the sync op must sit directly in its ``aie.runtime_sequence``, so it
+    cannot go under ``range_`` or ``if_``. A sequence syncs once: the sync
     stages every parameter of the device and releases every core waiting on
-    one, so a later call in the same sequence (a merged step's) emits nothing.
+    one, so a later call in the same sequence (a merged step's) emits nothing,
+    the earlier sync having already run ahead of it.
+
+    Raises:
+        ValueError: The call is inside a ``range_`` or ``if_`` of the body.
     """
     seq = active_sequence()
+    if ir.InsertionPoint.current.block != seq.body:
+        raise ValueError(
+            "sync_parameters() must be called at the top level of a runtime "
+            "sequence body, not under range_ or if_: "
+            "aiex.sync_scratchpad_parameters_from_host sits directly in its "
+            "aie.runtime_sequence"
+        )
     if seq.synced_parameters:
         return
     seq.synced_parameters = True

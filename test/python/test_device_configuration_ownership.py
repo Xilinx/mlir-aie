@@ -34,6 +34,7 @@ from aie.iron import (
     WorkerRuntimeBarrier,
     sync_parameters,
 )
+from aie.iron.controlflow import if_
 from aie.iron.device import NPU2, NPU2Col1, Tile
 from aie.passmanager import PassManager
 from aie.utils.compile.jit.context import compile_context
@@ -1004,6 +1005,29 @@ def test_merged_steps_sync_their_parameters_once():
     assert sequence.count("aiex.npu.create_scratchpad") == 1
     # One release of each core's sync lock.
     assert sequence.count("aiex.set_lock") == 2
+
+
+def test_sync_under_a_branch_is_refused():
+    count = ScratchpadParameter("count_branch", np.int32)
+    of_out = ObjectFifo(Line, name="out_branch")
+
+    def core(out, count):
+        elem = out.acquire(1)
+        elem[0] = count.read()
+        out.release(1)
+
+    def sequence(c, out):
+        # A sync the branch may skip must not stand in for the one after it.
+        with if_(True):
+            sync_parameters()
+        sync_parameters()
+        out.drain(c, wait=True)
+
+    worker = Worker(core, [of_out.prod(), count], while_true=False)
+    rt = Runtime(sequence, [Line, of_out.cons()])
+    config = DeviceConfiguration("dev", NPU2Col1(), workers=[worker], runtimes=[rt])
+    with pytest.raises(ValueError, match="top level of a runtime sequence body"):
+        Program.compose([config], entry=rt).resolve_program()
 
 
 def step_runtimes(n, out_of_cons):
