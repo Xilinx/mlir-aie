@@ -7,7 +7,7 @@ from aie.dialects.aie import (
     TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
     TracePacketType,  # pyright: ignore[reportAttributeAccessIssue]
     WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
-    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+    get_target_model,
     packetflow,
     trace,
     trace_event,

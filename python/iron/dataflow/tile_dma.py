@@ -5,20 +5,20 @@
 #
 """IRON-level explicit per-tile DMA program.
 
-Peer of [`Worker`][iron.Worker] (which describes the compute body of a tile).
-A [`TileDma`][iron.TileDma] describes the DMA engine program for the same (or
+Peer of [`Worker`][aie.iron.Worker] (which describes the compute body of a tile).
+A [`TileDma`][aie.iron.TileDma] describes the DMA engine program for the same (or
 a different) tile — what each hardware DMA channel does, which buffers
 it reads/writes, and how it synchronizes with the compute side via
 locks.
 
-Used together with [`Flow`][iron.Flow] / [`PacketFlow`][iron.PacketFlow]
-(which describe the AXI-stream routes) and explicit [`Buffer`][iron.Buffer]
-+ [`Lock`][iron.Lock] declarations, for designs where
-[`ObjectFifo`][iron.ObjectFifo] would hide too much to be useful.
+Used together with [`Flow`][aie.iron.Flow] / [`PacketFlow`][aie.iron.PacketFlow]
+(which describe the AXI-stream routes) and explicit [`Buffer`][aie.iron.Buffer]
++ [`Lock`][aie.iron.Lock] declarations, for designs where
+[`ObjectFifo`][aie.iron.ObjectFifo] would hide too much to be useful.
 
-A [`DmaEndpoint`][iron.DmaEndpoint] names one DMA channel of a tile. It is what
-a [`DmaChannel`][iron.DmaChannel] runs on when the compiler assigns the channel,
-and it builds the runtime-sequence [`TileDmaTask`][iron.TileDmaTask]s that
+A [`DmaEndpoint`][aie.iron.DmaEndpoint] names one DMA channel of a tile. It is what
+a [`DmaChannel`][aie.iron.DmaChannel] runs on when the compiler assigns the channel,
+and it builds the runtime-sequence [`TileDmaTask`][aie.iron.TileDmaTask]s that
 reprogram a mem or core tile's DMA from inside the sequence body.
 """
 
@@ -98,7 +98,7 @@ class Release:
 
 @dataclass
 class Bd:
-    """A single buffer-descriptor entry in a [`DmaChannel`][iron.DmaChannel]'s chain.
+    """A single buffer-descriptor entry in a [`DmaChannel`][aie.iron.DmaChannel]'s chain.
 
     Lowers to one basic block containing acquires + `aie.dma_bd` +
     releases + an `aie.next_bd`. The `next` field selects what the
@@ -106,14 +106,14 @@ class Bd:
 
     - `None` (default) — follow the channel: the next entry in `bds`, and from
       the last entry either back to the head or out of the chain, per
-      [`DmaChannel.loop`][iron.DmaChannel].
+      [`DmaChannel.loop`][aie.iron.DmaChannel].
     - `"self"` — the BD loops to itself, whatever the rest of the chain does.
     - an `int` `i` — point at the i-th BD in this channel's `bds`
       list (zero-based). Useful for explicit cycles in a multi-BD chain.
 
     `next` is ignored on an out-of-order channel because those BDs are chained
     only for configuration and the hardware selects by header id (see
-    [`DmaChannel.out_of_order`][iron.DmaChannel]).
+    [`DmaChannel.out_of_order`][aie.iron.DmaChannel]).
     """
 
     buffer: Buffer
@@ -176,12 +176,12 @@ class DmaEndpoint:
     """One DMA channel of a tile: its tile, direction and channel.
 
     ``DmaEndpoint(tile, direction, channel)`` pins a channel by index. A
-    [`Flow`][iron.Flow]'s [`endpoint`][iron.dataflow.flow.Flow.endpoint] is one
+    [`Flow`][aie.iron.Flow]'s [`endpoint`][aie.iron.dataflow.flow.Flow.endpoint] is one
     too, whose channel the compiler may assign instead.
 
-    Pass one as a [`DmaChannel`][iron.DmaChannel]'s ``channel``, or build a
+    Pass one as a [`DmaChannel`][aie.iron.DmaChannel]'s ``channel``, or build a
     runtime-sequence task on it with
-    [`task`][iron.dataflow.tile_dma.DmaEndpoint.task].
+    [`task`][aie.iron.dataflow.tile_dma.DmaEndpoint.task].
     """
 
     def __init__(self, tile: Tile, direction: DMAChannelDir, channel: int | None):
@@ -215,7 +215,7 @@ class DmaEndpoint:
     def sync(self) -> None:
         """Wait until this channel's tasks have issued their completion tokens.
 
-        Called in a [`Runtime`][iron.Runtime] sequence body, it emits
+        Called in a [`Runtime`][aie.iron.Runtime] sequence body, it emits
         ``aiex.npu_sync`` on its tile and channel.
 
         Raises:
@@ -259,12 +259,12 @@ class DmaEndpoint:
     ) -> "TileDmaTask":
         """Configure a runtime-sequence task that walks ``bds`` on this channel.
 
-        Call from within a [`Runtime`][iron.Runtime] sequence body on a mem or
+        Call from within a [`Runtime`][aie.iron.Runtime] sequence body on a mem or
         core tile's channel (a shim channel moves host memory: use
         ``fill``/``drain``). The buffer descriptors are written here, at the
-        call; [`start`][iron.runtime.dmataskhandle.Task.start] pushes the task
+        call; [`start`][aie.iron.runtime.dmataskhandle.Task.start] pushes the task
         onto the channel queue, as often as needed, and
-        [`free`][iron.runtime.dmataskhandle.Task.free] returns its descriptors
+        [`free`][aie.iron.runtime.dmataskhandle.Task.free] returns its descriptors
         after the last start.
 
         ```python
@@ -277,7 +277,7 @@ class DmaEndpoint:
         load.free()
         ```
 
-        Each [`Bd`][iron.Bd] is spelled as in a [`TileDma`][iron.TileDma], but
+        Each [`Bd`][aie.iron.Bd] is spelled as in a [`TileDma`][aie.iron.TileDma], but
         without ``next``, and its ``tap`` may hold dispatch-time values. An
         ``iteration`` takes the descriptor's outermost dimension, so its
         ``tap`` gets one dimension fewer. A buffer that has no tile yet is
@@ -285,17 +285,17 @@ class DmaEndpoint:
 
         Args:
             *bds: The descriptors, walked in order as one task; a bare
-                [`Buffer`][iron.Buffer] stands for ``Bd(buffer)``.
+                [`Buffer`][aie.iron.Buffer] stands for ``Bd(buffer)``.
             runs (int | Value): How many times the whole chain runs per start.
                 Defaults to 1.
             wait: Issue a completion token, so the task can be awaited.
             out_of_order: Run an S2MM channel in out-of-order mode, as
-                [`DmaChannel.out_of_order`][iron.DmaChannel] does: a Bd with
+                [`DmaChannel.out_of_order`][aie.iron.DmaChannel] does: a Bd with
                 no ``bd_id`` takes its position in ``bds``, and ``runs`` counts
                 packets. Needs a channel given by index.
 
         Returns:
-            The configured [`TileDmaTask`][iron.TileDmaTask].
+            The configured [`TileDmaTask`][aie.iron.TileDmaTask].
         """
         active = active_sequence()
         if self.tile.effective_tile_type in _SHIM_TILE_TYPES:
@@ -362,8 +362,8 @@ class DmaEndpoint:
 class TileDmaTask(Task):
     """A runtime-sequence DMA task on one channel of a mem or core tile.
 
-    Built by [`DmaEndpoint.task`][iron.dataflow.tile_dma.DmaEndpoint.task],
-    already configured. It is a [`Task`][iron.runtime.dmataskhandle.Task]:
+    Built by [`DmaEndpoint.task`][aie.iron.dataflow.tile_dma.DmaEndpoint.task],
+    already configured. It is a [`Task`][aie.iron.runtime.dmataskhandle.Task]:
     ``start()`` pushes it (again), ``await_()`` waits for it (needs
     ``wait=True``), ``free()`` returns its descriptors, and it rides a
     ``range_`` ``iter_args`` entry across loop iterations.
@@ -392,11 +392,11 @@ class DmaChannel:
         direction: `DMAChannelDir.S2MM` (host→tile) or `DMAChannelDir.MM2S`
             (tile→host).
         channel: hardware channel index, or a
-            [`DmaEndpoint`][iron.DmaEndpoint] such as
-            [`Flow.endpoint`][iron.dataflow.flow.Flow.endpoint]'s, to run on the
+            [`DmaEndpoint`][aie.iron.DmaEndpoint] such as
+            [`Flow.endpoint`][aie.iron.dataflow.flow.Flow.endpoint]'s, to run on the
             channel the compiler assigns that end. An endpoint must be on the
             program's tile and point in ``direction``.
-        bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
+        bds: ordered list of [`Bd`][aie.iron.Bd] entries that form the chain
             (in-order) or n-way merge (out-of-order).
         repeat_count: extra repeats of the task (0 = run once), where the task
             is the BD chain (in-order) or a merge round (out-of-order). Only
@@ -404,7 +404,7 @@ class DmaChannel:
         loop: whether the last BD chains back to the first (the default),
             making the chain endless. An endless chain is one task that never
             completes: it runs for as long as its locks let it, which is how
-            [`ObjectFifo`][iron.ObjectFifo] expresses the same thing, and
+            [`ObjectFifo`][aie.iron.ObjectFifo] expresses the same thing, and
             `repeat_count` has nothing to count and is ignored. `loop=False`
             ends the chain after its last BD, making it a task that completes
             and can be re-run -- which is what gives `repeat_count` meaning,
@@ -508,7 +508,7 @@ class TileDma(PerDeviceConfigurationResolvable):
 
     Args:
         tile: the tile whose DMA hardware this program targets.
-        channels: ordered list of [`DmaChannel`][iron.DmaChannel] entries.
+        channels: ordered list of [`DmaChannel`][aie.iron.DmaChannel] entries.
     """
 
     def __init__(self, tile: Tile, channels: Iterable[DmaChannel]):

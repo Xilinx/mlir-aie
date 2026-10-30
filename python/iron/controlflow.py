@@ -64,13 +64,13 @@ def _loop_frame(body, specs):
 def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
     """``scf.for`` for IRON bodies, with ``Task`` and ``TaskGroup`` support in ``iter_args``.
 
-    See [`Task`][iron.runtime.dmataskhandle.Task] and
-    [`TaskGroup`][iron.runtime.taskgroup.TaskGroup].
+    See [`Task`][aie.iron.runtime.dmataskhandle.Task] and
+    [`TaskGroup`][aie.iron.runtime.taskgroup.TaskGroup].
     Without ``iter_args`` each iteration yields the induction variable. With
     them it yields ``(iv, args, results)``: the carried values as the body
     sees them and as the loop returns them, each a tuple with one entry per
     ``iter_args`` entry. The body must end with
-    [`yield_`][iron.controlflow.yield_] of the next iteration's values.
+    [`yield_`][aie.iron.controlflow.yield_] of the next iteration's values.
 
     A ``Task`` entry is carried across iterations by its SSA handle and comes
     back as a copy of the ``Task`` passed in (so ``.start()``/``.free()``/
@@ -79,7 +79,7 @@ def range_(*args, iter_args=None, **kwargs) -> Iterator[Any]:
     handles of its transfers and comes back as a group ``finish()`` closes.
     Every group yielded back must have the same shape (transfer count and
     waited flags) as the one carried in.
-    [`TaskGroup.pipelined`][iron.runtime.taskgroup.TaskGroup.pipelined] builds
+    [`TaskGroup.pipelined`][aie.iron.runtime.taskgroup.TaskGroup.pipelined] builds
     the usual software pipeline out of this.
     """
     # Each user-level iter_arg becomes one or more raw SSA iter_args. packers
@@ -154,7 +154,7 @@ def forever_() -> Iterator[None]:
 
     The body of a Python ``for`` over it is emitted once, into a loop whose
     condition is always true, so the loop keeps no counter. A
-    [`Worker`][iron.Worker] already wraps its body in one unless
+    [`Worker`][aie.iron.Worker] already wraps its body in one unless
     ``while_true=False``; write it yourself when a body must do some work once
     before it loops forever.
     """
@@ -166,7 +166,7 @@ def yield_(values):
 
     A ``Task`` yields its SSA handle; a ``TaskGroup`` yields the handles of its
     transfers (and is spent), checked against the shape of the group the
-    enclosing ``range_`` carried in. See [`Task`][iron.runtime.dmataskhandle.Task].
+    enclosing ``range_`` carried in. See [`Task`][aie.iron.runtime.dmataskhandle.Task].
     """
     values = list(values)
     frames = _loop_frames.get()
@@ -211,7 +211,7 @@ def if_(cond):
 
     ``cond`` is an ``i1`` value (a comparison on a staged scalar) or a plain
     ``bool``. The block's ``as`` target opens the else region with
-    [`else_`][iron.controlflow.else_]:
+    [`else_`][aie.iron.controlflow.else_]:
 
     ```python
     with if_(n_ragged > 0) as branch:

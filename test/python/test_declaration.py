@@ -125,7 +125,8 @@ class Banded(Base):
 def test_a_declaration_records_a_per_call_vectors_count():
     d = Banded.declaration
     assert [m.name for m in d.per_calls] == ["edges"]
-    assert d.per_calls[0].count(Banded(M=8)) == 4
+    count = d.per_calls[0].count
+    assert callable(count) and count(Banded(M=8)) == 4
     assert "  per_call  edges[f(op)]" in repr(d)
 
 
@@ -377,7 +378,10 @@ def test_a_select_whose_flag_a_function_computes_asks_for_it():
 
 
 class Narrowed(GEMV):
-    batches: int = param(default=1)
+    # The narrowing under test; pyright holds a mutable attribute's type invariant.
+    batches: int = param(  # pyright: ignore[reportIncompatibleVariableOverride]
+        default=1
+    )
 
 
 def test_a_subclass_may_make_a_nullable_parameter_required_and_dims_may_be_numpy():

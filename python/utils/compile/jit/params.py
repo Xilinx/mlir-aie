@@ -230,7 +230,13 @@ class PerCallMember(Member):
             with ``count``, returns that many host values, not one.
     """
 
-    def __init__(self, dtype, derive, bounds, count=None):
+    def __init__(
+        self,
+        dtype: Any,
+        derive: Callable[[Any], Any] | None,
+        bounds: OperatorParam | None,
+        count: int | Callable[[Any], int] | None = None,
+    ) -> None:
         self.dtype = dtype
         self.derive = derive
         self.bounds = bounds
@@ -241,7 +247,7 @@ def per_call(
     dtype: Any = np.int32,
     *,
     derive: Callable[[Any], Any] | None = None,
-    bounds: OperatorParam | None = None,
+    bounds: Any = None,
     count: int | Callable[[Any], int] | None = None,
 ) -> Any:
     """Declare a value the cores read that may change every call without a rebuild.
@@ -303,7 +309,8 @@ class Select:
     ``obj_shape``, a None branch is no stream: ``Select(feed_b, (K,), None)``.
     """
 
-    flag: OperatorParam
+    # A class body's param(), typed there as its annotation (bool).
+    flag: Any
     when_true: tuple | None
     when_false: tuple | None
 

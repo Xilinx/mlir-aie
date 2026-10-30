@@ -22,8 +22,8 @@ class ScratchpadParameter(Resolvable):
     """A named runtime parameter communicated from host to AIE cores via the scratchpad mechanism.
 
     Declare a `ScratchpadParameter` at design time. Pass it to a
-    [`Worker`][iron.Worker] via `fn_args` and call
-    [`read`][iron.scratchpad_parameter.ScratchpadParameter.read] inside the
+    [`Worker`][aie.iron.Worker] via `fn_args` and call
+    [`read`][aie.iron.scratchpad_parameter.ScratchpadParameter.read] inside the
     `core_fn` to obtain its current value. The
     `--aie-lower-scratchpad-parameters` pass automatically inserts the
     necessary lock and scratchpad-sync preamble ops.

@@ -96,7 +96,7 @@ def repo(tmp_path):
             "python/iron/kernels/eltwise.py": FACTORIES,
             "test/python/npu/kernel_cases.py": CASES,
             "test/python/test_kernel_contracts.py": "NOT_JUDGED = {}\n",
-            "docs/api/kernels.md": "::: iron.kernels.eltwise\n",
+            "docs/api/kernels.md": "::: aie.iron.kernels.eltwise\n",
             "aie_kernels/eltwise/add.cc": '#include "add.h"\n',
             "aie_kernels/eltwise/add.h": "",
             "README.md": "",

@@ -52,12 +52,12 @@ _BF16_ROUNDTRIP = Tolerance.bf16_ulps(
 
 
 def add_ref(a, b):
-    """Numpy reference for [`add`][iron.kernels.eltwise.add]: element-wise ``a + b`` in float32."""
+    """Numpy reference for [`add`][aie.iron.kernels.eltwise.add]: element-wise ``a + b`` in float32."""
     return a.astype(np.float32) + b.astype(np.float32)
 
 
 def add_i8_ref(a, b, a_shift, b_shift, out_shift):
-    """Numpy reference for [`add`][iron.kernels.eltwise.add] on int8.
+    """Numpy reference for [`add`][aie.iron.kernels.eltwise.add] on int8.
 
     ``sat_i8(round_half_even(((a << a_shift) + (b << b_shift)) / 2**out_shift))``.
 
@@ -79,12 +79,12 @@ def add_i8_ref(a, b, a_shift, b_shift, out_shift):
 
 
 def mul_ref(a, b):
-    """Numpy reference for [`mul`][iron.kernels.eltwise.mul]: element-wise ``a * b`` in float32."""
+    """Numpy reference for [`mul`][aie.iron.kernels.eltwise.mul]: element-wise ``a * b`` in float32."""
     return a.astype(np.float32) * b.astype(np.float32)
 
 
 def scale_ref(x, factor):
-    """Numpy reference for [`scale`][iron.kernels.eltwise.scale]: ``x * factor[0]`` in int64.
+    """Numpy reference for [`scale`][aie.iron.kernels.eltwise.scale]: ``x * factor[0]`` in int64.
 
     ``factor`` is the 1-element int32 buffer the kernel reads the multiplier
     from; the harness casts the int64 product back to ``x.dtype``, wrapping
@@ -96,7 +96,7 @@ def scale_ref(x, factor):
 def _eltwise_bf16_kernel(
     op: str, tile_size: int, dtype, vectorized: bool
 ) -> ExternalFunction:
-    """Shared implementation for [`add`][iron.kernels.eltwise.add] and [`mul`][iron.kernels.eltwise.mul]."""
+    """Shared implementation for [`add`][aie.iron.kernels.eltwise.add] and [`mul`][aie.iron.kernels.eltwise.mul]."""
     _require_fixed_tile_size(op, tile_size, _ELTWISE_FIXED_TILE)
     if dtype is not bfloat16:
         raise ValueError(
@@ -327,7 +327,7 @@ def mul_add(tile_size: int = 1024) -> ExternalFunction:
 
 
 def mul_add_ref(a, b, is_mul):
-    """Numpy reference for [`mul_add`][iron.kernels.eltwise.mul_add]: ``a * b`` if ``is_mul`` else ``a + b``."""
+    """Numpy reference for [`mul_add`][aie.iron.kernels.eltwise.mul_add]: ``a * b`` if ``is_mul`` else ``a + b``."""
     a32, b32 = a.astype(np.float32), b.astype(np.float32)
     return (a32 * b32 if int(is_mul) else a32 + b32).astype(a.dtype)
 
@@ -335,7 +335,7 @@ def mul_add_ref(a, b, is_mul):
 def add_sized(tile_size: int = 1024) -> ExternalFunction:
     """Element-wise bf16 addition, with a compiled-in element count.
 
-    Runtime-size sibling of [`add`][iron.kernels.eltwise.add]; design passes
+    Runtime-size sibling of [`add`][aie.iron.kernels.eltwise.add]; design passes
     ``(a, b, c, size)`` for ABI compatibility. Scalar tails are supported.
     """
     if tile_size <= 0:
@@ -362,7 +362,7 @@ def add_sized(tile_size: int = 1024) -> ExternalFunction:
 def mul_sized(tile_size: int = 1024) -> ExternalFunction:
     """Element-wise bf16 multiplication, with a compiled-in element count.
 
-    Runtime-size sibling of [`mul`][iron.kernels.eltwise.mul]; design passes
+    Runtime-size sibling of [`mul`][aie.iron.kernels.eltwise.mul]; design passes
     ``(a, b, c, size)`` for ABI compatibility. Scalar tails are supported.
     """
     if tile_size <= 0:
@@ -445,7 +445,7 @@ def clamp(tile_size: int = 1024) -> ExternalFunction:
 
 
 def clamp_ref(x, low, high):
-    """Numpy reference for [`clamp`][iron.kernels.eltwise.clamp]: ``min(max(x, low), high)``.
+    """Numpy reference for [`clamp`][aie.iron.kernels.eltwise.clamp]: ``min(max(x, low), high)``.
 
     ``low`` and ``high`` are the bounds' bf16 bits, as the kernel takes them.
     """
@@ -527,7 +527,7 @@ _POWER_F32_TOLERANCE = Tolerance.bounded(
 
 
 def magnitude_f32_ref(x, power=1):
-    """Numpy reference for [`magnitude_f32`][iron.kernels.eltwise.magnitude_f32].
+    """Numpy reference for [`magnitude_f32`][aie.iron.kernels.eltwise.magnitude_f32].
 
     ``hypot`` of each call's two halves, or its square, in float64.
     """

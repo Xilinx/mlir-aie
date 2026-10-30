@@ -109,7 +109,7 @@ def _conv1x1_acc(x, weights, W: int, IC: int, OC: int):
 
 
 def conv2dk1_ref(x, weights, input_width, input_channels, output_channels, scale):
-    """Numpy reference for [`conv2dk1`][iron.kernels.conv.conv2dk1]: 1x1 conv, requantized.
+    """Numpy reference for [`conv2dk1`][aie.iron.kernels.conv.conv2dk1]: 1x1 conv, requantized.
 
     Layouts are the kernel's: activations ``[C/8][W][8]`` (``x`` is one
     line of ``input_width * input_channels`` values, or ``(calls, ...)`` of
@@ -123,9 +123,9 @@ def conv2dk1_ref(x, weights, input_width, input_channels, output_channels, scale
 
 
 def conv2dk1_i8_ref(x, weights, input_width, input_channels, output_channels, scale):
-    """Numpy reference for [`conv2dk1_i8`][iron.kernels.conv.conv2dk1_i8]: 1x1 conv to ``int8``.
+    """Numpy reference for [`conv2dk1_i8`][aie.iron.kernels.conv.conv2dk1_i8]: 1x1 conv to ``int8``.
 
-    The layouts of [`conv2dk1_ref`][iron.kernels.conv.conv2dk1_ref] with an
+    The layouts of [`conv2dk1_ref`][aie.iron.kernels.conv.conv2dk1_ref] with an
     ``int8`` output and no ReLU: ``out = sat_i8(round(sum_ic x * w /
     2**scale))``, rounding half away from zero (``symmetric_inf``).
     """
@@ -137,9 +137,9 @@ def conv2dk1_i8_ref(x, weights, input_width, input_channels, output_channels, sc
 def conv2dk1_i8_bias_ref(
     x, weights, bias, input_width, input_channels, output_channels, scale, rounding
 ):
-    """Numpy reference for [`conv2dk1_i8`][iron.kernels.conv.conv2dk1_i8] with ``bias``.
+    """Numpy reference for [`conv2dk1_i8`][aie.iron.kernels.conv.conv2dk1_i8] with ``bias``.
 
-    The layouts of [`conv2dk1_ref`][iron.kernels.conv.conv2dk1_ref]; ``bias``
+    The layouts of [`conv2dk1_ref`][aie.iron.kernels.conv.conv2dk1_ref]; ``bias``
     is one int32 per output channel in accumulator units, added before the
     shift: ``out = sat_i8(round((sum_ic x * w + bias) / 2**scale))``,
     rounding half to even (``conv_even``) or away from zero
@@ -154,7 +154,7 @@ def conv2dk1_i8_bias_ref(
 def conv2dk1_i8_even_ref(
     x, weights, input_width, input_channels, output_channels, scale
 ):
-    """[`conv2dk1_i8_ref`][iron.kernels.conv.conv2dk1_i8_ref] rounding half to even (``conv_even``)."""
+    """[`conv2dk1_i8_ref`][aie.iron.kernels.conv.conv2dk1_i8_ref] rounding half to even (``conv_even``)."""
     W, IC, OC = int(input_width), int(input_channels), int(output_channels)
     acc, lead = _conv1x1_acc(x, weights, W, IC, OC)
     return _requant_even(acc, scale, -128, 127, np.int8).reshape(*lead, W * OC)
@@ -171,7 +171,7 @@ def conv2dk1_i8_bias_table_ref(
     scale,
     rounding,
 ):
-    """[`conv2dk1_i8_bias_ref`][iron.kernels.conv.conv2dk1_i8_bias_ref], then ``table[out + 128]``."""
+    """[`conv2dk1_i8_bias_ref`][aie.iron.kernels.conv.conv2dk1_i8_bias_ref], then ``table[out + 128]``."""
     out = conv2dk1_i8_bias_ref(
         x, weights, bias, input_width, input_channels, output_channels, scale, rounding
     )
@@ -190,7 +190,7 @@ def conv2dk1_i8_bias_slices_ref(
     rounding,
     input_slice,
 ):
-    """[`conv2dk1_i8_bias_ref`][iron.kernels.conv.conv2dk1_i8_bias_ref] summed over input-channel slices.
+    """[`conv2dk1_i8_bias_ref`][aie.iron.kernels.conv.conv2dk1_i8_bias_ref] summed over input-channel slices.
 
     Call ``s`` reads its own row of the ``input_slice`` channels
     ``[s * input_slice, (s + 1) * input_slice)`` through ``weights``
@@ -227,7 +227,7 @@ def conv2dk1_i8_bias_table_slices_ref(
     rounding,
     input_slice,
 ):
-    """[`conv2dk1_i8_bias_slices_ref`][iron.kernels.conv.conv2dk1_i8_bias_slices_ref], then ``table[out + 128]``."""
+    """[`conv2dk1_i8_bias_slices_ref`][aie.iron.kernels.conv.conv2dk1_i8_bias_slices_ref], then ``table[out + 128]``."""
     out = conv2dk1_i8_bias_slices_ref(
         x,
         weights,
@@ -253,7 +253,7 @@ def conv2dk1_skip_ref(
     scale,
     skip_scale,
 ):
-    """Numpy reference for [`conv2dk1_skip`][iron.kernels.conv.conv2dk1_skip]: 1x1 conv plus residual.
+    """Numpy reference for [`conv2dk1_skip`][aie.iron.kernels.conv.conv2dk1_skip]: 1x1 conv plus residual.
 
     ``x0`` and ``x1`` each hold half the input channels (``[IC/16][W][8]``
     lines, ``x1`` the upper half); weights are ``[OC/8][IC/8][ic8][oc8]``
@@ -295,7 +295,7 @@ def conv2dk3_ref(
     scale,
     channel_offset,
 ):
-    """Numpy reference for [`conv2dk3`][iron.kernels.conv.conv2dk3]: 3x3 conv over three lines.
+    """Numpy reference for [`conv2dk3`][aie.iron.kernels.conv.conv2dk3]: 3x3 conv over three lines.
 
     Produces the output line for ``line1``. Activations are ``[C/8][W][8]``
     lines; weights ``[WOC/8][IC/8][3 rows][kernel_width][ic8][oc8]`` where
@@ -376,9 +376,9 @@ def conv2dk1_skip_init_ref(
     skip_scale,
     scale_skip_conv,
 ):
-    """Numpy reference for [`conv2dk1_skip_init`][iron.kernels.conv.conv2dk1_skip_init]: 1x1 conv plus a projected residual.
+    """Numpy reference for [`conv2dk1_skip_init`][aie.iron.kernels.conv.conv2dk1_skip_init]: 1x1 conv plus a projected residual.
 
-    Like [`conv2dk1_skip_ref`][iron.kernels.conv.conv2dk1_skip_ref], but the
+    Like [`conv2dk1_skip_ref`][aie.iron.kernels.conv.conv2dk1_skip_ref], but the
     residual is itself a 1x1 conv of ``skip`` (``[ICs/8][W][8]``) with the
     weights stored after the main ones (``[OC/8][ICs/8][ic8][oc8]`` at
     offset ``OC * IC``):
@@ -409,7 +409,7 @@ def conv2dk1_skip_init_ref(
 def conv2dk14_ref(
     x, weights, input_width, input_channels, output_channels, kernel_width, scale
 ):
-    """Numpy reference for [`conv2dk14`][iron.kernels.conv.conv2dk14]: a KxK patch conv (stride K) to ``int8``.
+    """Numpy reference for [`conv2dk14`][aie.iron.kernels.conv.conv2dk14]: a KxK patch conv (stride K) to ``int8``.
 
     One call covers ``T = input_width / kernel_width`` patches of ``K*K``
     RGBA pixels. Layouts are the kernel's: input ``[T/8][P/2][t8][p2][4]``
@@ -450,7 +450,7 @@ def dwconv1d_channels_first(
 
     One channel per call with time contiguous, vectorized along time with
     scalar taps. See
-    [`dwconv1d_channels_last`][iron.kernels.conv.dwconv1d_channels_last] for
+    [`dwconv1d_channels_last`][aie.iron.kernels.conv.dwconv1d_channels_last] for
     the transposed layout, and the "Choosing a depthwise conv1d" section of
     ``aie_kernels/README.md`` for which to reach for.
 
@@ -496,7 +496,7 @@ def dwconv1d_channels_first(
 
 
 def dwconv1d_channels_first_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bool):
-    """Numpy reference for [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first] on the padded row(s).
+    """Numpy reference for [`dwconv1d_channels_first`][aie.iron.kernels.conv.dwconv1d_channels_first] on the padded row(s).
 
     ``x_pad`` is ``(..., seq_len + DWCONV1D_TAIL)``; ``w`` is ``(..., kernel_size + 1)``.
     """
@@ -514,12 +514,12 @@ def dwconv1d_channels_first_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bo
 def dwconv1d(
     seq_len: int = 1024, kernel_size: int = 9, bias: bool = True
 ) -> ExternalFunction:
-    """Compatibility alias for [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first]."""
+    """Compatibility alias for [`dwconv1d_channels_first`][aie.iron.kernels.conv.dwconv1d_channels_first]."""
     return dwconv1d_channels_first(seq_len, kernel_size, bias)
 
 
 def dwconv1d_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bool):
-    """Compatibility alias for [`dwconv1d_channels_first_ref`][iron.kernels.conv.dwconv1d_channels_first_ref]."""
+    """Compatibility alias for [`dwconv1d_channels_first_ref`][aie.iron.kernels.conv.dwconv1d_channels_first_ref]."""
     return dwconv1d_channels_first_ref(
         x_pad, w, seq_len, kernel_size=kernel_size, bias=bias
     )
@@ -540,7 +540,7 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
     ObjectFifo is itself the sliding window.
 
     Counterpart to
-    [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first];
+    [`dwconv1d_channels_first`][aie.iron.kernels.conv.dwconv1d_channels_first];
     layout picks the vectorization axis, so neither subsumes the other. See
     the "Choosing a depthwise conv1d" section of ``aie_kernels/README.md``.
 
@@ -612,7 +612,7 @@ def dwconv1d_channels_last(channels: int = 256, clamp: bool = True) -> ExternalF
 def dwconv1d_channels_last_ref(
     w_0, w_1, w_2, w_3, w_4, x_0, x_1, x_2, x_3, x_4, *, lo, hi, clamp: bool
 ):
-    """Numpy reference for [`dwconv1d_channels_last`][iron.kernels.conv.dwconv1d_channels_last]: one timestep over all channels.
+    """Numpy reference for [`dwconv1d_channels_last`][aie.iron.kernels.conv.dwconv1d_channels_last]: one timestep over all channels.
 
     Each tap is an independent plane, so this is a plain ``sum_t w_t * x_t``.
     Accumulated in float32, which is what the kernel's ``accfloat`` is, then
@@ -825,9 +825,9 @@ def conv2dk3_bias_ref(
     stride,
     rounding,
 ):
-    """Numpy reference for [`conv2dk3`][iron.kernels.conv.conv2dk3] with ``bias``.
+    """Numpy reference for [`conv2dk3`][aie.iron.kernels.conv.conv2dk3] with ``bias``.
 
-    The layouts of [`conv2dk3_ref`][iron.kernels.conv.conv2dk3_ref] at
+    The layouts of [`conv2dk3_ref`][aie.iron.kernels.conv.conv2dk3_ref] at
     ``stride`` 1 or 2; ``bias`` is one int32 per output channel in
     accumulator units: ``out = sat_i8(round((sum + bias) / 2**scale))``,
     rounding half to even (``conv_even``) or away from zero
@@ -868,7 +868,7 @@ def conv2dk3_bias_table_ref(
     stride,
     rounding,
 ):
-    """[`conv2dk3_bias_ref`][iron.kernels.conv.conv2dk3_bias_ref], then ``table[out + 128]``."""
+    """[`conv2dk3_bias_ref`][aie.iron.kernels.conv.conv2dk3_bias_ref], then ``table[out + 128]``."""
     out = conv2dk3_bias_ref(
         line0,
         line1,
@@ -907,7 +907,7 @@ def conv2dk3_bias_slices_ref(
     rounding,
     input_slice,
 ):
-    """[`conv2dk3_bias_ref`][iron.kernels.conv.conv2dk3_bias_ref] summed over input-channel slices.
+    """[`conv2dk3_bias_ref`][aie.iron.kernels.conv.conv2dk3_bias_ref] summed over input-channel slices.
 
     Call ``s`` reads its own lines of the ``input_slice`` channels
     ``[s * input_slice, (s + 1) * input_slice)`` through ``weights``
@@ -962,7 +962,7 @@ def conv2dk3_bias_table_slices_ref(
     rounding,
     input_slice,
 ):
-    """[`conv2dk3_bias_slices_ref`][iron.kernels.conv.conv2dk3_bias_slices_ref], then ``table[out + 128]``."""
+    """[`conv2dk3_bias_slices_ref`][aie.iron.kernels.conv.conv2dk3_bias_slices_ref], then ``table[out + 128]``."""
     out = conv2dk3_bias_slices_ref(
         line0,
         line1,
@@ -994,7 +994,7 @@ def _conv2dk3_bias(
     table_copies,
     input_slice=None,
 ) -> ExternalFunction:
-    """[`conv2dk3`][iron.kernels.conv.conv2dk3]'s ``bias`` variant."""
+    """[`conv2dk3`][aie.iron.kernels.conv.conv2dk3]'s ``bias`` variant."""
     if act_dtype != np.int8:
         raise ValueError("conv2dk3: bias needs act_dtype=np.int8")
     if stride not in (1, 2):
@@ -1510,9 +1510,9 @@ def _dw3x3_acc(lines, weights, input_width, channels, check, stride: int = 1):
 def bn_conv2dk1_relu_ref(
     x, weights, input_width, input_channels, output_channels, scale
 ):
-    """Numpy reference for [`bn_conv2dk1_relu`][iron.kernels.conv.bn_conv2dk1_relu].
+    """Numpy reference for [`bn_conv2dk1_relu`][aie.iron.kernels.conv.bn_conv2dk1_relu].
 
-    The layouts of [`conv2dk1_ref`][iron.kernels.conv.conv2dk1_ref], rounding
+    The layouts of [`conv2dk1_ref`][aie.iron.kernels.conv.conv2dk1_ref], rounding
     half to even: ``out = sat_u8(round_even(sum_ic x * w, scale))``.
     """
     W, IC, OC = int(input_width), int(input_channels), int(output_channels)
@@ -1521,7 +1521,7 @@ def bn_conv2dk1_relu_ref(
 
 
 def bn_conv2dk1_i8_ref(x, weights, input_width, input_channels, output_channels, scale):
-    """Numpy reference for [`bn_conv2dk1_i8`][iron.kernels.conv.bn_conv2dk1_i8].
+    """Numpy reference for [`bn_conv2dk1_i8`][aie.iron.kernels.conv.bn_conv2dk1_i8].
 
     ``uint8`` activations, ``int8`` output:
     ``out = sat_i8(round_even(sum_ic x * w, scale))``.
@@ -1541,7 +1541,7 @@ def bn_conv2dk1_skip_ref(
     scale,
     skip_scale,
 ):
-    """Numpy reference for [`bn_conv2dk1_skip`][iron.kernels.conv.bn_conv2dk1_skip].
+    """Numpy reference for [`bn_conv2dk1_skip`][aie.iron.kernels.conv.bn_conv2dk1_skip].
 
     ``skip`` is an ``[OC/8][W][8]`` line of either signedness:
 
@@ -1573,9 +1573,9 @@ def bn_conv2dk3_ref(
     scale,
     channel_offset,
 ):
-    """Numpy reference for [`bn_conv2dk3`][iron.kernels.conv.bn_conv2dk3]: 3x3 stride-2 conv.
+    """Numpy reference for [`bn_conv2dk3`][aie.iron.kernels.conv.bn_conv2dk3]: 3x3 stride-2 conv.
 
-    The layouts and ``check`` of [`conv2dk3_ref`][iron.kernels.conv.conv2dk3_ref];
+    The layouts and ``check`` of [`conv2dk3_ref`][aie.iron.kernels.conv.conv2dk3_ref];
     output ``x`` reads input pixels ``2x-1 .. 2x+1`` and the output line is
     ``input_width / 2`` wide: ``out = sat_u8(round_even(sum, scale))``.
     """
@@ -1610,10 +1610,10 @@ def bn_conv2dk3_dw_ref(
     *,
     stride: int = 1,
 ):
-    """Numpy reference for [`bn_conv2dk3_dw`][iron.kernels.conv.bn_conv2dk3_dw]: depthwise 3x3 + ReLU.
+    """Numpy reference for [`bn_conv2dk3_dw`][aie.iron.kernels.conv.bn_conv2dk3_dw]: depthwise 3x3 + ReLU.
 
     Lines are ``[C/8][W][8]`` ``uint8``, weights ``[C/8][3 rows][3][c8]``,
-    ``check`` as in [`conv2dk3_ref`][iron.kernels.conv.conv2dk3_ref]:
+    ``check`` as in [`conv2dk3_ref`][aie.iron.kernels.conv.conv2dk3_ref]:
     ``out = sat_u8(round_even(sum, scale))`` over ``output_channels``
     channels and ``input_width / stride`` pixels. ``kernel_width``,
     ``kernel_height`` and ``channel_offset`` are accepted for the signature.
@@ -1639,9 +1639,9 @@ def bn_conv2dk3_dw_out_split_ref(
     scale,
     channel_offset,
 ):
-    """Numpy reference for [`bn_conv2dk3_dw_out_split`][iron.kernels.conv.bn_conv2dk3_dw_out_split].
+    """Numpy reference for [`bn_conv2dk3_dw_out_split`][aie.iron.kernels.conv.bn_conv2dk3_dw_out_split].
 
-    The stride-1 [`bn_conv2dk3_dw_ref`][iron.kernels.conv.bn_conv2dk3_dw_ref],
+    The stride-1 [`bn_conv2dk3_dw_ref`][aie.iron.kernels.conv.bn_conv2dk3_dw_ref],
     its output channels split in two halves, one per output.
     """
     out = bn_conv2dk3_dw_ref(
@@ -1674,7 +1674,7 @@ def bn_conv2dk1_relu_xy_pool_padded_ref(
     output_split,
     weight_index,
 ):
-    """Numpy reference for [`bn_conv2dk1_relu_xy_pool_padded`][iron.kernels.conv.bn_conv2dk1_relu_xy_pool_padded] into a zeroed output.
+    """Numpy reference for [`bn_conv2dk1_relu_xy_pool_padded`][aie.iron.kernels.conv.bn_conv2dk1_relu_xy_pool_padded] into a zeroed output.
 
     Each output channel of this call's slice (``output_channels /
     output_split`` of them, at slice ``weight_index``) sums
@@ -1713,7 +1713,7 @@ def bn_fc_relu_ui16_ic_chunk_ref(
     chunk_output_channels: int,
     max_images: int,
 ):
-    """Numpy reference for [`bn_fc_relu_ui16_ic_chunk`][iron.kernels.conv.bn_fc_relu_ui16_ic_chunk].
+    """Numpy reference for [`bn_fc_relu_ui16_ic_chunk`][aie.iron.kernels.conv.bn_fc_relu_ui16_ic_chunk].
 
     Call ``k`` of ``weights`` (``(calls, n)``, one ``[OC/8][ICc][8]`` chunk
     each) adds input channels ``[k * ICc, (k + 1) * ICc)`` of each of the
@@ -1792,7 +1792,7 @@ def bn_conv2dk3(
         input_channels: Number of input channels.
         output_channels: Number of output channels produced by this call.
         weight_output_channels: Total number of output channels stored in the
-            weights buffer, as for [`conv2dk3`][iron.kernels.conv.conv2dk3].
+            weights buffer, as for [`conv2dk3`][aie.iron.kernels.conv.conv2dk3].
             Defaults to ``output_channels``.
 
     Returns:
@@ -2028,9 +2028,9 @@ def bn_conv2dk3_dw_bias_ref(
     *,
     rounding,
 ):
-    """Numpy reference for [`bn_conv2dk3_dw`][iron.kernels.conv.bn_conv2dk3_dw] with ``bias``.
+    """Numpy reference for [`bn_conv2dk3_dw`][aie.iron.kernels.conv.bn_conv2dk3_dw] with ``bias``.
 
-    The layouts of [`bn_conv2dk3_dw_ref`][iron.kernels.conv.bn_conv2dk3_dw_ref]
+    The layouts of [`bn_conv2dk3_dw_ref`][aie.iron.kernels.conv.bn_conv2dk3_dw_ref]
     on ``int8`` lines: ``out = sat_i8(round((sum + bias) / 2**scale))``,
     rounding half to even (``conv_even``) or away from zero
     (``symmetric_inf``).
@@ -2060,7 +2060,7 @@ def bn_conv2dk3_dw_bias_table_ref(
     *,
     rounding,
 ):
-    """[`bn_conv2dk3_dw_bias_ref`][iron.kernels.conv.bn_conv2dk3_dw_bias_ref], then ``table[out + 128]``."""
+    """[`bn_conv2dk3_dw_bias_ref`][aie.iron.kernels.conv.bn_conv2dk3_dw_bias_ref], then ``table[out + 128]``."""
     out = bn_conv2dk3_dw_bias_ref(
         line0,
         line1,
@@ -2081,7 +2081,7 @@ def bn_conv2dk3_dw_bias_table_ref(
 
 
 def _bn_conv2dk3_dw_bias(input_width, channels, table, stride, rounding, table_copies):
-    """[`bn_conv2dk3_dw`][iron.kernels.conv.bn_conv2dk3_dw]'s ``bias`` variant."""
+    """[`bn_conv2dk3_dw`][aie.iron.kernels.conv.bn_conv2dk3_dw]'s ``bias`` variant."""
     if stride != 1:
         raise ValueError("bn_conv2dk3_dw(): bias needs stride 1")
     if rounding not in ("symmetric_inf", "conv_even"):
@@ -2208,7 +2208,7 @@ def bn_conv2dk1_partial_put_i8(
     width slice of the activation, multiplies against its weight half,
     and emits the partial sum onto the cascade stream (no separate
     output buffer — cascade-only).  Sister of
-    [`bn_conv2dk1_partial_get_relu_i8`][iron.kernels.conv.bn_conv2dk1_partial_get_relu_i8].
+    [`bn_conv2dk1_partial_get_relu_i8`][aie.iron.kernels.conv.bn_conv2dk1_partial_get_relu_i8].
 
     Currently defined in the .cc only for MobileNet V3's bn13 / bn14
     (one wrapper symbol per block); ``block_index`` selects which.
@@ -2258,7 +2258,7 @@ def bn_conv2dk1_partial_get_relu_i8(
     The GET tile of a two-tile cascade-split pointwise conv: consumes
     the cascade partial sum from its sister PUT tile, finishes the dot
     product against its weight half, applies ReLU, and writes the full
-    output buffer.  Sister of [`bn_conv2dk1_partial_put_i8`][iron.kernels.conv.bn_conv2dk1_partial_put_i8].
+    output buffer.  Sister of [`bn_conv2dk1_partial_put_i8`][aie.iron.kernels.conv.bn_conv2dk1_partial_put_i8].
 
     Currently defined in the .cc only for MobileNet V3's bn13 / bn14
     (one wrapper symbol per block); ``block_index`` selects which.
@@ -2301,7 +2301,7 @@ def bn_conv2dk3_dw_out_split(
 ) -> ExternalFunction:
     """Depthwise 3x3 stride-1 conv with split output stream (uint8 in/out).
 
-    A variant of [`bn_conv2dk3_dw`][iron.kernels.conv.bn_conv2dk3_dw] (stride=1) that writes its output
+    A variant of [`bn_conv2dk3_dw`][aie.iron.kernels.conv.bn_conv2dk3_dw] (stride=1) that writes its output
     to TWO separate buffers — the channel dimension is split in half so
     downstream cascade-PUT tiles can each consume one slice.  Used by
     MobileNet V3's bn13 / bn14 depthwise stage to feed the L3 cascade.
@@ -2370,7 +2370,7 @@ def bn_conv2dk1_input_split_partial_put_ui8(
 ) -> ExternalFunction:
     """Input-split cascade-PUT half of a 1x1 conv on uint8 activations.
 
-    Like [`bn_conv2dk1_partial_put_i8`][iron.kernels.conv.bn_conv2dk1_partial_put_i8] but consumes a CHANNEL slice
+    Like [`bn_conv2dk1_partial_put_i8`][aie.iron.kernels.conv.bn_conv2dk1_partial_put_i8] but consumes a CHANNEL slice
     (input-split) of a uint8 activation instead of a width slice of int8.
     Used by MobileNet V3's bn13 / bn14 L3 stage.
 
@@ -2418,7 +2418,7 @@ def bn_conv2dk1_input_split_partial_skip_get(
     The GET tile completes the cascade-split 1x1 + ReLU + residual add
     pattern: consumes the partial sum from its sister PUT tile, finishes
     the dot product, adds a skip row of int8 activations, and writes int8
-    output.  Sister of [`bn_conv2dk1_input_split_partial_put_ui8`][iron.kernels.conv.bn_conv2dk1_input_split_partial_put_ui8].
+    output.  Sister of [`bn_conv2dk1_input_split_partial_put_ui8`][aie.iron.kernels.conv.bn_conv2dk1_input_split_partial_put_ui8].
 
     Args:
         input_width: Spatial width of the input slice.

@@ -211,7 +211,7 @@ def experts_sample(
     rows: int,
     cols: int,
 ) -> list[np.ndarray]:
-    """Return random inputs for [`experts`][iron.kernels.moe.experts], as a design passes them.
+    """Return random inputs for [`experts`][aie.iron.kernels.moe.experts], as a design passes them.
 
     Every third row repeats its first id when ``top_k`` > 1, so a device run
     checks that a duplicated id sums its weights.
@@ -255,7 +255,7 @@ def experts_ref(
     rows: int,
     cols: int,
 ) -> np.ndarray:
-    """Numpy reference for [`experts`][iron.kernels.moe.experts].
+    """Numpy reference for [`experts`][aie.iron.kernels.moe.experts].
 
     Args:
         row: The rows, as `experts_sample` returns them.

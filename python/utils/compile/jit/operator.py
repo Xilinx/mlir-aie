@@ -29,7 +29,6 @@ from aie.helpers.npdtypes import is_block_float
 
 from ...hostruntime import set_current_device
 from .declaration import Declaration
-from .params import param, tunable
 
 if TYPE_CHECKING:
     # aie.iron imports this module.
@@ -69,7 +68,7 @@ class Unresolvable(ValueError):
     """No legal resolution exists for this operator on this device."""
 
 
-@dataclass_transform(kw_only_default=True, field_specifiers=(param, tunable))
+@dataclass_transform(kw_only_default=True, eq_default=False)
 class Operator:
     """An operator. Subclass it; each subclass's body is its declaration.
 

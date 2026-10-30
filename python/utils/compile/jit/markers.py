@@ -111,7 +111,7 @@ class _Operand(Member):
         per: Any = None,
         depth: int = 2,
         replicate: bool = False,
-        when: OperatorParam | None = None,
+        when: Any = None,
         like: _Operand | None = None,
     ):
         if replicate and per is None:
