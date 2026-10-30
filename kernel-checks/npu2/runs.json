@@ -2111,6 +2111,53 @@
     "offered": 136,
     "checked": 121
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu2",
+   "id": "41012847181",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41012847181",
+   "date": "2026-10-30T06:13:43+00:00",
+   "commit": {
+    "id": "e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
+    "message": "Convert aie.iron.algorithms.kernel_design into a class (#3977)",
+    "timestamp": "2026-10-30T01:15:10Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "e28f6dc7e5",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "8ee98c1c8fb7",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2603,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 910,
+    "failed": 0,
+    "timed": 438,
+    "timing_failed": 0,
+    "untimed": 472,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 136,
+    "checked": 121
+   }
   }
  ]
 }
