@@ -121,6 +121,8 @@ FRAME = re.compile(
     re.M,
 )
 REPORT_END = re.compile(r"^(SUMMARY: \w+Sanitizer.*|==\d+==ABORTING)$", re.M)
+# ASan's first line can say only "attempting"; its summary names the bug type.
+ASAN_SUMMARY = re.compile(r"^SUMMARY: AddressSanitizer: ([\w-]+)", re.M)
 
 
 def ubsan_kind(message: str) -> str:
@@ -145,6 +147,8 @@ def reports(output: str, root: str) -> list[dict]:
         end = starts[i + 1][0] if i + 1 < len(starts) else len(output)
         tail = REPORT_END.search(output, at, end)
         text = output[at : tail.end() if tail else end]
+        if sanitizer == "asan" and (summary := ASAN_SUMMARY.search(text)):
+            kind = summary.group(1)
         where = {}
         ub = UBSAN.match(output, at) if sanitizer == "ubsan" else None
         if sanitizer == "ubsan":

@@ -111,6 +111,48 @@ def test_tsan_names_the_race_in_our_code():
     assert f["where"]["file"] == "lib/Dialect/AIE/IR/AIETargetModel.cpp"
 
 
+# Two real ASan reports (clang 18, a double free and a free of a stack
+# object), their frames moved into this repository's code.
+ASAN_DOUBLE_FREE = f"""\
+==715658==ERROR: AddressSanitizer: attempting double-free on 0x502000000010 in thread T0:
+    #0 0x7982574fc4d8 in free ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:52
+    #1 0x5c1cf17741da in xilinx::AIE::release() {SRC}/lib/Dialect/AIE/IR/AIEDialect.cpp:2
+    #2 0x79825702a1c9 in __libc_start_call_main ../sysdeps/nptl/libc_start_call_main.h:58
+
+0x502000000010 is located 0 bytes inside of 8-byte region [0x502000000010,0x502000000018)
+freed by thread T0 here:
+    #0 0x7982574fc4d8 in free ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:52
+    #1 0x5c1cf17741ce in xilinx::AIE::release() {SRC}/lib/Dialect/AIE/IR/AIEDialect.cpp:2
+
+SUMMARY: AddressSanitizer: double-free ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:52 in free
+==715658==ABORTING
+"""
+ASAN_BAD_FREE = f"""\
+==715667==ERROR: AddressSanitizer: attempting free on address which was not malloc()-ed: 0x7779a4500020 in thread T0
+    #0 0x7982574fc4d8 in free ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:52
+    #1 0x5c1cf17741da in xilinx::AIE::release() {SRC}/lib/Dialect/AIE/IR/AIEDialect.cpp:2
+    #2 0x79825702a1c9 in __libc_start_call_main ../sysdeps/nptl/libc_start_call_main.h:58
+
+SUMMARY: AddressSanitizer: bad-free ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:52 in free
+==715667==ABORTING
+"""
+
+
+def test_two_asan_bugs_in_one_function_stay_apart():
+    piece = ch.summarize_sanitizer(
+        "asan-ubsan",
+        [
+            lit(
+                ("AIE :: a.mlir", "FAIL", ASAN_DOUBLE_FREE),
+                ("AIE :: b.mlir", "FAIL", ASAN_BAD_FREE),
+            )
+        ],
+        SRC,
+    )
+    assert sorted(f["kind"] for f in piece["findings"]) == ["bad-free", "double-free"]
+    assert piece["finding_count"] == 2
+
+
 def test_a_finding_keeps_its_first_night():
     before = {
         "findings": [
