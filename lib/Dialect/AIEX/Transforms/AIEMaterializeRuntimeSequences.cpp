@@ -426,6 +426,7 @@ static LogicalResult inlineReferencedSymbolDefinitions(
 
       // Insert the cloned symbol at the device level, after its SSA
       // dependencies. A definition also named by SSA shares that clone.
+      bool cloned = !clonedDefs.contains(symbolDefOp);
       Operation *clonedSymbolDefOp =
           getOrClone(rewriter, symbolDefOp, argMap, clonedDefs,
                      clonedDefOpsInsertionPoint, allSymbolNames);
@@ -433,6 +434,14 @@ static LogicalResult inlineReferencedSymbolDefinitions(
           FlatSymbolRefAttr::get(clonedSymbolDefOp->getAttrOfType<StringAttr>(
               SymbolTable::getSymbolAttrName()));
       previouslyInlinedSymbolMap[oldSymbolRef] = newSymbolRef;
+      // A definition may itself name others, as a shim allocation's
+      // consumed_by names its outputs, and the clone must name their clones.
+      if (cloned &&
+          failed(inlineReferencedSymbolDefinitions(
+              rewriter, clonedSymbolDefOp, symbolDefOp, argMap,
+              previouslyInlinedSymbolMap, callerDevice, clonedDefs, calleeNames,
+              clonedDefOpsInsertionPoint, allSymbolNames)))
+        return std::make_pair(oldSymbolRef, WalkResult::interrupt());
       return std::make_pair(newSymbolRef, WalkResult::advance());
     });
     if (!newAttr) {
