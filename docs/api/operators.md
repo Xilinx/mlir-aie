@@ -57,19 +57,19 @@ a pattern that needs it on the device stages it as `arith`.
 
 ## Operator
 
-::: utils.compile.jit.operator.Operator
+::: aie.utils.compile.jit.operator.Operator
     options:
       show_root_heading: true
       heading_level: 3
 
-::: utils.compile.jit.operator.Unresolvable
+::: aie.utils.compile.jit.operator.Unresolvable
     options:
       show_root_heading: true
       heading_level: 3
 
 ## Parameters and per-call values
 
-::: utils.compile.jit.params
+::: aie.utils.compile.jit.params
     options:
       show_root_heading: false
       members:
@@ -81,7 +81,7 @@ a pattern that needs it on the device stages it as `arith`.
 
 ## Operands
 
-::: utils.compile.jit.markers
+::: aie.utils.compile.jit.markers
     options:
       show_root_heading: false
       members:
@@ -91,19 +91,19 @@ a pattern that needs it on the device stages it as `arith`.
 
 ## Declaration
 
-::: utils.compile.jit.declaration.Declaration
+::: aie.utils.compile.jit.declaration.Declaration
     options:
       show_root_heading: true
       heading_level: 3
 
 ## Per-call expressions
 
-::: helpers.taplib.PerCall
+::: aie.helpers.taplib.PerCall
     options:
       show_root_heading: true
       heading_level: 3
 
-::: helpers.taplib.Affine
+::: aie.helpers.taplib.Affine
     options:
       show_root_heading: true
       heading_level: 3

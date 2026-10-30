@@ -35,8 +35,8 @@ class DMATask(RuntimeTask):
         Args:
             alloc (str): Name of the shim DMA allocation this transfer drives,
                 i.e. the symbol naming the shim channel. An
-                [`ObjectFifo`][iron.ObjectFifo] with a shim endpoint generates an
-                allocation of its own name; a [`Flow`][iron.Flow] generates one
+                [`ObjectFifo`][aie.iron.ObjectFifo] with a shim endpoint generates an
+                allocation of its own name; a [`Flow`][aie.iron.Flow] generates one
                 for its ``shim_symbol``.
             rt_data (RuntimeData): The Runtime buffer associated with the operation.
             tap (TensorAccessPattern): The walk over ``rt_data``; its values may be staged.
@@ -56,9 +56,9 @@ class DMATask(RuntimeTask):
                 iteration over them early). Defaults to None.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
                 BD with a packet header `(pkt_type, pkt_id)`. A packet-switched
-                [`ObjectFifo`][iron.ObjectFifo] needs none, since the transfer
+                [`ObjectFifo`][aie.iron.ObjectFifo] needs none, since the transfer
                 takes the header its shim allocation was assigned; this is for
-                an explicit [`PacketFlow`][iron.PacketFlow] or to override that
+                an explicit [`PacketFlow`][aie.iron.PacketFlow] or to override that
                 header. Defaults to None.
         """
         self._alloc = alloc

@@ -326,7 +326,10 @@ def test_a_select_whose_flag_a_function_computes_asks_for_it():
 
 
 class Narrowed(GEMV):
-    batches: int = param(default=1)
+    # The narrowing under test; pyright holds a mutable attribute's type invariant.
+    batches: int = param(  # pyright: ignore[reportIncompatibleVariableOverride]
+        default=1
+    )
 
 
 def test_a_subclass_may_make_a_nullable_parameter_required_and_dims_may_be_numpy():

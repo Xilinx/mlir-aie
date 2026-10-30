@@ -95,25 +95,9 @@ def _row_maj(a, b, vec_size):
         output_dtype=bfloat16,
         vec_size=vec_size,
     )
-    design = kd.design(
-        kernels.mv,
-        calls=calls,
-        dim_m=4,
-        dim_k=dim_k,
-        input_dtype=bfloat16,
-        output_dtype=bfloat16,
-        vec_size=vec_size,
-    )
+    design = kd.KernelDesign(fn, calls=calls)
     inputs = [a.reshape(calls, 4, dim_k), np.broadcast_to(b, (calls, dim_k))]
-    ins, out = kd.upload(
-        inputs,
-        kd.output_size(fn, calls=calls),
-        fn.output_dtype(),
-        fn=fn,
-        poison=True,
-    )
-    design(*ins, out)
-    return out.numpy().copy()
+    return design.run(inputs)
 
 
 def _col_maj(a_t, b, chunk, vec_size):

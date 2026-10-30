@@ -53,7 +53,7 @@ def selective_scan_sample(
 def selective_scan_ref(
     block, head, valid, *, rows: int, head_dim: int, state: int, blocks: int
 ):
-    """Numpy reference for [`selective_scan`][iron.kernels.ssm.selective_scan].
+    """Numpy reference for [`selective_scan`][aie.iron.kernels.ssm.selective_scan].
 
     Call ``b`` is block ``b``. Returns ``(final, y)`` per call.
     """
@@ -268,7 +268,7 @@ def gated_delta_rule_sample(
 def gated_delta_rule_ref(
     block, head, valid, *, rows: int, key_dim: int, value_dim: int, blocks: int
 ):
-    """Numpy reference for [`gated_delta_rule`][iron.kernels.ssm.gated_delta_rule]: call ``b`` is block ``b``.
+    """Numpy reference for [`gated_delta_rule`][aie.iron.kernels.ssm.gated_delta_rule]: call ``b`` is block ``b``.
 
     Returns ``(final, y)`` per call.
     """
