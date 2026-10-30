@@ -296,8 +296,13 @@ TIDY_LOG = f"""{SRC}/lib/Dialect/AIE/IR/AIEDialect.cpp:10:3: error: use auto whe
 {SRC}/lib/Dialect/AIE/IR/AIEDialect.cpp:10:3: error: use auto when initializing with a cast [modernize-use-auto,-warnings-as-errors]
 {SRC}/lib/Dialect/AIE/Transforms/AIEFoo.cpp:5:1: error: variable 'x' is not initialized [cppcoreguidelines-init-variables,-warnings-as-errors]
 {SRC}/lib/Dialect/AIE/Transforms/AIEFoo.cpp:9:1: error: redundant cast [readability-redundant-casting,-warnings-as-errors]
+1 error generated.
+Error while processing {SRC}/lib/Broken.cpp.
 {SRC}/lib/Broken.cpp:1:10: error: 'gen.h.inc' file not found [clang-diagnostic-error]
+    1 | #include "gen.h.inc"
+      |          ^~~~~~~~~~~
 /usr/include/c++/13/bits/stl.h:1:1: warning: something [bugprone-x]
+Found compiler error(s).
 """
 
 
@@ -321,6 +326,27 @@ def test_tidy_splits_enabled_files_from_the_rest():
     }
     assert piece["ready"] == ["lib/Clean.cpp"]
     assert piece["could_not_parse"] == ["lib/Broken.cpp"]
+
+
+def test_a_unit_broken_by_its_header_is_not_ready():
+    # clang-tidy's report of a missing tablegen'd .inc: the error is in the
+    # header, the translation unit is named by "Error while processing".
+    log = f"""1 error generated.
+Error while processing {SRC}/lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp.
+{SRC}/include/aie/Dialect/AIE/IR/AIEDialect.h:30:10: error: 'aie/Dialect/AIE/IR/AIEAttrs.h.inc' file not found [clang-diagnostic-error]
+   30 | #include "aie/Dialect/AIE/IR/AIEAttrs.h.inc"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found compiler error(s).
+"""
+    files = [
+        "lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp",
+        "lib/Clean.cpp",
+    ]
+    piece = ch.summarize_tidy(log, files, re.compile(r"lib/Enabled\.cpp$"), SRC)
+    assert piece["could_not_parse"] == [
+        "lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp"
+    ]
+    assert piece["ready"] == ["lib/Clean.cpp"]
 
 
 def test_the_enabled_list_is_read_from_the_pre_commit_hook():

@@ -273,6 +273,9 @@ def summarize_sanitizer(name: str, lits: list[dict], root: str) -> dict:
 # ----------------------------------------------------------------------
 
 DIAG = re.compile(r"^(.+?):(\d+):(\d+): (warning|error): (.*?) \[([\w.,-]+)\]$", re.M)
+# clang's ClangTool::run names the translation unit it could not compile;
+# the compiler error itself may point into a header that unit includes.
+UNPARSED = re.compile(r"^Error while processing (.+)\.$", re.M)
 
 
 def enabled_pattern(config: Path) -> re.Pattern:
@@ -306,7 +309,8 @@ def summarize_tidy(log: str, files: list[str], enabled: re.Pattern, root: str) -
     seen = set()
     by_file: dict[str, int] = {}
     by_check: dict[str, int] = {}
-    in_enabled, broken = [], set()
+    in_enabled = []
+    broken = {relative(m.group(1), root) for m in UNPARSED.finditer(log)}
     for m in DIAG.finditer(log):
         path = relative(m.group(1), root)
         checks = [c for c in m.group(6).split(",") if c != "-warnings-as-errors"]
@@ -315,7 +319,6 @@ def summarize_tidy(log: str, files: list[str], enabled: re.Pattern, root: str) -
             continue
         seen.add((path, m.group(2), check))
         if check == "clang-diagnostic-error":
-            broken.add(path)
             continue
         if not ours(path):
             continue
