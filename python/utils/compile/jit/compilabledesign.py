@@ -965,6 +965,16 @@ class CompilableDesign:
                     )
                     _cleanup_failed_compilation(kernel_dir)
                     xclbin_exists = inst_exists = False
+                elif not all(
+                    (kernel_dir / f"insts_{name.replace(':', '_')}.bin").exists()
+                    for name in _manifest.resolve_entries(kernel_dir)
+                ):
+                    logger.debug(
+                        "An entry's instruction stream is missing for '%s'; "
+                        "rebuilding",
+                        self.generator_name,
+                    )
+                    inst_exists = False
 
             if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
                 logger.debug(
@@ -1391,6 +1401,12 @@ class CompilableDesign:
                 generated = self._generated_for(full_elf=False)
                 if generated.requires_full_elf:
                     raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
+                if len(generated.entries) > 1:
+                    raise ValueError(
+                        f"{self.generator_name!r} has several entries "
+                        f"{list(generated.entries)}; an insts_only design "
+                        "lowers one runtime sequence."
+                    )
                 external_kernels = generated.external_kernels
                 use_chess = self._resolve_use_chess(external_kernels)
                 digests: dict[str, str] = {}
@@ -1474,7 +1490,12 @@ class CompilableDesign:
         """
         if self._kernel_dir is None:
             return None
-        return parse_dma_sizes(self._kernel_dir, self._full_elf_kernel_name)
+        # Entries take identical arguments, so the default entry's stand for all.
+        entries = _manifest.resolve_entries(self._kernel_dir)
+        return parse_dma_sizes(
+            self._kernel_dir,
+            self._full_elf_kernel_name or (entries[0] if entries else None),
+        )
 
     def _build_kernels(
         self,
@@ -1582,37 +1603,49 @@ class CompilableDesign:
     def _qualified_entry(self, entry: str) -> str:
         """Return the last build's ``"device:sequence"`` entry named ``entry``.
 
+        Args:
+            entry: An entry's ``"device:sequence"`` name, or its sequence name
+                when no other entry shares it.
+
         Raises:
-            ValueError: The build has no entry runtime named ``entry``.
+            ValueError: The build has no entry runtime named ``entry``, or
+                several entries' sequences are named ``entry``.
         """
         assert self._kernel_dir is not None, "compile() runs first"
-        names = {
-            name.partition(":")[2]: name
-            for name in _manifest.resolve_entries(self._kernel_dir)
-        }
-        if entry not in names:
+        names = _manifest.resolve_entries(self._kernel_dir)
+        if entry in names:
+            return entry
+        matches = [name for name in names if name.partition(":")[2] == entry]
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
             raise ValueError(
-                f"{self.generator_name!r} has no entry {entry!r}: "
-                + (
-                    f"its entries are {sorted(names)}."
-                    if names
-                    else "it has one entry; give its Program a list of Runtimes "
-                    "to dispatch several by name."
-                )
+                f"{self.generator_name!r} has several entries named {entry!r}: "
+                f"name one of {matches}."
             )
-        return names[entry]
+        raise ValueError(
+            f"{self.generator_name!r} has no entry {entry!r}: "
+            + (
+                f"its entries are {list(names)}."
+                if names
+                else "it has one entry; give its Program a list of Runtimes "
+                "to dispatch several by name."
+            )
+        )
 
     def entry_kernel_name(self, entry: str) -> str:
         """Return the full ELF's ``"device:sequence"`` kernel of the entry runtime ``entry``.
 
         Args:
-            entry: The name of one of the Program's entry runtimes.
+            entry: One of the Program's entry runtimes, by ``"device:sequence"``
+                or, when no other entry shares it, by sequence name.
 
         Returns:
             The kernel the last ``compile()``'s full ELF runs it as.
 
         Raises:
-            ValueError: The build has no entry runtime named ``entry``.
+            ValueError: The build has no entry runtime named ``entry``, or
+                several.
         """
         assert self._kernel_dir is not None, "compile() runs first"
         return self._parse_full_elf_kernel_name(
@@ -1623,13 +1656,15 @@ class CompilableDesign:
         """Return the instruction stream of the entry runtime ``entry`` beside the xclbin.
 
         Args:
-            entry: The name of one of the Program's entry runtimes.
+            entry: One of the Program's entry runtimes, by ``"device:sequence"``
+                or, when no other entry shares it, by sequence name.
 
         Returns:
             Its ``insts_<device>_<sequence>.bin`` from the last ``compile()``.
 
         Raises:
-            ValueError: The build has no entry runtime named ``entry``.
+            ValueError: The build has no entry runtime named ``entry``, or
+                several.
         """
         assert self._kernel_dir is not None, "compile() runs first"
         qualified = self._qualified_entry(entry)

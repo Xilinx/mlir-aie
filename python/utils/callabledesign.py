@@ -258,7 +258,11 @@ class CallableDesign:
             physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
                 trace_config.physical_mlir_path = str(physical_mlir)
-            trace_config.kernel = compilable._full_elf_kernel_name or DEFAULT_KERNEL
+            trace_config.kernel = (
+                compilable._qualified_entry(entry)
+                if entry is not None
+                else compilable._full_elf_kernel_name or DEFAULT_KERNEL
+            )
         # The lowered runtime_sequence operand list is the true host-buffer
         # contract (one operand per host BO, including any trace/ctrl-packet
         # buffer the lowering appended). Its length is floor-independent, unlike
@@ -318,8 +322,9 @@ class CallableDesign:
                 design's ScratchpadParameter values for this call, a mapping
                 by name, written to the run's ctrl scratchpad before it
                 starts (the design compiles to a full ELF, ``full_elf=True``);
-                and ``entry``: the name of the Program entry runtime to
-                dispatch, from the same build (default: its first).
+                and ``entry``: the Program entry runtime to dispatch from the
+                same build, by ``"device:sequence"`` or, when no other entry
+                shares it, by sequence name (default: its first).
 
         Returns:
             The result of ``NPUKernel.__call__``.
