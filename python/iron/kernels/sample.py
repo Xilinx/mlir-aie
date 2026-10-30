@@ -76,6 +76,15 @@ def summary_words(slice_size: int, k_max: int) -> int:
     return SUMMARY_HEADER + 2 * k_max + (slice_size + 31) // 32
 
 
+def rule_column_words(slice_size: int, k_max: int) -> int:
+    """int32 words of one column's input to ``sample_combine(probability_rule=True)``.
+
+    That column's ``sample_select`` summary, restricted summary and
+    reduction, back to back.
+    """
+    return 2 * summary_words(slice_size, k_max) + REDUCTION_WORDS
+
+
 def _positive(owner: str, **values) -> None:
     for name, value in values.items():
         if (
@@ -208,8 +217,10 @@ def sample_select(
     ``chunk``-wide bf16 scratch) and ``reduction`` (``REDUCTION_WORDS``
     int32, this column's running evidence for ``sample_combine``'s
     forced-timestamp compare). ``sample_combine`` (``probability_rule=True``)
-    reduces every column's ``reduction`` into that compare and draws from
-    ``summary`` or ``restricted_summary`` as it decides.
+    reads ``summary``, ``restricted_summary`` and ``reduction`` back to back
+    (``rule_column_words``), reduces every column's ``reduction`` into that
+    compare and draws from ``summary`` or ``restricted_summary`` as it
+    decides.
     """
     _check_slice("sample_select", slice_size, k_max)
     _positive("sample_select", chunk=chunk)
@@ -302,16 +313,20 @@ def sample_combine(
         probability_rule: Matches the same argument of every column's
             ``sample_select`` (default off, bit-identical to a build without
             it). ``row`` then carries one more word, its split
-            (``split_word``), and two more arguments arrive: ``restricted_summaries``
-            (mirroring ``summaries``, each column's second, ``[split,
-            vocab)``-only top-k) and ``reductions`` (``columns *
-            REDUCTION_WORDS`` int32, column 0 first, every column's
-            ``sample_select`` reduction output). The forced-timestamp compare
-            they decide chooses which of ``summaries``/``restricted_summaries``
-            the draw comes from.
+            (``split_word``), and each column of ``summaries`` is
+            ``rule_column_words`` long: its summary, then its second,
+            ``[split, vocab)``-only top-k (``restricted_summary``), then its
+            ``reduction``, so one stream per column carries all three. The
+            forced-timestamp compare the reductions decide chooses which of
+            the two summaries the draw comes from. Every column is
+            ``slice_size``: no ``last_slice``.
 
     Returns:
         The kernel.
+
+    Raises:
+        ValueError: When a size is out of range, or ``probability_rule`` is
+            given with a ``last_slice``.
     """
     last = slice_size if last_slice is None else last_slice
     _check_slice("sample_combine", slice_size, k_max)
@@ -323,23 +338,25 @@ def sample_combine(
         )
     if columns * slice_size >= 1 << 31:
         raise ValueError("sample_combine: a token must fit int32")
-    summaries_shape = (
-        (columns - 1) * summary_words(slice_size, k_max) + summary_words(last, k_max),
-    )
+    if probability_rule:
+        # The core strides by a whole column, so the last's restricted
+        # summary must sit where a full column's would.
+        if last != slice_size:
+            raise ValueError("sample_combine: probability_rule needs equal slices")
+        summaries_shape = (columns * rule_column_words(slice_size, k_max),)
+    else:
+        summaries_shape = (
+            (columns - 1) * summary_words(slice_size, k_max)
+            + summary_words(last, k_max),
+        )
     row_words = combine_row_words(probability_rule)
     arg_types = [
         np.ndarray[summaries_shape, np.dtype[np.int32]],
         np.ndarray[(row_words,), np.dtype[np.int32]],
+        np.ndarray[(1,), np.dtype[np.int32]],
+        np.ndarray[(1,), np.dtype[np.int32]],
     ]
-    roles = [In, In]
-    if probability_rule:
-        arg_types += [
-            np.ndarray[summaries_shape, np.dtype[np.int32]],
-            np.ndarray[(columns * REDUCTION_WORDS,), np.dtype[np.int32]],
-        ]
-        roles += [In, In]
-    arg_types += [np.ndarray[(1,), np.dtype[np.int32]]] * 2
-    roles += [Out, Out]
+    roles = [In, In, Out, Out]
     compile_flags = list(
         _STRICT_FP
         + [

@@ -822,11 +822,20 @@ def test_combine_factory_with_rule(arch):
         columns=3, slice_size=2048, k_max=32, probability_rule=True
     )
     assert "-DSAMPLE_PROB_RULE=1" in fn._compile_flags
+    words = 2 * sample.summary_words(2048, 32) + sample.REDUCTION_WORDS
+    assert sample.rule_column_words(2048, 32) == words
+    assert fn.arg_shape(0) == (3 * words,)
     assert fn.arg_shape(1) == (sample.combine_row_words(probability_rule=True),)
-    assert fn.arg_shape(2) == (3 * sample.summary_words(2048, 32),)  # restricted
-    assert fn.arg_shape(3) == (3 * sample.REDUCTION_WORDS,)  # reductions
-    assert fn.arg_shape(4) == fn.arg_shape(5) == (1,)
-    assert fn.contract.roles == (In, In, In, In, Out, Out)
+    assert fn.arg_shape(2) == fn.arg_shape(3) == (1,)
+    assert fn.contract.roles == (In, In, Out, Out)
+    with pytest.raises(ValueError, match="equal slices"):
+        kernels.sample_combine(
+            columns=3,
+            slice_size=2048,
+            k_max=32,
+            last_slice=1024,
+            probability_rule=True,
+        )
 
 
 # --- builds ----------------------------------------------------------------
