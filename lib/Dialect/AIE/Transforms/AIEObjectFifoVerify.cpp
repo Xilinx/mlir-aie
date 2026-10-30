@@ -74,8 +74,7 @@ static bool runsForever(Operation *op) {
   auto forOp = dyn_cast<scf::ForOp>(op);
   std::optional<int64_t> trip =
       forOp ? getStaticTripCount(forOp) : std::nullopt;
-  return (whileOp && isForeverLoop(whileOp)) ||
-         (trip && *trip >= kRunsForever);
+  return (whileOp && isForeverLoop(whileOp)) || (trip && *trip >= kRunsForever);
 }
 
 /// How many times `op` runs when its core, or runtime sequence, runs to
