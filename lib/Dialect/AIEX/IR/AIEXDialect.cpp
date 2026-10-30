@@ -686,8 +686,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       return failure();
   }
 
-  // The experimental HSA target uses this op on AIE1, skip all the AIE2
-  // specific checks
+  // AIE1 does not use the NPU alignment and packet-header checks.
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return success();
 
@@ -728,13 +727,10 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 
   bool hasLengthParameter =
       getLengthParameterAttr() || getLengthStateTableIdxAttr();
-  // Static AIE1 transfers without a length parameter skip allocation checks,
-  // including on the compatibility target used outside a device.
-  if (!isDynamic && !hasLengthParameter &&
-      targetModel.getTargetArch() == AIE::AIEArch::AIE1)
-    return success();
-
+  bool isAIE1 = targetModel.getTargetArch() == AIE::AIEArch::AIE1;
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (!dev && isAIE1 && !isDynamic && !hasLengthParameter)
+    return success();
   auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getMetadata().getRootReference());
   if (isDynamic)
@@ -744,7 +740,14 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // until metadata names a shim DMA allocation.
   if (!allocOp)
     return success();
-  AIE::TileOp tile = allocOp.getTileOp();
+  auto tile = allocOp.getTile().getDefiningOp<AIE::TileOp>();
+  // Defer coordinate-dependent AIE1 checks until logical tiles are placed.
+  if (isAIE1 && !tile) {
+    if (hasLengthParameter)
+      return emitOpError("length_parameter is only supported on AIE2 and "
+                         "AIE2P devices");
+    return success();
+  }
   if (!tile)
     return emitOpError("shim DMA allocation must reference a valid TileOp");
   int col = tile.getCol();
@@ -752,8 +755,6 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   if (hasLengthParameter &&
       failed(AIE::verifyLengthParameterTile(*this, targetModel, col, row)))
     return failure();
-  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
-    return success();
 
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -791,9 +792,10 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       });
   // aie-decompose-large-dma-bd leaves a transfer with a runtime length
   // alone, so it must be legal as written.
-  if (!hasLengthParameter && AIEX::isDecomposableNdDmaPattern(
-                                 getOperation(), buffer, targetModel, col, row,
-                                 inputOffsets, inputSizes, inputStrides)) {
+  // AIE1 patterns must fit directly; the NPU decomposition pass is not used.
+  if (!isAIE1 && !hasLengthParameter &&
+      AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel, col,
+                                     row, inputOffsets, inputSizes, inputStrides)) {
     // ok: will be decomposed before lowering
   } else if (failed(verifyStridesWraps(
                  *this, [&] { return emitOpError(); }, buffer, col, row,
