@@ -590,6 +590,19 @@ def test_sample_ref_never_draws_a_mask_below_finite_logits():
         )
 
 
+def test_sample_ref_takes_a_row_shaped_logits_as_its_row():
+    # (1, vocab) is one row, as sample_weights already reads it.
+    logits = np.zeros(16, np.float32)
+    logits[5] = 9.0
+    logits[12] = 1.0
+    flat = logits.astype(bfloat16)
+    for kw in (dict(ranges=[(5, 6)]), dict(ranges=[(5, 6)], probability_rule_split=8)):
+        assert sample.sample_ref(flat.reshape(1, -1), 0.0, 1, 0, **kw) == (
+            sample.sample_ref(flat, 0.0, 1, 0, **kw)
+        )
+    assert sample.sample_ref(flat.reshape(1, -1), 0.0, 1, 0, ranges=[(5, 6)]) != 5
+
+
 def test_sample_ref_clamps_the_split():
     # A split below 0 masks nothing when the rule fires, as each column clamps it.
     logits = np.linspace(1, 0, 8).astype(bfloat16)

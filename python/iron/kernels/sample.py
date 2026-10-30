@@ -531,7 +531,7 @@ def apply_ranges_ref(logits, ranges) -> np.ndarray:
     to its slice: ``select_summary_ref`` (or ``sample_ref``) of the result
     draws as the device would.
     """
-    row = np.ascontiguousarray(logits, dtype=bfloat16).copy()
+    row = np.ascontiguousarray(logits, dtype=bfloat16).reshape(-1).copy()
     for lo, hi in ranges:
         row[min(max(lo, 0), row.size) : min(max(hi, 0), row.size)] = -np.inf
     return row
