@@ -42,7 +42,7 @@ from aie.iron.kernels.activation import (
     softmax_span_ref,
     softmax_span_sample,
 )
-from aie.utils import bfp, get_current_device
+from aie.utils import bfp, coded, get_current_device
 from aie.utils.accuracy import round_to
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
@@ -1285,6 +1285,46 @@ def test_col_maj_matvec_is_an_mv_layout():
             kernels.mv(**kwargs, **bf16)
     with pytest.raises(ValueError, match="bf16"):
         kernels.mv(dim_m=32, dim_k=32, a_col_maj=True)
+
+
+def test_coded_matvec_is_an_mv_layout():
+    # (m, row_offset, A, scratch, b, c): A is dim_m coded rows, decoded into
+    # the scratch the core keeps, then the row-major kernel's.
+    bf16 = dict(input_dtype=bfloat16, output_dtype=bfloat16, a_coded=True)
+    fn = kernels.mv(dim_m=4, dim_k=2048, vec_size=64, **bf16)
+    types = fn.arg_types()
+    assert types[0] is np.int32 and types[1] is np.int32
+    assert [kd.shape_dtype(t) for t in types[2:]] == [
+        ((4 * coded.row_bytes(2048),), np.uint8),
+        ((4 * 2048,), bfloat16),
+        ((2048,), bfloat16),
+        ((4,), bfloat16),
+    ]
+    assert Path(fn.source_file).name == "mv_bf16.cc"
+    assert {"-DA_CODED", "-DCAPACITY=15", "-DDIM_K=2048"} <= set(fn.compile_flags)
+    assert fn.name.split("_", 1)[-1] == "matvec_coded_bf16_bf16"
+    assert fn.contract.roles == (Param, Param, In, Param, In, Out)
+    a, b = fn.contract.sample(np.random.default_rng(0), 3)
+    plain = kernels.mv(dim_m=4, dim_k=2048, input_dtype=bfloat16, output_dtype=bfloat16)
+    decoded = coded.decode_rows(a, 2048)
+    assert np.array_equal(
+        fn.expected([a, b]), plain.expected([decoded, b]), equal_nan=True
+    )
+    np.testing.assert_array_equal(
+        kernels.mv_bf16_ref(4, 2, a[0], b[0], a_coded=True),
+        kernels.mv_bf16_ref(4, 2, decoded[0], b[0]),
+    )
+    for kwargs, match in (
+        (dict(dim_m=4, dim_k=96, vec_size=32), "multiple of 64"),
+        (dict(dim_m=4, dim_k=128, vectorized=False), "vectorized"),
+    ):
+        with pytest.raises(ValueError, match=match):
+            kernels.mv(**kwargs, **bf16)
+    with pytest.raises(ValueError, match="bf16"):
+        kernels.mv(dim_m=32, dim_k=128, a_coded=True)
+    set_current_device(NPU1Col1())
+    with pytest.raises(NotImplementedError, match="aie2p"):
+        kernels.mv(dim_m=4, dim_k=128, **bf16)
 
 
 @pytest.mark.parametrize("case_id", list(CASES))

@@ -1039,13 +1039,18 @@ def mv_coded_sample(rng, calls, *, dim_m: int, dim_k: int, tiled: bool):
     return [coded.encode_rows(a.astype(bfloat16), CODED_CAPACITY), b]
 
 
-def mv_bf16_ref(m, row_offset, a, b):
+def mv_bf16_ref(m, row_offset, a, b, *, a_coded: bool = False):
     """Numpy reference for the bf16 [`mv`][aie.iron.kernels.linalg.mv]: ``a @ b`` over ``m`` rows, accumulated in float32.
 
     ``a`` is row-major ``(rows, K)``; only the first ``m`` rows are computed,
-    and the kernel writes them at ``row_offset`` into ``c``.
+    and the kernel writes them at ``row_offset`` into ``c``. With ``a_coded``
+    it is the coded rows ``mv(a_coded=True)`` reads, decoded first.
     """
-    a = np.asarray(a).reshape(-1, np.asarray(b).shape[-1])
+    K = np.asarray(b).shape[-1]
+    if a_coded:
+        rows = np.asarray(a).reshape(-1, coded.row_bytes(K, CODED_CAPACITY))
+        a = coded.decode_rows(rows, K)
+    a = np.asarray(a).reshape(-1, K)
     out = a[: int(m)].astype(np.float32) @ np.asarray(b).astype(np.float32)
     return np.concatenate([np.zeros(int(row_offset), np.float32), out])
 
