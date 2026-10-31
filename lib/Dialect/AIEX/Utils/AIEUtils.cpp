@@ -313,6 +313,18 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
       os << " " << ref.getValue();
     os << "\n";
   }
+
+  // Last, and only when there are any, so a reader that predates it stops
+  // before it.
+  SmallVector<AIEX::ScratchpadParameterOp> multiples;
+  for (auto p : allParams)
+    if (p.getOffsetMultiple())
+      multiples.push_back(p);
+  if (multiples.empty())
+    return;
+  os << multiples.size() << "\n";
+  for (auto p : multiples)
+    os << p.getSymName() << " " << *p.getOffsetMultiple() << "\n";
 }
 
 bool AIEX::getReachableConfigures(
