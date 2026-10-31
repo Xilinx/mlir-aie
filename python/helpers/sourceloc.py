@@ -12,7 +12,6 @@ import inspect
 import itertools
 import linecache
 import os
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from types import CodeType, FunctionType
@@ -48,8 +47,6 @@ def is_internal_file(filename: str) -> bool:
 # Finding a statement's column walks its code, and captures repeat a few sites.
 @functools.lru_cache(maxsize=4096)
 def _column(code: CodeType, lasti: int) -> int:
-    if sys.version_info < (3, 11):
-        return 0
     # f_lasti counts bytes; co_positions has an entry per 2-byte unit.
     positions = itertools.islice(code.co_positions(), lasti // 2, None)
     return next(positions)[2] or 0
@@ -98,8 +95,8 @@ class SourceSite:
         # before it, innermost first.
         self.returned_to = returned_to
         # The function each of the declaring and returned-to statements called,
-        # as its source spells it ("ObjectFifo", "forward", "load"): without
-        # columns it picks the call on the line.
+        # as its source spells it ("ObjectFifo", "forward", "load"), for a
+        # site with no column; None for one with a column.
         self.callees = callees
 
     @classmethod
@@ -139,16 +136,16 @@ class SourceSite:
                     frame.f_lineno,
                     _column(frame.f_code, frame.f_lasti),
                 )
+                # Without a column, the function a site called picks its call
+                # on the line; reading a class's name costs the frame's locals.
+                callee = below.f_code.co_name if site[2] == 0 else None
                 if not frames:
-                    # The IRON call the declaring statement made: a class's
-                    # __init__ is spelled as the class.
-                    callee = below.f_code.co_name
                     if callee == "__init__" and "self" in below.f_locals:
                         callee = type(below.f_locals["self"]).__name__
                     callees.append(callee)
                 elif returning and len(returned_to) < cls.RETURN_DEPTH:
                     returned_to.append(site)
-                    callees.append(below.f_code.co_name)
+                    callees.append(callee)
                 if len(frames) < depth:
                     frames.append(site)
             below = frame
@@ -375,9 +372,9 @@ def _binding(
         or an element of it, e.g. an argument to another call.
     """
     if col == 0:
-        # Before Python 3.11 there are no columns, so any call to `callee`
-        # spanning the line may be the site: answer only when every one gives
-        # the same.
+        # Python run with -X no_debug_ranges records no columns, so any call
+        # to `callee` spanning the line may be the site: answer only when
+        # every one gives the same.
         answers = {
             _binding(filename, call.lineno, call.col_offset + 1, stamp)
             for statement in _statements(filename, stamp)

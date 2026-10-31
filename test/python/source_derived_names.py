@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %PYTHON %s
+# Without column positions, a site's call is picked by the function it called.
+# RUN: env PYTHONNODEBUGRANGES=1 %PYTHON %s
 
 # An unnamed ObjectFifo or Worker is named after the variable its statement
 # assigns it to, so the symbol, the iron: location name and the buffers and
@@ -9,7 +11,6 @@
 # object that is not assigned to a name falls back to of<N> / worker<N>.
 
 import numpy as np
-from aie.helpers.sourceloc import SourceSite
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
 
@@ -78,41 +79,3 @@ cores = [op.location.name_str for op in ops if op.name == "aie.core"]
 # An element of a list is named after the list.
 assert cores == ["iron:producer", "iron:workers"], cores
 print("PASS: names from source")
-
-# Before Python 3.11 a site has no column. A name read without one is the name
-# read with it: of the calls on its line, only those to the function the site
-# called count, so a call in its arguments (`act_in.cons()`) does not.
-left, right = ObjectFifo(line_type), ObjectFifo(line_type)
-without_columns = {}
-for name, obj in [
-    ("act_in", act_in),
-    ("first", first),
-    ("forwarded", forwarded),
-    ("fifos", fifos[0]),
-    ("producer", producer),
-    ("workers", workers[0]),
-    ("left", left),
-    ("right", right),
-]:
-    site = obj._site
-    lined = SourceSite(
-        site.filename,
-        site.line,
-        0,
-        returned_to=tuple((f, line, 0) for f, line, _ in site.returned_to),
-        callees=site.callees,
-    )
-    without_columns[name] = lined.assigned_name()
-    assert without_columns[name] in (None, site.assigned_name()), (name, lined)
-assert without_columns == {
-    "act_in": "act_in",
-    "first": "out_fifo",
-    "forwarded": "forwarded",
-    "fifos": "fifos",
-    "producer": "producer",
-    "workers": "workers",
-    # Two ObjectFifo calls on one line, with no column to tell them apart.
-    "left": None,
-    "right": None,
-}, without_columns
-print("PASS: names without columns")
