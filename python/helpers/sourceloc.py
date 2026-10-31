@@ -87,6 +87,7 @@ class SourceSite:
         col: int = 0,
         callers: tuple[tuple[str, int, int], ...] = (),
         returned_to: tuple = (),
+        callees: tuple[str | None, ...] = (),
     ):
         self.filename = filename
         self.line = line
@@ -96,6 +97,10 @@ class SourceSite:
         # (filename, line, col) of each user frame that called the one
         # before it, innermost first.
         self.returned_to = returned_to
+        # The function each of the declaring and returned-to statements called,
+        # as its source spells it ("ObjectFifo", "forward", "load"): without
+        # columns it picks the call on the line.
+        self.callees = callees
 
     @classmethod
     def capture(cls) -> "SourceSite":
@@ -105,12 +110,12 @@ class SourceSite:
             The site, or one with no `filename` when the whole stack is
             internal.
         """
-        frames, returned_to = [], []
+        frames, returned_to, callees = [], [], []
         depth = _depth()
         # Whether every frame since the declaring one is a user frame: those
         # are the frames a helper may have returned the object through.
         returning = True
-        frame = inspect.currentframe()
+        frame = below = inspect.currentframe()
         while frame is not None and (
             len(frames) < depth or (returning and len(returned_to) < cls.RETURN_DEPTH)
         ):
@@ -132,15 +137,27 @@ class SourceSite:
                     frame.f_lineno,
                     _column(frame.f_code, frame.f_lasti),
                 )
-                if frames and returning and len(returned_to) < cls.RETURN_DEPTH:
+                if not frames:
+                    # The IRON call the declaring statement made: a class's
+                    # __init__ is spelled as the class.
+                    callee = below.f_code.co_name
+                    if callee == "__init__" and "self" in below.f_locals:
+                        callee = type(below.f_locals["self"]).__name__
+                    callees.append(callee)
+                elif returning and len(returned_to) < cls.RETURN_DEPTH:
                     returned_to.append(site)
+                    callees.append(below.f_code.co_name)
                 if len(frames) < depth:
                     frames.append(site)
+            below = frame
             frame = frame.f_back
         if not frames:
             return cls(None)
         return cls(
-            *frames[0], callers=tuple(frames[1:]), returned_to=tuple(returned_to)
+            *frames[0],
+            callers=tuple(frames[1:]),
+            returned_to=tuple(returned_to),
+            callees=tuple(callees),
         )
 
     def assigned_name(self) -> str | None:
@@ -168,16 +185,15 @@ class SourceSite:
             return None
         # The element of a returned tuple the object is, if it is one.
         index = None
-        for filename, line, col in (
-            (self.filename, self.line, self.col),
-        ) + self.returned_to:
+        sites = ((self.filename, self.line, self.col),) + self.returned_to
+        for (filename, line, col), callee in itertools.zip_longest(sites, self.callees):
             # A design edited and rerun in one process is read afresh.
             try:
                 stat = os.stat(filename)
                 stamp = (stat.st_size, stat.st_mtime_ns)
             except OSError:
                 stamp = None
-            binding = _binding(filename, line, col, stamp)
+            binding = _binding(filename, line, col, stamp, callee)
             if binding is None:
                 return None
             kind, element, names = binding
@@ -233,7 +249,7 @@ class SourceSite:
 
 
 def _target_name(target: ast.AST) -> str | None:
-    """`x` for `x = ...`, `self.x = ...` and `x[i] = ...`."""
+    """`x` for `x = ...`, `self.x = ...` and `x[i] = ...`; `f` for `obj.f(...)`."""
     while isinstance(target, ast.Subscript):
         target = target.value
     if isinstance(target, ast.Name):
@@ -332,7 +348,11 @@ def _element(value: ast.expr, line: int, col: int) -> ast.expr | None:
 
 @functools.lru_cache(maxsize=4096)
 def _binding(
-    filename: str, line: int, col: int, stamp: tuple[int, int] | None
+    filename: str,
+    line: int,
+    col: int,
+    stamp: tuple[int, int] | None,
+    callee: str | None = None,
 ) -> tuple | None:
     """How the statement at a call site binds the call's result.
 
@@ -342,6 +362,8 @@ def _binding(
         col: Its column, 0 when unknown.
         stamp: The file's size and modification time, as `_statements`
             takes it.
+        callee: The name of the function the site called, which picks its
+            call among the line's when `col` is 0; None for any call.
 
     Returns:
         (kind, element, names): `kind` is "assign" or "return"; `element` is
@@ -351,14 +373,16 @@ def _binding(
         or an element of it, e.g. an argument to another call.
     """
     if col == 0:
-        # Before Python 3.11 there are no columns, so any call spanning the
-        # line may be the site: answer only when every one gives the same.
+        # Before Python 3.11 there are no columns, so any call to `callee`
+        # spanning the line may be the site: answer only when every one gives
+        # the same.
         answers = {
             _binding(filename, call.lineno, call.col_offset + 1, stamp)
             for statement in _statements(filename, stamp)
             for call in ast.walk(statement[2])
             if isinstance(call, ast.Call)
             and call.lineno <= line <= (call.end_lineno or call.lineno)
+            and callee in (None, _target_name(call.func))
         }
         return answers.pop() if len(answers) == 1 else None
     for kind, names, value, unpacks in _statements(filename, stamp):

@@ -80,7 +80,8 @@ assert cores == ["iron:producer", "iron:workers"], cores
 print("PASS: names from source")
 
 # Before Python 3.11 a site has no column. A name read without one is the name
-# read with it, or none when the calls on its line disagree on it.
+# read with it: of the calls on its line, only those to the function the site
+# called count, so a call in its arguments (`act_in.cons()`) does not.
 left, right = ObjectFifo(line_type), ObjectFifo(line_type)
 without_columns = {}
 for name, obj in [
@@ -99,6 +100,7 @@ for name, obj in [
         site.line,
         0,
         returned_to=tuple((f, line, 0) for f, line, _ in site.returned_to),
+        callees=site.callees,
     )
     without_columns[name] = lined.assigned_name()
     assert without_columns[name] in (None, site.assigned_name()), (name, lined)
@@ -106,11 +108,10 @@ assert without_columns == {
     "act_in": "act_in",
     "first": "out_fifo",
     "forwarded": "forwarded",
-    # range(1) is a call on the line too.
-    "fifos": None,
-    # The handles passed to the Worker are calls on its line.
-    "producer": None,
-    "workers": None,
+    "fifos": "fifos",
+    "producer": "producer",
+    "workers": "workers",
+    # Two ObjectFifo calls on one line, with no column to tell them apart.
     "left": None,
     "right": None,
 }, without_columns
