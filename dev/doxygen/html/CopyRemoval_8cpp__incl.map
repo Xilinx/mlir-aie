@@ -1,0 +1,14 @@
+<map id="lib/Dialect/AIEVec/Transforms/CopyRemoval.cpp" name="lib/Dialect/AIEVec/Transforms/CopyRemoval.cpp">
+<area shape="rect" id="Node000001" title=" " alt="" coords="154,5,374,50"/>
+<area shape="rect" id="Node000002" href="$Dialect_2AIEVec_2Pipelines_2Passes_8h.html" title=" " alt="" coords="105,98,250,143"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="246,49,210,89,206,85,241,52"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,191,131,218"/>
+<area shape="poly" id="edge6_Node000001_Node000003" title=" " alt="" coords="164,52,128,72,95,100,84,117,77,136,70,176,65,174,72,135,79,115,91,96,125,68,168,49"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="274,98,430,143"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="286,48,324,87,318,87,284,53"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="454,98,639,143"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="332,48,467,92,462,94,331,53"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="151,142,99,183,96,179,146,144"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="155,191,330,218"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="196,141,225,179,220,178,193,145"/>
+</map>
