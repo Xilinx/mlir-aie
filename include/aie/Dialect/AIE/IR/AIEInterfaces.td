@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #ifndef AIE_INTERFACES
 #define AIE_INTERFACES
 
@@ -16,6 +15,24 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
+
+def NamedOpUserOpInterface : OpInterface<"NamedOpUserOpInterface"> {
+  let cppNamespace = "::xilinx::AIE";
+  let description = [{
+    Verify references to device-owned named operations after the device's
+    children have passed their invariants. Unlike MLIR symbols, these named
+    operations may also define SSA results.
+
+    The enclosing aie.device region verifier calls this interface with a fresh,
+    lazily populated collection. Implementations must not retain its tables.
+    Graph-dependent checks require verification of the containing device (or
+    module); standalone verification of the user does not perform them.
+  }];
+  let methods = [InterfaceMethod<
+      [{Verify named uses in the enclosing device.}], "::mlir::LogicalResult",
+      "verifyNamedOpUses",
+      (ins "::xilinx::AIE::NamedOpTableCollection &":$names)>];
+}
 
 // Op is a DMA-like operation with BD contraints
 def HasValidBDs : NativeOpTrait<"HasValidBDs"> {
@@ -27,29 +44,33 @@ def HasValidDMAChannels : NativeOpTrait<"HasValidDMAChannels"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
-def PredIsCoreTile : CPred<
-  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
-  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isCoreTile()"
->;
-def PredIsMemTile : CPred<
-  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
-  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isMemTile()"
->;
-def PredIsShimNOCTile : CPred<
-  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
-  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isShimNOCTile()"
->;
-def PredIsShimPLTile : CPred<
-  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
-  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isShimPLTile()"
->;
+def PredIsCoreTile
+    : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
+            "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike()."
+            "isCoreTile()">;
+def PredIsMemTile
+    : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
+            "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike()."
+            "isMemTile()">;
+def PredIsShimNOCTile
+    : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
+            "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike()."
+            "isShimNOCTile()">;
+def PredIsShimPLTile
+    : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
+            "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike()."
+            "isShimPLTile()">;
 
 def IsCoreTile : PredOpTrait<"op exists in a core tile", PredIsCoreTile>;
 def IsMemTile : PredOpTrait<"op exists in a MemTile", PredIsMemTile>;
-def IsTileWithMemory : PredOpTrait<"op exists in a tile with local memory", Or<[PredIsCoreTile, PredIsMemTile]>>;
-def IsShimTile : PredOpTrait<"op exists in a shim tile", Or<[PredIsShimNOCTile, PredIsShimPLTile]>>;
-def IsShimNOCTile : PredOpTrait<"op exists in a shim tile with NOC connection", PredIsShimNOCTile>;
-def IsShimPLTile : PredOpTrait<"op exists in a shim tile with PL interface", PredIsShimPLTile>;
+def IsTileWithMemory : PredOpTrait<"op exists in a tile with local memory",
+                                   Or<[PredIsCoreTile, PredIsMemTile]>>;
+def IsShimTile : PredOpTrait<"op exists in a shim tile",
+                             Or<[PredIsShimNOCTile, PredIsShimPLTile]>>;
+def IsShimNOCTile : PredOpTrait<"op exists in a shim tile with NOC connection",
+                                PredIsShimNOCTile>;
+def IsShimPLTile : PredOpTrait<"op exists in a shim tile with PL interface",
+                               PredIsShimPLTile>;
 
 def IsFlowEndPoint : NativeOpTrait<"IsFlowEndPoint"> {
   string cppNamespace = "::xilinx::AIE";
@@ -60,79 +81,75 @@ def TileLike : OpInterface<"TileLike"> {
     Interface for operations that represent an AIE tile (logical or physical).
   }];
   let cppNamespace = "::xilinx::AIE";
-  let methods = [
-    InterfaceMethod<[{Return the true hardware tile type.}],
-      "xilinx::AIE::AIETileType", "getTileType", (ins)
-    >,
-    InterfaceMethod<[{Return the optional column index.}],
-      "std::optional<int>", "tryGetCol", (ins)
-    >,
-    InterfaceMethod<[{Return the optional row index.}],
-      "std::optional<int>", "tryGetRow", (ins)
-    >,
-    InterfaceMethod<[{}], "bool", "isCoreTile", (ins), [{}], [{
+  let methods =
+      [InterfaceMethod<[{Return the true hardware tile type.}],
+                       "xilinx::AIE::AIETileType", "getTileType", (ins)>,
+       InterfaceMethod<[{Return the optional column index.}],
+                       "std::optional<int>", "tryGetCol", (ins)>,
+       InterfaceMethod<[{Return the optional row index.}], "std::optional<int>",
+                       "tryGetRow", (ins)>,
+       InterfaceMethod<[{}], "bool", "isCoreTile", (ins), [{}], [{
       return $_op.getTileType() == xilinx::AIE::AIETileType::CoreTile;
     }]>,
-    InterfaceMethod<[{}], "bool", "isMemTile", (ins), [{}], [{
+       InterfaceMethod<[{}], "bool", "isMemTile", (ins), [{}], [{
       return $_op.getTileType() == xilinx::AIE::AIETileType::MemTile;
     }]>,
-    InterfaceMethod<[{}], "bool", "isShimNOCTile", (ins), [{}], [{
+       InterfaceMethod<[{}], "bool", "isShimNOCTile", (ins), [{}], [{
       return $_op.getTileType() == xilinx::AIE::AIETileType::ShimNOCTile;
     }]>,
-    InterfaceMethod<[{}], "bool", "isShimPLTile", (ins), [{}], [{
+       InterfaceMethod<[{}], "bool", "isShimPLTile", (ins), [{}], [{
       return $_op.getTileType() == xilinx::AIE::AIETileType::ShimPLTile;
     }]>,
-    InterfaceMethod<[{}], "bool", "isShimNOCorPLTile", (ins), [{}], [{
+       InterfaceMethod<[{}], "bool", "isShimNOCorPLTile", (ins), [{}], [{
       return $_op.isShimNOCTile() || $_op.isShimPLTile();
     }]>,
-    InterfaceMethod<[{}], "bool", "isShimTile", (ins), [{}], [{
+       InterfaceMethod<[{}], "bool", "isShimTile", (ins), [{}], [{
       return $_op.isShimNOCTile() || $_op.isShimPLTile();
     }]>,
-    InterfaceMethod<[{Return the number of source connections for a wire bundle.}],
-      "size_t", "getNumSourceConnections", (ins "xilinx::AIE::WireBundle":$bundle)
-    >,
-    InterfaceMethod<[{Return the number of dest connections for a wire bundle.}],
-      "size_t", "getNumDestConnections", (ins "xilinx::AIE::WireBundle":$bundle)
-    >,
+       InterfaceMethod<
+           [{Return the number of source connections for a wire bundle.}],
+           "size_t", "getNumSourceConnections",
+           (ins "xilinx::AIE::WireBundle":$bundle)>,
+       InterfaceMethod<
+           [{Return the number of dest connections for a wire bundle.}],
+           "size_t", "getNumDestConnections",
+           (ins "xilinx::AIE::WireBundle":$bundle)>,
   ];
 }
 
-def TileElement : OpInterface<"TileElement", [
-    DeclareOpInterfaceMethods<OpAsmOpInterface>,
-  ]> {
+def TileElement
+    : OpInterface<"TileElement", [DeclareOpInterfaceMethods<OpAsmOpInterface>,
+]> {
   let description = [{
     Interface for operations that exist in a TileOp.
   }];
   let cppNamespace = "::xilinx::AIE";
-  let methods = [
-    InterfaceMethod<[{Return the tile operand value.}],
-      "mlir::Value", "getTile", (ins)
-    >,
-    InterfaceMethod<[{Return the TileLike interface for this element's tile.}],
-      "TileLike", "getTileLike", (ins), [{}], [{
+  let methods =
+      [InterfaceMethod<[{Return the tile operand value.}], "mlir::Value",
+                       "getTile", (ins)>,
+       InterfaceMethod<
+           [{Return the TileLike interface for this element's tile.}],
+           "TileLike", "getTileLike", (ins), [{}], [{
         return llvm::dyn_cast<TileLike>($_op.getTile().getDefiningOp());
-      }]
-    >,
-    InterfaceMethod<[{Return the column index of this element's tile. Asserts if unplaced.}],
-      "int", "colIndex", (ins), [{}], [{
+      }]>,
+       InterfaceMethod<
+           [{Return the column index of this element's tile. Asserts if unplaced.}],
+           "int", "colIndex", (ins), [{}], [{
         std::optional<int> col = $_op.getTileLike().tryGetCol();
         assert(col.has_value() && "TileElement called colIndex() on an unplaced tile.");
         return *col;
-      }]
-    >,
-    InterfaceMethod<[{Return the row index of this element's tile. Asserts if unplaced.}],
-      "int", "rowIndex", (ins), [{}], [{
+      }]>,
+       InterfaceMethod<
+           [{Return the row index of this element's tile. Asserts if unplaced.}],
+           "int", "rowIndex", (ins), [{}], [{
         std::optional<int> row = $_op.getTileLike().tryGetRow();
         assert(row.has_value() && "TileElement called rowIndex() on an unplaced tile.");
         return *row;
-      }]
-    >,
-    InterfaceMethod<[{Return the TileID of this element's tile.}],
-      "TileID", "getTileID", (ins), [{}], [{
+      }]>,
+       InterfaceMethod<[{Return the TileID of this element's tile.}], "TileID",
+                       "getTileID", (ins), [{}], [{
         return TileID{$_op.colIndex(), $_op.rowIndex()};
-      }]
-    >
-  ];
+      }]>];
 
   let extraClassDeclaration = [{
     // Requires a placed tile: fatally errors if the tile is still logical.
@@ -219,17 +236,12 @@ def Interconnect : OpInterface<"Interconnect", [TileElement]> {
     enabling them to host flows for routing.
   }];
   let cppNamespace = "::xilinx::AIE";
-  let methods = [
-    InterfaceMethod<[{}],
-      "mlir::Region &", "getConnections", (ins )
-    >,
-    InterfaceMethod<[{}],
-      "size_t", "getNumSourceConnections", (ins "WireBundle":$bundle)
-    >,
-    InterfaceMethod<[{}],
-      "size_t", "getNumDestConnections", (ins "WireBundle":$bundle)
-    >
-  ];
+  let methods = [InterfaceMethod<[{}], "mlir::Region &", "getConnections",
+                                 (ins)>,
+                 InterfaceMethod<[{}], "size_t", "getNumSourceConnections",
+                                 (ins "WireBundle":$bundle)>,
+                 InterfaceMethod<[{}], "size_t", "getNumDestConnections",
+                                 (ins "WireBundle":$bundle)>];
 }
 
 def AIETarget : OpInterface<"AIETarget"> {
@@ -237,23 +249,22 @@ def AIETarget : OpInterface<"AIETarget"> {
     Interface for operations that model an array of AIEngine cores.
   }];
   let cppNamespace = "::xilinx::AIE";
-  let methods = [
-    InterfaceMethod<[{
+  let methods = [InterfaceMethod<[{
         Return the target model describing the characteristics of how this operation will be implemented.
       }],
-      "const ::xilinx::AIE::AIETargetModel&", "getTargetModel", (ins )
-    >
-  ];
+                                 "const ::xilinx::AIE::AIETargetModel&",
+                                 "getTargetModel", (ins)>];
 }
 
 // Don't delete - see AIEDialect::myVerifyOffsetSizeAndStrideOp
-def MyOffsetSizeAndStrideOpInterface : OpInterfaceTrait<"::xilinx::AIE::MyOffsetSizeAndStrideOpInterface"> {}
+def MyOffsetSizeAndStrideOpInterface
+    : OpInterfaceTrait<"::xilinx::AIE::MyOffsetSizeAndStrideOpInterface"> {}
 
-// Ops may specify that the accessibility checks of their child ops are not verified.
-// For example, by default, ops will verify that all contained aie.buffers are
-// accessible from within the tile from which they are used. However, in abstract
-// definitions not tied to any tile, it may still be useful to be able to refer
-// to buffers and skip those checks.
+// Ops may specify that the accessibility checks of their child ops are not
+// verified. For example, by default, ops will verify that all contained
+// aie.buffers are accessible from within the tile from which they are used.
+// However, in abstract definitions not tied to any tile, it may still be useful
+// to be able to refer to buffers and skip those checks.
 def SkipAccessibilityCheckTrait : NativeOpTrait<"SkipAccessibilityCheckTrait"> {
   string cppNamespace = "::xilinx::AIE";
 }

@@ -3123,6 +3123,23 @@ LogicalResult DeviceOp::verify() {
   return success();
 }
 
+LogicalResult DeviceOp::verifyRegions() {
+  // Region verification follows all child invariants, including the joined
+  // verification of isolated children. Named uses may safely inspect forward
+  // definitions here. The collection belongs only to this verification sweep.
+  NamedOpTableCollection names;
+  WalkResult result = getOperation()->walk<WalkOrder::PreOrder>(
+      [&](Operation *op) -> WalkResult {
+        if (op != getOperation() && isa<DeviceOp>(op))
+          return WalkResult::skip();
+        if (auto user = dyn_cast<NamedOpUserOpInterface>(op))
+          if (failed(user.verifyNamedOpUses(names)))
+            return WalkResult::interrupt();
+        return WalkResult::advance();
+      });
+  return failure(result.wasInterrupted());
+}
+
 const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());
 }
