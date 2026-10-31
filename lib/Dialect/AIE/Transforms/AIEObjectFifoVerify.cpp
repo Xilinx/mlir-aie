@@ -365,8 +365,9 @@ passRatio(DeviceOp device, CoreOp core, StringRef in, StringRef out) {
     return std::nullopt;
   std::optional<std::pair<int64_t, int64_t>> least;
   for (auto &[loop, loopUses] : byLoop) {
+    Operation *outer = loop;
     if (llvm::any_of(byLoop, [&](auto &other) {
-          return other.first != loop && loop->isProperAncestor(other.first);
+          return other.first != outer && outer->isProperAncestor(other.first);
         }))
       return std::nullopt;
     std::optional<std::pair<int64_t, int64_t>> ratio =
@@ -1171,18 +1172,12 @@ struct AIEObjectFifoVerifyPass
             core ? core.getSelectedSegments() : dma.getSelectedSegments();
         if (drained.empty())
           continue;
-        int64_t in, out;
-        if (drained == filled) {
-          in = out = 1;
-        } else if (drained.size() == 1 && drained.front() == filled.back()) {
-          in = segmentBytes(pool, filled);
-          out = segmentBytes(pool, drained);
-        } else if (filled.size() == 1 && filled.front() == drained.front()) {
-          in = segmentBytes(pool, filled);
-          out = segmentBytes(pool, drained);
-        } else {
+        bool split = drained.size() == 1 && drained.front() == filled.back();
+        bool join = filled.size() == 1 && filled.front() == drained.front();
+        if (drained != filled && !split && !join)
           continue;
-        }
+        int64_t in = segmentBytes(pool, filled);
+        int64_t out = segmentBytes(pool, drained);
         Reach next{drainer, 0, 0};
         if (in <= 0 || out <= 0 ||
             llvm::MulOverflow(scale.inBytes, in, next.inBytes) ||
