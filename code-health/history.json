@@ -1,0 +1,1 @@
+{"schema":1,"points":[{"date":"2026-10-31T02:49:25Z","run":41159858328,"sha":"064a1721a4af3fa483ebccd23b508c2d647066fe","lines":85.63,"functions":90.89,"code_scanning":{"open":72,"by_severity":{"high":32,"medium":39,"low":1},"by_language":{"other":71,"python":1}}}]}
