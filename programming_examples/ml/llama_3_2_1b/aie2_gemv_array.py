@@ -19,16 +19,19 @@ import llama_kernels
 import numpy as np
 from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
     CmpIPredicate,
+    addi,
     andi,
     cmpi,
     constant,
     extui,
     index_cast,
+    muli,
     ori,
     shli,
     shrui,
 )
 from aie.extras.types import i32  # pyright: ignore[reportMissingImports]
+from aie.ir import Value  # pyright: ignore[reportMissingImports]
 from aie.iron.controlflow import range_
 from llama_config import HD, PROJECTIONS, D
 
@@ -112,7 +115,7 @@ def mma_rows(
     out,
     kernels,
     row0=0,
-    m_count=1,
+    m_count: int | Value = 1,
     ostride=0,
     groups=None,
 ):
@@ -139,11 +142,14 @@ def mma_rows(
         k_acc(tile, w, part, 0, 0, 1)
         c_w.release(1)
         w = c_w.acquire(1)
-        k_f(tile, w, part, out, 0, 1, ostride, index_cast(i32(), g) * 8 + row0, m_count)
+        row = addi(
+            muli(index_cast(i32(), g), constant(i32(), 8)), constant(i32(), row0)
+        )
+        k_f(tile, w, part, out, 0, 1, ostride, row, m_count)
         c_w.release(1)
 
 
-def mma_down(tile, c_w, part, out, kernels, spread_chunk, m_count=1):
+def mma_down(tile, c_w, part, out, kernels, spread_chunk, m_count: int | Value = 1):
     """In a core body: the core's down rows through the tile.
 
     Activation m's row n goes to out[256 m + n] (fp32), in four 2048-column
@@ -186,7 +192,7 @@ def mma_down(tile, c_w, part, out, kernels, spread_chunk, m_count=1):
             index_cast(i32(), g),
             1,
             DOWN_ROWS_PER_CORE,
-            index_cast(i32(), g) * 8,
+            muli(index_cast(i32(), g), constant(i32(), 8)),
             m_count,
         )
         c_w.release(1)
