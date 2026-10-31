@@ -16,7 +16,7 @@
 // CHECK-LABEL: @dmaTransportWithCores
 // CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared__buf0"}
 // CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared__buf1"}
-// CHECK-NOT:     of_shared_cons_buff
+// CHECK-NOT:     of_shared__cons__buf
 
 // @of_stream is pushed onto the DMAs, so the consumer gets its own objects.
 // CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_stream__buf0"}

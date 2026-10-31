@@ -57,7 +57,7 @@ module @shared_existing {
   }
 }
 // CHECK-LABEL: module @shared_existing
-// CHECK-NOT: shared_buff
+// CHECK-NOT: shared__buf
 // CHECK: @r4({{.*}}) drains @shared {channelIndex = 4 : i32}
 // CHECK: @r5({{.*}}) drains @shared {channelIndex = 5 : i32}
 // CHECK: @w({{.*}}) fills @shared {channelIndex = 0 : i32}
@@ -106,7 +106,7 @@ module @split_existing {
   }
 }
 // CHECK-LABEL: module @split_existing
-// CHECK-NOT: split_buff
+// CHECK-NOT: split__buf
 // CHECK: @split({{.*}}) {buffers = [@a, @b], depth = 2 : i32}
 // CHECK: @reader({{.*}}) drains @split {channelIndex = 0 : i32}
 // CHECK: @writer({{.*}}) fills @split {channelIndex = 0 : i32}
