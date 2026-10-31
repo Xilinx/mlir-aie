@@ -1,9 +1,0 @@
-<map id="ComputeBandAndBorOpPattern&lt; SrcOpTy, DstOpTy &gt;" name="ComputeBandAndBorOpPattern&lt; SrcOpTy, DstOpTy &gt;">
-<area shape="rect" id="Node000001" title=" " alt="" coords="213,59,437,104"/>
-<area shape="rect" id="Node000003" href="$structComputeBandAndBorOpPattern.html" title=" " alt="" coords="644,8,869,70"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="452,66,647,49,641,50,453,72"/>
-<area shape="rect" id="Node000004" href="$structComputeBandAndBorOpPattern.html" title=" " alt="" coords="644,93,869,155"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="407,106,462,118,554,127,646,130,641,130,554,132,461,124,406,111"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,59,164,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="179,79,215,81,210,82,179,84"/>
-</map>

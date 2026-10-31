@@ -13689,7 +13689,7 @@ segment carrying it must not also name an endpoint there.</p>
 <p>Runtime re-arm information for a single objectFIFO, generalizing
 <code>aie.shim_dma_allocation</code> to the core and mem tile endpoints.</p>
 <p><code>aie.objectfifo_stateful_transform</code> erases the <code>aie.objectfifo</code> op and
-rewrites every remaining <code>@fifo</code> use to the fifo's <code>@fifo_shim_alloc</code>
+rewrites every remaining <code>@fifo</code> use to the fifo's <code>@fifo__shim_alloc</code>
 (shim endpoint only). That loses the core/mem channels + locks that a
 resident re-arm (<code>aiex.dma_channel_reset_for</code>) needs, and for a
 core-to-core fifo there is no shim allocation at all. To keep that
@@ -14046,7 +14046,7 @@ written before that decision is made.</p>
 the design programs itself, so allocation only picks its index:
 - On a shim tile the host runtime programs it. With <code>fifoName</code> set, the
   chosen channel is recorded as an <code>aie.shim_dma_allocation</code> named
-  <code>{fifoName}_shim_alloc</code>, and every use of this symbol is renamed to it.
+  <code>{fifoName}__shim_alloc</code>, and every use of this symbol is renamed to it.
 - On any tile, an <code>aie.dma_start</code> in the tile's DMA program, or an
   <code>aiex.dma_configure_task_for</code> in the runtime sequence, may name this
   symbol in place of a channel index. Allocation rewrites both to the

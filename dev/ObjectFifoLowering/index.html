@@ -3450,6 +3450,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#generated-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-is-checked" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4295,6 +4306,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#generated-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-is-checked" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4538,7 +4560,7 @@ intermediate levels useful.</p>
 <p>A pool is a set of buffers and the contract for accessing them.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>aie.objectfifo.pool @P(%tile) {
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  depth   = 2 : i32,
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  buffers = [@P_buff_0, @P_buff_1]
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  buffers = [@P__buf0, @P__buf1]
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>} : memref&lt;36xi32&gt; {
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  aie.objectfifo.segment @s0 {offset = 0 : i32,  size = 16 : i32, produceLock = @p0, consumeLock = @c0}
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  aie.objectfifo.segment @s1 {offset = 16 : i32, size = 20 : i32, produceLock = @p1, consumeLock = @c1}
@@ -4837,21 +4859,21 @@ flows, deciding which tiles hold objects and which ends need DMAs.</p>
 <a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>%e = aie.objectfifo.acquire @of1 (Produce, 1) : memref&lt;16xi32&gt;
 <a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>
 <a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>// after
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>aie.objectfifo.pool @of1_pool(%tile_0_2) {depth = 2 : i32, fifoName = "of1",
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>aie.objectfifo.pool @of1__pool(%tile_0_2) {depth = 2 : i32, fifoName = "of1",
 <a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>    } : memref&lt;16xi32&gt; {
 <a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
 <a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>    }
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>aie.objectfifo.core_endpoint @of1_prod(%tile_0_2) fills @of1_pool
-<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {fifoName = "of1"}
-<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>aie.objectfifo.pool @of1_cons_pool(%tile_2_5) {depth = 2 : i32, fifoName = "of1",
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>aie.objectfifo.core_endpoint @of1__prod(%tile_0_2) fills @of1__pool
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>aie.objectfifo.dma_endpoint @of1__prod__dma(%tile_0_2) drains @of1__pool {fifoName = "of1"}
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>aie.objectfifo.pool @of1__cons__pool(%tile_2_5) {depth = 2 : i32, fifoName = "of1",
 <a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    } : memref&lt;16xi32&gt; {
 <a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
 <a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>    }
-<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>aie.objectfifo.core_endpoint @of1_cons(%tile_2_5) drains @of1_cons_pool
-<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>aie.objectfifo.dma_endpoint @of1_cons_dma(%tile_2_5) fills @of1_cons_pool {fifoName = "of1"}
-<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>aie.route from @of1_prod_dma to [@of1_cons_dma]
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>aie.objectfifo.core_endpoint @of1__cons(%tile_2_5) drains @of1__cons__pool
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>aie.objectfifo.dma_endpoint @of1__cons__dma(%tile_2_5) fills @of1__cons__pool {fifoName = "of1"}
+<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>aie.route from @of1__prod__dma to [@of1__cons__dma]
 <a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a>
-<a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>%e = aie.objectfifo.acquire @of1_prod (1) : memref&lt;16xi32&gt;
+<a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>%e = aie.objectfifo.acquire @of1__prod (1) : memref&lt;16xi32&gt;
 </code></pre></div>
 <p>A core's <code>acquire</code> and <code>release</code> name the endpoint they work through; the
 endpoint's role gives the direction.</p>
@@ -4888,20 +4910,20 @@ numbers traces, so the two never alias.</p>
 <h3 id="4---aie-objectfifo-allocate">4. <code>--aie-objectfifo-allocate</code><a class="headerlink" href="#4---aie-objectfifo-allocate" title="Permanent link">&para;</a></h3>
 <p>Gives pools their buffers and locks, and endpoints their channels, flows and
 shim allocations. A packet header reaching it has to carry its id.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>%of1_buff_0 = aie.buffer(%tile_0_2) {sym_name = "of1_buff_0"} : memref&lt;16xi32&gt;
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>%of1_buff_1 = aie.buffer(%tile_0_2) {sym_name = "of1_buff_1"} : memref&lt;16xi32&gt;
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>%of1_prod_lock_0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>%of1_cons_lock_0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>%of1__buf0 = aie.buffer(%tile_0_2) {sym_name = "of1__buf0"} : memref&lt;16xi32&gt;
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>%of1__buf1 = aie.buffer(%tile_0_2) {sym_name = "of1__buf1"} : memref&lt;16xi32&gt;
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>%of1__prodlock0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of1__prodlock0"}
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>%of1__conslock0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of1__conslock0"}
 <a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>aie.objectfifo.pool @of1_pool(%tile_0_2) {
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>aie.objectfifo.pool @of1__pool(%tile_0_2) {
 <a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>    depth = 2 : i32, fifoName = "of1",
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    buffers = [@of1_buff_0, @of1_buff_1]
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    buffers = [@of1__buf0, @of1__buf1]
 <a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>} : memref&lt;16xi32&gt; {
 <a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32,
-<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>        produceLock = @of1_prod_lock_0, consumeLock = @of1_cons_lock_0}
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>        produceLock = @of1__prodlock0, consumeLock = @of1__conslock0}
 <a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>}
 <a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>// Note the set buffer and lock attributes.
-<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {channelIndex = 0 : i32, fifoName = "of1"}
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>aie.objectfifo.dma_endpoint @of1__prod__dma(%tile_0_2) drains @of1__pool {channelIndex = 0 : i32, fifoName = "of1"}
 <a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>aie.flow(%tile_0_2, DMA : 0, %tile_2_5, DMA : 0)
 </code></pre></div>
 <p>Attributes already present are kept, so writing <code>aie.buffer</code> ops and naming them
@@ -4960,11 +4982,11 @@ until every endpoint is back at its first object.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>%mem_0_2 = aie.mem(%tile_0_2) {
 <a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 <a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>^bb1:
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  aie.use_lock(%of1_cons_lock_0, AcquireGreaterEqual, %c1_i32)
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>  aie.dma_bd(%of1_buff_0 : memref&lt;16xi32&gt; offset = 0 len = 16)
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>  aie.use_lock(%of1_prod_lock_0, Release, %c1_i32_0)
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  aie.use_lock(%of1__conslock0, AcquireGreaterEqual, %c1_i32)
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>  aie.dma_bd(%of1__buf0 : memref&lt;16xi32&gt; offset = 0 len = 16)
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>  aie.use_lock(%of1__prodlock0, Release, %c1_i32_0)
 <a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>  aie.next_bd ^bb2
-<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>^bb2:   // the same, with %of1_buff_1
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>^bb2:   // the same, with %of1__buf1
 <a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>  ...
 </code></pre></div>
 <h3 id="6---aie-objectfifo-lower-cores">6. <code>--aie-objectfifo-lower-cores</code><a class="headerlink" href="#6---aie-objectfifo-lower-cores" title="Permanent link">&para;</a></h3>
@@ -4974,10 +4996,10 @@ order in rank-0 slots: an acquire reads the front ones, and a release rotates
 the released objects to the back.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>%0 = arith.subi %c1_i32, %c0_i32 : i32   // acquire(N) is absolute:
 <a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>%1 = arith.maxsi %0, %c0_i32_0 : i32     // delta = max(N - held, 0)
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>aie.use_lock(%of1_prod_lock_0, AcquireGreaterEqual, %1)
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>aie.use_lock(%of1__prodlock0, AcquireGreaterEqual, %1)
 <a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>%obj = memref.load %front[] : memref&lt;memref&lt;16xi32&gt;&gt;
 <a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>...
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>aie.use_lock(%of1_cons_lock_0, Release, %c1_i32)
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>aie.use_lock(%of1__conslock0, Release, %c1_i32)
 <a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>%a = memref.load %front[] : memref&lt;memref&lt;16xi32&gt;&gt;   // release(1) rotates
 <a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>%b = memref.load %back[] : memref&lt;memref&lt;16xi32&gt;&gt;    // the objects by one
 <a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>memref.store %b, %front[] : memref&lt;memref&lt;16xi32&gt;&gt;
@@ -4994,6 +5016,61 @@ objects, so they are still selected by a rotating index.</p>
 <h3 id="7---aie-objectfifo-erase-pools">7. <code>--aie-objectfifo-erase-pools</code><a class="headerlink" href="#7---aie-objectfifo-erase-pools" title="Permanent link">&para;</a></h3>
 <p>Drops pool metadata once nothing refers to it. A pool still named by something
 else, such as a re-arm binding in a runtime sequence, stays.</p>
+<h2 id="generated-names">Generated names<a class="headerlink" href="#generated-names" title="Permanent link">&para;</a></h2>
+<p>The ops the pipeline creates are named after the fifo they come from, with
+<code>__</code> between the fifo's name and each part the pipeline adds, so a name reads
+as <code>&lt;fifo&gt;__&lt;end&gt;__&lt;kind&gt;&lt;index&gt;</code> and stays a plain identifier:</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>act_in__pool</code></td>
+<td>the producer's (or the shared) pool</td>
+</tr>
+<tr>
+<td><code>act_in__cons__pool</code></td>
+<td>the consumer's pool; <code>act_in__cons1__pool</code> for the second of several consumers</td>
+</tr>
+<tr>
+<td><code>act_in__prod</code>, <code>act_in__cons</code></td>
+<td>core endpoints</td>
+</tr>
+<tr>
+<td><code>act_in__prod__dma</code>, <code>act_in__cons__dma</code></td>
+<td>DMA and route endpoints</td>
+</tr>
+<tr>
+<td><code>act_in__cons__buf0</code></td>
+<td>object 0 of a pool: <code>&lt;pool base&gt;__buf&lt;i&gt;</code></td>
+</tr>
+<tr>
+<td><code>act_in__cons__prodlock0</code>, <code>act_in__cons__conslock0</code></td>
+<td>segment 0's lock pair (AIE2): free objects, full objects</td>
+</tr>
+<tr>
+<td><code>act_in__lock0</code></td>
+<td>object 0's lock (AIE1)</td>
+</tr>
+<tr>
+<td><code>act_in__shim_alloc</code>, <code>act_in__shim_alloc1</code></td>
+<td>shim DMA allocations the runtime sequence uses</td>
+</tr>
+<tr>
+<td><code>act_in__rearm</code>, <code>act_in__rearm1</code></td>
+<td>rearm bindings</td>
+</tr>
+<tr>
+<td><code>in__merge__dma</code>, <code>in__dispatch__dma</code></td>
+<td>the shared endpoint of a merge or dispatch link</td>
+</tr>
+</tbody>
+</table>
+<p>A pool's base is its name without <code>__pool</code>.</p>
 <h2 id="what-is-checked">What is checked<a class="headerlink" href="#what-is-checked" title="Permanent link">&para;</a></h2>
 <h3 id="by-the-op-verifiers">By the op verifiers<a class="headerlink" href="#by-the-op-verifiers" title="Permanent link">&para;</a></h3>
 <p>Pools:</p>

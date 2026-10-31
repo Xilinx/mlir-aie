@@ -1,7 +1,0 @@
-<map id="aie_runtime::BdPool" name="aie_runtime::BdPool">
-<area shape="rect" id="Node000001" title=" " alt="" coords="12,106,164,134"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,80,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="39,46,42,65,46,81,55,93,68,105,62,106,51,97,41,83,36,66,38,51"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="114,5,152,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="123,46,96,107,92,104,118,48"/>
-</map>
