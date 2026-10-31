@@ -2865,10 +2865,15 @@ LogicalResult PacketPlan::emit(DeviceOp device, OpBuilder &builder,
       SmallVector<int, 4> matchIds =
           llvm::to_vector<4>(llvm::make_second_range(group));
       for (int id : matchIds)
-        if (id > static_cast<int>(maxPacketId))
-          return mlir::emitError(tileLoc)
+        if (id > static_cast<int>(maxPacketId)) {
+          SmallVector<std::pair<PhysPort, int>> offending;
+          for (const auto &flow : group)
+            if (flow.second == id)
+              offending.push_back(flow);
+          return mlir::emitError(locOf(offending, tileLoc))
                  << "packet id " << id << " exceeds the maximum of "
                  << maxPacketId;
+        }
 
       // Rules the switchbox already has, e.g. hand-authored, match first.
       for (PacketRuleOp rule : existingRules.lookup(slave))

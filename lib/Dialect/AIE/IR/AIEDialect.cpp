@@ -3726,10 +3726,15 @@ LogicalResult PacketFlowOp::verify() {
         "with via waypoints must have exactly one aie.packet_dest");
   }
 
+  uint8_t id = getID();
+  if (uint32_t maxId = getTargetModel(getOperation()).getMaxPacketId();
+      id > maxId)
+    return emitOpError("packet id ")
+           << static_cast<int>(id) << " exceeds the maximum of " << maxId;
+
   // A slave port accepts a packet when `incoming & mask == ID`, so a bit set
   // in ID and clear in the mask rejects every packet.
   if (std::optional<uint8_t> mask = getMask()) {
-    uint8_t id = getID();
     if ((id & *mask) != id) {
       return emitOpError("has ID 0x")
              << llvm::utohexstr(id) << " outside mask 0x"
