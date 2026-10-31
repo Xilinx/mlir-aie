@@ -694,8 +694,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   bool leavesNothing(AIE::ShimDMAAllocationOp input,
                      AIE::ShimDMAAllocationOp output,
                      AIE::ConsumedByAttr proof) {
-    auto [it, inserted] = balancedPairs.try_emplace({input, output}, true);
-    if (!inserted)
+    auto entry = balancedPairs.try_emplace({input, output}, true);
+    auto it = entry.first;
+    if (!entry.second)
       return it->second;
     for (auto seq : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
       Volume in, out;
