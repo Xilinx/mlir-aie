@@ -43,6 +43,9 @@ createAIEMaterializeBDChainsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEMaterializeRuntimeSequencesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEMaterializeRuntimeSequencesPass(
+    const AIEMaterializeRuntimeSequencesOptions &options);
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEFuseTraceBuffersPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEResolveAddressPatchBuffersPass();
@@ -92,6 +95,12 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIELowerScratchpadParametersPass(
     AIELowerScratchpadParametersOptions options);
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECreateControlOverlayPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECreateControlOverlayPass(
+    const AIECreateControlOverlayOptions &options);
+
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -109,7 +118,9 @@ void addTraceStage(mlir::OpPassManager &pm);
 /// Affine lowering through `aie-prepare-buffers`.
 void addLoweringStage(mlir::OpPassManager &pm, bool dynamicObjFifos,
                       bool packetSwObjFifos, bool ctrlPktOverlay,
-                      bool loadPdiToCtrlPkt, bool skipObjectFifoVerify);
+                      bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
+                      llvm::ArrayRef<int> coverColumns = {},
+                      bool adaptiveOverlay = true, bool shareChannels = true);
 void addBufferAddressStage(mlir::OpPassManager &pm, int64_t placementBudget);
 void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne);
 
@@ -148,6 +159,15 @@ struct AIEResourceStagesOptions
   Option<bool> loadPdiToCtrlPkt{
       *this, "load-pdi-to-ctrl-pkt",
       llvm::cl::desc("Load PDIs over control packets"), llvm::cl::init(false)};
+  Option<bool> adaptiveOverlay{
+      *this, "ctrlpkt-adaptive-overlay",
+      llvm::cl::desc("Choose the control overlay around application resources"),
+      llvm::cl::init(true)};
+  Option<bool> shareControlChannels{
+      *this, "ctrlpkt-share-channels",
+      llvm::cl::desc(
+          "Share control channels with disjoint application transfers"),
+      llvm::cl::init(true)};
   Option<bool> skipObjectFifoVerify{
       *this, "skip-objectFifo-verify",
       llvm::cl::desc("Skip structural verification of split objectFifo IR"),

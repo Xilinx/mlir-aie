@@ -69,15 +69,21 @@ Each runtime sequence is a full-ELF entry named `<device>:<sequence>`, e.g.
 `aiex.configure`. Two options cut the resets between its configurations; each
 requires a full ELF:
 
-- `--reconfig-teardown` (with `--expand-load-pdis`): before the next load, or
-  at the sequence's end, each configuration's `aiex.npu.write_teardown`
-  disables the stream-switch circuits and packet ports it set, disables its
-  cores and resets the memtile and core-tile DMA channels it started. A
-  sequence then keeps only its first reset. A device that starts a shim DMA
-  channel itself is refused, since shim channels have no reset.
+- `--reconfig-teardown` (with `--expand-load-pdis` or `--load-pdi-to-ctrl-pkt`):
+  before the next load, or at the sequence's end, each configuration disables
+  the stream-switch circuits and packet ports it set, disables its cores and
+  resets the memtile and core-tile DMA channels it started. A sequence then
+  keeps only its first reset or overlay load. A device that starts a shim DMA
+  channel itself is refused, since shim channels have no reset. Under
+  `--expand-load-pdis` the teardown is an `aiex.npu.write_teardown`. On by
+  default under `--load-pdi-to-ctrl-pkt`; under it, the teardown is sent as
+  control packets and leaves the control overlay in place.
 - `--reconfig-init-entry` (with `--reconfig-teardown`): the reset moves into an
-  argument-free `<device>:reconfig_init` entry. The host runs it once on each new
-  hardware context, before any other entry; IRON's host runtime does so itself.
+  argument-free `<device>:reconfig_init` entry; under `--load-pdi-to-ctrl-pkt` it
+  also installs the control overlay. The host runs it before the first entry on a
+  hardware context, and again whenever another context ran in between, since
+  that may have reset the array. IRON's host runtime does so itself; a host
+  that shares the NPU with another process runs it before each entry.
 
 For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 
@@ -87,6 +93,56 @@ For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 | teardown, init entry | `main:reconfig_init`, `main:sequence` |
 
 `--sequence-name` always keeps the `reconfig_init` entry.
+
+### Control packet reconfiguration
+
+`--load-pdi-to-ctrl-pkt` loads each configuration through a common
+`@ctrl_pkt_overlay` device. The module pass `aie-create-control-overlay` runs
+on placed endpoint and route IR before application allocation, after splitting
+any ObjectFIFOs. It routes one standalone overlay across all configurations and attaches
+`overlay = @ctrl_pkt_overlay` references to its users. `aie-import-overlay`
+imports its routed switchboxes, wires, shim muxes and DMA reservations before
+application allocation. The application router treats them as fixed resources.
+`aie.is_ctrl_overlay` marks settings that application configuration and teardown
+must leave untouched; application rules can occupy free slots on shared inputs.
+Sharing an imported output masterset is not currently supported.
+
+- `--ctrlpkt-adaptive-overlay` (on by default) chooses shim channels around
+  fixed application reservations and packet demand, and uses trial application
+  routing to prefer switchbox ports the applications do not need. Set it to
+  `false` for channel 0 and the default overlay routes.
+- `--ctrlpkt-share-channels` (on by default) allows the resource allocator to
+  put application endpoints on the overlay's fixed channels. It automatically
+  adds packet headers to shared data routes. It does not insert memory-tile
+  relays. Set it to `false` to require dedicated control channels.
+
+The aliases `--ctrlpkt-adaptive-pin` and `--ctrlpkt-auto-packetize` are accepted.
+Both options require `--load-pdi-to-ctrl-pkt`.
+
+For direct pass use:
+
+```sh
+aie-opt --aie-objectfifo-split --aie-create-control-overlay='adaptive=false' \
+  --aie-assign-packet-ids --aie-objectfifo-allocate design.mlir
+```
+
+Overlay creation materializes runtime sequences in an analysis copy. Sharing
+uses configuration boundaries (`load_pdi`, `write_config`, `write_teardown`)
+and transfer lifetimes, without interpreting `aiex.configure`. An ordinary
+entry's initial configuration precedes its dispatch. Explicit control-packet
+batches complete before the following operation; arbitrary data sends are not
+assumed complete merely because a shim MM2S task was awaited.
+
+Application endpoints also carry pairwise sharing permissions from the
+materialized schedules, so callees that run in one dispatch are checked
+together.
+
+Fixed shim reservations carry `aie.fixed` and an `aie.shareable_with` list of
+endpoints admitted by lifetime analysis. Their channel numbers are immutable;
+application endpoints may share only with permission and only when their own
+transfers are mutually disjoint. Unknown transfer lifetimes remain exclusive.
+The overlay's packet IDs and routing settings remain protected during reload
+and teardown.
 
 ### Parameterized C++ transaction builders
 

@@ -28,7 +28,7 @@ using namespace xilinx::AIE;
 namespace {
 // A connection's demand, the cost Dijkstra weighs it by, is
 // (demandBase + overCapacityCoeff * iterations it was over capacity) *
-// (demandBase + usedCapacityCoeff * streams using it).
+// (demandBase + usedCapacityCoeff * streams using it), plus its avoidance.
 constexpr double overCapacityCoeff = 0.1;
 constexpr double usedCapacityCoeff = 0.02;
 constexpr double demandBase = 1.0;
@@ -39,14 +39,17 @@ constexpr double priorityDemandCoeff =
     static_cast<double>(std::numeric_limits<int>::max());
 constexpr int maxCircuitStreamCapacity = 1;
 constexpr int maxPacketStreamCapacity = 32;
+// Demand added to a connection into an avoided port. It exceeds what a long
+// detour costs, so a route takes the port only when every other is taken.
+constexpr double avoidedPortDemand = 100.0;
 // History added to a connection each time the routing check rejects it.
 constexpr int routingCheckPenalty = 5;
 // Iterations spent steering away from a usable routing the check rejects.
 constexpr int maxSteers = 16;
-// Routings in a row the check rejects only for onlyOverlayMasters before
+// Routings in a row the check rejects only for onlyPriorityMasters before
 // routing gives up: the penalties move such a flow between the ports of the
 // switchbox it has to leave by.
-constexpr int maxOverlayFaults = 16;
+constexpr int maxPriorityFaults = 16;
 // Times the routing check may fault where two trees meet before they stop
 // meeting; each fault moves the meeting elsewhere.
 constexpr int maxMeetFaults = 4;
@@ -81,7 +84,8 @@ constexpr int stallHistory = 4;
 void SwitchboxConnect::updateDemand() {
   for (Cell &c : cells)
     c.demand = (demandBase + overCapacityCoeff * c.overCapacity) *
-               (demandBase + usedCapacityCoeff * c.usedCapacity);
+                   (demandBase + usedCapacityCoeff * c.usedCapacity) +
+               c.avoidance;
 }
 
 void SwitchboxConnect::bumpDemand(Cell &c) {
@@ -99,6 +103,14 @@ void RoutingFailure::log(llvm::raw_ostream &os) const {
     os << ": " << reason;
 }
 
+bool xilinx::AIE::touchesTileControl(PacketFlowOp flow) {
+  auto control = [](auto end) {
+    return end.getBundle() == WireBundle::TileControl;
+  };
+  return llvm::any_of(flow.getPorts().getOps<PacketSourceOp>(), control) ||
+         llvm::any_of(flow.getPorts().getOps<PacketDestOp>(), control);
+}
+
 llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow
@@ -106,6 +118,8 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   maxRow = device.getTargetModel().rows();
 
   pathfinder.initialize(maxCol, maxRow, device.getTargetModel());
+  for (const auto &[coords, port] : avoidedPorts)
+    pathfinder.avoidPort(coords, port);
 
   // For each flow (circuit + packet) in the device, add it to pathfinder. Each
   // source can map to multiple different destinations (fanout). Control packet
@@ -169,24 +183,6 @@ llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
 
   // Canonicalize all flows after both packet and circuit flows are collected.
   pathfinder.sortFlows();
-
-  // A reload configures only the switchboxes the overlay reaches.
-  if (device.getHasCtrlPktOverlay()) {
-    llvm::DenseSet<TileID> reached;
-    for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
-      if (!pktFlowOp.getPriorityRoute().value_or(false))
-        continue;
-      for (auto pktDest : pktFlowOp.getPorts().getOps<PacketDestOp>())
-        if (pktDest.getBundle() == WireBundle::TileControl)
-          reached.insert(
-              cast<TileOp>(pktDest.getTile().getDefiningOp()).getTileID());
-    }
-    if (!reached.empty())
-      for (int row = 0; row <= maxRow; row++)
-        for (int col = 0; col <= maxCol; col++)
-          if (!reached.contains({col, row}))
-            pathfinder.excludeTile({col, row});
-  }
 
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
@@ -399,8 +395,12 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort, std::optional<int> packetId,
                          bool isPriorityFlow,
                          std::optional<mlir::Location> loc) {
-  isPriorityFlow &= constraints.prioritize ||
-                    constraints.pinned.count({srcCoords, srcPort}) > 0;
+  auto pinnedIds = constraints.pinnedIds.find({srcCoords, srcPort});
+  if (constraints.pinned.count({srcCoords, srcPort}))
+    isPriorityFlow &= packetId && pinnedIds != constraints.pinnedIds.end() &&
+                      pinnedIds->second.count(*packetId);
+  else
+    isPriorityFlow &= constraints.prioritize;
   if (loc)
     flowLocs[{srcCoords, srcPort}].try_emplace({dstCoords, dstPort}, *loc);
   if (packetId) {
@@ -717,6 +717,18 @@ void Pathfinder::excludeTile(TileID coords) {
       sb.at(i, j).available = false;
 }
 
+void Pathfinder::avoidPort(TileID coords, Port port) {
+  auto it = graph.find({coords, coords});
+  if (it == graph.end())
+    return;
+  SwitchboxConnect &sb = it->second;
+  int j = sb.dstIndex(port);
+  if (j < 0)
+    return;
+  for (size_t i = 0; i < sb.srcPorts.size(); i++)
+    sb.at(i, j).avoidance = avoidedPortDemand;
+}
+
 static constexpr double INF = std::numeric_limits<double>::max();
 
 namespace {
@@ -993,8 +1005,8 @@ struct Pathfinder::RouteState {
   // A control-packet reload keeps the master sets the prioritized flows' trees
   // leave each switchbox by, so another flow leaving by one of those master
   // ports leaves by all of one such set and no others.
-  llvm::DenseSet<int> overlayMasters;
-  std::vector<SmallVector<int, 4>> overlaySets;
+  llvm::DenseSet<int> priorityMasters;
+  std::vector<SmallVector<int, 4>> prioritySets;
   bool mayLeave(ArrayRef<int> masters, int next) const;
   bool reorder(int later, int earlier, bool again = false);
 };
@@ -1042,8 +1054,8 @@ Pathfinder::RouteState::RouteState(const Pathfinder &pf)
     }
     for (auto &[_, set] : sets) {
       llvm::sort(set);
-      overlayMasters.insert(set.begin(), set.end());
-      overlaySets.push_back(std::move(set));
+      priorityMasters.insert(set.begin(), set.end());
+      prioritySets.push_back(std::move(set));
     }
   }
 }
@@ -1063,12 +1075,12 @@ bool Pathfinder::RouteState::reorder(int later, int earlier, bool again) {
 }
 
 // Whether a tree whose packets leave a switchbox by `masters` from one slave
-// port may leave it by `next` too; see overlayMasters.
+// port may leave it by `next` too; see priorityMasters.
 bool Pathfinder::RouteState::mayLeave(ArrayRef<int> masters, int next) const {
-  if (!overlayMasters.count(next) &&
-      llvm::none_of(masters, [&](int m) { return overlayMasters.count(m); }))
+  if (!priorityMasters.count(next) &&
+      llvm::none_of(masters, [&](int m) { return priorityMasters.count(m); }))
     return true;
-  return llvm::any_of(overlaySets, [&](const SmallVector<int, 4> &set) {
+  return llvm::any_of(prioritySets, [&](const SmallVector<int, 4> &set) {
     return llvm::is_contained(set, next) && llvm::all_of(masters, [&](int m) {
              return llvm::is_contained(set, m);
            });
@@ -1474,10 +1486,10 @@ Pathfinder::TreeBuilder::TreeBuilder(Pathfinder &pf, RouteState &st, int flow)
     // connect it to itself (Core to Core), the stream has to leave and
     // come back, which Dijkstra finds from the In side to the Out side.
     // A tree the flow joins may reach the port for it instead. A port in
-    // overlayMasters is reached like any other destination, so mayLeave
+    // priorityMasters is reached like any other destination, so mayLeave
     // still holds.
     int self = stateId(srcId, Out);
-    if (endPoint == part.src && !st.overlayMasters.count(self) &&
+    if (endPoint == part.src && !st.priorityMasters.count(self) &&
         llvm::any_of(pf.adjacency[srcId],
                      [&](const Edge &e) { return e.dst == srcId; })) {
       toSelf = true;
@@ -1828,7 +1840,7 @@ void Pathfinder::TreeBuilder::search(const llvm::DenseSet<int> &drop,
     blocked.insert(off.begin(), off.end());
   }
   llvm::DenseMap<int, SmallVector<int, 4>> masters;
-  bool limited = !st.overlayMasters.empty();
+  bool limited = !st.priorityMasters.empty();
   if (limited)
     for (const auto &[state, hop] : planned)
       if ((hop.first & 1) == In && !drop.count(state))
@@ -2248,7 +2260,7 @@ llvm::Error Pathfinder::routePart(RouteState &st, int flow) {
   llvm::Error err = tree->pinned ? tree->placePinned() : tree->grow();
   // Kept to the prioritized flows' master sets, the branch a tree takes first
   // can leave it no way to another destination; each is then tried first.
-  if (err && !tree->pinned && !st.overlayMasters.empty())
+  if (err && !tree->pinned && !st.priorityMasters.empty())
     for (const PathEndPoint &dst : st.parts[flow].dsts) {
       for (auto *pairs : {&st.unmet, &st.met})
         pairs->erase(pairs->lower_bound({flow, 0}),
@@ -2474,7 +2486,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   int fewestIllegal = std::numeric_limits<int>::max(), sinceFewest = 0;
   // Iterations of the current stall that moved circuit trees first.
   int reorderedStall = 0;
-  int overlayFaults = 0;
+  int priorityFaults = 0;
   do {
     if (usable && (iterationCount + 1 >= maxIterations ||
                    iterationCount - usableAt >= maxSteers)) {
@@ -2643,9 +2655,9 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                     LLVM_DEBUG(llvm::dbgs() << "Routing rejected: "
                                             << rejected->reason << '\n');
                     illegalEdges += applyRoutingFaults(st, rejected->faults);
-                    overlayFaults = rejected->faults.onlyOverlayMasters
-                                        ? overlayFaults + 1
-                                        : 0;
+                    priorityFaults = rejected->faults.onlyPriorityMasters
+                                         ? priorityFaults + 1
+                                         : 0;
                     stuck = illegalEdges == 0;
                     if (rejected->isA(DeadlockProneRouting::classID())) {
                       if (!usable) {
@@ -2680,10 +2692,10 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     }
     if (unmoved)
       return std::move(unmoved);
-    if (overlayFaults >= maxOverlayFaults) {
+    if (priorityFaults >= maxPriorityFaults) {
       LLVM_DEBUG(llvm::dbgs() << "\t\tPathfinder: the routing check rejects "
                                  "only master sets of the prioritized flows ("
-                              << overlayFaults << " routings in a row)\n");
+                              << priorityFaults << " routings in a row)\n");
       if (usable)
         return std::move(*usable);
       packetsFailed = false;

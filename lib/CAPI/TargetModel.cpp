@@ -208,7 +208,7 @@ bool aieDmaBdFits(uint32_t device, int col, int row, MlirType elementType,
   builder.setInsertionPointToStart(module->getBody());
   auto dev = xilinx::AIE::DeviceOp::create(
       builder, loc, static_cast<xilinx::AIE::AIEDevice>(device),
-      xilinx::AIE::DeviceOp::getDefaultDeviceName());
+      xilinx::AIE::DeviceOp::getDefaultDeviceName(), nullptr);
   const xilinx::AIE::AIETargetModel &tm = dev.getTargetModel();
 
   int64_t elemBits = DataLayout::closest(dev).getTypeSizeInBits(elemType);

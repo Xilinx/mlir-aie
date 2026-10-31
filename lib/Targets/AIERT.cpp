@@ -730,7 +730,7 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
 LogicalResult
 xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
                                              bool skipCtrlPktOverlay) {
-  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(targetOp.getContext());
+  AIEDialect::IsCtrlOverlayAttrHelper overlay(targetOp.getContext());
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
@@ -825,6 +825,8 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
         XAie_TileLoc(muxOp.getTileOp().getCol(), muxOp.getTileOp().getRow());
     Block &b = muxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
+      if (skipCtrlPktOverlay && overlay.isAttrPresent(connectOp))
+        continue;
       TxnLocBracket bracket(*this, connectOp.getLoc());
       // demux!
       if (connectOp.getSourceBundle() == WireBundle::North)
@@ -857,12 +859,20 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
   return success();
 }
 
-LogicalResult xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp) {
+LogicalResult
+xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp,
+                                            bool skipCtrlPktOverlay) {
+  AIEDialect::IsCtrlOverlayAttrHelper overlay(targetOp.getContext());
+  auto skip = [&](Operation *op) {
+    return skipCtrlPktOverlay && overlay.isAttrPresent(op);
+  };
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
     XAie_LocType tileLoc =
         XAie_TileLoc(switchboxOp.colIndex(), switchboxOp.rowIndex());
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
+      if (skip(connectOp))
+        continue;
       TxnLocBracket bracket(*this, connectOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
           switchboxOp, XAie_StrmConnCctDisable, &aiert->devInst, tileLoc,
@@ -872,6 +882,8 @@ LogicalResult xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp) {
           connectOp.destIndex());
     }
     for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      if (skip(masterSetOp))
+        continue;
       TxnLocBracket bracket(*this, masterSetOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
           masterSetOp, XAie_StrmPktSwMstrPortDisable, &aiert->devInst, tileLoc,
@@ -880,19 +892,21 @@ LogicalResult xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp) {
     }
     for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
       auto rules = packetRulesOp.getRules().front().getOps<PacketRuleOp>();
-      if (rules.empty())
+      if (rules.empty() || skip(packetRulesOp))
         continue;
       TxnLocBracket bracket(*this, packetRulesOp.getLoc());
       StrmSwPortType port =
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(packetRulesOp.getSourceBundle());
-      TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortDisable,
-                              &aiert->devInst, tileLoc, port,
-                              packetRulesOp.sourceIndex());
+      if (llvm::none_of(rules, skip))
+        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlavePortDisable,
+                                &aiert->devInst, tileLoc, port,
+                                packetRulesOp.sourceIndex());
       // A slot stays enabled when its port is disabled.
       for (auto [slot, rule] : llvm::enumerate(rules))
-        TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotDisable,
-                                &aiert->devInst, tileLoc, port,
-                                packetRulesOp.sourceIndex(), slot);
+        if (!skip(rule))
+          TRY_XAIE_API_EMIT_ERROR(packetRulesOp, XAie_StrmPktSwSlaveSlotDisable,
+                                  &aiert->devInst, tileLoc, port,
+                                  packetRulesOp.sourceIndex(), slot);
     }
   }
   return success();

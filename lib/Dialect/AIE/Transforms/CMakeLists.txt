@@ -43,6 +43,7 @@ add_mlir_dialect_library(
   AIEObjectFifoUnroll.cpp
   AIELowerCascadeFlows.cpp
   AIEGenerateColumnControlOverlay.cpp
+  AIEImportOverlay.cpp
   AIETraceToConfig.cpp
   AIEInsertTraceFlows.cpp
   AIEPacketIdSpace.cpp

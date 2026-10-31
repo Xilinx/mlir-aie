@@ -48,11 +48,9 @@ def AIE_DeviceOp
     The design itself is described using a region of code contained by the device
     operation.
 
-    The optional `has_ctrl_pkt_overlay` attribute marks a design that a
-    control-packet reload (`aiecc --load-pdi-to-ctrl-pkt`) installs. The reload
-    configures the `@ctrl_pkt_overlay` device first and the rest of the design
-    through it, so the router keeps the switch settings the overlay's flows
-    take on their own. `aie-generate-column-control-overlay` sets it.
+    The optional `overlay` symbol references a routed device whose resources
+    remain resident while this design executes. `aie-import-overlay` imports
+    those fixed resources before application allocation and routing.
 
     Example:
     ```
@@ -65,7 +63,7 @@ def AIE_DeviceOp
 
   let arguments = (ins AIEDevice:$device,
       DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name,
-      DefaultValuedOptionalAttr<BoolAttr, "false">:$has_ctrl_pkt_overlay);
+      OptionalAttr<FlatSymbolRefAttr>:$overlay);
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
     `(` $device `)` ($sym_name^)? regions attr-dict
@@ -879,9 +877,7 @@ def AIE_PacketFlowOp
     data packet's packet header gets preserved at the flow's
     destination. The optional attribute priority_route routes the flow
     first, on its own, and the other flows route around it. If the design
-    cannot route that way, the flow routes with the others. In a device
-    with `has_ctrl_pkt_overlay`, the control overlay's flows (those to or
-    from a TileControl port) always keep the route they take on their own.
+    cannot route that way, the flow routes with the others.
 
     The optional attribute mask, written after the ID in the parentheses,
     states the packet-rule mask of the flow. A slave port accepts a packet

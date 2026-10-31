@@ -7,16 +7,12 @@
 
 // RUN: aie-opt %s -aie-generate-column-control-overlay="emit-standalone-overlay=true" | FileCheck %s
 
-// The standalone overlay has no runtime sequence of its own, so it routes the
-// token of every tile that any participating device awaits, and each device
-// gets that same set so all of them share one overlay shape.
-
 // CHECK-LABEL: aie.device(npu2_1col) @first
-// CHECK-DAG: aie.packet_source<%{{.*}}tile_0_1{{.*}}, TileControl : 0>
-// CHECK-DAG: aie.packet_source<%{{.*}}tile_0_2{{.*}}, TileControl : 0>
+// CHECK-NOT: aie.packet_flow
+// CHECK: overlay = @ctrl_pkt_overlay
 // CHECK-LABEL: aie.device(npu2_1col) @second
-// CHECK-DAG: aie.packet_source<%{{.*}}tile_0_1{{.*}}, TileControl : 0>
-// CHECK-DAG: aie.packet_source<%{{.*}}tile_0_2{{.*}}, TileControl : 0>
+// CHECK-NOT: aie.packet_flow
+// CHECK: overlay = @ctrl_pkt_overlay
 // CHECK-LABEL: aie.device(npu2_1col) @ctrl_pkt_overlay
 // CHECK-DAG: aie.packet_source<%{{.*}}tile_0_1{{.*}}, TileControl : 0>
 // CHECK-DAG: aie.packet_source<%{{.*}}tile_0_2{{.*}}, TileControl : 0>

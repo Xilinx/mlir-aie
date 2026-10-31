@@ -12,6 +12,15 @@ using namespace xilinx::AIE;
 
 PacketIdSpace::PacketIdSpace(DeviceOp device)
     : max(static_cast<int>(device.getTargetModel().getMaxPacketId())) {
+  if (device->hasAttr("aie.reserve_controller_packet_ids")) {
+    for (auto [tile, id] :
+         device.getTargetModel().getTileToControllerIdMap(true))
+      taken.insert(id);
+    for (auto tile : device.getOps<TileOp>())
+      if (auto id = tile->getAttrOfType<PacketInfoAttr>("controller_id");
+          id && id.isAssigned())
+        taken.insert(id.assignedId());
+  }
   device.walk([&](PacketFlowOp flow) { taken.insert(flow.IDInt()); });
   device.walk([&](TracePacketOp packet) {
     if (std::optional<int32_t> id = packet.getId()) {

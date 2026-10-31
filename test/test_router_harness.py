@@ -149,16 +149,16 @@ def test_wait_chain_reaches_a_dma_receiver_again_free():
     assert graph.wait_chain([s], [t], [c1]) == []
 
 
-def test_the_model_accepts_the_routers_overlay_marks(priority):
+def test_the_model_accepts_the_routers_priority_marks(priority):
     d, routed = priority
-    assert "aie.is_ctrl_pkt_overlay" in routed
+    assert "aie.priority_route" in routed
     assert rp.verify(d, rp.Analysis(d), routed, True)[0] == []
 
 
 def test_the_model_rejects_a_priority_hop_without_its_mark(priority):
     d, routed = priority
     unmarked = routed.replace(
-        "{aie.is_ctrl_pkt_overlay, keep_pkt_header = true}",
+        "{aie.priority_route, keep_pkt_header = true}",
         "{keep_pkt_header = true}",
     )
     assert unmarked != routed
@@ -172,9 +172,9 @@ def test_the_model_rejects_a_mark_no_priority_flow_takes(priority):
     k = next(
         i
         for i, line in enumerate(lines)
-        if "aie.masterset(South : 2" in line and "aie.is_ctrl" not in line
+        if "aie.masterset(South : 2" in line and "aie.priority_route" not in line
     )
-    lines[k] += " {aie.is_ctrl_pkt_overlay}"
+    lines[k] += " {aie.priority_route}"
     problems = rp.verify(d, rp.Analysis(d), "\n".join(lines), True)[0]
     assert "ctrl masterset South:2 at (0, 0) carries no priority flow" in problems
 

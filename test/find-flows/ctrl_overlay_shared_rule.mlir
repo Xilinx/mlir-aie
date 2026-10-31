@@ -5,20 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The control overlay stays materialized. Flow 9 enters the shim on the
-// overlay's slave port, but the router gives it a rule of its own after the
-// overlay's, so flow 9 is lifted back to a packet_flow. The shim mux connect
-// both use is kept, and routing the result again routes flow 9.
+// The control overlay stays materialized. The design declares the overlay's
+// request to the shim on DMA:0, which the overlay keeps for the column, so
+// flow 9 enters the shim on the overlay's slave port. The router gives it a
+// rule of its own after the overlay's, so flow 9 is lifted back to a
+// packet_flow. The shim mux connect both use is kept, and routing the result
+// again routes flow 9.
 
-// RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s --check-prefixes=CHECK,FIND
-// RUN: aie-opt --aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows %s | FileCheck %s --check-prefixes=CHECK,ROUTE
+// RUN: aie-opt --aie-create-control-overlay --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s --check-prefixes=CHECK,FIND
+// RUN: aie-opt --aie-create-control-overlay --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows %s | FileCheck %s --check-prefixes=CHECK,ROUTE
 
 // CHECK:      aie.shim_mux
-// CHECK-NEXT:   aie.connect<DMA : 0, North : 3>
+// CHECK-NEXT:   aie.connect<DMA : 0, North : 3> {aie.is_ctrl_overlay}
 // CHECK-NEXT: }
 // CHECK:      aie.packet_rules(South : 3) {
-// CHECK-NEXT:   aie.rule(30, 26, %{{.*}}) {aie.is_ctrl_pkt_overlay, aie.priority_route}
-// CHECK-NEXT:   aie.rule(31, 15, %{{.*}}) {aie.is_ctrl_pkt_overlay, aie.priority_route}
+// CHECK-NEXT:   aie.rule(24, 24, %{{.*}}) {aie.is_ctrl_overlay}
+// CHECK-NEXT:   aie.rule(31, 15, %{{.*}}) {aie.is_ctrl_overlay}
 // FIND-NEXT:  }
 // ROUTE-NEXT:   aie.rule(31, 9,
 // CHECK:      aie.switchbox(%{{.*}}tile_0_2)
@@ -37,5 +39,9 @@ module {
       aie.packet_source<%t00, DMA : 0>
       aie.packet_dest<%t02, DMA : 1>
     }
+    aie.packet_flow(15) {
+      aie.packet_source<%t00, DMA : 0>
+      aie.packet_dest<%t00, TileControl : 0>
+    } {keep_pkt_header = true, priority_route = true}
   }
 }

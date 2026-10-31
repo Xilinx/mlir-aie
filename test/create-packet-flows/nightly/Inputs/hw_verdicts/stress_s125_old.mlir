@@ -174,12 +174,12 @@ module {
     %switchbox_1_0 = aie.switchbox(%shim_noc_tile_1_0) {
       %0 = aie.amsel<0> (0)
       %1 = aie.amsel<5> (3)
-      %2 = aie.masterset(South : 0, %1) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
+      %2 = aie.masterset(South : 0, %1) {aie.priority_route, keep_pkt_header = true}
       %3 = aie.masterset(North : 3, %0)
       %4 = aie.masterset(East : 3, %0)
       aie.packet_rules(TileControl : 0) {
         aie.rule(31, 15, %1) {aie.priority_route}
-      } {aie.is_ctrl_pkt_overlay}
+      } {aie.priority_route}
       aie.packet_rules(South : 7) {
         aie.rule(31, 11, %0)
       }
@@ -219,11 +219,11 @@ module {
       %1 = aie.amsel<0> (1)
       %2 = aie.amsel<5> (3)
       %3 = aie.masterset(South : 3, %0, %1) {keep_pkt_header = true}
-      %4 = aie.masterset(South : 0, %2) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
+      %4 = aie.masterset(South : 0, %2) {aie.priority_route, keep_pkt_header = true}
       %5 = aie.masterset(North : 0, %0)
       aie.packet_rules(TileControl : 0) {
         aie.rule(31, 15, %2) {aie.priority_route}
-      } {aie.is_ctrl_pkt_overlay}
+      } {aie.priority_route}
       aie.packet_rules(West : 3) {
         aie.rule(31, 11, %0)
       }

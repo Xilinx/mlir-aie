@@ -287,6 +287,9 @@ def AIEMaterializeRuntimeSequences
   }];
 
   let constructor = "xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass()";
+  let options = [Option<"analysisOnly", "analysis-only", "bool", "false",
+                        "Inline a schedule before resource allocation for "
+                        "analysis; the result is not executable IR">];
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -694,11 +697,14 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     (i.e., after `aiex.configure` ops have been turned into
     `aiex.npu.load_pdi`).
 
-    With `teardown = true`, an `aiex.npu.write_teardown @device` before the
-    next `load_pdi`, or at the sequence's end, undoes what each configuration
-    enabled, so only a sequence's first configuration keeps its reset. With
-    `init-entry = true` as well, that reset moves into an argument-free
-    `reconfig_init` runtime sequence, which the host runs once before the
+    With `teardown = true`, each configuration undoes what it enabled before
+    the next `load_pdi`, or at the sequence's end: with an
+    `aiex.npu.write_teardown @device`, or with control packets for a control
+    packet configuration. Only a sequence's first configuration, or one after a
+    configuration of the other kind, keeps its reset or overlay load. With
+    `init-entry = true` as well, a device whose sequences all end on
+    configurations of one kind gets an argument-free `reconfig_init` runtime
+    sequence holding that kind's preload, which the host runs before the
     others.
 
     A sequence whose first and last reset (or overlay load) name the same PDI
@@ -747,6 +753,31 @@ def AIEXInlineTraceConfig : Pass<"aie-inline-trace-config", "AIE::DeviceOp"> {
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
+}
+
+def AIECreateControlOverlay
+    : Pass<"aie-create-control-overlay", "mlir::ModuleOp"> {
+  let summary =
+      "Create a common, fixed control overlay before resource allocation";
+  let description = [{
+    Operates on placed, split ObjectFIFO IR. Chooses one control channel per
+    column across all devices, routes @ctrl_pkt_overlay once, and imports its
+    resources into devices carrying an `overlay` symbol reference. Application
+    endpoints may share its fixed channels when materialized runtime sequences establish
+    disjoint configuration and execution phases. With adaptive=false, use
+    channel zero and the default overlay routes. With adaptive=true, avoid
+    application reservations and prefer routes away from application traffic.
+  }];
+  let constructor = "xilinx::AIEX::createAIECreateControlOverlayPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+  let options =
+      [Option<"adaptive", "adaptive", "bool", "true",
+              "Plan the overlay around all application devices">,
+       Option<"shareChannels", "share-channels", "bool", "true",
+              "Allow application transfers to share fixed overlay channels">,
+       ListOption<"coverColumns", "cover-columns", "int",
+                  "Additional columns the overlay must reach">];
 }
 
 #endif

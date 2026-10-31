@@ -8,29 +8,28 @@
 // RUN: aie-opt --split-input-file --aie-create-pathfinder-flows %s | FileCheck %s
 
 // A switchbox routes on the slave port and id alone, so a flow sharing both
-// with a priority_route flow is carried as a control packet there too.
+// with a priority_route flow receives the same priority.
 
 // Same id and source, one priority and one not. Both id 2 flows take the
 // priority flow's route alone, and id 31, which shares the source, routes on
-// its own. A control-packet reload keeps the overlay's rules, so the source's
-// rules tag the control packet's rule, and id 31's rule follows it.
+// its own. The priority rule precedes id 31's rule.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_2_1) {
 // CHECK-NEXT:    %[[PLAIN:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:    %[[CTRL:.*]] = aie.amsel<5> (3)
 // CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[PLAIN]])
-// CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:    aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {aie.priority_route}
 // CHECK-NEXT:    aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:      aie.rule(31, 2, %[[CTRL]]) {aie.is_ctrl_pkt_overlay, aie.priority_route}
+// CHECK-NEXT:      aie.rule(31, 2, %[[CTRL]]) {aie.priority_route}
 // CHECK-NEXT:      aie.rule(31, 31, %[[PLAIN]])
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-LABEL: aie.switchbox(%tile_2_2) {
-// CHECK:         aie.masterset(DMA : 1, %[[CTRL:.*]]) {aie.is_ctrl_pkt_overlay}
-// CHECK:         aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {aie.is_ctrl_pkt_overlay}
+// CHECK:         aie.masterset(DMA : 1, %[[CTRL:.*]]) {aie.priority_route}
+// CHECK:         aie.masterset(North : {{[0-9]+}}, %[[CTRL]]) {aie.priority_route}
 // CHECK:         aie.packet_rules(South : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 2, %[[CTRL]])
-// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:    } {aie.priority_route}
 
 module {
   aie.device(npu2_3col) {
@@ -57,23 +56,23 @@ module {
 
 // Same id and destination from different sources, one priority and one not.
 // The other flow joins the priority flow's master set where they meet, by a
-// rule of its own outside the overlay.
+// rule of its own without priority.
 
 // CHECK-LABEL: aie.switchbox(%tile_3_2) {
 // CHECK-NEXT:    %[[CTRL:.*]] = aie.amsel<5> (3)
-// CHECK-NEXT:    aie.masterset(North : 1, %[[CTRL]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:    aie.masterset(North : 1, %[[CTRL]]) {aie.priority_route}
 // CHECK-NEXT:    aie.packet_rules(DMA : 1) {
 // CHECK-NEXT:      aie.rule(31, 15, %[[CTRL]])
 // CHECK-NEXT:    }
 // CHECK-NEXT:    aie.packet_rules(South : 5) {
 // CHECK-NEXT:      aie.rule(31, 15, %[[CTRL]])
-// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:    } {aie.priority_route}
 // CHECK-LABEL: aie.switchbox(%tile_3_5) {
 // CHECK-NEXT:    %[[CTRL:.*]] = aie.amsel<5> (3)
-// CHECK-NEXT:    aie.masterset(DMA : 0, %[[CTRL]]) {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:    aie.masterset(DMA : 0, %[[CTRL]]) {aie.priority_route}
 // CHECK-NEXT:    aie.packet_rules(South : 4) {
 // CHECK-NEXT:      aie.rule(31, 15, %[[CTRL]])
-// CHECK-NEXT:    } {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:    } {aie.priority_route}
 
 module {
   aie.device(npu2_4col) {

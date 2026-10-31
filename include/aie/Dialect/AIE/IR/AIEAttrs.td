@@ -140,27 +140,23 @@ def BDDimLayoutAttr : AttrDef<AIE_Dialect, "BDDimLayout", []> {
     buffer descriptor;
   }];
 
-  let parameters = (ins
-    "uint32_t" : $size,
-    "uint32_t" : $stride
-  );
+  let parameters = (ins "uint32_t":$size, "uint32_t":$stride);
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
 def BDDimLayoutArrayAttr : ArrayOfAttr<
-    /*dialect*/AIE_Dialect,
-    /*attrName*/"BDDimLayoutArray",
-    /*attrMnemonic*/"bd_dim_layout_array",
-    /*eltName*/BDDimLayoutAttr.cppClassName
->;
+                               /*dialect*/ AIE_Dialect,
+                               /*attrName*/ "BDDimLayoutArray",
+                               /*attrMnemonic*/ "bd_dim_layout_array",
+                               /*eltName*/ BDDimLayoutAttr.cppClassName>;
 
-def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
-    /*dialect*/AIE_Dialect,
-    /*attrName*/"BDDimLayoutArrayArray",
-    /*attrMnemonic*/"bd_dim_layout_array_array",
-    /*eltName*/BDDimLayoutArrayAttr.cppClassName
->;
+def BDDimLayoutArrayArrayAttr
+    : ArrayOfAttr<
+          /*dialect*/ AIE_Dialect,
+          /*attrName*/ "BDDimLayoutArrayArray",
+          /*attrMnemonic*/ "bd_dim_layout_array_array",
+          /*eltName*/ BDDimLayoutArrayAttr.cppClassName>;
 
 def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
   let mnemonic = "bd_pad_layout";
@@ -169,20 +165,17 @@ def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
     n-dimensional buffer descriptor;
   }];
 
-  let parameters = (ins
-    "uint16_t" : $const_pad_before,
-    "uint16_t" : $const_pad_after
-  );
+  let parameters = (ins "uint16_t":$const_pad_before,
+      "uint16_t":$const_pad_after);
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
 def BDPadLayoutArrayAttr : ArrayOfAttr<
-    /*dialect*/AIE_Dialect,
-    /*attrName*/"BDPadLayoutArray",
-    /*attrMnemonic*/"bd_pad_layout_array",
-    /*eltName*/BDPadLayoutAttr.cppClassName
->;
+                               /*dialect*/ AIE_Dialect,
+                               /*attrName*/ "BDPadLayoutArray",
+                               /*attrMnemonic*/ "bd_pad_layout_array",
+                               /*eltName*/ BDPadLayoutAttr.cppClassName>;
 
 // Per-segment, per-dimension padding for an objectFifo DMA endpoint.
 def BDPadLayoutArrayArrayAttr
@@ -242,11 +235,8 @@ def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
     true (element) values;
   }];
 
-  let parameters = (ins
-    "uint32_t" : $size,
-    "uint32_t" : $stride,
-    "uint32_t" : $current
-  );
+  let parameters = (ins "uint32_t":$size, "uint32_t":$stride,
+      "uint32_t":$current);
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
@@ -304,7 +294,7 @@ def TraceSliceArrayAttr
     : TypedArrayAttrBase<TraceSliceAttr, "array of trace buffer slices">;
 
 def InitValuesArrayAttr
-  : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
+    : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
 
 //===----------------------------------------------------------------------===//
 // ObjectFifo pools and endpoints

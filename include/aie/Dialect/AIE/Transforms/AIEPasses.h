@@ -88,6 +88,9 @@ createAIECoreIntRangeNarrowingPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options);
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEPathfinderPass(const AIERoutePathfinderFlowsOptions &options,
+                        llvm::ArrayRef<std::pair<TileID, Port>> avoidedPorts);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoUnrollPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoUnrollPass(const AIEObjectFifoUnrollOptions &options);
@@ -95,7 +98,8 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoSplitPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoVerifyPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignPacketIdsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
-createAIEAssignPacketIdsPass(bool packetSwitched);
+createAIEAssignPacketIdsPass(bool packetSwitched,
+                             bool reserveControllerPacketIds = false);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoAllocatePass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
@@ -114,6 +118,8 @@ createAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLivenessPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEImportOverlayPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEGenerateColumnControlOverlayPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEGenerateColumnControlOverlayPass(
@@ -131,7 +137,8 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 /// Adds the passes of `aie-objectFifo-stateful-transform` to `pm`, which
 /// anchors on DeviceOp.
 void addObjectFifoLoweringPasses(mlir::OpPassManager &pm, bool packetSwitched,
-                                 bool skipVerify);
+                                 bool skipVerify,
+                                 bool reserveControllerPacketIds = false);
 
 /// Register `aie-objectFifo-stateful-transform` as a pipeline over the passes
 /// that lower `aie.objectfifo`.

@@ -226,6 +226,18 @@ design carries `has_ctrl_pkt_overlay` on its `aie.device`. The router keeps
 the overlay's flows (those to or from a `TileControl` port) on the routes
 they take alone, and fails if the design's flows don't fit around them.
 
+Those routes don't consider the design's flows, so a design flow may have to
+detour around the overlay. With `aiecc --ctrlpkt-adaptive-overlay` (the default
+in control-packet reconfiguration mode), overlay creation allocates and routes
+a temporary copy of the applications. The `aie-control-overlay-avoid-data` pass
+routes each configuration without
+the overlay and records the switchbox output ports its flows take. The overlay
+then routes alone around all of those ports, taking one only where no other
+port is free. Every configuration avoids the same ports, so all of them keep
+the overlay's routes. Set `--ctrlpkt-adaptive-overlay=false` to use shim DMA
+channel 0 and the default overlay paths. Sharing may move application endpoints
+onto the selected control channel; it never changes the overlay channel.
+
 ## Options
 
 | Pass option | Default | Effect |

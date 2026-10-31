@@ -33,23 +33,31 @@ void AIEX::addTraceStage(OpPassManager &pm) {
 
 void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
                             bool packetSwObjFifos, bool ctrlPktOverlay,
-                            bool loadPdiToCtrlPkt, bool skipObjectFifoVerify) {
+                            bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
+                            llvm::ArrayRef<int> coverColumns,
+                            bool adaptiveOverlay, bool shareChannels) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(createAIECanonicalizeDevicePass());
   // Before lock IDs and buffer addresses, which its new locks and buffers need.
   pm.addPass(createAIELowerScratchpadParametersPass());
 
-  // With the overlay requested, it claims its shim DMA channels before
-  // objectFIFO lowering works around them; otherwise it runs after tile
-  // control IDs are assigned.
-  AIEGenerateColumnControlOverlayOptions overlay;
-  overlay.clRouteShimDmaToTileCTRL = ctrlPktOverlay;
-  overlay.clEmitStandaloneOverlay = ctrlPktOverlay && loadPdiToCtrlPkt;
-  if (ctrlPktOverlay)
-    pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
-
+  pm.nest<DeviceOp>().addPass(createAIEObjectFifoSplitPass());
+  if (!skipObjectFifoVerify)
+    pm.nest<DeviceOp>().addPass(createAIEObjectFifoVerifyPass());
+  if (loadPdiToCtrlPkt) {
+    AIECreateControlOverlayOptions options;
+    options.adaptive = adaptiveOverlay;
+    options.shareChannels = shareChannels;
+    options.coverColumns = llvm::to_vector(coverColumns);
+    pm.addPass(createAIECreateControlOverlayPass(options));
+  }
+  pm.addPass(createAIEImportOverlayPass());
   OpPassManager &dpm = pm.nest<DeviceOp>();
-  addObjectFifoLoweringPasses(dpm, packetSwObjFifos, skipObjectFifoVerify);
+  dpm.addPass(createAIEAssignPacketIdsPass(packetSwObjFifos, ctrlPktOverlay));
+  dpm.addPass(createAIEObjectFifoAllocatePass());
+  dpm.addPass(createAIEObjectFifoLowerDMAsPass());
+  dpm.addPass(createAIEObjectFifoLowerCoresPass());
+  dpm.addPass(createAIEObjectFifoErasePoolsPass());
   AIEObjectFifoUnrollOptions unroll;
   unroll.clDefaultDynamic = dynamicObjFifos;
   dpm.addPass(createAIEObjectFifoUnrollPass(unroll));
@@ -60,7 +68,12 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(createAIEBroadcastPacketPass());
   dpm.addPass(createAIELowerMulticastPass());
-  dpm.addPass(createAIEAssignTileCtrlIDsPass());
+  AIEGenerateColumnControlOverlayOptions overlay;
+  overlay.clRouteShimDmaToTileCTRL = ctrlPktOverlay;
+  overlay.clCoverColumns = llvm::to_vector(coverColumns);
+  if (ctrlPktOverlay && !loadPdiToCtrlPkt)
+    pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
+  pm.nest<DeviceOp>().addPass(createAIEAssignTileCtrlIDsPass());
 
   if (!ctrlPktOverlay)
     pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
@@ -76,8 +89,8 @@ void AIEX::addBufferAddressStage(OpPassManager &pm, int64_t placementBudget) {
 }
 
 void AIEX::addRoutingStage(OpPassManager &pm, bool allowDeadlockProne) {
+  pm.nest<DeviceOp>().addPass(createAIESplitFlowViasPass());
   OpPassManager &dpm = pm.nest<DeviceOp>();
-  dpm.addPass(createAIESplitFlowViasPass());
   AIERoutePathfinderFlowsOptions options;
   options.clAllowDeadlockProne = allowDeadlockProne;
   dpm.addPass(createAIEPathfinderPass(options));
@@ -97,8 +110,9 @@ void AIEX::registerAIEResourceStagesPipeline() {
         addTraceStage(pm);
         addLoweringStage(pm, options.dynamicObjFifos, options.packetSwObjFifos,
                          options.ctrlPktOverlay || options.loadPdiToCtrlPkt,
-                         options.loadPdiToCtrlPkt,
-                         options.skipObjectFifoVerify);
+                         options.loadPdiToCtrlPkt, options.skipObjectFifoVerify,
+                         {}, options.adaptiveOverlay,
+                         options.shareControlChannels);
         addBufferAddressStage(pm, options.placementBudget);
         addRoutingStage(pm, options.allowDeadlockProneRouting);
       });

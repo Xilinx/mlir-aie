@@ -54,7 +54,7 @@ mlir::LogicalResult generateAndInsertConfigOps(
 // its device. They are generated once per device and sequence-holding device,
 // and a sequence's constants and payload globals are made once, at its head:
 // a device reloaded hundreds of times would otherwise repeat each per reload.
-// Control-packet output skips what is marked is_ctrl_pkt_overlay. A site that
+// Control-packet output skips what is marked is_ctrl_overlay. A site that
 // is an aiex.npu.write_teardown gets the device's teardown ops instead.
 mlir::LogicalResult insertConfigOps(
     llvm::ArrayRef<std::pair<mlir::Operation *, xilinx::AIE::DeviceOp>> sites,
@@ -70,7 +70,8 @@ generateAndInsertTeardownOps(mlir::OpBuilder &builder,
                              xilinx::AIE::DeviceOp device,
                              xilinx::AIEX::BlockwriteData &blockwriteData,
                              AIEToConfigurationOutputType outputType =
-                                 AIEToConfigurationOutputType::Transaction);
+                                 AIEToConfigurationOutputType::Transaction,
+                             bool skipCtrlPktOverlay = false);
 
 // --------------------------------------------------------------------------
 // Device reset

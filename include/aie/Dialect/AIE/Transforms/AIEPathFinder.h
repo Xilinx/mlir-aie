@@ -61,6 +61,8 @@ struct SwitchboxConnect {
     llvm::SmallDenseMap<int, int, 2> packetIds;
     // whether a prioritized flow uses the connection
     bool isPriority = false;
+    // added to the demand, so routes keep off the connection where they can
+    double avoidance = 0;
   };
 
   SwitchboxConnect() = default;
@@ -274,9 +276,8 @@ struct RoutingFaults {
   // Sources whose tree waits on an arbiter it holds itself; they stop
   // trunking (see RouteState::trunked).
   std::vector<PathEndPoint> untrunk;
-  // Whether the connections all break the overlay's master sets; see
-  // RouteState::overlayMasters.
-  bool onlyOverlayMasters = false;
+  // Whether every rejected connection would change a pinned master set.
+  bool onlyPriorityMasters = false;
 };
 
 // A routing findPaths found.
@@ -348,6 +349,9 @@ struct PacketConstraints {
   // The prioritized packet flows from these sources take these trees
   // instead of being routed.
   PacketTrees pinned;
+  // The packet ids each pinned tree carries. A pinned source's other flows
+  // route with the rest of the design, prioritized or not.
+  std::map<PathEndPoint, std::set<int>> pinnedIds;
   // Whether prioritized packet flows not pinned route first, keeping
   // other flows off their channels; otherwise they route like the others.
   bool prioritize = true;
@@ -370,6 +374,8 @@ public:
   mlir::LogicalResult addFixedConnection(SwitchboxOp switchboxOp);
   // Keeps routes out of the switchbox at `coords`.
   void excludeTile(TileID coords);
+  // Keeps routes off an output port of a switchbox where another is free.
+  void avoidPort(TileID coords, Port port);
   // A RoutingFailure if no legal routing is found in `maxIterations`.
   llvm::Expected<Routing> findPaths(int maxIterations);
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
@@ -537,6 +543,8 @@ public:
   }
 
   Pathfinder pathfinder;
+  // Passed to Pathfinder::avoidPort.
+  std::vector<std::pair<TileID, Port>> avoidedPorts;
   // The routing runAnalysis found.
   Routing routing;
   // The sources of the circuit flows lowered so far.
@@ -551,6 +559,8 @@ private:
   llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
   llvm::DenseMap<TileID, ShimMuxOp> coordToShimMux;
 };
+
+bool touchesTileControl(PacketFlowOp flow);
 
 } // namespace xilinx::AIE
 

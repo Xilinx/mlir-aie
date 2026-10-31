@@ -8,10 +8,8 @@
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true inline-config=true" --split-input-file %s | FileCheck %s
 // RUN: aie-opt --aie-expand-load-pdi="teardown=true init-entry=true" --split-input-file --verify-diagnostics %s | FileCheck %s --check-prefix=INIT
 // RUN: not aie-opt --aie-expand-load-pdi="init-entry=true" --split-input-file %s 2>&1 | FileCheck %s --check-prefix=NO-TEARDOWN
-// RUN: not aie-opt --aie-expand-load-pdi="ctrl-pkt=true teardown=true" --split-input-file %s 2>&1 | FileCheck %s --check-prefix=CTRL-PKT
 
 // NO-TEARDOWN: error: aie-expand-load-pdi: init-entry requires teardown
-// CTRL-PKT: error: teardown is not implemented for control packet reconfiguration
 
 // @cfg sets a circuit and a packet route in tile (0, 2) and starts the
 // memtile's MM2S channel 1. Its teardown, where the next configuration starts,
@@ -182,6 +180,98 @@ module {
 
 // -----
 
+// With control packet reconfiguration (expand_mode = 2), only the first
+// configuration loads the overlay, or none with an init entry. The teardown
+// keeps what the overlay sets, which is the memtile's control circuit, the
+// TileControl master of tile (0, 2), and the overlay rule of slave port
+// South : 3, where only the slot of the configuration's own rule (2355844) is
+// disabled. The memtile channel is reset and its control register written back
+// to its reset value, clearing what the configuration set (1705528 = 1).
+
+// CHECK-LABEL: aie.runtime_sequence(%arg0: memref<16xi32>)
+// CHECK:       aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay,
+// CHECK:       aiex.control_packet {address = 2355844 : ui32, data = array<i32: 52363521>
+// CHECK:       aiex.control_packet {address = 1705528 : ui32, data = array<i32: 1>
+// CHECK-NEXT:  aiex.npu.sync
+// CHECK-NEXT:  aiex.control_packet {address = 2355204 : ui32, data = array<i32: 0>
+// CHECK-NEXT:  aiex.control_packet {address = 2355480 : ui32, data = array<i32: 0>
+// CHECK-NEXT:  aiex.control_packet {address = 2355200 : ui32, data = array<i32: 0>
+// CHECK-NEXT:  aiex.control_packet {address = 2355844 : ui32, data = array<i32: 0>
+// CHECK-NEXT:  aiex.control_packet {address = 1705528 : ui32, data = array<i32: 3>
+// CHECK-NEXT:  aiex.control_packet {address = 1705528 : ui32, data = array<i32: 0>
+// CHECK-NEXT:  aiex.control_packet {address = 2355204 : ui32, data = array<i32: -2147483642>
+// CHECK-NOT:   aiex.npu.load_pdi
+// CHECK:       aiex.npu.sync
+// CHECK-NEXT:  aiex.control_packet {address = 2355204 : ui32, data = array<i32: 0>
+// CHECK-NOT:   aiex.npu.load_pdi
+// CHECK:       {{^    }}}
+
+// INIT-LABEL: aie.device(npu2_1col) @ctrl_pkt_overlay
+// INIT:       aie.runtime_sequence @reconfig_init() {
+// INIT-NEXT:    aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay, expand_mode = 0 : i32}
+// INIT-NEXT:  }
+// INIT:       aie.runtime_sequence(%arg0: memref<16xi32>)
+// INIT-NOT:   aiex.npu.load_pdi
+// INIT:       {{^    }}}
+
+module {
+  aie.device(npu2_1col) @ctrl_pkt_overlay {
+    %shim = aie.tile(0, 0)
+    %mem = aie.tile(0, 1)
+    %compute = aie.tile(0, 2)
+    aie.switchbox(%mem) {
+      aie.connect<South : 0, TileControl : 0>
+    }
+    aie.switchbox(%compute) {
+      %a = aie.amsel<0> (0)
+      aie.masterset(TileControl : 0, %a)
+      aie.packet_rules(South : 3) {
+        aie.rule(31, 15, %a)
+      }
+    }
+  }
+  aie.device(npu2_1col) @cfg {
+    %shim = aie.tile(0, 0)
+    %mem = aie.tile(0, 1)
+    %compute = aie.tile(0, 2)
+    aie.switchbox(%mem) {
+      aie.connect<South : 0, TileControl : 0> {aie.is_ctrl_overlay}
+    }
+    aie.switchbox(%compute) {
+      aie.connect<South : 1, DMA : 0>
+      %a = aie.amsel<0> (0)
+      %b = aie.amsel<1> (0)
+      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_overlay}
+      aie.masterset(Core : 0, %b)
+      aie.packet_rules(South : 3) {
+        aie.rule(31, 15, %a) {aie.is_ctrl_overlay}
+        aie.rule(31, 3, %b)
+      }
+    }
+    %buf = aie.buffer(%mem) {address = 0 : i32, sym_name = "buf"} : memref<16xi32>
+    %memdma = aie.memtile_dma(%mem) {
+      %0 = aie.dma_start(MM2S, 1, ^bb1, ^bb2)
+    ^bb1:
+      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16) {bd_id = 24 : i32, next_bd_id = 24 : i32}
+      aie.next_bd ^bb1
+    ^bb2:
+      aie.end
+    }
+  } {overlay = @ctrl_pkt_overlay}
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      %c0 = arith.constant 0 : i32
+      %c1 = arith.constant 1 : i32
+      aiex.npu.load_pdi {device_ref = @cfg, expand_mode = 2 : i32}
+      aiex.npu.sync(%c0, %c0, %c0, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+      aiex.npu.load_pdi {device_ref = @cfg, expand_mode = 2 : i32}
+      aiex.npu.sync(%c0, %c0, %c0, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    }
+  }
+}
+
+// -----
+
 // A core is disabled, and only the channel its tile starts is reset.
 
 // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<16xi32>)
@@ -245,6 +335,32 @@ module {
       aiex.npu.load_pdi {device_ref = @cfg}
       aiex.npu.load_pdi {device_ref = @cfg, expand_mode = 0 : i32}
       aiex.npu.load_pdi {device_ref = @cfg}
+    }
+  }
+}
+
+// -----
+
+// The sequence ends on a control packet configuration, so the init entry loads
+// the overlay, and the load of the other kind before it keeps its reset.
+
+// INIT-LABEL: aie.device(npu2_1col) @mixed
+// INIT:       aie.runtime_sequence @reconfig_init()
+// INIT-NEXT:    aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay,
+// INIT:       aiex.npu.load_pdi {device_ref = @empty_0
+// INIT:       aiex.npu.load_pdi {device_ref = @ctrl_pkt_overlay
+
+module {
+  aie.device(npu2_1col) @ctrl_pkt_overlay {
+    %t = aie.tile(0, 0)
+  }
+  aie.device(npu2_1col) @mixed {
+    %t = aie.tile(0, 0)
+  } {overlay = @ctrl_pkt_overlay}
+  aie.device(npu2_1col) @main {
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aiex.npu.load_pdi {device_ref = @mixed, expand_mode = 1 : i32}
+      aiex.npu.load_pdi {device_ref = @mixed, expand_mode = 2 : i32}
     }
   }
 }

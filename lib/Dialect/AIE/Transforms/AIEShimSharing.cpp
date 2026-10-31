@@ -8,6 +8,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -16,7 +17,8 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 ShimTransferSpans::ShimTransferSpans(
-    DeviceOp device, function_ref<std::optional<End>(StringAttr)> endOf) {
+    DeviceOp device, function_ref<std::optional<End>(StringAttr)> endOf,
+    StringAttr configuration) {
   for (auto sequence : device.getOps<RuntimeSequenceOp>()) {
     DenseMap<Operation *, int64_t> position, end;
     int64_t next = 0;
@@ -30,8 +32,16 @@ ShimTransferSpans::ShimTransferSpans(
     };
     number(sequence);
 
-    auto &byFifo = spans.emplace_back();
+    // A dispatch begins after its configuration has been installed.
+    if (configuration) {
+      auto &initial = spans.emplace_back()[configuration];
+      initial.first = initial.last = initial.lastDone = 0;
+    }
+    size_t phase = spans.size();
+    spans.emplace_back();
+    DenseMap<std::tuple<int, int, int, int>, StringAttr> physicalEnds;
     DenseMap<Value, AIEX::DMAConfigureTaskForOp> tasks;
+    DenseMap<StringAttr, unsigned> pendingConfiguration;
     auto note = [&](Operation *op, StringAttr symbol, bool issues) {
       std::optional<End> shimEnd = endOf(symbol);
       if (!shimEnd)
@@ -43,10 +53,23 @@ ShimTransferSpans::ShimTransferSpans(
           from = position[parent];
           to = end[parent];
         }
-      Span &span = byFifo[shimEnd->fifo];
+      if (shimEnd->channel)
+        physicalEnds[*shimEnd->channel] = symbol;
+      Span &span = spans[phase][shimEnd->fifo];
       span.sends |= shimEnd->sends;
       span.first = std::min(span.first, from);
       span.last = std::max(span.last, to);
+      if (shimEnd->fifo == configuration) {
+        if (issues)
+          ++pendingConfiguration[symbol];
+        else {
+          auto pending = pendingConfiguration.find(symbol);
+          if (pending != pendingConfiguration.end() && --pending->second == 0)
+            pendingConfiguration.erase(pending);
+          if (!pendingConfiguration.empty())
+            return;
+        }
+      }
       int64_t &mark = issues ? span.lastIssue : span.lastDone;
       mark = std::max(mark, to);
     };
@@ -55,6 +78,51 @@ ShimTransferSpans::ShimTransferSpans(
         note(op, configure.getAlloc().getRootReference(), issues);
     };
     sequence.walk([&](Operation *op) {
+      if (configuration &&
+          isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
+              AIEX::NpuWriteTeardownOp>(op) &&
+          op->getParentOp() == sequence) {
+        auto &boundary = spans.emplace_back()[configuration];
+        boundary.first = boundary.last = boundary.lastDone = position[op];
+        phase = spans.size();
+        spans.emplace_back();
+        physicalEnds.clear();
+        pendingConfiguration.clear();
+        return;
+      }
+      if (configuration &&
+          isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
+              AIEX::NpuWriteTeardownOp, AIEX::NpuControlPacketOp>(op)) {
+        Span &span = spans[phase][configuration];
+        span.first = std::min(span.first, position[op]);
+        // Control-packet lowering completes each batch with a sync before
+        // emitting the following non-packet operation.
+        span.lastIssue = position[op] - 1;
+        span.last = position[op];
+        if (pendingConfiguration.empty())
+          span.lastDone = position[op];
+        if (op->getParentOp() != sequence) {
+          span.sends = true;
+          span.first = 0;
+          span.last = end[sequence];
+          span.lastIssue = span.last;
+        }
+        return;
+      }
+      if (auto sync = dyn_cast<AIEX::NpuSyncOp>(op)) {
+        SmallVector<int> values;
+        for (Value operand : sync->getOperands()) {
+          APInt value;
+          if (!matchPattern(operand, m_ConstantInt(&value)))
+            return;
+          values.push_back(value.getSExtValue());
+        }
+        if (values[4] == 1 && values[5] == 1)
+          if (auto symbol = physicalEnds.lookup(
+                  {values[0], values[1], values[2], values[3]}))
+            note(op, symbol, false);
+        return;
+      }
       if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
         note(op, memcpy.getMetadata().getRootReference(), true);
       else if (auto wait = dyn_cast<AIEX::NpuDmaWaitOp>(op))
@@ -71,6 +139,11 @@ ShimTransferSpans::ShimTransferSpans(
         noteTask(op, free.getTask(), false);
     });
   }
+}
+
+bool ShimTransferSpans::isUsed(StringAttr endpoint) const {
+  return llvm::any_of(
+      spans, [&](const auto &phase) { return phase.contains(endpoint); });
 }
 
 bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
