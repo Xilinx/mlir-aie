@@ -52,9 +52,10 @@ def _attach_source_frame(
     if not real:
         return False
     # Python omits carets when the statement spans the whole line, and MLIR
-    # gives no end column to underline up to.
-    pad = max(0, (len(real) - len("raise __hop__")) // 2)
-    source = "\n" * (lineno - 1) + "raise " + "(" * pad + "__hop__" + ")" * pad
+    # gives no end column to underline up to. A string pads it: nested
+    # parentheses stop compiling past 200 levels.
+    pad = "0" * max(0, len(real) - len('raise __hop__ or ""'))
+    source = "\n" * (lineno - 1) + f'raise __hop__ or "{pad}"'
     code = compile(source, filename, "exec").replace(co_name=name)
     hop = Exception()
     with contextlib.suppress(Exception):
