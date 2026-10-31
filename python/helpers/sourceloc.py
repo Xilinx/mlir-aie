@@ -281,8 +281,6 @@ def _statements(filename: str, stamp: tuple[int, int] | None) -> tuple:
 
 
 def _contains(node: ast.expr, line: int, col: int) -> bool:
-    if col == 0:  # Before Python 3.11 there are no columns; match the line.
-        return node.lineno <= line <= (node.end_lineno or node.lineno)
     start = (node.lineno, node.col_offset)
     end = (node.end_lineno, node.end_col_offset)
     return start <= (line, col) <= end
@@ -348,6 +346,17 @@ def _binding(
         targets. None when the call's result is not the statement's value
         or an element of it, e.g. an argument to another call.
     """
+    if col == 0:
+        # Before Python 3.11 there are no columns, so any call spanning the
+        # line may be the site: answer only when every one gives the same.
+        answers = {
+            _binding(filename, call.lineno, call.col_offset + 1, stamp)
+            for statement in _statements(filename, stamp)
+            for call in ast.walk(statement[2])
+            if isinstance(call, ast.Call)
+            and call.lineno <= line <= (call.end_lineno or call.lineno)
+        }
+        return answers.pop() if len(answers) == 1 else None
     for kind, names, value, unpacks in _statements(filename, stamp):
         if not _contains(value, line, col):
             continue

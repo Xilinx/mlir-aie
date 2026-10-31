@@ -9,6 +9,7 @@
 # object that is not assigned to a name falls back to of<N> / worker<N>.
 
 import numpy as np
+from aie.helpers.sourceloc import SourceSite
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
 
@@ -77,3 +78,40 @@ cores = [op.location.name_str for op in ops if op.name == "aie.core"]
 # An element of a list is named after the list.
 assert cores == ["iron:producer", "iron:workers"], cores
 print("PASS: names from source")
+
+# Before Python 3.11 a site has no column. A name read without one is the name
+# read with it, or none when the calls on its line disagree on it.
+left, right = ObjectFifo(line_type), ObjectFifo(line_type)
+without_columns = {}
+for name, obj in [
+    ("act_in", act_in),
+    ("first", first),
+    ("forwarded", forwarded),
+    ("fifos", fifos[0]),
+    ("producer", producer),
+    ("workers", workers[0]),
+    ("left", left),
+    ("right", right),
+]:
+    site = obj._site
+    lined = SourceSite(
+        site.filename,
+        site.line,
+        0,
+        returned_to=tuple((f, line, 0) for f, line, _ in site.returned_to),
+    )
+    without_columns[name] = lined.assigned_name()
+    assert without_columns[name] in (None, site.assigned_name()), (name, lined)
+assert without_columns == {
+    "act_in": "act_in",
+    "first": "out_fifo",
+    "forwarded": "forwarded",
+    # range(1) is a call on the line too.
+    "fifos": None,
+    # The handles passed to the Worker are calls on its line.
+    "producer": None,
+    "workers": None,
+    "left": None,
+    "right": None,
+}, without_columns
+print("PASS: names without columns")
