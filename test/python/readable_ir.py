@@ -22,6 +22,13 @@ module {
     } {link_with = "has loc(inside).o"} loc(unknown)
     %b = aie.buffer(%tile_0_2) {sym_name = "b"} : memref<4xi32> loc("/abs/path/inline.py":9:1)
     func.call @get_loc(%b) : (memref<4xi32>) -> () loc("d\\C3\\A9sign.py":5:0)
+    aie.runtime_sequence(%arg1: memref<16xi32> loc("arg.py":7:0)) {
+      scf.if %c {
+        aie.end loc(#loc4)
+      } else {
+        aie.end loc(#loc5)
+      } loc(#loc1)
+    } loc(#loc2)
   } loc(#loc)
 } loc(#loc)
 #loc = loc("design.py":1:0)
@@ -35,14 +42,18 @@ module {
 
 print(readable(IR))
 
-# CHECK:      %tile_0_2 = aie.tile(0, 2)  // design.py:1
+# CHECK:      module {  // design.py:1
+# CHECK-NEXT: aie.device(npu1_1col) {  // design.py:1
+# CHECK-NEXT: %tile_0_2 = aie.tile(0, 2)  // design.py:1
 # CHECK-NEXT: aie.objectfifo @act_in(%tile_0_2, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>  // act_in · helpers.py:12
-# CHECK-NEXT: %mem_0_2 = aie.mem(%tile_0_2) {
+# An op with regions prints its location after its closing brace; the
+# comment goes on the line that names the op. Fused: every name, the first
+# source line.
+# CHECK-NEXT: %mem_0_2 = aie.mem(%tile_0_2) {  // act_in, of_out · helpers.py:12
 # CHECK-NEXT:   aie.end  // of_out · design.py:40
-# Fused: every name, the first source line.
-# CHECK-NEXT: }  // act_in, of_out · helpers.py:12
+# CHECK-NEXT: }{{$}}
 
-# CHECK-NEXT: %core_0_2 = aie.core(%tile_0_2) {
+# CHECK-NEXT: %core_0_2 = aie.core(%tile_0_2) {{[{]$}}
 # A block argument's location is dropped from the middle of the line.
 # CHECK-NEXT:   ^bb0(%arg0: i32):  // blk.py:3
 # CHECK-NEXT:   aie.end  // py:core_fn · design.py:20
@@ -51,5 +62,15 @@ print(readable(IR))
 # CHECK-NEXT: %b = aie.buffer(%tile_0_2) {sym_name = "b"} : memref<4xi32>  // inline.py:9
 # Only a whole `loc(` starts a location; MLIR's escapes are undone.
 # CHECK-NEXT: func.call @get_loc(%b) : (memref<4xi32>) -> ()  // désign.py:5
+# A header's block-argument locations are not the op's.
+# CHECK-NEXT: aie.runtime_sequence(%arg1: memref<16xi32>) {  // design.py:30
+# CHECK-NEXT:   scf.if %c {  // helpers.py:12
+# CHECK-NEXT:     aie.end  // py:core_fn · design.py:20
+# CHECK-NEXT:   } else {{[{]$}}
+# CHECK-NEXT:     aie.end  // of_out · design.py:40
+# CHECK-NEXT:   }{{$}}
+# CHECK-NEXT: }{{$}}
+# CHECK-NEXT: }{{$}}
+# CHECK-NEXT: }{{$}}
 # Alias definitions are gone.
 # CHECK-NOT: #loc

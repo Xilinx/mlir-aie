@@ -234,7 +234,8 @@ def readable(text: str) -> str:
     Returns:
         The IR with each line's locations removed, the last one on a line
         (the op's own) appended as a `// ...` comment, and the location alias
-        definitions dropped.
+        definitions dropped. An op with regions prints its location after
+        its closing `}`; that comment goes on the line that names the op.
     """
     aliases = {}
     body = []
@@ -245,20 +246,39 @@ def readable(text: str) -> str:
         else:
             body.append(line)
 
-    out = []
+    out, notes = [], {}
+    # The line of the op each open `{` belongs to.
+    owners = []
     for line in body:
         spans = list(_locs(line))
-        if not spans:
-            out.append(line)
-            continue
         kept, prev = [], 0
         for start, end, _ in spans:
             kept.append(line[prev:start].rstrip(" "))
             prev = end
         kept.append(line[prev:])
-        stripped = "".join(kept).rstrip()
-        note = label(_Parser(spans[-1][2]).parse(), aliases)
-        out.append(f"{stripped}  // {note}" if note else stripped)
+        stripped = "".join(kept).rstrip() if spans else line
+        owner = len(out)
+        in_string = escaped = False
+        for c in stripped:
+            if in_string:
+                in_string = escaped or c != '"'
+                escaped = not escaped and c == "\\"
+            elif c == '"':
+                in_string = True
+            elif c == "}" and owners:
+                owner = owners.pop()
+            elif c == "{":
+                owners.append(owner)
+        out.append(stripped)
+        # A line that leaves a region open holds only its block arguments'
+        # locations; the op's own follows the region.
+        if spans and not (owners and owners[-1] == len(out) - 1):
+            note = label(_Parser(spans[-1][2]).parse(), aliases)
+            if note:
+                notes[owner] = note
+    out = [
+        f"{line}  // {notes[i]}" if i in notes else line for i, line in enumerate(out)
+    ]
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
