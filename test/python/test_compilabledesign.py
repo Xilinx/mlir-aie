@@ -459,7 +459,7 @@ def test_unnamed_fifos_are_named_per_program(scale_design, npu2_device):
         for _ in range(2)
     )
     assert first == second
-    assert "aie.objectfifo @of0(" in first and "aie.objectfifo @of1(" in first
+    assert "aie.objectfifo @of_in(" in first and "aie.objectfifo @of_out(" in first
 
 
 def test_hash_differs_for_different_kwargs_value():

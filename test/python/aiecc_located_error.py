@@ -60,6 +60,8 @@ def check_aiecc_failure_points_at_design():
     innermost = frames[-1]
     assert os.path.abspath(innermost.filename) == THIS_FILE, frames
     assert "# two 48 KiB buffers" in (innermost.line or ""), innermost
+    # Named after the IRON objects aiecc's error opens with, as an MLIRError's.
+    assert innermost.name in ("in", "out"), innermost.name
 
 
 def check_unreadable_locations_are_skipped():

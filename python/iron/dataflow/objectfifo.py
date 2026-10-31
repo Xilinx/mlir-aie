@@ -28,7 +28,7 @@ from ...helpers.npdtypes import (
     pack_pad_value,
     single_elem_or_list_to_list,
 )
-from ...helpers.sourceloc import SourceSite
+from ...helpers.sourceloc import Declared, SourceSite, iron_name
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
@@ -89,7 +89,7 @@ def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
     return (a.col, a.row) == (b.col, b.row)
 
 
-class ObjectFifo(PerDeviceConfigurationResolvable):
+class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     """A synchronized, explicit dataflow channel between IRON program components such as [`Worker`][aie.iron.Worker]s and the [`Runtime`][aie.iron.Runtime].
 
     Internally, an ObjectFifo is a circular buffer with a given depth and
@@ -236,6 +236,11 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         return self._to_stream
 
     @property
+    def display_name(self) -> str:
+        """The name, or before one is assigned, how an error names it."""
+        return self.name or self._site.describe(type(self).__name__)
+
+    @property
     def op(self) -> ObjectFifoCreateOp:
         if self._op is None:
             raise NotResolvedError()
@@ -285,7 +290,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
             prod_endpoint = self._prod.endpoint
         return (
             f"{self.__class__.__name__}({self._obj_type}, "
-            f"depth={self.depth}, name='{self.name}', "
+            f"depth={self.depth}, name='{self.display_name}', "
             f"prod={prod_endpoint}, cons={[c.endpoint for c in self._cons]})"
         )
 
@@ -326,12 +331,12 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 raise ValueError(f"Depth must be > 1, but got {depth}")
             if port is not None and self._prod.port != port:
                 raise ValueError(
-                    f"Producer handle for {self.name} already pinned to "
+                    f"Producer handle for {self.display_name} already pinned to "
                     f"{self._prod.port}, cannot re-pin to {port}."
                 )
             if tile is not None and not _same_shim_pin(self._prod._shim_tile, tile):
                 raise ValueError(
-                    f"Producer handle for {self.name} already pinned to shim tile "
+                    f"Producer handle for {self.display_name} already pinned to shim tile "
                     f"{self._prod._shim_tile}, cannot re-pin to {tile}."
                 )
         else:
@@ -389,52 +394,30 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         """Return the placement tiles corresponding to the endpoints of all handles of this ObjectFifo.
 
         Raises:
-            ValueError: A producer handle must be constructed.
-            ValueError: At least one consumer handle must be constructed.
+            ValueError: A producer or consumer handle is missing, or is not
+                passed to a Worker, a Runtime or a link.
 
         Returns:
             list[Tile]: A list of tiles of the endpoints of this ObjectFifo.
         """
+        endpoints = [] if cons_only else self._get_endpoint(is_prod=True)
+        endpoints += self._get_endpoint(is_prod=False)
         tiles = []
-        if not cons_only:
-            if self._prod is None:
-                raise ValueError(
-                    "Cannot return prod.tile.op because prod was not created."
-                )
-            if self._prod.endpoint is None:
-                raise ValueError(f"Prod endpoint not set for {self}")
-            assert self._prod.endpoint.tile is not None
-            tiles += [self._prod.endpoint.tile]
-        if self._cons == []:
-            raise ValueError("Cannot return cons tiles because cons were not created.")
-        for cons in self._cons:
-            if cons.endpoint is None:
-                raise ValueError(f"Cons endpoint not set for {self}")
-            assert cons.endpoint.tile is not None
-            tiles.append(cons.endpoint.tile)
+        for endpoint in endpoints:
+            assert endpoint.tile is not None
+            tiles.append(endpoint.tile)
         return tiles
 
     def _prod_tile_op(self) -> Tile:
-        if self._prod is None:
-            raise ValueError(
-                f"Cannot return prod.tile.op for ObjectFifo {self.name} because prod was not created."
-            )
-        if self._prod.endpoint is None:
-            raise ValueError(f"Prod endpoint not set for {self}")
-        assert self._prod.endpoint.tile is not None
-        return self._prod.endpoint.tile.op
+        (endpoint,) = self._get_endpoint(is_prod=True)
+        assert endpoint.tile is not None
+        return endpoint.tile.op
 
     def _cons_tiles_ops(self) -> list[Tile]:
-        if len(self._cons) < 1:
-            raise ValueError(
-                f"Cannot return cons.tile.op for ObjectFifo {self.name} because no consumers were created."
-            )
         ops = []
-        for cons in self._cons:
-            if cons.endpoint is None:
-                raise ValueError(f"Cons endpoint not set for {self}")
-            assert cons.endpoint.tile is not None
-            ops.append(cons.endpoint.tile.op)
+        for endpoint in self._get_endpoint(is_prod=False):
+            assert endpoint.tile is not None
+            ops.append(endpoint.tile.op)
         return ops
 
     def _get_depths(self) -> int | list[int]:
@@ -453,21 +436,23 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
 
     def _get_endpoint(self, is_prod: bool) -> list[ObjectFifoEndpoint]:
         if is_prod:
-            if self._prod:
-                if self._prod.endpoint is None:
-                    raise ValueError(f"Prod endpoint not set for {self}")
-                return [self._prod.endpoint]
-            else:
-                raise ValueError(f"Prod endpoint not set for {self}")
+            end, handles = "prod", [self._prod] if self._prod else []
         else:
-            if len(self._cons) < 1:
-                raise ValueError(f"Cons endpoint not set for {self}")
-            endpoints = []
-            for con in self._cons:
-                if con.endpoint is None:
-                    raise ValueError(f"Cons endpoint not set for {self}")
-                endpoints.append(con.endpoint)
-            return endpoints
+            end, handles = "cons", self._cons
+        if not handles:
+            raise ValueError(
+                f"ObjectFifo {self.display_name!r} has no {end}() handle: take "
+                "one and pass it to a Worker, a Runtime or a link"
+            )
+        endpoints = []
+        for handle in handles:
+            if handle.endpoint is None:
+                raise ValueError(
+                    f"ObjectFifo {self.display_name!r} has a {end}() handle that "
+                    "is not passed to a Worker, a Runtime or a link"
+                )
+            endpoints.append(handle.endpoint)
+        return endpoints
 
     def _check_walk_sizes(self) -> None:
         assert self._prod is not None
@@ -484,13 +469,15 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
             self._to_stream,
             sizes,
             None if walks_stream else emits,
-            f"{self.name} to_stream",
+            f"{self.display_name} to_stream",
         )
         for con in self._cons:
             sizes = [emits]
             if isinstance(con.endpoint, ObjectFifoLink):
                 sizes = con.endpoint._transfer_sizes(self)
-            _check_walk_size(con.from_stream, sizes, emits, f"{self.name} from_stream")
+            _check_walk_size(
+                con.from_stream, sizes, emits, f"{self.display_name} from_stream"
+            )
 
     def resolve(
         self,
@@ -507,6 +494,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 if self._consumer_obj_type is not None
                 else None
             )
+            assert self.name is not None
             op = object_fifo(
                 self.name,
                 self._prod_tile_op(),
@@ -529,7 +517,9 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 transport=self._transport,
                 initValues=self._init_values,
                 consumer_datatype=consumer_datatype,
-                loc=ir.Location.name(self.name, childLoc=loc or self._site.location()),
+                loc=ir.Location.name(
+                    iron_name(self.name), childLoc=loc or self._site.location()
+                ),
                 ip=ip,
             )
             self._op = op
@@ -743,7 +733,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     def endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
         if self._endpoint and self._endpoint != endpoint:
             raise ValueError(
-                f"Endpoint already set for ObjectFifoHandle {self.name}.{self.handle_type}: "
+                f"Endpoint already set for ObjectFifoHandle {self._object_fifo.display_name}.{self.handle_type}: "
                 f"Set to {self._endpoint}, trying to set to {endpoint}"
             )
         self._endpoint = endpoint
@@ -1291,7 +1281,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         self._object_fifo.resolve(loc=loc, ip=ip)
 
 
-class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
+class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
     """This is an object used internally by split(), join() and forward() operations."""
 
     def __init__(
@@ -1399,7 +1389,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
         objects = (dims[0][0] - 1) * (dims[0][1] // in_size) + span - before - after
         if sprod(tap.tensor_dims) != objects * in_size:
             raise ValueError(
-                f"{out.name} to_stream {tap!r} walks a stream of {objects} "
+                f"{out.display_name} to_stream {tap!r} walks a stream of {objects} "
                 f"objects of {in_size} elements, but its tensor has shape "
                 f"{tuple(tap.tensor_dims)}"
             )
@@ -1435,6 +1425,11 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
             if participant is of:
                 return [sizes[i]]
         return sizes
+
+    def __str__(self) -> str:
+        srcs = [h._object_fifo.display_name for h in self._srcs]
+        dsts = [h._object_fifo.display_name for h in self._dsts]
+        return f"ObjectFifoLink({srcs} -> {dsts})"
 
     def resolve(
         self,

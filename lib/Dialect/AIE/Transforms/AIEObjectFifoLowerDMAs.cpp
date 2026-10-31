@@ -60,11 +60,14 @@ struct AIEObjectFifoLowerDMAsPass
   DeviceOp device;
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
 
-  /// The DMA program of `tile`, created empty if the tile has none yet.
+  /// The DMA program of `tile`, created empty if the tile has none yet. A
+  /// program shared by several endpoints is located at all of them.
   DmaBody dmaProgramFor(TileLike tile, Location loc) {
     Value wanted = tile->getResult(0);
     for (auto program : device.getOps<DmaBody>()) {
       if (program.getTile() == wanted) {
+        program->setLoc(
+            FusedLoc::get(loc.getContext(), {program->getLoc(), loc}));
         return program;
       }
     }

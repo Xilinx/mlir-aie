@@ -78,12 +78,12 @@ def build():
 # The sharing ends name the first flow's endpoint and emit none of their own;
 # allocation would refuse one no route names.
 
-# CHECK-DAG: aie.route_endpoint @packetflow0_dst(%{{.*}}) DMA
-# CHECK-DAG: aie.route_endpoint @packetflow2_src(%{{.*}}) DMA
-# CHECK-DAG: aie.route from @packetflow0_src to [@packetflow0_dst] {keep_pkt_header, packet = #aie.packet_info<pkt_id = 1>}
-# CHECK-DAG: aie.route from @packetflow1_src to [@packetflow0_dst] {keep_pkt_header, packet = #aie.packet_info<pkt_id = 2>}
-# CHECK-DAG: aie.route from @packetflow2_src to [@packetflow2_dst] {packet = #aie.packet_info<pkt_id = 1>}
-# CHECK-DAG: aie.route from @packetflow2_src to [@packetflow3_dst] {packet = #aie.packet_info<pkt_id = 2>}
+# CHECK-DAG: aie.route_endpoint @gather_dst(%{{.*}}) DMA
+# CHECK-DAG: aie.route_endpoint @scatter_src(%{{.*}}) DMA
+# CHECK-DAG: aie.route from @gather_src to [@gather_dst] {keep_pkt_header, packet = #aie.packet_info<pkt_id = 1>}
+# CHECK-DAG: aie.route from @gather_b_src to [@gather_dst] {keep_pkt_header, packet = #aie.packet_info<pkt_id = 2>}
+# CHECK-DAG: aie.route from @scatter_src to [@scatter_dst] {packet = #aie.packet_info<pkt_id = 1>}
+# CHECK-DAG: aie.route from @scatter_src to [@scatter_b_dst] {packet = #aie.packet_info<pkt_id = 2>}
 
 # ALLOC-LABEL: aie.memtile_dma
 # ALLOC-DAG: aie.dma_start(S2MM, 0,

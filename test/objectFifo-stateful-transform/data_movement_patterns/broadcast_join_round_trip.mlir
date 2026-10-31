@@ -26,9 +26,9 @@
 // The MemTile takes each result into its own slice of the joined object.
 // CHECK:         aie.memtile_dma(%{{.*}}mem_tile_0_1)
 // CHECK:           aie.dma_start(S2MM, 0
-// CHECK:           aie.dma_bd(%{{.*}}out_mem_buff_0 : memref<64xi32> offset = 0 len = 32)
+// CHECK:           aie.dma_bd(%{{.*}}out_mem__buf0 : memref<64xi32> offset = 0 len = 32)
 // CHECK:           aie.dma_start(S2MM, 1
-// CHECK:           aie.dma_bd(%{{.*}}out_mem_buff_0 : memref<64xi32> offset = 32 len = 32)
+// CHECK:           aie.dma_bd(%{{.*}}out_mem__buf0 : memref<64xi32> offset = 32 len = 32)
 
 module @broadcastJoinRoundTrip {
  aie.device(npu2) {

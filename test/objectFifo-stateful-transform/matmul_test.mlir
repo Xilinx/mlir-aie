@@ -11,18 +11,18 @@
 
 // CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(0, 0)
 // CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(0, 2)
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC_buff_0"} : memref<16x16xi16>
-// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC_buff_1"} : memref<16x16xi16>
-// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "outC_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "outC_cons_lock_0"}
-// CHECK-DAG:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inB_cons_buff_0"} : memref<8x16xi16>
-// CHECK-DAG:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inB_cons_buff_1"} : memref<8x16xi16>
-// CHECK-DAG:           %[[VAL_10:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "inB_cons_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_11:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "inB_cons_cons_lock_0"}
-// CHECK-DAG:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inA_cons_buff_0"} : memref<16x8xi16>
-// CHECK-DAG:           %[[VAL_15:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inA_cons_buff_1"} : memref<16x8xi16>
-// CHECK-DAG:           %[[VAL_16:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "inA_cons_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_17:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "inA_cons_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC__buf0"} : memref<16x16xi16>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC__buf1"} : memref<16x16xi16>
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "outC__prodlock0"}
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "outC__conslock0"}
+// CHECK-DAG:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inB__cons__buf0"} : memref<8x16xi16>
+// CHECK-DAG:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inB__cons__buf1"} : memref<8x16xi16>
+// CHECK-DAG:           %[[VAL_10:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "inB__cons__prodlock0"}
+// CHECK-DAG:           %[[VAL_11:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "inB__cons__conslock0"}
+// CHECK-DAG:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inA__cons__buf0"} : memref<16x8xi16>
+// CHECK-DAG:           %[[VAL_15:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inA__cons__buf1"} : memref<16x8xi16>
+// CHECK-DAG:           %[[VAL_16:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "inA__cons__prodlock0"}
+// CHECK-DAG:           %[[VAL_17:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "inA__cons__conslock0"}
 // CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 1, %[[VAL_1]], DMA : 1)
 // CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
@@ -74,9 +74,9 @@
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK-DAG:           aie.shim_dma_allocation @inA_shim_alloc(%[[VAL_0]], MM2S, 0)
-// CHECK-DAG:           aie.shim_dma_allocation @inB_shim_alloc(%[[VAL_0]], MM2S, 1)
-// CHECK-DAG:           aie.shim_dma_allocation @outC_shim_alloc(%[[VAL_0]], S2MM, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @inA__shim_alloc(%[[VAL_0]], MM2S, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @inB__shim_alloc(%[[VAL_0]], MM2S, 1)
+// CHECK-DAG:           aie.shim_dma_allocation @outC__shim_alloc(%[[VAL_0]], S2MM, 0)
 // CHECK:           %[[VAL_36:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:             %[[VAL_37:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2

@@ -84,7 +84,7 @@ print(build(np.float32, "ok"))
 # 1024 f32 over a 300-f32 object is 3.41 objects. The error points at fill().
 # CHECK-LABEL: TEST: partial_object_on_the_fill_side_is_rejected
 # CHECK: fill_line=[[LINE:[0-9]+]]
-# CHECK: objectfifo_transfer_covers_whole_objects.py":[[LINE]]:{{.*}}moves 4096 bytes through objectFIFO @in_partial, which is not a whole number of its 1200-byte objects
+# CHECK: objectfifo_transfer_covers_whole_objects.py:[[LINE]]:{{[0-9]+}}: error: {{.*}}moves 4096 bytes through objectFIFO @in_partial, which is not a whole number of its 1200-byte objects
 print("TEST: partial_object_on_the_fill_side_is_rejected")
 lines, first = inspect.getsourcelines(build)
 print(f"fill_line={first + next(i for i, l in enumerate(lines) if 'in_h.fill(' in l)}")
@@ -167,7 +167,7 @@ print(build_concat(first=128, second=896, name="concat"))
 # 128 + 1024 f32 leave the last object half full; the first fill reports it.
 # CHECK-LABEL: TEST: fills_that_leave_an_object_partial_are_rejected
 # CHECK: fill_line=[[LINE:[0-9]+]]
-# CHECK: objectfifo_transfer_covers_whole_objects.py":[[LINE]]:{{.*}}moves 512 bytes through objectFIFO @in_concatbad, which, with this runtime sequence's other transfers through it (4608 bytes in all), is not a whole number of its 1024-byte objects
+# CHECK: objectfifo_transfer_covers_whole_objects.py:[[LINE]]:{{[0-9]+}}: error: {{.*}}moves 512 bytes through objectFIFO @in_concatbad, which, with this runtime sequence's other transfers through it (4608 bytes in all), is not a whole number of its 1024-byte objects
 print("TEST: fills_that_leave_an_object_partial_are_rejected")
 lines, first = inspect.getsourcelines(build_concat)
 print(

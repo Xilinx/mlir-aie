@@ -33,12 +33,12 @@
 // CHECK:     %[[tile43:.*]] = aie.tile(4, 3)
 
 // The setup for flows, locks, and buffers can be the same in the dynamic case:
-// CHECK:     %[[fifo_buff_0:.*]] = aie.buffer(%[[tile23]]) {sym_name = "fifo_buff_0"} : memref<i64>
-// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile23]]) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile23]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
-// CHECK:     %[[fifo_cons_buff_0:.*]] = aie.buffer(%[[tile43]]) {sym_name = "fifo_cons_buff_0"} : memref<i64>
-// CHECK:     %[[fifo_cons_prod_lock:.*]] = aie.lock(%[[tile43]]) {init = 1 : i32, sym_name = "fifo_cons_prod_lock_0"}
-// CHECK:     %[[fifo_cons_cons_lock:.*]] = aie.lock(%[[tile43]]) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
+// CHECK:     %[[fifo__buf0:.*]] = aie.buffer(%[[tile23]]) {sym_name = "fifo__buf0"} : memref<i64>
+// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile23]]) {init = 1 : i32, sym_name = "fifo__prodlock0"}
+// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile23]]) {init = 0 : i32, sym_name = "fifo__conslock0"}
+// CHECK:     %[[fifo__cons__buf0:.*]] = aie.buffer(%[[tile43]]) {sym_name = "fifo__cons__buf0"} : memref<i64>
+// CHECK:     %[[fifo_cons_prod_lock:.*]] = aie.lock(%[[tile43]]) {init = 1 : i32, sym_name = "fifo__cons__prodlock0"}
+// CHECK:     %[[fifo_cons_cons_lock:.*]] = aie.lock(%[[tile43]]) {init = 0 : i32, sym_name = "fifo__cons__conslock0"}
 // CHECK:     aie.flow(%[[tile23]], DMA : 0, %[[tile43]], DMA : 0)
 
 // CHECK:     %[[ssa8:.*]] = aie.core(%[[tile23]]) {
@@ -115,7 +115,7 @@
 // CHECK:         } else {
 // CHECK:           scf.yield %[[lock0_num_iter]]
 //                }
-// CHECK:         memref.store %c1_i64, %[[fifo_buff_0]][] : memref<i64>
+// CHECK:         memref.store %c1_i64, %[[fifo__buf0]][] : memref<i64>
 
 // Release inside loop:
 //   The release will always release, but additionally to
@@ -134,7 +134,7 @@
 // CHECK:       %11 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
 // CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%[[fifo_buff_0]] : memref<i64> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
+// CHECK:       aie.dma_bd(%[[fifo__buf0]] : memref<i64> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:       aie.use_lock(%[[fifo_prod_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
@@ -144,7 +144,7 @@
 // CHECK:       %11 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
 // CHECK:       aie.use_lock(%[[fifo_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%[[fifo_cons_buff_0]] : memref<i64> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
+// CHECK:       aie.dma_bd(%[[fifo__cons__buf0]] : memref<i64> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:       aie.use_lock(%[[fifo_cons_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0

@@ -21,9 +21,9 @@ module @iter_count_from_fifo {
   }
 }
 
-// CHECK: aie.objectfifo.pool @of_pool(%tile_0_2) {{{.*}}repeatCount = 3 : i32
+// CHECK: aie.objectfifo.pool @of__pool(%tile_0_2) {{{.*}}repeatCount = 3 : i32
 // CHECK-NOT: iterCount
-// CHECK: aie.objectfifo.dma_endpoint @of_prod_dma(%tile_0_2) drains @of_pool {{{.*}}iterCount = 5 : i32
-// CHECK: aie.objectfifo.pool @of_cons_pool(%tile_0_3)
+// CHECK: aie.objectfifo.dma_endpoint @of__prod__dma(%tile_0_2) drains @of__pool {{{.*}}iterCount = 5 : i32
+// CHECK: aie.objectfifo.pool @of__cons__pool(%tile_0_3)
 // CHECK-NOT: repeatCount
-// CHECK: aie.objectfifo.dma_endpoint @of_cons_dma(%tile_0_3) fills @of_cons_pool {{{.*}}iterCount = 15 : i32
+// CHECK: aie.objectfifo.dma_endpoint @of__cons__dma(%tile_0_3) fills @of__cons__pool {{{.*}}iterCount = 15 : i32

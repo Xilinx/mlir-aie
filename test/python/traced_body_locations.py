@@ -3,10 +3,14 @@
 
 # RUN: %PYTHON %s
 
+import os
+import tempfile
 from functools import partial
 
 from aie.extras import types as T
 from aie.extras.dialects.arith import constant
+from aie.helpers.sourceloc import traced_body
+from aie.ir import CallSiteLoc, Context, InsertionPoint, Location, Module
 from aie.iron import Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
 
@@ -56,11 +60,65 @@ def check_synthesized_body():
     loops = [op for op in walk(core) if op.name == "scf.while"]
     assert len(loops) == 2
     for op in walk(core):
-        loc = op.location
+        # A synthesized body takes the Worker's site, named after the Worker
+        # (here, after the variable it is assigned to).
+        assert op.location.name_str == "iron:worker", (op.name, op.location)
+        loc = op.location.child_loc
+        # The statement is the callee of the calls that led to it.
+        if isinstance(loc, CallSiteLoc):
+            loc = loc.callee
         assert loc.filename == __file__, (op.name, loc)
         assert "Worker(None)" in SOURCE[loc.start_line - 1], (op.name, loc)
 
 
+def failing_body():
+    constant(7, T.i32())
+    raise RuntimeError("body failed")
+
+
+def check_failing_body():
+    """Ops a body built before it raised are still marked as Python's."""
+    with Context(), Location.unknown():
+        module = Module.create()
+        with InsertionPoint(module.body):
+            try:
+                with traced_body(failing_body):
+                    failing_body()
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("expected the body to raise")
+        (op,) = module.body.operations
+        assert op.location.name_str == "py:failing_body", op.location
+
+
+def check_relative_body():
+    """A body compiled under a relative name is located by its absolute path."""
+    cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "rel_body.py"), "w") as f:
+            f.write("def rel_body():\n    constant(9, T.i32())\n")
+        os.chdir(tmp)
+        try:
+            expected = os.path.abspath("rel_body.py")
+            with open("rel_body.py") as f:
+                code = compile(f.read(), "rel_body.py", "exec")
+            design = {"constant": constant, "T": T}
+            exec(code, design)
+            with Context(), Location.unknown():
+                module = Module.create()
+                with InsertionPoint(module.body):
+                    with traced_body(design["rel_body"]):
+                        design["rel_body"]()
+                (op,) = module.body.operations
+                filename = op.location.child_loc.filename
+        finally:
+            os.chdir(cwd)
+    assert filename == expected, filename
+
+
 check_callable_bodies()
 check_synthesized_body()
-print("PASS: callable and synthesized body locations")
+check_failing_body()
+check_relative_body()
+print("PASS: callable, synthesized, failing and relative body locations")

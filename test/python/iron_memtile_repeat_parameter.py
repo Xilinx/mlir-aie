@@ -23,12 +23,12 @@ from aie.iron.scratchpad_parameter import ScratchpadParameter
 
 N, TILE = 1024, 64
 
-# CHECK: aiex.dma_configure_task_for @flow0_dst {
+# CHECK: aiex.dma_configure_task_for @into_dst {
 # CHECK: aie.dma_bd(%held : memref<1024xi32> len = 64)
 # CHECK-SAME: iteration = #aie.bd_iteration<size = 16, stride = 64, current = 0>
 # CHECK: } {issue_token = true, repeat_count = 15 : i32}
 # CHECK: aiex.dma_start_task(%{{.*}}) {repeat_parameter = @reps}
-# CHECK: aiex.dma_configure_task_for @flow0_src {
+# CHECK: aiex.dma_configure_task_for @into_src {
 # CHECK: } {repeat_count = 15 : i32}
 # CHECK: aiex.dma_start_task(%{{.*}}) {repeat_parameter = @reps}
 # CHECK: aiex.scratchpad_parameter @reps : i32

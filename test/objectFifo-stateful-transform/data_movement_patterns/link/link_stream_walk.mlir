@@ -32,10 +32,10 @@ module @window {
 }
 
 // CHECK-LABEL: module @window
-// CHECK-DAG:   %[[BUF:.*]] = aie.buffer(%{{.*}}) {sym_name = "rows_cons_buff_0"} : memref<48xi32> = dense<0>
-// CHECK-DAG:   %[[FREE:.*]] = aie.lock(%{{.*}}) {init = 4 : i32, sym_name = "rows_cons_prod_lock_0"}
-// CHECK-DAG:   %[[FULL:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "rows_cons_cons_lock_0"}
-// CHECK-NOT:   sym_name = "rows_cons_buff_1"
+// CHECK-DAG:   %[[BUF:.*]] = aie.buffer(%{{.*}}) {sym_name = "rows__cons__buf0"} : memref<48xi32> = dense<0>
+// CHECK-DAG:   %[[FREE:.*]] = aie.lock(%{{.*}}) {init = 4 : i32, sym_name = "rows__cons__prodlock0"}
+// CHECK-DAG:   %[[FULL:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "rows__cons__conslock0"}
+// CHECK-NOT:   sym_name = "rows__cons__buf1"
 // CHECK:       aie.memtile_dma
 // CHECK:         aie.dma_start(S2MM, 0, ^[[FILL:.*]], ^
 // CHECK:       ^[[FILL]]:
@@ -81,8 +81,8 @@ module @subsample {
 }
 
 // CHECK-LABEL: module @subsample
-// CHECK-DAG:   %[[BUF:.*]] = aie.buffer(%{{.*}}) {sym_name = "rows_cons_buff_0"} : memref<40xi32>
-// CHECK-DAG:   %[[FREE:.*]] = aie.lock(%{{.*}}) {init = 5 : i32, sym_name = "rows_cons_prod_lock_0"}
+// CHECK-DAG:   %[[BUF:.*]] = aie.buffer(%{{.*}}) {sym_name = "rows__cons__buf0"} : memref<40xi32>
+// CHECK-DAG:   %[[FREE:.*]] = aie.lock(%{{.*}}) {init = 5 : i32, sym_name = "rows__cons__prodlock0"}
 // CHECK:       aie.dma_bd(%[[BUF]] : memref<40xi32> offset = 0 len = 8) {iteration = #aie.bd_iteration<size = 5, stride = 8, current = 0>}
 // CHECK:       aie.dma_start(MM2S, 0
 // CHECK:         aie.use_lock(%{{.*}}, AcquireGreaterEqual, %c1_i32{{.*}})

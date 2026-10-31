@@ -21,11 +21,15 @@ ty = np.ndarray[(256,), np.dtype[np.int32]]
 
 def build(body, register=True, extra_dsts=(), fill_extra_dsts=()):
     shim, mem = Tile(0, 0), Tile(0, 1)
-    flows = [
-        PacketFlow(0, shim, mem, keep_pkt_header=True, extra_dsts=fill_extra_dsts),
-        PacketFlow(1, shim, mem, keep_pkt_header=True),
-        PacketFlow(2, mem, shim, src_channel=2, extra_dsts=extra_dsts),
-    ]
+    # Built as arguments to a call, the flows take fallback names rather
+    # than the list's.
+    flows = list(
+        (
+            PacketFlow(0, shim, mem, keep_pkt_header=True, extra_dsts=fill_extra_dsts),
+            PacketFlow(1, shim, mem, keep_pkt_header=True),
+            PacketFlow(2, mem, shim, src_channel=2, extra_dsts=extra_dsts),
+        )
+    )
 
     def sequence(a, c):
         body(*flows, a, c)

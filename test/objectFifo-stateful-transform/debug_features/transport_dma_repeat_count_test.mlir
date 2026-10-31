@@ -14,15 +14,15 @@
 
 // CHECK-LABEL: @dmaTransportRepeat
 // The producer counts depth * repeat_count; the consumer only counts depth.
-// CHECK-DAG:     %[[PROD:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 2 : i32, sym_name = "of_prod_lock_0"}
-// CHECK-DAG:     %[[CONS:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 0 : i32, sym_name = "of_cons_lock_0"}
-// CHECK-DAG:     %[[CPROD:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 1 : i32, sym_name = "of_cons_prod_lock_0"}
-// CHECK-DAG:     %[[CCONS:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 0 : i32, sym_name = "of_cons_cons_lock_0"}
+// CHECK-DAG:     %[[PROD:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 2 : i32, sym_name = "of__prodlock0"}
+// CHECK-DAG:     %[[CONS:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 0 : i32, sym_name = "of__conslock0"}
+// CHECK-DAG:     %[[CPROD:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 1 : i32, sym_name = "of__cons__prodlock0"}
+// CHECK-DAG:     %[[CCONS:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 0 : i32, sym_name = "of__cons__conslock0"}
 
 // The dma transport forces a flow between neighbours that would otherwise
 // share memory.
 // CHECK-DAG:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_3, DMA : 0)
-// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_3) {sym_name = "of_cons_buff_0"}
+// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_3) {sym_name = "of__cons__buf0"}
 
 // CHECK:         aie.core(%{{.*}}tile_1_2)
 // CHECK:           %[[C2:.*]] = arith.constant 2 : i32

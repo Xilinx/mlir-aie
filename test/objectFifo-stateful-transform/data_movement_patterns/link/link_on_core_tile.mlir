@@ -37,10 +37,10 @@ module @distribute_on_core {
 }
 
 // One lock pair per half of the object.
-// CHECK-DAG:   %[[PROD0:.*]] = aie.lock(%[[T02:.*]]) {init = 2 : i32, sym_name = "in_cons_prod_lock_0"}
-// CHECK-DAG:   %[[CONS0:.*]] = aie.lock(%[[T02]]) {init = 0 : i32, sym_name = "in_cons_cons_lock_0"}
-// CHECK-DAG:   %[[PROD1:.*]] = aie.lock(%[[T02]]) {init = 2 : i32, sym_name = "in_cons_prod_lock_1"}
-// CHECK-DAG:   %[[CONS1:.*]] = aie.lock(%[[T02]]) {init = 0 : i32, sym_name = "in_cons_cons_lock_1"}
+// CHECK-DAG:   %[[PROD0:.*]] = aie.lock(%[[T02:.*]]) {init = 2 : i32, sym_name = "in__cons__prodlock0"}
+// CHECK-DAG:   %[[CONS0:.*]] = aie.lock(%[[T02]]) {init = 0 : i32, sym_name = "in__cons__conslock0"}
+// CHECK-DAG:   %[[PROD1:.*]] = aie.lock(%[[T02]]) {init = 2 : i32, sym_name = "in__cons__prodlock1"}
+// CHECK-DAG:   %[[CONS1:.*]] = aie.lock(%[[T02]]) {init = 0 : i32, sym_name = "in__cons__conslock1"}
 
 // Each output gets its own outgoing channel off the compute tile.
 // CHECK-DAG:   aie.flow(%[[T02]], DMA : 0, %{{.*}}, DMA : 0)

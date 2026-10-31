@@ -455,14 +455,16 @@ def test_one_configuration_refuses_a_symbol_named_twice(first, second, kinds):
 
 
 def test_unnamed_symbols_in_one_configuration_take_fresh_names():
-    module = pack(member(), member(fifo_name="of0", rtp_name="rtp0"))
+    # Unnamed ones are named after their variable, numbered past a name
+    # another member claims explicitly, from 0.
+    module = pack(member(), member(fifo_name="of", rtp_name="rtp"))
     module.operation.verify()
     text = str(module)
     for symbol in (
-        "aie.objectfifo @of0(",
-        "aie.objectfifo @of1(",
-        'sym_name = "rtp0"',
-        'sym_name = "rtp1"',
+        "aie.objectfifo @of(",
+        "aie.objectfifo @of_0(",
+        'sym_name = "rtp"',
+        'sym_name = "rtp_0"',
     ):
         assert text.count(symbol) == 1, symbol
 

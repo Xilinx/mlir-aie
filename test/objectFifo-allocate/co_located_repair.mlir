@@ -26,11 +26,11 @@ module {
 // CHECK-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[ALIAS:.*]] = aie.logical_tile<MemTile>(0, 1)
 // CHECK-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[ALIAS]]) {sym_name = "small_buff_0"}
-// CHECK-DAG: aie.buffer(%[[ALIAS]]) {sym_name = "small_buff_1"}
-// CHECK-DAG: aie.lock(%[[ALIAS]]) {{.*}}sym_name = "small_prod_lock_0"
-// CHECK-DAG: aie.lock(%[[ALIAS]]) {{.*}}sym_name = "small_cons_lock_0"
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "large_buff_0"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "large_buff_1"}
+// CHECK-DAG: aie.buffer(%[[ALIAS]]) {sym_name = "small__buf0"}
+// CHECK-DAG: aie.buffer(%[[ALIAS]]) {sym_name = "small__buf1"}
+// CHECK-DAG: aie.lock(%[[ALIAS]]) {{.*}}sym_name = "small__prodlock0"
+// CHECK-DAG: aie.lock(%[[ALIAS]]) {{.*}}sym_name = "small__conslock0"
+// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "large__buf0"}
+// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "large__buf1"}
 // CHECK: @large_dma(%[[HOME]]) fills @large {channelIndex = 0 : i32}
 // CHECK: @small_dma(%[[ALIAS]]) fills @small {channelIndex = 5 : i32}

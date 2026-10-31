@@ -15,26 +15,26 @@
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:           %[[MT:.*]] = aie.tile(0, 1)
 // CHECK-DAG:           %[[T2:.*]] = aie.tile(0, 2)
-// CHECK-DAG:           %[[YCB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoY_cons_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[YCB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoY_cons_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[YCB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoY_cons_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[YCPROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "fifoY_cons_prod_lock_0"}
-// CHECK-DAG:           %[[YCCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "fifoY_cons_cons_lock_0"}
-// CHECK-DAG:           %[[YB0:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoY_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[YB1:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoY_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[YPROD:.*]] = aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "fifoY_prod_lock_0"}
-// CHECK-DAG:           %[[YCONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "fifoY_cons_lock_0"}
-// CHECK-DAG:           %[[XCB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoX_cons_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[XCB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoX_cons_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[XCB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoX_cons_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[XCB3:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoX_cons_buff_3"} : memref<8xi8>
-// CHECK-DAG:           %[[XCPROD:.*]] = aie.lock(%[[T2]]) {init = 4 : i32, sym_name = "fifoX_cons_prod_lock_0"}
-// CHECK-DAG:           %[[XCCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "fifoX_cons_cons_lock_0"}
-// CHECK-DAG:           %[[XB0:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoX_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[XB1:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoX_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[XB2:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoX_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[XPROD:.*]] = aie.lock(%[[MT]]) {init = 3 : i32, sym_name = "fifoX_prod_lock_0"}
-// CHECK-DAG:           %[[XCONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "fifoX_cons_lock_0"}
+// CHECK-DAG:           %[[YCB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoY__cons__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[YCB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoY__cons__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[YCB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoY__cons__buf2"} : memref<8xi8>
+// CHECK-DAG:           %[[YCPROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "fifoY__cons__prodlock0"}
+// CHECK-DAG:           %[[YCCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "fifoY__cons__conslock0"}
+// CHECK-DAG:           %[[YB0:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoY__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[YB1:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoY__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[YPROD:.*]] = aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "fifoY__prodlock0"}
+// CHECK-DAG:           %[[YCONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "fifoY__conslock0"}
+// CHECK-DAG:           %[[XCB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoX__cons__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[XCB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoX__cons__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[XCB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoX__cons__buf2"} : memref<8xi8>
+// CHECK-DAG:           %[[XCB3:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifoX__cons__buf3"} : memref<8xi8>
+// CHECK-DAG:           %[[XCPROD:.*]] = aie.lock(%[[T2]]) {init = 4 : i32, sym_name = "fifoX__cons__prodlock0"}
+// CHECK-DAG:           %[[XCCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "fifoX__cons__conslock0"}
+// CHECK-DAG:           %[[XB0:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoX__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[XB1:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoX__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[XB2:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifoX__buf2"} : memref<8xi8>
+// CHECK-DAG:           %[[XPROD:.*]] = aie.lock(%[[MT]]) {init = 3 : i32, sym_name = "fifoX__prodlock0"}
+// CHECK-DAG:           %[[XCONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "fifoX__conslock0"}
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 1, %[[T2]], DMA : 1)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {

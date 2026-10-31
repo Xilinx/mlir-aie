@@ -18,8 +18,8 @@
 
 // The first shim end keeps the fifo's own record name; the second gets one of
 // its own rather than being folded into the first, which named the wrong tile.
-// CHECK-DAG:     aie.shim_dma_allocation @of_shim_alloc(%{{.*}}shim_pl_tile_0_0, S2MM, 0)
-// CHECK-DAG:     aie.shim_dma_allocation @of_shim_alloc_0(%{{.*}}shim_pl_tile_1_0, S2MM, 0)
+// CHECK-DAG:     aie.shim_dma_allocation @of__shim_alloc(%{{.*}}shim_pl_tile_0_0, S2MM, 0)
+// CHECK-DAG:     aie.shim_dma_allocation @of__shim_alloc1(%{{.*}}shim_pl_tile_1_0, S2MM, 0)
 
 module @twoShimConsumers {
  aie.device(xcve2302) {
@@ -48,10 +48,10 @@ module @twoShimConsumers {
 // named a different tile.
 
 // CHECK-LABEL: @twoShimConsumersRuntime
-// CHECK-DAG:     aie.shim_dma_allocation @of_shim_alloc(%{{.*}}shim_noc_tile_0_0, S2MM, 0)
-// CHECK-DAG:     aie.shim_dma_allocation @of_shim_alloc_0(%{{.*}}shim_noc_tile_1_0, S2MM, 0)
-// CHECK-DAG:     aiex.npu.dma_memcpy_nd{{.*}}metadata = @of_shim_alloc_0
-// CHECK-DAG:     aiex.npu.dma_wait {symbol = @of_shim_alloc_0}
+// CHECK-DAG:     aie.shim_dma_allocation @of__shim_alloc(%{{.*}}shim_noc_tile_0_0, S2MM, 0)
+// CHECK-DAG:     aie.shim_dma_allocation @of__shim_alloc1(%{{.*}}shim_noc_tile_1_0, S2MM, 0)
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd{{.*}}metadata = @of__shim_alloc1
+// CHECK-DAG:     aiex.npu.dma_wait {symbol = @of__shim_alloc1}
 
 module @twoShimConsumersRuntime {
  aie.device(npu1) {

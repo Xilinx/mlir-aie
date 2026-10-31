@@ -42,5 +42,5 @@ module @sub_byte_exact_capacity {
   }
 }
 // CHECK-LABEL: module @sub_byte_exact_capacity
-// CHECK: aie.buffer({{.*}}) {address = 524160 : i32, {{.*}}sym_name = "large_buff_0"
-// CHECK: aie.buffer({{.*}}) {address = 524256 : i32, {{.*}}sym_name = "small_buff_0"
+// CHECK: aie.buffer({{.*}}) {address = 524160 : i32, {{.*}}sym_name = "large__buf0"
+// CHECK: aie.buffer({{.*}}) {address = 524256 : i32, {{.*}}sym_name = "small__buf0"
