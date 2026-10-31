@@ -668,6 +668,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "41177177699",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41177177699",
+   "date": "2026-10-31T06:34:31+00:00",
+   "commit": {
+    "id": "064a1721a4af3fa483ebccd23b508c2d647066fe",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/064a1721a4af3fa483ebccd23b508c2d647066fe",
+    "message": "Get Metrics from Remaining Nightly Workflows (#3998)",
+    "timestamp": "2026-10-31T00:54:08Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "064a1721a4",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

@@ -387,6 +387,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "llama-chain-hw",
+   "id": "41177177699",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41177177699",
+   "date": "2026-10-31T06:34:31+00:00",
+   "commit": {
+    "id": "064a1721a4af3fa483ebccd23b508c2d647066fe",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/064a1721a4af3fa483ebccd23b508c2d647066fe",
+    "message": "Get Metrics from Remaining Nightly Workflows (#3998)",
+    "timestamp": "2026-10-31T00:54:08Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "064a1721a4",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "7db85ae9b8e1",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 71,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
