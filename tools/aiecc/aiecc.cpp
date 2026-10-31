@@ -94,11 +94,13 @@ namespace {
 // IRON names the objects a design declares in their locations
 // (loc("iron:act_in"(...)), see python/helpers/sourceloc.py). A diagnostic
 // located at one is reported as the design's: it opens with the object's name,
-// and the dump of the op it was emitted on is dropped, since the location
-// already points at the Python statement that declared it.
+// and the dump of the op it was emitted on is dropped unless `keepOpDump`,
+// since the location already points at the Python statement that declared it.
+// An op a pass generates from the object (a pool, a buffer, a BD) shares that
+// location, so --verbose keeps the dump that tells which op it was.
 constexpr llvm::StringLiteral ironPrefix = "iron:";
 
-mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag) {
+mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag, bool keepOpDump) {
   llvm::SmallVector<llvm::StringRef> names;
   diag.getLocation()->walk([&](mlir::Location loc) {
     if (auto named = llvm::dyn_cast<mlir::NameLoc>(loc)) {
@@ -113,7 +115,7 @@ mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag) {
     renamed << llvm::join(names, ", ") << ": ";
   renamed << diag.str();
   for (mlir::Diagnostic &note : diag.getNotes()) {
-    if (!names.empty() &&
+    if (!names.empty() && !keepOpDump &&
         llvm::StringRef(note.str()).starts_with("see current operation"))
       continue;
     renamed.attachNote(note.getLocation()) << note.str();
@@ -128,18 +130,17 @@ class SynchronizedSourceMgrDiagnosticHandler
     : public mlir::SourceMgrDiagnosticHandler {
 public:
   SynchronizedSourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
-                                         mlir::MLIRContext *ctx,
-                                         bool showRemarks)
-      : mlir::SourceMgrDiagnosticHandler(mgr, ctx) {
-    setHandler([this, showRemarks](mlir::Diagnostic &diag) {
+                                         mlir::MLIRContext *ctx, bool verbose)
+      : mlir::SourceMgrDiagnosticHandler(mgr, ctx), isVerbose(verbose) {
+    setHandler([this](mlir::Diagnostic &diag) {
       if (diag.getSeverity() == mlir::DiagnosticSeverity::Remark &&
-          !showRemarks) {
+          !isVerbose) {
         std::lock_guard<std::mutex> lock(heldMutex);
         held.push_back(std::move(diag));
         return;
       }
       auto log = endProgressLine();
-      mlir::Diagnostic named = nameAfterDesign(diag);
+      mlir::Diagnostic named = nameAfterDesign(diag, isVerbose);
       emitDiagnostic(named);
     });
   }
@@ -149,13 +150,14 @@ public:
     std::lock_guard<std::mutex> lock(heldMutex);
     auto log = endProgressLine();
     for (mlir::Diagnostic &diag : held) {
-      mlir::Diagnostic named = nameAfterDesign(diag);
+      mlir::Diagnostic named = nameAfterDesign(diag, isVerbose);
       emitDiagnostic(named);
     }
     held.clear();
   }
 
 private:
+  bool isVerbose;
   std::mutex heldMutex;
   std::vector<mlir::Diagnostic> held;
 };
