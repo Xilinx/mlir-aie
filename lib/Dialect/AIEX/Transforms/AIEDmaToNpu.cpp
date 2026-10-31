@@ -869,31 +869,43 @@ public:
   }
 };
 
+// What a push or a sync does to its channel at their common representation.
+static QueueEffect queueEffectOf(Operation *op) {
+  if (auto push = dyn_cast<NpuPushQueueOp>(op))
+    return QueueEffect::push({static_cast<int>(push.getColumn()),
+                              static_cast<int>(push.getRow()),
+                              static_cast<int>(push.getDirection()),
+                              static_cast<int>(push.getChannel())},
+                             push.getIssueToken());
+  if (auto sync = dyn_cast<NpuSyncOp>(op))
+    if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
+      return QueueEffect::await(*key);
+  return {};
+}
+
 // Count all task starts at their common representation, after memcpy lowering
 // but before pushes become register writes. This includes starts lowered by
-// dma-tasks-to-npu and compiler-generated channel rearm pushes.
-static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
+// dma-tasks-to-npu and compiler-generated channel rearm pushes, and so every
+// path's tokens: no sequence may leave one on a channel any of them awaits.
+static LogicalResult checkQueueDepth(AIE::DeviceOp device,
+                                     bool enforceQueueDepth) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
-  auto effectOf = [&](Operation *op) -> QueueEffect {
-    if (auto push = dyn_cast<NpuPushQueueOp>(op))
-      return QueueEffect::push({static_cast<int>(push.getColumn()),
-                                static_cast<int>(push.getRow()),
-                                static_cast<int>(push.getDirection()),
-                                static_cast<int>(push.getChannel())},
-                               push.getIssueToken());
-    if (auto sync = dyn_cast<NpuSyncOp>(op))
-      if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
-        return QueueEffect::await(*key);
-    return {};
-  };
-
+  std::set<DmaQueueModel::ChannelKey> awaited;
+  device.walk([&](Operation *op) {
+    QueueEffect e = queueEffectOf(op);
+    if (e.kind == QueueEffect::Kind::Await)
+      awaited.insert(e.key);
+  });
+  bool consumed = true;
   device.walk([&](AIE::RuntimeSequenceOp seq) {
     DmaQueueModel queue;
     // No dma_free_task survives to this lowering stage; nothing to check here.
     guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
-                            /*warnUnsafeBdReuse=*/false, effectOf);
+                            /*warnUnsafeBdReuse=*/false, queueEffectOf);
     seq->removeAttr(queueDiagnosedAttr);
+    consumed &= succeeded(checkTokensConsumed(seq, awaited, queueEffectOf));
   });
+  return success(consumed);
 }
 
 struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
@@ -956,7 +968,10 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
       return;
     }
 
-    checkQueueDepth(device, enforceQueueDepth);
+    if (failed(checkQueueDepth(device, enforceQueueDepth))) {
+      signalPassFailure();
+      return;
+    }
 
     target.addIllegalOp<NpuPushQueueOp>();
     RewritePatternSet pushPatterns(&getContext());

@@ -25,7 +25,8 @@
 // imbalance -- an await with no matching issue_token push on its channel would
 // deadlock the host -- and DMA task-queue overflow, where more transfers are
 // pushed onto a channel than its queue holds. On the straight-line IR the
-// allocator sees, both are single-pass per-channel counts.
+// allocator sees, both are single-pass per-channel counts. What an await here
+// proves relies on checkTokensConsumed (DmaQueueModel.h).
 //
 // With reclaim-bds, when a tile runs out of ids, the pass takes them back from
 // a started task that was never released (see reclaimFor) rather than failing:
@@ -275,9 +276,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   // Track the two per-channel resources a sequence can exhaust. Their failure
-  // modes are opposites: over-production is harmless for the TCT FIFO (leftover
-  // tokens cost nothing) but not for the task queue, where a push onto a full
-  // queue is dropped and its transfer never runs.
+  // modes differ: over-production costs the TCT FIFO no capacity (see
+  // checkTokensConsumed for what it costs later), but a push onto a full queue
+  // is dropped and its transfer never runs.
   //
   // Queue counting differs from token counting in three ways: every push takes
   // a slot, not just issue_token ones; a non-token push is still retired
@@ -329,8 +330,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         tokens--;
         queue.awaitToken(key);
       } else if (auto key = otherAwaitChannel(op)) {
-        // Raw waits may also consume tokens from outside this sequence. Do not
-        // diagnose those here, but never reuse a token already consumed by one.
+        // A raw wait may consume a token from a push this count cannot see,
+        // such as a raw register write. Do not diagnose those here, but never
+        // reuse a token already consumed by one.
         avail[*key] = std::max(0, avail[*key] - 1);
         queue.awaitToken(*key);
       } else if (auto key = otherTokenChannel(op)) {
