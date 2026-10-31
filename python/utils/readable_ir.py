@@ -10,7 +10,8 @@ instead ends in what a reader wants from that location:
     aie.objectfifo @act_in(...)   // act_in · design.py:12
 
 the IRON object or Python function names on it (`iron:` dropped, `py:` kept)
-and the innermost source line. The alias definitions are dropped. The input is
+and the source line aiecc reports for it: its first file location, a call
+site's callee before its callers. The alias definitions are dropped. The input is
 read as text, so any stage aiecc writes works, with or without
 `--mlir-print-local-scope`, and no dialect needs to be registered.
 
@@ -159,7 +160,7 @@ def label(loc, aliases: dict) -> str:
         aliases: Each alias name, as `#loc3`, to its parsed location.
 
     Returns:
-        The names on the location and its innermost source line, as
+        The names on the location and its first source line, as
         "act_in · design.py:12"; "" when it has neither.
     """
     names: list[str] = []
@@ -177,11 +178,8 @@ def label(loc, aliases: dict) -> str:
             if node[2] is not None:
                 visit(node[2], seen)
         elif kind == "callsite":
-            # The callee is where the op was built; callers only add lines.
             visit(node[1], seen)
-            caller_files = len(files)
             visit(node[2], seen)
-            del files[caller_files:]
         elif kind == "fused":
             for child in node[1]:
                 visit(child, seen)
