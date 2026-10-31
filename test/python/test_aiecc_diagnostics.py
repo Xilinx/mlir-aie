@@ -45,10 +45,10 @@ def test_successful_diagnostics(tmp_path, capsys, located):
     assert captured.out == ""
     where = f"{design}:" if located else "<unknown>:0:"
     lines = captured.err.splitlines()
-    assert [line.split(": ")[1] for line in lines] == ["warning", "note", "note"]
+    assert [line.split(": ")[1] for line in lines] == ["warning", "note"]
     assert all(line.startswith(f"[aiecc] {where}") for line in lines)
     assert "whose task queue is only 4 deep" in lines[0]
-    assert "the compiler would have waited for a free slot here" in lines[2]
+    assert "the compiler would have waited for a free slot here" in lines[1]
 
 
 def test_failed_diagnostics(tmp_path, capsys):
