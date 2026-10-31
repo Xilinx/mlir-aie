@@ -403,10 +403,10 @@ class DeviceConfiguration(DeviceResources):
         taken.update(b._name for b in buffers if b._name is not None)
         taken.update(lock._name for lock in locks if lock._name is not None)
 
-        def fresh(prefix, start=0):
+        def fresh(prefix):
             name = next(
                 candidate
-                for index in itertools.count(start)
+                for index in itertools.count()
                 if (candidate := f"{prefix}{index}") not in taken
             )
             taken.add(name)
