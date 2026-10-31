@@ -1,0 +1,7 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// RUN: %python %S/distribute_L2.py -d npu --emit-mlir > %t_npu.mlir
+// RUN: %python %S/distribute_L2.py -d npu2 --emit-mlir > %t_npu2.mlir
