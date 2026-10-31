@@ -238,7 +238,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
     @property
     def display_name(self) -> str:
         """The name, or before one is assigned, how an error names it."""
-        return self.name or self._site.describe("ObjectFifo")
+        return self.name or self._site.describe(type(self).__name__)
 
     @property
     def op(self) -> ObjectFifoCreateOp:
@@ -1409,7 +1409,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
         objects = (dims[0][0] - 1) * (dims[0][1] // in_size) + span - before - after
         if sprod(tap.tensor_dims) != objects * in_size:
             raise ValueError(
-                f"{out.name} to_stream {tap!r} walks a stream of {objects} "
+                f"{out.display_name} to_stream {tap!r} walks a stream of {objects} "
                 f"objects of {in_size} elements, but its tensor has shape "
                 f"{tuple(tap.tensor_dims)}"
             )

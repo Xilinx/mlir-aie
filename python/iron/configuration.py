@@ -250,7 +250,7 @@ class DeviceConfiguration(DeviceResources):
                 pass
             elif not isinstance(endpoint, ObjectFifoLink):
                 raise ValueError(
-                    f"ObjectFifo {fifo.name!r} has an endpoint outside device "
+                    f"ObjectFifo {fifo.display_name!r} has an endpoint outside device "
                     f"configuration {self.name!r}."
                 )
             if isinstance(endpoint, PerDeviceConfiguration):
