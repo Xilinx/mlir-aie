@@ -13,6 +13,7 @@ import functools
 
 import numpy as np
 import pytest
+from aie.helpers.npdtypes import v8bfp16ebs8
 from aie.iron.device import NPU2Col4
 from aie.utils import coded
 from aie.utils.compile.jit.markers import In, InOut, Out
@@ -183,6 +184,29 @@ def test_a_coded_operand_refuses_what_its_rows_cannot_hold():
         class Wrong(Operator):
             K: int = param()
             x = In(K, coded="yes")
+
+
+def test_a_coded_operand_takes_either_spelling_of_bfloat16():
+    class Spelled(Operator):
+        K: int = param()
+        x = In(4, K, dtype=np.dtype(bfloat16), obj_shape=(1, K), coded=True)
+        y = In(4, K, dtype=v8bfp16ebs8, obj_shape=(1, K), coded=True)
+
+    op = Spelled(K=64)
+    assert Spelled.x.of(op).dtype == np.uint8
+    with pytest.raises(TypeError, match="coded rows hold bfloat16"):
+        Spelled.y.of(op).dtype
+
+
+def test_a_coded_stream_s_row_length_is_in_the_cores_key():
+    class Literal(Operator):
+        M: int = param()
+        K: int = param()
+        w = In(M, K, obj_shape=(4, 64), coded=True)
+
+    assert "K" in Literal.declaration.key
+    view = Literal(M=8, K=64).layout()
+    assert view.w.obj_shape == (4, coded.row_bytes(64))
 
 
 def test_an_operand_says_which_way_it_moves():

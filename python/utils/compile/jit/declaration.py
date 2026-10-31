@@ -78,8 +78,9 @@ class Declaration:
             binds a call's arguments.
         tunables: The tunables a caller or the tuner sets (``init=True``).
         key: The parameters the cores are built from: every tunable, what a
-            stream's ``obj_shape=``, ``per=``, ``dtype=`` or ``when=`` names,
-            and every ``param(array=True)``.
+            stream's ``obj_shape=``, ``per=``, ``dtype=``, ``when=``,
+            ``coded=`` or ``capacity=`` names, a stream's row length where it
+            may be coded, and every ``param(array=True)``.
     """
 
     def __init__(
@@ -106,6 +107,9 @@ class Declaration:
                     named.add(m.declared_dtype.name)
                 if m.when is not None:
                     named.add(m.when.name)
+            if m.streamed and m.declared_coded is not False:
+                # A coded obj_shape reads the row's length.
+                named |= _names(m.dims[-1:])
             for given in (m.declared_coded, m.declared_capacity):
                 if isinstance(given, OperatorParam):
                     named.add(given.name)

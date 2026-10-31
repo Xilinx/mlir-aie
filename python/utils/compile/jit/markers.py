@@ -191,7 +191,7 @@ class _Operand(Member):
         dtype = self.logical_dtype
         if not self.coded:
             return dtype
-        if dtype is not bfloat16:
+        if bfp.is_bfp(dtype) or np.dtype(dtype) != np.dtype(bfloat16):
             raise TypeError(
                 f"{self.name}: coded rows hold bfloat16 weights, not "
                 f"{bfp.dtype_name(dtype)}"
