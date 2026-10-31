@@ -7,10 +7,13 @@ import os
 import traceback
 
 import numpy as np
+import aie.dialects.aie  # noqa: F401  (registers the aie dialect for parsing)
+from aie.extras.context import mlir_mod_ctx
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
+from aie.helpers.errors import design_error
 from aie.helpers.sourceloc import is_internal_file
-from aie.ir import MLIRError
+from aie.ir import MLIRError, Module
 
 THIS_FILE = os.path.abspath(__file__)
 
@@ -115,11 +118,44 @@ def check_guard_failure():
     return f"{len(frames)} frames, {len(internal)} internal"
 
 
+# The line the fused location points at; the frame quotes it.
+PARSE = 'Module.parse(FUSED_IR.replace(":0:0", f":{line}:0"))'
+FUSED_IR = f"""
+module {{
+  aie.device(npu1_1col) {{
+    %t = aie.tile(9, 2) loc(#both)
+  }}
+}}
+#in = loc("iron:act_in"("{THIS_FILE}":0:0))
+#out = loc("iron:act_out"("{THIS_FILE}":0:0))
+#both = loc(fused[#in, #out])
+"""
+
+
+def check_fused_location():
+    """An op located at several objects, as a pass may fuse them, names all."""
+    with open(THIS_FILE) as f:
+        line = [l.strip() for l in f].index(PARSE) + 1
+    with mlir_mod_ctx():
+        try:
+            Module.parse(FUSED_IR.replace(":0:0", f":{line}:0"))
+        except MLIRError as exc:
+            frames = frames_of(design_error(exc))
+        else:
+            raise AssertionError("expected the out-of-range tile to be rejected")
+    filename, lineno, name, text = frames[-1]
+    assert (filename, lineno, text) == (THIS_FILE, line, PARSE), frames[-1]
+    assert name == "act_in, act_out", f"frame should name both objects: {name!r}"
+    return name
+
+
 def main():
     where = check_verifier_failure()
     guard = check_guard_failure()
+    fused = check_fused_location()
     print(f"PASS: verifier failure reported at {where}")
     print(f"PASS: guard failure filtered to {guard}")
+    print(f"PASS: fused location reported as {fused}")
 
 
 main()

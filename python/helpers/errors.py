@@ -14,11 +14,16 @@ import os
 import re
 import types
 
-from ..ir import MLIRError  # pyright: ignore[reportMissingImports]
+from ..ir import (  # pyright: ignore[reportMissingImports]
+    CallSiteLoc,
+    FileLineColLoc,
+    FusedLoc,
+    Location,
+    MLIRError,
+    NameLoc,
+)
 from .sourceloc import is_internal_file
 
-_FILE_LOC = re.compile(r'"([^"]+)":(\d+):(\d+)')
-_NAMED_LOC = re.compile(r'^loc\("([^"]+)"\(')
 _TOOL_ERROR = re.compile(r"^(.+?):(\d+):\d+: error: ", re.M)
 
 
@@ -89,19 +94,48 @@ def design_error(exc: BaseException) -> BaseException:
         exc.with_traceback(rebuilt)
     if isinstance(exc, MLIRError):
         for diag in exc.error_diagnostics:  # pyright: ignore[reportAttributeAccessIssue]  # fmt: skip
-            loc = str(diag.location)
-            match = _FILE_LOC.search(loc)
-            if match is not None:
-                named = _NAMED_LOC.match(loc)
-                name = "<design>"
-                if named:
-                    # "iron:act_in" or "py:build.<locals>.core_fn": the frame
-                    # reads as the object or function, without its kind.
-                    name = named.group(1).partition(":")[2] or named.group(1)
-                    name = name.rpartition(".")[2]
-                _attach_source_frame(exc, match.group(1), int(match.group(2)), name)
+            site = _design_site(diag.location)
+            if site is not None:
+                _attach_source_frame(exc, *site)
                 break
     return exc
+
+
+def _design_site(loc: Location) -> tuple[str, int, str] | None:
+    """Return where a diagnostic's location points in the design.
+
+    Args:
+        loc: The location, as IRON builds them: names around a file location,
+            its callers, or several of those fused.
+
+    Returns:
+        (filename, line, name) of the first file location, the callee of a
+        call site; `name` lists the objects and functions named on the whole
+        location, as "act_in, act_out", or "<design>" when none is. None
+        when there is no file location.
+    """
+    names, site, pending, context = [], None, [loc], loc.context
+    while pending:
+        # A diagnostic's location comes as a plain Location; from_attr gives
+        # its kind.
+        loc = Location.from_attr(pending.pop(0).attr, context)
+        if isinstance(loc, NameLoc):
+            # "iron:act_in" or "py:build.<locals>.core_fn": the frame reads
+            # as the object or function, without its kind.
+            name = loc.name_str
+            name = (name.partition(":")[2] or name).rpartition(".")[2]
+            if name not in names:
+                names.append(name)
+            pending.insert(0, loc.child_loc)
+        elif isinstance(loc, CallSiteLoc):
+            pending.insert(0, loc.callee)
+        elif isinstance(loc, FusedLoc):
+            pending[0:0] = loc.locations
+        elif isinstance(loc, FileLineColLoc) and site is None:
+            site = (loc.filename, loc.start_line)
+    if site is None:
+        return None
+    return *site, ", ".join(names) or "<design>"
 
 
 def attach_tool_location(exc: BaseException, output: str) -> bool:
