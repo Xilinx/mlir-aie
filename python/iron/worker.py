@@ -288,6 +288,9 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         """
         return [[factory(r, c) for c in range(cols)] for r in range(rows)]
 
+    def __str__(self) -> str:
+        return f"Worker({self.name or self._site.describe(type(self).__name__)!r})"
+
     @property
     def tile(self) -> Tile:
         """The compute tile this Worker is placed on."""

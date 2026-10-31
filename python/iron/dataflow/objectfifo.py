@@ -394,52 +394,30 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         """Return the placement tiles corresponding to the endpoints of all handles of this ObjectFifo.
 
         Raises:
-            ValueError: A producer handle must be constructed.
-            ValueError: At least one consumer handle must be constructed.
+            ValueError: A producer or consumer handle is missing, or is not
+                passed to a Worker, a Runtime or a link.
 
         Returns:
             list[Tile]: A list of tiles of the endpoints of this ObjectFifo.
         """
+        endpoints = [] if cons_only else self._get_endpoint(is_prod=True)
+        endpoints += self._get_endpoint(is_prod=False)
         tiles = []
-        if not cons_only:
-            if self._prod is None:
-                raise ValueError(
-                    "Cannot return prod.tile.op because prod was not created."
-                )
-            if self._prod.endpoint is None:
-                raise ValueError(f"Prod endpoint not set for {self}")
-            assert self._prod.endpoint.tile is not None
-            tiles += [self._prod.endpoint.tile]
-        if self._cons == []:
-            raise ValueError("Cannot return cons tiles because cons were not created.")
-        for cons in self._cons:
-            if cons.endpoint is None:
-                raise ValueError(f"Cons endpoint not set for {self}")
-            assert cons.endpoint.tile is not None
-            tiles.append(cons.endpoint.tile)
+        for endpoint in endpoints:
+            assert endpoint.tile is not None
+            tiles.append(endpoint.tile)
         return tiles
 
     def _prod_tile_op(self) -> Tile:
-        if self._prod is None:
-            raise ValueError(
-                f"Cannot return prod.tile.op for ObjectFifo {self.display_name} because prod was not created."
-            )
-        if self._prod.endpoint is None:
-            raise ValueError(f"Prod endpoint not set for {self}")
-        assert self._prod.endpoint.tile is not None
-        return self._prod.endpoint.tile.op
+        (endpoint,) = self._get_endpoint(is_prod=True)
+        assert endpoint.tile is not None
+        return endpoint.tile.op
 
     def _cons_tiles_ops(self) -> list[Tile]:
-        if len(self._cons) < 1:
-            raise ValueError(
-                f"Cannot return cons.tile.op for ObjectFifo {self.display_name} because no consumers were created."
-            )
         ops = []
-        for cons in self._cons:
-            if cons.endpoint is None:
-                raise ValueError(f"Cons endpoint not set for {self}")
-            assert cons.endpoint.tile is not None
-            ops.append(cons.endpoint.tile.op)
+        for endpoint in self._get_endpoint(is_prod=False):
+            assert endpoint.tile is not None
+            ops.append(endpoint.tile.op)
         return ops
 
     def _get_depths(self) -> int | list[int]:
@@ -458,21 +436,23 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
 
     def _get_endpoint(self, is_prod: bool) -> list[ObjectFifoEndpoint]:
         if is_prod:
-            if self._prod:
-                if self._prod.endpoint is None:
-                    raise ValueError(f"Prod endpoint not set for {self}")
-                return [self._prod.endpoint]
-            else:
-                raise ValueError(f"Prod endpoint not set for {self}")
+            end, handles = "prod", [self._prod] if self._prod else []
         else:
-            if len(self._cons) < 1:
-                raise ValueError(f"Cons endpoint not set for {self}")
-            endpoints = []
-            for con in self._cons:
-                if con.endpoint is None:
-                    raise ValueError(f"Cons endpoint not set for {self}")
-                endpoints.append(con.endpoint)
-            return endpoints
+            end, handles = "cons", self._cons
+        if not handles:
+            raise ValueError(
+                f"ObjectFifo {self.display_name!r} has no {end}() handle: take "
+                "one and pass it to a Worker, a Runtime or a link"
+            )
+        endpoints = []
+        for handle in handles:
+            if handle.endpoint is None:
+                raise ValueError(
+                    f"ObjectFifo {self.display_name!r} has a {end}() handle that "
+                    "is not passed to a Worker, a Runtime or a link"
+                )
+            endpoints.append(handle.endpoint)
+        return endpoints
 
     def _check_walk_sizes(self) -> None:
         assert self._prod is not None
@@ -1445,6 +1425,11 @@ class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
             if participant is of:
                 return [sizes[i]]
         return sizes
+
+    def __str__(self) -> str:
+        srcs = [h._object_fifo.display_name for h in self._srcs]
+        dsts = [h._object_fifo.display_name for h in self._dsts]
+        return f"ObjectFifoLink({srcs} -> {dsts})"
 
     def resolve(
         self,
