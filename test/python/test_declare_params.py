@@ -183,7 +183,7 @@ def test_a_coded_operand_refuses_what_its_rows_cannot_hold():
 
         class Wrong(Operator):
             K: int = param()
-            x = In(K, coded="yes")
+            x = In(K, coded="yes")  # pyright: ignore[reportArgumentType]
 
 
 def test_a_coded_operand_takes_either_spelling_of_bfloat16():

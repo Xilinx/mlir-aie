@@ -3,7 +3,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, decode_coded, expand, limbs_f32, merge_rows, patch_positions, row_addresses, transpose.
+"""Data-movement / conversion kernel factories.
+
+affine_cast, axpy, convert_copy, decode_coded, expand, limbs_f32,
+merge_rows, patch_positions, row_addresses, transpose.
 
 Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
 vector code with no LUT dependency.  ``convert_copy`` binds
@@ -24,7 +27,6 @@ from ._common import (
     Param,
     TensorLayout,
     Trace,
-    _detect_arch,
     _kernel_source,
     _make_extern,
     _require_vector_alignment,
@@ -928,7 +930,7 @@ CODED_CAPACITY = 15
 
 
 def coded_rows_sample(rng, calls: int, *, dim_m: int, dim_k: int) -> np.ndarray:
-    """``calls`` tiles of ``dim_m`` coded rows of ``dim_k`` weights.
+    """Draw ``calls`` tiles of ``dim_m`` coded rows of ``dim_k`` weights.
 
     Rows are normal draws held to at least 2^-8 in magnitude, so they span
     11 binades and fit their windows, with up to ``CODED_CAPACITY`` entries

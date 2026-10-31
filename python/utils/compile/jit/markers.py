@@ -165,8 +165,11 @@ class _Operand(Member):
 
     @property
     def logical_shape(self) -> tuple[int, ...]:
-        """The shape the declaration names: what a caller passes, and what
-        inference, drawing and a reference see."""
+        """The shape the declaration names.
+
+        It is what a caller passes, and what inference, drawing and a
+        reference see.
+        """
         return resolve(self.dims, self.op)
 
     @property
@@ -178,8 +181,10 @@ class _Operand(Member):
 
     @property
     def shape(self) -> tuple[int, ...]:
-        """The shape that moves: the logical one, a coded tensor's rows as
-        their bytes."""
+        """The shape that moves.
+
+        It is the logical shape, with a coded tensor's rows as their bytes.
+        """
         shape = self.logical_shape
         if not self.coded:
             return shape
