@@ -956,7 +956,7 @@ def decode_coded_ref(a, *, dim_k: int):
 
 
 def decode_coded(dim_m: int = 4, dim_k: int = 2048) -> ExternalFunction:
-    """Coded rows in, bf16 rows out (aie2p only).
+    """Coded rows in, bf16 rows out.
 
     ``aie_kernels/datamovement/decode_coded.cc``, signature ``(m, A, out)``:
     ``A`` is ``dim_m`` rows coded as ``aie.utils.coded`` writes them (capacity
@@ -973,11 +973,8 @@ def decode_coded(dim_m: int = 4, dim_k: int = 2048) -> ExternalFunction:
         ExternalFunction for ``decode_coded_bf16``.
 
     Raises:
-        NotImplementedError: On a device other than aie2p.
         ValueError: ``dim_k`` is not a positive multiple of 64.
     """
-    if _detect_arch() != "aie2p":
-        raise NotImplementedError("decode_coded() is written for aie2p only")
     if dim_k <= 0 or dim_k % 64:
         raise ValueError(f"decode_coded(): dim_k ({dim_k}) must be a multiple of 64")
     row_bytes = coded.row_bytes(dim_k, CODED_CAPACITY)

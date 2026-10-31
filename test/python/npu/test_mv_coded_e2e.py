@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+# RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
 # REQUIRES: xrt_python_bindings
 
@@ -14,8 +15,8 @@ scratch tile and runs the row-major kernel on it, so it is lossless only if
 the decode is exact: every case runs the coded kernel on coded rows and the
 plain kernel on ``coded.decode_rows`` of them, at the same ``dim_m``,
 ``vec_size`` and ``output_rows``, and compares the bits. The comparison is
-device against device: aie2p's float adder is not IEEE, so no host model
-reproduces either kernel's bits. The rows are the factory's sample, which
+device against device, since no host model reproduces either kernel's
+bits. The rows are the factory's sample, which
 fills each call's first row to capacity with exceptions at both of its ends.
 """
 

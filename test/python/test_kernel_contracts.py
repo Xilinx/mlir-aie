@@ -1323,8 +1323,7 @@ def test_coded_matvec_is_an_mv_layout():
     with pytest.raises(ValueError, match="bf16"):
         kernels.mv(dim_m=32, dim_k=128, a_coded=True)
     set_current_device(NPU1Col1())
-    with pytest.raises(NotImplementedError, match="aie2p"):
-        kernels.mv(dim_m=4, dim_k=128, **bf16)
+    assert "-DA_CODED" in kernels.mv(dim_m=4, dim_k=128, **bf16).compile_flags
 
 
 @pytest.mark.parametrize("case_id", list(CASES))

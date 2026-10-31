@@ -475,12 +475,11 @@ CASES: list[Case] = [
     check("affine_cast", dict(rows=8, cols=256), tag="wide"),
     # The coded-rows decode alone: four rows of llama 3.2 1B's hidden size,
     # and a row whose code plane ends off a 64-byte boundary.
-    Case("decode_coded", calls=16, devices=("npu2",), smoke=True),
+    Case("decode_coded", calls=16, smoke=True),
     check(
         "decode_coded",
         dict(dim_m=2, dim_k=192),
         tag="edge-code-plane-padded",
-        devices=("npu2",),
         smoke=True,
     ),
     Case("expand", calls=16, smoke=True),
@@ -1324,8 +1323,8 @@ CASES: list[Case] = [
             (16, 32, 16, "edge-narrowest"),
         )
     ],
-    # The coded matvec (a_coded) at llama 3.2 1B's two decode GEMV shapes on
-    # npu2, as the plain kernel's cases above run them, so its cycles read
+    # The coded matvec (a_coded) at llama 3.2 1B's two decode GEMV shapes,
+    # as the plain kernel's cases above run them, so its cycles read
     # against theirs. Bit identity with the plain kernel is
     # test_mv_coded_e2e.py's.
     *[
@@ -1342,7 +1341,6 @@ CASES: list[Case] = [
             ),
             calls=output_rows // dim_m,
             tag=tag,
-            devices=("npu2",),
             smoke=smoke,
         )
         for dim_m, dim_k, output_rows, tag, smoke in (

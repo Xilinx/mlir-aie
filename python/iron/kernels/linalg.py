@@ -799,15 +799,14 @@ def mv(
             ``dim_m`` rows.
         a_col_maj: bf16 and vectorized only: A is stored ``(dim_k, dim_m)``,
             the transpose, with partial sums carried across calls (above).
-        a_coded: bf16, vectorized and aie2p only, ``dim_k`` a multiple of
-            64: A arrives as coded rows (above).
+        a_coded: bf16 and vectorized only, ``dim_k`` a multiple of 64: A
+            arrives as coded rows (above).
 
     Returns:
         ExternalFunction configured for the matvec kernel.
 
     Raises:
         ValueError: When the dtype combination is not supported.
-        NotImplementedError: For ``a_coded`` on a device other than aie2p.
     """
     if (input_dtype, output_dtype) == (bfloat16, bfloat16):
         return _mv_bf16(
@@ -930,8 +929,6 @@ def _mv_bf16(
         )
         subscripts = "ckm,ck->cm"
     elif a_coded:
-        if _detect_arch() != "aie2p":
-            raise NotImplementedError("mv(): a_coded is written for aie2p only")
         if not vectorized or dim_k % 64:
             raise ValueError(
                 f"mv(): a_coded is vectorized only, with dim_k ({dim_k}) a "
