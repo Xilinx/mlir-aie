@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %PYTHON %s
+# REQUIRES: peano
 
 # When aiecc rejects a design compiled into a work_dir, the design's IR is
 # written beside it with each op's source as a comment, and the error says
