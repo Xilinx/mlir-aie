@@ -601,21 +601,34 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return true;
   }
 
-  // Whether the host library holds the scratchpad parameter at state-table
-  // index `index` at 0 or above.
-  bool nonNegative(int64_t index) {
-    auto [it, inserted] = nonNegativeByIndex.try_emplace(index, false);
+  // Whether the host library holds the scratchpad parameter `seq` reads at
+  // state-table index `index` at 0 or above. Commands that never run together
+  // share slots, so where `seq` does not list what it reads, every parameter
+  // on the slot must be.
+  bool nonNegative(AIE::RuntimeSequenceOp seq, int64_t index) {
+    auto [it, inserted] =
+        nonNegativeByIndex.try_emplace({seq.getOperation(), index}, false);
     if (!inserted)
       return it->second;
-    if (auto module = getOperation()->getParentOfType<ModuleOp>())
-      for (auto parameter : module.getOps<ScratchpadParameterOp>())
-        if (parameter.getStateTableIdx() == index) {
-          std::optional<int32_t> min = parameter.getMinValue();
-          it->second = min && *min >= 0;
-        }
+    auto module = getOperation()->getParentOfType<ModuleOp>();
+    if (!module)
+      return false;
+    ArrayAttr reads = seq.getScratchpadParametersAttr();
+    bool found = false, held = true;
+    for (auto parameter : module.getOps<ScratchpadParameterOp>()) {
+      if (parameter.getStateTableIdx() != index ||
+          (reads &&
+           !llvm::is_contained(reads.getAsValueRange<FlatSymbolRefAttr>(),
+                               parameter.getSymName())))
+        continue;
+      std::optional<int32_t> min = parameter.getMinValue();
+      found = true;
+      held &= min && *min >= 0;
+    }
+    it->second = found && held;
     return it->second;
   }
-  llvm::DenseMap<int64_t, bool> nonNegativeByIndex;
+  llvm::DenseMap<std::pair<Operation *, int64_t>, bool> nonNegativeByIndex;
 
   // The bytes one push of `cfg` by `start` moves, or nullopt where its chain
   // loops, iterates, continues outside its body, or takes its length from a
@@ -643,7 +656,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         bytes[-1] += static_cast<uint32_t>(*len) * width;
         if (std::optional<uint8_t> index = bd.getLengthStateTableIdx()) {
           std::optional<int32_t> unit = bd.getLengthUnit();
-          if (!unit || !nonNegative(*index))
+          if (!unit ||
+              !nonNegative(start->getParentOfType<AIE::RuntimeSequenceOp>(),
+                           *index))
             return std::nullopt;
           bytes[*index] += static_cast<int64_t>(*unit) * width;
         }

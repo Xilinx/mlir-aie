@@ -380,3 +380,84 @@ module {
     }
   }
 }
+
+// -----
+
+// Slot 0 holds @n here and @o, which may be negative, in some other command.
+// This command lists the parameters it reads, so the slot is @n, held at 0 or
+// above, and k is covered once the output is awaited.
+module {
+  aiex.scratchpad_parameter @n : i32 {kind = 0 : i32, max_value = 4 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
+  aiex.scratchpad_parameter @o : i32 {kind = 0 : i32, max_value = 4 : i32, min_value = -4 : i32, state_table_idx = 0 : ui8}
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @k(%tile_0_0, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    aie.runtime_sequence @listed(%a: memref<4096xi32>, %c: memref<4096xi32>) attributes {scratchpad_parameters = [@n]} {
+      %k0 = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
+        aie.dma_bd(%a : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
+        aie.end
+      } {alloc = @k}
+      aiex.dma_start_task(%k0)
+      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out0)
+      aiex.dma_await_task(%out0)
+      aiex.dma_free_task(%k0)
+      %k1 = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
+        aie.dma_bd(%a : memref<4096xi32> offset = 1024 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
+        aie.end
+      } {alloc = @k}
+      aiex.dma_start_task(%k1)
+      %out1 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<4096xi32> offset = 1024 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out1)
+      aiex.dma_await_task(%out1)
+    }
+  }
+}
+
+// -----
+
+// The same command without its list: slot 0 may hold @o, which may be
+// negative, so k's bytes are not proven covered.
+module {
+  aiex.scratchpad_parameter @n : i32 {kind = 0 : i32, max_value = 4 : i32, min_value = 0 : i32, state_table_idx = 0 : ui8}
+  aiex.scratchpad_parameter @o : i32 {kind = 0 : i32, max_value = 4 : i32, min_value = -4 : i32, state_table_idx = 0 : ui8}
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @k(%tile_0_0, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    aie.runtime_sequence @unlisted(%a: memref<4096xi32>, %c: memref<4096xi32>) {
+      %k0 = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
+        aie.dma_bd(%a : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
+        aie.end
+      } {alloc = @k}
+      aiex.dma_start_task(%k0)
+      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out0)
+      aiex.dma_await_task(%out0)
+      // expected-note@+1 {{released here}}
+      aiex.dma_free_task(%k0)
+      %k1 = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
+        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        aie.dma_bd(%a : memref<4096xi32> offset = 1024 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
+        aie.end
+      } {alloc = @k}
+      aiex.dma_start_task(%k1)
+      %out1 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<4096xi32> offset = 1024 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out1)
+      aiex.dma_await_task(%out1)
+    }
+  }
+}
