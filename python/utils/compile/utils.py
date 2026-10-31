@@ -28,6 +28,7 @@ import aie.utils.config as config
 from aie import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from aie.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from aie.helpers.errors import attach_tool_location
+from aie.utils.readable_ir import readable
 
 logger = logging.getLogger(__name__)
 
@@ -1033,6 +1034,7 @@ def _run_aiecc(
     args: list[str],
     cwd: str | Path | None = None,
     build_link_files: Callable[[], None] | None = None,
+    readable_path: str | None = None,
 ):
     aiecc_bin = os.path.abspath(config.aiecc_path())
     cmd = [aiecc_bin, os.path.abspath(mlir_file)] + args
@@ -1089,10 +1091,19 @@ def _run_aiecc(
         # Lead with the diagnostics so a truncated traceback still names the
         # fix; keep the whole log after them for everything they leave out.
         detail = f"{summary}\n\n--- full aiecc log ---\n{error_msg}"
-        exc = RuntimeError(
+        message = (
             f"[aiecc] Compilation failed with exit code {proc.returncode}:\n"
             f"{detail if summary else error_msg}"
         )
+        if readable_path is not None:
+            with open(mlir_file) as f:
+                text = readable(f.read())
+            with open(readable_path, "w") as f:
+                f.write(text)
+            message += (
+                f"\nThe design's IR, each op noted with its source: {readable_path}"
+            )
+        exc = RuntimeError(message)
         attach_tool_location(exc, error_msg)
         raise exc
 
@@ -1281,6 +1292,7 @@ def compile_mlir_module(
             args + [f"--profile-json={profile}"],
             cwd=work_dir,
             build_link_files=build_link_files,
+            readable_path=os.path.join(work_dir, "aie.readable.mlir"),
         )
     elif build_link_files is not None:
         raise ValueError("build_link_files requires work_dir.")
