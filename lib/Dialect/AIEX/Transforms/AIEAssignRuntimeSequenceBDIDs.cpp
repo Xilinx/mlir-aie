@@ -242,7 +242,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pushesByAllocation.clear();
     channelOwner.clear();
     mixedChannels.clear();
-    sinceLoad = true;
   }
 
   // Reject control flow the static path cannot lower. Constant-trip scf.for is
@@ -681,16 +680,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // allocation's own count misses.
   std::map<DmaQueueModel::ChannelKey, Operation *> channelOwner;
   std::set<DmaQueueModel::ChannelKey> mixedChannels;
-  // Set by the latest load: the array starts afresh, holding nothing an
-  // earlier dispatch sent.
-  bool sinceLoad = false;
   llvm::DenseMap<std::pair<Operation *, Operation *>, bool> balancedPairs;
 
-  // Whether every runtime sequence of this device, up to its first load,
-  // ends with all of `input`'s bytes covered by `output`'s under `proof`. A
-  // dispatch run without a load before it starts where the previous one
-  // left the array, so its counts hold only when no dispatch leaves input
-  // bytes behind.
+  // Whether every stretch of every runtime sequence of this device, from its
+  // start or a load to the next load or its end, ends with all of `input`'s
+  // bytes covered by `output`'s under `proof`. The counts restart at each
+  // stretch, but a load of the PDI already loaded leaves the array as it was,
+  // so a stretch starts where the previous one, perhaps another dispatch's,
+  // left it, and its counts hold only when none leaves input bytes behind.
   bool leavesNothing(AIE::ShimDMAAllocationOp input,
                      AIE::ShimDMAAllocationOp output,
                      AIE::ConsumedByAttr proof) {
@@ -701,8 +698,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     for (auto seq : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
       Volume in, out;
       seq.walk([&](Operation *op) {
-        if (isa<NpuLoadPdiOp>(op))
-          return WalkResult::interrupt();
+        if (isa<NpuLoadPdiOp>(op)) {
+          if (!atMost(in, proof.getOutputBytes(), out, proof.getInputBytes())) {
+            it->second = false;
+            return WalkResult::interrupt();
+          }
+          in.clear();
+          out.clear();
+          return WalkResult::advance();
+        }
         auto start = dyn_cast<DMAStartTaskOp>(op);
         DMAConfigureTaskOp cfg = start ? start.getTaskOp() : nullptr;
         AIE::ShimDMAAllocationOp allocation = cfg ? allocationOf(cfg) : nullptr;
@@ -753,7 +757,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         continue;
       for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>()) {
         if (proof.getOutput().getAttr() != output.getSymNameAttr() ||
-            (!sinceLoad && !leavesNothing(input, output, proof)))
+            !leavesNothing(input, output, proof))
           continue;
         std::optional<uint64_t> last;
         for (const AllocationPush &push : pushes) {
@@ -1133,7 +1137,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pushesByAllocation.clear();
     channelOwner.clear();
     mixedChannels.clear();
-    sinceLoad = false;
   }
 
   void runOnOperation() override {

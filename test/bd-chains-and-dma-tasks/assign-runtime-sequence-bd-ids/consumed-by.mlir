@@ -246,8 +246,9 @@ module {
 
 // -----
 
-// After a load the array starts afresh, so the same sequence is credited, as
-// in a full ELF's materialized sequence.
+// A load of the PDI already loaded leaves the array as it was, so a stretch
+// after a load must leave no input bytes behind either: this one pushes in1
+// past what its output covers, and nothing is credited.
 module {
   aie.device(npu2) @design {
     %tile_0_0 = aie.tile(0, 0)
@@ -269,12 +270,113 @@ module {
       } {alloc = @out, issue_token = true}
       aiex.dma_start_task(%out0)
       aiex.dma_await_task(%out0)
+      // expected-note@+1 {{released here}}
+      aiex.dma_free_task(%in0)
+      %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in1)
+    }
+  }
+}
+
+// -----
+
+// @init loads, then pushes 128 words in and receives 64, leaving the rest in
+// the array. @next, balanced on its own, may run after it without a real
+// reload and receive those leftovers first: nothing is credited.
+module {
+  aie.device(npu2) @design {
+    %tile_0_0 = aie.tile(0, 0)
+  }
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    aie.runtime_sequence @init(%a: memref<512xi32>, %c: memref<512xi32>) {
+      aiex.npu.load_pdi {device_ref = @design}
+      %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 128)
+        aie.end
+      } {alloc = @in, issue_token = true}
+      aiex.dma_start_task(%in0)
+      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out0)
+      aiex.dma_await_task(%in0)
+      aiex.dma_await_task(%out0)
+    }
+    aie.runtime_sequence @next(%a: memref<512xi32>, %c: memref<512xi32>) {
+      %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in0)
+      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out0)
+      aiex.dma_await_task(%out0)
+      // expected-note@+1 {{released here}}
+      aiex.dma_free_task(%in0)
+      %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in1)
+      %out1 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<512xi32> offset = 64 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out1)
+      aiex.dma_await_task(%out1)
+    }
+  }
+}
+
+// -----
+
+// Balanced stretches before and after a load: the rounds are credited.
+module {
+  aie.device(npu2) @design {
+    %tile_0_0 = aie.tile(0, 0)
+  }
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    aie.runtime_sequence @balanced_after_load(%a: memref<512xi32>, %c: memref<512xi32>) {
+      aiex.npu.load_pdi {device_ref = @design}
+      %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in0)
+      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out0)
+      aiex.dma_await_task(%out0)
       aiex.dma_free_task(%in0)
       %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
         aie.end
       } {alloc = @in}
       aiex.dma_start_task(%in1)
+      %out1 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<512xi32> offset = 64 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out1)
+      aiex.dma_await_task(%out1)
+      aiex.dma_free_task(%in1)
     }
   }
 }
