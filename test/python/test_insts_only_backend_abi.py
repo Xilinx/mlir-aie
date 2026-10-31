@@ -8,7 +8,6 @@ import hashlib
 import inspect
 from functools import partial
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -30,19 +29,7 @@ def design_factory(tmp_path, monkeypatch, npu2_device):
             "_resolve_fold_ddr_addr_offset",
             staticmethod(lambda: fold),
         )
-        design = cd.CompilableDesign(source, **kwargs)
-        monkeypatch.setattr(
-            design,
-            "_generated_for",
-            lambda **kwargs: SimpleNamespace(
-                requires_full_elf=False,
-                external_kernels=[],
-                mlir_text="module {}",
-                entry_stream_options=[],
-                devices=(),
-            ),
-        )
-        return design
+        return cd.CompilableDesign(source, **kwargs)
 
     return make
 

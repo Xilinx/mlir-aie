@@ -30,12 +30,16 @@ class Program:
     configuration owns the resources inside one ``aie.device`` operation;
     Program owns module creation, entry selection, and cross-configuration
     validation.
+
+    A Program may have several entries: runtimes the host dispatches by name
+    from one compiled build, each taking the same arguments. The first is the
+    default entry.
     """
 
     def __init__(
         self,
         device: Device | None,
-        rt: Runtime,
+        rt: "Runtime | list[Runtime]",
         workers: "list | None" = None,
         *,
         expand_load_pdis: bool | None = None,
@@ -53,7 +57,9 @@ class Program:
                 Accepts the ``Device | None`` returned by ``iron.get_current_device``
                 directly and raises if no device has been selected, so callers need
                 not narrow it first.
-            rt (Runtime): The runtime object for the design.
+            rt (Runtime | list[Runtime]): The design's entry runtime, or its
+                entries, the first the default. Entries take identical
+                argument types.
             workers (list[Worker] | None, optional): The Workers to run on the
                 device. Defaults to None (no workers). Workers are passed here
                 explicitly rather than started from within the runtime sequence.
@@ -66,7 +72,8 @@ class Program:
                 ``--reconfig-init-entry`` option. ``None`` omits the option.
 
         Raises:
-            ValueError: If ``device`` is None (no NPU device was selected/detected).
+            ValueError: If ``device`` is None (no NPU device was selected/detected),
+                or the entries take different argument types.
         """
         if device is None:
             raise ValueError(
@@ -74,11 +81,13 @@ class Program:
                 "Device, or ensure an NPU runtime is available for "
                 "iron.get_current_device()."
             )
+        entries = list(rt) if isinstance(rt, list) else [rt]
         configuration = DeviceConfiguration(
-            "main", device, workers=workers or (), runtimes=[rt]
+            "main", device, workers=workers or (), runtimes=entries
         )
         self._configurations = [configuration]
-        self._entry = rt
+        self._entries = entries
+        self._entry = entries[0]
         self._implicit_configuration = True
         self._reconfiguration_options = {
             "expand_load_pdis": expand_load_pdis,
@@ -93,7 +102,7 @@ class Program:
         cls,
         configurations: "list[DeviceConfiguration]",
         *,
-        entry: Runtime,
+        entry: "Runtime | list[Runtime]",
         expand_load_pdis: bool | None = None,
         reconfig_teardown: bool | None = None,
         reconfig_init_entry: bool | None = None,
@@ -102,7 +111,9 @@ class Program:
 
         Args:
             configurations: The device configurations, each one ``aie.device``.
-            entry: The runtime that orchestrates one run.
+            entry: The runtime that orchestrates one run, or the entries the
+                host dispatches by name, the first the default. Entries take
+                identical argument types.
             expand_load_pdis: The value passed to aiecc's
                 ``--expand-load-pdis`` option. ``None`` omits the option.
             reconfig_teardown: The value passed to aiecc's
@@ -112,7 +123,8 @@ class Program:
         """
         program = cls.__new__(cls)
         program._configurations = list(configurations)
-        program._entry = entry
+        program._entries = list(entry) if isinstance(entry, list) else [entry]
+        program._entry = program._entries[0]
         program._implicit_configuration = False
         program._reconfiguration_options = {
             "expand_load_pdis": expand_load_pdis,
@@ -162,11 +174,20 @@ class Program:
             raise ValueError(
                 f"Program has duplicate configuration names: {duplicates}."
             )
-        entry_configuration = self._entry.configuration
-        if entry_configuration not in self._configurations:
-            raise ValueError(
-                f"Entry runtime {self._entry.name!r} does not belong to this Program."
-            )
+        for entry in self._entries:
+            if entry.configuration not in self._configurations:
+                raise ValueError(
+                    f"Entry runtime {entry.name!r} does not belong to this Program."
+                )
+        if len({id(entry) for entry in self._entries}) != len(self._entries):
+            raise ValueError("Program lists an entry runtime more than once.")
+        for entry in self._entries[1:]:
+            if entry.arg_types != self._entry.arg_types:
+                raise ValueError(
+                    f"Entry runtime {entry.name!r} takes {entry.arg_types}, but "
+                    f"{self._entry.name!r} takes {self._entry.arg_types}; a "
+                    "Program's entries take identical argument types."
+                )
 
     def enable_trace(
         self,
@@ -284,7 +305,7 @@ class Program:
                 configuration.resolve(
                     device_name=symbol,
                     loc=loc,
-                    entry=self._entry,
+                    entries=self._entries,
                     owners=owners,
                 )
 
@@ -295,14 +316,24 @@ class Program:
                             scratchpad_parameters, parameter
                         ).resolve()
 
-            if not self._implicit_configuration:
-                entry_configuration = self._entry.configuration
-                assert entry_configuration is not None
-                assert entry_configuration.name is not None
-                assert self._entry.name is not None
-                ctx.module.operation.attributes["iron.entry"] = ir.StringAttr.get(
-                    f"{entry_configuration.name}:{self._entry.name}"
+            qualified = []
+            for entry in self._entries:
+                assert entry.configuration is not None and entry.name is not None
+                symbol = (
+                    device_name
+                    if self._implicit_configuration
+                    else entry.configuration.name
                 )
+                qualified.append(f"{symbol}:{entry.name}")
+            if not self._implicit_configuration or len(qualified) > 1:
+                ctx.module.operation.attributes["iron.entry"] = ir.StringAttr.get(
+                    qualified[0]
+                )
+            if len(qualified) > 1:
+                ctx.module.operation.attributes["iron.entries"] = ir.ArrayAttr.get(
+                    [ir.StringAttr.get(name) for name in qualified]
+                )
+            if not self._implicit_configuration:
                 ctx.module.operation.attributes["iron.configuration_count"] = (
                     ir.IntegerAttr.get(
                         ir.IntegerType.get_signless(32), len(self._configurations)

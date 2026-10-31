@@ -1,0 +1,320 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Code health
+
+# The dashboard's Code health tab, nightly on main: line and function
+# coverage of the lit suite (codeCoverage.yml); check-aie under
+# AddressSanitizer with UndefinedBehaviorSanitizer and under
+# ThreadSanitizer; CodeQL's C++ analysis, traced on the ASan build so the
+# compiler runs once; and clang-tidy over every C++ file, not only the
+# files lintAndFormat.yml enforces it on. Each job leaves a small JSON
+# summary; the last job folds them, with the open code-scanning alerts, into
+# gh-pages:code-health/ (utils/kernel_checks/code_health.py). Never gates
+# anything: a finding is news on the dashboard, not a red merge queue.
+
+on:
+  schedule:
+    - cron: '17 2 * * *'          # 02:17, ahead of the 06:00 hardware nightlies
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+
+  coverage:
+    uses: ./.github/workflows/codeCoverage.yml
+
+  sanitizer:
+    name: check-aie under ${{ matrix.title }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 330
+    permissions:
+      contents: read
+      security-events: write   # CodeQL's alerts, on the ASan leg
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # UBSan rides with ASan (one runtime, one build). vptr and
+          # function need RTTI from every object, and the prebuilt MLIR is
+          # not built for them. Leaks are off: the Python tests' interpreter
+          # is not instrumented and leaks by design at exit.
+          - name: asan-ubsan
+            title: ASan and UBSan
+            flags: -fsanitize=address,undefined -fno-sanitize=vptr,function -fno-sanitize-recover=undefined
+            runtime: asan
+            options: ASAN_OPTIONS=detect_leaks=0:abort_on_error=0:symbolize=1 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
+            filter-out: 'slow_test|python-concurrency'
+            codeql: true
+          # TSan sees races in this repo's code; the prebuilt MLIR it links
+          # is not instrumented, so a race inside MLIR goes unseen and its
+          # atomics can read as races: a finding there wants a second look.
+          - name: tsan
+            title: TSan
+            flags: -fsanitize=thread
+            runtime: tsan
+            options: TSAN_OPTIONS=halt_on_error=0:second_deadlock_stack=1:report_signal_unsafe=0
+            filter-out: slow_test
+            codeql: false
+    steps:
+      - name: Free disk space
+        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: "true"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install Python and other packages
+        run: |
+          pip install --upgrade pip
+          python utils/mlir_aie_wheels/vendor_eudsl.py \
+              --requirements python/requirements.txt \
+              --install-non-eudsl
+          python -m pip install --require-hashes -r python/requirements_dev.lock
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang lld llvm libelf-dev
+
+      - name: Get MLIR
+        run: |
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
+
+      # CodeQL sees what the compiler compiles: a ccache hit compiles
+      # nothing, so the traced leg builds from cold.
+      - name: Ccache for C++ compilation
+        if: ${{ !matrix.codeql }}
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d  # v1.2.24
+        with:
+          key: ${{ runner.os }}-${{ matrix.name }}
+          max-size: 2G
+
+      - name: Initialize CodeQL
+        if: ${{ matrix.codeql }}
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
+        with:
+          languages: c-cpp
+          build-mode: manual
+
+      # Everything links the shared sanitizer runtime (-shared-libsan), so a
+      # tool started from a Python test and the aie extension that test
+      # imported share one runtime; lit preloads it into every test's
+      # processes, the uninstrumented interpreter among them
+      # (AIE_SANITIZER_PRELOAD, test/lit.cfg.py).
+      - name: Build
+        run: |
+          RT=$(clang -print-runtime-dir)
+          PRELOAD=$(find "$RT" -maxdepth 1 \( -name 'libclang_rt.${{ matrix.runtime }}.so' -o -name 'libclang_rt.${{ matrix.runtime }}-x86_64.so' \) | head -1)
+          test -n "$PRELOAD" || { echo "::error::no shared ${{ matrix.runtime }} runtime under $RT"; exit 1; }
+          echo "AIE_SANITIZER_PRELOAD=$PRELOAD" >> "$GITHUB_ENV"
+          FLAGS="-O1 -g -fno-omit-frame-pointer ${{ matrix.flags }} -shared-libsan"
+          LINK="${{ matrix.flags }} -shared-libsan -Wl,-rpath,$RT -fuse-ld=lld"
+          LAUNCH=()
+          if [ "${{ matrix.codeql }}" != "true" ]; then
+            LAUNCH=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+          fi
+          cmake -S . -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ "${LAUNCH[@]}" \
+            -DCMAKE_C_FLAGS="$FLAGS" -DCMAKE_CXX_FLAGS="$FLAGS" \
+            -DCMAKE_C_FLAGS_RELWITHDEBINFO="" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="" \
+            -DCMAKE_EXE_LINKER_FLAGS="$LINK" -DCMAKE_SHARED_LINKER_FLAGS="$LINK" -DCMAKE_MODULE_LINKER_FLAGS="$LINK" \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DAIE_COMPILER=NONE -DAIE_LINKER=NONE -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=ON -DLLVM_ENABLE_RTTI=ON \
+            -DCMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx \
+            -DMLIR_DIR=$PWD/mlir/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/mlir/lib/cmake/llvm \
+            -DLLVM_USE_LINKER=lld \
+            -DLLVM_EXTERNAL_LIT=$(which lit)
+          ninja -C build
+
+      - name: Perform CodeQL analysis
+        if: ${{ matrix.codeql }}
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
+        with:
+          category: "/language:c-cpp"
+
+      # A test that fails here and passes in the plain build is what this job
+      # is for; the summary sorts the sanitizers' reports from the rest, so
+      # the step itself never fails the job.
+      # Each test's sanitizer reports go to files of its own (test/lit.cfg.py),
+      # so a report a test pipes into FileCheck is still read.
+      - name: Test
+        run: |
+          mkdir -p "$RUNNER_TEMP/lit" "$RUNNER_TEMP/sanitizer-logs"
+          export ${{ matrix.options }}
+          export AIE_SANITIZER_LOG_DIR="$RUNNER_TEMP/sanitizer-logs"
+          lit -sv --timeout 1800 --filter-out '${{ matrix.filter-out }}' \
+            -o "$RUNNER_TEMP/lit/tests.json" build/test \
+            || echo "some tests failed"
+
+      - name: Summarize
+        if: ${{ !cancelled() }}
+        run: |
+          python3 utils/kernel_checks/code_health.py sanitizer --name ${{ matrix.name }} \
+            --source-root "$GITHUB_WORKSPACE" --logs "$RUNNER_TEMP/sanitizer-logs" \
+            --out "$RUNNER_TEMP/${{ matrix.name }}.json" "$RUNNER_TEMP"/lit/*.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: code-health-${{ matrix.name }}
+          path: ${{ runner.temp }}/${{ matrix.name }}.json
+
+  clang-tidy:
+    name: clang-tidy, every file
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: "true"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: python/requirements_dev.lock
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang libelf-dev
+          pip install --upgrade pip
+          python utils/mlir_aie_wheels/vendor_eudsl.py \
+              --requirements python/requirements.txt \
+              --install-non-eudsl
+          python -m pip install --require-hashes -r python/requirements_dev.lock
+
+      - name: Get MLIR
+        run: |
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
+
+      # Every generated header, not lintAndFormat's few: the whole tree is
+      # checked here.
+      - name: Compile database and generated headers
+        run: |
+          cmake -S . -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DAIE_COMPILER=NONE -DAIE_LINKER=NONE -DAIE_ENABLE_AIRBIN=OFF -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=ON -DLLVM_ENABLE_RTTI=ON \
+            -DCMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx \
+            -DMLIR_DIR=$PWD/mlir/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/mlir/lib/cmake/llvm \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          ninja -C build -t targets all | sed -n 's/^\([^:]*\(IncGen\|-headers\|_version\)\): .*/\1/p' | sort -u > "$RUNNER_TEMP/gen.txt"
+          xargs -a "$RUNNER_TEMP/gen.txt" ninja -C build
+
+      - name: clang-tidy
+        run: |
+          python3 - "$RUNNER_TEMP/files.txt" <<'EOF'
+          import json, os, sys
+          root = os.getcwd()
+          files = sorted({os.path.relpath(e["file"], root) for e in json.load(open("build/compile_commands.json"))})
+          files = [f for f in files if f.endswith(".cpp") and f.split("/")[0] in ("lib", "tools")]
+          open(sys.argv[1], "w").write("\n".join(files) + "\n")
+          EOF
+          # One invocation, so its exit status is clang-tidy's own: a finding
+          # (123) is a result, anything else an analysis that did not finish,
+          # which the summary refuses to report as clean.
+          mapfile -t FILES < "$RUNNER_TEMP/files.txt"
+          rc=0
+          MLIR_AIE_BUILD_DIR="$PWD/build" utils/run_clang_tidy.sh "${FILES[@]}" \
+            > "$RUNNER_TEMP/tidy.log" 2>&1 || rc=$?
+          python3 utils/kernel_checks/code_health.py tidy --source-root "$GITHUB_WORKSPACE" \
+            --files "$RUNNER_TEMP/files.txt" --exit-code "$rc" \
+            --out "$RUNNER_TEMP/clang-tidy.json" "$RUNNER_TEMP/tidy.log"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: code-health-clang-tidy
+          path: ${{ runner.temp }}/clang-tidy.json
+
+  publish:
+    needs: [coverage, sanitizer, clang-tidy]
+    # A job that failed leaves its check missing for the night; the rest
+    # still publish.
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: write          # the gh-pages branch
+      security-events: read    # the open code-scanning alerts
+    concurrency:
+      group: gh-pages-publish
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # Each into its own directory; a job that failed left none, and its
+      # check reads as missing.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: code-health-*
+          path: ${{ runner.temp }}/in
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        continue-on-error: true
+        with:
+          name: coverage-report
+          path: ${{ runner.temp }}/in/coverage-report
+
+      - name: Fetch publication branch
+        run: git fetch origin gh-pages:gh-pages --depth=1
+
+      - name: Summarize the night
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git show gh-pages:code-health/status.json > "$RUNNER_TEMP/status.json" 2>/dev/null || echo "no published status yet"
+          git show gh-pages:code-health/history.json > "$RUNNER_TEMP/history.json" 2>/dev/null || echo "no published history yet"
+          IN="$RUNNER_TEMP/in"
+          python3 utils/kernel_checks/code_health.py publish --source-root "$GITHUB_WORKSPACE" \
+            --coverage "$IN/coverage-report/coverage.lcov" \
+            --piece "$IN/code-health-asan-ubsan/asan-ubsan.json" \
+            --piece "$IN/code-health-tsan/tsan.json" \
+            --piece "$IN/code-health-clang-tidy/clang-tidy.json" \
+            --code-scanning \
+            --previous "$RUNNER_TEMP/status.json" --history "$RUNNER_TEMP/history.json" \
+            --out "$RUNNER_TEMP/code-health"
+
+      - name: Publish
+        run: |
+          cp utils/kernel_checks/index.html "$RUNNER_TEMP/index.html"
+          git switch -q gh-pages
+          mkdir -p code-health dashboard
+          cp "$RUNNER_TEMP/code-health/status.json" "$RUNNER_TEMP/code-health/history.json" code-health/
+          cp "$RUNNER_TEMP/index.html" dashboard/index.html
+          git add -A code-health dashboard
+          git diff --cached --quiet || git -c user.name=code-health \
+            -c user.email=github@users.noreply.github.com \
+            commit -q -m "Publish code health for ${GITHUB_SHA:0:10}"
+          git checkout -q -
+
+      - name: Push
+        run: git push origin gh-pages:gh-pages

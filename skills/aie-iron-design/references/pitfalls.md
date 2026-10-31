@@ -84,7 +84,7 @@ transform_parallel_binary(kernels.add(tile_size=1024), tensor_ty, tile_size=1024
 
 Writing your own `relu.cc` or `mm.cc` means maintaining a second, probably slower copy of a kernel that upstream already vectorized and tests. It also costs you `.mac_dims`, the `_ref` NumPy oracles, and the `.zero` companion kernel that `kernels.mm` hands you for free.
 
-**Fix**: check [`builtin_kernels.md`](builtin_kernels.md) first. Hand-write when the dtype/tile isn't supported, the op fuses stages the library only exposes separately, or the access pattern isn't tile-in/tile-out — and say so explicitly when you do, so the choice is visible.
+**Fix**: check [`programming_guide/kernels_library.md`](../../../programming_guide/kernels_library.md) first. Hand-write when the dtype/tile isn't supported, the op fuses stages the library only exposes separately, or the access pattern isn't tile-in/tile-out — and say so explicitly when you do, so the choice is visible.
 
 ---
 

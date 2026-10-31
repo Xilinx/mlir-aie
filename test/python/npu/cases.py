@@ -162,7 +162,8 @@ class Case:
         out_dt = "+".join(
             bfp.dtype_name(kd.shape_dtype(types[i])[1]) for i in fn.contract.out_indices
         )
-        dtypes = in_dt if in_dt == out_dt else f"{in_dt}_{out_dt}"
+        # A kernel whose contract declares no output (nms_score) is named by its input.
+        dtypes = in_dt if out_dt in ("", in_dt) else f"{in_dt}_{out_dt}"
         # A product's tile is named (m, k[, n]) from its declared operands:
         # a 2-D A and a B whose leading extent is A's trailing one. Anything
         # else is named by the element count of its primary tile.

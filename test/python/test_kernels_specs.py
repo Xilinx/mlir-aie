@@ -654,6 +654,64 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         shape_checks=[(dict(chunk=64), 0, (64,)), (dict(words=100), 1, (100,))],
     ),
+    KernelSpec(
+        name="levels",
+        factory=kernels.levels,
+        kwargs=dict(in_bytes=1024, out_width=230),
+        arg_count=9,  # in, table, out, first, count, at, row, lo, hi
+        expected_name="levelsLine",
+        name_variants=[(dict(in_bytes=1248, out_width=416, bgr=True), "levelsLine")],
+        invalid_kwargs=[
+            (dict(in_bytes=1022, out_width=230), "multiple of 4"),
+            (dict(in_bytes=1024, out_width=0), "out_width >= 1"),
+        ],
+        shape_checks=[
+            (dict(in_bytes=1024, out_width=230), 0, (1024,)),
+            (dict(in_bytes=1024, out_width=230), 2, (920,)),
+        ],
+    ),
+    KernelSpec(
+        name="grid_decode",
+        factory=kernels.grid_decode,
+        kwargs={},
+        arg_count=4,  # cells, out, y, stride
+        expected_name="grid_decode",
+        invalid_kwargs=[
+            (dict(width=0), "width >= 1"),
+            (dict(channels=100), "inside 100 channels"),
+            (dict(obj_at=2), "after the box"),
+        ],
+        shape_checks=[(dict(), 0, (52 * 144,)), (dict(width=13), 1, (13 * 85,))],
+    ),
+    KernelSpec(
+        name="resize_linear",
+        factory=kernels.resize_linear,
+        kwargs={},
+        arg_count=2,  # source row, counts
+        expected_name="resize_linear_take",
+        invalid_kwargs=[
+            (dict(in_bytes=6), "multiple of 4"),
+            (dict(out_bytes=32768), "multiple of 4 from 4 to 32764"),
+        ],
+        shape_checks=[(dict(in_bytes=1920), 0, (1920,))],
+    ),
+    KernelSpec(
+        name="nms",
+        factory=kernels.nms,
+        kwargs={},
+        arg_count=2,  # row, width
+        expected_name="nms_score",
+        invalid_kwargs=[
+            (dict(width=0), "width, classes and cap >= 1"),
+            (dict(classes=0), "width, classes and cap >= 1"),
+            (dict(cap=0), "width, classes and cap >= 1"),
+            (dict(cap=1001), "cap <= 1000"),
+        ],
+        shape_checks=[
+            (dict(), 0, (52 * 85,)),
+            (dict(width=13, classes=3), 0, (13 * 8,)),
+        ],
+    ),
     # ----- linalg -----
     KernelSpec(
         name="mm",

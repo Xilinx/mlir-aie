@@ -1,6 +1,6 @@
 ---
 name: aie-kernel-opt
-description: Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel, or port one architecture's tuned code to the other; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the aie.utils.compile.remarks static report and its base-arm diff, the kernel_design contract gate and traced cycles per call, and, for library kernels, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the traps that compile cleanly and run wrong. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).
+description: Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel, or port one architecture's tuned code to the other; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the aie.utils.compile.remarks static report and its base-arm diff, the kernel_design contract gate and traced cycles per call, and, for library kernels, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the traps that compile cleanly and run wrong. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-iron-design).
 license: Apache-2.0 WITH LLVM-exception
 ---
 
@@ -10,6 +10,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 # AIE kernel optimization
+
+Fifth of five porting phases, alongside `aie-dataflow-opt` (see
+`aie-model-baseline` for phase 1, `aie-dataflow-presim` for phase 2,
+`aie-iron-design` for phase 3, and `aie-hw-bringup` for phase 4, getting
+to a correct baseline on real hardware — this phase assumes that baseline
+already exists and is correct).
 
 This skill makes **one compiled kernel** faster. It assumes the kernel is
 already correct on hardware (`aie-hw-bringup`) and worth the work
@@ -350,6 +356,9 @@ measured 78 / 134); if they disagree, find out which is wrong first.
   `$NPU_CACHE_HOME/objects/<key>/` holds a copy of every `.cc` it compiled
   (the `.o.d` depfiles name them), so diff those against `git show
   <rev>:<path>`. When two numbers conflict, compare digests first.
+- The nightly kernel checks and their history are on the [maintainer
+  dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=night); the
+  numbers in this skill's case studies are dated evidence, not today's.
 - Several agents on one NPU: wrap every hardware command in `flock` on one
   shared lock file, and build base arms by copying the live tree.
 - Keep every `extern "C"` name, signature and buffer layout. Leave

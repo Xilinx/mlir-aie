@@ -45,6 +45,7 @@ def test_successful_diagnostics(tmp_path, capsys, located):
     assert captured.out == ""
     where = f"{design}:" if located else "<unknown>:0:"
     lines = captured.err.splitlines()
+    # No "see current operation" note: the warning is emitted at its location.
     assert [line.split(": ")[1] for line in lines] == ["warning", "note"]
     assert all(line.startswith(f"[aiecc] {where}") for line in lines)
     assert "whose task queue is only 4 deep" in lines[0]

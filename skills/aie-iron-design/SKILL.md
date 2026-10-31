@@ -1,5 +1,5 @@
 ---
-name: aie-code-creator
+name: aie-iron-design
 description: Write efficient IRON Python designs and C++ AIE kernels for AMD XDNA NPUs (AIE2 / AIE2P architectures, e.g., Ryzen AI Phoenix, Hawk, Strix, Krackan Point). Use whenever the user asks about IRON, ObjectFifo, Worker/Program/Runtime, NPU programming, AIE kernels, MLIR-AIE, iron.jit, iron.kernels or iron.algorithms, CompileTime/In/Out design signatures, vectorizing for AIE, MMUL or mac_dims, bfloat16/int8 on NPU, NPU1/NPU2 devices, AIE_PREPARE_FOR_PIPELINING, or wants help writing/debugging a design that targets AMD's XDNA NPU — even if they don't name "IRON" explicitly.
 ---
 
@@ -9,7 +9,16 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 
-# AIE Code Creator — AMD XDNA NPU Programming
+# IRON Design: Writing the Dataflow and Its Kernels
+
+Third of five phases in porting a model to AIE/NPU: it realizes, in IRON, the dataflow plan
+`aie-dataflow-presim` (phase 2) already proved bit-exact in software (see `aie-model-baseline`
+for phase 1, the numeric oracle behind both; `aie-hw-bringup` for phase 4; `aie-kernel-opt`/
+`aie-dataflow-opt` for phase 5, optimization once it's correct).
+
+This skill is also the direct entry point for work that isn't a full model port — one kernel,
+or a small standalone design — where phases 1 and 2 shrink down to simply knowing what to
+compute.
 
 This skill teaches you how to write efficient designs for AMD XDNA NPUs (AIE2 in Phoenix/Hawk, AIE2P in Strix/Krackan) using the IRON Python API and write the C++ AIE kernels that run on the compute tiles.
 
@@ -20,11 +29,18 @@ An IRON design has two halves:
 
 The design is compiled to MLIR, then linked against the C++ kernel objects and a host runtime to produce an `xclbin` that runs on the NPU.
 
-**You often don't have to write either half from scratch.** mlir-aie ships `aie.iron.kernels` (maintained, vectorized kernels for element-wise ops, reductions, activations, matmul, conv2d, vision) and `aie.iron.algorithms` (whole-design templates like `transform_parallel` and `reduce` that build the fifos, workers, and runtime for you). A multi-core bf16 element-wise design is ~15 lines of Python and zero C++. Start there and drop to hand-written code only where nothing fits — that's how you get a correct baseline fast, which is the thing worth optimizing later. See [`references/builtin_kernels.md`](references/builtin_kernels.md).
+**You often don't have to write either half from scratch.** mlir-aie ships `aie.iron.kernels` (maintained, vectorized kernels for element-wise ops, reductions, activations, matmul, conv2d, vision) and `aie.iron.algorithms` (whole-design templates like `transform_parallel` and `reduce` that build the fifos, workers, and runtime for you). A multi-core bf16 element-wise design is ~15 lines of Python and zero C++. Start there and drop to hand-written code only where nothing fits — that's how you get a correct baseline fast, which is the thing worth optimizing later. See [`programming_guide/kernels_library.md`](../../programming_guide/kernels_library.md).
 
 **Two libraries, one boundary.** The IRON API, `@iron.jit`, `aie.iron.kernels`, `aie.iron.algorithms`, and the `aie.iron` / `aie.helpers` packages all ship in the base **`Xilinx/mlir-aie`** toolchain (the `mlir_aie` wheel) — everything in this skill runs on that alone, *except* where noted. The **`amd/IRON`** repo is a separate downstream operator library (package `iron`, e.g. `iron.common`, `iron.operators`); its helpers — `MLIROperator`, `AIEContext`, `run_test`, `verify_buffer`, `AIERuntimeArgSpec` — are **not** in the wheel and require an `amd/IRON` checkout. When you use one of those, say so, and prefer wheel-only equivalents unless the user is working inside `amd/IRON`.
 
-**Targets mlir-aie 1.4.0.** Version 1.4.0 reworked the `Runtime`/`Program` API into an eager-callback style (`Runtime(seq_fn, fn_args)`, `fill`/`drain` as `ObjectFifoHandle` methods, `Program(device, rt, workers=[...])`) — a breaking change from 1.3.x's `Runtime()`/`rt.sequence()`/`rt.fill()`/`rt.start()` style. This skill's wheel-only examples assume 1.4.0 throughout; older pinned versions are out of scope. The one deliberate exception is the `amd/IRON` `MLIROperator` pattern (see `complete_examples.md` Example 8), which still pins an older wheel and intentionally keeps the old Runtime API — don't "fix" that snippet to the new style.
+**Targets this checkout's `aie.iron` API.** The `Runtime`/`Program` API here is the
+eager-callback style (`Runtime(seq_fn, fn_args)`, `fill`/`drain` as `ObjectFifoHandle` methods,
+`Program(device, rt, workers=[...])`) — a breaking change from the pre-1.4 `Runtime()`/
+`rt.sequence()`/`rt.fill()`/`rt.start()` style. This skill's wheel-only examples assume the
+current API throughout; older pinned versions are out of scope. The one deliberate exception is
+the `amd/IRON` `MLIROperator` pattern (see `complete_examples.md` Example 8), which still pins an
+older wheel and intentionally keeps the old Runtime API — don't "fix" that snippet to the new
+style.
 
 Three other 1.3.x names are gone in 1.4.0 and show up in stale examples across the internet: **`aie.iron.placers` / `SequentialPlacer`** (placement is now the `--aie-place-tiles` compiler pass; `resolve_program()` takes no placer), **`Worker(placement=...)`** (the kwarg is `tile=`), and **`NpuTensor.cpu()`** (use `.numpy()`, or `.to("cpu")` to move residency). If you catch yourself writing any of them, you're pattern-matching on old code.
 
@@ -44,7 +60,7 @@ Drop to the lower-level API only when the user needs a hand-scripted DMA channel
 
 **1. Identify the shape of the computation**: element-wise, reduction, matmul/conv, stencil/sliding-window, pipeline, broadcast?
 
-**2. Check whether a built-in already covers it** ([`references/builtin_kernels.md`](references/builtin_kernels.md)):
+**2. Check whether a built-in already covers it** ([`programming_guide/kernels_library.md`](../../programming_guide/kernels_library.md)):
 
 - Is the compute in `aie.iron.kernels`? (`relu`, `add`, `mul`, `scale`, `softmax`, `gelu`, `silu`, `reduce_add/min/max`, `mm`, `mv`, `cascade_mm`, `conv2dk1/k3`, vision ops, …)
 - Does the topology match an `aie.iron.algorithms` template? (`transform`, `transform_parallel`, `transform_binary`, `transform_parallel_binary`, `reduce`, `for_each`, the `row_at_a_time`/`sliding_3row` conv pipelines)
@@ -67,14 +83,14 @@ Load the ones you need; don't pre-read all of them.
 
 | File | When to read |
 |------|--------------|
-| [`references/builtin_kernels.md`](references/builtin_kernels.md) | **Read first.** `aie.iron.kernels` catalog, `aie.iron.algorithms` templates, `In`/`Out`/`CompileTime[T]` jit signatures, `.mac_dims` |
+| [`programming_guide/kernels_library.md`](../../programming_guide/kernels_library.md) | **Read first.** `aie.iron.kernels` catalog, kernel-signature gotchas, `In`/`Out`/`CompileTime[T]` jit signatures (below), `.mac_dims` ([`iron_configuration.md`](../../programming_guide/iron_configuration.md)) |
 | [`references/architecture.md`](references/architecture.md) | Hardware limits, data types & vector widths, tile layout, NPU1 vs NPU2 |
-| [`references/python_api.md`](references/python_api.md) | `Program`, `Worker`, `ObjectFifo`, `Runtime`, `Kernel`, `Buffer`, `iron.jit` signatures and examples |
+| [`programming_guide/section-2/README.md`](../../programming_guide/section-2/README.md) and [`docs/api/iron.md`](../../docs/api/iron.md) | `Program`, `Worker`, `ObjectFifo`, `Runtime`, `Kernel`, `Buffer`, `iron.jit` — the full data-movement deep dive (2a–2h) plus the live API reference |
 | [`references/patterns.md`](references/patterns.md) | Copy-ready Python skeletons: single-core, multi-core data-parallel, broadcast, split/join, producer-consumer pipeline, reduction, RTP+barrier |
 | [`references/kernel_intrinsics.md`](references/kernel_intrinsics.md) | C++ kernel cheatsheet: `aie::add/mul/mac`, `aie::load_v/store_v`, MMUL/accumulator, reductions, broadcast — with template skeletons |
 | [`programming_guide/section-3/README.md`](../../programming_guide/section-3/README.md) / [`section-4b`](../../programming_guide/section-4/section-4b/README.md) | Building/running a design end-to-end, enabling trace |
 | [`references/pitfalls.md`](references/pitfalls.md) | Anti-patterns: deadlocks, bad placement, alignment, restrict misuse, divisibility, RTP races |
-| [`references/low_level_api.md`](references/low_level_api.md) | Lower-level API (`@device`, `@core`, explicit `tile(col,row)`) — only when the high-level API is insufficient |
+| [`programming_guide/section-2/section-2g/README.md`](../../programming_guide/section-2/section-2g/README.md) | Lower-level API (`@device`, `@core`, explicit `tile(col,row)`, `Flow`/`PacketFlow`/`CascadeFlow`) — only when the high-level API is insufficient |
 | [`references/complete_examples.md`](references/complete_examples.md) | Nine full runnable designs: library form (no C++) → passthrough → inline `source_string` kernel → precompiled Kernel → TAP/task_group → split/join → ReLU jit → two-stage pipeline → MLIROperator pattern (last one is `amd/IRON`-only; see below) |
 | [`assets/python_design_skeleton.py`](assets/python_design_skeleton.py) | Drop-in template for a JIT-compiled multi-core design |
 | [`assets/kernel_skeleton.cc`](assets/kernel_skeleton.cc) | Drop-in template for a templated, vectorized C++ kernel |
@@ -95,7 +111,7 @@ Load the ones you need; don't pre-read all of them.
 
 ## Python design coding rules
 
-- Prefer `aie.iron.kernels` / `aie.iron.algorithms` over rebuilding equivalent compute or topology by hand (see [`references/builtin_kernels.md`](references/builtin_kernels.md)).
+- Prefer `aie.iron.kernels` / `aie.iron.algorithms` over rebuilding equivalent compute or topology by hand (see [`programming_guide/kernels_library.md`](../../programming_guide/kernels_library.md)).
 - Declare `@iron.jit` tensor arguments with `In` / `Out` / `InOut`, and specialization knobs as keyword-only `CompileTime[T]` parameters. An unannotated non-tensor parameter with a default is rejected at decoration time — there's no runtime-scalar plumbing, so the default would be baked in and any per-call override silently ignored.
 - Use `range_` from `aie.iron.controlflow`, **not** Python's `range`, for loops that should be emitted as AIE loops. Plain `range` unrolls at design-build time and will explode your code size or fail.
 - Type tensors with `np.ndarray[(N,), np.dtype[T]]` — the shape and dtype must match what the kernel expects.
@@ -106,17 +122,17 @@ Load the ones you need; don't pre-read all of them.
 
 ## Where this skill stops
 
-This skill covers getting a **correct, reasonable first design** written. Upstream mlir-aie
-ships a phased skill family (`mlir-aie/skills/`) for what comes before and after — don't
-re-derive their methodology here, point at it:
+This skill covers getting a **correct, reasonable first design** written. The rest of this
+directory's phased skill family covers what comes before and after — don't re-derive their
+methodology here, point at it:
 
 | Phase | Skill | Covers |
 |-------|-------|--------|
-| Prepare the model | `aie-model-baseline` | Quantization scheme, ONNX export, bit-exact numeric oracle |
-| Validate pre-hardware | `aie-dataflow-presim` | Threaded ObjectFifo mock for deadlock/depth bugs; prove novel decompositions in numpy first |
-| First hardware bring-up | `aie-hw-bringup` | Block-by-block bring-up against the oracle, methodical bisection |
-| Optimize (micro) | `aie-kernel-opt` | Make one compiled kernel faster: the remarks report, then a back-to-back A/B on the NPU |
-| Optimize (macro) | `aie-dataflow-opt` | NOOP-ablation ranking, placement/overlays, DMA bandwidth modeling |
+| 1 — Prepare the model | `aie-model-baseline` | Quantization scheme, ONNX export, bit-exact numeric oracle |
+| 2 — Plan the dataflow | `aie-dataflow-presim` | Threaded ObjectFifo mock for deadlock/depth bugs; prove the dataflow plan and novel decompositions in numpy first |
+| 4 — First hardware bring-up | `aie-hw-bringup` | Block-by-block bring-up against the oracle, methodical bisection |
+| 5 — Optimize (micro) | `aie-kernel-opt` | Make one compiled kernel faster: the remarks report, then a back-to-back A/B on the NPU |
+| 5 — Optimize (macro) | `aie-dataflow-opt` | NOOP-ablation ranking, placement/overlays, DMA bandwidth modeling |
 
 Two habits from those skills are worth carrying into design time, because they're cheap now
 and expensive later: **validate one block at a time against a reference** rather than wiring
@@ -127,9 +143,9 @@ mechanism you haven't built before** instead of debugging it inside the full des
 
 | User says | Reach for |
 |-----------|-----------|
-| "Element-wise op (add/mul/relu/scale) on a vector" | [`builtin_kernels.md`](references/builtin_kernels.md) `kernels.add/mul/relu/scale` + `transform_parallel` — only fall back to [`patterns.md`](references/patterns.md) §Element-wise + [`kernel_intrinsics.md`](references/kernel_intrinsics.md) §Element-wise if the dtype/tile isn't supported |
-| "Matrix multiply / GEMM / conv" | [`builtin_kernels.md`](references/builtin_kernels.md) `kernels.mm`/`conv2dk*` (+ `.mac_dims`), then [`patterns.md`](references/patterns.md) §GEMM-style + [`kernel_intrinsics.md`](references/kernel_intrinsics.md) §MMUL |
-| "Sum / max / argmax / softmax" | [`builtin_kernels.md`](references/builtin_kernels.md) `kernels.reduce_*`/`softmax` + `algorithms.reduce`, then [`patterns.md`](references/patterns.md) §Reduction |
+| "Element-wise op (add/mul/relu/scale) on a vector" | [`kernels_library.md`](../../programming_guide/kernels_library.md) `kernels.add/mul/relu/scale` + `transform_parallel` — only fall back to [`patterns.md`](references/patterns.md) §Element-wise + [`kernel_intrinsics.md`](references/kernel_intrinsics.md) §Element-wise if the dtype/tile isn't supported |
+| "Matrix multiply / GEMM / conv" | [`kernels_library.md`](../../programming_guide/kernels_library.md) `kernels.mm`/`conv2dk*` (+ `.mac_dims`), then [`patterns.md`](references/patterns.md) §GEMM-style + [`kernel_intrinsics.md`](references/kernel_intrinsics.md) §MMUL |
+| "Sum / max / argmax / softmax" | [`kernels_library.md`](../../programming_guide/kernels_library.md) `kernels.reduce_*`/`softmax` + `algorithms.reduce`, then [`patterns.md`](references/patterns.md) §Reduction |
 | "Same data to many cores" | [`patterns.md`](references/patterns.md) §Broadcast |
 | "Split a big tensor across N workers" | [`patterns.md`](references/patterns.md) §Distribute/Join |
 | "Two-stage pipeline (kernel1 → kernel2)" | [`patterns.md`](references/patterns.md) §Producer-consumer pipeline |
@@ -140,3 +156,12 @@ mechanism you haven't built before** instead of debugging it inside the full des
 | "My fix changed nothing" | [`pitfalls.md`](references/pitfalls.md) §Stale JIT/xclbin cache |
 | "Slow / not pipelining" | [`pitfalls.md`](references/pitfalls.md) §Missing __restrict, then the `aie-kernel-opt` skill |
 | "How do I run / test this?" | [`programming_guide/section-3/README.md`](../../programming_guide/section-3/README.md) |
+
+## Checklist before moving to phase 4 (`aie-hw-bringup`)
+
+- [ ] Built-in kernels/algorithms checked first ([`kernels_library.md`](../../programming_guide/kernels_library.md)); hand-written C++ only where nothing fit, and that choice stated explicitly
+- [ ] Design resolves to MLIR and compiles without verifier errors
+- [ ] Topology and FIFO depths match the plan `aie-dataflow-presim` validated — any divergence re-checked against that plan, not assumed harmless
+- [ ] Every `acquire`/`release` pair balanced; argument lists and tile placements match what each `Worker`/`Kernel` expects
+- [ ] Data sizes respect the hardware divisibility/alignment constraints in [`references/architecture.md`](references/architecture.md)
+- [ ] Checked against [`references/pitfalls.md`](references/pitfalls.md) before declaring done

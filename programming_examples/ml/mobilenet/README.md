@@ -60,23 +60,20 @@ source tree, for an A/B of kernel changes on the same design.
 
 ## Performance
 
-On Strix (NPU2), one launch of the full network takes, at each batch of one
-`--dynamic` compile:
-
-| Batch | Per launch | Per image |
-|---|---|---|
-| 1 | 306 us | 306 us |
-| 4 | 519 us | 130 us |
-| 16 | 1386 us | 87 us |
-| 64 | 4815 us | 75 us |
+The nightly runs every batch from one `--dynamic` compile on NPU2 and
+records, per launch and per image, the dispatch and NPU time (the fastest of
+its launches after warm-up ones, with the median and MAD), the host overhead
+around it and the whole call. The current figures and their history are on
+the [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=performance).
+To measure it yourself:
 
 ```bash
 python3 -m mobilenet.aie2_mobilenet_iron --dynamic 1 4 16 64 -w 20 -i 20
 ```
 
-Each is the fastest of 20 launches after 20 warm-up launches, NPU time: the
-host's clock around the dispatch's submit and completion, without the Python
-call around it (`aie.utils.benchmark` prints both, with the median and MAD).
+NPU time is the host's clock around the dispatch's submit and completion,
+without the Python call around it (`aie.utils.benchmark` prints both, with
+the median and MAD).
 
 ## Lit-driven verification
 

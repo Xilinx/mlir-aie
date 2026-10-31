@@ -45,7 +45,8 @@ from ...helpers.util import (
 )
 from ...utils import trace as trace_utils
 from ...utils.compile.jit.markers import _DispatchParameter
-from ..dataflow.objectfifo import ObjectFifoHandle
+from ..dataflow.objectfifo import ObjectFifoHandle, ObjectFifoLink
+from ..dataflow.objectfifopool import ObjectFifoPoolHandle
 from ..resolvable import DeviceResources, Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_configuration, active_sequence, active_sequence_scope
@@ -89,15 +90,29 @@ class ActiveSequence:
         self._open_task_groups: list[TaskGroup] = []
         self._used_default = False
         self._used_explicit = False
+        # sync_parameters() calls so far; only the first emits a sync.
+        self.sync_requests = 0
+        # The merged step whose body is running, if any (Runtime.merge).
+        self.step: Runtime | None = None
 
     @property
     def runtime(self) -> "Runtime":
         """The Runtime whose sequence body is running."""
         return self._runtime
 
+    @property
+    def body(self) -> ir.Block:
+        """The sequence's entry block, which holds the body's top-level ops."""
+        return self._seq_op.body.blocks[0]
+
     def note_fifo(self, handle: ObjectFifoHandle) -> None:
-        """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
+        """Record that ``handle`` is driven from the runtime (its shim endpoint).
+
+        A merged step running records it as its own as well.
+        """
         self._runtime._fifos[handle] = None
+        if self.step is not None:
+            self.step._fifos[handle] = None
 
     def resolve_in_device(self, resolvable) -> None:
         """Resolve a Buffer or Lock the body reaches first, ahead of the sequence.
@@ -335,7 +350,12 @@ class Runtime(DeviceResources, Resolvable):
         self._task_group_index = itertools.count()
 
     @classmethod
-    def merge(cls, runtimes: Sequence[Runtime], name: str | None = None) -> Runtime:
+    def merge(
+        cls,
+        runtimes: Sequence[Runtime],
+        name: str | None = None,
+        run: Callable[[Sequence[tuple[Runtime, tuple]]], None] | None = None,
+    ) -> Runtime:
         """Return one Runtime whose sequence runs the bodies of ``runtimes`` in order.
 
         For steps that run back to back on one configuration: they issue one
@@ -344,15 +364,25 @@ class Runtime(DeviceResources, Resolvable):
         with a DispatchTime parameter several steps forward kept once, and it
         registers their flows, locks, tile DMAs and scratchpad parameters.
 
+        Each step's task groups close before the next step issues, which frees
+        its transfers it did not await. That suits steps that each await what
+        they need; steps joined on-chip, where a step's input completes only
+        once a later step drains, give ``run`` to issue them together.
+
         Args:
             runtimes: The steps, in the order their bodies run.
             name: The merged Runtime's name, or None to have one given.
+            run: Called inside the merged sequence with each step and the
+                arguments it takes, in order, in place of running the bodies
+                one after another; None runs them so.
 
         Returns:
             The merged Runtime.
 
         Raises:
-            ValueError: One of ``runtimes`` already belongs to a configuration.
+            ValueError: One of ``runtimes`` already belongs to a configuration;
+                or, once the sequence is emitted, two steps that sync parameters
+                drive one Worker that waits for them each pass.
             TypeError: The steps forward DispatchTime parameters of different
                 designs.
         """
@@ -378,11 +408,28 @@ class Runtime(DeviceResources, Resolvable):
                     fn_args.append(arg)
 
         def body(*args):
-            for runtime, slot in zip(runtimes, slots):
-                runtime._seq_fn(*(args[i] for i in slot))
-                # Closing the step's task groups awaits its wait=True
-                # transfers before the next step issues; the rest are freed.
-                active_sequence().finalize(runtime._strict_task_groups)
+            calls = [
+                (runtime, tuple(args[i] for i in slot))
+                for runtime, slot in zip(runtimes, slots)
+            ]
+            seq = active_sequence()
+            if run is not None:
+                run(calls)
+                # run issues the steps together, so once the sequence asks for
+                # a second sync any step may be one that asked.
+                synced = [seq.sync_requests > 1] * len(calls)
+            else:
+                synced = []
+                for runtime, step_args in calls:
+                    requests = seq.sync_requests
+                    seq.step = runtime
+                    runtime._seq_fn(*step_args)
+                    seq.step = None
+                    synced.append(seq.sync_requests > requests)
+                    # Closing the step's task groups awaits its wait=True
+                    # transfers before the next step issues; the rest are freed.
+                    seq.finalize(runtime._strict_task_groups)
+            _refuse_a_worker_synced_twice(runtimes, synced, seq)
 
         merged = cls(
             body,
@@ -757,7 +804,95 @@ def sync_parameters() -> None:
     """Emit ``aiex.sync_scratchpad_parameters_from_host`` in the sequence body.
 
     Call after all scratchpad parameters have been written on the host side and
-    before starting workers that read them.
+    before starting workers that read them, at the top level of the sequence
+    body: the sync op must sit directly in its ``aie.runtime_sequence``, so it
+    cannot go under ``range_`` or ``if_``. A sequence syncs once: the sync
+    stages every parameter of the device and releases every core waiting on
+    one, so a later call in the same sequence (a merged step's) emits nothing,
+    the earlier sync having already run ahead of it. A Worker that waits for
+    parameters each pass therefore makes one pass per sequence, and
+    ``Runtime.merge`` refuses two syncing steps that both drive one.
+
+    Raises:
+        ValueError: The call is inside a ``range_`` or ``if_`` of the body.
     """
-    active_sequence()  # ensure we're inside a sequence body
-    _SyncParametersTask().resolve()
+    seq = active_sequence()
+    if ir.InsertionPoint.current.block != seq.body:
+        raise ValueError(
+            "sync_parameters() must be called at the top level of a runtime "
+            "sequence body, not under range_ or if_: "
+            "aiex.sync_scratchpad_parameters_from_host sits directly in its "
+            "aie.runtime_sequence"
+        )
+    seq.sync_requests += 1
+    if seq.sync_requests == 1:
+        _SyncParametersTask().resolve()
+
+
+def _refuse_a_worker_synced_twice(
+    steps: list[Runtime], synced: list[bool], seq: ActiveSequence
+) -> None:
+    """Refuse two syncing merged steps that drive one Worker waiting each pass.
+
+    The merged sequence syncs once, and a ``while_true`` Worker with
+    ``wait_for_parameters`` makes one pass per sync, so the second step's
+    pass would never start. A step drives the Workers its fifos reach,
+    through any chain of links; a fifo the sequence moves that no step
+    declares may be any step's. A pool handle states one end only, so a
+    Worker holding one counts as driven by every syncing step.
+
+    Args:
+        steps: The merged steps, in order.
+        synced: Whether each step asked for a sync.
+        seq: The merged sequence.
+
+    Raises:
+        ValueError: Two syncing steps drive one such Worker.
+    """
+    configuration = seq.runtime.configuration
+    waiting = [
+        worker
+        for worker in (configuration.workers if configuration is not None else [])
+        if worker.while_true and worker.wait_for_parameters
+    ]
+    if sum(synced) < 2 or not waiting:
+        return
+    declared = {handle for step in steps for handle in step.fifos}
+    stray = [handle for handle in seq.runtime.fifos if handle not in declared]
+    reached: list[list] = []
+    for step in steps:
+        endpoints = []
+        seen = set()
+        fifos = [handle._object_fifo for handle in [*step.fifos, *stray]]
+        while fifos:
+            fifo = fifos.pop()
+            if id(fifo) in seen:
+                continue
+            seen.add(id(fifo))
+            for handle in [fifo._prod, *fifo._cons]:
+                endpoint = handle.endpoint if handle is not None else None
+                endpoints.append(endpoint)
+                if isinstance(endpoint, ObjectFifoLink):
+                    fifos.extend(
+                        linked._object_fifo
+                        for linked in [*endpoint._srcs, *endpoint._dsts]
+                    )
+        reached.append(endpoints)
+    for worker in waiting:
+        untraced = any(isinstance(h, ObjectFifoPoolHandle) for h in worker.fifos)
+        driving = [
+            i
+            for i, endpoints in enumerate(reached)
+            if synced[i]
+            and (untraced or any(endpoint is worker for endpoint in endpoints))
+        ]
+        if len(driving) > 1:
+            first, second = (steps[i] for i in driving[:2])
+            raise ValueError(
+                f"Runtime.merge: steps {driving[0]} ({first.name}) and "
+                f"{driving[1]} ({second.name}) both sync parameters and drive "
+                f"the Worker running {worker.core_fn!r} on {worker.tile}, which "
+                "waits for parameters each pass of its loop. A sequence syncs "
+                "once, so that Worker would make one pass where the steps need "
+                "two; run them as separate dispatches."
+            )

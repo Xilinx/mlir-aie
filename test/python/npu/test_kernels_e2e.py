@@ -417,7 +417,9 @@ _LEAK_TIES = 1024
 
 
 @iron.jit
-def _after_a_kernel_design(x: In, y: In, z: Out, *, first: CompileTime[str]):
+def _after_a_kernel_design(
+    x: In, y: In, z: Out, *, first: CompileTime[str], kept: CompileTime[str]
+):
     mul = kernels.mul(tile_size=_LEAK_TIES)
     x_ty, y_ty, z_ty = mul.arg_types()
     of_x = ObjectFifo(x_ty, name="x", depth=1)
@@ -432,6 +434,13 @@ def _after_a_kernel_design(x: In, y: In, z: Out, *, first: CompileTime[str]):
             Buffer(conv_out_ty, name="conv_out"),
         ]
         kernel, scalars = conv, (32, 8, 8, 1)
+    elif first == "grid_decode":
+        kernel = kernels.grid_decode(width=4, channels=8, obj_at=4, cls_at=5, classes=2)
+        bufs = [
+            Buffer(t, name=f"grid_{i}", initial_value=np.zeros(*kd.shape_dtype(t)))
+            for i, t in enumerate(kernel.arg_types()[:2])
+        ]
+        scalars = (0, 8)
     else:
         fused = kernels.fused_mm(rounding="floor")
         kernel = fused.mm_fused_k_step
@@ -441,9 +450,9 @@ def _after_a_kernel_design(x: In, y: In, z: Out, *, first: CompileTime[str]):
         ]
         scalars = (0,)
 
-    def core(of_x, of_y, of_z, a, b, c, conv_even, kernel, mul):
-        conv_even()
-        kernel(a, b, c, *scalars)
+    def core(of_x, of_y, of_z, setup, kernel, mul, *bufs):
+        setup()
+        kernel(*bufs, *scalars)
         tx, ty, tz = of_x.acquire(1), of_y.acquire(1), of_z.acquire(1)
         mul(tx, ty, tz)
         of_x.release(1)
@@ -452,8 +461,8 @@ def _after_a_kernel_design(x: In, y: In, z: Out, *, first: CompileTime[str]):
 
     worker = Worker(
         core,
-        [of_x.cons(), of_y.cons(), of_z.prod(), *bufs]
-        + [kernels.conv_even(), kernel, mul],
+        [of_x.cons(), of_y.cons(), of_z.prod()]
+        + [kernels.set_rounding(kernels.RoundingMode(kept)), kernel, mul, *bufs],
     )
 
     def seq(host_x, host_y, host_z, x_in, y_in, z_out):
@@ -465,30 +474,70 @@ def _after_a_kernel_design(x: In, y: In, z: Out, *, first: CompileTime[str]):
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
-@pytest.mark.kernel_check("conv2dk1", "fused_mm", "mul", invalidates_timing=True)
-@pytest.mark.parametrize(
-    "first, odd_below", [("conv2dk1", False), ("mm_fused_k_step", True)]
+@pytest.mark.kernel_check(
+    "conv2dk1", "fused_mm", "grid_decode", "mul", invalidates_timing=True
 )
-def test_a_kernel_leaves_the_rounding_mode_as_it_found_it(first, odd_below):
+@pytest.mark.parametrize(
+    "first, kept, odd_below",
+    [
+        ("conv2dk1", "conv_even", False),
+        ("mm_fused_k_step", "conv_even", True),
+        ("grid_decode", "floor", True),
+    ],
+)
+def test_a_kernel_leaves_the_rounding_mode_as_it_found_it(first, kept, odd_below):
     """A kernel that needs its own rounding must put the core's back.
 
-    The setup leaves conv_even for whatever runs next. conv2dk1 rounds
+    The setup leaves ``kept`` for whatever runs next. conv2dk1 rounds
     positive_inf, which rounds a tie up where conv_even rounds it down (an
     even lower neighbour); a floor build of fused_mm's k step rounds down
-    where conv_even rounds up (an odd one). mul run after either shows which
-    mode it found.
+    where conv_even rounds up (an odd one), and grid_decode's conv_even
+    does the same against a floor core. mul run after each shows which mode
+    it found.
     """
     x, y, below = _bf16_product_ties(_LEAK_TIES, odd_below=odd_below)
-    want = below + int(odd_below)
+    want = below + int(kept == "conv_even" and odd_below)
     z = iron.zeros(_LEAK_TIES, dtype=bfloat16, device="npu")
     _after_a_kernel_design(
-        iron.tensor(x, device="npu"), iron.tensor(y, device="npu"), z, first=first
+        iron.tensor(x, device="npu"),
+        iron.tensor(y, device="npu"),
+        z,
+        first=first,
+        kept=kept,
     )
     got = z.numpy().astype(bfloat16)
     assert np.array_equal(got, _bf16_from_bits(want)), (
         f"{int((got != _bf16_from_bits(want)).sum())} of {_LEAK_TIES} ties "
         f"rounded the other way: {first} left the core in its own rounding mode"
     )
+
+
+@pytest.mark.kernel_check("grid_decode")
+@pytest.mark.parametrize("stride", [8, 16, 32])
+def test_grid_decode_keeps_a_tiny_exp_through_the_stride(stride):
+    """exp(dw) * stride near float32's ends, every bf16 dw and dh there.
+
+    Below ln(FLT_MIN) exp alone is subnormal, but times the stride it can be
+    normal again (exp(-88) * 32 =~ 1.9e-37), so flushing exp to zero before
+    the stride misses the contract's relative tolerance; near 88 the
+    product overflows first. Random data almost never lands in either band.
+    """
+    fn = kernels.grid_decode()
+    band = np.arange(1 << 16, dtype=np.uint32).astype(np.uint16).view(bfloat16)
+    band = band[np.isfinite(band.astype(np.float32))]
+    band = band[(np.abs(band.astype(np.float32)) >= 80) & (np.abs(band) <= 105)]
+    width, channels = 52, 144
+    calls = -(-band.size // width)
+    design = kd.KernelDesign(fn, calls=calls, scalars=(3, stride))
+    inputs = design.sample_inputs(np.random.default_rng(stride))
+    cells = inputs[0].reshape(calls, width, channels)
+    flat = np.zeros(calls * width, bfloat16)
+    flat[: band.size] = band
+    cells[..., 2] = flat.reshape(calls, width)
+    cells[..., 3] = flat[::-1].reshape(calls, width)
+    got = design.run(inputs)
+    verdict = design.check(got, inputs)
+    assert verdict, verdict.detail
 
 
 def _skips_first_vector():

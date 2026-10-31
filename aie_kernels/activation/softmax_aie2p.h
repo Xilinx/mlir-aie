@@ -16,21 +16,37 @@
 #define SM_VEC_LEN 32   // 32
 #define log2e 1.4453125 // 1.44269504089
 
+// A build's own macros fold a runtime-chosen scale into log2(e): the three
+// bf16 limbs (or the single one) of scale * log2(e), host-split the same way
+// (python/iron/kernels/datamovement.py's limbs_f32_split) as log2(e) alone
+// below. Left undefined, these default to exactly log2(e), so a build that
+// asks for no scale keeps today's bits.
+#ifndef SOFTMAX_SCALE_LOG2E_HI
+#define SOFTMAX_SCALE_LOG2E_HI 0x3fb9
+#define SOFTMAX_SCALE_LOG2E_MID 0xbb2c
+#define SOFTMAX_SCALE_LOG2E_LO 0x36ec
+#endif
+#ifndef SOFTMAX_SCALE_LOG2E
+#define SOFTMAX_SCALE_LOG2E log2e
+#endif
+
 using namespace aie;
 
-// x * log2(e) in f32. Under EXP2_BF16_ACCURATE log2(e) is three bf16 limbs,
-// to 2^-26, summed smallest product first; otherwise it is bf16(log2(e)),
-// 1.8e-3 low. A row's maximum is scaled through this too, so its own exponent
+// x * scale * log2(e) in f32 (scale 1 unless a build's macros say otherwise,
+// above). Under EXP2_BF16_ACCURATE it is three bf16 limbs, to 2^-26, summed
+// smallest product first; otherwise it is a single bf16 constant, 1.8e-3 low
+// at scale 1. A row's maximum is scaled through this too, so its own exponent
 // argument is exactly 0.
 static inline aie::accum<accfloat, SM_VEC_LEN>
 scale_log2e(aie::vector<bfloat16, SM_VEC_LEN> x) {
 #ifdef EXP2_BF16_ACCURATE
   aie::accum<accfloat, SM_VEC_LEN> t =
-      aie::mul(x, bf16_splat<SM_VEC_LEN>(0x36ec));
-  t = aie::mac(t, x, bf16_splat<SM_VEC_LEN>(0xbb2c));
-  return aie::mac(t, x, bf16_splat<SM_VEC_LEN>(0x3fb9));
+      aie::mul(x, bf16_splat<SM_VEC_LEN>(SOFTMAX_SCALE_LOG2E_LO));
+  t = aie::mac(t, x, bf16_splat<SM_VEC_LEN>(SOFTMAX_SCALE_LOG2E_MID));
+  return aie::mac(t, x, bf16_splat<SM_VEC_LEN>(SOFTMAX_SCALE_LOG2E_HI));
 #else
-  return aie::mul(x, aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e));
+  return aie::mul(
+      x, aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)SOFTMAX_SCALE_LOG2E));
 #endif
 }
 
@@ -42,14 +58,27 @@ exp2_arg(aie::vector<bfloat16, SM_VEC_LEN> x,
 #ifdef EXP2_BF16_ACCURATE
   return aie::add(scale_log2e(x), neg_m);
 #else
-  return aie::mac(neg_m, x, (bfloat16)log2e);
+  return aie::mac(neg_m, x, (bfloat16)SOFTMAX_SCALE_LOG2E);
 #endif
 }
 
+// The lanes of the SM_VEC_LEN elements from base that lie in [lo, hi).
+static inline aie::mask<SM_VEC_LEN> span_lanes(int32_t base, int32_t lo,
+                                               int32_t hi) {
+  auto below = [](int32_t n) -> uint32_t {
+    return n <= 0 ? 0u : n >= SM_VEC_LEN ? ~0u : (1u << n) - 1;
+  };
+  return aie::mask<SM_VEC_LEN>::from_uint32(below(hi - base) &
+                                            ~below(lo - base));
+}
+
+// With Span, the exponentials outside [lo, hi) are 0 before they are summed
+// or stored, whatever the scale makes of those inputs' arguments.
+template <bool Span = false>
 static inline __attribute__((always_inline)) void
 softmax_simple_bf16(bfloat16 *restrict input_vector,
-                    bfloat16 *restrict output_vector,
-                    const int32_t vector_size) {
+                    bfloat16 *restrict output_vector, const int32_t vector_size,
+                    const int32_t lo = 0, const int32_t hi = 0) {
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
   const int elem_iters = (uint32_t)vector_size / SM_VEC_LEN;
@@ -95,9 +124,15 @@ softmax_simple_bf16(bfloat16 *restrict input_vector,
   aie::accum<accfloat, SM_VEC_LEN> exp_sum = aie::zeros<accfloat, SM_VEC_LEN>();
   in = input_vector;
   bfloat16 *__restrict out = output_vector;
+  [[maybe_unused]] int32_t base = 0;
   auto exp_pass = [&]() {
     auto arg = exp2_arg(aie::load_v<SM_VEC_LEN>(in), neg_max);
     auto e = exp2_bf16(arg.to_vector<float>());
+    if constexpr (Span) {
+      e = aie::select(aie::zeros<bfloat16, SM_VEC_LEN>(), e,
+                      span_lanes(base, lo, hi));
+      base += SM_VEC_LEN;
+    }
 #if AIE_TUNED_AIE2 && defined(EXP2_BF16_ACCURATE)
     exp_sum = aie::add(exp_sum, e);
 #else
@@ -123,6 +158,7 @@ softmax_simple_bf16(bfloat16 *restrict input_vector,
   using vec_t = aie::vector<bfloat16, SM_VEC_LEN>;
   in = input_vector;
   out = output_vector;
+  base = 0;
   VERSIONED_LOOP(4, elem_iters, [&]() {
     vec_t e;
     if constexpr (recompute)
@@ -130,6 +166,11 @@ softmax_simple_bf16(bfloat16 *restrict input_vector,
           exp2_arg(aie::load_v<SM_VEC_LEN>(in), neg_max).to_vector<float>());
     else
       e = aie::load_v<SM_VEC_LEN>(out);
+    if constexpr (Span && recompute) {
+      e = aie::select(aie::zeros<bfloat16, SM_VEC_LEN>(), e,
+                      span_lanes(base, lo, hi));
+      base += SM_VEC_LEN;
+    }
     aie::store_v(out, aie::mul(e, sum_inv).to_vector<bfloat16>());
     in += SM_VEC_LEN;
     out += SM_VEC_LEN;
@@ -519,6 +560,32 @@ void mask_bf16(bfloat16 *inout, const int32_t unmasked_size,
   for (int32_t i = unmasked_size; i < total_size; i++) {
     inout[i] = std::numeric_limits<bfloat16>::lowest();
   }
+}
+
+// Fill [0, valid_from) with -inf: mask_bf16's head, for a sliding window's
+// lower edge.
+void mask_head_bf16(bfloat16 *inout, const int32_t valid_from) {
+  for (int32_t i = 0; i < valid_from; i++) {
+    inout[i] = std::numeric_limits<bfloat16>::lowest();
+  }
+}
+
+// softmax_bf16 over the row's valid span [lo, hi) of input_size elements:
+// [0, lo) and [hi, input_size) are masked to lowest first, so the row's
+// maximum is the span's, and their exponentials are then zeroed, so they are
+// exactly 0 once normalized at any scale (at scale 0 a masked element's
+// exponent argument is 0 like every other). The live-region sequencing
+// that calls this already trims whole dead vectors from input_size, leaving
+// lo and hi each within one vector of 0 and input_size -- a causal row needs
+// only hi short of input_size, a sliding window both edges.
+void softmax_span_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
+                       const int32_t input_size, const int32_t lo,
+                       const int32_t hi) {
+  event0();
+  mask_head_bf16(input, lo);
+  mask_bf16(input, hi, input_size);
+  softmax_simple_bf16<true>(input, output, input_size, lo, hi);
+  event1();
 }
 
 // softmax_bf16 over `rows` rows of `row_len` each.

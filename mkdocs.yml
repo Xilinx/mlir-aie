@@ -257,12 +257,12 @@ nav:
   - Agentic Programming:
     - Introduction: skills/agentic_programming.md
     - Agent Skills Overview: skills/README.md
-    - "Phase 0: Write the Design": skills/aie-code-creator/SKILL.md
     - "Phase 1: Model Baseline": skills/aie-model-baseline/SKILL.md
     - "Phase 2: Dataflow Pre-Sim": skills/aie-dataflow-presim/SKILL.md
-    - "Phase 3: HW Bring-up": skills/aie-hw-bringup/SKILL.md
-    - "Phase 4: Kernel Optimization": skills/aie-kernel-opt/SKILL.md
-    - "Phase 4: Dataflow Optimization": skills/aie-dataflow-opt/SKILL.md
+    - "Phase 3: IRON Design": skills/aie-iron-design/SKILL.md
+    - "Phase 4: HW Bring-up": skills/aie-hw-bringup/SKILL.md
+    - "Phase 5: Kernel Optimization": skills/aie-kernel-opt/SKILL.md
+    - "Phase 5: Dataflow Optimization": skills/aie-dataflow-opt/SKILL.md
   - API & Internals:
     - Overview: api/index.md
     - Python API:
@@ -286,5 +286,6 @@ nav:
   - Community:
     - Used in / Cited in: UsedIn.md
     - Contributing: CONTRIBUTING.md
+    - Maintainer Dashboard: https://xilinx.github.io/mlir-aie/dashboard/
     - Roadmap: ROADMAP.md
     - Security: SECURITY.md

@@ -114,6 +114,22 @@ def test_a_declaration_names_a_partial_domain_by_its_function():
     assert "cores in widths" in repr(Partial.declaration)
 
 
+class Banded(Base):
+    M: int = param()
+    rows: int = tunable(default=4)
+    a = In(M)
+    c = Out(M)
+    edges = per_call(count=lambda op: op.rows, derive=lambda op: (0,) * op.rows)
+
+
+def test_a_declaration_records_a_per_call_vectors_count():
+    d = Banded.declaration
+    assert [m.name for m in d.per_calls] == ["edges"]
+    count = d.per_calls[0].count
+    assert callable(count) and count(Banded(M=8)) == 4
+    assert "  per_call  edges[f(op)]" in repr(d)
+
+
 def declare(body: dict, annotations: dict | None = None, base: type = Base):
     return type("Bad", (base,), {**body, "__annotations__": annotations or {}})
 
@@ -154,11 +170,47 @@ M.name, T.name, F.name = "M", "T", "F"
         (In(M, 2.0), "dimension 2.0 is not a param\\(\\) of Bad or an integer"),
         (In(Select(M, (T,), (1,))), "dimension T is a tunable\\(\\)"),
         (In(Select(M, (Select(M, (T,), (1,)),), (1,))), "dimension T is a tunable"),
+        (In(Select(T, (M,), (1,))), "flag <tunable T> must be a param\\(\\) of Bad"),
+        (In(Select(1, (M,), (1,))), "flag 1 must be a param\\(\\) of Bad"),
+        (
+            In(Select(M, (Select(GEMV.b_col_maj, (M,), (1,)),), (1,))),
+            "flag <param b_col_maj> must be a param\\(\\) of Bad",
+        ),
         (In(F, M, F), "at most one T | None dimension"),
         (In(M, when=T), "when=<tunable T> must be a param\\(\\)"),
         (In(M, when=True), "when=True must be a param\\(\\)"),
         (per_call(bounds=3), "per_call\\(bounds=3\\) must name a param\\(\\)"),
         (In(M, obj_shape=(2.5,)), "obj_shape dimension 2.5 is not"),
+        (In(Select(M, (M,), None)), "so it is an obj_shape, not a dimension"),
+        (
+            In(Select(M, (Select(M, (M,), None),), (M,))),
+            "so it is an obj_shape, not a dimension",
+        ),
+        (
+            In(Select(M, (M,), (Select(M, None, (M,)),))),
+            "so it is an obj_shape, not a dimension",
+        ),
+        (In(M, obj_shape=(Select(M, (M,), None), 2)), "is the whole obj_shape"),
+        (
+            In(M, obj_shape=Select(M, (Select(M, (M,), None),), (M,))),
+            "is the whole obj_shape",
+        ),
+        (
+            In(M, obj_shape=Select(M, (M,), (Select(M, None, (M,)),))),
+            "is the whole obj_shape",
+        ),
+        (
+            In(M, obj_shape=Select(M, (Select(M, (M,), None),), None)),
+            "is the whole obj_shape",
+        ),
+        (
+            In(M, obj_shape=Select(M, (Select(GEMV.b_col_maj, (M,), (2,)),), (M,))),
+            "obj_shape Select\\(\\) flag <param b_col_maj> is not a param\\(\\)",
+        ),
+        (
+            In(M, obj_shape=Select(1, (M,), None)),
+            "obj_shape Select\\(\\) flag 1 is not",
+        ),
         (In(M, per=3), "per=3 must be a param\\(\\) or tunable\\(\\)"),
         (In(GEMV.M), "dimension <param M> is not a param\\(\\) of Bad"),
         (Out(like=GEMV.a), "like=In\\(batches, M, K\\) must be an input of Bad"),

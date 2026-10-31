@@ -3,7 +3,16 @@ Copyright (C) 2026 Advanced Micro Devices, Inc.
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-# AIE Code Creator
+# IRON Design: Writing the Dataflow and Its Kernels
+
+Third of five phases in porting a model to AIE/NPU: it realizes, in IRON, the dataflow plan
+`aie-dataflow-presim` (phase 2) already proved bit-exact in software (see `aie-model-baseline`
+for phase 1, the numeric oracle behind both; `aie-hw-bringup` for phase 4; `aie-kernel-opt`/
+`aie-dataflow-opt` for phase 5, optimization once it's correct).
+
+This skill is also the direct entry point for work that isn't a full model port — one kernel,
+or a small standalone design — where phases 1 and 2 shrink down to simply knowing what to
+compute.
 
 ## Description
 
@@ -20,8 +29,8 @@ The skill provides:
 
 - **Defaults** for kernel source, API level, target device, data type, and parallelism so designs can be produced without exhaustive clarification
 - A **step-by-step workflow** from computation shape to complete design (built-in check -> pattern -> kernel template -> wiring -> sizing -> pitfalls check)
-- **Reference files** loaded on demand covering the built-in kernel/algorithm libraries and `In`/`Out`/`CompileTime[T]` jit signatures, hardware architecture, the Python API (`Program`, `Worker`, `ObjectFifo`, `Runtime`, `Kernel`, `Buffer`, `iron.jit`), copy-ready design patterns, C++ kernel intrinsics, build/test harness, and known pitfalls
-- A pointer to upstream mlir-aie's phased skill family (`aie-model-baseline`, `aie-dataflow-presim`, `aie-hw-bringup`, `aie-kernel-opt`, `aie-dataflow-opt`) for the phases before and after design creation
+- **Reference files** loaded on demand covering hardware architecture, copy-ready design patterns, C++ kernel intrinsics, and known pitfalls — the built-in kernel/algorithm libraries, `In`/`Out`/`CompileTime[T]` jit signatures, and the full `Program`/`Worker`/`ObjectFifo`/`Runtime`/`Kernel`/`Buffer`/`iron.jit` Python API live in the [Programming Guide](../../programming_guide/) this skill points at, so there's one canonical copy
+- A pointer to the rest of this directory's phased skill family (`aie-model-baseline`, `aie-dataflow-presim`, `aie-hw-bringup`, `aie-kernel-opt`, `aie-dataflow-opt`) for the phases before and after design creation
 
 When asked for a complete design, it delivers the Python design file, a build/run snippet, and the C++ kernel file where one had to be written.
 
@@ -30,13 +39,13 @@ When asked for a complete design, it delivers the Python design file, a build/ru
 Invoke when writing or modifying IRON / NPU code:
 
 ```text
-Using the aie-code-creator skill, write a multi-core bfloat16 element-wise add for NPU2
+Using the aie-iron-design skill, write a multi-core bfloat16 element-wise add for NPU2
 ```
 
 ```text
-Using the aie-code-creator skill, generate an MMUL-based matmul kernel and the matching Python design
+Using the aie-iron-design skill, generate an MMUL-based matmul kernel and the matching Python design
 ```
 
 ```text
-Using the aie-code-creator skill, add a broadcast ObjectFifo to this design so all four workers see the same weights
+Using the aie-iron-design skill, add a broadcast ObjectFifo to this design so all four workers see the same weights
 ```

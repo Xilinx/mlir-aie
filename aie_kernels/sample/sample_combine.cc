@@ -12,6 +12,8 @@
 // random operands differ). The helpers stay out of line and the product's
 // loops rolled: with the builtins and exp64's table the core's 16 KB of
 // program memory is nearly full.
+//
+// SAMPLE_PROB_RULE (sample.h) adds forced_timestamp below.
 
 #include <aie_api/aie.hpp>
 
@@ -21,6 +23,13 @@
 #ifndef SAMPLE_COLUMNS
 #error                                                                         \
     "SAMPLE_COLUMNS (the columns whose summaries are combined) must be defined"
+#endif
+
+// A column's stride in summaries: see sample_combine below.
+#if SAMPLE_PROB_RULE
+#define SAMPLE_COLUMN_WORDS (2 * SAMPLE_SUMMARY_WORDS + SAMPLE_REDUCTION_WORDS)
+#else
+#define SAMPLE_COLUMN_WORDS SAMPLE_SUMMARY_WORDS
 #endif
 
 extern "C" float __subsf3(float, float);
@@ -138,7 +147,7 @@ union_tau(const int32_t *summaries, int32_t k) {
     for (int32_t b = 0; b < 256; ++b)
       hist[b] = 0;
     for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
-      const int32_t *sum = summaries + c * SAMPLE_SUMMARY_WORDS;
+      const int32_t *sum = summaries + c * SAMPLE_COLUMN_WORDS;
       const int32_t n = sum[SAMPLE_ENTRIES];
       for (int32_t e = -1; e < n; ++e) {
         // e == -1 is the column's tau, once per tie.
@@ -163,7 +172,7 @@ AIE2_MINSIZE __attribute__((noinline)) void total(const int32_t *summaries,
                                                   weights *t, uint32_t *s) {
   int32_t ties = 0;
   for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
-    const int32_t *sum = summaries + c * SAMPLE_SUMMARY_WORDS;
+    const int32_t *sum = summaries + c * SAMPLE_COLUMN_WORDS;
     const int32_t entries = sum[SAMPLE_ENTRIES];
     for (int32_t e = 0; e < entries; ++e) {
       const int32_t key = sum[SAMPLE_HEADER + 2 * e + 1];
@@ -188,7 +197,7 @@ __attribute__((noinline)) int32_t visit(const int32_t *summaries, weights *t,
                                         uint32_t *acc) {
   int32_t last = 0;
   for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
-    const int32_t *sum = summaries + c * SAMPLE_SUMMARY_WORDS;
+    const int32_t *sum = summaries + c * SAMPLE_COLUMN_WORDS;
     const int32_t *entry = sum + SAMPLE_HEADER;
     const uint32_t *bitmap = (const uint32_t *)(sum + SAMPLE_BITMAP);
     const int32_t entries = sum[SAMPLE_ENTRIES];
@@ -227,11 +236,49 @@ __attribute__((noinline)) int32_t visit(const int32_t *summaries, weights *t,
   return last;
 }
 
+#if SAMPLE_PROB_RULE
+// Whether the rule forces the text range to -inf: whether the drawn
+// probability mass at or above the split exceeds the best logit below it.
+// logsumexp(ts) > max_text, with logsumexp(ts) = max_ts_all + ln(sum_c
+// sum_ts_c * exp(max_ts_c - max_ts_all)), holds exactly where sum_c sum_ts_c
+// * exp(max_ts_c - max_text) > 1 (take max_text, not max_ts_all, as the
+// reference the sum is scaled to: the inequality is against max_text
+// either way, and this skips a log).
+bool forced_timestamp(const int32_t *reductions) {
+  float max_text = __builtin_bit_cast(float, (uint32_t)0xff800000); // -inf
+  for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
+    const float v = __builtin_bit_cast(
+        float,
+        (uint32_t)
+            reductions[c * SAMPLE_COLUMN_WORDS + SAMPLE_REDUCTION_MAX_TEXT]);
+    if (v > max_text)
+      max_text = v;
+  }
+  double total = 0.0;
+  for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
+    const int32_t *r = reductions + c * SAMPLE_COLUMN_WORDS;
+    const float sum_ts =
+        __builtin_bit_cast(float, (uint32_t)r[SAMPLE_REDUCTION_SUM_TS]);
+    if (sum_ts == 0.0f)
+      continue;
+    const float max_ts =
+        __builtin_bit_cast(float, (uint32_t)r[SAMPLE_REDUCTION_MAX_TS]);
+    // This column holds max_ts itself (sum_ts >= 1), so the rule holds
+    // before an exp that would round a small excess to 1.
+    if (max_ts > max_text)
+      return true;
+    // A float64 difference: float subtraction is not IEEE here (see above).
+    total += (double)sum_ts * exp64((double)max_ts - (double)max_text);
+  }
+  return total > 1.0;
+}
+#endif
+
 int32_t combine(const int32_t *summaries, const int32_t *row) {
   int32_t max_key = -1;
   int32_t argmax = 0;
   for (int32_t c = 0; c < SAMPLE_COLUMNS; ++c) {
-    const int32_t *sum = summaries + c * SAMPLE_SUMMARY_WORDS;
+    const int32_t *sum = summaries + c * SAMPLE_COLUMN_WORDS;
     if (sum[SAMPLE_MAX_KEY] > max_key) {
       max_key = sum[SAMPLE_MAX_KEY];
       argmax = c * SAMPLE_SLICE + sum[SAMPLE_ARGMAX];
@@ -261,13 +308,21 @@ int32_t combine(const int32_t *summaries, const int32_t *row) {
 
 extern "C" {
 
-// summaries: SAMPLE_COLUMNS summaries, column 0 first; row: the draw row;
-// token and record: the drawn token, twice (the next step's input and the
-// position's record).
+// summaries: SAMPLE_COLUMNS columns of SAMPLE_COLUMN_WORDS, column 0 first;
+// with SAMPLE_PROB_RULE each is sample_select's summary, restricted_summary
+// and reduction. row: the draw row; token and record: the drawn token, twice
+// (the next step's input and the position's record).
 void sample_combine(const int32_t *summaries, const int32_t *row,
                     int32_t *token, int32_t *record) {
   event0();
-  const int32_t drawn = combine(summaries, row);
+#if SAMPLE_PROB_RULE
+  const int32_t *active = forced_timestamp(summaries + 2 * SAMPLE_SUMMARY_WORDS)
+                              ? summaries + SAMPLE_SUMMARY_WORDS
+                              : summaries;
+#else
+  const int32_t *active = summaries;
+#endif
+  const int32_t drawn = combine(active, row);
   *token = drawn;
   *record = drawn;
   event1();

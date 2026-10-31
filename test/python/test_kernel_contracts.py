@@ -39,6 +39,8 @@ from aie.iron.kernels.activation import (
     softmax_banded_ref,
     softmax_banded_sample,
     softmax_f32_bound,
+    softmax_span_ref,
+    softmax_span_sample,
 )
 from aie.utils import bfp, get_current_device
 from aie.utils.accuracy import round_to
@@ -99,6 +101,8 @@ NOT_JUDGED = {
     "sample_select": "a state machine across a position's select_streams * slice / chunk calls; test_sample_e2e.py judges it",
     "sample_combine": "reads sample_select's summaries, which the generic builder cannot draw; test_sample_e2e.py judges the pair",
     "resize": "six entry points share one core's state, driven by counts they write; test_resize_e2e.py judges them",
+    "resize_linear": "four entry points share one core's state, driven by counts they write; test_resize_linear_e2e.py judges them",
+    "nms": "three entry points share one core's state, driven by a running candidate count nms_finish reads; test_nms_e2e.py drives and judges them",
     **{
         name: "one half of a MobileNet bottleneck cascade pair; test_bn_cascade_pairs.py builds and judges the pair"
         for name in (
@@ -1878,6 +1882,138 @@ def test_softmax_tolerance_rejects_an_unwritten_tile():
     assert not compare(np.zeros_like(ref), ref, fn.contract.tolerance)
 
 
+def test_softmax_scale_none_and_one_embed_log2e_s_own_bits():
+    # A build that asks for no scale leaves the new macros undefined, so it
+    # keeps exactly today's constants; an explicit scale=1.0 computes the
+    # same bits instead of skipping them.
+    base = kernels.softmax(32, accurate_exp2=True)
+    one = kernels.softmax(32, accurate_exp2=True, scale=1.0)
+    assert not any("SOFTMAX_SCALE_LOG2E" in f for f in base.compile_flags)
+    assert {f for f in one.compile_flags if "SOFTMAX_SCALE_LOG2E" in f} == {
+        "-DSOFTMAX_SCALE_LOG2E_HI=0x3fb9",
+        "-DSOFTMAX_SCALE_LOG2E_MID=0xbb2c",
+        "-DSOFTMAX_SCALE_LOG2E_LO=0x36ec",
+    }
+    inaccurate_base = kernels.softmax(32)
+    inaccurate_one = kernels.softmax(32, scale=1.0)
+    assert not any("SOFTMAX_SCALE_LOG2E" in f for f in inaccurate_base.compile_flags)
+    assert "-DSOFTMAX_SCALE_LOG2E=1.4453125f" in inaccurate_one.compile_flags
+
+
+def test_softmax_scale_multiplies_the_logits_before_centering():
+    rng = np.random.default_rng(0)
+    x = rng.standard_normal((3, 32)).astype(bfloat16)
+    scale = 0.125
+    got = kernels.softmax_ref(x, tile_size=32, scale=scale).astype(np.float32)
+    xf = x.astype(np.float32).astype(np.float64) * scale
+    xf -= xf.max(axis=1, keepdims=True)
+    want = np.exp(xf)
+    want /= want.sum(axis=1, keepdims=True)
+    assert np.allclose(got, want, atol=1e-3)
+
+
+@pytest.mark.parametrize("scale", [-1.0, -(2.0**-10), float("nan"), float("inf")])
+def test_softmax_rejects_a_negative_or_non_finite_scale(scale):
+    # The kernel centres on the largest raw logit; under a negative scale the
+    # smallest is the largest scaled one, and a row holding 0 and 128 would
+    # exp2 its 0 to infinity.
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        kernels.softmax(32, accurate_exp2=True, scale=scale)
+
+
+def test_softmax_takes_a_zero_scale():
+    fn = kernels.softmax(32, accurate_exp2=True, scale=0.0)
+    x = np.random.default_rng(0).standard_normal((2, 32)).astype(bfloat16)
+    assert np.array_equal(
+        fn.expected([x]).astype(np.float32), np.full((2, 32), 1 / 32, np.float32)
+    )
+
+
+def test_softmax_span_builds_softmax_span_bf16():
+    # (x, y, n, lo, hi): n bound to tile_size, lo and hi the free scalars.
+    fn = kernels.softmax(32, span=True, accurate_exp2=True)
+    assert fn.name.endswith("softmax_span_bf16")
+    dtypes = [kd.shape_dtype(t)[1] for t in fn.arg_types()[:2]]
+    assert dtypes == [np.dtype(bfloat16), np.dtype(bfloat16)]
+    assert fn.contract.roles == (In, Out, Param, Param, Param)
+    assert fn.contract.parameter_bindings == ((2, 32),)
+    assert list(inspect.signature(fn.contract.reference).parameters) == [
+        "x",
+        "lo",
+        "hi",
+    ]
+
+
+def test_softmax_span_masks_outside_the_live_region():
+    rng = np.random.default_rng(0)
+    fn = kernels.softmax(32, span=True, accurate_exp2=True)
+    x, lo, hi = softmax_span_sample(rng, 6, tile_size=32)
+    ref = fn.contract.reference(x, lo, hi)
+    cols = np.arange(32)[None, :]
+    live = (cols >= lo[:, None]) & (cols < hi[:, None])
+    assert (ref.astype(np.float32)[~live] == 0).all()
+    # Each probability is rounded to bf16 (2**-9 of itself) after its
+    # exponential was rounded too, so a row sums to 1 within twice that.
+    assert np.allclose(ref.astype(np.float32).sum(axis=1), 1.0, atol=2**-8)
+    assert compare(ref, ref, fn.contract.tolerance)
+    assert not compare(np.zeros_like(ref), ref, fn.contract.tolerance)
+
+
+def test_softmax_span_contract_takes_its_bounds_as_scalars():
+    # The contract samples the tile alone; lo and hi are the scalars a design
+    # gives every call, which the reference spreads over the rows.
+    fn = kernels.softmax(32, span=True, accurate_exp2=True)
+    sampled = fn.contract.sample(np.random.default_rng(2), 3)
+    assert len(sampled) == 1
+    (x,) = sampled
+    got = fn.expected([x], scalars=(3, 29))
+    want = softmax_span_ref(x, np.full(3, 3), np.full(3, 29), tile_size=32)
+    assert np.array_equal(got, want)
+    probabilities = got.astype(np.float32)
+    assert (probabilities[:, :3] == 0).all() and (probabilities[:, 29:] == 0).all()
+    assert (probabilities[:, 3:29] > 0).any(axis=1).all()
+
+
+def test_softmax_span_sample_keeps_one_full_and_one_single_element_row():
+    x, lo, hi = softmax_span_sample(np.random.default_rng(0), 4, tile_size=32)
+    assert (lo[0], hi[0]) == (0, 32) and (lo[1], hi[1]) == (0, 1)
+    assert ((hi - lo) >= 1).all() and (hi <= 32).all() and (lo >= 0).all()
+
+
+def test_softmax_span_ref_agrees_with_a_masked_softmax_ref():
+    x, lo, hi = softmax_span_sample(np.random.default_rng(1), 5, tile_size=32)
+    got = softmax_span_ref(x, lo, hi, tile_size=32, scale=0.25)
+    cols = np.arange(32)[None, :]
+    live = (cols >= lo[:, None]) & (cols < hi[:, None])
+    masked = np.where(live, x, bfloat16(finfo(bfloat16).min)).astype(x.dtype)
+    want = kernels.softmax_ref(masked, tile_size=32, scale=0.25)
+    assert np.array_equal(got, want)
+
+
+@pytest.mark.parametrize("scale", [0.0, 1e-37])
+def test_softmax_span_ref_drops_masked_elements_at_any_scale(scale):
+    # The span is applied after scaling. Masking the input to lowest first,
+    # scale 0 would weigh all 32 elements alike, and 1e-37 would leave the
+    # masked ones a weight of about 2^-49 each.
+    x = np.random.default_rng(3).standard_normal((2, 32)).astype(bfloat16)
+    lo, hi = np.array([0, 5]), np.array([1, 27])
+    got = softmax_span_ref(x, lo, hi, tile_size=32, scale=scale).astype(np.float32)
+    assert got[0, 0] == 1.0 and (got[0, 1:] == 0).all()
+    assert (got[1, :5] == 0).all() and (got[1, 27:] == 0).all()
+    assert np.allclose(got[1, 5:27], 1 / 22, rtol=2**-8)
+
+
+def test_softmax_rejects_scale_and_span_on_aie2_without_accurate_exp2():
+    with set_current_device(NPU1Col1()):
+        with pytest.raises(ValueError, match="softmax_aie2.h instead"):
+            kernels.softmax(32, scale=0.5)
+        with pytest.raises(ValueError, match="softmax_aie2.h instead"):
+            kernels.softmax(32, span=True)
+        # accurate_exp2 takes softmax_aie2p.h regardless of arch.
+        fn = kernels.softmax(32, scale=0.5, accurate_exp2=True)
+        assert fn.built_for_arch == "aie2"
+
+
 @pytest.mark.parametrize("addend", [False, True])
 @pytest.mark.parametrize("masked", [False, True])
 def test_softmax_float_path_takes_its_rows_in_order(addend, masked):
@@ -1915,6 +2051,8 @@ def test_softmax_float_path_takes_its_rows_in_order(addend, masked):
         dict(input_dtype=np.float32, soft_cap=np.nan),
         dict(input_dtype=np.float32, soft_cap=2.0**-101),
         dict(input_dtype=np.float32, soft_cap=2.0**10 * 1.01),
+        dict(input_dtype=np.float32, scale=0.5),
+        dict(input_dtype=np.float32, span=True),
     ],
 )
 def test_softmax_rejects_float_options_it_cannot_build(kwargs):

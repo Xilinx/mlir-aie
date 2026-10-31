@@ -41,7 +41,7 @@ def _names(dims) -> set[str]:
         if isinstance(d, OperatorParam):
             out.add(d.name)
         elif isinstance(d, Select):
-            out |= _names((d.flag, *d.when_true, *d.when_false))
+            out |= _names((d.flag, *(d.when_true or ()), *(d.when_false or ())))
     return out
 
 
@@ -49,9 +49,17 @@ def _leaves(dims):
     """Yield the dimensions ``dims`` may resolve to, through nested ``Select``."""
     for d in dims:
         if isinstance(d, Select):
-            yield from _leaves(d.when_true + d.when_false)
+            yield from _leaves((d.when_true or ()) + (d.when_false or ()))
         else:
             yield d
+
+
+def _selects(dims):
+    """Yield every selection in ``dims``, including nested branches."""
+    for d in dims:
+        if isinstance(d, Select):
+            yield d
+            yield from _selects((d.when_true or ()) + (d.when_false or ()))
 
 
 class Declaration:
@@ -227,6 +235,19 @@ class Declaration:
             raise TypeError(
                 f"{where}: like={m.like!r} must be an input of {owner.__name__} with no when="
             )
+        if any(None in (d.when_true, d.when_false) for d in _selects(m.dims)):
+            raise TypeError(
+                f"{where}: a Select() with a None branch picks no stream, so it is an obj_shape, not a dimension"
+            )
+        for s in _selects(m.dims):
+            if (
+                not isinstance(s.flag, OperatorParam)
+                or _foreign(s.flag, owner)
+                or s.flag.tunable
+            ):
+                raise TypeError(
+                    f"{where}: Select() flag {s.flag!r} must be a param() of {owner.__name__}; a host shape may not depend on tuning"
+                )
         for leaf in _leaves(m.dims):
             if _foreign(leaf, owner):
                 raise TypeError(
@@ -253,7 +274,21 @@ class Declaration:
             raise TypeError(
                 f"{where}: when={m.when!r} must be a param(), the flag the operand exists under"
             )
-        for d in m.obj_dims or ():
+        obj_dims = m.obj_dims or ()
+        if any(
+            None in (d.when_true, d.when_false)
+            and (len(obj_dims) != 1 or d is not obj_dims[0])
+            for d in _selects(obj_dims)
+        ):
+            raise TypeError(
+                f"{where}: a Select() with a None branch is the whole obj_shape, the stream it gives or not"
+            )
+        for s in _selects(obj_dims):
+            if not isinstance(s.flag, OperatorParam) or _foreign(s.flag, owner):
+                raise TypeError(
+                    f"{where}: obj_shape Select() flag {s.flag!r} is not a param() or a tunable() of {owner.__name__}"
+                )
+        for d in _leaves(obj_dims):
             if _foreign(d, owner):
                 raise TypeError(
                     f"{where}: obj_shape dimension {d!r} is not a param(), a tunable() or an integer"
@@ -396,7 +431,9 @@ class Declaration:
                     raise ValueError(
                         f"{self.name}: {d.flag.name} selects {m.name}'s shape and has no default; pass it explicitly"
                     )
-                dims[:0] = d.when_true if value else d.when_false
+                branch = d.when_true if value else d.when_false
+                assert branch is not None
+                dims[:0] = branch
             dims = expanded
             if len(dims) == 1 and len(shape) != 1:
                 # A flat operand takes a tensor of any rank: its one
@@ -452,4 +489,7 @@ def _member(m: Member) -> str:
     if isinstance(m, _Operand):
         per = "" if m.per is None else f" per [{', '.join(map(_text, m.per))}]"
         return f"{type(m).__name__:<9} {m.name} [{', '.join(map(_text, m.dims))}]{per}"
+    if isinstance(m, PerCallMember) and m.count is not None:
+        count = m.count if isinstance(m.count, int) else "f(op)"
+        return f"{'per_call':<9} {m.name}[{count}]"
     return f"{'per_call':<9} {m.name}"
