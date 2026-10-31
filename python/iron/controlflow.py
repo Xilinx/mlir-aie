@@ -21,7 +21,9 @@ from aie.helpers.dialects.scf import (
 from aie.helpers.dialects.scf import (
     yield_ as _yield_,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.ir import InsertionPoint  # pyright: ignore[reportMissingImports]
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    InsertionPoint,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.iron.runtime.dmataskhandle import Task
 from aie.iron.runtime.taskgroup import TaskGroup
 

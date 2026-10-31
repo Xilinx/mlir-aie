@@ -35,7 +35,6 @@ def AIE_Dialect : Dialect {
   // Overlay-owned settings survive application configuration and teardown.
   let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_overlay,
       "::mlir::UnitAttr":$priority_route);
-
 }
 
 #endif // AIE_BASE

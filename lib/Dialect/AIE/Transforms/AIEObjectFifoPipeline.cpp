@@ -47,7 +47,8 @@ void xilinx::AIE::addObjectFifoLoweringPasses(OpPassManager &pm,
   if (!skipVerify) {
     pm.addPass(createAIEObjectFifoVerifyPass());
   }
-  pm.addPass(createAIEAssignPacketIdsPass(packetSwitched, reserveControllerPacketIds));
+  pm.addPass(
+      createAIEAssignPacketIdsPass(packetSwitched, reserveControllerPacketIds));
   pm.addPass(createAIEObjectFifoAllocatePass());
   AIEObjectFifoInsertCoreQueuePushesOptions pushOptions;
   pushOptions.checkQueueSpace = checkQueueSpace;

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
@@ -37,14 +37,10 @@ struct AIECreateControlOverlayPass
         if (endpoint.getBundle() != WireBundle::DMA ||
             !endpoint.getTileLike().isShimTile())
           continue;
-        auto copy = mapping.lookup(endpoint.getOperation());
+        auto *copy = mapping.lookup(endpoint.getOperation());
         copy->setAttr("aie.sharing_id",
                       IntegerAttr::get(IntegerType::get(&getContext(), 32),
                                        endpoints.size()));
-        copy->setAttr(
-            "aie.sharing_sends",
-            BoolAttr::get(&getContext(),
-                          endpoint.getRouteDirection() == DMAChannelDir::MM2S));
         endpoints.push_back(endpoint);
       }
     PassManager materialize(&getContext());
@@ -81,20 +77,17 @@ struct AIECreateControlOverlayPass
                               static_cast<int>(alloc.getChannelIndex()))};
         }
         auto id = endpoint->getAttrOfType<IntegerAttr>("aie.sharing_id");
-        auto sends = endpoint->getAttrOfType<BoolAttr>("aie.sharing_sends");
-        if (!id || !sends)
+        if (!id)
           return std::nullopt;
-        ShimTransferSpans::End end{
-            StringAttr::get(&getContext(), std::to_string(id.getInt())),
-            sends.getValue()};
+        auto direction = endpoints[id.getInt()].getRouteDirection();
+        ShimTransferSpans::End end{keys[id.getInt()],
+                                   direction == DMAChannelDir::MM2S};
         if (auto channel = endpoint.getChannelIndex()) {
           auto tile = dyn_cast<TileOp>(endpoint.getTile().getDefiningOp());
           if (tile)
-            end.channel = std::make_tuple(
-                tile.colIndex(), tile.rowIndex(),
-                static_cast<int>(sends.getValue() ? DMAChannelDir::MM2S
-                                                  : DMAChannelDir::S2MM),
-                *channel);
+            end.channel =
+                std::make_tuple(tile.colIndex(), tile.rowIndex(),
+                                static_cast<int>(direction), *channel);
         }
         return end;
       };
@@ -210,6 +203,24 @@ struct AIECreateControlOverlayPass
       routing.addPass(createAIEPathfinderPass({}, avoided));
       if (failed(runPipeline(routing, overlay)))
         return signalPassFailure();
+      // Adding master sets to an active arbiter can stall its in-flight
+      // packets. Unused amsels reserve the rest of each overlay arbiter during
+      // routing.
+      for (auto switchbox : overlay.getOps<SwitchboxOp>()) {
+        auto amsels =
+            llvm::to_vector(switchbox.getConnections().getOps<AMSelOp>());
+        std::set<std::pair<int, int>> slots;
+        for (auto amsel : amsels)
+          slots.emplace(amsel.arbiterIndex(), amsel.getMselValue());
+        OpBuilder builder =
+            OpBuilder::atBlockTerminator(&switchbox.getConnections().front());
+        for (auto amsel : amsels)
+          for (unsigned msel = 0;
+               msel < overlay.getTargetModel().getNumMselsPerArbiter(); ++msel)
+            if (slots.emplace(amsel.arbiterIndex(), msel).second)
+              AMSelOp::create(builder, amsel.getLoc(), amsel.arbiterIndex(),
+                              msel);
+      }
       overlay.walk([&](Operation *op) {
         op->removeAttr("aie.priority_route");
         if (!isa<DeviceOp, EndOp, PacketRulesOp>(op))

@@ -228,19 +228,6 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
 def PacketInfoArrayAttr
     : TypedArrayAttrBase<PacketInfoAttr, "array of packet headers">;
 
-def SwitchPortAttr : AttrDef<AIE_Dialect, "SwitchPort", []> {
-  let mnemonic = "switch_port";
-  let summary = "A port of a tile's switchbox";
-  let description = [{
-    The `bundle : channel` port of tile (`col`, `row`)'s switchbox.
-  }];
-
-  let parameters = (ins "int":$col, "int":$row,
-      EnumParameter<WireBundle>:$bundle, "int":$channel);
-
-  let assemblyFormat = "`<` $col `,` $row `,` $bundle `:` $channel `>`";
-}
-
 def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
   let mnemonic = "bd_iteration";
   let summary = [{
