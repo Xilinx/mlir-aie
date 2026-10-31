@@ -141,11 +141,16 @@ def check_fused_location():
             Module.parse(FUSED_IR.replace(":0:0", f":{line}:0"))
         except MLIRError as exc:
             frames = frames_of(design_error(exc))
+            message = str(exc)
         else:
             raise AssertionError("expected the out-of-range tile to be rejected")
     filename, lineno, name, text = frames[-1]
     assert (filename, lineno, text) == (THIS_FILE, line, PARSE), frames[-1]
     assert name == "act_in, act_out", f"frame should name both objects: {name!r}"
+    # The message reads as aiecc prints it, without the op's dump.
+    error = f"{THIS_FILE}:{line}:0: error: act_in, act_out: 'aie.tile' op column"
+    assert error in message, message
+    assert "see current operation" not in message, message
     return name
 
 
