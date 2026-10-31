@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import collections
 import itertools
+import logging
 from collections.abc import Sequence
 from contextlib import contextmanager
 
@@ -38,6 +39,8 @@ from .resolvable import DeviceResources, PerDeviceConfiguration, Resolvable
 from .runtime import Runtime
 from .runtime._context import active_configuration, active_configuration_scope
 from .scratchpad_parameter import ScratchpadParameter
+
+logger = logging.getLogger(__name__)
 
 
 def _pool_symbols(pool):
@@ -431,7 +434,13 @@ class DeviceConfiguration(DeviceResources):
             # left unnamed, with no kind).
             base = obj._site.assigned_name()
             if base is None:
-                return fresh(prefix) if prefix else None
+                name = fresh(prefix) if prefix else None
+                logger.debug(
+                    "%s is not assigned to a variable where it is built; %s",
+                    obj._site.describe(type(obj).__name__),
+                    f"named {name}" if name else "the compiler names it",
+                )
+                return name
             if shared[base] == 1 and base not in taken:
                 taken.add(base)
                 return base
