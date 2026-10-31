@@ -1,9 +1,0 @@
-<map id="include/aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h" name="include/aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="109,5,320,67"/>
-<area shape="rect" id="Node000002" href="$All_8h.html" title=" " alt="" coords="18,115,174,160"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="165,79,124,117,120,113,169,75"/>
-<area shape="rect" id="Node000004" href="$XLLVMToLLVMIRTranslation_8cpp.html" title=" " alt="" coords="198,115,471,160"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="264,75,311,114,306,115,262,80"/>
-<area shape="rect" id="Node000003" href="$Registration_8cpp.html" title=" " alt="" coords="5,208,187,235"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="98,174,98,208,94,206,94,177"/>
-</map>
