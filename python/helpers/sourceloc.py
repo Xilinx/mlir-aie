@@ -115,7 +115,9 @@ class SourceSite:
         # Whether every frame since the declaring one is a user frame: those
         # are the frames a helper may have returned the object through.
         returning = True
-        frame = below = inspect.currentframe()
+        frame = inspect.currentframe()
+        assert frame is not None, "CPython provides frames"
+        below = frame
         while frame is not None and (
             len(frames) < depth or (returning and len(returned_to) < cls.RETURN_DEPTH)
         ):
