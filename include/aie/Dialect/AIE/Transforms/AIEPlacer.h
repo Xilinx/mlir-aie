@@ -799,9 +799,21 @@ private:
   // The resource terms that read only some tiles' positions, kept so a move
   // recomputes one only when it moves a tile the term reads.
   int memSpilloverPenalty = 0, bdCountPenalty = 0, delegatePenalty = 0;
-  llvm::DenseSet<mlir::Operation *> memTileTermTiles, delegateTermTiles,
-      pairedTiles;
+  llvm::DenseSet<mlir::Operation *> spillTiles, delegateTermTiles, pairedTiles;
+  // MemTile buffers by size, largest first, each with the tile whose column
+  // is its home, and the static buffers on MemTiles.
+  llvm::SmallVector<std::pair<int64_t, mlir::Operation *>> spillBuffers;
+  llvm::SmallVector<std::pair<mlir::Operation *, int64_t>> spillBaseline;
+  // The BDs each tile holds for the MemTile budget, their total at each
+  // position, and what the last move overwrote in it.
+  llvm::DenseMap<mlir::Operation *, int> tileBDs;
+  llvm::DenseMap<TileID, int> memTileBDs;
+  llvm::SmallVector<std::pair<TileID, int>> bdUndo;
   int cachedPressure = 0;
+  // The DMA-channel term per tile, and what the last move overwrote in it.
+  int dmaPenalty = 0;
+  llvm::DenseMap<TileID, int> dmaPenaltyAt;
+  llvm::SmallVector<std::pair<TileID, int>> dmaUndo;
   // An over-full shim tile is charged only for the channels allocation
   // still needs once ends never in flight together share them.
   std::optional<ShimTransferSpans> shimSpans;
@@ -841,10 +853,15 @@ private:
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);
   int getResourcePenalty() const { return cachedResourcePenalty; }
+  void collectSpillBuffers();
+  void collectTileBDs();
   int computeMemSpilloverPenalty() const;
   int computeCoreOverflowPenalty() const;
-  int computeDMAChannelPenalty() const;
-  int computeBDCountPenalty() const;
+  /// Fills `dmaPenaltyAt` and returns its sum.
+  int computeDMAChannelPenalty();
+  int computeTileDMAPenalty(TileID tilePos) const;
+  /// Fills `memTileBDs` and returns the penalty it gives.
+  int computeBDCountPenalty();
   int computeDelegatePenalty() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
   int computeMemoryPressure() const;
