@@ -44,3 +44,21 @@ with tempfile.TemporaryDirectory() as work:
     assert fifo.endswith("  // act_in · design.py:12"), fifo
     assert not any("#loc" in line for line in lines), lines
 print("PASS: readable IR written beside a failed compile")
+
+# A readable dump that cannot be written still reports aiecc's error.
+with tempfile.TemporaryDirectory() as work:
+    (Path(work) / "aie.readable.mlir").mkdir()
+    try:
+        compile_mlir_module(
+            IR,
+            insts_path=f"{work}/insts.bin",
+            xclbin_path=f"{work}/final.xclbin",
+            work_dir=work,
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected aiecc to reject a fifo with no drainer")
+    assert message.startswith("[aiecc] Compilation failed"), message
+    assert "Could not write the design's readable IR: IsADirectoryError" in message
+print("PASS: aiecc's error kept when the readable IR cannot be written")

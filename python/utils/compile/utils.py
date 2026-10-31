@@ -1096,13 +1096,18 @@ def _run_aiecc(
             f"{detail if summary else error_msg}"
         )
         if readable_path is not None:
-            with open(mlir_file) as f:
-                text = readable(f.read())
-            with open(readable_path, "w") as f:
-                f.write(text)
-            message += (
-                f"\nThe design's IR, each op noted with its source: {readable_path}"
-            )
+            # A diagnostic aid: its own failure must not hide aiecc's error.
+            try:
+                with open(mlir_file) as f:
+                    text = readable(f.read())
+                with open(readable_path, "w") as f:
+                    f.write(text)
+            except Exception as dump_error:
+                message += f"\nCould not write the design's readable IR: {dump_error!r}"
+            else:
+                message += (
+                    f"\nThe design's IR, each op noted with its source: {readable_path}"
+                )
         exc = RuntimeError(message)
         attach_tool_location(exc, error_msg)
         raise exc
