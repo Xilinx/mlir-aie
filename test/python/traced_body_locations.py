@@ -3,6 +3,8 @@
 
 # RUN: %PYTHON %s
 
+import os
+import tempfile
 from functools import partial
 
 from aie.extras import types as T
@@ -90,7 +92,33 @@ def check_failing_body():
         assert op.location.name_str == "py:failing_body", op.location
 
 
+def check_relative_body():
+    """A body compiled under a relative name is located by its absolute path."""
+    cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "rel_body.py"), "w") as f:
+            f.write("def rel_body():\n    constant(9, T.i32())\n")
+        os.chdir(tmp)
+        try:
+            expected = os.path.abspath("rel_body.py")
+            with open("rel_body.py") as f:
+                code = compile(f.read(), "rel_body.py", "exec")
+            design = {"constant": constant, "T": T}
+            exec(code, design)
+            with Context(), Location.unknown():
+                module = Module.create()
+                with InsertionPoint(module.body):
+                    with traced_body(design["rel_body"]):
+                        design["rel_body"]()
+                (op,) = module.body.operations
+                filename = op.location.child_loc.filename
+        finally:
+            os.chdir(cwd)
+    assert filename == expected, filename
+
+
 check_callable_bodies()
 check_synthesized_body()
 check_failing_body()
-print("PASS: callable, synthesized and failing body locations")
+check_relative_body()
+print("PASS: callable, synthesized, failing and relative body locations")

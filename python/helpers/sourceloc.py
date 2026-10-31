@@ -486,20 +486,35 @@ def user_code_location() -> "ir.Location | None":
     return site.location() if site.filename else None
 
 
-def _python_names(loc: "ir.Location") -> "ir.Location":
-    """Return `loc` with each unprefixed NameLoc name marked as a function."""
+def _traced_location(loc: "ir.Location") -> "ir.Location":
+    """Return a traced statement's `loc` as an IRON object's would read.
+
+    Each unprefixed NameLoc name is marked as a Python function, and a
+    relative file path is made absolute, as `SourceSite.capture` makes its
+    own: code compiled under a relative name records one.
+    """
     if isinstance(loc, ir.NameLoc):
         name = loc.name_str
         if not name.startswith((IRON_PREFIX, PYTHON_PREFIX)):
             name = PYTHON_PREFIX + name
-        return ir.Location.name(name, childLoc=_python_names(loc.child_loc))
+        return ir.Location.name(name, childLoc=_traced_location(loc.child_loc))
     if isinstance(loc, ir.CallSiteLoc):
         return ir.Location.callsite(
-            _python_names(loc.callee), [_python_names(loc.caller)]
+            _traced_location(loc.callee), [_traced_location(loc.caller)]
         )
     if isinstance(loc, ir.FusedLoc):
         return ir.Location.fused(
-            [_python_names(child) for child in loc.locations], loc.metadata
+            [_traced_location(child) for child in loc.locations], loc.metadata
+        )
+    if isinstance(loc, ir.FileLineColLoc) and not (
+        loc.filename.startswith("<") or os.path.isabs(loc.filename)
+    ):
+        return ir.Location.file(
+            os.path.abspath(loc.filename),
+            loc.start_line,
+            loc.start_col,
+            loc.end_line,
+            loc.end_col,
         )
     return loc
 
@@ -525,9 +540,9 @@ def traced_body(fn):
     """Give each op `fn` emits its own source statement.
 
     `ir.loc_tracebacks` names each statement's location after the function it
-    ran in; those names are marked as Python functions ("py:") on exit, even
-    when `fn` raises, so a reader can tell them from IRON objects' names
-    ("iron:").
+    ran in; on exit, even when `fn` raises, those names are marked as Python
+    functions ("py:"), so a reader can tell them from IRON objects' names
+    ("iron:"), and relative file paths are made absolute.
 
     Args:
         fn: A Worker or Runtime body about to run.
@@ -547,4 +562,4 @@ def traced_body(fn):
             yield
     finally:
         for op in block.operations:
-            relocate(op.operation, _python_names)
+            relocate(op.operation, _traced_location)
