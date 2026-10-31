@@ -9,6 +9,7 @@ import hashlib
 import logging
 import re
 import tempfile
+import warnings
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -1222,7 +1223,7 @@ class ExternalFunction(Kernel):
         Returns:
             Its ``Linked``; None for a kernel aiecc cannot measure either: a
             Chess or merge-mode kernel, or any kernel when no Peano is
-            installed.
+            installed, which also warns (a RuntimeWarning).
 
         Raises:
             ValueError: Its factory built it for another architecture (see
@@ -1232,6 +1233,13 @@ class ExternalFunction(Kernel):
         try:
             config.peano_cxx_path()
         except RuntimeError:
+            # Not an error: a device-free resolve must still work. Python's
+            # warning filter shows it once.
+            warnings.warn(
+                "Peano is not installed: kernel frames read as 0 bytes, so "
+                "designs are sized as if their kernels took no core memory",
+                RuntimeWarning,
+            )
             return None
         if self.use_chess or self.link_with_mode is not None:
             return None
