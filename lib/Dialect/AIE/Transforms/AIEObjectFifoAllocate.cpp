@@ -1691,6 +1691,8 @@ struct AIEObjectFifoAllocatePass
     for (auto &[fifoName, users] : poolLocks->rearms()) {
       SmallVector<Value> channelTiles, lockValues;
       SmallVector<int32_t> channelDirs, channelIndices, lockInits;
+      // The record stands for these endpoints and pools: located at each.
+      SmallVector<Location> locs;
 
       for (auto endpoint : device.getOps<RouteEndpoint>()) {
         std::optional<int> channel = endpoint.getRouteChannel();
@@ -1702,11 +1704,13 @@ struct AIEObjectFifoAllocatePass
         channelDirs.push_back(
             static_cast<int32_t>(endpoint.getRouteDirection()));
         channelIndices.push_back(*channel);
+        locs.push_back(endpoint->getLoc());
       }
       for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
         if (pool.getFifoName() != fifoName || pool.getTileLike().isShimTile()) {
           continue;
         }
+        locs.push_back(pool.getLoc());
         for (LockOp lock : pool.getLockOps()) {
           lockValues.push_back(lock.getResult());
           lockInits.push_back(lock.getInit().value_or(0));
@@ -1730,9 +1734,9 @@ struct AIEObjectFifoAllocatePass
 
       // head_bd_ids and repeat_counts are filled in by --aie-assign-bd-ids.
       ObjectFifoRearmBindingOp::create(
-          builder, device.getLoc(), builder.getStringAttr(name),
-          ValueRange(channelTiles), ValueRange(lockValues),
-          builder.getDenseI32ArrayAttr(channelDirs),
+          builder, FusedLoc::get(builder.getContext(), locs),
+          builder.getStringAttr(name), ValueRange(channelTiles),
+          ValueRange(lockValues), builder.getDenseI32ArrayAttr(channelDirs),
           builder.getDenseI32ArrayAttr(channelIndices),
           builder.getDenseI32ArrayAttr(lockInits),
           /*head_bd_ids=*/DenseI32ArrayAttr(),
