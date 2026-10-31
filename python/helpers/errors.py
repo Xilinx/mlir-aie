@@ -14,6 +14,7 @@ import linecache
 import os
 import re
 import types
+from collections.abc import Iterator
 
 from ..ir import (  # pyright: ignore[reportMissingImports]
     CallSiteLoc,
@@ -22,10 +23,15 @@ from ..ir import (  # pyright: ignore[reportMissingImports]
     Location,
     MLIRError,
     NameLoc,
+    UnknownLoc,
 )
 from .sourceloc import IRON_PREFIX, is_internal_file
 
 _TOOL_ERROR = re.compile(r"^(.+?):(\d+):\d+: error: ", re.M)
+# A design's MLIRError prints as MLIR's SourceMgrDiagnosticHandler prints
+# aiecc's diagnostics, so the two read line for line alike.
+_CALL_STACK_LIMIT = 10
+_OP_DUMP = "see current operation"
 
 
 def _attach_source_frame(
@@ -100,100 +106,88 @@ def design_error(exc: BaseException) -> BaseException:
         return exc
     lines, attached = [f"{exc.message}:"], False  # pyright: ignore[reportAttributeAccessIssue]  # fmt: skip
     for diag in exc.error_diagnostics:  # pyright: ignore[reportAttributeAccessIssue]  # fmt: skip
-        site = _design_site(diag.location)
-        objects, callers = [], []
-        if site is None:
-            # Unwrapped as MLIRError prints it: `unknown`, `"name"`.
-            where = str(diag.location).removeprefix("loc(").removesuffix(")")
-        else:
-            filename, line, col, callers, names = site
-            objects = [
-                n.removeprefix(IRON_PREFIX) for n in names if n.startswith(IRON_PREFIX)
-            ]
-            if not attached:
-                # "iron:act_in" or "py:build.<locals>.core_fn": the frame reads
-                # as the object or function, without its kind.
-                short = [(n.partition(":")[2] or n).rpartition(".")[2] for n in names]
-                frame_name = ", ".join(dict.fromkeys(short)) or "<design>"
-                attached = _attach_source_frame(exc, filename, line, frame_name)
-            where = f"{filename}:{line}:{col}"
+        # A diagnostic's location comes as a plain Location; from_attr gives
+        # its kind, and its parts come typed.
+        loc = Location.from_attr(diag.location.attr, diag.location.context)
+        names = list(
+            dict.fromkeys(n.name_str for n in _walk(loc) if isinstance(n, NameLoc))
+        )
+        objects = [
+            n.removeprefix(IRON_PREFIX) for n in names if n.startswith(IRON_PREFIX)
+        ]
+        site = next((f for f in _walk(loc) if isinstance(f, FileLineColLoc)), None)
+        if site is not None and not attached:
+            # "iron:act_in" or "py:build.<locals>.core_fn": the frame reads as
+            # the object or function, without its kind.
+            short = [(n.partition(":")[2] or n).rpartition(".")[2] for n in names]
+            frame_name = ", ".join(dict.fromkeys(short)) or "<design>"
+            attached = _attach_source_frame(
+                exc, site.filename, site.start_line, frame_name
+            )
         named = f"{', '.join(objects)}: " if objects else ""
-        # Continuation lines, such as an op's dump, indent under their line.
-        message = diag.message.replace("\n", "\n  ")
-        lines.append(f"{where}: error: {named}{message}")
-        lines += [f"{f}:{n}:{c}: note: called from" for f, n, c in callers]
+        lines.append(_diagnostic_line(loc, "error", named + diag.message))
+        call = _call_site(loc)
+        for _ in range(_CALL_STACK_LIMIT):
+            if call is None:
+                break
+            lines.append(_diagnostic_line(call.caller, "note", "called from"))
+            call = _call_site(call.caller)
         for note in diag.notes:
             # The location already points at the statement that declared the
             # object; IRON_FULL_TRACEBACK keeps the dump for debugging IRON.
-            if (
-                objects
-                and not full
-                and note.message.startswith("see current operation")
-            ):
+            if objects and not full and note.message.startswith(_OP_DUMP):
                 continue
-            site = _design_site(note.location)
-            where = (
-                f"{site[0]}:{site[1]}:{site[2]}"
-                if site
-                else str(note.location).removeprefix("loc(").removesuffix(")")
-            )
-            message = note.message.replace("\n", "\n  ")
-            lines.append(f"{where}: note: {message}")
+            note_loc = Location.from_attr(note.location.attr, note.location.context)
+            lines.append(_diagnostic_line(note_loc, "note", note.message))
     exc.args = ("\n".join(lines),)
     return exc
 
 
-def _design_site(
-    loc: Location,
-) -> tuple[str, int, int, list[tuple[str, int, int]], list[str]] | None:
-    """Return where a diagnostic's location points in the design.
+def _walk(loc: Location) -> Iterator[Location]:
+    """Yield `loc` and every location within it, in MLIR's (pre-)order."""
+    stack = [loc]
+    while stack:
+        loc = stack.pop()
+        yield loc
+        if isinstance(loc, NameLoc):
+            stack.append(loc.child_loc)
+        elif isinstance(loc, CallSiteLoc):
+            stack += [loc.caller, loc.callee]
+        elif isinstance(loc, FusedLoc):
+            stack += reversed(list(loc.locations))
+
+
+def _call_site(loc: Location) -> CallSiteLoc | None:
+    """Return the call site `loc` is, under names, or the first fused one."""
+    if isinstance(loc, NameLoc):
+        return _call_site(loc.child_loc)
+    if isinstance(loc, CallSiteLoc):
+        return loc
+    if isinstance(loc, FusedLoc):
+        return next((c for c in map(_call_site, loc.locations) if c is not None), None)
+    return None
+
+
+def _diagnostic_line(loc: Location, severity: str, message: str) -> str:
+    """Return a diagnostic's line: at `loc`'s first file location, if any.
 
     Args:
-        loc: The location, as IRON builds them: names around a file location,
-            its callers, or several of those fused.
+        loc: Where the diagnostic is, typed.
+        severity: "error" or "note".
+        message: Its text.
 
     Returns:
-        (filename, line, col, callers, names): the first file location, a
-        call site's callee; the (filename, line, col) of each call that led
-        to it, innermost first; and every name on the whole location, as
-        "iron:act_in" or "py:core_fn". None when there is no file location.
+        "design.py:12:4: error: ..."; with no file location, as LLVM's
+        SourceMgr prints a message it cannot place, "<unknown>:0: error: ..."
+        and, unless the location is unknown, `loc(...)` before the message.
     """
-    names, site = [], None
-    # Each location still to visit, with the callers of the call sites
-    # around it, innermost first. A diagnostic's location comes as a plain
-    # Location; from_attr gives its kind, and its parts come typed.
-    pending = [(Location.from_attr(loc.attr, loc.context), [])]
-    while pending:
-        loc, callers = pending.pop(0)
-        if isinstance(loc, NameLoc):
-            if loc.name_str not in names:
-                names.append(loc.name_str)
-            pending.insert(0, (loc.child_loc, callers))
-        elif isinstance(loc, CallSiteLoc):
-            pending.insert(0, (loc.callee, [loc.caller] + callers))
-        elif isinstance(loc, FusedLoc):
-            pending[0:0] = [(child, callers) for child in loc.locations]
-        elif isinstance(loc, FileLineColLoc) and site is None:
-            site = (loc.filename, loc.start_line, loc.start_col, callers)
-    if site is None:
-        return None
-    filename, line, col, callers = site
-    # A caller is a file location, a chain of call sites, or either of those
-    # named or fused.
-    caller_sites = []
-    for caller in callers:
-        stack = [caller]
-        while stack:
-            loc = stack.pop()
-            if isinstance(loc, NameLoc):
-                stack.append(loc.child_loc)
-            elif isinstance(loc, CallSiteLoc):
-                stack += [loc.caller, loc.callee]
-            elif isinstance(loc, FusedLoc):
-                stack += reversed(list(loc.locations))
-            elif isinstance(loc, FileLineColLoc):
-                caller_sites.append((loc.filename, loc.start_line, loc.start_col))
-    return filename, line, col, caller_sites, names
+    site = next((f for f in _walk(loc) if isinstance(f, FileLineColLoc)), None)
+    if site is not None:
+        where = f"{site.filename}:{site.start_line}:{site.start_col}"
+        return f"{where}: {severity}: {message}"
+    if isinstance(loc, UnknownLoc):
+        return f"<unknown>:0: {severity}: {message}"
+    return f"<unknown>:0: {severity}: {loc}: {message}"
 
 
 def attach_tool_location(exc: BaseException, output: str) -> bool:

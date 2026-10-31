@@ -4,6 +4,8 @@
 # RUN: %PYTHON %s
 
 import os
+import subprocess
+import tempfile
 import traceback
 
 import numpy as np
@@ -154,68 +156,71 @@ def check_fused_location():
     return name
 
 
-def parse_error(ir):
-    with mlir_mod_ctx():
-        try:
-            Module.parse(ir)
-        except MLIRError as exc:
-            return str(design_error(exc))
-    raise AssertionError("expected the module to be rejected")
-
-
-# An inliner nests call sites in the callee; a traceback names its frames.
-NESTED_CALLERS_IR = """
-module {
-  aie.device(npu1_1col) {
-    %t = aie.tile(9, 2) loc(#site)
-  }
+# Locations with no file on disk, so aiecc quotes no source line, and each
+# with its case: a nested call site (as an inliner builds) under a name, with
+# a named caller; one fused across two objects; a name over no file; none.
+AIECC_CASES = {
+    "nested callers": (
+        "aie.tile(9, 2) loc(#site)",
+        '#site = loc("iron:x"(callsite(callsite("a.py":1:0 at "b.py":2:0)'
+        ' at "py:f"("c.py":3:0))))',
+    ),
+    "fused objects": (
+        "aie.tile(9, 2) loc(#both)",
+        '#a = loc("iron:act_in"("a.py":4:2))\n'
+        '#b = loc("iron:act_out"(callsite("b.py":5:0 at "c.py":6:0)))\n'
+        "#both = loc(fused[#a, #b])",
+    ),
+    "name without a file": ('aie.tile(9, 2) loc("iron:x")', ""),
+    "unknown location": ("aie.core(%t) { aie.end } loc(unknown)", ""),
 }
-#site = loc("iron:x"(callsite(callsite("a.py":1:0 at "b.py":2:0) at "py:f"("c.py":3:0))))
-"""
 
 
-def check_nested_callers():
-    """Each call that led to the op is noted, innermost first."""
-    lines = parse_error(NESTED_CALLERS_IR).splitlines()
-    assert lines[1].startswith("a.py:1:0: error: x: 'aie.tile' op column"), lines
-    assert lines[2:] == [
-        "b.py:2:0: note: called from",
-        "c.py:3:0: note: called from",
-    ], lines
-    return ", ".join(line.split(":")[0] for line in lines[1:])
+def case_ir(op, aliases):
+    return (
+        "module {\n  aie.device(npu1_1col) {\n"
+        "    %t = aie.tile(0, 0) loc(unknown)\n"
+        f"    %r = {op}\n  }}\n}}\n{aliases}\n"
+    )
 
 
-UNLOCATED_IR = """
-module {
-  aie.device(npu1_1col) {
-    %t = aie.tile(0, 0) loc(unknown)
-    %c = aie.core(%t) { aie.end } loc(unknown)
-  }
-}
-"""
-
-
-def check_unlocated_diagnostic():
-    """An error with no source reads as MLIRError prints it, dump indented."""
-    lines = parse_error(UNLOCATED_IR).splitlines()
-    assert lines[1].startswith("unknown: error: 'aie.core' op"), lines
-    assert lines[2].startswith("unknown: note: see current operation"), lines
-    body = lines[3:]
-    assert body and all(line.startswith("  ") for line in body), lines
-    return f"{len(body)} indented dump lines"
+def check_matches_aiecc():
+    """Each MLIRError reads line for line as aiecc prints the same error."""
+    with tempfile.TemporaryDirectory() as tmp:
+        for case, (op, aliases) in AIECC_CASES.items():
+            ir = case_ir(op, aliases)
+            path = os.path.join(tmp, "design.mlir")
+            with open(path, "w") as f:
+                f.write(ir)
+            run = subprocess.run(
+                ["aiecc", "-n", "--no-progress", "--tmpdir", tmp]
+                + ["--get=input_physical.mlir", path],
+                capture_output=True,
+                text=True,
+            )
+            assert run.returncode != 0, f"{case}: aiecc accepted it"
+            expected = [l for l in run.stderr.splitlines() if l and "aiecc:" not in l]
+            with mlir_mod_ctx():
+                try:
+                    Module.parse(ir)
+                except MLIRError as exc:
+                    message = str(design_error(exc))
+                else:
+                    raise AssertionError(f"{case}: expected a rejection")
+            got = message.splitlines()[1:]
+            assert got == expected, f"{case}:\n{got}\n!=\n{expected}"
+    return ", ".join(AIECC_CASES)
 
 
 def main():
     where = check_verifier_failure()
     guard = check_guard_failure()
     fused = check_fused_location()
-    callers = check_nested_callers()
-    unlocated = check_unlocated_diagnostic()
+    cases = check_matches_aiecc()
     print(f"PASS: verifier failure reported at {where}")
     print(f"PASS: guard failure filtered to {guard}")
     print(f"PASS: fused location reported as {fused}")
-    print(f"PASS: nested callers noted in order {callers}")
-    print(f"PASS: unlocated diagnostic with {unlocated}")
+    print(f"PASS: as aiecc prints: {cases}")
 
 
 main()
