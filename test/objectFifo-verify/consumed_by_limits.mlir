@@ -110,3 +110,52 @@ module @drain_twice {
   }
 }
 
+// -----
+
+// Two paths reach @d: through @b one input byte for every output byte, through
+// @c one for every two. Only the larger share is recorded; the smaller
+// follows from it.
+
+// CHECK-LABEL: module @two_paths
+// CHECK: aie.route_endpoint @a_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @d_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "a"}
+module @two_paths {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core2 = aie.tile(0, 2)
+    %core4 = aie.tile(0, 4)
+    aie.objectfifo @a(%shim, {%core2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%core2, {%core4}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%core2, {%core4}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @d(%core4, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %x = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
+        %y = aie.objectfifo.acquire @b(Produce, 1) : memref<16xi32>
+        %z:2 = aie.objectfifo.acquire @c(Produce, 2) : memref<16xi32>, memref<16xi32>
+        aie.objectfifo.release @a(Consume, 1)
+        aie.objectfifo.release @b(Produce, 1)
+        aie.objectfifo.release @c(Produce, 2)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%core4) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %x = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
+        %y = aie.objectfifo.acquire @c(Consume, 1) : memref<16xi32>
+        %z = aie.objectfifo.acquire @d(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @b(Consume, 1)
+        aie.objectfifo.release @c(Consume, 1)
+        aie.objectfifo.release @d(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}

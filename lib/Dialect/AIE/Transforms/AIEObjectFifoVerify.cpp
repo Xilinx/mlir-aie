@@ -1215,13 +1215,15 @@ struct AIEObjectFifoVerifyPass
       if (input.getBundle() != WireBundle::DMA ||
           !input.getTileLike().isShimTile())
         continue;
-      llvm::SetVector<Attribute> proofs;
-      // An input sent `in` bytes for every `out` the output received.
+      // The most bytes the input is proven to have sent for every `out` each
+      // output received, as (in, out); a smaller share follows from it.
+      llvm::MapVector<Operation *, std::pair<int64_t, int64_t>> proofs;
       auto prove = [&](RouteEndpointOp output, int64_t in, int64_t out) {
-        int64_t common = std::gcd(in, out);
-        proofs.insert(ConsumedByAttr::get(
-            ctx, FlatSymbolRefAttr::get(output.getSymNameAttr()), in / common,
-            out / common));
+        auto [it, inserted] = proofs.try_emplace(output, in, out);
+        int64_t lhs, rhs;
+        if (!inserted && !llvm::MulOverflow(in, it->second.second, lhs) &&
+            !llvm::MulOverflow(it->second.first, out, rhs) && lhs > rhs)
+          it->second = {in, out};
       };
       SmallVector<Reach> reaches;
       llvm::SmallPtrSet<Operation *, 8> onPath;
@@ -1306,10 +1308,21 @@ struct AIEObjectFifoVerifyPass
           }
         }
       }
-      if (proofs.empty())
+      if (proofs.empty()) {
         input.removeConsumedByAttr();
-      else
-        input.setConsumedByAttr(ArrayAttr::get(ctx, proofs.getArrayRef()));
+        continue;
+      }
+      SmallVector<Attribute> attrs;
+      for (auto [output, share] : proofs) {
+        auto [in, out] = share;
+        int64_t common = std::gcd(in, out);
+        attrs.push_back(ConsumedByAttr::get(
+            ctx,
+            FlatSymbolRefAttr::get(
+                cast<RouteEndpointOp>(output).getSymNameAttr()),
+            in / common, out / common));
+      }
+      input.setConsumedByAttr(ArrayAttr::get(ctx, attrs));
     }
   }
 
