@@ -124,10 +124,10 @@ class SourceSite:
                     returning = False
             else:
                 site = (
-                    # co_filename is relative for a module imported through a
-                    # relative sys.path entry, which a reader of the IR cannot
-                    # resolve, nor a later os.stat after a chdir. "<string>"
-                    # names no path.
+                    # co_filename is relative for code compiled under a
+                    # relative name, as a runner's exec(compile(src, path)),
+                    # which neither a reader of the IR nor a later read
+                    # after a chdir can resolve. "<string>" names no path.
                     filename if filename.startswith("<") else os.path.abspath(filename),
                     frame.f_lineno,
                     _column(frame.f_code, frame.f_lasti),
