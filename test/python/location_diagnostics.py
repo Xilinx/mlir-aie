@@ -154,13 +154,68 @@ def check_fused_location():
     return name
 
 
+def parse_error(ir):
+    with mlir_mod_ctx():
+        try:
+            Module.parse(ir)
+        except MLIRError as exc:
+            return str(design_error(exc))
+    raise AssertionError("expected the module to be rejected")
+
+
+# An inliner nests call sites in the callee; a traceback names its frames.
+NESTED_CALLERS_IR = """
+module {
+  aie.device(npu1_1col) {
+    %t = aie.tile(9, 2) loc(#site)
+  }
+}
+#site = loc("iron:x"(callsite(callsite("a.py":1:0 at "b.py":2:0) at "py:f"("c.py":3:0))))
+"""
+
+
+def check_nested_callers():
+    """Each call that led to the op is noted, innermost first."""
+    lines = parse_error(NESTED_CALLERS_IR).splitlines()
+    assert lines[1].startswith("a.py:1:0: error: x: 'aie.tile' op column"), lines
+    assert lines[2:] == [
+        "b.py:2:0: note: called from",
+        "c.py:3:0: note: called from",
+    ], lines
+    return ", ".join(line.split(":")[0] for line in lines[1:])
+
+
+UNLOCATED_IR = """
+module {
+  aie.device(npu1_1col) {
+    %t = aie.tile(0, 0) loc(unknown)
+    %c = aie.core(%t) { aie.end } loc(unknown)
+  }
+}
+"""
+
+
+def check_unlocated_diagnostic():
+    """An error with no source reads as MLIRError prints it, dump indented."""
+    lines = parse_error(UNLOCATED_IR).splitlines()
+    assert lines[1].startswith("unknown: error: 'aie.core' op"), lines
+    assert lines[2].startswith("unknown: note: see current operation"), lines
+    body = lines[3:]
+    assert body and all(line.startswith("  ") for line in body), lines
+    return f"{len(body)} indented dump lines"
+
+
 def main():
     where = check_verifier_failure()
     guard = check_guard_failure()
     fused = check_fused_location()
+    callers = check_nested_callers()
+    unlocated = check_unlocated_diagnostic()
     print(f"PASS: verifier failure reported at {where}")
     print(f"PASS: guard failure filtered to {guard}")
     print(f"PASS: fused location reported as {fused}")
+    print(f"PASS: nested callers noted in order {callers}")
+    print(f"PASS: unlocated diagnostic with {unlocated}")
 
 
 main()

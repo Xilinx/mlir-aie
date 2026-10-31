@@ -23,7 +23,7 @@ from ..ir import (  # pyright: ignore[reportMissingImports]
     MLIRError,
     NameLoc,
 )
-from .sourceloc import is_internal_file
+from .sourceloc import IRON_PREFIX, is_internal_file
 
 _TOOL_ERROR = re.compile(r"^(.+?):(\d+):\d+: error: ", re.M)
 
@@ -101,29 +101,44 @@ def design_error(exc: BaseException) -> BaseException:
     lines, attached = [f"{exc.message}:"], False  # pyright: ignore[reportAttributeAccessIssue]  # fmt: skip
     for diag in exc.error_diagnostics:  # pyright: ignore[reportAttributeAccessIssue]  # fmt: skip
         site = _design_site(diag.location)
+        objects, callers = [], []
         if site is None:
-            lines.append(f"error: {diag.location}: {diag.message}")
-            lines += [f" note: {n.location}: {n.message}" for n in diag.notes]
-            continue
-        filename, line, col, callers, names = site
-        objects = [n.removeprefix("iron:") for n in names if n.startswith("iron:")]
-        if not attached:
-            # "iron:act_in" or "py:build.<locals>.core_fn": the frame reads
-            # as the object or function, without its kind.
-            short = [(n.partition(":")[2] or n).rpartition(".")[2] for n in names]
-            frame_name = ", ".join(dict.fromkeys(short)) or "<design>"
-            attached = _attach_source_frame(exc, filename, line, frame_name)
+            # Unwrapped as MLIRError prints it: `unknown`, `"name"`.
+            where = str(diag.location).removeprefix("loc(").removesuffix(")")
+        else:
+            filename, line, col, callers, names = site
+            objects = [
+                n.removeprefix(IRON_PREFIX) for n in names if n.startswith(IRON_PREFIX)
+            ]
+            if not attached:
+                # "iron:act_in" or "py:build.<locals>.core_fn": the frame reads
+                # as the object or function, without its kind.
+                short = [(n.partition(":")[2] or n).rpartition(".")[2] for n in names]
+                frame_name = ", ".join(dict.fromkeys(short)) or "<design>"
+                attached = _attach_source_frame(exc, filename, line, frame_name)
+            where = f"{filename}:{line}:{col}"
         named = f"{', '.join(objects)}: " if objects else ""
-        lines.append(f"{filename}:{line}:{col}: error: {named}{diag.message}")
+        # Continuation lines, such as an op's dump, indent under their line.
+        message = diag.message.replace("\n", "\n  ")
+        lines.append(f"{where}: error: {named}{message}")
         lines += [f"{f}:{n}:{c}: note: called from" for f, n, c in callers]
         for note in diag.notes:
             # The location already points at the statement that declared the
             # object; IRON_FULL_TRACEBACK keeps the dump for debugging IRON.
-            if objects and not full and note.message.startswith("see current"):
+            if (
+                objects
+                and not full
+                and note.message.startswith("see current operation")
+            ):
                 continue
-            where = _design_site(note.location)
-            at = f"{where[0]}:{where[1]}:{where[2]}" if where else note.location
-            lines.append(f"{at}: note: {note.message}")
+            site = _design_site(note.location)
+            where = (
+                f"{site[0]}:{site[1]}:{site[2]}"
+                if site
+                else str(note.location).removeprefix("loc(").removesuffix(")")
+            )
+            message = note.message.replace("\n", "\n  ")
+            lines.append(f"{where}: note: {message}")
     exc.args = ("\n".join(lines),)
     return exc
 
@@ -143,21 +158,19 @@ def _design_site(
         to it, innermost first; and every name on the whole location, as
         "iron:act_in" or "py:core_fn". None when there is no file location.
     """
-    names, site, context = [], None, loc.context
+    names, site = [], None
     # Each location still to visit, with the callers of the call sites
-    # around it.
-    pending = [(loc, [])]
+    # around it, innermost first. A diagnostic's location comes as a plain
+    # Location; from_attr gives its kind, and its parts come typed.
+    pending = [(Location.from_attr(loc.attr, loc.context), [])]
     while pending:
         loc, callers = pending.pop(0)
-        # A diagnostic's location comes as a plain Location; from_attr gives
-        # its kind.
-        loc = Location.from_attr(loc.attr, context)
         if isinstance(loc, NameLoc):
             if loc.name_str not in names:
                 names.append(loc.name_str)
             pending.insert(0, (loc.child_loc, callers))
         elif isinstance(loc, CallSiteLoc):
-            pending.insert(0, (loc.callee, callers + [loc.caller]))
+            pending.insert(0, (loc.callee, [loc.caller] + callers))
         elif isinstance(loc, FusedLoc):
             pending[0:0] = [(child, callers) for child in loc.locations]
         elif isinstance(loc, FileLineColLoc) and site is None:
@@ -165,21 +178,21 @@ def _design_site(
     if site is None:
         return None
     filename, line, col, callers = site
-    # A caller is itself a file location, or a chain of them.
+    # A caller is a file location, a chain of call sites, or either of those
+    # named or fused.
     caller_sites = []
     for caller in callers:
-        while caller is not None:
-            caller = Location.from_attr(caller.attr, context)
-            if isinstance(caller, CallSiteLoc):
-                caller, rest = caller.callee, caller.caller
-            else:
-                rest = None
-            caller = Location.from_attr(caller.attr, context)
-            if isinstance(caller, FileLineColLoc):
-                caller_sites.append(
-                    (caller.filename, caller.start_line, caller.start_col)
-                )
-            caller = rest
+        stack = [caller]
+        while stack:
+            loc = stack.pop()
+            if isinstance(loc, NameLoc):
+                stack.append(loc.child_loc)
+            elif isinstance(loc, CallSiteLoc):
+                stack += [loc.caller, loc.callee]
+            elif isinstance(loc, FusedLoc):
+                stack += reversed(list(loc.locations))
+            elif isinstance(loc, FileLineColLoc):
+                caller_sites.append((loc.filename, loc.start_line, loc.start_col))
     return filename, line, col, caller_sites, names
 
 
