@@ -24,9 +24,11 @@ import os
 import re
 import sys
 
-_ALIAS_DEF = re.compile(r"^(#loc[0-9]*)\s*=\s*loc\((.*)\)\s*$")
+# MLIR names its own location aliases #locN; a hand-written file may use any
+# alias name.
+_ALIAS_DEF = re.compile(r"^(#[A-Za-z_][\w$.-]*)\s*=\s*loc\((.*)\)\s*$")
 _TOKEN = re.compile(
-    r'\s*(?:(?P<str>"(?:[^"\\]|\\.)*")|(?P<alias>#loc[0-9]*)'
+    r'\s*(?:(?P<str>"(?:[^"\\]|\\.)*")|(?P<alias>#[A-Za-z_][\w$.-]*)'
     r"|(?P<num>[0-9]+)|(?P<word>[A-Za-z_][A-Za-z0-9_]*)|(?P<punct>[()\[\],:<>]))"
 )
 
@@ -149,7 +151,7 @@ def label(loc, aliases: dict) -> str:
 
     Args:
         loc: A location from `_Parser.parse`.
-        aliases: `#locN` to its parsed location.
+        aliases: Each alias name, as `#loc3`, to its parsed location.
 
     Returns:
         The names on the location and its innermost source line, as

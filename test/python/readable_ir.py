@@ -22,6 +22,7 @@ module {
     } {link_with = "has loc(inside).o"} loc(unknown)
     %b = aie.buffer(%tile_0_2) {sym_name = "b"} : memref<4xi32> loc("/abs/path/inline.py":9:1)
     func.call @get_loc(%b) : (memref<4xi32>) -> () loc("d\\C3\\A9sign.py":5:0)
+    %tile_0_3 = aie.tile(0, 3) loc(#named.site)
     aie.runtime_sequence(%arg1: memref<16xi32> loc("arg.py":7:0)) {
       scf.if %c {
         aie.end loc(#loc4)
@@ -38,6 +39,7 @@ module {
 #loc4 = loc("py:core_fn"("design.py":20:8))
 #loc5 = loc("iron:of_out"("design.py":40:0))
 #loc6 = loc(fused[#loc3, #loc5])
+#named.site = loc("iron:by_hand"("named.py":3:0))
 """
 
 print(readable(IR))
@@ -62,6 +64,8 @@ print(readable(IR))
 # CHECK-NEXT: %b = aie.buffer(%tile_0_2) {sym_name = "b"} : memref<4xi32>  // inline.py:9
 # Only a whole `loc(` starts a location; MLIR's escapes are undone.
 # CHECK-NEXT: func.call @get_loc(%b) : (memref<4xi32>) -> ()  // désign.py:5
+# An alias need not be one MLIR printed (#locN).
+# CHECK-NEXT: %tile_0_3 = aie.tile(0, 3)  // by_hand · named.py:3
 # A header's block-argument locations are not the op's.
 # CHECK-NEXT: aie.runtime_sequence(%arg1: memref<16xi32>) {  // design.py:30
 # CHECK-NEXT:   scf.if %c {  // helpers.py:12
@@ -74,3 +78,4 @@ print(readable(IR))
 # CHECK-NEXT: }{{$}}
 # Alias definitions are gone.
 # CHECK-NOT: #loc
+# CHECK-NOT: #named
