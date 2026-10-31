@@ -12,6 +12,7 @@ import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils import coded
 from aie.utils.accuracy import ulp_size
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.utils import resolve_target_arch
@@ -33,6 +34,7 @@ from ._common import (
     _runtime_lib_include,
 )
 from .core import conv_even
+from .datamovement import CODED_CAPACITY, coded_rows_sample
 from .zero import zero
 
 DTYPES: dict[str, tuple[dict, ...]] = {}
@@ -742,6 +744,7 @@ def mv(
     vec_size: int = 64,
     output_rows: int | None = None,
     a_col_maj: bool = False,
+    a_coded: bool = False,
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
@@ -767,6 +770,14 @@ def mv(
     spells out the order). Choose ``vec_size`` as the row-major kernel would
     for the whole ``K``.
 
+    ``a_coded=True`` builds it with ``-DA_CODED``, signature ``(m,
+    row_offset, A, scratch, b, c)``: ``A`` is ``dim_m`` coded rows
+    (``aie.utils.coded``, capacity 15), ``uint8`` of
+    ``coded.row_bytes(dim_k)`` each, which the core decodes into ``scratch``
+    (``dim_m * dim_k`` bf16) before the row-major kernel runs on it. So it
+    returns plain ``mv``'s bits on the decoded matrix at the same ``dim_m``
+    and ``vec_size``.
+
     Args:
         dim_m: Number of rows of A (output vector length). With
             ``a_col_maj``: 16, 32 or a multiple of 64.
@@ -788,19 +799,31 @@ def mv(
             ``dim_m`` rows.
         a_col_maj: bf16 and vectorized only: A is stored ``(dim_k, dim_m)``,
             the transpose, with partial sums carried across calls (above).
+        a_coded: bf16 and vectorized only, ``dim_k`` a multiple of 64: A
+            arrives as coded rows (above).
 
     Returns:
         ExternalFunction configured for the matvec kernel.
 
     Raises:
-        ValueError: When the dtype combination is not supported.
+        ValueError: When the dtype combination is not supported, or both
+            ``a_col_maj`` and ``a_coded`` are given.
     """
+    if a_col_maj and a_coded:
+        raise ValueError("mv(): a_col_maj and a_coded are two layouts of A; pick one")
     if (input_dtype, output_dtype) == (bfloat16, bfloat16):
         return _mv_bf16(
-            dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj
+            dim_m,
+            dim_k,
+            vectorized,
+            use_chess,
+            vec_size,
+            output_rows,
+            a_col_maj,
+            a_coded,
         )
-    if a_col_maj:
-        raise ValueError("mv(): a_col_maj is a bf16 layout")
+    if a_col_maj or a_coded:
+        raise ValueError("mv(): a_col_maj and a_coded are bf16 layouts")
     if output_rows is not None:
         raise ValueError("mv(): output_rows needs the bf16 kernel's row_offset")
     if input_dtype != np.int16 or output_dtype != np.int32:
@@ -855,7 +878,7 @@ MV_COL_MAJ_LAST = 2
 
 
 def _mv_bf16(
-    dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj
+    dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj, a_coded
 ) -> ExternalFunction:
     """bf16 matvec from ``aie_kernels/linalg/mv_bf16.cc`` (see [`mv`][aie.iron.kernels.linalg.mv])."""
     if vec_size <= 0 or dim_k <= 0 or dim_k % vec_size:
@@ -908,6 +931,35 @@ def _mv_bf16(
             TensorLayout((dim_m,)),
         )
         subscripts = "ckm,ck->cm"
+    elif a_coded:
+        if not vectorized or dim_k % 64:
+            raise ValueError(
+                f"mv(): a_coded is vectorized only, with dim_k ({dim_k}) a "
+                "multiple of 64"
+            )
+        symbol = "matvec_coded_bf16_bf16"
+        flags = ["-DA_CODED", f"-DCAPACITY={CODED_CAPACITY}", *flags]
+        row_bytes = coded.row_bytes(dim_k, CODED_CAPACITY)
+        arg_types = [
+            np.int32,
+            np.int32,
+            np.ndarray[(dim_m * row_bytes,), np.dtype[np.uint8]],
+            np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
+            b_ty,
+            c_ty,
+        ]
+        roles = (Param, Param, In, Param, Param if tiled else In, Out)
+        # The scratch is the core's, rewritten by every call before it is read.
+        bindings = ((0, dim_m), (1, 0), (3, np.zeros(dim_m * dim_k, bfloat16)))
+        layouts = (
+            None,
+            None,
+            TensorLayout((dim_m, row_bytes)),
+            None,
+            TensorLayout((dim_k,)),
+            TensorLayout((dim_m,)),
+        )
+        subscripts = "cmk,k->cm" if tiled else "cmk,ck->cm"
     else:
         prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
         symbol = f"{prefix}_bf16_bf16"
@@ -943,7 +995,14 @@ def _mv_bf16(
             out_offset=(1, dim_m) if tiled else None,
             layouts=layouts,
             reference=lambda a, b: np.einsum(
-                subscripts, a.astype(np.float32), b.astype(np.float32)
+                subscripts,
+                (coded.decode_rows(a, dim_k) if a_coded else a).astype(np.float32),
+                b.astype(np.float32),
+            ),
+            sample=(
+                partial(mv_coded_sample, dim_m=dim_m, dim_k=dim_k, tiled=tiled)
+                if a_coded
+                else None
             ),
             acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
             reduction=dim_k,
@@ -953,13 +1012,25 @@ def _mv_bf16(
     )
 
 
-def mv_bf16_ref(m, row_offset, a, b):
+def mv_coded_sample(rng, calls, *, dim_m: int, dim_k: int, tiled: bool):
+    """Coded A tiles (``coded_rows_sample``) and a b for [`mv`][aie.iron.kernels.linalg.mv] with ``a_coded``."""
+    a = coded_rows_sample(rng, calls, dim_m=dim_m, dim_k=dim_k)
+    b_shape = (dim_k,) if tiled else (calls, dim_k)
+    return [a, rng.standard_normal(b_shape).astype(bfloat16)]
+
+
+def mv_bf16_ref(m, row_offset, a, b, *, a_coded: bool = False):
     """Numpy reference for the bf16 [`mv`][aie.iron.kernels.linalg.mv]: ``a @ b`` over ``m`` rows, accumulated in float32.
 
     ``a`` is row-major ``(rows, K)``; only the first ``m`` rows are computed,
-    and the kernel writes them at ``row_offset`` into ``c``.
+    and the kernel writes them at ``row_offset`` into ``c``. With ``a_coded``
+    it is the coded rows ``mv(a_coded=True)`` reads, decoded first.
     """
-    a = np.asarray(a).reshape(-1, np.asarray(b).shape[-1])
+    K = np.asarray(b).shape[-1]
+    if a_coded:
+        rows = np.asarray(a).reshape(-1, coded.row_bytes(K, CODED_CAPACITY))
+        a = coded.decode_rows(rows, K)
+    a = np.asarray(a).reshape(-1, K)
     out = a[: int(m)].astype(np.float32) @ np.asarray(b).astype(np.float32)
     return np.concatenate([np.zeros(int(row_offset), np.float32), out])
 
