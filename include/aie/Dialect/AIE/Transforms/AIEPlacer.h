@@ -771,6 +771,12 @@ private:
   llvm::SmallVector<NetInfo> nets;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;
   llvm::SmallVector<FifoBufferInfo> fifoBuffers;
+  // Each fifo's end tile types, where known, as tileTypes gives them.
+  struct FifoEndTypes {
+    std::optional<AIETileType> producer;
+    llvm::SmallVector<std::optional<AIETileType>, 4> consumers;
+  };
+  std::vector<FifoEndTypes> fifoEndTypes;
 
   // A route's DMA end on a logical tile: one channel, in or out, that moves
   // with the tile.

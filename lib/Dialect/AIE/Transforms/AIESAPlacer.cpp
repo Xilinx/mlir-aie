@@ -408,12 +408,10 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   if (prodPlaceIt == currentPlacement.end())
     return;
   TileID prodPos = prodPlaceIt->second;
-  auto prodTypeIt = tileTypes.find(prod);
-  bool prodIsCore = prodTypeIt != tileTypes.end() &&
-                    prodTypeIt->second == AIETileType::CoreTile;
-  bool prodIsShim = prodTypeIt != tileTypes.end() &&
-                    (prodTypeIt->second == AIETileType::ShimNOCTile ||
-                     prodTypeIt->second == AIETileType::ShimPLTile);
+  const FifoEndTypes &types = fifoEndTypes[fifoIdx];
+  bool prodIsCore = types.producer == AIETileType::CoreTile;
+  bool prodIsShim = types.producer == AIETileType::ShimNOCTile ||
+                    types.producer == AIETileType::ShimPLTile;
 
   // A fifo that already has an aie.objectfifo.allocate keeps its shared-memory
   // objects on that delegate tile.
@@ -437,12 +435,9 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     if (consPlaceIt == currentPlacement.end())
       continue;
     TileID consPos = consPlaceIt->second;
-    auto consTypeIt = tileTypes.find(cons);
-    bool consIsCore = consTypeIt != tileTypes.end() &&
-                      consTypeIt->second == AIETileType::CoreTile;
-    bool consIsShim = consTypeIt != tileTypes.end() &&
-                      (consTypeIt->second == AIETileType::ShimNOCTile ||
-                       consTypeIt->second == AIETileType::ShimPLTile);
+    bool consIsCore = types.consumers[ci] == AIETileType::CoreTile;
+    bool consIsShim = types.consumers[ci] == AIETileType::ShimNOCTile ||
+                      types.consumers[ci] == AIETileType::ShimPLTile;
 
     // Declared depth (for shared-mem) and DMA depth (for DMA connections).
     // The appropriate depth is selected in each branch below based on
@@ -453,12 +448,14 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
                            : fb.producerDMADepth;
 
     // Check shared memory between core tiles (skip if fifo forces DMA)
-    bool isSharedMem =
-        !fb.forcesDMA && prodIsCore && consIsCore && prodPos != consPos &&
-        (targetModel->isLegalMemAffinity(prodPos.col, prodPos.row, consPos.col,
-                                         consPos.row) ||
-         targetModel->isLegalMemAffinity(consPos.col, consPos.row, prodPos.col,
-                                         prodPos.row));
+    bool rightShared = false, leftShared = false;
+    if (!fb.forcesDMA && prodIsCore && consIsCore && prodPos != consPos) {
+      rightShared = targetModel->isLegalMemAffinity(prodPos.col, prodPos.row,
+                                                    consPos.col, consPos.row);
+      leftShared = targetModel->isLegalMemAffinity(consPos.col, consPos.row,
+                                                   prodPos.col, prodPos.row);
+    }
+    bool isSharedMem = rightShared || leftShared;
 
     if (prodPos == consPos) {
       // Intratile: shared-mem, use declared depths
@@ -468,10 +465,6 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       currentMemUsage[delegatePos.value_or(prodPos)] += sign * bytes;
     } else if (isSharedMem) {
       // Shared memory: use declared depths
-      bool rightShared = targetModel->isLegalMemAffinity(
-          prodPos.col, prodPos.row, consPos.col, consPos.row);
-      bool leftShared = targetModel->isLegalMemAffinity(
-          consPos.col, consPos.row, prodPos.col, prodPos.row);
       TileID bufTile;
       if (delegatePos) {
         bufTile = *delegatePos;
@@ -562,6 +555,19 @@ void SAPlacer::initResourceTracking() {
   currentMemUsage.clear();
   currentDMAUsage.clear();
   sharedMemDestination.clear();
+
+  auto typeOf = [&](Operation *tile) -> std::optional<AIETileType> {
+    if (auto it = tileTypes.find(tile); it != tileTypes.end())
+      return it->second;
+    return std::nullopt;
+  };
+  fifoEndTypes.clear();
+  for (const auto &fb : fifoBuffers) {
+    FifoEndTypes &types = fifoEndTypes.emplace_back();
+    types.producer = typeOf(fb.producer);
+    for (Operation *cons : fb.consumers)
+      types.consumers.push_back(typeOf(cons));
+  }
 
   // Build reverse index: tile → fifo indices
   tileToFifoIndices.clear();
@@ -1122,10 +1128,11 @@ int SAPlacer::updateResourcePenalty(
   // Subtract old fifo contributions (positions already updated in
   // currentPlacement, but we need old positions for subtraction).
   // Temporarily swap back old positions for affected fifos.
-  DenseMap<Operation *, TileID> savedPositions;
+  SmallVector<std::pair<Operation *, TileID>, 3> savedPositions;
   for (auto &[op, oldPos] : oldPlacements) {
-    savedPositions[op] = currentPlacement[op];
-    currentPlacement[op] = oldPos;
+    TileID &pos = currentPlacement[op];
+    savedPositions.push_back({op, pos});
+    pos = oldPos;
   }
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, -1);
