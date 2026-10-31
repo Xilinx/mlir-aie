@@ -1114,8 +1114,8 @@ struct AIEObjectFifoVerifyPass
   /// segments when the fill fills the first (a join): segments release once
   /// written, so only those drainers' progress bounds the whole of the fill's.
   /// Bytes pass only through DMAs that neither pad, repeat nor dispatch them,
-  /// and only to a destination no other route merges into, with no packet
-  /// header kept in its bytes.
+  /// counted as each DMA's transform moves them, and only to a destination no
+  /// other route merges into, with no packet header kept in its bytes.
   void carries(DeviceOp device, StringAttr from, const PoolActors &actors,
                Reach scale, llvm::SmallPtrSetImpl<Operation *> &onPath,
                SmallVectorImpl<Reach> &reaches) {
@@ -1182,8 +1182,8 @@ struct AIEObjectFifoVerifyPass
         bool join = filled.size() == 1 && filled.front() == drained.front();
         if (drained != filled && !split && !join)
           continue;
-        int64_t in = segmentBytes(pool, filled);
-        int64_t out = segmentBytes(pool, drained);
+        int64_t in = objectBytes(fill);
+        int64_t out = core ? segmentBytes(pool, drained) : objectBytes(dma);
         Reach next{drainer, 0, 0};
         if (in <= 0 || out <= 0 ||
             llvm::MulOverflow(scale.inBytes, in, next.inBytes) ||
@@ -1270,21 +1270,25 @@ struct AIEObjectFifoVerifyPass
           // next.inBytes / next.outBytes, the core released at least that
           // much of the producer and so took `taken` bytes of the consumer
           // for every `released`, of which the input sent reach's share.
+          // `released` counts what the drainer moves of each object.
+          auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(drainer);
           int64_t taken, released;
           if (llvm::MulOverflow(ratio->first, takenBytes, taken) ||
               llvm::MulOverflow(
                   ratio->second,
-                  segmentBytes(pool, producer.getSelectedSegments()), released))
+                  dma ? objectBytes(dma)
+                      : segmentBytes(pool, producer.getSelectedSegments()),
+                  released) ||
+              released <= 0)
             continue;
           // A core sharing the pool's memory takes what this one released.
           SmallVector<Reach> nexts;
-          if (isa<ObjectFifoCoreEndpointOp>(drainer)) {
+          if (!dma) {
             nexts.push_back({drainer, 1, 1});
           } else {
             llvm::SmallPtrSet<Operation *, 8> outPath;
-            carries(device,
-                    cast<ObjectFifoDmaEndpointOp>(drainer).getSymNameAttr(),
-                    actors, {nullptr, 1, 1}, outPath, nexts);
+            carries(device, dma.getSymNameAttr(), actors, {nullptr, 1, 1},
+                    outPath, nexts);
           }
           for (const Reach &next : nexts) {
             Reach composed{next.far, 0, 0};

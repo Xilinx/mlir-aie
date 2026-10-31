@@ -52,3 +52,61 @@ module @kept_header {
   }
 }
 
+// -----
+
+// The core tile's DMA fills half of each `in` object, so the input sends 32
+// bytes for every 64 the output receives.
+
+// CHECK-LABEL: module @fill_half
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 2>], fifoName = "in"}
+module @fill_half {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core dimensionsFromStream [<size = 8, stride = 1>]}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The core tile's DMA sends each `out` object twice, so the output receives
+// 128 bytes for every 64 the input sends.
+
+// CHECK-LABEL: module @drain_twice
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 2>], fifoName = "in"}
+module @drain_twice {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core dimensionsToStream [<size = 2, stride = 0>, <size = 16, stride = 1>], {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
