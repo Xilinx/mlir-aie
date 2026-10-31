@@ -141,3 +141,51 @@ with contextlib.ExitStack() as stack:
     assert all(marker.exists() for marker in markers)
     assert not list(cache.glob("*.tmp*"))
 assert "device cache store:" in run("unlocked")
+
+# A lock released while the build is still waiting is plain contention, not a
+# lock failure: the build must wait it out and store silently, with no
+# "cannot lock" warning.
+invalidate()
+hold_seconds = 2
+locks = list(cache.glob("*.lock"))
+assert len(locks) == 2, locks
+holder_script = (
+    "import fcntl, sys, time\n"
+    "f = open(sys.argv[1], 'r+')\n"
+    "fcntl.lockf(f, fcntl.LOCK_EX)\n"
+    "open(sys.argv[2], 'w').close()\n"
+    "time.sleep(float(sys.argv[3]))\n"
+    "fcntl.lockf(f, fcntl.LOCK_UN)\n"
+)
+holders = []
+readies = []
+for path in locks:
+    ready = path.with_suffix(".ready")
+    readies.append(ready)
+    holders.append(
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                holder_script,
+                str(path),
+                str(ready),
+                str(hold_seconds),
+            ]
+        )
+    )
+try:
+    deadline = time.monotonic() + 30
+    while not all(r.exists() for r in readies):
+        assert all(h.poll() is None for h in holders), "a holder exited early"
+        assert time.monotonic() < deadline, "holders never took their locks"
+        time.sleep(0.02)
+    output = run("contended")
+finally:
+    for holder in holders:
+        assert holder.wait(timeout=30) == 0
+    for ready in readies:
+        ready.unlink(missing_ok=True)
+assert "cannot lock" not in output, output
+assert "No locks available" not in output, output
+assert "device cache store:" in output, output

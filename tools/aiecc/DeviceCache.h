@@ -429,7 +429,9 @@ private:
       return;
     }
     // Keep the lock file: unlinking it could let writers lock different inodes
-    // for the same key. Contention or unsupported locking only costs reuse.
+    // for the same key. A wait lets a concurrent store for the same entry
+    // finish normally; only contention longer than that, or unsupported
+    // locking, costs reuse.
     std::error_code ec;
     llvm::raw_fd_ostream lockFile(entry.dir + ".lock", ec,
                                   llvm::sys::fs::CD_OpenAlways);
@@ -437,7 +439,9 @@ private:
       warn("open the entry lock", ec);
       return;
     }
-    auto lock = lockFile.tryLockFor(std::chrono::milliseconds(0));
+    // A holder only writes the linked module and copies a few ELFs; 5 s
+    // covers that without masking a real lock failure as a timeout.
+    auto lock = lockFile.tryLockFor(std::chrono::milliseconds(5000));
     if (!lock) {
       warn("lock an entry", llvm::errorToErrorCode(lock.takeError()));
       return;
