@@ -242,6 +242,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pushesByAllocation.clear();
     channelOwner.clear();
     mixedChannels.clear();
+    creditedPushes.clear();
   }
 
   // Reject control flow the static path cannot lower. Constant-trip scf.for is
@@ -558,13 +559,20 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (DMAConfigureTaskOp task = started[i].task)
         if (startCount.lookup(task) == 0)
           knownComplete.insert(task);
-    SmallVector<StartedTask> done(started.begin(), std::next(it));
+    // Counts are cumulative, so the newest push an allocation retired here
+    // credits all that its older ones would.
+    SmallVector<std::pair<AIE::ShimDMAAllocationOp, uint64_t>> newest;
+    for (const StartedTask &push :
+         llvm::reverse(llvm::make_range(started.begin(), std::next(it))))
+      if (AIE::ShimDMAAllocationOp output =
+              push.task ? allocationOf(push.task) : nullptr)
+        if (llvm::none_of(newest,
+                          [&](auto &seen) { return seen.first == output; }))
+          newest.push_back({output, push.order});
     started.erase(started.begin(), std::next(it));
     channel.finished -= std::min(channel.finished, retired);
-    for (const StartedTask &push : done)
-      if (push.task)
-        if (AIE::ShimDMAAllocationOp output = allocationOf(push.task))
-          creditInputs(output, push.order);
+    for (auto [output, order] : newest)
+      creditInputs(output, order);
   }
 
   // A status poll, or consumption an output proves, shows at most
@@ -675,6 +683,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // The device's shim allocations, by name; a task names one of its own
   // device's.
   llvm::DenseMap<StringAttr, AIE::ShimDMAAllocationOp> allocationsByName;
+  // Each output's proofs, with the input that holds each.
+  llvm::DenseMap<
+      Operation *,
+      SmallVector<std::pair<AIE::ShimDMAAllocationOp, AIE::ConsumedByAttr>>>
+      proofsByOutput;
 
   // The shim allocation `cfg` was configured for, when substitution kept it.
   AIE::ShimDMAAllocationOp allocationOf(DMAConfigureTaskOp cfg) {
@@ -695,6 +708,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // allocation's own count misses.
   std::map<DmaQueueModel::ChannelKey, Operation *> channelOwner;
   std::set<DmaQueueModel::ChannelKey> mixedChannels;
+  // Per (input, output), how many of the input's pushes that output has
+  // already proven taken: both counts only grow, so a credit resumes there.
+  llvm::DenseMap<std::pair<Operation *, Operation *>, size_t> creditedPushes;
   llvm::DenseMap<std::pair<Operation *, Operation *>, bool> balancedPairs;
 
   // Whether every stretch of every runtime sequence of this device, from its
@@ -751,42 +767,45 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // pushes within those bytes have finished.
   void creditInputs(AIE::ShimDMAAllocationOp output, uint64_t order) {
     auto outPushes = pushesByAllocation.find(output);
-    if (outPushes == pushesByAllocation.end())
+    auto proofs = proofsByOutput.find(output);
+    if (outPushes == pushesByAllocation.end() || proofs == proofsByOutput.end())
       return;
+    auto byOrder = [](const auto &push, uint64_t bound) {
+      return push.order < bound;
+    };
     const AllocationPush *done =
-        llvm::find_if(outPushes->second, [&](const AllocationPush &push) {
-          return push.order == order;
-        });
-    if (done == outPushes->second.end() || !done->through)
+        llvm::lower_bound(outPushes->second, order, byOrder);
+    if (done == outPushes->second.end() || done->order != order ||
+        !done->through)
       return;
     DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(
         output.getTileOp(), output.getChannelDir(), output.getChannelIndex());
     if (mixedChannels.count(outKey))
       return;
-    for (auto &[op, pushes] : pushesByAllocation) {
-      auto input = cast<AIE::ShimDMAAllocationOp>(op);
-      ArrayAttr proofs = input.getConsumedByAttr();
+    for (auto [input, proof] : proofs->second) {
+      auto inPushes = pushesByAllocation.find(input);
       DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(
           input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
-      if (!proofs || mixedChannels.count(key))
+      if (inPushes == pushesByAllocation.end() || mixedChannels.count(key) ||
+          !leavesNothing(input, output, proof))
         continue;
-      for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>()) {
-        if (proof.getOutput().getAttr() != output.getSymNameAttr() ||
-            !leavesNothing(input, output, proof))
-          continue;
-        std::optional<uint64_t> last;
-        for (const AllocationPush &push : pushes) {
-          if (!push.through || !atMost(*push.through, proof.getOutputBytes(),
-                                       *done->through, proof.getInputBytes()))
-            break;
-          last = push.order;
-        }
-        auto &tasks = startedOnChannel[key].tasks;
-        const StartedTask *at = llvm::find_if(
-            tasks, [&](const StartedTask &push) { return push.order == last; });
-        if (last && at != tasks.end())
-          noteDrained(key, tasks.end() - at - 1);
+      ArrayRef<AllocationPush> pushes = inPushes->second;
+      size_t &credited = creditedPushes[{input, output}];
+      size_t covered = credited;
+      for (; covered < pushes.size(); ++covered) {
+        const std::optional<Volume> &through = pushes[covered].through;
+        if (!through || !atMost(*through, proof.getOutputBytes(),
+                                *done->through, proof.getInputBytes()))
+          break;
       }
+      if (covered == credited)
+        continue;
+      credited = covered;
+      auto &tasks = startedOnChannel[key].tasks;
+      const StartedTask *at =
+          llvm::lower_bound(tasks, pushes[covered - 1].order, byOrder);
+      if (at != tasks.end() && at->order == pushes[covered - 1].order)
+        noteDrained(key, tasks.end() - at - 1);
     }
   }
 
@@ -1152,6 +1171,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pushesByAllocation.clear();
     channelOwner.clear();
     mixedChannels.clear();
+    creditedPushes.clear();
   }
 
   void runOnOperation() override {
@@ -1161,8 +1181,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     nonNegativeByIndex.clear();
     balancedPairs.clear();
     allocationsByName.clear();
+    proofsByOutput.clear();
     for (auto allocation : device.getOps<AIE::ShimDMAAllocationOp>())
       allocationsByName[allocation.getSymNameAttr()] = allocation;
+    for (auto input : device.getOps<AIE::ShimDMAAllocationOp>())
+      if (ArrayAttr proofs = input.getConsumedByAttr())
+        for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>())
+          if (AIE::ShimDMAAllocationOp output =
+                  allocationsByName.lookup(proof.getOutput().getAttr()))
+            proofsByOutput[output].push_back({input, proof});
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
       // Skip sequences already handled by the dynamic free-list pool path
