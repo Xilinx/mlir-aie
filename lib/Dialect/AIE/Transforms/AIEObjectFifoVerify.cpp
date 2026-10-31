@@ -160,12 +160,12 @@ static std::optional<int64_t> heldAfter(Block &block, StringRef name,
 }
 
 /// The trip count of `forOp`: static, or an upper bound the host writes as
-/// one constant for every dispatch. That is a word of an `aie.buffer` the
-/// cores only load, which every runtime sequence of the device writes with
-/// the same constant (`aiex.npu.rtp_write`) before it sets a lock
-/// (`aiex.set_lock`) the core acquires ahead of the load. The lock starts at
-/// 0 and the core gives it back only after taking it, so every load follows
-/// a write.
+/// one constant for every dispatch. That is a word of an `aie.buffer` of
+/// 32-bit words the cores only load, which every runtime sequence of the
+/// device writes with the same constant (`aiex.npu.rtp_write`), directly in
+/// its body, before it sets a lock (`aiex.set_lock`) the core waits on ahead
+/// of the load. The lock starts at 0 and each release gives back no more
+/// than the acquire just before it took, so every load follows a write.
 static std::optional<int64_t> tripCount(scf::ForOp forOp, DeviceOp device) {
   if (std::optional<int64_t> trip = getStaticTripCount(forOp))
     return trip;
@@ -179,34 +179,49 @@ static std::optional<int64_t> tripCount(scf::ForOp forOp, DeviceOp device) {
     return std::nullopt;
   std::optional<int64_t> index = getConstantIntValue(load.getIndices().front());
   auto buffer = load.getMemRef().getDefiningOp<BufferOp>();
-  if (!index || !buffer || !buffer.getSymName() || buffer.getInitialValue() ||
+  // An RTP write's index counts 32-bit words, so only in a buffer of them is
+  // that the element the load reads.
+  auto type = buffer ? dyn_cast<MemRefType>(buffer.getType()) : MemRefType();
+  if (!index || !type || !type.getElementType().isInteger(32) ||
+      !type.getLayout().isIdentity() || !buffer.getSymName() ||
+      buffer.getInitialValue() ||
       llvm::any_of(buffer->getUsers(),
                    [](Operation *user) { return !isa<memref::LoadOp>(user); }))
     return std::nullopt;
 
-  auto acquiredBefore = [](Operation *op, Value lock) {
-    for (Operation *prev = op->getPrevNode(); prev; prev = prev->getPrevNode())
-      if (auto use = dyn_cast<UseLockOp>(prev);
-          use && use.getLock() == lock &&
-          use.getAction() != LockAction::Release)
-        return true;
-    return false;
-  };
-  LockOp lock;
-  for (Operation *prev = load->getPrevNode(); prev && !lock;
+  UseLockOp wait;
+  for (Operation *prev = load->getPrevNode(); prev && !wait;
        prev = prev->getPrevNode())
-    if (auto use = dyn_cast<UseLockOp>(prev);
-        use && use.getAction() != LockAction::Release)
-      lock = use.getLock().getDefiningOp<LockOp>();
-  if (!lock || lock.getInit().value_or(0) != 0)
+    if (auto use = dyn_cast<UseLockOp>(prev); use && !use.release())
+      wait = use;
+  std::optional<int64_t> waitsFor =
+      wait ? getConstantIntValue(wait.getValue()) : std::nullopt;
+  LockOp lock = wait ? wait.getLock().getDefiningOp<LockOp>() : LockOp();
+  if (!lock || !wait.acquireGE() || !waitsFor || *waitsFor < 1 ||
+      !wait.getAcqEn() ||
+      wait.getBlocking().value_or(LockBlocking::Blocking) !=
+          LockBlocking::Blocking ||
+      lock.getInit().value_or(0) != 0)
     return std::nullopt;
   for (Operation *user : lock->getUsers()) {
     if (isa<AIEX::SetLockOp>(user))
       continue;
     auto use = dyn_cast<UseLockOp>(user);
-    if (!use || use.getAction() != LockAction::Release)
+    if (!use)
+      return std::nullopt;
+    if (!use.release())
       continue;
-    if (!acquiredBefore(use, lock.getResult()))
+    std::optional<int64_t> given = getConstantIntValue(use.getValue());
+    UseLockOp before;
+    for (Operation *prev = use->getPrevNode(); prev && !before;
+         prev = prev->getPrevNode())
+      if (auto other = dyn_cast<UseLockOp>(prev);
+          other && other.getLock() == use.getLock())
+        before = other;
+    std::optional<int64_t> taken = before && !before.release()
+                                       ? getConstantIntValue(before.getValue())
+                                       : std::nullopt;
+    if (!given || !taken || *given > *taken)
       return std::nullopt;
   }
 
@@ -218,8 +233,10 @@ static std::optional<int64_t> tripCount(scf::ForOp forOp, DeviceOp device) {
         if (write.getBuffer() != *buffer.getSymName() ||
             write.getIndex() != *index)
           return WalkResult::advance();
+        // A write under a branch or a loop may never run.
         std::optional<int64_t> word = getConstantIntValue(write.getValue());
-        if (!word || (value && *value != *word))
+        if (write->getParentOp() != sequence || !word ||
+            (value && *value != *word))
           return WalkResult::interrupt();
         value = word;
         written = true;
