@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, row_addresses, transpose.
+"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, decode_coded, expand, limbs_f32, merge_rows, patch_positions, row_addresses, transpose.
 
 Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
 vector code with no LUT dependency.  ``convert_copy`` binds
@@ -14,6 +14,7 @@ of the same cast.
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils import coded
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -21,7 +22,9 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Param,
+    TensorLayout,
     Trace,
+    _detect_arch,
     _kernel_source,
     _make_extern,
     _require_vector_alignment,
@@ -916,5 +919,91 @@ def transpose(
             ),
             tolerance=Tolerance.exact(note="data movement only; lossless"),
             ops_per_call=0,
+        ),
+    )
+
+
+# Exceptions a coded row holds: 15 fill its 64-byte tail.
+CODED_CAPACITY = 15
+
+
+def coded_rows_sample(rng, calls: int, *, dim_m: int, dim_k: int) -> np.ndarray:
+    """``calls`` tiles of ``dim_m`` coded rows of ``dim_k`` weights.
+
+    Rows are normal draws held to at least 2^-8 in magnitude, so they span
+    11 binades and fit their windows, with up to ``CODED_CAPACITY`` entries
+    pushed far outside them. The first row of each call holds the full
+    count, its first and last weight among them, so every call patches
+    exceptions and the patch reaches both ends of a row.
+    """
+    a = rng.standard_normal((calls, dim_m, dim_k)).astype(np.float32)
+    a = np.copysign(np.maximum(np.abs(a), np.float32(2**-8)), a)
+    inner = np.arange(1, dim_k - 1)
+    for c in range(calls):
+        for m in range(dim_m):
+            if m == 0:
+                at = np.r_[0, dim_k - 1, rng.choice(inner, CODED_CAPACITY - 2, False)]
+            else:
+                n = int(rng.integers(0, CODED_CAPACITY + 1))
+                at = rng.choice(dim_k, size=n, replace=False)
+            a[c, m, at] *= np.exp2(rng.choice([-60.0, 60.0], size=at.size))
+    return coded.encode_rows(a.astype(bfloat16), CODED_CAPACITY)
+
+
+def decode_coded_ref(a, *, dim_k: int):
+    """Numpy reference for [`decode_coded`][iron.kernels.datamovement.decode_coded]: ``aie.utils.coded.decode_rows``."""
+    return coded.decode_rows(np.asarray(a), dim_k)
+
+
+def decode_coded(dim_m: int = 4, dim_k: int = 2048) -> ExternalFunction:
+    """Coded rows in, bf16 rows out (aie2p only).
+
+    ``aie_kernels/datamovement/decode_coded.cc``, signature ``(m, A, out)``:
+    ``A`` is ``dim_m`` rows coded as ``aie.utils.coded`` writes them (capacity
+    15), ``coded.row_bytes(dim_k)`` bytes each, and ``out`` their
+    ``dim_m * dim_k`` bf16 weights, bit for bit. It is the decode the coded
+    matvec runs ahead of its products (``common/coded_rows.h``), as a kernel
+    of its own.
+
+    Args:
+        dim_m: Rows a call decodes.
+        dim_k: Weights in a row, a multiple of 64.
+
+    Returns:
+        ExternalFunction for ``decode_coded_bf16``.
+
+    Raises:
+        NotImplementedError: On a device other than aie2p.
+        ValueError: ``dim_k`` is not a positive multiple of 64.
+    """
+    if _detect_arch() != "aie2p":
+        raise NotImplementedError("decode_coded() is written for aie2p only")
+    if dim_k <= 0 or dim_k % 64:
+        raise ValueError(f"decode_coded(): dim_k ({dim_k}) must be a multiple of 64")
+    row_bytes = coded.row_bytes(dim_k, CODED_CAPACITY)
+    return _make_extern(
+        "decode_coded_bf16",
+        _kernel_source("datamovement/decode_coded.cc"),
+        [
+            np.int32,
+            np.ndarray[(dim_m * row_bytes,), np.dtype[np.uint8]],
+            np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
+        ],
+        compile_flags=[f"-DDIM_K={dim_k}", f"-DCAPACITY={CODED_CAPACITY}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Param, In, Out),
+            parameter_bindings=((0, dim_m),),
+            layouts=(
+                None,
+                TensorLayout((dim_m, row_bytes)),
+                TensorLayout((dim_m, dim_k)),
+            ),
+            reference=lambda a: decode_coded_ref(a, dim_k=dim_k),
+            tolerance=Tolerance.exact(note="a lossless decode"),
+            ops_per_call=dim_m * dim_k,
+            sample=lambda rng, calls: [
+                coded_rows_sample(rng, calls, dim_m=dim_m, dim_k=dim_k)
+            ],
         ),
     )

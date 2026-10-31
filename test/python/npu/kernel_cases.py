@@ -473,6 +473,16 @@ CASES: list[Case] = [
     # One row and one 16-lane column block: each loop runs a single trip.
     check("affine_cast", dict(rows=1, cols=16), tag="edge-tiny", smoke=True),
     check("affine_cast", dict(rows=8, cols=256), tag="wide"),
+    # The coded-rows decode alone: four rows of llama 3.2 1B's hidden size,
+    # and a row whose code plane ends off a 64-byte boundary.
+    Case("decode_coded", calls=16, devices=("npu2",), smoke=True),
+    check(
+        "decode_coded",
+        dict(dim_m=2, dim_k=192),
+        tag="edge-code-plane-padded",
+        devices=("npu2",),
+        smoke=True,
+    ),
     Case("expand", calls=16, smoke=True),
     Case("expand", calls=256),
     # AIE2 builds a group's scale once when a group spans blocks; 96 leaves one

@@ -34,6 +34,7 @@ from ._common import (
     _runtime_lib_include,
 )
 from .core import conv_even
+from .datamovement import CODED_CAPACITY, coded_rows_sample
 from .zero import zero
 
 DTYPES: dict[str, tuple[dict, ...]] = {}
@@ -873,9 +874,6 @@ def mv(
 MV_COL_MAJ_FIRST = 1
 MV_COL_MAJ_LAST = 2
 
-# Exceptions a coded row holds: 15 fill its 64-byte tail.
-CODED_CAPACITY = 15
-
 
 def _mv_bf16(
     dim_m, dim_k, vectorized, use_chess, vec_size, output_rows, a_col_maj, a_coded
@@ -1015,28 +1013,10 @@ def _mv_bf16(
 
 
 def mv_coded_sample(rng, calls, *, dim_m: int, dim_k: int, tiled: bool):
-    """Coded A tiles and a b for [`mv`][iron.kernels.linalg.mv] with ``a_coded``.
-
-    Rows are normal draws held to at least 2^-8 in magnitude, so they span
-    11 binades and fit their windows, with up to ``CODED_CAPACITY`` entries
-    pushed far outside them. The first row of each call holds the full
-    count, its first and last weight among them, so every call patches
-    exceptions and the patch reaches both ends of a row.
-    """
-    a = rng.standard_normal((calls, dim_m, dim_k)).astype(np.float32)
-    a = np.copysign(np.maximum(np.abs(a), np.float32(2**-8)), a)
-    inner = np.arange(1, dim_k - 1)
-    for c in range(calls):
-        for m in range(dim_m):
-            if m == 0:
-                at = np.r_[0, dim_k - 1, rng.choice(inner, CODED_CAPACITY - 2, False)]
-            else:
-                n = int(rng.integers(0, CODED_CAPACITY + 1))
-                at = rng.choice(dim_k, size=n, replace=False)
-            a[c, m, at] *= np.exp2(rng.choice([-60.0, 60.0], size=at.size))
+    """Coded A tiles (``coded_rows_sample``) and a b for [`mv`][iron.kernels.linalg.mv] with ``a_coded``."""
+    a = coded_rows_sample(rng, calls, dim_m=dim_m, dim_k=dim_k)
     b_shape = (dim_k,) if tiled else (calls, dim_k)
-    b = rng.standard_normal(b_shape).astype(bfloat16)
-    return [coded.encode_rows(a.astype(bfloat16), CODED_CAPACITY), b]
+    return [a, rng.standard_normal(b_shape).astype(bfloat16)]
 
 
 def mv_bf16_ref(m, row_offset, a, b, *, a_coded: bool = False):
