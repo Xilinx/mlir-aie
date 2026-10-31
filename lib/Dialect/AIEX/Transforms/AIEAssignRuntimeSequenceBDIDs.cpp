@@ -830,19 +830,54 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (knownComplete.contains(released.configure) ||
         provenFinished.contains(released.configure))
       return;
-    // Not bd->emitWarning(): its "see current operation" note verifies and
-    // numbers the whole device for each warning, quadratic in the sequence.
-    auto diag =
-        mlir::emitWarning(bd.getLoc())
-        << "reuses buffer descriptor ID " << id << " on tile (" << tile.getCol()
-        << "," << tile.getRow()
-        << ") after it was released by an aiex.dma_free_task that had no "
-           "completion guarantee, so the DMA it belonged to may still be "
-           "running and this reprograms it underneath. Consume the outstanding "
-           "tokens on the same tile, direction and channel through a task "
-           "queued at or after this transfer -- each await consumes the oldest "
-           "token, regardless of the task it names";
-    diag.attachNote(released.freeOp->getLoc()) << "released here";
+    UnsafeReuse &reuse =
+        unsafeReuses
+            .try_emplace(bd.getLoc(),
+                         UnsafeReuse{id, tile.getCol(), tile.getRow(),
+                                     released.freeOp->getLoc()})
+            .first->second;
+    reuse.tiles.insert({tile.getCol(), tile.getRow()});
+    reuse.count++;
+  }
+
+  // A full ELF inlines a sequence at every call, so one source transfer can
+  // reuse an id once per call; it is reported once, with how often.
+  struct UnsafeReuse {
+    uint32_t id;
+    int col, row;
+    Location freeLoc;
+    std::set<std::pair<int, int>> tiles = {};
+    int64_t count = 0;
+  };
+  llvm::MapVector<Location, UnsafeReuse> unsafeReuses;
+
+  void emitUnsafeReuses() {
+    for (auto &[loc, reuse] : unsafeReuses) {
+      // Not bd->emitWarning(): its "see current operation" note verifies and
+      // numbers the whole device for each warning, quadratic in the sequence.
+      auto diag =
+          mlir::emitWarning(loc)
+          << "reuses buffer descriptor ID " << reuse.id << " on tile ("
+          << reuse.col << "," << reuse.row
+          << ") after it was released by an aiex.dma_free_task that had no "
+             "completion guarantee, so the DMA it belonged to may still be "
+             "running and this reprograms it underneath. Consume the "
+             "outstanding tokens on the same tile, direction and channel "
+             "through a task queued at or after this transfer -- each await "
+             "consumes the oldest token, regardless of the task it names";
+      diag.attachNote(reuse.freeLoc) << "released here";
+      if (reuse.count > 1) {
+        Diagnostic &note = diag.attachNote();
+        note << "and " << reuse.count - 1
+             << " more times from this transfer, on tile";
+        if (reuse.tiles.size() > 1)
+          note << "s";
+        llvm::interleaveComma(reuse.tiles, note, [&](auto tile) {
+          note << " (" << tile.first << "," << tile.second << ")";
+        });
+      }
+    }
+    unsafeReuses.clear();
   }
 
   // Configures already completed by an aiex.dma_await_task. Awaiting a task
@@ -1203,6 +1238,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         freeOp.erase();
       return WalkResult::advance();
     });
+    emitUnsafeReuses();
     if (wr.wasInterrupted())
       return signalPassFailure();
   }
