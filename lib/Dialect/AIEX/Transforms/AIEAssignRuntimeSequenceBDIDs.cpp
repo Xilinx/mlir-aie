@@ -25,7 +25,8 @@
 // imbalance -- an await with no matching issue_token push on its channel would
 // deadlock the host -- and DMA task-queue overflow, where more transfers are
 // pushed onto a channel than its queue holds. On the straight-line IR the
-// allocator sees, both are single-pass per-channel counts.
+// allocator sees, both are single-pass per-channel counts. What an await here
+// proves relies on checkTokensConsumed (DmaQueueModel.h).
 //
 // With reclaim-bds, when a tile runs out of ids, the pass takes them back from
 // a started task that was never released (see reclaimFor) rather than failing:
@@ -44,9 +45,11 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <array>
 #include <map>
@@ -77,23 +80,35 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   static std::optional<DmaQueueModel::ChannelKey>
   otherTokenChannel(Operation *op) {
-    if (auto push = dyn_cast<NpuPushQueueOp>(op)) {
-      if (push.getIssueToken())
-        return DmaQueueModel::ChannelKey{static_cast<int>(push.getColumn()),
-                                         static_cast<int>(push.getRow()),
-                                         static_cast<int>(push.getDirection()),
-                                         static_cast<int>(push.getChannel())};
-    } else if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+    std::optional<DmaQueueModel::ChannelKey> key = rawPushChannel(op);
+    auto push = dyn_cast<NpuPushQueueOp>(op);
+    auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op);
+    bool issuesToken =
+        push
+            ? push.getIssueToken()
+            : copy && (copy.getIssueToken() ||
+                       (key && (*key)[2] ==
+                                   static_cast<int>(AIE::DMAChannelDir::S2MM)));
+    return issuesToken ? key : std::nullopt;
+  }
+
+  // The channel a raw push, an aiex.npu.push_queue or aiex.npu.dma_memcpy_nd,
+  // queues on, whether or not it issues a token.
+  static std::optional<DmaQueueModel::ChannelKey>
+  rawPushChannel(Operation *op) {
+    if (auto push = dyn_cast<NpuPushQueueOp>(op))
+      return DmaQueueModel::ChannelKey{static_cast<int>(push.getColumn()),
+                                       static_cast<int>(push.getRow()),
+                                       static_cast<int>(push.getDirection()),
+                                       static_cast<int>(push.getChannel())};
+    if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
       auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
           op->getParentOfType<AIE::DeviceOp>(),
           copy.getMetadata().getRootReference());
-      if (allocation &&
-          (copy.getIssueToken() ||
-           allocation.getChannelDir() == AIE::DMAChannelDir::S2MM)) {
+      if (allocation)
         if (AIE::TileOp tile = allocation.getTileOp())
           return DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
                                       allocation.getChannelIndex());
-      }
     }
     return std::nullopt;
   }
@@ -237,6 +252,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     liveByTile.clear();
     pendingAwaitReleases.clear();
     freedInFlight.clear();
+    pushesByAllocation.clear();
+    creditedPushes.clear();
   }
 
   // Reject control flow the static path cannot lower. Constant-trip scf.for is
@@ -259,9 +276,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   // Track the two per-channel resources a sequence can exhaust. Their failure
-  // modes are opposites: over-production is harmless for the TCT FIFO (leftover
-  // tokens cost nothing) but not for the task queue, where a push onto a full
-  // queue is dropped and its transfer never runs.
+  // modes differ: over-production costs the TCT FIFO no capacity (see
+  // checkTokensConsumed for what it costs later), but a push onto a full queue
+  // is dropped and its transfer never runs.
   //
   // Queue counting differs from token counting in three ways: every push takes
   // a slot, not just issue_token ones; a non-token push is still retired
@@ -313,8 +330,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         tokens--;
         queue.awaitToken(key);
       } else if (auto key = otherAwaitChannel(op)) {
-        // Raw waits may also consume tokens from outside this sequence. Do not
-        // diagnose those here, but never reuse a token already consumed by one.
+        // A raw wait may consume a token from a push this count cannot see,
+        // such as a raw register write. Do not diagnose those here, but never
+        // reuse a token already consumed by one.
         avail[*key] = std::max(0, avail[*key] - 1);
         queue.awaitToken(*key);
       } else if (auto key = otherTokenChannel(op)) {
@@ -482,19 +500,34 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   llvm::DenseMap<Operation *, unsigned> runningCount;
 
   void notePush(const DmaQueueModel::ChannelKey &key, DMAConfigureTaskOp task,
-                bool issuesToken) {
-    startedOnChannel[key].tasks.push_back({task, issuesToken, pushCount++});
+                bool issuesToken, DMAStartTaskOp start = {}) {
+    uint64_t order = pushCount++;
+    startedOnChannel[key].tasks.push_back({task, issuesToken, order});
     if (task) {
       ++startCount[task];
       ++runningCount[task];
     }
+    AIE::ShimDMAAllocationOp allocation = task ? allocationOf(task) : nullptr;
+    if (!allocation)
+      return;
+    auto &pushes = pushesByAllocation[allocation];
+    std::optional<Volume> through =
+        pushes.empty() ? Volume() : pushes.back().through;
+    std::optional<Volume> moved =
+        start ? pushVolume(start, task) : std::nullopt;
+    if (through && moved)
+      for (auto [term, bytes] : *moved)
+        (*through)[term] += bytes;
+    else
+      through = std::nullopt;
+    pushes.push_back({order, through});
   }
   // Configures whose completion an await has established.
   llvm::SmallPtrSet<Operation *, 16> knownComplete;
-  // Configures whose completion a status poll has established. Kept apart from
-  // knownComplete so that the ids an await releases do not move: only
-  // reclaimFor reads this.
-  llvm::SmallPtrSet<Operation *, 16> pollProven;
+  // Configures a status poll, or the consumption an output's await proves
+  // (#aie.consumed_by), shows finished. Kept apart from knownComplete so that
+  // the ids an await releases do not move.
+  llvm::SmallPtrSet<Operation *, 16> provenFinished;
   // Configures whose ids reclaimFor took back.
   llvm::SmallPtrSet<Operation *, 16> reclaimed;
   // Configures whose ids went back to the pool by any route.
@@ -535,12 +568,25 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (DMAConfigureTaskOp task = started[i].task)
         if (startCount.lookup(task) == 0)
           knownComplete.insert(task);
+    // Counts are cumulative, so the newest push an allocation retired here
+    // credits all that its older ones would.
+    SmallVector<std::pair<AIE::ShimDMAAllocationOp, uint64_t>> newest;
+    for (const StartedTask &push :
+         llvm::reverse(llvm::make_range(started.begin(), std::next(it))))
+      if (AIE::ShimDMAAllocationOp output =
+              push.task ? allocationOf(push.task) : nullptr)
+        if (llvm::none_of(newest,
+                          [&](auto &seen) { return seen.first == output; }))
+          newest.push_back({output, push.order});
     started.erase(started.begin(), std::next(it));
     channel.finished -= std::min(channel.finished, retired);
+    for (auto [output, order] : newest)
+      creditInputs(output, order);
   }
 
-  // A status poll proved at most `unfinished` pushes on `key` are still queued
-  // or running. The channel runs its queue in order, so those are the newest.
+  // A status poll, or consumption an output proves, shows at most
+  // `unfinished` pushes on `key` still queued or running. The channel runs its
+  // queue in order, so those are the newest.
   void noteDrained(const DmaQueueModel::ChannelKey &key, size_t unfinished) {
     ChannelPushes &channel = startedOnChannel[key];
     if (channel.tasks.size() <= unfinished)
@@ -549,7 +595,233 @@ struct AIEAssignRuntimeSequenceBDIDsPass
          channel.finished < done; ++channel.finished)
       if (DMAConfigureTaskOp task = channel.tasks[channel.finished].task)
         if (--runningCount[task] == 0)
-          pollProven.insert(task);
+          provenFinished.insert(task);
+  }
+
+  // Bytes as a linear form in the sequence's scratchpad parameters: the
+  // constant at key -1, each parameter's coefficient at its state-table index.
+  using Volume = std::map<int64_t, int64_t>;
+
+  // Whether a * scaleA <= b * scaleB whatever values the parameters take.
+  // Every coefficient is a length and every parameter is at least 0, so it is
+  // enough to compare them one by one.
+  static bool atMost(const Volume &a, int64_t scaleA, const Volume &b,
+                     int64_t scaleB) {
+    for (auto [key, coefficient] : a) {
+      auto it = b.find(key);
+      int64_t lhs, rhs = 0;
+      if (llvm::MulOverflow(coefficient, scaleA, lhs) ||
+          (it != b.end() && llvm::MulOverflow(it->second, scaleB, rhs)) ||
+          lhs > rhs)
+        return false;
+    }
+    return true;
+  }
+
+  // Whether the host library holds the scratchpad parameter `seq` reads at
+  // state-table index `index` at 0 or above. Commands that never run together
+  // share slots, so where `seq` does not list what it reads, every parameter
+  // on the slot must be.
+  bool nonNegative(AIE::RuntimeSequenceOp seq, int64_t index) {
+    auto [it, inserted] =
+        nonNegativeByIndex.try_emplace({seq.getOperation(), index}, false);
+    if (!inserted)
+      return it->second;
+    auto module = getOperation()->getParentOfType<ModuleOp>();
+    if (!module)
+      return false;
+    ArrayAttr reads = seq.getScratchpadParametersAttr();
+    bool found = false, held = true;
+    for (auto parameter : module.getOps<ScratchpadParameterOp>()) {
+      if (parameter.getStateTableIdx() != index ||
+          (reads &&
+           !llvm::is_contained(reads.getAsValueRange<FlatSymbolRefAttr>(),
+                               parameter.getSymName())))
+        continue;
+      std::optional<int32_t> min = parameter.getMinValue();
+      found = true;
+      held &= min && *min >= 0;
+    }
+    it->second = found && held;
+    return it->second;
+  }
+  llvm::DenseMap<std::pair<Operation *, int64_t>, bool> nonNegativeByIndex;
+
+  // The bytes one push of `cfg` by `start` moves, or nullopt where its chain
+  // loops, iterates, continues outside its body, or takes its length from a
+  // parameter not held non-negative.
+  std::optional<Volume> pushVolume(DMAStartTaskOp start,
+                                   DMAConfigureTaskOp cfg) {
+    std::optional<int64_t> repeat =
+        start.hasRepeatParameter()
+            ? std::nullopt
+            : getConstantIntValue(start.getPushRepeatCount(cfg));
+    Region &body = cfg.getBody();
+    if (!repeat || *repeat < 0 || body.empty())
+      return std::nullopt;
+    Volume bytes;
+    llvm::SmallPtrSet<Block *, 8> seen;
+    for (Block *block = &body.front(); block;) {
+      if (!seen.insert(block).second)
+        return std::nullopt;
+      for (AIE::DMABDOp bd : block->getOps<AIE::DMABDOp>()) {
+        std::optional<int32_t> len = bd.getConstantLen();
+        if (!len || bd.getIteration() || bd.getNextBdId() ||
+            bd.getLengthParameterAttr())
+          return std::nullopt;
+        int64_t width = bd.getBufferElementTypeWidthInBytes();
+        bytes[-1] += static_cast<uint32_t>(*len) * width;
+        if (std::optional<uint8_t> index = bd.getLengthStateTableIdx()) {
+          std::optional<int32_t> unit = bd.getLengthUnit();
+          if (!unit ||
+              !nonNegative(start->getParentOfType<AIE::RuntimeSequenceOp>(),
+                           *index))
+            return std::nullopt;
+          bytes[*index] += static_cast<int64_t>(*unit) * width;
+        }
+      }
+      auto next = dyn_cast<AIE::NextBDOp>(block->getTerminator());
+      block = next ? next.getDest() : nullptr;
+    }
+    for (auto &[key, coefficient] : bytes)
+      if (llvm::MulOverflow(coefficient, *repeat + 1, coefficient))
+        return std::nullopt;
+    return bytes;
+  }
+
+  // The device's shim allocations, by name; a task names one of its own
+  // device's.
+  llvm::DenseMap<StringAttr, AIE::ShimDMAAllocationOp> allocationsByName;
+  // Each output's proofs, with the input that holds each.
+  llvm::DenseMap<
+      Operation *,
+      SmallVector<std::pair<AIE::ShimDMAAllocationOp, AIE::ConsumedByAttr>>>
+      proofsByOutput;
+
+  // The shim allocation `cfg` was configured for, when substitution kept it.
+  AIE::ShimDMAAllocationOp allocationOf(DMAConfigureTaskOp cfg) {
+    FlatSymbolRefAttr alloc = cfg.getAllocAttr();
+    return alloc ? allocationsByName.lookup(alloc.getAttr()) : nullptr;
+  }
+
+  // A shim allocation's pushes since the latest load, in program order, with
+  // the bytes it has moved through each: nullopt from the first whose bytes
+  // are unknown.
+  struct AllocationPush {
+    uint64_t order;
+    std::optional<Volume> through;
+  };
+  llvm::DenseMap<Operation *, SmallVector<AllocationPush>> pushesByAllocation;
+  // Per (input, output), how many of the input's pushes that output has
+  // already proven taken: both counts only grow, so a credit resumes there.
+  llvm::DenseMap<std::pair<Operation *, Operation *>, size_t> creditedPushes;
+  llvm::DenseMap<std::pair<Operation *, Operation *>, bool> balancedPairs;
+
+  // Whether every stretch of every runtime sequence of this device, from its
+  // start or a load to the next load or its end, ends with all of `input`'s
+  // bytes covered by `output`'s under `proof`. The counts restart at each
+  // stretch, but a load of the PDI already loaded leaves the array as it was,
+  // so a stretch starts where the previous one, perhaps another dispatch's,
+  // left it, and its counts hold only when none leaves input bytes behind.
+  // They count only the two allocations' own tasks, so any other push on
+  // either channel, in any sequence, voids the pair.
+  bool leavesNothing(AIE::ShimDMAAllocationOp input,
+                     AIE::ShimDMAAllocationOp output,
+                     AIE::ConsumedByAttr proof) {
+    auto entry = balancedPairs.try_emplace({input, output}, true);
+    auto it = entry.first;
+    if (!entry.second)
+      return it->second;
+    DmaQueueModel::ChannelKey inKey = DmaQueueModel::keyOf(
+        input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
+    DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(
+        output.getTileOp(), output.getChannelDir(), output.getChannelIndex());
+    for (auto seq : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
+      Volume in, out;
+      seq.walk([&](Operation *op) {
+        if (isa<NpuLoadPdiOp>(op)) {
+          if (!atMost(in, proof.getOutputBytes(), out, proof.getInputBytes())) {
+            it->second = false;
+            return WalkResult::interrupt();
+          }
+          in.clear();
+          out.clear();
+          return WalkResult::advance();
+        }
+        auto start = dyn_cast<DMAStartTaskOp>(op);
+        DMAConfigureTaskOp cfg = start ? start.getTaskOp() : nullptr;
+        AIE::ShimDMAAllocationOp allocation = cfg ? allocationOf(cfg) : nullptr;
+        std::optional<DmaQueueModel::ChannelKey> channel =
+            cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
+        bool foreign =
+            channel && ((*channel == inKey && allocation != input) ||
+                        (*channel == outKey && allocation != output));
+        if (foreign) {
+          it->second = false;
+          return WalkResult::interrupt();
+        }
+        if (!allocation || (allocation != input && allocation != output))
+          return WalkResult::advance();
+        std::optional<Volume> moved = pushVolume(start, cfg);
+        if (!moved) {
+          it->second = false;
+          return WalkResult::interrupt();
+        }
+        for (auto [key, bytes] : *moved)
+          (allocation == input ? in : out)[key] += bytes;
+        return WalkResult::advance();
+      });
+      if (!it->second ||
+          !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes())) {
+        it->second = false;
+        break;
+      }
+    }
+    return it->second;
+  }
+
+  // `output`'s pushes up to `order` have finished: the host has received the
+  // R bytes it moved through that push. Each input whose consumed_by names it
+  // has then had its first R * input_bytes / output_bytes bytes taken, so its
+  // pushes within those bytes have finished.
+  void creditInputs(AIE::ShimDMAAllocationOp output, uint64_t order) {
+    auto outPushes = pushesByAllocation.find(output);
+    auto proofs = proofsByOutput.find(output);
+    if (outPushes == pushesByAllocation.end() || proofs == proofsByOutput.end())
+      return;
+    auto byOrder = [](const auto &push, uint64_t bound) {
+      return push.order < bound;
+    };
+    const AllocationPush *done =
+        llvm::lower_bound(outPushes->second, order, byOrder);
+    if (done == outPushes->second.end() || done->order != order ||
+        !done->through)
+      return;
+    for (auto [input, proof] : proofs->second) {
+      auto inPushes = pushesByAllocation.find(input);
+      DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(
+          input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
+      if (inPushes == pushesByAllocation.end() ||
+          !leavesNothing(input, output, proof))
+        continue;
+      ArrayRef<AllocationPush> pushes = inPushes->second;
+      size_t &credited = creditedPushes[{input, output}];
+      size_t covered = credited;
+      for (; covered < pushes.size(); ++covered) {
+        const std::optional<Volume> &through = pushes[covered].through;
+        if (!through || !atMost(*through, proof.getOutputBytes(),
+                                *done->through, proof.getInputBytes()))
+          break;
+      }
+      if (covered == credited)
+        continue;
+      credited = covered;
+      auto &tasks = startedOnChannel[key].tasks;
+      const StartedTask *at =
+          llvm::lower_bound(tasks, pushes[covered - 1].order, byOrder);
+      if (at != tasks.end() && at->order == pushes[covered - 1].order)
+        noteDrained(key, tasks.end() - at - 1);
+    }
   }
 
   // Credit a maskpoll on a channel's status register, whether the queue-depth
@@ -609,21 +881,55 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     ReleasedTask released = idIt->second;
     tileIt->second.erase(idIt);
     if (knownComplete.contains(released.configure) ||
-        pollProven.contains(released.configure))
+        provenFinished.contains(released.configure))
       return;
-    // Not bd->emitWarning(): its "see current operation" note verifies and
-    // numbers the whole device for each warning, quadratic in the sequence.
-    auto diag =
-        mlir::emitWarning(bd.getLoc())
-        << "reuses buffer descriptor ID " << id << " on tile (" << tile.getCol()
-        << "," << tile.getRow()
-        << ") after it was released by an aiex.dma_free_task that had no "
-           "completion guarantee, so the DMA it belonged to may still be "
-           "running and this reprograms it underneath. Consume the outstanding "
-           "tokens on the same tile, direction and channel through a task "
-           "queued at or after this transfer -- each await consumes the oldest "
-           "token, regardless of the task it names";
-    diag.attachNote(released.freeOp->getLoc()) << "released here";
+    UnsafeReuse &reuse =
+        unsafeReuses
+            .try_emplace(bd.getLoc(),
+                         UnsafeReuse{id, tile.getCol(), tile.getRow(),
+                                     released.freeOp->getLoc()})
+            .first->second;
+    reuse.tiles.insert({tile.getCol(), tile.getRow()});
+    reuse.count++;
+  }
+
+  // A full ELF inlines a sequence at every call, so one source transfer can
+  // reuse an id once per call; it is reported once, with how often.
+  struct UnsafeReuse {
+    uint32_t id;
+    int col, row;
+    Location freeLoc;
+    std::set<std::pair<int, int>> tiles = {};
+    int64_t count = 0;
+  };
+  llvm::MapVector<Location, UnsafeReuse> unsafeReuses;
+
+  void emitUnsafeReuses() {
+    for (auto &[loc, reuse] : unsafeReuses) {
+      // Not bd->emitWarning(): its "see current operation" note verifies and
+      // numbers the whole device for each warning, quadratic in the sequence.
+      auto diag =
+          mlir::emitWarning(loc)
+          << "reuses buffer descriptor ID " << reuse.id << " on tile ("
+          << reuse.col << "," << reuse.row
+          << ") after it was released by an aiex.dma_free_task that had no "
+             "completion guarantee, so the DMA it belonged to may still be "
+             "running and this reprograms it underneath. Consume the "
+             "outstanding tokens on the same tile, direction and channel "
+             "through a task queued at or after this transfer -- each await "
+             "consumes the oldest token, regardless of the task it names";
+      diag.attachNote(reuse.freeLoc) << "released here";
+      if (reuse.count > 1) {
+        Diagnostic &note = diag.attachNote();
+        note << "and " << reuse.count - 1
+             << " more times from this transfer, on tile"
+             << (reuse.tiles.size() > 1 ? "s " : " ");
+        llvm::interleaveComma(reuse.tiles, note, [&](auto tile) {
+          note << "(" << tile.first << "," << tile.second << ")";
+        });
+      }
+    }
+    unsafeReuses.clear();
   }
 
   // Configures already completed by an aiex.dma_await_task. Awaiting a task
@@ -764,7 +1070,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
     ArrayRef<DMAConfigureTaskOp> live = liveByTile[tile];
     for (DMAConfigureTaskOp task : live)
-      if ((knownComplete.contains(task) || pollProven.contains(task)) &&
+      if ((knownComplete.contains(task) || provenFinished.contains(task)) &&
           isCandidate(task)) {
         take(task);
         return success();
@@ -868,7 +1174,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     startCount.clear();
     runningCount.clear();
     knownComplete.clear();
-    pollProven.clear();
+    provenFinished.clear();
     reclaimed.clear();
     releasedTasks.clear();
     liveByTile.clear();
@@ -877,12 +1183,26 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     opaqueLoad = {};
     unloaded.clear();
     resetChannels.clear();
+    pushesByAllocation.clear();
+    creditedPushes.clear();
   }
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
     staticBdIds.clear();
     loopingStarts.clear();
+    nonNegativeByIndex.clear();
+    balancedPairs.clear();
+    allocationsByName.clear();
+    proofsByOutput.clear();
+    for (auto allocation : device.getOps<AIE::ShimDMAAllocationOp>())
+      allocationsByName[allocation.getSymNameAttr()] = allocation;
+    for (auto input : device.getOps<AIE::ShimDMAAllocationOp>())
+      if (ArrayAttr proofs = input.getConsumedByAttr())
+        for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>())
+          if (AIE::ShimDMAAllocationOp output =
+                  allocationsByName.lookup(proof.getOutput().getAttr()))
+            proofsByOutput[output].push_back({input, proof});
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
       // Skip sequences already handled by the dynamic free-list pool path
@@ -940,8 +1260,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             if (failed(checkNotBehindLoop(start, cfg)))
               return WalkResult::interrupt();
             knownComplete.erase(cfg);
-            pollProven.erase(cfg);
-            notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg));
+            provenFinished.erase(cfg);
+            notePush(channelOf(cfg), cfg, start.getPushIssueToken(cfg), start);
           }
         } else if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
           noteLoadPdi(load);
@@ -975,6 +1295,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         freeOp.erase();
       return WalkResult::advance();
     });
+    emitUnsafeReuses();
     if (wr.wasInterrupted())
       return signalPassFailure();
   }

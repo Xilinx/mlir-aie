@@ -408,12 +408,10 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   if (prodPlaceIt == currentPlacement.end())
     return;
   TileID prodPos = prodPlaceIt->second;
-  auto prodTypeIt = tileTypes.find(prod);
-  bool prodIsCore = prodTypeIt != tileTypes.end() &&
-                    prodTypeIt->second == AIETileType::CoreTile;
-  bool prodIsShim = prodTypeIt != tileTypes.end() &&
-                    (prodTypeIt->second == AIETileType::ShimNOCTile ||
-                     prodTypeIt->second == AIETileType::ShimPLTile);
+  const FifoEndTypes &types = fifoEndTypes[fifoIdx];
+  bool prodIsCore = types.producer == AIETileType::CoreTile;
+  bool prodIsShim = types.producer == AIETileType::ShimNOCTile ||
+                    types.producer == AIETileType::ShimPLTile;
 
   // A fifo that already has an aie.objectfifo.allocate keeps its shared-memory
   // objects on that delegate tile.
@@ -437,12 +435,9 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     if (consPlaceIt == currentPlacement.end())
       continue;
     TileID consPos = consPlaceIt->second;
-    auto consTypeIt = tileTypes.find(cons);
-    bool consIsCore = consTypeIt != tileTypes.end() &&
-                      consTypeIt->second == AIETileType::CoreTile;
-    bool consIsShim = consTypeIt != tileTypes.end() &&
-                      (consTypeIt->second == AIETileType::ShimNOCTile ||
-                       consTypeIt->second == AIETileType::ShimPLTile);
+    bool consIsCore = types.consumers[ci] == AIETileType::CoreTile;
+    bool consIsShim = types.consumers[ci] == AIETileType::ShimNOCTile ||
+                      types.consumers[ci] == AIETileType::ShimPLTile;
 
     // Declared depth (for shared-mem) and DMA depth (for DMA connections).
     // The appropriate depth is selected in each branch below based on
@@ -453,12 +448,14 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
                            : fb.producerDMADepth;
 
     // Check shared memory between core tiles (skip if fifo forces DMA)
-    bool isSharedMem =
-        !fb.forcesDMA && prodIsCore && consIsCore && prodPos != consPos &&
-        (targetModel->isLegalMemAffinity(prodPos.col, prodPos.row, consPos.col,
-                                         consPos.row) ||
-         targetModel->isLegalMemAffinity(consPos.col, consPos.row, prodPos.col,
-                                         prodPos.row));
+    bool rightShared = false, leftShared = false;
+    if (!fb.forcesDMA && prodIsCore && consIsCore && prodPos != consPos) {
+      rightShared = targetModel->isLegalMemAffinity(prodPos.col, prodPos.row,
+                                                    consPos.col, consPos.row);
+      leftShared = targetModel->isLegalMemAffinity(consPos.col, consPos.row,
+                                                   prodPos.col, prodPos.row);
+    }
+    bool isSharedMem = rightShared || leftShared;
 
     if (prodPos == consPos) {
       // Intratile: shared-mem, use declared depths
@@ -468,10 +465,6 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       currentMemUsage[delegatePos.value_or(prodPos)] += sign * bytes;
     } else if (isSharedMem) {
       // Shared memory: use declared depths
-      bool rightShared = targetModel->isLegalMemAffinity(
-          prodPos.col, prodPos.row, consPos.col, consPos.row);
-      bool leftShared = targetModel->isLegalMemAffinity(
-          consPos.col, consPos.row, prodPos.col, prodPos.row);
       TileID bufTile;
       if (delegatePos) {
         bufTile = *delegatePos;
@@ -563,6 +556,19 @@ void SAPlacer::initResourceTracking() {
   currentDMAUsage.clear();
   sharedMemDestination.clear();
 
+  auto typeOf = [&](Operation *tile) -> std::optional<AIETileType> {
+    if (auto it = tileTypes.find(tile); it != tileTypes.end())
+      return it->second;
+    return std::nullopt;
+  };
+  fifoEndTypes.clear();
+  for (const auto &fb : fifoBuffers) {
+    FifoEndTypes &types = fifoEndTypes.emplace_back();
+    types.producer = typeOf(fb.producer);
+    for (Operation *cons : fb.consumers)
+      types.consumers.push_back(typeOf(cons));
+  }
+
   // Build reverse index: tile → fifo indices
   tileToFifoIndices.clear();
   for (size_t i = 0; i < fifoBuffers.size(); i++) {
@@ -601,7 +607,36 @@ void SAPlacer::initResourceTracking() {
     tileToRouteEnds[routeEnds[i].tile].push_back(i);
     addRouteEndContribution(i, +1);
   }
-  cachedResourcePenalty = computePenalty();
+
+  collectSpillBuffers();
+  spillTiles.clear();
+  for (auto &[_, op] : spillBuffers)
+    spillTiles.insert(op);
+  for (auto &[op, _] : spillBaseline)
+    spillTiles.insert(op);
+  collectTileBDs();
+  delegateTermTiles.clear();
+  for (const auto &fb : fifoBuffers) {
+    if (!fb.delegate)
+      continue;
+    delegateTermTiles.insert(fb.delegate);
+    delegateTermTiles.insert(fb.producer);
+    delegateTermTiles.insert(fb.consumers.begin(), fb.consumers.end());
+  }
+  pairedTiles.clear();
+  for (const Adjacency *adj : {&cascadeAdjacency, &sharedMemAdjacency})
+    for (auto [first, second] : adj->edges) {
+      pairedTiles.insert(first.getOperation());
+      pairedTiles.insert(second.getOperation());
+    }
+
+  memSpilloverPenalty = computeMemSpilloverPenalty();
+  bdCountPenalty = computeBDCountPenalty();
+  delegatePenalty = computeDelegatePenalty();
+  dmaPenalty = computeDMAChannelPenalty();
+  cachedResourcePenalty = memSpilloverPenalty + computeCoreOverflowPenalty() +
+                          dmaPenalty + bdCountPenalty + delegatePenalty;
+  cachedPressure = computeMemoryPressure();
 }
 
 int SAPlacer::computeMemoryPressure() const {
@@ -624,12 +659,6 @@ int SAPlacer::computeMemoryPressure() const {
     }
   }
   return pressure;
-}
-
-int SAPlacer::computePenalty() const {
-  return computeMemSpilloverPenalty() + computeCoreOverflowPenalty() +
-         computeDMAChannelPenalty() + computeBDCountPenalty() +
-         computeDelegatePenalty();
 }
 
 // Both ends of a fifo with an aie.objectfifo.allocate must reach the delegate
@@ -666,23 +695,14 @@ int SAPlacer::computeDelegatePenalty() const {
 // Equal-size buffers may be visited in a different order than the
 // allocator's, so the two can break spill ties differently; the
 // allocator backtracks over its spill choices to cover that.
-int SAPlacer::computeMemSpilloverPenalty() const {
-  int64_t memTileCapacity = targetModel->getMemTileSize();
-  int numCols = targetModel->columns();
-  int penalty = 0;
-
-  // Collect all MemTile buffers globally, each tagged with its home column.
-  // Pair: (bufferSize, homeColumn).
-  llvm::SmallVector<std::pair<int64_t, int>> allBufs;
-  llvm::SmallVector<int64_t> memTileBaseline(numCols, 0);
-
+void SAPlacer::collectSpillBuffers() {
+  // Each MemTile buffer with the logical tile whose column is its home.
+  spillBuffers.clear();
   for (const auto &fb : fifoBuffers) {
     if (!fb.producer)
       continue;
-    auto prodIt = currentPlacement.find(fb.producer);
-    if (prodIt == currentPlacement.end())
+    if (!currentPlacement.count(fb.producer))
       continue;
-    TileID prodPos = prodIt->second;
     auto prodTypeIt = tileTypes.find(fb.producer);
     if (prodTypeIt == tileTypes.end())
       continue;
@@ -691,38 +711,51 @@ int SAPlacer::computeMemSpilloverPenalty() const {
     if (fb.linkSharedProd)
       continue;
 
-    int col = prodPos.col;
     for (int d = 0; d < fb.producerDepth; d++)
-      allBufs.push_back({fb.producerSizeBytes, col});
+      spillBuffers.push_back({fb.producerSizeBytes, fb.producer});
 
     for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
       auto *cons = fb.consumers[ci];
       if (!cons)
         continue;
-      auto consIt = currentPlacement.find(cons);
-      if (consIt == currentPlacement.end())
+      if (!currentPlacement.count(cons))
         continue;
       auto consTypeIt = tileTypes.find(cons);
       if (consTypeIt == tileTypes.end() ||
           consTypeIt->second != AIETileType::MemTile)
         continue;
-      int consCol = consIt->second.col;
       int consDepth = fb.consumerDepthAt(ci);
       for (int d = 0; d < consDepth; d++)
-        allBufs.push_back({fb.consumerSizeBytes, consCol});
+        spillBuffers.push_back({fb.consumerSizeBytes, cons});
     }
   }
+  // Sort globally by size descending (matching stateful transform). Which
+  // buffers there are never changes while tiles move, only their columns, and
+  // the sort compares sizes alone, so this is the order every placement
+  // visits them in.
+  llvm::sort(spillBuffers,
+             [](const auto &a, const auto &b) { return a.first > b.first; });
 
   // Static buffers as baseline (non-spillable).
+  spillBaseline.clear();
   for (auto &[op, bufSize] : staticBufferSizes) {
-    auto posIt = currentPlacement.find(op);
-    if (posIt == currentPlacement.end())
+    if (!currentPlacement.count(op))
       continue;
     auto typeIt = tileTypes.find(op);
     if (typeIt == tileTypes.end() || typeIt->second != AIETileType::MemTile)
       continue;
-    memTileBaseline[posIt->second.col] += bufSize;
+    spillBaseline.push_back({op, bufSize});
   }
+}
+
+int SAPlacer::computeMemSpilloverPenalty() const {
+  int64_t memTileCapacity = targetModel->getMemTileSize();
+  int numCols = targetModel->columns();
+  int penalty = 0;
+
+  llvm::SmallVector<int64_t> memTileBaseline(numCols, 0);
+  for (auto &[op, bufSize] : spillBaseline)
+    memTileBaseline[currentPlacement.lookup(op).col] += bufSize;
 
   // remaining[col] = capacity available after baseline.
   llvm::SmallVector<int64_t> remaining(numCols, 0);
@@ -733,12 +766,9 @@ int SAPlacer::computeMemSpilloverPenalty() const {
         std::max(memTileCapacity - memTileBaseline[col], int64_t{0});
   }
 
-  // Sort globally by size descending (matching stateful transform).
-  llvm::sort(allBufs,
-             [](const auto &a, const auto &b) { return a.first > b.first; });
-
   // Place each buffer: try home first, then neighbor with most capacity.
-  for (auto &[bufSize, homeCol] : allBufs) {
+  for (auto &[bufSize, home] : spillBuffers) {
+    int homeCol = currentPlacement.lookup(home).col;
     if (remaining[homeCol] >= bufSize) {
       remaining[homeCol] -= bufSize;
     } else {
@@ -850,70 +880,78 @@ int SAPlacer::computeCoreOverflowPenalty() const {
   return penalty;
 }
 
-int SAPlacer::computeDMAChannelPenalty() const {
+int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
+  auto usage = currentDMAUsage.lookup(tilePos);
+  auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
+  int used[2] = {usage.first, usage.second};
+  int max[2] = {maxIn, maxOut};
   int penalty = 0;
-  for (auto &[tilePos, usage] : currentDMAUsage) {
-    auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
-    int used[2] = {usage.first, usage.second};
-    int max[2] = {maxIn, maxOut};
-    for (int dir : {0, 1}) {
-      if (used[dir] <= max[dir])
-        continue;
-      if (shimSpans && targetModel->getTileType(tilePos.col, tilePos.row) ==
-                           AIETileType::ShimNOCTile) {
-        SmallVector<StringAttr> ends;
-        for (auto &[lt, own] : shareableShimEnds) {
-          auto at = currentPlacement.find(lt);
-          if (at != currentPlacement.end() && at->second == tilePos)
-            llvm::append_range(ends, own[dir]);
-        }
-        used[dir] += static_cast<int>(shimSpans->groups(ends).size()) -
-                     static_cast<int>(ends.size());
+  for (int dir : {0, 1}) {
+    if (used[dir] <= max[dir])
+      continue;
+    if (shimSpans && targetModel->getTileType(tilePos.col, tilePos.row) ==
+                         AIETileType::ShimNOCTile) {
+      SmallVector<StringAttr> ends;
+      for (auto &[lt, own] : shareableShimEnds) {
+        auto at = currentPlacement.find(lt);
+        if (at != currentPlacement.end() && at->second == tilePos)
+          llvm::append_range(ends, own[dir]);
       }
-      penalty +=
-          std::max(0, used[dir] - max[dir]) * config.dmaPenaltyPerChannel;
+      used[dir] += static_cast<int>(shimSpans->groups(ends).size()) -
+                   static_cast<int>(ends.size());
     }
+    penalty += std::max(0, used[dir] - max[dir]) * config.dmaPenaltyPerChannel;
+  }
+  return penalty;
+}
+
+int SAPlacer::computeDMAChannelPenalty() {
+  dmaPenaltyAt.clear();
+  int penalty = 0;
+  for (auto &[tilePos, _] : currentDMAUsage) {
+    int at = computeTileDMAPenalty(tilePos);
+    dmaPenaltyAt[tilePos] = at;
+    penalty += at;
   }
   return penalty;
 }
 
 // Penalizes MemTiles that exceed their BD slot limit.
-int SAPlacer::computeBDCountPenalty() const {
-  int memTileBDMax = targetModel->getNumBDs(AIETileType::MemTile);
-  int penalty = 0;
-
-  llvm::DenseMap<TileID, int> memTileBDs;
+void SAPlacer::collectTileBDs() {
+  // The BDs each logical tile holds wherever it sits.
+  tileBDs.clear();
   for (const auto &fb : fifoBuffers) {
     if (fb.producer) {
-      auto posIt = currentPlacement.find(fb.producer);
       auto typeIt = tileTypes.find(fb.producer);
-      if (posIt != currentPlacement.end() && typeIt != tileTypes.end() &&
+      if (currentPlacement.count(fb.producer) && typeIt != tileTypes.end() &&
           typeIt->second == AIETileType::MemTile && !fb.linkSharedProd)
-        memTileBDs[posIt->second] += fb.producerDepth;
+        tileBDs[fb.producer] += fb.producerDepth;
     }
     for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
       auto *cons = fb.consumers[ci];
       if (!cons)
         continue;
-      auto posIt = currentPlacement.find(cons);
       auto typeIt = tileTypes.find(cons);
-      if (posIt == currentPlacement.end() || typeIt == tileTypes.end() ||
+      if (!currentPlacement.count(cons) || typeIt == tileTypes.end() ||
           typeIt->second != AIETileType::MemTile)
         continue;
-      int depth = fb.consumerDepthAt(ci);
-      memTileBDs[posIt->second] += depth;
+      tileBDs[cons] += fb.consumerDepthAt(ci);
     }
   }
-  for (auto &[op, depth] : poolBDs) {
-    auto posIt = currentPlacement.find(op);
-    if (posIt != currentPlacement.end())
-      memTileBDs[posIt->second] += depth;
-  }
-  for (auto &[tilePos, totalBDs] : memTileBDs) {
-    if (totalBDs > memTileBDMax)
-      penalty += (totalBDs - memTileBDMax) * config.dmaPenaltyPerChannel;
-  }
+  for (auto &[op, depth] : poolBDs)
+    if (currentPlacement.count(op))
+      tileBDs[op] += depth;
+}
 
+int SAPlacer::computeBDCountPenalty() {
+  int memTileBDMax = targetModel->getNumBDs(AIETileType::MemTile);
+  memTileBDs.clear();
+  for (auto &[op, bds] : tileBDs)
+    memTileBDs[currentPlacement.lookup(op)] += bds;
+  int penalty = 0;
+  for (auto &[tilePos, totalBDs] : memTileBDs)
+    penalty +=
+        std::max(totalBDs - memTileBDMax, 0) * config.dmaPenaltyPerChannel;
   return penalty;
 }
 
@@ -1090,10 +1128,11 @@ int SAPlacer::updateResourcePenalty(
   // Subtract old fifo contributions (positions already updated in
   // currentPlacement, but we need old positions for subtraction).
   // Temporarily swap back old positions for affected fifos.
-  DenseMap<Operation *, TileID> savedPositions;
+  SmallVector<std::pair<Operation *, TileID>, 3> savedPositions;
   for (auto &[op, oldPos] : oldPlacements) {
-    savedPositions[op] = currentPlacement[op];
-    currentPlacement[op] = oldPos;
+    TileID &pos = currentPlacement[op];
+    savedPositions.push_back({op, pos});
+    pos = oldPos;
   }
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, -1);
@@ -1121,7 +1160,59 @@ int SAPlacer::updateResourcePenalty(
       currentMemUsage[newPos] += stackIt->second;
   }
 
-  cachedResourcePenalty = computePenalty();
+  auto reads = [&](const DenseSet<Operation *> &tiles) {
+    return llvm::any_of(oldPlacements, [&](const auto &moved) {
+      return tiles.contains(moved.first);
+    });
+  };
+  if (reads(spillTiles))
+    memSpilloverPenalty = computeMemSpilloverPenalty();
+  int memTileBDMax = targetModel->getNumBDs(AIETileType::MemTile);
+  bdUndo.clear();
+  for (auto &[op, oldPos] : oldPlacements) {
+    int bds = tileBDs.lookup(op);
+    if (!bds)
+      continue;
+    for (auto [pos, change] :
+         {std::pair(oldPos, -bds), std::pair(currentPlacement[op], bds)}) {
+      int &total = memTileBDs[pos];
+      bdUndo.push_back({pos, total});
+      bdCountPenalty -=
+          std::max(total - memTileBDMax, 0) * config.dmaPenaltyPerChannel;
+      total += change;
+      bdCountPenalty +=
+          std::max(total - memTileBDMax, 0) * config.dmaPenaltyPerChannel;
+    }
+  }
+  if (reads(delegateTermTiles))
+    delegatePenalty = computeDelegatePenalty();
+
+  // DMA usage changed only where the affected fifos' ends and the moved
+  // tiles sit, before or after the move, and so did which shim ends share.
+  llvm::SmallDenseSet<TileID, 16> dmaTouched;
+  for (auto &[op, oldPos] : oldPlacements) {
+    dmaTouched.insert(oldPos);
+    dmaTouched.insert(currentPlacement[op]);
+  }
+  for (size_t fi : affectedFifos) {
+    const auto &fb = fifoBuffers[fi];
+    SmallVector<Operation *, 4> ends = {fb.producer};
+    llvm::append_range(ends, fb.consumers);
+    for (Operation *end : ends)
+      if (auto it = currentPlacement.find(end); it != currentPlacement.end())
+        dmaTouched.insert(it->second);
+  }
+  dmaUndo.clear();
+  for (TileID tile : dmaTouched) {
+    int &at = dmaPenaltyAt[tile];
+    dmaUndo.push_back({tile, at});
+    int now = computeTileDMAPenalty(tile);
+    dmaPenalty += now - at;
+    at = now;
+  }
+
+  cachedResourcePenalty = memSpilloverPenalty + computeCoreOverflowPenalty() +
+                          dmaPenalty + bdCountPenalty + delegatePenalty;
   return cachedResourcePenalty;
 }
 
@@ -1853,6 +1944,8 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   for (auto &[t, _] : moves)
     oldPlacements.push_back({t, currentPlacement[t]});
   int oldResPenalty = cachedResourcePenalty;
+  int oldMemSpillover = memSpilloverPenalty, oldBDCount = bdCountPenalty,
+      oldDelegate = delegatePenalty, oldDMA = dmaPenalty;
   auto savedMemUsage = currentMemUsage;
   auto savedDMAUsage = currentDMAUsage;
   auto savedSharedMemDest = sharedMemDestination;
@@ -1872,9 +1965,14 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
 
   // Compute total cost delta across all cost terms.
   int oldCascade = cascadePen;
-  int oldPressure = computeMemoryPressure();
+  int oldPressure = cachedPressure;
   int newResPenalty = updateResourcePenalty(oldPlacements);
-  int newCascade = computePairingPenalty();
+  int newCascade = llvm::any_of(moves,
+                                [&](const auto &move) {
+                                  return pairedTiles.contains(move.first);
+                                })
+                       ? computePairingPenalty()
+                       : cascadePen;
   int newPressure = computeMemoryPressure();
   int delta = hpwlDelta + (newResPenalty - oldResPenalty) +
               (newCascade - oldCascade) + (newPressure - oldPressure);
@@ -1898,6 +1996,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
       acceptedUphill++;
     totalCost += delta;
     cascadePen = newCascade;
+    cachedPressure = newPressure;
     schedule.record(true);
     if (totalCost < bestOverallCost) {
       bestOverallCost = totalCost;
@@ -1923,6 +2022,14 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     currentDMAUsage = savedDMAUsage;
     sharedMemDestination = savedSharedMemDest;
     cachedResourcePenalty = oldResPenalty;
+    memSpilloverPenalty = oldMemSpillover;
+    bdCountPenalty = oldBDCount;
+    delegatePenalty = oldDelegate;
+    dmaPenalty = oldDMA;
+    for (auto &[tile, at] : dmaUndo)
+      dmaPenaltyAt[tile] = at;
+    for (auto &[tile, total] : llvm::reverse(bdUndo))
+      memTileBDs[tile] = total;
     rejectedMoves++;
     schedule.record(false);
   }

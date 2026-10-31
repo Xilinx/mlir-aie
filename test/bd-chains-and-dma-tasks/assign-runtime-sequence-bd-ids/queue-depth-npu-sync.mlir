@@ -54,6 +54,7 @@ aie.device(npu1_1col) {
     aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 12][1, 1, 1, 2][0, 0, 0, 1], packet = <pkt_id = 29, pkt_type = 1>) {id = 3 : i64, issue_token = true, metadata = @ctrlin1} : memref<1280xi32>
     aiex.npu.sync(%c0, %c0, %c1, %c1, %c1, %c1) : i32, i32, i32, i32, i32, i32
     aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 16][1, 1, 1, 2][0, 0, 0, 1], packet = <pkt_id = 30, pkt_type = 1>) {id = 4 : i64, issue_token = true, metadata = @ctrlin1} : memref<1280xi32>
+    aiex.npu.sync(%c0, %c0, %c1, %c1, %c1, %c1) : i32, i32, i32, i32, i32, i32
   }
 }
 

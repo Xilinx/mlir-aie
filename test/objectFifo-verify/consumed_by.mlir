@@ -1,0 +1,971 @@
+//===- consumed_by.mlir -----------------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// A shim input records the shim outputs whose progress proves its bytes
+// consumed: once the host has received R bytes through the output, the first
+// R * input_bytes / output_bytes bytes the input sent have been taken.
+
+// RUN: aie-opt --split-input-file --aie-objectfifo-split --aie-objectfifo-verify %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform %s | FileCheck %s --check-prefix=ALLOC
+
+// A core taking one object of `in` before releasing each object of `out`.
+// Allocation moves the proof onto the input's shim_dma_allocation, its output
+// named by the allocation the runtime sequence reaches it through.
+
+// CHECK-LABEL: module @one_to_one
+// ALLOC-LABEL: module @one_to_one
+// ALLOC: aie.shim_dma_allocation @in_shim_alloc(%{{.*}}, MM2S, {{[0-9]+}}) {consumed_by = [#aie.consumed_by<output = @out_shim_alloc, input_bytes = 1, output_bytes = 1>]}
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+// CHECK-NOT: consumed_by
+module @one_to_one {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// One angle object a row of 24 outputs, the inner loop's trip count; `x`
+// pairs one to one with the outputs, whatever the outer loop's count.
+
+// CHECK-LABEL: module @rows_of_outputs
+// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 24>], fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+module @rows_of_outputs {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    %rows = aie.buffer(%core) : memref<1xi32>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c24 = arith.constant 24 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %n = memref.load %rows[%c0] : memref<1xi32>
+        %rows_n = arith.index_cast %n : i32 to index
+        scf.for %r = %c0 to %rows_n step %c1 {
+          %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
+          scf.for %j = %c0 to %c24 step %c1 {
+            %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
+            %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
+            aie.objectfifo.release @x(Consume, 1)
+            aie.objectfifo.release @out(Produce, 1)
+          }
+          aie.objectfifo.release @angle(Consume, 1)
+        }
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A memtile relay: the bytes the input sends reach the output one to one.
+
+// CHECK-LABEL: module @relay
+// ALLOC-LABEL: module @relay
+// ALLOC: aie.shim_dma_allocation @a_shim_alloc(%{{.*}}, MM2S, {{[0-9]+}}) {consumed_by = [#aie.consumed_by<output = @b_shim_alloc, input_bytes = 1, output_bytes = 1>]}
+// CHECK: aie.route_endpoint @a_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @b_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "a"}
+module @relay {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %mem = aie.tile(0, 1)
+    aie.objectfifo @a(%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<64xbf16>>
+    aie.objectfifo @b(%mem, {%shim}, 2 : i32) : !aie.objectfifo<memref<64xbf16>>
+    aie.objectfifo.link [@a] -> [@b] ([] [])
+  }
+}
+
+// -----
+
+// Through memtile links on both sides of the core, with objects of different
+// sizes on each hop: the proof is in bytes.
+
+// CHECK-LABEL: module @link_chain
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @res_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+module @link_chain {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %mem = aie.tile(0, 1)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @in_l1(%mem, {%core}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@in] -> [@in_l1] ([] [])
+    aie.objectfifo @out_l1(%core, {%mem}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @res(%mem, {%shim}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@out_l1] -> [@res] ([] [])
+    aie.core(%core) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in_l1(Consume, 1) : memref<32xi32>
+        %o = aie.objectfifo.acquire @out_l1(Produce, 1) : memref<32xi32>
+        aie.objectfifo.release @in_l1(Consume, 1)
+        aie.objectfifo.release @out_l1(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The core releases each output before taking the input that goes with it,
+// so an output's arrival proves nothing about the input.
+
+// CHECK-LABEL: module @release_before_take
+// CHECK-NOT: consumed_by
+module @release_before_take {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A window holding one object of `in` from one pass into the next: the pass
+// does not end where it began, so no ratio is read off it.
+
+// CHECK-LABEL: module @window_across_passes
+// CHECK-NOT: consumed_by
+module @window_across_passes {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 3 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i:2 = aie.objectfifo.acquire @in(Consume, 2) : memref<16xi32>, memref<16xi32>
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The input feeds one core and the output comes from another, which takes
+// the first core's output ahead of each of its own releases, as the first
+// takes the input ahead of each of its: the chain ties them one to one.
+
+// CHECK-LABEL: module @other_core
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+module @other_core {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core2 = aie.tile(0, 2)
+    %core3 = aie.tile(0, 3)
+    aie.objectfifo @in(%shim, {%core2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @mid(%core2, {%core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core3, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        %m = aie.objectfifo.acquire @mid(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @mid(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%core3) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %m = aie.objectfifo.acquire @mid(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @mid(Consume, 1)
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A broadcast input reaches two cores, and only one of them produces the
+// output. A byte that core has taken has left the shim, which is all the BD
+// ids need, whatever the other core does with its copy.
+
+// CHECK-LABEL: module @broadcast
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+module @broadcast {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core2 = aie.tile(0, 2)
+    %core3 = aie.tile(0, 3)
+    aie.objectfifo @in(%shim, {%core2, %core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core2, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%core3) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A row's length is an RTP word the runtime sequence writes with one constant
+// before setting the lock the core takes ahead of reading it, so the angle's
+// ratio is 1 to that constant, as RoPE's is.
+
+// CHECK-LABEL: module @rtp_row
+// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 24>], fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+module @rtp_row {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
+    %barrier = aie.lock(%core)
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %one = arith.constant 1 : i32
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
+        %n = memref.load %rtp[%c0] : memref<1xi32>
+        aie.use_lock(%barrier, Release, %one)
+        %cols = arith.index_cast %n : i32 to index
+        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
+        scf.for %j = %c0 to %cols step %c1 {
+          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
+          aie.objectfifo.release @x(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        aie.objectfifo.release @angle(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @seq(%a: memref<128xbf16>) {
+      %c24 = arith.constant 24 : i32
+      aiex.npu.rtp_write(@rtp, 0, %c24) : i32
+      %c1 = arith.constant 1 : i32
+      aiex.set_lock(%barrier, %c1)
+    }
+  }
+}
+
+// -----
+
+// Two runtime sequences write the word with different constants, so a row's
+// length is not one number: only `x`, paired one to one, is proven.
+
+// CHECK-LABEL: module @rtp_two_values
+// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+module @rtp_two_values {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
+    %barrier = aie.lock(%core)
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %one = arith.constant 1 : i32
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
+        %n = memref.load %rtp[%c0] : memref<1xi32>
+        aie.use_lock(%barrier, Release, %one)
+        %cols = arith.index_cast %n : i32 to index
+        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
+        scf.for %j = %c0 to %cols step %c1 {
+          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
+          aie.objectfifo.release @x(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        aie.objectfifo.release @angle(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @wide(%a: memref<128xbf16>) {
+      %c24 = arith.constant 24 : i32
+      aiex.npu.rtp_write(@rtp, 0, %c24) : i32
+      %c1 = arith.constant 1 : i32
+      aiex.set_lock(%barrier, %c1)
+    }
+    aie.runtime_sequence @narrow(%a: memref<128xbf16>) {
+      %c12 = arith.constant 12 : i32
+      aiex.npu.rtp_write(@rtp, 0, %c12) : i32
+      %c1 = arith.constant 1 : i32
+      aiex.set_lock(%barrier, %c1)
+    }
+  }
+}
+
+// -----
+
+// The lock is set before the word is written, so the core may read a stale
+// length: only `x` is proven.
+
+// CHECK-LABEL: module @rtp_set_before_write
+// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+module @rtp_set_before_write {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
+    %barrier = aie.lock(%core)
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %one = arith.constant 1 : i32
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
+        %n = memref.load %rtp[%c0] : memref<1xi32>
+        aie.use_lock(%barrier, Release, %one)
+        %cols = arith.index_cast %n : i32 to index
+        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
+        scf.for %j = %c0 to %cols step %c1 {
+          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
+          aie.objectfifo.release @x(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        aie.objectfifo.release @angle(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @seq(%a: memref<128xbf16>) {
+      %c1 = arith.constant 1 : i32
+      aiex.set_lock(%barrier, %c1)
+      %c24 = arith.constant 24 : i32
+      aiex.npu.rtp_write(@rtp, 0, %c24) : i32
+    }
+  }
+}
+
+// -----
+
+// The pass takes its input under a branch on data, so it may release an
+// output without taking anything.
+
+// CHECK-LABEL: module @take_under_branch
+// CHECK-NOT: consumed_by
+module @take_under_branch {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %flag = aie.buffer(%core) : memref<1xi32>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c0_i32 = arith.constant 0 : i32
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %f = memref.load %flag[%c0] : memref<1xi32>
+        %take = arith.cmpi ne, %f, %c0_i32 : i32
+        scf.if %take {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+        }
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The pass takes its input in a loop whose count is a word nothing fixes, so
+// how much it takes per output is unknown.
+
+// CHECK-LABEL: module @take_in_unknown_loop
+// CHECK-NOT: consumed_by
+module @take_in_unknown_loop {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %count = aie.buffer(%core) : memref<1xi32>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %n = memref.load %count[%c0] : memref<1xi32>
+        %takes = arith.index_cast %n : i32 to index
+        scf.for %j = %c0 to %takes step %c1 {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+        }
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A memtile splits each object between two cores. A segment is released once
+// written, so a core taking the first segment of an object knows only that
+// segment arrived; one taking the last knows the whole object did, so only
+// its output proves the input, two bytes for each it receives.
+
+// CHECK-LABEL: module @split
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @outb_cons_dma, input_bytes = 2, output_bytes = 1>], fifoName = "in"}
+module @split {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %mem = aie.tile(0, 1)
+    %core2 = aie.tile(0, 2)
+    %core3 = aie.tile(0, 3)
+    aie.objectfifo @in(%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @a(%mem, {%core2}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @b(%mem, {%core3}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@in] -> [@a, @b] ([] [0, 32])
+    aie.objectfifo @outa(%core2, {%shim}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @outb(%core3, {%shim}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.core(%core2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @a(Consume, 1) : memref<32xi32>
+        %o = aie.objectfifo.acquire @outa(Produce, 1) : memref<32xi32>
+        aie.objectfifo.release @a(Consume, 1)
+        aie.objectfifo.release @outa(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%core3) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @b(Consume, 1) : memref<32xi32>
+        %o = aie.objectfifo.acquire @outb(Produce, 1) : memref<32xi32>
+        aie.objectfifo.release @b(Consume, 1)
+        aie.objectfifo.release @outb(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A memtile joins two cores' objects into one. Once the shim has received part
+// of an object, the memtile has the first segment of it, so the core filling
+// that segment has taken its input; the second core's input stays unproven.
+
+// CHECK-LABEL: module @join
+// CHECK: aie.route_endpoint @ina_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 2>], fifoName = "ina"}
+// CHECK: aie.route_endpoint @inb_prod_dma({{.*}}) DMA {fifoName = "inb"}
+module @join {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %mem = aie.tile(0, 1)
+    %core2 = aie.tile(0, 2)
+    %core3 = aie.tile(0, 3)
+    aie.objectfifo @ina(%shim, {%core2}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @inb(%shim, {%core3}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @a(%core2, {%mem}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @b(%core3, {%mem}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @out(%mem, {%shim}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@a, @b] -> [@out] ([0, 32] [])
+    aie.core(%core2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @ina(Consume, 1) : memref<32xi32>
+        %o = aie.objectfifo.acquire @a(Produce, 1) : memref<32xi32>
+        aie.objectfifo.release @ina(Consume, 1)
+        aie.objectfifo.release @a(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%core3) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @inb(Consume, 1) : memref<32xi32>
+        %o = aie.objectfifo.acquire @b(Produce, 1) : memref<32xi32>
+        aie.objectfifo.release @inb(Consume, 1)
+        aie.objectfifo.release @b(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// As @other_core, with objects halving at the first core: the output proves
+// the input two bytes for each it receives.
+
+// CHECK-LABEL: module @two_cores
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 2, output_bytes = 1>], fifoName = "in"}
+module @two_cores {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core2 = aie.tile(0, 2)
+    %core3 = aie.tile(0, 3)
+    aie.objectfifo @in(%shim, {%core2}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @mid(%core2, {%core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core3, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<32xi32>
+        %m = aie.objectfifo.acquire @mid(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @mid(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%core3) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %m = aie.objectfifo.acquire @mid(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @mid(Consume, 1)
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The core's accesses sit in two loops whose trip counts are runtime words.
+// Each loop's pass takes ahead of each release, one input per output in the
+// first and two in the second, so whatever the counts the core has taken at
+// least one input for every output.
+
+// CHECK-LABEL: module @sibling_loops
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+module @sibling_loops {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<2xi32>
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %n = memref.load %rtp[%c0] : memref<2xi32>
+        %rows = arith.index_cast %n : i32 to index
+        %k = memref.load %rtp[%c1] : memref<2xi32>
+        %more = arith.index_cast %k : i32 to index
+        scf.for %r = %c0 to %rows step %c1 {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        scf.for %r = %c0 to %more step %c1 {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+          %j = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// As above, but the second loop releases its output before taking its input,
+// so an output's arrival proves nothing about the input.
+
+// CHECK-LABEL: module @sibling_loops_release_first
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {fifoName = "in"}
+module @sibling_loops_release_first {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<2xi32>
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %n = memref.load %rtp[%c0] : memref<2xi32>
+        %rows = arith.index_cast %n : i32 to index
+        %k = memref.load %rtp[%c1] : memref<2xi32>
+        %more = arith.index_cast %k : i32 to index
+        scf.for %r = %c0 to %rows step %c1 {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        scf.for %r = %c0 to %more step %c1 {
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+          aie.objectfifo.release @out(Produce, 1)
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+        }
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The RTP buffer holds i16: the write fills word 1, elements 2 and 3,
+// while the load reads element 1, which nothing writes. The row length is
+// unknown, so only `x` is proven.
+
+// CHECK-LABEL: module @rtp_i16_word
+// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+module @rtp_i16_word {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<4xi16>
+    %barrier = aie.lock(%core)
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %cidx = arith.constant 1 : index
+      %one = arith.constant 1 : i32
+      %acq = arith.constant 1 : i32
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aie.use_lock(%barrier, AcquireGreaterEqual, %acq)
+        %n = memref.load %rtp[%cidx] : memref<4xi16>
+        aie.use_lock(%barrier, Release, %acq)
+        %cols = arith.index_cast %n : i16 to index
+        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
+        scf.for %j = %c0 to %cols step %c1 {
+          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
+          aie.objectfifo.release @x(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        aie.objectfifo.release @angle(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @seq(%a: memref<128xbf16>) {
+      %c24 = arith.constant 24 : i32
+      aiex.npu.rtp_write(@rtp, 1, %c24) : i32
+      %c1 = arith.constant 1 : i32
+      aiex.set_lock(%barrier, %c1)
+    }
+  }
+}
+
+// -----
+
+// The core's acquire takes 0, so it never waits for the host's write and
+// may read the word before it: only `x` is proven.
+
+// CHECK-LABEL: module @rtp_acquire_zero
+// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+module @rtp_acquire_zero {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
+    %barrier = aie.lock(%core)
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %cidx = arith.constant 0 : index
+      %one = arith.constant 1 : i32
+      %acq = arith.constant 0 : i32
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aie.use_lock(%barrier, AcquireGreaterEqual, %acq)
+        %n = memref.load %rtp[%cidx] : memref<1xi32>
+        aie.use_lock(%barrier, Release, %acq)
+        %cols = arith.index_cast %n : i32 to index
+        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
+        scf.for %j = %c0 to %cols step %c1 {
+          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
+          aie.objectfifo.release @x(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        aie.objectfifo.release @angle(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @seq(%a: memref<128xbf16>) {
+      %c24 = arith.constant 24 : i32
+      aiex.npu.rtp_write(@rtp, 0, %c24) : i32
+      %c1 = arith.constant 1 : i32
+      aiex.set_lock(%barrier, %c1)
+    }
+  }
+}
+
+// -----
+
+// The write sits under a branch that never runs, while the set_lock does
+// not: the core may read a word nothing wrote, and only `x` is proven.
+
+// CHECK-LABEL: module @rtp_write_under_branch
+// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+module @rtp_write_under_branch {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
+    %barrier = aie.lock(%core)
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %cidx = arith.constant 0 : index
+      %one = arith.constant 1 : i32
+      %acq = arith.constant 1 : i32
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aie.use_lock(%barrier, AcquireGreaterEqual, %acq)
+        %n = memref.load %rtp[%cidx] : memref<1xi32>
+        aie.use_lock(%barrier, Release, %acq)
+        %cols = arith.index_cast %n : i32 to index
+        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
+        scf.for %j = %c0 to %cols step %c1 {
+          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
+          aie.objectfifo.release @x(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        aie.objectfifo.release @angle(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @seq(%a: memref<128xbf16>) {
+      %c24 = arith.constant 24 : i32
+      %false = arith.constant false
+      scf.if %false {
+        aiex.npu.rtp_write(@rtp, 0, %c24) : i32
+      }
+      %c1 = arith.constant 1 : i32
+      aiex.set_lock(%barrier, %c1)
+    }
+  }
+}
+
+// -----
+
+// The core gives back 2 after taking 1, so it raises the lock past the
+// host's set_lock and a later pass may read before the next write: only `x`
+// is proven.
+
+// CHECK-LABEL: module @rtp_release_more
+// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+module @rtp_release_more {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
+    %barrier = aie.lock(%core)
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %cidx = arith.constant 0 : index
+      %one = arith.constant 1 : i32
+      %acq = arith.constant 1 : i32
+      %two = arith.constant 2 : i32
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aie.use_lock(%barrier, AcquireGreaterEqual, %acq)
+        %n = memref.load %rtp[%cidx] : memref<1xi32>
+        aie.use_lock(%barrier, Release, %two)
+        %cols = arith.index_cast %n : i32 to index
+        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
+        scf.for %j = %c0 to %cols step %c1 {
+          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
+          aie.objectfifo.release @x(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        aie.objectfifo.release @angle(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @seq(%a: memref<128xbf16>) {
+      %c24 = arith.constant 24 : i32
+      aiex.npu.rtp_write(@rtp, 0, %c24) : i32
+      %c1 = arith.constant 1 : i32
+      aiex.set_lock(%barrier, %c1)
+    }
+  }
+}

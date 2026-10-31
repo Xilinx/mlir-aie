@@ -107,7 +107,9 @@ public:
   /// the value is written directly (no shift). A DMA offset or length
   /// parameter's value, read as an int32, must lie in the range the compiler
   /// gave it, which keeps its transfers within their buffers; a repeat
-  /// parameter's, at most its task's repeat count.
+  /// parameter's, at most its task's repeat count. An offset into elements
+  /// narrower than 4 bytes must be a multiple of the elements in a word, or
+  /// the DMA would round its address down.
   void writeBits(const std::string &name, uint32_t bits) {
     if (unslotted.count(name))
       throw std::runtime_error("ParameterScratchpad: no command reads "
@@ -123,6 +125,15 @@ public:
                                "' does not read parameter '" + name +
                                "', whose slot another of its parameters may "
                                "hold");
+    if (auto multiple = offsetMultiples.find(name);
+        multiple != offsetMultiples.end() &&
+        static_cast<int32_t>(bits) % multiple->second)
+      throw std::invalid_argument(
+          "ParameterScratchpad: value " +
+          std::to_string(static_cast<int32_t>(bits)) + " of '" + name +
+          "' is not a multiple of " + std::to_string(multiple->second) +
+          " elements, which the DMA address it offsets needs to stay "
+          "4-byte aligned");
     if (auto range = ranges.find(name); range != ranges.end()) {
       int32_t value = static_cast<int32_t>(bits);
       if (value < range->second.first || value > range->second.second)
@@ -222,6 +233,9 @@ private:
   std::unordered_set<std::string> repeatParams; // params with kind="repeat"
   std::unordered_map<std::string, std::pair<int32_t, int32_t>> ranges;
   std::unordered_map<std::string, int32_t> values; // of the ranged params
+  // Offset parameters into elements narrower than a word, by the element
+  // count whose bytes fill one.
+  std::unordered_map<std::string, int32_t> offsetMultiples;
   struct JointBound {
     std::string length, offset;
     int64_t lengthStep, max;
@@ -282,10 +296,15 @@ private:
     //   <num_commands>
     //   <device>:<sequence> <num_read> <name> ...
     //   ...
+    //   <num_offset_multiples>
+    //   <name> <multiple>
+    //   ...
     // where <state_table_idx> is "-" for a parameter no command reads, kind
     // is "core", "addr" or "repeat", and <min> <max> is "- -" for a parameter
     // with no range. A joint bound requires
-    // offset + length_step * length <= max.
+    // offset + length_step * length <= max. The offset multiples, absent when
+    // no offset needs one, list the offset parameters whose value must be a
+    // multiple.
     unsigned numParams = 0, numSlots = 0;
     file >> numParams >> numSlots;
     if (!file)
@@ -383,6 +402,20 @@ private:
       if (!file)
         throw std::runtime_error("ParameterScratchpad: malformed command " +
                                  std::to_string(i) + " in '" + path + "'");
+    }
+
+    unsigned numMultiples = 0;
+    if (!(file >> numMultiples))
+      return;
+    for (unsigned i = 0; i < numMultiples; i++) {
+      std::string name;
+      int32_t multiple = 0;
+      file >> name >> multiple;
+      if (!file || multiple < 1)
+        throw std::runtime_error("ParameterScratchpad: malformed offset "
+                                 "multiple " +
+                                 std::to_string(i) + " in '" + path + "'");
+      offsetMultiples[name] = multiple;
     }
   }
 };

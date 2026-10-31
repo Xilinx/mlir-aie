@@ -1474,12 +1474,9 @@ static std::optional<int64_t> staticBdLenBytes(AIE::DMABDOp bd) {
       elems, static_cast<int64_t>(bd.getBufferElementTypeWidthInBytes()));
 }
 
-// Bytes a task streams per dispatch, or nullopt when any extent, repeat or
-// start count is not static, or the total overflows.
-static std::optional<int64_t>
-staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
+std::optional<int64_t> AIEX::DMAConfigureTaskForOp::getStaticBytesStreamed() {
   int64_t starts = 0;
-  for (Operation *user : task.getResult().getUsers()) {
+  for (Operation *user : getResult().getUsers()) {
     auto start = dyn_cast<AIEX::DMAStartTaskOp>(user);
     if (!start) {
       if (isa<AIEX::DMAAwaitTaskOp, AIEX::DMAFreeTaskOp>(user))
@@ -1490,19 +1487,19 @@ staticBytesStreamed(AIEX::DMAConfigureTaskForOp task) {
     }
     // A start outside the task's own block may run under a loop or a
     // mutually-exclusive branch, either of which this static count can't see.
-    if (start->getBlock() != task->getBlock() || start.getRepeatCountAttr() ||
-        start.getRepeatCountVal() || start.hasRepeatParameter())
+    if (start->getBlock() != (*this)->getBlock() ||
+        start.getRepeatCountAttr() || start.getRepeatCountVal() ||
+        start.hasRepeatParameter())
       return std::nullopt;
     ++starts;
   }
   if (starts == 0)
     return 0;
-  std::optional<int64_t> repeat =
-      getConstantIntValue(task.getRepeatCountValue());
+  std::optional<int64_t> repeat = getConstantIntValue(getRepeatCountValue());
   if (!repeat || *repeat < 0)
     return std::nullopt;
 
-  Region &body = task.getBody();
+  Region &body = getBody();
   if (body.empty())
     return std::nullopt;
   // The queue starts the chain at the entry block, so only blocks reachable
@@ -1583,7 +1580,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                              AIE::ObjectFifoCreateOp fifo) {
   if (fifo.getPadDimensions() || fifo.usesStream())
     return success();
-  std::optional<int64_t> moved = staticBytesStreamed(task);
+  std::optional<int64_t> moved = task.getStaticBytesStreamed();
   if (!moved || *moved == 0)
     return success();
   DataLayout layout = DataLayout::closest(task);
@@ -1685,7 +1682,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   for (Operation *prev = task->getPrevNode(); prev; prev = prev->getPrevNode())
     if (auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(prev);
         other && other.getAlloc() == task.getAlloc() &&
-        staticBytesStreamed(other) != 0)
+        other.getStaticBytesStreamed() != 0)
       return success();
   std::optional<int64_t> total = 0;
   int64_t sharing = 0;
@@ -1701,7 +1698,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
     auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(op);
     if (!other || other.getAlloc() != task.getAlloc())
       return WalkResult::advance();
-    std::optional<int64_t> bytes = staticBytesStreamed(other);
+    std::optional<int64_t> bytes = other.getStaticBytesStreamed();
     // A task that is never started streams nothing, wherever it is.
     if (bytes == 0)
       return WalkResult::advance();

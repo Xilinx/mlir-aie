@@ -235,6 +235,37 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
 def PacketInfoArrayAttr
     : TypedArrayAttrBase<PacketInfoAttr, "array of packet headers">;
 
+def ConsumedByAttr : AttrDef<AIE_Dialect, "ConsumedBy", []> {
+  let mnemonic = "consumed_by";
+  let summary = "An output whose progress proves a shim input consumed";
+  let description = [{
+    Held in the `consumed_by` of a shim input: its `aie.route_endpoint` until
+    `--aie-objectfifo-allocate`, its `aie.shim_dma_allocation` after.
+    `--aie-objectfifo-verify` records one where the design proves that, once
+    the host has received `R` bytes through `output` since the array was
+    loaded, the input's first `R * input_bytes / output_bytes` bytes have left
+    the shim, taken by the tile they went to, so the transfers that sent them
+    have finished.
+    `--aie-assign-runtime-sequence-bd-ids` credits that completion when an
+    await retires a transfer on `output`.
+
+    ```
+      aie.shim_dma_allocation @in(%shim, MM2S, 0) {consumed_by = [
+          #aie.consumed_by<output = @out, input_bytes = 256,
+                           output_bytes = 6144>]}
+    ```
+  }];
+
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$output,
+      "int64_t":$input_bytes, "int64_t":$output_bytes);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def ConsumedByArrayAttr
+    : TypedArrayAttrBase<ConsumedByAttr,
+                         "outputs whose progress proves a shim input consumed">;
+
 def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
   let mnemonic = "bd_iteration";
   let summary = [{

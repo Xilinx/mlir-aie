@@ -106,7 +106,8 @@ class ParameterScratchpad:
         Raises:
             ValueError: `name` is a DMA offset or length parameter and `value`
                 is outside the range that keeps its transfers within their
-                buffers.
+                buffers, or an offset into elements narrower than 4 bytes
+                that is not a multiple of the elements in a word.
             RuntimeError: `name` is not one of ``names``.
         """
         self._impl.write_bytes(name, _to_bytes(value))

@@ -7,17 +7,18 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-substitute-shim-dma-allocations %s | FileCheck %s
 
-// Each task names its allocation's tile, direction and channel; the body moves
-// with it.
+// Each task names its allocation's tile, direction and channel, and keeps the
+// allocation itself, whose proofs the BD-id pass reads; the body moves with
+// it.
 
 // CHECK: %[[T:.*]] = aie.tile(1, 0)
 // CHECK: @two_tasks
 // CHECK: aiex.dma_configure_task(%[[T]], MM2S, 1) {
 // CHECK:   aie.dma_bd(%arg0 : memref<64xi32> offset = 0 len = 64) {bd_id = 0 : i32}
-// CHECK: } {issue_token = true}
+// CHECK: } {alloc = @in, issue_token = true}
 // CHECK: aiex.dma_configure_task(%[[T]], S2MM, 0) {
 // CHECK:   aie.dma_bd(%arg1 : memref<64xi32> offset = 0 len = 64) {bd_id = 1 : i32}
-// CHECK: }
+// CHECK: } {alloc = @out}
 // CHECK-NOT: dma_configure_task_for
 module {
   aie.device(npu2) {

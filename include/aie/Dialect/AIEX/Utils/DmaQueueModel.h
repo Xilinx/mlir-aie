@@ -24,6 +24,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <algorithm>
 #include <array>
@@ -845,6 +846,143 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
     merged[key] = channelExit;
   }
   queue.setState(std::move(merged));
+}
+
+/// Check that `sequence` ends, on every path, with no task-completion token
+/// outstanding on a channel in `awaited`, the channels some sequence of the
+/// device awaits. A token left at the end outlives the command: the next
+/// command's await on that channel takes it and returns before its own
+/// transfer has finished (measured on Strix, NPU firmware 1.1.2.64), and every
+/// completion the compiler derives from an await assumes the channel started
+/// with none. A token on a channel nothing awaits is never taken. An await
+/// consumes the oldest token, so only the count matters. A loop with an
+/// unknown trip count must leave the count where it found it, or what remains
+/// grows with the trip count. Regions the check cannot follow are not
+/// diagnosed.
+template <typename EffectFn>
+inline mlir::LogicalResult
+checkTokensConsumed(AIE::RuntimeSequenceOp sequence,
+                    const std::set<DmaQueueModel::ChannelKey> &awaited,
+                    EffectFn effectOf) {
+  mlir::Region &body = sequence.getBody();
+  // Each channel's analysis visits only its own pushes and syncs and the ops
+  // enclosing them, in block order.
+  llvm::DenseMap<mlir::Operation *, QueueEffect> effects;
+  using Visits =
+      llvm::DenseMap<mlir::Block *, llvm::SmallVector<mlir::Operation *>>;
+  std::map<DmaQueueModel::ChannelKey, Visits> visits;
+  body.walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+    QueueEffect e = effectOf(op);
+    if ((e.kind != QueueEffect::Kind::Push &&
+         e.kind != QueueEffect::Kind::Await) ||
+        !awaited.count(e.key))
+      return;
+    effects[op] = e;
+    Visits &blocks = visits[e.key];
+    for (mlir::Operation *at = op; at != body.getParentOp();
+         at = at->getParentOp()) {
+      auto &ops = blocks[at->getBlock()];
+      if (!ops.empty() && ops.back() == at)
+        break;
+      ops.push_back(at);
+    }
+  });
+
+  auto describe = [](mlir::InFlightDiagnostic &diag,
+                     const DmaQueueModel::ChannelKey &key) {
+    diag << " on tile (" << key[0] << "," << key[1] << ") "
+         << AIE::stringifyDMAChannelDir(static_cast<AIE::DMAChannelDir>(key[2]))
+         << " channel " << key[3];
+  };
+  // Small constant trip counts are followed pass by pass, as unrolling would.
+  constexpr int64_t maxFollowedTrips = 64;
+  bool consumed = true;
+  for (const auto &channel : visits) {
+    const DmaQueueModel::ChannelKey &key = channel.first;
+    const Visits &blocks = channel.second;
+    using Counts = std::set<int64_t>;
+    bool unknown = false;
+    std::function<Counts(mlir::Region &, Counts)> analyze;
+    analyze = [&](mlir::Region &region, Counts counts) -> Counts {
+      if (region.empty())
+        return counts;
+      if (!region.hasOneBlock()) {
+        unknown = true;
+        return counts;
+      }
+      auto visited = blocks.find(&region.front());
+      if (visited == blocks.end())
+        return counts;
+      for (mlir::Operation *at : visited->second) {
+        mlir::Operation &op = *at;
+        if (unknown)
+          return counts;
+        if (auto it = effects.find(&op); it != effects.end()) {
+          Counts next;
+          for (int64_t count : counts)
+            next.insert(it->second.kind == QueueEffect::Kind::Push
+                            ? count + it->second.issuesToken
+                            : std::max<int64_t>(count - 1, 0));
+          counts = std::move(next);
+          continue;
+        }
+        if (auto loop = mlir::dyn_cast<mlir::scf::ForOp>(&op)) {
+          auto lb = mlir::getConstantIntValue(loop.getLowerBound());
+          auto ub = mlir::getConstantIntValue(loop.getUpperBound());
+          auto step = mlir::getConstantIntValue(loop.getStep());
+          if (lb && ub && step && *step > 0 && !loop->hasAttr("unsignedCmp")) {
+            int64_t trips = *ub > *lb ? llvm::divideCeil(*ub - *lb, *step) : 0;
+            if (trips <= maxFollowedTrips) {
+              for (int64_t i = 0; i < trips && !unknown; i++)
+                counts = analyze(loop.getRegion(), counts);
+              continue;
+            }
+          }
+          for (int64_t count : counts) {
+            Counts after = analyze(loop.getRegion(), Counts{count});
+            if (unknown)
+              return counts;
+            if (after == Counts{count})
+              continue;
+            auto diag = loop.emitOpError("changes how many task-completion "
+                                         "tokens are outstanding");
+            describe(diag, key);
+            diag << " in each pass, so how many it leaves depends on its trip "
+                    "count; await as many tokens in each pass as it issues";
+            consumed = false;
+            unknown = true;
+            return counts;
+          }
+          continue;
+        }
+        if (auto branch = mlir::dyn_cast<mlir::scf::IfOp>(&op)) {
+          Counts taken = analyze(branch.getThenRegion(), counts);
+          Counts otherwise = analyze(branch.getElseRegion(), counts);
+          taken.insert(otherwise.begin(), otherwise.end());
+          counts = std::move(taken);
+          continue;
+        }
+        unknown = true;
+        return counts;
+      }
+      return counts;
+    };
+    Counts exits = analyze(body, Counts{0});
+    if (unknown || *exits.rbegin() == 0)
+      continue;
+    int64_t left = *exits.rbegin();
+    // Not sequence.emitOpError(): that would print the whole sequence.
+    auto diag = mlir::emitError(sequence.getLoc())
+                << "ends with " << left << " task-completion token"
+                << (left > 1 ? "s" : "") << " no await consumes";
+    describe(diag, key);
+    diag << "; the next command's await on that channel would return for "
+            "this sequence's transfer instead of its own. Await every "
+            "token-issuing transfer before the sequence ends, or start it "
+            "without issue_token";
+    consumed = false;
+  }
+  return mlir::success(consumed);
 }
 
 } // namespace xilinx::AIEX

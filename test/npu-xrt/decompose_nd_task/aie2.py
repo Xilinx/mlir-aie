@@ -26,7 +26,7 @@
 # 6 pieces of 4 executions at 16384 * i + 4096 * j, each restarted for pass 2.
 # MLIR:          offset = 0 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])
 # MLIR-NEXT:       aie.end
-# MLIR-NEXT:     } {repeat_count = 3 : i32}
+# MLIR-NEXT:     } {alloc = @in_shim_alloc, repeat_count = 3 : i32}
 # MLIR:          offset = 4096 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])
 # MLIR:          offset = 8192 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])
 # MLIR:          offset = 16384 len = 256 sizes = [4, 2, 8, 16] strides = [16, 1024, 64, 1])

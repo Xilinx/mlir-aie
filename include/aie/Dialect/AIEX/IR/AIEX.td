@@ -1407,6 +1407,11 @@ def AIE_DMAConfigureTaskOp
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
 
     An `aie.dma_bd` in a task may give more than 4 dimensions when all are constant; `aie-decompose-large-dma-bd` iterates every one past the innermost three.
+
+    `alloc` names the `aie.shim_dma_allocation` the task was configured for,
+    when `aie-substitute-shim-dma-allocations` made it from an
+    `aiex.dma_configure_task_for`. `aie-assign-runtime-sequence-bd-ids` reads
+    that allocation's `consumed_by`.
   }];
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
@@ -1416,7 +1421,7 @@ def AIE_DMAConfigureTaskOp
       Optional<AnySignlessIntegerOrIndex>:$repeat_count_val,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Put the channel into out-of-order mode (S2MM only).
-      UnitAttr:$out_of_order);
+      UnitAttr:$out_of_order, OptionalAttr<FlatSymbolRefAttr>:$alloc);
 
   let regions = (region AnyRegion:$body);
 
@@ -1460,7 +1465,7 @@ def AIE_DMAConfigureTaskOp
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
-            /*packet=*/nullptr, /*out_of_order=*/nullptr);
+            /*packet=*/nullptr, /*out_of_order=*/nullptr, /*alloc=*/nullptr);
     }]>];
 }
 
@@ -1529,6 +1534,10 @@ def AIE_DMAConfigureTaskForOp
       return mlir::IntegerAttr::get(
           mlir::IntegerType::get(getContext(), 32), getRepeatCount());
     }
+    // Bytes the task streams each time its block runs, counting each start
+    // and the chain reachable from the body's entry; nullopt when any extent,
+    // repeat or start count is not static, or the total overflows.
+    std::optional<int64_t> getStaticBytesStreamed();
   }];
 }
 
@@ -2022,6 +2031,9 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
     A transfer whose offset and length are two different parameters also adds a
     `#aiex.joint_bound` to the length parameter's `joint_bounds`, which the host library
     checks when it syncs the scratchpad.
+    A parameter used as an offset into elements narrower than 4 bytes gets `offset_multiple`,
+    the element count whose bytes fill a 4-byte word: the BD address drops its low two bits,
+    so the host library rejects a value that is not a multiple of it.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
     For `kind == addr`, and for any parameter used as a `length_parameter`, the `type` must be `i32`.
@@ -2051,7 +2063,8 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
       OptionalAttr<ScratchpadParameterKind>:$kind,
       OptionalAttr<I32Attr>:$min_value, OptionalAttr<I32Attr>:$max_value,
       OptionalAttr<TypedArrayAttrBase<AIEX_JointBoundAttr,
-                                      "joint bounds">>:$joint_bounds);
+                                      "joint bounds">>:$joint_bounds,
+      OptionalAttr<I32Attr>:$offset_multiple);
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }
