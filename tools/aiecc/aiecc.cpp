@@ -91,13 +91,9 @@ using namespace xilinx::aiecc::cli;
 
 namespace {
 
-// IRON names the objects a design declares in their locations
-// (loc("iron:act_in"(...)), see python/helpers/sourceloc.py). A diagnostic
-// located at one is reported as the design's: it opens with the object's name,
-// and the dump of the op it was emitted on is dropped unless `keepOpDump`,
-// since the location already points at the Python statement that declared it.
-// An op a pass generates from the object (a pool, a buffer, a BD) shares that
-// location, so --verbose keeps the dump that tells which op it was.
+// Matches IRON_PREFIX in python/helpers/sourceloc.py. The op dump is dropped
+// because the location already names the declaring statement; --verbose keeps
+// it, since a pass-generated op shares its object's location.
 constexpr llvm::StringLiteral ironPrefix = "iron:";
 
 mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag, bool keepOpDump) {

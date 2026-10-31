@@ -1,5 +1,8 @@
+# readable_ir.py -*- Python -*-
+#
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Print MLIR with each op's location as a short trailing comment.
 
 An IR file printed with debug info ends each op with a `loc(...)`, usually an
