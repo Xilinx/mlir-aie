@@ -869,11 +869,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (reuse.count > 1) {
         Diagnostic &note = diag.attachNote();
         note << "and " << reuse.count - 1
-             << " more times from this transfer, on tile";
-        if (reuse.tiles.size() > 1)
-          note << "s";
+             << " more times from this transfer, on tile"
+             << (reuse.tiles.size() > 1 ? "s " : " ");
         llvm::interleaveComma(reuse.tiles, note, [&](auto tile) {
-          note << " (" << tile.first << "," << tile.second << ")";
+          note << "(" << tile.first << "," << tile.second << ")";
         });
       }
     }
