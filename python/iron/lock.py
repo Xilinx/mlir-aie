@@ -20,12 +20,12 @@ from ..dialects.aie import (
     use_lock as _use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..dialects.aiex import set_lock_value as _set_lock_value
-from ..helpers.sourceloc import SourceSite
+from ..helpers.sourceloc import Declared, SourceSite
 from .device import Tile
 from .resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 
 
-class Lock(PerDeviceConfigurationResolvable):
+class Lock(Declared, PerDeviceConfigurationResolvable):
     """A named hardware lock on a specific tile."""
 
     def __init__(

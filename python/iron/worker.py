@@ -23,7 +23,7 @@ from ..dialects.aiex import (
 )
 from ..helpers.dialects.scf import _for as range_
 from ..helpers.dialects.scf import forever_
-from ..helpers.sourceloc import SourceSite, iron_name, traced_body
+from ..helpers.sourceloc import Declared, SourceSite, iron_name, traced_body
 from ..helpers.taplib import Affine
 from ..helpers.util import flatten_fn_args
 from ..utils.compile.jit.markers import _DispatchParameter
@@ -37,7 +37,7 @@ from .resolvable import PerDeviceConfiguration, Resolvable
 from .scratchpad_parameter import ScratchpadParameter
 
 
-class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
+class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
     """A task to be run on an AIE compute core.
 
     A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO handles,

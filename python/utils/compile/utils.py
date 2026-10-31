@@ -1097,11 +1097,12 @@ def _run_aiecc(
             f"[aiecc] Compilation failed with exit code {proc.returncode}:\n"
             f"{detail if summary else error_msg}"
         )
+        with open(mlir_file) as f:
+            ir_text = f.read()
         if readable_path is not None:
             # A diagnostic aid: its own failure must not hide aiecc's error.
             try:
-                with open(mlir_file) as f:
-                    text = readable(f.read())
+                text = readable(ir_text)
                 with open(readable_path, "w") as f:
                     f.write(text)
             except Exception as dump_error:
@@ -1111,7 +1112,7 @@ def _run_aiecc(
                     f"\nThe design's IR, each op noted with its source: {readable_path}"
                 )
         exc = RuntimeError(message)
-        attach_tool_location(exc, error_msg)
+        attach_tool_location(exc, error_msg, ir_text)
         raise exc
 
 

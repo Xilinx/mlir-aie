@@ -32,7 +32,7 @@ from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     objectfifo_segment,
 )
 from ...helpers.npdtypes import np_ndarray_type_get_shape
-from ...helpers.sourceloc import SourceSite
+from ...helpers.sourceloc import Declared, SourceSite
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import Tile
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
@@ -123,7 +123,7 @@ class PoolSegment:
         )
 
 
-class ObjectFifoPool(PerDeviceConfigurationResolvable):
+class ObjectFifoPool(Declared, PerDeviceConfigurationResolvable):
     """A rotating set of buffers on one tile, and the locks that guard them.
 
     Example:
@@ -359,7 +359,7 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
         )
 
 
-class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
+class ObjectFifoPoolHandle(Declared, PerDeviceConfigurationResolvable):
     """What a Worker acquires and releases an [`ObjectFifoPool`][aie.iron.ObjectFifoPool]'s objects through.
 
     Obtain one from

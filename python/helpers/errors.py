@@ -25,13 +25,14 @@ from ..ir import (  # pyright: ignore[reportMissingImports]
     NameLoc,
     UnknownLoc,
 )
-from .sourceloc import IRON_PREFIX, is_internal_file
+from .sourceloc import IRON_PREFIX, Declared, SourceSite, is_internal_file
 
 _TOOL_ERROR = re.compile(r"^(.+?):(\d+):\d+: error: ", re.M)
 # A design's MLIRError prints as MLIR's SourceMgrDiagnosticHandler prints
 # aiecc's diagnostics, so the two read line for line alike.
 _CALL_STACK_LIMIT = 10
 _OP_DUMP = "see current operation"
+_HIDDEN_NOTE = "IRON's own frames are hidden; IRON_FULL_TRACEBACK=1 shows them."
 
 
 def _attach_source_frame(
@@ -76,13 +77,14 @@ def _attach_source_frame(
     return True
 
 
-def design_error(exc: BaseException) -> BaseException:
-    """Rewrite `exc`, raised while building a design, to point at the design.
+def hide_internal_frames(exc: BaseException) -> BaseException:
+    """Point `exc`, raised through IRON, at the user's code.
 
-    The `aie` package's frames are dropped, and an `MLIRError` gains a frame at
-    the location of its first error diagnostic. Its message prints each
-    diagnostic as aiecc does: `design.py:12:4: error: act_in: ...`, then the
-    calls that led there, without the dump of an op an IRON object names.
+    The `aie` package's frames are dropped, and a note says so. An error IRON
+    raised from a method of an object the design declared gains a frame at the
+    statement that declared it, named after the object; an `MLIRError` is left
+    to `design_error`, which points at its diagnostic. Applying it again, at an
+    outer entry point, drops the frames that entry point added.
 
     Args:
         exc: The exception to rewrite in place.
@@ -90,19 +92,66 @@ def design_error(exc: BaseException) -> BaseException:
     Returns:
         `exc`.
     """
-    full = os.environ.get("IRON_FULL_TRACEBACK", "") not in ("", "0")
-    if not full:
-        kept, tb = [], exc.__traceback__
-        while tb is not None:
-            if not is_internal_file(tb.tb_frame.f_code.co_filename):
-                kept.append(tb)
-            tb = tb.tb_next
+    entries, tb = [], exc.__traceback__
+    while tb is not None:
+        entries.append(tb)
+        tb = tb.tb_next
+    declared = None
+    if (
+        entries
+        and is_internal_file(entries[-1].tb_frame.f_code.co_filename)
+        and not isinstance(exc, MLIRError)
+    ):
+        for entry in reversed(entries):
+            # The user's own statement, when IRON raised under it, is the
+            # more precise place.
+            if not is_internal_file(entry.tb_frame.f_code.co_filename):
+                break
+            obj = entry.tb_frame.f_locals.get("self")
+            # A constructor may raise before it records its site.
+            if isinstance(obj, Declared) and isinstance(
+                site := vars(obj).get("_site"), SourceSite
+            ):
+                if site.filename is not None:
+                    name = site.describe(type(obj).__name__)
+                    declared = (site.filename, site.line, name)
+                break
+    if os.environ.get("IRON_FULL_TRACEBACK", "") in ("", "0"):
+        kept = [
+            e for e in entries if not is_internal_file(e.tb_frame.f_code.co_filename)
+        ]
         rebuilt = None
         for entry in reversed(kept):
             rebuilt = types.TracebackType(
                 rebuilt, entry.tb_frame, entry.tb_lasti, entry.tb_lineno
             )
         exc.with_traceback(rebuilt)
+        if len(kept) < len(entries) and _HIDDEN_NOTE not in vars(exc).get(
+            "__notes__", []
+        ):
+            exc.add_note(_HIDDEN_NOTE)
+    if declared is not None:
+        _attach_source_frame(exc, *declared)
+    return exc
+
+
+def design_error(exc: BaseException) -> BaseException:
+    """Rewrite `exc`, raised while building a design, to point at the design.
+
+    `hide_internal_frames` points it at the user's code. An `MLIRError` also
+    gains a frame at the location of its first error diagnostic, and its
+    message prints each diagnostic as aiecc does: `design.py:12:4: error:
+    act_in: ...`, then the calls that led there, without the dump of an op an
+    IRON object names.
+
+    Args:
+        exc: The exception to rewrite in place.
+
+    Returns:
+        `exc`.
+    """
+    hide_internal_frames(exc)
+    full = os.environ.get("IRON_FULL_TRACEBACK", "") not in ("", "0")
     if not isinstance(exc, MLIRError):
         return exc
     lines, attached = [f"{exc.message}:"], False  # pyright: ignore[reportAttributeAccessIssue]  # fmt: skip
@@ -191,12 +240,15 @@ def _diagnostic_line(loc: Location, severity: str, message: str) -> str:
     return f"<unknown>:0: {severity}: {loc}: {message}"
 
 
-def attach_tool_location(exc: BaseException, output: str) -> bool:
+def attach_tool_location(exc: BaseException, output: str, ir_text: str = "") -> bool:
     """Point `exc` at the first located error a tool such as aiecc printed.
 
     Args:
         exc: The exception to raise for the tool's failure.
         output: The tool's output, with errors as `file:line:col: error: ...`.
+        ir_text: The IR the tool read. aiecc opens an error located at IRON
+            objects with their names (`error: act_in: ...`); names the IR
+            gives its objects name the frame, as `design_error` names it.
 
     Returns:
         Whether a frame was attached.
@@ -204,4 +256,8 @@ def attach_tool_location(exc: BaseException, output: str) -> bool:
     match = _TOOL_ERROR.search(output)
     if match is None:
         return False
-    return _attach_source_frame(exc, match.group(1), int(match.group(2)))
+    objects = set(re.findall(rf'"{re.escape(IRON_PREFIX)}([^"]+)"', ir_text))
+    prefix, sep, _ = output[match.end() :].partition(": ")
+    named = prefix.split(", ")
+    name = prefix if sep and set(named) <= objects else "<design>"
+    return _attach_source_frame(exc, match.group(1), int(match.group(2)), name)

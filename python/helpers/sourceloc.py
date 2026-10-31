@@ -247,6 +247,15 @@ class SourceSite:
         return ir.Location.name(iron_name(name), childLoc=loc) if name else loc
 
 
+class Declared:
+    """An object a design declares; `_site` is the statement that did.
+
+    An error IRON raises from one of its methods is pointed at that statement.
+    """
+
+    _site: SourceSite
+
+
 def _target_name(target: ast.AST) -> str | None:
     """`x` for `x = ...`, `self.x = ...` and `x[i] = ...`; `f` for `obj.f(...)`."""
     while isinstance(target, ast.Subscript):

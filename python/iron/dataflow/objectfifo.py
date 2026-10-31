@@ -28,7 +28,7 @@ from ...helpers.npdtypes import (
     pack_pad_value,
     single_elem_or_list_to_list,
 )
-from ...helpers.sourceloc import SourceSite, iron_name
+from ...helpers.sourceloc import Declared, SourceSite, iron_name
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import sprod
 from ...helpers.util import np_ndarray_type_to_memref_type
@@ -89,7 +89,7 @@ def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
     return (a.col, a.row) == (b.col, b.row)
 
 
-class ObjectFifo(PerDeviceConfigurationResolvable):
+class ObjectFifo(Declared, PerDeviceConfigurationResolvable):
     """A synchronized, explicit dataflow channel between IRON program components such as [`Worker`][aie.iron.Worker]s and the [`Runtime`][aie.iron.Runtime].
 
     Internally, an ObjectFifo is a circular buffer with a given depth and
@@ -1281,7 +1281,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
         self._object_fifo.resolve(loc=loc, ip=ip)
 
 
-class ObjectFifoLink(ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
+class ObjectFifoLink(Declared, ObjectFifoEndpoint, PerDeviceConfigurationResolvable):
     """This is an object used internally by split(), join() and forward() operations."""
 
     def __init__(

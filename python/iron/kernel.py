@@ -22,7 +22,7 @@ from ..dialects import arith, memref  # pyright: ignore[reportAttributeAccessIss
 from ..dialects.aie import external_func
 from ..helpers.dialects.func import call
 from ..helpers.npdtypes import is_block_float, np_ndarray_type_of
-from ..helpers.sourceloc import SourceSite
+from ..helpers.sourceloc import Declared, SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..utils import config
 from ..utils.compile import NPU_CACHE_HOME, compile_external_kernel
@@ -257,7 +257,7 @@ class ObjectFile(KernelObject):
         super().__init__(object_file_name, link_with_mode, _symbol_prefix=symbol_prefix)
 
 
-class Kernel(Resolvable):
+class Kernel(Declared, Resolvable):
     """An AIE core function backed by a pre-compiled object file.
 
     Use [`ExternalFunction`][aie.iron.ExternalFunction] instead when you want to

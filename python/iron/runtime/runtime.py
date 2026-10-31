@@ -38,7 +38,7 @@ from ...dialects.aiex import (
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from ...helpers.npdtypes import np_ndarray_type_of
-from ...helpers.sourceloc import SourceSite, traced_body
+from ...helpers.sourceloc import Declared, SourceSite, traced_body
 from ...helpers.util import (
     flatten_fn_args,
     np_dtype_to_mlir_type,
@@ -208,7 +208,7 @@ class ActiveSequence:
         self._used_default = self._used_explicit = False
 
 
-class Runtime(DeviceResources, Resolvable):
+class Runtime(Declared, DeviceResources, Resolvable):
     """The host-side sequence of data-movement operations that execute an IRON design.
 
     A Runtime describes what the host does at runtime: filling input
