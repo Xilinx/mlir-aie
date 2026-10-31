@@ -225,7 +225,7 @@ jobs:
             -DLLVM_DIR=$PWD/mlir/lib/cmake/llvm \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          ninja -C build -t targets all | sed -n 's/^\([^:]*\(IncGen\|-headers\|_version\)\): .*/\1/p' | grep -v '^install-' | sort -u > "$RUNNER_TEMP/gen.txt"
+          ninja -C build -t targets all | sed -n 's/^\([^:]*\(IncGen\|-headers\|_version\)\): .*/\1/p' | grep -vE '(^|/)install-' | sort -u > "$RUNNER_TEMP/gen.txt"
           xargs -a "$RUNNER_TEMP/gen.txt" ninja -C build
 
       - name: clang-tidy
