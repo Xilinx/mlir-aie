@@ -796,6 +796,12 @@ private:
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
+  // The resource terms that read only some tiles' positions, kept so a move
+  // recomputes one only when it moves a tile the term reads.
+  int memSpilloverPenalty = 0, bdCountPenalty = 0, delegatePenalty = 0;
+  llvm::DenseSet<mlir::Operation *> memTileTermTiles, delegateTermTiles,
+      pairedTiles;
+  int cachedPressure = 0;
   // An over-full shim tile is charged only for the channels allocation
   // still needs once ends never in flight together share them.
   std::optional<ShimTransferSpans> shimSpans;
@@ -835,7 +841,6 @@ private:
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);
   int getResourcePenalty() const { return cachedResourcePenalty; }
-  int computePenalty() const;
   int computeMemSpilloverPenalty() const;
   int computeCoreOverflowPenalty() const;
   int computeDMAChannelPenalty() const;

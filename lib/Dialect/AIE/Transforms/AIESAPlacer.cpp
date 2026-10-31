@@ -601,7 +601,35 @@ void SAPlacer::initResourceTracking() {
     tileToRouteEnds[routeEnds[i].tile].push_back(i);
     addRouteEndContribution(i, +1);
   }
-  cachedResourcePenalty = computePenalty();
+
+  memTileTermTiles.clear();
+  for (auto &[op, type] : tileTypes)
+    if (type == AIETileType::MemTile)
+      memTileTermTiles.insert(op);
+  for (auto &[op, _] : poolBDs)
+    memTileTermTiles.insert(op);
+  delegateTermTiles.clear();
+  for (const auto &fb : fifoBuffers) {
+    if (!fb.delegate)
+      continue;
+    delegateTermTiles.insert(fb.delegate);
+    delegateTermTiles.insert(fb.producer);
+    delegateTermTiles.insert(fb.consumers.begin(), fb.consumers.end());
+  }
+  pairedTiles.clear();
+  for (const Adjacency *adj : {&cascadeAdjacency, &sharedMemAdjacency})
+    for (auto [first, second] : adj->edges) {
+      pairedTiles.insert(first.getOperation());
+      pairedTiles.insert(second.getOperation());
+    }
+
+  memSpilloverPenalty = computeMemSpilloverPenalty();
+  bdCountPenalty = computeBDCountPenalty();
+  delegatePenalty = computeDelegatePenalty();
+  cachedResourcePenalty = memSpilloverPenalty + computeCoreOverflowPenalty() +
+                          computeDMAChannelPenalty() + bdCountPenalty +
+                          delegatePenalty;
+  cachedPressure = computeMemoryPressure();
 }
 
 int SAPlacer::computeMemoryPressure() const {
@@ -624,12 +652,6 @@ int SAPlacer::computeMemoryPressure() const {
     }
   }
   return pressure;
-}
-
-int SAPlacer::computePenalty() const {
-  return computeMemSpilloverPenalty() + computeCoreOverflowPenalty() +
-         computeDMAChannelPenalty() + computeBDCountPenalty() +
-         computeDelegatePenalty();
 }
 
 // Both ends of a fifo with an aie.objectfifo.allocate must reach the delegate
@@ -1121,7 +1143,20 @@ int SAPlacer::updateResourcePenalty(
       currentMemUsage[newPos] += stackIt->second;
   }
 
-  cachedResourcePenalty = computePenalty();
+  auto reads = [&](const DenseSet<Operation *> &tiles) {
+    return llvm::any_of(oldPlacements, [&](const auto &moved) {
+      return tiles.contains(moved.first);
+    });
+  };
+  if (reads(memTileTermTiles)) {
+    memSpilloverPenalty = computeMemSpilloverPenalty();
+    bdCountPenalty = computeBDCountPenalty();
+  }
+  if (reads(delegateTermTiles))
+    delegatePenalty = computeDelegatePenalty();
+  cachedResourcePenalty = memSpilloverPenalty + computeCoreOverflowPenalty() +
+                          computeDMAChannelPenalty() + bdCountPenalty +
+                          delegatePenalty;
   return cachedResourcePenalty;
 }
 
@@ -1853,6 +1888,8 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
   for (auto &[t, _] : moves)
     oldPlacements.push_back({t, currentPlacement[t]});
   int oldResPenalty = cachedResourcePenalty;
+  int oldMemSpillover = memSpilloverPenalty, oldBDCount = bdCountPenalty,
+      oldDelegate = delegatePenalty;
   auto savedMemUsage = currentMemUsage;
   auto savedDMAUsage = currentDMAUsage;
   auto savedSharedMemDest = sharedMemDestination;
@@ -1872,9 +1909,14 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
 
   // Compute total cost delta across all cost terms.
   int oldCascade = cascadePen;
-  int oldPressure = computeMemoryPressure();
+  int oldPressure = cachedPressure;
   int newResPenalty = updateResourcePenalty(oldPlacements);
-  int newCascade = computePairingPenalty();
+  int newCascade = llvm::any_of(moves,
+                                [&](const auto &move) {
+                                  return pairedTiles.contains(move.first);
+                                })
+                       ? computePairingPenalty()
+                       : cascadePen;
   int newPressure = computeMemoryPressure();
   int delta = hpwlDelta + (newResPenalty - oldResPenalty) +
               (newCascade - oldCascade) + (newPressure - oldPressure);
@@ -1898,6 +1940,7 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
       acceptedUphill++;
     totalCost += delta;
     cascadePen = newCascade;
+    cachedPressure = newPressure;
     schedule.record(true);
     if (totalCost < bestOverallCost) {
       bestOverallCost = totalCost;
@@ -1923,6 +1966,9 @@ void SAPlacer::tryMove(SmallVector<std::pair<Operation *, TileID>> &moves) {
     currentDMAUsage = savedDMAUsage;
     sharedMemDestination = savedSharedMemDest;
     cachedResourcePenalty = oldResPenalty;
+    memSpilloverPenalty = oldMemSpillover;
+    bdCountPenalty = oldBDCount;
+    delegatePenalty = oldDelegate;
     rejectedMoves++;
     schedule.record(false);
   }
