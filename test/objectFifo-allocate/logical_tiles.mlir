@@ -33,14 +33,14 @@ module {
 // Buffers, locks and channels are all assigned against the unplaced tiles.
 // CHECK-DAG:   %[[SHIM:.*]] = aie.logical_tile<ShimNOCTile>(?, ?)
 // CHECK-DAG:   %[[MEM:.*]] = aie.logical_tile<MemTile>(?, ?)
-// CHECK:       aie.buffer(%[[MEM]]) {sym_name = "p_buff_0"}
-// CHECK:       aie.buffer(%[[MEM]]) {sym_name = "p_buff_1"}
-// CHECK:       aie.lock(%[[MEM]]) {init = 2 : i32, sym_name = "p_prod_lock_0"}
-// CHECK:       aie.lock(%[[MEM]]) {init = 0 : i32, sym_name = "p_cons_lock_0"}
+// CHECK:       aie.buffer(%[[MEM]]) {sym_name = "p__buf0"}
+// CHECK:       aie.buffer(%[[MEM]]) {sym_name = "p__buf1"}
+// CHECK:       aie.lock(%[[MEM]]) {init = 2 : i32, sym_name = "p__prodlock0"}
+// CHECK:       aie.lock(%[[MEM]]) {init = 0 : i32, sym_name = "p__conslock0"}
 // CHECK:       aie.objectfifo.dma_endpoint @src(%[[SHIM]]) drains @shim_p {channelIndex = 0 : i32
 // CHECK:       aie.objectfifo.dma_endpoint @dst(%[[MEM]]) fills @p {channelIndex = 0 : i32
 // CHECK:       aie.flow(%[[SHIM]], DMA : 0, %[[MEM]], DMA : 0)
-// CHECK:       aie.shim_dma_allocation @of_shim_alloc(%[[SHIM]], MM2S, 0)
+// CHECK:       aie.shim_dma_allocation @of__shim_alloc(%[[SHIM]], MM2S, 0)
 
 // Placing afterwards leaves ordinary physical IR behind.
 // PLACED-DAG:  %[[PMEM:.*]] = aie.tile(2, 1)
@@ -66,12 +66,12 @@ module @shared_logical {
 }
 // CHECK-LABEL: module @shared_logical
 // CHECK: %[[HOME:.*]] = aie.logical_tile<MemTile>(0, 1)
-// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_0"}
-// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_1"}
+// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared__buf0"}
+// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared__buf1"}
 // CHECK: @reader({{.*}}) drains @shared {channelIndex = 0 : i32}
 // PLACED-LABEL: module @shared_logical
 // PLACED: %[[PHOME:.*]] = aie.tile(0, 1)
-// PLACED: aie.buffer(%[[PHOME]]) {sym_name = "shared_buff_0"}
+// PLACED: aie.buffer(%[[PHOME]]) {sym_name = "shared__buf0"}
 // PLACED: aie.dma_start(MM2S, 0
 
 // -----

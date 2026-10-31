@@ -20,11 +20,15 @@ ty = np.ndarray[(256,), np.dtype[np.int32]]
 def build(names=(None, None)):
     shim = Tile(0, 0)
     mem = Tile(tile_type=AIETileType.MemTile)
-    flows = [
-        Flow(shim, mem, name=names[0]),
-        Flow(mem, shim, name=names[1]),
-        PacketFlow(3, shim, mem),
-    ]
+    # Built as arguments to a call, the flows take fallback names rather
+    # than the list's.
+    flows = list(
+        (
+            Flow(shim, mem, name=names[0]),
+            Flow(mem, shim, name=names[1]),
+            PacketFlow(3, shim, mem),
+        )
+    )
 
     def sequence(a, c):
         flows[0].fill(a)

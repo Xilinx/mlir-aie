@@ -10,11 +10,11 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
 )
 from ...dialects.aie import LogicalTileOp
-from ...helpers.sourceloc import SourceSite
+from ...helpers.sourceloc import Declared, SourceSite
 from ..resolvable import PerDeviceConfiguration
 
 
-class Tile(PerDeviceConfiguration):
+class Tile(Declared, PerDeviceConfiguration):
     """An object representing a tile on a device.
 
     A tile can be:

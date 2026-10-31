@@ -17,7 +17,7 @@ module {
     %shim = aie.tile(0, 0)
     %tile = aie.tile(0, 2)
     aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    // expected-error@+1 {{'aie.core' op ends with 1 acquired from @in_cons never released, so their locks stay taken into the next run of this configuration}}
+    // expected-error@+1 {{'aie.core' op ends with 1 acquired from @in__cons never released, so their locks stay taken into the next run of this configuration}}
     %core = aie.core(%tile) {
       // expected-note@+1 {{acquired here}}
       %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
@@ -61,7 +61,7 @@ module {
     %shim = aie.tile(0, 0)
     %tile = aie.tile(0, 2)
     aie.objectfifo @in(%shim, {%tile}, 3 : i32) : !aie.objectfifo<memref<16xi32>>
-    // expected-error@+1 {{'aie.core' op ends with 1 acquired from @in_cons never released}}
+    // expected-error@+1 {{'aie.core' op ends with 1 acquired from @in__cons never released}}
     %core = aie.core(%tile) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index

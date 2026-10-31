@@ -32,7 +32,7 @@ from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     objectfifo_segment,
 )
 from ...helpers.npdtypes import np_ndarray_type_get_shape
-from ...helpers.sourceloc import SourceSite
+from ...helpers.sourceloc import Declared, SourceSite
 from ...helpers.util import np_ndarray_type_to_memref_type
 from ..device import Tile
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
@@ -123,7 +123,7 @@ class PoolSegment:
         )
 
 
-class ObjectFifoPool(PerDeviceConfigurationResolvable):
+class ObjectFifoPool(Declared, PerDeviceConfigurationResolvable):
     """A rotating set of buffers on one tile, and the locks that guard them.
 
     Example:
@@ -264,19 +264,20 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
         Args:
             claim: Takes a preferred name and returns one free of collisions.
         """
+        assert self.name is not None, "a pool is named before its symbols"
         for index, buffer in enumerate(self._buffers or []):
             if buffer.name is None:
-                buffer._name = claim(f"{self.name}_buff_{index}")
+                buffer._name = claim(f"{self.name}__buf{index}")
         for index, segment in enumerate(self._segments):
             for lock, role in (
                 (segment.produce_lock, "prod"),
                 (segment.consume_lock, "cons"),
             ):
                 if lock is not None and lock.name is None:
-                    lock._name = claim(f"{self.name}_{role}_lock_{index}")
+                    lock._name = claim(f"{self.name}__{role}lock{index}")
         for handle in self._handles:
             if handle.name is None:
-                handle._name = claim(f"{self.name}_{handle.verb}")
+                handle._name = claim(handle.symbol_on(self.name))
 
     @property
     def op(self):
@@ -345,15 +346,20 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
             for index, segment in enumerate(self._segments):
                 segment._resolve(index, base)
 
+    @property
+    def display_name(self) -> str:
+        """The name, or before one is assigned, how an error names it."""
+        return self.name or self._site.describe(type(self).__name__)
+
     def __str__(self) -> str:
         return (
             f"ObjectFifoPool({self._obj_type}, tile={self._tile}, "
-            f"depth={self._depth}, name={self.name!r}, "
+            f"depth={self._depth}, name={self.display_name!r}, "
             f"segments={len(self._segments)})"
         )
 
 
-class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
+class ObjectFifoPoolHandle(Declared, PerDeviceConfigurationResolvable):
     """What a Worker acquires and releases an [`ObjectFifoPool`][aie.iron.ObjectFifoPool]'s objects through.
 
     Obtain one from
@@ -384,6 +390,20 @@ class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
         """What this handle does to the pool, as its symbol spells it."""
         return "cons" if self._role == ObjectFifoRole.Drain else "prod"
 
+    def symbol_on(self, pool_name: str) -> str:
+        """Return the symbol this handle takes when it has no name.
+
+        Args:
+            pool_name: The pool's symbol.
+
+        Returns:
+            `<pool>__<verb>`, numbered from the second handle that shares
+            its verb on the pool: `act__cons`, `act__cons1`, ...
+        """
+        peers = [h for h in self._pool.handles if h.verb == self.verb]
+        index = peers.index(self)
+        return f"{pool_name}__{self.verb}{index or ''}"
+
     @property
     def pool(self) -> ObjectFifoPool:
         """The pool this handle reaches."""
@@ -398,7 +418,8 @@ class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
     def endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
         if self._endpoint and self._endpoint != endpoint:
             raise ValueError(
-                f"Endpoint already set for ObjectFifoPoolHandle {self._name}: "
+                f"Endpoint already set for ObjectFifoPoolHandle "
+                f"{self._name or self._pool.display_name}: "
                 f"Set to {self._endpoint}, trying to set to {endpoint}"
             )
         self._endpoint = endpoint
@@ -460,13 +481,9 @@ class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
         self._pool.resolve(loc=loc, ip=ip)
         base = self._pool.name or "pool"
         if self._name is None:
-            # Several handles may take the same role on one pool, so the symbol
-            # carries the handle's index among them. A DeviceConfiguration names
-            # them before this, and only a pool resolved outside one lands here.
-            peers = [h for h in self._pool.handles if h.verb == self.verb]
-            index = peers.index(self)
-            suffix = "" if index == 0 else f"_{index}"
-            self._name = f"{base}_{self.verb}{suffix}"
+            # A DeviceConfiguration names handles before this; only a pool
+            # resolved outside one lands here.
+            self._name = self.symbol_on(base)
         segments = self._pool._segment_names(self._segments)
         # The core that took this handle is the one that reaches the objects,
         # so the endpoint sits on its tile; the verifier rejects an endpoint

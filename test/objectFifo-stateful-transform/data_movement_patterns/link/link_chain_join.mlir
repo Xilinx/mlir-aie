@@ -12,9 +12,9 @@
 // input. Each moves from its own link's pool, walked segment by segment, into
 // its slot of the last link's pool.
 
-// CHECK-DAG: %[[LEFT0:.*]] = aie.buffer(%mem_tile_0_1) {sym_name = "left_buff_0"} : memref<32xi32>
-// CHECK-DAG: %[[RIGHT0:.*]] = aie.buffer(%mem_tile_2_1) {sym_name = "right_buff_0"} : memref<32xi32>
-// CHECK-DAG: %[[OUT0:.*]] = aie.buffer(%mem_tile_1_1) {sym_name = "out_buff_0"} : memref<64xi32>
+// CHECK-DAG: %[[LEFT0:.*]] = aie.buffer(%mem_tile_0_1) {sym_name = "left__buf0"} : memref<32xi32>
+// CHECK-DAG: %[[RIGHT0:.*]] = aie.buffer(%mem_tile_2_1) {sym_name = "right__buf0"} : memref<32xi32>
+// CHECK-DAG: %[[OUT0:.*]] = aie.buffer(%mem_tile_1_1) {sym_name = "out__buf0"} : memref<64xi32>
 // CHECK-DAG: aie.flow(%tile_0_2, DMA : 0, %mem_tile_0_1, DMA : 0)
 // CHECK-DAG: aie.flow(%tile_0_3, DMA : 0, %mem_tile_0_1, DMA : 1)
 // CHECK-DAG: aie.flow(%tile_2_2, DMA : 0, %mem_tile_2_1, DMA : 0)

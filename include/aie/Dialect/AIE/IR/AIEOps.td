@@ -2158,7 +2158,7 @@ def AIE_RouteEndpointOp
     the design programs itself, so allocation only picks its index:
     - On a shim tile the host runtime programs it. With `fifoName` set, the
       chosen channel is recorded as an `aie.shim_dma_allocation` named
-      `{fifoName}_shim_alloc`, and every use of this symbol is renamed to it.
+      `{fifoName}__shim_alloc`, and every use of this symbol is renamed to it.
     - On any tile, an `aie.dma_start` in the tile's DMA program, or an
       `aiex.dma_configure_task_for` in the runtime sequence, may name this
       symbol in place of a channel index. Allocation rewrites both to the
@@ -2326,7 +2326,7 @@ def AIE_ObjectFifoRearmBindingOp
     `aie.shim_dma_allocation` to the core and mem tile endpoints.
 
     `aie.objectfifo_stateful_transform` erases the `aie.objectfifo` op and
-    rewrites every remaining `@fifo` use to the fifo's `@fifo_shim_alloc`
+    rewrites every remaining `@fifo` use to the fifo's `@fifo__shim_alloc`
     (shim endpoint only). That loses the core/mem channels + locks that a
     resident re-arm (`aiex.dma_channel_reset_for`) needs, and for a
     core-to-core fifo there is no shim allocation at all. To keep that

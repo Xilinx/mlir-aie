@@ -46,7 +46,7 @@ from ...dialects.aie import (
 from ...dialects.aie import (
     shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from ...helpers.sourceloc import SourceSite
+from ...helpers.sourceloc import Declared, SourceSite
 from ..device import Tile  # noqa: F401  (re-exported via package)
 from ..resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 from ..runtime._context import active_sequence
@@ -370,7 +370,7 @@ class FlowEndpoint(DmaEndpoint):
         return super().__str__()
 
 
-class Flow(_Route):
+class Flow(Declared, _Route):
     """An explicit AXI-stream route from a source to one or more destinations.
 
     Connects ``(src_tile, src_port, src_channel)`` to
@@ -541,7 +541,7 @@ class PacketDest:
     channel: "int | None | FlowEndpoint" = 0
 
 
-class PacketFlow(_Route):
+class PacketFlow(Declared, _Route):
     """An explicit packet-switched route from a source to one or more destinations.
 
     Connects ``(src_tile, src_port, src_channel)`` to each destination

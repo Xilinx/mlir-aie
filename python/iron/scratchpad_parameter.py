@@ -13,12 +13,12 @@ from ..dialects.aiex import (
     ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..helpers.npdtypes import NpuDType
-from ..helpers.sourceloc import SourceSite
+from ..helpers.sourceloc import Declared, SourceSite
 from ..helpers.util import mlir_type_to_np_dtype, np_dtype_to_mlir_type
 from .resolvable import Resolvable
 
 
-class ScratchpadParameter(Resolvable):
+class ScratchpadParameter(Declared, Resolvable):
     """A named runtime parameter communicated from host to AIE cores via the scratchpad mechanism.
 
     Declare a `ScratchpadParameter` at design time. Pass it to a

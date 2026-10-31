@@ -11,18 +11,18 @@
 // delegate holds of0's objects and locks, and no DMA or flow moves them.
 
 // CHECK-LABEL:   aie.device(npu2) {
-// CHECK-DAG:       %of0_buff_0 = aie.buffer(%tile_0_3) {sym_name = "of0_buff_0"} : memref<16xi32>
-// CHECK-DAG:       %of0_buff_1 = aie.buffer(%tile_0_3) {sym_name = "of0_buff_1"} : memref<16xi32>
-// CHECK-DAG:       %of0_prod_lock_0 = aie.lock(%tile_0_3) {init = 2 : i32, sym_name = "of0_prod_lock_0"}
-// CHECK-DAG:       %of0_cons_lock_0 = aie.lock(%tile_0_3) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
+// CHECK-DAG:       %of0__buf0 = aie.buffer(%tile_0_3) {sym_name = "of0__buf0"} : memref<16xi32>
+// CHECK-DAG:       %of0__buf1 = aie.buffer(%tile_0_3) {sym_name = "of0__buf1"} : memref<16xi32>
+// CHECK-DAG:       %of0__prodlock0 = aie.lock(%tile_0_3) {init = 2 : i32, sym_name = "of0__prodlock0"}
+// CHECK-DAG:       %of0__conslock0 = aie.lock(%tile_0_3) {init = 0 : i32, sym_name = "of0__conslock0"}
 // CHECK-NOT:       aie.flow
 // CHECK-NOT:       aie.mem(
 // CHECK:           aie.core(%tile_0_2)
-// CHECK:             aie.use_lock(%of0_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:             aie.use_lock(%of0_cons_lock_0, Release, %{{.*}})
+// CHECK:             aie.use_lock(%of0__prodlock0, AcquireGreaterEqual, %{{.*}})
+// CHECK:             aie.use_lock(%of0__conslock0, Release, %{{.*}})
 // CHECK:           aie.core(%tile_0_4)
-// CHECK:             aie.use_lock(%of0_cons_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:             aie.use_lock(%of0_prod_lock_0, Release, %{{.*}})
+// CHECK:             aie.use_lock(%of0__conslock0, AcquireGreaterEqual, %{{.*}})
+// CHECK:             aie.use_lock(%of0__prodlock0, Release, %{{.*}})
 
 module @allocate_bridge {
   aie.device(npu2) {

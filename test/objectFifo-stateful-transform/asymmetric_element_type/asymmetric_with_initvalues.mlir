@@ -12,12 +12,12 @@
 // data on MemTile, consumer receives small chunks on CoreTile.
 
 // Consumer buffers use the small type
-// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "wts_cons_buff_0"} : memref<10xi32>
-// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "wts_cons_buff_1"} : memref<10xi32>
+// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "wts__cons__buf0"} : memref<10xi32>
+// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "wts__cons__buf1"} : memref<10xi32>
 
 // Producer buffers have initial values
-// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "wts_buff_0"} : memref<40xi32> = dense<1>
-// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "wts_buff_1"} : memref<40xi32> = dense<2>
+// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "wts__buf0"} : memref<40xi32> = dense<1>
+// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "wts__buf1"} : memref<40xi32> = dense<2>
 
 // Producer lock: init = 0 (depth - initValues count = 0)
 // Consumer lock: init = 2 (initValues count)

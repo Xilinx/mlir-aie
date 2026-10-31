@@ -13,20 +13,20 @@
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of2_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of2_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of2_buff_2"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of2_lock_0"}
-// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of2_lock_1"}
-// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of2_lock_2"}
-// CHECK-DAG:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of_buff_2"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_11:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of_buff_3"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_12:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of_lock_0"}
-// CHECK-DAG:           %[[VAL_13:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of_lock_1"}
-// CHECK-DAG:           %[[VAL_14:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of_lock_2"}
-// CHECK-DAG:           %[[VAL_15:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of_lock_3"}
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of2__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of2__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of2__buf2"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of2__lock0"}
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of2__lock1"}
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of2__lock2"}
+// CHECK-DAG:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of__buf2"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_11:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of__buf3"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_12:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of__lock0"}
+// CHECK-DAG:           %[[VAL_13:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of__lock1"}
+// CHECK-DAG:           %[[VAL_14:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of__lock2"}
+// CHECK-DAG:           %[[VAL_15:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of__lock3"}
 // CHECK:           func.func @some_work(%[[VAL_16:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }

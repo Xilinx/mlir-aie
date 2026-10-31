@@ -22,7 +22,7 @@ module {
   }
 }
 // CHECK: %[[HOME:.*]] = aie.tile(0, 1)
-// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_0"}
+// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared__buf0"}
 // CHECK: @reader({{.*}}) drains @shared {channelIndex = 5 : i32}
 // CHECK: @home_reader({{.*}}) drains @shared {channelIndex = 0 : i32}
 // CHECK: @alias_reader({{.*}}) drains @shared {channelIndex = 1 : i32}

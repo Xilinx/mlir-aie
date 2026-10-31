@@ -9,26 +9,26 @@
 // carries both, and the mem tile ends feeding it take the same turns.
 
 // CHECK-LABEL: @three_fifos_two_channels
-// CHECK: aie.objectfifo.dma_endpoint @a_cons_dma(%{{.*}}) fills @a_cons_pool {channelIndex = {{[0-9]+}} : i32, fifoName = "a"}
-// CHECK: aie.objectfifo.dma_endpoint @b_prod_dma(%{{.*}}) drains @bc_in_cons_pool {channelIndex = [[MM2S:[0-9]+]] : i32, {{.*}}turns = [@b_prod_dma, @c_prod_dma]}
-// CHECK: aie.objectfifo.dma_endpoint @b_cons_dma(%{{.*}}) fills @b_cons_pool {channelIndex = [[S2MM:[0-9]+]] : i32, {{.*}}turns = [@b_cons_dma, @c_cons_dma]}
+// CHECK: aie.objectfifo.dma_endpoint @a__cons__dma(%{{.*}}) fills @a__cons__pool {channelIndex = {{[0-9]+}} : i32, fifoName = "a"}
+// CHECK: aie.objectfifo.dma_endpoint @b__prod__dma(%{{.*}}) drains @bc_in__cons__pool {channelIndex = [[MM2S:[0-9]+]] : i32, {{.*}}turns = [@b__prod__dma, @c__prod__dma]}
+// CHECK: aie.objectfifo.dma_endpoint @b__cons__dma(%{{.*}}) fills @b__cons__pool {channelIndex = [[S2MM:[0-9]+]] : i32, {{.*}}turns = [@b__cons__dma, @c__cons__dma]}
 // CHECK: aie.flow(%mem_tile_0_1, DMA : [[MM2S]], %tile_0_2, DMA : [[S2MM]])
-// CHECK: aie.objectfifo.dma_endpoint @c_prod_dma(%{{.*}}) drains @bc_in_cons_pool {channelIndex = [[MM2S]] : i32, {{.*}}turns = [@b_prod_dma, @c_prod_dma]}
-// CHECK: aie.objectfifo.dma_endpoint @c_cons_dma(%{{.*}}) fills @c_cons_pool {channelIndex = [[S2MM]] : i32, {{.*}}turns = [@b_cons_dma, @c_cons_dma]}
+// CHECK: aie.objectfifo.dma_endpoint @c__prod__dma(%{{.*}}) drains @bc_in__cons__pool {channelIndex = [[MM2S]] : i32, {{.*}}turns = [@b__prod__dma, @c__prod__dma]}
+// CHECK: aie.objectfifo.dma_endpoint @c__cons__dma(%{{.*}}) fills @c__cons__pool {channelIndex = [[S2MM]] : i32, {{.*}}turns = [@b__cons__dma, @c__cons__dma]}
 // CHECK-NOT: aie.flow(%mem_tile_0_1
 
 // The core's chain moves b and c in turn, each through its own pool.
 // CHAIN-LABEL: @three_fifos_two_channels
 // CHAIN: aie.mem(%tile_0_2)
 // CHAIN: aie.dma_start(S2MM
-// CHAIN: aie.dma_bd(%b_cons_buff_0
-// CHAIN: aie.dma_bd(%c_cons_buff_0
-// CHAIN: aie.dma_bd(%b_cons_buff_1
-// CHAIN: aie.dma_bd(%c_cons_buff_1
+// CHAIN: aie.dma_bd(%b__cons__buf0
+// CHAIN: aie.dma_bd(%c__cons__buf0
+// CHAIN: aie.dma_bd(%b__cons__buf1
+// CHAIN: aie.dma_bd(%c__cons__buf1
 // CHAIN: aie.next_bd ^bb1
 // CHAIN: aie.dma_start(S2MM
-// CHAIN-NOT: %c_cons_buff
-// CHAIN: aie.dma_bd(%a_cons_buff_0
+// CHAIN-NOT: %c__cons__buf
+// CHAIN: aie.dma_bd(%a__cons__buf0
 module @three_fifos_two_channels {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -67,9 +67,9 @@ module @three_fifos_two_channels {
 // forever, so the window's tail release after it is never reached.
 
 // CHECK-LABEL: @window_beside_two_deep
-// CHECK-DAG: aie.objectfifo.dma_endpoint @a_cons_dma(%{{.*}}) fills @a_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @b_cons_dma(%{{.*}}) fills @b_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @c_cons_dma(%{{.*}}) fills @c_cons_pool {channelIndex = {{[0-9]+}} : i32, fifoName = "c"}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__cons__dma(%{{.*}}) fills @a__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__cons__dma(%{{.*}}) fills @b__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @c__cons__dma(%{{.*}}) fills @c__cons__pool {channelIndex = {{[0-9]+}} : i32, fifoName = "c"}
 module @window_beside_two_deep {
   aie.device(npu2) {
     %s = aie.tile(0, 0)
@@ -113,8 +113,8 @@ module @window_beside_two_deep {
 // tail releases after the loop leave the turns alone.
 
 // CHECK-LABEL: @windows_in_step
-// CHECK-DAG: aie.objectfifo.dma_endpoint @a_cons_dma(%{{.*}}) fills @a_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @b_cons_dma(%{{.*}}) fills @b_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__cons__dma(%{{.*}}) fills @a__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__cons__dma(%{{.*}}) fills @b__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
 module @windows_in_step {
   aie.device(npu2) {
     %s = aie.tile(0, 0)

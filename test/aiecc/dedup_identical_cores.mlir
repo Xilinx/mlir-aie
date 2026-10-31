@@ -30,14 +30,14 @@
 // LOG-DAG: aiecc: main_core_2_2: {{.*}}canonical_{{[0-9A-F]+}}.o renamed to {{.*}}objects_main_core_2_2.o
 
 // CORE02-DAG: FUNC GLOBAL DEFAULT {{.*}} core_0_2
-// CORE02-DAG: in0_cons_buff_0
-// CORE02-DAG: out0_buff_0
+// CORE02-DAG: in0__cons__buf0
+// CORE02-DAG: out0__buf0
 // CORE12-DAG: FUNC GLOBAL DEFAULT {{.*}} core_1_2
-// CORE12-DAG: in1_cons_buff_0
-// CORE12-DAG: out1_buff_0
+// CORE12-DAG: in1__cons__buf0
+// CORE12-DAG: out1__buf0
 // CORE22-DAG: FUNC GLOBAL DEFAULT {{.*}} core_2_2
-// CORE22-DAG: in2_cons_buff_0
-// CORE22-DAG: out2_buff_0
+// CORE22-DAG: in2__cons__buf0
+// CORE22-DAG: out2__buf0
 
 module {
   aie.device(npu2) {

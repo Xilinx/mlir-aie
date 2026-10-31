@@ -17,13 +17,13 @@
 
 // The transform stays on the chain that fills the MemTile.
 // CHECK:           aie.dma_start(S2MM, 0
-// CHECK:           aie.dma_bd(%{{.*}}of_in_cons_buff_0 : memref<32xi32> offset = 0 len = 32 sizes = [4, 8] strides = [8, 1])
-// CHECK:           aie.dma_bd(%{{.*}}of_in_cons_buff_1 : memref<32xi32> offset = 0 len = 32 sizes = [4, 8] strides = [8, 1])
+// CHECK:           aie.dma_bd(%{{.*}}of_in__cons__buf0 : memref<32xi32> offset = 0 len = 32 sizes = [4, 8] strides = [8, 1])
+// CHECK:           aie.dma_bd(%{{.*}}of_in__cons__buf1 : memref<32xi32> offset = 0 len = 32 sizes = [4, 8] strides = [8, 1])
 
 // It does not follow the data back out.
 // CHECK:           aie.dma_start(MM2S, 0
-// CHECK:           aie.dma_bd(%{{.*}}of_in_cons_buff_0 : memref<32xi32> offset = 0 len = 32)
-// CHECK:           aie.dma_bd(%{{.*}}of_in_cons_buff_1 : memref<32xi32> offset = 0 len = 32)
+// CHECK:           aie.dma_bd(%{{.*}}of_in__cons__buf0 : memref<32xi32> offset = 0 len = 32)
+// CHECK:           aie.dma_bd(%{{.*}}of_in__cons__buf1 : memref<32xi32> offset = 0 len = 32)
 
 module @relayConsumerDims {
  aie.device(npu1_1col) {

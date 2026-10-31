@@ -24,17 +24,17 @@
 // CHECK:         aie.dma_start(MM2S, 0, ^[[BD0:.*]], ^
 // CHECK:       ^[[BD0]]:
 // CHECK:         aie.dma_bd_packet(0, 0)
-// CHECK-NEXT:    aie.dma_bd(%y_buff_0
+// CHECK-NEXT:    aie.dma_bd(%y__buf0
 // CHECK:         aie.dma_bd_packet(0, 9)
-// CHECK-NEXT:    aie.dma_bd(%y_buff_1
+// CHECK-NEXT:    aie.dma_bd(%y__buf1
 // CHECK:         aie.dma_bd_packet(0, 1)
-// CHECK-NEXT:    aie.dma_bd(%y_buff_0
+// CHECK-NEXT:    aie.dma_bd(%y__buf0
 // CHECK:         aie.dma_bd_packet(0, 0)
-// CHECK-NEXT:    aie.dma_bd(%y_buff_1
+// CHECK-NEXT:    aie.dma_bd(%y__buf1
 // CHECK:         aie.dma_bd_packet(0, 9)
-// CHECK-NEXT:    aie.dma_bd(%y_buff_0
+// CHECK-NEXT:    aie.dma_bd(%y__buf0
 // CHECK:         aie.dma_bd_packet(0, 1)
-// CHECK-NEXT:    aie.dma_bd(%y_buff_1
+// CHECK-NEXT:    aie.dma_bd(%y__buf1
 // CHECK:         aie.next_bd ^[[BD0]]
 
 module @dispatch {

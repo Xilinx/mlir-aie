@@ -27,16 +27,16 @@
 // DMAS:        aie.mem(%{{.*}}) {
 // DMAS:          aie.dma_start(MM2S, 0
 // DMAS:          aie.dma_bd_packet(0, 0)
-// DMAS:          aie.dma_bd(%a_buff_0
+// DMAS:          aie.dma_bd(%a_pool__buf0
 // DMAS:        aie.mem(%{{.*}}) {
 // DMAS:          aie.dma_start(MM2S, 0
 // DMAS:          aie.dma_bd_packet(0, 0)
-// DMAS:          aie.dma_bd(%b_buff_0
+// DMAS:          aie.dma_bd(%b_pool__buf0
 // DMAS:        aie.mem(%{{.*}}) {
 // DMAS:          aie.dma_start(S2MM, 0
 // DMAS-NOT:      aie.dma_bd_packet
-// DMAS:          aie.dma_bd(%c_buff_0
-// DMAS:          aie.dma_bd(%c_buff_1
+// DMAS:          aie.dma_bd(%c_pool__buf0
+// DMAS:          aie.dma_bd(%c_pool__buf1
 
 // ROUTED:      aie.packet_rules
 // ROUTED:      aie.packet_rules

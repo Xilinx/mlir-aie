@@ -55,7 +55,7 @@ from ..extras.util import (
     find_parent_of_type,
     region_adder,
 )
-from ..helpers.sourceloc import AIE_ROOT, user_code_location
+from ..helpers.sourceloc import AIE_ROOT, CONTEXTLIB_FILE, user_code_location
 from ..helpers.taplib import PerCall, TensorAccessPattern
 from ..helpers.util import try_convert_np_type_to_mlir_type
 
@@ -84,6 +84,8 @@ register_dialect(get_dialect_registry())
 assert _cext.globals._check_dialect_module_loaded("aie")
 # Lets ir.loc_tracebacks() skip this package; the exclusion is a path prefix.
 _cext.globals.register_traceback_file_exclusion(f"{AIE_ROOT}{os.sep}")
+# And contextlib, which a `with` over one of its @contextmanagers runs through.
+_cext.globals.register_traceback_file_exclusion(CONTEXTLIB_FILE)
 
 # The generated `use_lock` builder takes the lock value as an SSA i32 operand.
 # Wrap it so callers may still pass a plain Python int (materialized as an

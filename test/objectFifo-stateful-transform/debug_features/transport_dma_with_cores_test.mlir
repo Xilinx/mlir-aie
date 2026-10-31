@@ -14,22 +14,22 @@
 
 // @of_shared stays in shared memory: its objects live only on the producer.
 // CHECK-LABEL: @dmaTransportWithCores
-// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared_buff_0"}
-// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared_buff_1"}
-// CHECK-NOT:     of_shared_cons_buff
+// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared__buf0"}
+// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared__buf1"}
+// CHECK-NOT:     of_shared__cons__buf
 
 // @of_stream is pushed onto the DMAs, so the consumer gets its own objects.
-// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_stream_buff_0"}
-// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_3) {sym_name = "of_stream_cons_buff_0"}
+// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_stream__buf0"}
+// CHECK-DAG:     aie.buffer(%{{.*}}tile_1_3) {sym_name = "of_stream__cons__buf0"}
 // CHECK-DAG:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_3, DMA : 0)
 
 // Only the forced fifo reaches the DMAs.
 // CHECK:         aie.mem(%{{.*}}tile_1_2)
 // CHECK:           aie.dma_start(MM2S, 0
-// CHECK:           aie.dma_bd(%{{.*}}of_stream_buff_0
+// CHECK:           aie.dma_bd(%{{.*}}of_stream__buf0
 // CHECK:         aie.mem(%{{.*}}tile_1_3)
 // CHECK:           aie.dma_start(S2MM, 0
-// CHECK:           aie.dma_bd(%{{.*}}of_stream_cons_buff_0
+// CHECK:           aie.dma_bd(%{{.*}}of_stream__cons__buf0
 
 // CHECK-LABEL: @dmaTransportCrossColumn
 // CHECK:         aie.flow(%{{.*}}tile_0_2, DMA : 0, %{{.*}}tile_2_3, DMA : 0)

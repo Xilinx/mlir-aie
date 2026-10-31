@@ -31,7 +31,7 @@ module @spill_backtrack {
 // CHECK-DAG: %[[M1:.*]] = aie.tile(1, 1)
 // CHECK-DAG: %[[M2:.*]] = aie.tile(2, 1)
 // CHECK-DAG: %[[M3:.*]] = aie.tile(3, 1)
-// CHECK-DAG: aie.buffer(%[[M2]]) {sym_name = "middle_buff_0"}
-// CHECK-DAG: aie.buffer(%[[M3]]) {sym_name = "middle_buff_1"}
-// CHECK-DAG: aie.buffer(%[[M0]]) {sym_name = "edge_buff_0"}
-// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "edge_buff_1"}
+// CHECK-DAG: aie.buffer(%[[M2]]) {sym_name = "middle__buf0"}
+// CHECK-DAG: aie.buffer(%[[M3]]) {sym_name = "middle__buf1"}
+// CHECK-DAG: aie.buffer(%[[M0]]) {sym_name = "edge__buf0"}
+// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "edge__buf1"}

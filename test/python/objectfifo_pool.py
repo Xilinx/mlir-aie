@@ -42,7 +42,7 @@ def consume(handle):
 
 def pool_handle_drives_a_worker():
     tile = Tile(0, 2)
-    # The pool names these in the IR, and the configuration names them for it.
+    # The pool names these in the IR, after the variables they are assigned to.
     prod = Lock(tile=tile, init=1)
     cons = Lock(tile=tile, init=0)
     buffer = Buffer(type=obj_type, tile=tile)
@@ -148,29 +148,29 @@ def a_pool_holds_a_multidimensional_object():
     return print(Program(NPU2Col1(), rt, workers=[worker]).resolve_program())
 
 
-# The pool's buffer and locks take the names the compiler would have given
-# them, and the core endpoint names the pool rather than generating a second end.
+# The pool's buffer and locks take their variables' names, and the core
+# endpoint names the pool rather than generating a second end.
 # CHECK: module {
 # CHECK:   aie.device(npu2_1col) {
-# CHECK-DAG: aie.buffer({{.*}}) {sym_name = "x_pool_buff_0"}
-# CHECK-DAG: aie.lock({{.*}}) {init = 1 : i32, sym_name = "x_pool_prod_lock_0"}
-# CHECK-DAG: aie.lock({{.*}}) {init = 0 : i32, sym_name = "x_pool_cons_lock_0"}
+# CHECK-DAG: aie.buffer({{.*}}) {sym_name = "buffer"}
+# CHECK-DAG: aie.lock({{.*}}) {init = 1 : i32, sym_name = "prod"}
+# CHECK-DAG: aie.lock({{.*}}) {init = 0 : i32, sym_name = "cons"}
 
-# CHECK:     aie.objectfifo.pool @x_pool({{.*}}) {buffers = [@x_pool_buff_0], depth = 1 : i32}
-# CHECK:       aie.objectfifo.segment @x_pool_s0 {consumeLock = @x_pool_cons_lock_0,
-# CHECK-SAME:   manualFill, offset = 0 : i32, produceLock = @x_pool_prod_lock_0, size = 16 : i32}
-# CHECK:     aie.objectfifo.core_endpoint @x_pool_cons({{.*}}) drains @x_pool {segments = [@x_pool_s0]}
+# CHECK:     aie.objectfifo.pool @x_pool({{.*}}) {buffers = [@buffer], depth = 1 : i32}
+# CHECK:       aie.objectfifo.segment @x_pool_s0 {consumeLock = @cons,
+# CHECK-SAME:   manualFill, offset = 0 : i32, produceLock = @prod, size = 16 : i32}
+# CHECK:     aie.objectfifo.core_endpoint @x_pool__cons({{.*}}) drains @x_pool {segments = [@x_pool_s0]}
 # CHECK:     aie.core({{.*}}) {
-# CHECK:       aie.objectfifo.acquire @x_pool_cons(1)
-# CHECK:       aie.objectfifo.release @x_pool_cons(1)
+# CHECK:       aie.objectfifo.acquire @x_pool__cons(1)
+# CHECK:       aie.objectfifo.release @x_pool__cons(1)
 # CHECK:     }
 
 # The filling BD takes the lock protocol the core endpoint expects.
 # CHECK:     aie.mem({{.*}}) {
 # CHECK:       aie.dma_start(S2MM, 0
-# CHECK:       aie.use_lock(%x_pool_prod_lock_0, AcquireGreaterEqual
-# CHECK:       aie.dma_bd(%x_pool_buff_0 : memref<16xi32>)
-# CHECK:       aie.use_lock(%x_pool_cons_lock_0, Release
+# CHECK:       aie.use_lock(%prod, AcquireGreaterEqual
+# CHECK:       aie.dma_bd(%buffer : memref<16xi32>)
+# CHECK:       aie.use_lock(%cons, Release
 # CHECK:     }
 # CHECK:   }
 # CHECK: }
@@ -196,15 +196,15 @@ fifo_handle_drives_the_same_body()
 # Each handle takes a symbol of its own, and a segment short of the whole
 # object acquires a subview that carries the segment's offset.
 # CHECK: aie.objectfifo.pool @p({{.*}})
-# CHECK-DAG: aie.objectfifo.core_endpoint @p_cons({{.*}}) drains @p {segments = [@p_s0]}
-# CHECK-DAG: aie.objectfifo.core_endpoint @p_cons_0({{.*}}) drains @p {segments = [@p_s1]}
-# CHECK-DAG: aie.objectfifo.acquire @p_cons(1) : memref<16xi32, strided<[1]>>
-# CHECK-DAG: aie.objectfifo.acquire @p_cons_0(1) : memref<16xi32, strided<[1], offset: 16>>
+# CHECK-DAG: aie.objectfifo.core_endpoint @p__cons({{.*}}) drains @p {segments = [@p_s0]}
+# CHECK-DAG: aie.objectfifo.core_endpoint @p__cons1({{.*}}) drains @p {segments = [@p_s1]}
+# CHECK-DAG: aie.objectfifo.acquire @p__cons(1) : memref<16xi32, strided<[1]>>
+# CHECK-DAG: aie.objectfifo.acquire @p__cons1(1) : memref<16xi32, strided<[1], offset: 16>>
 two_workers_split_one_pool()
 
 # A whole-object acquire keeps the object's own type, so the core indexes a
 # multidimensional object as it was declared.
 # CHECK: aie.objectfifo.pool @m({{.*}}) {depth = 1 : i32} : memref<4x8xi32>
 # CHECK:   aie.objectfifo.segment @m_s0 {manualFill, offset = 0 : i32, size = 32 : i32}
-# CHECK: aie.objectfifo.acquire @m_cons(1) : memref<4x8xi32>
+# CHECK: aie.objectfifo.acquire @m__cons(1) : memref<4x8xi32>
 a_pool_holds_a_multidimensional_object()

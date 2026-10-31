@@ -27,10 +27,10 @@ module @mixed {
 
 // The choice rides on the flow, which is what becomes one kind of route or the
 // other.
-// SPLIT:       aie.route from @plain_prod_dma to [@plain_cons_dma]
+// SPLIT:       aie.route from @plain__prod__dma to [@plain__cons__dma]
 // SPLIT-NOT:   packet
-// SPLIT:       aie.route from @auto_prod_dma to [@auto_cons_dma] {packet = #aie.packet_info<>}
-// SPLIT:       aie.route from @pinned_prod_dma to [@pinned_cons_dma] {packet = #aie.packet_info<pkt_id = 7>}
+// SPLIT:       aie.route from @auto__prod__dma to [@auto__cons__dma] {packet = #aie.packet_info<>}
+// SPLIT:       aie.route from @pinned__prod__dma to [@pinned__cons__dma] {packet = #aie.packet_info<pkt_id = 7>}
 
 // CHECK-DAG:   %[[A:.*]] = aie.tile(1, 2)
 // CHECK-DAG:   %[[B:.*]] = aie.tile(3, 2)

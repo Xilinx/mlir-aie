@@ -410,7 +410,7 @@ struct AIEObjectFifoAllocatePass
     for (int i = 0; i < bufferCount(pool); i++) {
       ElementsAttr init =
           i < filled ? cast<ElementsAttr>(initValues[i]) : zeros;
-      std::string name = (base + "_buff_" + std::to_string(i)).str();
+      std::string name = (base + "__buf" + std::to_string(i)).str();
       Value placement = bufferPlacements[pool][i];
       setInsertionPointOn(placement);
       lastPlaced[placement] = BufferOp::create(
@@ -538,7 +538,7 @@ struct AIEObjectFifoAllocatePass
       }
       SmallVector<Attribute> names;
       for (int i = 0; i < depth; i++) {
-        std::string name = (base + "_lock_" + std::to_string(i)).str();
+        std::string name = (base + "__lock" + std::to_string(i)).str();
         createLock(pool, lockPlacement(pool, pool), name, i < filled ? 1 : 0);
         names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
       }
@@ -550,10 +550,8 @@ struct AIEObjectFifoAllocatePass
       if (segment.getProduceLock() && segment.getConsumeLock()) {
         continue;
       }
-      std::string produce =
-          (base + "_prod_lock_" + std::to_string(index)).str();
-      std::string consume =
-          (base + "_cons_lock_" + std::to_string(index)).str();
+      std::string produce = (base + "__prodlock" + std::to_string(index)).str();
+      std::string consume = (base + "__conslock" + std::to_string(index)).str();
       Value tile = lockPlacement(pool, segment);
       createLock(pool, tile, produce, (depth - filled) * repeat);
       createLock(pool, tile, consume, filled * repeat);
@@ -1693,6 +1691,8 @@ struct AIEObjectFifoAllocatePass
     for (auto &[fifoName, users] : poolLocks->rearms()) {
       SmallVector<Value> channelTiles, lockValues;
       SmallVector<int32_t> channelDirs, channelIndices, lockInits;
+      // The record stands for these endpoints and pools: located at each.
+      SmallVector<Location> locs;
 
       for (auto endpoint : device.getOps<RouteEndpoint>()) {
         std::optional<int> channel = endpoint.getRouteChannel();
@@ -1704,11 +1704,13 @@ struct AIEObjectFifoAllocatePass
         channelDirs.push_back(
             static_cast<int32_t>(endpoint.getRouteDirection()));
         channelIndices.push_back(*channel);
+        locs.push_back(endpoint->getLoc());
       }
       for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
         if (pool.getFifoName() != fifoName || pool.getTileLike().isShimTile()) {
           continue;
         }
+        locs.push_back(pool.getLoc());
         for (LockOp lock : pool.getLockOps()) {
           lockValues.push_back(lock.getResult());
           lockInits.push_back(lock.getInit().value_or(0));
@@ -1724,17 +1726,17 @@ struct AIEObjectFifoAllocatePass
         return failure();
       }
 
-      std::string name = (fifoName + "_rearm").str();
+      std::string name = (fifoName + "__rearm").str();
       for (unsigned suffix = 0; lookupNamedOpIn(device, StringRef(name));
            suffix++) {
-        name = (fifoName + "_rearm_" + std::to_string(suffix)).str();
+        name = (fifoName + "__rearm" + std::to_string(suffix + 1)).str();
       }
 
       // head_bd_ids and repeat_counts are filled in by --aie-assign-bd-ids.
       ObjectFifoRearmBindingOp::create(
-          builder, device.getLoc(), builder.getStringAttr(name),
-          ValueRange(channelTiles), ValueRange(lockValues),
-          builder.getDenseI32ArrayAttr(channelDirs),
+          builder, FusedLoc::get(builder.getContext(), locs),
+          builder.getStringAttr(name), ValueRange(channelTiles),
+          ValueRange(lockValues), builder.getDenseI32ArrayAttr(channelDirs),
           builder.getDenseI32ArrayAttr(channelIndices),
           builder.getDenseI32ArrayAttr(lockInits),
           /*head_bd_ids=*/DenseI32ArrayAttr(),
@@ -1901,7 +1903,7 @@ struct AIEObjectFifoAllocatePass
       if (!tileOf(endpoint).isShimTile() || !fifoName || !channel) {
         continue;
       }
-      std::string name = (*fifoName + "_shim_alloc").str();
+      std::string name = (*fifoName + "__shim_alloc").str();
       unsigned ordinal = shimEndsSeen[*fifoName]++;
       bool create = true;
       if (ordinal == 0) {
@@ -1911,7 +1913,8 @@ struct AIEObjectFifoAllocatePass
       } else {
         for (unsigned suffix = ordinal - 1; device.lookupSymbol(name);
              suffix++) {
-          name = (*fifoName + "_shim_alloc_" + std::to_string(suffix)).str();
+          name =
+              (*fifoName + "__shim_alloc" + std::to_string(suffix + 1)).str();
         }
       }
       if (create) {

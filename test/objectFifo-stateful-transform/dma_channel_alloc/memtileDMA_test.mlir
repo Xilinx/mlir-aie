@@ -10,14 +10,14 @@
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK-DAG:           %{{.*}}tile_1_1 = aie.tile(1, 1)
 // CHECK-DAG:           %{{.*}}tile_3_3 = aie.tile(3, 3)
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 2 : i32, sym_name = "objfifo_cons_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 0 : i32, sym_name = "objfifo_cons_cons_lock_0"}
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 2 : i32, sym_name = "objfifo_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo__cons__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo__cons__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 2 : i32, sym_name = "objfifo__cons__prodlock0"}
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 0 : i32, sym_name = "objfifo__cons__conslock0"}
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 2 : i32, sym_name = "objfifo__prodlock0"}
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "objfifo__conslock0"}
 // CHECK-DAG:           %buffer_1_1 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32>
 // CHECK-DAG:           %lock_1_1 = aie.lock(%{{.*}}tile_1_1, 0)
 // CHECK-DAG:           %buffer_1_1_0 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32>

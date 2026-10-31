@@ -11,10 +11,10 @@
 // Producer sends 40 elements per BD, consumer receives 10 at a time (4:1 ratio).
 
 // Consumer-side buffer should be the small type
-// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "test_wts_cons_buff_0"} : memref<10xi32>
+// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "test_wts__cons__buf0"} : memref<10xi32>
 
 // Producer-side buffer should be the large type
-// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "test_wts_buff_0"} : memref<40xi32>
+// CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "test_wts__buf0"} : memref<40xi32>
 
 // Flow connecting producer DMA to consumer DMA
 // CHECK-DAG: aie.flow

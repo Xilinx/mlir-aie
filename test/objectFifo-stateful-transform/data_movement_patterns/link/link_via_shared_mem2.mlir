@@ -11,10 +11,10 @@
 //CHECK:   aie.device(xcve2302) {
 //CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(2, 0)
 //CHECK-DAG:     %[[VAL_1:.*]] = aie.tile(1, 2)
-//CHECK-DAG:     %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-//CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
-//CHECK-DAG:     %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
-//CHECK-DAG:     %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+//CHECK-DAG:     %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1__cons__buf0"} : memref<16xi32>
+//CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1__cons__buf1"} : memref<16xi32>
+//CHECK-DAG:     %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "of1__cons__prodlock0"}
+//CHECK-DAG:     %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of1__cons__conslock0"}
 //CHECK-DAG:     aie.flow(%[[VAL_0:.*]], DMA : 0, %[[VAL_1]], DMA : 0)
 //CHECK:     %[[VAL_11:.*]] = aie.mem(%[[VAL_1]]) {
 //CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)

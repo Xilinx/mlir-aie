@@ -13,8 +13,8 @@
 // CHECK-DAG: aie.flow(%shim_noc_tile_0_0, DMA : 0, %mem_tile_0_1, DMA : 0)
 // CHECK-DAG: aie.flow(%mem_tile_0_1, DMA : 0, %mem_tile_1_1, DMA : 0)
 // CHECK-DAG: aie.flow(%mem_tile_1_1, DMA : 0, %tile_0_2, DMA : 0)
-// CHECK-DAG: aie.buffer(%mem_tile_0_1) {sym_name = "in_cons_buff_0"} : memref<2560xi32>
-// CHECK-DAG: aie.buffer(%mem_tile_1_1) {sym_name = "mid_cons_buff_0"} : memref<2560xi32>
+// CHECK-DAG: aie.buffer(%mem_tile_0_1) {sym_name = "in__cons__buf0"} : memref<2560xi32>
+// CHECK-DAG: aie.buffer(%mem_tile_1_1) {sym_name = "mid__cons__buf0"} : memref<2560xi32>
 module @chained {
   aie.device(npu2) {
     %s = aie.tile(0, 0)

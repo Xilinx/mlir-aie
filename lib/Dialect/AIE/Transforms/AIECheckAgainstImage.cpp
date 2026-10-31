@@ -227,7 +227,7 @@ SmallVector<std::string> differences(const Allocation &image,
 
   both(image.shimEnds, stream.shimEnds,
        [&](const std::string &name, const Channel *i, const Channel *s) {
-         StringRef fifo = StringRef(name).rsplit("_shim_alloc").first;
+         StringRef fifo = StringRef(name).rsplit("__shim_alloc").first;
          if (i && s && *i == *s)
            return;
          lines.push_back((fifo + "'s shim end: image " +

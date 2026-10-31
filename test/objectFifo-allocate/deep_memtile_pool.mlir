@@ -10,7 +10,7 @@
 // the mem tile on two descriptors instead of eighty.
 
 // CHECK-LABEL: @deep
-// CHECK: aie.objectfifo.pool @in_cons_pool(%{{.*}}) {buffers = [@in_cons_buff_0], contiguous, depth = 40 : i32
+// CHECK: aie.objectfifo.pool @in__cons__pool(%{{.*}}) {buffers = [@in__cons__buf0], contiguous, depth = 40 : i32
 // BDS-LABEL: @deep
 // BDS: aie.memtile_dma
 // BDS-COUNT-2: iteration = #aie.bd_iteration<size = 40, stride = 640, current = 0>
@@ -41,7 +41,7 @@ module @deep {
 
 // Pools whose descriptors fit keep an object a buffer.
 // CHECK-LABEL: @shallow
-// CHECK: aie.objectfifo.pool @in_cons_pool(%{{.*}}) {buffers = [{{.*}}@in_cons_buff_7], depth = 8 : i32
+// CHECK: aie.objectfifo.pool @in__cons__pool(%{{.*}}) {buffers = [{{.*}}@in__cons__buf7], depth = 8 : i32
 module @shallow {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)

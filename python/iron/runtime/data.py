@@ -38,6 +38,8 @@ class RuntimeData:
         """
         self._arr_type = np_ndarray_type_of(arr_type)
         self._op = None
+        # The sequence parameter that receives it, once the Runtime resolves.
+        self.name: str | None = None
 
     @property
     def shape(self) -> Sequence[int]:

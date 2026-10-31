@@ -15,27 +15,27 @@
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:           %[[MT:.*]] = aie.tile(0, 1)
 // CHECK-DAG:           %[[T2:.*]] = aie.tile(0, 2)
-// CHECK-DAG:           %[[XCB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_X_cons_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[XCB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_X_cons_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[XCB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_X_cons_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[XCB3:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_X_cons_buff_3"} : memref<8xi8>
-// CHECK-DAG:           %[[XCPROD:.*]] = aie.lock(%[[T2]]) {init = 4 : i32, sym_name = "inOF_X_cons_prod_lock_0"}
-// CHECK-DAG:           %[[XCCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "inOF_X_cons_cons_lock_0"}
-// CHECK-DAG:           %[[XB0:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_X_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[XB1:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_X_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[XB2:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_X_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[XPROD:.*]] = aie.lock(%[[MT]]) {init = 3 : i32, sym_name = "inOF_X_prod_lock_0"}
-// CHECK-DAG:           %[[XCONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "inOF_X_cons_lock_0"}
-// CHECK-DAG:           %[[WCB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_W_cons_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[WCB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_W_cons_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[WCB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_W_cons_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[WCPROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "inOF_W_cons_prod_lock_0"}
-// CHECK-DAG:           %[[WCCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "inOF_W_cons_cons_lock_0"}
-// CHECK-DAG:           %[[WB0:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_W_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[WB1:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_W_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[WB2:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_W_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[WPROD:.*]] = aie.lock(%[[MT]]) {init = 3 : i32, sym_name = "inOF_W_prod_lock_0"}
-// CHECK-DAG:           %[[WCONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "inOF_W_cons_lock_0"}
+// CHECK-DAG:           %[[XCB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_X__cons__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[XCB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_X__cons__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[XCB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_X__cons__buf2"} : memref<8xi8>
+// CHECK-DAG:           %[[XCB3:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_X__cons__buf3"} : memref<8xi8>
+// CHECK-DAG:           %[[XCPROD:.*]] = aie.lock(%[[T2]]) {init = 4 : i32, sym_name = "inOF_X__cons__prodlock0"}
+// CHECK-DAG:           %[[XCCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "inOF_X__cons__conslock0"}
+// CHECK-DAG:           %[[XB0:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_X__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[XB1:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_X__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[XB2:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_X__buf2"} : memref<8xi8>
+// CHECK-DAG:           %[[XPROD:.*]] = aie.lock(%[[MT]]) {init = 3 : i32, sym_name = "inOF_X__prodlock0"}
+// CHECK-DAG:           %[[XCONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "inOF_X__conslock0"}
+// CHECK-DAG:           %[[WCB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_W__cons__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[WCB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_W__cons__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[WCB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "inOF_W__cons__buf2"} : memref<8xi8>
+// CHECK-DAG:           %[[WCPROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "inOF_W__cons__prodlock0"}
+// CHECK-DAG:           %[[WCCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "inOF_W__cons__conslock0"}
+// CHECK-DAG:           %[[WB0:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_W__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[WB1:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_W__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[WB2:.*]] = aie.buffer(%[[MT]]) {sym_name = "inOF_W__buf2"} : memref<8xi8>
+// CHECK-DAG:           %[[WPROD:.*]] = aie.lock(%[[MT]]) {init = 3 : i32, sym_name = "inOF_W__prodlock0"}
+// CHECK-DAG:           %[[WCONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "inOF_W__conslock0"}
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 1, %[[T2]], DMA : 1)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
