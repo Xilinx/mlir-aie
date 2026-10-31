@@ -1322,6 +1322,8 @@ def test_coded_matvec_is_an_mv_layout():
             kernels.mv(**kwargs, **bf16)
     with pytest.raises(ValueError, match="bf16"):
         kernels.mv(dim_m=32, dim_k=128, a_coded=True)
+    with pytest.raises(ValueError, match="pick one"):
+        kernels.mv(dim_m=4, dim_k=128, a_col_maj=True, **bf16)
     set_current_device(NPU1Col1())
     assert "-DA_CODED" in kernels.mv(dim_m=4, dim_k=128, **bf16).compile_flags
 

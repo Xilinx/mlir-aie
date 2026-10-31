@@ -806,8 +806,11 @@ def mv(
         ExternalFunction configured for the matvec kernel.
 
     Raises:
-        ValueError: When the dtype combination is not supported.
+        ValueError: When the dtype combination is not supported, or both
+            ``a_col_maj`` and ``a_coded`` are given.
     """
+    if a_col_maj and a_coded:
+        raise ValueError("mv(): a_col_maj and a_coded are two layouts of A; pick one")
     if (input_dtype, output_dtype) == (bfloat16, bfloat16):
         return _mv_bf16(
             dim_m,
