@@ -79,23 +79,35 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   static std::optional<DmaQueueModel::ChannelKey>
   otherTokenChannel(Operation *op) {
-    if (auto push = dyn_cast<NpuPushQueueOp>(op)) {
-      if (push.getIssueToken())
-        return DmaQueueModel::ChannelKey{static_cast<int>(push.getColumn()),
-                                         static_cast<int>(push.getRow()),
-                                         static_cast<int>(push.getDirection()),
-                                         static_cast<int>(push.getChannel())};
-    } else if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+    std::optional<DmaQueueModel::ChannelKey> key = rawPushChannel(op);
+    auto push = dyn_cast<NpuPushQueueOp>(op);
+    auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op);
+    bool issuesToken =
+        push
+            ? push.getIssueToken()
+            : copy && (copy.getIssueToken() ||
+                       (key && (*key)[2] ==
+                                   static_cast<int>(AIE::DMAChannelDir::S2MM)));
+    return issuesToken ? key : std::nullopt;
+  }
+
+  // The channel a raw push, an aiex.npu.push_queue or aiex.npu.dma_memcpy_nd,
+  // queues on, whether or not it issues a token.
+  static std::optional<DmaQueueModel::ChannelKey>
+  rawPushChannel(Operation *op) {
+    if (auto push = dyn_cast<NpuPushQueueOp>(op))
+      return DmaQueueModel::ChannelKey{static_cast<int>(push.getColumn()),
+                                       static_cast<int>(push.getRow()),
+                                       static_cast<int>(push.getDirection()),
+                                       static_cast<int>(push.getChannel())};
+    if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
       auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
           op->getParentOfType<AIE::DeviceOp>(),
           copy.getMetadata().getRootReference());
-      if (allocation &&
-          (copy.getIssueToken() ||
-           allocation.getChannelDir() == AIE::DMAChannelDir::S2MM)) {
+      if (allocation)
         if (AIE::TileOp tile = allocation.getTileOp())
           return DmaQueueModel::keyOf(tile, allocation.getChannelDir(),
                                       allocation.getChannelIndex());
-      }
     }
     return std::nullopt;
   }
@@ -240,8 +252,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     pendingAwaitReleases.clear();
     freedInFlight.clear();
     pushesByAllocation.clear();
-    channelOwner.clear();
-    mixedChannels.clear();
     creditedPushes.clear();
   }
 
@@ -496,9 +506,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       ++runningCount[task];
     }
     AIE::ShimDMAAllocationOp allocation = task ? allocationOf(task) : nullptr;
-    auto [owner, first] = channelOwner.try_emplace(key, allocation);
-    if (!first && owner->second != allocation)
-      mixedChannels.insert(key);
     if (!allocation)
       return;
     auto &pushes = pushesByAllocation[allocation];
@@ -703,11 +710,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     std::optional<Volume> through;
   };
   llvm::DenseMap<Operation *, SmallVector<AllocationPush>> pushesByAllocation;
-  // The allocation of the first push on each channel since the latest load.
-  // A channel another allocation, or a raw push, also uses carries bytes the
-  // allocation's own count misses.
-  std::map<DmaQueueModel::ChannelKey, Operation *> channelOwner;
-  std::set<DmaQueueModel::ChannelKey> mixedChannels;
   // Per (input, output), how many of the input's pushes that output has
   // already proven taken: both counts only grow, so a credit resumes there.
   llvm::DenseMap<std::pair<Operation *, Operation *>, size_t> creditedPushes;
@@ -719,6 +721,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // stretch, but a load of the PDI already loaded leaves the array as it was,
   // so a stretch starts where the previous one, perhaps another dispatch's,
   // left it, and its counts hold only when none leaves input bytes behind.
+  // They count only the two allocations' own tasks, so any other push on
+  // either channel, in any sequence, voids the pair.
   bool leavesNothing(AIE::ShimDMAAllocationOp input,
                      AIE::ShimDMAAllocationOp output,
                      AIE::ConsumedByAttr proof) {
@@ -726,6 +730,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     auto it = entry.first;
     if (!entry.second)
       return it->second;
+    DmaQueueModel::ChannelKey inKey = DmaQueueModel::keyOf(
+        input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
+    DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(
+        output.getTileOp(), output.getChannelDir(), output.getChannelIndex());
     for (auto seq : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
       Volume in, out;
       seq.walk([&](Operation *op) {
@@ -741,6 +749,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         auto start = dyn_cast<DMAStartTaskOp>(op);
         DMAConfigureTaskOp cfg = start ? start.getTaskOp() : nullptr;
         AIE::ShimDMAAllocationOp allocation = cfg ? allocationOf(cfg) : nullptr;
+        std::optional<DmaQueueModel::ChannelKey> channel =
+            cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
+        bool foreign =
+            channel && ((*channel == inKey && allocation != input) ||
+                        (*channel == outKey && allocation != output));
+        if (foreign) {
+          it->second = false;
+          return WalkResult::interrupt();
+        }
         if (!allocation || (allocation != input && allocation != output))
           return WalkResult::advance();
         std::optional<Volume> moved = pushVolume(start, cfg);
@@ -778,15 +795,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (done == outPushes->second.end() || done->order != order ||
         !done->through)
       return;
-    DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(
-        output.getTileOp(), output.getChannelDir(), output.getChannelIndex());
-    if (mixedChannels.count(outKey))
-      return;
     for (auto [input, proof] : proofs->second) {
       auto inPushes = pushesByAllocation.find(input);
       DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(
           input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
-      if (inPushes == pushesByAllocation.end() || mixedChannels.count(key) ||
+      if (inPushes == pushesByAllocation.end() ||
           !leavesNothing(input, output, proof))
         continue;
       ArrayRef<AllocationPush> pushes = inPushes->second;
@@ -1169,8 +1182,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     unloaded.clear();
     resetChannels.clear();
     pushesByAllocation.clear();
-    channelOwner.clear();
-    mixedChannels.clear();
     creditedPushes.clear();
   }
 
