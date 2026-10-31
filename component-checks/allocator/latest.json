@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "40997152406",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/40997152406",
- "date": "2026-10-30T03:23:56+00:00",
+ "id": "41163843494",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41163843494",
+ "date": "2026-10-31T03:19:03+00:00",
  "commit": {
-  "id": "e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
-  "message": "Convert aie.iron.algorithms.kernel_design into a class (#3977)",
-  "timestamp": "2026-10-30T01:15:10Z"
+  "id": "064a1721a4af3fa483ebccd23b508c2d647066fe",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/064a1721a4af3fa483ebccd23b508c2d647066fe",
+  "message": "Get Metrics from Remaining Nightly Workflows (#3998)",
+  "timestamp": "2026-10-31T00:54:08Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 7763 64-Core Processor",
+ "device": "AMD EPYC 9V74 80-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "e28f6dc7e5",
-  "cpu": "AMD EPYC 7763 64-Core Processor"
+  "commit": "064a1721a4",
+  "cpu": "AMD EPYC 9V74 80-Core Processor"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 234.5,
+    "value": 221.3,
     "unit": "s"
    }
   }
