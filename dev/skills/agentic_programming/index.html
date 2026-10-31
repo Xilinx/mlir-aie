@@ -2573,34 +2573,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2657,6 +2629,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2664,7 +2664,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2692,7 +2692,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2720,7 +2720,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3440,6 +3440,8 @@
       
         
       
+        
+      
     
     
     
@@ -3528,6 +3530,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -3743,15 +3773,20 @@ it's a second way to use the same knowledge. The Programming Guide teaches
 grounded in the same dialect, the same DMA/ObjectFifo model, and the same
 hardware constraints.</p>
 <h2 id="the-workflow-phase-by-phase">The workflow, phase by phase<a class="headerlink" href="#the-workflow-phase-by-phase" title="Permanent link">&para;</a></h2>
-<p>Porting a model to AIE/NPU moves through four phases in order. Each has a
+<p>Porting a model to AIE/NPU moves through five phases in order. Each has a
 skill:</p>
 <ol>
 <li><strong>Prepare the model</strong> (<a href="../aie-model-baseline/SKILL/"><code>aie-model-baseline</code></a>) —
    lock a quantization scheme, export ONNX, extract a deployment manifest,
    build a bit-exact numeric oracle to check everything else against.</li>
-<li><strong>Validate the dataflow before hardware</strong> (<a href="../aie-dataflow-presim/SKILL/"><code>aie-dataflow-presim</code></a>) —
+<li><strong>Plan the dataflow</strong> (<a href="../aie-dataflow-presim/SKILL/"><code>aie-dataflow-presim</code></a>) —
    a threaded ObjectFifo mock catches deadlocks and depth bugs, bit-exact
-   checks against the oracle catch logic bugs, all before touching a device.</li>
+   checks against the oracle catch logic bugs, all before writing a line of
+   IRON or touching a device.</li>
+<li><strong>Write the design</strong> (<a href="../aie-iron-design/SKILL/"><code>aie-iron-design</code></a>) —
+   realize that plan as an IRON Python design (tiles, ObjectFifos, Workers,
+   Runtime) and the C++ AIE kernels it calls, library-first. Also the direct
+   entry point for work that isn't a full model port.</li>
 <li><strong>Bring it up on real hardware</strong> (<a href="../aie-hw-bringup/SKILL/"><code>aie-hw-bringup</code></a>) —
    sequential block-by-block bring-up against the reference, methodical
    bisection when something hangs or mismatches.</li>

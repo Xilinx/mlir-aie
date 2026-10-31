@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/skills/aie-model-baseline/SKILL/">
       
       
-        <link rel="prev" href="../../aie-code-creator/SKILL/">
+        <link rel="prev" href="../../">
       
       
         <link rel="next" href="../../aie-dataflow-presim/SKILL/">
@@ -2501,34 +2501,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../../aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -2690,6 +2662,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2697,7 +2697,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2725,7 +2725,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2753,7 +2753,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3473,6 +3473,8 @@
       
         
       
+        
+      
     
     
     
@@ -3561,6 +3563,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -3792,12 +3822,15 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 <h1 id="model-baseline--numeric-oracle-the-before-you-write-any-iron-phase">Model baseline &amp; numeric oracle (the "before you write any IRON" phase)<a class="headerlink" href="#model-baseline--numeric-oracle-the-before-you-write-any-iron-phase" title="Permanent link">&para;</a></h1>
-<p>This is the first of four phases in porting a model to AIE/NPU:</p>
+<p>This is the first of five phases in porting a model to AIE/NPU:</p>
 <ol>
 <li><strong>Model baseline &amp; numeric oracle</strong> (this skill) — get a validated software
    reference and a quantization spec before touching hardware or dataflow.</li>
-<li><strong>Pre-hardware dataflow simulation</strong> (<code>aie-dataflow-presim</code>) — validate the
-   <em>design</em> (FIFOs, kernels, novel mechanisms) against the oracle in software.</li>
+<li><strong>Pre-hardware dataflow simulation</strong> (<code>aie-dataflow-presim</code>) — prove a
+   dataflow plan (decomposition, topology, FIFO depths, capacity/regime)
+   bit-exact against the oracle in software, before any IRON code exists.</li>
+<li><strong>Write the IRON design</strong> (<code>aie-iron-design</code>) — realize that plan as an
+   IRON Python design and the C++ AIE kernels it calls, library-first.</li>
 <li><strong>Hardware bring-up against reference</strong> (<code>aie-hw-bringup</code>) — get a minimal
    version running on real silicon, comparing against the oracle at every step.</li>
 <li><strong>Kernel optimization</strong> (<code>aie-kernel-opt</code>) and <strong>dataflow optimization</strong>
@@ -3905,7 +3938,7 @@ just a floating-point approximation. Then validate:</p>
 </ul>
 <p>This oracle is not throwaway scaffolding — it's the reference every later
 phase compares against: the software dataflow simulator (phase 2) validates
-against it, and hardware bring-up (phase 3) validates against it again on
+against it, and hardware bring-up (phase 4) validates against it again on
 real silicon. Time spent making it trustworthy now pays off three times
 over.</p>
 <h2 id="checklist-before-moving-to-phase-2-aie-dataflow-presim">Checklist before moving to phase 2 (<code>aie-dataflow-presim</code>)<a class="headerlink" href="#checklist-before-moving-to-phase-2-aie-dataflow-presim" title="Permanent link">&para;</a></h2>
@@ -3967,7 +4000,7 @@ over.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../../aie-code-creator/SKILL/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Phase 0: Write the Design">
+          <a href="../../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Agent Skills Overview">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3977,7 +4010,7 @@ over.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Phase 0: Write the Design
+                Agent Skills Overview
               </div>
             </div>
           </a>

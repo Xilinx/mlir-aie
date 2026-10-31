@@ -18,7 +18,7 @@
         <link rel="prev" href="../../aie-model-baseline/SKILL/">
       
       
-        <link rel="next" href="../../aie-hw-bringup/SKILL/">
+        <link rel="next" href="../../aie-iron-design/SKILL/">
       
       
         
@@ -2504,34 +2504,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2675,10 +2647,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#checklist-before-moving-to-phase-3-aie-hw-bringup" class="md-nav__link">
+  <a href="#checklist-before-moving-to-phase-3-aie-iron-design" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Checklist before moving to phase 3 (aie-hw-bringup)
+        Checklist before moving to phase 3 (aie-iron-design)
       
     </span>
   </a>
@@ -2701,6 +2673,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2708,7 +2708,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2736,7 +2736,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2764,7 +2764,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3484,6 +3484,8 @@
       
         
       
+        
+      
     
     
     
@@ -3572,6 +3574,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -3730,10 +3760,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#checklist-before-moving-to-phase-3-aie-hw-bringup" class="md-nav__link">
+  <a href="#checklist-before-moving-to-phase-3-aie-iron-design" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Checklist before moving to phase 3 (aie-hw-bringup)
+        Checklist before moving to phase 3 (aie-iron-design)
       
     </span>
   </a>
@@ -3814,9 +3844,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 <h1 id="pre-hardware-dataflow-simulation-the-brainstorm-without-the-npu-phase">Pre-hardware dataflow simulation (the "brainstorm without the NPU" phase)<a class="headerlink" href="#pre-hardware-dataflow-simulation-the-brainstorm-without-the-npu-phase" title="Permanent link">&para;</a></h1>
-<p>Second of four porting phases (see <code>aie-model-baseline</code> for phase 1, the
-numeric oracle this phase validates against; <code>aie-hw-bringup</code> for phase 3;
-<code>aie-kernel-opt</code>/<code>aie-dataflow-opt</code> for optimization once it's correct).</p>
+<p>Second of five porting phases (see <code>aie-model-baseline</code> for phase 1, the
+numeric oracle this phase validates against; <code>aie-iron-design</code> for phase 3,
+which realizes the dataflow plan this phase proves in software;
+<code>aie-hw-bringup</code> for phase 4; <code>aie-kernel-opt</code>/<code>aie-dataflow-opt</code> for
+phase 5, optimization once it's correct).</p>
 <p>The point of this phase: a deadlock, a wrong FIFO depth, or a math error in
 a new design is cheap to find in a Python simulation that runs in seconds
 on a laptop, and expensive to find on real hardware, where the failure mode
@@ -3824,10 +3856,11 @@ is often just "it hangs" or "the output is wrong" with no further
 information volunteered. Do the cheap thing first.</p>
 <h2 id="1-build-a-software-mock-of-the-objectfifoworker-api-and-simulate-the-exact-topology">1. Build a software mock of the ObjectFifo/Worker API, and simulate the exact topology<a class="headerlink" href="#1-build-a-software-mock-of-the-objectfifoworker-api-and-simulate-the-exact-topology" title="Permanent link">&para;</a></h2>
 <p>A useful mock doesn't need to model timing accurately — it needs to model
-<strong>the same synchronization semantics</strong> your real design uses: bounded
-queues per ObjectFifo with the depth you've declared, acquire/release
-paired the way your kernels pair them, and a timeout on every blocking
-operation so a deadlock fails fast (in seconds) instead of hanging forever.
+<strong>the same synchronization semantics</strong> the planned topology will use in
+IRON: bounded queues per ObjectFifo with the depth you've declared,
+acquire/release paired the way your kernels pair them, and a timeout on
+every blocking operation so a deadlock fails fast (in seconds) instead of
+hanging forever.
 A thread per tile/worker plus Python's <code>threading.Condition</code> per FIFO is
 enough to build this once, model-agnostically, and reuse it for every
 future design.</p>
@@ -3849,14 +3882,15 @@ means a mismatch could be anywhere.</p>
 simulation tests that run in under ten seconds combined is cheap insurance
 against silently reintroducing a bug while working on something else.</p>
 <h2 id="3-de-risk-a-genuinely-novel-mechanism-with-a-tiny-isolated-probe-first">3. De-risk a genuinely novel mechanism with a tiny isolated probe first<a class="headerlink" href="#3-de-risk-a-genuinely-novel-mechanism-with-a-tiny-isolated-probe-first" title="Permanent link">&para;</a></h2>
-<p>If part of the design does something you haven't built before — a new
+<p>If part of the plan does something you haven't built before — a new
 attention decomposition, a new streaming/broadcast pattern, a new way of
 appending to a growing buffer — don't discover whether it works by wiring
-it into the full design. Write the smallest possible standalone IRON
-program that exercises just that mechanism, confirm it does what you think
-it does, and only then integrate it. A probe that fails is a cheap,
-isolated failure; the same bug discovered inside the full design is buried
-under everything else that's also new.</p>
+it into the full IRON design <code>aie-iron-design</code> will build. Write the
+smallest possible standalone IRON program that exercises just that
+mechanism, confirm it does what you think it does, and only then fold it
+into the plan. A probe that fails is a cheap, isolated failure; the same
+bug discovered inside the full design is buried under everything else
+that's also new.</p>
 <h2 id="4-prove-novel-algorithmic-decompositions-are-mathematically-equivalent-before-realizing-them-in-iron">4. Prove novel algorithmic decompositions are mathematically equivalent before realizing them in IRON<a class="headerlink" href="#4-prove-novel-algorithmic-decompositions-are-mathematically-equivalent-before-realizing-them-in-iron" title="Permanent link">&para;</a></h2>
 <p>If a mechanism <em>changes the math</em>, not just the data movement (chunked/
 streaming attention instead of full attention is the canonical example),
@@ -3880,7 +3914,7 @@ because the constraint it was actually bound by was never modeled.</p>
 <p>If the workload has more than one regime (e.g. a compute-bound prefill
 pass and a bandwidth-bound decode pass in an autoregressive model), model
 each separately — a single average cost model will mask both.</p>
-<h2 id="checklist-before-moving-to-phase-3-aie-hw-bringup">Checklist before moving to phase 3 (<code>aie-hw-bringup</code>)<a class="headerlink" href="#checklist-before-moving-to-phase-3-aie-hw-bringup" title="Permanent link">&para;</a></h2>
+<h2 id="checklist-before-moving-to-phase-3-aie-iron-design">Checklist before moving to phase 3 (<code>aie-iron-design</code>)<a class="headerlink" href="#checklist-before-moving-to-phase-3-aie-iron-design" title="Permanent link">&para;</a></h2>
 <ul>
 <li>[ ] Every block/layer simulated bit-exact against the phase-1 oracle,
       individually before chaining</li>
@@ -3949,13 +3983,13 @@ each separately — a single average cost model will mask both.</p>
         
         
           
-          <a href="../../aie-hw-bringup/SKILL/" class="md-footer__link md-footer__link--next" aria-label="Next: Phase 3: HW Bring-up">
+          <a href="../../aie-iron-design/SKILL/" class="md-footer__link md-footer__link--next" aria-label="Next: Phase 3: IRON Design">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Phase 3: HW Bring-up
+                Phase 3: IRON Design
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -2788,34 +2788,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../skills/aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../../skills/aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2872,6 +2844,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../../skills/aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2879,7 +2879,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2907,7 +2907,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2935,7 +2935,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3655,6 +3655,8 @@
       
         
       
+        
+      
     
     
     
@@ -3743,6 +3745,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -4223,7 +4253,7 @@
 <p>A trace buffer that fills keeps only the first intervals. The split still labels them, and the row's <code>range</code> says <code>truncated</code>.</p>
 <p>Adding markers has a cost of its own: on AIE2P they grew one kernel's stack frame by 64 bytes. After instrumenting, check the remarks tool's <code>kernel_stack_bytes</code> row (see <a href="#keeping-it-correct">Keeping it correct</a>).</p>
 <h2 id="a-worked-example-add"><u>A worked example: <code>add</code></u><a class="headerlink" href="#a-worked-example-add" title="Permanent link">&para;</a></h2>
-<p>The bf16 <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/eltwise/add.cc">add.cc</a> kernel used to run one load/add/store chain per loop iteration. On AIE2P it now runs four. Here is how that change looks through each tool.</p>
+<p>The bf16 <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/eltwise/add.cc">add.cc</a> kernel once ran one load/add/store chain per loop iteration, and a change made it run four on AIE2P. Here is how that change looks through each tool. (The kernel has moved on since; the end of this example says where it stands now.)</p>
 <p><strong>Hardware first.</strong> The <code>add</code> contract declares <code>Trace.whole_call()</code>, so the performance check times it. Time the 16-call case with the kernel in your checkout and, in the same run, with a snapshot of the old one. Run from the root of the checkout:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>mkdir<span class="w"> </span>/tmp/before
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>git<span class="w"> </span>archive<span class="w"> </span>&lt;old-commit&gt;<span class="w"> </span>aie_kernels<span class="w"> </span>aie_runtime_lib<span class="w"> </span><span class="p">|</span><span class="w"> </span>tar<span class="w"> </span>-x<span class="w"> </span>-C<span class="w"> </span>/tmp/before
@@ -4290,8 +4320,9 @@
 <a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>  nopa ; nopb ; vst.conv.bf16.fp32  cml0, [p2], #0x40 ; nopxm ; nopv
 </code></pre></div>
 <p>Twelve bundles do four useful things. Both inputs are loaded with <code>vlda.conv.fp32.bf16</code>, a load that converts bf16 to float on the way in and exists only on load unit A, so the two loads take two bundles instead of sharing one. The <code>vadd.f</code> then waits out the load latency, and the store waits for the add. Nothing else is available to fill the gaps: the loop is <strong>latency-bound</strong>, not limited by any unit.</p>
-<p>The shipped loop gives the scheduler four independent chains. Its 18 bundles start with eight <code>vlda.conv</code> loads back to back, and the adds and stores of earlier chains fill the bundles that were empty. 4.5 bundles per vector instead of 12. The loads on unit A now set a floor of 2 bundles per vector, so there is still some room, but the easy win is taken.</p>
+<p>The four-chain loop gives the scheduler four independent chains. Its 18 bundles start with eight <code>vlda.conv</code> loads back to back, and the adds and stores of earlier chains fill the bundles that were empty. 4.5 bundles per vector instead of 12. The loads on unit A now set a floor of 2 bundles per vector, so there is still some room, but the easy win is taken.</p>
 <p>AIE2 took the opposite route. There the four-chain body needs more bundles than the pipeliner's limit (<code>SwpMaxMii</code> 27), so it ran unoverlapped. The AIE2 branch of <code>add.cc</code> keeps one chain under <code>AIE_LOOP_NO_UNROLL</code> with <code>__restrict</code> pointers, and the pipeliner overlaps its iterations to one vector per cycle: 342 → 78 cycles on an npu1.</p>
+<p>Both branches have since converged on one chain that removes the floor itself. The tuned AIE2 and AIE2P paths run <code>eltwise_vadd_mac</code>: only <code>a</code> converts on load, <code>b</code> loads as bf16 on load unit B and is added as <code>b * 1</code> in a <code>mac</code>, so the two loads no longer queue on unit A and the loop pipelines to one vector per cycle (II1 on AIE2P). The four-chain loop above is now the untuned branch, which a build with <code>AIE_KERNELS_PORTABLE=1</code> compiles; set it to reproduce this example's numbers.</p>
 <p>This is the pattern for the rest of the section: hardware says whether it got faster, the remarks say what the compiler did, and the bundles say why.</p>
 <h2 id="two-clocks"><u>Two clocks</u><a class="headerlink" href="#two-clocks" title="Permanent link">&para;</a></h2>
 <p><a href="../section-4a">Section 4a</a> measures wall-clock time around a whole dispatch; <a href="../section-4b">section 4b</a> measures core cycles between the markers. They answer different questions. Use traced cycles per call to judge a kernel change. Use wall clock only to say whether the <em>application</em> got faster.</p>

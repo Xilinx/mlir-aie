@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel, or port one architecture's tuned code to the other; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the aie.utils.compile.remarks static report and its base-arm diff, the kernel_design contract gate and traced cycles per call, and, for library kernels, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the traps that compile cleanly and run wrong. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).">
+        <meta name="description" content="Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel, or port one architecture's tuned code to the other; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the aie.utils.compile.remarks static report and its base-arm diff, the kernel_design contract gate and traced cycles per call, and, for library kernels, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the traps that compile cleanly and run wrong. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-iron-design).">
       
       
         <meta name="author" content="AMD Advanced Micro Devices">
@@ -29,7 +29,7 @@
     
     
       
-        <title>Phase 4: Kernel Optimization - IRON / MLIR-AIE</title>
+        <title>Phase 5: Kernel Optimization - IRON / MLIR-AIE</title>
       
     
     
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Phase 4: Kernel Optimization
+              Phase 5: Kernel Optimization
             
           </span>
         </div>
@@ -2504,34 +2504,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2588,6 +2560,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2595,7 +2595,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2632,7 +2632,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2650,7 +2650,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2886,7 +2886,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3606,6 +3606,8 @@
       
         
       
+        
+      
     
     
     
@@ -3694,6 +3696,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -4058,6 +4088,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 <h1 id="aie-kernel-optimization">AIE kernel optimization<a class="headerlink" href="#aie-kernel-optimization" title="Permanent link">&para;</a></h1>
+<p>Fifth of five porting phases, alongside <code>aie-dataflow-opt</code> (see
+<code>aie-model-baseline</code> for phase 1, <code>aie-dataflow-presim</code> for phase 2,
+<code>aie-iron-design</code> for phase 3, and <code>aie-hw-bringup</code> for phase 4, getting
+to a correct baseline on real hardware — this phase assumes that baseline
+already exists and is correct).</p>
 <p>This skill makes <strong>one compiled kernel</strong> faster. It assumes the kernel is
 already correct on hardware (<code>aie-hw-bringup</code>) and worth the work
 (<code>aie-dataflow-opt</code> ranks kernels by ablation).</p>
@@ -4512,6 +4547,9 @@ measured 78 / 134); if they disagree, find out which is wrong first.</p>
   <code>$NPU_CACHE_HOME/objects/&lt;key&gt;/</code> holds a copy of every <code>.cc</code> it compiled
   (the <code>.o.d</code> depfiles name them), so diff those against <code>git show
   &lt;rev&gt;:&lt;path&gt;</code>. When two numbers conflict, compare digests first.</li>
+<li>The nightly kernel checks and their history are on the <a href="https://xilinx.github.io/mlir-aie/dashboard/#view=night">maintainer
+  dashboard</a>; the
+  numbers in this skill's case studies are dated evidence, not today's.</li>
 <li>Several agents on one NPU: wrap every hardware command in <code>flock</code> on one
   shared lock file, and build base arms by copying the live tree.</li>
 <li>Keep every <code>extern "C"</code> name, signature and buffer layout. Leave
@@ -4951,7 +4989,7 @@ humans, with a worked <code>add</code> example).</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../../aie-hw-bringup/SKILL/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Phase 3: HW Bring-up">
+          <a href="../../aie-hw-bringup/SKILL/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Phase 4: HW Bring-up">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -4961,20 +4999,20 @@ humans, with a worked <code>add</code> example).</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Phase 3: HW Bring-up
+                Phase 4: HW Bring-up
               </div>
             </div>
           </a>
         
         
           
-          <a href="../../aie-dataflow-opt/SKILL/" class="md-footer__link md-footer__link--next" aria-label="Next: Phase 4: Dataflow Optimization">
+          <a href="../../aie-dataflow-opt/SKILL/" class="md-footer__link md-footer__link--next" aria-label="Next: Phase 5: Dataflow Optimization">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Phase 4: Dataflow Optimization
+                Phase 5: Dataflow Optimization
               </div>
             </div>
             <div class="md-footer__button md-icon">

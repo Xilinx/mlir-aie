@@ -2575,34 +2575,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../skills/aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../../../skills/aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2659,6 +2631,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../../../skills/aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../../../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2666,7 +2666,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2694,7 +2694,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2722,7 +2722,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3442,6 +3442,8 @@
       
         
       
+        
+      
     
     
     
@@ -3530,6 +3532,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -3755,11 +3785,12 @@
 //===----------------------------------------------------------------------===//-->
 
 <h1 id="objectfifo-repeat-pattern">ObjectFifo Repeat Pattern<a class="headerlink" href="#objectfifo-repeat-pattern" title="Permanent link">&para;</a></h1>
-<p>At the closer-to-metal API level, the ObjectFifo provides users with two ways to specify how data from the producer should be repeated. </p>
+<p>At the closer-to-metal API level, the ObjectFifo provides users with two ways to specify how data from the producer should be repeated.</p>
 <p>Both repeat features are achieved using the Direct Memory Access (DMA) unit of the ObjectFifo's producer tile. In particular, data movement for each DMA channel is described as a chain of buffer descriptors, where each buffer descriptor (BD) indicates what data should be pushed to the AXI stream. The data movement generated for ObjectFifos follows a cyclic pattern of First In First Out where each object in the ObjectFifo is moved by one BD in a chain.</p>
 <p>The first repeat features enables users to repeat the entire BD chain using the following syntax:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">of0</span> <span class="o">=</span> <span class="n">object_fifo</span><span class="p">(</span><span class="s2">"objfifo0"</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">256</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]])</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">of0</span><span class="o">.</span><span class="n">set_iter_count</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">of0</span> <span class="o">=</span> <span class="n">object_fifo</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="s2">"objfifo0"</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">256</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]],</span> <span class="n">iter_count</span><span class="o">=</span><span class="mi">2</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>
 </code></pre></div>
 The code snippet above results in the repetition of each object in the ObjectFifo following the pattern <code>buff_ping - buff_pong - buff_ping - buff_pong</code>. This is shown in the figure below with the red arrow representing the repeat value of the entire BD chain:</p>
 <p><img src="./../../../assets/RepeatSharedTile.png" height="300"></p>

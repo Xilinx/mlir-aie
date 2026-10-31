@@ -29,7 +29,7 @@
     
     
       
-        <title>Phase 4: Dataflow Optimization - IRON / MLIR-AIE</title>
+        <title>Phase 5: Dataflow Optimization - IRON / MLIR-AIE</title>
       
     
     
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Phase 4: Dataflow Optimization
+              Phase 5: Dataflow Optimization
             
           </span>
         </div>
@@ -2504,34 +2504,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2588,6 +2560,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2595,7 +2595,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2623,7 +2623,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2660,7 +2660,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -2678,7 +2678,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3484,6 +3484,8 @@
       
         
       
+        
+      
     
     
     
@@ -3572,6 +3574,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -3819,10 +3849,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 <h1 id="dataflow-optimization-the-make-the-whole-design-fast-phase">Dataflow optimization (the "make the whole design fast" phase)<a class="headerlink" href="#dataflow-optimization-the-make-the-whole-design-fast-phase" title="Permanent link">&para;</a></h1>
-<p>Fourth of four porting phases, alongside <code>aie-kernel-opt</code> (see
-<code>aie-model-baseline</code> for the oracle, <code>aie-dataflow-presim</code> for pre-hardware
-validation, <code>aie-hw-bringup</code> for getting to a correct baseline on real
-hardware — this phase assumes that baseline already exists and is correct).</p>
+<p>Fifth of five porting phases, alongside <code>aie-kernel-opt</code> (see
+<code>aie-model-baseline</code> for phase 1, the oracle; <code>aie-dataflow-presim</code> for
+phase 2, planning the dataflow; <code>aie-iron-design</code> for phase 3, writing it;
+<code>aie-hw-bringup</code> for phase 4, getting to a correct baseline on real
+hardware — this phase assumes that baseline already exists and is
+correct).</p>
 <p><strong>This skill is macro; <code>aie-kernel-opt</code> is micro.</strong> <code>aie-kernel-opt</code>
 answers "how do I make this one compiled kernel faster." This skill
 answers "which op should run on which tile, how should data move between
@@ -3964,7 +3996,7 @@ a switch you flip after the fact).</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../../aie-kernel-opt/SKILL/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Phase 4: Kernel Optimization">
+          <a href="../../aie-kernel-opt/SKILL/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Phase 5: Kernel Optimization">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3974,7 +4006,7 @@ a switch you flip after the fact).</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Phase 4: Kernel Optimization
+                Phase 5: Kernel Optimization
               </div>
             </div>
           </a>

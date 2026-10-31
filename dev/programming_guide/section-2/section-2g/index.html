@@ -1886,6 +1886,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#cascadeflow--direct-cascade-stream-link-between-two-workers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CascadeFlow — direct cascade-stream link between two Workers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#canonical-end-to-end-demo" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2695,34 +2706,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../skills/aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../../skills/aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2779,6 +2762,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../../skills/aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2786,7 +2797,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2814,7 +2825,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2842,7 +2853,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3562,6 +3573,8 @@
       
         
       
+        
+      
     
     
     
@@ -3650,6 +3663,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -3824,6 +3865,17 @@
     <span class="md-ellipsis">
       
         Tile DMAs from the runtime sequence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cascadeflow--direct-cascade-stream-link-between-two-workers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CascadeFlow — direct cascade-stream link between two Workers
       
     </span>
   </a>
@@ -4323,6 +4375,36 @@ The device limits these programs work within are available from the
 device itself — <code>dev.max_lock_value</code>, <code>dev.max_repeat_count</code>,
 <code>dev.dma_task_queue_depth</code> and <code>dev.get_num_bds(tile_type)</code> — rather
 than being hardcoded.</p>
+<h3 id="cascadeflow--direct-cascade-stream-link-between-two-workers">CascadeFlow — direct cascade-stream link between two Workers<a class="headerlink" href="#cascadeflow--direct-cascade-stream-link-between-two-workers" title="Permanent link">&para;</a></h3>
+<p>For designs that chain compute across adjacent tiles' cascade interconnect (e.g. an
+accumulator passed core-to-core) rather than through an ObjectFifo, connect two <code>Worker</code>s
+directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="n">CascadeFlow</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">cf</span> <span class="o">=</span> <span class="n">CascadeFlow</span><span class="p">(</span><span class="n">src</span><span class="o">=</span><span class="n">worker_a</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="n">worker_b</span><span class="p">)</span>   <span class="c1"># registers on worker_a; resolved when tiles are placed</span>
+</code></pre></div>
+<p>The kernels on both sides must drive the stream themselves via the AIE API's
+<code>put_mcd</code>/<code>get_scd</code> intrinsics — <code>CascadeFlow</code> only declares the topology edge, not the data
+movement. Unlike <code>Flow</code>/<code>PacketFlow</code> above, constructing a <code>CascadeFlow</code> self-registers it on
+<code>src</code>'s outgoing-cascade list — there's no separate <code>rt.add_flow(...)</code> call needed.</p>
+<p>Hardware constraints, all checked at lowering rather than construction (so a bad chain surfaces
+as an <code>aie.cascade_flow</code> verifier error, not a Python exception):</p>
+<ul>
+<li><strong>Direction is fixed.</strong> On AIE2/AIE2P the cascade input must come from <strong>North or West</strong> and
+  the output must go <strong>South or East</strong>. A chain therefore has to descend in row or advance east
+  — you cannot run it upward or westward. In practice this means pinning tiles (e.g. head at row
+  5 down to tail at row 2 within a column) rather than leaving the chain to <code>--aie-place-tiles</code>.</li>
+<li><strong>Adjacency</strong>: <code>src</code>/<code>dst</code> tiles must end up cardinally adjacent after placement.</li>
+<li><strong>Fan-in/out</strong>: each compute tile has at most one cascade input and one cascade output.</li>
+<li><strong>No shim/mem participation</strong>: ShimTiles and MemTiles have no cascade interface, so the last
+  core in a chain must land its result in L1 for a normal ObjectFifo DMA — the cascade cannot
+  itself reach the host.</li>
+<li><strong>Width</strong>: the accumulator cascade is 512 bits on AIE2/AIE2P (384 on AIE1, where cascade isn't
+  supported by this API anyway) — e.g. a <code>v16int32</code> payload. See
+  <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/matrix_multiplication/cascade"><code>programming_examples/basic/matrix_multiplication/cascade/</code></a>
+  for a worked example (a row-accumulator chain across 4 cores).</li>
+</ul>
+<p>Like <code>Flow</code> and <code>PacketFlow</code>, <code>CascadeFlow</code> implements the <code>Resolvable</code> protocol described above.</p>
 <h3 id="canonical-end-to-end-demo">Canonical end-to-end demo<a class="headerlink" href="#canonical-end-to-end-demo" title="Permanent link">&para;</a></h3>
 <p>The runnable example for this whole surface is
 <a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/basic/chaining_channels/chaining_channels.py"><code>programming_examples/basic/chaining_channels/chaining_channels.py</code></a>
@@ -4347,72 +4429,124 @@ tile S2MM with:</p>
 <code>aie</code> dialect Python API
 (<a href="https://github.com/Xilinx/mlir-aie/blob/main/python/dialects/aie.py"><code>python/dialects/aie.py</code></a>).  Reach
 for them when you need an op the IRON primitives above don't surface,
-or when writing pure-dialect lit tests that bypass the IRON runtime.</p>
+or when writing pure-dialect lit tests that bypass the IRON runtime.
+Reaching for this tier is genuinely rare: all current examples in this
+repo are written against the IRON primitives above, and custom DMA
+access patterns are already possible there without a hand-scripted
+<code>@mem(tile)</code> body.</p>
+<p>The pieces shown throughout this section (<code>@core</code>, <code>object_fifo</code>,
+<code>object_fifo_link</code>) assemble into a complete design under <code>@device</code> /
+<code>@runtime_sequence</code>, wrapped in <code>mlir_mod_ctx()</code> rather than
+<code>@iron.jit</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.dialects.aie</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.dialects.aiex</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.extras.context</span><span class="w"> </span><span class="kn">import</span> <span class="n">mlir_mod_ctx</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.helpers.dialects.scf</span><span class="w"> </span><span class="kn">import</span> <span class="n">_for</span> <span class="k">as</span> <span class="n">range_</span><span class="p">,</span> <span class="n">forever_</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">design</span><span class="p">():</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="nd">@device</span><span class="p">(</span><span class="n">AIEDevice</span><span class="o">.</span><span class="n">npu2</span><span class="p">)</span>              <span class="c1"># or AIEDevice.npu1</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">device_body</span><span class="p">():</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>        <span class="n">ShimTile</span>    <span class="o">=</span> <span class="n">tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>        <span class="n">ComputeTile</span> <span class="o">=</span> <span class="n">tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>        <span class="n">tile_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">1024</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>        <span class="n">of_in</span>  <span class="o">=</span> <span class="n">object_fifo</span><span class="p">(</span><span class="s2">"in"</span><span class="p">,</span>  <span class="n">ShimTile</span><span class="p">,</span>    <span class="n">ComputeTile</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">tile_ty</span><span class="p">)</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>        <span class="n">of_out</span> <span class="o">=</span> <span class="n">object_fifo</span><span class="p">(</span><span class="s2">"out"</span><span class="p">,</span> <span class="n">ComputeTile</span><span class="p">,</span> <span class="n">ShimTile</span><span class="p">,</span>    <span class="mi">2</span><span class="p">,</span> <span class="n">tile_ty</span><span class="p">)</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>        <span class="nd">@core</span><span class="p">(</span><span class="n">ComputeTile</span><span class="p">)</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">core_body</span><span class="p">():</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">forever_</span><span class="p">():</span>                               <span class="c1"># while (true)</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>                <span class="n">e_in</span>  <span class="o">=</span> <span class="n">of_in</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="n">ObjectFifoPort</span><span class="o">.</span><span class="n">Consume</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>                <span class="n">e_out</span> <span class="o">=</span> <span class="n">of_out</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="n">ObjectFifoPort</span><span class="o">.</span><span class="n">Produce</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">range_</span><span class="p">(</span><span class="mi">1024</span><span class="p">):</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a>                    <span class="n">e_out</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">e_in</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>                <span class="n">of_in</span><span class="o">.</span><span class="n">release</span><span class="p">(</span><span class="n">ObjectFifoPort</span><span class="o">.</span><span class="n">Consume</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>                <span class="n">of_out</span><span class="o">.</span><span class="n">release</span><span class="p">(</span><span class="n">ObjectFifoPort</span><span class="o">.</span><span class="n">Produce</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>        <span class="nd">@runtime_sequence</span><span class="p">(</span><span class="n">tile_ty</span><span class="p">,</span> <span class="n">tile_ty</span><span class="p">)</span>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">c_out</span><span class="p">):</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a>            <span class="n">npu_dma_memcpy_nd</span><span class="p">(</span><span class="n">metadata</span><span class="o">=</span><span class="n">of_in</span><span class="p">,</span>  <span class="n">bd_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">mem</span><span class="o">=</span><span class="n">a_in</span><span class="p">,</span>  <span class="n">sizes</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1024</span><span class="p">])</span>
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a>            <span class="n">npu_dma_memcpy_nd</span><span class="p">(</span><span class="n">metadata</span><span class="o">=</span><span class="n">of_out</span><span class="p">,</span> <span class="n">bd_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">mem</span><span class="o">=</span><span class="n">c_out</span><span class="p">,</span> <span class="n">sizes</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1024</span><span class="p">])</span>
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a>            <span class="n">dma_wait</span><span class="p">(</span><span class="n">of_out</span><span class="p">)</span>
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a><span class="k">with</span> <span class="n">mlir_mod_ctx</span><span class="p">()</span> <span class="k">as</span> <span class="n">ctx</span><span class="p">:</span>
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a>    <span class="n">design</span><span class="p">()</span>
+<a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a>    <span class="k">assert</span> <span class="n">ctx</span><span class="o">.</span><span class="n">module</span><span class="o">.</span><span class="n">operation</span><span class="o">.</span><span class="n">verify</span><span class="p">()</span> <span class="o">==</span> <span class="kc">True</span>
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">module</span><span class="p">)</span>
+</code></pre></div>
+<p>The two tiers otherwise line up directly: <code>tile(col, row)</code> in place of implicit placement,
+<code>of.acquire(ObjectFifoPort.Consume/Produce, n)</code> in place of <code>of.acquire(n)</code>,
+<code>npu_dma_memcpy_nd</code> + <code>dma_wait</code> in place of <code>fill</code>/<code>drain</code>, and an explicit
+<code>ctx.module.operation.verify()</code> call in place of the verification <code>@iron.jit</code> runs for you. Reach
+for this tier when porting an <em>external</em>, pre-existing MLIR-AIE example 1:1, or when you need an
+op the IRON primitives don't expose yet — in which case, also consider raising it upstream.</p>
 <p>The three DMA region decorators pick by tile type:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nd">@mem</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>          <span class="c1"># compute tile DMA region</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nd">@memtile_dma</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>  <span class="c1"># mem tile DMA region</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nd">@shim_mem</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>     <span class="c1"># shim tile DMA region</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nd">@mem</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>          <span class="c1"># compute tile DMA region</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nd">@memtile_dma</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>  <span class="c1"># mem tile DMA region</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nd">@shim_mem</span><span class="p">(</span><span class="n">tile</span><span class="p">)</span>     <span class="c1"># shim tile DMA region</span>
 </code></pre></div>
 <p>A channel inside a region uses the unified <code>dma</code> constructor:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">dma</span><span class="p">(</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">channel_dir</span><span class="p">,</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">channel_index</span><span class="p">,</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">num_blocks</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">loop</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">repeat_count</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">sym_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">loc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">ip</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">dma</span><span class="p">(</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="n">channel_dir</span><span class="p">,</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">channel_index</span><span class="p">,</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">num_blocks</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="n">loop</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">repeat_count</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="n">sym_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">loc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="n">ip</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="p">)</span>
 </code></pre></div>
 <p>The same <code>tile_a → tile_b</code> flow as the IRON example above, written at
 the dialect level:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">tile_a</span> <span class="o">=</span> <span class="n">tile</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">tile_b</span> <span class="o">=</span> <span class="n">tile</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">prod_lock_a</span> <span class="o">=</span> <span class="n">lock</span><span class="p">(</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">lock_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">cons_lock_a</span> <span class="o">=</span> <span class="n">lock</span><span class="p">(</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">lock_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">buff_a</span> <span class="o">=</span> <span class="n">buffer</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">datatype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">256</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]])</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">prod_lock_b</span> <span class="o">=</span> <span class="n">lock</span><span class="p">(</span><span class="n">tile_b</span><span class="p">,</span> <span class="n">lock_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">cons_lock_b</span> <span class="o">=</span> <span class="n">lock</span><span class="p">(</span><span class="n">tile_b</span><span class="p">,</span> <span class="n">lock_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="n">buff_b</span> <span class="o">=</span> <span class="n">buffer</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">tile_b</span><span class="p">,</span> <span class="n">datatype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">256</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]])</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
-<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="n">aie</span><span class="o">.</span><span class="n">flow</span><span class="p">(</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">WireBundle</span><span class="o">.</span><span class="n">DMA</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">tile_b</span><span class="p">,</span> <span class="n">WireBundle</span><span class="o">.</span><span class="n">DMA</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
-<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="nd">@mem</span><span class="p">(</span><span class="n">tile_a</span><span class="p">)</span>
-<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="k">def</span><span class="w"> </span><span class="nf">mem_body</span><span class="p">():</span>
-<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="nd">@dma</span><span class="p">(</span><span class="n">MM2S</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dma_out_0</span><span class="p">():</span>
-<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">cons_lock_a</span><span class="p">,</span> <span class="n">AcquireGreaterEqual</span><span class="p">)</span>
-<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>        <span class="n">dma_bd</span><span class="p">(</span><span class="n">buff_a</span><span class="p">)</span>
-<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">prod_lock_a</span><span class="p">,</span> <span class="n">Release</span><span class="p">)</span>
-<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>
-<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="nd">@mem</span><span class="p">(</span><span class="n">tile_b</span><span class="p">)</span>
-<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="k">def</span><span class="w"> </span><span class="nf">mem_body</span><span class="p">():</span>
-<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>    <span class="nd">@dma</span><span class="p">(</span><span class="n">S2MM</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dma_in_1</span><span class="p">():</span>
-<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">prod_lock_b</span><span class="p">,</span> <span class="n">AcquireGreaterEqual</span><span class="p">)</span>
-<a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>        <span class="n">dma_bd</span><span class="p">(</span><span class="n">buff_b</span><span class="p">)</span>
-<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">cons_lock_b</span><span class="p">,</span> <span class="n">Release</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">tile_a</span> <span class="o">=</span> <span class="n">tile</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">tile_b</span> <span class="o">=</span> <span class="n">tile</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">prod_lock_a</span> <span class="o">=</span> <span class="n">lock</span><span class="p">(</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">lock_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">cons_lock_a</span> <span class="o">=</span> <span class="n">lock</span><span class="p">(</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">lock_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">buff_a</span> <span class="o">=</span> <span class="n">buffer</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">datatype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">256</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]])</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">prod_lock_b</span> <span class="o">=</span> <span class="n">lock</span><span class="p">(</span><span class="n">tile_b</span><span class="p">,</span> <span class="n">lock_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="n">cons_lock_b</span> <span class="o">=</span> <span class="n">lock</span><span class="p">(</span><span class="n">tile_b</span><span class="p">,</span> <span class="n">lock_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="n">buff_b</span> <span class="o">=</span> <span class="n">buffer</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">tile_b</span><span class="p">,</span> <span class="n">datatype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">256</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]])</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="n">aie</span><span class="o">.</span><span class="n">flow</span><span class="p">(</span><span class="n">tile_a</span><span class="p">,</span> <span class="n">WireBundle</span><span class="o">.</span><span class="n">DMA</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">tile_b</span><span class="p">,</span> <span class="n">WireBundle</span><span class="o">.</span><span class="n">DMA</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="nd">@mem</span><span class="p">(</span><span class="n">tile_a</span><span class="p">)</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="k">def</span><span class="w"> </span><span class="nf">mem_body</span><span class="p">():</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    <span class="nd">@dma</span><span class="p">(</span><span class="n">MM2S</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dma_out_0</span><span class="p">():</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">cons_lock_a</span><span class="p">,</span> <span class="n">AcquireGreaterEqual</span><span class="p">)</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>        <span class="n">dma_bd</span><span class="p">(</span><span class="n">buff_a</span><span class="p">)</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">prod_lock_a</span><span class="p">,</span> <span class="n">Release</span><span class="p">)</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="nd">@mem</span><span class="p">(</span><span class="n">tile_b</span><span class="p">)</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="k">def</span><span class="w"> </span><span class="nf">mem_body</span><span class="p">():</span>
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>    <span class="nd">@dma</span><span class="p">(</span><span class="n">S2MM</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dma_in_1</span><span class="p">():</span>
+<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">prod_lock_b</span><span class="p">,</span> <span class="n">AcquireGreaterEqual</span><span class="p">)</span>
+<a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a>        <span class="n">dma_bd</span><span class="p">(</span><span class="n">buff_b</span><span class="p">)</span>
+<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">cons_lock_b</span><span class="p">,</span> <span class="n">Release</span><span class="p">)</span>
 </code></pre></div>
 <p>Extending a channel's BD chain at the dialect level uses
 <code>@another_bd(prev_bd)</code> (the IRON-Python equivalent is just appending
 to <code>DmaChannel.bds=[...]</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nd">@mem</span><span class="p">(</span><span class="n">tile_a</span><span class="p">)</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">mem_body</span><span class="p">():</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="nd">@dma</span><span class="p">(</span><span class="n">S2MM</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">num_blocks</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dma_in_0</span><span class="p">():</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">prod_lock</span><span class="p">,</span> <span class="n">AcquireGreaterEqual</span><span class="p">)</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>        <span class="n">dma_bd</span><span class="p">(</span><span class="n">buff_ping</span><span class="p">)</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">cons_lock</span><span class="p">,</span> <span class="n">Release</span><span class="p">)</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="nd">@another_bd</span><span class="p">(</span><span class="n">dma_in_0</span><span class="p">)</span>
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dma_in_1</span><span class="p">():</span>
-<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">prod_lock</span><span class="p">,</span> <span class="n">AcquireGreaterEqual</span><span class="p">)</span>
-<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>        <span class="n">dma_bd</span><span class="p">(</span><span class="n">buff_pong</span><span class="p">)</span>
-<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">cons_lock</span><span class="p">,</span> <span class="n">Release</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nd">@mem</span><span class="p">(</span><span class="n">tile_a</span><span class="p">)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">mem_body</span><span class="p">():</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="nd">@dma</span><span class="p">(</span><span class="n">S2MM</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">num_blocks</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dma_in_0</span><span class="p">():</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">prod_lock</span><span class="p">,</span> <span class="n">AcquireGreaterEqual</span><span class="p">)</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>        <span class="n">dma_bd</span><span class="p">(</span><span class="n">buff_ping</span><span class="p">)</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">cons_lock</span><span class="p">,</span> <span class="n">Release</span><span class="p">)</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="nd">@another_bd</span><span class="p">(</span><span class="n">dma_in_0</span><span class="p">)</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dma_in_1</span><span class="p">():</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">prod_lock</span><span class="p">,</span> <span class="n">AcquireGreaterEqual</span><span class="p">)</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>        <span class="n">dma_bd</span><span class="p">(</span><span class="n">buff_pong</span><span class="p">)</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>        <span class="n">use_lock</span><span class="p">(</span><span class="n">cons_lock</span><span class="p">,</span> <span class="n">Release</span><span class="p">)</span>
 </code></pre></div>
 <blockquote>
 <p><strong>NOTE:</strong> This DMA configuration is equivalent to what the Object
@@ -4439,26 +4573,26 @@ IRON already has a generic way to emit device-level ops: any object with
 <code>Worker</code> via <code>fn_args</code> is resolved at device scope, with its tiles
 placed first.  So a small user-side class emits the configuration with
 no new API:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.dialects.aie</span><span class="w"> </span><span class="kn">import</span> <span class="n">switchbox</span><span class="p">,</span> <span class="n">connect</span><span class="p">,</span> <span class="n">EndOp</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.dialects._aie_enum_gen</span><span class="w"> </span><span class="kn">import</span> <span class="n">WireBundle</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">PinnedSwitchbox</span><span class="p">:</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tile</span><span class="p">,</span> <span class="n">conns</span><span class="p">):</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conns</span> <span class="o">=</span> <span class="n">tile</span><span class="p">,</span> <span class="n">conns</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">tiles</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>                       <span class="c1"># placed before resolve()</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">]</span>
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
-<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">loc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ip</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>        <span class="nd">@switchbox</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="o">.</span><span class="n">op</span><span class="p">)</span>
-<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_sb</span><span class="p">():</span>
-<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>            <span class="k">for</span> <span class="n">sb</span><span class="p">,</span> <span class="n">sc</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">dc</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conns</span><span class="p">:</span>
-<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>                <span class="n">connect</span><span class="p">(</span><span class="n">sb</span><span class="p">,</span> <span class="n">sc</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">dc</span><span class="p">)</span>
-<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>            <span class="n">EndOp</span><span class="p">()</span>                        <span class="c1"># aie.switchbox needs an explicit terminator</span>
-<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>
-<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="c1"># pin one hop; hand it to a Worker in fn_args (the core_fn ignores it):</span>
-<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">PinnedSwitchbox</span><span class="p">(</span><span class="n">compute_tile</span><span class="p">,</span> <span class="p">[(</span><span class="n">WireBundle</span><span class="o">.</span><span class="n">South</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">WireBundle</span><span class="o">.</span><span class="n">DMA</span><span class="p">,</span> <span class="mi">0</span><span class="p">)])</span>
-<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="n">worker</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span><span class="n">core_fn</span><span class="p">,</span> <span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">sb</span><span class="p">],</span> <span class="n">tile</span><span class="o">=</span><span class="n">compute_tile</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.dialects.aie</span><span class="w"> </span><span class="kn">import</span> <span class="n">switchbox</span><span class="p">,</span> <span class="n">connect</span><span class="p">,</span> <span class="n">EndOp</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.dialects._aie_enum_gen</span><span class="w"> </span><span class="kn">import</span> <span class="n">WireBundle</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">PinnedSwitchbox</span><span class="p">:</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tile</span><span class="p">,</span> <span class="n">conns</span><span class="p">):</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conns</span> <span class="o">=</span> <span class="n">tile</span><span class="p">,</span> <span class="n">conns</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">tiles</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>                       <span class="c1"># placed before resolve()</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">]</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">loc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ip</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>        <span class="nd">@switchbox</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="o">.</span><span class="n">op</span><span class="p">)</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">_sb</span><span class="p">():</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>            <span class="k">for</span> <span class="n">sb</span><span class="p">,</span> <span class="n">sc</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">dc</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conns</span><span class="p">:</span>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>                <span class="n">connect</span><span class="p">(</span><span class="n">sb</span><span class="p">,</span> <span class="n">sc</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">dc</span><span class="p">)</span>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>            <span class="n">EndOp</span><span class="p">()</span>                        <span class="c1"># aie.switchbox needs an explicit terminator</span>
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="c1"># pin one hop; hand it to a Worker in fn_args (the core_fn ignores it):</span>
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="n">sb</span> <span class="o">=</span> <span class="n">PinnedSwitchbox</span><span class="p">(</span><span class="n">compute_tile</span><span class="p">,</span> <span class="p">[(</span><span class="n">WireBundle</span><span class="o">.</span><span class="n">South</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">WireBundle</span><span class="o">.</span><span class="n">DMA</span><span class="p">,</span> <span class="mi">0</span><span class="p">)])</span>
+<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="n">worker</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span><span class="n">core_fn</span><span class="p">,</span> <span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">sb</span><span class="p">],</span> <span class="n">tile</span><span class="o">=</span><span class="n">compute_tile</span><span class="p">)</span>
 </code></pre></div>
 <p><code>connect</code> takes <code>(source_bundle, source_channel, dest_bundle,
 dest_channel)</code>, and a single <code>switchbox</code> may hold as many <code>connect</code> ops

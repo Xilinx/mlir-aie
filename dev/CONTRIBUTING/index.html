@@ -2499,34 +2499,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../skills/aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2583,6 +2555,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../skills/aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2590,7 +2590,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2618,7 +2618,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2646,7 +2646,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3368,6 +3368,8 @@
       
         
       
+        
+      
     
     
     
@@ -3624,6 +3626,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3945,9 +3975,11 @@ to make sure it isn't already listed.</p>
    Fill in the description and checklist, and link the related issue with
    <code>Fixes #123</code>.</li>
 <li><strong>Get CI green and work with your reviewer.</strong> CI runs builds, tests, linting,
-   and type checks. A maintainer reviews once it passes; push follow-up commits
-   to the same branch to address feedback. We'll let you know once your change
-   is merged.</li>
+   and type checks. If a check fails in code you didn't touch, the
+   <a href="https://xilinx.github.io/mlir-aie/dashboard/#view=ci">maintainer dashboard</a>
+   shows whether it is failing on <code>main</code> too. A maintainer reviews once it
+   passes; push follow-up commits to the same branch to address feedback.
+   We'll let you know once your change is merged.</li>
 </ol>
 <p>Small, self-contained PRs with a clear description are the easiest to review and
 the fastest to merge.</p>
@@ -3971,7 +4003,7 @@ formatting or lint issue. To run them by hand:</p>
 <p>The hooks cover:</p>
 <ul>
 <li><strong>C++ and TableGen (<code>*.td</code>)</strong> — <a href="https://clang.llvm.org/docs/ClangFormat.html"><code>clang-format</code></a>
-  (LLVM style; config in <code>.clang-format</code>). The hook pins clang-format 23.1.1,
+  (LLVM style; config in <code>.clang-format</code>). The hook pins clang-format 23.1.3,
   which is what CI runs; a system <code>clang-format</code> of another version can
   format the same file differently.</li>
 <li><strong>Python and notebooks</strong> — <a href="https://black.readthedocs.io/"><code>black</code></a> for
@@ -4020,8 +4052,8 @@ exception won't pass review.</p>
 <h2 id="static-analysis-for-c-clang-tidy">Static analysis for C++ (clang-tidy)<a class="headerlink" href="#static-analysis-for-c-clang-tidy" title="Permanent link">&para;</a></h2>
 <p>C++ is checked with <a href="https://clang.llvm.org/extra/clang-tidy/">clang-tidy</a>
 (config in <code>.clang-tidy</code>), scoped to an explicit, growing list of files
-rather than the whole repo at once — currently just
-<code>lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp</code>. Unlike
+rather than the whole repo at once: the clang-tidy hook's <code>files:</code> pattern
+in <code>.pre-commit-config.yaml</code>, kept in sync with <code>lintAndFormat.yml</code>. Unlike
 clang-format, clang-tidy needs a real compile database
 (<code>compile_commands.json</code>) and the tablegen'd headers a file includes to parse
 anything, so it can't run as a bare per-file text check the way the
@@ -4036,8 +4068,8 @@ point the pre-push hook and CI at it — any build works, clang or GCC:</p>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nb">export</span><span class="w"> </span><span class="nv">MLIR_AIE_BUILD_DIR</span><span class="o">=</span>/path/to/build
 </code></pre></div>
 <p>The pre-push hook then runs it automatically on enabled files you've
-touched, via <code>utils/run_clang_tidy.sh</code> — a pinned <code>clang-tidy==20.1.0</code>
-(matching clang-format's pinned version, via <code>python/requirements_dev.txt</code>)
+touched, via <code>utils/run_clang_tidy.sh</code> — a pinned <code>clang-tidy==22.1.8</code>
+(via <code>python/requirements_dev.txt</code>)
 rather than a bare <code>apt install clang-tidy</code>, so the version doesn't silently
 drift between your machine and CI. If there's no compile database yet, the
 hook fails with the setup hint above instead of silently skipping. To run it

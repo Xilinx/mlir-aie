@@ -1554,6 +1554,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#scratchpad-parameters--an-alternative-to-rtp-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scratchpad Parameters — an Alternative to RTP Buffers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#runtime-task-groups" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2691,34 +2702,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../../skills/aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../../../skills/aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2775,6 +2758,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../../../skills/aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../../../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2782,7 +2793,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2810,7 +2821,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2838,7 +2849,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3558,6 +3569,8 @@
       
         
       
+        
+      
     
     
     
@@ -3646,6 +3659,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -3775,6 +3816,17 @@
     <span class="md-ellipsis">
       
         Setting Runtime Parameters in the Body
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scratchpad-parameters--an-alternative-to-rtp-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scratchpad Parameters — an Alternative to RTP Buffers
       
     </span>
   </a>
@@ -4130,6 +4182,37 @@ The propagation of data to these global buffers is not instantaneous and may lea
 <blockquote>
 <p><strong>NOTE:</strong>  Similar to the <code>Buffer</code> it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.</p>
 </blockquote>
+<h4 id="scratchpad-parameters--an-alternative-to-rtp-buffers"><strong>Scratchpad Parameters — an Alternative to RTP Buffers</strong><a class="headerlink" href="#scratchpad-parameters--an-alternative-to-rtp-buffers" title="Permanent link">&para;</a></h4>
+<p><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/scratchpad_parameter.py"><code>ScratchpadParameter</code></a> is a newer, simpler way
+to pass a named scalar from host to core, without a dedicated RTP <code>Buffer</code>/lock pair:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="n">ScratchpadParameter</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">seq_len</span> <span class="o">=</span> <span class="n">ScratchpadParameter</span><span class="p">(</span><span class="s2">"seq_len"</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">core_fn</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">v</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>                          <span class="c1"># inside the Worker core</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="o">...</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="n">w</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span><span class="n">core_fn</span><span class="p">,</span> <span class="p">[</span><span class="n">seq_len</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">cons</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">k</span><span class="p">])</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>    <span class="n">sync_parameters</span><span class="p">()</span>                     <span class="c1"># emits the host→scratchpad sync; call before workers read it</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">)</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p>From the host, an <code>@iron.jit(full_elf=True)</code> design takes the values per call, by name:
+<code>design(a, c, parameters={"seq_len": np.int32(128)})</code>. A design that declares no
+<code>ScratchpadParameter</code> refuses <code>parameters=</code>, and a generator may not name one of its own
+parameters <code>parameters</code>. A lower-level pyxrt flow writes the same values through
+<code>aie.utils.hostruntime.xrtruntime.parameter_scratchpad.ParameterScratchpad</code> before <code>run.start()</code>.
+<code>test/python/npu-xrt/scratchpad_params/test.py</code> runs both forms against
+<a href="https://github.com/Xilinx/mlir-aie/blob/main/test/python/npu-xrt/scratchpad_params/aie_design.py"><code>aie_design.py</code></a> in the same
+directory.</p>
+<p>Reach for <code>Buffer(..., use_write_rtp=True)</code> + <code>WorkerRuntimeBarrier</code> for the common case above
+(matches most existing examples); use <code>ScratchpadParameter</code> when you specifically want to avoid
+a dedicated RTP buffer/lock.</p>
+<p>Note that <code>ScratchpadParameter</code>s depend on the full-ELF flow (<code>aiecc --get-full-elf</code>) and are
+not available on the Phoenix/Hawk Point architectures.</p>
 <h4 id="runtime-task-groups"><strong>Runtime Task Groups</strong><a class="headerlink" href="#runtime-task-groups" title="Permanent link">&para;</a></h4>
 <p>It may be desirable to reconfigure a <code>Runtime</code>'s <code>sequence</code> and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited. The compiler already reuses the BDs of tasks it can prove finished, so a task group is not needed just to stay within the BD pool; use one to say when the sequence should wait.</p>
 <p>To facilitate this reconfiguration step, IRON introduces <code>TaskGroup</code>s, created with the <code>TaskGroup()</code> constructor as defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/runtime/taskgroup.py">taskgroup.py</a>.</p>
@@ -4143,26 +4226,26 @@ For example, you may choose to set <code>wait=False</code> on an input fill if y
 <p>If you suspect a race condition, the safest (but possibly slower) solution is to annotated <em>all</em> tasks (including inputs) with <code>wait=True</code>.</p>
 </blockquote>
 <p>The body in the code snippet below has two task groups. Each group is finished before the next iteration submits its transfers.
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">):</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>        <span class="n">tg</span> <span class="o">=</span> <span class="n">TaskGroup</span><span class="p">()</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>        <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">)</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>        <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>        <span class="n">tg</span><span class="o">.</span><span class="n">finish</span><span class="p">()</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span>
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>    <span class="n">sequence</span><span class="p">,</span>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>    <span class="p">[</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()],</span>
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">):</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>        <span class="n">tg</span> <span class="o">=</span> <span class="n">TaskGroup</span><span class="p">()</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>        <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">)</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>        <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>        <span class="n">tg</span><span class="o">.</span><span class="n">finish</span><span class="p">()</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>    <span class="n">sequence</span><span class="p">,</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>    <span class="p">[</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()],</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="p">)</span>
 </code></pre></div></p>
 <h3 id="pipelining-task-groups">Pipelining task groups<a class="headerlink" href="#pipelining-task-groups" title="Permanent link">&para;</a></h3>
 <p>A software pipeline starts the next step's transfers before finishing the
 previous step's. <code>TaskGroup.pipelined(n_steps, depth=2)</code> hands out one fresh
 group per step and finishes each group once the next <code>depth - 1</code> steps have
 been issued, so <code>depth</code> steps are in flight at a time:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">for</span> <span class="n">step</span><span class="p">,</span> <span class="n">tg</span> <span class="ow">in</span> <span class="n">TaskGroup</span><span class="o">.</span><span class="n">pipelined</span><span class="p">(</span><span class="n">n_steps</span><span class="p">):</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">tap</span><span class="o">=</span><span class="n">in_tiles</span><span class="p">[</span><span class="n">step</span><span class="p">],</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">)</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">tap</span><span class="o">=</span><span class="n">out_tiles</span><span class="p">[</span><span class="n">step</span><span class="p">],</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="k">for</span> <span class="n">step</span><span class="p">,</span> <span class="n">tg</span> <span class="ow">in</span> <span class="n">TaskGroup</span><span class="o">.</span><span class="n">pipelined</span><span class="p">(</span><span class="n">n_steps</span><span class="p">):</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">tap</span><span class="o">=</span><span class="n">in_tiles</span><span class="p">[</span><span class="n">step</span><span class="p">],</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">)</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">tap</span><span class="o">=</span><span class="n">out_tiles</span><span class="p">[</span><span class="n">step</span><span class="p">],</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 <p>The body is the same whether <code>n_steps</code> is a Python <code>int</code> or a dispatch-time
 value. With an <code>int</code> the steps unroll. With a dispatch-time value the loop
@@ -4177,10 +4260,10 @@ keeps four row blocks in flight this way.</p>
 <h3 id="control-flow-in-the-body">Control flow in the body<a class="headerlink" href="#control-flow-in-the-body" title="Permanent link">&para;</a></h3>
 <p><code>range_</code>, <code>if_</code> and <code>else_</code> from <code>aie.iron.controlflow</code> emit <code>scf</code> control
 flow in the body, for loops and branches on dispatch-time values:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="k">with</span> <span class="n">if_</span><span class="p">(</span><span class="n">n_ragged</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="k">as</span> <span class="n">branch</span><span class="p">:</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="o">...</span>
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="k">with</span> <span class="n">else_</span><span class="p">(</span><span class="n">branch</span><span class="p">):</span>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="o">...</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">with</span> <span class="n">if_</span><span class="p">(</span><span class="n">n_ragged</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="k">as</span> <span class="n">branch</span><span class="p">:</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>    <span class="o">...</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="k">with</span> <span class="n">else_</span><span class="p">(</span><span class="n">branch</span><span class="p">):</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>    <span class="o">...</span>
 </code></pre></div>
 <p><code>range_</code> can carry values from one iteration to the next: with <code>iter_args</code> it
 yields <code>(iv, args, results)</code>, where <code>args</code> holds the carried values the body
@@ -4210,18 +4293,18 @@ call that breaks one.</p>
 <p><code>DispatchTime</code> parameters must be keyword-only, even when defaulted or
 explicitly specialized. Prefer tensors first, then dispatch scalars, then
 compile-time configuration; group ordering is a convention, not a restriction:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">In</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>         <span class="n">count</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">DispatchTime</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]</span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
-<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>         <span class="n">tile_size</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    <span class="o">...</span>  <span class="c1"># Build the design.</span>
-<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>
-<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="n">copy</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>                        <span class="c1"># Dispatch with the default count=3.</span>
-<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="n">copy</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>               <span class="c1"># Same compiled design; a different dispatch.</span>
-<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="n">copy</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">3</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>    <span class="c1"># Compile with count fixed to 3.</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">In</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>         <span class="n">count</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">DispatchTime</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]</span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>         <span class="n">tile_size</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="o">...</span>  <span class="c1"># Build the design.</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="n">copy</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>                        <span class="c1"># Dispatch with the default count=3.</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="n">copy</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>               <span class="c1"># Same compiled design; a different dispatch.</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="n">copy</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">3</span><span class="p">)(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>    <span class="c1"># Compile with count fixed to 3.</span>
 </code></pre></div>
 <p>Inside the sequence body a dispatch scalar is an ordinary staged value: it can
 bound a <code>range_</code>, feed <code>if_</code>, be written to a worker's RTP buffer, and stand
@@ -4237,14 +4320,14 @@ how to check what it issues without an NPU.</p>
 <code>DispatchTime[T]</code>, or a typed NumPy constant for a specialized one. Forward each
 symbolic parameter exactly once as a direct <code>Runtime</code> argument, <strong>in any order</strong>.
 The callback receives the corresponding SSA values:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">design</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">bar</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">DispatchTime</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">],</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>           <span class="n">baz</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">DispatchTime</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]):</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">seq</span><span class="p">(</span><span class="n">baz_value</span><span class="p">,</span> <span class="n">bar_value</span><span class="p">):</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>        <span class="o">...</span>  <span class="c1"># baz_value corresponds to baz, bar_value to bar.</span>
-<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
-<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>    <span class="n">rt</span> <span class="o">=</span> <span class="n">iron</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">seq</span><span class="p">,</span> <span class="n">fn_args</span><span class="o">=</span><span class="p">[</span><span class="n">baz</span><span class="p">,</span> <span class="n">bar</span><span class="p">])</span>
-<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="o">...</span>  <span class="c1"># Build and resolve the Program with rt.</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">design</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">bar</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">DispatchTime</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">],</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>           <span class="n">baz</span><span class="p">:</span> <span class="n">iron</span><span class="o">.</span><span class="n">DispatchTime</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]):</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">seq</span><span class="p">(</span><span class="n">baz_value</span><span class="p">,</span> <span class="n">bar_value</span><span class="p">):</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>        <span class="o">...</span>  <span class="c1"># baz_value corresponds to baz, bar_value to bar.</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>    <span class="n">rt</span> <span class="o">=</span> <span class="n">iron</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">seq</span><span class="p">,</span> <span class="n">fn_args</span><span class="o">=</span><span class="p">[</span><span class="n">baz</span><span class="p">,</span> <span class="n">bar</span><span class="p">])</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>    <span class="o">...</span>  <span class="c1"># Build and resolve the Program with rt.</span>
 </code></pre></div>
 <p>Aliases preserve identity. Missing or duplicate bindings, bare scalar-type
 substitutes, and bindings to multiple sequences are rejected.</p>
@@ -4283,26 +4366,26 @@ such as runtime parameters and locks. <code>explain(words)</code> lists them and
 <code>compare(a, b)</code> returns their differences, empty when the streams are
 equivalent. <code>python -m aie.utils.txn_trace insts.bin [other.bin]</code> does the
 same for streams on disk.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.device</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_name</span>
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.utils.txn_trace</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare</span><span class="p">,</span> <span class="n">explain</span>
-<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
-<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"programming_examples/basic/matrix_multiplication/whole_array"</span><span class="p">)</span>
-<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">whole_array</span><span class="w"> </span><span class="kn">import</span> <span class="n">whole_array</span>
-<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>
-<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="n">iron</span><span class="o">.</span><span class="n">set_current_device</span><span class="p">(</span><span class="n">from_name</span><span class="p">(</span><span class="s2">"npu2"</span><span class="p">))</span>
-<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="n">tile</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">m</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">n_aie_cols</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="n">buffers</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
-<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a>    <span class="n">A</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">512</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">]],</span>
-<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>    <span class="n">B</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">]],</span>
-<a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a>    <span class="n">C</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">512</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]],</span>
-<a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a><span class="p">)</span>
-<a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="n">dyn</span> <span class="o">=</span> <span class="n">whole_array</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="o">**</span><span class="n">buffers</span><span class="p">,</span> <span class="o">**</span><span class="n">tile</span><span class="p">)</span>
-<a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="n">words</span> <span class="o">=</span> <span class="n">dyn</span><span class="o">.</span><span class="n">instructions</span><span class="p">(</span><span class="n">M</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">K</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">128</span><span class="p">)</span>
-<a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a><span class="nb">print</span><span class="p">(</span><span class="n">explain</span><span class="p">(</span><span class="n">words</span><span class="p">))</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.device</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_name</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.utils.txn_trace</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare</span><span class="p">,</span> <span class="n">explain</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"programming_examples/basic/matrix_multiplication/whole_array"</span><span class="p">)</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="kn">from</span><span class="w"> </span><span class="nn">whole_array</span><span class="w"> </span><span class="kn">import</span> <span class="n">whole_array</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="n">iron</span><span class="o">.</span><span class="n">set_current_device</span><span class="p">(</span><span class="n">from_name</span><span class="p">(</span><span class="s2">"npu2"</span><span class="p">))</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="n">tile</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">m</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">n_aie_cols</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="n">buffers</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>    <span class="n">A</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">512</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">]],</span>
+<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>    <span class="n">B</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">256</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">]],</span>
+<a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a>    <span class="n">C</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">512</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]],</span>
+<a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a><span class="p">)</span>
+<a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a><span class="n">dyn</span> <span class="o">=</span> <span class="n">whole_array</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="o">**</span><span class="n">buffers</span><span class="p">,</span> <span class="o">**</span><span class="n">tile</span><span class="p">)</span>
+<a id="__codelineno-19-19" name="__codelineno-19-19" href="#__codelineno-19-19"></a><span class="n">words</span> <span class="o">=</span> <span class="n">dyn</span><span class="o">.</span><span class="n">instructions</span><span class="p">(</span><span class="n">M</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">K</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">128</span><span class="p">)</span>
+<a id="__codelineno-19-20" name="__codelineno-19-20" href="#__codelineno-19-20"></a><span class="nb">print</span><span class="p">(</span><span class="n">explain</span><span class="p">(</span><span class="n">words</span><span class="p">))</span>
 </code></pre></div>
 <h2 id="exercises"><u>Exercises</u><a class="headerlink" href="#exercises" title="Permanent link">&para;</a></h2>
 <ol>

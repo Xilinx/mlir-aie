@@ -2938,34 +2938,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../skills/aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../skills/aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -3022,6 +2994,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../skills/aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -3029,7 +3029,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -3057,7 +3057,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -3085,7 +3085,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3805,6 +3805,8 @@
       
         
       
+        
+      
     
     
     
@@ -3893,6 +3895,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -4535,6 +4565,9 @@ selects its source and MMUL geometry when it is created.</p>
 (<code>_MM_MAC_DIMS</code>).  Combined with the cross-compile pattern above, the
 same generator file produces a correct binary for each arch without
 ever editing the source.</p>
+<p><code>kernels.cascade_mm(...)</code>'s kernel is <strong>scalar</strong> on both AIE2 and AIE2P, so its
+<code>.mac_dims</code> are always <code>(1, 1, 1)</code> and its L2→L1 buffers must stay plain row-major —
+feeding it a tiled layout produces silently wrong output, not an error.</p>
 <h2 id="iron-cache-location">IRON Cache Location<a class="headerlink" href="#iron-cache-location" title="Permanent link">&para;</a></h2>
 <p>The IRON jit feature caches compiled objects in a directory defined by <code>NPU_CACHE_HOME</code>. By default this value is the user's home directory.</p>
 <h2 id="aiecc-executable-override-aiecc_path">aiecc Executable Override (<code>AIECC_PATH</code>)<a class="headerlink" href="#aiecc-executable-override-aiecc_path" title="Permanent link">&para;</a></h2>

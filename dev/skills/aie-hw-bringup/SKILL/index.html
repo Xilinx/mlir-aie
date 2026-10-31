@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/skills/aie-hw-bringup/SKILL/">
       
       
-        <link rel="prev" href="../../aie-dataflow-presim/SKILL/">
+        <link rel="prev" href="../../aie-iron-design/SKILL/">
       
       
         <link rel="next" href="../../aie-kernel-opt/SKILL/">
@@ -29,7 +29,7 @@
     
     
       
-        <title>Phase 3: HW Bring-up - IRON / MLIR-AIE</title>
+        <title>Phase 4: HW Bring-up - IRON / MLIR-AIE</title>
       
     
     
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Phase 3: HW Bring-up
+              Phase 4: HW Bring-up
             
           </span>
         </div>
@@ -2504,34 +2504,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2585,6 +2557,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../../aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -2604,7 +2604,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2622,7 +2622,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2692,10 +2692,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#checklist-before-moving-to-optimization-aie-kernel-opt--aie-dataflow-opt" class="md-nav__link">
+  <a href="#checklist-before-moving-to-phase-5-optimization-aie-kernel-opt--aie-dataflow-opt" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Checklist before moving to optimization (aie-kernel-opt / aie-dataflow-opt)
+        Checklist before moving to phase 5, optimization (aie-kernel-opt / aie-dataflow-opt)
       
     </span>
   </a>
@@ -2725,7 +2725,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2753,7 +2753,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3473,6 +3473,8 @@
       
         
       
+        
+      
     
     
     
@@ -3561,6 +3563,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -3708,10 +3738,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#checklist-before-moving-to-optimization-aie-kernel-opt--aie-dataflow-opt" class="md-nav__link">
+  <a href="#checklist-before-moving-to-phase-5-optimization-aie-kernel-opt--aie-dataflow-opt" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Checklist before moving to optimization (aie-kernel-opt / aie-dataflow-opt)
+        Checklist before moving to phase 5, optimization (aie-kernel-opt / aie-dataflow-opt)
       
     </span>
   </a>
@@ -3792,10 +3822,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 <h1 id="hardware-bring-up-against-a-reference-the-minimal-functional-version-phase">Hardware bring-up against a reference (the "minimal functional version" phase)<a class="headerlink" href="#hardware-bring-up-against-a-reference-the-minimal-functional-version-phase" title="Permanent link">&para;</a></h1>
-<p>Third of four porting phases (see <code>aie-model-baseline</code> for the oracle this
-phase compares against, <code>aie-dataflow-presim</code> for the simulation that
-should already have caught topology/deadlock bugs before this phase
-starts, <code>aie-kernel-opt</code>/<code>aie-dataflow-opt</code> for optimization afterward).</p>
+<p>Fourth of five porting phases (see <code>aie-model-baseline</code> for phase 1, the
+oracle this phase compares against; <code>aie-dataflow-presim</code> for phase 2, the
+simulation that should already have caught topology/deadlock bugs before
+this phase starts; <code>aie-iron-design</code> for phase 3, the design being brought
+up; <code>aie-kernel-opt</code>/<code>aie-dataflow-opt</code> for phase 5, optimization
+afterward).</p>
 <p>Simulation catches deadlocks and math bugs cheaply, but it can't catch
 everything — real hardware has memory budgets, real DMA timing, and real
 toolchain behavior that a mock doesn't model. This phase is about finding
@@ -3877,7 +3909,7 @@ squeezing the existing kernel by shrinking precision or unrolling less.
 Precision/unroll cuts trade away exactly the correctness or performance
 this phase is trying to establish; a tile split is a dataflow decision
 that doesn't cost either.</p>
-<h2 id="checklist-before-moving-to-optimization-aie-kernel-opt--aie-dataflow-opt">Checklist before moving to optimization (<code>aie-kernel-opt</code> / <code>aie-dataflow-opt</code>)<a class="headerlink" href="#checklist-before-moving-to-optimization-aie-kernel-opt--aie-dataflow-opt" title="Permanent link">&para;</a></h2>
+<h2 id="checklist-before-moving-to-phase-5-optimization-aie-kernel-opt--aie-dataflow-opt">Checklist before moving to phase 5, optimization (<code>aie-kernel-opt</code> / <code>aie-dataflow-opt</code>)<a class="headerlink" href="#checklist-before-moving-to-phase-5-optimization-aie-kernel-opt--aie-dataflow-opt" title="Permanent link">&para;</a></h2>
 <ul>
 <li>[ ] Every block/layer brought up and validated bit-exact on real
       hardware, incrementally, not all at once</li>
@@ -3933,7 +3965,7 @@ that doesn't cost either.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../../aie-dataflow-presim/SKILL/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Phase 2: Dataflow Pre-Sim">
+          <a href="../../aie-iron-design/SKILL/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Phase 3: IRON Design">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3943,20 +3975,20 @@ that doesn't cost either.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Phase 2: Dataflow Pre-Sim
+                Phase 3: IRON Design
               </div>
             </div>
           </a>
         
         
           
-          <a href="../../aie-kernel-opt/SKILL/" class="md-footer__link md-footer__link--next" aria-label="Next: Phase 4: Kernel Optimization">
+          <a href="../../aie-kernel-opt/SKILL/" class="md-footer__link md-footer__link--next" aria-label="Next: Phase 5: Kernel Optimization">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Phase 4: Kernel Optimization
+                Phase 5: Kernel Optimization
               </div>
             </div>
             <div class="md-footer__button md-icon">

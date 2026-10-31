@@ -18,7 +18,7 @@
         <link rel="prev" href="agentic_programming/">
       
       
-        <link rel="next" href="aie-code-creator/SKILL/">
+        <link rel="next" href="aie-model-baseline/SKILL/">
       
       
         
@@ -2504,34 +2504,6 @@
   
   
     <li class="md-nav__item">
-      <a href="aie-code-creator/SKILL/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Phase 0: Write the Design
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="aie-model-baseline/SKILL/" class="md-nav__link">
         
   
@@ -2588,6 +2560,34 @@
   
   
     <li class="md-nav__item">
+      <a href="aie-iron-design/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: IRON Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
@@ -2595,7 +2595,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 3: HW Bring-up
+    Phase 4: HW Bring-up
   
 
     
@@ -2623,7 +2623,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Kernel Optimization
+    Phase 5: Kernel Optimization
   
 
     
@@ -2651,7 +2651,7 @@
   <span class="md-ellipsis">
     
   
-    Phase 4: Dataflow Optimization
+    Phase 5: Dataflow Optimization
   
 
     
@@ -3371,6 +3371,8 @@
       
         
       
+        
+      
     
     
     
@@ -3459,6 +3461,34 @@
     
   
     Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://xilinx.github.io/mlir-aie/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintainer Dashboard
   
 
     
@@ -3694,19 +3724,23 @@ each skill below covers one:</p>
 </tr>
 <tr>
 <td><a href="aie-dataflow-presim/SKILL/"><code>aie-dataflow-presim</code></a></td>
-<td>Phase 2 — validating an IRON dataflow design in software before hardware: a threaded ObjectFifo mock for deadlock/depth bugs, bit-exact validation against the oracle, probing novel mechanisms in isolation, and capacity/regime modeling.</td>
+<td>Phase 2 — planning the dataflow in software before hardware or IRON: a threaded ObjectFifo mock for deadlock/depth bugs, bit-exact validation against the oracle, probing novel mechanisms in isolation, and capacity/regime modeling.</td>
+</tr>
+<tr>
+<td><a href="aie-iron-design/SKILL/"><code>aie-iron-design</code></a></td>
+<td>Phase 3 — writing the design: an IRON Python design (tiles, ObjectFifos, Workers, Runtime) and the C++ AIE kernels it calls, library-first — checking <code>aie.iron.kernels</code> and <code>aie.iron.algorithms</code> before writing kernel code by hand. Also the direct entry point for work that isn't a full model port (one kernel, or a small design), where phases 1-2 shrink to knowing what to compute.</td>
 </tr>
 <tr>
 <td><a href="aie-hw-bringup/SKILL/"><code>aie-hw-bringup</code></a></td>
-<td>Phase 3 — bringing up a design on real hardware for the first time: sequential block-by-block bring-up against the reference, methodical bisection, and memory-budget tile splits.</td>
+<td>Phase 4 — bringing up a design on real hardware for the first time: sequential block-by-block bring-up against the reference, methodical bisection, and memory-budget tile splits.</td>
 </tr>
 <tr>
 <td><a href="aie-kernel-opt/SKILL/"><code>aie-kernel-opt</code></a></td>
-<td>Phase 4 (micro) — making one Peano-compiled kernel faster: the remarks report and its base-arm diff, a mutation-proven gate, a back-to-back traced A/B on the NPU, the levers that measured faster and the Peano traps.</td>
+<td>Phase 5 (micro) — making one Peano-compiled kernel faster: the remarks report and its base-arm diff, a mutation-proven gate, a back-to-back traced A/B on the NPU, the levers that measured faster and the Peano traps.</td>
 </tr>
 <tr>
 <td><a href="aie-dataflow-opt/SKILL/"><code>aie-dataflow-opt</code></a></td>
-<td>Phase 4 (macro) — optimizing the dataflow around already-correct kernels: NOOP-ablation-driven prioritization, regime-aware placement/overlays, and DMA bandwidth/compression modeling.</td>
+<td>Phase 5 (macro) — optimizing the dataflow around already-correct kernels: NOOP-ablation-driven prioritization, regime-aware placement/overlays, and DMA bandwidth/compression modeling.</td>
 </tr>
 </tbody>
 </table>
@@ -3793,13 +3827,13 @@ it directly, or point your agent's instructions file at the relevant skill.</p>
         
         
           
-          <a href="aie-code-creator/SKILL/" class="md-footer__link md-footer__link--next" aria-label="Next: Phase 0: Write the Design">
+          <a href="aie-model-baseline/SKILL/" class="md-footer__link md-footer__link--next" aria-label="Next: Phase 1: Model Baseline">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Phase 0: Write the Design
+                Phase 1: Model Baseline
               </div>
             </div>
             <div class="md-footer__button md-icon">
