@@ -243,8 +243,9 @@ def ConsumedByAttr : AttrDef<AIE_Dialect, "ConsumedBy", []> {
     `--aie-objectfifo-allocate`, its `aie.shim_dma_allocation` after.
     `--aie-objectfifo-verify` records one where the design proves that, once
     the host has received `R` bytes through `output` since the array was
-    loaded, the first `R * input_bytes / output_bytes` bytes this input sent
-    have all been consumed, so the transfers that sent them have finished.
+    loaded, the input's first `R * input_bytes / output_bytes` bytes have left
+    the shim, taken by the tile they went to, so the transfers that sent them
+    have finished.
     `--aie-assign-runtime-sequence-bd-ids` credits that completion when an
     await retires a transfer on `output`.
 

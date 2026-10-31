@@ -199,11 +199,12 @@ module @window_across_passes {
 
 // -----
 
-// The input feeds one core and the output comes from another: nothing ties
-// the output's progress to the input.
+// The input feeds one core and the output comes from another, which takes
+// the first core's output ahead of each of its own releases, as the first
+// takes the input ahead of each of its: the chain ties them one to one.
 
 // CHECK-LABEL: module @other_core
-// CHECK-NOT: consumed_by
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
 module @other_core {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -243,11 +244,12 @@ module @other_core {
 
 // -----
 
-// A broadcast input reaches two cores; only one of them produces the output,
-// so the other may still be taking its copy.
+// A broadcast input reaches two cores, and only one of them produces the
+// output. A byte that core has taken has left the shim, which is all the BD
+// ids need, whatever the other core does with its copy.
 
 // CHECK-LABEL: module @broadcast
-// CHECK-NOT: consumed_by
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
 module @broadcast {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -507,6 +509,242 @@ module @take_in_unknown_loop {
         }
         %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
         aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A memtile splits each object between two cores. A segment is released once
+// written, so a core taking the first segment of an object knows only that
+// segment arrived; one taking the last knows the whole object did, so only
+// its output proves the input, two bytes for each it receives.
+
+// CHECK-LABEL: module @split
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @outb_cons_dma, input_bytes = 2, output_bytes = 1>], fifoName = "in"}
+module @split {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %mem = aie.tile(0, 1)
+    %core2 = aie.tile(0, 2)
+    %core3 = aie.tile(0, 3)
+    aie.objectfifo @in(%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo @a(%mem, {%core2}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @b(%mem, {%core3}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@in] -> [@a, @b] ([] [0, 32])
+    aie.objectfifo @outa(%core2, {%shim}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @outb(%core3, {%shim}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.core(%core2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @a(Consume, 1) : memref<32xi32>
+        %o = aie.objectfifo.acquire @outa(Produce, 1) : memref<32xi32>
+        aie.objectfifo.release @a(Consume, 1)
+        aie.objectfifo.release @outa(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%core3) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @b(Consume, 1) : memref<32xi32>
+        %o = aie.objectfifo.acquire @outb(Produce, 1) : memref<32xi32>
+        aie.objectfifo.release @b(Consume, 1)
+        aie.objectfifo.release @outb(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// A memtile joins two cores' objects into one. Once the shim has received part
+// of an object, the memtile has the first segment of it, so the core filling
+// that segment has taken its input; the second core's input stays unproven.
+
+// CHECK-LABEL: module @join
+// CHECK: aie.route_endpoint @ina_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 2>], fifoName = "ina"}
+// CHECK: aie.route_endpoint @inb_prod_dma({{.*}}) DMA {fifoName = "inb"}
+module @join {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %mem = aie.tile(0, 1)
+    %core2 = aie.tile(0, 2)
+    %core3 = aie.tile(0, 3)
+    aie.objectfifo @ina(%shim, {%core2}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @inb(%shim, {%core3}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @a(%core2, {%mem}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @b(%core3, {%mem}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @out(%mem, {%shim}, 2 : i32) : !aie.objectfifo<memref<64xi32>>
+    aie.objectfifo.link [@a, @b] -> [@out] ([0, 32] [])
+    aie.core(%core2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @ina(Consume, 1) : memref<32xi32>
+        %o = aie.objectfifo.acquire @a(Produce, 1) : memref<32xi32>
+        aie.objectfifo.release @ina(Consume, 1)
+        aie.objectfifo.release @a(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%core3) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @inb(Consume, 1) : memref<32xi32>
+        %o = aie.objectfifo.acquire @b(Produce, 1) : memref<32xi32>
+        aie.objectfifo.release @inb(Consume, 1)
+        aie.objectfifo.release @b(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// As @other_core, with objects halving at the first core: the output proves
+// the input two bytes for each it receives.
+
+// CHECK-LABEL: module @two_cores
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 2, output_bytes = 1>], fifoName = "in"}
+module @two_cores {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core2 = aie.tile(0, 2)
+    %core3 = aie.tile(0, 3)
+    aie.objectfifo @in(%shim, {%core2}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo @mid(%core2, {%core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core3, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core2) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<32xi32>
+        %m = aie.objectfifo.acquire @mid(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @mid(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.core(%core3) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %m = aie.objectfifo.acquire @mid(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @mid(Consume, 1)
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// The core's accesses sit in two loops whose trip counts are runtime words.
+// Each loop's pass takes ahead of each release, one input per output in the
+// first and two in the second, so whatever the counts the core has taken at
+// least one input for every output.
+
+// CHECK-LABEL: module @sibling_loops
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+module @sibling_loops {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<2xi32>
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %n = memref.load %rtp[%c0] : memref<2xi32>
+        %rows = arith.index_cast %n : i32 to index
+        %k = memref.load %rtp[%c1] : memref<2xi32>
+        %more = arith.index_cast %k : i32 to index
+        scf.for %r = %c0 to %rows step %c1 {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        scf.for %r = %c0 to %more step %c1 {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+          %j = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// As above, but the second loop releases its output before taking its input,
+// so an output's arrival proves nothing about the input.
+
+// CHECK-LABEL: module @sibling_loops_release_first
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {fifoName = "in"}
+module @sibling_loops_release_first {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<2xi32>
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %n = memref.load %rtp[%c0] : memref<2xi32>
+        %rows = arith.index_cast %n : i32 to index
+        %k = memref.load %rtp[%c1] : memref<2xi32>
+        %more = arith.index_cast %k : i32 to index
+        scf.for %r = %c0 to %rows step %c1 {
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        scf.for %r = %c0 to %more step %c1 {
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+          aie.objectfifo.release @out(Produce, 1)
+          %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+          aie.objectfifo.release @in(Consume, 1)
+        }
         scf.yield
       }
       aie.end
