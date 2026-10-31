@@ -10,6 +10,7 @@ import contextlib
 import functools
 import inspect
 import itertools
+import linecache
 import os
 import sys
 from pathlib import Path
@@ -180,8 +181,16 @@ class SourceSite:
             return None
         # The element of a returned tuple the object is, if it is one.
         index = None
-        for site in ((self.filename, self.line, self.col),) + self.returned_to:
-            binding = _binding(*site)
+        for filename, line, col in (
+            (self.filename, self.line, self.col),
+        ) + self.returned_to:
+            # A design edited and rerun in one process is read afresh.
+            try:
+                stat = os.stat(filename)
+                stamp = (stat.st_size, stat.st_mtime_ns)
+            except OSError:
+                stamp = None
+            binding = _binding(filename, line, col, stamp)
             if binding is None:
                 return None
             kind, element, names = binding
@@ -233,17 +242,23 @@ def _target_name(target: ast.AST) -> str | None:
 # Parsed rather than read from bytecode: how a list, comprehension or
 # conditional element reaches its store differs between Python versions.
 @functools.lru_cache(maxsize=64)
-def _statements(filename: str) -> tuple:
+def _statements(filename: str, stamp: tuple[int, int] | None) -> tuple:
     """Each assignment and return of a value in `filename`.
 
-    Entries are (kind, target names, value, unpacks): kind "assign" or
-    "return", and whether the statement takes a tuple apart element by
-    element, as `a, b = X(), Y()` and `return X(), offsets` do.
+    Args:
+        filename: A source file, or a cell IPython registered in `linecache`.
+        stamp: The file's size and modification time, so an edited file
+            misses the cache; None when it has none.
+
+    Returns:
+        Entries (kind, target names, value, unpacks): kind "assign" or
+        "return", and whether the statement takes a tuple apart element by
+        element, as `a, b = X(), Y()` and `return X(), offsets` do.
     """
+    linecache.checkcache(filename)
     try:
-        with open(filename) as f:
-            tree = ast.parse(f.read(), filename)
-    except (OSError, SyntaxError, ValueError):
+        tree = ast.parse("".join(linecache.getlines(filename)), filename)
+    except (SyntaxError, ValueError):
         return ()
     found = []
     for node in ast.walk(tree):
@@ -314,8 +329,17 @@ def _element(value: ast.expr, line: int, col: int) -> ast.expr | None:
 
 
 @functools.lru_cache(maxsize=4096)
-def _binding(filename: str, line: int, col: int) -> tuple | None:
+def _binding(
+    filename: str, line: int, col: int, stamp: tuple[int, int] | None
+) -> tuple | None:
     """How the statement at a call site binds the call's result.
+
+    Args:
+        filename: The call site's file.
+        line: Its line.
+        col: Its column, 0 when unknown.
+        stamp: The file's size and modification time, as `_statements`
+            takes it.
 
     Returns:
         (kind, element, names): `kind` is "assign" or "return"; `element` is
@@ -324,7 +348,7 @@ def _binding(filename: str, line: int, col: int) -> tuple | None:
         targets. None when the call's result is not the statement's value
         or an element of it, e.g. an argument to another call.
     """
-    for kind, names, value, unpacks in _statements(filename):
+    for kind, names, value, unpacks in _statements(filename, stamp):
         if not _contains(value, line, col):
             continue
         element = None

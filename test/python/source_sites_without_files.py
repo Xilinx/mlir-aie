@@ -6,6 +6,8 @@
 # A design run from a string or an IPython cell is located in that code, not at
 # the statement that ran it.
 
+from IPython.core.interactiveshell import InteractiveShell
+
 from aie.ir import CallSiteLoc
 
 DESIGN = """\
@@ -57,3 +59,13 @@ sites = fifo_sites(scope["module"])
 assert sorted(sites) == ["of0", "of1"], sites
 assert sites["of0"] == ("<string>", ACT_IN_LINE), sites
 print("PASS: exec of a string")
+
+# IPython keeps each cell's source in linecache, so its variables name the fifos.
+shell = InteractiveShell.instance()
+result = shell.run_cell(DESIGN)
+assert result.success, result.error_in_exec
+sites = fifo_sites(shell.user_ns["module"])
+assert sorted(sites) == ["act_in", "act_out"], sites
+filename, line = sites["act_in"]
+assert filename.startswith("<ipython-input-") and line == ACT_IN_LINE, sites
+print("PASS: IPython cell")
