@@ -307,7 +307,10 @@ class In(_Operand):
             the logical ``(..., M, K)`` (``logical_shape``, ``logical_dtype``),
             which inference, drawing and a reference see; ``shape``,
             ``dtype`` and ``obj_shape`` are what moves, ``(..., M, R)`` uint8,
-            an ``obj_shape`` of whole rows mapped to their records.
+            an ``obj_shape`` of whole rows mapped to their records. Only an
+            ``Operator`` declares it, and its caller uploads the rows
+            ``aie.utils.coded.encode_rows`` writes; a generator's tensor
+            parameters take their types from the call's tensors and cannot.
         capacity: The exceptions a coded row holds, or a ``param()``.
 
     Raises:
