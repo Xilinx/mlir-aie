@@ -198,9 +198,11 @@ class SourceSite:
         # The element of a returned tuple the object is, if it is one.
         index = None
         sites = ((self.filename, self.line, self.col),) + self.returned_to
+        callees = self.callees or (None,) * len(sites)
         # Only the declaring call's end is known.
-        for (filename, line, col), callee, end in itertools.zip_longest(
-            sites, self.callees, [self.end], fillvalue=None
+        ends = [self.end] + [(0, 0)] * len(self.returned_to)
+        for (filename, line, col), callee, end in zip(
+            sites, callees, ends, strict=True
         ):
             # A design edited and rerun in one process is read afresh.
             try:
@@ -208,7 +210,7 @@ class SourceSite:
                 stamp = (stat.st_size, stat.st_mtime_ns)
             except OSError:
                 stamp = None
-            binding = _binding(filename, line, col, stamp, callee, end or (0, 0))
+            binding = _binding(filename, line, col, stamp, callee, end)
             if binding is None:
                 return None
             kind, element, names = binding
