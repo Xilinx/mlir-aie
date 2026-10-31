@@ -98,6 +98,10 @@ The full per-arch table lives in
 same generator file produces a correct binary for each arch without
 ever editing the source.
 
+`kernels.cascade_mm(...)`'s kernel is **scalar** on both AIE2 and AIE2P, so its
+`.mac_dims` are always `(1, 1, 1)` and its L2→L1 buffers must stay plain row-major —
+feeding it a tiled layout produces silently wrong output, not an error.
+
 ## IRON Cache Location
 
 The IRON jit feature caches compiled objects in a directory defined by ```NPU_CACHE_HOME```. By default this value is the user's home directory.

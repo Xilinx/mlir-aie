@@ -3,7 +3,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 # Getting Started: SAXPY
 
-This example implements a SAXPY kernel, which given single-precision (i.e. `bfloat16`) inputs `a`, `X` and `Y` performs the $Z = a*X + Y$ operation. In this design `X` and `Y` are `4096` element-wide tensors, and `a` is a scalar with set value `3`. A single AI Engine core is used to compute the kernel.
+This example implements a SAXPY kernel, which given `bfloat16` inputs `a`, `X` and `Y` performs the $Z = a*X + Y$ operation. In this design `X` and `Y` are `4096` element-wide tensors, and `a` is a scalar with set value `3`. A single AI Engine core is used to compute the kernel.
 
 ## Overview
 

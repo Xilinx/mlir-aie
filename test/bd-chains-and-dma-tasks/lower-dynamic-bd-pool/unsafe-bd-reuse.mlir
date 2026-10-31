@@ -8,6 +8,15 @@
 // RUN:         --verify-diagnostics --split-input-file %s
 // RUN: sed '/expected-/d' %s | aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=false' \
 // RUN:         --verify-diagnostics --split-input-file
+// RUN: aie-opt --aie-lower-dynamic-bd-pool='warn-unsafe-bd-reuse=true' \
+// RUN:         --split-input-file %s -o /dev/null 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=NO-OP-PRINT
+
+// The warning carries no "see current operation" note: printing the free for
+// one verifies the whole device, once per warning.
+// NO-OP-PRINT-NOT: see current operation
+// NO-OP-PRINT:     warning: frees a task on tile
+// NO-OP-PRINT-NOT: see current operation
 
 // aiex.dma_free_task returns a buffer descriptor id to the runtime pool with
 // no completion guarantee, and the pool is free to hand that id straight back

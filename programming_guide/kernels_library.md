@@ -98,6 +98,39 @@ Call it on the last K tile of a reduction whose length is not a multiple of
 `dim_k`: the matmul after it sums only the first `k_valid` of the tile's K,
 whatever the rest of the tile holds.
 
+## Kernel signatures worth checking before you wire one up
+
+The `ExternalFunction` a factory returns carries a concrete `arg_types` list, and a mismatch
+fails at MLIR verification with an argument-count error rather than at runtime. Three that
+surprise people:
+
+* **`kernels.scale`** is `(in_tile, out_tile, factor, n)` where `factor` is a **1-element
+  buffer** (`np.ndarray[(1,), np.dtype[np.int32]]`), not a plain Python scalar. Feed it from a
+  small `depth=1` ObjectFifo or a `Buffer` — the upside is the factor becomes settable per
+  launch without a rebuild.
+* **`kernels.add` / `kernels.mul`** on bf16 are bare `(in..., out)` with no trailing size. The
+  `aie.iron.algorithms` templates (`transform_parallel`, `transform_parallel_binary`, ...) append
+  `tile_size` as a trailing argument by default (`pass_size_to_kernel=True`); pass
+  `pass_size_to_kernel=False` for these two. `kernels.passthrough` and most other factories *do*
+  take a trailing size and want the default `True`.
+* **The int8 `kernels.add`** ends with three `int32` shifts,
+  `(a, b, out, a_shift, b_shift, out_shift)`. `transform_binary` and
+  `transform_parallel_binary` take no `*params`, so they can't call it: build the
+  `ObjectFifo`/`Worker`/`Runtime` design by hand and pass the shifts as Python ints in the core
+  body, `add_k(a, b, c, 0, 0, 0)`. All-zero shifts give a plain saturating int8 add.
+
+When in doubt, ask the kernel. `arg_types` is a **method**, not a property — call it:
+
+```python
+>>> kernels.scale(1024, np.int32).arg_types()
+[ndarray[(1024,), int32], ndarray[(1024,), int32], ndarray[(1,), int32], numpy.int32]
+```
+
+Unsupported dtypes fail loudly at construction rather than producing a wrong kernel, e.g.
+`kernels.mul(tile_size=1024, dtype=np.int8)` raises
+`ValueError: mul() dtype must be bfloat16 ... Only the bf16 variant is available in the
+installed aie_kernels`. That's your signal to hand-write the kernel.
+
 ## Shared-buffer factory kwargs
 
 Some convolution factories accept an opt-in kwarg that decouples the

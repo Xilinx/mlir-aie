@@ -53,9 +53,11 @@ to make sure it isn't already listed.
    Fill in the description and checklist, and link the related issue with
    `Fixes #123`.
 6. **Get CI green and work with your reviewer.** CI runs builds, tests, linting,
-   and type checks. A maintainer reviews once it passes; push follow-up commits
-   to the same branch to address feedback. We'll let you know once your change
-   is merged.
+   and type checks. If a check fails in code you didn't touch, the
+   [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=ci)
+   shows whether it is failing on `main` too. A maintainer reviews once it
+   passes; push follow-up commits to the same branch to address feedback.
+   We'll let you know once your change is merged.
 
 Small, self-contained PRs with a clear description are the easiest to review and
 the fastest to merge.
@@ -87,7 +89,7 @@ pre-commit run --all-files
 The hooks cover:
 
 - **C++ and TableGen (`*.td`)** — [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html)
-  (LLVM style; config in `.clang-format`). The hook pins clang-format 23.1.1,
+  (LLVM style; config in `.clang-format`). The hook pins clang-format 23.1.3,
   which is what CI runs; a system `clang-format` of another version can
   format the same file differently.
 - **Python and notebooks** — [`black`](https://black.readthedocs.io/) for
@@ -143,8 +145,8 @@ exception won't pass review.
 
 C++ is checked with [clang-tidy](https://clang.llvm.org/extra/clang-tidy/)
 (config in `.clang-tidy`), scoped to an explicit, growing list of files
-rather than the whole repo at once — currently just
-`lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp`. Unlike
+rather than the whole repo at once: the clang-tidy hook's `files:` pattern
+in `.pre-commit-config.yaml`, kept in sync with `lintAndFormat.yml`. Unlike
 clang-format, clang-tidy needs a real compile database
 (`compile_commands.json`) and the tablegen'd headers a file includes to parse
 anything, so it can't run as a bare per-file text check the way the
@@ -163,8 +165,8 @@ export MLIR_AIE_BUILD_DIR=/path/to/build
 ```
 
 The pre-push hook then runs it automatically on enabled files you've
-touched, via `utils/run_clang_tidy.sh` — a pinned `clang-tidy==20.1.0`
-(matching clang-format's pinned version, via `python/requirements_dev.txt`)
+touched, via `utils/run_clang_tidy.sh` — a pinned `clang-tidy==22.1.8`
+(via `python/requirements_dev.txt`)
 rather than a bare `apt install clang-tidy`, so the version doesn't silently
 drift between your machine and CI. If there's no compile database yet, the
 hook fails with the setup hint above instead of silently skipping. To run it

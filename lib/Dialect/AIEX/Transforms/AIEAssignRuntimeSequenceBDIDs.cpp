@@ -611,8 +611,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (knownComplete.contains(released.configure) ||
         pollProven.contains(released.configure))
       return;
+    // Not bd->emitWarning(): its "see current operation" note verifies and
+    // numbers the whole device for each warning, quadratic in the sequence.
     auto diag =
-        bd->emitWarning()
+        mlir::emitWarning(bd.getLoc())
         << "reuses buffer descriptor ID " << id << " on tile (" << tile.getCol()
         << "," << tile.getRow()
         << ") after it was released by an aiex.dma_free_task that had no "

@@ -11,9 +11,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # Pre-hardware dataflow simulation (the "brainstorm without the NPU" phase)
 
-Second of four porting phases (see `aie-model-baseline` for phase 1, the
-numeric oracle this phase validates against; `aie-hw-bringup` for phase 3;
-`aie-kernel-opt`/`aie-dataflow-opt` for optimization once it's correct).
+Second of five porting phases (see `aie-model-baseline` for phase 1, the
+numeric oracle this phase validates against; `aie-iron-design` for phase 3,
+which realizes the dataflow plan this phase proves in software;
+`aie-hw-bringup` for phase 4; `aie-kernel-opt`/`aie-dataflow-opt` for
+phase 5, optimization once it's correct).
 
 The point of this phase: a deadlock, a wrong FIFO depth, or a math error in
 a new design is cheap to find in a Python simulation that runs in seconds
@@ -24,10 +26,11 @@ information volunteered. Do the cheap thing first.
 ## 1. Build a software mock of the ObjectFifo/Worker API, and simulate the exact topology
 
 A useful mock doesn't need to model timing accurately — it needs to model
-**the same synchronization semantics** your real design uses: bounded
-queues per ObjectFifo with the depth you've declared, acquire/release
-paired the way your kernels pair them, and a timeout on every blocking
-operation so a deadlock fails fast (in seconds) instead of hanging forever.
+**the same synchronization semantics** the planned topology will use in
+IRON: bounded queues per ObjectFifo with the depth you've declared,
+acquire/release paired the way your kernels pair them, and a timeout on
+every blocking operation so a deadlock fails fast (in seconds) instead of
+hanging forever.
 A thread per tile/worker plus Python's `threading.Condition` per FIFO is
 enough to build this once, model-agnostically, and reuse it for every
 future design.
@@ -56,14 +59,15 @@ against silently reintroducing a bug while working on something else.
 
 ## 3. De-risk a genuinely novel mechanism with a tiny isolated probe first
 
-If part of the design does something you haven't built before — a new
+If part of the plan does something you haven't built before — a new
 attention decomposition, a new streaming/broadcast pattern, a new way of
 appending to a growing buffer — don't discover whether it works by wiring
-it into the full design. Write the smallest possible standalone IRON
-program that exercises just that mechanism, confirm it does what you think
-it does, and only then integrate it. A probe that fails is a cheap,
-isolated failure; the same bug discovered inside the full design is buried
-under everything else that's also new.
+it into the full IRON design `aie-iron-design` will build. Write the
+smallest possible standalone IRON program that exercises just that
+mechanism, confirm it does what you think it does, and only then fold it
+into the plan. A probe that fails is a cheap, isolated failure; the same
+bug discovered inside the full design is buried under everything else
+that's also new.
 
 ## 4. Prove novel algorithmic decompositions are mathematically equivalent before realizing them in IRON
 
@@ -93,7 +97,7 @@ If the workload has more than one regime (e.g. a compute-bound prefill
 pass and a bandwidth-bound decode pass in an autoregressive model), model
 each separately — a single average cost model will mask both.
 
-## Checklist before moving to phase 3 (`aie-hw-bringup`)
+## Checklist before moving to phase 3 (`aie-iron-design`)
 
 - [ ] Every block/layer simulated bit-exact against the phase-1 oracle,
       individually before chaining

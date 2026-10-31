@@ -159,6 +159,7 @@ def record(
     full_elf_kernel=None,
     digests: dict[str, str] | None = None,
     full_elf_init_entry: bool = False,
+    entries: tuple[str, ...] = (),
 ) -> None:
     """Record the inputs this build consumed, if they can be known exactly.
 
@@ -193,6 +194,7 @@ def record(
             dispatch_library=dispatch_library,
             full_elf_kernel=full_elf_kernel,
             full_elf_init_entry=full_elf_init_entry,
+            entries=entries,
         )
         return
 
@@ -223,6 +225,7 @@ def record(
                 dispatch_library=dispatch_library,
                 full_elf_kernel=full_elf_kernel,
                 full_elf_init_entry=full_elf_init_entry,
+                entries=entries,
             )
             return
 
@@ -253,6 +256,7 @@ def record(
         full_elf_kernel=full_elf_kernel,
         full_elf_init_entry=full_elf_init_entry,
         digests=digests,
+        entries=entries,
     )
 
 
@@ -264,11 +268,12 @@ def _write(
     full_elf_kernel: str | None = None,
     full_elf_init_entry: bool = False,
     digests: dict[str, str] | None = None,
+    entries: tuple[str, ...] = (),
 ) -> None:
-    entries: list[dict] = []
+    recorded: list[dict] = []
     for path, st in inputs.items():
         try:
-            entries.append(_entry(path, st, digests))
+            recorded.append(_entry(path, st, digests))
         except OSError:
             # Unverifiable, but not uncacheable: mark it incomplete rather than
             # writing nothing and costing the entry on every later lookup.
@@ -276,15 +281,17 @@ def _write(
                 "cache manifest: %s unreadable; recording an incomplete manifest",
                 path,
             )
-            entries, complete = [], False
+            recorded, complete = [], False
             break
-    payload = {"version": _VERSION, "complete": complete, "inputs": entries}
+    payload = {"version": _VERSION, "complete": complete, "inputs": recorded}
     if dispatch_library is not None:
         payload["dispatch_library"] = dispatch_library
     if full_elf_kernel is not None:
         payload["full_elf_kernel"] = full_elf_kernel
     if full_elf_init_entry:
         payload["full_elf_init_entry"] = True
+    if entries:
+        payload["entries"] = list(entries)
     with _staged(str(Path(kernel_dir) / MANIFEST_NAME)) as tmp:
         Path(tmp).write_text(json.dumps(payload))
 
@@ -330,6 +337,20 @@ def resolve_full_elf_init_entry(kernel_dir: Path) -> bool:
     if not isinstance(payload, dict) or payload.get("version") != _VERSION:
         return False
     return payload.get("full_elf_init_entry") is True
+
+
+def resolve_entries(kernel_dir: Path) -> tuple[str, ...]:
+    """Return the build's ``"device:sequence"`` entries when it has several, else ``()``."""
+    try:
+        payload = json.loads((kernel_dir / MANIFEST_NAME).read_text())
+    except (OSError, ValueError):
+        return ()
+    if not isinstance(payload, dict) or payload.get("version") != _VERSION:
+        return ()
+    names = payload.get("entries")
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        return ()
+    return tuple(names)
 
 
 def is_valid(kernel_dir: Path) -> bool:

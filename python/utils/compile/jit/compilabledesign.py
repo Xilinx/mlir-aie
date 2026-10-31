@@ -36,6 +36,7 @@ import logging
 import math
 import operator
 import os
+import shutil
 import sys
 import threading
 from collections import OrderedDict
@@ -55,7 +56,9 @@ from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from aie.helpers.npdtypes import np_ndarray_type_of
 from aie.ir import (  # pyright: ignore[reportMissingImports]
+    ArrayAttr,  # pyright: ignore[reportAttributeAccessIssue]
     IntegerAttr,  # pyright: ignore[reportAttributeAccessIssue]
+    StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
@@ -184,6 +187,7 @@ class _GeneratedDesign:
     mlir_text: str
     external_kernels: list
     entry: str | None
+    entries: tuple[str, ...]
     configuration_count: int
     reconfiguration: tuple[tuple[str, bool], ...]
     devices: tuple
@@ -196,11 +200,17 @@ class _GeneratedDesign:
         """Record `mlir_text` with the IRON attributes of `module`, its parse."""
         attributes = module.operation.attributes
         entry = attributes.get("iron.entry")
+        entries = attributes.get("iron.entries")
         count = attributes.get("iron.configuration_count")
         return cls(
             mlir_text=mlir_text,
             external_kernels=external_kernels,
             entry=entry.value if entry is not None else None,
+            entries=(
+                tuple(StringAttr(name).value for name in ArrayAttr(entries))
+                if entries is not None
+                else ((entry.value,) if entry is not None else ())
+            ),
             configuration_count=count.value if count is not None else 1,
             reconfiguration=tuple(
                 (name, attributes[f"iron.{name}"].value)
@@ -246,6 +256,16 @@ class _GeneratedDesign:
             return []
         device, sequence = self.entry.split(":")
         return [f"--device-name={device}", f"--sequence-name={sequence}"]
+
+    @property
+    def entries_stream_options(self) -> list[str]:
+        """The aiecc flags that keep every entry's instruction stream.
+
+        Each entry's stream is its own ``insts_<device>_<sequence>.bin``; the
+        entries share one configuration, so one device filter keeps them all.
+        """
+        device, _ = self.entries[0].split(":")
+        return [f"--device-name={device}"]
 
 
 class CompilableDesign:
@@ -326,6 +346,7 @@ class CompilableDesign:
         self._full_elf_kernel_name: str | None = None
         self._full_elf_init_entry = False
         self._kernel_dir: Path | None = None
+        self._entry_tensor_sizes: dict[str, list[int] | None] = {}
         self._generated_cache: dict[tuple, _GeneratedDesign] = {}
 
         # The generator's declaration, memoised, which split_runtime_args and
@@ -945,6 +966,16 @@ class CompilableDesign:
                     )
                     _cleanup_failed_compilation(kernel_dir)
                     xclbin_exists = inst_exists = False
+                elif not all(
+                    (kernel_dir / f"insts_{name.replace(':', '_')}.bin").exists()
+                    for name in _manifest.resolve_entries(kernel_dir)
+                ):
+                    logger.debug(
+                        "An entry's instruction stream is missing for '%s'; "
+                        "rebuilding",
+                        self.generator_name,
+                    )
+                    inst_exists = False
 
             if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
                 logger.debug(
@@ -989,15 +1020,28 @@ class CompilableDesign:
                 use_chess = self._resolve_use_chess(external_kernels)
                 digests: dict[str, str] = {}
 
+                several_entries = len(generated.entries) > 1
+                if several_entries and (explicit_paths or has_dispatch):
+                    raise ValueError(
+                        f"{self.generator_name!r} has several entries "
+                        f"{list(generated.entries)}; they compile only into the "
+                        "JIT cache, without DispatchTime[T] parameters."
+                    )
                 compiler_options = [
                     *self.aiecc_flags,
-                    *generated.entry_stream_options,
+                    *(
+                        generated.entries_stream_options
+                        if several_entries
+                        else generated.entry_stream_options
+                    ),
                 ]
                 if has_dispatch:
                     compiler_options.append("--get=npu_lowered.mlir")
                 compile_mlir_module(
                     mlir_module=generated.mlir_text,
-                    insts_path=inst_path,
+                    insts_path=(
+                        kernel_dir / "insts_{0}.bin" if several_entries else inst_path
+                    ),
                     xclbin_path=xclbin_path,
                     elf_path=elf_path,
                     pdi_path=pdi_path,
@@ -1020,6 +1064,22 @@ class CompilableDesign:
                         generated.devices,
                     ),
                 )
+
+                if several_entries:
+                    assert inst_path is not None and generated.entry is not None
+                    streams = [
+                        kernel_dir / f"insts_{name.replace(':', '_')}.bin"
+                        for name in generated.entries
+                    ]
+                    missing_streams = [p for p in streams if not p.exists()]
+                    if missing_streams:
+                        raise RuntimeError(
+                            "[aiecc] Compilation appeared to succeed but did not "
+                            "write the entries' instruction streams: "
+                            + ", ".join(str(p) for p in missing_streams)
+                        )
+                    # insts.bin stays the default entry's, as for one entry.
+                    shutil.copyfile(streams[0], inst_path)
 
                 # aiecc may exit 0 even when xclbin generation fails silently
                 # (missing xclbinutil/bootgen); verify outputs exist.
@@ -1069,6 +1129,7 @@ class CompilableDesign:
                         dispatch_so_path.name if dispatch_so_path is not None else None
                     ),
                     digests=digests,
+                    entries=generated.entries if several_entries else (),
                 )
                 if explicit_paths:
                     if dispatch_so_path is not None:
@@ -1239,6 +1300,8 @@ class CompilableDesign:
             init_entry = init and self._parse_full_elf_init_entry(
                 kernel_dir, kernel_name
             )
+            for name in generated.entries[1:]:
+                self._parse_full_elf_kernel_name(kernel_dir, name)
             _manifest.record(
                 kernel_dir,
                 external_kernels,
@@ -1247,6 +1310,7 @@ class CompilableDesign:
                 full_elf_kernel=kernel_name,
                 full_elf_init_entry=init_entry,
                 digests=digests,
+                entries=generated.entries if len(generated.entries) > 1 else (),
             )
             if build_key is not None:
                 self._record_explicit_outputs(
@@ -1338,6 +1402,12 @@ class CompilableDesign:
                 generated = self._generated_for(full_elf=False)
                 if generated.requires_full_elf:
                     raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
+                if len(generated.entries) > 1:
+                    raise ValueError(
+                        f"{self.generator_name!r} has several entries "
+                        f"{list(generated.entries)}; an insts_only design "
+                        "lowers one runtime sequence."
+                    )
                 external_kernels = generated.external_kernels
                 use_chess = self._resolve_use_chess(external_kernels)
                 digests: dict[str, str] = {}
@@ -1409,6 +1479,7 @@ class CompilableDesign:
         self._full_elf_kernel_name = full_elf_kernel_name
         self._full_elf_init_entry = full_elf_init_entry
         vars(self).pop("expected_tensor_sizes", None)
+        self._entry_tensor_sizes.clear()
 
     @functools.cached_property
     def expected_tensor_sizes(self) -> list[int] | None:
@@ -1421,7 +1492,7 @@ class CompilableDesign:
         """
         if self._kernel_dir is None:
             return None
-        return parse_dma_sizes(self._kernel_dir, self._full_elf_kernel_name)
+        return parse_dma_sizes(self._kernel_dir, self._dispatched_entry(None))
 
     def _build_kernels(
         self,
@@ -1525,6 +1596,120 @@ class CompilableDesign:
                 f"found {available}."
             )
         raise RuntimeError(f"{config_path} names no runtime sequence.")
+
+    def _dispatched_entry(self, entry: str | None) -> str | None:
+        """Return the ``"device:sequence"`` a call naming ``entry`` runs.
+
+        Args:
+            entry: The entry the call names, or None for the default entry.
+
+        Returns:
+            The qualified entry, or None for a one-entry xclbin build, whose
+            sequence the build alone holds.
+        """
+        if entry is not None:
+            return self._qualified_entry(entry)
+        assert self._kernel_dir is not None, "compile() runs first"
+        entries = _manifest.resolve_entries(self._kernel_dir)
+        return self._full_elf_kernel_name or (entries[0] if entries else None)
+
+    def _qualified_entry(self, entry: str) -> str:
+        """Return the last build's ``"device:sequence"`` entry named ``entry``.
+
+        Args:
+            entry: An entry's ``"device:sequence"`` name, or its sequence name
+                when no other entry shares it.
+
+        Raises:
+            ValueError: The build has no entry runtime named ``entry``, or
+                several entries' sequences are named ``entry``.
+        """
+        assert self._kernel_dir is not None, "compile() runs first"
+        names = _manifest.resolve_entries(self._kernel_dir)
+        if entry in names:
+            return entry
+        matches = [name for name in names if name.partition(":")[2] == entry]
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            raise ValueError(
+                f"{self.generator_name!r} has several entries named {entry!r}: "
+                f"name one of {matches}."
+            )
+        raise ValueError(
+            f"{self.generator_name!r} has no entry {entry!r}: "
+            + (
+                f"its entries are {list(names)}."
+                if names
+                else "it has one entry; give its Program a list of Runtimes "
+                "to dispatch several by name."
+            )
+        )
+
+    def entry_kernel_name(self, entry: str) -> str:
+        """Return the full ELF's ``"device:sequence"`` kernel of the entry runtime ``entry``.
+
+        Args:
+            entry: One of the Program's entry runtimes, by ``"device:sequence"``
+                or, when no other entry shares it, by sequence name.
+
+        Returns:
+            The kernel the last ``compile()``'s full ELF runs it as.
+
+        Raises:
+            ValueError: The build has no entry runtime named ``entry``, or
+                several.
+        """
+        assert self._kernel_dir is not None, "compile() runs first"
+        return self._parse_full_elf_kernel_name(
+            self._kernel_dir, self._qualified_entry(entry)
+        )
+
+    def entry_insts_path(self, entry: str) -> Path:
+        """Return the instruction stream of the entry runtime ``entry`` beside the xclbin.
+
+        Args:
+            entry: One of the Program's entry runtimes, by ``"device:sequence"``
+                or, when no other entry shares it, by sequence name.
+
+        Returns:
+            Its ``insts_<device>_<sequence>.bin`` from the last ``compile()``.
+
+        Raises:
+            ValueError: The build has no entry runtime named ``entry``, or
+                several.
+        """
+        assert self._kernel_dir is not None, "compile() runs first"
+        qualified = self._qualified_entry(entry)
+        return self._kernel_dir / f"insts_{qualified.replace(':', '_')}.bin"
+
+    def entry_tensor_sizes(self, entry: str) -> list[int] | None:
+        """Return each host tensor's footprint in bits for the entry runtime ``entry``.
+
+        Entries take identical arguments as written, but tracing appends
+        operands per configuration, so each entry's lowered signature is read.
+
+        Args:
+            entry: One of the Program's entry runtimes, by ``"device:sequence"``
+                or, when no other entry shares it, by sequence name.
+
+        Returns:
+            Its footprints in ``aie.runtime_sequence`` order from the last
+            ``compile()``; None before ``compile()`` or where
+            ``parse_dma_sizes`` cannot tell.
+
+        Raises:
+            ValueError: The build has no entry runtime named ``entry``, or
+                several.
+        """
+        if self._kernel_dir is None:
+            return None
+        qualified = self._qualified_entry(entry)
+        if qualified not in self._entry_tensor_sizes:
+            self._entry_tensor_sizes[qualified] = parse_dma_sizes(
+                self._kernel_dir, qualified
+            )
+        return self._entry_tensor_sizes[qualified]
 
     def get_artifacts(self) -> tuple[Path, Path] | None:
         """Return cached artifact paths without recompiling, or ``None``."""
@@ -1747,6 +1932,7 @@ class CompilableDesign:
         *,
         num_host_bos: int | None = None,
         implicit_tensor_count: int = 0,
+        entry: str | None = None,
     ) -> None:
         """Validate that *tensor_args* cover the bits the compiled kernel expects.
 
@@ -1767,10 +1953,17 @@ class CompilableDesign:
 
         No-op when expected sizes are unavailable (e.g. offline compilation
         or when ``input_with_addresses.mlir`` was not produced), unless
-        ``num_host_bos`` is known.
+        ``num_host_bos`` is known. ``entry`` names the entry runtime the call
+        dispatches, whose lowered signature is checked; None checks the
+        default entry's.
         """
-        if num_host_bos is None and self.expected_tensor_sizes is not None:
-            num_host_bos = len(self.expected_tensor_sizes)
+        expected_sizes = (
+            self.expected_tensor_sizes
+            if entry is None
+            else self.entry_tensor_sizes(entry)
+        )
+        if num_host_bos is None and expected_sizes is not None:
+            num_host_bos = len(expected_sizes)
         if num_host_bos is not None:
             expected_count = num_host_bos - implicit_tensor_count
             if len(tensor_args) != expected_count:
@@ -1779,13 +1972,11 @@ class CompilableDesign:
                     f"tensor argument(s), but received {len(tensor_args)} "
                     f"({implicit_tensor_count} buffer(s) supplied by the runtime)."
                 )
-        if self.expected_tensor_sizes is None:
+        if expected_sizes is None:
             return
         import numpy as np
 
-        for i, (tensor, expected) in enumerate(
-            zip(tensor_args, self.expected_tensor_sizes)
-        ):
+        for i, (tensor, expected) in enumerate(zip(tensor_args, expected_sizes)):
             if expected == 0:
                 continue
             try:

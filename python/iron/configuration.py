@@ -404,10 +404,18 @@ class DeviceConfiguration(DeviceResources):
         *,
         device_name: str,
         loc: ir.Location,
-        entry: Runtime,
+        entries: "list[Runtime]",
         owners: dict[int, "DeviceConfiguration"],
     ) -> None:
-        """Emit this configuration as one ``aie.device`` operation."""
+        """Emit this configuration as one ``aie.device`` operation.
+
+        Args:
+            device_name: The symbol of the emitted ``aie.device``.
+            loc: The location of the emitted operations.
+            entries: The Program's host entries; on a full ELF each of this
+                configuration's entries loads its PDI first.
+            owners: The configuration owning each resource, by ``id``.
+        """
         # The remaining emission order matches the dependencies between device ops.
         self._owners = owners
         if self._prebuilt is not None:
@@ -417,14 +425,17 @@ class DeviceConfiguration(DeviceResources):
             old = ir.StringAttr(clone.attributes["sym_name"]).value
             clone.attributes["sym_name"] = ir.StringAttr.get(device_name)
             ir.SymbolTable.replace_all_symbol_uses(old, device_name, clone.operation)
-            if entry in self._runtimes and get_compile_arg("_iron_full_elf"):
-                (sequence,) = [
-                    o
-                    for o in clone.body_region.blocks[0].operations
-                    if isinstance(o, RuntimeSequenceOp)
-                    and ir.StringAttr(o.attributes["sym_name"]).value == entry.name
-                ]
-                entry.load_pdi_first(sequence.body.blocks[0], device_name)
+            if get_compile_arg("_iron_full_elf"):
+                for entry in entries:
+                    if entry not in self._runtimes:
+                        continue
+                    (sequence,) = [
+                        o
+                        for o in clone.body_region.blocks[0].operations
+                        if isinstance(o, RuntimeSequenceOp)
+                        and ir.StringAttr(o.attributes["sym_name"]).value == entry.name
+                    ]
+                    entry.load_pdi_first(sequence.body.blocks[0], device_name)
             return
         self._name_unnamed()
         device_type = type(self._device)
@@ -564,7 +575,7 @@ class DeviceConfiguration(DeviceResources):
             for runtime in self._runtimes:
                 implicit_configure_device_ref = (
                     device_name
-                    if runtime is entry and get_compile_arg("_iron_full_elf")
+                    if runtime in entries and get_compile_arg("_iron_full_elf")
                     else None
                 )
                 runtime.resolve(

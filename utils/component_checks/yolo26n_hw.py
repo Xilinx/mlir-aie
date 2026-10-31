@@ -6,19 +6,21 @@ r"""Build + run the YOLO26n 640x640 detector on NPU2 over real COCO images.
 The whole detector end to end: does it still build, does every image's
 detection match the numpy oracle and onnxruntime (all but ``--ort-mismatches``
 images, the ones known to land off a softmax rounding boundary), and how
-long one image takes at batch 1 and at batch 8: the fastest of ``N_ITERS``
+long one image takes at each of ``BATCHES`` (1 to 64 images a dispatch, as
+MobileNet sweeps its batches): the fastest of ``N_ITERS``
 calls after ``N_WARMUP``, host wall time of the whole ``yolo26n(...)`` call,
 with the median and MAD beside it, and that time split into the dispatch
 (submit to completion), its NPU time (the dispatch less the same run's
-empty-dispatch baseline, which a full ELF carries as its own empty runtime
-sequence) and the host overhead around it, as MobileNet's are. Shells out
+empty-dispatch baseline, a dispatch of the design's configuration with no
+operations) and the host overhead around it, as MobileNet's are. Shells out
 to the example's
 own yolo26n.py CLI (no new Python API): ``--compile-only`` twice into one
 fresh NPU_CACHE_HOME, cold then warm, keeping only the cold compile's kernel
 objects for the warm one, as llama_chain_hw.py does; then a ``--time`` run
-from that cache and one at ``--batch 8``, the same build (images a dispatch
-are chosen when it is dispatched, up to its ``--capacity``), each checking
-every image, their timing kept only when every image matched in both. A
+from that cache at each of ``BATCHES``. One build serves every batch: each
+is an entry of the design's Program with its own instruction stream beside
+the one xclbin, so no run compiles again. Every run checks every image;
+the timing is kept only when every image matched at every batch. A
 ``--time`` run also times a dispatch with no image on
 (``empty_dispatch_us``): every segment's configuration and the dispatch,
 which each dispatch pays once.
@@ -30,8 +32,8 @@ beside the images: a host-side, numpy mAP matching Ultralytics 8.4's
 validator (``yolo26n/coco_map.py``). ``--n-images`` defaults to all 128
 coco128 images, not 8: mAP on 8 images (30 labelled objects) is noise (the
 int8 model scores higher than fp32 there); on all 128 it costs about a
-minute of extra host time per run (two runs: batch 1 and batch 8), each
-still the oracle check it already did. The fp32 ONNX model's own mAP50
+minute of extra host time per run (one run per batch), each still the
+oracle check it already did. The fp32 ONNX model's own mAP50
 on the same 128 images, 0.6365, is a fixed reference the page shows beside
 the nightly's: see ``utils/kernel_checks/index.html``'s ``map50_coco128``
 description for how it was computed and from where.
@@ -89,7 +91,9 @@ _TIMED_PREFIXES = (
 )
 N_ITERS = 20
 N_WARMUP = 10
-BATCH = 8
+# The images a dispatch carries, each an entry of the one build and a checked
+# run: the curve per image as the batch amortizes a dispatch, as MobileNet's.
+BATCHES = (1, 2, 4, 8, 16, 32, 64)
 # Seconds each command may take before the check kills it and fails: the
 # parameter extraction, one compile, and one checked and timed run.
 EXTRACT_TIMEOUT = 1800
@@ -460,6 +464,52 @@ def measurement_sane(correctness: dict, timing: dict, batches: list[int]) -> boo
     return True
 
 
+class BatchSweep:
+    """The verdict of the runs at each of ``BATCHES``, taken in order.
+
+    The first run to fail ends the sweep and is its verdict; timing is
+    published only when every batch passed.
+
+    Args:
+        ort_mismatches: As for ``parse_correctness``.
+    """
+
+    def __init__(self, ort_mismatches: int):
+        self.ort_mismatches = ort_mismatches
+        self.correctness = parse_correctness("", 1, ort_mismatches)
+        self.outputs: list[str] = []
+
+    def add(self, out: str, returncode: int) -> bool:
+        """Take the next batch's run.
+
+        Args:
+            out: The run's stdout and stderr.
+            returncode: Its exit code.
+
+        Returns:
+            Whether it passed, so the sweep goes on to the next batch.
+        """
+        self.correctness = parse_correctness(out, returncode, self.ort_mismatches)
+        if self.correctness["passed"]:
+            self.outputs.append(out)
+        return self.correctness["passed"]
+
+    def timing(self) -> dict:
+        """Every batch's ``parse_timing`` and the one mAP@0.5, or nothing unless all passed."""
+        if not self.correctness["passed"] or len(self.outputs) != len(BATCHES):
+            return {}
+        timing: dict = {}
+        for out in self.outputs:
+            timing |= parse_timing(out)
+        # The same bit-exact detections at every batch: one score.
+        scores = [parse_map50(out) for out in self.outputs]
+        scored = [m for m in scores if m]
+        if scored:
+            timing["map50_coco128_disagrees"] = any(m != scored[0] for m in scores)
+            timing |= scored[0]
+        return timing
+
+
 def artifact_stats(build_dir: str | None) -> dict:
     """Sizes of the files the warm build actually produced.
 
@@ -525,7 +575,8 @@ def main(argv=None) -> int:
         "--n-images",
         type=int,
         default=128,
-        help="COCO images to run, a multiple of 8 (default: 128, all of coco128: "
+        help=f"COCO images to run, a multiple of {max(BATCHES)}, the largest batch "
+        "(default: 128, all of coco128: "
         "mAP50 on 8 images is noise -- the int8 model even beats fp32 there)",
     )
     parser.add_argument(
@@ -550,9 +601,10 @@ def main(argv=None) -> int:
     parser.add_argument("--out", required=True, help="perf.json to write")
     parser.add_argument("--meta", required=True, help="meta.json to write")
     args = parser.parse_args(argv)
-    if args.n_images < BATCH or args.n_images % BATCH:
+    largest = max(BATCHES)
+    if args.n_images < largest or args.n_images % largest:
         parser.error(
-            f"--n-images {args.n_images} is not a positive multiple of {BATCH}"
+            f"--n-images {args.n_images} is not a positive multiple of {largest}"
         )
     if not 0 <= args.ort_mismatches <= args.n_images:
         parser.error(f"--ort-mismatches {args.ort_mismatches} is not in 0..--n-images")
@@ -596,37 +648,21 @@ def main(argv=None) -> int:
         )
     cache_dir = tempfile.mkdtemp(prefix="component-checks-yolo26n-")
     run_env = dict(env, NPU_CACHE_HOME=cache_dir)
-    correctness = parse_correctness("", 1, args.ort_mismatches)
-    timing = parse_timing("")
+    sweep = BatchSweep(args.ort_mismatches)
     artifacts: dict = {}
     try:
         compiled = compile_cold_warm(images, onnx, params, env, cache_dir)
         if compiled["built"].returncode == 0:
             artifacts = artifact_stats(compiled["build_dir"])
-            ran = run_timed(images, onnx, params, args.n_images, 1, run_env).process
-            correctness = parse_correctness(
-                ran.stdout, ran.returncode, args.ort_mismatches
-            )
-            if correctness["passed"]:
-                batched = run_timed(
-                    images, onnx, params, args.n_images, BATCH, run_env
+            for batch in BATCHES:
+                ran = run_timed(
+                    images, onnx, params, args.n_images, batch, run_env
                 ).process
-                in_batches = parse_correctness(
-                    batched.stdout, batched.returncode, args.ort_mismatches
-                )
-                if in_batches["passed"]:
-                    timing = parse_timing(ran.stdout) | parse_timing(batched.stdout)
-                    map50_b1, map50_b8 = (
-                        parse_map50(ran.stdout),
-                        parse_map50(batched.stdout),
-                    )
-                    if map50_b1 or map50_b8:
-                        timing["map50_coco128_disagrees"] = map50_b1 != map50_b8
-                        timing |= map50_b1 or map50_b8
-                else:
-                    correctness = in_batches
+                if not sweep.add(ran.stdout, ran.returncode):
+                    break
     finally:
         shutil.rmtree(cache_dir, ignore_errors=True)
+    correctness, timing = sweep.correctness, sweep.timing()
 
     failed = [] if correctness["passed"] else [CASE]
 
@@ -635,7 +671,7 @@ def main(argv=None) -> int:
         args.meta,
         {
             **meta,
-            "measurement_sane": measurement_sane(correctness, timing, [1, BATCH]),
+            "measurement_sane": measurement_sane(correctness, timing, list(BATCHES)),
             "detail": [
                 {
                     "case": CASE,

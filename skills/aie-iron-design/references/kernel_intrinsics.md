@@ -6,9 +6,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # AIE C++ Kernel Intrinsics Cheatsheet
 
 > Before writing a kernel from this cheatsheet, check
-> [`builtin_kernels.md`](builtin_kernels.md) — `aie.iron.kernels` already ships maintained,
-> vectorized kernels for element-wise ops, reductions, activations, matmul, conv2d, and vision.
-> This file is for the cases those don't cover.
+> [`programming_guide/kernels_library.md`](../../../programming_guide/kernels_library.md) —
+> `aie.iron.kernels` already ships maintained, vectorized kernels for element-wise ops,
+> reductions, activations, matmul, conv2d, and vision. This file is for the cases those don't
+> cover.
 
 All code targets `aie_api/aie.hpp`. Always include `aie_kernel_utils.h` for portable loop annotations.
 

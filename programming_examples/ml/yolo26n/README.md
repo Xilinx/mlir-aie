@@ -76,7 +76,11 @@ first and last ops instead, and `--batch N` pipelines N images through it.
 - The Detect postprocess (best class per anchor, top 300 anchors, top 300
   anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`,
   reading the Detect outputs back from a DDR scratch buffer.
-- `yolo26n.py` runs the network in one dispatch.
+- `yolo26n.py` runs the network in one dispatch. One build serves every
+  batch of 1 to 64 images: each batch is an entry of the design, its own
+  instruction stream beside the one xclbin, and `--batch` picks it. The
+  host buffers are declared for 64 images, but a batch of B writes, moves
+  and reads back only its own B images.
 
 ## Accuracy
 
@@ -101,21 +105,20 @@ exits 0 only when every image passes.
 
 ## Performance
 
-On Strix Halo (NPU2), in one device configuration of 30 workers, per
-640x640 image (`python yolo26n.py --n 16 --batch B --time`, 16 coco128
-images, every one bit-exact against the oracle and ONNX Runtime):
+The nightly runs every batch in `BATCHES` from one compile, on the real
+weights over coco128, and records per image the end-to-end and NPU time
+and the frame rate, with mAP@0.5 against coco128's labels. The current
+figures and their history are on the
+[maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=performance).
+To time it yourself, with `B` one of `BATCHES` (1 to 64):
 
-| batch | fastest | fps | median |
-|---:|---:|---:|---:|
-| 1 | 6.83 ms | 146 | 7.24 ms |
-| 2 | 4.29 ms | 233 | 4.48 ms |
-| 4 | 3.12 ms | 321 | 3.26 ms |
-| 8 | 2.58 ms | 388 | 2.62 ms |
-| 16 | 2.27 ms | 441 | 2.30 ms |
+```bash
+python yolo26n.py --n 64 --batch B --time
+```
 
-Each is the fastest of 20 calls after 10 warm-up calls, the host's wall
+Every batch is an entry of the same build, so only the first run compiles.
+Each time is the fastest of 20 calls after 10 warm-up calls, the host's wall
 time of the whole `yolo26n(...)` call divided by the batch, beside the
 median. A batch pipelines its images through the array, fills issued three
-images ahead. mAP@0.5 on those 16 images against coco128's labels is
-0.868. Compiling takes about 7 minutes, nearly all of it placing the
+images ahead. Compiling takes several minutes, nearly all of it placing the
 workers.
