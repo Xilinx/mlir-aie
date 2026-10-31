@@ -13,6 +13,10 @@
 // A stored (K, M), the transpose, a chunk of its stored rows per call. It
 // sums in the row-major kernel's order, operation for operation, so the two
 // layouts give the same bits (see matvec_vectorized_col_maj).
+//
+// Built with -DA_CODED, it exports the coded-rows variant instead: A arrives
+// as aie.utils.coded rows, which the core decodes into a scratch tile for
+// the row-major kernel, so it returns that kernel's bits.
 
 #define NOCPP
 
@@ -159,6 +163,34 @@ void matvec_vectorized(uint32_t m, const bfloat16 *__restrict a,
   ::aie::set_rounding(saved_rounding);
 }
 
+#ifdef A_CODED
+
+#ifndef CAPACITY
+#define CAPACITY 15
+#endif
+
+#include "../common/coded_rows.h"
+
+extern "C" {
+
+// a_scratch holds the decoded rows, which feed the unchanged matvec, so the
+// result is plain mv's on the decoded matrix, bit for bit.
+void matvec_coded_bf16_bf16(uint32_t m, uint32_t row_offset,
+                            const uint8_t *__restrict a_coded,
+                            bfloat16 *__restrict a_scratch,
+                            const bfloat16 *__restrict b_in,
+                            bfloat16 *__restrict c_out) {
+  event0();
+  c_out += row_offset;
+  decode_coded_rows<DIM_K, CAPACITY>(m, a_coded, a_scratch);
+  matvec_vectorized<VEC_SIZE, DIM_K>(m, a_scratch, b_in, c_out);
+  event1();
+}
+
+} // extern "C"
+
+#else // A_CODED
+
 extern "C" {
 
 /* The row offset parameter in the functions below is a workaround. The output
@@ -187,6 +219,8 @@ void matvec_vectorized_bf16_bf16(uint32_t m, uint32_t row_offset,
 }
 
 } // extern "C"
+
+#endif // A_CODED
 
 #else // A_COL_MAJ
 

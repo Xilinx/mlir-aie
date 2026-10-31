@@ -70,6 +70,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [cast_f32_bf16.cc](./datamovement/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
 | [limbs_f32.cc](./datamovement/limbs_f32.cc) | AIE API | f32 as six planes of its exact bf16 limbs (`hi + mid + lo`), for an f32-accurate bf16 matmul | `float32`→`bfloat16` |
 | [affine_cast_f32_bf16.cc](./datamovement/affine_cast_f32_bf16.cc) | AIE API | Per-column affine `out = bf16(in*gamma + beta)`, gamma and beta packed in one buffer (`conv_even` rounding) | `float32`→`bfloat16` |
+| [decode_coded.cc](./datamovement/decode_coded.cc) | AIE API | Lossless coded rows (`aie.utils.coded`) to their bf16 weights, through [coded_rows.h](./common/coded_rows.h) | `uint8`→`bfloat16` |
 
 ## eltwise
 | Name | Coding style | Purpose | Datatypes |
@@ -115,7 +116,7 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [cascade_mm.cc](./linalg/cascade_mm.cc) | Scalar, cascade intrinsics | Cascade Matrix/Matrix multiply (multi-core) | `int16_t`,`bfloat16` |
 | [mm_bfp.cc](./linalg/mm_bfp.cc) | AIE API | Block-floating-point matmul (AIE2P only) | `bfp16` |
 | [mm_bfp_mixed.cc](./linalg/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul (AIE2P only) | `bfp16` |
-| [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV); `-DA_COL_MAJ` reads A column-major with partial sums carried across calls, bit-identical to row-major | `bfloat16` |
+| [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV); `-DA_COL_MAJ` reads A column-major with partial sums carried across calls, bit-identical to row-major; `-DA_CODED` reads A as lossless coded rows (`aie.utils.coded`, decoded by [coded_rows.h](./common/coded_rows.h)), bit-identical to plain | `bfloat16` |
 | [mv_i16.cc](./linalg/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
 | [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 8 rows, key blocks a multiple of 16 and a head dimension a multiple of 8; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16`, running state and O `float32` |
 | [attention_i8.cc](./linalg/attention_i8.cc) | AIE API | One head of int8 attention over a 2-D map (YOLO26n's PSA), a row of queries a call: power-of-two scales, an integer softmax from a 256-entry exp table, rounding half to even | `int8_t`, table `int32_t` |

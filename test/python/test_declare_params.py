@@ -13,7 +13,9 @@ import functools
 
 import numpy as np
 import pytest
+from aie.helpers.npdtypes import v8bfp16ebs8
 from aie.iron.device import NPU2Col4
+from aie.utils import coded
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.jit.operator import Operator
 from aie.utils.compile.jit.params import (
@@ -24,6 +26,7 @@ from aie.utils.compile.jit.params import (
     tunable,
     widths,
 )
+from ml_dtypes import bfloat16
 
 
 class Op:
@@ -134,6 +137,76 @@ def test_an_operand_resolves_its_shapes_on_the_operator():
     assert Streams.a.of(streams(batches=3)).shape == (3, 8, 4)
     assert Streams.b.of(streams(gated=True)).shape == (4,)
     assert not Streams.c.streamed and Streams.c.of(streams()).shape == (8,)
+
+
+class Coded(Operator):
+    M: int = param()
+    K: int = param()
+    rows: int = param(default=4)
+    coded_w: bool = tunable(default=False, domain=(False, True))
+    w = In(M, K, obj_shape=(rows, K), per=(rows,), coded=coded_w)
+
+
+def test_a_coded_operand_moves_its_rows_as_bytes_and_keeps_its_logical_shape():
+    plain = Coded.w.of(Coded(M=8, K=2048))
+    assert (plain.shape, plain.dtype, plain.obj_shape) == (
+        (8, 2048),
+        bfloat16,
+        (4, 2048),
+    )
+    w = Coded.w.of(Coded(M=8, K=2048, coded_w=True))
+    R = coded.row_bytes(2048)
+    assert (w.logical_shape, w.logical_dtype) == ((8, 2048), bfloat16)
+    assert (w.shape, w.dtype, w.obj_shape, w.elements) == (
+        (8, R),
+        np.uint8,
+        (4, R),
+        8 * R,
+    )
+    assert w.ndarray_type == np.ndarray[(8, R), np.dtype[np.uint8]]
+    assert repr(w) == f"<In w (8, {R}) uint8 coded>"
+    assert "coded_w" in Coded.declaration.key
+
+
+def test_a_coded_operand_refuses_what_its_rows_cannot_hold():
+    class Narrow(Operator):
+        K: int = param()
+        x = In(K, 2, dtype=np.float32, obj_shape=(K, 2), coded=True)
+        y = In(2, K, obj_shape=(128,), coded=True)
+
+    op = Narrow(K=64)
+    with pytest.raises(TypeError, match="coded rows hold bfloat16"):
+        Narrow.x.of(op).dtype
+    with pytest.raises(ValueError, match="whole rows of 64"):
+        Narrow.y.of(op).obj_shape
+    with pytest.raises(TypeError, match="coded= takes a bool"):
+
+        class Wrong(Operator):
+            K: int = param()
+            x = In(K, coded="yes")  # pyright: ignore[reportArgumentType]
+
+
+def test_a_coded_operand_takes_either_spelling_of_bfloat16():
+    class Spelled(Operator):
+        K: int = param()
+        x = In(4, K, dtype=np.dtype(bfloat16), obj_shape=(1, K), coded=True)
+        y = In(4, K, dtype=v8bfp16ebs8, obj_shape=(1, K), coded=True)
+
+    op = Spelled(K=64)
+    assert Spelled.x.of(op).dtype == np.uint8
+    with pytest.raises(TypeError, match="coded rows hold bfloat16"):
+        Spelled.y.of(op).dtype
+
+
+def test_a_coded_stream_s_row_length_is_in_the_cores_key():
+    class Literal(Operator):
+        M: int = param()
+        K: int = param()
+        w = In(M, K, obj_shape=(4, 64), coded=True)
+
+    assert "K" in Literal.declaration.key
+    view = Literal(M=8, K=64).layout()
+    assert view.w.obj_shape == (4, coded.row_bytes(64))
 
 
 def test_an_operand_says_which_way_it_moves():
