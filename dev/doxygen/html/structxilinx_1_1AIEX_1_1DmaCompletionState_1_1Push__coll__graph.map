@@ -1,7 +1,0 @@
-<map id="xilinx::AIEX::DmaCompletionState::Push" name="xilinx::AIEX::DmaCompletionState::Push">
-<area shape="rect" id="Node000001" title=" " alt="" coords="5,128,215,173"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="15,5,64,33"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="34,45,35,76,43,103,52,115,65,127,60,128,48,119,38,106,30,77,33,51"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="142,5,222,33"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="177,46,169,77,155,106,135,130,132,126,150,103,164,75,174,50"/>
-</map>
