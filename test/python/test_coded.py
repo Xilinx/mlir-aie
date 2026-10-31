@@ -142,6 +142,26 @@ def test_encode_rejects_bad_inputs():
         coded.decode_rows(np.zeros((2, 192), np.uint8), 63)
 
 
+def test_capacity_and_k_stay_within_the_row_s_count_and_index_fields():
+    # Every high byte twice in a 512-wide row: 480 exceptions, past the u8
+    # count, so no capacity can hold them and the encoder must refuse.
+    w = np.arange(512, dtype=np.uint16).reshape(1, 512) % 256 << 8
+    row = w.view(bfloat16)
+    for capacity in (256, 480, -1, 2.5):
+        with pytest.raises(ValueError, match="capacity"):
+            coded.encode_rows(row, capacity=capacity)
+    with pytest.raises(ValueError, match="past capacity 255"):
+        coded.encode_rows(row, capacity=255)
+    with pytest.raises(ValueError, match="65536"):
+        coded.row_bytes(65536 + 64)
+    # The last index a u16 holds still decodes in place.
+    w = np.zeros((1, 65536), np.uint16)
+    w[0, -1] = 0x7F80
+    rows = w.view(bfloat16)
+    back = coded.decode_rows(coded.encode_rows(rows), 65536)
+    assert np.array_equal(back.view(np.uint16), w)
+
+
 def test_byte_layout_of_a_hand_computed_row():
     # 63 elements at hi=0x3F (1.0's bf16 high byte), lo=0x80; one outlier at
     # hi=0x00, lo=0x00, far from the cluster so no 8-wide window covers both.

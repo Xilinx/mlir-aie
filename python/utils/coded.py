@@ -58,23 +58,33 @@ def _roundup64(n: int) -> int:
 
 
 def _check_k(K: int) -> None:
-    if K <= 0 or K % 64:
-        raise ValueError(f"coded: K={K} must be a positive multiple of 64")
+    # An exception's index is a u16.
+    if K <= 0 or K % 64 or K > 1 << 16:
+        raise ValueError(
+            f"coded: K={K} must be a positive multiple of 64, at most 65536"
+        )
 
 
 def row_bytes(K: int, capacity: int = 15) -> int:
     """Bytes one coded row of ``K`` weights occupies at a given exception ``capacity``.
 
     Args:
-        K: Weights per row; must be a positive multiple of 64.
-        capacity: Exception slots held in the row's tail. 15 (the default,
-            64-byte tail) covers every model measured so far; 31 and 63 are
-            the next tiers (128 and 256 bytes) for a model that needs them.
+        K: Weights per row; a positive multiple of 64, at most 65536.
+        capacity: Exception slots held in the row's tail, 0 to 255. 15 (the
+            default, 64-byte tail) covers every model measured so far; 31 and
+            63 are the next tiers (128 and 256 bytes) for a model that needs
+            them.
 
     Returns:
         int: The row's size in bytes, a multiple of 64.
+
+    Raises:
+        ValueError: ``K`` or ``capacity`` is out of range.
     """
     _check_k(K)
+    # The row's exception count is a u8.
+    if not isinstance(capacity, (int, np.integer)) or not 0 <= capacity <= 255:
+        raise ValueError(f"coded: capacity={capacity} must be an integer from 0 to 255")
     tail = _roundup64(HEADER + ENTRY * capacity)
     return _roundup64(3 * K // 2) + tail
 
