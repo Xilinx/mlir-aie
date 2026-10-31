@@ -1113,7 +1113,9 @@ struct AIEObjectFifoVerifyPass
   /// same segments, of the fill's last segment alone (a split), or of all
   /// segments when the fill fills the first (a join): segments release once
   /// written, so only those drainers' progress bounds the whole of the fill's.
-  /// Bytes pass only through DMAs that neither pad, repeat nor dispatch them.
+  /// Bytes pass only through DMAs that neither pad, repeat nor dispatch them,
+  /// and only to a destination no other route merges into, with no packet
+  /// header kept in its bytes.
   void carries(DeviceOp device, StringAttr from, const PoolActors &actors,
                Reach scale, llvm::SmallPtrSetImpl<Operation *> &onPath,
                SmallVectorImpl<Reach> &reaches) {
@@ -1129,11 +1131,15 @@ struct AIEObjectFifoVerifyPass
         return;
       route = candidate;
     }
-    if (!route || route.getSources().size() != 1)
+    if (!route || route.getSources().size() != 1 || route.getKeepPktHeader())
       return;
-    for (Attribute destination : route.getDestinations()) {
+    for (StringRef name : route.getDestinationNames()) {
+      if (llvm::any_of(device.getOps<RouteOp>(), [&](RouteOp other) {
+            return other != route && other.namesAsDestination(name);
+          }))
+        continue;
       Operation *dest = SymbolTable::lookupNearestSymbolFrom(
-          device, cast<FlatSymbolRefAttr>(destination));
+          device, StringAttr::get(device.getContext(), name));
       if (auto shim = dyn_cast_or_null<RouteEndpointOp>(dest)) {
         if (shim.getBundle() == WireBundle::DMA &&
             shim.getTileLike().isShimTile())
