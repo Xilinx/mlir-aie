@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "e28f6dc7e52fbb7b43f94b3693083c3f01a2387c",
- "date": "2026-10-30T06:58:53.302587+00:00",
+ "commit": "064a1721a4af3fa483ebccd23b508c2d647066fe",
+ "date": "2026-10-31T06:57:59.546263+00:00",
  "swept": true,
  "kernels": [
   {
@@ -159,13 +159,14 @@
    "builds": [
     "mul"
    ],
-   "passed": 4,
+   "passed": 5,
    "failed": [],
    "timed": 2,
    "timing_failed": [],
    "untimed": [
-    "mul/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-False]",
-    "mul/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-True]"
+    "mul/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-conv_even-False]",
+    "mul/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[grid_decode-floor-True]",
+    "mul/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-conv_even-True]"
    ],
    "flaky": []
   },
@@ -256,13 +257,32 @@
    "builds": [
     "sample_select"
    ],
-   "passed": 0,
+   "passed": 19,
    "failed": [],
-   "timed": 0,
+   "timed": 1,
    "timing_failed": [],
-   "untimed": [],
-   "flaky": [],
-   "reason": "no case in test/python/npu/kernel_cases.py"
+   "untimed": [
+    "sample_select/test_device_draws_match_ranges[2048-2-256]",
+    "sample_select/test_device_draws_match_ranges[512-2-256]",
+    "sample_select/test_device_draws_match_sample_ref[128256-4-5344-64-0]",
+    "sample_select/test_device_draws_match_sample_ref[1536-2-256-64-512]",
+    "sample_select/test_device_draws_match_sample_ref[2048-2-1024-64-0]",
+    "sample_select/test_device_draws_match_sample_ref[2048-2-256-64-0]",
+    "sample_select/test_device_draws_match_sample_ref[2060-2-206-8-0]",
+    "sample_select/test_device_draws_match_sample_ref[4096-4-512-32-0]",
+    "sample_select/test_device_draws_match_the_probability_rule[1-256]",
+    "sample_select/test_device_draws_match_the_probability_rule[1-64]",
+    "sample_select/test_device_draws_match_the_probability_rule[2-256]",
+    "sample_select/test_device_draws_match_the_probability_rule[2-64]",
+    "sample_select/test_device_draws_match_the_probability_rule[4-256]",
+    "sample_select/test_device_draws_match_the_probability_rule[4-64]",
+    "sample_select/test_device_reduction_matches_logsumexp_reduction_ref_bit_for_bit[4096]",
+    "sample_select/test_device_reduction_matches_logsumexp_reduction_ref_bit_for_bit[512]",
+    "sample_select/test_device_rule_fires_on_one_timestamp_just_above_the_text",
+    "sample_select/test_padding_is_never_drawn[2048-2-1024-1]",
+    "sample_select/test_padding_is_never_drawn[2060-2-206-39]"
+   ],
+   "flaky": []
   },
   {
    "factory": "sample_combine",
@@ -274,13 +294,32 @@
    "builds": [
     "sample_combine"
    ],
-   "passed": 0,
+   "passed": 19,
    "failed": [],
-   "timed": 0,
+   "timed": 1,
    "timing_failed": [],
-   "untimed": [],
-   "flaky": [],
-   "reason": "no case in test/python/npu/kernel_cases.py"
+   "untimed": [
+    "sample_combine/test_device_draws_match_ranges[2048-2-256]",
+    "sample_combine/test_device_draws_match_ranges[512-2-256]",
+    "sample_combine/test_device_draws_match_sample_ref[128256-4-5344-64-0]",
+    "sample_combine/test_device_draws_match_sample_ref[1536-2-256-64-512]",
+    "sample_combine/test_device_draws_match_sample_ref[2048-2-1024-64-0]",
+    "sample_combine/test_device_draws_match_sample_ref[2048-2-256-64-0]",
+    "sample_combine/test_device_draws_match_sample_ref[2060-2-206-8-0]",
+    "sample_combine/test_device_draws_match_sample_ref[4096-4-512-32-0]",
+    "sample_combine/test_device_draws_match_the_probability_rule[1-256]",
+    "sample_combine/test_device_draws_match_the_probability_rule[1-64]",
+    "sample_combine/test_device_draws_match_the_probability_rule[2-256]",
+    "sample_combine/test_device_draws_match_the_probability_rule[2-64]",
+    "sample_combine/test_device_draws_match_the_probability_rule[4-256]",
+    "sample_combine/test_device_draws_match_the_probability_rule[4-64]",
+    "sample_combine/test_device_reduction_matches_logsumexp_reduction_ref_bit_for_bit[4096]",
+    "sample_combine/test_device_reduction_matches_logsumexp_reduction_ref_bit_for_bit[512]",
+    "sample_combine/test_device_rule_fires_on_one_timestamp_just_above_the_text",
+    "sample_combine/test_padding_is_never_drawn[2048-2-1024-1]",
+    "sample_combine/test_padding_is_never_drawn[2060-2-206-39]"
+   ],
+   "flaky": []
   },
   {
    "factory": "router_top_k",
@@ -731,7 +770,7 @@
   {
    "factory": "flm_gemma4_q4nx_lm_head_rms",
    "family": "flm_gemma4",
-   "summary": "q4nx_lm_head_rms of [`flm_gemma4_q4nx_lm_head`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: the token's RMS norm and per-32 column sums.",
+   "summary": "q4nx_lm_head_rms of [`flm_gemma4_q4nx_lm_head`][aie.iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: the token's RMS norm and per-32 column sums.",
    "sources": [
     "flm_gemma4/q4nx_lm_head.cc"
    ],
@@ -767,7 +806,7 @@
   {
    "factory": "flm_gemma4_glu_core",
    "family": "flm_gemma4",
-   "summary": "pseduo_glu of [`flm_gemma4_decode_glu`][iron.kernels.flm_gemma4.flm_gemma4_decode_glu]: gelu(gate) * up for one slice.",
+   "summary": "pseduo_glu of [`flm_gemma4_decode_glu`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_glu]: gelu(gate) * up for one slice.",
    "sources": [
     "flm_gemma4/decode_glu_core.cc"
    ],
@@ -859,7 +898,7 @@
   {
    "factory": "flm_gemma4_attn_qk_core",
    "family": "flm_gemma4",
-   "summary": "One attn_qk_round of [`flm_gemma4_decode_attn_qk`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], without its k lock.",
+   "summary": "One attn_qk_round of [`flm_gemma4_decode_attn_qk`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], without its k lock.",
    "sources": [
     "flm_gemma4/decode_attn_qk_core.cc"
    ],
@@ -878,7 +917,7 @@
   {
    "factory": "flm_gemma4_attn_qk_kvh2_core",
    "family": "flm_gemma4",
-   "summary": "One round of [`flm_gemma4_decode_attn_qk_kvh2`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], without its k lock.",
+   "summary": "One round of [`flm_gemma4_decode_attn_qk_kvh2`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], without its k lock.",
    "sources": [
     "flm_gemma4/decode_attn_qk_kvh2_core.cc"
    ],
@@ -914,7 +953,7 @@
   {
    "factory": "flm_gemma4_attn_kv_core",
    "family": "flm_gemma4",
-   "summary": "One attn_kv_round of [`flm_gemma4_decode_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] without its v lock.",
+   "summary": "One attn_kv_round of [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] without its v lock.",
    "sources": [
     "flm_gemma4/decode_attn_kv_core.cc"
    ],
@@ -950,7 +989,7 @@
   {
    "factory": "flm_gemma4_swa_attn_kv_core",
    "family": "flm_gemma4",
-   "summary": "One swa_attn_kv_round of [`flm_gemma4_decode_swa_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] without its v lock.",
+   "summary": "One swa_attn_kv_round of [`flm_gemma4_decode_swa_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] without its v lock.",
    "sources": [
     "flm_gemma4/decode_swa_attn_kv_core.cc"
    ],
@@ -991,7 +1030,7 @@
   {
    "factory": "flm_gemma4_rope_core",
    "family": "flm_gemma4",
-   "summary": "_rotate_t of [`flm_gemma4_decode_rope`][iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one q and one k head.",
+   "summary": "_rotate_t of [`flm_gemma4_decode_rope`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one q and one k head.",
    "sources": [
     "flm_gemma4/decode_rope_core.cc"
    ],
@@ -1011,7 +1050,7 @@
   {
    "factory": "flm_gemma4_v_norm_core",
    "family": "flm_gemma4",
-   "summary": "rms_norm_unweighted of [`flm_gemma4_decode_rope`][iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one v head.",
+   "summary": "rms_norm_unweighted of [`flm_gemma4_decode_rope`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one v head.",
    "sources": [
     "flm_gemma4/decode_rope_core.cc"
    ],
@@ -1050,7 +1089,7 @@
   {
    "factory": "flm_gemma4_rms_residual_core",
    "family": "flm_gemma4",
-   "summary": "rms_norm then residual_add of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual].",
+   "summary": "rms_norm then residual_add of [`flm_gemma4_decode_rms_residual`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual].",
    "sources": [
     "flm_gemma4/decode_rms_residual_core.cc"
    ],
@@ -1070,7 +1109,7 @@
   {
    "factory": "flm_gemma4_rms_norm_core",
    "family": "flm_gemma4",
-   "summary": "rms_norm of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual] into its packet layout.",
+   "summary": "rms_norm of [`flm_gemma4_decode_rms_residual`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual] into its packet layout.",
    "sources": [
     "flm_gemma4/decode_rms_residual_core.cc"
    ],
@@ -1184,7 +1223,7 @@
   {
    "factory": "flm_gemma4_pli_gelu_core",
    "family": "flm_gemma4",
-   "summary": "_activate of [`flm_gemma4_decode_gate_layer_embedding`][iron.kernels.flm_gemma4.flm_gemma4_decode_gate_layer_embedding]: GELU over pli_d values.",
+   "summary": "_activate of [`flm_gemma4_decode_gate_layer_embedding`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_gate_layer_embedding]: GELU over pli_d.",
    "sources": [
     "flm_gemma4/decode_gate_layer_embedding_core.cc"
    ],
@@ -1274,7 +1313,7 @@
   {
    "factory": "compute_max",
    "family": "reduce",
-   "summary": "Pairwise scalar max \u2014 companion to [`reduce_max`][iron.kernels.reduce.reduce_max].",
+   "summary": "Pairwise scalar max \u2014 companion to [`reduce_max`][aie.iron.kernels.reduce.reduce_max].",
    "sources": [
     "reduce/reduce_max.cc"
    ],
@@ -1317,7 +1356,7 @@
   {
    "factory": "argmax_combine",
    "family": "reduce",
-   "summary": "Pairwise record merge \u2014 companion to [`argmax`][iron.kernels.reduce.argmax].",
+   "summary": "Pairwise record merge \u2014 companion to [`argmax`][aie.iron.kernels.reduce.argmax].",
    "sources": [
     "reduce/argmax.cc"
    ],
@@ -1651,6 +1690,106 @@
    "reason": "six entry points share one core's state, driven by counts they write; test_resize_e2e.py drives and judges them"
   },
   {
+   "factory": "levels",
+   "family": "vision",
+   "summary": "Map a row of uint8 RGB pixels through per-channel tables to bf16 pixels of four channels.",
+   "sources": [
+    "vision/levels.cc"
+   ],
+   "builds": [
+    "levels"
+   ],
+   "passed": 7,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/fill-only",
+    "levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/past-input",
+    "levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/past-output",
+    "levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/row-after",
+    "levels/1024x4/uint8_bfloat16/in_bytes=1024/out_width=230/row-before",
+    "levels/1248x4/uint8_bfloat16/bgr=True/in_bytes=1248/out_width=416/bgr"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "grid_decode",
+   "family": "vision",
+   "summary": "Decode a row of an anchor-free detector's prediction map into float32 boxes.",
+   "sources": [
+    "vision/grid_decode.cc"
+   ],
+   "builds": [
+    "grid_decode"
+   ],
+   "passed": 9,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "grid_decode/1872x4/bfloat16_float32/width=13/stride-32",
+    "grid_decode/3744x4/bfloat16_float32/width=26/stride-16",
+    "grid_decode/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-conv_even-False]",
+    "grid_decode/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[grid_decode-floor-True]",
+    "grid_decode/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-conv_even-True]",
+    "grid_decode/test_grid_decode_keeps_a_tiny_exp_through_the_stride[16]",
+    "grid_decode/test_grid_decode_keeps_a_tiny_exp_through_the_stride[32]",
+    "grid_decode/test_grid_decode_keeps_a_tiny_exp_through_the_stride[8]"
+   ],
+   "flaky": []
+  },
+  {
+   "factory": "resize_linear",
+   "family": "vision",
+   "summary": "Resize a uint8 RGB image as OpenCV's INTER_LINEAR does, a row at a time.",
+   "sources": [
+    "vision/resize_linear.cc"
+   ],
+   "builds": [
+    "resize_linear"
+   ],
+   "passed": 0,
+   "failed": [],
+   "timed": 0,
+   "timing_failed": [],
+   "untimed": [],
+   "flaky": [],
+   "reason": "four entry points share one core's state, driven by counts they write; test_resize_linear_e2e.py drives and judges them"
+  },
+  {
+   "factory": "nms",
+   "family": "vision",
+   "summary": "Score-threshold and class-aware NMS over an anchor-free detector's boxes.",
+   "sources": [
+    "vision/nms.cc"
+   ],
+   "builds": [
+    "nms"
+   ],
+   "passed": 14,
+   "failed": [],
+   "timed": 2,
+   "timing_failed": [],
+   "untimed": [
+    "nms/test_device_nms_matches_nms_ref[candidate_cap_eviction_widens_offset]",
+    "nms/test_device_nms_matches_nms_ref[candidate_cap_overflow]",
+    "nms/test_device_nms_matches_nms_ref[candidate_cap_tie_at_boundary]",
+    "nms/test_device_nms_matches_nms_ref[class_agnostic]",
+    "nms/test_device_nms_matches_nms_ref[everything_suppressed]",
+    "nms/test_device_nms_matches_nms_ref[iou_exactly_at_threshold]",
+    "nms/test_device_nms_matches_nms_ref[many_classes]",
+    "nms/test_device_nms_matches_nms_ref[nan_class_rejected]",
+    "nms/test_device_nms_matches_nms_ref[nan_score_rejected]",
+    "nms/test_device_nms_matches_nms_ref[nothing_above_threshold]",
+    "nms/test_device_nms_matches_nms_ref[survivors_over_1000_vanilla_path]",
+    "nms/test_device_nms_matches_nms_ref[ties_in_score]",
+    "nms/test_device_nms_matches_nms_ref_realistic_pyramid",
+    "nms/test_nms_ref_rejects_a_nan_class_anywhere"
+   ],
+   "flaky": []
+  },
+  {
    "factory": "softmax",
    "family": "activation",
    "summary": "Softmax over a row of tile_size elements, into bf16.",
@@ -1661,7 +1800,7 @@
     "softmax",
     "softmax/input_dtype=float32"
    ],
-   "passed": 17,
+   "passed": 23,
    "failed": [],
    "timed": 4,
    "timing_failed": [],
@@ -1673,6 +1812,12 @@
     "softmax/160x4/bfloat16/min-pipelined",
     "softmax/160x8/float32_bfloat16/addend=True/f32",
     "softmax/32x4/bfloat16/accurate_exp2=True/accurate-short",
+    "softmax/32x4/bfloat16/accurate_exp2=True/scale=0.0/span=True/span-mid",
+    "softmax/32x4/bfloat16/accurate_exp2=True/scale=0.0/span=True/span-one",
+    "softmax/32x4/bfloat16/accurate_exp2=True/span=True/span",
+    "softmax/32x4/bfloat16/scale=0.0/span=True/span-mid",
+    "softmax/32x4/bfloat16/scale=0.0/span=True/span-one",
+    "softmax/32x4/bfloat16/scale=0.25/scaled",
     "softmax/32x4/bfloat16/short-trip",
     "softmax/32x8/float32_bfloat16/addend=True/masked=True/soft_cap=50.0/f32",
     "softmax/32x8/float32_bfloat16/f32",
@@ -2180,7 +2325,7 @@
    "builds": [
     "fused_mm"
    ],
-   "passed": 35,
+   "passed": 36,
    "failed": [],
    "timed": 12,
    "timing_failed": [],
@@ -2206,8 +2351,9 @@
     "fused_mm/32x64x16x4/bfloat16/b_col_maj=True/band_m=16/chunk_k=16/mmul_shape=(8, 8, 8)/out_chunk=256",
     "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=gelu/epilogue_modes=('none', 'gelu', 'silu', 'sigmoid')/gelu=bf16_steps/out_chunk=512/rounding=floor",
     "fused_mm/64x128x64x4/bfloat16/band_m=32/bfp16_b=True/chunk_k=128/epilogue=silu/out_chunk=512",
-    "fused_mm/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-False]",
-    "fused_mm/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-True]"
+    "fused_mm/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-conv_even-False]",
+    "fused_mm/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[grid_decode-floor-True]",
+    "fused_mm/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-conv_even-True]"
    ],
    "flaky": []
   },
@@ -2426,7 +2572,7 @@
   {
    "factory": "cascade_mm_put",
    "family": "linalg",
-   "summary": "Build the PUT half of [`cascade_mm`][iron.kernels.linalg.cascade_mm]: A * B onto the cascade stream.",
+   "summary": "Build the PUT half of [`cascade_mm`][aie.iron.kernels.linalg.cascade_mm]: A * B onto the cascade stream.",
    "sources": [
     "linalg/cascade_mm.cc"
    ],
@@ -2484,14 +2630,15 @@
     "conv2dk1",
     "conv2dk1/act_dtype=uint8"
    ],
-   "passed": 5,
+   "passed": 6,
    "failed": [],
    "timed": 2,
    "timing_failed": [],
    "untimed": [
     "conv2dk1/4096x8/int8_uint8/input_width=64/two-blocks",
-    "conv2dk1/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-False]",
-    "conv2dk1/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-True]"
+    "conv2dk1/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[conv2dk1-conv_even-False]",
+    "conv2dk1/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[grid_decode-floor-True]",
+    "conv2dk1/test_a_kernel_leaves_the_rounding_mode_as_it_found_it[mm_fused_k_step-conv_even-True]"
    ],
    "flaky": []
   },
@@ -2539,7 +2686,7 @@
   {
    "factory": "dwconv1d",
    "family": "conv",
-   "summary": "Compatibility alias for [`dwconv1d_channels_first`][iron.kernels.conv.dwconv1d_channels_first].",
+   "summary": "Compatibility alias for [`dwconv1d_channels_first`][aie.iron.kernels.conv.dwconv1d_channels_first].",
    "sources": [
     "conv/dwconv1d_channels_first.cc"
    ],

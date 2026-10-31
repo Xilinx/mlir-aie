@@ -3363,6 +3363,53 @@
     "offered": 95,
     "checked": 92
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "41175499320",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41175499320",
+   "date": "2026-10-31T06:10:27+00:00",
+   "commit": {
+    "id": "064a1721a4af3fa483ebccd23b508c2d647066fe",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/064a1721a4af3fa483ebccd23b508c2d647066fe",
+    "message": "Get Metrics from Remaining Nightly Workflows (#3998)",
+    "timestamp": "2026-10-31T00:54:08Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "064a1721a4",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "7db85ae9b8e1",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2075,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 825,
+    "failed": 0,
+    "timed": 351,
+    "timing_failed": 0,
+    "untimed": 478,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 99,
+    "checked": 97
+   }
   }
  ]
 }
