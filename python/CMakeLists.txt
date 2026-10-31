@@ -46,7 +46,8 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/bfp.py
     utils/config.py
     utils/probe.py
-    utils/readable_ir.py
+    utils/readable_ir/__init__.py
+    utils/readable_ir/__main__.py
     utils/txn_trace.py
     utils/tensor_factory.py
     utils/test.py

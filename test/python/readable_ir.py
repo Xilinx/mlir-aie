@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %PYTHON %s | FileCheck %s
+# The command line, run without warnings (aie.utils imports the package first).
+# RUN: %PYTHON -W error -m aie.utils.readable_ir %S/../objectFifo-split/link_pool_loc.mlir | FileCheck %s --check-prefix=CLI
+# CLI: aie.objectfifo @in {{.*}}  // in · design.py:10
 
 # readable() turns each op's location into a short trailing comment: the
 # names on it (iron: dropped, py: kept) and its innermost source line.

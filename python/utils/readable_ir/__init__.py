@@ -1,4 +1,4 @@
-# readable_ir.py -*- Python -*-
+# __init__.py -*- Python -*-
 #
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -23,10 +23,8 @@ read as text, so any stage aiecc writes works, with or without
 
 from __future__ import annotations
 
-import argparse
 import os
 import re
-import sys
 
 from aie.helpers.sourceloc import IRON_PREFIX
 
@@ -288,24 +286,3 @@ def readable(text: str) -> str:
         f"{line}  // {notes[i]}" if i in notes else line for i, line in enumerate(out)
     ]
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
-
-
-def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Print MLIR with each op's location as a short trailing comment."
-    )
-    parser.add_argument("input", help="MLIR file printed with debug info, or -")
-    parser.add_argument("-o", "--output", help="Write here instead of stdout")
-    args = parser.parse_args(argv)
-    text = sys.stdin.read() if args.input == "-" else open(args.input).read()
-    result = readable(text)
-    if args.output:
-        with open(args.output, "w") as f:
-            f.write(result)
-    else:
-        sys.stdout.write(result)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
