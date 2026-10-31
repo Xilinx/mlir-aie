@@ -1013,7 +1013,7 @@ def _mv_bf16(
 
 
 def mv_coded_sample(rng, calls, *, dim_m: int, dim_k: int, tiled: bool):
-    """Coded A tiles (``coded_rows_sample``) and a b for [`mv`][iron.kernels.linalg.mv] with ``a_coded``."""
+    """Coded A tiles (``coded_rows_sample``) and a b for [`mv`][aie.iron.kernels.linalg.mv] with ``a_coded``."""
     a = coded_rows_sample(rng, calls, dim_m=dim_m, dim_k=dim_k)
     b_shape = (dim_k,) if tiled else (calls, dim_k)
     return [a, rng.standard_normal(b_shape).astype(bfloat16)]

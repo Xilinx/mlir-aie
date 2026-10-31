@@ -951,7 +951,7 @@ def coded_rows_sample(rng, calls: int, *, dim_m: int, dim_k: int) -> np.ndarray:
 
 
 def decode_coded_ref(a, *, dim_k: int):
-    """Numpy reference for [`decode_coded`][iron.kernels.datamovement.decode_coded]: ``aie.utils.coded.decode_rows``."""
+    """Numpy reference for [`decode_coded`][aie.iron.kernels.datamovement.decode_coded]: ``aie.utils.coded.decode_rows``."""
     return coded.decode_rows(np.asarray(a), dim_k)
 
 
