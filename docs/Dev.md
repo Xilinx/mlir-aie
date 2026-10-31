@@ -55,8 +55,8 @@ fork rather than upstream, so the major version tracks that fork.
 The wheels are currently built for
 
 * Linux
-  * x86_64 ([manylinux_2_27](https://github.com/pypa/manylinux))
-  * aarch64
+  * x86_64 ([manylinux_2_28](https://github.com/pypa/manylinux))
+  * aarch64 (manylinux_2_28)
 * Windows
   * AMD64
 
@@ -72,7 +72,7 @@ The same procedure applies to the **MLIR AIE Distro** workflow for the MLIR-AIE 
 
 ### Developing/extending { #developing-extending }
 
-A brief overview: 
+A brief overview:
 
 * Everything is meant to flow through [cibuildwheel](https://cibuildwheel.readthedocs.io/en/stable) so start by studying the [pyproject.toml](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_wheels%2Fpyproject.toml) files;
 * CMake is driven through [setup.py](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_aie_wheels%2Fsetup.py)s.
@@ -115,7 +115,7 @@ Useful entry points:
 ##### Known gotchas and non-obvious behaviors
 
 * In many places `PIP_NO_BUILD_ISOLATION=false` appears. Counterintuitively, this *disables* build isolation (equivalent to passing `--no-build-isolation` to `pip wheel`); see [this pip issue](https://github.com/pypa/pip/issues/5229#issuecomment-387301397) for the rationale.
-* CMake versions in the 3.28 range have been observed to segfault during `Detecting CXX compiler ABI info` inside cibuildwheel, so the build pins a known-good version (`cmake==4.3.4`) in the wheel [pyproject.toml](https://github.com/Xilinx/mlir-aie/blob/main/utils/mlir_wheels/pyproject.toml) files.
+* CMake versions in the 3.28 range have been observed to segfault during `Detecting CXX compiler ABI info` inside cibuildwheel, so the build pins a known-good version (`cmake==4.4.4`) in the wheel [pyproject.toml](https://github.com/Xilinx/mlir-aie/blob/main/utils/mlir_wheels/pyproject.toml) files.
 * `caution filename not matched` during `unzip` is caused by a glob that matches multiple files; escape the glob, e.g. `mlir_aie\*.whl`.
 * Files created inside a cibuildwheel container (on Linux) can carry future timestamps, which makes `ninja` loop indefinitely during the `cmake .. -G Ninja ...` configure step. To avoid this, the build resets timestamps to a fixed past value, e.g. `find mlir -exec touch -a -m -t 201108231405.14 {} \;` (the exact value is arbitrary, as long as it is in the past).
 * The `setup.py` files accommodate several platform-specific requirements:

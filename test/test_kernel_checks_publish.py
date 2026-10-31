@@ -521,6 +521,291 @@ def test_old_runs_thin_to_one_a_week(publish):
     assert kept[-1]["id"] == "0"
 
 
+def test_a_thinned_week_keeps_its_published_nightly(publish):
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+
+    def run(rid, days, **extra):
+        return {
+            "id": rid,
+            "date": publish.iso(now - datetime.timedelta(days=days)),
+            **extra,
+        }
+
+    # One old ISO week: a published nightly, then a newer refused night and
+    # a newer published run started by hand. The week's charted point is the
+    # nightly's: neither newer run may stand in for it.
+    week = publish.parse_date(publish.iso(now - datetime.timedelta(days=120)))
+    monday = 120 + week.weekday()
+    records = [
+        run("nightly", monday - 1, published=True, rows={"a": {}}),
+        run("refused", monday - 2, published=False, rows={}),
+        run(
+            "manual",
+            monday - 3,
+            published=True,
+            rows={"a": {}},
+            event="workflow_dispatch",
+        ),
+    ]
+    assert [r["id"] for r in publish.prune(records, now)] == ["nightly"]
+    # A week with no published run keeps its newest.
+    only_refused = [
+        run("r1", monday - 1, published=False),
+        run("r2", monday - 2, published=False),
+    ]
+    assert [r["id"] for r in publish.prune(only_refused, now)] == ["r2"]
+
+
+def test_runs_past_a_year_of_weeks_are_dropped(publish):
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    horizon = publish.KEEP_DAYS + 7 * publish.KEEP_WEEKS
+    records = [
+        {"id": str(d), "date": publish.iso(now - datetime.timedelta(days=d))}
+        for d in (0, horizon - 10, horizon + 10, horizon + 400)
+    ]
+    assert [r["id"] for r in publish.prune(records, now)] == [str(horizon - 10), "0"]
+
+
+def test_old_records_shed_their_detail_and_retired_cases_leave_the_history(
+    publish, tmp_path
+):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    # Twenty nights, oldest first (one 200 days ago, then the last 19): case
+    # "kept" every night; "retired" only in the first five; "gap" every night
+    # but the last three.
+    days = [200, *range(18, -1, -1)]
+    for i, d in enumerate(days):
+        rows = {"kept": {"cost": {"value": i, "unit": "cost"}}}
+        if i < 5:
+            rows["retired"] = {"cost": {"value": i, "unit": "cost"}}
+        if i < len(days) - 3:
+            rows["gap"] = {"cost": {"value": i, "unit": "cost"}}
+        record = {
+            "target": "sa-placer-hw",
+            "id": f"r{i:02}",
+            "url": "",
+            "commit": {},
+            "date": publish.iso(now - datetime.timedelta(days=d)),
+            "pmode": "turbo",
+            "provenance": {},
+            "sane": True,
+            "published": True,
+            "n_rows": 1,
+            "failed": [],
+            "truncated": [],
+            "rows": rows,
+            "detail": [{"seed": 3}],
+            "builds": {"x": 1},
+        }
+        (out / "runs" / f"r{i:02}.json").write_text(json.dumps(record))
+    publish.rebuild(out, now)
+    # The 200-day-old record sheds what only the latest runs are read for;
+    # a recent one keeps it.
+    old = json.loads((out / "runs/r00.json").read_text())
+    assert "detail" not in old and "builds" not in old and old["rows"]
+    assert "detail" in json.loads((out / "runs/r19.json").read_text())
+    # A case not measured in the last RETIRED_AFTER runs leaves the history;
+    # one missing a few nights stays.
+    cost = json.loads((out / "history/cost.json").read_text())
+    assert sorted(cost["series"]) == ["gap", "kept"]
+
+
+def test_manual_publishes_of_a_subset_retire_nothing(publish, tmp_path):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    nights = publish.RETIRED_AFTER
+    for i in range(2 * nights):
+        manual = i >= nights
+        rows = {"subset": {"cost": {"value": i, "unit": "cost"}}}
+        if not manual:
+            rows["nightly"] = {"cost": {"value": i, "unit": "cost"}}
+        record = hardware_record(
+            f"r{i:02}",
+            publish.iso(now - datetime.timedelta(hours=2 * nights - i)),
+            "full",
+            event="workflow_dispatch" if manual else "schedule",
+        )
+        record["rows"] = rows
+        (out / "runs" / f"r{i:02}.json").write_text(json.dumps(record))
+    publish.rebuild(out, now)
+    cost = json.loads((out / "history/cost.json").read_text())
+    assert sorted(cost["series"]) == ["nightly", "subset"]
+
+
+@pytest.mark.parametrize(
+    "changes, selected, needed",
+    [
+        (
+            [
+                {"event": "schedule"},
+                {"event": "schedule"},
+                {"event": "workflow_dispatch"},
+                {"event": "workflow_dispatch"},
+            ],
+            "2",
+            {"1", "2"},
+        ),
+        ([{}, {"pmode": "performance"}, {}], "3", {"1", "3"}),
+        ([{}, {"device": "Phoenix"}, {}], "3", {"1", "3"}),
+        ([{"device": "Phoenix"}, {"device": "Strix Halo"}, {}], "3", {"2", "3"}),
+        ([{}, {}, {"published": False, "rows": {}}], "2", {"1", "2"}),
+        (
+            [{"event": "workflow_dispatch"} for _ in range(4)],
+            "4",
+            {"4"},
+        ),
+        (
+            [{}, {"event": "workflow_dispatch"}, {}],
+            "3",
+            {"1", "3"},
+        ),
+    ],
+    ids=[
+        "manual-after",
+        "power",
+        "same-device",
+        "new-device",
+        "refused",
+        "manual-only",
+        "manual-before",
+    ],
+)
+def test_old_detail_follows_the_pages_selected_comparison(
+    publish, tmp_path, changes, selected, needed
+):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    for i, change in enumerate(changes, 1):
+        record = hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=160 - 7 * i)),
+            "full",
+            builds={"kernel": "built"},
+            **change,
+        )
+        (out / "runs" / f"{i}.json").write_text(json.dumps(record))
+
+    publish.rebuild(out, now)
+    latest = json.loads((out / "latest.json").read_text())
+    assert latest["id"] == selected
+    assert latest["detail"] and latest["builds"]
+    for i in range(1, len(changes) + 1):
+        record = json.loads((out / "runs" / f"{i}.json").read_text())
+        assert ("detail" in record) == (str(i) in needed)
+        assert ("builds" in record) == (str(i) in needed)
+    before = {p: p.read_text() for p in out.rglob("*.json")}
+    publish.rebuild(out, now)
+    assert {p: p.read_text() for p in out.rglob("*.json")} == before
+
+
+@pytest.mark.parametrize(
+    "middle, latest, previous",
+    [
+        ({}, {}, "2"),
+        ({"pmode": "performance"}, {}, "1"),
+        ({"device": "Phoenix"}, {}, "1"),
+        ({"device": "Phoenix"}, {"device": "Strix Halo"}, "2"),
+    ],
+    ids=["same-week", "power", "same-device", "new-device"],
+)
+def test_comparison_survives_weekly_thinning_and_the_run_limit(
+    publish, tmp_path, middle, latest, previous
+):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    max_runs = 6
+    records = [
+        hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=161 - i)),
+            "full",
+            event="schedule",
+            builds={"kernel": "built"},
+            **change,
+        )
+        for i, change in enumerate(({}, middle, latest), 1)
+    ]
+    assert len({publish.parse_date(r["date"]).isocalendar()[:2] for r in records}) == 1
+    records += [
+        hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=24 - i)),
+            "full",
+            event="workflow_dispatch" if i % 2 else "schedule",
+            published=bool(i % 2),
+            **({} if i % 2 else {"rows": {}}),
+        )
+        for i in range(4, 24)
+    ]
+    # File enumeration order is not chronology.
+    for r in reversed(records):
+        (out / "runs" / f"{r['id']}.json").write_text(json.dumps(r))
+    publish.rebuild(out, now, max_runs=max_runs)
+
+    selected = json.loads((out / "latest.json").read_text())
+    assert selected["id"] == "3" and selected["detail"] and selected["builds"]
+    index = json.loads((out / "runs.json").read_text())["runs"]
+    assert [r["id"] for r in index] == [previous, "3", "20", "21", "22", "23"]
+    assert len(index) == max_runs
+    assert [r["date"] for r in index] == sorted(r["date"] for r in index)
+    for run_id in (previous, "3"):
+        detail = json.loads((out / "runs" / f"{run_id}.json").read_text())
+        assert detail["detail"] and detail["builds"]
+    assert len(list((out / "runs").glob("*.json"))) == max_runs
+    before = {p: p.read_text() for p in out.rglob("*.json")}
+    publish.rebuild(out, now, max_runs=max_runs)
+    assert {p: p.read_text() for p in out.rglob("*.json")} == before
+
+
+def test_a_run_limit_below_the_comparison_keeps_only_the_comparison(publish, tmp_path):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    records = [
+        hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=10 - i)),
+            "full",
+            event="schedule" if i < 3 else "workflow_dispatch",
+            published=i < 3,
+            **({} if i < 3 else {"rows": {}}),
+        )
+        for i in range(1, 8)
+    ]
+    for r in records:
+        (out / "runs" / f"{r['id']}.json").write_text(json.dumps(r))
+    with pytest.raises(ValueError, match="max_runs must be at least 1"):
+        publish.rebuild(out, now, max_runs=0)
+    assert len(list((out / "runs").glob("*.json"))) == len(records)
+    publish.rebuild(out, now, max_runs=1)
+    index = json.loads((out / "runs.json").read_text())["runs"]
+    assert [r["id"] for r in index] == ["1", "2"]
+    assert sorted(p.stem for p in (out / "runs").glob("*.json")) == ["1", "2"]
+
+
+def test_comparison_protection_does_not_extend_the_retention_horizon(publish, tmp_path):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    horizon = publish.KEEP_DAYS + 7 * publish.KEEP_WEEKS
+    for i, days in enumerate((horizon + 1, horizon, 1), 1):
+        record = hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=days)),
+            "full",
+            event="workflow_dispatch" if i == 3 else "schedule",
+        )
+        (out / "runs" / f"{i}.json").write_text(json.dumps(record))
+    publish.rebuild(out, now)
+    assert json.loads((out / "latest.json").read_text())["id"] == "3"
+    assert [p.stem for p in (out / "runs").glob("*.json")] == ["3"]
+
+
 def test_rebuild_drops_pruned_run_files_and_stale_histories(publish, tmp_path):
     out = tmp_path / "npu2"
     (out / "runs").mkdir(parents=True)

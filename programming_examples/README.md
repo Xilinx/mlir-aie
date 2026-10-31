@@ -11,6 +11,8 @@ These programming examples are provided so that application programmers can lear
 
 Most examples are a single `<example_name>.py` design driven by `@iron.jit` — one file describes the AIE-array dataflow, JIT-compiles to xclbin/insts, and runs end-to-end (or feeds the prebuilt artifacts to a C++ host).
 
+The designs measured every night (the kernels, and MobileNet, YOLO26n and Llama 3.2 1B) are charted on the [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
+
 They are organized into the following directories:
 
 ## [getting_started](./getting_started)

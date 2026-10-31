@@ -7,14 +7,15 @@
 
 # ObjectFifo Repeat Pattern
 
-At the closer-to-metal API level, the ObjectFifo provides users with two ways to specify how data from the producer should be repeated. 
+At the closer-to-metal API level, the ObjectFifo provides users with two ways to specify how data from the producer should be repeated.
 
 Both repeat features are achieved using the Direct Memory Access (DMA) unit of the ObjectFifo's producer tile. In particular, data movement for each DMA channel is described as a chain of buffer descriptors, where each buffer descriptor (BD) indicates what data should be pushed to the AXI stream. The data movement generated for ObjectFifos follows a cyclic pattern of First In First Out where each object in the ObjectFifo is moved by one BD in a chain.
 
 The first repeat features enables users to repeat the entire BD chain using the following syntax:
 ```python
-of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
-of0.set_iter_count(2)
+of0 = object_fifo(
+    "objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]], iter_count=2
+)
 ```
 The code snippet above results in the repetition of each object in the ObjectFifo following the pattern `buff_ping - buff_pong - buff_ping - buff_pong`. This is shown in the figure below with the red arrow representing the repeat value of the entire BD chain:
 

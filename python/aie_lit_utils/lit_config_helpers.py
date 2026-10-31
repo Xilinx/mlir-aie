@@ -23,6 +23,8 @@ Usage:
     helper.apply_config_to_lit(config, {"xrt": xrt_config})
 """
 
+import copy
+import hashlib
 import logging
 import os
 import re
@@ -32,6 +34,8 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
+
+import lit.formats
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,34 @@ class HardwareConfig:
     substitutions: Dict[str, str] = field(default_factory=dict)
     flags: str = ""
     environment: Dict[str, str] = field(default_factory=dict)
+
+
+class SanitizerLogShTest(lit.formats.ShTest):
+    """Run each test with its sanitizer reports in files of its own.
+
+    A report piped into FileCheck is kept. The files are
+    ``<log_dir>/<sha1(full lit name)[:16]>.<pid>``, the naming
+    utils/kernel_checks/code_health.py reads back.
+
+    Args:
+        log_dir: Absolute directory for the report files.
+    """
+
+    OPTIONS = ("ASAN_OPTIONS", "UBSAN_OPTIONS", "TSAN_OPTIONS")
+
+    def __init__(self, log_dir: str):
+        super().__init__()
+        self.log_dir = log_dir
+
+    def execute(self, test, litConfig):
+        name = hashlib.sha1(test.getFullName().encode()).hexdigest()[:16]
+        log_path = f"log_path={os.path.join(self.log_dir, name)}"
+        env = dict(test.config.environment)
+        for key in self.OPTIONS:
+            env[key] = f"{env[key]}:{log_path}" if env.get(key) else log_path
+        test.config = copy.copy(test.config)
+        test.config.environment = env
+        return super().execute(test, litConfig)
 
 
 class LitConfigHelper:

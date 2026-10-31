@@ -7,7 +7,7 @@
 
 # <ins>Vector Vector Modulo</ins>
 
-A simple binary operator: a single AIE core computes `c = a % b` element-wise on two vectors of length `256`, processed in sub-tiles of `16`. The design body is a single `transform_binary(lambda a, b: a % b, ...)` call through `aie.iron.algorithms`; the kernel runs on AIE tile (`col`, 2) with both inputs streamed in from a Shim tile and the result streamed back out. This reference design runs on a Ryzen™ AI NPU.
+A simple binary operator: a single AIE core computes `c = a % b` element-wise on two vectors of length `256`, processed in sub-tiles of `16`. The design body is a single `transform_binary(lambda a, b: a % b, ...)` call through `aie.iron.algorithms`; the kernel runs on one AIE compute tile, with both inputs streamed in from a Shim tile and the result streamed back out. This reference design runs on a Ryzen™ AI NPU.
 
 ## Source Files Overview
 
