@@ -24,12 +24,16 @@ import os
 import re
 import sys
 
+from aie.helpers.sourceloc import IRON_PREFIX
+
 # MLIR names its own location aliases #locN; a hand-written file may use any
 # alias name.
 _ALIAS_DEF = re.compile(r"^(#[A-Za-z_][\w$.-]*)\s*=\s*loc\((.*)\)\s*$")
 _TOKEN = re.compile(
     r'\s*(?:(?P<str>"(?:[^"\\]|\\.)*")|(?P<alias>#[A-Za-z_][\w$.-]*)'
-    r"|(?P<num>[0-9]+)|(?P<word>[A-Za-z_][A-Za-z0-9_]*)|(?P<punct>[()\[\],:<>]))"
+    r"|(?P<num>[0-9]+)|(?P<word>[A-Za-z_][A-Za-z0-9_]*)|(?P<punct>[()\[\],:<>])"
+    # Anything else, as in `fused<{n = 1 : i64}>` metadata, is skipped over.
+    r"|(?P<other>\S))"
 )
 
 
@@ -46,9 +50,7 @@ class _Parser:
         pos = 0
         while pos < len(text):
             m = _TOKEN.match(text, pos)
-            if not m or m.end() == pos:
-                # Something this reader does not model (opaque metadata):
-                # keep what came before.
+            if not m:
                 break
             self.tokens.append((m.lastgroup, m[0].lstrip()))
             pos = m.end()
@@ -107,7 +109,8 @@ class _Parser:
             text = _unescape(value[1:-1])
             if self.peek(":"):
                 self.take()
-                line = int(tok[1]) if (tok := self.take()) else 0
+                tok = self.peek()
+                line = int(self.take()[1]) if tok and tok[0] == "num" else 0
                 # The column, and any `to` range end, are not shown.
                 while self.peek(":") or self.peek("to"):
                     self.take()
@@ -166,7 +169,7 @@ def label(loc, aliases: dict) -> str:
             if node[1] in aliases and node[1] not in seen:
                 visit(aliases[node[1]], seen | {node[1]})
         elif kind == "name":
-            name = node[1].removeprefix("iron:")
+            name = node[1].removeprefix(IRON_PREFIX)
             if name not in names:
                 names.append(name)
             if node[2] is not None:

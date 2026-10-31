@@ -23,6 +23,7 @@ module {
     %b = aie.buffer(%tile_0_2) {sym_name = "b"} : memref<4xi32> loc("/abs/path/inline.py":9:1)
     func.call @get_loc(%b) : (memref<4xi32>) -> () loc("d\\C3\\A9sign.py":5:0)
     %tile_0_3 = aie.tile(0, 3) loc(#named.site)
+    %tile_0_4 = aie.tile(0, 4) loc(fused<{n = 1 : i64, pass = "cse"}>[#loc5, "b.py":3:4])
     aie.runtime_sequence(%arg1: memref<16xi32> loc("arg.py":7:0)) {
       scf.if %c {
         aie.end loc(#loc4)
@@ -66,6 +67,8 @@ print(readable(IR))
 # CHECK-NEXT: func.call @get_loc(%b) : (memref<4xi32>) -> ()  // désign.py:5
 # An alias need not be one MLIR printed (#locN).
 # CHECK-NEXT: %tile_0_3 = aie.tile(0, 3)  // by_hand · named.py:3
+# A fused location's metadata is skipped over.
+# CHECK-NEXT: %tile_0_4 = aie.tile(0, 4)  // of_out · design.py:40
 # A header's block-argument locations are not the op's.
 # CHECK-NEXT: aie.runtime_sequence(%arg1: memref<16xi32>) {  // design.py:30
 # CHECK-NEXT:   scf.if %c {  // helpers.py:12
