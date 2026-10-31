@@ -11,6 +11,7 @@
 import tempfile
 from pathlib import Path
 
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.utils import compile_mlir_module
 
 IR = """
@@ -63,3 +64,21 @@ with tempfile.TemporaryDirectory() as work:
     assert message.startswith("[aiecc] Compilation failed"), message
     assert "Could not write the design's readable IR: IsADirectoryError" in message
 print("PASS: aiecc's error kept when the readable IR cannot be written")
+
+# A design compiled through CompilableDesign, whose failed build is cleaned
+# from its cache directory, keeps the readable IR the error points at.
+with tempfile.TemporaryDirectory() as work:
+    design = Path(work) / "design.mlir"
+    design.write_text(IR)
+    try:
+        CompilableDesign(design, use_cache=False).compile(
+            xclbin_path=f"{work}/final.xclbin", inst_path=f"{work}/insts.bin"
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected aiecc to reject a fifo with no drainer")
+    pointed = Path(message.rpartition("each op noted with its source: ")[2])
+    assert pointed.name == "aie.readable.mlir", message
+    assert pointed.is_file(), f"{pointed} was cleaned with the failed build"
+print("PASS: readable IR kept when a CompilableDesign's failed build is cleaned")

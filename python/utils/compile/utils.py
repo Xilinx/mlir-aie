@@ -43,6 +43,8 @@ _SYMBOL_PREFIX_STAMP_VERSION = 3
 
 AIECC_PROFILE_NAME = "aiecc_profile.json"
 KERNEL_PROFILE_NAME = "kernel_profile.json"
+# Written beside a design aiecc rejects; kept when the failed build is cleaned.
+READABLE_IR_NAME = "aie.readable.mlir"
 
 SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
 SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
@@ -1297,7 +1299,7 @@ def compile_mlir_module(
             args + [f"--profile-json={profile}"],
             cwd=work_dir,
             build_link_files=build_link_files,
-            readable_path=os.path.join(work_dir, "aie.readable.mlir"),
+            readable_path=os.path.join(work_dir, READABLE_IR_NAME),
         )
     elif build_link_files is not None:
         raise ValueError("build_link_files requires work_dir.")
@@ -2059,8 +2061,9 @@ def _is_dispatch_library_name(name: str) -> bool:
 def _cleanup_failed_compilation(cache_dir):
     """Clean up cache directory after failed compilation.
 
-    Preserves the lock file and, when present, the ``repeater`` reproducer dir
-    that aiecc's ``--enable-repeater-scripts`` writes. Published dispatch
+    Preserves the lock file, the design's readable IR the failure message
+    points at, and, when present, the ``repeater`` reproducer dir that
+    aiecc's ``--enable-repeater-scripts`` writes. Published dispatch
     generations are retained cache artifacts, not temporary staging files:
     a caller can still hold their path without having loaded it yet, so they
     stay until cache eviction.
@@ -2069,7 +2072,9 @@ def _cleanup_failed_compilation(cache_dir):
         return
 
     for item in os.listdir(cache_dir):
-        if item in (".lock", "repeater") or _is_dispatch_library_name(item):
+        if item in (".lock", "repeater", READABLE_IR_NAME):
+            continue
+        if _is_dispatch_library_name(item):
             continue
         item_path = os.path.join(cache_dir, item)
         if os.path.isfile(item_path):
