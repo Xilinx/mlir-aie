@@ -236,6 +236,11 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
         return self._to_stream
 
     @property
+    def display_name(self) -> str:
+        """The name, or before one is assigned, how an error names it."""
+        return self.name or self._site.describe("ObjectFifo")
+
+    @property
     def op(self) -> ObjectFifoCreateOp:
         if self._op is None:
             raise NotResolvedError()
@@ -285,7 +290,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
             prod_endpoint = self._prod.endpoint
         return (
             f"{self.__class__.__name__}({self._obj_type}, "
-            f"depth={self.depth}, name='{self.name}', "
+            f"depth={self.depth}, name='{self.display_name}', "
             f"prod={prod_endpoint}, cons={[c.endpoint for c in self._cons]})"
         )
 
@@ -326,12 +331,12 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
                 raise ValueError(f"Depth must be > 1, but got {depth}")
             if port is not None and self._prod.port != port:
                 raise ValueError(
-                    f"Producer handle for {self.name} already pinned to "
+                    f"Producer handle for {self.display_name} already pinned to "
                     f"{self._prod.port}, cannot re-pin to {port}."
                 )
             if tile is not None and not _same_shim_pin(self._prod._shim_tile, tile):
                 raise ValueError(
-                    f"Producer handle for {self.name} already pinned to shim tile "
+                    f"Producer handle for {self.display_name} already pinned to shim tile "
                     f"{self._prod._shim_tile}, cannot re-pin to {tile}."
                 )
         else:
@@ -417,7 +422,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
     def _prod_tile_op(self) -> Tile:
         if self._prod is None:
             raise ValueError(
-                f"Cannot return prod.tile.op for ObjectFifo {self.name} because prod was not created."
+                f"Cannot return prod.tile.op for ObjectFifo {self.display_name} because prod was not created."
             )
         if self._prod.endpoint is None:
             raise ValueError(f"Prod endpoint not set for {self}")
@@ -427,7 +432,7 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
     def _cons_tiles_ops(self) -> list[Tile]:
         if len(self._cons) < 1:
             raise ValueError(
-                f"Cannot return cons.tile.op for ObjectFifo {self.name} because no consumers were created."
+                f"Cannot return cons.tile.op for ObjectFifo {self.display_name} because no consumers were created."
             )
         ops = []
         for cons in self._cons:
@@ -484,13 +489,15 @@ class ObjectFifo(PerDeviceConfigurationResolvable):
             self._to_stream,
             sizes,
             None if walks_stream else emits,
-            f"{self.name} to_stream",
+            f"{self.display_name} to_stream",
         )
         for con in self._cons:
             sizes = [emits]
             if isinstance(con.endpoint, ObjectFifoLink):
                 sizes = con.endpoint._transfer_sizes(self)
-            _check_walk_size(con.from_stream, sizes, emits, f"{self.name} from_stream")
+            _check_walk_size(
+                con.from_stream, sizes, emits, f"{self.display_name} from_stream"
+            )
 
     def resolve(
         self,
@@ -746,7 +753,7 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     def endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
         if self._endpoint and self._endpoint != endpoint:
             raise ValueError(
-                f"Endpoint already set for ObjectFifoHandle {self.name}.{self.handle_type}: "
+                f"Endpoint already set for ObjectFifoHandle {self._object_fifo.display_name}.{self.handle_type}: "
                 f"Set to {self._endpoint}, trying to set to {endpoint}"
             )
         self._endpoint = endpoint

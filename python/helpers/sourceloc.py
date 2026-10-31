@@ -207,6 +207,23 @@ class SourceSite:
             index = element if index is None else index
         return None
 
+    def describe(self, kind: str) -> str:
+        """Return how an error names an object before it has a name.
+
+        Args:
+            kind: The object's class, e.g. "ObjectFifo".
+
+        Returns:
+            The variable its statement assigns it to, as "act_in"; else where
+            it was declared, as "ObjectFifo at design.py:12"; else `kind`.
+        """
+        name = self.assigned_name()
+        if name is not None:
+            return name
+        if self.filename is None:
+            return kind
+        return f"{kind} at {os.path.basename(self.filename)}:{self.line}"
+
     def location(self, name: str | None = None) -> "ir.Location":
         """Return this site as an `ir.Location` in the current Context.
 

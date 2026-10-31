@@ -348,10 +348,15 @@ class ObjectFifoPool(PerDeviceConfigurationResolvable):
             for index, segment in enumerate(self._segments):
                 segment._resolve(index, base)
 
+    @property
+    def display_name(self) -> str:
+        """The name, or before one is assigned, how an error names it."""
+        return self.name or self._site.describe("ObjectFifoPool")
+
     def __str__(self) -> str:
         return (
             f"ObjectFifoPool({self._obj_type}, tile={self._tile}, "
-            f"depth={self._depth}, name={self.name!r}, "
+            f"depth={self._depth}, name={self.display_name!r}, "
             f"segments={len(self._segments)})"
         )
 
@@ -401,7 +406,8 @@ class ObjectFifoPoolHandle(PerDeviceConfigurationResolvable):
     def endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
         if self._endpoint and self._endpoint != endpoint:
             raise ValueError(
-                f"Endpoint already set for ObjectFifoPoolHandle {self._name}: "
+                f"Endpoint already set for ObjectFifoPoolHandle "
+                f"{self._name or self._pool.display_name}: "
                 f"Set to {self._endpoint}, trying to set to {endpoint}"
             )
         self._endpoint = endpoint
