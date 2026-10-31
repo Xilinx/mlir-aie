@@ -114,6 +114,13 @@ def declare(generator: Callable) -> Declaration:
             )
         elif ann in _TENSOR_ANNOTATIONS:
             member = ann()
+        elif isinstance(ann, _TENSOR_ANNOTATIONS):
+            raise TypeError(
+                f"Parameter {name!r} of {generator!r}: annotate a tensor with the "
+                f"bare {type(ann).__name__}; its shape and dtype come from the "
+                "call's tensor. A coded operand is an Operator's, whose caller "
+                "uploads aie.utils.coded.encode_rows' rows"
+            )
         elif (dtype := _tagged_type(ann, "aie.dispatch_time")) is not None:
             member = PerCallMember(dtype, None, None)
         else:

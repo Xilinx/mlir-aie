@@ -473,6 +473,15 @@ CASES: list[Case] = [
     # One row and one 16-lane column block: each loop runs a single trip.
     check("affine_cast", dict(rows=1, cols=16), tag="edge-tiny", smoke=True),
     check("affine_cast", dict(rows=8, cols=256), tag="wide"),
+    # The coded-rows decode alone: four rows of llama 3.2 1B's hidden size,
+    # and a row whose code plane ends off a 64-byte boundary.
+    Case("decode_coded", calls=16, smoke=True),
+    check(
+        "decode_coded",
+        dict(dim_m=2, dim_k=192),
+        tag="edge-code-plane-padded",
+        smoke=True,
+    ),
     Case("expand", calls=16, smoke=True),
     Case("expand", calls=256),
     # AIE2 builds a group's scale once when a group spans blocks; 96 leaves one
@@ -1312,6 +1321,31 @@ CASES: list[Case] = [
             (64, 128, 64, ""),
             (32, 256, 32, "edge-eight-vectors"),
             (16, 32, 16, "edge-narrowest"),
+        )
+    ],
+    # The coded matvec (a_coded) at llama 3.2 1B's two decode GEMV shapes,
+    # as the plain kernel's cases above run them, so its cycles read
+    # against theirs. Bit identity with the plain kernel is
+    # test_mv_coded_e2e.py's.
+    *[
+        Case(
+            "mv",
+            dict(
+                dim_m=dim_m,
+                dim_k=dim_k,
+                input_dtype=bfloat16,
+                output_dtype=bfloat16,
+                vec_size=64,
+                output_rows=output_rows,
+                a_coded=True,
+            ),
+            calls=output_rows // dim_m,
+            tag=tag,
+            smoke=smoke,
+        )
+        for dim_m, dim_k, output_rows, tag, smoke in (
+            (4, 2048, 64, "", True),
+            (1, 8192, 256, "llama-decode-ffn-down", False),
         )
     ],
     # reduce companion, gated activation
