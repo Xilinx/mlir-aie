@@ -281,3 +281,16 @@ def test_declare_keeps_markers_beside_a_checker_only_annotation():
 def test_declare_names_the_parameter_whose_marker_does_not_resolve():
     with pytest.raises(TypeError, match="Parameter 'M'.*CompileTime\\[Sequence"):
         declare(_checker_only_marker)
+
+
+def test_a_generator_refuses_a_declared_operand():
+    def coded(w: In(4, 64, coded=True)):  # pyright: ignore[reportInvalidTypeForm]
+        pass
+
+    def shaped(a: In(4)):  # pyright: ignore[reportInvalidTypeForm]
+        pass
+
+    with pytest.raises(TypeError, match="encode_rows"):
+        declare(coded)
+    with pytest.raises(TypeError, match="bare In"):
+        declare(shaped)

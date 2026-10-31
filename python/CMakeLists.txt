@@ -44,6 +44,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/aie_fp32.py
     utils/benchmark.py
     utils/bfp.py
+    utils/coded.py
     utils/config.py
     utils/probe.py
     utils/readable_ir.py
