@@ -109,8 +109,10 @@ class _Parser:
             text = _unescape(value[1:-1])
             if self.peek(":"):
                 self.take()
-                tok = self.peek()
-                line = int(self.take()[1]) if tok and tok[0] == "num" else 0
+                line = 0
+                if (tok := self.peek()) and tok[0] == "num":
+                    self.take()
+                    line = int(tok[1])
                 # The column, and any `to` range end, are not shown.
                 while self.peek(":") or self.peek("to"):
                     self.take()
