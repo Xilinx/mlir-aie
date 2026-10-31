@@ -46,10 +46,15 @@ def is_internal_file(filename: str) -> bool:
 
 # Finding a statement's column walks its code, and captures repeat a few sites.
 @functools.lru_cache(maxsize=4096)
-def _column(code: CodeType, lasti: int) -> int:
+def _position(code: CodeType, lasti: int) -> tuple[int, int, int]:
+    """Return the column, end line and end column of the instruction at `lasti`.
+
+    Each is 0 when Python recorded none (-X no_debug_ranges).
+    """
     # f_lasti counts bytes; co_positions has an entry per 2-byte unit.
     positions = itertools.islice(code.co_positions(), lasti // 2, None)
-    return next(positions)[2] or 0
+    _, end_line, col, end_col = next(positions)
+    return col or 0, end_line or 0, end_col or 0
 
 
 # User frames an IRON object records: its declaring statement, then the calls
@@ -85,6 +90,7 @@ class SourceSite:
         callers: tuple[tuple[str, int, int], ...] = (),
         returned_to: tuple = (),
         callees: tuple[str | None, ...] = (),
+        end: tuple[int, int] = (0, 0),
     ):
         self.filename = filename
         self.line = line
@@ -98,6 +104,9 @@ class SourceSite:
         # as its source spells it ("ObjectFifo", "forward", "load"), for a
         # site with no column; None for one with a column.
         self.callees = callees
+        # Where the declaring call ends, which tells the calls of a chain
+        # (`a.cons().forward()`) apart; (0, 0) when unknown.
+        self.end = end
 
     @classmethod
     def capture(cls) -> "SourceSite":
@@ -108,6 +117,7 @@ class SourceSite:
             internal.
         """
         frames, returned_to, callees = [], [], []
+        end = (0, 0)
         depth = _depth()
         # Whether every frame since the declaring one is a user frame: those
         # are the frames a helper may have returned the object through.
@@ -127,6 +137,7 @@ class SourceSite:
                 if frames:
                     returning = False
             else:
+                col, end_line, end_col = _position(frame.f_code, frame.f_lasti)
                 site = (
                     # co_filename is relative for code compiled under a
                     # relative name, as a runner's exec(compile(src, path)),
@@ -134,7 +145,7 @@ class SourceSite:
                     # after a chdir can resolve. "<string>" names no path.
                     filename if filename.startswith("<") else os.path.abspath(filename),
                     frame.f_lineno,
-                    _column(frame.f_code, frame.f_lasti),
+                    col,
                 )
                 # Without a column, the function a site called picks its call
                 # on the line; reading a class's name costs the frame's locals.
@@ -143,6 +154,7 @@ class SourceSite:
                     if callee == "__init__" and "self" in below.f_locals:
                         callee = type(below.f_locals["self"]).__name__
                     callees.append(callee)
+                    end = (end_line, end_col)
                 elif returning and len(returned_to) < cls.RETURN_DEPTH:
                     returned_to.append(site)
                     callees.append(callee)
@@ -157,6 +169,7 @@ class SourceSite:
             callers=tuple(frames[1:]),
             returned_to=tuple(returned_to),
             callees=tuple(callees),
+            end=end,
         )
 
     def assigned_name(self) -> str | None:
@@ -185,14 +198,17 @@ class SourceSite:
         # The element of a returned tuple the object is, if it is one.
         index = None
         sites = ((self.filename, self.line, self.col),) + self.returned_to
-        for (filename, line, col), callee in itertools.zip_longest(sites, self.callees):
+        # Only the declaring call's end is known.
+        for (filename, line, col), callee, end in itertools.zip_longest(
+            sites, self.callees, [self.end], fillvalue=None
+        ):
             # A design edited and rerun in one process is read afresh.
             try:
                 stat = os.stat(filename)
                 stamp = (stat.st_size, stat.st_mtime_ns)
             except OSError:
                 stamp = None
-            binding = _binding(filename, line, col, stamp, callee)
+            binding = _binding(filename, line, col, stamp, callee, end or (0, 0))
             if binding is None:
                 return None
             kind, element, names = binding
@@ -361,6 +377,7 @@ def _binding(
     col: int,
     stamp: tuple[int, int] | None,
     callee: str | None = None,
+    end: tuple[int, int] = (0, 0),
 ) -> tuple | None:
     """How the statement at a call site binds the call's result.
 
@@ -372,6 +389,9 @@ def _binding(
             takes it.
         callee: The name of the function the site called, which picks its
             call among the line's when `col` is 0; None for any call.
+        end: Where the site's call ends, (0, 0) when unknown. When known, the
+            object is the statement's value only if that call is the value's
+            outermost, not an earlier link of a chain.
 
     Returns:
         (kind, element, names): `kind` is "assign" or "return"; `element` is
@@ -419,6 +439,21 @@ def _binding(
             value = _element(value, line, col)
             if value is None:
                 return None
+        exact = next(
+            (
+                node
+                for node in ast.walk(value)
+                if isinstance(node, ast.Call)
+                and (node.end_lineno, node.end_col_offset) == end
+            ),
+            None,
+        )
+        if exact is not None:
+            if exact is not value:
+                return None
+            if kind == "assign" and element is not None:
+                return kind, None, (names[element],)
+            return kind, element, names
         # The object is the statement's value, not built inside an argument
         # of it: the innermost call around the site must be on the value's
         # chain of calls. ast.walk goes outside in, so the last call around

@@ -112,3 +112,26 @@ assert fallback.startswith("of"), fallback
 buffers = [op.attributes["sym_name"].value for op in ops if op.name == "aie.buffer"]
 assert "scale" in buffers, buffers
 print("PASS: source name rules")
+
+# A chain of calls names only the object its outermost call makes: the fifo
+# between two forwards is no variable's.
+src = ObjectFifo(line_type)
+mid = src.cons().forward().cons().forward()
+
+
+def move(a, b, fill, drain):
+    fill.fill(a)
+    drain.drain(b, wait=True)
+
+
+chain_rt = Runtime(move, [line_type, line_type, src.prod(), mid.cons()])
+chain = Program(NPU1Col1(), chain_rt).resolve_program()
+chain_symbols = sorted(
+    op.attributes["sym_name"].value
+    for op in walk(chain.operation)
+    if op.name == "aie.objectfifo"
+)
+(middle,) = set(chain_symbols) - {"src", "mid"}
+assert "src" in chain_symbols and "mid" in chain_symbols, chain_symbols
+assert middle.startswith("of"), chain_symbols
+print("PASS: a chain names only its outermost object")
