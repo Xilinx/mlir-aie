@@ -68,10 +68,11 @@ def _depth() -> int:
 
 
 def _is_user_frame(filename: str) -> bool:
-    # "<frozen runpy>", "<string>": no file a reader could open.
-    return not filename.startswith("<") and not os.path.normcase(filename).startswith(
-        _PASSTHROUGH
-    )
+    # "<frozen runpy>" is import machinery; "<string>", "<stdin>" and IPython's
+    # "<ipython-input-...>" are the user's own code.
+    return not filename.startswith("<frozen ") and not os.path.normcase(
+        filename
+    ).startswith(_PASSTHROUGH)
 
 
 class SourceSite:
@@ -114,13 +115,18 @@ class SourceSite:
         depth = _depth()
         frame = inspect.currentframe()
         while frame is not None and len(frames) < depth:
-            if _is_user_frame(frame.f_code.co_filename):
+            filename = frame.f_code.co_filename
+            if _is_user_frame(filename):
                 frames.append(
                     (
                         # co_filename is relative for a module imported through
                         # a relative sys.path entry, which a reader of the IR
-                        # cannot resolve.
-                        os.path.abspath(frame.f_code.co_filename),
+                        # cannot resolve. "<string>" names no path.
+                        (
+                            filename
+                            if filename.startswith("<")
+                            else os.path.abspath(filename)
+                        ),
                         frame.f_lineno,
                         _column(frame.f_code, frame.f_lasti),
                     )
