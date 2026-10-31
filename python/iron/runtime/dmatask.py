@@ -7,7 +7,7 @@
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects.aiex import dma_start_task, shim_dma_single_bd_task
-from ...helpers.sourceloc import iron_name
+from ...helpers.sourceloc import iron_name, relocate
 from ...helpers.taplib import TensorAccessPattern
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence
@@ -119,15 +119,7 @@ class DMATask(RuntimeTask):
             ops = [self._task.operation]
             ops += [use.owner for use in self._task.result.uses]
             for op in ops:
-                _name_op(op, name)
-
-
-def _name_op(op: ir.Operation, name: str) -> None:
-    op.location = ir.Location.name(name, childLoc=op.location)
-    for region in op.regions:
-        for block in region.blocks:
-            for child in block.operations:
-                _name_op(child.operation, name)
+                relocate(op, lambda loc: ir.Location.name(name, childLoc=loc))
 
 
 def emit_shim_transfer(

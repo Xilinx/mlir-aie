@@ -13,6 +13,7 @@ import itertools
 import linecache
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from types import CodeType, FunctionType
 
@@ -68,14 +69,6 @@ def _depth() -> int:
         return DEFAULT_DEPTH
 
 
-def _is_user_frame(filename: str) -> bool:
-    # "<frozen runpy>" is import machinery; "<string>", "<stdin>" and IPython's
-    # "<ipython-input-...>" are the user's own code.
-    return not filename.startswith("<frozen ") and not os.path.normcase(
-        filename
-    ).startswith(_PASSTHROUGH)
-
-
 class SourceSite:
     """The user statement that declared an IRON object, and its callers.
 
@@ -112,49 +105,40 @@ class SourceSite:
             The site, or one with no `filename` when the whole stack is
             internal.
         """
-        frames = []
+        frames, returned_to = [], []
         depth = _depth()
+        # Whether every frame since the declaring one is a user frame: those
+        # are the frames a helper may have returned the object through.
+        returning = True
         frame = inspect.currentframe()
-        while frame is not None and len(frames) < depth:
+        while frame is not None and (
+            len(frames) < depth or (returning and len(returned_to) < cls.RETURN_DEPTH)
+        ):
             filename = frame.f_code.co_filename
-            if _is_user_frame(filename):
-                frames.append(
-                    (
-                        # co_filename is relative for a module imported through
-                        # a relative sys.path entry, which a reader of the IR
-                        # cannot resolve. "<string>" names no path.
-                        (
-                            filename
-                            if filename.startswith("<")
-                            else os.path.abspath(filename)
-                        ),
-                        frame.f_lineno,
-                        _column(frame.f_code, frame.f_lasti),
-                    )
+            # "<frozen runpy>" is import machinery; "<string>", "<stdin>" and
+            # IPython's "<ipython-input-...>" are the user's own code.
+            if filename.startswith("<frozen ") or os.path.normcase(filename).startswith(
+                _PASSTHROUGH
+            ):
+                if frames:
+                    returning = False
+            else:
+                site = (
+                    # co_filename is relative for a module imported through a
+                    # relative sys.path entry, which a reader of the IR cannot
+                    # resolve, nor a later os.stat after a chdir. "<string>"
+                    # names no path.
+                    filename if filename.startswith("<") else os.path.abspath(filename),
+                    frame.f_lineno,
+                    _column(frame.f_code, frame.f_lasti),
                 )
+                if frames and returning and len(returned_to) < cls.RETURN_DEPTH:
+                    returned_to.append(site)
+                if len(frames) < depth:
+                    frames.append(site)
             frame = frame.f_back
         if not frames:
             return cls(None)
-        # The frames a helper may have returned the object through: the
-        # user frames that directly called the declaring one.
-        returned_to = []
-        frame = inspect.currentframe()
-        while frame is not None and not _is_user_frame(frame.f_code.co_filename):
-            frame = frame.f_back
-        caller = frame.f_back if frame is not None else None
-        while (
-            caller is not None
-            and len(returned_to) < cls.RETURN_DEPTH
-            and _is_user_frame(caller.f_code.co_filename)
-        ):
-            returned_to.append(
-                (
-                    caller.f_code.co_filename,
-                    caller.f_lineno,
-                    _column(caller.f_code, caller.f_lasti),
-                )
-            )
-            caller = caller.f_back
         return cls(
             *frames[0], callers=tuple(frames[1:]), returned_to=tuple(returned_to)
         )
@@ -174,8 +158,11 @@ class SourceSite:
         An object a helper returns, as `return Buffer(...)` or as one element
         of `return Buffer(...), offsets`, is named where the helper's caller
         assigns it: `wts = load(...)`, or `wts, offsets = pack(...)`.
-        None when the object is not assigned where it is built or returned to
-        (an argument to a call), or the source cannot be read.
+
+        Returns:
+            The variable's name; None when the object is not assigned where
+            it is built or returned to (an argument to a call), or the source
+            cannot be read.
         """
         if self.filename is None:
             return None
@@ -448,12 +435,20 @@ def _python_names(loc: "ir.Location") -> "ir.Location":
     return loc
 
 
-def _mark_python_names(op: "ir.Operation") -> None:
-    op.location = _python_names(op.location)
+def relocate(
+    op: "ir.Operation", rewrite: "Callable[[ir.Location], ir.Location]"
+) -> None:
+    """Rewrite the location of `op` and of every op nested in it.
+
+    Args:
+        op: The outermost op.
+        rewrite: Takes an op's location and returns its new one.
+    """
+    op.location = rewrite(op.location)
     for region in op.regions:
         for block in region.blocks:
             for child in block.operations:
-                _mark_python_names(child.operation)
+                relocate(child.operation, rewrite)
 
 
 @contextlib.contextmanager
@@ -461,8 +456,9 @@ def traced_body(fn):
     """Give each op `fn` emits its own source statement.
 
     `ir.loc_tracebacks` names each statement's location after the function it
-    ran in; those names are marked as Python functions ("py:") on exit, so a
-    reader can tell them from IRON objects' names ("iron:").
+    ran in; those names are marked as Python functions ("py:") on exit, even
+    when `fn` raises, so a reader can tell them from IRON objects' names
+    ("iron:").
 
     Args:
         fn: A Worker or Runtime body about to run.
@@ -475,9 +471,11 @@ def traced_body(fn):
         yield
         return
     block = ir.InsertionPoint.current.block
-    with ir.loc_tracebacks(
-        max_depth=1, on_explicit_actn=ir.OnExplicitAction.USE_TRACEBACK
-    ):
-        yield
-    for op in block.operations:
-        _mark_python_names(op.operation)
+    try:
+        with ir.loc_tracebacks(
+            max_depth=1, on_explicit_actn=ir.OnExplicitAction.USE_TRACEBACK
+        ):
+            yield
+    finally:
+        for op in block.operations:
+            relocate(op.operation, _python_names)

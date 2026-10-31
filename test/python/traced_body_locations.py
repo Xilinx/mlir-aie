@@ -7,7 +7,8 @@ from functools import partial
 
 from aie.extras import types as T
 from aie.extras.dialects.arith import constant
-from aie.ir import CallSiteLoc
+from aie.helpers.sourceloc import traced_body
+from aie.ir import CallSiteLoc, Context, InsertionPoint, Location, Module
 from aie.iron import Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
 
@@ -68,6 +69,28 @@ def check_synthesized_body():
         assert "Worker(None)" in SOURCE[loc.start_line - 1], (op.name, loc)
 
 
+def failing_body():
+    constant(7, T.i32())
+    raise RuntimeError("body failed")
+
+
+def check_failing_body():
+    """Ops a body built before it raised are still marked as Python's."""
+    with Context(), Location.unknown():
+        module = Module.create()
+        with InsertionPoint(module.body):
+            try:
+                with traced_body(failing_body):
+                    failing_body()
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("expected the body to raise")
+        (op,) = module.body.operations
+        assert op.location.name_str == "py:failing_body", op.location
+
+
 check_callable_bodies()
 check_synthesized_body()
-print("PASS: callable and synthesized body locations")
+check_failing_body()
+print("PASS: callable, synthesized and failing body locations")
