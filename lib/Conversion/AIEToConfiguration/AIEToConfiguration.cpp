@@ -568,7 +568,7 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
 }
 
 // Scans back from the insertion point to the last PDI load, which reprograms
-// the array. A register missing from the map holds 0.
+// the array.
 static llvm::DenseMap<uint32_t, uint32_t>
 registersWrittenSinceLoad(OpBuilder &builder) {
   llvm::DenseMap<uint32_t, uint32_t> registers;
@@ -595,10 +595,11 @@ registersWrittenSinceLoad(OpBuilder &builder) {
 // packet ops. Each emitted op gets the per-op `sourceLoc` from AIERT's
 // instruction-range bracketing if available; otherwise it falls back to
 // `fallbackLoc`.
-static LogicalResult
-emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
-                     std::vector<TransactionBinaryOperation> &operations,
-                     std::vector<memref::GlobalOp> &global_data) {
+static LogicalResult emitControlPacketOps(
+    OpBuilder &builder, Location fallbackLoc,
+    std::vector<TransactionBinaryOperation> &operations,
+    std::vector<memref::GlobalOp> &global_data,
+    const llvm::DenseMap<uint32_t, uint32_t> &initialRegisters) {
 
   auto *ctx = builder.getContext();
 
@@ -606,6 +607,8 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
   // the value the register would hold after it.
   llvm::DenseMap<uint32_t, uint32_t> registers =
       registersWrittenSinceLoad(builder);
+  for (auto [address, value] : initialRegisters)
+    registers.try_emplace(address, value);
 
   // create the control packet ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
@@ -665,11 +668,11 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
 
 // Take transaction operations and insert them at the _current_ insertion point
 // of the supplied builder.
-static LogicalResult
-convertTransactionOpsToMLIR(OpBuilder builder,
-                            AIE::AIEToConfigurationOutputType outputType,
-                            std::vector<TransactionBinaryOperation> &operations,
-                            AIEX::BlockwriteData &blockwriteData) {
+static LogicalResult convertTransactionOpsToMLIR(
+    OpBuilder builder, AIE::AIEToConfigurationOutputType outputType,
+    std::vector<TransactionBinaryOperation> &operations,
+    AIEX::BlockwriteData &blockwriteData,
+    const llvm::DenseMap<uint32_t, uint32_t> &initialRegisters = {}) {
 
   // for each blockwrite in the binary, find or create a GlobalOp with the data
   // at the device level
@@ -695,7 +698,8 @@ convertTransactionOpsToMLIR(OpBuilder builder,
     if (failed(emitTransactionOps(builder, loc, operations, global_data)))
       return failure();
   } else if (outputType == AIE::AIEToConfigurationOutputType::ControlPacket) {
-    if (failed(emitControlPacketOps(builder, loc, operations, global_data)))
+    if (failed(emitControlPacketOps(builder, loc, operations, global_data,
+                                    initialRegisters)))
       return failure();
   } else {
     llvm_unreachable("bad output type");
@@ -756,7 +760,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 static LogicalResult
 insertRecordedTransaction(AIERTControl &ctl, OpBuilder &builder,
                           AIE::AIEToConfigurationOutputType outputType,
-                          AIEX::BlockwriteData &blockwriteData) {
+                          AIEX::BlockwriteData &blockwriteData,
+                          DeviceOp configured = {}) {
   // Export the transactions to a binary buffer
   std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
 
@@ -786,8 +791,36 @@ insertRecordedTransaction(AIERTControl &ctl, OpBuilder &builder,
     if (!isa<UnknownLoc>(opLocs[i]))
       operations[i].sourceLoc = opLocs[i];
 
+  llvm::DenseMap<uint32_t, uint32_t> initialRegisters;
+  if (outputType == AIEToConfigurationOutputType::ControlPacket && configured &&
+      configured.getOverlayAttr()) {
+    auto overlay = SymbolTable::lookupNearestSymbolFrom<DeviceOp>(
+        configured->getParentOp(), configured.getOverlayAttr());
+    if (!overlay)
+      return configured.emitOpError("references an unknown overlay device");
+    AIERTControl overlayCtl(overlay.getTargetModel());
+    if (failed(overlayCtl.setIOBackend(false, false)))
+      return failure();
+    overlayCtl.startTransaction();
+    if (failed(overlayCtl.configureSwitches(overlay)))
+      return failure();
+    auto overlayData = overlayCtl.exportSerializedTransaction();
+    std::vector<TransactionBinaryOperation> overlayOps;
+    if (!parseTransactionBinary(overlayData, overlayOps))
+      return failure();
+    // Masked writes must preserve fields installed by the overlay's PDI.
+    for (const auto &op : overlayOps) {
+      uint32_t &value = initialRegisters[op.cmd.RegOff];
+      if (op.cmd.Opcode == XAIE_IO_WRITE)
+        value = op.cmd.Value;
+      else if (op.cmd.Opcode == XAIE_IO_MASKWRITE)
+        value = (value & ~op.cmd.Mask) | (op.cmd.Value & op.cmd.Mask);
+      else
+        return overlay.emitOpError("has a non-register switch configuration");
+    }
+  }
   return convertTransactionOpsToMLIR(builder, outputType, operations,
-                                     blockwriteData);
+                                     blockwriteData, initialRegisters);
 }
 
 LogicalResult xilinx::AIE::generateAndInsertConfigOps(
@@ -815,7 +848,8 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
                                   true, true, skipCtrlPktOverlay)))
     return failure();
 
-  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData);
+  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
+                                   skipCtrlPktOverlay ? device : DeviceOp{});
 }
 
 LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
@@ -834,7 +868,8 @@ LogicalResult xilinx::AIE::generateAndInsertTeardownOps(
   if (failed(ctl.teardownSwitches(device, skipCtrlPktOverlay)) ||
       failed(ctl.disableCores(device)) || failed(ctl.resetDmaChannels(device)))
     return failure();
-  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData);
+  return insertRecordedTransaction(ctl, builder, outputType, blockwriteData,
+                                   skipCtrlPktOverlay ? device : DeviceOp{});
 }
 
 LogicalResult

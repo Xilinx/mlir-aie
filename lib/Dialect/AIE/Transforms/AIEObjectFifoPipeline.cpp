@@ -41,7 +41,8 @@ void xilinx::AIE::addObjectFifoLoweringPasses(OpPassManager &pm,
   if (!skipVerify) {
     pm.addPass(createAIEObjectFifoVerifyPass());
   }
-  pm.addPass(createAIEAssignPacketIdsPass(packetSwitched, reserveControllerPacketIds));
+  pm.addPass(
+      createAIEAssignPacketIdsPass(packetSwitched, reserveControllerPacketIds));
   pm.addPass(createAIEObjectFifoAllocatePass());
   pm.addPass(createAIEObjectFifoLowerDMAsPass());
   pm.addPass(createAIEObjectFifoLowerCoresPass());
@@ -54,6 +55,7 @@ void xilinx::AIE::registerAIEObjectFifoPipeline() {
       "Lower aie.objectfifo to buffers, locks, flows and DMA programs",
       [](OpPassManager &pm, const ObjectFifoLoweringOptions &options) {
         addObjectFifoLoweringPasses(pm, options.packetSwitched,
-                                    options.skipVerify, options.reserveControllerPacketIds);
+                                    options.skipVerify,
+                                    options.reserveControllerPacketIds);
       });
 }

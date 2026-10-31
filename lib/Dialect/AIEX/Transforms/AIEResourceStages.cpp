@@ -70,7 +70,6 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   dpm.addPass(createAIELowerMulticastPass());
   AIEGenerateColumnControlOverlayOptions overlay;
   overlay.clRouteShimDmaToTileCTRL = ctrlPktOverlay;
-  overlay.clEmitStandaloneOverlay = ctrlPktOverlay && loadPdiToCtrlPkt;
   overlay.clCoverColumns = llvm::to_vector(coverColumns);
   if (ctrlPktOverlay && !loadPdiToCtrlPkt)
     pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));

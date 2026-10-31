@@ -522,9 +522,7 @@ class Design:
                             f"        aie.rule({mask}, {value}, %{name})"
                             + (" {aie.priority_route}" if tag else "")
                         )
-                    out.append(
-                        "      }" + (" {aie.priority_route}" if ctrl else "")
-                    )
+                    out.append("      }" + (" {aie.priority_route}" if ctrl else ""))
             out.append("    }")
         for (c, r), conns in sorted(self.muxes.items()):
             out.append(f"    %mux_{c}_{r} = aie.shim_mux(%t_{c}_{r}) {{")
@@ -3276,12 +3274,7 @@ def priority_trees(d, cache):
 
 def priority_design(d):
     """Only the prioritized flows and packets sharing their source and ID."""
-    prio = {
-        (s, f["id"])
-        for f in d.packet_flows
-        if f["priority"]
-        for s in f["srcs"]
-    }
+    prio = {(s, f["id"]) for f in d.packet_flows if f["priority"] for s in f["srcs"]}
     kept = [f for f in d.packet_flows if any((s, f["id"]) in prio for s in f["srcs"])]
     if not kept or (not d.flows and len(kept) == len(d.packet_flows)):
         return None
@@ -5872,7 +5865,9 @@ def main(argv=None):
         tag = f"seed {seed}{mode} ({c['shape']})"
         if seed not in alone_outs:
             err = first_error(alone_errs[seed][1])[:300]
-            priority_wrong.append(f"{tag}: routed, but its priority flows alone fail: {err}")
+            priority_wrong.append(
+                f"{tag}: routed, but its priority flows alone fail: {err}"
+            )
             save(c, "priority" + mode.strip(), c["design"].emit())
         elif priority_problems(load_design(text), load_design(alone_outs[seed])):
             priority_moved += 1

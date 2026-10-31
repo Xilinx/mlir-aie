@@ -6,7 +6,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
@@ -30,6 +29,16 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
+static ShimDMAAllocationOp getCtrlPktShimAlloc(DeviceOp device, int col) {
+  AIEDialect::IsCtrlOverlayAttrHelper overlay(device.getContext());
+  for (auto alloc : device.getOps<AIE::ShimDMAAllocationOp>())
+    if (overlay.isAttrPresent(alloc) &&
+        alloc.getChannelDir() == AIE::DMAChannelDir::MM2S &&
+        alloc.getTileOp().colIndex() == col)
+      return alloc;
+  return {};
+}
+
 struct AIECtrlPacketInferTilesPass
     : xilinx::AIEX::impl::AIECtrlPacketInferTilesBase<
           AIECtrlPacketInferTilesPass> {
@@ -46,7 +55,7 @@ struct AIECtrlPacketInferTilesPass
                                        (int)ctrlPktOp.getColumnFromAddr(),
                                        (int)ctrlPktOp.getRowFromAddr());
         // Assign controller id
-        auto tileIDMap = getTileToControllerIdMap(true, targetModel);
+        auto tileIDMap = targetModel.getTileToControllerIdMap(true);
         if (tOp->hasAttr("controller_id"))
           continue;
         auto pktInfoAttr = AIE::PacketInfoAttr::get(

@@ -852,12 +852,14 @@ def AIEGenerateColumnControlOverlay
        Option<"clEmitStandaloneOverlay", "emit-standalone-overlay", "bool",
               /*default=*/"false",
               "Emit a standalone @ctrl_pkt_overlay device and reference it "
-              "from application devices for the load-pdi-to-ctrl-pkt reconfigure flow. When "
+              "from application devices for the load-pdi-to-ctrl-pkt "
+              "reconfigure flow. When "
               "false, the pass applies the overlay in place only.">,
        Option<"clPlanChannels", "plan-channels", "bool", "false",
               "Select fixed control channels before application allocation.">,
        Option<"clAdaptiveChannels", "adaptive-channels", "bool", "true",
-              "Choose control channels around application reservations; otherwise use channel 0.">,
+              "Choose control channels around application reservations; "
+              "otherwise use channel 0.">,
        ListOption<"clCoverColumns", "cover-columns", "int",
                   "With route-shim-to-tile-ctrl, also cover these columns. "
                   "aiecc adds each column outside the occupied range that the "

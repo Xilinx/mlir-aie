@@ -287,10 +287,9 @@ def AIEMaterializeRuntimeSequences
   }];
 
   let constructor = "xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass()";
-  let options = [
-    Option<"analysisOnly", "analysis-only", "bool", "false",
-           "Inline a schedule before resource allocation for analysis; the result is not executable IR">
-  ];
+  let options = [Option<"analysisOnly", "analysis-only", "bool", "false",
+                        "Inline a schedule before resource allocation for "
+                        "analysis; the result is not executable IR">];
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -756,8 +755,10 @@ def AIEXInlineTraceConfig : Pass<"aie-inline-trace-config", "AIE::DeviceOp"> {
   ];
 }
 
-def AIECreateControlOverlay : Pass<"aie-create-control-overlay", "mlir::ModuleOp"> {
-  let summary = "Create a common, fixed control overlay before resource allocation";
+def AIECreateControlOverlay
+    : Pass<"aie-create-control-overlay", "mlir::ModuleOp"> {
+  let summary =
+      "Create a common, fixed control overlay before resource allocation";
   let description = [{
     Operates on placed, split ObjectFIFO IR. Chooses one control channel per
     column across all devices, routes @ctrl_pkt_overlay once, and imports its
@@ -768,15 +769,15 @@ def AIECreateControlOverlay : Pass<"aie-create-control-overlay", "mlir::ModuleOp
     application reservations and prefer routes away from application traffic.
   }];
   let constructor = "xilinx::AIEX::createAIECreateControlOverlayPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect", "xilinx::AIEX::AIEXDialect"];
-  let options = [
-    Option<"adaptive", "adaptive", "bool", "true",
-           "Plan the overlay around all application devices">,
-    Option<"shareChannels", "share-channels", "bool", "true",
-           "Allow application transfers to share fixed overlay channels">,
-    ListOption<"coverColumns", "cover-columns", "int",
-               "Additional columns the overlay must reach">
-  ];
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+  let options =
+      [Option<"adaptive", "adaptive", "bool", "true",
+              "Plan the overlay around all application devices">,
+       Option<"shareChannels", "share-channels", "bool", "true",
+              "Allow application transfers to share fixed overlay channels">,
+       ListOption<"coverColumns", "cover-columns", "int",
+                  "Additional columns the overlay must reach">];
 }
 
 #endif
