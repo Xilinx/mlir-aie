@@ -496,11 +496,22 @@ struct AIEObjectFifoSplitPass
   /// The endpoint a time link's turns share, made by whichever participant
   /// reaches it first.
   ObjectFifoDmaEndpointOp timeLinkEndpointFor(ObjectFifoLinkOp link,
-                                              Location loc, PoolRef ref,
+                                              PoolRef ref,
                                               std::optional<int> channel);
   void createTimeLinkRoutes();
   LogicalResult createLinkPools();
 };
+
+// A link's pool and its shared merge or dispatch endpoint hold every
+// participant's objects, so they are located at the link and at each fifo.
+static Location linkLocation(ObjectFifoLinkOp link) {
+  SmallVector<Location> locs{link.getLoc()};
+  for (ObjectFifoCreateOp fifo : link.getInputObjectFifos())
+    locs.push_back(fifo.getLoc());
+  for (ObjectFifoCreateOp fifo : link.getOutputObjectFifos())
+    locs.push_back(fifo.getLoc());
+  return FusedLoc::get(link.getContext(), locs);
+}
 
 /// A link's participants meet on one pool on the shared tile: the fifo carrying
 /// whole objects owns its size, and each of the other side's fifos occupies one
@@ -576,12 +587,8 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
     bool disableSynchronization = llvm::any_of(ins, asksToSkipLocks) ||
                                   llvm::any_of(outs, asksToSkipLocks);
 
-    // The pool holds every participant's objects, so it is located at each.
-    SmallVector<Location> locs{linkOp.getLoc()};
-    for (ObjectFifoCreateOp fifo : llvm::concat<ObjectFifoCreateOp>(ins, outs))
-      locs.push_back(fifo.getLoc());
-    auto pool = createPool(FusedLoc::get(linkOp.getContext(), locs), name,
-                           *sharedTile, depth, elemType, owner, extents,
+    auto pool = createPool(linkLocation(linkOp), name, *sharedTile, depth,
+                           elemType, owner, extents,
                            /*holdsInitialContents=*/ownerIsOutput,
                            linkOp.getRepeatCount(), disableSynchronization);
     if (window) {
@@ -613,15 +620,14 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
 }
 
 ObjectFifoDmaEndpointOp
-AIEObjectFifoSplitPass::timeLinkEndpointFor(ObjectFifoLinkOp link, Location loc,
-                                            PoolRef ref,
+AIEObjectFifoSplitPass::timeLinkEndpointFor(ObjectFifoLinkOp link, PoolRef ref,
                                             std::optional<int> channel) {
   ObjectFifoDmaEndpointOp &endpoint = timeLinkEndpoint[link];
   if (!endpoint) {
     ObjectFifoCreateOp owner = link.isMerge() ? link.getOutputObjectFifos()[0]
                                               : link.getInputObjectFifos()[0];
     endpoint = createDmaEndpoint(
-        loc,
+        linkLocation(link),
         (owner.name().getValue() +
          (link.isMerge() ? "__merge__dma" : "__dispatch__dma"))
             .str(),
@@ -785,8 +791,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     std::string prodDmaName = (fifoName + "__prod__dma").str();
     ObjectFifoLinkOp timeLink = timeLinkOf.lookup(fifo);
     if (timeLink && timeLink.isDispatch()) {
-      prodDmaName = timeLinkEndpointFor(timeLink, loc, *prodRef, prodChannel)
-                        .getSymName();
+      prodDmaName =
+          timeLinkEndpointFor(timeLink, *prodRef, prodChannel).getSymName();
     } else if (prodRef) {
       createDmaEndpoint(loc, prodDmaName, prodTile, *prodRef,
                         ObjectFifoRole::Drain, fifo,
@@ -850,8 +856,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
 
       std::string consDmaName = (fifoName + suffix + "__dma").str();
       if (timeLink && timeLink.isMerge()) {
-        consDmaName = timeLinkEndpointFor(timeLink, loc, *consRef, consChannel)
-                          .getSymName();
+        consDmaName =
+            timeLinkEndpointFor(timeLink, *consRef, consChannel).getSymName();
       } else if (consRef) {
         createDmaEndpoint(loc, consDmaName, consumerTile, *consRef,
                           ObjectFifoRole::Fill, fifo,
