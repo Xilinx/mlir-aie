@@ -66,12 +66,14 @@ print(readable(IR))
 # CHECK-NEXT: %b = aie.buffer(%tile_0_2) {sym_name = "b"} : memref<4xi32>  // inline.py:9
 # Only a whole `loc(` starts a location; MLIR's escapes are undone.
 # CHECK-NEXT: func.call @get_loc(%b) : (memref<4xi32>) -> ()  // désign.py:5
+
 # An alias need not be one MLIR printed (#locN).
 # CHECK-NEXT: %tile_0_3 = aie.tile(0, 3)  // by_hand · named.py:3
 # A fused location's metadata is skipped over.
 # CHECK-NEXT: %tile_0_4 = aie.tile(0, 4)  // of_out · design.py:40
 # A callee with no source line shows its caller's, as aiecc reports it.
 # CHECK-NEXT: %tile_0_5 = aie.tile(0, 5)  // caller.py:8
+
 # A header's block-argument locations are not the op's.
 # CHECK-NEXT: aie.runtime_sequence(%arg1: memref<16xi32>) {  // design.py:30
 # CHECK-NEXT:   scf.if %c {  // helpers.py:12
@@ -82,6 +84,7 @@ print(readable(IR))
 # CHECK-NEXT: }{{$}}
 # CHECK-NEXT: }{{$}}
 # CHECK-NEXT: }{{$}}
+
 # Alias definitions are gone.
 # CHECK-NOT: #loc
 # CHECK-NOT: #named
