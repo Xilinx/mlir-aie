@@ -95,5 +95,10 @@ aie.device(npu1_1col) {
     aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 768][1, 1, 1, 256][0, 0, 0, 1]) {id = 3 : i64, metadata = @out0} : memref<1280xi32>
     aiex.npu.dma_wait {symbol = @out0}
     aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 1024][1, 1, 1, 256][0, 0, 0, 1]) {id = 4 : i64, metadata = @out0} : memref<1280xi32>
+    // One wait per remaining output, so the sequence ends with no token left.
+    aiex.npu.dma_wait {symbol = @out0}
+    aiex.npu.dma_wait {symbol = @out0}
+    aiex.npu.dma_wait {symbol = @out0}
+    aiex.npu.dma_wait {symbol = @out0}
   }
 }
