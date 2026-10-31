@@ -159,3 +159,33 @@ module @two_paths {
     }
   }
 }
+
+// -----
+
+// The core's own output DMA sends each object twice (the pool's
+// repeat_count), so the output receives 128 bytes for every 64 the input
+// sends: the input is not proven consumed.
+
+// CHECK-LABEL: module @core_output_repeats
+// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {fifoName = "in"}
+module @core_output_repeats {
+  aie.device(npu2_1col) {
+    %shim = aie.tile(0, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) {
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %i = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
+        %o = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in(Consume, 1)
+        aie.objectfifo.release @out(Produce, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}

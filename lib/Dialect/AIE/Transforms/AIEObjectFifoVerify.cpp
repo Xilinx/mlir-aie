@@ -1123,6 +1123,13 @@ struct AIEObjectFifoVerifyPass
                DataLayout::closest(pool).getTypeSize(type.getElementType()));
   }
 
+  /// Whether `dma` moves each object's bytes once, neither padding, repeating
+  /// nor dispatching them.
+  static bool passesOn(ObjectFifoDmaEndpointOp dma) {
+    return !dma.getPadDimensions() && !dma.getDispatch() &&
+           dma.getRepeat() == 1;
+  }
+
   /// Where the bytes the endpoint `from` sends end up, scaled by `scale`: a
   /// shim's route endpoint, or a core endpoint draining a pool on the way.
   /// Every destination of a route is reached. A pool is entered through a
@@ -1136,10 +1143,6 @@ struct AIEObjectFifoVerifyPass
   void carries(DeviceOp device, StringAttr from, const PoolActors &actors,
                Reach scale, llvm::SmallPtrSetImpl<Operation *> &onPath,
                SmallVectorImpl<Reach> &reaches) {
-    auto passesOn = [](ObjectFifoDmaEndpointOp dma) {
-      return !dma.getPadDimensions() && !dma.getDispatch() &&
-             dma.getRepeat() == 1;
-    };
     RouteOp route;
     for (auto candidate : device.getOps<RouteOp>()) {
       if (!candidate.namesAsSource(from.getValue()))
@@ -1292,7 +1295,8 @@ struct AIEObjectFifoVerifyPass
           // `released` counts what the drainer moves of each object.
           auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(drainer);
           int64_t taken, released;
-          if (llvm::MulOverflow(ratio->first, takenBytes, taken) ||
+          if ((dma && !passesOn(dma)) ||
+              llvm::MulOverflow(ratio->first, takenBytes, taken) ||
               llvm::MulOverflow(
                   ratio->second,
                   dma ? objectBytes(dma)
