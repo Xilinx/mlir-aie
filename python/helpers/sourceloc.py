@@ -169,7 +169,7 @@ class SourceSite:
         Each object an element of a list or tuple display builds, as in
         `consts = [Buffer(w), Buffer(b), *([Buffer(t)] if act else [])]` or
         `bufs = [Buffer(t) for t in ts]`, is named after the list (then
-        numbered: consts, consts_1, ...), as is either branch of
+        numbered: consts_0, consts_1, ...), as is either branch of
         `x = A() if c else B()`.
         An object a helper returns, as `return Buffer(...)` or as one element
         of `return Buffer(...), offsets`, is named where the helper's caller

@@ -1652,9 +1652,6 @@ void PacketFlowRouting::collectFlows() {
   }
 }
 
-// The rules the flows through `slaveFlow` state. A full-width mask selects the
-// id alone, which the cover states just as well, so only a wider claim becomes
-// a rule of its own.
 Location PacketPlan::locOf(ArrayRef<std::pair<PhysPort, int>> slaveFlows,
                            Location fallback) const {
   SmallVector<Location, 2> locs;
@@ -1671,6 +1668,9 @@ Location PacketPlan::locOf(ArrayRef<std::pair<PhysPort, int>> slaveFlows,
   return FusedLoc::get(fallback.getContext(), locs);
 }
 
+// The rules the flows through `slaveFlow` state. A full-width mask selects the
+// id alone, which the cover states just as well, so only a wider claim becomes
+// a rule of its own.
 SmallVector<std::pair<int, int>, 2>
 PacketPlan::statedCubes(const std::pair<PhysPort, int> &slaveFlow,
                         int idMask) const {
