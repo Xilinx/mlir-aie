@@ -579,6 +579,12 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
 
     These are completeness rules, so a design that is deliberately partial --
     one whose other half is supplied elsewhere -- may decline to run this pass.
+
+    On a design that passes, it also records on each shim input the outputs
+    whose progress proves it consumed (`#aie.consumed_by`), replacing any
+    earlier proof. `--aie-assign-runtime-sequence-bd-ids` trusts these to
+    reuse an input's buffer descriptor IDs once an output is awaited, so a
+    design that declines this pass gets no proof and keeps those IDs apart.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoVerifyPass()";
