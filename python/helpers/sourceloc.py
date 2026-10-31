@@ -12,6 +12,7 @@ import inspect
 import itertools
 import linecache
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from types import CodeType, FunctionType
@@ -49,8 +50,11 @@ def is_internal_file(filename: str) -> bool:
 def _position(code: CodeType, lasti: int) -> tuple[int, int, int]:
     """Return the column, end line and end column of the instruction at `lasti`.
 
-    Each is 0 when Python recorded none (-X no_debug_ranges).
+    Each is 0 when Python records none: before 3.11 (the Ryzen AI 1.3 SDK's
+    3.10), or under -X no_debug_ranges.
     """
+    if sys.version_info < (3, 11):
+        return 0, 0, 0
     # f_lasti counts bytes; co_positions has an entry per 2-byte unit.
     positions = itertools.islice(code.co_positions(), lasti // 2, None)
     _, end_line, col, end_col = next(positions)
@@ -403,9 +407,9 @@ def _binding(
         or an element of it, e.g. an argument to another call.
     """
     if col == 0:
-        # Python run with -X no_debug_ranges records no columns, so any call
-        # to `callee` spanning the line may be the site: answer only when
-        # every one gives the same.
+        # Python 3.10, or 3.11+ under -X no_debug_ranges, records no columns,
+        # so any call to `callee` spanning the line may be the site: answer
+        # only when every one gives the same.
         answers = {
             _binding(filename, call.lineno, call.col_offset + 1, stamp)
             for statement in _statements(filename, stamp)

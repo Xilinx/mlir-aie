@@ -7,11 +7,24 @@
 # statement that constructs it counts, and each assignment form gives one
 # deterministic name.
 
+import sys
+
 import numpy as np
 from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
 
 line_type = np.ndarray[(16,), np.dtype[np.int32]]
+
+
+def _probe():
+    pass
+
+
+# Python 3.10, or 3.11+ under -X no_debug_ranges, records no columns, so two
+# calls to the same constructor on one line cannot be told apart.
+COLUMNS = sys.version_info >= (3, 11) and all(
+    col is not None for _, _, col, _ in _probe.__code__.co_positions()
+)
 
 
 class Holder:
@@ -94,8 +107,6 @@ symbols = [op.attributes["sym_name"].value for op in ops if op.name == "aie.obje
 expected = {
     "my_fifo",
     "chained",
-    "left",
-    "right",
     "held",
     "slots_0",
     "slots_1",
@@ -106,9 +117,12 @@ expected = {
     "made_1",
     "chosen",
 }
+if COLUMNS:
+    expected |= {"left", "right"}
 assert expected <= set(symbols), sorted(symbols)
-(fallback,) = set(symbols) - expected
-assert fallback.startswith("of"), fallback
+fallbacks = set(symbols) - expected
+assert len(fallbacks) == (1 if COLUMNS else 3), sorted(symbols)
+assert all(f.startswith("of") for f in fallbacks), fallbacks
 buffers = [op.attributes["sym_name"].value for op in ops if op.name == "aie.buffer"]
 assert "scale" in buffers, buffers
 print("PASS: source name rules")
@@ -131,7 +145,11 @@ chain_symbols = sorted(
     for op in walk(chain.operation)
     if op.name == "aie.objectfifo"
 )
-(middle,) = set(chain_symbols) - {"src", "mid"}
-assert "src" in chain_symbols and "mid" in chain_symbols, chain_symbols
-assert middle.startswith("of"), chain_symbols
+if COLUMNS:
+    (middle,) = set(chain_symbols) - {"src", "mid"}
+    assert "src" in chain_symbols and "mid" in chain_symbols, chain_symbols
+    assert middle.startswith("of"), chain_symbols
+else:
+    # Both forwards are calls to `forward` on the line.
+    assert chain_symbols == ["mid_0", "mid_1", "src"], chain_symbols
 print("PASS: a chain names only its outermost object")

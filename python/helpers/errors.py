@@ -13,6 +13,7 @@ import contextlib
 import linecache
 import os
 import re
+import sys
 import types
 from collections.abc import Iterator
 
@@ -126,8 +127,11 @@ def hide_internal_frames(exc: BaseException) -> BaseException:
                 rebuilt, entry.tb_frame, entry.tb_lasti, entry.tb_lineno
             )
         exc.with_traceback(rebuilt)
-        if len(kept) < len(entries) and _HIDDEN_NOTE not in vars(exc).get(
-            "__notes__", []
+        # Exceptions take notes from Python 3.11; the Ryzen AI 1.3 SDK runs 3.10.
+        if (
+            sys.version_info >= (3, 11)
+            and len(kept) < len(entries)
+            and _HIDDEN_NOTE not in vars(exc).get("__notes__", [])
         ):
             exc.add_note(_HIDDEN_NOTE)
     if declared is not None:

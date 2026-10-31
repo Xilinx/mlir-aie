@@ -9,6 +9,7 @@
 # or compiled.
 
 import os
+import sys
 import tempfile
 import traceback
 
@@ -62,9 +63,11 @@ def check(build):
     # Only the lines that re-raise it remain of IRON's frames.
     internal = [f for f in frames if is_internal_file(f.filename)]
     assert all("raise" in (f.line or "") for f in internal), internal
-    assert error.__notes__ == [
-        "IRON's own frames are hidden; IRON_FULL_TRACEBACK=1 shows them."
-    ], error.__notes__
+    # Exceptions take notes from Python 3.11.
+    if sys.version_info >= (3, 11):
+        assert error.__notes__ == [
+            "IRON's own frames are hidden; IRON_FULL_TRACEBACK=1 shows them."
+        ], error.__notes__
     return len(frames)
 
 
