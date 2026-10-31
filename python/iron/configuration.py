@@ -426,20 +426,23 @@ class DeviceConfiguration(DeviceResources):
         unnamed += [flow for flow in self._flows if flow.name is None]
         unnamed += [worker for worker in self._workers if worker.name is None]
         unnamed += [pool for pool in pools if pool.name is None]
-        shared = collections.Counter(obj._site.assigned_name() for obj in unnamed)
+        # Each reads the declaring source, so it is read once per object.
+        bases = {obj: obj._site.assigned_name() for obj in unnamed}
+        shared = collections.Counter(bases.values())
 
         def from_source(obj, prefix):
             # Named after the variable the user's statement assigns it to,
             # numbered from 0 when several share one, else after its kind (or
             # left unnamed, with no kind).
-            base = obj._site.assigned_name()
+            base = bases[obj]
             if base is None:
                 name = fresh(prefix) if prefix else None
-                logger.debug(
-                    "%s is not assigned to a variable where it is built; %s",
-                    obj._site.describe(type(obj).__name__),
-                    f"named {name}" if name else "the compiler names it",
-                )
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "%s is not assigned to a variable where it is built; %s",
+                        obj._site.describe(type(obj).__name__),
+                        f"named {name}" if name else "the compiler names it",
+                    )
                 return name
             if shared[base] == 1 and base not in taken:
                 taken.add(base)
