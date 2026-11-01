@@ -3128,14 +3128,13 @@ CASES += [
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, smoke=True),
     Case("mha", dict(f32_scores=True), calls=4, smoke=True),
-    # Float32 scores on AIE2 at IRON's fused blocks (DESIGN M4: QK^T at
-    # 64x64x64 within GEMM's float32 product).
+    # Float32 scores at IRON's fused blocks (DESIGN M4: QK^T at 64x64x64
+    # within GEMM's float32 product).
     Case(
         "mha",
         dict(f32_scores=True, b_col_maj=True),
         calls=4,
         tag="f32-scores",
-        devices=("npu1",),
     ),
     # ...and its P*V product. Same tile, but on AIE2P a different micro-tile
     # (8x8x8 against QK^T's 4x8x8) and so a different blocked operand order,
