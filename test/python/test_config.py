@@ -233,6 +233,20 @@ def test_broken_candidate_is_skipped_for_a_working_one(tmp_path):
 
 
 @posix_only
+def test_a_candidate_is_run_once_however_often_it_is_resolved(tmp_path):
+    """Each object cache key resolves its tools; probing each one again forks a process that may hold a model's weights."""
+    tool = _write_tool(tmp_path / "bin", "llvm-faketool")
+    runs = tmp_path / "runs"
+    tool.write_text(f"#!/bin/sh\necho run >> {runs}\necho 'llvm-faketool 1.0'\n")
+    stdout, _, code = _resolve(
+        f"[{_FAKE} for _ in range(3)][-1]", path_dirs=[tool.parent]
+    )
+    assert code == 0
+    assert stdout == str(tool)
+    assert runs.read_text().splitlines() == ["run"]
+
+
+@posix_only
 def test_hanging_candidate_is_skipped_for_a_working_one(tmp_path):
     hanging = _write_tool(tmp_path / "hanging", "llvm-faketool")
     hanging.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(60)\n")

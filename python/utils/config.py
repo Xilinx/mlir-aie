@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import functools
 import os
 import re
 import shutil
@@ -137,6 +138,7 @@ def host_cxx_path():
     )
 
 
+@functools.cache
 def _tool_runs(path):
     """Return True if the binary at ``path`` actually executes.
 
@@ -144,6 +146,8 @@ def _tool_runs(path):
     whose shared-library dependency fails to load, so it exits nonzero and
     emits nothing. Such a binary is worse than a missing one: a caller reading
     its output sees an empty symbol listing rather than a broken toolchain.
+    Asked once per path in a process: every object cache key resolves its
+    tools, and forking a process that maps gigabytes of weights is slow.
     """
     try:
         return (
