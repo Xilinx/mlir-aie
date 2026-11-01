@@ -34,6 +34,7 @@ from ._common import (
     _runtime_lib_include,
     _tuned_arch,
 )
+from .activation import _SOFT_CAP_ERR
 from .core import conv_even
 from .datamovement import CODED_CAPACITY, coded_rows_sample
 from .zero import zero
@@ -1852,9 +1853,10 @@ def _mha_fused(
 
     # A weight's error: exp2_bf16.h's cubic with its bf16 store, 0.74% at
     # worst on npu1, or the accurate exp2's bf16 store, with float32
-    # summation over dim_n exact products; a cap adds its float32 tanh's.
+    # summation over dim_n exact products; a cap adds its float32 tanh's,
+    # softmax's per unit of cap.
     weight = (2.0**-8 if accurate_exp2 else 0.0075) + (
-        2.0**-12 if soft_cap is not None else 0.0
+        soft_cap * _SOFT_CAP_ERR if soft_cap is not None else 0.0
     )
 
     def bound(q, kv, qr=None):
@@ -1986,7 +1988,7 @@ def _mha_pair(
         ]
 
     weight = (2.0**-8 if accurate_exp2 else 0.0075) + (
-        2.0**-12 if soft_cap is not None else 0.0
+        soft_cap * _SOFT_CAP_ERR if soft_cap is not None else 0.0
     )
 
     def bound(s0, s1, kv):
