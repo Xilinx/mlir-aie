@@ -32,6 +32,7 @@ from ._common import (
     _kernel_source,
     _make_extern,
     _runtime_lib_include,
+    _tuned_arch,
 )
 from .core import conv_even
 from .datamovement import CODED_CAPACITY, coded_rows_sample
@@ -1400,14 +1401,14 @@ def mha(
     fused: bool = False,
     group: int = 1,
     kv_heads: int = 1,
-) -> MatrixKernel:
+) -> ExternalFunction:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
     One translation unit that includes ``softmax_aie2p.h`` and the
     architecture's own GEMM header (``mm_aie2.h`` or ``mm_aie2p.h``) and
     exports the symbols an attention dataflow composes over one micro-tile.
-    The returned kernel is one of the toolkit's two matmuls, both
-    accumulating into ``C``, so it is a
+    Unless ``fused``, the returned kernel is one of the toolkit's two
+    matmuls, both accumulating into ``C``, so it is a
     [`MatrixKernel`][aie.iron.kernels.linalg.MatrixKernel] judged like
     [`mm`][aie.iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
     ``matmul_bf16_bf16_wrapper``, GEMM's bf16 product on its micro-tile
@@ -1493,7 +1494,8 @@ def mha(
             ``accurate_exp2`` or without ``b_col_maj``, or a ``group`` that
             does not divide ``dim_m``, or ``kv_heads`` past 1 without
             ``fused``.
-        NotImplementedError: ``fused`` off AIE2.
+        NotImplementedError: ``fused`` off AIE2, or in an
+            ``AIE_KERNELS_PORTABLE`` build.
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
@@ -1502,8 +1504,8 @@ def mha(
             "mha: fused is QK^T on K as stored (b_col_maj), bf16 scores and the "
             "cubic exponential, and returns its own entry, not pv's"
         )
-    if fused and _arch_traits().name != "aie2":
-        raise NotImplementedError("mha: fused is written for AIE2 only")
+    if fused and _tuned_arch() != "aie2":
+        raise NotImplementedError("mha: fused is written for tuned AIE2 only")
     if kv_heads < 1 or (kv_heads > 1 and not fused):
         raise ValueError(f"mha: kv_heads ({kv_heads}) past 1 is fused's")
     if group < 1 or dim_m % group:
@@ -1693,10 +1695,14 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_hea
 
     q_block = -(-2 * dim_n // (dim_m // group))
     scale = float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
-    block = dict(
-        idx=np.array([1, q_block, 0], np.int32),
-        s_q_eff=(q_block + 1) * dim_m,
-        s_kv_eff=2 * dim_n,
+    idx = np.array([1, q_block, 0], np.int32)
+    s_q_eff = (q_block + 1) * dim_m
+    s_kv_eff = 2 * dim_n
+    terms = partial(
+        mha_attend_block_terms,
+        idx=idx,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
         scale=scale,
         dim_m=dim_m,
         dim_k=dim_k,
@@ -1729,7 +1735,7 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_hea
     def bound(q, kv):
         # exp2_bf16.h's cubic with its bf16 store, 0.74% at worst on npu1, and
         # float32 summation over dim_n exact products.
-        _, p = mha_attend_block_terms(q, kv, **block)
+        _, p = terms(q, kv)
         v = np.abs(
             np.asarray(kv, np.float64).reshape(-1, dim_n, kv_heads, 2, dim_k)[
                 :, :, 0, 1
@@ -1767,12 +1773,12 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_hea
                 (3, np.zeros(dim_m * dim_n, bfloat16)),
                 (4, np.zeros(dim_m * dim_n, bfloat16)),
                 (5, np.zeros(4 * dim_m, np.float32)),
-                (6, block["idx"]),
+                (6, idx),
                 (7, scale),
-                (8, block["s_q_eff"]),
-                (9, block["s_kv_eff"]),
+                (8, s_q_eff),
+                (9, s_kv_eff),
             ),
-            reference=lambda q, kv: mha_attend_block_terms(q, kv, **block)[0],
+            reference=lambda q, kv: terms(q, kv)[0],
             initializers=((2, _zero_output),),
             sample=sample,
             tolerance=Tolerance.bounded(
