@@ -15,6 +15,7 @@ Peano compile alone and need no NPU.
 """
 
 import os
+import shlex
 import subprocess
 import tempfile
 
@@ -115,12 +116,14 @@ def test_frame_bytes_is_data_and_stack_or_its_declared_override():
     assert declared.frame_bytes("aie2p") == found.data + 96
 
 
+@pytest.mark.skipif(os.name == "nt", reason="the counting readobj is a shell script")
 def test_a_kernel_is_read_once_however_often_it_is_measured(tmp_path, monkeypatch):
     """A process resolving many designs asks for each kernel's frame again and again."""
     runs = tmp_path / "runs"
     wrapper = tmp_path / "llvm-readobj"
     wrapper.write_text(
-        f'#!/bin/sh\necho run >> {runs}\nexec {config.readobj_path()} "$@"\n'
+        f"#!/bin/sh\necho run >> {shlex.quote(str(runs))}\n"
+        f'exec {shlex.quote(config.readobj_path())} "$@"\n'
     )
     wrapper.chmod(0o755)
     monkeypatch.setenv("AIE_READOBJ_PATH", str(wrapper))
