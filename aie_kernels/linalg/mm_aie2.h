@@ -74,7 +74,7 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
           bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false,
-          unsigned b_pitch = colA>
+          unsigned b_pitch = colA, bool c_zero = false>
 static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
                                               const T_in *__restrict pB,
                                               T_out *__restrict pC) {
@@ -128,7 +128,12 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
         aie::vector<T_out, MMUL::size_C> acc_C01;
         aie::vector<T_out, MMUL::size_C> acc_C10;
         aie::vector<T_out, MMUL::size_C> acc_C11;
-        if constexpr (c_row_maj) {
+        if constexpr (c_zero) {
+          acc_C00 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C01 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C10 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C11 = aie::zeros<T_out, MMUL::size_C>();
+        } else if constexpr (c_row_maj) {
           acc_C00 = aie::load_v<MMUL::size_C>(pC1);
           acc_C01 = aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
           acc_C10 = aie::load_v<MMUL::size_C>(pC2);
@@ -440,7 +445,7 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
           bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false,
-          unsigned b_pitch = colA>
+          unsigned b_pitch = colA, bool c_zero = false>
 static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
                                          const T_in *__restrict pB,
                                          T_out *__restrict pC) {
@@ -507,7 +512,24 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
         aie::vector<T_out, MMUL::size_C> acc_C32;
         aie::vector<T_out, MMUL::size_C> acc_C33;
 
-        if constexpr (c_row_maj) {
+        if constexpr (c_zero) {
+          acc_C00 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C01 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C02 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C03 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C10 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C11 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C12 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C13 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C20 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C21 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C22 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C23 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C30 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C31 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C32 = aie::zeros<T_out, MMUL::size_C>();
+          acc_C33 = aie::zeros<T_out, MMUL::size_C>();
+        } else if constexpr (c_row_maj) {
           acc_C00 = aie::load_v<MMUL::size_C>(pC1);
           acc_C01 = aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
           acc_C02 = aie::load_v<MMUL::size_C>(pC1 + 2 * MMUL::size_C);
