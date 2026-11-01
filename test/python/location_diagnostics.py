@@ -122,14 +122,16 @@ def check_guard_failure():
 
 # The line the fused location points at; the frame quotes it.
 PARSE = 'Module.parse(FUSED_IR.replace(":0:0", f":{line}:0"))'
+# MLIR string literals take a backslash as an escape, as in a Windows path.
+MLIR_FILE = THIS_FILE.replace("\\", "\\\\")
 FUSED_IR = f"""
 module {{
   aie.device(npu1_1col) {{
     %t = aie.tile(9, 2) loc(#both)
   }}
 }}
-#in = loc("iron:act_in"("{THIS_FILE}":0:0))
-#out = loc("iron:act_out"("{THIS_FILE}":0:0))
+#in = loc("iron:act_in"("{MLIR_FILE}":0:0))
+#out = loc("iron:act_out"("{MLIR_FILE}":0:0))
 #both = loc(fused[#in, #out])
 """
 
