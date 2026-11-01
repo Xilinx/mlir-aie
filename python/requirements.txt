@@ -5,5 +5,5 @@ ml_dtypes>=0.6.0
 typing_extensions>=4.1; python_version < "3.11"
 cloudpickle # required by eudsl when it is vendored instead of installed
 -f https://llvm.github.io/eudsl
-eudsl-python-extras==0.1.0.20261001.532+c60cea4 \
+eudsl-python-extras==0.1.0.20261101.540+19d4144 \
   --config-settings=EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie
