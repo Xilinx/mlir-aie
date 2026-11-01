@@ -2232,20 +2232,24 @@ LogicalResult ObjectFifoLinkOp::verify() {
 }
 
 std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
+  // An input read by several links meets each at its consumer end on that
+  // link's tile, whichever of its ends that is.
   if (isJoin()) {
-    auto fifoOut = getOutputObjectFifos()[0];
+    Value tile = getOutputObjectFifos()[0].getProducerTile();
     for (auto fifoIn : getInputObjectFifos())
-      if (fifoOut.getProducerTile() != fifoIn.getConsumerTiles()[0])
+      if (!llvm::is_contained(fifoIn.getConsumerTiles(), tile))
         return {};
-    return {fifoOut.getProducerTile()};
+    return {tile};
   }
 
   if (isDistribute()) {
-    auto fifoIn = getInputObjectFifos()[0];
+    Value tile = getOutputObjectFifos()[0].getProducerTile();
     for (auto fifoOut : getOutputObjectFifos())
-      if (fifoIn.getConsumerTiles()[0] != fifoOut.getProducerTile())
+      if (fifoOut.getProducerTile() != tile)
         return {};
-    return {fifoIn.getConsumerTiles()[0]};
+    if (!llvm::is_contained(getInputObjectFifos()[0].getConsumerTiles(), tile))
+      return {};
+    return {tile};
   }
 
   auto fifoIn = getInputObjectFifos();
