@@ -1366,11 +1366,25 @@ def test_a_long_context_keeps_the_running_state_accurate(accurate_exp2):
 
 
 def _fused_kernels(
-    b_q, b_kv, d, causal, window, packed, group, kv_heads=1, f32_scores=False
+    b_q,
+    b_kv,
+    d,
+    causal,
+    window,
+    packed,
+    group,
+    kv_heads=1,
+    f32_scores=False,
+    accurate_exp2=False,
 ):
     """``attend_block`` and the QK^T product of one mha.cc object."""
     band = dict(
-        causal=causal, window=window, packed=packed, group=group, f32_scores=f32_scores
+        causal=causal,
+        window=window,
+        packed=packed,
+        group=group,
+        f32_scores=f32_scores,
+        accurate_exp2=accurate_exp2,
     )
     qk = kernels.mha(dim_m=b_q, dim_k=d, dim_n=b_kv, b_col_maj=True, **band)
     fused = kernels.mha(
@@ -1405,6 +1419,7 @@ def mha_pipeline_round(
     group: CompileTime[int] = 1,
     offset: CompileTime[int] = 0,
     f32_scores: CompileTime[bool] = False,
+    accurate_exp2: CompileTime[bool] = False,
 ):
     """One query block over ``n_kv`` key blocks on three cores, as IRON's MHA pipeline runs it.
 
@@ -1423,7 +1438,15 @@ def mha_pipeline_round(
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
 
     qk, _ = _fused_kernels(
-        b_q, b_kv, d, causal, window, packed, group, f32_scores=f32_scores
+        b_q,
+        b_kv,
+        d,
+        causal,
+        window,
+        packed,
+        group,
+        f32_scores=f32_scores,
+        accurate_exp2=accurate_exp2,
     )
     obj = qk.object_file
     softmax = obj.bind(
@@ -1575,6 +1598,7 @@ def mha_fused_round(
     kv_heads: CompileTime[int] = 1,
     head: CompileTime[int] = 0,
     f32_scores: CompileTime[bool] = False,
+    accurate_exp2: CompileTime[bool] = False,
 ):
     """``mha_pipeline_round`` on one core: ``attend_block`` per key block, each K then V on one stream.
 
@@ -1592,7 +1616,7 @@ def mha_fused_round(
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
 
     _, fused = _fused_kernels(
-        b_q, b_kv, d, causal, window, packed, group, kv_heads, f32_scores
+        b_q, b_kv, d, causal, window, packed, group, kv_heads, f32_scores, accurate_exp2
     )
     obj = fused.object_file
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
@@ -1701,7 +1725,13 @@ def _run_fused(q, k, v, n_kv, **shape):
     heads = shape.get("kv_heads", 1)
     band = {n: shape[n] for n in ("causal", "window", "packed", "group")}
     _, fused = _fused_kernels(
-        b_q, b_kv, d, **band, kv_heads=heads, f32_scores=shape.get("f32_scores", False)
+        b_q,
+        b_kv,
+        d,
+        **band,
+        kv_heads=heads,
+        f32_scores=shape.get("f32_scores", False),
+        accurate_exp2=shape.get("accurate_exp2", False),
     )
     q_layout, kv_layout = fused.contract.layouts[:2]
     k, v = (x.reshape(heads, n_kv, b_kv, d) for x in (k, v))
@@ -1723,7 +1753,12 @@ def _run_pipeline(q, k, v, n_kv, **shape):
     b_q, b_kv, d = shape["b_q"], shape["b_kv"], shape["d"]
     band = {n: shape[n] for n in ("causal", "window", "packed", "group")}
     qk, fused = _fused_kernels(
-        b_q, b_kv, d, **band, f32_scores=shape.get("f32_scores", False)
+        b_q,
+        b_kv,
+        d,
+        **band,
+        f32_scores=shape.get("f32_scores", False),
+        accurate_exp2=shape.get("accurate_exp2", False),
     )
     q_layout, k_layout = qk.contract.layouts[:2]
     blocks = [slice(b * b_kv, (b + 1) * b_kv) for b in range(n_kv)]
@@ -1768,9 +1803,23 @@ def _run_pipeline(q, k, v, n_kv, **shape):
         (0, 2, 8, 100, 8, 64, 64, 0, dict(packed=True)),
     ],
 )
-@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
+@pytest.mark.parametrize(
+    "f32_scores,accurate_exp2",
+    [(False, False), (True, False), (True, True)],
+    ids=["bf16_scores", "f32_scores", "f32_scores_accurate"],
+)
 def test_attend_block_is_the_pipeline_bit_for_bit(
-    q_block, n_kv, s_q_eff, s_kv_eff, b_q, b_kv, d, offset, band, f32_scores
+    q_block,
+    n_kv,
+    s_q_eff,
+    s_kv_eff,
+    b_q,
+    b_kv,
+    d,
+    offset,
+    band,
+    f32_scores,
+    accurate_exp2,
 ):
     """``attend_block`` on one core gives the three-core pipeline's O, bit for bit, and masked attention's."""
     if resolve_target_arch(iron.get_current_device()) != "aie2":
@@ -1778,6 +1827,7 @@ def test_attend_block_is_the_pipeline_bit_for_bit(
     band = {**dict(causal=True, window=0, packed=False, group=1), **band}
     shape = dict(
         f32_scores=f32_scores,
+        accurate_exp2=accurate_exp2,
         q_block=q_block,
         s_q_eff=s_q_eff,
         s_kv_eff=s_kv_eff,

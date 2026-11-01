@@ -1400,6 +1400,7 @@ def mha(
     fused: bool = False,
     group: int = 1,
     kv_heads: int = 1,
+    soft_cap: float | None = None,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1472,7 +1473,7 @@ def mha(
             cache holds them, in ``QK^T``'s B tiling (``b_col_maj``), so one
             stream carries both; ``S`` and ``P``, ``dim_m`` by ``dim_n`` each,
             hold the scores (float32 with ``f32_scores``) and the weights.
-            AIE2 only, with its cubic exponential.
+            AIE2 only; ``accurate_exp2`` only with ``f32_scores``.
         group: Each position's query heads a block packs, position-major:
             row ``i`` is at the block's first position plus ``i // group``.
             ``dim_m`` is whole positions of it.
@@ -1481,6 +1482,10 @@ def mha(
             holds them, tiled as one ``dim_n`` by ``2 dim_k kv_heads`` block;
             ``attend_block`` takes the first, ``attend_head`` any.
 
+        soft_cap: With ``fused`` and ``f32_scores``: each score ``s`` becomes
+            ``soft_cap * tanh(s / soft_cap) * log2(e)`` (``-DMHA_SOFT_CAP``,
+            ``softmax``'s float32 cap), so the scale ``attend_block`` takes
+            is 1: base-e logits, as Gemma's capped attention has them.
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
         ``matmul_bf16_bf16_rowmaj``, with ``float_o`` ``matmul_PV``, or with
@@ -1497,11 +1502,15 @@ def mha(
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
-    if fused and (pv or accurate_exp2 or not b_col_maj):
+    if fused and (pv or (accurate_exp2 and not f32_scores) or not b_col_maj):
         raise ValueError(
-            "mha: fused is QK^T on K as stored (b_col_maj) and the cubic "
-            "exponential, and returns its own entry, not pv's"
+            "mha: fused is QK^T on K as stored (b_col_maj), the accurate "
+            "exponential only over f32_scores, and returns its own entry, not pv's"
         )
+    if soft_cap is not None and not (fused and f32_scores):
+        raise ValueError("mha: soft_cap is the fused block's, over f32_scores")
+    if soft_cap is not None and not 2.0**-100 <= soft_cap <= 2.0**10:
+        raise ValueError(f"mha: soft_cap must be in [2^-100, 2^10], got {soft_cap}")
     if fused and _arch_traits().name != "aie2":
         raise NotImplementedError("mha: fused is written for AIE2 only")
     if kv_heads < 1 or (kv_heads > 1 and not fused):
@@ -1548,6 +1557,8 @@ def mha(
         flags.append(f"-DMHA_GROUP={group}")
     if kv_heads > 1:
         flags.append(f"-DMHA_KV_HEADS={kv_heads}")
+    if soft_cap is not None:
+        flags.append(f"-DMHA_SOFT_CAP={float(soft_cap)!r}f")
     if fused:
         return _mha_fused(
             dim_m,
@@ -1560,6 +1571,8 @@ def mha(
             group,
             kv_heads,
             f32_scores,
+            accurate_exp2,
+            soft_cap,
         )
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
@@ -1682,7 +1695,18 @@ def _mha_band_flags(name, causal, window, packed):
 
 
 def _mha_fused(
-    dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_heads, f32_scores
+    dim_m,
+    dim_k,
+    dim_n,
+    flags,
+    causal,
+    window,
+    packed,
+    group,
+    kv_heads,
+    f32_scores,
+    accurate_exp2,
+    soft_cap,
 ):
     """``mha(fused=True)``'s ``attend_block`` and its contract.
 
@@ -1701,7 +1725,10 @@ def _mha_fused(
     kv_stream = TensorAccessPattern.full((dim_n, width)).tile((4, 8))
 
     q_block = -(-2 * dim_n // (dim_m // group))
-    scale = float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
+    # Capped scores come in log2(e) units: the call's scale is 1.
+    scale = (
+        1.0 if soft_cap is not None else float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
+    )
     block = dict(
         idx=np.array([1, q_block, 0], np.int32),
         s_q_eff=(q_block + 1) * dim_m,
@@ -1716,6 +1743,7 @@ def _mha_fused(
         group=group,
         kv_heads=kv_heads,
         f32_scores=f32_scores,
+        soft_cap=soft_cap,
     )
 
     def sample(rng, calls):
@@ -1736,16 +1764,21 @@ def _mha_fused(
         )
         return [np.broadcast_to(x, (calls, *x.shape)).astype(bfloat16) for x in (q, kv)]
 
+    # A weight's error: exp2_bf16.h's cubic with its bf16 store, 0.74% at
+    # worst on npu1, or the accurate exp2's bf16 store, with float32
+    # summation over dim_n exact products; a cap adds its float32 tanh's.
+    weight = (2.0**-8 if accurate_exp2 else 0.0075) + (
+        2.0**-12 if soft_cap is not None else 0.0
+    )
+
     def bound(q, kv):
-        # exp2_bf16.h's cubic with its bf16 store, 0.74% at worst on npu1, and
-        # float32 summation over dim_n exact products.
         _, p = mha_attend_block_terms(q, kv, **block)
         v = np.abs(
             np.asarray(kv, np.float64).reshape(-1, dim_n, kv_heads, 2, dim_k)[
                 :, :, 0, 1
             ]
         )
-        return ((0.0075 + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
+        return ((weight + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
 
     arg_types = [
         np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
@@ -1787,8 +1820,9 @@ def _mha_fused(
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,
-                note="exp2_bf16.h cubic, 0.74% at worst on npu1, and float32 "
-                "summation; the sample's scores are exact",
+                note="exp2_bf16.h cubic (0.74% at worst on npu1) or the accurate "
+                "exp2's bf16 store, float32 summation, a cap's float32 tanh; "
+                "the sample's scores are exact",
             ),
             ops_per_call=4 * dim_m * dim_k * dim_n,
         ),
@@ -1812,13 +1846,15 @@ def mha_attend_block_terms(
     group=1,
     kv_heads=1,
     f32_scores=False,
+    soft_cap=None,
 ):
     """Numpy reference for ``mha(fused=True)``'s ``attend_block`` from a zeroed state: ``(O, P)``.
 
     ``O = P V`` with ``P = exp2((S - m) s)``, true ``exp2`` of the scores
     ``S`` as the core keeps them (rounded to bf16, or float32 with
     ``f32_scores``), ``m`` each row's largest kept score or 0, whichever is
-    larger, as a zeroed running maximum leaves it.
+    larger, as a zeroed running maximum leaves it. A ``soft_cap`` takes each
+    score to ``soft_cap * tanh(s / soft_cap) * log2(e)`` first.
     """
     kv_block, q_block, offset = (int(i) for i in np.asarray(idx).ravel())
     q = np.asarray(q, np.float64).reshape(-1, dim_m, dim_k)
@@ -1828,6 +1864,8 @@ def mha_attend_block_terms(
         .astype(np.float32 if f32_scores else bfloat16)
         .astype(np.float64)
     )
+    if soft_cap is not None:
+        s = soft_cap * np.tanh(s / soft_cap) * np.log2(np.e)
     rows, cols = np.indices((dim_m, dim_n))
     position = (
         s_kv_eff - 1 if packed else q_block * (dim_m // group) + offset + rows // group

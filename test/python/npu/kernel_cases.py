@@ -3216,6 +3216,40 @@ CASES += [
         )
         for b_q, d, b_kv in ((32, 64, 64), (32, 128, 32))
     ],
+    # ...with the accurate exponential, and Gemma 4 audio's block: float32
+    # scores capped at 50, a causal window of 12, the accurate exponential.
+    Case(
+        "mha",
+        dict(
+            dim_m=32,
+            dim_k=64,
+            dim_n=64,
+            b_col_maj=True,
+            fused=True,
+            f32_scores=True,
+            accurate_exp2=True,
+        ),
+        calls=4,
+        tag="iron-fused-f32-accurate-d64",
+        devices=("npu1",),
+    ),
+    Case(
+        "mha",
+        dict(
+            dim_m=32,
+            dim_k=128,
+            dim_n=16,
+            b_col_maj=True,
+            fused=True,
+            f32_scores=True,
+            accurate_exp2=True,
+            window=11,
+            soft_cap=50.0,
+        ),
+        calls=4,
+        tag="gemma4-audio",
+        devices=("npu1",),
+    ),
     # Split decode's on npu1: 8 rows, Llama 3.2 1B's two KV heads a key
     # block, 3B's one.
     *[

@@ -716,7 +716,7 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
   }
 }
 
-#if AIE_TUNED_AIE2 && !defined(EXP2_BF16_ACCURATE)
+#if AIE_TUNED_AIE2 && (!defined(EXP2_BF16_ACCURATE) || defined(MHA_F32_SCORES))
 #define MHA_FUSED 1
 // The fused block's softmax: partial_softmax_rows over S as QK^T leaves it,
 // (4, 4) tiles in row-major tile order, writing P as P*V reads it, (4, 8)
@@ -900,6 +900,28 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
   const T *__restrict t = S;
   bfloat16 *__restrict w = P;
   if constexpr (f32) {
+#ifdef EXP2_BF16_ACCURATE
+    // partial_softmax_rows' generic float exponentials: (S - m) * s from
+    // three bf16 limbs, then the accurate exp2_bf16.
+    aie::set_saturation(saved_saturation);
+    const auto s32 = aie::broadcast<bfloat16, 2 * S_TILE>(scale);
+    AIE_LOOP_MIN_ITERATION_COUNT(8)
+    for (int32_t i = 0; i < DIM_M / 4 * P_TILES;
+         i++, t += 2 * S_TILE, w += 2 * S_TILE) {
+      const auto m_v = aie::load_v<S_TILE>(m_tiles + i / P_TILES * S_TILE);
+      aie::accum<accfloat, 2 * S_TILE> d;
+      d.from_vector(aie::load_v<2 * S_TILE>(t));
+      const Limbs<2 * S_TILE> dl =
+          bf16_limbs(aie::sub(d, aie::concat(m_v, m_v)));
+      aie::accum<accfloat, 2 * S_TILE> x = aie::mul(dl.hi, s32);
+      x = aie::mac(x, dl.mid, s32);
+      x = aie::mac(x, dl.lo, s32);
+      const auto e = exp2_bf16(x.template to_vector<float>());
+      const auto [z0, z1] = aie::interleave_zip(
+          e.template extract<S_TILE>(0), e.template extract<S_TILE>(1), 4);
+      aie::store_v(w, aie::concat(z0, z1));
+    }
+#else
     // partial_softmax_rows' float exponentials, each lane's own row maximum.
     const auto s2 = aie::broadcast<bfloat16, 2 * SM_LANES>(scale);
     const auto zero = aie::zeros<bfloat16, SM_LANES>();
@@ -921,7 +943,9 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
           aie::interleave_zip(exps(t, m_v), exps(t + S_TILE, m_v), 4);
       aie::store_v(w, aie::concat(z0, z1));
     }
+#endif
   } else {
+#ifndef EXP2_BF16_ACCURATE
     AIE_LOOP_MIN_ITERATION_COUNT(8)
     for (int32_t i = 0; i < DIM_M / 4 * P_TILES;
          i++, t += 2 * S_TILE, w += 2 * S_TILE) {
@@ -934,6 +958,7 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
       const auto [z0, z1] = aie::interleave_zip(e0, e1, 4);
       aie::store_v(w, aie::concat(z0, z1));
     }
+#endif
   }
   aie::set_saturation(saved_saturation);
 
@@ -1439,6 +1464,16 @@ void attend_block(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
   if (valid_q_rows > B_q)
     valid_q_rows = B_q;
   qk_kv(Q, KV, S);
+#ifdef MHA_SOFT_CAP
+  // Each score cap * tanh(s / cap) * log2(e): the scale the caller passes is
+  // then 1, which the limbs of m - S take exactly.
+  static_assert(std::is_same_v<score_t, float>, "a soft cap takes f32 scores");
+  for (int32_t n = 0; n < DIM_M * DIM_N; n += 32)
+    aie::store_v(
+        S + n, soft_cap_log2e(aie::accum<accfloat, 32>(aie::load_v<32>(S + n)),
+                              MHA_SOFT_CAP)
+                   .to_vector<float>());
+#endif
   partial_softmax_tiles(S, P, scale_buffer, scale_buffer + B_q,
                         scale_buffer + 3 * B_q, valid_q_rows, valid_kv_cols,
                         diagonal, inv_scale);
