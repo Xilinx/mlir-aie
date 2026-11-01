@@ -15,9 +15,9 @@ module @shared {
 }
 // CHECK-LABEL: module @shared
 // CHECK: %[[HOME:.*]] = aie.tile(0, 1)
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_0"}
-// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_1"}
-// CHECK: aie.objectfifo.pool @shared_pool(%[[HOME]]) {buffers = [@shared_buff_0, @shared_buff_1]
+// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "shared__buf0"}
+// CHECK-DAG: aie.buffer(%[[HOME]]) {sym_name = "shared__buf1"}
+// CHECK: aie.objectfifo.pool @shared__pool(%[[HOME]]) {buffers = [@shared__buf0, @shared__buf1]
 // CHECK-NOT: aie.objectfifo.pool
 
 // -----
@@ -34,7 +34,7 @@ module @delegated {
 }
 // CHECK-LABEL: module @delegated
 // CHECK: %[[DELEGATE:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[DELEGATE]]) {sym_name = "delegated_buff_0"}
-// CHECK-DAG: aie.buffer(%[[DELEGATE]]) {sym_name = "delegated_buff_1"}
-// CHECK: aie.objectfifo.pool @delegated_pool(%[[DELEGATE]]) {buffers = [@delegated_buff_0, @delegated_buff_1]
+// CHECK-DAG: aie.buffer(%[[DELEGATE]]) {sym_name = "delegated__buf0"}
+// CHECK-DAG: aie.buffer(%[[DELEGATE]]) {sym_name = "delegated__buf1"}
+// CHECK: aie.objectfifo.pool @delegated__pool(%[[DELEGATE]]) {buffers = [@delegated__buf0, @delegated__buf1]
 // CHECK-NOT: aie.objectfifo.pool

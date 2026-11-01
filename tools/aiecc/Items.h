@@ -183,7 +183,8 @@ struct DeserializeContext {
   mlir::MLIRContext *mlirContext = nullptr;
 };
 
-// Parse a .mlir file back into a module in `ctx`.
+// Parse a .mlir file back into a module in `ctx`. Its diagnostics go to the
+// handler `ctx` already has, which names an IRON design's objects in them.
 inline mlir::OwningOpRef<mlir::ModuleOp>
 parseModuleFromFile(llvm::StringRef path, mlir::MLIRContext *ctx) {
   assert(ctx && "parseModuleFromFile requires an MLIRContext");
@@ -195,7 +196,6 @@ parseModuleFromFile(llvm::StringRef path, mlir::MLIRContext *ctx) {
   }
   llvm::SourceMgr sm;
   sm.AddNewSourceBuffer(std::move(buf), llvm::SMLoc());
-  mlir::SourceMgrDiagnosticHandler dh(sm, ctx);
   return mlir::parseSourceFile<mlir::ModuleOp>(sm, ctx);
 }
 

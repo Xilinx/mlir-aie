@@ -54,8 +54,8 @@ print(pinned())
 
 # All four channels are the ones asked for -- 1, not the 0 auto-assignment
 # would have picked.
-# CHECK-DAG: aie.shim_dma_allocation @into_shim_alloc(%{{.*}}, MM2S, 1)
-# CHECK-DAG: aie.shim_dma_allocation @out_shim_alloc(%{{.*}}, S2MM, 1)
+# CHECK-DAG: aie.shim_dma_allocation @into__shim_alloc(%{{.*}}, MM2S, 1)
+# CHECK-DAG: aie.shim_dma_allocation @out__shim_alloc(%{{.*}}, S2MM, 1)
 # CHECK:     aie.mem(%tile_0_5)
 # CHECK-DAG:   aie.dma_start(S2MM, 1
 # CHECK-DAG:   aie.dma_start(MM2S, 1

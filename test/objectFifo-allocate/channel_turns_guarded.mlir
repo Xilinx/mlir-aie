@@ -10,17 +10,17 @@
 // and b take turns on one input channel.
 
 // CHECK-LABEL: @rolled_windows
-// CHECK-DAG: aie.objectfifo.dma_endpoint @a_cons_dma(%{{.*}}) fills @a_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @b_cons_dma(%{{.*}}) fills @b_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @c_cons_dma(%{{.*}}) fills @c_cons_pool {channelIndex = {{[0-9]+}} : i32, fifoName = "c"}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__cons__dma(%{{.*}}) fills @a__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__cons__dma(%{{.*}}) fills @b__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @c__cons__dma(%{{.*}}) fills @c__cons__pool {channelIndex = {{[0-9]+}} : i32, fifoName = "c"}
 
 // CHAIN-LABEL: @rolled_windows
 // CHAIN: aie.mem(%tile_0_2)
 // CHAIN: aie.dma_start(S2MM
-// CHAIN: aie.dma_bd(%a_cons_buff_0
-// CHAIN: aie.dma_bd(%b_cons_buff_0
-// CHAIN: aie.dma_bd(%a_cons_buff_1
-// CHAIN: aie.dma_bd(%b_cons_buff_1
+// CHAIN: aie.dma_bd(%a__cons__buf0
+// CHAIN: aie.dma_bd(%b__cons__buf0
+// CHAIN: aie.dma_bd(%a__cons__buf1
+// CHAIN: aie.dma_bd(%b__cons__buf1
 // CHAIN: aie.next_bd ^bb1
 module @rolled_windows {
   aie.device(npu2) {
@@ -76,16 +76,16 @@ module @rolled_windows {
 // taking its else side on odd steps.
 
 // CHECK-LABEL: @alternate_steps
-// CHECK-DAG: aie.objectfifo.dma_endpoint @a_cons_dma(%{{.*}}) fills @a_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @b_cons_dma(%{{.*}}) fills @b_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__cons__dma(%{{.*}}) fills @a__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__cons__dma(%{{.*}}) fills @b__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
 
 // CHAIN-LABEL: @alternate_steps
 // CHAIN: aie.mem(%tile_0_2)
 // CHAIN: aie.dma_start(S2MM
-// CHAIN: aie.dma_bd(%a_cons_buff_0
-// CHAIN: aie.dma_bd(%b_cons_buff_0
-// CHAIN: aie.dma_bd(%a_cons_buff_1
-// CHAIN: aie.dma_bd(%b_cons_buff_1
+// CHAIN: aie.dma_bd(%a__cons__buf0
+// CHAIN: aie.dma_bd(%b__cons__buf0
+// CHAIN: aie.dma_bd(%a__cons__buf1
+// CHAIN: aie.dma_bd(%b__cons__buf1
 // CHAIN: aie.next_bd ^bb1
 module @alternate_steps {
   aie.device(npu2) {

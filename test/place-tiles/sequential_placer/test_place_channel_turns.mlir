@@ -15,8 +15,8 @@
 // CHECK-LABEL: module @three_fifos_two_channels
 // CHECK:       aie.mem(%[[CORE:.*]])
 // CHECK:       aie.dma_start(S2MM
-// CHECK:       aie.dma_bd(%b_cons_buff_0
-// CHECK:       aie.dma_bd(%c_cons_buff_0
+// CHECK:       aie.dma_bd(%b__cons__buf0
+// CHECK:       aie.dma_bd(%c__cons__buf0
 module @three_fifos_two_channels {
   aie.device(npu2_1col) {
     %s = aie.logical_tile<ShimNOCTile>(?, ?)

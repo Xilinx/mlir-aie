@@ -4,13 +4,18 @@
 # RUN: %PYTHON %s
 
 import os
+import subprocess
+import tempfile
 import traceback
 
 import numpy as np
+import aie.dialects.aie  # noqa: F401  (registers the aie dialect for parsing)
+from aie.extras.context import mlir_mod_ctx
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1
+from aie.helpers.errors import attach_tool_location, design_error
 from aie.helpers.sourceloc import is_internal_file
-from aie.ir import MLIRError
+from aie.ir import MLIRError, Module
 
 THIS_FILE = os.path.abspath(__file__)
 
@@ -115,11 +120,126 @@ def check_guard_failure():
     return f"{len(frames)} frames, {len(internal)} internal"
 
 
+# The line the fused location points at; the frame quotes it.
+PARSE = 'Module.parse(FUSED_IR.replace(":0:0", f":{line}:0"))'
+FUSED_IR = f"""
+module {{
+  aie.device(npu1_1col) {{
+    %t = aie.tile(9, 2) loc(#both)
+  }}
+}}
+#in = loc("iron:act_in"("{THIS_FILE}":0:0))
+#out = loc("iron:act_out"("{THIS_FILE}":0:0))
+#both = loc(fused[#in, #out])
+"""
+
+
+def check_fused_location():
+    """An op located at several objects, as a pass may fuse them, names all."""
+    with open(THIS_FILE) as f:
+        line = [l.strip() for l in f].index(PARSE) + 1
+    with mlir_mod_ctx():
+        try:
+            Module.parse(FUSED_IR.replace(":0:0", f":{line}:0"))
+        except MLIRError as exc:
+            frames = frames_of(design_error(exc))
+            message = str(exc)
+        else:
+            raise AssertionError("expected the out-of-range tile to be rejected")
+    filename, lineno, name, text = frames[-1]
+    assert (filename, lineno, text) == (THIS_FILE, line, PARSE), frames[-1]
+    assert name == "act_in, act_out", f"frame should name both objects: {name!r}"
+    # The message reads as aiecc prints it, without the op's dump.
+    error = f"{THIS_FILE}:{line}:0: error: act_in, act_out: 'aie.tile' op column"
+    assert error in message, message
+    assert "see current operation" not in message, message
+    return name
+
+
+# Locations with no file on disk, so aiecc quotes no source line, and each
+# with its case: a nested call site (as an inliner builds) under a name, with
+# a named caller; one fused across two objects; a name over no file; none.
+AIECC_CASES = {
+    "nested callers": (
+        "aie.tile(9, 2) loc(#site)",
+        '#site = loc("iron:x"(callsite(callsite("a.py":1:0 at "b.py":2:0)'
+        ' at "py:f"("c.py":3:0))))',
+    ),
+    "fused objects": (
+        "aie.tile(9, 2) loc(#both)",
+        '#a = loc("iron:act_in"("a.py":4:2))\n'
+        '#b = loc("iron:act_out"(callsite("b.py":5:0 at "c.py":6:0)))\n'
+        "#both = loc(fused[#a, #b])",
+    ),
+    "name without a file": ('aie.tile(9, 2) loc("iron:x")', ""),
+    "unknown location": ("aie.core(%t) { aie.end } loc(unknown)", ""),
+}
+
+
+def case_ir(op, aliases):
+    return (
+        "module {\n  aie.device(npu1_1col) {\n"
+        "    %t = aie.tile(0, 0) loc(unknown)\n"
+        f"    %r = {op}\n  }}\n}}\n{aliases}\n"
+    )
+
+
+def check_matches_aiecc():
+    """Each MLIRError reads line for line as aiecc prints the same error."""
+    with tempfile.TemporaryDirectory() as tmp:
+        for case, (op, aliases) in AIECC_CASES.items():
+            ir = case_ir(op, aliases)
+            path = os.path.join(tmp, "design.mlir")
+            with open(path, "w") as f:
+                f.write(ir)
+            run = subprocess.run(
+                ["aiecc", "-n", "--no-progress", "--tmpdir", tmp]
+                + ["--get=input_physical.mlir", path],
+                capture_output=True,
+                text=True,
+            )
+            assert run.returncode != 0, f"{case}: aiecc accepted it"
+            expected = [l for l in run.stderr.splitlines() if l and "aiecc:" not in l]
+            with mlir_mod_ctx():
+                try:
+                    Module.parse(ir)
+                except MLIRError as exc:
+                    message = str(design_error(exc))
+                else:
+                    raise AssertionError(f"{case}: expected a rejection")
+            got = message.splitlines()[1:]
+            assert got == expected, f"{case}:\n{got}\n!=\n{expected}"
+    return ", ".join(AIECC_CASES)
+
+
+# A statement longer than a frame could once be padded to (about 400 chars).
+LONG = "a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24, a25, a26, a27, a28, a29, a30, a31, a32, a33, a34, a35, a36, a37, a38, a39, a40, a41, a42, a43, a44, a45, a46, a47, a48, a49, a50, a51, a52, a53, a54, a55, a56, a57, a58, a59, a60, a61, a62, a63, a64, a65, a66, a67, a68, a69, a70, a71, a72, a73, a74, a75, a76, a77, a78, a79, a80, a81, a82, a83, a84, a85, a86, a87, a88, a89, a90, a91, a92, a93, a94, a95, a96, a97, a98, a99, a100, a101, a102, a103, a104, a105, a106, a107, a108, a109"
+
+
+def check_long_line():
+    """A tool error at a very long line still gains its frame there."""
+    with open(THIS_FILE) as f:
+        line = [l.rstrip("\n") for l in f].index(f'LONG = "{LONG}"') + 1
+    exc = RuntimeError("tool failed")
+    attached = attach_tool_location(exc, f"{THIS_FILE}:{line}:0: error: too long")
+    assert attached, "no frame attached for a long line"
+    filename, lineno, _, text = frames_of(exc)[-1]
+    assert (filename, lineno) == (THIS_FILE, line), frames_of(exc)[-1]
+    assert text.startswith("LONG = "), text
+    return len(text)
+
+
 def main():
     where = check_verifier_failure()
     guard = check_guard_failure()
+    fused = check_fused_location()
+    cases = check_matches_aiecc()
+    long_line = check_long_line()
     print(f"PASS: verifier failure reported at {where}")
     print(f"PASS: guard failure filtered to {guard}")
+    print(f"PASS: fused location reported as {fused}")
+    print(f"PASS: as aiecc prints: {cases}")
+    print(f"PASS: frame attached at a {long_line}-char line")
 
 
 main()

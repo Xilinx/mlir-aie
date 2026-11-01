@@ -17,8 +17,8 @@
 // CHECK: aie.device(npu1_1col)
 // CHECK-DAG: %[[SHIM:.*]] = aie.tile(0, 0)
 // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, {{[2-5]}})
-// CHECK-DAG: aie.lock(%[[CORE]], {{[0-9]+}}) {init = 2 : i32, sym_name = "in_cons_prod_lock_0"}
-// CHECK-DAG: aie.buffer(%[[CORE]]) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "in_cons_buff_0"}
+// CHECK-DAG: aie.lock(%[[CORE]], {{[0-9]+}}) {init = 2 : i32, sym_name = "in__cons__prodlock0"}
+// CHECK-DAG: aie.buffer(%[[CORE]]) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "in__cons__buf0"}
 // CHECK-DAG: aie.switchbox(%[[SHIM]])
 // CHECK-DAG: aie.mem(%[[CORE]])
 

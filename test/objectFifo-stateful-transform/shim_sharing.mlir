@@ -16,9 +16,9 @@
 // before the next starts, so any two may take turns on a channel. Only one
 // pair needs to, so in_c keeps MM2S 1 to itself.
 // CHECK-LABEL: module @pack
-// CHECK-DAG:   aie.shim_dma_allocation @in_a_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
-// CHECK-DAG:   aie.shim_dma_allocation @in_b_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
-// CHECK-DAG:   aie.shim_dma_allocation @in_c_shim_alloc(%{{.*}}, MM2S, 1)
+// CHECK-DAG:   aie.shim_dma_allocation @in_a__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK-DAG:   aie.shim_dma_allocation @in_b__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK-DAG:   aie.shim_dma_allocation @in_c__shim_alloc(%{{.*}}, MM2S, 1)
 module @pack {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -62,9 +62,9 @@ module @pack {
 // awaited is done, so out_a and out_b take turns on S2MM 0, their routes
 // packet-switched to tell them apart.
 // CHECK-LABEL: module @awaited
-// CHECK-DAG:   aie.shim_dma_allocation @out_a_shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @out_b_shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @out_c_shim_alloc(%{{.*}}, S2MM, 1)
+// CHECK-DAG:   aie.shim_dma_allocation @out_a__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @out_b__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @out_c__shim_alloc(%{{.*}}, S2MM, 1)
 module @awaited {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -146,9 +146,9 @@ module @sending_awaited {
 // Runtime tasks freed rather than awaited: freeing lets a task's BD ids be
 // reused, which is only safe once its transfers are done.
 // CHECK-LABEL: module @freed
-// CHECK-DAG:   aie.shim_dma_allocation @out_a_shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @out_b_shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @out_c_shim_alloc(%{{.*}}, S2MM, 1)
+// CHECK-DAG:   aie.shim_dma_allocation @out_a__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @out_b__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @out_c__shim_alloc(%{{.*}}, S2MM, 1)
 module @freed {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -202,12 +202,12 @@ module @freed {
 // need ids that differ, but the other tile's sharing ends reuse them: the
 // router keeps flows with one id apart wherever their destinations differ.
 // CHECK-LABEL: module @reused_ids
-// CHECK:       aie.shim_dma_allocation @in_a_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID0:[0-9]+]]>)
-// CHECK:       aie.shim_dma_allocation @in_b_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID1:[0-9]+]]>)
-// CHECK:       aie.shim_dma_allocation @in_c_shim_alloc(%{{.*}}, MM2S, 1)
-// CHECK:       aie.shim_dma_allocation @in_d_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID0]]>)
-// CHECK:       aie.shim_dma_allocation @in_e_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID1]]>)
-// CHECK:       aie.shim_dma_allocation @in_f_shim_alloc(%{{.*}}, MM2S, 1)
+// CHECK:       aie.shim_dma_allocation @in_a__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID0:[0-9]+]]>)
+// CHECK:       aie.shim_dma_allocation @in_b__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID1:[0-9]+]]>)
+// CHECK:       aie.shim_dma_allocation @in_c__shim_alloc(%{{.*}}, MM2S, 1)
+// CHECK:       aie.shim_dma_allocation @in_d__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID0]]>)
+// CHECK:       aie.shim_dma_allocation @in_e__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = [[ID1]]>)
+// CHECK:       aie.shim_dma_allocation @in_f__shim_alloc(%{{.*}}, MM2S, 1)
 module @reused_ids {
   aie.device(npu2) {
     %s0 = aie.tile(0, 0)
@@ -274,9 +274,9 @@ module @reused_ids {
 // out_a's transfer is never awaited, so it may still be in flight when the
 // others go; out_b and out_c take turns on one channel and out_a has the other.
 // CHECK-LABEL: module @partly_awaited
-// CHECK-DAG:   aie.shim_dma_allocation @out_a_shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @out_b_shim_alloc(%{{.*}}, S2MM, 1)
-// CHECK-DAG:   aie.shim_dma_allocation @out_c_shim_alloc(%{{.*}}, S2MM, 1)
+// CHECK-DAG:   aie.shim_dma_allocation @out_a__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @out_b__shim_alloc(%{{.*}}, S2MM, 1)
+// CHECK-DAG:   aie.shim_dma_allocation @out_c__shim_alloc(%{{.*}}, S2MM, 1)
 module @partly_awaited {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)

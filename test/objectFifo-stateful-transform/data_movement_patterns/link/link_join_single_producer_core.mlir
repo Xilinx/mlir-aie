@@ -16,18 +16,18 @@
 // Both sources leave the one producer tile, so it needs two MM2S chains.
 // CHECK:         aie.mem(%{{.*}}tile_0_2)
 // CHECK:           aie.dma_start(MM2S, 0
-// CHECK:           aie.dma_bd(%{{.*}}of_a_buff_0 : memref<64xi8> offset = 0 len = 64)
-// CHECK:           aie.dma_bd(%{{.*}}of_a_buff_1 : memref<64xi8> offset = 0 len = 64)
+// CHECK:           aie.dma_bd(%{{.*}}of_a__buf0 : memref<64xi8> offset = 0 len = 64)
+// CHECK:           aie.dma_bd(%{{.*}}of_a__buf1 : memref<64xi8> offset = 0 len = 64)
 // CHECK:           aie.dma_start(MM2S, 1
-// CHECK:           aie.dma_bd(%{{.*}}of_b_buff_0 : memref<64xi8> offset = 0 len = 64)
-// CHECK:           aie.dma_bd(%{{.*}}of_b_buff_1 : memref<64xi8> offset = 0 len = 64)
+// CHECK:           aie.dma_bd(%{{.*}}of_b__buf0 : memref<64xi8> offset = 0 len = 64)
+// CHECK:           aie.dma_bd(%{{.*}}of_b__buf1 : memref<64xi8> offset = 0 len = 64)
 
 // The MemTile lands them in adjacent slices of one joined object.
 // CHECK:         aie.memtile_dma(%{{.*}}mem_tile_0_1)
 // CHECK:           aie.dma_start(S2MM, 0
-// CHECK:           aie.dma_bd(%{{.*}}of_out_buff_0 : memref<128xi8> offset = 0 len = 64)
+// CHECK:           aie.dma_bd(%{{.*}}of_out__buf0 : memref<128xi8> offset = 0 len = 64)
 // CHECK:           aie.dma_start(S2MM, 1
-// CHECK:           aie.dma_bd(%{{.*}}of_out_buff_0 : memref<128xi8> offset = 64 len = 64)
+// CHECK:           aie.dma_bd(%{{.*}}of_out__buf0 : memref<128xi8> offset = 64 len = 64)
 
 module @joinSingleProducer {
  aie.device(npu2) {

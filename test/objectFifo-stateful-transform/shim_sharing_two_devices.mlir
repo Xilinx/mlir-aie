@@ -13,9 +13,9 @@
 // has already erased.
 
 // CHECK-LABEL: aie.device(npu2_1col) @first
-// CHECK-DAG:     aie.shim_dma_allocation @in_a_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
-// CHECK-DAG:     aie.shim_dma_allocation @in_b_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
-// CHECK-DAG:     aie.shim_dma_allocation @in_c_shim_alloc(%{{.*}}, MM2S, 1)
+// CHECK-DAG:     aie.shim_dma_allocation @in_a__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK-DAG:     aie.shim_dma_allocation @in_b__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK-DAG:     aie.shim_dma_allocation @in_c__shim_alloc(%{{.*}}, MM2S, 1)
 // CHECK-LABEL: aie.device(npu2_1col) @second
 // CHECK:         aie.flow(%{{.*}}, DMA : 0, %{{.*}}, DMA : 0)
 // CHECK-NOT:     packet_flow

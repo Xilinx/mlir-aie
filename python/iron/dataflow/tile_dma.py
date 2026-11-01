@@ -49,7 +49,7 @@ from ...dialects.aie import (
 from ...dialects.aie import bds as bd_blocks
 from ...dialects.aiex import dma_configure_task, dma_configure_task_for, npu_sync
 from ...helpers.npdtypes import pack_pad_value
-from ...helpers.sourceloc import SourceSite
+from ...helpers.sourceloc import Declared, SourceSite
 from ...helpers.taplib import TensorAccessPattern
 from ...helpers.taplib._symbolic import is_sym, si32, sprod, sym_any
 from ..buffer import Buffer
@@ -500,7 +500,7 @@ class DmaChannel:
         )
 
 
-class TileDma(PerDeviceConfigurationResolvable):
+class TileDma(Declared, PerDeviceConfigurationResolvable):
     """Per-tile DMA program.
 
     Lowers to an `aie.mem` (compute tile), `aie.memtile_dma` (memtile), or
