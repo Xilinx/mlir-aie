@@ -153,9 +153,10 @@ def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
 
 _PATH_FLAG = re.compile(r'((?:-I|-isystem|-iquote)\s*|-D[^=]+=)?("?)(.*?)("?)')
 
-# What measure() read, by kernel recipe, symbol prefix, entry and build: a
-# process asks again for every design resolved, and compiling (an object cache
-# key hashes every header) and reading the object each time is seconds a kernel.
+# What measure() read, by kernel content (its include directories too, which a
+# recipe key leaves out), symbol prefix, entry and build: a process asks again
+# for every design resolved, and compiling (an object cache key hashes every
+# header) and reading the object each time is seconds a kernel.
 _MEASURED: dict[tuple, Linked | None] = {}
 
 
@@ -1249,7 +1250,7 @@ class ExternalFunction(Kernel):
         if self.use_chess or self.link_with_mode is not None:
             return None
         key = (
-            self.recipe_key,
+            self._content_digest(),
             self.object_file.symbol_prefix,
             target_arch,
             embed_bitcode,

@@ -133,6 +133,23 @@ def test_a_kernel_is_read_once_however_often_it_is_measured(tmp_path, monkeypatc
     assert runs.read_text().splitlines() == ["run"]
 
 
+def test_kernels_that_differ_only_in_include_dirs_are_measured_apart(tmp_path):
+    source = '#include "k.h"\nextern "C" void k(int *x) { x[0] = table[x[1]]; }\n'
+    data = []
+    for words in (8, 4096):
+        d = tmp_path / f"inc{words}"
+        d.mkdir()
+        (d / "k.h").write_text(f"static volatile int table[{words}] = {{1}};\n")
+        kernel = ExternalFunction(
+            "k",
+            source_string=source,
+            arg_types=[np.ndarray[(8,), np.dtype[np.int32]]],
+            include_dirs=[str(d)],
+        )
+        data.append(kernel.measure("aie2p").data)
+    assert data[1] - data[0] == 4 * (4096 - 8)
+
+
 def test_measure_reads_each_entry_of_one_object(tmp_path):
     """Two symbols of one object: each entry's own stack, the object's data."""
     small = ExternalFunction(
