@@ -136,6 +136,35 @@ _PLAIN = (int, float, complex, str, bytes, bool, type(None))
 # module-level list of kernel flags, say).
 _CONTAINER = (list, tuple, dict, set, frozenset)
 
+# Deepest nesting of containers and instances the key will walk before it
+# refuses (see ``_too_deep``).  Bounded so key time cannot grow with an
+# arbitrary object graph, and so state that mutates on every call (a memo
+# cache hanging off a reachable instance) cannot silently cost a key
+# computation each call.  32 is far past any real design input -- flags,
+# shapes and configs sit within a handful of levels -- and well inside
+# Python's own recursion limit, so an over-deep graph fails with this
+# readable error instead of a RecursionError from deep inside the walk.
+_MAX_KEY_DEPTH = 32
+
+
+def _too_deep(where: str) -> ValueError:
+    """The error for a key that would walk deeper than ``_MAX_KEY_DEPTH``.
+
+    Failing here is the graceful failure: the alternative to a clear error
+    is either hashing an unbounded object graph on every call (the cache
+    performance problem) or summarising it (a weaker key that can silently
+    reuse a stale entry -- the very bug this walk exists to close).  numba
+    makes the same call for oversized constants: it refuses to cache rather
+    than key what it cannot freeze; JAX rejects non-hashable static inputs
+    outright.  None of them publishes a nesting number, so the bound is
+    pragmatic, not theoretical.
+    """
+    return ValueError(
+        f"cache-key traversal exceeded the nesting bound of {_MAX_KEY_DEPTH} "
+        f"at {where}: flatten the state the generator reads (a plain "
+        f"constant, or a digest of it) instead of nesting it deeper."
+    )
+
 
 def _plain(value) -> bool:
     if isinstance(value, tuple):
@@ -243,30 +272,49 @@ def _python_identity(roots) -> bytes:
     todo: list = []
     modules: list[ModuleType] = []
 
-    def visit(value, where: str):
+    def visit(value, where: str, depth: int = 0):
         if isinstance(value, (staticmethod, classmethod)):
             value = value.__func__
         if isinstance(value, property):
             for f in (value.fget, value.fset, value.fdel):
-                visit(f, where)
+                visit(f, where, depth)
         elif _plain(value) or isinstance(value, ExternalFunction):
             records.add(f"{where}={value!r}".encode())
         elif isinstance(value, _CONTAINER) and id(value) not in seen:
             # A container the code reads is an input like a plain constant
             # is (a module-level list of kernel flags, say): digest it
             # member by member — sequences ordered, mappings/sets not.
+            if depth >= _MAX_KEY_DEPTH:
+                raise _too_deep(where)
             seen.add(id(value))
             if isinstance(value, dict):
                 for item in value.items():
-                    visit(item, f"{where}.item")
+                    visit(item, f"{where}.item", depth + 1)
             elif isinstance(value, (set, frozenset)):
                 for member in value:
-                    visit(member, f"{where}.item")
+                    visit(member, f"{where}.item", depth + 1)
             else:
                 for index, member in enumerate(value):
-                    visit(member, f"{where}[{index}]")
+                    visit(member, f"{where}[{index}]", depth + 1)
         elif (module := _stamped_module(value)) is not None:
             modules.append(module)
+            # An instance of a file-backed class is different from the
+            # class itself: the file says what its attributes mean, not
+            # what they hold, so the state the code reads through it is an
+            # input like a container's members are.  A module's namespace
+            # is not walked (it grows with every import), and code -- a
+            # function, a class -- is still named by its file.
+            state = (
+                None
+                if isinstance(value, (ModuleType, FunctionType, type))
+                else getattr(value, "__dict__", None)
+            )
+            if state and id(value) not in seen:
+                if depth >= _MAX_KEY_DEPTH:
+                    raise _too_deep(where)
+                seen.add(id(value))
+                for attr, member in state.items():
+                    visit(member, f"{where}.{attr}", depth + 1)
         elif isinstance(value, (FunctionType, type)) and id(value) not in seen:
             home = sys.modules.get(value.__module__)
             # Followed by code only where no file stands for it; an
