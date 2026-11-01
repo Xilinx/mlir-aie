@@ -1430,15 +1430,56 @@ __attribute__((noinline)) static void qk_kv(const bfloat16 *Q,
                                                                           S);
 }
 
+#ifdef MHA_REL_BAND
+// The relative band (Gemma 4 audio's relative-position logits): score (i, j)
+// gains Q_i . R_d at distance d = pos_i - key_j, 0 <= d < REL_KEYS, R's rows
+// past the model's window zero. relative_rows takes QR = Q R^T once a query
+// block, each row reversed into REL_ROW floats, d at REL_AT - d with zeros
+// either side, so a tile row's four addends are one run of them.
+static constexpr int32_t REL_KEYS = 16, REL_ROW = 32, REL_AT = 23;
+static_assert(MHA_GROUP == 1 && !MHA_PACKED,
+              "the relative band takes a query a row");
+
+// Before the cap, as a pre-cap addend: each S tile within the band.
+static inline __attribute__((always_inline)) void
+relative_add(float *S, const float *QR, int32_t diagonal) {
+  for (int32_t b = 0; b < DIM_M / 4; b++) {
+    for (int32_t c = 0; c < S_TILES; c++) {
+      // Lane (r, k) of the tile is at distance d0 + r - k.
+      const int32_t d0 = diagonal + 4 * b - 4 * c;
+      if (d0 + 3 < 0 || d0 - 3 >= REL_KEYS)
+        continue;
+      // Each row's run of eight, the first four its, two rows a vector.
+      aie::vector<float, 8> rows[4];
+      for (int32_t r = 0; r < 4; r++) {
+        const int32_t d = d0 + r;
+        rows[r] = d < 0 || d - 3 >= REL_KEYS
+                      ? aie::zeros<float, 8>()
+                      : aie::load_unaligned_v<8>(QR + (4 * b + r) * REL_ROW +
+                                                 REL_AT - d);
+      }
+      float *t = S + (b * S_TILES + c) * S_TILE;
+      aie::store_v(
+          t, aie::add(aie::accum<accfloat, S_TILE>(aie::load_v<S_TILE>(t)),
+                      aie::concat(
+                          aie::filter_even(aie::concat(rows[0], rows[1]), 4),
+                          aie::filter_even(aie::concat(rows[2], rows[3]), 4)))
+                 .template to_vector<float>());
+    }
+  }
+}
+#endif
+
 // One key block of a query block on one core: S = Q K^T, the online softmax
 // over S, then O += P V, bit for bit as matmul_bf16_bf16_wrapper,
 // partial_softmax and matmul_PV compute it over three cores. KV is the
 // block's K, then its V, both in QK^T's B tiling, so one stream carries
 // them; S holds its scores and P its weights. init_scale_buffer starts a
-// query block, rescale_O ends it.
-void attend_block(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
-                  float *scale_buffer, int32_t *idx_buffer, bfloat16 inv_scale,
-                  int32_t S_q_eff, int32_t S_kv_eff) {
+// query block, rescale_O ends it. QR is relative_rows' (MHA_REL_BAND).
+static inline __attribute__((always_inline)) void
+attend(bfloat16 *Q, bfloat16 *KV, const float *QR, float *O, score_t *S,
+       bfloat16 *P, float *scale_buffer, int32_t *idx_buffer,
+       bfloat16 inv_scale, int32_t S_q_eff, int32_t S_kv_eff) {
   event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
   constexpr int32_t B_q = DIM_M;
@@ -1464,6 +1505,9 @@ void attend_block(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
   if (valid_q_rows > B_q)
     valid_q_rows = B_q;
   qk_kv(Q, KV, S);
+#ifdef MHA_REL_BAND
+  relative_add(S, QR, diagonal);
+#endif
 #ifdef MHA_SOFT_CAP
   // Each score cap * tanh(s / cap) * log2(e): the scale the caller passes is
   // then 1, which the limbs of m - S take exactly.
@@ -1506,6 +1550,49 @@ void attend_block(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
   event1();
 }
 
+#ifdef MHA_REL_BAND
+void attend_block(bfloat16 *Q, bfloat16 *KV, const float *QR, float *O,
+                  score_t *S, bfloat16 *P, float *scale_buffer,
+                  int32_t *idx_buffer, bfloat16 inv_scale, int32_t S_q_eff,
+                  int32_t S_kv_eff) {
+  attend(Q, KV, QR, O, S, P, scale_buffer, idx_buffer, inv_scale, S_q_eff,
+         S_kv_eff);
+}
+
+// QR = Q R^T, R the head's REL_KEYS relative keys in QK^T's B tiling, laid
+// out as relative_add reads it. The product lands in QR's second half: a row
+// group's rows overwrite its tiles only after reading them.
+void relative_rows(const bfloat16 *Q, const bfloat16 *R, float *QR) {
+  event0();
+  ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
+  float *c = QR + DIM_M * REL_KEYS;
+  matmul_aie2<float, DIM_M, DIM_K, REL_KEYS, is_b_row_maj, DIM_K / 8, true>(
+      Q, R, c);
+  for (int32_t b = 0; b < DIM_M / 4; b++) {
+    aie::vector<float, S_TILE> t[4];
+    for (int32_t k = 0; k < 4; k++)
+      t[k] = aie::load_v<S_TILE>(c + (4 * b + k) * S_TILE);
+    for (int32_t r = 0; r < 4; r++) {
+      const auto row =
+          aie::concat(t[0].template extract<4>(r), t[1].template extract<4>(r),
+                      t[2].template extract<4>(r), t[3].template extract<4>(r));
+      float *dst = QR + (4 * b + r) * REL_ROW;
+      aie::store_v(dst, aie::zeros<float, 8>());
+      aie::store_v(dst + REL_AT - (REL_KEYS - 1), aie::reverse(row));
+      aie::store_v(dst + REL_AT + 1, aie::zeros<float, 8>());
+    }
+  }
+  ::aie::set_rounding(saved_rounding);
+  event1();
+}
+#else
+void attend_block(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
+                  float *scale_buffer, int32_t *idx_buffer, bfloat16 inv_scale,
+                  int32_t S_q_eff, int32_t S_kv_eff) {
+  attend(Q, KV, nullptr, O, S, P, scale_buffer, idx_buffer, inv_scale, S_q_eff,
+         S_kv_eff);
+}
+
 // attend_block on head `head` of a key block's MHA_KV_HEADS heads.
 void attend_head(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
                  float *scale_buffer, int32_t *idx_buffer, bfloat16 inv_scale,
@@ -1513,6 +1600,7 @@ void attend_head(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
   attend_block(Q, KV + head * 8 * DIM_K, O, S, P, scale_buffer, idx_buffer,
                inv_scale, S_q_eff, S_kv_eff);
 }
+#endif
 
 // The first n values of a key block's object, laid in it flat (value f at
 // row f / KV_W, column f % KV_W) and tiled as keys, out into q flat.

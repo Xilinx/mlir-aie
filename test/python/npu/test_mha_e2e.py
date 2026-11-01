@@ -1976,6 +1976,88 @@ def test_attend_head_is_its_head_alone(n_kv, s_kv_eff, b_kv, d, band):
 
 
 @jit
+def mha_relative_rows(
+    q_in: In,
+    r_in: In,
+    qr_out: Out,
+    *,
+    b_q: CompileTime[int] = 32,
+    d: CompileTime[int] = 128,
+):
+    """``relative_rows`` on one core: a query block's ``Q R^T``, laid out as ``attend_block`` reads it."""
+    q_ty = np.ndarray[(b_q * d,), BF]
+    r_ty = np.ndarray[(16 * d,), BF]
+    qr_ty = np.ndarray[(b_q * 32,), F32]
+    fused = kernels.mha(
+        dim_m=b_q,
+        dim_k=d,
+        dim_n=16,
+        b_col_maj=True,
+        fused=True,
+        f32_scores=True,
+        accurate_exp2=True,
+        window=11,
+        soft_cap=50.0,
+        relative_band=True,
+    )
+    rows = fused.object_file.bind("relative_rows", [q_ty, r_ty, qr_ty])
+    of_q = ObjectFifo(q_ty, name="q", depth=1)
+    of_r = ObjectFifo(r_ty, name="r", depth=1)
+    of_qr = ObjectFifo(qr_ty, name="qr", depth=1)
+
+    def core(of_q, of_r, of_qr, rows):
+        rows(of_q.acquire(1), of_r.acquire(1), of_qr.acquire(1))
+        of_q.release(1)
+        of_r.release(1)
+        of_qr.release(1)
+
+    worker = Worker(core, fn_args=[of_q.cons(), of_r.cons(), of_qr.prod(), rows])
+
+    def sequence(q_h, r_h, qr_h, qf, rf, qrf):
+        qf.fill(q_h)
+        rf.fill(r_h)
+        qrf.drain(qr_h, wait=True)
+
+    rt = Runtime(sequence, [q_ty, r_ty, qr_ty, of_q.prod(), of_r.prod(), of_qr.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.parametrize("b_q,d", [(32, 128), (16, 64)])
+def test_relative_rows_lay_q_r_by_distance(b_q, d):
+    """``relative_rows``: row ``i``'s ``Q_i . R_d`` at column ``23 - d``, zeros elsewhere, exact over dyadic Q and R."""
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("mha.cc's fused block is written for AIE2")
+    rng = np.random.default_rng(20261101 + d)
+    q = _dyadic(rng, (b_q, d), 0.25, mag=2)
+    r = _dyadic(rng, (16, d), 0.125, mag=2)
+    fused = kernels.mha(
+        dim_m=b_q,
+        dim_k=d,
+        dim_n=16,
+        b_col_maj=True,
+        fused=True,
+        f32_scores=True,
+        accurate_exp2=True,
+        window=11,
+        soft_cap=50.0,
+        relative_band=True,
+    )
+    q_layout = fused.contract.layouts[0]
+    r_tiles = TensorAccessPattern.full((16, d)).tile((4, 8))
+    out = iron.zeros((b_q * 32,), dtype=np.float32)
+    mha_relative_rows(
+        iron.tensor(q_layout.encode(q).reshape(-1), dtype=bfloat16),
+        iron.tensor(r_tiles.gather(r), dtype=bfloat16),
+        out,
+        b_q=b_q,
+        d=d,
+    )
+    want = np.zeros((b_q, 32), np.float32)
+    want[:, 23 - np.arange(16)] = q.astype(np.float32) @ r.astype(np.float32).T
+    np.testing.assert_array_equal(out.numpy().reshape(b_q, 32), want)
+
+
+@jit
 def mha_split_q(
     obj_in: In,
     q_out: Out,

@@ -3217,7 +3217,8 @@ CASES += [
         for b_q, d, b_kv in ((32, 64, 64), (32, 128, 32))
     ],
     # ...with the accurate exponential, and Gemma 4 audio's block: float32
-    # scores capped at 50, a causal window of 12, the accurate exponential.
+    # scores with their relative band, capped at 50, a causal window of 12,
+    # the accurate exponential.
     Case(
         "mha",
         dict(
@@ -3245,6 +3246,7 @@ CASES += [
             accurate_exp2=True,
             window=11,
             soft_cap=50.0,
+            relative_band=True,
         ),
         calls=4,
         tag="gemma4-audio",

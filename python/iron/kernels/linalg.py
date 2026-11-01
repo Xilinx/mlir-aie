@@ -514,6 +514,9 @@ class _CascadeMatMulFactory:
 
 # mha.cc's softmax reads a row of a key block as one vector.
 _MHA_KEY_BLOCKS = (16, 32, 64)
+# mha.cc's relative band: 16 distances, a QR row of 32 floats, distance d
+# at 23 - d.
+_MHA_REL_KEYS, _MHA_REL_ROW, _MHA_REL_AT = 16, 32, 23
 
 
 class _MhaFactory:
@@ -1401,6 +1404,7 @@ def mha(
     group: int = 1,
     kv_heads: int = 1,
     soft_cap: float | None = None,
+    relative_band: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1486,6 +1490,14 @@ def mha(
             ``soft_cap * tanh(s / soft_cap) * log2(e)`` (``-DMHA_SOFT_CAP``,
             ``softmax``'s float32 cap), so the scale ``attend_block`` takes
             is 1: base-e logits, as Gemma's capped attention has them.
+        relative_band: With ``fused`` and ``f32_scores``, a query a row
+            (``group`` 1, not ``packed``): ``attend_block`` takes ``QR``
+            after ``KV`` and adds ``Q_i . R_d`` to score ``(i, j)`` at
+            distance ``d = pos_i - key_j``, ``0 <= d < 16``, before the cap
+            (``-DMHA_REL_BAND``, Gemma 4 audio's relative-position logits).
+            ``QR`` is ``relative_rows(Q, R, QR)``'s, from the head's 16
+            relative keys ``R`` in ``QK^T``'s B tiling: ``dim_m`` rows of 32
+            floats, distance ``d`` at column ``23 - d``.
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
         ``matmul_bf16_bf16_rowmaj``, with ``float_o`` ``matmul_PV``, or with
@@ -1509,6 +1521,11 @@ def mha(
         )
     if soft_cap is not None and not (fused and f32_scores):
         raise ValueError("mha: soft_cap is the fused block's, over f32_scores")
+    if relative_band and not (fused and f32_scores and group == 1 and not packed):
+        raise ValueError(
+            "mha: relative_band is the fused block's, over f32_scores, a query "
+            "a row (group 1, not packed)"
+        )
     if soft_cap is not None and not 2.0**-100 <= soft_cap <= 2.0**10:
         raise ValueError(f"mha: soft_cap must be in [2^-100, 2^10], got {soft_cap}")
     if fused and _arch_traits().name != "aie2":
@@ -1559,6 +1576,8 @@ def mha(
         flags.append(f"-DMHA_KV_HEADS={kv_heads}")
     if soft_cap is not None:
         flags.append(f"-DMHA_SOFT_CAP={float(soft_cap)!r}f")
+    if relative_band:
+        flags.append("-DMHA_REL_BAND")
     if fused:
         return _mha_fused(
             dim_m,
@@ -1573,6 +1592,7 @@ def mha(
             f32_scores,
             accurate_exp2,
             soft_cap,
+            relative_band,
         )
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
@@ -1707,6 +1727,7 @@ def _mha_fused(
     f32_scores,
     accurate_exp2,
     soft_cap,
+    relative_band,
 ):
     """``mha(fused=True)``'s ``attend_block`` and its contract.
 
@@ -1762,7 +1783,17 @@ def _mha_fused(
             ],
             axis=1,
         )
-        return [np.broadcast_to(x, (calls, *x.shape)).astype(bfloat16) for x in (q, kv)]
+        inputs = [
+            np.broadcast_to(x, (calls, *x.shape)).astype(bfloat16) for x in (q, kv)
+        ]
+        if relative_band:
+            # Each row's 16 relative terms in quarters, laid as relative_rows
+            # lays them.
+            qr = np.zeros((dim_m, _MHA_REL_ROW), np.float32)
+            terms = rng.choice(np.arange(-8, 9) / 4, (dim_m, _MHA_REL_KEYS))
+            qr[:, _MHA_REL_AT - np.arange(_MHA_REL_KEYS)] = terms
+            inputs.append(np.broadcast_to(qr, (calls, *qr.shape)).copy())
+        return inputs
 
     # A weight's error: exp2_bf16.h's cubic with its bf16 store, 0.74% at
     # worst on npu1, or the accurate exp2's bf16 store, with float32
@@ -1771,8 +1802,8 @@ def _mha_fused(
         2.0**-12 if soft_cap is not None else 0.0
     )
 
-    def bound(q, kv):
-        _, p = mha_attend_block_terms(q, kv, **block)
+    def bound(q, kv, qr=None):
+        _, p = mha_attend_block_terms(q, kv, qr, **block)
         v = np.abs(
             np.asarray(kv, np.float64).reshape(-1, dim_n, kv_heads, 2, dim_k)[
                 :, :, 0, 1
@@ -1780,9 +1811,11 @@ def _mha_fused(
         )
         return ((weight + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
 
+    qr = [np.ndarray[(dim_m * _MHA_REL_ROW,), np.dtype[np.float32]]] * relative_band
     arg_types = [
         np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
         np.ndarray[(dim_n * width,), np.dtype[bfloat16]],
+        *qr,
         np.ndarray[(dim_m * dim_k,), np.dtype[np.float32]],
         np.ndarray[(dim_m * dim_n,), np.dtype[np.float32 if f32_scores else bfloat16]],
         np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
@@ -1802,21 +1835,30 @@ def _mha_fused(
             layouts=(
                 _tile_layout((dim_m, dim_k), qk.A, block=mac[:2]),
                 _tile_layout((dim_n, width), kv_stream, block=(4, 8)),
+                *[None] * len(qr),
                 _tile_layout((dim_m, dim_k), pv.C, inverse=True, block=mac[::2]),
                 *([None] * 7),
             ),
-            roles=(In, In, InOut, *([Param] * 7)),
-            parameter_bindings=(
-                (3, np.zeros(dim_m * dim_n, np.float32 if f32_scores else bfloat16)),
-                (4, np.zeros(dim_m * dim_n, bfloat16)),
-                (5, np.zeros(4 * dim_m, np.float32)),
-                (6, block["idx"]),
-                (7, scale),
-                (8, block["s_q_eff"]),
-                (9, block["s_kv_eff"]),
+            roles=(In, In, *[In] * len(qr), InOut, *([Param] * 7)),
+            parameter_bindings=tuple(
+                (i + len(qr), v)
+                for i, v in (
+                    (
+                        3,
+                        np.zeros(dim_m * dim_n, np.float32 if f32_scores else bfloat16),
+                    ),
+                    (4, np.zeros(dim_m * dim_n, bfloat16)),
+                    (5, np.zeros(4 * dim_m, np.float32)),
+                    (6, block["idx"]),
+                    (7, scale),
+                    (8, block["s_q_eff"]),
+                    (9, block["s_kv_eff"]),
+                )
             ),
-            reference=lambda q, kv: mha_attend_block_terms(q, kv, **block)[0],
-            initializers=((2, _zero_output),),
+            reference=lambda q, kv, qr=None: mha_attend_block_terms(q, kv, qr, **block)[
+                0
+            ],
+            initializers=((2 + len(qr), partial(_zero_output, index=2 + len(qr))),),
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,
@@ -1832,6 +1874,7 @@ def _mha_fused(
 def mha_attend_block_terms(
     q,
     kv,
+    qr=None,
     *,
     idx,
     s_q_eff,
@@ -1853,8 +1896,10 @@ def mha_attend_block_terms(
     ``O = P V`` with ``P = exp2((S - m) s)``, true ``exp2`` of the scores
     ``S`` as the core keeps them (rounded to bf16, or float32 with
     ``f32_scores``), ``m`` each row's largest kept score or 0, whichever is
-    larger, as a zeroed running maximum leaves it. A ``soft_cap`` takes each
-    score to ``soft_cap * tanh(s / soft_cap) * log2(e)`` first.
+    larger, as a zeroed running maximum leaves it. ``qr``, as
+    ``relative_rows`` lays it, adds each score's relative term, and a
+    ``soft_cap`` then takes each score to ``soft_cap * tanh(s / soft_cap) *
+    log2(e)``.
     """
     kv_block, q_block, offset = (int(i) for i in np.asarray(idx).ravel())
     q = np.asarray(q, np.float64).reshape(-1, dim_m, dim_k)
@@ -1864,13 +1909,18 @@ def mha_attend_block_terms(
         .astype(np.float32 if f32_scores else bfloat16)
         .astype(np.float64)
     )
-    if soft_cap is not None:
-        s = soft_cap * np.tanh(s / soft_cap) * np.log2(np.e)
     rows, cols = np.indices((dim_m, dim_n))
     position = (
         s_kv_eff - 1 if packed else q_block * (dim_m // group) + offset + rows // group
     )
     key = kv_block * dim_n + cols - position
+    if qr is not None:
+        terms = np.asarray(qr, np.float64).reshape(-1, dim_m, _MHA_REL_ROW)
+        near = (key <= 0) & (key > -_MHA_REL_KEYS)
+        at = np.broadcast_to(np.where(near, _MHA_REL_AT + key, 0), s.shape)
+        s = s + np.where(near, np.take_along_axis(terms, at, axis=2), 0.0)
+    if soft_cap is not None:
+        s = soft_cap * np.tanh(s / soft_cap) * np.log2(np.e)
     keep = (rows < s_q_eff - q_block * dim_m) & (cols < s_kv_eff - kv_block * dim_n)
     if causal or window:
         keep &= key <= (0 if causal else window)
