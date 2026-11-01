@@ -1569,8 +1569,12 @@ void relative_rows(const bfloat16 *Q, const bfloat16 *R, float *QR) {
   event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
   float *c = QR + DIM_M * REL_KEYS;
-  matmul_aie2<float, DIM_M, DIM_K, REL_KEYS, is_b_row_maj, KV_PITCH, true>(Q, R,
-                                                                           c);
+  // At 16-key blocks this is attend_block's own QK^T: one copy of it.
+  if constexpr (DIM_N == REL_KEYS)
+    qk_kv(Q, R, c);
+  else
+    matmul_aie2<float, DIM_M, DIM_K, REL_KEYS, is_b_row_maj, KV_PITCH, true>(
+        Q, R, c);
   for (int32_t b = 0; b < DIM_M / 4; b++) {
     aie::vector<float, S_TILE> t[4];
     for (int32_t k = 0; k < 4; k++)
