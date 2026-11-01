@@ -3410,6 +3410,53 @@
     "offered": 99,
     "checked": 97
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "41279760991",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41279760991",
+   "date": "2026-11-01T06:10:45+00:00",
+   "commit": {
+    "id": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "message": "Name and locate MLIR after the IRON Python that built it (#4004)",
+    "timestamp": "2026-10-31T19:44:44Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "7553ce5647",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "cbe68ae46132",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2093,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 829,
+    "failed": 0,
+    "timed": 354,
+    "timing_failed": 0,
+    "untimed": 479,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 100,
+    "checked": 98
+   }
   }
  ]
 }

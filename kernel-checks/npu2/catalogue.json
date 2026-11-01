@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "064a1721a4af3fa483ebccd23b508c2d647066fe",
- "date": "2026-10-31T06:57:59.546263+00:00",
+ "commit": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+ "date": "2026-11-01T06:58:15.581988+00:00",
  "swept": true,
  "kernels": [
   {
@@ -2104,6 +2104,25 @@
    "flaky": []
   },
   {
+   "factory": "decode_coded",
+   "family": "datamovement",
+   "summary": "Coded rows in, bf16 rows out.",
+   "sources": [
+    "datamovement/decode_coded.cc"
+   ],
+   "builds": [
+    "decode_coded"
+   ],
+   "passed": 2,
+   "failed": [],
+   "timed": 1,
+   "timing_failed": [],
+   "untimed": [
+    "decode_coded/768x4/uint8_bfloat16/edge-code-plane-padded"
+   ],
+   "flaky": []
+  },
+  {
    "factory": "expand",
    "family": "datamovement",
    "summary": "Dequantize kernel: uint4 -> bfloat16 with per-group scale factors.",
@@ -2502,9 +2521,9 @@
     "mv",
     "mv/dim_k=256/input_dtype=bfloat16/output_dtype=bfloat16"
    ],
-   "passed": 16,
+   "passed": 18,
    "failed": [],
-   "timed": 7,
+   "timed": 9,
    "timing_failed": [],
    "untimed": [
     "mv/10x512x4/bfloat16/vec_size=64/edge-mac-loop",
