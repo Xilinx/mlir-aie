@@ -462,6 +462,111 @@ def test_cache_key_covers_kernel_flags_mutated_in_place(scale_design):
     assert key() != before
 
 
+_SHAPE_STATE = (
+    "CONFIG = []\n"
+    "FLAGMAP = {'chosen': ['-DSTEP=1'], 'other': ['-DSTEP=2']}\n"
+    "LEFT = ['-DA=1']\n"
+    "RIGHT = ['-DB=1']\n"
+    "TRIPLE = [LEFT, RIGHT, LEFT]\n"
+    "\n"
+    "\n"
+    "def first_helper():\n"
+    "    return 1\n"
+    "\n"
+    "\n"
+    "def second_helper():\n"
+    "    return 2\n"
+    "\n"
+    "\n"
+    "HELPERS = [first_helper, second_helper]\n"
+)
+
+# Each entry: (what the generator reads, how the structure changes without
+# any leaf value changing).  The walk must record the SHAPE -- kind, length,
+# key/value pairing, which value sits at which position -- not only leaves,
+# or these mutations reuse a stale entry.
+_SHAPE_MUTATIONS = [
+    (
+        "empty-shape",
+        "list(shape_state.CONFIG)",
+        lambda s: setattr(s, "CONFIG", [[]]),
+    ),
+    (
+        "dict-pairing",
+        "shape_state.FLAGMAP['chosen']",
+        lambda s: setattr(
+            s, "FLAGMAP", {"chosen": ["-DSTEP=2"], "other": ["-DSTEP=1"]}
+        ),
+    ),
+    (
+        "alias-repeat",
+        "shape_state.TRIPLE",
+        lambda s: setattr(s, "TRIPLE", [s.LEFT, s.RIGHT, s.RIGHT]),
+    ),
+    (
+        "helper-order",
+        "[h.__name__ for h in shape_state.HELPERS]",
+        lambda s: setattr(s, "HELPERS", [s.second_helper, s.first_helper]),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "case_id,read_expr,mutate", _SHAPE_MUTATIONS, ids=[m[0] for m in _SHAPE_MUTATIONS]
+)
+def test_cache_key_covers_the_shape_of_a_read_container(
+    tmp_path, case_id, read_expr, mutate
+):
+    """A structural change to a read container moves the key with no leaf change.
+
+    Recorded members alone cannot tell ``[]`` from ``[[]]``, one mapping
+    pairing from its swap, ``[a, b, a]`` from ``[a, b, b]``, or ``[f, g]``
+    from ``[g, f]`` -- yet a generator branching on ``len`` or indexing
+    reads the difference.  Kind, length, pairing and position travel with
+    the member digest.
+    """
+    (tmp_path / "shape_state.py").write_text(_SHAPE_STATE)
+    (tmp_path / "shape_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import shape_state\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void shape(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def shape(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "shape",\n'
+        '        object_file_name="shape.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        f"        compile_flags={read_expr},\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import shape_design
+
+        state = sys.modules["shape_state"]
+
+        def key():
+            return CompilableDesign(
+                shape_design.shape, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+        mutate(state)
+        assert key() != before
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("shape_design", None)
+        sys.modules.pop("shape_state", None)
+
+
 def test_cache_key_does_not_generate_the_design():
     def scale(a: In, *, N: CompileTime[int]):
         raise AssertionError("the key generated the design")

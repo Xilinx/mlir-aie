@@ -309,7 +309,9 @@ def _python_identity(roots) -> bytes:
     classes with no file behind them are identified by their code and the
     plain constants they read, directly or through a mutable container (a
     list of kernel compile flags on the module, say), which is digested
-    member by member; a module imported from a file, or the script being
+    member by member — its kind and length, the pairing of a mapping's
+    keys to its values, and which value sits at which position included;
+    a module imported from a file, or the script being
     run, by its source's stamp (see ``_import_identity``), and every
     module its globals reach in turn. Installed third-party code is
     not followed. No design is generated to find any of it.
@@ -323,6 +325,13 @@ def _python_identity(roots) -> bytes:
 
     records: set[bytes] = set()
     seen: set[int] = set()
+    # Containers and file-backed instances on the CURRENT descent path only:
+    # a cycle is cut, but a reference repeated along a sibling branch is
+    # still recorded where it sits.  A walk-wide dedup here would make
+    # ``[a, b, a]`` and ``[a, b, b]`` hash identically, and which of two
+    # aliased globals gets recorded would follow set-iteration order, which
+    # the hash seed varies between processes.
+    active: set[int] = set()
     todo: list = []
     modules: list[ModuleType] = []
 
@@ -334,24 +343,45 @@ def _python_identity(roots) -> bytes:
                 visit(f, where, depth)
         elif _plain(value) or isinstance(value, ExternalFunction):
             records.add(f"{where}={value!r}".encode())
-        elif isinstance(value, _CONTAINER) and id(value) not in seen:
+        elif isinstance(value, _CONTAINER) and id(value) not in active:
             # A container the code reads is an input like a plain constant
             # is (a module-level list of kernel flags, say): digest it
-            # member by member — sequences ordered, mappings/sets not.
+            # member by member — sequences ordered, mappings/sets not.  The
+            # kind and length are recorded first: they are inputs too (a
+            # generator can branch on ``len()``), and without them an empty
+            # container leaves no trace at all.
             if depth >= _MAX_KEY_DEPTH:
                 raise _too_deep(where)
-            seen.add(id(value))
-            if isinstance(value, dict):
-                for item in value.items():
-                    visit(item, f"{where}.item", depth + 1)
-            elif isinstance(value, (set, frozenset)):
-                for member in value:
-                    visit(member, f"{where}.item", depth + 1)
-            else:
-                for index, member in enumerate(value):
-                    visit(member, f"{where}[{index}]", depth + 1)
+            records.add(f"{where}=<{type(value).__name__}:{len(value)}>".encode())
+            active.add(id(value))
+            try:
+                if isinstance(value, dict):
+                    # Each entry's key qualifies where its value is
+                    # recorded, so a value reassigned between keys cannot
+                    # keep the old entry's record.
+                    for k, v in value.items():
+                        visit(k, f"{where}[{k!r}].key", depth + 1)
+                        visit(v, f"{where}[{k!r}]", depth + 1)
+                elif isinstance(value, (set, frozenset)):
+                    for member in value:
+                        visit(member, f"{where}.item", depth + 1)
+                else:
+                    for index, member in enumerate(value):
+                        visit(member, f"{where}[{index}]", depth + 1)
+            finally:
+                active.discard(id(value))
         elif (module := _stamped_module(value)) is not None:
             modules.append(module)
+            # The position binds what sits in it: two same-file helpers, or
+            # two modules, are not interchangeable at one ``where`` even
+            # though the file's stamp covers both, so the binding is
+            # recorded next to following the value itself.
+            if isinstance(value, ModuleType):
+                records.add(f"{where}->module:{value.__name__}".encode())
+            elif isinstance(value, (FunctionType, type)):
+                records.add(
+                    f"{where}->{value.__module__}.{value.__qualname__}".encode()
+                )
             # An instance of a file-backed class is different from the
             # class itself: the file says what its attributes mean, not
             # what they hold, so the state the code reads through it is an
@@ -363,12 +393,15 @@ def _python_identity(roots) -> bytes:
                 if isinstance(value, (ModuleType, FunctionType, type))
                 else getattr(value, "__dict__", None)
             )
-            if state and id(value) not in seen:
+            if state and id(value) not in active:
                 if depth >= _MAX_KEY_DEPTH:
                     raise _too_deep(where)
-                seen.add(id(value))
-                for attr, member in state.items():
-                    visit(member, f"{where}.{attr}", depth + 1)
+                active.add(id(value))
+                try:
+                    for attr, member in state.items():
+                        visit(member, f"{where}.{attr}", depth + 1)
+                finally:
+                    active.discard(id(value))
         elif isinstance(value, (FunctionType, type)) and id(value) not in seen:
             home = sys.modules.get(value.__module__)
             # Followed by code only where no file stands for it; an
@@ -378,6 +411,9 @@ def _python_identity(roots) -> bytes:
                 or home.__name__ == "__main__"
                 or not vars(home).get("__file__")
             ):
+                records.add(
+                    f"{where}->{value.__module__}.{value.__qualname__}".encode()
+                )
                 seen.add(id(value))
                 todo.append(value)
 
