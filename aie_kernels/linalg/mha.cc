@@ -95,18 +95,20 @@ static constexpr int32_t PV_R = 4, PV_S = 8, PV_T = 4;
 
 // GEMM's AIE2 bf16 product, (M, K) by (K, N) on the native 4x8x4 tile: four
 // row blocks by four column blocks a step, or two by two in an 8-row block.
-// A column-major B's column blocks are b_pitch tiles apart.
+// A column-major B's column blocks are b_pitch tiles apart; c_zero starts
+// C at 0 rather than adding to it.
 template <typename C, unsigned M, unsigned K, unsigned N, bool b_row_maj,
-          unsigned b_pitch = K / 8>
+          unsigned b_pitch = K / 8, bool c_zero = false>
 static inline void matmul_aie2(const bfloat16 *a, const bfloat16 *b, C *c) {
   constexpr unsigned r = 4, s = 8, t = 4;
   static_assert(M % (2 * r) == 0 && K % s == 0 && N % (4 * t) == 0);
   if constexpr (M % (4 * r) == 0)
     matmul_vectorized_4x4<bfloat16, C, M / r, K / s, N / t, r, s, t, b_row_maj,
-                          true, (K / s) <= 8, b_pitch>(a, b, c);
+                          true, (K / s) <= 8, b_pitch, c_zero>(a, b, c);
   else
     matmul_vectorized_2x2_mmul<bfloat16, C, M / r, K / s, N / t, r, s, t,
-                               b_row_maj, true, false, b_pitch>(a, b, c);
+                               b_row_maj, true, false, b_pitch, c_zero>(a, b,
+                                                                        c);
 }
 #else
 static constexpr int32_t PV_R = 8, PV_S = 8, PV_T = 8;
@@ -245,6 +247,16 @@ static void scale_blocked_rows(const float *O, bfloat16 *out,
 // through the limbs, an O just below a power of two can lose its last bit.
 static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
   using Acc64 = aie::accum<accfloat, VECTOR_LENGTH>;
+  // Most key blocks move no row's max: one compare over the block's every
+  // factor before the row groups'.
+  constexpr int32_t W = DIM_M % 16 ? 8 : 16;
+  bool held_all = true;
+  AIE_LOOP_UNROLL_FULL
+  for (int32_t l = 0; l < DIM_M; l += W)
+    held_all &=
+        aie::equal(aie::load_v<W>(alpha + l), aie::broadcast<float, W>(1.0f));
+  if (held_all)
+    return;
   const auto ones = aie::broadcast<float, 8>(1.0f);
   for (int32_t l = 0; l < rows; l += 8) {
     if (aie::equal(aie::load_v<8>(alpha + l), ones))
@@ -950,9 +962,19 @@ advance_state_w(float *scale_buffer, int32_t B_q, bfloat16 scale) {
     VecW m_i = aie::load_v<W>(scale_buffer + B_q + i);
     VecW l_i_minus_1 = aie::load_v<W>(scale_buffer + 2 * B_q + i);
     VecW accum_exp_val = aie::load_v<W>(scale_buffer + 3 * B_q + i);
+    const VecW m_prev = aie::load_v<W>(scale_buffer + i);
+    // Rows whose maxima all held: a factor of exp2(0) = 1, and l adds the
+    // block's sum, as below, without the exponential.
+    if (aie::equal(m_i, m_prev)) {
+      aie::store_v(scale_buffer + 3 * B_q + i, aie::broadcast<float, W>(1.0f));
+      aie::store_v(scale_buffer + 2 * B_q + i,
+                   aie::add(aie::accum<accfloat, W>(accum_exp_val), l_i_minus_1)
+                       .template to_vector<float>());
+      continue;
+    }
 
     aie::accum<accfloat, W> prev;
-    prev.from_vector(aie::load_v<W>(scale_buffer + i));
+    prev.from_vector(m_prev);
 #ifdef MHA_F32_SCORES
     // Float maxima; see partial_softmax_rows.
     const Limbs<W> dl = bf16_limbs(aie::sub(prev, m_i));
@@ -1183,7 +1205,8 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
 // legalize a G_BITCAST of <16 x s16>.
 __attribute__((noinline)) static void qk_kv(const bfloat16 *Q,
                                             const bfloat16 *KV, bfloat16 *S) {
-  matmul_aie2<bfloat16, DIM_M, DIM_K, DIM_N, is_b_row_maj, KV_PITCH>(Q, KV, S);
+  matmul_aie2<bfloat16, DIM_M, DIM_K, DIM_N, is_b_row_maj, KV_PITCH, true>(
+      Q, KV, S);
 }
 
 // One key block of a query block on one core: S = Q K^T, the online softmax
@@ -1219,7 +1242,6 @@ void attend_block(bfloat16 *Q, bfloat16 *KV, float *O, bfloat16 *S, bfloat16 *P,
     valid_kv_cols = DIM_N;
   if (valid_q_rows > B_q)
     valid_q_rows = B_q;
-  zero_vectorized<bfloat16, DIM_M, DIM_N, false>(S);
   qk_kv(Q, KV, S);
   partial_softmax_tiles(S, P, scale_buffer, scale_buffer + B_q,
                         scale_buffer + 3 * B_q, valid_q_rows, valid_kv_cols,
