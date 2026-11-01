@@ -1399,6 +1399,7 @@ def mha(
     float_o: bool = False,
     fused: bool = False,
     group: int = 1,
+    kv_heads: int = 1,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1475,6 +1476,10 @@ def mha(
         group: Each position's query heads a block packs, position-major:
             row ``i`` is at the block's first position plus ``i // group``.
             ``dim_m`` is whole positions of it.
+        kv_heads: With ``fused``, the KV heads a key block's ``KV`` holds,
+            each key's rows of every head in turn as a position-major cache
+            holds them, tiled as one ``dim_n`` by ``2 dim_k kv_heads`` block;
+            ``attend_block`` takes the first, ``attend_head`` any.
 
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
@@ -1486,7 +1491,8 @@ def mha(
             ``dim_n`` not 16, 32 or 64, a negative window, ``float_o``
             without ``pv``, ``fused`` with ``pv``, ``f32_scores``,
             ``accurate_exp2`` or without ``b_col_maj``, or a ``group`` that
-            does not divide ``dim_m``.
+            does not divide ``dim_m``, or ``kv_heads`` past 1 without
+            ``fused``.
         NotImplementedError: ``fused`` off AIE2.
     """
     if float_o and not pv:
@@ -1498,6 +1504,8 @@ def mha(
         )
     if fused and _arch_traits().name != "aie2":
         raise NotImplementedError("mha: fused is written for AIE2 only")
+    if kv_heads < 1 or (kv_heads > 1 and not fused):
+        raise ValueError(f"mha: kv_heads ({kv_heads}) past 1 is fused's")
     if group < 1 or dim_m % group:
         raise ValueError(f"mha: group ({group}) must divide dim_m ({dim_m})")
     for name, v, mult in (
@@ -1540,8 +1548,12 @@ def mha(
     flags += _mha_band_flags("mha", causal, window, packed)
     if group != 1:
         flags.append(f"-DMHA_GROUP={group}")
+    if kv_heads > 1:
+        flags.append(f"-DMHA_KV_HEADS={kv_heads}")
     if fused:
-        return _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group)
+        return _mha_fused(
+            dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_heads
+        )
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
@@ -1662,21 +1674,22 @@ def _mha_band_flags(name, causal, window, packed):
     ]
 
 
-def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group):
+def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_heads):
     """``mha(fused=True)``'s ``attend_block`` and its contract.
 
     The contract's block is key block 1 of the first query block every row of
     which keeps all of its keys, as ``matmul_PV``'s contract is a later key
     block: ``O`` is the harness's to zero, and the rescale runs, by 1. The
     state starts at 0, and every call takes the same tile, so the state each
-    call carries holds.
+    call carries holds. With ``kv_heads``, it attends the first head's keys.
     """
     mac = (4, 8, 4)
     qk = mm_stream_dims(dim_m, dim_k, dim_n, mac, b_col_maj=True)
     pv = mm_stream_dims(dim_m, dim_n, dim_k, mac)
     # Each key's K row, then its V row, as a paired cache holds them, in
     # QK^T's B tiling: (4, 8) tiles of 4 keys by 8 columns.
-    kv_stream = TensorAccessPattern.full((dim_n, 2 * dim_k)).tile((4, 8))
+    width = 2 * dim_k * kv_heads
+    kv_stream = TensorAccessPattern.full((dim_n, width)).tile((4, 8))
 
     q_block = -(-2 * dim_n // (dim_m // group))
     scale = float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
@@ -1692,6 +1705,7 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group):
         window=window,
         packed=packed,
         group=group,
+        kv_heads=kv_heads,
     )
 
     def sample(rng, calls):
@@ -1701,8 +1715,12 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group):
         q = rng.choice([-0.5, 0.0, 0.5], (dim_m, dim_k))
         kv = np.concatenate(
             [
-                rng.choice([-0.5, 0.0, 0.5], (dim_n, dim_k)),
-                rng.standard_normal((dim_n, dim_k)),
+                x
+                for _ in range(kv_heads)
+                for x in (
+                    rng.choice([-0.5, 0.0, 0.5], (dim_n, dim_k)),
+                    rng.standard_normal((dim_n, dim_k)),
+                )
             ],
             axis=1,
         )
@@ -1712,12 +1730,16 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group):
         # exp2_bf16.h's cubic with its bf16 store, 0.74% at worst on npu1, and
         # float32 summation over dim_n exact products.
         _, p = mha_attend_block_terms(q, kv, **block)
-        v = np.abs(np.asarray(kv, np.float64).reshape(-1, dim_n, 2, dim_k)[:, :, 1])
+        v = np.abs(
+            np.asarray(kv, np.float64).reshape(-1, dim_n, kv_heads, 2, dim_k)[
+                :, :, 0, 1
+            ]
+        )
         return ((0.0075 + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
 
     arg_types = [
         np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
-        np.ndarray[(2 * dim_n * dim_k,), np.dtype[bfloat16]],
+        np.ndarray[(dim_n * width,), np.dtype[bfloat16]],
         np.ndarray[(dim_m * dim_k,), np.dtype[np.float32]],
         np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
         np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
@@ -1736,7 +1758,7 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group):
             trace=Trace.whole_call(),
             layouts=(
                 _tile_layout((dim_m, dim_k), qk.A, block=mac[:2]),
-                _tile_layout((dim_n, 2 * dim_k), kv_stream, block=(4, 8)),
+                _tile_layout((dim_n, width), kv_stream, block=(4, 8)),
                 _tile_layout((dim_m, dim_k), pv.C, inverse=True, block=mac[::2]),
                 *([None] * 7),
             ),
@@ -1778,6 +1800,7 @@ def mha_attend_block_terms(
     window=0,
     packed=False,
     group=1,
+    kv_heads=1,
 ):
     """Numpy reference for ``mha(fused=True)``'s ``attend_block`` from a zeroed state: ``(O, P)``.
 
@@ -1788,7 +1811,7 @@ def mha_attend_block_terms(
     """
     kv_block, q_block, offset = (int(i) for i in np.asarray(idx).ravel())
     q = np.asarray(q, np.float64).reshape(-1, dim_m, dim_k)
-    kv = np.asarray(kv, np.float64).reshape(-1, dim_n, 2, dim_k)
+    kv = np.asarray(kv, np.float64).reshape(-1, dim_n, kv_heads, 2, dim_k)[:, :, 0]
     s = (q @ kv[:, :, 0].swapaxes(1, 2)).astype(bfloat16).astype(np.float64)
     rows, cols = np.indices((dim_m, dim_n))
     position = (

@@ -1373,12 +1373,18 @@ def test_a_long_context_keeps_the_running_state_accurate(accurate_exp2):
     np.testing.assert_allclose(got, ref, rtol=0, atol=2 * ulp)
 
 
-def _fused_kernels(b_q, b_kv, d, causal, window, packed, group):
+def _fused_kernels(b_q, b_kv, d, causal, window, packed, group, kv_heads=1):
     """``attend_block`` and the QK^T product of one mha.cc object."""
     band = dict(causal=causal, window=window, packed=packed, group=group)
     qk = kernels.mha(dim_m=b_q, dim_k=d, dim_n=b_kv, b_col_maj=True, **band)
     fused = kernels.mha(
-        dim_m=b_q, dim_k=d, dim_n=b_kv, b_col_maj=True, fused=True, **band
+        dim_m=b_q,
+        dim_k=d,
+        dim_n=b_kv,
+        b_col_maj=True,
+        fused=True,
+        kv_heads=kv_heads,
+        **band,
     )
     return qk, fused
 
@@ -1564,10 +1570,16 @@ def mha_fused_round(
     packed: CompileTime[bool] = False,
     group: CompileTime[int] = 1,
     offset: CompileTime[int] = 0,
+    kv_heads: CompileTime[int] = 1,
+    head: CompileTime[int] = 0,
 ):
-    """``mha_pipeline_round`` on one core: ``attend_block`` per key block, each K then V on one stream."""
+    """``mha_pipeline_round`` on one core: ``attend_block`` per key block, each K then V on one stream.
+
+    With ``kv_heads``, each block holds that many heads' keys and
+    ``attend_head`` takes head ``head``'s.
+    """
     q_ty = np.ndarray[(b_q * d,), BF]
-    kv_ty = np.ndarray[(2 * b_kv * d,), BF]
+    kv_ty = np.ndarray[(2 * kv_heads * b_kv * d,), BF]
     s_ty = np.ndarray[(b_q * b_kv,), BF]
     o_ty = np.ndarray[(b_q * d,), BF]
     acc_ty = np.ndarray[(b_q * d,), F32]
@@ -1575,10 +1587,19 @@ def mha_fused_round(
     idx_ty = np.ndarray[(3,), I32]
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
 
-    _, fused = _fused_kernels(b_q, b_kv, d, causal, window, packed, group)
+    _, fused = _fused_kernels(b_q, b_kv, d, causal, window, packed, group, kv_heads)
     obj = fused.object_file
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
     rescale = obj.bind("rescale_O", [acc_ty, o_ty, scale_ty, np.int32, idx_ty])
+    if kv_heads > 1:
+        attend_head = obj.bind(
+            "attend_head",
+            [q_ty, kv_ty, acc_ty, s_ty, s_ty, scale_ty, idx_ty, bfloat16]
+            + [np.int32] * 3,
+        )
+        attend_args = (head,)
+    else:
+        attend_head, attend_args = fused, ()
 
     of_q = ObjectFifo(q_ty, name="q", depth=1)
     # Double-buffered only where the core's L1 still holds S, O and Q beside.
@@ -1608,6 +1629,7 @@ def mha_fused_round(
                 inv_scale,
                 s_q_eff,
                 s_kv_eff,
+                *attend_args,
             )
             of_kv.release(1)
         rescale(acc, of_o.acquire(1), state, b_q, idx[0])
@@ -1620,7 +1642,7 @@ def mha_fused_round(
             of_q.cons(),
             of_kv.cons(),
             of_o.prod(),
-            fused,
+            attend_head,
             init,
             rescale,
             Buffer(acc_ty, name="acc"),
@@ -1636,7 +1658,7 @@ def mha_fused_round(
         kvf.fill(kv_h)
         of.drain(o_h, wait=True)
 
-    host = [q_ty, np.ndarray[(n_kv * 2 * b_kv * d,), BF], o_ty]
+    host = [q_ty, np.ndarray[(n_kv * 2 * kv_heads * b_kv * d,), BF], o_ty]
     rt = Runtime(sequence, [*host, of_q.prod(), of_kv.prod(), of_o.cons()])
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
@@ -1664,12 +1686,19 @@ def _fused_case_data(
 
 
 def _run_fused(q, k, v, n_kv, **shape):
-    """Run ``mha_fused_round`` on logical Q, K and V; return O, (b_q, d)."""
+    """Run ``mha_fused_round`` on logical Q, K and V; return O, (b_q, d).
+
+    With ``kv_heads``, K and V are ``(kv_heads, keys, d)``, a position's heads
+    side by side in each block.
+    """
     b_q, b_kv, d = shape["b_q"], shape["b_kv"], shape["d"]
+    heads = shape.get("kv_heads", 1)
     band = {n: shape[n] for n in ("causal", "window", "packed", "group")}
-    _, fused = _fused_kernels(b_q, b_kv, d, **band)
+    _, fused = _fused_kernels(b_q, b_kv, d, **band, kv_heads=heads)
     q_layout, kv_layout = fused.contract.layouts[:2]
-    kv = np.concatenate([k.reshape(n_kv, b_kv, d), v.reshape(n_kv, b_kv, d)], axis=2)
+    k, v = (x.reshape(heads, n_kv, b_kv, d) for x in (k, v))
+    kv = np.concatenate([k, v], axis=3).transpose(1, 2, 0, 3)
+    kv = kv.reshape(n_kv, b_kv, heads * 2 * d)
     o_t = iron.zeros((b_q * d,), dtype=bfloat16)
     mha_fused_round(
         iron.tensor(q_layout.encode(q).reshape(-1), dtype=bfloat16),
@@ -1840,145 +1869,260 @@ def test_packed_rows_attend_as_their_heads_alone():
         assert not len(differ), f"block {j}: {len(differ)} differ, first {differ[:4]}"
 
 
+@pytest.mark.parametrize(
+    "n_kv,s_kv_eff,b_kv,d,band",
+    [
+        # Llama 3.2 1B's split decode: two KV heads a block, the last block
+        # partly past the keys.
+        (3, 80, 32, 64, {}),
+        # A packed sliding decode: the window masks the first blocks.
+        (4, 100, 32, 64, dict(window=20, packed=True)),
+    ],
+)
+def test_attend_head_is_its_head_alone(n_kv, s_kv_eff, b_kv, d, band):
+    """``attend_head`` on each head of blocks holding two KV heads gives ``attend_block`` on that head's keys alone, bit for bit."""
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("mha.cc's fused block is written for AIE2")
+    band = {**dict(causal=True, window=0, packed=False, group=1), **band}
+    b_q, heads = 8, 2
+    q_block = 0 if band["packed"] else -(-s_kv_eff // b_q)
+    shape = dict(
+        q_block=q_block,
+        s_q_eff=(q_block + 1) * b_q,
+        s_kv_eff=s_kv_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        d=d,
+        offset=0,
+        **band,
+    )
+    data = [
+        _fused_case_data(
+            q_block + 7 * h, n_kv, s_kv_eff, b_q, b_kv, d, band["packed"], 1, 0
+        )
+        for h in range(heads)
+    ]
+    k = np.stack([x[1] for x in data])
+    v = np.stack([x[2] for x in data])
+    for h, (q, k_h, v_h) in enumerate(data):
+        alone = _run_fused(q, k_h, v_h, n_kv, **shape)
+        together = _run_fused(q, k, v, n_kv, **shape, kv_heads=heads, head=h)
+        differ = np.argwhere(alone.view(np.uint16) != together.view(np.uint16))
+        assert not len(differ), f"head {h}: {len(differ)} differ, first {differ[:4]}"
+
+
 @jit
 def mha_split_round(
     q_in: In,
     kv_in: In,
     o_out: Out,
     *,
-    q_block: CompileTime[int] = 0,
+    ways: CompileTime[int] = 2,
     n_kv: CompileTime[int] = 2,
+    q_block: CompileTime[int] = 0,
     s_q_eff: CompileTime[int] = _B,
     s_kv_eff: CompileTime[int] = _B,
     b_q: CompileTime[int] = _B,
     b_kv: CompileTime[int] = _B,
     d: CompileTime[int] = _B,
+    window: CompileTime[int] = 0,
     packed: CompileTime[bool] = False,
 ):
-    """``mha_fused_round`` split over keys: each half of the key blocks into an O and a state of its own, then ``merge_partials`` and ``rescale_O``."""
+    """Split decode in small: ``ways`` cores each ``attend_block`` over every ``ways``-th key block into a partial, a memtile joining them, and a last core folding them in order (``merge_partials``) and ending the rows (``rescale_O``)."""
     q_ty = np.ndarray[(b_q * d,), BF]
     kv_ty = np.ndarray[(2 * b_kv * d,), BF]
     s_ty = np.ndarray[(b_q * b_kv,), BF]
     o_ty = np.ndarray[(b_q * d,), BF]
-    acc_ty = np.ndarray[(b_q * d,), F32]
+    part = b_q * d + 4 * b_q
+    part_ty = np.ndarray[(part,), F32]
+    joined_ty = np.ndarray[(ways * part,), F32]
     scale_ty = np.ndarray[(4 * b_q,), F32]
     idx_ty = np.ndarray[(3,), I32]
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+    per = -(-n_kv // ways)
 
-    _, fused = _fused_kernels(b_q, b_kv, d, True, 0, packed, 1)
+    _, fused = _fused_kernels(b_q, b_kv, d, True, window, packed, 1)
     obj = fused.object_file
-    init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
-    merge = obj.bind("merge_partials", [acc_ty, scale_ty, acc_ty, scale_ty, bfloat16])
-    rescale = obj.bind("rescale_O", [acc_ty, o_ty, scale_ty, np.int32, idx_ty])
-
-    of_q = ObjectFifo(q_ty, name="q", depth=1)
-    of_kv = ObjectFifo(kv_ty, name="kv", depth=1)
-    of_o = ObjectFifo(o_ty, name="o", depth=1)
-    # Each half restarts its key blocks at 0, as a core of split decode does.
-    idx = [
-        Buffer(
+    attend = obj.bind(
+        "attend_block",
+        [
+            q_ty,
+            kv_ty,
+            part_ty,
+            s_ty,
+            s_ty,
+            scale_ty,
             idx_ty,
-            name=f"idx{k}",
-            initial_value=np.array([k % (n_kv // 2), q_block, 0], np.int32),
-        )
-        for k in range(n_kv)
-    ]
-
-    def core(of_q, of_kv, of_o, attend, init, merge, rescale, *bufs):
-        acc_a, acc_b, s, p, state_a, state_b, *idx = bufs
-        q = of_q.acquire(1)
-        for acc, state, half in ((acc_a, state_a, 0), (acc_b, state_b, 1)):
-            init(state, b_q)
-            for k in range(half * n_kv // 2, (half + 1) * n_kv // 2):
-                attend(
-                    q,
-                    of_kv.acquire(1),
-                    acc,
-                    s,
-                    p,
-                    state,
-                    idx[k],
-                    inv_scale,
-                    s_q_eff,
-                    # The half's own keys, counted from its first.
-                    s_kv_eff - half * (n_kv // 2) * b_kv,
-                )
-                of_kv.release(1)
-        merge(acc_a, state_a, acc_b, state_b, inv_scale)
-        rescale(acc_a, of_o.acquire(1), state_a, b_q, idx[0])
-        of_o.release(1)
-        of_q.release(1)
-
-    worker = Worker(
-        core,
-        fn_args=[
-            of_q.cons(),
-            of_kv.cons(),
-            of_o.prod(),
-            fused,
-            init,
-            merge,
-            rescale,
-            Buffer(acc_ty, name="acc_a"),
-            Buffer(acc_ty, name="acc_b"),
-            Buffer(s_ty, name="s"),
-            Buffer(s_ty, name="p"),
-            Buffer(scale_ty, name="state_a"),
-            Buffer(scale_ty, name="state_b"),
-            *idx,
+            bfloat16,
+            np.int32,
+            np.int32,
         ],
     )
+    open_partial = obj.bind("open_partial", [part_ty, scale_ty])
+    close_partial = obj.bind("close_partial", [scale_ty, part_ty])
+    merge = obj.bind(
+        "merge_partials", [part_ty, scale_ty, joined_ty, np.int32, bfloat16]
+    )
+    rescale = obj.bind("rescale_O", [part_ty, o_ty, scale_ty, np.int32, idx_ty])
 
-    def sequence(q_h, kv_h, o_h, qf, kvf, of):
+    of_q = ObjectFifo(q_ty, name="q", depth=1)
+    of_kv = [ObjectFifo(kv_ty, name=f"kv{w}", depth=1) for w in range(ways)]
+    of_joined = ObjectFifo(joined_ty, name="parts", depth=1)
+    of_parts = of_joined.prod().join(
+        offsets=[w * part for w in range(ways)],
+        obj_types=[part_ty] * ways,
+        depths=[1] * ways,
+    )
+    of_o = ObjectFifo(o_ty, name="o", depth=1)
+
+    def attend_core(of_q, of_kv, of_part, attend, open_partial, close_partial, *bufs):
+        s, p, state, *idx = bufs
+        q = of_q.acquire(1)
+        acc = of_part.acquire(1)
+        open_partial(acc, state)
+        for i in idx:
+            attend(
+                q, of_kv.acquire(1), acc, s, p, state, i, inv_scale, s_q_eff, s_kv_eff
+            )
+            of_kv.release(1)
+        close_partial(state, acc)
+        of_part.release(1)
+        of_q.release(1)
+
+    def merge_core(of_joined, of_o, open_partial, merge, rescale, acc, state, idx):
+        open_partial(acc, state)
+        merge(acc, state, of_joined.acquire(1), ways, inv_scale)
+        of_joined.release(1)
+        rescale(acc, of_o.acquire(1), state, b_q, idx)
+        of_o.release(1)
+
+    # Each core's key blocks by their global index, so a band masks as one
+    # core's would.
+    workers = [
+        Worker(
+            attend_core,
+            fn_args=[
+                of_q.cons(),
+                of_kv[w].cons(),
+                of_parts[w].prod(),
+                attend,
+                open_partial,
+                close_partial,
+                Buffer(s_ty, name=f"s{w}"),
+                Buffer(s_ty, name=f"p{w}"),
+                Buffer(scale_ty, name=f"state{w}"),
+                *(
+                    Buffer(
+                        idx_ty,
+                        name=f"idx{w}_{j}",
+                        initial_value=np.array([w + j * ways, q_block, 0], np.int32),
+                    )
+                    for j in range(per)
+                ),
+            ],
+        )
+        for w in range(ways)
+    ]
+    workers.append(
+        Worker(
+            merge_core,
+            fn_args=[
+                of_joined.cons(),
+                of_o.prod(),
+                open_partial,
+                merge,
+                rescale,
+                Buffer(part_ty, name="acc"),
+                Buffer(scale_ty, name="state"),
+                Buffer(
+                    idx_ty,
+                    name="idx",
+                    initial_value=np.array([0, q_block, 0], np.int32),
+                ),
+            ],
+        )
+    )
+
+    block = 2 * b_kv * d
+    total = per * ways * block
+
+    def sequence(q_h, kv_h, o_h, qf, *ends):
+        *kvf, of = ends
         qf.fill(q_h)
-        kvf.fill(kv_h)
+        for w, f in enumerate(kvf):
+            f.fill(
+                kv_h,
+                TensorAccessPattern(
+                    (total,), w * block, [per, block], [ways * block, 1]
+                ),
+            )
         of.drain(o_h, wait=True)
 
-    host = [q_ty, np.ndarray[(n_kv * 2 * b_kv * d,), BF], o_ty]
-    rt = Runtime(sequence, [*host, of_q.prod(), of_kv.prod(), of_o.cons()])
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    host = [q_ty, np.ndarray[(total,), BF], o_ty]
+    rt = Runtime(
+        sequence,
+        [*host, of_q.prod(), *(f.prod() for f in of_kv), of_o.cons()],
+    )
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 @pytest.mark.parametrize(
-    "n_kv,s_kv_eff,b_q,b_kv,d,packed",
+    "ways,n_kv,s_kv_eff,b_q,b_kv,d,band",
     [
-        # A decode step's packed KV group over four key blocks, the last
-        # partly past the keys.
-        (4, 230, 8, 64, 64, True),
-        # Two query blocks' worth of keys behind 32 queries, unmasked.
-        (2, 2 * _B, 32, 64, 64, False),
+        # Llama 3.2 1B's decode step as split decode runs it, its query block
+        # past every key: four cores over five blocks, the last partly past
+        # the keys, three cores' second blocks past them all.
+        (4, 5, 270, 8, 64, 64, {}),
+        # One core's every block past the keys.
+        (4, 3, 150, 8, 64, 64, {}),
+        # Llama 3.2 3B's.
+        (4, 9, 280, 8, 32, 128, {}),
+        # Gemma 3's sliding decode, packed: the window masks the first blocks.
+        (2, 6, 90, 8, 16, 256, dict(window=20, packed=True)),
+        # 32 queries past every key, unmasked.
+        (2, 2, 2 * _B, 32, 64, 64, {}),
     ],
 )
-def test_merged_halves_are_masked_attention(n_kv, s_kv_eff, b_q, b_kv, d, packed):
+def test_split_keys_merged_are_masked_attention(
+    ways, n_kv, s_kv_eff, b_q, b_kv, d, band
+):
     """Attention split over keys and merged (``merge_partials``) is masked attention over them all."""
     if resolve_target_arch(iron.get_current_device()) != "aie2":
         pytest.skip("mha.cc's fused block is written for AIE2")
-    # Unpacked, the queries sit past every key, so every key is live.
-    q_block = 0 if packed else n_kv * b_kv // b_q
-    s_q_eff = b_q if packed else (q_block + 1) * b_q
-    q, k, v = _fused_case_data(q_block, n_kv, s_kv_eff, b_q, b_kv, d, packed, 1, 0)
-    _, fused = _fused_kernels(b_q, b_kv, d, True, 0, packed, 1)
+    band = {**dict(window=0, packed=False), **band}
+    packed = band["packed"]
+    # Unpacked, the queries sit past every key, as a decode step's do.
+    q_block = 0 if packed else -(-s_kv_eff // b_q)
+    s_q_eff = (q_block + 1) * b_q
+    blocks = -(-n_kv // ways) * ways
+    q, k, v = _fused_case_data(q_block, blocks, s_kv_eff, b_q, b_kv, d, packed, 1, 0)
+    _, fused = _fused_kernels(b_q, b_kv, d, True, band["window"], packed, 1)
     q_layout, kv_layout = fused.contract.layouts[:2]
-    kv = np.concatenate([k.reshape(n_kv, b_kv, d), v.reshape(n_kv, b_kv, d)], axis=2)
+    kv = np.concatenate(
+        [k.reshape(blocks, b_kv, d), v.reshape(blocks, b_kv, d)], axis=2
+    )
     o_t = iron.zeros((b_q * d,), dtype=bfloat16)
     mha_split_round(
         iron.tensor(q_layout.encode(q).reshape(-1), dtype=bfloat16),
         iron.tensor(kv_layout.encode(kv).reshape(-1), dtype=bfloat16),
         o_t,
-        q_block=q_block,
+        ways=ways,
         n_kv=n_kv,
+        q_block=q_block,
         s_q_eff=s_q_eff,
         s_kv_eff=s_kv_eff,
         b_q=b_q,
         b_kv=b_kv,
         d=d,
-        packed=packed,
+        **band,
     )
     got = _unblock(o_t.numpy(), b_q, d).astype(np.float32)
     keep = np.concatenate(
         [
-            _keep(q_block, kv, s_q_eff, s_kv_eff, b_q, b_kv, True, 0, packed)
-            for kv in range(n_kv)
+            _keep(
+                q_block, kv, s_q_eff, s_kv_eff, b_q, b_kv, True, band["window"], packed
+            )
+            for kv in range(blocks)
         ],
         axis=1,
     )

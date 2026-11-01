@@ -780,9 +780,13 @@ partial_softmax_tiles(bfloat16 *__restrict S, bfloat16 *__restrict P,
 
 // The fused block's K and V come as one stream: each key's K row, then its
 // V row, in QK^T's B tiling, (4, 8) tiles of 4 keys by 8 columns. A group
-// of 4 keys is its DIM_K / 8 K tiles, then its V tiles.
+// of 4 keys is its DIM_K / 8 K tiles, then its V tiles; with MHA_KV_HEADS,
+// each of that many heads' in turn, a position's heads one run in a cache.
+#ifndef MHA_KV_HEADS
+#define MHA_KV_HEADS 1
+#endif
 static constexpr int32_t KV_TILE = 32;
-static constexpr int32_t KV_PITCH = 2 * DIM_K / 8;
+static constexpr int32_t KV_PITCH = MHA_KV_HEADS * 2 * DIM_K / 8;
 static constexpr int32_t KV_ROW = KV_PITCH * KV_TILE;
 
 // GEMM's P V, its (8, 4) B tile of 8 keys by 4 columns half the columns of
@@ -1274,18 +1278,36 @@ void attend_block(bfloat16 *Q, bfloat16 *KV, float *O, bfloat16 *S, bfloat16 *P,
   ::aie::set_rounding(saved_rounding);
   event1();
 }
+
+// attend_block on head `head` of a key block's MHA_KV_HEADS heads.
+void attend_head(bfloat16 *Q, bfloat16 *KV, float *O, bfloat16 *S, bfloat16 *P,
+                 float *scale_buffer, int32_t *idx_buffer, bfloat16 inv_scale,
+                 int32_t S_q_eff, int32_t S_kv_eff, int32_t head) {
+  attend_block(Q, KV + head * 8 * DIM_K, O, S, P, scale_buffer, idx_buffer,
+               inv_scale, S_q_eff, S_kv_eff);
+}
+
+// Head `head`'s query block out of an object Q rode in tiled as keys: an
+// 8-row block is one group of 4 keys of its head's K and V columns.
+void take_q(const bfloat16 *obj, bfloat16 *Q, int32_t head) {
+  event0();
+  const bfloat16 *__restrict src = obj + head * 8 * DIM_K;
+  for (int32_t i = 0; i < DIM_M * DIM_K; i += 32)
+    aie::store_v(Q + i, aie::load_v<32>(src + i));
+  event1();
+}
 #endif
 
-// Split decode's merge: O_b and state_b, another core's attention of the
-// same rows over other keys, added into O_a and state_a, each rescaled to the
-// larger running maximum by exp2 of the difference, as advance_state
-// rescales a key block. A state is as its last key block leaves it, m from 0
-// and l from 2 * B_q; O_a and O_b are float, unnormalized, and rescale_O
-// ends the merged rows.
-void merge_partials(float *O_a, float *state_a, float *O_b, float *state_b,
-                    bfloat16 inv_scale) {
-  event0();
-  ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
+// A partial: a query block's float O, unnormalized, then its state, as a
+// core of split decode hands its keys' attention on, one object.
+static constexpr int32_t PARTIAL = DIM_M * DIM_K + 4 * DIM_M;
+
+// O_b and state_b, another core's attention of the same rows over other
+// keys, added into O_a and state_a, each rescaled to the larger running
+// maximum by exp2 of the difference, as advance_state rescales a key block.
+// A state is as its last key block leaves it, m from 0 and l from 2 * B_q.
+static inline void merge_partial(float *O_a, float *state_a, const float *O_b,
+                                 const float *state_b, bfloat16 inv_scale) {
   constexpr int32_t B_q = DIM_M, W = STATE_W;
   using Acc = aie::accum<accfloat, W>;
   const auto s = aie::broadcast<bfloat16, W>(inv_scale);
@@ -1339,7 +1361,38 @@ void merge_partials(float *O_a, float *state_a, float *O_b, float *state_b,
       b += VECTOR_LENGTH;
     }
   }
+}
+
+// Split decode's merge: n partials, one after another, folded in order into
+// O and state; rescale_O ends the merged rows. O and state start as
+// open_partial leaves them, which the first partial's merge only copies.
+void merge_partials(float *O, float *state, const float *partials, int32_t n,
+                    bfloat16 inv_scale) {
+  event0();
+  ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
+  for (int32_t k = 0; k < n; k++) {
+    const float *O_b = partials + k * PARTIAL;
+    merge_partial(O, state, O_b, O_b + DIM_M * DIM_K, inv_scale);
+  }
   ::aie::set_rounding(saved_rounding);
+  event1();
+}
+
+// A partial's start where its first key block is not block 0: O zero, the
+// state as init_scale_buffer leaves it.
+void open_partial(float *O, float *state) {
+  event0();
+  zero_vectorized<float, DIM_M, DIM_K, false>(O);
+  init_state_w<STATE_W>(state, DIM_M);
+  event1();
+}
+
+// The state into the partial whose O the key blocks accumulated.
+void close_partial(const float *state, float *partial) {
+  event0();
+  float *__restrict out = partial + DIM_M * DIM_K;
+  for (int32_t i = 0; i < 4 * DIM_M; i += 16)
+    aie::store_v(out + i, aie::load_v<16>(state + i));
   event1();
 }
 
