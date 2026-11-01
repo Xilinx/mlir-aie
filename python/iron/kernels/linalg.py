@@ -1937,10 +1937,14 @@ def _mha_pair(
     scale = (
         1.0 if soft_cap is not None else float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
     )
-    block = dict(
-        idx=np.array([1, q_block, 0], np.int32),
-        s_q_eff=(q_block + 1) * dim_m,
-        s_kv_eff=2 * dim_n,
+    idx = np.array([1, q_block, 0], np.int32)
+    s_q_eff = (q_block + 1) * dim_m
+    s_kv_eff = 2 * dim_n
+    pair_terms = partial(
+        mha_attend_pair_terms,
+        idx=idx,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
         scale=scale,
         dim_m=dim_m,
         dim_k=half,
@@ -1971,7 +1975,7 @@ def _mha_pair(
     )
 
     def bound(s0, s1, kv):
-        _, p = mha_attend_pair_terms(s0, s1, kv, **block)
+        _, p = pair_terms(s0, s1, kv)
         v = np.abs(np.asarray(kv, np.float64).reshape(-1, dim_n, 2, half)[:, :, 1])
         return ((weight + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
 
@@ -2008,12 +2012,12 @@ def _mha_pair(
                 (4, np.zeros(dim_m * dim_n, np.float32 if f32_scores else bfloat16)),
                 (5, np.zeros(dim_m * dim_n, bfloat16)),
                 (6, np.zeros(4 * dim_m, np.float32)),
-                (7, block["idx"]),
+                (7, idx),
                 (8, scale),
-                (9, block["s_q_eff"]),
-                (10, block["s_kv_eff"]),
+                (9, s_q_eff),
+                (10, s_kv_eff),
             ),
-            reference=lambda s0, s1, kv: mha_attend_pair_terms(s0, s1, kv, **block)[0],
+            reference=lambda s0, s1, kv: pair_terms(s0, s1, kv)[0],
             initializers=((3, partial(_zero_output, index=3)),),
             sample=sample,
             tolerance=Tolerance.bounded(
