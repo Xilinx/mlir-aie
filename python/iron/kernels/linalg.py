@@ -32,6 +32,7 @@ from ._common import (
     _kernel_source,
     _make_extern,
     _runtime_lib_include,
+    _tuned_arch,
 )
 from .core import conv_even
 from .datamovement import CODED_CAPACITY, coded_rows_sample
@@ -1406,14 +1407,14 @@ def mha(
     soft_cap: float | None = None,
     relative_band: bool = False,
     pair: bool = False,
-) -> MatrixKernel:
+) -> ExternalFunction:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
     One translation unit that includes ``softmax_aie2p.h`` and the
     architecture's own GEMM header (``mm_aie2.h`` or ``mm_aie2p.h``) and
     exports the symbols an attention dataflow composes over one micro-tile.
-    The returned kernel is one of the toolkit's two matmuls, both
-    accumulating into ``C``, so it is a
+    Unless ``fused``, the returned kernel is one of the toolkit's two
+    matmuls, both accumulating into ``C``, so it is a
     [`MatrixKernel`][aie.iron.kernels.linalg.MatrixKernel] judged like
     [`mm`][aie.iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
     ``matmul_bf16_bf16_wrapper``, GEMM's bf16 product on its micro-tile
@@ -1524,7 +1525,8 @@ def mha(
             does not divide ``dim_m``, ``kv_heads`` past 1 without
             ``fused``, or ``pair`` without ``fused``, with ``kv_heads`` or
             ``relative_band``, or at a ``dim_k`` not a multiple of 16.
-        NotImplementedError: ``fused`` off AIE2.
+        NotImplementedError: ``fused`` off AIE2, or in an
+            ``AIE_KERNELS_PORTABLE`` build.
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
@@ -1547,8 +1549,8 @@ def mha(
             "mha: pair is the fused block's, one KV head, no relative band, "
             f"over two halves of dim_k that are multiples of 8, got {dim_k}"
         )
-    if fused and _arch_traits().name != "aie2":
-        raise NotImplementedError("mha: fused is written for AIE2 only")
+    if fused and _tuned_arch() != "aie2":
+        raise NotImplementedError("mha: fused is written for tuned AIE2 only")
     if kv_heads < 1 or (kv_heads > 1 and not fused):
         raise ValueError(f"mha: kv_heads ({kv_heads}) past 1 is fused's")
     if group < 1 or dim_m % group:
@@ -1784,10 +1786,14 @@ def _mha_fused(
     scale = (
         1.0 if soft_cap is not None else float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
     )
-    block = dict(
-        idx=np.array([1, q_block, 0], np.int32),
-        s_q_eff=(q_block + 1) * dim_m,
-        s_kv_eff=2 * dim_n,
+    idx = np.array([1, q_block, 0], np.int32)
+    s_q_eff = (q_block + 1) * dim_m
+    s_kv_eff = 2 * dim_n
+    block_terms = partial(
+        mha_attend_block_terms,
+        idx=idx,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
         scale=scale,
         dim_m=dim_m,
         dim_k=dim_k,
@@ -1837,7 +1843,7 @@ def _mha_fused(
     )
 
     def bound(q, kv, qr=None):
-        _, p = mha_attend_block_terms(q, kv, qr, **block)
+        _, p = block_terms(q, kv, qr)
         v = np.abs(
             np.asarray(kv, np.float64).reshape(-1, dim_n, kv_heads, 2, dim_k)[
                 :, :, 0, 1
@@ -1883,15 +1889,13 @@ def _mha_fused(
                     ),
                     (4, np.zeros(dim_m * dim_n, bfloat16)),
                     (5, np.zeros(4 * dim_m, np.float32)),
-                    (6, block["idx"]),
+                    (6, idx),
                     (7, scale),
-                    (8, block["s_q_eff"]),
-                    (9, block["s_kv_eff"]),
+                    (8, s_q_eff),
+                    (9, s_kv_eff),
                 )
             ),
-            reference=lambda q, kv, qr=None: mha_attend_block_terms(q, kv, qr, **block)[
-                0
-            ],
+            reference=lambda q, kv, qr=None: block_terms(q, kv, qr)[0],
             initializers=((2 + len(qr), partial(_zero_output, index=2 + len(qr))),),
             sample=sample,
             tolerance=Tolerance.bounded(

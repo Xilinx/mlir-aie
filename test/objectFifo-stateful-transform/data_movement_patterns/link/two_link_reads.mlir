@@ -81,10 +81,10 @@ module @two_reads_one_tile {
 // sends once to both mem tiles, and each join fills its own pool, one slot
 // per input, from that input's consumer end on its tile.
 // CHECK-LABEL: @two_joins
-// CHECK-DAG: %[[A0:.*]] = aie.buffer(%mem_tile_0_1) {sym_name = "a_buff_0"} : memref<32xi32>
-// CHECK-DAG: %[[A1:.*]] = aie.buffer(%mem_tile_0_1) {sym_name = "a_buff_1"} : memref<32xi32>
-// CHECK-DAG: %[[B0:.*]] = aie.buffer(%mem_tile_1_1) {sym_name = "b_buff_0"} : memref<32xi32>
-// CHECK-DAG: %[[B1:.*]] = aie.buffer(%mem_tile_1_1) {sym_name = "b_buff_1"} : memref<32xi32>
+// CHECK-DAG: %[[A0:.*]] = aie.buffer(%mem_tile_0_1) {sym_name = "a__buf0"} : memref<32xi32>
+// CHECK-DAG: %[[A1:.*]] = aie.buffer(%mem_tile_0_1) {sym_name = "a__buf1"} : memref<32xi32>
+// CHECK-DAG: %[[B0:.*]] = aie.buffer(%mem_tile_1_1) {sym_name = "b__buf0"} : memref<32xi32>
+// CHECK-DAG: %[[B1:.*]] = aie.buffer(%mem_tile_1_1) {sym_name = "b__buf1"} : memref<32xi32>
 // CHECK-DAG: aie.flow(%tile_0_2, DMA : 0, %mem_tile_0_1, DMA : 0)
 // CHECK-DAG: aie.flow(%tile_0_2, DMA : 0, %mem_tile_1_1, DMA : 0)
 // CHECK-DAG: aie.flow(%tile_1_2, DMA : 0, %mem_tile_0_1, DMA : 1)
@@ -93,11 +93,11 @@ module @two_reads_one_tile {
 // CHECK-DAG: aie.flow(%mem_tile_1_1, DMA : 0, %tile_1_3, DMA : 0)
 // CHECK-LABEL: aie.memtile_dma(%mem_tile_0_1)
 // CHECK:       aie.dma_start(S2MM, 0
-// CHECK:       aie.use_lock(%a_prod_lock_0, AcquireGreaterEqual
+// CHECK:       aie.use_lock(%a__prodlock0, AcquireGreaterEqual
 // CHECK-NEXT:  aie.dma_bd(%[[A0]] : memref<32xi32> offset = 0 len = 16)
 // CHECK:       aie.dma_bd(%[[A1]] : memref<32xi32> offset = 0 len = 16)
 // CHECK:       aie.dma_start(S2MM, 1
-// CHECK:       aie.use_lock(%a_prod_lock_1, AcquireGreaterEqual
+// CHECK:       aie.use_lock(%a__prodlock1, AcquireGreaterEqual
 // CHECK-NEXT:  aie.dma_bd(%[[A0]] : memref<32xi32> offset = 16 len = 16)
 // CHECK:       aie.dma_bd(%[[A1]] : memref<32xi32> offset = 16 len = 16)
 // CHECK:       aie.dma_start(MM2S, 0
@@ -107,11 +107,11 @@ module @two_reads_one_tile {
 // CHECK:       aie.dma_bd(%[[A1]] : memref<32xi32> offset = 16 len = 16)
 // CHECK-LABEL: aie.memtile_dma(%mem_tile_1_1)
 // CHECK:       aie.dma_start(S2MM, 0
-// CHECK:       aie.use_lock(%b_prod_lock_0, AcquireGreaterEqual
+// CHECK:       aie.use_lock(%b__prodlock0, AcquireGreaterEqual
 // CHECK-NEXT:  aie.dma_bd(%[[B0]] : memref<32xi32> offset = 0 len = 16)
 // CHECK:       aie.dma_bd(%[[B1]] : memref<32xi32> offset = 0 len = 16)
 // CHECK:       aie.dma_start(S2MM, 1
-// CHECK:       aie.use_lock(%b_prod_lock_1, AcquireGreaterEqual
+// CHECK:       aie.use_lock(%b__prodlock1, AcquireGreaterEqual
 // CHECK-NEXT:  aie.dma_bd(%[[B0]] : memref<32xi32> offset = 16 len = 16)
 // CHECK:       aie.dma_bd(%[[B1]] : memref<32xi32> offset = 16 len = 16)
 // CHECK:       aie.dma_start(MM2S, 0
@@ -161,8 +161,8 @@ module @two_joins {
 // Distributes on two mem tiles split the same broadcast fifo, each filling
 // its own pool from the fifo's consumer end on its tile.
 // CHECK-LABEL: @two_distributes
-// CHECK-DAG: %[[IN0:.*]] = aie.buffer(%mem_tile_0_1) {sym_name = "in_0_cons_buff_0"} : memref<32xi32>
-// CHECK-DAG: %[[IN1:.*]] = aie.buffer(%mem_tile_1_1) {sym_name = "in_1_cons_buff_0"} : memref<32xi32>
+// CHECK-DAG: %[[IN0:.*]] = aie.buffer(%mem_tile_0_1) {sym_name = "in__cons0__buf0"} : memref<32xi32>
+// CHECK-DAG: %[[IN1:.*]] = aie.buffer(%mem_tile_1_1) {sym_name = "in__cons1__buf0"} : memref<32xi32>
 // CHECK-DAG: aie.flow(%shim_noc_tile_0_0, DMA : 0, %mem_tile_0_1, DMA : 0)
 // CHECK-DAG: aie.flow(%shim_noc_tile_0_0, DMA : 0, %mem_tile_1_1, DMA : 0)
 // CHECK-DAG: aie.flow(%mem_tile_0_1, DMA : 0, %tile_0_2, DMA : 0)

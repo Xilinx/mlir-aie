@@ -906,7 +906,7 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
     // three bf16 limbs, then the accurate exp2_bf16.
     aie::set_saturation(saved_saturation);
     const auto s32 = aie::broadcast<bfloat16, 2 * S_TILE>(scale);
-    AIE_LOOP_MIN_ITERATION_COUNT(8)
+    AIE_LOOP_MIN_ITERATION_COUNT(DIM_M / 4 * P_TILES)
     for (int32_t i = 0; i < DIM_M / 4 * P_TILES;
          i++, t += 2 * S_TILE, w += 2 * S_TILE) {
       const auto m_v = aie::load_v<S_TILE>(m_tiles + i / P_TILES * S_TILE);
@@ -936,7 +936,7 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
       y = mac_elem_16_2(aie::concat(dl.lo, zero), s2, y);
       return exp2_neg_f32(y, magic);
     };
-    AIE_LOOP_MIN_ITERATION_COUNT(8)
+    AIE_LOOP_MIN_ITERATION_COUNT(DIM_M / 4 * P_TILES)
     for (int32_t i = 0; i < DIM_M / 4 * P_TILES;
          i++, t += 2 * S_TILE, w += 2 * S_TILE) {
       const auto m_v = aie::load_v<S_TILE>(m_tiles + i / P_TILES * S_TILE);
@@ -947,7 +947,7 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
 #endif
   } else {
 #ifndef EXP2_BF16_ACCURATE
-    AIE_LOOP_MIN_ITERATION_COUNT(8)
+    AIE_LOOP_MIN_ITERATION_COUNT(DIM_M / 4 * P_TILES)
     for (int32_t i = 0; i < DIM_M / 4 * P_TILES;
          i++, t += 2 * S_TILE, w += 2 * S_TILE) {
       const auto m_v = aie::load_v<S_TILE>(m_tiles + i / P_TILES * S_TILE);
