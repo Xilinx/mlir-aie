@@ -1984,9 +1984,12 @@ def mha_relative_rows(
     b_q: CompileTime[int] = 32,
     d: CompileTime[int] = 128,
 ):
-    """``relative_rows`` on one core: a query block's ``Q R^T``, laid out as ``attend_block`` reads it."""
+    """``relative_rows`` on one core: a query block's ``Q R^T``, laid out as ``attend_block`` reads it.
+
+    R arrives as a 16-key block's object, each key's K row a relative key.
+    """
     q_ty = np.ndarray[(b_q * d,), BF]
-    r_ty = np.ndarray[(16 * d,), BF]
+    r_ty = np.ndarray[(16 * 2 * d,), BF]
     qr_ty = np.ndarray[(b_q * 32,), F32]
     fused = kernels.mha(
         dim_m=b_q,
@@ -2024,7 +2027,10 @@ def mha_relative_rows(
 
 @pytest.mark.parametrize("b_q,d", [(32, 128), (16, 64)])
 def test_relative_rows_lay_q_r_by_distance(b_q, d):
-    """``relative_rows``: row ``i``'s ``Q_i . R_d`` at column ``23 - d``, zeros elsewhere, exact over dyadic Q and R."""
+    """``relative_rows``: row ``i``'s ``Q_i . R_d`` at column ``23 - d``, zeros elsewhere, exact over dyadic Q and R.
+
+    R rides as a key block's K rows, its V rows anything.
+    """
     if resolve_target_arch(iron.get_current_device()) != "aie2":
         pytest.skip("mha.cc's fused block is written for AIE2")
     rng = np.random.default_rng(20261101 + d)
@@ -2042,12 +2048,12 @@ def test_relative_rows_lay_q_r_by_distance(b_q, d):
         soft_cap=50.0,
         relative_band=True,
     )
-    q_layout = fused.contract.layouts[0]
-    r_tiles = TensorAccessPattern.full((16, d)).tile((4, 8))
+    q_layout, kv_layout = fused.contract.layouts[:2]
+    keys = np.concatenate([r, _dyadic(rng, (16, d), 0.5)], axis=1)
     out = iron.zeros((b_q * 32,), dtype=np.float32)
     mha_relative_rows(
         iron.tensor(q_layout.encode(q).reshape(-1), dtype=bfloat16),
-        iron.tensor(r_tiles.gather(r), dtype=bfloat16),
+        iron.tensor(kv_layout.encode(keys).reshape(-1), dtype=bfloat16),
         out,
         b_q=b_q,
         d=d,

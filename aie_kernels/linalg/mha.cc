@@ -1559,15 +1559,17 @@ void attend_block(bfloat16 *Q, bfloat16 *KV, const float *QR, float *O,
          S_kv_eff);
 }
 
-// QR = Q R^T, R the head's REL_KEYS relative keys in QK^T's B tiling, laid
-// out as relative_add reads it. The product lands in QR's second half: a row
-// group's rows overwrite its tiles only after reading them.
+// QR = Q R^T, laid out as relative_add reads it. R is a key block's object
+// whose first REL_KEYS keys' K rows are the head's relative keys, so they
+// ride the KV stream. The product lands in QR's second half: a row group's
+// rows overwrite its tiles only after reading them.
 void relative_rows(const bfloat16 *Q, const bfloat16 *R, float *QR) {
+  static_assert(DIM_N >= REL_KEYS, "the relative keys are a key block's");
   event0();
   ::aie::rounding_mode saved_rounding = ::aie::swap_rounding(ROUNDING_MODE);
   float *c = QR + DIM_M * REL_KEYS;
-  matmul_aie2<float, DIM_M, DIM_K, REL_KEYS, is_b_row_maj, DIM_K / 8, true>(
-      Q, R, c);
+  matmul_aie2<float, DIM_M, DIM_K, REL_KEYS, is_b_row_maj, KV_PITCH, true>(Q, R,
+                                                                           c);
   for (int32_t b = 0; b < DIM_M / 4; b++) {
     aie::vector<float, S_TILE> t[4];
     for (int32_t k = 0; k < 4; k++)

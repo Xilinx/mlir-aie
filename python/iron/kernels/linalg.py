@@ -1495,9 +1495,11 @@ def mha(
             after ``KV`` and adds ``Q_i . R_d`` to score ``(i, j)`` at
             distance ``d = pos_i - key_j``, ``0 <= d < 16``, before the cap
             (``-DMHA_REL_BAND``, Gemma 4 audio's relative-position logits).
-            ``QR`` is ``relative_rows(Q, R, QR)``'s, from the head's 16
-            relative keys ``R`` in ``QK^T``'s B tiling: ``dim_m`` rows of 32
-            floats, distance ``d`` at column ``23 - d``.
+            ``QR`` is ``relative_rows(Q, R, QR)``'s: ``dim_m`` rows of 32
+            floats, distance ``d`` at column ``23 - d``, from ``R`` a key
+            block's ``KV`` whose first 16 keys' K rows are the head's
+            relative keys (``dim_n`` at least 16), so they ride the KV
+            stream.
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
         ``matmul_bf16_bf16_rowmaj``, with ``float_o`` ``matmul_PV``, or with
