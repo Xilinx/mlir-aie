@@ -1912,6 +1912,94 @@ def test_attend_head_is_its_head_alone(n_kv, s_kv_eff, b_kv, d, band):
 
 
 @jit
+def mha_split_q(
+    obj_in: In,
+    q_out: Out,
+    *,
+    heads: CompileTime[int] = 32,
+    group: CompileTime[int] = 4,
+    b_kv: CompileTime[int] = 32,
+    d: CompileTime[int] = 64,
+    kv_heads: CompileTime[int] = 2,
+):
+    """``keep_q`` then ``take_q`` per KV group on one core, from a key block's object holding a position's query heads flat."""
+    obj_ty = np.ndarray[(b_kv * kv_heads * 2 * d,), BF]
+    flat_ty = np.ndarray[(heads * d,), BF]
+    block_ty = np.ndarray[(8 * d,), BF]
+    _, fused = _fused_kernels(8, b_kv, d, True, 0, False, 1, kv_heads)
+    obj = fused.object_file
+    keep_q = obj.bind("keep_q", [obj_ty, flat_ty, np.int32])
+    take_q = obj.bind("take_q", [flat_ty, block_ty, np.int32, np.int32])
+    of_obj = ObjectFifo(obj_ty, name="obj", depth=1)
+    of_q = ObjectFifo(block_ty, name="q", depth=1)
+
+    def core(of_obj, of_q, keep_q, take_q, flat):
+        keep_q(of_obj.acquire(1), flat, heads * d)
+        of_obj.release(1)
+        for kv_head in range_(heads // group):
+            take_q(flat, of_q.acquire(1), kv_head, group)
+            of_q.release(1)
+
+    worker = Worker(
+        core,
+        fn_args=[of_obj.cons(), of_q.prod(), keep_q, take_q, Buffer(flat_ty)],
+    )
+
+    def sequence(obj_h, q_h, objf, qf):
+        objf.fill(obj_h)
+        qf.drain(q_h, wait=True)
+
+    host = [obj_ty, np.ndarray[(heads // group * 8 * d,), BF]]
+    rt = Runtime(sequence, [*host, of_obj.prod(), of_q.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.parametrize(
+    "heads,kv_heads,d,b_kv",
+    [
+        # Llama 3.2 1B's (two KV heads a block), 3B's, Granite's group of 5,
+        # Qwen3's of 2, MHA's of 1, Gemma 3's MQA.
+        (32, 2, 64, 32),
+        (24, 1, 128, 32),
+        (40, 2, 64, 32),
+        (16, 2, 64, 32),
+        (8, 2, 64, 32),
+        (4, 1, 256, 16),
+    ],
+)
+def test_take_q_packs_each_groups_heads(heads, kv_heads, d, b_kv):
+    """Q flat at the head of a key block's object, tiled as keys: ``take_q`` packs each KV group's every head into rows i and i + 4, tiled as ``attend_block`` reads Q."""
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("mha.cc's fused block is written for AIE2")
+    group = {32: 4, 24: 3, 40: 5, 16: 2, 8: 1, 4: 4}[heads]
+    rng = np.random.default_rng(20261101 + heads)
+    width = kv_heads * 2 * d
+    q = rng.standard_normal((heads, d)).astype(bfloat16)
+    obj = rng.standard_normal(b_kv * width).astype(bfloat16)
+    obj[: heads * d] = q.reshape(-1)
+    _, fused = _fused_kernels(8, b_kv, d, True, 0, False, 1, kv_heads)
+    q_layout, kv_layout = fused.contract.layouts[:2]
+    out = iron.zeros((heads // group * 8 * d,), dtype=bfloat16)
+    mha_split_q(
+        iron.tensor(kv_layout.encode(obj.reshape(b_kv, width)).reshape(-1)),
+        out,
+        heads=heads,
+        group=group,
+        b_kv=b_kv,
+        d=d,
+        kv_heads=kv_heads,
+    )
+    pairs = 1 if group == 1 else group - 1 if group % 2 else group // 2
+    step = 0 if group == 1 else 1 if group % 2 else 2
+    rows = [step * (i % pairs) + (j and group > 1) for j in (0, 1) for i in range(4)]
+    assert sorted(set(rows)) == list(range(group))
+    got = out.numpy().reshape(heads // group, -1)
+    for kv_head, block in enumerate(got):
+        want = q_layout.encode(q[kv_head * group + np.array(rows)]).reshape(-1)
+        assert np.array_equal(block.view(np.uint16), want.view(np.uint16)), kv_head
+
+
+@jit
 def mha_split_round(
     q_in: In,
     kv_in: In,

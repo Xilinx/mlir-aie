@@ -1287,13 +1287,36 @@ void attend_head(bfloat16 *Q, bfloat16 *KV, float *O, bfloat16 *S, bfloat16 *P,
                inv_scale, S_q_eff, S_kv_eff);
 }
 
-// Head `head`'s query block out of an object Q rode in tiled as keys: an
-// 8-row block is one group of 4 keys of its head's K and V columns.
-void take_q(const bfloat16 *obj, bfloat16 *Q, int32_t head) {
+// The first n values of a key block's object, laid in it flat (value f at
+// row f / KV_W, column f % KV_W) and tiled as keys, out into q flat.
+static constexpr int32_t KV_W = MHA_KV_HEADS * 2 * DIM_K;
+void keep_q(const bfloat16 *obj, bfloat16 *q, int32_t n) {
   event0();
-  const bfloat16 *__restrict src = obj + head * 8 * DIM_K;
-  for (int32_t i = 0; i < DIM_M * DIM_K; i += 32)
-    aie::store_v(Q + i, aie::load_v<32>(src + i));
+  for (int32_t f = 0; f < n; f += 8) {
+    const int32_t r = f / KV_W, c = f % KV_W;
+    aie::store_v(q + f, aie::load_v<8>(obj + (r / 4) * 4 * KV_W + (c / 8) * 32 +
+                                       (r % 4) * 8));
+  }
+  event1();
+}
+
+// KV head kv_head's packed 8-row query block out of q, a position's query heads
+// flat, tiled as attend_block reads Q. Rows i and i + 4 take neighbouring
+// heads of the group (heads 2j and 2j + 1 of an even group, j and j + 1 of an
+// odd one, its one head twice alone), the order one DMA pattern returns O's
+// rows to their heads in.
+void take_q(const bfloat16 *q, bfloat16 *Q, int32_t kv_head, int32_t group) {
+  event0();
+  const int32_t pairs = group == 1 ? 1 : group % 2 ? group - 1 : group / 2;
+  const int32_t step = group == 1 ? 0 : group % 2 ? 1 : 2;
+  const bfloat16 *__restrict src = q + kv_head * group * DIM_K;
+  for (int32_t i = 0; i < 8; i++) {
+    const int32_t head = step * ((i % 4) % pairs) + (i >= 4 && group > 1);
+    const bfloat16 *__restrict row = src + head * DIM_K;
+    bfloat16 *__restrict dst = Q + (i / 4) * 4 * DIM_K + (i % 4) * 8;
+    for (int32_t x = 0; x < DIM_K; x += 8)
+      aie::store_v(dst + x * 4, aie::load_v<8>(row + x));
+  }
   event1();
 }
 #endif
