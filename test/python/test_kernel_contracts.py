@@ -1446,6 +1446,16 @@ def test_mha_binds_its_translation_unit_as_one_object():
         kernels.mha(dim_n=128)
 
 
+def test_mha_refuses_a_head_dim_mha_cc_cannot_build():
+    set_current_device(NPU1Col1())
+    fused = dict(dim_n=16, b_col_maj=True, fused=True)
+    with pytest.raises(ValueError, match="multiple of 16"):
+        kernels.mha(dim_k=24)
+    with pytest.raises(ValueError, match="multiples of 16"):
+        kernels.mha(dim_m=16, dim_k=48, pair=True, f32_scores=True, **fused)
+    kernels.mha(dim_m=16, dim_k=64, pair=True, **fused)
+
+
 def test_mha_band_reaches_the_kernel_and_its_reference():
     """causal, window and packed are -D flags only off their defaults, and mha_softmax_ref keeps the band."""
     assert not any("MHA_" in f for f in kernels.mha().compile_flags)

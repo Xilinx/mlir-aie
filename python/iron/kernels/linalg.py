@@ -1443,8 +1443,9 @@ def mha(
             ``emulate_bf16_mmul_with_bfp16``). An 8-row block, a decode
             step's KV group of up to 8 heads, runs the online state 8 lanes
             wide.
-        dim_k: Depth of the micro-tile (multiple of 8; of 16 with ``pv``,
-            where it is the product's columns).
+        dim_k: Depth of the micro-tile, a multiple of 16: every entry of the
+            object is built, and ``P*V`` takes it as its columns. With
+            ``pair`` each core's half is that, so a multiple of 32.
         dim_n: Columns of the micro-tile, the key block: 16, 32 or 64.
         pv: If ``True`` return the ``P*V`` product instead of ``QK^T``.
         b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the ``QK^T``
@@ -1524,7 +1525,7 @@ def mha(
             without ``b_col_maj``, or a ``group`` that
             does not divide ``dim_m``, ``kv_heads`` past 1 without
             ``fused``, or ``pair`` without ``fused``, with ``kv_heads`` or
-            ``relative_band``, or at a ``dim_k`` not a multiple of 16.
+            ``relative_band``, or at a ``dim_k`` not a multiple of 32.
         NotImplementedError: ``fused`` off AIE2, or in an
             ``AIE_KERNELS_PORTABLE`` build.
     """
@@ -1544,10 +1545,10 @@ def mha(
         )
     if soft_cap is not None and not 2.0**-100 <= soft_cap <= 2.0**10:
         raise ValueError(f"mha: soft_cap must be in [2^-100, 2^10], got {soft_cap}")
-    if pair and (not fused or kv_heads != 1 or relative_band or dim_k % 16):
+    if pair and (not fused or kv_heads != 1 or relative_band or dim_k % 32):
         raise ValueError(
             "mha: pair is the fused block's, one KV head, no relative band, "
-            f"over two halves of dim_k that are multiples of 8, got {dim_k}"
+            f"over two halves of dim_k that are multiples of 16, got {dim_k}"
         )
     if fused and _tuned_arch() != "aie2":
         raise NotImplementedError("mha: fused is written for tuned AIE2 only")
@@ -1557,7 +1558,7 @@ def mha(
         raise ValueError(f"mha: group ({group}) must divide dim_m ({dim_m})")
     for name, v, mult in (
         ("dim_m", dim_m, 16 if emulate_bf16_mmul_with_bfp16 else 8),
-        ("dim_k", dim_k, 16 if pv else 8),
+        ("dim_k", dim_k, 16),
     ):
         if v <= 0 or v % mult:
             raise ValueError(
