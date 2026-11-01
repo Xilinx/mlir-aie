@@ -1952,6 +1952,9 @@ def _compile_external_kernel(
             "symbol_prefix, or drop inline for this kernel."
         )
 
+    # The compilers run with kernel_dir as their cwd, so paths under it must
+    # not be relative to the caller's.
+    kernel_dir = os.path.abspath(kernel_dir)
     # A missing/stale stamp can mean either a legacy cache entry or an interrupted
     # prefix pass. Never rename those bytes again; rebuild from source instead.
     output_file = os.path.join(kernel_dir, func.object_file_name)
