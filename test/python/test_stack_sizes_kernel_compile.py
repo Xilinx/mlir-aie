@@ -23,7 +23,7 @@ import pytest
 from aie.iron import kernels
 from aie.iron.device import NPU2
 from aie.iron.kernel import ExternalFunction
-from aie.utils import set_current_device
+from aie.utils import config, set_current_device
 from aie.utils.compile.jit._object_cache import KernelObjectCache
 from aie.utils.compile.utils import compile_cxx_core_function
 
@@ -113,6 +113,21 @@ def test_frame_bytes_is_data_and_stack_or_its_declared_override():
         stack_size_override=96,
     )
     assert declared.frame_bytes("aie2p") == found.data + 96
+
+
+def test_a_kernel_is_read_once_however_often_it_is_measured(tmp_path, monkeypatch):
+    """A process resolving many designs asks for each kernel's frame again and again."""
+    runs = tmp_path / "runs"
+    wrapper = tmp_path / "llvm-readobj"
+    wrapper.write_text(
+        f'#!/bin/sh\necho run >> {runs}\nexec {config.readobj_path()} "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("AIE_READOBJ_PATH", str(wrapper))
+    kernel = _table_kernel(3072)
+    frames = {kernel.frame_bytes("aie2p") for _ in range(3)}
+    assert len(frames) == 1 and frames.pop() >= 3 * 4096
+    assert runs.read_text().splitlines() == ["run"]
 
 
 def test_measure_reads_each_entry_of_one_object(tmp_path):

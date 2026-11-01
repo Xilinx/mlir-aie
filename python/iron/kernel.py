@@ -152,6 +152,11 @@ def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
 
 _PATH_FLAG = re.compile(r'((?:-I|-isystem|-iquote)\s*|-D[^=]+=)?("?)(.*?)("?)')
 
+# What measure() read, by kernel recipe, symbol prefix, entry and build: a
+# process asks again for every design resolved, and compiling (an object cache
+# key hashes every header) and reading the object each time is seconds a kernel.
+_MEASURED: dict[tuple, Linked | None] = {}
+
 
 def _install_relative_flag(flag: str, roots: dict[str, Path]) -> str:
     """Return ``flag`` with a path under one of ``roots`` named relative to that root.
@@ -1235,15 +1240,26 @@ class ExternalFunction(Kernel):
             return None
         if self.use_chess or self.link_with_mode is not None:
             return None
-        with tempfile.TemporaryDirectory() as tmp:
-            compile_external_kernel(
-                self,
-                tmp,
-                target_arch,
-                embed_bitcode=embed_bitcode,
-                object_cache=object_cache,
-            )
-            return linked(Path(tmp) / self.object_file_name, entry or self.name)
+        key = (
+            self.recipe_key,
+            self.object_file.symbol_prefix,
+            target_arch,
+            embed_bitcode,
+            entry or self.name,
+        )
+        if key not in _MEASURED:
+            with tempfile.TemporaryDirectory() as tmp:
+                compile_external_kernel(
+                    self,
+                    tmp,
+                    target_arch,
+                    embed_bitcode=embed_bitcode,
+                    object_cache=object_cache,
+                )
+                _MEASURED[key] = linked(
+                    Path(tmp) / self.object_file_name, entry or self.name
+                )
+        return _MEASURED[key]
 
     def __call__(self, *args, **kwargs):
         """Call with argument count and type validation before emitting MLIR.
