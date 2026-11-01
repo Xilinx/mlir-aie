@@ -7,15 +7,23 @@
 
 #include "../activation/softmax_aie2p.h"
 
-// mha.cc is a single compilation unit that includes the AIE2P mm and softmax
-// kernels on every arch (there is no separate link step).  The col-major B
+// mha.cc is a single compilation unit that includes each arch's own mm
+// kernels and the softmax (there is no separate link step).  The col-major B
 // variants are compiled by passing -DB_COL_MAJ to the compiler; this flag is
 // set in the PeanoCompilationRule configuration for this file.
-// mm_aie2p.h provides matmul_bf16_bf16 and matmul_scalar_bf16_bf16.
 #include "../aie_kernel_utils.h"
 #include "../common/zero.h"
 #include "../fused/mm_fused_mmul.h"
+#if AIE_ARCH_AIE2
+// The products call mm_aie2.h's routines, at block shapes (an 8-row decode
+// block) its vectorized entry points do not take; matmul_scalar_bf16_bf16
+// stays.
+#define SCALAR_ONLY
+#include "mm_aie2.h"
+#else
+// matmul_bf16_bf16 and matmul_scalar_bf16_bf16.
 #include "mm_aie2p.h"
+#endif
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
@@ -73,24 +81,54 @@ block_live(int32_t diagonal, int32_t B_q, int32_t B_kv) {
          (!BAND_BEHIND || diagonal < MHA_WINDOW + B_kv);
 }
 
-// An 8x8 tile's 64 lanes, lane i holding s[i / 8]: one value per tile row.
+// P*V's micro-tile: P (PV_R, PV_S), V (PV_S, PV_T) and O (PV_R, PV_T).
+#if AIE_ARCH_AIE2
+static constexpr int32_t PV_R = 4, PV_S = 8, PV_T = 4;
+
+// GEMM's AIE2 bf16 product, (M, K) by (K, N) on the native 4x8x4 tile: four
+// row blocks by four column blocks a step, or two by two in an 8-row block.
+template <typename C, unsigned M, unsigned K, unsigned N, bool b_row_maj>
+static inline void matmul_aie2(const bfloat16 *a, const bfloat16 *b, C *c) {
+  constexpr unsigned r = 4, s = 8, t = 4;
+  static_assert(M % (2 * r) == 0 && K % s == 0 && N % (4 * t) == 0);
+  if constexpr (M % (4 * r) == 0)
+    matmul_vectorized_4x4<bfloat16, C, M / r, K / s, N / t, r, s, t, b_row_maj,
+                          true, (K / s) <= 8>(a, b, c);
+  else
+    matmul_vectorized_2x2_mmul<bfloat16, C, M / r, K / s, N / t, r, s, t,
+                               b_row_maj, true>(a, b, c);
+}
+#else
+static constexpr int32_t PV_R = 8, PV_S = 8, PV_T = 8;
+#endif
+
+// A vector of O's (PV_R, PV_T) tiles side by side, lane i holding
+// s[(i % (PV_R * PV_T)) / PV_T]: one value per row of the tiles.
 // aie::transpose stops at 512 bits, so each row's lanes are broadcast.
 static inline __attribute__((always_inline)) aie::accum<accfloat, VECTOR_LENGTH>
 broadcast_by_row(const float *s) {
   aie::accum<accfloat, VECTOR_LENGTH> v;
+#if AIE_ARCH_AIE2
+  const auto tile = aie::concat(
+      aie::broadcast<float, 4>(s[0]), aie::broadcast<float, 4>(s[1]),
+      aie::broadcast<float, 4>(s[2]), aie::broadcast<float, 4>(s[3]));
+  v.from_vector(aie::concat(tile, tile, tile, tile));
+#else
   v.from_vector(aie::concat(
       aie::broadcast<float, 8>(s[0]), aie::broadcast<float, 8>(s[1]),
       aie::broadcast<float, 8>(s[2]), aie::broadcast<float, 8>(s[3]),
       aie::broadcast<float, 8>(s[4]), aie::broadcast<float, 8>(s[5]),
       aie::broadcast<float, 8>(s[6]), aie::broadcast<float, 8>(s[7])));
+#endif
   return v;
 }
 
 // Row-major variants needed by matmul_PV.  Because there is no separate link
 // step, all kernel symbols must be defined in this single translation unit.
 
-// The product is (M, K) by (K, N). AIE2P's native bf16 macs take the shared
-// (half, column block) 2x2 tile. The other builds expand along n only:
+// The product is (M, K) by (K, N) on (PV_R, PV_S, PV_T) tiles. AIE2's is
+// GEMM's own routine. AIE2P's native bf16 macs take the shared (half, column
+// block) 2x2 tile. Emulated through bfp16 it expands along n only:
 // mm_aie2p.h's 2x2 expansion keeps four 64-float accumulators plus two A and
 // two B tiles live, which does not fit the registers. The mac order per
 // output tile, and so the result, is the same.
@@ -98,14 +136,17 @@ template <typename C, unsigned M, unsigned K, unsigned N>
 static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(aie::rounding_mode::conv_even);
-  constexpr unsigned r = 8, s = 8, t = 8;
+#if AIE_ARCH_AIE2
+  matmul_aie2<C, M, K, N, true>(a_in, b_in, c_out);
+#else
+  constexpr unsigned r = PV_R, s = PV_S, t = PV_T;
   constexpr unsigned rowA = M / r, colA = K / s, colB = N / t;
   static_assert(M % r == 0);
   static_assert(K % s == 0);
   static_assert(N % (2 * t) == 0);
   using MMUL = aie::mmul<r, s, t, bfloat16, bfloat16, accauto>;
 
-#if AIE_ARCH_AIE2P && !defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16)
+#if !defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16)
   mm_bf16_2x2_aie2p<rowA, colA, colB, r, s, t, false, true>(a_in, b_in, c_out);
 #else
   for (unsigned z = 0; z < rowA; z++) {
@@ -139,6 +180,7 @@ static void matmul_rowmaj(bfloat16 *a_in, bfloat16 *b_in, C *c_out) {
     }
   }
 #endif
+#endif
   ::aie::set_rounding(saved_rounding);
 }
 
@@ -159,18 +201,21 @@ void matmul_bf16_bf16_rowmaj(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
 
 } // extern "C" (row-major wrappers)
 
-// O is matmul_PV's r=t=8 blocked output, B_q rows of the head dimension
-// DIM_K: element (row, col) sits at (row / 8) * 8 * DIM_K + (col / 8) * 64 +
-// (row % 8) * 8 + col % 8. Both O and the scale are three limbs; the products
-// under 2^-16 of the leading one are dropped.
+// O is matmul_PV's (PV_R, PV_T) blocked output, B_q rows of the head
+// dimension DIM_K: element (row, col) sits at (row / PV_R) * PV_R * DIM_K +
+// (col / PV_T) * PV_R * PV_T + (row % PV_R) * PV_T + col % PV_T, so a band
+// of PV_R rows is PV_R * DIM_K / 64 vectors. Both O and the scale are three
+// limbs; the products under 2^-16 of the leading one are dropped.
+static constexpr int32_t BAND_VECTORS = PV_R * DIM_K / VECTOR_LENGTH;
 static void scale_blocked_rows(const float *O, bfloat16 *out,
                                const float *scale, int32_t rows) {
   using Acc64 = aie::accum<accfloat, VECTOR_LENGTH>;
-  for (int32_t l = 0; l < rows / 8; l++) {
-    const Limbs<VECTOR_LENGTH> sl = bf16_limbs(broadcast_by_row(scale + l * 8));
-    const float *row = O + l * 8 * DIM_K;
-    bfloat16 *dst = out + l * 8 * DIM_K;
-    for (int32_t j = 0; j < DIM_K / 8; j++) {
+  for (int32_t l = 0; l < rows / PV_R; l++) {
+    const Limbs<VECTOR_LENGTH> sl =
+        bf16_limbs(broadcast_by_row(scale + l * PV_R));
+    const float *row = O + l * PV_R * DIM_K;
+    bfloat16 *dst = out + l * PV_R * DIM_K;
+    for (int32_t j = 0; j < BAND_VECTORS; j++) {
       Acc64 o_acc;
       o_acc.from_vector(aie::load_v<VECTOR_LENGTH>(row + j * VECTOR_LENGTH));
       const Limbs<VECTOR_LENGTH> ol = bf16_limbs(o_acc);
@@ -191,27 +236,30 @@ static void scale_blocked_rows(const float *O, bfloat16 *out,
 static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
   using Acc64 = aie::accum<accfloat, VECTOR_LENGTH>;
   const auto ones = aie::broadcast<float, 8>(1.0f);
-  for (int32_t l = 0; l < rows / 8; l++) {
-    if (aie::equal(aie::load_v<8>(alpha + l * 8), ones))
+  for (int32_t l = 0; l < rows; l += 8) {
+    if (aie::equal(aie::load_v<8>(alpha + l), ones))
       continue;
-    const Acc64 factors = broadcast_by_row(alpha + l * 8);
-    const aie::vector<bfloat16, VECTOR_LENGTH> s =
-        factors.template to_vector<bfloat16>();
-    const auto held = aie::eq(factors.template to_vector<float>(),
-                              aie::broadcast<float, VECTOR_LENGTH>(1.0f));
-    float *__restrict row = O + l * 8 * DIM_K;
-    AIE_LOOP_UNROLL(4)
-    for (int32_t j = 0; j < DIM_K / 8; j++) {
-      const aie::vector<float, VECTOR_LENGTH> o =
-          aie::load_v<VECTOR_LENGTH>(row);
-      Acc64 o_acc;
-      o_acc.from_vector(o);
-      const Limbs<VECTOR_LENGTH> ol = bf16_limbs(o_acc);
-      Acc64 acc = aie::mul(ol.hi, s);
-      acc = aie::mac(acc, ol.mid, s);
-      acc = aie::mac(acc, ol.lo, s);
-      aie::store_v(row, aie::select(acc.template to_vector<float>(), o, held));
-      row += VECTOR_LENGTH;
+    for (int32_t band = l; band < l + 8; band += PV_R) {
+      const Acc64 factors = broadcast_by_row(alpha + band);
+      const aie::vector<bfloat16, VECTOR_LENGTH> s =
+          factors.template to_vector<bfloat16>();
+      const auto held = aie::eq(factors.template to_vector<float>(),
+                                aie::broadcast<float, VECTOR_LENGTH>(1.0f));
+      float *__restrict row = O + band * DIM_K;
+      AIE_LOOP_UNROLL(4)
+      for (int32_t j = 0; j < BAND_VECTORS; j++) {
+        const aie::vector<float, VECTOR_LENGTH> o =
+            aie::load_v<VECTOR_LENGTH>(row);
+        Acc64 o_acc;
+        o_acc.from_vector(o);
+        const Limbs<VECTOR_LENGTH> ol = bf16_limbs(o_acc);
+        Acc64 acc = aie::mul(ol.hi, s);
+        acc = aie::mac(acc, ol.mid, s);
+        acc = aie::mac(acc, ol.lo, s);
+        aie::store_v(row,
+                     aie::select(acc.template to_vector<float>(), o, held));
+        row += VECTOR_LENGTH;
+      }
     }
   }
 }
@@ -513,21 +561,22 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
 // Emulated through bfp16 it shares one exponent over eight rows of the
 // reduction, so a stale row changes the valid rows beside it, and 0 * NaN is
 // NaN. V is DIM_N keys of the head dimension DIM_K, blocked as matmul_PV reads
-// it: one vector is an 8x8 tile, row-major, and a band of DIM_K / 8 tiles is
-// eight rows.
+// it: (PV_S, PV_T) tiles, row-major, and a band of DIM_K / PV_T tiles is PV_S
+// rows.
 static void zero_rows_from(bfloat16 *V, int32_t row) {
-  constexpr int32_t band = DIM_K / 8;
-  const auto zeros = aie::zeros<bfloat16, VECTOR_LENGTH>();
-  bfloat16 *__restrict p = V + (row / 8) * band * VECTOR_LENGTH;
-  if (row % 8) {
+  constexpr int32_t tile = PV_S * PV_T;
+  constexpr int32_t band = DIM_K / PV_T;
+  const auto zeros = aie::zeros<bfloat16, tile>();
+  bfloat16 *__restrict p = V + (row / PV_S) * band * tile;
+  if (row % PV_S) {
     const auto stale =
-        aie::ge(aie::load_v<VECTOR_LENGTH>(sm_lane_idx),
-                aie::broadcast<int16_t, VECTOR_LENGTH>((row % 8) * 8));
-    for (int32_t j = 0; j < band; j++, p += VECTOR_LENGTH) {
-      aie::store_v(p, aie::select(aie::load_v<VECTOR_LENGTH>(p), zeros, stale));
+        aie::ge(aie::load_v<tile>(sm_lane_idx),
+                aie::broadcast<int16_t, tile>((row % PV_S) * PV_T));
+    for (int32_t j = 0; j < band; j++, p += tile) {
+      aie::store_v(p, aie::select(aie::load_v<tile>(p), zeros, stale));
     }
   }
-  for (; p < V + DIM_N * DIM_K; p += VECTOR_LENGTH) {
+  for (; p < V + DIM_N * DIM_K; p += tile) {
     aie::store_v(p, zeros);
   }
 }
@@ -647,7 +696,7 @@ void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, score_t *c_out,
   // so every block is computed.
   if (!MHA_PACKED &&
       !block_live(block_diagonal(idx_buffer, DIM_M, DIM_N, 0), DIM_M, DIM_N)) {
-    // matmul_bf16_bf16 brackets itself; an empty pair keeps a masked call to
+    // A product below is one interval; an empty pair keeps a masked call to
     // one interval too, so every call can be timed.
     event0();
     event1();
@@ -657,6 +706,10 @@ void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, score_t *c_out,
 
 #ifdef MHA_F32_SCORES
   matmul_bf16_f32(a_in, b_in, c_out);
+#elif AIE_ARCH_AIE2
+  event0();
+  matmul_aie2<score_t, DIM_M, DIM_K, DIM_N, is_b_row_maj>(a_in, b_in, c_out);
+  event1();
 #elif defined(MHA_QK_UNROLL_K)
   matmul_vectorized_2x2_mmul<bfloat16, bfloat16, DIM_M / 4, DIM_K / 8,
                              DIM_N / 8, 4, 8, 8, is_b_row_maj, is_c_row_maj,
@@ -711,7 +764,6 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, float *out, float *scale_buffer,
     zero_rows_from(K, valid_kv_rows);
   }
 
-  // O dims = [(B_q / 8, 8 * DIM_K), (DIM_K / 8, 64), (8, 8), (8, 1)]
   // O_{i-1} is scaled by exp2((m_{i-1} - m_i) s); on the first block O is
   // zero.
   if (first_iter != 0) {

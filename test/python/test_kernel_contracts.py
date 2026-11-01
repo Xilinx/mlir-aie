@@ -1508,8 +1508,11 @@ def test_mha_answers_its_micro_tile_without_building_a_kernel(
 ):
     """``mha.mac_dims`` is the micro-tile ``mha`` declares, for either product."""
     kw = dict(pv=pv, emulate_bf16_mmul_with_bfp16=emulate)
-    # mha.cc includes mm_aie2p.h even on AIE2, unlike mm.cc.
-    expected = (8, 8, 8) if pv or (emulate and arch == "aie2p") else (4, 8, 8)
+    # Each product is the arch's GEMM tile; AIE2 ignores the emulation.
+    if arch == "aie2":
+        expected = (4, 8, 4)
+    else:
+        expected = (8, 8, 8) if pv or emulate else (4, 8, 8)
     target = device()
     with set_current_device(target):
         instances = ExternalFunction._instances.copy()

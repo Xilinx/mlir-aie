@@ -110,9 +110,10 @@ _L_RTOL_ACCURATE = 2.0**-9
 
 
 def _unblock(flat: np.ndarray, rows: int = _B, cols: int = _B) -> np.ndarray:
-    """Return the 8x8-blocked O tile as (rows, cols)."""
+    """Return the O tile, blocked in P*V's (r, t) micro-tiles, as (rows, cols)."""
+    r, _, t = kernels.mha.mac_dims(pv=True)
     return (
-        flat.reshape(rows // 8, cols // 8, 8, 8)
+        flat.reshape(rows // r, cols // t, r, t)
         .transpose(0, 2, 1, 3)
         .reshape(rows, cols)
     )
@@ -613,7 +614,8 @@ def test_a_factor_of_one_keeps_o():
     factors = np.resize(np.float32([1, 0.5, 1, 1, 0.5, 1, 1, 1]), _B)
     scale = np.zeros(4 * _B, np.float32)
     scale[3 * _B :] = factors
-    blocked = TensorAccessPattern.full((_B, _B)).tile((8, 8))
+    r, _, t = kernels.mha.mac_dims(pv=True)
+    blocked = TensorAccessPattern.full((_B, _B)).tile((r, t))
 
     out_t = iron.zeros((_B * _B,), dtype=np.float32)
     pv_from_state(
@@ -697,9 +699,12 @@ def mha_round(
     of_v = ObjectFifo(v_ty, name="v", depth=2 if d == _B else 1)
     of_o = ObjectFifo(o_ty, name="o", depth=1)
     of_p = ObjectFifo(p_ty, name="p", depth=1)
-    # The row-major P is read back in the mmul's 8x8 block order.
+    # The row-major P is read back in P*V's (r, s) micro-tile order.
     of_pb = of_p.cons().forward(
-        to_stream=TensorAccessPattern.full((b_q, b_kv)).tile((8, 8)), depth=1
+        to_stream=TensorAccessPattern.full((b_q, b_kv)).tile(
+            kernels.mha.mac_dims(pv=True)[:2]
+        ),
+        depth=1,
     )
     of_scale = ObjectFifo(scale_ty, name="scale_out", depth=1)
 
@@ -858,7 +863,7 @@ def _round_case_data(
     v_host = np.concatenate(
         [
             TensorAccessPattern.full((b_kv, d))
-            .tile((8, 8))
+            .tile(kernels.mha.mac_dims(pv=True)[1:])
             .gather(stale[b * b_kv : (b + 1) * b_kv])
             for b in range(n_kv)
         ]
@@ -1037,7 +1042,7 @@ def test_mha_round_keeps_scores_past_2_15_finite(b_q, b_kv, accurate_exp2, f32_s
     v_host = np.concatenate(
         [
             TensorAccessPattern.full((b_kv, _B))
-            .tile((8, 8))
+            .tile(kernels.mha.mac_dims(pv=True)[1:])
             .gather(v[b * b_kv : (b + 1) * b_kv])
             for b in range(n_kv)
         ]
@@ -1092,7 +1097,7 @@ def test_mha_round_f32_scores_resolve_near_ties(b_q, b_kv, accurate_exp2):
     v_host = np.concatenate(
         [
             TensorAccessPattern.full((b_kv, _B))
-            .tile((8, 8))
+            .tile(kernels.mha.mac_dims(pv=True)[1:])
             .gather(v[b * b_kv : (b + 1) * b_kv])
             for b in range(n_kv)
         ]
@@ -1161,7 +1166,10 @@ def mha_long_round(
     of_o = ObjectFifo(tile_ty, name="o", depth=1)
     of_p = ObjectFifo(tile_ty, name="p", depth=1)
     of_pb = of_p.cons().forward(
-        to_stream=TensorAccessPattern.full((_B, _B)).tile((8, 8)), depth=1
+        to_stream=TensorAccessPattern.full((_B, _B)).tile(
+            kernels.mha.mac_dims(pv=True)[:2]
+        ),
+        depth=1,
     )
     of_scale = ObjectFifo(scale_ty, name="scale_out", depth=1)
 
@@ -1282,7 +1290,7 @@ def test_a_long_context_keeps_the_running_state_accurate(accurate_exp2):
     v_host = np.concatenate(
         [
             TensorAccessPattern.full((_B, _B))
-            .tile((8, 8))
+            .tile(kernels.mha.mac_dims(pv=True)[1:])
             .gather(v[b * _B : (b + 1) * _B])
             for b in range(n_kv)
         ]

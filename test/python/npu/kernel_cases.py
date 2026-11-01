@@ -3128,9 +3128,9 @@ CASES += [
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, smoke=True),
     Case("mha", dict(f32_scores=True), calls=4, smoke=True, devices=("npu2",)),
-    # ...and its P*V product, mha.cc's own 8x8x8 expansion. Same tile, but a
-    # different micro-tile and so a different blocked operand order, which is
-    # the part a shared case could not check.
+    # ...and its P*V product. Same tile, but on AIE2P a different micro-tile
+    # (8x8x8 against QK^T's 4x8x8) and so a different blocked operand order,
+    # which is the part a shared case could not check.
     Case("mha", dict(pv=True), calls=4, smoke=True),
     # As IRON's MHA operator builds them on npu2: B column-major and the
     # accurate exp2 (operators/mha.py), at head_dim 64 (Llama 3.2 1B) and 128.

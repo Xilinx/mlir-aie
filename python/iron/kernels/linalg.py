@@ -524,15 +524,17 @@ class _MhaFactory:
     ) -> tuple[int, int, int]:
         """Query geometry without constructing a kernel; ``arch`` overrides ``device``.
 
-        ``QK^T`` uses ``mm_aie2p.h`` on both architectures: (4, 8, 8),
-        or (8, 8, 8) with BFP16 emulation on AIE2P. ``P*V``
-        (``matmul_bf16_bf16_rowmaj``) expands ``aie::mmul<8, 8, 8>`` itself.
+        Both products are the architecture's GEMM tile: on AIE2 ``mm_aie2.h``'s
+        bf16 (4, 8, 4). On AIE2P ``QK^T`` is ``mm_aie2p.h``'s (4, 8, 8), or
+        (8, 8, 8) with BFP16 emulation, and ``P*V`` (8, 8, 8).
         """
         arch = arch or (
             resolve_target_arch(device) if device is not None else _detect_arch()
         )
         if arch not in _MM_MAC_DIMS:
             raise ValueError(f"mha.mac_dims(): unsupported arch {arch}.")
+        if arch == "aie2":
+            return _MM_MAC_DIMS["aie2"][(bfloat16, bfloat16)]
         if pv:
             return (8, 8, 8)
         key = (bfloat16, bfloat16)
@@ -1394,19 +1396,20 @@ def mha(
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
-    One translation unit that includes ``softmax_aie2p.h`` and ``mm_aie2p.h`` and
+    One translation unit that includes ``softmax_aie2p.h`` and the
+    architecture's own GEMM header (``mm_aie2.h`` or ``mm_aie2p.h``) and
     exports the symbols an attention dataflow composes over one micro-tile.
     The returned kernel is one of the toolkit's two matmuls, both
     accumulating into ``C``, so it is a
     [`MatrixKernel`][aie.iron.kernels.linalg.MatrixKernel] judged like
     [`mm`][aie.iron.kernels.linalg.mm]. By default that is the ``QK^T`` product
-    ``matmul_bf16_bf16_wrapper``, ``mm_aie2p.h``'s bf16 product on its 4x8x8
-    micro-tile behind an ``idx_buffer`` gate (the call runs when key block
+    ``matmul_bf16_bf16_wrapper``, GEMM's bf16 product on its micro-tile
+    (AIE2 4x8x4, AIE2P 4x8x8) behind an ``idx_buffer`` gate (the call runs when key block
     ``idx[0]`` holds a key some row of query block ``idx[1]``, its first row
     ``idx[2]`` positions past the block's start, keeps) bound here to
     ``[0, 0, 0]``. With ``pv`` it is the
-    ``P*V`` product ``matmul_bf16_bf16_rowmaj``, mha.cc's own expansion of
-    the native 8x8x8 micro-tile and ungated. With ``float_o`` it is
+    ``P*V`` product ``matmul_bf16_bf16_rowmaj``, ungated: GEMM's routine on
+    AIE2's 4x8x4 micro-tile, AIE2P's native 8x8x8. With ``float_o`` it is
     ``matmul_PV``, that product added into a float32 ``O`` after ``O``'s
     rows are rescaled by the running state's factor, here 1 on a block every
     row keeps; ``test_mha_e2e.py`` exercises it across key blocks.
@@ -1426,7 +1429,8 @@ def mha(
             ``emulate_bf16_mmul_with_bfp16``). An 8-row block, a decode
             step's KV group of up to 8 heads, runs the online state 8 lanes
             wide.
-        dim_k: Depth of the micro-tile (multiple of 8).
+        dim_k: Depth of the micro-tile (multiple of 8; of 16 with ``pv``,
+            where it is the product's columns).
         dim_n: Columns of the micro-tile (multiple of 16).
         pv: If ``True`` return the ``P*V`` product instead of ``QK^T``.
         b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the ``QK^T``
@@ -1467,7 +1471,7 @@ def mha(
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
     for name, v, mult in (
         ("dim_m", dim_m, 16 if emulate_bf16_mmul_with_bfp16 else 8),
-        ("dim_k", dim_k, 8),
+        ("dim_k", dim_k, 16 if pv else 8),
         ("dim_n", dim_n, 16),
     ):
         if v <= 0 or v % mult:
@@ -1505,8 +1509,8 @@ def mha(
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
-    # mha.cc includes mm_aie2p.h without C_COL_MAJ, and without B_COL_MAJ unless
-    # b_col_maj. matmul_bf16_bf16_rowmaj is always row-major.
+    # mha.cc includes its arch's mm header without C_COL_MAJ, and without
+    # B_COL_MAJ unless b_col_maj. matmul_bf16_bf16_rowmaj is always row-major.
     b_col_maj = b_col_maj and not pv
     r, s, t = _MhaFactory.mac_dims(
         pv=pv, emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16
