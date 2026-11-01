@@ -1397,6 +1397,8 @@ def mha(
     packed: bool = False,
     f32_scores: bool = False,
     float_o: bool = False,
+    fused: bool = False,
+    group: int = 1,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1462,18 +1464,42 @@ def mha(
         float_o: With ``pv``, return ``matmul_PV``: ``P``, ``dim_m`` by
             ``dim_n``, times ``V``, ``dim_n`` by ``dim_k``, into a float32
             ``O``, as IRON's MHA operator binds it.
+        fused: Return ``attend_block``: one key block on one core, ``S = Q
+            K^T``, the online softmax over ``S`` in the product's tiles and
+            ``O += P V``, bit for bit the three entries above. ``KV`` is the
+            block's keys, each its ``K`` row then its ``V`` row as a paired
+            cache holds them, in ``QK^T``'s B tiling (``b_col_maj``), so one
+            stream carries both; ``S`` and ``P``, ``dim_m`` by ``dim_n`` each,
+            hold the scores and the weights. AIE2 only, with its cubic
+            exponential.
+        group: Each position's query heads a block packs, position-major:
+            row ``i`` is at the block's first position plus ``i // group``.
+            ``dim_m`` is whole positions of it.
 
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
-        ``matmul_bf16_bf16_rowmaj``, or with ``float_o`` ``matmul_PV``.
+        ``matmul_bf16_bf16_rowmaj``, with ``float_o`` ``matmul_PV``, or with
+        ``fused`` ``attend_block``.
 
     Raises:
         ValueError: A tile dimension that is not a positive multiple, a
-            ``dim_n`` not 16, 32 or 64, a negative window, or ``float_o``
-            without ``pv``.
+            ``dim_n`` not 16, 32 or 64, a negative window, ``float_o``
+            without ``pv``, ``fused`` with ``pv``, ``f32_scores``,
+            ``accurate_exp2`` or without ``b_col_maj``, or a ``group`` that
+            does not divide ``dim_m``.
+        NotImplementedError: ``fused`` off AIE2.
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
+    if fused and (pv or f32_scores or accurate_exp2 or not b_col_maj):
+        raise ValueError(
+            "mha: fused is QK^T on K as stored (b_col_maj), bf16 scores and the "
+            "cubic exponential, and returns its own entry, not pv's"
+        )
+    if fused and _arch_traits().name != "aie2":
+        raise NotImplementedError("mha: fused is written for AIE2 only")
+    if group < 1 or dim_m % group:
+        raise ValueError(f"mha: group ({group}) must divide dim_m ({dim_m})")
     for name, v, mult in (
         ("dim_m", dim_m, 16 if emulate_bf16_mmul_with_bfp16 else 8),
         ("dim_k", dim_k, 16 if pv else 8),
@@ -1512,6 +1538,10 @@ def mha(
     if accurate_exp2:
         flags.append("-DEXP2_BF16_ACCURATE=1")
     flags += _mha_band_flags("mha", causal, window, packed)
+    if group != 1:
+        flags.append(f"-DMHA_GROUP={group}")
+    if fused:
+        return _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group)
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
         flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
@@ -1630,6 +1660,149 @@ def _mha_band_flags(name, causal, window, packed):
         *([f"-DMHA_WINDOW={window}"] if window else []),
         *(["-DMHA_PACKED=1"] if packed else []),
     ]
+
+
+def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group):
+    """``mha(fused=True)``'s ``attend_block`` and its contract.
+
+    The contract's block is key block 1 of the first query block every row of
+    which keeps all of its keys, as ``matmul_PV``'s contract is a later key
+    block: ``O`` is the harness's to zero, and the rescale runs, by 1. The
+    state starts at 0, and every call takes the same tile, so the state each
+    call carries holds.
+    """
+    mac = (4, 8, 4)
+    qk = mm_stream_dims(dim_m, dim_k, dim_n, mac, b_col_maj=True)
+    pv = mm_stream_dims(dim_m, dim_n, dim_k, mac)
+    # Each key's K row, then its V row, as a paired cache holds them, in
+    # QK^T's B tiling: (4, 8) tiles of 4 keys by 8 columns.
+    kv_stream = TensorAccessPattern.full((dim_n, 2 * dim_k)).tile((4, 8))
+
+    q_block = -(-2 * dim_n // (dim_m // group))
+    scale = float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
+    block = dict(
+        idx=np.array([1, q_block, 0], np.int32),
+        s_q_eff=(q_block + 1) * dim_m,
+        s_kv_eff=2 * dim_n,
+        scale=scale,
+        dim_m=dim_m,
+        dim_k=dim_k,
+        dim_n=dim_n,
+        causal=causal,
+        window=window,
+        packed=packed,
+        group=group,
+    )
+
+    def sample(rng, calls):
+        # Halves times halves, at most dim_k / 4 apart from 0 in quarters:
+        # every score exact in bf16, so the device's and the reference's
+        # agree and only the exponential stands between them.
+        q = rng.choice([-0.5, 0.0, 0.5], (dim_m, dim_k))
+        kv = np.concatenate(
+            [
+                rng.choice([-0.5, 0.0, 0.5], (dim_n, dim_k)),
+                rng.standard_normal((dim_n, dim_k)),
+            ],
+            axis=1,
+        )
+        return [np.broadcast_to(x, (calls, *x.shape)).astype(bfloat16) for x in (q, kv)]
+
+    def bound(q, kv):
+        # exp2_bf16.h's cubic with its bf16 store, 0.74% at worst on npu1, and
+        # float32 summation over dim_n exact products.
+        _, p = mha_attend_block_terms(q, kv, **block)
+        v = np.abs(np.asarray(kv, np.float64).reshape(-1, dim_n, 2, dim_k)[:, :, 1])
+        return ((0.0075 + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
+
+    arg_types = [
+        np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
+        np.ndarray[(2 * dim_n * dim_k,), np.dtype[bfloat16]],
+        np.ndarray[(dim_m * dim_k,), np.dtype[np.float32]],
+        np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
+        np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
+        np.ndarray[(4 * dim_m,), np.dtype[np.float32]],
+        np.ndarray[(3,), np.dtype[np.int32]],
+        bfloat16,
+        np.int32,
+        np.int32,
+    ]
+    return _make_extern(
+        "attend_block",
+        _kernel_source("linalg/mha.cc"),
+        arg_types,
+        compile_flags=flags,
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            layouts=(
+                _tile_layout((dim_m, dim_k), qk.A, block=mac[:2]),
+                _tile_layout((dim_n, 2 * dim_k), kv_stream, block=(4, 8)),
+                _tile_layout((dim_m, dim_k), pv.C, inverse=True, block=mac[::2]),
+                *([None] * 7),
+            ),
+            roles=(In, In, InOut, *([Param] * 7)),
+            parameter_bindings=(
+                (3, np.zeros(dim_m * dim_n, bfloat16)),
+                (4, np.zeros(dim_m * dim_n, bfloat16)),
+                (5, np.zeros(4 * dim_m, np.float32)),
+                (6, block["idx"]),
+                (7, scale),
+                (8, block["s_q_eff"]),
+                (9, block["s_kv_eff"]),
+            ),
+            reference=lambda q, kv: mha_attend_block_terms(q, kv, **block)[0],
+            initializers=((2, _zero_output),),
+            sample=sample,
+            tolerance=Tolerance.bounded(
+                bound,
+                note="exp2_bf16.h cubic, 0.74% at worst on npu1, and float32 "
+                "summation; the sample's scores are exact",
+            ),
+            ops_per_call=4 * dim_m * dim_k * dim_n,
+        ),
+    )
+
+
+def mha_attend_block_terms(
+    q,
+    kv,
+    *,
+    idx,
+    s_q_eff,
+    s_kv_eff,
+    scale,
+    dim_m,
+    dim_k,
+    dim_n,
+    causal=True,
+    window=0,
+    packed=False,
+    group=1,
+):
+    """Numpy reference for ``mha(fused=True)``'s ``attend_block`` from a zeroed state: ``(O, P)``.
+
+    ``O = P V`` with ``P = exp2((S - m) s)``, true ``exp2`` of the scores
+    ``S`` rounded to bf16 as the core keeps them, ``m`` each row's largest
+    kept score or 0, whichever is larger, as a zeroed running maximum leaves
+    it.
+    """
+    kv_block, q_block, offset = (int(i) for i in np.asarray(idx).ravel())
+    q = np.asarray(q, np.float64).reshape(-1, dim_m, dim_k)
+    kv = np.asarray(kv, np.float64).reshape(-1, dim_n, 2, dim_k)
+    s = (q @ kv[:, :, 0].swapaxes(1, 2)).astype(bfloat16).astype(np.float64)
+    rows, cols = np.indices((dim_m, dim_n))
+    position = (
+        s_kv_eff - 1 if packed else q_block * (dim_m // group) + offset + rows // group
+    )
+    key = kv_block * dim_n + cols - position
+    keep = (rows < s_q_eff - q_block * dim_m) & (cols < s_kv_eff - kv_block * dim_n)
+    if causal or window:
+        keep &= key <= (0 if causal else window)
+    if window:
+        keep &= key >= -window
+    m = np.maximum(np.where(keep, s, -np.inf).max(axis=2), 0)
+    p = np.exp2(np.where(keep, (s - m[..., None]) * scale, -np.inf))
+    return (p @ kv[:, :, 1]).reshape(len(q), dim_m * dim_k), p
 
 
 def _mha_softmax_accurate_bound(
