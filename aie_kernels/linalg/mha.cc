@@ -265,7 +265,8 @@ static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
       const auto held = aie::eq(factors.template to_vector<float>(),
                                 aie::broadcast<float, VECTOR_LENGTH>(1.0f));
       float *__restrict row = O + band * DIM_K;
-      AIE_LOOP_UNROLL(4)
+      // Rolled: the fused cores' 16 KB of program memory, f32's in particular.
+      AIE_LOOP_NO_UNROLL
       for (int32_t j = 0; j < BAND_VECTORS; j++) {
         const aie::vector<float, VECTOR_LENGTH> o =
             aie::load_v<VECTOR_LENGTH>(row);
@@ -826,31 +827,31 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
     prev.from_vector(aie::load_v<SM_ROWS>(m_prev + g));
     kept.from_vector(aie::load_v<SM_ROWS>(m_new + g));
     if constexpr (f32) {
-      // A float band's bits, its tiles combined by pick, then its rows' lanes.
-      auto bits_rows = [&](int32_t g, auto pick, auto fold) {
-        aie::vector<int32_t, S_TILE> band[2];
-        AIE_LOOP_UNROLL_FULL
-        for (int32_t h = 0; h < 2; h++) {
-          const T *__restrict t = S + (g / 4 + h) * BAND;
-          auto v = aie::load_v<S_TILE>(t).template cast_to<int32_t>();
-          // Unrolled whole, a 64-key block's 15 tiles spill ~1.6 KB of stack.
-          AIE_LOOP_UNROLL(5)
-          for (int32_t c = 1; c < S_TILES; c++)
-            v = pick(v, aie::load_v<S_TILE>(t + c * S_TILE)
-                            .template cast_to<int32_t>());
-          band[h] = v;
+      // A float band's bits, their largest and smallest over its tiles in one
+      // pass, then over its rows' lanes; the smallest is a row's where every
+      // score is negative.
+      aie::vector<int32_t, S_TILE> hi[2], lo[2];
+      AIE_LOOP_UNROLL_FULL
+      for (int32_t h = 0; h < 2; h++) {
+        const T *__restrict t = S + (g / 4 + h) * BAND;
+        hi[h] = lo[h] = aie::load_v<S_TILE>(t).template cast_to<int32_t>();
+        // Unrolled whole, a 64-key block's 15 tiles spill ~1.6 KB of stack.
+        AIE_LOOP_UNROLL(5)
+        for (int32_t c = 1; c < S_TILES; c++) {
+          const auto v =
+              aie::load_v<S_TILE>(t + c * S_TILE).template cast_to<int32_t>();
+          hi[h] = aie::max(hi[h], v);
+          lo[h] = aie::min(lo[h], v);
         }
-        const auto pairs = fold(band[0], band[1], 1);
-        return fold(pairs, pairs, 1).template extract<SM_ROWS>(0);
-      };
-      auto bits =
-          bits_rows(g, [](auto x, auto y) { return aie::max(x, y); }, fold_max);
+      }
+      const auto hi_pairs = fold_max(hi[0], hi[1], 1);
+      const auto lo_pairs = fold_min(lo[0], lo[1], 1);
       const auto zero = aie::zeros<int32_t, SM_ROWS>();
-      if (aie::lt(bits, zero).to_uint32())
-        bits = aie::select(
-            bits_rows(
-                g, [](auto x, auto y) { return aie::min(x, y); }, fold_min),
-            bits, aie::ge(bits, zero));
+      const auto top_bits =
+          fold_max(hi_pairs, hi_pairs, 1).template extract<SM_ROWS>(0);
+      const auto bits = aie::select(
+          fold_min(lo_pairs, lo_pairs, 1).template extract<SM_ROWS>(0),
+          top_bits, aie::ge(top_bits, zero));
       const auto top =
           aie::max(aie::max(key(lowest16.template extract<SM_ROWS>(0)),
                             key(bits.template cast_to<float>())),
