@@ -288,6 +288,8 @@ def inputs_for(case: Case, data_case: str, rng, *, design=None) -> list[np.ndarr
                 edge = np.full(shape, -np.inf)
             elif data_case == "large":
                 edge = rng.standard_normal(shape) * 1e4
+            elif data_case == "negative":
+                edge = -np.abs(rng.standard_normal(shape)) * 8
             elif data_case == "all_bf16":
                 edge = np.resize(all_bf16(nan=False, inf=False), shape)
             else:

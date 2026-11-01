@@ -3127,7 +3127,16 @@ CASES += [
     check("mv", dict(dim_m=32, dim_k=32), smoke=True),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, smoke=True),
-    Case("mha", dict(f32_scores=True), calls=4, smoke=True, devices=("npu2",)),
+    Case("mha", dict(f32_scores=True), calls=4, smoke=True),
+    # Float32 scores on AIE2 at IRON's fused blocks (DESIGN M4: QK^T at
+    # 64x64x64 within GEMM's float32 product).
+    Case(
+        "mha",
+        dict(f32_scores=True, b_col_maj=True),
+        calls=4,
+        tag="f32-scores",
+        devices=("npu1",),
+    ),
     # ...and its P*V product. Same tile, but on AIE2P a different micro-tile
     # (8x8x8 against QK^T's 4x8x8) and so a different blocked operand order,
     # which is the part a shared case could not check.
@@ -3219,6 +3228,28 @@ CASES += [
         params=((0, 0, 0),),
         scalars=(64, 64),
         tag="diagonal",
+    ),
+    # The same over float32 scores, the plain block and the padded diagonal;
+    # rows whose every score is negative take AIE2's float maximum's other
+    # branch.
+    Case(
+        "mha_softmax",
+        dict(f32_scores=True),
+        calls=4,
+        params=((0, 1, 0),),
+        scalars=(128, 64),
+        smoke=True,
+        tag="f32-scores",
+        data_cases=(*FLOAT_BASE, "negative", "min"),
+    ),
+    Case(
+        "mha_softmax",
+        dict(f32_scores=True),
+        calls=4,
+        params=((0, 0, 0),),
+        scalars=(64, 64),
+        tag="f32-scores-diagonal",
+        data_cases=(*FLOAT_BASE, "negative"),
     ),
     # A decode step's block: 16 packed rows past every one of the 64
     # keys, so nothing is masked.

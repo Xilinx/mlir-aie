@@ -1459,9 +1459,9 @@ def mha(
             then computes every block.
         f32_scores: Keep the ``QK^T`` scores in float32 (``-DMHA_F32_SCORES``):
             ``matmul_bf16_bf16_wrapper`` writes, and ``partial_softmax``
-            reads, a float32 tile, held to float32 summation order. AIE2P
-            only, and not with ``emulate_bf16_mmul_with_bfp16``. At 64-key
-            blocks a design places only with ``P V`` split over two cores.
+            reads, a float32 tile, held to float32 summation order. Not with
+            ``emulate_bf16_mmul_with_bfp16``. At 64-key blocks a design places
+            only with ``P V`` split over two cores.
         float_o: With ``pv``, return ``matmul_PV``: ``P``, ``dim_m`` by
             ``dim_n``, times ``V``, ``dim_n`` by ``dim_k``, into a float32
             ``O``, as IRON's MHA operator binds it.
@@ -1518,8 +1518,6 @@ def mha(
             )
     if dim_n not in _MHA_KEY_BLOCKS:
         raise ValueError(f"mha: dim_n must be one of {_MHA_KEY_BLOCKS}, got {dim_n}")
-    if f32_scores and _arch_traits().name == "aie2":
-        raise NotImplementedError("mha: f32_scores is written for AIE2P only")
     if f32_scores and emulate_bf16_mmul_with_bfp16:
         raise ValueError(
             "mha: f32_scores keeps the scores to float32 summation order, which "
@@ -1864,6 +1862,7 @@ def mha_softmax(
     window: int = 0,
     packed: bool = False,
     scale: float = np.log2(np.e) / 8,
+    f32_scores: bool = False,
 ) -> ExternalFunction:
     """One block of ``mha.cc``'s online softmax, ``partial_softmax``.
 
@@ -1904,6 +1903,9 @@ def mha_softmax(
             over the square root of the head dimension. Positive and finite,
             so a masked score, ``A``'s lowest times ``s``, stays below every
             kept one.
+        f32_scores: ``A`` is float32, as [`mha`][aie.iron.kernels.linalg.mha]'s
+            ``f32_scores`` leaves it (``-DMHA_F32_SCORES``): ``A - m`` is
+            taken in float32 and times ``s`` as three bf16 limbs.
 
     Returns:
         ExternalFunction for ``partial_softmax``.
@@ -1926,20 +1928,27 @@ def mha_softmax(
         raise ValueError(f"mha_softmax: scale must be positive and finite, got {scale}")
     band_flags = _mha_band_flags("mha_softmax", causal, window, packed)
     band = dict(dim_m=dim_m, dim_n=dim_n, causal=causal, window=window, packed=packed)
+    scores = np.ndarray[
+        (dim_m * dim_n,), np.dtype[np.float32 if f32_scores else bfloat16]
+    ]
     tile = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
     state = np.ndarray[(4 * dim_m,), np.dtype[np.float32]]
     idx = np.ndarray[(3,), np.dtype[np.int32]]
     return _make_extern(
         "partial_softmax",
         _kernel_source("linalg/mha.cc"),
-        [tile, tile, state, idx, bfloat16, *([np.int32] * 4)],
+        [scores, tile, state, idx, bfloat16, *([np.int32] * 4)],
         # mha.cc calls only mm.cc's bf16 products; the others assert on an
         # 8-row block.
         compile_flags=[
             f"-DDIM_M={dim_m}",
             "-DDIM_K=64",
             f"-DDIM_N={dim_n}",
-            "-Dbf16_bf16_ONLY",
+            *(
+                ["-DMHA_F32_SCORES", "-Dbf16_f32_ONLY"]
+                if f32_scores
+                else ["-Dbf16_bf16_ONLY"]
+            ),
             *(["-DEXP2_BF16_ACCURATE=1"] if accurate_exp2 else []),
             *band_flags,
         ],

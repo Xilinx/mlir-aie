@@ -37,9 +37,6 @@
 // steps by 2^-8 of its magnitude, which past |A| = 2^15 or so is coarser than
 // the softmax can take.
 #ifdef MHA_F32_SCORES
-#if AIE_ARCH_AIE2
-#error "MHA_F32_SCORES: the float32 score path is written for AIE2P only"
-#endif
 using score_t = float;
 #else
 using score_t = bfloat16;
@@ -349,6 +346,10 @@ fold_rows(Load at, Fold fold) {
 }
 
 #if AIE_TUNED_AIE2 && !defined(EXP2_BF16_ACCURATE)
+static inline aie::vector<bfloat16, SM_LANES>
+exp2_neg_reduced(aie::accum<accfloat, SM_LANES> f,
+                 aie::vector<int32_t, SM_LANES> k);
+
 // 2^-y for y = m * s - a * s, 16 lanes, from x = [a | m] and neg_scale =
 // [-s | s]: AIE2's bf16 product sums a lane of each half.  exp2_bf16.h's
 // reduction and Horner steps in -f, each constant term an f32, so the two
@@ -371,6 +372,15 @@ exp2_neg_bf16(aie::vector<bfloat16, 2 * SM_LANES> x,
   const aie::vector<int32_t, SM_LANES> k = aie::sub(
       ym.cast_to<int32_t>(), aie::broadcast<int32_t, SM_LANES>(0x4b400000));
   Acc f(mac_elem_16_2(x, neg_scale, aie::sub(magic, ym)));
+  return exp2_neg_reduced(f, k);
+}
+
+// 2^-y from y = k + f, k = round(y) and f in [-1/2, 1/2]: exp2_neg_bf16's
+// Horner steps and its exponent shift.
+static inline __attribute__((always_inline)) aie::vector<bfloat16, SM_LANES>
+exp2_neg_reduced(aie::accum<accfloat, SM_LANES> f,
+                 aie::vector<int32_t, SM_LANES> k) {
+  using Acc = aie::accum<accfloat, SM_LANES>;
   const auto fn = f.to_vector<bfloat16>();
   auto horner = [&](aie::vector<bfloat16, SM_LANES> c1, float c0) {
     Acc acc;
@@ -386,6 +396,19 @@ exp2_neg_bf16(aie::vector<bfloat16, 2 * SM_LANES> x,
       aie::maxdiff(t.to_vector<float>().cast_to<int32_t>(), aie::upshift(k, 23))
           .cast_to<float>());
   return r.to_vector<bfloat16>();
+}
+
+// 2^-y for an accumulated y: exp2_neg_bf16's reduction with f = y - k taken
+// from y itself, so bit for bit exp2_bf16(-y) over a live row's y >= 0.
+static inline __attribute__((always_inline)) aie::vector<bfloat16, SM_LANES>
+exp2_neg_f32(aie::accum<accfloat, SM_LANES> y,
+             aie::accum<accfloat, SM_LANES> magic) {
+  const aie::vector<float, SM_LANES> ym =
+      aie::add(magic, y.to_vector<float>()).to_vector<float>();
+  const aie::vector<int32_t, SM_LANES> k = aie::sub(
+      ym.cast_to<int32_t>(), aie::broadcast<int32_t, SM_LANES>(0x4b400000));
+  return exp2_neg_reduced(aie::add(aie::sub(magic, ym), y.to_vector<float>()),
+                          k);
 }
 #endif
 
@@ -451,30 +474,85 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
   // below its element's product, and 2^128 overflows.
   alignas(32) T m_rows[DIM_M];
   const T *__restrict a = A;
+  // AIE2 has no float max. A float row's largest is its bits' largest as
+  // int32 where that is a non-negative float, else (every float negative)
+  // their smallest; the few lanes after are ordered by keys, a negative's
+  // magnitude bits flipped. Both exact.
+  constexpr bool bits_max = std::is_same_v<T, float> && AIE_ARCH_AIE2;
+  using K = std::conditional_t<bits_max, int32_t, T>;
+  auto key = [](auto v) {
+    if constexpr (bits_max) {
+      const auto b = v.template cast_to<int32_t>();
+      constexpr unsigned N = decltype(b)::size();
+      return aie::select(
+          b, aie::bit_xor(b, aie::broadcast<int32_t, N>(0x7fffffff)),
+          aie::lt(b, aie::zeros<int32_t, N>()));
+    } else {
+      return v;
+    }
+  };
+  auto fold_min = [](auto a, auto b, unsigned step) {
+    auto [lo, hi] = aie::interleave_unzip(a, b, step);
+    return aie::min(lo, hi);
+  };
+  // A row's bits as int32, its 16-lane pieces combined by pick first, so
+  // the folds across rows stay in one register each.
+  auto bits_fold = [&](auto fold, auto pick) {
+    return fold_rows<int32_t, SM_LANES>(
+               [&](int32_t r) {
+                 const T *row = a + r * ROW;
+                 auto v =
+                     aie::load_v<SM_LANES>(row).template cast_to<int32_t>();
+                 AIE_LOOP_UNROLL_FULL
+                 for (int32_t c = SM_LANES; c < ROW; c += SM_LANES)
+                   v = pick(v, aie::load_v<SM_LANES>(row + c)
+                                   .template cast_to<int32_t>());
+                 return v;
+               },
+               fold)
+        .template extract<SM_ROWS>(0);
+  };
   MHA_GROUP_LOOP
   for (int32_t g = 0; g < group_end; g += SM_ROWS) {
-    const aie::vector<T, SM_ROWS> o =
-        fold_rows<T, FOLD>(
-            [&](int32_t r) {
-              if constexpr (ROW == FOLD) {
-                return aie::load_v<ROW>(a + r * ROW);
-              } else {
-                auto row = aie::load_v<ROW>(a + r * ROW);
-                return aie::max(row.template extract<FOLD>(0),
-                                row.template extract<FOLD>(1));
-              }
-            },
-            fold_max)
-            .template extract<SM_ROWS>(0);
+    aie::vector<K, SM_ROWS> o_key;
+    if constexpr (bits_max) {
+      auto bits =
+          bits_fold(fold_max, [](auto x, auto y) { return aie::max(x, y); });
+      // A row whose every score is negative (padding, a row masked whole)
+      // takes its smallest bits.
+      const auto zero = aie::zeros<int32_t, SM_ROWS>();
+      if (aie::lt(bits, zero).to_uint32())
+        bits = aie::select(
+            bits_fold(fold_min, [](auto x, auto y) { return aie::min(x, y); }),
+            bits, aie::ge(bits, zero));
+      o_key = key(bits.template cast_to<float>());
+    } else {
+      o_key = fold_rows<T, FOLD>(
+                  [&](int32_t r) {
+                    if constexpr (ROW == FOLD) {
+                      return aie::load_v<ROW>(a + r * ROW);
+                    } else {
+                      auto row = aie::load_v<ROW>(a + r * ROW);
+                      return aie::max(row.template extract<FOLD>(0),
+                                      row.template extract<FOLD>(1));
+                    }
+                  },
+                  fold_max)
+                  .template extract<SM_ROWS>(0);
+    }
     a += SM_ROWS * ROW;
     aie::accum<accfloat, SM_ROWS> prev, kept;
     prev.from_vector(aie::load_v<SM_ROWS>(m_prev + g));
     kept.from_vector(aie::load_v<SM_ROWS>(m_new + g));
-    auto m = aie::select(
-        kept.to_vector<T>(),
-        aie::max(aie::max(lowest_vec.template extract<SM_ROWS>(0), o),
-                 prev.to_vector<T>()),
-        live(g));
+    const auto top_key =
+        aie::max(aie::max(key(lowest_vec.template extract<SM_ROWS>(0)), o_key),
+                 key(prev.to_vector<T>()));
+    aie::vector<T, SM_ROWS> top;
+    if constexpr (bits_max)
+      top = key(top_key).template cast_to<float>();
+    else
+      top = top_key;
+    auto m = aie::select(kept.to_vector<T>(), top, live(g));
     aie::store_v(m_rows + g, m);
     aie::store_v(m_new + g,
                  aie::accum<accfloat, SM_ROWS>(m).to_vector<float>());
@@ -483,6 +561,44 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
   // Each row's exponentials go to P.  A discarded lane's is +0.
   bfloat16 *__restrict p = P;
   if constexpr (std::is_same_v<T, float>) {
+#if AIE_TUNED_AIE2 && !defined(EXP2_BF16_ACCURATE)
+    // (m - A) * s from m - A's three bf16 limbs, the first two in one
+    // product sum (rounded once, as a mul then a mac round it), then
+    // exp2_neg_f32: bit for bit exp2_bf16 of the generic path's (A - m) * s.
+    const auto s2 = aie::broadcast<bfloat16, 2 * SM_LANES>(scale);
+    const auto zero = aie::zeros<bfloat16, SM_LANES>();
+    aie::accum<accfloat, SM_LANES> magic;
+    magic.from_vector(aie::broadcast<float, SM_LANES>(12582912.0f));
+    aie::saturation_mode saved_saturation =
+        aie::swap_saturation(aie::saturation_mode::saturate);
+    // As the bf16 path's loop: 32 lanes a step, each row's own maximum.
+    constexpr int32_t STEP_ROWS = ROW < 2 * SM_LANES ? 2 * SM_LANES / ROW : 1;
+    auto half = [&](const float *src, float m) {
+      aie::accum<accfloat, SM_LANES> m_acc;
+      m_acc.from_vector(aie::broadcast<float, SM_LANES>(m));
+      const Limbs<SM_LANES> dl =
+          bf16_limbs(aie::sub(m_acc, aie::load_v<SM_LANES>(src)));
+      aie::accum<accfloat, SM_LANES> y(
+          mul_elem_16_2(aie::concat(dl.hi, dl.mid), s2));
+      y = mac_elem_16_2(aie::concat(dl.lo, zero), s2, y);
+      return exp2_neg_f32(y, magic);
+    };
+    for (int32_t h = 0; h < ROW; h += 2 * SM_LANES) {
+      a = A + h;
+      p = P + h;
+      const T *__restrict m = m_rows;
+      AIE_LOOP_MIN_ITERATION_COUNT(4)
+      for (int32_t i = 0; i < group_rows; i += STEP_ROWS) {
+        const float m_lo = m[0], m_hi = m[STEP_ROWS - 1];
+        m += STEP_ROWS;
+        aie::store_v(p, half(a, m_lo));
+        aie::store_v(p + SM_LANES, half(a + SM_LANES, m_hi));
+        a += ROW * STEP_ROWS;
+        p += ROW * STEP_ROWS;
+      }
+    }
+    aie::set_saturation(saved_saturation);
+#else
     // A float32 max leaves A - m exact in the accumulator, so (A - m) * s is
     // taken as three bf16 limbs, each times s.
     const auto s = aie::broadcast<bfloat16, FOLD>(scale);
@@ -502,6 +618,7 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
       a += ROW;
       p += ROW;
     }
+#endif
   } else {
     const T *__restrict m = m_rows;
 #if AIE_TUNED_AIE2 && !defined(EXP2_BF16_ACCURATE)
@@ -1067,12 +1184,12 @@ void matmul_bf16_bf16_wrapper(bfloat16 *a_in, bfloat16 *b_in, score_t *c_out,
     return;
   }
 
-#ifdef MHA_F32_SCORES
-  matmul_bf16_f32(a_in, b_in, c_out);
-#elif AIE_ARCH_AIE2
+#if AIE_ARCH_AIE2
   event0();
   matmul_aie2<score_t, DIM_M, DIM_K, DIM_N, is_b_row_maj>(a_in, b_in, c_out);
   event1();
+#elif defined(MHA_F32_SCORES)
+  matmul_bf16_f32(a_in, b_in, c_out);
 #elif defined(MHA_QK_UNROLL_K)
   matmul_vectorized_2x2_mmul<bfloat16, bfloat16, DIM_M / 4, DIM_K / 8,
                              DIM_N / 8, 4, 8, 8, is_b_row_maj, is_c_row_maj,

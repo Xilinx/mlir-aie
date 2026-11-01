@@ -933,16 +933,10 @@ def _round_case_data(
     return scores, v, keep, s_host, v_host
 
 
-def _skip_f32_off_aie2p(f32_scores):
-    if f32_scores and resolve_target_arch(iron.get_current_device()) == "aie2":
-        pytest.skip("mha.cc's float32 scores are written for AIE2P")
-
-
 def _check_round(
     q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, f32_scores=False, **shape
 ):
     """Run ``mha_round`` and hold it to masked attention over its band."""
-    _skip_f32_off_aie2p(f32_scores)
     b_q, d = shape.get("b_q", _B), shape.get("d", _B)
     scores, v, keep, s_host, v_host = _round_case_data(
         q_block, n_kv, s_q_eff, s_kv_eff, **shape
@@ -1085,7 +1079,6 @@ _PAST_2_15 = 252928.0
 @pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
 def test_mha_round_keeps_scores_past_2_15_finite(b_q, b_kv, accurate_exp2, f32_scores):
     """Each row's top keys tie at a scaled score past 2^15, the rest far below."""
-    _skip_f32_off_aie2p(f32_scores)
     scaled = np.float32(_PAST_2_15) * np.float32(_INV_SCALE)
     assert scaled - np.float32(bfloat16(scaled)) == 127
     q_block, s_eff = 1, 2 * b_q
@@ -1140,7 +1133,6 @@ _NEAR_TIES = 131072.0
 @pytest.mark.parametrize("accurate_exp2", [False, True])
 def test_mha_round_f32_scores_resolve_near_ties(b_q, b_kv, accurate_exp2):
     """Scores at 2^17 plus multiples of 4, which bf16 would round to one value."""
-    _skip_f32_off_aie2p(True)
     q_block, s_eff = 1, 2 * b_q
     n_kv = s_eff // b_kv
     rng = np.random.default_rng(20261014)
