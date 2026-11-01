@@ -30,13 +30,13 @@ module @simple_dma {
 // CHECK-LABEL: @simple_dma
 // CHECK-DAG:   %[[T12:.*]] = aie.tile(1, 2)
 // CHECK-DAG:   %[[T33:.*]] = aie.tile(3, 3)
-// CHECK:   aie.objectfifo.pool @of1_pool(%[[T12]]) {depth = 2 : i32, fifoName = "of1"} : memref<16xi32>
+// CHECK:   aie.objectfifo.pool @of1__pool(%[[T12]]) {depth = 2 : i32, fifoName = "of1"} : memref<16xi32>
 // CHECK: aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
-// CHECK:   aie.objectfifo.core_endpoint @of1_prod(%[[T12]]) fills @of1_pool
-// CHECK:   aie.objectfifo.dma_endpoint @of1_prod_dma(%[[T12]]) drains @of1_pool {fifoName = "of1"}
-// CHECK:   aie.objectfifo.pool @of1_cons_pool(%[[T33]]) {depth = 2 : i32, fifoName = "of1"} : memref<16xi32>
+// CHECK:   aie.objectfifo.core_endpoint @of1__prod(%[[T12]]) fills @of1__pool
+// CHECK:   aie.objectfifo.dma_endpoint @of1__prod__dma(%[[T12]]) drains @of1__pool {fifoName = "of1"}
+// CHECK:   aie.objectfifo.pool @of1__cons__pool(%[[T33]]) {depth = 2 : i32, fifoName = "of1"} : memref<16xi32>
 // CHECK: aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
-// CHECK:   aie.objectfifo.core_endpoint @of1_cons(%[[T33]]) drains @of1_cons_pool
-// CHECK:   aie.objectfifo.dma_endpoint @of1_cons_dma(%[[T33]]) fills @of1_cons_pool {fifoName = "of1"}
-// CHECK:   aie.route from @of1_prod_dma to [@of1_cons_dma]
+// CHECK:   aie.objectfifo.core_endpoint @of1__cons(%[[T33]]) drains @of1__cons__pool
+// CHECK:   aie.objectfifo.dma_endpoint @of1__cons__dma(%[[T33]]) fills @of1__cons__pool {fifoName = "of1"}
+// CHECK:   aie.route from @of1__prod__dma to [@of1__cons__dma]
 // CHECK-NOT: aie.objectfifo @

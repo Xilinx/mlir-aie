@@ -9,8 +9,8 @@
 // absorb the first and last steps.
 
 // CHECK-LABEL: @steady_run
-// CHECK-DAG: aie.objectfifo.dma_endpoint @a_cons_dma(%{{.*}}) fills @a_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @b_cons_dma(%{{.*}}) fills @b_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__cons__dma(%{{.*}}) fills @a__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__cons__dma(%{{.*}}) fills @b__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
 module @steady_run {
   aie.device(npu2) {
     %s = aie.tile(0, 0)
@@ -56,16 +56,16 @@ module @steady_run {
 // object, and b's pool, walked whole beside them, lines up with them.
 
 // CHECK-LABEL: @two_walkers
-// CHECK-DAG: aie.objectfifo.dma_endpoint @a_prod_dma(%{{.*}}) drains @a_in_cons_pool {{{.*}}turns = [@a_prod_dma, @a_prod_dma, @b_prod_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @b_prod_dma(%{{.*}}) drains @b_in_cons_pool {{{.*}}turns = [@a_prod_dma, @a_prod_dma, @b_prod_dma]}
-// CHECK-DAG: aie.objectfifo.pool @b_in_cons_pool(%{{.*}}) {buffers = [@b_in_cons_buff_0], contiguous, depth = 3
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__prod__dma(%{{.*}}) drains @a_in__cons__pool {{{.*}}turns = [@a__prod__dma, @a__prod__dma, @b__prod__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__prod__dma(%{{.*}}) drains @b_in__cons__pool {{{.*}}turns = [@a__prod__dma, @a__prod__dma, @b__prod__dma]}
+// CHECK-DAG: aie.objectfifo.pool @b_in__cons__pool(%{{.*}}) {buffers = [@b_in__cons__buf0], contiguous, depth = 3
 
 // CHAIN-LABEL: @two_walkers
 // CHAIN: aie.memtile_dma(%mem_tile_0_1)
 // CHAIN: aie.dma_start(MM2S
-// CHAIN: aie.dma_bd(%a_in_cons_buff_0 : memref<2560xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 20, stride = 128, current = 0>}
-// CHAIN: aie.dma_bd(%a_in_cons_buff_0 : memref<2560xi32> offset = 64 len = 64) {iteration = #aie.bd_iteration<size = 20, stride = 128, current = 0>}
-// CHAIN: aie.dma_bd(%b_in_cons_buff_0 : memref<192xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 3, stride = 64, current = 0>}
+// CHAIN: aie.dma_bd(%a_in__cons__buf0 : memref<2560xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 20, stride = 128, current = 0>}
+// CHAIN: aie.dma_bd(%a_in__cons__buf0 : memref<2560xi32> offset = 64 len = 64) {iteration = #aie.bd_iteration<size = 20, stride = 128, current = 0>}
+// CHAIN: aie.dma_bd(%b_in__cons__buf0 : memref<192xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 3, stride = 64, current = 0>}
 // CHAIN: aie.next_bd ^bb5
 module @two_walkers {
   aie.device(npu2) {
@@ -107,16 +107,16 @@ module @two_walkers {
 // whole, one descriptor a turn.
 
 // CHECK-LABEL: @unrolled_chain
-// CHECK-DAG: aie.objectfifo.dma_endpoint @a_prod_dma(%{{.*}}) drains @a_in_cons_pool {{{.*}}turns = [@a_prod_dma, @b_prod_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @b_prod_dma(%{{.*}}) drains @b_in_cons_pool {{{.*}}turns = [@a_prod_dma, @b_prod_dma]}
-// CHECK-DAG: aie.objectfifo.pool @a_in_cons_pool(%{{.*}}) {buffers = [@a_in_cons_buff_0], contiguous, depth = 7
-// CHECK-DAG: aie.objectfifo.pool @b_in_cons_pool(%{{.*}}) {buffers = [@b_in_cons_buff_0], contiguous, depth = 6
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__prod__dma(%{{.*}}) drains @a_in__cons__pool {{{.*}}turns = [@a__prod__dma, @b__prod__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__prod__dma(%{{.*}}) drains @b_in__cons__pool {{{.*}}turns = [@a__prod__dma, @b__prod__dma]}
+// CHECK-DAG: aie.objectfifo.pool @a_in__cons__pool(%{{.*}}) {buffers = [@a_in__cons__buf0], contiguous, depth = 7
+// CHECK-DAG: aie.objectfifo.pool @b_in__cons__pool(%{{.*}}) {buffers = [@b_in__cons__buf0], contiguous, depth = 6
 
 // CHAIN-LABEL: @unrolled_chain
 // CHAIN: aie.memtile_dma(%mem_tile_0_1)
 // CHAIN: aie.dma_start(MM2S
-// CHAIN: aie.dma_bd(%a_in_cons_buff_0 : memref<448xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 7, stride = 64, current = 0>}
-// CHAIN: aie.dma_bd(%b_in_cons_buff_0 : memref<384xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 6, stride = 64, current = 0>}
+// CHAIN: aie.dma_bd(%a_in__cons__buf0 : memref<448xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 7, stride = 64, current = 0>}
+// CHAIN: aie.dma_bd(%b_in__cons__buf0 : memref<384xi32> offset = 0 len = 64) {iteration = #aie.bd_iteration<size = 6, stride = 64, current = 0>}
 // CHAIN: aie.next_bd ^bb
 module @unrolled_chain {
   aie.device(npu2) {

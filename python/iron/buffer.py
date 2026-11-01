@@ -17,7 +17,7 @@ from ..helpers.npdtypes import (
     np_ndarray_type_get_shape,
     np_ndarray_type_of,
 )
-from ..helpers.sourceloc import SourceSite
+from ..helpers.sourceloc import Declared, SourceSite
 from .device import Tile
 from .resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from .worker import Worker
 
 
-class Buffer(PerDeviceConfigurationResolvable):
+class Buffer(Declared, PerDeviceConfigurationResolvable):
     """A buffer that is available both to Workers and to the Runtime for operations.
 
     This is often used for Runtime Parameters.

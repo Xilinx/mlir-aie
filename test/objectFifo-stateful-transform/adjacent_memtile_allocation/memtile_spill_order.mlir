@@ -20,14 +20,14 @@
 // With large-first sort (block 524000, large 400000, small 260000):
 //   @large spills to col 1 (empty), @small spills to col 0 → SUCCESS.
 
-// large_cons_buff_0 on col 2 (home), large_cons_buff_1 spills to col 1
-// CHECK-DAG: aie.buffer(%mem_tile_2_1) {sym_name = "large_cons_buff_0"}
-// CHECK-DAG: aie.buffer(%mem_tile_1_1) {sym_name = "large_cons_buff_1"}
+// large__cons__buf0 on col 2 (home), large__cons__buf1 spills to col 1
+// CHECK-DAG: aie.buffer(%mem_tile_2_1) {sym_name = "large__cons__buf0"}
+// CHECK-DAG: aie.buffer(%mem_tile_1_1) {sym_name = "large__cons__buf1"}
 // small buffers both spill to col 0
-// CHECK-DAG: aie.buffer(%mem_tile_0_1) {sym_name = "small_cons_buff_0"}
-// CHECK-DAG: aie.buffer(%mem_tile_0_1) {sym_name = "small_cons_buff_1"}
+// CHECK-DAG: aie.buffer(%mem_tile_0_1) {sym_name = "small__cons__buf0"}
+// CHECK-DAG: aie.buffer(%mem_tile_0_1) {sym_name = "small__cons__buf1"}
 // block buffer on col 3 (home)
-// CHECK-DAG: aie.buffer(%mem_tile_3_1) {sym_name = "block_cons_buff_0"}
+// CHECK-DAG: aie.buffer(%mem_tile_3_1) {sym_name = "block__cons__buf0"}
 
 module {
   aie.device(npu2) {

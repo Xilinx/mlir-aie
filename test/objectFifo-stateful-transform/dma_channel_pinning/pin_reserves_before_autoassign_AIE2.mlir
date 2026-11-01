@@ -21,9 +21,9 @@
 // CHECK-DAG:       aie.flow(%{{.*}}tile_1_2, DMA : 1, %{{.*}}tile_3_3, DMA : 1)
 // CHECK:           %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 // CHECK:             aie.dma_start(MM2S, 0,
-// CHECK:             aie.dma_bd(%of_pinned_buff_0
+// CHECK:             aie.dma_bd(%of_pinned__buf0
 // CHECK:             aie.dma_start(MM2S, 1,
-// CHECK:             aie.dma_bd(%of_auto_buff_0
+// CHECK:             aie.dma_bd(%of_auto__buf0
 
 module @dma_channel_pinning_reserve {
  aie.device(xcve2302) {

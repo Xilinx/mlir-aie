@@ -17,6 +17,7 @@ bounds) elaborates to a flat binary sequence.
 
 from __future__ import annotations
 
+import inspect
 import itertools
 import logging
 from typing import TYPE_CHECKING, Callable, Sequence, get_origin
@@ -37,7 +38,7 @@ from ...dialects.aiex import (
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from ...helpers.npdtypes import np_ndarray_type_of
-from ...helpers.sourceloc import SourceSite, traced_body
+from ...helpers.sourceloc import Declared, SourceSite, traced_body
 from ...helpers.util import (
     flatten_fn_args,
     np_dtype_to_mlir_type,
@@ -207,7 +208,7 @@ class ActiveSequence:
         self._used_default = self._used_explicit = False
 
 
-class Runtime(DeviceResources, Resolvable):
+class Runtime(Declared, DeviceResources, Resolvable):
     """The host-side sequence of data-movement operations that execute an IRON design.
 
     A Runtime describes what the host does at runtime: filling input
@@ -716,6 +717,12 @@ class Runtime(DeviceResources, Resolvable):
                 else:
                     body_args.append(arg)
 
+            # Each buffer is named after the sequence parameter it arrives as,
+            # which names the transfers that move it.
+            for name, rt_data in zip(_parameter_names(self._seq_fn), self._rt_data):
+                if rt_data is not None:
+                    rt_data.name = name
+
             with active_sequence_scope(active):
                 with traced_body(self._seq_fn):
                     self._seq_fn(*body_args)
@@ -787,6 +794,23 @@ class Runtime(DeviceResources, Resolvable):
                         )
             for r in to_remove:
                 fifo_obj._cons.remove(r)
+
+
+def _parameter_names(fn) -> list[str]:
+    """Return `fn`'s positional parameter names, or none if it has no fixed ones."""
+    try:
+        parameters = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return []
+    names = []
+    for parameter in parameters:
+        if parameter.kind not in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            break
+        names.append(parameter.name)
+    return names
 
 
 class _SyncParametersTask(Resolvable):

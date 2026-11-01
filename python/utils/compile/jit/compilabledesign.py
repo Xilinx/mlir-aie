@@ -54,6 +54,7 @@ from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
     ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
+from aie.helpers.errors import hide_internal_frames
 from aie.helpers.npdtypes import np_ndarray_type_of
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     ArrayAttr,  # pyright: ignore[reportAttributeAccessIssue]
@@ -735,420 +736,437 @@ class CompilableDesign:
         producing a stream that would program resources the image does not
         have.
         """
-        has_dispatch = bool(self.dispatch_params)
+        try:
+            has_dispatch = bool(self.dispatch_params)
 
-        requested_full_elf = self.full_elf_requested or full_elf_path is not None
-        if requested_full_elf and has_dispatch:
-            raise NotImplementedError(
-                "DispatchTime[T] + full_elf=True is not supported: a full ELF "
-                "bakes one static instruction stream into the ELF at compile "
-                "time, and XRT's full-ELF dispatch path has no instruction-"
-                "buffer argument to swap in a per-call one -- unlike the "
-                "xclbin + insts.bin path. Compile without full_elf for a "
-                "design with DispatchTime[T] parameters."
-            )
-        if self.insts_only and has_dispatch:
-            raise NotImplementedError(
-                "insts_only=True with DispatchTime[T] parameters: an "
-                "instructions-only design has no static stream to emit."
-            )
-        if has_dispatch and (inst_path is not None or elf_path is not None):
-            raise ValueError(
-                "compile(): DispatchTime[T] designs have no static instructions; "
-                "inst_path and elf_path must be None."
-            )
-        if has_dispatch and npu_cpp_path is not None:
-            raise ValueError(
-                "compile(): DispatchTime[T] designs already build their own "
-                "C++ TXN builder as the dispatch bridge; npu_cpp_path must be "
-                "None. Retrieve it with get_dispatch_lib_path()."
-            )
-        full_elf = self.full_elf or full_elf_path is not None
-        if self._inferred_full_elf and any(
-            path is not None
-            for path in (xclbin_path, inst_path, elf_path, pdi_path, npu_cpp_path)
-        ):
-            raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
-        if full_elf and has_dispatch:
-            # Architectural boundary, not a TODO: full-ELF bakes one static TXN
-            # into the ELF, and XRT's full-ELF dispatch path has no instruction-
-            # buffer argument to swap a per-call one into.
-            raise NotImplementedError(
-                "DispatchTime[T] + full_elf=True is not supported: a full ELF "
-                "bakes one static instruction stream into the ELF at compile "
-                "time, and XRT's full-ELF dispatch path has no instruction-"
-                "buffer argument to swap in a per-call one -- unlike the "
-                "xclbin + insts.bin path. Compile without full_elf for a "
-                "design with DispatchTime[T] parameters."
-            )
-        if full_elf and npu_cpp_path is not None:
-            raise NotImplementedError(
-                "compile(): npu_cpp_path is not supported with full_elf=True; "
-                "a full ELF bakes one static instruction stream, leaving no "
-                "runtime sequence left to re-express as a C++ builder."
-            )
-        if full_elf:
-            return self._compile_full_elf(full_elf_path)
-        if image is not None and not self.insts_only:
-            raise ValueError(
-                "compile(): image= is the image an insts_only design's stream "
-                "runs on; this design builds its own."
-            )
-        if self.insts_only:
+            requested_full_elf = self.full_elf_requested or full_elf_path is not None
+            if requested_full_elf and has_dispatch:
+                raise NotImplementedError(
+                    "DispatchTime[T] + full_elf=True is not supported: a full ELF "
+                    "bakes one static instruction stream into the ELF at compile "
+                    "time, and XRT's full-ELF dispatch path has no instruction-"
+                    "buffer argument to swap in a per-call one -- unlike the "
+                    "xclbin + insts.bin path. Compile without full_elf for a "
+                    "design with DispatchTime[T] parameters."
+                )
+            if self.insts_only and has_dispatch:
+                raise NotImplementedError(
+                    "insts_only=True with DispatchTime[T] parameters: an "
+                    "instructions-only design has no static stream to emit."
+                )
+            if has_dispatch and (inst_path is not None or elf_path is not None):
+                raise ValueError(
+                    "compile(): DispatchTime[T] designs have no static instructions; "
+                    "inst_path and elf_path must be None."
+                )
+            if has_dispatch and npu_cpp_path is not None:
+                raise ValueError(
+                    "compile(): DispatchTime[T] designs already build their own "
+                    "C++ TXN builder as the dispatch bridge; npu_cpp_path must be "
+                    "None. Retrieve it with get_dispatch_lib_path()."
+                )
+            full_elf = self.full_elf or full_elf_path is not None
+            if self._inferred_full_elf and any(
+                path is not None
+                for path in (xclbin_path, inst_path, elf_path, pdi_path, npu_cpp_path)
+            ):
+                raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
+            if full_elf and has_dispatch:
+                # Architectural boundary, not a TODO: full-ELF bakes one static TXN
+                # into the ELF, and XRT's full-ELF dispatch path has no instruction-
+                # buffer argument to swap a per-call one into.
+                raise NotImplementedError(
+                    "DispatchTime[T] + full_elf=True is not supported: a full ELF "
+                    "bakes one static instruction stream into the ELF at compile "
+                    "time, and XRT's full-ELF dispatch path has no instruction-"
+                    "buffer argument to swap in a per-call one -- unlike the "
+                    "xclbin + insts.bin path. Compile without full_elf for a "
+                    "design with DispatchTime[T] parameters."
+                )
+            if full_elf and npu_cpp_path is not None:
+                raise NotImplementedError(
+                    "compile(): npu_cpp_path is not supported with full_elf=True; "
+                    "a full ELF bakes one static instruction stream, leaving no "
+                    "runtime sequence left to re-express as a C++ builder."
+                )
+            if full_elf:
+                return self._compile_full_elf(full_elf_path)
+            if image is not None and not self.insts_only:
+                raise ValueError(
+                    "compile(): image= is the image an insts_only design's stream "
+                    "runs on; this design builds its own."
+                )
+            if self.insts_only:
+                if (
+                    xclbin_path is not None
+                    or elf_path is not None
+                    or pdi_path is not None
+                    or npu_cpp_path is not None
+                ):
+                    raise ValueError(
+                        "compile(): an insts_only design takes inst_path alone "
+                        "(or nothing, for the JIT cache); it builds no image."
+                    )
+                if isinstance(image, CompilableDesign):
+                    if image.get_cache_entry() is None:
+                        image.compile()
+                    entry = image.get_cache_entry()
+                    assert entry is not None
+                    if entry.lowered_mlir is None:
+                        raise ValueError(
+                            f"compile(): the image's build left no resolved module "
+                            f"in {entry.directory} to check this stream against."
+                        )
+                    image = entry.lowered_mlir
+                return self._compile_insts_only(
+                    inst_path, None if image is None else Path(image).resolve()
+                )
+
             if (
-                xclbin_path is not None
-                or elf_path is not None
-                or pdi_path is not None
-                or npu_cpp_path is not None
+                not has_dispatch
+                and (xclbin_path is None) != (inst_path is None)
+                and not (xclbin_path is not None and npu_cpp_path is not None)
             ):
                 raise ValueError(
-                    "compile(): an insts_only design takes inst_path alone "
-                    "(or nothing, for the JIT cache); it builds no image."
+                    "compile(): xclbin_path and inst_path must be set together "
+                    "(both paths to write artifacts directly, or both None to use "
+                    f"the JIT cache).  Got xclbin_path={xclbin_path!r}, "
+                    f"inst_path={inst_path!r}."
                 )
-            if isinstance(image, CompilableDesign):
-                if image.get_cache_entry() is None:
-                    image.compile()
-                entry = image.get_cache_entry()
-                assert entry is not None
-                if entry.lowered_mlir is None:
-                    raise ValueError(
-                        f"compile(): the image's build left no resolved module "
-                        f"in {entry.directory} to check this stream against."
-                    )
-                image = entry.lowered_mlir
-            return self._compile_insts_only(
-                inst_path, None if image is None else Path(image).resolve()
-            )
 
-        if (
-            not has_dispatch
-            and (xclbin_path is None) != (inst_path is None)
-            and not (xclbin_path is not None and npu_cpp_path is not None)
-        ):
-            raise ValueError(
-                "compile(): xclbin_path and inst_path must be set together "
-                "(both paths to write artifacts directly, or both None to use "
-                f"the JIT cache).  Got xclbin_path={xclbin_path!r}, "
-                f"inst_path={inst_path!r}."
-            )
+            explicit_paths = xclbin_path is not None
+            cache_hash = None
+            build_key = ""
+            outputs: dict[str, Path] = {}
 
-        explicit_paths = xclbin_path is not None
-        cache_hash = None
-        build_key = ""
-        outputs: dict[str, Path] = {}
+            if elf_path is not None and (not explicit_paths or inst_path is None):
+                raise ValueError(
+                    "compile(): elf_path requires explicit xclbin_path + inst_path "
+                    "(the JIT cache does not track ELF artifacts)."
+                )
 
-        if elf_path is not None and (not explicit_paths or inst_path is None):
-            raise ValueError(
-                "compile(): elf_path requires explicit xclbin_path + inst_path "
-                "(the JIT cache does not track ELF artifacts)."
-            )
+            if pdi_path is not None and not explicit_paths:
+                raise ValueError(
+                    "compile(): pdi_path requires explicit xclbin_path "
+                    "(the JIT cache does not track caller-named PDI artifacts; use "
+                    "get_pdi_path() to locate the cache-mode main.pdi)."
+                )
 
-        if pdi_path is not None and not explicit_paths:
-            raise ValueError(
-                "compile(): pdi_path requires explicit xclbin_path "
-                "(the JIT cache does not track caller-named PDI artifacts; use "
-                "get_pdi_path() to locate the cache-mode main.pdi)."
-            )
+            if npu_cpp_path is not None and not explicit_paths:
+                raise ValueError(
+                    "compile(): npu_cpp_path requires explicit xclbin_path "
+                    "(the JIT cache does not track caller-named C++ builder "
+                    "artifacts)."
+                )
 
-        if npu_cpp_path is not None and not explicit_paths:
-            raise ValueError(
-                "compile(): npu_cpp_path requires explicit xclbin_path "
-                "(the JIT cache does not track caller-named C++ builder "
-                "artifacts)."
-            )
+            if not isinstance(self.mlir_generator, Path):
+                self._bind_generation_device()
 
-        if not isinstance(self.mlir_generator, Path):
-            self._bind_generation_device()
-
-        # The DDR-patch fold ABI feeds both the cache key (via _compute_cache_hash)
-        # and the aiecc invocation below. Both read it from the single resolver
-        # _resolve_fold_ddr_addr_offset() -> the backend's FOLDS_DDR_ADDR_OFFSET
-        # class attribute, so they can never disagree.
-        fold_ddr_addr_offset = self._resolve_fold_ddr_addr_offset()
-
-        if explicit_paths:
-            assert xclbin_path is not None
-            # Absolutize so compile_external_kernel's `cwd=kernel_dir` doesn't
-            # turn relative paths into "build/build/foo.cc" etc.
-            xclbin_path = Path(xclbin_path).resolve()
-            inst_path = Path(inst_path).resolve() if inst_path is not None else None
-            if elf_path is not None:
-                elf_path = Path(elf_path).resolve()
-            if pdi_path is not None:
-                pdi_path = Path(pdi_path).resolve()
-            if npu_cpp_path is not None:
-                npu_cpp_path = Path(npu_cpp_path).resolve()
-            # Per-xclbin scratch dir (mirrors aiecc's default <input>.prj
-            # naming) so two siblings sharing one build/ don't clobber each
-            # other's input_with_addresses.mlir / .o files.
-            kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
-            lock_file_path = kernel_dir / ".lock"
-        else:
-            cache_hash = self._compute_cache_hash()
-            kernel_dir = NPU_CACHE_HOME / cache_hash
-            lock_file_path = kernel_dir / ".lock"
-            xclbin_path = kernel_dir / "final.xclbin"
-            inst_path = None if has_dispatch else kernel_dir / "insts.bin"
-
-        dispatch_so_path = None
-
-        with file_lock(lock_file_path, timeout_seconds=COMPILE_LOCK_TIMEOUT_SECONDS):
-            os.makedirs(kernel_dir, exist_ok=True)
-
-            companion_path = (
-                _manifest.resolve_dispatch_library(kernel_dir)
-                if has_dispatch
-                else inst_path
-            )
-            xclbin_exists = xclbin_path.exists()
-            inst_exists = companion_path is not None and companion_path.exists()
+            # The DDR-patch fold ABI feeds both the cache key (via _compute_cache_hash)
+            # and the aiecc invocation below. Both read it from the single resolver
+            # _resolve_fold_ddr_addr_offset() -> the backend's FOLDS_DDR_ADDR_OFFSET
+            # class attribute, so they can never disagree.
+            fold_ddr_addr_offset = self._resolve_fold_ddr_addr_offset()
 
             if explicit_paths:
-                build_key = self._compute_cache_hash(
-                    full_elf=False,
-                    emit_elf=elf_path is not None,
-                    work_dir=kernel_dir,
+                assert xclbin_path is not None
+                # Absolutize so compile_external_kernel's `cwd=kernel_dir` doesn't
+                # turn relative paths into "build/build/foo.cc" etc.
+                xclbin_path = Path(xclbin_path).resolve()
+                inst_path = Path(inst_path).resolve() if inst_path is not None else None
+                if elf_path is not None:
+                    elf_path = Path(elf_path).resolve()
+                if pdi_path is not None:
+                    pdi_path = Path(pdi_path).resolve()
+                if npu_cpp_path is not None:
+                    npu_cpp_path = Path(npu_cpp_path).resolve()
+                # Per-xclbin scratch dir (mirrors aiecc's default <input>.prj
+                # naming) so two siblings sharing one build/ don't clobber each
+                # other's input_with_addresses.mlir / .o files.
+                kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
+                lock_file_path = kernel_dir / ".lock"
+            else:
+                cache_hash = self._compute_cache_hash()
+                kernel_dir = NPU_CACHE_HOME / cache_hash
+                lock_file_path = kernel_dir / ".lock"
+                xclbin_path = kernel_dir / "final.xclbin"
+                inst_path = None if has_dispatch else kernel_dir / "insts.bin"
+
+            dispatch_so_path = None
+
+            with file_lock(
+                lock_file_path, timeout_seconds=COMPILE_LOCK_TIMEOUT_SECONDS
+            ):
+                os.makedirs(kernel_dir, exist_ok=True)
+
+                companion_path = (
+                    _manifest.resolve_dispatch_library(kernel_dir)
+                    if has_dispatch
+                    else inst_path
                 )
-                dispatch_library = companion_path if has_dispatch else None
-                outputs = {
-                    role: Path(p)
-                    for role, p in (
-                        ("xclbin", xclbin_path),
-                        ("insts", inst_path),
-                        ("elf", elf_path),
-                        ("pdi", pdi_path),
-                        ("npu_cpp", npu_cpp_path),
+                xclbin_exists = xclbin_path.exists()
+                inst_exists = companion_path is not None and companion_path.exists()
+
+                if explicit_paths:
+                    build_key = self._compute_cache_hash(
+                        full_elf=False,
+                        emit_elf=elf_path is not None,
+                        work_dir=kernel_dir,
                     )
-                    if p is not None
-                }
-                if self._reuse_explicit_outputs(
-                    kernel_dir,
-                    build_key,
-                    (
-                        {**outputs, "dispatch_library": dispatch_library}
-                        if has_dispatch
-                        else outputs
-                    ),
-                    shared=not has_dispatch,
+                    dispatch_library = companion_path if has_dispatch else None
+                    outputs = {
+                        role: Path(p)
+                        for role, p in (
+                            ("xclbin", xclbin_path),
+                            ("insts", inst_path),
+                            ("elf", elf_path),
+                            ("pdi", pdi_path),
+                            ("npu_cpp", npu_cpp_path),
+                        )
+                        if p is not None
+                    }
+                    if self._reuse_explicit_outputs(
+                        kernel_dir,
+                        build_key,
+                        (
+                            {**outputs, "dispatch_library": dispatch_library}
+                            if has_dispatch
+                            else outputs
+                        ),
+                        shared=not has_dispatch,
+                    ):
+                        self._record_artifacts(
+                            kernel_dir,
+                            xclbin=xclbin_path,
+                            insts=inst_path,
+                            elf=Path(elf_path) if elf_path is not None else None,
+                            dispatch_library=dispatch_library,
+                        )
+                        return xclbin_path, inst_path
+
+                if (
+                    not explicit_paths
+                    and self.use_cache
+                    and self._serve_cached_full_elf(
+                        kernel_dir, kernel_dir / "design.elf"
+                    )
                 ):
+                    self.full_elf = True
+                    self._inferred_full_elf = True
+                    return kernel_dir / "design.elf", None
+
+                if (
+                    not explicit_paths
+                    and self.use_cache
+                    and xclbin_exists
+                    and (inst_exists or has_dispatch)
+                ):
+                    if not _manifest.is_valid(kernel_dir):
+                        # A recorded input moved.  The directory holds nested caches
+                        # of its own -- compile_external_kernel skips any .o that is
+                        # already present -- so a stale entry has to be cleared, not
+                        # merely rebuilt over.
+                        logger.debug(
+                            "Inputs changed for '%s'; discarding cache entry",
+                            self.generator_name,
+                        )
+                        _cleanup_failed_compilation(kernel_dir)
+                        xclbin_exists = inst_exists = False
+                    elif not all(
+                        (kernel_dir / f"insts_{name.replace(':', '_')}.bin").exists()
+                        for name in _manifest.resolve_entries(kernel_dir)
+                    ):
+                        logger.debug(
+                            "An entry's instruction stream is missing for '%s'; "
+                            "rebuilding",
+                            self.generator_name,
+                        )
+                        inst_exists = False
+
+                if (
+                    not explicit_paths
+                    and self.use_cache
+                    and xclbin_exists
+                    and inst_exists
+                ):
+                    logger.debug(
+                        "Cache hit for '%s' (hash=%s)", self.generator_name, cache_hash
+                    )
                     self._record_artifacts(
                         kernel_dir,
                         xclbin=xclbin_path,
                         insts=inst_path,
-                        elf=Path(elf_path) if elf_path is not None else None,
-                        dispatch_library=dispatch_library,
+                        dispatch_library=companion_path if has_dispatch else None,
                     )
                     return xclbin_path, inst_path
 
-            if (
-                not explicit_paths
-                and self.use_cache
-                and self._serve_cached_full_elf(kernel_dir, kernel_dir / "design.elf")
-            ):
-                self.full_elf = True
-                self._inferred_full_elf = True
-                return kernel_dir / "design.elf", None
-
-            if (
-                not explicit_paths
-                and self.use_cache
-                and xclbin_exists
-                and (inst_exists or has_dispatch)
-            ):
-                if not _manifest.is_valid(kernel_dir):
-                    # A recorded input moved.  The directory holds nested caches
-                    # of its own -- compile_external_kernel skips any .o that is
-                    # already present -- so a stale entry has to be cleared, not
-                    # merely rebuilt over.
+                if explicit_paths:
                     logger.debug(
-                        "Inputs changed for '%s'; discarding cache entry",
+                        "Compiling '%s' to %s (explicit paths)",
                         self.generator_name,
+                        xclbin_path,
                     )
-                    _cleanup_failed_compilation(kernel_dir)
-                    xclbin_exists = inst_exists = False
-                elif not all(
-                    (kernel_dir / f"insts_{name.replace(':', '_')}.bin").exists()
-                    for name in _manifest.resolve_entries(kernel_dir)
-                ):
+                else:
                     logger.debug(
-                        "An entry's instruction stream is missing for '%s'; "
-                        "rebuilding",
+                        "Cache miss for '%s' (hash=%s); compiling...",
                         self.generator_name,
+                        cache_hash,
                     )
-                    inst_exists = False
 
-            if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
-                logger.debug(
-                    "Cache hit for '%s' (hash=%s)", self.generator_name, cache_hash
-                )
-                self._record_artifacts(
-                    kernel_dir,
-                    xclbin=xclbin_path,
-                    insts=inst_path,
-                    dispatch_library=companion_path if has_dispatch else None,
-                )
-                return xclbin_path, inst_path
-
-            if explicit_paths:
-                logger.debug(
-                    "Compiling '%s' to %s (explicit paths)",
-                    self.generator_name,
-                    xclbin_path,
-                )
-            else:
-                logger.debug(
-                    "Cache miss for '%s' (hash=%s); compiling...",
-                    self.generator_name,
-                    cache_hash,
-                )
-
-            try:
-                if self._infer_full_elf():
-                    if explicit_paths:
-                        raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
-                    if has_dispatch:
-                        raise NotImplementedError(
-                            "DispatchTime[T] parameters in a multi-configuration "
-                            "Program: it compiles to a full ELF, which bakes one "
-                            "static instruction stream."
+                try:
+                    if self._infer_full_elf():
+                        if explicit_paths:
+                            raise ValueError(_MULTI_CONFIGURATION_OUTPUTS)
+                        if has_dispatch:
+                            raise NotImplementedError(
+                                "DispatchTime[T] parameters in a multi-configuration "
+                                "Program: it compiles to a full ELF, which bakes one "
+                                "static instruction stream."
+                            )
+                        return self._build_full_elf(
+                            kernel_dir, kernel_dir / "design.elf", build_key=None
                         )
-                    return self._build_full_elf(
-                        kernel_dir, kernel_dir / "design.elf", build_key=None
-                    )
-                generated = self._generated_for(full_elf=False)
-                external_kernels = generated.external_kernels
-                use_chess = self._resolve_use_chess(external_kernels)
-                digests: dict[str, str] = {}
+                    generated = self._generated_for(full_elf=False)
+                    external_kernels = generated.external_kernels
+                    use_chess = self._resolve_use_chess(external_kernels)
+                    digests: dict[str, str] = {}
 
-                several_entries = len(generated.entries) > 1
-                if several_entries and (explicit_paths or has_dispatch):
-                    raise ValueError(
-                        f"{self.generator_name!r} has several entries "
-                        f"{list(generated.entries)}; they compile only into the "
-                        "JIT cache, without DispatchTime[T] parameters."
+                    several_entries = len(generated.entries) > 1
+                    if several_entries and (explicit_paths or has_dispatch):
+                        raise ValueError(
+                            f"{self.generator_name!r} has several entries "
+                            f"{list(generated.entries)}; they compile only into the "
+                            "JIT cache, without DispatchTime[T] parameters."
+                        )
+                    compiler_options = [
+                        *self.aiecc_flags,
+                        *(
+                            generated.entries_stream_options
+                            if several_entries
+                            else generated.entry_stream_options
+                        ),
+                    ]
+                    if has_dispatch:
+                        compiler_options.append("--get=npu_lowered.mlir")
+                    compile_mlir_module(
+                        mlir_module=generated.mlir_text,
+                        insts_path=(
+                            kernel_dir / "insts_{0}.bin"
+                            if several_entries
+                            else inst_path
+                        ),
+                        xclbin_path=xclbin_path,
+                        elf_path=elf_path,
+                        pdi_path=pdi_path,
+                        work_dir=kernel_dir,
+                        use_chess=use_chess,
+                        options=compiler_options or None,
+                        fold_ddr_addr_offset=fold_ddr_addr_offset,
+                        npu_cpp_path=(
+                            kernel_dir / "dispatch_gen.cpp"
+                            if has_dispatch
+                            else npu_cpp_path
+                        ),
+                        npu_cpp_emit_dispatch_shim=has_dispatch,
+                        device_cache_dir=self._device_cache_dir(),
+                        build_link_files=functools.partial(
+                            self._build_kernels,
+                            kernel_dir,
+                            external_kernels,
+                            digests,
+                            generated.devices,
+                        ),
                     )
-                compiler_options = [
-                    *self.aiecc_flags,
-                    *(
-                        generated.entries_stream_options
-                        if several_entries
-                        else generated.entry_stream_options
-                    ),
-                ]
-                if has_dispatch:
-                    compiler_options.append("--get=npu_lowered.mlir")
-                compile_mlir_module(
-                    mlir_module=generated.mlir_text,
-                    insts_path=(
-                        kernel_dir / "insts_{0}.bin" if several_entries else inst_path
-                    ),
-                    xclbin_path=xclbin_path,
-                    elf_path=elf_path,
-                    pdi_path=pdi_path,
-                    work_dir=kernel_dir,
-                    use_chess=use_chess,
-                    options=compiler_options or None,
-                    fold_ddr_addr_offset=fold_ddr_addr_offset,
-                    npu_cpp_path=(
-                        kernel_dir / "dispatch_gen.cpp"
-                        if has_dispatch
-                        else npu_cpp_path
-                    ),
-                    npu_cpp_emit_dispatch_shim=has_dispatch,
-                    device_cache_dir=self._device_cache_dir(),
-                    build_link_files=functools.partial(
-                        self._build_kernels,
+
+                    if several_entries:
+                        assert inst_path is not None and generated.entry is not None
+                        streams = [
+                            kernel_dir / f"insts_{name.replace(':', '_')}.bin"
+                            for name in generated.entries
+                        ]
+                        missing_streams = [p for p in streams if not p.exists()]
+                        if missing_streams:
+                            raise RuntimeError(
+                                "[aiecc] Compilation appeared to succeed but did not "
+                                "write the entries' instruction streams: "
+                                + ", ".join(str(p) for p in missing_streams)
+                            )
+                        # insts.bin stays the default entry's, as for one entry.
+                        shutil.copyfile(streams[0], inst_path)
+
+                    # aiecc may exit 0 even when xclbin generation fails silently
+                    # (missing xclbinutil/bootgen); verify outputs exist.
+                    expected_outputs = [xclbin_path]
+                    if inst_path is not None:
+                        expected_outputs.append(inst_path)
+                    if elf_path is not None:
+                        expected_outputs.append(Path(elf_path))
+                    if pdi_path is not None:
+                        expected_outputs.append(Path(pdi_path))
+                    if npu_cpp_path is not None:
+                        expected_outputs.append(Path(npu_cpp_path))
+                    missing = [p for p in expected_outputs if not p.exists()]
+                    if missing:
+                        raise RuntimeError(
+                            "[aiecc] Compilation appeared to succeed (exit code 0) "
+                            "but expected output file(s) were not created: "
+                            + ", ".join(str(p) for p in missing)
+                        )
+
+                    manifest_sources = list(self.source_files)
+                    if has_dispatch:
+                        from aie.utils import config
+
+                        dispatch_so_path = compile_dispatch_bridge(
+                            kernel_dir,
+                            self.dispatch_params,
+                            self.dispatch_param_types,
+                        )
+                        if not dispatch_so_path.exists():
+                            raise RuntimeError(
+                                "[dispatch bridge] Compilation appeared to succeed "
+                                f"but {dispatch_so_path} was not created."
+                            )
+                        manifest_sources.append(
+                            Path(config.runtime_header_path())
+                            / "aie/Runtime/TxnEncoding.h"
+                        )
+
+                    # Build succeeded: record what it consumed, so the next lookup
+                    # can check the real inputs instead of guessing at them.
+                    _manifest.record(
                         kernel_dir,
                         external_kernels,
-                        digests,
-                        generated.devices,
-                    ),
-                )
-
-                if several_entries:
-                    assert inst_path is not None and generated.entry is not None
-                    streams = [
-                        kernel_dir / f"insts_{name.replace(':', '_')}.bin"
-                        for name in generated.entries
-                    ]
-                    missing_streams = [p for p in streams if not p.exists()]
-                    if missing_streams:
-                        raise RuntimeError(
-                            "[aiecc] Compilation appeared to succeed but did not "
-                            "write the entries' instruction streams: "
-                            + ", ".join(str(p) for p in missing_streams)
+                        manifest_sources,
+                        used_chess=use_chess,
+                        dispatch_library=(
+                            dispatch_so_path.name
+                            if dispatch_so_path is not None
+                            else None
+                        ),
+                        digests=digests,
+                        entries=generated.entries if several_entries else (),
+                    )
+                    if explicit_paths:
+                        if dispatch_so_path is not None:
+                            outputs["dispatch_library"] = dispatch_so_path
+                        self._record_explicit_outputs(
+                            kernel_dir, build_key, outputs, shared=not has_dispatch
                         )
-                    # insts.bin stays the default entry's, as for one entry.
-                    shutil.copyfile(streams[0], inst_path)
+                except Exception:
+                    _cleanup_failed_compilation(kernel_dir)
+                    raise
 
-                # aiecc may exit 0 even when xclbin generation fails silently
-                # (missing xclbinutil/bootgen); verify outputs exist.
-                expected_outputs = [xclbin_path]
-                if inst_path is not None:
-                    expected_outputs.append(inst_path)
-                if elf_path is not None:
-                    expected_outputs.append(Path(elf_path))
-                if pdi_path is not None:
-                    expected_outputs.append(Path(pdi_path))
-                if npu_cpp_path is not None:
-                    expected_outputs.append(Path(npu_cpp_path))
-                missing = [p for p in expected_outputs if not p.exists()]
-                if missing:
-                    raise RuntimeError(
-                        "[aiecc] Compilation appeared to succeed (exit code 0) "
-                        "but expected output file(s) were not created: "
-                        + ", ".join(str(p) for p in missing)
-                    )
-
-                manifest_sources = list(self.source_files)
-                if has_dispatch:
-                    from aie.utils import config
-
-                    dispatch_so_path = compile_dispatch_bridge(
-                        kernel_dir,
-                        self.dispatch_params,
-                        self.dispatch_param_types,
-                    )
-                    if not dispatch_so_path.exists():
-                        raise RuntimeError(
-                            "[dispatch bridge] Compilation appeared to succeed "
-                            f"but {dispatch_so_path} was not created."
-                        )
-                    manifest_sources.append(
-                        Path(config.runtime_header_path()) / "aie/Runtime/TxnEncoding.h"
-                    )
-
-                # Build succeeded: record what it consumed, so the next lookup
-                # can check the real inputs instead of guessing at them.
-                _manifest.record(
-                    kernel_dir,
-                    external_kernels,
-                    manifest_sources,
-                    used_chess=use_chess,
-                    dispatch_library=(
-                        dispatch_so_path.name if dispatch_so_path is not None else None
-                    ),
-                    digests=digests,
-                    entries=generated.entries if several_entries else (),
-                )
-                if explicit_paths:
-                    if dispatch_so_path is not None:
-                        outputs["dispatch_library"] = dispatch_so_path
-                    self._record_explicit_outputs(
-                        kernel_dir, build_key, outputs, shared=not has_dispatch
-                    )
-            except Exception:
-                _cleanup_failed_compilation(kernel_dir)
-                raise
-
-        self._record_artifacts(
-            kernel_dir,
-            xclbin=xclbin_path,
-            insts=inst_path,
-            elf=Path(elf_path) if elf_path is not None else None,
-            dispatch_library=dispatch_so_path,
-        )
-        return xclbin_path, inst_path
+            self._record_artifacts(
+                kernel_dir,
+                xclbin=xclbin_path,
+                insts=inst_path,
+                elf=Path(elf_path) if elf_path is not None else None,
+                dispatch_library=dispatch_so_path,
+            )
+            return xclbin_path, inst_path
+        except Exception as exc:
+            raise hide_internal_frames(exc)
 
     def _infer_full_elf(self) -> bool:
         if self.full_elf:

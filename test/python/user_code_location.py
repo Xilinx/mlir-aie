@@ -13,6 +13,7 @@ import numpy as np
 
 from aie.dialects.aie import buffer, tile
 from aie.extras.context import mlir_mod_ctx
+from aie.ir import CallSiteLoc
 from aie.iron import Buffer
 from aie.iron.device import Tile
 
@@ -24,10 +25,12 @@ load_col, store_col = (11, 4) if sys.version_info >= (3, 11) else (0, 0)
 def located(module, names):
     ops = [op for op in module.body.operations if op.operation.name in names]
     assert [op.operation.name for op in ops] == names, ops
-    return [
-        (op.location.filename, op.location.start_line, op.location.start_col)
-        for op in ops
+    # The statement is the callee; the calls that led to it follow.
+    locs = [
+        loc.callee if isinstance(loc, CallSiteLoc) else loc
+        for loc in (op.location for op in ops)
     ]
+    return [(loc.filename, loc.start_line, loc.start_col) for loc in locs]
 
 
 def check(build):

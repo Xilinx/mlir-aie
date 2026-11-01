@@ -10,7 +10,7 @@
 
 // RUN: not aie-opt --pass-pipeline='builtin.module(aie-resource-stages)' %s 2>&1 | FileCheck %s
 
-// CHECK: error: 'aie.buffer' op could not be placed: buffer "in_cons_buff_{{[01]}}" needs 32768 bytes and this tile has no room left for it
+// CHECK: error: 'aie.buffer' op could not be placed: buffer "in__cons__buf{{[01]}}" needs 32768 bytes and this tile has no room left for it
 
 module {
   aie.device(npu1_1col) {

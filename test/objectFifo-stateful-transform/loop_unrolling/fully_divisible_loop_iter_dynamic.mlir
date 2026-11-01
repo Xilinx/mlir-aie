@@ -15,10 +15,10 @@
 // rewrite this to step 2 and emit two acquire/release bodies).
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK-DAG:           %[[T12:.*]] = aie.tile(1, 2)
-// CHECK-DAG:           %[[B0:.*]] = aie.buffer(%[[T12]]) {sym_name = "loop_of_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[B1:.*]] = aie.buffer(%[[T12]]) {sym_name = "loop_of_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[L0:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "loop_of_lock_0"}
-// CHECK-DAG:           %[[L1:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "loop_of_lock_1"}
+// CHECK-DAG:           %[[B0:.*]] = aie.buffer(%[[T12]]) {sym_name = "loop_of__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[B1:.*]] = aie.buffer(%[[T12]]) {sym_name = "loop_of__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[L0:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "loop_of__lock0"}
+// CHECK-DAG:           %[[L1:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "loop_of__lock1"}
 // CHECK:           func.func @some_work(%{{.*}}: memref<16xi32>, %{{.*}}: index) {
 // CHECK:             return
 // CHECK:           }

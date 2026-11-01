@@ -22,7 +22,7 @@ module {
         %true = arith.constant true
         scf.condition(%true)
       } do {
-        // expected-error@+1 {{takes from @in_cons each time its loop repeats, but the loop releases none of them, so the core keeps the same objects forever and the end filling the pool stops once it is full}}
+        // expected-error@+1 {{takes from @in__cons each time its loop repeats, but the loop releases none of them, so the core keeps the same objects forever and the end filling the pool stops once it is full}}
         %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
         scf.yield
       }
@@ -46,7 +46,7 @@ module {
         %true = arith.constant true
         scf.condition(%true)
       } do {
-        // expected-error@+1 {{takes from @out_prod each time its loop repeats, but the loop releases none of them, so nothing the core writes there is ever sent}}
+        // expected-error@+1 {{takes from @out__prod each time its loop repeats, but the loop releases none of them, so nothing the core writes there is ever sent}}
         %o = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
         scf.yield
       }
@@ -70,7 +70,7 @@ module {
       %c1 = arith.constant 1 : index
       %cmax = arith.constant 4294967295 : index
       scf.for %i = %c0 to %cmax step %c1 {
-        // expected-error@+1 {{takes from @in_cons each time its loop repeats, but the loop releases none of them}}
+        // expected-error@+1 {{takes from @in__cons each time its loop repeats, but the loop releases none of them}}
         %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
       }
       aie.end

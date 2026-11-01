@@ -15,9 +15,9 @@
 // take turns on one.
 // SA-NOT:      warning
 // CHECK-LABEL: module @pack
-// CHECK-DAG:   aie.shim_dma_allocation @in_a_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
-// CHECK-DAG:   aie.shim_dma_allocation @in_b_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
-// CHECK-DAG:   aie.shim_dma_allocation @in_c_shim_alloc(%{{.*}}, MM2S, 1)
+// CHECK-DAG:   aie.shim_dma_allocation @in_a__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK-DAG:   aie.shim_dma_allocation @in_b__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK-DAG:   aie.shim_dma_allocation @in_c__shim_alloc(%{{.*}}, MM2S, 1)
 module @pack {
   aie.device(npu2_1col) {
     %s_a = aie.logical_tile<ShimNOCTile>(?, ?)
@@ -64,9 +64,9 @@ module @pack {
 // sending end is never done before its sequence ends: a shim MM2S task
 // reports itself complete before its words leave the shim.)
 // CHECK-LABEL: module @pinned_freed
-// CHECK-DAG:   aie.shim_dma_allocation @out_a_shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @out_b_shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @out_c_shim_alloc(%{{.*}}, S2MM, 1)
+// CHECK-DAG:   aie.shim_dma_allocation @out_a__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @out_b__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @out_c__shim_alloc(%{{.*}}, S2MM, 1)
 module @pinned_freed {
   aie.device(npu2_1col) {
     %s_a = aie.logical_tile<ShimNOCTile>(0, 0)
@@ -120,8 +120,8 @@ module @pinned_freed {
 
 // Two ends fit the tile, so nothing is shared and both keep a channel each.
 // CHECK-LABEL: module @fits
-// CHECK-DAG:   aie.shim_dma_allocation @in_a_shim_alloc(%{{.*}}, MM2S, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @in_b_shim_alloc(%{{.*}}, MM2S, 1)
+// CHECK-DAG:   aie.shim_dma_allocation @in_a__shim_alloc(%{{.*}}, MM2S, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @in_b__shim_alloc(%{{.*}}, MM2S, 1)
 module @fits {
   aie.device(npu2_1col) {
     %s_a = aie.logical_tile<ShimNOCTile>(?, ?)

@@ -27,12 +27,12 @@ module @relocated_core_locks {
 }
 // CHECK-LABEL: module @relocated_core_locks
 // CHECK: %[[READER:.*]] = aie.tile(2, 2)
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_prod_lock_0"
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_cons_lock_0"
+// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p__prodlock0"
+// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p__conslock0"
 // LOWER-LABEL: module @relocated_core_locks
 // LOWER: %[[READER:.*]] = aie.tile(2, 2)
-// LOWER: %[[FREE:.*]] = aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_0"
-// LOWER: %[[FULL:.*]] = aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_0"
+// LOWER: %[[FREE:.*]] = aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p__prodlock0"
+// LOWER: %[[FULL:.*]] = aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p__conslock0"
 // LOWER: aie.core(%[[READER]])
 // LOWER: aie.use_lock(%[[FULL]], AcquireGreaterEqual,
 // LOWER: aie.use_lock(%[[FREE]], Release,
@@ -61,12 +61,12 @@ module @core_and_dma_locks {
 }
 // CHECK-LABEL: module @core_and_dma_locks
 // CHECK: %[[MEMORY:.*]] = aie.tile(0, 3)
-// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p_prod_lock_0"
-// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p_cons_lock_0"
+// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p__prodlock0"
+// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p__conslock0"
 // LOWER-LABEL: module @core_and_dma_locks
 // LOWER: %[[MEMORY:.*]] = aie.tile(0, 3)
-// LOWER: %[[FREE:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_0"
-// LOWER: %[[FULL:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_0"
+// LOWER: %[[FREE:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p__prodlock0"
+// LOWER: %[[FULL:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p__conslock0"
 // LOWER: aie.core
 // LOWER: aie.use_lock(%[[FULL]], AcquireGreaterEqual,
 // LOWER: aie.use_lock(%[[FREE]], Release,
@@ -88,12 +88,12 @@ module @delegated_core_locks {
 }
 // CHECK-LABEL: module @delegated_core_locks
 // CHECK: %[[READER:.*]] = aie.tile(0, 2)
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_prod_lock_0"
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_cons_lock_0"
+// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p__prodlock0"
+// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p__conslock0"
 // LOWER-LABEL: module @delegated_core_locks
 // LOWER: %[[READER:.*]] = aie.tile(0, 2)
-// LOWER: aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_0"
-// LOWER: aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_0"
+// LOWER: aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p__prodlock0"
+// LOWER: aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p__conslock0"
 
 // -----
 
@@ -115,10 +115,10 @@ module @relocated_binary_locks {
 }
 // CHECK-LABEL: module @relocated_binary_locks
 // CHECK: %[[READER:.*]] = aie.tile(2, 2)
-// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p_lock_0"
+// CHECK: aie.lock(%[[READER]]) {{.*}}sym_name = "p__lock0"
 // LOWER-LABEL: module @relocated_binary_locks
 // LOWER: %[[READER:.*]] = aie.tile(2, 2)
-// LOWER: %[[LOCK:.*]] = aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p_lock_0"
+// LOWER: %[[LOCK:.*]] = aie.lock(%[[READER]], {{[0-9]+}}) {{.*}}sym_name = "p__lock0"
 // LOWER: aie.core
 // LOWER: scf.yield %[[LOCK]]
 // LOWER: aie.use_lock
@@ -145,12 +145,12 @@ module @neighbor_core_locks {
 }
 // CHECK-LABEL: module @neighbor_core_locks
 // CHECK: %[[HOME:.*]] = aie.tile(0, 2)
-// CHECK: aie.lock(%[[HOME]]) {{.*}}sym_name = "p_prod_lock_0"
-// CHECK: aie.lock(%[[HOME]]) {{.*}}sym_name = "p_cons_lock_0"
+// CHECK: aie.lock(%[[HOME]]) {{.*}}sym_name = "p__prodlock0"
+// CHECK: aie.lock(%[[HOME]]) {{.*}}sym_name = "p__conslock0"
 // LOWER-LABEL: module @neighbor_core_locks
 // LOWER: %[[HOME:.*]] = aie.tile(0, 2)
-// LOWER: %[[FREE:.*]] = aie.lock(%[[HOME]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_0"
-// LOWER: %[[FULL:.*]] = aie.lock(%[[HOME]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_0"
+// LOWER: %[[FREE:.*]] = aie.lock(%[[HOME]], {{[0-9]+}}) {{.*}}sym_name = "p__prodlock0"
+// LOWER: %[[FULL:.*]] = aie.lock(%[[HOME]], {{[0-9]+}}) {{.*}}sym_name = "p__conslock0"
 // LOWER: aie.core
 // LOWER: aie.use_lock(%[[FULL]], AcquireGreaterEqual,
 // LOWER: aie.use_lock(%[[FREE]], Release,
@@ -182,13 +182,13 @@ module @selected_segment_locks {
 }
 // CHECK-LABEL: module @selected_segment_locks
 // CHECK: %[[MEMORY:.*]] = aie.tile(0, 3)
-// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p_prod_lock_1"
-// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p_cons_lock_1"
+// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p__prodlock1"
+// CHECK: aie.lock(%[[MEMORY]]) {{.*}}sym_name = "p__conslock1"
 // CHECK: produceLock = @free
 // LOWER-LABEL: module @selected_segment_locks
 // LOWER: %[[MEMORY:.*]] = aie.tile(0, 3)
-// LOWER: %[[FREE:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p_prod_lock_1"
-// LOWER: %[[FULL:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p_cons_lock_1"
+// LOWER: %[[FREE:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p__prodlock1"
+// LOWER: %[[FULL:.*]] = aie.lock(%[[MEMORY]], {{[0-9]+}}) {{.*}}sym_name = "p__conslock1"
 // LOWER: aie.core
 // LOWER: aie.use_lock(%[[FULL]], AcquireGreaterEqual,
 // LOWER: aie.use_lock(%[[FREE]], Release,

@@ -27,7 +27,7 @@ module {
       %c8 = arith.constant 8 : index
       scf.for %i = %c0 to %c8 step %c1 {
         %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
-        // expected-error@+1 {{releases 8 objects through @in_cons over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), so the core would wait forever for the rest}}
+        // expected-error@+1 {{releases 8 objects through @in__cons over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), so the core would wait forever for the rest}}
         aie.objectfifo.release @in (Consume, 1)
       }
       aie.end
@@ -75,7 +75,7 @@ module {
       scf.for %i = %c0 to %c2 step %c1 {
         scf.for %j = %c0 to %c3 step %c1 {
           %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
-          // expected-error@+1 {{releases 6 objects through @in_cons over the run, but the pool's DMA endpoint stops after 4}}
+          // expected-error@+1 {{releases 6 objects through @in__cons over the run, but the pool's DMA endpoint stops after 4}}
           aie.objectfifo.release @in (Consume, 1)
         }
       }
@@ -152,7 +152,7 @@ module {
       %c5 = arith.constant 5 : index
       scf.for %i = %c0 to %c5 step %c1 {
         %o = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
-        // expected-error@+1 {{releases 5 objects through @out_prod over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), leaving 1 in the pool unsent}}
+        // expected-error@+1 {{releases 5 objects through @out__prod over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), leaving 1 in the pool unsent}}
         aie.objectfifo.release @out (Produce, 1)
       }
       aie.end
@@ -177,7 +177,7 @@ module {
       %c7 = arith.constant 7 : index
       scf.for %i = %c0 to %c7 step %c1 {
         %o = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
-        // expected-error@+1 {{releases 7 objects through @out_prod over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), so the core would wait forever for the rest}}
+        // expected-error@+1 {{releases 7 objects through @out__prod over the run, but the pool's DMA endpoint stops after 4 (iterCount 2 x depth 2), so the core would wait forever for the rest}}
         aie.objectfifo.release @out (Produce, 1)
       }
       aie.end
@@ -228,7 +228,7 @@ module {
   aie.device(npu1_1col) {
     %shim = aie.tile(0, 0)
     %tile = aie.tile(0, 2)
-    // expected-error@+2 {{fills 8 objects (iterCount 4 x depth 2) before it stops, but the core releases exactly 3 through @in_cons, leaving room for only 5, so the DMA endpoint would wait forever for the rest}}
+    // expected-error@+2 {{fills 8 objects (iterCount 4 x depth 2) before it stops, but the core releases exactly 3 through @in__cons, leaving room for only 5, so the DMA endpoint would wait forever for the rest}}
     // expected-note@+1 {{the core endpoint is here}}
     aie.objectfifo @in(%shim, {%tile}, 2 : i32) {iter_count = 4 : i32} : !aie.objectfifo<memref<16xi32>>
     %core = aie.core(%tile) {
@@ -275,7 +275,7 @@ module {
   aie.device(npu1_1col) {
     %shim = aie.tile(0, 0)
     %tile = aie.tile(0, 2)
-    // expected-error@+2 {{drains 4 objects (iterCount 2 x depth 2) before it stops, but the core releases exactly 3 through @out_prod, so the DMA endpoint would wait forever for the rest}}
+    // expected-error@+2 {{drains 4 objects (iterCount 2 x depth 2) before it stops, but the core releases exactly 3 through @out__prod, so the DMA endpoint would wait forever for the rest}}
     // expected-note@+1 {{the core endpoint is here}}
     aie.objectfifo @out(%tile, {%shim}, 2 : i32) {iter_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
     %core = aie.core(%tile) {
@@ -318,7 +318,7 @@ module {
   aie.device(npu1_1col) {
     %shim = aie.tile(0, 0)
     %tile = aie.tile(0, 2)
-    // expected-error@+2 {{fills 2 objects (iterCount 2 x depth 1) before it stops, but the core releases exactly 0 through @w_cons, leaving room for only 1}}
+    // expected-error@+2 {{fills 2 objects (iterCount 2 x depth 1) before it stops, but the core releases exactly 0 through @w__cons, leaving room for only 1}}
     // expected-note@+1 {{the core endpoint is here}}
     aie.objectfifo @w(%shim, {%tile}, 1 : i32) {iter_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
     %core = aie.core(%tile) {

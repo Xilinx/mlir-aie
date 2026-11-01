@@ -20,8 +20,8 @@
 // CHECK-DAG: %[[S0:.*]] = aie.tile(0, 0)
 // CHECK-DAG: %[[S1:.*]] = aie.tile(1, 0)
 // CHECK-DAG: %[[S2:.*]] = aie.tile(2, 0)
-// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "join_out_buff_0"}
-// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "join_out_buff_1"}
+// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "join_out__buf0"}
+// CHECK-DAG: aie.buffer(%[[M1]]) {sym_name = "join_out__buf1"}
 // CHECK-DAG: aie.flow(%[[S0]], DMA : 0, %[[M0]], DMA : 4)
 // CHECK-DAG: aie.flow(%[[S0]], DMA : 1, %[[M0]], DMA : 5)
 // CHECK-DAG: aie.flow(%[[S1]], DMA : 0, %[[M0]], DMA : 0)

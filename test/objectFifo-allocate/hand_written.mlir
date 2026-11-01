@@ -36,8 +36,8 @@ module @hand_written {
 }
 
 // CHECK-LABEL: @hand_written
-// CHECK-NOT: prod_buff_0
-// CHECK-NOT: prod_prod_lock_0
+// CHECK-NOT: prod_pool__buf0
+// CHECK-NOT: prod_pool__prodlock0
 // CHECK: aie.objectfifo.pool @prod_pool({{.*}}) {buffers = [@mine_0, @mine_1], depth = 2 : i32}
 // CHECK: aie.objectfifo.segment @s0 {consumeLock = @full, offset = 0 : i32, produceLock = @free, size = 16 : i32}
 // CHECK: aie.objectfifo.dma_endpoint @prod_dma({{.*}}) drains @prod_pool {channelIndex = 1 : i32}

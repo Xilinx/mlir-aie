@@ -11,28 +11,28 @@
 // CHECK:   aie.device(xcve2302) {
 // CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK-DAG:     %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK-DAG:     %of_producer_stream_cons_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:     %of_producer_stream_cons_buff_1 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream_cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:     %of_producer_stream_cons_buff_2 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream_cons_buff_2"} : memref<16xi32>
-// CHECK-DAG:     %of_producer_stream_cons_prod_lock_0 = aie.lock(%tile_1_3) {init = 3 : i32, sym_name = "of_producer_stream_cons_prod_lock_0"}
-// CHECK-DAG:     %of_producer_stream_cons_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of_producer_stream_cons_cons_lock_0"}
+// CHECK-DAG:     %of_producer_stream__cons__buf0 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream__cons__buf0"} : memref<16xi32>
+// CHECK-DAG:     %of_producer_stream__cons__buf1 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream__cons__buf1"} : memref<16xi32>
+// CHECK-DAG:     %of_producer_stream__cons__buf2 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream__cons__buf2"} : memref<16xi32>
+// CHECK-DAG:     %of_producer_stream__cons__prodlock0 = aie.lock(%tile_1_3) {init = 3 : i32, sym_name = "of_producer_stream__cons__prodlock0"}
+// CHECK-DAG:     %of_producer_stream__cons__conslock0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of_producer_stream__cons__conslock0"}
 // CHECK-DAG:     aie.flow(%tile_1_2, Core : 0, %tile_1_3, DMA : 0)
 // CHECK:     %mem_1_3 = aie.mem(%tile_1_3) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb3
-// CHECK:       aie.use_lock(%of_producer_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%of_producer_stream_cons_buff_0 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_producer_stream_cons_cons_lock_0, Release, %{{.*}})
+// CHECK:       aie.use_lock(%of_producer_stream__cons__prodlock0, AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.dma_bd(%of_producer_stream__cons__buf0 : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:       aie.use_lock(%of_producer_stream__cons__conslock0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       aie.use_lock(%of_producer_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%of_producer_stream_cons_buff_1 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_producer_stream_cons_cons_lock_0, Release, %{{.*}})
+// CHECK:       aie.use_lock(%of_producer_stream__cons__prodlock0, AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.dma_bd(%of_producer_stream__cons__buf1 : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:       aie.use_lock(%of_producer_stream__cons__conslock0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb3
 // CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       aie.use_lock(%of_producer_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%of_producer_stream_cons_buff_2 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_producer_stream_cons_cons_lock_0, Release, %{{.*}})
+// CHECK:       aie.use_lock(%of_producer_stream__cons__prodlock0, AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.dma_bd(%of_producer_stream__cons__buf2 : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:       aie.use_lock(%of_producer_stream__cons__conslock0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb4:  // pred: ^bb0
 // CHECK:       aie.end

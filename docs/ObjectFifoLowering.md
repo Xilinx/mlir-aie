@@ -50,7 +50,7 @@ A pool is a set of buffers and the contract for accessing them.
 ```mlir
 aie.objectfifo.pool @P(%tile) {
   depth   = 2 : i32,
-  buffers = [@P_buff_0, @P_buff_1]
+  buffers = [@P__buf0, @P__buf1]
 } : memref<36xi32> {
   aie.objectfifo.segment @s0 {offset = 0 : i32,  size = 16 : i32, produceLock = @p0, consumeLock = @c0}
   aie.objectfifo.segment @s1 {offset = 16 : i32, size = 20 : i32, produceLock = @p1, consumeLock = @c1}
@@ -373,21 +373,21 @@ aie.objectfifo @of1 (%tile02, {%tile25}, 2 : i32) : !aie.objectfifo<memref<16xi3
 %e = aie.objectfifo.acquire @of1 (Produce, 1) : memref<16xi32>
 
 // after
-aie.objectfifo.pool @of1_pool(%tile_0_2) {depth = 2 : i32, fifoName = "of1",
+aie.objectfifo.pool @of1__pool(%tile_0_2) {depth = 2 : i32, fifoName = "of1",
     } : memref<16xi32> {
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
     }
-aie.objectfifo.core_endpoint @of1_prod(%tile_0_2) fills @of1_pool
-aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {fifoName = "of1"}
-aie.objectfifo.pool @of1_cons_pool(%tile_2_5) {depth = 2 : i32, fifoName = "of1",
+aie.objectfifo.core_endpoint @of1__prod(%tile_0_2) fills @of1__pool
+aie.objectfifo.dma_endpoint @of1__prod__dma(%tile_0_2) drains @of1__pool {fifoName = "of1"}
+aie.objectfifo.pool @of1__cons__pool(%tile_2_5) {depth = 2 : i32, fifoName = "of1",
     } : memref<16xi32> {
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
     }
-aie.objectfifo.core_endpoint @of1_cons(%tile_2_5) drains @of1_cons_pool
-aie.objectfifo.dma_endpoint @of1_cons_dma(%tile_2_5) fills @of1_cons_pool {fifoName = "of1"}
-aie.route from @of1_prod_dma to [@of1_cons_dma]
+aie.objectfifo.core_endpoint @of1__cons(%tile_2_5) drains @of1__cons__pool
+aie.objectfifo.dma_endpoint @of1__cons__dma(%tile_2_5) fills @of1__cons__pool {fifoName = "of1"}
+aie.route from @of1__prod__dma to [@of1__cons__dma]
 
-%e = aie.objectfifo.acquire @of1_prod (1) : memref<16xi32>
+%e = aie.objectfifo.acquire @of1__prod (1) : memref<16xi32>
 ```
 
 A core's `acquire` and `release` name the endpoint they work through; the
@@ -438,20 +438,20 @@ Gives pools their buffers and locks, and endpoints their channels, flows and
 shim allocations. A packet header reaching it has to carry its id.
 
 ```mlir
-%of1_buff_0 = aie.buffer(%tile_0_2) {sym_name = "of1_buff_0"} : memref<16xi32>
-%of1_buff_1 = aie.buffer(%tile_0_2) {sym_name = "of1_buff_1"} : memref<16xi32>
-%of1_prod_lock_0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
-%of1_cons_lock_0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+%of1__buf0 = aie.buffer(%tile_0_2) {sym_name = "of1__buf0"} : memref<16xi32>
+%of1__buf1 = aie.buffer(%tile_0_2) {sym_name = "of1__buf1"} : memref<16xi32>
+%of1__prodlock0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of1__prodlock0"}
+%of1__conslock0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of1__conslock0"}
 
-aie.objectfifo.pool @of1_pool(%tile_0_2) {
+aie.objectfifo.pool @of1__pool(%tile_0_2) {
     depth = 2 : i32, fifoName = "of1",
-    buffers = [@of1_buff_0, @of1_buff_1]
+    buffers = [@of1__buf0, @of1__buf1]
 } : memref<16xi32> {
     aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32,
-        produceLock = @of1_prod_lock_0, consumeLock = @of1_cons_lock_0}
+        produceLock = @of1__prodlock0, consumeLock = @of1__conslock0}
 }
 // Note the set buffer and lock attributes.
-aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {channelIndex = 0 : i32, fifoName = "of1"}
+aie.objectfifo.dma_endpoint @of1__prod__dma(%tile_0_2) drains @of1__pool {channelIndex = 0 : i32, fifoName = "of1"}
 aie.flow(%tile_0_2, DMA : 0, %tile_2_5, DMA : 0)
 ```
 
@@ -521,11 +521,11 @@ until every endpoint is back at its first object.
 %mem_0_2 = aie.mem(%tile_0_2) {
   %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 ^bb1:
-  aie.use_lock(%of1_cons_lock_0, AcquireGreaterEqual, %c1_i32)
-  aie.dma_bd(%of1_buff_0 : memref<16xi32> offset = 0 len = 16)
-  aie.use_lock(%of1_prod_lock_0, Release, %c1_i32_0)
+  aie.use_lock(%of1__conslock0, AcquireGreaterEqual, %c1_i32)
+  aie.dma_bd(%of1__buf0 : memref<16xi32> offset = 0 len = 16)
+  aie.use_lock(%of1__prodlock0, Release, %c1_i32_0)
   aie.next_bd ^bb2
-^bb2:   // the same, with %of1_buff_1
+^bb2:   // the same, with %of1__buf1
   ...
 ```
 
@@ -539,10 +539,10 @@ the released objects to the back.
 ```mlir
 %0 = arith.subi %c1_i32, %c0_i32 : i32   // acquire(N) is absolute:
 %1 = arith.maxsi %0, %c0_i32_0 : i32     // delta = max(N - held, 0)
-aie.use_lock(%of1_prod_lock_0, AcquireGreaterEqual, %1)
+aie.use_lock(%of1__prodlock0, AcquireGreaterEqual, %1)
 %obj = memref.load %front[] : memref<memref<16xi32>>
 ...
-aie.use_lock(%of1_cons_lock_0, Release, %c1_i32)
+aie.use_lock(%of1__conslock0, Release, %c1_i32)
 %a = memref.load %front[] : memref<memref<16xi32>>   // release(1) rotates
 %b = memref.load %back[] : memref<memref<16xi32>>    // the objects by one
 memref.store %b, %front[] : memref<memref<16xi32>>
@@ -562,6 +562,27 @@ objects, so they are still selected by a rotating index.
 
 Drops pool metadata once nothing refers to it. A pool still named by something
 else, such as a re-arm binding in a runtime sequence, stays.
+
+## Generated names
+
+The ops the pipeline creates are named after the fifo they come from, with
+`__` between the fifo's name and each part the pipeline adds, so a name reads
+as `<fifo>__<end>__<kind><index>` and stays a plain identifier:
+
+| Name                      | What it is                                         |
+|---------------------------|----------------------------------------------------|
+| `act_in__pool`            | the producer's (or the shared) pool                |
+| `act_in__cons__pool`      | the consumer's pool; `act_in__cons1__pool` for the second of several consumers |
+| `act_in__prod`, `act_in__cons` | core endpoints                                |
+| `act_in__prod__dma`, `act_in__cons__dma` | DMA and route endpoints             |
+| `act_in__cons__buf0`      | object 0 of a pool: `<pool base>__buf<i>`          |
+| `act_in__cons__prodlock0`, `act_in__cons__conslock0` | segment 0's lock pair (AIE2): free objects, full objects |
+| `act_in__lock0`           | object 0's lock (AIE1)                              |
+| `act_in__shim_alloc`, `act_in__shim_alloc1` | shim DMA allocations the runtime sequence uses |
+| `act_in__rearm`, `act_in__rearm1` | rearm bindings                             |
+| `in__merge__dma`, `in__dispatch__dma` | the shared endpoint of a merge or dispatch link |
+
+A pool's base is its name without `__pool`.
 
 ## What is checked
 

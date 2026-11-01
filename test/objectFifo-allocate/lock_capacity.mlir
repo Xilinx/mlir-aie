@@ -62,8 +62,8 @@ module {
 }
 // CHECK-DAG: %[[DST:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[DST]]) {sym_name = "larger_buff_0"}
-// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "cheap_buff_0"}
-// CHECK-DAG: aie.lock(%[[NEIGHBOR]]) {{.*}}sym_name = "cheap_prod_lock_0"
+// CHECK-DAG: aie.buffer(%[[DST]]) {sym_name = "larger__buf0"}
+// CHECK-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "cheap__buf0"}
+// CHECK-DAG: aie.lock(%[[NEIGHBOR]]) {{.*}}sym_name = "cheap__prodlock0"
 // CHECK: @r3(%[[DST]]) drains @cheap {channelIndex = 3 : i32}
 // CHECK: @r4(%[[DST]]) drains @larger {channelIndex = 4 : i32}

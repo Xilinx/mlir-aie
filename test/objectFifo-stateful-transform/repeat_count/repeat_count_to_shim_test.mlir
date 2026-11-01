@@ -13,8 +13,8 @@
 // plain S2MM.
 
 // CHECK-LABEL: @repeatToShim
-// CHECK-DAG:     %[[PROD:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 2 : i32, sym_name = "of_out_prod_lock_0"}
-// CHECK-DAG:     %[[CONS:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 0 : i32, sym_name = "of_out_cons_lock_0"}
+// CHECK-DAG:     %[[PROD:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 2 : i32, sym_name = "of_out__prodlock0"}
+// CHECK-DAG:     %[[CONS:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 0 : i32, sym_name = "of_out__conslock0"}
 // CHECK-DAG:     aie.flow(%{{.*}}tile_0_2, DMA : 0, %{{.*}}shim_noc_tile_0_0, DMA : 0)
 
 // The core holds repeat_count objects at a time, matching the lock's init.
@@ -25,7 +25,7 @@
 // CHECK:             aie.use_lock(%[[CONS]], Release, %[[C2]])
 
 // The shim end keeps a plain S2MM record; the repeat stays on the compute tile.
-// CHECK:         aie.shim_dma_allocation @of_out_shim_alloc(%{{.*}}shim_noc_tile_0_0, S2MM, 0)
+// CHECK:         aie.shim_dma_allocation @of_out__shim_alloc(%{{.*}}shim_noc_tile_0_0, S2MM, 0)
 // CHECK:         aie.mem(%{{.*}}tile_0_2)
 // CHECK:           aie.dma_start(MM2S, 0, ^bb1, ^bb2, repeat_count = 1)
 
