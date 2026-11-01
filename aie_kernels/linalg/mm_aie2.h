@@ -19,7 +19,6 @@
 template <typename T_in, typename T_out, int rowA, int colA, int colB,
           bool b_row_maj = true, bool c_row_maj = true>
 static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
-  event0();
   for (int row = 0; row < rowA; row++) {
     for (int col = 0; col < colB; col++) {
       T_out running_sum = 0;
@@ -42,7 +41,6 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
       *c_ptr += running_sum;
     }
   }
-  event1();
 }
 
 /* Blocked MatMul kernel (vectorized) utilizing the aie::mmul class.
@@ -81,8 +79,6 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
                                               T_out *__restrict pC) {
 
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accauto>;
-
-  event0();
 
   // Outer-loop body factored into a lambda so the same code can be wrapped
   // by three differently-parameterised loops below. Per-instantiation iter
@@ -232,8 +228,6 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
     for (unsigned z = 0; z < rowA; z += 2)
       outer_body(z);
   }
-
-  event1();
 }
 
 /* Similar to the kernel above, but we expand matrix A (in 'm' dimension, or
@@ -249,8 +243,6 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
                                               T_out *__restrict pC) {
 
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accauto>;
-
-  event0();
 
   auto outer_body = [&](unsigned z) [[gnu::always_inline]] {
     T_out *__restrict pC1;
@@ -437,8 +429,6 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
     for (unsigned z = 0; z < rowA; z += 4)
       outer_body(z);
   }
-
-  event1();
 }
 
 /* Similar to the kernel aboves, we expand matrix A (in 'm' dimension, or rowA)
@@ -454,8 +444,6 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
                                          T_out *__restrict pC) {
 
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accauto>;
-
-  event0();
 
   auto outer_body = [&](unsigned z) [[gnu::always_inline]] {
     T_out *__restrict pC1;
@@ -756,8 +744,6 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
     for (unsigned z = 0; z < rowA; z += 4)
       outer_body(z);
   }
-
-  event1();
 }
 
 #ifdef B_COL_MAJ
@@ -987,20 +973,26 @@ extern "C" {
   X(bfloat16, bf16, float, f32, 4, 8, 4)
 #endif
 
+// The entry points trace a call, not the routines, which mha.cc also calls
+// inside kernels of its own.
 #define matmul_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, r, s, t)                       \
   void matmul_##mlir_type_in##_##mlir_type_out(ctype_in *a_in, ctype_in *b_in, \
                                                ctype_out *c_out) {             \
+    event0();                                                                  \
     matmul_vectorized_##r##x##s##x##t##_##mlir_type_in##_##mlir_type_out<      \
         DIM_M, DIM_K, DIM_N>(a_in, b_in, c_out);                               \
+    event1();                                                                  \
   }
 
 #define matmul_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \
                              r, s, t)                                          \
   void matmul_scalar_##mlir_type_in##_##mlir_type_out(                         \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
+    event0();                                                                  \
     matmul_scalar<ctype_in, ctype_out, DIM_M, DIM_K, DIM_N, is_b_row_maj,      \
                   is_c_row_maj>(a_in, b_in, c_out);                            \
+    event1();                                                                  \
   }
 
 #ifndef SCALAR_ONLY
