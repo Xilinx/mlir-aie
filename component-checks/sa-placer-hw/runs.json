@@ -936,6 +936,54 @@
     "full": 1.0
    },
    "iters": 20
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer-hw",
+   "id": "41281508257",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41281508257",
+   "date": "2026-11-01T06:36:26+00:00",
+   "commit": {
+    "id": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "message": "Name and locate MLIR after the IRON Python that built it (#4004)",
+    "timestamp": "2026-10-31T19:44:44Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "7553ce5647",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "cbe68ae46132",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo",
+    "dispatch": "dynamic"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 330,
+   "exitstatus": 1,
+   "failed": [
+    "mobilenet/seed=7/batch=1/effort=default",
+    "mobilenet/seed=7/batch=2/effort=default",
+    "mobilenet/seed=7/batch=4/effort=default",
+    "mobilenet/seed=7/batch=8/effort=default",
+    "mobilenet/seed=7/batch=16/effort=default",
+    "mobilenet/seed=7/batch=32/effort=default",
+    "mobilenet/seed=7/batch=64/effort=default"
+   ],
+   "truncated": [],
+   "efforts": {
+    "default": 0.05,
+    "full": 1.0
+   },
+   "iters": 20
   }
  ]
 }

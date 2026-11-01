@@ -448,6 +448,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "yolo26n-hw",
+   "id": "41281508257",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41281508257",
+   "date": "2026-11-01T06:36:26+00:00",
+   "commit": {
+    "id": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "message": "Name and locate MLIR after the IRON Python that built it (#4004)",
+    "timestamp": "2026-10-31T19:44:44Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "7553ce5647",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "cbe68ae46132",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 68,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

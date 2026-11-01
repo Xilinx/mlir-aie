@@ -696,6 +696,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "41281508257",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41281508257",
+   "date": "2026-11-01T06:36:26+00:00",
+   "commit": {
+    "id": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "message": "Name and locate MLIR after the IRON Python that built it (#4004)",
+    "timestamp": "2026-10-31T19:44:44Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "INTEL(R) XEON(R) PLATINUM 8573C",
+   "device_raw": null,
+   "provenance": {
+    "commit": "7553ce5647",
+    "fixtures": "9b6b41d42657",
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
