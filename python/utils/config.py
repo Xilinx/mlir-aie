@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-import functools
 import os
 import re
 import shutil
@@ -138,7 +137,12 @@ def host_cxx_path():
     )
 
 
-@functools.cache
+# Tools seen to run, asked once each in a process: every object cache key
+# resolves its tools, and forking a process that maps gigabytes of weights is
+# slow. A failure is asked again, since a probe can time out under load.
+_TOOLS_THAT_RAN: set[str] = set()
+
+
 def _tool_runs(path):
     """Return True if the binary at ``path`` actually executes.
 
@@ -146,11 +150,11 @@ def _tool_runs(path):
     whose shared-library dependency fails to load, so it exits nonzero and
     emits nothing. Such a binary is worse than a missing one: a caller reading
     its output sees an empty symbol listing rather than a broken toolchain.
-    Asked once per path in a process: every object cache key resolves its
-    tools, and forking a process that maps gigabytes of weights is slow.
     """
+    if path in _TOOLS_THAT_RAN:
+        return True
     try:
-        return (
+        ran = (
             subprocess.run(
                 [path, "--version"], capture_output=True, timeout=5
             ).returncode
@@ -158,6 +162,9 @@ def _tool_runs(path):
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
+    if ran:
+        _TOOLS_THAT_RAN.add(path)
+    return ran
 
 
 def _llvm_tool_dirs():
