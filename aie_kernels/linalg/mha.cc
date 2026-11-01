@@ -731,7 +731,7 @@ partial_softmax_tiles(bfloat16 *__restrict S, bfloat16 *__restrict P,
       aie::swap_saturation(aie::saturation_mode::saturate);
   const bfloat16 *__restrict t = S;
   bfloat16 *__restrict w = P;
-  AIE_LOOP_MIN_ITERATION_COUNT(8)
+  AIE_LOOP_MIN_ITERATION_COUNT(DIM_M / 4 * P_TILES)
   for (int32_t i = 0; i < DIM_M / 4 * P_TILES;
        i++, t += 2 * S_TILE, w += 2 * S_TILE) {
     const auto m_v = aie::load_v<S_TILE>(m_tiles + i / P_TILES * S_TILE);
