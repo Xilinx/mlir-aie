@@ -1487,7 +1487,8 @@ def mha(
         kv_heads: With ``fused``, the KV heads a key block's ``KV`` holds,
             each key's rows of every head in turn as a position-major cache
             holds them, tiled as one ``dim_n`` by ``2 dim_k kv_heads`` block;
-            ``attend_block`` takes the first, ``attend_head`` any.
+            ``attend_block`` takes the first, ``attend_head`` any. 1, 2, 4
+            or 8: Peano's backend fails on others.
         soft_cap: With ``fused`` and ``f32_scores``: each score ``s`` becomes
             ``soft_cap * tanh(s / soft_cap) * log2(e)`` (``-DMHA_SOFT_CAP``,
             ``softmax``'s float32 cap), so the scale ``attend_block`` takes
@@ -1511,7 +1512,8 @@ def mha(
             both hold one ``S`` and one ``P``, then runs ``attend_block``'s
             steps over its half of ``V`` into its half of ``O``. ``Q``,
             ``KV`` and ``O`` are a half's, tiled as ``attend_block``'s at
-            ``dim_k / 2``.
+            ``dim_k / 2``. With bf16 scores, at 16 rows or more: Peano's
+            backend fails on ``attend_pair`` at 8.
 
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
@@ -1527,7 +1529,9 @@ def mha(
             ``fused``, or ``pair`` without ``fused``, with ``kv_heads`` or
             ``relative_band``, or at a ``dim_k`` not a multiple of 32.
         NotImplementedError: ``fused`` off AIE2, or in an
-            ``AIE_KERNELS_PORTABLE`` build.
+            ``AIE_KERNELS_PORTABLE`` build; ``kv_heads`` other than 1, 2, 4
+            or 8, or ``pair`` with bf16 scores at 8 rows, which Peano's
+            backend cannot build.
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
@@ -1554,6 +1558,16 @@ def mha(
         raise NotImplementedError("mha: fused is written for tuned AIE2 only")
     if kv_heads < 1 or (kv_heads > 1 and not fused):
         raise ValueError(f"mha: kv_heads ({kv_heads}) past 1 is fused's")
+    if kv_heads not in (1, 2, 4, 8):
+        raise NotImplementedError(
+            f"mha: kv_heads {kv_heads}: Peano's backend cannot legalize "
+            "attend_block's KV pitch (G_UNMERGE_VALUES s20); use 1, 2, 4 or 8"
+        )
+    if pair and not f32_scores and dim_m == 8:
+        raise NotImplementedError(
+            "mha: pair with bf16 scores at 8 rows: Peano's backend cannot "
+            "legalize attend_pair (G_BITCAST <16 x s16>); use f32_scores or 16 rows"
+        )
     if group < 1 or dim_m % group:
         raise ValueError(f"mha: group ({group}) must divide dim_m ({dim_m})")
     for name, v, mult in (

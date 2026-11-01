@@ -1446,13 +1446,19 @@ def test_mha_binds_its_translation_unit_as_one_object():
         kernels.mha(dim_n=128)
 
 
-def test_mha_refuses_a_head_dim_mha_cc_cannot_build():
+def test_mha_refuses_what_mha_cc_cannot_build():
     set_current_device(NPU1Col1())
     fused = dict(dim_n=16, b_col_maj=True, fused=True)
     with pytest.raises(ValueError, match="multiple of 16"):
         kernels.mha(dim_k=24)
     with pytest.raises(ValueError, match="multiples of 16"):
         kernels.mha(dim_m=16, dim_k=48, pair=True, f32_scores=True, **fused)
+    with pytest.raises(NotImplementedError, match="kv_heads 3"):
+        kernels.mha(dim_m=8, dim_k=64, kv_heads=3, **fused)
+    with pytest.raises(NotImplementedError, match="8 rows"):
+        kernels.mha(dim_m=8, dim_k=64, pair=True, **fused)
+    kernels.mha(dim_m=8, dim_k=64, kv_heads=4, **fused)
+    kernels.mha(dim_m=8, dim_k=64, pair=True, f32_scores=True, **fused)
     kernels.mha(dim_m=16, dim_k=64, pair=True, **fused)
 
 
