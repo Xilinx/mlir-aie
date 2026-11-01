@@ -263,6 +263,63 @@ def softmax_blocks(
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
+def _exp2_bf16_aie2(x: np.ndarray) -> np.ndarray:
+    """``exp2_bf16.h``'s AIE2 cubic of float32 ``x``, bit for bit.
+
+    Each Horner step adds an exact bf16 product to an f32 constant term,
+    rounded once; every narrowing to bf16 rounds to nearest even.
+    """
+    f32 = np.float32
+    x = np.clip(x.astype(f32), f32(-200), f32(127))
+    magic = f32(12582912.0)
+    xm = x + magic
+    k = xm.view(np.int32) - np.int32(0x4B400000)
+    f = (x - (xm - magic)).astype(bfloat16).astype(f32)
+    t = f32(0.2402265069) + f * bfloat16(0.0555041087).astype(f32)
+    t = f32(0.6931471805) + f * t.astype(bfloat16).astype(f32)
+    t = f32(1.0) + f * t.astype(bfloat16).astype(f32)
+    bits = np.maximum(t.view(np.int32) + (k << 23), 0)
+    return bits.view(f32).astype(bfloat16)
+
+
+def test_partial_softmax_weights_are_exp2_bf16_bit_for_bit():
+    """On AIE2 every kept weight is ``exp2_bf16``'s cubic of ``(a - m) * s``.
+
+    The row-group path's fused exp2 must agree with the per-row path's
+    ``exp2_bf16`` bit for bit; with its constant terms as bf16 products
+    (0.6931 as 0.6914) it was an ulp off on some weights.
+    """
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("AIE2's cubic; AIE2P takes aie::exp2")
+    rng = np.random.default_rng(20261031)
+    scores = [(rng.standard_normal((_B, _B)) * 4).astype(bfloat16) for _ in range(2)]
+    keeps = [_keep(1, kv, 2 * _B, 2 * _B) for kv in (0, 1)]
+
+    p_t = iron.zeros((2 * _B * _B,), dtype=bfloat16)
+    scale_t = iron.zeros((4 * _B,), dtype=np.float32)
+    softmax_blocks(
+        iron.tensor(np.concatenate([s.reshape(-1) for s in scores]), dtype=bfloat16),
+        p_t,
+        scale_t,
+        q_block=1,
+        kv_first=0,
+        kv_second=1,
+        s_q_eff=2 * _B,
+        s_kv_eff=2 * _B,
+    )
+    got = p_t.numpy().reshape(2, _B, _B)
+
+    # Both products are exact, and the kernel rounds their difference once.
+    s = np.float64(_INV_SCALE)
+    m = np.full(_B, -np.inf)
+    for block, (a, keep) in enumerate(zip(scores, keeps)):
+        a = a.astype(np.float64)
+        m = np.maximum(m, np.where(keep, a, -np.inf).max(axis=1))
+        x = (a * s - m[:, None] * s).astype(np.float32)
+        want = np.where(keep, _exp2_bf16_aie2(x), bfloat16(0)).astype(bfloat16)
+        np.testing.assert_array_equal(got[block].view(np.uint16), want.view(np.uint16))
+
+
 @jit
 def rescale_tile(o_in: In, scale_in: In, o_out: Out):
     """``rescale_O``: the float32 O divided by the row sums into bf16."""

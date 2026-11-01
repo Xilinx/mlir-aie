@@ -327,18 +327,18 @@ fold_rows(Load at, Fold fold) {
 #if AIE_TUNED_AIE2 && !defined(EXP2_BF16_ACCURATE)
 // 2^-y for y = m * s - a * s, 16 lanes, from x = [a | m] and neg_scale =
 // [-s | s]: AIE2's bf16 product sums a lane of each half.  exp2_bf16.h's
-// method otherwise, with the same cubic in the upper halves, but k = round(y)
-// is not clamped.  Shifting it into the exponent field saturates instead (the
-// caller sets saturation), and maxdiff clamps the difference at +0, so every y
-// above 128, masked lanes included, gives +0 whatever 2^-f came to.  Below
-// -127.5, where 2^-y overflows, the result is undefined; m is the row's
-// largest a and both products are exact, so a live row's y is at least 0.
+// reduction and Horner steps in -f, each constant term an f32, so the two
+// agree bit for bit, but k = round(y) is not clamped.  Shifting it into the
+// exponent field saturates instead (the caller sets saturation), and maxdiff
+// clamps the difference at +0, so every y above 128, masked lanes included,
+// gives +0 whatever 2^-f came to.  Below -127.5, where 2^-y overflows, the
+// result is undefined; m is the row's largest a and both products are exact, so
+// a live row's y is at least 0.
 static inline __attribute__((always_inline)) aie::vector<bfloat16, SM_LANES>
 exp2_neg_bf16(aie::vector<bfloat16, 2 * SM_LANES> x,
               aie::vector<bfloat16, 2 * SM_LANES> neg_scale,
               aie::accum<accfloat, SM_LANES> magic) {
   using Acc = aie::accum<accfloat, SM_LANES>;
-  const auto one = aie::broadcast<bfloat16, SM_LANES>(1.0f);
   // The mac rounds after each product, so y + magic is not one mac: that
   // rounds m - k' + magic with k' = round(a * s).
   Acc y(mul_elem_16_2(x, neg_scale));
@@ -347,14 +347,16 @@ exp2_neg_bf16(aie::vector<bfloat16, 2 * SM_LANES> x,
   const aie::vector<int32_t, SM_LANES> k = aie::sub(
       ym.cast_to<int32_t>(), aie::broadcast<int32_t, SM_LANES>(0x4b400000));
   Acc f(mac_elem_16_2(x, neg_scale, aie::sub(magic, ym)));
-  const auto fv = aie::concat(f.to_vector<bfloat16>(), one);
-  Acc t(mul_elem_16_2(
-      fv, aie::concat(aie::broadcast<bfloat16, SM_LANES>(-0.0555041087f),
-                      aie::broadcast<bfloat16, SM_LANES>(0.2402265069f))));
-  t = mul_elem_16_2(
-      fv, aie::concat(t.to_vector<bfloat16>(),
-                      aie::broadcast<bfloat16, SM_LANES>(-0.6931471805f)));
-  t = mul_elem_16_2(fv, aie::concat(t.to_vector<bfloat16>(), one));
+  const auto fn = f.to_vector<bfloat16>();
+  auto horner = [&](aie::vector<bfloat16, SM_LANES> c1, float c0) {
+    Acc acc;
+    acc.from_vector(aie::broadcast<float, SM_LANES>(c0));
+    return aie::mac(acc, fn, c1);
+  };
+  Acc t =
+      horner(aie::broadcast<bfloat16, SM_LANES>(-0.0555041087f), 0.2402265069f);
+  t = horner(t.to_vector<bfloat16>(), -0.6931471805f);
+  t = horner(t.to_vector<bfloat16>(), 1.0f);
   Acc r;
   r.from_vector(
       aie::maxdiff(t.to_vector<float>().cast_to<int32_t>(), aie::upshift(k, 23))
