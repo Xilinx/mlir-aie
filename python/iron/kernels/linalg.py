@@ -512,6 +512,10 @@ class _CascadeMatMulFactory:
         return _CASCADE_MM_MAC_DIMS[arch][key]
 
 
+# mha.cc's softmax reads a row of a key block as one vector.
+_MHA_KEY_BLOCKS = (16, 32, 64)
+
+
 class _MhaFactory:
     @classmethod
     def mac_dims(
@@ -1431,7 +1435,7 @@ def mha(
             wide.
         dim_k: Depth of the micro-tile (multiple of 8; of 16 with ``pv``,
             where it is the product's columns).
-        dim_n: Columns of the micro-tile (multiple of 16).
+        dim_n: Columns of the micro-tile, the key block: 16, 32 or 64.
         pv: If ``True`` return the ``P*V`` product instead of ``QK^T``.
         b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the ``QK^T``
             product consumes ``K`` as stored, ``(n, k)``, rather than
@@ -1465,19 +1469,21 @@ def mha(
 
     Raises:
         ValueError: A tile dimension that is not a positive multiple, a
-            negative window, or ``float_o`` without ``pv``.
+            ``dim_n`` not 16, 32 or 64, a negative window, or ``float_o``
+            without ``pv``.
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
     for name, v, mult in (
         ("dim_m", dim_m, 16 if emulate_bf16_mmul_with_bfp16 else 8),
         ("dim_k", dim_k, 16 if pv else 8),
-        ("dim_n", dim_n, 16),
     ):
         if v <= 0 or v % mult:
             raise ValueError(
                 f"mha: {name} must be a positive multiple of {mult}, got {v}"
             )
+    if dim_n not in _MHA_KEY_BLOCKS:
+        raise ValueError(f"mha: dim_n must be one of {_MHA_KEY_BLOCKS}, got {dim_n}")
     if f32_scores and _arch_traits().name == "aie2":
         raise NotImplementedError("mha: f32_scores is written for AIE2P only")
     if f32_scores and emulate_bf16_mmul_with_bfp16:
@@ -1680,8 +1686,8 @@ def mha_softmax(
     position ``query block * dim_m + row offset``, so the queries may start
     anywhere among the keys. A block no query row keeps a key of is skipped,
     and ``S_q_eff``/``S_kv_eff`` are the query rows (in blocks' rows, from
-    the offset) and keys whose tails pad the block. A 64-key block of a multiple of 8 rows, at least
-    16 or exactly 8, takes the kernel's row-group path; any other shape the per-row one.
+    the offset) and keys whose tails pad the block. Every block takes one
+    path: eight rows at a time, a row one key block of 16, 32 or 64 keys.
 
     Args:
         accurate_exp2: Take 2^x from a polynomial within 2.8e-6 before its
@@ -1690,7 +1696,7 @@ def mha_softmax(
             0.74% with the bf16 store. ``s`` stays the bf16 scalar the
             kernel takes, 1.8e-3 from log2(e) / 8.
         dim_m: Query rows of the block (``B_q``), a multiple of 8.
-        dim_n: Keys of the block (``B_kv``), a multiple of 16.
+        dim_n: Keys of the block (``B_kv``): 16, 32 or 64.
         causal: A query keeps no key past its own position.
         window: A query keeps no key more than ``window`` positions before
             it, nor, when not causal, after it; 0 is no window. For
@@ -1707,15 +1713,18 @@ def mha_softmax(
         ExternalFunction for ``partial_softmax``.
 
     Raises:
-        ValueError: A block dimension that is not a positive multiple of
-            8 (``dim_m``) or 16 (``dim_n``), a ``scale`` that is not positive
-            and finite, or a negative window.
+        ValueError: A ``dim_m`` that is not a positive multiple of 8, a
+            ``dim_n`` not 16, 32 or 64, a ``scale`` that is not positive and
+            finite, or a negative window.
     """
-    for name, v, mult in (("dim_m", dim_m, 8), ("dim_n", dim_n, 16)):
-        if v <= 0 or v % mult:
-            raise ValueError(
-                f"mha_softmax: {name} must be a positive multiple of {mult}, got {v}"
-            )
+    if dim_m <= 0 or dim_m % 8:
+        raise ValueError(
+            f"mha_softmax: dim_m must be a positive multiple of 8, got {dim_m}"
+        )
+    if dim_n not in _MHA_KEY_BLOCKS:
+        raise ValueError(
+            f"mha_softmax: dim_n must be one of {_MHA_KEY_BLOCKS}, got {dim_n}"
+        )
     scale = float(bfloat16(scale))
     if not 0 < scale < np.inf:
         raise ValueError(f"mha_softmax: scale must be positive and finite, got {scale}")

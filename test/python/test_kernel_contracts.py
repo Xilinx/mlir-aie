@@ -1442,6 +1442,8 @@ def test_mha_binds_its_translation_unit_as_one_object():
     assert fn.name in str(design.as_mlir())
     with pytest.raises(ValueError, match="multiple of"):
         kernels.mha(dim_m=17)
+    with pytest.raises(ValueError, match="dim_n must be one of"):
+        kernels.mha(dim_n=128)
 
 
 def test_mha_band_reaches_the_kernel_and_its_reference():
@@ -1457,6 +1459,7 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
         dict(window=-64),
         dict(scale=0.0),
         dict(dim_n=24),
+        dict(dim_n=128),
     ):
         with pytest.raises(ValueError):
             kernels.mha_softmax(**bad)

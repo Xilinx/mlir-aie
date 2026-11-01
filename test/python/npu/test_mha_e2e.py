@@ -195,16 +195,18 @@ def softmax_blocks(
     s_q_eff: CompileTime[int] = 64,
     s_kv_eff: CompileTime[int] = 64,
     accurate_exp2: CompileTime[bool] = False,
+    b: CompileTime[int] = _B,
 ):
     """``partial_softmax`` over two key blocks sharing one ``scale_buffer``.
 
-    The second block reads the state the first carried.
+    The second block reads the state the first carried. A block is ``b``
+    queries by ``b`` keys.
     """
-    tile_ty = np.ndarray[(_B * _B,), BF]
-    scale_ty = np.ndarray[(4 * _B,), F32]
+    tile_ty = np.ndarray[(b * b,), BF]
+    scale_ty = np.ndarray[(4 * b,), F32]
     idx_ty = np.ndarray[(3,), I32]
 
-    mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
+    mha = kernels.mha(dim_m=b, dim_k=_B, dim_n=b, accurate_exp2=accurate_exp2)
     obj = mha.object_file
     softmax = obj.bind(
         "partial_softmax",
@@ -226,7 +228,7 @@ def softmax_blocks(
 
     def core(of_a, of_p, of_scale, softmax, init, idx_first, idx_second):
         scale = of_scale.acquire(1)
-        init(scale, _B)
+        init(scale, b)
         for idx_buf in (idx_first, idx_second):
             softmax(
                 of_a.acquire(1),
@@ -234,8 +236,8 @@ def softmax_blocks(
                 scale,
                 idx_buf,
                 _INV_SCALE,
-                _B,
-                _B,
+                b,
+                b,
                 s_q_eff,
                 s_kv_eff,
             )
@@ -249,8 +251,8 @@ def softmax_blocks(
     )
 
     host = [
-        np.ndarray[(2 * _B * _B,), BF],
-        np.ndarray[(2 * _B * _B,), BF],
+        np.ndarray[(2 * b * b,), BF],
+        np.ndarray[(2 * b * b,), BF],
         scale_ty,
     ]
 
@@ -282,21 +284,22 @@ def _exp2_bf16_aie2(x: np.ndarray) -> np.ndarray:
     return bits.view(f32).astype(bfloat16)
 
 
-def test_partial_softmax_weights_are_exp2_bf16_bit_for_bit():
+@pytest.mark.parametrize("b", [64, 32, 16])
+def test_partial_softmax_weights_are_exp2_bf16_bit_for_bit(b):
     """On AIE2 every kept weight is ``exp2_bf16``'s cubic of ``(a - m) * s``.
 
-    The row-group path's fused exp2 must agree with the per-row path's
-    ``exp2_bf16`` bit for bit; with its constant terms as bf16 products
-    (0.6931 as 0.6914) it was an ulp off on some weights.
+    At every key block, as the per-row path that 32- and 16-key blocks took
+    before; with its constant terms as bf16 products (0.6931 as 0.6914) the
+    row-group path's fused exp2 was an ulp off on some weights.
     """
     if resolve_target_arch(iron.get_current_device()) != "aie2":
         pytest.skip("AIE2's cubic; AIE2P takes aie::exp2")
     rng = np.random.default_rng(20261031)
-    scores = [(rng.standard_normal((_B, _B)) * 4).astype(bfloat16) for _ in range(2)]
-    keeps = [_keep(1, kv, 2 * _B, 2 * _B) for kv in (0, 1)]
+    scores = [(rng.standard_normal((b, b)) * 4).astype(bfloat16) for _ in range(2)]
+    keeps = [_keep(1, kv, 2 * b, 2 * b, b, b) for kv in (0, 1)]
 
-    p_t = iron.zeros((2 * _B * _B,), dtype=bfloat16)
-    scale_t = iron.zeros((4 * _B,), dtype=np.float32)
+    p_t = iron.zeros((2 * b * b,), dtype=bfloat16)
+    scale_t = iron.zeros((4 * b,), dtype=np.float32)
     softmax_blocks(
         iron.tensor(np.concatenate([s.reshape(-1) for s in scores]), dtype=bfloat16),
         p_t,
@@ -304,14 +307,15 @@ def test_partial_softmax_weights_are_exp2_bf16_bit_for_bit():
         q_block=1,
         kv_first=0,
         kv_second=1,
-        s_q_eff=2 * _B,
-        s_kv_eff=2 * _B,
+        s_q_eff=2 * b,
+        s_kv_eff=2 * b,
+        b=b,
     )
-    got = p_t.numpy().reshape(2, _B, _B)
+    got = p_t.numpy().reshape(2, b, b)
 
     # Both products are exact, and the kernel rounds their difference once.
     s = np.float64(_INV_SCALE)
-    m = np.full(_B, -np.inf)
+    m = np.full(b, -np.inf)
     for block, (a, keep) in enumerate(zip(scores, keeps)):
         a = a.astype(np.float64)
         m = np.maximum(m, np.where(keep, a, -np.inf).max(axis=1))
