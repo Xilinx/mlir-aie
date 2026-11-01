@@ -1326,7 +1326,8 @@ void matmul_PV(bfloat16 *Q, bfloat16 *K, float *out, float *scale_buffer,
   event1();
 }
 
-// O, the float accumulator, divided by the row sums into out.
+// O, the float accumulator, divided by the row sums into out, which may be
+// O itself: each band's bf16 lands on bytes of O already read.
 void rescale_O(float *O, bfloat16 *out, float *scale_buffer, int32_t B_q,
                int32_t *idx_buffer) {
   event0();
@@ -1471,14 +1472,18 @@ relative_add(float *S, const float *QR, int32_t diagonal) {
 }
 #endif
 
-// One key block of a query block on one core: S = Q K^T, the online softmax
-// over S, then O += P V, bit for bit as matmul_bf16_bf16_wrapper,
-// partial_softmax and matmul_PV compute it over three cores. KV is the
-// block's K, then its V, both in QK^T's B tiling, so one stream carries
-// them; S holds its scores and P its weights. init_scale_buffer starts a
-// query block, rescale_O ends it. QR is relative_rows' (MHA_REL_BAND).
+extern "C++" { // attend is a template
+
+// One key block of a query block on one core: S = Q K^T (scores(S) writes
+// it), the online softmax over S, then O += P V, bit for bit as
+// matmul_bf16_bf16_wrapper, partial_softmax and matmul_PV compute it over
+// three cores. KV is the block's K, then its V, both in QK^T's B tiling, so
+// one stream carries them; S holds its scores and P its weights.
+// init_scale_buffer starts a query block, rescale_O ends it. QR is
+// relative_rows' (MHA_REL_BAND).
+template <typename Scores>
 static inline __attribute__((always_inline)) void
-attend(bfloat16 *Q, bfloat16 *KV, const float *QR, float *O, score_t *S,
+attend(Scores scores, bfloat16 *KV, const float *QR, float *O, score_t *S,
        bfloat16 *P, float *scale_buffer, int32_t *idx_buffer,
        bfloat16 inv_scale, int32_t S_q_eff, int32_t S_kv_eff) {
   event0();
@@ -1505,7 +1510,7 @@ attend(bfloat16 *Q, bfloat16 *KV, const float *QR, float *O, score_t *S,
     valid_kv_cols = DIM_N;
   if (valid_q_rows > B_q)
     valid_q_rows = B_q;
-  qk_kv(Q, KV, S);
+  scores(S);
 #ifdef MHA_REL_BAND
   relative_add(S, QR, diagonal);
 #endif
@@ -1550,14 +1555,52 @@ attend(bfloat16 *Q, bfloat16 *KV, const float *QR, float *O, score_t *S,
   ::aie::set_rounding(saved_rounding);
   event1();
 }
+} // extern "C++"
 
+#if defined(MHA_PAIR)
 #ifdef MHA_REL_BAND
+#error "the relative band's QR takes a whole query row, not a pair's half"
+#endif
+// The head dimension split over two neighbouring cores, DIM_K of it each:
+// pair_scores writes a core's half of Q K^T in float32 for the other core to
+// read, and attend_pair adds the two halves' partials, S0 the first's and S1
+// the second's in that order on both cores, so both hold one S and one P;
+// each then accumulates its half of O from its half of V.
+void pair_scores(const bfloat16 *Q, const bfloat16 *KV, float *S_part,
+                 int32_t *idx_buffer, int32_t S_q_eff, int32_t S_kv_eff) {
+  event0();
+  // A block attend skips needs no scores.
+  if (block_live(block_diagonal(idx_buffer, DIM_M, DIM_N, S_kv_eff), DIM_M,
+                 DIM_N) &&
+      S_kv_eff > idx_buffer[0] * DIM_N && S_q_eff > idx_buffer[1] * DIM_M)
+    matmul_aie2<float, DIM_M, DIM_K, DIM_N, is_b_row_maj, KV_PITCH, true>(
+        Q, KV, S_part);
+  event1();
+}
+
+void attend_pair(const float *S0, const float *S1, bfloat16 *KV, float *O,
+                 score_t *S, bfloat16 *P, float *scale_buffer,
+                 int32_t *idx_buffer, bfloat16 inv_scale, int32_t S_q_eff,
+                 int32_t S_kv_eff) {
+  attend(
+      [S0, S1](score_t *S) {
+        AIE_LOOP_UNROLL_FULL
+        for (int32_t n = 0; n < DIM_M * DIM_N; n += 32)
+          aie::store_v(
+              S + n, aie::add(aie::accum<accfloat, 32>(aie::load_v<32>(S0 + n)),
+                              aie::load_v<32>(S1 + n))
+                         .template to_vector<score_t>());
+      },
+      KV, nullptr, O, S, P, scale_buffer, idx_buffer, inv_scale, S_q_eff,
+      S_kv_eff);
+}
+#elif defined(MHA_REL_BAND)
 void attend_block(bfloat16 *Q, bfloat16 *KV, const float *QR, float *O,
                   score_t *S, bfloat16 *P, float *scale_buffer,
                   int32_t *idx_buffer, bfloat16 inv_scale, int32_t S_q_eff,
                   int32_t S_kv_eff) {
-  attend(Q, KV, QR, O, S, P, scale_buffer, idx_buffer, inv_scale, S_q_eff,
-         S_kv_eff);
+  attend([Q, KV](score_t *S) { qk_kv(Q, KV, S); }, KV, QR, O, S, P,
+         scale_buffer, idx_buffer, inv_scale, S_q_eff, S_kv_eff);
 }
 
 // QR = Q R^T, laid out as relative_add reads it. R is a key block's object
@@ -1596,8 +1639,8 @@ void relative_rows(const bfloat16 *Q, const bfloat16 *R, float *QR) {
 void attend_block(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
                   float *scale_buffer, int32_t *idx_buffer, bfloat16 inv_scale,
                   int32_t S_q_eff, int32_t S_kv_eff) {
-  attend(Q, KV, nullptr, O, S, P, scale_buffer, idx_buffer, inv_scale, S_q_eff,
-         S_kv_eff);
+  attend([Q, KV](score_t *S) { qk_kv(Q, KV, S); }, KV, nullptr, O, S, P,
+         scale_buffer, idx_buffer, inv_scale, S_q_eff, S_kv_eff);
 }
 
 // attend_block on head `head` of a key block's MHA_KV_HEADS heads.

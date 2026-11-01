@@ -3216,6 +3216,26 @@ CASES += [
         )
         for b_q, d, b_kv in ((32, 64, 64), (32, 128, 32))
     ],
+    # ...and at d=512 on two cores a block, each half of the head (pair):
+    # Gemma 4 E2B's and EmbeddingGemma's global layers.
+    *[
+        Case(
+            "mha",
+            dict(
+                dim_m=16,
+                dim_k=512,
+                dim_n=16,
+                b_col_maj=True,
+                fused=True,
+                pair=True,
+                f32_scores=f32,
+            ),
+            calls=4,
+            tag=f"iron-fused-pair{'-f32' if f32 else ''}-d512",
+            devices=("npu1",),
+        )
+        for f32 in (False, True)
+    ],
     # ...with the accurate exponential, and Gemma 4 audio's block: float32
     # scores with their relative band, capped at 50, a causal window of 12,
     # the accurate exponential.

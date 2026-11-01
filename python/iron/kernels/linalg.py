@@ -1405,6 +1405,7 @@ def mha(
     kv_heads: int = 1,
     soft_cap: float | None = None,
     relative_band: bool = False,
+    pair: bool = False,
 ) -> MatrixKernel:
     """Flash-attention toolkit from ``aie_kernels/linalg/mha.cc``.
 
@@ -1485,7 +1486,6 @@ def mha(
             each key's rows of every head in turn as a position-major cache
             holds them, tiled as one ``dim_n`` by ``2 dim_k kv_heads`` block;
             ``attend_block`` takes the first, ``attend_head`` any.
-
         soft_cap: With ``fused`` and ``f32_scores``: each score ``s`` becomes
             ``soft_cap * tanh(s / soft_cap) * log2(e)`` (``-DMHA_SOFT_CAP``,
             ``softmax``'s float32 cap), so the scale ``attend_block`` takes
@@ -1500,18 +1500,30 @@ def mha(
             block's ``KV`` whose first 16 keys' K rows are the head's
             relative keys (``dim_n`` at least 16), so they ride the KV
             stream.
+        pair: With ``fused``, return ``attend_pair``: the block at head dim
+            ``dim_k`` on two neighbouring cores, each ``dim_k / 2`` of it
+            (``-DMHA_PAIR``). Each core's ``pair_scores(Q, KV, S_part, idx,
+            S_q_eff, S_kv_eff)`` writes its half's ``Q K^T`` in float32, and
+            ``attend_pair(S0, S1, KV, O, S, P, state, ...)`` adds the first
+            half's partial and the second's, in that order on both cores, so
+            both hold one ``S`` and one ``P``, then runs ``attend_block``'s
+            steps over its half of ``V`` into its half of ``O``. ``Q``,
+            ``KV`` and ``O`` are a half's, tiled as ``attend_block``'s at
+            ``dim_k / 2``.
+
     Returns:
         MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
-        ``matmul_bf16_bf16_rowmaj``, with ``float_o`` ``matmul_PV``, or with
-        ``fused`` ``attend_block``.
+        ``matmul_bf16_bf16_rowmaj``, with ``float_o`` ``matmul_PV``, with
+        ``fused`` ``attend_block``, or with ``pair`` ``attend_pair``.
 
     Raises:
         ValueError: A tile dimension that is not a positive multiple, a
             ``dim_n`` not 16, 32 or 64, a negative window, ``float_o``
             without ``pv``, ``fused`` with ``pv``, ``accurate_exp2`` or
             without ``b_col_maj``, or a ``group`` that
-            does not divide ``dim_m``, or ``kv_heads`` past 1 without
-            ``fused``.
+            does not divide ``dim_m``, ``kv_heads`` past 1 without
+            ``fused``, or ``pair`` without ``fused``, with ``kv_heads`` or
+            ``relative_band``, or at a ``dim_k`` not a multiple of 16.
         NotImplementedError: ``fused`` off AIE2.
     """
     if float_o and not pv:
@@ -1530,6 +1542,11 @@ def mha(
         )
     if soft_cap is not None and not 2.0**-100 <= soft_cap <= 2.0**10:
         raise ValueError(f"mha: soft_cap must be in [2^-100, 2^10], got {soft_cap}")
+    if pair and (not fused or kv_heads != 1 or relative_band or dim_k % 16):
+        raise ValueError(
+            "mha: pair is the fused block's, one KV head, no relative band, "
+            f"over two halves of dim_k that are multiples of 8, got {dim_k}"
+        )
     if fused and _arch_traits().name != "aie2":
         raise NotImplementedError("mha: fused is written for AIE2 only")
     if kv_heads < 1 or (kv_heads > 1 and not fused):
@@ -1559,7 +1576,7 @@ def mha(
     # mha.cc only calls mm.cc's bf16 products, so build none of the others.
     flags = [
         f"-DDIM_M={dim_m}",
-        f"-DDIM_K={dim_k}",
+        f"-DDIM_K={dim_k // 2 if pair else dim_k}",
         f"-DDIM_N={dim_n}",
         *(
             ["-DMHA_F32_SCORES", "-Dbf16_f32_ONLY"]
@@ -1580,6 +1597,21 @@ def mha(
         flags.append(f"-DMHA_SOFT_CAP={float(soft_cap)!r}f")
     if relative_band:
         flags.append("-DMHA_REL_BAND")
+    if pair:
+        flags.append("-DMHA_PAIR")
+        return _mha_pair(
+            dim_m,
+            dim_k,
+            dim_n,
+            flags,
+            causal,
+            window,
+            packed,
+            group,
+            f32_scores,
+            accurate_exp2,
+            soft_cap,
+        )
     if fused:
         return _mha_fused(
             dim_m,
@@ -1873,6 +1905,124 @@ def _mha_fused(
     )
 
 
+def _mha_pair(
+    dim_m,
+    dim_k,
+    dim_n,
+    flags,
+    causal,
+    window,
+    packed,
+    group,
+    f32_scores,
+    accurate_exp2,
+    soft_cap,
+):
+    """``mha(fused=True, pair=True)``'s ``attend_pair`` and its contract.
+
+    The contract's call is the first core's, as ``_mha_fused``'s block: its
+    scores the two halves' partials of a ``dim_k`` product, its ``KV`` and
+    ``O`` the first half's.
+    """
+    half = dim_k // 2
+    mac = (4, 8, 4)
+    qk = mm_stream_dims(dim_m, half, dim_n, mac, b_col_maj=True)
+    pv = mm_stream_dims(dim_m, dim_n, half, mac)
+    kv_stream = TensorAccessPattern.full((dim_n, 2 * half)).tile((4, 8))
+    q_block = -(-2 * dim_n // (dim_m // group))
+    scale = (
+        1.0 if soft_cap is not None else float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
+    )
+    block = dict(
+        idx=np.array([1, q_block, 0], np.int32),
+        s_q_eff=(q_block + 1) * dim_m,
+        s_kv_eff=2 * dim_n,
+        scale=scale,
+        dim_m=dim_m,
+        dim_k=half,
+        dim_n=dim_n,
+        causal=causal,
+        window=window,
+        packed=packed,
+        group=group,
+        f32_scores=f32_scores,
+        soft_cap=soft_cap,
+    )
+
+    def sample(rng, calls):
+        # Halves times halves over the whole head: each partial and their sum
+        # exact in float32.
+        q = rng.choice([-0.5, 0.0, 0.5], (dim_m, dim_k))
+        k = rng.choice([-0.5, 0.0, 0.5], (dim_n, dim_k))
+        v = rng.standard_normal((dim_n, half))
+        s0, s1 = (q[:, h] @ k[:, h].T for h in (slice(0, half), slice(half, None)))
+        inputs = [s0, s1, np.concatenate([k[:, :half], v], axis=1)]
+        return [
+            np.broadcast_to(x, (calls, *x.shape)).astype(t)
+            for x, t in zip(inputs, (np.float32, np.float32, bfloat16))
+        ]
+
+    weight = (2.0**-8 if accurate_exp2 else 0.0075) + (
+        2.0**-12 if soft_cap is not None else 0.0
+    )
+
+    def bound(s0, s1, kv):
+        _, p = mha_attend_pair_terms(s0, s1, kv, **block)
+        v = np.abs(np.asarray(kv, np.float64).reshape(-1, dim_n, 2, half)[:, :, 1])
+        return ((weight + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
+
+    s_tile = np.ndarray[(dim_m * dim_n,), np.dtype[np.float32]]
+    return _make_extern(
+        "attend_pair",
+        _kernel_source("linalg/mha.cc"),
+        [
+            s_tile,
+            s_tile,
+            np.ndarray[(dim_n * 2 * half,), np.dtype[bfloat16]],
+            np.ndarray[(dim_m * half,), np.dtype[np.float32]],
+            np.ndarray[
+                (dim_m * dim_n,), np.dtype[np.float32 if f32_scores else bfloat16]
+            ],
+            np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
+            np.ndarray[(4 * dim_m,), np.dtype[np.float32]],
+            np.ndarray[(3,), np.dtype[np.int32]],
+            bfloat16,
+            np.int32,
+            np.int32,
+        ],
+        compile_flags=flags,
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            layouts=(
+                *[_tile_layout((dim_m, dim_n), qk.C, inverse=True, block=(4, 4))] * 2,
+                _tile_layout((dim_n, 2 * half), kv_stream, block=(4, 8)),
+                _tile_layout((dim_m, half), pv.C, inverse=True, block=mac[::2]),
+                *([None] * 7),
+            ),
+            roles=(In, In, In, InOut, *([Param] * 7)),
+            parameter_bindings=(
+                (4, np.zeros(dim_m * dim_n, np.float32 if f32_scores else bfloat16)),
+                (5, np.zeros(dim_m * dim_n, bfloat16)),
+                (6, np.zeros(4 * dim_m, np.float32)),
+                (7, block["idx"]),
+                (8, scale),
+                (9, block["s_q_eff"]),
+                (10, block["s_kv_eff"]),
+            ),
+            reference=lambda s0, s1, kv: mha_attend_pair_terms(s0, s1, kv, **block)[0],
+            initializers=((3, partial(_zero_output, index=3)),),
+            sample=sample,
+            tolerance=Tolerance.bounded(
+                bound,
+                note="exp2_bf16.h cubic (0.74% at worst on npu1) or the accurate "
+                "exp2's bf16 store, float32 summation, a cap's float32 tanh; "
+                "the sample's partials and their sum are exact",
+            ),
+            ops_per_call=2 * dim_m * half * dim_n,
+        ),
+    )
+
+
 def mha_attend_block_terms(
     q,
     kv,
@@ -1903,14 +2053,93 @@ def mha_attend_block_terms(
     ``soft_cap`` then takes each score to ``soft_cap * tanh(s / soft_cap) *
     log2(e)``.
     """
-    kv_block, q_block, offset = (int(i) for i in np.asarray(idx).ravel())
     q = np.asarray(q, np.float64).reshape(-1, dim_m, dim_k)
     kv = np.asarray(kv, np.float64).reshape(-1, dim_n, kv_heads, 2, dim_k)[:, :, 0]
-    s = (
-        (q @ kv[:, :, 0].swapaxes(1, 2))
-        .astype(np.float32 if f32_scores else bfloat16)
-        .astype(np.float64)
+    return _mha_block_terms(
+        q @ kv[:, :, 0].swapaxes(1, 2),
+        kv[:, :, 1],
+        qr,
+        idx=idx,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
+        scale=scale,
+        dim_m=dim_m,
+        dim_n=dim_n,
+        causal=causal,
+        window=window,
+        packed=packed,
+        group=group,
+        f32_scores=f32_scores,
+        soft_cap=soft_cap,
     )
+
+
+def mha_attend_pair_terms(
+    s0,
+    s1,
+    kv,
+    *,
+    idx,
+    s_q_eff,
+    s_kv_eff,
+    scale,
+    dim_m,
+    dim_k,
+    dim_n,
+    causal=True,
+    window=0,
+    packed=False,
+    group=1,
+    f32_scores=False,
+    soft_cap=None,
+):
+    """Numpy reference for ``mha(fused=True, pair=True)``'s ``attend_pair`` from a zeroed state: ``(O, P)``.
+
+    ``mha_attend_block_terms`` over the scores ``s0 + s1``, the float32
+    partials of a head's two halves, and ``kv``'s ``V``, the core's half of
+    the head; ``dim_k`` is the half's.
+    """
+    s0, s1 = (np.asarray(x, np.float64).reshape(-1, dim_m, dim_n) for x in (s0, s1))
+    v = np.asarray(kv, np.float64).reshape(-1, dim_n, 2, dim_k)[:, :, 1]
+    return _mha_block_terms(
+        s0 + s1,
+        v,
+        idx=idx,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
+        scale=scale,
+        dim_m=dim_m,
+        dim_n=dim_n,
+        causal=causal,
+        window=window,
+        packed=packed,
+        group=group,
+        f32_scores=f32_scores,
+        soft_cap=soft_cap,
+    )
+
+
+def _mha_block_terms(
+    s,
+    v,
+    qr=None,
+    *,
+    idx,
+    s_q_eff,
+    s_kv_eff,
+    scale,
+    dim_m,
+    dim_n,
+    causal,
+    window,
+    packed,
+    group,
+    f32_scores,
+    soft_cap,
+):
+    """Return the fused block's ``(O, P)`` from its exact scores ``s``, ``(calls, dim_m, dim_n)``, and ``V``, ``(calls, dim_n, d)``."""
+    kv_block, q_block, offset = (int(i) for i in np.asarray(idx).ravel())
+    s = s.astype(np.float32 if f32_scores else bfloat16).astype(np.float64)
     rows, cols = np.indices((dim_m, dim_n))
     position = (
         s_kv_eff - 1 if packed else q_block * (dim_m // group) + offset + rows // group
@@ -1930,7 +2159,7 @@ def mha_attend_block_terms(
         keep &= key >= -window
     m = np.maximum(np.where(keep, s, -np.inf).max(axis=2), 0)
     p = np.exp2(np.where(keep, (s - m[..., None]) * scale, -np.inf))
-    return (p @ kv[:, :, 1]).reshape(len(q), dim_m * dim_k), p
+    return (p @ v).reshape(len(s), -1), p
 
 
 def _mha_softmax_accurate_bound(

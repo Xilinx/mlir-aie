@@ -50,6 +50,7 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
+from aie.iron.device import Tile
 from aie.iron.kernels.linalg import mm_stream_dims
 from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.verify import Tolerance, compare, nearly_equal
@@ -131,17 +132,22 @@ def _keep(
     window: int = 0,
     packed: bool = False,
     offset: int = 0,
+    group: int = 1,
 ) -> np.ndarray:
     """Which (query, key) pairs of this block pair the band admits.
 
     The query at q keeps the keys from ``q - window`` to ``q`` when causal,
     else to ``q + window``; a window of 0 is none. Packed, every query is at
-    the last key. The query block's rows sit ``offset`` positions past its
-    start.
+    the last key. Row ``i`` of the query block is at its first position plus
+    ``i // group``, ``offset`` positions past its start.
     """
     rows = q_block * b_q + np.arange(b_q)
     cols = kv_block * b_kv + np.arange(b_kv)
-    at = np.full(b_q, s_kv_eff - 1) if packed else rows + offset
+    at = (
+        np.full(b_q, s_kv_eff - 1)
+        if packed
+        else q_block * (b_q // group) + offset + np.arange(b_q) // group
+    )
     ahead = cols[None, :] - at[:, None]
     keep = (rows[:, None] < s_q_eff) & (cols[None, :] < s_kv_eff)
     if causal or window:
@@ -1973,6 +1979,287 @@ def test_attend_head_is_its_head_alone(n_kv, s_kv_eff, b_kv, d, band):
         together = _run_fused(q, k, v, n_kv, **shape, kv_heads=heads, head=h)
         differ = np.argwhere(alone.view(np.uint16) != together.view(np.uint16))
         assert not len(differ), f"head {h}: {len(differ)} differ, first {differ[:4]}"
+
+
+@jit
+def mha_pair_round(
+    q_in: In,
+    kv_in: In,
+    o_out: Out,
+    *,
+    q_block: CompileTime[int] = 0,
+    n_kv: CompileTime[int] = 1,
+    s_q_eff: CompileTime[int] = 16,
+    s_kv_eff: CompileTime[int] = 16,
+    b_q: CompileTime[int] = 16,
+    b_kv: CompileTime[int] = 16,
+    d: CompileTime[int] = 512,
+    causal: CompileTime[bool] = True,
+    group: CompileTime[int] = 1,
+    f32_scores: CompileTime[bool] = False,
+    scale_d: CompileTime[int] = 0,
+):
+    """One query block over ``n_kv`` key blocks on two neighbouring cores, each half of ``d``.
+
+    Each core takes its half's partial scores (``pair_scores``), hands them
+    to the other through a depth-1 ObjectFifo in their shared memory, and
+    ``attend_pair`` adds the two in half order. A core accumulates O in its
+    output object and ``rescale_O`` ends it there in place, its bf16 O the
+    object's first half, so L1 holds K-and-V double-buffered. Host buffers
+    hold the halves one after the other: Q's, each key block's K-and-V, and
+    O's objects. The scale is ``log2(e) / sqrt(scale_d or d)``.
+    """
+    half = d // 2
+    q_ty = np.ndarray[(b_q * half,), BF]
+    kv_ty = np.ndarray[(2 * b_kv * half,), BF]
+    part_ty = np.ndarray[(b_q * b_kv,), F32]
+    s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
+    p_ty = np.ndarray[(b_q * b_kv,), BF]
+    o_ty = np.ndarray[(b_q * half,), F32]
+    state_ty = np.ndarray[(4 * b_q,), F32]
+    idx_ty = np.ndarray[(3,), I32]
+    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(scale_d or d)))
+
+    attend = kernels.mha(
+        dim_m=b_q,
+        dim_k=d,
+        dim_n=b_kv,
+        b_col_maj=True,
+        fused=True,
+        pair=True,
+        causal=causal,
+        group=group,
+        f32_scores=f32_scores,
+    )
+    obj = attend.object_file
+    scores = obj.bind("pair_scores", [q_ty, kv_ty, part_ty, idx_ty, np.int32, np.int32])
+    init = obj.bind("init_scale_buffer", [state_ty, np.int32])
+    rescale = obj.bind("rescale_O", [o_ty, o_ty, state_ty, np.int32, idx_ty])
+
+    of_q = [ObjectFifo(q_ty, name=f"q{h}", depth=1) for h in range(2)]
+    of_kv = [ObjectFifo(kv_ty, name=f"kv{h}", depth=2) for h in range(2)]
+    of_o = [ObjectFifo(o_ty, name=f"o{h}", depth=1) for h in range(2)]
+    # Each core's partial scores, to the other core.
+    of_part = [ObjectFifo(part_ty, name=f"part{h}", depth=1) for h in range(2)]
+
+    def core(of_q, of_kv, of_o, of_mine, of_theirs, h, scores, attend, init, *bufs):
+        rescale, s, p, state, *idx = bufs
+        o = of_o.acquire(1)
+        init(state, b_q)
+        q = of_q.acquire(1)
+        for k in range(n_kv):
+            kv = of_kv.acquire(1)
+            mine = of_mine.acquire(1)
+            scores(q, kv, mine, idx[k], s_q_eff, s_kv_eff)
+            # Released before the other core's is taken, so neither waits on
+            # the other; the other only reads it, so this core's add still may.
+            of_mine.release(1)
+            theirs = of_theirs.acquire(1)
+            s0, s1 = (mine, theirs) if h == 0 else (theirs, mine)
+            attend(s0, s1, kv, o, s, p, state, idx[k], inv_scale, s_q_eff, s_kv_eff)
+            of_theirs.release(1)
+            of_kv.release(1)
+        rescale(o, o, state, b_q, idx[0])
+        of_o.release(1)
+        of_q.release(1)
+
+    workers = [
+        Worker(
+            core,
+            fn_args=[
+                of_q[h].cons(),
+                of_kv[h].cons(),
+                of_o[h].prod(),
+                of_part[h].prod(),
+                of_part[1 - h].cons(),
+                h,
+                scores,
+                attend,
+                init,
+                rescale,
+                Buffer(s_ty, name=f"s{h}"),
+                Buffer(p_ty, name=f"p{h}"),
+                Buffer(state_ty, name=f"state{h}"),
+                *(
+                    Buffer(
+                        idx_ty,
+                        name=f"idx{h}_{k}",
+                        initial_value=np.array([k, q_block, 0], np.int32),
+                    )
+                    for k in range(n_kv)
+                ),
+            ],
+            # Vertical neighbours, so each reads the other's memory.
+            tile=Tile(0, 2 + h),
+        )
+        for h in range(2)
+    ]
+
+    q_size, kv_block, o_size = b_q * half, 2 * b_kv * half, b_q * half
+    total = n_kv * 2 * kv_block
+
+    def sequence(q_h, kv_h, o_h, *ends):
+        qf, kvf, of = ends[0:2], ends[2:4], ends[4:6]
+        for h in range(2):
+            qf[h].fill(
+                q_h, TensorAccessPattern((2 * q_size,), h * q_size, [1, q_size], [0, 1])
+            )
+            kvf[h].fill(
+                kv_h,
+                TensorAccessPattern(
+                    (total,), h * kv_block, [n_kv, kv_block], [2 * kv_block, 1]
+                ),
+            )
+        for h in range(2):
+            of[h].drain(
+                o_h,
+                TensorAccessPattern((2 * o_size,), h * o_size, [1, o_size], [0, 1]),
+                wait=True,
+            )
+
+    host = [
+        np.ndarray[(2 * q_size,), BF],
+        np.ndarray[(total,), BF],
+        np.ndarray[(2 * o_size,), F32],
+    ]
+    rt = Runtime(
+        sequence,
+        [
+            *host,
+            *(f.prod() for f in of_q),
+            *(f.prod() for f in of_kv),
+            *(f.cons() for f in of_o),
+        ],
+    )
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+
+
+def _run_pair(q, k, v, n_kv, **shape):
+    """Run ``mha_pair_round`` on logical Q, K and V, ``(rows, d)``; return O, (b_q, d)."""
+    b_q, b_kv, d = shape["b_q"], shape["b_kv"], shape["d"]
+    half = d // 2
+    q_tiles = TensorAccessPattern.full((b_q, half)).tile((4, 8))
+    kv_tiles = TensorAccessPattern.full((b_kv, 2 * half)).tile((4, 8))
+    halves = [slice(0, half), slice(half, d)]
+    blocks = [slice(b * b_kv, (b + 1) * b_kv) for b in range(n_kv)]
+    o_t = iron.zeros((b_q * d,), dtype=np.float32)
+    mha_pair_round(
+        iron.tensor(
+            np.concatenate([q_tiles.gather(q[:, h].copy()) for h in halves]),
+            dtype=bfloat16,
+        ),
+        iron.tensor(
+            np.concatenate(
+                [
+                    kv_tiles.gather(np.concatenate([k[b, h], v[b, h]], axis=1))
+                    for b in blocks
+                    for h in halves
+                ]
+            ),
+            dtype=bfloat16,
+        ),
+        o_t,
+        n_kv=n_kv,
+        **shape,
+    )
+    o = o_t.numpy().view(bfloat16).reshape(2, -1)[:, : b_q * half]
+    return np.concatenate([_unblock(o[h], b_q, half) for h in range(2)], axis=1)
+
+
+# Gemma 4 E2B's and EmbeddingGemma's global layers, at d=512: a causal block
+# on the diagonal with a key tail; 8 query heads of one KV head, two
+# positions a block; bidirectional, 4 heads a position, rows past s_q_eff.
+_PAIR_CASES = [
+    (5, 6, 96, 90, 1, True),
+    (20, 3, 336, 44, 8, True),
+    (1, 4, 30, 60, 4, False),
+]
+
+
+@pytest.mark.parametrize("q_block,n_kv,s_q_eff,s_kv_eff,group,causal", _PAIR_CASES)
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
+def test_pair_is_masked_attention(
+    q_block, n_kv, s_q_eff, s_kv_eff, group, causal, f32_scores
+):
+    """Two cores, each half of d=512 (``pair=True``), give masked attention over the whole head's scores.
+
+    The two halves' float32 partials sum in another order than one core's
+    product would, so the bound is attend_block's against masked attention.
+    """
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("mha.cc's fused block is written for AIE2")
+    b_q, b_kv, d = 16, 16, 512
+    q, k, v = _fused_case_data(q_block, n_kv, s_kv_eff, b_q, b_kv, d, False, group, 0)
+    got = _run_pair(
+        q,
+        k,
+        v,
+        n_kv,
+        q_block=q_block,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        d=d,
+        causal=causal,
+        group=group,
+        f32_scores=f32_scores,
+    ).astype(np.float32)
+    keep = np.concatenate(
+        [
+            _keep(q_block, kv, s_q_eff, s_kv_eff, b_q, b_kv, causal, group=group)
+            for kv in range(n_kv)
+        ],
+        axis=1,
+    )
+    scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(
+        np.float32 if f32_scores else bfloat16
+    )
+    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+    ref = _attention(scores, v, keep, inv_scale=inv_scale).astype(np.float32)
+    live = keep.any(axis=1)
+    ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
+    np.testing.assert_allclose(got[live], ref[live], rtol=0, atol=_ATOL_ULP * ulp)
+    np.testing.assert_array_equal(got[~live], 0)
+
+
+@pytest.mark.parametrize("q_block,n_kv,s_q_eff,s_kv_eff,group,causal", _PAIR_CASES)
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
+def test_pair_is_one_core_where_the_second_half_scores_zero(
+    q_block, n_kv, s_q_eff, s_kv_eff, group, causal, f32_scores
+):
+    """With Q's second half zero, each core's half of O is ``attend_block``'s at d=256 on that half of V, bit for bit."""
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("mha.cc's fused block is written for AIE2")
+    b_q, b_kv, d = 16, 16, 512
+    half = d // 2
+    q, k, v = _fused_case_data(q_block, n_kv, s_kv_eff, b_q, b_kv, d, False, group, 0)
+    q[:, half:] = 0
+    shape = dict(
+        q_block=q_block,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        causal=causal,
+        group=group,
+        f32_scores=f32_scores,
+    )
+    pair = _run_pair(q, k, v, n_kv, d=d, scale_d=half, **shape)
+    for h, cols in enumerate((slice(0, half), slice(half, d))):
+        alone = _run_fused(
+            q[:, :half].copy(),
+            k[:, :half].copy(),
+            v[:, cols].copy(),
+            n_kv,
+            d=half,
+            offset=0,
+            window=0,
+            packed=False,
+            **shape,
+        )
+        differ = np.argwhere(pair[:, cols].view(np.uint16) != alone.view(np.uint16))
+        assert not len(differ), f"half {h}: {len(differ)} differ, first {differ[:4]}"
 
 
 @jit
