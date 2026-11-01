@@ -1668,6 +1668,7 @@ void keep_q(const bfloat16 *obj, bfloat16 *q, int32_t n) {
 // reads Q. Rows i and i + 4 take neighbouring heads of the group (heads 2j
 // and 2j + 1 of an even group, j and j + 1 of an odd one, its one head twice
 // alone), the order one DMA pattern returns O's rows to their heads in.
+// Eight rows hold a group of 1 to 6 or 8 so; at 7 or past 8 heads are lost.
 void take_q(const bfloat16 *q, bfloat16 *Q, int32_t kv_head, int32_t group) {
   event0();
   const int32_t pairs = group == 1 ? 1 : group % 2 ? group - 1 : group / 2;
