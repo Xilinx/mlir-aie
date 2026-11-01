@@ -73,7 +73,8 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
  */
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
-          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false>
+          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false,
+          unsigned b_pitch = colA>
 static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
                                               const T_in *__restrict pB,
                                               T_out *__restrict pC) {
@@ -110,10 +111,10 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           pC2 = pC + (j + 1) * rowA * MMUL::size_C + z * MMUL::size_C;
         }
         const T_in *__restrict pBk =
-            pB + (b_row_maj ? j : j * colA) * MMUL::size_B;
+            pB + (b_row_maj ? j : j * b_pitch) * MMUL::size_B;
         constexpr unsigned a_row = colA * MMUL::size_A;
         constexpr unsigned b_tile =
-            b_row_maj ? MMUL::size_B : colA * MMUL::size_B;
+            b_row_maj ? MMUL::size_B : b_pitch * MMUL::size_B;
 
         aie::vector<T_in, MMUL::size_A> A0;
         aie::vector<T_in, MMUL::size_A> A1;
@@ -438,7 +439,8 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
  */
 template <typename T_in, typename T_out, unsigned rowA, unsigned colA,
           unsigned colB, unsigned r, unsigned s, unsigned t,
-          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false>
+          bool b_row_maj = true, bool c_row_maj = true, bool unroll_k = false,
+          unsigned b_pitch = colA>
 static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
                                          const T_in *__restrict pB,
                                          T_out *__restrict pC) {
@@ -474,7 +476,7 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
           pC4 = pC + (j + 3) * rowA * MMUL::size_C + z * MMUL::size_C;
         }
         const T_in *__restrict pBk =
-            pB + (b_row_maj ? j : j * colA) * MMUL::size_B;
+            pB + (b_row_maj ? j : j * b_pitch) * MMUL::size_B;
 
         aie::vector<T_in, MMUL::size_A> A0;
         aie::vector<T_in, MMUL::size_A> A1;
@@ -581,7 +583,7 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
 
         constexpr unsigned a_row = colA * MMUL::size_A;
         constexpr unsigned b_tile =
-            b_row_maj ? MMUL::size_B : colA * MMUL::size_B;
+            b_row_maj ? MMUL::size_B : b_pitch * MMUL::size_B;
         auto k_step = [&]() {
           A0 = aie::load_v<MMUL::size_A>(pAk);
           A1 = aie::load_v<MMUL::size_A>(pAk + a_row);
