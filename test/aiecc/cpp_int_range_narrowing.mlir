@@ -49,11 +49,11 @@ module {
       %c1 = arith.constant 1 : index
       %c32 = arith.constant 32 : index
       %cmax = arith.constant 9223372036854775807 : index
-      %one = arith.constant 1 : i32
       scf.for %iter = %c0 to %cmax step %c1 {
         scf.for %i = %c0 to %c32 step %c1 {
           %x = memref.load %buf[%i] : memref<32xi32>
-          %y = arith.addi %x, %one : i32
+          %iter32 = arith.index_castui %iter : index to i32
+          %y = arith.addi %x, %iter32 : i32
           memref.store %y, %buf[%i] : memref<32xi32>
         }
       }
