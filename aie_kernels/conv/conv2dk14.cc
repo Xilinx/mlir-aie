@@ -151,8 +151,10 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
   // Each 8 tiles x 8 channels block is two native 4x8x8 macs on the two
   // 256-bit halves of the activations, so no shuffle is needed.
   using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::symmetric_inf);
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::symmetric_inf);
 
   const int output_channels_div_8 = output_channels / 8;
   const int tiles_div_16 = input_width / kernel_width / 16;
@@ -218,6 +220,8 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
     out_ptr += second;
   }
 
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #else
@@ -234,9 +238,9 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
 
   // Compute
   using MMUL8x8x8 = aie::mmul<8, 8, 8, uint8, int8>;
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = ::aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(
+  const aie::rounding_mode saved_rnd = ::aie::swap_rounding(
       aie::rounding_mode::symmetric_inf); // Needed to saturate properly to int8
 
   aie::vector<int8, 64> zero64 = aie::zeros<int8, 64>();
@@ -286,6 +290,8 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
     in_ptr_2 -= 2 * tiles_div_16 * pixels_div_2 * 64;
   }
 
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif

@@ -10,18 +10,21 @@
 
 include "mlir/IR/EnumAttr.td"
 
-def StateTableFuncMul  : I32EnumAttrCase<"Mul", 0, "mul">;
+def StateTableFuncMul : I32EnumAttrCase<"Mul", 0, "mul">;
 def StateTableFuncIncr : I32EnumAttrCase<"Incr", 1, "incr">;
 def StateTableFuncDecr : I32EnumAttrCase<"Decr", 2, "decr">;
 
-def StateTableFunc : I32EnumAttr<"StateTableFunc",
-    "Function to apply between scratchpad value and register pair",
-    [StateTableFuncMul, StateTableFuncIncr, StateTableFuncDecr]> {
+def StateTableFunc
+    : I32EnumAttr<
+          "StateTableFunc",
+          "Function to apply between scratchpad value and register pair",
+          [StateTableFuncMul, StateTableFuncIncr, StateTableFuncDecr]> {
   let cppNamespace = "::xilinx::AIEX";
 }
 
 def ScratchpadParameterKindCore : I32EnumAttrCase<"Core", 0, "core">;
 def ScratchpadParameterKindAddr : I32EnumAttrCase<"Addr", 1, "addr">;
+def ScratchpadParameterKindRepeat : I32EnumAttrCase<"Repeat", 2, "repeat">;
 
 def ScratchpadParameterKind
     : I32EnumAttr<
@@ -31,8 +34,11 @@ def ScratchpadParameterKind
           "(values are shift-2 encoded); `addr` parameters are used only by "
           "DMA ops, as BD address offsets via `offset_parameter` or lengths "
           "via `length_parameter` (values written raw). A length parameter "
-          "a core also reads is `core`",
-          [ScratchpadParameterKindCore, ScratchpadParameterKindAddr]> {
+          "a core also reads is `core`. `repeat` parameters are the repeat "
+          "counts of `aiex.dma_start_task`s (`repeat_parameter`; values "
+          "shifted into the task queue's repeat field, 16)",
+          [ScratchpadParameterKindCore, ScratchpadParameterKindAddr,
+           ScratchpadParameterKindRepeat]> {
   let cppNamespace = "::xilinx::AIEX";
 }
 

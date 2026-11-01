@@ -6,8 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --canonicalize %s | FileCheck %s
-// Verify that canonicalize does not remove chained aie.next_bd
+// RUN: aie-opt --canonicalize='test-convergence=true' %s | FileCheck %s
+// Verify that canonicalize does not remove chained aie.next_bd, and that a
+// BD chain with nothing left to fold is left alone.
 
 // CHECK-LABEL:  module @test {
 // CHECK:          %[[VAL_0:.*]] = aie.tile(1, 1)

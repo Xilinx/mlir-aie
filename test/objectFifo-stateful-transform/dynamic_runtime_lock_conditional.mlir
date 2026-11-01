@@ -17,17 +17,17 @@
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:           %[[MT:.*]] = aie.tile(0, 1)
 // CHECK-DAG:           %[[T2:.*]] = aie.tile(0, 2)
-// CHECK-DAG:           %[[CB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[CB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[CB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[CB3:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_3"} : memref<8xi8>
-// CHECK-DAG:           %[[CPROD:.*]] = aie.lock(%[[T2]]) {init = 4 : i32, sym_name = "fifo_cons_prod_lock_0"}
-// CHECK-DAG:           %[[CCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
-// CHECK-DAG:           %[[B0:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_0"} : memref<8xi8>
-// CHECK-DAG:           %[[B1:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_1"} : memref<8xi8>
-// CHECK-DAG:           %[[B2:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_2"} : memref<8xi8>
-// CHECK-DAG:           %[[PROD:.*]] = aie.lock(%[[MT]]) {init = 3 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK-DAG:           %[[CONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK-DAG:           %[[CB0:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo__cons__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[CB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo__cons__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[CB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo__cons__buf2"} : memref<8xi8>
+// CHECK-DAG:           %[[CB3:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo__cons__buf3"} : memref<8xi8>
+// CHECK-DAG:           %[[CPROD:.*]] = aie.lock(%[[T2]]) {init = 4 : i32, sym_name = "fifo__cons__prodlock0"}
+// CHECK-DAG:           %[[CCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "fifo__cons__conslock0"}
+// CHECK-DAG:           %[[B0:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo__buf0"} : memref<8xi8>
+// CHECK-DAG:           %[[B1:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo__buf1"} : memref<8xi8>
+// CHECK-DAG:           %[[B2:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo__buf2"} : memref<8xi8>
+// CHECK-DAG:           %[[PROD:.*]] = aie.lock(%[[MT]]) {init = 3 : i32, sym_name = "fifo__prodlock0"}
+// CHECK-DAG:           %[[CONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "fifo__conslock0"}
 // CHECK-DAG:           aie.flow(%[[MT]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
 // CHECK:             %[[C14:.*]] = arith.constant 14 : index
@@ -36,18 +36,14 @@
 // CHECK:             %[[C0I:.*]] = arith.constant 0 : i32
 // CHECK:             %[[C3I:.*]] = arith.constant 3 : i32
 // CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
-// CHECK:             %[[C4I:.*]] = arith.constant 4 : i32
-// CHECK:             %{{.*}}:2 = scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] iter_args(%[[IDX:.*]] = %[[C0I]], %[[HELD:.*]] = %[[C0I]]) -> (i32, i32) {
+// CHECK:             %{{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] iter_args(%[[HELD:.*]] = %[[C0I]]) -> (i32) {
 // CHECK:               %[[SUB:.*]] = arith.subi %[[C3I]], %[[HELD]] : i32
 // CHECK:               %[[DELTA:.*]] = arith.maxsi %[[SUB]], %[[C0I]] : i32
 // CHECK:               aie.use_lock(%[[CCONS]], AcquireGreaterEqual, %[[DELTA]])
 // CHECK:               %[[NH:.*]] = arith.addi %[[HELD]], %[[DELTA]] : i32
 // CHECK:               aie.use_lock(%[[CPROD]], Release, %[[C1I]])
 // CHECK:               %[[RH:.*]] = arith.subi %[[NH]], %[[C1I]] : i32
-// CHECK:               %[[NX:.*]] = arith.addi %[[IDX]], %[[C1I]] : i32
-// CHECK:               %[[CMP:.*]] = arith.cmpi sge, %[[NX]], %[[C4I]] : i32
-// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[C0I]], %[[NX]] : i32
-// CHECK:               scf.yield %[[SEL]], %[[RH]] : i32, i32
+// CHECK:               scf.yield %[[RH]] : i32
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }

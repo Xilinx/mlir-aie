@@ -5,7 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 // Verify that AIECoreToStandard sets the rounding mode conditionally:
-//  - floor (0) for cores with only float SRS (f32→bf16)
+//  - conv_even (12) for cores with only float SRS (f32→bf16), as arith.truncf
+//    rounds to nearest even
 //  - positive_inf (9) for cores with integer SRS (i32→i8)
 //  - conv_even (12) for cores with bf16 matmul
 //  - conv_even (12) takes precedence when both bf16 matmul and integer SRS
@@ -16,12 +17,12 @@
 // RUN: aie-opt --aie-standard-lowering="tilecol=0 tilerow=4" %s | FileCheck --check-prefix=CHECK-BF16-MATMUL %s
 // RUN: aie-opt --aie-standard-lowering="tilecol=0 tilerow=5" %s | FileCheck --check-prefix=CHECK-BF16-MATMUL-INT-SRS %s
 
-// Float-only SRS core: rounding mode = floor (register 6 = 0)
+// Float-only SRS core: rounding mode = conv_even (register 6 = 12)
 // CHECK-FLOAT:  func.func @core_0_2
 // CHECK-FLOAT:    call @llvm.aie2.set.ctrl.reg(%c9_i32, %c1_i32)
 // CHECK-FLOAT:    %c6_i32 = arith.constant 6 : i32
-// CHECK-FLOAT:    %c0_i32{{.*}} = arith.constant 0 : i32
-// CHECK-FLOAT:    call @llvm.aie2.set.ctrl.reg(%c6_i32, %c0_i32
+// CHECK-FLOAT:    %c12_i32 = arith.constant 12 : i32
+// CHECK-FLOAT:    call @llvm.aie2.set.ctrl.reg(%c6_i32, %c12_i32
 
 // Integer SRS core: rounding mode = positive_inf (register 6 = 9)
 // CHECK-INT:  func.func @core_0_3
@@ -51,7 +52,7 @@ module @test_srs_rounding {
     %t04 = aie.tile(0, 4)
     %t05 = aie.tile(0, 5)
 
-    // Core with only float SRS (f32 -> bf16): should get floor rounding
+    // Core with only float SRS (f32 -> bf16): should get conv_even rounding
     %core02 = aie.core(%t02) {
       %c0 = arith.constant 0 : i32
       %v = arith.constant dense<1.0> : vector<16xf32>

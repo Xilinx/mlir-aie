@@ -12,12 +12,12 @@
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(2, 2)
-// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_2"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_3"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]]) {init = 4 : i32, sym_name = "fifo0_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "fifo0_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0__buf2"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0__buf3"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]]) {init = 4 : i32, sym_name = "fifo0__prodlock0"}
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "fifo0__conslock0"}
 // Producer: shared-mem semaphore-lock producer, fully unrolled x4 (+1 remainder)
 // storing to buff0..3 in rotation; each push acquires 1 prod / releases 1 cons.
 // CHECK:           %[[VAL_8:.*]] = aie.core(%[[VAL_0]]) {

@@ -14,7 +14,7 @@ def pytest_arguments(arguments: list[str]) -> list[str]:
         return [
             "-n1",
             "--reruns",
-            "1",
+            "3",
             "--reruns-delay",
             "3",
             "--rerun-show-tracebacks",

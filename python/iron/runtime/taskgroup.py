@@ -27,7 +27,7 @@ class TaskGroup:
 
     Construct one inside a runtime sequence body and pass it as the ``group=``
     argument to ``fifo.fill(...)`` / ``fifo.drain(...)``. Call
-    [`finish`][iron.runtime.taskgroup.TaskGroup.finish] to await the group's
+    [`finish`][aie.iron.runtime.taskgroup.TaskGroup.finish] to await the group's
     waited transfers and free the rest (waits are ordered before frees).
 
     ```python
@@ -39,7 +39,7 @@ class TaskGroup:
     ```
 
     A software pipeline keeps a step's transfers in flight while it issues
-    the next step's: [`pipelined`][iron.runtime.taskgroup.TaskGroup.pipelined]
+    the next step's: [`pipelined`][aie.iron.runtime.taskgroup.TaskGroup.pipelined]
     hands out one group per step and finishes each a step later, with the
     same body whether the step count is a Python ``int`` or a dispatch-time
     value.
@@ -65,7 +65,7 @@ class TaskGroup:
                     "TaskGroup() must be constructed within the function passed "
                     "to Runtime(seq_fn, fn_args)."
                 )
-            id = next(active._runtime._task_group_index)
+            id = next(active.runtime._task_group_index)
         self._group_id = id
         # Set once the group's transfers have been handed to a loop (as an
         # iter_arg or a yield); the object is then spent.

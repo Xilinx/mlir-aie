@@ -27,23 +27,22 @@ The kernel library ([`aie.iron.kernels`](../../kernels_library.md)) comes with c
 |---|---|
 | [`test/python/npu/kernel_cases.py`](../../../test/python/npu/kernel_cases.py) | The table of cases: kernel, tile size, number of calls, edge data, and which cases are smoke tests, nightly tests, or performance cases. |
 | [`test/python/npu/test_kernels_e2e.py`](../../../test/python/npu/test_kernels_e2e.py) | Is the kernel still correct? Runs each case on the NPU with poisoned output buffers, checks that nothing was written past each output tile, and judges it against the kernel's numpy reference. |
-| [`test/python/npu/test_kernels_perf.py`](../../../test/python/npu/test_kernels_perf.py) | How fast is it? Checks correctness first, then records traced core `cycles` per call, wall-clock `npu_us`, compile time and binary sizes. |
+| [`test/python/npu/test_kernels_perf.py`](../../../test/python/npu/test_kernels_perf.py) | How fast is it? Checks correctness first, then records traced core `cycles` per call, wall-clock `dispatch_us` and `npu_us` (the dispatch less an empty one), compile time and binary sizes. |
 | `python -m aie.utils.compile.remarks` | What did the compiler do? Compiles each kernel exactly as the JIT does and reports every loop's II, stages, zero-overhead-loop status, program memory, dropped pragmas, runtime-library calls and stack depth. No device needed. |
-| [Nightly Kernel Checks](https://xilinx.github.io/mlir-aie/kernel-checks/) | Last night's run per NPU (power mode, host, Peano, what passed, what moved past its threshold, and warnings when the numbers are less comparable), then the history: the [kernels view](https://xilinx.github.io/mlir-aie/kernel-checks/#view=kernels) lists every kernel, its sources, which NPUs build it and passed it last night; a kernel's own page (`#view=kernel&kernel=<factory>`) has every case's latest numbers and charts; the charts view has one chart per case and metric. |
-| [Nightly Component Checks](https://xilinx.github.io/mlir-aie/kernel-checks/#view=components) | The same dashboard's components view: last night's SA placer seed sweep (which seeds placed, their cost, CPU time and memory) and the SA placer hardware check (mobilenet compiled, run and verified on an NPU2 for a few seeds at batch 1 to 64: time per image, streaming time and compile time), each as cards and a chart like a kernel's, with the command that reproduces each failed seed or run. See [Nightly SA placer checks](../../section-1/README.md#nightly-sa-placer-checks). |
+| [Maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=night) | Last night's kernel checks on npu1 and npu2, and each kernel's history. |
 
 All of them honour `MLIR_AIE_KERNEL_SOURCES` (see [section 4c](../section-4c#before-you-start-make-sure-your-edits-are-compiled)): point it at a checkout and they compile that checkout's `aie_kernels/`. That is also how you build a "before" version to compare against.
 
 ## <u>Markers come first</u>
 
-A cycle count needs `event0()` before the work and `event1()` after it in the kernel source ([section 4b](../section-4b)). `test_kernels_perf.py` measures cycles with [`kd.cycles_per_call`](../../../python/iron/algorithms/kernel_design.py), and only for kernels whose `KernelContract` declares `trace=Trace.whole_call()`: **exactly one** `event0()`/`event1()` pair brackets **exactly one** whole call of the entry symbol. A kernel whose markers sit around an inner loop or behind an early return declares `Trace.partial(reason)`, and one without markers `Trace.none(reason)`. A timed case whose kernel declares either fails rather than charting wall clock alone, and the declaration must be right, because a wrong one produces a clean-looking wrong number (see [Cycles you can trust](#cycles-you-can-trust)).
+A cycle count needs `event0()` before the work and `event1()` after it in the kernel source ([section 4b](../section-4b)). `test_kernels_perf.py` measures cycles with [`KernelDesign.cycles_per_call`](../../../python/iron/algorithms/kernel_design.py), and only for kernels whose `KernelContract` declares `trace=Trace.whole_call()`: **exactly one** `event0()`/`event1()` pair brackets **exactly one** whole call of the entry symbol. A kernel whose markers sit around an inner loop or behind an early return declares `Trace.partial(reason)`, and one without markers `Trace.none(reason)`. A timed case whose kernel declares either fails rather than charting wall clock alone, and the declaration must be right, because a wrong one produces a clean-looking wrong number (see [Cycles you can trust](#cycles-you-can-trust)).
 
 Before you declare `Trace.whole_call()` on a kernel's contract (in `python/iron/kernels/`, in the Python package your tests import):
 
 1. Find the symbol the factory actually compiles, and the file it lives in. The remarks tool prints it for every build: for the `add` factory it is `eltwise_add_bf16_vector` in [add.cc](../../../aie_kernels/eltwise/add.cc).
 2. Check that the symbol's body has one marker pair around the whole call. [`test_kernel_trace_markers.py`](../../../test/python/test_kernel_trace_markers.py) does this for every library build without a device: it compiles each build to optimized IR and fails when the markers its entry symbol reaches do not match the contract's `trace`.
 
-An initializer on the same core (such as `zero`) may have markers of its own. The harness calls the initializers and then the kernel in a fixed order, so `cycles_per_call` splits the intervals by position and returns each kernel's population separately (`kd.CallCycles`). A stream with more intervals than the contracts declare means some kernel emits markers it does not declare, and `cycles_per_call` raises instead of returning a number:
+An initializer on the same core (such as `zero`) may have markers of its own. The harness calls the initializers and then the kernel in a fixed order, so `cycles_per_call` splits the intervals by position and returns each kernel's population separately (`CallCycles`). A stream with more intervals than the contracts declare means some kernel emits markers it does not declare, and `cycles_per_call` raises instead of returning a number:
 
 ```
 RuntimeError: expected <N> trace intervals, got <M>; a kernel on the core emits markers its contract's trace does not declare
@@ -55,7 +54,7 @@ Adding markers has a cost of its own: on AIE2P they grew one kernel's stack fram
 
 ## <u>A worked example: `add`</u>
 
-The bf16 [add.cc](../../../aie_kernels/eltwise/add.cc) kernel used to run one load/add/store chain per loop iteration. On AIE2P it now runs four. Here is how that change looks through each tool.
+The bf16 [add.cc](../../../aie_kernels/eltwise/add.cc) kernel once ran one load/add/store chain per loop iteration, and a change made it run four on AIE2P. Here is how that change looks through each tool. (The kernel has moved on since; the end of this example says where it stands now.)
 
 **Hardware first.** The `add` contract declares `Trace.whole_call()`, so the performance check times it. Time the 16-call case with the kernel in your checkout and, in the same run, with a snapshot of the old one. Run from the root of the checkout:
 
@@ -67,7 +66,7 @@ MLIR_AIE_KERNEL_SOURCES=$PWD pytest test/python/npu/test_kernels_perf.py -m perf
     --baseline-sources /tmp/before --perf-meta meta.json
 ```
 
-`--baseline-sources` measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and `meta.json` give both arms' `cycles` and minimum `npu_us`, and how many raw output words differ. The rows in `after.json` are the checkout's. Set `MLIR_AIE_KERNEL_SOURCES` for the checkout too. Without it, the tools compile the installed copy of `aie_kernels/`, so the "after" arm quietly measures whatever kernel was last installed. The brackets in `-k` match the whole case ID; without them, `mul_add/1024x16/bfloat16` would match too. `--pmode <mode>` makes the run refuse to start unless the device is in that power mode (the nightly uses `turbo`); it checks the mode and does not set it.
+`--baseline-sources` measures each case a second time with its kernels from that tree, back to back and on the same inputs. The terminal summary and `meta.json` give both arms' `cycles` and minimum `dispatch_us` and `npu_us`, and how many raw output words differ. The rows in `after.json` are the checkout's. Set `MLIR_AIE_KERNEL_SOURCES` for the checkout too. Without it, the tools compile the installed copy of `aie_kernels/`, so the "after" arm quietly measures whatever kernel was last installed. The brackets in `-k` match the whole case ID; without them, `mul_add/1024x16/bfloat16` would match too. `--pmode <mode>` makes the run refuse to start unless the device is in that power mode (the nightly uses `turbo`); it checks the mode and does not set it.
 
 Each row in the JSON is `<case>/<metric>`:
 
@@ -75,7 +74,7 @@ Each row in the JSON is `<case>/<metric>`:
 |---|---|---|
 | `add/1024x16/bfloat16/cycles` | 390 | 150 |
 | `add/1024x16/bfloat16/cycles_per_kop` | 380.859 | 146.484 |
-| `add/1024x16/bfloat16/npu_us` | 85.16 | 90.53 |
+| `add/1024x16/bfloat16/dispatch_us` | 85.16 | 90.53 |
 
 `cycles` is the minimum over the 16 traced calls, with the median, maximum and count in the row's `range`. The table's cycles are medians, recorded before the performance check switched to the minimum. `npu_us` is the median device time of a whole 16-call dispatch. The kernel is 2.6x faster, yet `npu_us` got *slower*. The next section explains why that is expected, and why you should judge the kernel by `cycles`.
 
@@ -121,9 +120,11 @@ Now check the arithmetic: the old loop does one vector (32 elements) per iterati
 
 Twelve bundles do four useful things. Both inputs are loaded with `vlda.conv.fp32.bf16`, a load that converts bf16 to float on the way in and exists only on load unit A, so the two loads take two bundles instead of sharing one. The `vadd.f` then waits out the load latency, and the store waits for the add. Nothing else is available to fill the gaps: the loop is **latency-bound**, not limited by any unit.
 
-The shipped loop gives the scheduler four independent chains. Its 18 bundles start with eight `vlda.conv` loads back to back, and the adds and stores of earlier chains fill the bundles that were empty. 4.5 bundles per vector instead of 12. The loads on unit A now set a floor of 2 bundles per vector, so there is still some room, but the easy win is taken.
+The four-chain loop gives the scheduler four independent chains. Its 18 bundles start with eight `vlda.conv` loads back to back, and the adds and stores of earlier chains fill the bundles that were empty. 4.5 bundles per vector instead of 12. The loads on unit A now set a floor of 2 bundles per vector, so there is still some room, but the easy win is taken.
 
 AIE2 took the opposite route. There the four-chain body needs more bundles than the pipeliner's limit (`SwpMaxMii` 27), so it ran unoverlapped. The AIE2 branch of `add.cc` keeps one chain under `AIE_LOOP_NO_UNROLL` with `__restrict` pointers, and the pipeliner overlaps its iterations to one vector per cycle: 342 → 78 cycles on an npu1.
+
+Both branches have since converged on one chain that removes the floor itself. The tuned AIE2 and AIE2P paths run `eltwise_vadd_mac`: only `a` converts on load, `b` loads as bf16 on load unit B and is added as `b * 1` in a `mac`, so the two loads no longer queue on unit A and the loop pipelines to one vector per cycle (II1 on AIE2P). The four-chain loop above is now the untuned branch, which a build with `AIE_KERNELS_PORTABLE=1` compiles; set it to reproduce this example's numbers.
 
 This is the pattern for the rest of the section: hardware says whether it got faster, the remarks say what the compiler did, and the bundles say why.
 
@@ -193,9 +194,9 @@ The remarks tool (see [Static checks](../../kernels_library.md#static-checks)) w
 | `pipelined`, `missed_reason` | A loop the pipeliner declined. The hot loop should be innermost, with no `if` in its body. |
 | `prologue_bundles`, `epilogue_bundles` | The fixed cost of entering the loop. It matters when the trip count is small or the loop is entered many times. |
 
-Per kernel, `pm_bytes` is program memory, `pass_failed` lists `#pragma clang loop` or `AIE_*` hints the compiler could not apply, and `schedule_notes` holds the scheduler's messages. "Unable to find schedule" means the modulo scheduler gave up; the loop may still have been packed by the post-pass scheduler, so read `ii` and `ns` too. The tool builds each factory at its defaults and at each entry of its `.dtypes` table, not at every case's parameters.
+Per kernel, `pm_bytes` is program memory, `pass_failed` lists `#pragma clang loop` or `AIE_*` hints the compiler could not apply, and `schedule_notes` holds the scheduler's messages. "Unable to find schedule" means the modulo scheduler gave up; the loop may still have been packed by the post-pass scheduler, so read `ii` and `ns` too. The tool builds each factory at its defaults and at each entry of its `kernels.DTYPES` table, not at every case's parameters.
 
-**Library calls and stack.** Scalar code that looks harmless can compile to a function call. The tool also reads each kernel object. Its `libcalls` row counts the runtime-library routines that the entry symbol reaches, and the build prints their names (`calls the runtime library: __divsf3 __mulsf3`). A healthy kernel has none. [Peano and AIE2P traps](#peano-and-aie2p-traps) lists the calls to look for. For an object outside the library, `$PEANO_INSTALL_DIR/bin/llvm-nm -u <kernel>.o` lists the same symbols, next to any other kernels it calls. The `kernel_stack_bytes` row is the deepest chain of stack frames from the entry symbol, not counting the library routines' own frames or the core's `main`, so the core needs more than it says. When it is over the contract's `stack_bytes` (or the target's default), the tool prints a warning.
+**Library calls and stack.** Scalar code that looks harmless can compile to a function call. The tool also reads each kernel object. Its `libcalls` row counts the runtime-library routines that the entry symbol reaches, and the build prints their names (`calls the runtime library: __divsf3 __mulsf3`). A healthy kernel has none. [Peano and AIE2P traps](#peano-and-aie2p-traps) lists the calls to look for. For an object outside the library, `$PEANO_INSTALL_DIR/bin/llvm-nm -u <kernel>.o` lists the same symbols, next to any other kernels it calls. The `kernel_stack_bytes` row is the deepest chain of stack frames from the entry symbol, not counting the library routines' own frames or the core's `main`, so the core needs more than it says. aiecc measures the whole linked core and reserves that.
 
 **The object.** When a number moves unexpectedly, look before you explain. In the loop body, count the `vlda`/`vldb`/`vmac`/`vst` operations and any `[sp, #...]` accesses (spills to the stack). Size code per function, not per object: `llvm-size -A` and the `.text.<entry>` section. A `static` helper that is inlined into its `extern "C"` entry point can also be emitted on its own; it counts in the object, and the linker then drops it.
 
@@ -267,7 +268,7 @@ Some things compile without a warning and then run silently slower or give wrong
 **Pragmas that do nothing, or the opposite.** Under Peano, `AIE_PREPARE_FOR_PIPELINING` expands to nothing, and so do the other Chess-only controls ([pragma reference](../section-4c#loop-pragma-reference)). Code built with and without it is byte-identical. `AIE_PREPARE_FOR_POSTPIPELINING` expands to `pipeline(disable)`: it **turns pipelining off**. `AIE_LOOP_RANGE` states a trip count and unrolls nothing. `chess_storage(...)` silently drops its alignment and bank placement: the same table was 32-byte aligned under Chess and 4-byte aligned under Peano. Use `alignas`.
 
 **Silent wrong results.**
-* A stack overflow does not trap on AIE2P; it overwrites the neighbouring buffer. aiecc measures the stack each core needs and fails the build when the declared size is too small. The IRON `Worker` default is 1024 bytes; a kernel contract states a larger need in `stack_bytes`. The remarks `kernel_stack_bytes` row gives the kernel's deepest path before you build; the core adds `main`'s frame.
+* A stack overflow does not trap on AIE2P; it overwrites the neighbouring buffer. aiecc measures the stack each linked core needs and reserves it, never less than the 1024-byte default, and fails the build when an explicit `Worker(stack_size=)` is too small. The remarks `kernel_stack_bytes` row gives the kernel's deepest path before you build; the core adds `main`'s frame.
 * On hardware, a block stream's `pop_seek` that directly follows a plain `pop()` landed on the wrong block when the seek stride was odd; even strides were correct. [mm_bfp.cc](../../../aie_kernels/linalg/mm_bfp.cc) therefore seeks after every pop when the number of k blocks is odd, and an odd-K case in [kernel_cases.py](../../../test/python/npu/kernel_cases.py) covers that path.
 * An unaligned `load_v<int8, 32>` silently returns wrong bytes: use two aligned loads and `shuffle_down`. Vector stores of 64 lanes need a 64-byte-aligned buffer (32 at the least), and lookup tables need `alignas(32)`.
 * `mmul::to_vector<int32>` dumps the accumulator in a different lane order from `to_vector<int8>(shift)`.
@@ -354,10 +355,10 @@ Make sure every number comes from the source you think it does.
     }
     ```
     <details markdown="1"><summary>Show answer</summary>
-    390 and 150 cycles; II 12 and II 18, both with `NS=1`. The wall-clock `npu_us` does not move beyond noise, because the core is busy for about 1.5% of the device time.
+    390 and 150 cycles; II 12 and II 18, both with `NS=1`. The wall-clock `dispatch_us` does not move beyond noise, because the core is busy for about 1.5% of the device time.
     </details>
 
-1. The performance check sizes the trace buffer from the number of intervals the contracts declare (`kd.traced_intervals`). Call `kd.cycles_per_call` for the `add/1024x256/bfloat16` case with `trace_size=16384` instead. What comes back, and how can you tell?
+1. The performance check sizes the trace buffer from the number of intervals the contracts declare (`KernelDesign.traced_intervals()`). Call the instance's `cycles_per_call` for the `add/1024x256/bfloat16` case with `trace_size=16384` instead. What comes back, and how can you tell?
     <details markdown="1"><summary>Show answer</summary>
     A 16 KB buffer fills after 91 intervals of this design, so `kernel` holds the first 91 calls and `truncated` is `True`. Those 91 are still labelled correctly, because the buffer keeps the start of the stream in call order. In a performance row, `truncated` appears in the `range`.
     </details>

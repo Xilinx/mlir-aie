@@ -62,11 +62,15 @@ def post_l2(act_in, sf, *, data_dir):
         depth=2,
     )
 
-    PostOutputSplitL2 = 40
-    fc_full_per_tile = post_L2_InC * fc_out_per_tile  # 409600 B per FC half
-    fc_recv_per_tile = fc_full_per_tile // PostOutputSplitL2  # 10240 B on compute
-    # `co` = channels per ObjectFifo element (one WeightIndex iteration's output slice).
-    co = post_L2_OutC // (PostOutputSplitL2 * n_fc_tiles)  # = 8
+    # Each FC tile streams 32-output blocks of its weights in chunks of 320
+    # inputs, so FC1 (960 real inputs of the 1280 its weights are padded to)
+    # streams three chunks a block and FC2 four.
+    chunk_ic, co = 320, 32
+    chunk_bytes = chunk_ic * co
+    n_blocks = fc_out_per_tile // co
+    fc1_chunks, fc2_chunks = post_L1_OutC // chunk_ic, post_L2_InC // chunk_ic
+    fc_full_per_tile = post_L2_InC * fc_out_per_tile
+    fc_stream_per_tile = (fc1_chunks + fc2_chunks) * n_blocks * chunk_bytes
 
     # Split the output fifo into 4 channel-segments, one per FC tile.
     act_post_l2_tiles = act_out_of.prod().join(
@@ -75,61 +79,47 @@ def post_l2(act_in, sf, *, data_dir):
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
     )
 
-    def _u16(shape):
-        return np.ndarray[shape, np.dtype[np.uint16]]
-
-    # Post-L2 FC: uint16 input (avgpool output) → uint16 output, in `co`-element slices.
-    k_post_l2 = kernels.bn_fc_relu_ui16_pad(
+    k_post_l2 = kernels.bn_fc_relu_ui16_ic_chunk(
         input_channels=post_L2_InC,
-        output_channels=co,
-        weight_chunk_count=fc_recv_per_tile,
+        chunk_input_channels=chunk_ic,
+        chunk_output_channels=co,
     )
 
     post_l2_workers = []
     for i, (fc1_f, fc2_f) in enumerate(fc_wts_filenames):
-        fc1_data = load_wts(data_dir, fc1_f, fc_full_per_tile)
-        fc2_data = load_wts(data_dir, fc2_f, fc_full_per_tile)
+        # [OC/8][1280][8] weights, reordered into the stream's chunk order.
+        stream = np.concatenate(
+            [
+                load_wts(data_dir, f, fc_full_per_tile)
+                .reshape(n_blocks, co // 8, post_L2_InC // chunk_ic, -1)[:, :, :n]
+                .transpose(0, 2, 1, 3)
+                .reshape(-1)
+                for f, n in ((fc1_f, fc1_chunks), (fc2_f, fc2_chunks))
+            ]
+        )
 
-        # FC weights: depth-2 ObjectFifo with both FC1 and FC2 weight sets
-        # as init_values. The consumer loops through buffer 0 (FC1) then
-        # buffer 1 (FC2), each split into PostOutputSplitL2 chunks.
+        # The tile's whole weight stream rests on a MemTile, as two halves
+        # (each must fit one MemTile); the consumer walks it a chunk at a time.
         fc_wts_of = ObjectFifo(
-            i8((fc_full_per_tile,)),
+            i8((fc_stream_per_tile // 2,)),
             depth=2,
             name=f"post_L2_wts_{i + 1}",
-            consumer_obj_type=i8((fc_recv_per_tile,)),
-            init_values=[
-                fc1_data.reshape(fc_full_per_tile),
-                fc2_data.reshape(fc_full_per_tile),
-            ],
+            consumer_obj_type=i8((chunk_bytes,)),
+            init_values=np.split(stream, 2),
         )
         # Put the producer on a MemTile. Normally a Worker sets its fifo
         # endpoint implicitly, but this fifo has no producing Worker.
         fc_wts_of.prod().endpoint = ObjectFifoEndpoint(AnyMemTile.copy())
 
-        def post_l2_fn(
-            act_in,
-            act_out,
-            wts_h,
-            k,
-            inC_fc1,
-            inC_fc2,
-            outC,
-            n_co,
-            sf1,
-            sf2,
-            n_splits=PostOutputSplitL2,
-        ):
-            # Two FC passes (FC1 then FC2) sharing the same inner ping-pong loop.
-            # The outer Python for-loop is inlined at codegen time → emits two
-            # copies of the inner range_ loop, same MLIR as a manual unroll.
-            for inC, sf in ((inC_fc1, sf1), (inC_fc2, sf2)):
+        def post_l2_fn(act_in, act_out, wts_h, k, sf1, sf2):
+            for n_chunks, sf in ((fc1_chunks, sf1), (fc2_chunks, sf2)):
                 elem_in = act_in.acquire(1)
-                for _ in range_(n_splits):
+                for _ in range_(n_blocks):
                     elem_out = act_out.acquire(1)
-                    wts = wts_h.acquire(1)
-                    k(elem_in, wts, elem_out, 1, inC, outC, n_co, sf)
-                    wts_h.release(1)
+                    for chunk in range(n_chunks):
+                        wts = wts_h.acquire(1)
+                        k(elem_in, wts, elem_out, chunk, 1, sf)
+                        wts_h.release(1)
                     act_out.release(1)
                 act_in.release(1)
 
@@ -140,10 +130,6 @@ def post_l2(act_in, sf, *, data_dir):
                 act_post_l2_tiles[i].prod(),
                 fc_wts_of.cons(),
                 k_post_l2,
-                post_L1_OutC,
-                post_L2_InC,
-                post_L2_OutC,
-                co,
                 post_fc1_sf,
                 post_fc2_sf,
             ],

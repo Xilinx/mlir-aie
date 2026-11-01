@@ -21,19 +21,14 @@ The npu2_device fixture comes from conftest.py at this directory level.
 import pytest
 from aie.iron import kernels
 from aie.iron.device import NPU1Col1
-from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
 from ml_dtypes import bfloat16
 
 
 @pytest.fixture
 def npu1_device():
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(NPU1Col1())
-    try:
+    with set_current_device(NPU1Col1()):
         yield
-    finally:
-        set_current_device(previous)
 
 
 def _bf16_mm(**kwargs):

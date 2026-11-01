@@ -30,33 +30,32 @@
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:       %[[T2:.*]] = aie.tile(0, 2)
 // CHECK-DAG:       %[[T3:.*]] = aie.tile(0, 3)
-// CHECK-DAG:       %[[BL_PROD:.*]] = aie.lock(%[[T3]]) {init = 3 : i32, sym_name = "acquire_before_loop_cons_prod_lock_0"}
-// CHECK-DAG:       %[[BL_CONS:.*]] = aie.lock(%[[T3]]) {init = 0 : i32, sym_name = "acquire_before_loop_cons_cons_lock_0"}
-// CHECK-DAG:       %[[IN_PROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "acquire_in_loop_cons_prod_lock_0"}
-// CHECK-DAG:       %[[IN_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "acquire_in_loop_cons_cons_lock_0"}
+// CHECK-DAG:       %[[BL_PROD:.*]] = aie.lock(%[[T3]]) {init = 3 : i32, sym_name = "acquire_before_loop__cons__prodlock0"}
+// CHECK-DAG:       %[[BL_CONS:.*]] = aie.lock(%[[T3]]) {init = 0 : i32, sym_name = "acquire_before_loop__cons__conslock0"}
+// CHECK-DAG:       %[[IN_PROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "acquire_in_loop__cons__prodlock0"}
+// CHECK-DAG:       %[[IN_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "acquire_in_loop__cons__conslock0"}
 
 // core_0_2 holds nothing on entry, so it computes how much to acquire.
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
 // CHECK-DAG:         %[[IN_C0:.*]] = arith.constant 0 : i32
 // CHECK-DAG:         %[[IN_C1:.*]] = arith.constant 1 : i32
 // CHECK-DAG:         %[[IN_C2:.*]] = arith.constant 2 : i32
-// CHECK:             %{{.*}}:2 = scf.for %{{.*}} iter_args(%{{.*}} = %[[IN_C0]], %[[HELD:.*]] = %[[IN_C0]]) -> (i32, i32) {
+// CHECK:             %{{.*}} = scf.for %{{.*}} iter_args(%[[HELD:.*]] = %[[IN_C0]]) -> (i32) {
 // CHECK:               %[[DELTA:.*]] = arith.subi %[[IN_C2]], %[[HELD]] : i32
 // CHECK:               %[[ACQ:.*]] = arith.maxsi %[[DELTA]], %[[IN_C0]] : i32
 // CHECK:               aie.use_lock(%[[IN_CONS]], AcquireGreaterEqual, %[[ACQ]])
 // CHECK:               %[[HELDACQ:.*]] = arith.addi %[[HELD]], %[[ACQ]] : i32
 // CHECK:               aie.use_lock(%[[IN_PROD]], Release, %[[IN_C1]])
 // CHECK:               %[[HELDREL:.*]] = arith.subi %[[HELDACQ]], %[[IN_C1]] : i32
-// CHECK:               scf.yield %{{.*}}, %[[HELDREL]] : i32, i32
+// CHECK:               scf.yield %[[HELDREL]] : i32
 // CHECK:             }
 // CHECK:             aie.end
 
 // core_0_3 holds 1 on entry, so every acquire is the constant 1.
 // CHECK:           %{{.*}} = aie.core(%[[T3]]) {
-// CHECK-DAG:         %[[BL_C0:.*]] = arith.constant 0 : i32
 // CHECK-DAG:         %[[BL_C1:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[BL_CONS]], AcquireGreaterEqual, %[[BL_C1]])
-// CHECK:             %{{.*}} = scf.for %{{.*}} iter_args(%{{.*}} = %[[BL_C0]]) -> (i32) {
+// CHECK:             scf.for %{{.*}} {
 // CHECK-NOT:           arith.maxsi
 // CHECK:               aie.use_lock(%[[BL_CONS]], AcquireGreaterEqual, %[[BL_C1]])
 // CHECK:               aie.use_lock(%[[BL_PROD]], Release, %[[BL_C1]])

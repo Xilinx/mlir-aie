@@ -9,10 +9,13 @@ checks import without a built ``aie._mlir_libs``. ``aie.helpers.util`` holds
 the other half and builds on this one.
 """
 
-from typing import TypeVar, get_args
+from typing import TYPE_CHECKING, TypeVar, get_args
 
 import numpy as np
 from ml_dtypes import bfloat16
+
+if TYPE_CHECKING:
+    from ..utils.compile.jit.markers import In, InOut, Out
 
 
 class _BlockFloat(np.generic):
@@ -77,14 +80,41 @@ def ceildiv(a, b):
     return -(a // -b)
 
 
-def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
-    shape = get_args(ndarray_type)[0]
+_T = TypeVar("_T")
+
+
+def np_ndarray_type_of(tensor: "_T | In | Out | InOut") -> "_T | type[np.ndarray]":
+    """Return ``tensor``'s type, ``np.ndarray[shape, np.dtype[T]]``.
+
+    Args:
+        tensor: The ``In``/``Out``/``InOut`` operand a generator's tensor
+            parameter receives, or anything else, which is returned as is.
+
+    Returns:
+        The operand's tensor type, or ``tensor``.
+    """
+    # Imported lazily: JIT type introspection itself uses this module.
+    from ..utils.compile.jit.markers import In, InOut, Out
+
+    return tensor.ndarray_type if isinstance(tensor, (In, Out, InOut)) else tensor
+
+
+def np_ndarray_type_get_shape(
+    ndarray_type: "type[np.ndarray] | In | Out | InOut",
+) -> tuple[int, ...]:
+    shape = get_args(np_ndarray_type_of(ndarray_type))[0]
     # Imported lazily: JIT type introspection itself uses this module.
     from ..utils.compile.jit.markers import _DispatchParameter
+    from .taplib import Affine
 
     for elem in shape if isinstance(shape, tuple) else (shape,):
         if isinstance(elem, _DispatchParameter):
-            elem._misuse()
+            elem.refuse()
+        if isinstance(elem, Affine):
+            raise TypeError(
+                f"a shape cannot hold {elem}, which is computed per call; use "
+                "CompileTime or specialize"
+            )
     assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
     for elem in shape:
         assert isinstance(
@@ -93,8 +123,10 @@ def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]
     return shape
 
 
-def np_ndarray_type_get_dtype(ndarray_type: type[np.ndarray]) -> type[NpuDType]:
-    return get_args(get_args(ndarray_type)[1])[0]
+def np_ndarray_type_get_dtype(
+    ndarray_type: "type[np.ndarray] | In | Out | InOut",
+) -> type[NpuDType]:
+    return get_args(get_args(np_ndarray_type_of(ndarray_type))[1])[0]
 
 
 def pack_pad_value(value: int, elem_bytes: int) -> int:

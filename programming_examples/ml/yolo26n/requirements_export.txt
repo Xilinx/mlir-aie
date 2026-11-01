@@ -1,0 +1,10 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Extras for export_yolo26n.py only, on top of requirements.txt and torch
+# (python/requirements_ml.txt has the CPU build; install it first so
+# ultralytics does not pull CUDA): it fetches the AGPL-3.0 checkpoint and
+# quantizes it. amd-quark needs Python 3.11 to 3.13, and 0.13 is the newest
+# that accepts requirements.txt's onnx and onnxruntime pins.
+ultralytics==8.4.182
+amd-quark==0.13

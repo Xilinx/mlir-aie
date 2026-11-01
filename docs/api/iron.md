@@ -33,19 +33,25 @@ The objects most designs are built from.
 
 ### Program
 
-::: iron.program
+::: aie.iron.program
+    options:
+      show_root_heading: false
+
+### DeviceConfiguration
+
+::: aie.iron.configuration
     options:
       show_root_heading: false
 
 ### Worker
 
-::: iron.worker
+::: aie.iron.worker
     options:
       show_root_heading: false
 
 ### ObjectFifo
 
-::: iron.dataflow.objectfifo
+::: aie.iron.dataflow.objectfifo
     options:
       show_root_heading: false
 
@@ -55,7 +61,7 @@ The host-side orchestration entry point. Calls to producer-handle `fill` and
 consumer-handle `drain` are declared in the sequence body passed to `Runtime(seq, fn_args)`;
 Workers are passed to `Program(workers=...)`.
 
-::: iron.runtime.runtime
+::: aie.iron.runtime.runtime
     options:
       show_root_heading: false
 
@@ -66,7 +72,7 @@ in one Worker, as in the [edge-detection example](../../programming_examples/vis
 Passing it in the Worker's `fn_args` associates it with that Worker's tile.
 Unlike an ObjectFifo, a Buffer does not provide producer/consumer synchronization.
 
-::: iron.buffer
+::: aie.iron.buffer
     options:
       show_root_heading: false
 
@@ -86,13 +92,20 @@ Resolving a source-backed binding registers its artifact for compilation without
 requiring the original `ExternalFunction` to remain alive. Independent operations
 such as `kernels.zero(...)` own their own objects.
 
-::: iron.kernel
+::: aie.iron.kernel
     options:
       show_root_heading: false
 
 ### ScratchpadParameter
 
-::: iron.scratchpad_parameter
+A design that declares `ScratchpadParameter`s and compiles to a full ELF
+(`@iron.jit(full_elf=True)`) takes their values per call:
+`design(out, parameters={"foo": bfloat16(3.0), "bar": bfloat16(4.0)})`. The
+values go through the run's ctrl scratchpad, laid out by the build's own
+`params.txt`. A design without `ScratchpadParameter`s refuses `parameters=`,
+and so do the HSA and HRX runtimes.
+
+::: aie.iron.scratchpad_parameter
     options:
       show_root_heading: false
 
@@ -116,7 +129,7 @@ constants. These are re-exported into `iron` from `aie.utils`.
 | `iron.CallableDesign` | class | A compiled, callable design produced from a `CompilableDesign`. |
 | `iron.compileconfig` | decorator | Attach compile-time configuration to a design generator. |
 | `iron.get_compile_arg` | function | Dynamically inject a compile-time argument (advanced). |
-| `iron.In` / `iron.Out` / `iron.InOut` | markers | Type-annotation markers for design inputs/outputs. |
+| `iron.In` / `iron.Out` / `iron.InOut` | classes | As annotations they mark a design's inputs and outputs; instantiated in an operator's class body, they declare its tensors. |
 | `iron.CompileTime` | marker | Type-annotation marker for a compile-time constant argument. |
 | `iron.DispatchTime` | marker | Integer scalar that can vary per call without recompiling the device program. |
 
@@ -147,15 +160,15 @@ into `iron` from `aie.utils`.
 | Symbol | Summary |
 |--------|---------|
 | `iron.get_current_device` | Return the currently selected NPU device. |
-| `iron.set_current_device` | Select the NPU device for subsequent allocations. |
+| `iron.set_current_device` | Select the NPU device for subsequent allocations; under `with`, restore the previous one on exit. |
 | `iron.ensure_current_device` | Raise if no device is currently selected. |
 
-The [`Device`][iron.Device] a `Program` targets also reports the hardware
+The [`Device`][aie.iron.Device] a `Program` targets also reports the hardware
 limits a design is sized against, such as `max_lock_value`,
 `max_repeat_count`, `dma_task_queue_depth` and `get_num_bds(tile_type)`, so a
 design can read them instead of hardcoding them.
 
-::: iron.Device
+::: aie.iron.Device
     options:
       show_root_heading: true
 
@@ -163,7 +176,7 @@ design can read them instead of hardcoding them.
 
 ## Data type helpers
 
-::: iron.dtype
+::: aie.iron.dtype
     options:
       show_root_heading: false
 
@@ -172,22 +185,22 @@ design can read them instead of hardcoding them.
 ## Advanced primitives
 
 Still part of the `aie.iron` API —
-but reach for these only when the managed [`ObjectFifo`][iron.ObjectFifo]
+but reach for these only when the managed [`ObjectFifo`][aie.iron.ObjectFifo]
 abstraction is not enough and you need explicit control over routing, DMA
 descriptors, and locks.
 
 ### Flow / PacketFlow
 
-Circuit-switched ([`Flow`][iron.Flow]) and packet-switched
-([`PacketFlow`][iron.PacketFlow]) stream connections, plus the
-[`PacketDest`][iron.PacketDest] endpoint descriptor.  A `Flow` given no DMA
+Circuit-switched ([`Flow`][aie.iron.Flow]) and packet-switched
+([`PacketFlow`][aie.iron.PacketFlow]) stream connections, plus the
+[`PacketDest`][aie.iron.PacketDest] endpoint descriptor.  A `Flow` given no DMA
 channels lets the compiler assign them.  `endpoint(tile)` on either returns the
-[`FlowEndpoint`][iron.FlowEndpoint] on `tile`, which a `DmaChannel` takes in
+[`FlowEndpoint`][aie.iron.FlowEndpoint] on `tile`, which a `DmaChannel` takes in
 place of a channel index and which can run a runtime-sequence task.  A `Flow`
 or `PacketFlow` with one shim end has `fill` / `drain`; `PacketFlow.fill`
 stamps the packet header on the input.
 
-::: iron.dataflow.flow
+::: aie.iron.dataflow.flow
     options:
       show_root_heading: false
       inherited_members: true
@@ -196,47 +209,47 @@ stamps the packet header on the input.
 
 Directed cascade-stream connection between two adjacent Workers.
 
-::: iron.dataflow.cascadeflow
+::: aie.iron.dataflow.cascadeflow
     options:
       show_root_heading: false
 
 ### TileDma / DmaChannel / Bd / DmaEndpoint
 
-Explicit tile DMA programs: [`TileDma`][iron.TileDma],
-[`DmaChannel`][iron.DmaChannel], buffer descriptors ([`Bd`][iron.Bd]), and the
-[`Acquire`][iron.Acquire] / [`Release`][iron.Release] lock actions.  A
-[`DmaEndpoint`][iron.DmaEndpoint] names one channel of one tile;
-`endpoint.task(*bds)` configures a [`TileDmaTask`][iron.TileDmaTask] on a mem
+Explicit tile DMA programs: [`TileDma`][aie.iron.TileDma],
+[`DmaChannel`][aie.iron.DmaChannel], buffer descriptors ([`Bd`][aie.iron.Bd]), and the
+[`Acquire`][aie.iron.Acquire] / [`Release`][aie.iron.Release] lock actions.  A
+[`DmaEndpoint`][aie.iron.DmaEndpoint] names one channel of one tile;
+`endpoint.task(*bds)` configures a [`TileDmaTask`][aie.iron.TileDmaTask] on a mem
 or core tile from the runtime sequence, so its descriptors can change per
 dispatch.
 
-::: iron.dataflow.tile_dma
+::: aie.iron.dataflow.tile_dma
     options:
       show_root_heading: false
 
 ### Lock
 
-::: iron.lock
+::: aie.iron.lock
     options:
       show_root_heading: false
 
 ### Runtime tasks
 
 Lower-level runtime task types scheduled by the
-[`Runtime`][iron.runtime.runtime.Runtime].
+[`Runtime`][aie.iron.runtime.runtime.Runtime].
 
-::: iron.runtime.task
+::: aie.iron.runtime.task
     options:
       show_root_heading: false
 
-::: iron.runtime.taskgroup
+::: aie.iron.runtime.taskgroup
     options:
       show_root_heading: false
 
-::: iron.runtime.dmatask
+::: aie.iron.runtime.dmatask
     options:
       show_root_heading: false
 
-::: iron.runtime.dmataskhandle
+::: aie.iron.runtime.dmataskhandle
     options:
       show_root_heading: false

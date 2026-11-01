@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // Switching is chosen per fifo, so circuit- and packet-switched connections
-// coexist. A pinned packet_id is honoured; the rest are assigned around it and
+// coexist. A pinned pkt_id is honoured; the rest are assigned around it and
 // around packet flows the design already declares.
 
 // RUN: aie-opt --aie-objectfifo-split %s | FileCheck %s --check-prefix=SPLIT
@@ -20,17 +20,17 @@ module @mixed {
     %d = aie.tile(3, 3)
 
     aie.objectfifo @plain (%a, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @auto (%c, {%d}, 2 : i32) {packet} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @pinned (%b, {%c}, 2 : i32) {packet, packet_id = 7 : i8} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @auto (%c, {%d}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<>>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @pinned (%b, {%c}, 2 : i32) {transport = #aie.transport<auto, packet = #aie.packet_info<pkt_id = 7>>} : !aie.objectfifo<memref<16xi32>>
   }
 }
 
 // The choice rides on the flow, which is what becomes one kind of route or the
 // other.
-// SPLIT:       aie.route from @plain_prod_dma to [@plain_cons_dma]
+// SPLIT:       aie.route from @plain__prod__dma to [@plain__cons__dma]
 // SPLIT-NOT:   packet
-// SPLIT:       aie.route from @auto_prod_dma to [@auto_cons_dma] {packet}
-// SPLIT:       aie.route from @pinned_prod_dma to [@pinned_cons_dma] {packet, packet_id = 7 : i8}
+// SPLIT:       aie.route from @auto__prod__dma to [@auto__cons__dma] {packet = #aie.packet_info<>}
+// SPLIT:       aie.route from @pinned__prod__dma to [@pinned__cons__dma] {packet = #aie.packet_info<pkt_id = 7>}
 
 // CHECK-DAG:   %[[A:.*]] = aie.tile(1, 2)
 // CHECK-DAG:   %[[B:.*]] = aie.tile(3, 2)

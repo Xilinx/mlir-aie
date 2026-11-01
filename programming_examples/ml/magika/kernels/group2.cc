@@ -489,7 +489,13 @@ void group2_kernel(int16_t *__restrict xin, int16_t *__restrict magika_2_a,
                    int16_t *__restrict magika_2_c,
                    int16_t *__restrict magika_2_d) {
   event0();
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::symmetric_inf);
   group2(xin, magika_2_a, magika_2_b, magika_2_c, magika_2_d);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 

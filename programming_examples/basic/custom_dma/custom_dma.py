@@ -12,10 +12,10 @@ from aie.dialects.aiex import set_lock_value
 from aie.iron import ObjectFifo, Program, Runtime, TaskGroup, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, AnyComputeTile, AnyMemTile
-from aie.iron.resolvable import Resolvable
+from aie.iron.resolvable import PerDeviceConfigurationResolvable
 
 
-class ScatterReadDMA(Resolvable):
+class ScatterReadDMA(PerDeviceConfigurationResolvable):
     """Read three equal-sized sections at non-uniform offsets from a MemTile buffer.
 
     A custom three-BD chain pattern reads ``transfer_len`` elements from ``offset_a``,

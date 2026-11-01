@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 // Additional rounding mode tests for bf16 matmul (issue #2983):
 //  - Integer matmul (i8) does NOT trigger conv_even
-//  - BF16 matmul + float SRS: conv_even (12) takes precedence over floor (0)
+//  - BF16 matmul + float SRS: conv_even (12)
 //  - No matmul/no SRS core does not emit ctrl_reg calls
 //===----------------------------------------------------------------------===//
 
@@ -19,8 +19,8 @@
 // CHECK-INT-MATMUL:  func.func @core_0_2
 // CHECK-INT-MATMUL-NOT:  call @llvm.aie2.set.ctrl.reg
 
-// BF16 matmul + float SRS (f32->bf16): conv_even (12) takes precedence
-// over floor (0). This is the most common direct-codegen scenario where
+// BF16 matmul + float SRS (f32->bf16): conv_even (12). This is the most
+// common direct-codegen scenario where
 // matmul accumulates in f32 and SRS truncates back to bf16.
 // CHECK-BF16-FLOAT-SRS:  func.func @core_0_3
 // CHECK-BF16-FLOAT-SRS:    call @llvm.aie2.set.ctrl.reg(%c9_i32, %c1_i32)

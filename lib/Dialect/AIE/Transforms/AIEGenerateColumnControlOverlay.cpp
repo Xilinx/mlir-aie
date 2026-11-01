@@ -130,6 +130,8 @@ struct AIEAssignTileCtrlIDsPass
 struct AIEGenerateColumnControlOverlayPass
     : xilinx::AIE::impl::AIEGenerateColumnControlOverlayBase<
           AIEGenerateColumnControlOverlayPass> {
+  using Base::Base;
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
     registry.insert<memref::MemRefDialect>();
@@ -153,7 +155,7 @@ struct AIEGenerateColumnControlOverlayPass
     for (auto dev : sourceDevices) {
       if (deviceOptedOut(dev)) {
         if (clEmitStandaloneOverlay) {
-          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(false));
+          dev.setHasCtrlPktOverlay(false);
         }
         continue;
       }
@@ -161,7 +163,7 @@ struct AIEGenerateColumnControlOverlayPass
       // second one.
       if (deviceHasControlOverlay(dev)) {
         if (clEmitStandaloneOverlay) {
-          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+          dev.setHasCtrlPktOverlay(true);
         }
         continue;
       }
@@ -186,7 +188,7 @@ struct AIEGenerateColumnControlOverlayPass
       if (failed(applyOverlayToDevice(dev, tokenTiles)))
         return signalPassFailure();
       if (clEmitStandaloneOverlay)
-        dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+        dev.setHasCtrlPktOverlay(true);
     }
 
     // Emit standalone `@ctrl_pkt_overlay` device.
@@ -285,7 +287,7 @@ struct AIEGenerateColumnControlOverlayPass
     if (failed(applyOverlayToDevice(overlayDevice, tokenTiles)))
       return failure();
 
-    overlayDevice->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+    overlayDevice.setHasCtrlPktOverlay(true);
     return success();
   }
 
@@ -497,7 +499,7 @@ struct AIEGenerateColumnControlOverlayPass
   // The packet ID of control packets to and from `tile`.
   static int getControllerID(TileOp tile, DenseMap<TileID, int> &tileIDMap) {
     if (auto id = tile->getAttrOfType<AIE::PacketInfoAttr>("controller_id"))
-      return id.getPktId();
+      return id.assignedId();
     return tileIDMap[{tile.colIndex(), tile.rowIndex()}];
   }
 
@@ -518,6 +520,7 @@ struct AIEGenerateColumnControlOverlayPass
   static bool hasRoutedPacket(DeviceOp device, int pktID, TileID from,
                               ArrayRef<Port> startPorts, TileID to,
                               Port toPort) {
+    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
     DenseMap<TileID, AIE::SwitchboxOp> switchboxes;
     for (auto switchbox : device.getOps<AIE::SwitchboxOp>()) {
       auto tile = dyn_cast<TileLike>(switchbox.getTile().getDefiningOp());
@@ -566,29 +569,15 @@ struct AIEGenerateColumnControlOverlayPass
 
       for (auto [dest, op] : outputs) {
         if (tileID == to && dest == toPort) {
-          if (op->hasAttr("is_ctrl_pkt_overlay"))
+          if (overlay.isAttrPresent(op))
             return true;
           continue;
         }
-        TileID next = tileID;
-        switch (dest.bundle) {
-        case WireBundle::North:
-          next.row++;
-          break;
-        case WireBundle::South:
-          next.row--;
-          break;
-        case WireBundle::East:
-          next.col++;
-          break;
-        case WireBundle::West:
-          next.col--;
-          break;
-        default:
+        auto next =
+            getConnectingWireEndpoint(device.getTargetModel(), tileID, dest);
+        if (!next)
           continue;
-        }
-        worklist.push_back(
-            {next, Port{getConnectingBundle(dest.bundle), dest.channel}});
+        worklist.push_back(*next);
       }
     }
     return false;
@@ -829,7 +818,7 @@ struct AIEGenerateColumnControlOverlayPass
       if (tOp->hasAttr("controller_id"))
         ctrlPktFlowID =
             (int)tOp->getAttrOfType<AIE::PacketInfoAttr>("controller_id")
-                .getPktId();
+                .assignedId();
       else
         ctrlPktFlowID = tileIDMap[{tOp.colIndex(), tOp.rowIndex()}];
       // Check shim channel availability
@@ -944,6 +933,12 @@ std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignTileCtrlIDsPass() {
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
 AIE::createAIEGenerateColumnControlOverlayPass() {
   return std::make_unique<AIEGenerateColumnControlOverlayPass>();
+}
+
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
+AIE::createAIEGenerateColumnControlOverlayPass(
+    const AIEGenerateColumnControlOverlayOptions &options) {
+  return std::make_unique<AIEGenerateColumnControlOverlayPass>(options);
 }
 
 void populateAIEColumnControlOverlay(DeviceOp &device) {}

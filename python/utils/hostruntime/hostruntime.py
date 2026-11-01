@@ -6,8 +6,9 @@ from __future__ import annotations
 import logging
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -36,6 +37,18 @@ class KernelHandle(ABC):
 
     def __init__(self, *, needs_dispatch_insts: bool = False):
         self.needs_dispatch_insts = needs_dispatch_insts
+
+    def empty_dispatch_ns(self) -> int | None:
+        """Time one dispatch that does nothing on this kernel's hardware context.
+
+        It is the fixed cost each dispatch of the kernel carries, on the host
+        clock a run's ``npu_time`` is measured with.
+
+        Returns:
+            Nanoseconds from submit to completion, or None where the runtime
+            has nothing empty to dispatch for this kernel.
+        """
+        return None
 
 
 class KernelResult(ABC):
@@ -171,6 +184,7 @@ class HostRuntime(ABC):
         fail_on_error: bool = True,
         only_if_loaded=False,
         dispatch_insts: np.ndarray | None = None,
+        parameters: Mapping[str, Any] | None = None,
         **kwargs,
     ) -> KernelResult:
         """Run a loaded kernel.
@@ -183,6 +197,8 @@ class HostRuntime(ABC):
             only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
             dispatch_insts (np.ndarray | None, optional): Per-call instruction
                 words for a DispatchTime[T] design. None uses static instructions.
+            parameters (Mapping[str, Any] | None, optional): ScratchpadParameter
+                values for this call, by name.
             **kwargs: Additional arguments.
 
         Returns:
@@ -218,6 +234,7 @@ class HostRuntime(ABC):
         npu_kernel: NPUKernel,
         run_args: list,
         dispatch_scalars: dict | None = None,
+        parameters: Mapping[str, Any] | None = None,
         **kwargs,
     ) -> tuple[KernelHandle, KernelResult]:
         """Load and run an NPU kernel.
@@ -227,6 +244,8 @@ class HostRuntime(ABC):
             run_args (list): Arguments to pass to the kernel.
             dispatch_scalars (dict | None, optional): DispatchTime[T] scalar
                 values for this call, keyed by parameter name.
+            parameters (Mapping[str, Any] | None, optional): ScratchpadParameter
+                values for this call, by name.
             **kwargs: Additional arguments passed to load.
 
         Returns:
@@ -264,6 +283,7 @@ class HostRuntime(ABC):
             list(run_args),
             trace_config=trace_config,
             dispatch_insts=dispatch_insts,
+            parameters=parameters,
         )
 
         if trace_config:

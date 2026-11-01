@@ -15,7 +15,7 @@ func.func @invalidElementType(%A : vector<4x8xf16>, %B : vector<8x4xf16>,
 
 func.func @invalidShape(%A : vector<4x4xbf16>, %B : vector<4x4xbf16>,
                         %C : vector<4x4xf32>) -> vector<4x4xf32> {
-  // expected-error @+1 {{op operand #0 must be a vector compatible with a lhs operand of matrix-multiply and accumulate, but got 'vector<4x4xbf16>'}}
+  // expected-error @+1 {{op no AIE2 matrix multiply takes 4x4 bf16 times 4x4 bf16 into f32}}
   %0 = aievec.matmul %A, %B, %C : vector<4x4xbf16>, vector<4x4xbf16>
                                   into vector<4x4xf32>
   return %0 : vector<4x4xf32>
@@ -25,7 +25,7 @@ func.func @invalidShape(%A : vector<4x4xbf16>, %B : vector<4x4xbf16>,
 
 func.func @invalidContraction(%A : vector<2x4xi16>, %B : vector<2x8xi16>,
                               %C : vector<4x8xi32>) -> vector<4x8xi32> {
-  // expected-error @+1 {{op failed to verify that [lhs x rhs = acc] is a valid contraction}}
+  // expected-error @+1 {{op lhs vector<2x4xi16> [m, k] times rhs vector<2x8xi16> [k, n] is not a contraction into vector<4x8xi32>}}
   %0 = aievec.matmul %A, %B, %C : vector<2x4xi16>, vector<2x8xi16>
                                   into vector<4x8xi32>
   return %0 : vector<4x8xi32>
@@ -35,7 +35,7 @@ func.func @invalidContraction(%A : vector<2x4xi16>, %B : vector<2x8xi16>,
 
 func.func @invalidAccumulatorType(%A : vector<2x4xi16>, %B : vector<4x8xi16>,
                                   %C : vector<2x8xi32>) -> vector<2x8xi32> {
-  // expected-error @+1 {{op operand #2 must be a vector compatible with an accumulator of matrix-multiply and accumulate, but got 'vector<2x8xi32>'}}
+  // expected-error @+1 {{op no AIE2 matrix multiply takes 2x4 i16 times 4x8 i16 into i32}}
   %0 = aievec.matmul %A, %B, %C : vector<2x4xi16>, vector<4x8xi16>
                                   into vector<2x8xi32>
   return %0 : vector<2x8xi32>
@@ -74,4 +74,39 @@ func.func @invalidElementTypeMulElem(%arg0 : vector<32xi8>, %arg1 : vector<32xi8
   // expected-error @+1 {{'aievec.mul_elem' op failed to verify that result type is a valid accumulator type given the type of the operands.}}
   %t11 = aievec.mul_elem %arg0, %arg1 : vector<32xi8>, vector<32xi8>, vector<32xi64>
   return %t11 : vector<32xi64>
+}
+
+// -----
+
+func.func @invalidMulElem64LanesInt(%arg0 : vector<64xi16>, %arg1 : vector<64xi16>) -> vector<64xi32> {
+  // expected-error @+1 {{64 lanes are supported only for bf16 operands with an f32 result}}
+  %0 = aievec.mul_elem %arg0, %arg1 : vector<64xi16>, vector<64xi16>, vector<64xi32>
+  return %0 : vector<64xi32>
+}
+
+// -----
+
+func.func @invalidAIE2PShuffleModeElementType(%v : vector<32xi16>)
+            -> vector<32xi16> {
+  // expected-error @+1 {{shuffle mode 't32_8x2' requires vectors of 32-bit elements}}
+  %r = aievec.shuffle %v [t32_8x2] : vector<32xi16>
+  return %r : vector<32xi16>
+}
+
+// -----
+
+func.func @invalidAIE2PShuffleModeExtraOperand(%v : vector<8xi64>)
+            -> vector<8xi64> {
+  // expected-error @+1 {{shuffle mode 't64_2x4' does not admit a second operand}}
+  %r = aievec.shuffle %v, %v [t64_2x4] : vector<8xi64>
+  return %r : vector<8xi64>
+}
+
+// -----
+
+func.func @invalidAIE2PShuffleModeMissingOperand(%v : vector<32xbf16>)
+            -> vector<32xbf16> {
+  // expected-error @+1 {{shuffle mode 't16_8x8_hi' requires a second operand}}
+  %r = aievec.shuffle %v [t16_8x8_hi] : vector<32xbf16>
+  return %r : vector<32xbf16>
 }

@@ -14,11 +14,15 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LogicalResult.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <array>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -66,10 +70,37 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::StringRef deviceName = "");
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &, llvm::StringRef);
+// The TXN encoding of each device an aiex.npu.write_config or write_teardown
+// names. Shared by the translations of one module's sequences, folded or not,
+// it encodes each written device once: a configuration's writes patch no DDR
+// address. Safe to share across threads.
+class NpuConfigCache {
+public:
+  struct Config {
+    std::vector<uint32_t> words;
+    uint32_t count = 0;
+    // At offsets from the first word.
+    std::vector<TxnLocEntry> locmap;
+  };
+
+  // `device`'s configuration, or with `teardown` its teardown, encoded by
+  // `encode` the first time it is asked for; nullptr if that failed.
+  const Config *
+  getOrEncode(mlir::Operation *device, bool teardown,
+              llvm::function_ref<mlir::LogicalResult(Config &)> encode);
+
+private:
+  std::mutex mutex;
+  // Indexed by whether the encoding is a teardown.
+  std::array<llvm::DenseMap<mlir::Operation *, std::unique_ptr<Config>>, 2>
+      configs;
+};
+
 mlir::LogicalResult AIETranslateNpuToBinary(
     mlir::ModuleOp, std::vector<uint32_t> &, llvm::StringRef deviceName = "",
     llvm::StringRef sequenceName = "",
-    std::vector<TxnLocEntry> *locmap = nullptr, bool foldDDRAddrOffset = true);
+    std::vector<TxnLocEntry> *locmap = nullptr, bool foldDDRAddrOffset = true,
+    NpuConfigCache *configs = nullptr);
 /// \brief Emit a C++ builder that reconstructs the TXN stream at runtime.
 /// \param foldDDRAddrOffset apply firmware DDR folding; see
 /// aie/Runtime/TxnEncoding.h for the runtime-specific address convention.

@@ -41,9 +41,6 @@ void linear_proj_iD(int M, int K, bf16 *x_ping, bf16 *x_pong,
   constexpr int m = Q4NX_ROW_BLOCK_SIZE;
   constexpr int k = Q4NX_COL_BLOCK_SIZE;
 
-  uint32 *pkt_id_ping = reinterpret_cast<uint32 *>(y_ping + 14);
-  uint32 *pkt_id_pong = reinterpret_cast<uint32 *>(y_pong + 14);
-
   for (int i = 0; i < M / m; i++) {
     zero_256<float, m>(y_acc);
     for (int j = 0; j < K / k; j++) {
@@ -63,34 +60,17 @@ void linear_proj_iD(int M, int K, bf16 *x_ping, bf16 *x_pong,
     }
     bf16 *y_using = y_pingpong.next(y_ping, y_pong);
 
+    // A sending core fills the first slot of its own pair; otherwise the core
+    // fills the second slot of the pair below. The lock follows the buffer.
+    _shared_lock_acquire_p(y_using, y_pingpong.is_ping ? y_prod_ping_lock
+                                                       : y_prod_pong_lock);
     if (send_x_output != 0) {
-      uint32 *pkt_id_using = y_pingpong.is_ping ? pkt_id_ping : pkt_id_pong;
-      *pkt_id_using = pkt_id;
-      if (y_pingpong.is_ping) {
-        _lock_acquire_p(y_using, y_prod_ping_lock);
-      } else {
-        _lock_acquire_p(y_using, y_prod_pong_lock);
-      }
-      narrow_to_bf16<m>(y_using + 16, y_acc);
-      if (y_pingpong.is_ping) {
-        _lock_release_p(y_using, y_cons_ping_lock);
-      } else {
-        _lock_release_p(y_using, y_cons_pong_lock);
-      }
-    } else {
-      if (y_pingpong.is_ping) {
-        _down_lock_acquire_p(y_using, y_prod_ping_lock);
-      } else {
-        _down_lock_acquire_p(y_using, y_prod_pong_lock);
-      }
-      narrow_to_bf16<m>(y_using + 16 + m,
-                        y_acc); // offset of 16+m, 16 for packed_it
-      if (y_pingpong.is_ping) {
-        _down_lock_release_p(y_using, y_cons_ping_lock);
-      } else {
-        _down_lock_release_p(y_using, y_cons_pong_lock);
-      }
+      *reinterpret_cast<uint32 *>(y_using + 14) = pkt_id;
     }
+    // 16 for the packet header.
+    narrow_to_bf16<m>(y_using + 16 + (send_x_output != 0 ? 0 : m), y_acc);
+    _shared_lock_release_p(y_using, y_pingpong.is_ping ? y_cons_ping_lock
+                                                       : y_cons_pong_lock);
   }
 }
 

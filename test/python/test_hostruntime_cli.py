@@ -230,11 +230,8 @@ def test_compile_only_without_runtime_requires_an_explicit_target(monkeypatch):
 def keep_device():
     from aie.utils import get_current_device, set_current_device
 
-    previous = get_current_device(probe_runtime=False)
-    try:
+    with set_current_device(get_current_device(probe_runtime=False)):
         yield
-    finally:
-        set_current_device(previous)
 
 
 def test_compile_only_refuses_insts_path_for_a_dispatch_time_design(

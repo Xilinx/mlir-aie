@@ -21,9 +21,8 @@ from pathlib import Path
 
 from packaging.version import Version
 
-NIGHTLY_INDEX_URL = (
-    "https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly"
-)
+LLVM_AIE_URL = "https://github.com/Xilinx/llvm-aie"
+NIGHTLY_INDEX_URL = f"{LLVM_AIE_URL}/releases/expanded_assets/nightly"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REQUIREMENTS_FILE = REPO_ROOT / "utils" / "peano-requirements.txt"
 
@@ -187,6 +186,8 @@ def main():
         target_version=target,
         changes="true",
         bump_reason=f"{current} -> {target}",
+        compare_url=f"{LLVM_AIE_URL}/compare/"
+        f"{Version(current).local}...{Version(target).local}",
     )
 
     if args.identify_only:

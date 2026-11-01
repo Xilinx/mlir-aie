@@ -29,6 +29,13 @@ def AIE_Dialect : Dialect {
   // Python wrappers in dialects/aie.py and AIEX lowerings emit arith.constant
   // and other operations, so this dialect depends on arith being available.
   let dependentDialects = ["::mlir::arith::ArithDialect"];
+  // The op assembly formats still print inherent attributes in `attr-dict`;
+  // opt out of upstream's strict-properties default until they migrate.
+  let useStrictPropertiesInAssemblyFormat = 0;
+  // Marks on switchbox ops: is_ctrl_pkt_overlay for the control-packet
+  // overlay's, priority_route for rules that carry a prioritized flow.
+  let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_pkt_overlay,
+      "::mlir::UnitAttr":$priority_route);
 }
 
 #endif // AIE_BASE

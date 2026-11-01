@@ -103,10 +103,12 @@ static inline void rope_halves_step(const T *restrict input,
   // Second half: x2*cos + x1*sin
   ::aie::vector<T, N> y2 =
       ::aie::mac(::aie::mul(x2, cos_val), x1, sin_val).template to_vector<T>();
+  // Without the 32-byte hint the store rewrites the next 32 bytes too, past
+  // the end of the row on the last step.
   if constexpr (Aligned)
     ::aie::store_v(output + dims_half, y2);
   else
-    ::aie::store_unaligned_v(output + dims_half, y2);
+    ::aie::store_unaligned_v(output + dims_half, y2, 32 / sizeof(T));
 }
 
 // Two-halves RoPE (the layout used by HuggingFace transformers): the first and

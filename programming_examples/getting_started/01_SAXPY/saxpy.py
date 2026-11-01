@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-from pathlib import Path
-
 import aie.iron as iron
 import numpy as np
 from aie.iron import (
@@ -19,6 +17,48 @@ from aie.iron import (
 from aie.utils.config import cxx_header_path
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
+
+# The AI Engine kernels are a string here, so the design needs no separate .cc file.
+_KERNEL_SRC = """
+#define NOCPP
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <aie_api/aie.hpp>
+
+extern "C" {
+void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, bfloat16 *restrict z) {
+  event0();
+  ::aie::vector<bfloat16, 64> a_v = ::aie::broadcast<bfloat16, 64>(3.f);
+#pragma clang loop min_iteration_count(4)
+  for (int i = 0; i < 4096; i += 64) {
+    ::aie::vector<bfloat16, 64> x_v = ::aie::load_v<64>(x);
+    x += 64;
+    ::aie::vector<bfloat16, 64> y_v = ::aie::load_v<64>(y);
+    y += 64;
+    ::aie::accum<accfloat, 64> ax_v = ::aie::mul(x_v, a_v);
+    ::aie::accum<accfloat, 64> z_v = ::aie::add(ax_v, y_v);
+    ::aie::vector<bfloat16, 64> z_v_converted = z_v.to_vector<bfloat16>();
+    ::aie::store_v(z, z_v_converted);
+    z += 64;
+  }
+  event1();
+}
+
+// saxpy_scalar: a non-vectorized reference SAXPY. Select it from Python by
+// changing the ExternalFunction name from "saxpy" to "saxpy_scalar".
+void saxpy_scalar(bfloat16 *x, bfloat16 *y, bfloat16 *z) {
+  event0();
+  float a = 3.f;
+  for (int i = 0; i < 4096; ++i) {
+    z[i] = a * x[i] + y[i];
+  }
+  event1();
+}
+}
+"""
 
 
 # JIT decorator for IRON
@@ -55,7 +95,7 @@ def saxpy(
 
     saxpy_kernel = ExternalFunction(
         "saxpy",
-        source_file=str(Path(__file__).parent / "saxpy.cc"),
+        source_string=_KERNEL_SRC,
         arg_types=[in_ty, in_ty, out_ty],
         include_dirs=[cxx_header_path()],
     )
@@ -97,7 +137,7 @@ def saxpy(
 
 def main():
     # Define tensor shapes and data types.
-    # NOTE: saxpy.cc hardcodes the loop bound to 4096 elements. This value
+    # NOTE: the kernel source hardcodes the loop bound to 4096 elements; this
     # must match data_size or the kernel will produce silently wrong results.
     data_size = 4096
     element_type = bfloat16

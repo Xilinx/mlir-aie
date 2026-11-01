@@ -13,12 +13,12 @@
 
 std::string xilinx::aiecc::assembleAie2ConfigElf(
     const std::string &configJson,
-    const std::vector<std::pair<std::string, std::vector<char>>> &files,
+    std::vector<std::pair<std::string, std::vector<char>>> &&files,
     std::vector<char> &elf) {
   try {
     aiebu::file_artifact artifact;
-    for (const auto &[name, contents] : files)
-      artifact.add_vfile(name, contents);
+    for (auto &[name, contents] : files)
+      artifact.add_vfile(name, std::move(contents));
     aiebu::aiebu_assembler assembler(
         aiebu::aiebu_assembler::buffer_type::aie2_config,
         std::vector<char>(configJson.begin(), configJson.end()), artifact,

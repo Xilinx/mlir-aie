@@ -181,11 +181,15 @@ public:
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
 
-  /// Number of aie2ps/aie4 microcontrollers (uC) per column
+  /// Number of microcontrollers (uC) per column
   virtual uint32_t getNumControllersPerColumn() const { return 0; }
 
-  /// Total number of aie2ps/aie4 microcontrollers (uC) in the device.
-  uint32_t getNumControllers() const {
+  /// Total number of microcontrollers (uC) in the device.
+  /// Defaults to columns() * getNumControllersPerColumn();
+  /// architectures with a single device-level uC (e.g. AIE2/AIE2P NPUs)
+  /// override this directly instead, since their controller count doesn't
+  /// scale with column count.
+  virtual uint32_t getNumControllers() const {
     return static_cast<uint32_t>(columns()) * getNumControllersPerColumn();
   }
 
@@ -355,10 +359,11 @@ public:
   /// there.
   virtual uint32_t getCoreDataAddressSpaceSize() const = 0;
 
-  /// Return the default stack reservation (in bytes) for a core, used when a
-  /// design does not state one. The linker script places the stack directly
-  /// below the objectFIFO buffers with no clearance, so a design whose frames
-  /// exceed this corrupts them instead of faulting.
+  /// Return the default stack reservation (in bytes) for a core that does not
+  /// state one. It is also the floor when aiecc sizes the stack from its
+  /// measurement. The linker script places the stack directly below the
+  /// objectFIFO buffers with no clearance, so a design whose frames exceed its
+  /// reservation corrupts them instead of faulting.
   virtual uint32_t getDefaultCoreStackSize() const { return 0x400; }
 
   /// Stack-pointer alignment in bytes, matching Peano's AIE frame lowering:
@@ -597,6 +602,10 @@ public:
 
   /// Return the number of packet-rule slots per stream-switch slave port.
   virtual uint32_t getNumSlaveSlots() const = 0;
+  /// Return the number of arbiters per stream switch.
+  virtual uint32_t getNumArbiters() const = 0;
+  /// Return the number of master select values per stream-switch arbiter.
+  virtual uint32_t getNumMselsPerArbiter() const = 0;
   /// Return the largest packet id the stream switch can route.
   virtual uint32_t getMaxPacketId() const = 0;
   /// Return the largest out-of-order BD id (unsupported = 0).
@@ -679,8 +688,9 @@ public:
                                       bool isMem = false) const;
 
   /// Encode a field value with proper bit shifting.
-  /// Return Value shifted to correct bit position
-  uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
+  /// Return nullopt if value does not fit in the field's bit width.
+  std::optional<uint32_t> encodeFieldValue(const BitFieldInfo &field,
+                                           uint32_t value) const;
 
   /// Compute a 32-bit mask for a register field.
   /// Return nullopt if the field does not fit in a 32-bit register.
@@ -705,6 +715,8 @@ public:
   AIEArch getTargetArch() const override;
 
   uint32_t getNumSlaveSlots() const override { return 4; }
+  uint32_t getNumArbiters() const override { return 6; }
+  uint32_t getNumMselsPerArbiter() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 0; }
   uint32_t getMaxRepeatCount() const override { return 0; }
@@ -848,6 +860,8 @@ public:
   uint32_t getAddressGenGranularity() const override { return 32; }
 
   uint32_t getNumSlaveSlots() const override { return 4; }
+  uint32_t getNumArbiters() const override { return 6; }
+  uint32_t getNumMselsPerArbiter() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 63; }
   uint32_t getMaxRepeatCount() const override { return 255; }
@@ -1170,6 +1184,8 @@ public:
 
   uint32_t getNumMemTileRows() const override { return 1; }
 
+  uint32_t getNumControllers() const override { return 1; }
+
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1_1Col &&
            model->getKind() < TK_AIE2_NPU1_Last;
@@ -1241,6 +1257,8 @@ public:
   bool isSupportedBlockFormat(std::string const &format) const override;
 
   bool isMemTilePadValueSupported() const override { return true; }
+
+  uint32_t getNumControllers() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&

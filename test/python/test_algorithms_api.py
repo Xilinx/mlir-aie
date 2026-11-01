@@ -11,7 +11,6 @@ import numpy as np
 import pytest
 
 from aie.iron.device import NPU1Col1
-from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
 
 
@@ -36,9 +35,7 @@ def test_pipeline_stage_preserves_iteration_count(iterations):
     from aie.iron.dataflow import ObjectFifo
     from aie.iron.kernel import Kernel
 
-    previous_device = get_current_device(probe_runtime=False)
-    set_current_device(NPU1Col1())
-    try:
+    with set_current_device(NPU1Col1()):
         tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
         tensor_ty = np.ndarray[(max(iterations, 1) * 16,), np.dtype[np.int32]]
         source, sink = ObjectFifo(tile_ty, name="in"), ObjectFifo(tile_ty, name="out")
@@ -70,5 +67,3 @@ def test_pipeline_stage_preserves_iteration_count(iterations):
         assert ("aie.objectfifo.acquire" in core_ops[0]) == (iterations > 0)
         assert ("aie.objectfifo.release" in core_ops[0]) == (iterations > 0)
         assert ("func.call @step" in core_ops[0]) == (iterations > 0)
-    finally:
-        set_current_device(previous_device)

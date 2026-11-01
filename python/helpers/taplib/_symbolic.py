@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Integer helpers that behave identically on Python ints and staged MLIR values.
 
+Each also takes a `PerCall` or `Affine` (`_per_call.py`) bound to a runtime
+sequence, which `sint` stages.
+
 The access-pattern algebra in `tap.py` is pure integer
 arithmetic plus a validity check. On Python ints these helpers are the
 obvious builtins. On a staged value (an `aie.ir.Value` carrying a runtime
@@ -32,6 +35,7 @@ from ...ir import (  # pyright: ignore[reportMissingImports]
     OpView,
     Value,
 )
+from ._per_call import Affine, PerCall
 
 __all__ = [
     "IntLike",
@@ -103,7 +107,8 @@ def sint(value: Any) -> Any:
     `int`.
 
     Args:
-        value: A Python or NumPy integer, or a staged value.
+        value: A Python or NumPy integer, a staged value, or a bound
+            `PerCall` or `Affine`.
 
     Returns:
         IntLike: An `int`, or a signless integer staged value.
@@ -111,6 +116,10 @@ def sint(value: Any) -> Any:
     Raises:
         TypeError: If `value` is neither an integer nor a staged value.
     """
+    if isinstance(value, PerCall):
+        value = value.affine()
+    if isinstance(value, Affine):
+        return value.stage()
     if isinstance(value, Value):
         if isinstance(value.type, IndexType):
             return index_cast(value, to=T.i64())

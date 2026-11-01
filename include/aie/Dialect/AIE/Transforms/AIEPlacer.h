@@ -10,7 +10,9 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 
+#include <array>
 #include <deque>
 #include <random>
 
@@ -31,6 +33,19 @@ inline std::pair<int, int> getDMACapacity(const AIETargetModel &tm,
       tm.getNumSourceSwitchboxConnections(tile.col, tile.row, WireBundle::DMA)};
 }
 
+// Streams through the North and South ports of a tile's stream switch.
+struct StreamDemand {
+  int northIn = 0, northOut = 0, southIn = 0, southOut = 0;
+
+  StreamDemand &operator+=(const StreamDemand &other) {
+    northIn += other.northIn;
+    northOut += other.northOut;
+    southIn += other.southIn;
+    southOut += other.southOut;
+    return *this;
+  }
+};
+
 // maps logical tile operations to physical coordinates
 using PlacementResult = llvm::DenseMap<mlir::Operation *, TileID>;
 
@@ -50,6 +65,13 @@ struct TileAvailability {
 
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;
+  llvm::DenseMap<TileID, StreamDemand> streamsUsed;
+  // Live runtime-sequence BDs after each task event, as in
+  // SequentialPlacer::runtimeBdProfiles.
+  llvm::DenseMap<TileID, llvm::SmallVector<int>> runtimeBdsUsed;
+  // DMA channels, as (output, index), that flows of the logical tiles placed
+  // here name by index.
+  llvm::DenseMap<TileID, llvm::DenseSet<std::pair<int, int>>> namedChannelsUsed;
 
   void removeTile(TileID tile, AIETileType type);
 };
@@ -103,6 +125,7 @@ public:
     llvm::SmallVector<LogicalTileOp> logicalTiles;
     llvm::SmallVector<ObjectFifoCreateOp> objectFifos;
     llvm::SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+    llvm::SmallVector<ObjectFifoAllocateOp> objectFifoAllocates;
     llvm::SmallVector<CascadeFlowOp> cascadeFlows;
     llvm::SmallVector<FlowOp> flows;
     llvm::SmallVector<PacketFlowOp> pktFlows;
@@ -126,6 +149,11 @@ public:
   static Adjacency
   buildComputePeerAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
+  // Edge: (producer, consumer) per forcesSharedMemory() ObjectFifo with one
+  // consumer.
+  static Adjacency
+  buildSharedMemAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
   // Edge: (producer, consumer_i) per fifo.
   static Adjacency
   buildObjectFifoAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
@@ -133,6 +161,22 @@ public:
   // Edge: (src, dst) per `aie.flow`; cross-product per `aie.packet_flow`.
   static Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
                                       llvm::ArrayRef<PacketFlowOp> pktFlows);
+
+  // The objectFIFO ends each shim LTO hosts that may take turns on a channel
+  // with ends never in flight with them (ShimTransferSpans): DMA ends naming
+  // no channel, [0] receiving and [1] sending, as objectFIFO allocation sees
+  // them.
+  using ShareableShimEnds =
+      llvm::DenseMap<mlir::Operation *,
+                     std::array<llvm::SmallVector<mlir::StringAttr>, 2>>;
+  static ShareableShimEnds
+  collectShareableShimEnds(DeviceOp device,
+                           llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // The objectFIFO end a runtime sequence names `symbol` for, before split:
+  // the fifo itself, sending when its producer is a shim tile.
+  static std::optional<ShimTransferSpans::End>
+  shimEndOf(DeviceOp device, mlir::StringAttr symbol);
 
 protected:
   PlacementResult result;
@@ -158,8 +202,21 @@ inline void forEachPeer(mlir::Operation *op, const Placer::Adjacency &adjacency,
   }
 }
 
-// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that is a legal
-// shared-L1 mem-affinity neighbor per the target model.
+// Whether two compute tiles can share one memory module: unlike buffer
+// ownership (where only the consumer must reach the owner's module),
+// sharing has no owner/consumer asymmetry, so either tile reaching the
+// other's module is enough. isLegalMemAffinity itself is directional (see
+// AIETargetModel::getSharedMemory's None/First/Second/Either), so compute-
+// peer neighbor-ness -- what `--aie-objectfifo-split`'s auto transport
+// actually tests -- has to check both.
+inline bool isSharedComputeMemory(const AIETargetModel &targetModel, TileID a,
+                                  TileID b) {
+  return targetModel.isLegalMemAffinity(a.col, a.row, b.col, b.row) ||
+         targetModel.isLegalMemAffinity(b.col, b.row, a.col, a.row);
+}
+
+// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that can share
+// compute-peer memory with it per the target model.
 template <typename F>
 inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
                                        TileID at, F &&fn) {
@@ -173,7 +230,7 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
       continue;
     if (targetModel.getTileType(nc, nr) != AIETileType::CoreTile)
       continue;
-    if (!targetModel.isLegalMemAffinity(at.col, at.row, nc, nr))
+    if (!isSharedComputeMemory(targetModel, at, TileID{nc, nr}))
       continue;
     fn(TileID{nc, nr});
   }
@@ -196,15 +253,17 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
 //      placementPriority. For each LTO: validate buffer/cascade/compute-peer
 //      constraints and channel budget, then claim the tile, trying first
 //      the columns that keep its group together. Unpinned candidates are
-//      tried in two passes: first the slots not soft-reserved for another
-//      demand-bearing LTO's peers, then a fallback pass that accepts
-//      reserved slots. Each placement of a demand-bearing LTO soft-reserves
-//      its mem-affinity neighbor slots for that LTO's compute peers.
+//      tried in two passes: first the slots with column stream capacity and
+//      not soft-reserved for another demand-bearing LTO's peers, then a
+//      fallback accepting overloaded columns and reserved slots. Placing a
+//      demand-bearing LTO soft-reserves its mem-affinity neighbor slots for
+//      that LTO's compute peers.
 //   4. Place each remaining non-core (mem/shim) LTO near the column
 //      centroid of its placed-core peers. With mergeLogicalTiles == true
 //      (default) several non-core LTOs may share one physical tile when
-//      DMA capacity allows; with mergeLogicalTiles == false each non-core
-//      LTO claims its own physical tile.
+//      DMA capacity allows, preferring tiles whose North/South stream ports
+//      and runtime-sequence BDs also fit; with mergeLogicalTiles == false
+//      each non-core LTO claims its own physical tile.
 //
 // Greedy: once a tile is chosen the decision is final, with no backtracking.
 // If a later LTO's constraints become unsatisfiable given prior placements,
@@ -240,6 +299,22 @@ private:
   llvm::DenseSet<TileID> assignedNonCoreTiles;
   int deviceCoresPerCol = 0; // Actual cores per column in device
 
+  // Shim channels are counted one per end until a shim tile runs out; then
+  // ends never in flight together count once, as allocation will share them.
+  std::optional<ShimTransferSpans> shimSpans;
+  ShareableShimEnds shareableShimEnds;
+  llvm::DenseMap<TileID, std::array<llvm::SmallVector<mlir::StringAttr>, 2>>
+      shimEndsAt;
+  bool fitsSharingShim(TileID tile, mlir::Operation *logicalTile,
+                       std::pair<int, int> required);
+  void recordShimEnds(TileID tile, mlir::Operation *logicalTile);
+
+  // Counts once in `requirements` each group of fifos between a core and one
+  // mem tile that allocation's planTurnSharing will put on one channel.
+  void countTurns(
+      DeviceOp device, llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+      llvm::DenseMap<mlir::Operation *, std::pair<int, int>> &requirements);
+
   // DMA channel direction selector.
   enum class DmaDir { In, Out };
 
@@ -250,12 +325,13 @@ private:
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
   // targetCol == nullopt means no routing anchor is known, so candidates are
-  // ranked by DMA load rather than by distance to a column.
-  std::optional<TileID> findTileWithCapacity(std::optional<int> targetCol,
-                                             llvm::ArrayRef<TileID> tiles,
-                                             int requiredInputChannels,
-                                             int requiredOutputChannels,
-                                             AIETileType requestedType);
+  // ranked by DMA load rather than by distance to a column. `withinBudgets`
+  // also requires fitsStreamAndBdBudgets.
+  std::optional<TileID>
+  findTileWithCapacity(std::optional<int> targetCol,
+                       llvm::ArrayRef<TileID> tiles, int requiredInputChannels,
+                       int requiredOutputChannels, AIETileType requestedType,
+                       mlir::Operation *logicalTile, bool withinBudgets);
 
   // Diagnosis for a failed findTileWithCapacity() call. `findTileWithCapacity`
   // scans every tile of `requestedType` on the device -- `targetCol` orders
@@ -270,12 +346,47 @@ private:
     bool capacityExistsSomewhere = false;
     int tilesOfType = 0;
     int inUsed = 0, inMax = 0, outUsed = 0, outMax = 0;
+    // Both shortfalls belong to one tile, minimizing their sum.
+    int closestShortIn = 0, closestShortOut = 0;
   };
   CapacityDiagnosis diagnoseCapacityExhaustion(AIETileType requestedType,
                                                int requiredInputChannels,
                                                int requiredOutputChannels);
 
   void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
+
+  // North/South streams of each tile's ObjectFifos: a memtile has 6
+  // DMA inputs but only 4 streams from the core above, and no East/West.
+  llvm::DenseMap<mlir::Operation *, StreamDemand> streamDemand;
+  // Aggregate traffic between a column's cores and the tiles below them.
+  llvm::DenseMap<int, StreamDemand> columnStreamsUsed;
+  // Broadcast consumers in one column share a single incoming stream.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<mlir::Operation *>>
+      incomingFifos;
+  llvm::DenseMap<int, llvm::DenseSet<mlir::Operation *>> columnIncomingFifos;
+  void recordColumnStreamUsage(mlir::Operation *tile, int col);
+  // Extra broadcast destinations beyond the first, which uses one DMA channel.
+  llvm::DenseMap<mlir::Operation *, int> broadcastFanout;
+  llvm::DenseMap<TileID, int> broadcastFanoutUsed;
+  void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // Live runtime-sequence BDs of each ShimNOCTile LTO after every task event,
+  // counting each descriptor as aie-decompose-large-dma-bd splits it.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<int>> runtimeBdProfiles;
+
+  // DMA channels, as (output, index), that each logical tile's flows name by
+  // index. Two logical tiles naming the same one cannot share a physical tile.
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
+      namedChannels;
+  void buildRuntimeBdProfiles(DeviceOp device,
+                              llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // True if `tile`'s stream ports and BDs still fit `logicalTile`'s demand on
+  // top of what earlier placements use.
+  bool fitsStreamAndBdBudgets(mlir::Operation *logicalTile, TileID tile) const;
+  // Records the streams, BDs and named DMA channels `logicalTile` takes on
+  // `tile`.
+  void recordStreamAndBdUsage(mlir::Operation *logicalTile, TileID tile);
 
   bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels);
 
@@ -351,6 +462,8 @@ private:
     llvm::function_ref<bool(TileID, TileID)> bufferPred;
     const Adjacency &cascadeAdjacency;
     llvm::function_ref<bool(TileID, TileID)> cascadePred;
+    const Adjacency &sharedMemAdjacency;
+    llvm::function_ref<bool(TileID, TileID)> sharedMemPred;
     const Adjacency &computePeerAdjacency;
     const llvm::DenseMap<mlir::Operation *, int> &needNeighborIn;
     const llvm::DenseMap<mlir::Operation *, int> &needNeighborOut;
@@ -383,8 +496,11 @@ private:
                                  const UnpinnedPlacementInputs &inputs);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
-  // SequentialPlacer-only: walks CoreOps and BufferOps.
-  Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
+  // SequentialPlacer-only: walks CoreOps and BufferOps, and takes each end of
+  // an allocated fifo as a consumer of its delegate tile.
+  Adjacency
+  buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles,
+                       llvm::ArrayRef<ObjectFifoAllocateOp> allocates);
 
   // Per-LTO peer-Value lists, one list per flow that mentions the LTO.
   // Built once and shared so each centroid lookup is O(#flows on the LTO).
@@ -510,6 +626,13 @@ struct SAConfig {
 
   // Cascade penalty (cost 3)
   int cascadeWeightPerDist = 30; // per Manhattan distance to valid position
+  // A shared-memory pair apart, per distance past a neighbour: above a
+  // fifo's worth of memory overflow, which a neighbour's spare room absorbs.
+  int sharedMemWeightPerDist = 300;
+
+  // The core's own sections (tables, constants) a core that declares no
+  // data_size is taken to need, before aiecc measures them after placement.
+  int coreSectionsBytes = 3 * 1024;
 
   // Memory pressure (cost 4)
   int pressurePerKB = 3;           // quadratic pressure above threshold
@@ -649,6 +772,17 @@ private:
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;
   llvm::SmallVector<FifoBufferInfo> fifoBuffers;
 
+  // A route's DMA end on a logical tile: one channel, in or out, that moves
+  // with the tile.
+  struct RouteEndInfo {
+    mlir::Operation *tile;
+    bool output;
+  };
+  llvm::SmallVector<RouteEndInfo> routeEnds;
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToRouteEnds;
+  // Descriptors the pools on each logical tile need, for the mem-tile budget.
+  llvm::DenseMap<mlir::Operation *, int> poolBDs;
+
   // Placement state
   llvm::DenseMap<mlir::Operation *, TileID> currentPlacement;
   llvm::DenseMap<TileID, mlir::Operation *> physToLogical;
@@ -662,10 +796,16 @@ private:
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
+  // An over-full shim tile is charged only for the channels allocation
+  // still needs once ends never in flight together share them.
+  std::optional<ShimTransferSpans> shimSpans;
+  ShareableShimEnds shareableShimEnds;
 
   // Cascade
   Adjacency cascadeAdjacency;
   static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
+  // Ends of fifos that ask for shared memory, which must share a module.
+  Adjacency sharedMemAdjacency;
 
   // SA loop state
   int totalCost = 0;
@@ -690,6 +830,7 @@ private:
   // Cost and resource methods
   void initResourceTracking();
   void addFifoContribution(size_t fifoIdx, int sign);
+  void addRouteEndContribution(size_t endIdx, int sign);
   int updateResourcePenalty(
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);
@@ -705,6 +846,9 @@ private:
   int computeAdjacencyPenalty(const Adjacency &adj,
                               llvm::ArrayRef<std::pair<int, int>> validOffsets,
                               int weight) const;
+  /// Cascade neighbours placed apart, and shared-memory ends placed on
+  /// tiles sharing no memory module, by how far.
+  int computePairingPenalty() const;
   void generateAllocates();
 
   // Move methods
@@ -723,6 +867,7 @@ private:
   void buildFifoBufferInfo(DeviceOp device,
                            llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
                            llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks);
+  void buildRouteModel(DeviceOp device, llvm::ArrayRef<RouteOp> routes);
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();

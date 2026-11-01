@@ -14,8 +14,15 @@ add_mlir_dialect_library(MLIRAIEVecDialect
   DEPENDS
   MLIRAIEVecOpsIncGen
   MLIRAIEVecAttributesIncGen
+  MLIRAIEAttrDefsIncGen
+  MLIRAIEEnumsIncGen
+  MLIRAIEIncGen
+  MLIRAIETypesIncGen
+  MLIRAIEInterfacesIncGen
+  MLIRAIEOpsIncGen
 
   LINK_LIBS PUBLIC
+  AIE
   MLIRIR
   MLIRPass
   )

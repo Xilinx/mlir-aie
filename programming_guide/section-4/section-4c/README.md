@@ -130,7 +130,7 @@ void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
 }
 ```
 
-[scale.cc](../../../aie_kernels/eltwise/scale.cc) also has a specialization for `int32_t`. It is the same loop with `vec_factor = 16` and an `acc64` accumulator.
+[scale.cc](../../../aie_kernels/eltwise/scale.cc) also has a specialization for `int32_t`, with an `acc64` accumulator. On AIE2P it uses `vec_factor = 32` (a 32-lane `acc64` accumulator, so a 16-lane multiply would leave half of it idle) plus a one-off remainder pass when `SCALE_ELEMS` isn't a multiple of 32; on AIE2 it falls back to `vec_factor = 16`.
 
 Instead of one multiply per element, each iteration now loads 32 elements, multiplies them in one vector operation, and stores 32 results, so the loop runs `SCALE_ELEMS / 32` times. `AIE_PREPARE_FOR_PIPELINING` is a loop pragma from [aie_kernel_utils.h](../../../aie_kernels/aie_kernel_utils.h). What it does depends on the compiler, as we will see below.
 
@@ -153,6 +153,8 @@ The operations used most often in kernel code:
 | `aie::max(a, b)` / `aie::inv(v)` | Lane-wise maximum; lane-wise reciprocal. | `auto r = aie::inv(v);` |
 
 ## <u>Vectorization Exercises</u>
+
+The cycle counts in these exercises are a worked example from when this section was written; today's figures for this kernel (`scale` in `aie.iron.kernels`) are on [its page](https://xilinx.github.io/mlir-aie/dashboard/#view=kernel&kernel=scale) under the maintainer dashboard's Kernels tab.
 
 1. Let's trace the scalar kernel first. Set `vectorized: CompileTime[bool] = False` in [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) and build the 32-bit version of the design with `make clean; make int_bit_width=32 trace`. The `int_bit_width` argument sets the data type and buffer sizes in both the design (`vector_scalar_mul.py`) and the host code (`test.cpp`). Open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the time between `event 0` and `event 1`. In the Perfetto waveform, 1 us is one clock cycle. How many cycles did you measure?
     <details markdown="1"><summary>Show answer</summary>

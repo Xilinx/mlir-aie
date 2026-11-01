@@ -5,16 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s 2>/dev/null | FileCheck %s
 
 // Memtile (0,1) emits flows 0..3 and receives flows 4 and 5, filling all six
 // arbiters. Flow 6 only passes through, so it has to share.
 //
 // The grant is held until tlast, so a co-tenant still to leave the switchbox
 // waits behind whatever the holder waits on. Flows 0..3 are all emitted by
-// this tile's DMA and stall when their consumer falls behind -- flow 3
-// included, since a shim DMA drains in an order only the host knows. Flows 4
-// and 5 end at a DMA here, which drains them regardless.
+// this tile's DMA and stall when their consumer falls behind, and flows 4 and
+// 5 feed that DMA. But nothing any of them waits on waits on flow 6 in turn:
+// core (0,5) runs on its own and nothing drains shim (0,0) but the host. So
+// flow 6 can share with any of them, and takes the first arbiter.
 
 module {
   aie.device(npu2) {
@@ -42,21 +44,28 @@ module {
 
     // Passes through (0,1) on its way south. Placed last, so it has to share.
     aie.packet_flow(6) { aie.packet_source<%c5, DMA : 0>  aie.packet_dest<%s0, DMA : 0> }
+
+    // The host issues every shim channel up front.
+    aie.runtime_sequence() {
+      %bd = arith.constant 0 : i32
+      aiex.npu.push_queue(0, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(1, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(2, 0, MM2S : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(3, 0, MM2S : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+    }
   }
 }
 
-// Flow 6 skips the shim-bound flow on arbiter 3 and joins flow 4 on arbiter 4.
+// Flow 6 joins flow 5 on arbiter 0.
+
+// NOWARN-NOT: warning
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
-// CHECK:         %[[SHIMBOUND:.*]] = aie.amsel<3> (0)
-// CHECK:         %[[ENDSHERE:.*]] = aie.amsel<4> (0)
-// CHECK:         %[[SHARED:.*]] = aie.amsel<4> (1)
-// CHECK:         aie.masterset(DMA : 0, %[[ENDSHERE]])
+// CHECK:         %[[ENDSHERE:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)
+// CHECK:         aie.masterset(DMA : 1, %[[ENDSHERE]])
 // CHECK:         aie.masterset(South : 0, %[[SHARED]])
-// CHECK:         aie.masterset(South : 2, %[[SHIMBOUND]])
 // CHECK:         aie.packet_rules(North : 0) {
 // CHECK-NEXT:      aie.rule(31, 6, %[[SHARED]])
-// CHECK:         aie.packet_rules(South : 1) {
-// CHECK-NEXT:      aie.rule(31, 4, %[[ENDSHERE]])
-// CHECK:         aie.packet_rules(DMA : 3) {
-// CHECK-NEXT:      aie.rule(31, 3, %[[SHIMBOUND]])
+// CHECK:         aie.packet_rules(South : 2) {
+// CHECK-NEXT:      aie.rule(31, 5, %[[ENDSHERE]])

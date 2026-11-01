@@ -54,7 +54,7 @@ set(EVENTS_HEADER_FILES
 )
 
 set(GENERATED_EVENTS_TD_FILES
-  "${CMAKE_BINARY_DIR}/include/AIEEvents.td.inc"
+  "${CMAKE_BINARY_DIR}/include/AIEEventsAIE.td.inc"
   "${CMAKE_BINARY_DIR}/include/AIEEventsAIE2.td.inc"
   "${CMAKE_BINARY_DIR}/include/AIEEventsAIE2P.td.inc"
 )

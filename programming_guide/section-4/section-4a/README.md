@@ -19,7 +19,7 @@ We begin by first looking at timers for measuring application performance and wh
 
 ## The Compact Form: ``@iron.jit`` + ``run_iters``
 
-In a `@iron.jit`-decorated design, calling the design at the host side is what runs the kernel.  The IRON helper [`aie.utils.benchmark.run_iters`](../../../python/utils/benchmark.py) wraps that call site in a `warmup + iters` loop, captures NPU-side time (from the kernel result) and end-to-end host time, and returns a `BenchmarkResult`.  The pair is exactly what the explicit chrono-loop in `test.cpp` does — in one line:
+In a `@iron.jit`-decorated design, calling the design at the host side is what runs the kernel.  The IRON helper [`aie.utils.benchmark.run_iters`](../../../python/utils/benchmark.py) wraps that call site in a `warmup + iters` loop and returns a `BenchmarkResult` of four timings, all on the host's clock: the dispatch (submit to completion, from the kernel result, which is what the explicit chrono-loop in `test.cpp` times), the dispatch overhead (an empty dispatch on the same hardware context after each timed call), the NPU's time (each dispatch less the overhead's median) and the end-to-end Python call. In one line:
 
 ```python
 from aie.utils.benchmark import print_benchmark, run_iters
@@ -31,7 +31,21 @@ bench = run_iters(
 print_benchmark(bench)
 ```
 
-[vector_scalar_mul.py](./vector_scalar_mul.py) uses this directly; running `make run` (or `python3 vector_scalar_mul.py --iters 10 --warmup 4`) prints the canonical `avg/min/max us` pair for both NPU and end-to-end timings.
+[vector_scalar_mul.py](./vector_scalar_mul.py) uses this directly; running `make run` (or `python3 vector_scalar_mul.py --iters 10 --warmup 4`) prints one `avg/min/max us` line per timing.
+
+To compare designs, time them against each other with `run_interleaved`: each round runs every callable in turn and keeps its median call, so a drift in the host or the NPU lands on all of them alike. With `completion_cores=True` the timing thread is held on the cores the NPU's completions interrupt, and either way a figure whose calls waited for a CPU is refused rather than reported:
+
+```python
+from functools import partial
+
+from aie.utils.benchmark import run_interleaved
+
+small, large = run_interleaved(
+    [partial(design, a, b, n=n), partial(design, a4, b4, n=4 * n)],
+    completion_cores=True,
+)
+print(small.median_us, small.median_se_us, large.median_us)
+```
 
 The rest of this section walks down through what's happening underneath, using the explicit chrono-loop in [test.cpp](./test.cpp) and the manual accumulator loop in [test.py](./test.py).
 

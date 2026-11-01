@@ -144,15 +144,45 @@ OpTy lookupNamedOp(mlir::Operation *from, NameT name) {
   return llvm::dyn_cast_if_present<OpTy>(lookupNamedOp(from, name));
 }
 
-// Generate a symbol name guaranteed to be unique within the symbol table of
-// `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
-// counter is advanced past the chosen value so repeated calls with the same
-// counter remain efficient and produce distinct names. The returned name is
-// not inserted into the symbol table; the caller is responsible for creating
-// a symbol with that name before the next call (otherwise the same name will
-// be returned again).
-std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
-                                     llvm::StringRef prefix, unsigned &counter);
+// `lookupNamedOpIn` indexed once, for resolving many names in a symbol table
+// whose named ops do not change meanwhile.
+class NamedOpTable {
+public:
+  explicit NamedOpTable(mlir::Operation *symbolTableOp);
+
+  mlir::Operation *lookup(mlir::StringAttr name) const {
+    return ops.lookup(name);
+  }
+  template <typename OpTy>
+  OpTy lookup(mlir::StringAttr name) const {
+    return llvm::dyn_cast_if_present<OpTy>(lookup(name));
+  }
+
+  // "<prefix><n>" for the first n from `counter` up that no op in the table
+  // has. `counter` moves past n, so names drawn from one counter differ
+  // although the table does not record them.
+  std::string uniqueName(llvm::StringRef prefix, unsigned &counter) const;
+
+private:
+  mlir::MLIRContext *context;
+  llvm::DenseMap<mlir::StringAttr, mlir::Operation *> ops;
+};
+
+// The NamedOpTables of several symbol tables, each indexed on first use, as
+// mlir::SymbolTableCollection is for symbols.
+class NamedOpTableCollection {
+public:
+  NamedOpTable &getTable(mlir::Operation *symbolTableOp) {
+    return tables.try_emplace(symbolTableOp, symbolTableOp).first->second;
+  }
+  template <typename OpTy>
+  OpTy lookupIn(mlir::Operation *symbolTableOp, mlir::StringAttr name) {
+    return getTable(symbolTableOp).lookup<OpTy>(name);
+  }
+
+private:
+  llvm::DenseMap<mlir::Operation *, NamedOpTable> tables;
+};
 
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
@@ -262,6 +292,10 @@ using Port = struct Port {
   }
 };
 
+std::optional<std::pair<TileID, Port>>
+getConnectingWireEndpoint(const AIETargetModel &targetModel, TileID tile,
+                          Port port);
+
 using Connect = struct Connect {
   Port src;
   Port dst;
@@ -333,6 +367,21 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
                                   BDDimLayoutArrayArrayAttr dimsPerTileAttr);
 
+mlir::ParseResult
+parseFlowVias(mlir::OpAsmParser &parser,
+              llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &vias,
+              mlir::DenseI32ArrayAttr &ingressBundles,
+              mlir::DenseI32ArrayAttr &ingressChannels,
+              mlir::DenseI32ArrayAttr &egressBundles,
+              mlir::DenseI32ArrayAttr &egressChannels);
+
+void printFlowVias(mlir::OpAsmPrinter &printer, mlir::Operation *op,
+                   mlir::OperandRange vias,
+                   mlir::DenseI32ArrayAttr ingressBundles,
+                   mlir::DenseI32ArrayAttr ingressChannels,
+                   mlir::DenseI32ArrayAttr egressBundles,
+                   mlir::DenseI32ArrayAttr egressChannels);
+
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
 // Trace Event Value Parsing/Printing (handles both string and typed enums)
@@ -342,11 +391,63 @@ void printTraceEventEnum(mlir::AsmPrinter &printer, mlir::Attribute attr);
 
 } // namespace xilinx::AIE
 
+namespace xilinx::AIE {
+
+// A draining walk over a whole stream of objects rather than one of them:
+// output `j` walks `inner` from object `advance * j - top` on, reading `span`
+// consecutive objects through the inner dimension `rowDim` steps by one
+// object (none when `span` is 1); the `top` objects before the first and
+// `bottom` past the last of `objects` read as zeros.
+struct StreamWindow {
+  int64_t objectSize;
+  int64_t outputs;
+  int64_t advance;
+  int64_t span;
+  int64_t top;
+  int64_t bottom;
+  int64_t objects;
+  int64_t rowDim;
+  llvm::SmallVector<BDDimLayoutAttr> inner;
+
+  // Elements each output moves.
+  int64_t transfer() const;
+};
+
+// One output of a StreamWindow: the first object it reads, counting the `top`
+// zero objects, and the lock units it takes before and gives back after.
+struct StreamWindowStep {
+  int64_t first;
+  int64_t acquire;
+  int64_t release;
+};
+
+} // namespace xilinx::AIE
+
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIEOps.h.inc"
 
 namespace xilinx::AIE {
+
+// The endpoints `end`'s `turns` names, each once, in order of first turn;
+// none when it takes no turns.
+llvm::SmallVector<ObjectFifoDmaEndpointOp>
+turnEndpoints(ObjectFifoDmaEndpointOp end);
+
+// Passes a chain of turns is unrolled for, given each end's turns a pass and
+// descriptors: until every end is back at its first descriptor. An end on a
+// contiguous pool, given 0 descriptors, takes as many as its turns need.
+int64_t turnPasses(llvm::ArrayRef<std::pair<int64_t, int64_t>> ends);
+
+// Whether packets leave `master` of `tile` with their header: not into a DMA,
+// nor down the shim's South to one, unless `keep` says.
+bool keepsPktHeader(TileID tile, Port master, std::optional<bool> keep);
+
+// Whether `bundle` links a switchbox to a neighbouring one.
+inline bool isDirectional(WireBundle bundle) {
+  return bundle == WireBundle::North || bundle == WireBundle::South ||
+         bundle == WireBundle::East || bundle == WireBundle::West;
+}
 
 void collectTiles(DeviceOp &device,
                   llvm::DenseMap<TileID, mlir::Operation *> &tiles);
@@ -361,6 +462,19 @@ void collectBuffers(
 // canonicalization to allow natural ND forms on shim tiles that will be
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
+
+// The elements a BD streaming `dims` with `pads` sends, each dimension widened
+// by its padding; `fallback` unless it has both.
+int64_t paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
+                   llvm::ArrayRef<BDPadLayoutAttr> pads, int64_t fallback);
+
+// The dimensions aie-normalize-dma-bd-dims leaves a constant BD with, given its
+// dimensions (outermost first) and its length in elements: none when it
+// becomes one linear transfer, else its size-1 dimensions dropped. nullopt
+// when it stays as written: no size-1 dimension, or a length that is not the
+// dimensions' product (a leading repeat outside the length).
+std::optional<llvm::SmallVector<BDDimLayoutAttr>>
+normalizedBDDims(llvm::ArrayRef<BDDimLayoutAttr> dims, int64_t len);
 
 // The byte size of `lengthUnit` elements of `buffer`, checked to be a multiple
 // of 16 bytes whose word count fits a 32-bit BD length.
@@ -406,6 +520,13 @@ verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
 // step fields. Callable from the AIEX dialect, like verifyDMABDOutOfOrderId.
 mlir::LogicalResult verifyDMABDIteration(DMABDOp bd, AIETileType tileType);
 
+// Below allocation a packet header is only useful once its id is assigned.
+// `what` names the attribute in the diagnostic. Callable from the AIEX
+// dialect, whose runtime ops carry the same header.
+mlir::LogicalResult verifyAssignedPacket(mlir::Operation *op,
+                                         PacketInfoAttr packet,
+                                         llvm::StringRef what = "packet");
+
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult
 verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
@@ -418,6 +539,21 @@ verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
 // null when the block has no such lock.
 mlir::LogicalResult verifyBdLockPair(mlir::Block &block, bool outOfOrder,
                                      UseLockOp &acquire, UseLockOp &release);
+
+// The stream window `dims` (outermost first) and `pads` (`(top, bottom)` on
+// the outermost dimension only) describe over objects of `objectSize`
+// elements. The outermost dimension steps whole objects between outputs; at
+// most one inner dimension steps whole objects, by one; the others stay
+// within an object. Fills `window` on success.
+mlir::LogicalResult
+inferStreamWindow(llvm::ArrayRef<BDDimLayoutAttr> dims,
+                  llvm::ArrayRef<BDPadLayoutAttr> pads, int64_t objectSize,
+                  llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+                  StreamWindow &window);
+
+// Each output's step: it takes the objects up to the newest it reads and gives
+// back those no later output reads, the last one all that are left.
+llvm::SmallVector<StreamWindowStep> streamWindowSteps(const StreamWindow &w);
 
 // BD ids already assigned within a tile's static DMA program (the
 // aie.dma_bd chain(s) inside one DmaBody-implementing op: aie.mem,

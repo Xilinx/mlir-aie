@@ -26,7 +26,16 @@ from typing import TYPE_CHECKING, Any, Iterator, Sequence
 
 import numpy as np
 
-from ._symbolic import IntLike, is_sym, require, show, sint, sprod, sym_any
+from ._per_call import Affine, PerCall
+from ._symbolic import (
+    IntLike,
+    is_sym,
+    require,
+    show,
+    sint,
+    sprod,
+    sym_any,
+)
 from .utils import (
     row_major_strides,
     validate_and_clean_sizes_strides,
@@ -424,7 +433,7 @@ class TensorAccessPattern:
                 raise TypeError(
                     "boolean indexing is advanced indexing; a pattern is a strided walk"
                 )
-            if is_sym(entry):
+            if is_sym(entry) or isinstance(entry, (Affine, PerCall)):
                 entry = sint(entry)
                 require(entry >= 0, "index must be >= 0 on a runtime dimension")
                 require(entry < n, "index exceeds the dimension")
@@ -578,6 +587,12 @@ class TensorAccessPattern:
         ObjectFifo as `to_stream` and it sets the padding too (the pad value
         is set on the fifo). Padding is applied last: a padded pattern cannot
         be reshaped further.
+
+        A forwarded ObjectFifo's `to_stream` that walks the whole stream of
+        input objects (overlapping windows, see `ObjectFifoHandle.forward`)
+        may pad only its outermost dimension, and there `(before, after)`
+        counts zero input objects ahead of and behind the stream rather than
+        constant elements around each pass.
 
         Args:
             padding (Sequence[Sequence[int]]): One `(before, after)` pair per

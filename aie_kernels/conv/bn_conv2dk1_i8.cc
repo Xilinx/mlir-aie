@@ -761,8 +761,10 @@ static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
                          const int32_t input_channels,
                          const int32_t output_channels, const int scale) {
   event0();
-  aie::set_saturation(aie::saturation_mode::saturate);
-  aie::set_rounding(aie::rounding_mode::conv_even);
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::conv_even);
 #if defined(K1_WIDTH)
   k1_i8_rows<K1_ALIGNED, K1_P, K1_FIXED>(
       input, kernels, output, K1_WIDTH, input_channels, output_channels, scale);
@@ -773,6 +775,8 @@ static void k1_i8_vector(const uint8_t *input, const int8_t *kernels,
   k1_i8_chunked<4>(input, kernels, output, input_width, input_channels,
                    output_channels, scale);
 #endif
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif // AIE_TUNED_AIE2 || AIE_TUNED_AIE2P

@@ -76,7 +76,13 @@ extern "C" {
 void group0a_kernel(int16_t *xin, int16_t *yout, int16_t *magika_0a_cin,
                     int32_t xid, int32_t cid) {
   event0();
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::symmetric_inf);
   group0a(xin, yout, magika_0a_cin, xid, cid);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif
@@ -85,7 +91,13 @@ void group0a_kernel(int16_t *xin, int16_t *yout, int16_t *magika_0a_cin,
 void group0b_kernel(int16_t *xin, int16_t *yout, int16_t *magika_0b_cin_a,
                     int16_t *magika_0b_cin_b) {
   event0();
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      aie::swap_rounding(aie::rounding_mode::symmetric_inf);
   group0b(xin, yout, magika_0b_cin_a, magika_0b_cin_b);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif

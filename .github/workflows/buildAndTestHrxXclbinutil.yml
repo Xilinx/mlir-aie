@@ -37,7 +37,7 @@ concurrency:
 jobs:
   build-and-test-linux:
     name: build-and-test (linux, ${{ matrix.compiler }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:

@@ -7,9 +7,8 @@ permissions:
   contents: read
 
 on:
-  push:
-    branches:
-      - main
+  # No push trigger for main: the merge queue runs this workflow on the
+  # commit that lands, so a push run repeats it.
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -48,7 +47,7 @@ jobs:
       # Run the tests on the Cartesian product of the following
       matrix:
 
-        OS: [ ubuntu-24.04 ]
+        OS: [ ubuntu-26.04 ]
         COMPILER: [ llvm, gcc ]
         ENABLE_ASSERTIONS: [ ON, OFF ]
         ENABLE_RTTI: [ ON, OFF ]
@@ -90,7 +89,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install -r python/requirements_notebook.txt
+          python -m pip install --require-hashes -r python/requirements_notebook.lock
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Setup Cpp

@@ -8,8 +8,7 @@
 Single-tile design with 4 LUT buffers spread across neighboring tiles
 (south / west / north / current) for memory capacity. The kernel uses
 ``put_ms()`` to push outputs directly to the wire, so the output
-ObjectFifo is constructed with ``aie_stream=(end, port)`` to mark it
-as a direct-stream connection.
+ObjectFifo's producer end is ``Port.stream(0)``, the core's stream port.
 """
 
 import argparse
@@ -20,8 +19,17 @@ import numpy as np
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
 )
-from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
-from aie.iron.controlflow import range_
+from aie.iron import (
+    Buffer,
+    CompileTime,
+    In,
+    ObjectFifo,
+    Out,
+    Port,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.device import Tile
 from aie.iron.kernel import ExternalFunction
 from aie.utils.config import cxx_header_path
@@ -113,21 +121,20 @@ def group2(
 
     # Output goes compute -> shim as a direct stream (no L1 buffer); the
     # kernel emits each element via put_ms() instead of acquire/release.
-    of_dout_L1L3 = ObjectFifo(dout_ty, name="of_dout_L1L3", depth=2, aie_stream=(0, 0))
+    of_dout_L1L3 = ObjectFifo(dout_ty, name="of_dout_L1L3", depth=2)
 
     # Core body: kernel writes its output via put_ms() inside group2.cc, so
     # we don't acquire/release of_dout here.
     def core_body(of_in, _of_out_unused, lut0, lut1, lut2, lut3, kernel):
-        for _ in range_(0x7FFFFFFF):
-            di = of_in.acquire(1)
-            kernel(di, lut0, lut1, lut2, lut3)
-            of_in.release(1)
+        di = of_in.acquire(1)
+        kernel(di, lut0, lut1, lut2, lut3)
+        of_in.release(1)
 
     worker = Worker(
         core_body,
         fn_args=[
             of_din_L2L1.cons(),
-            of_dout_L1L3.prod(),
+            of_dout_L1L3.prod(port=Port.stream(0)),
             lut0_buf,
             lut1_buf,
             lut2_buf,
@@ -135,7 +142,6 @@ def group2(
             group2_kernel,
         ],
         tile=compute_tile,
-        while_true=False,
         trace=1 if trace_size > 0 else 0,
     )
 

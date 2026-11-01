@@ -26,7 +26,7 @@ module {
         aiex.run @seq_a (%arg0) : (memref<64xi32>)
       }
       aiex.configure @dev_b {
-        aiex.run @seq_b (%arg0) : (memref<64xi32>)
+        aiex.run @seq_b (%arg0, %arg0) : (memref<64xi32>, memref<64xi32>)
       }
     }
   }
@@ -53,7 +53,8 @@ module {
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
     }
-    aie.runtime_sequence @seq_b(%arg0: memref<64xi32>) {
+    aie.runtime_sequence @seq_b(%arg0: memref<64xi32>,
+                  %arg1: memref<64xi32>) {
       aie.trace.host_config {buffer_size = 4096 : i32}
       aie.trace.start_config @b_trace
     }
@@ -128,8 +129,10 @@ print("merged tiles=", sorted(pid_events[0].keys()))
 # CHECK: merged tiles= ['2,0', '4,0']
 
 # A callee is dispatchable in its own right, and carries its own layout.
+print("callee-a", get_trace_buffer(lowered, "dev_a:seq_a"))
+# CHECK: callee-a {'arg_index': 1, 'offset': 0, 'size': 8192, 'dedicated': True}
 print("callee", get_trace_buffer(lowered, "dev_b:seq_b"))
-# CHECK: callee {'arg_index': 1, 'offset': 0, 'size': 4096, 'dedicated': True}
+# CHECK: callee {'arg_index': 2, 'offset': 0, 'size': 4096, 'dedicated': True}
 
 # A hand-written attribute survives the passes and reaches the utilities.
 kept = lower(HAND_WRITTEN, PIPELINE)

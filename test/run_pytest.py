@@ -42,7 +42,7 @@ def test_npu_pytest_arguments(monkeypatch, environment):
     assert arguments[:7] == [
         "-n1",
         "--reruns",
-        "1",
+        "3",
         "--reruns-delay",
         "3",
         "--rerun-show-tracebacks",

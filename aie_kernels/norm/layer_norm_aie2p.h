@@ -11,9 +11,10 @@
 #include <stdint.h>
 
 template <typename T, int N>
-void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
+__attribute__((always_inline)) inline void
+layer_norm(const T *restrict input, T *restrict output, int32_t cols,
+           float epsilon = 1e-5f) {
   event0();
-  constexpr float epsilon = 1e-5f;
   constexpr int H = N / 2;
 
   // cols is non-negative, so the unsigned divide lowers to a shift.
@@ -122,10 +123,11 @@ static inline void store_tail(bfloat16 *p, bf16xN v, unsigned parts) {
 
 // x s + c with s = s_hi + s_lo = inv_std and c = -mean s, both in f32, so
 // that the output is rounded to bf16 once, as on AIE2.
-static void layer_norm_aie2p(const bfloat16 *restrict input,
-                             bfloat16 *restrict output, int32_t cols) {
+// Inlined into each entry point so layer_norm's default epsilon folds.
+static inline __attribute__((always_inline)) void
+layer_norm_aie2p(const bfloat16 *restrict input, bfloat16 *restrict output,
+                 int32_t cols, float epsilon = 1e-5f) {
   event0();
-  constexpr float epsilon = 1e-5f;
   const unsigned chunks = (uint32_t)cols / kLanes;
   const unsigned tail = chunks * kLanes;
   const unsigned parts = ((uint32_t)cols - tail) / kPart;
@@ -201,6 +203,18 @@ void layer_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
   layer_norm_aie2p(input, output, cols);
 #else
   layer_norm<bfloat16, AIE_BF16_LANES>(input, output, cols);
+#endif
+  ::aie::set_rounding(saved_rounding);
+}
+
+void layer_norm_eps(bfloat16 *input, bfloat16 *output, int32_t cols,
+                    float epsilon) {
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
+#if AIE_TUNED_AIE2P
+  layer_norm_aie2p(input, output, cols, epsilon);
+#else
+  layer_norm<bfloat16, AIE_BF16_LANES>(input, output, cols, epsilon);
 #endif
   ::aie::set_rounding(saved_rounding);
 }

@@ -36,21 +36,35 @@ cases, which are not timed, join that comparison untimed.
 
 from __future__ import annotations
 
-import re
 import shutil
 import tempfile
 from pathlib import Path
 
 import numpy as np
 import pytest
-from aie.iron import ExternalFunction, kernels
+
+import aie.iron as iron
+from aie.iron import ExternalFunction
 from aie.iron.algorithms import kernel_design as kd
+from aie.iron.kernels import sample
 from aie.utils.config import aie_kernels_dir, aie_runtime_lib_dir
 from aie.utils.benchmark import preflight, provenance, run_iters
+from aie.utils.compile.readobj import linked
 from aie.utils.compile.remarks import current_kernel_sources
+from aie.utils.trace import TraceConfig
+from aie.utils.trace.utils import get_cycles_summary
 from cases import Case, error_report, inputs_for
 from kernel_cases import CASES
+from ml_dtypes import bfloat16
+from nms_design import TRACE_FLUSH as NMS_TRACE_FLUSH
+from nms_design import build_case as nms_build_case
+from nms_design import nms_detect
+from nms_design import realistic_pyramid as nms_realistic_pyramid
+from sample_design import sample_positions
 
+# Bump with any change to how a published metric is taken: publish.py and the
+# page compare a series only within one measurement.
+MEASUREMENT = "3"
 TRACE_SIZE = 16384
 # The add/256 case filled 16 KB after 91 intervals (180 B each) when every
 # default core event was traced; markers alone take about 5 B. Size for
@@ -63,10 +77,6 @@ TRACE_BYTES_PER_INTERVAL = 512
 # risk a host buffer the runtime cannot allocate.
 TRACE_RETRIES = 3
 TRACE_MAX_BYTES = 4 << 20
-
-_STACK_SHORT = re.compile(
-    r"stack_size = (\d+) is insufficient: this core needs (\d+) bytes"
-)
 
 # A kernel whose cost is known well enough to catch a broken measurement:
 # 8 KB copied, identical across its calls and across nightlies (264 cycles
@@ -99,42 +109,25 @@ def _measure(
     workdir: Path,
     *,
     strict: bool = True,
-    stack_bytes: int | None = None,
     timed: bool = True,
 ) -> dict:
     """Build, check and time one case. Raises if it is wrong, unless not ``strict``.
 
     Not ``strict``, a wrong output is timed anyway and its verdict's detail
-    is the result's ``"failed"`` (None when it passed). ``stack_bytes``
-    replaces the contract's core stack. Not ``timed``, it only runs once.
+    is the result's ``"failed"`` (None when it passed). Not ``timed``, it
+    only runs once.
     """
-    fn = case.fn()
-    factory = getattr(kernels, case.factory)
-    inputs = inputs_for(case, "random", np.random.default_rng(0))
-    design = kd.design(
-        factory,
-        **case.harness_opts(),
-        params=fn.param_values(inputs),
-        stack_bytes=stack_bytes,
-        **case.kwargs,
-    )
-
-    ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kd.output_size(fn, calls=case.calls)
-    out_dt = fn.output_dtype()
-    ins, out = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
+    harness = case.kernel_design()
+    fn = harness.fn
+    inputs = inputs_for(case, "random", np.random.default_rng(0), design=harness)
+    design = harness.design(params=fn.param_values(inputs))
+    ins, out = harness.upload(inputs, poison=True)
     outputs = out if isinstance(out, tuple) else (out,)
 
     design(*ins, *outputs)
     # Copies: numpy() views the device buffer, which dies with this frame.
     got = tuple(o.numpy().copy() for o in outputs)
-    verdict = fn.judge(
-        got if len(got) > 1 else got[0],
-        ref,
-        calls=case.calls,
-        inputs=inputs,
-        scalars=case.scalars,
-    )
+    verdict = harness.check(got if len(got) > 1 else got[0], inputs)
     assert verdict or not strict, f"{case.name}: {verdict.detail}"
     measured: dict = {
         "outputs": got,
@@ -160,35 +153,26 @@ def _measure(
     # A compiler bug can leave a kernel right on its first run and wrong after
     # many, so check it once more after the timing loop, into fresh poisoned
     # outputs (the timed runs' outputs could hide a run that wrote nothing).
-    _, again = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
+    _, again = harness.upload(inputs, poison=True)
     again = again if isinstance(again, tuple) else (again,)
     design(*ins, *again)
     got = tuple(o.numpy().copy() for o in again)
-    verdict = fn.judge(
-        got if len(got) > 1 else got[0],
-        ref,
-        calls=case.calls,
-        inputs=inputs,
-        scalars=case.scalars,
-    )
+    verdict = harness.check(got if len(got) > 1 else got[0], inputs)
     runs = 2 + config.getoption("--warmup") + config.getoption("--iters")
+    if not verdict:
+        measured["failed"] = verdict.detail
     assert (
-        verdict
+        verdict or not strict
     ), f"{case.name}: wrong on run {runs} (right on the first): {verdict.detail}"
     if not config.getoption("--no-cycles"):
         # A separate traced run: tracing perturbs the timing above.
-        intervals = kd.traced_intervals(fn, calls=case.calls)
+        intervals = harness.traced_intervals()
         trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * intervals)
         for attempt in range(1 + TRACE_RETRIES):
-            traced = kd.cycles_per_call(
-                design,
+            traced = harness.cycles_per_call(
                 inputs,
-                out_n,
-                out_dt,
                 trace_size=trace_size,
                 workdir=workdir,
-                fn=fn,
-                calls=case.calls,
             )
             # Every kernel checked here is timed; one that is not would chart
             # only wall clock and still pass.
@@ -236,29 +220,47 @@ def _grow_trace_size(trace_size: int, *, seen: int, expected: int) -> int:
 
 
 def _kernel_object_size(design, fn) -> int | None:
-    """Return only the tested kernel's object size, excluding harness objects."""
+    """Return the bytes of code and initialized data the tested entry point links.
+
+    What the entry reaches in its object (``readobj.linked``): not the
+    object's sibling entry points, symbol tables, or the bitcode
+    ``--check-lut-banks`` embeds.
+    """
     if Path(fn.object_file_name).suffix != ".o":
         return None
-    entry = design.compilable.get_cache_entry()
-    return (entry.directory / fn.object_file_name).stat().st_size
+    obj = design.compilable.get_cache_entry().directory / fn.object_file_name
+    reached = linked(obj, fn.name)
+    assert fn.name in reached.functions, f"{obj} does not define {fn.name}"
+    return reached.linked_bytes
 
 
-def _cycles_span(traced: kd.CallCycles) -> str:
-    """The kernel's spread, and any initializer's, beside its min."""
+def _cycles(case: Case, traced: kd.CallCycles) -> int:
+    """The cheapest call, or for calls of unequal work, the median call."""
     k = traced.kernel
-    parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    return min(k) if case.fn().contract.even_calls else int(np.median(k))
+
+
+def _cycles_span(case: Case, traced: kd.CallCycles) -> str:
+    """The kernel's spread, and any initializer's, beside its row's value."""
+    k = traced.kernel
+    if case.fn().contract.even_calls:
+        parts = [f"median {int(np.median(k))} max {max(k)} n={len(k)}"]
+    else:
+        parts = [
+            f"median of calls of unequal work; min {min(k)} max {max(k)} n={len(k)}"
+        ]
     parts += [f"init[{i}] min {min(v)}" for i, v in traced.initializers.items() if v]
     return "; ".join(parts)
 
 
 def _detail(case: Case, m: dict) -> dict:
-    """Return the distribution behind each row, for ``--perf-meta``.
+    """Return the kernel's build key and the distribution behind each row, for ``--perf-meta``.
 
     A row keeps one value and a text ``range``; the numbers a reader needs to judge that value (how far the median and the
     slowest call sit above the min, how many calls the trace held) go here
     as fields.
     """
-    detail: dict = {}
+    detail: dict = {"build": case.fn().recipe_key}
     if (traced := m.get("cycles")) is not None:
         k = traced.kernel
         detail["cycles"] = {
@@ -270,8 +272,8 @@ def _detail(case: Case, m: dict) -> dict:
             "truncated": traced.truncated,
             "trace_size": m.get("trace_size"),
         }
-    if (wall := m.get("wall")) and (s := wall.npu):
-        detail["npu_us"] = {
+    for metric, s in _wall_stats(m).items():
+        detail[metric] = {
             "median": round(s.median_us, 2),
             "mad": round(s.mad_us, 2),
             "p95": round(s.p95_us, 2),
@@ -282,6 +284,32 @@ def _detail(case: Case, m: dict) -> dict:
     return detail
 
 
+def _wall_stats(m: dict) -> dict:
+    """Return the host-clock timings of a measurement, by metric name.
+
+    ``dispatch_us`` is submit to completion of each call, the dispatch's
+    fixed cost included; ``dispatch_overhead_us`` is that cost alone, an
+    empty dispatch on the same hardware context after each call; ``npu_us``
+    is each call's dispatch less the overhead's median. A runtime with no
+    empty dispatch for the kernel gives neither of the last two.
+
+    Args:
+        m: ``_measure``'s result.
+
+    Returns:
+        Each present timing's ``Stats``, in series-name order.
+    """
+    wall = m.get("wall")
+    if wall is None:
+        return {}
+    found = {
+        "dispatch_overhead_us": wall.dispatch_overhead,
+        "dispatch_us": wall.dispatch,
+        "npu_us": wall.npu,
+    }
+    return {metric: s for metric, s in found.items() if s is not None}
+
+
 def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     """Emit the rows one measurement contributes, in series-name order.
 
@@ -290,28 +318,21 @@ def _record(record, case: Case, m: dict, meta: dict | None = None) -> None:
     """
     if meta is not None:
         meta.setdefault("cases", {})[case.name] = _detail(case, m)
+    rows = []
     if (traced := m.get("cycles")) is not None:
-        # The min: every call does the same work, so anything above it is
-        # the core waiting (a stall, a refresh), not the kernel.
-        cycles = min(traced.kernel)
-        record(case.name, "cycles", "cycles", cycles, _cycles_span(traced))
+        cycles = _cycles(case, traced)
+        rows.append(("cycles", "cycles", cycles, _cycles_span(case, traced)))
         if ops := case.work():
-            record(
-                case.name,
-                "cycles_per_kop",
-                "cycles/1k-ops",
-                round(1000.0 * cycles * case.kernel_calls() / ops, 3),
-            )
-    if (wall := m.get("wall")) and (s := wall.npu):
-        record(
-            case.name,
-            "npu_us",
-            "us",
-            round(s.median_us, 2),
-            f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}",
-        )
+            per_kop = round(1000.0 * cycles * case.kernel_calls() / ops, 3)
+            rows.append(("cycles_per_kop", "cycles/1k-ops", per_kop, None))
+    for metric, s in _wall_stats(m).items():
+        # The MAD leads the range text: the page and pr_report read it there.
+        span = f"± {s.mad_us:.1f}; min {s.min_us:.1f} max {s.max_us:.1f} n={s.n}"
+        rows.append((metric, "us", round(s.median_us, 2), span))
     if (size := m.get("kernel_object_bytes")) is not None:
-        record(case.name, "kernel_object_bytes", "bytes", size)
+        rows.append(("kernel_object_bytes", "bytes", size, None))
+    for metric, unit, value, span in sorted(rows, key=lambda row: row[0]):
+        record(case.name, metric, unit, value, span)
 
 
 @pytest.fixture(scope="module")
@@ -341,7 +362,9 @@ def _preflight(request):
             "(set it with xrt-smi configure --pmode, or pass --pmode any)"
         )
     config._perf_meta["preflight"] = dict(vars(pre))
-    config._perf_meta["provenance"] = provenance(device=pre.device, pmode=pre.pmode)
+    config._perf_meta["provenance"] = provenance(
+        device=pre.device, pmode=pre.pmode, measurement=MEASUREMENT
+    )
     return pre
 
 
@@ -364,6 +387,263 @@ def test_measurement_is_sane(request, record_perf, workdir):
         assert lo <= cycles <= hi, f"{cycles} cycles is outside {band}"
     meta["measurement_sane"] = True
     _record(record_perf, SMOKE_TEST, m, meta)
+
+
+# nms's three entry points share one core's state across a run (NOT_JUDGED:
+# the generic single-call harness above cannot build or time it), so this
+# builds nms_detect directly -- the same design test_nms_e2e.py judges --
+# rather than through kd.design, and times it with its own tracing.
+NMS_CASE = Case(
+    "nms", dict(width=52, classes=80, cap=320), calls=91, tag="realistic_pyramid"
+)
+NMS_FINISH_CASE = Case(
+    "nms",
+    dict(width=52, classes=80, cap=320),
+    calls=1,
+    tag="realistic_pyramid_finish",
+)
+
+
+@pytest.mark.perf
+def test_nms_cycles(request, record_perf, workdir):
+    """``nms_score``'s per-row cost and ``nms_finish``'s own, over a full
+    YOLOX-Nano pyramid (91 rows).
+
+    Checked first, as every other case here is: ``nms``'s own kernel is
+    judged by ``test_nms_e2e.py``'s dedicated e2e file, not this harness, so
+    this re-runs that same check (against ``vision.nms_ref``) before timing.
+    ``nms_score`` and ``nms_finish`` both declare ``Trace.whole_call()``
+    (``nms.cc``; ``test_kernel_trace_markers.py -k nms`` checks both), so a
+    traced run's stream is 91 row intervals, a flush (pushed right after
+    the last row, before ``nms_finish``'s own work would otherwise land
+    between them), one ``nms_finish`` interval, then a second flush and,
+    past that, the core idling for a dispatch that never comes --
+    measurement harness noise, not kernel cost. ``nms_finish`` is worth its
+    own series: its O(candidates^2) suppression is exactly where a 35x
+    Peano regression was once found (see ``nms``'s own commit message), so
+    the generic score-only number would not have moved if it had come back.
+    """
+    meta = request.config._perf_meta
+    rows, classes = nms_realistic_pyramid()
+    kwargs, flat, det_ref, count_ref, survivors_ref = nms_build_case(
+        width=52,
+        classes=classes,
+        cap=320,
+        conf_thre=0.3,
+        nms_thre=0.45,
+        class_agnostic=0,
+        rows=rows,
+    )
+    calls = len(kwargs["widths"])
+    assert calls == NMS_CASE.calls, f"the pyramid now has {calls} rows, not 91"
+
+    def _tensors():
+        return (
+            iron.tensor(flat, dtype=np.float32),
+            iron.full((kwargs["cap"] * 6,), -1.0, dtype=np.float32),
+            iron.full((2,), -1, dtype=np.int32),
+        )
+
+    rows_t, det, count = _tensors()
+    nms_detect(rows_t, det, count, **kwargs)
+    got = (int(count.numpy()[0]), int(count.numpy()[1]))
+    failed = None
+    if got != (count_ref, survivors_ref):
+        failed = f"count/survivors {got} != ref {(count_ref, survivors_ref)}"
+    elif not np.array_equal(det.numpy(), det_ref):
+        failed = "detections differ from nms_ref"
+    assert failed is None, failed
+
+    m: dict = {"failed": failed}
+    m["wall"] = run_iters(
+        nms_detect,
+        *_tensors(),
+        warmup=request.config.getoption("--warmup"),
+        iters=request.config.getoption("--iters"),
+        **kwargs,
+    )
+    finish_m: dict = {"failed": failed}
+    if not request.config.getoption("--no-cycles"):
+        finish_at = calls + NMS_TRACE_FLUSH
+        needed = finish_at + 1
+        trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * needed)
+        tdir = workdir / "nms"
+        tdir.mkdir(parents=True, exist_ok=True)
+        cfg = TraceConfig(trace_size=trace_size, trace_file=str(tdir / "trace.txt"))
+        rows_t, det, count = _tensors()
+        nms_detect(rows_t, det, count, **kwargs, trace_config=cfg)
+        assert (
+            cfg.physical_mlir_path is not None
+        ), f"{NMS_CASE.name}: the traced run recorded no physical MLIR path"
+        trace_json = tdir / "trace.json"
+        cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
+        durations = [d for p in get_cycles_summary(str(trace_json)) for d in p[1:]]
+        assert len(durations) >= needed, (
+            f"{NMS_CASE.name}: only {len(durations)} of {needed} rows + "
+            "flush + nms_finish traced"
+        )
+        m["cycles"] = kd.CallCycles(kernel=tuple(durations[:calls]))
+        m["trace_size"] = trace_size
+        finish_m["cycles"] = kd.CallCycles(kernel=(durations[finish_at],))
+        finish_m["trace_size"] = trace_size
+    _record(record_perf, NMS_CASE, m, meta)
+    _record(record_perf, NMS_FINISH_CASE, finish_m, meta)
+
+
+# sample_select/sample_combine only make sense together (NOT_JUDGED: the
+# generic builder cannot draw sample_combine's own summaries), but each
+# runs on its own core, so -- unlike resize_rows's single-core take/emit --
+# a traced run's streams never interleave: select's calls and combine's are
+# labeled by core (get_cycles_summary groups by tile), not by position in
+# one shared stream.
+SAMPLE_VOCAB, SAMPLE_CORES, SAMPLE_CHUNK, SAMPLE_K_MAX = 128256, 4, 5344, 64
+SAMPLE_POSITIONS = 8
+SAMPLE_SELECT_CASE = Case(
+    "sample_select",
+    dict(
+        slice_size=SAMPLE_VOCAB // SAMPLE_CORES, chunk=SAMPLE_CHUNK, k_max=SAMPLE_K_MAX
+    ),
+    calls=SAMPLE_POSITIONS
+    * sample.select_streams(SAMPLE_VOCAB // SAMPLE_CORES, SAMPLE_CHUNK)
+    * (SAMPLE_VOCAB // SAMPLE_CORES)
+    // SAMPLE_CHUNK,
+    tag="llama_vocab",
+)
+SAMPLE_COMBINE_CASE = Case(
+    "sample_combine",
+    dict(
+        columns=SAMPLE_CORES,
+        slice_size=SAMPLE_VOCAB // SAMPLE_CORES,
+        k_max=SAMPLE_K_MAX,
+    ),
+    calls=SAMPLE_POSITIONS,
+    tag="llama_vocab",
+)
+# The series the dedicated tests above record, outside kernel_cases.CASES.
+_DEDICATED_CASES = (NMS_CASE, NMS_FINISH_CASE, SAMPLE_SELECT_CASE, SAMPLE_COMBINE_CASE)
+
+
+@pytest.mark.perf
+def test_sample_cycles(request, record_perf, workdir):
+    """``sample_select``'s and ``sample_combine``'s per-position cost, Llama
+    3.2's vocabulary split the way IRON's Sample operator splits it.
+
+    Checked first, as every other case here is: ``test_sample_e2e.py``'s
+    dedicated e2e file is what judges these kernels, not this harness, so
+    this re-runs the same check (against ``sample.sample_ref``) over
+    ``SAMPLE_POSITIONS`` positions before timing. Both kernels declare
+    ``Trace.whole_call()``; a traced run gives each select core
+    ``positions * calls`` intervals and the combine core ``positions``, each
+    on its own stream (confirmed: every stream's length is exactly that
+    count plus the flush, with nothing to untangle). Only one select core's
+    stream is charted (the four slice the same vocabulary the same way).
+    """
+    meta = request.config._perf_meta
+    slice_size = SAMPLE_VOCAB // SAMPLE_CORES
+    streams = sample.select_streams(slice_size, SAMPLE_CHUNK)
+    select_calls = streams * slice_size // SAMPLE_CHUNK
+    rng = np.random.default_rng(0)
+    logits = rng.normal(0, 3.0, SAMPLE_VOCAB).astype(bfloat16)
+    n53s = [int(rng.integers(0, 1 << 53)) for _ in range(SAMPLE_POSITIONS)]
+    draws = np.stack([sample.draw_row(1.0, SAMPLE_K_MAX, n) for n in n53s])
+    expected = np.array(
+        [sample.sample_ref(logits, 1.0, SAMPLE_K_MAX, n) for n in n53s], dtype=np.int32
+    )
+
+    def _tensors():
+        return (
+            iron.tensor(np.tile(logits, SAMPLE_POSITIONS * streams), dtype=bfloat16),
+            iron.tensor(draws.reshape(-1), dtype=np.int32),
+            iron.full((SAMPLE_POSITIONS,), -1, dtype=np.int32),
+            iron.full((SAMPLE_POSITIONS,), -1, dtype=np.int32),
+        )
+
+    logits_t, draws_t, token, record = _tensors()
+    sample_positions(
+        logits_t,
+        draws_t,
+        token,
+        record,
+        vocab=SAMPLE_VOCAB,
+        cores=SAMPLE_CORES,
+        chunk=SAMPLE_CHUNK,
+        k_max=SAMPLE_K_MAX,
+        positions=SAMPLE_POSITIONS,
+    )
+    failed = None
+    if not np.array_equal(token.numpy(), expected) or not np.array_equal(
+        record.numpy(), expected
+    ):
+        failed = f"draws {token.numpy()} / {record.numpy()} != ref {expected}"
+    assert failed is None, failed
+
+    select_m: dict = {"failed": failed}
+    combine_m: dict = {"failed": failed}
+    select_m["wall"] = combine_m["wall"] = run_iters(
+        sample_positions,
+        *_tensors(),
+        warmup=request.config.getoption("--warmup"),
+        iters=request.config.getoption("--iters"),
+        vocab=SAMPLE_VOCAB,
+        cores=SAMPLE_CORES,
+        chunk=SAMPLE_CHUNK,
+        k_max=SAMPLE_K_MAX,
+        positions=SAMPLE_POSITIONS,
+    )
+    if not request.config.getoption("--no-cycles"):
+        select_total = SAMPLE_POSITIONS * select_calls
+        trace_size = max(TRACE_SIZE, TRACE_BYTES_PER_INTERVAL * (select_total + 16))
+        tdir = workdir / "sample"
+        tdir.mkdir(parents=True, exist_ok=True)
+        cfg = TraceConfig(trace_size=trace_size, trace_file=str(tdir / "trace.txt"))
+        logits_t, draws_t, token, record = _tensors()
+        sample_positions(
+            logits_t,
+            draws_t,
+            token,
+            record,
+            vocab=SAMPLE_VOCAB,
+            cores=SAMPLE_CORES,
+            chunk=SAMPLE_CHUNK,
+            k_max=SAMPLE_K_MAX,
+            positions=SAMPLE_POSITIONS,
+            trace_config=cfg,
+        )
+        assert (
+            cfg.physical_mlir_path is not None
+        ), f"{SAMPLE_SELECT_CASE.name}: the traced run recorded no physical MLIR path"
+        trace_json = tdir / "trace.json"
+        cfg.trace_to_json(cfg.physical_mlir_path, str(trace_json))
+        streams_found = {row[0]: row[1:] for row in get_cycles_summary(str(trace_json))}
+        assert len(streams_found) == SAMPLE_CORES + 1, (
+            f"expected {SAMPLE_CORES} select cores and one combine core, "
+            f"got streams {sorted(streams_found)}"
+        )
+        # Select's stream is select_total + flush long; combine's is
+        # SAMPLE_POSITIONS + flush, much shorter (SAMPLE_POSITIONS <
+        # select_total for any configuration a real decode uses) -- told
+        # apart by length, not name, since tile naming does not sort cores
+        # before the combine tile.
+        by_length = sorted(streams_found.values(), key=len)
+        combine_durations = by_length[0]
+        select_durations = by_length[-1]
+        assert len(select_durations) >= select_total, (
+            f"{SAMPLE_SELECT_CASE.name}: only {len(select_durations)} of "
+            f"{select_total} calls traced"
+        )
+        assert len(combine_durations) >= SAMPLE_POSITIONS, (
+            f"{SAMPLE_COMBINE_CASE.name}: only {len(combine_durations)} of "
+            f"{SAMPLE_POSITIONS} calls traced"
+        )
+        select_m["cycles"] = kd.CallCycles(
+            kernel=tuple(select_durations[:select_total])
+        )
+        combine_m["cycles"] = kd.CallCycles(
+            kernel=tuple(combine_durations[:SAMPLE_POSITIONS])
+        )
+        select_m["trace_size"] = combine_m["trace_size"] = trace_size
+    _record(record_perf, SAMPLE_SELECT_CASE, select_m, meta)
+    _record(record_perf, SAMPLE_COMBINE_CASE, combine_m, meta)
 
 
 def _differing_words(a: np.ndarray, b: np.ndarray) -> int:
@@ -413,42 +693,27 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
     exactly. Both arms are judged by this tree's contract and only recorded
     here: the caller fails the current arm, and the baseline's miss can be a
     tolerance tightened along with the kernel. Returns the pair of each
-    arm's cycles and npu_us (min, and min, max and n), each arm's error
+    arm's cycles, dispatch_us and npu_us (min, and min, max and n), each arm's error
     against the reference (``cases.error_report``), the differing words and
-    each arm's verdict.
-
-    The contract's stack is sized for this tree's kernel too, and aiecc
-    refuses a baseline that needs more; that one is built with the stack
-    aiecc measured, recorded as ``"baseline_stack"`` ``[contract, needed]``.
-    The baseline is timed only if ``current`` was.
+    each arm's verdict. The baseline is timed only if ``current`` was.
     """
     timed = "wall" in current
     # The baseline's kernels share their object names with this tree's but
-    # not their sources; the registry would refuse them as a collision.
+    # not their sources; the registry would refuse either arm's as a collision
+    # with the other's.
+    saved = set(ExternalFunction._instances)
     ExternalFunction._instances.clear()
-    stack = None
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("MLIR_AIE_KERNEL_SOURCES", tree)
         try:
-            try:
-                base = _measure(
-                    case, config, workdir / "baseline", strict=False, timed=timed
-                )
-            except RuntimeError as e:
-                if not (short := _STACK_SHORT.search(str(e))):
-                    raise
-                stack = [int(short[1]), int(short[2])]
-                ExternalFunction._instances.clear()
-                base = _measure(
-                    case,
-                    config,
-                    workdir / "baseline",
-                    strict=False,
-                    stack_bytes=stack[1],
-                    timed=timed,
-                )
+            base = _measure(
+                case, config, workdir / "baseline", strict=False, timed=timed
+            )
         except AssertionError as e:
             raise AssertionError(f"baseline tree {tree}: {e}") from None
+        finally:
+            ExternalFunction._instances.clear()
+            ExternalFunction._instances.update(saved)
 
     def cycles(m):
         if "cycles" not in m:
@@ -456,26 +721,30 @@ def _compare(case: Case, config, workdir: Path, current: dict, tree: str) -> dic
         k = m["cycles"].kernel
         return {"min": min(k), "max": max(k), "n": len(k)}
 
-    def npu_us(m):
-        if "wall" not in m or not (s := m["wall"].npu):
-            return None
-        return {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
-
     words = [
         _differing_words(a, b) for a, b in zip(base["outputs"], current["outputs"])
     ]
     cycles_range = [cycles(base), cycles(current)]
-    npu_us_range = [npu_us(base), npu_us(current)]
+    timed_ranges = {
+        metric: [
+            (s := _wall_stats(m).get(metric))
+            and {"min": round(s.min_us, 2), "max": round(s.max_us, 2), "n": s.n}
+            for m in (base, current)
+        ]
+        for metric in ("dispatch_us", "npu_us")
+    }
     return {
         "cycles": [r and r["min"] for r in cycles_range],
-        "npu_us_min": [r and r["min"] for r in npu_us_range],
+        **{
+            f"{metric}_min": [r and r["min"] for r in ranges]
+            for metric, ranges in timed_ranges.items()
+        },
         "cycles_range": cycles_range,
-        "npu_us_range": npu_us_range,
+        **{f"{metric}_range": ranges for metric, ranges in timed_ranges.items()},
         "differing_words": sum(words),
         "accuracy": [base["error"], current["error"]],
         "baseline_failed": base["failed"],
         "current_failed": current["failed"],
-        "baseline_stack": stack,
     }
 
 
@@ -529,30 +798,6 @@ def test_a_baseline_that_fails_the_contract_is_timed(request, workdir, tmp_path)
     assert entry["npu_us_min"][0] is not None
     if not request.config.getoption("--no-cycles"):
         assert entry["cycles"][0] is not None
-
-
-@pytest.mark.perf
-def test_a_baseline_that_needs_more_stack_is_timed(request, workdir, tmp_path):
-    """A baseline over this tree's stack contract is built with the stack it needs.
-
-    A change that shrinks a kernel's frame lowers its ``stack_bytes`` with
-    it, and aiecc refuses the old kernel under the new contract.
-    """
-    tree = tmp_path / "base"
-    shutil.copytree(aie_kernels_dir(), tree / "aie_kernels")
-    shutil.copytree(aie_runtime_lib_dir(), tree / "aie_runtime_lib")
-    frame = "  volatile int frame[1024];\n  for (int k = 0; k < 1024; k++)\n    frame[k] = k;\n"
-    for header in ("relu_aie2.h", "relu_aie2p.h"):
-        path = tree / "aie_kernels" / "eltwise" / header
-        assert path.read_text().count("  event1();") == 1
-        path.write_text(path.read_text().replace("  event1();", f"{frame}  event1();"))
-    case = Case("relu", calls=4)
-    current = _measure(case, request.config, workdir)
-    entry = _compare(case, request.config, workdir, current, str(tree))
-    contract, needed = entry["baseline_stack"]
-    assert contract == kd._stack_bytes(case.fn()) and needed > 4096
-    assert entry["baseline_failed"] is None and entry["differing_words"] == 0
-    assert entry["npu_us_min"][0] is not None
 
 
 @pytest.mark.perf

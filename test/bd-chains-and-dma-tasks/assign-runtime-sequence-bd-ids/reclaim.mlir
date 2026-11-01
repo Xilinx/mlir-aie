@@ -7,6 +7,16 @@
 // RUN:   | FileCheck %s
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' --aie-dma-tasks-to-npu \
 // RUN:   --aie-dma-to-npu %s | FileCheck %s --check-prefix=LOWERED
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='reclaim-bds=true' %s -o /dev/null 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=REMARK
+
+// The remark carries no "see current operation" note: printing the poll for
+// one verifies the whole device, once per poll.
+// REMARK-NOT:  see current operation
+// REMARK:      reclaim.mlir:{{[0-9]+}}:{{[0-9]+}}: remark: tile (0,0) has no free buffer descriptor id
+// REMARK-NEXT: aiex.dma_configure_task
+// REMARK:      note: the task it waits for
+// REMARK-NOT:  see current operation
 
 // With reclaim-bds, when a tile runs out of BD ids, the pass takes them back
 // from a task that was started and never freed. It first looks for a task that

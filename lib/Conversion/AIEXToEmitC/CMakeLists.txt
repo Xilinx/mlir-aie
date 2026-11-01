@@ -15,6 +15,7 @@ add_mlir_conversion_library(MLIRAIEXToEmitC
   LINK_LIBS PUBLIC
   AIE
   AIEX
+  MLIRAIEToConfiguration
   MLIRArithToEmitC
   MLIRArithTransforms
   MLIRControlFlowDialect

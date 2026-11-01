@@ -21,7 +21,6 @@ from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
 )
 from ...extras.meta import op_region_builder  # pyright: ignore[reportMissingImports]
 from ...extras.util import (  # pyright: ignore[reportMissingImports]
-    get_user_code_loc,
     make_maybe_no_args_decorator,
 )
 from ...ir import (  # pyright: ignore[reportMissingImports]
@@ -39,6 +38,7 @@ from ...ir import (  # pyright: ignore[reportMissingImports]
     Value,
 )
 from ..npdtypes import NpuDType
+from ..sourceloc import user_code_location
 from ..util import (
     get_arg_types,
     try_convert_np_type_to_mlir_type,
@@ -57,7 +57,7 @@ def call(
     ip=None,
 ):
     if loc is None:
-        loc = get_user_code_loc()
+        loc = user_code_location()
     if isinstance(callee_or_results, FuncOp.__base__):
         func_op: Any = callee_or_results
         if not isinstance(arguments_or_callee, (list, tuple)):
@@ -176,7 +176,7 @@ def prep_func_types(sig, return_types):
         or r in get_args(NpuDType)
         for r in input_types
     ), f"all input types must be mlir types or ndarrays (tensors) or np dtypes {input_types=}"
-    user_loc = get_user_code_loc()
+    user_loc = user_code_location()
     # If ir.Context is none (like for deferred func emit)
     if user_loc is None:
         user_locs = None
@@ -340,7 +340,7 @@ def func(
     ip=None,
 ) -> FuncBase:
     if loc is None:
-        loc = get_user_code_loc()
+        loc = user_code_location()
     func = FuncBase(
         body_builder=f,
         func_op_ctor=FuncOp.__base__,

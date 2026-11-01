@@ -221,7 +221,10 @@ def AIENpuToCert : Pass<"aie-npu-to-cert", "mlir::ModuleOp"> {
                         "removed after absorption)">];
 
   let constructor = "xilinx::AIEX::createAIENpuToCertPass()";
-  let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
 }
@@ -236,6 +239,24 @@ def AIECertPages : Pass<"cert-legalize-pages", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIECertPagesPass()";
   let dependentDialects = ["mlir::func::FuncDialect", "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECertVerify : Pass<"aie-cert-verify", "AIE::DeviceOp"> {
+  let summary = "Verify CERT ordering/placement legality invariants";
+  let description = [{
+    This pass checks the firmware-imposed legality invariants on cert
+    operations. It performs no IR
+    mutation; it only emits diagnostics for illegal cert programs.
+
+    The uC (microcontroller / CERT group) of a cert op is the `group_id` of
+    its nearest enclosing `cert.attach_to_group`, or 0 if the op is at device
+    level (not inside any `cert.attach_to_group`).
+  }];
+
+  let constructor = "xilinx::AIEX::createAIECertVerifyPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
 }
@@ -335,15 +356,11 @@ def AIEAssignRuntimeSequenceBDIDs
            "that report no pollable occupancy register fall back to warning.">,
        Option<
            "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
-           /*default=*/"false",
+           /*default=*/"true",
            "Warn when a BD id released by aiex.dma_free_task without any "
-           "completion guarantee is later reused on the same tile. Off by "
-           "default: the common fill/drain idiom frees tasks on one channel "
-           "having awaited another, and that cross-channel reasoning runs "
-           "through the compute core, which the runtime sequence cannot see, "
-           "so this reports designs that are correct by an argument the "
-           "compiler does not have. Useful when chasing a suspected BD "
-           "aliasing hang.">,
+           "completion guarantee is later reused on the same tile. On by "
+           "default; disable when completion is guaranteed through the compute "
+           "core or another tile, which the runtime sequence cannot see.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
               "When a tile runs out of BD ids, take them back from a started "
@@ -446,14 +463,26 @@ def AIELowerDynamicBDPool : Pass<"aie-lower-dynamic-bd-pool", "AIE::DeviceOp"> {
     runtime loop are diagnosed.
   }];
 
-  let options = [Option<
-      "enforceQueueDepth", "enforce-queue-depth", "bool",
-      /*default=*/"true",
-      "Insert an aiex.npu.maskpoll before any dma_start_task in a "
-      "runtime-bound loop that could push onto a full DMA task queue. "
-      "The same option as on aie-dma-to-npu and "
-      "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
-      "of those reaches: a loop this pass deliberately keeps rolled.">];
+  let options =
+      [Option<
+           "enforceQueueDepth", "enforce-queue-depth", "bool",
+           /*default=*/"true",
+           "Insert an aiex.npu.maskpoll before any dma_start_task in a "
+           "runtime-bound loop that could push onto a full DMA task queue. "
+           "The same option as on aie-dma-to-npu and "
+           "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
+           "of those reaches: a loop this pass deliberately keeps rolled.">,
+       Option<
+           "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
+           /*default=*/"true",
+           "Warn when a dma_free_task releases a buffer descriptor id with no "
+           "completion guarantee, so the runtime pool could hand it straight "
+           "back out before hardware has finished the freed transfer. The "
+           "same default-on option as on "
+           "aie-assign-runtime-sequence-bd-ids: the pass can only reason "
+           "within the runtime sequence, so a design that proves completion "
+           "through the compute core or another tile looks unsafe without "
+           "being so.">];
 
   let constructor = "xilinx::AIEX::createAIELowerDynamicBDPoolPass()";
   let dependentDialects = ["mlir::arith::ArithDialect", "mlir::scf::SCFDialect",
@@ -646,8 +675,10 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     By default (`ctrl-pkt = false`), each op is replaced with:
     1. A `load_pdi { device_ref = @empty_N }` op (loading an empty device,
        which causes a device reset).
-    2. A sequence of `aiex.npu.write32`/`aiex.npu.blockwrite` ops that
-       configure the device.
+    2. An `aiex.npu.write_config @device` op, whose register writes the NPU
+       translation emits from the device, generating them once however many
+       times the device is reloaded. With `inline-config = true`, the
+       `aiex.npu.write32`/`aiex.npu.blockwrite` ops of those writes instead.
 
     With `ctrl-pkt = true`, each op is replaced with:
     1. A `load_pdi { device_ref = @ctrl_pkt_overlay }` op, which loads the
@@ -662,10 +693,22 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     This pass is intended to run after runtime sequence materialization
     (i.e., after `aiex.configure` ops have been turned into
     `aiex.npu.load_pdi`).
+
+    With `teardown = true`, an `aiex.npu.write_teardown @device` before the
+    next `load_pdi`, or at the sequence's end, undoes what each configuration
+    enabled, so only a sequence's first configuration keeps its reset. With
+    `init-entry = true` as well, that reset moves into an argument-free
+    `reconfig_init` runtime sequence, which the host runs once before the
+    others.
+
+    A sequence whose first and last reset (or overlay load) name the same PDI
+    gets one more of the other, so the next dispatch's first load is not skipped
+    as cached. Under teardown no sequence needs this.
   }];
 
   let constructor = "xilinx::AIEX::createAIEExpandLoadPdiPass()";
-  let dependentDialects = ["mlir::memref::MemRefDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -674,6 +717,17 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
               "If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi "
               "followed by aiex.npu.control_packet ops instead of write32/"
               "blockwrite ops with an empty-device reset.">,
+       Option<"clInlineConfig", "inline-config", "bool", /*default=*/"false",
+              "If true, write each reloaded device's configuration and "
+              "teardown as write32/blockwrite ops rather than an "
+              "aiex.npu.write_config and aiex.npu.write_teardown.">,
+       Option<"clTeardown", "teardown", "bool", /*default=*/"false",
+              "If true, each configuration undoes what it enabled once it is "
+              "done, and only the first configuration of a runtime sequence "
+              "keeps its reset.">,
+       Option<"clInitEntry", "init-entry", "bool", /*default=*/"false",
+              "If true (requires teardown), the one reset moves to an "
+              "argument-free `reconfig_init` runtime sequence per device.">,
   ];
 }
 

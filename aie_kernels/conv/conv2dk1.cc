@@ -147,9 +147,9 @@ conv2dk1_vector(ActT *input, int8_t *kernels, uint8_t *__restrict output,
   event0();
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, ActT, int8>;
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = ::aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(
+  const aie::rounding_mode saved_rnd = ::aie::swap_rounding(
       aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
 
   constexpr int NUM_ACC = 8;
@@ -191,6 +191,8 @@ conv2dk1_vector(ActT *input, int8_t *kernels, uint8_t *__restrict output,
     kernels += (input_channels / 8) * 64; // next oc/8 weights
   }
 
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #elif AIE_TUNED_AIE2P
@@ -213,8 +215,10 @@ conv2dk1_vector(ActT *__restrict input, int8_t *__restrict kernels,
   event0();
 
   using MMUL8x8x8 = aie::mmul<8, 8, 8, ActT, int8>;
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::positive_inf);
 
   constexpr int NUM_ACC = 4;
   const int iw = input_width;
@@ -248,6 +252,8 @@ conv2dk1_vector(ActT *__restrict input, int8_t *__restrict kernels,
     kernels += (input_channels / 8) * 64; // next oc/8 weights
   }
 
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #else
@@ -277,9 +283,9 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
   event0();
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = ::aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(
+  const aie::rounding_mode saved_rnd = ::aie::swap_rounding(
       aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
 
   uint8_t *restrict out_ptr = output;
@@ -375,6 +381,8 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, uint8_t *output,
 
   } // if(iw_32_rem > 0)
 
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 
@@ -404,9 +412,9 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
   event0();
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = ::aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(
+  const aie::rounding_mode saved_rnd = ::aie::swap_rounding(
       aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
 
   uint8_t *restrict out_ptr = output;
@@ -502,6 +510,8 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
 
   } // if(iw_32_rem > 0)
 
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 

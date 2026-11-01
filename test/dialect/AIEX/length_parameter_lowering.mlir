@@ -290,18 +290,21 @@ aie.device(npu2) {
 // An offset may also run backwards to the buffer's start, so its range starts
 // below 0, while a parameter only cores read has no range. With a length
 // parameter too, off + 16 * n <= 32 keeps the transfer within the buffer, and
-// params.txt carries that joint bound after the ranges.
+// params.txt carries that joint bound after the ranges, and then the one
+// command, which reads all three.
 
 // CHECK-LABEL: module
 // CHECK: aiex.scratchpad_parameter @off : i32 {kind = 1 : i32, max_value = 32 : i32, min_value = -16 : i32, state_table_idx = 0 : ui8}
 // CHECK: aiex.scratchpad_parameter @n : i32 {joint_bounds = [#aiex.joint_bound<offset = @off, length_step = 16, max = 32>], kind = 1 : i32, max_value = 2 : i32, min_value = 0 : i32, state_table_idx = 1 : ui8}
 // CHECK: aiex.scratchpad_parameter @trips : i32 {kind = 0 : i32, state_table_idx = 2 : ui8}
-// PARAMS: 3
+// PARAMS: 3 3
 // PARAMS-NEXT: off 0 i32 addr -16 32
 // PARAMS-NEXT: n 1 i32 addr 0 2
 // PARAMS-NEXT: trips 2 i32 core - -
 // PARAMS-NEXT: 1
 // PARAMS-NEXT: n off 16 32
+// PARAMS-NEXT: 1
+// PARAMS-NEXT: main:offset_range 3 off n trips
 // PARAMS-EMPTY:
 aiex.scratchpad_parameter @off : i32
 aiex.scratchpad_parameter @n : i32

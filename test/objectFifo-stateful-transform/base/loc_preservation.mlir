@@ -26,8 +26,8 @@ module @loc_test {
 // the synthesized buffers / locks reference the same alias and that the
 // alias resolves to user_design.py:42:4 (and is *not* loc(unknown)).
 
-// CHECK: aie.buffer({{.*}}) {sym_name = "of0_buff_0"} : memref<16xi32>{{ +}}loc(#[[USERLOC:loc[0-9]*]])
-// CHECK: aie.buffer({{.*}}) {sym_name = "of0_buff_1"} : memref<16xi32>{{ +}}loc(#[[USERLOC]])
-// CHECK: aie.lock({{.*}}) {init = 4 : i32, sym_name = "of0_prod_lock_0"} loc(#[[USERLOC]])
-// CHECK: aie.lock({{.*}}) {init = 0 : i32, sym_name = "of0_cons_lock_0"} loc(#[[USERLOC]])
+// CHECK: aie.buffer({{.*}}) {sym_name = "of0__buf0"} : memref<16xi32>{{ +}}loc(#[[USERLOC:loc[0-9]*]])
+// CHECK: aie.buffer({{.*}}) {sym_name = "of0__buf1"} : memref<16xi32>{{ +}}loc(#[[USERLOC]])
+// CHECK: aie.lock({{.*}}) {init = 4 : i32, sym_name = "of0__prodlock0"} loc(#[[USERLOC]])
+// CHECK: aie.lock({{.*}}) {init = 0 : i32, sym_name = "of0__conslock0"} loc(#[[USERLOC]])
 // CHECK: #[[USERLOC]] = loc("user_design.py":42:4)

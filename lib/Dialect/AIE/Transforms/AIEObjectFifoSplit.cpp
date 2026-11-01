@@ -72,30 +72,46 @@ bool delegateReachesBothEnds(ObjectFifoCreateOp op, TileOp delegate) {
          reachesDelegate(consumerTileOp);
 }
 
-/// A fifo needs DMAs unless both ends reach one memory module and neither end
-/// asks the DMA to reshape the data on the way.
-bool requiresDMAs(ObjectFifoCreateOp createOp,
-                  AIETargetModel::SharedMemory &shared) {
-  if (createOp.getVia_DMA() || createOp.getRepeatCount() ||
-      createOp.getAieStream() || createOp.getConsumerElemType()) {
-    return true;
-  }
+/// Why a fifo needs DMAs, or nothing when both ends reach one memory module
+/// and neither end asks the DMA to reshape the data on the way.
+std::optional<StringRef> dmaReason(ObjectFifoCreateOp createOp,
+                                   AIETargetModel::SharedMemory &shared) {
+  if (createOp.forcesDMA())
+    return "it asks for a dma transport";
+  if (createOp.getRepeatCount())
+    return "it repeats objects (`repeat_count`)";
+  if (createOp.usesStream())
+    return "an end is a Core stream port";
+  if (createOp.getConsumerElemType())
+    return "its consumer takes a different element type";
 
   if (createOp.getConsumerTiles().size() == 1 &&
       createOp.getDimensionsToStream().empty()) {
     auto consumerTileOp =
         cast<TileOp>(createOp.getConsumerTiles()[0].getDefiningOp());
     shared = sharedMemory(createOp.getProducerTileOp(), consumerTileOp);
+    // A delegate both ends reach holds the objects even where the ends share
+    // no memory of their own.
+    if (shared == AIETargetModel::SharedMemory::None) {
+      if (auto alloc = getOptionalAllocateOp(createOp);
+          alloc &&
+          delegateReachesBothEnds(createOp, alloc->getDelegateTileOp()))
+        shared = AIETargetModel::SharedMemory::Either;
+    }
   }
 
   if (shared == AIETargetModel::SharedMemory::None) {
-    return true;
+    if (createOp.getConsumerTiles().size() > 1)
+      return "it has more than one consumer";
+    if (!createOp.getDimensionsToStream().empty())
+      return "its producer reshapes the data (`dimensionsToStream`)";
+    return "its ends share no memory module";
   }
 
   for (BDDimLayoutArrayAttr dims :
        createOp.getDimensionsFromStreamPerConsumer()) {
     if (!dims.empty()) {
-      return true;
+      return "a consumer reshapes the data (`dimensionsFromStream`)";
     }
   }
 
@@ -104,12 +120,13 @@ bool requiresDMAs(ObjectFifoCreateOp createOp,
   // this fifo can reach directly.
   if (getOptionalLinkOp(createOp)) {
     if (auto alloc = getOptionalAllocateOp(createOp)) {
-      return !delegateReachesBothEnds(createOp, alloc->getDelegateTileOp());
+      if (delegateReachesBothEnds(createOp, alloc->getDelegateTileOp()))
+        return std::nullopt;
     }
-    return true;
+    return "it is linked through a tile's DMAs";
   }
 
-  return false;
+  return std::nullopt;
 }
 
 /// Objects a fifo needs on `tile`: enough to cover the largest acquire made
@@ -213,14 +230,16 @@ struct AIEObjectFifoSplitPass
                               ObjectFifoCreateOp from,
                               ArrayRef<std::pair<int64_t, int64_t>> extents,
                               bool holdsInitialContents,
-                              std::optional<int> repeatCount) {
+                              std::optional<int> repeatCount,
+                              bool disableSynchronization = false) {
     auto pool = ObjectFifoPoolOp::create(
         builder, loc, name, tile, depth, elemType, /*buffers=*/ArrayAttr(),
         /*locks=*/ArrayAttr(),
         repeatCount ? builder.getI32IntegerAttr(*repeatCount) : IntegerAttr(),
-        from.getDisableSynchronization(),
+        disableSynchronization || from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
-        holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr());
+        holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr(),
+        /*contiguous=*/false, /*zeroObjects=*/nullptr);
     createSegments(pool, loc, extents);
     return pool;
   }
@@ -277,7 +296,8 @@ struct AIEObjectFifoSplitPass
                            : IntegerAttr(),
         iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
-        builder.getStringAttr(from.name().getValue()));
+        builder.getStringAttr(from.name().getValue()), /*dispatch=*/ArrayAttr(),
+        /*dispatchPackets=*/ArrayAttr(), /*turns=*/ArrayAttr());
   }
 
   /// An end with no pool behind it: a shim whose transfers the runtime issues,
@@ -321,7 +341,8 @@ struct AIEObjectFifoSplitPass
         /*locks=*/ArrayAttr(), /*repeatCount=*/IntegerAttr(),
         fifo.getDisableSynchronization(),
         builder.getStringAttr(fifo.name().getValue()),
-        /*initValues=*/ArrayAttr());
+        /*initValues=*/ArrayAttr(), /*contiguous=*/false,
+        /*zeroObjects=*/nullptr);
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }
@@ -397,12 +418,13 @@ struct AIEObjectFifoSplitPass
   LogicalResult verifyStreamPortAccesses() {
     auto check = [&](Operation *op, ObjectFifoCreateOp fifo,
                      std::optional<ObjectFifoPort> port, StringRef verb) {
-      if (!fifo || !port || !fifo.getAieStream()) {
+      if (!fifo || !port || !fifo.usesStream()) {
         return success();
       }
-      int streamEnd = *fifo.getAieStream();
-      int end = *port == ObjectFifoPort::Produce ? 0 : 1;
-      if (streamEnd != 2 && streamEnd != end) {
+      bool onStreamPort = *port == ObjectFifoPort::Produce
+                              ? fifo.streamsFromProducer()
+                              : fifo.streamsToConsumer(0);
+      if (!onStreamPort) {
         return success();
       }
       return LogicalResult(op->emitOpError("cannot ")
@@ -452,21 +474,49 @@ struct AIEObjectFifoSplitPass
     return success();
   }
 
-  /// Ends of a linked fifo that resolve to the link's shared pool.
+  /// Ends of a linked fifo that resolve to the link's shared pool. Each link
+  /// reading a fifo takes the next of its consumer ends on the link's tile.
   DenseMap<Operation *, PoolRef> linkedProducerEnd;
-  DenseMap<Operation *, PoolRef> linkedConsumerEnd;
+  DenseMap<std::pair<Operation *, Value>, SmallVector<PoolRef>>
+      linkedConsumerEnd;
   /// Fifos whose own objects a link's shared pool holds.
   DenseSet<Operation *> linkPoolOwner;
   /// Shim endpoint each fifo is driven through, where it has one.
   DenseMap<Operation *, std::string> shimEndpointName;
 
-  void createLinkPools();
+  /// The time link each merging input or dispatched output takes turns in.
+  DenseMap<Operation *, ObjectFifoLinkOp> timeLinkOf;
+  /// A time link's one shared endpoint on the link point.
+  DenseMap<Operation *, ObjectFifoDmaEndpointOp> timeLinkEndpoint;
+  /// What each time link gathers while its participants are split: a merge's
+  /// sources, and a dispatch's destination per output.
+  DenseMap<Operation *, SmallVector<Attribute>> mergeSources;
+  DenseMap<Operation *, DenseMap<Operation *, Attribute>> dispatchTurns;
+
+  /// The endpoint a time link's turns share, made by whichever participant
+  /// reaches it first.
+  ObjectFifoDmaEndpointOp timeLinkEndpointFor(ObjectFifoLinkOp link,
+                                              PoolRef ref,
+                                              std::optional<int> channel);
+  void createTimeLinkRoutes();
+  LogicalResult createLinkPools();
 };
+
+// A link's pool and its shared merge or dispatch endpoint hold every
+// participant's objects, so they are located at the link and at each fifo.
+static Location linkLocation(ObjectFifoLinkOp link) {
+  SmallVector<Location> locs{link.getLoc()};
+  for (ObjectFifoCreateOp fifo : link.getInputObjectFifos())
+    locs.push_back(fifo.getLoc());
+  for (ObjectFifoCreateOp fifo : link.getOutputObjectFifos())
+    locs.push_back(fifo.getLoc());
+  return FusedLoc::get(link.getContext(), locs);
+}
 
 /// A link's participants meet on one pool on the shared tile: the fifo carrying
 /// whole objects owns its size, and each of the other side's fifos occupies one
 /// segment.
-void AIEObjectFifoSplitPass::createLinkPools() {
+LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
   for (auto linkOp : device.getOps<ObjectFifoLinkOp>()) {
     auto sharedTile = linkOp.getOptionalSharedTile();
     if (!sharedTile) {
@@ -478,70 +528,77 @@ void AIEObjectFifoSplitPass::createLinkPools() {
     bool isJoin = linkOp.isJoin();
     bool isDistribute = linkOp.isDistribute();
 
-    ObjectFifoCreateOp owner = isJoin ? outs[0] : ins[0];
-    if (!isJoin && !isDistribute) {
-      auto inType = cast<MemRefType>(
-          cast<AIEObjectFifoType>(ins[0].getElemType()).getElementType());
-      auto outType = cast<MemRefType>(
-          cast<AIEObjectFifoType>(outs[0].getElemType()).getElementType());
-      // Padding is applied as the objects leave, so the pool holds what
-      // arrives.
-      if (outs[0].getInitValues() ||
-          (outType.getNumElements() > inType.getNumElements() &&
-           !outs[0].getPadDimensions())) {
-        owner = outs[0];
-      }
+    ObjectFifoCreateOp owner = linkOp.getPoolOwner();
+    if (linkOp.isMerge()) {
+      for (ObjectFifoCreateOp in : ins)
+        timeLinkOf[in] = linkOp;
+    }
+    if (linkOp.isDispatch()) {
+      for (ObjectFifoCreateOp out : outs)
+        timeLinkOf[out] = linkOp;
     }
 
     auto elemType = cast<MemRefType>(
         cast<AIEObjectFifoType>(owner.getElemType()).getElementType());
     builder.setInsertionPoint(owner);
 
-    SmallVector<std::pair<int64_t, int64_t>> extents;
-    if (isJoin || isDistribute) {
-      ArrayAttr offsets =
-          isJoin ? linkOp.getSrcOffsets() : linkOp.getDstOffsets();
-      std::vector<ObjectFifoCreateOp> &side = isJoin ? ins : outs;
-      for (auto [index, participant] : llvm::enumerate(side)) {
-        int64_t offset = *getConstantIntValue(offsets[index]);
-        int64_t next = index + 1 < side.size()
-                           ? *getConstantIntValue(offsets[index + 1])
-                           : elemType.getNumElements();
-        int64_t size = next - offset;
-        if (size <= 0) {
-          size = cast<MemRefType>(
-                     cast<AIEObjectFifoType>(participant.getElemType())
-                         .getElementType())
-                     .getNumElements();
-        }
-        extents.emplace_back(offset, size);
-      }
-    } else {
-      extents.emplace_back(0, elemType.getNumElements());
-    }
+    SmallVector<std::pair<int64_t, int64_t>> extents = linkOp.getPoolSegments();
 
     bool ownerIsOutput = llvm::is_contained(outs, owner);
     std::string name;
     int depth;
-    if (ownerIsOutput) {
-      name = (owner.name().getValue() + "_pool").str();
+    // A walk over the stream reads across the objects of one image, so the
+    // pool holds the image's objects side by side.
+    bool window = linkOp.walksStream();
+    StreamWindow walk;
+    if (window) {
+      if (failed(linkOp.getStreamWindow(walk)))
+        return failure();
+      name = (owner.name().getValue() + "__cons__pool").str();
+      depth = walk.objects;
+    } else if (ownerIsOutput) {
+      name = (owner.name().getValue() + "__pool").str();
       depth = owner.size();
     } else {
       auto consumers = owner.getConsumerTiles();
-      int index =
-          std::distance(consumers.begin(), llvm::find(consumers, *sharedTile));
-      name = (owner.name().getValue() +
-              (consumers.size() > 1 ? "_" + std::to_string(index) + "_cons_pool"
-                                    : "_cons_pool"))
-                 .str();
+      size_t earlier = linkedConsumerEnd.lookup({owner, *sharedTile}).size();
+      int index = -1;
+      for (size_t seen = 0; seen <= earlier;) {
+        assert(static_cast<size_t>(index + 1) < consumers.size() &&
+               "fewer consumer tiles than already-linked pools for this tile");
+        if (consumers[++index] == *sharedTile)
+          seen++;
+      }
+      name =
+          (owner.name().getValue() +
+           (consumers.size() > 1 ? "__cons" + std::to_string(index) + "__pool"
+                                 : "__cons__pool"))
+              .str();
       depth = isa<ArrayAttr>(owner.getElemNumber())
                   ? owner.size(index + 1)
                   : objectCountOn(device, *sharedTile, owner);
     }
 
-    auto pool = createPool(
-        linkOp.getLoc(), name, *sharedTile, depth, elemType, owner, extents,
-        /*holdsInitialContents=*/ownerIsOutput, linkOp.getRepeatCount());
+    // The pool is shared by every participant, but `owner` is only one of them:
+    // whether its locks are generated must not depend on which fifo that is.
+    auto asksToSkipLocks = [](ObjectFifoCreateOp fifo) {
+      return fifo.getDisableSynchronization();
+    };
+    bool disableSynchronization = llvm::any_of(ins, asksToSkipLocks) ||
+                                  llvm::any_of(outs, asksToSkipLocks);
+
+    auto pool = createPool(linkLocation(linkOp), name, *sharedTile, depth,
+                           elemType, owner, extents,
+                           /*holdsInitialContents=*/ownerIsOutput,
+                           linkOp.getRepeatCount(), disableSynchronization);
+    if (window) {
+      pool.setContiguous(true);
+      // The padding objects sit in the buffer as zeros, since a MemTile
+      // descriptor walking four dimensions ignores its padding.
+      if (walk.top || walk.bottom)
+        pool.setZeroObjects(SmallVector<int32_t>{
+            static_cast<int32_t>(walk.top), static_cast<int32_t>(walk.bottom)});
+    }
     linkPoolOwner.insert(owner);
 
     SmallVector<int32_t> allSegments;
@@ -549,15 +606,64 @@ void AIEObjectFifoSplitPass::createLinkPools() {
       allSegments.push_back(index);
     }
     for (auto [index, in] : llvm::enumerate(ins)) {
-      linkedConsumerEnd[in] = PoolRef{
+      linkedConsumerEnd[{in, *sharedTile}].push_back(PoolRef{
           pool, isJoin ? SmallVector<int32_t>{static_cast<int32_t>(index)}
-                       : allSegments};
+                       : allSegments});
     }
     for (auto [index, out] : llvm::enumerate(outs)) {
       linkedProducerEnd[out] = PoolRef{
           pool, isDistribute ? SmallVector<int32_t>{static_cast<int32_t>(index)}
                              : allSegments};
     }
+  }
+  return success();
+}
+
+ObjectFifoDmaEndpointOp
+AIEObjectFifoSplitPass::timeLinkEndpointFor(ObjectFifoLinkOp link, PoolRef ref,
+                                            std::optional<int> channel) {
+  ObjectFifoDmaEndpointOp &endpoint = timeLinkEndpoint[link];
+  if (!endpoint) {
+    ObjectFifoCreateOp owner = link.isMerge() ? link.getOutputObjectFifos()[0]
+                                              : link.getInputObjectFifos()[0];
+    endpoint = createDmaEndpoint(
+        linkLocation(link),
+        (owner.name().getValue() +
+         (link.isMerge() ? "__merge__dma" : "__dispatch__dma"))
+            .str(),
+        ref.pool.getTile(), ref,
+        link.isMerge() ? ObjectFifoRole::Fill : ObjectFifoRole::Drain, owner,
+        BDDimLayoutArrayAttr(), channel);
+  }
+  return endpoint;
+}
+
+/// A merge becomes one fan-in route into its shared endpoint; a dispatch
+/// names its turns on its shared endpoint in the link's output order.
+void AIEObjectFifoSplitPass::createTimeLinkRoutes() {
+  for (auto link : device.getOps<ObjectFifoLinkOp>()) {
+    ObjectFifoDmaEndpointOp endpoint = timeLinkEndpoint.lookup(link);
+    if (!endpoint)
+      continue;
+    MLIRContext *ctx = builder.getContext();
+    if (link.isMerge()) {
+      PacketInfoAttr header = PacketInfoAttr::get(ctx, 0, std::nullopt);
+      for (ObjectFifoCreateOp in : link.getInputObjectFifos())
+        if (PacketInfoAttr pinned = in.packetHeader();
+            pinned && pinned.isAssigned())
+          header = pinned;
+      builder.setInsertionPoint(link);
+      RouteOp::create(builder, link.getLoc(),
+                      builder.getArrayAttr(mergeSources[link]),
+                      builder.getArrayAttr(
+                          {FlatSymbolRefAttr::get(ctx, endpoint.getSymName())}),
+                      header);
+      continue;
+    }
+    SmallVector<Attribute> turns;
+    for (ObjectFifoCreateOp out : link.getOutputObjectFifos())
+      turns.push_back(dispatchTurns[link].lookup(out));
+    endpoint.setDispatchAttr(builder.getArrayAttr(turns));
   }
 }
 
@@ -573,9 +679,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  createLinkPools();
-
-  if (failed(verifyAllocateDelegates())) {
+  if (failed(createLinkPools()) || failed(verifyAllocateDelegates())) {
     return signalPassFailure();
   }
 
@@ -590,16 +694,22 @@ void AIEObjectFifoSplitPass::runOnOperation() {
             .getElementType());
 
     auto sharedModule = AIETargetModel::SharedMemory::None;
-    bool shared = !requiresDMAs(fifo, sharedModule);
+    std::optional<StringRef> needsDMAs = dmaReason(fifo, sharedModule);
+    if (needsDMAs && fifo.forcesSharedMemory()) {
+      fifo.emitOpError("asks for a shared_mem transport, but ") << *needsDMAs;
+      return signalPassFailure();
+    }
+    bool shared = !needsDMAs;
 
     if (shared) {
       PoolRef ref;
       if (auto linked = linkedProducerEnd.find(fifo);
           linked != linkedProducerEnd.end()) {
         ref = linked->second;
-      } else if (auto linked = linkedConsumerEnd.find(fifo);
+      } else if (auto linked =
+                     linkedConsumerEnd.find({fifo, fifo.getConsumerTiles()[0]});
                  linked != linkedConsumerEnd.end()) {
-        ref = linked->second;
+        ref = linked->second.front();
       } else {
         Value tile = sharedModule == AIETargetModel::SharedMemory::Second
                          ? fifo.getConsumerTiles()[0]
@@ -616,7 +726,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
         }
         // Both ends address the one pool, so it needs the deeper end's depth
         // even when init_values fill only the producer's share of it.
-        ref = PoolRef{createPool(loc, (fifoName + "_pool").str(), tile,
+        ref = PoolRef{createPool(loc, (fifoName + "__pool").str(), tile,
                                  sharedObjectCount(fifo), elemType, fifo,
                                  {{0, elemType.getNumElements()}},
                                  /*holdsInitialContents=*/true,
@@ -626,7 +736,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
 
       if (hasCoreAccess(device, fifo.getProducerTile(), fifo,
                         ObjectFifoPort::Produce)) {
-        auto name = (fifoName + "_prod").str();
+        auto name = (fifoName + "__prod").str();
         createCoreEndpoint(loc, name, fifo.getProducerTile(), ref,
                            ObjectFifoRole::Fill);
         retargetCoreAccesses(fifo, ObjectFifoPort::Produce,
@@ -634,7 +744,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       }
       if (hasCoreAccess(device, fifo.getConsumerTiles()[0], fifo,
                         ObjectFifoPort::Consume)) {
-        auto name = (fifoName + "_cons").str();
+        auto name = (fifoName + "__cons").str();
         createCoreEndpoint(loc, name, fifo.getConsumerTiles()[0], ref,
                            ObjectFifoRole::Drain);
         retargetCoreAccesses(fifo, ObjectFifoPort::Consume,
@@ -646,15 +756,9 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     Value prodTile = fifo.getProducerTile();
     // A fifo end wired straight to a Core stream port has no objects of its
     // own: whatever the core writes goes out on the port.
-    int streamEnd = fifo.getAieStream().value_or(-1);
-    std::optional<int> prodStreamPort;
-    std::optional<int> consStreamPort;
-    if (streamEnd == 0 || streamEnd == 2) {
-      prodStreamPort = fifo.getAieStreamPort();
-    }
-    if (streamEnd == 1 || streamEnd == 2) {
-      consStreamPort = fifo.getAieStreamPort();
-    }
+    ObjectFifoEndPortAttr prodPort = fifo.getProdPortAttr();
+    std::optional<int> prodChannel =
+        prodPort ? prodPort.channelIndex() : std::nullopt;
 
     bool prodIsShim = cast<TileOp>(prodTile.getDefiningOp()).isShimTile();
     std::optional<PoolRef> prodRef;
@@ -664,38 +768,41 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       prodRef = linked->second;
     } else if (prodIsShim) {
       if (!fifo.getPlio()) {
-        prodRef = registeredPool(fifo, prodTile, (fifoName + "_pool").str(),
+        prodRef = registeredPool(fifo, prodTile, (fifoName + "__pool").str(),
                                  elemType);
       }
-    } else if (!prodStreamPort) {
+    } else if (!fifo.streamsFromProducer()) {
       int depth = fifo.getInitValues() ? fifo.size()
                                        : objectCountOn(device, prodTile, fifo);
       auto pool =
-          createPool(loc, (fifoName + "_pool").str(), prodTile, depth, elemType,
-                     fifo, {{0, elemType.getNumElements()}},
+          createPool(loc, (fifoName + "__pool").str(), prodTile, depth,
+                     elemType, fifo, {{0, elemType.getNumElements()}},
                      /*holdsInitialContents=*/true, fifo.getRepeatCount());
       prodRef = PoolRef{pool, {0}};
     }
 
     if (prodRef &&
         hasCoreAccess(device, prodTile, fifo, ObjectFifoPort::Produce)) {
-      auto name = (fifoName + "_prod").str();
+      auto name = (fifoName + "__prod").str();
       createCoreEndpoint(loc, name, prodTile, *prodRef, ObjectFifoRole::Fill);
       retargetCoreAccesses(fifo, ObjectFifoPort::Produce, prodTile, name);
     }
 
-    std::string prodDmaName = (fifoName + "_prod_dma").str();
-    if (prodRef) {
-      createDmaEndpoint(
-          loc, prodDmaName, prodTile, *prodRef, ObjectFifoRole::Drain, fifo,
-          fifo.getDimensionsToStreamAttr(), fifo.getProdDmaChannel());
+    std::string prodDmaName = (fifoName + "__prod__dma").str();
+    ObjectFifoLinkOp timeLink = timeLinkOf.lookup(fifo);
+    if (timeLink && timeLink.isDispatch()) {
+      prodDmaName =
+          timeLinkEndpointFor(timeLink, *prodRef, prodChannel).getSymName();
+    } else if (prodRef) {
+      createDmaEndpoint(loc, prodDmaName, prodTile, *prodRef,
+                        ObjectFifoRole::Drain, fifo,
+                        fifo.getDimensionsToStreamAttr(), prodChannel);
     } else {
-      createRouteEndpoint(
-          loc, prodDmaName, prodTile,
-          prodStreamPort   ? WireBundle::Core
-          : fifo.getPlio() ? WireBundle::PLIO
-                           : WireBundle::DMA,
-          prodStreamPort ? prodStreamPort : fifo.getProdDmaChannel(), fifo);
+      createRouteEndpoint(loc, prodDmaName, prodTile,
+                          fifo.streamsFromProducer() ? WireBundle::Core
+                          : fifo.getPlio()           ? WireBundle::PLIO
+                                                     : WireBundle::DMA,
+                          prodChannel, fifo);
     }
     if (prodIsShim) {
       shimEndpointName[fifo] = prodDmaName;
@@ -705,28 +812,29 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     ArrayRef<BDDimLayoutArrayAttr> consumerDims =
         fifo.getDimensionsFromStreamPerConsumer();
     int consumerIndex = 0;
+    DenseMap<Value, unsigned> linkedOn;
     for (Value consumerTile : fifo.getConsumerTiles()) {
       std::string suffix = fifo.getConsumerTiles().size() > 1
-                               ? ("_" + std::to_string(consumerIndex) + "_cons")
-                               : "_cons";
+                               ? ("__cons" + std::to_string(consumerIndex))
+                               : "__cons";
       bool consIsShim = cast<TileOp>(consumerTile.getDefiningOp()).isShimTile();
 
       std::optional<PoolRef> consRef;
-      if (auto linked = linkedConsumerEnd.find(fifo);
+      if (auto linked = linkedConsumerEnd.find({fifo, consumerTile});
           linked != linkedConsumerEnd.end() &&
-          consumerTile == linked->second.pool.getTile()) {
-        consRef = linked->second;
+          linkedOn[consumerTile] < linked->second.size()) {
+        consRef = linked->second[linkedOn[consumerTile]++];
       } else if (consIsShim) {
         if (!fifo.getPlio()) {
-          consRef =
-              registeredPool(fifo, consumerTile,
-                             (fifoName + suffix + "_pool").str(), consElemType);
+          consRef = registeredPool(fifo, consumerTile,
+                                   (fifoName + suffix + "__pool").str(),
+                                   consElemType);
         }
-      } else if (!consStreamPort) {
+      } else if (!fifo.streamsToConsumer(consumerIndex)) {
         int depth = isa<ArrayAttr>(fifo.getElemNumber())
                         ? fifo.size(consumerIndex + 1)
                         : objectCountOn(device, consumerTile, fifo);
-        auto pool = createPool(loc, (fifoName + suffix + "_pool").str(),
+        auto pool = createPool(loc, (fifoName + suffix + "__pool").str(),
                                consumerTile, depth, consElemType, fifo,
                                {{0, consElemType.getNumElements()}},
                                /*holdsInitialContents=*/false,
@@ -742,26 +850,27 @@ void AIEObjectFifoSplitPass::runOnOperation() {
         retargetCoreAccesses(fifo, ObjectFifoPort::Consume, consumerTile, name);
       }
 
-      std::optional<int> pinned;
-      if (auto consChannels = fifo.getConsDmaChannels();
-          consChannels && consumerIndex < (int)consChannels->size() &&
-          (*consChannels)[consumerIndex] >= 0) {
-        pinned = (*consChannels)[consumerIndex];
-      }
+      ObjectFifoEndPortAttr consPort = fifo.getConsumerPort(consumerIndex);
+      std::optional<int> consChannel =
+          consPort ? consPort.channelIndex() : std::nullopt;
 
-      std::string consDmaName = (fifoName + suffix + "_dma").str();
-      if (consRef) {
+      std::string consDmaName = (fifoName + suffix + "__dma").str();
+      if (timeLink && timeLink.isMerge()) {
+        consDmaName =
+            timeLinkEndpointFor(timeLink, *consRef, consChannel).getSymName();
+      } else if (consRef) {
         createDmaEndpoint(loc, consDmaName, consumerTile, *consRef,
                           ObjectFifoRole::Fill, fifo,
                           consumerDims.empty() ? BDDimLayoutArrayAttr()
                                                : consumerDims[consumerIndex],
-                          pinned);
+                          consChannel);
       } else {
         createRouteEndpoint(loc, consDmaName, consumerTile,
-                            consStreamPort   ? WireBundle::Core
+                            fifo.streamsToConsumer(consumerIndex)
+                                ? WireBundle::Core
                             : fifo.getPlio() ? WireBundle::PLIO
                                              : WireBundle::DMA,
-                            consStreamPort ? consStreamPort : pinned, fifo);
+                            consChannel, fifo);
       }
       destinations.push_back(
           FlatSymbolRefAttr::get(builder.getContext(), consDmaName));
@@ -771,12 +880,25 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       consumerIndex++;
     }
 
-    RouteOp::create(builder, loc,
-                    FlatSymbolRefAttr::get(builder.getContext(), prodDmaName),
-                    builder.getArrayAttr(destinations),
-                    fifo.getPacket() ? builder.getUnitAttr() : UnitAttr(),
-                    fifo.getPacketIdAttr());
+    FlatSymbolRefAttr source =
+        FlatSymbolRefAttr::get(builder.getContext(), prodDmaName);
+    if (timeLink && timeLink.isMerge()) {
+      mergeSources[timeLink].push_back(source);
+      continue;
+    }
+    // A dispatch tells its turns apart by header, so each of its routes
+    // carries one.
+    PacketInfoAttr header = fifo.packetHeader();
+    if (timeLink && timeLink.isDispatch()) {
+      dispatchTurns[timeLink][fifo] = destinations.front();
+      if (!header)
+        header = PacketInfoAttr::get(builder.getContext(), 0, std::nullopt);
+    }
+    RouteOp::create(builder, loc, builder.getArrayAttr({source}),
+                    builder.getArrayAttr(destinations), header);
   }
+
+  createTimeLinkRoutes();
 
   SmallVector<Operation *> toErase;
   for (ObjectFifoCreateOp fifo : fifos) {

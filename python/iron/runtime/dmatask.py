@@ -6,10 +6,8 @@
 """DMATask: a RuntimeTask that generates a shim DMA transfer operation."""
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
-    dma_start_task,
-)
-from ...dialects.aiex import shim_dma_single_bd_task
+from ...dialects.aiex import dma_start_task, shim_dma_single_bd_task
+from ...helpers.sourceloc import iron_name, relocate
 from ...helpers.taplib import TensorAccessPattern
 from ..scratchpad_parameter import ScratchpadParameter
 from ._context import active_sequence
@@ -31,14 +29,15 @@ class DMATask(RuntimeTask):
         packet: tuple[int, int] | None = None,
         length_parameter: str | None = None,
         length_unit: int | None = None,
+        repeat_parameter: str | None = None,
     ):
         """Construct a RuntimeTask that will resolve to a DMA Operation.
 
         Args:
             alloc (str): Name of the shim DMA allocation this transfer drives,
                 i.e. the symbol naming the shim channel. An
-                [`ObjectFifo`][iron.ObjectFifo] with a shim endpoint generates an
-                allocation of its own name; a [`Flow`][iron.Flow] generates one
+                [`ObjectFifo`][aie.iron.ObjectFifo] with a shim endpoint generates an
+                allocation of its own name; a [`Flow`][aie.iron.Flow] generates one
                 for its ``shim_symbol``.
             rt_data (RuntimeData): The Runtime buffer associated with the operation.
             tap (TensorAccessPattern): The walk over ``rt_data``; its values may be staged.
@@ -52,11 +51,16 @@ class DMATask(RuntimeTask):
             length_unit (int | None, optional): Elements per unit of
                 length_parameter, a multiple of 16 bytes. Defaults to the
                 elements one pass of ``tap`` moves.
+            repeat_parameter (str | None, optional): Name of a
+                ScratchpadParameter n; the transfer runs n + 1 times, at most
+                as many as ``tap``'s outer dimensions give (it stops an
+                iteration over them early). Defaults to None.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
-                BD with a packet header `(pkt_type, pkt_id)`. Pairs with
-                downstream packet-switched routing (e.g. an
-                [`ObjectFifo`][iron.ObjectFifo] built with ``packet=True`` or
-                an explicit [`PacketFlow`][iron.PacketFlow]). Defaults to None.
+                BD with a packet header `(pkt_type, pkt_id)`. A packet-switched
+                [`ObjectFifo`][aie.iron.ObjectFifo] needs none, since the transfer
+                takes the header its shim allocation was assigned; this is for
+                an explicit [`PacketFlow`][aie.iron.PacketFlow] or to override that
+                header. Defaults to None.
         """
         self._alloc = alloc
         self._rt_data = rt_data
@@ -65,6 +69,7 @@ class DMATask(RuntimeTask):
         self._offset_parameter = offset_parameter
         self._length_parameter = length_parameter
         self._length_unit = length_unit
+        self._repeat_parameter = repeat_parameter
         self._packet = packet
         self._task = None
         RuntimeTask.__init__(self, task_group)
@@ -105,7 +110,16 @@ class DMATask(RuntimeTask):
             length_unit=self._length_unit,
             packet=self._packet,  # pyright: ignore[reportArgumentType]
         )
-        dma_start_task(self._task)
+        dma_start_task(self._task, repeat_parameter=self._repeat_parameter)
+        # Named after the buffer and the channel it moves through
+        # ("iron:A@of_in"), so the sequence's tasks and BDs read like the source.
+        if self._rt_data.name is not None:
+            name = iron_name(f"{self._rt_data.name}@{self._alloc}")
+            # The task, its BDs, and the start pushing it (its only use yet).
+            ops = [self._task.operation]
+            ops += [use.owner for use in self._task.result.uses]
+            for op in ops:
+                relocate(op, lambda loc: ir.Location.name(name, childLoc=loc))
 
 
 def emit_shim_transfer(
@@ -119,6 +133,7 @@ def emit_shim_transfer(
     managed: bool = True,
     length_parameter: ScratchpadParameter | str | None = None,
     length_unit: int | None = None,
+    repeat_parameter: ScratchpadParameter | str | None = None,
 ) -> Task:
     """Emit one shim DMA transfer on the ``alloc`` channel, inside the active sequence.
 
@@ -136,15 +151,16 @@ def emit_shim_transfer(
     returned Task's ``.free()``/``.await_()`` -- used for hand-rolled software
     pipelines that carry the task across ``scf.for`` iterations.
 
-    ``offset_parameter`` and ``length_parameter`` take a ScratchpadParameter (or
-    its name). A ``length_parameter`` n makes the transfer move exactly n
-    passes of ``tap`` (per iteration); see DMATask.
+    ``offset_parameter``, ``length_parameter`` and ``repeat_parameter`` take a
+    ScratchpadParameter (or its name). A ``length_parameter`` n makes the
+    transfer move exactly n passes of ``tap`` (per iteration), and a
+    ``repeat_parameter`` n runs it n + 1 times; see DMATask.
 
     Returns:
         Task: A handle to the transfer.
     """
     active = active_sequence()
-    rt = active._runtime
+    rt = active.runtime
 
     if not isinstance(rt_data, RuntimeData):
         raise ValueError(f"Expected a RuntimeData source/dest, got {rt_data}")
@@ -172,6 +188,7 @@ def emit_shim_transfer(
         packet=packet,
         length_parameter=rt.register_parameter(length_parameter),
         length_unit=length_unit,
+        repeat_parameter=rt.register_parameter(repeat_parameter),
     )
     if managed:
         active.emit_transfer(task, group)

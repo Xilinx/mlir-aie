@@ -60,7 +60,6 @@ def eltwise_unary(
         np.ndarray[(size,), np.dtype[bfloat16]],
         tile_size=1024,
         num_channels=num_channels,
-        pass_size_to_kernel=False,
     )
 
 

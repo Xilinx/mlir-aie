@@ -91,3 +91,122 @@ module @route_channel_demand {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// Packet routes merging into one endpoint share its channel, so a core taking
+// two merged flows plus one more input needs its two S2MM channels, not three.
+// CHECK-LABEL: @route_shared_dest_unplaced
+// CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.route_endpoint @merge(%[[CORE]]) DMA
+// CHECK-DAG: aie.route_endpoint @own(%[[CORE]]) DMA
+module @route_shared_dest_unplaced {
+  aie.device(npu2) {
+    %mt = aie.logical_tile<MemTile>(0, 1)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%core) { aie.end }
+    aie.route_endpoint @x(%mt) DMA
+    aie.route_endpoint @y(%mt) DMA
+    aie.route_endpoint @z(%mt) DMA
+    aie.route_endpoint @merge(%core) DMA
+    aie.route_endpoint @own(%core) DMA
+    aie.route from @x to [@merge] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @y to [@merge] {packet = #aie.packet_info<pkt_id = 2>}
+    aie.route from @z to [@own]
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// The same on a pinned core, fed from three shims.
+// CHECK-LABEL: @route_shared_dest_pinned
+// CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.route_endpoint @merge(%[[CORE]]) DMA
+// CHECK-DAG: aie.route_endpoint @own(%[[CORE]]) DMA
+// CHECK-DAG: aie.route_endpoint @out(%[[CORE]]) DMA
+module @route_shared_dest_pinned {
+  aie.device(npu2) {
+    %core = aie.logical_tile<CoreTile>(0, 2)
+    %s0 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s2 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %s3 = aie.logical_tile<ShimNOCTile>(?, ?)
+    aie.core(%core) { aie.end }
+    aie.route_endpoint @in0(%s0) DMA {fifoName = "in0"}
+    aie.route_endpoint @in1(%s1) DMA {fifoName = "in1"}
+    aie.route_endpoint @in2(%s2) DMA {fifoName = "in2"}
+    aie.route_endpoint @merge(%core) DMA
+    aie.route_endpoint @own(%core) DMA
+    aie.route from @in0 to [@merge] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @in1 to [@merge] {packet = #aie.packet_info<pkt_id = 2>}
+    aie.route from @in2 to [@own]
+    aie.route_endpoint @out(%core) DMA
+    aie.route_endpoint @back(%s3) DMA {fifoName = "back"}
+    aie.route from @out to [@back]
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// One endpoint sending two packet routes holds one MM2S channel, so a core
+// sourcing it and one more flow fits its two.
+// CHECK-LABEL: @route_shared_source_unplaced
+// CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+// CHECK-DAG: aie.route_endpoint @split(%[[CORE]]) DMA
+// CHECK-DAG: aie.route_endpoint @other(%[[CORE]]) DMA
+module @route_shared_source_unplaced {
+  aie.device(npu2) {
+    %mt = aie.logical_tile<MemTile>(0, 1)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%core) { aie.end }
+    aie.route_endpoint @split(%core) DMA
+    aie.route_endpoint @other(%core) DMA
+    aie.route_endpoint @a(%mt) DMA
+    aie.route_endpoint @b(%mt) DMA
+    aie.route_endpoint @c(%mt) DMA
+    aie.route from @split to [@a] {packet = #aie.packet_info<pkt_id = 1>}
+    aie.route from @split to [@b] {packet = #aie.packet_info<pkt_id = 2>}
+    aie.route from @other to [@c]
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// A fan-in route makes the mem tile a peer of both cores, so it lands between
+// them, and it spends one input channel on the mem tile, not one per source.
+
+// CHECK-LABEL: @fan_in_memtile_between_cores
+module @fan_in_memtile_between_cores {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[C1:.*]] = aie.tile(1, 2)
+    %c1 = aie.logical_tile<CoreTile>(1, 2)
+    // CHECK-DAG: %[[C2:.*]] = aie.tile(3, 2)
+    %c2 = aie.logical_tile<CoreTile>(3, 2)
+    // CHECK-DAG: %[[MEM:.*]] = aie.tile(2, 1)
+    %mem = aie.logical_tile<MemTile>(?, ?)
+    aie.objectfifo.pool @a(%c1) {depth = 1 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.core_endpoint @a_core(%c1) fills @a
+    aie.objectfifo.dma_endpoint @a_dma(%c1) drains @a
+    aie.objectfifo.pool @b(%c2) {depth = 1 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.core_endpoint @b_core(%c2) fills @b
+    aie.objectfifo.dma_endpoint @b_dma(%c2) drains @b
+    aie.objectfifo.pool @m(%mem) {depth = 2 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.dma_endpoint @m_in(%mem) fills @m
+    aie.objectfifo.dma_endpoint @m_out(%mem) drains @m
+    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
+    aie.route_endpoint @out(%shim) DMA
+    // CHECK: aie.route from [@a_dma, @b_dma] to [@m_in] {packet = #aie.packet_info<>}
+    aie.route from [@a_dma, @b_dma] to [@m_in] {packet = #aie.packet_info<>}
+    aie.route from @m_out to [@out]
+    // CHECK-NOT: aie.logical_tile
+  }
+}

@@ -14,43 +14,92 @@
 // different switchbox topologies.
 //
 // Five same-id packet sources merge into a single mem_tile S2MM DMA channel.
-// Same-id flows may not share a switch channel, so each source is pushed onto
-// its own crossbar entry into (0,1) DMA0. That congestion used to drive
-// Dijkstra onto a detour that leaves a switchbox on some "South N" and then
-// re-enters the same switchbox on that same "South N" -- expressible only
-// because a graph node is (tile, bundle, channel) with no direction. The
-// emitted route then dead-ended and one source was reported unroutable.
+// Same-id flows used to be forbidden from sharing a switch channel, so each
+// source was pushed onto its own crossbar entry into (0,1) DMA0. That
+// congestion used to drive Dijkstra onto a detour that leaves a switchbox on
+// some "South N" and then re-enters the same switchbox on that same "South N"
+// -- expressible only because a graph node was (tile, bundle, channel) with no
+// direction. The emitted route then dead-ended and one source was reported
+// unroutable.
 //
 // This file used to be named incomplete_route_edge_merge.mlir and asserted that
-// error, on the assumption that no complete assignment existed here. One does:
-// the route below is found by a search that is strictly more constrained than
-// the one that failed, over an unchanged graph. The pass still reports a
-// genuinely unroutable design loudly -- see
+// error, on the assumption that no complete assignment existed here. One does.
+// The pass still reports a genuinely unroutable design loudly -- see
 // create-flows/unreachable_dest_err_test.mlir.
 //
-// All five sources must arrive and merge onto DMA0.
+// Same-id flows to the same destination now merge, so each shim folds its own
+// DMA:0 into the stream passing West, and one stream reaches (0,1) DMA0. All
+// five sources must arrive.
 
-// Each source must land on its OWN input port -- same-id flows may not share a
-// channel -- and all five merge onto the one DMA : 0 endpoint via one amsel.
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK-NEXT:    %[[AMSEL:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:    aie.masterset(DMA : 0, %[[AMSEL]]) {keep_pkt_header = true}
-// CHECK-NEXT:    aie.packet_rules(North : 0) {
-// CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
-// CHECK-NEXT:    }
-// CHECK-NEXT:    aie.packet_rules(North : 3) {
-// CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
-// CHECK-NEXT:    }
-// CHECK-NEXT:    aie.packet_rules(North : 2) {
-// CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
-// CHECK-NEXT:    }
-// CHECK-NEXT:    aie.packet_rules(North : 1) {
-// CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
-// CHECK-NEXT:    }
-// CHECK-NEXT:    aie.packet_rules(South : 5) {
+// CHECK-NEXT:    aie.packet_rules({{[A-Za-z]+}} : {{[0-9]+}}) {
 // CHECK-NEXT:      aie.rule(31, 0, %[[AMSEL]])
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
+
+// CHECK-LABEL: aie.shim_mux(%shim_noc_tile_2_0) {
+// CHECK-NEXT:   aie.connect<DMA : 0, North : [[N2:[0-9]+]]>
+// CHECK:        aie.switchbox(%shim_noc_tile_2_0) {
+// CHECK-NEXT:   %[[S2:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(West : {{[0-9]+}}, %[[S2]])
+// CHECK-NEXT:   aie.packet_rules(East : {{[0-9]+}}) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S2]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(South : [[N2]]) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S2]])
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+
+// CHECK-LABEL: aie.shim_mux(%shim_noc_tile_3_0) {
+// CHECK-NEXT:   aie.connect<DMA : 0, North : [[N3:[0-9]+]]>
+// CHECK:        aie.switchbox(%shim_noc_tile_3_0) {
+// CHECK-NEXT:   %[[S3:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(West : {{[0-9]+}}, %[[S3]])
+// CHECK-NEXT:   aie.packet_rules(East : {{[0-9]+}}) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S3]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(South : [[N3]]) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S3]])
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+
+// CHECK-LABEL: aie.shim_mux(%shim_noc_tile_4_0) {
+// CHECK-NEXT:   aie.connect<DMA : 0, North : [[N4:[0-9]+]]>
+// CHECK:        aie.switchbox(%shim_noc_tile_4_0) {
+// CHECK-NEXT:   %[[S4:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(West : {{[0-9]+}}, %[[S4]])
+// CHECK-NEXT:   aie.packet_rules(East : {{[0-9]+}}) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S4]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(South : [[N4]]) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S4]])
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+
+// CHECK-LABEL: aie.shim_mux(%shim_noc_tile_5_0) {
+// CHECK-NEXT:   aie.connect<DMA : 0, North : [[N5:[0-9]+]]>
+// CHECK:        aie.switchbox(%shim_noc_tile_5_0) {
+// CHECK-NEXT:   %[[S5:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(West : {{[0-9]+}}, %[[S5]])
+// CHECK-NEXT:   aie.packet_rules(East : {{[0-9]+}}) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S5]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(South : [[N5]]) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S5]])
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+
+// CHECK-LABEL: aie.shim_mux(%shim_noc_tile_6_0) {
+// CHECK-NEXT:   aie.connect<DMA : 0, North : [[N6:[0-9]+]]>
+// CHECK:        aie.switchbox(%shim_noc_tile_6_0) {
+// CHECK-NEXT:   %[[S6:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(West : {{[0-9]+}}, %[[S6]])
+// CHECK-NEXT:   aie.packet_rules(South : [[N6]]) {
+// CHECK-NEXT:     aie.rule(31, 0, %[[S6]])
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
 
 module {
   aie.device(npu2) {

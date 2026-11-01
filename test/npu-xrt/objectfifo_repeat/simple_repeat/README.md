@@ -11,7 +11,7 @@ This reference design can be run on a Ryzen™ AI NPU.
 
 In the [design](./aie2.py) data is brought from external memory via the `ShimTile` to the `MemTile` and back by using an implicit copy via the mem tile's Direct Memory Access (DMA). Furthermore, the input data is repeated by the `MemTile` four times which results in the output data consisting of four instances of the input data.
 
-The implicit copy is performed using the `object_fifo_link` operation that specifies how input data arriving via `of_in` should be sent further via `of_out` by specifically leveraging the mem tile's DMA. This operation and its functionality are described in more depth in [Section-2b](../../../../programming_guide/section-2/section-2b/03_Link_Distribute_Join/README.md#object-fifo-link) of the programming guide.
+The implicit copy is performed using the `object_fifo_link` operation that specifies how input data arriving via `of_in` should be sent further via `of_out` by specifically leveraging the mem tile's DMA. This operation and its functionality are described in more depth in [Section-2b](../../../../programming_guide/section-2/section-2b/03_Implicit_Copy/README.md#objectfifo-implicit-copy) of the programming guide.
 
 The repeat count is specified as follows:
 ```python

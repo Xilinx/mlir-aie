@@ -1,0 +1,36 @@
+loading embed/final_norm from <repo>/programming_examples/ml/llama_3_2_1b/data ...
+packing the weights ...
+Traceback (most recent call last):
+  File "<repo>/programming_examples/ml/llama_3_2_1b/test_decode.py", line 776, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "<repo>/programming_examples/ml/llama_3_2_1b/test_decode.py", line 467, in main
+    decoder = Decoder(shape, layers, lm, rope, opts.elf)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/programming_examples/ml/llama_3_2_1b/llama_decode.py", line 377, in __init__
+    self.session = DispatchSession(build, elf, **shape.compile_kwargs)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/programming_examples/ml/llama_3_2_1b/llama_npu.py", line 35, in __init__
+    specialized.compile(full_elf_path=full_elf_path)
+  File "<repo>/install/python/aie/utils/callabledesign.py", line 548, in compile
+    return self.compilable.compile(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/install/python/aie/utils/compile/jit/compilabledesign.py", line 713, in compile
+    return self._compile_full_elf(full_elf_path)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/install/python/aie/utils/compile/jit/compilabledesign.py", line 1061, in _compile_full_elf
+    return self._build_full_elf(kernel_dir, elf_path, build_key=build_key)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/install/python/aie/utils/compile/jit/compilabledesign.py", line 1110, in _build_full_elf
+    generated = self._generated_for(full_elf=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/install/python/aie/utils/compile/jit/compilabledesign.py", line 1953, in _generated_for
+    generated = self._generate_uncached(full_elf=full_elf)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/install/python/aie/utils/compile/jit/compilabledesign.py", line 2064, in _generate_uncached
+    result = self.mlir_generator(*bound.args, **bound.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<repo>/programming_examples/ml/llama_3_2_1b/aie2_decode.py", line 770, in build
+    t_h = _f32(HD)
+
+NameError: name 'SILU_GATE_SCALE' is not defined

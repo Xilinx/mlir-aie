@@ -44,9 +44,10 @@ def _decode_kwarg(encoded: Any) -> Any:
 class _TensorPlaceholder:
     """Sentinel for an ``In``/``Out``/``InOut`` param with no type bound.
 
-    A generator receives a tensor's type, ``np.ndarray[shape, np.dtype[T]]``,
-    when the design is called with that tensor or the type is bound with
-    ``specialize``. Without one, any use of the parameter raises.
+    A generator receives a tensor as its ``In``/``Out``/``InOut`` operand,
+    with that tensor's shape and dtype, when the design is called with the
+    tensor or its type is bound with ``specialize``. Without one, any use of
+    the parameter raises.
     """
 
     def __init__(self, param_name: str) -> None:

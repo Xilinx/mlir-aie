@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -36,6 +37,15 @@
 
 namespace xilinx::aiecc {
 
+// Serializes diagnostic/progress writes to the shared stdout/stderr so that
+// concurrent worker threads (and the tool-invocation echo) don't interleave
+// their lines. Any code that prints a full log line from a worker thread should
+// hold this across the write (and flush before releasing).
+inline std::mutex &logMutex() {
+  static std::mutex m;
+  return m;
+}
+
 // RAII: while alive (when `enable`), redirect the process's stdout+stderr
 // (fd 1 & 2) into a temp file, capturing an in-process tool library's chatter
 // instead of letting it leak (and corrupt the single-line --progress display).
@@ -44,9 +54,9 @@ namespace xilinx::aiecc {
 // A disabled instance (verbose runs) is a no-op and leaves `out` empty, letting
 // the library write straight to the terminal.
 //
-// It redirects *process-global* fds, so instances must not overlap; the
-// in-process library edges that use it (assemblePdi/assembleElf) are not
-// `threadSafe`, so the engine runs them serially.
+// It redirects *process-global* fds, so it holds `logMutex()` while they are
+// redirected: worker threads running alongside it write their progress and
+// failure output under that lock, and would otherwise write into the capture.
 class CaptureStdio {
 public:
   CaptureStdio(bool enable, std::string &out) : out(out) {
@@ -58,6 +68,7 @@ public:
     if (llvm::sys::fs::createTemporaryFile("aiecc-lib", "log", fd, path))
       return;
     tmpPath = std::string(path.str());
+    log = std::unique_lock<std::mutex>(logMutex());
     std::fflush(stdout);
     std::fflush(stderr);
     savedOut = ::dup(STDOUT_FILENO);
@@ -93,6 +104,8 @@ private:
   std::string &out;
   int savedOut = -1, savedErr = -1;
   std::string tmpPath;
+  // Released after the destructor body has restored the fds.
+  std::unique_lock<std::mutex> log;
 };
 
 // Reinterpret a u32 instruction stream as its raw little-endian bytes. Every

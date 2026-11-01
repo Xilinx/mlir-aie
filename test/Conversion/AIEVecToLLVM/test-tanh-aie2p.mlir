@@ -35,3 +35,34 @@ func.func @v32bf16_tanh(%arg0 : vector<32xbf16>) -> vector<32xbf16> {
 // CHECK: %[[TANH1:.*]] = "xllvm.intr.aie2p.tanh"(%[[UPPER_F32]]) : (vector<16xf32>) -> vector<16xbf16>
 // CHECK: %[[RESULT:.*]] = vector.shuffle %[[TANH0]], %[[TANH1]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<16xbf16>, vector<16xbf16>
 // CHECK: return %[[RESULT]] : vector<32xbf16>
+
+// -----
+
+func.func @v16f32_tanh(%arg0 : vector<16xf32>) -> vector<16xf32> {
+  %0 = aievec.tanh %arg0 : vector<16xf32>
+  return %0 : vector<16xf32>
+}
+
+// CHECK-LABEL: @v16f32_tanh
+// CHECK-SAME: %[[ARG0:.*]]: vector<16xf32>
+// CHECK: %[[TANH:.*]] = "xllvm.intr.aie2p.tanh"(%[[ARG0]]) : (vector<16xf32>) -> vector<16xbf16>
+// CHECK: %[[F32:.*]] = "xllvm.intr.aie2p.v16bf16.to.v16accfloat"(%[[TANH]]) : (vector<16xbf16>) -> vector<16xf32>
+// CHECK: return %[[F32]] : vector<16xf32>
+
+// -----
+
+func.func @v32f32_tanh(%arg0 : vector<32xf32>) -> vector<32xf32> {
+  %0 = aievec.tanh %arg0 : vector<32xf32>
+  return %0 : vector<32xf32>
+}
+
+// CHECK-LABEL: @v32f32_tanh
+// CHECK-SAME: %[[ARG0:.*]]: vector<32xf32>
+// CHECK: %[[LOWER:.*]] = vector.shuffle %[[ARG0]], %[[ARG0]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<32xf32>, vector<32xf32>
+// CHECK: %[[UPPER:.*]] = vector.shuffle %[[ARG0]], %[[ARG0]] [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<32xf32>, vector<32xf32>
+// CHECK: %[[TANH0:.*]] = "xllvm.intr.aie2p.tanh"(%[[LOWER]]) : (vector<16xf32>) -> vector<16xbf16>
+// CHECK: %[[TANH1:.*]] = "xllvm.intr.aie2p.tanh"(%[[UPPER]]) : (vector<16xf32>) -> vector<16xbf16>
+// CHECK: %[[F32_0:.*]] = "xllvm.intr.aie2p.v16bf16.to.v16accfloat"(%[[TANH0]]) : (vector<16xbf16>) -> vector<16xf32>
+// CHECK: %[[F32_1:.*]] = "xllvm.intr.aie2p.v16bf16.to.v16accfloat"(%[[TANH1]]) : (vector<16xbf16>) -> vector<16xf32>
+// CHECK: %[[RESULT:.*]] = vector.shuffle %[[F32_0]], %[[F32_1]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<16xf32>, vector<16xf32>
+// CHECK: return %[[RESULT]] : vector<32xf32>

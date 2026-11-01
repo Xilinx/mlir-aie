@@ -23,10 +23,12 @@ import logging
 import os
 import time
 from collections import OrderedDict
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
+from ..tensor_class import TensorRegion
 from ._bindings import HSA_SIGNAL_CONDITION_EQ, HSA_WAIT_STATE_BLOCKED, lib
 from .context import HSAContext
 from .tensor import HSATensor
@@ -211,12 +213,21 @@ class HSAHostRuntime(HostRuntime):
 
     @staticmethod
     def _arg_pairs(kept):
-        """(device_va, logical byte size) per tensor, in dispatch order.
+        """(device_va, logical byte size) per tensor or region, in dispatch order.
 
         The logical ``nbytes`` (not the granule-rounded allocation size) is what
         the kernarg block must carry, matching ROCR's dispatch.cc.
         """
-        return [(t.buffer_object(), t.nbytes) for t in kept]
+        pairs = []
+        for t in kept:
+            if isinstance(t, TensorRegion):
+                assert isinstance(t.tensor, HSATensor)
+                va = t.tensor.buffer_object()
+                assert va is not None
+                pairs.append((va + t.storage_offset, t.nbytes))
+            else:
+                pairs.append((t.buffer_object(), t.nbytes))
+        return pairs
 
     def _release_dispatch(self, failed, overflows):
         """Release what a completed dispatch owns; leak what a failed one may still.
@@ -247,10 +258,12 @@ class HSAHostRuntime(HostRuntime):
 
     def _validate_args(self, args):
         kept = [a for a in args if not callable(a)]
-        if not all(isinstance(a, self._tensor_class) for a in kept):
+        owners = [a.tensor if isinstance(a, TensorRegion) else a for a in kept]
+        if not all(isinstance(owner, self._tensor_class) for owner in owners):
             raise HostRuntimeError(
                 f"The {self.__class__.__name__} can only take "
-                f"{self._tensor_class.__name__} as arguments, but got: {kept}"
+                f"{self._tensor_class.__name__} arguments, or regions of them, "
+                f"but got: {kept}"
             )
         return kept
 
@@ -266,7 +279,8 @@ class HSAHostRuntime(HostRuntime):
         sequence succeed on XRT/HRX and fail here.
         """
         for t in tensors:
-            t.device = "npu"
+            owner = t.tensor if isinstance(t, TensorRegion) else t
+            owner.device = "npu"
 
     def run(
         self,
@@ -276,6 +290,7 @@ class HSAHostRuntime(HostRuntime):
         fail_on_error=True,
         only_if_loaded=False,
         dispatch_insts=None,
+        parameters: Mapping[str, Any] | None = None,
         **kwargs,
     ) -> HSAKernelResult:
         """Dispatch one packet for ``kernel_handle`` and wait for it to complete.
@@ -288,10 +303,15 @@ class HSAHostRuntime(HostRuntime):
         ``dispatch_insts`` (np.ndarray | None): Per-call instruction words,
         copied into a fresh device buffer retained until completion. Failed
         submissions are rechecked on subsequent dispatches and during cleanup.
+        ``parameters`` must be empty: HSA writes no ScratchpadParameters.
         """
         assert isinstance(kernel_handle, HSAKernelHandle)
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
+        if parameters:
+            raise HostRuntimeError(
+                f"HSA writes no ScratchpadParameters; got {sorted(parameters)}"
+            )
         self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
         self._reclaim_dispatch_insts()
@@ -406,7 +426,9 @@ class HSAHostRuntime(HostRuntime):
         self._mark_device_resident(tensors)
         return HSAKernelResult(stop - start, success=True)
 
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
+    def load_and_run(
+        self, npu_kernel, run_args, dispatch_scalars=None, parameters=None, **kwargs
+    ):
         """Reject trace up front, then defer to the base load/run pipeline.
 
         The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
@@ -416,7 +438,9 @@ class HSAHostRuntime(HostRuntime):
         """
         if getattr(npu_kernel, "trace_config", None) is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(npu_kernel, run_args, dispatch_scalars, **kwargs)
+        return super().load_and_run(
+            npu_kernel, run_args, dispatch_scalars, parameters, **kwargs
+        )
 
     def device(self) -> "Device":
         from aie.iron.device import from_name

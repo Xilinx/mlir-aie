@@ -14,7 +14,6 @@ to size asymmetric BDs so neither side hangs on a length mismatch.
 """
 
 import os
-import sys
 from dataclasses import dataclass
 
 import aie.iron as iron
@@ -43,7 +42,7 @@ from aie.iron import (
     TileDma,
     Worker,
 )
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import forever_, range_
 from aie.iron.device import Tile
 
 N = 4096
@@ -166,13 +165,24 @@ class PingPongDma:
 
     Receives on ``into`` and sends on ``out``, handing each buffer from one
     channel to the other through a full/empty lock pair. The BD ids are pinned
-    to ``BD_S2MM`` / ``BD_MM2S`` so ``CompressionRegs`` finds them.
+    to ``BD_S2MM`` / ``BD_MM2S`` so ``regs`` finds them.
     """
 
-    def __init__(self, tile: Tile, buf_ty, into: Flow, out: Flow, name: str):
-        self.tile = tile
+    def __init__(
+        self,
+        tile: Tile,
+        regs: CompressionRegs,
+        buf_ty,
+        into: Flow,
+        out: Flow,
+        name: str,
+    ):
         assert tile.row is not None, "PingPongDma needs a placed tile"
-        self.regs = CompressionRegs.compute(tile.row)
+        assert (
+            regs.row == tile.row
+        ), f"PingPongDma's regs are for row {regs.row}, tile is row {tile.row}"
+        self.tile = tile
+        self.regs = regs
         self.buffers = [
             Buffer(type=buf_ty, tile=tile, name=f"{name}_buf{i}") for i in range(2)
         ]
@@ -217,8 +227,12 @@ def build_multi_cmp_only():
     link = Flow(ct2, ct3, src_channel=0, dst_channel=0)
     out = Flow(ct3, shim, src_channel=0, dst_channel=0)
 
-    ct2_dma = PingPongDma(ct2, line_ty, into, link, "ct2")
-    ct3_dma = PingPongDma(ct3, comp_ty, link, out, "ct3")
+    ct2_dma = PingPongDma(
+        ct2, CompressionRegs.compute(COMPUTE_ROW), line_ty, into, link, "ct2"
+    )
+    ct3_dma = PingPongDma(
+        ct3, CompressionRegs.compute(COMPUTE_ROW_2), comp_ty, link, out, "ct3"
+    )
 
     # The host out buffer is full N so the JIT size check accepts the test's
     # tensor; the drain writes only RATIOED_N ints and leaves the tail at
@@ -351,8 +365,12 @@ def dma_compression(
         link_tile = Tile(COL, COMPUTE_ROW, tile_type=AIETileType.CoreTile)
         link_regs = CompressionRegs.compute(COMPUTE_ROW)
 
-    of_in = ObjectFifo(line_ty, name="in")
-    of_out = of_in.cons().forward(tile=link_tile, name="out")
+    # A (de)compressing channel moves a data-dependent byte count, not whole
+    # line_ty objects, so the shim ends are Flows rather than an ObjectFifo.
+    shim = Tile(COL, 0, tile_type=AIETileType.ShimNOCTile)
+    into = Flow(shim, link_tile, src_channel=0, dst_channel=0)
+    out = Flow(link_tile, shim, src_channel=0, dst_channel=0)
+    link_dma = PingPongDma(link_tile, link_regs, line_ty, into, out, "link")
 
     # `core_*` configs spawn a Worker on the link tile that calls the peano
     # `write_tm` kernel functions to flip compression registers from inside
@@ -398,10 +416,10 @@ def dma_compression(
         def core_body(*enable_fns):
             for fn in enable_fns:
                 fn()
-            for _ in range_(sys.maxsize):
+            for _ in forever_():
                 pass
 
-        core_worker = Worker(core_body, list(enables), tile=link_tile)
+        core_worker = Worker(core_body, list(enables), tile=link_tile, while_true=False)
 
     # Strip "core_"/"memtile_" prefix to get the cmp/dcmp/both suffix.
     suffix = (
@@ -416,7 +434,7 @@ def dma_compression(
     is_host_compression = config in HOST_CONFIGS or config in MEMTILE_CONFIGS
     base_config = config in ("base", "memtile_base")
 
-    def sequence(a_in, c_out, in_h, out_h):
+    def link_sequence(a_in, c_out):
         if is_host_compression and not base_config:
             if has_mm2s_cmp:
                 link_regs.compress_mm2s()
@@ -428,9 +446,12 @@ def dma_compression(
             # core hangs on the first write_tm).
             enable_processor_bus(COMPUTE_ROW)
 
-        in_h.fill(a_in, tap=in_tap)
-        out_h.drain(c_out, tap=out_tap, wait=True)
+        into.fill(a_in, tap=in_tap)
+        out.drain(c_out, tap=out_tap, wait=True)
 
-    rt = Runtime(sequence, [vec_ty, vec_ty, of_in.prod(), of_out.cons()])
+    rt = Runtime(link_sequence, [vec_ty, vec_ty])
+    rt.add_flow(into)
+    rt.add_flow(out)
+    rt.add_tile_dma(link_dma.tile_dma)
     workers = [core_worker] if core_worker is not None else []
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

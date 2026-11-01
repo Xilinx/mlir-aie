@@ -158,7 +158,7 @@ def assert_close_with_benchmark(
     the comparator based on ``expected``'s dtype: integer dtypes use the
     exact compare (``np.array_equal``), float dtypes use the tolerance
     compare with ``rtol=float_rtol`` / ``atol=float_atol``. A kernel's own
-    ``Tolerance`` (``fn.contract.tolerance``) can be passed instead and
+    ``Tolerance`` (``fn.contract_for().tolerance``) can be passed instead and
     is judged by ``compare``, whatever the dtype.
 
     Args:

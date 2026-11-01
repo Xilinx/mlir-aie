@@ -25,10 +25,10 @@ aie.device(npu1_1col) {
   %mem_tile_0_1 = aie.tile(0, 1)
   %switchbox_0_1 = aie.switchbox(%mem_tile_0_1) {
     %0 = aie.amsel<4> (3)
-    %1 = aie.masterset(TileControl : 0, %0) {is_ctrl_pkt_overlay, keep_pkt_header = true}
+    %1 = aie.masterset(TileControl : 0, %0) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
     aie.packet_rules(South : 4) {
       aie.rule(31, 26, %0)
-    } {is_ctrl_pkt_overlay}
+    } {aie.is_ctrl_pkt_overlay}
   }
   %shim_noc_tile_0_0 = aie.tile(0, 0)
   %shim_mux_0_0 = aie.shim_mux(%shim_noc_tile_0_0) {
@@ -38,16 +38,16 @@ aie.device(npu1_1col) {
     %0 = aie.amsel<2> (3)
     %2 = aie.amsel<4> (3)
     %3 = aie.amsel<5> (3)
-    %4 = aie.masterset(South : 0, %0) {is_ctrl_pkt_overlay, keep_pkt_header = true}
-    %6 = aie.masterset(North : 4, %2) {is_ctrl_pkt_overlay}
-    %7 = aie.masterset(TileControl : 0, %3) {is_ctrl_pkt_overlay, keep_pkt_header = true}
+    %4 = aie.masterset(South : 0, %0) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
+    %6 = aie.masterset(North : 4, %2) {aie.is_ctrl_pkt_overlay}
+    %7 = aie.masterset(TileControl : 0, %3) {aie.is_ctrl_pkt_overlay, keep_pkt_header = true}
     aie.packet_rules(South : 3) {
       aie.rule(31, 26, %2)
       aie.rule(31, 15, %3)
-    } {is_ctrl_pkt_overlay}
+    } {aie.is_ctrl_pkt_overlay}
     aie.packet_rules(TileControl : 0) {
       aie.rule(31, 15, %0)
-    } {is_ctrl_pkt_overlay}
+    } {aie.is_ctrl_pkt_overlay}
   }
   %tile_0_2 = aie.tile(0, 2)
   aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim_noc_tile_0_0, MM2S, 0)

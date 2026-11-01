@@ -36,7 +36,6 @@ Cases whose kernels exist only for one NPU generation carry
 """
 
 import pathlib
-from types import SimpleNamespace
 
 import aie.iron as iron
 import numpy as np
@@ -67,41 +66,15 @@ def _param(case):
     return pytest.param(case, marks=marks, id=case.name)
 
 
-def _run(design, fn, inputs, out_n, out_dt):
-    """Upload, run and read back, with the output poisoned first.
-
-    The result is a copy: ``Tensor.numpy()`` views the XRT buffer's mapped
-    host memory, and ``out`` is the last reference to that buffer.
-    """
-    ins, out = kd.upload(inputs, out_n, out_dt, fn=fn, poison=True)
-    outputs = out if isinstance(out, tuple) else (out,)
-    design(*ins, *outputs)
-    got = tuple(o.numpy().copy() for o in outputs)
-    return got if len(got) > 1 else got[0]
-
-
 def _run_case(case, data_case: str, seed: int, report_error=None):
-    fn = case.fn()
-    inputs = inputs_for(case, data_case, np.random.default_rng(1000 + seed))
-    design = kd.design(
-        getattr(kernels, case.factory),
-        **case.harness_opts(),
-        params=fn.param_values(inputs),
-        guard=True,
-        **case.kwargs,
+    design = case.kernel_design(guard=True)
+    fn = design.fn
+    inputs = inputs_for(
+        case, data_case, np.random.default_rng(1000 + seed), design=design
     )
-    ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kd.output_size(fn, calls=case.calls, guard=True)
-    out_dt = fn.output_dtype()
     # The output is poisoned so a kernel that writes nothing cannot pass.
-    got, overrun = kd.strip_guard(
-        fn, _run(design, fn, inputs, out_n, out_dt), calls=case.calls
-    )
-    assert not any(np.atleast_1d(overrun)), (
-        f"{case.name} [{data_case}, seed {seed}]: changed {overrun} guard byte(s) past its output "
-        f"({kd.GUARD_BYTES} after each tile)"
-    )
-    verdict = fn.judge(got, ref, calls=case.calls, inputs=inputs, scalars=case.scalars)
+    got = design.run(inputs)
+    verdict = design.check(got, inputs)
     if report_error:
         entries = error_report(fn, got, inputs, calls=case.calls, scalars=case.scalars)
         report_error(f"{case.name}/{data_case}/s{seed}", entries, bool(verdict))
@@ -141,19 +114,6 @@ def test_case_names_are_unique():
     assert len(names) == len(set(names)), "two cases share a series name"
 
 
-def test_run_reads_all_outputs(monkeypatch):
-    arrays = (np.arange(4), np.arange(4) + 10)
-    outputs = tuple(SimpleNamespace(numpy=lambda a=a: a) for a in arrays)
-    inp = object()
-    monkeypatch.setattr(kd, "upload", lambda *args, **kwargs: ([inp], outputs))
-    calls = []
-    got = _run(lambda *args: calls.append(args), None, [], (4, 4), (int, int))
-    assert calls == [(inp, *outputs)]
-    for actual, expected in zip(got, arrays):
-        np.testing.assert_array_equal(actual, expected)
-        assert not np.shares_memory(actual, expected)
-
-
 # getExpBf16 reaches its tables through a Q8 fixed-point int16, so an input
 # outside (-128, 128) used to wrap and fetch an unrelated entry. The two tests
 # below pin the clamp that closes that (EXP_BF16_CLAMP in
@@ -172,14 +132,14 @@ def test_bf16_exp_saturates_outside_lut_domain():
     tile[: len(xs)] = xs
     tile_bf16 = tile.astype(bfloat16)
 
-    design = kd.design(kernels.bf16_exp, calls=1)
-    got = _run(design, fn, [tile_bf16.reshape(1, 1024)], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([tile_bf16.reshape(1, 1024)])
     expected = fn.expected([tile_bf16.reshape(1, 1024)])
     verdict = fn.judge(got, expected, calls=1)
     assert verdict, verdict.detail
     # Padding must not dilute the mismatch budget for the boundary inputs.
     verdict = compare(
-        got[: len(xs)], expected.ravel()[: len(xs)], fn.contract.tolerance
+        got[: len(xs)], expected.ravel()[: len(xs)], fn.contract_for().tolerance
     )
     assert verdict, verdict.detail
 
@@ -216,8 +176,8 @@ def test_bf16_exp_full_clamped_range():
     ]
     tile[: len(edges)] = edges
     tile_bf16 = tile.astype(bfloat16).reshape(1, 1024)
-    design = kd.design(kernels.bf16_exp, calls=1)
-    got = _run(design, fn, [tile_bf16], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([tile_bf16])
     expected = fn.expected([tile_bf16])
     verdict = fn.judge(got, expected, calls=1)
     assert verdict, verdict.detail
@@ -244,8 +204,8 @@ def test_softmax_wide_dynamic_range():
     tile[0], tile[1] = 0.0, -5.0
     tile_bf16 = tile.astype(bfloat16)
 
-    design = kd.design(kernels.softmax, calls=1)
-    got = _run(design, fn, [tile_bf16.reshape(1, 1024)], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([tile_bf16.reshape(1, 1024)])
     verdict = fn.judge(got, fn.expected([tile_bf16.reshape(1, 1024)]), calls=1)
     assert verdict, verdict.detail
     # The peak must dominate: a wrapped index used to bury it at ~1e-14.
@@ -296,9 +256,7 @@ def _lut_on_npu2(*args):
         _lut_on_npu2("sigmoid", _step),
         ("silu", _relu, {}),
         _lut_on_npu2("silu", _relu),
-        ("silu_sized", _relu, {}),
         ("gelu", _relu, {}),
-        ("gelu_sized", _relu, {}),
     ],
     ids=lambda v: (
         ("lut" if v.get("use_lut") else "default") if isinstance(v, dict) else None
@@ -308,8 +266,8 @@ def test_activation_saturates_for_huge_inputs(factory, limit, kwargs):
     """Each activation takes its limit for large and infinite inputs."""
     fn = getattr(kernels, factory)(**kwargs)
     tile = _huge_tile(bfloat16)
-    design = kd.design(getattr(kernels, factory), calls=1, **kwargs)
-    got = _run(design, fn, [tile], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([tile])
     edge = tile.ravel()[: len(_HUGE)].astype(np.float32)
     np.testing.assert_array_equal(got[: len(_HUGE)].astype(np.float32), limit(edge))
     verdict = fn.judge(got, fn.expected([tile]), calls=1, inputs=[tile])
@@ -323,8 +281,8 @@ def test_swiglu_zero_gate_hides_overflow(kwargs):
     x = _huge_tile(bfloat16, [1e20, 1e20, 1e20, 2, 1, 1])
     w1 = _huge_tile(bfloat16, [1e20, 1e20, -1e20, np.inf, 1, 1])
     w2 = _huge_tile(bfloat16, [-1e20, 1e20, 1e20, -1e3, np.inf, -np.inf])
-    design = kd.design(kernels.swiglu, calls=1, **kwargs)
-    got = _run(design, fn, [x, w1, w2], 1024, np.dtype(bfloat16))
+    design = kd.KernelDesign(fn)
+    got = design.run([x, w1, w2])
     np.testing.assert_array_equal(
         got[:6].astype(np.float32), [0, np.inf, -np.inf, 0, np.inf, 0]
     )
@@ -336,10 +294,10 @@ def test_epilogue_gelu_saturates_for_huge_inputs():
     """The matmul epilogue's gelu, which narrows its f32 input to bf16 first."""
     fn = kernels.mm_activation_epilogue()
     tile = _huge_tile(np.float32)
-    design = kd.design(kernels.mm_activation_epilogue, calls=1, scalars=(2,))
-    got = _run(design, fn, [tile], 1024, np.dtype(np.float32))
+    design = kd.KernelDesign(fn, scalars=(2,))
+    got = design.run([tile])
     _assert_gelu_saturates(got, tile)
-    verdict = fn.judge(got, fn.expected([tile], scalars=(2,)), calls=1)
+    verdict = design.check(got, [tile])
     assert verdict, verdict.detail
 
 
@@ -348,15 +306,84 @@ def test_epilogue_silu_saturates_for_huge_inputs():
     fn = kernels.mm_activation_epilogue()
     finite = np.concatenate([_HUGE[np.isfinite(_HUGE)], [3.4e38, -3.4e38]])
     tile = _huge_tile(np.float32, finite)
-    design = kd.design(kernels.mm_activation_epilogue, calls=1, scalars=(1,))
-    got = _run(design, fn, [tile], 1024, np.dtype(np.float32))
+    design = kd.KernelDesign(fn, scalars=(1,))
+    got = design.run([tile])
     np.testing.assert_allclose(got[: len(finite)], _relu(finite), rtol=2**-16)
-    verdict = fn.judge(got, fn.expected([tile], scalars=(1,)), calls=1)
+    verdict = design.check(got, [tile])
+    assert verdict, verdict.detail
+
+
+@pytest.mark.parametrize("vectorized", [True, False], ids=["vector", "scalar"])
+def test_argmax_of_a_tile_with_no_finite_value(vectorized):
+    """A tile of -inf, or of NaN, resolves to its first element as -inf."""
+    n = 1000
+    tiles = np.stack([np.full(n, -np.inf), np.full(n, np.nan)]).astype(bfloat16)
+    fn = kernels.argmax(tile_size=n, dtype=bfloat16, vectorized=vectorized)
+    design = kd.KernelDesign(
+        fn,
+        calls=2,
+        scalars=(7,),
+    )
+    got = design.run([tiles])
+    records = got.reshape(2, 2)
+    np.testing.assert_array_equal(records[:, 0].view(np.float32), [-np.inf, -np.inf])
+    np.testing.assert_array_equal(records[:, 1], [7, 7])
+    verdict = design.check(got, [tiles])
+    assert verdict, verdict.detail
+
+
+@pytest.mark.parametrize("vectorized", [True, False], ids=["vector", "scalar"])
+def test_argmax_ties_minus_zero_with_plus_zero(vectorized):
+    """-0 reads as +0, so the first zero wins whichever sign it has."""
+    n = 72
+    # (-0's index, +0's index): across lanes, within a lane, into the tail.
+    zeros_at = [(33, 0), (1, 32), (1, 33), (2, 66)]
+    tiles = np.full((len(zeros_at), n), -np.inf, np.float32)
+    for tile, (minus, plus) in zip(tiles, zeros_at):
+        tile[[minus, plus]] = [-0.0, 0.0]
+    tiles = tiles.astype(bfloat16)
+    calls = len(tiles)
+    fn = kernels.argmax(tile_size=n, dtype=bfloat16, vectorized=vectorized)
+    design = kd.KernelDesign(
+        fn,
+        calls=calls,
+        scalars=(0,),
+    )
+    got = design.run([tiles])
+    records = got.reshape(calls, 2)
+    np.testing.assert_array_equal(records[:, 0], [0] * calls)
+    np.testing.assert_array_equal(records[:, 1], [0, 1, 1, 2])
+    verdict = design.check(got, [tiles])
     assert verdict, verdict.detail
 
 
 def _bf16_from_bits(u):
     return (np.asarray(u, np.uint32) << 16).view(np.float32).astype(bfloat16)
+
+
+def _bf16_product_ties(n, odd_below):
+    """Return ``n`` bf16 pairs whose f32 product is an exact bf16 tie.
+
+    Args:
+        n: How many pairs.
+        odd_below: Whether the tie's lower bf16 neighbour is odd, where
+            conv_even rounds up, or even, where it rounds down.
+
+    Returns:
+        ``(x, y, below)``: the operands and, as bits, the lower neighbour.
+    """
+    rng = np.random.default_rng(0)
+    xs, ys = [], []
+    while len(xs) < n:
+        a = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
+        b = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
+        p = (a.astype(np.float32) * b.astype(np.float32)).view(np.uint32)
+        tie = ((p & 0xFFFF) == 0x8000) & (((p >> 16) & 1) == int(odd_below))
+        xs.extend(a[tie].tolist())
+        ys.extend(b[tie].tolist())
+    x = np.asarray(xs[:n], bfloat16)
+    y = np.asarray(ys[:n], bfloat16)
+    return x, y, (x.astype(np.float32) * y.astype(np.float32)).view(np.uint32) >> 16
 
 
 @pytest.mark.kernel_check("set_rounding", invalidates_timing=True)
@@ -372,38 +399,145 @@ def test_setup_reaches_the_core():
     must disagree.
     """
     n = 1024
-    rng = np.random.default_rng(0)
-    xs, ys = [], []
-    while len(xs) < n:
-        a = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
-        b = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
-        p = (a.astype(np.float32) * b.astype(np.float32)).view(np.uint32)
-        tie = ((p & 0xFFFF) == 0x8000) & (((p >> 16) & 1) == 1)
-        xs.extend(a[tie].tolist())
-        ys.extend(b[tie].tolist())
-    x = np.asarray(xs[:n], bfloat16)
-    y = np.asarray(ys[:n], bfloat16)
-
-    bits = (x.astype(np.float32) * y.astype(np.float32)).view(np.uint32) >> 16
+    x, y, bits = _bf16_product_ties(n, odd_below=True)
     floor_result = _bf16_from_bits(bits)
     conv_even_result = _bf16_from_bits(bits + 1)  # ties away from the odd neighbor
 
     fn = kernels.mul(tile_size=n)
-    design = kd.design(kernels.mul, calls=1, tile_size=n)
-    ins, out = kd.upload(
-        [x.reshape(1, n), y.reshape(1, n)],
-        kd.output_size(fn, calls=1),
-        bfloat16,
-        fn=fn,
-        poison=True,
-    )
-    design(*ins, out)
-    got = out.numpy().copy().reshape(-1)[:n].astype(bfloat16)
+    design = kd.KernelDesign(fn)
+    got = design.run([x.reshape(1, n), y.reshape(1, n)])[:n].astype(bfloat16)
 
     assert np.array_equal(got, conv_even_result), (
         f"{int((got == floor_result).sum())} of {n} ties rounded floor: the "
         "contract's setup did not reach the core"
     )
+
+
+_LEAK_TIES = 1024
+
+
+@iron.jit
+def _after_a_kernel_design(
+    x: In, y: In, z: Out, *, first: CompileTime[str], kept: CompileTime[str]
+):
+    mul = kernels.mul(tile_size=_LEAK_TIES)
+    x_ty, y_ty, z_ty = mul.arg_types()
+    of_x = ObjectFifo(x_ty, name="x", depth=1)
+    of_y = ObjectFifo(y_ty, name="y", depth=1)
+    of_z = ObjectFifo(z_ty, name="z", depth=1)
+    if first == "conv2dk1":
+        conv = kernels.conv2dk1(input_channels=8, output_channels=8)
+        act_ty, wts_ty, conv_out_ty = conv.arg_types()[:3]
+        bufs = [
+            Buffer(act_ty, name="act", initial_value=np.zeros(256, np.int8)),
+            Buffer(wts_ty, name="wts", initial_value=np.zeros(64, np.int8)),
+            Buffer(conv_out_ty, name="conv_out"),
+        ]
+        kernel, scalars = conv, (32, 8, 8, 1)
+    elif first == "grid_decode":
+        kernel = kernels.grid_decode(width=4, channels=8, obj_at=4, cls_at=5, classes=2)
+        bufs = [
+            Buffer(t, name=f"grid_{i}", initial_value=np.zeros(*kd.shape_dtype(t)))
+            for i, t in enumerate(kernel.arg_types()[:2])
+        ]
+        scalars = (0, 8)
+    else:
+        fused = kernels.fused_mm(rounding="floor")
+        kernel = fused.mm_fused_k_step
+        bufs = [
+            Buffer(t, name=f"k_step_{i}", initial_value=np.zeros(*kd.shape_dtype(t)))
+            for i, t in enumerate(kernel.arg_types()[:3])
+        ]
+        scalars = (0,)
+
+    def core(of_x, of_y, of_z, setup, kernel, mul, *bufs):
+        setup()
+        kernel(*bufs, *scalars)
+        tx, ty, tz = of_x.acquire(1), of_y.acquire(1), of_z.acquire(1)
+        mul(tx, ty, tz)
+        of_x.release(1)
+        of_y.release(1)
+        of_z.release(1)
+
+    worker = Worker(
+        core,
+        [of_x.cons(), of_y.cons(), of_z.prod()]
+        + [kernels.set_rounding(kernels.RoundingMode(kept)), kernel, mul, *bufs],
+    )
+
+    def seq(host_x, host_y, host_z, x_in, y_in, z_out):
+        x_in.fill(host_x)
+        y_in.fill(host_y)
+        z_out.drain(host_z, wait=True)
+
+    rt = Runtime(seq, [x_ty, y_ty, z_ty, of_x.prod(), of_y.prod(), of_z.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.kernel_check(
+    "conv2dk1", "fused_mm", "grid_decode", "mul", invalidates_timing=True
+)
+@pytest.mark.parametrize(
+    "first, kept, odd_below",
+    [
+        ("conv2dk1", "conv_even", False),
+        ("mm_fused_k_step", "conv_even", True),
+        ("grid_decode", "floor", True),
+    ],
+)
+def test_a_kernel_leaves_the_rounding_mode_as_it_found_it(first, kept, odd_below):
+    """A kernel that needs its own rounding must put the core's back.
+
+    The setup leaves ``kept`` for whatever runs next. conv2dk1 rounds
+    positive_inf, which rounds a tie up where conv_even rounds it down (an
+    even lower neighbour); a floor build of fused_mm's k step rounds down
+    where conv_even rounds up (an odd one), and grid_decode's conv_even
+    does the same against a floor core. mul run after each shows which mode
+    it found.
+    """
+    x, y, below = _bf16_product_ties(_LEAK_TIES, odd_below=odd_below)
+    want = below + int(kept == "conv_even" and odd_below)
+    z = iron.zeros(_LEAK_TIES, dtype=bfloat16, device="npu")
+    _after_a_kernel_design(
+        iron.tensor(x, device="npu"),
+        iron.tensor(y, device="npu"),
+        z,
+        first=first,
+        kept=kept,
+    )
+    got = z.numpy().astype(bfloat16)
+    assert np.array_equal(got, _bf16_from_bits(want)), (
+        f"{int((got != _bf16_from_bits(want)).sum())} of {_LEAK_TIES} ties "
+        f"rounded the other way: {first} left the core in its own rounding mode"
+    )
+
+
+@pytest.mark.kernel_check("grid_decode")
+@pytest.mark.parametrize("stride", [8, 16, 32])
+def test_grid_decode_keeps_a_tiny_exp_through_the_stride(stride):
+    """exp(dw) * stride near float32's ends, every bf16 dw and dh there.
+
+    Below ln(FLT_MIN) exp alone is subnormal, but times the stride it can be
+    normal again (exp(-88) * 32 =~ 1.9e-37), so flushing exp to zero before
+    the stride misses the contract's relative tolerance; near 88 the
+    product overflows first. Random data almost never lands in either band.
+    """
+    fn = kernels.grid_decode()
+    band = np.arange(1 << 16, dtype=np.uint32).astype(np.uint16).view(bfloat16)
+    band = band[np.isfinite(band.astype(np.float32))]
+    band = band[(np.abs(band.astype(np.float32)) >= 80) & (np.abs(band) <= 105)]
+    width, channels = 52, 144
+    calls = -(-band.size // width)
+    design = kd.KernelDesign(fn, calls=calls, scalars=(3, stride))
+    inputs = design.sample_inputs(np.random.default_rng(stride))
+    cells = inputs[0].reshape(calls, width, channels)
+    flat = np.zeros(calls * width, bfloat16)
+    flat[: band.size] = band
+    cells[..., 2] = flat.reshape(calls, width)
+    cells[..., 3] = flat[::-1].reshape(calls, width)
+    got = design.run(inputs)
+    verdict = design.check(got, inputs)
+    assert verdict, verdict.detail
 
 
 def _skips_first_vector():
@@ -431,12 +565,8 @@ def test_guard_poisons_the_core_tile():
     calls = 3
     fn = _skips_first_vector()
     x = np.arange(calls * 64, dtype=np.int32).reshape(calls, 64) + 1
-    design = kd.design(_skips_first_vector, calls=calls, guard=True)
-    out_n = kd.output_size(fn, calls=calls, guard=True)
-    got, overrun = kd.strip_guard(
-        fn, _run(design, fn, [x], out_n, np.int32), calls=calls
-    )
-    assert not any(np.atleast_1d(overrun))
+    design = kd.KernelDesign(fn, calls=calls, guard=True)
+    got = design.run([x])
     got = got.reshape(calls, 64)
     np.testing.assert_array_equal(got[:, 16:], x[:, 16:])
     skipped = got[:, :16]
@@ -444,6 +574,24 @@ def test_guard_poisons_the_core_tile():
         f"the elements the kernel skipped read back as {np.unique(skipped)}, "
         "not the poison"
     )
+
+
+def test_run_refuses_a_kernel_that_writes_past_its_tile():
+    tile = np.ndarray[(64,), np.dtype[np.int32]]
+    fn = iron.ExternalFunction(
+        "writes_past_its_tile",
+        source_string="""extern "C" {
+void writes_past_its_tile(int *in, int *out) {
+  for (int i = 0; i < 68; i++)
+    out[i] = in[i % 64];
+}
+}""",
+        arg_types=[tile, tile],
+        contract=kernels.KernelContract(roles=(In, Out), reference=lambda x: x),
+    )
+    x = np.arange(2 * 64, dtype=np.int32).reshape(2, 64) + 1
+    with pytest.raises(RuntimeError, match=r"changed 32 guard byte\(s\)"):
+        kd.KernelDesign(fn, calls=2, guard=True).run([x])
 
 
 def _adds_param(vector_loads=False):
@@ -477,14 +625,8 @@ def _run_adds_param(vector_loads, offset):
     fn = _adds_param(vector_loads)
     x = np.arange(calls * 64, dtype=np.int32).reshape(calls, 64)
     w = np.arange(64, dtype=np.int32) * 1000 + 7
-    design = kd.design(
-        _adds_param,
-        calls=calls,
-        params=[w],
-        arg_byte_offsets=((1, offset),),
-        vector_loads=vector_loads,
-    )
-    got = _run(design, fn, [x, w], kd.output_size(fn, calls=calls), np.int32)
+    design = kd.KernelDesign(fn, calls=calls, arg_byte_offsets=((1, offset),))
+    got = design.run([x, w])
     return got.reshape(calls, 64), x + w
 
 
@@ -675,6 +817,129 @@ def test_cascade_mm_chain(combo, shape, tiles, full_range):
         f"{int((err > bound).sum())} of {m * n} outputs outside the fp32 "
         f"summation bound; max |err| {err.max():.4g}"
     )
+
+
+# ---------------------------------------------------------------------------
+# mm's k_tail: each call zeroes one operand's tail (the other's goes to a
+# scratch tile) and multiplies, so a tail the call leaves unzeroed (NaN, or
+# the integer maximum) reaches C through the other operand's random tail.
+# ---------------------------------------------------------------------------
+
+_K_TAIL_CONFIGS = {
+    "bf16_f32": dict(input_dtype=bfloat16, output_dtype=np.float32),
+    "bf16_f32_b_col": dict(
+        input_dtype=bfloat16, output_dtype=np.float32, b_col_maj=True
+    ),
+    "bf16_f32_emulated": dict(
+        input_dtype=bfloat16,
+        output_dtype=np.float32,
+        emulate_bf16_mmul_with_bfp16=True,
+    ),
+    "bf16_f32_emulated_b_col": dict(
+        input_dtype=bfloat16,
+        output_dtype=np.float32,
+        emulate_bf16_mmul_with_bfp16=True,
+        b_col_maj=True,
+    ),
+    "i8_i32": dict(input_dtype=np.int8, output_dtype=np.int32),
+    "i16_i32": dict(input_dtype=np.int16, output_dtype=np.int32),
+    "i16_i32_b_col": dict(input_dtype=np.int16, output_dtype=np.int32, b_col_maj=True),
+    "scalar_bf16_f32": dict(
+        input_dtype=bfloat16, output_dtype=np.float32, vectorized=False
+    ),
+    "scalar_bf16_f32_b_col": dict(
+        input_dtype=bfloat16, output_dtype=np.float32, vectorized=False, b_col_maj=True
+    ),
+    "scalar_i16_i32": dict(
+        input_dtype=np.int16, output_dtype=np.int32, vectorized=False
+    ),
+}
+_K_TAIL_DIM = 64
+# Every boundary inside, at and past a micro-tile of K (1, 4 or 8 wide), and
+# bounds outside the tile, which clamp to it.
+_K_TAIL_VALID = (-9, -1, 0, 1, 3, 4, 5, 7, 8, 9, 33, 63, 64, 65)
+_K_TAIL_CALLS = [(kv, side) for kv in _K_TAIL_VALID for side in "ab"]
+
+
+@iron.jit
+def _k_tail_design(a: In, b: In, c: Out, *, config: CompileTime[str]):
+    fn = kernels.mm(_K_TAIL_DIM, _K_TAIL_DIM, _K_TAIL_DIM, **_K_TAIL_CONFIGS[config])
+    a_ty, b_ty, c_ty = fn.arg_types()
+    of_a = ObjectFifo(a_ty, name="a", depth=1)
+    of_b = ObjectFifo(b_ty, name="b", depth=1)
+    of_c = ObjectFifo(c_ty, name="c", depth=1)
+    # Square, so one scratch tile stands in for either operand.
+    scratch = Buffer(a_ty, name="scratch")
+
+    def core(of_a, of_b, of_c, scratch, mm, zero, k_tail):
+        for kv, side in _K_TAIL_CALLS:
+            ta, tb, tc = of_a.acquire(1), of_b.acquire(1), of_c.acquire(1)
+            zero(tc)
+            if side == "a":
+                k_tail(ta, scratch, kv)
+            else:
+                k_tail(scratch, tb, kv)
+            mm(ta, tb, tc)
+            of_a.release(1)
+            of_b.release(1)
+            of_c.release(1)
+
+    worker = Worker(
+        core,
+        [of_a.cons(), of_b.cons(), of_c.prod(), scratch, fn, fn.zero, fn.k_tail],
+    )
+
+    def seq(host_a, host_b, host_c, a_in, b_in, c_out):
+        a_in.fill(host_a)
+        b_in.fill(host_b)
+        c_out.drain(host_c, wait=True)
+
+    calls = len(_K_TAIL_CALLS)
+    hosts = [
+        np.ndarray[(calls * kd.elems(t),), np.dtype[kd.shape_dtype(t)[1]]]
+        for t in (a_ty, b_ty, c_ty)
+    ]
+    rt = Runtime(seq, hosts + [of_a.prod(), of_b.prod(), of_c.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+def _k_tail_cases():
+    for config, kw in _K_TAIL_CONFIGS.items():
+        # AIE2 has no bfp16 to emulate bf16 with.
+        npu2 = kw.get("emulate_bf16_mmul_with_bfp16", False)
+        marks = [pytest.mark.supported_devices("npu2")] if npu2 else []
+        yield pytest.param(config, marks=marks, id=config)
+
+
+@pytest.mark.kernel_check("mm")
+@pytest.mark.parametrize("config", list(_k_tail_cases()))
+def test_mm_k_tail_zeroes_each_operand_past_k_valid(config):
+    fn = kernels.mm(_K_TAIL_DIM, _K_TAIL_DIM, _K_TAIL_DIM, **_K_TAIL_CONFIGS[config])
+    in_dt = np.dtype(_K_TAIL_CONFIGS[config]["input_dtype"])
+    out_dt = np.dtype(_K_TAIL_CONFIGS[config]["output_dtype"])
+    calls = len(_K_TAIL_CALLS)
+    a, b = kd.KernelDesign(fn, calls=calls).sample_inputs(np.random.default_rng(5))
+    poison = np.iinfo(in_dt).max if in_dt.kind == "i" else np.nan
+    for i, (kv, side) in enumerate(_K_TAIL_CALLS):
+        clamped = min(max(kv, 0), _K_TAIL_DIM)
+        if side == "a":
+            a[i, :, clamped:] = poison
+        else:
+            b[i, clamped:] = poison
+    a_dev = iron.tensor(fn.contract.layouts[0].encode(a).reshape(-1), dtype=in_dt)
+    b_dev = iron.tensor(fn.contract.layouts[1].encode(b).reshape(-1), dtype=in_dt)
+    c_dev = iron.tensor(
+        np.zeros(calls * _K_TAIL_DIM * _K_TAIL_DIM, out_dt), dtype=out_dt
+    )
+    _k_tail_design(a_dev, b_dev, c_dev, config=config)
+    got = c_dev.numpy().copy().reshape(calls, -1)
+
+    wide = np.int64 if in_dt.kind == "i" else np.float64
+    for i, (kv, side) in enumerate(_K_TAIL_CALLS):
+        clamped = min(max(kv, 0), _K_TAIL_DIM)
+        exact = a[i, :, :clamped].astype(wide) @ b[i, :clamped].astype(wide)
+        verdict = fn.judge(got[i], exact.astype(out_dt)[None])
+        assert verdict, f"k_valid {kv}, {side}'s tail: {verdict.detail}"
 
 
 _LUT_PAIR_SRC = """#include <aie_api/aie.hpp>

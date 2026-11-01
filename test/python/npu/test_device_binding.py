@@ -19,12 +19,8 @@ from aie.utils.compile.jit.compilabledesign import CompilableDesign
 
 @pytest.fixture(autouse=True)
 def unbound():
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(None)
-    try:
+    with set_current_device(None):
         yield
-    finally:
-        set_current_device(previous)
 
 
 def copy():

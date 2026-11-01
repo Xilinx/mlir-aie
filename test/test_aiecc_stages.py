@@ -1,0 +1,363 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# RUN: %pytest %s
+"""aiecc's --profile-json, grouped into compile stages, on real captured profiles."""
+
+import importlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+CHECKS = ROOT / "utils/component_checks"
+# A shim-only design (test/aiecc/profile_json.mlir's shape), a cold
+# mobilenet JIT compile at SA effort 0.05, and a five-device full-ELF design
+# built with --get-txn and --get-locmap by an aiecc that records process_ms,
+# all captured from aiecc as is.
+SHIM = ROOT / "test/fixtures/aiecc_profile_shim.json"
+MOBILENET = ROOT / "test/fixtures/aiecc_profile_mobilenet.json"
+FULL_ELF = ROOT / "test/fixtures/aiecc_profile_full_elf.json"
+AIECC = shutil.which("aiecc")
+POSIX_MEASURE = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="run_measured waits with os.wait4 and kills a process group, which are POSIX-only",
+)
+
+
+@pytest.fixture
+def checks(monkeypatch):
+    monkeypatch.syspath_prepend(str(CHECKS))
+    return importlib.import_module("aiecc_stages"), importlib.import_module(
+        "llama_chain_hw"
+    )
+
+
+@pytest.mark.parametrize(
+    "fixture", [SHIM, MOBILENET, FULL_ELF], ids=["shim", "mobilenet", "full-elf"]
+)
+def test_every_captured_edge_has_a_stage(checks, fixture):
+    stages, _ = checks
+    edges = json.loads(fixture.read_text())["edges"]
+    assert {
+        e["name"]: stages.stage_of(e["name"])
+        for e in edges
+        if stages.stage_of(e["name"]) == "other"
+    } == {}
+
+
+def test_mobilenet_stages_are_its_edges_summed(checks):
+    stages, _ = checks
+    profile = json.loads(MOBILENET.read_text())
+    ms = {e["name"]: e["ms"] for e in profile["edges"]}
+    got = stages.stage_seconds(str(MOBILENET))
+    assert got["place"] == ms["placed.mlir"] / 1000
+    assert got["route"] == ms["input_physical.mlir"] / 1000
+    assert got["kernels"] == ms["awaitLinkFiles"] / 1000
+    assert got["wall_s"] == profile["wall_ms"] / 1000
+    assert sum(got[s] for s in stages.STAGES) == pytest.approx(sum(ms.values()) / 1000)
+    # Cold, its own kernel objects dominate; the SA placer is next.
+    assert max(stages.STAGES, key=got.__getitem__) == "kernels"
+    assert sorted(stages.STAGES, key=got.__getitem__)[-2] == "place"
+
+
+@pytest.mark.parametrize(
+    "edge, stage",
+    [
+        ("placed.mlir", "place"),
+        ("input_physical.mlir", "route"),
+        ("input_with_symbols.mlir", "lower"),
+        ("design.xclbin", "package"),
+        ("main.pdi", "package"),
+        ("insts_chain_persist_grow_N16_PT4.bin", "package"),
+        ("elfs_{0}.elf", "link"),
+        ("instructions.elf", "package"),
+        ("kernels_{0}.json", "package"),
+        # Edges a full-ELF, multi-device, transaction or locmap build adds.
+        ("perDeviceNPULowered_{0}.mlir", "lower"),
+        ("perDeviceCompile_{0}.mlir", "lower"),
+        ("npu_seq_full_elf_{0}.mlir", "lower"),
+        ("perSeqFullElfMatching", "lower"),
+        ("perDeviceNPULoweredFullElf_{0}.mlir", "lower"),
+        ("perDeviceNPULoweredFullElfMatching", "lower"),
+        ("perDeviceCompileMatching", "lower"),
+        ("perDeviceArches_{0}.txt", "lower"),
+        ("ctrlPktSeqs", "lower"),
+        ("{0}_transaction.mlir", "package"),
+        ("input_aie_partition_{0}.json", "package"),
+        ("insts_{0}.bin.locmap.json", "package"),
+        ("a_new_aiecc_edge", "other"),
+    ],
+)
+def test_output_names_aiecc_was_given_are_matched_by_kind(checks, edge, stage):
+    stages, _ = checks
+    assert stages.stage_of(edge) == stage
+
+
+@pytest.mark.skipif(AIECC is None, reason="no aiecc on PATH")
+def test_the_aiecc_built_here_names_only_known_edges(checks, tmp_path):
+    stages, _ = checks
+    profile = tmp_path / "profile.json"
+    subprocess.run(
+        [AIECC, "--get-npu-insts", "--no-progress", f"--profile-json={profile}"]
+        + [f"--output-dir={tmp_path}", f"--tmpdir={tmp_path / 'work'}"]
+        + [str(ROOT / "test/aiecc/profile_json.mlir")],
+        check=True,
+        capture_output=True,
+    )
+    got = json.loads(profile.read_text())
+    assert got["version"] == stages.PROFILE_VERSION
+    assert [
+        e["name"] for e in got["edges"] if stages.stage_of(e["name"]) == "other"
+    ] == []
+
+
+def test_an_unknown_edge_is_counted_as_other(checks, tmp_path):
+    stages, _ = checks
+    profile = json.loads(SHIM.read_text())
+    profile["edges"].append(
+        {"name": "a_new_aiecc_edge", "ms": 250, "start_ms": 0, "end_ms": 250}
+    )
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps(profile))
+    assert stages.stage_seconds(str(path))["other"] == 0.25
+
+
+def test_aieccs_own_time_is_told_apart_when_the_profile_records_it(checks):
+    stages, _ = checks
+    rows = stages.stage_rows(str(FULL_ELF), 2.0, "")
+    # process_ms 137 against a graph span of 123 ms.
+    assert rows["compile_aiecc_wall_s"] == 0.12
+    assert rows[stages.AIECC_OWN_METRIC] == 0.01
+    assert rows["compile_outside_aiecc_s"] == round(2.0 - 0.137, 2)
+    # Longer than the compile counting aiecc's whole run, not just its graph.
+    (problem,) = stages.stage_rows(str(FULL_ELF), 0.13, "_warm").values()
+    assert "spans 0.14 s of a 0.13 s compile" in problem
+    # A profile without process_ms has no such row.
+    assert stages.AIECC_OWN_METRIC not in stages.stage_rows(str(SHIM), 2.0, "")
+
+
+def test_the_kernel_objects_compile_time_comes_from_the_jits_profile(checks, tmp_path):
+    stages, _ = checks
+    profile = tmp_path / "kernel_profile.json"
+    kernels = [
+        {"object": f"k{i}.o", "symbols": [f"k{i}"], "seconds": s, "cached": c}
+        for i, (s, c) in enumerate(
+            [(8.55, False), (0.01, True), (3.2, False), (1.0, False), (5.0, False)]
+            + [(0.4, False), (2.0, False)]
+        )
+    ]
+    profile.write_text(json.dumps({"wall_s": 16.823, "jobs": 8, "kernels": kernels}))
+    rows = stages.kernel_rows(str(profile), 43.0, "")
+    assert rows[stages.KERNEL_OBJECTS_METRIC] == 16.82
+    detail = rows["kernel_objects"]
+    assert (detail["jobs"], detail["compiled"], detail["cached"]) == (8, 6, 1)
+    assert [k["object"] for k in detail["slowest"]] == [
+        "k0.o",
+        "k4.o",
+        "k2.o",
+        "k6.o",
+        "k3.o",
+    ]
+    assert stages.kernel_rows(str(profile), None, "") == {}
+    missing = str(tmp_path / "missing.json")
+    assert stages.kernel_rows(missing, 1.0, "_warm") == {
+        "kernel_profile_problem_warm": f"no profile at {missing}"
+    }
+    # A compile's rows carry it beside the stages.
+    rows = stages.compile_rows("c", {"compile_s": 43.0, **rows})
+    assert {r["name"]: r["value"] for r in rows}["c/compile_kernel_objects_s"] == 16.82
+
+
+def test_a_profile_that_is_not_the_compiles_gives_no_stages(checks, tmp_path):
+    stages, _ = checks
+    missing = str(tmp_path / "missing.json")
+    with pytest.raises(stages.ProfileError, match="no profile"):
+        stages.stage_seconds(missing)
+    assert stages.stage_rows(missing, 60.5, "_warm") == {
+        "profile_problem_warm": f"no profile at {missing}"
+    }
+    newer = tmp_path / "newer.json"
+    newer.write_text(json.dumps(dict(json.loads(SHIM.read_text()), version=2)))
+    assert stages.stage_rows(str(newer), 60.5, "") == {
+        "profile_problem": f"{newer} is version 2, this reads 1"
+    }
+    # aiecc runs inside the timed compile: a profile longer than the whole
+    # compile is another compile's.
+    (problem,) = stages.stage_rows(str(MOBILENET), 12.0, "").values()
+    assert problem.endswith("spans 17.42 s of a 12.00 s compile: not this compile's")
+    # A failed compile has no stages, and nothing to explain.
+    assert stages.stage_rows(missing, None, "") == {}
+
+
+@POSIX_MEASURE
+def test_a_command_is_echoed_as_it_runs_and_measured(checks, capfd):
+    stages, _ = checks
+    measured = stages.run_measured(
+        [sys.executable, "-c", "import sys; print('one'); sys.exit(3)"],
+        None,
+        None,
+        60,
+    )
+    assert measured.process.returncode == 3 and measured.process.stdout == "one\n"
+    assert capfd.readouterr().out == "one\n"
+    assert measured.seconds > 0 and measured.peak_rss_mib > 0 and measured.cpu_s > 0
+
+
+@POSIX_MEASURE
+def test_a_command_past_its_timeout_is_killed_with_its_children(checks, capfd):
+    stages, _ = checks
+    start = time.perf_counter()
+    measured = stages.run_measured(
+        ["sh", "-c", "echo started; sleep 60 & sleep 60"], None, None, 1
+    )
+    assert time.perf_counter() - start < 30
+    assert measured.process.returncode == stages.TIMED_OUT
+    lines = measured.process.stdout.splitlines()
+    assert lines[0] == "started" and lines[-1].endswith("timed out after 1 s")
+    assert capfd.readouterr().out.splitlines() == lines
+
+
+# Two children that each touch 128 MiB at once: the tree peaks at their sum,
+# its largest process at one.
+TWO_CHILDREN = [
+    sys.executable,
+    "-c",
+    "import subprocess, sys\n"
+    "hold = 'b = bytearray(128 << 20); b[::4096] = bytes(len(b[::4096])); "
+    "import time; time.sleep(1)'\n"
+    "kids = [subprocess.Popen([sys.executable, '-c', hold]) for _ in range(2)]\n"
+    "sys.exit(sum(k.wait() for k in kids))",
+]
+
+
+@POSIX_MEASURE
+def test_a_compile_in_its_own_scope_reports_its_whole_trees_peak(checks):
+    stages, _ = checks
+    if (why := stages.scope_unavailable(None)) is not None:
+        pytest.skip(f"no memory-accounted user scope here: {why}")
+    measured = stages.run_measured(TWO_CHILDREN, None, None, 60, tree_peak=True)
+    assert measured.process.returncode == 0
+    assert measured.tree_peak_unavailable is None
+    assert 128 < measured.peak_rss_mib < 200
+    assert 256 < measured.tree_peak_mib < 400
+    stats = stages.compile_stats(measured, measured)
+    assert stats["compile_peak_mib"] == round(measured.tree_peak_mib, 1)
+    assert stats["compile_peak_unavailable"] is None
+    rows = {r["name"]: r for r in stages.compile_rows("c", stats)}
+    assert rows["c/compile_peak_mib"]["unit"] == "MiB"
+    assert rows["c/compile_peak_mib_warm"]["unit"] == "MiB"
+
+
+@POSIX_MEASURE
+def test_without_a_user_manager_a_compile_has_no_peak_row_and_says_why(checks):
+    stages, _ = checks
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS")
+    }
+    measured = stages.run_measured(TWO_CHILDREN, None, env, 60, tree_peak=True)
+    # The command still runs, measured as without a scope.
+    assert measured.process.returncode == 0 and measured.peak_rss_mib > 128
+    assert measured.tree_peak_mib is None and measured.tree_peak_unavailable
+    stats = stages.compile_stats(measured, measured)
+    assert stats["compile_peak_unavailable"] == measured.tree_peak_unavailable
+    names = [r["name"] for r in stages.compile_rows("c", stats)]
+    assert "c/compile_peak_mib" not in names and "c/compile_peak_rss_mb" in names
+
+
+def test_a_warm_compile_keeps_only_the_kernel_objects_and_headers(checks, tmp_path):
+    stages, _ = checks
+    cache = tmp_path / "cache"
+    for name in ("objects", "pch", "builds", "devices", "final.prj", "0123abcd"):
+        (cache / name).mkdir(parents=True)
+        (cache / name / "kept").write_text("")
+    (cache / "final.xclbin").write_text("")
+    elsewhere = tmp_path / "design.elf"
+    elsewhere.write_text("")
+    stages.clear_for_warm(str(cache), [str(elsewhere), str(tmp_path / "absent")])
+    assert sorted(p.name for p in cache.iterdir()) == ["objects", "pch"]
+    assert (cache / "objects/kept").exists() and (cache / "pch/kept").exists()
+    assert not elsewhere.exists()
+
+
+def test_llama_publishes_each_stage_cold_and_warm(checks):
+    stages, llama = checks
+    compiled = {
+        "compile_s": 19.8,
+        "compile_s_warm": 0.5,
+        **stages.stage_rows(str(MOBILENET), 19.8, ""),
+        **stages.stage_rows(str(SHIM), 0.5, "_warm"),
+    }
+    assert stages.stage_rows(str(MOBILENET), None, "") == {}
+    rows = llama.aggregate(
+        llama.parse_correctness("", 1),
+        llama.parse_timing("", 1),
+        llama.parse_generate("", 1),
+        {},
+        {},
+        {},
+        compiled,
+    )
+    by_name = {r["name"].rsplit("/", 1)[1]: r for r in rows}
+    assert by_name["compile_place_s"]["value"] == 0.96
+    assert by_name["compile_kernels_s"]["value"] == 15.72
+    assert by_name["compile_aiecc_wall_s"]["value"] == 17.42
+    assert by_name["compile_outside_aiecc_s"]["value"] == 2.38
+    assert by_name["compile_place_s_warm"]["unit"] == "s"
+    assert {f"{m}_warm" for m in stages.STAGE_METRICS} <= by_name.keys()
+
+
+def test_yolo26n_publishes_each_stage_cold_and_warm(checks):
+    stages, _ = checks
+    yolo = importlib.import_module("yolo26n_hw")
+    compiled = {
+        "compile_s": 19.8,
+        "compile_s_warm": 0.5,
+        **stages.stage_rows(str(MOBILENET), 19.8, ""),
+        **stages.stage_rows(str(SHIM), 0.5, "_warm"),
+    }
+    rows = yolo.aggregate(
+        yolo.parse_correctness("", 1), yolo.parse_timing(""), {}, compiled
+    )
+    by_name = {r["name"].rsplit("/", 1)[1]: r for r in rows}
+    assert all(r["name"].startswith("yolo26n/640/") for r in rows)
+    assert by_name["compile_place_s"]["value"] == 0.96
+    assert by_name["compile_kernels_s"]["value"] == 15.72
+    assert by_name["compile_outside_aiecc_s"]["value"] == 2.38
+    assert {
+        f"{m}{suffix}" for m in stages.STAGE_METRICS for suffix in ("", "_warm")
+    } <= by_name.keys()
+    # A run that never verified still says so, with nothing to time.
+    assert by_name["images_passed"] == {
+        "name": "yolo26n/640/images_passed",
+        "unit": "images",
+        "value": 0,
+        "range": "of 0",
+    }
+    assert not any(n.startswith(("us_per_image", "fps")) for n in by_name)
+
+
+def test_yolo26n_reads_the_newest_build_in_its_cache(checks, tmp_path):
+    stages, _ = checks
+    yolo = importlib.import_module("yolo26n_hw")
+    assert yolo.newest_build(str(tmp_path)) is None
+    for name, mtime in (("older", 1_000_000), ("newer", 2_000_000)):
+        build = tmp_path / name
+        build.mkdir()
+        (build / stages.PROFILE_NAME).write_text(SHIM.read_text())
+        os.utime(build / stages.PROFILE_NAME, (mtime, mtime))
+    (tmp_path / "objects").mkdir()
+    newest = yolo.newest_build(str(tmp_path))
+    assert newest == str(tmp_path / "newer")
+    (tmp_path / "newer" / "design.elf").write_bytes(b"\0" * 4096)
+    assert yolo.artifact_stats(newest) == {"elf_bytes": 4096}
+    assert yolo.artifact_stats(str(tmp_path / "older")) == {}
+    assert yolo.artifact_stats(None) == {}

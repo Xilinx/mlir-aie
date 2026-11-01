@@ -233,7 +233,6 @@ class CMakeBuild(build_ext):
             # Disables generation of "version soname" (i.e. libFoo.so.<version>), which
             # causes pure duplication of various shlibs for Python wheels.
             "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
-            "-DLLVM_CCACHE_BUILD=ON",
             f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
             f"-DAIE_VITIS_COMPONENTS={os.getenv('AIE_VITIS_COMPONENTS', 'AIE2')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
@@ -550,7 +549,6 @@ setup(
     ),
     long_description_content_type="text/markdown",
     author="AMD Inc.",
-    author_email="joseph.melber@amd.com",
     url="https://github.com/Xilinx/mlir-aie",
     license="Apache-2.0 WITH LLVM-exception",
     license_files=["LICENSE"],

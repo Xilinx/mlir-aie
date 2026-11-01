@@ -51,3 +51,28 @@ module {
     }
   }
 }
+
+// -----
+
+// The same holds for a core that loops forever with scf.while.
+
+module {
+  aie.device(npu1_1col) {
+    %shim_noc_tile_0_0 = aie.tile(0, 0)
+    %tile_0_2 = aie.tile(0, 2)
+    aie.objectfifo @fifo_in(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<32x32xi32>>
+    %core_0_2 = aie.core(%tile_0_2) {
+      %true = arith.constant true
+      scf.while : () -> () {
+        scf.condition(%true)
+      } do {
+        // expected-error@+1 {{cannot release more elements than are already acquired}}
+        %1 = aie.objectfifo.acquire @fifo_in (Consume, 1) : memref<32x32xi32>
+        aie.objectfifo.release @fifo_in (Consume, 1)
+        aie.objectfifo.release @fifo_in (Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}

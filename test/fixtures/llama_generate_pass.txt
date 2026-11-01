@@ -1,0 +1,4 @@
+The capital of France is Paris. It is the most populous city in the country and the most populous city in the European Union. Paris is the most visited city in the world. It
+prompt 6 tokens, generated 32, median of 5: TTFT 124.6 ms (min 124.3; NPU dispatch 119.4, host 5.2), decode 22.14 tok/s
+check: 28/32 tokens are numpy_llama_ref's argmax
+oracle: 32/32 generated tokens pass

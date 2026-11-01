@@ -8,7 +8,10 @@
 # Core Data Memory
 
 Every AIE compute tile has one small block of local data memory, 64 kB on npu2
-for example; IRON reads the size as `dev.core_memory_bytes`. Three things share that block:
+for example; IRON reads the size as `dev.core_memory_bytes`, and the banks the
+buffer allocator places in as `dev.core_memory_banks` of
+`dev.core_memory_bank_bytes` each: four of 16 kB on AIE2 and AIE2P, each two
+hardware banks interleaved. Three things share that block:
 
 - the **stack**, at offset zero by default;
 - the **`aie.buffer`s** that the buffer allocator places on the tile: the L1
@@ -32,22 +35,28 @@ This page covers the **stack** and the **core's own sections**: sizing,
 bank placement, the attributes and flags that control them, and what to do
 when a diagnostic fires.
 
-One rule governs both checks: *the compiler measures and reports, you declare
-and rebuild.* `aiecc` never writes `stack_size` or `data_size`. A value you set
-explicitly stays as you wrote it (`data_size = 0` is legal; `stack_size` must
-be positive). When the measured requirement exceeds the declared value, the
-build reports the number to set and stops.
+One rule governs both: *declared wins, measured stands in.* `aiecc` never
+writes `stack_size` or `data_size`. A value you set explicitly stays as you
+wrote it (`data_size = 0` is legal; `stack_size` must be positive), and when the
+measured requirement exceeds it, the build reports the number to set and stops.
+When the attribute is absent, `aiecc` measures the core before placement and
+reserves what it found.
 
 ## The stack: `stack_size`
 
-`stack_size` is a per-core attribute on `aie.core`. A core that leaves it
-absent uses the target default from
-`AIETargetModel::getDefaultCoreStackSize()`, currently 1024 bytes, which IRON
-reads as `dev.default_core_stack_bytes`. IRON spells it on the `Worker`:
+`stack_size` is a per-core attribute on `aie.core`. Most cores leave it absent,
+and `aiecc` then reserves the core's measured stack requirement, never less
+than the target default from `AIETargetModel::getDefaultCoreStackSize()`
+(currently 1024 bytes, which IRON reads as `dev.default_core_stack_bytes`). A
+core that fits the default keeps the layout it would have had anyway. To fix
+the size yourself, IRON spells it on the `Worker`:
 
 ```python
 Worker(core_fn, [args], stack_size=4096)
 ```
+
+Set it where `aiecc` cannot measure the core, as in a Chess build, or to hold
+headroom above the measurement.
 
 The stack grows upward from its assigned address. A core whose frames exceed
 the reservation can overwrite buffers or static data beyond it. `aiecc`
@@ -65,18 +74,44 @@ calls the core body, which calls its kernels. `_main_init` holds a frame that
 stays live across the whole chain, so it counts. `__start` establishes the
 stack pointer, so its own frame counts as 0.
 
-The check runs once, after each core is linked, and the Peano link keeps the
-relocations (`-Wl,--emit-relocs`) that the walk needs. `aiecc` writes the
-result to the `measured_stack_size` attribute on the `aie.core`, so you can
-inspect it:
+`aiecc` walks the call graph twice. Before placement, it links each core once
+against permissive regions, the same probe link that sizes the core's static
+data (see [`measured_data_size`](#measured_data_size)). An exact result goes to
+the `measured_stack_size` attribute on the `aie.core`, and a core without
+`stack_size` reserves it, rounded up to the stack alignment. Tile placement
+runs before the probe, so `--placer=sa_placer` budgets the declared or default
+stack. When the measured stack then doesn't fit beside the tile's buffers,
+buffer placement fails and its memory map notes the measurement. The probe links
+the same objects with the same garbage collection as the final link. After the
+final link, `aiecc` walks again and checks the reservation against the result.
+Both links keep the relocations (`-Wl,--emit-relocs`) that the walk needs. You
+can inspect the result:
 
 ```mlir
-aie.core(%tile_0_2) { ... } {stack_size = 8192 : i32, measured_stack_size = 4128 : i32}
+aie.core(%tile_0_2) { ... } {measured_stack_size = 4128 : i32}
 ```
 
 Pass `--get=measured_stack_sizes.mlir` to dump that module. A `stack_size`
-below `measured_stack_size` fails the build. `measured_stack_size` stays absent
-when `aiecc` cannot measure the core; see the stack-contribution overrides below.
+below `measured_stack_size` fails the build.
+
+A core without `stack_size` keeps the target default, guarded by the post-link
+check, when there is no exact measurement before placement:
+
+- the build uses Chess (`--xchesscc`/`--xbridge`), whose link carries no
+  `.stack_sizes`;
+- the core comes prebuilt (`elf_file`);
+- `--no-measure-stack-size` or `--default-stack-size` is passed;
+- the call graph has a cycle, or reaches a function with no `.stack_sizes`
+  entry, so the walk yields at best a lower bound (see the stack-contribution
+  overrides below);
+- the probe link fails.
+
+Peano currently builds its compiler-rt builtins (`__divsf3`, `__modsi3` and the
+like) without `.stack_sizes`. `aiecc` carries their frames per architecture in
+a table generated from the pinned Peano
+(`utils/generate_compiler_rt_stack_frames.py`), so a kernel that calls them
+still measures exactly. A lit test fails when a Peano update changes a frame.
+Peano's libc and libm are not in the table.
 
 ### Stack placement: `stack_bank` and `stack_address`
 
@@ -107,6 +142,16 @@ so aiecc leaves it at Peano's unrestricted default rather than promise the
 bank-conflict model something untrue. `stack_bank` is the attribute that names
 a bank, and it must hold the whole stack -- a `stack_bank` whose stack runs
 past it is an error, because the two would disagree.
+
+The legacy stack at offset zero claims bank A when it fits there. Peano
+compiles the core's own object (the core body, MLIR-lowered functions and
+`link_with_mode = "merge"` kernels) with `-aie-stack-addrspace` naming bank A,
+and that happens before a measured size exists. Kernels in `link_files` are
+compiled separately and never carry the claim. A measured stack may therefore
+grow past bank A, provided every frame of the core's own object ends inside
+the bank. When one does not, as with a deep merged kernel, the build fails and
+names the `stack_size` to declare. A declared size is known before compile, so
+a stack that spans banks is then compiled without the claim.
 
 Moving within bank A works with both Peano and Chess. Moving to banks B–D
 through `aiecc` requires Peano compilation and linking, with no separately
@@ -355,7 +400,8 @@ Separate flags disable measurements and checks, for debugging or a build that
 has to skip them:
 
 - **`--no-measure-stack-size`** drops the stack measurement and its check, so no
-  `measured_stack_size` reaches the IR.
+  `measured_stack_size` reaches the IR and a core without `stack_size` gets the
+  target default.
 - **`--no-measure-data-size`** drops ordinary static-data measurement before
   placement and after linking, including its `data_size` check. Per-bank
   measurements and reservations remain enabled. Explicit `data_size`
@@ -370,8 +416,9 @@ A design-wide stand-in for the built-in default covers any core that leaves
 - **`--default-stack-size=<bytes>`** assumes this many bytes in place of
   `AIETargetModel::getDefaultCoreStackSize()` for any core without an explicit
   `stack_size`. The rest of the build then treats that core as if it declared
-  `stack_size` explicitly, and the diagnostics call the value assumed. A core
-  with an explicit `stack_size` keeps it.
+  `stack_size` explicitly, and the diagnostics call the value assumed, so
+  `aiecc` sizes none of those stacks from the measurement. A core with an
+  explicit `stack_size` keeps it.
 
 ## How placement chooses addresses
 
@@ -403,10 +450,18 @@ buffer has nowhere to go, the allocator undoes an earlier choice and tries that
 buffer's next-best address. It explores in rank order, so the first arrangement
 it tries is the one the ranking prefers and most designs never backtrack at all.
 
-The search is bounded at 20000 placements per tile — packing around fixed
-obstacles is NP-hard, and the bound is a count rather than a time limit so
-builds stay reproducible. Reaching it is reported (see the diagnostics below)
-rather than passed off as "no such layout exists".
+Backtracking only tries positions flush against what is already placed, so a
+layout where a buffer must sit against one placed after it is out of its reach.
+When the ranked search fails, an exhaustive one takes over: it slides every
+buffer down into address order and chooses which buffer comes next, which
+reaches every layout that exists. Most designs never get there, and those that
+do only need a legal layout, so it does not rank.
+
+Each search is bounded by the pass's `placement-budget` option, 100000
+placements per tile by default — packing around fixed obstacles is NP-hard, and
+the bound is a count rather than a time limit so builds stay reproducible.
+Within the bound, "no room" is a proof that no layout exists; reaching it is
+reported (see the diagnostics below) rather than passed off as one.
 
 - **`Buffer(mem_bank=...)`** pins a buffer to a bank. The pin is honored or the
   build fails; it is never silently dropped.
@@ -434,13 +489,30 @@ graph is unavailable. The chess/BCF link produces such an ELF, so a
 requirement is at least M bytes and may be higher` (warning).** The linked core
 carries no `.stack_sizes` entry for the functions the diagnostic names, and
 their frames count as 0. `M` is therefore a lower bound: `aiecc` still fails a
-core that declares less than `M`, and writes no `measured_stack_size`. Compile
-the named source with `-fstack-size-section`, or set `stack_size_override` on
-the affected kernel.
+core that declares less than `M`, and writes no `measured_stack_size`; a core
+without `stack_size` keeps the device default. Compile the named source with
+`-fstack-size-section`, or set `stack_size_override` on the affected kernel.
 
-**`stack_size is absent, so this core uses the device default of M bytes, but
-it needs N bytes` (error).** Set `stack_size = N`, or `Worker(stack_size=N)`,
-and rebuild.
+**`stack_size is absent and this core's stack could not be measured exactly
+before placement, so it uses the device default of M bytes, but it needs at
+least N bytes` (error).** One of the fallback cases under
+[The stack](#the-stack-stack_size) applied, and the post-link check caught the
+shortfall. Set `stack_size = N`, or `Worker(stack_size=N)`, and rebuild, or
+remove the cause, for example by compiling a named source with
+`-fstack-size-section`.
+
+**`this core needs a N-byte stack. Its own code was compiled to keep its stack
+frames in memory bank A, but those frames reach F bytes into the stack, past
+the R bytes left in that bank` (error).** A measured stack outgrew the bank
+claim described under
+[Stack placement](#stack-placement-stack_bank-and-stack_address). Set
+`stack_size = N` and rebuild, so that the core is compiled for a stack that
+spans banks.
+
+**`internal error: placement reserved M bytes of stack from this core's probe
+link, but its final link needs N bytes` (error).** The probe and the final link
+disagree, which they should not. Please file an issue with the design.
+Setting `stack_size = N` works around it.
 
 **`stack_size = M is insufficient: this core needs N bytes` (error).** The same
 case, with `stack_size` already set explicitly to a value below the
@@ -498,12 +570,13 @@ may well exist while being too fragmented to use, so shrinking any extent can
 help, not only the one named. Lower `data_size`, shrink or move buffers, or
 lower `stack_size`.
 
-**`the search hit its 20000-placement budget with arrangements still untried`
+**`the search hit its 100000-placement budget with arrangements still untried`
 (note, attached to the error above).** The allocator gave up rather than proved
 the design infeasible, so a layout may exist that it did not reach. This is
-rare and worth reporting: please file an issue with the design. Pinning a
-buffer or two with `mem_bank` cuts the search down and often gets a build
-through in the meantime.
+rare and worth reporting: please file an issue with the design. Raising
+`placement-budget` (`--aie-assign-buffer-addresses='placement-budget=N'`) lets
+the search go further, and pinning a buffer or two with `mem_bank` cuts it down;
+either often gets a build through in the meantime.
 
 **`<what> requires N bytes, which cannot fit in bank B (C bytes total)`
 (error).** A `mem_bank` pin, or a kernel's bank-pinned static data, asks for

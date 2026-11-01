@@ -16,7 +16,14 @@
 static inline v32bfloat16 inv_rms_limbs(float sum_sq, int32_t cols,
                                         float epsilon) {
   // A row fits in 64 KB, so cols < 2^15 and the quotient keeps 17+ bits.
+  // NORM_COLS, the row length the factory built for, folds the divide.
+#ifdef NORM_COLS
+  int32_t inv_cols_q31 =
+      (int32_t)((uint32_t)cols == NORM_COLS ? 0x7fffffffu / NORM_COLS
+                                            : 0x7fffffffu / (uint32_t)cols);
+#else
   int32_t inv_cols_q31 = (int32_t)(0x7fffffffu / (uint32_t)cols);
+#endif
   v32bfloat16 inv_cols =
       limbs(broadcast_to_v16accfloat(::aie::to_float<float>(inv_cols_q31, 31)));
   v32bfloat16 s = limbs(broadcast_to_v16accfloat(sum_sq));
@@ -89,10 +96,11 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
 
   if (remaining > 0) {
     int start_idx = vector_chunks * N;
+    // A bf16 square is exact in f32: the vector multiply gives the float a
+    // scalar multiply (a __mulsf3 call) would, and the sum keeps its order.
     for (int i = 0; i < remaining; i++) {
-      T val = input[start_idx + i];
-      float square = static_cast<float>(val) * static_cast<float>(val);
-      sum_sq += square;
+      ::aie::vector<T, 16> v = ::aie::broadcast<T, 16>(input[start_idx + i]);
+      sum_sq += ::aie::mul(v, v).template to_vector<float>()[0];
     }
   }
 

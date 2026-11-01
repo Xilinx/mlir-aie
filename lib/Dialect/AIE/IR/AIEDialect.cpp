@@ -29,6 +29,7 @@
 
 #include <limits>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -167,6 +168,20 @@ Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
   return nullptr;
 }
 
+xilinx::AIE::NamedOpTable::NamedOpTable(Operation *symbolTableOp)
+    : context(symbolTableOp->getContext()) {
+  if (!symbolTableOp->hasTrait<mlir::OpTrait::SymbolTable>() ||
+      symbolTableOp->getRegion(0).empty()) {
+    return;
+  }
+  for (Operation &op : symbolTableOp->getRegion(0).front()) {
+    if (auto name = op.getAttrOfType<StringAttr>(
+            mlir::SymbolTable::getSymbolAttrName())) {
+      ops.try_emplace(name, &op);
+    }
+  }
+}
+
 Operation *xilinx::AIE::lookupNamedOpIn(Operation *symbolTableOp,
                                         StringRef name) {
   return lookupNamedOpIn(symbolTableOp,
@@ -182,24 +197,23 @@ Operation *xilinx::AIE::lookupNamedOp(Operation *from, StringRef name) {
   return lookupNamedOp(from, StringAttr::get(from->getContext(), name));
 }
 
-std::string xilinx::AIE::generateUniqueSymbolName(
-    mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
+std::string xilinx::AIE::NamedOpTable::uniqueName(llvm::StringRef prefix,
+                                                  unsigned &counter) const {
   std::string name;
   do {
     name = (prefix + llvm::Twine(counter++)).str();
-  } while (lookupNamedOpIn(symbolTableOp, llvm::StringRef(name)));
+  } while (ops.count(StringAttr::get(context, name)));
   return name;
 }
 
 LogicalResult
 xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   std::array<unsigned, 3> maxRanks = op.getArrayAttrMaxRanks();
-  if (!(op.getMixedOffsets().size() == 1 && maxRanks[0] == 1) && // NOLINT
-      op.getMixedOffsets().size() != op.getMixedSizes().size())
-    return op->emitError(
-               "expected mixed offsets rank to match mixed sizes rank (")
-           << op.getMixedOffsets().size() << " vs " << op.getMixedSizes().size()
-           << ") so the rank of the result type is well-formed.";
+  // Count checks FIRST, matching mlir::detail::verifyOffsetSizeAndStrideOp.
+  // getMixedOffsets()/getMixedSizes() assert that the number of dynamic
+  // operands equals the number of kDynamic sentinels in the static list, so
+  // running the rank comparison before these validates nothing and aborts on
+  // malformed input instead of diagnosing it.
   if (failed(verifyListOfOperandsOrIntegers(
           op, "offset", maxRanks[0], op.getStaticOffsets(), op.getOffsets())))
     return failure();
@@ -209,6 +223,15 @@ xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   if (failed(verifyListOfOperandsOrIntegers(
           op, "stride", maxRanks[2], op.getStaticStrides(), op.getStrides())))
     return failure();
+  // Each getMixed* call rebuilds its list, so read them once.
+  const size_t numMixedOffsets = op.getMixedOffsets().size();
+  const size_t numMixedSizes = op.getMixedSizes().size();
+  if (!(numMixedOffsets == 1 && maxRanks[0] == 1) && // NOLINT
+      numMixedOffsets != numMixedSizes)
+    return op->emitError(
+               "expected mixed offsets rank to match mixed sizes rank (")
+           << numMixedOffsets << " vs " << numMixedSizes
+           << ") so the rank of the result type is well-formed.";
   for (int64_t offset : op.getStaticOffsets())
     if (offset < 0 && !ShapedType::isDynamic(offset))
       return op->emitError("expected offsets to be non-negative, but got ")
@@ -315,6 +338,89 @@ static int64_t getDimsMaxIdx(ArrayRef<BDDimLayoutAttr> dims) {
     maxIdx += dim.getStride() * (dim.getSize() - 1);
   }
   return maxIdx;
+}
+
+int64_t xilinx::AIE::StreamWindow::transfer() const {
+  int64_t elements = 1;
+  for (BDDimLayoutAttr dim : inner)
+    elements *= dim.getSize();
+  return elements;
+}
+
+LogicalResult xilinx::AIE::inferStreamWindow(
+    ArrayRef<BDDimLayoutAttr> dims, ArrayRef<BDPadLayoutAttr> pads,
+    int64_t objectSize, function_ref<InFlightDiagnostic()> emitError,
+    StreamWindow &window) {
+  if (dims.size() < 2)
+    return emitError() << "a walk over a stream needs an outer dimension of "
+                          "outputs and at least one inner dimension";
+  StreamWindow w;
+  w.objectSize = objectSize;
+  w.outputs = dims.front().getSize();
+  int64_t outerStride = dims.front().getStride();
+  if (outerStride % objectSize)
+    return emitError() << "a walk over a stream steps whole objects between "
+                          "outputs, but its outer stride "
+                       << outerStride << " is not a multiple of the "
+                       << objectSize << "-element object";
+  w.advance = outerStride / objectSize;
+  w.inner.assign(dims.begin() + 1, dims.end());
+  w.rowDim = -1;
+  int64_t reach = 0;
+  for (auto [index, dim] : llvm::enumerate(w.inner)) {
+    if (dim.getSize() > 1 && dim.getStride() >= objectSize) {
+      if (w.rowDim >= 0 || dim.getStride() != objectSize)
+        return emitError() << "a walk over a stream may step one inner "
+                              "dimension by exactly one "
+                           << objectSize << "-element object";
+      w.rowDim = index;
+      continue;
+    }
+    reach += dim.getStride() * (dim.getSize() - 1);
+  }
+  if (reach >= objectSize)
+    return emitError() << "a walk over a stream reads " << reach + 1
+                       << " elements of each object, past the " << objectSize
+                       << "-element object";
+  w.span = w.rowDim >= 0 ? w.inner[w.rowDim].getSize() : 1;
+  w.top = w.bottom = 0;
+  for (auto [index, pad] : llvm::enumerate(pads)) {
+    if (index == 0) {
+      w.top = pad.getConstPadBefore();
+      w.bottom = pad.getConstPadAfter();
+    } else if (pad.getConstPadBefore() || pad.getConstPadAfter()) {
+      return emitError() << "a walk over a stream pads only its outer "
+                            "dimension, with the objects before and after "
+                            "the stream";
+    }
+  }
+  w.objects = (w.outputs - 1) * w.advance + w.span - w.top - w.bottom;
+  if (w.objects < w.span || w.top >= w.span || w.bottom >= w.span)
+    return emitError() << "a walk over a stream of " << w.objects
+                       << " objects with " << w.top << " and " << w.bottom
+                       << " padding objects leaves an output without data";
+  window = w;
+  return success();
+}
+
+SmallVector<StreamWindowStep>
+xilinx::AIE::streamWindowSteps(const StreamWindow &w) {
+  SmallVector<StreamWindowStep> steps;
+  int64_t acquired = 0, released = 0;
+  for (int64_t j = 0; j < w.outputs; j++) {
+    int64_t start = j * w.advance - w.top;
+    int64_t newest = std::max(
+        acquired, start + std::clamp<int64_t>(w.objects - start, 0, w.span));
+    int64_t next =
+        j + 1 < w.outputs
+            ? std::clamp<int64_t>((j + 1) * w.advance - w.top, 0, newest)
+            : w.objects;
+    next = std::max(released, next);
+    steps.push_back({j * w.advance, newest - acquired, next - released});
+    acquired = newest;
+    released = next;
+  }
+  return steps;
 }
 
 namespace {
@@ -507,10 +613,75 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ObjectFifoTransportAttr
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+ObjectFifoTransportAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                                ObjectFifoTransportMode mode,
+                                PacketInfoAttr packet) {
+  // A packet header rides a stream-switch connection the DMAs drive, so only
+  // the paths that may use the DMAs can honour one.
+  if (packet && mode == ObjectFifoTransportMode::SharedMem)
+    return emitError() << "`packet` belongs to a dma or auto transport, not "
+                       << stringifyObjectFifoTransportMode(mode);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ObjectFifoEndPortAttr
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+ObjectFifoEndPortAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                              WireBundle bundle,
+                              std::optional<uint32_t> channel) {
+  if (bundle != WireBundle::DMA && bundle != WireBundle::Core)
+    return emitError() << "an objectFifo end is driven by a DMA channel or a "
+                          "Core stream port, not "
+                       << stringifyWireBundle(bundle);
+  if (bundle == WireBundle::Core) {
+    if (!channel)
+      return emitError() << "a Core end needs its stream port";
+    if (*channel > 1)
+      return emitError() << "a Core end's stream port is 0 or 1, not "
+                         << *channel;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ObjectFifoCreateOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult ObjectFifoCreateOp::verify() {
+  for (Type fifoType : {Type(getElemType()), getConsumerElemTypeOrDefault()})
+    if (MemRefType memref = cast<AIEObjectFifoType>(fifoType).getElementType();
+        !memref.hasStaticShape())
+      return emitOpError("type should be static shaped memref, but got ")
+             << memref;
+
+  // MLIR carries an attribute it does not know about rather than rejecting it,
+  // so IR written against the switches these replaced would keep parsing and
+  // quietly take the default path instead. Name them to fail that loudly.
+  static constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
+      replaced[] = {
+          {"via_DMA", "transport = #aie.transport<dma>"},
+          {"packet", "transport = #aie.transport<dma, packet = "
+                     "#aie.packet_info<>>"},
+          {"packet_id", "transport = #aie.transport<dma, packet = "
+                        "#aie.packet_info<pkt_id = 3>>"},
+          {"aie_stream", "prod_port = #aie.end_port<Core : 0> or cons_ports "
+                         "= [#aie.end_port<Core : 0>]"},
+          {"aie_stream_port", "prod_port = #aie.end_port<Core : 0> or "
+                              "cons_ports = [#aie.end_port<Core : 0>]"},
+          {"prod_dma_channel", "prod_port = #aie.end_port<DMA : 1>"},
+          {"cons_dma_channels", "cons_ports = [#aie.end_port<DMA : 1>]"}};
+  for (auto [gone, replacement] : replaced)
+    if ((*this)->hasAttr(gone))
+      return emitOpError("`")
+             << gone << "` has been replaced; write " << replacement;
+
   if (isa<ArrayAttr>(getElemNumber())) {
     if (size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
         numDepths != getConsumerTiles().size() + 1) // +1 for producer depth
@@ -518,15 +689,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
-  if (getAieStream() && (getProdDmaChannel() || getConsDmaChannels())) {
-    return emitOpError(
-        "cannot pin a DMA channel on an objectfifo that also uses aie_stream "
-        "(stream ports bypass DMA channels)");
-  }
-
-  if (getPacketId() && !getPacket()) {
-    return emitOpError("packet_id is only meaningful on a packet objectfifo");
-  }
+  if (ArrayAttr consPorts = getConsPortsAttr();
+      consPorts && consPorts.size() != getConsumerTiles().size())
+    return emitOpError("`cons_ports` has ")
+           << consPorts.size() << " entries for " << getConsumerTiles().size()
+           << " consumers";
 
   // Helper to get tile interface from Value
   auto getTileLikeFromValue = [](Value v) -> TileLike {
@@ -568,23 +735,19 @@ LogicalResult ObjectFifoCreateOp::verify() {
                        "unavailable on this target");
   }
 
-  if (getAieStreamPort().has_value()) {
-    if (!getAieStream().has_value())
-      return emitError("`aie_stream` must be defined");
-  }
-
-  if (auto aieStream = getAieStream()) {
-    int aieStreamVal = *aieStream;
+  if (usesStream()) {
     if (getConsumerTiles().size() > 1)
-      return emitError("`aie_stream` can only be used in 1-to-1 object FIFOs");
+      return emitError("a Core stream port end can only be used in 1-to-1 "
+                       "object FIFOs");
 
-    if (!getAieStreamPort().has_value())
-      return emitError("`aie_stream_port` must be defined");
+    if (forcesSharedMemory())
+      return emitError("a Core stream port end sends over the stream, not "
+                       "through shared memory");
 
-    if (aieStreamVal == 0 || aieStreamVal == 2) {
+    if (streamsFromProducer()) {
       if (producerTile.isShimTile() || producerTile.isMemTile())
         return emitError(
-            "`aie_stream` is not available for shim and mem tiles");
+            "a Core stream port end is not available for shim and mem tiles");
 
       if (getRepeatCount().has_value())
         return emitError("`repeat_count` unavailable on stream end");
@@ -600,11 +763,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "unavailable on stream end");
     }
 
-    if (aieStreamVal == 1 || aieStreamVal == 2) {
+    if (streamsToConsumer(0)) {
       TileLike consTile = getTileLikeFromValue(getConsumerTiles()[0]);
       if (consTile && (consTile.isShimTile() || consTile.isMemTile()))
         return emitError(
-            "`aie_stream` is not available for shim and mem tiles");
+            "a Core stream port end is not available for shim and mem tiles");
     }
 
     if (!getDimensionsFromStreamPerConsumer()[0].empty())
@@ -689,6 +852,15 @@ int64_t ObjectFifoPoolOp::getObjectSize() {
   return llvm::cast<MemRefType>(getElemType()).getNumElements();
 }
 
+int64_t ObjectFifoPoolOp::getObjectsPerBuffer() {
+  if (!getContiguous())
+    return 1;
+  int64_t objects = getDepth();
+  if (auto zeros = getZeroObjects())
+    objects += (*zeros)[0] + (*zeros)[1];
+  return objects;
+}
+
 LogicalResult ObjectFifoPoolOp::verify() {
   auto &target = (*this)->getParentOfType<DeviceOp>().getTargetModel();
   bool semaphoreLocks = target.hasProperty(AIETargetModel::UsesSemaphoreLocks);
@@ -705,8 +877,19 @@ LogicalResult ObjectFifoPoolOp::verify() {
     }
   }
 
+  if (auto zeros = getZeroObjects()) {
+    if (!getContiguous() || zeros->size() != 2 ||
+        llvm::any_of(*zeros, [](int32_t count) { return count < 0; }))
+      return emitOpError("'zeroObjects' expects [before, after] counts on a "
+                         "contiguous pool");
+  }
+
   if (auto buffers = getBuffers()) {
-    if (static_cast<int64_t>(buffers->size()) != getDepth()) {
+    if (getContiguous() && buffers->size() != 1) {
+      return emitOpError("expects one buffer holding its objects side by side");
+    }
+    if (!getContiguous() &&
+        static_cast<int64_t>(buffers->size()) != getDepth()) {
       return emitOpError("expects 'depth' buffers");
     }
   }
@@ -793,7 +976,7 @@ SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {
 
 StringRef ObjectFifoPoolOp::getBaseName() {
   StringRef name = getSymName();
-  return name.consume_back("_pool") ? name : getSymName();
+  return name.consume_back("__pool") ? name : getSymName();
 }
 
 //===----------------------------------------------------------------------===//
@@ -937,7 +1120,44 @@ int64_t ObjectFifoDmaEndpointOp::getNumDescriptors() {
   ObjectFifoPoolOp pool = getPoolOp();
   if (!pool)
     return 0;
+  if (pool.getContiguous()) {
+    // Taking k turns a pass, k descriptors walk the objects, each k apart.
+    if (!walksStream()) {
+      SmallVector<ObjectFifoDmaEndpointOp> ends = turnEndpoints(*this);
+      if (ends.empty())
+        return 1;
+      ArrayRef<Attribute> turns = getTurnsAttr().getValue();
+      SmallVector<std::pair<int64_t, int64_t>> counts;
+      for (ObjectFifoDmaEndpointOp end : ends)
+        counts.push_back(
+            {llvm::count(turns, FlatSymbolRefAttr::get(end.getSymNameAttr())),
+             end.getPoolOp().getContiguous() ? 0 : end.getNumDescriptors()});
+      return llvm::count(turns, FlatSymbolRefAttr::get(getSymNameAttr())) *
+             turnPasses(counts);
+    }
+    StreamWindow window;
+    return succeeded(getStreamWindow(window)) ? window.outputs : 0;
+  }
   return pool.getDepth() * getSelectedSegments().size();
+}
+
+bool ObjectFifoDmaEndpointOp::walksStream() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  auto dims = getDimensions();
+  return pool && pool.getContiguous() && drains() && dims && !dims->empty() &&
+         !(*dims)[0].getValue().empty();
+}
+
+LogicalResult ObjectFifoDmaEndpointOp::getStreamWindow(StreamWindow &window) {
+  auto dims = getDimensions();
+  if (!dims || dims->empty())
+    return emitOpError("walks no stream: it has no dimensions");
+  ArrayRef<BDPadLayoutAttr> pads;
+  if (auto padding = getPadDimensions(); padding && !padding->empty())
+    pads = (*padding)[0].getValue();
+  return inferStreamWindow((*dims)[0].getValue(), pads,
+                           getPoolOp().getObjectSize(),
+                           [&] { return emitOpError(); }, window);
 }
 
 int64_t ObjectFifoDmaEndpointOp::getRepeat() {
@@ -950,8 +1170,50 @@ bool ObjectFifoDmaEndpointOp::repeatsInHardware() {
   return getRepeat() > 1 && getNumDescriptors() == 1 && !getIterCount();
 }
 
+int64_t ObjectFifoDmaEndpointOp::getDispatchPasses() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  std::optional<ArrayAttr> turns = getDispatch();
+  if (!pool || !turns || turns->empty())
+    return 1;
+  int64_t depth = std::max<int64_t>(pool.getDepth(), 1);
+  return std::lcm(depth, static_cast<int64_t>(turns->size())) / depth;
+}
+
+SmallVector<ObjectFifoDmaEndpointOp>
+xilinx::AIE::turnEndpoints(ObjectFifoDmaEndpointOp endpoint) {
+  SmallVector<ObjectFifoDmaEndpointOp> ends;
+  if (std::optional<ArrayAttr> turns = endpoint.getTurns())
+    for (auto name : turns->getAsRange<FlatSymbolRefAttr>())
+      if (auto end =
+              SymbolTable::lookupNearestSymbolFrom<ObjectFifoDmaEndpointOp>(
+                  endpoint, name);
+          end && !llvm::is_contained(ends, end))
+        ends.push_back(end);
+  return ends;
+}
+
+int64_t xilinx::AIE::turnPasses(ArrayRef<std::pair<int64_t, int64_t>> ends) {
+  int64_t passes = 1;
+  for (auto [appearances, count] : ends)
+    if (count > 0)
+      passes = std::lcm(passes, count / std::gcd(count, appearances));
+  return passes;
+}
+
 int64_t ObjectFifoDmaEndpointOp::getNumBDs() {
-  return getNumDescriptors() * (repeatsInHardware() ? 1 : getRepeat());
+  SmallVector<ObjectFifoDmaEndpointOp> ends = turnEndpoints(*this);
+  if (ends.empty())
+    return getNumDescriptors() * (repeatsInHardware() ? 1 : getRepeat()) *
+           getDispatchPasses();
+  if (ends.front() != *this)
+    return 0;
+  ArrayRef<Attribute> turns = getTurnsAttr().getValue();
+  SmallVector<std::pair<int64_t, int64_t>> counts;
+  for (ObjectFifoDmaEndpointOp end : ends)
+    counts.push_back(
+        {llvm::count(turns, FlatSymbolRefAttr::get(end.getSymNameAttr())),
+         end.getPoolOp().getContiguous() ? 0 : end.getNumDescriptors()});
+  return turnPasses(counts) * static_cast<int64_t>(turns.size());
 }
 
 DMAChannelDir ObjectFifoDmaEndpointOp::getRouteDirection() {
@@ -976,6 +1238,58 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
 
   if (failed(verifyEndpoint(*this, pool, getSegments()))) {
     return failure();
+  }
+  if (failed(verifyAssignedPacket(*this, getPacketAttr()))) {
+    return failure();
+  }
+
+  if (std::optional<ArrayAttr> turns = getDispatch()) {
+    if (!drains())
+      return emitOpError("only a draining endpoint can dispatch");
+    if (turns->empty())
+      return emitOpError("dispatch names no destination");
+    if (getPacketAttr())
+      return emitOpError("a dispatching endpoint carries a header per turn in "
+                         "`dispatchPackets`, not one `packet`");
+    if (pool.getRepeatCount().value_or(1) > 1)
+      return emitOpError("cannot dispatch a pool that repeats its objects");
+    if (std::optional<int32_t> iterCount = getIterCount();
+        iterCount && *iterCount % std::max<int64_t>(getDispatchPasses(), 1))
+      return emitOpError("iterCount ")
+             << *iterCount << " is not a whole number of dispatch rounds ("
+             << getDispatchPasses() << " passes over the pool)";
+  }
+  if (std::optional<ArrayAttr> headers = getDispatchPackets()) {
+    std::optional<ArrayAttr> turns = getDispatch();
+    if (!turns || turns->size() != headers->size())
+      return emitOpError("dispatchPackets needs one header per dispatch turn");
+    for (auto header : headers->getAsRange<PacketInfoAttr>())
+      if (failed(verifyAssignedPacket(*this, header, "dispatchPackets")))
+        return failure();
+  }
+  if (std::optional<ArrayAttr> turns = getTurns()) {
+    if (!llvm::is_contained(*turns, FlatSymbolRefAttr::get(getSymNameAttr())))
+      return emitOpError("takes no turn of its own in `turns`");
+    for (auto name : turns->getAsRange<FlatSymbolRefAttr>())
+      if (!SymbolTable::lookupNearestSymbolFrom<ObjectFifoDmaEndpointOp>(*this,
+                                                                         name))
+        return emitOpError("turns names ")
+               << name << ", which is no objectfifo.dma_endpoint";
+    if (getDispatch() || getPacketAttr() || getIterCount() || getRepeat() > 1)
+      return emitOpError("taking turns on a channel, it cannot also dispatch, "
+                         "carry a header, stop after iterCount or repeat");
+    for (ObjectFifoDmaEndpointOp end : turnEndpoints(*this))
+      if (end.getTile() != getTile() || end.getRole() != getRole() ||
+          end.getTurnsAttr() != getTurnsAttr() ||
+          end.getChannelIndexAttr() != getChannelIndexAttr())
+        return emitOpError("takes turns with ")
+               << end.getSymNameAttr()
+               << ", which is not on this tile and channel with the same turns";
+    if (pool.getContiguous() && !walksStream() &&
+        pool.getDepth() % getNumDescriptors())
+      return emitOpError("walks a contiguous pool of ")
+             << pool.getDepth() << " objects in " << getNumDescriptors()
+             << " turns a pass, which do not divide them";
   }
 
   std::optional<ArrayAttr> segmentNames = getSegments();
@@ -1002,6 +1316,11 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
     return emitOpError("nonzero padValue requires a non-empty padDimensions "
                        "entry");
   }
+
+  // A walk over the stream reads across the pool's objects, outputs apart.
+  StreamWindow window;
+  if (walksStream())
+    return getStreamWindow(window);
 
   std::vector<ObjectFifoSegmentOp> selected = getSelectedSegments();
   for (size_t position = 0; position < selectedCount; ++position) {
@@ -1039,12 +1358,10 @@ DMAChannelDir RouteEndpointOp::getRouteDirection() {
   StringRef name = getSymName();
   bool named = false;
   for (auto flow : device.getOps<RouteOp>()) {
-    if (flow.getSource() == name) {
+    if (flow.namesAsSource(name)) {
       return DMAChannelDir::MM2S;
     }
-    named |= llvm::any_of(
-        flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
-        [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; });
+    named |= flow.namesAsDestination(name);
   }
   assert(named && "endpoint is named by no flow, so it has no direction to "
                   "read; --aie-objectfifo-verify rejects this");
@@ -1065,22 +1382,47 @@ LogicalResult RouteEndpointOp::verify() {
   if (!tile) {
     return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   }
-  // getRouteDirection() reads this end's direction off the flow naming it, so a
-  // second mention would leave it ambiguous, including both ends of one flow.
-  StringRef name = getSymName();
-  int flows = 0;
-  for (auto flow : (*this)->getParentOfType<DeviceOp>().getOps<RouteOp>()) {
-    if (flow.getSource() == name) {
-      flows++;
-    }
-    flows += llvm::count_if(
-        flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
-        [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; });
+  if (failed(verifyAssignedPacket(*this, getPacketAttr()))) {
+    return failure();
   }
-  if (flows > 1) {
-    return emitOpError("drives one channel, so at most one flow may name it, "
-                       "but it is named ")
-           << flows << " times";
+  // getRouteDirection() reads this end's direction off the flows naming it, so
+  // they must all name it on the same side. Packet flows can share the channel;
+  // a circuit owns it.
+  StringRef name = getSymName();
+  SmallVector<RouteOp> sources, dests;
+  for (auto flow : (*this)->getParentOfType<DeviceOp>().getOps<RouteOp>()) {
+    if (flow.namesAsSource(name))
+      sources.push_back(flow);
+    if (flow.namesAsDestination(name))
+      dests.push_back(flow);
+  }
+  if (!sources.empty() && !dests.empty()) {
+    return emitOpError("is named as both a source and a destination, so its "
+                       "direction is ambiguous");
+  }
+  ArrayRef<RouteOp> sharers = sources.empty() ? dests : sources;
+  if (sharers.size() > 1) {
+    if (llvm::any_of(sharers, [](RouteOp flow) { return !flow.getPacket(); }))
+      return emitOpError("drives one channel, which a circuit flow owns, but "
+                         "it is named ")
+             << sharers.size() << " times";
+    llvm::SmallDenseSet<int> ids;
+    for (RouteOp flow : sources) {
+      std::optional<uint16_t> id = flow.getPacketAttr().getPktId();
+      if (!id)
+        return emitOpError("sends several packet flows, so each must pin its "
+                           "pkt_id for the BDs to state it");
+      if (!ids.insert(*id).second)
+        return emitOpError("sends several packet flows, two of which pin the "
+                           "same pkt_id ")
+               << static_cast<int>(*id) << "; each needs its own";
+    }
+    // The port keeps or drops every header it receives.
+    if (llvm::any_of(dests, [&](RouteOp flow) {
+          return flow.getKeepPktHeader() != dests[0].getKeepPktHeader();
+        }))
+      return emitOpError("receives several packet flows, so they must agree "
+                         "on keep_pkt_header");
   }
   switch (getBundle()) {
   case WireBundle::DMA:
@@ -1103,13 +1445,49 @@ LogicalResult RouteEndpointOp::verify() {
 // RouteOp
 //===----------------------------------------------------------------------===//
 
+// A route's sources print bare when there is one, bracketed when there are
+// several; both forms parse.
+static ParseResult parseRouteSources(OpAsmParser &parser, ArrayAttr &sources) {
+  SmallVector<Attribute> names;
+  auto parseOne = [&]() -> ParseResult {
+    FlatSymbolRefAttr name;
+    if (parser.parseAttribute(name))
+      return failure();
+    names.push_back(name);
+    return success();
+  };
+  if (succeeded(parser.parseOptionalLSquare())) {
+    if (failed(parser.parseOptionalRSquare()) &&
+        (parser.parseCommaSeparatedList(parseOne) || parser.parseRSquare()))
+      return failure();
+  } else if (parseOne()) {
+    return failure();
+  }
+  sources = parser.getBuilder().getArrayAttr(names);
+  return success();
+}
+
+static void printRouteSources(OpAsmPrinter &p, Operation *, ArrayAttr sources) {
+  if (sources.size() == 1) {
+    p.printAttribute(sources[0]);
+    return;
+  }
+  p << '[';
+  llvm::interleaveComma(sources, p,
+                        [&](Attribute name) { p.printAttribute(name); });
+  p << ']';
+}
+
 LogicalResult RouteOp::verify() {
+  if (getSources().empty()) {
+    return emitOpError("expects at least one source");
+  }
   if (getDestinations().empty()) {
     return emitOpError("expects at least one destination");
   }
 
-  if (getPacketId() && !getPacket()) {
-    return emitOpError("packet_id is only meaningful on a packet flow");
+  if (getKeepPktHeader() && !getPacket()) {
+    return emitOpError("keep_pkt_header is only meaningful on a packet flow");
   }
 
   auto device = (*this)->getParentOfType<DeviceOp>();
@@ -1118,17 +1496,34 @@ LogicalResult RouteOp::verify() {
         device, StringAttr::get(getContext(), name)));
   };
 
-  if (!lookup(getSource())) {
-    return emitOpError("source '") << getSource() << "' is not an endpoint";
+  llvm::SmallDenseSet<StringRef> seen;
+  for (StringRef source : getSourceNames()) {
+    if (!lookup(source)) {
+      return emitOpError("source '") << source << "' is not an endpoint";
+    }
+    if (!seen.insert(source).second) {
+      return emitOpError("names '@") << source << "' as a source twice";
+    }
   }
-
-  for (auto destination : getDestinations().getAsRange<FlatSymbolRefAttr>()) {
-    if (!lookup(destination.getValue())) {
+  for (StringRef destination : getDestinationNames()) {
+    if (!lookup(destination)) {
       return emitOpError("destination '")
-             << destination.getValue() << "' is not an endpoint";
+             << destination << "' is not an endpoint";
+    }
+    if (!seen.insert(destination).second) {
+      return emitOpError("names '@")
+             << destination
+             << "' more than once; an end is a source or a "
+                "destination, and only one of each";
     }
   }
 
+  // A circuit joins one slave port to its master ports, so only packets can
+  // share a destination channel between sources.
+  if (isFanIn() && !getPacket()) {
+    return emitOpError("has several sources, so it needs a `packet` header; "
+                       "a circuit cannot merge streams");
+  }
   return success();
 }
 
@@ -1187,7 +1582,7 @@ ParseResult xilinx::AIE::parseDMAStartChannel(OpAsmParser &parser,
 
 LogicalResult xilinx::AIE::verifyDMAChannelsResolved(DeviceOp device) {
   bool resolved = true;
-  device.walk([&](DMAStartOp start) {
+  device.walkOutsideRuntimeSequences<DMAStartOp>([&](DMAStartOp start) {
     if (FlatSymbolRefAttr endpoint = start.getEndpoint()) {
       start.emitOpError() << "names route endpoint " << endpoint
                           << " in place of a channel index; run "
@@ -1342,6 +1737,76 @@ static void printObjectFifoConsumerElemType(OpAsmPrinter &p,
     p << " -> " << consumerElemType;
 }
 
+ParseResult xilinx::AIE::parseFlowVias(
+    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &vias,
+    DenseI32ArrayAttr &ingressBundles, DenseI32ArrayAttr &ingressChannels,
+    DenseI32ArrayAttr &egressBundles, DenseI32ArrayAttr &egressChannels) {
+  SmallVector<int32_t> inBundles, inChannels, egBundles, egChannels;
+  auto parseBundle = [&](SmallVectorImpl<int32_t> &out) -> ParseResult {
+    StringRef kw;
+    if (parser.parseKeyword(&kw)) {
+      return failure();
+    }
+    auto bundle = symbolizeWireBundle(kw);
+    if (!bundle) {
+      return parser.emitError(parser.getCurrentLocation(),
+                              "invalid wire bundle '" + kw + "'");
+    }
+    out.push_back(static_cast<int32_t>(*bundle));
+    return success();
+  };
+  // via ( %tile : <ingress bundle> : <ch> -> <egress bundle> : <ch>, ... )
+  if (succeeded(parser.parseOptionalKeyword("via"))) {
+    auto parseOne = [&]() -> ParseResult {
+      int32_t inChan, egChan;
+      if (parser.parseOperand(vias.emplace_back()) || parser.parseColon() ||
+          parseBundle(inBundles) || parser.parseColon() ||
+          parser.parseInteger(inChan) || parser.parseArrow() ||
+          parseBundle(egBundles) || parser.parseColon() ||
+          parser.parseInteger(egChan)) {
+        return failure();
+      }
+      inChannels.push_back(inChan);
+      egChannels.push_back(egChan);
+      return success();
+    };
+    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseOne)) {
+      return failure();
+    }
+  }
+  if (!vias.empty()) {
+    MLIRContext *ctx = parser.getContext();
+    ingressBundles = DenseI32ArrayAttr::get(ctx, inBundles);
+    ingressChannels = DenseI32ArrayAttr::get(ctx, inChannels);
+    egressBundles = DenseI32ArrayAttr::get(ctx, egBundles);
+    egressChannels = DenseI32ArrayAttr::get(ctx, egChannels);
+  }
+  return success();
+}
+
+void xilinx::AIE::printFlowVias(OpAsmPrinter &printer, Operation *op,
+                                OperandRange vias,
+                                DenseI32ArrayAttr ingressBundles,
+                                DenseI32ArrayAttr ingressChannels,
+                                DenseI32ArrayAttr egressBundles,
+                                DenseI32ArrayAttr egressChannels) {
+  if (vias.empty()) {
+    return;
+  }
+  printer << "via (";
+  for (size_t i = 0; i < vias.size(); i++) {
+    if (i) {
+      printer << ", ";
+    }
+    printer << vias[i] << " : "
+            << stringifyWireBundle(static_cast<WireBundle>(ingressBundles[i]))
+            << " : " << ingressChannels[i] << " -> "
+            << stringifyWireBundle(static_cast<WireBundle>(egressBundles[i]))
+            << " : " << egressChannels[i];
+  }
+  printer << ")";
+}
+
 static ParseResult parseObjectFifoConsumerElemType(OpAsmParser &parser,
                                                    TypeAttr &consumerElemType) {
   if (failed(parser.parseOptionalArrow()))
@@ -1426,16 +1891,16 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     return emitError("cannot retrieve associated object FIFO");
   if (objFifo.getConsumerTiles().size() != 1)
     return emitError("can only be used in 1-to-1 object FIFOs");
-  if (objFifo.getVia_DMA())
+  if (objFifo.forcesDMA())
     return emitError("cannot allocate a shared memory module to objectfifo "
-                     "with set `via_DMA` attribute");
+                     "that asks for a dma transport");
   if (objFifo.getRepeatCount().has_value())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set `repeat_count` attribute");
   if (!objFifo.getDimensionsToStream().empty())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set dimensions attribute");
-  if (objFifo.getAieStream().has_value())
+  if (objFifo.usesStream())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "using stream port");
   for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
@@ -1471,26 +1936,44 @@ LogicalResult ObjectFifoLinkOp::verify() {
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
 
-  auto participants = [](ObjectFifoLinkOp link) {
-    std::vector<ObjectFifoCreateOp> all = link.getInputObjectFifos();
-    std::vector<ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
-    all.insert(all.end(), outs.begin(), outs.end());
-    return all;
-  };
-
-  // A fifo passes its objects to exactly one place, so it belongs to at most
-  // one link.
-  for (auto other :
-       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
-    if (other == *this) {
-      break;
+  if (isTime()) {
+    if (isMerge() && isDispatch())
+      return emitOpError("a time link merges or dispatches, not both");
+    if (!isMerge() && !isDispatch())
+      return emitOpError("a time link takes turns, so it needs several inputs "
+                         "or several outputs");
+    if (!getSrcOffsets().empty() || !getDstOffsets().empty())
+      return emitOpError("a time link moves whole objects and takes no "
+                         "offsets");
+    std::vector<ObjectFifoCreateOp> fifos = getInputObjectFifos();
+    std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+    fifos.insert(fifos.end(), outs.begin(), outs.end());
+    for (ObjectFifoCreateOp fifo : fifos) {
+      if (fifo.getElemType() != fifos.front().getElemType())
+        return emitOpError("a time link's participants carry one object "
+                           "type, but '")
+               << fifo.name().getValue() << "' carries " << fifo.getElemType()
+               << " and '" << fifos.front().name().getValue() << "' carries "
+               << fifos.front().getElemType();
     }
-    for (ObjectFifoCreateOp mine : participants(*this)) {
-      for (ObjectFifoCreateOp theirs : participants(other)) {
-        if (mine == theirs) {
-          return mine.emitOpError(
-              "objectfifo cannot be in more than one ObjectFifoLinkOp");
-        }
+    if (isDispatch()) {
+      for (ObjectFifoCreateOp out : outs)
+        if (out.getConsumerTiles().size() != 1)
+          return emitOpError("each turn of a dispatch reaches one consumer, "
+                             "but '")
+                 << out.name().getValue() << "' has "
+                 << out.getConsumerTiles().size();
+    }
+    if (isMerge()) {
+      PacketInfoAttr pinned;
+      for (ObjectFifoCreateOp in : getInputObjectFifos()) {
+        PacketInfoAttr header = in.packetHeader();
+        if (!header || !header.isAssigned())
+          continue;
+        if (pinned && pinned != header)
+          return emitOpError("a merge is one route with one header, but its "
+                             "inputs pin different ones");
+        pinned = header;
       }
     }
   }
@@ -1499,6 +1982,30 @@ LogicalResult ObjectFifoLinkOp::verify() {
   if (!sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
+
+  // A fifo has one producer, so one link at most fills it; each link reading
+  // it takes one of its consumer ends on the link's tile. A fifo out of one
+  // link may go into the next, as a chain of mem tile holds does.
+  DenseMap<Operation *, size_t> reads;
+  for (auto other :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
+    if (other == *this) {
+      break;
+    }
+    for (ObjectFifoCreateOp fifo : getOutputObjectFifos())
+      if (llvm::is_contained(other.getOutputObjectFifos(), fifo))
+        return fifo.emitOpError(
+            "objectfifo cannot be filled by more than one ObjectFifoLinkOp");
+    for (ObjectFifoCreateOp fifo : getInputObjectFifos())
+      if (llvm::is_contained(other.getInputObjectFifos(), fifo) &&
+          other.getOptionalSharedTile() == sharedTile)
+        reads[fifo]++;
+  }
+  for (ObjectFifoCreateOp fifo : getInputObjectFifos())
+    if (reads.lookup(fifo) >=
+        static_cast<size_t>(llvm::count(fifo.getConsumerTiles(), *sharedTile)))
+      return fifo.emitOpError("objectfifo is read by more ObjectFifoLinkOps "
+                              "on a tile than it has consumer ends there");
 
   TileLike tile = llvm::dyn_cast<TileLike>(sharedTile.value().getDefiningOp());
   if (!tile)
@@ -1515,6 +2022,45 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitError("ObjectFifoLinkOp join and distribute require "
                        "semaphore locks, which this device lacks");
   }
+  if (isTime() && tile.isShimTile())
+    return emitOpError("a time link holds its objects on the link point, which "
+                       "a shim tile has no memory for");
+
+  // A join or distribute slot must hold a whole number of its participant's
+  // objects, or one straddles two shared objects and the DMA stalls.
+  auto elementsOf = [](Type objectFifoType) {
+    return cast<MemRefType>(
+               cast<AIEObjectFifoType>(objectFifoType).getElementType())
+        .getNumElements();
+  };
+  // The data layout sizes block-float elements too, which have no bit width.
+  DataLayout dataLayout = DataLayout::closest(getOperation());
+  auto bytesOf = [&](Type objectFifoType, int64_t elements) {
+    return elements *
+           static_cast<int64_t>(dataLayout.getTypeSize(
+               cast<MemRefType>(
+                   cast<AIEObjectFifoType>(objectFifoType).getElementType())
+                   .getElementType()));
+  };
+  auto checkSlot = [&](StringRef role, ObjectFifoCreateOp participant,
+                       int64_t object, ObjectFifoCreateOp shared,
+                       int64_t slotBytes, ArrayAttr offsets) -> LogicalResult {
+    if (object <= 0)
+      return emitOpError() << role << " @" << participant.name().getValue()
+                           << " has empty objects";
+    if (slotBytes % object == 0)
+      return success();
+    std::string offsetText;
+    llvm::raw_string_ostream os(offsetText);
+    llvm::interleaveComma(offsets, os, [&](Attribute offset) {
+      os << *getConstantIntValue(offset);
+    });
+    return emitOpError() << role << " @" << participant.name().getValue()
+                         << " has " << object << " B objects, but its "
+                         << slotBytes << " B slot in @"
+                         << shared.name().getValue() << " from offsets ["
+                         << offsetText << "] is not a whole number of them";
+  };
 
   if (isJoin()) {
     if (getFifoIns().size() != getSrcOffsets().size())
@@ -1524,7 +2070,30 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
+    // Each input's transfer runs to the next input's offset, so the offsets
+    // must increase; otherwise the lengths come out wrong and the link hangs.
+    for (auto [idx, len] : llvm::enumerate(getJoinTransferLengths()))
+      if (len <= 0)
+        return emitOpError("src offsets must increase: input objectFifo ")
+               << idx << " would transfer " << len << " elements";
+
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
+    for (auto [fifoIn, slot] :
+         llvm::zip(getInputObjectFifos(), getJoinTransferLengths())) {
+      int64_t object =
+          fifoIn.getConsumerElemType()
+              ? bytesOf(fifoIn.getConsumerElemTypeOrDefault(),
+                        elementsOf(fifoIn.getConsumerElemTypeOrDefault()))
+              : bytesOf(fifoIn.getElemType(),
+                        paddedSize(fifoIn.getDimensionsToStream(),
+                                   fifoIn.getPadDimensions().value_or(
+                                       ArrayRef<BDPadLayoutAttr>{}),
+                                   elementsOf(fifoIn.getElemType())));
+      if (failed(checkSlot("input", fifoIn, object, fifoOut,
+                           bytesOf(fifoOut.getElemType(), slot),
+                           getSrcOffsets())))
+        return failure();
+    }
     if (!fifoOut.getDimensionsToStream().empty()) {
       int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
       int64_t minInputBufferSize = -1;
@@ -1549,7 +2118,27 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getSrcOffsets().empty())
       return emitOpError("src offsets should be empty for distribute");
 
+    for (auto [idx, len] : llvm::enumerate(getDistributeTransferLengths()))
+      if (len <= 0)
+        return emitOpError("dst offsets must increase: output objectFifo ")
+               << idx << " would transfer " << len << " elements";
+
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
+    for (auto [fifoOut, slot] :
+         llvm::zip(getOutputObjectFifos(), getDistributeTransferLengths())) {
+      // The memtile sends the slot, padded if the output pads.
+      if (failed(checkSlot(
+              "output", fifoOut,
+              bytesOf(fifoOut.getElemType(), elementsOf(fifoOut.getElemType())),
+              fifoIn,
+              bytesOf(fifoIn.getElemType(),
+                      paddedSize(fifoOut.getDimensionsToStream(),
+                                 fifoOut.getPadDimensions().value_or(
+                                     ArrayRef<BDPadLayoutAttr>{}),
+                                 slot)),
+              getDstOffsets())))
+        return failure();
+    }
     if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
       int64_t maxIdx =
           getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
@@ -1566,23 +2155,77 @@ LogicalResult ObjectFifoLinkOp::verify() {
                << std::to_string(minOutputBufferSize) << ".";
       }
     }
-
-    std::vector<int> repeat_counts;
-    for (auto fifoOut : getOutputObjectFifos()) {
-      if (auto repeatCount = fifoOut.getRepeatCount()) {
-        repeat_counts.push_back(*repeatCount);
-      } else {
-        repeat_counts.push_back(0);
-      }
-    }
-    for (auto repeat : repeat_counts)
-      if (repeat_counts[0] != repeat)
-        return emitError("repeat counts of output object FIFOs must be equal");
-
   } else {
     if (!getSrcOffsets().empty() && !getDstOffsets().empty())
       return emitOpError("all offsets should be empty if there is no "
                          "join or distribute");
+    // Each pool object leaves whole in one descriptor, so a walk that covers
+    // less would run its outer dimension on past the walk.
+    std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+    if (!isTime() && !walksStream() && !outs.empty()) {
+      ArrayRef<BDDimLayoutAttr> dims = outs[0].getDimensionsToStream();
+      std::optional<ArrayRef<BDPadLayoutAttr>> pads =
+          outs[0].getPadDimensions();
+      int64_t walked = 1;
+      for (BDDimLayoutAttr dim : dims)
+        walked *= dim.getSize();
+      int64_t object = elementsOf(getPoolOwner().getElemType());
+      if (!dims.empty() && (!pads || pads->empty()) && walked != object)
+        return emitOpError()
+               << "@" << outs[0].name().getValue() << "'s walk covers "
+               << walked << " elements, but each transfer sends a whole "
+               << object
+               << "-element object; to send part of each input object, walk "
+                  "the stream (an outer dimension stepping whole input "
+                  "objects)";
+    }
+  }
+
+  if (walksStream()) {
+    StreamWindow window;
+    if (failed(getStreamWindow(window)))
+      return failure();
+    if (!tile.isMemTile())
+      return emitOpError("a walk over a stream needs a MemTile link point");
+    ObjectFifoCreateOp in = getInputObjectFifos()[0];
+    ObjectFifoCreateOp out = getOutputObjectFifos()[0];
+    if (in.getRepeatCount() || out.getRepeatCount())
+      return emitOpError("a walk over a stream does not repeat objects");
+    if (in.getIterCount() || out.getIterCount())
+      return emitOpError("a walk over a stream runs without an iter_count");
+    const AIETargetModel &target = getTargetModel(getOperation());
+    // Its pool counts the stream's objects on one lock pair, and each output
+    // is a descriptor of its own on a MemTile channel.
+    if (window.objects > static_cast<int64_t>(target.getMaxLockValue()))
+      return emitOpError() << "a walk over a stream of " << window.objects
+                           << " objects needs a lock counting that many, "
+                              "but locks count to "
+                           << target.getMaxLockValue();
+    int64_t bds = target.getNumBDs(AIETileType::MemTile) / 2;
+    if (window.outputs > bds)
+      return emitOpError() << "a walk over a stream lowers to one descriptor "
+                              "per output, "
+                           << window.outputs << ", but a MemTile channel has "
+                           << bds;
+  }
+
+  // Distribute outputs drain one shared pool with a single repeat count.
+  // Join inputs repeat at independent producer pools.
+  if (isDistribute()) {
+    auto fifos = getOutputObjectFifos();
+    for (size_t i = 1; i < fifos.size(); ++i) {
+      ObjectFifoCreateOp first = fifos[0], fifo = fifos[i];
+      int repeat = first.getRepeatCount().value_or(1);
+      int otherRepeat = fifo.getRepeatCount().value_or(1);
+      if (repeat != otherRepeat)
+        return emitOpError()
+               << "distribute outputs must have equal effective repeat counts: "
+                  "@"
+               << first.name().getValue() << " has " << repeat
+               << (first.getRepeatCount() ? "" : " (default)") << ", @"
+               << fifo.name().getValue() << " has " << otherRepeat
+               << (fifo.getRepeatCount() ? "" : " (default)");
+    }
   }
 
   return success();
@@ -1612,6 +2255,91 @@ std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
       if (consumerIn == fifoOut[0].getProducerTile())
         return {fifoOut[0].getProducerTile()};
   return {};
+}
+
+bool ObjectFifoLinkOp::walksStream() {
+  if (isJoin() || isDistribute())
+    return false;
+  std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+  if (outs.empty())
+    return false;
+  ArrayRef<BDDimLayoutAttr> dims = outs[0].getDimensionsToStream();
+  if (dims.size() < 2 || dims.front().getSize() < 2)
+    return false;
+  int64_t inner = 1;
+  for (BDDimLayoutAttr dim : dims.drop_front())
+    inner *= dim.getSize();
+  int64_t objectSize =
+      cast<AIEObjectFifoType>(getInputObjectFifos()[0].getElemType())
+          .getElementType()
+          .getNumElements();
+  // A walk within one input object (rate conversion) is no window.
+  return getDimsMaxIdx(dims) >= objectSize &&
+         inner == cast<AIEObjectFifoType>(outs[0].getElemType())
+                      .getElementType()
+                      .getNumElements();
+}
+
+LogicalResult ObjectFifoLinkOp::getStreamWindow(StreamWindow &window) {
+  ObjectFifoCreateOp in = getInputObjectFifos()[0];
+  ObjectFifoCreateOp out = getOutputObjectFifos()[0];
+  ArrayRef<BDPadLayoutAttr> pads;
+  if (auto padding = out.getPadDimensions())
+    pads = *padding;
+  return inferStreamWindow(
+      out.getDimensionsToStream(), pads,
+      cast<AIEObjectFifoType>(in.getElemType())
+          .getElementType()
+          .getNumElements(),
+      [&] { return emitOpError(); }, window);
+}
+
+ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
+  std::vector<ObjectFifoCreateOp> ins = getInputObjectFifos();
+  std::vector<ObjectFifoCreateOp> outs = getOutputObjectFifos();
+  if (isJoin() || isMerge())
+    return outs[0];
+  if (isDistribute() || isDispatch())
+    return ins[0];
+  // A window's pool holds the stream it walks, object by object.
+  if (walksStream())
+    return ins[0];
+  auto count = [](ObjectFifoCreateOp fifo) {
+    return cast<AIEObjectFifoType>(fifo.getElemType())
+        .getElementType()
+        .getNumElements();
+  };
+  // Padding is applied as the objects leave, so the pool holds what arrives.
+  if (outs[0].getInitValues() ||
+      (count(outs[0]) > count(ins[0]) && !outs[0].getPadDimensions()))
+    return outs[0];
+  return ins[0];
+}
+
+SmallVector<std::pair<int64_t, int64_t>> ObjectFifoLinkOp::getPoolSegments() {
+  auto count = [](ObjectFifoCreateOp fifo) {
+    return cast<AIEObjectFifoType>(fifo.getElemType())
+        .getElementType()
+        .getNumElements();
+  };
+  int64_t whole = count(getPoolOwner());
+  if (!isJoin() && !isDistribute())
+    return {{0, whole}};
+  ArrayAttr offsets = isJoin() ? getSrcOffsets() : getDstOffsets();
+  std::vector<ObjectFifoCreateOp> side =
+      isJoin() ? getInputObjectFifos() : getOutputObjectFifos();
+  SmallVector<std::pair<int64_t, int64_t>> segments;
+  for (auto [index, participant] : llvm::enumerate(side)) {
+    int64_t offset = cast<IntegerAttr>(offsets[index]).getInt();
+    int64_t next = index + 1 < side.size()
+                       ? cast<IntegerAttr>(offsets[index + 1]).getInt()
+                       : whole;
+    int64_t size = next - offset;
+    if (size <= 0)
+      size = count(participant);
+    segments.emplace_back(offset, size);
+  }
+  return segments;
 }
 
 std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
@@ -2067,13 +2795,13 @@ std::string to_string(const PortKey &key) {
 // broadcast to the same endpoint twice.
 LogicalResult verifyNoDuplicateFlows(DeviceOp device) {
   std::map<std::pair<PortKey, PortKey>, FlowOp> flowSeen;
-  WalkResult result = device.walk([&](FlowOp flow) {
+  for (FlowOp flow : device.getOps<FlowOp>()) {
     std::optional<PortKey> src = tryGetPortKey(
         flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
     std::optional<PortKey> dst = tryGetPortKey(
         flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
     if (!src || !dst)
-      return WalkResult::advance();
+      continue;
     auto [it, inserted] = flowSeen.try_emplace({*src, *dst}, flow);
     if (!inserted) {
       InFlightDiagnostic diag = flow.emitOpError()
@@ -2081,11 +2809,10 @@ LogicalResult verifyNoDuplicateFlows(DeviceOp device) {
                                 << to_string(*src) << " -> " << to_string(*dst)
                                 << " is already declared";
       diag.attachNote(it->second.getLoc()) << "the other flow is here";
-      return WalkResult::interrupt();
+      return failure();
     }
-    return WalkResult::advance();
-  });
-  return failure(result.wasInterrupted());
+  }
+  return success();
 }
 
 // Rejects two aie.packet_flow ops that carry the same ID between the same set
@@ -2097,13 +2824,14 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   using PacketFlowKey =
       std::tuple<int, int, std::vector<PortKey>, std::vector<PortKey>>;
   std::map<PacketFlowKey, PacketFlowOp> packetFlowSeen;
-  WalkResult result = device.walk([&](PacketFlowOp packetFlow) {
+  for (PacketFlowOp packetFlow : device.getOps<PacketFlowOp>()) {
     Region &body = packetFlow.getPorts();
     if (body.empty())
-      return WalkResult::advance();
+      continue;
     // Sources and destinations are unordered within a packet flow, so sort
     // both to give permutations of the same flow the same key.
     std::vector<PortKey> sources, dests;
+    bool comparable = true;
     for (Operation &op : body.front()) {
       std::vector<PortKey> *endpoints = nullptr;
       std::optional<PortKey> port;
@@ -2119,12 +2847,14 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
         continue;
       }
       // One unplaced endpoint makes the whole flow incomparable.
-      if (!port)
-        return WalkResult::advance();
+      if (!port) {
+        comparable = false;
+        break;
+      }
       endpoints->push_back(*port);
     }
-    if (sources.empty() || dests.empty())
-      return WalkResult::advance();
+    if (!comparable || sources.empty() || dests.empty())
+      continue;
     llvm::sort(sources);
     llvm::sort(dests);
     int idBits =
@@ -2140,11 +2870,10 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
           << " under mask 0x" << llvm::utohexstr(mask)
           << " is already declared between the same sources and destinations";
       diag.attachNote(it->second.getLoc()) << "the other packet flow is here";
-      return WalkResult::interrupt();
+      return failure();
     }
-    return WalkResult::advance();
-  });
-  return failure(result.wasInterrupted());
+  }
+  return success();
 }
 
 // Rejects two aie.flows into one port and a packet flow sharing an endpoint
@@ -2152,33 +2881,29 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
 // included, and its destination takes words from nothing else.
 LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
   std::map<PortKey, FlowOp> circuitSources, circuitDests;
-  WalkResult result =
-      device.walk([&](FlowOp flow) {
-        std::optional<PortKey> src = tryGetPortKey(
-            flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
-        std::optional<PortKey> dst = tryGetPortKey(
-            flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
-        if (src)
-          circuitSources.try_emplace(*src, flow);
-        if (!dst)
-          return WalkResult::advance();
-        auto [it, inserted] = circuitDests.try_emplace(*dst, flow);
-        if (inserted)
-          return WalkResult::advance();
-        InFlightDiagnostic diag =
-            flow.emitOpError()
-            << "ends at " << to_string(*dst)
-            << ", where another circuit flow ends; a port takes one circuit";
-        diag.attachNote(it->second.getLoc())
-            << "the other circuit flow is here";
-        return WalkResult::interrupt();
-      });
-  if (result.wasInterrupted())
+  for (FlowOp flow : device.getOps<FlowOp>()) {
+    std::optional<PortKey> src = tryGetPortKey(
+        flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
+    std::optional<PortKey> dst = tryGetPortKey(
+        flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
+    if (src)
+      circuitSources.try_emplace(*src, flow);
+    if (!dst)
+      continue;
+    auto [it, inserted] = circuitDests.try_emplace(*dst, flow);
+    if (inserted)
+      continue;
+    InFlightDiagnostic diag =
+        flow.emitOpError()
+        << "ends at " << to_string(*dst)
+        << ", where another circuit flow ends; a port takes one circuit";
+    diag.attachNote(it->second.getLoc()) << "the other circuit flow is here";
     return failure();
-  result = device.walk([&](PacketFlowOp packetFlow) {
+  }
+  for (PacketFlowOp packetFlow : device.getOps<PacketFlowOp>()) {
     Region &body = packetFlow.getPorts();
     if (body.empty())
-      return WalkResult::advance();
+      continue;
     for (Operation &op : body.front()) {
       std::optional<PortKey> port;
       std::map<PortKey, FlowOp> *circuits = nullptr;
@@ -2204,6 +2929,107 @@ LogicalResult verifyNoSharedCircuitPorts(DeviceOp device) {
           << role << " at " << to_string(*port) << ", where a circuit flow "
           << role << "; a port carries either one circuit or packets";
       diag.attachNote(it->second.getLoc()) << "the circuit flow is here";
+      return failure();
+    }
+  }
+  return success();
+}
+
+LogicalResult verifyNoSharedCircuitViaEgresses(DeviceOp device) {
+  enum class ClaimKind { FlowDest, PacketDest, Connect, MasterSet, Via };
+  struct Claim {
+    Operation *op;
+    ClaimKind kind;
+    size_t viaIndex = 0;
+  };
+  std::map<PortKey, Claim> claimedEgresses;
+
+  auto addInterconnectClaims = [&](auto interconnect) {
+    Value tile = interconnect.getTile();
+    for (ConnectOp connect :
+         interconnect.getConnections().template getOps<ConnectOp>()) {
+      Port dest = connect.destPort();
+      if (std::optional<PortKey> port =
+              tryGetPortKey(tile, dest.bundle, dest.channel))
+        claimedEgresses.try_emplace(*port, Claim{connect, ClaimKind::Connect});
+    }
+    for (MasterSetOp masterSet :
+         interconnect.getConnections().template getOps<MasterSetOp>()) {
+      Port dest = masterSet.destPort();
+      if (std::optional<PortKey> port =
+              tryGetPortKey(tile, dest.bundle, dest.channel))
+        claimedEgresses.try_emplace(*port,
+                                    Claim{masterSet, ClaimKind::MasterSet});
+    }
+  };
+  for (SwitchboxOp switchbox : device.getOps<SwitchboxOp>())
+    addInterconnectClaims(switchbox);
+  for (ShimMuxOp shimMux : device.getOps<ShimMuxOp>())
+    addInterconnectClaims(shimMux);
+  for (FlowOp flow : device.getOps<FlowOp>()) {
+    if (std::optional<PortKey> dest = tryGetPortKey(
+            flow.getDest(), flow.getDestBundle(), flow.getDestChannel()))
+      claimedEgresses.try_emplace(*dest, Claim{flow, ClaimKind::FlowDest});
+  }
+  for (PacketFlowOp packetFlow : device.getOps<PacketFlowOp>()) {
+    for (PacketDestOp dest : packetFlow.getPorts().getOps<PacketDestOp>()) {
+      if (std::optional<PortKey> port = tryGetPortKey(
+              dest.getTile(), dest.getBundle(), dest.getChannel()))
+        claimedEgresses.try_emplace(*port, Claim{dest, ClaimKind::PacketDest});
+    }
+  }
+
+  WalkResult result = device.walk([&](FlowOp flow) {
+    ArrayRef<int32_t> bundles =
+        flow.getViaEgressBundlesAttr()
+            ? flow.getViaEgressBundlesAttr().asArrayRef()
+            : ArrayRef<int32_t>();
+    ArrayRef<int32_t> channels =
+        flow.getViaEgressChannelsAttr()
+            ? flow.getViaEgressChannelsAttr().asArrayRef()
+            : ArrayRef<int32_t>();
+    if (bundles.size() != flow.getVias().size() ||
+        channels.size() != flow.getVias().size()) {
+      return WalkResult::advance();
+    }
+    for (auto [index, via] : llvm::enumerate(flow.getVias())) {
+      std::optional<PortKey> egress = tryGetPortKey(
+          via, static_cast<WireBundle>(bundles[index]), channels[index]);
+      if (!egress) {
+        continue;
+      }
+      Claim viaClaim{flow, ClaimKind::Via, index};
+      auto [it, inserted] = claimedEgresses.try_emplace(*egress, viaClaim);
+      if (inserted)
+        continue;
+      if (index + 1 == flow.getVias().size() && it->second.op == flow &&
+          it->second.kind == ClaimKind::FlowDest) {
+        it->second = viaClaim;
+        continue;
+      }
+      InFlightDiagnostic diag = flow.emitOpError()
+                                << "via " << index << " claims circuit egress "
+                                << to_string(*egress)
+                                << ", which another operation already claims";
+      Diagnostic &note = diag.attachNote(it->second.op->getLoc());
+      switch (it->second.kind) {
+      case ClaimKind::FlowDest:
+        note << "a circuit flow ends at the same port";
+        break;
+      case ClaimKind::PacketDest:
+        note << "a packet flow ends at the same port";
+        break;
+      case ClaimKind::Connect:
+        note << "a fixed connect drives the same port";
+        break;
+      case ClaimKind::MasterSet:
+        note << "a fixed master set drives the same port";
+        break;
+      case ClaimKind::Via:
+        note << "via " << it->second.viaIndex
+             << " claims the same circuit egress";
+        break;
+      }
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
@@ -2248,21 +3074,24 @@ LogicalResult verifyNoDuplicateNames(Operation *symbolTableOp) {
 } // namespace
 
 LogicalResult DeviceOp::verify() {
+  // Cores and flows are the device's own ops, as the router and the CDO read
+  // them; a walk would also visit every op of the runtime sequences.
+  //
   // A compute tile has exactly one core in hardware, so at most one aie.core
   // may resolve to any given (col, row). Cores whose tile is a logical_tile
   // with unspecified coordinates are skipped here — they cannot collide until
   // --aie-place-tiles assigns them a position, at which point this same check
   // runs again on the resulting aie.tile coordinates.
   DenseMap<TileID, CoreOp> coreAtTile;
-  WalkResult result = walk([&](CoreOp core) {
+  for (CoreOp core : getOps<CoreOp>()) {
     auto tile =
         llvm::dyn_cast_or_null<TileLike>(core.getTile().getDefiningOp());
     if (!tile)
-      return WalkResult::advance();
+      continue;
     std::optional<int> col = tile.tryGetCol();
     std::optional<int> row = tile.tryGetRow();
     if (!col || !row)
-      return WalkResult::advance();
+      continue;
     TileID id{*col, *row};
     auto [it, inserted] = coreAtTile.try_emplace(id, core);
     if (!inserted) {
@@ -2271,12 +3100,9 @@ LogicalResult DeviceOp::verify() {
           << "tile (" << *col << ", " << *row
           << ") already has a core; each compute tile can host only one core";
       diag.attachNote(it->second.getLoc()) << "the other core is here";
-      return WalkResult::interrupt();
+      return failure();
     }
-    return WalkResult::advance();
-  });
-  if (result.wasInterrupted())
-    return failure();
+  }
 
   // A flow declared twice is always a mistake, and one that is otherwise only
   // noticed (if at all) as unexplained routing pressure much later on.
@@ -2286,6 +3112,9 @@ LogicalResult DeviceOp::verify() {
     return failure();
   if (failed(verifyNoSharedCircuitPorts(*this)))
     return failure();
+  if (failed(verifyNoSharedCircuitViaEgresses(*this))) {
+    return failure();
+  }
 
   if (failed(verifyNoDuplicateNames(*this))) {
     return failure();
@@ -2347,6 +3176,10 @@ TileOp TileElement::getTileOp() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult LogicalTileOp::verify() {
+  if (failed(verifyAssignedPacket(
+          *this, (*this)->getAttrOfType<PacketInfoAttr>("controller_id"),
+          "controller_id")))
+    return failure();
   const auto &targetModel = getTargetModel(*this);
   int columns = targetModel.columns();
   int rows = targetModel.rows();
@@ -2555,6 +3388,10 @@ void LogicalTileOp::print(OpAsmPrinter &printer) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TileOp::verify() {
+  if (failed(verifyAssignedPacket(
+          *this, (*this)->getAttrOfType<PacketInfoAttr>("controller_id"),
+          "controller_id")))
+    return failure();
   const auto &targetModel = getTargetModel(*this);
   int columns = targetModel.columns();
   int rows = targetModel.rows();
@@ -2745,6 +3582,122 @@ LogicalResult MasterSetOp::verify() {
   return success();
 }
 
+bool MasterSetOp::keepsPktHeader() {
+  return AIE::keepsPktHeader(
+      (*this)->getParentOfType<SwitchboxOp>().getTileOp().getTileID(),
+      destPort(), getKeepPktHeader());
+}
+
+bool xilinx::AIE::keepsPktHeader(TileID tile, Port master,
+                                 std::optional<bool> keep) {
+  if (keep)
+    return *keep;
+  return master.bundle != WireBundle::DMA &&
+         (tile.row != 0 || master.bundle != WireBundle::South);
+}
+
+// A Core or DMA port a flow starts or ends at on a placed tile must exist
+// there. The placer checks logical tiles' channel budgets.
+static LogicalResult verifyFlowEndpoint(Operation *op, Value tile, Port port,
+                                        bool isSource) {
+  if (port.bundle != WireBundle::Core && port.bundle != WireBundle::DMA)
+    return success();
+  auto tileOp = dyn_cast_or_null<TileOp>(tile.getDefiningOp());
+  if (!tileOp)
+    return success();
+  size_t channels = isSource ? tileOp.getNumDestConnections(port.bundle)
+                             : tileOp.getNumSourceConnections(port.bundle);
+  if (static_cast<size_t>(port.channel) < channels)
+    return success();
+  return op->emitOpError() << (isSource ? "source " : "destination ")
+                           << stringifyWireBundle(port.bundle) << ":"
+                           << port.channel << " does not exist: tile ("
+                           << tileOp.getCol() << ", " << tileOp.getRow()
+                           << ") has " << channels << " "
+                           << stringifyWireBundle(port.bundle) << " port"
+                           << (channels == 1 ? "" : "s")
+                           << (isSource ? " into" : " out of")
+                           << " its stream switch";
+}
+
+static LogicalResult verifyFlowVias(Operation *op, OperandRange vias,
+                                    DenseI32ArrayAttr ingressBundles,
+                                    DenseI32ArrayAttr ingressChannels,
+                                    DenseI32ArrayAttr egressBundles,
+                                    DenseI32ArrayAttr egressChannels) {
+  size_t numVias = vias.size();
+  DenseI32ArrayAttr arrays[] = {ingressBundles, ingressChannels, egressBundles,
+                                egressChannels};
+  for (DenseI32ArrayAttr array : arrays) {
+    size_t size = array ? array.size() : 0;
+    if (size != numVias) {
+      return op->emitOpError("has ")
+             << numVias << " via tile(s) but a via port array of size " << size;
+    }
+  }
+  if (numVias == 0) {
+    return success();
+  }
+
+  for (auto [index, via] : llvm::enumerate(vias)) {
+    if (!isa_and_nonnull<TileLike>(via.getDefiningOp())) {
+      return op->emitOpError("has via operand at index ")
+             << index << " that is not defined by a tile-like operation";
+    }
+  }
+
+  auto verifyBundles = [&](DenseI32ArrayAttr bundles,
+                           StringRef direction) -> LogicalResult {
+    for (auto [index, bundle] : llvm::enumerate(bundles.asArrayRef())) {
+      if (bundle < 0 ||
+          bundle > static_cast<int32_t>(getMaxEnumValForWireBundle())) {
+        return op->emitOpError("has invalid via ")
+               << direction << " bundle " << bundle << " at index " << index;
+      }
+    }
+    return success();
+  };
+  auto verifyChannels = [&](DenseI32ArrayAttr channels,
+                            StringRef direction) -> LogicalResult {
+    for (auto [index, channel] : llvm::enumerate(channels.asArrayRef())) {
+      if (channel < 0) {
+        return op->emitOpError("has negative via ")
+               << direction << " channel " << channel << " at index " << index;
+      }
+    }
+    return success();
+  };
+  if (failed(verifyBundles(ingressBundles, "ingress")) ||
+      failed(verifyChannels(ingressChannels, "ingress")) ||
+      failed(verifyBundles(egressBundles, "egress")) ||
+      failed(verifyChannels(egressChannels, "egress"))) {
+    return failure();
+  }
+  return success();
+}
+
+LogicalResult FlowOp::verify() {
+  if (failed(verifyFlowEndpoint(*this, getSource(),
+                                {getSourceBundle(), sourceIndex()}, true)))
+    return failure();
+  if (failed(verifyFlowEndpoint(*this, getDest(),
+                                {getDestBundle(), destIndex()}, false))) {
+    return failure();
+  }
+
+  return verifyFlowVias(*this, getVias(), getViaIngressBundlesAttr(),
+                        getViaIngressChannelsAttr(), getViaEgressBundlesAttr(),
+                        getViaEgressChannelsAttr());
+}
+
+LogicalResult PacketSourceOp::verify() {
+  return verifyFlowEndpoint(*this, getTile(), port(), true);
+}
+
+LogicalResult PacketDestOp::verify() {
+  return verifyFlowEndpoint(*this, getTile(), port(), false);
+}
+
 LogicalResult PacketFlowOp::verify() {
   Region &body = getPorts();
   if (body.empty())
@@ -2764,11 +3717,24 @@ LogicalResult PacketFlowOp::verify() {
     return emitOpError("must have at least one aie.packet_source");
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
+  if (!getVias().empty() && numSources != 1) {
+    return emitOpError(
+        "with via waypoints must have exactly one aie.packet_source");
+  }
+  if (!getVias().empty() && numDests != 1) {
+    return emitOpError(
+        "with via waypoints must have exactly one aie.packet_dest");
+  }
+
+  uint8_t id = getID();
+  if (uint32_t maxId = getTargetModel(getOperation()).getMaxPacketId();
+      id > maxId)
+    return emitOpError("packet id ")
+           << static_cast<int>(id) << " exceeds the maximum of " << maxId;
 
   // A slave port accepts a packet when `incoming & mask == ID`, so a bit set
   // in ID and clear in the mask rejects every packet.
   if (std::optional<uint8_t> mask = getMask()) {
-    uint8_t id = getID();
     if ((id & *mask) != id) {
       return emitOpError("has ID 0x")
              << llvm::utohexstr(id) << " outside mask 0x"
@@ -2776,7 +3742,9 @@ LogicalResult PacketFlowOp::verify() {
     }
   }
 
-  return success();
+  return verifyFlowVias(*this, getVias(), getViaIngressBundlesAttr(),
+                        getViaIngressChannelsAttr(), getViaEgressBundlesAttr(),
+                        getViaEgressChannelsAttr());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2878,7 +3846,8 @@ LogicalResult CoreOp::verify() {
   // more than one defect. Size and placement are separate faults: a stack can
   // fit the tile yet be placed so it runs off the end.
   if (stackRun.size >= localMem)
-    return emitOpError("stack_size ")
+    return emitOpError(getStackSize() ? "stack_size "
+                                      : "measured stack requirement ")
            << stackRun.size
            << " leaves no local memory for this tile's buffers (" << localMem
            << " bytes total)";
@@ -2907,8 +3876,15 @@ TileOp CoreOp::getTileOp() {
 }
 
 uint32_t CoreOp::getEffectiveStackSize() {
-  return getStackSize().value_or(
-      getTargetModel(*this).getDefaultCoreStackSize());
+  if (auto declared = getStackSize())
+    return *declared;
+  const auto &targetModel = getTargetModel(*this);
+  uint32_t fallback = targetModel.getDefaultCoreStackSize();
+  if (auto measured = getMeasuredStackSize())
+    return std::max<uint32_t>(
+        fallback,
+        llvm::alignTo(*measured, targetModel.getCoreStackAlignment()));
+  return fallback;
 }
 
 MemoryRun CoreOp::getStackRun() {
@@ -3150,6 +4126,17 @@ static bool isBdPacketEnabled(DMABDOp bd) {
   if (Block *blk = bd->getBlock())
     return !blk->getOps<DMABDPACKETOp>().empty();
   return false;
+}
+
+LogicalResult xilinx::AIE::verifyAssignedPacket(Operation *op,
+                                                PacketInfoAttr packet,
+                                                StringRef what) {
+  if (packet && !packet.isAssigned())
+    return op->emitOpError()
+           << what
+           << " has no pkt_id; allocation assigns one, so a header at "
+              "this level must carry it";
+  return success();
 }
 
 LogicalResult
@@ -3553,18 +4540,28 @@ LogicalResult DMABDOp::verifyMixedSizesAndStrides() {
 
 std::optional<llvm::SmallVector<BDDimLayoutAttr>> DMABDOp::getFoldedDimensions(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError) {
-  llvm::SmallVector<mlir::OpFoldResult> sizes = getMixedSizes();
-  llvm::SmallVector<mlir::OpFoldResult> strides = getMixedStrides();
+  llvm::ArrayRef<int64_t> sizes =
+      getStaticSizes().value_or(llvm::ArrayRef<int64_t>{});
+  llvm::ArrayRef<int64_t> strides =
+      getStaticStrides().value_or(llvm::ArrayRef<int64_t>{});
   if (sizes.size() != strides.size()) {
     emitError() << "expected the same number of sizes (" << sizes.size()
                 << ") and strides (" << strides.size() << ")";
     return std::nullopt;
   }
+  mlir::OperandRange dynSizes = getSizes(), dynStrides = getStrides();
+  unsigned nextSize = 0, nextStride = 0;
   llvm::SmallVector<BDDimLayoutAttr> dims;
   dims.reserve(sizes.size());
   for (auto [s, t] : llvm::zip(sizes, strides)) {
-    std::optional<int64_t> sc = mlir::getConstantIntValue(s);
-    std::optional<int64_t> tc = mlir::getConstantIntValue(t);
+    std::optional<int64_t> sc =
+        ShapedType::isDynamic(s)
+            ? mlir::getConstantIntValue(dynSizes[nextSize++])
+            : s;
+    std::optional<int64_t> tc =
+        ShapedType::isDynamic(t)
+            ? mlir::getConstantIntValue(dynStrides[nextStride++])
+            : t;
     if (!sc || !tc) {
       emitError() << "buffer descriptor size/stride is a runtime value; a "
                      "compile-time constant is required on this path";
@@ -3632,6 +4629,17 @@ LogicalResult DMABDOp::verifyTransferInBounds() {
 // A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
 // scan when the innermost stride is 1 and each outer stride equals the product
 // of all inner sizes.  Used by both DMABDOp verification and canonicalization.
+int64_t xilinx::AIE::paddedSize(llvm::ArrayRef<BDDimLayoutAttr> dims,
+                                llvm::ArrayRef<BDPadLayoutAttr> pads,
+                                int64_t fallback) {
+  if (dims.empty() || pads.empty())
+    return fallback;
+  int64_t size = 1;
+  for (auto [dim, pad] : llvm::zip(dims, pads))
+    size *= dim.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
+  return size;
+}
+
 bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   if (dims.empty())
     return true; // no ND layout = trivially contiguous
@@ -3648,6 +4656,22 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
       return false;
   }
   return true;
+}
+
+std::optional<SmallVector<BDDimLayoutAttr>>
+xilinx::AIE::normalizedBDDims(ArrayRef<BDDimLayoutAttr> dims, int64_t len) {
+  SmallVector<BDDimLayoutAttr> kept;
+  int64_t product = 1;
+  for (BDDimLayoutAttr dim : dims) {
+    product *= dim.getSize();
+    if (dim.getSize() != 1)
+      kept.push_back(dim);
+  }
+  if (kept.size() == dims.size() || len != product)
+    return std::nullopt;
+  if (isContiguousBDTransfer(kept))
+    return SmallVector<BDDimLayoutAttr>{};
+  return kept;
 }
 
 // The firmware's UPDATE_REG reads the 32-bit length word with its low two bits
@@ -4021,6 +5045,14 @@ LogicalResult DMABDOp::verify() {
     if (dims->size() != paddims->size())
       return emitOpError() << "Mismatch number of dimensions between padding(s)"
                            << " and wrap(s) and stride(s).";
+    // Measured on npu2: with d3 in use, d2 padding is not applied (and d3 has
+    // no padding fields).
+    if (paddims->size() == 4)
+      for (BDPadLayoutAttr pad : paddims->take_front(2))
+        if (pad.getConstPadBefore() || pad.getConstPadAfter())
+          return emitOpError()
+                 << "a four-dimensional walk pads only its two innermost "
+                    "dimensions; the DMA does not apply d2 or d3 padding";
     int actuallen = 1;
     for (unsigned i = 0; i < paddims->size(); i++) {
       auto dim = (*dims)[i];
@@ -4058,9 +5090,11 @@ LogicalResult DMABDOp::verify() {
     }
   }
   if (auto packetInfo = getPacket()) {
+    if (failed(verifyAssignedPacket(*this, *packetInfo)))
+      return failure();
     if (packetInfo->getPktType() > 7)
       return emitOpError("Packet type field can only hold 3 bits.");
-    if (packetInfo->getPktId() >
+    if (packetInfo->assignedId() >
         getTargetModel(getOperation()).getMaxPacketId())
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
@@ -4163,6 +5197,10 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
     patternIt++;
   }
 
+  // No block repeats, so there is no sub-chain to collapse.
+  if (patternIt == reachable.end())
+    return failure();
+
   unsigned idx = 0;
   while (patternIt != reachable.end()) {
     // BD repetition found. Check if repeating pattern.
@@ -4175,7 +5213,9 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   // Repeating BD chains detected. Erasing repetitions.
   auto lastBDTerm = cast<NextBDOp>(reachable.back()->getTerminator());
   auto lastUniqueBDTerm = cast<NextBDOp>(uniquePattern.back()->getTerminator());
-  lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());
+  rewriter.modifyOpInPlace(lastUniqueBDTerm, [&] {
+    lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());
+  });
 
   return success();
 }
@@ -4189,6 +5229,9 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
 
   mlir::LogicalResult
   matchAndRewrite(DMABDOp op, mlir::PatternRewriter &rewriter) const override {
+    if (op.getStaticSizes().value_or(llvm::ArrayRef<int64_t>{}).empty())
+      return mlir::failure();
+
     // Only fire for shim DMA BDs: ExternalBufferOp buffer
     // (dma_configure_task_for stage), parent TileElement is shim
     // (dma_configure_task stage), or inside ShimDMAOp (after full lowering).
@@ -4202,17 +5245,15 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     if (!bufferIsExternal && !parentIsShim && !inShimDMA)
       return mlir::failure();
 
-    // Only ND dimensions that are present and all-constant can be linearized;
-    // decline silently on runtime-valued sizes/strides so valid dynamic IR
-    // doesn't get a spurious diagnostic.
-    if (op.getMixedSizes().empty())
+    // Only ND dimensions that are all-constant can be linearized; decline
+    // silently on runtime-valued sizes/strides so valid dynamic IR doesn't get
+    // a spurious diagnostic.
+    auto isConstant = [](mlir::Value v) {
+      return mlir::getConstantIntValue(v).has_value();
+    };
+    if (!llvm::all_of(op.getSizes(), isConstant) ||
+        !llvm::all_of(op.getStrides(), isConstant))
       return mlir::failure();
-    for (mlir::OpFoldResult s : op.getMixedSizes())
-      if (!mlir::getConstantIntValue(s))
-        return mlir::failure();
-    for (mlir::OpFoldResult s : op.getMixedStrides())
-      if (!mlir::getConstantIntValue(s))
-        return mlir::failure();
     std::optional<llvm::SmallVector<BDDimLayoutAttr>> dims =
         op.getFoldedDimensions([&]() { return op.emitError(); });
     if (!dims.has_value() || dims->empty())
@@ -4261,6 +5302,9 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
 
   mlir::LogicalResult
   matchAndRewrite(DMABDOp op, mlir::PatternRewriter &rewriter) const override {
+    if (op.getSizes().empty() && op.getStrides().empty() && !op.getOffset() &&
+        !op.getLen())
+      return mlir::failure();
     llvm::SmallVector<mlir::OpFoldResult> sizes = op.getMixedSizes();
     llvm::SmallVector<mlir::OpFoldResult> strides = op.getMixedStrides();
     // foldDynamicIndexList returns success() only if it replaced a dynamic
@@ -4743,8 +5787,8 @@ FailureOr<int32_t> UseLockOp::getConstantValue() {
 LogicalResult UseLockOp::canonicalize(UseLockOp op, PatternRewriter &rewriter) {
   // An AcquireGreaterEqual by a compile-time-constant 0 is a no-op: the lock is
   // already >= 0 (semaphore values are non-negative) and it decrements the lock
-  // by 0.
-  if (op.acquireGE()) {
+  // by 0. A buffer descriptor's acquire is kept: its release needs the pair.
+  if (op.acquireGE() && op->getBlock()->getOps<DMABDOp>().empty()) {
     if (auto value = getConstantLockValue(op); value && *value == 0) {
       rewriter.eraseOp(op);
       return success();
@@ -4788,6 +5832,30 @@ WireBundle xilinx::AIE::getConnectingBundle(WireBundle dir) {
   default:
     return dir;
   }
+}
+
+std::optional<std::pair<TileID, Port>>
+xilinx::AIE::getConnectingWireEndpoint(const AIETargetModel &targetModel,
+                                       TileID tile, Port port) {
+  switch (port.bundle) {
+  case WireBundle::North:
+    tile.row++;
+    break;
+  case WireBundle::South:
+    tile.row--;
+    break;
+  case WireBundle::East:
+    tile.col++;
+    break;
+  case WireBundle::West:
+    tile.col--;
+    break;
+  default:
+    return std::nullopt;
+  }
+  if (!targetModel.isValidTile(tile))
+    return std::nullopt;
+  return std::pair(tile, Port{getConnectingBundle(port.bundle), port.channel});
 }
 
 //===----------------------------------------------------------------------===//
@@ -4872,7 +5940,7 @@ LogicalResult ShimDMAAllocationOp::verify() {
     return emitOpError("tile must be a shim tile");
   }
 
-  return success();
+  return verifyAssignedPacket(*this, getPacketAttr());
 }
 
 TileOp ShimDMAAllocationOp::getTileOp() {

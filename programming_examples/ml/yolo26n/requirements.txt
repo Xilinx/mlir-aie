@@ -1,0 +1,10 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# What running the yolo26n example needs, on top of python/requirements.txt.
+# onnx and onnxruntime are pinned: the parameters gen_yolo_data.py extracts
+# are ONNX Runtime's own outputs. Exporting the model needs
+# requirements_export.txt too.
+onnx==1.22.0
+onnxruntime==1.28.0
+opencv-python>=4.10

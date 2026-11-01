@@ -8,15 +8,15 @@
 // Software f32 2^x for exp-family ops needing more accuracy than the hardware
 // `aie::exp2<bfloat16>` LUT. Measured on aie2p against a
 // float64 reference, the LUT's max relative error runs 6.1% on [-1, 0] to 49.1%
-// on [-100, 0], softmax's range, where this kernel holds 9.2e-6. See
-// programming_examples/basic/vector_exp2f.
+// on [-100, 0], softmax's range, where this kernel holds 9.2e-6 (7.4e-6 on
+// aie2). See programming_examples/basic/vector_exp2f.
 //
 // 2^x = p(f) * 2^k, f = x - k, with k added straight into the f32 exponent
 // field. The field is 8 bits wide, and that sets the hard ends of the domain:
 // outside k in [-126, 127] the biased exponent carries into the sign bit and
 // the result is finite but wrong-signed (k = 129 reads back as -0.0, k = -129
-// as -1.7e38), which isfinite() cannot catch. The add is exact, and on aie2p
-// the accuracy above holds down to -126. The clamp defaults to -111; move it
+// as -1.7e38), which isfinite() cannot catch. The add is exact, and the
+// accuracy above holds down to -126. The clamp defaults to -111; move it
 // with -DEXP2F_VEC_MIN_X=<float>. 2^128 exceeds FLT_MAX, so x >= 128 gets +inf
 // under a mask, and [127.999, 128) clamps onto one value (7.8e-4 relative
 // error).
@@ -41,7 +41,7 @@ static_assert(kMinX >= -126.0f,
               "2^k is built in the f32 exponent field, which bottoms out at "
               "the smallest normal, k = -126");
 
-#if AIE_TUNED_AIE2P
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
 // k = round(x) here, so f = x - k is in [-1/2, 1/2]. There is no f32 vector
 // multiply: each Horner step multiplies the [hi | lo] bf16 limbs of the
 // running value by those of f into an f32 accumulator.
@@ -120,7 +120,7 @@ static void exp2f_vec(const float *in, float *out) {
   x = aie::min(x, aie::broadcast<float, EXP2F_VEC_LEN>(127.999f));
   aie::vector<int32_t, EXP2F_VEC_LEN> ki;
   const auto p = exp2_poly(x, ki);
-  // AIE2 emulates the f32 multiply, so add k to p's exponent instead. p is in
+  // The f32 multiply is emulated, so add k to p's exponent instead. p is in
   // [1, 2) and the clamps hold k to [-126, 127], so the sum stays a normal
   // float and is exact.
   aie::vector<float, EXP2F_VEC_LEN> result =
@@ -138,7 +138,7 @@ extern "C" {
 void exp2f_vec_f32(float *restrict input, float *restrict output,
                    int32_t vector_size) {
   event0();
-#if AIE_TUNED_AIE2P
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   // f's limbs round to bf16 in this mode.
   const auto saved_rounding = aie::get_rounding();
   aie::set_rounding(aie::rounding_mode::conv_even);
@@ -157,7 +157,7 @@ void exp2f_vec_f32(float *restrict input, float *restrict output,
     exp2f_vec(tail, tail);
     aie::store_v(output, aie::load_v<EXP2F_VEC_LEN / 2>(tail));
   }
-#if AIE_TUNED_AIE2P
+#if AIE_TUNED_AIE2 || AIE_TUNED_AIE2P
   aie::set_rounding(saved_rounding);
 #endif
 

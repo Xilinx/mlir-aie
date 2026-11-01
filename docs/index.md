@@ -47,6 +47,12 @@ with full control over tile placement, data movement, and vectorized compute.
 <span class="iron-card-desc">Agent Skills that teach a coding agent to port and optimize IRON designs.</span>
 </a>
 
+<a class="iron-card" href="https://xilinx.github.io/mlir-aie/dashboard/" markdown>
+<span class="iron-card-icon">📊</span>
+<span class="iron-card-title">Maintainer Dashboard</span>
+<span class="iron-card-desc">CI and code health, and nightly checks of the kernels, performance and placement on Ryzen AI NPUs.</span>
+</a>
+
 <a class="iron-card" href="https://discord.gg/UbXzGdXsR5" markdown>
 <span class="iron-card-icon">💬</span>
 <span class="iron-card-title">Join us on Discord</span>
@@ -118,4 +124,3 @@ on the attached NPU. Subsequent calls hit a cache.
   ![IRON software stack](assets/images/iron_stack.svg){ width=460 }
   <figcaption>From a Python design to running on the NPU — IRON lowers through the MLIR-AIE compiler and Peano, then XRT loads it onto the AI Engine tile array.</figcaption>
 </figure>
-

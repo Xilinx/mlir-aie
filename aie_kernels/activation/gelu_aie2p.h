@@ -18,9 +18,6 @@ static_assert(GELU_ELEMS > 0 && GELU_ELEMS % 32 == 0);
 #define GELU_ELEMS vector_size
 #endif
 
-// Tile size of gelu_bf16, which takes no size argument.
-constexpr int32_t gelu_tile_elems = 1024;
-
 // GELU (tanh approximation):
 //   0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3))).
 // 32-wide with MAC fusion and s*beta precompute to shorten the dependency
@@ -94,10 +91,6 @@ static inline void gelu_tanh_approx_inplace_bf16(bfloat16 *restrict v,
 }
 
 extern "C" {
-
-void gelu_bf16(bfloat16 *restrict input, bfloat16 *restrict output) {
-  gelu_tanh_approx_bf16(input, output, gelu_tile_elems);
-}
 
 void gelu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
                     int32_t input_size) {

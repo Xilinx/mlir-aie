@@ -56,6 +56,7 @@ import inspect as _inspect
 from typing import Callable, overload
 
 from aie.utils.callabledesign import CallableDesign as _CallableDesign
+from aie.utils.compile.jit._introspect import declare
 from aie.utils.compile.jit.compilabledesign import config_param_names
 
 # Derived from CallableDesign.__init__ so it stays in sync automatically:
@@ -104,11 +105,11 @@ def jit(
 
     # --- Validate CompileTime[T] params when generator is callable ---
     if callable(mlir_generator):
-        from aie.utils.compile.jit._introspect import split_params
-
-        compile_params, tensor_params, dispatch_params, scalar_params = split_params(
-            mlir_generator
-        )
+        declaration = declare(mlir_generator)
+        compile_params = list(declaration.params)
+        tensor_params = [m.name for m in declaration.operands]
+        dispatch_params = [m.name for m in declaration.per_calls]
+        scalar_params = list(declaration.scalars)
 
         # Guard 1-A: reject any compile kwarg that doesn't match a CompileTime[T]
         # param. Failing fast at decoration time catches typos like @jit(NN=...)
@@ -134,11 +135,12 @@ def jit(
         # Guard 1-C: an unannotated scalar binds at generation time, so its
         # default bakes into the MLIR and per-call overrides are *silently*
         # ignored. DispatchTime[T] is exempt -- its stream is rebuilt per call.
-        sig_for_defaults = _inspect.signature(mlir_generator)
+        sig = declaration.signature
+        assert sig is not None, "a generator's declaration has a signature"
         silent_default_scalars = [
             name
             for name in scalar_params
-            if sig_for_defaults.parameters[name].default is not _inspect.Parameter.empty
+            if sig.parameters[name].default is not _inspect.Parameter.empty
         ]
         if silent_default_scalars:
             raise TypeError(
@@ -161,7 +163,6 @@ def jit(
         # have a signature default).  Pre-bound and defaulted params are exempt
         # because callers can omit them at the call site, so positional-vs-
         # keyword ambiguity does not arise.
-        sig = _inspect.signature(mlir_generator)
         non_kw_compile_params = [
             name
             for name in compile_params

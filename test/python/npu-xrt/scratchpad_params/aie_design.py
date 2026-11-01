@@ -7,11 +7,20 @@
 #
 # Usage:
 #   python3 aie_design.py > aie.mlir
+#
+# test.py also builds program() through iron.jit.
 
 import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker, sync_parameters
+from aie.iron import (
+    DeviceConfiguration,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    sync_parameters,
+)
 from aie.iron.device import NPU2Col1
 from aie.iron.scratchpad_parameter import ScratchpadParameter
 from aie.dialects.aiex import npu_load_pdi
@@ -20,7 +29,7 @@ from aie.dialects.memref import store
 from aie.ir import IndexType, IntegerAttr
 
 
-def design():
+def program() -> Program:
     device_name = "test"
 
     # Output type: 2 x bf16
@@ -57,21 +66,19 @@ def design():
         sync_parameters()
         out_h.drain(out_tensor, wait=True)
 
-    rt = Runtime(sequence, [out_ty, of_out.cons()])
-
-    module = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
-        device_name=device_name
+    rt = Runtime(
+        sequence,
+        [out_ty, of_out.cons()],
+        name="sequence",
+        implicit_configure=False,
     )
 
-    # Insert empty device at the beginning of the module to force PDI reload.
-    # The firmware skips reloading a PDI if it's the same as the last one loaded,
-    # so we force a different (empty) PDI first.
-    # FIXME: Replace this with the proper IRON abstraction for multiple devices when it becomes available.
-    mlir_text = str(module)
-    empty_device = "  aie.device(npu2) @empty { }\n"
-    mlir_text = mlir_text.replace("module {\n", "module {\n" + empty_device, 1)
-    return mlir_text
+    config = DeviceConfiguration(
+        device_name, NPU2Col1(), workers=[worker], runtimes=[rt]
+    )
+    empty = DeviceConfiguration("empty", NPU2Col1())
+    return Program.compose([empty, config], entry=rt)
 
 
-mlir_text = design()
-print(mlir_text)
+if __name__ == "__main__":
+    print(program().resolve_program())

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-# RUN: %python %s | aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform --aie-substitute-shim-dma-allocations --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu | FileCheck %s --check-prefix=NPU
+# RUN: %python %s | aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform --aie-substitute-shim-dma-allocations --canonicalize --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu | FileCheck %s --check-prefix=NPU
 
 # Runtime scalars of several widths and signedness as slice bounds of a tap:
 # taplib widens each to i64 (sign-extending signed ones, zero-extending

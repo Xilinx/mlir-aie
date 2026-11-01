@@ -11,6 +11,10 @@ add_executable(target_model_rtti  target_model_rtti.cpp)
 add_executable(target_model_unknown_device  target_model_unknown_device.cpp)
 add_executable(register_database  register_database.cpp)
 add_executable(device_cache device_cache.cpp)
+add_executable(stream_wait_graph stream_wait_graph.cpp)
+llvm_update_compile_flags(stream_wait_graph)
+target_link_libraries(stream_wait_graph PRIVATE AIETransforms MLIRParser)
+add_test(NAME StreamWaitGraph COMMAND stream_wait_graph)
 # aiecc's headers define cl::opt globals, whose typeinfo must match LLVM's
 # RTTI setting; take aiecc's compile flags so rtti=OFF builds link.
 llvm_update_compile_flags(device_cache)
@@ -34,6 +38,13 @@ else()
 endif()
 add_test(NAME Bfloat16Fallback COMMAND bfloat16_fallback_test)
 
+# The aievec.shuffle mode table against the permutations measured on AIE2P.
+add_executable(aievec_shuffle_modes aievec_shuffle_modes.cpp)
+target_link_libraries(aievec_shuffle_modes PRIVATE MLIRAIEVecDialect AIE)
+add_test(NAME AIEVecShuffleModes
+         COMMAND aievec_shuffle_modes
+                 ${CMAKE_CURRENT_SOURCE_DIR}/aie2p_vshuffle_modes.json)
+
 # ELF fixtures and checks are in test/aiecc/stack_size_analysis.test.
 add_executable(stack_size_analysis stack_size_analysis.cpp
                ${CMAKE_CURRENT_SOURCE_DIR}/../../tools/aiecc/StackSizeAnalysis.cpp)
@@ -46,11 +57,12 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
 set(EXECUTABLES target_model target_model_rtti target_model_unknown_device register_database device_cache)
 
-set(CPP_TEST_DEPENDS ${EXECUTABLES} bfloat16_fallback_test stack_size_analysis)
+set(CPP_TEST_DEPENDS ${EXECUTABLES} bfloat16_fallback_test stack_size_analysis
+    aievec_shuffle_modes stream_wait_graph)
 add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND}
                   DEPENDS ${CPP_TEST_DEPENDS})
 
-foreach(executable ${EXECUTABLES})
+foreach(executable ${EXECUTABLES} aievec_shuffle_modes stream_wait_graph)
     target_link_libraries(${executable}
                         PUBLIC
                         AIE

@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 from aie.iron.device import from_name
 from aie.iron.kernels._common import ARCH_TRAITS
-from aie.utils import config, get_current_device
+from aie.utils import config
 from aie.utils.compile.remarks import compile_command, kernel_builds
 from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.hostruntime import set_current_device
@@ -97,12 +97,8 @@ def test_every_kernel_builds_from_its_portable_branch(arch, tmp_path, monkeypatc
     if not (Path(config.aie_runtime_lib_dir()) / arch.upper()).is_dir():
         pytest.skip(f"this build has no aie_runtime_lib/{arch.upper()}")
     monkeypatch.setenv("AIE_KERNELS_PORTABLE", "1")
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(from_name(ARCH_TRAITS[arch].device, n_cols=1))
-    try:
+    with set_current_device(from_name(ARCH_TRAITS[arch].device, n_cols=1)):
         builds = list(kernel_builds())
-    finally:
-        set_current_device(previous)
 
     def one(indexed):
         i, (name, ef) = indexed

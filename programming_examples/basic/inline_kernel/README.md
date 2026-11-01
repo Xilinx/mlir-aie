@@ -51,8 +51,9 @@ each:
 python inline_kernel.py --num-elements 16384 --iters 50
 ```
 
-Timing uses `aie.utils.benchmark.run_iters`. It reports **on-NPU time**,
-captured around `kernel.wait()`, separately from end-to-end host latency;
+Timing uses `aie.utils.benchmark.run_iters`. It reports **on-NPU time**, each
+dispatch less the median of an empty dispatch on the same hardware context,
+separately from end-to-end host latency;
 the example quotes the NPU figure because excluding launch overhead is what makes the per-call delta legible. `warmup=1` absorbs the
 JIT compile.
 

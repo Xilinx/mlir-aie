@@ -24,13 +24,9 @@ from aie.utils.compile.jit.compilabledesign import CompilableDesign
 @pytest.fixture(autouse=True)
 def offline():
     """Run each test with no device bound, and check it never started the runtime."""
-    previous = get_current_device(probe_runtime=False)
-    set_current_device(None)
-    assert utils._DefaultNPURuntime is None
-    try:
+    with set_current_device(None):
+        assert utils._DefaultNPURuntime is None
         yield
-    finally:
-        set_current_device(previous)
     assert utils._DefaultNPURuntime is None
 
 

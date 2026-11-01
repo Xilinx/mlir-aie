@@ -15,6 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Conversion/AIEXToEmitC/AIEXToEmitC.h"
+#include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
@@ -520,6 +521,8 @@ struct ConvertAIEXToEmitCPass
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
     MLIRContext *ctx = &getContext();
+    if (failed(AIE::inlineWriteConfigs(moduleOp)))
+      return signalPassFailure();
 
     struct SeqInfo {
       AIE::RuntimeSequenceOp seq;

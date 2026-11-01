@@ -498,7 +498,7 @@ NUM_PROC_THREADS       = 1
 # Possible values are: YES, NO, DATETIME and DATE.
 # The default value is: NO.
 
-TIMESTAMP              = YES
+TIMESTAMP              = NO
 
 #---------------------------------------------------------------------------
 # Build related configuration options

@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: python %s | FileCheck %s
+# RUN: %python %s | FileCheck %s
 
 from aie.dialects.aie import *
 import aie.dialects.aiex as aiex

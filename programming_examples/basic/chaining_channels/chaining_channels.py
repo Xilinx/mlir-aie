@@ -51,7 +51,6 @@ from aie.iron import (
     TileDma,
     Worker,
 )
-from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -158,15 +157,13 @@ def chaining_channels(
 
     # ---- compute tile spinner: toggle locks, ignore the data ----------
     def core_body(cons_lock, prod_lock):
-        for _ in range_(sys.maxsize):
-            cons_lock.acquire(1)
-            prod_lock.release(1)
+        cons_lock.acquire(1)
+        prod_lock.release(1)
 
     worker = Worker(
         core_body,
         [compute_cons_lock, compute_prod_lock],
         tile=compute_tile,
-        while_true=False,
     )
 
     # ---- runtime sequence: manual BD writes (THE lesson) ---------------

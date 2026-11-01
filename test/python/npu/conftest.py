@@ -139,7 +139,8 @@ def pytest_addoption(parser):
     parser.addoption(
         "--correctness-results",
         default=None,
-        help="only publish cases checked without failures in this extensive JUnit report",
+        help="only publish cases checked without failures in this extensive JUnit "
+        "report (dedicated series: their factory's kernel_check tests)",
     )
     parser.addoption("--warmup", type=int, default=10, help="untimed iterations")
     parser.addoption("--iters", type=int, default=50, help="timed iterations")
@@ -220,6 +221,10 @@ def report_error(request):
     return record
 
 
+# A sweep test's name: test_kernel_extensive[<case>/<data case>/s<seed>].
+_SWEEP_CASE = re.compile(r"test_kernel_extensive\[(.+)/[^/]+/s\d+\]")
+
+
 def _checked_cases(path):
     """Exclude failed sweep cases and factories with failed dedicated checks.
 
@@ -232,7 +237,7 @@ def _checked_cases(path):
     checked, rejected, rejected_factories, failed = set(), set(), set(), []
     for test in tests:
         name = test.get("name", "")
-        match = re.fullmatch(r"test_kernel_extensive\[(.+)/[^/]+/s\d+\]", name)
+        match = _SWEEP_CASE.fullmatch(name)
         bad = test.find("failure") is not None or test.find("error") is not None
         if bad:
             if match:
@@ -263,6 +268,39 @@ def _checked_cases(path):
     }, failed
 
 
+def _publishable(rows, path):
+    """The rows a correctness report admits, and the failures it lists.
+
+    A case the extensive sweep ran is judged there (``_checked_cases``). A
+    case it never ran -- a dedicated timing test's own -- is admitted only
+    when at least one ``kernel_check`` test of its factory ran and none
+    failed.
+    """
+    checked, failed = _checked_cases(path)
+    swept, verified, rejected = set(), set(), set()
+    for test in ET.parse(path).iter("testcase"):
+        match = _SWEEP_CASE.fullmatch(test.get("name", ""))
+        if match:
+            swept.add(match[1])
+            continue
+        factories = {
+            prop.get("value")
+            for prop in test.findall("properties/property")
+            if prop.get("name") == "kernel_check" and prop.get("value")
+        }
+        if test.find("failure") is not None or test.find("error") is not None:
+            rejected |= factories
+        elif test.find("skipped") is None:
+            verified |= factories
+    verified -= rejected
+    kept = []
+    for row in rows:
+        case = row["name"].rsplit("/", 1)[0]
+        if case in checked or (case not in swept and case.split("/", 1)[0] in verified):
+            kept.append(row)
+    return kept, failed
+
+
 def _reason(report) -> str:
     """The first line of a failed test's error, short enough for a table."""
     longrepr = getattr(report, "longrepr", None)
@@ -277,7 +315,9 @@ def pytest_sessionfinish(session, exitstatus):
 
     A kernel that returns the wrong answer records nothing -- its test raises
     before timing. When given the extensive correctness report, also exclude
-    cases that failed an edge input or were not checked there. A failed
+    cases that failed an edge input or were not checked there, or, for a
+    dedicated timing test's case the sweep never runs, whose factory's
+    ``kernel_check`` tests did not all pass (``_publishable``). A failed
     kernel's series shows a gap for this run. What a partial file
     cannot survive is a bad device: if preflight (power mode) or the
     measurement sanity check failed, no number from the run is trustworthy
@@ -300,8 +340,7 @@ def pytest_sessionfinish(session, exitstatus):
     failed = sorted({r.nodeid for k in ("failed", "error") for r in stats.get(k, [])})
     if correctness := config.getoption("--correctness-results"):
         try:
-            checked, correctness_failed = _checked_cases(correctness)
-            rows = [r for r in rows if r["name"].rsplit("/", 1)[0] in checked]
+            rows, correctness_failed = _publishable(rows, correctness)
             failed = sorted(set(failed) | set(correctness_failed))
         except (OSError, ET.ParseError, ValueError) as exc:
             meta["correctness_error"] = str(exc)
@@ -350,7 +389,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Print the ``--report-error`` stats and the ``--baseline-sources`` comparison.
 
     Each baseline arm shows its min..max over n calls (cycles) or iterations
-    (npu_us), so "the candidate's max is below the base's min" reads off one
+    (dispatch_us, npu_us), so "the candidate's max is below the base's min" reads off one
     line, and its error against the reference (``cases.error_report``)
     below the words.
     """
@@ -388,21 +427,15 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
                 f"  baseline fails this tree's contract: {c['baseline_failed']}",
                 yellow=True,
             )
-        if stack := c.get("baseline_stack"):
-            tr.write_line(
-                f"  baseline built with a {stack[1]} B stack: it needs more than "
-                f"the {stack[0]} B this tree's contract gives",
-                yellow=True,
-            )
         base, cur = c.get("accuracy", ([], []))
         for b, a in zip(base, cur):
             tr.write_line(f"  error[{b['output']}] {_accuracy_line(b)}")
             tr.write_line(f"  {'':>8} -> {_accuracy_line(a)}")
-        for metric in ("cycles", "npu_us"):
+        for metric in ("cycles", "dispatch_us", "npu_us"):
             if not any(c[f"{metric}_range"]):
                 continue
             base, cur = c[f"{metric}_range"]
-            tr.write_line(f"  {metric:<7} {span(base):>26} -> {span(cur)}")
+            tr.write_line(f"  {metric:<11} {span(base):>26} -> {span(cur)}")
 
 
 def _device_generation() -> str | None:

@@ -5,15 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows="circuit-switch-hops=false" %s | FileCheck %s
 
 // Memtile (0,1) emits flows 0..3 south and receives flows 4..6 from the cores
 // above, one arbiter short. Flow 6 is placed last and has to share.
 //
-// Flow 4 sends 256 bytes per descriptor into a DMA taking 64 at a time. One
-// send descriptor is one packet and the grant is held until tlast, so it spans
-// all four receive descriptors and any co-tenant waits out the whole sequence.
-// Flow 5 sends and receives the same size, so flow 6 joins that arbiter.
+// Flow 4 sends 256 bytes per descriptor into a DMA taking 64 at a time, so one
+// packet spans four receive descriptors. That alone cannot hang: every
+// receiver here loops over a descriptor with no lock, so it always drains, and
+// no flow can stall holding an arbiter. The flows take amsels in plain order.
 
 module {
   aie.device(npu2) {
@@ -87,15 +87,22 @@ module {
     ^end:
       aie.end
     }
+
+    // The host issues every shim channel up front.
+    aie.runtime_sequence() {
+      %bd = arith.constant 0 : i32
+      aiex.npu.push_queue(1, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(2, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(3, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+      aiex.npu.push_queue(4, 0, S2MM : 0) bd_id %bd repeat %bd {issue_token = false} : i32, i32
+    }
   }
 }
-
-// Flow 4 keeps arbiter 4 to itself; flow 6 wraps onto flow 5's arbiter.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[SPANS:.*]] = aie.amsel<4> (0)
 // CHECK:         %[[SAME:.*]] = aie.amsel<5> (0)
-// CHECK:         %[[SHARED:.*]] = aie.amsel<5> (1)
+// CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)
 // CHECK:         aie.masterset(DMA : 0, %[[SPANS]])
 // CHECK:         aie.masterset(DMA : 1, %[[SAME]])
 // CHECK:         aie.masterset(DMA : 2, %[[SHARED]])

@@ -22,20 +22,16 @@ While the ObjectFifo primitive aims to reduce the complexity tied to data moveme
 
 Tile DMAs interact directly with the memory modules of their tiles and are responsible for pushing and retrieving data to and from the AXI stream interconnect. When data is pushed onto the stream, the user can program the DMA's n-dimensional address generation scheme such that the data's layout when pushed may be different than how it is stored in the tile's local memory. In the same way, a user can also specify in what layout a DMA should store the data retrieved from the AXI stream.
 
-DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR and have their own auto-generated Python binding (available under `<MLIR_AIE_INSTALL_PATH>/python/aie/dialects/_aie_ops_gen.py` after the repository is built):
+DMA blocks contain buffer descriptor operations that summarize what data is being moved, from what offset, how much of it, and in what layout. These buffer descriptors are the `AIE_DMABDOp` operations in MLIR, wrapped by a hand-written Python builder in [`python/dialects/aie.py`](../../../python/dialects/aie.py):
 ```python
-def dma_bd
-    (
-        buffer,
-        *,
-        offset=None,
-        len=None,
-        dimensions=None,
-        bd_id=None,
-        next_bd_id=None,
-        loc=None,
-        ip=None
-    )
+def dma_bd(
+    buffer,
+    sizes=None,
+    strides=None,
+    offset=None,
+    transfer_len=None,
+    **kwargs,
+)
 ```
 It is not necessary to understand these low-level operations in order to use the data layout transformations with the ObjectFifo primitive.
 
@@ -119,6 +115,31 @@ Please see the [`to_stream_transformations`](./to_stream_transformations/) and [
 Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
 
 When using the implicit copy feature of the ObjectFifo for a join or distribute data movement pattern, a data layout transformation on the output of a join or on the input of a distribute applies to each participant's segment of the shared object on its own; it cannot walk across the larger tensor. The reasoning behind this decision is largely due to the complexity of the DMA program that is required to achieve a data layout transformation across the larger data tensor while ensuring race-free execution of the DMA buffer descriptor logic. Users may however program the DMA buffer descriptors themselves for specific designs; this is further detailed in [this](https://github.com/Xilinx/mlir-aie/discussions/2748) discussion.
+
+### Overlapping Windows over a Forwarded Stream
+
+A `to_stream` usually walks one object. When an ObjectFifo is forwarded through a Mem tile with `forward()`, its `to_stream` may instead walk the whole stream of input objects, the way an im2row would be written on the host. This cuts overlapping windows out of a stream of rows, for example the three rows a 3x3 convolution reads for each output row, so the consumer core holds one window at a time instead of a ring of whole rows:
+
+```python
+ROWS, COLS = 4, 8
+row_ty = np.ndarray[(COLS,), np.dtype[np.int32]]
+window_ty = np.ndarray[(3, COLS), np.dtype[np.int32]]
+
+of_rows = ObjectFifo(row_ty, name="rows")
+# One window per row, three rows each; a zero row above the first and below the last.
+windows = TensorAccessPattern((ROWS, COLS), 0, [ROWS, 3, COLS], [COLS, COLS, 1])
+windows = windows.pad([(1, 1), (0, 0), (0, 0)])
+of_windows = of_rows.cons().forward(obj_type=window_ty, to_stream=windows)
+```
+
+The pattern is read as a walk over the stream:
+
+- Its tensor is the whole stream of input objects (here the 4 rows of an image), not one object.
+- The outermost dimension enumerates the outputs, one object of the forwarded fifo each, and steps whole input objects: its stride divided by the input object's size is how far the window advances (1 here, 2 for a stride-2 convolution).
+- The inner dimensions are one output, exactly as many elements as the forwarded fifo's object. At most one of them steps by exactly one input object (the window's rows); the others stay inside an object.
+- Padding the outermost dimension by `(before, after)` adds that many zero objects ahead of and behind the stream, and the walk's coordinates start at the first of them. Padding any other dimension is not allowed in a stream walk.
+
+From the pattern the compiler infers how many outputs each stream yields, how many input objects each window spans and how far it advances; no other argument is needed. A `to_stream` that stays within one object keeps its usual meaning. The Mem tile holds the whole stream (its zero objects included) in one buffer, so the stream may hold at most 63 objects and yield at most 24 outputs, one buffer descriptor each. See `ObjectFifoLinkOp` in the AIE dialect and [ObjectFifo Lowering](../../../docs/ObjectFifoLowering.md#windows-a-link-walking-the-whole-stream) for how this lowers.
 
 ### Data Layout Transformations with the Runtime Sequence
 

@@ -52,10 +52,17 @@ ROWS = [
         "extra": "x",
     },
     {
-        "name": "add/1024x16/bfloat16/npu_us",
+        "name": "add/1024x16/bfloat16/dispatch_us",
         "unit": "us",
         "value": 193.5,
         "range": "± 1.6; min 172.8 max 202.2 n=50",
+        "extra": "x",
+    },
+    {
+        "name": "add/1024x16/bfloat16/npu_us",
+        "unit": "us",
+        "value": 101.2,
+        "range": "± 1.6; min 80.5 max 109.9 n=50",
         "extra": "x",
     },
     {
@@ -160,7 +167,7 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     assert record["pmode"] == "performance" and record["device"] == "Phoenix"
     assert record["device_raw"] == "RyzenAI-npu1" and record["schema"] == 1
     assert record["provenance"]["host"] == "bench-1"
-    assert record["sane"] and record["published"] and record["n_rows"] == 4
+    assert record["sane"] and record["published"] and record["n_rows"] == 5
     assert record["failed"] == META["failed"]
     assert record["truncated"] == ["swiglu/1024x256/bfloat16"]
     assert record["cases"] == {
@@ -194,12 +201,16 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     cycles = json.loads((out / "history/cycles.json").read_text())
     assert cycles["metric"] == "cycles" and cycles["unit"] == "cycles"
     assert [r["id"] for r in cycles["runs"]] == ["100"]
+    # The part each run measured on, so a chart can keep parts apart.
+    assert cycles["runs"][0]["device"] == "Phoenix"
     assert cycles["runs"][0]["provenance"] == {
         "peano": "22.0.0+0006955e",
         "kernels": "0857407c3322",
         "xrt": "2.20.0",
         "host": "bench-1",
         "device": "RyzenAI-npu1",
+        # Dated before DECODER_FIXED.
+        "measurement": "1",
     }
     assert cycles["series"] == {
         "add/1024x16/bfloat16": {"values": [78], "ranges": ["median 87 max 131 n=16"]},
@@ -213,8 +224,85 @@ def test_a_perf_run_is_recorded_summarized_and_charted(publish, tmp_path):
     assert sorted(p.stem for p in (out / "history").glob("*.json")) == [
         "core_elf_bytes",
         "cycles",
+        "dispatch_us",
         "npu_us",
     ]
+
+
+def test_a_timed_case_is_charted_with_its_worst_error_per_dtype(publish, tmp_path):
+    bf16 = dict(
+        output=0,
+        dtype="bfloat16",
+        reference="float64",
+        modeled=False,
+        max_ulp=1,
+        not_correctly_rounded=3,
+        n=1024,
+    )
+    f32 = dict(bf16, output=1, dtype="float32", max_ulp=40, not_correctly_rounded=1)
+    errors = {
+        "add/1024x16/bfloat16/random/s0": {"passed": True, "outputs": [bf16, f32]},
+        "add/1024x16/bfloat16/large/s1": {
+            "passed": True,
+            "outputs": [dict(bf16, max_ulp=2, not_correctly_rounded=1, modeled=True)],
+        },
+        # All-zero data is right or wrong as one: left out of the pool.
+        "add/1024x16/bfloat16/zeros/s0": {
+            "passed": True,
+            "outputs": [dict(bf16, max_ulp=9, not_correctly_rounded=1024)],
+        },
+        # An untimed case has no row to stand beside.
+        "relu/1024/bf16/random/s0": {"passed": True, "outputs": [bf16]},
+    }
+    results = results_dir(tmp_path)
+    (results / "error.json").write_text(json.dumps(errors))
+    out = tmp_path / "npu1"
+    run_cli(
+        [
+            "perf",
+            "--target",
+            "npu1",
+            "--results",
+            results,
+            "--run-id",
+            "1",
+            "--out",
+            out,
+        ]
+    )
+    record = json.loads((out / "runs/1.json").read_text())
+    add = record["rows"]["add/1024x16/bfloat16"]
+    modeled = (
+        "vs the float64 correctly rounded reference; the check judges this build"
+        " by a model of the kernel"
+    )
+    # A float32 output's ulps never mix with a bfloat16 one's.
+    assert add["max_ulp_bfloat16"] == {"value": 2, "unit": "ulp", "range": modeled}
+    assert add["not_correctly_rounded_bfloat16"]["value"] == 0.195
+    assert add["max_ulp_float32"] == {
+        "value": 40,
+        "unit": "ulp",
+        "range": "vs the float64 correctly rounded reference",
+    }
+    assert add["not_correctly_rounded_float32"]["value"] == 0.098
+    assert "relu/1024/bf16" not in record["rows"]
+    ulps = json.loads((out / "history/max_ulp_bfloat16.json").read_text())
+    assert ulps["series"]["add/1024x16/bfloat16"]["values"] == [2]
+
+
+def test_each_timed_case_names_its_kernel_build(publish, tmp_path):
+    cases = {
+        "add/1024x16/bfloat16": {"build": "add_bf16-0123456789ab"},
+        # A case that recorded no row has no build to name.
+        "relu/1024x16/bfloat16": {"build": "relu_bf16-ba9876543210"},
+    }
+    record = publish.record_perf(
+        results_dir(tmp_path, meta={**META, "cases": cases}),
+        target="npu1",
+        run={"id": "1"},
+    )
+    assert record["builds"] == {"add/1024x16/bfloat16": "add_bf16-0123456789ab"}
+    assert "builds" not in publish.summary(record)
 
 
 def test_a_refused_run_records_why_and_no_sanity_result(publish, tmp_path):
@@ -431,6 +519,291 @@ def test_old_runs_thin_to_one_a_week(publish):
     }
     assert len(weeks) == len(old)
     assert kept[-1]["id"] == "0"
+
+
+def test_a_thinned_week_keeps_its_published_nightly(publish):
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+
+    def run(rid, days, **extra):
+        return {
+            "id": rid,
+            "date": publish.iso(now - datetime.timedelta(days=days)),
+            **extra,
+        }
+
+    # One old ISO week: a published nightly, then a newer refused night and
+    # a newer published run started by hand. The week's charted point is the
+    # nightly's: neither newer run may stand in for it.
+    week = publish.parse_date(publish.iso(now - datetime.timedelta(days=120)))
+    monday = 120 + week.weekday()
+    records = [
+        run("nightly", monday - 1, published=True, rows={"a": {}}),
+        run("refused", monday - 2, published=False, rows={}),
+        run(
+            "manual",
+            monday - 3,
+            published=True,
+            rows={"a": {}},
+            event="workflow_dispatch",
+        ),
+    ]
+    assert [r["id"] for r in publish.prune(records, now)] == ["nightly"]
+    # A week with no published run keeps its newest.
+    only_refused = [
+        run("r1", monday - 1, published=False),
+        run("r2", monday - 2, published=False),
+    ]
+    assert [r["id"] for r in publish.prune(only_refused, now)] == ["r2"]
+
+
+def test_runs_past_a_year_of_weeks_are_dropped(publish):
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    horizon = publish.KEEP_DAYS + 7 * publish.KEEP_WEEKS
+    records = [
+        {"id": str(d), "date": publish.iso(now - datetime.timedelta(days=d))}
+        for d in (0, horizon - 10, horizon + 10, horizon + 400)
+    ]
+    assert [r["id"] for r in publish.prune(records, now)] == [str(horizon - 10), "0"]
+
+
+def test_old_records_shed_their_detail_and_retired_cases_leave_the_history(
+    publish, tmp_path
+):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    # Twenty nights, oldest first (one 200 days ago, then the last 19): case
+    # "kept" every night; "retired" only in the first five; "gap" every night
+    # but the last three.
+    days = [200, *range(18, -1, -1)]
+    for i, d in enumerate(days):
+        rows = {"kept": {"cost": {"value": i, "unit": "cost"}}}
+        if i < 5:
+            rows["retired"] = {"cost": {"value": i, "unit": "cost"}}
+        if i < len(days) - 3:
+            rows["gap"] = {"cost": {"value": i, "unit": "cost"}}
+        record = {
+            "target": "sa-placer-hw",
+            "id": f"r{i:02}",
+            "url": "",
+            "commit": {},
+            "date": publish.iso(now - datetime.timedelta(days=d)),
+            "pmode": "turbo",
+            "provenance": {},
+            "sane": True,
+            "published": True,
+            "n_rows": 1,
+            "failed": [],
+            "truncated": [],
+            "rows": rows,
+            "detail": [{"seed": 3}],
+            "builds": {"x": 1},
+        }
+        (out / "runs" / f"r{i:02}.json").write_text(json.dumps(record))
+    publish.rebuild(out, now)
+    # The 200-day-old record sheds what only the latest runs are read for;
+    # a recent one keeps it.
+    old = json.loads((out / "runs/r00.json").read_text())
+    assert "detail" not in old and "builds" not in old and old["rows"]
+    assert "detail" in json.loads((out / "runs/r19.json").read_text())
+    # A case not measured in the last RETIRED_AFTER runs leaves the history;
+    # one missing a few nights stays.
+    cost = json.loads((out / "history/cost.json").read_text())
+    assert sorted(cost["series"]) == ["gap", "kept"]
+
+
+def test_manual_publishes_of_a_subset_retire_nothing(publish, tmp_path):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    nights = publish.RETIRED_AFTER
+    for i in range(2 * nights):
+        manual = i >= nights
+        rows = {"subset": {"cost": {"value": i, "unit": "cost"}}}
+        if not manual:
+            rows["nightly"] = {"cost": {"value": i, "unit": "cost"}}
+        record = hardware_record(
+            f"r{i:02}",
+            publish.iso(now - datetime.timedelta(hours=2 * nights - i)),
+            "full",
+            event="workflow_dispatch" if manual else "schedule",
+        )
+        record["rows"] = rows
+        (out / "runs" / f"r{i:02}.json").write_text(json.dumps(record))
+    publish.rebuild(out, now)
+    cost = json.loads((out / "history/cost.json").read_text())
+    assert sorted(cost["series"]) == ["nightly", "subset"]
+
+
+@pytest.mark.parametrize(
+    "changes, selected, needed",
+    [
+        (
+            [
+                {"event": "schedule"},
+                {"event": "schedule"},
+                {"event": "workflow_dispatch"},
+                {"event": "workflow_dispatch"},
+            ],
+            "2",
+            {"1", "2"},
+        ),
+        ([{}, {"pmode": "performance"}, {}], "3", {"1", "3"}),
+        ([{}, {"device": "Phoenix"}, {}], "3", {"1", "3"}),
+        ([{"device": "Phoenix"}, {"device": "Strix Halo"}, {}], "3", {"2", "3"}),
+        ([{}, {}, {"published": False, "rows": {}}], "2", {"1", "2"}),
+        (
+            [{"event": "workflow_dispatch"} for _ in range(4)],
+            "4",
+            {"4"},
+        ),
+        (
+            [{}, {"event": "workflow_dispatch"}, {}],
+            "3",
+            {"1", "3"},
+        ),
+    ],
+    ids=[
+        "manual-after",
+        "power",
+        "same-device",
+        "new-device",
+        "refused",
+        "manual-only",
+        "manual-before",
+    ],
+)
+def test_old_detail_follows_the_pages_selected_comparison(
+    publish, tmp_path, changes, selected, needed
+):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    for i, change in enumerate(changes, 1):
+        record = hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=160 - 7 * i)),
+            "full",
+            builds={"kernel": "built"},
+            **change,
+        )
+        (out / "runs" / f"{i}.json").write_text(json.dumps(record))
+
+    publish.rebuild(out, now)
+    latest = json.loads((out / "latest.json").read_text())
+    assert latest["id"] == selected
+    assert latest["detail"] and latest["builds"]
+    for i in range(1, len(changes) + 1):
+        record = json.loads((out / "runs" / f"{i}.json").read_text())
+        assert ("detail" in record) == (str(i) in needed)
+        assert ("builds" in record) == (str(i) in needed)
+    before = {p: p.read_text() for p in out.rglob("*.json")}
+    publish.rebuild(out, now)
+    assert {p: p.read_text() for p in out.rglob("*.json")} == before
+
+
+@pytest.mark.parametrize(
+    "middle, latest, previous",
+    [
+        ({}, {}, "2"),
+        ({"pmode": "performance"}, {}, "1"),
+        ({"device": "Phoenix"}, {}, "1"),
+        ({"device": "Phoenix"}, {"device": "Strix Halo"}, "2"),
+    ],
+    ids=["same-week", "power", "same-device", "new-device"],
+)
+def test_comparison_survives_weekly_thinning_and_the_run_limit(
+    publish, tmp_path, middle, latest, previous
+):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    max_runs = 6
+    records = [
+        hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=161 - i)),
+            "full",
+            event="schedule",
+            builds={"kernel": "built"},
+            **change,
+        )
+        for i, change in enumerate(({}, middle, latest), 1)
+    ]
+    assert len({publish.parse_date(r["date"]).isocalendar()[:2] for r in records}) == 1
+    records += [
+        hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=24 - i)),
+            "full",
+            event="workflow_dispatch" if i % 2 else "schedule",
+            published=bool(i % 2),
+            **({} if i % 2 else {"rows": {}}),
+        )
+        for i in range(4, 24)
+    ]
+    # File enumeration order is not chronology.
+    for r in reversed(records):
+        (out / "runs" / f"{r['id']}.json").write_text(json.dumps(r))
+    publish.rebuild(out, now, max_runs=max_runs)
+
+    selected = json.loads((out / "latest.json").read_text())
+    assert selected["id"] == "3" and selected["detail"] and selected["builds"]
+    index = json.loads((out / "runs.json").read_text())["runs"]
+    assert [r["id"] for r in index] == [previous, "3", "20", "21", "22", "23"]
+    assert len(index) == max_runs
+    assert [r["date"] for r in index] == sorted(r["date"] for r in index)
+    for run_id in (previous, "3"):
+        detail = json.loads((out / "runs" / f"{run_id}.json").read_text())
+        assert detail["detail"] and detail["builds"]
+    assert len(list((out / "runs").glob("*.json"))) == max_runs
+    before = {p: p.read_text() for p in out.rglob("*.json")}
+    publish.rebuild(out, now, max_runs=max_runs)
+    assert {p: p.read_text() for p in out.rglob("*.json")} == before
+
+
+def test_a_run_limit_below_the_comparison_keeps_only_the_comparison(publish, tmp_path):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    records = [
+        hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=10 - i)),
+            "full",
+            event="schedule" if i < 3 else "workflow_dispatch",
+            published=i < 3,
+            **({} if i < 3 else {"rows": {}}),
+        )
+        for i in range(1, 8)
+    ]
+    for r in records:
+        (out / "runs" / f"{r['id']}.json").write_text(json.dumps(r))
+    with pytest.raises(ValueError, match="max_runs must be at least 1"):
+        publish.rebuild(out, now, max_runs=0)
+    assert len(list((out / "runs").glob("*.json"))) == len(records)
+    publish.rebuild(out, now, max_runs=1)
+    index = json.loads((out / "runs.json").read_text())["runs"]
+    assert [r["id"] for r in index] == ["1", "2"]
+    assert sorted(p.stem for p in (out / "runs").glob("*.json")) == ["1", "2"]
+
+
+def test_comparison_protection_does_not_extend_the_retention_horizon(publish, tmp_path):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    now = datetime.datetime(2026, 9, 29, tzinfo=datetime.timezone.utc)
+    horizon = publish.KEEP_DAYS + 7 * publish.KEEP_WEEKS
+    for i, days in enumerate((horizon + 1, horizon, 1), 1):
+        record = hardware_record(
+            str(i),
+            publish.iso(now - datetime.timedelta(days=days)),
+            "full",
+            event="workflow_dispatch" if i == 3 else "schedule",
+        )
+        (out / "runs" / f"{i}.json").write_text(json.dumps(record))
+    publish.rebuild(out, now)
+    assert json.loads((out / "latest.json").read_text())["id"] == "3"
+    assert [p.stem for p in (out / "runs").glob("*.json")] == ["3"]
 
 
 def test_rebuild_drops_pruned_run_files_and_stale_histories(publish, tmp_path):
@@ -668,24 +1041,40 @@ def test_a_component_check_migrates_and_keeps_its_redirect(publish, tmp_path):
         "mobilenet": {"failed_seeds": {"value": 0, "unit": "seeds"}},
         "mobilenet/seed=3/batch=1": {"us_per_image": {"value": 295.7, "unit": "us"}},
     }
+    assert record["provenance"]["dispatch"] == "static"
     index = json.loads((out / "runs.json").read_text())
     assert index["metrics"] == ["failed_seeds", "us_per_image"]
 
     meta = {
         "preflight": {"pmode": "turbo", "device": "NPU Strix Halo"},
-        "provenance": "commit 0123456789 | peano 22.0.0+0006955e | pmode turbo",
+        "provenance": "commit 0123456789 | peano 22.0.0+0006955e | pmode turbo"
+        " | dispatch dynamic",
+        "efforts": {"default": 0.05, "full": 1.0},
+        "iters": 20,
         "measurement_sane": True,
         "detail": [
-            {"seed": 3, "batch": 16, "passed": True, "us_per_image": 81.48},
-            {"seed": 2, "batch": 16, "passed": False, "us_per_image": None},
+            {
+                "seed": 3,
+                "batch": 16,
+                "effort_label": "default",
+                "passed": True,
+                "us_per_image": 81.48,
+            },
+            {
+                "seed": 2,
+                "batch": 16,
+                "effort_label": "default",
+                "passed": False,
+                "us_per_image": None,
+            },
         ],
-        "failed": ["mobilenet/seed=2/batch=16"],
+        "failed": ["mobilenet/seed=2/batch=16/effort=default"],
         "exitstatus": 1,
     }
     rows = [
         {"name": "mobilenet/failed_seeds", "unit": "seeds", "value": 1},
         {
-            "name": "mobilenet/seed=3/placement_cost",
+            "name": "mobilenet/seed=3/effort=default/placement_cost",
             "unit": "cost",
             "value": 300,
             "range": "placement 0123456789ab",
@@ -708,8 +1097,13 @@ def test_a_component_check_migrates_and_keeps_its_redirect(publish, tmp_path):
         ]
     )
     record = json.loads((out / "runs/9.json").read_text())
-    assert record["failed"] == ["mobilenet/seed=2/batch=16"] and record["published"]
+    assert record["failed"] == ["mobilenet/seed=2/batch=16/effort=default"]
+    assert record["published"]
     assert record["detail"] == meta["detail"]
+    # The page reads the efforts the check ran from the record.
+    assert record["efforts"] == meta["efforts"] and record["iters"] == 20
+    # The raw device name is where the page keeps each part's times apart.
+    assert record["provenance"]["device"] == "NPU Strix Halo"
     assert record["device"] == "Strix Halo" and record["pmode"] == "turbo"
     index = json.loads((out / "runs.json").read_text())
     assert index["metrics"] == ["failed_seeds", "placement_cost", "us_per_image"]
@@ -718,10 +1112,168 @@ def test_a_component_check_migrates_and_keeps_its_redirect(publish, tmp_path):
     assert failed["target"] == "sa-placer-hw"
     assert failed["series"] == {"mobilenet": {"values": [0, 1]}}
     cost = json.loads((out / "history/placement_cost.json").read_text())
-    assert cost["series"]["mobilenet/seed=3"]["ranges"] == [
+    assert cost["series"]["mobilenet/seed=3/effort=default"]["ranges"] == [
         None,
         "placement 0123456789ab",
     ]
+
+
+def hardware_record(run_id, date, effort=None, **extra):
+    suffix = f"/effort={effort}" if effort else ""
+    return {
+        "schema": 1,
+        "target": "sa-placer-hw",
+        "id": run_id,
+        "url": "",
+        "commit": {},
+        "date": date,
+        "pmode": "turbo",
+        "device": "Strix",
+        "provenance": {"dispatch": "dynamic"} if effort else {},
+        "sane": True,
+        "published": True,
+        "n_rows": 3,
+        "exitstatus": 1,
+        "failed": [f"mobilenet/seed=7/batch=64{suffix}"],
+        "truncated": [],
+        "rows": {
+            "mobilenet": {"failed_seeds": {"value": 1, "unit": "seeds"}},
+            f"mobilenet/seed=3{suffix}": {
+                "placement_cost": {"value": 300, "unit": "cost"},
+                **({"compile_s": {"value": 27.1, "unit": "s"}} if effort else {}),
+            },
+            **{
+                f"mobilenet/seed=3/batch={b}{suffix}": {
+                    "us_per_image": {"value": us, "unit": "us"},
+                    **({} if effort else {"compile_s": {"value": s, "unit": "s"}}),
+                }
+                for b, us, s in ((1, 292.1, 28.0), (16, 81.5, 27.7))
+            },
+        },
+        "detail": [
+            {
+                "seed": 3,
+                "batch": 16,
+                "passed": True,
+                "us_per_image": 81.5,
+                **({"effort_label": effort} if effort else {}),
+            }
+        ],
+        **extra,
+    }
+
+
+def test_a_static_hardware_run_keeps_its_times_and_gives_full_effort_its_compile(
+    publish, tmp_path
+):
+    out = tmp_path / "sa-placer-hw"
+    (out / "runs").mkdir(parents=True)
+    old = hardware_record("old", "2026-10-16T06:52:54+00:00")
+    new = hardware_record(
+        "new", "2026-10-18T06:52:54+00:00", "full", event="workflow_dispatch"
+    )
+    (out / "runs/old.json").write_text(json.dumps(old))
+    current = json.dumps(new, indent=2)
+    (out / "runs/new.json").write_text(current)
+    now = datetime.datetime(2026, 10, 19, tzinfo=datetime.timezone.utc)
+    publish.rebuild(out, now)
+
+    upgraded = json.loads((out / "runs/old.json").read_text())
+    assert upgraded["provenance"] == {"dispatch": "static"}
+    # The placement and the one compile a seed takes now continue at full
+    # effort; the static design's per-batch times keep their own ids.
+    assert upgraded["rows"] == {
+        "mobilenet": {"failed_seeds": {"value": 1, "unit": "seeds"}},
+        "mobilenet/seed=3/effort=full": {
+            "placement_cost": {"value": 300, "unit": "cost"},
+            "compile_s": {"value": 28.0, "unit": "s"},
+        },
+        "mobilenet/seed=3/batch=1": {"us_per_image": {"value": 292.1, "unit": "us"}},
+        "mobilenet/seed=3/batch=16": {"us_per_image": {"value": 81.5, "unit": "us"}},
+    }
+    assert upgraded["failed"] == ["mobilenet/seed=7/batch=64/effort=full"]
+    assert upgraded["detail"][0]["effort_label"] == "full"
+    assert (out / "runs/new.json").read_text() == current
+    latest = json.loads((out / "latest.json").read_text())
+    assert latest["id"] == "old"
+    per_image = json.loads((out / "history/us_per_image.json").read_text())
+    assert per_image["series"] == {
+        "mobilenet/seed=3/batch=1": {"values": [292.1, None]},
+        "mobilenet/seed=3/batch=1/effort=full": {"values": [None, 292.1]},
+        "mobilenet/seed=3/batch=16": {"values": [81.5, None]},
+        "mobilenet/seed=3/batch=16/effort=full": {"values": [None, 81.5]},
+    }
+    compile_s = json.loads((out / "history/compile_s.json").read_text())
+    assert compile_s["series"] == {
+        "mobilenet/seed=3/effort=full": {"values": [28.0, 27.1]}
+    }
+    assert [r["provenance"]["dispatch"] for r in compile_s["runs"]] == [
+        "static",
+        "dynamic",
+    ]
+
+    before = {p.name: p.read_text() for p in out.rglob("*.json")}
+    publish.rebuild(out, now)
+    assert {p.name: p.read_text() for p in out.rglob("*.json")} == before
+
+
+@pytest.mark.parametrize("target", ["sa-placer", "llama-chain-hw", "yolo26n-hw"])
+def test_only_the_hardware_check_has_its_cases_upgraded(publish, target):
+    record = {**hardware_record("r", "2026-10-16T06:52:54+00:00"), "target": target}
+    assert not publish.upgrade(record)
+    assert record == {
+        **hardware_record("r", "2026-10-16T06:52:54+00:00"),
+        "target": target,
+    }
+
+
+def kernel_record(target, date, cycles):
+    return {
+        "target": target,
+        "id": "r",
+        "date": date,
+        "provenance": {"peano": "22.0.0+e1"},
+        "rows": {
+            case: {
+                "cycles": {"value": cycles, "unit": "cycles"},
+                "cycles_per_kop": {"value": 1.5, "unit": "cycles"},
+                "dispatch_us": {"value": 3378.0, "unit": "us"},
+            }
+            for case in sorted(KERNEL_CASES)
+        },
+    }
+
+
+KERNEL_CASES = {
+    # Over two timer wraps per call before the 10-02 decoder fix.
+    "bn_conv2dk3/1792x8/int8_uint8/input_channels=8/input_width=224/output_channels=16",
+    # Under them: decoded right either way.
+    "bn_conv2dk3_dw/3360x8/uint8/input_channels=120/input_width=28/output_channels=120",
+}
+
+
+def test_cycles_the_old_trace_decoder_understated_are_dropped(publish):
+    record = kernel_record("npu2", "2026-10-01T06:16:12+00:00", 293058)
+    assert publish.upgrade(record)
+    assert record["provenance"] == {"peano": "22.0.0+e1", "measurement": "1"}
+    wrapped, unwrapped = sorted(KERNEL_CASES)
+    assert record["rows"][wrapped] == {"dispatch_us": {"value": 3378.0, "unit": "us"}}
+    assert set(record["rows"][unwrapped]) == {"cycles", "cycles_per_kop", "dispatch_us"}
+    assert not publish.upgrade(record)
+
+    # From the fix on, and on npu1, every point stays.
+    for target, date in (
+        ("npu2", "2026-10-02T06:16:12+00:00"),
+        ("npu1", "2026-09-30T06:16:12+00:00"),
+    ):
+        record = kernel_record(target, date, 301)
+        assert publish.upgrade(record)
+        assert all(len(cells) == 3 for cells in record["rows"].values())
+    assert record["provenance"]["measurement"] == "1"
+    # A record that names its measurement keeps it.
+    record = kernel_record("npu2", "2026-09-30T06:16:12+00:00", 293058)
+    record["provenance"]["measurement"] = "3"
+    assert not publish.upgrade(record)
 
 
 def test_an_unknown_target_is_refused(tmp_path):
@@ -732,3 +1284,36 @@ def test_an_unknown_target_is_refused(tmp_path):
         text=True,
     )
     assert result.returncode == 2 and "invalid choice" in result.stderr
+
+
+def test_a_redirect_keeps_the_links_own_view(publish, tmp_path):
+    publish.redirect(tmp_path, "../dashboard/#view=night")
+    page = (tmp_path / "index.html").read_text()
+    # A link with its own #view lands on it; a bare one on the default.
+    assert (
+        '<script>location.replace("../dashboard/" + (location.hash || "#view=night"));</script>'
+        in page
+    )
+    assert (
+        '<meta http-equiv="refresh" content="0; url=../dashboard/#view=night">' in page
+    )
+
+
+def test_a_host_time_from_before_the_split_is_its_dispatch_time(publish):
+    old = kernel_record("npu1", "2026-10-20T06:16:12+00:00", 900)
+    old["provenance"]["measurement"] = "2"
+    for cells in old["rows"].values():
+        cells["npu_us"] = cells.pop("dispatch_us")
+    assert publish.upgrade(old)
+    for cells in old["rows"].values():
+        assert "npu_us" not in cells
+        assert cells["dispatch_us"] == {"value": 3378.0, "unit": "us"}
+    assert not publish.upgrade(old)
+
+    new = kernel_record("npu1", "2026-10-22T06:16:12+00:00", 900)
+    new["provenance"]["measurement"] = "2"
+    for cells in new["rows"].values():
+        cells["npu_us"] = {"value": 3290.5, "unit": "us"}
+    assert not publish.upgrade(new)
+    for cells in new["rows"].values():
+        assert cells["npu_us"]["value"] == 3290.5

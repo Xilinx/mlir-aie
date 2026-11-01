@@ -1,6 +1,6 @@
 ---
 name: aie-kernel-opt
-description: Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel, or port one architecture's tuned code to the other; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the aie.utils.compile.remarks static report and its base-arm diff, the kernel_design contract gate and traced cycles per call, and, for library kernels, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the traps that compile cleanly and run wrong. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-code-creator).
+description: Make one compiled AIE kernel faster, and prove it. For C++ kernels built by Peano (llvm-aie) for AIE2P (npu2) or AIE2 (npu1) in bf16, float, int8 or int16, from elementwise and normalization kernels to matmul, GEMV, attention and conv, in aie_kernels/ or the user's own .cc. Use when a loop has a high II, won't pipeline, spills, overflows its stack or calls __mulsf3, __divsi3 or another libcall; when the user wants to vectorize or restructure a kernel, or port one architecture's tuned code to the other; or when they want to know whether a kernel change is really faster or bit-identical on the NPU. Drives the aie.utils.compile.remarks static report and its base-arm diff, the kernel_design contract gate and traced cycles per call, and, for library kernels, the test_kernels_e2e gate and the test_kernels_perf back-to-back A/B. Carries the levers that measured faster on hardware and the traps that compile cleanly and run wrong. Not for tile placement or DMA bandwidth (aie-dataflow-opt), or for writing a first kernel (aie-iron-design).
 license: Apache-2.0 WITH LLVM-exception
 ---
 
@@ -10,6 +10,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 # AIE kernel optimization
+
+Fifth of five porting phases, alongside `aie-dataflow-opt` (see
+`aie-model-baseline` for phase 1, `aie-dataflow-presim` for phase 2,
+`aie-iron-design` for phase 3, and `aie-hw-bringup` for phase 4, getting
+to a correct baseline on real hardware — this phase assumes that baseline
+already exists and is correct).
 
 This skill makes **one compiled kernel** faster. It assumes the kernel is
 already correct on hardware (`aie-hw-bringup`) and worth the work
@@ -48,8 +54,8 @@ the same for a kernel in your own design; only the drivers change:
 |---|---|---|
 | Static report (1, 4) | `python -m aie.utils.compile.remarks --cases ...` | `remarks.analyze(ef, "aie2p", Path(dir))` (`aie.utils.compile.remarks`) returns the same `StaticReport`: `loops` (`ii`, `ns`, `zol`, `trips`, `bundle_count`), `libcalls`, `kernel_stack_bytes`, `pass_failed`. `remarks.compile_command(ef, ...)` gives the exact clang++ line |
 | Arms (3) | `MLIR_AIE_KERNEL_SOURCES=$BASE`, `--baseline-sources $BASE` | Two copies of your `.cc`, one `ExternalFunction` per copy (`source_file=`); run `analyze` on each and compare the reports |
-| Gate (2) | `test_kernels_e2e.py -m extensive` | Attach a `KernelContract` (`aie.iron.kernels`: roles, a single-pass reference, tolerance, `trace=`) and drive it with `aie.iron.algorithms.kernel_design` (`kd.design(my_factory, calls=N, guard=True)` with `my_factory` a module-level function returning the kernel, `kd.sample_inputs`, `kd.upload(..., poison=True)`), or keep your design's own test with poisoned outputs |
-| Measure (6) | `test_kernels_perf.py --baseline-sources` | `kd.cycles_per_call` on each arm's design for a `Trace.whole_call()` contract, or `event0()`/`event1()` markers around the call in your design traced with `TraceConfig`; alternate the arms back to back |
+| Gate (2) | `test_kernels_e2e.py -m extensive` | Attach a `KernelContract` (`aie.iron.kernels`: roles, a single-pass reference, tolerance, `trace=`) and drive it with `aie.iron.algorithms.KernelDesign` (`kd = KernelDesign(my_kernel, calls=N, guard=True)`, then `kd.run(kd.sample_inputs())` and `kd.check`), or keep your design's own test with poisoned outputs |
+| Measure (6) | `test_kernels_perf.py --baseline-sources` | `kd.cycles_per_call` on each arm's `KernelDesign` for a `Trace.whole_call()` contract, or `event0()`/`event1()` markers around the call in your design traced with `TraceConfig`; alternate the arms back to back |
 | Whole design | MobileNet in the examples below | Your design's own end-to-end timing, same rules (warm up, min, back to back) |
 
 Every rule and lever holds either way. The MobileNet, ResNet and llama
@@ -74,7 +80,7 @@ python -m aie.utils.compile.remarks --target aie2p --cases test/python/npu/kerne
 - `--cases` compiles exactly the builds the cases run, named by case
   (4c8c4d91ff4); it first prints `cases: N builds for M cases ...`, and a
   case missing from M is a finding. Without it remarks builds only factory
-  defaults and `.dtypes`, which missed every stride-2 and sized `-D` build
+  defaults and `kernels.DTYPES`, which missed every stride-2 and sized `-D` build
   of the conv kernels. For a shape no case has, use
   `--build FACTORY:KEY=VALUE,...` (repeatable; 3dfa82d81af).
 - Read the contract's `trace=`. Only `Trace.whole_call()` gets a cycles row.
@@ -134,8 +140,8 @@ pytest test/python/npu/test_kernels_e2e.py -m extensive -k "$CASE" --seeds 3 \
   arg_byte_offsets=((idx, 16),))` (c7d229b9316), and run it on the base
   kernels first so it fails. Declare `alignments` in the contract for
   what the fast path loads (d8e877d26fc).
-- Keep outputs poisoned (`kd.upload(..., poison=True)`; the core's output
-  tile is poisoned too, 36bd3b637a7) and guarded (`kd.design(...,
+- Keep outputs poisoned (`kd.run` poisons them; the core's output tile is
+  poisoned too, 36bd3b637a7) and guarded (`KernelDesign(...,
   guard=True)`), so an unwritten output or a write past a tile's end fails.
   Gate every entry point alone, and the composition once.
 
@@ -283,10 +289,12 @@ taskset -c $CPUS pytest test/python/npu/test_kernels_perf.py -m perf -k "$K" \
 
 - Each case runs from this tree, then from `$BASE`, with the same inputs.
   The summary prints `cycles base -> cur` and each arm's `min..max n=` for
-  cycles and `npu_us`, `same` or `N differ` raw output words, and each
-  arm's error vs the reference (3b507540694, 8f749a06d52). `--perf-meta`
-  holds the same under `baseline.cases.<case>` (`cycles_range`,
-  `npu_us_range`, `accuracy` as [base, cur]).
+  cycles, `dispatch_us` and `npu_us`, `same` or `N differ` raw output
+  words, and each arm's error vs the reference (3b507540694, 8f749a06d52).
+  `--perf-meta` holds the same under `baseline.cases.<case>`
+  (`cycles_range`, `dispatch_us_range`, `npu_us_range`, `accuracy` as
+  [base, cur]). `dispatch_us` is submit to completion; `npu_us` is that less
+  the median of an empty dispatch on the same hardware context.
 - **Time every case of the kernel**, not the one you targeted. Every case
   is one command, and a change often wins one shape and loses another: 8
   pixels per mmul won six bn 1x1 shapes and lost relu 28/40/120 2236 →
@@ -348,6 +356,9 @@ measured 78 / 134); if they disagree, find out which is wrong first.
   `$NPU_CACHE_HOME/objects/<key>/` holds a copy of every `.cc` it compiled
   (the `.o.d` depfiles name them), so diff those against `git show
   <rev>:<path>`. When two numbers conflict, compare digests first.
+- The nightly kernel checks and their history are on the [maintainer
+  dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=night); the
+  numbers in this skill's case studies are dated evidence, not today's.
 - Several agents on one NPU: wrap every hardware command in `flock` on one
   shared lock file, and build base arms by copying the live tree.
 - Keep every `extern "C"` name, signature and buffer layout. Leave
@@ -380,7 +391,8 @@ or the test fails with `N of M calls traced` (53f84828939); intervals over
   cycles; if production is dispatch-bound too, hand off to
   `aie-dataflow-opt`.
 - Wall clock, only when the kernel can't be traced: quote the pinned
-  **min** (`npu_us_min`), never the mean (it showed 7.5% between
+  **min** (`npu_us_min`, or `dispatch_us_min` where the runtime has no
+  empty dispatch), never the mean (it showed 7.5% between
   byte-identical builds). For the per-call cost, difference two cases that
   differ only in `calls`: `(t20 − t4) / 16`.
 - Ablation prices a region: replace it with a cheap wrong computation and

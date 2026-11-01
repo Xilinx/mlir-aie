@@ -11,14 +11,12 @@ intrinsic type.
 """
 
 import argparse
-import sys
 from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
-from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
     add_compile_args,
     device_from_args,
@@ -46,12 +44,11 @@ def vector_passthrough(a_in: In, b_out: Out):
     of_out = ObjectFifo(_TILE_TY, name="out")
 
     def core_fn(of_in, of_out, kernel):
-        for _ in range_(sys.maxsize):
-            elem_in = of_in.acquire(1)
-            elem_out = of_out.acquire(1)
-            kernel(elem_in, elem_out)
-            of_in.release(1)
-            of_out.release(1)
+        elem_in = of_in.acquire(1)
+        elem_out = of_out.acquire(1)
+        kernel(elem_in, elem_out)
+        of_in.release(1)
+        of_out.release(1)
 
     worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_func])
 

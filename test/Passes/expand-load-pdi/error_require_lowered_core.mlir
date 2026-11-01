@@ -9,7 +9,7 @@
 // This supports lightweight "reset-only" devices that have CoreOps for
 // lock/core initialization but no ELF to load.
 
-// RUN: aie-opt --aie-expand-load-pdi %s | FileCheck %s
+// RUN: aie-opt --aie-expand-load-pdi="inline-config=true" %s | FileCheck %s
 
 module {
 

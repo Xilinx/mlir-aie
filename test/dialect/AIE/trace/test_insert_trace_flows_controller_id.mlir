@@ -13,7 +13,7 @@
 // CHECK-LABEL: module @ctrl_id_auto_assign
 module @ctrl_id_auto_assign {
   aie.device(npu1_1col) {
-    // CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
+    // CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_id = 15>}
     %tile00 = aie.tile(0, 0)
     %tile02 = aie.tile(0, 2)
     aie.trace @core_trace(%tile02) {
@@ -39,7 +39,7 @@ module @ctrl_id_auto_assign {
 // CHECK-LABEL: module @ctrl_id_user_specified
 module @ctrl_id_user_specified {
   aie.device(npu1_1col) {
-    // CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
+    // CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_id = 5>}
     %tile00 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 5>}
     %tile02 = aie.tile(0, 2)
     aie.trace @core_trace(%tile02) {
@@ -65,7 +65,7 @@ module @ctrl_id_user_specified {
 // CHECK-LABEL: module @ctrl_id_created_shim
 module @ctrl_id_created_shim {
   aie.device(npu1_1col) {
-    // CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
+    // CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_id = 15>}
     %tile02 = aie.tile(0, 2)
     aie.trace @core_trace(%tile02) {
       aie.trace.packet id=1 type=core
@@ -89,7 +89,7 @@ module @ctrl_id_created_shim {
 // CHECK-LABEL: module @ctrl_id_npu2
 module @ctrl_id_npu2 {
   aie.device(npu2_1col) {
-    // CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 10>}
+    // CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_id = 10>}
     %tile00 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 10>}
     %tile02 = aie.tile(0, 2)
     aie.trace @core_trace(%tile02) {

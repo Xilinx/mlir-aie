@@ -12,7 +12,7 @@ Reductions differ from `transform` in two ways:
   not apply.
 * The whole input is handed to the kernel in **one** call rather than tiled.
   Reductions need accumulator state across the elements, which a per-tile
-  lambda can't model -- so these helpers accept an [`ExternalFunction`][iron.ExternalFunction]
+  lambda can't model -- so these helpers accept an [`ExternalFunction`][aie.iron.ExternalFunction]
   with signature ``(input_tile, output_tile, input_size: np.int32)`` and
   do not have a lambda path.
 """
@@ -36,7 +36,7 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
             its accumulator loop.
         input_desc: A fake-tensor descriptor (``.shape``, ``.size``,
             ``.dtype``) for the input.  Build via
-            [`make_param_descriptor`][iron.algorithms.reduce.make_param_descriptor].
+            [`make_param_descriptor`][aie.iron.algorithms.reduce.make_param_descriptor].
         output_desc: Same, for the output (typically ``(1,)``-shaped).
         trace_size: When > 0, enable Worker core trace and a
             ``trace_size``-byte runtime trace buffer (default: 0).  Kernel

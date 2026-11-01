@@ -14,7 +14,7 @@
 // RUN: cat %t/ckpt/*/input_with_symbols.mlir | FileCheck --check-prefix=MLIR %s
 
 // The routing failure is reported and a resumable checkpoint is written.
-// CHECK: slave port packet rules exceed the 4-slot limit
+// CHECK: need 5 packet rules, and a slave port holds 4
 // CHECK: aiecc: wrote checkpoint to
 // CHECK: To reproduce, run: aiecc --resume={{.*}}/manifest.json
 
@@ -29,11 +29,23 @@
 // MLIR: aie.packet_flow(20)
 
 // based on test/create-packet-flows/subcube_cover_overbudget.mlir (IDs may differ)
-aie.device(xcvc1902) {
-  %11 = aie.tile(1, 1)
-  aie.packet_flow(20) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, Core : 0> }
-  aie.packet_flow(21) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, Core : 1> }
-  aie.packet_flow(22) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, DMA : 0> }
-  aie.packet_flow(23) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, DMA : 1> }
-  aie.packet_flow(24) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, TileControl : 0> }
+aie.device(npu1_1col) {
+  %01 = aie.tile(0, 1)
+  %02 = aie.tile(0, 2)
+  %sb01 = aie.switchbox(%01) {
+    aie.connect<DMA : 0, South : 0>
+    aie.connect<DMA : 1, South : 1>
+    aie.connect<DMA : 2, South : 2>
+    aie.connect<DMA : 3, South : 3>
+  }
+  %sb02 = aie.switchbox(%02) {
+    aie.connect<DMA : 1, South : 1>
+    aie.connect<Core : 0, South : 2>
+    aie.connect<North : 0, South : 3>
+  }
+  aie.packet_flow(20) { aie.packet_source<%02, DMA : 0>  aie.packet_dest<%01, DMA : 0> }
+  aie.packet_flow(21) { aie.packet_source<%02, DMA : 0>  aie.packet_dest<%01, DMA : 1> }
+  aie.packet_flow(22) { aie.packet_source<%02, DMA : 0>  aie.packet_dest<%01, DMA : 2> }
+  aie.packet_flow(23) { aie.packet_source<%02, DMA : 0>  aie.packet_dest<%01, DMA : 3> }
+  aie.packet_flow(24) { aie.packet_source<%02, DMA : 0>  aie.packet_dest<%01, DMA : 4> }
 }

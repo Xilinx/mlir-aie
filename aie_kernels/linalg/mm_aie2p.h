@@ -468,9 +468,8 @@ static inline void matmul_vectorized_8x8x8_i8_i32(const int8 *__restrict pA,
   static_assert(k % s == 0);
   static_assert(n % (2 * t) == 0);
 
-  // From K = 416, Peano's post-increment combine makes some of the unrolled
-  // A loads read the wrong address (16xKx32, 32xKx16, 16xKx48, 48xKx16; the
-  // 16x16 tile compiles correctly). Roll K up there instead.
+  // From K = 416 the unrolled K loop takes 6-30% more cycles than the rolled
+  // one; the 16x16 tile unrolls at every K.
   constexpr bool unroll_k = k < 416 || (m == 2 * r && n == 2 * t);
 
   return matmul_vectorized_2x2_mmul<int8, int32, (m / r), (k / s), (n / t), r,
@@ -552,12 +551,20 @@ extern "C" {
 #endif
 #endif
 
+// A bf16 C is the f32 sum converted in the core's rounding mode, which powers
+// up as floor; convert to nearest even and give the caller its mode back.
 #define matmul_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,            \
                                  mlir_type_out, r, s, t)                       \
   void matmul_##mlir_type_in##_##mlir_type_out(ctype_in *a_in, ctype_in *b_in, \
                                                ctype_out *c_out) {             \
+    constexpr bool narrows = std::is_same_v<ctype_out, bfloat16>;              \
+    const aie::rounding_mode saved = aie::get_rounding();                      \
+    if constexpr (narrows)                                                     \
+      aie::set_rounding(aie::rounding_mode::conv_even);                        \
     matmul_vectorized_##r##x##s##x##t##_##mlir_type_in##_##mlir_type_out<      \
         DIM_M, DIM_K, DIM_N>(a_in, b_in, c_out);                               \
+    if constexpr (narrows)                                                     \
+      aie::set_rounding(saved);                                                \
   }
 
 #define matmul_scalar_c_func(ctype_in, mlir_type_in, ctype_out, mlir_type_out, \

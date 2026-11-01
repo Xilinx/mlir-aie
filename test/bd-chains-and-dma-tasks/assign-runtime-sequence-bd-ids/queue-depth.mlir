@@ -12,6 +12,16 @@
 // RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
 // RUN:         --aie-dma-tasks-to-npu --aie-dma-to-npu='enforce-queue-depth=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
+// RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \
+// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
+// RUN:         --split-input-file %s -o /dev/null 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=NO-OP-PRINT
+
+// The warning carries no "see current operation" note: printing the push for
+// one verifies the whole device, once per warning.
+// NO-OP-PRINT-NOT: see current operation
+// NO-OP-PRINT:     warning: pushes a DMA task onto tile
+// NO-OP-PRINT-NOT: see current operation
 
 // A DMA channel's task queue holds only getDmaTaskQueueDepth() entries (4 on
 // AIE2, matching aie-rt's XAIE_DMA_MAX_QUEUE_SIZE). Pushing onto a full queue

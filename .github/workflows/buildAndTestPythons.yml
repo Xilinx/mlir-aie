@@ -8,9 +8,8 @@ permissions:
   contents: read
 
 on:
-  push:
-    branches:
-      - main
+  # No push trigger for main: the merge queue runs this workflow on the
+  # commit that lands, so a push run repeats it.
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -70,7 +69,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install -r python/requirements_notebook.txt
+          python -m pip install --require-hashes -r python/requirements_notebook.lock
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Install packages
@@ -105,6 +104,8 @@ jobs:
           # run, and only the newest is ever restored.
           key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ matrix.python_version }}
           max-size: 1G
+          # Never save from the merge queue -- see .github/actions/setup_ccache.
+          save: ${{ github.event_name != 'merge_group' }}
 
       # ccache defaults to comparing the compiler by mtime. GitHub-hosted
       # runners reinstall the compiler every run with a fresh mtime, so every

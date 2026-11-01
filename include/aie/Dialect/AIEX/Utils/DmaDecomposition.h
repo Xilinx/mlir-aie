@@ -22,6 +22,7 @@
 
 namespace xilinx::AIE {
 class AIETargetModel;
+class DMABDOp;
 } // namespace xilinx::AIE
 
 namespace xilinx::AIEX {
@@ -52,13 +53,14 @@ struct NdDmaPattern {
 };
 
 /// Returns true when the pattern passes verifyStridesWraps for the given tile
-/// and memref element type (skipTransformationChecks=false). Diagnostics are
-/// suppressed so callers can probe legality without emitting errors.
+/// and memref element type. Diagnostics are suppressed so callers can probe
+/// legality without emitting errors.
 bool patternPassesVerification(mlir::Operation *forOp,
                                mlir::BaseMemRefType referencedBufType,
                                const xilinx::AIE::AIETargetModel &tm,
                                int tileCol, int tileRow,
-                               const NdDmaPattern &pattern);
+                               const NdDmaPattern &pattern,
+                               bool skipTransformationChecks = false);
 
 /// True when the pattern is fully constant, non-contiguous, currently illegal,
 /// and decomposeNdDmaPattern would produce at least one legal replacement.
@@ -89,6 +91,25 @@ mlir::FailureOr<llvm::SmallVector<NdDmaPattern>> decomposeNdDmaPattern(
     mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType,
     const NdDmaPattern &pattern, const xilinx::AIE::AIETargetModel &targetModel,
     int tileCol, int tileRow);
+
+/// How aie-decompose-large-dma-bd splits a runtime task's descriptor.
+struct TaskBdDecomposition {
+  /// The descriptor lowers as it is.
+  bool legal = false;
+  /// One pass over the descriptor, less the outer dimensions that only
+  /// re-read the same data.
+  NdDmaPattern pass;
+  /// The legal patterns `pass` splits into; empty when no split fits.
+  llvm::SmallVector<NdDmaPattern> pieces;
+};
+
+/// Plan the split of `bd`, a runtime task's descriptor, on tile (`tileCol`,
+/// `tileRow`). Fails when `bd` has padding or a non-constant offset, length,
+/// size or stride, which the pass leaves whole.
+mlir::FailureOr<TaskBdDecomposition>
+decomposeTaskBdPattern(xilinx::AIE::DMABDOp bd,
+                       const xilinx::AIE::AIETargetModel &targetModel,
+                       int tileCol, int tileRow);
 
 } // namespace xilinx::AIEX
 

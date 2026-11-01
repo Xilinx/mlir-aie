@@ -12,7 +12,7 @@
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
-// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -c %S/stack_size_unmeasurable_kernel.cc -o %t.d/stack_size_unmeasurable_kernel.o
+// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -c %S/stack_size_scratch_kernel.cc -o %t.d/stack_size_scratch_kernel.o
 // RUN: cd %t.d && %aiecc %s 2>&1 | FileCheck %s
 
 // The override dominates the sum. The trailing digits are the core body's
@@ -26,7 +26,7 @@ module {
 
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<512xi8>>
 
-    func.func private @touch_scratch(memref<512xi8>) attributes {link_with = "stack_size_unmeasurable_kernel.o", stack_size_override = 5000000000 : i64}
+    func.func private @touch_scratch(memref<512xi8>) attributes {link_with = "stack_size_scratch_kernel.o", stack_size_override = 5000000000 : i64}
 
     %core_0_2 = aie.core(%tile_0_2) {
       %e = aie.objectfifo.acquire @of_out(Produce, 1) : memref<512xi8>

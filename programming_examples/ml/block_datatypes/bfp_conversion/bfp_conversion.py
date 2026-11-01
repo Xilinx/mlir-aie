@@ -11,14 +11,12 @@ to bfp16ebs8, the second multiplies the converted tiles.  Strix-only
 """
 
 import argparse
-import sys
 from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
-from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
     add_compile_args,
     device_from_args,
@@ -57,26 +55,24 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
     of_out = ObjectFifo(_TILE_BFP16_TY, name="out")
 
     def conversion_core(of_in1, of_in2, of_inter1, of_inter2, kernel):
-        for _ in range_(sys.maxsize):
-            elem_in1 = of_in1.acquire(1)
-            elem_in2 = of_in2.acquire(1)
-            elem_out1 = of_inter1.acquire(1)
-            elem_out2 = of_inter2.acquire(1)
-            kernel(elem_in1, elem_in2, elem_out1, elem_out2)
-            of_in1.release(1)
-            of_in2.release(1)
-            of_inter1.release(1)
-            of_inter2.release(1)
+        elem_in1 = of_in1.acquire(1)
+        elem_in2 = of_in2.acquire(1)
+        elem_out1 = of_inter1.acquire(1)
+        elem_out2 = of_inter2.acquire(1)
+        kernel(elem_in1, elem_in2, elem_out1, elem_out2)
+        of_in1.release(1)
+        of_in2.release(1)
+        of_inter1.release(1)
+        of_inter2.release(1)
 
     def multiplication_core(of_inter1, of_inter2, of_out, kernel):
-        for _ in range_(sys.maxsize):
-            elem_in1 = of_inter1.acquire(1)
-            elem_in2 = of_inter2.acquire(1)
-            elem_out = of_out.acquire(1)
-            kernel(elem_in1, elem_in2, elem_out)
-            of_inter1.release(1)
-            of_inter2.release(1)
-            of_out.release(1)
+        elem_in1 = of_inter1.acquire(1)
+        elem_in2 = of_inter2.acquire(1)
+        elem_out = of_out.acquire(1)
+        kernel(elem_in1, elem_in2, elem_out)
+        of_inter1.release(1)
+        of_inter2.release(1)
+        of_out.release(1)
 
     workers = [
         Worker(

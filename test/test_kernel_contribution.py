@@ -51,6 +51,14 @@ def scale(tile_size: int = 64, dtype=None) -> ExternalFunction:
     )
 
 
+DTYPES["tabled"] = ({"dtype": "bf16"}, {"dtype": "i8"})
+
+
+def tabled(tile_size: int = 64, dtype=None) -> ExternalFunction:
+    """Scale a tile in either dtype."""
+    return _make_extern("tabled", _kernel_source("eltwise/tabled.cc"), [])
+
+
 def bare() -> ExternalFunction:
     """No contract."""
     return _make_extern("bare", _kernel_source("eltwise/bare.cc"), [])
@@ -88,7 +96,7 @@ def repo(tmp_path):
             "python/iron/kernels/eltwise.py": FACTORIES,
             "test/python/npu/kernel_cases.py": CASES,
             "test/python/test_kernel_contracts.py": "NOT_JUDGED = {}\n",
-            "docs/api/kernels.md": "::: iron.kernels.eltwise\n",
+            "docs/api/kernels.md": "::: aie.iron.kernels.eltwise\n",
             "aie_kernels/eltwise/add.cc": '#include "add.h"\n',
             "aie_kernels/eltwise/add.h": "",
             "README.md": "",
@@ -127,13 +135,16 @@ def test_a_new_factory_is_told_what_it_still_needs(contribution, repo):
     assert "`note=`" in said
     assert "docstring" in said
     assert "smoke=True" in said
-    assert "@dtypes" in said
+    assert 'DTYPES["scale"]' in said
     assert "export it" not in said  # it is in __all__
+    # One whose module's DTYPES table lists it is not asked to.
+    tabled = "\n".join(line for line in text.splitlines() if "`tabled`" in line)
+    assert tabled and "DTYPES" not in tabled
     bare = "\n".join(line for line in text.splitlines() if "`bare`" in line)
     assert "contract=KernelContract" in bare
     assert "no case in" in bare
     assert "export it" in bare
-    assert '-k "scale or bare"' in text
+    assert '-k "scale or tabled or bare"' in text
     assert "--baseline-sources" in text
 
 

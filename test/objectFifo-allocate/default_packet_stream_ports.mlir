@@ -1,4 +1,4 @@
-// RUN: aie-opt --aie-objectfifo-allocate="packet-sw-objFifos=true" %s | FileCheck %s
+// RUN: aie-opt --aie-assign-packet-ids="packet-sw-objFifos=true" --aie-objectfifo-allocate %s | FileCheck %s
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception

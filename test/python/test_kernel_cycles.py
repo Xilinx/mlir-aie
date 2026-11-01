@@ -4,16 +4,13 @@
 # RUN: %pytest %s
 """Only declared whole-call trace regions may become benchmark cycle metrics."""
 
-from types import SimpleNamespace
-
 import numpy as np
 import pytest
 from aie.iron import ExternalFunction, kernels
 from aie.iron.algorithms import kernel_design as kd
-from aie.iron.device import NPU2Col1
 from aie.iron.kernels import KernelContract, Trace
 from aie.utils.compile.jit import InOut
-from aie.utils.hostruntime import set_current_device
+from aie.utils.trace import TraceConfig
 
 
 def _kernel(name, contract, arg_types=()):
@@ -24,14 +21,9 @@ def _kernel(name, contract, arg_types=()):
     return kernel
 
 
-@pytest.fixture
-def fn():
-    return _kernel("profiled", KernelContract(roles=(), trace=Trace.whole_call()))
-
-
 def _run(fn, tmp_path, calls=1):
-    return kd.cycles_per_call(
-        None, [], 1, int, fn=fn, trace_size=1024, workdir=tmp_path, calls=calls
+    return kd.KernelDesign(fn, calls=calls).cycles_per_call(
+        [], trace_size=1024, workdir=tmp_path
     )
 
 
@@ -41,7 +33,7 @@ def _run(fn, tmp_path, calls=1):
 def test_an_untimed_contract_returns_its_reason_without_running(tmp_path, trace):
     fn = _kernel("untimed", KernelContract(roles=(), trace=trace))
     assert _run(fn, tmp_path) == kd.CallCycles(untimed=trace.reason)
-    assert kd.traced_intervals(fn, calls=4) == 0
+    assert kd.KernelDesign(fn, calls=4).traced_intervals() == 0
 
 
 def test_an_undeclared_trace_is_refused(tmp_path):
@@ -64,21 +56,17 @@ def _with_initializer(trace):
 
 
 def test_a_traced_initializer_is_one_more_interval_per_call():
-    assert kd.traced_intervals(_with_initializer(Trace.whole_call()), calls=4) == 8
-    assert (
-        kd.traced_intervals(_with_initializer(Trace.none("no markers")), calls=4) == 4
-    )
+    timed = kd.KernelDesign(_with_initializer(Trace.whole_call()), calls=4)
+    untimed = kd.KernelDesign(_with_initializer(Trace.none("no markers")), calls=4)
+    assert timed.traced_intervals() == 8
+    assert untimed.traced_intervals() == 4
 
 
-def test_the_library_mm_is_zeroed_then_timed_each_call():
+def test_the_library_mm_is_zeroed_then_timed_each_call(npu2_device):
     # zero's markers bracket its call, so every mm call emits two intervals;
     # set_rounding, the eltwise setup, emits none.
-    set_current_device(NPU2Col1())
-    try:
-        assert kd.traced_intervals(kernels.mm(), calls=4) == 8
-        assert kd.traced_intervals(kernels.add(), calls=4) == 4
-    finally:
-        set_current_device(None)
+    assert kd.KernelDesign(kernels.mm(), calls=4).traced_intervals() == 8
+    assert kd.KernelDesign(kernels.add(), calls=4).traced_intervals() == 4
 
 
 def test_a_partial_initializer_cannot_be_split_off(tmp_path):
@@ -134,39 +122,36 @@ def test_more_flush_intervals_than_pairs_is_an_error():
 
 
 @pytest.mark.parametrize(
-    "intervals,expected",
-    [
-        ([17, 19], kd.CallCycles(kernel=(17, 19))),
-        ([17], kd.CallCycles(kernel=(17,), truncated=True)),
-        ([], RuntimeError),
-        # Each call emitted two pairs, longer than a flush pair.
-        ([170, 190, 170, 190], RuntimeError),
-    ],
+    "intervals,kernel,truncated",
+    [([17, 19], (17, 19), False), ([17], (17,), True), ([], (), True)],
 )
-def test_cycle_protocol_requires_one_complete_pair_per_call(
-    monkeypatch, tmp_path, fn, intervals, expected
-):
-    cfg = SimpleNamespace(
-        physical_mlir_path="physical.mlir", trace_to_json=lambda *args: None
+def test_each_call_takes_one_pair(intervals, kernel, truncated):
+    assert kd.split_intervals(intervals, calls=2, per_call=1, flush=kd.TRACE_FLUSH) == (
+        (),
+        [kernel],
+        truncated,
     )
-    monkeypatch.setattr(kd, "TraceConfig", lambda **kwargs: cfg)
-    monkeypatch.setattr(kd, "upload", lambda *args, **kwargs: ([], object()))
-    monkeypatch.setattr(kd, "get_cycles_summary", lambda path: [(0, *intervals)])
 
-    def run():
-        return kd.cycles_per_call(
-            lambda *args, **kwargs: None,
-            [],
-            1,
-            int,
-            fn=fn,
-            trace_size=1024,
-            workdir=tmp_path,
-            calls=2,
+
+def test_two_pairs_per_call_are_not_flushes():
+    with pytest.raises(RuntimeError, match="does not declare"):
+        kd.split_intervals(
+            [170, 190, 170, 190], calls=2, per_call=1, flush=kd.TRACE_FLUSH
         )
 
-    if expected is RuntimeError:
-        with pytest.raises(RuntimeError, match="trace"):
-            run()
-    else:
-        assert run() == expected
+
+def test_an_inputless_kernel_waits_for_the_trace(tmp_path, npu2_device):
+    # Without the barrier zero's first calls run before the sequence starts
+    # the trace, and the flush pairs are read as calls.
+    design = kd.KernelDesign(kernels.zero(tile_size=64), calls=4).design()
+    traced = design.as_mlir(
+        None,
+        trace_config=TraceConfig(
+            trace_size=1024, trace_file=str(tmp_path / "trace.txt")
+        ),
+    )
+    untraced = design.as_mlir(None)
+    sequence = traced[traced.index("aie.runtime_sequence") :]
+    assert sequence.index("aie.trace.start_config") < sequence.index("aiex.set_lock")
+    assert "aie.use_lock" in traced
+    assert "aie.lock" not in untraced

@@ -142,9 +142,9 @@ static void conv2dk1_skip_init_blocks(
     const int scale, const int skip_scale, const int scale_skip_conv) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
   using MMULSkip = aie::mmul<4, 8, 8, SkipT, int8>;
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = ::aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(
+  const aie::rounding_mode saved_rnd = ::aie::swap_rounding(
       aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
 
   constexpr int NUM_ACC = 8;
@@ -235,6 +235,8 @@ static void conv2dk1_skip_init_blocks(
 
   // Only whole 32-wide blocks are computed; kernels.conv2dk1_skip_init
   // rejects other widths.
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
 }
 
 template <typename SkipT>
@@ -275,8 +277,10 @@ static void conv2dk1_skip_init_vector(
 
   using MMUL8x8x8 = aie::mmul<8, 8, 8, uint8, int8>;
   using MMULSkip = aie::mmul<8, 8, 8, SkipT, int8>;
-  ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  const aie::saturation_mode saved_sat =
+      ::aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd =
+      ::aie::swap_rounding(aie::rounding_mode::positive_inf);
 
   constexpr int NUM_ACC = 4;
   const int iw = input_width;
@@ -368,6 +372,8 @@ static void conv2dk1_skip_init_vector(
   // Only whole 32-wide blocks are computed; kernels.conv2dk1_skip_init
   // rejects other widths.
 
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #else
@@ -383,9 +389,9 @@ static void conv2dk1_skip_init_vector(
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, uint8, int8>;
   using MMULSkip = aie::mmul<4, 8, 8, SkipT, int8>;
-  ::aie::set_saturation(
+  const aie::saturation_mode saved_sat = ::aie::swap_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  ::aie::set_rounding(
+  const aie::rounding_mode saved_rnd = ::aie::swap_rounding(
       aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
 
   uint8_t * /*restrict*/ out_ptr = output;
@@ -540,6 +546,8 @@ static void conv2dk1_skip_init_vector(
   // last (input_width % 32) columns unwritten rather than raising. The
   // factory rejects such a width; see kernels.conv2dk1_skip_init.
 
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
   event1();
 }
 #endif

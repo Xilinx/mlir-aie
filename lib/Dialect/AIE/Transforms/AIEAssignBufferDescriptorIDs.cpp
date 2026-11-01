@@ -44,14 +44,15 @@ BdIdGenerator::BdIdGenerator(int col, int row,
                              const AIETargetModel &targetModel)
     : col(col), row(row), targetModel(targetModel) {}
 
-std::optional<uint32_t> BdIdGenerator::nextBdId(int channelIndex) {
+std::optional<uint32_t> BdIdGenerator::nextBdId(int channelIndex,
+                                                uint32_t alignment) {
   uint32_t bdId = 0;
   uint32_t maxBdId = targetModel.getNumBDs(col, row) - 1;
   // Find the next free BD ID. This is not an efficient algorithm, but doesn't
   for (; (bdIdAlreadyAssigned(bdId) ||
           !targetModel.isBdChannelAccessible(col, row, bdId, channelIndex)) &&
          bdId <= maxBdId;
-       bdId++)
+       bdId += alignment)
     ;
   if (bdId > maxBdId) {
     return std::nullopt;

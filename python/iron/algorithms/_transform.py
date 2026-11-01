@@ -5,9 +5,10 @@
 #
 """Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON."""
 
-from typing import get_origin
+from typing import get_args, get_origin
 
 import numpy as np
+from aie.helpers.npdtypes import np_ndarray_type_of
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
@@ -18,12 +19,6 @@ from aie.iron.worker import Worker
 from aie.utils import get_current_device
 
 from ._pipeline import Stage, kernel_params, pipeline
-
-
-def _stack_size(func):
-    """Return the core stack a library kernel's contract asks for, or None."""
-    contract = getattr(func, "contract", None)
-    return contract.stack_bytes if contract is not None else None
 
 
 def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
@@ -105,7 +100,6 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
         held=kparams.fifos,
         constants=[func],
         iterations=N_div_n,
-        stack_size=_stack_size(func),
         trace=trace_size > 0,
     )
     # Host buffers: inputs, output, then the tensor params.
@@ -157,7 +151,7 @@ def _transform_parallel_gen(
         pass_size_to_kernel: When True (default), the kernel receives an extra
             trailing ``int`` argument equal to ``tile_size``.  Set False for
             kernels whose signature is just ``(*in_tiles, out_tile)`` (e.g.
-            ``iron.kernels.relu``, ``iron.kernels.add``).
+            ``iron.kernels.add``, ``iron.kernels.mul``).
     """
     if num_channels < 1:
         raise ValueError("num_channels must be positive")
@@ -327,7 +321,6 @@ def _transform_parallel_gen(
             + [of.cons() for of in param_of_list]
             + [of_outs[col][chan].prod()]
             + [func],
-            stack_size=_stack_size(func),
             trace=(1 if trace_size > 0 else 0),
         )
         for col in range(num_columns)
@@ -408,18 +401,19 @@ def _transform_parallel_gen(
 def make_param_descriptor(tensor_ty):
     """Build a fake-tensor descriptor (``.shape``, ``.size``, ``.dtype``).
 
-    Used as an extra param to [`transform`][iron.algorithms._transform.transform] and friends.
+    Used as an extra param to [`transform`][aie.iron.algorithms._transform.transform] and friends.
 
     Mirrors `_make_fake_tensor` but skips the tile-divisibility check
     because params (e.g. a 1-element ``factor`` tensor) are passed through
     a dedicated ObjectFifo and aren't tiled.
     """
+    tensor_ty = np_ndarray_type_of(tensor_ty)
     try:
-        shape_arg, dtype_arg = tensor_ty.__args__
+        shape_arg, dtype_arg = get_args(tensor_ty)
         num_elements = 1
         for dim in shape_arg:
             num_elements *= dim
-        dtype = dtype_arg.__args__[0]
+        dtype = get_args(dtype_arg)[0]
     except Exception as exc:
         raise TypeError(
             f"make_param_descriptor expects a numpy ndarray type such as "
@@ -439,7 +433,8 @@ def make_param_descriptor(tensor_ty):
 
 
 def _expand_param(param):
-    """Allow callers to pass either a real tensor or a numpy ndarray type."""
+    """Allow callers to pass a real tensor, a numpy ndarray type or an operand."""
+    param = np_ndarray_type_of(param)
     if get_origin(param) is np.ndarray:
         return make_param_descriptor(param)
     return param
@@ -463,12 +458,13 @@ def _make_fake_tensor(tensor_ty, tile_size, fn_name):
     Returns:
         An object with ``.shape``, ``.size``, and ``.dtype``.
     """
+    tensor_ty = np_ndarray_type_of(tensor_ty)
     try:
-        shape_arg, dtype_arg = tensor_ty.__args__
+        shape_arg, dtype_arg = get_args(tensor_ty)
         num_elements = 1
         for dim in shape_arg:
             num_elements *= dim
-        dtype = dtype_arg.__args__[0]
+        dtype = get_args(dtype_arg)[0]
     except Exception as exc:
         raise TypeError(
             f"{fn_name} expects a numpy ndarray type such as "
@@ -496,7 +492,7 @@ def _make_fake_tensor(tensor_ty, tile_size, fn_name):
 def transform(func, tensor_ty, *params, tile_size=16, trace_size=0):
     """Apply ``func`` element-wise over a tensor described by *tensor_ty*.
 
-    Like [`transform`][iron.algorithms._transform.transform] but accepts a numpy ``ndarray`` type descriptor
+    Like [`transform`][aie.iron.algorithms._transform.transform] but accepts a numpy ``ndarray`` type descriptor
     instead of a real tensor.  Intended for use inside ``@iron.jit`` generator
     bodies where the tensor's shape and dtype are expressed as ``CompileTime[T]``
     parameters and the actual tensors are not yet available:
@@ -516,7 +512,7 @@ def transform(func, tensor_ty, *params, tile_size=16, trace_size=0):
         *params: Additional parameters forwarded to ``func`` (ExternalFunction
             only).  Each ``param`` may be a real tensor, a numpy ``ndarray``
             type descriptor (transparently expanded via
-            [`make_param_descriptor`][iron.algorithms._transform.make_param_descriptor]), or a numpy scalar type.
+            [`make_param_descriptor`][aie.iron.algorithms._transform.make_param_descriptor]), or a numpy scalar type.
         tile_size (int, optional): Number of elements per tile. Defaults to 16.
         trace_size (int, optional): When > 0, enable Worker core trace and a
             ``trace_size``-byte runtime trace buffer. Defaults to 0 (off).
@@ -539,7 +535,7 @@ def transform(func, tensor_ty, *params, tile_size=16, trace_size=0):
 def transform_binary(func, tensor_ty, tile_size=16, trace_size=0):
     """Apply ``func`` element-wise over two tensors described by *tensor_ty*.
 
-    Like [`transform_binary`][iron.algorithms._transform.transform_binary] but accepts a numpy ``ndarray`` type
+    Like [`transform_binary`][aie.iron.algorithms._transform.transform_binary] but accepts a numpy ``ndarray`` type
     descriptor instead of real tensors.  Intended for use inside
     ``@iron.jit`` generator bodies.
 
@@ -575,7 +571,7 @@ def transform_parallel(
 ):
     """Apply ``func`` element-wise in parallel using a tensor type descriptor.
 
-    Like [`transform_parallel`][iron.algorithms._transform.transform_parallel] but accepts a numpy ``ndarray`` type
+    Like [`transform_parallel`][aie.iron.algorithms._transform.transform_parallel] but accepts a numpy ``ndarray`` type
     descriptor instead of a real tensor.  Intended for use inside
     ``@iron.jit`` generator bodies.
 
@@ -624,7 +620,7 @@ def transform_parallel_binary(
 ):
     """Apply ``func`` over two tensors in parallel using a tensor type descriptor.
 
-    Like [`transform_parallel_binary`][iron.algorithms._transform.transform_parallel_binary] but accepts a numpy ``ndarray``
+    Like [`transform_parallel_binary`][aie.iron.algorithms._transform.transform_parallel_binary] but accepts a numpy ``ndarray``
     type descriptor instead of real tensors.  Intended for use inside
     ``@iron.jit`` generator bodies.
 

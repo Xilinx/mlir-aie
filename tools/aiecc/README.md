@@ -2,7 +2,7 @@
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// 
+//
 //===----------------------------------------------------------===//-->
 
 # `aiecc`: the MLIR-AIE compiler driver
@@ -44,9 +44,49 @@ bundled into a single loadable ELF instead of an xclbin plus loose binaries:
 aiecc --get-full-elf design.mlir   # -> aie.elf
 ```
 
-You can override these output file names with `--npu-insts-name`, 
-`--xclbin-name`, and `--full-elf-name`. You can filter which devices and 
-runtime sequences are compiled with `--device-name` and `--sequence-name`. 
+You can override these output file names with `--npu-insts-name`,
+`--xclbin-name`, and `--full-elf-name`. You can filter which devices and
+runtime sequences are compiled with `--device-name` and `--sequence-name`.
+
+### Compiling one device: `--device-name`
+
+`--device-name=NAME` compiles only the `aie.device` called `NAME` (devices
+named `empty_*` are always kept). For every output but the full ELF that is
+all it compiles. A full ELF has to carry the PDI of every device its
+sequences load or configure, so with `--get-full-elf` the filter also keeps
+each device reached from `NAME` through `aiex.configure` and
+`aiex.npu.load_pdi`, transitively:
+
+```bash
+aiecc --get-full-elf --device-name=main design.mlir   # main and the devices it loads
+aiecc --get-pdi --pdi-name=design.pdi --device-name=main design.mlir   # main only
+```
+
+### Full-ELF entries of a reconfiguring design
+
+Each runtime sequence is a full-ELF entry named `<device>:<sequence>`, e.g.
+`main:sequence` for a sequence that runs its configurations with
+`aiex.configure`. Two options cut the resets between its configurations; each
+requires a full ELF:
+
+- `--reconfig-teardown` (with `--expand-load-pdis`): before the next load, or
+  at the sequence's end, each configuration's `aiex.npu.write_teardown`
+  disables the stream-switch circuits and packet ports it set, disables its
+  cores and resets the memtile and core-tile DMA channels it started. A
+  sequence then keeps only its first reset. A device that starts a shim DMA
+  channel itself is refused, since shim channels have no reset.
+- `--reconfig-init-entry` (with `--reconfig-teardown`): the reset moves into an
+  argument-free `<device>:reconfig_init` entry. The host runs it once on each new
+  hardware context, before any other entry; IRON's host runtime does so itself.
+
+For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
+
+| Options              | Entries                               |
+|----------------------|---------------------------------------|
+| none, or teardown    | `main:sequence`                       |
+| teardown, init entry | `main:reconfig_init`, `main:sequence` |
+
+`--sequence-name` always keeps the `reconfig_init` entry.
 
 ### Parameterized C++ transaction builders
 
@@ -109,6 +149,10 @@ An explicit `-j` or `--nthreads` takes precedence over `AIECC_JOBS`, which in
 turn takes precedence over the default. The environment variable accepts the
 same non-negative integer values as `-j`, including `0` for auto-detection.
 
+`-j` also sizes the thread pool MLIR runs the per-device pass pipelines on, and
+`-j 1` keeps them on one thread. With the pinned MLIR wheel, which is built
+without MLIR threading, those pipelines run on one thread either way.
+
 ### Reusing compiled devices: `--device-cache`
 
 `--device-cache=<dir>` keeps what compiling each `aie.device`'s cores produced
@@ -130,6 +174,43 @@ core's compilation (`--get-core-elfs`, `--get-locmap`, `--dump-intermediates`)
 bypasses it. Concurrent builds can share a directory. Nothing is ever evicted;
 delete the directory to reclaim space.
 
+### Cores that run one program: `--no-share-core-objects`
+
+Cores that run the same program over their own buffers and locks are compiled
+once: the first such core's module runs `opt` and `llc` under positional
+symbol names, and every core links that object with the names renamed back to
+its own. The core ELFs are byte-identical to compiling each core on its own.
+`--no-share-core-objects` compiles each core separately, should the sharing
+ever need to be ruled out.
+
+### Arguments for `opt` and `llc`: `-Xopt` and `-Xllc`
+
+`-Xopt <arg>` and `-Xllc <arg>` pass `<arg>` to the Peano `opt` and `llc` that
+compile each core's program, as clang's `-Xclang` does: one argument per
+occurrence, never split at commas, after the arguments `aiecc` passes itself,
+so an option that `aiecc` sets takes the value given here. They reach the
+cores' programs, including kernels merged into them
+(`link_with_mode = "merge"`); a kernel compiled to an object takes its flags
+from its own clang command line (`-mllvm`).
+
+```bash
+# Rule out opt passes, or bisect them, in the cores' programs
+aiecc --get-pdi -Xopt -opt-disable=licm,loop-unroll-full design.mlir
+aiecc --get-pdi -v -Xopt -opt-bisect-limit=40 design.mlir
+# A backend option
+aiecc --get-pdi -Xllc=--enable-aie-zol-without-minitercount=false design.mlir
+```
+
+With `--xchesscc` they are an error: Chess compiles the cores.
+
+### Building the link files meanwhile: `--await-link-files`
+
+With `--await-link-files`, `aiecc` lowers the design but reads no file a core
+links (`link_with`, `link_files`) until a line arrives on its standard input,
+so a caller can build those objects while `aiecc` works. Standard input closing
+before that line fails the build. The IRON JIT uses this to compile a design's
+kernels while `aiecc` lowers it.
+
 ### Core memory placement and validation
 
 `aiecc` checks stack and ordinary static-data requirements after linking.
@@ -149,10 +230,10 @@ annotations, IR-retention options and verification limitations.
 ### Seeing what the compiler will do / dry-running: `--emit-dot`
 
 The compiler builds its execution plan from the flags you pass.
-Adding `--emit-dot` prints that plan (as a GraphViz graph) for exactly the 
+Adding `--emit-dot` prints that plan (as a GraphViz graph) for exactly the
 requested outputs and options and exits without compiling anything. You omit
 the input file when you pass `--emit-dot`, as no compilation actually takes
-place. For example, this shows the plan for the NPU-instruction flow and 
+place. For example, this shows the plan for the NPU-instruction flow and
 renders it to an image:
 
 ```bash
@@ -166,6 +247,33 @@ graph accordingly, so this is the fastest way to understand what a given
 invocation will actually do. The command above produces this graph:
 
 ![NPU-instruction flow graph](docs/npu_insts_flow.svg)
+
+### Timing a build: `--profile` and `--profile-json`
+
+`--profile` prints, at the end of the run, each edge's time, the change in
+resident memory since the edge before it (dRSS) and the peak resident memory
+so far. `--profile-json=PATH` writes the same summary to `PATH` as JSON, with
+or without `--profile`:
+
+```json
+{
+  "version": 1,
+  "wall_ms": 7412,
+  "process_ms": 7690,
+  "edges": [
+    {"name": "...", "ms": 120, "start_ms": 0, "end_ms": 120,
+     "rss_after_mib": 312.5, "peak_mib": 340.1}
+  ]
+}
+```
+
+`wall_ms` runs from the graph's start to its last edge's end, and each edge's
+`start_ms` and `end_ms` count from the graph's start. `process_ms` counts from
+aiecc's `main()` to the writing of this file, so `process_ms - wall_ms` is the
+time aiecc spends outside the graph: reading its options, building the graph
+and writing the outputs. `rss_after_mib` is the resident memory after the
+edge; it and `peak_mib` are `null` where the platform does not report them. A
+path that cannot be written fails the build.
 
 ### Stopping and restarting a build: `--checkpoint` and `--resume`
 
@@ -224,7 +332,7 @@ aiecc --get-npu-insts --cut=input_physical.mlir --checkpoint=cp \
 
 ![NPU-instruction flow with a checkpoint cut](docs/npu_insts_cut.svg)
 
-If an error occurs during compilation, `aiecc` will dump a checkpoint 
+If an error occurs during compilation, `aiecc` will dump a checkpoint
 capturing the state up to the first failing edge. This allows you to submit
 a checkpoint as a reproducer, or investigate the issue yourself using the
 exact inputs the failing step saw.
@@ -263,22 +371,22 @@ to verify after every pass and learn which one it was.
 ## Developer guide
 
 `aiecc` captures the build steps required for each requested output artifact
-as a static graph: every kind of intermediate is a `Node`, every 
+as a static graph: every kind of intermediate is a `Node`, every
 transformation an edge, and the engine runs only the edges needed for the
 artifacts you asked for.
 
 ### Edge, Node, Item — and keys
 
-- **`Item<T>`** — one typed intermediate or output artifact; a payload of type 
+- **`Item<T>`** — one typed intermediate or output artifact; a payload of type
   `T` (e.g., JSON, IR module, vector of bytes) plus a `key`, which uniquely
-  identifies the payload among its peers. Items are materialized to disk 
-  lazily, i.e., only when a downstream edge needs them on disk. Payload types 
+  identifies the payload among its peers. Items are materialized to disk
+  lazily, i.e., only when a downstream edge needs them on disk. Payload types
   and their disk serializers live in `Items.h`.
-- **`Node<T>`** — the collection of all `Item<T>` artifacts produced by one 
+- **`Node<T>`** — the collection of all `Item<T>` artifacts produced by one
   edge; for many edges this wraps a single item (e.g. `aie.elf`), but for
   some it contains many (e.g. the per-AIE-core `.o` files).
-- **`Edge`** — a transformation from input node(s) to an output node, 
-  performing some action (a lambda, a `PassPipeline`, or a `ShellCommand`). 
+- **`Edge`** — a transformation from input node(s) to an output node,
+  performing some action (a lambda, a `PassPipeline`, or a `ShellCommand`).
   Edges may change the cardinality of the input/output nodes, e.g. split or
   join, or apply a transform to each item (map) -- see below.
 
@@ -297,9 +405,9 @@ read inputs or write outputs out-of-band.
 
 #### Why this matters
 
-- **The graph is declared unconditionally.** No guards around edge construction 
-  — every edge always exists. The engine prunes backward from the requested 
-  outputs, so unrequested work never runs. `--emit-dot`, `--checkpoint`, and 
+- **The graph is declared unconditionally.** No guards around edge construction
+  — every edge always exists. The engine prunes backward from the requested
+  outputs, so unrequested work never runs. `--emit-dot`, `--checkpoint`, and
   `--resume` rely on this static shape.
 - **`Item` owns materialization.** An `Item<T>` holds a typed payload and only
   writes it to disk when a *downstream* edge asks for its path via `asFile()`.
