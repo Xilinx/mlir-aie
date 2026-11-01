@@ -902,8 +902,7 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
   bfloat16 *__restrict w = P;
   if constexpr (f32) {
 #ifdef EXP2_BF16_ACCURATE
-    // partial_softmax_rows' generic float exponentials: (S - m) * s from
-    // three bf16 limbs, then the accurate exp2_bf16.
+    // (S - m) * s from three bf16 limbs, then the accurate exp2_bf16.
     aie::set_saturation(saved_saturation);
     const auto s32 = aie::broadcast<bfloat16, 2 * S_TILE>(scale);
     AIE_LOOP_MIN_ITERATION_COUNT(DIM_M / 4 * P_TILES)
@@ -923,7 +922,7 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
       aie::store_v(w, aie::concat(z0, z1));
     }
 #else
-    // partial_softmax_rows' float exponentials, each lane's own row maximum.
+    // Each lane against its own row's maximum.
     const auto s2 = aie::broadcast<bfloat16, 2 * SM_LANES>(scale);
     const auto zero = aie::zeros<bfloat16, SM_LANES>();
     auto exps = [&](const float *src, aie::vector<float, S_TILE> m) {
@@ -1665,11 +1664,10 @@ void keep_q(const bfloat16 *obj, bfloat16 *q, int32_t n) {
   event1();
 }
 
-// KV head kv_head's packed 8-row query block out of q, a position's query heads
-// flat, tiled as attend_block reads Q. Rows i and i + 4 take neighbouring
-// heads of the group (heads 2j and 2j + 1 of an even group, j and j + 1 of an
-// odd one, its one head twice alone), the order one DMA pattern returns O's
-// rows to their heads in.
+// KV head kv_head's packed 8-row query block out of q, tiled as attend_block
+// reads Q. Rows i and i + 4 take neighbouring heads of the group (heads 2j
+// and 2j + 1 of an even group, j and j + 1 of an odd one, its one head twice
+// alone), the order one DMA pattern returns O's rows to their heads in.
 void take_q(const bfloat16 *q, bfloat16 *Q, int32_t kv_head, int32_t group) {
   event0();
   const int32_t pairs = group == 1 ? 1 : group % 2 ? group - 1 : group / 2;
