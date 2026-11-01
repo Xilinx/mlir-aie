@@ -1471,8 +1471,8 @@ def mha(
             block's keys, each its ``K`` row then its ``V`` row as a paired
             cache holds them, in ``QK^T``'s B tiling (``b_col_maj``), so one
             stream carries both; ``S`` and ``P``, ``dim_m`` by ``dim_n`` each,
-            hold the scores and the weights. AIE2 only, with its cubic
-            exponential.
+            hold the scores (float32 with ``f32_scores``) and the weights.
+            AIE2 only, with its cubic exponential.
         group: Each position's query heads a block packs, position-major:
             row ``i`` is at the block's first position plus ``i // group``.
             ``dim_m`` is whole positions of it.
@@ -1489,18 +1489,18 @@ def mha(
     Raises:
         ValueError: A tile dimension that is not a positive multiple, a
             ``dim_n`` not 16, 32 or 64, a negative window, ``float_o``
-            without ``pv``, ``fused`` with ``pv``, ``f32_scores``,
-            ``accurate_exp2`` or without ``b_col_maj``, or a ``group`` that
+            without ``pv``, ``fused`` with ``pv``, ``accurate_exp2`` or
+            without ``b_col_maj``, or a ``group`` that
             does not divide ``dim_m``, or ``kv_heads`` past 1 without
             ``fused``.
         NotImplementedError: ``fused`` off AIE2.
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
-    if fused and (pv or f32_scores or accurate_exp2 or not b_col_maj):
+    if fused and (pv or accurate_exp2 or not b_col_maj):
         raise ValueError(
-            "mha: fused is QK^T on K as stored (b_col_maj), bf16 scores and the "
-            "cubic exponential, and returns its own entry, not pv's"
+            "mha: fused is QK^T on K as stored (b_col_maj) and the cubic "
+            "exponential, and returns its own entry, not pv's"
         )
     if fused and _arch_traits().name != "aie2":
         raise NotImplementedError("mha: fused is written for AIE2 only")
@@ -1550,7 +1550,16 @@ def mha(
         flags.append(f"-DMHA_KV_HEADS={kv_heads}")
     if fused:
         return _mha_fused(
-            dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_heads
+            dim_m,
+            dim_k,
+            dim_n,
+            flags,
+            causal,
+            window,
+            packed,
+            group,
+            kv_heads,
+            f32_scores,
         )
     emulate_bf16_mmul_with_bfp16 = emulate_bf16_mmul_with_bfp16 and _arch_traits().bfp16
     if emulate_bf16_mmul_with_bfp16:
@@ -1672,7 +1681,9 @@ def _mha_band_flags(name, causal, window, packed):
     ]
 
 
-def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_heads):
+def _mha_fused(
+    dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_heads, f32_scores
+):
     """``mha(fused=True)``'s ``attend_block`` and its contract.
 
     The contract's block is key block 1 of the first query block every row of
@@ -1704,6 +1715,7 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_hea
         packed=packed,
         group=group,
         kv_heads=kv_heads,
+        f32_scores=f32_scores,
     )
 
     def sample(rng, calls):
@@ -1739,7 +1751,7 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_hea
         np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
         np.ndarray[(dim_n * width,), np.dtype[bfloat16]],
         np.ndarray[(dim_m * dim_k,), np.dtype[np.float32]],
-        np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
+        np.ndarray[(dim_m * dim_n,), np.dtype[np.float32 if f32_scores else bfloat16]],
         np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]],
         np.ndarray[(4 * dim_m,), np.dtype[np.float32]],
         np.ndarray[(3,), np.dtype[np.int32]],
@@ -1762,7 +1774,7 @@ def _mha_fused(dim_m, dim_k, dim_n, flags, causal, window, packed, group, kv_hea
             ),
             roles=(In, In, InOut, *([Param] * 7)),
             parameter_bindings=(
-                (3, np.zeros(dim_m * dim_n, bfloat16)),
+                (3, np.zeros(dim_m * dim_n, np.float32 if f32_scores else bfloat16)),
                 (4, np.zeros(dim_m * dim_n, bfloat16)),
                 (5, np.zeros(4 * dim_m, np.float32)),
                 (6, block["idx"]),
@@ -1799,18 +1811,23 @@ def mha_attend_block_terms(
     packed=False,
     group=1,
     kv_heads=1,
+    f32_scores=False,
 ):
     """Numpy reference for ``mha(fused=True)``'s ``attend_block`` from a zeroed state: ``(O, P)``.
 
     ``O = P V`` with ``P = exp2((S - m) s)``, true ``exp2`` of the scores
-    ``S`` rounded to bf16 as the core keeps them, ``m`` each row's largest
-    kept score or 0, whichever is larger, as a zeroed running maximum leaves
-    it.
+    ``S`` as the core keeps them (rounded to bf16, or float32 with
+    ``f32_scores``), ``m`` each row's largest kept score or 0, whichever is
+    larger, as a zeroed running maximum leaves it.
     """
     kv_block, q_block, offset = (int(i) for i in np.asarray(idx).ravel())
     q = np.asarray(q, np.float64).reshape(-1, dim_m, dim_k)
     kv = np.asarray(kv, np.float64).reshape(-1, dim_n, kv_heads, 2, dim_k)[:, :, 0]
-    s = (q @ kv[:, :, 0].swapaxes(1, 2)).astype(bfloat16).astype(np.float64)
+    s = (
+        (q @ kv[:, :, 0].swapaxes(1, 2))
+        .astype(np.float32 if f32_scores else bfloat16)
+        .astype(np.float64)
+    )
     rows, cols = np.indices((dim_m, dim_n))
     position = (
         s_kv_eff - 1 if packed else q_block * (dim_m // group) + offset + rows // group

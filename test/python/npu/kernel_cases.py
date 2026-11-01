@@ -3198,6 +3198,24 @@ CASES += [
         )
         for b_q, d, b_kv in ((32, 64, 64), (32, 128, 32), (16, 256, 16))
     ],
+    # ...and over float32 scores, at Llama 3.2 1B's and 3B's blocks.
+    *[
+        Case(
+            "mha",
+            dict(
+                dim_m=b_q,
+                dim_k=d,
+                dim_n=b_kv,
+                b_col_maj=True,
+                fused=True,
+                f32_scores=True,
+            ),
+            calls=4,
+            tag=f"iron-fused-f32-d{d}",
+            devices=("npu1",),
+        )
+        for b_q, d, b_kv in ((32, 64, 64), (32, 128, 32))
+    ],
     # Split decode's on npu1: 8 rows, Llama 3.2 1B's two KV heads a key
     # block, 3B's one.
     *[

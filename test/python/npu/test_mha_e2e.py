@@ -1365,9 +1365,13 @@ def test_a_long_context_keeps_the_running_state_accurate(accurate_exp2):
     np.testing.assert_allclose(got, ref, rtol=0, atol=2 * ulp)
 
 
-def _fused_kernels(b_q, b_kv, d, causal, window, packed, group, kv_heads=1):
+def _fused_kernels(
+    b_q, b_kv, d, causal, window, packed, group, kv_heads=1, f32_scores=False
+):
     """``attend_block`` and the QK^T product of one mha.cc object."""
-    band = dict(causal=causal, window=window, packed=packed, group=group)
+    band = dict(
+        causal=causal, window=window, packed=packed, group=group, f32_scores=f32_scores
+    )
     qk = kernels.mha(dim_m=b_q, dim_k=d, dim_n=b_kv, b_col_maj=True, **band)
     fused = kernels.mha(
         dim_m=b_q,
@@ -1400,6 +1404,7 @@ def mha_pipeline_round(
     packed: CompileTime[bool] = False,
     group: CompileTime[int] = 1,
     offset: CompileTime[int] = 0,
+    f32_scores: CompileTime[bool] = False,
 ):
     """One query block over ``n_kv`` key blocks on three cores, as IRON's MHA pipeline runs it.
 
@@ -1407,7 +1412,8 @@ def mha_pipeline_round(
     rows and the weights to ``P V``'s tiles through memtiles. Q, K and V
     arrive as their products read them.
     """
-    s_ty = np.ndarray[(b_q * b_kv,), BF]
+    s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
+    p_ty = np.ndarray[(b_q * b_kv,), BF]
     q_ty = np.ndarray[(b_q * d,), BF]
     kv_ty = np.ndarray[(b_kv * d,), BF]
     o_ty = np.ndarray[(b_q * d,), BF]
@@ -1416,18 +1422,22 @@ def mha_pipeline_round(
     idx_ty = np.ndarray[(3,), I32]
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
 
-    qk, _ = _fused_kernels(b_q, b_kv, d, causal, window, packed, group)
+    qk, _ = _fused_kernels(
+        b_q, b_kv, d, causal, window, packed, group, f32_scores=f32_scores
+    )
     obj = qk.object_file
     softmax = obj.bind(
-        "partial_softmax", [s_ty, s_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)]
+        "partial_softmax", [s_ty, p_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)]
     )
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
     pv = obj.bind(
         "matmul_PV",
-        [s_ty, kv_ty, acc_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
+        [p_ty, kv_ty, acc_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
     )
     rescale = obj.bind("rescale_O", [acc_ty, o_ty, scale_ty, np.int32, idx_ty])
-    zero = kernels.zero(tile_size=(b_q * b_kv,), dtype=bfloat16)
+    zero = kernels.zero(
+        tile_size=(b_q * b_kv,), dtype=np.float32 if f32_scores else bfloat16
+    )
     copy_scale = kernels.passthrough(4 * b_q, np.int32).object_file.bind(
         "passThroughLine", [scale_ty, scale_ty, np.int32]
     )
@@ -1438,7 +1448,7 @@ def mha_pipeline_round(
     of_v = ObjectFifo(kv_ty, name="v", depth=2)
     of_s = ObjectFifo(s_ty, name="s", depth=2)
     of_s_rows = of_s.cons().forward(to_stream=qk.stream_dims.C, depth=2)
-    of_p = ObjectFifo(s_ty, name="p", depth=1)
+    of_p = ObjectFifo(p_ty, name="p", depth=1)
     of_p_tiles = of_p.cons().forward(to_stream=pv_streams.A, depth=1)
     of_scale = ObjectFifo(scale_ty, name="scale_out", depth=1)
     of_o = ObjectFifo(o_ty, name="o", depth=1)
@@ -1564,6 +1574,7 @@ def mha_fused_round(
     offset: CompileTime[int] = 0,
     kv_heads: CompileTime[int] = 1,
     head: CompileTime[int] = 0,
+    f32_scores: CompileTime[bool] = False,
 ):
     """``mha_pipeline_round`` on one core: ``attend_block`` per key block, each K then V on one stream.
 
@@ -1572,21 +1583,24 @@ def mha_fused_round(
     """
     q_ty = np.ndarray[(b_q * d,), BF]
     kv_ty = np.ndarray[(2 * kv_heads * b_kv * d,), BF]
-    s_ty = np.ndarray[(b_q * b_kv,), BF]
+    s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
+    p_ty = np.ndarray[(b_q * b_kv,), BF]
     o_ty = np.ndarray[(b_q * d,), BF]
     acc_ty = np.ndarray[(b_q * d,), F32]
     scale_ty = np.ndarray[(4 * b_q,), F32]
     idx_ty = np.ndarray[(3,), I32]
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
 
-    _, fused = _fused_kernels(b_q, b_kv, d, causal, window, packed, group, kv_heads)
+    _, fused = _fused_kernels(
+        b_q, b_kv, d, causal, window, packed, group, kv_heads, f32_scores
+    )
     obj = fused.object_file
     init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
     rescale = obj.bind("rescale_O", [acc_ty, o_ty, scale_ty, np.int32, idx_ty])
     if kv_heads > 1:
         attend_head = obj.bind(
             "attend_head",
-            [q_ty, kv_ty, acc_ty, s_ty, s_ty, scale_ty, idx_ty, bfloat16]
+            [q_ty, kv_ty, acc_ty, s_ty, p_ty, scale_ty, idx_ty, bfloat16]
             + [np.int32] * 3,
         )
         attend_args = (head,)
@@ -1639,7 +1653,7 @@ def mha_fused_round(
             rescale,
             Buffer(acc_ty, name="acc"),
             Buffer(s_ty, name="s"),
-            Buffer(s_ty, name="p"),
+            Buffer(p_ty, name="p"),
             Buffer(scale_ty, name="state"),
             *idx,
         ],
@@ -1686,7 +1700,9 @@ def _run_fused(q, k, v, n_kv, **shape):
     b_q, b_kv, d = shape["b_q"], shape["b_kv"], shape["d"]
     heads = shape.get("kv_heads", 1)
     band = {n: shape[n] for n in ("causal", "window", "packed", "group")}
-    _, fused = _fused_kernels(b_q, b_kv, d, **band, kv_heads=heads)
+    _, fused = _fused_kernels(
+        b_q, b_kv, d, **band, kv_heads=heads, f32_scores=shape.get("f32_scores", False)
+    )
     q_layout, kv_layout = fused.contract.layouts[:2]
     k, v = (x.reshape(heads, n_kv, b_kv, d) for x in (k, v))
     kv = np.concatenate([k, v], axis=3).transpose(1, 2, 0, 3)
@@ -1706,7 +1722,9 @@ def _run_pipeline(q, k, v, n_kv, **shape):
     """Run ``mha_pipeline_round`` on logical Q, K and V; return O, (b_q, d)."""
     b_q, b_kv, d = shape["b_q"], shape["b_kv"], shape["d"]
     band = {n: shape[n] for n in ("causal", "window", "packed", "group")}
-    qk, fused = _fused_kernels(b_q, b_kv, d, **band)
+    qk, fused = _fused_kernels(
+        b_q, b_kv, d, **band, f32_scores=shape.get("f32_scores", False)
+    )
     q_layout, k_layout = qk.contract.layouts[:2]
     blocks = [slice(b * b_kv, (b + 1) * b_kv) for b in range(n_kv)]
     v_tiles = TensorAccessPattern.full((b_kv, d)).tile(
@@ -1750,14 +1768,16 @@ def _run_pipeline(q, k, v, n_kv, **shape):
         (0, 2, 8, 100, 8, 64, 64, 0, dict(packed=True)),
     ],
 )
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
 def test_attend_block_is_the_pipeline_bit_for_bit(
-    q_block, n_kv, s_q_eff, s_kv_eff, b_q, b_kv, d, offset, band
+    q_block, n_kv, s_q_eff, s_kv_eff, b_q, b_kv, d, offset, band, f32_scores
 ):
     """``attend_block`` on one core gives the three-core pipeline's O, bit for bit, and masked attention's."""
     if resolve_target_arch(iron.get_current_device()) != "aie2":
         pytest.skip("mha.cc's fused block is written for AIE2")
     band = {**dict(causal=True, window=0, packed=False, group=1), **band}
     shape = dict(
+        f32_scores=f32_scores,
         q_block=q_block,
         s_q_eff=s_q_eff,
         s_kv_eff=s_kv_eff,
@@ -1793,7 +1813,9 @@ def test_attend_block_is_the_pipeline_bit_for_bit(
         ],
         axis=1,
     )
-    scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(bfloat16)
+    scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(
+        np.float32 if f32_scores else bfloat16
+    )
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
     ref = _attention(scores, v, keep, inv_scale=inv_scale).astype(np.float32)
     live = keep.any(axis=1)
