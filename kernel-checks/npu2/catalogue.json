@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
- "date": "2026-11-01T06:58:15.581988+00:00",
+ "commit": "eec735f9535479778a1021b3976fc0526492256c",
+ "date": "2026-11-02T07:02:32.370821+00:00",
  "swept": true,
  "kernels": [
   {
@@ -2386,9 +2386,9 @@
    "builds": [
     "mha"
    ],
-   "passed": 18,
+   "passed": 19,
    "failed": [],
-   "timed": 17,
+   "timed": 18,
    "timing_failed": [],
    "untimed": [
     "mha/16x256x64x4/bfloat16/pv=True"
@@ -2405,9 +2405,9 @@
    "builds": [
     "mha_softmax"
    ],
-   "passed": 20,
+   "passed": 23,
    "failed": [],
-   "timed": 5,
+   "timed": 8,
    "timing_failed": [],
    "untimed": [
     "mha_softmax/2048x4/bfloat16_bfloat16+float32/half-block-diagonal",

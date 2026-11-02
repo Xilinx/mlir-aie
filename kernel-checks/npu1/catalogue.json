@@ -1,8 +1,8 @@
 {
  "npu": "npu1",
  "arch": "aie2",
- "commit": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
- "date": "2026-11-01T06:53:31.644100+00:00",
+ "commit": "eec735f9535479778a1021b3976fc0526492256c",
+ "date": "2026-11-02T07:13:38.801065+00:00",
  "swept": true,
  "kernels": [
   {
@@ -2143,9 +2143,21 @@
    "builds": [
     "mha"
    ],
-   "passed": 17,
-   "failed": [],
-   "timed": 16,
+   "passed": 19,
+   "failed": [
+    "mha/1024x4/bfloat16_float32/b_col_maj=True/fused=True/kv_heads=1/iron-split-d128",
+    "mha/16x16x16x4/float32/b_col_maj=True/f32_scores=False/fused=True/pair=True/iron-fused-pair-d512",
+    "mha/16x16x16x4/float32/b_col_maj=True/f32_scores=True/fused=True/pair=True/iron-fused-pair-f32-d512",
+    "mha/32x64x128x4/bfloat16_float32/accurate_exp2=True/b_col_maj=True/f32_scores=True/fused=True/iron-fused-f32-accurate-d64",
+    "mha/32x64x128x4/bfloat16_float32/b_col_maj=True/f32_scores=True/fused=True/iron-fused-f32-d64",
+    "mha/32x64x128x4/bfloat16_float32/b_col_maj=True/fused=True/iron-fused-d64",
+    "mha/4096x4/bfloat16_float32/accurate_exp2=True/b_col_maj=True/f32_scores=True/fused=True/relative_band=True/soft_cap=50.0/window=11/gemma4-audio",
+    "mha/4096x4/bfloat16_float32/b_col_maj=True/f32_scores=True/fused=True/iron-fused-f32-d128",
+    "mha/4096x4/bfloat16_float32/b_col_maj=True/fused=True/iron-fused-d128",
+    "mha/4096x4/bfloat16_float32/b_col_maj=True/fused=True/iron-fused-d256",
+    "mha/512x4/bfloat16_float32/b_col_maj=True/fused=True/kv_heads=2/iron-split-d64"
+   ],
+   "timed": 18,
    "timing_failed": [],
    "untimed": [
     "mha/16x256x64x4/bfloat16/pv=True"
@@ -2162,9 +2174,9 @@
    "builds": [
     "mha_softmax"
    ],
-   "passed": 20,
+   "passed": 23,
    "failed": [],
-   "timed": 5,
+   "timed": 8,
    "timing_failed": [],
    "untimed": [
     "mha_softmax/2048x4/bfloat16_bfloat16+float32/half-block-diagonal",
