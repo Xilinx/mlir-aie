@@ -1460,6 +1460,14 @@ def test_mha_refuses_what_mha_cc_cannot_build():
     kernels.mha(dim_m=8, dim_k=64, kv_heads=4, **fused)
     kernels.mha(dim_m=8, dim_k=64, pair=True, f32_scores=True, **fused)
     kernels.mha(dim_m=16, dim_k=64, pair=True, **fused)
+    for bad, match in (
+        (dict(pv=True), "not pv's"),
+        (dict(b_col_maj=False), "needs b_col_maj"),
+        (dict(accurate_exp2=True), "over f32_scores"),
+        (dict(kv_heads=0), "at least 1"),
+    ):
+        with pytest.raises(ValueError, match=match):
+            kernels.mha(dim_m=16, dim_k=64, **{**fused, **bad})
 
 
 def test_mha_band_reaches_the_kernel_and_its_reference():

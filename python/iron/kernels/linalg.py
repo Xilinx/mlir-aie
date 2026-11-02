@@ -1488,8 +1488,9 @@ def mha(
         kv_heads: With ``fused``, the KV heads a key block's ``KV`` holds,
             each key's rows of every head in turn as a position-major cache
             holds them, tiled as one ``dim_n`` by ``2 dim_k kv_heads`` block;
-            ``attend_block`` takes the first, ``attend_head`` any. 1, 2, 4
-            or 8: Peano's backend fails on others.
+            ``attend_block`` takes the first, ``attend_head`` any (not built
+            with ``relative_band`` or ``pair``). 1, 2, 4 or 8: Peano's backend
+            fails on others.
         soft_cap: With ``fused`` and ``f32_scores``: each score ``s`` becomes
             ``soft_cap * tanh(s / soft_cap) * log2(e)`` (``-DMHA_SOFT_CAP``,
             ``softmax``'s float32 cap), so the scale ``attend_block`` takes
@@ -1517,17 +1518,22 @@ def mha(
             backend fails on ``attend_pair`` at 8.
 
     Returns:
-        MatrixKernel for ``matmul_bf16_bf16_wrapper``, with ``pv``
-        ``matmul_bf16_bf16_rowmaj``, with ``float_o`` ``matmul_PV``, with
-        ``fused`` ``attend_block``, or with ``pair`` ``attend_pair``.
+        A [`MatrixKernel`][aie.iron.kernels.linalg.MatrixKernel] for
+        ``matmul_bf16_bf16_wrapper``, with ``pv`` ``matmul_bf16_bf16_rowmaj``
+        and with ``float_o`` ``matmul_PV``; an ``ExternalFunction`` for
+        ``attend_block`` with ``fused``, or ``attend_pair`` with ``pair``.
 
     Raises:
-        ValueError: A tile dimension that is not a positive multiple, a
-            ``dim_n`` not 16, 32 or 64, a negative window, ``float_o``
-            without ``pv``, ``fused`` with ``pv``, ``accurate_exp2`` or
-            without ``b_col_maj``, or a ``group`` that
-            does not divide ``dim_m``, ``kv_heads`` past 1 without
-            ``fused``, or ``pair`` without ``fused``, with ``kv_heads`` or
+        ValueError: A ``dim_m`` not a positive multiple of 8 (of 16 with
+            ``emulate_bf16_mmul_with_bfp16``), a ``dim_k`` not a positive
+            multiple of 16, a ``dim_n`` not 16, 32 or 64, a negative window, ``float_o`` without ``pv``, ``fused`` with ``pv``,
+            without ``b_col_maj``, or with ``accurate_exp2`` but bf16 scores,
+            ``f32_scores`` with ``emulate_bf16_mmul_with_bfp16``, a ``group``
+            that does not divide ``dim_m``, ``kv_heads`` below 1 or past 1
+            without ``fused``, ``soft_cap`` without ``fused`` and
+            ``f32_scores`` or outside [2^-100, 2^10], ``relative_band``
+            without ``fused`` and ``f32_scores`` or with a ``group`` or
+            ``packed``, or ``pair`` without ``fused``, with ``kv_heads`` or
             ``relative_band``, or at a ``dim_k`` not a multiple of 32.
         NotImplementedError: ``fused`` off AIE2, or in an
             ``AIE_KERNELS_PORTABLE`` build; ``kv_heads`` other than 1, 2, 4
@@ -1536,11 +1542,12 @@ def mha(
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
-    if fused and (pv or (accurate_exp2 and not f32_scores) or not b_col_maj):
-        raise ValueError(
-            "mha: fused is QK^T on K as stored (b_col_maj), the accurate "
-            "exponential only over f32_scores, and returns its own entry, not pv's"
-        )
+    if fused and pv:
+        raise ValueError("mha: fused returns its own entry, not pv's")
+    if fused and not b_col_maj:
+        raise ValueError("mha: fused is QK^T on K as stored, so it needs b_col_maj")
+    if fused and accurate_exp2 and not f32_scores:
+        raise ValueError("mha: fused takes the accurate exponential over f32_scores")
     if soft_cap is not None and not (fused and f32_scores):
         raise ValueError("mha: soft_cap is the fused block's, over f32_scores")
     if relative_band and not (fused and f32_scores and group == 1 and not packed):
@@ -1557,7 +1564,9 @@ def mha(
         )
     if fused and _tuned_arch() != "aie2":
         raise NotImplementedError("mha: fused is written for tuned AIE2 only")
-    if kv_heads < 1 or (kv_heads > 1 and not fused):
+    if kv_heads < 1:
+        raise ValueError(f"mha: kv_heads must be at least 1, got {kv_heads}")
+    if kv_heads > 1 and not fused:
         raise ValueError(f"mha: kv_heads ({kv_heads}) past 1 is fused's")
     if kv_heads not in (1, 2, 4, 8):
         raise NotImplementedError(
