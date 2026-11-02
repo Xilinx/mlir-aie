@@ -46,7 +46,7 @@ public:
   bool apart(mlir::StringAttr a, mlir::StringAttr b) const;
 
   /// Splits `ends` into groups whose members are pairwise apart, each group
-  /// taking one channel: first fit, in the order the ends are first in flight.
+  /// taking one channel: first fit, ordered by the ends' spans in flight.
   /// Returns indices into `ends`.
   llvm::SmallVector<llvm::SmallVector<unsigned>>
   groups(llvm::ArrayRef<mlir::StringAttr> ends) const;
