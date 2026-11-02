@@ -793,7 +793,8 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // AIE1 patterns must fit directly; the NPU decomposition pass is not used.
   if (!isAIE1 && !hasLengthParameter &&
       AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel, col,
-                                     row, inputOffsets, inputSizes, inputStrides)) {
+                                       row, inputOffsets, inputSizes,
+                                       inputStrides)) {
     // ok: will be decomposed before lowering
   } else if (failed(verifyStridesWraps(
                  *this, [&] { return emitOpError(); }, buffer, col, row,
