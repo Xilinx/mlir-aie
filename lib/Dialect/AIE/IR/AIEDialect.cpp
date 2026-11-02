@@ -2139,9 +2139,16 @@ LogicalResult ObjectFifoLinkOp::verify() {
               getDstOffsets())))
         return failure();
     }
-    if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
-      int64_t maxIdx =
-          getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
+    // The end this link reads: the next on its tile after earlier links'.
+    size_t end = 0;
+    for (size_t seen = 0; end < fifoIn.getConsumerTiles().size(); end++)
+      if (fifoIn.getConsumerTiles()[end] == *sharedTile &&
+          seen++ == reads.lookup(fifoIn))
+        break;
+    BDDimLayoutArrayAttr dims =
+        fifoIn.getDimensionsFromStreamPerConsumer()[end];
+    if (!dims.empty()) {
+      int64_t maxIdx = getDimsMaxIdx(dims);
       int64_t minOutputBufferSize = -1;
       for (auto lenOut : getDistributeTransferLengths()) {
         if (lenOut <= minOutputBufferSize || minOutputBufferSize < 0)
