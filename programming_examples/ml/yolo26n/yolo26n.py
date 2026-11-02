@@ -185,7 +185,9 @@ def main() -> None:
         "--ahead", type=int, default=3, help="images' fills issued ahead of a wait"
     )
     parser.add_argument(
-        "--compile-only", action="store_true", help="build the ELF and stop"
+        "--compile-only",
+        action="store_true",
+        help="compile the xclbin and instruction streams, then stop",
     )
     args = parser.parse_args()
     if not args.compile_only and args.n % args.batch:
