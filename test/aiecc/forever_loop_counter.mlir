@@ -41,12 +41,12 @@
 // STATIC:      {{^}}[[HEAD]]:
 // STATIC-NEXT: call void @llvm.aie2p.acquire
 // STATIC-NOT:  922337203685477
-// STATIC:      getelementptr inbounds nuw i32, ptr @of_buff_0
+// STATIC:      getelementptr inbounds nuw i32, ptr @of__buf0
 // STATIC:      store i32
 // STATIC:      call void @llvm.aie2p.release
 // STATIC-NEXT: call void @llvm.aie2p.acquire
 // STATIC-NOT:  922337203685477
-// STATIC:      getelementptr inbounds nuw i32, ptr @of_buff_1
+// STATIC:      getelementptr inbounds nuw i32, ptr @of__buf1
 // STATIC:      store i32
 // STATIC:      call void @llvm.aie2p.release
 // STATIC-NEXT: br label %[[HEAD]]{{$}}
