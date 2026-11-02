@@ -76,9 +76,10 @@ first and last ops instead, and `--batch N` pipelines N images through it.
 - The Detect postprocess (best class per anchor, top 300 anchors, top 300
   anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`,
   reading the Detect outputs back from a DDR scratch buffer.
-- `yolo26n.py` runs the network in one dispatch. One build serves every
-  batch of 1 to 64 images: each batch is an entry of the design, its own
-  instruction stream beside the one xclbin, and `--batch` picks it. The
+- `yolo26n.py` runs the network in one dispatch. One build serves each
+  batch size in `BATCHES` (1, 2, 4, 8, 16, 32 and 64 images): each is an
+  entry of the design, its own instruction stream beside the one xclbin, and
+  `--batch` picks it. The
   host buffers are declared for 64 images, but a batch of B writes, moves
   and reads back only its own B images.
 
@@ -89,19 +90,22 @@ by this example: FP32 0.474, XINT8 0.443. The XINT8 model is calibrated on
 the same 128 images, so its number is optimistic.
 
 On the NPU, the whole model's detections match the oracle bit for bit on
-all 128 coco128 images, and ONNX Runtime's on 126. The oracle agrees with
-ONNX Runtime on those 126 in all 169 int8 tensors the spec names (the
-outputs of every operator but the float postprocess, and both attentions'
-values). In the other 2, the oracle's
-softmax and ONNX Runtime's float32 one round an attention probability (4 of
-82 million) to opposite sides of a rounding boundary; neither changes a
-detection above 0.25 confidence.
+all 128 coco128 images. The oracle agrees with ONNX Runtime in all 169 int8
+tensors the spec names (the outputs of every operator but the float
+postprocess, and both attentions' values) on 121 of them. In the other 7,
+the oracle's softmax and ONNX Runtime's float32 one round 1 to 4 attention
+probabilities to opposite sides of a rounding boundary, and ONNX Runtime's is
+the one off each time; the final detections differ on 4 of the 7. Measured
+with onnxruntime 1.28.0 on an AMD Ryzen AI 9 HX 370: ONNX Runtime's float32
+softmax can round differently on another CPU, so these counts can vary.
 
 `verify_oracle.py` settles each such probability with exact arithmetic
-(`SoftmaxArbiter`). An image passes when it is exact, or when ONNX Runtime
-is the one off at every differing probability and the oracle, run again
-with ONNX Runtime's probabilities, then matches it in every tensor. It
-exits 0 only when every image passes.
+(`SoftmaxArbiter`), one attention at a time in network order: each later
+attention is compared on an oracle run that follows ONNX Runtime's
+probabilities through the attentions before it. An image passes when it is
+exact, or when ONNX Runtime is the one off at every differing probability and
+the oracle, run again with ONNX Runtime's probabilities, then matches it in
+every tensor. It exits 0 only when every image passes.
 
 ## Performance
 
@@ -110,7 +114,7 @@ weights over coco128, and records per image the end-to-end and NPU time
 and the frame rate, with mAP@0.5 against coco128's labels. The current
 figures and their history are on the
 [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=performance).
-To time it yourself, with `B` one of `BATCHES` (1 to 64):
+To time it yourself, with `B` one of `BATCHES` (1, 2, 4, 8, 16, 32 or 64):
 
 ```bash
 python yolo26n.py --n 64 --batch B --time

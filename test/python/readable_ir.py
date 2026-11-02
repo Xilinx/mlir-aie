@@ -5,11 +5,23 @@
 # The command line, run without warnings (aie.utils imports the package first).
 # RUN: %PYTHON -W error -m aie.utils.readable_ir %S/../objectFifo-split/link_pool_loc.mlir | FileCheck %s --check-prefix=CLI
 # CLI: aie.objectfifo @in {{.*}}  // in · design.py:10
+# UTF-8 on stdin under an ASCII locale, as a Windows code page would decode it.
+# RUN: sed 's/design\.py/désign.py/' %S/../objectFifo-split/link_pool_loc.mlir \
+# RUN:   | env LC_ALL=C PYTHONCOERCECLOCALE=0 PYTHONUTF8=0 \
+# RUN:     %PYTHON -m aie.utils.readable_ir - | FileCheck %s --check-prefix=STDIN
+# STDIN: aie.objectfifo @in {{.*}}  // in · désign.py:10
 
 # readable() turns each op's location into a short trailing comment: the
 # names on it (iron: dropped, py: kept) and its innermost source line.
 
+import io
+import sys
+
 from aie.utils.readable_ir import readable
+
+# FileCheck reads UTF-8; a Windows pipe defaults to the ANSI code page.
+assert isinstance(sys.stdout, io.TextIOWrapper)
+sys.stdout.reconfigure(encoding="utf-8")
 
 IR = """\
 module {
