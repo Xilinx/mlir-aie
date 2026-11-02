@@ -21,18 +21,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-
-#include <limits>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIESCFTOCONTROLFLOW
@@ -45,45 +42,20 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-static void replaceWithCounterFreeLoop(scf::ForOp forOp) {
-  OpBuilder builder(forOp);
-  auto whileOp = scf::WhileOp::create(
-      builder, forOp.getLoc(), TypeRange{}, ValueRange{},
-      [](OpBuilder &b, Location loc, ValueRange) {
-        Value always = arith::ConstantIntOp::create(b, loc, 1, 1);
-        scf::ConditionOp::create(b, loc, always, ValueRange{});
-      },
-      [](OpBuilder &b, Location loc, ValueRange) {
-        scf::YieldOp::create(b, loc, ValueRange{});
-      });
-  Block *forBody = forOp.getBody();
-  Block *after = whileOp.getAfterBody();
-  after->getOperations().splice(after->getTerminator()->getIterator(),
-                                forBody->getOperations(), forBody->begin(),
-                                forBody->getTerminator()->getIterator());
-  forOp.erase();
-}
-
 struct AIESCFToControlFlowPass
     : xilinx::AIEX::impl::AIESCFToControlFlowBase<AIESCFToControlFlowPass> {
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
-    // INT64_MAX iterations never finish, so dropping an unused counter keeps
-    // the loop's behaviour; a smaller bound such as 2^32-1 can be reached.
     SmallVector<scf::ForOp> foreverLoops;
     module.walk([&](scf::ForOp forOp) {
       if (forOp->getParentOfType<AIE::CoreOp>() &&
-          forOp.getInitArgs().empty() && forOp.getInductionVar().use_empty() &&
-          isConstantIntValue(forOp.getLowerBound(), 0) &&
-          isConstantIntValue(forOp.getStep(), 1) &&
-          isConstantIntValue(forOp.getUpperBound(),
-                             std::numeric_limits<int64_t>::max()))
+          forOp.getInitArgs().empty() && AIE::isForeverForLoop(forOp))
         foreverLoops.push_back(forOp);
     });
     for (scf::ForOp forOp : foreverLoops)
-      replaceWithCounterFreeLoop(forOp);
+      AIE::replaceWithForeverLoop(forOp);
 
     ConversionTarget target(getContext());
     // Everything is legal by default; only scf outside a runtime sequence is

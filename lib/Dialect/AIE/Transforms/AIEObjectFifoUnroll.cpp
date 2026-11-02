@@ -28,6 +28,8 @@
 
 #include "llvm/ADT/DenseSet.h"
 
+#include <limits>
+
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEOBJECTFIFOUNROLL
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -45,6 +47,35 @@ bool xilinx::AIE::isForeverLoop(scf::WhileOp whileOp) {
          llvm::equal(condition.getArgs(), whileOp.getBeforeArguments()) &&
          llvm::all_of(whileOp.getBeforeBody()->without_terminator(),
                       [](Operation &op) { return isPure(&op); });
+}
+
+bool xilinx::AIE::isForeverForLoop(scf::ForOp forOp) {
+  return forOp.getInductionVar().use_empty() &&
+         isConstantIntValue(forOp.getLowerBound(), 0) &&
+         isConstantIntValue(forOp.getStep(), 1) &&
+         isConstantIntValue(forOp.getUpperBound(),
+                            std::numeric_limits<int64_t>::max());
+}
+
+scf::WhileOp xilinx::AIE::replaceWithForeverLoop(scf::ForOp forOp) {
+  OpBuilder builder(forOp);
+  auto whileOp = scf::WhileOp::create(
+      builder, forOp.getLoc(), forOp.getResultTypes(), forOp.getInitArgs(),
+      [](OpBuilder &b, Location loc, ValueRange args) {
+        Value always = arith::ConstantIntOp::create(b, loc, 1, 1);
+        scf::ConditionOp::create(b, loc, always, args);
+      },
+      [](OpBuilder &, Location, ValueRange) {});
+  Block *forBody = forOp.getBody();
+  Block *after = whileOp.getAfterBody();
+  for (auto [from, to] :
+       llvm::zip_equal(forOp.getRegionIterArgs(), after->getArguments())) {
+    from.replaceAllUsesWith(to);
+  }
+  after->getOperations().splice(after->end(), forBody->getOperations());
+  forOp.replaceAllUsesWith(whileOp.getResults());
+  forOp.erase();
+  return whileOp;
 }
 
 bool xilinx::AIE::isObjectFifoLoop(Operation *op) {
@@ -465,6 +496,10 @@ struct AIEObjectFifoUnrollPass
         auto forOp = dyn_cast<scf::ForOp>(loop);
         if (!forOp) {
           unrollForeverLoop(cast<scf::WhileOp>(loop), unrollFactor);
+          continue;
+        }
+        if (isForeverForLoop(forOp)) {
+          unrollForeverLoop(replaceWithForeverLoop(forOp), unrollFactor);
           continue;
         }
 

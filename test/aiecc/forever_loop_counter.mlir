@@ -6,7 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 // A core's INT64_MAX loop over an objectFIFO reaches LLVM as an unconditional
-// backedge, with no counter and no bound comparison, on both FIFO ends.
+// backedge, with no counter and no bound comparison, on both FIFO ends. The
+// loop's work survives: each acquire is followed by the element loop's stores
+// before its release. Static objectFIFOs repeat the body once per buffer.
 
 // RUN: %aiecc -O0 --get='llvmIR_{0}.ll' --tmpdir=%t.o0 --output-dir=%t.o0 %s
 // RUN: FileCheck %s -DCORE=core_0_2 --input-file=%t.o0/llvmIR_main_core_0_2.ll
@@ -16,16 +18,39 @@
 // RUN: FileCheck %s -DCORE=core_0_2 --input-file=%t.default/llvmIR_main_core_0_2.ll
 // RUN: FileCheck %s -DCORE=core_0_3 --input-file=%t.default/llvmIR_main_core_0_3.ll
 
+// RUN: %aiecc --dynamic-objFifos=false --get='llvmIR_{0}.ll' --tmpdir=%t.static --output-dir=%t.static %s
+// RUN: FileCheck %s --check-prefix=STATIC -DCORE=core_0_2 --input-file=%t.static/llvmIR_main_core_0_2.ll
+// RUN: FileCheck %s --check-prefix=STATIC -DCORE=core_0_3 --input-file=%t.static/llvmIR_main_core_0_3.ll
+
 // CHECK:       define void @[[CORE]]()
-// CHECK-NOT:   9223372036854775807
+// CHECK-NOT:   922337203685477
 // CHECK:       br label %[[HEAD:[0-9]+]]
 // CHECK:       {{^}}[[HEAD]]:
 // CHECK-NEXT:  call void @llvm.aie2p.acquire
-// CHECK-NOT:   9223372036854775807
+// CHECK-NOT:   922337203685477
+// CHECK:       getelementptr inbounds nuw i32
+// CHECK:       store i32
 // CHECK:       call void @llvm.aie2p.release
-// CHECK-NOT:   9223372036854775807
-// CHECK:       br label %[[HEAD]]
+// CHECK-NOT:   922337203685477
+// CHECK:       br label %[[HEAD]]{{$}}
 // CHECK-NEXT:  }
+
+// STATIC:      define void @[[CORE]]()
+// STATIC-NOT:  922337203685477
+// STATIC:      br label %[[HEAD:[0-9]+]]
+// STATIC:      {{^}}[[HEAD]]:
+// STATIC-NEXT: call void @llvm.aie2p.acquire
+// STATIC-NOT:  922337203685477
+// STATIC:      getelementptr inbounds nuw i32, ptr @of_buff_0
+// STATIC:      store i32
+// STATIC:      call void @llvm.aie2p.release
+// STATIC-NEXT: call void @llvm.aie2p.acquire
+// STATIC-NOT:  922337203685477
+// STATIC:      getelementptr inbounds nuw i32, ptr @of_buff_1
+// STATIC:      store i32
+// STATIC:      call void @llvm.aie2p.release
+// STATIC-NEXT: br label %[[HEAD]]{{$}}
+// STATIC-NEXT: }
 
 module {
   aie.device(npu2) {
