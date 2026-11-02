@@ -1161,7 +1161,7 @@ pv_accumulate(bfloat16 *P, bfloat16 *V, float *out, float *scale_buffer,
 
 // The online state is four B_q-long regions, B_q the build's DIM_M, walked at
 // the widest of 64 (32 on AIE2, where 64 float lanes cost program memory), 32
-// and 16 lanes that divides it, or 8 in an 8-row build.
+// and 16 lanes that divides it, or 8 when DIM_M is no multiple of 16.
 static constexpr int STATE_W_MAX = AIE_ARCH_AIE2 ? 32 : VECTOR_LENGTH;
 static constexpr int STATE_W = DIM_M % 16                 ? 8
                                : DIM_M % STATE_W_MAX == 0 ? STATE_W_MAX
@@ -1397,6 +1397,8 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
     aie::store_v(A + n, lowest);
   }
 
+  // A row's maximum is taken before scaling, so inv_scale must be positive
+  // and finite, as every caller's 1/sqrt(d) is.
   partial_softmax_rows(A, P, scale_buffer, scale_buffer + B_q,
                        scale_buffer + 3 * B_q, valid_q_rows, valid_kv_cols,
                        diagonal, inv_scale);

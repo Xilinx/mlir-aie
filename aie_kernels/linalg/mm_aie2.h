@@ -80,6 +80,8 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
                                               T_out *__restrict pC) {
 
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accauto>;
+  static_assert(b_row_maj || b_pitch >= colA,
+                "b_pitch steps a column-major B's column blocks, colA or more");
 
   // Outer-loop body factored into a lambda so the same code can be wrapped
   // by three differently-parameterised loops below. Per-instantiation iter
@@ -451,6 +453,8 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
                                          T_out *__restrict pC) {
 
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accauto>;
+  static_assert(b_row_maj || b_pitch >= colA,
+                "b_pitch steps a column-major B's column blocks, colA or more");
 
   auto outer_body = [&](unsigned z) [[gnu::always_inline]] {
     T_out *__restrict pC1;
