@@ -150,6 +150,23 @@ def test_kernels_that_differ_only_in_include_dirs_are_measured_apart(tmp_path):
     assert data[1] - data[0] == 4 * (4096 - 8)
 
 
+def test_a_header_edited_since_is_measured_again(tmp_path):
+    header = tmp_path / "inc" / "k.h"
+    header.parent.mkdir()
+    header.write_text("static volatile int table[8] = {1};\n")
+    kernel = ExternalFunction(
+        "k_edited",
+        source_string='#include "k.h"\n'
+        'extern "C" void k_edited(int *x) { x[0] = table[x[1]]; }\n',
+        arg_types=[np.ndarray[(8,), np.dtype[np.int32]]],
+        include_dirs=[str(header.parent)],
+    )
+    before = kernel.measure("aie2p").data
+    assert kernel.measure("aie2p").data == before
+    header.write_text("static volatile int table[4096] = {1};\n")
+    assert kernel.measure("aie2p").data - before == 4 * (4096 - 8)
+
+
 def test_measure_reads_each_entry_of_one_object(tmp_path):
     """Two symbols of one object: each entry's own stack, the object's data."""
     small = ExternalFunction(
