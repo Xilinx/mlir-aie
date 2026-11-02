@@ -606,6 +606,29 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
       }
     }
     aie::set_saturation(saved_saturation);
+#elif AIE_ARCH_AIE2P
+    // As below, 64 lanes a step, a row's or several rows' each against its
+    // own row's maximum, so that two exponential chains share a schedule.
+    constexpr int32_t LANES = 64;
+    constexpr int32_t STEP_ROWS = LANES / ROW;
+    const auto s = aie::broadcast<bfloat16, LANES>(scale);
+    a = A;
+    AIE_LOOP_MIN_ITERATION_COUNT(SM_ROWS / STEP_ROWS)
+    for (int32_t i = 0; i < group_rows; i += STEP_ROWS) {
+      aie::vector<float, LANES> m_vec;
+      AIE_LOOP_UNROLL_FULL
+      for (int32_t r = 0; r < STEP_ROWS; r++)
+        m_vec.insert(r, aie::broadcast<float, ROW>(m_rows[i + r]));
+      aie::accum<accfloat, LANES> d;
+      d.from_vector(aie::load_v<LANES>(a));
+      const Limbs<LANES> dl = bf16_limbs(aie::sub(d, m_vec));
+      aie::accum<accfloat, LANES> x = aie::mul(dl.hi, s);
+      x = aie::mac(x, dl.mid, s);
+      x = aie::mac(x, dl.lo, s);
+      aie::store_v(p, exp2_bf16(x.to_vector<float>()));
+      a += LANES;
+      p += LANES;
+    }
 #else
     // A float32 max leaves A - m exact in the accumulator, so (A - m) * s is
     // taken as three bf16 limbs, each times s.
