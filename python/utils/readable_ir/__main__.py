@@ -21,13 +21,15 @@ def main(argv=None) -> int:
     if args.input == "-":
         text = sys.stdin.read()
     else:
-        with open(args.input) as f:
+        with open(args.input, encoding="utf-8") as f:
             text = f.read()
     result = readable(text)
     if args.output:
-        with open(args.output, "w") as f:
+        with open(args.output, "w", encoding="utf-8") as f:
             f.write(result)
     else:
+        # MLIR is UTF-8; a Windows console or pipe defaults to the ANSI code page.
+        sys.stdout.reconfigure(encoding="utf-8")
         sys.stdout.write(result)
     return 0
 

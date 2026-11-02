@@ -9,7 +9,12 @@
 # readable() turns each op's location into a short trailing comment: the
 # names on it (iron: dropped, py: kept) and its innermost source line.
 
+import sys
+
 from aie.utils.readable_ir import readable
+
+# FileCheck reads UTF-8; a Windows pipe defaults to the ANSI code page.
+sys.stdout.reconfigure(encoding="utf-8")
 
 IR = """\
 module {
