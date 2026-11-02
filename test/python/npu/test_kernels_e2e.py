@@ -18,8 +18,8 @@ reference that disagrees with the C++.
 Two tiers share one table (``kernel_cases.py``):
 
 * ``test_kernel`` runs the ``smoke`` cases on random data: one representative
-  shape per kernel, on every pull request. ``test_kernel_rerun`` runs each
-  one again on new data, on the design already loaded.
+  shape per kernel, on every pull request, then runs it again on new data
+  on the design already loaded.
 * ``test_kernel_extensive`` (marker ``extensive``, deselected by the lit
   shards) runs every case under every edge-data case its contract
   admits, for ``--seeds`` random seeds.
@@ -92,15 +92,10 @@ def _run_case(case, data_case: str, seed: int, report_error=None, params_of=None
 
 @pytest.mark.parametrize("case", [_param(c) for c in CASES if c.smoke])
 def test_kernel(case, report_error):
-    _run_case(case, "random", 0, report_error)
-
-
-@pytest.mark.parametrize("case", [_param(c) for c in CASES if c.smoke])
-def test_kernel_rerun(case):
+    first = _run_case(case, "random", 0, report_error)
     # New streamed data on the design the first run loaded: no call may read
     # what an earlier run left in core memory.
-    first = _run_case(case, "random", 0)
-    _run_case(case, "random", 1, params_of=first)
+    _run_case(case, "random", 1, report_error, params_of=first)
 
 
 def pytest_generate_tests(metafunc):
