@@ -1,7 +1,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# RUN: %pytest %s
+# RUN: %pytest %s -n 4
 # REQUIRES: peano
 """Convolution dimension specialization and raw-ABI compilation (no NPU)."""
 
