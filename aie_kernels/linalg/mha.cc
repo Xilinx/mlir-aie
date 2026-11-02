@@ -1041,10 +1041,6 @@ static constexpr int32_t S_TILES = ROW / 8;
 static_assert(PV_R == 8 && PV_S == 8,
               "a P tile is two S tiles, one above the other");
 
-alignas(64) static const int16_t s_tile_key[S_TILE] = {
-    0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7,
-    0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};
-
 // Out of line, as P*V's step is in attend: inlined, both spill into
 // attend_block's own frame (the exponentials' constants live across QK^T's
 // call), 2 KB more stack at 24x128x32, past what L1 leaves a core two key
@@ -1077,7 +1073,16 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
       (BAND_BEHIND &&
        (MHA_PACKED ? 0 : (DIM_M - 1) / MHA_GROUP) + diagonal > MHA_WINDOW) ||
       rows < DIM_M) {
-    const auto key0 = aie::load_v<S_TILE>(s_tile_key);
+    // A lane's key in its tile, 0 to 7, from its index's bits.
+    const auto zero = aie::zeros<int16_t, S_TILE>();
+    auto key0 = aie::select(zero, aie::broadcast<int16_t, S_TILE>(1),
+                            aie::mask<S_TILE>::from_uint32(0xAAAAAAAAu));
+    key0 = aie::add(key0,
+                    aie::select(zero, aie::broadcast<int16_t, S_TILE>(2),
+                                aie::mask<S_TILE>::from_uint32(0xCCCCCCCCu)));
+    key0 = aie::add(key0,
+                    aie::select(zero, aie::broadcast<int16_t, S_TILE>(4),
+                                aie::mask<S_TILE>::from_uint32(0xF0F0F0F0u)));
     const auto eight = aie::broadcast<int16_t, S_TILE>(8);
     for (int32_t b = 0; b < DIM_M / 4; b++) {
       int16_t end[4], start[4];
@@ -1167,7 +1172,25 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
     const auto st =
         aie::concat(aie::load_v<S_TILE>(t), aie::load_v<S_TILE>(t + BAND));
     aie::accum<accfloat, P_TILE> x;
-    if constexpr (f32) {
+    if constexpr (f32 && ROW == 32) {
+      // An S tile a step: 64 lanes' limbs spill, past the stack L1 leaves a
+      // 24x128x32 block two key blocks deep.
+      const auto m =
+          by_lane(aie::load_v<SM_ROWS>(m_new + (i / S_TILES) * SM_ROWS));
+      const auto s32 = s.template extract<S_TILE>(0);
+      AIE_LOOP_UNROLL_FULL
+      for (int32_t h = 0; h < 2; h++) {
+        aie::accum<accfloat, S_TILE> d;
+        d.from_vector(aie::load_v<S_TILE>(t + h * BAND));
+        const Limbs<S_TILE> dl =
+            bf16_limbs(aie::sub(d, m.template extract<S_TILE>(h)));
+        aie::accum<accfloat, S_TILE> y = aie::mul(dl.hi, s32);
+        y = aie::mac(y, dl.mid, s32);
+        y = aie::mac(y, dl.lo, s32);
+        aie::store_v(w + h * S_TILE, exp2_bf16(y.to_vector<float>()));
+      }
+      continue;
+    } else if constexpr (f32) {
       // As partial_softmax_rows: S - m in float32, times s as three limbs.
       aie::accum<accfloat, P_TILE> d;
       d.from_vector(st);
