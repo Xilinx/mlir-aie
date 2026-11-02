@@ -1,11 +1,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-
-# RUN: %run_on_npu1_xrt% %pytest -m "not extensive" %s
-# RUN: %run_on_npu2_xrt% %pytest -m "not extensive" %s
-# RUN: %run_on_npu2_hrx% %pytest -m "not extensive" %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
+# lit runs this file in shards, from test_mha_e2e_shard*.test: one lit test
+# held the device for longer than lit's per-test timeout.
 """Numeric gates for mha.cc's softmax entry points, alone and as one round.
 
 ``partial_softmax`` and ``rescale_O`` read and write a carried float32
