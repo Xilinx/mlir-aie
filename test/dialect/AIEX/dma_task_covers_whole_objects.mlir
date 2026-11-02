@@ -1173,3 +1173,87 @@ module {
     }
   }
 }
+
+// -----
+
+// @x is broadcast to joins on two mem tiles whose slots for it differ: one
+// 16-i32 object on m0, two (32 i32) on m1. One object through @x leaves m1's
+// 128-byte BD half full, whichever link comes first.
+module {
+  aie.device(npu2) {
+    %s0 = aie.tile(0, 0)
+    %s1 = aie.tile(1, 0)
+    %m0 = aie.tile(0, 1)
+    %m1 = aie.tile(1, 1)
+    %t0 = aie.tile(0, 2)
+    %t1 = aie.tile(1, 2)
+    aie.objectfifo @x(%s0, {%m0, %m1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @y(%s1, {%m0, %m1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%m0, {%t0}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@x, @y] -> [@a] ([0, 16] [])
+    aie.objectfifo @b(%m1, {%t1}, 2 : i32) : !aie.objectfifo<memref<48xi32>>
+    aie.objectfifo.link [@x, @y] -> [@b] ([0, 32] [])
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      // expected-error@+1 {{moves 64 bytes through objectFIFO @x, which is not a whole number of its 128-byte objects}}
+      %t = aiex.dma_configure_task_for @x {
+        aie.dma_bd(%arg0 : memref<16xi32> offset = 0 len = 16 sizes = [1, 1, 1, 16] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2) {
+    %s0 = aie.tile(0, 0)
+    %s1 = aie.tile(1, 0)
+    %m0 = aie.tile(0, 1)
+    %m1 = aie.tile(1, 1)
+    %t0 = aie.tile(0, 2)
+    %t1 = aie.tile(1, 2)
+    aie.objectfifo @x(%s0, {%m0, %m1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @y(%s1, {%m0, %m1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%m1, {%t1}, 2 : i32) : !aie.objectfifo<memref<48xi32>>
+    aie.objectfifo.link [@x, @y] -> [@b] ([0, 32] [])
+    aie.objectfifo @a(%m0, {%t0}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@x, @y] -> [@a] ([0, 16] [])
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      // expected-error@+1 {{moves 64 bytes through objectFIFO @x, which is not a whole number of its 128-byte objects}}
+      %t = aiex.dma_configure_task_for @x {
+        aie.dma_bd(%arg0 : memref<16xi32> offset = 0 len = 16 sizes = [1, 1, 1, 16] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
+// Two plain links read @x on two mem tiles, a 64-byte object on m0 and a
+// 128-byte pool on m1: one 64-byte object leaves m1's BD half full.
+module {
+  aie.device(npu2) {
+    %s0 = aie.tile(0, 0)
+    %m0 = aie.tile(0, 1)
+    %m1 = aie.tile(1, 1)
+    %t0 = aie.tile(0, 2)
+    %t1 = aie.tile(1, 2)
+    aie.objectfifo @x(%s0, {%m0, %m1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%m0, {%t0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@x] -> [@a] ([] [])
+    aie.objectfifo @b(%m1, {%t1}, 2 : i32) : !aie.objectfifo<memref<32xi32>>
+    aie.objectfifo.link [@x] -> [@b] ([] [])
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      // expected-error@+1 {{moves 64 bytes through objectFIFO @x, which is not a whole number of its 128-byte objects}}
+      %t = aiex.dma_configure_task_for @x {
+        aie.dma_bd(%arg0 : memref<16xi32> offset = 0 len = 16 sizes = [1, 1, 1, 16] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}

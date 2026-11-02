@@ -7,13 +7,14 @@
 
 import hashlib
 import logging
+import os
 import re
 import tempfile
 import warnings
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, get_origin
+from typing import Any, NamedTuple, get_origin
 
 import numpy as np
 
@@ -26,6 +27,7 @@ from ..helpers.sourceloc import Declared, SourceSite
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..utils import config
 from ..utils.compile import NPU_CACHE_HOME, compile_external_kernel
+from ..utils.compile.jit._manifest import _parse_depfile
 from ..utils.compile.jit._object_cache import KernelObjectCache
 from ..utils.compile.jit.compilabledesign import COMPILE_LOCK_TIMEOUT_SECONDS
 from ..utils.compile.jit.context import compile_context, get_compile_arg
@@ -152,6 +154,64 @@ def _enclosing_symbol_table(ip: ir.InsertionPoint) -> ir.SymbolTable:
 
 
 _PATH_FLAG = re.compile(r'((?:-I|-isystem|-iquote)\s*|-D[^=]+=)?("?)(.*?)("?)')
+
+
+class _Measured(NamedTuple):
+    """What measure() read, and each header it read it through as it stood."""
+
+    linked: Linked | None
+    # (path, size, mtime_ns) of the headers the compile opened outside Peano
+    # and aie_api, which change only with an install.
+    headers: tuple[tuple[str, int, int], ...]
+
+    @classmethod
+    def read(cls, obj: Path, entry: str) -> "_Measured":
+        """Read ``obj`` from ``entry``, and the headers its depfile names.
+
+        Args:
+            obj: The compiled object, its ``.d`` beside it.
+            entry: The symbol to read from.
+
+        Returns:
+            The object's ``Linked`` and its headers' sizes and mtimes; the
+            staged source beside ``obj`` is left out, as it goes with it.
+        """
+        depfile = obj.with_name(obj.name + ".d")
+        deps = _parse_depfile(depfile) if depfile.is_file() else []
+        installed = (
+            Path(config.peano_install_dir()).resolve(),
+            Path(config.cxx_header_path(), "aie_api").resolve(),
+        )
+        headers = []
+        for dep in deps:
+            if (
+                not dep.is_absolute()
+                or dep.parent == obj.parent
+                or any(dep.resolve().is_relative_to(root) for root in installed)
+            ):
+                continue
+            st = dep.stat()
+            headers.append((str(dep), st.st_size, st.st_mtime_ns))
+        return cls(linked(obj, entry), tuple(headers))
+
+    def current(self) -> bool:
+        """Return whether every header is as it was when this was read."""
+        for path, size, mtime_ns in self.headers:
+            try:
+                st = os.stat(path)
+            except OSError:
+                return False
+            if (st.st_size, st.st_mtime_ns) != (size, mtime_ns):
+                return False
+        return True
+
+
+# What measure() read, by kernel content (its include directories too, which a
+# recipe key leaves out), symbol prefix, entry and build: a process asks again
+# for every design resolved, and compiling (an object cache key hashes every
+# header) and reading the object each time is seconds a kernel. A header
+# edited since is read again.
+_MEASURED: dict[tuple, _Measured] = {}
 
 
 def _install_relative_flag(flag: str, roots: dict[str, Path]) -> str:
@@ -1243,15 +1303,27 @@ class ExternalFunction(Kernel):
             return None
         if self.use_chess or self.link_with_mode is not None:
             return None
-        with tempfile.TemporaryDirectory() as tmp:
-            compile_external_kernel(
-                self,
-                tmp,
-                target_arch,
-                embed_bitcode=embed_bitcode,
-                object_cache=object_cache,
-            )
-            return linked(Path(tmp) / self.object_file_name, entry or self.name)
+        key = (
+            self._content_digest(),
+            self.object_file.symbol_prefix,
+            target_arch,
+            embed_bitcode,
+            entry or self.name,
+        )
+        measured = _MEASURED.get(key)
+        if measured is None or not measured.current():
+            with tempfile.TemporaryDirectory() as tmp:
+                compile_external_kernel(
+                    self,
+                    tmp,
+                    target_arch,
+                    embed_bitcode=embed_bitcode,
+                    object_cache=object_cache,
+                )
+                measured = _MEASURED[key] = _Measured.read(
+                    Path(tmp) / self.object_file_name, entry or self.name
+                )
+        return measured.linked
 
     def __call__(self, *args, **kwargs):
         """Call with argument count and type validation before emitting MLIR.
