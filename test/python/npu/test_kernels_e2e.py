@@ -56,6 +56,7 @@ from aie.iron import (
 from aie.iron.algorithms import kernel_design as kd
 from aie.iron.buffer import Buffer
 from aie.iron.device import Tile
+from aie.iron.kernels import Param
 from aie.utils.verify import compare, poisoned
 from cases import error_report, inputs_for
 from kernel_cases import CASES
@@ -67,12 +68,18 @@ def _param(case):
     return pytest.param(case, marks=marks, id=case.name)
 
 
-def _run_case(case, data_case: str, seed: int, report_error=None):
+def _run_case(case, data_case: str, seed: int, report_error=None, params_of=None):
     design = case.kernel_design(guard=True)
     fn = design.fn
     inputs = inputs_for(
         case, data_case, np.random.default_rng(1000 + seed), design=design
     )
+    if params_of is not None:
+        # A tensor Param is compiled into the design: keep it to keep the design.
+        inputs = [
+            kept if fn.contract.roles[i] is Param else new
+            for new, kept, i in zip(inputs, params_of, design._tensor_positions)
+        ]
     # The output is poisoned so a kernel that writes nothing cannot pass.
     got = design.run(inputs)
     verdict = design.check(got, inputs)
@@ -80,6 +87,7 @@ def _run_case(case, data_case: str, seed: int, report_error=None):
         entries = error_report(fn, got, inputs, calls=case.calls, scalars=case.scalars)
         report_error(f"{case.name}/{data_case}/s{seed}", entries, bool(verdict))
     assert verdict, f"{case.name} [{data_case}, seed {seed}]: {verdict.detail}"
+    return inputs
 
 
 @pytest.mark.parametrize("case", [_param(c) for c in CASES if c.smoke])
@@ -89,10 +97,10 @@ def test_kernel(case, report_error):
 
 @pytest.mark.parametrize("case", [_param(c) for c in CASES if c.smoke])
 def test_kernel_rerun(case):
-    # New data on the design the first run loaded: no call may read what an
-    # earlier run left in core memory.
-    _run_case(case, "random", 0)
-    _run_case(case, "random", 1)
+    # New streamed data on the design the first run loaded: no call may read
+    # what an earlier run left in core memory.
+    first = _run_case(case, "random", 0)
+    _run_case(case, "random", 1, params_of=first)
 
 
 def pytest_generate_tests(metafunc):
