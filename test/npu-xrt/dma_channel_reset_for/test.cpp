@@ -77,8 +77,11 @@ int main(int argc, char **argv) {
     // The input varies per dispatch, so a fifo that stopped delivering shows up
     // as the previous dispatch's output. Do not clear the output BO: syncing it
     // to device races the output DMA.
-    for (int i = 0; i < kLength; ++i)
+    std::vector<int32_t> expected(kLength);
+    for (int i = 0; i < kLength; ++i) {
       input[i] = dispatch * 1024 + i;
+      expected[i] = input[i] + i + 1;
+    }
     inputBo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
     auto run = kernel(3, instructionBo, instructions.size(), inputBo, outputBo);
@@ -102,11 +105,13 @@ int main(int argc, char **argv) {
     }
 
     outputBo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    std::vector<int32_t> actual(kLength);
+    std::memcpy(actual.data(), output, kLength * sizeof(int32_t));
     for (int i = 0; i < kLength; ++i) {
-      const int32_t expected = input[i] + i + 1;
-      if (output[i] != expected) {
+      if (actual[i] != expected[i]) {
         std::cerr << "MISMATCH at dispatch " << dispatch << ", element " << i
-                  << ": expected " << expected << ", got " << output[i] << "\n";
+                  << ": expected " << expected[i] << ", got " << actual[i]
+                  << "\n";
         return 1;
       }
     }

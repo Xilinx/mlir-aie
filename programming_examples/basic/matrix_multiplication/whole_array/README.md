@@ -27,7 +27,7 @@ In summary, this design leverages an AI Engine accelerator to accomplish matrix 
 
 ## Building and Running the Design
 
-With the default configuration, this design will set up an array of AIEs to perform matrix-matrix multiplication on an `int16` input data type (`int32` output). The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c` by default.
+With the default configuration, this design will set up an array of AIEs to perform matrix-matrix multiplication on an `int16` input data type. The two paths below have different defaults: `make` builds `int32` output with `m` = `k` = `n` = `32` tiles (the Makefile's `m`, `k`, `n`), while a direct `python3 whole_array.py` run builds `int16` output with `m` = `64`, `k` = `64`, `n` = `32` (its `-m`, `-k`, `-n`).
 
 The Python source ([`whole_array.py`](./whole_array.py)) supports two execution paths:
 

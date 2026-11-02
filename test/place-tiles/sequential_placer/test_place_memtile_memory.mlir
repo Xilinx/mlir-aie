@@ -29,19 +29,19 @@
 // CHECK: aie.objectfifo @join0(%{{.*}}, {%[[M0]]}
 // ALLOC-DAG: %[[HOME:.*]] = aie.tile(0, 1)
 // ALLOC-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
-// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out_buff_0"}
-// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out_buff_1"}
-// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "b1_in_cons_buff_0"}
-// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b0_in_cons_buff_1"}
-// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b0_in_cons_buff_0"}
-// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b1_in_cons_buff_1"}
+// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out__buf0"}
+// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out__buf1"}
+// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "b1_in__cons__buf0"}
+// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b0_in__cons__buf1"}
+// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b0_in__cons__buf0"}
+// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b1_in__cons__buf1"}
 // BOUNDARY: %[[M:.*]] = aie.tile(0, 1)
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b0_in_cons_buff_0"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b0_in_cons_buff_1"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b1_in_cons_buff_0"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b1_in_cons_buff_1"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "join_out_buff_0"}
-// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "join_out_buff_1"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b0_in__cons__buf0"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b0_in__cons__buf1"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b1_in__cons__buf0"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b1_in__cons__buf1"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "join_out__buf0"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "join_out__buf1"}
 module {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)

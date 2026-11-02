@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from ...dialects.aie import (
     cascade_flow as _cascade_flow_op,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from ...helpers.sourceloc import SourceSite
+from ...helpers.sourceloc import Declared, SourceSite
 from ..resolvable import PerDeviceConfigurationResolvable
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from ..worker import Worker
 
 
-class CascadeFlow(PerDeviceConfigurationResolvable):
+class CascadeFlow(Declared, PerDeviceConfigurationResolvable):
     """A directed cascade stream connection from one Worker to another.
 
     Construct one of these for each cascade edge in your design:

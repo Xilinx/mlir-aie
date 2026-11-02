@@ -52,7 +52,7 @@ jobs:
   build:
     name: Build, allocator and router lit tests
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
 
     outputs:
@@ -92,7 +92,7 @@ jobs:
       - uses: ./.github/actions/setup_ccache
         id: setup_ccache
         with:
-          MATRIX_OS: ubuntu-24.04
+          MATRIX_OS: ubuntu-26.04
           MATRIX_ARCH: x86
           EXTRA_KEY: compile-and-test-llvm-assert=ON-rtti=ON
 
@@ -150,7 +150,7 @@ jobs:
         if: ${{ steps.build.outcome == 'success' }}
         run: tar -czhf router-tools.tar.gz build_release/bin/aie-opt build_release/python
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: ${{ steps.pack.outcome == 'success' }}
         with:
           name: model-based-tools-${{ github.run_id }}
@@ -188,7 +188,7 @@ jobs:
           lit -sv -D router_nightly=1 -o results/router/reports/lit.json \
             build_release/test/create-packet-flows/nightly
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: always()
         with:
           name: model-based-results-build-${{ github.run_id }}
@@ -202,7 +202,7 @@ jobs:
     needs: build
     if: ${{ !cancelled() && needs.build.outputs.tools == 'success' }}
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
 
     strategy:
@@ -230,7 +230,7 @@ jobs:
               --install-non-eudsl
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           name: model-based-tools-${{ github.run_id }}
 
@@ -264,7 +264,7 @@ jobs:
               --out "$out" --shrink --repros "$out/repros" --report "$report"
           fi
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: always()
         with:
           name: model-based-results-${{ matrix.device }}-${{ matrix.run }}-${{ github.run_id }}
@@ -278,7 +278,7 @@ jobs:
     needs: [build, router]
     if: always()
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
 
     steps:
@@ -288,7 +288,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           pattern: model-based-results-*-${{ github.run_id }}
           path: results
@@ -313,7 +313,7 @@ jobs:
 
       - name: Upload the allocator's results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: component-checks-allocator-${{ github.run_id }}
           path: results/allocator/
@@ -321,7 +321,7 @@ jobs:
 
       - name: Upload the router's results and failing designs
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: component-checks-router-${{ github.run_id }}
           path: results/router/
@@ -334,7 +334,7 @@ jobs:
       ${{ !cancelled() && github.ref == 'refs/heads/main'
       && !(inputs.allocator_seeds || inputs.allocator_bankres_seeds
       || inputs.router_seeds || inputs.mutation_seeds || inputs.first_seed) }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
       actions: read  # the workflow's runs, to date each record by its start
@@ -348,11 +348,11 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           pattern: component-checks-allocator-${{ github.run_id }}
           path: results/allocator
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           pattern: component-checks-router-${{ github.run_id }}
           path: results/router

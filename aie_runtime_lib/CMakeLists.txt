@@ -9,7 +9,7 @@ add_custom_target(aie-runtime-libs ALL)
 
 function(add_aie_runtime_libs arch)
   # Precompile the intrinsic wrapper when chess-clang and AIETools are available.
-  if(AIE_BUILD_CHESS_CLANG AND DEFINED VITIS_AIETOOLS_DIR)
+  if(AIE_BUILD_CHESS_CLANG AND DEFINED VITIS_AIETOOLS_DIR AND arch IN_LIST AIE_VITIS_COMPONENTS)
     string(TOLOWER ${arch} aiearch)
     add_custom_target(${arch}_chess_intrinsic_wrapper ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/chess_intrinsic_wrapper.ll
@@ -53,11 +53,10 @@ function(add_aie_runtime_libs arch)
 
 endfunction()
 
-# Install the runtime helper payload for the requested architectures.
+# Peano needs the runtime helper payload for every architecture.
 # Chess wrapper generation remains gated on xchesscc_wrapper and AIETools.
-foreach(_aie_arch IN LISTS AIE_VITIS_COMPONENTS)
+foreach(_aie_arch AIE AIE2 AIE2P)
   if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_aie_arch}/CMakeLists.txt)
     add_subdirectory(${_aie_arch})
   endif()
 endforeach()
-

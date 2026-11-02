@@ -23,7 +23,7 @@ from ..dialects.aiex import (
 )
 from ..helpers.dialects.scf import _for as range_
 from ..helpers.dialects.scf import forever_
-from ..helpers.sourceloc import SourceSite, traced_body
+from ..helpers.sourceloc import Declared, SourceSite, iron_name, traced_body
 from ..helpers.taplib import Affine
 from ..helpers.util import flatten_fn_args
 from ..utils.compile.jit.markers import _DispatchParameter
@@ -37,7 +37,7 @@ from .resolvable import PerDeviceConfiguration, Resolvable
 from .scratchpad_parameter import ScratchpadParameter
 
 
-class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
+class Worker(Declared, ObjectFifoEndpoint, PerDeviceConfiguration):
     """A task to be run on an AIE compute core.
 
     A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO handles,
@@ -57,6 +57,7 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
         wait_for_parameters: bool = False,
+        name: str | None = None,
     ):
         """Construct a Worker.
 
@@ -91,12 +92,16 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
                 one iteration of a ``while_true`` Worker is one dispatch; without
                 it the Worker waits only once, before its first iteration.
                 Requires a ScratchpadParameter in ``fn_args``. Defaults to False.
+            name (str | None, optional): Names the Worker's core in its source
+                location (``iron:<name>``). None lets its configuration name it
+                ``worker<N>``. Defaults to None.
 
         Raises:
             ValueError: Parameters are validated.
             TypeError: An argument is computed per call.
         """
         self._site = SourceSite.capture()
+        self.name = name
         for arg in flatten_fn_args(
             [
                 fn_args or [],
@@ -283,11 +288,24 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
         """
         return [[factory(r, c) for c in range(cols)] for r in range(rows)]
 
+    def __str__(self) -> str:
+        return f"Worker({self.name or self._site.describe(type(self).__name__)!r})"
+
     @property
     def tile(self) -> Tile:
         """The compute tile this Worker is placed on."""
         assert self._tile is not None
         return self._tile
+
+    @property
+    def while_true(self) -> bool:
+        """Whether the core loops until reconfiguration rather than running once."""
+        return self._while_true
+
+    @property
+    def wait_for_parameters(self) -> bool:
+        """Whether each pass of the core's loop waits for a dispatch's parameters."""
+        return self._wait_for_parameters
 
     @property
     def flat_fn_args(self) -> list:
@@ -333,27 +351,36 @@ class Worker(ObjectFifoEndpoint, PerDeviceConfiguration):
                 barrier_lock = lock(my_tile)
                 barrier.worker_locks.append(barrier_lock)
 
-            @core(
-                my_tile,
-                stack_size=self.stack_size,
-                data_size=self.data_size,
-                dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
+            # The core is named after the Worker; its body's statements keep
+            # their own locations.
+            core_loc = (
+                ir.Location.name(iron_name(self.name), childLoc=ir.Location.current)
+                if self.name
+                else ir.Location.current
             )
-            def core_body():
-                # A Worker that runs until reconfiguration loops with no counter.
-                # A single-shot Worker still wraps its body in an scf.for with
-                # bound 1 so the lowered MLIR matches expectations downstream (the
-                # lower-level aie dialect uses the same pattern). Using Python
-                # range(1) here would emit the body inline with no scf.for wrapper,
-                # which the dataflow lowerer treats differently and can cause
-                # runtime hangs.
-                for setup in self._setup_kernels:
-                    setup()
-                for _ in forever_() if self._while_true else range_(1):
-                    if self._wait_for_parameters:
-                        wait_scratchpad_parameters()
-                    with traced_body(self.core_fn):
-                        self.core_fn(*self.fn_args)
+            with core_loc:
+
+                @core(
+                    my_tile,
+                    stack_size=self.stack_size,
+                    data_size=self.data_size,
+                    dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
+                )
+                def core_body():
+                    # A Worker that runs until reconfiguration loops with no counter.
+                    # A single-shot Worker still wraps its body in an scf.for with
+                    # bound 1 so the lowered MLIR matches expectations downstream (the
+                    # lower-level aie dialect uses the same pattern). Using Python
+                    # range(1) here would emit the body inline with no scf.for wrapper,
+                    # which the dataflow lowerer treats differently and can cause
+                    # runtime hangs.
+                    for setup in self._setup_kernels:
+                        setup()
+                    for _ in forever_() if self._while_true else range_(1):
+                        if self._wait_for_parameters:
+                            wait_scratchpad_parameters()
+                        with traced_body(self.core_fn):
+                            self.core_fn(*self.fn_args)
 
 
 class WorkerRuntimeBarrier(PerDeviceConfiguration):
@@ -368,6 +395,25 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
         self.initial_value = initial_value
         self.worker_locks = []
 
+    def _get_worker_lock(self) -> ir.Value:
+        op = ir.InsertionPoint.current.block.owner.operation
+        while op is not None:
+            if op.name == "aie.core":
+                core_tile = op.operands[0].owner.operation
+                for worker_lock in self.worker_locks:
+                    lock_tile = worker_lock.owner.operation.operands[0].owner.operation
+                    # Value equality emits arith.cmpi; compare defining operations.
+                    if lock_tile == core_tile:
+                        return worker_lock
+                break
+            if op.name in ("aie.device", "builtin.module"):
+                break
+            op = op.parent
+        raise ValueError(
+            "No lock is registered for this barrier on the current core's tile; "
+            "pass the barrier in this Worker's fn_args."
+        )
+
     def wait_for_value(self, value: int, *, greater_equal: bool = False):
         """Wait for the barrier to be set to `value`.
 
@@ -380,15 +426,8 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
             value (int): The value to wait for.
             greater_equal (bool): Use a consuming greater-than-or-equal lock wait.
         """
-        # Here this is assuming that the we are currently placing the last added lock
-        # And therefore that wait_for_value operations are placed just after their corresponding Worker...
-        # This is a pretty bad assumption, think about an alternative way to solve this
-        if len(self.worker_locks) == 0:
-            raise ValueError(
-                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
-            )
         action = LockAction.AcquireGreaterEqual if greater_equal else LockAction.Acquire
-        use_lock(self.worker_locks[-1], action, value=value)
+        use_lock(self._get_worker_lock(), action, value=value)
 
     def set(self, value: int):
         """Set the barrier to ``value`` from within a runtime sequence body.
@@ -409,11 +448,7 @@ class WorkerRuntimeBarrier(PerDeviceConfiguration):
         Args:
             value (int): The value to add.
         """
-        if len(self.worker_locks) == 0:
-            raise ValueError(
-                "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
-            )
-        use_lock(self.worker_locks[-1], LockAction.Release, value=value)
+        use_lock(self._get_worker_lock(), LockAction.Release, value=value)
 
 
 class _BarrierSetOp(Resolvable):

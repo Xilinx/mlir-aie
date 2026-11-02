@@ -8,11 +8,12 @@
   leaves +-2^23: weight rows near +-127 against activations near +-127,
   through mma_rows as the decode runs a projection's row group, against
   llama_oracle.Layer.project; and small sums, through the vector epilogue.
-- llama_attn_block's sv paths: sv_head, sv_head_low for a block where a live
-  pv's exponent field is below 24 (one dominant dot leaves the other rows' e
-  near 2^-115), and the per-row path for a pv at or above 2^112 (a v_scale
-  near 2^119). One core attends two blocks, the second the query's own, as
-  the decode's pair of cores for a KV head does, against
+- llama_attn_block's fixed-point sv (block_sv) at its edges: a block where
+  live rows' pv sit more than 30 binades below its largest, so their P is 0
+  (one dominant dot leaves the other rows' e near 2^-115), and one whose
+  largest pv is at or above 2^112 (a v_scale near 2^119), scaled near the
+  top of the fp32 range. One core attends two blocks, the second the
+  query's own, as the decode's pair of cores for a KV head does, against
   llama_oracle.attention_blocks.
 
 Each case first checks that its inputs take the path it names.
@@ -257,28 +258,28 @@ class AttnCase:
         self.rng = rng
 
     def paths(self):
-        """llama_attn_block's sv path for each block, from the oracle's pv.
+        """Which of block_sv's edges each block reaches, from the oracle's pv.
 
         Returns:
-            Per block, "slow" if a live pv is negative or its exponent field
-            past 238, else "low" if a live normal one's is below 24, else
-            "fast".
+            Per block, "drop" if a live nonzero pv's exponent field is more
+            than 30 below the block's largest, else "top" if the largest is
+            at least 230, else "plain".
         """
         pv = attention_weights(
             self.q, self.q_scales, self.k, self.ks, self.vs, self.t, KV_TB
         )[2][:REP]
         live = (np.arange(2 * KV_TB) < self.t).reshape(2, KV_TB)
-        bits = pv.view(np.int32)
-        field = (bits >> 23) & 0xFF
+        field = (pv.view(np.int32) >> 23) & 0xFF
         out = []
         for b in range(2):
-            on = live[b]
-            if np.any(on & ((bits[:, b] < 0) | (field[:, b] > 238))):
-                out.append("slow")
-            elif np.any(on & (field[:, b] > 0) & (field[:, b] < 24)):
-                out.append("low")
+            f = np.where(live[b], field[:, b], 0)
+            top = f.max(axis=1, keepdims=True)
+            if np.any((f > 0) & (top - f > 30)):
+                out.append("drop")
+            elif np.any(top >= 230):
+                out.append("top")
             else:
-                out.append("fast")
+                out.append("plain")
         return out
 
     def run(self, session):
@@ -334,7 +335,7 @@ def mma_cases(rng):
 
 
 def attn_cases(rng):
-    """sv_head, sv_head_low (block 0) and the per-row path (block 0)."""
+    """A plain pair of blocks, then block 0 at block_sv's two edges."""
     rows = 2 * KV_TB
 
     def base():
@@ -347,7 +348,7 @@ def attn_cases(rng):
             rng.uniform(0.002, 0.05, (N_HEADS_KV, rows)).astype(np.float32),
         )
 
-    cases = [AttnCase("sv_head", *base(), rng)]
+    cases = [AttnCase("plain", *base(), rng)]
 
     # Every Q head of KV head 0 aligned with block 0's row 5 alone: its dot is
     # 64 * 127^2, the others' near 0, so their scores trail by about 80.
@@ -358,13 +359,13 @@ def attn_cases(rng):
     k[0, :KV_TB] = rng.integers(-8, 9, (KV_TB, HEAD_D))
     k[0, 5] = 127 * sign
     ks[0, :KV_TB] = 0.031
-    cases.append(AttnCase("sv_head_low", q, q_scales, k, v, ks, vs, rng))
+    cases.append(AttnCase("dropped rows", q, q_scales, k, v, ks, vs, rng))
 
     # Block 0's v_scale near 2^119: its largest pv is at least 2^113, and its
     # sv, at most 127 * 2^119, stays finite.
     q, q_scales, k, v, ks, vs = base()
     vs[0, :KV_TB] = np.ldexp(rng.uniform(1.0, 1.01, KV_TB), 119).astype(np.float32)
-    cases.append(AttnCase("per-row sv", q, q_scales, k, v, ks, vs, rng))
+    cases.append(AttnCase("top of range", q, q_scales, k, v, ks, vs, rng))
     return cases
 
 
@@ -392,7 +393,7 @@ def main():
 
     session = DispatchSession(attn_pair, ROW0=OWN_ROW)
     for case, want in zip(
-        attn_cases(rng), (["fast", "fast"], ["low", "fast"], ["slow", "fast"])
+        attn_cases(rng), (["plain", "plain"], ["drop", "plain"], ["top", "plain"])
     ):
         paths = case.paths()
         bad, ms = case.run(session)

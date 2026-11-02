@@ -6,12 +6,14 @@ name: Publish CI health
 # Records CI health for the maintainer dashboard (utils/kernel_checks/ci_health.py,
 # the workflows in utils/kernel_checks/ci_workflows.json): the critical test
 # workflows' pass rates, flakiness, durations and runner waits over the last
-# two weeks; how long pull requests take to merge; and the scheduled
-# workflows' recent runs on main. Writes gh-pages:ci-health/status.json and
-# history.json (a point a day), and the dashboard page beside them; the page
-# reads the files, so no browser asks GitHub's API itself. Every six hours:
-# the figures cover two weeks, and a nightly that failed or a leg still
-# waiting for a runner shows the same morning. Never gates anything.
+# two weeks; how long pull requests take to merge; the scheduled workflows'
+# recent runs on main; and, from the critical workflows' jobs, each
+# self-hosted runner named and how its jobs fared. Writes
+# gh-pages:ci-health/status.json and history.json (a point a day), and the
+# dashboard page beside them; the page reads the files, so no browser asks
+# GitHub's API itself. Every six hours: the figures cover two weeks, and a
+# nightly that failed or a leg still waiting for a runner shows the same
+# morning. Never gates anything.
 
 on:
   schedule:
@@ -24,7 +26,7 @@ permissions:
 jobs:
   publish:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: write   # the gh-pages branch

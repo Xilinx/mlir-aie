@@ -14,13 +14,13 @@ module @shim_and_segments {
     aie.route_endpoint @in_shim(%shim) DMA {fifoName = "in"}
 
     // Two participants writing one object need a lock pair each.
-    aie.objectfifo.pool @in_pool(%memtile) {
+    aie.objectfifo.pool @in__pool(%memtile) {
       depth = 2 : i32
     } : memref<48xi32> {
       aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
       aie.objectfifo.segment @s1 {offset = 16 : i32, size = 32 : i32}
     }
-    aie.objectfifo.dma_endpoint @in_dma(%memtile) fills @in_pool {segments = [@s0, @s1]}
+    aie.objectfifo.dma_endpoint @in_dma(%memtile) fills @in__pool {segments = [@s0, @s1]}
 
     aie.route from @in_shim to [@in_dma]
   }
@@ -31,12 +31,12 @@ module @shim_and_segments {
 // CHECK-DAG:   %[[MT:.*]] = aie.tile(0, 1)
 // CHECK-NOT: aie.buffer(%[[SHIM]])
 // CHECK-NOT: aie.lock(%[[SHIM]])
-// CHECK:   aie.buffer(%[[MT]]) {sym_name = "in_buff_0"} : memref<48xi32>
-// CHECK:   aie.buffer(%[[MT]]) {sym_name = "in_buff_1"} : memref<48xi32>
-// CHECK:   aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "in_prod_lock_0"}
-// CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in_cons_lock_0"}
-// CHECK:   aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "in_prod_lock_1"}
-// CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in_cons_lock_1"}
+// CHECK:   aie.buffer(%[[MT]]) {sym_name = "in__buf0"} : memref<48xi32>
+// CHECK:   aie.buffer(%[[MT]]) {sym_name = "in__buf1"} : memref<48xi32>
+// CHECK:   aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "in__prodlock0"}
+// CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in__conslock0"}
+// CHECK:   aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "in__prodlock1"}
+// CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in__conslock1"}
 // CHECK:   aie.route_endpoint @in_shim(%[[SHIM]]) DMA {channelIndex = 0 : i32, fifoName = "in"}
 // CHECK:   aie.flow(%[[SHIM]], DMA : 0, %[[MT]], DMA : 0)
-// CHECK:   aie.shim_dma_allocation @in_shim_alloc(%[[SHIM]], MM2S, 0)
+// CHECK:   aie.shim_dma_allocation @in__shim_alloc(%[[SHIM]], MM2S, 0)

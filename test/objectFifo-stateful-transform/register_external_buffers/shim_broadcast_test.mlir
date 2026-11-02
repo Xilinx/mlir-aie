@@ -14,25 +14,25 @@
 // CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(2, 2)
 // CHECK-DAG:           %[[VAL_2:.*]] = aie.tile(2, 3)
 // CHECK-DAG:           %[[VAL_3:.*]] = aie.tile(3, 3)
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of_in_0_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of_in_0_cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "of_in_0_cons_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of_in_0_cons_cons_lock_0"}
-// CHECK-DAG:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of_in_1_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of_in_1_cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_10:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "of_in_1_cons_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_11:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "of_in_1_cons_cons_lock_0"}
-// CHECK-DAG:           %[[VAL_12:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "of_in_2_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_13:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "of_in_2_cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_14:.*]] = aie.lock(%[[VAL_3]]) {init = 2 : i32, sym_name = "of_in_2_cons_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_15:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "of_in_2_cons_cons_lock_0"}
-// CHECK-DAG:           %[[VAL_16:.*]] = aie.lock(%[[VAL_0]]) {init = 1 : i32, sym_name = "of_in_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_17:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of_in_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of_in__cons0__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of_in__cons0__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "of_in__cons0__prodlock0"}
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of_in__cons0__conslock0"}
+// CHECK-DAG:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of_in__cons1__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of_in__cons1__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_10:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "of_in__cons1__prodlock0"}
+// CHECK-DAG:           %[[VAL_11:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "of_in__cons1__conslock0"}
+// CHECK-DAG:           %[[VAL_12:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "of_in__cons2__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_13:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "of_in__cons2__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_14:.*]] = aie.lock(%[[VAL_3]]) {init = 2 : i32, sym_name = "of_in__cons2__prodlock0"}
+// CHECK-DAG:           %[[VAL_15:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "of_in__cons2__conslock0"}
+// CHECK-DAG:           %[[VAL_16:.*]] = aie.lock(%[[VAL_0]]) {init = 1 : i32, sym_name = "of_in__prodlock0"}
+// CHECK-DAG:           %[[VAL_17:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of_in__conslock0"}
 // CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_3]], DMA : 0)
 // CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_2]], DMA : 0)
 // CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK-DAG:           %[[VAL_18:.*]] = aie.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
-// CHECK-DAG:           aie.shim_dma_allocation @of_in_shim_alloc(%[[VAL_0]], MM2S, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @of_in__shim_alloc(%[[VAL_0]], MM2S, 0)
 // CHECK:           %[[VAL_19:.*]] = aie.shim_dma(%[[VAL_0]]) {
 // CHECK:             %[[VAL_20:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1

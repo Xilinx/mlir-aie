@@ -6,20 +6,21 @@
 """Dataflow primitives for IRON designs.
 
 High-level (managed routing + buffers + locks):
-[`ObjectFifo`][iron.ObjectFifo], [`CascadeFlow`][iron.CascadeFlow]
+[`ObjectFifo`][aie.iron.ObjectFifo], [`CascadeFlow`][aie.iron.CascadeFlow]
 
 Lower-level (explicit routing + DMA programs; peers of the above):
-[`Flow`][iron.Flow], [`PacketFlow`][iron.PacketFlow],
-[`PacketDest`][iron.PacketDest], [`TileDma`][iron.TileDma],
-[`DmaChannel`][iron.DmaChannel], [`Bd`][iron.Bd],
-[`Acquire`][iron.Acquire], [`Release`][iron.Release],
-[`DmaEndpoint`][iron.DmaEndpoint], [`FlowEndpoint`][iron.FlowEndpoint],
-[`TileDmaTask`][iron.TileDmaTask]
+[`Flow`][aie.iron.Flow], [`PacketFlow`][aie.iron.PacketFlow],
+[`PacketDest`][aie.iron.PacketDest], [`TileDma`][aie.iron.TileDma],
+[`DmaChannel`][aie.iron.DmaChannel], [`Bd`][aie.iron.Bd],
+[`Acquire`][aie.iron.Acquire], [`Release`][aie.iron.Release],
+[`DmaEndpoint`][aie.iron.DmaEndpoint], [`FlowEndpoint`][aie.iron.FlowEndpoint],
+[`TileDmaTask`][aie.iron.TileDmaTask]
 
 One end managed, the other written by hand:
-[`ObjectFifoPool`][iron.ObjectFifoPool], [`PoolSegment`][iron.PoolSegment]
+[`ObjectFifoPool`][aie.iron.ObjectFifoPool], [`PoolSegment`][aie.iron.PoolSegment]
 """
 
+from ...dialects.aie import Packet, Port
 from .cascadeflow import CascadeFlow
 from .flow import Flow, FlowEndpoint, PacketDest, PacketFlow
 from .objectfifo import (
@@ -27,6 +28,7 @@ from .objectfifo import (
     ObjectFifoEndpoint,
     ObjectFifoHandle,
     ObjectFifoLink,
+    Transport,
 )
 from .objectfifopool import ObjectFifoPool, ObjectFifoPoolHandle, PoolSegment
 from .tile_dma import (
@@ -45,6 +47,9 @@ __all__ = [
     "ObjectFifoPoolHandle",
     "PoolSegment",
     "ObjectFifo",
+    "Packet",
+    "Port",
+    "Transport",
     "ObjectFifoHandle",
     "ObjectFifoLink",
     "ObjectFifoEndpoint",

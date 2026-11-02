@@ -116,11 +116,14 @@ class Case:
         with device_for(self.devices):
             return getattr(kernels, self.factory)(**self.kwargs)
 
-    def harness_opts(self) -> dict:
-        opts = dict(calls=self.calls, scalars=self.scalars)
-        if self.arg_byte_offsets:
-            opts["arg_byte_offsets"] = self.arg_byte_offsets
-        return opts
+    def kernel_design(self, *, guard=False):
+        return kd.KernelDesign(
+            self.fn(),
+            calls=self.calls,
+            scalars=self.scalars,
+            guard=guard,
+            arg_byte_offsets=self.arg_byte_offsets,
+        )
 
     # Factory kwargs that the dims / dtype segments of the name already encode.
     # skip_dtype is absent on purpose: it types neither the first input nor
@@ -159,7 +162,8 @@ class Case:
         out_dt = "+".join(
             bfp.dtype_name(kd.shape_dtype(types[i])[1]) for i in fn.contract.out_indices
         )
-        dtypes = in_dt if in_dt == out_dt else f"{in_dt}_{out_dt}"
+        # A kernel whose contract declares no output (nms_score) is named by its input.
+        dtypes = in_dt if out_dt in ("", in_dt) else f"{in_dt}_{out_dt}"
         # A product's tile is named (m, k[, n]) from its declared operands:
         # a 2-D A and a B whose leading extent is A's trailing one. Anything
         # else is named by the element count of its primary tile.
@@ -236,12 +240,13 @@ def data_policy(fn) -> tuple[str, ...]:
     return FLOAT_BASE
 
 
-def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
+def inputs_for(case: Case, data_case: str, rng, *, design=None) -> list[np.ndarray]:
     """Host inputs for ``case`` under one data case, in contract order."""
-    fn = case.fn()
+    design = case.kernel_design() if design is None else design
+    fn = design.fn
     c = fn.contract
-    inputs = kd.sample_inputs(fn, calls=case.calls, rng=rng)
-    tensor_pos = kd._tensor_positions(fn)[0]
+    inputs = design.sample_inputs(rng)
+    tensor_pos = design._tensor_positions
     if data_case != "random":
         if c.sample is not None:
             raise ValueError(
@@ -283,6 +288,12 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
                 edge = np.full(shape, -np.inf)
             elif data_case == "large":
                 edge = rng.standard_normal(shape) * 1e4
+            elif data_case == "negative":
+                edge = -np.abs(rng.standard_normal(shape)) * 8
+            elif data_case == "near_ties":
+                # float32 steps by 2 at 2^24: scaled before the maximum is
+                # taken off, each score rounds by up to an eighth of a step.
+                edge = 2.0**24 + 2 * rng.integers(0, 8, shape)
             elif data_case == "all_bf16":
                 edge = np.resize(all_bf16(nan=False, inf=False), shape)
             else:

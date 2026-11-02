@@ -62,7 +62,9 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     Shim tile, whose buffer descriptors still fit the runtime-sequence tasks
     live at once. Memory, locks and spill-dependent channel eligibility are
     checked by `aie-objectfifo-allocate` after splitting. Allocation failures
-    do not trigger re-placement or undo merges.
+    do not trigger re-placement or undo merges. When no shim tile has a channel
+    left, shim ends the runtime sequences never have in flight together count
+    once, as allocation will share their channel.
 
     Logical tiles are taken shims first, then MemTiles, then cores, and
     within those in an order set by the design's structure (what each tile's
@@ -550,7 +552,9 @@ def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
     a DMA has to carry out, becomes a single pool with a core endpoint at each
     end. Reshaping the data on the way -- a layout transformation on either
     side, a link, a repeat count, an asymmetric consumer type -- puts it back
-    on DMAs, as does the explicit `via_DMA` switch. Any other fifo becomes one pool per tile, a DMA
+    on DMAs, as does an explicit `#aie.transport<dma>`; an explicit
+    `#aie.transport<shared_mem>` that cannot be had is an error. Any other fifo
+    becomes one pool per tile, a DMA
     endpoint alongside each core endpoint, and an `aie.route`
     connecting the two DMA ends. A link's participants meet on one pool, one
     segment per participant.
@@ -568,8 +572,10 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
   let description = [{
     Check the properties an op verifier cannot: that a pool's segments tile its
     element type, that each segment has one endpoint filling it and one draining
-    it, that every DMA endpoint is connected by exactly one flow, and that no
-    loop body releases more objects than it acquires.
+    it, that every DMA endpoint is connected by exactly one flow, that no
+    loop body releases more objects than it acquires, and that no core must
+    release more objects through a pool than the pool's DMA endpoint, bounded
+    by an iteration count, will ever move.
 
     These are completeness rules, so a design that is deliberately partial --
     one whose other half is supplied elsewhere -- may decline to run this pass.
@@ -579,12 +585,38 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
+def AIEAssignPacketIds : Pass<"aie-assign-packet-ids", "DeviceOp"> {
+  let summary = "Give every packet-switched route a packet id";
+  let description = [{
+    Fill in the `pkt_id` of every `aie.route` whose packet header leaves it
+    open, taking the lowest id nothing on the device holds yet: another
+    `aie.packet_flow`, a route or objectfifo that pinned one, or a trace
+    packet. A pinned id is kept, and checked against the target's header
+    field. Routes are taken in device order, so the assignment is a function
+    of the design alone.
+
+    `--aie-objectfifo-allocate` lowers the routes afterwards and expects every
+    packet header to be assigned by then.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAssignPacketIdsPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+
+  let options =
+      [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
+              /*default=*/"false",
+              "Make every route packet-switched, whether or not it asked.">,
+  ];
+}
+
 def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
   let summary = "Give pools and endpoints their buffers, locks and channels";
   let description = [{
     Allocate missing pool buffers, synchronization locks and endpoint channels;
     lower routes to circuit/packet flows and emit shim runtime allocations.
-    Existing buffers, locks and pinned channels stay fixed.
+    Existing buffers, locks and pinned channels stay fixed. Packet ids are not
+    filled in here: a packet header reaching this pass has to be assigned,
+    which `--aie-assign-packet-ids` does.
 
     A route endpoint that a DMA program or runtime task names is given its
     channel after the objectFIFOs' endpoints, by the BDs its static chains
@@ -629,12 +661,6 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
-
-  let options =
-      [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
-              /*default=*/"false",
-              "Flag to enable aie.packetflow lowering from objectfifos.">,
-  ];
 }
 
 def AIECheckAgainstImage : Pass<"aie-check-against-image", "mlir::ModuleOp"> {

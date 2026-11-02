@@ -18,7 +18,7 @@ import lit.util
 from lit.llvm import llvm_config
 from lit.llvm.subst import ToolSubst
 from lit.llvm.subst import FindTool
-from aie_lit_utils import LitConfigHelper
+from aie_lit_utils import LitConfigHelper, SanitizerLogShTest
 
 # Configuration file for the 'lit' test runner.
 
@@ -66,6 +66,20 @@ llvm_config.with_system_environment("MLIR_AIE_REQUIRE_NODE")
 # NPU cache namespace so cache state cannot leak between unrelated tests while
 # still allowing multiple RUN lines from one test to share that test-local cache.
 _python_with_test_cache = LitConfigHelper._run_with_test_cache_wrap(config.aie_src_root)
+# A sanitized build (nightlyCodeHealth.yml) links its tools and the aie
+# extension against the shared sanitizer runtime; the interpreter itself is
+# not instrumented, so the runtime must be loaded before it imports aie.
+# Preloaded through the test environment, so every interpreter a RUN line
+# starts gets it (%PYTHON, %pytest and lit's own %python alike).
+llvm_config.with_system_environment(
+    ["ASAN_OPTIONS", "UBSAN_OPTIONS", "TSAN_OPTIONS", "LSAN_OPTIONS"]
+)
+if os.environ.get("AIE_SANITIZER_PRELOAD"):
+    config.environment["LD_PRELOAD"] = os.environ["AIE_SANITIZER_PRELOAD"]
+if os.environ.get("AIE_SANITIZER_LOG_DIR"):
+    config.test_format = SanitizerLogShTest(
+        os.path.abspath(os.environ["AIE_SANITIZER_LOG_DIR"])
+    )
 _pytest_wrapper = os.path.join(config.aie_src_root, "utils", "run_pytest.py")
 config.substitutions.append(
     (

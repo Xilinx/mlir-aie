@@ -11,6 +11,8 @@ Now that you've had a chance to walk through the components of compiling and run
 
 It is helpful to first examine performance measurement before we delve into vector programming in order to get a baseline for where our application performance is. There are many factors that contribute to performance including latency, throughput and power efficiency. Performance measurement is an active area of research to provide more powerful tools for users to measure the speedup of their application on AIEs. In [section-4a](./section-4a) and [section-4b](./section-4b/), we look at performance from the perspective of timers and trace. Then in [section-4c](./section-4c), we look more closely at how to vectorize AIE kernel code, and in [section-4d](./section-4d) we use the repository's benchmark and compiler-report tools to make an existing kernel faster and confirm the gain on hardware.
 
+The nightly figures for the kernels and the ML designs, and their history, are on the [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/).
+
 * [Section 4a - Timers](./section-4a)
 * [Section 4b - Trace](./section-4b)
 * [Section 4c - Kernel Vectorization](./section-4c)

@@ -130,7 +130,7 @@ module @objectfifo_claims_channel {
 
 // -----
 
-// Test: An objectFifo pinned to S2MM channel 1 by cons_dma_channels takes
+// Test: An objectFifo pinned to S2MM channel 1 by cons_ports takes
 // channel 1, not the lowest free one, so the trace gets channel 0.
 // CHECK-LABEL: module @objectfifo_pinned_channel
 module @objectfifo_pinned_channel {
@@ -138,7 +138,7 @@ module @objectfifo_pinned_channel {
     %tile02 = aie.tile(0, 2)
     %tile00 = aie.tile(0, 0)
 
-    aie.objectfifo @out(%tile02, {%tile00}, 2 : i32) {cons_dma_channels = array<i32: 1>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out(%tile02, {%tile00}, 2 : i32) {cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
 
     aie.trace @trace(%tile02) {
       aie.trace.packet id=1 type=core

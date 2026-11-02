@@ -14,9 +14,14 @@ the same tokens. The weights are already on the device, as on a server.
 --prompt-tokens times prefill at a controlled length instead of --prompt's
 real text: seeded random ids, not readable, but --check still scores them.
 
-The prompt runs in batches of up to 4 tokens a dispatch, each input from its
-own embed row, which the device gathers; the token after the last one is the
-first generated, and generation goes on from there.
+With --prefill prefill (the default), the prompt's positions run through
+the prefill (llama_prefill.py), up to 64 a pass, into the decode's KV
+cache, and the decode runs the last 1 to 4 tokens. --prefill decode runs
+the whole prompt through the decode instead, up to 4 tokens a command:
+only a comparison with the prefill, which nothing falls back to. Each
+input comes from its own embed row, which the device gathers; the token
+after the last one is the first generated, and generation goes on from
+there.
 
 Needs data/ (gen_llama_data.py) and tiktoken (`pip install tiktoken`).
 
@@ -31,9 +36,11 @@ import time
 from pathlib import Path
 
 import numpy as np
-from llama_config import HEAD_D, N_LAYERS, VOCAB
+from aie2_decode import RROW
+from llama_config import HEAD_D, KV_TB, N_LAYERS, VOCAB
 from llama_decode import Decoder, DecodeShape
-from llama_oracle import Layer, teacher_forced_logits
+from llama_oracle import Layer, chain_forward_logits, embed_seed_ref
+from llama_prefill import Prefiller
 from numpy_llama_ref import forward_full, load_model, load_tokenizer, rope_table
 
 BOS = 128000
@@ -53,6 +60,19 @@ def main():
     )
     p.add_argument("--max-new", type=int, default=32, help="tokens to generate at most")
     p.add_argument("--t", type=int, default=128, help="KV cache rows (the build's T)")
+    p.add_argument(
+        "--p-max",
+        type=int,
+        choices=range(1, 5),
+        default=4,
+        help="tokens a decode command generates (the build's P_MAX)",
+    )
+    p.add_argument(
+        "--prefill",
+        choices=("prefill", "decode"),
+        default="prefill",
+        help="what runs the prompt: the prefill design, or (to compare) the decode",
+    )
     p.add_argument("--sample-temp", type=float, default=0.0, help="0: greedy")
     p.add_argument("--sample-topk", type=int, default=0, help="0: the whole set")
     p.add_argument("--sample-seed", type=int, default=0)
@@ -69,7 +89,8 @@ def main():
         "--check",
         action="store_true",
         help="replay the device's tokens through the oracle of its arithmetic and "
-        "fail unless each is its greedy pick; also report "
+        "fail unless each is its greedy pick, and unless every prompt KV row "
+        "and the prompt's final hidden state match it bit for bit; also report "
         "agreement with numpy_llama_ref's argmax (the INT8 recipe, not bit-exact)",
     )
     opts = p.parse_args()
@@ -85,12 +106,13 @@ def main():
     model = load_model(data_dir)
     layers = [Layer.real(L, data_dir, opts.t) for L in range(N_LAYERS)]
     decoder = Decoder(
-        DecodeShape(N_LAYERS, opts.t),
+        DecodeShape(N_LAYERS, opts.t, p_max=opts.p_max),
         layers,
         (model.embed_i8, model.embed_sc, model.final_norm),
         rope_table(opts.t, HEAD_D),
         opts.elf,
     )
+    prefiller = Prefiller(decoder) if opts.prefill == "prefill" else None
     sample = (opts.sample_temp, opts.sample_topk, opts.sample_seed)
 
     def tokenize():
@@ -99,14 +121,19 @@ def main():
             return [BOS] + ids.tolist()
         return [BOS] + enc.encode(opts.prompt)
 
-    # Moves the weights to the device, as a server does before its first prompt.
+    # Moves the weights to the device and opens every context once, as a
+    # server does before its first prompt: one prefill pass, then the decode.
     prompt = tokenize()
-    decoder.generate(prompt, 2, sample)
+    decoder.generate(prompt[: KV_TB + 2], 2, sample, prefiller=prefiller)
     runs = []
     for _ in range(opts.repeats):
         started = time.perf_counter()
         prompt = tokenize()
-        runs.append(decoder.generate(prompt, opts.max_new, sample, STOP, started))
+        runs.append(
+            decoder.generate(
+                prompt, opts.max_new, sample, STOP, started, prefiller=prefiller
+            )
+        )
     runs.sort(key=lambda g: g.ttft_s)
     gen = runs[len(runs) // 2]
     out = gen.tokens
@@ -121,12 +148,34 @@ def main():
         f"{(gen.ttft_s - gen.prefill_dispatch_s) * 1e3:.1f}), "
         + (f"decode {np.median(rates):.2f} tok/s" if rates else "decode n/a")
     )
+    print("TTFT per request, ms: " + " ".join(f"{g.ttft_s * 1e3:.1f}" for g in runs))
+    if prefiller is not None:
+        passes, pos0 = prefiller.plan(len(prompt))
+        steps = prefiller.dispatch_ms
+        print(
+            f"prefill, the last request: {passes} passes {sum(steps):.1f} ms"
+            + (f" (first {steps[0]:.1f}, last {steps[-1]:.1f})" if steps else "")
+            + f", decode from position {pos0}"
+        )
+    else:
+        pos0 = 0
     differ = sum(g.tokens != out for g in runs)
     if differ:
         print(f"{differ}/{len(runs)} requests generated other tokens")
         return 1
     if not opts.check:
         return 0
+
+    # The prompt's KV rows, and its last position's final hidden state from
+    # a request that stops at the first generated token.
+    decoder.generate(prompt, 1, sample, prefiller=prefiller)
+    assert decoder.kv_t is not None and decoder.stage_t is not None
+    shape = decoder.shape
+    kv = decoder.kv_t.numpy().copy()
+    row = shape.batches(pos0, len(prompt) - pos0)[-1] - 1
+    at = shape.final_at + row * RROW
+    hidden = decoder.stage_t.numpy()[at : at + RROW].copy()
+
     logits = forward_full(model, np.array(prompt + out[:-1]))
     ref = np.argmax(logits[len(prompt) - 1 :], axis=-1)
     agree = int(np.count_nonzero(ref == np.array(out)))
@@ -135,20 +184,39 @@ def main():
     # The gate: the device's tokens through the oracle of its own arithmetic,
     # from empty caches, each generated token its greedy pick.
     tokens = prompt + out
-    oracle = teacher_forced_logits(
-        layers,
-        (model.embed_i8, model.embed_sc, model.final_norm),
-        rope_table(opts.t, HEAD_D),
-        tokens[:-1],
-    )
+    lm = (model.embed_i8, model.embed_sc, model.final_norm)
+    rope = rope_table(opts.t, HEAD_D)
+    picks = []
+    want_hidden = None
+    for pos, tok in enumerate(tokens[:-1]):
+        seed = embed_seed_ref(model.embed_i8[tok], float(model.embed_sc[tok]))
+        logits, x = chain_forward_logits(seed, layers, pos, rope, lm)
+        picks.append(int(np.argmax(logits)))
+        if pos == len(prompt) - 1:
+            want_hidden = x
     fails = 0
     for pos in range(len(prompt) - 1, len(tokens) - 1):
-        oracle_tok = int(np.argmax(oracle[pos]))
-        if tokens[pos + 1] != oracle_tok:
-            print(f"  position {pos + 1}: {tokens[pos + 1]}, oracle {oracle_tok}")
+        if tokens[pos + 1] != picks[pos]:
+            print(f"  position {pos + 1}: {tokens[pos + 1]}, oracle {picks[pos]}")
             fails += 1
     print(f"oracle: {len(out) - fails}/{len(out)} generated tokens pass")
-    return 1 if fails else 0
+    positions = np.arange(len(prompt))
+    bad_rows = np.zeros(len(prompt), bool)
+    for L, layer in enumerate(layers):
+        got = kv[shape.kv_word_index(L, positions)]
+        bad_rows |= (got != shape.kv_row_words(layer, positions)).any(axis=(0, 2))
+    print(
+        f"oracle: {len(prompt) - bad_rows.sum()}/{len(prompt)} prompt KV rows "
+        f"bit-exact in all {N_LAYERS} layers"
+        + (
+            f", first differing {np.flatnonzero(bad_rows)[:8]}"
+            if bad_rows.any()
+            else ""
+        )
+    )
+    hidden_ok = hidden.tobytes() == np.asarray(want_hidden, np.float32).tobytes()
+    print(f"oracle: the prompt's final hidden state {'PASS' if hidden_ok else 'FAIL'}")
+    return 1 if fails or bad_rows.any() or not hidden_ok else 0
 
 
 if __name__ == "__main__":

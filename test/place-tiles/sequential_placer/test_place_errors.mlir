@@ -63,7 +63,8 @@ module @memtile_exhaustion {
     // Global exhaustion: npu1_1col has exactly one MemTile, and it is
     // already fully booked, so no column pin could ever help.
     // CHECK: error: no MemTile on the device has {{[0-9]+ input/[0-9]+ output}} DMA channel(s) free: all 1 MemTile(s) are at {{[0-9]+/[0-9]+}} input, {{[0-9]+/[0-9]+}} output channels used
-    // CHECK: note: this is the device's total MemTile DMA budget
+    // CHECK: note: this is the device's total MemTile DMA budget, not a placement choice
+    // CHECK: note: the closest MemTile is short 1 output channel(s); fan traffic through a MemTile via aie.objectfifo.link
     %mem7 = aie.logical_tile<MemTile>(?, ?)
 
     aie.objectfifo @of1 (%mem1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
@@ -149,7 +150,8 @@ module @shimnoc_exhaustion {
     // Global exhaustion: npu1_1col has exactly one ShimNOCTile, and it is
     // already fully booked, so no column pin could ever help.
     // CHECK: error: no ShimNOCTile on the device has {{[0-9]+ input/[0-9]+ output}} DMA channel(s) free: all 1 ShimNOCTile(s) are at {{[0-9]+/[0-9]+}} input, {{[0-9]+/[0-9]+}} output channels used
-    // CHECK: note: this is the device's total ShimNOCTile DMA budget
+    // CHECK: note: this is the device's total ShimNOCTile DMA budget, not a placement choice
+    // CHECK: note: the closest ShimNOCTile is short 1 output channel(s); fan traffic through a MemTile via aie.objectfifo.link
     %shim3 = aie.logical_tile<ShimNOCTile>(?, ?)
 
     aie.objectfifo @of1 (%shim1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
@@ -160,6 +162,62 @@ module @shimnoc_exhaustion {
     aie.core(%core1) { aie.end }
     aie.core(%core2) { aie.end }
     aie.core(%core3) { aie.end }
+  }
+}
+
+// -----
+
+// Three ends one runtime sequence has in flight at once cannot take turns on a
+// channel, so the shim tile's two MM2S channels still fall one short.
+module @shimnoc_exhaustion_in_flight {
+  aie.device(npu2_1col) {
+    %core1 = aie.logical_tile<CoreTile>(?, ?)
+    %core2 = aie.logical_tile<CoreTile>(?, ?)
+    %core3 = aie.logical_tile<CoreTile>(?, ?)
+    %shim1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %shim2 = aie.logical_tile<ShimNOCTile>(?, ?)
+    // CHECK: error: no ShimNOCTile on the device has 0 input/1 output DMA channel(s) free
+    %shim3 = aie.logical_tile<ShimNOCTile>(?, ?)
+    aie.objectfifo @of1 (%shim1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of2 (%shim2, {%core2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of3 (%shim3, {%core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core1) { aie.end }
+    aie.core(%core2) { aie.end }
+    aie.core(%core3) { aie.end }
+    aie.runtime_sequence(%in : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @of1, id = 0 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @of2, id = 1 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @of3, id = 2 : i64} : memref<16xi32>
+    }
+  }
+}
+
+// -----
+
+// Awaiting each fill does not let them take turns either: a shim MM2S task
+// reports itself complete before its words leave the shim.
+module @shimnoc_exhaustion_awaited_sends {
+  aie.device(npu2_1col) {
+    %core1 = aie.logical_tile<CoreTile>(?, ?)
+    %core2 = aie.logical_tile<CoreTile>(?, ?)
+    %core3 = aie.logical_tile<CoreTile>(?, ?)
+    %shim1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %shim2 = aie.logical_tile<ShimNOCTile>(?, ?)
+    // CHECK: error: no ShimNOCTile on the device has 0 input/1 output DMA channel(s) free
+    %shim3 = aie.logical_tile<ShimNOCTile>(?, ?)
+    aie.objectfifo @of1 (%shim1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of2 (%shim2, {%core2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of3 (%shim3, {%core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core1) { aie.end }
+    aie.core(%core2) { aie.end }
+    aie.core(%core3) { aie.end }
+    aie.runtime_sequence(%in : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @of1, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_wait {symbol = @of1}
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @of2, id = 1 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_wait {symbol = @of2}
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @of3, id = 2 : i64} : memref<16xi32>
+    }
   }
 }
 

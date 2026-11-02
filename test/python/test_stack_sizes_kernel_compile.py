@@ -15,6 +15,7 @@ Peano compile alone and need no NPU.
 """
 
 import os
+import shlex
 import subprocess
 import tempfile
 
@@ -23,7 +24,7 @@ import pytest
 from aie.iron import kernels
 from aie.iron.device import NPU2
 from aie.iron.kernel import ExternalFunction
-from aie.utils import set_current_device
+from aie.utils import config, set_current_device
 from aie.utils.compile.jit._object_cache import KernelObjectCache
 from aie.utils.compile.utils import compile_cxx_core_function
 
@@ -113,6 +114,57 @@ def test_frame_bytes_is_data_and_stack_or_its_declared_override():
         stack_size_override=96,
     )
     assert declared.frame_bytes("aie2p") == found.data + 96
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the counting readobj is a shell script")
+def test_a_kernel_is_read_once_however_often_it_is_measured(tmp_path, monkeypatch):
+    """A process resolving many designs asks for each kernel's frame again and again."""
+    runs = tmp_path / "runs"
+    wrapper = tmp_path / "llvm-readobj"
+    wrapper.write_text(
+        f"#!/bin/sh\necho run >> {shlex.quote(str(runs))}\n"
+        f'exec {shlex.quote(config.readobj_path())} "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("AIE_READOBJ_PATH", str(wrapper))
+    kernel = _table_kernel(3072)
+    frames = {kernel.frame_bytes("aie2p") for _ in range(3)}
+    assert len(frames) == 1 and frames.pop() >= 3 * 4096
+    assert runs.read_text().splitlines() == ["run"]
+
+
+def test_kernels_that_differ_only_in_include_dirs_are_measured_apart(tmp_path):
+    source = '#include "k.h"\nextern "C" void k(int *x) { x[0] = table[x[1]]; }\n'
+    data = []
+    for words in (8, 4096):
+        d = tmp_path / f"inc{words}"
+        d.mkdir()
+        (d / "k.h").write_text(f"static volatile int table[{words}] = {{1}};\n")
+        kernel = ExternalFunction(
+            "k",
+            source_string=source,
+            arg_types=[np.ndarray[(8,), np.dtype[np.int32]]],
+            include_dirs=[str(d)],
+        )
+        data.append(kernel.measure("aie2p").data)
+    assert data[1] - data[0] == 4 * (4096 - 8)
+
+
+def test_a_header_edited_since_is_measured_again(tmp_path):
+    header = tmp_path / "inc" / "k.h"
+    header.parent.mkdir()
+    header.write_text("static volatile int table[8] = {1};\n")
+    kernel = ExternalFunction(
+        "k_edited",
+        source_string='#include "k.h"\n'
+        'extern "C" void k_edited(int *x) { x[0] = table[x[1]]; }\n',
+        arg_types=[np.ndarray[(8,), np.dtype[np.int32]]],
+        include_dirs=[str(header.parent)],
+    )
+    before = kernel.measure("aie2p").data
+    assert kernel.measure("aie2p").data == before
+    header.write_text("static volatile int table[4096] = {1};\n")
+    assert kernel.measure("aie2p").data - before == 4 * (4096 - 8)
 
 
 def test_measure_reads_each_entry_of_one_object(tmp_path):

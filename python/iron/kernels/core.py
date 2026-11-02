@@ -40,7 +40,7 @@ def set_rounding(mode: RoundingMode = RoundingMode.CONV_EVEN) -> ExternalFunctio
     """Set the core's rounding mode using always-inline, merge-linked LLVM IR.
 
     Args:
-        mode: The [`RoundingMode`][iron.kernels.core.RoundingMode] to set.
+        mode: The [`RoundingMode`][aie.iron.kernels.core.RoundingMode] to set.
 
     Returns:
         ExternalFunction ``set_rounding_<mode>``, which takes no arguments.

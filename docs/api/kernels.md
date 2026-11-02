@@ -9,54 +9,54 @@ kernel sources these wrap, see [C++ AIE kernels](aie_kernels.md).
 
 ## Element-wise operations
 
-::: iron.kernels.eltwise
+::: aie.iron.kernels.eltwise
     options:
       show_root_heading: false
 
 ## Data movement
 
-::: iron.kernels.datamovement
+::: aie.iron.kernels.datamovement
     options:
       show_root_heading: false
 
-::: iron.kernels.zero
+::: aie.iron.kernels.zero
     options:
       show_root_heading: false
 
 ## Quantization
 
-::: iron.kernels.quant
+::: aie.iron.kernels.quant
     options:
       show_root_heading: false
 
 ## Core state
 
-::: iron.kernels.core
+::: aie.iron.kernels.core
     options:
       show_root_heading: false
 
 ## Reduction
 
-::: iron.kernels.reduce
+::: aie.iron.kernels.reduce
     options:
       show_root_heading: false
 
 ## Linear algebra
 
-::: iron.kernels.linalg
+::: aie.iron.kernels.linalg
     options:
       show_root_heading: false
 
 `fused_mm` computes one bf16 matrix-multiply tile on a single core, with an
 f32 reduction and an optional activation and clamp fused into the drain.
 
-::: iron.kernels.fused
+::: aie.iron.kernels.fused
     options:
       show_root_heading: false
 
 ## Convolution
 
-::: iron.kernels.conv
+::: aie.iron.kernels.conv
     options:
       show_root_heading: false
 
@@ -65,7 +65,7 @@ f32 reduction and an optional activation and clamp fused into the drain.
 `gelu_erf` is GELU as defined, `x * Phi(x)` ([Hendrycks and Gimpel](https://arxiv.org/abs/1606.08415)), its erfc in the form of Numerical Recipes' `erfcc` (Press et al., 2nd ed., §6.2) with a refit polynomial.
 `log10_clamp_f32` takes log-mel features as Hugging Face's [`WhisperFeatureExtractor`](https://github.com/huggingface/transformers/blob/main/src/transformers/models/whisper/feature_extraction_whisper.py) does.
 
-::: iron.kernels.activation
+::: aie.iron.kernels.activation
     options:
       show_root_heading: false
 
@@ -78,19 +78,19 @@ and `two_halves=True` layouts. The transformer module re-exports the canonical
 bf16 norm and RoPE factories and references; importing through either module
 does not select a different implementation. Norm references accept `eps`.
 
-::: iron.kernels.norm
+::: aie.iron.kernels.norm
     options:
       show_root_heading: false
 
 ## Transformer blocks
 
-::: iron.kernels.transformer
+::: aie.iron.kernels.transformer
     options:
       show_root_heading: false
 
 ## Vision
 
-::: iron.kernels.vision
+::: aie.iron.kernels.vision
     options:
       show_root_heading: false
 
@@ -105,7 +105,7 @@ it. Multi-dtype factories publish the combinations they support in
 `*_ref` functions (`eltwise.add_ref`, `eltwise.add_i8_ref`,
 `reduce.reduce_max_ref`, ...), so host code never reimplements the math.
 
-::: iron.kernels._common
+::: aie.iron.kernels._common
     options:
       show_root_heading: false
       members:
@@ -114,33 +114,38 @@ it. Multi-dtype factories publish the combinations they support in
         - Param
         - Trace
 
-`aie.iron.algorithms.kernel_design` turns any contract-bearing factory into a
+`aie.iron.algorithms.KernelDesign` turns any contract-bearing kernel into a
 design of one Worker, built on the same single-core pipeline as
 `transform`, `for_each` and `reduce`. What a kernel can answer about itself
 -- its
 reference result, its safe input range, which arguments are parameters,
 how to judge a device output -- lives on
-[`ExternalFunction`][iron.ExternalFunction] instead, so bringing up a
+[`ExternalFunction`][aie.iron.ExternalFunction] instead, so bringing up a
 kernel needs no test harness. See
 [Kernel Library](../programming_guide/kernels_library.md#adding-a-kernel) for
 the add-a-kernel procedure and the test tiers built on it.
 
-Import the builder with `from aie.iron.algorithms import kernel_design as kd`
-and call `kd.design(...)`, or import `design` directly from `aie.iron.algorithms`.
+Bind the target device before calling the kernel factory, and give the call
+count and guard once, to the `KernelDesign`; every method sizes, builds and
+checks from them:
 
-::: iron.algorithms.kernel_design
+```python
+from aie.iron import kernels
+from aie.iron.algorithms import KernelDesign
+
+kd = KernelDesign(kernels.relu(tile_size=1024), calls=4, guard=True)
+inputs = kd.sample_inputs()
+outputs = kd.run(inputs)
+verdict = kd.check(outputs, inputs)
+assert verdict, verdict.detail
+```
+
+::: aie.iron.algorithms.kernel_design
     options:
       show_root_heading: false
       members:
-        - design
-        - host_args
-        - sample_inputs
-        - host_layout
-        - output_size
-        - upload
-        - cycles_per_call
+        - KernelDesign
         - CallCycles
-        - traced_intervals
         - split_intervals
 
 
@@ -152,7 +157,7 @@ written. `--baseline-sources DIR` measures every selected case a second
 time with its kernels from `DIR` and compares the two runs' raw output words
 and cycles in `--perf-meta`. The timing helpers live here:
 
-::: utils.benchmark
+::: aie.utils.benchmark
     options:
       show_root_heading: false
       members:
@@ -174,7 +179,7 @@ These compiler-remark checks are available on demand through
 The trace-marker check (`test/python/test_kernel_trace_markers.py`) runs in
 lit on every PR, through `trace_markers` below.
 
-::: utils.compile.remarks
+::: aie.utils.compile.remarks
     options:
       show_root_heading: false
       members:
@@ -191,7 +196,7 @@ lit on every PR, through `trace_markers` below.
         - trace_shape
         - entry_symbol
 
-::: utils.compile.readobj
+::: aie.utils.compile.readobj
     options:
       show_root_heading: false
       members:
@@ -207,7 +212,7 @@ the Python counterpart of `programming_examples/ml/block_datatypes/helper.h`,
 which the examples' C++ hosts use; a Python host encodes and checks with
 this module.
 
-::: utils.bfp
+::: aie.utils.bfp
     options:
       show_root_heading: false
       members:
@@ -216,7 +221,7 @@ this module.
         - quantize
         - shuffle
 
-::: utils.verify
+::: aie.utils.verify
     options:
       show_root_heading: false
       members:
@@ -232,7 +237,7 @@ logits on the device: each `sample_select` core reduces one slice to its top
 k, and one `sample_combine` core draws from those summaries. `sample_ref` is
 the bit-exact host reference.
 
-::: iron.kernels.sample
+::: aie.iron.kernels.sample
     options:
       show_root_heading: false
 
@@ -244,7 +249,7 @@ is the bit-exact host reference.
 `experts` runs one row through its chosen experts' gated feed-forward on one
 core, from the row and one stream of weight tiles.
 
-::: iron.kernels.moe
+::: aie.iron.kernels.moe
     options:
       show_root_heading: false
 
@@ -258,12 +263,12 @@ float32 state carried from call to call.
 - Gated DeltaNet: [Yang, Kautz and Hatamizadeh](https://arxiv.org/abs/2412.06464), on DeltaNet ([Yang et al.](https://arxiv.org/abs/2406.06484)); the references are fla-org's [`fused_recurrent_gated_delta_rule`](https://github.com/fla-org/flash-linear-attention/blob/main/fla/ops/gated_delta_rule/fused_recurrent.py) and Hugging Face's [Qwen3-Next](https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3_next/modeling_qwen3_next.py).
 - Their exponentials, and `router_top_k`'s, reduce by ln 2 in two parts (Cody and Waite, *Software Manual for the Elementary Functions*, 1980).
 
-::: iron.kernels.ssm
+::: aie.iron.kernels.ssm
     options:
       show_root_heading: false
 
 ## FastFlowLM Gemma 4
 
-::: iron.kernels.flm_gemma4
+::: aie.iron.kernels.flm_gemma4
     options:
       show_root_heading: false

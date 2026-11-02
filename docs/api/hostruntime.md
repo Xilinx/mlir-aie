@@ -19,7 +19,7 @@ installed `aie.utils.*` import name).
 
 Abstract runtime types that concrete backends (for example XRT) implement.
 
-::: utils.hostruntime.hostruntime
+::: aie.utils.hostruntime.hostruntime
     options:
       show_root_heading: false
       docstring_options:
@@ -37,7 +37,7 @@ A tensor is a shape and a dtype over bytes it does not own. The bytes, and the
 record of which agent currently holds each range of them, belong to the
 [`Storage`](#allocations-and-coherence) below.
 
-::: utils.hostruntime
+::: aie.utils.hostruntime
     options:
       show_root_heading: false
       members:
@@ -48,7 +48,7 @@ record of which agent currently holds each range of them, belong to the
       docstring_options:
         warn_missing_types: false
 
-::: utils.hostruntime.tensor_class
+::: aie.utils.hostruntime.tensor_class
     options:
       show_root_heading: false
       members:
@@ -72,7 +72,7 @@ its name rather than accepting the arguments and ignoring them.
 This is the split torch draws between `UntypedStorage` and `Tensor`, and is where
 `NpuTensor.storage_offset` comes from.
 
-::: utils.hostruntime.buffer
+::: aie.utils.hostruntime.buffer
     options:
       show_root_heading: false
       members:
@@ -90,13 +90,13 @@ This is the split torch draws between `UntypedStorage` and `Tensor`, and is wher
 Reusable `argparse` flag groups and the standard design CLI dispatcher used by
 the programming examples.
 
-::: utils.hostruntime.argparse
+::: aie.utils.hostruntime.argparse
     options:
       show_root_heading: false
       docstring_options:
         warn_missing_types: false
 
-::: utils.hostruntime.cli
+::: aie.utils.hostruntime.cli
     options:
       show_root_heading: false
       docstring_options:
@@ -114,7 +114,7 @@ source. On a machine with PyXRT available they can also be rendered with
 mkdocstrings, for example:
 
 ```markdown
-::: utils.hostruntime.xrtruntime.hostruntime
+::: aie.utils.hostruntime.xrtruntime.hostruntime
     options:
       show_root_heading: false
 ```

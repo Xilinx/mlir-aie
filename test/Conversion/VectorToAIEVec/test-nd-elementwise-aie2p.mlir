@@ -86,11 +86,12 @@ func.func @mul_16_bf16(%a: vector<16xbf16>,
   return %0 : vector<16xbf16>
 }
 
-// A lane count that is not native stays legal, so it is never handed to a
-// pattern and keeps its original shape.
+// A lane count that is not native has no aievec lowering, but is flattened
+// all the same: the LLVM lowering takes rank-1 vectors only.
 // CHECK-LABEL: func @mul_1x1x8x8_f32
-// CHECK-NOT: vector.shape_cast
-// CHECK: arith.mulf {{.*}} : vector<1x1x8x8xf32>
+// CHECK: %[[L:.*]] = vector.shape_cast %{{.*}} : vector<1x1x8x8xf32> to vector<64xf32>
+// CHECK: %[[R:.*]] = vector.shape_cast %{{.*}} : vector<1x1x8x8xf32> to vector<64xf32>
+// CHECK: arith.mulf %[[L]], %[[R]] : vector<64xf32>
 func.func @mul_1x1x8x8_f32(%a: vector<1x1x8x8xf32>,
                            %b: vector<1x1x8x8xf32>) -> vector<1x1x8x8xf32> {
   %0 = arith.mulf %a, %b : vector<1x1x8x8xf32>
@@ -174,4 +175,48 @@ func.func @extf_into_contract_and_return(%a: vector<1x1x8x8xbf16>,
 func.func @extf_2x16(%a: vector<2x16xbf16>) -> vector<2x16xf32> {
   %0 = arith.extf %a : vector<2x16xbf16> to vector<2x16xf32>
   return %0 : vector<2x16xf32>
+}
+
+// A compare and the select on it are flattened together.
+// CHECK-LABEL: func @cmpf_select_2x16_bf16
+// CHECK: %[[A:.*]] = vector.shape_cast %{{.*}} : vector<2x16xbf16> to vector<32xbf16>
+// CHECK: %[[B:.*]] = vector.shape_cast %{{.*}} : vector<2x16xbf16> to vector<32xbf16>
+// CHECK: %[[M:.*]] = aievec.cmp %[[A]], %[[B]] {pred = "sgt"} : vector<32xbf16>, vector<32xbf16>, ui32
+// CHECK: %[[S:.*]] = aievec.sel %[[B]], %[[A]], %[[M]] : vector<32xbf16>, vector<32xbf16>, ui32, vector<32xbf16>
+// CHECK: vector.shape_cast %[[S]] : vector<32xbf16> to vector<2x16xbf16>
+func.func @cmpf_select_2x16_bf16(%a: vector<2x16xbf16>,
+                                 %b: vector<2x16xbf16>) -> vector<2x16xbf16> {
+  %m = arith.cmpf ogt, %a, %b : vector<2x16xbf16>
+  %o = arith.select %m, %a, %b : vector<2x16xi1>, vector<2x16xbf16>
+  return %o : vector<2x16xbf16>
+}
+
+// CHECK-LABEL: func @muli_2x16_i16
+// CHECK: vector.shape_cast %{{.*}} : vector<2x16xi16> to vector<32xi16>
+// CHECK: aievec.mul_elem %{{.*}}, %{{.*}} : vector<32xi16>, vector<32xi16>, vector<32xi32>
+// CHECK: vector.shape_cast %{{.*}} : vector<32xi16> to vector<2x16xi16>
+func.func @muli_2x16_i16(%a: vector<2x16xi16>,
+                         %b: vector<2x16xi16>) -> vector<2x16xi16> {
+  %0 = arith.muli %a, %b : vector<2x16xi16>
+  return %0 : vector<2x16xi16>
+}
+
+// No aievec op takes it, but it reaches the LLVM lowering at rank 1.
+// CHECK-LABEL: func @index_cast_2x8
+// CHECK: %[[F:.*]] = vector.shape_cast %{{.*}} : vector<2x8xindex> to vector<16xindex>
+// CHECK: %[[C:.*]] = arith.index_cast %[[F]] : vector<16xindex> to vector<16xi32>
+// CHECK: vector.shape_cast %[[C]] : vector<16xi32> to vector<2x8xi32>
+func.func @index_cast_2x8(%a: vector<2x8xindex>) -> vector<2x8xi32> {
+  %0 = arith.index_cast %a : vector<2x8xindex> to vector<2x8xi32>
+  return %0 : vector<2x8xi32>
+}
+
+// CHECK-LABEL: func @maxnumf_2x16_bf16
+// CHECK: vector.shape_cast %{{.*}} : vector<2x16xbf16> to vector<32xbf16>
+// CHECK: aievec.max %{{.*}}, %{{.*}} : vector<32xbf16>
+// CHECK: vector.shape_cast %{{.*}} : vector<32xbf16> to vector<2x16xbf16>
+func.func @maxnumf_2x16_bf16(%a: vector<2x16xbf16>,
+                             %b: vector<2x16xbf16>) -> vector<2x16xbf16> {
+  %0 = arith.maxnumf %a, %b : vector<2x16xbf16>
+  return %0 : vector<2x16xbf16>
 }

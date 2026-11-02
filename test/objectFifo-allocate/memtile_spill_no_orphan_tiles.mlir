@@ -18,7 +18,7 @@ module @spill_no_orphan_tiles {
 }
 // CHECK-LABEL: module @spill_no_orphan_tiles
 // CHECK-DAG: %[[M0:.*]] = aie.tile(0, 1)
-// CHECK-DAG: aie.buffer(%[[M0]]) {sym_name = "spill_buff_0"}
+// CHECK-DAG: aie.buffer(%[[M0]]) {sym_name = "spill__buf0"}
 
 // -----
 
@@ -39,6 +39,6 @@ module @spill_then_another_device {
 }
 // CHECK-LABEL: module @spill_then_another_device
 // CHECK: aie.device(npu2) @a
-// CHECK: aie.buffer({{.*}}) {sym_name = "spill_buff_0"}
+// CHECK: aie.buffer({{.*}}) {sym_name = "spill__buf0"}
 // CHECK: aie.device(npu2) @b
 // CHECK: aie.tile(0, 2)

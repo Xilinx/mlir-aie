@@ -205,7 +205,8 @@ jobs:
           # Every case in test/python/npu/kernel_cases.py, under every edge-data
           # case its contract admits, for three random seeds (or a soak's),
           # plus dedicated setup and cascade-pair tests that cannot use the
-          # generic harness.
+          # generic harness, and the e2e files that are the correctness of
+          # the timing run's dedicated series (nms, sample_select/combine).
           # A soak turns off the runner's retry: a failure that passes when
           # retried is what a soak is looking for.
           if [[ ! ${SEEDS:-3} =~ ^[1-9][0-9]{0,3}$ ]]; then
@@ -215,6 +216,8 @@ jobs:
           MLIR_AIE_NPU_TEST=1 python utils/run_pytest.py \
             test/python/npu/test_kernels_e2e.py \
             test/python/npu/test_kernel_cascade_conv.py \
+            test/python/npu/test_nms_e2e.py \
+            test/python/npu/test_sample_e2e.py \
             test/python/npu/test_mha_e2e.py -m "extensive or kernel_check" -v \
             --junitxml=correctness.xml --report-error error.json \
             --seeds "${SEEDS:-3}" ${SEEDS:+--reruns 0} 2>&1 | tee correctness.log
@@ -268,7 +271,7 @@ jobs:
 
       - name: Upload raw results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: kernel-checks-${{ matrix.expected_npu }}-${{ github.run_id }}
           path: |
@@ -292,7 +295,7 @@ jobs:
     # on the page says the same against the previous nightly, but the
     # summary is what a red run's notification links to.
     if: ${{ !cancelled() && needs.checks.result != 'skipped' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       pull-requests: write   # the one report comment on a Peano PR
@@ -300,11 +303,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       # `pattern`, not `name`: an NPU whose leg produced nothing is reported
       # as such rather than failing the report.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           pattern: kernel-checks-npu1-${{ github.run_id }}
           path: results/npu1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           pattern: kernel-checks-npu2-${{ github.run_id }}
           path: results/npu2

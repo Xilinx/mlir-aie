@@ -56,13 +56,13 @@ func.func @neg_32_f16(%arg0: vector<32xf16>) -> vector<32xf16> {
 }
 
 // `getVectorLaneSize` is the product of every dimension, so this counts 32
-// too. It is left alone: NegOpAIE2pConversion builds its shuffle masks per
-// scalar lane from the shaped operand, so taking it here would emit indices
-// that do not verify. Legal, and reaching the backend as arith.negf, is what
-// it did before 32 lanes were taken at all.
+// too. It is flattened first: NegOpAIE2pConversion builds its shuffle masks
+// per scalar lane from the shaped operand, so taking it at rank 2 would emit
+// indices that do not verify.
 // CHECK-LABEL: func @neg_2x16_f32
-// CHECK: arith.negf
-// CHECK-NOT: aievec.neg
+// CHECK: vector.shape_cast %{{.*}} : vector<2x16xf32> to vector<32xf32>
+// CHECK: aievec.neg %{{.*}} : vector<32xf32>
+// CHECK-NOT: arith.negf
 func.func @neg_2x16_f32(%arg0: vector<2x16xf32>) -> vector<2x16xf32> {
   %0 = arith.negf %arg0 : vector<2x16xf32>
   return %0 : vector<2x16xf32>

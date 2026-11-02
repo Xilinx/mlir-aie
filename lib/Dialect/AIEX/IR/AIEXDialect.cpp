@@ -524,11 +524,9 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
 // The scope here is exactly what the dynamic BD encoder (AIEDmaToNpu.cpp
 // lowerDynamic) can lower; runtime values are never silently masked.
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
-    const AIE::AIETargetModel &targetModel, mlir::BaseMemRefType buffer) {
+    const AIE::AIETargetModel &targetModel, mlir::BaseMemRefType buffer,
+    AIE::ShimDMAAllocationOp allocOp) {
   // Shim NOC only.
-  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-  auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
-      dev, getMetadata().getRootReference());
   if (!allocOp)
     return emitOpError(
         "runtime sizes/strides require a shim_dma_allocation to resolve the "
@@ -660,12 +658,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError(
         "length_parameter requires constant offsets, sizes and strides");
 
-  // Dynamic path: any runtime size/stride/offset. A runtime offset flows into
-  // the address-patch arg_plus as arith (see AIEDmaToNpu.cpp emitBufferAddress-
-  // Patch); runtime sizes/strides use the dynamic BD-word encoder. The shared
-  // scope check enforces what the dynamic lowering can represent.
+  // The dynamic scope check needs the allocation resolved by verifySymbolUses.
   if (!allStridesConstant || !allSizesConstant || !allOffsetsConstant)
-    return verifyDynamicSizesStrides(targetModel, buffer);
+    return success();
 
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -675,10 +670,6 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  llvm::SmallVector<int64_t, 4> hardwareSizes(4);
-  llvm::SmallVector<int64_t, 4> hardwareStrides(4);
-  getHardwareStridesWraps(targetModel, getOperation(), buffer, inputSizes,
-                          inputStrides, hardwareSizes, hardwareStrides);
   int64_t offset = getOffsetInBytes();
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
@@ -693,13 +684,6 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
             AIEX::isContiguousTransfer(inputSizes, inputStrides),
             llvm::ArrayRef<int64_t>(inputSizes).take_front(3))))
       return failure();
-    AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-    if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
-            dev, getMetadata().getRootReference()))
-      if (AIE::TileOp tile = allocOp.getTileOp())
-        if (failed(AIE::verifyLengthParameterTile(
-                *this, targetModel, tile.getCol(), tile.getRow())))
-          return failure();
   }
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2
@@ -711,56 +695,111 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Offset must be 4-byte-aligned.");
   }
 
+  // packet header
+  if (auto packetInfo = getPacket()) {
+    if (failed(AIE::verifyAssignedPacket(*this, *packetInfo)))
+      return failure();
+    if (packetInfo->getPktType() > 7)
+      return emitOpError("Packet type field can only hold 3 bits.");
+    if (packetInfo->assignedId() > 31)
+      return emitOpError("Packet ID field can only hold 5 bits.");
+  }
+
+  return success();
+}
+
+// The verifier-owned collection shares the device symbol table across memcpy
+// checks without retaining allocation pointers between verification calls.
+LogicalResult
+AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  BaseMemRefType buffer = getMemref().getType();
+  const auto &targetModel = AIE::getTargetModel(*this);
+  bool allStridesConstant = llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allSizesConstant = llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allOffsetsConstant = llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool isDynamic =
+      !allStridesConstant || !allSizesConstant || !allOffsetsConstant;
+
+  bool hasLengthParameter =
+      getLengthParameterAttr() || getLengthStateTableIdxAttr();
+  // Static AIE1 transfers without a length parameter skip allocation checks,
+  // including on the compatibility target used outside a device.
+  if (!isDynamic && !hasLengthParameter &&
+      targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return success();
+
+  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
+      dev, getMetadata().getRootReference());
+  if (isDynamic)
+    return verifyDynamicSizesStrides(targetModel, buffer, allocOp);
+
+  // Static transfers can precede allocation lowering, so defer tile checks
+  // until metadata names a shim DMA allocation.
+  if (!allocOp)
+    return success();
+  AIE::TileOp tile = allocOp.getTileOp();
+  if (!tile)
+    return emitOpError("shim DMA allocation must reference a valid TileOp");
+  int col = tile.getCol();
+  int row = tile.getRow();
+  if (hasLengthParameter &&
+      failed(AIE::verifyLengthParameterTile(*this, targetModel, col, row)))
+    return failure();
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return success();
+
+  llvm::SmallVector<int64_t, 4> inputSizes =
+      llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  llvm::SmallVector<int64_t, 4> inputStrides =
+      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  llvm::SmallVector<int64_t, 4> hardwareSizes(4);
+  llvm::SmallVector<int64_t, 4> hardwareStrides(4);
+  getHardwareStridesWraps(targetModel, getOperation(), buffer, inputSizes,
+                          inputStrides, hardwareSizes, hardwareStrides);
+
   // dma_memcpy_nd transfers of the form [1, 1, 1, len][0, 0, 0, 1] do not
   // specify any data layout transformation, but simply express a contiguous
   // transfer of `len`. For backwards compatibility, we allow this to proceed
   // even if it exceeds the maximum stride/wrap size of any one dimension,
   // and simply do not lower any data layout transformations, since there is
   // no other way to express this at the dma_memcpy_nd interface otherwise.
-  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-  if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
-          dev, getMetadata().getRootReference())) {
-    AIE::TileOp tile = allocOp.getTileOp();
-    if (!tile) {
-      return emitOpError("shim DMA allocation must reference a valid TileOp");
-    }
-    int col = tile.getCol();
-    int row = tile.getRow();
-    // A contiguous row-major ND access is also exempt from the ND wrap-size
-    // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0),
-    // and LinearizeContiguousTransfer canonicalizes it to explicit linear form.
-    bool skipTransformationChecks = AIEX::isLinearModeTransfer(
-        targetModel, col, row, inputSizes, inputStrides);
-    // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
-    // split into hardware-legal sub-transfers is also allowed to verify: the
-    // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
-    // oversized strides) still fail below. isDecomposableNdDmaPattern
-    // suppresses its own diagnostics, so no stray error is emitted for the
-    // accepted case.
-    llvm::SmallVector<int64_t, 4> inputOffsets = llvm::map_to_vector(
-        llvm::reverse(getMixedOffsets()),
-        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    // aie-decompose-large-dma-bd leaves a transfer with a runtime length
-    // alone, so it must be legal as written.
-    if (!hasLengthParameter &&
-        AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
-                                         col, row, inputOffsets, inputSizes,
-                                         inputStrides)) {
-      // ok: will be decomposed before lowering
-    } else if (failed(verifyStridesWraps(
-                   *this, [&] { return emitOpError(); }, buffer, col, row,
-                   inputSizes, inputStrides, hardwareSizes, hardwareStrides,
-                   skipTransformationChecks))) {
-      return failure();
-    }
-  }
-
-  // packet header
-  if (auto packetInfo = getPacket()) {
-    if (packetInfo->getPktType() > 7)
-      return emitOpError("Packet type field can only hold 3 bits.");
-    if (packetInfo->getPktId() > 31)
-      return emitOpError("Packet ID field can only hold 5 bits.");
+  // A contiguous row-major ND access is also exempt from the ND wrap-size
+  // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0),
+  // and LinearizeContiguousTransfer canonicalizes it to explicit linear form.
+  bool skipTransformationChecks = AIEX::isLinearModeTransfer(
+      targetModel, col, row, inputSizes, inputStrides);
+  // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
+  // split into hardware-legal sub-transfers is also allowed to verify: the
+  // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
+  // oversized strides) still fail below. isDecomposableNdDmaPattern
+  // suppresses its own diagnostics, so no stray error is emitted for the
+  // accepted case.
+  llvm::SmallVector<int64_t, 4> inputOffsets =
+      llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
+        return getConstantIntValue(s).value();
+      });
+  // aie-decompose-large-dma-bd leaves a transfer with a runtime length
+  // alone, so it must be legal as written.
+  if (!hasLengthParameter && AIEX::isDecomposableNdDmaPattern(
+                                 getOperation(), buffer, targetModel, col, row,
+                                 inputOffsets, inputSizes, inputStrides)) {
+    // ok: will be decomposed before lowering
+  } else if (failed(verifyStridesWraps(
+                 *this, [&] { return emitOpError(); }, buffer, col, row,
+                 inputSizes, inputStrides, hardwareSizes, hardwareStrides,
+                 skipTransformationChecks))) {
+    return failure();
   }
 
   return success();
@@ -1343,6 +1382,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
   // dialect. The normal DMABDOp verify operation will skip over any BD inside
   // a DMAConfigureTaskOp
+  if (failed(AIE::verifyAssignedPacket(*this, getPacketAttr())))
+    return failure();
   LogicalResult result = success();
   bool taskHasPacket = getPacket().has_value();
   llvm::SmallVector<AIE::DMABDOp> bds;
@@ -1367,8 +1408,11 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
                        "are connected to the memory-mapped NOC.");
         result = failure();
       }
-      // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
-      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
+      // DMABDOp::verify skips task BDs, so validate their packet header and
+      // out_of_order_id here too.
+      if (failed(AIE::verifyAssignedPacket(
+              bd, bd.getPacket().value_or(AIE::PacketInfoAttr()))) ||
+          failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
           failed(bd.verifyTransferInBounds()))
         result = failure();
       bds.push_back(bd);
@@ -1537,7 +1581,7 @@ struct BdChain {
 static LogicalResult
 verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                              AIE::ObjectFifoCreateOp fifo) {
-  if (fifo.getPadDimensions() || fifo.getAieStream())
+  if (fifo.getPadDimensions() || fifo.usesStream())
     return success();
   std::optional<int64_t> moved = staticBytesStreamed(task);
   if (!moved || *moved == 0)
@@ -1556,9 +1600,10 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   // steps through every segment in order, each small end through its own, and
   // a plain link's single segment is the whole pool object. The link's
   // repeat_count sends each of its output's segment BDs that many times in a
-  // row.
-  Value linkTile;
-  std::optional<BdChain> linkChain;
+  // row. Every link the fifo meets has an end the transfer must complete,
+  // one per tile when links on several tiles read a broadcast.
+  SmallVector<Value> linkTiles;
+  SmallVector<BdChain> chains;
   if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
     for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
       std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
@@ -1568,7 +1613,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       std::optional<Value> sharedTile = link.getOptionalSharedTile();
       if (ins.empty() || outs.empty() || !sharedTile)
         return success();
-      linkTile = *sharedTile;
+      linkTiles.push_back(*sharedTile);
       AIE::ObjectFifoCreateOp owner = link.getPoolOwner();
       MemRefType pool =
           cast<AIE::AIEObjectFifoType>(owner.getElemType()).getElementType();
@@ -1590,21 +1635,22 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       int64_t copies = llvm::is_contained(outs, fifo)
                            ? link.getRepeatCount().value_or(1)
                            : 1;
+      std::optional<BdChain> chain;
       if (segmentBytes.size() == segments.size())
-        linkChain = BdChain::get(segmentBytes, copies);
-      break;
+        chain = BdChain::get(segmentBytes, copies);
+      if (chain && !llvm::is_contained(chains, *chain))
+        chains.push_back(*chain);
     }
   // Every far-end BD chain this transfer must leave at a BD boundary: the
   // producer's, for a drain, and each consumer's other than the shim's own. A
   // broadcast stalls on its slowest consumer, so a drain bounds what the
-  // others receive too. An end off the link tile is one BD over its own
+  // others receive too. An end off every link tile is one BD over its own
   // object.
-  SmallVector<BdChain> chains;
   auto addChain = [&](Value tile, Type fifoType) {
+    if (llvm::is_contained(linkTiles, tile))
+      return;
     std::optional<BdChain> chain;
-    if (linkTile && tile == linkTile)
-      chain = linkChain;
-    else if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
+    if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
       chain = BdChain::get({*bytes}, 1);
     if (chain && !llvm::is_contained(chains, *chain))
       chains.push_back(*chain);

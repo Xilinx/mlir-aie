@@ -17,6 +17,9 @@ inputs:
   env:
     description: Newline-separated KEY=VALUE assignments for the container.
     required: false
+  volumes:
+    description: Newline-separated HOST_PATH:CONTAINER_PATH bind mounts.
+    required: false
   run:
     description: Bash commands to run in the container.
     required: true
@@ -28,6 +31,7 @@ runs:
       shell: bash
       env:
         CONTAINER_ENV: ${{ inputs.env }}
+        CONTAINER_VOLUMES: ${{ inputs.volumes }}
         CONTAINER_IMAGE: ${{ inputs.image }}
         CONTAINER_MAC_ADDRESS: ${{ inputs.mac-address }}
         CONTAINER_RUN: ${{ inputs.run }}
@@ -111,5 +115,14 @@ runs:
           export "$assignment"
           docker_args+=(--env "$key")
         done <<< "$CONTAINER_ENV"
+
+        while IFS= read -r volume; do
+          [[ -z "$volume" ]] && continue
+          if [[ "$volume" != *:* ]]; then
+            echo "::error::invalid container volume mount: $volume" >&2
+            exit 1
+          fi
+          docker_args+=(--volume "$volume")
+        done <<< "$CONTAINER_VOLUMES"
 
         docker run "${docker_args[@]}" "$CONTAINER_IMAGE" /run-x86-container.sh

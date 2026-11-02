@@ -1,0 +1,13 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// The prefill's GEMM array (aie2_prefill.py) at 2 layers on NPU2: a layer's
+// projections (qkv, o, g, u, d) for 64 rows each from the decode's weight
+// blob, every output row bit-exact to the numpy oracle
+// (llama_oracle.Layer.project). --synthetic-weights swaps the layers'
+// weights for seeded ones in the same layout.
+//
+// REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings
+//
+// RUN: %run_on_npu2% %python %S/test_prefill_gemm.py --synthetic-weights --n-layers 2 --iters 0 | FileCheck %s
+// CHECK: first dispatch: 2 layers x qkv o g u d, 64 rows each, every row bit-exact: PASS

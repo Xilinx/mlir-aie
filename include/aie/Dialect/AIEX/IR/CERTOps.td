@@ -68,10 +68,18 @@ def AIE_CertPageOp
   let summary = "A control code page";
   let description = [{
     This operation represents a page of control code. Pages are the basic unit
-    of control code organization, with a maximum size of 8192 bytes. Each page
-    typically contains one job along with its associated data.
+    of control code organization, with a maximum size of 8192 bytes. A page may
+    contain one or more jobs along with their associated data; jobs within a
+    page are cooperatively scheduled (see `cert.job`), while pages of a given
+    microcontroller execute strictly in order.
 
     Corresponds to the `.eop` (end of page) directive in assembly.
+
+    The optional `placement` attribute selects the microcontroller (CERT group /
+    uC id) that runs this page. It is a resolved group id — use the target
+    model's `getUcGroupId(col, half)` to compute it rather than deriving it by
+    hand. When absent, the page defaults to group 0 (col0/uC0). A later pass lowers
+    `placement` to an enclosing `cert.attach_to_group`.
 
     Example:
     ```
@@ -80,10 +88,24 @@ def AIE_CertPageOp
           cert.write32(0x1000, 42)
         }
       }
+
+      // placed on microcontroller (group) 2:
+      cert.page {
+        cert.job(1) {
+          cert.write32(0x2000, 43)
+        }
+      } {placement = 2 : i32}
     ```
   }];
+  let arguments = (ins OptionalAttr<I32Attr>:$placement);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ $body attr-dict }];
+  let builders = [
+      // Convenience builder for an unplaced page (defaults to group 0), keeping
+      // the previous no-argument call sites valid.
+      OpBuilder<(ins), [{
+      build($_builder, $_state, /*placement=*/nullptr);
+    }]>];
 }
 
 def AIE_CertJobOp
@@ -92,8 +114,16 @@ def AIE_CertJobOp
                            SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "Start a job with a given job ID";
   let description = [{
-    This operation starts a job identified by the given job ID. The job ID is an
-    integer that uniquely identifies the job to be started.
+    This operation starts a job identified by the given job ID.
+
+    The job ID is a *label*, not an execution or emission order: it must be
+    unique among jobs on the same page, and the CERT firmware uses it as a
+    job-table key (and as the handle referenced by deferred/launch jobs). It is
+    NOT a priority. Emission order and execution order are both determined by
+    textual (IR) order: within a page the firmware starts jobs in textual order
+    (running each until it blocks or ends), and between pages on one uC
+    execution is strictly sequential. Emitters must therefore preserve IR order
+    and must not sort jobs by job_id.
 
     Example:
     ```
@@ -247,7 +277,8 @@ def AIE_CertRemoteBarrierOp
   let description = [{
     This operation represents a remote barrier that synchronizes execution
     based on a barrier ID `remote_barrier_id` and `party_mask`, a bit map of
-    participant uC IDs.
+    participant uC IDs. The integer id names the assembler operand
+    `$rb0`..`$rb6`, encoded as firmware ids 1..7.
 
     Example:
     ```
@@ -257,6 +288,35 @@ def AIE_CertRemoteBarrierOp
   let arguments = (ins I32Attr:$remote_barrier_id, I32Attr:$party_mask);
   let assemblyFormat = [{
     `(` $remote_barrier_id `,` $party_mask `)` attr-dict
+  }];
+}
+
+def AIE_CertRelAcqSyncOp
+    : AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]> {
+  let summary = "Release-acquire global barrier on an AIE lock";
+  let description = [{
+    Releases the lock at rel_address, then busy-waits acquiring the lock at
+    acq_address. Both addresses must refer to the same AIE lock; the
+    release/acquire operation and its operand are encoded in the address bits.
+
+    The acquire is a non-yielding busy-wait and never times out. No other job
+    on the same microcontroller can progress while this operation waits, so the
+    caller must avoid dependencies on work that microcontroller still owes.
+
+    A symmetric N-participant barrier uses rel(+1) followed by acq_eq(N).
+    Alternating that with rel(-1) followed by acq_eq(0) lets one lock serve
+    repeated barriers without an explicit reset.
+
+    Operand order is release then acquire, matching the aiebu assembler.
+
+    Example (illustrative lock-request addresses):
+    ```
+      cert.rel_acq_sync(0x1000, 0x1004)
+    ```
+  }];
+  let arguments = (ins UI32Attr:$rel_address, UI32Attr:$acq_address);
+  let assemblyFormat = [{
+    `(` $rel_address `,` $acq_address `)` attr-dict
   }];
 }
 

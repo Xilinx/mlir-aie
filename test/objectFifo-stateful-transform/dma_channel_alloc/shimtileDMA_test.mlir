@@ -10,12 +10,12 @@
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK-DAG:           %{{.*}}tile_2_0 = aie.tile(2, 0)
 // CHECK-DAG:           %{{.*}}tile_3_3 = aie.tile(3, 3)
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:           %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 2 : i32, sym_name = "objfifo_cons_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 0 : i32, sym_name = "objfifo_cons_cons_lock_0"}
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_2_0) {init = 1 : i32, sym_name = "objfifo_prod_lock_0"}
-// CHECK-DAG:           %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_2_0) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo__cons__buf0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo__cons__buf1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 2 : i32, sym_name = "objfifo__cons__prodlock0"}
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 0 : i32, sym_name = "objfifo__cons__conslock0"}
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_2_0) {init = 1 : i32, sym_name = "objfifo__prodlock0"}
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_2_0) {init = 0 : i32, sym_name = "objfifo__conslock0"}
 // CHECK-DAG:           %0 = aie.external_buffer : memref<16xi32>
 // CHECK-DAG:           %lock_2_0 = aie.lock(%{{.*}}tile_2_0, 0)
 // CHECK-DAG:           %1 = aie.external_buffer : memref<16xi32>
@@ -53,7 +53,7 @@
 // CHECK:           ^bb7:  // pred: ^bb5
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK-DAG:           aie.shim_dma_allocation @objfifo_shim_alloc(%shim_noc_tile_2_0, MM2S, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @objfifo__shim_alloc(%shim_noc_tile_2_0, MM2S, 0)
 // CHECK:           %mem_3_3 = aie.mem(%{{.*}}tile_3_3) {
 // CHECK:             %3 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2

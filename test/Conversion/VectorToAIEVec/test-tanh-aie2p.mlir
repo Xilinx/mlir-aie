@@ -78,14 +78,26 @@ func.func @test_tanh_v1f32_aie2p(%a: vector<1xf32>) -> vector<1xf32> {
     return %0 : vector<1xf32>
 }
 
+// 8 lanes: the operand repeated to 16 lanes, and the low 8 lanes kept.
+// CHECK-LABEL: func @test_tanh_v8f32_aie2p
+// CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<8xf32>
+// CHECK: %[[W:.*]] = aievec.concat %[[A]], %[[A]] : vector<8xf32>, vector<16xf32>
+// CHECK: %[[T:.*]] = aievec.tanh %[[W]] : vector<16xf32>
+// CHECK: %[[R:.*]] = aievec.ext %[[T]] {index = 0 : i8} : vector<16xf32>, vector<8xf32>
+// CHECK: return %[[R]]
+func.func @test_tanh_v8f32_aie2p(%a: vector<8xf32>) -> vector<8xf32> {
+    %0 = math.tanh %a : vector<8xf32>
+    return %0 : vector<8xf32>
+}
+
 // Lane counts and element types without a lowering are left as they are.
 // CHECK-LABEL: func @test_tanh_unsupported_aie2p
-func.func @test_tanh_unsupported_aie2p(%a: vector<8xf32>, %b: f16,
+func.func @test_tanh_unsupported_aie2p(%a: vector<24xf32>, %b: f16,
                                        %c: tensor<16xf32>, %d: vector<[16]xf32>,
                                        %e: vector<[1]xf32>)
-    -> (vector<8xf32>, f16, tensor<16xf32>, vector<[16]xf32>, vector<[1]xf32>) {
-    // CHECK: math.tanh %{{.*}} : vector<8xf32>
-    %0 = math.tanh %a : vector<8xf32>
+    -> (vector<24xf32>, f16, tensor<16xf32>, vector<[16]xf32>, vector<[1]xf32>) {
+    // CHECK: math.tanh %{{.*}} : vector<24xf32>
+    %0 = math.tanh %a : vector<24xf32>
     // CHECK: math.tanh %{{.*}} : f16
     %1 = math.tanh %b : f16
     // CHECK: math.tanh %{{.*}} : tensor<16xf32>
@@ -95,5 +107,27 @@ func.func @test_tanh_unsupported_aie2p(%a: vector<8xf32>, %b: f16,
     // CHECK: math.tanh %{{.*}} : vector<[1]xf32>
     %4 = math.tanh %e : vector<[1]xf32>
     return %0, %1, %2, %3, %4
-        : vector<8xf32>, f16, tensor<16xf32>, vector<[16]xf32>, vector<[1]xf32>
+        : vector<24xf32>, f16, tensor<16xf32>, vector<[16]xf32>, vector<[1]xf32>
+}
+
+// 64 and 128 lanes: a 32-lane tanh on each part.
+// CHECK-LABEL: func @test_tanh_v64bf16_aie2p
+// CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<64xbf16>
+// CHECK: %[[A0:.*]] = aievec.ext %[[A]] {index = 0 : i8} : vector<64xbf16>, vector<32xbf16>
+// CHECK: %[[T0:.*]] = aievec.tanh %[[A0]] : vector<32xbf16>
+// CHECK: %[[A1:.*]] = aievec.ext %[[A]] {index = 1 : i8} : vector<64xbf16>, vector<32xbf16>
+// CHECK: %[[T1:.*]] = aievec.tanh %[[A1]] : vector<32xbf16>
+// CHECK: %[[R:.*]] = aievec.concat %[[T0]], %[[T1]] : vector<32xbf16>, vector<64xbf16>
+// CHECK: return %[[R]]
+func.func @test_tanh_v64bf16_aie2p(%a: vector<64xbf16>) -> vector<64xbf16> {
+  %0 = math.tanh %a : vector<64xbf16>
+  return %0 : vector<64xbf16>
+}
+
+// CHECK-LABEL: func @test_tanh_v128f32_aie2p
+// CHECK-COUNT-4: aievec.tanh %{{.*}} : vector<32xf32>
+// CHECK: aievec.concat %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : vector<32xf32>, vector<128xf32>
+func.func @test_tanh_v128f32_aie2p(%a: vector<128xf32>) -> vector<128xf32> {
+  %0 = math.tanh %a : vector<128xf32>
+  return %0 : vector<128xf32>
 }

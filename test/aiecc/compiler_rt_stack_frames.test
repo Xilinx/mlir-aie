@@ -7,4 +7,4 @@
 
 // REQUIRES: peano
 // RUN: %PYTHON %S/../../utils/generate_compiler_rt_stack_frames.py > %t.inc
-// RUN: diff %S/../../tools/aiecc/CompilerRtStackFrames.inc %t.inc
+// RUN: diff --strip-trailing-cr %S/../../tools/aiecc/CompilerRtStackFrames.inc %t.inc
