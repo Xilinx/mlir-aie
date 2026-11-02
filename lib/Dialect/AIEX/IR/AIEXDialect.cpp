@@ -1343,6 +1343,18 @@ AIEX::NpuMaskWrite32Op::getAbsoluteAddress(const AIE::NamedOpTable *names) {
 // NpuMaskPollOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult AIEX::NpuMaskPollOp::verify() {
+  return verifyBufferWriteScope(*this);
+}
+
+LogicalResult
+AIEX::NpuMaskPollOp::verifyNamedOpUses(AIE::NamedOpTableCollection &names) {
+  if (!getBuffer())
+    return success();
+  return verifyBufferWrite(*this, getConstantIntOperand(getAddress()),
+                           sizeof(uint32_t), names);
+}
+
 std::optional<uint32_t>
 AIEX::NpuMaskPollOp::getAbsoluteAddress(const AIE::NamedOpTable *names) {
   std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());

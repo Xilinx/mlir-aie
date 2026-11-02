@@ -24,6 +24,7 @@ module {
       aiex.npu.blockwrite(%two) {buffer = @acc, address = 6 : ui32} : memref<2xi32>
       aiex.npu.write32(%last, %value) {buffer = @acc} : i32, i32
       aiex.npu.maskwrite32(%last, %value, %mask) {buffer = @acc} : i32, i32, i32
+      aiex.npu.maskpoll(%last, %value, %mask) {buffer = @acc} : i32, i32, i32
     }
   }
 }

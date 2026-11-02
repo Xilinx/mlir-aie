@@ -904,9 +904,12 @@ def AIE_NpuWrite32Op
 }
 
 // MASKWRITE
-def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
+def AIE_NpuMaskPollOp
+    : AIEX_Op<
+          "npu.maskpoll", [DeclareOpInterfaceMethods<NamedOpUserOpInterface>]> {
   let summary =
       "Block the runtime sequence until a masked 32-bit register matches";
+  let hasVerifier = 1;
   let arguments = (ins I32:$address, I32:$value, I32:$mask,
       OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
       OptionalAttr<I32Attr>:$row);
@@ -926,9 +929,10 @@ def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
     that never becomes true therefore surfaces as a dispatch timeout rather
     than hanging forever.
 
-    Address interpretation matches `npu.maskwrite32`: an offset into 'buffer'
-    if present, else an offset into aie.tile('column', 'row') if those are
-    present, else a full 32-bit array address.
+    Address interpretation and the buffer bounds check match
+    `npu.maskwrite32`: an offset into 'buffer' if present, else an offset into
+    aie.tile('column', 'row') if those are present, else a full 32-bit array
+    address.
   }];
   let extraClassDeclaration = [{
     // Compile-time absolute address, or nullopt if 'address' is not constant.

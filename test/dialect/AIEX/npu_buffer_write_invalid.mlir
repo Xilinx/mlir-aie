@@ -67,6 +67,33 @@ module {
 
 // -----
 
+module {
+  aie.device(npu2) {
+    %tile = aie.tile(0, 2)
+    %acc = aie.buffer(%tile) {sym_name = "acc"} : memref<8xi32>
+    aie.runtime_sequence @polled(%value: i32, %mask: i32) {
+      %offset = arith.constant 8 : i32
+      // expected-error @+1 {{write range [32, 36) exceeds buffer @acc size 32 bytes}}
+      aiex.npu.maskpoll(%offset, %value, %mask) {buffer = @acc} : i32, i32, i32
+    }
+  }
+}
+
+// -----
+
+module {
+  aie.device(npu2) {
+    %tile = aie.tile(0, 2)
+    %acc = aie.buffer(%tile) {sym_name = "acc"} : memref<8xi32>
+    aie.runtime_sequence(%offset: i32, %value: i32, %mask: i32) {
+      // expected-error @+1 {{address must be constant when buffer is present}}
+      aiex.npu.maskpoll(%offset, %value, %mask) {buffer = @acc} : i32, i32, i32
+    }
+  }
+}
+
+// -----
+
 // getLocalMemorySize() for npu2 is 65536 bytes: start at its last word.
 module {
   aie.device(npu2) {
