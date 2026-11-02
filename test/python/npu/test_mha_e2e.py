@@ -2398,12 +2398,15 @@ def mha_split_q(
     b_kv: CompileTime[int] = 32,
     d: CompileTime[int] = 64,
     kv_heads: CompileTime[int] = 2,
+    accurate_exp2: CompileTime[bool] = False,
 ):
     """``keep_q`` then ``take_q`` per KV group on one core, from a key block's object holding a position's query heads flat."""
     obj_ty = np.ndarray[(b_kv * kv_heads * 2 * d,), BF]
     flat_ty = np.ndarray[(heads * d,), BF]
     block_ty = np.ndarray[(8 * d,), BF]
-    _, fused = _fused_kernels(8, b_kv, d, True, 0, False, 1, kv_heads)
+    _, fused = _fused_kernels(
+        8, b_kv, d, True, 0, False, 1, kv_heads, accurate_exp2=accurate_exp2
+    )
     obj = fused.object_file
     keep_q = obj.bind("keep_q", [obj_ty, flat_ty, np.int32])
     take_q = obj.bind("take_q", [flat_ty, block_ty, np.int32, np.int32])
@@ -2446,15 +2449,16 @@ def mha_split_q(
 )
 def test_take_q_packs_each_groups_heads(heads, kv_heads, d, b_kv):
     """Q flat at the head of a key block's object, tiled as keys: ``take_q`` packs each KV group's every head into rows i and i + 4, tiled as ``attend_block`` reads Q."""
-    if resolve_target_arch(iron.get_current_device()) != "aie2":
-        pytest.skip("mha.cc's fused block is written for AIE2")
+    aie2p = resolve_target_arch(iron.get_current_device()) == "aie2p"
     group = {32: 4, 24: 3, 40: 5, 16: 2, 8: 1, 4: 4}[heads]
     rng = np.random.default_rng(20261101 + heads)
     width = kv_heads * 2 * d
     q = rng.standard_normal((heads, d)).astype(bfloat16)
     obj = rng.standard_normal(b_kv * width).astype(bfloat16)
     obj[: heads * d] = q.reshape(-1)
-    _, fused = _fused_kernels(8, b_kv, d, True, 0, False, 1, kv_heads)
+    _, fused = _fused_kernels(
+        8, b_kv, d, True, 0, False, 1, kv_heads, accurate_exp2=aie2p
+    )
     q_layout, kv_layout = fused.contract.layouts[:2]
     out = iron.zeros((heads // group * 8 * d,), dtype=bfloat16)
     mha_split_q(
@@ -2465,6 +2469,7 @@ def test_take_q_packs_each_groups_heads(heads, kv_heads, d, b_kv):
         b_kv=b_kv,
         d=d,
         kv_heads=kv_heads,
+        accurate_exp2=aie2p,
     )
     pairs = 1 if group == 1 else group - 1 if group % 2 else group // 2
     step = 0 if group == 1 else 1 if group % 2 else 2
@@ -2493,6 +2498,7 @@ def mha_split_round(
     window: CompileTime[int] = 0,
     packed: CompileTime[bool] = False,
     f32_scores: CompileTime[bool] = False,
+    accurate_exp2: CompileTime[bool] = False,
 ):
     """Split decode in small: ``ways`` cores each ``attend_block`` over every ``ways``-th key block into a partial, a memtile joining them, and a last core folding them in order (``merge_partials``) and ending the rows (``rescale_O``)."""
     q_ty = np.ndarray[(b_q * d,), BF]
@@ -2509,7 +2515,15 @@ def mha_split_round(
     per = -(-n_kv // ways)
 
     _, fused = _fused_kernels(
-        b_q, b_kv, d, True, window, packed, 1, f32_scores=f32_scores
+        b_q,
+        b_kv,
+        d,
+        True,
+        window,
+        packed,
+        1,
+        f32_scores=f32_scores,
+        accurate_exp2=accurate_exp2,
     )
     obj = fused.object_file
     attend = obj.bind(
@@ -2657,8 +2671,9 @@ def test_split_keys_merged_are_masked_attention(
     ways, n_kv, s_kv_eff, b_q, b_kv, d, band, f32_scores
 ):
     """Attention split over keys and merged (``merge_partials``) is masked attention over them all."""
-    if resolve_target_arch(iron.get_current_device()) != "aie2":
-        pytest.skip("mha.cc's fused block is written for AIE2")
+    aie2p = resolve_target_arch(iron.get_current_device()) == "aie2p"
+    if aie2p and f32_scores:
+        pytest.skip("AIE2P's fused block takes bf16 scores with the accurate exp2")
     band = {**dict(window=0, packed=False), **band}
     packed = band["packed"]
     # Unpacked, the queries sit past every key, as a decode step's do.
@@ -2674,7 +2689,15 @@ def test_split_keys_merged_are_masked_attention(
         top = k[:, 0] == k[:, 0].max()
         k[:, 0] = 8192.0 + np.where(top, k[:, 0].astype(np.float32), 0.0)
     _, fused = _fused_kernels(
-        b_q, b_kv, d, True, band["window"], packed, 1, f32_scores=f32_scores
+        b_q,
+        b_kv,
+        d,
+        True,
+        band["window"],
+        packed,
+        1,
+        f32_scores=f32_scores,
+        accurate_exp2=aie2p,
     )
     q_layout, kv_layout = fused.contract.layouts[:2]
     kv = np.concatenate(
@@ -2694,6 +2717,7 @@ def test_split_keys_merged_are_masked_attention(
         b_kv=b_kv,
         d=d,
         f32_scores=f32_scores,
+        accurate_exp2=aie2p,
         **band,
     )
     got = _unblock(o_t.numpy(), b_q, d).astype(np.float32)
