@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::BufferAllocation" name="xilinx::AIE::BufferAllocation">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,128,204,156"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="6,5,72,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="46,45,57,75,70,103,91,128,86,128,66,106,52,77,44,50"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="96,5,246,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="167,46,158,77,144,106,122,130,119,126,140,103,153,75,163,50"/>
+</map>
