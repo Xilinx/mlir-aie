@@ -2487,11 +2487,13 @@ def mha_split_round(
     d: CompileTime[int] = _B,
     window: CompileTime[int] = 0,
     packed: CompileTime[bool] = False,
+    f32_scores: CompileTime[bool] = False,
 ):
     """Split decode in small: ``ways`` cores each ``attend_block`` over every ``ways``-th key block into a partial, a memtile joining them, and a last core folding them in order (``merge_partials``) and ending the rows (``rescale_O``)."""
     q_ty = np.ndarray[(b_q * d,), BF]
     kv_ty = np.ndarray[(2 * b_kv * d,), BF]
-    s_ty = np.ndarray[(b_q * b_kv,), BF]
+    s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
+    p_ty = np.ndarray[(b_q * b_kv,), BF]
     o_ty = np.ndarray[(b_q * d,), BF]
     part = b_q * d + 4 * b_q
     part_ty = np.ndarray[(part,), F32]
@@ -2501,7 +2503,9 @@ def mha_split_round(
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
     per = -(-n_kv // ways)
 
-    _, fused = _fused_kernels(b_q, b_kv, d, True, window, packed, 1)
+    _, fused = _fused_kernels(
+        b_q, b_kv, d, True, window, packed, 1, f32_scores=f32_scores
+    )
     obj = fused.object_file
     attend = obj.bind(
         "attend_block",
@@ -2510,7 +2514,7 @@ def mha_split_round(
             kv_ty,
             part_ty,
             s_ty,
-            s_ty,
+            p_ty,
             scale_ty,
             idx_ty,
             bfloat16,
@@ -2569,7 +2573,7 @@ def mha_split_round(
                 open_partial,
                 close_partial,
                 Buffer(s_ty, name=f"s{w}"),
-                Buffer(s_ty, name=f"p{w}"),
+                Buffer(p_ty, name=f"p{w}"),
                 Buffer(scale_ty, name=f"state{w}"),
                 *(
                     Buffer(
@@ -2643,8 +2647,9 @@ def mha_split_round(
         (2, 2, 2 * _B, 32, 64, 64, {}),
     ],
 )
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
 def test_split_keys_merged_are_masked_attention(
-    ways, n_kv, s_kv_eff, b_q, b_kv, d, band
+    ways, n_kv, s_kv_eff, b_q, b_kv, d, band, f32_scores
 ):
     """Attention split over keys and merged (``merge_partials``) is masked attention over them all."""
     if resolve_target_arch(iron.get_current_device()) != "aie2":
@@ -2658,7 +2663,14 @@ def test_split_keys_merged_are_masked_attention(
     q, k, v = _fused_case_data(
         q_block, blocks, s_kv_eff, b_q, b_kv, d, packed, 1, 0, window=band["window"]
     )
-    _, fused = _fused_kernels(b_q, b_kv, d, True, band["window"], packed, 1)
+    if f32_scores:
+        # Every score lifted by 4096, where each partial's float32 maximum
+        # is finer than bf16's spacing, so a merge that rounds it shows.
+        top = k[:, 0] == k[:, 0].max()
+        k[:, 0] = 8192.0 + np.where(top, k[:, 0].astype(np.float32), 0.0)
+    _, fused = _fused_kernels(
+        b_q, b_kv, d, True, band["window"], packed, 1, f32_scores=f32_scores
+    )
     q_layout, kv_layout = fused.contract.layouts[:2]
     kv = np.concatenate(
         [k.reshape(blocks, b_kv, d), v.reshape(blocks, b_kv, d)], axis=2
@@ -2676,6 +2688,7 @@ def test_split_keys_merged_are_masked_attention(
         b_q=b_q,
         b_kv=b_kv,
         d=d,
+        f32_scores=f32_scores,
         **band,
     )
     got = _unblock(o_t.numpy(), b_q, d).astype(np.float32)
@@ -2688,7 +2701,9 @@ def test_split_keys_merged_are_masked_attention(
         ],
         axis=1,
     )
-    scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(bfloat16)
+    scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(
+        np.float32 if f32_scores else bfloat16
+    )
     inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
     ref = _attention(scores, v, keep, inv_scale=inv_scale).astype(np.float32)
     ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())

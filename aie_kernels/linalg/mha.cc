@@ -1700,6 +1700,21 @@ static inline void merge_partial(float *O_a, float *state_a, const float *O_b,
   const auto s = aie::broadcast<bfloat16, W>(inv_scale);
   alignas(64) float f_a[DIM_M], f_b[DIM_M];
   for (int32_t i = 0; i < B_q; i += W) {
+#ifdef MHA_F32_SCORES
+    // Float maxima, as advance_state_w takes them.
+    const auto m =
+        aie::max(aie::load_v<W>(state_a + i), aie::load_v<W>(state_b + i));
+    const auto factor = [&](const float *own) {
+      Acc d;
+      d.from_vector(aie::load_v<W>(own + i));
+      const Limbs<W> dl = bf16_limbs(aie::sub(d, m));
+      Acc diff = aie::mul(dl.hi, s);
+      diff = aie::mac(diff, dl.mid, s);
+      diff = aie::mac(diff, dl.lo, s);
+      return exp2_bf16(diff.template to_vector<float>());
+    };
+    const auto fa = factor(state_a), fb = factor(state_b);
+#else
     Acc m_a, m_b;
     m_a.from_vector(aie::load_v<W>(state_a + i));
     m_b.from_vector(aie::load_v<W>(state_b + i));
@@ -1711,6 +1726,7 @@ static inline void merge_partial(float *O_a, float *state_a, const float *O_b,
       return exp2_bf16(diff.template to_vector<float>());
     };
     const auto fa = factor(m_a), fb = factor(m_b);
+#endif
     Acc la, lb;
     la.from_vector(aie::load_v<W>(state_a + 2 * B_q + i));
     lb.from_vector(aie::load_v<W>(state_b + 2 * B_q + i));
