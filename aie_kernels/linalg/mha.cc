@@ -1328,8 +1328,7 @@ static void zero_kv_rows_from(bfloat16 *V, int32_t row) {
   bfloat16 *__restrict band = V + (row / KV_KEYS) * KV_ROW;
   if (row % KV_KEYS) {
     const auto stale =
-        aie::ge(aie::load_v<KV_TILE>(sm_lane_idx),
-                aie::broadcast<int16_t, KV_TILE>((row % KV_KEYS) * 8));
+        aie::mask<KV_TILE>::from_uint64(~uint64_t(0) << (row % KV_KEYS) * 8);
     bfloat16 *__restrict p = band;
     for (int32_t j = 0; j < DIM_K / 8; j++, p += KV_TILE)
       aie::store_v(p, aie::select(aie::load_v<KV_TILE>(p), zeros, stale));
@@ -1817,9 +1816,8 @@ attend(Scores scores, bfloat16 *KV, const float *QR, float *O, score_t *S,
 #else
     int32_t n = (kept_rows / 8) * 2 * BAND;
     if (kept_rows % 8) {
-      const auto keep =
-          aie::lt(aie::load_v<P_TILE>(sm_lane_idx),
-                  aie::broadcast<int16_t, P_TILE>(8 * (kept_rows % 8)));
+      const auto keep = aie::mask<P_TILE>::from_uint64(
+          (uint64_t(1) << (8 * (kept_rows % 8))) - 1);
       for (int32_t c = 0; c < S_TILES; c++, n += P_TILE)
         aie::store_v(P + n, aie::select(aie::zeros<bfloat16, P_TILE>(),
                                         aie::load_v<P_TILE>(P + n), keep));
