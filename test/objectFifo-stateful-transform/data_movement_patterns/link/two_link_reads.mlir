@@ -15,6 +15,28 @@
 // CHECK-DAG: aie.flow(%mem_tile_1_1, DMA : 0, %tile_1_2, DMA : 0)
 // CHECK-DAG: aie.buffer(%mem_tile_0_1) {sym_name = "in__cons0__buf0"} : memref<64xi32>
 // CHECK-DAG: aie.buffer(%mem_tile_1_1) {sym_name = "in__cons1__buf0"} : memref<64xi32>
+// CHECK-LABEL: aie.memtile_dma(%mem_tile_0_1)
+// CHECK:       aie.dma_start(S2MM, 0
+// CHECK:       aie.use_lock(%in__cons0__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf0 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.use_lock(%in__cons0__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf1 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.dma_start(MM2S, 0
+// CHECK:       aie.use_lock(%in__cons0__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf0 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.use_lock(%in__cons0__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf1 : memref<64xi32> offset = 0 len = 64)
+// CHECK-LABEL: aie.memtile_dma(%mem_tile_1_1)
+// CHECK:       aie.dma_start(S2MM, 0
+// CHECK:       aie.use_lock(%in__cons1__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf0 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.use_lock(%in__cons1__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf1 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.dma_start(MM2S, 0
+// CHECK:       aie.use_lock(%in__cons1__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf0 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.use_lock(%in__cons1__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf1 : memref<64xi32> offset = 0 len = 64)
 module @two_reads {
   aie.device(npu2) {
     %s = aie.tile(0, 0)
@@ -51,6 +73,27 @@ module @two_reads {
 // CHECK-DAG: aie.flow(%shim_noc_tile_0_0, DMA : 0, %mem_tile_0_1, DMA : 1)
 // CHECK-DAG: aie.flow(%mem_tile_0_1, DMA : 0, %tile_0_2, DMA : 0)
 // CHECK-DAG: aie.flow(%mem_tile_0_1, DMA : 1, %tile_1_2, DMA : 0)
+// CHECK-LABEL: aie.memtile_dma(%mem_tile_0_1)
+// CHECK:       aie.dma_start(S2MM, 0
+// CHECK:       aie.use_lock(%in__cons0__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf0 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.use_lock(%in__cons0__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf1 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.dma_start(S2MM, 1
+// CHECK:       aie.use_lock(%in__cons1__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf0 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.use_lock(%in__cons1__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf1 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.dma_start(MM2S, 0
+// CHECK:       aie.use_lock(%in__cons0__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf0 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.use_lock(%in__cons0__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf1 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.dma_start(MM2S, 1
+// CHECK:       aie.use_lock(%in__cons1__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf0 : memref<64xi32> offset = 0 len = 64)
+// CHECK:       aie.use_lock(%in__cons1__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf1 : memref<64xi32> offset = 0 len = 64)
 module @two_reads_one_tile {
   aie.device(npu2) {
     %s = aie.tile(0, 0)
@@ -171,20 +214,44 @@ module @two_joins {
 // CHECK-DAG: aie.flow(%mem_tile_1_1, DMA : 1, %tile_1_3, DMA : 0)
 // CHECK-LABEL: aie.memtile_dma(%mem_tile_0_1)
 // CHECK:       aie.dma_start(S2MM, 0
-// CHECK:       aie.dma_bd(%[[IN0]] : memref<32xi32> offset = 0 len = 16)
-// CHECK:       aie.dma_bd(%[[IN0]] : memref<32xi32> offset = 16 len = 16)
+// CHECK:       aie.use_lock(%in__cons0__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf0 : memref<32xi32> offset = 0 len = 16)
+// CHECK:       aie.use_lock(%in__cons0__prodlock1, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf0 : memref<32xi32> offset = 16 len = 16)
+// CHECK:       aie.use_lock(%in__cons0__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf1 : memref<32xi32> offset = 0 len = 16)
+// CHECK:       aie.use_lock(%in__cons0__prodlock1, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf1 : memref<32xi32> offset = 16 len = 16)
 // CHECK:       aie.dma_start(MM2S, 0
-// CHECK:       aie.dma_bd(%[[IN0]] : memref<32xi32> offset = 0 len = 16)
+// CHECK:       aie.use_lock(%in__cons0__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf0 : memref<32xi32> offset = 0 len = 16)
+// CHECK:       aie.use_lock(%in__cons0__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf1 : memref<32xi32> offset = 0 len = 16)
 // CHECK:       aie.dma_start(MM2S, 1
-// CHECK:       aie.dma_bd(%[[IN0]] : memref<32xi32> offset = 16 len = 16)
+// CHECK:       aie.use_lock(%in__cons0__conslock1, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf0 : memref<32xi32> offset = 16 len = 16)
+// CHECK:       aie.use_lock(%in__cons0__conslock1, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons0__buf1 : memref<32xi32> offset = 16 len = 16)
 // CHECK-LABEL: aie.memtile_dma(%mem_tile_1_1)
 // CHECK:       aie.dma_start(S2MM, 0
-// CHECK:       aie.dma_bd(%[[IN1]] : memref<32xi32> offset = 0 len = 16)
-// CHECK:       aie.dma_bd(%[[IN1]] : memref<32xi32> offset = 16 len = 16)
+// CHECK:       aie.use_lock(%in__cons1__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf0 : memref<32xi32> offset = 0 len = 16)
+// CHECK:       aie.use_lock(%in__cons1__prodlock1, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf0 : memref<32xi32> offset = 16 len = 16)
+// CHECK:       aie.use_lock(%in__cons1__prodlock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf1 : memref<32xi32> offset = 0 len = 16)
+// CHECK:       aie.use_lock(%in__cons1__prodlock1, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf1 : memref<32xi32> offset = 16 len = 16)
 // CHECK:       aie.dma_start(MM2S, 0
-// CHECK:       aie.dma_bd(%[[IN1]] : memref<32xi32> offset = 0 len = 16)
+// CHECK:       aie.use_lock(%in__cons1__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf0 : memref<32xi32> offset = 0 len = 16)
+// CHECK:       aie.use_lock(%in__cons1__conslock0, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf1 : memref<32xi32> offset = 0 len = 16)
 // CHECK:       aie.dma_start(MM2S, 1
-// CHECK:       aie.dma_bd(%[[IN1]] : memref<32xi32> offset = 16 len = 16)
+// CHECK:       aie.use_lock(%in__cons1__conslock1, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf0 : memref<32xi32> offset = 16 len = 16)
+// CHECK:       aie.use_lock(%in__cons1__conslock1, AcquireGreaterEqual
+// CHECK-NEXT:  aie.dma_bd(%in__cons1__buf1 : memref<32xi32> offset = 16 len = 16)
 module @two_distributes {
   aie.device(npu2) {
     %s = aie.tile(0, 0)
