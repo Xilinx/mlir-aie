@@ -1481,7 +1481,9 @@ def mha(
             cache holds them, in ``QK^T``'s B tiling (``b_col_maj``), so one
             stream carries both; ``S`` and ``P``, ``dim_m`` by ``dim_n`` each,
             hold the scores (float32 with ``f32_scores``) and the weights.
-            AIE2 only; ``accurate_exp2`` only with ``f32_scores``.
+            On AIE2, ``accurate_exp2`` only with ``f32_scores``; on AIE2P,
+            bf16 scores with ``accurate_exp2`` (the pipeline's) and no
+            ``pair``.
         group: Each position's query heads a block packs, position-major:
             row ``i`` is at the block's first position plus ``i // group``.
             ``dim_m`` is whole positions of it.
@@ -1535,10 +1537,11 @@ def mha(
             without ``fused`` and ``f32_scores`` or with a ``group`` or
             ``packed``, or ``pair`` without ``fused``, with ``kv_heads`` or
             ``relative_band``, or at a ``dim_k`` not a multiple of 32.
-        NotImplementedError: ``fused`` off AIE2, or in an
-            ``AIE_KERNELS_PORTABLE`` build; ``kv_heads`` other than 1, 2, 4
-            or 8, or ``pair`` with bf16 scores at 8 rows, which Peano's
-            backend cannot build.
+        NotImplementedError: ``fused`` off AIE2 and AIE2P, in an
+            ``AIE_KERNELS_PORTABLE`` build, or on AIE2P with ``f32_scores``,
+            without ``accurate_exp2`` or with ``pair``; ``kv_heads`` other
+            than 1, 2, 4 or 8, or ``pair`` with bf16 scores at 8 rows, which
+            Peano's backend cannot build.
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
@@ -1546,7 +1549,8 @@ def mha(
         raise ValueError("mha: fused returns its own entry, not pv's")
     if fused and not b_col_maj:
         raise ValueError("mha: fused is QK^T on K as stored, so it needs b_col_maj")
-    if fused and accurate_exp2 and not f32_scores:
+    arch = _tuned_arch()
+    if fused and arch == "aie2" and accurate_exp2 and not f32_scores:
         raise ValueError("mha: fused takes the accurate exponential over f32_scores")
     if soft_cap is not None and not (fused and f32_scores):
         raise ValueError("mha: soft_cap is the fused block's, over f32_scores")
@@ -1562,8 +1566,13 @@ def mha(
             "mha: pair is the fused block's, one KV head, no relative band, "
             f"over two halves of dim_k that are multiples of 16, got {dim_k}"
         )
-    if fused and _tuned_arch() != "aie2":
-        raise NotImplementedError("mha: fused is written for tuned AIE2 only")
+    if fused and arch not in ("aie2", "aie2p"):
+        raise NotImplementedError("mha: fused is written for tuned AIE2 and AIE2P")
+    if fused and arch == "aie2p" and (f32_scores or not accurate_exp2 or pair):
+        raise NotImplementedError(
+            "mha: fused on AIE2P takes bf16 scores and accurate_exp2, the "
+            "pipeline's, and no pair"
+        )
     if kv_heads < 1:
         raise ValueError(f"mha: kv_heads must be at least 1, got {kv_heads}")
     if kv_heads > 1 and not fused:
@@ -1855,13 +1864,15 @@ def _mha_fused(
     The contract's call attends a ``_FusedBlock``, with ``kv_heads`` the first
     head's keys.
     """
-    mac = (4, 8, 4)
-    qk = mm_stream_dims(dim_m, dim_k, dim_n, mac, b_col_maj=True)
-    pv = mm_stream_dims(dim_m, dim_n, dim_k, mac)
+    qk_mac = _MhaFactory.mac_dims()
+    pv_mac = _MhaFactory.mac_dims(pv=True)
+    qk = mm_stream_dims(dim_m, dim_k, dim_n, qk_mac, b_col_maj=True)
+    pv = mm_stream_dims(dim_m, dim_n, dim_k, pv_mac)
     # Each key's K row, then its V row, as a paired cache holds them, in
-    # QK^T's B tiling: (4, 8) tiles of 4 keys by 8 columns.
+    # QK^T's B tiling: tiles of its t keys by 8 columns.
     width = 2 * dim_k * kv_heads
-    kv_stream = TensorAccessPattern.full((dim_n, width)).tile((4, 8))
+    kv_tile = (qk_mac[2], qk_mac[1])
+    kv_stream = TensorAccessPattern.full((dim_n, width)).tile(kv_tile)
 
     block = _FusedBlock.of(dim_m, dim_k, dim_n, group, accurate_exp2, soft_cap)
     block_terms = partial(
@@ -1941,10 +1952,10 @@ def _mha_fused(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=(
-                _tile_layout((dim_m, dim_k), qk.A, block=mac[:2]),
-                _tile_layout((dim_n, width), kv_stream, block=(4, 8)),
+                _tile_layout((dim_m, dim_k), qk.A, block=qk_mac[:2]),
+                _tile_layout((dim_n, width), kv_stream, block=kv_tile),
                 *[None] * len(qr),
-                _tile_layout((dim_m, dim_k), pv.C, inverse=True, block=mac[::2]),
+                _tile_layout((dim_m, dim_k), pv.C, inverse=True, block=pv_mac[::2]),
                 *([None] * 7),
             ),
             roles=(In, In, *[In] * len(qr), InOut, *([Param] * 7)),

@@ -1812,6 +1812,10 @@ def _run_pipeline(q, k, v, n_kv, **shape):
         (1, 4, 2 * _B, 2 * _B, _B, 32, _B, 0, {}),
         # Llama 3.2 3B's and a d=256 layer's, key and query tails mid-block.
         (2, 3, 96, 90, 32, 32, 128, 0, {}),
+        # Llama 3.2 3B's on npu2: 24 queries, a group of 3 heads each of 8
+        # positions, over 32-key blocks; the diagonal and the key tail in
+        # the last two.
+        (2, 3, 72, 70, 24, 32, 128, 0, {}),
         (5, 6, 90, 85, 16, 16, 256, 0, {}),
         # Queries from mid-block, then rows past s_q_eff.
         (1, 2, 64, 74, 32, 64, 64, 10, {}),
@@ -1825,8 +1829,8 @@ def _run_pipeline(q, k, v, n_kv, **shape):
 )
 @pytest.mark.parametrize(
     "f32_scores,accurate_exp2",
-    [(False, False), (True, False), (True, True)],
-    ids=["bf16_scores", "f32_scores", "f32_scores_accurate"],
+    [(False, False), (True, False), (True, True), (False, True)],
+    ids=["bf16_scores", "f32_scores", "f32_scores_accurate", "bf16_scores_accurate"],
 )
 def test_attend_block_is_the_pipeline_bit_for_bit(
     q_block,
@@ -1842,8 +1846,12 @@ def test_attend_block_is_the_pipeline_bit_for_bit(
     accurate_exp2,
 ):
     """``attend_block`` on one core gives the three-core pipeline's O, bit for bit, and masked attention's."""
-    if resolve_target_arch(iron.get_current_device()) != "aie2":
-        pytest.skip("mha.cc's fused block is written for AIE2")
+    aie2p = resolve_target_arch(iron.get_current_device()) == "aie2p"
+    if aie2p != (accurate_exp2 and not f32_scores):
+        pytest.skip(
+            "AIE2P's fused block takes bf16 scores with the accurate exp2 only, "
+            "and AIE2's not that pair"
+        )
     band = {**dict(causal=True, window=0, packed=False, group=1), **band}
     shape = dict(
         f32_scores=f32_scores,
@@ -1910,14 +1918,13 @@ def test_packed_rows_attend_as_their_heads_alone():
     One query block of 32 positions per head unpacked, against four blocks
     of 8 positions x 4 heads packed, over the same keys.
     """
-    if resolve_target_arch(iron.get_current_device()) != "aie2":
-        pytest.skip("mha.cc's fused block is written for AIE2")
+    accurate_exp2 = resolve_target_arch(iron.get_current_device()) == "aie2p"
     heads, b_q, b_kv, d, n_kv, q_block = 4, 32, 64, 64, 2, 3
     s_eff = n_kv * b_kv
     rng = np.random.default_rng(20261102)
     q = _dyadic(rng, (heads, b_q, d), 0.25, mag=2)
     _, k, v = _fused_case_data(q_block, n_kv, s_eff, b_q, b_kv, d, False, 1, 0)
-    band = dict(causal=True, window=0, packed=False)
+    band = dict(causal=True, window=0, packed=False, accurate_exp2=accurate_exp2)
     alone = [
         _run_fused(
             q[h],
@@ -1974,8 +1981,6 @@ def test_packed_rows_attend_as_their_heads_alone():
 )
 def test_attend_head_is_its_head_alone(n_kv, s_kv_eff, b_kv, d, band):
     """``attend_head`` on each head of blocks holding two KV heads gives ``attend_block`` on that head's keys alone, bit for bit."""
-    if resolve_target_arch(iron.get_current_device()) != "aie2":
-        pytest.skip("mha.cc's fused block is written for AIE2")
     band = {**dict(causal=True, window=0, packed=False, group=1), **band}
     b_q, heads = 8, 2
     q_block = 0 if band["packed"] else -(-s_kv_eff // b_q)
@@ -1987,6 +1992,7 @@ def test_attend_head_is_its_head_alone(n_kv, s_kv_eff, b_kv, d, band):
         b_kv=b_kv,
         d=d,
         offset=0,
+        accurate_exp2=resolve_target_arch(iron.get_current_device()) == "aie2p",
         **band,
     )
     data = [

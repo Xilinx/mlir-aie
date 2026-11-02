@@ -3197,6 +3197,26 @@ CASES += [
         )
         for b_q, d, b_kv in ((32, 64, 64), (32, 128, 32), (16, 256, 16))
     ],
+    # ...and on npu2, with the accurate exponential the AIE2P pipeline takes,
+    # at Llama 3.2 1B's and 3B's blocks there.
+    *[
+        Case(
+            "mha",
+            dict(
+                dim_m=b_q,
+                dim_k=d,
+                dim_n=b_kv,
+                b_col_maj=True,
+                fused=True,
+                accurate_exp2=True,
+            ),
+            calls=4,
+            tag=f"iron-fused-accurate-d{d}",
+            smoke=d == 64,
+            devices=("npu2",),
+        )
+        for b_q, d, b_kv in ((32, 64, 64), (24, 128, 32))
+    ],
     # ...and over float32 scores, at Llama 3.2 1B's and 3B's blocks.
     *[
         Case(

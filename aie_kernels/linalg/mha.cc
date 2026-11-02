@@ -242,7 +242,14 @@ static void scale_blocked_rows(const float *O, bfloat16 *out,
 // Scales O's rows in place by the running max's correction, exact in bf16, so
 // only O is split. A row whose max held, a factor of exactly 1, keeps its O:
 // through the limbs, an O just below a power of two can lose its last bit.
-static void rescale_running_O(float *O, const float *alpha, int32_t rows) {
+#if AIE_ARCH_AIE2
+static void
+#else
+// Inlined, as in matmul_PV before attend_block also called it: outlined, it
+// changed the composed P*V core's code.
+static inline __attribute__((always_inline)) void
+#endif
+rescale_running_O(float *O, const float *alpha, int32_t rows) {
   using Acc64 = aie::accum<accfloat, VECTOR_LENGTH>;
   // Most key blocks move no row's max: one compare over the block's every
   // factor before the row groups'.
@@ -717,8 +724,13 @@ partial_softmax_rows(T *__restrict A, bfloat16 *__restrict P,
   }
 }
 
-#if AIE_TUNED_AIE2 && (!defined(EXP2_BF16_ACCURATE) || defined(MHA_F32_SCORES))
+#if (AIE_TUNED_AIE2 &&                                                         \
+     (!defined(EXP2_BF16_ACCURATE) || defined(MHA_F32_SCORES))) ||             \
+    (AIE_TUNED_AIE2P && defined(EXP2_BF16_ACCURATE) &&                         \
+     !defined(MHA_F32_SCORES) &&                                               \
+     !defined(AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16))
 #define MHA_FUSED 1
+#if AIE_ARCH_AIE2
 // The fused block's softmax: partial_softmax_rows over S as QK^T leaves it,
 // (4, 4) tiles in row-major tile order, writing P as P*V reads it, (4, 8)
 // tiles, each the two S tiles it covers; P apart from S, so the exponentials
@@ -994,18 +1006,186 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
                              t.template extract<SM_ROWS>(0), live(g)));
   }
 }
+#else
+// The fused block's softmax on AIE2P: S as QK^T leaves it, (4, 8) tiles in
+// row-major tile order, and P as P*V reads it, (8, 8) tiles, each the two S
+// tiles above one another, so a P tile is an 8-row group's 8 keys. P and the
+// state are partial_softmax_rows' bit for bit, as on AIE2.
+static constexpr int32_t S_TILE = 32;
+static constexpr int32_t P_TILE = 64;
+static constexpr int32_t BAND = 4 * ROW;
+static constexpr int32_t S_TILES = ROW / 8;
+static_assert(PV_R == 8 && PV_S == 8,
+              "a P tile is two S tiles, one above the other");
+
+alignas(64) static const int16_t s_tile_key[S_TILE] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7,
+    0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};
+
+static void
+partial_softmax_tiles(bfloat16 *__restrict S, bfloat16 *__restrict P,
+                      const float *__restrict m_prev, float *__restrict m_new,
+                      float *__restrict l_new, int32_t rows, int32_t valid_cols,
+                      int32_t diagonal, bfloat16 scale) {
+  const auto lowest =
+      aie::broadcast<bfloat16, S_TILE>(std::numeric_limits<bfloat16>::lowest());
+  auto fold_max = [](auto a, auto b, unsigned step) {
+    auto [lo, hi] = aie::interleave_unzip(a, b, step);
+    return aie::max(lo, hi);
+  };
+  auto fold_add = [](auto a, auto b, unsigned step) {
+    auto [lo, hi] = aie::interleave_unzip(a, b, step);
+    return aie::add(aie::accum<accfloat, decltype(a)::size()>(lo), hi)
+        .template to_vector<float>();
+  };
+  auto live = [rows](int32_t g) {
+    int32_t n = rows - g >= SM_ROWS ? SM_ROWS : rows - g > 0 ? rows - g : 0;
+    return aie::mask<SM_ROWS>::from_uint32((1u << n) - 1);
+  };
+
+  // Lanes a row discards, and a padded row's every lane, hold lowest from
+  // here on, as partial_softmax and band_mask leave them.
+  if ((BAND_AHEAD && diagonal + AHEAD < ROW - 1) || valid_cols < ROW ||
+      (BAND_BEHIND &&
+       (MHA_PACKED ? 0 : (DIM_M - 1) / MHA_GROUP) + diagonal > MHA_WINDOW) ||
+      rows < DIM_M) {
+    const auto key0 = aie::load_v<S_TILE>(s_tile_key);
+    const auto eight = aie::broadcast<int16_t, S_TILE>(8);
+    for (int32_t b = 0; b < DIM_M / 4; b++) {
+      int16_t end[4], start[4];
+      for (int32_t r = 0; r < 4; r++) {
+        const int32_t i = b * 4 + r;
+        const int32_t pos = MHA_PACKED ? 0 : i / MHA_GROUP;
+        int32_t e = valid_cols;
+        if (BAND_AHEAD && pos + diagonal + AHEAD + 1 < e)
+          e = pos + diagonal + AHEAD + 1;
+        end[r] = i < rows ? e : 0;
+        start[r] = BAND_BEHIND ? pos + diagonal - MHA_WINDOW : 0;
+      }
+      // Each against the tile's first key, which steps by 8.
+      auto end_v = aie::concat(aie::broadcast<int16_t, 8>(end[0]),
+                               aie::broadcast<int16_t, 8>(end[1]),
+                               aie::broadcast<int16_t, 8>(end[2]),
+                               aie::broadcast<int16_t, 8>(end[3]));
+      auto start_v = aie::concat(aie::broadcast<int16_t, 8>(start[0]),
+                                 aie::broadcast<int16_t, 8>(start[1]),
+                                 aie::broadcast<int16_t, 8>(start[2]),
+                                 aie::broadcast<int16_t, 8>(start[3]));
+      bfloat16 *__restrict t = S + b * BAND;
+      for (int32_t c = 0; c < S_TILES; c++, t += S_TILE) {
+        aie::mask<S_TILE> drop = aie::ge(key0, end_v);
+        if constexpr (BAND_BEHIND)
+          drop = drop | aie::lt(key0, start_v);
+        aie::store_v(t, aie::select(aie::load_v<S_TILE>(t), lowest, drop));
+        end_v = aie::sub(end_v, eight);
+        start_v = aie::sub(start_v, eight);
+      }
+    }
+  }
+
+  // Each row's maximum, of the unscaled scores, an 8-row group (two bands)
+  // at a time, and each band's over its rows' 8 lanes of an S tile; then
+  // each row's eight times over, as a P tile's lanes take it.
+  alignas(64) bfloat16 m_tiles[DIM_M * 8];
+  MHA_GROUP_LOOP
+  for (int32_t g = 0; g < DIM_M; g += SM_ROWS) {
+    aie::accum<accfloat, SM_ROWS> prev, kept;
+    prev.from_vector(aie::load_v<SM_ROWS>(m_prev + g));
+    kept.from_vector(aie::load_v<SM_ROWS>(m_new + g));
+    aie::vector<bfloat16, S_TILE> band_max[2];
+    AIE_LOOP_UNROLL_FULL
+    for (int32_t h = 0; h < 2; h++) {
+      const bfloat16 *__restrict t = S + (g / 4 + h) * BAND;
+      auto mx = aie::load_v<2 * S_TILE>(t);
+      AIE_LOOP_UNROLL_FULL
+      for (int32_t c = 2; c < S_TILES; c += 2)
+        mx = aie::max(mx, aie::load_v<2 * S_TILE>(t + c * S_TILE));
+      band_max[h] = aie::max(mx.template extract<S_TILE>(0),
+                             mx.template extract<S_TILE>(1));
+    }
+    const auto quads = fold_max(band_max[0], band_max[1], 4);
+    const auto pairs = fold_max(quads, quads, 2);
+    const aie::vector<bfloat16, SM_ROWS> o =
+        fold_max(pairs, pairs, 1).template extract<SM_ROWS>(0);
+    const auto m =
+        aie::select(kept.to_vector<bfloat16>(),
+                    aie::max(aie::max(lowest.template extract<SM_ROWS>(0), o),
+                             prev.to_vector<bfloat16>()),
+                    live(g));
+    aie::store_v(m_new + g,
+                 aie::accum<accfloat, SM_ROWS>(m).to_vector<float>());
+    const auto [m2_lo, m2_hi] = aie::interleave_zip(m, m, 1);
+    const auto m2 = aie::concat(m2_lo, m2_hi);
+    const auto [m4_lo, m4_hi] = aie::interleave_zip(m2, m2, 2);
+    const auto m4 = aie::concat(m4_lo, m4_hi);
+    const auto [m8_lo, m8_hi] = aie::interleave_zip(m4, m4, 4);
+    aie::store_v(m_tiles + g * 8, aie::concat(m8_lo, m8_hi));
+  }
+
+  // Each P tile's exponentials, from the two S tiles it covers.
+  const auto s = aie::broadcast<bfloat16, P_TILE>(scale);
+  bfloat16 *__restrict w = P;
+  AIE_LOOP_MIN_ITERATION_COUNT(DIM_M / 8 * S_TILES)
+  for (int32_t i = 0; i < DIM_M / 8 * S_TILES; i++, w += P_TILE) {
+    const bfloat16 *__restrict t =
+        S + (i / S_TILES) * 2 * BAND + (i % S_TILES) * S_TILE;
+    const aie::accum<accfloat, P_TILE> x =
+        aie::msc(aie::mul(aie::concat(aie::load_v<S_TILE>(t),
+                                      aie::load_v<S_TILE>(t + BAND)),
+                          s),
+                 aie::load_v<P_TILE>(m_tiles + (i / S_TILES) * P_TILE), s);
+    aie::store_v(w, exp2_bf16(x.to_vector<float>()));
+  }
+
+  // Each row's sum over its P tiles, eight rows at a time, a P tile's upper
+  // and lower four apart: tiles half the row apart, then half that, to one
+  // tile, then lanes four, two and one apart.
+  MHA_GROUP_LOOP
+  for (int32_t g = 0; g < DIM_M; g += SM_ROWS) {
+    aie::vector<float, S_TILE> half[2];
+    AIE_LOOP_UNROLL_FULL
+    for (int32_t h = 0; h < 2; h++) {
+      const bfloat16 *__restrict t = P + g * ROW + h * S_TILE;
+      aie::vector<float, S_TILE> part[S_TILES / 2];
+      AIE_LOOP_UNROLL_FULL
+      for (int32_t k = 0; k < S_TILES / 2; k++)
+        part[k] = aie::add(aie::accum<accfloat, S_TILE>(
+                               aie::load_v<S_TILE>(t + k * P_TILE)),
+                           aie::load_v<S_TILE>(t + (k + S_TILES / 2) * P_TILE))
+                      .template to_vector<float>();
+      AIE_LOOP_UNROLL_FULL
+      for (int32_t n = S_TILES / 4; n > 0; n /= 2)
+        AIE_LOOP_UNROLL_FULL
+      for (int32_t k = 0; k < n; k++)
+        part[k] = aie::add(aie::accum<accfloat, S_TILE>(part[k]), part[k + n])
+                      .template to_vector<float>();
+      half[h] = part[0];
+    }
+    const auto quads = fold_add(half[0], half[1], 4);
+    const auto pairs = fold_add(quads.template extract<S_TILE / 2>(0),
+                                quads.template extract<S_TILE / 2>(1), 2);
+    const auto t = fold_add(pairs.template extract<SM_ROWS>(0),
+                            pairs.template extract<SM_ROWS>(1), 1);
+    aie::store_v(l_new + g,
+                 aie::select(aie::load_v<SM_ROWS>(l_new + g), t, live(g)));
+  }
+}
+#endif
 
 // The fused block's K and V come as one stream: each key's K row, then its
-// V row, in QK^T's B tiling, (4, 8) tiles of 4 keys by 8 columns. A group
-// of 4 keys is its DIM_K / 8 K tiles, then its V tiles; with MHA_KV_HEADS,
-// each of that many heads' in turn, a position's heads one run in a cache.
+// V row, in QK^T's B tiling, (KV_KEYS, 8) tiles of KV_KEYS keys by 8
+// columns, which on AIE2P is also P*V's V tiling. A group of KV_KEYS keys
+// is its DIM_K / 8 K tiles, then its V tiles; with MHA_KV_HEADS, each of
+// that many heads' in turn, a position's heads one run in a cache.
 #ifndef MHA_KV_HEADS
 #define MHA_KV_HEADS 1
 #endif
-static constexpr int32_t KV_TILE = 32;
+static constexpr int32_t KV_KEYS = AIE_ARCH_AIE2 ? 4 : 8;
+static constexpr int32_t KV_TILE = KV_KEYS * 8;
 static constexpr int32_t KV_PITCH = MHA_KV_HEADS * 2 * DIM_K / 8;
 static constexpr int32_t KV_ROW = KV_PITCH * KV_TILE;
 
+#if AIE_ARCH_AIE2
 // GEMM's P V, its (8, 4) B tile of 8 keys by 4 columns half the columns of
 // two such V tiles, which one unzip takes apart; each output tile takes the
 // same products in the same order as matmul_rowmaj's.
@@ -1087,6 +1267,35 @@ static void zero_kv_rows_from(bfloat16 *V, int32_t row) {
       aie::store_v(p, zeros);
   }
 }
+#else
+// matmul_rowmaj's P V, V's key groups KV_ROW apart.
+template <unsigned M, unsigned K, unsigned N>
+static void matmul_pv_kv(const bfloat16 *__restrict pA,
+                         const bfloat16 *__restrict pV, float *__restrict pC) {
+  mm_bf16_2x2_aie2p<M / PV_R, K / PV_S, N / PV_T, PV_R, PV_S, PV_T, false, true,
+                    KV_PITCH>(pA, pV, pC);
+}
+
+// zero_rows_from for V in the fused block's tiling.
+static void zero_kv_rows_from(bfloat16 *V, int32_t row) {
+  const auto zeros = aie::zeros<bfloat16, KV_TILE>();
+  bfloat16 *__restrict band = V + (row / KV_KEYS) * KV_ROW;
+  if (row % KV_KEYS) {
+    const auto stale =
+        aie::ge(aie::load_v<KV_TILE>(sm_lane_idx),
+                aie::broadcast<int16_t, KV_TILE>((row % KV_KEYS) * 8));
+    bfloat16 *__restrict p = band;
+    for (int32_t j = 0; j < DIM_K / 8; j++, p += KV_TILE)
+      aie::store_v(p, aie::select(aie::load_v<KV_TILE>(p), zeros, stale));
+    band += KV_ROW;
+  }
+  for (; band < V + DIM_N / KV_KEYS * KV_ROW; band += KV_ROW) {
+    bfloat16 *__restrict p = band;
+    for (int32_t j = 0; j < DIM_K / 8; j++, p += KV_TILE)
+      aie::store_v(p, zeros);
+  }
+}
+#endif
 #endif
 
 // V's rows from row on are keys past S_kv, which do not exist: their weights
@@ -1429,8 +1638,17 @@ void partial_softmax(score_t *A, bfloat16 *P, float *scale_buffer,
 // legalize a G_BITCAST of <16 x s16>.
 __attribute__((noinline)) static void qk_kv(const bfloat16 *Q,
                                             const bfloat16 *KV, score_t *S) {
+#if AIE_ARCH_AIE2
   matmul_aie2<score_t, DIM_M, DIM_K, DIM_N, is_b_row_maj, KV_PITCH, true>(Q, KV,
                                                                           S);
+#else
+  // Rolled, unlike matmul_bf16_bf16_wrapper's at DIM_K 64: starting C at 0
+  // unrolled spills 8.5 KB of stack and ran 572 cycles slower a 32x64x64
+  // block.
+  matmul_vectorized_2x2_mmul<bfloat16, score_t, DIM_M / 4, DIM_K / 8, DIM_N / 8,
+                             4, 8, 8, is_b_row_maj, true, false, KV_PITCH, true,
+                             false>(Q, KV, S);
+#endif
 }
 
 #ifdef MHA_REL_BAND
@@ -1539,6 +1757,7 @@ attend(Scores scores, bfloat16 *KV, const float *QR, float *O, score_t *S,
   if (kept_rows < B_q) {
     // An index, not a pointer carried from one loop to the next: Peano
     // fails to select a G_SEXT of the latter's 20-bit modifier.
+#if AIE_ARCH_AIE2
     int32_t n = (kept_rows / 4) * BAND;
     if (kept_rows % 4) {
       const auto keep =
@@ -1549,6 +1768,19 @@ attend(Scores scores, bfloat16 *KV, const float *QR, float *O, score_t *S,
     }
     for (; n < DIM_M * DIM_N; n += 2 * S_TILE)
       aie::store_v(P + n, aie::zeros<bfloat16, 2 * S_TILE>());
+#else
+    int32_t n = (kept_rows / 8) * 2 * BAND;
+    if (kept_rows % 8) {
+      const auto keep =
+          aie::lt(aie::load_v<P_TILE>(sm_lane_idx),
+                  aie::broadcast<int16_t, P_TILE>(8 * (kept_rows % 8)));
+      for (int32_t c = 0; c < S_TILES; c++, n += P_TILE)
+        aie::store_v(P + n, aie::select(aie::zeros<bfloat16, P_TILE>(),
+                                        aie::load_v<P_TILE>(P + n), keep));
+    }
+    for (; n < DIM_M * DIM_N; n += P_TILE)
+      aie::store_v(P + n, aie::zeros<bfloat16, P_TILE>());
+#endif
   }
   advance_state_w<STATE_W>(scale_buffer, B_q, inv_scale);
   pv_accumulate<true>(P, V, O, scale_buffer, B_q, first_iter, idx_buffer,
@@ -1648,8 +1880,8 @@ void attend_block(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
 void attend_head(bfloat16 *Q, bfloat16 *KV, float *O, score_t *S, bfloat16 *P,
                  float *scale_buffer, int32_t *idx_buffer, bfloat16 inv_scale,
                  int32_t S_q_eff, int32_t S_kv_eff, int32_t head) {
-  attend_block(Q, KV + head * 8 * DIM_K, O, S, P, scale_buffer, idx_buffer,
-               inv_scale, S_q_eff, S_kv_eff);
+  attend_block(Q, KV + head * 2 * KV_KEYS * DIM_K, O, S, P, scale_buffer,
+               idx_buffer, inv_scale, S_q_eff, S_kv_eff);
 }
 #endif
 
@@ -1660,8 +1892,8 @@ void keep_q(const bfloat16 *obj, bfloat16 *q, int32_t n) {
   event0();
   for (int32_t f = 0; f < n; f += 8) {
     const int32_t r = f / KV_W, c = f % KV_W;
-    aie::store_v(q + f, aie::load_v<8>(obj + (r / 4) * 4 * KV_W + (c / 8) * 32 +
-                                       (r % 4) * 8));
+    aie::store_v(q + f, aie::load_v<8>(obj + (r / KV_KEYS) * KV_KEYS * KV_W +
+                                       (c / 8) * KV_TILE + (r % KV_KEYS) * 8));
   }
   event1();
 }
