@@ -1789,6 +1789,7 @@ class _FusedBlock(NamedTuple):
     s_kv_eff: int
     scale: float
     weight: float
+    weight_note: str
 
     @classmethod
     def of(cls, dim_m, dim_k, dim_n, group, accurate_exp2, soft_cap):
@@ -1804,10 +1805,11 @@ class _FusedBlock(NamedTuple):
 
         Returns:
             The block's ``idx``, effective sizes, the call's scale (1 for
-            capped scores, which come in log2(e) units) and a weight's
+            capped scores, which come in log2(e) units), a weight's
             relative error: exp2_bf16.h's cubic with its bf16 store, 0.74% at
             worst on npu1, or the accurate exp2's bf16 store, and a cap's
-            float32 tanh, softmax's per unit of cap.
+            float32 tanh, softmax's per unit of cap; and where that error
+            comes from.
         """
         q_block = -(-2 * dim_n // (dim_m // group))
         scale = (
@@ -1818,19 +1820,19 @@ class _FusedBlock(NamedTuple):
         weight = (2.0**-8 if accurate_exp2 else 0.0075) + (
             soft_cap * _SOFT_CAP_ERR if soft_cap is not None else 0.0
         )
+        weight_note = (
+            "the accurate exp2's bf16 store"
+            if accurate_exp2
+            else "exp2_bf16.h cubic (0.74% at worst on npu1)"
+        ) + (", a cap's float32 tanh" if soft_cap is not None else "")
         return cls(
             np.array([1, q_block, 0], np.int32),
             (q_block + 1) * dim_m,
             2 * dim_n,
             scale,
             weight,
+            weight_note,
         )
-
-
-_FUSED_TOLERANCE_NOTE = (
-    "exp2_bf16.h cubic (0.74% at worst on npu1) or the accurate exp2's bf16 "
-    "store, float32 summation, a cap's float32 tanh"
-)
 
 
 def _mha_fused(
@@ -1961,12 +1963,17 @@ def _mha_fused(
                     (9, block.s_kv_eff),
                 )
             ),
-            reference=lambda q, kv, qr=None: block_terms(q, kv, qr)[0],
+            reference=(
+                (lambda q, kv, qr: block_terms(q, kv, qr)[0])
+                if relative_band
+                else (lambda q, kv: block_terms(q, kv)[0])
+            ),
             initializers=((2 + len(qr), partial(_zero_output, index=2 + len(qr))),),
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,
-                note=f"{_FUSED_TOLERANCE_NOTE}; the sample's scores are exact",
+                note=f"{block.weight_note}, float32 summation; the sample's "
+                "scores are exact",
             ),
             ops_per_call=4 * dim_m * dim_k * dim_n,
         ),
@@ -2076,8 +2083,8 @@ def _mha_pair(
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,
-                note=f"{_FUSED_TOLERANCE_NOTE}; the sample's partials and their "
-                "sum are exact",
+                note=f"{block.weight_note}, float32 summation; the sample's "
+                "partials and their sum are exact",
             ),
             ops_per_call=2 * dim_m * half * dim_n,
         ),
