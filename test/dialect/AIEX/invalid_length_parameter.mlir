@@ -230,3 +230,28 @@ aie.device(npu2) {
     }
   }
 }
+
+// -----
+
+// Deferring tile-coordinate checks must not accept AIE1 runtime lengths.
+aiex.scratchpad_parameter @n : i32
+aie.device(xcvc1902) {
+  %tile = aie.logical_tile<ShimNOCTile>(?, ?)
+  aie.shim_dma_allocation @dma(%tile, MM2S, 0)
+  aie.runtime_sequence(%arg0 : memref<4096xi32>) {
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_parameter is only supported on AIE2 and AIE2P devices}}
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @dma, length_parameter = @n, length_unit = 4 : i64} : memref<4096xi32>
+  }
+}
+
+// -----
+
+// The lowered state-table spelling has the same architecture restriction.
+aie.device(xcvc1902) {
+  %tile = aie.logical_tile<ShimNOCTile>(?, ?)
+  aie.shim_dma_allocation @dma(%tile, MM2S, 0)
+  aie.runtime_sequence(%arg0 : memref<4096xi32>) {
+    // expected-error @+1 {{'aiex.npu.dma_memcpy_nd' op length_parameter is only supported on AIE2 and AIE2P devices}}
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @dma, length_state_table_idx = 0 : ui8, length_unit = 4 : i64} : memref<4096xi32>
+  }
+}

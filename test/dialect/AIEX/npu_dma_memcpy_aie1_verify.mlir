@@ -105,6 +105,20 @@ module {
 
 // -----
 
+// The AIE1 target model permits only one execution of a pure repeat.
+module {
+  aie.device(xcvc1902) {
+    %tile = aie.tile(2, 0)
+    aie.shim_dma_allocation @dma (%tile, MM2S, 0)
+    aie.runtime_sequence(%arg0: memref<?xi32>) {
+      // expected-error@+1 {{repeat count 2 exceeds the [1:1] range.}}
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][2, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @dma} : memref<?xi32>
+    }
+  }
+}
+
+// -----
+
 // Linear transfers still bypass the ND wrap limit.
 module {
   aie.device(xcvc1902) {

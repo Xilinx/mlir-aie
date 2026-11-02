@@ -532,8 +532,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
         "runtime sizes/strides require a shim_dma_allocation to resolve the "
         "tile; none found.");
   AIE::TileOp tile = allocOp.getTileOp();
+  // Coordinate-dependent checks must wait until logical tiles are placed.
   if (!tile)
-    return emitOpError("shim DMA allocation must reference a valid TileOp");
+    return success();
   if (!targetModel.isShimNOCTile(tile.getCol(), tile.getRow()))
     return emitOpError(
         "runtime sizes/strides are only supported for shim NOC tile DMAs.");
@@ -740,16 +741,14 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // until metadata names a shim DMA allocation.
   if (!allocOp)
     return success();
-  auto tile = allocOp.getTile().getDefiningOp<AIE::TileOp>();
-  // Defer coordinate-dependent AIE1 checks until logical tiles are placed.
-  if (isAIE1 && !tile) {
-    if (hasLengthParameter)
+  auto tile = allocOp.getTileOp();
+  // Defer coordinate-dependent checks until logical tiles are placed.
+  if (!tile) {
+    if (isAIE1 && hasLengthParameter)
       return emitOpError("length_parameter is only supported on AIE2 and "
                          "AIE2P devices");
     return success();
   }
-  if (!tile)
-    return emitOpError("shim DMA allocation must reference a valid TileOp");
   int col = tile.getCol();
   int row = tile.getRow();
   if (hasLengthParameter &&
@@ -792,7 +791,8 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       });
   // aie-decompose-large-dma-bd leaves a transfer with a runtime length
   // alone, so it must be legal as written.
-  // AIE1 patterns must fit directly; the NPU decomposition pass is not used.
+  // AIE1 patterns must fit directly, even when the decomposition pass is
+  // scheduled: verification must not rely on it to legalize AIE1 transfers.
   if (!isAIE1 && !hasLengthParameter &&
       AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel, col,
                                        row, inputOffsets, inputSizes,
