@@ -1847,10 +1847,10 @@ def test_attend_block_is_the_pipeline_bit_for_bit(
 ):
     """``attend_block`` on one core gives the three-core pipeline's O, bit for bit, and masked attention's."""
     aie2p = resolve_target_arch(iron.get_current_device()) == "aie2p"
-    if aie2p != (accurate_exp2 and not f32_scores):
+    if aie2p != accurate_exp2 and (aie2p or not f32_scores):
         pytest.skip(
-            "AIE2P's fused block takes bf16 scores with the accurate exp2 only, "
-            "and AIE2's not that pair"
+            "AIE2P's fused block takes the accurate exp2 only, and AIE2's "
+            "takes it over f32 scores only"
         )
     band = {**dict(causal=True, window=0, packed=False, group=1), **band}
     shape = dict(
@@ -2672,8 +2672,6 @@ def test_split_keys_merged_are_masked_attention(
 ):
     """Attention split over keys and merged (``merge_partials``) is masked attention over them all."""
     aie2p = resolve_target_arch(iron.get_current_device()) == "aie2p"
-    if aie2p and f32_scores:
-        pytest.skip("AIE2P's fused block takes bf16 scores with the accurate exp2")
     band = {**dict(window=0, packed=False), **band}
     packed = band["packed"]
     # Unpacked, the queries sit past every key, as a decode step's do.

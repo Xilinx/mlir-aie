@@ -1482,8 +1482,8 @@ def mha(
             stream carries both; ``S`` and ``P``, ``dim_m`` by ``dim_n`` each,
             hold the scores (float32 with ``f32_scores``) and the weights.
             On AIE2, ``accurate_exp2`` only with ``f32_scores``; on AIE2P,
-            bf16 scores with ``accurate_exp2`` (the pipeline's) and no
-            ``pair``.
+            ``accurate_exp2`` (the pipeline's), and no ``pair``, ``soft_cap``
+            or ``relative_band``.
         group: Each position's query heads a block packs, position-major:
             row ``i`` is at the block's first position plus ``i // group``.
             ``dim_m`` is whole positions of it.
@@ -1538,8 +1538,9 @@ def mha(
             ``packed``, or ``pair`` without ``fused``, with ``kv_heads`` or
             ``relative_band``, or at a ``dim_k`` not a multiple of 32.
         NotImplementedError: ``fused`` off AIE2 and AIE2P, in an
-            ``AIE_KERNELS_PORTABLE`` build, or on AIE2P with ``f32_scores``,
-            without ``accurate_exp2`` or with ``pair``; ``kv_heads`` other
+            ``AIE_KERNELS_PORTABLE`` build, or on AIE2P without
+            ``accurate_exp2`` or with ``pair``, ``soft_cap`` or
+            ``relative_band``; ``kv_heads`` other
             than 1, 2, 4 or 8, or ``pair`` with bf16 scores at 8 rows, which
             Peano's backend cannot build.
     """
@@ -1568,10 +1569,14 @@ def mha(
         )
     if fused and arch not in ("aie2", "aie2p"):
         raise NotImplementedError("mha: fused is written for tuned AIE2 and AIE2P")
-    if fused and arch == "aie2p" and (f32_scores or not accurate_exp2 or pair):
+    if (
+        fused
+        and arch == "aie2p"
+        and (not accurate_exp2 or pair or soft_cap is not None or relative_band)
+    ):
         raise NotImplementedError(
-            "mha: fused on AIE2P takes bf16 scores and accurate_exp2, the "
-            "pipeline's, and no pair"
+            "mha: fused on AIE2P takes accurate_exp2, the pipeline's, and no "
+            "pair, soft_cap or relative_band"
         )
     if kv_heads < 1:
         raise ValueError(f"mha: kv_heads must be at least 1, got {kv_heads}")
