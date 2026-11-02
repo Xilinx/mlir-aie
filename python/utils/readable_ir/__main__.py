@@ -20,6 +20,8 @@ def main(argv=None) -> int:
     parser.add_argument("-o", "--output", help="Write here instead of stdout")
     args = parser.parse_args(argv)
     if args.input == "-":
+        if isinstance(sys.stdin, io.TextIOWrapper):
+            sys.stdin.reconfigure(encoding="utf-8")
         text = sys.stdin.read()
     else:
         with open(args.input, encoding="utf-8") as f:
