@@ -6,6 +6,7 @@
 """`python -m aie.utils.readable_ir FILE`: print FILE with locations as comments."""
 
 import argparse
+import io
 import sys
 
 from aie.utils.readable_ir import readable
@@ -29,7 +30,8 @@ def main(argv=None) -> int:
             f.write(result)
     else:
         # MLIR is UTF-8; a Windows console or pipe defaults to the ANSI code page.
-        sys.stdout.reconfigure(encoding="utf-8")
+        if isinstance(sys.stdout, io.TextIOWrapper):
+            sys.stdout.reconfigure(encoding="utf-8")
         sys.stdout.write(result)
     return 0
 
