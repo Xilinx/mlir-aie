@@ -28,12 +28,11 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-#include "llvm/ADT/APInt.h"
-
-#include <cstdint>
+#include <limits>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIESCFTOCONTROLFLOW
@@ -46,58 +45,22 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-constexpr uint64_t kEffectivelyInfiniteLoopBound = (uint64_t{1} << 32) - 1;
-
-static bool isConstantZero(Value value) {
-  auto constant = value.getDefiningOp<arith::ConstantOp>();
-  auto integer =
-      constant ? dyn_cast<IntegerAttr>(constant.getValue()) : IntegerAttr{};
-  return integer && integer.getValue().isZero();
-}
-
-static bool isConstantOne(Value value) {
-  auto constant = value.getDefiningOp<arith::ConstantOp>();
-  auto integer =
-      constant ? dyn_cast<IntegerAttr>(constant.getValue()) : IntegerAttr{};
-  return integer && integer.getValue().isOne();
-}
-
-static bool hasEffectivelyInfiniteBound(Value value) {
-  auto constant = value.getDefiningOp<arith::ConstantOp>();
-  auto integer =
-      constant ? dyn_cast<IntegerAttr>(constant.getValue()) : IntegerAttr{};
-  if (!integer)
-    return false;
-  const llvm::APInt &bound = integer.getValue();
-  return !bound.isNegative() && bound.getActiveBits() >= 32 &&
-         bound.getLimitedValue() >= kEffectivelyInfiniteLoopBound;
-}
-
-static bool isCounterFreeForeverLoopCandidate(scf::ForOp forOp) {
-  return forOp.getInitArgs().empty() && forOp.getInductionVar().use_empty() &&
-         isConstantZero(forOp.getLowerBound()) &&
-         isConstantOne(forOp.getStep()) &&
-         hasEffectivelyInfiniteBound(forOp.getUpperBound());
-}
-
 static void replaceWithCounterFreeLoop(scf::ForOp forOp) {
   OpBuilder builder(forOp);
-  Location loc = forOp.getLoc();
-  Block *forBody = forOp.getBody();
-  auto whileOp = builder.create<scf::WhileOp>(
-      loc, TypeRange{}, ValueRange{},
-      [&](OpBuilder &beforeBuilder, Location loc, ValueRange) {
-        Value trueValue = beforeBuilder.create<arith::ConstantIntOp>(loc, 1, 1);
-        beforeBuilder.create<scf::ConditionOp>(loc, trueValue, ValueRange{});
+  auto whileOp = scf::WhileOp::create(
+      builder, forOp.getLoc(), TypeRange{}, ValueRange{},
+      [](OpBuilder &b, Location loc, ValueRange) {
+        Value always = arith::ConstantIntOp::create(b, loc, 1, 1);
+        scf::ConditionOp::create(b, loc, always, ValueRange{});
       },
-      [&](OpBuilder &afterBuilder, Location loc, ValueRange) {
-        afterBuilder.create<scf::YieldOp>(loc, ValueRange{});
+      [](OpBuilder &b, Location loc, ValueRange) {
+        scf::YieldOp::create(b, loc, ValueRange{});
       });
+  Block *forBody = forOp.getBody();
   Block *after = whileOp.getAfterBody();
   after->getOperations().splice(after->getTerminator()->getIterator(),
                                 forBody->getOperations(), forBody->begin(),
                                 forBody->getTerminator()->getIterator());
-  forBody->eraseArgument(0);
   forOp.erase();
 }
 
@@ -107,10 +70,16 @@ struct AIESCFToControlFlowPass
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
+    // INT64_MAX iterations never finish, so dropping an unused counter keeps
+    // the loop's behaviour; a smaller bound such as 2^32-1 can be reached.
     SmallVector<scf::ForOp> foreverLoops;
     module.walk([&](scf::ForOp forOp) {
       if (forOp->getParentOfType<AIE::CoreOp>() &&
-          isCounterFreeForeverLoopCandidate(forOp))
+          forOp.getInitArgs().empty() && forOp.getInductionVar().use_empty() &&
+          isConstantIntValue(forOp.getLowerBound(), 0) &&
+          isConstantIntValue(forOp.getStep(), 1) &&
+          isConstantIntValue(forOp.getUpperBound(),
+                             std::numeric_limits<int64_t>::max()))
         foreverLoops.push_back(forOp);
     });
     for (scf::ForOp forOp : foreverLoops)
