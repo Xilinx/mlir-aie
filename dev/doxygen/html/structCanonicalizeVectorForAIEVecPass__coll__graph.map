@@ -1,7 +1,0 @@
-<map id="CanonicalizeVectorForAIEVecPass" name="CanonicalizeVectorForAIEVecPass">
-<area shape="rect" id="Node000001" title=" " alt="" coords="349,57,587,85"/>
-<area shape="rect" id="Node000002" href="$classPassWrapper.html" title=" " alt="" coords="5,5,233,67"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="248,46,351,58,346,60,248,52"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="39,92,199,119"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="214,94,324,84,345,84,351,84,325,89,214,100"/>
-</map>
