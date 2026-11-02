@@ -16,6 +16,7 @@
 // CHECK: aie.dma_bd({{.*}} {bd_id = 3 : i32}
 aie.device(npu2) {
   %tile = aie.tile(0, 0)
+  // expected-warning@+1 {{may exit with 1 DMA transfer(s) neither awaited nor freed}}
   aie.runtime_sequence @oldest_token_only(%buf: memref<256xi32>) {
     %oldest = aiex.dma_configure_task(%tile, MM2S, 0) {
       aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
@@ -31,6 +32,7 @@ aie.device(npu2) {
     } {issue_token = true}
     aiex.dma_start_task(%oldest)
     aiex.dma_start_task(%middle)
+    // expected-note@+1 {{first outstanding transfer starts here}}
     aiex.dma_start_task(%newest)
     aiex.dma_await_task(%newest)
     // expected-note@+1 {{released here}}

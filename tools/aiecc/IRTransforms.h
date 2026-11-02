@@ -1923,6 +1923,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
+  bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
@@ -1993,6 +1994,7 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
   bdIdOpts.reclaimBds = cli::reclaimRuntimeBds;
   bdIdOpts.warnUnsafeBdReuse = cli::warnUnsafeBdReuse;
+  bdIdOpts.warnUnreleasedTransfers = cli::warnUnreleasedTransfers;
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass(bdIdOpts));
   // Without region simplification; see getNpuDmaLoweringPipeline.
   mlir::GreedyRewriteConfig canonicalize;

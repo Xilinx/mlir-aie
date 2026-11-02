@@ -287,9 +287,6 @@ def AIEMaterializeRuntimeSequences
   }];
 
   let constructor = "xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass()";
-  let options = [Option<"analysisOnly", "analysis-only", "bool", "false",
-                        "Inline a schedule before resource allocation for "
-                        "analysis; the result is not executable IR">];
   let dependentDialects = ["xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
@@ -364,6 +361,11 @@ def AIEAssignRuntimeSequenceBDIDs
            "completion guarantee is later reused on the same tile. On by "
            "default; disable when completion is guaranteed through the compute "
            "core or another tile, which the runtime sequence cannot see.">,
+       Option<"warnUnreleasedTransfers", "warn-unreleased-transfers", "bool",
+              /*default=*/"true",
+              "Warn when a straight-line runtime sequence leaves DMA transfers "
+              "neither awaited nor freed. Completion established indirectly "
+              "through computation or other channels may not be visible.">,
        Option<"reclaimBds", "reclaim-bds", "bool",
               /*default=*/"false",
               "When a tile runs out of BD ids, take them back from a started "

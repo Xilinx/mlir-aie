@@ -10,7 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -19,17 +19,9 @@
 
 namespace xilinx::AIE {
 
-/// When the runtime sequences have each shim end's transfers in flight, so
-/// that ends never in flight together can take turns on one shim channel.
-/// Different runtime sequences never overlap (a dispatch finishes its
-/// transfers before the next starts). Within one, a receiving end's transfers
-/// must all be awaited or freed before the other's first, and a loop spans
-/// its body; a sending end stays in flight to the end of its sequence, as a
-/// shim MM2S task reports itself complete before its words leave the shim.
-/// An optional configuration identity partitions lifetimes at materialized
-/// configuration boundaries and accounts for synchronized control packets.
-/// Ends are known by their symbolic identity, before or after allocation.
-/// The placer and objectFIFO allocation both decide by this, so they agree.
+/// Shim endpoint lifetimes, including calls to self-contained runtime
+/// sequences. MM2S transfers conservatively remain live until their sequence
+/// returns.
 class ShimTransferSpans {
 public:
   /// A shim end a runtime sequence transfers through.
@@ -46,6 +38,11 @@ public:
       DeviceOp device,
       llvm::function_ref<std::optional<End>(mlir::StringAttr)> endOf,
       mlir::StringAttr configuration = {});
+
+  ShimTransferSpans(
+      mlir::ModuleOp module,
+      llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf,
+      mlir::StringAttr configuration);
 
   /// Whether the ends of `a` and `b` are never in flight together.
   bool apart(mlir::StringAttr a, mlir::StringAttr b) const;
@@ -66,7 +63,14 @@ private:
     int64_t lastDone = -1;
     bool sends = false;
   };
-  llvm::SmallVector<llvm::DenseMap<mlir::StringAttr, Span>> spans;
+  void analyze(
+      mlir::Operation *root,
+      llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf,
+      mlir::StringAttr configuration);
+
+  llvm::DenseSet<mlir::StringAttr> used;
+  llvm::DenseSet<std::pair<mlir::StringAttr, mlir::StringAttr>> overlaps;
+  bool unknown = false;
 };
 
 } // namespace xilinx::AIE

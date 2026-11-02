@@ -92,6 +92,12 @@ inline cl::opt<bool> warnUnsafeBdReuse(
              "guarantee is later reused on the same tile (enabled by default)"),
     cl::init(true));
 
+inline cl::opt<bool> warnUnreleasedTransfers(
+    "warn-unreleased-transfers",
+    cl::desc("Warn when a runtime sequence leaves DMA transfers neither "
+             "awaited nor freed (enabled by default)"),
+    cl::init(true));
+
 inline cl::opt<bool> verifyEach(
     "verify-each",
     cl::desc("Verify the IR after every pass, not once per pass pipeline "

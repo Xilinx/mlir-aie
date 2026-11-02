@@ -682,8 +682,7 @@ struct AIEMaterializeRuntimeSequencesPass
       // Verify all runtime sequences before materialization
       for (AIE::RuntimeSequenceOp runtimeSequenceOp :
            deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
-        if (!analysisOnly &&
-            failed(runtimeSequenceOp.verifyBeforeMaterialization())) {
+        if (failed(runtimeSequenceOp.verifyBeforeMaterialization())) {
           return signalPassFailure();
         }
 
@@ -829,10 +828,4 @@ struct AIEMaterializeRuntimeSequencesPass
 std::unique_ptr<OperationPass<ModuleOp>>
 AIEX::createAIEMaterializeRuntimeSequencesPass() {
   return std::make_unique<AIEMaterializeRuntimeSequencesPass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>>
-AIEX::createAIEMaterializeRuntimeSequencesPass(
-    const AIEMaterializeRuntimeSequencesOptions &options) {
-  return std::make_unique<AIEMaterializeRuntimeSequencesPass>(options);
 }

@@ -9,7 +9,6 @@
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/PassManager.h"
 
 using namespace mlir;
@@ -29,41 +28,37 @@ struct AIECreateControlOverlayPass
   using Base::Base;
 
   LogicalResult sharingConstraints(ModuleOp module) {
-    IRMapping mapping;
-    OwningOpRef<ModuleOp> schedules = cast<ModuleOp>(module->clone(mapping));
     SmallVector<RouteEndpointOp> endpoints;
+    DenseMap<Operation *, StringAttr> keys;
     for (DeviceOp device : module.getOps<DeviceOp>())
       for (auto endpoint : device.getOps<RouteEndpointOp>()) {
         if (endpoint.getBundle() != WireBundle::DMA ||
             !endpoint.getTileLike().isShimTile())
           continue;
-        auto *copy = mapping.lookup(endpoint.getOperation());
-        copy->setAttr("aie.sharing_id",
-                      IntegerAttr::get(IntegerType::get(&getContext(), 32),
-                                       endpoints.size()));
+        keys[endpoint] =
+            StringAttr::get(&getContext(), std::to_string(endpoints.size()));
         endpoints.push_back(endpoint);
       }
-    PassManager materialize(&getContext());
-    // Inlined symbolic endpoints have no local routes in this analysis copy.
-    materialize.enableVerifier(false);
-    AIEMaterializeRuntimeSequencesOptions options;
-    options.analysisOnly = true;
-    materialize.addPass(createAIEMaterializeRuntimeSequencesPass(options));
-    if (failed(materialize.run(*schedules)))
-      return failure();
-
-    SmallVector<bool> seen(endpoints.size(), false),
-        blocked(endpoints.size(), false);
-    DenseSet<std::pair<unsigned, unsigned>> blockedPairs;
-    SmallVector<StringAttr> keys;
-    for (unsigned i = 0; i < endpoints.size(); ++i)
-      keys.push_back(StringAttr::get(&getContext(), std::to_string(i)));
     StringAttr config = StringAttr::get(&getContext(), "configuration");
-    for (DeviceOp device : schedules->getOps<DeviceOp>()) {
-      auto resolve =
-          [&](StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
-        auto endpoint = device.lookupSymbol<RouteEndpointOp>(symbol.getValue());
-        if (!endpoint) {
+    ShimTransferSpans spans(
+        module,
+        [&](DeviceOp device,
+            StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
+          if (auto endpoint =
+                  device.lookupSymbol<RouteEndpointOp>(symbol.getValue())) {
+            auto key = keys.lookup(endpoint);
+            if (!key)
+              return std::nullopt;
+            auto direction = endpoint.getRouteDirection();
+            ShimTransferSpans::End end{key, direction == DMAChannelDir::MM2S};
+            if (auto channel = endpoint.getChannelIndex())
+              if (auto tile =
+                      dyn_cast<TileOp>(endpoint.getTile().getDefiningOp()))
+                end.channel =
+                    std::make_tuple(tile.colIndex(), tile.rowIndex(),
+                                    static_cast<int>(direction), *channel);
+            return end;
+          }
           auto alloc =
               device.lookupSymbol<ShimDMAAllocationOp>(symbol.getValue());
           AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
@@ -75,42 +70,16 @@ struct AIECreateControlOverlayPass
                               alloc.getTileOp().rowIndex(),
                               static_cast<int>(alloc.getChannelDir()),
                               static_cast<int>(alloc.getChannelIndex()))};
-        }
-        auto id = endpoint->getAttrOfType<IntegerAttr>("aie.sharing_id");
-        if (!id)
-          return std::nullopt;
-        auto direction = endpoints[id.getInt()].getRouteDirection();
-        ShimTransferSpans::End end{keys[id.getInt()],
-                                   direction == DMAChannelDir::MM2S};
-        if (auto channel = endpoint.getChannelIndex()) {
-          auto tile = dyn_cast<TileOp>(endpoint.getTile().getDefiningOp());
-          if (tile)
-            end.channel =
-                std::make_tuple(tile.colIndex(), tile.rowIndex(),
-                                static_cast<int>(direction), *channel);
-        }
-        return end;
-      };
-      ShimTransferSpans spans(device, resolve, config);
-      for (unsigned i = 0; i < endpoints.size(); ++i) {
-        auto key = keys[i];
-        if (spans.isUsed(key)) {
-          seen[i] = true;
-          blocked[i] = blocked[i] || !spans.apart(key, config);
-          for (unsigned j = i + 1; j < endpoints.size(); ++j)
-            if (spans.isUsed(keys[j]) && !spans.apart(key, keys[j]))
-              blockedPairs.insert({i, j});
-        }
-      }
-    }
-    for (auto [i, endpoint] : llvm::enumerate(endpoints)) {
+        },
+        config);
+    for (auto endpoint : endpoints) {
       SmallVector<Attribute> allowed;
-      for (auto [j, other] : llvm::enumerate(endpoints))
-        if (i != j && seen[i] && seen[j] &&
+      for (auto other : endpoints)
+        if (endpoint != other &&
             endpoint->getParentOp() == other->getParentOp() &&
             endpoint.getTile() == other.getTile() &&
             endpoint.getRouteDirection() == other.getRouteDirection() &&
-            !blockedPairs.contains({std::min(i, j), std::max(i, j)}))
+            spans.apart(keys.lookup(endpoint), keys.lookup(other)))
           allowed.push_back(FlatSymbolRefAttr::get(other.getSymNameAttr()));
       endpoint->setAttr("aie.shareable_with",
                         ArrayAttr::get(&getContext(), allowed));
@@ -121,8 +90,8 @@ struct AIECreateControlOverlayPass
         if (!alloc->hasAttr("aie.fixed") || !overlay.isAttrPresent(alloc))
           continue;
         SmallVector<Attribute> allowed;
-        for (auto [i, endpoint] : llvm::enumerate(endpoints))
-          if (shareChannels && seen[i] && !blocked[i] &&
+        for (auto endpoint : endpoints)
+          if (shareChannels && spans.apart(keys.lookup(endpoint), config) &&
               endpoint->getParentOp() == device &&
               endpoint.getTile() == alloc.getTile() &&
               endpoint.getRouteDirection() == alloc.getChannelDir())

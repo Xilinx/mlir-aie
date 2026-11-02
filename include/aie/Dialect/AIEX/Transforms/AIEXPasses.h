@@ -43,9 +43,6 @@ createAIEMaterializeBDChainsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEMaterializeRuntimeSequencesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIEMaterializeRuntimeSequencesPass(
-    const AIEMaterializeRuntimeSequencesOptions &options);
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEFuseTraceBuffersPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEResolveAddressPatchBuffersPass();

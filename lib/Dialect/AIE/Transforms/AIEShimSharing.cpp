@@ -21,7 +21,44 @@ using namespace xilinx::AIE;
 ShimTransferSpans::ShimTransferSpans(
     DeviceOp device, function_ref<std::optional<End>(StringAttr)> endOf,
     StringAttr configuration) {
-  for (auto sequence : device.getOps<RuntimeSequenceOp>()) {
+  analyze(
+      device,
+      [&](DeviceOp owner, StringAttr symbol) {
+        return owner == device ? endOf(symbol) : std::nullopt;
+      },
+      configuration);
+}
+
+ShimTransferSpans::ShimTransferSpans(
+    ModuleOp module,
+    function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf,
+    StringAttr configuration) {
+  analyze(module, endOf, configuration);
+}
+
+void ShimTransferSpans::analyze(
+    Operation *root,
+    function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf,
+    StringAttr configuration) {
+  using Ends = DenseSet<StringAttr>;
+  DenseMap<Operation *, Ends> summaries;
+  DenseSet<Operation *> active;
+  NamedOpTableCollection names;
+  auto conflict = [&](StringAttr a, StringAttr b) {
+    overlaps.insert({a, b});
+    overlaps.insert({b, a});
+  };
+  std::function<Ends(RuntimeSequenceOp)> summarize =
+      [&](RuntimeSequenceOp sequence) -> Ends {
+    if (active.contains(sequence)) {
+      unknown = true;
+      return {};
+    }
+    if (auto found = summaries.find(sequence); found != summaries.end())
+      return found->second;
+    active.insert(sequence);
+    DeviceOp device = sequence->getParentOfType<DeviceOp>();
+    Ends ends;
     DenseMap<Operation *, int64_t> position, end;
     int64_t next = 0;
     std::function<void(Operation *)> number = [&](Operation *op) {
@@ -33,21 +70,7 @@ ShimTransferSpans::ShimTransferSpans(
       end[op] = next - 1;
     };
     number(sequence);
-
-    // A dispatch begins after its configuration has been installed.
-    if (configuration) {
-      auto &initial = spans.emplace_back()[configuration];
-      initial.first = initial.last = initial.lastDone = 0;
-    }
-    size_t phase = spans.size();
-    spans.emplace_back();
-    DenseMap<std::tuple<int, int, int, int>, StringAttr> physicalEnds;
-    DenseMap<Value, AIEX::DMAConfigureTaskForOp> tasks;
-    DenseMap<StringAttr, unsigned> pendingConfiguration;
-    auto note = [&](Operation *op, StringAttr symbol, bool issues) {
-      std::optional<End> shimEnd = endOf(symbol);
-      if (!shimEnd)
-        return;
+    auto interval = [&](Operation *op) {
       int64_t from = position[op], to = position[op];
       for (Operation *parent = op->getParentOp(); parent != sequence;
            parent = parent->getParentOp())
@@ -55,6 +78,26 @@ ShimTransferSpans::ShimTransferSpans(
           from = position[parent];
           to = end[parent];
         }
+      return std::make_pair(from, to);
+    };
+
+    struct Call {
+      Ends ends;
+      int64_t first, last;
+      size_t phase;
+    };
+    SmallVector<Call> calls;
+    SmallVector<DenseMap<StringAttr, Span>> spans(1);
+    size_t phase = 0;
+    DenseMap<std::tuple<int, int, int, int>, StringAttr> physicalEnds;
+    DenseMap<Value, AIEX::DMAConfigureTaskForOp> tasks;
+    DenseMap<StringAttr, unsigned> pendingConfiguration;
+    auto note = [&](Operation *op, StringAttr symbol, bool issues) {
+      std::optional<End> shimEnd = endOf(device, symbol);
+      if (!shimEnd)
+        return;
+      ends.insert(shimEnd->fifo);
+      auto [from, to] = interval(op);
       if (shimEnd->channel)
         physicalEnds[*shimEnd->channel] = symbol;
       Span &span = spans[phase][shimEnd->fifo];
@@ -79,14 +122,33 @@ ShimTransferSpans::ShimTransferSpans(
       if (auto configure = tasks.lookup(task))
         note(op, configure.getAlloc().getRootReference(), issues);
     };
-    sequence.walk([&](Operation *op) {
+    sequence.walk<WalkOrder::PreOrder>([&](Operation *op) {
+      if (auto run = dyn_cast<AIEX::RunOp>(op)) {
+        if (auto callee = run.getCalleeRuntimeSequenceOp(&names)) {
+          Ends called = summarize(callee);
+          ends.insert(called.begin(), called.end());
+          auto [from, to] = interval(op);
+          calls.push_back({std::move(called), from, to, phase});
+        } else {
+          unknown = true;
+        }
+        return;
+      }
+      if (configuration && isa<AIEX::ConfigureOp>(op)) {
+        ends.insert(configuration);
+        auto [from, to] = interval(op);
+        calls.push_back({Ends{configuration}, from, to, phase});
+        return;
+      }
       if (configuration &&
           isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
               AIEX::NpuWriteTeardownOp>(op) &&
           op->getParentOp() == sequence) {
-        auto &boundary = spans.emplace_back()[configuration];
-        boundary.first = boundary.last = boundary.lastDone = position[op];
-        phase = spans.size();
+        ends.insert(configuration);
+        calls.push_back(
+            {Ends{configuration}, position[op], position[op], ++phase});
+        spans.emplace_back();
+        ++phase;
         spans.emplace_back();
         physicalEnds.clear();
         pendingConfiguration.clear();
@@ -95,10 +157,11 @@ ShimTransferSpans::ShimTransferSpans(
       if (configuration &&
           isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
               AIEX::NpuWriteTeardownOp, AIEX::NpuControlPacketOp>(op)) {
+        ends.insert(configuration);
         Span &span = spans[phase][configuration];
         span.first = std::min(span.first, position[op]);
-        // Control-packet lowering completes each batch with a sync before
-        // emitting the following non-packet operation.
+        // Control-packet lowering synchronizes each batch before the next
+        // non-packet operation.
         span.lastIssue = position[op] - 1;
         span.last = position[op];
         if (pendingConfiguration.empty())
@@ -135,38 +198,50 @@ ShimTransferSpans::ShimTransferSpans(
         noteTask(op, start.getTask(), true);
       else if (auto await = dyn_cast<AIEX::DMAAwaitTaskOp>(op))
         noteTask(op, await.getTask(), false);
-      // Freeing a task lets its BD ids be reused, which is only safe once its
-      // transfers are done.
       else if (auto free = dyn_cast<AIEX::DMAFreeTaskOp>(op))
         noteTask(op, free.getTask(), false);
     });
-  }
+
+    auto last = [](const Span &span) {
+      return !span.sends && span.lastDone > span.lastIssue
+                 ? span.last
+                 : std::numeric_limits<int64_t>::max();
+    };
+    for (const auto &byEnd : spans)
+      for (const auto &[a, x] : byEnd)
+        for (const auto &[b, y] : byEnd)
+          if (last(x) >= y.first && last(y) >= x.first)
+            conflict(a, b);
+    for (const Call &call : calls) {
+      // A call completes its own transfers, but cannot retire caller work.
+      for (const auto &[a, span] : spans[call.phase])
+        if (span.first <= call.last && last(span) >= call.first)
+          for (StringAttr b : call.ends)
+            conflict(a, b);
+      for (const Call &other : calls)
+        if (call.phase == other.phase && &call != &other &&
+            call.first <= other.last && other.first <= call.last)
+          for (StringAttr a : call.ends)
+            for (StringAttr b : other.ends)
+              conflict(a, b);
+    }
+    active.erase(sequence);
+    used.insert(ends.begin(), ends.end());
+    summaries[sequence] = ends;
+    return ends;
+  };
+  if (configuration)
+    used.insert(configuration);
+  root->walk([&](RuntimeSequenceOp sequence) { summarize(sequence); });
 }
 
 bool ShimTransferSpans::isUsed(StringAttr endpoint) const {
-  return llvm::any_of(
-      spans, [&](const auto &phase) { return phase.contains(endpoint); });
+  return used.contains(endpoint);
 }
 
 bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
-  if (a == b)
-    return false;
-  // An end no sequence names is driven some other way, so nothing is known
-  // about when it is in flight.
-  bool aUsed = false, bUsed = false;
-  for (auto &byFifo : spans) {
-    auto sa = byFifo.find(a), sb = byFifo.find(b);
-    aUsed |= sa != byFifo.end();
-    bUsed |= sb != byFifo.end();
-    if (sa == byFifo.end() || sb == byFifo.end())
-      continue;
-    auto before = [](const Span &x, const Span &y) {
-      return !x.sends && x.last < y.first && x.lastDone > x.lastIssue;
-    };
-    if (!before(sa->second, sb->second) && !before(sb->second, sa->second))
-      return false;
-  }
-  return aUsed && bUsed;
+  return !unknown && a != b && isUsed(a) && isUsed(b) &&
+         !overlaps.contains({a, b});
 }
 
 SmallVector<SmallVector<unsigned>>
