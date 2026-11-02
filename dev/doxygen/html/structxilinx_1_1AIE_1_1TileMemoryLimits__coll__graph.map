@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::TileMemoryLimits" name="xilinx::AIE::TileMemoryLimits">
+<area shape="rect" id="Node000001" title="A memtile is reached by DMA rather than by core vector load and store, so its bus width also covers t..." alt="" coords="22,128,234,156"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,72,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="32,46,34,76,42,103,55,116,73,127,68,128,52,120,38,106,28,77,31,51"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="181,5,256,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="216,46,207,78,191,106,177,120,160,130,158,125,174,115,187,103,202,76,212,50"/>
+</map>
