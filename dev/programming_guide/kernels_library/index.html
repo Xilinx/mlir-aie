@@ -4439,7 +4439,10 @@ or <code>CONV_*</code> defines retains their runtime bounds.
 <code>Out</code> is written, while <code>InOut</code>
 is read and written and requires a declared <code>initializers</code> entry. Its reference
 describes the result from that initial state. Initialization occurs on every
-independent call, not only the first.</p>
+independent call, not only the first. A tensor <code>Param</code> the kernel writes, such
+as attention's running state, declares an <code>initializers</code> entry too: its bound
+value is loaded once with the design, so without one a later run reads what the
+last run left.</p>
 <p>Multiple outputs are ordered by <code>contract.out_indices</code>. Their reference,
 output sizes and device dtypes are tuples; <code>output_dtype()</code> derives the latter
 from declarations. <code>judge</code> returns one aggregate verdict, false if any output
@@ -4553,7 +4556,8 @@ above picks it up.</p>
    A factory with more than one dtype lists them in <code>DTYPES["&lt;factory&gt;"]</code>
    above its definition.
    Bind fixed parameters explicitly with <code>parameter_bindings</code>, publish nontrivial
-   storage with <code>layouts</code>, and initialize <code>InOut</code> tiles with <code>initializers</code>.
+   storage with <code>layouts</code>, and initialize <code>InOut</code> tiles and written <code>Param</code>
+   buffers with <code>initializers</code>.
    Declare what the kernel's trace markers measure with <code>trace=</code>:
    <code>Trace.whole_call()</code> when one <code>event0()</code> before the work and one
    <code>event1()</code> after it bracket every call of the entry symbol, or
