@@ -468,6 +468,7 @@ _SHAPE_STATE = (
     "LEFT = ['-DA=1']\n"
     "RIGHT = ['-DB=1']\n"
     "TRIPLE = [LEFT, RIGHT, LEFT]\n"
+    "SHARED = {'left': LEFT, 'right': LEFT}\n"
     "\n"
     "\n"
     "def first_helper():\n"
@@ -479,6 +480,13 @@ _SHAPE_STATE = (
     "\n"
     "\n"
     "HELPERS = [first_helper, second_helper]\n"
+    "\n"
+    "\n"
+    "def act(x):\n"
+    "    return x\n"
+    "\n"
+    "\n"
+    "FLAG_BY_OP = {act: '-DRELU', 'plain': '-DPLAIN'}\n"
 )
 
 # Each entry: (what the generator reads, how the structure changes without
@@ -507,6 +515,16 @@ _SHAPE_MUTATIONS = [
         "helper-order",
         "[h.__name__ for h in shape_state.HELPERS]",
         lambda s: setattr(s, "HELPERS", [s.second_helper, s.first_helper]),
+    ),
+    (
+        "shared-subobject",
+        "shape_state.SHARED['left'][0]",
+        lambda s: s.LEFT.append("-DSHARED=1"),
+    ),
+    (
+        "function-keyed-mapping",
+        "shape_state.FLAG_BY_OP[shape_state.act]",
+        lambda s: setattr(s, "FLAG_BY_OP", {s.act: "-DRELU2"}),
     ),
 ]
 
@@ -565,6 +583,148 @@ def test_cache_key_covers_the_shape_of_a_read_container(
         sys.path.remove(str(tmp_path))
         sys.modules.pop("shape_design", None)
         sys.modules.pop("shape_state", None)
+
+
+def _doubling_chain_source(depth):
+    """Return a config chain source referencing its child twice per level."""
+    node = "TAIL"
+    for _ in range(depth):
+        node = "{'left': %s, 'right': %s}" % (node, node)
+    return "TAIL = ['-DLEAF=1']\nCHAIN = %s\n" % node
+
+
+def test_cache_key_walks_a_shared_graph_once(tmp_path):
+    """A config chain that references its child twice per level keys in bounded time.
+
+    Per-path walking made the work grow with the number of paths (2**depth
+    for the doubling chain), which the nesting bound never caps: depth 24
+    exceeds this test's own subprocess timeout walked per path. Each
+    object's content is now digested once per walk and memoized by id, so
+    the chain keys in milliseconds however much it shares -- and the
+    digest is content, so a fresh interpreter computes the same key.
+    """
+    depth = 24
+    (tmp_path / "chain_state.py").write_text(_doubling_chain_source(depth))
+    (tmp_path / "chain_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import chain_state\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void chain(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def chain(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "chain",\n'
+        '        object_file_name="chain.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=chain_state.CHAIN,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import chain_design
+
+        state = sys.modules["chain_state"]
+
+        def key():
+            return CompilableDesign(
+                chain_design.chain, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+        state.TAIL.append("-O2")
+        assert key() != before, "a shared leaf feeds every position it is read at"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("chain_design", None)
+        sys.modules.pop("chain_state", None)
+
+    # A fresh interpreter walks the same graph (the file on disk) with new
+    # ids and must land on the same key; walked per path this outlives the
+    # timeout (2**depth).
+    prog = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(tmp_path)!r})\n"
+        "import chain_design\n"
+        "from aie.utils.compile.jit.compilabledesign import CompilableDesign\n"
+        "print(CompilableDesign(\n"
+        "    chain_design.chain, compile_kwargs={'N': 64}\n"
+        ")._compute_cache_hash())\n"
+    )
+    fresh = subprocess.run(
+        [sys.executable, "-c", prog], capture_output=True, text=True, timeout=30
+    )
+    assert fresh.returncode == 0, fresh.stderr
+    assert fresh.stdout.strip() == before, "ids differ; the content must not"
+
+
+_CROSS_PROGRAM = """\
+import sys
+
+import numpy as np
+
+from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import CompileTime, In, Out
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
+
+
+def act(x):
+    return x
+
+
+FLAG_BY_OP = {act: '-DRELU', 'plain': '-DPLAIN'}
+OPS = [act]
+
+SOURCE = "void cross(int *a, int *b) {}"
+
+
+def cross(a: In, b: Out, *, N: CompileTime[int]):
+    ty = np.ndarray[(N,), np.dtype[np.int32]]
+    return ExternalFunction(
+        "cross",
+        object_file_name="cross.o",
+        source_string=SOURCE,
+        arg_types=[ty, ty],
+        compile_flags=(act, FLAG_BY_OP, OPS),
+    )
+
+
+print(CompilableDesign(cross, compile_kwargs={'N': 64})._compute_cache_hash())
+"""
+
+
+@pytest.mark.parametrize("seed", ["0", "1", "2"])
+def test_cache_key_is_the_same_in_every_process(seed):
+    """Key a file-less design with function keys and aliased helpers identically everywhere.
+
+    ``repr(key)`` once put a function's address into the record, so every
+    process computed a different key for ``{act: '-DRELU'}`` and the cache
+    never hit. An aliased file-less helper was recorded only at whichever
+    of its positions the walk reached first, and that order follows
+    set iteration, which PYTHONHASHSEED varies per process -- a notebook
+    restart missed. Keys are now address- and order-free, so every seed
+    (and every process) agrees.
+    """
+
+    def key_under(hashseed):
+        result = subprocess.run(
+            [sys.executable, "-c", _CROSS_PROGRAM],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, "PYTHONHASHSEED": hashseed},
+            timeout=60,
+        )
+        assert result.stdout.strip(), result.stderr
+        return result.stdout.strip()
+
+    assert key_under(seed) == key_under("0")
 
 
 def test_cache_key_does_not_generate_the_design():

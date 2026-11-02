@@ -28,8 +28,9 @@ again. The script
 being run counts as that kind of module, under the name it is imported as.
 Code with no file behind it (a notebook cell, the REPL) is identified by its
 code and the plain constants it reads -- through the mutable containers
-holding them as well, which are digested member by member -- since those
-can change without any file changing.
+holding them as well, which are digested member by member, each object's
+content once per walk and recorded at every position it is read at -- since
+those can change without any file changing.
 
 `_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
@@ -151,7 +152,7 @@ _MAX_KEY_DEPTH = 32
 
 
 def _too_deep(where: str) -> ValueError:
-    """The error for a key that would walk deeper than ``_MAX_KEY_DEPTH``.
+    """Return the error for a key that would walk deeper than ``_MAX_KEY_DEPTH``.
 
     Failing here is the graceful failure: the alternative to a clear error
     is either hashing an unbounded object graph on every call (the cache
@@ -316,6 +317,16 @@ def _python_identity(roots) -> bytes:
     module its globals reach in turn. Installed third-party code is
     not followed. No design is generated to find any of it.
 
+    Each mutable object's content is digested once per walk and memoized
+    by id, and every position it is read at records that digest: a shared
+    sub-object is an input at each of its positions but is walked once, so
+    the work follows the object graph rather than the number of paths
+    through it. Digests are address-free and order-free — mapping entries
+    and set members are folded in a canonical (sorted) order — and a
+    mapping's keys are named the way values are (a plain key by its repr,
+    code or a module by its binding, a container by its digest), so the
+    same running design hashes identically in every process.
+
     An ``ExternalFunction`` it reaches is recorded by its content-based repr,
     as a ``CompileTime`` one is: the cache manifest never sees a kernel's
     compile flags.
@@ -325,105 +336,146 @@ def _python_identity(roots) -> bytes:
 
     records: set[bytes] = set()
     seen: set[int] = set()
-    # Containers and file-backed instances on the CURRENT descent path only:
-    # a cycle is cut, but a reference repeated along a sibling branch is
-    # still recorded where it sits.  A walk-wide dedup here would make
-    # ``[a, b, a]`` and ``[a, b, b]`` hash identically, and which of two
-    # aliased globals gets recorded would follow set-iteration order, which
-    # the hash seed varies between processes.
+    # Content digest per mutable object for THIS walk, keyed by id.  id() is
+    # an address, but it only decides where the one-time computation happens;
+    # the digest itself is content, so no key can move with it.  Per walk,
+    # not per process: any of this state may be mutated between keys.
+    digests: dict[int, str] = {}
+    # The descent currently being digested: a reference back up it is a
+    # cycle and contributes a marker instead of recursing.
     active: set[int] = set()
     todo: list = []
     modules: list[ModuleType] = []
 
-    def visit(value, where: str, depth: int = 0):
+    def describe(value, where: str, depth: int) -> str:
+        """Return the position-free identity of ``value``: what it holds.
+
+        ``where`` threads the read position through for error messages and
+        key qualification only; it never enters a digest, so which path
+        happens to compute a digest first cannot move the key. Values the
+        walk does not follow — installed code, containers outside
+        ``_CONTAINER`` — all return one uniform marker, as interchangeable
+        as they were before.
+        """
         if isinstance(value, (staticmethod, classmethod)):
             value = value.__func__
         if isinstance(value, property):
-            for f in (value.fget, value.fset, value.fdel):
-                visit(f, where, depth)
-        elif _plain(value) or isinstance(value, ExternalFunction):
-            records.add(f"{where}={value!r}".encode())
-        elif isinstance(value, _CONTAINER) and id(value) not in active:
-            # A container the code reads is an input like a plain constant
-            # is (a module-level list of kernel flags, say): digest it
-            # member by member — sequences ordered, mappings/sets not.  The
-            # kind and length are recorded first: they are inputs too (a
-            # generator can branch on ``len()``), and without them an empty
-            # container leaves no trace at all.
-            if depth >= _MAX_KEY_DEPTH:
-                raise _too_deep(where)
-            records.add(f"{where}=<{type(value).__name__}:{len(value)}>".encode())
-            active.add(id(value))
-            try:
-                if isinstance(value, dict):
-                    # Each entry's key qualifies where its value is
-                    # recorded, so a value reassigned between keys cannot
-                    # keep the old entry's record.
-                    for k, v in value.items():
-                        visit(k, f"{where}[{k!r}].key", depth + 1)
-                        visit(v, f"{where}[{k!r}]", depth + 1)
-                elif isinstance(value, (set, frozenset)):
-                    for member in value:
-                        visit(member, f"{where}.item", depth + 1)
-                else:
-                    for index, member in enumerate(value):
-                        visit(member, f"{where}[{index}]", depth + 1)
-            finally:
-                active.discard(id(value))
-        elif (module := _stamped_module(value)) is not None:
-            modules.append(module)
-            # The position binds what sits in it: two same-file helpers, or
-            # two modules, are not interchangeable at one ``where`` even
-            # though the file's stamp covers both, so the binding is
-            # recorded next to following the value itself.
-            if isinstance(value, ModuleType):
-                records.add(f"{where}->module:{value.__name__}".encode())
-            elif isinstance(value, (FunctionType, type)):
-                records.add(
-                    f"{where}->{value.__module__}.{value.__qualname__}".encode()
-                )
-            # An instance of a file-backed class is different from the
-            # class itself: the file says what its attributes mean, not
-            # what they hold, so the state the code reads through it is an
-            # input like a container's members are.  A module's namespace
-            # is not walked (it grows with every import), and code -- a
-            # function, a class -- is still named by its file.
-            state = (
-                None
-                if isinstance(value, (ModuleType, FunctionType, type))
-                else getattr(value, "__dict__", None)
+            legs = ",".join(
+                "()" if leg is None else describe(leg, where, depth)
+                for leg in (value.fget, value.fset, value.fdel)
             )
-            if state and id(value) not in active:
+            return f"<property:{legs}>"
+        if _plain(value) or isinstance(value, ExternalFunction):
+            return repr(value)
+        if isinstance(value, _CONTAINER):
+            d = digests.get(id(value))
+            if d is None:
+                if id(value) in active:
+                    return "<cycle>"
                 if depth >= _MAX_KEY_DEPTH:
                     raise _too_deep(where)
-                active.add(id(value))
-                try:
-                    for attr, member in state.items():
-                        visit(member, f"{where}.{attr}", depth + 1)
-                finally:
-                    active.discard(id(value))
-        elif isinstance(value, (FunctionType, type)) and id(value) not in seen:
+                digests[id(value)] = d = _digest(value, where, depth)
+            return d
+        if (module := _stamped_module(value)) is not None:
+            modules.append(module)
+            if isinstance(value, ModuleType):
+                return f"module:{value.__name__}"
+            # The position binds what sits in it: two same-file helpers, or
+            # two modules, are not interchangeable at one read even though
+            # the file's stamp covers both, so the binding travels with the
+            # content. The file says what an instance's attributes mean,
+            # not what they hold, so the state read through it is an input
+            # like a container's members are.
+            if isinstance(value, (FunctionType, type)):
+                return f"{value.__module__}.{value.__qualname__}"
+            binding = f"{type(value).__module__}.{type(value).__qualname__}"
+            state = getattr(value, "__dict__", None)
+            if not state:
+                return binding
+            d = digests.get(id(value))
+            if d is None:
+                if id(value) in active:
+                    return f"{binding}=<cycle>"
+                if depth >= _MAX_KEY_DEPTH:
+                    raise _too_deep(where)
+                digests[id(value)] = d = _instance_digest(value, binding, where, depth)
+            return f"{binding}={d}"
+        if isinstance(value, (FunctionType, type)):
             home = sys.modules.get(value.__module__)
             # Followed by code only where no file stands for it; an
-            # installed package's is versioned with the install.
+            # installed package's is versioned with the install.  The body
+            # is walked once (``seen``); the binding is what every position
+            # records, however many positions reach it.
             if (
                 home is None
                 or home.__name__ == "__main__"
                 or not vars(home).get("__file__")
             ):
-                records.add(
-                    f"{where}->{value.__module__}.{value.__qualname__}".encode()
-                )
-                seen.add(id(value))
-                todo.append(value)
+                if id(value) not in seen:
+                    seen.add(id(value))
+                    todo.append(value)
+                return f"{value.__module__}.{value.__qualname__}"
+        return "<not-followed>"
 
+    def _digest(value, where: str, depth: int) -> str:
+        """Digest a container's content: its kind, length and member identities."""
+        active.add(id(value))
+        try:
+            h = hashlib.sha256()
+            h.update(f"<{type(value).__name__}:{len(value)}>".encode())
+            if isinstance(value, dict):
+                # A mapping entry's key qualifies its value, so a value
+                # reassigned between keys cannot keep the old entry's
+                # digest, and the entries fold in the keys' order so equal
+                # mappings built in different orders agree.  The key is
+                # named the way a value is: ``repr(key)`` would embed a
+                # function's address and move the key in every process.
+                entries = []
+                for k, v in value.items():
+                    kd = describe(k, f"{where}[key].key", depth + 1)
+                    entries.append((kd, describe(v, f"{where}[{kd}]", depth + 1)))
+                for kd, vd in sorted(entries):
+                    h.update(f"{kd}={vd}\0".encode())
+            elif isinstance(value, (set, frozenset)):
+                # A set is read without order; fold its members sorted.
+                for d in sorted(
+                    describe(member, f"{where}.item", depth + 1) for member in value
+                ):
+                    h.update(f"{d}\0".encode())
+            else:
+                for index, member in enumerate(value):
+                    d = describe(member, f"{where}[{index}]", depth + 1)
+                    h.update(f"{d}\0".encode())
+            return h.hexdigest()
+        finally:
+            active.discard(id(value))
+
+    def _instance_digest(value, binding: str, where: str, depth: int) -> str:
+        """Digest the state a file-backed instance holds, attribute by attribute."""
+        active.add(id(value))
+        try:
+            h = hashlib.sha256()
+            h.update(binding.encode())
+            state = value.__dict__
+            for attr in sorted(state):
+                member = describe(state[attr], f"{where}.{attr}", depth + 1)
+                h.update(f".{attr}={member}\0".encode())
+            return h.hexdigest()
+        finally:
+            active.discard(id(value))
+
+    def visit(value, where: str):
+        """Record the identity of ``value`` as read at ``where``."""
+        records.add(f"{where}={describe(value, where, 0)}".encode())
+
+    root_ids = {id(r) for r in roots if isinstance(r, FunctionType)}
     for root in roots:
         if isinstance(root, FunctionType) and id(root) not in seen:
             seen.add(id(root))
             todo.append(root)
         else:
             visit(root, "<root>")
-    roots = set(map(id, todo))
+    roots = root_ids
     while todo:
         obj = todo.pop()
         home = _import_name(obj.__module__)
@@ -435,8 +487,8 @@ def _python_identity(roots) -> bytes:
             continue
         if id(obj) not in roots:
             records.add(name.encode() + _code_identity(obj.__code__))
-            visit(obj.__defaults__, f"{name}.__defaults__")
-            visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
+        visit(obj.__defaults__, f"{name}.__defaults__")
+        visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
         names = _names(obj.__code__)
         scope = dict(obj.__globals__)
         where = {n: f"{home}.{n}" for n in scope}
