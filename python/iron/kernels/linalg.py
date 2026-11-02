@@ -1775,6 +1775,64 @@ def _mha_band_flags(name, causal, window, packed):
     ]
 
 
+class _FusedBlock(NamedTuple):
+    """The block a fused contract's call attends, and a weight's error bound.
+
+    Key block 1 of the first query block every row of which keeps all of its
+    keys, as ``matmul_PV``'s contract is a later key block: ``O`` is the
+    harness's to zero, and the rescale runs, by 1. The state starts at 0, and
+    every call takes the same tile, so the state each call carries holds.
+    """
+
+    idx: np.ndarray
+    s_q_eff: int
+    s_kv_eff: int
+    scale: float
+    weight: float
+
+    @classmethod
+    def of(cls, dim_m, dim_k, dim_n, group, accurate_exp2, soft_cap):
+        """Return the block for a fused build of these dimensions and options.
+
+        Args:
+            dim_m: Query rows of the block.
+            dim_k: Head dimension, the whole head's for a pair.
+            dim_n: Keys of the block.
+            group: Query heads a position packs.
+            accurate_exp2: Whether the build takes the accurate exponential.
+            soft_cap: The build's soft cap, or None.
+
+        Returns:
+            The block's ``idx``, effective sizes, the call's scale (1 for
+            capped scores, which come in log2(e) units) and a weight's
+            relative error: exp2_bf16.h's cubic with its bf16 store, 0.74% at
+            worst on npu1, or the accurate exp2's bf16 store, and a cap's
+            float32 tanh, softmax's per unit of cap.
+        """
+        q_block = -(-2 * dim_n // (dim_m // group))
+        scale = (
+            1.0
+            if soft_cap is not None
+            else float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
+        )
+        weight = (2.0**-8 if accurate_exp2 else 0.0075) + (
+            soft_cap * _SOFT_CAP_ERR if soft_cap is not None else 0.0
+        )
+        return cls(
+            np.array([1, q_block, 0], np.int32),
+            (q_block + 1) * dim_m,
+            2 * dim_n,
+            scale,
+            weight,
+        )
+
+
+_FUSED_TOLERANCE_NOTE = (
+    "exp2_bf16.h cubic (0.74% at worst on npu1) or the accurate exp2's bf16 "
+    "store, float32 summation, a cap's float32 tanh"
+)
+
+
 def _mha_fused(
     dim_m,
     dim_k,
@@ -1792,11 +1850,8 @@ def _mha_fused(
 ):
     """``mha(fused=True)``'s ``attend_block`` and its contract.
 
-    The contract's block is key block 1 of the first query block every row of
-    which keeps all of its keys, as ``matmul_PV``'s contract is a later key
-    block: ``O`` is the harness's to zero, and the rescale runs, by 1. The
-    state starts at 0, and every call takes the same tile, so the state each
-    call carries holds. With ``kv_heads``, it attends the first head's keys.
+    The contract's call attends a ``_FusedBlock``, with ``kv_heads`` the first
+    head's keys.
     """
     mac = (4, 8, 4)
     qk = mm_stream_dims(dim_m, dim_k, dim_n, mac, b_col_maj=True)
@@ -1806,20 +1861,13 @@ def _mha_fused(
     width = 2 * dim_k * kv_heads
     kv_stream = TensorAccessPattern.full((dim_n, width)).tile((4, 8))
 
-    q_block = -(-2 * dim_n // (dim_m // group))
-    # Capped scores come in log2(e) units: the call's scale is 1.
-    scale = (
-        1.0 if soft_cap is not None else float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
-    )
-    idx = np.array([1, q_block, 0], np.int32)
-    s_q_eff = (q_block + 1) * dim_m
-    s_kv_eff = 2 * dim_n
+    block = _FusedBlock.of(dim_m, dim_k, dim_n, group, accurate_exp2, soft_cap)
     block_terms = partial(
         mha_attend_block_terms,
-        idx=idx,
-        s_q_eff=s_q_eff,
-        s_kv_eff=s_kv_eff,
-        scale=scale,
+        idx=block.idx,
+        s_q_eff=block.s_q_eff,
+        s_kv_eff=block.s_kv_eff,
+        scale=block.scale,
         dim_m=dim_m,
         dim_k=dim_k,
         dim_n=dim_n,
@@ -1860,14 +1908,6 @@ def _mha_fused(
             inputs.append(np.broadcast_to(qr, (calls, *qr.shape)).copy())
         return inputs
 
-    # A weight's error: exp2_bf16.h's cubic with its bf16 store, 0.74% at
-    # worst on npu1, or the accurate exp2's bf16 store, with float32
-    # summation over dim_n exact products; a cap adds its float32 tanh's,
-    # softmax's per unit of cap.
-    weight = (2.0**-8 if accurate_exp2 else 0.0075) + (
-        soft_cap * _SOFT_CAP_ERR if soft_cap is not None else 0.0
-    )
-
     def bound(q, kv, qr=None):
         _, p = block_terms(q, kv, qr)
         v = np.abs(
@@ -1875,7 +1915,7 @@ def _mha_fused(
                 :, :, 0, 1
             ]
         )
-        return ((weight + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
+        return ((block.weight + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
 
     qr = [np.ndarray[(dim_m * _MHA_REL_ROW,), np.dtype[np.float32]]] * relative_band
     arg_types = [
@@ -1915,10 +1955,10 @@ def _mha_fused(
                     ),
                     (4, np.zeros(dim_m * dim_n, bfloat16)),
                     (5, np.zeros(4 * dim_m, np.float32)),
-                    (6, idx),
-                    (7, scale),
-                    (8, s_q_eff),
-                    (9, s_kv_eff),
+                    (6, block.idx),
+                    (7, block.scale),
+                    (8, block.s_q_eff),
+                    (9, block.s_kv_eff),
                 )
             ),
             reference=lambda q, kv, qr=None: block_terms(q, kv, qr)[0],
@@ -1926,9 +1966,7 @@ def _mha_fused(
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,
-                note="exp2_bf16.h cubic (0.74% at worst on npu1) or the accurate "
-                "exp2's bf16 store, float32 summation, a cap's float32 tanh; "
-                "the sample's scores are exact",
+                note=f"{_FUSED_TOLERANCE_NOTE}; the sample's scores are exact",
             ),
             ops_per_call=4 * dim_m * dim_k * dim_n,
         ),
@@ -1950,28 +1988,22 @@ def _mha_pair(
 ):
     """``mha(fused=True, pair=True)``'s ``attend_pair`` and its contract.
 
-    The contract's call is the first core's, as ``_mha_fused``'s block: its
-    scores the two halves' partials of a ``dim_k`` product, its ``KV`` and
-    ``O`` the first half's.
+    The contract's call is the first core's over a ``_FusedBlock``: its scores
+    the two halves' partials of a ``dim_k`` product, its ``KV`` and ``O`` the
+    first half's.
     """
     half = dim_k // 2
     mac = (4, 8, 4)
     qk = mm_stream_dims(dim_m, half, dim_n, mac, b_col_maj=True)
     pv = mm_stream_dims(dim_m, dim_n, half, mac)
     kv_stream = TensorAccessPattern.full((dim_n, 2 * half)).tile((4, 8))
-    q_block = -(-2 * dim_n // (dim_m // group))
-    scale = (
-        1.0 if soft_cap is not None else float(bfloat16(np.log2(np.e) / np.sqrt(dim_k)))
-    )
-    idx = np.array([1, q_block, 0], np.int32)
-    s_q_eff = (q_block + 1) * dim_m
-    s_kv_eff = 2 * dim_n
+    block = _FusedBlock.of(dim_m, dim_k, dim_n, group, accurate_exp2, soft_cap)
     pair_terms = partial(
         mha_attend_pair_terms,
-        idx=idx,
-        s_q_eff=s_q_eff,
-        s_kv_eff=s_kv_eff,
-        scale=scale,
+        idx=block.idx,
+        s_q_eff=block.s_q_eff,
+        s_kv_eff=block.s_kv_eff,
+        scale=block.scale,
         dim_m=dim_m,
         dim_k=half,
         dim_n=dim_n,
@@ -1996,14 +2028,10 @@ def _mha_pair(
             for x, t in zip(inputs, (np.float32, np.float32, bfloat16))
         ]
 
-    weight = (2.0**-8 if accurate_exp2 else 0.0075) + (
-        soft_cap * _SOFT_CAP_ERR if soft_cap is not None else 0.0
-    )
-
     def bound(s0, s1, kv):
         _, p = pair_terms(s0, s1, kv)
         v = np.abs(np.asarray(kv, np.float64).reshape(-1, dim_n, 2, half)[:, :, 1])
-        return ((weight + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
+        return ((block.weight + dim_n * 2.0**-23) * (p @ v)).reshape(len(p), -1)
 
     s_tile = np.ndarray[(dim_m * dim_n,), np.dtype[np.float32]]
     return _make_extern(
@@ -2038,19 +2066,18 @@ def _mha_pair(
                 (4, np.zeros(dim_m * dim_n, np.float32 if f32_scores else bfloat16)),
                 (5, np.zeros(dim_m * dim_n, bfloat16)),
                 (6, np.zeros(4 * dim_m, np.float32)),
-                (7, idx),
-                (8, scale),
-                (9, s_q_eff),
-                (10, s_kv_eff),
+                (7, block.idx),
+                (8, block.scale),
+                (9, block.s_q_eff),
+                (10, block.s_kv_eff),
             ),
             reference=lambda s0, s1, kv: pair_terms(s0, s1, kv)[0],
             initializers=((3, partial(_zero_output, index=3)),),
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,
-                note="exp2_bf16.h cubic (0.74% at worst on npu1) or the accurate "
-                "exp2's bf16 store, float32 summation, a cap's float32 tanh; "
-                "the sample's partials and their sum are exact",
+                note=f"{_FUSED_TOLERANCE_NOTE}; the sample's partials and their "
+                "sum are exact",
             ),
             ops_per_call=2 * dim_m * half * dim_n,
         ),
@@ -2077,15 +2104,39 @@ def mha_attend_block_terms(
     f32_scores=False,
     soft_cap=None,
 ):
-    """Numpy reference for ``mha(fused=True)``'s ``attend_block`` from a zeroed state: ``(O, P)``.
+    """Numpy reference for ``mha(fused=True)``'s ``attend_block``.
 
-    ``O = P V`` with ``P = exp2((S - m) s)``, true ``exp2`` of the scores
-    ``S`` as the core keeps them (rounded to bf16, or float32 with
-    ``f32_scores``), ``m`` each row's largest kept score or 0, whichever is
-    larger, as a zeroed running maximum leaves it. ``qr``, as
-    ``relative_rows`` lays it, adds each score's relative term, and a
-    ``soft_cap`` then takes each score to ``soft_cap * tanh(s / soft_cap) *
-    log2(e)``.
+    From a zeroed state, ``O = P V`` with ``P = exp2((S - m) s)``, true
+    ``exp2`` of the scores ``S`` as the core keeps them (rounded to bf16, or
+    float32 with ``f32_scores``), ``m`` each row's largest kept score or 0,
+    whichever is larger, as a zeroed running maximum leaves it.
+
+    Args:
+        q: Query blocks, ``(calls, dim_m * dim_k)`` or reshapeable to it.
+        kv: Key blocks as ``attend_block`` reads them, each key's ``K`` row
+            then its ``V`` row for each of ``kv_heads`` heads; the first
+            head's are attended.
+        qr: ``relative_rows``' output, which adds each score's relative term,
+            or None.
+        idx: ``(key block, query block, row offset)``.
+        s_q_eff: Query rows that exist, from the offset.
+        s_kv_eff: Keys that exist.
+        scale: The call's scale, applied after the maximum.
+        dim_m: Query rows of the block.
+        dim_k: Head dimension.
+        dim_n: Keys of the block.
+        causal: A query keeps no key past its position.
+        window: Keys more than this far from a query are dropped; 0 is none.
+        packed: Every row is a query at the last key.
+        group: Query heads a position packs.
+        kv_heads: Heads ``kv`` interleaves.
+        f32_scores: Keep the scores in float32 rather than bf16.
+        soft_cap: Take each score to ``soft_cap * tanh(s / soft_cap) *
+            log2(e)``, or None.
+
+    Returns:
+        ``(O, P)``: ``O`` as ``(calls, dim_m * dim_k)``, and the weights,
+        ``(calls, dim_m, dim_n)``.
     """
     q = np.asarray(q, np.float64).reshape(-1, dim_m, dim_k)
     kv = np.asarray(kv, np.float64).reshape(-1, dim_n, kv_heads, 2, dim_k)[:, :, 0]
@@ -2127,11 +2178,34 @@ def mha_attend_pair_terms(
     f32_scores=False,
     soft_cap=None,
 ):
-    """Numpy reference for ``mha(fused=True, pair=True)``'s ``attend_pair`` from a zeroed state: ``(O, P)``.
+    """Numpy reference for ``mha(fused=True, pair=True)``'s ``attend_pair``.
 
-    ``mha_attend_block_terms`` over the scores ``s0 + s1``, the float32
-    partials of a head's two halves, and ``kv``'s ``V``, the core's half of
-    the head; ``dim_k`` is the half's.
+    ``mha_attend_block_terms`` from a zeroed state, over the scores
+    ``s0 + s1``.
+
+    Args:
+        s0: The float32 scores of the head's first half.
+        s1: The float32 scores of the head's second half.
+        kv: The core's half of the head, each key's ``K`` row then its ``V``
+            row; ``V`` is attended.
+        idx: ``(key block, query block, row offset)``.
+        s_q_eff: Query rows that exist, from the offset.
+        s_kv_eff: Keys that exist.
+        scale: The call's scale, applied after the maximum.
+        dim_m: Query rows of the block.
+        dim_k: The half's head dimension.
+        dim_n: Keys of the block.
+        causal: A query keeps no key past its position.
+        window: Keys more than this far from a query are dropped; 0 is none.
+        packed: Every row is a query at the last key.
+        group: Query heads a position packs.
+        f32_scores: Keep the scores in float32 rather than bf16.
+        soft_cap: Take each score to ``soft_cap * tanh(s / soft_cap) *
+            log2(e)``, or None.
+
+    Returns:
+        ``(O, P)``: the core's half of ``O`` as ``(calls, dim_m * dim_k)``,
+        and the weights, ``(calls, dim_m, dim_n)``.
     """
     s0, s1 = (np.asarray(x, np.float64).reshape(-1, dim_m, dim_n) for x in (s0, s1))
     v = np.asarray(kv, np.float64).reshape(-1, dim_n, 2, dim_k)[:, :, 1]
@@ -2171,7 +2245,10 @@ def _mha_block_terms(
     f32_scores,
     soft_cap,
 ):
-    """Return the fused block's ``(O, P)`` from its exact scores ``s``, ``(calls, dim_m, dim_n)``, and ``V``, ``(calls, dim_n, d)``."""
+    """Return the fused block's ``(O, P)`` from its exact scores and ``V``.
+
+    ``s`` is ``(calls, dim_m, dim_n)`` and ``v`` ``(calls, dim_n, d)``.
+    """
     kv_block, q_block, offset = (int(i) for i in np.asarray(idx).ravel())
     s = s.astype(np.float32 if f32_scores else bfloat16).astype(np.float64)
     rows, cols = np.indices((dim_m, dim_n))
