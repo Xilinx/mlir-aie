@@ -2314,7 +2314,7 @@ class CompilableDesign:
 
         if isinstance(self.mlir_generator, Path):
             # Static .mlir file: text already on disk; no kernels to collect.
-            mlir_text = self.mlir_generator.read_text()
+            mlir_text = self.mlir_generator.read_text(encoding="utf-8")
             with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
                 return _GeneratedDesign.from_module(
                     _Module.parse(mlir_text), mlir_text, []

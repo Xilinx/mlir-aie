@@ -432,8 +432,8 @@ class SegmentDesign:
         """Issue one image's drains and every fill that reads no staged rows; await nothing.
 
         `handles` and `locate` are as `transfer`'s. The fills join the
-        output drains' group, freed once those drains are awaited: by then
-        the network has read every filled row.
+        output drains' group and are awaited with it, before their buffer
+        descriptors are freed for later images' transfers.
         """
         filled = dict(zip(self.in_fifos, handles))
         drains = TaskGroup()
@@ -466,7 +466,9 @@ class SegmentDesign:
         for fill in sorted(self.fills, key=attrgetter("step")):
             if fill.tensor.name not in staged:
                 buffer, total, offset = locate(fill.tensor)
-                filled[fill.fifo].fill(buffer, fill.tap(total, offset), group=drains)
+                filled[fill.fifo].fill(
+                    buffer, fill.tap(total, offset), wait=True, group=drains
+                )
         return Pending(filled, staging, drains)
 
     def transfer_tail(
@@ -491,7 +493,7 @@ class SegmentDesign:
             if fill.tensor.name in staged:
                 buffer, total, offset = locate(fill.tensor)
                 pending.filled[fill.fifo].fill(
-                    buffer, fill.tap(total, offset), group=pending.drains
+                    buffer, fill.tap(total, offset), wait=True, group=pending.drains
                 )
         return pending.drains
 
