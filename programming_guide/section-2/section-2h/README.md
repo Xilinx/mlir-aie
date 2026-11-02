@@ -67,23 +67,23 @@ Canonical demos:
   — production use feeding the MobileNet FC tiles a different chunk size
   than the upstream weight stream produces.
 
-## <u>Direct AIE-stream `ObjectFifo`: `aie_stream=(end, port)`</u>
+## <u>Direct AIE-stream end: `port=Port.stream(n)`</u>
 
-`aie_stream=(end, port)` marks the fifo as a *direct AIE-stream*
-connection — the underlying `aie.objectfifo` op gets the `aie_stream` /
-`aie_stream_port` attributes stamped on it, telling the lowering to
-treat the producer side as wire-only.  No L1 buffer is allocated; the
-consumer reads straight off the stream.
+`prod(port=Port.stream(n))` or `cons(port=Port.stream(n))` wires that end
+of the fifo to the core's stream port `n` instead of a DMA channel. The
+underlying `aie.objectfifo` op gets `prod_port = #aie.end_port<Core : n>`
+or `cons_ports = [#aie.end_port<Core : n>]`, telling the lowering to treat
+that end as wire-only. No L1 buffer is allocated there; the other end reads
+or writes straight off the stream.
 
 Pair it with kernels that emit per-element via `put_ms()` instead of
 acquire/release:
 
 ```python
-of_dout_L1L3 = ObjectFifo(
-    dout_ty,
-    name="of_dout_L1L3",
-    depth=2,
-    aie_stream=(0, 0),            # (end, port) — wire-only producer side
+of_dout_L1L3 = ObjectFifo(dout_ty, name="of_dout_L1L3", depth=2)
+worker = Worker(
+    core_body,
+    fn_args=[of_din_L2L1.cons(), of_dout_L1L3.prod(port=Port.stream(0)), ...],
 )
 ```
 
@@ -102,7 +102,7 @@ Lowered MLIR (extract from `magika/group2.py --emit-mlir`):
 
 ```mlir
 aie.objectfifo @of_dout_L1L3(%logical_core, {%logical_shim_noc}, 2 : i32)
-    {aie_stream = 0 : i32, aie_stream_port = 0 : i32}
+    {prod_port = #aie.end_port<Core : 0>}
     : !aie.objectfifo<memref<214xi32>>
 ```
 

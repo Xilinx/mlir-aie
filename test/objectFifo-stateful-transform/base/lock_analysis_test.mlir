@@ -11,14 +11,14 @@
 // CHECK:   aie.device(xcve2302) {
 // CHECK-DAG:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK-DAG:     %{{.*}}tile_3_3 = aie.tile(3, 3)
-// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-// CHECK-DAG:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
-// CHECK-DAG:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK-DAG:     %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK-DAG:     %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_1"} : memref<16xi32>
-// CHECK-DAG:     %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK-DAG:     %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1__cons__buf0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1__cons__buf1"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 2 : i32, sym_name = "of1__cons__prodlock0"}
+// CHECK-DAG:     %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 0 : i32, sym_name = "of1__cons__conslock0"}
+// CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1__buf0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1__buf1"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 2 : i32, sym_name = "of1__prodlock0"}
+// CHECK-DAG:     %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_2) {init = 0 : i32, sym_name = "of1__conslock0"}
 // CHECK-DAG:     %test_buff = aie.buffer(%{{.*}}tile_1_2) {sym_name = "test_buff"} : memref<16xi32>
 // CHECK-DAG:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_3_3, DMA : 0)
 // CHECK:     %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {

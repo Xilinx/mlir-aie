@@ -10,12 +10,12 @@ core in one of FastFlowLM's Gemma 4 designs (prefill attention, the LM head
 and the decode layer), called from that core's Worker body. Several kernels
 acquire and release core locks themselves, by the lock ids the factories
 take. The decode kernels build for the whole model's geometry
-([`FlmGemma4DecodeGeometry`][iron.kernels.flm_gemma4.FlmGemma4DecodeGeometry])
+([`FlmGemma4DecodeGeometry`][aie.iron.kernels.flm_gemma4.FlmGemma4DecodeGeometry])
 and for FastFlowLM's array layout. All are AIE2P only; their
 sources are in ``aie_kernels/flm_gemma4/``.
 
 A factory returns one ``ExternalFunction``. As
-[`cascade_mm`][iron.kernels.linalg.cascade_mm] does with its ``put_only`` and
+[`cascade_mm`][aie.iron.kernels.linalg.cascade_mm] does with its ``put_only`` and
 ``put_get``, every entry point of its object, its own included, is an
 attribute of it named by its C symbol: ``fn.attn_qk_round``.
 """
@@ -157,7 +157,7 @@ _ATTN_PREFILL_LQ, _ATTN_PREFILL_DH = 8, 512
 def flm_gemma4_attn_prefill() -> ExternalFunction:
     """Causal flash-attention prefill at a head dim of 512, from ``flm_gemma4/prefill.cc``.
 
-    [`linalg.prefill_fv`][iron.kernels.linalg.prefill_fv]'s algorithm with
+    [`linalg.prefill_fv`][aie.iron.kernels.linalg.prefill_fv]'s algorithm with
     FastFlowLM's numerics and synchronization: the softmax scales by log2(e)
     alone, and the epilogue multiplies by a bf16 ``1 / l``.
 
@@ -197,7 +197,7 @@ _SWA_PREFILL_LQ, _SWA_PREFILL_DH, _SWA_PREFILL_CHUNK = 16, 256, 33
 def flm_gemma4_swa_prefill() -> ExternalFunction:
     """Sliding-window causal flash-attention prefill at a head dim of 256, from ``flm_gemma4/prefill.cc``.
 
-    The sliding-window build of [`flm_gemma4_attn_prefill`][iron.kernels.flm_gemma4.flm_gemma4_attn_prefill]:
+    The sliding-window build of [`flm_gemma4_attn_prefill`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_prefill]:
     one core holds 16 query rows of a 128-row round and folds in, 16 rows at
     a time, the keys inside the window its ``window_size`` RTP gives. The
     entry points are those of ``flm_gemma4_attn_prefill``, with
@@ -233,7 +233,7 @@ def flm_gemma4_prefill_block_begin(*, head_dim: int = 512) -> ExternalFunction:
 
 
 def flm_gemma4_prefill_block_begin_ref(prev_m):
-    """Numpy reference for [`flm_gemma4_prefill_block_begin`][iron.kernels.flm_gemma4.flm_gemma4_prefill_block_begin].
+    """Numpy reference for [`flm_gemma4_prefill_block_begin`][aie.iron.kernels.flm_gemma4.flm_gemma4_prefill_block_begin].
 
     ``m`` is ``(LQ, LK)`` with ``LK == LQ`` in both builds.
     """
@@ -260,7 +260,7 @@ def flm_gemma4_prefill_block_end(*, head_dim: int = 512) -> ExternalFunction:
 
 
 def flm_gemma4_prefill_block_end_ref(new_m):
-    """Numpy reference for [`flm_gemma4_prefill_block_end`][iron.kernels.flm_gemma4.flm_gemma4_prefill_block_end]."""
+    """Numpy reference for [`flm_gemma4_prefill_block_end`][aie.iron.kernels.flm_gemma4.flm_gemma4_prefill_block_end]."""
     return np.array(new_m, copy=True)
 
 
@@ -405,7 +405,7 @@ def flm_gemma4_prefill_finalize(*, head_dim: int = 512) -> ExternalFunction:
 
 
 def flm_gemma4_prefill_finalize_ref(row_sums):
-    """Numpy reference for [`flm_gemma4_prefill_finalize`][iron.kernels.flm_gemma4.flm_gemma4_prefill_finalize]: ``1 / l``.
+    """Numpy reference for [`flm_gemma4_prefill_finalize`][aie.iron.kernels.flm_gemma4.flm_gemma4_prefill_finalize]: ``1 / l``.
 
     The tolerance covers the kernel's hardware reciprocal and its floor
     narrowing to bf16.
@@ -499,7 +499,7 @@ def _grid_bf16(rng, shape, step):
 
 
 def flm_gemma4_prefill_round_begin_ref(*, head_dim=512):
-    """Numpy reference for [`flm_gemma4_prefill_round_begin`][iron.kernels.flm_gemma4.flm_gemma4_prefill_round_begin].
+    """Numpy reference for [`flm_gemma4_prefill_round_begin`][aie.iron.kernels.flm_gemma4.flm_gemma4_prefill_round_begin].
 
     The bytes of ``y | c | l | prev_m | new_m``: zeros, ones, zeros and two
     rows of NEG_INF.
@@ -549,7 +549,7 @@ def _prefill_keep(lq, lk, inner_k, inner_q, inner_k_current):
 def flm_gemma4_prefill_qk_core_ref(
     q, k, m, inner_k, inner_q, inner_k_current, *, head_dim=512
 ):
-    """Numpy reference for [`flm_gemma4_prefill_qk_core`][iron.kernels.flm_gemma4.flm_gemma4_prefill_qk_core]: ``s | m``.
+    """Numpy reference for [`flm_gemma4_prefill_qk_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_prefill_qk_core]: ``s | m``.
 
     ``s = q @ k.T``, NEG_INF where masked, and ``m`` folds in ``s``
     lanewise. The tolerance covers the bfp16 operands and the bf16 narrowing.
@@ -626,7 +626,7 @@ def flm_gemma4_prefill_qk_core(*, head_dim: int = 512) -> ExternalFunction:
 
 
 def flm_gemma4_prefill_fv_core_ref(y, sv, *, head_dim=512):
-    """Numpy reference for [`flm_gemma4_prefill_fv_core`][iron.kernels.flm_gemma4.flm_gemma4_prefill_fv_core]: ``y + s @ v``.
+    """Numpy reference for [`flm_gemma4_prefill_fv_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_prefill_fv_core]: ``y + s @ v``.
 
     ``y`` and ``s`` are in the mmul's 8x8 tiles, ``v`` in column-major tile
     order; the tolerance covers the bfp16 operands.
@@ -727,7 +727,7 @@ def _prefill_block_mid_s(p, lq):
 
 
 def flm_gemma4_prefill_block_mid_core_ref(in_bf16, in_f32, *, head_dim=512):
-    """Numpy reference for [`flm_gemma4_prefill_block_mid_core`][iron.kernels.flm_gemma4.flm_gemma4_prefill_block_mid_core].
+    """Numpy reference for [`flm_gemma4_prefill_block_mid_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_prefill_block_mid_core].
 
     ``(s | new_m, y | l | c)``: ``new_m`` the row max of ``m``,
     ``p = 2**((s - new_m) * log2e)`` and ``c = 2**((prev_m - new_m) * log2e)``
@@ -1109,7 +1109,7 @@ def _glu_split(x):
 
 
 def flm_gemma4_glu_core_ref(x):
-    """Numpy reference for [`flm_gemma4_glu_core`][iron.kernels.flm_gemma4.flm_gemma4_glu_core]: ``gelu(gate) * up``.
+    """Numpy reference for [`flm_gemma4_glu_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_glu_core]: ``gelu(gate) * up``.
 
     ``x`` holds, per call, the up half then the gate half. GELU is the tanh
     form Gemma 4 uses; the tolerance covers the kernel's table.
@@ -1139,7 +1139,7 @@ DTYPES["flm_gemma4_glu_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 def flm_gemma4_glu_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
-    """``pseduo_glu`` of [`flm_gemma4_decode_glu`][iron.kernels.flm_gemma4.flm_gemma4_decode_glu]: ``gelu(gate) * up`` for one slice.
+    """``pseduo_glu`` of [`flm_gemma4_decode_glu`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_glu]: ``gelu(gate) * up`` for one slice.
 
     ``glu_core(x, y)``: ``x`` is ``glu_slice`` bf16, the up half then the
     gate half; ``y`` is ``glu_slice // 2`` bf16. GELU goes through
@@ -1417,7 +1417,7 @@ def _attn_kv_round_core(base, source, symbol, *, dh, kv_width, impl, rows, ref):
 def flm_gemma4_attn_kv_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
-    """One ``attn_kv_round`` of [`flm_gemma4_decode_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] without its v lock.
+    """One ``attn_kv_round`` of [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] without its v lock.
 
     ``attn_kv_round_core(sv, ly_in, ly_out)``: ``ly_out`` is ``ly_in`` with
     ``l = c * l + rowsum(s)`` and ``y = c * y + s @ v`` per query head. ``sv``
@@ -1438,7 +1438,7 @@ def flm_gemma4_attn_kv_core(
 
 
 def flm_gemma4_attn_kv_core_ref(sv, ly, *, dh=512):
-    """Numpy reference for [`flm_gemma4_attn_kv_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_kv_core], in float64."""
+    """Numpy reference for [`flm_gemma4_attn_kv_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_kv_core], in float64."""
     return _attn_kv_round_ref(sv, ly, dh=dh, impl="1x8x1")
 
 
@@ -1448,7 +1448,7 @@ def flm_gemma4_decode_attn_kv_kvh2(
     """Build the global-attention score-times-value core for two KV heads, from ``flm_gemma4/decode_attn_kv_kvh2.cc``.
 
     The two-KV-head (E4B) sibling of
-    [`flm_gemma4_decode_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv]:
+    [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv]:
     the Worker runs a round as one ``attn_kv_s_begin``, which folds the
     scores into ``l`` and rescales ``y``, then one ``attn_kv_v_half`` per
     KV head.
@@ -1488,7 +1488,7 @@ def flm_gemma4_attn_kv_kvh2_core(
     """``attn_kv_s_begin``, then one KV head's ``attn_kv_v_half``, without the v lock.
 
     The entry points are those of
-    [`flm_gemma4_decode_attn_kv_kvh2`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv_kvh2].
+    [`flm_gemma4_decode_attn_kv_kvh2`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv_kvh2].
     ``attn_kv_kvh2_round_core(sv, ly_in, ly_out, kv_head)``: ``ly_out`` is
     ``ly_in`` with ``l = c * l + rowsum(s)`` and ``y = c * y``, plus ``s @ v``
     for query heads ``4 * kv_head`` to ``4 * kv_head + 3``. ``sv`` holds
@@ -1511,7 +1511,7 @@ def flm_gemma4_attn_kv_kvh2_core(
 
 
 def flm_gemma4_attn_kv_kvh2_core_ref(sv, ly, kv_head, *, dh=512):
-    """Numpy reference for [`flm_gemma4_attn_kv_kvh2_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_kv_kvh2_core], in float64."""
+    """Numpy reference for [`flm_gemma4_attn_kv_kvh2_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_kv_kvh2_core], in float64."""
     return _attn_kv_round_ref(sv, ly, int(kv_head), dh=dh, impl="kvh2")
 
 
@@ -1531,7 +1531,7 @@ def flm_gemma4_decode_attn_qk(
 ) -> ExternalFunction:
     """Build an attention query-times-key core, from ``flm_gemma4/decode_attn_qk.cc``.
 
-    The other half of [`flm_gemma4_decode_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv]:
+    The other half of [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv]:
     it multiplies the query heads into each round's 16 key rows, masks the
     keys past the sequence length, keeps the running row maximum ``m`` and
     hands the kv core the exponentiated scores with their corrections. The
@@ -1574,7 +1574,7 @@ def flm_gemma4_decode_attn_qk_kvh2(
     """Build the global-attention query-times-key core for two KV heads, from ``flm_gemma4/decode_attn_qk_kvh2.cc``.
 
     The two-KV-head (E4B) sibling of
-    [`flm_gemma4_decode_attn_qk`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk]:
+    [`flm_gemma4_decode_attn_qk`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk]:
     the Worker runs a round as one ``attn_qk_half`` per KV head, then
     ``attn_qk_store_c``, which copies the corrections into the scores.
 
@@ -1651,7 +1651,7 @@ def _attn_qk_parts(qm, k, iter, L0):
 
 
 def flm_gemma4_attn_qk_core_ref(qm, k, iter, L0):
-    """Numpy reference for [`flm_gemma4_attn_qk_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_qk_core].
+    """Numpy reference for [`flm_gemma4_attn_qk_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_qk_core].
 
     Keys ``j`` with ``j < L0 - 16 * iter`` are valid. Per query row the new
     running max is ``max(m_in, valid scores)``; ``s`` holds ``exp(score -
@@ -1754,7 +1754,7 @@ def flm_gemma4_attn_qk_core(
     sliding_window: bool = False,
     geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
 ) -> ExternalFunction:
-    """One ``attn_qk_round`` of [`flm_gemma4_decode_attn_qk`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], without its k lock.
+    """One ``attn_qk_round`` of [`flm_gemma4_decode_attn_qk`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], without its k lock.
 
     ``attn_qk_round_core(qm, k, s, c, iter, L0)`` takes the running max
     after q in ``qm`` and writes it after the scores in ``s``. ``c`` holds the
@@ -1775,12 +1775,12 @@ def flm_gemma4_attn_qk_core(
 def flm_gemma4_attn_qk_kvh2_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE
 ) -> ExternalFunction:
-    """One round of [`flm_gemma4_decode_attn_qk_kvh2`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], without its k lock.
+    """One round of [`flm_gemma4_decode_attn_qk_kvh2`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], without its k lock.
 
     ``attn_qk_kvh2_round_core(qm, k, s, c, iter, L0)`` runs
     ``attn_qk_half`` for both KV heads, whose k objects ``k`` holds back to
     back. Otherwise as
-    [`flm_gemma4_attn_qk_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_qk_core].
+    [`flm_gemma4_attn_qk_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_qk_core].
     """
     base = flm_gemma4_decode_attn_qk_kvh2(geometry=geometry)
     return _wrapper(
@@ -1793,7 +1793,7 @@ def flm_gemma4_attn_qk_kvh2_core(
 
 
 def flm_gemma4_attn_qk_kvh2_core_ref(qm, k, iter, L0):
-    """Numpy reference for [`flm_gemma4_attn_qk_kvh2_core`][iron.kernels.flm_gemma4.flm_gemma4_attn_qk_kvh2_core]; see ``flm_gemma4_attn_qk_core_ref``."""
+    """Numpy reference for [`flm_gemma4_attn_qk_kvh2_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_qk_kvh2_core]; see ``flm_gemma4_attn_qk_core_ref``."""
     return flm_gemma4_attn_qk_core_ref(qm, k, iter, L0)
 
 
@@ -1805,7 +1805,7 @@ def flm_gemma4_decode_swa_attn_kv(
 ) -> ExternalFunction:
     """Build the sliding-window-attention score-times-value core, from ``flm_gemma4/decode_swa_attn_kv.cc``.
 
-    [`flm_gemma4_decode_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv]
+    [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv]
     at head dim ``swa_dh``, with entry points ``swa_attn_kv_begin``,
     ``swa_attn_kv_round`` and ``swa_attn_kv_finish``. One round covers every
     KV head, so it builds for one and for two.
@@ -1845,7 +1845,7 @@ DTYPES["flm_gemma4_swa_attn_kv_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECOD
 def flm_gemma4_swa_attn_kv_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
-    """One ``swa_attn_kv_round`` of [`flm_gemma4_decode_swa_attn_kv`][iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] without its v lock.
+    """One ``swa_attn_kv_round`` of [`flm_gemma4_decode_swa_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] without its v lock.
 
     ``swa_attn_kv_round_core(sv, ly_in, ly_out)``: ``ly_out`` is ``ly_in``
     with ``l = c * l + rowsum(s)`` and ``y = c * y + s @ v`` per query head,
@@ -1868,7 +1868,7 @@ def flm_gemma4_swa_attn_kv_core(
 
 
 def flm_gemma4_swa_attn_kv_core_ref(sv, ly, *, dh=256, kv_heads=1):
-    """Numpy reference for [`flm_gemma4_swa_attn_kv_core`][iron.kernels.flm_gemma4.flm_gemma4_swa_attn_kv_core], in float64."""
+    """Numpy reference for [`flm_gemma4_swa_attn_kv_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_swa_attn_kv_core], in float64."""
     impl = "1x8x1" if kv_heads == 1 else "2x4x1"
     return _attn_kv_round_ref(sv, ly, dh=dh, impl=impl)
 
@@ -1965,7 +1965,7 @@ def _rope_core_terms(x, rope_w):
 
 
 def flm_gemma4_rope_core_ref(x, rope_w):
-    """Numpy reference for [`flm_gemma4_rope_core`][iron.kernels.flm_gemma4.flm_gemma4_rope_core].
+    """Numpy reference for [`flm_gemma4_rope_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_rope_core].
 
     Per call, ``x`` is a q head then a k head and ``rope_w`` is ``[cos |
     sin | q weight | k weight]``. Each head ``n = x * w / sqrt(mean(x^2) +
@@ -2001,7 +2001,7 @@ def flm_gemma4_rope_core(
     sliding_window: bool = False,
     geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
 ) -> ExternalFunction:
-    """``_rotate_t`` of [`flm_gemma4_decode_rope`][iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one q and one k head.
+    """``_rotate_t`` of [`flm_gemma4_decode_rope`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one q and one k head.
 
     ``rope_head_core(x, rope_w, y)``: ``x`` is a q head then a k head,
     ``rope_w`` the base kernel's ``[cos | sin | q weight | k weight]``.
@@ -2035,7 +2035,7 @@ def flm_gemma4_rope_core(
 
 
 def flm_gemma4_v_norm_core_ref(x):
-    """Numpy reference for [`flm_gemma4_v_norm_core`][iron.kernels.flm_gemma4.flm_gemma4_v_norm_core]: ``x / sqrt(mean(x^2) + 1e-6)``."""
+    """Numpy reference for [`flm_gemma4_v_norm_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_v_norm_core]: ``x / sqrt(mean(x^2) + 1e-6)``."""
     x = np.asarray(x, np.float64)
     return (x * _rms(x)).astype(np.float32).astype(bfloat16)
 
@@ -2059,7 +2059,7 @@ def flm_gemma4_v_norm_core(
     sliding_window: bool = False,
     geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
 ) -> ExternalFunction:
-    """``rms_norm_unweighted`` of [`flm_gemma4_decode_rope`][iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one v head."""
+    """``rms_norm_unweighted`` of [`flm_gemma4_decode_rope`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_rope] on one v head."""
     base = flm_gemma4_decode_rope(sliding_window=sliding_window, geometry=geometry)
     dh = geometry.swa_dh if sliding_window else geometry.dh
     head = np.ndarray[(dh,), _BF16]
@@ -2154,7 +2154,7 @@ def _rms_residual_core_terms(x, w, residual):
 
 
 def flm_gemma4_rms_residual_core_ref(x, w, residual):
-    """Numpy reference for [`flm_gemma4_rms_residual_core`][iron.kernels.flm_gemma4.flm_gemma4_rms_residual_core].
+    """Numpy reference for [`flm_gemma4_rms_residual_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_rms_residual_core].
 
     ``residual + x * w / sqrt(mean(x^2) + 1e-6)``, rounded to bf16.
     """
@@ -2175,7 +2175,7 @@ DTYPES["flm_gemma4_rms_residual_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECO
 def flm_gemma4_rms_residual_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
-    """``rms_norm`` then ``residual_add`` of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual].
+    """``rms_norm`` then ``residual_add`` of [`flm_gemma4_decode_rms_residual`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual].
 
     The post-attention norm and residual add. ``rms_residual_core(x, w,
     residual, y)``, all ``model_dim`` bf16: ``y = residual + rms_norm(x) * w``.
@@ -2210,7 +2210,7 @@ _PACKET_HEADER = 16
 
 
 def flm_gemma4_rms_norm_core_ref(x, w):
-    """Numpy reference for [`flm_gemma4_rms_norm_core`][iron.kernels.flm_gemma4.flm_gemma4_rms_norm_core].
+    """Numpy reference for [`flm_gemma4_rms_norm_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_rms_norm_core].
 
     16 zeros, then ``x * w / sqrt(mean(x^2) + 1e-6)`` rounded to bf16.
     """
@@ -2231,7 +2231,7 @@ DTYPES["flm_gemma4_rms_norm_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}]
 def flm_gemma4_rms_norm_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
-    """``rms_norm`` of [`flm_gemma4_decode_rms_residual`][iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual] into its packet layout.
+    """``rms_norm`` of [`flm_gemma4_decode_rms_residual`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_rms_residual] into its packet layout.
 
     ``rms_norm_core(x, w, y)``: ``x`` and ``w`` are ``model_dim`` bf16, ``y``
     is ``model_dim + 16``, a zeroed 16-element packet header then
@@ -2385,7 +2385,7 @@ _BF16_PROJ_M, _BF16_PROJ_K = 32, 256
 
 
 def flm_gemma4_bf16_proj_core_ref(w, x):
-    """Numpy reference for [`flm_gemma4_bf16_proj_core`][iron.kernels.flm_gemma4.flm_gemma4_bf16_proj_core]: one weight block times ``x``.
+    """Numpy reference for [`flm_gemma4_bf16_proj_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_bf16_proj_core]: one weight block times ``x``.
 
     The block is stored column by column: ``w[k * 32 + m]`` multiplies
     ``x[k]`` into out-feature ``m``. Sums in float64.
@@ -2561,7 +2561,7 @@ def flm_gemma4_decode_gate_layer_embedding(
 
 
 def flm_gemma4_pli_gelu_core_ref(x):
-    """Numpy reference for [`flm_gemma4_pli_gelu_core`][iron.kernels.flm_gemma4.flm_gemma4_pli_gelu_core]: tanh-GELU.
+    """Numpy reference for [`flm_gemma4_pli_gelu_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_pli_gelu_core]: tanh-GELU.
 
     The tolerance covers the kernel's table.
     """
@@ -2584,7 +2584,7 @@ DTYPES["flm_gemma4_pli_gelu_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}]
 def flm_gemma4_pli_gelu_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
-    """``_activate`` of [`flm_gemma4_decode_gate_layer_embedding`][iron.kernels.flm_gemma4.flm_gemma4_decode_gate_layer_embedding]: GELU over ``pli_d`` values.
+    """``_activate`` of [`flm_gemma4_decode_gate_layer_embedding`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_gate_layer_embedding]: GELU over ``pli_d``.
 
     ``pli_gelu_core(x, y)``: copies ``x`` into ``y`` and applies GELU there,
     through aie_runtime_lib's table (``getGeluBf16``). Both are ``pli_d``
@@ -2656,7 +2656,7 @@ def _f32(x):
 
 
 def flm_gemma4_q4nx_lm_head_ref(w, x, sums, *, m_tile=32, k_tile=256, group=32):
-    """Numpy reference for [`flm_gemma4_q4nx_lm_head`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: one ``q4nx_lm_head_block`` call.
+    """Numpy reference for [`flm_gemma4_q4nx_lm_head`][aie.iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: one ``q4nx_lm_head_block`` call.
 
     ``w`` is one q4nx block per call, as bytes or bf16 words: bf16 scales,
     then bf16 minima, both indexed ``[k // group, m]``, then 4-bit codes, low
@@ -2745,7 +2745,7 @@ def _lm_head_zero(fn) -> ExternalFunction:
 
 def flm_gemma4_q4nx_lm_head(
     *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
-) -> ExternalFunction:
+) -> _LmHeadKernel:
     """AIE2P logits from a q4nx vocabulary, from ``flm_gemma4/q4nx_lm_head.cc``.
 
     One core owns ``m_tile`` out-features at a time and streams their q4nx
@@ -2827,7 +2827,7 @@ def _lm_head_softcap(rtp):
 
 
 def flm_gemma4_q4nx_lm_head_epilogue_ref(y_acc, rtp):
-    """Numpy reference for [`flm_gemma4_q4nx_lm_head_epilogue`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head_epilogue]: ``c * tanh(y_acc / c)``.
+    """Numpy reference for [`flm_gemma4_q4nx_lm_head_epilogue`][aie.iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head_epilogue]: ``c * tanh(y_acc / c)``.
 
     ``rtp`` holds the float32 bits of ``c`` in word 0. The reference computes
     in float64 and rounds to bf16 once; the tolerance covers the kernel's
@@ -2905,7 +2905,7 @@ def _lm_head_rms_y(x, dim):
 
 
 def flm_gemma4_q4nx_lm_head_rms_ref(x, *, dim=1536):
-    """Numpy reference for [`flm_gemma4_q4nx_lm_head_rms`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head_rms]: column sums of the normalized token.
+    """Numpy reference for [`flm_gemma4_q4nx_lm_head_rms`][aie.iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head_rms]: column sums of the normalized token.
 
     ``x`` holds, per call, the token then its RMS weight. The reference
     narrows each normalized value to bf16 and sums each 32 of them in float64.
@@ -2923,7 +2923,7 @@ def _lm_head_rms_bound(x, *, dim):
 def flm_gemma4_q4nx_lm_head_rms(
     *, dim: int = 1536, m_tile: int = 32, k_tile: int = 256, group: int = 32
 ) -> ExternalFunction:
-    """``q4nx_lm_head_rms`` of [`flm_gemma4_q4nx_lm_head`][iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: the token's RMS norm and per-32 column sums.
+    """``q4nx_lm_head_rms`` of [`flm_gemma4_q4nx_lm_head`][aie.iron.kernels.flm_gemma4.flm_gemma4_q4nx_lm_head]: the token's RMS norm and per-32 column sums.
 
     The kernel normalizes the token in place. The contract declares the token
     ``In``: the write lands in the core's input element, and the next DMA fill
@@ -2954,7 +2954,7 @@ def flm_gemma4_q4nx_lm_head_rms(
 
 
 def flm_gemma4_attn_prefill_ref(l_bf16, y):
-    """Numpy reference for [`flm_gemma4_attn_prefill`][iron.kernels.flm_gemma4.flm_gemma4_attn_prefill]: ``attn_epilogue`` at chunk 0.
+    """Numpy reference for [`flm_gemma4_attn_prefill`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_prefill]: ``attn_epilogue`` at chunk 0.
 
     ``y`` is the round's (8, 512) float32 accumulator, flat; chunk 0 is its
     first 64 values, eight per row of ``l_bf16``. The kernel narrows ``y`` to
@@ -2967,9 +2967,9 @@ def flm_gemma4_attn_prefill_ref(l_bf16, y):
 
 
 def flm_gemma4_swa_prefill_ref(l_bf16, y):
-    """Numpy reference for [`flm_gemma4_swa_prefill`][iron.kernels.flm_gemma4.flm_gemma4_swa_prefill]: ``attn_epilogue`` at chunk 33.
+    """Numpy reference for [`flm_gemma4_swa_prefill`][aie.iron.kernels.flm_gemma4.flm_gemma4_swa_prefill]: ``attn_epilogue`` at chunk 33.
 
-    As [`flm_gemma4_attn_prefill_ref`][iron.kernels.flm_gemma4.flm_gemma4_attn_prefill_ref], over a
+    As [`flm_gemma4_attn_prefill_ref`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_prefill_ref], over a
     (16, 256) ``y``: rows 8 to 15, columns 64 to 127, each row scaled by its
     own ``1 / l``.
     """

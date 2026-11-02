@@ -458,12 +458,13 @@ def _yolo_night(rng: random.Random) -> tuple[list, dict]:
     ran = "".join(f"image {name}: PASS (0/8400 differ)\n" for name in images)
     ran += f"yolo26n: {len(images)}/{len(images)} images PASS\n"
     ran += f"ort: {len(images)}/{len(images)} images match onnxruntime\n"
-    one = 12700 * rng.uniform(0.98, 1.03)
-    batched = 6150 * rng.uniform(0.98, 1.03)
+    # Per image at each batch, shaped as the synthetic-weight runs on Strix Halo.
+    curve = {1: 7650, 2: 5280, 4: 4280, 8: 3490, 16: 3210, 32: 3000, 64: 2860}
     # One run per batch, as the check makes them: the dispatch ~157 us under
     # the call and the empty dispatch ~88 us, as on Strix.
     timing = {}
-    for us, b in ((one, 1), (batched, yolo26n_hw.BATCH)):
+    for b in yolo26n_hw.BATCHES:
+        us = curve[b] * rng.uniform(0.98, 1.03)
         call, dispatch = us * b, us * b - 157 * rng.uniform(0.95, 1.05)
         empty = 88 * rng.uniform(0.95, 1.05)
         timing |= yolo26n_hw.parse_timing(

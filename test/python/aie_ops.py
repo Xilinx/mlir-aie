@@ -6,6 +6,7 @@ import numpy as np
 
 
 from aie.dialects.aie import (
+    Transport,
     AIEDevice,
     Core,
     Device,
@@ -143,7 +144,7 @@ def externalBufferOp():
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL1:.*]] = aie.tile(2, 2)
-# CHECK: aie.objectfifo @of0(%[[VAL0]] dimensionsToStream [<size = 1, stride = 2>], {%[[VAL1]] dimensionsFromStream [<size = 1, stride = 2>]}, 2 : i32) {via_DMA = true} : !aie.objectfifo<memref<4xf16>> = [dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : memref<4xf16>, dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : memref<4xf16>]
+# CHECK: aie.objectfifo @of0(%[[VAL0]] dimensionsToStream [<size = 1, stride = 2>], {%[[VAL1]] dimensionsFromStream [<size = 1, stride = 2>]}, 2 : i32) {transport = #aie.transport<dma>} : !aie.objectfifo<memref<4xf16>> = [dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : memref<4xf16>, dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : memref<4xf16>]
 @construct_and_print_module
 def objFifo():
     dev = Device(AIEDevice.xcvc1902)
@@ -159,7 +160,7 @@ def objFifo():
             np.ndarray[(4,), np.dtype[np.float16]],
             [bd_dim_layout(size=1, stride=2)],
             [[bd_dim_layout(size=1, stride=2)]],
-            via_DMA=True,
+            transport=Transport.dma(),
             initValues=[np.arange(4, dtype=np.float16), np.arange(4, dtype=np.float16)],
         )
         end()
@@ -374,7 +375,7 @@ def packetFlowViaOp():
 # CHECK-LABEL: dmaBDOp
 # CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
 # CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
-# CHECK: aie.dma_bd(%[[VAL_1]] : memref<12xi32>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
+# CHECK: aie.dma_bd(%[[VAL_1]] : memref<12xi32>) {packet = #aie.packet_info<pkt_id = 4>}
 @construct_and_print_module
 def dmaBDOp():
     t0 = tile(col=1, row=3)

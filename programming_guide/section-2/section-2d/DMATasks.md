@@ -214,6 +214,12 @@ dma_await_task(in_task, out_task)
 
 `dma_await_task` can only be called on a task created with `issue_token=True`. If `issue_token=False` (which is default), then `dma_free_task` should be called when the programmer knows that task if complete. `dma_free_task` allows the compiler to reuse the BDs of a task without synchronization. Using `dma_free_task(X)` before task `X` has completed will lead to a race condition and unpredictable behavior. Only use `dma_free_task(X)` in conjunction with some other means of synchronization. For example, you may issue `dma_free_task(X)` after a call to `dma_await_task(Y)` if you can reason that task `Y` can only complete after task `X` has completed.
 
+`aiecc` warns about unsafe BD reuse by default: a `dma_free_task(X)` whose BD id is reused before anything on the same tile, direction and channel proves `X` complete. It covers both the straight-line sequences the static allocator handles and the runtime-bound loops the dynamic BD pool handles. The analysis can only reason about completion within the runtime sequence itself, so a design that proves `X` complete through the compute core or another tile will still be flagged. Use `aiecc --warn-unsafe-bd-reuse=false` to disable these warnings, or `warn-unsafe-bd-reuse=false` on either `aie-assign-runtime-sequence-bd-ids` or `aie-lower-dynamic-bd-pool` when invoking `aie-opt` directly.
+
+The dynamic analysis also warns conservatively when its per-channel ownership-state or analysis-work budget is exhausted. It then continues queue-depth enforcement without tracking task identities, treating subsequent frees as unproven. A queue-space poll cannot establish completion from attempted-push counts after a potentially dropped push.
+
+On the dynamic pool path, the check follows the task selected by branch yields and loop-carried values. Task starts, raw queue pushes and `npu.dma_memcpy_nd` share the same channel FIFO, as do task awaits, `npu.sync` and `npu.dma_wait`: a wait may consume an older transfer's token instead of the named task's. A queue-space poll does not by itself prove the oldest tracked task complete, because queue occupancy excludes the running task. If the bounded analysis loses track of outstanding tokens, it conservatively warns rather than assuming a later wait completed the freed task.
+
 **Function Signature**:
 ```python
 def dma_free_task(*args: DMAConfigureTaskForOp)

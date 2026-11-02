@@ -11,11 +11,11 @@
 // Input replication and output replication are separate stages. The join's
 // shared pool must retain the output repeat, not either producer's repeat.
 // POOL-LABEL: module @join_independent
-// POOL: aie.objectfifo.pool @a_pool
+// POOL: aie.objectfifo.pool @a__pool
 // POOL-SAME: repeatCount = 3
-// POOL: aie.objectfifo.pool @b_pool
+// POOL: aie.objectfifo.pool @b__pool
 // POOL-SAME: repeatCount = 3
-// POOL: aie.objectfifo.pool @out_pool
+// POOL: aie.objectfifo.pool @out__pool
 // POOL-SAME: repeatCount = 2
 // DMA-LABEL: module @join_independent
 // DMA: aie.mem(
@@ -56,9 +56,9 @@ module @join_independent {
 // A distribute keeps the input's local repeat separate from the repeat of
 // the shared pool feeding the two output segments.
 // POOL-LABEL: module @distribute_independent
-// POOL: aie.objectfifo.pool @in_cons_pool
+// POOL: aie.objectfifo.pool @in__cons__pool
 // POOL-SAME: repeatCount = 3
-// POOL: aie.objectfifo.pool @in_pool
+// POOL: aie.objectfifo.pool @in__pool
 // POOL-SAME: repeatCount = 2
 // DMA-LABEL: module @distribute_independent
 // DMA: aie.mem(

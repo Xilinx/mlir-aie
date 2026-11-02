@@ -27,6 +27,90 @@ def workflow(name):
     )
 
 
+@pytest.mark.parametrize("index", [0, 1])
+def test_code_health_sanitizers_do_not_stop_after_one_failure(tmp_path, index):
+    job = workflow("nightlyCodeHealth.yml")["jobs"]["sanitizer"]
+    entry = job["strategy"]["matrix"]["include"][index]
+    script = next(s["run"] for s in job["steps"] if s.get("name") == "Test")
+    script = script.replace("${{ matrix.options }}", entry["options"]).replace(
+        "${{ matrix.filter-out }}", entry["filter-out"]
+    )
+    lit = 'lit() { printf "%s\\n" "$@" "LOGS=$AIE_SANITIZER_LOG_DIR"; return 1; }\n'
+    result = subprocess.run(
+        [BASH, "-e", "-c", lit + script],
+        env={**os.environ, "RUNNER_TEMP": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    args = result.stdout.splitlines()
+    assert "--max-failures" not in args
+    assert args[args.index("--filter-out") + 1] == entry["filter-out"]
+    # The script joins with "/" whatever separator RUNNER_TEMP uses.
+    assert args[args.index("-o") + 1] == f"{tmp_path}/lit/tests.json"
+    assert "build/test" in args
+    # Each test's sanitizer logs land where the summary reads them.
+    assert f"LOGS={tmp_path}/sanitizer-logs" in args
+    assert (tmp_path / "sanitizer-logs").is_dir()
+    summarize = next(s["run"] for s in job["steps"] if s.get("name") == "Summarize")
+    assert '--logs "$RUNNER_TEMP/sanitizer-logs"' in summarize
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the step runs on a Linux runner and reads POSIX paths",
+)
+@pytest.mark.parametrize(
+    "tidy_exit, crash, written",
+    [
+        (0, False, True),
+        (123, False, True),
+        (125, False, False),
+        (1, False, False),
+        (123, True, False),
+    ],
+)
+def test_code_health_tidy_reports_only_a_finished_analysis(
+    tmp_path, tidy_exit, crash, written
+):
+    job = workflow("nightlyCodeHealth.yml")["jobs"]["clang-tidy"]
+    script = next(s["run"] for s in job["steps"] if s.get("name") == "clang-tidy")
+    root = Path(__file__).resolve().parents[1]
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build/compile_commands.json").write_text(
+        json.dumps([{"file": str(tmp_path / "lib/A.cpp")}])
+    )
+    (tmp_path / "utils/kernel_checks").mkdir(parents=True)
+    for script_name in ("code_health.py", "ci_health.py"):
+        shutil.copy(
+            root / "utils/kernel_checks" / script_name, tmp_path / "utils/kernel_checks"
+        )
+    shutil.copy(root / ".pre-commit-config.yaml", tmp_path)
+    tidy = tmp_path / "utils/run_clang_tidy.sh"
+    tidy.write_text(
+        "#!/usr/bin/env bash\n"
+        f"echo \"$*\" > {json.dumps(str(tmp_path / 'args.txt'))}\n"
+        + ("echo 'Stack dump:'\n" if crash else "")
+        + f"exit {tidy_exit}\n"
+    )
+    tidy.chmod(0o755)
+    py = Path(sys.executable).as_posix()
+    result = subprocess.run(
+        [BASH, "-e", "-c", f'python3() {{ "{py}" "$@"; }}\n' + script],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "RUNNER_TEMP": str(tmp_path),
+            "GITHUB_WORKSPACE": str(tmp_path),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert (tmp_path / "args.txt").read_text().split() == ["lib/A.cpp"]
+    assert (result.returncode == 0) == written, result.stderr
+    assert (tmp_path / "clang-tidy.json").exists() == written
+
+
 # Resolve bash in PATH order: a bare "bash" argv[0] goes through CreateProcess's
 # search, which checks System32 before PATH and so finds Windows' WSL launcher
 # stub instead of Git for Windows' bash.
@@ -798,6 +882,7 @@ def test_the_docs_deploy_keeps_what_the_nightlies_publish(tmp_path):
         "kernel-checks/npu1/runs.json",
         "component-checks/sa-placer/runs.json",
         "ci-health/status.json",
+        "code-health/status.json",
         "dev/index.html",
         "index.html",
         "versions.json",
@@ -1014,3 +1099,67 @@ def test_the_picker_step_runs_the_script_with_the_types_split():
     assert '--runner-types "${types[@]}"' in step["run"]
     outputs = workflow("pickBenchRunner.yml")["on"]["workflow_call"]["outputs"]
     assert outputs["runs_on"]["value"] == "${{ jobs.pick.outputs.runs_on }}"
+
+
+def test_code_health_publishes_its_files_and_the_page(tmp_path):
+    """nightlyCodeHealth.yml's Publish step, on a local repository: its two
+    files and the page, under the lock every gh-pages writer takes."""
+    job = workflow("nightlyCodeHealth.yml")["jobs"]["publish"]
+    assert job["concurrency"] == {
+        "group": "gh-pages-publish",
+        "cancel-in-progress": "false",
+        "queue": "max",
+    }
+    assert job["permissions"] == {"contents": "write", "security-events": "read"}
+    # A failed check still publishes the others; a cancelled run does not.
+    assert set(job["needs"]) == {"coverage", "sanitizer", "clang-tidy"}
+    assert "!cancelled()" in job["if"] and "refs/heads/main" in job["if"]
+    run = next(step["run"] for step in job["steps"] if step.get("name") == "Publish")
+    repo = tmp_path / "repo"
+    (repo / "utils/kernel_checks").mkdir(parents=True)
+    page = WORKFLOWS.parents[1] / "utils/kernel_checks/index.html"
+    (repo / "utils/kernel_checks/index.html").write_bytes(page.read_bytes())
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "main")
+    git(repo, "switch", "-q", "--orphan", "gh-pages")
+    (repo / "ci-health").mkdir()
+    (repo / "ci-health/status.json").write_text("{}")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "pages")
+    git(repo, "switch", "-q", "main")
+    temp = tmp_path / "runner-temp"
+    (temp / "code-health").mkdir(parents=True)
+    (temp / "code-health/status.json").write_text('{"schema": 1}')
+    (temp / "code-health/history.json").write_text('{"schema": 1, "points": []}')
+    env = {
+        **os.environ,
+        "RUNNER_TEMP": str(temp),
+        "GITHUB_SHA": "0123456789abcdef",
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+    }
+    subprocess.run(
+        [BASH, "-eo", "pipefail", "-c", run],
+        cwd=repo,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+    assert git(repo, "branch", "--show-current").strip() == "main"
+    files = set(git(repo, "ls-tree", "-r", "--name-only", "gh-pages").split())
+    assert files == {
+        "ci-health/status.json",
+        "code-health/status.json",
+        "code-health/history.json",
+        "dashboard/index.html",
+    }
+    assert (
+        git(repo, "log", "-1", "--format=%s", "gh-pages").strip()
+        == "Publish code health for 0123456789"
+    )
+    # The coverage job is the coverage workflow itself, called.
+    assert workflow("nightlyCodeHealth.yml")["jobs"]["coverage"]["uses"] == (
+        "./.github/workflows/codeCoverage.yml"
+    )
+    assert "workflow_call" in workflow("codeCoverage.yml")["on"]

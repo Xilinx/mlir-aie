@@ -30,6 +30,10 @@ def runtime():
 
     # Save old values
     old_utils_runtime = aie.utils.DefaultNPURuntime
+    # These tests count hardware contexts, so free the ones earlier tests left
+    # open in the outgoing runtime; it recreates them on its next run.
+    if old_utils_runtime is not None:
+        old_utils_runtime.cleanup()
 
     # Set new values
     aie.utils.DefaultNPURuntime = rt

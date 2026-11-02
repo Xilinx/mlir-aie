@@ -30,7 +30,9 @@ no browser asks GitHub itself.
   list or the other, never both.
 
 * **Self-hosted runners**: each one named in the critical workflows' jobs
-  in the window, and how many it ran that passed or failed. No separate
+  in the window, and how many it ran that passed, failed or lost the
+  runner; each run on main keeps its jobs' runners and outcomes, so the
+  page can judge a machine on its latest jobs. No separate
   request: GitHub's API does not say which runners are online without a
   repository-administrator token, which the publisher does not have.
 
@@ -73,7 +75,8 @@ PULL_PAGES = 5
 FAILED = ("failure", "timed_out", "startup_failure")
 # The critical workflows use these custom labels without "self-hosted".
 SELF_HOSTED_LABELS = {"self-hosted", "aie2-4col", "aie2p-8col"}
-RUNNERS_VERSION = 1
+# 2: a job whose runner was lost is recorded too, with each job's outcome.
+RUNNERS_VERSION = 2
 # A run on main's outcome, from its jobs. The first two count against its
 # pass rate, the next two are the runners', and a cancel counts neither way.
 OUTCOMES = ("failed", "timed_out", "runner_lost", "no_runner", "cancelled")
@@ -225,8 +228,10 @@ def judge(get, repo: str, run: dict) -> dict:
     run that did not pass with no job to say why is cancelled if GitHub
     says so and failed otherwise); its wait the longest any job waited for
     a runner, and its time from its first job's start to its end, in
-    minutes. ``runners`` records passed, failed and timed-out jobs on
-    self-hosted runners, excluding cancellations and infrastructure loss.
+    minutes. ``runners`` records each self-hosted runner's passed, failed,
+    timed-out and runner-lost jobs, with the outcome: a machine that keeps
+    losing its jobs, or failing them while its peers pass, needs a look.
+    Cancellations are no one's.
     """
     jobs = get(f"/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100").get(
         "jobs", []
@@ -252,12 +257,16 @@ def judge(get, repo: str, run: dict) -> dict:
             rounded(minutes(min(started), run.get("updated_at"))) if started else None
         ),
         "runners": [
-            {"runner": j["runner_name"], "passed": result == "passed"}
+            {
+                "runner": j["runner_name"],
+                "passed": result == "passed",
+                "outcome": result,
+            }
             for j, result in zip(jobs, outcomes)
             if j.get("runner_name")
             and SELF_HOSTED_LABELS.intersection(j.get("labels") or [])
             and j.get("conclusion") not in ("skipped", "neutral")
-            and result in ("passed", "failed", "timed_out")
+            and result in ("passed", "failed", "timed_out", "runner_lost")
         ],
         "runners_version": RUNNERS_VERSION,
     }
@@ -481,18 +490,24 @@ def merge_time(get, repo: str, now: datetime.datetime) -> dict:
 
 
 def runner_tally(critical: list) -> dict:
-    """Count each self-hosted runner's passed and failed jobs.
+    """Count each self-hosted runner's passed, failed and lost jobs.
 
     From the critical workflows' runs on main in the window, already
-    fetched to judge them: no extra requests. Returns
-    ``{runner_name: {"passed", "failed"}}``.
+    fetched to judge them: no extra requests. A lost runner is the
+    machine's, not the tests': counted apart. Returns
+    ``{runner_name: {"passed", "failed", "lost"}}``.
     """
     tally = {}
     for wf in critical:
         for main_run in wf.get("main_runs") or []:
             for j in main_run.get("runners") or []:
-                counts = tally.setdefault(j["runner"], {"passed": 0, "failed": 0})
-                counts["passed" if j["passed"] else "failed"] += 1
+                counts = tally.setdefault(
+                    j["runner"], {"passed": 0, "failed": 0, "lost": 0}
+                )
+                if j.get("outcome") == "runner_lost":
+                    counts["lost"] += 1
+                else:
+                    counts["passed" if j["passed"] else "failed"] += 1
     return tally
 
 

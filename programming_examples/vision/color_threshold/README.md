@@ -9,7 +9,7 @@
 
 The Color Threshold pipeline design consists of 4 threshold blocks in separate AIE tiles that process a different region of an input image, as shown in the image below.
 
-The pipeline is mapped onto a single column of the npu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5). 
+The pipeline is mapped onto a single column of the npu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5).
 
 <p align="center">
   <img
@@ -29,7 +29,7 @@ Each AIE tile applies a threshold kernel on its data and sends its result back t
 python3 color_threshold.py
 ```
 
-`-d npu2` for Strix; `-W` / `-H` override the image dimensions. This mode JIT-compiles + runs on random data without verifying pixels.
+`-d npu2` for Strix; `-W` / `-H` override the image dimensions. This mode JIT-compiles and runs on random data, then checks every output byte against a NumPy binary-threshold reference.
 
 ### Makefile + C++ testbench (OpenCV)
 

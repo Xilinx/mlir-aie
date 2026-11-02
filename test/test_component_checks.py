@@ -209,10 +209,10 @@ def publish_results(results, target):
 def test_the_fixture_digest_follows_the_fixtures_content(tmp_path):
     sa_placer = load("sa_placer")
     copy = tmp_path / SMALL.name
-    copy.write_text(SMALL.read_text())
+    copy.write_bytes(SMALL.read_bytes())
     same = sa_placer.fixtures_digest([str(SMALL)])
     assert sa_placer.fixtures_digest([str(copy)]) == same
-    copy.write_text(SMALL.read_text() + "\n")
+    copy.write_bytes(SMALL.read_bytes() + b"\n")
     assert sa_placer.fixtures_digest([str(copy)]) != same
 
 

@@ -44,7 +44,7 @@ _REDUCE_VEC_ELEMS_BF16 = 32
 
 
 def reduce_add_ref(x):
-    """Numpy reference for [`reduce_add`][iron.kernels.reduce.reduce_add]: per-tile sum.
+    """Numpy reference for [`reduce_add`][aie.iron.kernels.reduce.reduce_add]: per-tile sum.
 
     In int64 for integer tiles, in float64 for bfloat16 ones.
     """
@@ -71,12 +71,12 @@ def _reduce_add_bf16_bound(x):
 
 
 def reduce_min_ref(x):
-    """Numpy reference for [`reduce_min`][iron.kernels.reduce.reduce_min]: per-tile minimum."""
+    """Numpy reference for [`reduce_min`][aie.iron.kernels.reduce.reduce_min]: per-tile minimum."""
     return x.min(axis=-1, keepdims=True)
 
 
 def reduce_max_ref(x):
-    """Numpy reference for [`reduce_max`][iron.kernels.reduce.reduce_max]: per-tile maximum."""
+    """Numpy reference for [`reduce_max`][aie.iron.kernels.reduce.reduce_max]: per-tile maximum."""
     return x.max(axis=-1, keepdims=True)
 
 
@@ -117,7 +117,7 @@ def _reduce_contract(
 def _reduce_kernel(
     op: str, tile_size: int, dtype, vectorized: bool
 ) -> ExternalFunction:
-    """Shared implementation for [`reduce_add`][iron.kernels.reduce.reduce_add] and [`reduce_min`][iron.kernels.reduce.reduce_min]."""
+    """Shared implementation for [`reduce_add`][aie.iron.kernels.reduce.reduce_add] and [`reduce_min`][aie.iron.kernels.reduce.reduce_min]."""
     is_bf16 = np.dtype(dtype) == np.dtype(bfloat16)
     if not is_bf16 and np.dtype(dtype) != np.dtype(np.int32):
         raise ValueError(
@@ -250,12 +250,12 @@ DTYPES["compute_max"] = tuple(({"dtype": np.int32}, {"dtype": bfloat16}))
 
 
 def compute_max(dtype: type = np.int32) -> ExternalFunction:
-    """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max].
+    """Pairwise scalar max — companion to [`reduce_max`][aie.iron.kernels.reduce.reduce_max].
 
     Used for multi-core reductions where each core produces a partial max and a
     final tree reduces them pairwise.
 
-    Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max],
+    Lives in the same ``reduce_max.cc`` as [`reduce_max`][aie.iron.kernels.reduce.reduce_max],
     but uses an unspecialized object independent of reduction tile sizes.
 
     Args:
@@ -296,7 +296,7 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
 
 
 def compute_max_ref(a, b):
-    """Numpy reference for [`compute_max`][iron.kernels.reduce.compute_max].
+    """Numpy reference for [`compute_max`][aie.iron.kernels.reduce.compute_max].
 
     The kernel compares only element 0 of each (DMA-padded) input tile and
     writes element 0 of the output; the reference does the same, returning
@@ -306,7 +306,7 @@ def compute_max_ref(a, b):
 
 
 def argmax_ref(x, index_offset: int = 0):
-    """Numpy reference for [`argmax`][iron.kernels.reduce.argmax]: one record per tile.
+    """Numpy reference for [`argmax`][aie.iron.kernels.reduce.argmax]: one record per tile.
 
     Returns the ``(..., 2)`` int32 records the kernel writes, so a host can
     compare them verbatim. A NaN reads as -inf and a -0 as +0, as they do in
@@ -334,10 +334,10 @@ def argmax(
     """Reduction kernel: the largest element of a tile and its index.
 
     The partial half of a distributed argmax, in the same shape as
-    [`reduce_max`][iron.kernels.reduce.reduce_max] +
-    [`compute_max`][iron.kernels.reduce.compute_max]: each core runs this over
+    [`reduce_max`][aie.iron.kernels.reduce.reduce_max] +
+    [`compute_max`][aie.iron.kernels.reduce.compute_max]: each core runs this over
     its own slice and a tree merges the records with
-    [`argmax_combine`][iron.kernels.reduce.argmax_combine].
+    [`argmax_combine`][aie.iron.kernels.reduce.argmax_combine].
 
     The kernel writes a 2-element int32 record: ``out[0]`` the winning value
     (int32 as itself, bfloat16 widened to float and bit-cast) and ``out[1]``
@@ -394,7 +394,7 @@ def argmax(
 
 
 def argmax_combine_ref(a, b, dtype: type = np.int32):
-    """Numpy reference for [`argmax_combine`][iron.kernels.reduce.argmax_combine].
+    """Numpy reference for [`argmax_combine`][aie.iron.kernels.reduce.argmax_combine].
 
     Keeps, per call, the record with the larger value, or the lower index when
     the values are equal. ``dtype`` is the original input's and says how
@@ -428,9 +428,9 @@ def argmax_combine_sample(rng, calls: int, *, dtype: type) -> list:
 
 
 def argmax_combine(dtype: type = np.int32) -> ExternalFunction:
-    """Pairwise record merge — companion to [`argmax`][iron.kernels.reduce.argmax].
+    """Pairwise record merge — companion to [`argmax`][aie.iron.kernels.reduce.argmax].
 
-    Takes two of the records described in [`argmax`][iron.kernels.reduce.argmax]
+    Takes two of the records described in [`argmax`][aie.iron.kernels.reduce.argmax]
     and keeps the one with the larger value, or the lower index when the values
     are equal. When both operands carry global indices, the merge order does
     not affect the result.
@@ -473,7 +473,7 @@ def argmax_combine(dtype: type = np.int32) -> ExternalFunction:
 
 
 def maxpool2d_ref(line0, line1, line2, line3, line4, input_width, channels):
-    """Numpy reference for [`maxpool2d`][iron.kernels.reduce.maxpool2d]: a 5x5 stride-1 max pool row.
+    """Numpy reference for [`maxpool2d`][aie.iron.kernels.reduce.maxpool2d]: a 5x5 stride-1 max pool row.
 
     Lines are ``[C/8][W][8]`` int8, the output row is the max over the five
     lines and the five pixels around each one, pixels past the row's ends

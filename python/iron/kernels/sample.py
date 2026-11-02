@@ -62,11 +62,24 @@ SUMMARY_HEADER = 8
 # The largest k_max: sample_combine's stack holds a table of k_max weights.
 # 128 is the largest verified on hardware.
 K_MAX_LIMIT = 128
+# int32 words of sample_select's per-call reduction output, SAMPLE_PROB_RULE
+# only (sample.h): a running max over the text range and a running (max, sum
+# of exp) over the timestamp range.
+REDUCTION_WORDS = 3
 
 
 def summary_words(slice_size: int, k_max: int) -> int:
     """int32 words of one column's summary: header, entries, tie bitmap."""
     return SUMMARY_HEADER + 2 * k_max + (slice_size + 31) // 32
+
+
+def rule_column_words(slice_size: int, k_max: int) -> int:
+    """int32 words of one column's input to ``sample_combine(probability_rule=True)``.
+
+    That column's ``sample_select`` summary, restricted summary and
+    reduction, back to back.
+    """
+    return 2 * summary_words(slice_size, k_max) + REDUCTION_WORDS
 
 
 def _positive(owner: str, **values) -> None:
@@ -77,6 +90,16 @@ def _positive(owner: str, **values) -> None:
             or value <= 0
         ):
             raise ValueError(f"{owner}: {name} must be a positive integer")
+
+
+def _non_negative(owner: str, **values) -> None:
+    for name, value in values.items():
+        if (
+            isinstance(value, (bool, np.bool_))
+            or not isinstance(value, (int, np.integer))
+            or value < 0
+        ):
+            raise ValueError(f"{owner}: {name} must be a non-negative integer")
 
 
 def _check_slice(owner: str, slice_size: int, k_max: int) -> None:
@@ -92,6 +115,57 @@ def _check_slice(owner: str, slice_size: int, k_max: int) -> None:
         raise ValueError(f"{owner}: slice_size must be below 2**24")
 
 
+def select_row_words(max_ranges: int = 0, probability_rule: bool = False) -> int:
+    """int32 words of ``sample_select``'s row.
+
+    ``draw_row``'s ``ROW_WORDS``, then ``2 * max_ranges`` range words, then
+    one split word if ``probability_rule``. ``0, False`` (the default) is
+    ``ROW_WORDS``.
+    """
+    _non_negative("select_row_words", max_ranges=max_ranges)
+    return ROW_WORDS + 2 * max_ranges + (1 if probability_rule else 0)
+
+
+def combine_row_words(probability_rule: bool = False) -> int:
+    """int32 words of ``sample_combine``'s row.
+
+    ``draw_row``'s ``ROW_WORDS``, then one split word if ``probability_rule``.
+    """
+    return ROW_WORDS + (1 if probability_rule else 0)
+
+
+def range_words(ranges, max_ranges: int) -> np.ndarray:
+    """Pack up to ``max_ranges`` ``(lo, hi)`` pairs as ``sample_select``'s row words.
+
+    Appended after ``draw_row``'s ``ROW_WORDS``: global row coordinates, one
+    pair per range, in order. An unused slot is ``(0, 0)``, which excludes
+    nothing (``lo >= hi``, once clipped to a column's own slice, is empty).
+
+    Raises:
+        ValueError: When more than ``max_ranges`` ranges are given.
+    """
+    _non_negative("range_words", max_ranges=max_ranges)
+    ranges = list(ranges)
+    if len(ranges) > max_ranges:
+        raise ValueError(
+            f"range_words: {len(ranges)} ranges exceeds max_ranges ({max_ranges})"
+        )
+    words = np.zeros(2 * max_ranges, dtype=np.int32)
+    for i, (lo, hi) in enumerate(ranges):
+        words[2 * i] = lo
+        words[2 * i + 1] = hi
+    return words
+
+
+def split_word(split: int) -> np.ndarray:
+    """``sample_select``'s and ``sample_combine``'s one extra row word.
+
+    Present when ``probability_rule``: ``timestamp_begin``, global row
+    coordinates.
+    """
+    return np.array([split], dtype=np.int32)
+
+
 def select_streams(slice_size: int, chunk: int) -> int:
     """How often ``sample_select`` takes its slice per position.
 
@@ -102,7 +176,14 @@ def select_streams(slice_size: int, chunk: int) -> int:
 
 
 def sample_select(
-    *, slice_size=32064, chunk=5344, k_max=64, valid=None
+    *,
+    slice_size=32064,
+    chunk=5344,
+    k_max=64,
+    valid=None,
+    base=0,
+    max_ranges=0,
+    probability_rule=False,
 ) -> ExternalFunction:
     """One column's half of sampling: its slice's summary, for ``sample_combine``.
 
@@ -116,9 +197,31 @@ def sample_select(
     ``valid`` (default ``slice_size``) is how many of the slice's logits are
     tokens'; the rest pad it to whole words, and the kernel writes them -inf
     in ``x`` so none is drawn.
+
+    ``base`` is this column's global offset into the row, which ``row``'s
+    ranges (``max_ranges``) and split (``probability_rule``) are given in; it
+    does not change ``row``'s own shape. ``max_ranges`` (default 0: none)
+    accepts that many ``(lo, hi)`` pairs per call (``range_words``, appended
+    to ``row`` after ``draw_row``'s ``ROW_WORDS``), each masking ``[lo, hi)``
+    (clamped to the row) to -inf before either pass reads it, as padding is:
+    while any unmasked logit is finite, no masked one is drawn.
+
+    ``probability_rule`` (default off, bit-identical to a build without it)
+    additionally takes ``row``'s one split word (``split_word``, after the
+    ranges) and five more arguments: ``restricted_state``/
+    ``restricted_summary`` (mirroring ``state``/``summary``, a second top-k
+    built over ``[split, vocab)`` only), ``restricted_x`` (this column's own
+    ``chunk``-wide bf16 scratch) and ``reduction`` (``REDUCTION_WORDS``
+    int32, this column's running evidence for ``sample_combine``'s
+    forced-timestamp compare). ``sample_combine`` (``probability_rule=True``)
+    reads ``summary``, ``restricted_summary`` and ``reduction`` back to back
+    (``rule_column_words``), reduces every column's ``reduction`` into that
+    compare and draws from ``summary`` or ``restricted_summary`` as it
+    decides.
     """
     _check_slice("sample_select", slice_size, k_max)
     _positive("sample_select", chunk=chunk)
+    _non_negative("sample_select", base=base, max_ranges=max_ranges)
     valid = slice_size if valid is None else valid
     if not k_max <= valid <= slice_size:
         raise ValueError(
@@ -129,25 +232,56 @@ def sample_select(
         raise ValueError("sample_select: chunk must divide slice_size")
     if chunk % 2:
         raise ValueError("sample_select: chunk must be even (4-byte DMA)")
-    return _make_extern(
-        "sample_select",
-        _kernel_source("sample/sample_select.cc"),
-        [
-            np.ndarray[(chunk,), np.dtype[bfloat16]],
-            np.ndarray[(ROW_WORDS,), np.dtype[np.int32]],
+    row_words = select_row_words(max_ranges, probability_rule)
+    summary_shape = (summary_words(slice_size, k_max),)
+    arg_types = [
+        np.ndarray[(chunk,), np.dtype[bfloat16]],
+        np.ndarray[(row_words,), np.dtype[np.int32]],
+        np.ndarray[(SELECT_STATE_WORDS,), np.dtype[np.int32]],
+        np.ndarray[summary_shape, np.dtype[np.int32]],
+    ]
+    # x is written in place: by the padding fill below valid, and by
+    # apply_ranges (sample_select.cc) masking a range's span to -inf bits,
+    # whether or not padding also applies.
+    roles = [In if valid == slice_size and not max_ranges else InOut, In, InOut, InOut]
+    if probability_rule:
+        arg_types += [
             np.ndarray[(SELECT_STATE_WORDS,), np.dtype[np.int32]],
-            np.ndarray[(summary_words(slice_size, k_max),), np.dtype[np.int32]],
-        ],
-        compile_flags=_STRICT_FP
+            np.ndarray[summary_shape, np.dtype[np.int32]],
+            np.ndarray[(chunk,), np.dtype[bfloat16]],
+            np.ndarray[(REDUCTION_WORDS,), np.dtype[np.int32]],
+        ]
+        roles += [InOut, InOut, InOut, InOut]
+    compile_flags = list(
+        _STRICT_FP
         + [
             f"-DSAMPLE_SLICE={slice_size}",
             f"-DSAMPLE_CHUNK={chunk}",
             f"-DSAMPLE_K_MAX={k_max}",
             f"-DSAMPLE_VALID={valid}",
-        ],
+        ]
+    )
+    if base:
+        compile_flags.append(f"-DSAMPLE_BASE={base}")
+    if max_ranges:
+        compile_flags.append(f"-DSAMPLE_MAX_RANGES={max_ranges}")
+    if probability_rule:
+        compile_flags.append("-DSAMPLE_PROB_RULE=1")
+    return _make_extern(
+        "sample_select",
+        _kernel_source("sample/sample_select.cc"),
+        arg_types,
+        compile_flags=compile_flags,
         contract=KernelContract(
             trace=Trace.whole_call(),
-            roles=(In if valid == slice_size else InOut, In, InOut, InOut),
+            roles=tuple(roles),
+            ops_per_call=0,
+            # A position's calls are not equal work: the first of each pass
+            # (begin(), zeroing the bitmap, and a cut=0 scan keeping every
+            # key) and the last (end_pass()) do more than the steady-state
+            # calls between them, and pass 0 (scan) and pass 1 (collect)
+            # are different code.
+            even_calls=False,
         ),
     )
 
@@ -158,6 +292,7 @@ def sample_combine(
     slice_size: int = 32064,
     k_max: int = 64,
     last_slice: int | None = None,
+    probability_rule: bool = False,
 ) -> ExternalFunction:
     """Draw from ``columns`` summaries of ``sample_select``, as ``sample_ref`` does.
 
@@ -172,9 +307,23 @@ def sample_combine(
         k_max: The largest top-k the summaries carry.
         last_slice: The last column's slice, if shorter than
             ``slice_size``: the row and the last summary end early.
+        probability_rule: Matches the same argument of every column's
+            ``sample_select`` (default off, bit-identical to a build without
+            it). ``row`` then carries one more word, its split
+            (``split_word``), and each column of ``summaries`` is
+            ``rule_column_words`` long: its summary, then its second,
+            ``[split, vocab)``-only top-k (``restricted_summary``), then its
+            ``reduction``, so one stream per column carries all three. The
+            forced-timestamp compare the reductions decide chooses which of
+            the two summaries the draw comes from. Every column is
+            ``slice_size``: no ``last_slice``.
 
     Returns:
         The kernel.
+
+    Raises:
+        ValueError: When a size is out of range, or ``probability_rule`` is
+            given with a ``last_slice``.
     """
     last = slice_size if last_slice is None else last_slice
     _check_slice("sample_combine", slice_size, k_max)
@@ -186,30 +335,42 @@ def sample_combine(
         )
     if columns * slice_size >= 1 << 31:
         raise ValueError("sample_combine: a token must fit int32")
-    return _make_extern(
-        "sample_combine",
-        _kernel_source("sample/sample_combine.cc"),
-        [
-            np.ndarray[
-                (
-                    (columns - 1) * summary_words(slice_size, k_max)
-                    + summary_words(last, k_max),
-                ),
-                np.dtype[np.int32],
-            ],
-            np.ndarray[(ROW_WORDS,), np.dtype[np.int32]],
-            np.ndarray[(1,), np.dtype[np.int32]],
-            np.ndarray[(1,), np.dtype[np.int32]],
-        ],
-        compile_flags=_STRICT_FP
+    if probability_rule:
+        # The core strides by a whole column, so the last's restricted
+        # summary must sit where a full column's would.
+        if last != slice_size:
+            raise ValueError("sample_combine: probability_rule needs equal slices")
+        summaries_shape = (columns * rule_column_words(slice_size, k_max),)
+    else:
+        summaries_shape = (
+            (columns - 1) * summary_words(slice_size, k_max)
+            + summary_words(last, k_max),
+        )
+    row_words = combine_row_words(probability_rule)
+    arg_types = [
+        np.ndarray[summaries_shape, np.dtype[np.int32]],
+        np.ndarray[(row_words,), np.dtype[np.int32]],
+        np.ndarray[(1,), np.dtype[np.int32]],
+        np.ndarray[(1,), np.dtype[np.int32]],
+    ]
+    roles = [In, In, Out, Out]
+    compile_flags = list(
+        _STRICT_FP
         + [
             f"-DSAMPLE_SLICE={slice_size}",
             f"-DSAMPLE_COLUMNS={columns}",
             f"-DSAMPLE_K_MAX={k_max}",
-        ],
+        ]
+    )
+    if probability_rule:
+        compile_flags.append("-DSAMPLE_PROB_RULE=1")
+    return _make_extern(
+        "sample_combine",
+        _kernel_source("sample/sample_combine.cc"),
+        arg_types,
+        compile_flags=compile_flags,
         contract=KernelContract(
-            trace=Trace.whole_call(),
-            roles=(In, In, Out, Out),
+            trace=Trace.whole_call(), roles=tuple(roles), ops_per_call=0
         ),
     )
 
@@ -362,6 +523,86 @@ def select_summary_ref(logits, k_max: int) -> np.ndarray:
     return words
 
 
+def apply_ranges_ref(logits, ranges) -> np.ndarray:
+    """Return bf16 ``logits``, ``(lo, hi)`` ranges masked to -inf.
+
+    As ``sample_select``'s own masking does before either of its passes
+    reads them, each endpoint clamped to the row as each column clamps it
+    to its slice: ``select_summary_ref`` (or ``sample_ref``) of the result
+    draws as the device would.
+    """
+    row = np.ascontiguousarray(logits, dtype=bfloat16).reshape(-1).copy()
+    for lo, hi in ranges:
+        row[min(max(lo, 0), row.size) : min(max(hi, 0), row.size)] = -np.inf
+    return row
+
+
+def logsumexp_reduction_ref(
+    logits, split: int
+) -> tuple[np.float32, np.float32, np.float32]:
+    """Return one column's ``sample_select`` reduction output (``probability_rule``).
+
+    ``(max_text, max_ts, sum_ts)`` over its own slice of bf16 ``logits``,
+    local ``split``. A running max over ``logits[:split]``, and a running ``(max, sum of
+    exp(v - max))`` over ``logits[split:]``, each folded index by index as
+    the device does (so a near-tie rounds the same way): float32
+    throughout, ``exp64_ref`` (float64) evaluating each exp before its single
+    rounding into the float32 sum. A ``-inf`` logit weighs 0 and is not
+    folded. ``-inf``/``-inf``/``0.0`` where a side is empty (or all
+    ``-inf``), matching ``sample_select``'s own ``begin_reduction``.
+    """
+    values = np.ascontiguousarray(logits, dtype=bfloat16).astype(np.float32)
+    max_text = np.float32(-np.inf)
+    for v in values[:split]:
+        if v > max_text:
+            max_text = v
+    max_ts = np.float32(-np.inf)
+    sum_ts = np.float32(0.0)
+    for v in values[split:]:
+        if v == -np.inf:
+            continue
+        if v <= max_ts:
+            sum_ts = np.float32(
+                np.float64(sum_ts) + exp64_ref(np.float64(v - max_ts)).item()
+            )
+        else:
+            sum_ts = np.float32(
+                np.float64(sum_ts) * exp64_ref(np.float64(max_ts - v)).item() + 1.0
+            )
+            max_ts = v
+    return max_text, max_ts, sum_ts
+
+
+def forced_timestamp_ref(reductions) -> bool:
+    """Return ``sample_combine``'s forced-timestamp compare (``probability_rule``).
+
+    From every column's ``logsumexp_reduction_ref`` triple, column 0 first:
+    ``logsumexp(logits[split:]) > max(logits[:split])``, merged across
+    columns without a log: with ``max_text`` the largest of every column's
+    own text-range max, the compare holds exactly where ``sum_c sum_ts_c *
+    exp(max_ts_c - max_text) > 1``. A column with no fold on a side
+    (``sum_ts == 0``) drops out of the sum. A column whose ``max_ts`` is
+    above ``max_text`` holds at least that one logit (``sum_ts >= 1``), so
+    the compare holds outright, before an exp that rounds a small excess to
+    1; ``exp64_ref`` (float64) of a float64 difference matches
+    ``sample_combine``'s own merge for the rest.
+    """
+    max_text = np.float32(-np.inf)
+    for text, _, _ in reductions:
+        if text > max_text:
+            max_text = text
+    total = 0.0
+    for _, max_ts, sum_ts in reductions:
+        if sum_ts == np.float32(0.0):
+            continue
+        if max_ts > max_text:
+            return True
+        total += (
+            float(sum_ts) * exp64_ref(np.float64(max_ts) - np.float64(max_text)).item()
+        )
+    return total > 1.0
+
+
 def check_order_preserving(temperature) -> None:
     """Raise unless ``l -> fl32(l / T)`` strictly increases over every finite bf16 l with a finite image.
 
@@ -453,18 +694,55 @@ def sample_weights(logits, temperature, top_k: int) -> tuple[np.ndarray, np.ndar
 
 
 def sample_ref(
-    logits, temperature, top_k: int, n53: int, *, k_max: int | None = None
+    logits,
+    temperature,
+    top_k: int,
+    n53: int,
+    *,
+    k_max: int | None = None,
+    ranges=(),
+    probability_rule_split: int | None = None,
+    columns: int = 1,
 ) -> int:
-    """Return the token ``sample_combine`` draws from one row of bf16 logits.
+    """Return the token ``sample_select``/``sample_combine`` draw from one row of bf16 logits.
 
     With ``k_max``, ``top_k`` is clamped to it, as kernels built with that
     ``k_max`` clamp it; without, ``top_k`` is taken as it is.
+
+    ``ranges`` (``[(lo, hi), ...]``, default none) and ``probability_rule_split``
+    (default ``None``: off) are ``sample_select``/``sample_combine``'s own
+    features: ``ranges`` masks each ``[lo, hi)`` first
+    (``apply_ranges_ref``); then, if ``probability_rule_split`` is given,
+    ``logits`` is split into ``columns`` equal slices (matching how a
+    multi-core device build would, so the rule's fold order matches bit for
+    bit), each slice's own ``logsumexp_reduction_ref``, merged as
+    ``forced_timestamp_ref`` does, additionally masks ``[0,
+    probability_rule_split)`` (the split clamped to the row) where it fires.
     """
     _positive("sample_ref", top_k=top_k)
     n53 = _check_n53(n53)
     if k_max is not None:
         _positive("sample_ref", k_max=k_max)
         top_k = min(top_k, k_max)
+    if ranges or probability_rule_split is not None:
+        logits = apply_ranges_ref(logits, ranges)
+        if probability_rule_split is not None:
+            n = len(logits)
+            split = min(max(probability_rule_split, 0), n)
+            _positive("sample_ref", columns=columns)
+            if n % columns:
+                raise ValueError("sample_ref: columns must divide the row")
+            slice_size = n // columns
+            reductions = [
+                logsumexp_reduction_ref(
+                    logits[c * slice_size : (c + 1) * slice_size],
+                    min(max(split - c * slice_size, 0), slice_size),
+                )
+                for c in range(columns)
+            ]
+            if forced_timestamp_ref(reductions):
+                logits = logits.copy()
+                logits[:split] = -np.inf
     if np.float32(temperature).view(np.uint32) & 0x7FFFFFFF == 0:
         return int(np.argmax(order_keys(_row(logits))))
     candidates, weights = sample_weights(logits, temperature, top_k)

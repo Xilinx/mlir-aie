@@ -357,12 +357,11 @@ The same configuration steps in the C++ host code is also required for the pytho
 1. *Create XRT buffer objects*: This step is simplified with the IRON python classes where IRON tensors can be created from numpy data arrays and a datatype. These objects interacts with the NPU runtime so that the objects are properly initalized and synced.
 
     ```python
-    ref_buffer = np.arange(1, 4096 + 1, dtype=np.int32)
-    in_buffer = iron.tensor(ref_buffer, dtype=np.int32)
+    in_buffer = iron.arange(1, 4096 + 1, dtype=np.int32)
     scale_factor = 3
-    in_factor = iron.tensor([scale_factor], dtype=np.int32)
+    in_factor = iron.full((1,), scale_factor, dtype=np.int32)
     out = iron.zeros(4096, dtype=np.int32)
-    ref_buffer = ref_buffer * scale_factor
+    ref_buffer = in_buffer.numpy() * scale_factor
     ```
 
 1. *Run on AIE and synchronize*: Execute the program, waits for it to finish, synchronizes the data buffers and returns the runtime in milliseconds.

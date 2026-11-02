@@ -331,20 +331,22 @@ def test_judge_records_each_jobs_runner_and_whether_it_passed(ci, served):
         ]
     )
     j = ci.judge(get, "o/r", run(1, 2, "push", "success"))
-    assert j["runners"] == [{"runner": "r1", "passed": True}]
+    assert j["runners"] == [{"runner": "r1", "passed": True, "outcome": "passed"}]
 
 
 @pytest.mark.parametrize(
     "conclusion, notes, expected",
     [
-        ("success", "", True),
-        ("failure", "", False),
-        ("timed_out", "", False),
-        ("cancelled", TIMED_OUT, False),
+        ("success", "", (True, "passed")),
+        ("failure", "", (False, "failed")),
+        ("timed_out", "", (False, "timed_out")),
+        ("cancelled", TIMED_OUT, (False, "timed_out")),
         ("cancelled", "The run was canceled by @someone.", None),
         ("cancelled", "higher priority waiting request", None),
         ("cancelled", "", None),
-        ("failure", RUNNER_LOST, None),
+        # The machine's, not the tests': recorded, so a runner that keeps
+        # dropping its jobs shows.
+        ("failure", RUNNER_LOST, (False, "runner_lost")),
         ("skipped", "", None),
         ("neutral", "", None),
     ],
@@ -361,7 +363,9 @@ def test_runner_results_use_job_outcomes(ci, served, conclusion, notes, expected
     )
     result = ci.judge(get, "o/r", run(1, 2, "push", conclusion))
     assert result["runners"] == (
-        [] if expected is None else [{"runner": "r1", "passed": expected}]
+        []
+        if expected is None
+        else [{"runner": "r1", "passed": expected[0], "outcome": expected[1]}]
     )
 
 
@@ -387,7 +391,9 @@ def test_only_self_hosted_jobs_enter_the_runner_table(ci, served, labels, includ
     )
     result = ci.judge(get, "o/r", run(1, 2, "push", "success"))
     assert result["runners"] == (
-        [{"runner": "named-runner", "passed": True}] if included else []
+        [{"runner": "named-runner", "passed": True, "outcome": "passed"}]
+        if included
+        else []
     )
 
 
@@ -402,13 +408,19 @@ def test_runner_tally_counts_passed_and_failed_jobs(ci):
                     ]
                 },
                 {"runners": [{"runner": "r1", "passed": False}]},
+                {
+                    "runners": [
+                        {"runner": "r2", "passed": False, "outcome": "runner_lost"}
+                    ]
+                },
             ]
         },
         {"main_runs": [{"runners": [{"runner": "r1", "passed": True}]}]},
     ]
+    # A lost runner is counted apart from a failed job.
     assert ci.runner_tally(critical_wfs) == {
-        "r1": {"passed": 2, "failed": 1},
-        "r2": {"passed": 0, "failed": 1},
+        "r1": {"passed": 2, "failed": 1, "lost": 0},
+        "r2": {"passed": 0, "failed": 1, "lost": 1},
     }
 
 
@@ -416,7 +428,7 @@ def test_runners_lists_each_one_named_in_the_critical_jobs(ci, served):
     get, _ = served(critical_routes())
     (crit,) = ci.critical(get, "o/r", [{"file": "crit.yml", "title": "Crit"}], NOW, {})
     # r1 ran every job in the on-main runs: run 10 (1 failed), run 9 (2 passed).
-    assert ci.runners([crit]) == [{"name": "r1", "passed": 2, "failed": 1}]
+    assert ci.runners([crit]) == [{"name": "r1", "passed": 2, "failed": 1, "lost": 0}]
     # No critical workflows answered: no runners to name.
     assert ci.runners([]) == []
 

@@ -11,7 +11,7 @@
 
 // RUN: aie-opt --aie-objectfifo-split %s | FileCheck %s
 
-// CHECK: aie.objectfifo.pool @link3_pool({{.*}}) {{{.*}}disableSynchronization{{.*}}}
+// CHECK: aie.objectfifo.pool @link3__pool({{.*}}) {{{.*}}disableSynchronization{{.*}}}
 
 module @link_non_owner {
     aie.device(xcve2302) {

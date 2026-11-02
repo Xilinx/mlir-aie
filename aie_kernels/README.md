@@ -9,7 +9,7 @@
 
 These kernels are provided as example building blocks for larger designs, and also as illustrations of how to write single core programs for AIEs which can then be duplicated or mixed into multi-core designs using the structural IRON API.
 
-Most kernels use the AIE API, a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics, and whose documentation can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html). A few use the architecture-specific low-level intrinsics directly.
+Most kernels use the AIE API, a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics, and whose documentation can be found [here](https://xilinx.github.io/aie_api/topics.html). A few use the architecture-specific low-level intrinsics directly.
 
 > **NOTE:** this set of AIE kernels are meant for demonstration along with the programming examples. The goal is not to be 100% performant, there may be room for further improvement. The kernels are provided as-is with no guarantees of support of AMD or AMD Research and Advanced Development.
 
@@ -70,6 +70,7 @@ The tables below describe the sources. Which kernels each NPU builds, and whethe
 | [cast_f32_bf16.cc](./datamovement/cast_f32_bf16.cc) | AIE API | f32→bf16 narrowing cast (host-matching `conv_even` rounding) | `float32`→`bfloat16` |
 | [limbs_f32.cc](./datamovement/limbs_f32.cc) | AIE API | f32 as six planes of its exact bf16 limbs (`hi + mid + lo`), for an f32-accurate bf16 matmul | `float32`→`bfloat16` |
 | [affine_cast_f32_bf16.cc](./datamovement/affine_cast_f32_bf16.cc) | AIE API | Per-column affine `out = bf16(in*gamma + beta)`, gamma and beta packed in one buffer (`conv_even` rounding) | `float32`→`bfloat16` |
+| [decode_coded.cc](./datamovement/decode_coded.cc) | AIE API | Lossless coded rows (`aie.utils.coded`) to their bf16 weights, through [coded_rows.h](./common/coded_rows.h) | `uint8`→`bfloat16` |
 
 ## eltwise
 | Name | Coding style | Purpose | Datatypes |
@@ -115,9 +116,9 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [cascade_mm.cc](./linalg/cascade_mm.cc) | Scalar, cascade intrinsics | Cascade Matrix/Matrix multiply (multi-core) | `int16_t`,`bfloat16` |
 | [mm_bfp.cc](./linalg/mm_bfp.cc) | AIE API | Block-floating-point matmul (AIE2P only) | `bfp16` |
 | [mm_bfp_mixed.cc](./linalg/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul (AIE2P only) | `bfp16` |
-| [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV); `-DA_COL_MAJ` reads A column-major with partial sums carried across calls, bit-identical to row-major | `bfloat16` |
+| [mv_bf16.cc](./linalg/mv_bf16.cc) | AIE API | Matrix/Vector multiply, row-major A (IRON GEMV); `-DA_COL_MAJ` reads A column-major with partial sums carried across calls, bit-identical to row-major; `-DA_CODED` reads A as lossless coded rows (`aie.utils.coded`, decoded by [coded_rows.h](./common/coded_rows.h)), bit-identical to plain | `bfloat16` |
 | [mv_i16.cc](./linalg/mv_i16.cc) | AIE API | Matrix/Vector multiply, A word-transposed | `int16_t`→`int32_t` |
-| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 8 rows, key blocks a multiple of 16 and a head dimension a multiple of 8; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; composes `softmax_aie2p.h` + `mm_aie2p.h` | `bfloat16`, running state and O `float32` |
+| [mha.cc](./linalg/mha.cc) | AIE API | Flash-attention toolkit (matmul_PV, partial_softmax, rescale_O, …) for query blocks a multiple of 8 rows, key blocks of 16, 32 or 64 and a head dimension a multiple of 16; `-DMHA_CAUSAL=0` and `-DMHA_WINDOW=w` select a bidirectional or sliding-window band in place of the causal one; on AIE2 (the factory refuses others), the fused entries run a key block on one core (`attend_block`, `attend_head`, `keep_q`; split decode's `take_q`, `open_partial`, `close_partial`, `merge_partials`), `-DMHA_F32_SCORES` keeps scores in float32, `-DMHA_SOFT_CAP=c` and `-DMHA_REL_BAND` add a soft cap and a relative-position band (`relative_rows`), and `-DMHA_PAIR` splits the head over two neighbouring cores (`pair_scores`, `attend_pair`); composes `softmax_aie2p.h` + its architecture's GEMM header (`mm_aie2.h` or `mm_aie2p.h`) | `bfloat16`, running state and O `float32` |
 | [attention_i8.cc](./linalg/attention_i8.cc) | AIE API | One head of int8 attention over a 2-D map (YOLO26n's PSA), a row of queries a call: power-of-two scales, an integer softmax from a 256-entry exp table, rounding half to even | `int8_t`, table `int32_t` |
 | [flash_attn_prefill.cc](./linalg/flash_attn_prefill.cc) | AIE API | Flash-attention **prefill** with online softmax, as five per-step entry points an ObjectFifo design drives (`round_begin`, `qk_step`, `block_mid`, `fv_step`, `epilogue`). `-DPREFILL_HEAD_DIM` picks the geometry: 512 global, 256 sliding-window | `bfloat16` |
 
@@ -176,8 +177,12 @@ Kernels extracted from FastFlowLM's Gemma 4 implementation, each one core's kern
 | [addWeighted.cc](./vision/addWeighted.cc) | AIE API | Fixed point weighted sum of two tensors | `uint8_t` |
 | [threshold.cc](./vision/threshold.cc) | AIE API | Clipping | `uint8_t` |
 | [filter2d.cc](./vision/filter2d.cc) | AIE API | Fixed point 2D image processing filter | `uint8_t` |
+| [levels.cc](./vision/levels.cc) | Generic C | A row of RGB pixels through per-channel 256-entry tables to bf16 pixels of four channels, a run of them placed in a filled row (an image processor's crop, rescale and normalization, or a letterbox) | `uint8_t` in, `bfloat16` out |
+| [grid_decode.cc](./vision/grid_decode.cc) | AIE API | An anchor-free detector's boxes from a row of its prediction map, in float32: centres offset by the grid, sizes through `exp_f32`, both times the stride (YOLOX's `decode_outputs`) | `bfloat16` in, `float` out |
+| [resize_linear.cc](./vision/resize_linear.cc) | Generic C | OpenCV's INTER_LINEAR resize of a uint8 RGB image, bit for bit its fixed-point path, a source row in and each output row out once both its rows are in (YOLOX's letterbox) | `uint8_t` |
 | [resample_peak.cc](./vision/resample_peak.cc) | Generic C | The largest normalized weight of one core's share of a resize axis's filter table (torch's antialiased bicubic, IEEE float64), and `resample_join`, the larger of two; shared with [resample.h](./vision/resample.h) | `int32_t` |
 | [resample_quantize.cc](./vision/resample_quantize.cc) | Generic C | One chunk of that table: each output's first sample, tap count and int16 weights at the precision the peak sets, bit for bit as torch on the CPU | `int32_t` |
+| [nms.cc](./vision/nms.cc) | Generic C | A detector's score threshold and class-aware NMS, bit for bit torchvision's CPU `nms` under `batched_nms`'s coordinate-offset trick (YOLOX's `postprocess`): `nms_score` thresholds and compacts a row of [grid_decode](./vision/grid_decode.cc)'s boxes, `nms_finish` sorts and suppresses every candidate of one image | `float` |
 | [resize.cc](./vision/resize.cc) | AIE API | A uint8 RGB image resized with those tables, across then down, each pass rounded to uint8 as torch on the CPU, and written as 16x16 patches of `u8 / 255`; six entry points share one core's state | `uint8_t` → `bfloat16` |
 
 ## zero

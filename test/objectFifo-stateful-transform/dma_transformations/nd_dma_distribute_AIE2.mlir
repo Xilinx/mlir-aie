@@ -15,26 +15,26 @@
 // CHECK-DAG:     %[[tile_1_1:.*]] = aie.tile(1, 1)
 // CHECK-DAG:     %[[tile_2_2:.*]] = aie.tile(2, 2)
 // CHECK-DAG:     %[[tile_2_3:.*]] = aie.tile(2, 3)
-// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of2_cons_buff_0"} : memref<128xi32>
-// CHECK-DAG:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of2_cons_buff_1"} : memref<128xi32>
-// CHECK-DAG:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_2_3) {init = 2 : i32, sym_name = "of2_cons_prod_lock_0"}
-// CHECK-DAG:     %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_2_3) {init = 0 : i32, sym_name = "of2_cons_cons_lock_0"}
-// CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_2_2) {sym_name = "of1_cons_buff_0"} : memref<128xi32>
-// CHECK-DAG:     %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_2_2) {sym_name = "of1_cons_buff_1"} : memref<128xi32>
-// CHECK-DAG:     %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_2_2) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK-DAG:     %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_2_2) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK-DAG:     %[[VAL_8:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of0_cons_buff_0"} : memref<256xi32>
-// CHECK-DAG:     %[[VAL_9:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of0_cons_buff_1"} : memref<256xi32>
-// CHECK-DAG:     %[[VAL_10:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 2 : i32, sym_name = "of0_cons_prod_lock_0"}
-// CHECK-DAG:     %[[VAL_11:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "of0_cons_cons_lock_0"}
-// CHECK-DAG:     %[[VAL_12:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 2 : i32, sym_name = "of0_cons_prod_lock_1"}
-// CHECK-DAG:     %[[VAL_13:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "of0_cons_cons_lock_1"}
-// CHECK-DAG:     %[[VAL_14:.*]] = aie.lock(%{{.*}}tile_1_0) {init = 1 : i32, sym_name = "of0_prod_lock_0"}
-// CHECK-DAG:     %[[VAL_15:.*]] = aie.lock(%{{.*}}tile_1_0) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of2__cons__buf0"} : memref<128xi32>
+// CHECK-DAG:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of2__cons__buf1"} : memref<128xi32>
+// CHECK-DAG:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_2_3) {init = 2 : i32, sym_name = "of2__cons__prodlock0"}
+// CHECK-DAG:     %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_2_3) {init = 0 : i32, sym_name = "of2__cons__conslock0"}
+// CHECK-DAG:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_2_2) {sym_name = "of1__cons__buf0"} : memref<128xi32>
+// CHECK-DAG:     %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_2_2) {sym_name = "of1__cons__buf1"} : memref<128xi32>
+// CHECK-DAG:     %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_2_2) {init = 2 : i32, sym_name = "of1__cons__prodlock0"}
+// CHECK-DAG:     %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_2_2) {init = 0 : i32, sym_name = "of1__cons__conslock0"}
+// CHECK-DAG:     %[[VAL_8:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of0__cons__buf0"} : memref<256xi32>
+// CHECK-DAG:     %[[VAL_9:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of0__cons__buf1"} : memref<256xi32>
+// CHECK-DAG:     %[[VAL_10:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 2 : i32, sym_name = "of0__cons__prodlock0"}
+// CHECK-DAG:     %[[VAL_11:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "of0__cons__conslock0"}
+// CHECK-DAG:     %[[VAL_12:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 2 : i32, sym_name = "of0__cons__prodlock1"}
+// CHECK-DAG:     %[[VAL_13:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "of0__cons__conslock1"}
+// CHECK-DAG:     %[[VAL_14:.*]] = aie.lock(%{{.*}}tile_1_0) {init = 1 : i32, sym_name = "of0__prodlock0"}
+// CHECK-DAG:     %[[VAL_15:.*]] = aie.lock(%{{.*}}tile_1_0) {init = 0 : i32, sym_name = "of0__conslock0"}
 // CHECK-DAG:     aie.flow(%[[tile_1_0:.*]], DMA : 0, %[[tile_1_1:.*]], DMA : 0)
 // CHECK-DAG:     aie.flow(%[[tile_1_1:.*]], DMA : 0, %[[tile_2_2:.*]], DMA : 0)
 // CHECK-DAG:     aie.flow(%[[tile_1_1:.*]], DMA : 1, %[[tile_2_3:.*]], DMA : 0)
-// CHECK-DAG:     aie.shim_dma_allocation @of0_shim_alloc(%shim_noc_tile_1_0, MM2S, 0)
+// CHECK-DAG:     aie.shim_dma_allocation @of0__shim_alloc(%shim_noc_tile_1_0, MM2S, 0)
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%{{.*}}tile_1_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb4

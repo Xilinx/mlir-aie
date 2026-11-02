@@ -25,19 +25,24 @@ hardware constraints.
 
 ## The workflow, phase by phase
 
-Porting a model to AIE/NPU moves through four phases in order. Each has a
+Porting a model to AIE/NPU moves through five phases in order. Each has a
 skill:
 
 1. **Prepare the model** ([`aie-model-baseline`](aie-model-baseline/SKILL.md)) —
    lock a quantization scheme, export ONNX, extract a deployment manifest,
    build a bit-exact numeric oracle to check everything else against.
-2. **Validate the dataflow before hardware** ([`aie-dataflow-presim`](aie-dataflow-presim/SKILL.md)) —
+2. **Plan the dataflow** ([`aie-dataflow-presim`](aie-dataflow-presim/SKILL.md)) —
    a threaded ObjectFifo mock catches deadlocks and depth bugs, bit-exact
-   checks against the oracle catch logic bugs, all before touching a device.
-3. **Bring it up on real hardware** ([`aie-hw-bringup`](aie-hw-bringup/SKILL.md)) —
+   checks against the oracle catch logic bugs, all before writing a line of
+   IRON or touching a device.
+3. **Write the design** ([`aie-iron-design`](aie-iron-design/SKILL.md)) —
+   realize that plan as an IRON Python design (tiles, ObjectFifos, Workers,
+   Runtime) and the C++ AIE kernels it calls, library-first. Also the direct
+   entry point for work that isn't a full model port.
+4. **Bring it up on real hardware** ([`aie-hw-bringup`](aie-hw-bringup/SKILL.md)) —
    sequential block-by-block bring-up against the reference, methodical
    bisection when something hangs or mismatches.
-4. **Optimize** — once correct, go faster at either level:
+5. **Optimize** — once correct, go faster at either level:
    [`aie-kernel-opt`](aie-kernel-opt/SKILL.md) (micro: make one compiled
    kernel faster, and measure it on the NPU) or [`aie-dataflow-opt`](aie-dataflow-opt/SKILL.md) (macro:
    fix tile placement, overlays, and DMA bandwidth around already-correct

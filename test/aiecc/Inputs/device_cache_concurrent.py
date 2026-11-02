@@ -138,6 +138,8 @@ with contextlib.ExitStack() as stack:
         fcntl.lockf(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     output = run("busy")
     assert "device cache store:" not in output, output
+    # A held lock is a build storing that entry, so skipping it is silent.
+    assert "cannot lock" not in output, output
     assert all(marker.exists() for marker in markers)
     assert not list(cache.glob("*.tmp*"))
 assert "device cache store:" in run("unlocked")

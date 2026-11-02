@@ -22,7 +22,7 @@ Weight delivery:
 """
 
 import numpy as np
-from aie.iron import Buffer, ObjectFifo, Worker, kernels
+from aie.iron import Buffer, ObjectFifo, Transport, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
@@ -369,7 +369,7 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir):
     of_l1_l2 = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_OutC), np.dtype[np.uint8]],
         depth=4,
-        via_DMA=True,
+        transport=Transport.dma(),
     )
     of_l2_l3_first = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],

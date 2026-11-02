@@ -153,7 +153,7 @@ jobs:
     # or hang in one still lets the others run and publish. Shares the kernel
     # checks' own npu2 lock, so the nightlies queue rather than risk landing
     # on the same physical NPU at once.
-    timeout-minutes: 240
+    timeout-minutes: 300
     concurrency:
       group: kernel-checks-aie2p-8col
       cancel-in-progress: false
@@ -263,7 +263,7 @@ jobs:
       - name: Run the yolo26n detector
         id: yolo26n
         if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
-        timeout-minutes: 60
+        timeout-minutes: 120
         env:
           REQUIRED_PMODE: ${{ (github.ref == 'refs/heads/main' && !inputs.seeds) && env.PERF_PMODE || 'any' }}
           NPU_CACHE_HOME: ${{ env.CACHE_ROOT }}/yolo26n

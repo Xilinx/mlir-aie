@@ -11,15 +11,18 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # Model baseline & numeric oracle (the "before you write any IRON" phase)
 
-This is the first of four phases in porting a model to AIE/NPU:
+This is the first of five phases in porting a model to AIE/NPU:
 
 1. **Model baseline & numeric oracle** (this skill) — get a validated software
    reference and a quantization spec before touching hardware or dataflow.
-2. **Pre-hardware dataflow simulation** (`aie-dataflow-presim`) — validate the
-   *design* (FIFOs, kernels, novel mechanisms) against the oracle in software.
-3. **Hardware bring-up against reference** (`aie-hw-bringup`) — get a minimal
+2. **Pre-hardware dataflow simulation** (`aie-dataflow-presim`) — prove a
+   dataflow plan (decomposition, topology, FIFO depths, capacity/regime)
+   bit-exact against the oracle in software, before any IRON code exists.
+3. **Write the IRON design** (`aie-iron-design`) — realize that plan as an
+   IRON Python design and the C++ AIE kernels it calls, library-first.
+4. **Hardware bring-up against reference** (`aie-hw-bringup`) — get a minimal
    version running on real silicon, comparing against the oracle at every step.
-4. **Kernel optimization** (`aie-kernel-opt`) and **dataflow optimization**
+5. **Kernel optimization** (`aie-kernel-opt`) and **dataflow optimization**
    (`aie-dataflow-opt`) — once it's correct, make it fast.
 
 Skipping this phase doesn't save time — it moves the cost downstream, where
@@ -135,7 +138,7 @@ just a floating-point approximation. Then validate:
 
 This oracle is not throwaway scaffolding — it's the reference every later
 phase compares against: the software dataflow simulator (phase 2) validates
-against it, and hardware bring-up (phase 3) validates against it again on
+against it, and hardware bring-up (phase 4) validates against it again on
 real silicon. Time spent making it trustworthy now pays off three times
 over.
 

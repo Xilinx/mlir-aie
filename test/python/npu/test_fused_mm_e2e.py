@@ -43,14 +43,9 @@ def test_fused_init_k_bands_and_epilogue(epilogue, clamp):
     b[0, :, 1] = -0.25
     a[1] = 0
     fn = fused_mm(dim_k=48, epilogue=epilogue, clamp=clamp)
-    design = kd.design(fused_mm, calls=3, dim_k=48, epilogue=epilogue, clamp=clamp)
-    inputs, output = kd.upload(
-        [a, b], 3 * 32 * 16, np.dtype(bfloat16), fn=fn, poison=True
-    )
-    design(*inputs, output)
-    got = (
-        fn.contract.layouts[2].decode(output.numpy().copy(), calls=3).astype(np.float32)
-    )
+    design = kd.KernelDesign(fn, calls=3)
+    got = design.run([a, b])
+    got = fn.contract.layouts[2].decode(got, calls=design.calls).astype(np.float32)
     product = a.astype(np.float32) @ b.astype(np.float32)
     if epilogue == "none":
         expected = product

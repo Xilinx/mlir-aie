@@ -41,5 +41,4 @@ bfloat16 input value.
 
 The host driver tests every possible bfloat16 value (every uint16
 reinterpreted as bf16, 65536 inputs total) and verifies the LUT output
-against `numpy.exp` within the same 0.128 absolute tolerance the original
-C++ testbench used.
+against `numpy.exp` within a 12.8% relative tolerance (`rtol=0.128`).

@@ -39,7 +39,7 @@ both lower into the same `aie.flow` / `aie.lock` / `aie.mem` /
   lifecycle (content-addressed caching, `iron.tensor` host I/O,
   `aiecc` lowering).
 * **AIE dialect Python** ([§Lowered-equivalent dialect](#lowered-equivalent-dialect-aie-dialect-python)
-  at the end).  Raw `@mem` / `@memtile_dma` / `@shim_dma` /
+  at the end).  Raw `@mem` / `@memtile_dma` / `@shim_mem` /
   `aie.flow` / `aie.lock` decorators from
   [`python/dialects/aie.py`](../../../python/dialects/aie.py).
   Useful for pure-dialect lit tests and for the rare design that
@@ -80,7 +80,7 @@ These classes live under `aie.iron`:
 | `TileDma(tile, channels=[DmaChannel(...)])` | `aie.mem` (compute), `aie.memtile_dma` (memtile), or `aie.shim_dma` (shim) — picked by tile type | [`python/iron/dataflow/tile_dma.py`](../../../python/iron/dataflow/tile_dma.py) |
 | `DmaChannel(direction, channel, bds=[Bd(...)], pad_value=0, repeat_count=0, out_of_order=False, loop=True)` | One `@dma(dir, ch)` chain inside the TileDma's region.  `channel` is an index or a `DmaEndpoint` such as `flow.endpoint(tile)` | same |
 | `Bd(buffer, tap=None, acquires=[...], releases=[...], next=None\|"self"\|int, packet=None, bd_id=None, iteration=None, out_of_order_id=None)` | One BD block: acquires + `aie.dma_bd` + releases + `aie.next_bd`.  `tap` is a `TensorAccessPattern` over `buffer` (default: the whole buffer) | same |
-| `BdIteration(size, stride, current=0)` | The `iteration` state of one `aie.dma_bd`: the BD's base advances by `stride` elements per execution and wraps after `size` | same |
+| `BdIteration(size, stride, current=0)` | The `iteration` state of one `aie.dma_bd`: the BD's base advances by `stride` elements per execution and wraps after `size` | [`python/dialects/aie.py`](../../../python/dialects/aie.py) |
 | `Acquire(lock, value=1, greater_equal=True)` | `aie.use_lock(..., AcquireGreaterEqual\|Acquire)` at BD start | same |
 | `Release(lock, value=1)` | `aie.use_lock(..., Release)` at BD end | same |
 
@@ -333,6 +333,42 @@ device itself — `dev.max_lock_value`, `dev.max_repeat_count`,
 `dev.dma_task_queue_depth` and `dev.get_num_bds(tile_type)` — rather
 than being hardcoded.
 
+### CascadeFlow — direct cascade-stream link between two Workers
+
+For designs that chain compute across adjacent tiles' cascade interconnect (e.g. an
+accumulator passed core-to-core) rather than through an ObjectFifo, connect two `Worker`s
+directly:
+
+```python
+from aie.iron import CascadeFlow
+
+cf = CascadeFlow(src=worker_a, dst=worker_b)   # registers on worker_a; resolved when tiles are placed
+```
+
+The kernels on both sides must drive the stream themselves via the AIE API's
+`put_mcd`/`get_scd` intrinsics — `CascadeFlow` only declares the topology edge, not the data
+movement. Unlike `Flow`/`PacketFlow` above, constructing a `CascadeFlow` self-registers it on
+`src`'s outgoing-cascade list — there's no separate `rt.add_flow(...)` call needed.
+
+Hardware constraints, all checked at lowering rather than construction (so a bad chain surfaces
+as an `aie.cascade_flow` verifier error, not a Python exception):
+
+* **Direction is fixed.** On AIE2/AIE2P the cascade input must come from **North or West** and
+  the output must go **South or East**. A chain therefore has to descend in row or advance east
+  — you cannot run it upward or westward. In practice this means pinning tiles (e.g. head at row
+  5 down to tail at row 2 within a column) rather than leaving the chain to `--aie-place-tiles`.
+* **Adjacency**: `src`/`dst` tiles must end up cardinally adjacent after placement.
+* **Fan-in/out**: each compute tile has at most one cascade input and one cascade output.
+* **No shim/mem participation**: ShimTiles and MemTiles have no cascade interface, so the last
+  core in a chain must land its result in L1 for a normal ObjectFifo DMA — the cascade cannot
+  itself reach the host.
+* **Width**: the accumulator cascade is 512 bits on AIE2/AIE2P (384 on AIE1, where cascade isn't
+  supported by this API anyway) — e.g. a `v16int32` payload. See
+  [`programming_examples/basic/matrix_multiplication/cascade/`](../../../programming_examples/basic/matrix_multiplication/cascade/)
+  for a worked example (a row-accumulator chain across 4 cores).
+
+Like `Flow` and `PacketFlow`, `CascadeFlow` implements the `Resolvable` protocol described above.
+
 ### Canonical end-to-end demo
 
 The runnable example for this whole surface is
@@ -361,13 +397,69 @@ The same hardware concepts are also exposed as raw decorators in the
 ([`python/dialects/aie.py`](../../../python/dialects/aie.py)).  Reach
 for them when you need an op the IRON primitives above don't surface,
 or when writing pure-dialect lit tests that bypass the IRON runtime.
+Reaching for this tier is genuinely rare: all current examples in this
+repo are written against the IRON primitives above, and custom DMA
+access patterns are already possible there without a hand-scripted
+`@mem(tile)` body.
+
+The pieces shown throughout this section (`@core`, `object_fifo`,
+`object_fifo_link`) assemble into a complete design under `@device` /
+`@runtime_sequence`, wrapped in `mlir_mod_ctx()` rather than
+`@iron.jit`:
+
+```python
+import numpy as np
+from aie.dialects.aie import *
+from aie.dialects.aiex import *
+from aie.extras.context import mlir_mod_ctx
+from aie.helpers.dialects.scf import _for as range_, forever_
+
+def design():
+    @device(AIEDevice.npu2)              # or AIEDevice.npu1
+    def device_body():
+        ShimTile    = tile(0, 0)
+        ComputeTile = tile(0, 2)
+
+        tile_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+
+        of_in  = object_fifo("in",  ShimTile,    ComputeTile, 2, tile_ty)
+        of_out = object_fifo("out", ComputeTile, ShimTile,    2, tile_ty)
+
+        @core(ComputeTile)
+        def core_body():
+            for _ in forever_():                               # while (true)
+                e_in  = of_in.acquire(ObjectFifoPort.Consume, 1)
+                e_out = of_out.acquire(ObjectFifoPort.Produce, 1)
+                for i in range_(1024):
+                    e_out[i] = e_in[i] + 1
+                of_in.release(ObjectFifoPort.Consume, 1)
+                of_out.release(ObjectFifoPort.Produce, 1)
+
+        @runtime_sequence(tile_ty, tile_ty)
+        def sequence(a_in, c_out):
+            npu_dma_memcpy_nd(metadata=of_in,  bd_id=0, mem=a_in,  sizes=[1, 1, 1, 1024])
+            npu_dma_memcpy_nd(metadata=of_out, bd_id=1, mem=c_out, sizes=[1, 1, 1, 1024])
+            dma_wait(of_out)
+
+with mlir_mod_ctx() as ctx:
+    design()
+    assert ctx.module.operation.verify() == True
+    print(ctx.module)
+```
+
+The two tiers otherwise line up directly: `tile(col, row)` in place of implicit placement,
+`of.acquire(ObjectFifoPort.Consume/Produce, n)` in place of `of.acquire(n)`,
+`npu_dma_memcpy_nd` + `dma_wait` in place of `fill`/`drain`, and an explicit
+`ctx.module.operation.verify()` call in place of the verification `@iron.jit` runs for you. Reach
+for this tier when porting an *external*, pre-existing MLIR-AIE example 1:1, or when you need an
+op the IRON primitives don't expose yet — in which case, also consider raising it upstream.
 
 The three DMA region decorators pick by tile type:
 
 ```python
 @mem(tile)          # compute tile DMA region
 @memtile_dma(tile)  # mem tile DMA region
-@shim_dma(tile)     # shim tile DMA region
+@shim_mem(tile)     # shim tile DMA region
 ```
 
 A channel inside a region uses the unified `dma` constructor:
