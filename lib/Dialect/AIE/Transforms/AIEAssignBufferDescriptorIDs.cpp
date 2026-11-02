@@ -345,7 +345,35 @@ struct AIEAssignBufferDescriptorIDsPass
       }
     }
 
+    if (failed(resolveOutOfOrderTags(targetOp)))
+      return signalPassFailure();
     populateRearmBindings(targetOp);
+  }
+
+  /// Resolve temporary receiving-BD tags after hardware ID assignment.
+  LogicalResult resolveOutOfOrderTags(DeviceOp device) {
+    DenseMap<int32_t, int> idOfTag;
+    device.walk([&](DMABDOp bd) {
+      std::optional<uint32_t> id = bd.getBdId();
+      if (std::optional<int32_t> tag = bd.getBdTag(); tag && id)
+        idOfTag[*tag] = static_cast<int>(*id);
+      bd.removeBdTagAttr();
+    });
+    WalkResult walked = device.walk([&](DMABDOp bd) {
+      std::optional<int32_t> tag = bd.getOutOfOrderTag();
+      if (!tag)
+        return WalkResult::advance();
+      auto it = idOfTag.find(*tag);
+      if (it == idOfTag.end()) {
+        bd.emitOpError("sends out of order into a descriptor that no "
+                       "receiving tile holds");
+        return WalkResult::interrupt();
+      }
+      bd.setOutOfOrderId(it->second);
+      bd.removeOutOfOrderTagAttr();
+      return WalkResult::advance();
+    });
+    return failure(walked.wasInterrupted());
   }
 };
 

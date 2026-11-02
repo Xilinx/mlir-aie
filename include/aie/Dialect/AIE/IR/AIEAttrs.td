@@ -370,6 +370,13 @@ def ObjectFifoTransportAttr : AttrDef<AIE_Dialect, "ObjectFifoTransport", []> {
     allocation pick the id, `#aie.packet_info<pkt_id = 3>` pins it. It belongs
     to `auto` and `dma`; on `auto` it only matters when the DMAs are used.
 
+    `out_of_order = true` requires `packet` and selects receiving buffer
+    descriptors through the packet header's `out_of_order_id`. This allows
+    multiple packet FIFOs to share an S2MM channel. It changes descriptor
+    selection, not packet arrival order. Like `packet`, it only applies when
+    `auto` chooses DMA. The default is false; the lowering may still enable
+    it when packet FIFOs are pinned to the same receiving channel.
+
     What drives each end (a DMA channel or a core stream port) is not part of
     the path; see `#aie.end_port`.
 
@@ -377,13 +384,15 @@ def ObjectFifoTransportAttr : AttrDef<AIE_Dialect, "ObjectFifoTransport", []> {
     ```
       transport = #aie.transport<dma>
       transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 3>>
+      transport = #aie.transport<dma, packet = #aie.packet_info<>, out_of_order = true>
     ```
   }];
 
   let parameters = (ins EnumParameter<ObjectFifoTransportMode>:$mode,
-      PacketInfoField:$packet);
+      PacketInfoField:$packet,
+      DefaultValuedParameter<"bool", "false">:$out_of_order);
 
-  let assemblyFormat = "`<` $mode (`,` struct($packet)^)? `>`";
+  let assemblyFormat = "`<` $mode (`,` struct($packet, $out_of_order)^)? `>`";
 
   let genVerifyDecl = 1;
 }

@@ -208,6 +208,58 @@ def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "mlir::ModuleOp"> {
   let constructor = "xilinx::AIE::createAIECanonicalizeDevicePass()";
 }
 
+def AIELowerCoreIssuedConfiguration
+    : Pass<"aie-lower-core-issued-configuration", "xilinx::AIE::DeviceOp"> {
+  let summary = "Lower core-issued DMA queue operations to register accesses";
+  let description = [{
+    Lowers `aie.dma_push_queue` to register writes and
+    `aie.dma_poll_for_queue_space` to a loop that reads the DMA queue status.
+    The accesses execute on the core and address registers on its own tile
+    through the processor bus. The pass sets `processor_bus` on each affected
+    `aie.core` so device configuration enables the bus before core startup.
+
+    For pushes, the pass records an aie-rt transaction and extracts its
+    register writes, avoiding a separate implementation of the DMA register
+    encoding. It rejects transactions containing writes outside the core's
+    tile or operations other than plain register writes.
+  }];
+  let constructor = "xilinx::AIE::createAIELowerCoreIssuedConfigurationPass()";
+  let dependentDialects = ["mlir::func::FuncDialect",
+                           "mlir::arith::ArithDialect", "mlir::scf::SCFDialect",
+                           "mlir::LLVM::LLVMDialect"];
+}
+
+def AIEObjectFifoInsertCoreQueuePushes
+    : Pass<"aie-objectfifo-insert-core-queue-pushes", "xilinx::AIE::DeviceOp"> {
+  let summary =
+      "Insert core-issued tasks to replenish out-of-order receive queues";
+  let description = [{
+    An out-of-order S2MM task accepts a finite number of objects. For FIFOs
+    without `iter_count`, this pass inserts additional tasks so reception can
+    continue beyond the tasks submitted during device configuration.
+
+    After channel allocation, the pass creates a runtime counter for each
+    receiving channel used by a core. Consumer releases decrement that
+    counter across all FIFOs sharing the channel. The first release submits
+    an additional task; subsequent pushes occur once per
+    `getMaxRepeatCount() + 1` released objects (256 on current supported
+    targets). A release of multiple objects carries any excess into the next
+    counter interval. Each pushed task accepts that same number of objects.
+
+    With `check-queue-space=true`, a queue-space poll precedes each push.
+    The program must still avoid circular waits between core synchronization
+    and DMA progress; polling only prevents task-queue overflow.
+  }];
+  let options = [Option<"checkQueueSpace", "check-queue-space", "bool",
+                        /*default=*/"true",
+                        "Wait for room on the task queue before each push.">];
+  let constructor =
+      "xilinx::AIE::createAIEObjectFifoInsertCoreQueuePushesPass()";
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::scf::SCFDialect"];
+}
+
 def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
   let summary = "Lowering operations in AIE cores' regions to Standard";
   let description = [{
