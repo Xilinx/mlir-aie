@@ -724,6 +724,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "41401841962",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41401841962",
+   "date": "2026-11-02T06:44:41+00:00",
+   "commit": {
+    "id": "eec735f9535479778a1021b3976fc0526492256c",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/eec735f9535479778a1021b3976fc0526492256c",
+    "message": "Attention kernels: GEMM's AIE2 tile, one-core key blocks, split decode (#4007)",
+    "timestamp": "2026-11-02T03:22:41Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "eec735f953",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

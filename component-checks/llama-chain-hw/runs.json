@@ -455,6 +455,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "llama-chain-hw",
+   "id": "41401841962",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41401841962",
+   "date": "2026-11-02T06:44:41+00:00",
+   "commit": {
+    "id": "eec735f9535479778a1021b3976fc0526492256c",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/eec735f9535479778a1021b3976fc0526492256c",
+    "message": "Attention kernels: GEMM's AIE2 tile, one-core key blocks, split decode (#4007)",
+    "timestamp": "2026-11-02T03:22:41Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "eec735f953",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "f9fbbddd60f5",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 71,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
