@@ -3,9 +3,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 # Building on a non-Ubuntu distro (and/or with the in-tree `amdxdna` driver)
 
-[`buildHostLin.md`](buildHostLin.md) targets **Ubuntu 22.04+** and walks the
-*out-of-tree* XDNA™ driver build. This guide covers the two deltas that come up
-on other setups:
+The [Getting Started for AMD Ryzen™ AI on Linux](../README.md#getting-started-for-amd-ryzen-ai-on-linux)
+instructions target **Ubuntu 24.04+** and install the XDNA™ driver and XRT from
+the AMD PPA. This guide covers the two deltas that come up on other setups:
 
 1. **A distro without `apt`** (Arch, Void, Gentoo, Fedora-from-source, …) — you
    install build dependencies by *function* rather than by Ubuntu package name.
@@ -13,8 +13,9 @@ on other setups:
    e.g. Ubuntu 25.04, recent Fedora/Arch/Void). You then build **only the XRT
    userspace SHIM**, not a kernel module.
 
-Everything else (the wheels, Peano, running examples) is identical to
-`buildHostLin.md`. Worked example below: **Void Linux, kernel 7.0, glibc 2.41**,
+Everything else (the wheels, Peano, running examples) is identical to the main
+[Getting Started](../README.md#getting-started-for-amd-ryzen-ai-on-linux) flow.
+Worked example below: **Void Linux, kernel 7.0, glibc 2.41**,
 on a Ryzen™ AI "Phoenix" (XDNA1) laptop, using **Peano only — no Vitis™**.
 
 > This is a community-contributed guide. Versions/paths are examples; adapt to
@@ -108,7 +109,8 @@ xrt-smi examine        # -> Device(s) Present: [....] RyzenAI-npu1  aie2 ...
 
 ## 3. IRON toolchain (wheels)
 
-Same as `buildHostLin.md`, but pick a Python that matches your `pyxrt` (above).
+Same as the main [Getting Started](../README.md#install-iron-for-amd-ryzen-ai-aie-application-development)
+flow, but pick a Python that matches your `pyxrt` (above).
 `uv` makes provisioning one easy:
 
 ```bash

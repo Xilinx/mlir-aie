@@ -49,7 +49,8 @@ removed), upgrades any older run record (``upgrade``: a static
 ``sa-placer-hw`` record's cases, a kernel check's ``measurement``), rebuilds
 ``runs.json``, ``latest.json`` and the history from
 the run records, and prunes: every run of the last ``KEEP_DAYS`` is kept, older
-ones one per ISO week, ``MAX_RUNS`` at most. ``rebuild --drop-pmode MODE``
+ones one per ISO week plus the selected comparison pair, ``MAX_RUNS`` at most.
+``rebuild --drop-pmode MODE``
 also deletes the records of every run measured in ``MODE``, for retiring a
 power mode nobody should compare against; ``--keep-pmode MODE`` deletes
 those of every run that charted numbers in any other mode, keeping a run
@@ -84,8 +85,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Every run of the last KEEP_DAYS; then one a week for KEEP_WEEKS more (a
+# year of trend), then none. MAX_RUNS bounds the lot should a check run
+# many times a day.
 KEEP_DAYS = 90
-MAX_RUNS = 400
+KEEP_WEEKS = 52
+MAX_RUNS = 200
+# A case no published run measured since the last RETIRED_AFTER published
+# nightlies began is retired: its series leaves the history rather than
+# trailing nulls for a year.
+RETIRED_AFTER = 14
+# What a record carries for the page's latest and previous run only (a
+# hardware check's per-seed detail, a kernel leg's builds): a record thinned
+# to a week's keeps its rows and summary, which are all the history needs.
+HEAVY_FIELDS = ("detail", "builds")
 # The format of every file this writes. A reader that knows an older one
 # refuses the file rather than misreading it; bump it with any change a
 # reader of the old format would get wrong.
@@ -560,18 +573,41 @@ def migrate(out: Path) -> int:
     return count
 
 
-def prune(records: list[dict], now: datetime.datetime) -> list[dict]:
-    """Every run of the last ``KEEP_DAYS``; before that the newest of each ISO week."""
+def _stands_for_week(record: dict) -> tuple:
+    """How well a run stands for its week once thinned, higher better.
+
+    A published run (one that charted numbers) before one that did not (a
+    refused or failed night), a nightly before a run started by hand, then
+    the newest: a week's charted point is never lost to a newer run that
+    charted nothing.
+    """
+    published = bool(record.get("published") and record.get("rows"))
+    return (published, is_nightly(record), record["date"])
+
+
+def prune(
+    records: list[dict], now: datetime.datetime, max_runs: int = MAX_RUNS
+) -> list[dict]:
+    """Keep recent runs and weekly representatives within the horizon.
+
+    Keep every run of the last ``KEEP_DAYS``; then, for ``KEEP_WEEKS`` more,
+    one run each ISO week (the one that best stands for it); none older,
+    and ``max_runs`` at most.
+    """
     records = sorted(records, key=lambda r: r["date"])
     recent, weekly = [], {}
     for r in records:
         age = now - parse_date(r["date"])
         if age.days < KEEP_DAYS:
             recent.append(r)
-        else:
-            weekly[parse_date(r["date"]).isocalendar()[:2]] = r
+        elif age.days < KEEP_DAYS + 7 * KEEP_WEEKS:
+            week = parse_date(r["date"]).isocalendar()[:2]
+            if week not in weekly or _stands_for_week(r) >= _stands_for_week(
+                weekly[week]
+            ):
+                weekly[week] = r
     kept = sorted(weekly.values(), key=lambda r: r["date"]) + recent
-    return kept[-MAX_RUNS:]
+    return kept[-max_runs:]
 
 
 def rebuild(
@@ -579,14 +615,21 @@ def rebuild(
     now: datetime.datetime | None = None,
     drop_pmode: str | None = None,
     keep_pmode: str | None = None,
+    max_runs: int = MAX_RUNS,
 ) -> dict:
     """Rewrite the derived files from ``runs/*.json``, pruning old runs.
 
     A record still using older case ids is upgraded in place first. With
     ``drop_pmode``, the records of runs measured in that power mode are
     deleted first; with ``keep_pmode``, those of runs that charted numbers in
-    any other mode.
+    any other mode. At most ``max_runs`` records are kept, beyond the latest
+    published run and its comparison.
+
+    Raises:
+        ValueError: ``max_runs`` is below 1.
     """
+    if max_runs < 1:
+        raise ValueError(f"max_runs must be at least 1, not {max_runs}")
     now = now or now_utc()
     runs_dir = out / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -605,19 +648,61 @@ def rebuild(
     for r in records:
         if dropped(r):
             (runs_dir / f"{r['id']}.json").unlink()
-    records = [r for r in records if not dropped(r)]
-    kept = prune(records, now)
+    records = sorted((r for r in records if not dropped(r)), key=lambda r: r["date"])
+    eligible = [
+        r
+        for r in records
+        if (now - parse_date(r["date"])).days < KEEP_DAYS + 7 * KEEP_WEEKS
+    ]
+    published = [r for r in eligible if r.get("published") and r.get("rows")]
+    # The newest nightly is the baseline; only manual runs, the newest of those.
+    baseline = [r for r in published if is_nightly(r)] or published
+    selected = baseline[-1] if baseline else None
+    # A record past KEEP_DAYS sheds what only the latest runs are read for;
+    # protect the actual latest.json and its index.html previousPublished.
+    needed = set()
+    if selected:
+        needed.add(selected["id"])
+        before = [
+            r
+            for r in reversed(eligible[: eligible.index(selected)])
+            if r.get("published")
+            and r.get("pmode") == selected.get("pmode")
+            and is_nightly(r)
+        ]
+        previous = next(
+            (
+                r
+                for r in before
+                if selected.get("device") and r.get("device") == selected["device"]
+            ),
+            before[0] if before else None,
+        )
+        if previous:
+            needed.add(previous["id"])
+    # Select before weekly thinning: two comparison nights can share a week,
+    # and a long tail of refusals or manual runs must not evict their details.
+    protected = [r for r in eligible if r["id"] in needed]
+    others = [r for r in prune(records, now, max_runs) if r["id"] not in needed]
+    slots = max_runs - len(protected)
+    kept = sorted(
+        protected + (others[-slots:] if slots > 0 else []), key=lambda r: r["date"]
+    )
     keep_ids = {r["id"] for r in kept}
     for r in records:
         if r["id"] not in keep_ids:
             (runs_dir / f"{r['id']}.json").unlink(missing_ok=True)
     target = kept[-1]["target"] if kept else out.name
     published = [r for r in kept if r.get("published") and r.get("rows")]
+    for r in kept:
+        old = (now - parse_date(r["date"])).days >= KEEP_DAYS
+        if old and r["id"] not in needed and any(f in r for f in HEAVY_FIELDS):
+            for f in HEAVY_FIELDS:
+                r.pop(f, None)
+            (runs_dir / f"{r['id']}.json").write_text(json.dumps(r, indent=1))
     latest = out / "latest.json"
-    # The newest nightly is the baseline; only manual runs, the newest of those.
-    baseline = [r for r in published if is_nightly(r)] or published
-    if baseline:
-        latest.write_text(json.dumps(baseline[-1], indent=1))
+    if selected:
+        latest.write_text(json.dumps(selected, indent=1))
     elif latest.exists():
         latest.unlink()
 
@@ -654,6 +739,22 @@ def rebuild(
         }
         for r in published
     ]
+    # Counted in nightlies: a manual run may measure a subset, so a run of
+    # them must not retire what the nightly still measures. A metric left
+    # with no case goes with its cases.
+    nightlies = [i for i, r in enumerate(published) if is_nightly(r)]
+    if len(nightlies) >= RETIRED_AFTER:
+        since = nightlies[-RETIRED_AFTER]
+        for metric in list(metrics):
+            series = metrics[metric]["series"]
+            for case in [
+                c
+                for c, s in series.items()
+                if all(v is None for v in s["values"][since:])
+            ]:
+                del series[case]
+            if not series:
+                del metrics[metric]
     for stale in history_dir.glob("*.json"):
         if stale.stem not in metrics:
             stale.unlink()

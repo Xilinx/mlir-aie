@@ -36,10 +36,10 @@ module @memtile_spill_channel_priority {
 // CHECK-LABEL: @memtile_spill_channel_priority
 // CHECK-DAG: %[[MEM0:.*]] = aie.tile(0, 1)
 // CHECK-DAG: %[[MEM1:.*]] = aie.tile(1, 1)
-// CHECK-DAG: aie.buffer(%[[MEM0]]) {sym_name = "high_demand_buff_0"} : memref<10240xi32>
-// CHECK-DAG: aie.buffer(%[[MEM0]]) {sym_name = "high_demand_buff_1"} : memref<10240xi32>
-// CHECK-DAG: aie.buffer(%[[MEM1]]) {sym_name = "low_demand_buff_0"} : memref<25600xi32>
-// CHECK-DAG: aie.buffer(%[[MEM1]]) {sym_name = "low_demand_buff_1"} : memref<25600xi32>
+// CHECK-DAG: aie.buffer(%[[MEM0]]) {sym_name = "high_demand__buf0"} : memref<10240xi32>
+// CHECK-DAG: aie.buffer(%[[MEM0]]) {sym_name = "high_demand__buf1"} : memref<10240xi32>
+// CHECK-DAG: aie.buffer(%[[MEM1]]) {sym_name = "low_demand__buf0"} : memref<25600xi32>
+// CHECK-DAG: aie.buffer(%[[MEM1]]) {sym_name = "low_demand__buf1"} : memref<25600xi32>
 // CHECK-DAG: aie.objectfifo.dma_endpoint @low({{.*}}) fills @low_demand {channelIndex = 0 : i32}
 // CHECK-DAG: aie.objectfifo.dma_endpoint @high0({{.*}}) fills @high_demand {channelIndex = 1 : i32}
 // CHECK-DAG: aie.objectfifo.dma_endpoint @high1({{.*}}) fills @high_demand {channelIndex = 2 : i32}

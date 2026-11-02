@@ -5,9 +5,9 @@
 #
 """IRON-level Lock primitive — a named `aie.lock` on a specific tile.
 
-Pairs with [`Buffer`][iron.Buffer] for designs that wire DMA / compute
-synchronization explicitly (via [`TileDma`][iron.TileDma] and
-[`Flow`][iron.Flow]) instead of letting [`ObjectFifo`][iron.ObjectFifo]
+Pairs with [`Buffer`][aie.iron.Buffer] for designs that wire DMA / compute
+synchronization explicitly (via [`TileDma`][aie.iron.TileDma] and
+[`Flow`][aie.iron.Flow]) instead of letting [`ObjectFifo`][aie.iron.ObjectFifo]
 manage it.
 """
 
@@ -20,12 +20,12 @@ from ..dialects.aie import (
     use_lock as _use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..dialects.aiex import set_lock_value as _set_lock_value
-from ..helpers.sourceloc import SourceSite
+from ..helpers.sourceloc import Declared, SourceSite
 from .device import Tile
 from .resolvable import NotResolvedError, PerDeviceConfigurationResolvable
 
 
-class Lock(PerDeviceConfigurationResolvable):
+class Lock(Declared, PerDeviceConfigurationResolvable):
     """A named hardware lock on a specific tile."""
 
     def __init__(
@@ -97,7 +97,7 @@ class Lock(PerDeviceConfigurationResolvable):
 
         The default `AcquireGreaterEqual` mode matches what almost every
         ObjectFifo / DMA-driven design wants; use
-        [`acquire_exact`][iron.lock.Lock.acquire_exact] for the rarer
+        [`acquire_exact`][aie.iron.lock.Lock.acquire_exact] for the rarer
         `Acquire` (exact-equality) mode.
         """
         _use_lock(self.op, LockAction.AcquireGreaterEqual, value=value)

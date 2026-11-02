@@ -80,7 +80,7 @@ jobs:
               --requirements python/requirements.txt \
               --install-non-eudsl
           python -m pip install --require-hashes -r python/requirements_dev.lock
-          pip install -r docs/requirements-mkdocs.txt
+          python -m pip install --require-hashes -r docs/requirements-mkdocs.lock
 
       - name: Get Submodule Hash
         id: get-submodule-hash
@@ -179,9 +179,10 @@ jobs:
             echo "aliases=latest" >> $GITHUB_OUTPUT
             echo "ref=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
-            # main push -> "dev" docs; source links point at main.
+            # main push -> "dev" docs, also re-aliased "latest" so the site
+            # root tracks main between releases; source links point at main.
             echo "label=dev" >> $GITHUB_OUTPUT
-            echo "aliases=" >> $GITHUB_OUTPUT
+            echo "aliases=latest" >> $GITHUB_OUTPUT
             echo "ref=main" >> $GITHUB_OUTPUT
           fi
 
@@ -202,8 +203,9 @@ jobs:
           fi
 
           # Ensure the root index.html redirects to the default version.
-          # "latest" takes priority when it exists (i.e. after a tagged release);
-          # otherwise fall back to "dev" for main-branch pushes.
+          # "latest" takes priority once it exists (now re-aliased on every
+          # main push, not just tagged releases); "dev" is only the fallback
+          # for the very first deploy, before "latest" has ever been created.
           if mike list | grep -q "latest"; then
             mike set-default --push latest
           else
@@ -227,9 +229,9 @@ jobs:
 
           # Remove legacy Jekyll/CMake detritus from the gh-pages root. mike
           # owns versioned subdirs (dev/, 1.x.y/, versions.json, index.html);
-          # dashboard/, kernel-checks/, component-checks/ and ci-health/
-          # belong to the nightly check and CI health workflows and must
-          # survive deployment. The old
+          # dashboard/, kernel-checks/, component-checks/, ci-health/ and
+          # code-health/ belong to the nightly check, CI health and code
+          # health workflows and must survive deployment. The old
           # home of the kernel checks, bench/, is legacy and goes with the rest.
           cd ../gh-pages-wt
           # Keep the versioned dirs (dev/, 1.x.y/) plus the bare "latest"
@@ -240,7 +242,7 @@ jobs:
             | grep -zv '^\.nojekyll$' \
             | grep -zv '^index\.html$' \
             | grep -zv '^versions\.json$' \
-            | grep -zvE '^(dashboard|kernel-checks|component-checks|ci-health)/' \
+            | grep -zvE '^(dashboard|kernel-checks|component-checks|ci-health|code-health)/' \
             | grep -zvE '^(dev|latest)(/|$)' \
             | grep -zvE '^[0-9]+\.' \
             | xargs -0 -r git rm -rf --ignore-unmatch -q

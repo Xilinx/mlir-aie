@@ -13,7 +13,9 @@ import functools
 
 import numpy as np
 import pytest
+from aie.helpers.npdtypes import v8bfp16ebs8
 from aie.iron.device import NPU2Col4
+from aie.utils import coded
 from aie.utils.compile.jit.markers import In, InOut, Out
 from aie.utils.compile.jit.operator import Operator
 from aie.utils.compile.jit.params import (
@@ -24,6 +26,7 @@ from aie.utils.compile.jit.params import (
     tunable,
     widths,
 )
+from ml_dtypes import bfloat16
 
 
 class Op:
@@ -31,6 +34,7 @@ class Op:
     tile = tunable(default=64, domain=(32, 64))
     count = per_call(derive=lambda op: op.M // 4)
     valid = per_call(bounds=M)
+    edges = per_call(count=4, derive=lambda op: tuple(i * op.M for i in range(4)))
     b_col_maj = param(default=False, array=True)
     shape = Select(b_col_maj, (M, 1), (1, M))
 
@@ -75,6 +79,29 @@ def test_a_per_call_value_is_an_integer_with_one_source():
         per_call(derive=lambda op: 1, bounds=Op.M)
 
 
+def test_a_per_call_vector_is_a_fixed_word_count():
+    op = Op()
+    vars(op)["M"] = 8
+    assert Op.edges.count == 4
+    assert Op.edges.derive(op) == (0, 8, 16, 24)
+    counted = per_call(count=lambda op: op.M // 2)
+    assert counted.count(op) == 4
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        (dict(count=4, bounds=Op.M), "a vector bounds no single param"),
+        (dict(count=0), "give a positive int or a function"),
+        (dict(count=-1), "give a positive int or a function"),
+        (dict(count=True), "give a positive int or a function"),
+    ],
+)
+def test_a_per_call_vector_rejects_bounds_and_a_non_positive_count(kwargs, message):
+    with pytest.raises(TypeError, match=message):
+        per_call(**kwargs)
+
+
 def test_a_select_picks_by_its_flag():
     op = Op()
     vars(op).update(b_col_maj=True)
@@ -112,6 +139,76 @@ def test_an_operand_resolves_its_shapes_on_the_operator():
     assert not Streams.c.streamed and Streams.c.of(streams()).shape == (8,)
 
 
+class Coded(Operator):
+    M: int = param()
+    K: int = param()
+    rows: int = param(default=4)
+    coded_w: bool = tunable(default=False, domain=(False, True))
+    w = In(M, K, obj_shape=(rows, K), per=(rows,), coded=coded_w)
+
+
+def test_a_coded_operand_moves_its_rows_as_bytes_and_keeps_its_logical_shape():
+    plain = Coded.w.of(Coded(M=8, K=2048))
+    assert (plain.shape, plain.dtype, plain.obj_shape) == (
+        (8, 2048),
+        bfloat16,
+        (4, 2048),
+    )
+    w = Coded.w.of(Coded(M=8, K=2048, coded_w=True))
+    R = coded.row_bytes(2048)
+    assert (w.logical_shape, w.logical_dtype) == ((8, 2048), bfloat16)
+    assert (w.shape, w.dtype, w.obj_shape, w.elements) == (
+        (8, R),
+        np.uint8,
+        (4, R),
+        8 * R,
+    )
+    assert w.ndarray_type == np.ndarray[(8, R), np.dtype[np.uint8]]
+    assert repr(w) == f"<In w (8, {R}) uint8 coded>"
+    assert "coded_w" in Coded.declaration.key
+
+
+def test_a_coded_operand_refuses_what_its_rows_cannot_hold():
+    class Narrow(Operator):
+        K: int = param()
+        x = In(K, 2, dtype=np.float32, obj_shape=(K, 2), coded=True)
+        y = In(2, K, obj_shape=(128,), coded=True)
+
+    op = Narrow(K=64)
+    with pytest.raises(TypeError, match="coded rows hold bfloat16"):
+        Narrow.x.of(op).dtype
+    with pytest.raises(ValueError, match="whole rows of 64"):
+        Narrow.y.of(op).obj_shape
+    with pytest.raises(TypeError, match="coded= takes a bool"):
+
+        class Wrong(Operator):
+            K: int = param()
+            x = In(K, coded="yes")  # pyright: ignore[reportArgumentType]
+
+
+def test_a_coded_operand_takes_either_spelling_of_bfloat16():
+    class Spelled(Operator):
+        K: int = param()
+        x = In(4, K, dtype=np.dtype(bfloat16), obj_shape=(1, K), coded=True)
+        y = In(4, K, dtype=v8bfp16ebs8, obj_shape=(1, K), coded=True)
+
+    op = Spelled(K=64)
+    assert Spelled.x.of(op).dtype == np.uint8
+    with pytest.raises(TypeError, match="coded rows hold bfloat16"):
+        Spelled.y.of(op).dtype
+
+
+def test_a_coded_stream_s_row_length_is_in_the_cores_key():
+    class Literal(Operator):
+        M: int = param()
+        K: int = param()
+        w = In(M, K, obj_shape=(4, 64), coded=True)
+
+    assert "K" in Literal.declaration.key
+    view = Literal(M=8, K=64).layout()
+    assert view.w.obj_shape == (4, coded.row_bytes(64))
+
+
 def test_an_operand_says_which_way_it_moves():
     assert (In.fills, In.drains, Out.fills, Out.drains) == (True, False, False, True)
     assert InOut.fills and InOut.drains
@@ -127,11 +224,51 @@ def test_a_replicated_operand_needs_a_split():
         In(Op.M, replicate=True)
 
 
+@pytest.mark.parametrize("stream_when_true", [False, True])
+def test_a_select_obj_shape_streams_only_where_its_flag_picks_a_shape(
+    stream_when_true,
+):
+    class MaybeStreamed(Operator):
+        K: int = param()
+        fed: bool = tunable(default=False, domain=(False, True))
+        x = In(
+            K,
+            obj_shape=Select(
+                fed,
+                (K,) if stream_when_true else None,
+                None if stream_when_true else (K,),
+            ),
+        )
+
+    assert MaybeStreamed.x.streamed
+    off = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=not stream_when_true))
+    assert not off.streamed
+    with pytest.raises(TypeError, match="x has no obj_shape here: no stream"):
+        off.lanes
+    with pytest.raises(TypeError, match="x has no obj_shape here: no stream"):
+        off.obj_shape
+    on = MaybeStreamed.x.of(MaybeStreamed(K=64, fed=stream_when_true))
+    assert on.streamed and on.obj_shape == (64,) and on.lanes == 1
+
+
+def test_a_select_of_two_shapes_streams_before_its_flag_resolves():
+    class Tiled(Operator):
+        K: int = param()
+        wide: bool = tunable(default=False, domain=(False, True))
+        cores: int = tunable(default=2)
+        x = In(K, obj_shape=Select(wide, (K,), (1,)), per=cores)
+
+    op = Tiled(K=64)
+    vars(op).update(wide=None)
+    x = Tiled.x.of(op)
+    assert x.streamed and x.lanes == 2
+
+
 def test_an_unstreamed_operand_has_no_element_or_lanes():
     c = Streams.c.of(streams())
-    with pytest.raises(TypeError, match="c is declared without an obj_shape="):
+    with pytest.raises(TypeError, match="c has no obj_shape here: no stream"):
         c.obj_shape
-    with pytest.raises(TypeError, match="c is declared without an obj_shape="):
+    with pytest.raises(TypeError, match="c has no obj_shape here: no stream"):
         c.lanes
 
 

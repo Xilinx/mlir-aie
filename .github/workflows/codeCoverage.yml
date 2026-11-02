@@ -9,9 +9,9 @@ permissions:
 
 on:
   workflow_dispatch:
-  schedule:
-    # Runs at midnight (00:00) every day
-    - cron: '0 0 * * *'
+  # Nightly through nightlyCodeHealth.yml, which publishes the report's
+  # figures to the dashboard's Code health tab.
+  workflow_call:
 
 env:
   # Run apt package manager in the CI in non-interactive mode.
@@ -69,7 +69,7 @@ jobs:
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
           unzip -q mlir-*.whl
 
-      # This job runs on schedule/workflow_dispatch (whole-repo, not a PR
+      # This job runs nightly/workflow_dispatch (whole-repo, not a PR
       # diff), so unlike lintAndFormat's other jobs there is no changed-files
       # gate here -- every step below always runs.
       - name: Ccache for C++ compilation
@@ -126,9 +126,9 @@ jobs:
 
           cat "$GITHUB_WORKSPACE/build_release/report/summary.txt"
 
-      # No PR to comment on here (schedule/workflow_dispatch), so the report
+      # No PR to comment on here (nightly/workflow_dispatch), so the report
       # is an artifact instead of the PR comment lintAndFormat's PR-triggered
-      # jobs post.
+      # jobs post. nightlyCodeHealth.yml reads its coverage.lcov.
       - name: Upload coverage report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:

@@ -511,10 +511,11 @@ def advice(f: Factory, c: Cases | None, new: bool, ctx: Context) -> list[str]:
             )
         if not f.docstring:
             warn.append("add a docstring; the API docs are built from it")
-        if f"iron.kernels.{f.module}" not in ctx.api_docs + " ".join(ctx.docs_noted):
-            ctx.docs_noted.add(f"iron.kernels.{f.module}")
+        module = f"aie.iron.kernels.{f.module}"
+        if module not in ctx.api_docs + " ".join(ctx.docs_noted):
+            ctx.docs_noted.add(module)
             warn.append(
-                f"add `::: iron.kernels.{f.module}` to `{API_DOCS}` so the API "
+                f"add `::: {module}` to `{API_DOCS}` so the API "
                 "docs show the new module"
             )
     if c:

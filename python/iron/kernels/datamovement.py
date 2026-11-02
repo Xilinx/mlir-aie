@@ -3,7 +3,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Data-movement / conversion kernel factories: affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, row_addresses, transpose.
+"""Data-movement / conversion kernel factories.
+
+affine_cast, axpy, convert_copy, decode_coded, expand, limbs_f32,
+merge_rows, patch_positions, row_addresses, transpose.
 
 Each wraps one source under ``aie_kernels/datamovement/`` — plain ``aie_api``
 vector code with no LUT dependency.  ``convert_copy`` binds
@@ -14,6 +17,7 @@ of the same cast.
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils import coded
 from aie.utils.compile.jit.markers import In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -21,6 +25,7 @@ from ml_dtypes import bfloat16
 from ._common import (
     KernelContract,
     Param,
+    TensorLayout,
     Trace,
     _kernel_source,
     _make_extern,
@@ -43,7 +48,7 @@ _BF16_ROUNDTRIP = Tolerance.bf16_ulps(
 
 
 def axpy_ref(x, y, a):
-    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
+    """Numpy reference for [`axpy`][aie.iron.kernels.datamovement.axpy]: ``a * x + y`` in float32.
 
     The kernel broadcasts ``a`` as bf16, so it is rounded to bf16 here.
     """
@@ -52,7 +57,7 @@ def axpy_ref(x, y, a):
 
 
 def convert_copy_ref(x):
-    """Numpy reference for [`convert_copy`][iron.kernels.datamovement.convert_copy].
+    """Numpy reference for [`convert_copy`][aie.iron.kernels.datamovement.convert_copy].
 
     ``ml_dtypes`` rounds f32 -> bf16 half-to-even, exactly as the kernel's
     ``conv_even`` does, so the cast is the reference and the match is
@@ -62,7 +67,7 @@ def convert_copy_ref(x):
 
 
 def affine_cast_ref(x, gamma_beta):
-    """Numpy reference for [`affine_cast`][iron.kernels.datamovement.affine_cast].
+    """Numpy reference for [`affine_cast`][aie.iron.kernels.datamovement.affine_cast].
 
     ``gamma_beta`` is ``gamma`` then ``beta``, ``cols`` float32 values each;
     ``x`` is row-major with ``cols`` per row. The multiply and add round in
@@ -76,7 +81,7 @@ def affine_cast_ref(x, gamma_beta):
 
 
 def expand_ref(payload, *, tile_size: int, group_size: int):
-    """Numpy reference for [`expand`][iron.kernels.datamovement.expand].
+    """Numpy reference for [`expand`][aie.iron.kernels.datamovement.expand].
 
     ``payload`` holds, per tile, ``tile_size`` packed uint4 values
     (``tile_size // 2`` bytes, low nibble first) followed by one bf16 scale per
@@ -104,7 +109,7 @@ def expand_sample(rng, calls: int, *, tile_size: int, group_size: int) -> list:
 
 
 def transpose_ref(x, *, dim_m: int, dim_n: int, subtile: int):
-    """Numpy reference for [`transpose`][iron.kernels.datamovement.transpose].
+    """Numpy reference for [`transpose`][aie.iron.kernels.datamovement.transpose].
 
     Transposes each ``subtile`` x ``subtile`` block of the ``dim_n`` x ``dim_m``
     matrix in place -- the blocks move, the matrix does not.
@@ -227,7 +232,7 @@ def limbs_f32_split(x):
 
 
 def limbs_f32_ref(x):
-    """Numpy reference for [`limbs_f32`][iron.kernels.datamovement.limbs_f32].
+    """Numpy reference for [`limbs_f32`][aie.iron.kernels.datamovement.limbs_f32].
 
     The six planes ``(hi, mid, hi, lo, mid, hi)`` of each call's limbs,
     concatenated along the last axis.
@@ -277,7 +282,7 @@ def limbs_f32(tile_size: int = 320) -> ExternalFunction:
 
     Takes ``(x, y, size)``: ``tile_size`` float32 in, ``6 * tile_size`` bf16
     out. Each element splits exactly into ``hi + mid + lo``
-    ([`limbs_f32_split`][iron.kernels.datamovement.limbs_f32_split]), and
+    ([`limbs_f32_split`][aie.iron.kernels.datamovement.limbs_f32_split]), and
     ``y`` holds the planes ``(hi, mid, hi, lo, mid, hi)``, ``tile_size``
     each. A bf16 matmul of those planes against a second operand's limbs
     stacked ``(hi, hi, mid, hi, mid, lo)`` along K sums the six largest of a
@@ -330,7 +335,7 @@ def affine_cast(rows: int = 96, cols: int = 32) -> ExternalFunction:
     Works on a row-major ``rows`` x ``cols`` float32 tile; ``gamma`` and
     ``beta`` hold one float32 value per column and arrive packed in one
     ``2 * cols`` buffer, ``gamma`` first. The bf16 store rounds with
-    ``conv_even``, as [`convert_copy`][iron.kernels.datamovement.convert_copy]
+    ``conv_even``, as [`convert_copy`][aie.iron.kernels.datamovement.convert_copy]
     does, and the kernel restores the core's rounding mode on exit.
 
     Args:
@@ -433,7 +438,7 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
 def merge_rows_ref(
     ids, *, audio_token: int, image_token: int, audio_at: int, vision_at: int
 ):
-    """Numpy reference for [`merge_rows`][iron.kernels.datamovement.merge_rows].
+    """Numpy reference for [`merge_rows`][aie.iron.kernels.datamovement.merge_rows].
 
     ``ids`` is ``(calls, block)``, block ``b`` of one sequence per call: the
     j-th ``audio_token`` of the sequence takes row ``audio_at + j``, the j-th
@@ -546,7 +551,7 @@ def merge_rows(
 def patch_positions_ref(
     count, ho, wo, *, block: int, side: int, pool: int, positions: int, cores: int
 ):
-    """Numpy reference for [`patch_positions`][iron.kernels.datamovement.patch_positions].
+    """Numpy reference for [`patch_positions`][aie.iron.kernels.datamovement.patch_positions].
 
     Returns ``(count, 5 * block)``, one record per block: ``xy`` (``2 * block``),
     the x positions, the y positions plus ``positions``, and the raster rows.
@@ -721,7 +726,7 @@ def rope_ref(x, lut, *, two_halves: bool = False):
 def row_addresses_ref(
     ids, lo, hi, *, table_rows: int, row_bytes: int, low_bits: int, aperture: int
 ):
-    """Numpy reference for [`row_addresses`][iron.kernels.datamovement.row_addresses].
+    """Numpy reference for [`row_addresses`][aie.iron.kernels.datamovement.row_addresses].
 
     The table sits at ``(hi << low_bits) + lo``, each word read as unsigned; an
     id past the table is clipped to its first or last row and a negative one
@@ -916,5 +921,88 @@ def transpose(
             ),
             tolerance=Tolerance.exact(note="data movement only; lossless"),
             ops_per_call=0,
+        ),
+    )
+
+
+# Exceptions a coded row holds: 15 fill its 64-byte tail.
+CODED_CAPACITY = 15
+
+
+def coded_rows_sample(rng, calls: int, *, dim_m: int, dim_k: int) -> np.ndarray:
+    """Draw ``calls`` tiles of ``dim_m`` coded rows of ``dim_k`` weights.
+
+    Rows are normal draws held to at least 2^-8 in magnitude, so they span
+    11 binades and fit their windows, with up to ``CODED_CAPACITY`` entries
+    pushed far outside them. The first row of each call holds the full
+    count, its first and last weight among them, so every call patches
+    exceptions and the patch reaches both ends of a row.
+    """
+    a = rng.standard_normal((calls, dim_m, dim_k)).astype(np.float32)
+    a = np.copysign(np.maximum(np.abs(a), np.float32(2**-8)), a)
+    inner = np.arange(1, dim_k - 1)
+    for c in range(calls):
+        for m in range(dim_m):
+            if m == 0:
+                at = np.r_[0, dim_k - 1, rng.choice(inner, CODED_CAPACITY - 2, False)]
+            else:
+                n = int(rng.integers(0, CODED_CAPACITY + 1))
+                at = rng.choice(dim_k, size=n, replace=False)
+            a[c, m, at] *= np.exp2(rng.choice([-60.0, 60.0], size=at.size))
+    return coded.encode_rows(a.astype(bfloat16), CODED_CAPACITY)
+
+
+def decode_coded_ref(a, *, dim_k: int):
+    """Numpy reference for [`decode_coded`][aie.iron.kernels.datamovement.decode_coded]: ``aie.utils.coded.decode_rows``."""
+    return coded.decode_rows(np.asarray(a), dim_k)
+
+
+def decode_coded(dim_m: int = 4, dim_k: int = 2048) -> ExternalFunction:
+    """Coded rows in, bf16 rows out.
+
+    ``aie_kernels/datamovement/decode_coded.cc``, signature ``(m, A, out)``:
+    ``A`` is ``dim_m`` rows coded as ``aie.utils.coded`` writes them (capacity
+    15), ``coded.row_bytes(dim_k)`` bytes each, and ``out`` their
+    ``dim_m * dim_k`` bf16 weights, bit for bit. It is the decode the coded
+    matvec runs ahead of its products (``common/coded_rows.h``), as a kernel
+    of its own.
+
+    Args:
+        dim_m: Rows a call decodes.
+        dim_k: Weights in a row, a multiple of 64.
+
+    Returns:
+        ExternalFunction for ``decode_coded_bf16``.
+
+    Raises:
+        ValueError: ``dim_k`` is not a positive multiple of 64.
+    """
+    if dim_k <= 0 or dim_k % 64:
+        raise ValueError(f"decode_coded(): dim_k ({dim_k}) must be a multiple of 64")
+    row_bytes = coded.row_bytes(dim_k, CODED_CAPACITY)
+    return _make_extern(
+        "decode_coded_bf16",
+        _kernel_source("datamovement/decode_coded.cc"),
+        [
+            np.int32,
+            np.ndarray[(dim_m * row_bytes,), np.dtype[np.uint8]],
+            np.ndarray[(dim_m * dim_k,), np.dtype[bfloat16]],
+        ],
+        compile_flags=[f"-DDIM_K={dim_k}", f"-DCAPACITY={CODED_CAPACITY}"],
+        contract=KernelContract(
+            trace=Trace.whole_call(),
+            roles=(Param, In, Out),
+            parameter_bindings=((0, dim_m),),
+            layouts=(
+                None,
+                TensorLayout((dim_m, row_bytes)),
+                TensorLayout((dim_m, dim_k)),
+            ),
+            reference=lambda a: decode_coded_ref(a, dim_k=dim_k),
+            tolerance=Tolerance.exact(note="a lossless decode"),
+            ops_per_call=dim_m * dim_k,
+            sample=lambda rng, calls: [
+                coded_rows_sample(rng, calls, dim_m=dim_m, dim_k=dim_k)
+            ],
         ),
     )

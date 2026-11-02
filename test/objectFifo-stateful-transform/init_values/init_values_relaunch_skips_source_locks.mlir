@@ -14,9 +14,9 @@
 
 // CHECK-LABEL: module @relaunch
 // CHECK-DAG:     %[[MEM_TILE:.*]] = aie.tile(1, 1)
-// CHECK-NOT:     sym_name = "wts_prod_lock_0"
-// CHECK-NOT:     sym_name = "wts_cons_lock_0"
-// CHECK:         aie.lock({{.*}}) {init = 1 : i32, sym_name = "wts_cons_prod_lock_0"}
+// CHECK-NOT:     sym_name = "wts__prodlock0"
+// CHECK-NOT:     sym_name = "wts__conslock0"
+// CHECK:         aie.lock({{.*}}) {init = 1 : i32, sym_name = "wts__cons__prodlock0"}
 // CHECK:         aie.memtile_dma(%[[MEM_TILE]]) {
 // CHECK:           aie.dma_start(MM2S, 0, ^bb1, ^bb2, repeat_count = 6)
 // CHECK-NEXT:    ^bb1:
@@ -39,8 +39,8 @@ module @relaunch {
 // reset re-arms them to their initial counts at the start of every launch.
 
 // CHECK-LABEL: module @rearmed
-// CHECK:         aie.lock({{.*}}) {init = 0 : i32, sym_name = "wts_prod_lock_0"}
-// CHECK:         aie.lock({{.*}}) {init = 7 : i32, sym_name = "wts_cons_lock_0"}
+// CHECK:         aie.lock({{.*}}) {init = 0 : i32, sym_name = "wts__prodlock0"}
+// CHECK:         aie.lock({{.*}}) {init = 7 : i32, sym_name = "wts__conslock0"}
 // CHECK:         aie.memtile_dma
 // CHECK:           aie.use_lock({{.*}}, AcquireGreaterEqual
 module @rearmed {

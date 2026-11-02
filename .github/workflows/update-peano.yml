@@ -35,7 +35,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install dependencies
-        run: python3 -m pip install packaging
+        run: python3 -m pip install --require-hashes -r utils/update_peano_tools.lock
 
       - name: Apply update
         id: update

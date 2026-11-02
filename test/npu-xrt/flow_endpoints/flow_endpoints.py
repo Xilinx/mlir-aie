@@ -68,9 +68,9 @@ N = SIDE * SIDE  # int32 elements in one copy
 # ALLOC-COUNT-3: aie.dma_start(S2MM, {{[0-9]}},
 # ALLOC: aie.dma_start(MM2S, {{[0-9]}},
 # ALLOC-LABEL: aie.runtime_sequence
-# ALLOC: aiex.dma_configure_task_for @flow0_src_shim_alloc
+# ALLOC: aiex.dma_configure_task_for @into_src__shim_alloc
 # ALLOC: aiex.dma_configure_task(%[[MEM:.*]], MM2S, [[B:[0-9]]])
-# ALLOC: aiex.dma_configure_task_for @flow4_dst_shim_alloc
+# ALLOC: aiex.dma_configure_task_for @out_dst__shim_alloc
 # ALLOC-COUNT-2: aie.flow(%[[MEM]], DMA : [[B]], %{{.*}}, DMA : {{[0-9]}})
 
 

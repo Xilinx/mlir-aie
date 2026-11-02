@@ -191,7 +191,7 @@ def test_fused_reference_and_generic_lowering(device, epilogue):
         atol=2e-6,
         rtol=2e-6,
     )
-    design = kd.design(fused_mm, calls=2, epilogue=epilogue, clamp=(-0.125, 0.75))
+    design = kd.KernelDesign(fn, calls=2)
     assert "fused_mm_tile" in str(design.as_mlir())
 
 

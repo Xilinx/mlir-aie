@@ -8,7 +8,7 @@
 # <ins>ResNet with Offloaded Conv2_x Layers</ins>
 
 ## Introduction
-ResNet [[1]](#1) is a convolutional neural network architecture that has gained significant popularity for various computer vision tasks, including image classification, object detection, and image segmentation. It is renowned for its depth and efficiency in training very deep networks. This README focuses on our implementation of the conv2_x layers of the ResNet architecture using three columns of NPU. 
+ResNet [[1]](#1) is a convolutional neural network architecture that has gained significant popularity for various computer vision tasks, including image classification, object detection, and image segmentation. It is renowned for its depth and efficiency in training very deep networks. This README focuses on our implementation of the conv2_x layers of the ResNet architecture using three columns of NPU.
 
 ## ResNet Architecture Overview
 ResNet consists of the following key components:
@@ -30,7 +30,8 @@ ResNet consists of the following key components:
 |   +-- resnet.py                   # A Python script that defines the AIE array structural design using MLIR-AIE operations.
 |   +-- Makefile                    # Contains instructions for building and compiling software projects.
 |   +-- resnet_conv2x_pipeline.png  # Figure describing our implementation of conv2_x layers on NPU.
-|   +-- run.lit                     # For LLVM Integrated Tester (LIT) of the design.
+|   +-- run_makefile.lit            # For LLVM Integrated Tester (LIT) of the design.
+|   +-- run_strix_makefile.lit      # For LIT on Strix (npu2) devices.
 |   +-- test.py                     # Python code testbench for the design example.
 +-- README.md                       # This file.
 
@@ -60,8 +61,11 @@ After the initial processing in the first bottleneck block, the output is sent d
 
 
 ## Compilation
+The Makefile lives in `layers_conv2_x/`, so `cd` there first.
+
 To compile the design:
 ```shell
+cd layers_conv2_x
 make
 ```
 
@@ -71,6 +75,5 @@ make run_py
 ```
 
 ## References
-<a id="1">[1]</a> 
+<a id="1">[1]</a>
 He, K., Zhang, X., Ren, S., & Sun, J. (2016). Deep residual learning for image recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition (pp. 770-778).
-

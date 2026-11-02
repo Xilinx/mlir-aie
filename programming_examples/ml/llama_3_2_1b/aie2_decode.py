@@ -16,14 +16,15 @@ core, and the sampler core, which merges the array's top sets and samples.
 The array's activations and outputs are staged through DDR (`StageLayout`).
 """
 
-import argparse
-
 import llama_kernels
 import numpy as np
 from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.dialects.aiex import (  # pyright: ignore[reportMissingImports]
+    npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.dialects.arith import (  # pyright: ignore[reportMissingImports]
     CmpIPredicate,
@@ -43,19 +44,15 @@ from aie.extras.types import i32, index  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import (
     Buffer,
-    CompileTime,
+    DeviceConfiguration,
     ObjectFifo,
-    Program,
     Runtime,
     ScratchpadParameter,
     TaskGroup,
     Worker,
-    jit,
 )
 from aie.iron.controlflow import if_, range_
 from aie.iron.device import NPU2, Tile
-from aie.utils.hostruntime.argparse import add_compile_args
-from aie.utils.hostruntime.cli import run_design_cli
 from aie2_gemv_array import (
     COMB_BYTES,
     CORE_TILES,
@@ -85,9 +82,6 @@ from llama_config import (
     SVFULL_BYTES,
     VOCAB,
     D,
-)
-from llama_config import (
-    N_LAYERS as MODEL_LAYERS,
 )
 
 # The lm_head's weights: per 4-row tile the rows, then a weight slot's
@@ -334,17 +328,15 @@ def gather_tap(total, offset, count, stride, nbytes):
     )
 
 
-# The sequential placer leaves the 31 cores' flows unroutable along the shim
-# row; the SA placer's placement routes.
-@jit(aiecc_flags=["--placer=sa_placer", "--sa-seed=1"])
-def build(
-    *,
-    P_MAX: CompileTime[int] = 4,
-    N_LAYERS: CompileTime[int] = 2,
-    T: CompileTime[int] = 128,
-    KSET: CompileTime[int] = 8,
-):
-    """The decode design for one build.
+DECODE = "decode"
+
+
+def decode_configuration(
+    *, P_MAX: int, N_LAYERS: int, T: int, KSET: int
+) -> DeviceConfiguration:
+    """The decode's DeviceConfiguration, named DECODE: its workers and its
+    one command, decode:step, which loads the device's PDI first, so it may
+    follow another device's commands in one ELF.
 
     Args:
         `P_MAX`: Passes (tokens) a dispatch can run, at most 4.
@@ -353,7 +345,7 @@ def build(
         `KSET`: The sampler's top-k set size, at most 8.
 
     Returns:
-        The resolved program.
+        The DeviceConfiguration.
 
     Raises:
         ValueError: KSET is not 1..8, or a pinned memtile overflows
@@ -1197,6 +1189,7 @@ def build(
     ]
 
     def sequence(wblob, kv, lmw, rec, stage, *e):
+        npu_load_pdi(device_ref=DECODE)
         it = iter(e)
         act = next(it)
         w = [next(it) for _ in range(N_CORES)]
@@ -1532,34 +1525,7 @@ def build(
             np.ndarray[(stage_total,), np.dtype[np.int8]],
             *eps,
         ],
+        name="step",
     )
     pins.check()
-    return Program(NPU2(), rt, workers=workers).resolve_program()
-
-
-def main():
-    p = argparse.ArgumentParser(prog="Llama 3.2 1B decode on the GEMV array")
-    add_compile_args(
-        p, with_dev=True, default_dev="npu2", dev_choices=("npu2",), with_full_elf=True
-    )
-    # Four passes use 31 of the design's 32 ScratchpadParameters; a fifth
-    # needs four more.
-    p.add_argument("--p-max", type=int, choices=range(1, 5), default=4)
-    p.add_argument(
-        "--n-layers", type=int, choices=range(1, MODEL_LAYERS + 1), default=2
-    )
-    p.add_argument("--t", type=int, default=128)
-    p.add_argument("--kset", type=int, choices=range(1, 9), default=8)
-    opts = p.parse_args()
-    run_design_cli(
-        build,
-        opts,
-        compile_kwargs=lambda o: dict(
-            P_MAX=o.p_max, N_LAYERS=o.n_layers, T=o.t, KSET=o.kset
-        ),
-        device=NPU2(),
-    )
-
-
-if __name__ == "__main__":
-    main()
+    return DeviceConfiguration(DECODE, NPU2(), workers=workers, runtimes=[rt])

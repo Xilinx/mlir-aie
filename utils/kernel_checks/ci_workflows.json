@@ -85,10 +85,11 @@
    "why": "the Docker build against Ryzen AI Software"
   },
   {
-   "file": "codeCoverage.yml",
-   "title": "Code coverage",
+   "file": "nightlyCodeHealth.yml",
+   "title": "Code health",
    "every": 24,
-   "why": "the coverage report, as an artifact"
+   "legs": true,
+   "why": "coverage, check-aie under ASan, UBSan and TSan, CodeQL C++ and clang-tidy over every file: the Code health section's numbers"
   },
   {
    "file": "update-llvm.yml",

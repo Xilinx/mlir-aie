@@ -11,7 +11,7 @@
 [![Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie?cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/graphs/contributors)
 [![Discord](https://img.shields.io/badge/Discord-ROCm--NPU-5865F2?logo=discord&logoColor=white)](https://discord.gg/UbXzGdXsR5)
 
-📖 **[Documentation](https://xilinx.github.io/mlir-aie/)** &nbsp;·&nbsp; 🚀 **[Programming Guide](programming_guide/)** &nbsp;·&nbsp; 🐍 **[Python API](https://xilinx.github.io/mlir-aie/api/)** &nbsp;·&nbsp; 💡 **[Examples](programming_examples/)**
+📖 **[Documentation](https://xilinx.github.io/mlir-aie/)** &nbsp;·&nbsp; 🚀 **[Programming Guide](programming_guide/)** &nbsp;·&nbsp; 🐍 **[Python API](https://xilinx.github.io/mlir-aie/api/)** &nbsp;·&nbsp; 💡 **[Examples](programming_examples/)** &nbsp;·&nbsp; 📊 **[Dashboard](https://xilinx.github.io/mlir-aie/dashboard/)**
 
 Write Python. Run it on the NPU. IRON compiles your Python design straight to
 the AI Engine array inside AMD Ryzen™ AI processors — you control tile
@@ -337,7 +337,7 @@ Examples with a separate native host, explicit artifact builds, or multi-stage w
 
 > You may skip the Vitis™ installation step if you intend to only target AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). Compiling with `xchesscc` is not supported without installing AMD Vitis™ AIE Essentials.
 
-1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
+1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
    > This is an early access lounge, you must register and be granted access at this time.
 
@@ -412,15 +412,19 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [Device Descriptions](docs/Devices.md)
 
-[AMD XDNA NPU Architecture Cheatsheet](skills/aie-code-creator/references/architecture.md) — device/tile layout, memory hierarchy, vector register widths, MMUL shapes and divisibility constraints, routing/placement limits, and per-tile performance ballparks
+[AMD XDNA NPU Architecture Cheatsheet](skills/aie-iron-design/references/architecture.md) — device/tile layout, memory hierarchy, vector register widths, MMUL shapes and divisibility constraints, routing/placement limits, and per-tile performance ballparks
 
-[AIE C++ Kernel Intrinsics Cheatsheet](skills/aie-code-creator/references/kernel_intrinsics.md) — AIE API boilerplate, loop-pipelining annotations, vector load/store, MMUL usage, and common intrinsic quick-reference tables
+[AIE C++ Kernel Intrinsics Cheatsheet](skills/aie-iron-design/references/kernel_intrinsics.md) — AIE API boilerplate, loop-pipelining annotations, vector load/store, MMUL usage, and common intrinsic quick-reference tables
+
+Working with a coding agent instead? The [Agent Skills](skills/README.md) in this repo teach an agent (e.g. Claude Code) to write and optimize IRON designs the same way the Programming Guide teaches a person — see [Agentic Programming](skills/agentic_programming.md) for how the two fit together.
 
 [Building mlir-aie tools from source](docs/Building.md)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
 Interested in contributing MLIR-AIE? [Information for developers](CONTRIBUTING.md)
+
+See our [Roadmap](ROADMAP.md) for where the project is headed, and our [Security Policy](SECURITY.md) for how to report vulnerabilities.
 
 -----
 

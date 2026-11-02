@@ -130,6 +130,8 @@ struct AIEAssignTileCtrlIDsPass
 struct AIEGenerateColumnControlOverlayPass
     : xilinx::AIE::impl::AIEGenerateColumnControlOverlayBase<
           AIEGenerateColumnControlOverlayPass> {
+  using Base::Base;
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
     registry.insert<memref::MemRefDialect>();
@@ -497,7 +499,7 @@ struct AIEGenerateColumnControlOverlayPass
   // The packet ID of control packets to and from `tile`.
   static int getControllerID(TileOp tile, DenseMap<TileID, int> &tileIDMap) {
     if (auto id = tile->getAttrOfType<AIE::PacketInfoAttr>("controller_id"))
-      return id.getPktId();
+      return id.assignedId();
     return tileIDMap[{tile.colIndex(), tile.rowIndex()}];
   }
 
@@ -816,7 +818,7 @@ struct AIEGenerateColumnControlOverlayPass
       if (tOp->hasAttr("controller_id"))
         ctrlPktFlowID =
             (int)tOp->getAttrOfType<AIE::PacketInfoAttr>("controller_id")
-                .getPktId();
+                .assignedId();
       else
         ctrlPktFlowID = tileIDMap[{tOp.colIndex(), tOp.rowIndex()}];
       // Check shim channel availability
@@ -931,6 +933,12 @@ std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignTileCtrlIDsPass() {
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
 AIE::createAIEGenerateColumnControlOverlayPass() {
   return std::make_unique<AIEGenerateColumnControlOverlayPass>();
+}
+
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
+AIE::createAIEGenerateColumnControlOverlayPass(
+    const AIEGenerateColumnControlOverlayOptions &options) {
+  return std::make_unique<AIEGenerateColumnControlOverlayPass>(options);
 }
 
 void populateAIEColumnControlOverlay(DeviceOp &device) {}

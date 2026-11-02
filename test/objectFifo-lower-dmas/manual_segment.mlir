@@ -92,10 +92,10 @@ module @manual_fill_segment_allocated {
 }
 
 // CHECK-LABEL: @manual_fill_segment_allocated
-// CHECK-DAG: %[[F0:.*]] = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "pool_prod_lock_0"}
-// CHECK-DAG: %[[U0:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "pool_cons_lock_0"}
-// CHECK-DAG: %[[F1:.*]] = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "pool_prod_lock_1"}
-// CHECK-DAG: %[[U1:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "pool_cons_lock_1"}
+// CHECK-DAG: %[[F0:.*]] = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "pool__prodlock0"}
+// CHECK-DAG: %[[U0:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "pool__conslock0"}
+// CHECK-DAG: %[[F1:.*]] = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "pool__prodlock1"}
+// CHECK-DAG: %[[U1:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "pool__conslock1"}
 
 // The core holds the whole object, so it waits on both segments and frees both.
 // CHECK:   aie.core(%{{.*}}) {

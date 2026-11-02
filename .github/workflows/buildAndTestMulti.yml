@@ -89,7 +89,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install -r python/requirements_notebook.txt
+          python -m pip install --require-hashes -r python/requirements_notebook.lock
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Setup Cpp

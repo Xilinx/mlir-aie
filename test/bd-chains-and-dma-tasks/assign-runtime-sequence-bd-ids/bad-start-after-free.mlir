@@ -16,8 +16,11 @@ aie.device(npu2) {
       aie.end
     }
     aiex.dma_start_task(%t)
+    // Freed with no completion guarantee, so %u reusing its id is also unsafe.
+    // expected-note@+1 {{released here}}
     aiex.dma_free_task(%t)
     %u = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
+      // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
       aie.dma_bd(%arg1 : memref<8xi32> offset = 0 len = 8)
       aie.end
     }

@@ -490,7 +490,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install "reuse[charset-normalizer]==6.2.0"
+          python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Check Licenses
         shell: bash
@@ -522,10 +522,10 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-          cache-dependency-path: docs/requirements-mkdocs.txt
+          cache-dependency-path: docs/requirements-mkdocs.lock
 
       - name: Install MkDocs packages
-        run: pip install -r docs/requirements-mkdocs.txt
+        run: python -m pip install --require-hashes -r docs/requirements-mkdocs.lock
 
       # This is the same strict build generateDocs.yml runs at deploy time
       # (mike wraps `mkdocs build --strict`), minus the Doxygen/dialect-docs

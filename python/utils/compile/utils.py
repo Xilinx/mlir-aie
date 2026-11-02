@@ -28,6 +28,7 @@ import aie.utils.config as config
 from aie import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from aie.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from aie.helpers.errors import attach_tool_location
+from aie.utils.readable_ir import readable
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,8 @@ _SYMBOL_PREFIX_STAMP_VERSION = 3
 
 AIECC_PROFILE_NAME = "aiecc_profile.json"
 KERNEL_PROFILE_NAME = "kernel_profile.json"
+# Written beside a design aiecc rejects; kept when the failed build is cleaned.
+READABLE_IR_NAME = "aie.readable.mlir"
 
 SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
 SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
@@ -380,9 +383,7 @@ def resolve_target_arch(device=None) -> str:
     from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
         AIEArch,
     )
-    from aie.dialects.aie import (
-        get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
-    )
+    from aie.dialects.aie import get_target_model
     from aie.iron.device import Device
 
     if isinstance(device, Device):
@@ -1035,6 +1036,7 @@ def _run_aiecc(
     args: list[str],
     cwd: str | Path | None = None,
     build_link_files: Callable[[], None] | None = None,
+    readable_path: str | None = None,
 ):
     aiecc_bin = os.path.abspath(config.aiecc_path())
     cmd = [aiecc_bin, os.path.abspath(mlir_file)] + args
@@ -1091,11 +1093,26 @@ def _run_aiecc(
         # Lead with the diagnostics so a truncated traceback still names the
         # fix; keep the whole log after them for everything they leave out.
         detail = f"{summary}\n\n--- full aiecc log ---\n{error_msg}"
-        exc = RuntimeError(
+        message = (
             f"[aiecc] Compilation failed with exit code {proc.returncode}:\n"
             f"{detail if summary else error_msg}"
         )
-        attach_tool_location(exc, error_msg)
+        with open(mlir_file) as f:
+            ir_text = f.read()
+        if readable_path is not None:
+            # A diagnostic aid: its own failure must not hide aiecc's error.
+            try:
+                text = readable(ir_text)
+                with open(readable_path, "w") as f:
+                    f.write(text)
+            except Exception as dump_error:
+                message += f"\nCould not write the design's readable IR: {dump_error!r}"
+            else:
+                message += (
+                    f"\nThe design's IR, each op noted with its source: {readable_path}"
+                )
+        exc = RuntimeError(message)
+        attach_tool_location(exc, error_msg, ir_text)
         raise exc
 
 
@@ -1283,6 +1300,7 @@ def compile_mlir_module(
             args + [f"--profile-json={profile}"],
             cwd=work_dir,
             build_link_files=build_link_files,
+            readable_path=os.path.join(work_dir, READABLE_IR_NAME),
         )
     elif build_link_files is not None:
         raise ValueError("build_link_files requires work_dir.")
@@ -1934,6 +1952,9 @@ def _compile_external_kernel(
             "symbol_prefix, or drop inline for this kernel."
         )
 
+    # The compilers run with kernel_dir as their cwd, so paths under it must
+    # not be relative to the caller's.
+    kernel_dir = os.path.abspath(kernel_dir)
     # A missing/stale stamp can mean either a legacy cache entry or an interrupted
     # prefix pass. Never rename those bytes again; rebuild from source instead.
     output_file = os.path.join(kernel_dir, func.object_file_name)
@@ -2044,8 +2065,9 @@ def _is_dispatch_library_name(name: str) -> bool:
 def _cleanup_failed_compilation(cache_dir):
     """Clean up cache directory after failed compilation.
 
-    Preserves the lock file and, when present, the ``repeater`` reproducer dir
-    that aiecc's ``--enable-repeater-scripts`` writes. Published dispatch
+    Preserves the lock file, the design's readable IR the failure message
+    points at, and, when present, the ``repeater`` reproducer dir that
+    aiecc's ``--enable-repeater-scripts`` writes. Published dispatch
     generations are retained cache artifacts, not temporary staging files:
     a caller can still hold their path without having loaded it yet, so they
     stay until cache eviction.
@@ -2054,7 +2076,9 @@ def _cleanup_failed_compilation(cache_dir):
         return
 
     for item in os.listdir(cache_dir):
-        if item in (".lock", "repeater") or _is_dispatch_library_name(item):
+        if item in (".lock", "repeater", READABLE_IR_NAME):
+            continue
+        if _is_dispatch_library_name(item):
             continue
         item_path = os.path.join(cache_dir, item)
         if os.path.isfile(item_path):

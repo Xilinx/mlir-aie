@@ -12,11 +12,11 @@ This programming guide focuses on application programming for the NPU found in R
 ## Example Recommended Hardware
 
 * [Phoenix Point Mini PC: Minisforum EM780 : AMD Ryzen™ 7 7840U](https://www.minisforum.com/collections/amd-series/products/minisforum-em780)
-  
+
 * [Hawk Point Mini PC: Minisforum UM890 Pro : AMD Ryzen™ 9 8945HS](https://www.minisforum.com/collections/amd-series/products/minisforum-um890-pro)
 
 * [Strix Point Mini PC: Minisforum AI X1 Pro : AMD Ryzen™ AI 9 HX 370](https://www.minisforum.com/products/minisforum-ai-x1-pro)
-  
+
 * [Krackan Point Mini PC: ASRock 4x4 BOX-AI350 : AMD Ryzen™ AI 7 350](https://www.asrockind.com/en-gb/4X4%20BOX-AI350)
 
 ## AMD Ryzen™ AI Initial Setup
@@ -24,7 +24,7 @@ This programming guide focuses on application programming for the NPU found in R
 Please be sure to follow the quick setup path:
 
 * **[Getting Started on AMD Ryzen™ AI with Linux](../../README.md)** *(Recommended)*
-* [Building IRON and MLIR-AIE from source on Linux](../../Building.md) *(for developers)*
+* [Building IRON and MLIR-AIE from source on Linux](../../docs/Building.md) *(for developers)*
 
 ## Once you have a working NPU
 

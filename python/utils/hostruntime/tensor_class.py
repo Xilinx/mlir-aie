@@ -96,6 +96,8 @@ class _WriteBorrow:
             # left behind. Recording the write is __exit__'s job, and it only
             # does it when the body completed.
             tensor._reconcile_for_read()
+        else:
+            tensor._reconcile_past_data()
         array = tensor.data[...]
         self._array = array
         return array
@@ -122,8 +124,8 @@ class _WriteBorrow:
 class TensorRegion:
     """A region of a tensor's storage, bound as a kernel argument.
 
-    Unlike a `NpuTensor.subview`, a region may start and end inside a
-    coherence granule. That is safe because a region is never synchronized on
+    Unlike a `NpuTensor.subview`, a region may start inside a coherence
+    granule. That is safe because a region is never synchronized on
     its own: a runtime binds a buffer at the region's first byte and reconciles
     `tensor`, the tensor the region was carved from, as a whole. So a region has
     no host data. Read what a kernel wrote through `tensor`, or through an
@@ -182,7 +184,8 @@ class NpuTensor(ABC):
       pays for a redundant transfer, and a caller that has bypassed one gets no
       transfer at all.
     * Reconciliation is not byte-granular. It acts on whole cache lines, which is
-      why `subview` requires its regions to be granule-aligned.
+      why a `subview` starts on a granule and reconciles through to the end of
+      its last one.
 
     Subclasses supply the storage and the two transfer primitives; the invariant
     itself lives here so every backend states it the same way.
@@ -267,7 +270,12 @@ class NpuTensor(ABC):
 
     @property
     def _extent(self):
-        """Byte range this tensor covers in its buffer.
+        """Byte range this tensor reconciles in its buffer.
+
+        Its data, run on to the end of the coherence granule the data ends in,
+        or to the end of the allocation if that comes first: a view may end
+        mid-granule (see `subview`), and the granule is the least that can be
+        reconciled.
 
         Cached: shape, dtype and offset are fixed once the tensor exists, and
         this is read on every residency query, which a dispatch does per
@@ -277,8 +285,9 @@ class NpuTensor(ABC):
         if cached is not None:
             return cached
         start = self.storage_offset
-        size = math.prod(self.shape) * np.dtype(self.dtype).itemsize
-        extent = (start, start + size)
+        end = start + math.prod(self.shape) * np.dtype(self.dtype).itemsize
+        granule = self._coherence()._granule
+        extent = (start, min(-(-end // granule) * granule, self.storage.nbytes))
         self._extent_cache = extent
         return extent
 
@@ -305,6 +314,8 @@ class NpuTensor(ABC):
     def device(self, value):
         if value not in self.__class__.DEVICES:
             raise ValueError(_unsupported_device_message(self.__class__, value))
+        if value == _CoherenceMap.HOST:
+            self._reconcile_past_data()
         start, end = self._extent
         self._coherence().set(start, end, value)
 
@@ -483,6 +494,23 @@ class NpuTensor(ABC):
         for lo, hi in coherence.ranges(start, end, _CoherenceMap.DEVICE):
             self.storage.sync_from_device(lo, hi - lo)
 
+    def _reconcile_past_data(self):
+        """Pull the device's bytes in this tensor's last granule, past its data.
+
+        For a host claim made without reading first. The claim covers whole
+        granules, so the bytes it will not write must already be current on the
+        host, or the next transfer sends a stale copy of them over the device's.
+        A no-op unless this view ends mid-granule.
+        """
+        start, end = self._extent
+        data_end = start + self.nbytes
+        if data_end == end:
+            return
+        coherence = self._coherence()
+        last = data_end - data_end % coherence._granule
+        for lo, hi in coherence.ranges(last, end, _CoherenceMap.DEVICE):
+            self.storage.sync_from_device(lo, hi - lo)
+
     def to(self, target_device: str):
         """Move the tensor to a specified target device.
 
@@ -556,20 +584,27 @@ class NpuTensor(ABC):
         and synchronizes its own slice. It is a plain tensor of the same backend
         class, not a distinct type.
 
-        The region must be aligned to `COHERENCE_GRANULE`, because host and
-        device are reconciled a cache line at a time, not a byte at a time. Two
-        views sharing a line are not independent: synchronizing one acts on the
-        other's bytes in that line, so a view whose host copy is stale can be
+        The region must start on a `COHERENCE_GRANULE` boundary, because host
+        and device are reconciled a cache line at a time, not a byte at a time.
+        Two views sharing a line are not independent: synchronizing one acts on
+        the other's bytes in that line, so a view whose host copy is stale can be
         written back over data the device just produced in its neighbor. The
         check makes that unrepresentable instead of leaving it to callers to
         remember. It is enforced for every backend, including the CPU-only one
         that has no coherence concern of its own, so a layout validated against
         the test backend stays valid on a device.
 
-        A view may end anywhere if it ends where this tensor ends: its last line
-        is shared with no sibling, so it is no worse than synchronizing the whole
-        buffer. This also keeps a whole-buffer view (``offset=0``) legal for a
-        tensor whose own size is not a multiple of the granule.
+        A view may end anywhere, so its shape can be exactly the data's. It
+        still reconciles whole lines: its residency, and every transfer it makes,
+        run on to the end of the line its data ends in (or to the end of the
+        allocation, if that comes first). That line is shared with no view whose
+        bytes are disjoint from this one's, because every view starts on a line,
+        and it never leaves this tensor, whose own reconciled range ends on a
+        line or at the end of the allocation. So the bytes past the data are
+        reconciled with it rather than against a neighbor: a read pulls them, a
+        transfer to the device sends them only if the host wrote them, and a
+        write that skips the read (`overwrite`, `numpy_view`) pulls them first,
+        so claiming the line never sends a stale copy of them back.
 
         Note that alignment bounds the damage but does not make a sync exactly
         slice-scoped: some driver paths (an imported buffer, or one with no
@@ -607,8 +642,8 @@ class NpuTensor(ABC):
             NpuTensor: A view sharing this tensor's storage.
 
         Raises:
-            ValueError: If the region falls outside this tensor's buffer, or is
-                not aligned to `COHERENCE_GRANULE`.
+            ValueError: If the region falls outside this tensor's buffer, or
+                does not start on a `COHERENCE_GRANULE` boundary.
         """
         if type(self)._subview is NpuTensor._subview:
             # Answer the capability question before complaining about a region
@@ -620,24 +655,21 @@ class NpuTensor(ABC):
             "subview", offset, shape, dtype
         )
         granule = self._resolve_coherence_granule()
-        ends_at_parent_end = offset_bytes + nbytes == self.nbytes
-        if offset_bytes % granule or (nbytes % granule and not ends_at_parent_end):
+        if offset_bytes % granule:
             raise ValueError(
                 f"subview(offset={offset_bytes}, shape={tuple(shape)}, dtype={view_dtype}) "
-                f"spans bytes [{offset_bytes}, {offset_bytes + nbytes}) of this "
-                f"buffer, which is not aligned to the {granule}-byte coherence "
-                f"granule. Host and device are reconciled a cache line at a time, "
-                f"so a view sharing a line with a neighbor cannot be synchronized "
-                f"independently of it. Pad the region layout so each view starts "
-                f"at a multiple of {granule} bytes and (unless it ends where this "
-                f"buffer ends) is a multiple of {granule} bytes long."
+                f"starts at byte {offset_bytes} of this buffer, which is not on the "
+                f"{granule}-byte coherence granule. Host and device are reconciled "
+                f"a cache line at a time, so a view sharing a line with a neighbor "
+                f"cannot be synchronized independently of it. Pad the region "
+                f"layout so each view starts at a multiple of {granule} bytes."
             )
         return self._subview(offset_bytes, tuple(shape), view_dtype)
 
     def region(self, offset, shape, dtype=None):
         """Return a region of this tensor's storage to bind as a kernel argument.
 
-        For an argument that starts or ends inside a coherence granule, which
+        For an argument that starts inside a coherence granule, which
         `subview` refuses. The region has no host data of its own and is never
         synchronized on its own: see `TensorRegion`.
 
@@ -997,12 +1029,13 @@ class NpuTensor(ABC):
             random_val = generator.integers(low, high, size=size, dtype=dtype)
         else:
             random_val = np.random.randint(low, high, size=size, dtype=dtype)
-        if size == ():
-            t.data.fill(random_val)
-        else:
-            t.data[:] = random_val
+        with t.overwrite() as array:
+            if size == ():
+                array.fill(random_val)
+            else:
+                array[:] = random_val
         if device == "npu":
-            t._sync_to_device()
+            t.to("npu")
         return t
 
     @classmethod
@@ -1045,12 +1078,13 @@ class NpuTensor(ABC):
             max_val = np.nextafter(dtype(1.0), dtype(0.0))
             random_val = np.clip(random_val, 0.0, max_val)
 
-        if t.shape == ():
-            t.data.fill(random_val)
-        else:
-            t.data[:] = random_val
+        with t.overwrite() as array:
+            if t.shape == ():
+                array.fill(random_val)
+            else:
+                array[:] = random_val
         if device == "npu":
-            t._sync_to_device()
+            t.to("npu")
         return t
 
     @classmethod
@@ -1111,9 +1145,10 @@ class NpuTensor(ABC):
                 raise ValueError(
                     "Provided `out` tensor must match shape, dtype, and device"
                 )
-            out.data[...] = data
+            with out.overwrite() as array:
+                array[...] = data
             if device == "npu":
-                out._sync_to_device()
+                out.to("npu")
             return out
 
         t = cls(shape, dtype=dtype, device=device, **kwargs)

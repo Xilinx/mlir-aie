@@ -14,6 +14,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <type_traits>
+#include <utility>
 
 #include "../aie_arch.h"
 #include "../aie_kernel_utils.h"
@@ -1607,6 +1609,254 @@ dw_i8_bias_vector(const int8_t *line0, const int8_t *line1, const int8_t *line2,
   event1();
 }
 
+#if AIE_TUNED_AIE2P
+// Rows of 8k pixels: AIE2P convolves 8 pixels x 8 channels over a filter row
+// in one op (see dw8_conv). Chunk k of a row convolves the words k and k + 1
+// into output pixels 8k+1..8k+8, seeded with the bias; chunk -1, over a zero
+// word, gives pixel 0, and the word past the row is zero. Output word k is
+// chunk k - 1's last pixel and chunk k's first seven.
+using dwb_conv = aie::sliding_mul_ch_ops<8, 8, 8, 1, 1, 1, int8, int8>;
+
+template <int N, typename F>
+static inline __attribute__((always_inline)) void dwb_for(F &&f) {
+  [&]<int... K>(std::integer_sequence<int, K...>)
+      __attribute__((always_inline)) {
+        (f(std::integral_constant<int, K>{}), ...);
+      }(std::make_integer_sequence<int, N>{});
+}
+
+template <bool Table>
+static void
+dw_i8_bias_slide(const int8_t *__restrict line0, const int8_t *__restrict line1,
+                 const int8_t *__restrict line2, const int8_t *__restrict wts,
+                 const int32_t *__restrict bias, const int8_t *__restrict table,
+                 int8_t *__restrict output, const int32_t check,
+                 const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int channels = CONV_OUTPUT_CHANNELS;
+  constexpr int words = iw / 8;
+  static_assert(iw % 8 == 0, "the sliding path takes rows of 8k pixels");
+  event0();
+
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd = aie::swap_rounding(CONV_BIAS_ROUNDING);
+
+  const aie::vector<int8, 64> zero = aie::zeros<int8, 64>();
+  // A filter row's three taps are the coefficient's first 24 lanes; a border
+  // row's are zero.
+  const uint64_t taps = (1ull << 24) - 1;
+  const aie::mask<64> keep[3] = {
+      aie::mask<64>::from_uint64(check == top ? 0 : taps),
+      aie::mask<64>::from_uint64(taps),
+      aie::mask<64>::from_uint64(check == bottom ? 0 : taps)};
+  for (int c = 0; c < channels / 8; c++) {
+    aie::vector<int8, 64> w[3];
+    AIE_LOOP_UNROLL_FULL
+    for (int r = 0; r < 3; r++)
+      w[r] = aie::select(
+          zero, aie::load_unaligned_v<64>(wts + c * 72 + r * 24, 4), keep[r]);
+    const aie::accum<acc32, 64> seeded =
+        bias_seed<8>(aie::load_v<8>(bias + c * 8));
+    const int8_t *__restrict r0 = line0 + c * iw * 8;
+    const int8_t *__restrict r1 = line1 + c * iw * 8;
+    const int8_t *__restrict r2 = line2 + c * iw * 8;
+    int8_t *__restrict out = output + c * iw * 8;
+
+    // Pixels 8k + 1..8k + 8 from the rows' words k (zero at -1) and k + 1
+    // (zero past the row); only the first two pixels of word k + 1 reach it.
+    auto chunk = [&](auto first, auto last,
+                     int k) __attribute__((always_inline)) {
+      aie::accum<acc32, 64> acc = seeded;
+      AIE_LOOP_UNROLL_FULL
+      for (int r = 0; r < 3; r++) {
+        const int8_t *__restrict row = r == 0 ? r0 : (r == 1 ? r1 : r2);
+        aie::vector<int8, 64> lo, hi;
+        if constexpr (decltype(first)::value)
+          lo = zero;
+        else
+          lo = aie::load_v<64>(row + 64 * k);
+        if constexpr (decltype(last)::value)
+          hi = zero;
+        else
+          hi = aie::load_v<32>(row + 64 * (k + 1)).template grow<64>();
+        acc = dwb_conv::mac(acc, w[r], 0, aie::concat(lo, hi), 0);
+      }
+      return acc.template to_vector<int8>(scale);
+    };
+    using T = std::true_type;
+    using F = std::false_type;
+    aie::vector<int8, 64> prev = chunk(T{}, F{}, -1);
+    if constexpr (words <= 5) {
+      // A short row is straight-line code, so the channel loop pipelines.
+      dwb_for<words - 1>([&](auto kk) __attribute__((always_inline)) {
+        constexpr int k = decltype(kk)::value;
+        const aie::vector<int8, 64> a = chunk(F{}, F{}, k);
+        aie::store_v(out + 64 * k, aie::shuffle_up_fill(a, prev, 8));
+        prev = a;
+      });
+      const aie::vector<int8, 64> last = chunk(F{}, T{}, words - 1);
+      aie::store_v(out + 64 * (words - 1), aie::shuffle_up_fill(last, prev, 8));
+      continue;
+    }
+    // Two words a trip, so the loop's latency spreads over twice the work;
+    // an odd word before the last goes on its own.
+    constexpr int pairs = (words - 1) / 2;
+    for (int k = 0; k < 2 * pairs; k += 2) {
+      const aie::vector<int8, 64> a = chunk(F{}, F{}, k);
+      const aie::vector<int8, 64> b = chunk(F{}, F{}, k + 1);
+      aie::store_v(out + 64 * k, aie::shuffle_up_fill(a, prev, 8));
+      aie::store_v(out + 64 * (k + 1), aie::shuffle_up_fill(b, a, 8));
+      prev = b;
+    }
+    if constexpr ((words - 1) % 2) {
+      const aie::vector<int8, 64> a = chunk(F{}, F{}, words - 2);
+      aie::store_v(out + 64 * (words - 2), aie::shuffle_up_fill(a, prev, 8));
+      prev = a;
+    }
+    const aie::vector<int8, 64> cur = chunk(F{}, T{}, words - 1);
+    aie::store_v(out + 64 * (words - 1), aie::shuffle_up_fill(cur, prev, 8));
+  }
+  if constexpr (Table)
+    map_table_i8<channels * iw>(output, table);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
+  event1();
+}
+#endif
+
+#if AIE_TUNED_AIE2P
+// Rows of 8k + 4 pixels, channel blocks in pairs: two blocks' rows are one
+// run of 2W = 8(2q + 1) pixels, every pair 64-byte aligned. Chunk k is as in
+// dw_i8_bias_slide over the run, with the first block's weights before chunk
+// q and the second's after it. Chunk q, whose outputs 8q+1..8q+8 straddle
+// the blocks' edge at pixel W = 8q + 4, runs once per block with the other
+// block's edge pixel zeroed, and its lanes are taken from each in turn.
+
+template <bool Table>
+static void
+dw_i8_bias_pairs(const int8_t *__restrict line0, const int8_t *__restrict line1,
+                 const int8_t *__restrict line2, const int8_t *__restrict wts,
+                 const int32_t *__restrict bias, const int8_t *__restrict table,
+                 int8_t *__restrict output, const int32_t check,
+                 const int scale) {
+  constexpr int iw = CONV_INPUT_WIDTH;
+  constexpr int channels = CONV_OUTPUT_CHANNELS;
+  constexpr int q = iw / 8;
+  constexpr int words = 2 * q + 1;
+  static_assert(iw % 8 == 4 && channels % 16 == 0,
+                "the pair path takes rows of 8k + 4 pixels, blocks in pairs");
+  event0();
+
+  const aie::saturation_mode saved_sat =
+      aie::swap_saturation(aie::saturation_mode::saturate);
+  const aie::rounding_mode saved_rnd = aie::swap_rounding(CONV_BIAS_ROUNDING);
+
+  const aie::vector<int8, 64> zero = aie::zeros<int8, 64>();
+  const uint64_t taps = (1ull << 24) - 1;
+  const aie::mask<64> keep[3] = {
+      aie::mask<64>::from_uint64(check == top ? 0 : taps),
+      aie::mask<64>::from_uint64(taps),
+      aie::mask<64>::from_uint64(check == bottom ? 0 : taps)};
+  // Chunk q's window starts at pixel 8q: the second block's first pixel is
+  // window pixel 4, the first block's last is window pixel 3.
+  const aie::mask<64> not_second = aie::mask<64>::from_uint64(~(0xffull << 32));
+  const aie::mask<64> not_first = aie::mask<64>::from_uint64(~(0xffull << 24));
+  // Of chunk q's outputs 8q+1.., the first three are the first block's.
+  const aie::mask<64> second_lanes = aie::mask<64>::from_uint64(~0ull << 24);
+  for (int c = 0; c < channels / 8; c += 2) {
+    aie::vector<int8, 64> w[2][3];
+    aie::accum<acc32, 64> seeded[2];
+    AIE_LOOP_UNROLL_FULL
+    for (int b = 0; b < 2; b++) {
+      AIE_LOOP_UNROLL_FULL
+      for (int r = 0; r < 3; r++)
+        w[b][r] = aie::select(
+            zero, aie::load_unaligned_v<64>(wts + (c + b) * 72 + r * 24, 4),
+            keep[r]);
+      seeded[b] = bias_seed<8>(aie::load_v<8>(bias + (c + b) * 8));
+    }
+    const int8_t *__restrict rows[3] = {line0 + c * iw * 8, line1 + c * iw * 8,
+                                        line2 + c * iw * 8};
+    int8_t *__restrict out = output + c * iw * 8;
+
+    auto chunk = [&](auto kk, auto bb,
+                     aie::mask<64> keep_window) __attribute__((always_inline)) {
+      constexpr int k = decltype(kk)::value;
+      constexpr int b = decltype(bb)::value;
+      aie::accum<acc32, 64> acc = seeded[b];
+      AIE_LOOP_UNROLL_FULL
+      for (int r = 0; r < 3; r++) {
+        aie::vector<int8, 64> lo, hi;
+        if constexpr (k < 0)
+          lo = zero;
+        else
+          lo =
+              aie::select(zero, aie::load_v<64>(rows[r] + 64 * k), keep_window);
+        if constexpr (k + 1 >= words)
+          hi = zero;
+        else
+          hi = aie::load_v<32>(rows[r] + 64 * (k + 1)).template grow<64>();
+        acc = dwb_conv::mac(acc, w[b][r], 0, aie::concat(lo, hi), 0);
+      }
+      return acc.template to_vector<int8>(scale);
+    };
+    const aie::mask<64> all = aie::mask<64>::from_uint64(~0ull);
+    aie::vector<int8, 64> prev = chunk(std::integral_constant<int, -1>{},
+                                       std::integral_constant<int, 0>{}, all);
+    dwb_for<words>([&](auto kk) __attribute__((always_inline)) {
+      constexpr int k = decltype(kk)::value;
+      aie::vector<int8, 64> cur;
+      if constexpr (k < q) {
+        cur = chunk(kk, std::integral_constant<int, 0>{}, all);
+      } else if constexpr (k > q) {
+        cur = chunk(kk, std::integral_constant<int, 1>{}, all);
+      } else {
+        const aie::vector<int8, 64> first =
+            chunk(kk, std::integral_constant<int, 0>{}, not_second);
+        const aie::vector<int8, 64> second =
+            chunk(kk, std::integral_constant<int, 1>{}, not_first);
+        cur = aie::select(first, second, second_lanes);
+      }
+      aie::vector<int8, 64> word = aie::shuffle_up_fill(cur, prev, 8);
+      aie::store_v(out + 64 * k, word);
+      prev = cur;
+    });
+  }
+  if constexpr (Table)
+    map_table_i8<channels * iw>(output, table);
+  aie::set_rounding(saved_rnd);
+  aie::set_saturation(saved_sat);
+  event1();
+}
+
+#endif
+
+// The sliding path where the rows are 8k pixels, else blocks of diagonal
+// mmuls.
+template <bool Table>
+static void dw_i8_bias(const int8_t *line0, const int8_t *line1,
+                       const int8_t *line2, const int8_t *wts,
+                       const int32_t *bias, const int8_t *table, int8_t *output,
+                       const int32_t check, const int scale) {
+#if AIE_TUNED_AIE2P
+  // The sliding paths load and store whole 64-byte words: the contract asks
+  // for 64-byte aligned lines and output.
+  if constexpr (CONV_INPUT_WIDTH % 8 == 0) {
+    dw_i8_bias_slide<Table>(line0, line1, line2, wts, bias, table, output,
+                            check, scale);
+    return;
+  } else if constexpr (CONV_INPUT_WIDTH % 8 == 4 && CONV_INPUT_WIDTH >= 12 &&
+                       CONV_OUTPUT_CHANNELS % 16 == 0) {
+    dw_i8_bias_pairs<Table>(line0, line1, line2, wts, bias, table, output,
+                            check, scale);
+    return;
+  }
+#endif
+  dw_i8_bias_vector<Table>(line0, line1, line2, wts, bias, table, output, check,
+                           scale);
+}
+
 extern "C" {
 
 #ifdef CONV_TABLE
@@ -1616,8 +1866,7 @@ void DW_BIAS_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
                     const int32_t output_channels, const int32_t kernel_width,
                     const int32_t kernel_height, const int32_t check,
                     const int scale, const int channel_offset) {
-  dw_i8_bias_vector<true>(line0, line1, line2, wts, bias, table, output, check,
-                          scale);
+  dw_i8_bias<true>(line0, line1, line2, wts, bias, table, output, check, scale);
 }
 #else
 void DW_BIAS_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
@@ -1626,8 +1875,8 @@ void DW_BIAS_SYMBOL(int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
                     const int32_t kernel_width, const int32_t kernel_height,
                     const int32_t check, const int scale,
                     const int channel_offset) {
-  dw_i8_bias_vector<false>(line0, line1, line2, wts, bias, nullptr, output,
-                           check, scale);
+  dw_i8_bias<false>(line0, line1, line2, wts, bias, nullptr, output, check,
+                    scale);
 }
 #endif
 

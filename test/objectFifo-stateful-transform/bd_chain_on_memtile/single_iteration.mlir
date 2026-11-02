@@ -11,10 +11,10 @@
 // CHECK:   aie.device(npu1_1col) {
 // CHECK:     %[[SHIM_TILE:.*]] = aie.tile(0, 0)
 // CHECK:     %[[MEM_TILE:.*]] = aie.tile(0, 1)
-// CHECK:     %[[IN_CONS_BUFF_0:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "in_cons_buff_0"} : memref<1024xi32>
-// CHECK:     %[[IN_CONS_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "in_cons_buff_1"} : memref<1024xi32>
-// CHECK:     %[[IN_CONS_PROD_LOCK:.*]] = aie.lock(%[[MEM_TILE]]) {init = 2 : i32, sym_name = "in_cons_prod_lock_0"}
-// CHECK:     %[[IN_CONS_CONS_LOCK:.*]] = aie.lock(%[[MEM_TILE]]) {init = 0 : i32, sym_name = "in_cons_cons_lock_0"}
+// CHECK:     %[[IN_CONS_BUFF_0:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "in__cons__buf0"} : memref<1024xi32>
+// CHECK:     %[[IN_CONS_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "in__cons__buf1"} : memref<1024xi32>
+// CHECK:     %[[IN_CONS_PROD_LOCK:.*]] = aie.lock(%[[MEM_TILE]]) {init = 2 : i32, sym_name = "in__cons__prodlock0"}
+// CHECK:     %[[IN_CONS_CONS_LOCK:.*]] = aie.lock(%[[MEM_TILE]]) {init = 0 : i32, sym_name = "in__cons__conslock0"}
 // CHECK:     aie.flow(%[[SHIM_TILE]], DMA : 0, %[[MEM_TILE]], DMA : 0)
 // CHECK:     aie.flow(%[[MEM_TILE]], DMA : 0, %[[SHIM_TILE]], DMA : 0)
 // CHECK:     %[[MEMTILE_DMA:.*]] = aie.memtile_dma(%[[MEM_TILE]]) {

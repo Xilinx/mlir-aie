@@ -135,6 +135,7 @@ jobs:
             popd
 
             pip install --upgrade pip
+            # requirements_ml.txt is not hash-pinned; see regenerate_lockfiles.sh.
             pip install -r python/requirements_ml.txt
             python -m pip install --require-hashes -r python/requirements_dev.lock
 
@@ -353,6 +354,7 @@ jobs:
             popd
 
             pip install --upgrade pip
+            # requirements_ml.txt is not hash-pinned; see regenerate_lockfiles.sh.
             pip install -r python/requirements_ml.txt
             python -m pip install --require-hashes -r python/requirements_dev.lock
 

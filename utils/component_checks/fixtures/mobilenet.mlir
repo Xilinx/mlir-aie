@@ -103,19 +103,19 @@ module {
     aie.objectfifo @of34(%logical_core_11, {%logical_core_12}, 4 : i32) : !aie.objectfifo<memref<14x1x336xui8>>
     aie.objectfifo @of35(%logical_core_12, {%logical_core_13}, 2 : i32) : !aie.objectfifo<memref<14x1x336xui8>>
     aie.objectfifo @of36(%logical_core_13, {%logical_core_14}, 2 : i32) : !aie.objectfifo<memref<14x1x112xi8>>
-    aie.objectfifo @of37(%logical_core_14, {%logical_core_15}, 4 : i32) {via_DMA = true} : !aie.objectfifo<memref<14x1x336xui8>>
+    aie.objectfifo @of37(%logical_core_14, {%logical_core_15}, 4 : i32) {transport = #aie.transport<dma>} : !aie.objectfifo<memref<14x1x336xui8>>
     aie.objectfifo @of38(%logical_core_15, {%logical_core_15}, 1 : i32) : !aie.objectfifo<memref<7x1x336xui8>>
     aie.objectfifo @of39(%logical_core_15, {%logical_core_16, %logical_core_17, %logical_mem_39}, [2 : i32, 2 : i32, 2 : i32, 6 : i32]) : !aie.objectfifo<memref<7x1x80xi8>>
     aie.objectfifo @of39_fwd(%logical_mem_39, {%logical_core_20}, 2 : i32) : !aie.objectfifo<memref<7x1x80xi8>>
     aie.objectfifo.link [@of39] -> [@of39_fwd]([] [0])
     aie.objectfifo @of4(%logical_core_1, {%logical_core_1}, 3 : i32) : !aie.objectfifo<memref<112x1x64xui8>>
-    aie.objectfifo @of40(%logical_core_17, {%logical_core_18}, 4 : i32) {via_DMA = true} : !aie.objectfifo<memref<7x1x960xui8>>
+    aie.objectfifo @of40(%logical_core_17, {%logical_core_18}, 4 : i32) {transport = #aie.transport<dma>} : !aie.objectfifo<memref<7x1x960xui8>>
     aie.objectfifo @of41(%logical_core_18, {%logical_core_19}, 2 : i32) : !aie.objectfifo<memref<7x1x480xui8>>
     aie.objectfifo @of42(%logical_core_18, {%logical_core_20}, 2 : i32) : !aie.objectfifo<memref<7x1x480xui8>>
     aie.objectfifo @of43(%logical_core_20, {%logical_core_21, %logical_core_22, %logical_mem_40}, [2 : i32, 2 : i32, 2 : i32, 6 : i32]) : !aie.objectfifo<memref<7x1x80xi8>>
     aie.objectfifo @of43_fwd(%logical_mem_40, {%logical_core_25}, 2 : i32) : !aie.objectfifo<memref<7x1x80xi8>>
     aie.objectfifo.link [@of43] -> [@of43_fwd]([] [0])
-    aie.objectfifo @of44(%logical_core_22, {%logical_core_23}, 4 : i32) {via_DMA = true} : !aie.objectfifo<memref<7x1x960xui8>>
+    aie.objectfifo @of44(%logical_core_22, {%logical_core_23}, 4 : i32) {transport = #aie.transport<dma>} : !aie.objectfifo<memref<7x1x960xui8>>
     aie.objectfifo @of45(%logical_core_23, {%logical_core_24}, 2 : i32) : !aie.objectfifo<memref<7x1x480xui8>>
     aie.objectfifo @of46(%logical_core_23, {%logical_core_25}, 2 : i32) : !aie.objectfifo<memref<7x1x480xui8>>
     aie.objectfifo @of47(%logical_core_25, {%logical_core_26}, 2 : i32) : !aie.objectfifo<memref<7x1x80xi8>>

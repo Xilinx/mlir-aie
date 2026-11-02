@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
+from aie.helpers.errors import hide_internal_frames
 from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.hostruntime.tensor_class import NpuTensor, TensorRegion
@@ -141,6 +142,12 @@ class CallableDesign:
                     "'parameters', which a call takes for its ScratchpadParameter "
                     "values; name it otherwise"
                 )
+            if "entry" in signature.parameters:
+                raise TypeError(
+                    f"{self.compilable.generator_name!r} names a parameter "
+                    "'entry', which a call takes for the entry runtime it "
+                    "dispatches; name it otherwise"
+                )
 
         # Pre-build the named wrapper object used as the cache-key identity for
         # Path-based generators.  Creating it once here avoids allocating a new
@@ -241,22 +248,29 @@ class CallableDesign:
         compilable: CompilableDesign,
         cache_key,
         trace_config,
+        entry: str | None = None,
     ) -> NPUKernel:
         from aie.utils.npukernel import NPUKernel
 
         xclbin_path, inst_path = compilable.compile()
+        if entry is not None and not compilable.full_elf:
+            inst_path = compilable.entry_insts_path(entry)
         if trace_config is not None and compilable._kernel_dir is not None:
             physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
                 trace_config.physical_mlir_path = str(physical_mlir)
-            trace_config.kernel = compilable._full_elf_kernel_name or DEFAULT_KERNEL
+            trace_config.kernel = compilable._dispatched_entry(entry) or DEFAULT_KERNEL
         # The lowered runtime_sequence operand list is the true host-buffer
         # contract (one operand per host BO, including any trace/ctrl-packet
         # buffer the lowering appended). Its length is floor-independent, unlike
         # the kernels.json boN slot count which aiecc floors to the firmware
         # command-chain minimum -- so this is what host buffer counts are
         # validated against.
-        expected_sizes = compilable.expected_tensor_sizes
+        expected_sizes = (
+            compilable.expected_tensor_sizes
+            if entry is None
+            else compilable.entry_tensor_sizes(entry)
+        )
         num_host_bos = len(expected_sizes) if expected_sizes is not None else None
         if compilable.full_elf:
             # Full-ELF: compile() returns (elf_path, None). The kernel is loaded
@@ -267,14 +281,18 @@ class CallableDesign:
                 compilable._elf_path is not None
                 and compilable._full_elf_kernel_name is not None
             )
-            entry = compilable.get_cache_entry()
+            cache_entry = compilable.get_cache_entry()
             kernel = NPUKernel(
                 elf_path=compilable._elf_path,
-                kernel_name=compilable._full_elf_kernel_name,
+                kernel_name=(
+                    compilable.entry_kernel_name(entry)
+                    if entry is not None
+                    else compilable._full_elf_kernel_name
+                ),
                 init_entry=compilable._full_elf_init_entry,
                 trace_config=trace_config,
                 num_host_bos=num_host_bos,
-                params_path=entry.params if entry is not None else None,
+                params_path=cache_entry.params if cache_entry is not None else None,
             )
         else:
             kernel = NPUKernel(
@@ -301,198 +319,215 @@ class CallableDesign:
         Args:
             *runtime_args: Runtime tensor and/or scalar positional arguments.
             **runtime_kwargs: Mix of call-time ``CompileTime[T]`` params and
-                runtime scalar kernel arguments, and ``parameters``: the
+                runtime scalar kernel arguments; ``parameters``: the
                 design's ScratchpadParameter values for this call, a mapping
                 by name, written to the run's ctrl scratchpad before it
-                starts (the design compiles to a full ELF, ``full_elf=True``).
+                starts (the design compiles to a full ELF, ``full_elf=True``);
+                and ``entry``: the Program entry runtime to dispatch from the
+                same build, by ``"device:sequence"`` or, when no other entry
+                shares it, by sequence name (default: its first).
 
         Returns:
             The result of ``NPUKernel.__call__``.
 
         Raises:
-            TypeError: ``parameters`` is not a mapping.
+            TypeError: ``parameters`` is not a mapping, or ``entry`` not a string.
         """
-        parameters = runtime_kwargs.pop("parameters", None)
-        if parameters is not None and not isinstance(parameters, Mapping):
-            raise TypeError(
-                f"parameters must map ScratchpadParameter names to values, not "
-                f"{type(parameters).__name__}"
-            )
-        # --- Split call-time CompileTime[T] params from runtime scalar kwargs ---
-        # trace_config is handled specially: if annotated as CompileTime[object] on
-        # the generator, it flows through the normal CompileTime[T] classification so
-        # the generator receives it and can conditionally enable tracing in the
-        # generated MLIR.  We extract it from effective_compile_kwargs after the
-        # merge (below) rather than popping it here.
-        call_compile_kwargs, scalar_runtime_kwargs, effective_compile_kwargs = (
-            self._extract_compile_kwargs(runtime_kwargs)
-        )
-
-        # Guard 3-A: tensor params must not appear as runtime kwargs.
-        tensor_names = set(self.compilable.tensor_params)
-        confused_tensor_kwargs = set(scalar_runtime_kwargs.keys()) & tensor_names
-        if confused_tensor_kwargs:
-            raise TypeError(
-                f"{self.compilable.generator_name!r} received tensor "
-                f"param(s) as keyword arguments: {confused_tensor_kwargs}.\n"
-                f"  Params annotated In/Out/InOut must be passed positionally.\n"
-                f"  CompileTime[T] params (passed as kwargs): "
-                f"{self.compilable.compile_params}."
-            )
-
-        # Guard 3-C: too many positional args. A variadic tensor list takes
-        # any number; the lowered sequence's operand count checks it later.
-        if (
-            callable(self.compilable.mlir_generator)
-            and self.compilable.variadic_tensor_param is None
-        ):
-            max_positional = (
-                len(self.compilable.tensor_params)
-                + len(self.compilable.dispatch_params)
-                + len(self.compilable.scalar_params)
-            )
-            if len(runtime_args) > max_positional:
-                raise TypeError(
-                    f"{self.compilable.generator_name!r} takes at most "
-                    f"{max_positional} positional argument(s) "
-                    f"(tensor: {len(self.compilable.tensor_params)}, "
-                    f"dispatch: {len(self.compilable.dispatch_params)}, "
-                    f"scalar: {len(self.compilable.scalar_params)}) "
-                    f"but {len(runtime_args)} were given.\n"
-                    f"  CompileTime[T] parameters {self.compilable.compile_params} "
-                    f"must be keyword arguments, not positional."
-                )
-
-        trace_config = self.trace_config
-        if trace_config is not None:
-            if "trace_size" not in effective_compile_kwargs:
-                effective_compile_kwargs["trace_size"] = trace_config.trace_size
-                call_compile_kwargs["trace_size"] = trace_config.trace_size
-        else:
-            trace_config = effective_compile_kwargs.get("trace_config", None)
-
-        # The TraceConfig carries mutable per-call state, so keying on it would
-        # miss every call; its size must be in the key even so, because a traced
-        # build is a different program. Keying on neither let a traced run reuse
-        # the untraced kernel and come back with an empty trace.
-        cache_compile_kwargs = {
-            k: v for k, v in effective_compile_kwargs.items() if k != "trace_config"
-        }
-        if trace_config is not None:
-            cache_compile_kwargs["trace_size"] = trace_config.trace_size
-
-        from aie.utils import ensure_current_device
-
-        ensure_current_device()
-
-        tensor_args, remaining_scalars = self.compilable.split_runtime_args(
-            runtime_args, scalar_runtime_kwargs
-        )
-        compilable = self._build_compilable(call_compile_kwargs, tensor_args)
-        from aie.utils.npukernel import NPUKernel
-
-        # A misspelled keyword fails here, not after a fresh design compiles.
-        NPUKernel.check_keywords(compilable.dispatch_params, remaining_scalars)
-
-        generator = compilable.mlir_generator
-        if callable(generator):
-            cache_fn = generator
-        else:
-            cache_fn = self._path_cache_fn
-
-        # Tensor args are the whole runtime half of the key: a DispatchTime[T]
-        # value is not part of the compiled artifact, so keying on it would
-        # build one kernel per distinct value.
-        cache_key = _create_function_cache_key(
-            cache_fn,
-            tuple(tensor_args),
-            cache_compile_kwargs,
-            extra_key=compilable._generation_cache_key(
-                full_elf=compilable.full_elf_requested
-            ),
-        )
-
-        # A traced call skips the in-process cache. Decoding a trace needs the
-        # physical MLIR, and only going through compile() tells the design which
-        # directory holds it -- an in-process hit returns the kernel without
-        # ever asking. The on-disk cache still serves the artifacts, so this
-        # re-reads rather than rebuilds.
-        use_kernel_cache = compilable.use_cache and trace_config is None
-        kernel = self._kernel_cache.get(cache_key) if use_kernel_cache else None
-        if kernel is not None:
-            if kernel.elf_path is not None:
-                artifacts_present = Path(kernel.elf_path).is_file()
-            elif compilable.dispatch_params:
-                # A dispatch design has no insts.bin at all -- the instruction
-                # stream is rebuilt per call from its bridge, so that is the
-                # artifact whose disappearance has to invalidate the kernel.
-                lib = kernel.dispatch_lib_path
-                artifacts_present = (
-                    Path(kernel.xclbin_path).is_file()
-                    and lib is not None
-                    and Path(lib).is_file()
-                )
-            else:
-                artifacts_present = (
-                    Path(kernel.xclbin_path).is_file()
-                    and Path(kernel.insts_path).is_file()
-                )
-            if not artifacts_present:
-                self._kernel_cache.pop(cache_key, None)
-                kernel = None
-        if kernel is None:
-            kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
-            if use_kernel_cache:
-                self._kernel_cache[cache_key] = kernel
-
-        # After compile(): validation reads expected_tensor_sizes.
-        implicit_tensor_count = 0
-        if trace_config is not None:
-            if not trace_config.reuse_output_buffer:
-                implicit_tensor_count = 1 + int(trace_config.enable_ctrl_pkts)
-            elif not tensor_args:
-                implicit_tensor_count = 1
-        compilable.validate_tensor_args(
-            tensor_args,
-            num_host_bos=kernel.num_host_bos,
-            implicit_tensor_count=implicit_tensor_count,
-        )
-
         try:
-            return kernel(*tensor_args, parameters=parameters, **remaining_scalars)
-        except RuntimeError as exc:
-            # IOCTL EINVAL → stale XRT hw_context. Match libxrt's "err=-22"
-            # or xrt::error's "XRT...Invalid argument"; bare "Invalid argument"
-            # is too generic and is not treated as EINVAL.
-            msg = str(exc)
-            is_xrt_einval = "err=-22" in msg or (
-                "Invalid argument" in msg and ("XRT" in msg or "xrt" in msg)
-            )
-            if not is_xrt_einval:
-                raise
-            logger.warning(
-                "XRT IOCTL EINVAL detected for %r; evicting hw_context and "
-                "retrying once. Original error: %s",
-                self.compilable.generator_name,
-                msg,
+            parameters = runtime_kwargs.pop("parameters", None)
+            if parameters is not None and not isinstance(parameters, Mapping):
+                raise TypeError(
+                    f"parameters must map ScratchpadParameter names to values, not "
+                    f"{type(parameters).__name__}"
+                )
+            entry = runtime_kwargs.pop("entry", None)
+            if entry is not None and not isinstance(entry, str):
+                raise TypeError(
+                    f"entry names an entry runtime, not a {type(entry).__name__}"
+                )
+            # --- Split call-time CompileTime[T] params from runtime scalar kwargs ---
+            # trace_config is handled specially: if annotated as CompileTime[object] on
+            # the generator, it flows through the normal CompileTime[T] classification so
+            # the generator receives it and can conditionally enable tracing in the
+            # generated MLIR.  We extract it from effective_compile_kwargs after the
+            # merge (below) rather than popping it here.
+            call_compile_kwargs, scalar_runtime_kwargs, effective_compile_kwargs = (
+                self._extract_compile_kwargs(runtime_kwargs)
             )
 
-            self._kernel_cache.pop(cache_key, None)
-            # compile() returns the primary artifact path first (xclbin, or the
-            # full ELF in full-ELF mode) -- the same path the context cache is
-            # keyed on, so it is the correct eviction key either way.
-            primary_artifact, _ = compilable.compile()
-            # Evict the stale cached context so the retry rebuilds a fresh one.
-            # Runtimes without an evictable context cache (e.g. HRX) inherit the
-            # base no-op, so this needs no backend-specific branching here.
-            from aie.utils import DefaultNPURuntime
+            # Guard 3-A: tensor params must not appear as runtime kwargs.
+            tensor_names = set(self.compilable.tensor_params)
+            confused_tensor_kwargs = set(scalar_runtime_kwargs.keys()) & tensor_names
+            if confused_tensor_kwargs:
+                raise TypeError(
+                    f"{self.compilable.generator_name!r} received tensor "
+                    f"param(s) as keyword arguments: {confused_tensor_kwargs}.\n"
+                    f"  Params annotated In/Out/InOut must be passed positionally.\n"
+                    f"  CompileTime[T] params (passed as kwargs): "
+                    f"{self.compilable.compile_params}."
+                )
 
-            if DefaultNPURuntime is not None:
-                DefaultNPURuntime.evict_context(primary_artifact)
-            kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
-            if use_kernel_cache:
-                self._kernel_cache[cache_key] = kernel
-            return kernel(*tensor_args, parameters=parameters, **remaining_scalars)
+            # Guard 3-C: too many positional args. A variadic tensor list takes
+            # any number; the lowered sequence's operand count checks it later.
+            if (
+                callable(self.compilable.mlir_generator)
+                and self.compilable.variadic_tensor_param is None
+            ):
+                max_positional = (
+                    len(self.compilable.tensor_params)
+                    + len(self.compilable.dispatch_params)
+                    + len(self.compilable.scalar_params)
+                )
+                if len(runtime_args) > max_positional:
+                    raise TypeError(
+                        f"{self.compilable.generator_name!r} takes at most "
+                        f"{max_positional} positional argument(s) "
+                        f"(tensor: {len(self.compilable.tensor_params)}, "
+                        f"dispatch: {len(self.compilable.dispatch_params)}, "
+                        f"scalar: {len(self.compilable.scalar_params)}) "
+                        f"but {len(runtime_args)} were given.\n"
+                        f"  CompileTime[T] parameters {self.compilable.compile_params} "
+                        f"must be keyword arguments, not positional."
+                    )
+
+            trace_config = self.trace_config
+            if trace_config is not None:
+                if "trace_size" not in effective_compile_kwargs:
+                    effective_compile_kwargs["trace_size"] = trace_config.trace_size
+                    call_compile_kwargs["trace_size"] = trace_config.trace_size
+            else:
+                trace_config = effective_compile_kwargs.get("trace_config", None)
+
+            # The TraceConfig carries mutable per-call state, so keying on it would
+            # miss every call; its size must be in the key even so, because a traced
+            # build is a different program. Keying on neither let a traced run reuse
+            # the untraced kernel and come back with an empty trace.
+            cache_compile_kwargs = {
+                k: v for k, v in effective_compile_kwargs.items() if k != "trace_config"
+            }
+            if trace_config is not None:
+                cache_compile_kwargs["trace_size"] = trace_config.trace_size
+
+            from aie.utils import ensure_current_device
+
+            ensure_current_device()
+
+            tensor_args, remaining_scalars = self.compilable.split_runtime_args(
+                runtime_args, scalar_runtime_kwargs
+            )
+            compilable = self._build_compilable(call_compile_kwargs, tensor_args)
+            from aie.utils.npukernel import NPUKernel
+
+            # A misspelled keyword fails here, not after a fresh design compiles.
+            NPUKernel.check_keywords(compilable.dispatch_params, remaining_scalars)
+
+            generator = compilable.mlir_generator
+            if callable(generator):
+                cache_fn = generator
+            else:
+                cache_fn = self._path_cache_fn
+
+            # Tensor args are the whole runtime half of the key: a DispatchTime[T]
+            # value is not part of the compiled artifact, so keying on it would
+            # build one kernel per distinct value.
+            cache_key = _create_function_cache_key(
+                cache_fn,
+                tuple(tensor_args),
+                cache_compile_kwargs,
+                extra_key=compilable._generation_cache_key(
+                    full_elf=compilable.full_elf_requested
+                ),
+            )
+
+            # A traced call skips the in-process cache. Decoding a trace needs the
+            # physical MLIR, and only going through compile() tells the design which
+            # directory holds it -- an in-process hit returns the kernel without
+            # ever asking. The on-disk cache still serves the artifacts, so this
+            # re-reads rather than rebuilds.
+            use_kernel_cache = compilable.use_cache and trace_config is None
+            kernel_key = (cache_key, entry)
+            kernel = self._kernel_cache.get(kernel_key) if use_kernel_cache else None
+            if kernel is not None:
+                if kernel.elf_path is not None:
+                    artifacts_present = Path(kernel.elf_path).is_file()
+                elif compilable.dispatch_params:
+                    # A dispatch design has no insts.bin at all -- the instruction
+                    # stream is rebuilt per call from its bridge, so that is the
+                    # artifact whose disappearance has to invalidate the kernel.
+                    lib = kernel.dispatch_lib_path
+                    artifacts_present = (
+                        Path(kernel.xclbin_path).is_file()
+                        and lib is not None
+                        and Path(lib).is_file()
+                    )
+                else:
+                    artifacts_present = (
+                        Path(kernel.xclbin_path).is_file()
+                        and Path(kernel.insts_path).is_file()
+                    )
+                if not artifacts_present:
+                    self._kernel_cache.pop(kernel_key, None)
+                    kernel = None
+            if kernel is None:
+                kernel = self._compile_and_build_kernel(
+                    compilable, cache_key, trace_config, entry
+                )
+                if use_kernel_cache:
+                    self._kernel_cache[kernel_key] = kernel
+
+            # After compile(): validation reads expected_tensor_sizes.
+            implicit_tensor_count = 0
+            if trace_config is not None:
+                if not trace_config.reuse_output_buffer:
+                    implicit_tensor_count = 1 + int(trace_config.enable_ctrl_pkts)
+                elif not tensor_args:
+                    implicit_tensor_count = 1
+            compilable.validate_tensor_args(
+                tensor_args,
+                num_host_bos=kernel.num_host_bos,
+                implicit_tensor_count=implicit_tensor_count,
+                entry=entry,
+            )
+
+            try:
+                return kernel(*tensor_args, parameters=parameters, **remaining_scalars)
+            except RuntimeError as exc:
+                # IOCTL EINVAL → stale XRT hw_context. Match libxrt's "err=-22"
+                # or xrt::error's "XRT...Invalid argument"; bare "Invalid argument"
+                # is too generic and is not treated as EINVAL.
+                msg = str(exc)
+                is_xrt_einval = "err=-22" in msg or (
+                    "Invalid argument" in msg and ("XRT" in msg or "xrt" in msg)
+                )
+                if not is_xrt_einval:
+                    raise
+                logger.warning(
+                    "XRT IOCTL EINVAL detected for %r; evicting hw_context and "
+                    "retrying once. Original error: %s",
+                    self.compilable.generator_name,
+                    msg,
+                )
+
+                self._kernel_cache.pop(kernel_key, None)
+                # compile() returns the primary artifact path first (xclbin, or the
+                # full ELF in full-ELF mode) -- the same path the context cache is
+                # keyed on, so it is the correct eviction key either way.
+                primary_artifact, _ = compilable.compile()
+                # Evict the stale cached context so the retry rebuilds a fresh one.
+                # Runtimes without an evictable context cache (e.g. HRX) inherit the
+                # base no-op, so this needs no backend-specific branching here.
+                from aie.utils import DefaultNPURuntime
+
+                if DefaultNPURuntime is not None:
+                    DefaultNPURuntime.evict_context(primary_artifact)
+                kernel = self._compile_and_build_kernel(
+                    compilable, cache_key, trace_config, entry
+                )
+                if use_kernel_cache:
+                    self._kernel_cache[kernel_key] = kernel
+                return kernel(*tensor_args, parameters=parameters, **remaining_scalars)
+        except Exception as exc:
+            raise hide_internal_frames(exc)
 
     def specialize(self, **overrides) -> "CallableDesign":
         """Return a new ``CallableDesign`` with overrides applied.
@@ -540,6 +575,7 @@ class CallableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
+        npu_cpp_path: Path | str | None = None,
     ) -> tuple[Path | None, Path | None]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
@@ -551,11 +587,12 @@ class CallableDesign:
         directly to those paths instead of the cache, rebuilding them only
         when they are out of date — useful for build systems (e.g. Makefiles)
         that name their own outputs.
-        Static designs require both paths or neither. Active ``DispatchTime[T]``
-        designs accept ``xclbin_path`` alone, return ``(xclbin_path, None)``, and
-        reject ``inst_path`` and ``elf_path`` (there is no static instruction
-        stream). The immutable dispatch library remains in
-        ``<xclbin stem>.prj``; use ``get_dispatch_lib_path()``.
+        Non-dispatch designs require both paths or neither, unless
+        ``npu_cpp_path`` replaces ``inst_path`` (returning ``(xclbin_path, None)``).
+        Active ``DispatchTime[T]`` designs accept ``xclbin_path`` alone,
+        return ``(xclbin_path, None)``, and reject ``inst_path`` and ``elf_path``
+        (there is no static instruction stream). The immutable dispatch library
+        remains in ``<xclbin stem>.prj``; use ``get_dispatch_lib_path()``.
 
         ``elf_path`` is optional: when set, aiecc also wraps the NPU
         instructions into an ELF (via ``aiebu-asm``) at that path.  Needed by
@@ -567,17 +604,31 @@ class CallableDesign:
         xclbin + insts pair, and the return value is ``(elf_path, None)``.
 
         ``pdi_path`` is optional: when set, aiecc writes the Programmable
-        Device Image to that path. Requires explicit ``xclbin_path`` (and
-        ``inst_path`` for static designs). In cache mode, use ``get_pdi_path``
-        to locate the ``main.pdi`` aiecc emits.
+        Device Image to that path. Requires explicit ``xclbin_path``.
+        In cache mode, use ``get_pdi_path`` to locate the ``main.pdi`` aiecc emits.
+
+        ``npu_cpp_path`` is optional: when set, aiecc emits the runtime
+        sequence as a parameterized C++ TXN builder at that path instead of
+        (or alongside) the static instruction stream -- one compiled overlay's
+        sequence re-expressed as a function a native caller can invoke with
+        its own runtime values, without recompiling. Requires explicit
+        ``xclbin_path`` but not ``inst_path``; omit ``inst_path`` for
+        runtime-valued sequences that cannot produce static instructions.
+        It is not available for ``DispatchTime[T]`` designs,
+        which already build their own C++ builder as the dispatch bridge
+        (retrieve it with ``get_dispatch_lib_path()``).
         """
-        return self.compilable.compile(
-            xclbin_path=xclbin_path,
-            inst_path=inst_path,
-            elf_path=elf_path,
-            full_elf_path=full_elf_path,
-            pdi_path=pdi_path,
-        )
+        try:
+            return self.compilable.compile(
+                xclbin_path=xclbin_path,
+                inst_path=inst_path,
+                elf_path=elf_path,
+                full_elf_path=full_elf_path,
+                pdi_path=pdi_path,
+                npu_cpp_path=npu_cpp_path,
+            )
+        except Exception as exc:
+            raise hide_internal_frames(exc)
 
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:
         """Return one cache-directory PDI, or ``None`` if none is present.

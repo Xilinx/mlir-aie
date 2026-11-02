@@ -7,10 +7,11 @@
 
 Submodules:
 - `eltwise` — passthrough, scale, add, add_sized, mul, mul_sized, mul_add, relu, clamp, magnitude_f32
-- `datamovement` — affine_cast, axpy, convert_copy, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose
+- `datamovement` — affine_cast, axpy, convert_copy, decode_coded, expand, limbs_f32, merge_rows, patch_positions, rope, row_addresses, transpose
 - `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine, maxpool2d
-- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize
+- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted, resample_peak, resample_quantize, resize,
+  levels, grid_decode, resize_linear, nms
 - `activation` — softmax, gelu, gelu_erf, silu, swiglu, bf16_exp, exp2f_vec, log_f32, log10_clamp_f32, tanh, sigmoid, leaky_relu
 - `norm` — rms_norm, rms_norm_eps, layer_norm, layer_norm_eps
 - `quant` — q4nx_dequant (AIE2P packed q4nx to bfp16ebs8)
@@ -39,7 +40,7 @@ Submodules:
 - `tables` — exp_lut, silu_lut and the C headers that compile them into a kernel
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, dwconv1d, dwconv1d_channels_first, dwconv1d_channels_last, bn_*
 
-Every factory attaches a [`KernelContract`][iron.kernels.KernelContract] as
+Every factory attaches a [`KernelContract`][aie.iron.kernels.KernelContract] as
 ``.contract``: the role of each argument (``In``, ``Out``, ``InOut``,
 ``Param``), a numpy reference, a tolerance and the dtype facts a signature
 cannot say. A kernel whose arithmetic differs by ``Build`` declares the
@@ -149,6 +150,8 @@ from .datamovement import (
     axpy_ref,
     convert_copy,
     convert_copy_ref,
+    decode_coded,
+    decode_coded_ref,
     expand,
     expand_ref,
     limbs_f32,
@@ -339,11 +342,19 @@ from .vision import (
     filter2d_ref,
     gray2rgba,
     gray2rgba_ref,
+    grid_decode,
+    grid_decode_ref,
+    levels,
+    levels_ref,
+    nms,
+    nms_ref,
     resample_peak,
     resample_peak_ref,
     resample_quantize,
     resample_quantize_ref,
     resize,
+    resize_linear,
+    resize_linear_ref,
     resize_ref,
     rgba2gray,
     rgba2gray_ref,
@@ -521,6 +532,14 @@ __all__ = [
     "resample_quantize_ref",
     "resize",
     "resize_ref",
+    "levels",
+    "levels_ref",
+    "grid_decode",
+    "grid_decode_ref",
+    "resize_linear",
+    "resize_linear_ref",
+    "nms",
+    "nms_ref",
     "softmax",
     "gelu",
     "gelu_erf",
@@ -537,6 +556,7 @@ __all__ = [
     "affine_cast",
     "axpy",
     "convert_copy",
+    "decode_coded",
     "expand",
     "limbs_f32",
     "merge_rows",
@@ -552,6 +572,7 @@ __all__ = [
     "affine_cast_ref",
     "axpy_ref",
     "convert_copy_ref",
+    "decode_coded_ref",
     "expand_ref",
     "limbs_f32_ref",
     "merge_rows_ref",

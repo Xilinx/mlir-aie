@@ -14,11 +14,11 @@
 // five-input join's shared pool onto the neighboring MemTile.
 // CHECK: design.py:10:3: error: 'aie.tile' op number of input DMA channel exceeded!
 // CHECK-SAME: requires at least 5 S2MM channels, but capacity is 4 for adjacent MemTile access
-// CHECK: design.py:20:3: note: DMA endpoint @in0_cons_dma for ObjectFifo @in0 requires adjacent MemTile access
-// CHECK: design.py:21:3: note: DMA endpoint @in1_cons_dma for ObjectFifo @in1 requires adjacent MemTile access
-// CHECK: design.py:22:3: note: DMA endpoint @in2_cons_dma for ObjectFifo @in2 requires adjacent MemTile access
-// CHECK: design.py:23:3: note: DMA endpoint @in3_cons_dma for ObjectFifo @in3 requires adjacent MemTile access
-// CHECK: design.py:24:3: note: DMA endpoint @in4_cons_dma for ObjectFifo @in4 requires adjacent MemTile access
+// CHECK: design.py:20:3: note: DMA endpoint @in0__cons__dma for ObjectFifo @in0 requires adjacent MemTile access
+// CHECK: design.py:21:3: note: DMA endpoint @in1__cons__dma for ObjectFifo @in1 requires adjacent MemTile access
+// CHECK: design.py:22:3: note: DMA endpoint @in2__cons__dma for ObjectFifo @in2 requires adjacent MemTile access
+// CHECK: design.py:23:3: note: DMA endpoint @in3__cons__dma for ObjectFifo @in3 requires adjacent MemTile access
+// CHECK: design.py:24:3: note: DMA endpoint @in4__cons__dma for ObjectFifo @in4 requires adjacent MemTile access
 module {
   aie.device(npu2) {
     %shim0 = aie.tile(0, 0)

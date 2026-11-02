@@ -10,23 +10,23 @@
 
 // One A object repeated twice joins two independently produced B objects.
 // POOL-LABEL: module @join_unequal
-// POOL: aie.objectfifo.pool @a_pool
+// POOL: aie.objectfifo.pool @a__pool
 // POOL-SAME: repeatCount = 2
-// POOL: aie.objectfifo.pool @b_pool
+// POOL: aie.objectfifo.pool @b__pool
 // POOL-NOT: repeatCount
-// POOL: aie.objectfifo.pool @out_pool
+// POOL: aie.objectfifo.pool @out__pool
 // POOL-NOT: repeatCount
 // POOL: aie.objectfifo.segment @s0
 // POOL: aie.objectfifo.segment @s1
 // DMA-LABEL: module @join_unequal
-// DMA: %[[AP:.*]] = aie.lock({{.*}}) {init = 2 : i32, sym_name = "a_prod_lock_0"}
-// DMA: %[[AC:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "a_cons_lock_0"}
-// DMA: %[[BP:.*]] = aie.lock({{.*}}) {init = 1 : i32, sym_name = "b_prod_lock_0"}
-// DMA: %[[BC:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "b_cons_lock_0"}
-// DMA: %[[OP0:.*]] = aie.lock({{.*}}) {init = 1 : i32, sym_name = "out_prod_lock_0"}
-// DMA: %[[OC0:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "out_cons_lock_0"}
-// DMA: %[[OP1:.*]] = aie.lock({{.*}}) {init = 1 : i32, sym_name = "out_prod_lock_1"}
-// DMA: %[[OC1:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "out_cons_lock_1"}
+// DMA: %[[AP:.*]] = aie.lock({{.*}}) {init = 2 : i32, sym_name = "a__prodlock0"}
+// DMA: %[[AC:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "a__conslock0"}
+// DMA: %[[BP:.*]] = aie.lock({{.*}}) {init = 1 : i32, sym_name = "b__prodlock0"}
+// DMA: %[[BC:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "b__conslock0"}
+// DMA: %[[OP0:.*]] = aie.lock({{.*}}) {init = 1 : i32, sym_name = "out__prodlock0"}
+// DMA: %[[OC0:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "out__conslock0"}
+// DMA: %[[OP1:.*]] = aie.lock({{.*}}) {init = 1 : i32, sym_name = "out__prodlock1"}
+// DMA: %[[OC1:.*]] = aie.lock({{.*}}) {init = 0 : i32, sym_name = "out__conslock1"}
 // DMA: aie.core(
 // DMA: %[[TWO:.*]] = arith.constant 2 : i32
 // DMA: aie.use_lock(%[[AP]], AcquireGreaterEqual, %[[TWO]])

@@ -27,24 +27,36 @@ static_assert(YOLO_COPY_BYTES % 32 == 0, "copies go 32 bytes at a time");
 
 void YOLO_ROWS_SYMBOL(const int8_t *__restrict in, int8_t *__restrict out) {
   event0();
+  // Parts and ring slots sit 32-byte aligned, not always 64.
+  constexpr int vectors = YOLO_COPY_BYTES / 32;
   AIE_PREPARE_FOR_PIPELINING
-  for (int i = 0; i < YOLO_COPY_BYTES / 32; i++)
-    aie::store_v(out + i * 32, aie::load_v<32>(in + i * 32));
+  AIE_LOOP_MIN_ITERATION_COUNT(vectors)
+  for (int i = 0; i < vectors; i++) {
+    aie::store_v(out, aie::load_v<32>(in));
+    in += 32;
+    out += 32;
+  }
   event1();
 }
 #endif
 
 #ifdef YOLO_UPSAMPLE_WIDTH
+static_assert(YOLO_UPSAMPLE_WIDTH * YOLO_UPSAMPLE_GROUPS % 4 == 0,
+              "upsamples go 4 pixels at a time");
+
 void YOLO_ROWS_SYMBOL(const int8_t *__restrict in, int8_t *__restrict out) {
   event0();
-  const uint64_t *src = reinterpret_cast<const uint64_t *>(in);
-  uint64_t *dst = reinterpret_cast<uint64_t *>(out);
-  for (int g = 0; g < YOLO_UPSAMPLE_GROUPS; g++)
-    for (int x = 0; x < YOLO_UPSAMPLE_WIDTH; x++) {
-      const uint64_t pixel = src[g * YOLO_UPSAMPLE_WIDTH + x];
-      dst[(g * YOLO_UPSAMPLE_WIDTH + x) * 2] = pixel;
-      dst[(g * YOLO_UPSAMPLE_WIDTH + x) * 2 + 1] = pixel;
-    }
+  constexpr int vectors = YOLO_UPSAMPLE_WIDTH * YOLO_UPSAMPLE_GROUPS / 4;
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(vectors)
+  for (int i = 0; i < vectors; i++) {
+    const aie::vector<int8, 32> pixels = aie::load_v<32>(in);
+    const auto [lo, hi] = aie::interleave_zip(pixels, pixels, 8);
+    aie::store_v(out, lo);
+    aie::store_v(out + 32, hi);
+    in += 32;
+    out += 64;
+  }
   event1();
 }
 #endif

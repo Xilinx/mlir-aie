@@ -696,9 +696,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
 
   // packet header
   if (auto packetInfo = getPacket()) {
+    if (failed(AIE::verifyAssignedPacket(*this, *packetInfo)))
+      return failure();
     if (packetInfo->getPktType() > 7)
       return emitOpError("Packet type field can only hold 3 bits.");
-    if (packetInfo->getPktId() > 31)
+    if (packetInfo->assignedId() > 31)
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
@@ -1383,6 +1385,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
   // dialect. The normal DMABDOp verify operation will skip over any BD inside
   // a DMAConfigureTaskOp
+  if (failed(AIE::verifyAssignedPacket(*this, getPacketAttr())))
+    return failure();
   LogicalResult result = success();
   bool taskHasPacket = getPacket().has_value();
   llvm::SmallVector<AIE::DMABDOp> bds;
@@ -1407,8 +1411,11 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
                        "are connected to the memory-mapped NOC.");
         result = failure();
       }
-      // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
-      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
+      // DMABDOp::verify skips task BDs, so validate their packet header and
+      // out_of_order_id here too.
+      if (failed(AIE::verifyAssignedPacket(
+              bd, bd.getPacket().value_or(AIE::PacketInfoAttr()))) ||
+          failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)) ||
           failed(bd.verifyTransferInBounds()))
         result = failure();
       bds.push_back(bd);
@@ -1577,7 +1584,7 @@ struct BdChain {
 static LogicalResult
 verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
                              AIE::ObjectFifoCreateOp fifo) {
-  if (fifo.getPadDimensions() || fifo.getAieStream())
+  if (fifo.getPadDimensions() || fifo.usesStream())
     return success();
   std::optional<int64_t> moved = staticBytesStreamed(task);
   if (!moved || *moved == 0)
@@ -1596,9 +1603,10 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   // steps through every segment in order, each small end through its own, and
   // a plain link's single segment is the whole pool object. The link's
   // repeat_count sends each of its output's segment BDs that many times in a
-  // row.
-  Value linkTile;
-  std::optional<BdChain> linkChain;
+  // row. Every link the fifo meets has an end the transfer must complete,
+  // one per tile when links on several tiles read a broadcast.
+  SmallVector<Value> linkTiles;
+  SmallVector<BdChain> chains;
   if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
     for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
       std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
@@ -1608,7 +1616,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       std::optional<Value> sharedTile = link.getOptionalSharedTile();
       if (ins.empty() || outs.empty() || !sharedTile)
         return success();
-      linkTile = *sharedTile;
+      linkTiles.push_back(*sharedTile);
       AIE::ObjectFifoCreateOp owner = link.getPoolOwner();
       MemRefType pool =
           cast<AIE::AIEObjectFifoType>(owner.getElemType()).getElementType();
@@ -1630,21 +1638,22 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       int64_t copies = llvm::is_contained(outs, fifo)
                            ? link.getRepeatCount().value_or(1)
                            : 1;
+      std::optional<BdChain> chain;
       if (segmentBytes.size() == segments.size())
-        linkChain = BdChain::get(segmentBytes, copies);
-      break;
+        chain = BdChain::get(segmentBytes, copies);
+      if (chain && !llvm::is_contained(chains, *chain))
+        chains.push_back(*chain);
     }
   // Every far-end BD chain this transfer must leave at a BD boundary: the
   // producer's, for a drain, and each consumer's other than the shim's own. A
   // broadcast stalls on its slowest consumer, so a drain bounds what the
-  // others receive too. An end off the link tile is one BD over its own
+  // others receive too. An end off every link tile is one BD over its own
   // object.
-  SmallVector<BdChain> chains;
   auto addChain = [&](Value tile, Type fifoType) {
+    if (llvm::is_contained(linkTiles, tile))
+      return;
     std::optional<BdChain> chain;
-    if (linkTile && tile == linkTile)
-      chain = linkChain;
-    else if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
+    if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
       chain = BdChain::get({*bytes}, 1);
     if (chain && !llvm::is_contained(chains, *chain))
       chains.push_back(*chain);

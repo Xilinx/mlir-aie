@@ -274,7 +274,7 @@ def main(argv=None):
     )
     p.add_argument(
         "--elf",
-        help="run this full ELF, built by aie2_decode.py --full-elf-path "
+        help="run this full ELF, built by aie2_llama.py --full-elf-path "
         "at this test's configuration, instead of the JIT cache's",
     )
     p.add_argument(
@@ -343,7 +343,8 @@ def main(argv=None):
     p.add_argument(
         "--passes",
         type=int,
-        help="tokens generated per dispatch (default: DecodeShape.passes_for's, per dispatch)",
+        help="tokens generated per dispatch (default: DecodeShape.passes_for's: "
+        "--p-max, or what the cache has room for)",
     )
     p.add_argument(
         "--split",

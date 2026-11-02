@@ -70,15 +70,14 @@ def _declarations(module):
 def _generate(case):
     factory = getattr(kernels, case.factory)
     fn = factory(**case.kwargs)
-    design = kd.design(
-        factory,
-        params=fn.param_values(kd.sample_inputs(fn, calls=case.calls)),
+    harness = kd.KernelDesign(
+        fn,
         calls=case.calls,
         scalars=case.scalars,
         # A fixed stack lowers without compiling each kernel to read its frame.
         stack_bytes=get_current_device().default_core_stack_bytes,
-        **case.kwargs,
-    ).compilable
+    )
+    design = harness.design(params=fn.param_values(harness.sample_inputs())).compilable
     ExternalFunction._instances.clear()
     module = design.generate_mlir()
     discovered = list(ExternalFunction._instances)

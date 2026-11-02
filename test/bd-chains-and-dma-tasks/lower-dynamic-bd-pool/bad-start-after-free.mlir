@@ -87,7 +87,7 @@ aie.device(npu1) {
     %c = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 128)
       aie.end
-    }
+    } {issue_token = true}
     %r = scf.for %i = %c1 to %n step %c1 iter_args(%t = %c) -> (index) {
       aiex.dma_start_task(%t)
       aiex.dma_await_task(%t)
@@ -95,7 +95,7 @@ aie.device(npu1) {
       %next = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 128)
         aie.end
-      }
+      } {issue_token = true}
       scf.yield %next : index
     }
   }

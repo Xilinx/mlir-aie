@@ -98,6 +98,39 @@ Call it on the last K tile of a reduction whose length is not a multiple of
 `dim_k`: the matmul after it sums only the first `k_valid` of the tile's K,
 whatever the rest of the tile holds.
 
+## Kernel signatures worth checking before you wire one up
+
+The `ExternalFunction` a factory returns carries a concrete `arg_types` list, and a mismatch
+fails at MLIR verification with an argument-count error rather than at runtime. Three that
+surprise people:
+
+* **`kernels.scale`** is `(in_tile, out_tile, factor, n)` where `factor` is a **1-element
+  buffer** (`np.ndarray[(1,), np.dtype[np.int32]]`), not a plain Python scalar. Feed it from a
+  small `depth=1` ObjectFifo or a `Buffer` — the upside is the factor becomes settable per
+  launch without a rebuild.
+* **`kernels.add` / `kernels.mul`** on bf16 are bare `(in..., out)` with no trailing size. The
+  `aie.iron.algorithms` templates (`transform_parallel`, `transform_parallel_binary`, ...) append
+  `tile_size` as a trailing argument by default (`pass_size_to_kernel=True`); pass
+  `pass_size_to_kernel=False` for these two. `kernels.passthrough` and most other factories *do*
+  take a trailing size and want the default `True`.
+* **The int8 `kernels.add`** ends with three `int32` shifts,
+  `(a, b, out, a_shift, b_shift, out_shift)`. `transform_binary` and
+  `transform_parallel_binary` take no `*params`, so they can't call it: build the
+  `ObjectFifo`/`Worker`/`Runtime` design by hand and pass the shifts as Python ints in the core
+  body, `add_k(a, b, c, 0, 0, 0)`. All-zero shifts give a plain saturating int8 add.
+
+When in doubt, ask the kernel. `arg_types` is a **method**, not a property — call it:
+
+```python
+>>> kernels.scale(1024, np.int32).arg_types()
+[ndarray[(1024,), int32], ndarray[(1024,), int32], ndarray[(1,), int32], numpy.int32]
+```
+
+Unsupported dtypes fail loudly at construction rather than producing a wrong kernel, e.g.
+`kernels.mul(tile_size=1024, dtype=np.int8)` raises
+`ValueError: mul() dtype must be bfloat16 ... Only the bf16 variant is available in the
+installed aie_kernels`. That's your signal to hand-write the kernel.
+
 ## Shared-buffer factory kwargs
 
 Some convolution factories accept an opt-in kwarg that decouples the
@@ -192,31 +225,29 @@ fn.contract_for("aie2p").tolerance  # one bf16 ulp, measured on npu2
 fn.expected(inputs, arch="aie2p")   # expected() and judge() take arch= too
 ```
 
-The contract is what lets `aie.iron.algorithms.kernel_design` build, run and check
+The contract is what lets `aie.iron.algorithms.KernelDesign` build, run and check
 a kernel without a hand-written design:
 
 ```python
-from aie.iron.algorithms import kernel_design as kd
+from aie.iron.algorithms import KernelDesign
 
 fn = kernels.reduce_max(dtype=np.int32)
-design = kd.design(kernels.reduce_max, calls=16, dtype=np.int32)
-inputs = kd.sample_inputs(fn, calls=16)
-ins, out = kd.upload(
-    inputs, kd.output_size(fn, calls=16), fn.output_dtype(np.int32), fn=fn, poison=True
-)
-design(*ins, out)
-verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
+kd = KernelDesign(fn, calls=16, guard=True)
+inputs = kd.sample_inputs()
+outputs = kd.run(inputs)
+verdict = kd.check(outputs, inputs)
 assert verdict, verdict.detail
 ```
 
-`kd.design(..., guard=True)` also catches writes past an output. Each output
-tile gets `kd.GUARD_BYTES` of `0x55` after it, which the kernel never sees.
-Size the output with `kd.output_size(fn, calls=16, guard=True)` and split the
-result with `kd.strip_guard(fn, out.numpy(), calls=16)`, which returns the
-data and the number of changed guard bytes. bfp outputs are not guarded.
+`guard=True` also catches writes past an output. Each output tile gets
+`GUARD_BYTES` (64) of `0x55` after it, which the kernel never sees, and
+`kd.run` raises when the kernel changed any of them. bfp outputs are not
+guarded. To run the design by hand, `kd.upload(inputs)` sizes the buffers and
+`kd.strip_guard(outputs)` returns the data and the number of changed guard
+bytes.
 
 Every design validates independent tile calls, including matrix kernels.
-`kd.design(kernels.mm, calls=16)` repeats sixteen tile products, initializing
+`KernelDesign(kernels.mm(), calls=16)` repeats sixteen tile products, initializing
 each output before its call. The factory's dimensions size a tile; `calls`
 does not change its reduction length. Whole-problem `shape=` is rejected:
 algorithm integration tests own global iteration and accumulation.
@@ -315,7 +346,7 @@ Three things make this work for more than one kernel per design:
   from the same object with the prefix applied. Chess-built
   kernels are the exception: `llvm-objcopy` corrupts xchesscc objects, so
   they keep bare symbols and only one variant may appear in a design.
-- **`host_args`.** `kernel_design.host_args(fn, calls=)`
+- **`host_args`.** `KernelDesign(fn, calls=...).host_args()`
   reports the direction, shape, dtype and element count of each host buffer the
   design takes, in the layout the device expects: packed tiles from each
   argument's layout codec, encoded bytes for a bfp16ebs8 operand,

@@ -150,7 +150,8 @@ A packet flow takes three optional attributes:
 - `priority_route` routes the flow before the others; see
   [Priority routes and the control overlay](#priority-routes-and-the-control-overlay).
 
-In IRON, `ObjectFifo(..., packet=True)` routes a fifo as a packet flow, and
+In IRON, `ObjectFifo(..., transport=Transport.dma(packet=Packet()))` routes a
+fifo as a packet flow, and
 `PacketFlow` declares one directly (see
 [Section 2g](./section-2/section-2g/README.md)).
 
