@@ -96,10 +96,22 @@ bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
 
 SmallVector<SmallVector<unsigned>>
 ShimTransferSpans::groups(ArrayRef<StringAttr> ends) const {
+  // By when each end is in flight, not by name: ends this cannot order are
+  // in flight alike, so either may go first.
+  SmallVector<SmallVector<std::pair<int64_t, int64_t>>> when;
+  for (StringAttr end : ends) {
+    auto &key = when.emplace_back();
+    for (auto &byFifo : spans) {
+      auto span = byFifo.find(end);
+      key.push_back(
+          span == byFifo.end()
+              ? std::pair{std::numeric_limits<int64_t>::max(), int64_t{-1}}
+              : std::pair{span->second.first, span->second.last});
+    }
+  }
   auto order = llvm::to_vector(llvm::seq<unsigned>(0, ends.size()));
-  llvm::stable_sort(order, [&](unsigned x, unsigned y) {
-    return ends[x].getValue() < ends[y].getValue();
-  });
+  llvm::stable_sort(order,
+                    [&](unsigned x, unsigned y) { return when[x] < when[y]; });
   SmallVector<SmallVector<unsigned>> result;
   for (unsigned end : order) {
     auto *group = llvm::find_if(result, [&](ArrayRef<unsigned> members) {

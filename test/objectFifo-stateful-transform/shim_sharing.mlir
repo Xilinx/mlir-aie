@@ -57,6 +57,50 @@ module @pack {
 
 // -----
 
+// @pack again under names that sort the other way: the ends share by when they
+// are in flight, not by name, so zz and yy take turns as in_a and in_b do.
+// CHECK-LABEL: module @renamed
+// CHECK-DAG:   aie.shim_dma_allocation @zz__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK-DAG:   aie.shim_dma_allocation @yy__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK-DAG:   aie.shim_dma_allocation @xx__shim_alloc(%{{.*}}, MM2S, 1)
+module @renamed {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    aie.objectfifo @zz(%s, {%a}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @yy(%s, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @xx(%s, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %x = aie.objectfifo.acquire @zz(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @zz(Consume, 1)
+      aie.end
+    }
+    aie.core(%b) {
+      %x = aie.objectfifo.acquire @yy(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @yy(Consume, 1)
+      aie.end
+    }
+    aie.core(%c) {
+      %x = aie.objectfifo.acquire @xx(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @xx(Consume, 1)
+      aie.end
+    }
+    aie.runtime_sequence @run_a(%in : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @zz, id = 0 : i64} : memref<16xi32>
+    }
+    aie.runtime_sequence @run_b(%in : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @yy, id = 0 : i64} : memref<16xi32>
+    }
+    aie.runtime_sequence @run_c(%in : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @xx, id = 0 : i64} : memref<16xi32>
+    }
+  }
+}
+
+// -----
+
 // Three shim ends need three S2MM channels on a shim tile that has two. Each
 // drain is awaited before the next is issued, and a receiving end that is
 // awaited is done, so out_a and out_b take turns on S2MM 0, their routes
