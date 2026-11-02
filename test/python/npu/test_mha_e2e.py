@@ -15,7 +15,8 @@ then all four steps run as one decode round, which checks that they agree, and
 as one round over a long context, which checks that the carry stays accurate.
 
 References use true ``np.exp2`` and state the mask over absolute positions;
-nothing models the device's arithmetic. On AIE2P, ``aie::exp2`` is a linear
+only ``test_partial_softmax_weights_are_exp2_bf16_bit_for_bit`` models the
+device's arithmetic, the AIE2 cubic, to pin its constants. On AIE2P, ``aie::exp2`` is a linear
 interpolant that overshoots by up to 6.15%, so raw weights get that envelope
 (``_RTOL_EXP2``) and the round, where it divides out, gets bf16 rounding only.
 On AIE2 mha.cc evaluates a cubic instead, and the weights are held to
