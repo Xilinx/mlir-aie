@@ -462,6 +462,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "41382733263",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41382733263",
+   "date": "2026-11-02T03:22:19+00:00",
+   "commit": {
+    "id": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
+    "message": "Name and locate MLIR after the IRON Python that built it (#4004)",
+    "timestamp": "2026-10-31T19:44:44Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "7553ce5647",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

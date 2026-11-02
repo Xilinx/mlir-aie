@@ -1,9 +1,9 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "41268911524",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41268911524",
- "date": "2026-11-01T03:22:20+00:00",
+ "id": "41382733263",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41382733263",
+ "date": "2026-11-02T03:22:19+00:00",
  "commit": {
   "id": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
   "url": "https://github.com/Xilinx/mlir-aie/commit/7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 153.5,
+    "value": 235.4,
     "unit": "s"
    }
   }
@@ -102,7 +102,7 @@
   {
    "name": "stress",
    "ok": true,
-   "detail": "300/300 placed in 0.0s (max 30s)"
+   "detail": "300/300 placed in 0.1s (max 30s)"
   }
  ]
 }
