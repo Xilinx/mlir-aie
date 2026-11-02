@@ -181,10 +181,11 @@ def _attention(scores, v, keep, *, inv_scale):
 
     The running sum and output are float32, so only the result is rounded.
     """
-    scaled = scores.astype(np.float32) * np.float32(inv_scale)
+    scores = scores.astype(np.float32)
     live = keep.any(axis=1)
-    peak = np.where(live, np.where(keep, scaled, -np.inf).max(axis=1), 0)
-    p = np.exp2(scaled - peak[:, None])
+    peak = np.where(live, np.where(keep, scores, -np.inf).max(axis=1), 0)
+    # Centred before scaling, as the kernel takes S - m.
+    p = np.exp2((scores - peak[:, None]).astype(np.float64) * float(inv_scale))
     p = np.where(keep, p.astype(bfloat16).astype(np.float32), np.float32(0))
     y = p @ v.astype(np.float32)
     inv_l = np.float32(1.0) / np.where(live, p.sum(axis=1), np.float32(1))
@@ -1132,21 +1133,21 @@ def test_mha_round_keeps_scores_past_2_15_finite(b_q, b_kv, accurate_exp2, f32_s
     np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
 
-# 2^17: bf16 steps by 1024 here, float32 by 2^-6.
-_NEAR_TIES = 131072.0
-
-
 @pytest.mark.parametrize("b_q,b_kv", [(_B, _B), (32, 32)], ids=["64_keys", "32_keys"])
 @pytest.mark.parametrize("accurate_exp2", [False, True])
-def test_mha_round_f32_scores_resolve_near_ties(b_q, b_kv, accurate_exp2):
-    """Scores at 2^17 plus multiples of 4, which bf16 would round to one value."""
+@pytest.mark.parametrize(
+    "base,step",
+    # At 2^17 bf16 steps by 1024 and float32 by 2^-6. At 2^24 float32 steps by
+    # 2, so a score scaled before its maximum is taken off rounds by 2^-3.
+    [(2.0**17, 4), (2.0**24, 2)],
+    ids=["2^17", "2^24"],
+)
+def test_mha_round_f32_scores_resolve_near_ties(b_q, b_kv, accurate_exp2, base, step):
+    """Scores at ``base`` plus multiples of ``step``, which bf16 would round to one value."""
     q_block, s_eff = 1, 2 * b_q
     n_kv = s_eff // b_kv
     rng = np.random.default_rng(20261014)
-    # Scaled, a step of 4 is 0.72: within bf16's 1024 they would all tie.
-    scores = (_NEAR_TIES + 4 * rng.integers(0, 8, (b_q, n_kv * b_kv))).astype(
-        np.float32
-    )
+    scores = (base + step * rng.integers(0, 8, (b_q, n_kv * b_kv))).astype(np.float32)
     assert np.unique(scores.astype(bfloat16)).size == 1
     v = _dyadic(rng, (n_kv * b_kv, _B), 0.25, mag=2)
     keep = np.concatenate(

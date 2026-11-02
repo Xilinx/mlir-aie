@@ -290,6 +290,10 @@ def inputs_for(case: Case, data_case: str, rng, *, design=None) -> list[np.ndarr
                 edge = rng.standard_normal(shape) * 1e4
             elif data_case == "negative":
                 edge = -np.abs(rng.standard_normal(shape)) * 8
+            elif data_case == "near_ties":
+                # float32 steps by 2 at 2^24: scaled before the maximum is
+                # taken off, each score rounds by up to an eighth of a step.
+                edge = 2.0**24 + 2 * rng.integers(0, 8, shape)
             elif data_case == "all_bf16":
                 edge = np.resize(all_bf16(nan=False, inf=False), shape)
             else:

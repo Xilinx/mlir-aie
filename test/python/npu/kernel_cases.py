@@ -3324,6 +3324,16 @@ CASES += [
         tag="f32-scores-diagonal",
         data_cases=(*FLOAT_BASE, "negative"),
     ),
+    # Float32 scores near 2^24, under the accurate exponential's tight bound.
+    Case(
+        "mha_softmax",
+        dict(f32_scores=True, accurate_exp2=True),
+        calls=4,
+        params=((0, 1, 0),),
+        scalars=(128, 64),
+        tag="f32-scores-accurate",
+        data_cases=("random", "near_ties"),
+    ),
     # A decode step's block: 16 packed rows past every one of the 64
     # keys, so nothing is masked.
     *[

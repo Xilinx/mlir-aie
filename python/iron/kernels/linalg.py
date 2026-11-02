@@ -2488,7 +2488,10 @@ def mha_softmax_ref(
     scores = a.astype(np.float32).reshape(-1, dim_m, dim_n)
     m = np.maximum(np.where(keep, scores, -np.inf).max(axis=2), 0)
     s = np.float32(scale)
-    p = np.exp2(np.where(keep, scores * s - (m * s)[..., None], -np.inf))
+    # Centred in float32 before scaling, as the kernel takes A - m: scaled
+    # first, float32 scores far from 0 would round apart from their maximum.
+    centred = (scores - m[..., None]).astype(np.float64)
+    p = np.exp2(np.where(keep, centred * np.float64(s), -np.inf))
     state = np.concatenate([m, m, p.sum(axis=2), np.exp2(-m * s)], axis=1)
     return p.reshape(len(p), -1), state
 
