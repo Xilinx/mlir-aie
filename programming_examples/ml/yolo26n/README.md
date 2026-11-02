@@ -76,9 +76,10 @@ first and last ops instead, and `--batch N` pipelines N images through it.
 - The Detect postprocess (best class per anchor, top 300 anchors, top 300
   anchor-class pairs, box decode) runs on one worker, `kernels/yolo_detect.cc`,
   reading the Detect outputs back from a DDR scratch buffer.
-- `yolo26n.py` runs the network in one dispatch. One build serves every
-  batch of 1 to 64 images: each batch is an entry of the design, its own
-  instruction stream beside the one xclbin, and `--batch` picks it. The
+- `yolo26n.py` runs the network in one dispatch. One build serves each
+  batch size in `BATCHES` (1, 2, 4, 8, 16, 32 and 64 images): each is an
+  entry of the design, its own instruction stream beside the one xclbin, and
+  `--batch` picks it. The
   host buffers are declared for 64 images, but a batch of B writes, moves
   and reads back only its own B images.
 
@@ -113,7 +114,7 @@ weights over coco128, and records per image the end-to-end and NPU time
 and the frame rate, with mAP@0.5 against coco128's labels. The current
 figures and their history are on the
 [maintainer dashboard](https://xilinx.github.io/mlir-aie/dashboard/#view=performance).
-To time it yourself, with `B` one of `BATCHES` (1 to 64):
+To time it yourself, with `B` one of `BATCHES` (1, 2, 4, 8, 16, 32 or 64):
 
 ```bash
 python yolo26n.py --n 64 --batch B --time
