@@ -1700,24 +1700,39 @@ def mha_fused_round(
 
 
 def _fused_case_data(
-    q_block, n_kv, s_kv_eff, b_q, b_kv, d, packed, group, offset, rows=None
+    q_block, n_kv, s_kv_eff, b_q, b_kv, d, packed, group, offset, rows=None, window=0
 ):
-    """Q, K and V for a round, each key aimed at so the running max rises late.
+    """Q, K and V for a round, with keys aimed at each row's band edges.
 
-    Dyadic, so every score is exact in bf16 on the core and on the host.
+    Each row's own key, the one past it, the window's far edge and the one
+    beyond, and the last key and the first padded one score about 2^4 over
+    the rest for that row, and every query shares a component they all
+    score high on, so a mask one key off, or a merge that drops a partial's
+    rescale, moves the result by many ulps. Dyadic, so every score is exact
+    in float32 and rounds to bf16 alike on the core and on the host.
     """
     rng = np.random.default_rng(20261101 + 97 * q_block + n_kv + s_kv_eff + 7 * offset)
     q = _dyadic(rng, (b_q, d), 0.25, mag=2) if rows is None else rows
     k = _dyadic(rng, (n_kv * b_kv, d), 0.125, mag=2)
     v = _dyadic(rng, (n_kv * b_kv, d), 0.25, mag=2)
-    for row in range(b_q):
-        key = (
+    if rows is None:
+        q[:, 0] = 0.5
+    scale = np.log2(np.e) / np.sqrt(d)
+    shared = 2.0 ** round(np.log2(8.0 / scale))
+    for row in range(0, b_q, group):
+        pos = (
             s_kv_eff - 1 - row
             if packed
             else q_block * (b_q // group) + offset + row // group
         )
-        if 0 <= key < s_kv_eff and row % group == 0:
-            k[key] = (q[row].astype(np.float32) * 0.5).astype(bfloat16)
+        own = q[row].astype(np.float32)
+        energy = float(own @ own) * scale
+        aimed = own * (2.0 ** round(np.log2(4.0 / energy)) if energy else 0.0)
+        edge = (pos - window, pos - window - 1) if window else ()
+        for key in (pos, pos + 1, s_kv_eff - 1, s_kv_eff, *edge):
+            if 0 <= key < n_kv * b_kv:
+                k[key] = aimed.astype(bfloat16)
+                k[key, 0] = shared
     return q, k, v
 
 
@@ -1844,7 +1859,16 @@ def test_attend_block_is_the_pipeline_bit_for_bit(
         **band,
     )
     q, k, v = _fused_case_data(
-        q_block, n_kv, s_kv_eff, b_q, b_kv, d, band["packed"], 1, offset
+        q_block,
+        n_kv,
+        s_kv_eff,
+        b_q,
+        b_kv,
+        d,
+        band["packed"],
+        1,
+        offset,
+        window=band["window"],
     )
     fused = _run_fused(q, k, v, n_kv, **shape)
     pipeline = _run_pipeline(q, k, v, n_kv, **shape)
@@ -1968,7 +1992,16 @@ def test_attend_head_is_its_head_alone(n_kv, s_kv_eff, b_kv, d, band):
     )
     data = [
         _fused_case_data(
-            q_block + 7 * h, n_kv, s_kv_eff, b_q, b_kv, d, band["packed"], 1, 0
+            q_block + 7 * h,
+            n_kv,
+            s_kv_eff,
+            b_q,
+            b_kv,
+            d,
+            band["packed"],
+            1,
+            0,
+            window=band["window"],
         )
         for h in range(heads)
     ]
@@ -2622,7 +2655,9 @@ def test_split_keys_merged_are_masked_attention(
     q_block = 0 if packed else -(-s_kv_eff // b_q)
     s_q_eff = (q_block + 1) * b_q
     blocks = -(-n_kv // ways) * ways
-    q, k, v = _fused_case_data(q_block, blocks, s_kv_eff, b_q, b_kv, d, packed, 1, 0)
+    q, k, v = _fused_case_data(
+        q_block, blocks, s_kv_eff, b_q, b_kv, d, packed, 1, 0, window=band["window"]
+    )
     _, fused = _fused_kernels(b_q, b_kv, d, True, band["window"], packed, 1)
     q_layout, kv_layout = fused.contract.layouts[:2]
     kv = np.concatenate(
