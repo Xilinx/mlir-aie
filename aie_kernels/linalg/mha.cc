@@ -1022,7 +1022,11 @@ alignas(64) static const int16_t s_tile_key[S_TILE] = {
     0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7,
     0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};
 
-static void
+// Out of line, as P*V's step is in attend: inlined, both spill into
+// attend_block's own frame (the exponentials' constants live across QK^T's
+// call), 2 KB more stack at 24x128x32, past what L1 leaves a core two key
+// blocks deep.
+__attribute__((noinline)) static void
 partial_softmax_tiles(bfloat16 *__restrict S, bfloat16 *__restrict P,
                       const float *__restrict m_prev, float *__restrict m_new,
                       float *__restrict l_new, int32_t rows, int32_t valid_cols,
@@ -1783,6 +1787,9 @@ attend(Scores scores, bfloat16 *KV, const float *QR, float *O, score_t *S,
 #endif
   }
   advance_state_w<STATE_W>(scale_buffer, B_q, inv_scale);
+#if AIE_ARCH_AIE2P
+  [[clang::noinline]]
+#endif
   pv_accumulate<true>(P, V, O, scale_buffer, B_q, first_iter, idx_buffer,
                       S_kv_eff);
   ::aie::set_rounding(saved_rounding);
