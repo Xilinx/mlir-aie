@@ -8,6 +8,7 @@
 # written beside it with each op's source as a comment, and the error says
 # where.
 
+import sys
 import tempfile
 from pathlib import Path
 
@@ -62,7 +63,9 @@ with tempfile.TemporaryDirectory() as work:
     else:
         raise AssertionError("expected aiecc to reject a fifo with no drainer")
     assert message.startswith("[aiecc] Compilation failed"), message
-    assert "Could not write the design's readable IR: IsADirectoryError" in message
+    # Windows refuses to open a directory for writing as access denied.
+    error = "PermissionError" if sys.platform == "win32" else "IsADirectoryError"
+    assert f"Could not write the design's readable IR: {error}" in message, message
 print("PASS: aiecc's error kept when the readable IR cannot be written")
 
 # A design compiled through CompilableDesign, whose failed build is cleaned
