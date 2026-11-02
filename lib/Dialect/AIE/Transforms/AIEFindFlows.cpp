@@ -587,8 +587,8 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     bool marked = llvm::any_of(c.usedOps, [&](Operation *op) {
       Operation *rulesParent =
           isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
-      return (isa_and_nonnull<MasterSetOp, PacketRuleOp>(op) &&
-              overlay.isAttrPresent(op)) ||
+      return (op && overlay.isAttrPresent(op) &&
+              !(isa<ConnectOp>(op) && isa<ShimMuxOp>(op->getParentOp()))) ||
              (rulesParent && overlay.isAttrPresent(rulesParent));
     });
     if (marked) {
@@ -1130,10 +1130,11 @@ struct AIEFindFlowsPass
         op->erase();
       }
     }
-    auto cleanupInterconnect = [](Region &connections) {
+    AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
+    auto cleanupInterconnect = [&](Region &connections) {
       for (auto amselOp :
            llvm::make_early_inc_range(connections.getOps<AMSelOp>())) {
-        if (amselOp.use_empty()) {
+        if (amselOp.use_empty() && !overlay.isAttrPresent(amselOp)) {
           amselOp.erase();
         }
       }

@@ -4,6 +4,7 @@
 // RUN: aie-opt --aie-create-control-overlay="adaptive=false" --aie-create-pathfinder-flows %s -o %t
 // RUN: FileCheck %s < %t
 // RUN: aie-opt --aie-import-overlay %t | diff %t -
+// RUN: aie-opt --aie-find-flows --aie-create-pathfinder-flows %t | FileCheck %s
 
 // The application must not take an unused msel of an active overlay arbiter.
 // CHECK-LABEL: aie.device(npu2_1col) @design

@@ -474,7 +474,7 @@ module {
       %3 = aie.masterset(North : 1, %0)
       %4 = aie.masterset(North : 5, %1) {aie.priority_route}
       aie.packet_rules(DMA : 0) {
-        aie.rule(31, 23, %1) {aie.priority_route, aie.priority_route}
+        aie.rule(31, 23, %1) {aie.priority_route}
         aie.rule(31, 19, %0)
         aie.rule(31, 20, %0)
       }

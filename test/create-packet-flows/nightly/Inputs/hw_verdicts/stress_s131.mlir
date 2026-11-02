@@ -391,7 +391,7 @@ module {
         aie.rule(31, 18, %0)
       }
       aie.packet_rules(DMA : 1) {
-        aie.rule(31, 25, %5) {aie.priority_route, aie.priority_route}
+        aie.rule(31, 25, %5) {aie.priority_route}
         aie.rule(21, 16, %1)
       }
       aie.packet_rules(North : 1) {
