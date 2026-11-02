@@ -145,11 +145,11 @@ module @shared_channel {
 // -----
 
 // CHECK-LABEL: @assume_space
-// CHECK: aie.objectfifo.release {assume_queue_space} @of_cons(1)
+// CHECK: aie.objectfifo.release {assume_queue_space} @of__cons(1)
 // CHECK-NOT: aie.dma_poll_for_queue_space
 // CHECK: scf.if
 // CHECK-NEXT: aie.dma_push_queue(S2MM : 0) bd_id 0 {out_of_order, repeat_count = 255 : i32}
-// CHECK: aie.objectfifo.release @of_cons(1)
+// CHECK: aie.objectfifo.release @of__cons(1)
 // CHECK: scf.if
 // CHECK-NEXT: aie.dma_poll_for_queue_space(S2MM : 0)
 // CHECK-NEXT: aie.dma_push_queue(S2MM : 0)

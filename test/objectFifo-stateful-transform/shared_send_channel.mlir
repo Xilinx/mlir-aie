@@ -22,11 +22,11 @@
 // CHECK:         aie.dma_push_queue(MM2S : 0) bd_id 3
 // CHECK:       aie.mem(%{{.*}}) {
 // CHECK:         aie.dma_start(MM2S, 0, {{.*}}) {core_pushes}
-// CHECK:         aie.dma_bd(%a_buff_0 {{.*}}) {bd_id = 0 : i32
-// CHECK:         aie.dma_bd(%a_buff_1 {{.*}}) {bd_id = 1 : i32
+// CHECK:         aie.dma_bd(%a__buf0 {{.*}}) {bd_id = 0 : i32
+// CHECK:         aie.dma_bd(%a__buf1 {{.*}}) {bd_id = 1 : i32
 // CHECK:         aie.dma_start(MM2S, 0, {{.*}}) {core_pushes}
-// CHECK:         aie.dma_bd(%b_buff_0 {{.*}}) {bd_id = 2 : i32
-// CHECK:         aie.dma_bd(%b_buff_1 {{.*}}) {bd_id = 3 : i32
+// CHECK:         aie.dma_bd(%b__buf0 {{.*}}) {bd_id = 2 : i32
+// CHECK:         aie.dma_bd(%b__buf1 {{.*}}) {bd_id = 3 : i32
 module @shared_send {
   aie.device(npu2) {
     %tile_0_2 = aie.tile(0, 2)

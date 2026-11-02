@@ -29,13 +29,14 @@ module @shared_exceeds {
         %b0 = aie.objectfifo.acquire @b(Produce, 1) : memref<16xi32>
         aie.objectfifo.release @b(Produce, 1)
       }
+      aie.objectfifo.release @a(Produce, 1)
       aie.end
     }
     %recv_a = aie.core(%dst_a) {
       %c0 = arith.constant 0 : index
-      %c6 = arith.constant 6 : index
+      %c7 = arith.constant 7 : index
       %c1 = arith.constant 1 : index
-      scf.for %i = %c0 to %c6 step %c1 {
+      scf.for %i = %c0 to %c7 step %c1 {
         %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
         aie.objectfifo.release @a(Consume, 1)
       }
@@ -129,13 +130,15 @@ module @separate_channels {
         %b0, %b1 = aie.objectfifo.acquire @b(Produce, 2) : memref<16xi32>, memref<16xi32>
         aie.objectfifo.release @b(Produce, 1)
       }
+      aie.objectfifo.release @a(Produce, 1)
+      aie.objectfifo.release @b(Produce, 1)
       aie.end
     }
     %recv_a = aie.core(%dst_a) {
       %c0 = arith.constant 0 : index
-      %c6 = arith.constant 6 : index
+      %c7 = arith.constant 7 : index
       %c1 = arith.constant 1 : index
-      scf.for %i = %c0 to %c6 step %c1 {
+      scf.for %i = %c0 to %c7 step %c1 {
         %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
         aie.objectfifo.release @a(Consume, 1)
       }
@@ -143,9 +146,9 @@ module @separate_channels {
     }
     %recv_b = aie.core(%dst_b) {
       %c0 = arith.constant 0 : index
-      %c6 = arith.constant 6 : index
+      %c7 = arith.constant 7 : index
       %c1 = arith.constant 1 : index
-      scf.for %i = %c0 to %c6 step %c1 {
+      scf.for %i = %c0 to %c7 step %c1 {
         %b0 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
         aie.objectfifo.release @b(Consume, 1)
       }
@@ -180,6 +183,7 @@ module @separate_tiles {
         %a0, %a1 = aie.objectfifo.acquire @a(Produce, 2) : memref<16xi32>, memref<16xi32>
         aie.objectfifo.release @a(Produce, 1)
       }
+      aie.objectfifo.release @a(Produce, 1)
       aie.end
     }
     %core1 = aie.core(%other) {
@@ -190,13 +194,14 @@ module @separate_tiles {
         %b0, %b1 = aie.objectfifo.acquire @b(Produce, 2) : memref<16xi32>, memref<16xi32>
         aie.objectfifo.release @b(Produce, 1)
       }
+      aie.objectfifo.release @b(Produce, 1)
       aie.end
     }
     %recv_a = aie.core(%dst_a) {
       %c0 = arith.constant 0 : index
-      %c6 = arith.constant 6 : index
+      %c7 = arith.constant 7 : index
       %c1 = arith.constant 1 : index
-      scf.for %i = %c0 to %c6 step %c1 {
+      scf.for %i = %c0 to %c7 step %c1 {
         %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
         aie.objectfifo.release @a(Consume, 1)
       }
@@ -204,9 +209,9 @@ module @separate_tiles {
     }
     %recv_b = aie.core(%dst_b) {
       %c0 = arith.constant 0 : index
-      %c6 = arith.constant 6 : index
+      %c7 = arith.constant 7 : index
       %c1 = arith.constant 1 : index
-      scf.for %i = %c0 to %c6 step %c1 {
+      scf.for %i = %c0 to %c7 step %c1 {
         %b0 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
         aie.objectfifo.release @b(Consume, 1)
       }
@@ -254,13 +259,14 @@ module @assume_space {
         %next_a, %next_a1 = aie.objectfifo.acquire @a(Produce, 2) : memref<16xi32>, memref<16xi32>
         aie.objectfifo.release @a(Produce, 1)
       }
+      aie.objectfifo.release @a(Produce, 1)
       aie.end
     }
     %recv_a = aie.core(%dst_a) {
       %c0 = arith.constant 0 : index
-      %c6 = arith.constant 6 : index
+      %c19 = arith.constant 19 : index
       %c1 = arith.constant 1 : index
-      scf.for %i = %c0 to %c6 step %c1 {
+      scf.for %i = %c0 to %c19 step %c1 {
         %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
         aie.objectfifo.release @a(Consume, 1)
       }
