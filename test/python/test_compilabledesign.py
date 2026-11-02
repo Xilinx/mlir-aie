@@ -664,6 +664,83 @@ def test_cache_key_walks_a_shared_graph_once(tmp_path):
     assert fresh.stdout.strip() == before, "ids differ; the content must not"
 
 
+def test_cache_key_survives_a_self_configuring_generator(tmp_path):
+    """A generator that records what it learns keeps finding its own entry.
+
+    A self-configuring design appends to a module-level list on every run
+    -- the full-ELF learning path's instrumentation is exactly this -- and
+    the walk keys that list, so every run moved the key: the entry a cold
+    compile built was already stale for the next lookup, and the generator
+    re-ran instead of the design being served from the cache. The
+    mutations a run makes about its own inputs are now pinned while it
+    runs (see ``_mask_generator_mutations``), so the next lookup computes
+    the key its entry was built under -- while an edit made outside the
+    run, the user changing kernel flags between compiles, still moves it.
+    """
+    (tmp_path / "learning_state.py").write_text(
+        "LEARNED = []\n"
+        "FLAGS = ['-DSTEP=1']\n"
+        "\n"
+        "\n"
+        "def learned():\n"
+        "    return LEARNED\n"
+    )
+    (tmp_path / "learning_design.py").write_text(
+        "import learning_state\n"
+        "import numpy as np\n"
+        "\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void learn(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def learn(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    learning_state.LEARNED.append(N)\n"
+        "    return ExternalFunction(\n"
+        '        "learn",\n'
+        '        object_file_name="learn.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=learning_state.FLAGS,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import learning_design
+
+        state = sys.modules["learning_state"]
+
+        def key():
+            return CompilableDesign(
+                learning_design.learn, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+
+        # The generator's own run, under the watch the compile flow wraps
+        # it in: it records what it learned about its own inputs.
+        with _hash_mod._mask_generator_mutations(learning_design.learn, (64,)):
+            state.LEARNED.append(64)
+        assert key() == before, "the run's own record-keeping must not strand its entry"
+
+        # A full-ELF cold compile runs the generator twice (infer, then
+        # build); the second run happens under the same pins.
+        with _hash_mod._mask_generator_mutations(learning_design.learn, (64,)):
+            state.LEARNED.append(64)
+        assert key() == before, "a second run learns under the same pins"
+
+        # The user's edit between compiles is not the generator's doing.
+        state.FLAGS.append("-O2")
+        assert key() != before, "an edit outside the run still moves the key"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("learning_design", None)
+        sys.modules.pop("learning_state", None)
+
+
 _CROSS_PROGRAM = """\
 import sys
 

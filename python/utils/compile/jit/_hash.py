@@ -32,6 +32,14 @@ holding them as well, which are digested member by member, each object's
 content once per walk and recorded at every position it is read at -- since
 those can change without any file changing.
 
+A generator that reconfigures the state it reads (a full-ELF design appending
+each configuration it learns to a module-level list, say) would otherwise
+never find its own entry: every run moves the key.  Its mutations are told
+apart from the user's by when they happen -- ``_mask_generator_mutations``
+walks the same roots again after the generator runs and pins what moved, so
+later keys read the pinned identities while a user's edit between compiles
+still moves the key and rebuilds.
+
 `_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
 
@@ -50,6 +58,9 @@ import os
 import site
 import sys
 import sysconfig
+import threading
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from functools import cache, partial
 from pathlib import Path
 from types import CodeType, FunctionType, MethodType, ModuleType
@@ -302,7 +313,11 @@ def _import_identity(module: ModuleType) -> tuple[str, tuple[str, ...]]:
     return entry[1], entry[2]
 
 
-def _python_identity(roots) -> bytes:
+def _python_identity(
+    roots,
+    frozen: Mapping[int, str] | None = None,
+    snapshot: dict[int, str] | None = None,
+) -> bytes:
     """Identify the Python ``roots`` reach: their code, helpers and modules.
 
     A generator's bytecode names a helper but does not contain it, so the key
@@ -330,9 +345,19 @@ def _python_identity(roots) -> bytes:
     An ``ExternalFunction`` it reaches is recorded by its content-based repr,
     as a ``CompileTime`` one is: the cache manifest never sees a kernel's
     compile flags.
+
+    ``frozen`` maps an object's ``id`` to the descriptor a previous walk of
+    this domain produced for it (see ``_mask_generator_mutations``): the walk
+    reads the pinned descriptor instead of the object, so a later key
+    reproduces the earlier one over the objects that pinning covers.  With
+    ``snapshot`` given, the walk fills it with the ``id`` and descriptor of
+    every container and file-backed instance it digested, pinned ones
+    included -- the two walks a mutation mask is diffed from.
     """
     # aie.iron imports this module.
     from aie.iron.kernel import ExternalFunction
+
+    frozen = dict(frozen) if isinstance(frozen, dict) else {}
 
     records: set[bytes] = set()
     seen: set[int] = set()
@@ -368,6 +393,15 @@ def _python_identity(roots) -> bytes:
         if _plain(value) or isinstance(value, ExternalFunction):
             return repr(value)
         if isinstance(value, _CONTAINER):
+            if id(value) in frozen:
+                # Pinned by a run of the generator (see
+                # _mask_generator_mutations): the identity the key already
+                # holds for this object, not what it holds now.  Pinned
+                # subtrees are not walked, so they cost neither time nor a
+                # turn against the nesting bound.
+                if snapshot is not None:
+                    snapshot[id(value)] = frozen[id(value)]
+                return frozen[id(value)]
             d = digests.get(id(value))
             if d is None:
                 if id(value) in active:
@@ -375,6 +409,8 @@ def _python_identity(roots) -> bytes:
                 if depth >= _MAX_KEY_DEPTH:
                     raise _too_deep(where)
                 digests[id(value)] = d = _digest(value, where, depth)
+            if snapshot is not None:
+                snapshot[id(value)] = d
             return d
         if (module := _stamped_module(value)) is not None:
             modules.append(module)
@@ -392,6 +428,10 @@ def _python_identity(roots) -> bytes:
             state = getattr(value, "__dict__", None)
             if not state:
                 return binding
+            if id(value) in frozen:
+                if snapshot is not None:
+                    snapshot[id(value)] = frozen[id(value)]
+                return frozen[id(value)]
             d = digests.get(id(value))
             if d is None:
                 if id(value) in active:
@@ -399,6 +439,8 @@ def _python_identity(roots) -> bytes:
                 if depth >= _MAX_KEY_DEPTH:
                     raise _too_deep(where)
                 digests[id(value)] = d = _instance_digest(value, binding, where, depth)
+            if snapshot is not None:
+                snapshot[id(value)] = f"{binding}={d}"
             return f"{binding}={d}"
         if isinstance(value, (FunctionType, type)):
             home = sys.modules.get(value.__module__)
@@ -533,6 +575,91 @@ def _python_identity(roots) -> bytes:
     return b"\0".join(sorted(records))
 
 
+# Only the outermost watch masks.  A generator nested in another generator's
+# run mutates on the outer one's behalf, and a mask taken mid-run would pin
+# identities the nested key never read.  Per thread: two concurrent compiles
+# each mask their own generator.
+_MASKING = threading.local()
+
+
+@contextmanager
+def _mask_generator_mutations(
+    generator: Callable, extra_roots: Sequence = ()
+) -> Iterator[None]:
+    """Pin what ``generator`` mutates about its own inputs while it runs.
+
+    A self-configuring generator -- one that records what a run learns in
+    the module state the key walks, like appending every configuration it
+    composes to a module-level list -- would otherwise miss its own cache
+    entry: the key moves with every run, so the entry a cold compile builds
+    is already stale for the next lookup.  The generator's mutation and the
+    user's are structurally the same edit, so they are told apart by when
+    they happen: this wraps the generator call, walks the same roots the
+    key walks before and after it, and pins each container or file-backed
+    instance whose identity moved to the descriptor the key read before the
+    run.  The pins land on the generator as ``__iron_key_mask__`` (a mapping
+    of ``id`` to descriptor), which ``_compute_recipe_hash`` threads back
+    into the walk -- so the entry a run builds is the one the next lookup
+    finds, while a change made anywhere outside the run, the user's edit
+    between compiles included, still moves the key and rebuilds.
+
+    The mask lives on the function rather than in a cache entry: it is a
+    same-process statement about which objects this generator rewrites, and
+    a fresh process re-derives it on its first cold compile.  An ``id`` can
+    be reused once its object dies, so a pin only outlives its object as
+    dead weight until the process ends.  This never raises on the compile's
+    behalf: a walk that cannot be taken, or a generator that cannot hold
+    the attribute, simply leaves the key as sensitive as it was.
+
+    Args:
+        generator: The generator function about to run.
+        extra_roots: The remaining walk roots the key uses -- the
+            generator's compile-time kwargs.
+    """
+    if getattr(_MASKING, "on", False):
+        yield
+        return
+    roots = [generator, *extra_roots]
+    frozen = dict(getattr(generator, "__iron_key_mask__", None) or {})
+    pre: dict[int, str] = {}
+    try:
+        _python_identity(roots, frozen=frozen, snapshot=pre)
+    except Exception:  # the key's helper must not fail the compile
+        logger.debug(
+            "identity snapshot before generation failed; not masking", exc_info=True
+        )
+        pre = {}
+    _MASKING.on = True
+    try:
+        yield
+    finally:
+        _MASKING.on = False
+        if not pre:
+            return
+        post: dict[int, str] = {}
+        try:
+            _python_identity(roots, frozen=frozen, snapshot=post)
+        except Exception:  # as above: leave the key as sensitive as it was
+            logger.debug(
+                "identity snapshot after generation failed; not masking",
+                exc_info=True,
+            )
+            return
+        moved = {i: d for i, d in pre.items() if i in post and post[i] != d}
+        if not moved:
+            return
+        mask = dict(getattr(generator, "__iron_key_mask__", None) or {})
+        mask.update(moved)
+        try:
+            generator.__iron_key_mask__ = mask
+        except (AttributeError, TypeError):
+            logger.debug(
+                "generator %r cannot hold a key mask; its own mutations "
+                "keep moving the key",
+                getattr(generator, "__name__", generator),
+            )
+
+
 def _compute_recipe_hash(
     generator: Callable | Path,
     compile_kwargs: Mapping[str, Any],
@@ -557,6 +684,11 @@ def _compute_recipe_hash(
     header trees compile to different objects. Hashed in ORDER, not sorted
     like the flag lists above, because ``-I`` search order decides which
     header wins when two directories provide the same name.
+
+    A generator carrying ``__iron_key_mask__`` (see
+    ``_mask_generator_mutations``) has the pins read by its identity walk:
+    the mutations the generator itself made do not move the key, everything
+    else the walk reaches still does.
     """
     h = hashlib.sha256()
 
@@ -567,7 +699,12 @@ def _compute_recipe_hash(
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(_import_name(generator.__module__ or "").encode())
-        h.update(_python_identity([generator, *compile_kwargs.values()]))
+        h.update(
+            _python_identity(
+                [generator, *compile_kwargs.values()],
+                frozen=getattr(generator, "__iron_key_mask__", None),
+            )
+        )
         d = declare(generator)
         assert d.signature is not None, "a generator's declaration has a signature"
         dispatch_params = {m.name for m in d.per_calls}
