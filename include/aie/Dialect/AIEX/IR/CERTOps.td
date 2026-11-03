@@ -8,6 +8,11 @@
 #ifndef CERT_OPS
 #define CERT_OPS
 
+// A CERT microcontroller register index: r0..r7 are local to a job and
+// r8..r23 are shared by all jobs.
+def AIEX_CertRegisterAttr
+    : ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<23>]>;
+
 def AIE_CertUcDmaChainOp
     : AIEX_Op<"cert.uc_dma_chain", [AIESymbol, SingleBlockImplicitTerminator<
                                                    "AIE::EndOp">]> {
@@ -251,6 +256,48 @@ def AIE_CertUcDmaWriteDesSyncOp
   let arguments = (ins FlatSymbolRefAttr:$symbol);
   let assemblyFormat = [{
     `(` $symbol `)` attr-dict
+  }];
+}
+
+def AIE_CertUcDmaWriteDesOp
+    : AIEX_Op<"cert.uc_dma_write_des", [HasParent<"CertJobOp">]> {
+  let summary = "uC DMA Write Descriptor operation";
+  let description = [{
+    Enqueues a uC DMA transfer without waiting for it, and stores a wait
+    handle in register `wait_handle` for a later `cert.wait_uc_dma`. The
+    symbol operand refers to a `cert.uc_dma_chain`.
+
+    Example:
+    ```
+      cert.uc_dma_write_des(2, @dma_chain)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$wait_handle,
+      FlatSymbolRefAttr:$symbol);
+  let assemblyFormat = [{
+    `(` $wait_handle `,` $symbol `)` attr-dict
+  }];
+}
+
+def AIE_CertWaitUcDmaOp
+    : AIEX_Op<"cert.wait_uc_dma", [HasParent<"CertJobOp">]> {
+  let summary = "Wait for a uC DMA transfer to finish";
+  let description = [{
+    Waits for the transfer whose handle is in register `wait_handle`.
+
+    The handle must be a job-local register r0..r7 whose reaching definition
+    in the same job is a `cert.uc_dma_write_des`; `aie-cert-verify` checks
+    this. The instruction also accepts a shared register r8..r23 carrying a
+    handle across jobs, but this dialect does not.
+
+    Example:
+    ```
+      cert.wait_uc_dma(2)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$wait_handle);
+  let assemblyFormat = [{
+    `(` $wait_handle `)` attr-dict
   }];
 }
 
