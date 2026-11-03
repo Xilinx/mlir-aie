@@ -752,6 +752,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "41591090624",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41591090624",
+   "date": "2026-11-03T06:37:48+00:00",
+   "commit": {
+    "id": "26550c923c8e5fa333a0b40962207fd455b921c6",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/26550c923c8e5fa333a0b40962207fd455b921c6",
+    "message": "Port fused attention to AIE2P, with float32 scores (#4009)",
+    "timestamp": "2026-11-03T04:17:22Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "26550c923c",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
