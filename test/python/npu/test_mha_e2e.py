@@ -1813,9 +1813,9 @@ def _run_pipeline(q, k, v, n_kv, **shape):
         # Llama 3.2 3B's and a d=256 layer's, key and query tails mid-block.
         (2, 3, 96, 90, 32, 32, 128, 0, {}),
         # Llama 3.2 3B's on npu2: 24 queries, a group of 3 heads each of 8
-        # positions, over 32-key blocks; the diagonal and the key tail in
-        # the last two.
-        (2, 3, 72, 70, 24, 32, 128, 0, {}),
+        # positions, over 32-key blocks; positions 60 to 67, so the diagonal
+        # and the key tail in the last two, and the last position padded.
+        (7, 3, 189, 66, 24, 32, 128, 4, dict(group=3)),
         (5, 6, 90, 85, 16, 16, 256, 0, {}),
         # Queries from mid-block, then rows past s_q_eff.
         (1, 2, 64, 74, 32, 64, 64, 10, {}),
@@ -1875,7 +1875,7 @@ def test_attend_block_is_the_pipeline_bit_for_bit(
         b_kv,
         d,
         band["packed"],
-        1,
+        band["group"],
         offset,
         window=band["window"],
     )
@@ -1897,6 +1897,7 @@ def test_attend_block_is_the_pipeline_bit_for_bit(
                 band["window"],
                 band["packed"],
                 offset,
+                band["group"],
             )
             for kv in range(n_kv)
         ],
