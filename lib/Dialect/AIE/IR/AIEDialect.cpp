@@ -5955,7 +5955,7 @@ LogicalResult ShimDMAAllocationOp::verify() {
 }
 
 TileOp ShimDMAAllocationOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileOp>(getTile().getDefiningOp());
 }
 
 ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
