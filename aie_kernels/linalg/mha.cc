@@ -1092,8 +1092,10 @@ partial_softmax_tiles(T *__restrict S, bfloat16 *__restrict P,
         int32_t e = valid_cols;
         if (BAND_AHEAD && pos + diagonal + AHEAD + 1 < e)
           e = pos + diagonal + AHEAD + 1;
-        end[r] = i < rows ? e : 0;
-        start[r] = BAND_BEHIND ? pos + diagonal - MHA_WINDOW : 0;
+        end[r] = i < rows && e > 0 ? e : 0;
+        // Clamped in int32 first: a wide window's start overflows int16.
+        const int32_t s = BAND_BEHIND ? pos + diagonal - MHA_WINDOW : 0;
+        start[r] = s < 0 ? 0 : s > ROW ? ROW : s;
       }
       // Each against the tile's first key, which steps by 8.
       auto end_v = aie::concat(aie::broadcast<int16_t, 8>(end[0]),

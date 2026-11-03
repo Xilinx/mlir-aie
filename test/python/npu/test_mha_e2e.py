@@ -1823,6 +1823,8 @@ def _run_pipeline(q, k, v, n_kv, **shape):
         # Gemma's sliding window, an encoder's both ways, a decode step's
         # packed group.
         (5, 6, 96, 96, 16, 16, 256, 0, dict(window=20)),
+        # A window past int16, which each row's start must not wrap.
+        (3, 2, 128, 128, 32, 64, 64, 0, dict(window=40000)),
         (1, 2, 2 * _B, 2 * _B, 32, 64, 64, 0, dict(causal=False)),
         (0, 2, 8, 100, 8, 64, 64, 0, dict(packed=True)),
     ],
