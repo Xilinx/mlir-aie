@@ -913,10 +913,18 @@ SequentialPlacer::buildChannelRequirements(
   // channel once. AIEObjectFifoAllocate's sharesChannel() states which
   // channels may be shared, and why.
   //
-  // Keyed on the physical tile, not the logical one: each endpoint pinned to a
-  // tile gets a logical tile of its own, and they share the channel all the
-  // same. An unpinned logical tile has no physical tile yet and cannot share.
-  llvm::DenseMap<std::tuple<int, int, int>, ObjectFifoCreateOp> sharedOut;
+  // Fully pinned logical tiles at the same coordinates share a physical
+  // channel. Otherwise only endpoints on the very same logical tile share:
+  // that identity constrains them to be placed together.
+  using ChannelKey = std::tuple<Operation *, int, int, int>;
+  auto channelKey = [](LogicalTileOp tile, int channel) -> ChannelKey {
+    auto col = tile.getCol();
+    auto row = tile.getRow();
+    if (col && row)
+      return {nullptr, static_cast<int>(*col), static_cast<int>(*row), channel};
+    return {tile.getOperation(), -1, -1, channel};
+  };
+  llvm::DenseMap<ChannelKey, ObjectFifoCreateOp> sharedOut;
   auto sharesProducerChannel = [&](ObjectFifoCreateOp fifo,
                                    LogicalTileOp logicalTile) -> bool {
     ObjectFifoEndPortAttr port = fifo.getProdPortAttr();
@@ -924,15 +932,11 @@ SequentialPlacer::buildChannelRequirements(
         port && !port.isCore() ? port.channelIndex() : std::nullopt;
     if (!pinned || !logicalTile)
       return false;
-    std::optional<uint32_t> col = logicalTile.getCol();
-    std::optional<uint32_t> row = logicalTile.getRow();
-    if (!col || !row)
-      return false;
     AIETileType type = logicalTile.getTileType();
     if (type != AIETileType::ShimNOCTile && type != AIETileType::ShimPLTile)
       return false;
-    auto [it, fresh] = sharedOut.try_emplace(
-        {static_cast<int>(*col), static_cast<int>(*row), *pinned}, fifo);
+    auto [it, fresh] =
+        sharedOut.try_emplace(channelKey(logicalTile, *pinned), fifo);
     if (fresh)
       return false;
     ObjectFifoCreateOp other = it->second;
@@ -956,7 +960,7 @@ SequentialPlacer::buildChannelRequirements(
 
   // The receiving counterpart: out-of-order fifos pinned to one S2MM channel
   // of a tile share it, and the packet ids keep their objects apart.
-  llvm::DenseMap<std::tuple<int, int, int>, ObjectFifoCreateOp> sharedIn;
+  llvm::DenseMap<ChannelKey, ObjectFifoCreateOp> sharedIn;
   auto sharesConsumerChannel = [&](ObjectFifoCreateOp fifo, Operation *tileOp,
                                    unsigned consumer) -> bool {
     auto logicalTile = dyn_cast_or_null<LogicalTileOp>(tileOp);
@@ -964,12 +968,10 @@ SequentialPlacer::buildChannelRequirements(
     if (!logicalTile || !port || port.isCore() || !port.channelIndex())
       return false;
     int channel = *port.channelIndex();
-    std::optional<uint32_t> col = logicalTile.getCol();
-    std::optional<uint32_t> row = logicalTile.getRow();
-    if (channel < 0 || !col || !row)
+    if (channel < 0)
       return false;
-    auto [it, fresh] = sharedIn.try_emplace(
-        {static_cast<int>(*col), static_cast<int>(*row), channel}, fifo);
+    auto [it, fresh] =
+        sharedIn.try_emplace(channelKey(logicalTile, channel), fifo);
     if (fresh)
       return false;
     ObjectFifoCreateOp other = it->second;

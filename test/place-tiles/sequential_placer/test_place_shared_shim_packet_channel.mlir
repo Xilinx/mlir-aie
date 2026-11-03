@@ -86,3 +86,25 @@ module @shared_needs_distinct_ids {
     aie.objectfifo @b(%shim, {%c1}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
   }
 }
+
+// -----
+
+// An explicitly shared logical tile constrains co-placement before coordinates
+// are known. Its three FIFOs still require only two DMA channels.
+// CHECK-LABEL: @shared_unplaced_shim_channel
+// CHECK:       %[[S:.*]] = aie.tile(0, 0)
+// CHECK-DAG:   aie.objectfifo @a(%[[S]],
+// CHECK-DAG:   aie.objectfifo @b(%[[S]],
+// CHECK-DAG:   aie.objectfifo @c(%[[S]],
+module @shared_unplaced_shim_channel {
+  aie.device(npu2) {
+    %c0 = aie.logical_tile<CoreTile>(0, 2)
+    %c1 = aie.logical_tile<CoreTile>(0, 3)
+    %c2 = aie.logical_tile<CoreTile>(0, 4)
+    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
+    aie.objectfifo @a(%shim, {%c0}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%shim, {%c1}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 0>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%shim, {%c2}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 1>} : !aie.objectfifo<memref<16xi32>>
+  }
+}
+
