@@ -31,6 +31,17 @@ struct AIEImportOverlayPass
     OpBuilder builder(device.getContext());
     auto equivalent = [&](Operation *source, Operation *dest) {
       IRMapping values(mapping);
+      // The overlay supplies header and priority settings for matching flows.
+      OwningOpRef<Operation *> normalized;
+      if (auto flow = dyn_cast<PacketFlowOp>(source)) {
+        if (isa<PacketFlowOp>(dest)) {
+          normalized = dest->clone();
+          auto other = cast<PacketFlowOp>(*normalized);
+          other.setKeepPktHeaderAttr(flow.getKeepPktHeaderAttr());
+          other.setPriorityRouteAttr(flow.getPriorityRouteAttr());
+          dest = *normalized;
+        }
+      }
       return OperationEquivalence::isEquivalentTo(
           source, dest,
           [&](Value a, Value b) {
@@ -42,6 +53,11 @@ struct AIEImportOverlayPass
     };
     auto inherit = [&](Operation *source, Operation *dest) {
       mapping.map(source->getResults(), dest->getResults());
+      if (auto flow = dyn_cast<PacketFlowOp>(source)) {
+        auto other = cast<PacketFlowOp>(dest);
+        other.setKeepPktHeaderAttr(flow.getKeepPktHeaderAttr());
+        other.setPriorityRouteAttr(flow.getPriorityRouteAttr());
+      }
       for (NamedAttribute attr : source->getDiscardableAttrs())
         if (!dest->hasAttr(attr.getName()))
           dest->setAttr(attr.getName(), attr.getValue());

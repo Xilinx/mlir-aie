@@ -563,6 +563,7 @@ static Value resolveEndpointTile(Operation *op) {
 // that user flows and the control overlay share, and then it stays. Each lifted
 // packet flow is listed with the ops it traversed.
 struct LiftedOps {
+  llvm::DenseSet<Operation *> fixed;
   llvm::DenseSet<Operation *> consumed;
   llvm::DenseSet<Operation *> kept;
   std::vector<std::pair<PacketFlowOp, SmallVector<Operation *, 8>>> packetFlows;
@@ -587,7 +588,8 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     bool marked = llvm::any_of(c.usedOps, [&](Operation *op) {
       Operation *rulesParent =
           isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
-      return (op && overlay.isAttrPresent(op) &&
+      return lifted.fixed.contains(op) ||
+             (op && overlay.isAttrPresent(op) &&
               !(isa<ConnectOp>(op) && isa<ShimMuxOp>(op->getParentOp()))) ||
              (rulesParent && overlay.isAttrPresent(rulesParent));
     });
@@ -1005,6 +1007,13 @@ struct AIEFindFlowsPass
   void runOnOperation() override {
 
     DeviceOp d = getOperation();
+    ModuleOp module = d->getParentOfType<ModuleOp>();
+    if (d.getSymNameAttr() &&
+        llvm::any_of(module.getOps<DeviceOp>(), [&](DeviceOp user) {
+          return user.getOverlayAttr() && user.getOverlayAttr().getValue() ==
+                                              d.getSymNameAttr().getValue();
+        }))
+      return;
     ConnectivityAnalysis analysis(d);
     d.getTargetModel().validate();
     if (clEmitVias) {
@@ -1016,6 +1025,27 @@ struct AIEFindFlowsPass
         (1 << llvm::Log2_32_Ceil(d.getTargetModel().getMaxPacketId() + 1)) - 1;
 
     LiftedOps lifted;
+    if (auto ref = d.getOverlayAttr()) {
+      if (auto overlay = module.lookupSymbol<DeviceOp>(ref.getValue())) {
+        std::set<std::pair<TileID, Port>> outputs;
+        auto output = [](Operation &op) -> std::optional<Port> {
+          if (auto connect = dyn_cast<ConnectOp>(op))
+            return connect.destPort();
+          if (auto master = dyn_cast<MasterSetOp>(op))
+            return master.destPort();
+          return std::nullopt;
+        };
+        for (auto box : overlay.getOps<SwitchboxOp>())
+          for (Operation &op : box.getConnections().front())
+            if (auto port = output(op))
+              outputs.emplace(box.getTileOp().getTileID(), *port);
+        for (auto box : d.getOps<SwitchboxOp>())
+          for (Operation &op : box.getConnections().front())
+            if (auto port = output(op))
+              if (outputs.count({box.getTileOp().getTileID(), *port}))
+                lifted.fixed.insert(&op);
+      }
+    }
     lifted.kept.insert_range(analysis.getPacketMergeOps());
     FlowKeySet seen;
     OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
