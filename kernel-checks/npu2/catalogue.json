@@ -1,8 +1,8 @@
 {
  "npu": "npu2",
  "arch": "aie2p",
- "commit": "eec735f9535479778a1021b3976fc0526492256c",
- "date": "2026-11-02T07:02:32.370821+00:00",
+ "commit": "26550c923c8e5fa333a0b40962207fd455b921c6",
+ "date": "2026-11-03T07:01:34.892881+00:00",
  "swept": true,
  "kernels": [
   {
@@ -2386,9 +2386,9 @@
    "builds": [
     "mha"
    ],
-   "passed": 19,
+   "passed": 23,
    "failed": [],
-   "timed": 18,
+   "timed": 22,
    "timing_failed": [],
    "untimed": [
     "mha/16x256x64x4/bfloat16/pv=True"
