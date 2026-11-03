@@ -1468,6 +1468,11 @@ def test_mha_refuses_what_mha_cc_cannot_build():
     ):
         with pytest.raises(ValueError, match=match):
             kernels.mha(dim_m=16, dim_k=64, **{**fused, **bad})
+    set_current_device(NPU2Col1())
+    aie2p = dict(dim_m=32, dim_k=64, dim_n=64, b_col_maj=True, fused=True)
+    kernels.mha(accurate_exp2=True, **aie2p)
+    with pytest.raises(NotImplementedError, match="emulate_bf16_mmul_with_bfp16"):
+        kernels.mha(accurate_exp2=True, emulate_bf16_mmul_with_bfp16=True, **aie2p)
 
 
 def test_mha_band_reaches_the_kernel_and_its_reference():
