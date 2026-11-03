@@ -13,7 +13,6 @@
 // ALLOC-DAG: aie.shim_dma_allocation @{{[ab]}}__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
 // ALLOC-DAG: aie.shim_dma_allocation @{{[ab]}}__shim_alloc(%{{.*}}, MM2S, 1)
 // ALLOC-NOT: _relay
-// OFF: number of output DMA channel exceeded
 
 module {
   aie.device(npu2_1col) @shared {

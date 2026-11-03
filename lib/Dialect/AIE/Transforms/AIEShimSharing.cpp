@@ -100,20 +100,29 @@ void ShimTransferSpans::analyze(
     };
     DenseMap<StringAttr, SmallVector<size_t>> pending;
     DenseMap<Value, StringAttr> tasks;
+    DenseMap<size_t, Value> owners;
     auto transfer = [&](Operation *op, StringAttr symbol, bool starts,
-                        bool all = false) {
+                        bool all = false, Value owner = {}) {
       auto endpoint = endOf(device, symbol);
       if (!endpoint)
         return;
       auto [from, to] = interval(op, position[op], position[op]);
       auto &queue = pending[symbol];
-      if (starts)
-        queue.push_back(note(endpoint->fifo, from));
-      else if (!endpoint->sends && !queue.empty()) {
-        do {
-          note(endpoint->fifo, to, queue.front());
-          queue.erase(queue.begin());
-        } while (all && !queue.empty());
+      if (starts) {
+        size_t start = note(endpoint->fifo, from);
+        owners[start] = owner;
+        queue.push_back(start);
+      } else if (!endpoint->sends) {
+        for (auto it = queue.begin(); it != queue.end();) {
+          if (owner && owners.lookup(*it) != owner) {
+            ++it;
+            continue;
+          }
+          note(endpoint->fifo, to, *it);
+          it = queue.erase(it);
+          if (!all)
+            break;
+        }
       }
     };
     auto synchronous = [&](Operation *op, StringAttr endpoint, int64_t from,
@@ -204,7 +213,9 @@ void ShimTransferSpans::analyze(
       } else if (isa<AIEX::DMAStartTaskOp, AIEX::DMAAwaitTaskOp,
                      AIEX::DMAFreeTaskOp>(op)) {
         if (auto symbol = tasks.lookup(op->getOperand(0)))
-          transfer(op, symbol, isa<AIEX::DMAStartTaskOp>(op));
+          transfer(op, symbol, isa<AIEX::DMAStartTaskOp>(op),
+                   isa<AIEX::DMAFreeTaskOp>(op),
+                   isa<AIEX::DMAAwaitTaskOp>(op) ? Value{} : op->getOperand(0));
       }
     });
     llvm::stable_sort(result.spans, [](const Span &a, const Span &b) {
