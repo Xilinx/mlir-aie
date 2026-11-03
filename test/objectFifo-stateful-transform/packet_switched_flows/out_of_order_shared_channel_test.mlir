@@ -18,11 +18,11 @@
 // @a receives into the first run of ids, and its sender names them.
 // CHECK:       aie.dma_bd(%a__buf0{{.*}}out_of_order_id = 0 : i32}
 // CHECK:       aie.dma_bd(%a__buf1{{.*}}out_of_order_id = 1 : i32}
-// CHECK:       aie.dma_start(S2MM, 1, {{.*}}) {out_of_order}
+// CHECK:       aie.dma_start(S2MM, 1, {{.*}}, repeat_count = 3) {out_of_order}
 // CHECK:       aie.dma_bd(%a__cons__buf0{{.*}}bd_id = 0 : i32
 // CHECK:       aie.dma_bd(%a__cons__buf1{{.*}}bd_id = 1 : i32
 // @b shares the channel and takes the next run.
-// CHECK:       aie.dma_start(S2MM, 1, {{.*}}) {out_of_order}
+// CHECK-NOT:   aie.dma_start(S2MM
 // CHECK:       aie.dma_bd(%b__cons__buf0{{.*}}bd_id = 2 : i32
 // CHECK:       aie.dma_bd(%b__cons__buf1{{.*}}bd_id = 3 : i32
 // CHECK:       aie.dma_bd(%b__buf0{{.*}}out_of_order_id = 2 : i32}

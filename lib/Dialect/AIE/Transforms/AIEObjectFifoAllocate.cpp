@@ -19,6 +19,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Debug.h"
@@ -2181,7 +2182,8 @@ struct AIEObjectFifoAllocatePass
     // Routes still identify each sender's receiving buffers here, but hardware
     // BD IDs are assigned later. Preserve that pairing with temporary tags
     // before lowering erases the routes.
-    int32_t nextTag = 0;
+    llvm::EquivalenceClasses<Operation *> matchingPools;
+    DenseMap<Operation *, int64_t> descriptorCounts;
     for (auto flow : device.getOps<RouteOp>()) {
       if (flow.getSources().size() != 1)
         continue;
@@ -2202,18 +2204,26 @@ struct AIEObjectFifoAllocatePass
         ObjectFifoPoolOp from = src.getPoolOp(), to = dst.getPoolOp();
         if (!from || !to)
           continue;
-        SmallVector<int32_t> tags;
-        if (auto already = to.getOutOfOrderTags())
-          tags.assign(already->begin(), already->end());
-        else {
-          for (int64_t slot = 0; slot < dst.getNumDescriptors(); ++slot)
-            tags.push_back(nextTag++);
-          to.setOutOfOrderTagsAttr(
-              DenseI32ArrayAttr::get(to.getContext(), tags));
-        }
-        from.setOutOfOrderTagsAttr(
-            DenseI32ArrayAttr::get(from.getContext(), tags));
+        matchingPools.unionSets(from.getOperation(), to.getOperation());
+        descriptorCounts[from] = src.getNumDescriptors();
+        descriptorCounts[to] = dst.getNumDescriptors();
       }
+    }
+    int32_t nextTag = 0;
+    DenseMap<Operation *, DenseI32ArrayAttr> tagsOfGroup;
+    for (ObjectFifoPoolOp pool : pools) {
+      auto member = matchingPools.findLeader(pool.getOperation());
+      if (member == matchingPools.member_end())
+        continue;
+      Operation *leader = *member;
+      auto &tags = tagsOfGroup[leader];
+      if (!tags) {
+        SmallVector<int32_t> values;
+        for (int64_t slot = 0; slot < descriptorCounts.lookup(pool); ++slot)
+          values.push_back(nextTag++);
+        tags = builder.getDenseI32ArrayAttr(values);
+      }
+      pool.setOutOfOrderTagsAttr(tags);
     }
 
     if (failed(bindRearmTargets())) {

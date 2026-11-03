@@ -374,8 +374,8 @@ def ObjectFifoTransportAttr : AttrDef<AIE_Dialect, "ObjectFifoTransport", []> {
     descriptors through the packet header's `out_of_order_id`. This allows
     multiple packet FIFOs to share an S2MM channel. It changes descriptor
     selection, not packet arrival order. Like `packet`, it only applies when
-    `auto` chooses DMA. The default is false; the lowering may still enable
-    it when packet FIFOs are pinned to the same receiving channel.
+    `auto` chooses DMA. The default is false. FIFOs pinned to the same
+    receiving channel must explicitly set `out_of_order = true`.
 
     What drives each end (a DMA channel or a core stream port) is not part of
     the path; see `#aie.end_port`.

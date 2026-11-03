@@ -2581,7 +2581,12 @@ def AIE_ObjectFifoCreateOp
     uses that ID instead of advancing through a fixed BD chain, allowing
     multiple packet FIFOs to share the channel. Packet transport is required.
     The current lowering requires matching descriptor counts and object byte
-    sizes at the sending and receiving pools.
+    sizes at the sending and receiving pools. Broadcast destinations receive
+    matching hardware BD IDs; conflicting explicit IDs are rejected.
+
+    Without `iter_count`, each receiving pool needs a local core consumer
+    whose releases replenish the shared channel. DMA-drained receivers must
+    specify `iter_count`; their initial tasks must fit in the hardware queue.
 
     This changes descriptor selection, not packet arrival order. A packet
     targeting a buffer whose lock is unavailable stalls the channel and all

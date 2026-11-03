@@ -700,8 +700,8 @@ class Transport:
     receiving buffer descriptors, allowing FIFOs to share an S2MM channel.
     It changes descriptor selection, not packet arrival order. The receiving
     BD ID is separate from the packet ID used for routing. With ``auto``, these
-    settings apply only when DMA is selected. False leaves the lowering free
-    to enable out-of-order reception for FIFOs pinned to one receiving channel.
+    settings apply only when DMA is selected. FIFOs pinned to one receiving
+    channel must explicitly request ``out_of_order=True``.
     """
 
     mode: str

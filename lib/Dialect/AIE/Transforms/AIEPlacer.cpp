@@ -1020,7 +1020,7 @@ SequentialPlacer::buildChannelRequirements(
       if (producerLogicalTile && consumerLogicalTile &&
           producerLogicalTile.getTileType() == AIETileType::CoreTile &&
           consumerLogicalTile.getTileType() == AIETileType::CoreTile &&
-          ofOp.getConsumerTiles().size() == 1)
+          ofOp.getConsumerTiles().size() == 1 && !ofOp.getOutOfOrder())
         continue;
 
       // Linked consumers and shared channels are counted separately.
@@ -1210,7 +1210,7 @@ Placer::buildComputePeerAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
     if (!producer || producer.getTileType() != AIETileType::CoreTile)
       continue;
     // A broadcast always moves by DMA (dmaReason in AIEObjectFifoSplit).
-    if (ofOp.getConsumerTiles().size() != 1)
+    if (ofOp.getConsumerTiles().size() != 1 || ofOp.getOutOfOrder())
       continue;
     for (Value consumerVal : ofOp.getConsumerTiles()) {
       auto consumer =

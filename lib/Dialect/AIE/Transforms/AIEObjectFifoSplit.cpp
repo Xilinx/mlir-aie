@@ -399,11 +399,10 @@ struct AIEObjectFifoSplitPass
     return success();
   }
 
-  /// Two fifos pinned to one receiving channel can only share it out of
-  /// order, since a channel walking a chain holds one fifo's order, so
-  /// pinning them together selects it.
+  /// Sharing a receiving channel requires the author's explicit opt-in to
+  /// the ordering constraints of out-of-order packet reception.
   LogicalResult
-  selectOutOfOrderForSharedChannels(ArrayRef<ObjectFifoCreateOp> fifos) {
+  verifyOutOfOrderForSharedChannels(ArrayRef<ObjectFifoCreateOp> fifos) {
     DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
         onChannel;
     for (ObjectFifoCreateOp fifo : fifos) {
@@ -425,15 +424,10 @@ struct AIEObjectFifoSplitPass
       if (sharing.size() < 2)
         continue;
       for (ObjectFifoCreateOp fifo : sharing) {
-        if (!fifo.packetHeader())
+        if (!fifo.getOutOfOrder())
           return fifo.emitOpError(
-              "shares a receiving channel, which it can only do out of order, "
-              "naming each object's buffer in a packet header; make it a "
-              "packet objectfifo");
-        auto transport = fifo.getTransportAttr();
-        fifo.setTransportAttr(ObjectFifoTransportAttr::get(
-            fifo.getContext(), transport.getMode(), transport.getPacket(),
-            /*out_of_order=*/true));
+              "shares a receiving channel; explicitly set out_of_order = true "
+              "on its packet transport");
       }
     }
     return success();
@@ -719,7 +713,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
 
   if (failed(verifyTilesArePlaced()) || failed(verifyStreamPortAccesses()) ||
       failed(verifyLinkAccesses()) ||
-      failed(selectOutOfOrderForSharedChannels(fifos))) {
+      failed(verifyOutOfOrderForSharedChannels(fifos))) {
     return signalPassFailure();
   }
 

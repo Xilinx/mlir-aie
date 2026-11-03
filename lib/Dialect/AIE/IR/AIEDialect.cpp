@@ -3778,6 +3778,8 @@ static uint32_t channelsOfOwnTile(CoreOp core, DMAChannelDir direction,
 }
 
 LogicalResult DmaPushQueueOp::verify() {
+  if (getOutOfOrder() && getDirection() != DMAChannelDir::S2MM)
+    return emitOpError("out_of_order is only supported on S2MM channels");
   auto core = (*this)->getParentOfType<CoreOp>();
   TileOp tile = core.getTileOp();
   const AIETargetModel &targetModel = getTargetModel(*this);
