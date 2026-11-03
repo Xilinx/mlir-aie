@@ -741,6 +741,62 @@ def test_cache_key_survives_a_self_configuring_generator(tmp_path):
         sys.modules.pop("learning_state", None)
 
 
+def test_mask_generator_mutations_never_swallows_a_failing_generator():
+    """A generator that raises must surface its own error.
+
+    The watch's cleanup originally left its finally block through bare
+    return statements; a return inside finally discards the exception
+    propagating out of the generator, the contextmanager then suppresses
+    it, and _generate_uncached went on to read its result unassigned --
+    CI saw UnboundLocalError in place of the user's error
+    (iron_error_frames.py, taskgroup_carry.py). Every exit below must let
+    the exception through, with the watch's record-keeping intact.
+    """
+    from aie.utils.compile.jit._hash import _MAX_KEY_DEPTH, _mask_generator_mutations
+
+    def failing():
+        raise ValueError("the design is broken")
+
+    # No mutable object in the walk domain: the empty pre-snapshot exit.
+    with pytest.raises(ValueError, match="the design is broken"):
+        with _mask_generator_mutations(failing, ()):
+            failing()
+
+    # A domain whose container the generator does not touch: the
+    # nothing-moved exit.
+    with pytest.raises(ValueError, match="the design is broken"):
+        with _mask_generator_mutations(failing, ([1, 2, 3],)):
+            failing()
+
+    # A domain the failing generator deepens past the walk's nesting bound:
+    # the failed post-snapshot exit.
+    deepened = [1]
+
+    def deepening():
+        nest = []
+        for _ in range(_MAX_KEY_DEPTH + 2):
+            nest = [nest]
+        deepened.append(nest)
+        raise ValueError("the design is broken")
+
+    with pytest.raises(ValueError, match="the design is broken"):
+        with _mask_generator_mutations(deepening, (deepened,)):
+            deepening()
+
+    # A domain the failing generator reconfigures: the mask records it AND
+    # the exception still surfaces.
+    learned = [1]
+
+    def configuring():
+        learned.append(2)
+        raise ValueError("the design is broken")
+
+    with pytest.raises(ValueError, match="the design is broken"):
+        with _mask_generator_mutations(configuring, (learned,)):
+            configuring()
+    assert configuring.__iron_key_mask__
+
+
 _CROSS_PROGRAM = """\
 import sys
 

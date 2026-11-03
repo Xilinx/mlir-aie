@@ -633,31 +633,33 @@ def _mask_generator_mutations(
     try:
         yield
     finally:
+        # Every early exit below must be an `if`, never a `return`: a return
+        # inside a finally discards an exception propagating out of the
+        # generator, and the caller then proceeds as if the generator had
+        # finished -- reading the result it never assigned.
         _MASKING.on = False
-        if not pre:
-            return
-        post: dict[int, str] = {}
-        try:
-            _python_identity(roots, frozen=frozen, snapshot=post)
-        except Exception:  # as above: leave the key as sensitive as it was
-            logger.debug(
-                "identity snapshot after generation failed; not masking",
-                exc_info=True,
-            )
-            return
-        moved = {i: d for i, d in pre.items() if i in post and post[i] != d}
-        if not moved:
-            return
-        mask = dict(getattr(generator, "__iron_key_mask__", None) or {})
-        mask.update(moved)
-        try:
-            generator.__iron_key_mask__ = mask
-        except (AttributeError, TypeError):
-            logger.debug(
-                "generator %r cannot hold a key mask; its own mutations "
-                "keep moving the key",
-                getattr(generator, "__name__", generator),
-            )
+        if pre:
+            post: dict[int, str] = {}
+            try:
+                _python_identity(roots, frozen=frozen, snapshot=post)
+            except Exception:  # as above: leave the key as sensitive as it was
+                logger.debug(
+                    "identity snapshot after generation failed; not masking",
+                    exc_info=True,
+                )
+            else:
+                moved = {i: d for i, d in pre.items() if i in post and post[i] != d}
+                if moved:
+                    mask = dict(getattr(generator, "__iron_key_mask__", None) or {})
+                    mask.update(moved)
+                    try:
+                        setattr(generator, "__iron_key_mask__", mask)
+                    except (AttributeError, TypeError):
+                        logger.debug(
+                            "generator %r cannot hold a key mask; its own "
+                            "mutations keep moving the key",
+                            getattr(generator, "__name__", generator),
+                        )
 
 
 def _compute_recipe_hash(
