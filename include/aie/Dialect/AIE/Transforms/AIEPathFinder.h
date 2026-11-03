@@ -560,8 +560,6 @@ private:
   llvm::DenseMap<TileID, ShimMuxOp> coordToShimMux;
 };
 
-bool touchesTileControl(PacketFlowOp flow);
-
 } // namespace xilinx::AIE
 
 #endif

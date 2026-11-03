@@ -101,7 +101,10 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 
   // Shim allocations reserve channels outside the DMA bodies above.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    (allocOp->hasAttr("aie.shareable_with") ? shareableChannels : usedChannels)
+    (AIEDialect::ShareableWithAttrHelper(allocOp->getContext())
+             .isAttrPresent(allocOp)
+         ? shareableChannels
+         : usedChannels)
         .try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
                                      allocOp.getChannelDir(),
                                      (int)allocOp.getChannelIndex()),
@@ -176,7 +179,9 @@ int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
   if (auto *reservation = shareableChannels.lookup(key)) {
     if (!shareable)
       return -1;
-    auto allowed = reservation->getAttrOfType<ArrayAttr>("aie.shareable_with");
+    auto allowed =
+        AIEDialect::ShareableWithAttrHelper(reservation->getContext())
+            .getAttr(reservation);
     auto name =
         owner ? owner->getAttrOfType<StringAttr>("sym_name") : StringAttr();
     if (!allowed || !name || llvm::none_of(allowed, [&](Attribute attr) {

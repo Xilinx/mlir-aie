@@ -12,7 +12,8 @@ using namespace xilinx::AIE;
 
 PacketIdSpace::PacketIdSpace(DeviceOp device)
     : max(static_cast<int>(device.getTargetModel().getMaxPacketId())) {
-  if (device->hasAttr("aie.reserve_controller_packet_ids")) {
+  if (AIEDialect::ReserveControllerPacketIdsAttrHelper(device.getContext())
+          .isAttrPresent(device)) {
     for (auto [tile, id] :
          device.getTargetModel().getTileToControllerIdMap(true))
       taken.insert(id);

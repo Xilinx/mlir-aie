@@ -30,8 +30,8 @@ struct AIEAssignPacketIdsPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     if (clReserveControllerPacketIds)
-      device->setAttr("aie.reserve_controller_packet_ids",
-                      UnitAttr::get(device.getContext()));
+      AIEDialect::ReserveControllerPacketIdsAttrHelper(device.getContext())
+          .setAttr(device, UnitAttr::get(device.getContext()));
     PacketIdSpace space(device);
 
     // Pinned ids are checked before any are handed out, so a bad pin is

@@ -33,8 +33,15 @@ def AIE_Dialect : Dialect {
   // opt out of upstream's strict-properties default until they migrate.
   let useStrictPropertiesInAssemblyFormat = 0;
   // Overlay-owned settings survive application configuration and teardown.
+  // On route endpoints and shim allocations, shareable_with lists same-device
+  // endpoint symbols permitted to share their channel. An empty list forbids
+  // sharing; an explicit list overrides lifetime analysis, but not hardware
+  // constraints. Omitted attributes allow analysis to infer eligibility.
+  // On devices, reserve_controller_packet_ids excludes controller IDs from allocation.
   let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_overlay,
-      "::mlir::UnitAttr":$priority_route);
+      "::mlir::UnitAttr":$priority_route,
+      "::mlir::ArrayAttr":$shareable_with,
+      "::mlir::UnitAttr":$reserve_controller_packet_ids);
 }
 
 #endif // AIE_BASE

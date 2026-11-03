@@ -1151,7 +1151,8 @@ struct AIEObjectFifoAllocatePass
           return end;
         });
     auto canShare = [&](RouteEndpointOp a, RouteEndpointOp b) {
-      if (auto allowed = a->getAttrOfType<ArrayAttr>("aie.shareable_with"))
+      if (auto allowed =
+              AIEDialect::ShareableWithAttrHelper(a->getContext()).getAttr(a))
         return llvm::is_contained(allowed,
                                   FlatSymbolRefAttr::get(b.getSymNameAttr()));
       return spans.apart(
@@ -1172,7 +1173,8 @@ struct AIEObjectFifoAllocatePass
                                                  : endpoint.getSymNameAttr());
     }
     for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
-      auto allowed = alloc->getAttrOfType<ArrayAttr>("aie.shareable_with");
+      auto allowed = AIEDialect::ShareableWithAttrHelper(alloc->getContext())
+                         .getAttr(alloc);
       if (!allowed || alloc.getTile() != exhausted->getResult(0) ||
           alloc.getChannelDir() != dir)
         continue;

@@ -79,7 +79,6 @@ def reconfigure_add(data: InOut, *, ctrl_pkt: CompileTime[bool]):
         [main, add_two, add_three],
         entry=entry,
         expand_load_pdis=None if ctrl_pkt else True,
-        load_pdi_to_ctrl_pkt=True if ctrl_pkt else None,
         reconfig_teardown=True,
         reconfig_init_entry=True,
     ).resolve_program()
@@ -119,7 +118,9 @@ def looked_up(monkeypatch):
 def test_init_entry_runs_on_each_new_context(looked_up, ctrl_pkt):
     for _ in range(2):
         data = iron.arange(8, dtype=np.int32, device="npu")
-        reconfigure_add(data, ctrl_pkt=ctrl_pkt)
+        reconfigure_add.specialize(
+            aiecc_flags=["--load-pdi-to-ctrl-pkt"] if ctrl_pkt else []
+        )(data, ctrl_pkt=ctrl_pkt)
         data.to("cpu")
         np.testing.assert_array_equal(data.numpy(), expected())
     assert looked_up == NEW_CONTEXT
@@ -127,7 +128,9 @@ def test_init_entry_runs_on_each_new_context(looked_up, ctrl_pkt):
     # A new context, as after an IOCTL EINVAL, runs main:reconfig_init again.
     DefaultNPURuntime.cleanup()
     data = iron.arange(8, dtype=np.int32, device="npu")
-    reconfigure_add(data, ctrl_pkt=ctrl_pkt)
+    reconfigure_add.specialize(
+        aiecc_flags=["--load-pdi-to-ctrl-pkt"] if ctrl_pkt else []
+    )(data, ctrl_pkt=ctrl_pkt)
     data.to("cpu")
     np.testing.assert_array_equal(data.numpy(), expected())
     assert looked_up == NEW_CONTEXT * 2
@@ -138,7 +141,9 @@ def test_init_entry_runs_after_another_context(looked_up):
     # resets the array and removes the control packet build's overlay.
     for ctrl_pkt in (True, False, True):
         data = iron.arange(8, dtype=np.int32, device="npu")
-        reconfigure_add(data, ctrl_pkt=ctrl_pkt)
+        reconfigure_add.specialize(
+            aiecc_flags=["--load-pdi-to-ctrl-pkt"] if ctrl_pkt else []
+        )(data, ctrl_pkt=ctrl_pkt)
         data.to("cpu")
         np.testing.assert_array_equal(data.numpy(), expected())
     # The third dispatch reuses the first's kernel, so it looks up only the

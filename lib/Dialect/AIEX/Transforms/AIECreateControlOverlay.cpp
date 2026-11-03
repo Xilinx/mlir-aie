@@ -81,8 +81,9 @@ struct AIECreateControlOverlayPass
             endpoint.getRouteDirection() == other.getRouteDirection() &&
             spans.apart(keys.lookup(endpoint), keys.lookup(other)))
           allowed.push_back(FlatSymbolRefAttr::get(other.getSymNameAttr()));
-      endpoint->setAttr("aie.shareable_with",
-                        ArrayAttr::get(&getContext(), allowed));
+      AIEDialect::ShareableWithAttrHelper sharing(&getContext());
+      if (!sharing.isAttrPresent(endpoint))
+        sharing.setAttr(endpoint, ArrayAttr::get(&getContext(), allowed));
     }
     AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
     for (DeviceOp device : module.getOps<DeviceOp>()) {
@@ -97,8 +98,9 @@ struct AIECreateControlOverlayPass
               endpoint.getRouteDirection() == alloc.getChannelDir())
             allowed.push_back(
                 FlatSymbolRefAttr::get(endpoint.getSymNameAttr()));
-        alloc->setAttr("aie.shareable_with",
-                       ArrayAttr::get(&getContext(), allowed));
+        AIEDialect::ShareableWithAttrHelper sharing(&getContext());
+        if (!sharing.isAttrPresent(alloc))
+          sharing.setAttr(alloc, ArrayAttr::get(&getContext(), allowed));
       }
     }
     return success();

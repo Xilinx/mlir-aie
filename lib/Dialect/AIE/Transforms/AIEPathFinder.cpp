@@ -103,14 +103,6 @@ void RoutingFailure::log(llvm::raw_ostream &os) const {
     os << ": " << reason;
 }
 
-bool xilinx::AIE::touchesTileControl(PacketFlowOp flow) {
-  auto control = [](auto end) {
-    return end.getBundle() == WireBundle::TileControl;
-  };
-  return llvm::any_of(flow.getPorts().getOps<PacketSourceOp>(), control) ||
-         llvm::any_of(flow.getPorts().getOps<PacketDestOp>(), control);
-}
-
 llvm::Error DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow
