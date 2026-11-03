@@ -7,13 +7,12 @@
 
 // PLAN-LABEL: @shared
 // PLAN: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
-// PLAN-SAME: aie.fixed
-// PLAN-SAME: aie.shareable_with = [@a_prod_dma, @b_prod_dma]
+// PLAN-SAME: aie.shareable_with = [@a__prod__dma, @b__prod__dma]
 // PLAN-LABEL: @ctrl_pkt_overlay
 // ALLOC-LABEL: @shared
 // ALLOC-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%{{.*}}, MM2S, 0)
-// ALLOC-DAG: aie.shim_dma_allocation @{{[ab]}}_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
-// ALLOC-DAG: aie.shim_dma_allocation @{{[ab]}}_shim_alloc(%{{.*}}, MM2S, 1)
+// ALLOC-DAG: aie.shim_dma_allocation @{{[ab]}}__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// ALLOC-DAG: aie.shim_dma_allocation @{{[ab]}}__shim_alloc(%{{.*}}, MM2S, 1)
 // ALLOC-NOT: _relay
 // OFF: number of output DMA channel exceeded
 

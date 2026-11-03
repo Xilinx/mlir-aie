@@ -5,7 +5,7 @@
 
 // CHECK-LABEL: @synced
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
-// CHECK-SAME: aie.shareable_with = [@a_prod_dma, @b_prod_dma]
+// CHECK-SAME: aie.shareable_with = [@a__prod__dma, @b__prod__dma]
 // CHECK-LABEL: @unsynced
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
 // CHECK-SAME: aie.shareable_with = []

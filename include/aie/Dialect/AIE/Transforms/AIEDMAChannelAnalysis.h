@@ -33,9 +33,8 @@ class DMAChannelAnalysis {
   /// Channels whose claimants all share them. Several packet-switched sources
   /// coexist on one; a circuit claim is exclusive.
   mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> sharedChannels;
-  /// Fixed reservations admit packet endpoints listed by lifetime analysis.
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, mlir::Operation *>
-      controlChannels;
+      shareableChannels;
   /// The first claimant of a core stream port, and whether only packets use
   /// it; circuit occupancy is exclusive.
   struct StreamClaim {
@@ -72,8 +71,7 @@ public:
                            mlir::Operation *owner = nullptr,
                            bool shareable = false);
 
-  /// Operation reserving this channel, or else the flow routing it, or else its
-  /// control allocation; null if none.
+  /// Operation reserving or routing this channel; null if none.
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
 

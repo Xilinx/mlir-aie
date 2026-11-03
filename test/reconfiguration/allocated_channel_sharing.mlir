@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // RUN: aie-opt --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
+// RUN: sed 's/\[@a, @b, @c\]/[@a, @b]/' %s | not aie-opt --aie-assign-packet-ids --aie-objectfifo-allocate 2>&1 | FileCheck %s --check-prefix=DENIED
+// RUN: sed 's/ {aie.shareable_with = \[@a, @b, @c\]}//' %s | not aie-opt --aie-assign-packet-ids --aie-objectfifo-allocate 2>&1 | FileCheck %s --check-prefix=DENIED
+// DENIED: number of output DMA channel exceeded
 
-// CHECK: aie.shim_dma_allocation @fixed(%{{.*}}, MM2S, 0)
-// CHECK-SAME: aie.fixed
+// CHECK: aie.shim_dma_allocation @shared(%{{.*}}, MM2S, 0)
 // CHECK: aie.packet_flow(31)
 // CHECK-NEXT: aie.packet_source<%{{.*}}, DMA : 0>
-// CHECK-DAG: aie.shim_dma_allocation @a_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = 0>)
-// CHECK-DAG: aie.shim_dma_allocation @b_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = 1>)
-// CHECK-DAG: aie.shim_dma_allocation @c_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = 2>)
+// CHECK-DAG: aie.shim_dma_allocation @a__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = 0>)
+// CHECK-DAG: aie.shim_dma_allocation @b__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = 1>)
+// CHECK-DAG: aie.shim_dma_allocation @c__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = 2>)
 
 module {
   aie.device(npu2_1col) {
@@ -18,7 +20,7 @@ module {
     %t3 = aie.tile(0, 3)
     %t4 = aie.tile(0, 4)
     %t5 = aie.tile(0, 5)
-    aie.shim_dma_allocation @fixed(%shim, MM2S, 0) {aie.fixed, aie.shareable_with = [@a, @b, @c]}
+    aie.shim_dma_allocation @shared(%shim, MM2S, 0) {aie.shareable_with = [@a, @b, @c]}
     aie.shim_dma_allocation @reserved(%shim, MM2S, 1)
     aie.packet_flow(31) {
       aie.packet_source<%shim, DMA : 0>

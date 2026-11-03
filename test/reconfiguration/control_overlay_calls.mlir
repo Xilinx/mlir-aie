@@ -5,12 +5,12 @@
 
 // CHECK-LABEL: module @separate_configurations
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1
-// CHECK: aie.shim_dma_allocation @a_shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
-// CHECK: aie.shim_dma_allocation @b_shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
+// CHECK: aie.shim_dma_allocation @a__shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
+// CHECK: aie.shim_dma_allocation @b__shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
 // CHECK-LABEL: module @one_configuration
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1
-// CHECK: aie.shim_dma_allocation @a_shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
-// CHECK: aie.shim_dma_allocation @b_shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
+// CHECK: aie.shim_dma_allocation @a__shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
+// CHECK: aie.shim_dma_allocation @b__shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
 
 module @separate_configurations {
   aie.device(npu2_1col) @main {

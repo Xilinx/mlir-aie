@@ -645,8 +645,6 @@ struct AIEGenerateColumnControlOverlayPass
             DMAChannelDir::MM2S, shimPort.channel, false, nullptr);
       AIEDialect::IsCtrlOverlayAttrHelper(device.getContext())
           .setAttr(alloc, builder.getUnitAttr());
-      if (clPlanChannels)
-        alloc->setAttr("aie.fixed", builder.getUnitAttr());
     }
   }
 };

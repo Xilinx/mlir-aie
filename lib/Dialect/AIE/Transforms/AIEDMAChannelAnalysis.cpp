@@ -100,11 +100,8 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   }
 
   // Shim allocations reserve channels outside the DMA bodies above.
-  AIEDialect::IsCtrlOverlayAttrHelper overlay(device.getContext());
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    ((overlay.isAttrPresent(allocOp) || allocOp->hasAttr("aie.fixed"))
-         ? controlChannels
-         : usedChannels)
+    (allocOp->hasAttr("aie.shareable_with") ? shareableChannels : usedChannels)
         .try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
                                      allocOp.getChannelDir(),
                                      (int)allocOp.getChannelIndex()),
@@ -165,7 +162,7 @@ bool DMAChannelAnalysis::isChannelFree(TileLike tile, DMAChannelDir dir,
                                        int channel) {
   auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
   return !usedChannels.contains(key) && !streamedChannels.contains(key) &&
-         !controlChannels.contains(key);
+         !shareableChannels.contains(key);
 }
 
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
@@ -176,20 +173,17 @@ int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
     return -1;
   }
   auto key = std::make_tuple(getTileKey(tile->getResult(0)), dir, channel);
-  if (auto *reservation = controlChannels.lookup(key)) {
+  if (auto *reservation = shareableChannels.lookup(key)) {
     if (!shareable)
       return -1;
-    if (reservation->hasAttr("aie.fixed")) {
-      auto allowed =
-          reservation->getAttrOfType<ArrayAttr>("aie.shareable_with");
-      auto name =
-          owner ? owner->getAttrOfType<StringAttr>("sym_name") : StringAttr();
-      if (!allowed || !name || llvm::none_of(allowed, [&](Attribute attr) {
-            auto symbol = dyn_cast<FlatSymbolRefAttr>(attr);
-            return symbol && symbol.getAttr() == name;
-          }))
-        return -1;
-    }
+    auto allowed = reservation->getAttrOfType<ArrayAttr>("aie.shareable_with");
+    auto name =
+        owner ? owner->getAttrOfType<StringAttr>("sym_name") : StringAttr();
+    if (!allowed || !name || llvm::none_of(allowed, [&](Attribute attr) {
+          auto symbol = dyn_cast<FlatSymbolRefAttr>(attr);
+          return symbol && symbol.getAttr() == name;
+        }))
+      return -1;
   }
   if (usedChannels.try_emplace(key, owner).second) {
     if (shareable)
@@ -211,7 +205,7 @@ Operation *DMAChannelAnalysis::getDMAChannelOwner(TileLike tile,
     return owner;
   if (Operation *owner = streamedChannels.lookup(key))
     return owner;
-  return controlChannels.lookup(key);
+  return shareableChannels.lookup(key);
 }
 
 LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,

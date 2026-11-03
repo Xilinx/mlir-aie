@@ -10,15 +10,12 @@
 // CHECK-LABEL: aie.device(npu2) @cfg_add
 // CHECK-NOT: aie.memtile_dma
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%{{.*}}, MM2S, 0)
-// CHECK-SAME: aie.fixed
-// CHECK: aie.shim_dma_allocation @a_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
-// CHECK: aie.shim_dma_allocation @b_shim_alloc(%{{.*}}, MM2S, 1)
+// CHECK: aie.shim_dma_allocation @a__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK: aie.shim_dma_allocation @b__shim_alloc(%{{.*}}, MM2S, 1)
 // CHECK-NOT: aie.memtile_dma
 // CHECK-LABEL: aie.device(npu2) @cfg_sub
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%{{.*}}, MM2S, 0)
-// CHECK-SAME: aie.fixed
-// CHECK: aie.shim_dma_allocation @a_shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
-// CHECK: aie.shim_dma_allocation @b_shim_alloc(%{{.*}}, MM2S, 1)
+// CHECK: aie.shim_dma_allocation @a__shim_alloc(%{{.*}}, MM2S, 0, <pkt_id = {{[0-9]+}}>)
+// CHECK: aie.shim_dma_allocation @b__shim_alloc(%{{.*}}, MM2S, 1)
 // CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%{{.*}}, MM2S, 0)
-// CHECK-SAME: aie.fixed

@@ -126,21 +126,18 @@ aie-opt --aie-objectfifo-split --aie-create-control-overlay='adaptive=false' \
   --aie-assign-packet-ids --aie-objectfifo-allocate design.mlir
 ```
 
-Overlay creation materializes runtime sequences in an analysis copy. Sharing
-uses configuration boundaries (`load_pdi`, `write_config`, `write_teardown`)
-and transfer lifetimes, without interpreting `aiex.configure`. An ordinary
-entry's initial configuration precedes its dispatch. Explicit control-packet
-batches complete before the following operation; arbitrary data sends are not
-assumed complete merely because a shim MM2S task was awaited.
+Overlay creation analyzes runtime sequences and their `aiex.run` calls before
+materialization. Each call completes its own transfers on return; transfers
+started by the caller remain live until their completion is established.
+Configuration operations and explicit control-packet batches complete before
+the following operation. The analysis combines conflicts across all entry
+sequences and records pairwise `aie.shareable_with` permissions on application
+endpoints and overlay shim allocations.
 
-Application endpoints also carry pairwise sharing permissions from the
-materialized schedules, so callees that run in one dispatch are checked
-together.
-
-Fixed shim reservations carry `aie.fixed` and an `aie.shareable_with` list of
-endpoints admitted by lifetime analysis. Their channel numbers are immutable;
-application endpoints may share only with permission and only when their own
-transfers are mutually disjoint. Unknown transfer lifetimes remain exclusive.
+An explicit `aie.shim_dma_allocation` keeps its assigned channel. Packet
+endpoints may share it when listed in `aie.shareable_with` and when their own
+transfers are mutually disjoint. Allocations without sharing permissions and
+unknown transfer lifetimes remain exclusive.
 The overlay's packet IDs and routing settings remain protected during reload
 and teardown.
 

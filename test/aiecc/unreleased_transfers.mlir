@@ -3,8 +3,11 @@
 
 // RUN: %aiecc -n --tmpdir %t.default --get-npu-insts --npu-insts-name=%t.default.bin %s 2>&1 | FileCheck %s --check-prefix=ENABLED
 // RUN: %aiecc -n --tmpdir %t.disabled --get-npu-insts --npu-insts-name=%t.disabled.bin --warn-unreleased-transfers=false %s 2>&1 | FileCheck %s --check-prefix=DISABLED --allow-empty
+// ENABLED-NOT: see current operation
 // ENABLED: warning: may exit with 1 DMA transfer(s) neither awaited nor freed
+// ENABLED-NOT: see current operation
 // ENABLED: note: first outstanding transfer starts here
+// ENABLED-NOT: see current operation
 // DISABLED-NOT: warning:
 
 module {

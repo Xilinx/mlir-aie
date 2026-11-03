@@ -87,7 +87,7 @@ struct AIECreateControlOverlayPass
     AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
     for (DeviceOp device : module.getOps<DeviceOp>()) {
       for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
-        if (!alloc->hasAttr("aie.fixed") || !overlay.isAttrPresent(alloc))
+        if (!overlay.isAttrPresent(alloc))
           continue;
         SmallVector<Attribute> allowed;
         for (auto endpoint : endpoints)

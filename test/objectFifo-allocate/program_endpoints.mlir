@@ -206,7 +206,7 @@ module @pinned_task_demand {
 // CHECK: aie.runtime_sequence
 // CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
 // CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0, <pkt_id = 0>) {
-// CHECK: aie.shim_dma_allocation @host_shim_alloc(%{{.*}}, MM2S, 0)
+// CHECK: aie.shim_dma_allocation @host__shim_alloc(%{{.*}}, MM2S, 0)
 // CHECK-NOT: aie.shim_dma_allocation
 module @shim_and_packet {
   aie.device(npu2) {

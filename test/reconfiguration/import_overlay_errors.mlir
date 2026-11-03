@@ -73,6 +73,6 @@ module {
   } {overlay = @transport}
   aie.device(npu2_1col) @transport {
     %shim = aie.tile(0, 0)
-    aie.shim_dma_allocation @control(%shim, MM2S, 0) {aie.fixed, aie.is_ctrl_overlay}
+    aie.shim_dma_allocation @control(%shim, MM2S, 0) {aie.is_ctrl_overlay}
   }
 }

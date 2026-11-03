@@ -62,7 +62,7 @@ struct AIEObjectFifoAllocatePass
   /// Ends that take another end's channel, by the end they take it from:
   /// shim ends never in flight together, and ends taking turns.
   llvm::MapVector<Operation *, Operation *> channelSharers;
-  DenseMap<Operation *, ShimDMAAllocationOp> fixedSharers;
+  DenseMap<Operation *, ShimDMAAllocationOp> allocationSharers;
   DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -987,7 +987,7 @@ struct AIEObjectFifoAllocatePass
       // A core's stream port is named by the design, not drawn from the tile's
       // DMA channels; checkStreamPorts has claimed it.
       if (endpoint.getRouteBundle() == WireBundle::Core ||
-          fixedSharers.count(endpoint.getOperation()) ||
+          allocationSharers.count(endpoint.getOperation()) ||
           channelSharers.count(endpoint.getOperation()))
         continue;
 
@@ -1094,11 +1094,11 @@ struct AIEObjectFifoAllocatePass
       channelAssignments[endpoint.getOperation()] = channel;
       noteDemand(endpoint, channel);
     }
-    DenseSet<Operation *> claimedFixed;
-    for (auto [endpoint, alloc] : fixedSharers) {
+    DenseSet<Operation *> claimedAllocations;
+    for (auto [endpoint, alloc] : allocationSharers) {
       auto end = cast<RouteEndpoint>(endpoint);
       int channel = alloc.getChannelIndex();
-      if (claimedFixed.insert(alloc).second &&
+      if (claimedAllocations.insert(alloc).second &&
           channels.reservePinnedChannel(tileOf(end), alloc.getChannelDir(),
                                         channel, endpoint, true) < 0)
         return failure();
@@ -1163,7 +1163,7 @@ struct AIEObjectFifoAllocatePass
     for (auto endpoint : device.getOps<RouteEndpointOp>()) {
       if (endpoint.getBundle() != WireBundle::DMA ||
           endpoint.getChannelIndex() ||
-          fixedSharers.count(endpoint.getOperation()) ||
+          allocationSharers.count(endpoint.getOperation()) ||
           endpoint.getTile() != exhausted->getResult(0) ||
           endpoint.getRouteDirection() != dir)
         continue;
@@ -1173,26 +1173,26 @@ struct AIEObjectFifoAllocatePass
     }
     for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
       auto allowed = alloc->getAttrOfType<ArrayAttr>("aie.shareable_with");
-      if (!alloc->hasAttr("aie.fixed") || !allowed ||
-          alloc.getTile() != exhausted->getResult(0) ||
+      if (!allowed || alloc.getTile() != exhausted->getResult(0) ||
           alloc.getChannelDir() != dir)
         continue;
       for (Operation *candidate : candidates) {
         auto endpoint = cast<RouteEndpointOp>(candidate);
-        if (fixedSharers.count(candidate) || channelSharers.count(candidate) ||
+        if (allocationSharers.count(candidate) ||
+            channelSharers.count(candidate) ||
             llvm::none_of(allowed, [&](Attribute attr) {
               auto symbol = dyn_cast<FlatSymbolRefAttr>(attr);
               return symbol && symbol.getValue() == endpoint.getSymName();
             }))
           continue;
-        if (llvm::any_of(fixedSharers, [&](const auto &entry) {
+        if (llvm::any_of(allocationSharers, [&](const auto &entry) {
               if (entry.second != alloc)
                 return false;
               auto other = cast<RouteEndpointOp>(entry.first);
               return !canShare(endpoint, other);
             }))
           continue;
-        fixedSharers[candidate] = alloc;
+        allocationSharers[candidate] = alloc;
         return true;
       }
     }
@@ -1548,7 +1548,7 @@ struct AIEObjectFifoAllocatePass
       channelOf[sharer] = owner;
       channelOf[owner] = owner;
     }
-    for (auto [endpoint, alloc] : fixedSharers)
+    for (auto [endpoint, alloc] : allocationSharers)
       channelOf[endpoint] = alloc.getOperation();
     auto channelsOf = [&](RouteOp route) {
       SmallVector<Operation *> channels;
@@ -2137,7 +2137,7 @@ struct AIEObjectFifoAllocatePass
     // One pass instance serves every device in the module, and none of this
     // state means anything outside the device it was gathered from.
     channelSharers.clear();
-    fixedSharers.clear();
+    allocationSharers.clear();
     lastPlaced.clear();
     loweredFlows.clear();
     sourcedFlows.clear();
@@ -2229,7 +2229,7 @@ struct AIEObjectFifoAllocatePass
       allocated = planAllocation(pools, tried);
     }
     if (succeeded(allocated) &&
-        (!channelSharers.empty() || !fixedSharers.empty()) &&
+        (!channelSharers.empty() || !allocationSharers.empty()) &&
         failed(headShimSharingRoutes()))
       return signalPassFailure();
     if (failed(allocated)) {

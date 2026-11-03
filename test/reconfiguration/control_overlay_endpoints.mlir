@@ -6,8 +6,7 @@
 
 // CHECK-LABEL: @endpoints
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1
-// CHECK-SAME: aie.fixed
-// CHECK: aie.shim_dma_allocation @input_shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
+// CHECK: aie.shim_dma_allocation @input__shim_alloc(%{{.*}}, MM2S, 1, <pkt_id = {{[0-9]+}}>)
 // CHECK-LABEL: @ctrl_pkt_overlay
 // FIXED: {{already in use|number of output DMA channel exceeded|failed to generate|Unable to find}}
 

@@ -5,10 +5,10 @@
 
 // CHECK-LABEL: @control_then_data
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
-// CHECK-SAME: aie.shareable_with = [@a_prod_dma, @b_prod_dma]
+// CHECK-SAME: aie.shareable_with = [@a__prod__dma, @b__prod__dma]
 // CHECK-LABEL: @repeated
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
-// CHECK-SAME: aie.shareable_with = [@a_prod_dma, @b_prod_dma]
+// CHECK-SAME: aie.shareable_with = [@a__prod__dma, @b__prod__dma]
 // CHECK-LABEL: @interleaved
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
 // CHECK-SAME: aie.shareable_with = []

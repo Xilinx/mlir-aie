@@ -895,7 +895,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           outstanding.push_back(push.origin);
       if (outstanding.empty())
         continue;
-      auto diag = sequence.emitWarning()
+      auto diag = mlir::emitWarning(sequence.getLoc())
                   << "may exit with " << outstanding.size()
                   << " DMA transfer(s) neither awaited nor freed on tile ("
                   << key[0] << "," << key[1] << ") "
