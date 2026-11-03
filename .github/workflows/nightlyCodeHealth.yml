@@ -135,6 +135,7 @@ jobs:
           fi
           cmake -S . -B build -GNinja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ "${LAUNCH[@]}" \
             -DCMAKE_C_FLAGS="$FLAGS" -DCMAKE_CXX_FLAGS="$FLAGS" \
             -DCMAKE_C_FLAGS_RELWITHDEBINFO="" -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="" \
