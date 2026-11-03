@@ -16,6 +16,8 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringMap.h"
 
 #include <map>
 #include <set>
@@ -1244,8 +1246,16 @@ struct AIENpuToCertPass
 // and emitter in sync when adding a cert op:
 // an op the emitter can emit but this function ignores is counted as free,
 // which makes the page look smaller than it is.
+// AIEBU lays down each chain and each payload global once per page, however
+// many pushes on that page name them, so data is charged once per page.
+struct PageDataSeen {
+  llvm::DenseSet<Operation *> chains;
+  llvm::DenseSet<Operation *> payloads;
+};
+
 static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
-                            uint32_t &text_cost, uint32_t &data_cost) {
+                            uint32_t &text_cost, uint32_t &data_cost,
+                            PageDataSeen &seen) {
   // Several distinct op kinds share an encoded instruction size below --
   // an instruction-size table, not a copy-paste clone.
   // NOLINTBEGIN(bugprone-branch-clone)
@@ -1276,14 +1286,14 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     StringRef sym_name = syncOp.getSymbol();
     auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
         deviceOp.lookupSymbol(sym_name));
-    if (!chain)
+    if (!chain || !seen.chains.insert(chain).second)
       return;
     for (auto bdOp : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>()) {
       data_cost += 16; // bd op
       StringRef data_sym_name = bdOp.getRemoteAddress();
       auto global = dyn_cast_if_present<memref::GlobalOp>(
           deviceOp.lookupSymbol(data_sym_name));
-      if (!global)
+      if (!global || !seen.payloads.insert(global).second)
         continue;
       auto initVal = global.getInitialValue();
       if (!initVal)
@@ -1302,6 +1312,7 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
                              bool &found_split_point) {
   uint32_t text_cost = 32; // page header: `.align 16` padding plus `.eop`
   uint32_t data_cost = 0;
+  PageDataSeen seen;
   found_split_point = false;
   AIE::DeviceOp deviceOp = op->getParentOfType<AIE::DeviceOp>();
 
@@ -1319,7 +1330,7 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
         found_split_point = true;
       }
 
-      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      updateCostForOp(o, deviceOp, text_cost, data_cost, seen);
 
       if (!found_split_point && (text_cost + data_cost) >= split_target) {
         Block::iterator next = current;
@@ -1343,12 +1354,38 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
   return text_cost + data_cost;
 }
 
-// A cut inside a barrier's [min, max] textual indices would separate its
-// participants, which must remain co-resident (see
-// checkLocalBarrierColocation).
-static void computeBarrierSpans(AIEX::CertPageOp page,
-                                std::map<Operation *, int> &flatIndex,
-                                std::map<int, std::pair<int, int>> &spans) {
+// A cut before flat index p separates a span [lo, hi] when lo < p <= hi.
+// Local barrier participants must share a page (see
+// checkLocalBarrierColocation). A payload patch must share a page with every
+// later uC-DMA push of that payload: each page carries its own payload copy,
+// so a push on another page would use the unpatched addresses.
+enum class SpanKind { LocalBarrier, PatchedPayload };
+
+struct IndivisibleSpan {
+  int lo, hi;
+  SpanKind kind;
+};
+
+// Index non-terminator ops in textual order and record indivisible spans.
+static void computeIndivisibleSpans(AIEX::CertPageOp page,
+                                    std::map<Operation *, int> &flatIndex,
+                                    SmallVectorImpl<IndivisibleSpan> &spans) {
+  AIE::DeviceOp deviceOp = page->getParentOfType<AIE::DeviceOp>();
+  std::map<int, std::pair<int, int>> barriers;
+  // Patches accumulate and survive pushes, so later pushes depend on the
+  // earliest patch of their payload.
+  llvm::StringMap<int> firstPatch;
+  auto payloadsOf = [&](StringRef chainSym) {
+    SmallVector<StringRef> payloads;
+    auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
+        deviceOp ? deviceOp.lookupSymbol(chainSym) : nullptr);
+    if (!chain || chain.getBody().empty())
+      return payloads;
+    for (auto bd : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>())
+      payloads.push_back(bd.getRemoteAddress());
+    return payloads;
+  };
+
   int idx = 0;
   for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
     for (auto &o : job.getBody().front().getOperations()) {
@@ -1357,40 +1394,53 @@ static void computeBarrierSpans(AIEX::CertPageOp page,
       flatIndex[&o] = idx;
       if (auto bar = dyn_cast<AIEX::CertLocalBarrierOp>(o)) {
         int id = bar.getLocalBarrierId();
-        auto it = spans.find(id);
-        if (it == spans.end())
-          spans[id] = {idx, idx};
+        auto it = barriers.find(id);
+        if (it == barriers.end())
+          barriers[id] = {idx, idx};
         else {
           it->second.first = std::min(it->second.first, idx);
           it->second.second = std::max(it->second.second, idx);
+        }
+      } else if (auto patch = dyn_cast<AIEX::CertApplyOffset57Op>(o)) {
+        firstPatch.try_emplace(patch.getSymbol(), idx);
+      } else if (auto push = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o)) {
+        for (StringRef payload : payloadsOf(push.getSymbol())) {
+          auto it = firstPatch.find(payload);
+          if (it != firstPatch.end())
+            spans.push_back({it->second, idx, SpanKind::PatchedPayload});
         }
       }
       ++idx;
     }
   }
+  for (auto &[id, span] : barriers)
+    spans.push_back({span.first, span.second, SpanKind::LocalBarrier});
 }
 
-// A cut before flat index `p` (ops with index < p -> earlier page) separates a
-// local_barrier group iff some participant is before and some at/after the cut.
-static bool cutSeparatesBarrier(const std::map<int, std::pair<int, int>> &spans,
-                                int p) {
-  return llvm::any_of(spans, [p](const auto &entry) {
-    auto [lo, hi] = entry.second;
-    return lo < p && hi >= p;
-  });
+// Return whether the cut separates a span, optionally reporting its kind.
+static bool cutSeparatesSpan(ArrayRef<IndivisibleSpan> spans, int p,
+                             SpanKind *kind = nullptr) {
+  const auto *it = llvm::find_if(
+      spans, [p](const IndivisibleSpan &s) { return s.lo < p && s.hi >= p; });
+  if (it == spans.end())
+    return false;
+  if (kind)
+    *kind = it->kind;
+  return true;
 }
 
-// Choose the barrier-safe cut closest to split_target, allowing both interior
+// Choose the span-safe cut closest to split_target, allowing both interior
 // and job-boundary cuts. Each half needs content so repeated splitting
 // progresses.
 static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
                                 const std::map<Operation *, int> &flatIndex,
-                                const std::map<int, std::pair<int, int>> &spans,
+                                ArrayRef<IndivisibleSpan> spans,
                                 AIEX::CertJobOp &split_job,
                                 Block::iterator &split_iter) {
   AIE::DeviceOp deviceOp = page->getParentOfType<AIE::DeviceOp>();
   uint32_t text_cost = 32; // page header, mirrors estimateCost
   uint32_t data_cost = 0;
+  PageDataSeen seen;
   bool found = false;
   uint32_t best_delta = 0;
   // Whether some job already visited holds a real op, i.e. whether cutting at
@@ -1411,7 +1461,7 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
       if (sawOpInJob || sawOpInEarlierJob) {
         auto fi = flatIndex.find(&o);
         int p = fi == flatIndex.end() ? 0 : fi->second;
-        if (!cutSeparatesBarrier(spans, p)) {
+        if (!cutSeparatesSpan(spans, p)) {
           uint32_t cost = text_cost + data_cost;
           uint32_t delta =
               cost > split_target ? cost - split_target : split_target - cost;
@@ -1423,7 +1473,7 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
           }
         }
       }
-      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      updateCostForOp(o, deviceOp, text_cost, data_cost, seen);
       sawOpInJob = true;
     }
     text_cost += cert_job_end_cost; // mirrors estimateCost
@@ -1599,15 +1649,16 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     bool isImplicit = op->hasAttr("cert.implicit");
 
     std::map<Operation *, int> flatIndex;
-    std::map<int, std::pair<int, int>> barrierSpans;
-    computeBarrierSpans(op, flatIndex, barrierSpans);
+    SmallVector<IndivisibleSpan> spans;
+    computeIndivisibleSpans(op, flatIndex, spans);
 
     // The initial estimate can miss a job-boundary cut or an earlier candidate;
-    // search all positions before declaring the page unsplittable.
+    // search all positions before declaring the page unsplittable. Spans are
+    // not applied here: a page whose cuts are all blocked by a span has split
+    // points, and the span check below reports which constraint blocks them.
     if (!found_split_point)
-      found_split_point =
-          findLegalSplitPoint(op, cert_page_size / 2, flatIndex, barrierSpans,
-                              split_job, split_iter);
+      found_split_point = findLegalSplitPoint(op, cert_page_size / 2, flatIndex,
+                                              {}, split_job, split_iter);
 
     // Over the split trigger but with nowhere to cut. Every cut has to leave at
     // least one op on each side, so a page whose bulk sits in a single one-op
@@ -1627,49 +1678,54 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
       return failure();
     }
 
-    // never split a local_barrier participant set across an .eop
-    // (G-localbar). If the cost-chosen split point would separate a barrier
-    // group, retarget to a legal split point; if none exists the page cannot be
-    // made legal, so fail the compile rather than emit something broken.
-    // an implicit page (formed by formImplicitPages) groups jobs meant to
-    // be cooperatively scheduled together; an explicit page is a user-authored
-    // boundary. This governs the wording of the diagnostics below (the remedy
-    // differs), not whether they fire.
-    if (!barrierSpans.empty()) {
+    // Never split a local_barrier participant set, or a payload patch from a
+    // later push of that payload, across an .eop. If the cost-chosen split
+    // point would, retarget to a legal split point; if none exists the page
+    // cannot be made legal, so fail the compile rather than emit something
+    // broken. An implicit page (formed by formImplicitPages) groups jobs meant
+    // to be cooperatively scheduled together; an explicit page is a
+    // user-authored boundary. This governs the wording of the diagnostics
+    // below (the remedy differs), not whether they fire.
+    if (!spans.empty()) {
       auto fi = flatIndex.find(&*split_iter);
       int p = fi == flatIndex.end() ? 0 : fi->second;
-      if (cutSeparatesBarrier(barrierSpans, p)) {
-        if (!findLegalSplitPoint(op, cert_page_size / 2, flatIndex,
-                                 barrierSpans, split_job, split_iter)) {
-          // No split keeps every local_barrier group intact. Leave the
-          // page whole: severing a barrier hangs the firmware, so an oversized
-          // page is the better of the two. That is only survivable while the
-          // page still fits, though -- past cert_page_limit neither option
-          // works, and both fail silently at runtime, so diagnose and fail the
-          // compile. The remedy differs by page kind: an implicit page just
-          // needs a user-authored boundary in the right place, while an
-          // explicit page is already where the user put it and has to be made
-          // smaller or its participants regrouped. Raise `hadError` so the pass
-          // actually fails -- returning failure() alone only tells the greedy
-          // driver this pattern did not apply.
+      SpanKind kind = SpanKind::LocalBarrier;
+      if (cutSeparatesSpan(spans, p, &kind)) {
+        if (!findLegalSplitPoint(op, cert_page_size / 2, flatIndex, spans,
+                                 split_job, split_iter)) {
+          // Leave the page whole: a severed span hangs the firmware or pushes
+          // stale addresses, so an oversized page is the better of the two.
+          // That is only survivable while the page still fits; past
+          // cert_page_limit, diagnose and raise `hadError` so the pass fails
+          // rather than only this rewrite.
           if (cost > cert_page_limit) {
+            bool barrier = kind == SpanKind::LocalBarrier;
+            StringRef what = barrier
+                                 ? "a local_barrier participant set"
+                                 : "a cert.apply_offset_57 from a uC-DMA push "
+                                   "of the payload it patches";
             if (isImplicit)
               op.emitError()
                   << "implicit cert.page is an estimated " << cost
                   << " bytes, over the " << cert_page_limit
                   << "-byte microcontroller page limit, and cannot be split "
-                     "without separating a local_barrier participant set "
-                     "across pages; insert an explicit cert.page boundary to "
-                     "co-locate the barrier participants";
+                     "without separating "
+                  << what
+                  << " across pages; insert an explicit cert.page boundary to "
+                  << (barrier ? "co-locate the barrier participants"
+                              : "co-locate each apply_offset_57 with its "
+                                "pushes");
             else
               op.emitError()
                   << "cert.page is an estimated " << cost << " bytes, over the "
                   << cert_page_limit
                   << "-byte microcontroller page limit, and cannot be split "
-                     "without separating a local_barrier participant set "
-                     "across pages; reduce the page's contents or regroup its "
-                     "local_barrier participants so that a legal split point "
-                     "exists";
+                     "without separating "
+                  << what << " across pages; reduce the page's contents or "
+                  << (barrier ? "regroup its local_barrier participants"
+                              : "regroup its apply_offset_57 ops and their "
+                                "pushes")
+                  << " so that a legal split point exists";
             *hadError = true;
           }
           return failure();
