@@ -1,0 +1,5 @@
+<map id="EmulateFMAF32InBF16Pattern" name="EmulateFMAF32InBF16Pattern">
+<area shape="rect" id="Node000001" title="Pattern to emulate f32 vector.fma with bf16 inputs." alt="" coords="5,98,225,126"/>
+<area shape="rect" id="Node000002" href="$classOpRewritePattern.html" title=" " alt="" coords="19,5,211,50"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="117,64,117,99,113,96,113,68"/>
+</map>
