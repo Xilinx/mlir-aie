@@ -10,11 +10,13 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include <optional>
+#include <tuple>
 
 namespace xilinx::AIE {
 
@@ -56,6 +58,9 @@ private:
       mlir::Operation *root,
       llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf);
 
+  llvm::DenseMap<mlir::StringAttr,
+                 llvm::SmallVector<std::tuple<unsigned, int64_t, int64_t>>>
+      lifetimes;
   llvm::DenseSet<mlir::StringAttr> used;
   llvm::DenseSet<std::pair<mlir::StringAttr, mlir::StringAttr>> overlaps;
   bool unknown = false;

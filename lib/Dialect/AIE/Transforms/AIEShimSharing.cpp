@@ -223,6 +223,8 @@ void ShimTransferSpans::analyze(
     });
     DenseMap<StringAttr, int64_t> live;
     for (const Span &span : result.spans) {
+      lifetimes[span.endpoint].emplace_back(summaries.size(), span.first,
+                                            span.last);
       for (const auto &[other, last] : live) {
         if (last < span.first)
           continue;
@@ -254,19 +256,8 @@ bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
 
 SmallVector<SmallVector<unsigned>>
 ShimTransferSpans::groups(ArrayRef<StringAttr> ends) const {
-  // By each end's whole span, all apart() reads, not by name: ends this
-  // cannot order relate alike to every other, so either may go first.
-  using Key = std::tuple<int64_t, int64_t, int64_t, int64_t, bool>;
-  SmallVector<SmallVector<Key>> when;
-  for (StringAttr end : ends) {
-    auto &key = when.emplace_back();
-    for (auto &byFifo : spans) {
-      auto it = byFifo.find(end);
-      Span span = it == byFifo.end() ? Span() : it->second;
-      key.push_back(
-          {span.first, span.last, span.lastIssue, span.lastDone, span.sends});
-    }
-  }
+  auto when = llvm::map_to_vector(
+      ends, [&](StringAttr end) { return lifetimes.lookup(end); });
   auto order = llvm::to_vector(llvm::seq<unsigned>(0, ends.size()));
   llvm::stable_sort(order,
                     [&](unsigned x, unsigned y) { return when[x] < when[y]; });

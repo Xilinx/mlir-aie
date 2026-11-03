@@ -7,6 +7,8 @@
 
 // RUN: aie-opt --split-input-file --aie-place-tiles --aie-objectFifo-stateful-transform %s | FileCheck %s
 // RUN: aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=42' --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s --check-prefixes=CHECK,SA
+// RUN: sed -e 's/in_a/in_z/g' -e 's/in_c/in_a/g' %s > %t.renamed.mlir
+// RUN: aie-opt --split-input-file --aie-place-tiles --aie-objectFifo-stateful-transform %t.renamed.mlir | FileCheck %t.renamed.mlir
 
 // The placer counts a shim tile's channels the way objectFIFO allocation
 // shares them: once the tile runs out, ends never in flight together count

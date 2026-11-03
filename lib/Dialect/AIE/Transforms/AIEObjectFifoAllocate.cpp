@@ -1195,10 +1195,9 @@ struct AIEObjectFifoAllocatePass
         return true;
       }
     }
-    auto order = llvm::to_vector(llvm::seq<unsigned>(0, candidates.size()));
-    llvm::stable_sort(order, [&](unsigned a, unsigned b) {
-      return fifos[a].getValue() < fifos[b].getValue();
-    });
+    SmallVector<unsigned> order;
+    for (auto &group : spans.groups(fifos))
+      llvm::append_range(order, group);
     SmallVector<SmallVector<unsigned>> groups;
     for (unsigned candidate : order) {
       auto *group = llvm::find_if(groups, [&](ArrayRef<unsigned> members) {
