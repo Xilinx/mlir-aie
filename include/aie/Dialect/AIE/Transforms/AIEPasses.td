@@ -217,11 +217,6 @@ def AIELowerCoreIssuedConfiguration
     The accesses execute on the core and address registers on its own tile
     through the processor bus. The pass sets `processor_bus` on each affected
     `aie.core` so device configuration enables the bus before core startup.
-
-    For pushes, the pass records an aie-rt transaction and extracts its
-    register writes, avoiding a separate implementation of the DMA register
-    encoding. It rejects transactions containing writes outside the core's
-    tile or operations other than plain register writes.
   }];
   let constructor = "xilinx::AIE::createAIELowerCoreIssuedConfigurationPass()";
   let dependentDialects = ["mlir::func::FuncDialect",
