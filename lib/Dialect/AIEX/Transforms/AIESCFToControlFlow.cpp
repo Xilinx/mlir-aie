@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
@@ -46,6 +47,15 @@ struct AIESCFToControlFlowPass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
+
+    SmallVector<scf::ForOp> foreverLoops;
+    module.walk([&](scf::ForOp forOp) {
+      if (forOp->getParentOfType<AIE::CoreOp>() &&
+          forOp.getInitArgs().empty() && AIE::isForeverForLoop(forOp))
+        foreverLoops.push_back(forOp);
+    });
+    for (scf::ForOp forOp : foreverLoops)
+      AIE::replaceWithForeverLoop(forOp);
 
     ConversionTarget target(getContext());
     // Everything is legal by default; only scf outside a runtime sequence is

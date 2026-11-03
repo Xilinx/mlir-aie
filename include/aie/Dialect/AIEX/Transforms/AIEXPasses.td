@@ -84,8 +84,8 @@ def AIESCFToControlFlow : Pass<"aie-scf-to-control-flow", "mlir::ModuleOp"> {
     control flow is preserved for its own lowering.
   }];
 
-  let constructor = "xilinx::AIEX::createAIESCFToControlFlowPass()";
-  let dependentDialects = ["mlir::cf::ControlFlowDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "mlir::cf::ControlFlowDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect",
   ];
