@@ -1,9 +1,0 @@
-<map id="ComputeAbsOpPattern&lt; SrcOpTy &gt;" name="ComputeAbsOpPattern&lt; SrcOpTy &gt;">
-<area shape="rect" id="Node000001" title=" " alt="" coords="101,99,270,144"/>
-<area shape="rect" id="Node000003" href="$structComputeAbsOpPattern.html" title=" " alt="" coords="5,217,174,262"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="139,152,124,170,109,194,98,218,94,215,104,191,120,166,135,155"/>
-<area shape="rect" id="Node000004" href="$structComputeAbsOpPattern.html" title=" " alt="" coords="197,217,366,262"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="238,151,254,166,269,191,279,218,274,216,264,193,250,170,237,156"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="106,5,265,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="187,63,188,100,183,98,184,68"/>
-</map>
