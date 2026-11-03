@@ -3198,7 +3198,8 @@ CASES += [
         for b_q, d, b_kv in ((32, 64, 64), (32, 128, 32), (16, 256, 16))
     ],
     # ...and on npu2, with the accurate exponential the AIE2P pipeline takes,
-    # at Llama 3.2 1B's and 3B's blocks there, over bf16 and float32 scores.
+    # at Llama 3.2 1B's and 3B's blocks there, over bf16 and float32 scores;
+    # npu1 runs the float32 24-row block too, and the 32-row one below.
     *[
         Case(
             "mha",
@@ -3214,7 +3215,7 @@ CASES += [
             calls=4,
             tag=f"iron-fused-accurate{'-f32' if f32 else ''}-d{d}",
             smoke=d == 64 and not f32,
-            devices=("npu2",),
+            devices=() if f32 and d == 128 else ("npu2",),
         )
         for f32 in (False, True)
         for b_q, d, b_kv in ((32, 64, 64), (24, 128, 32))
