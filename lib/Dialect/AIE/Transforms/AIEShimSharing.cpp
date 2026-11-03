@@ -99,6 +99,7 @@ void ShimTransferSpans::analyze(
       return result.spans.size() - 1;
     };
     DenseMap<StringAttr, SmallVector<size_t>> pending;
+    DenseMap<StringAttr, int64_t> receiveStarts;
     DenseMap<Value, StringAttr> tasks;
     DenseMap<size_t, Value> owners;
     auto transfer = [&](Operation *op, StringAttr symbol, bool starts,
@@ -109,6 +110,10 @@ void ShimTransferSpans::analyze(
       auto [from, to] = interval(op, position[op], position[op]);
       auto &queue = pending[symbol];
       if (starts) {
+        // A producer can send again before its next receive is posted, so gaps
+        // between receives do not make an endpoint available for sharing.
+        if (!endpoint->sends)
+          from = receiveStarts.try_emplace(endpoint->fifo, from).first->second;
         size_t start = note(endpoint->fifo, from);
         owners[start] = owner;
         queue.push_back(start);
@@ -154,12 +159,14 @@ void ShimTransferSpans::analyze(
         configuration(op, configure.getReferencedDeviceOp());
       } else if (isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
                      AIEX::NpuWriteTeardownOp>(op)) {
-        if (isa<AIEX::NpuLoadPdiOp>(op) && op->getParentOp() == sequence)
+        if (isa<AIEX::NpuLoadPdiOp>(op) && op->getParentOp() == sequence) {
+          receiveStarts.clear();
           for (auto &[symbol, queue] : pending) {
             for (size_t start : queue)
               note(result.spans[start].endpoint, position[op] - 1, start);
             queue.clear();
           }
+        }
         auto ref = op->getAttrOfType<FlatSymbolRefAttr>("device_ref");
         configuration(
             op, ref ? SymbolTable::lookupNearestSymbolFrom<DeviceOp>(op, ref)
