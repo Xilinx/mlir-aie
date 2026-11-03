@@ -212,7 +212,9 @@ def AIELowerCoreIssuedConfiguration
     : Pass<"aie-lower-core-issued-configuration", "xilinx::AIE::DeviceOp"> {
   let summary = "Lower core-issued DMA queue operations to register accesses";
   let description = [{
-    Lowers `aie.dma_push_queue` to register writes and
+    Lowers device/tile configuration instructions issued from within a core.
+
+    Concretely, lowers `aie.dma_push_queue` to register writes and
     `aie.dma_poll_for_queue_space` to a loop that reads the DMA queue status.
     The accesses execute on the core and address registers on its own tile
     through the processor bus. The pass sets `processor_bus` on each affected
