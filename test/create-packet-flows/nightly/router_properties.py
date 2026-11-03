@@ -2142,6 +2142,7 @@ class Analysis:
             for s in range(n)
             for t in range(n)
             if s != t
+            and self.tree_of[s] != self.tree_of[t]
             and (self.streams[s].pid is not None or self.streams[t].pid is not None)
             and self.related(s, t)
             and self.can_block(s, t)
