@@ -1,0 +1,9 @@
+<map id="xilinx::AIE::NpuConfigCache::Config" name="xilinx::AIE::NpuConfigCache::Config">
+<area shape="rect" id="Node000001" title=" " alt="" coords="111,123,312,168"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,14,151,42"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="105,49,161,97,189,123,184,122,157,101,104,54"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="174,14,248,42"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="213,55,214,124,209,121,209,59"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="272,5,414,50"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="310,60,237,125,235,120,305,61"/>
+</map>
