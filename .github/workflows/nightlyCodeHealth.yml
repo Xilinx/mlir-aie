@@ -43,12 +43,14 @@ jobs:
           # UBSan rides with ASan (one runtime, one build). vptr and
           # function need RTTI from every object, and the prebuilt MLIR is
           # not built for them. Leaks are off: the Python tests' interpreter
-          # is not instrumented and leaks by design at exit.
+          # is not instrumented and leaks by design at exit. User poisoning is
+          # off: LLVM's allocators poison from our instrumented copies of their
+          # header templates and unpoison only in the prebuilt MLIR's.
           - name: asan-ubsan
             title: ASan and UBSan
             flags: -fsanitize=address,undefined -fno-sanitize=vptr,function -fno-sanitize-recover=undefined
             runtime: asan
-            options: ASAN_OPTIONS=detect_leaks=0:abort_on_error=0:symbolize=1 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
+            options: ASAN_OPTIONS=detect_leaks=0:abort_on_error=0:symbolize=1:allow_user_poisoning=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
             filter-out: 'slow_test|python-concurrency'
             codeql: true
           # TSan sees races in this repo's code; the prebuilt MLIR it links
