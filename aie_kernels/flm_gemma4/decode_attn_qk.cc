@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "decode_attn_qk_common.h"
-#include "decode_layout.h"
+#include "decode_geometry.h"
 #include "decode_lut_exp.h"
 #include "utils.h"
 

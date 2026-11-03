@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "decode_layout.h"
+#include "decode_geometry.h"
 #include "lut_based_ops.h"
 #include "utils.h"
 

@@ -931,8 +931,8 @@ FLM_GEMMA4_E4B_DECODE = FlmGemma4DecodeGeometry(
 )
 
 _DECODE_UNTIMED = (
-    "blocks on core locks its design releases, so the generic harness can "
-    "neither run nor time it"
+    "a compute step whose fused decode design initializes scratch state and "
+    "sequences calls; the generic harness cannot run or time it in isolation"
 )
 
 
@@ -1172,8 +1172,6 @@ _DECODE_Q4NX_ROWS, _DECODE_Q4NX_COLS = 32, 256
 _DECODE_Q4NX_BLOCK_BYTES = _DECODE_Q4NX_ROWS * _DECODE_Q4NX_COLS * 5 // 8
 # One bf16 weight block of the per-layer-input projections: 32 rows by 256.
 _DECODE_BF16_BLOCK = 32 * 256
-_DECODE_RTP = np.ndarray[(16,), np.dtype[np.int32]]
-_DECODE_KV_LOCKS = {}
 
 
 def _decode_kv_heads(
@@ -1208,7 +1206,6 @@ def _decode_attn_types(geometry, dh, kv_width):
         m=np.ndarray[(16,), _BF16],
         c=np.ndarray[(8,), _F32],
         y=np.ndarray[(geometry.num_attn_heads * dh,), _F32],
-        o=np.ndarray[(geometry.num_attn_heads * dh,), _BF16],
         l=np.ndarray[(8,), _F32],
     )
 
@@ -1246,10 +1243,11 @@ def flm_gemma4_decode_attn_kv(
     The decode layer's global attention runs on two cores. This one folds
     each round's scores and running-max corrections from the qk core into
     the softmax denominator ``l`` and the float32 accumulator ``y``, and at
-    the end writes ``o = y / l``. The returned kernel is ``attn_kv_begin``,
-    which zeroes ``y`` and ``l`` and waits for the RTPs. Per round the
-    Worker calls ``attn_kv_round``, then once ``attn_kv_finish``. ``y`` and
-    ``o`` need 64-byte-aligned base pointers.
+    the end narrows and normalizes ``y`` in place. The returned kernel is
+    ``attn_kv_begin``, which zeroes ``y`` and ``l``. The Worker owns the RTP
+    handshake, calls ``attn_kv_round`` per round, then ``attn_kv_finish(y, l)``.
+    Finish leaves bf16 values in the first half of the float32 allocation,
+    in [dh/8, head, 8] order. ``y`` needs a 64-byte-aligned base pointer.
 
     Args:
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 1.
@@ -1262,7 +1260,7 @@ def flm_gemma4_decode_attn_kv(
         "attn_kv_begin",
         [t["y"], t["l"]],
         (Out, Out),
-        _DECODE_KV_LOCKS,
+        {},
         locks,
         geometry,
         lut=True,
@@ -1270,7 +1268,7 @@ def flm_gemma4_decode_attn_kv(
     )
     bind = fn.object_file.bind
     fn.attn_kv_round = bind("attn_kv_round", [t["s"], t["kv"], t["y"], t["l"]])
-    fn.attn_kv_finish = bind("attn_kv_finish", [t["y"], t["o"], t["l"]])
+    fn.attn_kv_finish = bind("attn_kv_finish", [t["y"], t["l"]])
     return fn
 
 
@@ -1395,7 +1393,7 @@ def _attn_kv_round_core(base, source, symbol, *, dh, kv_width, impl, rows, ref):
 def flm_gemma4_attn_kv_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
-    """One ``attn_kv_round`` of [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] without its v lock.
+    """One ``attn_kv_round`` of [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv] with caller-owned state.
 
     ``attn_kv_round_core(sv, ly_in, ly_out)``: ``ly_out`` is ``ly_in`` with
     ``l = c * l + rowsum(s)`` and ``y = c * y + s @ v`` per query head. ``sv``
@@ -1442,7 +1440,7 @@ def flm_gemma4_decode_attn_kv_kvh2(
         "attn_kv_begin",
         [t["y"], t["l"]],
         (Out, Out),
-        _DECODE_KV_LOCKS,
+        {},
         locks,
         geometry,
         lut=True,
@@ -1451,14 +1449,14 @@ def flm_gemma4_decode_attn_kv_kvh2(
     bind = fn.object_file.bind
     fn.attn_kv_s_begin = bind("attn_kv_s_begin", [t["s"], t["y"], t["l"]])
     fn.attn_kv_v_half = bind("attn_kv_v_half", [t["s"], t["kv"], t["y"], np.int32])
-    fn.attn_kv_finish = bind("attn_kv_finish", [t["y"], t["o"], t["l"]])
+    fn.attn_kv_finish = bind("attn_kv_finish", [t["y"], t["l"]])
     return fn
 
 
 def flm_gemma4_attn_kv_kvh2_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE
 ) -> ExternalFunction:
-    """``attn_kv_s_begin``, then one KV head's ``attn_kv_v_half``, without the v lock.
+    """``attn_kv_s_begin``, then one KV head's ``attn_kv_v_half``, with caller-owned state.
 
     The entry points are those of
     [`flm_gemma4_decode_attn_kv_kvh2`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv_kvh2].
@@ -1715,7 +1713,7 @@ def flm_gemma4_attn_qk_core(
     sliding_window: bool = False,
     geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
 ) -> ExternalFunction:
-    """One ``attn_qk_round`` of [`flm_gemma4_decode_attn_qk`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], without its k lock.
+    """One ``attn_qk_round`` of [`flm_gemma4_decode_attn_qk`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk], with caller-owned state.
 
     ``attn_qk_round_core(qm, k, s, c, iter, L0)`` takes the running max
     after q in ``qm`` and writes it after the scores in ``s``. ``c`` holds the
@@ -1736,7 +1734,7 @@ def flm_gemma4_attn_qk_core(
 def flm_gemma4_attn_qk_kvh2_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE
 ) -> ExternalFunction:
-    """One round of [`flm_gemma4_decode_attn_qk_kvh2`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], without its k lock.
+    """One round of [`flm_gemma4_decode_attn_qk_kvh2`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], with caller-owned state.
 
     ``attn_qk_kvh2_round_core(qm, k, s, c, iter, L0)`` runs
     ``attn_qk_half`` for both KV heads, whose k objects ``k`` holds back to
@@ -1783,7 +1781,7 @@ def flm_gemma4_decode_swa_attn_kv(
         "swa_attn_kv_begin",
         [t["y"], t["l"]],
         (Out, Out),
-        _DECODE_KV_LOCKS,
+        {},
         locks,
         geometry,
         lut=True,
@@ -1791,7 +1789,7 @@ def flm_gemma4_decode_swa_attn_kv(
     )
     bind = fn.object_file.bind
     fn.swa_attn_kv_round = bind("swa_attn_kv_round", [t["s"], t["kv"], t["y"], t["l"]])
-    fn.swa_attn_kv_finish = bind("swa_attn_kv_finish", [t["y"], t["o"], t["l"]])
+    fn.swa_attn_kv_finish = bind("swa_attn_kv_finish", [t["y"], t["l"]])
     return fn
 
 
@@ -1801,7 +1799,7 @@ DTYPES["flm_gemma4_swa_attn_kv_core"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECOD
 def flm_gemma4_swa_attn_kv_core(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
-    """One ``swa_attn_kv_round`` of [`flm_gemma4_decode_swa_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] without its v lock.
+    """One ``swa_attn_kv_round`` of [`flm_gemma4_decode_swa_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_swa_attn_kv] with caller-owned state.
 
     ``swa_attn_kv_round_core(sv, ly_in, ly_out)``: ``ly_out`` is ``ly_in``
     with ``l = c * l + rowsum(s)`` and ``y = c * y + s @ v`` per query head,
@@ -2041,51 +2039,27 @@ DTYPES["flm_gemma4_decode_rms_residual"] = tuple([{"geometry": FLM_GEMMA4_E4B_DE
 def flm_gemma4_decode_rms_residual(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
-    """Build the decode layer's four RMS norms and two residual adds, from ``flm_gemma4/decode_rms_residual.cc``.
+    """Three lock-free decode phases: ``rms_begin``, ``rms_middle``, ``rms_finish``.
 
-    ``rms_residual(y, x_ping, x_pong, y_final, w, x_temp_buf, is_swa, skip_kv)``:
-    one layer's worth of norms. It normalizes the layer input into ``y`` for
-    the QKV projection, then normalizes the attention output, adds the
-    residual and normalizes the sum into ``y`` for the up/gate projection,
-    and finally normalizes the MLP output and adds the second residual into
-    ``y_final``. The attention and MLP outputs arrive in the ``x`` ping-pong
-    pair (``model_dim`` bf16 each). ``y`` is ``model_dim + 16`` bf16, a
-    16-element packet header then the row; ``w`` holds the four norm weights
-    (``4 * model_dim``); ``x_temp_buf`` is ``2 * model_dim`` of scratch.
-    ``is_swa`` and ``skip_kv`` are int32 RTP buffers of 16 words that select
-    how many projection repeats ``y`` is released for.
-
-    Args:
-        geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults ``y_prod_lock=2``, ``y_cons_lock=3``,
-            ``x_prod_lock=4`` and ``x_cons_lock=5``.
+    Each takes an input row, four norm weights, residual scratch (two rows),
+    and an output. Begin and middle write a packet-padded projection input;
+    finish writes the plain layer output. The Worker retains the weights and
+    scratch across the three calls and owns all synchronization.
     """
-    bf16 = np.dtype[bfloat16]
     d = geometry.model_dim
-    x_ty = np.ndarray[(d,), bf16]
-    return _decode_kernel(
-        "rms_residual",
-        "rms_residual",
-        [
-            np.ndarray[(d + 16,), bf16],
-            x_ty,
-            x_ty,
-            x_ty,
-            np.ndarray[(4, d), bf16],
-            np.ndarray[(2, d), bf16],
-            _DECODE_RTP,
-            _DECODE_RTP,
-        ],
-        (Out, In, In, Out, In, Out, Param, Param),
-        dict(
-            y_prod_lock=2,
-            y_cons_lock=3,
-            x_prod_lock=4,
-            x_cons_lock=5,
-        ),
-        locks,
-        geometry,
+    x = np.ndarray[(d,), _BF16]
+    args = [
+        x,
+        np.ndarray[(4, d), _BF16],
+        np.ndarray[(2, d), _BF16],
+        np.ndarray[(d + 16,), _BF16],
+    ]
+    fn = _decode_kernel(
+        "rms_residual", "rms_begin", args, (In, In, InOut, Out), {}, locks, geometry
     )
+    fn.rms_middle = fn.object_file.bind("rms_middle", args)
+    fn.rms_finish = fn.object_file.bind("rms_finish", [*args[:3], x])
+    return fn
 
 
 def _rms_residual_core_terms(x, w, residual):
@@ -2207,69 +2181,89 @@ def flm_gemma4_rms_norm_core(
     )
 
 
+DTYPES["flm_gemma4_decode_emit"] = tuple(
+    {
+        "geometry": FLM_GEMMA4_E4B_DECODE,
+        "attention": attention,
+        "sliding_window": sliding_window,
+    }
+    for attention, sliding_window in ((False, False), (True, False), (True, True))
+)
+
+
+def flm_gemma4_decode_emit(
+    *,
+    geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
+    attention: bool = False,
+    sliding_window: bool = False,
+) -> ExternalFunction:
+    """Copy one 512-bf16 projection input, reordering attention's head groups.
+
+    RMS input has a 16-bf16 packet prefix. Attention input is a float32
+    allocation whose first half holds normalized bf16 values in
+    [dh/8, head, 8] order, following ``attn_kv_finish``.
+    The output is a contiguous piece of the head-major projection vector.
+    """
+    dh = geometry.swa_dh if sliding_window else geometry.dh
+    size = geometry.num_attn_heads * dh if attention else geometry.model_dim + 16
+    return _decode_kernel(
+        "emit",
+        "decode_emit",
+        [
+            np.ndarray[(size,), _F32 if attention else _BF16],
+            np.ndarray[(512,), _BF16],
+            np.int32,
+        ],
+        (In, Out, Param),
+        {},
+        {},
+        geometry,
+        flags=(f"-DEMIT_ATTENTION={int(attention)}", f"-DEMIT_DH={dh}"),
+    )
+
+
 DTYPES["flm_gemma4_decode_proj_main"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 
 
 def flm_gemma4_decode_proj_main(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
-    """One of the decode layer's 16 q4nx projection cores, from ``flm_gemma4/decode_proj_main.cc``.
+    """Lock-free q4nx decode steps: zero, accumulate, store and packet assembly.
 
-    ``proj_main(y_ping, w_ping, x_ping, y_pong, w_pong, x_pong, is_swa, skip_kv, send_x_output)``:
-    runs this core's share of every projection in a layer (QKV, output,
-    up/gate and down), multiplying q4nx weight blocks from the ``w``
-    ping-pong pair into 256-element input slices from the ``x`` pair and
-    writing each block's 32 outputs into the ``y`` pair. ``y_ping`` and
-    ``y_pong`` are ``2 * 32 + 16`` bf16: a 16-element packet header, then
-    two 32-output slots. With ``send_x_output`` set the core fills the first
-    slot of its own pair and sends it; with it 0 the pair is the tile
-    below's and the core fills the second slot. ``w_ping`` and ``w_pong`` are one q4nx
-    block each (5120 bytes: 32 by 256 weights, their bf16 scales and mins,
-    then the 4-bit codes). ``is_swa`` and ``skip_kv`` are int32 RTP buffers
-    of 16 words that select the projection shapes.
-
-    Args:
-        geometry: The model the kernel builds for.
-        **locks: Core lock ids overriding the defaults ``x_prod_lock=0``,
-            ``x_cons_lock=1``, ``w_prod_lock=2``, ``w_cons_lock=3``,
-            ``y_prod_ping_lock=4``, ``y_prod_pong_lock=5``,
-            ``y_cons_ping_lock=7`` and
-            ``y_cons_pong_lock=8``. When ``send_x_output`` is 0 the four
-            ``y`` locks are those of the neighbour whose memory holds ``y``.
+    The Worker owns projection shapes, loops and FIFO rotations. Group sums
+    are computed for the first row block and reused for subsequent rows.
+    ``proj_store`` writes one row block; ``proj_pack`` combines the local
+    accumulator and a neighbour's row block into the outgoing packet.
     """
-    bf16 = np.dtype[bfloat16]
-    y_ty = np.ndarray[(2 * _DECODE_Q4NX_ROWS + 16,), bf16]
-    # One q4nx block, as the bf16 words the weight streams move.
-    w_ty = np.ndarray[(_DECODE_Q4NX_BLOCK_BYTES // 2,), bf16]
-    x_ty = np.ndarray[(_DECODE_Q4NX_COLS,), bf16]
-    return _decode_kernel(
+    m, k = _DECODE_Q4NX_ROWS, _DECODE_Q4NX_COLS
+    acc = np.ndarray[(m,), np.dtype[np.float32]]
+    row = np.ndarray[(m,), _BF16]
+    sums = np.ndarray[
+        (geometry.intermediate_size * (2 if geometry.double_wide_mlp else 1) // 32,),
+        _BF16,
+    ]
+    fn = _decode_kernel(
         "proj_main",
-        "proj_main",
+        "proj_accumulate",
         [
-            y_ty,
-            w_ty,
-            x_ty,
-            y_ty,
-            w_ty,
-            x_ty,
-            _DECODE_RTP,
-            _DECODE_RTP,
+            np.ndarray[(_DECODE_Q4NX_BLOCK_BYTES // 2,), _BF16],
+            np.ndarray[(k,), _BF16],
+            acc,
+            sums,
+            np.int32,
             np.int32,
         ],
-        (Out, In, In, Out, In, In, Param, Param, Param),
-        dict(
-            x_prod_lock=0,
-            x_cons_lock=1,
-            w_prod_lock=2,
-            w_cons_lock=3,
-            y_prod_ping_lock=4,
-            y_prod_pong_lock=5,
-            y_cons_ping_lock=7,
-            y_cons_pong_lock=8,
-        ),
+        (In, In, InOut, InOut, Param, Param),
+        {},
         locks,
         geometry,
     )
+    fn.proj_zero = fn.object_file.bind("proj_zero", [acc])
+    fn.proj_store = fn.object_file.bind("proj_store", [row, acc])
+    fn.proj_pack = fn.object_file.bind(
+        "proj_pack", [np.ndarray[(2 * m + 16,), _BF16], acc, row, np.int32]
+    )
+    return fn
 
 
 DTYPES["flm_gemma4_decode_per_layer_up"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
@@ -2390,7 +2384,11 @@ def flm_gemma4_decode_proj_layer_embedding_mvm(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
     """One MVM block of the per-layer-input embedding projection, inlined into its core."""
-    return _bf16_proj_mvm("proj_layer_embedding_mvm", geometry.model_dim, geometry)
+    return _bf16_proj_mvm(
+        "proj_layer_embedding_mvm",
+        2 * (geometry.pli_d + geometry.model_dim) + 32,
+        geometry,
+    )
 
 
 def flm_gemma4_decode_proj_layer_embedding_store(
@@ -2499,24 +2497,11 @@ DTYPES["flm_gemma4_decode_proj_layer_embedding"] = tuple(
 def flm_gemma4_decode_proj_layer_embedding(
     *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
 ) -> ExternalFunction:
-    """Build the per-layer-input embedding projection, from ``flm_gemma4/decode_proj_layer_embedding.cc``.
+    """Finish the embedding from a packed input object and projected scratch.
 
-    ``bf16_proj_zero``, ``proj_layer_embedding_mvm`` and
-    ``proj_layer_embedding_store`` project the layer input ``x0``
-    (``model_dim`` bf16) down to ``pli_d``. The design streams its 32 by 256
-    bf16 weight blocks. Then
-    ``proj_layer_embedding_finish(norm_w, x0_per_layer, x_proj, y)`` scales,
-    RMS-normalizes and adds the token's per-layer embedding ``x0_per_layer``
-    (``pli_d``), and scales again, in the scratch ``x_proj`` (``pli_d``).
-    ``norm_w`` (``pli_d + model_dim + 32`` bf16) holds the norm weight, then
-    ``model_dim + 32`` values the finish entry point copies to the start of
-    ``y`` (same size) for the up projection. The result follows them.
-
-    ``x_proj`` needs a 64-byte-aligned base pointer.
-
-    Args:
-        geometry: The model the kernel builds for.
-        **locks: No lock arguments are accepted.
+    Input layout: per-layer embedding, norm weights plus ``model_dim + 32``
+    values forwarded to the up projection, then the ``model_dim`` input row.
+    The MVM entry point reads that last row using its explicit offset.
     """
     bf16 = np.dtype[bfloat16]
     d, pli = geometry.model_dim, geometry.pli_d
@@ -2525,8 +2510,8 @@ def flm_gemma4_decode_proj_layer_embedding(
     fn = _decode_kernel(
         "proj_layer_embedding",
         "proj_layer_embedding_finish",
-        [y_ty, pli_ty, pli_ty, y_ty],
-        (In, In, InOut, Out),
+        [np.ndarray[(2 * (pli + d) + 32,), bf16], pli_ty, y_ty],
+        (In, InOut, Out),
         {},
         locks,
         geometry,

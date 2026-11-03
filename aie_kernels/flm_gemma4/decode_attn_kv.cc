@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "decode_attn_kv_common.h"
-#include "decode_layout.h"
+#include "decode_geometry.h"
 #include "utils.h"
 #if ATTN_IMPL == ATTN_IMPL_1x8x1
 typedef float y_acc_dtype;
@@ -14,7 +14,6 @@ template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
              y_acc_dtype *__restrict pY, float *__restrict c);
 
-extern "C" {}
 template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
              y_acc_dtype *__restrict pY, float *__restrict c) {
@@ -112,8 +111,6 @@ void attn_kv_round(bf16 *s, bf16 *v, float *y, float *l) {
   attn_fv<DH / 8, GQA_R, GQA_S, GQA_T>(s, v, y, c);
 }
 
-void attn_kv_finish(float *y, bf16 *o, float *l) {
-  attn_kv_finish_impl<8 * DH>(y, o, l);
-}
+void attn_kv_finish(float *y, float *l) { attn_kv_finish_impl<8 * DH>(y, l); }
 }
 #endif

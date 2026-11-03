@@ -7,14 +7,14 @@
 
 #include "decode_bf16_proj.h"
 #include "decode_geometry.h"
-#include "decode_layout.h"
 #include "rms_norm.h"
 #include "utils.h"
 
 extern "C" {
 
-void proj_layer_embedding_finish(bf16 *norm_w, bf16 *x0_per_layer, bf16 *x_proj,
-                                 bf16 *y) {
+void proj_layer_embedding_finish(bf16 *input, bf16 *x_proj, bf16 *y) {
+  bf16 *x0_per_layer = input;
+  bf16 *norm_w = input + PLI_D;
   scale_vectorized<PLI_D>(x_proj, (bf16)PER_LAYER_INPUT_SCALE);
 
   rms_norm<PLI_D>(x_proj, x_proj, norm_w);

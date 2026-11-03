@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "decode_attn_kv_common.h"
-#include "decode_layout.h"
+#include "decode_geometry.h"
 #include "utils.h"
 
 typedef float y_acc_dtype;
@@ -36,8 +36,8 @@ void swa_attn_kv_round(bf16 *s, bf16 *v, float *y, float *l) {
   attn_fv<SWA_DH / 8, GQA_R, GQA_S, GQA_T>(s, v, y);
 }
 
-void swa_attn_kv_finish(float *y, bf16 *o, float *l) {
-  attn_kv_finish_impl<8 * SWA_DH>(y, o, l);
+void swa_attn_kv_finish(float *y, float *l) {
+  attn_kv_finish_impl<8 * SWA_DH>(y, l);
 }
 }
 

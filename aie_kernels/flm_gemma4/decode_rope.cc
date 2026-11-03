@@ -9,7 +9,6 @@
 // FLM_GEMMA4_DECODE_ROPE_SWA=1 builds it for the sliding-window layers' head
 // dim, 0 for the global-attention layers'.
 #include "decode_geometry.h"
-#include "decode_layout.h"
 #include "rms_norm.h"
 #include "utils.h"
 

@@ -119,13 +119,11 @@ void scale_div_aie(bf16 *a, bf16 *o, float *l) {
 }
 
 // ---------------------------------------------------------------------------
-// Round prologue and epilogue of the three kv kernels. The lock ids are
-// template parameters because each kernel has its own lock contract with the
-// design.
+// Round prologue and epilogue of the three kv kernels.
 
 /// \brief Zero the y/l accumulators.
 ///
-/// The Worker acquires the qk tile's handshake lock after this call, so it
+/// The Worker acquires its handshake lock after this call, so it
 /// may read L only once that acquire returns.
 template <unsigned N>
 void attn_kv_begin_impl(float *y, float *l) {
@@ -134,14 +132,13 @@ void attn_kv_begin_impl(float *y, float *l) {
   aie::store_v(l, zero);
 }
 
-/// \brief Narrow the f32 accumulator in place, then scale by 1/l into o.
+/// \brief Narrow the f32 accumulator in place, then scale by 1/l in place.
 ///
-/// The Worker holds the o locks across this call; see decode_layout.h for the
-/// O_REPEATS the down projection reads o with.
+/// The Worker owns the output and its subsequent transfers.
 template <unsigned N>
-void attn_kv_finish_impl(float *y, bf16 *o, float *l) {
+void attn_kv_finish_impl(float *y, float *l) {
   narrow_to_bf16<N>((bf16 *)y, y);
-  scale_div_aie<N>((bf16 *)y, o, l);
+  scale_div_aie<N>((bf16 *)y, (bf16 *)y, l);
 }
 
 #endif // AIE_KERNELS_FLM_GEMMA4_DECODE_ATTN_KV_COMMON_H

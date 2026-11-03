@@ -7,7 +7,6 @@
 
 #include "decode_bf16_proj.h"
 #include "decode_geometry.h"
-#include "decode_layout.h"
 #include "lut_based_ops.h"
 #include "utils.h"
 
