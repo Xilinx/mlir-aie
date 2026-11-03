@@ -225,6 +225,24 @@ extern "C" void second_table(int *a, int n) {
     )
 
 
+def test_data_counts_the_padding_between_aligned_sections(tmp_path):
+    """Two 4-byte statics, each 64-byte aligned, take 68 bytes, not 8."""
+    pair = ExternalFunction(
+        "aligned_pair",
+        source_string="""
+alignas(64) static int lo;
+alignas(64) static int hi;
+extern "C" void aligned_pair(int *a, int n) {
+  lo += a[0];
+  hi += a[n - 1];
+}
+""",
+        arg_types=[np.ndarray[(64,), np.dtype[np.int32]], np.int32],
+    )
+    found = pair.measure("aie2p", KernelObjectCache(tmp_path, 60))
+    assert found.reached_data == found.data == 64 + 4
+
+
 def test_measure_refuses_an_arch_the_recipe_was_not_built_for():
     """A factory's recipe is its bound device's; measuring it for another
     arch is refused before Peano compiles the wrong source.
