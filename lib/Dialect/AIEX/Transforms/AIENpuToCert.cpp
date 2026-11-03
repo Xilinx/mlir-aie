@@ -232,7 +232,10 @@ struct NpuMaskPollToCertMaskPoll32 : OpConversionPattern<AIEX::NpuMaskPollOp> {
 };
 
 struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
-  using OpConversionPattern::OpConversionPattern;
+  // nextChainId is owned by the caller and shared by every rewrite in one
+  // conversion, so each name search resumes after the last name allocated.
+  NpuBlockWriteToCertUcDma(MLIRContext *ctx, unsigned &nextChainId)
+      : OpConversionPattern(ctx), nextChainId(nextChainId) {}
 
   LogicalResult
   matchAndRewrite(AIEX::NpuBlockWriteOp op, OpAdaptor adaptor,
@@ -244,11 +247,16 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
       return failure();
     MemRefType dataType = cast<MemRefType>(dataOperand.getResult().getType());
     uint32_t dataSize = dataType.getNumElements();
+    // An empty copy is a no-op, and AIEBU rejects a descriptor whose payload
+    // label has no data.
+    if (dataSize == 0) {
+      rewriter.eraseOp(op);
+      return success();
+    }
 
-    int id = 0;
-    std::string symbolName = "chain_" + std::to_string(id);
+    std::string symbolName = "chain_" + std::to_string(nextChainId++);
     while (op->getParentOfType<AIE::DeviceOp>().lookupSymbol(symbolName))
-      symbolName = "chain_" + std::to_string(++id);
+      symbolName = "chain_" + std::to_string(nextChainId++);
 
     // Create a new uc_dma_write_des_sync operation
     rewriter.replaceOpWithNewOp<AIEX::CertUcDmaWriteDesSyncOp>(op, symbolName);
@@ -291,6 +299,8 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
                                              op->getLoc());
     return success();
   }
+
+  unsigned &nextChainId;
 };
 
 struct NpuSyncToCertWaitTCTS : OpConversionPattern<AIEX::NpuSyncOp> {
@@ -1129,8 +1139,9 @@ struct AIENpuToCertPass
     target.addIllegalOp<AIEX::NpuWrite32Op>();
     target.addIllegalOp<AIEX::NpuLoadPdiOp>();
 
+    unsigned nextChainId = 0;
     RewritePatternSet p2(&getContext());
-    p2.insert<NpuBlockWriteToCertUcDma>(&getContext());
+    p2.insert<NpuBlockWriteToCertUcDma>(&getContext(), nextChainId);
     p2.insert<NpuMaskWrite32ToCertMaskWrite32>(&getContext());
     p2.insert<NpuMaskPollToCertMaskPoll32>(&getContext());
     p2.insert<NpuWrite32ToCertWrite32>(&getContext());
