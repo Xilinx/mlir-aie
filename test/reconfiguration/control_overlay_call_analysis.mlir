@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// RUN: aie-opt --split-input-file --aie-create-control-overlay="adaptive=false" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-generate-column-control-overlay="configuration=true adaptive=false" --aie-import-overlay --aie-annotate-shim-sharing %s | FileCheck %s
 
 // An overlap in any callee prevents sharing, even when other calls are disjoint.
 // CHECK-LABEL: module @callee_overlap

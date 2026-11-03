@@ -35,7 +35,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
                             bool packetSwObjFifos, bool ctrlPktOverlay,
                             bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
                             llvm::ArrayRef<int> coverColumns,
-                            bool adaptiveOverlay, bool shareChannels,
+                            bool adaptiveOverlay,
                             bool checkQueueSpace) {
   pm.addPass(createLowerAffinePass());
   pm.addPass(createAIECanonicalizeDevicePass());
@@ -45,14 +45,13 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   pm.nest<DeviceOp>().addPass(createAIEObjectFifoSplitPass());
   if (!skipObjectFifoVerify)
     pm.nest<DeviceOp>().addPass(createAIEObjectFifoVerifyPass());
-  if (loadPdiToCtrlPkt) {
-    AIECreateControlOverlayOptions options;
-    options.adaptive = adaptiveOverlay;
-    options.shareChannels = shareChannels;
-    options.coverColumns = llvm::to_vector(coverColumns);
-    pm.addPass(createAIECreateControlOverlayPass(options));
-  }
+  AIEGenerateColumnControlOverlayOptions overlay;
+  overlay.configuration = ctrlPktOverlay || loadPdiToCtrlPkt;
+  overlay.adaptive = adaptiveOverlay;
+  overlay.coverColumns = llvm::to_vector(coverColumns);
+  pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
   pm.addPass(createAIEImportOverlayPass());
+  pm.addPass(createAIEAnnotateShimSharingPass());
   OpPassManager &dpm = pm.nest<DeviceOp>();
   dpm.addPass(createAIEAssignPacketIdsPass(packetSwObjFifos, ctrlPktOverlay));
   dpm.addPass(createAIEObjectFifoAllocatePass());
@@ -73,15 +72,7 @@ void AIEX::addLoweringStage(OpPassManager &pm, bool dynamicObjFifos,
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(createAIEBroadcastPacketPass());
   dpm.addPass(createAIELowerMulticastPass());
-  AIEGenerateColumnControlOverlayOptions overlay;
-  overlay.clRouteShimDmaToTileCTRL = ctrlPktOverlay;
-  overlay.clCoverColumns = llvm::to_vector(coverColumns);
-  if (ctrlPktOverlay && !loadPdiToCtrlPkt)
-    pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
   pm.nest<DeviceOp>().addPass(createAIEAssignTileCtrlIDsPass());
-
-  if (!ctrlPktOverlay)
-    pm.addPass(createAIEGenerateColumnControlOverlayPass(overlay));
 
   // A buffer's name becomes a symbol in its core's object.
   pm.nest<DeviceOp>().addPass(createAIEPrepareBuffersPass());
@@ -116,8 +107,7 @@ void AIEX::registerAIEResourceStagesPipeline() {
         addLoweringStage(pm, options.dynamicObjFifos, options.packetSwObjFifos,
                          options.ctrlPktOverlay || options.loadPdiToCtrlPkt,
                          options.loadPdiToCtrlPkt, options.skipObjectFifoVerify,
-                         {}, options.adaptiveOverlay,
-                         options.shareControlChannels);
+                         {}, options.adaptiveOverlay);
         addBufferAddressStage(pm, options.placementBudget);
         addRoutingStage(pm, options.allowDeadlockProneRouting);
       });

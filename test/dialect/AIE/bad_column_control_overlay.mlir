@@ -5,12 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt %s -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" 2>&1 | FileCheck %s
+// RUN: not aie-opt %s -aie-generate-column-control-overlay="configuration=true " --aie-import-overlay 2>&1 | FileCheck %s
 
 // Column 1's two shim MM2S channels both move data, so none is left for its
 // control packets.
 
-// CHECK: error: 'aie.device' op failed to generate column control overlay: every shim mm2s dma channel of column 1 moves data, so none is left for its control packets
+// CHECK: failed to generate control overlay: no available shim MM2S channel in column 1
 
 aie.device(npu1_2col) {
   %tile_0_0 = aie.tile(0, 0)
@@ -18,8 +18,5 @@ aie.device(npu1_2col) {
   %tile_1_0 = aie.tile(1, 0)
   %tile_1_1 = aie.tile(1, 1)
   aie.flow(%tile_1_0, DMA : 0, %tile_1_1, DMA : 0)
-  aie.packet_flow(1) {
-    aie.packet_source<%tile_1_0, DMA : 1>
-    aie.packet_dest<%tile_1_1, DMA : 1>
-  }
+  aie.flow(%tile_1_0, DMA : 1, %tile_1_1, DMA : 1)
 }

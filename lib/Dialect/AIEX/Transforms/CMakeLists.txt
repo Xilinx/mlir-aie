@@ -6,7 +6,6 @@
 
 add_mlir_dialect_library(AIEXTransforms
   AIEResourceStages.cpp
-  AIECreateControlOverlay.cpp
   AIEXToStandard.cpp
   AIESCFToControlFlow.cpp
   AIECreateCores.cpp

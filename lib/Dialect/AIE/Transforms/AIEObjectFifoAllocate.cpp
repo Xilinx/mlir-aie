@@ -1142,15 +1142,9 @@ struct AIEObjectFifoAllocatePass
               endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
                                          : endpoint.getSymNameAttr(),
               endpoint.getRouteDirection() == DMAChannelDir::MM2S};
-          if (auto channel = endpoint.getChannelIndex())
-            if (auto tile =
-                    dyn_cast<TileOp>(endpoint.getTile().getDefiningOp()))
-              end.channel = std::make_tuple(
-                  tile.colIndex(), tile.rowIndex(),
-                  static_cast<int>(endpoint.getRouteDirection()), *channel);
           return end;
         });
-    auto canShare = [&](RouteEndpointOp a, RouteEndpointOp b) {
+    auto permits = [&](RouteEndpointOp a, RouteEndpointOp b) {
       if (auto allowed =
               AIEDialect::ShareableWithAttrHelper(a->getContext()).getAttr(a))
         return llvm::is_contained(allowed,
@@ -1158,6 +1152,9 @@ struct AIEObjectFifoAllocatePass
       return spans.apart(
           a.getFifoNameAttr() ? a.getFifoNameAttr() : a.getSymNameAttr(),
           b.getFifoNameAttr() ? b.getFifoNameAttr() : b.getSymNameAttr());
+    };
+    auto canShare = [&](RouteEndpointOp a, RouteEndpointOp b) {
+      return permits(a, b) && permits(b, a);
     };
     SmallVector<Operation *> candidates;
     SmallVector<StringAttr> fifos;

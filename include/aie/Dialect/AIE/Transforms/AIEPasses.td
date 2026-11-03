@@ -873,47 +873,35 @@ def AIEImportOverlay : Pass<"aie-import-overlay", "mlir::ModuleOp"> {
 
 def AIEGenerateColumnControlOverlay
     : Pass<"aie-generate-column-control-overlay", "mlir::ModuleOp"> {
-  let summary = "Spawns streaming interconnect network for column control";
+  let summary = "Generate a standalone control overlay shared by the module's devices";
   let description = [{
-    For each column of AIE tiles being employed in the design, spawn a network of control packet
-    streaming interconnects which overlay on top of the design.
-
-    With route-shim-to-tile-ctrl, each covered column's control packets enter
-    through one shim MM2S DMA channel, the one of the column's
-    `aie.is_ctrl_overlay` allocation, else the lowest one no device of the module moves data
-    through, and reach every row of the column.
+    Creates an overlay device and references it from application devices.
+    Completion-token flows are imported and routed with each application.
+    With configuration enabled, also creates shim-to-controller flows and
+    routes the overlay once, before importing its fixed resources.
+    Adaptive placement avoids application reservations; fixed placement uses
+    shim MM2S channel zero. Supplied overlays must be explicitly referenced.
   }];
-
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
-  let options =
-      [Option<
-           "clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string",
-           /*default=*/"\"shim-only\"",
-           "Flag to generate TCT routing between tile CTRL and shim SOUTH "
-           "ports. Available options: ['shim-only', 'all-tiles', 'disable']. "
-           "'shim-only' also routes any tile a runtime sequence task issues "
-           "a token from.">,
-       Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool",
-              /*default=*/"false",
-              "Flag to generate routing between shim dma DMA and tile CTRL "
-              "ports, for configuration.">,
-       Option<"clEmitStandaloneOverlay", "emit-standalone-overlay", "bool",
-              /*default=*/"false",
-              "Emit a standalone @ctrl_pkt_overlay device and reference it "
-              "from application devices for the load-pdi-to-ctrl-pkt "
-              "reconfigure flow. When "
-              "false, the pass applies the overlay in place only.">,
-       Option<"clPlanChannels", "plan-channels", "bool", "false",
-              "Select fixed control channels before application allocation.">,
-       Option<"clAdaptiveChannels", "adaptive-channels", "bool", "true",
-              "Choose control channels around application reservations; "
-              "otherwise use channel 0.">,
-       ListOption<"clCoverColumns", "cover-columns", "int",
-                  "With route-shim-to-tile-ctrl, also cover these columns. "
-                  "aiecc adds each column outside the occupied range that the "
-                  "design's routes need.">,
+  let dependentDialects = ["xilinx::AIE::AIEDialect", "xilinx::AIEX::AIEXDialect"];
+  let options = [
+    Option<"configuration", "configuration", "bool", "false",
+           "Include and pre-route configuration transport">,
+    Option<"adaptive", "adaptive", "bool", "true",
+           "Place configuration transport around application resources">,
+    ListOption<"coverColumns", "cover-columns", "int",
+               "Additional columns touched by application routing">
   ];
+}
+
+def AIEAnnotateShimSharing : Pass<"aie-annotate-shim-sharing", "mlir::ModuleOp"> {
+  let summary = "Annotate shim endpoints that can share channels";
+  let description = [{
+    Records module-wide transfer lifetime analysis in aie.shareable_with.
+    Explicit attributes take precedence over inferred sharing permissions.
+  }];
+  let constructor = "xilinx::AIE::createAIEAnnotateShimSharingPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect", "xilinx::AIEX::AIEXDialect"];
 }
 
 def AIETraceToConfig : Pass<"aie-trace-to-config", "DeviceOp"> {

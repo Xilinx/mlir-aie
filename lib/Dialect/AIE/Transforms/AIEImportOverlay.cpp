@@ -27,12 +27,25 @@ struct AIEImportOverlayPass
           "requires an overlay without an overlay reference");
     if (device.getDevice() != overlay.getDevice())
       return device.emitOpError("and its overlay must use the same target");
-    for (Operation &op : overlay.getBody()->without_terminator())
-      if (!isa<TileOp, SwitchboxOp, ShimMuxOp, WireOp, ShimDMAAllocationOp>(op))
-        return op.emitOpError("is not a routed overlay resource");
-
     IRMapping mapping;
     OpBuilder builder(device.getContext());
+    auto equivalent = [&](Operation *source, Operation *dest) {
+      IRMapping values(mapping);
+      return OperationEquivalence::isEquivalentTo(
+          source, dest,
+          [&](Value a, Value b) {
+            return success(values.lookupOrDefault(a) == b);
+          },
+          [&](Value a, Value b) { values.map(a, b); },
+          OperationEquivalence::IgnoreLocations |
+              OperationEquivalence::IgnoreDiscardableAttrs);
+    };
+    auto inherit = [&](Operation *source, Operation *dest) {
+      mapping.map(source->getResults(), dest->getResults());
+      for (NamedAttribute attr : source->getDiscardableAttrs())
+        if (!dest->hasAttr(attr.getName()))
+          dest->setAttr(attr.getName(), attr.getValue());
+    };
     for (TileOp tile : overlay.getOps<TileOp>()) {
       builder.setInsertionPointToStart(device.getBody());
       TileOp dest = TileOp::getOrCreate(builder, device, tile.colIndex(),
@@ -45,112 +58,68 @@ struct AIEImportOverlayPass
         dest->setAttr("controller_id", id);
       }
     }
-    auto equivalent = [&](Operation &op, Operation &existing) {
-      return OperationEquivalence::isEquivalentTo(
-          &op, &existing,
-          [&](Value a, Value b) {
-            return success(mapping.lookupOrDefault(a) == b);
-          },
-          nullptr,
-          OperationEquivalence::IgnoreLocations |
-              OperationEquivalence::IgnoreDiscardableAttrs);
-    };
-    auto inheritAttrs = [](Operation &source, Operation &dest) {
-      for (NamedAttribute attr : source.getDiscardableAttrs())
-        if (!dest.hasAttr(attr.getName()))
-          dest.setAttr(attr.getName(), attr.getValue());
-    };
-    auto importOp = [&](Operation &op, Block &block) -> Operation * {
-      for (Operation &existing : block.without_terminator()) {
-        if (equivalent(op, existing)) {
-          mapping.map(op.getResults(), existing.getResults());
-          inheritAttrs(op, existing);
-          return &existing;
-        }
-      }
-      builder.setInsertionPoint(block.getTerminator());
-      return builder.clone(op, mapping);
-    };
-    for (Operation &op : overlay.getBody()->without_terminator()) {
-      if (isa<TileOp, WireOp>(op))
-        continue;
-      if (auto alloc = dyn_cast<ShimDMAAllocationOp>(op)) {
-        auto existing =
-            device.lookupSymbol<ShimDMAAllocationOp>(alloc.getSymName());
-        if (existing) {
-          if (!equivalent(op, *existing))
-            return existing.emitOpError(
-                "conflicts with its overlay's DMA allocation");
-          inheritAttrs(op, *existing);
+    std::function<LogicalResult(Block &, Block &)> importBlock =
+        [&](Block &source, Block &dest) -> LogicalResult {
+      auto slot = dest.begin();
+      for (Operation &op : source.without_terminator()) {
+        if (isa<TileOp>(op))
+          continue;
+        // Rule order fixes both hardware slots and first-match precedence.
+        if (isa<PacketRuleOp>(op) && slot != dest.end() && !isa<EndOp>(*slot)) {
+          if (!equivalent(&op, &*slot))
+            return slot->emitOpError(
+                "occupies a packet-rule slot required by its overlay");
+          inherit(&op, &*slot++);
           continue;
         }
-        importOp(op, *device.getBody());
-        continue;
-      }
-      Value tile = mapping.lookup(op.getOperand(0));
-      Operation *dest = nullptr;
-      for (Operation &existing : device.getBody()->without_terminator())
-        if (existing.getName() == op.getName() &&
-            existing.getOperand(0) == tile) {
-          dest = &existing;
-          break;
-        }
-      if (!dest) {
-        builder.setInsertionPoint(device.getBody()->getTerminator());
-        dest = builder.cloneWithoutRegions(op, mapping);
-        dest->getRegion(0).emplaceBlock();
-        builder.setInsertionPointToEnd(&dest->getRegion(0).front());
-        EndOp::create(builder, op.getLoc());
-      }
-      mapping.map(op.getResults(), dest->getResults());
-      Block &block = dest->getRegion(0).front();
-      for (Operation &setting : op.getRegion(0).front().without_terminator()) {
-        auto rules = dyn_cast<PacketRulesOp>(setting);
-        if (!rules) {
-          importOp(setting, block);
-          continue;
-        }
-        PacketRulesOp destRules;
-        for (auto existing : block.getOps<PacketRulesOp>())
-          if (existing.sourcePort() == rules.sourcePort())
-            destRules = existing;
-        if (!destRules) {
-          builder.setInsertionPoint(block.getTerminator());
-          destRules = PacketRulesOp::create(builder, rules.getLoc(),
-                                            rules.getSourceBundle(),
-                                            rules.getSourceChannel());
-          PacketRulesOp::ensureTerminator(destRules.getRules(), builder,
-                                          rules.getLoc());
-        }
-        if (destRules->hasAttr("aie.is_ctrl_overlay")) {
-          for (auto rule : destRules.getRules().front().getOps<PacketRuleOp>())
-            rule->setAttr("aie.is_ctrl_overlay", builder.getUnitAttr());
-          destRules->removeAttr("aie.is_ctrl_overlay");
-        }
-        // Rule position is a hardware slot; importing cannot shift fixed rules.
-        auto existing = destRules.getRules().front().getOps<PacketRuleOp>();
-        auto it = existing.begin();
-        for (auto rule : rules.getRules().front().getOps<PacketRuleOp>()) {
-          if (it != existing.end()) {
-            auto own = *it++;
-            if (own.getMask() != rule.getMask() ||
-                own.getValue() != rule.getValue() ||
-                own.getAmsel() != mapping.lookup(rule.getAmsel()))
-              return own.emitOpError(
-                  "occupies a packet-rule slot required by its overlay");
-            inheritAttrs(*rule, *own);
-            if (rules->hasAttr("aie.is_ctrl_overlay"))
-              own->setAttr("aie.is_ctrl_overlay", builder.getUnitAttr());
-          } else {
-            Operation *imported = importOp(*rule, destRules.getRules().front());
-            if (rules->hasAttr("aie.is_ctrl_overlay"))
-              imported->setAttr("aie.is_ctrl_overlay", builder.getUnitAttr());
+        bool container = isa<SwitchboxOp, ShimMuxOp, PacketRulesOp>(op);
+        Operation *match = nullptr;
+        if (container) {
+          Operation *shape = op.cloneWithoutRegions();
+          for (Operation &candidate : dest.without_terminator()) {
+            if (candidate.getName() != op.getName())
+              continue;
+            Operation *other = candidate.cloneWithoutRegions();
+            bool same = equivalent(shape, other);
+            other->destroy();
+            if (same) {
+              match = &candidate;
+              break;
+            }
+          }
+          shape->destroy();
+        } else {
+          for (Operation &candidate : dest.without_terminator()) {
+            if (equivalent(&op, &candidate)) {
+              match = &candidate;
+              break;
+            }
+            auto name =
+                op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+            if (name && name == candidate.getAttrOfType<StringAttr>(
+                                    SymbolTable::getSymbolAttrName()))
+              return candidate.emitOpError("conflicts with an overlay symbol ")
+                     << name;
           }
         }
+        if (match) {
+          if (container) {
+            mapping.map(op.getResults(), match->getResults());
+            if (failed(importBlock(op.getRegion(0).front(),
+                                   match->getRegion(0).front())))
+              return failure();
+          } else {
+            inherit(&op, match);
+          }
+        } else {
+          builder.setInsertionPoint(dest.getTerminator());
+          builder.clone(op, mapping);
+        }
       }
-    }
-    for (auto wire : overlay.getOps<WireOp>())
-      importOp(*wire, *device.getBody());
+      return success();
+    };
+    if (failed(importBlock(*overlay.getBody(), *device.getBody())))
+      return failure();
     return success();
   }
 

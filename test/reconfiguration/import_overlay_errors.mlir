@@ -22,7 +22,6 @@ module {
   aie.device(npu2_1col) @application {} {overlay = @transport}
   aie.device(npu2_1col) @transport {
     %tile = aie.tile(0, 2)
-    // expected-error@+1 {{is not a routed overlay resource}}
     aie.packet_flow(15) {
       aie.packet_source<%tile, DMA : 0>
       aie.packet_dest<%tile, TileControl : 0>
@@ -68,7 +67,7 @@ module {
 module {
   aie.device(npu2_1col) @application {
     %shim = aie.tile(0, 0)
-    // expected-error@+1 {{conflicts with its overlay's DMA allocation}}
+    // expected-error@+1 {{conflicts with an overlay symbol}}
     aie.shim_dma_allocation @control(%shim, MM2S, 0, <pkt_id = 2>)
   } {overlay = @transport}
   aie.device(npu2_1col) @transport {

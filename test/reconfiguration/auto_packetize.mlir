@@ -1,9 +1,8 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// RUN: aie-opt --aie-objectfifo-split --aie-create-control-overlay="adaptive=false" %s | FileCheck %s --check-prefix=PLAN
-// RUN: aie-opt --aie-objectfifo-split --aie-create-control-overlay="adaptive=false" --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s --check-prefix=ALLOC
-// RUN: not aie-opt --aie-objectfifo-split --aie-create-control-overlay="adaptive=false share-channels=false" --aie-assign-packet-ids --aie-objectfifo-allocate %s 2>&1 | FileCheck %s --check-prefix=OFF
+// RUN: aie-opt --aie-objectfifo-split --aie-generate-column-control-overlay="configuration=true adaptive=false" --aie-import-overlay --aie-annotate-shim-sharing %s | FileCheck %s --check-prefix=PLAN
+// RUN: aie-opt --aie-objectfifo-split --aie-generate-column-control-overlay="configuration=true adaptive=false" --aie-import-overlay --aie-annotate-shim-sharing --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s --check-prefix=ALLOC
 
 // PLAN-LABEL: @shared
 // PLAN: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0

@@ -12,8 +12,8 @@
 // packet_flow. The shim mux connect both use is kept, and routing the result
 // again routes flow 9.
 
-// RUN: aie-opt --aie-create-control-overlay --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s --check-prefixes=CHECK,FIND
-// RUN: aie-opt --aie-create-control-overlay --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows %s | FileCheck %s --check-prefixes=CHECK,ROUTE
+// RUN: aie-opt --aie-generate-column-control-overlay="configuration=true " --aie-import-overlay --aie-annotate-shim-sharing --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s --check-prefixes=CHECK,FIND
+// RUN: aie-opt --aie-generate-column-control-overlay="configuration=true " --aie-import-overlay --aie-annotate-shim-sharing --aie-create-pathfinder-flows --aie-find-flows --aie-create-pathfinder-flows %s | FileCheck %s --check-prefixes=CHECK,ROUTE
 
 // CHECK:      aie.shim_mux
 // CHECK-NEXT:   aie.connect<DMA : 0, North : 3> {aie.is_ctrl_overlay}

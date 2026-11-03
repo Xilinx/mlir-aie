@@ -15,7 +15,7 @@ aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0)
   aie.runtime_sequence() {
-    // expected-error@+1 {{'aiex.control_packet' op column 0 has no control packet shim DMA allocation; run -aie-generate-column-control-overlay with route-shim-to-tile-ctrl=true first}}
+    // expected-error@+1 {{'aiex.control_packet' op column 0 has no control packet shim DMA allocation; run -aie-generate-column-control-overlay --aie-import-overlay with configuration=true, then -aie-import-overlay first}}
     aiex.control_packet {address = 0 : ui32, data = array<i32: 100>, opcode = 0 : i32, stream_id = 0 : i32}
   }
 }

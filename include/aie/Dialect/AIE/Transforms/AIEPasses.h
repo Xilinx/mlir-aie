@@ -17,6 +17,8 @@
 #include "mlir/Pass/Pass.h"
 
 namespace xilinx::AIE {
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEAnnotateShimSharingPass();
 
 /// Discardable attribute set by `--aie-objectfifo-lower-cores` on `scf.for`
 /// and forever `scf.while` loops containing ObjectFifo accesses -- the loop

@@ -96,37 +96,40 @@ For the two configurations of `test/npu-xrt/reconfigure_loadpdi/aie.mlir`:
 
 ### Control packet reconfiguration
 
-`--load-pdi-to-ctrl-pkt` loads each configuration through a common
-`@ctrl_pkt_overlay` device. The module pass `aie-create-control-overlay` runs
-on placed endpoint and route IR before application allocation, after splitting
-any ObjectFIFOs. It routes one standalone overlay across all configurations and attaches
-`overlay = @ctrl_pkt_overlay` references to its users. `aie-import-overlay`
-imports its routed switchboxes, wires, shim muxes and DMA reservations before
-application allocation. The application router treats them as fixed resources.
-`aie.is_ctrl_overlay` marks settings that application configuration and teardown
-must leave untouched; application rules can occupy free slots on shared inputs.
-Sharing an imported output masterset is not currently supported.
+`aie-generate-column-control-overlay` creates a standalone overlay device on
+placed, split ObjectFIFO IR. Application devices reference it using
+`overlay = @ctrl_pkt_overlay`; `aie-import-overlay` imports its resources before
+application allocation. Both passes run in the normal compilation pipeline.
 
-- `--ctrlpkt-adaptive-overlay` (on by default) chooses shim channels around
-  fixed application reservations and packet demand, and uses trial application
-  routing to prefer switchbox ports the applications do not need. Set it to
-  `false` for channel 0 and the default overlay routes.
-- `--ctrlpkt-share-channels` (on by default) allows the resource allocator to
-  put application endpoints on the overlay's fixed channels. It automatically
-  adds packet headers to shared data routes. It does not insert memory-tile
-  relays. Set it to `false` to require dedicated control channels.
+For ordinary compilation, the overlay contains completion-token packet flows.
+They remain unrouted until imported into each application. With
+`--generate-ctrl-pkt-overlay` or `--load-pdi-to-ctrl-pkt`, the generator also
+creates configuration transport and routes the standalone overlay once.
+The application router respects the imported switchboxes and DMA reservations.
+`aie.is_ctrl_overlay` marks settings that configuration and teardown preserve.
 
-The aliases `--ctrlpkt-adaptive-pin` and `--ctrlpkt-auto-packetize` are accepted.
-Both options require `--load-pdi-to-ctrl-pkt`.
+`--ctrlpkt-adaptive-overlay` chooses channels around application reservations
+and prefers routes away from application traffic. Set it to `false` to use
+channel zero and default routes. Coverage includes occupied columns
+and expands when application routing touches additional columns.
+
+`aie-annotate-shim-sharing` records sharing permissions before allocation.
+The allocator can place application endpoints on the overlay's fixed channels
+and add packet headers when the transfers do not overlap. Explicit
+`aie.shareable_with` lists override analysis; an empty list on a shim allocation
+prevents application endpoints from sharing that channel.
 
 For direct pass use:
 
 ```sh
-aie-opt --aie-objectfifo-split --aie-create-control-overlay='adaptive=false' \
-  --aie-assign-packet-ids --aie-objectfifo-allocate design.mlir
+aie-opt --aie-objectfifo-split \
+  --aie-generate-column-control-overlay='configuration=true adaptive=false' \
+  --aie-import-overlay --aie-annotate-shim-sharing \
+  --aie-assign-packet-ids='reserve-controller-packet-ids=true' \
+  --aie-objectfifo-allocate design.mlir
 ```
 
-Overlay creation analyzes runtime sequences and their `aiex.run` calls before
+Sharing analysis examines runtime sequences and their `aiex.run` calls before
 materialization. Each call completes its own transfers on return; transfers
 started by the caller remain live until their completion is established.
 Configuration operations and explicit control-packet batches complete before

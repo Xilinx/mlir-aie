@@ -5,21 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows %s | aie-opt --aie-generate-column-control-overlay="route-shim-to-tct=shim-only" | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// priority_route_holds_needed_channel.mlir with the shim's control response.
-// Packet id 0 cannot keep the route it takes alone, so the prioritized flows
-// route like the others. The response route carries the priority
-// marker, so the overlay pass finds it routed and adds a response flow only
-// for the other shim.
+// A prioritized response retains its marker when routing needs the fallback.
 
 // CHECK-LABEL: aie.switchbox(%shim_noc_tile_0_0)
 // CHECK:         aie.masterset(South : 0, %{{.*}}) {aie.priority_route, keep_pkt_header = true}
-// CHECK-NOT:     aie.packet_source<%shim_noc_tile_0_0, TileControl : 0>
-// CHECK:         aie.packet_flow(15) {
-// CHECK-NEXT:      aie.packet_source<%shim_noc_tile_1_0, TileControl : 0>
-// CHECK-NEXT:      aie.packet_dest<%shim_noc_tile_1_0, South : 0>
-// CHECK-NOT:     aie.packet_source<%shim_noc_tile_0_0, TileControl : 0>
 
 module {
   aie.device(npu1_2col) {

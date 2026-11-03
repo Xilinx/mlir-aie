@@ -173,6 +173,16 @@ struct OverlayCoverage {
       auto tileOp = tile.getDefiningOp<xilinx::AIE::TileOp>();
       if (!tileOp || op->getRegion(0).front().without_terminator().empty())
         return;
+      bool applicationWrites = false;
+      op->walk([&](mlir::Operation *setting) {
+        if (llvm::isa<xilinx::AIE::ConnectOp, xilinx::AIE::MasterSetOp,
+                      xilinx::AIE::PacketRuleOp>(setting) &&
+            !xilinx::AIE::AIEDialect::IsCtrlOverlayAttrHelper(op->getContext())
+                 .isAttrPresent(setting))
+          applicationWrites = true;
+      });
+      if (!applicationWrites)
+        return;
       auto device = op->getParentOfType<xilinx::AIE::DeviceOp>();
       cols.try_emplace(tileOp.colIndex(), device.getSymName().str(),
                        op->getName().getStringRef().str());

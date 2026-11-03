@@ -36,8 +36,8 @@ module {
       %a = aie.amsel<5>(3) {aie.is_ctrl_overlay}
       aie.masterset(TileControl : 0, %a) {aie.is_ctrl_overlay}
       aie.packet_rules(DMA : 0) {
-        aie.rule(31, 15, %a)
-      } {aie.is_ctrl_overlay}
+        aie.rule(31, 15, %a) {aie.is_ctrl_overlay}
+      }
     }
   } {aie.is_ctrl_overlay}
 }

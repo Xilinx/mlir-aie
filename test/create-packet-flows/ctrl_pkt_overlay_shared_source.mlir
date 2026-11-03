@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// RUN: aie-opt --aie-create-control-overlay='adaptive=false' --aie-create-pathfinder-flows %s -o %t
+// RUN: aie-opt --aie-generate-column-control-overlay="configuration=true adaptive=false" --aie-import-overlay --aie-annotate-shim-sharing --aie-create-pathfinder-flows %s -o %t
 // RUN: aie-opt --aie-import-overlay %t | diff %t -
 // RUN: FileCheck %s < %t
 
@@ -42,12 +42,8 @@ module {
     aie.flow(%t01, DMA : 4, %t05, DMA : 0)
     aie.flow(%t05, DMA : 0, %t01, DMA : 4)
     aie.flow(%t01, DMA : 5, %t02, DMA : 1)
-    aie.packet_flow(15) {
-      aie.packet_source<%t00, DMA : 1>
-      aie.packet_dest<%t00, TileControl : 0>
-    } {keep_pkt_header = true, priority_route = true}
     aie.packet_flow(3) {
-      aie.packet_source<%t00, DMA : 1>
+      aie.packet_source<%t00, DMA : 0>
       aie.packet_dest<%t11, DMA : 0>
     }
   }

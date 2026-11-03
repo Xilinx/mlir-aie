@@ -23,6 +23,16 @@ def AIE_Dialect : Dialect {
     switch is referred to as `switchbox` to avoid confusion with the
     `switch` keyword in C/C++.
 
+    `aie.shareable_with` is an array of flat symbol references. On a route
+    endpoint it lists other route endpoints allowed to share its shim channel;
+    both endpoints must permit the pairing. On a shim DMA allocation it lists
+    route endpoints allowed to use that fixed channel. Empty lists forbid
+    these shares. Explicit lists override lifetime analysis, but resource and
+    packet-routing constraints still apply; omission permits inference.
+
+    On a device, `aie.reserve_controller_packet_ids` reserves controller IDs
+    when assigning packet IDs.
+
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
@@ -33,11 +43,6 @@ def AIE_Dialect : Dialect {
   // opt out of upstream's strict-properties default until they migrate.
   let useStrictPropertiesInAssemblyFormat = 0;
   // Overlay-owned settings survive application configuration and teardown.
-  // On route endpoints and shim allocations, shareable_with lists same-device
-  // endpoint symbols permitted to share their channel. An empty list forbids
-  // sharing; an explicit list overrides lifetime analysis, but not hardware
-  // constraints. Omitted attributes allow analysis to infer eligibility.
-  // On devices, reserve_controller_packet_ids excludes controller IDs from allocation.
   let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_overlay,
       "::mlir::UnitAttr":$priority_route,
       "::mlir::ArrayAttr":$shareable_with,

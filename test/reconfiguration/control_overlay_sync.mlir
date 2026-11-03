@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// RUN: aie-opt --split-input-file --aie-objectfifo-split --aie-create-control-overlay="adaptive=false" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-objectfifo-split --aie-generate-column-control-overlay="configuration=true adaptive=false" --aie-import-overlay --aie-annotate-shim-sharing %s | FileCheck %s
 
 // CHECK-LABEL: @synced
 // CHECK: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
@@ -11,10 +11,13 @@
 // CHECK-SAME: aie.shareable_with = []
 
 module {
+  aie.device(npu2_1col) @transport {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_overlay}
+  } {aie.is_ctrl_overlay}
   aie.device(npu2_1col) @synced {
     %shim = aie.tile(0, 0)
     %core = aie.tile(0, 2)
-    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0)
     aie.objectfifo @a(%shim, {%core}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b(%shim, {%core}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.core(%core) {
@@ -32,17 +35,20 @@ module {
       aiex.npu.dma_memcpy_nd(%input[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @a, id = 0 : i64} : memref<16xi32>
       aiex.npu.dma_memcpy_nd(%input[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @b, id = 1 : i64} : memref<16xi32>
     }
-  }
+  } {overlay = @transport}
 }
 
 
 // -----
 
 module {
+  aie.device(npu2_1col) @transport {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_overlay}
+  } {aie.is_ctrl_overlay}
   aie.device(npu2_1col) @unsynced {
     %shim = aie.tile(0, 0)
     %core = aie.tile(0, 2)
-    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0)
     aie.objectfifo @a(%shim, {%core}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b(%shim, {%core}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.core(%core) {
@@ -57,7 +63,7 @@ module {
       aiex.npu.dma_memcpy_nd(%input[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @a, id = 0 : i64} : memref<16xi32>
       aiex.npu.dma_memcpy_nd(%input[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @b, id = 1 : i64} : memref<16xi32>
     }
-  }
+  } {overlay = @transport}
 }
 
 // -----
@@ -67,10 +73,13 @@ module {
 // CHECK-SAME: aie.shareable_with = []
 
 module {
+  aie.device(npu2_1col) @transport {
+    %shim = aie.tile(0, 0)
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_overlay}
+  } {aie.is_ctrl_overlay}
   aie.device(npu2_1col) @partially_synced {
     %shim = aie.tile(0, 0)
     %core = aie.tile(0, 2)
-    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0)
     aie.objectfifo @a(%shim, {%core}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @b(%shim, {%core}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.core(%core) {
@@ -89,5 +98,5 @@ module {
       aiex.npu.dma_memcpy_nd(%input[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @a, id = 0 : i64} : memref<16xi32>
       aiex.npu.dma_memcpy_nd(%input[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @b, id = 1 : i64} : memref<16xi32>
     }
-  }
+  } {overlay = @transport}
 }

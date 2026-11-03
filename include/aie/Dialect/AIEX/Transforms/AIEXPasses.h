@@ -92,12 +92,6 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIELowerScratchpadParametersPass(
     AIELowerScratchpadParametersOptions options);
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIECreateControlOverlayPass();
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createAIECreateControlOverlayPass(
-    const AIECreateControlOverlayOptions &options);
-
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -117,7 +111,7 @@ void addLoweringStage(mlir::OpPassManager &pm, bool dynamicObjFifos,
                       bool packetSwObjFifos, bool ctrlPktOverlay,
                       bool loadPdiToCtrlPkt, bool skipObjectFifoVerify,
                       llvm::ArrayRef<int> coverColumns = {},
-                      bool adaptiveOverlay = true, bool shareChannels = true,
+                      bool adaptiveOverlay = true,
                       bool checkQueueSpace = true);
 void addBufferAddressStage(mlir::OpPassManager &pm, int64_t placementBudget);
 void addRoutingStage(mlir::OpPassManager &pm, bool allowDeadlockProne);
@@ -160,11 +154,6 @@ struct AIEResourceStagesOptions
   Option<bool> adaptiveOverlay{
       *this, "ctrlpkt-adaptive-overlay",
       llvm::cl::desc("Choose the control overlay around application resources"),
-      llvm::cl::init(true)};
-  Option<bool> shareControlChannels{
-      *this, "ctrlpkt-share-channels",
-      llvm::cl::desc(
-          "Share control channels with disjoint application transfers"),
       llvm::cl::init(true)};
   Option<bool> skipObjectFifoVerify{
       *this, "skip-objectFifo-verify",

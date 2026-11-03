@@ -15,7 +15,6 @@
 #include "llvm/ADT/SmallVector.h"
 
 #include <optional>
-#include <tuple>
 
 namespace xilinx::AIE {
 
@@ -29,20 +28,17 @@ public:
     mlir::StringAttr fifo;
     /// An MM2S end, sending into the array.
     bool sends;
-    std::optional<std::tuple<int, int, int, int>> channel = std::nullopt;
   };
 
   /// `endOf` maps a symbol a runtime sequence transfers through to the
   /// objectFIFO end it belongs to, or nothing when it belongs to none.
   ShimTransferSpans(
       DeviceOp device,
-      llvm::function_ref<std::optional<End>(mlir::StringAttr)> endOf,
-      mlir::StringAttr configuration = {});
+      llvm::function_ref<std::optional<End>(mlir::StringAttr)> endOf);
 
   ShimTransferSpans(
       mlir::ModuleOp module,
-      llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf,
-      mlir::StringAttr configuration);
+      llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf);
 
   /// Whether the ends of `a` and `b` are never in flight together.
   bool apart(mlir::StringAttr a, mlir::StringAttr b) const;
@@ -56,17 +52,9 @@ public:
   groups(llvm::ArrayRef<mlir::StringAttr> ends) const;
 
 private:
-  struct Span {
-    int64_t first = std::numeric_limits<int64_t>::max();
-    int64_t last = -1;
-    int64_t lastIssue = -1;
-    int64_t lastDone = -1;
-    bool sends = false;
-  };
   void analyze(
       mlir::Operation *root,
-      llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf,
-      mlir::StringAttr configuration);
+      llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf);
 
   llvm::DenseSet<mlir::StringAttr> used;
   llvm::DenseSet<std::pair<mlir::StringAttr, mlir::StringAttr>> overlaps;

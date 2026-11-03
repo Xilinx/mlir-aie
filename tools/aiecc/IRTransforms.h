@@ -1405,7 +1405,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
     bool packetSwObjFifos, bool ctrlPktOverlay, bool bf16Emulation,
     unsigned optLevel, bool loadPdiToCtrlPkt = false,
     bool skipObjectFifoVerify = false, bool assignAddresses = true,
-    llvm::ArrayRef<int> coverColumns = {}, bool shareChannels = true,
+    llvm::ArrayRef<int> coverColumns = {},
     bool adaptiveOverlay = true, bool checkQueueSpace = true) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
@@ -1429,7 +1429,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // lowering in this stage writes no `outputParamsFile`.
   X::addLoweringStage(*pm, dynamicObjFifos, packetSwObjFifos, ctrlPktOverlay,
                       loadPdiToCtrlPkt, skipObjectFifoVerify, coverColumns,
-                      adaptiveOverlay, shareChannels, checkQueueSpace);
+                      adaptiveOverlay, checkQueueSpace);
 
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   if (assignAddresses) {

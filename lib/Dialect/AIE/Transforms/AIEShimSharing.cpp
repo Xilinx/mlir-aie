@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/IR/Matchers.h"
@@ -18,38 +19,40 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEANNOTATESHIMSHARING
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
 ShimTransferSpans::ShimTransferSpans(
-    DeviceOp device, function_ref<std::optional<End>(StringAttr)> endOf,
-    StringAttr configuration) {
-  analyze(
-      device,
-      [&](DeviceOp owner, StringAttr symbol) {
-        return owner == device ? endOf(symbol) : std::nullopt;
-      },
-      configuration);
+    DeviceOp device, function_ref<std::optional<End>(StringAttr)> endOf) {
+  analyze(device, [&](DeviceOp owner, StringAttr symbol) {
+    return owner == device ? endOf(symbol) : std::nullopt;
+  });
 }
 
 ShimTransferSpans::ShimTransferSpans(
     ModuleOp module,
-    function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf,
-    StringAttr configuration) {
-  analyze(module, endOf, configuration);
+    function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf) {
+  analyze(module, endOf);
 }
 
 void ShimTransferSpans::analyze(
     Operation *root,
-    function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf,
-    StringAttr configuration) {
-  using Ends = DenseSet<StringAttr>;
-  DenseMap<Operation *, Ends> summaries;
+    function_ref<std::optional<End>(DeviceOp, StringAttr)> endOf) {
+  struct Span {
+    StringAttr endpoint;
+    int64_t first, last;
+  };
+  struct Summary {
+    SmallVector<Span> spans;
+    int64_t duration = 0;
+  };
+  DenseMap<Operation *, Summary> summaries;
   DenseSet<Operation *> active;
   NamedOpTableCollection names;
-  auto conflict = [&](StringAttr a, StringAttr b) {
-    overlaps.insert({a, b});
-    overlaps.insert({b, a});
-  };
-  std::function<Ends(RuntimeSequenceOp)> summarize =
-      [&](RuntimeSequenceOp sequence) -> Ends {
+  std::function<Summary(RuntimeSequenceOp)> summarize =
+      [&](RuntimeSequenceOp sequence) -> Summary {
     if (active.contains(sequence)) {
       unknown = true;
       return {};
@@ -58,20 +61,24 @@ void ShimTransferSpans::analyze(
       return found->second;
     active.insert(sequence);
     DeviceOp device = sequence->getParentOfType<DeviceOp>();
-    Ends ends;
+    Summary result;
     DenseMap<Operation *, int64_t> position, end;
-    int64_t next = 0;
     std::function<void(Operation *)> number = [&](Operation *op) {
-      position[op] = next++;
+      position[op] = result.duration++;
+      if (auto run = dyn_cast<AIEX::RunOp>(op)) {
+        if (auto callee = run.getCalleeRuntimeSequenceOp(&names))
+          result.duration += summarize(callee).duration;
+        else
+          unknown = true;
+      }
       for (Region &region : op->getRegions())
         for (Block &block : region)
           for (Operation &nested : block)
             number(&nested);
-      end[op] = next - 1;
+      end[op] = result.duration++;
     };
     number(sequence);
-    auto interval = [&](Operation *op) {
-      int64_t from = position[op], to = position[op];
+    auto interval = [&](Operation *op, int64_t from, int64_t to) {
       for (Operation *parent = op->getParentOp(); parent != sequence;
            parent = parent->getParentOp())
         if (isa<LoopLikeOpInterface>(parent)) {
@@ -80,101 +87,77 @@ void ShimTransferSpans::analyze(
         }
       return std::make_pair(from, to);
     };
-
-    struct Call {
-      Ends ends;
-      int64_t first, last;
-      size_t phase;
-    };
-    SmallVector<Call> calls;
-    SmallVector<DenseMap<StringAttr, Span>> spans(1);
-    size_t phase = 0;
-    DenseMap<std::tuple<int, int, int, int>, StringAttr> physicalEnds;
-    DenseMap<Value, AIEX::DMAConfigureTaskForOp> tasks;
-    DenseMap<StringAttr, unsigned> pendingConfiguration;
-    auto note = [&](Operation *op, StringAttr symbol, bool issues) {
-      std::optional<End> shimEnd = endOf(device, symbol);
-      if (!shimEnd)
-        return;
-      ends.insert(shimEnd->fifo);
-      auto [from, to] = interval(op);
-      if (shimEnd->channel)
-        physicalEnds[*shimEnd->channel] = symbol;
-      Span &span = spans[phase][shimEnd->fifo];
-      span.sends |= shimEnd->sends;
-      span.first = std::min(span.first, from);
-      span.last = std::max(span.last, to);
-      if (shimEnd->fifo == configuration) {
-        if (issues)
-          ++pendingConfiguration[symbol];
-        else {
-          auto pending = pendingConfiguration.find(symbol);
-          if (pending != pendingConfiguration.end() && --pending->second == 0)
-            pendingConfiguration.erase(pending);
-          if (!pendingConfiguration.empty())
-            return;
-        }
+    // Completion names a specific start, so a callee cannot retire caller work.
+    auto note = [&](StringAttr endpoint, int64_t at,
+                    std::optional<size_t> completion = std::nullopt) {
+      if (completion) {
+        result.spans[*completion].last = at;
+        return *completion;
       }
-      int64_t &mark = issues ? span.lastIssue : span.lastDone;
-      mark = std::max(mark, to);
+      used.insert(endpoint);
+      result.spans.push_back({endpoint, at, end[sequence]});
+      return result.spans.size() - 1;
     };
-    auto noteTask = [&](Operation *op, Value task, bool issues) {
-      if (auto configure = tasks.lookup(task))
-        note(op, configure.getAlloc().getRootReference(), issues);
+    DenseMap<StringAttr, SmallVector<size_t>> pending;
+    DenseMap<Value, StringAttr> tasks;
+    auto transfer = [&](Operation *op, StringAttr symbol, bool starts,
+                        bool all = false) {
+      auto endpoint = endOf(device, symbol);
+      if (!endpoint)
+        return;
+      auto [from, to] = interval(op, position[op], position[op]);
+      auto &queue = pending[symbol];
+      if (starts)
+        queue.push_back(note(endpoint->fifo, from));
+      else if (!endpoint->sends && !queue.empty()) {
+        do {
+          note(endpoint->fifo, to, queue.front());
+          queue.erase(queue.begin());
+        } while (all && !queue.empty());
+      }
+    };
+    auto synchronous = [&](Operation *op, StringAttr endpoint, int64_t from,
+                           int64_t to) {
+      std::tie(from, to) = interval(op, from, to);
+      auto start = note(endpoint, from);
+      note(endpoint, to, start);
+    };
+    auto configuration = [&](Operation *op, DeviceOp configured,
+                             std::optional<int> column = {}) {
+      if (!configured)
+        return;
+      for (auto alloc : configured.getOps<ShimDMAAllocationOp>()) {
+        if (!AIEDialect::IsCtrlOverlayAttrHelper(root->getContext())
+                 .isAttrPresent(alloc) ||
+            (column && alloc.getTileOp().colIndex() != *column))
+          continue;
+        if (auto endpoint = endOf(configured, alloc.getSymNameAttr()))
+          synchronous(op, endpoint->fifo, position[op], position[op]);
+      }
     };
     sequence.walk<WalkOrder::PreOrder>([&](Operation *op) {
       if (auto run = dyn_cast<AIEX::RunOp>(op)) {
-        if (auto callee = run.getCalleeRuntimeSequenceOp(&names)) {
-          Ends called = summarize(callee);
-          ends.insert(called.begin(), called.end());
-          auto [from, to] = interval(op);
-          calls.push_back({std::move(called), from, to, phase});
-        } else {
-          unknown = true;
-        }
-        return;
-      }
-      if (configuration && isa<AIEX::ConfigureOp>(op)) {
-        ends.insert(configuration);
-        auto [from, to] = interval(op);
-        calls.push_back({Ends{configuration}, from, to, phase});
-        return;
-      }
-      if (configuration &&
-          isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
-              AIEX::NpuWriteTeardownOp>(op) &&
-          op->getParentOp() == sequence) {
-        ends.insert(configuration);
-        calls.push_back(
-            {Ends{configuration}, position[op], position[op], ++phase});
-        spans.emplace_back();
-        ++phase;
-        spans.emplace_back();
-        physicalEnds.clear();
-        pendingConfiguration.clear();
-        return;
-      }
-      if (configuration &&
-          isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
-              AIEX::NpuWriteTeardownOp, AIEX::NpuControlPacketOp>(op)) {
-        ends.insert(configuration);
-        Span &span = spans[phase][configuration];
-        span.first = std::min(span.first, position[op]);
-        // Control-packet lowering synchronizes each batch before the next
-        // non-packet operation.
-        span.lastIssue = position[op] - 1;
-        span.last = position[op];
-        if (pendingConfiguration.empty())
-          span.lastDone = position[op];
-        if (op->getParentOp() != sequence) {
-          span.sends = true;
-          span.first = 0;
-          span.last = end[sequence];
-          span.lastIssue = span.last;
-        }
-        return;
-      }
-      if (auto sync = dyn_cast<AIEX::NpuSyncOp>(op)) {
+        if (auto callee = run.getCalleeRuntimeSequenceOp(&names))
+          for (const Span &span : summarize(callee).spans)
+            synchronous(op, span.endpoint, position[op] + 1 + span.first,
+                        position[op] + 1 + span.last);
+      } else if (auto configure = dyn_cast<AIEX::ConfigureOp>(op)) {
+        configuration(op, configure.getReferencedDeviceOp());
+      } else if (isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
+                     AIEX::NpuWriteTeardownOp>(op)) {
+        if (isa<AIEX::NpuLoadPdiOp>(op) && op->getParentOp() == sequence)
+          for (auto &[symbol, queue] : pending) {
+            for (size_t start : queue)
+              note(result.spans[start].endpoint, position[op] - 1, start);
+            queue.clear();
+          }
+        auto ref = op->getAttrOfType<FlatSymbolRefAttr>("device_ref");
+        configuration(
+            op, ref ? SymbolTable::lookupNearestSymbolFrom<DeviceOp>(op, ref)
+                    : device);
+      } else if (auto packet = dyn_cast<AIEX::NpuControlPacketOp>(op)) {
+        configuration(op, device, packet.getColumnFromAddr());
+      } else if (auto sync = dyn_cast<AIEX::NpuSyncOp>(op)) {
         SmallVector<int> values;
         for (Value operand : sync->getOperands()) {
           APInt value;
@@ -182,56 +165,70 @@ void ShimTransferSpans::analyze(
             return;
           values.push_back(value.getSExtValue());
         }
-        if (values[4] == 1 && values[5] == 1)
-          if (auto symbol = physicalEnds.lookup(
-                  {values[0], values[1], values[2], values[3]}))
-            note(op, symbol, false);
-        return;
+        if (values[4] != 1 || values[5] != 1)
+          return;
+        StringAttr symbol;
+        size_t first = std::numeric_limits<size_t>::max();
+        for (const auto &[name, queue] : pending) {
+          if (queue.empty() || queue.front() >= first)
+            continue;
+          Operation *owner = device.lookupSymbol(name);
+          TileOp tile;
+          std::optional<int> channel;
+          DMAChannelDir direction;
+          if (auto alloc = dyn_cast_or_null<ShimDMAAllocationOp>(owner)) {
+            tile = alloc.getTileOp();
+            channel = alloc.getChannelIndex();
+            direction = alloc.getChannelDir();
+          } else if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(owner)) {
+            tile = endpoint.getTile().getDefiningOp<TileOp>();
+            channel = endpoint.getChannelIndex();
+            direction = endpoint.getRouteDirection();
+          }
+          if (tile && channel && tile.colIndex() == values[0] &&
+              tile.rowIndex() == values[1] &&
+              static_cast<int>(direction) == values[2] &&
+              *channel == values[3]) {
+            first = queue.front();
+            symbol = name;
+          }
+        }
+        if (symbol)
+          transfer(op, symbol, false);
+      } else if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op)) {
+        transfer(op, memcpy.getMetadata().getRootReference(), true);
+      } else if (auto wait = dyn_cast<AIEX::NpuDmaWaitOp>(op)) {
+        transfer(op, wait.getSymbolAttr().getAttr(), false, true);
+      } else if (auto configure = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
+        tasks[configure.getResult()] = configure.getAlloc().getRootReference();
+      } else if (isa<AIEX::DMAStartTaskOp, AIEX::DMAAwaitTaskOp,
+                     AIEX::DMAFreeTaskOp>(op)) {
+        if (auto symbol = tasks.lookup(op->getOperand(0)))
+          transfer(op, symbol, isa<AIEX::DMAStartTaskOp>(op));
       }
-      if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
-        note(op, memcpy.getMetadata().getRootReference(), true);
-      else if (auto wait = dyn_cast<AIEX::NpuDmaWaitOp>(op))
-        note(op, wait.getSymbolAttr().getAttr(), false);
-      else if (auto configure = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
-        tasks[configure.getResult()] = configure;
-      else if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(op))
-        noteTask(op, start.getTask(), true);
-      else if (auto await = dyn_cast<AIEX::DMAAwaitTaskOp>(op))
-        noteTask(op, await.getTask(), false);
-      else if (auto free = dyn_cast<AIEX::DMAFreeTaskOp>(op))
-        noteTask(op, free.getTask(), false);
     });
-
-    auto last = [](const Span &span) {
-      return !span.sends && span.lastDone > span.lastIssue
-                 ? span.last
-                 : std::numeric_limits<int64_t>::max();
-    };
-    for (const auto &byEnd : spans)
-      for (const auto &[a, x] : byEnd)
-        for (const auto &[b, y] : byEnd)
-          if (last(x) >= y.first && last(y) >= x.first)
-            conflict(a, b);
-    for (const Call &call : calls) {
-      // A call completes its own transfers, but cannot retire caller work.
-      for (const auto &[a, span] : spans[call.phase])
-        if (span.first <= call.last && last(span) >= call.first)
-          for (StringAttr b : call.ends)
-            conflict(a, b);
-      for (const Call &other : calls)
-        if (call.phase == other.phase && &call != &other &&
-            call.first <= other.last && other.first <= call.last)
-          for (StringAttr a : call.ends)
-            for (StringAttr b : other.ends)
-              conflict(a, b);
+    llvm::stable_sort(result.spans, [](const Span &a, const Span &b) {
+      return a.first < b.first;
+    });
+    DenseMap<StringAttr, int64_t> live;
+    for (const Span &span : result.spans) {
+      for (const auto &[other, last] : live) {
+        if (last < span.first)
+          continue;
+        overlaps.insert({span.endpoint, other});
+        overlaps.insert({other, span.endpoint});
+      }
+      live[span.endpoint] = std::max(live.lookup(span.endpoint), span.last);
     }
     active.erase(sequence);
-    used.insert(ends.begin(), ends.end());
-    summaries[sequence] = ends;
-    return ends;
+    summaries[sequence] = result;
+    return result;
   };
-  if (configuration)
-    used.insert(configuration);
+  root->walk([&](ShimDMAAllocationOp alloc) {
+    if (auto endpoint =
+            endOf(alloc->getParentOfType<DeviceOp>(), alloc.getSymNameAttr()))
+      used.insert(endpoint->fifo);
+  });
   root->walk([&](RuntimeSequenceOp sequence) { summarize(sequence); });
 }
 
@@ -274,4 +271,87 @@ ShimTransferSpans::groups(ArrayRef<StringAttr> ends) const {
       group->push_back(end);
   }
   return result;
+}
+
+namespace {
+struct AIEAnnotateShimSharingPass
+    : xilinx::AIE::impl::AIEAnnotateShimSharingBase<
+          AIEAnnotateShimSharingPass> {
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
+    AIEDialect::ShareableWithAttrHelper sharing(&getContext());
+    DenseMap<Operation *, StringAttr> keys;
+    auto key = [&](Operation *op) {
+      auto [it, inserted] = keys.try_emplace(op);
+      if (inserted)
+        it->second =
+            StringAttr::get(&getContext(), std::to_string(keys.size()));
+      return it->second;
+    };
+    ShimTransferSpans spans(
+        module,
+        [&](DeviceOp device,
+            StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
+          Operation *op = device.lookupSymbol(symbol);
+          if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(op)) {
+            if (endpoint.getBundle() != WireBundle::DMA ||
+                !endpoint.getTileLike().isShimTile())
+              return std::nullopt;
+            return ShimTransferSpans::End{key(endpoint),
+                                          endpoint.getRouteDirection() ==
+                                              DMAChannelDir::MM2S};
+          }
+          auto alloc = dyn_cast_or_null<ShimDMAAllocationOp>(op);
+          if (!alloc)
+            return std::nullopt;
+          if (overlay.isAttrPresent(alloc)) {
+            if (auto ref = device.getOverlayAttr())
+              if (auto definition =
+                      module.lookupSymbol<DeviceOp>(ref.getValue()))
+                if (Operation *original = definition.lookupSymbol(symbol))
+                  op = original;
+            return ShimTransferSpans::End{key(op), false};
+          }
+          return ShimTransferSpans::End{key(op), alloc.getChannelDir() ==
+                                                     DMAChannelDir::MM2S};
+        });
+    for (DeviceOp device : module.getOps<DeviceOp>()) {
+      auto annotate = [&](Operation *op, Value tile, DMAChannelDir direction,
+                          StringAttr identity) {
+        if (sharing.isAttrPresent(op))
+          return;
+        SmallVector<Attribute> allowed;
+        for (auto other : device.getOps<RouteEndpointOp>())
+          if (other != op && other.getBundle() == WireBundle::DMA &&
+              other.getTile() == tile &&
+              other.getRouteDirection() == direction &&
+              spans.apart(identity, keys.lookup(other)))
+            allowed.push_back(FlatSymbolRefAttr::get(other.getSymNameAttr()));
+        sharing.setAttr(op, ArrayAttr::get(&getContext(), allowed));
+      };
+      for (auto endpoint : device.getOps<RouteEndpointOp>())
+        if (endpoint.getBundle() == WireBundle::DMA &&
+            endpoint.getTileLike().isShimTile())
+          annotate(endpoint, endpoint.getTile(), endpoint.getRouteDirection(),
+                   keys.lookup(endpoint));
+      for (auto alloc : device.getOps<ShimDMAAllocationOp>())
+        if (overlay.isAttrPresent(alloc)) {
+          Operation *original = alloc;
+          if (auto ref = device.getOverlayAttr())
+            if (auto definition = module.lookupSymbol<DeviceOp>(ref.getValue()))
+              if (Operation *source =
+                      definition.lookupSymbol(alloc.getSymName()))
+                original = source;
+          annotate(alloc, alloc.getTile(), alloc.getChannelDir(),
+                   keys.lookup(original));
+        }
+    }
+  }
+};
+} // namespace
+
+std::unique_ptr<OperationPass<ModuleOp>>
+AIE::createAIEAnnotateShimSharingPass() {
+  return std::make_unique<AIEAnnotateShimSharingPass>();
 }

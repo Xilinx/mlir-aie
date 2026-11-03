@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// RUN: aie-opt --aie-create-control-overlay %s -o %t
+// RUN: aie-opt --aie-generate-column-control-overlay="configuration=true " --aie-import-overlay --aie-annotate-shim-sharing %s -o %t
 // RUN: FileCheck %s < %t
 // RUN: aie-opt --aie-create-pathfinder-flows --aie-import-overlay %t -o /dev/null
 

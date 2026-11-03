@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -aie-generate-column-control-overlay="emit-standalone-overlay=true" | FileCheck %s
+// RUN: aie-opt %s -aie-generate-column-control-overlay | FileCheck %s
 
 // CHECK-LABEL: aie.device(npu2_1col) @first
 // CHECK-NOT: aie.packet_flow

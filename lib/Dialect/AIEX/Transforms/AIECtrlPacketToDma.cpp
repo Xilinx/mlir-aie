@@ -163,7 +163,7 @@ struct AIECtrlPacketToDmaPass
                 << col
                 << " has no control packet shim DMA allocation; run "
                    "-aie-generate-column-control-overlay with "
-                   "route-shim-to-tile-ctrl=true first";
+                   "configuration=true, then -aie-import-overlay first";
             return signalPassFailure();
           }
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
