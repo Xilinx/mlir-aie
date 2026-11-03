@@ -22,7 +22,7 @@
 // CONFIG-DAG: aie.tile(0, 5)
 // CONFIG-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
 // CONFIG-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0
-// CONFIG-DAG: aie.masterset(TileControl : 0, {{.*}}) {aie.is_ctrl_overlay{{.*}}}
+// CONFIG-DAG: aie.masterset(TileControl : 0, {{.*}}) {aie.is_ctrl_pkt_overlay{{.*}}}
 // CONFIG-NOT: ctrlpkt_col2
 
 // IMPORT-LABEL: aie.device(npu2) @application

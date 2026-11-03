@@ -20,12 +20,12 @@ module {
   aie.device(npu2_1col) @transport {
     %shim = aie.tile(0, 0)
     aie.shim_mux(%shim) {
-      aie.connect<DMA : 0, North : 3> {aie.is_ctrl_overlay}
+      aie.connect<DMA : 0, North : 3> {aie.is_ctrl_pkt_overlay}
     }
     aie.switchbox(%shim) {
-      aie.connect<South : 3, TileControl : 0> {aie.is_ctrl_overlay}
+      aie.connect<South : 3, TileControl : 0> {aie.is_ctrl_pkt_overlay}
     }
-  } {aie.is_ctrl_overlay}
+  } {aie.is_ctrl_pkt_overlay}
   aie.device(npu2_1col) @application {
     %shim = aie.tile(0, 0)
     aie.shim_mux(%shim) {

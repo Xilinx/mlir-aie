@@ -235,16 +235,16 @@ module {
     %mem = aie.tile(0, 1)
     %compute = aie.tile(0, 2)
     aie.switchbox(%mem) {
-      aie.connect<South : 0, TileControl : 0> {aie.is_ctrl_overlay}
+      aie.connect<South : 0, TileControl : 0> {aie.is_ctrl_pkt_overlay}
     }
     aie.switchbox(%compute) {
       aie.connect<South : 1, DMA : 0>
       %a = aie.amsel<0> (0)
       %b = aie.amsel<1> (0)
-      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_overlay}
+      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_pkt_overlay}
       aie.masterset(Core : 0, %b)
       aie.packet_rules(South : 3) {
-        aie.rule(31, 15, %a) {aie.is_ctrl_overlay}
+        aie.rule(31, 15, %a) {aie.is_ctrl_pkt_overlay}
         aie.rule(31, 3, %b)
       }
     }

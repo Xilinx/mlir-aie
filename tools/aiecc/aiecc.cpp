@@ -962,7 +962,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   auto matchesDeviceFilter = [keptDevices =
                                   std::move(keptDevices)](DeviceOp d) {
-    if (xilinx::AIE::AIEDialect::IsCtrlOverlayAttrHelper(d.getContext())
+    if (xilinx::AIE::AIEDialect::IsCtrlPktOverlayAttrHelper(d.getContext())
             .isAttrPresent(d))
       return d.getSymName() == deviceName.getValue() ||
              (loadPdiToCtrlPkt && wantFullElf);

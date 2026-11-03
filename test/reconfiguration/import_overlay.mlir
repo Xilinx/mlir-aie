@@ -7,9 +7,9 @@
 
 // CHECK-LABEL: aie.device(npu2_1col) @application
 // CHECK: %[[CONTROL:.*]] = aie.amsel<5> (3)
-// CHECK: aie.masterset(TileControl : 0, %[[CONTROL]]) {aie.is_ctrl_overlay}
+// CHECK: aie.masterset(TileControl : 0, %[[CONTROL]]) {aie.is_ctrl_pkt_overlay}
 // CHECK: aie.packet_rules(DMA : 0) {
-// CHECK-NEXT: aie.rule(31, 15, %[[CONTROL]]) {aie.is_ctrl_overlay}
+// CHECK-NEXT: aie.rule(31, 15, %[[CONTROL]]) {aie.is_ctrl_pkt_overlay}
 // CHECK-NEXT: aie.rule(31, 0, %{{.*}})
 // CHECK-NEXT: }
 // CHECK: overlay = @transport
@@ -33,11 +33,11 @@ module {
   aie.device(npu2_1col) @transport {
     %tile = aie.tile(0, 2)
     aie.switchbox(%tile) {
-      %a = aie.amsel<5>(3) {aie.is_ctrl_overlay}
-      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_overlay}
+      %a = aie.amsel<5>(3) {aie.is_ctrl_pkt_overlay}
+      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_pkt_overlay}
       aie.packet_rules(DMA : 0) {
-        aie.rule(31, 15, %a) {aie.is_ctrl_overlay}
+        aie.rule(31, 15, %a) {aie.is_ctrl_pkt_overlay}
       }
     }
-  } {aie.is_ctrl_overlay}
+  } {aie.is_ctrl_pkt_overlay}
 }

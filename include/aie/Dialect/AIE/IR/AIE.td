@@ -43,7 +43,7 @@ def AIE_Dialect : Dialect {
   // opt out of upstream's strict-properties default until they migrate.
   let useStrictPropertiesInAssemblyFormat = 0;
   // Overlay-owned settings survive application configuration and teardown.
-  let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_overlay,
+  let discardableAttrs = (ins "::mlir::UnitAttr":$is_ctrl_pkt_overlay,
       "::mlir::UnitAttr":$priority_route, "::mlir::ArrayAttr":$shareable_with,
       "::mlir::UnitAttr":$reserve_controller_packet_ids);
 }

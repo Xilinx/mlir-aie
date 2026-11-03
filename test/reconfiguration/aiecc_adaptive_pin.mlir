@@ -16,28 +16,28 @@
 // BLIND-LABEL: aie.device(npu2) @a
 // BLIND:       aie.switchbox(%tile_0_2)
 // BLIND-NOT:   aie.switchbox
-// BLIND:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_overlay}
+// BLIND:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_pkt_overlay}
 // BLIND-LABEL: aie.device(npu2) @b
 // BLIND:       aie.switchbox(%tile_0_2)
 // BLIND-NOT:   aie.switchbox
-// BLIND:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_overlay}
+// BLIND:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_pkt_overlay}
 // BLIND-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 // BLIND:       aie.switchbox(%tile_0_2)
 // BLIND-NOT:   aie.switchbox
-// BLIND:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_overlay}
+// BLIND:       aie.masterset(North : 4, %{{.+}}) {aie.is_ctrl_pkt_overlay}
 
 // ADAPT-LABEL: aie.device(npu2) @a
 // ADAPT:       aie.switchbox(%tile_0_2)
 // ADAPT-NOT:   aie.switchbox
-// ADAPT:       aie.masterset(North : 5, %{{.+}}) {aie.is_ctrl_overlay}
+// ADAPT:       aie.masterset(North : 5, %{{.+}}) {aie.is_ctrl_pkt_overlay}
 // ADAPT-LABEL: aie.device(npu2) @b
 // ADAPT:       aie.switchbox(%tile_0_2)
 // ADAPT-NOT:   aie.switchbox
-// ADAPT:       aie.masterset(North : 5, %{{.+}}) {aie.is_ctrl_overlay}
+// ADAPT:       aie.masterset(North : 5, %{{.+}}) {aie.is_ctrl_pkt_overlay}
 // ADAPT-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 // ADAPT:       aie.switchbox(%tile_0_2)
 // ADAPT-NOT:   aie.switchbox
-// ADAPT:       aie.masterset(North : 5, %{{.+}}) {aie.is_ctrl_overlay}
+// ADAPT:       aie.masterset(North : 5, %{{.+}}) {aie.is_ctrl_pkt_overlay}
 
 // ADAPT-NOT: aie.ctrl_pkt_overlay_avoid
 

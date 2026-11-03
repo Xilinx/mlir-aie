@@ -10,8 +10,8 @@
 // CHECK: {{^    }}}
 
 module {
-  aie.device(npu2_1col) @transport_a {} {aie.is_ctrl_overlay}
-  aie.device(npu2_1col) @transport_b {} {aie.is_ctrl_overlay}
+  aie.device(npu2_1col) @transport_a {} {aie.is_ctrl_pkt_overlay}
+  aie.device(npu2_1col) @transport_b {} {aie.is_ctrl_pkt_overlay}
   aie.device(npu2_1col) @transport_b_copy {}
   aie.device(npu2_1col) @a {} {overlay = @transport_a}
   aie.device(npu2_1col) @b {} {overlay = @transport_b}

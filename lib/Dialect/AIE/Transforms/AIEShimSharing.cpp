@@ -136,7 +136,7 @@ void ShimTransferSpans::analyze(
       if (!configured)
         return;
       for (auto alloc : configured.getOps<ShimDMAAllocationOp>()) {
-        if (!AIEDialect::IsCtrlOverlayAttrHelper(root->getContext())
+        if (!AIEDialect::IsCtrlPktOverlayAttrHelper(root->getContext())
                  .isAttrPresent(alloc) ||
             (column && alloc.getTileOp().colIndex() != *column))
           continue;
@@ -290,7 +290,7 @@ struct AIEAnnotateShimSharingPass
           AIEAnnotateShimSharingPass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
+    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(&getContext());
     AIEDialect::ShareableWithAttrHelper sharing(&getContext());
     DenseMap<Operation *, StringAttr> keys;
     auto key = [&](Operation *op) {

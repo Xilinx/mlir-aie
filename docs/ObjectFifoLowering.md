@@ -477,19 +477,15 @@ router keeps flows with one id apart wherever their destinations differ. Each
 end keeps its own `aie.shim_dma_allocation`, so every transfer stamps its own
 header. A design that fits without sharing is lowered exactly as before.
 
-An `aiex.run` call is self-contained: its transfers must finish before it
-returns. Shim sharing reads the original callee and uses this boundary without
-materializing or cloning its operations. Endpoints used by consecutive calls
-can share, including calls within one `aiex.configure`. Any overlap inside a
-callee or with transfers launched by its caller still prevents sharing.
-Configuration completes before the configure body starts, so control and
-application transfers in these separate phases may also share.
+An `aiex.run` call is assumed to be self-contained: its transfers must finish
+before it returns. Based on this assumption, shim DMA allocation may choose
+to use the same DMA channel for endpoints whose transfers do not overlap
+("channel sharing"). Configuration completes before the configure body starts,
+so control and application transfers in these separate phases may also share.
 
 The runtime BD allocator warns about transfers left neither awaited nor freed
 at sequence exit (`warn-unreleased-transfers`, enabled by default in the pass
-and `aiecc`). Freeing a task acknowledges completion established elsewhere;
-it does not wait for the hardware. The diagnostic is best-effort for straight-line sequences and does
-not prove completion through computation or other DMA channels.
+and `aiecc`).
 
 When a compute or mem tile runs out of channels, DMA endpoints whose objects
 one core needs in a fixed order take turns on one channel instead, in that

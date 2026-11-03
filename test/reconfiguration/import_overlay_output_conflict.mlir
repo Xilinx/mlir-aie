@@ -15,11 +15,11 @@ module {
   aie.device(npu2_1col) @transport {
     %tile = aie.tile(0, 2)
     aie.switchbox(%tile) {
-      %a = aie.amsel<5>(3) {aie.is_ctrl_overlay}
-      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_overlay}
+      %a = aie.amsel<5>(3) {aie.is_ctrl_pkt_overlay}
+      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_pkt_overlay}
       aie.packet_rules(South : 0) {
-        aie.rule(31, 15, %a) {aie.is_ctrl_overlay}
+        aie.rule(31, 15, %a) {aie.is_ctrl_pkt_overlay}
       }
     }
-  } {aie.is_ctrl_overlay}
+  } {aie.is_ctrl_pkt_overlay}
 }

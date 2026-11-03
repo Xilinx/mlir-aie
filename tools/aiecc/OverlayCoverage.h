@@ -158,7 +158,7 @@ struct OverlayCoverage {
     std::set<int> cols;
     mod.walk([&](xilinx::AIE::MasterSetOp master) {
       if (master.getDestBundle() == xilinx::AIE::WireBundle::TileControl &&
-          master->hasAttr("aie.is_ctrl_overlay"))
+          master->hasAttr("aie.is_ctrl_pkt_overlay"))
         cols.insert(
             master->getParentOfType<xilinx::AIE::SwitchboxOp>().colIndex());
     });
@@ -177,7 +177,8 @@ struct OverlayCoverage {
       op->walk([&](mlir::Operation *setting) {
         if (llvm::isa<xilinx::AIE::ConnectOp, xilinx::AIE::MasterSetOp,
                       xilinx::AIE::PacketRuleOp>(setting) &&
-            !xilinx::AIE::AIEDialect::IsCtrlOverlayAttrHelper(op->getContext())
+            !xilinx::AIE::AIEDialect::IsCtrlPktOverlayAttrHelper(
+                 op->getContext())
                  .isAttrPresent(setting))
           applicationWrites = true;
       });

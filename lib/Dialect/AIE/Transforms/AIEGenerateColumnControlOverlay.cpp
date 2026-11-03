@@ -66,7 +66,7 @@ struct AIEGenerateColumnControlOverlayPass
 
   void runOnOperation() override {
     llvm::MapVector<AIEDevice, SmallVector<DeviceOp>> groups;
-    AIEDialect::IsCtrlOverlayAttrHelper marker(&getContext());
+    AIEDialect::IsCtrlPktOverlayAttrHelper marker(&getContext());
     for (DeviceOp device : getOperation().getOps<DeviceOp>())
       if (!marker.isAttrPresent(device) && !device.getOverlayAttr() &&
           device.getTargetModel().getTargetArch() != AIEArch::AIE1 &&
@@ -79,7 +79,7 @@ struct AIEGenerateColumnControlOverlayPass
 
   LogicalResult generate(ArrayRef<DeviceOp> users) {
     ModuleOp module = getOperation();
-    AIEDialect::IsCtrlOverlayAttrHelper marker(&getContext());
+    AIEDialect::IsCtrlPktOverlayAttrHelper marker(&getContext());
     DeviceOp first = users.front();
     auto target = first.getDevice();
     auto tokenTiles = collectTokenIssuingTiles(users);
@@ -323,7 +323,7 @@ struct AIEGenerateColumnControlOverlayPass
     OwningOpRef<ModuleOp> trial = cast<ModuleOp>(module->clone());
     for (DeviceOp device :
          llvm::make_early_inc_range(trial->getOps<DeviceOp>())) {
-      if (device->hasAttr("aie.is_ctrl_overlay"))
+      if (device->hasAttr("aie.is_ctrl_pkt_overlay"))
         device.erase();
       else
         device.removeOverlayAttr();

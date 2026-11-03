@@ -220,7 +220,7 @@ routes with the others. Completion-token flows use priority routing when importe
 A control-packet reload (`aiecc --load-pdi-to-ctrl-pkt`) uses a fixed overlay
 created by the module-level `aie-generate-column-control-overlay` pass. This pass
 creates a standalone `aie.device @ctrl_pkt_overlay`, routes it once, and marks
-its resources with `aie.is_ctrl_overlay`. Each application device references
+its resources with `aie.is_ctrl_pkt_overlay`. Each application device references
 it with `overlay = @ctrl_pkt_overlay`. The following `aie-import-overlay` pass copies its routed switchbox connections, packet rules, master sets, and other
 resources into the application devices. The application router treats these
 as occupied resources; it does not reroute the overlay. The runtime loads the

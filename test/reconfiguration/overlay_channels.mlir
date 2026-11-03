@@ -62,7 +62,7 @@ module {
 // CHECK-LABEL: aie.device(npu2) @ctrl_pkt_overlay
 // CHECK-DAG: aie.tile(0, 5)
 // CHECK-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
-// CHECK-DAG: aie.masterset(TileControl : 0, {{.*}}) {aie.is_ctrl_overlay{{.*}}}
+// CHECK-DAG: aie.masterset(TileControl : 0, {{.*}}) {aie.is_ctrl_pkt_overlay{{.*}}}
 // CHECK-NOT: ctrlpkt_col1
 module {
   aie.device(npu2) @a {

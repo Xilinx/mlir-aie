@@ -863,9 +863,10 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
 def AIEImportOverlay : Pass<"aie-import-overlay", "mlir::ModuleOp"> {
   let summary = "Import operations from a referenced overlay device";
   let description = [{
-    Copies operations from each device's `overlay`, deduplicating equivalent
-    operations and merging routing containers. Both devices must use the same
-    target. Unrouted flows are routed with the application after import.
+    Copies the operations of the `aie.device` referenced by the `overlay`
+    attribute into the referencing device, deduplicating equivalent operations
+    and merging routing containers. Both devices must use the same target.
+    Unrouted flows are routed with the application after import.
   }];
   let constructor = "xilinx::AIE::createAIEImportOverlayPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect"];

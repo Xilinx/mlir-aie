@@ -7,12 +7,12 @@
 
 // CHECK-LABEL: aie.device({{.*}}) @design
 // CHECK: aie.switchbox
-// CHECK: aie.is_ctrl_overlay
+// CHECK: aie.is_ctrl_pkt_overlay
 // CHECK: overlay = @ctrl_pkt_overlay
 // CHECK-LABEL: aie.device({{.*}}) @ctrl_pkt_overlay
 // CHECK-NOT: aie.packet_flow
 // CHECK: aie.masterset(TileControl : 0,
-// CHECK-SAME: aie.is_ctrl_overlay
+// CHECK-SAME: aie.is_ctrl_pkt_overlay
 
 module {
   aie.device(npu2_1col) @design {

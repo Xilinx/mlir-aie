@@ -106,7 +106,7 @@ They remain unrouted until imported into each application. With
 `--generate-ctrl-pkt-overlay` or `--load-pdi-to-ctrl-pkt`, the generator also
 creates configuration transport and routes the standalone overlay once.
 The application router respects the imported switchboxes and DMA reservations.
-`aie.is_ctrl_overlay` marks settings that configuration and teardown preserve.
+`aie.is_ctrl_pkt_overlay` marks settings that configuration and teardown preserve.
 
 `--ctrlpkt-adaptive-overlay` chooses channels around application reservations
 and prefers routes away from application traffic. Set it to `false` to use

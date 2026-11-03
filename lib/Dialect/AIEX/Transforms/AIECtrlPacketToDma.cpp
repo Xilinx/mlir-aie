@@ -30,7 +30,7 @@ using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
 static ShimDMAAllocationOp getCtrlPktShimAlloc(DeviceOp device, int col) {
-  AIEDialect::IsCtrlOverlayAttrHelper overlay(device.getContext());
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(device.getContext());
   for (auto alloc : device.getOps<AIE::ShimDMAAllocationOp>())
     if (overlay.isAttrPresent(alloc) &&
         alloc.getChannelDir() == AIE::DMAChannelDir::MM2S &&

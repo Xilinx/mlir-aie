@@ -22,15 +22,15 @@ module {
   aie.device(npu2_1col) @ctrl_pkt_overlay {
     %shim = aie.tile(0, 0)
     aie.shim_mux(%shim) {
-      aie.connect<DMA : 0, North : 3> {aie.is_ctrl_overlay}
+      aie.connect<DMA : 0, North : 3> {aie.is_ctrl_pkt_overlay}
     }
     %t = aie.tile(0, 2)
     aie.switchbox(%t) {
       %a = aie.amsel<5> (3)
-      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_overlay}
+      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_pkt_overlay}
       aie.packet_rules(South : 1) {
         aie.rule(31, 1, %a)
-      } {aie.is_ctrl_overlay}
+      } {aie.is_ctrl_pkt_overlay}
     }
   }
   aie.device(npu2_1col) @design {
@@ -38,10 +38,10 @@ module {
     aie.switchbox(%t) {
       %a = aie.amsel<5> (3)
       %b = aie.amsel<0> (0)
-      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_overlay}
+      aie.masterset(TileControl : 0, %a) {aie.is_ctrl_pkt_overlay}
       aie.masterset(DMA : 0, %b)
       aie.packet_rules(South : 1) {
-        aie.rule(31, 1, %a) {aie.is_ctrl_overlay}
+        aie.rule(31, 1, %a) {aie.is_ctrl_pkt_overlay}
         aie.rule(31, 2, %b)
       }
     }

@@ -573,7 +573,7 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
                       const std::vector<PacketConnection> &endpoints,
                       bool emitVias, bool dropIntraTile, int idMask,
                       FlowKeySet &seen, LiftedOps &lifted) {
-  AIEDialect::IsCtrlOverlayAttrHelper overlay(rewriter.getContext());
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(rewriter.getContext());
   AIEDialect::PriorityRouteAttrHelper prioritizedRule(rewriter.getContext());
   for (const PacketConnection &c : endpoints) {
     Operation *destOp = c.portConnection.op;
@@ -1130,7 +1130,7 @@ struct AIEFindFlowsPass
         op->erase();
       }
     }
-    AIEDialect::IsCtrlOverlayAttrHelper overlay(&getContext());
+    AIEDialect::IsCtrlPktOverlayAttrHelper overlay(&getContext());
     auto cleanupInterconnect = [&](Region &connections) {
       for (auto amselOp :
            llvm::make_early_inc_range(connections.getOps<AMSelOp>())) {

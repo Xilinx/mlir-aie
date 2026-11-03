@@ -13,8 +13,8 @@
 module {
   aie.device(npu2_1col) @transport {
     %shim = aie.tile(0, 0)
-    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_overlay}
-  } {aie.is_ctrl_overlay}
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+  } {aie.is_ctrl_pkt_overlay}
   aie.device(npu2_1col) @synced {
     %shim = aie.tile(0, 0)
     %core = aie.tile(0, 2)
@@ -44,8 +44,8 @@ module {
 module {
   aie.device(npu2_1col) @transport {
     %shim = aie.tile(0, 0)
-    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_overlay}
-  } {aie.is_ctrl_overlay}
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+  } {aie.is_ctrl_pkt_overlay}
   aie.device(npu2_1col) @unsynced {
     %shim = aie.tile(0, 0)
     %core = aie.tile(0, 2)
@@ -75,8 +75,8 @@ module {
 module {
   aie.device(npu2_1col) @transport {
     %shim = aie.tile(0, 0)
-    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_overlay}
-  } {aie.is_ctrl_overlay}
+    aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%shim, MM2S, 0) {aie.is_ctrl_pkt_overlay}
+  } {aie.is_ctrl_pkt_overlay}
   aie.device(npu2_1col) @partially_synced {
     %shim = aie.tile(0, 0)
     %core = aie.tile(0, 2)

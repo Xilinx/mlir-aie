@@ -341,7 +341,7 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @ctrlin (%tile_0_0, MM2S, 0) {aie.is_ctrl_overlay}
+    aie.shim_dma_allocation @ctrlin (%tile_0_0, MM2S, 0) {aie.is_ctrl_pkt_overlay}
     aie.shim_dma_allocation @ctrl0 (%tile_0_0, S2MM, 0)
     aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 1)
     aie.shim_dma_allocation @out1 (%tile_1_0, S2MM, 0)

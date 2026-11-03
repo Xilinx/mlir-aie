@@ -734,7 +734,7 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
 LogicalResult
 xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
                                              bool skipCtrlPktOverlay) {
-  AIEDialect::IsCtrlOverlayAttrHelper overlay(targetOp.getContext());
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(targetOp.getContext());
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
@@ -866,7 +866,7 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
 LogicalResult
 xilinx::AIE::AIERTControl::teardownSwitches(DeviceOp &targetOp,
                                             bool skipCtrlPktOverlay) {
-  AIEDialect::IsCtrlOverlayAttrHelper overlay(targetOp.getContext());
+  AIEDialect::IsCtrlPktOverlayAttrHelper overlay(targetOp.getContext());
   auto skip = [&](Operation *op) {
     return skipCtrlPktOverlay && overlay.isAttrPresent(op);
   };

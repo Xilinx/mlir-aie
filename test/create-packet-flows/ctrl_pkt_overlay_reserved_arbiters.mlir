@@ -9,17 +9,17 @@
 // The application must not take an unused msel of an active overlay arbiter.
 // CHECK-LABEL: aie.device(npu2_1col) @design
 // CHECK: aie.switchbox(%shim_noc_tile_0_0)
-// CHECK-DAG: aie.amsel<5> (0) {aie.is_ctrl_overlay}
-// CHECK-DAG: aie.amsel<5> (1) {aie.is_ctrl_overlay}
-// CHECK-DAG: aie.amsel<5> (2) {aie.is_ctrl_overlay}
-// CHECK-DAG: aie.amsel<5> (3) {aie.is_ctrl_overlay}
+// CHECK-DAG: aie.amsel<5> (0) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG: aie.amsel<5> (1) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG: aie.amsel<5> (2) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG: aie.amsel<5> (3) {aie.is_ctrl_pkt_overlay}
 // CHECK: aie.amsel<4> (3)
 // CHECK-LABEL: aie.device(npu2_1col) @ctrl_pkt_overlay
 // CHECK: aie.switchbox(%shim_noc_tile_0_0)
-// CHECK-DAG: aie.amsel<5> (0) {aie.is_ctrl_overlay}
-// CHECK-DAG: aie.amsel<5> (1) {aie.is_ctrl_overlay}
-// CHECK-DAG: aie.amsel<5> (2) {aie.is_ctrl_overlay}
-// CHECK-DAG: aie.amsel<5> (3) {aie.is_ctrl_overlay}
+// CHECK-DAG: aie.amsel<5> (0) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG: aie.amsel<5> (1) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG: aie.amsel<5> (2) {aie.is_ctrl_pkt_overlay}
+// CHECK-DAG: aie.amsel<5> (3) {aie.is_ctrl_pkt_overlay}
 
 module {
   aie.device(npu2_1col) @design {

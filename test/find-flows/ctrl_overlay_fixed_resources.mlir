@@ -7,8 +7,8 @@
 
 // CHECK-LABEL: aie.device(npu2_1col) @fixed
 // CHECK: aie.switchbox(%[[TILE:tile_0_2]]) {
-// CHECK-NEXT: aie.connect<DMA : 0, TileControl : 0> {aie.is_ctrl_overlay}
-// CHECK-NEXT: %{{.*}} = aie.amsel<0> (0) {aie.is_ctrl_overlay}
+// CHECK-NEXT: aie.connect<DMA : 0, TileControl : 0> {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT: %{{.*}} = aie.amsel<0> (0) {aie.is_ctrl_pkt_overlay}
 // FIND-NEXT: }
 // FIND-NEXT: aie.flow(%[[TILE]], DMA : 1, %[[TILE]], Core : 0)
 // FIND-NEXT: }
@@ -20,8 +20,8 @@ module {
   aie.device(npu2_1col) @fixed {
     %tile = aie.tile(0, 2)
     aie.switchbox(%tile) {
-      aie.connect<DMA : 0, TileControl : 0> {aie.is_ctrl_overlay}
-      %reserved = aie.amsel<0> (0) {aie.is_ctrl_overlay}
+      aie.connect<DMA : 0, TileControl : 0> {aie.is_ctrl_pkt_overlay}
+      %reserved = aie.amsel<0> (0) {aie.is_ctrl_pkt_overlay}
       %unused = aie.amsel<1> (0)
       aie.connect<DMA : 1, Core : 0>
     }

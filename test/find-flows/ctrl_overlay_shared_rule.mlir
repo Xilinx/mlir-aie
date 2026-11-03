@@ -17,11 +17,11 @@
 // ROUTE:        aie.masterset(DMA : 1,
 // ROUTE:        aie.rule(31, 9,
 // CHECK:      aie.shim_mux
-// CHECK-NEXT:   aie.connect<DMA : 0, North : 3> {aie.is_ctrl_overlay}
+// CHECK-NEXT:   aie.connect<DMA : 0, North : 3> {aie.is_ctrl_pkt_overlay}
 // CHECK-NEXT: }
 // CHECK:      aie.packet_rules(South : 3) {
-// CHECK-NEXT:   aie.rule(24, 24, %{{.*}}) {aie.is_ctrl_overlay}
-// CHECK-NEXT:   aie.rule(31, 15, %{{.*}}) {aie.is_ctrl_overlay}
+// CHECK-NEXT:   aie.rule(24, 24, %{{.*}}) {aie.is_ctrl_pkt_overlay}
+// CHECK-NEXT:   aie.rule(31, 15, %{{.*}}) {aie.is_ctrl_pkt_overlay}
 // FIND-NEXT:  }
 // ROUTE-NEXT:   aie.rule(31, 9,
 // FIND:       aie.packet_flow(9)
