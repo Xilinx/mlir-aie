@@ -148,7 +148,9 @@ jobs:
             -DLLVM_DIR=$PWD/mlir/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit)
-          ninja -C build
+          # A traced ASan compile of a large TU takes ~2 GB before CodeQL's
+          # own share; ninja's default 6 jobs exhaust the 16 GB runner.
+          ninja -C build ${{ matrix.codeql && '-j 3' || '' }}
 
       - name: Perform CodeQL analysis
         if: ${{ matrix.codeql }}
