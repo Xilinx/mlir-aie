@@ -1236,6 +1236,7 @@ class ExternalFunction(Kernel):
         target_arch: str,
         object_cache: KernelObjectCache | None = None,
         entry: str | None = None,
+        reached_only: bool = False,
     ) -> int:
         """Return the core data memory this kernel takes beyond its arguments.
 
@@ -1244,6 +1245,9 @@ class ExternalFunction(Kernel):
             object_cache: The store it compiles through, so the design's build
                 reuses the object; the one under ``NPU_CACHE_HOME`` when None.
             entry: A bound ``Kernel``'s symbol in this object to take the stack below.
+            reached_only: Count only the static data the entry reaches, as
+                the core's link keeps it when the core binds no other entry
+                of the object that reaches data.
 
         Returns:
             Its object's static data plus its stack, or plus a declared
@@ -1258,7 +1262,7 @@ class ExternalFunction(Kernel):
             ),
             entry=entry,
         )
-        data = found.data if found else 0
+        data = 0 if not found else found.reached_data if reached_only else found.data
         if self.stack_size_override is not None and entry is None:
             return data + self.stack_size_override
         return data + ((found.stack if found else None) or 0)

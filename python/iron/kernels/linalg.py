@@ -1481,7 +1481,9 @@ def mha(
             cache holds them, in ``QK^T``'s B tiling (``b_col_maj``), so one
             stream carries both; ``S`` and ``P``, ``dim_m`` by ``dim_n`` each,
             hold the scores (float32 with ``f32_scores``) and the weights.
-            AIE2 only; ``accurate_exp2`` only with ``f32_scores``.
+            On AIE2, ``accurate_exp2`` only with ``f32_scores``; on AIE2P,
+            ``accurate_exp2`` (the pipeline's), and no ``pair``, ``soft_cap``
+            or ``relative_band``.
         group: Each position's query heads a block packs, position-major:
             row ``i`` is at the block's first position plus ``i // group``.
             ``dim_m`` is whole positions of it.
@@ -1535,10 +1537,12 @@ def mha(
             without ``fused`` and ``f32_scores`` or with a ``group`` or
             ``packed``, or ``pair`` without ``fused``, with ``kv_heads`` or
             ``relative_band``, or at a ``dim_k`` not a multiple of 32.
-        NotImplementedError: ``fused`` off AIE2, or in an
-            ``AIE_KERNELS_PORTABLE`` build; ``kv_heads`` other than 1, 2, 4
-            or 8, or ``pair`` with bf16 scores at 8 rows, which Peano's
-            backend cannot build.
+        NotImplementedError: ``fused`` off AIE2 and AIE2P, in an
+            ``AIE_KERNELS_PORTABLE`` build, or on AIE2P without
+            ``accurate_exp2`` or with ``pair``, ``soft_cap``,
+            ``relative_band`` or ``emulate_bf16_mmul_with_bfp16``; ``kv_heads`` other
+            than 1, 2, 4 or 8, or ``pair`` with bf16 scores at 8 rows, which
+            Peano's backend cannot build.
     """
     if float_o and not pv:
         raise ValueError("mha: float_o is the P*V product's, so it needs pv")
@@ -1546,7 +1550,8 @@ def mha(
         raise ValueError("mha: fused returns its own entry, not pv's")
     if fused and not b_col_maj:
         raise ValueError("mha: fused is QK^T on K as stored, so it needs b_col_maj")
-    if fused and accurate_exp2 and not f32_scores:
+    arch = _tuned_arch()
+    if fused and arch == "aie2" and accurate_exp2 and not f32_scores:
         raise ValueError("mha: fused takes the accurate exponential over f32_scores")
     if soft_cap is not None and not (fused and f32_scores):
         raise ValueError("mha: soft_cap is the fused block's, over f32_scores")
@@ -1562,8 +1567,23 @@ def mha(
             "mha: pair is the fused block's, one KV head, no relative band, "
             f"over two halves of dim_k that are multiples of 16, got {dim_k}"
         )
-    if fused and _tuned_arch() != "aie2":
-        raise NotImplementedError("mha: fused is written for tuned AIE2 only")
+    if fused and arch not in ("aie2", "aie2p"):
+        raise NotImplementedError("mha: fused is written for tuned AIE2 and AIE2P")
+    if (
+        fused
+        and arch == "aie2p"
+        and (
+            not accurate_exp2
+            or pair
+            or soft_cap is not None
+            or relative_band
+            or emulate_bf16_mmul_with_bfp16
+        )
+    ):
+        raise NotImplementedError(
+            "mha: fused on AIE2P takes accurate_exp2, the pipeline's, and no "
+            "pair, soft_cap, relative_band or emulate_bf16_mmul_with_bfp16"
+        )
     if kv_heads < 1:
         raise ValueError(f"mha: kv_heads must be at least 1, got {kv_heads}")
     if kv_heads > 1 and not fused:
@@ -1789,6 +1809,7 @@ class _FusedBlock(NamedTuple):
     s_kv_eff: int
     scale: float
     weight: float
+    weight_note: str
 
     @classmethod
     def of(cls, dim_m, dim_k, dim_n, group, accurate_exp2, soft_cap):
@@ -1804,10 +1825,11 @@ class _FusedBlock(NamedTuple):
 
         Returns:
             The block's ``idx``, effective sizes, the call's scale (1 for
-            capped scores, which come in log2(e) units) and a weight's
+            capped scores, which come in log2(e) units), a weight's
             relative error: exp2_bf16.h's cubic with its bf16 store, 0.74% at
             worst on npu1, or the accurate exp2's bf16 store, and a cap's
-            float32 tanh, softmax's per unit of cap.
+            float32 tanh, softmax's per unit of cap; and where that error
+            comes from.
         """
         q_block = -(-2 * dim_n // (dim_m // group))
         scale = (
@@ -1818,19 +1840,19 @@ class _FusedBlock(NamedTuple):
         weight = (2.0**-8 if accurate_exp2 else 0.0075) + (
             soft_cap * _SOFT_CAP_ERR if soft_cap is not None else 0.0
         )
+        weight_note = (
+            "the accurate exp2's bf16 store"
+            if accurate_exp2
+            else "exp2_bf16.h cubic (0.74% at worst on npu1)"
+        ) + (", a cap's float32 tanh" if soft_cap is not None else "")
         return cls(
             np.array([1, q_block, 0], np.int32),
             (q_block + 1) * dim_m,
             2 * dim_n,
             scale,
             weight,
+            weight_note,
         )
-
-
-_FUSED_TOLERANCE_NOTE = (
-    "exp2_bf16.h cubic (0.74% at worst on npu1) or the accurate exp2's bf16 "
-    "store, float32 summation, a cap's float32 tanh"
-)
 
 
 def _mha_fused(
@@ -1853,13 +1875,15 @@ def _mha_fused(
     The contract's call attends a ``_FusedBlock``, with ``kv_heads`` the first
     head's keys.
     """
-    mac = (4, 8, 4)
-    qk = mm_stream_dims(dim_m, dim_k, dim_n, mac, b_col_maj=True)
-    pv = mm_stream_dims(dim_m, dim_n, dim_k, mac)
+    qk_mac = _MhaFactory.mac_dims()
+    pv_mac = _MhaFactory.mac_dims(pv=True)
+    qk = mm_stream_dims(dim_m, dim_k, dim_n, qk_mac, b_col_maj=True)
+    pv = mm_stream_dims(dim_m, dim_n, dim_k, pv_mac)
     # Each key's K row, then its V row, as a paired cache holds them, in
-    # QK^T's B tiling: (4, 8) tiles of 4 keys by 8 columns.
+    # QK^T's B tiling: tiles of its t keys by 8 columns.
     width = 2 * dim_k * kv_heads
-    kv_stream = TensorAccessPattern.full((dim_n, width)).tile((4, 8))
+    kv_tile = (qk_mac[2], qk_mac[1])
+    kv_stream = TensorAccessPattern.full((dim_n, width)).tile(kv_tile)
 
     block = _FusedBlock.of(dim_m, dim_k, dim_n, group, accurate_exp2, soft_cap)
     block_terms = partial(
@@ -1939,10 +1963,10 @@ def _mha_fused(
         contract=KernelContract(
             trace=Trace.whole_call(),
             layouts=(
-                _tile_layout((dim_m, dim_k), qk.A, block=mac[:2]),
-                _tile_layout((dim_n, width), kv_stream, block=(4, 8)),
+                _tile_layout((dim_m, dim_k), qk.A, block=qk_mac[:2]),
+                _tile_layout((dim_n, width), kv_stream, block=kv_tile),
                 *[None] * len(qr),
-                _tile_layout((dim_m, dim_k), pv.C, inverse=True, block=mac[::2]),
+                _tile_layout((dim_m, dim_k), pv.C, inverse=True, block=pv_mac[::2]),
                 *([None] * 7),
             ),
             roles=(In, In, *[In] * len(qr), InOut, *([Param] * 7)),
@@ -1961,14 +1985,19 @@ def _mha_fused(
                     (9, block.s_kv_eff),
                 )
             ),
-            reference=lambda q, kv, qr=None: block_terms(q, kv, qr)[0],
+            reference=(
+                (lambda q, kv, qr: block_terms(q, kv, qr)[0])
+                if relative_band
+                else (lambda q, kv: block_terms(q, kv)[0])
+            ),
             initializers=tuple(
                 (i, partial(_zero_output, index=i)) for i in (2 + len(qr), 5 + len(qr))
             ),
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,
-                note=f"{_FUSED_TOLERANCE_NOTE}; the sample's scores are exact",
+                note=f"{block.weight_note}, float32 summation; the sample's "
+                "scores are exact",
             ),
             ops_per_call=4 * dim_m * dim_k * dim_n,
         ),
@@ -2078,8 +2107,8 @@ def _mha_pair(
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,
-                note=f"{_FUSED_TOLERANCE_NOTE}; the sample's partials and their "
-                "sum are exact",
+                note=f"{block.weight_note}, float32 summation; the sample's "
+                "partials and their sum are exact",
             ),
             ops_per_call=2 * dim_m * half * dim_n,
         ),
