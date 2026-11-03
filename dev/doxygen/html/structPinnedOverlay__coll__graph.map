@@ -1,7 +1,0 @@
-<map id="PinnedOverlay" name="PinnedOverlay">
-<area shape="rect" id="Node000001" title="What the prioritized flows take routed alone (see has_ctrl_pkt_overlay)." alt="" coords="84,140,200,168"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,22,103,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="74,60,134,139,129,140,71,64"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="127,5,336,67"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="201,78,154,142,150,138,196,80"/>
-</map>
