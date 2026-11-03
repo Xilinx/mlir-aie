@@ -24,6 +24,10 @@ from pathlib import Path
 
 from aie.utils import config
 
+# The link script's data-region order (AIETargetLdScript.cpp): every
+# .data*, then every .rodata*, before .bss* gets its own output section.
+_DATA_SECTION_GROUPS = (".data", ".rodata", ".bss")
+
 
 @dataclass
 class Linked:
@@ -74,7 +78,9 @@ def parse_readobj(doc: dict, entry: str) -> Linked:
         alloc[s["Index"]] = "SHF_ALLOC" in flags
         stored[s["Index"]] = 0 if s["Type"]["Name"] == "SHT_NOBITS" else s["Size"]
         if "SHF_ALLOC" in flags and "SHF_EXECINSTR" not in flags:
-            data_sections.append((s["Index"], s["Size"], s["AddressAlignment"]))
+            data_sections.append(
+                (s["Index"], s["Size"], s["AddressAlignment"], s["Name"]["Name"])
+            )
     symbols = [s["Symbol"] for s in doc["Symbols"]]
     # A symbol names its section by index; an undefined one names index 0.
     home = [s["Section"]["Value"] or None for s in symbols]
@@ -125,10 +131,19 @@ def parse_readobj(doc: dict, entry: str) -> Linked:
         return depth[sec]
 
     def laid_out(sections) -> int:
-        # As aiecc's measureDataSectionDemand: each section from the next
-        # multiple of its alignment, in the order the link places them.
+        # As aiecc's generated link script (AIETargetLdScript.cpp): every
+        # .data* section, then every .rodata*, then every .bss*, in that
+        # output-section order regardless of the object's own section-table
+        # order; each from the next multiple of its alignment, as aiecc's
+        # measureDataSectionDemand does over the linked ELF.
+        def group(name: str) -> int:
+            for i, prefix in enumerate(_DATA_SECTION_GROUPS):
+                if name.startswith(prefix):
+                    return i
+            return len(_DATA_SECTION_GROUPS)
+
         end = 0
-        for _, size, align in sections:
+        for _, size, align, _name in sorted(sections, key=lambda s: group(s[3])):
             if size:
                 end = -(-end // max(align, 1)) * max(align, 1) + size
         return end

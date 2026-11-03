@@ -243,6 +243,27 @@ extern "C" void aligned_pair(int *a, int n) {
     assert found.reached_data == found.data == 64 + 4
 
 
+def test_data_lays_out_bss_after_data_as_the_link_script_does(tmp_path):
+    """.bss, .data, .bss (object order) still costs what the link gives .data
+    before .bss: the uninitialized pair doesn't share one alignment step."""
+    mixed = ExternalFunction(
+        "mixed_sections",
+        source_string="""
+alignas(64) static int lo;
+static int mid = 1;
+alignas(64) static int hi;
+extern "C" void mixed_sections(int *a, int n) {
+  lo += a[0];
+  mid += a[0];
+  hi += a[n - 1];
+}
+""",
+        arg_types=[np.ndarray[(64,), np.dtype[np.int32]], np.int32],
+    )
+    found = mixed.measure("aie2p", KernelObjectCache(tmp_path, 60))
+    assert found.reached_data == found.data == 64 + 64 + 4
+
+
 def test_measure_refuses_an_arch_the_recipe_was_not_built_for():
     """A factory's recipe is its bound device's; measuring it for another
     arch is refused before Peano compiles the wrong source.
