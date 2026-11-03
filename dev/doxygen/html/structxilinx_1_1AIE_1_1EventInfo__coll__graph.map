@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::EventInfo" name="xilinx::AIE::EventInfo">
+<area shape="rect" id="Node000001" title="Event information." alt="" coords="5,128,162,156"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="9,5,67,33"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="35,46,38,76,45,103,54,116,66,128,60,128,50,119,40,105,32,77,34,51"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="92,5,166,33"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="122,46,102,105,92,129,87,126,97,103,118,49"/>
+</map>
