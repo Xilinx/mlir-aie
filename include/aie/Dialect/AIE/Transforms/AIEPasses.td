@@ -873,7 +873,8 @@ def AIEImportOverlay : Pass<"aie-import-overlay", "mlir::ModuleOp"> {
 
 def AIEGenerateColumnControlOverlay
     : Pass<"aie-generate-column-control-overlay", "mlir::ModuleOp"> {
-  let summary = "Generate a standalone control overlay shared by the module's devices";
+  let summary =
+      "Generate a standalone control overlay shared by the module's devices";
   let description = [{
     Creates an overlay device and references it from application devices.
     Completion-token flows are imported and routed with each application.
@@ -883,25 +884,27 @@ def AIEGenerateColumnControlOverlay
     shim MM2S channel zero. Supplied overlays must be explicitly referenced.
   }];
   let constructor = "xilinx::AIE::createAIEGenerateColumnControlOverlayPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect", "xilinx::AIEX::AIEXDialect"];
-  let options = [
-    Option<"configuration", "configuration", "bool", "false",
-           "Include and pre-route configuration transport">,
-    Option<"adaptive", "adaptive", "bool", "true",
-           "Place configuration transport around application resources">,
-    ListOption<"coverColumns", "cover-columns", "int",
-               "Additional columns touched by application routing">
-  ];
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+  let options =
+      [Option<"configuration", "configuration", "bool", "false",
+              "Include and pre-route configuration transport">,
+       Option<"adaptive", "adaptive", "bool", "true",
+              "Place configuration transport around application resources">,
+       ListOption<"coverColumns", "cover-columns", "int",
+                  "Additional columns touched by application routing">];
 }
 
-def AIEAnnotateShimSharing : Pass<"aie-annotate-shim-sharing", "mlir::ModuleOp"> {
+def AIEAnnotateShimSharing
+    : Pass<"aie-annotate-shim-sharing", "mlir::ModuleOp"> {
   let summary = "Annotate shim endpoints that can share channels";
   let description = [{
     Records module-wide transfer lifetime analysis in aie.shareable_with.
     Explicit attributes take precedence over inferred sharing permissions.
   }];
   let constructor = "xilinx::AIE::createAIEAnnotateShimSharingPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect", "xilinx::AIEX::AIEXDialect"];
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
 }
 
 def AIETraceToConfig : Pass<"aie-trace-to-config", "DeviceOp"> {

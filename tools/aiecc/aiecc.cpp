@@ -962,6 +962,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   auto matchesDeviceFilter = [keptDevices =
                                   std::move(keptDevices)](DeviceOp d) {
+    if (xilinx::AIE::AIEDialect::IsCtrlOverlayAttrHelper(d.getContext())
+            .isAttrPresent(d))
+      return d.getSymName() == deviceName.getValue() ||
+             (loadPdiToCtrlPkt && wantFullElf);
     // Empty reset devices synthesized by --expand-load-pdis must always be
     // included, regardless of --device-name.
     return keptDevices.empty() || d.getSymName().starts_with("empty_") ||

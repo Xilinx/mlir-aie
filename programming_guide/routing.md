@@ -215,16 +215,13 @@ then routes the flows anyway and warns instead.
 
 A packet flow with `priority_route = true` routes first, on its own, and the
 other flows route around it. If the design can't route that way, the flow
-routes with the others. The control overlay that `aiecc
---generate-ctrl-pkt-overlay` adds, which carries control packets to and from
-tiles, uses priority routes.
+routes with the others. Completion-token flows use priority routing when imported into applications.
 
 A control-packet reload (`aiecc --load-pdi-to-ctrl-pkt`) uses a fixed overlay
-created by the module-level `aie-create-control-overlay` pass. This pass
+created by the module-level `aie-generate-column-control-overlay` pass. This pass
 creates a standalone `aie.device @ctrl_pkt_overlay`, routes it once, and marks
 its resources with `aie.is_ctrl_overlay`. Each application device references
-it with `overlay = @ctrl_pkt_overlay`. The pass then uses `aie-import-overlay`
-to copy its routed switchbox connections, packet rules, master sets, and other
+it with `overlay = @ctrl_pkt_overlay`. The following `aie-import-overlay` pass copies its routed switchbox connections, packet rules, master sets, and other
 resources into the application devices. The application router treats these
 as occupied resources; it does not reroute the overlay. The runtime loads the
 overlay's PDI before configuring applications through control packets, and

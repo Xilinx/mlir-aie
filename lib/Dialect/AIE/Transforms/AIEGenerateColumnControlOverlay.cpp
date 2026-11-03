@@ -65,31 +65,29 @@ struct AIEGenerateColumnControlOverlayPass
   DenseMap<int, llvm::SmallSet<int, 2>> fixedCircuits;
 
   void runOnOperation() override {
+    llvm::MapVector<AIEDevice, SmallVector<DeviceOp>> groups;
+    AIEDialect::IsCtrlOverlayAttrHelper marker(&getContext());
+    for (DeviceOp device : getOperation().getOps<DeviceOp>())
+      if (!marker.isAttrPresent(device) && !device.getOverlayAttr() &&
+          device.getTargetModel().getTargetArch() != AIEArch::AIE1 &&
+          (configuration || !collectTokenIssuingTiles({device}).empty()))
+        groups[device.getDevice()].push_back(device);
+    for (auto &[target, users] : groups)
+      if (failed(generate(users)))
+        return signalPassFailure();
+  }
+
+  LogicalResult generate(ArrayRef<DeviceOp> users) {
     ModuleOp module = getOperation();
     AIEDialect::IsCtrlOverlayAttrHelper marker(&getContext());
-    SmallVector<DeviceOp> users;
-    for (DeviceOp device : module.getOps<DeviceOp>())
-      if (!marker.isAttrPresent(device) && !device.getOverlayAttr() &&
-          device.getTargetModel().getTargetArch() != AIEArch::AIE1)
-        users.push_back(device);
-    if (users.empty())
-      return;
-    auto target = users.front().getDevice();
-    for (DeviceOp device : users)
-      if (device.getDevice() != target) {
-        device.emitOpError("cannot share an overlay with a different target");
-        return signalPassFailure();
-      }
-    if (module.lookupSymbol("ctrl_pkt_overlay")) {
-      module.emitError(
-          "@ctrl_pkt_overlay already exists; reference it with overlay");
-      return signalPassFailure();
-    }
+    DeviceOp first = users.front();
+    auto target = first.getDevice();
     auto tokenTiles = collectTokenIssuingTiles(users);
     std::set<int> columns;
-    for (DeviceOp device : users)
-      for (TileOp tile : device.getOps<TileOp>())
-        columns.insert(tile.colIndex());
+    if (configuration)
+      for (DeviceOp device : users)
+        for (TileOp tile : device.getOps<TileOp>())
+          columns.insert(tile.colIndex());
     for (TileID tile : tokenTiles)
       columns.insert(tile.col);
     if (configuration) {
@@ -100,11 +98,13 @@ struct AIEGenerateColumnControlOverlayPass
       columns.insert(coverColumns.begin(), coverColumns.end());
       collectShimMM2SUses(users);
     }
+    SymbolTable symbols(module);
     OpBuilder builder(module.getContext());
     builder.setInsertionPointToEnd(module.getBody());
     DeviceOp overlay =
         DeviceOp::create(builder, module.getLoc(), target,
                          builder.getStringAttr("ctrl_pkt_overlay"), nullptr);
+    symbols.insert(overlay);
     overlay.getRegion().emplaceBlock();
     builder.setInsertionPointToEnd(overlay.getBody());
     EndOp::create(builder, overlay.getLoc());
@@ -119,7 +119,7 @@ struct AIEGenerateColumnControlOverlayPass
               other && other != id) {
             tile.emitOpError(
                 "has a different controller ID in another configuration");
-            return signalPassFailure();
+            return failure();
           }
           dest->setAttr("controller_id", id);
         }
@@ -147,7 +147,7 @@ struct AIEGenerateColumnControlOverlayPass
     for (int col : columns) {
       if (col < 0 || col >= model.columns()) {
         overlay.emitOpError("control coverage column is outside the target");
-        return signalPassFailure();
+        return failure();
       }
       builder.setInsertionPointToStart(overlay.getBody());
       TileOp shim = TileOp::getOrCreate(builder, overlay, col, 0);
@@ -178,7 +178,7 @@ struct AIEGenerateColumnControlOverlayPass
         overlay.emitOpError("failed to generate control overlay: no available "
                             "shim MM2S channel in column ")
             << col;
-        return signalPassFailure();
+        return failure();
       }
       builder.setInsertionPoint(overlay.getBody()->getTerminator());
       auto alloc = ShimDMAAllocationOp::create(
@@ -199,14 +199,14 @@ struct AIEGenerateColumnControlOverlayPass
             .setAttr(device, builder.getUnitAttr());
     }
     if (!configuration)
-      return;
+      return success();
     auto avoided = adaptive ? applicationPorts(module)
                             : std::vector<std::pair<TileID, Port>>{};
     OpPassManager routing(DeviceOp::getOperationName());
     routing.addPass(createAIEAssignTileCtrlIDsPass());
     routing.addPass(createAIEPathfinderPass({}, avoided));
     if (failed(runPipeline(routing, overlay)))
-      return signalPassFailure();
+      return failure();
     // Reprogramming another master set of an active arbiter can stall control
     // packets.
     for (auto box : overlay.getOps<SwitchboxOp>()) {
@@ -226,6 +226,7 @@ struct AIEGenerateColumnControlOverlayPass
       if (!isa<DeviceOp, EndOp, PacketRulesOp>(op))
         marker.setAttr(op, builder.getUnitAttr());
     });
+    return success();
   }
   void collectShimMM2SUses(ArrayRef<DeviceOp> devices) {
     packetDemand.clear();
@@ -291,7 +292,10 @@ struct AIEGenerateColumnControlOverlayPass
       if (auto tile = dyn_cast_or_null<TileOp>(tileValue.getDefiningOp()))
         tiles.insert({tile.colIndex(), tile.rowIndex()});
     };
-    for (DeviceOp device : devices)
+    for (DeviceOp device : devices) {
+      for (TileOp tile : device.getOps<TileOp>())
+        if (tile.isShimNOCorPLTile())
+          tiles.insert(tile.getTileID());
       device.walk([&](Operation *op) {
         if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
           if (task.getIssueToken())
@@ -311,6 +315,7 @@ struct AIEGenerateColumnControlOverlayPass
                           static_cast<int>(push.getRow())});
         }
       });
+    }
     return tiles;
   }
 
