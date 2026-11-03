@@ -1794,8 +1794,8 @@ class _FusedBlock(NamedTuple):
 
     Key block 1 of the first query block every row of which keeps all of its
     keys, as ``matmul_PV``'s contract is a later key block: ``O`` is the
-    harness's to zero, and the rescale runs, by 1. The state starts at 0, and
-    every call takes the same tile, so the state each call carries holds.
+    harness's to zero, and the rescale runs, by 1. The harness zeroes the
+    state before each call too, as the kernel updates it.
     """
 
     idx: np.ndarray
@@ -1984,7 +1984,9 @@ def _mha_fused(
                 if relative_band
                 else (lambda q, kv: block_terms(q, kv)[0])
             ),
-            initializers=((2 + len(qr), partial(_zero_output, index=2 + len(qr))),),
+            initializers=tuple(
+                (i, partial(_zero_output, index=i)) for i in (2 + len(qr), 5 + len(qr))
+            ),
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,
@@ -2095,7 +2097,7 @@ def _mha_pair(
                 (10, block.s_kv_eff),
             ),
             reference=lambda s0, s1, kv: pair_terms(s0, s1, kv)[0],
-            initializers=((3, partial(_zero_output, index=3)),),
+            initializers=tuple((i, partial(_zero_output, index=i)) for i in (3, 6)),
             sample=sample,
             tolerance=Tolerance.bounded(
                 bound,

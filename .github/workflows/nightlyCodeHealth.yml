@@ -120,9 +120,12 @@ jobs:
       # (AIE_SANITIZER_PRELOAD, test/lit.cfg.py).
       - name: Build
         run: |
-          RT=$(clang -print-runtime-dir)
-          PRELOAD=$(find "$RT" -maxdepth 1 \( -name 'libclang_rt.${{ matrix.runtime }}.so' -o -name 'libclang_rt.${{ matrix.runtime }}-x86_64.so' \) | head -1)
-          test -n "$PRELOAD" || { echo "::error::no shared ${{ matrix.runtime }} runtime under $RT"; exit 1; }
+          # clang 21 reports its per-target runtime dir even where the distro
+          # installs the runtimes in the older lib/linux layout, so search both.
+          RES=$(clang -print-resource-dir)
+          PRELOAD=$(find "$RES/lib" -maxdepth 2 \( -name 'libclang_rt.${{ matrix.runtime }}.so' -o -name 'libclang_rt.${{ matrix.runtime }}-x86_64.so' \) | head -1)
+          test -n "$PRELOAD" || { echo "::error::no shared ${{ matrix.runtime }} runtime under $RES/lib"; exit 1; }
+          RT=$(dirname "$PRELOAD")
           echo "AIE_SANITIZER_PRELOAD=$PRELOAD" >> "$GITHUB_ENV"
           FLAGS="-O1 -g -fno-omit-frame-pointer ${{ matrix.flags }} -shared-libsan"
           LINK="${{ matrix.flags }} -shared-libsan -Wl,-rpath,$RT -fuse-ld=lld"

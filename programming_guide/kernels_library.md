@@ -277,7 +277,10 @@ or `CONV_*` defines retains their runtime bounds.
 `Out` is written, while `InOut`
 is read and written and requires a declared `initializers` entry. Its reference
 describes the result from that initial state. Initialization occurs on every
-independent call, not only the first.
+independent call, not only the first. A tensor `Param` the kernel writes, such
+as attention's running state, declares an `initializers` entry too: its bound
+value is loaded once with the design, so without one a later run reads what the
+last run left.
 
 Multiple outputs are ordered by `contract.out_indices`. Their reference,
 output sizes and device dtypes are tuples; `output_dtype()` derives the latter
@@ -405,7 +408,8 @@ A new factory is complete when one line each in two places covers it:
    A factory with more than one dtype lists them in `DTYPES["<factory>"]`
    above its definition.
    Bind fixed parameters explicitly with `parameter_bindings`, publish nontrivial
-   storage with `layouts`, and initialize `InOut` tiles with `initializers`.
+   storage with `layouts`, and initialize `InOut` tiles and written `Param`
+   buffers with `initializers`.
    Declare what the kernel's trace markers measure with `trace=`:
    `Trace.whole_call()` when one `event0()` before the work and one
    `event1()` after it bracket every call of the entry symbol, or
