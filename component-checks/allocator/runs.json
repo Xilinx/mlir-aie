@@ -489,6 +489,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "allocator",
+   "id": "41571601515",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41571601515",
+   "date": "2026-11-03T03:20:20+00:00",
+   "commit": {
+    "id": "76c9a2265682d10b847fd798133674f05fcf0fc1",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/76c9a2265682d10b847fd798133674f05fcf0fc1",
+    "message": "[cert] Emit DMA chains and payloads where AIEBU can resolve them (#3993)",
+    "timestamp": "2026-11-03T00:30:43Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "76c9a22656",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 6,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

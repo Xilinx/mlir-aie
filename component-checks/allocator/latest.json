@@ -1,21 +1,21 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "41382733263",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41382733263",
- "date": "2026-11-02T03:22:19+00:00",
+ "id": "41571601515",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41571601515",
+ "date": "2026-11-03T03:20:20+00:00",
  "commit": {
-  "id": "7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/7553ce5647ffd0989f0da15ad67a80a9b43a8bfd",
-  "message": "Name and locate MLIR after the IRON Python that built it (#4004)",
-  "timestamp": "2026-10-31T19:44:44Z"
+  "id": "76c9a2265682d10b847fd798133674f05fcf0fc1",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/76c9a2265682d10b847fd798133674f05fcf0fc1",
+  "message": "[cert] Emit DMA chains and payloads where AIEBU can resolve them (#3993)",
+  "timestamp": "2026-11-03T00:30:43Z"
  },
  "event": "schedule",
  "pmode": null,
  "device": "AMD EPYC 7763 64-Core Processor",
  "device_raw": null,
  "provenance": {
-  "commit": "7553ce5647",
+  "commit": "76c9a22656",
   "cpu": "AMD EPYC 7763 64-Core Processor"
  },
  "sane": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 235.4,
+    "value": 137.4,
     "unit": "s"
    }
   }
@@ -102,7 +102,7 @@
   {
    "name": "stress",
    "ok": true,
-   "detail": "300/300 placed in 0.1s (max 30s)"
+   "detail": "300/300 placed in 0.0s (max 30s)"
   }
  ]
 }
