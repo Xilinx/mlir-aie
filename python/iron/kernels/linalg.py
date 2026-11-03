@@ -1539,8 +1539,8 @@ def mha(
             ``relative_band``, or at a ``dim_k`` not a multiple of 32.
         NotImplementedError: ``fused`` off AIE2 and AIE2P, in an
             ``AIE_KERNELS_PORTABLE`` build, or on AIE2P without
-            ``accurate_exp2`` or with ``pair``, ``soft_cap`` or
-            ``relative_band``; ``kv_heads`` other
+            ``accurate_exp2`` or with ``pair``, ``soft_cap``,
+            ``relative_band`` or ``emulate_bf16_mmul_with_bfp16``; ``kv_heads`` other
             than 1, 2, 4 or 8, or ``pair`` with bf16 scores at 8 rows, which
             Peano's backend cannot build.
     """
@@ -1572,11 +1572,17 @@ def mha(
     if (
         fused
         and arch == "aie2p"
-        and (not accurate_exp2 or pair or soft_cap is not None or relative_band)
+        and (
+            not accurate_exp2
+            or pair
+            or soft_cap is not None
+            or relative_band
+            or emulate_bf16_mmul_with_bfp16
+        )
     ):
         raise NotImplementedError(
             "mha: fused on AIE2P takes accurate_exp2, the pipeline's, and no "
-            "pair, soft_cap or relative_band"
+            "pair, soft_cap, relative_band or emulate_bf16_mmul_with_bfp16"
         )
     if kv_heads < 1:
         raise ValueError(f"mha: kv_heads must be at least 1, got {kv_heads}")
