@@ -16,6 +16,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 
 #include <map>
@@ -1149,8 +1150,16 @@ struct AIENpuToCertPass
 // and emitter in sync when adding a cert op:
 // an op the emitter can emit but this function ignores is counted as free,
 // which makes the page look smaller than it is.
+// AIEBU lays down each chain and each payload global once per page, however
+// many pushes on that page name them, so data is charged once per page.
+struct PageDataSeen {
+  llvm::DenseSet<Operation *> chains;
+  llvm::DenseSet<Operation *> payloads;
+};
+
 static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
-                            uint32_t &text_cost, uint32_t &data_cost) {
+                            uint32_t &text_cost, uint32_t &data_cost,
+                            PageDataSeen &seen) {
   // Several distinct op kinds share an encoded instruction size below --
   // an instruction-size table, not a copy-paste clone.
   // NOLINTBEGIN(bugprone-branch-clone)
@@ -1179,14 +1188,14 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     StringRef sym_name = syncOp.getSymbol();
     auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
         deviceOp.lookupSymbol(sym_name));
-    if (!chain)
+    if (!chain || !seen.chains.insert(chain).second)
       return;
     for (auto bdOp : chain.getBody().front().getOps<AIEX::CertUcDmaBdOp>()) {
       data_cost += 16; // bd op
       StringRef data_sym_name = bdOp.getRemoteAddress();
       auto global = dyn_cast_if_present<memref::GlobalOp>(
           deviceOp.lookupSymbol(data_sym_name));
-      if (!global)
+      if (!global || !seen.payloads.insert(global).second)
         continue;
       auto initVal = global.getInitialValue();
       if (!initVal)
@@ -1205,6 +1214,7 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
                              bool &found_split_point) {
   uint32_t text_cost = 32; // page header: `.align 16` padding plus `.eop`
   uint32_t data_cost = 0;
+  PageDataSeen seen;
   found_split_point = false;
   AIE::DeviceOp deviceOp = op->getParentOfType<AIE::DeviceOp>();
 
@@ -1222,7 +1232,7 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
         found_split_point = true;
       }
 
-      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      updateCostForOp(o, deviceOp, text_cost, data_cost, seen);
 
       if (!found_split_point && (text_cost + data_cost) >= split_target) {
         Block::iterator next = current;
@@ -1332,6 +1342,7 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
   AIE::DeviceOp deviceOp = page->getParentOfType<AIE::DeviceOp>();
   uint32_t text_cost = 32; // page header, mirrors estimateCost
   uint32_t data_cost = 0;
+  PageDataSeen seen;
   bool found = false;
   uint32_t best_delta = 0;
   // Whether some job already visited holds a real op, i.e. whether cutting at
@@ -1364,7 +1375,7 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
           }
         }
       }
-      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      updateCostForOp(o, deviceOp, text_cost, data_cost, seen);
       sawOpInJob = true;
     }
     text_cost += cert_job_end_cost; // mirrors estimateCost
@@ -1544,10 +1555,12 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     computeIndivisibleSpans(op, flatIndex, spans);
 
     // The initial estimate can miss a job-boundary cut or an earlier candidate;
-    // search all positions before declaring the page unsplittable.
+    // search all positions before declaring the page unsplittable. Spans are
+    // not applied here: a page whose cuts are all blocked by a span has split
+    // points, and the span check below reports which constraint blocks them.
     if (!found_split_point)
       found_split_point = findLegalSplitPoint(op, cert_page_size / 2, flatIndex,
-                                              spans, split_job, split_iter);
+                                              {}, split_job, split_iter);
 
     // Over the split trigger but with nowhere to cut. Every cut has to leave at
     // least one op on each side, so a page whose bulk sits in a single one-op

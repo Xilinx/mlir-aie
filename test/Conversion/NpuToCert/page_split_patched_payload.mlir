@@ -139,7 +139,7 @@ aie.device(xcve3858) @unpatched {
 aie.device(xcve3858) @repeated_push {
   memref.global "private" constant @sA : memref<700xi32> = dense<0>
   memref.global "private" constant @sW : memref<400xi32> = dense<0>
-  memref.global "private" constant @sV : memref<200xi32> = dense<0>
+  memref.global "private" constant @sV : memref<900xi32> = dense<0>
   aiex.cert.uc_dma_chain @chainSA {
     aiex.cert.uc_dma_bd @sA, 0, 700, false
   }
@@ -147,7 +147,7 @@ aie.device(xcve3858) @repeated_push {
     aiex.cert.uc_dma_bd @sW, 0, 400, false
   }
   aiex.cert.uc_dma_chain @chainSV {
-    aiex.cert.uc_dma_bd @sV, 0, 200, false
+    aiex.cert.uc_dma_bd @sV, 0, 900, false
   }
   aiex.cert.page {
     aiex.cert.job(1) {
@@ -156,6 +156,44 @@ aie.device(xcve3858) @repeated_push {
       aiex.cert.uc_dma_write_des_sync(@chainSW)
       aiex.cert.uc_dma_write_des_sync(@chainSA)
       aiex.cert.uc_dma_write_des_sync(@chainSV)
+    }
+  }
+}
+
+// -----
+
+// Each page carries one copy of each chain and payload, however many pushes
+// name them. This page repeats @chainTA and shares @tA with @chainTA2; counted
+// once each, it fits the 8192-byte limit, so the indivisible span is kept
+// whole instead of being rejected.
+//
+// CHECK-LABEL: aie.device(xcve3858) @shared_payload_fits
+// CHECK: aiex.cert.page
+// CHECK: aiex.cert.apply_offset_57(@tA, 1, 0)
+// CHECK-NOT: aiex.cert.page
+// CHECK: aiex.cert.uc_dma_write_des_sync(@chainTA2)
+// CHECK-NOT: aiex.cert.page
+aie.device(xcve3858) @shared_payload_fits {
+  memref.global "private" constant @tA : memref<980xi32> = dense<0>
+  memref.global "private" constant @tB : memref<1000xi32> = dense<0>
+  aiex.cert.uc_dma_chain @chainTA {
+    aiex.cert.uc_dma_bd @tA, 0, 980, false
+  }
+  aiex.cert.uc_dma_chain @chainTB {
+    aiex.cert.uc_dma_bd @tB, 0, 1000, false
+  }
+  aiex.cert.uc_dma_chain @chainTA2 {
+    aiex.cert.uc_dma_bd @tA, 4096, 980, false
+  }
+  aiex.cert.page {
+    aiex.cert.job(1) {
+      aiex.cert.apply_offset_57(@tA, 1, 0)
+      aiex.cert.uc_dma_write_des_sync(@chainTA)
+      aiex.cert.write32(0x1000, 1)
+      aiex.cert.uc_dma_write_des_sync(@chainTB)
+      aiex.cert.uc_dma_write_des_sync(@chainTA)
+      aiex.cert.apply_offset_57(@tA, 1, 2)
+      aiex.cert.uc_dma_write_des_sync(@chainTA2)
     }
   }
 }
