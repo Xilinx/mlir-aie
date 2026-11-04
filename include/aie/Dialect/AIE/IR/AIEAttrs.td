@@ -260,6 +260,7 @@ def ConsumedByAttr : AttrDef<AIE_Dialect, "ConsumedBy", []> {
       "int64_t":$input_bytes, "int64_t":$output_bytes);
 
   let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
 }
 
 def ConsumedByArrayAttr

@@ -629,6 +629,20 @@ ObjectFifoTransportAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 //===----------------------------------------------------------------------===//
+// ConsumedByAttr
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+ConsumedByAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                       FlatSymbolRefAttr output, int64_t inputBytes,
+                       int64_t outputBytes) {
+  if (inputBytes <= 0 || outputBytes <= 0)
+    return emitError() << "consumed_by needs positive byte counts, got "
+                       << inputBytes << " and " << outputBytes;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ObjectFifoEndPortAttr
 //===----------------------------------------------------------------------===//
 
@@ -5949,6 +5963,19 @@ LogicalResult ShimDMAAllocationOp::verify() {
              << *col << ", " << *row << ")";
     }
     return emitOpError("tile must be a shim tile");
+  }
+
+  if (ArrayAttr proofs = getConsumedByAttr()) {
+    if (getChannelDir() != DMAChannelDir::MM2S)
+      return emitOpError("consumed_by belongs on a shim input (MM2S)");
+    auto device = (*this)->getParentOfType<DeviceOp>();
+    for (auto proof : proofs.getAsRange<ConsumedByAttr>()) {
+      auto output = getForSymbol(device, proof.getOutput().getValue());
+      if (!output || output.getChannelDir() != DMAChannelDir::S2MM)
+        return emitOpError("consumed_by output ")
+               << proof.getOutput()
+               << " names no shim output (S2MM aie.shim_dma_allocation)";
+    }
   }
 
   return verifyAssignedPacket(*this, getPacketAttr());
