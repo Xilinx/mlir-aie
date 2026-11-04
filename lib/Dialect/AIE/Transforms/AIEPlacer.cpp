@@ -271,8 +271,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       continue;
     auto [peerIn, peerOut] =
         totalComputePeers(lt.getOperation(), computePeerAdjacency);
-    int inBudget = lt.getNumDestConnections(WireBundle::DMA);
-    int outBudget = lt.getNumSourceConnections(WireBundle::DMA);
+    auto [inBudget, outBudget] =
+        getDMACapacity(*targetModel, lt.getCanonicalTileID());
     auto [nonPeerIn, nonPeerOut] =
         channelRequirements.lookup(lt.getOperation());
     needNeighborIn[lt.getOperation()] =
@@ -867,8 +867,8 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
 
   if (!hasAvailableChannels(tile, inChannels, outChannels) &&
       !fitsSharingShim(tile, logicalTile, {inChannels, outChannels})) {
-    int maxIn = logicalTile.getNumDestConnections(WireBundle::DMA);
-    int maxOut = logicalTile.getNumSourceConnections(WireBundle::DMA);
+    // The same capacity as hasAvailableChannels, so the message matches it.
+    auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
     int availIn = maxIn - availability.inputChannelsUsed[tile];
     int availOut = maxOut - availability.outputChannelsUsed[tile];
 
@@ -1093,8 +1093,9 @@ void SequentialPlacer::countTurns(
     auto &[in, out] = requirements[tile];
     for (bool coreDrains : {true, false}) {
       int &need = coreDrains ? in : out;
-      int budget = coreDrains ? tile.getNumDestConnections(WireBundle::DMA)
-                              : tile.getNumSourceConnections(WireBundle::DMA);
+      auto [inBudget, outBudget] =
+          getDMACapacity(*targetModel, tile.getCanonicalTileID());
+      int budget = coreDrains ? inBudget : outBudget;
       if (need <= budget)
         continue;
       llvm::MapVector<Operation *, SmallVector<ObjectFifoCreateOp>> byTile;
