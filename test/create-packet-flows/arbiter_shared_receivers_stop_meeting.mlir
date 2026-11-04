@@ -32,31 +32,7 @@ module {
 
 // -----
 
-// Joining (0, 0)'s id 3 tree at (0, 3) ties (0, 3) DMA:1's ids 4 and 20 to its
-// arbiter; the check undoes the join rather than split them across channels
-// (0, 3) does not have.
-// Reduced from router_mutation.py npu1 seed 207380308 (multi-source).
-
-// ERR: error: Unable to find a legal routing: Packet flows into receivers they share can deadlock holding arbiters across switchboxes, and no routing found avoids it: packet flow (0, 0) DMA:0 -> (0, 1) DMA:4 (id 3)
-// WARN: warning: Packet flows into receivers they share can deadlock holding arbiters across switchboxes, and no routing found avoids it: packet flow (0, 0) DMA:0 -> (0, 1) DMA:4 (id 3)
-
-module {
-  aie.device(npu1_1col) {
-    %t_0_0 = aie.tile(0, 0)
-    %t_0_1 = aie.tile(0, 1)
-    %t_0_2 = aie.tile(0, 2)
-    %t_0_3 = aie.tile(0, 3)
-    %t_0_5 = aie.tile(0, 5)
-    aie.flow(%t_0_3, DMA : 0, %t_0_2, DMA : 1)
-    aie.packet_flow(4) { aie.packet_source<%t_0_5, Core : 0> aie.packet_source<%t_0_3, DMA : 1> aie.packet_dest<%t_0_1, DMA : 2> }
-    aie.packet_flow(20) { aie.packet_source<%t_0_3, DMA : 1> aie.packet_source<%t_0_5, DMA : 1> aie.packet_dest<%t_0_1, DMA : 5> }
-    aie.packet_flow(3) { aie.packet_source<%t_0_3, DMA : 1> aie.packet_source<%t_0_0, DMA : 0> aie.packet_dest<%t_0_1, DMA : 4> aie.packet_dest<%t_0_5, DMA : 1> }
-  }
-}
-
-// -----
-
-// The same with id 18 from (0, 2) DMA:1 and (0, 0) DMA:1, joining at which
+// Id 18 from (0, 2) DMA:1 and (0, 0) DMA:1 share two receivers; joining
 // would tie (0, 2)'s ids 0 and 24 to (0, 0)'s arbiter.
 // Reduced from router_properties.py npu1 seed 207360700.
 

@@ -48,6 +48,7 @@ ROUTER_COUNTS = {
     "hop_ratio": "×",
     "amsels_per_design": "amsels",
     "ms_per_design": "ms",
+    "strict_misses": "designs",
 }
 
 
@@ -129,6 +130,11 @@ def router(
                 "killed": report["killed"],
                 "survived": report["survived"],
                 "failures": len(report["failures"]),
+                "why": [
+                    f"seed {f['seed']} {f['kind']} {f['name']} {f['outcome']}: "
+                    + f["detail"]
+                    for f in report["failures"]
+                ][:10],
             }
         )
     rows = [
