@@ -2338,9 +2338,9 @@ void Pathfinder::TreeBuilder::claim() {
       }
     }
   }
-  // A circuit from or to a switchbox port (as --aie-split-flow-vias leaves a
-  // via) takes the wire that port is fed by or drives, though no hop of its
-  // tree crosses it.
+  // A flow from a switchbox port (as --aie-split-flow-vias leaves a via, or a
+  // packet source on a port) takes the wire that port is fed by, and a circuit
+  // to one the wire it drives, though no hop of its tree crosses them.
   auto takeWire = [](SwitchboxConnect &link, int k) {
     if (k < 0)
       return;
@@ -2349,8 +2349,13 @@ void Pathfinder::TreeBuilder::claim() {
     SwitchboxConnect::bumpDemand(c);
   };
   // A via's next segment starts where the last one ended, on the wire that
-  // one already takes.
-  if (!packetId && isDirectional(part.src.port.bundle))
+  // one already takes. A packet source's parts share its wire, which the first
+  // takes.
+  bool takesSource =
+      !packetId || llvm::find_if(st.parts, [&](const Flow &f) {
+                     return f.src == part.src;
+                   }) == st.parts.begin() + flow;
+  if (takesSource && isDirectional(part.src.port.bundle))
     for (auto &[ends, link] : pf.graph) {
       int k = link.dstIndex(part.src.port);
       if (ends.second != part.src.coords || ends.first == ends.second || k < 0)
