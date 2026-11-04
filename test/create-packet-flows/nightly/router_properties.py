@@ -5382,7 +5382,7 @@ DETOUR, TURNS, BOX_AMSELS = (0, 1, 2, 4), (0, 1, 2, 3), (1, 3, 7, 15)
 def outcome(rc, stderr):
     if rc == 0:
         return "routed"
-    if rc == -1000:
+    if rc == TIMEOUT:
         return "timeout"
     for key, rx in OUTCOMES:
         if re.search(rx, stderr, re.M):
@@ -5830,7 +5830,7 @@ def aie_opt_path():
 
 def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=False):
     """Run the router, letting flows that can deadlock route with a warning
-    unless strict. A timeout comes back as returncode -1000."""
+    unless strict. A timeout comes back as returncode TIMEOUT."""
     opts = [] if hops_on else ["circuit-switch-hops=false"]
     if not strict:
         opts.append("allow-deadlock-prone=true")
@@ -5847,13 +5847,15 @@ def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=Fals
             )
         except subprocess.TimeoutExpired:
             return subprocess.CompletedProcess(
-                cmd, -1000, "", f"timeout after {timeout}s"
+                cmd, TIMEOUT, "", f"timeout after {timeout}s"
             )
         # The binary may be relinked under us; a crash is worth one retry.
         if p.returncode >= 0:
             break
     return p
 
+
+TIMEOUT = -1000
 
 MODULE_TAG_RE = re.compile(r"^module @s(\d+)\b", re.M)
 

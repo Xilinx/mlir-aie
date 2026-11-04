@@ -130,6 +130,11 @@ def router(
                 "killed": report["killed"],
                 "survived": report["survived"],
                 "failures": len(report["failures"]),
+                "why": [
+                    f"seed {f['seed']} {f['kind']} {f['name']} {f['outcome']}: "
+                    + f["detail"]
+                    for f in report["failures"]
+                ][:10],
             }
         )
     rows = [

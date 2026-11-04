@@ -193,6 +193,14 @@ def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
     assert "id 3 from (0, 2) DMA:0" in detail
 
 
+def test_a_router_timeout_is_not_called_a_crash(priority):
+    d, _ = priority
+    slow = rp.aie_opt(d.emit(), True, strict=True, timeout=1e-6)
+    assert slow.returncode == rp.TIMEOUT
+    outcome, detail = router_mutation.judge_strict(d, "route", True, slow)
+    assert outcome == "timeout", detail
+
+
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():
     d = rp.load_design(OVER_CUT)
     holds = router_shrink.holds_fn(OVERUSED, True)

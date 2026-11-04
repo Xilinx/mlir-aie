@@ -770,6 +770,8 @@ def judge(e, expect, hops_on, seed):
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
         why = v["reason"]
     p = rp.aie_opt(e.emit(), hops_on, timeout=120)
+    if p.returncode == rp.TIMEOUT:
+        return "timeout", p.stderr
     if p.returncode < 0:
         return "crash", rp.first_error(p.stderr)[:300]
     if p.returncode:
@@ -806,6 +808,8 @@ def judge_strict(e, expect, hops_on, s):
     """Hold the router's run on canonical `e` without allow-deadlock-prone,
     `s`, to what judge() holds its run with it to. Returns (outcome, detail)
     as judge() does."""
+    if s.returncode == rp.TIMEOUT:
+        return "timeout", f"strict: {s.stderr}"
     if s.returncode < 0:
         return "crash", f"strict: {rp.first_error(s.stderr)[:300]}"
     if s.returncode:
@@ -1550,6 +1554,7 @@ def main():
         "soundness",
         "illegal",
         "crash",
+        "timeout",
         "broken",
         "survived",
         "base-fails",
@@ -1607,8 +1612,14 @@ def main():
                     "killed": kills["killed"],
                     "survived": kills["survived"],
                     "failures": [
-                        {"seed": seed, "kind": kind, "name": name, "outcome": outcome}
-                        for seed, kind, outcome, name, _, _ in failures
+                        {
+                            "seed": seed,
+                            "kind": kind,
+                            "name": name,
+                            "outcome": outcome,
+                            "detail": detail.strip()[:300],
+                        }
+                        for seed, kind, outcome, name, detail, _ in failures
                     ],
                 },
                 indent=1,
