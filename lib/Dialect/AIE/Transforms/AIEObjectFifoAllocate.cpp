@@ -91,6 +91,9 @@ struct AIEObjectFifoAllocatePass
   // Whether channelFailure's channel has too few BD ids left, rather than no
   // channel being free.
   bool bdShortfall = false;
+  /// Mem tiles once short of BD ids, whose ends since take their channels
+  /// from DMAChannelAnalysis::planBDChannels.
+  llvm::SetVector<Operation *> bdPlanned;
   /// The pool the buffer search could not place with the fewest left
   /// unplaced, i.e. where it got furthest.
   ObjectFifoPoolOp bufferFailure;
@@ -936,17 +939,18 @@ struct AIEObjectFifoAllocatePass
     // BDs per placed (col, row, channel) as channels are handed out, for
     // choosing among a tile's channels by the BD ids they can use.
     DenseMap<std::tuple<int, int, int>, int64_t> demand = fixedBDs;
+    auto bdsOf = [&](RouteEndpoint endpoint) -> int64_t {
+      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation()))
+        return dma.getNumBDs();
+      if (isProgramOwned(endpoint))
+        return endpointBDs(endpoint.getOperation());
+      return 0;
+    };
     auto noteDemand = [&](RouteEndpoint endpoint, int channel) {
       TileLike tile = tileOf(endpoint);
       auto col = tile.tryGetCol(), row = tile.tryGetRow();
-      if (!col || !row)
-        return;
-      int64_t bds = 0;
-      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation()))
-        bds = dma.getNumBDs();
-      else if (isProgramOwned(endpoint))
-        bds = endpointBDs(endpoint.getOperation());
-      demand[{*col, *row, channel}] += bds;
+      if (col && row)
+        demand[{*col, *row, channel}] += bdsOf(endpoint);
     };
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
@@ -1012,10 +1016,76 @@ struct AIEObjectFifoAllocatePass
              structuralRank.lookup(b.getOperation());
     });
 
+    // On a mem tile once short of BD ids, every end gets the channel a plan of
+    // the tile's BD ids gives it, before any pool there is walked whole.
+    DenseMap<Operation *, int> planned;
+    for (Operation *tileOp : bdPlanned) {
+      TileLike tile = cast<TileLike>(tileOp);
+      std::optional<int> col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (!col || !row)
+        continue;
+      SmallVector<RouteEndpoint> onTile;
+      SmallVector<DMAChannelAnalysis::BDPlanEnd> ends, unweighted;
+      for (RouteEndpoint endpoint : pending) {
+        if (tileOf(endpoint).getOperation() != tileOp)
+          continue;
+        DMAChannelDir dir = endpoint.getRouteDirection();
+        int limit = DMAChannelAnalysis::getDMAChannelLimit(
+            tile, dir, reachesAdjacentTile(endpoint));
+        onTile.push_back(endpoint);
+        ends.push_back({dir, bdsOf(endpoint), limit});
+        unweighted.push_back({dir, 0, limit});
+      }
+      auto free = [&](DMAChannelDir dir, int channel) {
+        return channels.isChannelFree(tile, dir, channel);
+      };
+      const AIETargetModel &target = device.getTargetModel();
+      std::optional<SmallVector<int>> plan =
+          DMAChannelAnalysis::planBDChannels(
+              target, *col, *row, ends, free, [&](int channel) {
+                return demand.lookup({*col, *row, channel});
+              });
+      if (plan) {
+        for (auto [endpoint, channel] : llvm::zip_equal(onTile, *plan))
+          planned[endpoint.getOperation()] = channel;
+        continue;
+      }
+      // Too few channels is reported, or shared, as it is anywhere.
+      if (!DMAChannelAnalysis::planBDChannels(target, *col, *row, unweighted,
+                                              free, [](int) { return 0; }))
+        continue;
+      RouteEndpoint deepest = *llvm::max_element(
+          onTile, [&](RouteEndpoint a, RouteEndpoint b) {
+            return bdsOf(a) < bdsOf(b);
+          });
+      channelFailure = deepest;
+      bdShortfall = true;
+      if (!diagnose)
+        return failure();
+      int64_t total = 0;
+      for (const DMAChannelAnalysis::BDPlanEnd &end : ends)
+        total += end.bds;
+      return deepest->emitOpError("needs ")
+             << bdsOf(deepest)
+             << " buffer descriptors, but no choice of channels fits its "
+                "tile's "
+             << ends.size() << " unpinned DMA ends, " << total
+             << " buffer descriptors in all, into the BD ids their channels "
+                "share, and no pool on the tile is left to walk whole";
+    }
+
     for (auto endpoint : pending) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       TileLike tile = tileOf(endpoint);
       bool adjacent = reachesAdjacentTile(endpoint);
+      if (auto it = planned.find(endpoint.getOperation());
+          it != planned.end()) {
+        channelAssignments[endpoint.getOperation()] =
+            channels.reservePinnedChannel(tile, dir, it->second,
+                                          endpoint.getOperation());
+        noteDemand(endpoint, it->second);
+        continue;
+      }
       // An objectFIFO end takes the first free channel, unless that channel's
       // BD ids have too few left for it: then the one with the most left.
       bool roomy = true;
@@ -1044,8 +1114,7 @@ struct AIEObjectFifoAllocatePass
                << dma.getNumBDs() << " buffer descriptors, but channel "
                << channel << " of its tile has "
                << bdRoom(tile, *col, *row, channel, demand)
-               << " left beside the channels sharing its BD ids, and no "
-                  "pool on the tile is left to walk whole";
+               << " left beside the channels sharing its BD ids";
       }
       if (channel < 0) {
         channelFailure = endpoint;
@@ -2181,6 +2250,7 @@ struct AIEObjectFifoAllocatePass
     spillTiles.clear();
     dispatchHeaders.clear();
     channelSharers.clear();
+    bdPlanned.clear();
     plannedMemory.clear();
     bufferPlacements.clear();
     channelAssignments.clear();
@@ -2253,7 +2323,9 @@ struct AIEObjectFifoAllocatePass
     // Short of BD ids on a mem tile channel, its deepest pool walked whole
     // takes one a side.
     while (failed(allocated) && channelFailure &&
-           (bdShortfall ? walkDeepestWhole(tileOf(channelFailure))
+           (bdShortfall
+                ? bdPlanned.insert(tileOf(channelFailure).getOperation()) ||
+                      walkDeepestWhole(tileOf(channelFailure))
             : tileOf(channelFailure).isShimTile()
                 ? planShimSharing(tileOf(channelFailure),
                                   channelFailure.getRouteDirection())

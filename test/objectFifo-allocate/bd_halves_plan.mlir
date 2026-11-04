@@ -1,4 +1,4 @@
-//===- bd_halves_walk_whole.mlir -------------------------------*- MLIR -*-===//
+//===- bd_halves_plan.mlir -------------------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -9,12 +9,13 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-assign-bd-ids %s -o /dev/null
 
 // Six links through one mem tile, pools 1, 1, 1, 1, 1 and 11 deep: 32 BD ids
-// in all, which would fit the tile's two halves of 24, but channels go to
-// ends first-free, and the deep pool's ends take channel 5 in each
-// direction, both in the odd half. Short of BD ids there, the allocator
-// walks that pool whole, one BD a side, and BD ids assign.
-// CHECK: aie.objectfifo.pool @in5__cons__pool(%{{.*}}) {buffers = [@in5__cons__buf0], contiguous, depth = 11 : i32
-
+// in all. First-free channels put the deep pool's ends on channel 5 in each
+// direction, both in the odd half of 24 ids; short of ids there, the tile's
+// channels come from a plan of its BD ids instead, which puts the deep pool's
+// ends in different halves, so nothing is walked whole and BD ids assign.
+// CHECK: aie.objectfifo.pool @in5__cons__pool(%{{.*}}) {buffers = [@in5__cons__buf0, {{[^]]*}}], depth = 11 : i32
+// CHECK: aie.objectfifo.dma_endpoint @in5__cons__dma(%{{.*}}) fills @in5__cons__pool {channelIndex = 4 : i32
+// CHECK: aie.objectfifo.dma_endpoint @out5__prod__dma(%{{.*}}) drains @in5__cons__pool {channelIndex = 5 : i32
 module @halves {
   aie.device(npu2) {
     %s0 = aie.tile(0, 0)
@@ -107,3 +108,4 @@ module @halves {
     }
   }
 }
+
