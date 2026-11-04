@@ -497,3 +497,51 @@ automatically.
 
 For the full picture, start from `buildMainGraph` in `aiecc.cpp`, then read
 `Graph.h` (edges) and `Items.h` (payloads).
+
+## Artifact provenance
+
+Packaged full ELFs, instruction ELFs and control-packet ELFs carry an
+`.note.mlir-aie.provenance` section. Its ELF note owner is `MLIR-AIE`, type is
+`1`, and descriptor is a NUL-terminated UTF-8 JSON object. Inspect it with:
+
+```sh
+readelf -n aie.elf
+readelf -p .note.mlir-aie.provenance aie.elf
+```
+
+Xclbins carry the same JSON as the `mlir_aie.provenance` user key in
+`KEYVALUE_METADATA`:
+
+```sh
+xclbinutil --input aie.xclbin --dump-section KEYVALUE_METADATA:JSON:metadata.json
+```
+
+Schema 1 records:
+
+- `producer`: `mlir-aie/aiecc`.
+- `revision`: the full MLIR-AIE Git revision embedded when aiecc was built,
+  or `unknown` for a source distribution without Git metadata.
+- `dirty`: whether tracked source changes were present at that build, or
+  `null` when Git status could not be determined. Untracked files and submodule
+  working-tree edits are excluded: the build applies repository-owned patches
+  there. Changed submodule revisions still count as dirty.
+- `devices`: the devices selected for the compilation, with their names,
+  target architectures, `cores_from_ir` counts and `imported_core_elfs` counts.
+- `core_compiler`: the selected core compiler's name (`llvm-aie` or `chess`),
+  version and revision. The version is queried from the selected toolchain at
+  compilation time, not the toolchain used to build aiecc. Unavailable version
+  or revision fields are `null`; the object is `null` when there are no cores
+  supplied as IR. This identifies the selected toolchain, not the producer of
+  imported core ELFs or externally compiled objects.
+
+Provenance describes the compilation invocation. A multi-device invocation's
+per-device artifacts carry the same selected-device list. With `--xclbin-input`,
+the key describes the latest packaging invocation; unrelated user keys are
+preserved. A metadata-only dry run does not query a core compiler.
+
+The ELF note is non-allocated and appended after assembly; existing loadable
+bytes, section indices, relocations and XRT UID are preserved. Core ELFs are
+consumed into PDIs before the note is added to the outer ELF. No timestamps,
+host paths, hostnames or command lines are recorded, so provenance is stable
+across otherwise identical builds. It is self-declared metadata, not a signature
+or proof of the origin of imported code, and it can be removed by repackaging.

@@ -38,6 +38,7 @@
 #include "Graph.h"
 #include "IRTransforms.h"
 #include "Items.h"
+#include "Provenance.h"
 #include "SidecarFiles.h"
 #include "Tools.h"
 #include "Utils.h"
@@ -1027,6 +1028,75 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return verifyStackSizeOverrides(out.value->get());
       });
 
+  auto &provenance = withDefaultStackSize.map<std::string>(
+      "provenance.json", [matchesDeviceFilter](const ModRef &mod) {
+        auto info = compilerProvenance();
+        llvm::json::Array devices;
+        bool hasSourceCores = false;
+        for (DeviceOp device : mod.get().getOps<DeviceOp>()) {
+          if (!matchesDeviceFilter(device))
+            continue;
+          int sourceCores = 0, importedCores = 0;
+          device.walk([&](CoreOp core) {
+            if (core.getElfFileAttr())
+              ++importedCores;
+            else
+              ++sourceCores;
+          });
+          hasSourceCores |= sourceCores != 0;
+          devices.push_back(llvm::json::Object{
+              {"name", device.getSymName()},
+              {"target", detectAIETarget(mod.get(), device.getSymName())},
+              {"cores_from_ir", sourceCores},
+              {"imported_core_elfs", importedCores}});
+        }
+        info["devices"] = std::move(devices);
+        info["core_compiler"] = nullptr;
+        if (hasSourceCores && !dryRun) {
+          std::string tool = ShellCommand::resolveTool("clang");
+          if (xchesscc) {
+            auto dir = discoverAietoolsDir(aietoolsDir);
+            tool = dir.empty() ? "" : dir + "/bin/xchesscc";
+          }
+          info["core_compiler"] = coreCompilerProvenance(
+              xchesscc ? "chess" : "llvm-aie", tool, "--version");
+        }
+        return llvm::formatv("{0}", llvm::json::Value(std::move(info))).str();
+      });
+
+  auto stampElf =
+      [&](EdgeWithTypedOutput<File> &raw,
+          const std::string &name) -> EdgeWithTypedOutput<std::vector<char>> & {
+    auto &metadata = raw.rekeyFrom(name + ".provenance.json", provenance.out,
+                                   [](const File &) { return "input.mlir"; });
+    return bundle(raw.out, metadata.out)
+        .map<std::vector<char>>(
+            name,
+            [](const Item<File> &in, const Item<std::string> &info,
+               Item<std::vector<char>> &out) -> mlir::LogicalResult {
+              if (dryRun) {
+                out.value.emplace();
+                return mlir::success();
+              }
+              auto bytes = llvm::MemoryBuffer::getFile(in.asFile());
+              if (!bytes) {
+                llvm::errs()
+                    << "aiecc: cannot read ELF: " << bytes.getError().message()
+                    << "\n";
+                return mlir::failure();
+              }
+              auto stamped =
+                  stampElfProvenance((*bytes)->getBuffer(), info.get());
+              if (!stamped) {
+                llvm::errs()
+                    << "aiecc: " << llvm::toString(stamped.takeError()) << "\n";
+                return mlir::failure();
+              }
+              out.value = std::move(*stamped);
+              return mlir::success();
+            });
+  };
+
   auto &traced =
       withDefaultStackSize
           .map<ModRef>(
@@ -2009,9 +2079,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                       : ctrlpktElfName.getValue();
 
 #ifdef AIECC_HAS_AIEBU_LIBRARY
-  auto &ctrlpktElf =
+  auto &rawCtrlpktElf =
       bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
-          .map<File>(ctrlpktElfOutName,
+          .map<File>(ctrlpktElfOutName + ".unstamped",
                      [](const Item<std::vector<char>> &dmaSeqItem,
                         const Item<std::vector<char>> &ctrlItem,
                         const Item<llvm::json::Value> &patchItem,
@@ -2022,8 +2092,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                           llvm::StringRef(patch), out, verbose);
                      });
 #else
-  auto &ctrlpktElf = bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
-                         .map<File>(ctrlpktElfOutName, ShellCommand{"aiebu-asm"}
+  auto &rawCtrlpktElf =
+      bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
+          .map<File>(ctrlpktElfOutName + ".unstamped", ShellCommand{"aiebu-asm"}
                                                            .arg("-t")
                                                            .arg("aie2txn")
                                                            .arg("-c")
@@ -2035,6 +2106,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                                            .arg("-o")
                                                            .output());
 #endif // AIECC_HAS_AIEBU_LIBRARY
+  auto &ctrlpktElf = stampElf(rawCtrlpktElf, ctrlpktElfOutName);
 
   // Per-device xclbin (memory topology + kernel metadata + PDI partition).
   auto &memTopo = staticPerDevice.map<llvm::json::Value>(
@@ -2079,19 +2151,47 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //  * --xclbin-input: extend an existing xclbin by merging this design's PDI
   //    into its AIE_PARTITION and adding the kernel.
 
+  auto &xclbinProvenance =
+      kernels.rekeyFrom("xclbin_provenance_{0}.json", provenance.out,
+                        [](const llvm::json::Value &) { return "input.mlir"; });
+
+  auto makeUserMetadata = [](const llvm::json::Value &existing,
+                             const std::string &info) {
+    llvm::json::Array entries;
+    if (auto *root = existing.getAsObject())
+      if (auto *metadata = root->getObject("keyvalue_metadata"))
+        if (auto *values = metadata->getArray("key_values"))
+          for (const auto &entry : *values)
+            if (auto *object = entry.getAsObject())
+              if (object->getString("key") != "mlir_aie.provenance")
+                entries.push_back(entry);
+    entries.push_back(
+        llvm::json::Object{{"key", "mlir_aie.provenance"}, {"value", info}});
+    return llvm::json::Value(llvm::json::Object{
+        {"keyvalue_metadata",
+         llvm::json::Object{{"key_values", std::move(entries)}}}});
+  };
+  auto &newUserMetadata = xclbinProvenance.map<llvm::json::Value>(
+      "user_metadata_{0}.json", [makeUserMetadata](const std::string &info) {
+        return makeUserMetadata(nullptr, info);
+      });
+
   // From-scratch flow
   EdgeWithTypedOutput<File> &xclbinFromScratch =
-      bundle(memTopo.out, kernels.out, partition.out)
-          .map<File>(xclbinName.getValue(), ShellCommand{"xclbinutil"}
-                                                .arg("--add-replace-section")
-                                                .input("MEM_TOPOLOGY:JSON:")
-                                                .arg("--add-kernel")
-                                                .input()
-                                                .arg("--add-replace-section")
-                                                .input("AIE_PARTITION:JSON:")
-                                                .arg("--force")
-                                                .arg("--output")
-                                                .output());
+      bundle(memTopo.out, kernels.out, partition.out, newUserMetadata.out)
+          .map<File>(xclbinName.getValue(),
+                     ShellCommand{"xclbinutil"}
+                         .arg("--add-replace-section")
+                         .input("MEM_TOPOLOGY:JSON:")
+                         .arg("--add-kernel")
+                         .input()
+                         .arg("--add-replace-section")
+                         .input("AIE_PARTITION:JSON:")
+                         .arg("--add-replace-section")
+                         .input("KEYVALUE_METADATA:JSON:")
+                         .arg("--force")
+                         .arg("--output")
+                         .output());
 
   // --xclbin-input flow: dump the existing xclbin's AIE_PARTITION, append this
   // design's first PDI to it, then re-emit with the merged partition and our
@@ -2143,18 +2243,50 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 return mlir::success();
               });
 
+  auto &inputMetadataFile = staticPerDevice.map<File>(
+      "input_metadata_{0}.json", ShellCommand{"xclbinutil"}
+                                     .arg("--dump-section")
+                                     .outputConcat("KEYVALUE_METADATA:JSON:")
+                                     .arg("--force")
+                                     .arg("--quiet")
+                                     .arg("--input")
+                                     .arg(inXclbin)
+                                     .missingOutputOnExit(100));
+  auto &inputMetadata = inputMetadataFile.map<llvm::json::Value>(
+      "input_metadata_parsed_{0}.json",
+      [](const Item<File> &in, Item<llvm::json::Value> &out) {
+        if (dryRun || !llvm::sys::fs::exists(in.filePath)) {
+          out.value = llvm::json::Object{};
+          return mlir::success();
+        }
+        return deserializeFile<llvm::json::Value>()(in, out);
+      });
+  auto &mergedUserMetadata =
+      bundle(inputMetadata.out, xclbinProvenance.out)
+          .map<llvm::json::Value>(
+              "merged_user_metadata_{0}.json",
+              [makeUserMetadata](const Item<llvm::json::Value> &existing,
+                                 const Item<std::string> &info,
+                                 Item<llvm::json::Value> &out) {
+                out.value = makeUserMetadata(existing.get(), info.get());
+                return mlir::success();
+              });
+
   EdgeWithTypedOutput<File> &xclbinExtended =
-      bundle(kernels.out, mergedPartition.out)
-          .map<File>(xclbinName.getValue(), ShellCommand{"xclbinutil"}
-                                                .arg("--input")
-                                                .arg(inXclbin)
-                                                .arg("--add-kernel")
-                                                .input()
-                                                .arg("--add-replace-section")
-                                                .input("AIE_PARTITION:JSON:")
-                                                .arg("--force")
-                                                .arg("--output")
-                                                .output());
+      bundle(kernels.out, mergedPartition.out, mergedUserMetadata.out)
+          .map<File>(xclbinName.getValue(),
+                     ShellCommand{"xclbinutil"}
+                         .arg("--input")
+                         .arg(inXclbin)
+                         .arg("--add-kernel")
+                         .input()
+                         .arg("--add-replace-section")
+                         .input("AIE_PARTITION:JSON:")
+                         .arg("--add-replace-section")
+                         .input("KEYVALUE_METADATA:JSON:")
+                         .arg("--force")
+                         .arg("--output")
+                         .output());
 
   EdgeWithTypedOutput<File> &xclbin =
       xclbinInput.empty() ? xclbinFromScratch : xclbinExtended;
@@ -2273,23 +2405,24 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // loaded alongside an xclbin. It reuses the per-sequence instruction binary
   // already produced by `npuInsts` rather than re-translating the module.
 #ifdef AIECC_HAS_AIEBU_LIBRARY
-  auto &instElf =
-      npuInsts.map<File>(elfName.getValue(),
+  auto &rawInstElf =
+      npuInsts.map<File>(elfName.getValue() + ".unstamped",
                          [](const Item<std::vector<char>> &item,
                             Item<File> &out) -> mlir::LogicalResult {
                            return assembleElf(item.get(), /*buffer2=*/{},
                                               /*patchJson=*/{}, out, verbose);
                          });
 #else
-  auto &instElf =
-      npuInsts.map<File>(elfName.getValue(), ShellCommand{"aiebu-asm"}
-                                                 .arg("-t")
-                                                 .arg("aie2txn")
-                                                 .arg("-c")
-                                                 .input()
-                                                 .arg("-o")
-                                                 .output());
+  auto &rawInstElf = npuInsts.map<File>(elfName.getValue() + ".unstamped",
+                                        ShellCommand{"aiebu-asm"}
+                                            .arg("-t")
+                                            .arg("aie2txn")
+                                            .arg("-c")
+                                            .input()
+                                            .arg("-o")
+                                            .output());
 #endif // AIECC_HAS_AIEBU_LIBRARY
+  auto &instElf = stampElf(rawInstElf, elfName.getValue());
 
   //--------------------------------------------------------------------------//
   // Combined full ELF (joins the static configuration + NPU branches)
@@ -2488,11 +2621,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
               });
 
 #ifdef AIECC_HAS_AIEBU_CONFIG_ELF
-  auto &fullElf =
+  auto &rawFullElf =
       bundle(fullElfConfig.out, npuInstsFullElf.out, fullElfCtrlpkt.out,
              fullElfPatchInfo.out)
           .join<File>(
-              fullElfName.getValue(),
+              fullElfName.getValue() + ".unstamped",
               [fullElfInputPath](const Node<llvm::json::Value> &config,
                                  const Node<std::vector<char>> &instsBins,
                                  const Node<std::vector<char>> &ctrlPkts,
@@ -2527,15 +2660,16 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                        out, verbose);
               });
 #else
-  auto &fullElf =
-      fullElfConfig.map<File>(fullElfName.getValue(), ShellCommand{"aiebu-asm"}
-                                                          .arg("-t")
-                                                          .arg("aie2_config")
-                                                          .arg("-j")
-                                                          .input()
-                                                          .arg("-o")
-                                                          .output());
+  auto &rawFullElf = fullElfConfig.map<File>(
+      fullElfName.getValue() + ".unstamped", ShellCommand{"aiebu-asm"}
+                                                 .arg("-t")
+                                                 .arg("aie2_config")
+                                                 .arg("-j")
+                                                 .input()
+                                                 .arg("-o")
+                                                 .output());
 #endif // AIECC_HAS_AIEBU_CONFIG_ELF
+  auto &fullElf = stampElf(rawFullElf, fullElfName.getValue());
 
   //--------------------------------------------------------------------------//
   // Host program

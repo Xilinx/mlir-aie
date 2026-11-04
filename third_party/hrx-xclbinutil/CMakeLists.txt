@@ -44,7 +44,7 @@ configure_file(${_vendor}/version.h.in ${_xclbinutil_source_dir}/version.h)
 
 # The trimmed vendor/ dir now contains exactly the NPU-minimal source set.
 file(GLOB _xclbinutil_srcs "${_xclbinutil_source_dir}/*.cxx")
-set(_util_srcs "${_util}/hrx_util.cpp")
+set(_util_srcs "${_util}/hrx_util.cpp" "${_util}/SectionKeyValueMetadata.cpp")
 
 add_executable(hrx-xclbinutil ${_xclbinutil_srcs} ${_util_srcs})
 set(THREADS_PREFER_PTHREAD_FLAG ON)

@@ -1,0 +1,9 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// REQUIRES: system-linux
+// RUN: rm -rf %t.d && mkdir -p %t.d
+// RUN: cmake -DSOURCE_DIR=%S/../.. -DOUTPUT_FILE=%t.d/AIECCVersion.h -P %S/../../tools/aiecc/GenVersion.cmake
+// RUN: bash -c '%host_clang $(%LLVM_TOOLS_DIR/llvm-config --cxxflags) -I%t.d -I%S/../../tools/aiecc %S/Inputs/provenance_tool.cpp %S/../../tools/aiecc/Provenance.cpp $(%LLVM_TOOLS_DIR/llvm-config --ldflags --libs object support --system-libs) %host_link_flags -o %t.d/provenance'
+// RUN: %python %S/Inputs/provenance_checks.py unit %t.d/provenance
+// RUN: %python %S/Inputs/version_checks.py %S/../../tools/aiecc/GenVersion.cmake

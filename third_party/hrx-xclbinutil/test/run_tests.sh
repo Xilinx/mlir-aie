@@ -81,4 +81,14 @@ tr -d ' \n' < "$TMP/part.json" | grep -q '"dpu_kernel_ids":\["0x901"\]'
    && "$BIN" --input "$TMP_N/part.xclbin" --add-replace-section AIE_PARTITION:JSON:"$TMP_N/part.json" \
           --force --output "$TMP_N/part2.xclbin" | grep -q "Successfully wrote")
 
+"$BIN" --input "$TMP_N/part.xclbin" --key-value USER:unrelated:keep \
+       --key-value 'USER:mlir_aie.provenance:{"schema":1,"producer":"mlir-aie/aiecc"}' \
+       --force --output "$TMP_N/provenance.xclbin"
+"$BIN" --input "$TMP_N/provenance.xclbin" --key-value USER:mlir_aie.provenance:updated \
+       --force --output "$TMP_N/updated.xclbin"
+"$BIN" --input "$TMP_N/updated.xclbin" \
+       --dump-section KEYVALUE_METADATA:JSON:"$TMP_N/metadata.json"
+grep -q '"keep"' "$TMP/metadata.json"
+grep -q '"updated"' "$TMP/metadata.json"
+
 echo "PASS"
