@@ -2618,6 +2618,13 @@ def AIE_ObjectFifoCreateOp
                    TileID consumer, std::optional<TileID> delegate,
                    bool linked);
 
+    /// Objects in the pool an end keeps on its own tile when the fifo moves by
+    /// DMA: the producer's when `consumer` is empty, else that consumer's. An
+    /// end wired to a core stream port keeps none.
+    int dmaDepth(std::optional<unsigned> consumer);
+    /// Objects in the one pool of a fifo whose ends share a memory module.
+    int sharedDepth();
+
     /// The packet header this fifo asks its route to carry, or null for a
     /// circuit-switched connection.
     PacketInfoAttr packetHeader() {

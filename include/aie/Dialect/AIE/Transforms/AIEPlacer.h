@@ -757,18 +757,14 @@ private:
     mlir::Operation *delegate = nullptr;
     int64_t producerSizeBytes = 0;
     int64_t consumerSizeBytes = 0;
+    // ObjectFifoCreateOp::sharedDepth() and dmaDepth() of each end.
+    int sharedDepth = 0;
     int producerDepth = 0;
     llvm::SmallVector<int> consumerDepths;
-    int producerDMADepth = 0;
-    llvm::SmallVector<int> consumerDMADepths;
     // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
     bool linked = false;
     bool linkSharedProd = false;
-
-    int consumerDepthAt(size_t ci) const {
-      return (ci < consumerDepths.size()) ? consumerDepths[ci] : producerDepth;
-    }
   };
   llvm::SmallVector<NetInfo> nets;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;

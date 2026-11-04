@@ -30,46 +30,6 @@ struct PoolRef {
   SmallVector<int32_t> segments;
 };
 
-/// Objects a fifo needs on `tile`: enough to cover the largest acquire made
-/// there, plus one so a core can hold an object while the next arrives. A fifo
-/// that states a depth per endpoint is taken at its word instead.
-int objectCountOn(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo) {
-  if (objFifo.size() == 0) {
-    return 0;
-  }
-
-  int maxAcquire = 0;
-  for (auto coreOp : device.getOps<CoreOp>()) {
-    if (coreOp.getTile() == tile) {
-      coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
-        if (acqOp.getObjectFifo() == objFifo) {
-          maxAcquire = std::max(maxAcquire, acqOp.acqNumber());
-        }
-      });
-    }
-  }
-
-  if (maxAcquire == 0) {
-    return objFifo.size();
-  }
-  if (maxAcquire == 1 && objFifo.size() == 1) {
-    return 1;
-  }
-  return maxAcquire + 1;
-}
-
-/// Objects a fifo whose ends share one memory module keeps in its single pool:
-/// the most that any end states, so the deeper end can acquire all of its own.
-int sharedObjectCount(ObjectFifoCreateOp objFifo) {
-  int depth = objFifo.size();
-  if (auto depths = dyn_cast<ArrayAttr>(objFifo.getElemNumber())) {
-    for (int index = 1; index < static_cast<int>(depths.size()); ++index) {
-      depth = std::max(depth, objFifo.size(index));
-    }
-  }
-  return depth;
-}
-
 bool hasCoreAccess(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo,
                    ObjectFifoPort port) {
   for (auto coreOp : device.getOps<CoreOp>()) {
@@ -481,9 +441,7 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
            (consumers.size() > 1 ? "__cons" + std::to_string(index) + "__pool"
                                  : "__cons__pool"))
               .str();
-      depth = isa<ArrayAttr>(owner.getElemNumber())
-                  ? owner.size(index + 1)
-                  : objectCountOn(device, *sharedTile, owner);
+      depth = owner.dmaDepth(index);
     }
 
     // The pool is shared by every participant, but `owner` is only one of them:
@@ -652,7 +610,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
         // Both ends address the one pool, so it needs the deeper end's depth
         // even when init_values fill only the producer's share of it.
         ref = PoolRef{createPool(loc, (fifoName + "__pool").str(), tile,
-                                 sharedObjectCount(fifo), elemType, fifo,
+                                 fifo.sharedDepth(), elemType, fifo,
                                  {{0, elemType.getNumElements()}},
                                  /*holdsInitialContents=*/true,
                                  fifo.getRepeatCount()),
@@ -697,8 +655,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                                  elemType);
       }
     } else if (!fifo.streamsFromProducer()) {
-      int depth = fifo.getInitValues() ? fifo.size()
-                                       : objectCountOn(device, prodTile, fifo);
+      int depth = fifo.dmaDepth(std::nullopt);
       auto pool =
           createPool(loc, (fifoName + "__pool").str(), prodTile, depth,
                      elemType, fifo, {{0, elemType.getNumElements()}},
@@ -756,9 +713,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                                    consElemType);
         }
       } else if (!fifo.streamsToConsumer(consumerIndex)) {
-        int depth = isa<ArrayAttr>(fifo.getElemNumber())
-                        ? fifo.size(consumerIndex + 1)
-                        : objectCountOn(device, consumerTile, fifo);
+        int depth = fifo.dmaDepth(consumerIndex);
         auto pool = createPool(loc, (fifoName + suffix + "__pool").str(),
                                consumerTile, depth, consElemType, fifo,
                                {{0, consElemType.getNumElements()}},

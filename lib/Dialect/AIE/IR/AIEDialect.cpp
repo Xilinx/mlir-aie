@@ -1964,6 +1964,40 @@ AIETargetModel::SharedMemory ObjectFifoCreateOp::sharedMemoryOf(
   return target.getSharedMemory(producer, consumer);
 }
 
+int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
+  if (consumer ? streamsToConsumer(*consumer) : streamsFromProducer())
+    return 0;
+  if (!consumer && getInitValues())
+    return size();
+  if (consumer && isa<ArrayAttr>(getElemNumber()))
+    return size(*consumer + 1);
+  if (size() == 0)
+    return 0;
+  // Enough objects for the largest acquire made on the end's tile, plus one
+  // so a core can hold an object while the next arrives.
+  Value tile = consumer ? getConsumerTiles()[*consumer] : getProducerTile();
+  int maxAcquire = 0;
+  for (CoreOp core : (*this)->getParentOfType<DeviceOp>().getOps<CoreOp>())
+    if (core.getTile() == tile)
+      core.walk([&](ObjectFifoAcquireOp acquire) {
+        if (acquire.getObjectFifo() == *this)
+          maxAcquire = std::max(maxAcquire, acquire.acqNumber());
+      });
+  if (maxAcquire == 0)
+    return size();
+  if (maxAcquire == 1 && size() == 1)
+    return 1;
+  return maxAcquire + 1;
+}
+
+int ObjectFifoCreateOp::sharedDepth() {
+  int depth = size();
+  if (auto depths = dyn_cast<ArrayAttr>(getElemNumber()))
+    for (int index = 1, e = depths.size(); index < e; ++index)
+      depth = std::max(depth, size(index));
+  return depth;
+}
+
 //===----------------------------------------------------------------------===//
 // ObjectFifoAllocateOp
 //===----------------------------------------------------------------------===//

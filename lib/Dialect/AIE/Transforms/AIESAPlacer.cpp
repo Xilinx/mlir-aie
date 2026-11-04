@@ -410,7 +410,6 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     return;
   TileID prodPos = prodPlaceIt->second;
   const FifoEndTypes &types = fifoEndTypes[fifoIdx];
-  bool prodIsCore = types.producer == AIETileType::CoreTile;
   bool prodIsShim = types.producer == AIETileType::ShimNOCTile ||
                     types.producer == AIETileType::ShimPLTile;
 
@@ -418,13 +417,9 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   // objects on that delegate tile.
   std::optional<TileID> delegatePos = positionOf(fb.delegate);
 
-  // Charge memory based on connection topology:
-  //   intratile     → max(sizes) * max(depths) on shared tile
-  //   shared-mem    → max(sizes) * max(depths) on chosen adjacent tile
-  //   core↔core DMA → prod: prodSize*dmaDepth, cons: consSize*dmaDepth
-  //   core→mem/shim → prod: dmaDepth, cons: declaredDepth (skip shim)
-  //   mem/shim→core → prod: declaredDepth (skip shim/link), cons: dmaDepth
-  //   mem↔mem       → both declaredDepth (skip shim/link)
+  // A fifo shared memory carries keeps one pool of sharedDepth() objects;
+  // otherwise each end off a shim keeps its own, except a link output's
+  // producer, whose objects are the link input's consumer pool.
   bool prodCharged = false;
   bool prodNeedsDMA = false;
 
@@ -436,17 +431,8 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     if (consPlaceIt == currentPlacement.end())
       continue;
     TileID consPos = consPlaceIt->second;
-    bool consIsCore = types.consumers[ci] == AIETileType::CoreTile;
     bool consIsShim = types.consumers[ci] == AIETileType::ShimNOCTile ||
                       types.consumers[ci] == AIETileType::ShimPLTile;
-
-    // Declared depth (for shared-mem) and DMA depth (for DMA connections).
-    // The appropriate depth is selected in each branch below based on
-    // whether the connection uses DMA or shared memory.
-    int consDeclDepth = fb.consumerDepthAt(ci);
-    int consDMADepth = (ci < fb.consumerDMADepths.size())
-                           ? fb.consumerDMADepths[ci]
-                           : fb.producerDMADepth;
 
     using SharedMemory = AIETargetModel::SharedMemory;
     SharedMemory shared =
@@ -455,15 +441,12 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
             : ObjectFifoCreateOp::sharedMemoryOf(*targetModel, prodPos, consPos,
                                                  delegatePos, fb.linked);
     bool isSharedMem = shared != SharedMemory::None;
+    int64_t sharedBytes =
+        std::max(fb.producerSizeBytes, fb.consumerSizeBytes) * fb.sharedDepth;
 
     if (prodPos == consPos && isSharedMem) {
-      // Intratile: shared-mem, use declared depths
-      int depth = std::max(fb.producerDepth, consDeclDepth);
-      int64_t maxSize = std::max(fb.producerSizeBytes, fb.consumerSizeBytes);
-      int64_t bytes = maxSize * depth;
-      currentMemUsage[delegatePos.value_or(prodPos)] += sign * bytes;
+      currentMemUsage[delegatePos.value_or(prodPos)] += sign * sharedBytes;
     } else if (isSharedMem) {
-      // Shared memory: use declared depths
       TileID bufTile;
       if (delegatePos) {
         bufTile = *delegatePos;
@@ -488,52 +471,16 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       } else {
         bufTile = prodPos;
       }
-      int depth = std::max(fb.producerDepth, consDeclDepth);
-      int64_t maxSize = std::max(fb.producerSizeBytes, fb.consumerSizeBytes);
-      currentMemUsage[bufTile] += sign * maxSize * depth;
-    } else if (prodIsCore && consIsCore) {
-      // Non-adjacent core-to-core: DMA, use DMA depths (maxAcquire+1)
-      if (!prodCharged) {
-        int64_t bytes = fb.producerSizeBytes * fb.producerDMADepth;
-        currentMemUsage[prodPos] += sign * bytes;
-        prodCharged = true;
-      }
-      int64_t consBytes = fb.consumerSizeBytes * consDMADepth;
-      currentMemUsage[consPos] += sign * consBytes;
-    } else if (prodIsCore && !consIsCore) {
-      // CoreTile producer → MemTile/Shim consumer
-      // Producer (core): DMA depth. Consumer (MemTile): declared depth.
-      if (!prodCharged) {
-        int64_t bytes = fb.producerSizeBytes * fb.producerDMADepth;
-        currentMemUsage[prodPos] += sign * bytes;
-        prodCharged = true;
-      }
-      if (!consIsShim) {
-        // MemTile consumer: use declared depth
-        int64_t consBytes = fb.consumerSizeBytes * consDeclDepth;
-        currentMemUsage[consPos] += sign * consBytes;
-      }
-    } else if (!prodIsCore && consIsCore) {
-      // MemTile/Shim producer → CoreTile consumer
-      // Producer (MemTile): declared depth. Consumer (core): DMA depth.
+      currentMemUsage[bufTile] += sign * sharedBytes;
+    } else {
       if (!prodCharged && !prodIsShim && !fb.linkSharedProd) {
         currentMemUsage[prodPos] +=
             sign * fb.producerSizeBytes * fb.producerDepth;
         prodCharged = true;
       }
-      int64_t consBytes = fb.consumerSizeBytes * consDMADepth;
-      currentMemUsage[consPos] += sign * consBytes;
-    } else if (!prodIsCore && !consIsCore) {
-      // MemTile/Shim → MemTile/Shim: both use declared depths
-      if (!prodCharged && !prodIsShim && !fb.linkSharedProd) {
-        currentMemUsage[prodPos] +=
-            sign * fb.producerSizeBytes * fb.producerDepth;
-        prodCharged = true;
-      }
-      if (!consIsShim) {
-        int64_t consBytes = fb.consumerSizeBytes * consDeclDepth;
-        currentMemUsage[consPos] += sign * consBytes;
-      }
+      if (!consIsShim)
+        currentMemUsage[consPos] +=
+            sign * fb.consumerSizeBytes * fb.consumerDepths[ci];
     }
 
     // DMA contribution: a fifo shared memory does not carry runs through the
@@ -709,7 +656,7 @@ void SAPlacer::collectSpillBuffers() {
     for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
       auto *cons = fb.consumers[ci];
       if (onMemTile(cons))
-        pools.push_back({fb.consumerSizeBytes, fb.consumerDepthAt(ci), cons});
+        pools.push_back({fb.consumerSizeBytes, fb.consumerDepths[ci], cons});
     }
   }
 
@@ -885,10 +832,8 @@ int SAPlacer::computeCoreOverflowPenalty() const {
             continue;
           if (prodIt->second != tilePos || consIt->second != tilePos)
             continue;
-          int consDepth = fb.consumerDepths.empty() ? fb.producerDepth
-                                                    : fb.consumerDepths[0];
           int64_t sz = std::max(fb.producerSizeBytes, fb.consumerSizeBytes) *
-                       std::max(fb.producerDepth, consDepth);
+                       fb.sharedDepth;
           fifoSizes.push_back(sz);
         }
         llvm::sort(fifoSizes, std::greater<int64_t>());
@@ -970,7 +915,7 @@ void SAPlacer::collectTileBDs() {
       if (!currentPlacement.count(cons) || typeIt == tileTypes.end() ||
           typeIt->second != AIETileType::MemTile)
         continue;
-      tileBDs[cons] += fb.consumerDepthAt(ci);
+      tileBDs[cons] += fb.consumerDepths[ci];
     }
   }
   for (auto &[op, depth] : poolBDs)
@@ -1088,10 +1033,8 @@ void SAPlacer::generateAllocates() {
         continue;
       if (prodIt->second != tilePos || consIt->second != tilePos)
         continue;
-      int consDepth =
-          fb.consumerDepths.empty() ? fb.producerDepth : fb.consumerDepths[0];
       int64_t sz = std::max(fb.producerSizeBytes, fb.consumerSizeBytes) *
-                   std::max(fb.producerDepth, consDepth);
+                   fb.sharedDepth;
       relocFifos.push_back({fi, sz});
     }
     llvm::sort(relocFifos, [](const auto &a, const auto &b) {
@@ -1422,10 +1365,8 @@ int64_t SAPlacer::computeTileMemoryWeight(Operation *tile) const {
       continue;
 
     if (isProd && consIdx >= 0) {
-      // Intratile: max(sizes) * max(depths)
-      int depth = std::max(fb.producerDepth, fb.consumerDepths[consIdx]);
-      int64_t sz = std::max(fb.producerSizeBytes, fb.consumerSizeBytes);
-      weight += sz * depth;
+      weight +=
+          std::max(fb.producerSizeBytes, fb.consumerSizeBytes) * fb.sharedDepth;
     } else if (isProd) {
       weight += fb.producerSizeBytes * fb.producerDepth;
     } else {
@@ -1571,11 +1512,11 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     auto *prodOp = ofOp.getProducerTile().getDefiningOp();
     fb.producer = (isa_and_nonnull<LogicalTileOp>(prodOp)) ? prodOp : nullptr;
 
-    // Get consumers
+    // Null for a placed consumer, so indices stay the fifo's own.
     for (Value ct : ofOp.getConsumerTiles()) {
       auto *consOp = ct.getDefiningOp();
-      if (isa_and_nonnull<LogicalTileOp>(consOp))
-        fb.consumers.push_back(consOp);
+      fb.consumers.push_back(isa_and_nonnull<LogicalTileOp>(consOp) ? consOp
+                                                                    : nullptr);
     }
 
     // Compute buffer element size (producer side)
@@ -1601,115 +1542,30 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     // One size serves every consumer, so align it for a core tile if any
     // consumer is one.
     bool coreConsumer = llvm::any_of(fb.consumers, [&](Operation *cons) {
-      return tileTypes.lookup(cons) == AIETileType::CoreTile;
+      return cons && tileTypes.lookup(cons) == AIETileType::CoreTile;
     });
     fb.consumerSizeBytes = alignedBufferBytes(
         *targetModel,
         coreConsumer ? AIETileType::CoreTile : AIETileType::MemTile,
         consumerBytes);
 
-    // Get per-endpoint depths: [producer, consumer0, consumer1, ...]
-    if (auto arrayAttr = dyn_cast<ArrayAttr>(ofOp.getElemNumber())) {
-      auto values = arrayAttr.getValue();
-      fb.producerDepth =
-          values.empty()
-              ? 1
-              : static_cast<int>(cast<IntegerAttr>(values[0]).getInt());
-      for (size_t i = 0; i < fb.consumers.size(); i++) {
-        size_t idx = i + 1; // consumer depths start at index 1
-        int d = (idx < values.size())
-                    ? static_cast<int>(cast<IntegerAttr>(values[idx]).getInt())
-                    : fb.producerDepth;
-        fb.consumerDepths.push_back(d);
-      }
-    } else {
-      int d =
-          static_cast<int>(cast<IntegerAttr>(ofOp.getElemNumber()).getInt());
-      fb.producerDepth = d;
-      for (size_t i = 0; i < fb.consumers.size(); i++)
-        fb.consumerDepths.push_back(d);
-    }
+    fb.sharedDepth = ofOp.sharedDepth();
+    fb.producerDepth = ofOp.dmaDepth(std::nullopt);
+    for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
+      fb.consumerDepths.push_back(ofOp.dmaDepth(ci));
 
-    // Determine if this fifo forces DMA even when tiles are adjacent.
-    // Must match dmaReason() in AIEObjectFifoSplit.cpp.
-    bool isLinked = false;
-    for (auto link : objectFifoLinks) {
-      for (auto in : link.getInputObjectFifos())
-        if (in.name() == ofOp.getSymName())
-          isLinked = true;
-      for (auto out : link.getOutputObjectFifos())
-        if (out.name() == ofOp.getSymName())
-          isLinked = true;
-    }
+    std::optional<ObjectFifoLinkOp> link = ofOp.getLink();
     fb.forcesDMA = ofOp.dmaReason().has_value();
-    fb.linked = isLinked;
-    // For linked output fifos, producer buffers share memory with
-    // the link input fifo's consumer buffer on the MemTile.
-    // Mark to skip producer-side MemTile memory charge.
-    if (isLinked) {
-      for (auto link : objectFifoLinks) {
-        for (auto out : link.getOutputObjectFifos()) {
-          if (out.name() == ofOp.getSymName())
-            fb.linkSharedProd = true;
-        }
-      }
-    }
+    fb.linked = link.has_value();
+    // A link output's producer objects are the link input's consumer pool.
+    fb.linkSharedProd =
+        link && llvm::is_contained(link->getOutputObjectFifos(), ofOp);
     fifoBuffers.push_back(fb);
   }
 
   LLVM_DEBUG(llvm::dbgs() << "[SA] seed=" << rngSeed << "\n");
   LLVM_DEBUG(llvm::dbgs() << "[SA] Collected " << fifoBuffers.size()
                           << " ObjectFifo buffer requirements\n");
-
-  // Compute DMA depths per endpoint: maxAcquire + 1 from core body
-  // acquire ops, matching findObjectFifoSize() in the stateful transform.
-  // DMA depths are used when the connection requires DMA; declared
-  // depths are used for shared-mem connections. The SA selects the
-  // appropriate depth in addFifoContribution based on placement.
-  DenseMap<std::pair<Operation *, Operation *>, int> endpointMaxAcquire;
-  device.walk([&](CoreOp coreOp) {
-    auto *tileOp = coreOp.getTile().getDefiningOp();
-    if (!tileOp || !isa<LogicalTileOp>(tileOp))
-      return;
-    coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
-      auto fifoOp = acqOp.getObjectFifo();
-      if (!fifoOp)
-        return;
-      auto endpoint = std::pair{static_cast<Operation *>(fifoOp), tileOp};
-      int acqNum = acqOp.acqNumber();
-      auto it = endpointMaxAcquire.find(endpoint);
-      if (it == endpointMaxAcquire.end() || acqNum > it->second)
-        endpointMaxAcquire[endpoint] = acqNum;
-    });
-  });
-
-  for (auto &fb : fifoBuffers) {
-    // Producer DMA depth
-    fb.producerDMADepth = fb.producerDepth;
-    if (fb.producer) {
-      auto it = endpointMaxAcquire.find(std::pair{fb.fifoOp, fb.producer});
-      if (it != endpointMaxAcquire.end()) {
-        int maxAcq = it->second;
-        fb.producerDMADepth =
-            (maxAcq == 1 && fb.producerDepth == 1) ? 1 : maxAcq + 1;
-      }
-    }
-    // Consumer DMA depths
-    for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
-      int dmaDepth =
-          fb.consumerDepths.empty() ? fb.producerDepth : fb.consumerDepths[ci];
-      if (fb.consumers[ci]) {
-        auto it =
-            endpointMaxAcquire.find(std::pair{fb.fifoOp, fb.consumers[ci]});
-        if (it != endpointMaxAcquire.end()) {
-          int maxAcq = it->second;
-          int declared = fb.consumerDepthAt(ci);
-          dmaDepth = (maxAcq == 1 && declared == 1) ? 1 : maxAcq + 1;
-        }
-      }
-      fb.consumerDMADepths.push_back(dmaDepth);
-    }
-  }
 }
 
 LogicalResult SAPlacer::generateInitialPlacement() {
