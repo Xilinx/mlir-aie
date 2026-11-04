@@ -708,6 +708,12 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   return success();
 }
 
+static std::optional<int64_t> staticMemcpyBytes(AIEX::NpuDmaMemcpyNdOp memcpy);
+static LogicalResult
+verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
+                                 std::optional<int64_t> moved,
+                                 AIE::ObjectFifoCreateOp fifo);
+
 // The verifier-owned collection shares the device symbol table across memcpy
 // checks without retaining allocation pointers between verification calls.
 LogicalResult
@@ -732,6 +738,12 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev && isAIE1 && !isDynamic && !hasLengthParameter)
     return success();
+  if (dev)
+    if (auto fifo = symbolTable.lookupSymbolIn<AIE::ObjectFifoCreateOp>(
+            dev, getMetadata().getRootReference());
+        fifo && failed(verifyTransferCoversWholeObjects(
+                    *this, getMetadata(), staticMemcpyBytes(*this), fifo)))
+      return failure();
   auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getMetadata().getRootReference());
   if (isDynamic)
@@ -1578,15 +1590,31 @@ struct BdChain {
 // Several transfers may share an object (concatenating host buffers into it, or
 // splitting it across them), so it is the runtime sequence's static total
 // through the fifo that must stop at a BD boundary.
+// A dma_memcpy_nd's static extent in bytes; nullopt for runtime sizes or a
+// length a scratchpad parameter sets.
+static std::optional<int64_t> staticMemcpyBytes(AIEX::NpuDmaMemcpyNdOp memcpy) {
+  if (memcpy.getLengthParameterAttr() || memcpy.getLengthStateTableIdxAttr())
+    return std::nullopt;
+  uint64_t bits = memcpy.getElementTypeBitwidth();
+  if (bits % 8)
+    return std::nullopt;
+  std::optional<int64_t> bytes = static_cast<int64_t>(bits / 8);
+  for (OpFoldResult size : memcpy.getMixedSizes()) {
+    std::optional<int64_t> extent = getConstantIntValue(size);
+    bytes = bytes && extent ? llvm::checkedMul(*bytes, *extent) : std::nullopt;
+  }
+  return bytes;
+}
+
 static LogicalResult
-verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
-                             AIE::ObjectFifoCreateOp fifo) {
+verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
+                                 std::optional<int64_t> moved,
+                                 AIE::ObjectFifoCreateOp fifo) {
   if (fifo.getPadDimensions() || fifo.usesStream())
     return success();
-  std::optional<int64_t> moved = task.getStaticBytesStreamed();
   if (!moved || *moved == 0)
     return success();
-  DataLayout layout = DataLayout::closest(task);
+  DataLayout layout = DataLayout::closest(transfer);
   // Bytes an object holds, or nullopt when that overflows.
   auto objectBytesOf = [&](Type fifoType) -> std::optional<int64_t> {
     MemRefType elem = cast<AIE::AIEObjectFifoType>(fifoType).getElementType();
@@ -1670,44 +1698,44 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
     return success();
 
   // Transfers in a loop or branch have no static count to sum.
-  auto sequence = task->getParentOfType<AIE::RuntimeSequenceOp>();
-  if (!sequence || task->getBlock() != &sequence.getBody().front())
+  auto sequence = transfer->getParentOfType<AIE::RuntimeSequenceOp>();
+  if (!sequence || transfer->getBlock() != &sequence.getBody().front())
     return success();
   // A dma_channel_reset_for re-arms the fifo's far ends and drops a partly
   // filled object. It doesn't block, so which bytes land before it isn't
   // static, and the transfers around it can't be summed.
-  if (llvm::any_of(task->getBlock()->getOps<AIEX::DmaChannelResetForOp>(),
+  if (llvm::any_of(transfer->getBlock()->getOps<AIEX::DmaChannelResetForOp>(),
                    [&](AIEX::DmaChannelResetForOp reset) {
-                     return reset.getObjfifoAttr() == task.getAlloc();
+                     return reset.getObjfifoAttr() == alloc;
                    }))
     return success();
+  // Bytes `op` moves through the fifo: zero when it moves none or names
+  // another, nullopt when its count isn't static.
+  auto through = [&](Operation *op) -> std::optional<int64_t> {
+    if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
+      return memcpy.getMetadata() == alloc ? staticMemcpyBytes(memcpy) : 0;
+    if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
+      return task.getAlloc() == alloc ? task.getStaticBytesStreamed() : 0;
+    if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op))
+      return chain.getAllocAttr() == alloc ? std::nullopt
+                                           : std::optional<int64_t>(0);
+    return 0;
+  };
   // Segment boundaries don't add up the way whole objects do, so the
   // sequence's total is checked whatever this transfer moves, once: by the
   // first transfer through the fifo.
-  for (Operation *prev = task->getPrevNode(); prev; prev = prev->getPrevNode())
-    if (auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(prev);
-        other && other.getAlloc() == task.getAlloc() &&
-        other.getStaticBytesStreamed() != 0)
+  for (Operation *prev = transfer->getPrevNode(); prev;
+       prev = prev->getPrevNode())
+    if (through(prev) != 0)
       return success();
   std::optional<int64_t> total = 0;
   int64_t sharing = 0;
   WalkResult walk = sequence.walk([&](Operation *op) {
-    // A dma_memcpy_nd or BD chain through the fifo also shares its objects;
-    // its extent is not summed here, so the sequence's total is unknown.
-    if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
-      return memcpy.getMetadata() == task.getAlloc() ? WalkResult::interrupt()
-                                                     : WalkResult::advance();
-    if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op))
-      return chain.getAllocAttr() == task.getAlloc() ? WalkResult::interrupt()
-                                                     : WalkResult::advance();
-    auto other = dyn_cast<AIEX::DMAConfigureTaskForOp>(op);
-    if (!other || other.getAlloc() != task.getAlloc())
-      return WalkResult::advance();
-    std::optional<int64_t> bytes = other.getStaticBytesStreamed();
-    // A task that is never started streams nothing, wherever it is.
+    std::optional<int64_t> bytes = through(op);
+    // A transfer that moves nothing, or is never started, shares no object.
     if (bytes == 0)
       return WalkResult::advance();
-    if (!bytes || other->getBlock() != task->getBlock())
+    if (!bytes || op->getBlock() != transfer->getBlock())
       return WalkResult::interrupt();
     total = llvm::checkedAdd(*total, *bytes);
     if (!total)
@@ -1722,9 +1750,10 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   if (partial == chains.end())
     return success();
 
-  InFlightDiagnostic error =
-      task.emitOpError() << "moves " << *moved << " bytes through objectFIFO @"
-                         << fifo.getSymName() << ", which";
+  InFlightDiagnostic error = transfer->emitOpError()
+                             << "moves " << *moved
+                             << " bytes through objectFIFO @"
+                             << fifo.getSymName() << ", which";
   if (sharing > 1)
     error << ", with this runtime sequence's other transfers through it ("
           << *total << " bytes in all),";
@@ -1776,7 +1805,8 @@ LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
                                  << " port, not a DMA channel";
           })
           .Case([&](AIE::ObjectFifoCreateOp fifo) {
-            return verifyTaskCoversWholeObjects(*this, fifo);
+            return verifyTransferCoversWholeObjects(
+                *this, getAlloc(), getStaticBytesStreamed(), fifo);
           })
           .Default([&](Operation *) -> LogicalResult {
             return emitOpError() << getAlloc()
