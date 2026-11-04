@@ -679,12 +679,11 @@ void SAPlacer::collectSpillBuffers() {
         spillBuffers.push_back({end.objectBytes, tile});
     }
   }
-  // Sort globally by size descending (matching stateful transform). Which
-  // buffers there are never changes while tiles move, only their columns, and
-  // the sort compares sizes alone, so this is the order every placement
-  // visits them in.
-  llvm::sort(spillBuffers,
-             [](const auto &a, const auto &b) { return a.first > b.first; });
+  // The allocator's order. Which buffers there are never changes while tiles
+  // move, only their columns, and the order compares sizes alone, so this is
+  // the order every placement visits them in.
+  sortLargestBufferFirst(spillBuffers,
+                         [](const auto &buffer) { return buffer.first; });
 
   // Static buffers as baseline (non-spillable).
   spillBaseline.clear();

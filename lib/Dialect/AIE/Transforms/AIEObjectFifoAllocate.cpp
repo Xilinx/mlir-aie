@@ -2143,9 +2143,26 @@ struct AIEObjectFifoAllocatePass
     }
   }
 
+  /// Size-first packing order: mem tile pools largest buffer first, in the
+  /// slots mem tile pools hold, the others left in place. A pool walked whole
+  /// becomes one large buffer, so this is chosen again after every walk.
+  void sizeOrder(MutableArrayRef<ObjectFifoPoolOp> pools) {
+    SmallVector<size_t> memTileSlots;
+    SmallVector<ObjectFifoPoolOp> memTilePools;
+    for (auto [index, pool] : llvm::enumerate(pools)) {
+      if (pool.getTileLike().isMemTile()) {
+        memTileSlots.push_back(index);
+        memTilePools.push_back(pool);
+      }
+    }
+    sortLargestBufferFirst(memTilePools, bufferBytes);
+    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools))
+      pools[slot] = pool;
+  }
+
   /// Alternative packing order: prioritize DMA demand within each home tile,
-  /// but merge those lists by object size to avoid globally prioritizing small
-  /// pools over large objects on unrelated tiles. This is only a heuristic;
+  /// but merge those lists by buffer size to avoid globally prioritizing small
+  /// pools over large buffers on unrelated tiles. This is only a heuristic;
   /// the same buffer, lock and channel planner validates both orders.
   SmallVector<ObjectFifoPoolOp>
   demandOrderedPools(ArrayRef<ObjectFifoPoolOp> pools) {
@@ -2188,7 +2205,7 @@ struct AIEObjectFifoAllocatePass
       llvm::stable_sort(tilePools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
         if (demand(a) != demand(b))
           return demand(a) > demand(b);
-        return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
+        return bufferBytes(a) > bufferBytes(b);
       });
     }
     for (size_t slot : memTileSlots) {
@@ -2200,9 +2217,8 @@ struct AIEObjectFifoAllocatePass
         if (index >= tilePools.size())
           continue;
         ObjectFifoPoolOp pool = tilePools[index];
-        if (!bestPool ||
-            pool.getObjectSizeInBytes() > bestPool.getObjectSizeInBytes() ||
-            (pool.getObjectSizeInBytes() == bestPool.getObjectSizeInBytes() &&
+        if (!bestPool || bufferBytes(pool) > bufferBytes(bestPool) ||
+            (bufferBytes(pool) == bufferBytes(bestPool) &&
              demand(pool) > demand(bestPool))) {
           bestHome = home;
           bestPool = pool;
@@ -2256,20 +2272,7 @@ struct AIEObjectFifoAllocatePass
     llvm::stable_sort(pools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
       return structuralRank.lookup(a) < structuralRank.lookup(b);
     });
-    SmallVector<size_t> memTileSlots;
-    SmallVector<ObjectFifoPoolOp> memTilePools;
-    for (auto [index, pool] : llvm::enumerate(pools)) {
-      if (pool.getTileLike().isMemTile()) {
-        memTileSlots.push_back(index);
-        memTilePools.push_back(pool);
-      }
-    }
-    llvm::stable_sort(memTilePools, [](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
-      return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
-    });
-    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools)) {
-      pools[slot] = pool;
-    }
+    sizeOrder(pools);
 
     poolLocks = std::make_shared<PoolLocks>(device);
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
@@ -2312,6 +2315,7 @@ struct AIEObjectFifoAllocatePass
                                   channelFailure.getRouteDirection()))) {
       localPools.clear();
       tried.clear();
+      sizeOrder(pools);
       allocated = planAllocation(pools, tried);
     }
     if (succeeded(allocated) && !channelSharers.empty() &&

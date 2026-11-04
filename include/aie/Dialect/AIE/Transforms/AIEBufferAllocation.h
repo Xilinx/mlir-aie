@@ -62,6 +62,17 @@ struct BufferAllocation {
   std::optional<int64_t> address;
 };
 
+/// Buffers are laid out, and given a tile, largest buffer first: by the address
+/// layout below, the objectFIFO allocator, and the SA placer's estimate of it.
+/// A pool walked whole is one buffer of all its objects. Equal sizes keep their
+/// order.
+template <typename Range, typename BytesFn>
+void sortLargestBufferFirst(Range &&buffers, BytesFn bytes) {
+  llvm::stable_sort(buffers, [&](const auto &a, const auto &b) {
+    return bytes(a) > bytes(b);
+  });
+}
+
 /// The basic address allocator and resource planner share this layout: retain
 /// address pins, then place unpinned buffers largest-first, aligning each start
 /// and skipping occupied ranges. Return the high-water mark, without padding
@@ -81,8 +92,7 @@ assignSequentialBufferAddresses(llvm::MutableArrayRef<BufferAllocation> buffers,
     }
   }
   llvm::stable_sort(pinned, [](auto a, auto b) { return a.first < b.first; });
-  llvm::stable_sort(pending,
-                    [](auto *a, auto *b) { return a->size > b->size; });
+  sortLargestBufferFirst(pending, [](auto *buffer) { return buffer->size; });
   auto *current = pinned.begin();
   int64_t address = start;
   for (auto *buffer : pending) {
