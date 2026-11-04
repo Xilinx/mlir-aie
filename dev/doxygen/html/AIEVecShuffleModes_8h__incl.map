@@ -1,0 +1,35 @@
+<map id="include/aie/Dialect/AIEVec/IR/AIEVecShuffleModes.h" name="include/aie/Dialect/AIEVec/IR/AIEVecShuffleModes.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="726,5,960,50"/>
+<area shape="rect" id="Node000002" href="$AIEVecOps_8h.html" title=" " alt="" coords="652,98,791,143"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="817,49,764,91,761,86,812,52"/>
+<area shape="rect" id="Node000016" title=" " alt="" coords="815,106,871,134"/>
+<area shape="poly" id="edge15_Node000001_Node000016" title=" " alt="" coords="845,48,845,92,841,90,841,53"/>
+<area shape="rect" id="Node000017" title=" " alt="" coords="894,106,960,134"/>
+<area shape="poly" id="edge16_Node000001_Node000017" title=" " alt="" coords="864,48,907,95,902,94,862,53"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,191,201,235"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="649,131,460,157,217,193,215,188,459,152,654,129"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="225,191,405,235"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="649,138,421,191,420,186,654,136"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="429,191,614,235"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="676,142,584,186,582,181,671,144"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="639,191,804,235"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="723,141,724,177,719,174,720,145"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="829,191,1014,235"/>
+<area shape="poly" id="edge6_Node000002_Node000007" title=" " alt="" coords="770,141,863,184,857,184,769,146"/>
+<area shape="rect" id="Node000008" href="$AIEVecDialect_8h.html" title=" " alt="" coords="1039,199,1162,227"/>
+<area shape="poly" id="edge7_Node000002_Node000008" title=" " alt="" coords="792,137,804,140,916,164,1028,188,1044,195,1039,194,1026,193,915,169,802,145,792,143"/>
+<area shape="rect" id="Node000015" title=" " alt="" coords="1186,191,1332,235"/>
+<area shape="poly" id="edge14_Node000002_Node000015" title=" " alt="" coords="791,138,803,140,905,156,985,164,1067,172,1173,190,1168,190,1066,177,985,170,904,162,803,145,792,143"/>
+<area shape="rect" id="Node000009" href="$AIEVecTypes_8h.html" title=" " alt="" coords="936,283,1075,328"/>
+<area shape="poly" id="edge8_Node000008_Node000009" title=" " alt="" coords="1089,226,1040,275,1038,270,1084,228"/>
+<area shape="rect" id="Node000014" title=" " alt="" coords="1099,283,1291,328"/>
+<area shape="poly" id="edge13_Node000008_Node000014" title=" " alt="" coords="1115,225,1164,273,1159,272,1113,230"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="687,384,847,412"/>
+<area shape="poly" id="edge9_Node000009_Node000010" title=" " alt="" coords="951,328,816,381,815,376,946,329"/>
+<area shape="rect" id="Node000011" title=" " alt="" coords="870,384,997,412"/>
+<area shape="poly" id="edge10_Node000009_Node000011" title=" " alt="" coords="991,327,955,374,952,370,986,329"/>
+<area shape="rect" id="Node000012" title=" " alt="" coords="1020,384,1138,412"/>
+<area shape="poly" id="edge11_Node000009_Node000012" title=" " alt="" coords="1024,326,1061,373,1056,371,1022,331"/>
+<area shape="rect" id="Node000013" title=" " alt="" coords="1162,376,1345,421"/>
+<area shape="poly" id="edge12_Node000009_Node000013" title=" " alt="" coords="1066,326,1183,371,1177,370,1065,331"/>
+</map>
