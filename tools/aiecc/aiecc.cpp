@@ -2186,47 +2186,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //  * --xclbin-input: extend an existing xclbin by merging this design's PDI
   //    into its AIE_PARTITION and adding the kernel.
 
-  auto &xclbinProvenance =
-      kernels.rekeyFrom("xclbin_provenance_{0}.json", provenance.out,
-                        [](const llvm::json::Value &) { return "input.mlir"; });
-
-  auto makeUserMetadata = [](const llvm::json::Value &existing,
-                             const std::string &info) {
-    llvm::json::Array entries;
-    if (auto *root = existing.getAsObject())
-      if (auto *metadata = root->getObject("keyvalue_metadata"))
-        if (auto *values = metadata->getArray("key_values"))
-          for (const auto &entry : *values)
-            if (auto *object = entry.getAsObject())
-              if (object->getString("key") != "mlir_aie.provenance")
-                entries.push_back(entry);
-    entries.push_back(
-        llvm::json::Object{{"key", "mlir_aie.provenance"}, {"value", info}});
-    return llvm::json::Value(llvm::json::Object{
-        {"keyvalue_metadata",
-         llvm::json::Object{{"key_values", std::move(entries)}}}});
-  };
-  auto &newUserMetadata = xclbinProvenance.map<llvm::json::Value>(
-      "user_metadata_{0}.json", [makeUserMetadata](const std::string &info) {
-        return makeUserMetadata(nullptr, info);
-      });
-
   // From-scratch flow
   EdgeWithTypedOutput<File> &xclbinFromScratch =
-      bundle(memTopo.out, kernels.out, partition.out, newUserMetadata.out)
-          .map<File>(xclbinName.getValue(),
-                     ShellCommand{"xclbinutil"}
-                         .arg("--add-replace-section")
-                         .input("MEM_TOPOLOGY:JSON:")
-                         .arg("--add-kernel")
-                         .input()
-                         .arg("--add-replace-section")
-                         .input("AIE_PARTITION:JSON:")
-                         .arg("--add-replace-section")
-                         .input("KEYVALUE_METADATA:JSON:")
-                         .arg("--force")
-                         .arg("--output")
-                         .output());
+      bundle(memTopo.out, kernels.out, partition.out)
+          .map<File>(xclbinName.getValue(), ShellCommand{"xclbinutil"}
+                                                .arg("--add-replace-section")
+                                                .input("MEM_TOPOLOGY:JSON:")
+                                                .arg("--add-kernel")
+                                                .input()
+                                                .arg("--add-replace-section")
+                                                .input("AIE_PARTITION:JSON:")
+                                                .arg("--force")
+                                                .arg("--output")
+                                                .output());
 
   // --xclbin-input flow: dump the existing xclbin's AIE_PARTITION, append this
   // design's first PDI to it, then re-emit with the merged partition and our
@@ -2278,50 +2250,18 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 return mlir::success();
               });
 
-  auto &inputMetadataFile = staticPerDevice.map<File>(
-      "input_metadata_{0}.json", ShellCommand{"xclbinutil"}
-                                     .arg("--dump-section")
-                                     .outputConcat("KEYVALUE_METADATA:JSON:")
-                                     .arg("--force")
-                                     .arg("--quiet")
-                                     .arg("--input")
-                                     .arg(inXclbin)
-                                     .missingOutputOnExit(100));
-  auto &inputMetadata = inputMetadataFile.map<llvm::json::Value>(
-      "input_metadata_parsed_{0}.json",
-      [](const Item<File> &in, Item<llvm::json::Value> &out) {
-        if (dryRun || !llvm::sys::fs::exists(in.filePath)) {
-          out.value = llvm::json::Object{};
-          return mlir::success();
-        }
-        return deserializeFile<llvm::json::Value>()(in, out);
-      });
-  auto &mergedUserMetadata =
-      bundle(inputMetadata.out, xclbinProvenance.out)
-          .map<llvm::json::Value>(
-              "merged_user_metadata_{0}.json",
-              [makeUserMetadata](const Item<llvm::json::Value> &existing,
-                                 const Item<std::string> &info,
-                                 Item<llvm::json::Value> &out) {
-                out.value = makeUserMetadata(existing.get(), info.get());
-                return mlir::success();
-              });
-
   EdgeWithTypedOutput<File> &xclbinExtended =
-      bundle(kernels.out, mergedPartition.out, mergedUserMetadata.out)
-          .map<File>(xclbinName.getValue(),
-                     ShellCommand{"xclbinutil"}
-                         .arg("--input")
-                         .arg(inXclbin)
-                         .arg("--add-kernel")
-                         .input()
-                         .arg("--add-replace-section")
-                         .input("AIE_PARTITION:JSON:")
-                         .arg("--add-replace-section")
-                         .input("KEYVALUE_METADATA:JSON:")
-                         .arg("--force")
-                         .arg("--output")
-                         .output());
+      bundle(kernels.out, mergedPartition.out)
+          .map<File>(xclbinName.getValue(), ShellCommand{"xclbinutil"}
+                                                .arg("--input")
+                                                .arg(inXclbin)
+                                                .arg("--add-kernel")
+                                                .input()
+                                                .arg("--add-replace-section")
+                                                .input("AIE_PARTITION:JSON:")
+                                                .arg("--force")
+                                                .arg("--output")
+                                                .output());
 
   EdgeWithTypedOutput<File> &xclbin =
       xclbinInput.empty() ? xclbinFromScratch : xclbinExtended;

@@ -232,7 +232,6 @@ struct ShellCommand {
   std::vector<Part> parts;
   std::function<void(llvm::StringRef, llvm::StringRef)> failureHint;
   std::shared_ptr<const bool> failureIsEmpty;
-  std::optional<int> missingOutputExitCode;
 
   inline static std::vector<std::string> searchPaths;
   inline static std::map<std::string, std::string> toolPathCache;
@@ -417,13 +416,6 @@ struct ShellCommand {
   // it knows whether such a step runs at all.
   ShellCommand &optional(std::shared_ptr<const bool> when) {
     failureIsEmpty = std::move(when);
-    return *this;
-  }
-
-  // A documented exit code can denote an absent optional input; other failures
-  // must still be reported, so corrupt metadata is not mistaken for absence.
-  ShellCommand &missingOutputOnExit(int code) {
-    missingOutputExitCode = code;
     return *this;
   }
 
@@ -615,8 +607,7 @@ private:
     }
     int rc = llvm::sys::ExecuteAndWait(cmd[0], argv, std::nullopt, redirectRef,
                                        0, 0, &errMsg);
-    bool missing = missingOutputExitCode && rc == *missingOutputExitCode;
-    bool quiet = missing || (failureIsEmpty && *failureIsEmpty);
+    bool quiet = failureIsEmpty && *failureIsEmpty;
     std::unique_lock<std::mutex> log;
     if (capture) {
       // Verbose replays a successful run too, in place of the live output the
@@ -635,8 +626,6 @@ private:
     }
     if (rc != 0) {
       if (quiet) {
-        if (missing)
-          llvm::sys::fs::remove(outputFile);
         return mlir::success();
       }
       if (!log.owns_lock())
@@ -749,7 +738,6 @@ private:
     ShellCommand link{tokens.front()};
     link.failureHint = driver.failureHint;
     link.failureIsEmpty = driver.failureIsEmpty;
-    link.missingOutputExitCode = driver.missingOutputExitCode;
     unsigned inputs = 0, outputs = 0;
     for (llvm::StringRef token : llvm::ArrayRef(tokens).drop_front()) {
       if (inputs == 0 && token == objectPath) {

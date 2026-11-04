@@ -1,5 +1,0 @@
-// Copyright (C) 2026 Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-// REQUIRES: system-linux
-// RUN: %python %S/Inputs/version_checks.py %S/../../tools/aiecc/GenVersion.cmake
