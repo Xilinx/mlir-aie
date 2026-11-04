@@ -1213,35 +1213,17 @@ struct AIEObjectFifoAllocatePass
     return false;
   }
 
-  /// A MemTile whose endpoints need more buffer descriptors than it has
-  /// walks its deepest plain pools with one descriptor a side instead, their
-  /// objects side by side in one buffer and counted by one lock pair: the
-  /// deepest first, until its descriptors fit.
-  /// Whether one iterating descriptor a side could walk `pool`: a plain mem
-  /// tile pool of one segment, deeper than one object and no deeper than a
-  /// lock counts, whose ends neither dispatch nor take turns, but those in
-  /// `regrouped`, whose turns are being chosen again, and whose draining ends
-  /// lay out no dimensions, which on a contiguous pool walk a stream window.
+  /// Whether `pool` can be walked whole (ObjectFifoPoolOp::canWalkWhole),
+  /// its ends taking no turns but those in `regrouped`, whose turns are being
+  /// chosen again.
   bool canWalkWhole(ObjectFifoPoolOp pool,
                     ArrayRef<ObjectFifoDmaEndpointOp> regrouped = {}) {
-    const AIETargetModel &target = device.getTargetModel();
-    TileLike tile =
-        pool ? dyn_cast<TileLike>(pool.getTile().getDefiningOp()) : TileLike();
-    return tile && tile.isMemTile() && !pool.getContiguous() &&
-           pool.getSegmentOps().size() == 1 && !pool.getRepeatCount() &&
-           !pool.getBuffers() && pool.getDepth() > 1 &&
-           pool.getDepth() <= static_cast<int>(target.getMaxLockValue()) &&
-           llvm::all_of(
-               device.getOps<ObjectFifoDmaEndpointOp>(),
-               [&](ObjectFifoDmaEndpointOp end) {
-                 return end.getPoolOp() != pool ||
-                        (!end.getDispatch() &&
-                         (!end.drains() || !end.getDimensions() ||
-                          end.getDimensions()->empty() ||
-                          (*end.getDimensions())[0].getValue().empty()) &&
-                         (!end.getTurns() ||
-                          llvm::is_contained(regrouped, end)));
-               });
+    return pool && pool.canWalkWhole() &&
+           llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
+                        [&](ObjectFifoDmaEndpointOp end) {
+                          return end.getPoolOp() != pool || !end.getTurns() ||
+                                 llvm::is_contained(regrouped, end);
+                        });
   }
 
   /// Walks the deepest pool on `tile` that can be walked whole, so its ends

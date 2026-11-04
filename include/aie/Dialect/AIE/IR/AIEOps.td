@@ -2624,6 +2624,11 @@ def AIE_ObjectFifoCreateOp
     int dmaDepth(std::optional<unsigned> consumer);
     /// Objects in the one pool of a fifo whose ends share a memory module.
     int sharedDepth();
+    /// The DMA end the fifo gets on its producer's tile (`consumer` empty) or
+    /// consumer `consumer`'s, unless that end takes no BD ids of the tile's:
+    /// a shim's, a stream port's, or a merge's or dispatch's but the one end
+    /// its participants share.
+    std::optional<PlannedDmaEnd> plannedDmaEnd(std::optional<unsigned> consumer);
 
     /// The packet header this fifo asks its route to carry, or null for a
     /// circuit-switched connection.
@@ -2800,6 +2805,11 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     bool walksStream();
     // The window a stream walk reads, in input objects.
     mlir::LogicalResult getStreamWindow(StreamWindow &window);
+    // When the pool owner is an input, the consumer of it whose end the pool
+    // is: one on the shared tile, after those earlier links took there.
+    std::optional<unsigned> getOwnerConsumerIndex();
+    // Objects in the pool on the shared tile.
+    int64_t getPoolDepth();
   }];
 }
 
@@ -2934,6 +2944,12 @@ def AIE_ObjectFifoPoolOp
     /// The pool's name without the end marker, which buffers and locks are
     /// named after.
     llvm::StringRef getBaseName();
+
+    /// Whether one iterating descriptor a side could walk the pool: a plain
+    /// mem tile pool of one segment, deeper than one object and no deeper than
+    /// a lock counts, whose ends neither dispatch nor, draining, lay out
+    /// dimensions, which on a contiguous pool walk a stream window.
+    bool canWalkWhole();
   }];
 }
 

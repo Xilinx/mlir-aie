@@ -413,6 +413,18 @@ struct StreamWindow {
   int64_t transfer() const;
 };
 
+// The DMA end aie-objectfifo-split gives a fifo on one tile, known before
+// placement: the BD ids it takes, as ObjectFifoDmaEndpointOp::getNumBDs
+// counts them, and the pool it walks, `id` telling a fifo's own consumer
+// pools apart. Walked whole, a pool's ends take one BD id each.
+struct PlannedDmaEnd {
+  int64_t bds;
+  mlir::Operation *pool;
+  int id;
+  int64_t depth;
+  bool walkable;
+};
+
 // One output of a StreamWindow: the first object it reads, counting the `top`
 // zero objects, and the lock units it takes before and gives back after.
 struct StreamWindowStep {

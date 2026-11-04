@@ -993,6 +993,23 @@ StringRef ObjectFifoPoolOp::getBaseName() {
   return name.consume_back("__pool") ? name : getSymName();
 }
 
+bool ObjectFifoPoolOp::canWalkWhole() {
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  return getTileLike().isMemTile() && !getContiguous() &&
+         getSegmentOps().size() == 1 && !getRepeatCount() && !getBuffers() &&
+         getDepth() > 1 &&
+         getDepth() <=
+             static_cast<int>(device.getTargetModel().getMaxLockValue()) &&
+         llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
+                      [&](ObjectFifoDmaEndpointOp end) {
+                        auto dims = end.getDimensions();
+                        return end.getPoolOp() != *this ||
+                               (!end.getDispatch() &&
+                                (!end.drains() || !dims || dims->empty() ||
+                                 (*dims)[0].getValue().empty()));
+                      });
+}
+
 //===----------------------------------------------------------------------===//
 // ObjectFifo endpoints
 //===----------------------------------------------------------------------===//
@@ -1990,6 +2007,82 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
   return maxAcquire + 1;
 }
 
+std::optional<PlannedDmaEnd>
+ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
+  bool drains = !consumer;
+  Value tile = drains ? getProducerTile() : getConsumerTiles()[*consumer];
+  auto tileLike = cast<TileLike>(tile.getDefiningOp());
+  if (tileLike.isShimTile() ||
+      (drains ? streamsFromProducer() : streamsToConsumer(*consumer)))
+    return std::nullopt;
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  int64_t maxLock = device.getTargetModel().getMaxLockValue();
+  auto walkable = [&](int64_t depth) {
+    return tileLike.isMemTile() && depth > 1 && depth <= maxLock;
+  };
+
+  ObjectFifoLinkOp link;
+  for (ObjectFifoLinkOp candidate : device.getOps<ObjectFifoLinkOp>())
+    if (candidate.getOptionalSharedTile() == tile &&
+        llvm::is_contained(drains ? candidate.getOutputObjectFifos()
+                                  : candidate.getInputObjectFifos(),
+                           *this))
+      link = candidate;
+  if (!link) {
+    int depth = dmaDepth(consumer);
+    if (!drains)
+      return PlannedDmaEnd{depth, *this, static_cast<int>(*consumer), depth,
+                           walkable(depth)};
+    int64_t repeat = getRepeatCount().value_or(1);
+    bool inHardware = repeat > 1 && depth == 1 && !getIterCount();
+    return PlannedDmaEnd{depth * (inHardware ? 1 : repeat), *this, -1, depth,
+                         walkable(depth) && !getRepeatCount() &&
+                             getDimensionsToStream().empty()};
+  }
+
+  // A merge's participants fill one end, a dispatch's drain one, made by the
+  // first of them the split reaches.
+  if (drains ? link.isDispatch() : link.isMerge()) {
+    std::vector<ObjectFifoCreateOp> sharing =
+        drains ? link.getOutputObjectFifos() : link.getInputObjectFifos();
+    for (ObjectFifoCreateOp fifo : device.getOps<ObjectFifoCreateOp>())
+      if (llvm::is_contained(sharing, fifo)) {
+        if (fifo != *this)
+          return std::nullopt;
+        break;
+      }
+  }
+  int64_t depth = link.getPoolDepth();
+  int64_t segments = link.getPoolSegments().size();
+  int64_t selected =
+      (drains ? link.isDistribute() : link.isJoin()) ? 1 : segments;
+  int64_t descriptors = depth * selected;
+  if (link.walksStream()) {
+    StreamWindow window;
+    descriptors = !drains ? 1
+                  : succeeded(link.getStreamWindow(window)) ? window.outputs
+                                                            : 0;
+  }
+  int64_t repeat = drains ? link.getRepeatCount().value_or(1) : 1;
+  bool inHardware = repeat > 1 && descriptors == 1 && !getIterCount();
+  int64_t passes = 1;
+  if (drains && link.isDispatch()) {
+    int64_t objects = std::max<int64_t>(depth, 1);
+    passes = std::lcm(objects,
+                      static_cast<int64_t>(link.getFifoOuts().size())) /
+             objects;
+  }
+  bool drainLaysOut = llvm::any_of(
+      link.getOutputObjectFifos(), [](ObjectFifoCreateOp out) {
+        return !out.getDimensionsToStream().empty();
+      });
+  return PlannedDmaEnd{descriptors * (inHardware ? 1 : repeat) * passes, link,
+                       -1, depth,
+                       walkable(depth) && segments == 1 &&
+                           !link.getRepeatCount() && !link.walksStream() &&
+                           !link.isDispatch() && !drainLaysOut};
+}
+
 int ObjectFifoCreateOp::sharedDepth() {
   int depth = size();
   if (auto depths = dyn_cast<ArrayAttr>(getElemNumber()))
@@ -2412,6 +2505,36 @@ LogicalResult ObjectFifoLinkOp::getStreamWindow(StreamWindow &window) {
           .getElementType()
           .getNumElements(),
       [&] { return emitOpError(); }, window);
+}
+
+std::optional<unsigned> ObjectFifoLinkOp::getOwnerConsumerIndex() {
+  ObjectFifoCreateOp owner = getPoolOwner();
+  std::optional<Value> tile = getOptionalSharedTile();
+  if (!tile || llvm::is_contained(getOutputObjectFifos(), owner))
+    return std::nullopt;
+  unsigned earlier = 0;
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
+    if (link == *this)
+      break;
+    if (link.getOptionalSharedTile() == tile &&
+        llvm::is_contained(link.getInputObjectFifos(), owner))
+      ++earlier;
+  }
+  auto consumers = owner.getConsumerTiles();
+  for (unsigned index = 0, seen = 0; index < consumers.size(); ++index)
+    if (consumers[index] == *tile && seen++ == earlier)
+      return index;
+  return std::nullopt;
+}
+
+int64_t ObjectFifoLinkOp::getPoolDepth() {
+  StreamWindow window;
+  if (walksStream())
+    return succeeded(getStreamWindow(window)) ? window.objects : 0;
+  if (std::optional<unsigned> index = getOwnerConsumerIndex())
+    return getPoolOwner().dmaDepth(*index);
+  return getPoolOwner().size();
 }
 
 ObjectFifoCreateOp ObjectFifoLinkOp::getPoolOwner() {
