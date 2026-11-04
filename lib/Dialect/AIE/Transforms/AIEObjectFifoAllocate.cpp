@@ -23,6 +23,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Debug.h"
 
+#include <map>
 #include <memory>
 #include <set>
 
@@ -78,8 +79,11 @@ struct AIEObjectFifoAllocatePass
   /// the endpoints' own chains alone, so an image built for one runtime
   /// sequence serves another's instruction stream.
   DenseMap<std::tuple<int, int, int>, int64_t> fixedBDs;
-  /// The largest task the runtime sequence configures on each channel by
-  /// index, by (col, row, channel).
+  /// The BD ids runtime tasks pin, which aie-reserve-runtime-bd-ids keeps
+  /// static BDs off, each once per tile, by the lowest channel that reaches it.
+  DenseMap<std::tuple<int, int, int>, int64_t> pinnedBDs;
+  /// The most unpinned BDs one task the runtime sequence configures on each
+  /// channel by index holds, by (col, row, channel).
   DenseMap<std::tuple<int, int, int>, int64_t> taskBDs;
   /// The BDs every channel the last assignment handed out needs at once,
   /// runtime tasks included.
@@ -731,6 +735,7 @@ struct AIEObjectFifoAllocatePass
     endpointStarts.clear();
     endpointTasks.clear();
     fixedBDs.clear();
+    pinnedBDs.clear();
     taskBDs.clear();
     auto key = [](Value tile,
                   int channel) -> std::optional<std::tuple<int, int, int>> {
@@ -750,6 +755,8 @@ struct AIEObjectFifoAllocatePass
             fixedBDs[*at] += countBDs(start);
           }
         }
+    // Each id a task pins on a tile, with a channel reaching it.
+    std::map<std::pair<int, int>, std::map<int32_t, int>> pinned;
     device.walk([&](Operation *op) {
       if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
         if (auto endpoint = dyn_cast_or_null<RouteEndpointOp>(
@@ -758,11 +765,29 @@ struct AIEObjectFifoAllocatePass
           endpointTasks[endpoint].push_back(task);
       } else if (auto task = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
         if (auto at = key(task.getTile(), task.getChannel())) {
+          int64_t unpinned = 0;
+          task.getBody().walk([&](DMABDOp bd) {
+            if (std::optional<int32_t> id = bd.getBdId())
+              pinned[{std::get<0>(*at), std::get<1>(*at)}].try_emplace(
+                  *id, task.getChannel());
+            else
+              ++unpinned;
+          });
           int64_t &largest = taskBDs[*at];
-          largest = std::max(largest, countBDs(task.getBody()));
+          largest = std::max(largest, unpinned);
         }
       }
     });
+    const AIETargetModel &target = device.getTargetModel();
+    for (auto &[at, ids] : pinned) {
+      auto [col, row] = at;
+      for (auto [id, reaching] : ids)
+        for (int channel = 0; channel <= reaching; ++channel)
+          if (target.isBdChannelAccessible(col, row, id, channel)) {
+            ++pinnedBDs[{col, row, channel}];
+            break;
+          }
+    }
   }
 
   /// Rank tiles, pools, endpoints and routes by their attributes and then, a
@@ -939,6 +964,8 @@ struct AIEObjectFifoAllocatePass
     // BDs per placed (col, row, channel) as channels are handed out, for
     // choosing among a tile's channels by the BD ids they can use.
     DenseMap<std::tuple<int, int, int>, int64_t> demand = fixedBDs;
+    for (auto &[at, bds] : pinnedBDs)
+      demand[at] += bds;
     auto bdsOf = [&](RouteEndpoint endpoint) -> int64_t {
       if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation()))
         return dma.getNumBDs();
@@ -1141,7 +1168,8 @@ struct AIEObjectFifoAllocatePass
     }
     for (auto [sharer, owner] : channelSharers)
       channelAssignments[sharer] = channelAssignments.lookup(owner);
-    // Runtime tasks did not steer the choice, but they hold BDs while they
+    // Unpinned runtime BDs did not steer the choice, so the image serves any
+    // runtime sequence pinning the same ids, but they hold BDs while they
     // run, which the overcommit warning counts.
     for (auto &[at, bds] : taskBDs)
       demand[at] += bds;
