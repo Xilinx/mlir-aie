@@ -1100,8 +1100,18 @@ struct AIEObjectFifoAllocatePass
       int channel = alloc.getChannelIndex();
       if (claimedAllocations.insert(alloc).second &&
           channels.reservePinnedChannel(tileOf(end), alloc.getChannelDir(),
-                                        channel, endpoint, true) < 0)
+                                        channel, endpoint, true) < 0) {
+        channelFailure = end;
+        if (!diagnose)
+          return failure();
+        auto diag = endpoint->emitOpError("cannot share ");
+        diag << stringifyDMAChannelDir(alloc.getChannelDir()) << " DMA channel "
+             << channel << ": already in use or unavailable";
+        if (Operation *owner = channels.getDMAChannelOwner(
+                tileOf(end), alloc.getChannelDir(), channel))
+          noteChannelOwner(diag, owner, channel);
         return failure();
+      }
       channelAssignments[endpoint] = channel;
       noteDemand(end, channel);
     }
@@ -1168,6 +1178,13 @@ struct AIEObjectFifoAllocatePass
                          .getAttr(alloc);
       if (!allowed || alloc.getTile() != exhausted->getResult(0) ||
           alloc.getChannelDir() != dir)
+        continue;
+      if (llvm::any_of(device.getOps<RouteEndpoint>(), [&](RouteEndpoint end) {
+            return end.getRouteBundle() == WireBundle::DMA &&
+                   sameTile(end.getTile(), alloc.getTile()) &&
+                   end.getRouteDirection() == dir &&
+                   end.getRouteChannel() == alloc.getChannelIndex();
+          }))
         continue;
       for (Operation *candidate : candidates) {
         auto endpoint = cast<RouteEndpointOp>(candidate);

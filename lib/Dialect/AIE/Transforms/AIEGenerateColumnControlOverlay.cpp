@@ -200,8 +200,9 @@ struct AIEGenerateColumnControlOverlayPass
     }
     if (!configuration)
       return success();
-    auto avoided = adaptive ? applicationPorts(module)
-                            : std::vector<std::pair<TileID, Port>>{};
+    std::vector<std::pair<TileID, Port>> avoided;
+    if (adaptive && failed(applicationPorts(module, avoided)))
+      return failure();
     OpPassManager routing(DeviceOp::getOperationName());
     routing.addPass(createAIEAssignTileCtrlIDsPass());
     routing.addPass(createAIEPathfinderPass({}, avoided));
@@ -319,7 +320,9 @@ struct AIEGenerateColumnControlOverlayPass
     return tiles;
   }
 
-  std::vector<std::pair<TileID, Port>> applicationPorts(ModuleOp module) {
+  LogicalResult
+  applicationPorts(ModuleOp module,
+                   std::vector<std::pair<TileID, Port>> &avoided) {
     OwningOpRef<ModuleOp> trial = cast<ModuleOp>(module->clone());
     for (DeviceOp device :
          llvm::make_early_inc_range(trial->getOps<DeviceOp>())) {
@@ -333,10 +336,11 @@ struct AIEGenerateColumnControlOverlayPass
     dpm.addPass(createAIEAssignPacketIdsPass());
     dpm.addPass(createAIEObjectFifoAllocatePass());
     dpm.addPass(createAIEObjectFifoLowerDMAsPass());
-    ScopedDiagnosticHandler quiet(&getContext(),
-                                  [](Diagnostic &) { return success(); });
-    if (failed(pm.run(*trial)))
-      return {};
+    if (failed(pm.run(*trial))) {
+      module.emitError("failed to analyze application resources for adaptive "
+                       "control overlay");
+      return failure();
+    }
     std::set<std::pair<TileID, Port>> ports;
     for (DeviceOp device : trial->getOps<DeviceOp>()) {
       for (SwitchboxOp box : device.getOps<SwitchboxOp>()) {
@@ -348,8 +352,9 @@ struct AIEGenerateColumnControlOverlayPass
       DynamicTileAnalysis analysis;
       llvm::Error error = analysis.runAnalysis(device);
       if (error) {
-        llvm::consumeError(std::move(error));
-        continue;
+        device.emitOpError("cannot plan adaptive control overlay: ")
+            << llvm::toString(std::move(error));
+        return failure();
       }
       auto collect = [&](const SwitchSettings &settings) {
         for (const auto &[tile, setting] : settings)
@@ -361,7 +366,8 @@ struct AIEGenerateColumnControlOverlayPass
       for (const auto &[_, settings] : analysis.routing.idSettings)
         collect(settings);
     }
-    return {ports.begin(), ports.end()};
+    avoided.assign(ports.begin(), ports.end());
+    return success();
   }
 };
 
