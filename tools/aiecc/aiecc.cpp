@@ -97,31 +97,6 @@ namespace {
 // it, since a pass-generated op shares its object's location.
 constexpr llvm::StringLiteral ironPrefix = "iron:";
 
-// The marker belongs to the IR producer, which may differ from this compiler.
-mlir::FailureOr<llvm::json::Value> ironProvenance(mlir::ModuleOp module) {
-  auto attr = module->getAttr("iron.provenance");
-  if (!attr)
-    return llvm::json::Value(nullptr);
-  auto dictionary = llvm::dyn_cast<mlir::DictionaryAttr>(attr);
-  if (!dictionary) {
-    module.emitError("iron.provenance must be a dictionary");
-    return mlir::failure();
-  }
-  llvm::json::Object result{{"version", nullptr}, {"revision", nullptr}};
-  for (auto field : dictionary) {
-    auto name = field.getName().getValue();
-    auto value = llvm::dyn_cast<mlir::StringAttr>(field.getValue());
-    if ((name == "version" || name == "revision") && value) {
-      result[name] = value.getValue();
-      continue;
-    }
-    module.emitError("invalid iron.provenance field '")
-        << name << "': expected version/revision strings";
-    return mlir::failure();
-  }
-  return llvm::json::Value(std::move(result));
-}
-
 mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag, bool keepOpDump) {
   llvm::SmallVector<llvm::StringRef> names;
   diag.getLocation()->walk([&](mlir::Location loc) {
@@ -1052,85 +1027,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         });
         return verifyStackSizeOverrides(out.value->get());
       });
-
-  auto &provenance = withDefaultStackSize.map<std::string>(
-      "provenance.json",
-      [matchesDeviceFilter](const Item<ModRef> &in,
-                            Item<std::string> &out) -> mlir::LogicalResult {
-        const ModRef &mod = *in.value;
-        auto iron = ironProvenance(mod.get());
-        if (mlir::failed(iron))
-          return mlir::failure();
-        auto info = compilerProvenance();
-        if (iron->kind() != llvm::json::Value::Null)
-          info["iron"] = std::move(*iron);
-        llvm::json::Array devices;
-        bool hasSourceCores = false;
-        for (DeviceOp device : mod.get().getOps<DeviceOp>()) {
-          if (!matchesDeviceFilter(device))
-            continue;
-          int sourceCores = 0, importedCores = 0;
-          device.walk([&](CoreOp core) {
-            if (core.getElfFileAttr())
-              ++importedCores;
-            else
-              ++sourceCores;
-          });
-          hasSourceCores |= sourceCores != 0;
-          devices.push_back(llvm::json::Object{
-              {"name", device.getSymName()},
-              {"target", detectAIETarget(mod.get(), device.getSymName())},
-              {"cores_from_ir", sourceCores},
-              {"imported_core_elfs", importedCores}});
-        }
-        info["devices"] = std::move(devices);
-        info["core_compiler"] = nullptr;
-        if (hasSourceCores && !dryRun) {
-          std::string tool = ShellCommand::resolveTool("clang");
-          if (xchesscc) {
-            auto dir = discoverAietoolsDir(aietoolsDir);
-            tool = dir.empty() ? "" : dir + "/bin/xchesscc";
-          }
-          info["core_compiler"] = coreCompilerProvenance(
-              xchesscc ? "chess" : "llvm-aie", tool, "--version");
-        }
-        out.value =
-            llvm::formatv("{0}", llvm::json::Value(std::move(info))).str();
-        return mlir::success();
-      });
-
-  auto stampElf =
-      [&](EdgeWithTypedOutput<File> &raw,
-          const std::string &name) -> EdgeWithTypedOutput<std::vector<char>> & {
-    auto &metadata = raw.rekeyFrom(name + ".provenance.json", provenance.out,
-                                   [](const File &) { return "input.mlir"; });
-    return bundle(raw.out, metadata.out)
-        .map<std::vector<char>>(
-            name,
-            [](const Item<File> &in, const Item<std::string> &info,
-               Item<std::vector<char>> &out) -> mlir::LogicalResult {
-              if (dryRun) {
-                out.value.emplace();
-                return mlir::success();
-              }
-              auto bytes = llvm::MemoryBuffer::getFile(in.asFile());
-              if (!bytes) {
-                llvm::errs()
-                    << "aiecc: cannot read ELF: " << bytes.getError().message()
-                    << "\n";
-                return mlir::failure();
-              }
-              auto stamped =
-                  stampElfProvenance((*bytes)->getBuffer(), info.get());
-              if (!stamped) {
-                llvm::errs()
-                    << "aiecc: " << llvm::toString(stamped.takeError()) << "\n";
-                return mlir::failure();
-              }
-              out.value = std::move(*stamped);
-              return mlir::success();
-            });
-  };
 
   auto &traced =
       withDefaultStackSize
@@ -2114,7 +2010,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                       : ctrlpktElfName.getValue();
 
 #ifdef AIECC_HAS_AIEBU_LIBRARY
-  auto &rawCtrlpktElf =
+  auto &ctrlpktElf =
       bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
           .map<File>(ctrlpktElfOutName + ".unstamped",
                      [](const Item<std::vector<char>> &dmaSeqItem,
@@ -2127,7 +2023,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                           llvm::StringRef(patch), out, verbose);
                      });
 #else
-  auto &rawCtrlpktElf =
+  auto &ctrlpktElf =
       bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
           .map<File>(ctrlpktElfOutName + ".unstamped", ShellCommand{"aiebu-asm"}
                                                            .arg("-t")
@@ -2141,7 +2037,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                                            .arg("-o")
                                                            .output());
 #endif // AIECC_HAS_AIEBU_LIBRARY
-  auto &ctrlpktElf = stampElf(rawCtrlpktElf, ctrlpktElfOutName);
 
   // Per-device xclbin (memory topology + kernel metadata + PDI partition).
   auto &memTopo = staticPerDevice.map<llvm::json::Value>(
@@ -2380,7 +2275,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // loaded alongside an xclbin. It reuses the per-sequence instruction binary
   // already produced by `npuInsts` rather than re-translating the module.
 #ifdef AIECC_HAS_AIEBU_LIBRARY
-  auto &rawInstElf =
+  auto &instElf =
       npuInsts.map<File>(elfName.getValue() + ".unstamped",
                          [](const Item<std::vector<char>> &item,
                             Item<File> &out) -> mlir::LogicalResult {
@@ -2388,16 +2283,15 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                               /*patchJson=*/{}, out, verbose);
                          });
 #else
-  auto &rawInstElf = npuInsts.map<File>(elfName.getValue() + ".unstamped",
-                                        ShellCommand{"aiebu-asm"}
-                                            .arg("-t")
-                                            .arg("aie2txn")
-                                            .arg("-c")
-                                            .input()
-                                            .arg("-o")
-                                            .output());
+  auto &instElf = npuInsts.map<File>(elfName.getValue() + ".unstamped",
+                                     ShellCommand{"aiebu-asm"}
+                                         .arg("-t")
+                                         .arg("aie2txn")
+                                         .arg("-c")
+                                         .input()
+                                         .arg("-o")
+                                         .output());
 #endif // AIECC_HAS_AIEBU_LIBRARY
-  auto &instElf = stampElf(rawInstElf, elfName.getValue());
 
   //--------------------------------------------------------------------------//
   // Combined full ELF (joins the static configuration + NPU branches)
@@ -2596,7 +2490,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
               });
 
 #ifdef AIECC_HAS_AIEBU_CONFIG_ELF
-  auto &rawFullElf =
+  auto &fullElf =
       bundle(fullElfConfig.out, npuInstsFullElf.out, fullElfCtrlpkt.out,
              fullElfPatchInfo.out)
           .join<File>(
@@ -2635,16 +2529,15 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                        out, verbose);
               });
 #else
-  auto &rawFullElf = fullElfConfig.map<File>(
-      fullElfName.getValue() + ".unstamped", ShellCommand{"aiebu-asm"}
-                                                 .arg("-t")
-                                                 .arg("aie2_config")
-                                                 .arg("-j")
-                                                 .input()
-                                                 .arg("-o")
-                                                 .output());
+  auto &fullElf = fullElfConfig.map<File>(fullElfName.getValue() + ".unstamped",
+                                          ShellCommand{"aiebu-asm"}
+                                              .arg("-t")
+                                              .arg("aie2_config")
+                                              .arg("-j")
+                                              .input()
+                                              .arg("-o")
+                                              .output());
 #endif // AIECC_HAS_AIEBU_CONFIG_ELF
-  auto &fullElf = stampElf(rawFullElf, fullElfName.getValue());
 
   //--------------------------------------------------------------------------//
   // Host program
@@ -2667,6 +2560,46 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // AIE simulator Work folder
   //--------------------------------------------------------------------------//
   auto &aiesim = buildAiesimSubgraph(context, staticPerDevice, aieInc);
+
+  auto &provenance = withDefaultStackSize.map<std::string>(
+      "provenance.json", [](const ModRef &mod) {
+        llvm::json::Object info{{"revision", AIECC_GIT_SHA}};
+        if (auto iron = mod.get()->getAttrOfType<mlir::DictionaryAttr>(
+                "iron.provenance")) {
+          llvm::json::Object fields;
+          for (auto field : iron)
+            if (auto value = llvm::dyn_cast<mlir::StringAttr>(field.getValue()))
+              fields[field.getName().getValue()] = value.getValue();
+          info["iron"] = std::move(fields);
+        }
+        return llvm::formatv("{0}", llvm::json::Value(std::move(info))).str();
+      });
+  auto stampElf =
+      [&](EdgeWithTypedOutput<File> &elf,
+          const std::string &name) -> EdgeWithTypedOutput<std::vector<char>> & {
+    auto &metadata = elf.rekeyFrom(name + ".provenance.json", provenance.out,
+                                   [](const File &) { return "input.mlir"; });
+    return bundle(elf.out, metadata.out)
+        .map<std::vector<char>>(name, [](const Item<File> &in,
+                                         const Item<std::string> &info,
+                                         Item<std::vector<char>> &out) {
+          if (dryRun) {
+            out.value.emplace();
+            return mlir::success();
+          }
+          auto stamped = stampElfProvenance(in.asFile(), info.get());
+          if (!stamped) {
+            llvm::errs() << "aiecc: " << llvm::toString(stamped.takeError())
+                         << "\n";
+            return mlir::failure();
+          }
+          out.value = std::move(*stamped);
+          return mlir::success();
+        });
+  };
+  auto &stampedInstElf = stampElf(instElf, elfName.getValue());
+  auto &stampedCtrlpktElf = stampElf(ctrlpktElf, ctrlpktElfOutName);
+  auto &stampedFullElf = stampElf(fullElf, fullElfName.getValue());
 
   //--------------------------------------------------------------------------//
   // Output selection
@@ -2716,7 +2649,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // generated: in that case the combined control-packet ELF (produced below)
   // is the artifact written to --elf-name.
   if (generateElf && !generateCtrlpkt) {
-    outputs.push_back(&instElf);
+    outputs.push_back(&stampedInstElf);
   }
   if (generateCdo) {
     outputs.push_back(&cdo);
@@ -2733,13 +2666,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   if (generateCtrlpkt && !(loadPdiToCtrlPkt && generateFullElf)) {
     outputs.push_back(&ctrlpkt);
     outputs.push_back(&ctrlpktDmaSeq);
-    outputs.push_back(&ctrlpktElf);
+    outputs.push_back(&stampedCtrlpktElf);
   }
   if (generateXclbin) {
     outputs.push_back(&xclbin);
   }
   if (generateFullElf) {
-    outputs.push_back(&fullElf);
+    outputs.push_back(&stampedFullElf);
   }
   // AIE simulator Work folder: only when explicitly requested. The aggregator
   // edge pulls in and materializes every sim/ artifact.

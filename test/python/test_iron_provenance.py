@@ -48,7 +48,7 @@ def test_iron_program_stamps_elf(tmp_path, monkeypatch):
     )
     info = json.loads(re.search(r"^\[.*\] (\{.*\})$", dump, re.MULTILINE)[1])
     banner = subprocess.check_output([compiler, "--version"], text=True)
-    assert info["schema"] == 1
-    assert info["producer"] == "mlir-aie/aiecc"
-    assert info["revision"] == re.search(r"git SHA:\s+(\S+)", banner)[1]
-    assert info["iron"] == {"version": "1.2.3", "revision": "abcdef0"}
+    assert info == {
+        "revision": re.search(r"git SHA:\s+(\S+)", banner)[1],
+        "iron": {"version": "1.2.3", "revision": "abcdef0"},
+    }
