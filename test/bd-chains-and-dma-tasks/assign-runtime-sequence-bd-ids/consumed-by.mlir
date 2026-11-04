@@ -537,8 +537,9 @@ module {
 
 // -----
 
-// A raw write to the input's task queue pushes a task the counts cannot see,
-// so no await on the output proves the input's pushes finished.
+// A raw write to the input's task queue (shim MM2S 0's, 0x1D214, the word
+// after its control register) pushes a task the counts cannot see, so no await
+// on the output proves the input's pushes finished.
 module {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)
@@ -571,7 +572,7 @@ module {
       aiex.dma_start_task(%out1)
       aiex.dma_await_task(%out1)
       aiex.dma_free_task(%in1)
-      %queue = arith.constant 119312 : i32
+      %queue = arith.constant 119316 : i32
       %bd = arith.constant 15 : i32
       aiex.npu.write32(%queue, %bd) {column = 0 : i32, row = 0 : i32} : i32, i32
     }

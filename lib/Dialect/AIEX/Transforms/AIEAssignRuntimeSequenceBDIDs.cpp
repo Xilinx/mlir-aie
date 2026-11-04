@@ -143,7 +143,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     const AIETargetModel &tm =
         op->getParentOfType<AIE::DeviceOp>().getTargetModel();
     return llvm::any_of(keys, [&](const DmaQueueModel::ChannelKey &key) {
-      uint64_t queue = tm.getDmaControlAddress(
+      uint64_t queue = tm.getDmaQueueAddress(
           key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
       return queue >= *first && queue < *first + bytes;
     });

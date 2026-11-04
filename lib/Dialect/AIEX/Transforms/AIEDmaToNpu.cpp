@@ -217,8 +217,8 @@ public:
       }
     }
 
-    // the offset of the task queue register in the tile
-    uint32_t queue_offset = ctrl_offset + 0x4;
+    uint32_t queue_offset = tm.getDmaQueueAddress(
+        op.getColumn(), op.getRow(), op.getChannel(), op.getDirection());
 
     // Command word: bd_id in the START_BD_ID field, repeat_count [23:16],
     // issue-token bit [31]. START_BD_ID is 6 bits on a mem tile (48 BDs) and 4

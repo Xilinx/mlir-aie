@@ -566,6 +566,13 @@ public:
   /// queued, nothing running, nothing stalled (0 when unsupported).
   virtual uint32_t getDmaChannelIdleMask() const { return 0; }
 
+  /// Return the array address of the task queue register a push writes, the
+  /// word after the channel's control register.
+  uint32_t getDmaQueueAddress(int col, int row, int channel,
+                              AIE::DMAChannelDir direction) const {
+    return getDmaControlAddress(col, row, channel, direction) + 0x4;
+  }
+
   /// Return the DMA task-queue register address relative to its tile.
   uint32_t getLocalDmaControlAddress(int col, int row, int channel,
                                      AIE::DMAChannelDir direction) const {
