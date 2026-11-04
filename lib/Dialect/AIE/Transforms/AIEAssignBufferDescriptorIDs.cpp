@@ -250,7 +250,7 @@ struct AIEAssignBufferDescriptorIDsPass
           fixed = id;
         }
       }
-      auto available = [&](uint32_t id) {
+      auto available = [&, &indices = indices](uint32_t id) {
         std::set<std::pair<int, int>> tiles;
         for (size_t i : indices) {
           auto &a = assignments[i];
