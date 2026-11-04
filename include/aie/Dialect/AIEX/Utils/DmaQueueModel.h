@@ -25,8 +25,8 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 
-#include <climits>
 #include "llvm/Support/MathExtras.h"
+#include <climits>
 
 #include <algorithm>
 #include <array>
@@ -886,15 +886,16 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
 
 /// Check that `sequence` ends, on every path, with no task-completion token
 /// outstanding on a channel some sequence of the device awaits: one in
-/// `awaited`, or one a sync in `mayAwait` may wait on. A token left at the end outlives the command: the next
-/// command's await on that channel takes it and returns before its own
-/// transfer has finished (measured on Strix, NPU firmware 1.1.2.64), and every
-/// completion the compiler derives from an await assumes the channel started
-/// with none. A token on a channel nothing awaits is never taken. An await
-/// consumes the oldest token, so only the count matters. A loop with an
-/// unknown trip count must leave the count where it found it, or what remains
-/// grows with the trip count. Regions the check cannot follow are not
-/// diagnosed, nor channels a sync of the sequence's own may have waited on.
+/// `awaited`, or one a sync in `mayAwait` may wait on. A token left at the end
+/// outlives the command: the next command's await on that channel takes it and
+/// returns before its own transfer has finished (measured on Strix, NPU
+/// firmware 1.1.2.64), and every completion the compiler derives from an await
+/// assumes the channel started with none. A token on a channel nothing awaits
+/// is never taken. An await consumes the oldest token, so only the count
+/// matters. A loop with an unknown trip count must leave the count where it
+/// found it, or what remains grows with the trip count. Regions the check
+/// cannot follow are not diagnosed, nor channels a sync of the sequence's own
+/// may have waited on.
 template <typename EffectFn>
 inline mlir::LogicalResult
 checkTokensConsumed(AIE::RuntimeSequenceOp sequence,

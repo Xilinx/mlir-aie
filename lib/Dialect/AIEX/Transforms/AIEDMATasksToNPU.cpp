@@ -753,9 +753,9 @@ struct AIEDMATasksToNPUPass
         getBdRegisterBase(builder, loc, target_model, col, row, bdIdOfr);
     NpuBlockWriteValuesOp::create(builder, loc, bdBase, bdWords);
     const AIE::DmaBdLayout *layout = target_model.getDmaBdLayout(col, row);
-    return setAddressForSingleBD(
-        builder, bd_op, tile, bdIdOfr,
-        layout ? bdWords[layout->bufferLength.word] : Value());
+    return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr,
+                                 layout ? bdWords[layout->bufferLength.word]
+                                        : Value());
   }
 
   LogicalResult

@@ -265,8 +265,8 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
     return std::make_tuple(-ends[end].bds, static_cast<int>(ends[end].dir),
                            ends[end].limit);
   };
-  llvm::stable_sort(order,
-                    [&](unsigned a, unsigned b) { return shape(a) < shape(b); });
+  llvm::stable_sort(
+      order, [&](unsigned a, unsigned b) { return shape(a) < shape(b); });
   SmallVector<unsigned> groupOf(ends.size());
   SmallVector<int> channelOf(ends.size(), -1);
   auto match = [&]() {
@@ -324,12 +324,12 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
   // before any is placed.
   for (DMAChannelDir dir : {DMAChannelDir::S2MM, DMAChannelDir::MM2S}) {
     int64_t tighter = 0;
-    for (auto [i, bound] : llvm::enumerate(bounds)) {
+    for (size_t i = 0; i < bounds.size(); ++i) {
       int64_t room = 0;
       for (size_t g = 0; g < groups.size(); ++g)
         room += below[g * slots + static_cast<int>(dir) * bounds.size() + i];
       tighter += llvm::count_if(ends, [&](const BDPlanEnd &end) {
-        return end.dir == dir && end.limit == bound;
+        return end.dir == dir && end.limit == bounds[i];
       });
       if (tighter > room)
         return std::nullopt;
