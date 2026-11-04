@@ -514,6 +514,10 @@ struct AIEInsertTraceFlowsPass
     // If channels are occupied, adjust: use free channel, redirect lateral,
     // or error.
     auto usedChannels = scanUsedS2MMChannels(device);
+    auto s2mmChannels = [&](int col) {
+      return static_cast<int>(
+          targetModel.getNumDestShimMuxConnections(col, 0, WireBundle::DMA));
+    };
 
     for (auto &[col, shimInfo] : shimInfos) {
       int shimCol = shimInfo.shimTile.getCol();
@@ -522,7 +526,7 @@ struct AIEInsertTraceFlowsPass
         continue; // No conflicts on this shim
 
       const auto &usedSet = usedIt->second;
-      int freeCount = 2 - static_cast<int>(usedSet.size());
+      int freeCount = s2mmChannels(shimCol) - static_cast<int>(usedSet.size());
 
       if (freeCount <= 0) {
         // No channels free -- try lateral redirect
@@ -534,7 +538,7 @@ struct AIEInsertTraceFlowsPass
           });
           // Also treat columns with full shims as "active" for spare search
           for (auto &[fullCol, channels] : usedChannels) {
-            if (static_cast<int>(channels.size()) >= 2)
+            if (static_cast<int>(channels.size()) >= s2mmChannels(fullCol))
               activeColumns.insert(fullCol);
           }
           int spare =
@@ -561,7 +565,7 @@ struct AIEInsertTraceFlowsPass
       if (freeCount == 1) {
         // One channel free -- use it
         int freeChannel = -1;
-        for (int ch = 0; ch < 2; ch++) {
+        for (int ch = 0; ch < s2mmChannels(shimCol); ch++) {
           if (usedSet.count(ch) == 0) {
             freeChannel = ch;
             break;
@@ -574,7 +578,9 @@ struct AIEInsertTraceFlowsPass
     // Build channel descriptors and trace-to-channel assignments
     for (auto &[col, shimInfo] : shimInfos) {
       int shimCol = shimInfo.shimTile.getCol();
-      std::set<int> available = {0, 1};
+      std::set<int> available;
+      for (int ch = 0; ch < s2mmChannels(shimCol); ch++)
+        available.insert(ch);
       auto usedIt = usedChannels.find(shimCol);
       if (usedIt != usedChannels.end()) {
         for (int ch : usedIt->second)
@@ -1131,7 +1137,8 @@ private:
 
   /// Scan the device for existing S2MM channel claims on shim tiles.
   /// Checks aie.flow destinations, aie.packet_flow destinations,
-  /// ShimDMAAllocationOp declarations, and objectFifos that end at a shim.
+  /// ShimDMAAllocationOp declarations, aie.route DMA ends, and objectFifos
+  /// that end at a shim.
   std::map<int, std::set<int>> scanUsedS2MMChannels(DeviceOp device) {
     std::map<int, std::set<int>> used; // shimCol -> set of used S2MM channels
 
@@ -1160,11 +1167,23 @@ private:
       }
     });
 
-    // This pass runs before objectFifo lowering, so an objectFifo that ends
-    // at a shim has no flow yet. Claim what its lowering will: every
-    // consumer pin first, then the lowest free S2MM channel for each
-    // unpinned consumer.
+    // This pass runs before objectFifo lowering, so an objectFifo or route
+    // that ends at a shim has no flow yet. Claim what its lowering will:
+    // every pin first, then the lowest free S2MM channel for each unpinned
+    // end. Receiving ends share a channel only once objectFIFO verification
+    // has proven their turns, which runs after this pass, so each counts.
     SmallVector<TileOp> unpinned;
+    device.walk([&](RouteEndpoint endpoint) {
+      auto tile = dyn_cast_or_null<TileOp>(endpoint.getTile().getDefiningOp());
+      if (!tile || !tile.isShimTile() ||
+          endpoint.getRouteBundle() != WireBundle::DMA ||
+          endpoint.getRouteDirection() != DMAChannelDir::S2MM)
+        return;
+      if (std::optional<int> pin = endpoint.getRouteChannel())
+        used[tile.getCol()].insert(*pin);
+      else
+        unpinned.push_back(tile);
+    });
     device.walk([&](ObjectFifoCreateOp fifo) {
       if (fifo.getPlio())
         return;
