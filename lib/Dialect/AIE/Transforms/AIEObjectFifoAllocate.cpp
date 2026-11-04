@@ -1202,6 +1202,55 @@ struct AIEObjectFifoAllocatePass
 
   /// The other end of the one route naming `endpoint`, when that route is a
   /// circuit between two objectFIFO DMA endpoints.
+  /// Whether, in every runtime sequence, the host issues each transfer
+  /// through `fifo` before any wait: a turn chain waiting on that fifo's
+  /// objects then waits on nothing the host does after the array has moved.
+  bool hostMovesFirst(StringAttr fifo) {
+    for (auto seq : device.getOps<RuntimeSequenceOp>()) {
+      auto names = [&](Operation *op) {
+        auto uses = SymbolTable::getSymbolUses(op);
+        return fifo && uses && llvm::any_of(*uses, [&](auto use) {
+                 auto end = dyn_cast_or_null<RouteEndpoint>(
+                     SymbolTable::lookupNearestSymbolFrom(seq,
+                                                          use.getSymbolRef()));
+                 return end && end.getFifoName() == fifo.getValue();
+               });
+      };
+      auto waits = [](Operation *op) {
+        return isa<AIEX::NpuDmaWaitOp, AIEX::DMAAwaitTaskOp, AIEX::NpuSyncOp,
+                   AIEX::NpuMaskPollOp>(op);
+      };
+      bool waited = false;
+      WalkResult walk = seq.walk<WalkOrder::PreOrder>([&](Operation *op) {
+        if (waits(op)) {
+          waited = true;
+          return WalkResult::advance();
+        }
+        Operation *transfer = op;
+        if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(op))
+          transfer = start.getTask().getDefiningOp();
+        if (!transfer || !isa<AIEX::NpuDmaMemcpyNdOp, AIEX::DMAConfigureTaskForOp,
+                                AIEX::DMAStartBdChainForOp>(transfer) ||
+            isa<AIEX::DMAConfigureTaskForOp>(op) || !names(transfer))
+          return WalkResult::advance();
+        if (waited)
+          return WalkResult::interrupt();
+        for (Operation *parent = op->getParentOp(); parent != seq;
+             parent = parent->getParentOp())
+          if (parent->walk([&](Operation *inner) {
+                    return waits(inner) ? WalkResult::interrupt()
+                                        : WalkResult::advance();
+                  })
+                  .wasInterrupted())
+            return WalkResult::interrupt();
+        return WalkResult::advance();
+      });
+      if (walk.wasInterrupted())
+        return false;
+    }
+    return true;
+  }
+
   ObjectFifoDmaEndpointOp circuitPeer(ObjectFifoDmaEndpointOp endpoint) {
     ObjectFifoDmaEndpointOp peer;
     StringRef name = endpoint.getSymName();
@@ -1391,12 +1440,13 @@ struct AIEObjectFifoAllocatePass
         // The peers' chain moves the same turns, so a core working through
         // their pools, or through the pools that feed them circuit by circuit,
         // must keep up with that order too, through all those pools' depths.
-        // A peer reached from the shim waits on the host alone; one whose
-        // feeding core the walk cannot find refuses the turns.
+        // A peer reached from the shim waits on the host, so the host must
+        // move it before it waits on anything; one whose feeding core the walk
+        // cannot find refuses the turns.
         SmallVector<ObjectFifoCoreEndpointOp> peerCores;
         SmallVector<int64_t> peerDepths;
         SmallVector<unsigned> fed(peers.size(), ~0u);
-        bool lost = false;
+        bool lost = false, hostWaits = false;
         for (auto [i, peer] : llvm::enumerate(peers)) {
           int64_t depth = peer.getPoolOp().getDepth();
           ObjectFifoCoreEndpointOp core = cachedCoreEnd(peer);
@@ -1410,8 +1460,10 @@ struct AIEObjectFifoAllocatePass
               lost = true;
               break;
             }
-            if (byShim.contains(across.front()))
+            if (byShim.contains(across.front())) {
+              hostWaits |= !hostMovesFirst(across.front().getFifoNameAttr());
               break;
+            }
             at = across.front().drains() ? cachedCircuitPeer(across.front())
                                          : senderOf.lookup(across.front());
             if (!at) {
@@ -1433,6 +1485,8 @@ struct AIEObjectFifoAllocatePass
         }
         if (reason.empty() && lost)
           reason = "a peer's feeding core is not known, or feeds two peers";
+        if (reason.empty() && hostWaits)
+          reason = "the host waits before it moves a peer fed by the shim";
         if (reason.empty() && !peerCores.empty()) {
           SmallVector<unsigned> peerOrder;
           for (unsigned turn : turns.turns())
