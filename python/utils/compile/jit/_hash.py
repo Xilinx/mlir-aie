@@ -471,8 +471,11 @@ def _python_identity(
                 # Two same-named fileless helpers (lambdas from one factory,
                 # a swapped OPS list) share a qualname; the position must
                 # bind the code, or swapping them leaves the key unchanged.
-                ident = _code_identity(value.__code__).hex()
-                return f"{value.__module__}.{value.__qualname__}#{ident}"
+                # Classes have no __code__; their binding is the name.
+                if isinstance(value, FunctionType):
+                    ident = _code_identity(value.__code__).hex()
+                    return f"{value.__module__}.{value.__qualname__}#{ident}"
+                return f"{value.__module__}.{value.__qualname__}"
         return "<not-followed>"
 
     def _digest(value, where: str, depth: int) -> str:

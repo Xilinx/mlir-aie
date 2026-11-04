@@ -661,10 +661,16 @@ def test_cache_key_walks_a_shared_graph_once(tmp_path):
         "import sys\n"
         f"sys.path.insert(0, {str(tmp_path)!r})\n"
         "import chain_design\n"
+        # The file's autouse fixture binds a device for the in-process key;
+        # the fresh interpreter must bind the same one or the artifact hash
+        # carries a different target arch.
+        "from aie.utils.hostruntime import set_current_device\n"
+        "from aie.iron.device import NPU2Col1\n"
         "from aie.utils.compile.jit.compilabledesign import CompilableDesign\n"
-        "print(CompilableDesign(\n"
-        "    chain_design.chain, compile_kwargs={'N': 64}\n"
-        ")._compute_cache_hash())\n"
+        "with set_current_device(NPU2Col1()):\n"
+        "    print(CompilableDesign(\n"
+        "        chain_design.chain, compile_kwargs={'N': 64}\n"
+        "    )._compute_cache_hash())\n"
     )
     fresh = subprocess.run(
         [sys.executable, "-c", prog], capture_output=True, text=True, timeout=60
