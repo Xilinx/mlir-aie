@@ -478,11 +478,13 @@ in the other end's buffer. Ends whose senders run freely therefore never
 share, in one sequence or across sequences, since cores keep running between
 dispatches. A receiving end shares only where its senders wait on a gate: a
 shim input that `--aie-objectfifo-verify` proves they consume before sending,
-recording a `#aie.consumed_by` on the input's endpoint. In each sequence that issues the gate, the host
-must also drain the end, awaiting every byte the gate lets its senders send,
-so nothing spills into the next turn; the transfer sizes must be static for
-that count. Within one sequence, the gate must be issued only after the end
-before it is done. Without `--aie-objectfifo-verify` there are no proofs, so no
+recording a `#aie.consumed_by` on the input's endpoint. In each sequence that
+issues the gate, the host must also drain the end, awaiting every byte the gate
+lets its senders send, so nothing spills into the next turn; the transfer
+sizes must be static for that count. Within one sequence, the gate must be
+issued only after the end before it is awaited: freeing a task does not wait
+for it, and an await under a branch, or in a loop that may not run, may never
+happen. Without `--aie-objectfifo-verify` there are no proofs, so no
 receiving end shares. The placers run before the proofs and count shareable
 ends by the runtime order alone, so a design whose receiving ends cannot be
 proven fails at allocation rather than at placement. An end no runtime
