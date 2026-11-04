@@ -7,6 +7,7 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
@@ -688,38 +689,77 @@ int SAPlacer::computeDelegatePenalty() const {
 }
 
 void SAPlacer::collectSpillBuffers() {
-  // Each MemTile buffer with the logical tile whose column is its home.
-  spillBuffers.clear();
+  // Each MemTile end's objects, with the logical tile whose column is its
+  // home.
+  struct Pool {
+    int64_t size;
+    int depth;
+    Operation *tile;
+    bool whole = false;
+  };
+  // Every end on a mem tile holds its own pool, whatever is at the fifo's
+  // other end, except a link output's producer, whose objects are the link
+  // input's consumer pool.
+  SmallVector<Pool> pools;
+  auto onMemTile = [&](Operation *tile) {
+    auto typeIt = tile ? tileTypes.find(tile) : tileTypes.end();
+    return tile && currentPlacement.count(tile) && typeIt != tileTypes.end() &&
+           typeIt->second == AIETileType::MemTile;
+  };
   for (const auto &fb : fifoBuffers) {
-    if (!fb.producer)
-      continue;
-    if (!currentPlacement.count(fb.producer))
-      continue;
-    auto prodTypeIt = tileTypes.find(fb.producer);
-    if (prodTypeIt == tileTypes.end())
-      continue;
-    if (prodTypeIt->second != AIETileType::MemTile)
-      continue;
-    if (fb.linkSharedProd)
-      continue;
-
-    for (int d = 0; d < fb.producerDepth; d++)
-      spillBuffers.push_back({fb.producerSizeBytes, fb.producer});
+    if (onMemTile(fb.producer) && !fb.linkSharedProd)
+      pools.push_back({fb.producerSizeBytes, fb.producerDepth, fb.producer});
 
     for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
       auto *cons = fb.consumers[ci];
-      if (!cons)
-        continue;
-      if (!currentPlacement.count(cons))
-        continue;
-      auto consTypeIt = tileTypes.find(cons);
-      if (consTypeIt == tileTypes.end() ||
-          consTypeIt->second != AIETileType::MemTile)
-        continue;
-      int consDepth = fb.consumerDepthAt(ci);
-      for (int d = 0; d < consDepth; d++)
-        spillBuffers.push_back({fb.consumerSizeBytes, cons});
+      if (onMemTile(cons))
+        pools.push_back({fb.consumerSizeBytes, fb.consumerDepthAt(ci), cons});
     }
+  }
+
+  // aie-objectfifo-allocate walks a mem tile pool whole, one buffer that then
+  // spills only whole, when the channel its end gets runs short of BD ids.
+  // Which channel that is is the allocator's to say; once a tile's ends would
+  // fit the BD ids of any one channel, none can run short. So the estimate
+  // walks pools whole, deepest first, until they would. A pool it walks that
+  // the allocator leaves in pieces only makes the spill estimate stricter.
+  // A logical tile's ends do not depend on where it sits, so neither do these.
+  int64_t channelBDs = targetModel->getNumBDs(AIETileType::MemTile);
+  for (int col = 0; col < targetModel->columns(); col++)
+    for (int row = 0; row < targetModel->rows(); row++)
+      if (targetModel->getTileType(col, row) == AIETileType::MemTile)
+        channelBDs = std::min<int64_t>(
+            channelBDs, targetModel->getNumBDsForChannel(col, row, 0));
+  llvm::MapVector<Operation *, SmallVector<Pool *>> poolsOf;
+  for (Pool &pool : pools)
+    poolsOf[pool.tile].push_back(&pool);
+  for (auto &[tile, onTile] : poolsOf) {
+    int64_t bds = poolBDs.lookup(tile);
+    for (Pool *pool : onTile)
+      bds += pool->depth;
+    SmallVector<Pool *> deep;
+    for (Pool *pool : onTile)
+      if (pool->depth > 1 &&
+          pool->depth <= static_cast<int>(targetModel->getMaxLockValue()))
+        deep.push_back(pool);
+    llvm::stable_sort(
+        deep, [](Pool *a, Pool *b) { return a->depth > b->depth; });
+    for (Pool *pool : deep) {
+      if (bds <= channelBDs)
+        break;
+      pool->whole = true;
+      bds -= pool->depth - 1;
+    }
+  }
+
+  spillBuffers.clear();
+  for (const Pool &pool : pools) {
+    if (pool.whole) {
+      spillBuffers.push_back({pool.size * pool.depth, pool.tile});
+      continue;
+    }
+    for (int d = 0; d < pool.depth; d++)
+      spillBuffers.push_back({pool.size, pool.tile});
   }
   // Sort globally by size descending (matching stateful transform). Which
   // buffers there are never changes while tiles move, only their columns, and
