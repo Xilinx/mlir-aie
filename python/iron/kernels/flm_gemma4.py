@@ -5,19 +5,13 @@
 #
 """Kernels extracted from FastFlowLM's Gemma 4 implementation.
 
-These are not general building blocks. Each source is the kernel code of one
-core in one of FastFlowLM's Gemma 4 designs (prefill attention, the LM head
-and the decode layer), called from that core's Worker body. Several kernels
-acquire and release core locks themselves, by the lock ids the factories
-take. The decode kernels build for the whole model's geometry
-([`FlmGemma4DecodeGeometry`][aie.iron.kernels.flm_gemma4.FlmGemma4DecodeGeometry])
-and for FastFlowLM's array layout. All are AIE2P only; their
-sources are in ``aie_kernels/flm_gemma4/``.
+AIE2P kernels for prefill attention, decode and the LM head, with sources in
+``aie_kernels/flm_gemma4/``. Decode kernels use
+[`FlmGemma4DecodeGeometry`][aie.iron.kernels.flm_gemma4.FlmGemma4DecodeGeometry]
+for model dimensions and buffer layouts.
 
-A factory returns one ``ExternalFunction``. As
-[`cascade_mm`][aie.iron.kernels.linalg.cascade_mm] does with its ``put_only`` and
-``put_get``, every entry point of its object, its own included, is an
-attribute of it named by its C symbol: ``fn.attn_qk_round``.
+Factories expose related entry points as attributes named by their C symbols,
+such as ``fn.attn_qk_round``.
 """
 
 from dataclasses import dataclass, field
@@ -941,8 +935,6 @@ def _decode_kernel(
     symbol: str,
     arg_types: list,
     roles: tuple,
-    lock_defaults: dict[str, int],
-    locks: dict[str, int],
     geometry: FlmGemma4DecodeGeometry,
     trace: Trace | None = None,
     flags: tuple[str, ...] = (),
@@ -951,18 +943,9 @@ def _decode_kernel(
 ) -> _K:
     """One ``flm_gemma4/decode_<stem>.cc`` build, returning ``symbol`` as a ``cls``.
 
-    ``lock_defaults`` names the kernel's core locks, each set by a
-    ``-DFLM_GEMMA4_DECODE_<STEM>_<NAME>`` flag; ``locks`` overrides any of
-    them. ``trace`` defaults to ``Trace.none``; ``flags`` are further compile
-    flags. A ``lut`` kernel reads aie_runtime_lib's tables, so it builds
-    inside ``common/lut_kernel.cc``, which defines them.
+    A ``lut`` kernel builds inside ``common/lut_kernel.cc``, which defines
+    aie_runtime_lib's tables.
     """
-    unknown = set(locks) - set(lock_defaults)
-    if unknown:
-        raise TypeError(
-            f"flm_gemma4_decode_{stem}: unknown lock(s) {sorted(unknown)}; "
-            f"its locks are {sorted(lock_defaults)}"
-        )
     if not _arch_traits().bfp16:
         raise NotImplementedError(
             f"flm_gemma4_decode_{stem}() is only available on aie2p."
@@ -972,10 +955,6 @@ def _decode_kernel(
             f"flm_gemma4_decode_{stem}: builds only FLM_GEMMA4_E2B_DECODE and "
             "FLM_GEMMA4_E4B_DECODE, not a custom geometry"
         )
-    lock_flags = [
-        f"-DFLM_GEMMA4_DECODE_{stem.upper()}_{name.upper()}={int(value)}"
-        for name, value in {**lock_defaults, **locks}.items()
-    ]
     source = _kernel_source(f"flm_gemma4/decode_{stem}.cc")
     include_dirs = None
     if lut:
@@ -992,7 +971,6 @@ def _decode_kernel(
             *geometry.flags(),
             # The bf16 mmul lowers onto two bfp16-emulated macs on AIE2P.
             "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16",
-            *lock_flags,
             *flags,
         ],
         contract=KernelContract(
@@ -1007,11 +985,7 @@ def _decode_kernel(
 
 
 def _wrapper(base: ExternalFunction, source: str, symbol, arg_types, contract):
-    """``symbol`` of ``flm_gemma4/<source>``, a lock-free wrapper that includes ``base``'s source.
-
-    It builds with ``base``'s flags and include path, so the wrapper sees the
-    same geometry and lock ids, and is judged by ``contract``.
-    """
+    """Build a wrapper with ``base``'s flags and include path and the given contract."""
     path = str(_kernel_source(f"flm_gemma4/{source}"))
     flags = [f for f in base.compile_flags if f not in _portable_flags()]
     lut = [i for i, f in enumerate(flags) if f.startswith("-DAIE_LUT_KERNEL_SOURCE=")]
@@ -1033,21 +1007,23 @@ def _wrapper(base: ExternalFunction, source: str, symbol, arg_types, contract):
 DTYPES["flm_gemma4_decode_glu"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 
 
+class _GluKernel(ExternalFunction):
+    glu_emit: Kernel
+
+
 def flm_gemma4_decode_glu(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
-) -> ExternalFunction:
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> _GluKernel:
     """Build the decode layer's gated linear unit, from ``flm_gemma4/decode_glu.cc``.
 
-    Two entry points, with the design owning the loops and every lock.
     ``glu_chunk(hid, x, i)`` turns one ``glu_slice`` of gate and up values
-    into ``glu_slice // 2`` activations at slice ``i`` of the core-local
+    into ``glu_slice // 2`` activations at slice ``i`` of
     ``hid``, which holds ``intermediate_size`` of them (twice that with
     ``double_wide_mlp``). ``glu_emit(y_out, hid, j)`` copies slice ``j`` back
     out for the down projection.
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: No lock arguments are accepted.
     """
     bf16 = np.dtype[bfloat16]
     hid = geometry.intermediate_size * (2 if geometry.double_wide_mlp else 1)
@@ -1059,10 +1035,9 @@ def flm_gemma4_decode_glu(
         "glu_chunk",
         [hid_ty, x_ty, np.int32],
         (InOut, In, Param),
-        {},
-        locks,
         geometry,
         lut=True,
+        cls=_GluKernel,
     )
     fn.glu_emit = fn.object_file.bind("glu_emit", [y_ty, hid_ty, np.int32])
     return fn
@@ -1236,22 +1211,19 @@ class _AttnQkKvh2Kernel(ExternalFunction):
 
 
 def flm_gemma4_decode_attn_kv(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
-) -> ExternalFunction:
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> _AttnKvKernel:
     """Build the global-attention score-times-value core for one KV head, from ``flm_gemma4/decode_attn_kv.cc``.
 
-    The decode layer's global attention runs on two cores. This one folds
-    each round's scores and running-max corrections from the qk core into
-    the softmax denominator ``l`` and the float32 accumulator ``y``, and at
-    the end narrows and normalizes ``y`` in place. The returned kernel is
-    ``attn_kv_begin``, which zeroes ``y`` and ``l``. The Worker owns the RTP
-    handshake, calls ``attn_kv_round`` per round, then ``attn_kv_finish(y, l)``.
+    Accumulate scores and running-max corrections into the softmax denominator
+    ``l`` and float32 accumulator ``y``, then narrow and normalize ``y`` in place.
+    The returned kernel is ``attn_kv_begin``, which zeroes ``y`` and ``l``.
+    Call ``attn_kv_round`` per round, then ``attn_kv_finish(y, l)``.
     Finish leaves bf16 values in the first half of the float32 allocation,
     in [dh/8, head, 8] order. ``y`` needs a 64-byte-aligned base pointer.
 
     Args:
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 1.
-        **locks: The kernel takes no core lock.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_kv", geometry, 1)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1260,8 +1232,6 @@ def flm_gemma4_decode_attn_kv(
         "attn_kv_begin",
         [t["y"], t["l"]],
         (Out, Out),
-        {},
-        locks,
         geometry,
         lut=True,
         cls=_AttnKvKernel,
@@ -1419,19 +1389,18 @@ def flm_gemma4_attn_kv_core_ref(sv, ly, *, dh=512):
 
 
 def flm_gemma4_decode_attn_kv_kvh2(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE, **locks: int
-) -> ExternalFunction:
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE
+) -> _AttnKvKvh2Kernel:
     """Build the global-attention score-times-value core for two KV heads, from ``flm_gemma4/decode_attn_kv_kvh2.cc``.
 
     The two-KV-head (E4B) sibling of
     [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv]:
-    the Worker runs a round as one ``attn_kv_s_begin``, which folds the
+    each round starts with ``attn_kv_s_begin``, which folds the
     scores into ``l`` and rescales ``y``, then one ``attn_kv_v_half`` per
     KV head.
 
     Args:
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 2.
-        **locks: The kernel takes no core lock.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_kv_kvh2", geometry, 2)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1440,8 +1409,6 @@ def flm_gemma4_decode_attn_kv_kvh2(
         "attn_kv_begin",
         [t["y"], t["l"]],
         (Out, Out),
-        {},
-        locks,
         geometry,
         lut=True,
         cls=_AttnKvKvh2Kernel,
@@ -1464,8 +1431,6 @@ def flm_gemma4_attn_kv_kvh2_core(
     ``ly_in`` with ``l = c * l + rowsum(s)`` and ``y = c * y``, plus ``s @ v``
     for query heads ``4 * kv_head`` to ``4 * kv_head + 3``. ``sv`` holds
     ``s``, then ``v``. ``ly`` holds ``y``, then ``l`` in a 16-float slot.
-    Both KV heads' v buffers do not fit in core memory beside ``ly``, so a
-    call reads one.
     """
     base = flm_gemma4_decode_attn_kv_kvh2(geometry=geometry)
     dh = geometry.dh
@@ -1498,23 +1463,22 @@ def flm_gemma4_decode_attn_qk(
     *,
     sliding_window: bool = False,
     geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
-    **locks: int,
-) -> ExternalFunction:
+) -> _AttnQkKernel:
     """Build an attention query-times-key core, from ``flm_gemma4/decode_attn_qk.cc``.
 
     The other half of [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv]:
     it multiplies the query heads into each round's 16 key rows, masks the
     keys past the sequence length, keeps the running row maximum ``m`` and
-    hands the kv core the exponentiated scores with their corrections. The
-    returned kernel is ``attn_qk_begin``, which sets ``m`` to -inf; per round
-    the Worker calls ``attn_qk_round``.
-    The global build serves one KV head (E2B), the sliding-window build both.
+    writes the exponentiated scores followed by float32 corrections in ``s``.
+    The returned kernel is ``attn_qk_begin``, which initializes ``m`` to the
+    lowest finite bf16 value. Call ``attn_qk_round`` once per round.
+    The global build serves one KV head; the sliding-window build serves
+    ``geometry.num_kv_heads``.
 
     Args:
         sliding_window: Build for the sliding-window layers' head dim.
         geometry: The model the kernel builds for; without ``sliding_window``
             ``num_kv_heads`` must be 1.
-        **locks: The kernel takes no core lock.
     """
     if not sliding_window:
         _decode_kv_heads("flm_gemma4_decode_attn_qk", geometry, 1)
@@ -1525,8 +1489,6 @@ def flm_gemma4_decode_attn_qk(
         "attn_qk_begin",
         [t["m"]],
         (Out,),
-        {},
-        locks,
         geometry,
         flags=(f"-DFLM_GEMMA4_DECODE_ATTN_QK_SWA={int(sliding_window)}",),
         cls=_AttnQkKernel,
@@ -1539,18 +1501,17 @@ def flm_gemma4_decode_attn_qk(
 
 
 def flm_gemma4_decode_attn_qk_kvh2(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE, **locks: int
-) -> ExternalFunction:
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E4B_DECODE
+) -> _AttnQkKvh2Kernel:
     """Build the global-attention query-times-key core for two KV heads, from ``flm_gemma4/decode_attn_qk_kvh2.cc``.
 
     The two-KV-head (E4B) sibling of
     [`flm_gemma4_decode_attn_qk`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk]:
-    the Worker runs a round as one ``attn_qk_half`` per KV head, then
+    call ``attn_qk_half`` once per KV head per round, then
     ``attn_qk_store_c``, which copies the corrections into the scores.
 
     Args:
         geometry: The model the kernel builds for; ``num_kv_heads`` must be 2.
-        **locks: The kernel takes no core lock.
     """
     _decode_kv_heads("flm_gemma4_decode_attn_qk_kvh2", geometry, 2)
     t = _decode_attn_types(geometry, geometry.dh, geometry.dh)
@@ -1559,8 +1520,6 @@ def flm_gemma4_decode_attn_qk_kvh2(
         "attn_qk_begin",
         [t["m"]],
         (Out,),
-        {},
-        locks,
         geometry,
         cls=_AttnQkKvh2Kernel,
     )
@@ -1717,7 +1676,7 @@ def flm_gemma4_attn_qk_core(
 
     ``attn_qk_round_core(qm, k, s, c, iter, L0)`` takes the running max
     after q in ``qm`` and writes it after the scores in ``s``. ``c`` holds the
-    corrections the round stores in the tail of its s object.
+    eight float32 correction factors separately from ``s``.
     """
     base = flm_gemma4_decode_attn_qk(sliding_window=sliding_window, geometry=geometry)
     dh = geometry.swa_dh if sliding_window else geometry.dh
@@ -1737,7 +1696,7 @@ def flm_gemma4_attn_qk_kvh2_core(
     """One round of [`flm_gemma4_decode_attn_qk_kvh2`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_qk_kvh2], with caller-owned state.
 
     ``attn_qk_kvh2_round_core(qm, k, s, c, iter, L0)`` runs
-    ``attn_qk_half`` for both KV heads, whose k objects ``k`` holds back to
+    ``attn_qk_half`` for both KV heads, whose key buffers ``k`` holds back to
     back. Otherwise as
     [`flm_gemma4_attn_qk_core`][aie.iron.kernels.flm_gemma4.flm_gemma4_attn_qk_core].
     """
@@ -1760,8 +1719,8 @@ DTYPES["flm_gemma4_decode_swa_attn_kv"] = tuple([{"geometry": FLM_GEMMA4_E4B_DEC
 
 
 def flm_gemma4_decode_swa_attn_kv(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
-) -> ExternalFunction:
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> _SwaAttnKvKernel:
     """Build the sliding-window-attention score-times-value core, from ``flm_gemma4/decode_swa_attn_kv.cc``.
 
     [`flm_gemma4_decode_attn_kv`][aie.iron.kernels.flm_gemma4.flm_gemma4_decode_attn_kv]
@@ -1771,7 +1730,6 @@ def flm_gemma4_decode_swa_attn_kv(
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: The kernel takes no core lock.
     """
     t = _decode_attn_types(
         geometry, geometry.swa_dh, geometry.num_kv_heads * geometry.swa_dh
@@ -1781,8 +1739,6 @@ def flm_gemma4_decode_swa_attn_kv(
         "swa_attn_kv_begin",
         [t["y"], t["l"]],
         (Out, Out),
-        {},
-        locks,
         geometry,
         lut=True,
         cls=_SwaAttnKvKernel,
@@ -1836,28 +1792,31 @@ DTYPES["flm_gemma4_decode_rope"] = tuple(
 )
 
 
+class _RopeKernel(ExternalFunction):
+    rope_k: Kernel
+    rope_v: Kernel
+
+
 def flm_gemma4_decode_rope(
     *,
     sliding_window: bool = False,
     geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE,
-    **locks: int,
-) -> ExternalFunction:
+) -> _RopeKernel:
     """Build a layer's q/k norm and rotary embedding, from ``flm_gemma4/decode_rope.cc``.
 
-    Three entry points, one head (``dh`` bf16) each, with the design owning
-    the head loops and every lock. ``rope_q(q, qkv, rope_w, i)`` and
-    ``rope_k(k, qkv, rope_w, i)`` RMS-normalize ``qkv`` in place against the
-    head's weight and rotate it into slot ``i``; ``rope_v(v, qkv, i)``
+    Three entry points, one read-only head (``dh`` bf16) each.
+    ``rope_q(q, qkv, rope_w, i)`` and ``rope_k(k, qkv, rope_w, i)``
+    RMS-normalize ``qkv`` against the head's weight and rotate it into
+    output slot ``i``; ``rope_v(v, qkv, i)``
     RMS-normalizes it into slot ``i``. ``q`` is ``q_heads_padded * dh`` bf16,
     ``k`` and ``v`` ``num_kv_heads * dh``, and ``rope_w`` the cos and sin
-    halves then, with ``qk_norm``, the q and k norm weights (``3 * dh``).
+    halves followed by the q and k norm weights (``3 * dh`` total).
     ``dh`` is the geometry's ``swa_dh`` with ``sliding_window``, else its
     ``dh``.
 
     Args:
         sliding_window: Build for the sliding-window layers' head dim.
         geometry: The model the kernel builds for.
-        **locks: No lock arguments are accepted.
     """
     dh = geometry.swa_dh if sliding_window else geometry.dh
     bf16 = np.dtype[bfloat16]
@@ -1871,10 +1830,9 @@ def flm_gemma4_decode_rope(
         "rope_q",
         [q_ty, qkv_ty, rope_ty, np.int32],
         (Out, InOut, In, Param),
-        {},
-        locks,
         geometry,
         flags=(f"-DFLM_GEMMA4_DECODE_ROPE_SWA={int(sliding_window)}",),
+        cls=_RopeKernel,
     )
     bind = fn.object_file.bind
     fn.rope_k = bind("rope_k", [kv_ty, qkv_ty, rope_ty, np.int32])
@@ -2036,15 +1994,19 @@ def flm_gemma4_v_norm_core(
 DTYPES["flm_gemma4_decode_rms_residual"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 
 
+class _RmsKernel(ExternalFunction):
+    rms_middle: Kernel
+    rms_finish: Kernel
+
+
 def flm_gemma4_decode_rms_residual(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
-) -> ExternalFunction:
-    """Three lock-free decode phases: ``rms_begin``, ``rms_middle``, ``rms_finish``.
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> _RmsKernel:
+    """Build three RMS/residual phases: ``rms_begin``, ``rms_middle``, ``rms_finish``.
 
     Each takes an input row, four norm weights, residual scratch (two rows),
     and an output. Begin and middle write a packet-padded projection input;
-    finish writes the plain layer output. The Worker retains the weights and
-    scratch across the three calls and owns all synchronization.
+    finish writes a plain row. Retain the weights and scratch across calls.
     """
     d = geometry.model_dim
     x = np.ndarray[(d,), _BF16]
@@ -2055,7 +2017,12 @@ def flm_gemma4_decode_rms_residual(
         np.ndarray[(d + 16,), _BF16],
     ]
     fn = _decode_kernel(
-        "rms_residual", "rms_begin", args, (In, In, InOut, Out), {}, locks, geometry
+        "rms_residual",
+        "rms_begin",
+        args,
+        (In, In, InOut, Out),
+        geometry,
+        cls=_RmsKernel,
     )
     fn.rms_middle = fn.object_file.bind("rms_middle", args)
     fn.rms_finish = fn.object_file.bind("rms_finish", [*args[:3], x])
@@ -2152,8 +2119,7 @@ def flm_gemma4_rms_norm_core(
 
     ``rms_norm_core(x, w, y)``: ``x`` and ``w`` are ``model_dim`` bf16, ``y``
     is ``model_dim + 16``, a zeroed 16-element packet header then
-    ``rms_norm(x) * w``: the row starts 32 bytes into a 64-byte-aligned
-    buffer, as the QKV and up/gate projections' input does.
+    ``rms_norm(x) * w``.
     """
     base = flm_gemma4_decode_rms_residual(geometry=geometry)
     d = geometry.model_dim
@@ -2215,8 +2181,6 @@ def flm_gemma4_decode_emit(
             np.int32,
         ],
         (In, Out, Param),
-        {},
-        {},
         geometry,
         flags=(f"-DEMIT_ATTENTION={int(attention)}", f"-DEMIT_DH={dh}"),
     )
@@ -2225,15 +2189,20 @@ def flm_gemma4_decode_emit(
 DTYPES["flm_gemma4_decode_proj_main"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 
 
-def flm_gemma4_decode_proj_main(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
-) -> ExternalFunction:
-    """Lock-free q4nx decode steps: zero, accumulate, store and packet assembly.
+class _ProjKernel(ExternalFunction):
+    proj_zero: Kernel
+    proj_store: Kernel
+    proj_pack: Kernel
 
-    The Worker owns projection shapes, loops and FIFO rotations. Group sums
-    are computed for the first row block and reused for subsequent rows.
-    ``proj_store`` writes one row block; ``proj_pack`` combines the local
-    accumulator and a neighbour's row block into the outgoing packet.
+
+def flm_gemma4_decode_proj_main(
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> _ProjKernel:
+    """Build q4nx projection steps: zero, accumulate, store and packet assembly.
+
+    Group sums are computed for the first row block and reused for subsequent
+    rows. ``proj_store`` writes one row block; ``proj_pack`` combines a float32
+    accumulator and a bf16 row block after a 16-bf16 packet header.
     """
     m, k = _DECODE_Q4NX_ROWS, _DECODE_Q4NX_COLS
     acc = np.ndarray[(m,), np.dtype[np.float32]]
@@ -2254,9 +2223,8 @@ def flm_gemma4_decode_proj_main(
             np.int32,
         ],
         (In, In, InOut, InOut, Param, Param),
-        {},
-        locks,
         geometry,
+        cls=_ProjKernel,
     )
     fn.proj_zero = fn.object_file.bind("proj_zero", [acc])
     fn.proj_store = fn.object_file.bind("proj_store", [row, acc])
@@ -2269,15 +2237,19 @@ def flm_gemma4_decode_proj_main(
 DTYPES["flm_gemma4_decode_per_layer_up"] = tuple([{"geometry": FLM_GEMMA4_E4B_DECODE}])
 
 
+class _PerLayerUpKernel(ExternalFunction):
+    per_layer_up_finish: Kernel
+
+
 def flm_gemma4_decode_per_layer_up(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
-) -> ExternalFunction:
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> _PerLayerUpKernel:
     """Build the per-layer-input up projection, from ``flm_gemma4/decode_per_layer_up.cc``.
 
     ``per_layer_up_begin(x)`` gates the layer's per-layer input.
     ``bf16_proj_zero``, ``per_layer_up_mvm`` and ``per_layer_up_store`` implement
-    the projection from ``pli_d`` up to ``model_dim``. The design streams its
-    32 by 256 bf16 weight blocks. ``per_layer_up_finish(x, y)`` RMS-normalizes
+    the projection from ``pli_d`` up to ``model_dim`` using 32 by 256 bf16
+    weight blocks. ``per_layer_up_finish(x, y)`` RMS-normalizes
     the result, adds the residual and scales it by the layer scale. ``x`` is
     ``2 * (pli_d + model_dim) + 32`` bf16: the norm weight, the layer scale
     padded to 32, the per-layer input, the residual and the gate. ``y`` is
@@ -2287,7 +2259,6 @@ def flm_gemma4_decode_per_layer_up(
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: No lock arguments are accepted.
     """
     bf16 = np.dtype[bfloat16]
     d, pli = geometry.model_dim, geometry.pli_d
@@ -2298,9 +2269,8 @@ def flm_gemma4_decode_per_layer_up(
         "per_layer_up_begin",
         [x_ty],
         (InOut,),
-        {},
-        locks,
         geometry,
+        cls=_PerLayerUpKernel,
     )
     fn.per_layer_up_finish = fn.object_file.bind("per_layer_up_finish", [x_ty, y_ty])
     return fn
@@ -2459,10 +2429,8 @@ def flm_gemma4_bf16_proj_core(
 ) -> ExternalFunction:
     """``_mvm_bf16_bf16`` of the per-layer-input projections, one block.
 
-    ``bf16_proj_block_core(w, x, y)``: zeroes a float32 accumulator in its own
-    frame, accumulates one 32 by 256 bf16 weight block times 256 inputs into
-    it, as ``linear_proj`` does, and copies it to ``y``. The block does not
-    depend on ``geometry``.
+    ``bf16_proj_block_core(w, x, y)`` writes one 32 by 256 bf16 weight block
+    times 256 inputs to float32 ``y``. The block does not depend on ``geometry``.
     """
     base = flm_gemma4_decode_per_layer_up(geometry=geometry)
     return _wrapper(
@@ -2495,7 +2463,7 @@ DTYPES["flm_gemma4_decode_proj_layer_embedding"] = tuple(
 
 
 def flm_gemma4_decode_proj_layer_embedding(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
 ) -> ExternalFunction:
     """Finish the embedding from a packed input object and projected scratch.
 
@@ -2507,16 +2475,13 @@ def flm_gemma4_decode_proj_layer_embedding(
     d, pli = geometry.model_dim, geometry.pli_d
     pli_ty = np.ndarray[(pli,), bf16]
     y_ty = np.ndarray[(pli + d + 32,), bf16]
-    fn = _decode_kernel(
+    return _decode_kernel(
         "proj_layer_embedding",
         "proj_layer_embedding_finish",
         [np.ndarray[(2 * (pli + d) + 32,), bf16], pli_ty, y_ty],
         (In, InOut, Out),
-        {},
-        locks,
         geometry,
     )
-    return fn
 
 
 DTYPES["flm_gemma4_decode_gate_layer_embedding"] = tuple(
@@ -2524,16 +2489,20 @@ DTYPES["flm_gemma4_decode_gate_layer_embedding"] = tuple(
 )
 
 
+class _GateKernel(ExternalFunction):
+    gate_layer_embedding_finish: Kernel
+
+
 def flm_gemma4_decode_gate_layer_embedding(
-    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE, **locks: int
-) -> ExternalFunction:
+    *, geometry: FlmGemma4DecodeGeometry = FLM_GEMMA4_E2B_DECODE
+) -> _GateKernel:
     """Build the per-layer-input gate, from ``flm_gemma4/decode_gate_layer_embedding.cc``.
 
     ``gate_layer_embedding_begin(x, y)`` copies the layer output ``x``
-    (``model_dim`` bf16, a buffer of a neighbouring tile) into ``y``.
+    (``model_dim`` bf16) into ``y``.
     ``bf16_proj_zero``, ``gate_layer_embedding_mvm`` and
-    ``gate_layer_embedding_store`` project it to ``pli_d``. The design streams
-    its 32 by 256 bf16 weight blocks. ``gate_layer_embedding_finish(y)``
+    ``gate_layer_embedding_store`` project it to ``pli_d`` using 32 by 256
+    bf16 weight blocks. ``gate_layer_embedding_finish(y)``
     applies the activation into
     ``y + model_dim``. ``y`` is ``model_dim + pli_d`` bf16.
 
@@ -2542,7 +2511,6 @@ def flm_gemma4_decode_gate_layer_embedding(
 
     Args:
         geometry: The model the kernel builds for.
-        **locks: No lock arguments are accepted.
     """
     bf16 = np.dtype[bfloat16]
     d = geometry.model_dim
@@ -2553,10 +2521,9 @@ def flm_gemma4_decode_gate_layer_embedding(
         "gate_layer_embedding_begin",
         [x_ty, y_ty],
         (In, Out),
-        {},
-        locks,
         geometry,
         lut=True,
+        cls=_GateKernel,
     )
     fn.gate_layer_embedding_finish = fn.object_file.bind(
         "gate_layer_embedding_finish", [y_ty]

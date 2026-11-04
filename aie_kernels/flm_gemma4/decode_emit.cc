@@ -8,17 +8,16 @@
 #include "decode_geometry.h"
 #include "utils.h"
 
-// Normalize the producers' stream granularity at the core. Every input to
-// the projection memtile's temporal merge is one 512-element object.
+// Copy the 512-bf16 chunk at index chunk.
 #if EMIT_ATTENTION
-using input_type = float; // finish leaves bf16 values in the float allocation.
+using input_type = float; // Input holds packed bf16 in a float allocation.
 #else
 using input_type = bf16;
 #endif
 extern "C" void decode_emit(input_type *storage, bf16 *output, int chunk) {
   bf16 *input = reinterpret_cast<bf16 *>(storage);
 #if EMIT_ATTENTION
-  // The attention accumulator is [dh/8, head, 8]; projection wants [head, dh].
+  // Reorder [dh/8, head, 8] to [head, dh].
   // Assemble two groups into each aligned 256-bit output store.
   for (int i = 0; i < 512; i += 16) {
     int offset = chunk * 512 + i;
@@ -29,6 +28,7 @@ extern "C" void decode_emit(input_type *storage, bf16 *output, int chunk) {
     aie::store_v(output + i, aie::concat(lo, hi));
   }
 #else
+  // Skip the 16-bf16 input header.
   copy_vectorized<bf16, 512>(output, input + 16 + chunk * 512);
 #endif
 }

@@ -49,8 +49,8 @@ constexpr int ROPE_DH = DH;
 
 extern "C" {
 
-// One head per call, into slot i of the output. rope_w is [cos | sin | q norm
-// weight | k norm weight]; each entry point normalizes qkv in place first.
+// Normalize one read-only qkv head into output slot i, rotating q and k.
+// rope_w is [cos | sin | q norm weight | k norm weight].
 void rope_q(bf16 *restrict q, bf16 *restrict qkv, bf16 *restrict rope_w,
             int i) {
   _rotate_t<ROPE_DH>(q + i * ROPE_DH, qkv, rope_w, rope_w + ROPE_DH);

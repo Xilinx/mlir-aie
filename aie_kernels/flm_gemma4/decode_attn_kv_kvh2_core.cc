@@ -5,7 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// One call folds in one KV head; see flm_gemma4_attn_kv_kvh2_core.
 #include "decode_attn_kv_kvh2.cc"
 
 extern "C" void attn_kv_kvh2_round_core(bf16 *sv, float *ly_in, float *ly_out,

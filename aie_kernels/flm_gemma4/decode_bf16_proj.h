@@ -10,11 +10,7 @@
 #include "decode_geometry.h"
 #include "utils.h"
 
-// These kernels need a Peano that contains llvm-aie PR #1275
-// (https://github.com/Xilinx/llvm-aie/pull/1275, merged 2026-09-01; every
-// nightly since contains it). Without it, AIE2P codegen does not write the
-// float accumulator back on the loop back edge once _mvm_bf16_bf16 is inlined
-// into the frame that declares y_acc. Only the last partial sum survives.
+/// \brief y_acc += w * x, with w stored column-major as [K, M].
 template <int M, int K>
 void _mvm_bf16_bf16(bf16 *w, bf16 *x, float *y_acc) {
   aie::vector<float, M> y_acc_vec = aie::load_v<M>(y_acc);

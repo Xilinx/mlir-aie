@@ -16,13 +16,6 @@ void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
 
 extern "C" {
 
-// ---------------------------------------------------------------------------
-// Entry points. See decode_attn_kv.cc.
-//
-// l holds 8 floats, because calculate_l and scale_div_aie use only l[0..7].
-// A 64-byte l ties with the RTP buffer in the allocator's size order and
-// displaces the RTP buffer.
-
 void swa_attn_kv_begin(float *y, float *l) {
   attn_kv_begin_impl<8 * SWA_DH>(y, l);
 }
@@ -30,8 +23,7 @@ void swa_attn_kv_begin(float *y, float *l) {
 void swa_attn_kv_round(bf16 *s, bf16 *v, float *y, float *l) {
   float *c = (float *)(s + Q_HEADS_PADDED_PER_CU * 16);
   calculate_l(s, c, l);
-  // 64 lanes, not 128 as in decode_attn_kv_kvh2.cc. This translation unit
-  // has more live state, and a 128-lane (512-byte) accumulator makes it spill.
+  // A 128-lane accumulator spills with this kernel's live state.
   calculate_y<8 * SWA_DH, 64>(y, c);
   attn_fv<SWA_DH / 8, GQA_R, GQA_S, GQA_T>(s, v, y);
 }

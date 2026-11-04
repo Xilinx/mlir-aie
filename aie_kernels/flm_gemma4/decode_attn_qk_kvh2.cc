@@ -19,7 +19,6 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bf16 *__restrict pY,
               bf16 *__restrict m, float *__restrict c, aie::mask<16> &mask,
               bool &is_first, bool &is_up);
 
-// Written for a head dim of 512.
 template <unsigned colQ, unsigned r, unsigned s, unsigned t>
 void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bfloat16 *__restrict pY,
               bf16 *__restrict m, float *__restrict c, aie::mask<16> &mask,
@@ -81,22 +80,16 @@ void _attn_qk(bf16 *__restrict pQ, bf16 *__restrict pK, bfloat16 *__restrict pY,
   pY1 += 16 * ATTN_GROUPS_PADDING;
 }
 
-// ---------------------------------------------------------------------------
-// Entry points. See decode_attn_qk.cc. This variant has two KV heads per
-// core, so one s round consumes two k buffers. The Worker calls attn_qk_half
-// once per head. This file uses the 2-argument lock form, which carries no
-// memory operand; see utils.h.
 extern "C" {
 
-// See attn_qk_begin in decode_attn_qk.cc.
 void attn_qk_begin(bf16 *m) {
   static const aie::vector<bf16, 16> neg_inf =
       aie::broadcast<bf16, 16>(-0x1.FEp127f);
   aie::store_v(m, neg_inf);
 }
 
-// Half a round: one of the two KV heads. j selects which quarter of s/m/c_local
-// it lands in and which half of the mmul result _attn_qk keeps (is_up).
+// Process KV head j (0 or 1), updating its four query heads in s/m/c_local.
+// Round iter covers 16 key rows, masking positions beyond L0.
 void attn_qk_half(bf16 *q, bf16 *k, bf16 *s, bf16 *m, float *c_local, int j,
                   int iter, int L0) {
   static const aie::vector<int, 16> idx = aie::vector<int, 16>(
@@ -109,7 +102,7 @@ void attn_qk_half(bf16 *q, bf16 *k, bf16 *s, bf16 *m, float *c_local, int j,
                                         c_local + j * 4, mask, is_first, is_up);
 }
 
-// Both halves done: publish c into the tail of the s object.
+// After both heads, store eight float32 correction factors after the scores.
 void attn_qk_store_c(bf16 *s, float *c_local) {
   float *c = (float *)(s + Q_HEADS_PADDED_PER_CU * 16);
   aie::vector<float, 8> c_vec = aie::load_v<8>(c_local);

@@ -71,24 +71,18 @@ void attn_fv(bf16 *__restrict pS, bf16 *__restrict pV,
     attn_fv_impl<colQ, r, s, t, false>(pS, pV, pY);
 }
 
-// ---------------------------------------------------------------------------
-// Entry points. See decode_attn_kv.cc. This variant has two KV heads per
-// core, so one s round consumes two v buffers. The Worker calls attn_kv_v_half
-// once per head, with the buffer that head's BD filled.
-
 extern "C" {
 
 void attn_kv_begin(float *y, float *l) { attn_kv_begin_impl<8 * DH>(y, l); }
 
-// Start of an s round: fold the new scores into l and rescale the accumulator.
-// The Worker calls it once per s object, before either v half.
+// Update l and rescale y once per score block, before either attn_kv_v_half.
 void attn_kv_s_begin(bf16 *s, float *y, float *l) {
   float *c = (float *)(s + Q_HEADS_PADDED_PER_CU * 16);
   calculate_l(s, c, l);
   calculate_y<8 * DH, 128>(y, c);
 }
 
-// Half a round: one of the two KV heads.
+// Accumulate KV head j (0 or 1) into its four query heads in y.
 void attn_kv_v_half(bf16 *s, bf16 *v, float *y, int j) {
   attn_fv<DH / 8, GQA_R, GQA_S, GQA_T>(s, v, y, j == 0);
 }

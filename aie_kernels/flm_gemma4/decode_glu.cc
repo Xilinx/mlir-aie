@@ -58,12 +58,11 @@ void pseduo_glu(bf16 *__restrict y, const bf16 *__restrict x) {
 
 extern "C" {
 
-// One GLU_SLICE of gate and up values into slice i of the hidden buffer.
+// x holds GLU_SLICE/2 up values then GLU_SLICE/2 gate values.
 void glu_chunk(bf16 *hid, bf16 *x, int i) {
   pseduo_glu<GLU_SLICE>(hid + i * (GLU_SLICE / 2), x);
 }
 
-// Slice j of the hidden buffer out through one object of the y stream.
 void glu_emit(bf16 *y_out, bf16 *hid, int j) {
   copy_vectorized<bf16, GLU_SLICE / 2>(y_out, hid + j * (GLU_SLICE / 2));
 }

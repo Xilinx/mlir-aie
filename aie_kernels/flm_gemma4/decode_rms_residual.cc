@@ -9,9 +9,8 @@
 #include "rms_norm.h"
 #include "utils.h"
 
-// The Worker owns the three phases and their input/output synchronization.
-// state keeps the residual across projections. y has the projection stream's
-// 16-bf16 header followed by the normalized vector.
+// state holds a MODEL_DIM residual followed by MODEL_DIM scratch elements.
+// Begin and middle write y after a 16-bf16 header; finish writes a plain row.
 extern "C" {
 void rms_begin(bf16 *x, bf16 *w, bf16 *state, bf16 *y) {
   *reinterpret_cast<uint32 *>(y + 14) = 0;

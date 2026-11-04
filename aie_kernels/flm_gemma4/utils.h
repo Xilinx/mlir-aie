@@ -4,8 +4,6 @@ Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
     SPDX-License-Identifier: MIT
 */
 
-// Vector zero, copy, narrow and scale templates that the
-// flm_gemma4 kernels share. Independent of the model geometry.
 #ifndef AIE_KERNELS_FLM_GEMMA4_UTILS_H
 #define AIE_KERNELS_FLM_GEMMA4_UTILS_H
 
@@ -29,18 +27,11 @@ void zero_256(T *__restrict c) {
   }
 }
 
-// Copy M elements with vector loads and stores. Do not use memcpy in a loop:
-// memcpy is an opaque call, and the pipeliner does not schedule a loop that
-// contains a call.
-//
-// Both pointers must be 32-byte aligned. The copy uses 256-bit loads and
-// stores, and AIE2P silently drops part of an under-aligned access. The
-// static_assert checks only the element count. IRON buffers are 32-byte
-// aligned by default, so an offset into a buffer must be a multiple of 32
-// bytes.
+/// \brief Copy M elements between non-overlapping, 32-byte-aligned buffers.
+/// Vector loads/stores allow pipelining; an opaque memcpy call prevents it.
 template <typename T, int M>
 void copy_vectorized(T *__restrict dst, const T *__restrict src) {
-  constexpr int r = 256 / (sizeof(T) * 8); // one 256-bit store unit
+  constexpr int r = 256 / (sizeof(T) * 8);
   static_assert((M) % r == 0);
   const T *__restrict src_end = src + M;
   for (; src < src_end; src += r, dst += r) {
@@ -59,10 +50,9 @@ void scale_vectorized(bf16 *y, const bf16 scale) {
   }
 }
 
-// Narrows N floats to bf16 through an accfloat accumulator. The attention
-// kernels narrow in place, with the same buffer as source and destination: the
-// bf16 pointer advances at half the byte rate of the float one and so trails
-// it. The pointers must not be `restrict`, because they may alias.
+/// \brief Narrow N floats to bf16, allowing in-place conversion.
+/// With the same base address, bf16 stores trail float loads. Do not use
+/// restrict.
 template <int N>
 void narrow_to_bf16(bf16 *out, const float *in) {
   constexpr int vec_factor = 16;

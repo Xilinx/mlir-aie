@@ -26,8 +26,7 @@ void proj_accumulate(q4k_block_t *w, bf16 *x, float *acc, bf16 *sums, int row,
 
 void proj_store(bf16 *y, float *acc) { narrow_to_bf16<m>(y, acc); }
 
-// Only the sending core produces this object. Its neighbour hands over its
-// row block through a shared-memory ObjectFifo.
+// Pack acc and other after a 16-bf16 header; its final word is packet_id.
 void proj_pack(bf16 *y, float *acc, bf16 *other, int packet_id) {
   *reinterpret_cast<uint32 *>(y + 14) = packet_id;
   narrow_to_bf16<m>(y + 16, acc);
