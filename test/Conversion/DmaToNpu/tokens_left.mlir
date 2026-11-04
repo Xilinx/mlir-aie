@@ -162,3 +162,51 @@ aie.device(npu2) {
     aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
   }
 }
+
+// -----
+
+// A sync over a range of tiles may take the token another sequence leaves on
+// a channel in the range.
+aie.device(npu2) {
+  // expected-error@+1 {{ends with 1 task-completion token no await consumes on tile (0,0) MM2S channel 0}}
+  aie.runtime_sequence @leaves_token() {
+    %c0 = arith.constant 0 : i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
+  }
+  aie.runtime_sequence @ranged_sync() {
+    %c0 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : i32
+    %c2 = arith.constant 2 : i32
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c2, %c1) : i32, i32, i32, i32, i32, i32
+  }
+}
+
+// -----
+
+// So may a sync whose channel is chosen at run time.
+aie.device(npu2) {
+  // expected-error@+1 {{ends with 1 task-completion token no await consumes on tile (0,0) MM2S channel 0}}
+  aie.runtime_sequence @leaves_token() {
+    %c0 = arith.constant 0 : i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
+  }
+  aie.runtime_sequence @runtime_sync(%channel: i32) {
+    %c0 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : i32
+    aiex.npu.sync(%c0, %c0, %c1, %channel, %c1, %c1) : i32, i32, i32, i32, i32, i32
+  }
+}
+
+// -----
+
+// Whether a sequence's own range sync took its token is not known, so its
+// count on that channel is not diagnosed.
+aie.device(npu2) {
+  aie.runtime_sequence @own_ranged_sync() {
+    %c0 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : i32
+    %c2 = arith.constant 2 : i32
+    aiex.npu.push_queue (0, 0, MM2S:0) bd_id %c0 repeat %c0 {issue_token = true} : i32, i32
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c2, %c1) : i32, i32, i32, i32, i32, i32
+  }
+}

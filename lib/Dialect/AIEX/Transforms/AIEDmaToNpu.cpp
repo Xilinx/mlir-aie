@@ -891,10 +891,13 @@ static LogicalResult checkQueueDepth(AIE::DeviceOp device,
                                      bool enforceQueueDepth) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
   std::set<DmaQueueModel::ChannelKey> awaited;
+  SmallVector<SyncCover> mayAwait;
   device.walk([&](Operation *op) {
     QueueEffect e = queueEffectOf(op);
     if (e.kind == QueueEffect::Kind::Await)
       awaited.insert(e.key);
+    else if (auto sync = dyn_cast<NpuSyncOp>(op))
+      mayAwait.push_back(syncCover(sync));
   });
   bool consumed = true;
   device.walk([&](AIE::RuntimeSequenceOp seq) {
@@ -903,7 +906,8 @@ static LogicalResult checkQueueDepth(AIE::DeviceOp device,
     guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
                             /*warnUnsafeBdReuse=*/false, queueEffectOf);
     seq->removeAttr(queueDiagnosedAttr);
-    consumed &= succeeded(checkTokensConsumed(seq, awaited, queueEffectOf));
+    consumed &=
+        succeeded(checkTokensConsumed(seq, awaited, mayAwait, queueEffectOf));
   });
   return success(consumed);
 }

@@ -24,6 +24,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+
+#include <climits>
 #include "llvm/Support/MathExtras.h"
 
 #include <algorithm>
@@ -165,6 +167,40 @@ inline std::optional<DmaQueueModel::ChannelKey> syncChannelKey(NpuSyncOp sync) {
   return DmaQueueModel::ChannelKey{
       static_cast<int>(*col), static_cast<int>(*row), static_cast<int>(*dir),
       static_cast<int>(*chan)};
+}
+
+/// The channels an aiex.npu.sync syncChannelKey cannot pin down may wait on:
+/// its tile range expanded, any value for an operand known only at run time.
+struct SyncCover {
+  int colLo = 0, colHi = INT_MAX, rowLo = 0, rowHi = INT_MAX;
+  std::optional<int> dir, chan;
+
+  bool covers(const DmaQueueModel::ChannelKey &key) const {
+    return key[0] >= colLo && key[0] < colHi && key[1] >= rowLo &&
+           key[1] < rowHi && (!dir || *dir == key[2]) &&
+           (!chan || *chan == key[3]);
+  }
+};
+
+inline SyncCover syncCover(NpuSyncOp sync) {
+  SyncCover cover;
+  auto range = [](std::optional<uint32_t> first, std::optional<uint32_t> num,
+                  int &lo, int &hi) {
+    if (!first)
+      return;
+    lo = static_cast<int>(*first);
+    if (num)
+      hi = lo + static_cast<int>(*num);
+  };
+  range(getConstantIntOperand(sync.getColumn()),
+        getConstantIntOperand(sync.getColumnNum()), cover.colLo, cover.colHi);
+  range(getConstantIntOperand(sync.getRow()),
+        getConstantIntOperand(sync.getRowNum()), cover.rowLo, cover.rowHi);
+  if (std::optional<uint32_t> dir = getConstantIntOperand(sync.getDirection()))
+    cover.dir = static_cast<int>(*dir);
+  if (std::optional<uint32_t> chan = getConstantIntOperand(sync.getChannel()))
+    cover.chan = static_cast<int>(*chan);
+  return cover;
 }
 
 /// Retire what an aiex.npu.sync proves has drained. This is the lowered form of
@@ -849,8 +885,8 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
 }
 
 /// Check that `sequence` ends, on every path, with no task-completion token
-/// outstanding on a channel in `awaited`, the channels some sequence of the
-/// device awaits. A token left at the end outlives the command: the next
+/// outstanding on a channel some sequence of the device awaits: one in
+/// `awaited`, or one a sync in `mayAwait` may wait on. A token left at the end outlives the command: the next
 /// command's await on that channel takes it and returns before its own
 /// transfer has finished (measured on Strix, NPU firmware 1.1.2.64), and every
 /// completion the compiler derives from an await assumes the channel started
@@ -858,13 +894,23 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
 /// consumes the oldest token, so only the count matters. A loop with an
 /// unknown trip count must leave the count where it found it, or what remains
 /// grows with the trip count. Regions the check cannot follow are not
-/// diagnosed.
+/// diagnosed, nor channels a sync of the sequence's own may have waited on.
 template <typename EffectFn>
 inline mlir::LogicalResult
 checkTokensConsumed(AIE::RuntimeSequenceOp sequence,
                     const std::set<DmaQueueModel::ChannelKey> &awaited,
-                    EffectFn effectOf) {
+                    llvm::ArrayRef<SyncCover> mayAwait, EffectFn effectOf) {
   mlir::Region &body = sequence.getBody();
+  auto covered = [](llvm::ArrayRef<SyncCover> covers,
+                    const DmaQueueModel::ChannelKey &key) {
+    return llvm::any_of(covers,
+                        [&](const SyncCover &c) { return c.covers(key); });
+  };
+  llvm::SmallVector<SyncCover> ownInexact;
+  body.walk([&](NpuSyncOp sync) {
+    if (!syncChannelKey(sync))
+      ownInexact.push_back(syncCover(sync));
+  });
   // Each channel's analysis visits only its own pushes and syncs and the ops
   // enclosing them, in block order.
   llvm::DenseMap<mlir::Operation *, QueueEffect> effects;
@@ -875,7 +921,8 @@ checkTokensConsumed(AIE::RuntimeSequenceOp sequence,
     QueueEffect e = effectOf(op);
     if ((e.kind != QueueEffect::Kind::Push &&
          e.kind != QueueEffect::Kind::Await) ||
-        !awaited.count(e.key))
+        (!awaited.count(e.key) && !covered(mayAwait, e.key)) ||
+        covered(ownInexact, e.key))
       return;
     effects[op] = e;
     Visits &blocks = visits[e.key];
