@@ -74,8 +74,9 @@ constexpr int maxReorderedStall = 300;
 // over 275.
 constexpr int maxOverusedStall = 400;
 // Routings that fit the fabric, rejected by the routing check without it
-// naming fewer connections to move, before an attempt gives up. In the lit
-// corpus, none that routed took over 506.
+// naming fewer faults than before or teaching a new split, relation or
+// untrunk, before an attempt gives up. In the lit corpus, none that routed
+// took over 506 counting fewer faults alone.
 constexpr int maxRejectedStall = 600;
 // How much faster a stalled routing's overused channels that only circuit
 // trees take accrue history, so the trees spread out sooner.
@@ -2560,7 +2561,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
             llvm::count_if(st.parts[x].dsts, [&](const PathEndPoint &dst) {
               return llvm::is_contained(st.parts[y].dsts, dst);
             }) < 2) {
-          st.noJoin.insert({x, y});
+          related |= st.noJoin.insert({x, y}).second;
           st.noJoin.insert({y, x});
         }
     if (!st.togetherSources.insert(pair).second)
@@ -2891,9 +2892,12 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                   [&](std::unique_ptr<RoutingFailure> rejected) -> llvm::Error {
                     LLVM_DEBUG(llvm::dbgs() << "Routing rejected: "
                                             << rejected->reason << '\n');
+                    int named = rejected->faults.connections.size();
                     illegalEdges += applyRoutingFaults(st, rejected->faults);
-                    if (illegalEdges < fewestRejected) {
-                      fewestRejected = illegalEdges;
+                    // A rejection that teaches a split, a relation or an
+                    // untrunk changes the next routing too.
+                    if (illegalEdges < fewestRejected || illegalEdges > named) {
+                      fewestRejected = std::min(fewestRejected, illegalEdges);
                       sinceFewestRejected = 0;
                     } else {
                       sinceFewestRejected++;
