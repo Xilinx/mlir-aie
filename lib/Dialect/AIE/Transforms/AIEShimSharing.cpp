@@ -38,16 +38,21 @@ ShimTransferSpans::ShimTransferSpans(
 
     auto &byFifo = spans.emplace_back();
     DenseMap<Value, StringAttr> tasks;
+    DenseMap<Value, bool> tokens;
     DenseMap<StringAttr, std::optional<int64_t>> moved;
-    // An await under a branch, or in a loop that may not run, may never
-    // happen; an issue there still spans the whole branch or loop.
-    auto note = [&](Operation *op, StringAttr symbol, bool issues,
-                    bool awaits) {
+    // An end's transfers not yet awaited, over the loops around them: nullopt
+    // once one is issued that no await can take (no completion token, under a
+    // branch, or in a loop of unknown trips). An await under a branch, or in a
+    // loop that may not run, takes nothing; an issue there still spans the
+    // whole branch or loop.
+    DenseMap<StringAttr, std::optional<int64_t>> pending;
+    auto note = [&](Operation *op, StringAttr symbol, bool issues, bool awaits,
+                    bool tokened = false) {
       std::optional<End> shimEnd = endOf(symbol);
       if (!shimEnd)
         return;
       int64_t from = position[op], to = position[op];
-      bool surely = true;
+      std::optional<int64_t> runs = 1;
       for (Operation *parent = op->getParentOp(); parent != sequence;
            parent = parent->getParentOp()) {
         from = position[parent];
@@ -55,23 +60,33 @@ ShimTransferSpans::ShimTransferSpans(
         auto loop = dyn_cast<LoopLikeOpInterface>(parent);
         std::optional<APInt> trips =
             loop ? loop.getStaticTripCount() : std::nullopt;
-        surely &= trips && !trips->isZero();
+        runs = runs && trips && !trips->isZero()
+                   ? llvm::checkedMul(*runs,
+                                      static_cast<int64_t>(trips->getZExtValue()))
+                   : std::nullopt;
       }
       Span &span = byFifo[shimEnd->fifo];
       span.sends |= shimEnd->sends;
       span.first = std::min(span.first, from);
       span.last = std::max(span.last, to);
+      std::optional<int64_t> &waiting =
+          pending.try_emplace(shimEnd->fifo, 0).first->second;
       if (issues) {
         span.lastIssue = std::max(span.lastIssue, to);
-      } else if (surely) {
+        waiting = waiting && runs && tokened ? llvm::checkedAdd(*waiting, *runs)
+                                             : std::nullopt;
+      } else if (runs) {
         span.lastDone = std::max(span.lastDone, to);
-        if (awaits)
-          span.lastAwaited = std::max(span.lastAwaited, to);
+        if (awaits && waiting) {
+          waiting = std::max<int64_t>(*waiting - *runs, 0);
+          if (*waiting == 0)
+            span.lastAwaited = std::max(span.lastAwaited, to);
+        }
       }
     };
     auto noteTask = [&](Operation *op, Value task, bool issues, bool awaits) {
       if (StringAttr symbol = tasks.lookup(task))
-        note(op, symbol, issues, awaits);
+        note(op, symbol, issues, awaits, tokens.lookup(task));
     };
     // Adds the bytes `op` moves each time it runs, times the trip counts of
     // the loops around it, to its end's total; nullopt where any is unknown.
@@ -96,17 +111,20 @@ ShimTransferSpans::ShimTransferSpans(
     sequence.walk([&](Operation *op) {
       if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op)) {
         StringAttr symbol = memcpy.getMetadata().getRootReference();
-        note(op, symbol, true, false);
+        note(op, symbol, true, false, memcpy.getIssueToken());
         count(op, symbol, memcpy.getStaticBytesStreamed());
       } else if (auto wait = dyn_cast<AIEX::NpuDmaWaitOp>(op))
         note(op, wait.getSymbolAttr().getAttr(), false, true);
       else if (auto configure = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
         StringAttr symbol = configure.getAlloc().getRootReference();
         tasks[configure.getResult()] = symbol;
+        tokens[configure.getResult()] = configure.getIssueToken();
         count(op, symbol, configure.getStaticBytesStreamed());
       } else if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op)) {
         tasks[chain.getResult()] = chain.getAllocAttr().getAttr();
-        note(op, chain.getAllocAttr().getAttr(), true, false);
+        tokens[chain.getResult()] = chain.getIssueToken();
+        note(op, chain.getAllocAttr().getAttr(), true, false,
+             chain.getIssueToken());
         count(op, chain.getAllocAttr().getAttr(), std::nullopt);
       } else if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(op))
         noteTask(op, start.getTask(), true, false);
@@ -158,7 +176,7 @@ bool ShimTransferSpans::contained(StringAttr end, const Gate &gate) const {
       return in == byFifo.end();
     const Span &drain = out->second;
     std::optional<int64_t> filled = in == byFifo.end() ? 0 : in->second.bytes;
-    if (!filled || !drain.bytes || drain.lastDone <= drain.lastIssue)
+    if (!filled || !drain.bytes || drain.lastAwaited <= drain.lastIssue)
       return false;
     std::optional<int64_t> sent = llvm::checkedMul(*filled, gate.outputBytes);
     std::optional<int64_t> taken =
