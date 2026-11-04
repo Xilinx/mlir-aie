@@ -157,8 +157,8 @@ module @windows_in_step {
 // the turns are taken.
 
 // CHECK-LABEL: @windows_in_step_of_the_shorter_turns
-// CHECK-DAG: aie.objectfifo.dma_endpoint @a_cons_dma(%{{.*}}) fills @a_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
-// CHECK-DAG: aie.objectfifo.dma_endpoint @b_cons_dma(%{{.*}}) fills @b_cons_pool {{{.*}}turns = [@a_cons_dma, @b_cons_dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @a__cons__dma(%{{.*}}) fills @a__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
+// CHECK-DAG: aie.objectfifo.dma_endpoint @b__cons__dma(%{{.*}}) fills @b__cons__pool {{{.*}}turns = [@a__cons__dma, @b__cons__dma]}
 module @windows_in_step_of_the_shorter_turns {
   aie.device(npu2) {
     %s = aie.tile(0, 0)

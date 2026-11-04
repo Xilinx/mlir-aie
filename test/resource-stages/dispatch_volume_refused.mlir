@@ -25,7 +25,7 @@ module {
         scf.condition(%true)
       } do {
         aiex.wait_scratchpad_parameters
-        // expected-error@+1 {{hands over 1 objects through @out_prod for each dispatch, one pass of a loop that waits for each dispatch's parameters, but each run of runtime sequence @sequence moves 2, so the core drifts out of step with the dispatches}}
+        // expected-error@+1 {{hands over 1 objects through @out__prod for each dispatch, one pass of a loop that waits for each dispatch's parameters, but each run of runtime sequence @sequence moves 2, so the core drifts out of step with the dispatches}}
         %o = aie.objectfifo.acquire @out(Produce, 1) : memref<2xi32>
         aie.objectfifo.release @out(Produce, 1)
         scf.yield

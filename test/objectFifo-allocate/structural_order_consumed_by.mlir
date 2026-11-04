@@ -10,28 +10,28 @@
 // Without verification there is no proof, and every channel stays the same.
 
 // CHECK-LABEL: module @declared
-// CHECK-DAG: aie.shim_dma_allocation @p_shim_alloc(%{{.*}}, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @r_shim_alloc
-// CHECK-DAG: aie.shim_dma_allocation @q_shim_alloc(%{{.*}}, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @s_shim_alloc
-// CHECK-DAG: aie.shim_dma_allocation @r_shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG: aie.shim_dma_allocation @s_shim_alloc(%{{.*}}, S2MM, 1)
+// CHECK-DAG: aie.shim_dma_allocation @p__shim_alloc(%{{.*}}, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @r__shim_alloc
+// CHECK-DAG: aie.shim_dma_allocation @q__shim_alloc(%{{.*}}, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @s__shim_alloc
+// CHECK-DAG: aie.shim_dma_allocation @r__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG: aie.shim_dma_allocation @s__shim_alloc(%{{.*}}, S2MM, 1)
 
 // NOPROOF-LABEL: module @declared
-// NOPROOF-DAG: aie.shim_dma_allocation @p_shim_alloc(%{{.*}}, MM2S, 0)
-// NOPROOF-DAG: aie.shim_dma_allocation @q_shim_alloc(%{{.*}}, MM2S, 1)
-// NOPROOF-DAG: aie.shim_dma_allocation @r_shim_alloc(%{{.*}}, S2MM, 0)
-// NOPROOF-DAG: aie.shim_dma_allocation @s_shim_alloc(%{{.*}}, S2MM, 1)
+// NOPROOF-DAG: aie.shim_dma_allocation @p__shim_alloc(%{{.*}}, MM2S, 0)
+// NOPROOF-DAG: aie.shim_dma_allocation @q__shim_alloc(%{{.*}}, MM2S, 1)
+// NOPROOF-DAG: aie.shim_dma_allocation @r__shim_alloc(%{{.*}}, S2MM, 0)
+// NOPROOF-DAG: aie.shim_dma_allocation @s__shim_alloc(%{{.*}}, S2MM, 1)
 
 // CHECK-LABEL: module @renamed
-// CHECK-DAG: aie.shim_dma_allocation @p_shim_alloc(%{{.*}}, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @z_shim_alloc
-// CHECK-DAG: aie.shim_dma_allocation @q_shim_alloc(%{{.*}}, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @a_shim_alloc
-// CHECK-DAG: aie.shim_dma_allocation @z_shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG: aie.shim_dma_allocation @a_shim_alloc(%{{.*}}, S2MM, 1)
+// CHECK-DAG: aie.shim_dma_allocation @p__shim_alloc(%{{.*}}, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @z__shim_alloc
+// CHECK-DAG: aie.shim_dma_allocation @q__shim_alloc(%{{.*}}, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @a__shim_alloc
+// CHECK-DAG: aie.shim_dma_allocation @z__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG: aie.shim_dma_allocation @a__shim_alloc(%{{.*}}, S2MM, 1)
 
 // NOPROOF-LABEL: module @renamed
-// NOPROOF-DAG: aie.shim_dma_allocation @p_shim_alloc(%{{.*}}, MM2S, 0)
-// NOPROOF-DAG: aie.shim_dma_allocation @q_shim_alloc(%{{.*}}, MM2S, 1)
-// NOPROOF-DAG: aie.shim_dma_allocation @z_shim_alloc(%{{.*}}, S2MM, 0)
-// NOPROOF-DAG: aie.shim_dma_allocation @a_shim_alloc(%{{.*}}, S2MM, 1)
+// NOPROOF-DAG: aie.shim_dma_allocation @p__shim_alloc(%{{.*}}, MM2S, 0)
+// NOPROOF-DAG: aie.shim_dma_allocation @q__shim_alloc(%{{.*}}, MM2S, 1)
+// NOPROOF-DAG: aie.shim_dma_allocation @z__shim_alloc(%{{.*}}, S2MM, 0)
+// NOPROOF-DAG: aie.shim_dma_allocation @a__shim_alloc(%{{.*}}, S2MM, 1)
 
 module @declared {
   aie.device(npu2) {

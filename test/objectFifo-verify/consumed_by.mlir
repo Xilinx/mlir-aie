@@ -18,8 +18,8 @@
 
 // CHECK-LABEL: module @one_to_one
 // ALLOC-LABEL: module @one_to_one
-// ALLOC: aie.shim_dma_allocation @in_shim_alloc(%{{.*}}, MM2S, {{[0-9]+}}) {consumed_by = [#aie.consumed_by<output = @out_shim_alloc, input_bytes = 1, output_bytes = 1>]}
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+// ALLOC: aie.shim_dma_allocation @in__shim_alloc(%{{.*}}, MM2S, {{[0-9]+}}) {consumed_by = [#aie.consumed_by<output = @out__shim_alloc, input_bytes = 1, output_bytes = 1>]}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
 // CHECK-NOT: consumed_by
 module @one_to_one {
   aie.device(npu2_1col) {
@@ -49,8 +49,8 @@ module @one_to_one {
 // pairs one to one with the outputs, whatever the outer loop's count.
 
 // CHECK-LABEL: module @rows_of_outputs
-// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 24>], fifoName = "angle"}
-// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+// CHECK-DAG: aie.route_endpoint @angle__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 24>], fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rows_of_outputs {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
@@ -93,8 +93,8 @@ module @rows_of_outputs {
 
 // CHECK-LABEL: module @relay
 // ALLOC-LABEL: module @relay
-// ALLOC: aie.shim_dma_allocation @a_shim_alloc(%{{.*}}, MM2S, {{[0-9]+}}) {consumed_by = [#aie.consumed_by<output = @b_shim_alloc, input_bytes = 1, output_bytes = 1>]}
-// CHECK: aie.route_endpoint @a_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @b_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "a"}
+// ALLOC: aie.shim_dma_allocation @a__shim_alloc(%{{.*}}, MM2S, {{[0-9]+}}) {consumed_by = [#aie.consumed_by<output = @b__shim_alloc, input_bytes = 1, output_bytes = 1>]}
+// CHECK: aie.route_endpoint @a__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @b__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "a"}
 module @relay {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -111,7 +111,7 @@ module @relay {
 // sizes on each hop: the proof is in bytes.
 
 // CHECK-LABEL: module @link_chain
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @res_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @res__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
 module @link_chain {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -204,7 +204,7 @@ module @window_across_passes {
 // takes the input ahead of each of its: the chain ties them one to one.
 
 // CHECK-LABEL: module @other_core
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
 module @other_core {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -249,7 +249,7 @@ module @other_core {
 // ids need, whatever the other core does with its copy.
 
 // CHECK-LABEL: module @broadcast
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
 module @broadcast {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -291,8 +291,8 @@ module @broadcast {
 // ratio is 1 to that constant, as RoPE's is.
 
 // CHECK-LABEL: module @rtp_row
-// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 24>], fifoName = "angle"}
-// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+// CHECK-DAG: aie.route_endpoint @angle__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 24>], fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_row {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
@@ -342,8 +342,8 @@ module @rtp_row {
 // length is not one number: only `x`, paired one to one, is proven.
 
 // CHECK-LABEL: module @rtp_two_values
-// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
-// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+// CHECK-DAG: aie.route_endpoint @angle__prod__dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_two_values {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
@@ -399,8 +399,8 @@ module @rtp_two_values {
 // length: only `x` is proven.
 
 // CHECK-LABEL: module @rtp_set_before_write
-// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
-// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+// CHECK-DAG: aie.route_endpoint @angle__prod__dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_set_before_write {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
@@ -524,7 +524,7 @@ module @take_in_unknown_loop {
 // its output proves the input, two bytes for each it receives.
 
 // CHECK-LABEL: module @split
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @outb_cons_dma, input_bytes = 2, output_bytes = 1>], fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @outb__cons__dma, input_bytes = 2, output_bytes = 1>], fifoName = "in"}
 module @split {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -573,8 +573,8 @@ module @split {
 // that segment has taken its input; the second core's input stays unproven.
 
 // CHECK-LABEL: module @join
-// CHECK: aie.route_endpoint @ina_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 2>], fifoName = "ina"}
-// CHECK: aie.route_endpoint @inb_prod_dma({{.*}}) DMA {fifoName = "inb"}
+// CHECK: aie.route_endpoint @ina__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 2>], fifoName = "ina"}
+// CHECK: aie.route_endpoint @inb__prod__dma({{.*}}) DMA {fifoName = "inb"}
 module @join {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -622,7 +622,7 @@ module @join {
 // the input two bytes for each it receives.
 
 // CHECK-LABEL: module @two_cores
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 2, output_bytes = 1>], fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 2, output_bytes = 1>], fifoName = "in"}
 module @two_cores {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -668,7 +668,7 @@ module @two_cores {
 // least one input for every output.
 
 // CHECK-LABEL: module @sibling_loops
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "in"}
 module @sibling_loops {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -714,7 +714,7 @@ module @sibling_loops {
 // so an output's arrival proves nothing about the input.
 
 // CHECK-LABEL: module @sibling_loops_release_first
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {fifoName = "in"}
 module @sibling_loops_release_first {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -759,8 +759,8 @@ module @sibling_loops_release_first {
 // unknown, so only `x` is proven.
 
 // CHECK-LABEL: module @rtp_i16_word
-// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
-// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+// CHECK-DAG: aie.route_endpoint @angle__prod__dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_i16_word {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
@@ -812,8 +812,8 @@ module @rtp_i16_word {
 // may read the word before it: only `x` is proven.
 
 // CHECK-LABEL: module @rtp_acquire_zero
-// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
-// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+// CHECK-DAG: aie.route_endpoint @angle__prod__dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_acquire_zero {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
@@ -865,8 +865,8 @@ module @rtp_acquire_zero {
 // not: the core may read a word nothing wrote, and only `x` is proven.
 
 // CHECK-LABEL: module @rtp_write_under_branch
-// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
-// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+// CHECK-DAG: aie.route_endpoint @angle__prod__dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_write_under_branch {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
@@ -922,8 +922,8 @@ module @rtp_write_under_branch {
 // is proven.
 
 // CHECK-LABEL: module @rtp_release_more
-// CHECK-DAG: aie.route_endpoint @angle_prod_dma({{.*}}) DMA {fifoName = "angle"}
-// CHECK-DAG: aie.route_endpoint @x_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
+// CHECK-DAG: aie.route_endpoint @angle__prod__dma({{.*}}) DMA {fifoName = "angle"}
+// CHECK-DAG: aie.route_endpoint @x__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "x"}
 module @rtp_release_more {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)

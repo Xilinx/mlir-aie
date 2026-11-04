@@ -58,7 +58,7 @@ module @kept_header {
 // bytes for every 64 the output receives.
 
 // CHECK-LABEL: module @fill_half
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 2>], fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 2>], fifoName = "in"}
 module @fill_half {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -87,7 +87,7 @@ module @fill_half {
 // 128 bytes for every 64 the input sends.
 
 // CHECK-LABEL: module @drain_twice
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out_cons_dma, input_bytes = 1, output_bytes = 2>], fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 2>], fifoName = "in"}
 module @drain_twice {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -117,7 +117,7 @@ module @drain_twice {
 // follows from it.
 
 // CHECK-LABEL: module @two_paths
-// CHECK: aie.route_endpoint @a_prod_dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @d_cons_dma, input_bytes = 1, output_bytes = 1>], fifoName = "a"}
+// CHECK: aie.route_endpoint @a__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @d__cons__dma, input_bytes = 1, output_bytes = 1>], fifoName = "a"}
 module @two_paths {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
@@ -167,7 +167,7 @@ module @two_paths {
 // sends: the input is not proven consumed.
 
 // CHECK-LABEL: module @core_output_repeats
-// CHECK: aie.route_endpoint @in_prod_dma({{.*}}) DMA {fifoName = "in"}
+// CHECK: aie.route_endpoint @in__prod__dma({{.*}}) DMA {fifoName = "in"}
 module @core_output_repeats {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)
