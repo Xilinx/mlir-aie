@@ -297,6 +297,7 @@ struct AIEDMATasksToNPUPass
     uint32_t bd_id = constBdId ? *constBdId : bd_op.getBdId().value_or(0);
     uint64_t register_addr = target_model.getDmaBdAddress(col, row, bd_id) +
                              target_model.getDmaBdAddressOffset(col, row);
+    std::optional<uint64_t> staticByteAddress;
     // On the runtime-bd_id path the patched register (BD buffer-address word)
     // is itself runtime: getBdRegisterBase(bd_id) + getDmaBdAddressOffset.
     // Emitted as an SSA operand on the address patch; null keeps the static
@@ -408,6 +409,7 @@ struct AIEDMATasksToNPUPass
         if (buf_addr > maxByteAddr)
           return bd_op->emitOpError("buffer address exceeds the tile's DMA "
                                     "address field.");
+        staticByteAddress = buf_addr;
         addrField =
             createConstantI32(builder, loc, addrBits.place(buf_addr / divisor));
       } else {
@@ -473,7 +475,10 @@ struct AIEDMATasksToNPUPass
     if (bd_op.getOffsetStateTableIdxAttr()) {
       auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
       if (failed(emitUpdateBdAddressFromOffsetParameter(
-              builder, bd_op, bufType, register_addr, target_model, col, row)))
+              builder, bd_op, bufType, register_addr, target_model, col, row,
+              staticByteAddress,
+              bd_op.getLenInBytes() * 8 /
+                  target_model.getAddressGenGranularity())))
         return failure();
     }
 

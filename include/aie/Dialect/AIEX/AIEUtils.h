@@ -76,10 +76,13 @@ unsigned getHostBufferCount(Block &block);
 // (held in the scratchpad slot referenced by `bdOp`'s
 // `offset_state_table_idx` attribute, in elements of `bufType`) into the
 // address field of the BD at `registerAddr` on tile (`col`, `row`).
+// `staticByteAddress` is the buffer's address the BD was written with, where
+// known, and `lengthField` the value of its length field.
 LogicalResult emitUpdateBdAddressFromOffsetParameter(
     OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
     uint64_t registerAddr, const AIE::AIETargetModel &targetModel, int col,
-    int row);
+    int row, std::optional<uint64_t> staticByteAddress = std::nullopt,
+    std::optional<uint64_t> lengthField = std::nullopt);
 
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime length
 // (held in the scratchpad slot referenced by `bdOp`'s

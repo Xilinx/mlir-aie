@@ -929,8 +929,10 @@ struct AIELowerScratchpadParametersPass
     // (length, offset, length step) -> max of offset + length step * length.
     llvm::MapVector<std::tuple<StringRef, StringRef, int64_t>, int64_t>
         jointBounds;
-    // Each offset parameter into elements narrower than 4 bytes: the element
-    // count whose bytes fill a word, which the BD address cannot split.
+    // Each offset parameter's element step: the firmware clears the low two
+    // bits of the register it adds an offset into, so an offset moves in 4
+    // bytes on a shim (bytes) or core tile (words, from bit 14), and in 16 on a
+    // mem tile (words, from bit 0); a tile not known takes the 16.
     DenseMap<StringRef, int64_t> offsetMultiples;
     auto rewriteParams =
         [&](Operation *op, FlatSymbolRefAttr offsetRef,
@@ -945,11 +947,27 @@ struct AIELowerScratchpadParametersPass
           return failure();
         uint32_t elemBytes =
             llvm::cast<BaseMemRefType>(bufType).getElementTypeBitWidth() / 8;
-        if (elemBytes && elemBytes % 4) {
+        TileLike tile;
+        if (auto task = op->getParentOfType<DMAConfigureTaskOp>()) {
+          tile = task.getTileLike();
+        } else if (auto task = op->getParentOfType<DMAConfigureTaskForOp>()) {
+          Operation *named = SymbolTable::lookupNearestSymbolFrom(
+              task, task.getAlloc().getRootReference());
+          if (auto alloc = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(named))
+            tile = alloc.getTile().getDefiningOp<TileLike>();
+          else if (auto end = dyn_cast_or_null<AIE::RouteEndpoint>(named))
+            tile = end.getTile().getDefiningOp<TileLike>();
+        }
+        uint32_t step = isa<NpuDmaMemcpyNdOp>(op) ||
+                                (tile && !tile.isMemTile())
+                            ? 4
+                            : 16;
+        if (elemBytes && elemBytes % step) {
           int64_t &multiple =
               offsetMultiples.try_emplace(offsetRef.getValue(), 1)
                   .first->second;
-          multiple = std::lcm<int64_t>(multiple, 4 / std::gcd(4u, elemBytes));
+          multiple =
+              std::lcm<int64_t>(multiple, step / std::gcd(step, elemBytes));
         }
         auto &[lo, hi] =
             bounds.try_emplace(offsetRef.getValue(), INT32_MIN, INT32_MAX)
