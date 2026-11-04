@@ -88,6 +88,9 @@ struct AIEObjectFifoAllocatePass
   /// the design's structure alone, which settles the choices op order would.
   DenseMap<Operation *, unsigned> structuralRank;
   RouteEndpoint channelFailure;
+  // Whether channelFailure's channel has too few BD ids left, rather than no
+  // channel being free.
+  bool bdShortfall = false;
   /// The pool the buffer search could not place with the fewest left
   /// unplaced, i.e. where it got furthest.
   ObjectFifoPoolOp bufferFailure;
@@ -928,6 +931,7 @@ struct AIEObjectFifoAllocatePass
                                bool diagnose = true) {
     channelAssignments.clear();
     channelFailure = nullptr;
+    bdShortfall = false;
     SmallVector<RouteEndpoint> pending;
     // BDs per placed (col, row, channel) as channels are handed out, for
     // choosing among a tile's channels by the BD ids they can use.
@@ -1030,6 +1034,19 @@ struct AIEObjectFifoAllocatePass
                         ? chooseChannel(channels, endpoint, demand, adjacent)
                         : channels.getDMAChannelIndex(tile, dir, adjacent,
                                                       endpoint.getOperation());
+      if (channel >= 0 && dma && col && row && tile.isMemTile() &&
+          bdRoom(tile, *col, *row, channel, demand) < dma.getNumBDs()) {
+        channelFailure = endpoint;
+        bdShortfall = true;
+        if (!diagnose)
+          return failure();
+        return endpoint->emitOpError("needs ")
+               << dma.getNumBDs() << " buffer descriptors, but channel "
+               << channel << " of its tile has "
+               << bdRoom(tile, *col, *row, channel, demand)
+               << " left beside the channels sharing its BD ids, and no "
+                  "pool on the tile is left to walk whole";
+      }
       if (channel < 0) {
         channelFailure = endpoint;
         if (!diagnose)
@@ -1155,49 +1172,21 @@ struct AIEObjectFifoAllocatePass
                         });
   }
 
-  void walkDeepPoolsWhole() {
-    const AIETargetModel &target = device.getTargetModel();
-    llvm::MapVector<Value, SmallVector<ObjectFifoDmaEndpointOp>> byTile;
-    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
-      if (dma.getTileLike() && dma.getTileLike().isMemTile())
-        byTile[dma.getTile()].push_back(dma);
-    for (SmallVector<ObjectFifoDmaEndpointOp> &ends :
-         llvm::make_second_range(byTile)) {
-      // A mem tile's BD ids are split between its even and odd channels, and
-      // channels go to ends in an order of their own, each to the half with
-      // room. That cannot fail while every end fits beside all the others in
-      // either half: the ends' BDs and the largest of them within the BDs
-      // plus one.
-      TileLike tileLike = ends.front().getTileLike();
-      std::optional<int> col = tileLike.tryGetCol(), row = tileLike.tryGetRow();
-      int64_t numBDs = target.getNumBDs(AIETileType::MemTile);
-      bool halved =
-          col && row && target.getNumBDsForChannel(*col, *row, 0) < numBDs;
-      auto fits = [&] {
-        int64_t bds = 0, largest = 0;
-        for (ObjectFifoDmaEndpointOp end : ends) {
-          bds += end.getNumBDs();
-          largest = std::max(largest, end.getNumBDs());
-        }
-        return halved ? bds + largest <= numBDs + 1 : bds <= numBDs;
-      };
-      SmallVector<ObjectFifoPoolOp> pools;
-      for (ObjectFifoDmaEndpointOp end : ends) {
-        ObjectFifoPoolOp pool = end.getPoolOp();
-        if (!llvm::is_contained(pools, pool) && canWalkWhole(pool))
-          pools.push_back(pool);
-      }
-      llvm::stable_sort(pools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
-        if (a.getDepth() != b.getDepth())
-          return a.getDepth() > b.getDepth();
-        return structuralRank.lookup(a) < structuralRank.lookup(b);
-      });
-      for (ObjectFifoPoolOp pool : pools) {
-        if (fits())
-          break;
-        pool.setContiguous(true);
-      }
+  /// Walks the deepest pool on `tile` that can be walked whole, so its ends
+  /// take one BD each; false when none is left.
+  bool walkDeepestWhole(TileLike tile) {
+    ObjectFifoPoolOp deepest;
+    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      ObjectFifoPoolOp pool = dma.getPoolOp();
+      if (sameTile(dma.getTile(), tile->getResult(0)) && canWalkWhole(pool) &&
+          (!deepest || pool.getDepth() > deepest.getDepth() ||
+           (pool.getDepth() == deepest.getDepth() &&
+            structuralRank.lookup(pool) < structuralRank.lookup(deepest))))
+        deepest = pool;
     }
+    if (deepest)
+      deepest.setContiguous(true);
+    return bool(deepest);
   }
 
   /// The other end of the one route naming `endpoint`, when that route is a
@@ -2203,7 +2192,6 @@ struct AIEObjectFifoAllocatePass
       return signalPassFailure();
     collectChannelPrograms();
     rankStructurally();
-    walkDeepPoolsWhole();
 
     // Preserve successful largest-first allocations, including their locality
     // repairs. Only try demand ordering when that search fails.
@@ -2254,8 +2242,11 @@ struct AIEObjectFifoAllocatePass
     // Out of channels, ends that never need theirs at once take turns on one,
     // a tile and direction at a time: on a shim tile, ends never in flight
     // together; elsewhere, ends whose objects one core needs in a fixed order.
+    // Short of BD ids on a mem tile channel, its deepest pool walked whole
+    // takes one a side.
     while (failed(allocated) && channelFailure &&
-           (tileOf(channelFailure).isShimTile()
+           (bdShortfall ? walkDeepestWhole(tileOf(channelFailure))
+            : tileOf(channelFailure).isShimTile()
                 ? planShimSharing(tileOf(channelFailure),
                                   channelFailure.getRouteDirection())
                 : planTurnSharing(tileOf(channelFailure),
