@@ -107,4 +107,3 @@ module @shared_unplaced_shim_channel {
     aie.objectfifo @c(%shim, {%c2}, 2 : i32) { transport = #aie.transport<dma, packet = #aie.packet_info<>>, prod_port = #aie.end_port<DMA : 1>} : !aie.objectfifo<memref<16xi32>>
   }
 }
-
