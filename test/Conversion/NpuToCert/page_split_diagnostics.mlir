@@ -258,3 +258,26 @@ aie.device(xcve3858) {
     }
   }
 }
+
+// -----
+
+// The only job uses a local register, so it offers no cut, and the page is
+// over the limit. The diagnostic names the job and the register constraint.
+aie.device(xcve3858) {
+  memref.global "private" constant @rA : memref<1200xi32> = dense<0>
+  memref.global "private" constant @rB : memref<1200xi32> = dense<0>
+  aiex.cert.uc_dma_chain @chainRA {
+    aiex.cert.uc_dma_bd @rA, 0, 1200, false
+  }
+  aiex.cert.uc_dma_chain @chainRB {
+    aiex.cert.uc_dma_bd @rB, 0, 1200, false
+  }
+  // expected-error@+1 {{cannot be split: job 1 uses local registers r0..r7, which do not survive a split}}
+  aiex.cert.page {
+    aiex.cert.job(1) {
+      aiex.cert.uc_dma_write_des(1, @chainRA)
+      aiex.cert.uc_dma_write_des_sync(@chainRB)
+      aiex.cert.wait_uc_dma(1)
+    }
+  }
+}
