@@ -13,9 +13,9 @@
 // proof follows its own output, not the other design's.
 
 // CHECK-LABEL: aie.device(npu2) {
-// CHECK-DAG: aie.shim_dma_allocation @in(%{{.*}}, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 4>]}
+// CHECK-DAG: aie.shim_dma_allocation @in(%{{.*}}, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 4, device = @b>]}
 // CHECK-DAG: aie.shim_dma_allocation @out(%{{.*}}, S2MM, 1)
-// CHECK-DAG: aie.shim_dma_allocation @in_0(%{{.*}}, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out_0, input_bytes = 1, output_bytes = 1>]}
+// CHECK-DAG: aie.shim_dma_allocation @in_0(%{{.*}}, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out_0, input_bytes = 1, output_bytes = 1, device = @a>]}
 // CHECK-DAG: aie.shim_dma_allocation @out_0(%{{.*}}, S2MM, 0)
 // CHECK: aiex.npu.load_pdi {device_ref = @a}
 // CHECK: aiex.dma_configure_task_for @in_0 {

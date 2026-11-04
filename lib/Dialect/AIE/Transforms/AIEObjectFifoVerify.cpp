@@ -1399,7 +1399,7 @@ struct AIEObjectFifoVerifyPass
             ctx,
             FlatSymbolRefAttr::get(
                 cast<RouteEndpointOp>(output).getSymNameAttr()),
-            in / common, out / common));
+            in / common, out / common, /*device=*/FlatSymbolRefAttr()));
       }
       input.setConsumedByAttr(ArrayAttr::get(ctx, attrs));
     }

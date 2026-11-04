@@ -442,6 +442,21 @@ static LogicalResult inlineReferencedSymbolDefinitions(
               previouslyInlinedSymbolMap, callerDevice, clonedDefs, calleeNames,
               clonedDefOpsInsertionPoint, allSymbolNames)))
         return std::make_pair(oldSymbolRef, WalkResult::interrupt());
+      // A copied consumption proof describes the device it came from.
+      auto allocation = dyn_cast<AIE::ShimDMAAllocationOp>(clonedSymbolDefOp);
+      ArrayAttr proofs = allocation ? allocation.getConsumedByAttr() : nullptr;
+      auto callee = symbolDefOp->getParentOfType<AIE::DeviceOp>();
+      if (cloned && proofs && callee && callee.getSymNameAttr()) {
+        SmallVector<Attribute> stamped;
+        for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>())
+          stamped.push_back(AIE::ConsumedByAttr::get(
+              proof.getContext(), proof.getOutput(), proof.getInputBytes(),
+              proof.getOutputBytes(),
+              proof.getDevice() ? proof.getDevice()
+                                : FlatSymbolRefAttr::get(
+                                      callee.getSymNameAttr())));
+        allocation.setConsumedByAttr(rewriter.getArrayAttr(stamped));
+      }
       return std::make_pair(newSymbolRef, WalkResult::advance());
     });
     if (!newAttr) {

@@ -635,7 +635,7 @@ ObjectFifoTransportAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 LogicalResult
 ConsumedByAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                        FlatSymbolRefAttr output, int64_t input_bytes,
-                       int64_t output_bytes) {
+                       int64_t output_bytes, FlatSymbolRefAttr device) {
   if (input_bytes <= 0 || output_bytes <= 0)
     return emitError() << "consumed_by needs positive byte counts, got "
                        << input_bytes << " and " << output_bytes;

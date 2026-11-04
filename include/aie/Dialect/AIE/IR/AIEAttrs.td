@@ -249,6 +249,11 @@ def ConsumedByAttr : AttrDef<AIE_Dialect, "ConsumedBy", []> {
     `--aie-assign-runtime-sequence-bd-ids` credits that completion when an
     await retires a transfer on `output`.
 
+    The proof describes the array of the device holding it, or of `device`:
+    `--aie-materialize-runtime-sequences` sets that on the copies it makes in
+    another device, and BD id assignment credits it only while that device's
+    PDI is loaded.
+
     ```
       aie.shim_dma_allocation @in(%shim, MM2S, 0) {consumed_by = [
           #aie.consumed_by<output = @out, input_bytes = 256,
@@ -257,7 +262,8 @@ def ConsumedByAttr : AttrDef<AIE_Dialect, "ConsumedBy", []> {
   }];
 
   let parameters = (ins "::mlir::FlatSymbolRefAttr":$output,
-      "int64_t":$input_bytes, "int64_t":$output_bytes);
+      "int64_t":$input_bytes, "int64_t":$output_bytes,
+      OptionalParameter<"::mlir::FlatSymbolRefAttr">:$device);
 
   let assemblyFormat = "`<` struct(params) `>`";
   let genVerifyDecl = 1;

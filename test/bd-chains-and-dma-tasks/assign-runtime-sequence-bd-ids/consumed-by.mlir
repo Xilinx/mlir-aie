@@ -578,3 +578,49 @@ module {
     }
   }
 }
+
+// -----
+
+// @main's proof says its core takes @in before writing @out, but after
+// load_pdi @b the array runs @b's design: no await on @out proves @in's
+// pushes finished there.
+module {
+  aie.device(npu2) @b {
+    %t = aie.tile(0, 0)
+  }
+  aie.device(npu2) @main {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%t, S2MM, 0)
+    aie.runtime_sequence @seq(%a: memref<512xi32>, %c: memref<512xi32>) {
+      aiex.npu.load_pdi {device_ref = @b}
+      %in0 = aiex.dma_configure_task(%t, MM2S, 0) {
+        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in0)
+      %out0 = aiex.dma_configure_task(%t, S2MM, 0) {
+        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out0)
+      aiex.dma_await_task(%out0)
+      // expected-note@+1 {{released here}}
+      aiex.dma_free_task(%in0)
+      %in1 = aiex.dma_configure_task(%t, MM2S, 0) {
+        // expected-warning@+1 {{reuses buffer descriptor ID 0}}
+        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in1)
+      %out1 = aiex.dma_configure_task(%t, S2MM, 0) {
+        aie.dma_bd(%c : memref<512xi32> offset = 64 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out1)
+      aiex.dma_await_task(%out1)
+      aiex.dma_free_task(%in1)
+      aiex.npu.load_pdi {device_ref = @main}
+    }
+  }
+}

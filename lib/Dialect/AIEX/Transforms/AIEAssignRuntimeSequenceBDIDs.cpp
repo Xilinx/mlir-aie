@@ -769,92 +769,195 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       entry.first->second = llvm::all_of(
           getOperation().getOps<AIE::RuntimeSequenceOp>(),
           [&](AIE::RuntimeSequenceOp seq) {
-            return stretchesBalanced(seq, nullptr, input, output, proof);
+            return stretchesUnbalanced(seq, nullptr, proofDevice(proof),
+                                       input, output, {input}, {output},
+                                       proof) == Unbalanced::No;
           });
     return entry.first->second;
   }
 
-  // Whether each stretch of `seq` after `from` (all of them when null) ends
-  // with `input`'s bytes covered by `output`'s, as leavesNothing needs.
-  bool stretchesBalanced(AIE::RuntimeSequenceOp seq, Operation *from,
-                         AIE::ShimDMAAllocationOp input,
-                         AIE::ShimDMAAllocationOp output,
-                         AIE::ConsumedByAttr proof) {
+  // The device whose array `proof` describes: the one materialization copied
+  // it from, else this one; none where that device is not in the module.
+  AIE::DeviceOp proofDevice(AIE::ConsumedByAttr proof) {
+    FlatSymbolRefAttr device = proof.getDevice();
+    Operation *module = getOperation()->getParentOp();
+    if (!device)
+      return getOperation();
+    return module ? SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(module,
+                                                                        device)
+                  : AIE::DeviceOp();
+  }
+
+  // The device `load` configures; none where it names none in the module.
+  AIE::DeviceOp loadedBy(NpuLoadPdiOp load) {
+    FlatSymbolRefAttr ref = load.getDeviceRefAttr();
+    Operation *module = getOperation()->getParentOp();
+    return ref && module
+               ? SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(module,
+                                                                     ref)
+               : AIE::DeviceOp();
+  }
+
+  // Why a stretch of `proof`'s device may leave `input`'s bytes behind.
+  enum class Unbalanced {
+    No,
+    // A push of either moves bytes no count follows: a parameter not held
+    // non-negative, a chain, or a loop of a dynamic-pool sequence.
+    Unsized,
+    // Other traffic shares their channels.
+    Traffic,
+    // The input moves more than the output proves taken.
+    Excess,
+  };
+
+  // Whether each stretch of `seq` after `from` (all of them when null) with
+  // `target` loaded ends with the bytes `proof`'s input channel moved covered
+  // by those its output channel moved. Pushes through `inputs` and `outputs`
+  // count as the proof's, and with `byChannel` any push on a circuit channel
+  // (no packet header on it or on `input`/`output`), which carries only that
+  // route's words; any other on those channels is traffic the proof does not
+  // describe. Stretches under another PDI end at a real load of `target`.
+  Unbalanced stretchesUnbalanced(AIE::RuntimeSequenceOp seq, Operation *from,
+                                 AIE::DeviceOp target,
+                                 AIE::ShimDMAAllocationOp input,
+                                 AIE::ShimDMAAllocationOp output,
+                                 ArrayRef<AIE::ShimDMAAllocationOp> inputs,
+                                 ArrayRef<AIE::ShimDMAAllocationOp> outputs,
+                                 AIE::ConsumedByAttr proof,
+                                 bool byChannel = false) {
     DmaQueueModel::ChannelKey inKey = DmaQueueModel::keyOf(
         input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
     DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(
         output.getTileOp(), output.getChannelDir(), output.getChannelIndex());
+    auto fromLoad = dyn_cast_or_null<NpuLoadPdiOp>(from);
+    AIE::DeviceOp loaded = fromLoad ? loadedBy(fromLoad) : getOperation();
     bool counting = !from;
     Volume in, out;
-    WalkResult walk = seq.walk([&](Operation *op) {
+    Unbalanced why = Unbalanced::No;
+    seq.walk([&](Operation *op) {
       if (op == from) {
         counting = true;
         return WalkResult::advance();
       }
       if (!counting)
         return WalkResult::advance();
-      if (isa<NpuLoadPdiOp>(op)) {
-        if (!atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
+      if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
+        if (target && loaded == target &&
+            !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes())) {
+          why = Unbalanced::Excess;
           return WalkResult::interrupt();
+        }
         in.clear();
         out.clear();
+        loaded = loadedBy(load);
         return WalkResult::advance();
       }
+      if (!target || loaded != target)
+        return WalkResult::advance();
       auto start = dyn_cast<DMAStartTaskOp>(op);
       DMAConfigureTaskOp cfg = start ? start.getTaskOp() : nullptr;
       AIE::ShimDMAAllocationOp allocation = cfg ? allocationOf(cfg) : nullptr;
       std::optional<DmaQueueModel::ChannelKey> channel =
           cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
-      bool foreign =
-          (channel && ((*channel == inKey && allocation != input) ||
-                       (*channel == outKey && allocation != output))) ||
-          writesQueue(op, {inKey, outKey});
-      if (foreign)
+      bool circuit = byChannel && allocation && !allocation.getPacket();
+      bool isInput = llvm::is_contained(inputs, allocation) ||
+                     (circuit && channel && *channel == inKey &&
+                      !input.getPacket());
+      bool isOutput = llvm::is_contained(outputs, allocation) ||
+                      (circuit && channel && *channel == outKey &&
+                       !output.getPacket());
+      if ((channel && ((*channel == inKey && !isInput) ||
+                       (*channel == outKey && !isOutput))) ||
+          writesQueue(op, {inKey, outKey})) {
+        why = Unbalanced::Traffic;
         return WalkResult::interrupt();
-      if (!allocation || (allocation != input && allocation != output))
+      }
+      if (!allocation || (!isInput && !isOutput))
         return WalkResult::advance();
       // A dynamic-pool sequence keeps its loops, whose trip counts these
       // counts cannot follow.
       std::optional<Volume> moved =
           op->getParentOp() == seq ? pushVolume(start, cfg) : std::nullopt;
-      if (!moved)
+      if (!moved) {
+        why = Unbalanced::Unsized;
         return WalkResult::interrupt();
+      }
       for (auto [key, bytes] : *moved)
-        (allocation == input ? in : out)[key] += bytes;
+        (isInput ? in : out)[key] += bytes;
       return WalkResult::advance();
     });
-    return !walk.wasInterrupted() &&
-           atMost(in, proof.getOutputBytes(), out, proof.getInputBytes());
+    if (why == Unbalanced::No && target && loaded == target &&
+        !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
+      why = Unbalanced::Excess;
+    return why;
   }
 
   // A dispatch loads its own device first, so array state passes to a later
   // dispatch only from a sequence that ends on another device's PDI: that
-  // device's next dispatch starts where this one's tail left it, and its
-  // proofs, copied here with its sequences, count on a clean start.
+  // device's next dispatch starts where this one's tail left it, while its
+  // proofs count on a clean start. The tail is held to each of them, read off
+  // that device (as seedFromStaticBds reads its static BDs): pushes on a
+  // proof's channels count through the copies materialization stamped with
+  // that device, and any other there is traffic it does not describe.
   LogicalResult checkForeignTail(AIE::RuntimeSequenceOp seq) {
     NpuLoadPdiOp last;
     for (auto load : seq.getOps<NpuLoadPdiOp>())
       last = load;
-    FlatSymbolRefAttr loaded = last ? last.getDeviceRefAttr() : nullptr;
-    std::optional<StringRef> self = getOperation().getSymName();
-    if (!loaded || (self && loaded.getValue() == *self))
+    AIE::DeviceOp loaded = last ? loadedBy(last) : AIE::DeviceOp();
+    if (!loaded || loaded == getOperation())
       return success();
-    for (auto input : getOperation().getOps<AIE::ShimDMAAllocationOp>()) {
+    auto channelOfAllocation = [](AIE::ShimDMAAllocationOp allocation) {
+      return DmaQueueModel::keyOf(allocation.getTileOp(),
+                                  allocation.getChannelDir(),
+                                  allocation.getChannelIndex());
+    };
+    for (auto input : loaded.getOps<AIE::ShimDMAAllocationOp>()) {
       ArrayAttr proofs = input.getConsumedByAttr();
       if (!proofs)
         continue;
       for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>()) {
-        AIE::ShimDMAAllocationOp output =
-            allocationsByName.lookup(proof.getOutput().getAttr());
-        if (output && !stretchesBalanced(seq, last, input, output, proof))
-          return last.emitOpError()
-                 << "leaves " << loaded << " loaded with transfers through @"
-                 << input.getSymName() << " that @" << output.getSymName()
-                 << " does not prove consumed, or with other traffic on "
-                    "their channels; the next dispatch of "
-                 << loaded
-                 << " starts from that state. Balance them before the "
-                    "sequence ends, or load this device's PDI again.";
+        auto output = AIE::ShimDMAAllocationOp::getForSymbol(
+            loaded, proof.getOutput().getValue());
+        if (!output || proof.getDevice())
+          continue;
+        SmallVector<AIE::ShimDMAAllocationOp> inputs, outputs;
+        for (auto copy : getOperation().getOps<AIE::ShimDMAAllocationOp>()) {
+          ArrayAttr copied = copy.getConsumedByAttr();
+          if (!copied ||
+              channelOfAllocation(copy) != channelOfAllocation(input))
+            continue;
+          for (auto cp : copied.getAsRange<AIE::ConsumedByAttr>())
+            if (proofDevice(cp) == loaded)
+              if (AIE::ShimDMAAllocationOp out =
+                      allocationsByName.lookup(cp.getOutput().getAttr());
+                  out &&
+                  channelOfAllocation(out) == channelOfAllocation(output)) {
+                inputs.push_back(copy);
+                outputs.push_back(out);
+              }
+        }
+        Unbalanced why = stretchesUnbalanced(seq, last, loaded, input, output,
+                                             inputs, outputs, proof,
+                                             /*byChannel=*/true);
+        if (why == Unbalanced::No)
+          continue;
+        auto diag = last.emitOpError()
+                    << "leaves " << last.getDeviceRefAttr()
+                    << " loaded, and its next dispatch, whose proof that @"
+                    << input.getSymName() << " is consumed by @"
+                    << output.getSymName()
+                    << " counts on a clean start, finds what this "
+                       "sequence's last stretch left: it ";
+        if (why == Unbalanced::Excess)
+          diag << "moves more through that input than the output proves "
+                  "taken";
+        else if (why == Unbalanced::Traffic)
+          diag << "has other traffic on their channels";
+        else
+          diag << "moves bytes on their channels whose count is not known, "
+                  "so cannot be proven balanced";
+        return diag << ". Balance them before the sequence ends, or load "
+                       "this device's PDI again.";
       }
     }
     return success();
@@ -875,7 +978,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (done == outPushes->second.end() || done->order != order ||
         !done->through)
       return;
+    AIE::DeviceOp configured = opaqueLoad   ? AIE::DeviceOp()
+                               : loadedDevice ? loadedDevice
+                                              : getOperation();
     for (auto [input, proof] : proofs->second) {
+      if (!configured || proofDevice(proof) != configured)
+        continue;
       auto inPushes = pushesByAllocation.find(input);
       DmaQueueModel::ChannelKey key = DmaQueueModel::keyOf(
           input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
