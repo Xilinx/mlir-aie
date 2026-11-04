@@ -1153,7 +1153,8 @@ struct AIEObjectFifoAllocatePass
   /// Whether one iterating descriptor a side could walk `pool`: a plain mem
   /// tile pool of one segment, deeper than one object and no deeper than a
   /// lock counts, whose ends neither dispatch nor take turns, but those in
-  /// `regrouped`, whose turns are being chosen again.
+  /// `regrouped`, whose turns are being chosen again, and whose draining ends
+  /// lay out no dimensions, which on a contiguous pool walk a stream window.
   bool canWalkWhole(ObjectFifoPoolOp pool,
                     ArrayRef<ObjectFifoDmaEndpointOp> regrouped = {}) {
     const AIETargetModel &target = device.getTargetModel();
@@ -1167,6 +1168,11 @@ struct AIEObjectFifoAllocatePass
                         [&](ObjectFifoDmaEndpointOp end) {
                           return end.getPoolOp() != pool ||
                                  (!end.getDispatch() &&
+                                  !(end.drains() && end.getDimensions() &&
+                                    !end.getDimensions()->empty() &&
+                                    !(*end.getDimensions())[0]
+                                         .getValue()
+                                         .empty()) &&
                                   (!end.getTurns() ||
                                    llvm::is_contained(regrouped, end)));
                         });
