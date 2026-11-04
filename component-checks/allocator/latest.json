@@ -1,22 +1,22 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "41571601515",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41571601515",
- "date": "2026-11-03T03:20:20+00:00",
+ "id": "41766480666",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41766480666",
+ "date": "2026-11-04T03:20:17+00:00",
  "commit": {
-  "id": "76c9a2265682d10b847fd798133674f05fcf0fc1",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/76c9a2265682d10b847fd798133674f05fcf0fc1",
-  "message": "[cert] Emit DMA chains and payloads where AIEBU can resolve them (#3993)",
-  "timestamp": "2026-11-03T00:30:43Z"
+  "id": "6a97402957cffc709a2dbeb40878e414a65ef444",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/6a97402957cffc709a2dbeb40878e414a65ef444",
+  "message": "[cert] Add asynchronous uC DMA push and wait (#4014)",
+  "timestamp": "2026-11-04T00:51:56Z"
  },
  "event": "schedule",
  "pmode": null,
- "device": "AMD EPYC 7763 64-Core Processor",
+ "device": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
  "device_raw": null,
  "provenance": {
-  "commit": "76c9a22656",
-  "cpu": "AMD EPYC 7763 64-Core Processor"
+  "commit": "6a97402957",
+  "cpu": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
  },
  "sane": true,
  "published": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 137.4,
+    "value": 146.6,
     "unit": "s"
    }
   }
