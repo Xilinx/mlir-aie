@@ -1324,9 +1324,8 @@ struct AIEObjectFifoAllocatePass
         if (end && onShim(source))
           byShim.insert(end.getOperation());
       }
-      if (llvm::all_of(dests, [&](RouteEndpoint end) {
-            return end && onShim(end);
-          }))
+      if (llvm::all_of(dests,
+                       [&](RouteEndpoint end) { return end && onShim(end); }))
         byShim.insert(source.getOperation());
     }
     auto cachedCoreEnd = [&](ObjectFifoDmaEndpointOp dma) {

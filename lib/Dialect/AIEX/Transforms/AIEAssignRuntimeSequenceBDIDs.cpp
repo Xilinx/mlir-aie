@@ -848,9 +848,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             allocationsByName.lookup(proof.getOutput().getAttr());
         if (output && !stretchesBalanced(seq, last, input, output, proof))
           return last.emitOpError()
-                 << "leaves " << loaded
-                 << " loaded with transfers through @" << input.getSymName()
-                 << " that @" << output.getSymName()
+                 << "leaves " << loaded << " loaded with transfers through @"
+                 << input.getSymName() << " that @" << output.getSymName()
                  << " does not prove consumed, or with other traffic on "
                     "their channels; the next dispatch of "
                  << loaded

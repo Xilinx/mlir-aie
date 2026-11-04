@@ -250,13 +250,12 @@ static std::optional<int64_t> tripCount(scf::ForOp forOp, DeviceOp device) {
       bool rawWrite =
           llvm::TypeSwitch<Operation *, bool>(op)
               .Case<AIEX::NpuWrite32Op, AIEX::NpuMaskWrite32Op>([&](auto w) {
-                return reachesTile(w.getBufferAttr(), w.getColumn(),
-                                   w.getRow(),
+                return reachesTile(w.getBufferAttr(), w.getColumn(), w.getRow(),
                                    getConstantIntValue(w.getAddress()));
               })
               .Case([&](AIEX::NpuBlockWriteOp w) {
-                return reachesTile(w.getBufferAttr(), w.getColumn(),
-                                   w.getRow(), w.getAddress());
+                return reachesTile(w.getBufferAttr(), w.getColumn(), w.getRow(),
+                                   w.getAddress());
               })
               .Case([&](AIEX::NpuPushQueueOp push) {
                 return reachesTile({}, push.getColumn(), push.getRow(), {});
@@ -823,8 +822,8 @@ struct AIEObjectFifoVerifyPass
         ObjectFifoPoolOp pool = endpoint ? endpoint.getPoolOp() : nullptr;
         std::optional<StringRef> fifo =
             pool ? pool.getFifoName() : std::nullopt;
-        auto rearms = fifo ? poolLocks->rearms().find(*fifo)
-                           : poolLocks->rearms().end();
+        auto rearms =
+            fifo ? poolLocks->rearms().find(*fifo) : poolLocks->rearms().end();
         bool rearmedEveryLaunch =
             rearms != poolLocks->rearms().end() &&
             llvm::all_of(device.getOps<RuntimeSequenceOp>(), [&](auto seq) {

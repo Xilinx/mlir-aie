@@ -173,9 +173,8 @@ bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
   // An end no sequence names is driven some other way, so nothing is known
   // about when it is in flight.
   for (StringAttr end : {a, b})
-    if (llvm::none_of(spans, [&](const auto &byFifo) {
-          return byFifo.contains(end);
-        }))
+    if (llvm::none_of(spans,
+                      [&](const auto &byFifo) { return byFifo.contains(end); }))
       return false;
   // One gate per end serves every sequence, for its fill bound and its turn.
   for (const Gate *ga : usableGates(a))

@@ -1710,7 +1710,8 @@ verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
   // another, nullopt when its count isn't static.
   auto through = [&](Operation *op) -> std::optional<int64_t> {
     if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
-      return memcpy.getMetadata() == alloc ? memcpy.getStaticBytesStreamed() : 0;
+      return memcpy.getMetadata() == alloc ? memcpy.getStaticBytesStreamed()
+                                           : 0;
     if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
       return task.getAlloc() == alloc ? task.getStaticBytesStreamed() : 0;
     if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op))
@@ -1770,8 +1771,8 @@ verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
                   "segments, so a partial one never completes";
 }
 
-LogicalResult AIEX::DMAConfigureTaskOp::verifySymbolUses(
-    SymbolTableCollection &symbolTable) {
+LogicalResult
+AIEX::DMAConfigureTaskOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   FlatSymbolRefAttr alloc = getAllocAttr();
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!alloc || !dev)
@@ -1779,8 +1780,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verifySymbolUses(
   auto allocation = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(
       symbolTable.lookupSymbolIn(dev, alloc.getAttr()));
   if (!allocation)
-    return emitOpError("alloc ") << alloc
-                                 << " names no aie.shim_dma_allocation";
+    return emitOpError("alloc ")
+           << alloc << " names no aie.shim_dma_allocation";
   if (allocation.getTile() != getTile() ||
       allocation.getChannelDir() != getDirection() ||
       allocation.getChannelIndex() != static_cast<int>(getChannel()))

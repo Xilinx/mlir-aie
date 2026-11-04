@@ -2352,10 +2352,9 @@ void Pathfinder::TreeBuilder::claim() {
   // A via's next segment starts where the last one ended, on the wire that
   // one already takes. A packet source's parts share its wire, which the first
   // takes.
-  bool takesSource =
-      !packetId || llvm::find_if(st.parts, [&](const Flow &f) {
-                     return f.src == part.src;
-                   }) == st.parts.begin() + flow;
+  bool takesSource = !packetId || llvm::find_if(st.parts, [&](const Flow &f) {
+                                    return f.src == part.src;
+                                  }) == st.parts.begin() + flow;
   if (takesSource && isDirectional(part.src.port.bundle))
     for (auto &[ends, link] : pf.graph) {
       int k = link.dstIndex(part.src.port);
