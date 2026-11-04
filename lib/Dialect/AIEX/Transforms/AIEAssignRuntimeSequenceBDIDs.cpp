@@ -765,60 +765,100 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                      AIE::ShimDMAAllocationOp output,
                      AIE::ConsumedByAttr proof) {
     auto entry = balancedPairs.try_emplace({input, output}, true);
-    auto it = entry.first;
-    if (!entry.second)
-      return it->second;
+    if (entry.second)
+      entry.first->second = llvm::all_of(
+          getOperation().getOps<AIE::RuntimeSequenceOp>(),
+          [&](AIE::RuntimeSequenceOp seq) {
+            return stretchesBalanced(seq, nullptr, input, output, proof);
+          });
+    return entry.first->second;
+  }
+
+  // Whether each stretch of `seq` after `from` (all of them when null) ends
+  // with `input`'s bytes covered by `output`'s, as leavesNothing needs.
+  bool stretchesBalanced(AIE::RuntimeSequenceOp seq, Operation *from,
+                         AIE::ShimDMAAllocationOp input,
+                         AIE::ShimDMAAllocationOp output,
+                         AIE::ConsumedByAttr proof) {
     DmaQueueModel::ChannelKey inKey = DmaQueueModel::keyOf(
         input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
     DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(
         output.getTileOp(), output.getChannelDir(), output.getChannelIndex());
-    for (auto seq : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
-      Volume in, out;
-      seq.walk([&](Operation *op) {
-        if (isa<NpuLoadPdiOp>(op)) {
-          if (!atMost(in, proof.getOutputBytes(), out, proof.getInputBytes())) {
-            it->second = false;
-            return WalkResult::interrupt();
-          }
-          in.clear();
-          out.clear();
-          return WalkResult::advance();
-        }
-        auto start = dyn_cast<DMAStartTaskOp>(op);
-        DMAConfigureTaskOp cfg = start ? start.getTaskOp() : nullptr;
-        AIE::ShimDMAAllocationOp allocation = cfg ? allocationOf(cfg) : nullptr;
-        std::optional<DmaQueueModel::ChannelKey> channel =
-            cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
-        bool foreign =
-            (channel && ((*channel == inKey && allocation != input) ||
-                         (*channel == outKey && allocation != output))) ||
-            writesQueue(op, {inKey, outKey});
-        if (foreign) {
-          it->second = false;
-          return WalkResult::interrupt();
-        }
-        if (!allocation || (allocation != input && allocation != output))
-          return WalkResult::advance();
-        // A dynamic-pool sequence keeps its loops, whose trip counts these
-        // counts cannot follow.
-        std::optional<Volume> moved = op->getParentOp() == seq
-                                          ? pushVolume(start, cfg)
-                                          : std::nullopt;
-        if (!moved) {
-          it->second = false;
-          return WalkResult::interrupt();
-        }
-        for (auto [key, bytes] : *moved)
-          (allocation == input ? in : out)[key] += bytes;
+    bool counting = !from;
+    Volume in, out;
+    WalkResult walk = seq.walk([&](Operation *op) {
+      if (op == from) {
+        counting = true;
         return WalkResult::advance();
-      });
-      if (!it->second ||
-          !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes())) {
-        it->second = false;
-        break;
+      }
+      if (!counting)
+        return WalkResult::advance();
+      if (isa<NpuLoadPdiOp>(op)) {
+        if (!atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
+          return WalkResult::interrupt();
+        in.clear();
+        out.clear();
+        return WalkResult::advance();
+      }
+      auto start = dyn_cast<DMAStartTaskOp>(op);
+      DMAConfigureTaskOp cfg = start ? start.getTaskOp() : nullptr;
+      AIE::ShimDMAAllocationOp allocation = cfg ? allocationOf(cfg) : nullptr;
+      std::optional<DmaQueueModel::ChannelKey> channel =
+          cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
+      bool foreign =
+          (channel && ((*channel == inKey && allocation != input) ||
+                       (*channel == outKey && allocation != output))) ||
+          writesQueue(op, {inKey, outKey});
+      if (foreign)
+        return WalkResult::interrupt();
+      if (!allocation || (allocation != input && allocation != output))
+        return WalkResult::advance();
+      // A dynamic-pool sequence keeps its loops, whose trip counts these
+      // counts cannot follow.
+      std::optional<Volume> moved =
+          op->getParentOp() == seq ? pushVolume(start, cfg) : std::nullopt;
+      if (!moved)
+        return WalkResult::interrupt();
+      for (auto [key, bytes] : *moved)
+        (allocation == input ? in : out)[key] += bytes;
+      return WalkResult::advance();
+    });
+    return !walk.wasInterrupted() &&
+           atMost(in, proof.getOutputBytes(), out, proof.getInputBytes());
+  }
+
+  // A dispatch loads its own device first, so array state passes to a later
+  // dispatch only from a sequence that ends on another device's PDI: that
+  // device's next dispatch starts where this one's tail left it, and its
+  // proofs, copied here with its sequences, count on a clean start.
+  LogicalResult checkForeignTail(AIE::RuntimeSequenceOp seq) {
+    NpuLoadPdiOp last;
+    for (auto load : seq.getOps<NpuLoadPdiOp>())
+      last = load;
+    FlatSymbolRefAttr loaded = last ? last.getDeviceRefAttr() : nullptr;
+    std::optional<StringRef> self = getOperation().getSymName();
+    if (!loaded || (self && loaded.getValue() == *self))
+      return success();
+    for (auto input : getOperation().getOps<AIE::ShimDMAAllocationOp>()) {
+      ArrayAttr proofs = input.getConsumedByAttr();
+      if (!proofs)
+        continue;
+      for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>()) {
+        AIE::ShimDMAAllocationOp output =
+            allocationsByName.lookup(proof.getOutput().getAttr());
+        if (output && !stretchesBalanced(seq, last, input, output, proof))
+          return last.emitOpError()
+                 << "leaves " << loaded
+                 << " loaded with transfers through @" << input.getSymName()
+                 << " that @" << output.getSymName()
+                 << " does not prove consumed, or with other traffic on "
+                    "their channels; the next dispatch of "
+                 << loaded
+                 << " starts from that state. Balance them before the "
+                    "sequence ends, or load this device's PDI again.";
       }
     }
-    return it->second;
+    return success();
   }
 
   // `output`'s pushes up to `order` have finished; see recordConsumption in
@@ -1244,6 +1284,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             proofsByOutput[output].push_back({input, proof});
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
+      if (failed(checkForeignTail(seq)))
+        return WalkResult::interrupt();
       // Skip sequences already handled by the dynamic free-list pool path
       // (aie-lower-dynamic-bd-pool): they draw BD ids at runtime via
       // dma_bd_pool_pop and keep their scf.for rolled, which the static

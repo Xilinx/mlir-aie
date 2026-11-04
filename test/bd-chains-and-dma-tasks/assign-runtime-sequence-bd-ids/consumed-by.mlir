@@ -252,9 +252,6 @@ module {
 module {
   aie.device(npu2) @design {
     %tile_0_0 = aie.tile(0, 0)
-  }
-  aie.device(npu2) {
-    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
     aie.runtime_sequence @after_load(%a: memref<512xi32>, %c: memref<512xi32>) {
@@ -289,9 +286,6 @@ module {
 // reload and receive those leftovers first: nothing is credited.
 module {
   aie.device(npu2) @design {
-    %tile_0_0 = aie.tile(0, 0)
-  }
-  aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
@@ -345,9 +339,6 @@ module {
 // Balanced stretches before and after a load: the rounds are credited.
 module {
   aie.device(npu2) @design {
-    %tile_0_0 = aie.tile(0, 0)
-  }
-  aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
