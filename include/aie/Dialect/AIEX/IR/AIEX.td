@@ -756,6 +756,10 @@ def AIE_NpuDmaMemcpyNdOp
     call to DataLayout */
     uint64_t getElementTypeBitwidth();
 
+    // Bytes the transfer moves; nullopt for runtime sizes or a length a
+    // scratchpad parameter sets.
+    std::optional<int64_t> getStaticBytesStreamed();
+
     /* Verifies the supported scope and bounds for a transfer carrying runtime
        (SSA) sizes/strides using the allocation resolved by verifySymbolUses(). */
     llvm::LogicalResult verifyDynamicSizesStrides(

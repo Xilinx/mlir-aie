@@ -708,7 +708,6 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   return success();
 }
 
-static std::optional<int64_t> staticMemcpyBytes(AIEX::NpuDmaMemcpyNdOp memcpy);
 static LogicalResult
 verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
                                  std::optional<int64_t> moved,
@@ -742,7 +741,7 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     if (auto fifo = symbolTable.lookupSymbolIn<AIE::ObjectFifoCreateOp>(
             dev, getMetadata().getRootReference());
         fifo && failed(verifyTransferCoversWholeObjects(
-                    *this, getMetadata(), staticMemcpyBytes(*this), fifo)))
+                    *this, getMetadata(), getStaticBytesStreamed(), fifo)))
       return failure();
   auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getMetadata().getRootReference());
@@ -1584,28 +1583,26 @@ struct BdChain {
 };
 } // namespace
 
-// The far end of a shim transfer on an objectFIFO receives (or sends) whole
-// objects through BDs sized by the object type, or by its link pool's
-// segments, so transfers ending mid-BD never complete it and the fifo hangs.
-// Several transfers may share an object (concatenating host buffers into it, or
-// splitting it across them), so it is the runtime sequence's static total
-// through the fifo that must stop at a BD boundary.
-// A dma_memcpy_nd's static extent in bytes; nullopt for runtime sizes or a
-// length a scratchpad parameter sets.
-static std::optional<int64_t> staticMemcpyBytes(AIEX::NpuDmaMemcpyNdOp memcpy) {
-  if (memcpy.getLengthParameterAttr() || memcpy.getLengthStateTableIdxAttr())
+std::optional<int64_t> AIEX::NpuDmaMemcpyNdOp::getStaticBytesStreamed() {
+  if (getLengthParameterAttr() || getLengthStateTableIdxAttr())
     return std::nullopt;
-  uint64_t bits = memcpy.getElementTypeBitwidth();
+  uint64_t bits = getElementTypeBitwidth();
   if (bits % 8)
     return std::nullopt;
   std::optional<int64_t> bytes = static_cast<int64_t>(bits / 8);
-  for (OpFoldResult size : memcpy.getMixedSizes()) {
+  for (OpFoldResult size : getMixedSizes()) {
     std::optional<int64_t> extent = getConstantIntValue(size);
     bytes = bytes && extent ? llvm::checkedMul(*bytes, *extent) : std::nullopt;
   }
   return bytes;
 }
 
+// The far end of a shim transfer on an objectFIFO receives (or sends) whole
+// objects through BDs sized by the object type, or by its link pool's
+// segments, so transfers ending mid-BD never complete it and the fifo hangs.
+// Several transfers may share an object (concatenating host buffers into it, or
+// splitting it across them), so it is the runtime sequence's static total
+// through the fifo that must stop at a BD boundary.
 static LogicalResult
 verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
                                  std::optional<int64_t> moved,
@@ -1713,7 +1710,7 @@ verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
   // another, nullopt when its count isn't static.
   auto through = [&](Operation *op) -> std::optional<int64_t> {
     if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
-      return memcpy.getMetadata() == alloc ? staticMemcpyBytes(memcpy) : 0;
+      return memcpy.getMetadata() == alloc ? memcpy.getStaticBytesStreamed() : 0;
     if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
       return task.getAlloc() == alloc ? task.getStaticBytesStreamed() : 0;
     if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op))
@@ -1770,6 +1767,9 @@ verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
   if (partial->copies > 1)
     error << ", each sent " << partial->copies << " times in a row";
   return error << "); the far end's buffer descriptors are sized by the "
+                  "segments, so a partial one never completes";
+}
+
 LogicalResult AIEX::DMAConfigureTaskOp::verifySymbolUses(
     SymbolTableCollection &symbolTable) {
   FlatSymbolRefAttr alloc = getAllocAttr();
@@ -1786,9 +1786,6 @@ LogicalResult AIEX::DMAConfigureTaskOp::verifySymbolUses(
       allocation.getChannelIndex() != static_cast<int>(getChannel()))
     return emitOpError("runs on another channel than its alloc ") << alloc;
   return success();
-}
-
-                  "segments, so a partial one never completes";
 }
 
 // Resolving the allocation symbol through the collection keeps the lookup off

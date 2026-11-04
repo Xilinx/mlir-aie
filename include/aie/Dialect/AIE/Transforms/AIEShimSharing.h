@@ -73,17 +73,23 @@ private:
     int64_t last = -1;
     int64_t lastIssue = -1;
     int64_t lastDone = -1;
+    /// As lastDone, by an await alone: a free does not wait for the task.
+    int64_t lastAwaited = -1;
     bool sends = false;
     /// Bytes the sequence moves through the end; nullopt when not static.
     std::optional<int64_t> bytes = 0;
   };
 
-  /// Whether, in one sequence, a gate of `end` is first issued after `after`.
-  bool gatedAfter(const llvm::DenseMap<mlir::StringAttr, Span> &byFifo,
-                  mlir::StringAttr end, int64_t after) const;
-  /// Whether a gate of the receiving `end` is issued only in sequences that
-  /// drain it, each awaiting every byte the gate lets its senders send.
-  bool contained(mlir::StringAttr end) const;
+  /// The gates `end` may share by: all of a receiving end's that `contained`
+  /// holds for, or one null gate for an end that needs none.
+  llvm::SmallVector<const Gate *> usableGates(mlir::StringAttr end) const;
+  /// Whether, in one sequence, `x` is done before `y` starts and, when `gate`
+  /// is set, awaited before `gate` is first filled.
+  bool before(const llvm::DenseMap<mlir::StringAttr, Span> &byFifo,
+              const Span &x, const Span &y, const Gate *gate) const;
+  /// Whether `gate` is filled only in sequences that drain the receiving
+  /// `end`, each awaiting every byte the gate lets its senders send.
+  bool contained(mlir::StringAttr end, const Gate &gate) const;
 
   llvm::SmallVector<llvm::DenseMap<mlir::StringAttr, Span>> spans;
   std::optional<llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<Gate>>>
