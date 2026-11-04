@@ -14,6 +14,7 @@
 
 #include <array>
 #include <deque>
+#include <map>
 #include <random>
 
 namespace xilinx::AIE {
@@ -761,6 +762,9 @@ private:
     int sharedDepth = 0;
     int producerDepth = 0;
     llvm::SmallVector<int> consumerDepths;
+    // ObjectFifoCreateOp::plannedDmaEnd of each end.
+    std::optional<PlannedDmaEnd> producerEnd;
+    llvm::SmallVector<std::optional<PlannedDmaEnd>> consumerEnds;
     // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
     bool linked = false;
@@ -768,7 +772,7 @@ private:
   };
   llvm::SmallVector<NetInfo> nets;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;
-  llvm::SmallVector<FifoBufferInfo> fifoBuffers;
+  llvm::SmallVector<FifoBufferInfo, 0> fifoBuffers;
   // Each fifo's end tile types, where known, as tileTypes gives them.
   struct FifoEndTypes {
     std::optional<AIETileType> producer;
@@ -784,8 +788,15 @@ private:
   };
   llvm::SmallVector<RouteEndInfo> routeEnds;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToRouteEnds;
-  // Descriptors the pools on each logical tile need, for the mem-tile budget.
-  llvm::DenseMap<mlir::Operation *, int> poolBDs;
+  // The DMA ends of each logical mem tile and the BD ids each takes, as the
+  // split will make them.
+  struct MemTileEnd {
+    DMAChannelDir dir;
+    PlannedDmaEnd end;
+    int64_t objectBytes;
+  };
+  llvm::MapVector<mlir::Operation *, llvm::SmallVector<MemTileEnd>>
+      memTileEnds;
 
   // Placement state
   llvm::DenseMap<mlir::Operation *, TileID> currentPlacement;
@@ -808,11 +819,13 @@ private:
   // is its home, and the static buffers on MemTiles.
   llvm::SmallVector<std::pair<int64_t, mlir::Operation *>> spillBuffers;
   llvm::SmallVector<std::pair<mlir::Operation *, int64_t>> spillBaseline;
-  // The BDs each tile holds for the MemTile budget, their total at each
-  // position, and what the last move overwrote in it.
-  llvm::DenseMap<mlir::Operation *, int> tileBDs;
-  llvm::DenseMap<TileID, int> memTileBDs;
-  llvm::SmallVector<std::pair<TileID, int>> bdUndo;
+  // The BD ids the mem tile ends at each position are short of, what the
+  // last move overwrote in it, and the shortfall of each set of logical tiles
+  // sharing a position, by its tiles in order.
+  llvm::DenseMap<TileID, int64_t> bdShortfallAt;
+  llvm::SmallVector<std::pair<TileID, int64_t>> bdUndo;
+  std::map<std::pair<TileID, std::vector<mlir::Operation *>>, int64_t>
+      bdShortfallOf;
   int cachedPressure = 0;
   // The DMA-channel term per tile, and what the last move overwrote in it.
   int dmaPenalty = 0;
@@ -858,13 +871,21 @@ private:
           &oldPlacements);
   int getResourcePenalty() const { return cachedResourcePenalty; }
   void collectSpillBuffers();
-  void collectTileBDs();
+  /// The BD ids the ends of mem tiles `tiles`, at `position`, are short of
+  /// once aie-objectfifo-allocate has planned their channels
+  /// (DMAChannelAnalysis::planBDChannels) and walked whole the deepest pools
+  /// it can, deepest first, until they fit; with `walked`, those pools.
+  int64_t bdShortfall(
+      TileID position, llvm::ArrayRef<mlir::Operation *> tiles,
+      llvm::DenseSet<std::pair<mlir::Operation *, int>> *walked = nullptr);
+  /// The logical mem tiles at `position`, in memTileEnds order.
+  llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
   int computeMemSpilloverPenalty() const;
   int computeCoreOverflowPenalty() const;
   /// Fills `dmaPenaltyAt` and returns its sum.
   int computeDMAChannelPenalty();
   int computeTileDMAPenalty(TileID tilePos) const;
-  /// Fills `memTileBDs` and returns the penalty it gives.
+  /// Fills `bdShortfallAt` and returns the penalty it gives.
   int computeBDCountPenalty();
   int computeDelegatePenalty() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
