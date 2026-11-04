@@ -33,7 +33,7 @@ ShimTransferSpans::ShimTransferSpans(
     number(sequence);
 
     auto &byFifo = spans.emplace_back();
-    DenseMap<Value, AIEX::DMAConfigureTaskForOp> tasks;
+    DenseMap<Value, StringAttr> tasks;
     auto note = [&](Operation *op, StringAttr symbol, bool issues) {
       std::optional<End> shimEnd = endOf(symbol);
       if (!shimEnd)
@@ -53,8 +53,8 @@ ShimTransferSpans::ShimTransferSpans(
       mark = std::max(mark, to);
     };
     auto noteTask = [&](Operation *op, Value task, bool issues) {
-      if (auto configure = tasks.lookup(task))
-        note(op, configure.getAlloc().getRootReference(), issues);
+      if (StringAttr symbol = tasks.lookup(task))
+        note(op, symbol, issues);
     };
     sequence.walk([&](Operation *op) {
       if (auto memcpy = dyn_cast<AIEX::NpuDmaMemcpyNdOp>(op))
@@ -62,8 +62,11 @@ ShimTransferSpans::ShimTransferSpans(
       else if (auto wait = dyn_cast<AIEX::NpuDmaWaitOp>(op))
         note(op, wait.getSymbolAttr().getAttr(), false);
       else if (auto configure = dyn_cast<AIEX::DMAConfigureTaskForOp>(op))
-        tasks[configure.getResult()] = configure;
-      else if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(op))
+        tasks[configure.getResult()] = configure.getAlloc().getRootReference();
+      else if (auto chain = dyn_cast<AIEX::DMAStartBdChainForOp>(op)) {
+        tasks[chain.getResult()] = chain.getAllocAttr().getAttr();
+        note(op, chain.getAllocAttr().getAttr(), true);
+      } else if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(op))
         noteTask(op, start.getTask(), true);
       else if (auto await = dyn_cast<AIEX::DMAAwaitTaskOp>(op))
         noteTask(op, await.getTask(), false);

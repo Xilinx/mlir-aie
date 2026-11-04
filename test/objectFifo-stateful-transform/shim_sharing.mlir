@@ -538,3 +538,51 @@ module @overlapping {
     }
   }
 }
+
+// -----
+
+// out_a is sent again by a BD chain that nothing awaits, so it stays in flight
+// across out_b's turn: out_a keeps a channel to itself, as with a memcpy.
+// CHECK-LABEL: module @chain_in_flight
+// CHECK-DAG:   aie.shim_dma_allocation @out_a__shim_alloc(%{{.*}}, S2MM, [[A:[0-9]]])
+// CHECK-DAG:   aie.shim_dma_allocation @out_b__shim_alloc(%{{.*}}, S2MM, [[B:[0-9]]])
+// CHECK-DAG:   aie.shim_dma_allocation @out_c__shim_alloc(%{{.*}}, S2MM, [[B]])
+module @chain_in_flight {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %x = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @out_a(Produce, 1)
+      aie.end
+    }
+    aie.core(%b) {
+      %x = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @out_b(Produce, 1)
+      aie.end
+    }
+    aie.core(%c) {
+      %x = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @out_c(Produce, 1)
+      aie.end
+    }
+    aie.bd_chain @ch(%buf: memref<16xi32>) {
+      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
+      aie.end
+    }
+    aie.runtime_sequence(%in : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_wait {symbol = @out_a}
+      %t = aiex.dma_start_bd_chain_for @ch(%in) : (memref<16xi32>) for @out_a
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 2 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_wait {symbol = @out_b}
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 3 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_wait {symbol = @out_c}
+    }
+  }
+}
