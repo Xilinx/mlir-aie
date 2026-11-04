@@ -2059,7 +2059,7 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
   int64_t descriptors = depth * selected;
   if (link.walksStream()) {
     StreamWindow window;
-    descriptors = !drains ? 1
+    descriptors = !drains                                   ? 1
                   : succeeded(link.getStreamWindow(window)) ? window.outputs
                                                             : 0;
   }
@@ -2068,19 +2068,18 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
   int64_t passes = 1;
   if (drains && link.isDispatch()) {
     int64_t objects = std::max<int64_t>(depth, 1);
-    passes = std::lcm(objects,
-                      static_cast<int64_t>(link.getFifoOuts().size())) /
-             objects;
+    passes =
+        std::lcm(objects, static_cast<int64_t>(link.getFifoOuts().size())) /
+        objects;
   }
-  bool drainLaysOut = llvm::any_of(
-      link.getOutputObjectFifos(), [](ObjectFifoCreateOp out) {
+  bool drainLaysOut =
+      llvm::any_of(link.getOutputObjectFifos(), [](ObjectFifoCreateOp out) {
         return !out.getDimensionsToStream().empty();
       });
-  return PlannedDmaEnd{descriptors * (inHardware ? 1 : repeat) * passes, link,
-                       -1, depth,
-                       walkable(depth) && segments == 1 &&
-                           !link.getRepeatCount() && !link.walksStream() &&
-                           !link.isDispatch() && !drainLaysOut};
+  return PlannedDmaEnd{
+      descriptors * (inHardware ? 1 : repeat) * passes, link, -1, depth,
+      walkable(depth) && segments == 1 && !link.getRepeatCount() &&
+          !link.walksStream() && !link.isDispatch() && !drainLaysOut};
 }
 
 int ObjectFifoCreateOp::sharedDepth() {
@@ -2533,7 +2532,7 @@ int64_t ObjectFifoLinkOp::getPoolDepth() {
   if (walksStream())
     return succeeded(getStreamWindow(window)) ? window.objects : 0;
   if (std::optional<unsigned> index = getOwnerConsumerIndex())
-    return getPoolOwner().dmaDepth(*index);
+    return getPoolOwner().dmaDepth(index);
   return getPoolOwner().size();
 }
 

@@ -795,8 +795,7 @@ private:
     PlannedDmaEnd end;
     int64_t objectBytes;
   };
-  llvm::MapVector<mlir::Operation *, llvm::SmallVector<MemTileEnd>>
-      memTileEnds;
+  llvm::MapVector<mlir::Operation *, llvm::SmallVector<MemTileEnd>> memTileEnds;
 
   // Placement state
   llvm::DenseMap<mlir::Operation *, TileID> currentPlacement;

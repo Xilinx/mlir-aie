@@ -871,9 +871,8 @@ SmallVector<Operation *> SAPlacer::memTilesAt(TileID position) const {
   return tiles;
 }
 
-int64_t
-SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
-                      DenseSet<std::pair<Operation *, int>> *walked) {
+int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
+                              DenseSet<std::pair<Operation *, int>> *walked) {
   std::pair<TileID, std::vector<Operation *>> key{
       position, std::vector<Operation *>(tiles.begin(), tiles.end())};
   if (!walked)
@@ -881,7 +880,7 @@ SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
       return cached->second;
   SmallVector<const MemTileEnd *> ends;
   for (Operation *tile : tiles)
-    if (auto it = memTileEnds.find(tile); it != memTileEnds.end())
+    if (auto *it = memTileEnds.find(tile); it != memTileEnds.end())
       for (const MemTileEnd &end : it->second)
         ends.push_back(&end);
   auto [col, row] = position;
@@ -898,9 +897,8 @@ SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
     SmallVector<DMAChannelAnalysis::BDPlanEnd> planned, unweighted;
     int64_t total = 0;
     for (const MemTileEnd *end : ends) {
-      int64_t bds = whole.contains({end->end.pool, end->end.id})
-                        ? 1
-                        : end->end.bds;
+      int64_t bds =
+          whole.contains({end->end.pool, end->end.id}) ? 1 : end->end.bds;
       int limit = channels[end->dir == DMAChannelDir::MM2S];
       planned.push_back({end->dir, bds, limit});
       unweighted.push_back({end->dir, 0, limit});
@@ -1587,10 +1585,11 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
           {DMAChannelDir::MM2S, *fb.producerEnd,
            objectBytesOf(*fb.producerEnd, fb.producerSizeBytes)});
     for (unsigned ci = 0, e = fb.consumers.size(); ci < e; ++ci)
-      if (fb.consumerEnds[ci] && onMemTile(fb.consumers[ci]))
+      if (const std::optional<PlannedDmaEnd> &end = fb.consumerEnds[ci];
+          end && onMemTile(fb.consumers[ci]))
         memTileEnds[fb.consumers[ci]].push_back(
-            {DMAChannelDir::S2MM, *fb.consumerEnds[ci],
-             objectBytesOf(*fb.consumerEnds[ci], fb.consumerSizeBytes)});
+            {DMAChannelDir::S2MM, *end,
+             objectBytesOf(*end, fb.consumerSizeBytes)});
 
     std::optional<ObjectFifoLinkOp> link = ofOp.getLink();
     fb.forcesDMA = ofOp.dmaReason().has_value();

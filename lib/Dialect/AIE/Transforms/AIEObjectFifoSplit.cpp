@@ -429,8 +429,7 @@ LogicalResult AIEObjectFifoSplitPass::createLinkPools() {
       if (failed(linkOp.getStreamWindow(walk)))
         return failure();
       name = (owner.name().getValue() + "__cons__pool").str();
-    } else if (std::optional<unsigned> index =
-                   linkOp.getOwnerConsumerIndex()) {
+    } else if (std::optional<unsigned> index = linkOp.getOwnerConsumerIndex()) {
       name = (owner.name().getValue() +
               (owner.getConsumerTiles().size() > 1
                    ? "__cons" + std::to_string(*index) + "__pool"
