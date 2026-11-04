@@ -780,6 +780,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "41786842345",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41786842345",
+   "date": "2026-11-04T06:38:13+00:00",
+   "commit": {
+    "id": "6a97402957cffc709a2dbeb40878e414a65ef444",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/6a97402957cffc709a2dbeb40878e414a65ef444",
+    "message": "[cert] Add asynchronous uC DMA push and wait (#4014)",
+    "timestamp": "2026-11-04T00:51:56Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "6a97402957",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

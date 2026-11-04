@@ -550,6 +550,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "yolo26n-hw",
+   "id": "41786842345",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41786842345",
+   "date": "2026-11-04T06:38:13+00:00",
+   "commit": {
+    "id": "6a97402957cffc709a2dbeb40878e414a65ef444",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/6a97402957cffc709a2dbeb40878e414a65ef444",
+    "message": "[cert] Add asynchronous uC DMA push and wait (#4014)",
+    "timestamp": "2026-11-04T00:51:56Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "6a97402957",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "a6d60d5d2bde",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 68,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
