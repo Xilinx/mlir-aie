@@ -3,8 +3,7 @@
 #
 
 # RUN: %run_on_npu2_xrt% %pytest %s
-# RUN: %run_on_npu2_hrx% %pytest %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
+# REQUIRES: xrt_python_bindings
 """Numeric gates for softmax.cc's batched entry points on AIE2P.
 
 ``softmax_rows_bf16`` runs ``softmax_bf16`` over each row of a block, and

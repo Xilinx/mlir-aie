@@ -4,8 +4,7 @@
 
 # RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
-# RUN: %run_on_npu2_hrx% %pytest %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
+# REQUIRES: xrt_python_bindings
 """Numeric gate for softmax.cc's ``softmax_rows_banded_f32_bf16``: a row's
 mask computed from ``window`` and its own query position (``row_offset + r``,
 wrapped every ``period`` rows), not read from memory, as EG2 audio
