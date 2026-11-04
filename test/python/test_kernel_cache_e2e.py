@@ -136,7 +136,7 @@ def flow(request):
 def source(tmp_path):
     src = tmp_path / "src"
     src.mkdir()
-    (src / "add_one.cc").write_text('#include "step.h"\n' + _SOURCE)
+    (src / "add_one.cc").write_text(_SOURCE)
     _set_step(src / "add_one.cc", 1)
     return src / "add_one.cc"
 

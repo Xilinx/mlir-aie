@@ -37,8 +37,8 @@ each configuration it learns to a module-level list, say) would otherwise
 never find its own entry: every run moves the key.  Its mutations are told
 apart from the user's by when they happen -- ``_mask_generator_mutations``
 walks the same roots again after the generator runs and pins what moved, so
-later keys read the pinned identities while a user's edit between compiles
-still moves the key and rebuilds.
+later keys read the pinned identities, while a user's edit between compiles
+to anything the run did not touch still moves the key and rebuilds.
 
 `_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
@@ -317,11 +317,14 @@ def _python_identity(
     roots,
     frozen: Mapping[int, str] | None = None,
     snapshot: dict[int, str] | None = None,
+    obj_snapshot: dict[int, object] | None = None,
 ) -> bytes:
     """Identify the Python ``roots`` reach: their code, helpers and modules.
 
     A generator's bytecode names a helper but does not contain it, so the key
-    follows globals, closure cells and attributes of modules. Functions and
+    follows globals, closure cells and attributes of modules read by the
+    *walked* code (the generator and fileless helpers); a file-backed helper's
+    own reads ride its file's stamp.  Functions and
     classes with no file behind them are identified by their code and the
     plain constants they read, directly or through a mutable container (a
     list of kernel compile flags on the module, say), which is digested
@@ -357,7 +360,7 @@ def _python_identity(
     # aie.iron imports this module.
     from aie.iron.kernel import ExternalFunction
 
-    frozen = dict(frozen) if isinstance(frozen, dict) else {}
+    frozen = dict(frozen) if frozen is not None else {}
 
     records: set[bytes] = set()
     seen: set[int] = set()
@@ -401,6 +404,8 @@ def _python_identity(
                 # turn against the nesting bound.
                 if snapshot is not None:
                     snapshot[id(value)] = frozen[id(value)]
+                    if obj_snapshot is not None:
+                        obj_snapshot[id(value)] = value
                 return frozen[id(value)]
             d = digests.get(id(value))
             if d is None:
@@ -411,11 +416,13 @@ def _python_identity(
                 digests[id(value)] = d = _digest(value, where, depth)
             if snapshot is not None:
                 snapshot[id(value)] = d
+                if obj_snapshot is not None:
+                    obj_snapshot[id(value)] = value
             return d
         if (module := _stamped_module(value)) is not None:
             modules.append(module)
             if isinstance(value, ModuleType):
-                return f"module:{value.__name__}"
+                return f"module:{_import_name(value.__name__)}"
             # The position binds what sits in it: two same-file helpers, or
             # two modules, are not interchangeable at one read even though
             # the file's stamp covers both, so the binding travels with the
@@ -433,7 +440,28 @@ def _python_identity(
                         f"{_import_name(value.__module__)}.{value.__qualname__}"
                         f"#{ident}"
                     )
-                return f"{_import_name(value.__module__)}.{value.__qualname__}"
+                # A class's file covers its code but not its mutable
+                # class-level state (Config.FLAGS); that state is an input
+                # like an instance's attributes are.
+                binding = f"{_import_name(value.__module__)}.{value.__qualname__}"
+                if id(value) in frozen:
+                    if snapshot is not None:
+                        snapshot[id(value)] = frozen[id(value)]
+                        if obj_snapshot is not None:
+                            obj_snapshot[id(value)] = value
+                    return frozen[id(value)]
+                d = digests.get(id(value))
+                if d is None:
+                    if id(value) in active:
+                        return f"{binding}=<cycle>"
+                    if depth >= _MAX_KEY_DEPTH:
+                        raise _too_deep(where)
+                    digests[id(value)] = d = _type_digest(value, binding, where, depth)
+                if snapshot is not None:
+                    snapshot[id(value)] = f"{binding}={d}"
+                    if obj_snapshot is not None:
+                        obj_snapshot[id(value)] = value
+                return f"{binding}={d}"
             binding = (
                 f"{_import_name(type(value).__module__)}.{type(value).__qualname__}"
             )
@@ -443,6 +471,8 @@ def _python_identity(
             if id(value) in frozen:
                 if snapshot is not None:
                     snapshot[id(value)] = frozen[id(value)]
+                    if obj_snapshot is not None:
+                        obj_snapshot[id(value)] = value
                 return frozen[id(value)]
             d = digests.get(id(value))
             if d is None:
@@ -453,6 +483,8 @@ def _python_identity(
                 digests[id(value)] = d = _instance_digest(value, binding, where, depth)
             if snapshot is not None:
                 snapshot[id(value)] = f"{binding}={d}"
+                if obj_snapshot is not None:
+                    obj_snapshot[id(value)] = value
             return f"{binding}={d}"
         if isinstance(value, (FunctionType, type)):
             home = sys.modules.get(value.__module__)
@@ -521,6 +553,23 @@ def _python_identity(
             for attr in sorted(state):
                 member = describe(state[attr], f"{where}.{attr}", depth + 1)
                 h.update(f".{attr}={member}\0".encode())
+            return h.hexdigest()
+        finally:
+            active.discard(id(value))
+
+    def _type_digest(value, binding: str, where: str, depth: int) -> str:
+        """Digest a file-backed class's mutable class-level state."""
+        active.add(id(value))
+        try:
+            h = hashlib.sha256()
+            h.update(binding.encode())
+            for attr, member in sorted(vars(value).items()):
+                # Same convention as the type walk below: dunder entries are
+                # skipped unless they are functions.
+                if attr.startswith("__") and not isinstance(member, FunctionType):
+                    continue
+                d = describe(member, f"{where}.{attr}", depth + 1)
+                h.update(f".{attr}={d}\0".encode())
             return h.hexdigest()
         finally:
             active.discard(id(value))
@@ -624,14 +673,19 @@ def _mask_generator_mutations(
     run.  The pins land on the generator as ``__iron_key_mask__`` (a mapping
     of ``id`` to descriptor), which ``_compute_recipe_hash`` threads back
     into the walk -- so the entry a run builds is the one the next lookup
-    finds, while a change made anywhere outside the run, the user's edit
-    between compiles included, still moves the key and rebuilds.
+    finds.  A change made outside the run to an object the run did not pin
+    still moves the key and rebuilds; a pinned object is read at its pinned
+    identity until the next run re-derives the mask, so a user edit to a
+    *pinned* object between compiles is the one change that does not move
+    the key (it is indistinguishable from the generator's own rewrites).
 
     The mask lives on the function rather than in a cache entry: it is a
     same-process statement about which objects this generator rewrites, and
-    a fresh process re-derives it on its first cold compile.  An ``id`` can
-    be reused once its object dies, so a pin only outlives its object as
-    dead weight until the process ends.  This never raises on the compile's
+    a fresh process re-derives it on its first cold compile.  An ``id`` is
+    only unique while its object lives, so the mask keeps the pinned objects
+    referenced (``__iron_key_mask_keepalive__``) -- a dead pin could
+    otherwise be inherited by a new object that reuses the id, masking the
+    wrong object.  This never raises on the compile's
     behalf: a walk that cannot be taken, or a generator that cannot hold
     the attribute, simply leaves the key as sensitive as it was.
 
@@ -646,8 +700,9 @@ def _mask_generator_mutations(
     roots = [generator, *extra_roots]
     frozen = dict(getattr(generator, "__iron_key_mask__", None) or {})
     pre: dict[int, str] = {}
+    pre_objs: dict[int, object] = {}
     try:
-        _python_identity(roots, frozen=frozen, snapshot=pre)
+        _python_identity(roots, frozen=frozen, snapshot=pre, obj_snapshot=pre_objs)
     except Exception:  # the key's helper must not fail the compile
         logger.debug(
             "identity snapshot before generation failed; not masking", exc_info=True
@@ -678,6 +733,11 @@ def _mask_generator_mutations(
                     mask.update(moved)
                     try:
                         setattr(generator, "__iron_key_mask__", mask)
+                        # An id stays unique only while its object lives:
+                        # hold the pinned objects so no new object can
+                        # inherit their pins by reusing an id.
+                        keep = [pre_objs[i] for i in moved if i in pre_objs]
+                        setattr(generator, "__iron_key_mask_keepalive__", keep)
                     except (AttributeError, TypeError):
                         logger.debug(
                             "generator %r cannot hold a key mask; its own "

@@ -709,6 +709,57 @@ def test_swapped_fileless_helpers_rekey_their_positions():
     assert key(source("lb", "la")) != forward, "swapping them must move the key"
 
 
+def test_cache_key_covers_mutable_class_level_state(tmp_path):
+    """A file-backed class's mutable class attribute is keyed like instance state.
+
+    ``class Config: FLAGS = [...]`` read as ``Config.FLAGS[0]`` reaches mutable
+    state the file's stamp cannot see: the class object outlives its file's
+    text, so appending to FLAGS must move the key.
+    """
+    (tmp_path / "class_state.py").write_text(
+        "class Config:\n" "    FLAGS = ['-DSTEP=1']\n"
+    )
+    (tmp_path / "class_design.py").write_text(
+        "import numpy as np\n"
+        "\n"
+        "import class_state\n"
+        "from aie.iron.kernel import ExternalFunction\n"
+        "from aie.utils.compile.jit.markers import CompileTime, In, Out\n"
+        "\n"
+        'SOURCE = "void k(int *a, int *b) {}"\n'
+        "\n"
+        "\n"
+        "def k(a: In, b: Out, *, N: CompileTime[int]):\n"
+        "    ty = np.ndarray[(N,), np.dtype[np.int32]]\n"
+        "    return ExternalFunction(\n"
+        '        "k",\n'
+        '        object_file_name="k.o",\n'
+        "        source_string=SOURCE,\n"
+        "        arg_types=[ty, ty],\n"
+        "        compile_flags=class_state.Config.FLAGS,\n"
+        "    )\n"
+    )
+    sys.path.insert(0, str(tmp_path))
+    try:
+        import class_design
+
+        state = sys.modules["class_state"]
+
+        def key():
+            return CompilableDesign(
+                class_design.k, compile_kwargs={"N": 64}
+            )._compute_cache_hash()
+
+        before = key()
+        assert key() == before, "the key must be stable while nothing changes"
+        state.Config.FLAGS.append("-O2")
+        assert key() != before, "a class-level append must move the key"
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("class_design", None)
+        sys.modules.pop("class_state", None)
+
+
 def test_cache_key_survives_a_self_configuring_generator(tmp_path):
     """A generator that records what it learns keeps finding its own entry.
 
