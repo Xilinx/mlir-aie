@@ -1,0 +1,269 @@
+<!doctype html>
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="aie-visualize-svg" content="">
+<meta name="aie-visualize-title" content="">
+<title>AIE route visualization</title>
+<style>
+:root { color-scheme: light; font-family: "IBM Plex Sans", "DejaVu Sans", sans-serif; }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: grid; grid-template-rows: 48px minmax(0, 1fr); background: #f4f6f5; color: #1c2622; }
+header { display: flex; align-items: center; gap: 18px; padding: 0 18px; border-bottom: 1px solid #cbd3cf; background: #ffffff; }
+h1 { margin: 0; font-family: "IBM Plex Mono", "DejaVu Sans Mono", monospace; font-size: 14px; font-weight: 600; }
+button { border: 1px solid #aab5b0; border-radius: 4px; padding: 5px 9px; background: #ffffff; color: inherit; cursor: pointer; }
+button:hover { background: #edf1ef; }
+input[type="file"] { display: none; }
+#workspace { display: grid; grid-template-columns: 168px minmax(0, 1fr); min-height: 0; }
+aside { min-height: 0; overflow-y: auto; border-right: 1px solid #cbd3cf; padding: 10px 8px; background: #ffffff; }
+#flow-list { display: grid; gap: 2px; }
+.control-list { display: grid; gap: 2px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #dce2df; }
+.flow-row, .setting-row { display: grid; align-items: center; min-height: 30px; padding: 3px 6px; }
+.flow-row { grid-template-columns: 18px 14px 1fr; }
+.setting-row { grid-template-columns: 18px 1fr; }
+.flow-row, .setting-row { border-radius: 4px; cursor: pointer; font-size: 13px; }
+.flow-row:hover, .flow-row.hover-active, .setting-row:hover { background: #edf1ef; }
+.flow-row.selected { font-weight: 600; }
+.flow-row input, .setting-row input { margin: 0; }
+.flow-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--flow-color, #777777); }
+main { overflow: hidden; cursor: grab; }
+main.dragging { cursor: grabbing; }
+svg { width: 100%; height: 100%; display: block; user-select: none; }
+svg.hide-detail-buffers g.detail-buffers,
+svg.hide-detail-calls g.detail-calls,
+svg.hide-detail-arbitration g.detail-arbitration,
+svg.hide-detail-vias g.node.detail-vias { display: none; }
+svg.hide-detail-vias g.edge.detail-vias polygon { display: none; }
+svg.hide-detail-packet-ids g.detail-packet-ids text { display: none; }
+svg g.flow { opacity: 1; transition: opacity 100ms linear; }
+svg g.flow.hover-muted { opacity: 0.07; }
+svg g.flow.hover-active { opacity: 1; }
+svg g.flow.hover-active.route path,
+svg g.flow.hover-active.buffer-link path,
+svg g.flow.hover-active.call-link path,
+svg g.flow.hover-active.runtime-link path { stroke-width: 3.2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AIE route visualization</h1>
+  <button id="open" type="button">Open SVG</button>
+  <input id="file" type="file" accept="image/svg+xml,.svg">
+  <button id="reset" type="button">Reset view</button>
+</header>
+<div id="workspace">
+  <aside aria-label="Visualization controls">
+    <div id="config-list" class="control-list"></div>
+    <div id="flow-list"></div>
+  </aside>
+  <main id="viewport"></main>
+</div>
+<script>
+const viewport = document.getElementById("viewport");
+const configList = document.getElementById("config-list");
+const flowList = document.getElementById("flow-list");
+const fileInput = document.getElementById("file");
+let cleanupViewer = () => {};
+
+function inferredSVGURL() {
+  const url = new URL(location.href);
+  const configured = url.searchParams.get("svg") ||
+    document.querySelector('meta[name="aie-visualize-svg"]').content;
+  if (configured) return new URL(configured, url).href;
+  url.search = "";
+  url.hash = "";
+  url.pathname = url.pathname.replace(/\.html$/, ".svg");
+  return url.href;
+}
+
+function setTitle(source) {
+  const configured = new URL(location.href).searchParams.get("title") ||
+    document.querySelector('meta[name="aie-visualize-title"]').content;
+  const filename = source.split("/").pop().replace(/\.svg$/, "");
+  const title = configured || filename.replaceAll("-", " ") || "AIE route visualization";
+  document.title = title;
+  document.querySelector("h1").textContent = title;
+}
+
+function parseSVG(text) {
+  const document = new DOMParser().parseFromString(text, "image/svg+xml");
+  if (document.querySelector("parsererror")) throw new Error("Invalid SVG");
+  return document.documentElement;
+}
+
+function initializeViewer(svg) {
+  cleanupViewer();
+  configList.replaceChildren();
+  flowList.replaceChildren();
+  const originalViewBox = svg.hasAttribute("viewBox")
+    ? svg.getAttribute("viewBox").split(/\s+/).map(Number)
+    : [0, 0, svg.width.baseVal.value || viewport.clientWidth,
+        svg.height.baseVal.value || viewport.clientHeight];
+  let viewBox = [...originalViewBox];
+  let drag = null;
+  let suppressClick = false;
+  let hoveredFlows = [];
+  const selectedFlows = new Set();
+  const listeners = [];
+  const listen = (target, event, handler, options) => {
+    target.addEventListener(event, handler, options);
+    listeners.push(() => target.removeEventListener(event, handler, options));
+  };
+  const setViewBox = () => svg.setAttribute("viewBox", viewBox.join(" "));
+  const flowClasses = element =>
+    [...element.classList].filter(name => /^flow-\d+$/.test(name));
+  const renderHighlight = () => {
+    const names = [...new Set([...selectedFlows, ...hoveredFlows])];
+    const flows = svg.querySelectorAll("g.flow");
+    const matches = element => names.some(name => element.classList.contains(name));
+    flows.forEach(element => {
+      element.classList.toggle("hover-active", names.length > 0 && matches(element));
+      element.classList.toggle("hover-muted", names.length > 0 && !matches(element));
+    });
+    const stack = (kind, matched) => [...svg.querySelectorAll(`g.${kind}`)]
+      .filter(element => matches(element) === matched)
+      .forEach(element => element.parentNode.appendChild(element));
+    stack("node", false);
+    stack("node", true);
+    stack("edge", false);
+    stack("edge", true);
+    flowList.querySelectorAll(".flow-row").forEach(row => {
+      const name = row.dataset.flow;
+      row.classList.toggle("selected", selectedFlows.has(name));
+      row.classList.toggle("hover-active", hoveredFlows.includes(name));
+      row.querySelector("input").checked = selectedFlows.has(name);
+    });
+  };
+  const clearSelection = () => {
+    selectedFlows.clear();
+    hoveredFlows = [];
+    renderHighlight();
+  };
+  const toggleFlows = names => {
+    const remove = names.every(name => selectedFlows.has(name));
+    names.forEach(name => remove ? selectedFlows.delete(name) : selectedFlows.add(name));
+    renderHighlight();
+  };
+
+  const detailSettings = [
+    ["buffers", "Buffers"],
+    ["calls", "Calls"],
+    ["arbitration", "Arbitration"],
+    ["packet-ids", "Packet IDs"],
+    ["vias", "Route vias"],
+  ];
+  detailSettings.forEach(([name, label]) => {
+    if (!svg.querySelector(`g.detail-${name}`)) return;
+    const row = document.createElement("label");
+    row.className = "setting-row";
+    row.innerHTML = `<input type="checkbox" checked><span>${label}</span>`;
+    listen(row.querySelector("input"), "change", event => {
+      svg.classList.toggle(`hide-detail-${name}`, !event.target.checked);
+    });
+    configList.appendChild(row);
+  });
+  configList.hidden = !configList.children.length;
+
+  const flowNames = [...new Set([...svg.querySelectorAll("g.flow")].flatMap(flowClasses))]
+    .sort((first, second) => Number(first.slice(5)) - Number(second.slice(5)));
+  flowNames.forEach(name => {
+    const row = document.createElement("label");
+    row.className = "flow-row";
+    row.dataset.flow = name;
+    const route = svg.querySelector(`g.route.${name} path`);
+    const color = route?.getAttribute("stroke") || "#777777";
+    row.style.setProperty("--flow-color", color.split(":")[0]);
+    row.innerHTML = `<input type="checkbox"><span class="flow-swatch"></span><span>Flow ${name.slice(5)}</span>`;
+    listen(row.querySelector("input"), "change", () => toggleFlows([name]));
+    listen(row, "pointerenter", () => { hoveredFlows = [name]; renderHighlight(); });
+    listen(row, "pointerleave", () => { hoveredFlows = []; renderHighlight(); });
+    flowList.appendChild(row);
+  });
+  listen(svg, "pointerover", event => {
+    const element = event.target.closest("g.flow");
+    if (!element) return;
+    hoveredFlows = flowClasses(element);
+    renderHighlight();
+  });
+  listen(svg, "pointerout", event => {
+    if (event.relatedTarget?.closest?.("g.flow")) return;
+    hoveredFlows = [];
+    renderHighlight();
+  });
+  listen(svg, "pointerleave", () => { hoveredFlows = []; renderHighlight(); });
+  listen(svg, "wheel", event => {
+    event.preventDefault();
+    const scale = event.deltaY < 0 ? 0.86 : 1.16;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const cursor = point.matrixTransform(svg.getScreenCTM().inverse());
+    viewBox[0] = cursor.x - (cursor.x - viewBox[0]) * scale;
+    viewBox[1] = cursor.y - (cursor.y - viewBox[1]) * scale;
+    viewBox[2] *= scale;
+    viewBox[3] *= scale;
+    setViewBox();
+  }, {passive: false});
+  listen(viewport, "pointerdown", event => {
+    const element = event.target.closest("g.flow");
+    drag = {x: event.clientX, y: event.clientY, viewBox: [...viewBox], moved: false,
+      flows: element ? flowClasses(element) : []};
+    viewport.setPointerCapture(event.pointerId);
+    viewport.classList.add("dragging");
+  });
+  listen(viewport, "pointermove", event => {
+    if (!drag) return;
+    drag.moved ||= Math.abs(event.clientX - drag.x) + Math.abs(event.clientY - drag.y) > 3;
+    viewBox[0] = drag.viewBox[0] - (event.clientX - drag.x) * viewBox[2] / viewport.clientWidth;
+    viewBox[1] = drag.viewBox[1] - (event.clientY - drag.y) * viewBox[3] / viewport.clientHeight;
+    setViewBox();
+  });
+  listen(viewport, "pointerup", event => {
+    if (!drag) return;
+    if (!drag.moved && drag.flows.length) toggleFlows(drag.flows);
+    suppressClick = drag.moved || drag.flows.length > 0;
+    drag = null;
+    viewport.releasePointerCapture(event.pointerId);
+    viewport.classList.remove("dragging");
+  });
+  listen(viewport, "click", () => {
+    if (suppressClick) { suppressClick = false; return; }
+    clearSelection();
+  });
+  listen(document.querySelector("aside"), "click", event => {
+    if (!event.target.closest(".flow-row, .setting-row")) clearSelection();
+  });
+  listen(document.getElementById("reset"), "click", () => {
+    clearSelection();
+    viewBox = [...originalViewBox];
+    setViewBox();
+  });
+  cleanupViewer = () => listeners.forEach(remove => remove());
+}
+
+function showSVG(text, source) {
+  const svg = document.importNode(parseSVG(text), true);
+  viewport.replaceChildren(svg);
+  setTitle(source);
+  initializeViewer(svg);
+}
+
+async function loadSVG(url) {
+  const response = await fetch(url, {cache: "no-store"});
+  if (!response.ok) throw new Error(`Could not load ${url}`);
+  showSVG(await response.text(), url);
+}
+
+document.getElementById("open").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files[0];
+  if (file) showSVG(await file.text(), file.name);
+});
+loadSVG(inferredSVGURL()).catch(() => fileInput.click());
+</script>
+</body>
+</html>
