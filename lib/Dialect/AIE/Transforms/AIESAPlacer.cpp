@@ -858,6 +858,16 @@ int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
     }
     penalty += std::max(0, used[dir] - max[dir]) * config.dmaPenaltyPerChannel;
   }
+  if (targetModel->getTileType(tilePos.col, tilePos.row) ==
+      AIETileType::ShimNOCTile) {
+    SmallVector<Operation *> onTile;
+    for (auto &[lt, peak] : runtimeBdIds.users())
+      if (auto at = currentPlacement.find(lt);
+          at != currentPlacement.end() && at->second == tilePos)
+        onTile.push_back(lt);
+    penalty +=
+        runtimeBdIds.shortfall(onTile, tilePos) * config.dmaPenaltyPerChannel;
+  }
   return penalty;
 }
 
@@ -1422,8 +1432,8 @@ int64_t SAPlacer::computeTileMemoryWeight(Operation *tile) const {
 LogicalResult SAPlacer::mergeMemShimTiles(DeviceOp device) {
   // After SA, each logical tile has its own physical position.
   // Mem/shim tiles in the same column and of the same type share a
-  // physical tile. The SA's penalty model already enforces DMA capacity
-  // and memory constraints, so merge unconditionally.
+  // physical tile. The SA's penalty model already enforces DMA capacity,
+  // runtime BD ids and memory constraints, so merge unconditionally.
 
   // Group non-compute logical tiles by (col, tileType)
   llvm::DenseMap<std::pair<int, AIETileType>, SmallVector<Operation *>> groups;
@@ -1523,6 +1533,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });
+  runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
   cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
   LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "
                           << cascadeAdjacency.edges.size() << " edges\n");

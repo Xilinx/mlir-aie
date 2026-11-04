@@ -1642,6 +1642,15 @@ def AIE_DMAStartTaskOp
     bool getPushIssueToken(DMAConfigureTaskOp task) {
       return task.getIssueToken() && !getNoToken();
     }
+    // The alignment the head buffer descriptor id of `task` needs: a push
+    // whose repeat count is a parameter writes that id with an update that
+    // clears its low two bits.
+    static uint32_t headBdIdAlignment(mlir::Value task) {
+      return llvm::any_of(task.getUsers(), [](mlir::Operation *user) {
+        auto start = llvm::dyn_cast<DMAStartTaskOp>(user);
+        return start && start.hasRepeatParameter();
+      }) ? 4 : 1;
+    }
   }];
 
   let extraClassDefinition = [{

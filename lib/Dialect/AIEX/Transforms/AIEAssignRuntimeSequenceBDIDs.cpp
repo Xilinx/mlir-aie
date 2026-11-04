@@ -440,16 +440,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (result.wasInterrupted())
       return failure();
 
-    // A start whose repeat count is a scratchpad parameter pushes the head
-    // BD with an update that clears the low two bits of its id.
-    AIE::DMABDOp alignedHead =
-        llvm::any_of(op->getUsers(),
-                     [](Operation *user) {
-                       auto start = dyn_cast<DMAStartTaskOp>(user);
-                       return start && start.hasRepeatParameter();
-                     })
-            ? op.getFirstBd()
-            : nullptr;
+    AIE::DMABDOp head = op.getFirstBd();
+    uint32_t headAlignment = DMAStartTaskOp::headBdIdAlignment(op.getResult());
 
     // Now allocate BD IDs for all unspecified BDs.
     result = op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
@@ -470,7 +462,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       // channelIndex matters on a MemTile, where the AIE2 model partitions
       // BDs by channel parity (isBdChannelAccessible: an even channel can
       // only submit ids below 24, an odd channel only 24 and above).
-      uint32_t alignment = bd_op == alignedHead ? 4 : 1;
+      uint32_t alignment = bd_op == head ? headAlignment : 1;
       std::optional<int32_t> next_id = gen.nextBdId(op.getChannel(), alignment);
       while (!next_id && reclaimBds && succeeded(reclaimFor(op)))
         next_id = gen.nextBdId(op.getChannel(), alignment);

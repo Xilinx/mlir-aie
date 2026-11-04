@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -207,7 +208,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   }
   countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
-  buildRuntimeBdProfiles(device, objectFifos);
+  runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });
@@ -2014,8 +2015,10 @@ void SequentialPlacer::buildStreamDemand(
       broadcastFanoutUsed[{tile.getCol(), tile.getRow()}] += fanout;
 }
 
-void SequentialPlacer::buildRuntimeBdProfiles(
-    DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos) {
+Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
+                                   ArrayRef<ObjectFifoCreateOp> objectFifos,
+                                   const AIETargetModel &targetModel)
+    : targetModel(&targetModel) {
   llvm::StringMap<Operation *> shimOfFifo;
   for (auto of : objectFifos) {
     SmallVector<Value> ends{of.getProducerTile()};
@@ -2029,32 +2032,44 @@ void SequentialPlacer::buildRuntimeBdProfiles(
   if (shimOfFifo.empty())
     return;
   // How a descriptor splits depends on the tile type, not on its column.
-  auto shimTile = llvm::find_if(availability.nonCompTiles, [&](TileID t) {
-    return targetModel->getTileType(t.col, t.row) == AIETileType::ShimNOCTile;
-  });
-  if (shimTile == availability.nonCompTiles.end())
+  std::optional<int> shimCol;
+  for (int col = 0; col < targetModel.columns() && !shimCol; ++col)
+    if (targetModel.getTileType(col, 0) == AIETileType::ShimNOCTile)
+      shimCol = col;
+  if (!shimCol)
     return;
 
-  // (shim LTO, change in live BDs) in program order; a task holds its BDs from
-  // configure to await or free, else to the end of its sequence.
-  SmallVector<std::pair<Operation *, int>> events;
   device.walk([&](RuntimeSequenceOp seq) {
-    llvm::MapVector<Value, std::pair<Operation *, int>> live;
+    auto &events = sequences.emplace_back();
+    DenseMap<Value, unsigned> taskOf;
     seq.walk([&](Operation *op) {
-      if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
+      if (auto cfg = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
         Operation *shim =
-            shimOfFifo.lookup(task.getAlloc().getRootReference().getValue());
+            shimOfFifo.lookup(cfg.getAlloc().getRootReference().getValue());
         if (!shim)
           return;
-        int bds = 0;
-        task.getBody().walk([&](DMABDOp bd) {
-          auto plan = AIEX::decomposeTaskBdPattern(
-              bd, *targetModel, shimTile->col, shimTile->row);
-          bds += succeeded(plan) && !plan->pieces.empty() ? plan->pieces.size()
-                                                          : 1;
+        Task task{
+            shim, {}, AIEX::DMAStartTaskOp::headBdIdAlignment(cfg.getResult())};
+        cfg.getBody().walk([&](DMABDOp bd) {
+          std::optional<uint32_t> pinned;
+          if (std::optional<int32_t> id = bd.getBdId())
+            pinned = static_cast<uint32_t>(*id);
+          auto plan =
+              AIEX::decomposeTaskBdPattern(bd, targetModel, *shimCol, 0);
+          size_t pieces = succeeded(plan) && !plan->pieces.empty()
+                              ? plan->pieces.size()
+                              : 1;
+          // A pinned id stays with the first piece.
+          task.bdIds.push_back(pinned);
+          task.bdIds.append(pieces - 1, std::nullopt);
         });
-        live[task.getResult()] = {shim, bds};
-        events.push_back({shim, bds});
+        Peak &peak = peaks[shim];
+        peak.constrained |=
+            task.headAlignment > 1 ||
+            llvm::any_of(task.bdIds, [](auto id) { return id; });
+        taskOf[cfg.getResult()] = tasks.size();
+        events.push_back({tasks.size(), true});
+        tasks.push_back(std::move(task));
         return;
       }
       Value released;
@@ -2062,25 +2077,81 @@ void SequentialPlacer::buildRuntimeBdProfiles(
         released = await.getTask();
       else if (auto free = dyn_cast<AIEX::DMAFreeTaskOp>(op))
         released = free.getTask();
-      auto *it = live.find(released);
-      if (it == live.end())
-        return;
-      events.push_back({it->second.first, -it->second.second});
-      live.erase(it);
+      if (auto it = taskOf.find(released); it != taskOf.end()) {
+        events.push_back({it->second, false});
+        taskOf.erase(it);
+      }
     });
-    for (auto &[task, held] : live)
-      events.push_back({held.first, -held.second});
   });
-
-  llvm::MapVector<Operation *, int> running;
-  for (auto &[shim, delta] : events)
-    if (running.insert({shim, 0}).second)
-      runtimeBdProfiles[shim].assign(events.size(), 0);
-  for (auto [idx, event] : llvm::enumerate(events)) {
-    running[event.first] += event.second;
-    for (auto &[shim, n] : running)
-      runtimeBdProfiles[shim][idx] = n;
+  for (const auto &events : sequences) {
+    DenseMap<Operation *, int> live;
+    for (auto [index, configured] : events) {
+      const Task &task = tasks[index];
+      int &held = live[task.logicalTile];
+      int bds = static_cast<int>(task.bdIds.size());
+      held += configured ? bds : -bds;
+      Peak &peak = peaks[task.logicalTile];
+      peak.live = std::max(peak.live, held);
+    }
   }
+}
+
+int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
+                                    TileID tile) const {
+  std::vector<Operation *> key;
+  int live = 0;
+  bool constrained = false;
+  for (Operation *lt : onTile)
+    if (auto peak = peaks.find(lt); peak != peaks.end()) {
+      key.push_back(lt);
+      live += peak->second.live;
+      constrained |= peak->second.constrained;
+    }
+  // Lowest-free ids never fragment, so peaks that fit together always do.
+  if (!constrained &&
+      live <= static_cast<int>(targetModel->getNumBDs(tile.col, tile.row)))
+    return 0;
+  llvm::sort(key);
+  auto [cached, added] = shortfallOf.try_emplace(key, 0);
+  if (!added)
+    return cached->second;
+  int &missing = cached->second;
+  for (const auto &events : sequences) {
+    BdIdGenerator ids(tile.col, tile.row, *targetModel);
+    DenseMap<unsigned, SmallVector<uint32_t>> held;
+    for (auto [index, configured] : events) {
+      const Task &task = tasks[index];
+      if (!llvm::binary_search(key, task.logicalTile))
+        continue;
+      if (!configured) {
+        for (uint32_t id : held.lookup(index))
+          ids.freeBdId(id);
+        held.erase(index);
+        continue;
+      }
+      SmallVector<uint32_t> &taken = held[index];
+      for (std::optional<uint32_t> pinned : task.bdIds) {
+        if (!pinned)
+          continue;
+        if (ids.bdIdAlreadyAssigned(*pinned)) {
+          ++missing;
+          continue;
+        }
+        ids.assignBdId(*pinned);
+        taken.push_back(*pinned);
+      }
+      for (auto [i, pinned] : llvm::enumerate(task.bdIds)) {
+        if (pinned)
+          continue;
+        if (std::optional<uint32_t> id =
+                ids.nextBdId(0, i == 0 ? task.headAlignment : 1))
+          taken.push_back(*id);
+        else
+          ++missing;
+      }
+    }
+  }
+  return missing;
 }
 
 bool SequentialPlacer::fitsStreamAndBdBudgets(Operation *logicalTile,
@@ -2105,16 +2176,14 @@ bool SequentialPlacer::fitsStreamAndBdBudgets(Operation *logicalTile,
                               tile.col, tile.row, WireBundle::South))))
     return false;
 
-  auto profile = runtimeBdProfiles.find(logicalTile);
-  if (profile == runtimeBdProfiles.end())
+  if (!runtimeBdIds.uses(logicalTile))
     return true;
-  SmallVector<int> used = availability.runtimeBdsUsed.lookup(tile);
-  used.resize(profile->second.size(), 0);
-  int numBDs = tm.getNumBDs(tile.col, tile.row);
-  return llvm::all_of(llvm::zip(profile->second, used), [&](auto live) {
-    return !std::get<0>(live) ||
-           std::get<0>(live) + std::get<1>(live) <= numBDs;
-  });
+  // Only the ids this LTO adds to: a tile a fallback already overfilled stays
+  // open to LTOs whose tasks take none.
+  SmallVector<Operation *> onTile = availability.runtimeBdTiles.lookup(tile);
+  int before = runtimeBdIds.shortfall(onTile, tile);
+  onTile.push_back(logicalTile);
+  return runtimeBdIds.shortfall(onTile, tile) == before;
 }
 
 void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
@@ -2124,13 +2193,8 @@ void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
     availability.namedChannelsUsed[tile].insert(named);
   if (auto it = streamDemand.find(logicalTile); it != streamDemand.end())
     availability.streamsUsed[tile] += it->second;
-  auto profile = runtimeBdProfiles.find(logicalTile);
-  if (profile == runtimeBdProfiles.end())
-    return;
-  SmallVector<int> &used = availability.runtimeBdsUsed[tile];
-  used.resize(profile->second.size(), 0);
-  for (auto [idx, live] : llvm::enumerate(profile->second))
-    used[idx] += live;
+  if (runtimeBdIds.uses(logicalTile))
+    availability.runtimeBdTiles[tile].push_back(logicalTile);
 }
 
 void TileAvailability::removeTile(TileID tile, AIETileType type) {
