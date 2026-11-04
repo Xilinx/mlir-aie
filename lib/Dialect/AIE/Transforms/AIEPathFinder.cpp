@@ -73,10 +73,9 @@ constexpr int maxReorderedStall = 300;
 // fit the fabric gives up. In the nightly's designs, none that routed took
 // over 275.
 constexpr int maxOverusedStall = 400;
-// Routings that fit the fabric, rejected by the routing check without it
-// naming fewer faults than before or teaching a new split, relation or
-// untrunk, before an attempt gives up. In the lit corpus, none that routed
-// took over 506 counting fewer faults alone.
+// Iterations, once a routing has fit the fabric, without the routing check
+// naming fewer faults than before or teaching a split, relation, untrunk or
+// no-join pair it never taught this attempt, before the attempt gives up.
 constexpr int maxRejectedStall = 600;
 // How much faster a stalled routing's overused channels that only circuit
 // trees take accrue history, so the trees spread out sooner.
@@ -1048,6 +1047,11 @@ struct Pathfinder::RouteState {
     }
   };
   std::vector<std::set<IdSplit>> splitsOf;
+  // Each split, relation, untrunk and no-join pair the routing check has taught
+  // this attempt, counted once: a stall drops splitsOf, and the check teaching
+  // the same split again is no progress.
+  std::set<std::pair<int, IdSplit>> splitsTaught;
+  int lessons = 0;
   // A split one tree cannot make, since a destination takes both ids, moves
   // the second id to a part of its own. Parts of a source split apart at a
   // tile leave it by different master ports: the part routed later keeps off
@@ -2522,12 +2526,17 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
         !st.parts[flow].isPriorityFlow && inseparable())
       other = st.splitPart(flow, {split.b});
     if (flow != other) {
-      if (st.partSplits[flow].insert({split.at, other}).second)
+      if (st.partSplits[flow].insert({split.at, other}).second) {
         illegalEdges++;
+        st.lessons++;
+      }
       st.partSplits[other].insert({split.at, flow});
     } else if (st.splitsOf[flow]
                    .insert({split.at, split.a, split.b, apart})
                    .second) {
+      st.lessons +=
+          st.splitsTaught.insert({flow, {split.at, split.a, split.b, apart}})
+              .second;
       LLVM_DEBUG(llvm::dbgs()
                  << "Split ids " << split.a << " and " << split.b << " from "
                  << describeTilePort(split.src.coords, split.src.port)
@@ -2560,7 +2569,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
             llvm::count_if(st.parts[x].dsts, [&](const PathEndPoint &dst) {
               return llvm::is_contained(st.parts[y].dsts, dst);
             }) < 2) {
-          related |= st.noJoin.insert({x, y}).second;
+          st.lessons += st.noJoin.insert({x, y}).second;
           st.noJoin.insert({y, x});
         }
     if (!st.togetherSources.insert(pair).second)
@@ -2576,6 +2585,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
   }
   if (related) {
     illegalEdges++;
+    st.lessons++;
     st.relateParts();
   }
   for (const PathEndPoint &src : faults.untrunk)
@@ -2584,6 +2594,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
                  << "Untrunk: " << describeTilePort(src.coords, src.port)
                  << "\n");
       illegalEdges++;
+      st.lessons++;
     }
   std::set<std::pair<int, int>> faulted;
   bool unjoined = false;
@@ -2618,7 +2629,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
                  maxMeetFaults)
       st.reorder(flow, other, /*again=*/true);
     else
-      st.noJoin.insert({flow, other});
+      st.lessons += st.noJoin.insert({flow, other}).second;
   return illegalEdges;
 }
 
@@ -2665,8 +2676,8 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   // Iterations of the current stall that moved circuit trees first.
   int reorderedStall = 0;
   int overlayFaults = 0;
-  // Routings that fit the fabric but the routing check rejects, since it last
-  // named fewer connections to move.
+  // Once a routing has fit the fabric, the iterations since the routing check
+  // last named fewer faults or taught a lesson, overused ones included.
   int fewestRejected = std::numeric_limits<int>::max(), sinceFewestRejected = 0;
   do {
     if (usable && (iterationCount + 1 >= maxIterations ||
@@ -2688,7 +2699,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                      : reorderedStall >= maxReorderedStall
                          ? "circuit trees routed first stopped helping"
                      : sinceFewestRejected >= maxRejectedStall
-                         ? "the routing check stopped naming fewer faults"
+                         ? "the routing check stopped making progress"
                          : "the overuse stalled")
                  << ")...unable to find routing for flows.\n");
       // Packet streams took part if they share a switchbox or link with an
@@ -2852,6 +2863,13 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     } else {
       sinceFewest++;
     }
+    // Overuse after a fit is out of reach of maxOverusedStall, which needs the
+    // attempt never to have fit, so it stalls the routing check's count.
+    if (fewestIllegal == 0 && illegalEdges > 0) {
+      sinceFewestRejected++;
+      LLVM_DEBUG(llvm::dbgs() << "Rejected-routing stall "
+                              << sinceFewestRejected << '\n');
+    }
     if (illegalEdges && sinceFewest >= stallIterations) {
       auto losing = [&](int flow) {
         return !st.parts[flow].packetId &&
@@ -2891,20 +2909,21 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                   [&](std::unique_ptr<RoutingFailure> rejected) -> llvm::Error {
                     LLVM_DEBUG(llvm::dbgs() << "Routing rejected: "
                                             << rejected->reason << '\n');
-                    int named = rejected->faults.connections.size();
+                    int lessons = st.lessons;
                     illegalEdges += applyRoutingFaults(st, rejected->faults);
-                    // A rejection that teaches a split, a relation or an
-                    // untrunk changes the next routing too.
-                    if (illegalEdges < fewestRejected || illegalEdges > named) {
+                    if (illegalEdges < fewestRejected || st.lessons > lessons) {
                       fewestRejected = std::min(fewestRejected, illegalEdges);
                       sinceFewestRejected = 0;
                     } else {
                       sinceFewestRejected++;
                     }
+                    LLVM_DEBUG(llvm::dbgs()
+                               << "Rejected-routing stall "
+                               << sinceFewestRejected << '\n');
                     overlayFaults = rejected->faults.onlyOverlayMasters
                                         ? overlayFaults + 1
                                         : 0;
-                    stuck = illegalEdges == 0;
+                    stuck = illegalEdges == 0 && st.lessons == lessons;
                     if (rejected->isA(DeadlockProneRouting::classID())) {
                       if (!usable) {
                         usable = st.routing;
