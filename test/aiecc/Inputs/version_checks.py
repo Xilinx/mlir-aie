@@ -1,9 +1,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-import importlib.util
 import pathlib
-import re
 import subprocess
 import sys
 import tempfile
@@ -14,12 +12,6 @@ with tempfile.TemporaryDirectory() as directory:
     source = root / "source"
     source.mkdir()
     header = root / "AIECCVersion.h"
-
-    spec = importlib.util.spec_from_file_location("version_helper", sys.argv[2])
-    helper = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(helper)
-    helper._HERE = source
-    python_version = root / "_build_version.py"
 
     def stamp():
         subprocess.run(
@@ -32,16 +24,7 @@ with tempfile.TemporaryDirectory() as directory:
             ],
             check=True,
         )
-        content = header.read_text()
-        helper.write_build_metadata(python_version)
-        values = {}
-        exec(python_version.read_text(), values)
-        revision = re.search(r'AIECC_GIT_SHA "(.*)"', content)[1]
-        dirty = int(re.search(r"AIECC_GIT_DIRTY (-?\d+)", content)[1])
-        assert values["revision"] == (None if revision == "unknown" else revision)
-        assert values["dirty"] == (None if dirty == -1 else bool(dirty))
-        assert values["version"]
-        return content
+        return header.read_text()
 
     assert 'AIECC_GIT_SHA "unknown"' in stamp()
     assert "AIECC_GIT_DIRTY -1" in stamp()
@@ -69,10 +52,8 @@ with tempfile.TemporaryDirectory() as directory:
     assert f'AIECC_GIT_SHA "{revision}"' in clean
     assert "AIECC_GIT_DIRTY 0" in clean
     modified = header.stat().st_mtime_ns
-    python_modified = python_version.stat().st_mtime_ns
     assert stamp() == clean
     assert header.stat().st_mtime_ns == modified
-    assert python_version.stat().st_mtime_ns == python_modified
     (source / "untracked.txt").write_text("not a source change\n")
     assert stamp() == clean
     tracked.write_text("modified\n")

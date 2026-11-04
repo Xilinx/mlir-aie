@@ -107,23 +107,16 @@ mlir::FailureOr<llvm::json::Value> ironProvenance(mlir::ModuleOp module) {
     module.emitError("iron.provenance must be a dictionary");
     return mlir::failure();
   }
-  llvm::json::Object result{
-      {"version", nullptr}, {"revision", nullptr}, {"dirty", nullptr}};
+  llvm::json::Object result{{"version", nullptr}, {"revision", nullptr}};
   for (auto field : dictionary) {
     auto name = field.getName().getValue();
-    if (name == "version" || name == "revision") {
-      if (auto value = llvm::dyn_cast<mlir::StringAttr>(field.getValue())) {
-        result[name] = value.getValue();
-        continue;
-      }
-    } else if (name == "dirty") {
-      if (auto value = llvm::dyn_cast<mlir::BoolAttr>(field.getValue())) {
-        result[name] = value.getValue();
-        continue;
-      }
+    auto value = llvm::dyn_cast<mlir::StringAttr>(field.getValue());
+    if ((name == "version" || name == "revision") && value) {
+      result[name] = value.getValue();
+      continue;
     }
     module.emitError("invalid iron.provenance field '")
-        << name << "': expected version/revision strings or a dirty boolean";
+        << name << "': expected version/revision strings";
     return mlir::failure();
   }
   return llvm::json::Value(std::move(result));

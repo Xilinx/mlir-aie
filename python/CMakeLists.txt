@@ -238,20 +238,6 @@ add_mlir_python_modules(AIEPythonModules
     AIEAggregateCAPI
 )
 
-# Stamp the Python sources independently of the compiler used to consume their IR.
-set(AIE_PYTHON_BUILD_VERSION "${AIE_PYTHON_PACKAGES_DIR}/aie/_build_version.py")
-add_custom_target(aie_python_version ALL
-  BYPRODUCTS "${AIE_PYTHON_BUILD_VERSION}"
-  COMMAND ${Python3_EXECUTABLE}
-    "${AIE_SOURCE_DIR}/utils/mlir_aie_wheels/_version_helper.py"
-    --output "${AIE_PYTHON_BUILD_VERSION}"
-  COMMENT "Updating Python bindings build identity"
-  VERBATIM)
-add_dependencies(AIEPythonModules aie_python_version)
-install(FILES "${AIE_PYTHON_BUILD_VERSION}"
-  DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie"
-  COMPONENT aie-python)
-
 # Vendor eudsl-python-extras into the build directory
 add_custom_command(
   TARGET AIEPythonModules POST_BUILD

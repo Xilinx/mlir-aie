@@ -29,7 +29,7 @@ def generate(source, expected):
     attr = ir.DictAttr(module.operation.attributes["iron.provenance"])
     values = {
         name: attr[name].value if name in attr else None
-        for name in ("version", "revision", "dirty")
+        for name in ("version", "revision")
     }
     # Save the producer's metadata before the separate compiler process runs.
     pathlib.Path(source).write_text(str(module))
@@ -39,7 +39,6 @@ def generate(source, expected):
 def check(directory, expected):
     root = pathlib.Path(directory)
     wanted = json.loads(pathlib.Path(expected).read_text())
-    assert wanted["version"] and wanted["revision"]
     for name in ("full.elf", "partial.elf"):
         info = provenance((root / name).read_bytes())
         assert info["iron"] == wanted, info
@@ -56,14 +55,13 @@ def validate(directory):
     cases = [
         ("", None),
         ('iron.entry = "main:sequence"', None),
-        ("iron.provenance = {}", dict(version=None, revision=None, dirty=None)),
+        ("iron.provenance = {}", dict(version=None, revision=None)),
         (
-            'iron.provenance = {version = "old-bindings", revision = "abcdef0", dirty = true}',
-            dict(version="old-bindings", revision="abcdef0", dirty=True),
+            'iron.provenance = {version = "old-bindings", revision = "abcdef0"}',
+            dict(version="old-bindings", revision="abcdef0"),
         ),
         ('iron.provenance = "bad"', "must be a dictionary"),
         ("iron.provenance = {version = 1 : i32}", "invalid iron.provenance field"),
-        ('iron.provenance = {dirty = "true"}', "invalid iron.provenance field"),
         ('iron.provenance = {unknown = "value"}', "invalid iron.provenance field"),
     ]
     for i, (attrs, expected) in enumerate(cases):

@@ -534,34 +534,25 @@ Schema 1 records:
   supplied as IR. This identifies the selected toolchain, not the producer of
   imported core ELFs or externally compiled objects.
 
-`Program.resolve_program()` in the IRON Python API adds an `iron.provenance`
-module dictionary, for example:
+`Program.resolve_program()` adds an `iron.provenance` module dictionary using
+only the existing `aie.__version__` and `aie.__commit__` package fields:
 
 ```mlir
-module attributes {iron.provenance = {
-  version = "1.2.3.dev4", revision = "0123456789abcdef0123456789abcdef01234567", dirty = false
-}} {
+module attributes {iron.provenance = {version = "1.2.3", revision = "abcdef0"}} {
   // design
 }
 ```
 
-When present, aiecc copies it into an `iron` object in the artifact JSON, with
-`version`, `revision` and `dirty` fields. This identifies the Python bindings
-that generated the module independently of the compiler that later consumes it.
-The version is the wheel version (or the same Git-derived version for CMake
-builds), and the revision is the full source SHA captured when the bindings
-were built. The dirty flag follows the compiler's tracked-source rules above.
-Missing fields become `null`; an empty dictionary still identifies IRON usage.
-Malformed fields are diagnosed. Without the attribute, the `iron` object is
-omitted: absence does not establish that IRON was never used.
+aiecc copies these fields into an `iron` object in the artifact JSON. CMake
+builds without package version information emit an empty dictionary; missing
+fields become `null`. Without the attribute, the `iron` object is omitted.
+The marker identifies IRON's use in assembling the module, including composed
+programs; it does not attribute imported designs or kernels to that version.
 
-The attribute travels with saved MLIR and ordinary module transformations;
-compiling the file from the command line requires no Python installation.
-Tools that construct a new module by copying only its operations must also
-preserve this module attribute. It records use of the IRON API to assemble the
-module, including composed programs, rather than attributing imported designs
-or kernels to that bindings version. Only the loaded package's build metadata
-is consulted; generation performs no Git queries or searches for another wheel.
+The attribute stays with saved IR when compiled later. Tools that construct a
+new module by copying only operations must also preserve this attribute.
+aiecc adds the ELF section directly, using the same code for in-process AIEBU
+and external `aiebu-asm` output.
 
 Provenance describes the compilation invocation. A multi-device invocation's
 per-device artifacts carry the same selected-device list. With `--xclbin-input`,
