@@ -59,9 +59,12 @@ public:
   /// ends must move a whole number of that order over its run.
   bool keepsUp(llvm::ArrayRef<int64_t> depths);
 
-private:
+  /// Whether a channel moving objects in `order` forever, through pools of
+  /// `depths`, never has itself and the core both waiting.
   bool keepsUp(llvm::ArrayRef<unsigned> order,
                llvm::ArrayRef<int64_t> depths) const;
+
+private:
   mlir::LogicalResult readWholeRun(
       CoreOp core,
       llvm::ArrayRef<std::pair<ObjectFifoReleaseOp, unsigned>> releases,

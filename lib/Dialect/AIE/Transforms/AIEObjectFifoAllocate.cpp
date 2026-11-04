@@ -1340,6 +1340,23 @@ struct AIEObjectFifoAllocatePass
         std::string reason;
         if (succeeded(turns.read(cores, reason)) && !turns.keepsUp(depths))
           reason = "would stall";
+        // The peers' chain moves the same turns, so a core at their other end
+        // must keep up with that order too.
+        SmallVector<ObjectFifoCoreEndpointOp> peerCores;
+        SmallVector<int64_t> peerDepths;
+        for (ObjectFifoDmaEndpointOp peer : peers) {
+          peerCores.push_back(cachedCoreEnd(peer));
+          peerDepths.push_back(peer.getPoolOp().getDepth());
+        }
+        if (reason.empty() &&
+            llvm::any_of(peerCores, [](auto c) { return c; })) {
+          CoreTurns peerTurns;
+          if (llvm::any_of(peerCores, [](auto c) { return !c; }))
+            reason = "only some peers have a core at their other end";
+          else if (succeeded(peerTurns.read(peerCores, reason)) &&
+                   !peerTurns.keepsUp(turns.turns(), peerDepths))
+            reason = "the peers' core would stall";
+        }
         // Over plain pools the chain unrolls to whole passes over each; past
         // the peers' channel BDs, walking them whole takes one a turn.
         bool overflows = false;
