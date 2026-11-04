@@ -24,6 +24,7 @@ module {
           aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
           aie.end
         } {alloc = @in, issue_token = true}
+        // expected-note@+1 {{the transfer}}
         aiex.dma_start_task(%in)
         aiex.dma_await_task(%in)
       }
