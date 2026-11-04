@@ -8,6 +8,11 @@
 #ifndef CERT_OPS
 #define CERT_OPS
 
+// A CERT microcontroller register index: r0..r7 are local to a job and
+// r8..r23 are shared by all jobs.
+def AIEX_CertRegisterAttr
+    : ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<23>]>;
+
 def AIE_CertUcDmaChainOp
     : AIEX_Op<"cert.uc_dma_chain", [AIESymbol, SingleBlockImplicitTerminator<
                                                    "AIE::EndOp">]> {
@@ -156,6 +161,63 @@ def AIE_CertWrite32Op : AIEX_Op<"cert.write32", [HasParent<"CertJobOp">]> {
   }];
 }
 
+def AIE_CertWrite32DOp : AIEX_Op<"cert.write32_d", [HasParent<"CertJobOp">]> {
+  let summary = "Write a 32-bit value, taking the address or value from a "
+                "register";
+  let description = [{
+    Like `cert.write32`, but `address` and `value` may each name a register
+    instead of an immediate. With `address_is_reg`, `address` is a register
+    index r0..r23 holding the address; with `value_is_reg`, `value` is a
+    register index holding the value.
+
+    Example:
+    ```
+      cert.write32_d(3, 5) {address_is_reg}
+    ```
+  }];
+  let arguments = (ins UI32Attr:$address, UI32Attr:$value,
+      UnitAttr:$address_is_reg, UnitAttr:$value_is_reg);
+  let assemblyFormat = [{
+    `(` $address `,` $value `)` attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_CertRead32Op : AIEX_Op<"cert.read32", [HasParent<"CertJobOp">]> {
+  let summary = "Read a 32-bit value from an address into a register";
+  let description = [{
+    Reads the 32-bit value at `address` into register `value`.
+
+    Example:
+    ```
+      cert.read32(1, 0x1000)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$value, UI32Attr:$address);
+  let assemblyFormat = [{
+    `(` $value `,` $address `)` attr-dict
+  }];
+}
+
+def AIE_CertRead32DOp : AIEX_Op<"cert.read32_d", [HasParent<"CertJobOp">]> {
+  let summary = "Read a 32-bit value from a register-held address into a "
+                "register";
+  let description = [{
+    Reads the 32-bit value at the address held in register `address` into
+    register `value`.
+
+    Example:
+    ```
+      cert.read32_d(0, 1)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$address,
+      AIEX_CertRegisterAttr:$value);
+  let assemblyFormat = [{
+    `(` $address `,` $value `)` attr-dict
+  }];
+}
+
 def AIE_CertMaskWrite32Op
     : AIEX_Op<"cert.maskwrite32", [HasParent<"CertJobOp">]> {
   let summary = "Write a masked 32-bit value to a specified address";
@@ -251,6 +313,48 @@ def AIE_CertUcDmaWriteDesSyncOp
   let arguments = (ins FlatSymbolRefAttr:$symbol);
   let assemblyFormat = [{
     `(` $symbol `)` attr-dict
+  }];
+}
+
+def AIE_CertUcDmaWriteDesOp
+    : AIEX_Op<"cert.uc_dma_write_des", [HasParent<"CertJobOp">]> {
+  let summary = "uC DMA Write Descriptor operation";
+  let description = [{
+    Enqueues a uC DMA transfer without waiting for it, and stores a wait
+    handle in register `wait_handle` for a later `cert.wait_uc_dma`. The
+    symbol operand refers to a `cert.uc_dma_chain`.
+
+    Example:
+    ```
+      cert.uc_dma_write_des(2, @dma_chain)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$wait_handle,
+      FlatSymbolRefAttr:$symbol);
+  let assemblyFormat = [{
+    `(` $wait_handle `,` $symbol `)` attr-dict
+  }];
+}
+
+def AIE_CertWaitUcDmaOp
+    : AIEX_Op<"cert.wait_uc_dma", [HasParent<"CertJobOp">]> {
+  let summary = "Wait for a uC DMA transfer to finish";
+  let description = [{
+    Waits for the transfer whose handle is in register `wait_handle`.
+
+    The handle must be a job-local register r0..r7 whose reaching definition
+    in the same job is a `cert.uc_dma_write_des`; `aie-cert-verify` checks
+    this. The instruction also accepts a shared register r8..r23 carrying a
+    handle across jobs, but this dialect does not.
+
+    Example:
+    ```
+      cert.wait_uc_dma(2)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$wait_handle);
+  let assemblyFormat = [{
+    `(` $wait_handle `)` attr-dict
   }];
 }
 
