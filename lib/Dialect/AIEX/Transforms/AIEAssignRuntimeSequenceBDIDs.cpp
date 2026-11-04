@@ -762,7 +762,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         }
         if (!allocation || (allocation != input && allocation != output))
           return WalkResult::advance();
-        std::optional<Volume> moved = pushVolume(start, cfg);
+        // A dynamic-pool sequence keeps its loops, whose trip counts these
+        // counts cannot follow.
+        std::optional<Volume> moved = op->getParentOp() == seq
+                                          ? pushVolume(start, cfg)
+                                          : std::nullopt;
         if (!moved) {
           it->second = false;
           return WalkResult::interrupt();
