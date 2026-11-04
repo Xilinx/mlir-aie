@@ -1299,20 +1299,35 @@ struct AIEObjectFifoAllocatePass
       circuitPeerCache[dma] = circuitPeer(dma);
       poolEnds[dma.getPoolOp()].push_back(dma);
     }
-    // Each circuit destination's one sender, a broadcast's included.
+    // Each circuit destination's one sender, a broadcast's included, and the
+    // ends a circuit joins to the shim alone, which wait on the host only.
     DenseMap<Operation *, ObjectFifoDmaEndpointOp> senderOf;
+    DenseSet<Operation *> byShim;
+    auto onShim = [](RouteEndpoint end) {
+      auto tile = end.getTile().getDefiningOp<TileLike>();
+      return tile && tile.isShimTile();
+    };
     for (RouteOp route : device.getOps<RouteOp>()) {
       SmallVector<StringRef> sources = llvm::to_vector(route.getSourceNames());
       RouteEndpoint source = sources.size() == 1 && !route.getPacket()
                                  ? lookupEndpoint(sources[0])
                                  : RouteEndpoint();
-      auto sender =
-          source ? dyn_cast<ObjectFifoDmaEndpointOp>(source.getOperation())
-                 : ObjectFifoDmaEndpointOp();
-      if (sender)
-        for (StringRef dest : route.getDestinationNames())
-          if (RouteEndpoint end = lookupEndpoint(dest))
-            senderOf[end.getOperation()] = sender;
+      if (!source)
+        continue;
+      auto sender = dyn_cast<ObjectFifoDmaEndpointOp>(source.getOperation());
+      SmallVector<RouteEndpoint> dests;
+      for (StringRef dest : route.getDestinationNames())
+        dests.push_back(lookupEndpoint(dest));
+      for (RouteEndpoint end : dests) {
+        if (end && sender)
+          senderOf[end.getOperation()] = sender;
+        if (end && onShim(source))
+          byShim.insert(end.getOperation());
+      }
+      if (llvm::all_of(dests, [&](RouteEndpoint end) {
+            return end && onShim(end);
+          }))
+        byShim.insert(source.getOperation());
     }
     auto cachedCoreEnd = [&](ObjectFifoDmaEndpointOp dma) {
       return coreEndCache.lookup(dma);
@@ -1377,51 +1392,61 @@ struct AIEObjectFifoAllocatePass
         // The peers' chain moves the same turns, so a core working through
         // their pools, or through the pools that feed them circuit by circuit,
         // must keep up with that order too, through all those pools' depths.
-        // Cores of their own each feed one peer and wait on no other.
+        // A peer reached from the shim waits on the host alone; one whose
+        // feeding core the walk cannot find refuses the turns.
         SmallVector<ObjectFifoCoreEndpointOp> peerCores;
         SmallVector<int64_t> peerDepths;
-        for (ObjectFifoDmaEndpointOp peer : peers) {
-          ObjectFifoPoolOp pool = peer.getPoolOp();
-          int64_t depth = pool.getDepth();
+        SmallVector<unsigned> fed(peers.size(), ~0u);
+        bool lost = false;
+        for (auto [i, peer] : llvm::enumerate(peers)) {
+          int64_t depth = peer.getPoolOp().getDepth();
           ObjectFifoCoreEndpointOp core = cachedCoreEnd(peer);
           SmallPtrSet<Operation *, 8> seen;
-          for (ObjectFifoDmaEndpointOp at = peer;
-               !core && seen.insert(at).second;) {
+          for (ObjectFifoDmaEndpointOp at = peer; !core;) {
             SmallVector<ObjectFifoDmaEndpointOp> across;
             for (ObjectFifoDmaEndpointOp end : poolEnds.lookup(at.getPoolOp()))
               if (end.drains() != at.drains())
                 across.push_back(end);
-            if (across.size() != 1)
+            if (!seen.insert(at).second || across.size() != 1) {
+              lost = true;
+              break;
+            }
+            if (byShim.contains(across.front()))
               break;
             at = across.front().drains() ? cachedCircuitPeer(across.front())
                                          : senderOf.lookup(across.front());
-            if (!at)
+            if (!at) {
+              lost = true;
               break;
+            }
             depth += at.getPoolOp().getDepth();
             core = cachedCoreEnd(at);
           }
+          if (!core)
+            continue;
+          if (llvm::is_contained(peerCores, core)) {
+            lost = true;
+            continue;
+          }
+          fed[i] = peerCores.size();
           peerCores.push_back(core);
           peerDepths.push_back(depth);
         }
-        auto present = [](ObjectFifoCoreEndpointOp c) { return bool(c); };
-        bool oneCore = llvm::all_of(peerCores, [&](auto c) {
-          return c && sameTile(c.getTile(), peerCores.front().getTile());
-        });
-        bool ownCores =
-            llvm::all_of(peerCores, present) &&
-            llvm::all_of(llvm::enumerate(peerCores), [&](auto x) {
-              return llvm::none_of(
-                  llvm::drop_begin(peerCores, x.index() + 1), [&](auto c) {
-                    return sameTile(c.getTile(), x.value().getTile());
-                  });
-            });
-        if (reason.empty() && llvm::any_of(peerCores, present) && !ownCores) {
+        if (reason.empty() && lost)
+          reason = "a peer's feeding core is not known, or feeds two peers";
+        if (reason.empty() && !peerCores.empty()) {
+          SmallVector<unsigned> peerOrder;
+          for (unsigned turn : turns.turns())
+            if (fed[turn] != ~0u)
+              peerOrder.push_back(fed[turn]);
           CoreTurns peerTurns;
-          if (!oneCore)
-            reason = "a core feeds only some of the peers";
+          if (llvm::any_of(peerCores, [&](ObjectFifoCoreEndpointOp c) {
+                return !sameTile(c.getTile(), peerCores.front().getTile());
+              }))
+            reason = "several cores feed the peers";
           else if (succeeded(peerTurns.read(peerCores, reason)) &&
-                   !peerTurns.keepsUp(turns.turns(), peerDepths))
-            reason = "the core feeding the peers would stall";
+                   !peerTurns.keepsUp(peerOrder, peerDepths))
+            reason = "the core at the peers' far end would stall";
         }
         // Over plain pools the chain unrolls to whole passes over each; past
         // the peers' channel BDs, walking them whole takes one a turn.
