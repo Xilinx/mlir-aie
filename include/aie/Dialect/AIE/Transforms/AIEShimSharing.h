@@ -39,9 +39,8 @@ public:
     bool sends;
   };
 
-  /// A shim input whose transfers the senders of a receiving end wait on:
-  /// they send no more than `outputBytes` for each `inputBytes` it has
-  /// taken, as a `#aie.consumed_by` proves.
+  /// A shim input gating a receiving end's senders, per its
+  /// `#aie.consumed_by`.
   struct Gate {
     mlir::StringAttr input;
     int64_t inputBytes;

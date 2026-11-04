@@ -780,10 +780,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return it->second;
   }
 
-  // `output`'s pushes up to `order` have finished: the host has received the
-  // R bytes it moved through that push. Each input whose consumed_by names it
-  // has then had its first R * input_bytes / output_bytes bytes taken, so its
-  // pushes within those bytes have finished.
+  // `output`'s pushes up to `order` have finished; see recordConsumption in
+  // aie-objectfifo-verify for why that finishes its inputs' pushes too.
   void creditInputs(AIE::ShimDMAAllocationOp output, uint64_t order) {
     auto outPushes = pushesByAllocation.find(output);
     auto proofs = proofsByOutput.find(output);
