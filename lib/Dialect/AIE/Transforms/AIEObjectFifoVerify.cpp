@@ -20,6 +20,7 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CheckedArithmetic.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
@@ -225,10 +226,44 @@ static std::optional<int64_t> tripCount(scf::ForOp forOp, DeviceOp device) {
       return std::nullopt;
   }
 
+  TileOp tile = buffer.getTileOp();
+  const AIETargetModel &tm = device.getTargetModel();
+  auto reachesTile = [&](FlatSymbolRefAttr named, std::optional<int32_t> col,
+                         std::optional<int32_t> row,
+                         std::optional<int64_t> address) {
+    if (named)
+      return named.getValue() == *buffer.getSymName();
+    if (!col || !row) {
+      if (!address)
+        return true;
+      col = *address >> tm.getColumnShift();
+      row = (*address >> tm.getRowShift()) &
+            ((1 << (tm.getColumnShift() - tm.getRowShift())) - 1);
+    }
+    return *col == tile.getCol() && *row == tile.getRow();
+  };
+
   std::optional<int64_t> value;
   for (auto sequence : device.getOps<RuntimeSequenceOp>()) {
     bool written = false;
     WalkResult walk = sequence.walk([&](Operation *op) {
+      bool rawWrite =
+          llvm::TypeSwitch<Operation *, bool>(op)
+              .Case<AIEX::NpuWrite32Op, AIEX::NpuMaskWrite32Op>([&](auto w) {
+                return reachesTile(w.getBufferAttr(), w.getColumn(),
+                                   w.getRow(),
+                                   getConstantIntValue(w.getAddress()));
+              })
+              .Case([&](AIEX::NpuBlockWriteOp w) {
+                return reachesTile(w.getBufferAttr(), w.getColumn(),
+                                   w.getRow(), w.getAddress());
+              })
+              .Case([&](AIEX::NpuPushQueueOp push) {
+                return reachesTile({}, push.getColumn(), push.getRow(), {});
+              })
+              .Default(false);
+      if (rawWrite)
+        return WalkResult::interrupt();
       if (auto write = dyn_cast<AIEX::NpuWriteRTPOp>(op)) {
         if (write.getBuffer() != *buffer.getSymName() ||
             write.getIndex() != *index)

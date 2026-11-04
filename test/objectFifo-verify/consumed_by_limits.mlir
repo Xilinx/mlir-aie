@@ -189,3 +189,59 @@ module @core_output_repeats {
     }
   }
 }
+
+// -----
+
+// The trip count is the RTP word @seq writes, but @other may rewrite it with a
+// raw write32, so a row may be any length and angle is not proven consumed.
+
+// CHECK-LABEL: module @rtp_raw_write
+// CHECK: aie.route_endpoint @angle__prod__dma({{.*}}) DMA {fifoName = "angle"}
+module @rtp_raw_write {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %core = aie.tile(0, 2)
+    aie.objectfifo @x(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @angle(%shim1, {%core}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    aie.objectfifo @out(%core, {%shim}, 2 : i32) : !aie.objectfifo<memref<128xbf16>>
+    %rtp = aie.buffer(%core) {sym_name = "rtp"} : memref<1xi32>
+    %barrier = aie.lock(%core)
+    aie.core(%core) {
+      %c0 = arith.constant 0 : index
+      %one = arith.constant 1 : i32
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        aie.use_lock(%barrier, AcquireGreaterEqual, %one)
+        %n = memref.load %rtp[%c0] : memref<1xi32>
+        aie.use_lock(%barrier, Release, %one)
+        %cols = arith.index_cast %n : i32 to index
+        %a = aie.objectfifo.acquire @angle(Consume, 1) : memref<128xbf16>
+        scf.for %j = %c0 to %cols step %c1 {
+          %i = aie.objectfifo.acquire @x(Consume, 1) : memref<128xbf16>
+          %o = aie.objectfifo.acquire @out(Produce, 1) : memref<128xbf16>
+          aie.objectfifo.release @x(Consume, 1)
+          aie.objectfifo.release @out(Produce, 1)
+        }
+        aie.objectfifo.release @angle(Consume, 1)
+        scf.yield
+      }
+      aie.end
+    }
+    aie.runtime_sequence @seq(%a: memref<128xbf16>) {
+      %c24 = arith.constant 24 : i32
+      aiex.npu.rtp_write(@rtp, 0, %c24) : i32
+      %c1 = arith.constant 1 : i32
+      aiex.set_lock(%barrier, %c1)
+    }
+    aie.runtime_sequence @other(%a: memref<128xbf16>) {
+      %c0 = arith.constant 0 : i32
+      %c96 = arith.constant 96 : i32
+      aiex.npu.write32(%c0, %c96) {buffer = @rtp} : i32, i32
+    }
+  }
+}
+
