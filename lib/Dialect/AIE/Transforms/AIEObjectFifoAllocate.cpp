@@ -1081,6 +1081,22 @@ struct AIEObjectFifoAllocatePass
   /// ends share as the tile needs. Packet headers tell a shared channel's ends
   /// apart.
   bool planShimSharing(TileLike exhausted, DMAChannelDir dir) {
+    // A receiving end's gates are the shim inputs whose consumption its
+    // progress proves; without --aie-objectfifo-verify there are none.
+    DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>> gates;
+    for (auto input : device.getOps<RouteEndpointOp>()) {
+      if (!input.getConsumedBy() || !input.getFifoName())
+        continue;
+      for (auto proof :
+           input.getConsumedByAttr().getAsRange<ConsumedByAttr>()) {
+        auto output = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
+            device, proof.getOutput());
+        if (output && output.getFifoName())
+          gates[output.getFifoNameAttr()].push_back({input.getFifoNameAttr(),
+                                                     proof.getInputBytes(),
+                                                     proof.getOutputBytes()});
+      }
+    }
     ShimTransferSpans spans(
         device,
         [&](StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
@@ -1091,7 +1107,8 @@ struct AIEObjectFifoAllocatePass
           return ShimTransferSpans::End{endpoint.getFifoNameAttr(),
                                         endpoint.getRouteDirection() ==
                                             DMAChannelDir::MM2S};
-        });
+        },
+        std::move(gates));
     SmallVector<Operation *> candidates;
     SmallVector<StringAttr> fifos;
     for (auto endpoint : device.getOps<RouteEndpointOp>()) {

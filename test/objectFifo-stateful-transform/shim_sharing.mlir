@@ -102,9 +102,10 @@ module @renamed {
 // -----
 
 // out_x and out_y span both loops alike, but out_x is done once its last wait
-// is, while out_y is issued again in the second loop and is not: ordered by
-// whole spans, out_c, awaited before either, takes turns with out_x whichever
-// fifo is declared first.
+// is, while out_y is issued again in the second loop and is not. out_x's
+// core waits on in_x, which the host fills only once out_c is awaited, so
+// out_c takes turns with out_x whichever fifo is declared first; out_y's core
+// waits on nothing and keeps a channel to itself.
 // CHECK-LABEL: module @tied_x_first
 // CHECK-DAG:   aie.shim_dma_allocation @out_c__shim_alloc(%{{.*}}, S2MM, [[CH:[0-9]]])
 // CHECK-DAG:   aie.shim_dma_allocation @out_x__shim_alloc(%{{.*}}, S2MM, [[CH]])
@@ -112,40 +113,63 @@ module @renamed {
 module @tied_x_first {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
-    %a = aie.tile(0, 2)
-    %b = aie.tile(0, 3)
+    %x = aie.tile(0, 2)
+    %y = aie.tile(0, 3)
     %c = aie.tile(0, 4)
-    aie.objectfifo @out_x(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @out_y(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_x(%s, {%x}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_x(%x, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_y(%y, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_c(%s, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.core(%a) {
-      %v = aie.objectfifo.acquire @out_x(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_x(Produce, 1)
+    aie.core(%x) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 2 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_x(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_x(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_x(Consume, 1)
+        aie.objectfifo.release @out_x(Produce, 1)
+      }
       aie.end
     }
-    aie.core(%b) {
-      %v = aie.objectfifo.acquire @out_y(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_y(Produce, 1)
+    aie.core(%y) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 2 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_y(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_y(Produce, 1)
+      }
       aie.end
     }
     aie.core(%c) {
-      %v = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_c(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_c(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_c(Consume, 1)
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
       aie.end
     }
-    aie.runtime_sequence(%in : memref<16xi32>) {
+    aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
-      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_c, id = 0 : i64} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @out_c}
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 32][0, 0, 0, 1]) {metadata = @in_x, id = 2 : i64} : memref<64xi32>
       scf.for %i = %c0 to %c2 step %c1 {
-        aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_x, id = 0 : i64, issue_token = true} : memref<16xi32>
-        aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_y, id = 0 : i64, issue_token = true} : memref<16xi32>
+        aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_x, id = 3 : i64, issue_token = true} : memref<64xi32>
+        aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_y, id = 4 : i64, issue_token = true} : memref<64xi32>
       }
       scf.for %i = %c0 to %c2 step %c1 {
         aiex.npu.dma_wait {symbol = @out_x}
-        aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_y, id = 0 : i64, issue_token = true} : memref<16xi32>
+        aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_y, id = 4 : i64, issue_token = true} : memref<64xi32>
         aiex.npu.dma_wait {symbol = @out_y}
       }
     }
@@ -161,53 +185,76 @@ module @tied_x_first {
 module @tied_y_first {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
-    %a = aie.tile(0, 2)
-    %b = aie.tile(0, 3)
+    %y = aie.tile(0, 3)
+    %x = aie.tile(0, 2)
     %c = aie.tile(0, 4)
-    aie.objectfifo @out_y(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @out_x(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_y(%y, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_x(%s, {%x}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_x(%x, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_c(%s, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.core(%a) {
-      %v = aie.objectfifo.acquire @out_x(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_x(Produce, 1)
+    aie.core(%y) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 2 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_y(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_y(Produce, 1)
+      }
       aie.end
     }
-    aie.core(%b) {
-      %v = aie.objectfifo.acquire @out_y(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_y(Produce, 1)
+    aie.core(%x) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 2 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_x(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_x(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_x(Consume, 1)
+        aie.objectfifo.release @out_x(Produce, 1)
+      }
       aie.end
     }
     aie.core(%c) {
-      %v = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_c(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_c(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_c(Consume, 1)
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
       aie.end
     }
-    aie.runtime_sequence(%in : memref<16xi32>) {
+    aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c2 = arith.constant 2 : index
-      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_c, id = 0 : i64} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @out_c}
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 32][0, 0, 0, 1]) {metadata = @in_x, id = 2 : i64} : memref<64xi32>
       scf.for %i = %c0 to %c2 step %c1 {
-        aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_x, id = 0 : i64, issue_token = true} : memref<16xi32>
-        aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_y, id = 0 : i64, issue_token = true} : memref<16xi32>
+        aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_x, id = 3 : i64, issue_token = true} : memref<64xi32>
+        aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_y, id = 4 : i64, issue_token = true} : memref<64xi32>
       }
       scf.for %i = %c0 to %c2 step %c1 {
         aiex.npu.dma_wait {symbol = @out_x}
-        aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_y, id = 0 : i64, issue_token = true} : memref<16xi32>
+        aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_y, id = 4 : i64, issue_token = true} : memref<64xi32>
         aiex.npu.dma_wait {symbol = @out_y}
       }
     }
   }
 }
 
-
 // -----
 
 // Three shim ends need three S2MM channels on a shim tile that has two. Each
-// drain is awaited before the next is issued, and a receiving end that is
-// awaited is done, so out_a and out_b take turns on S2MM 0, their routes
-// packet-switched to tell them apart.
+// drain is awaited before the next is issued, and the cores sending out_a and
+// out_b each wait on an input the host fills in their turn, sending no more
+// than is drained, so out_a and out_b take turns on S2MM 0, their routes
+// packet-switched to tell them apart. out_c's core waits on nothing.
 // CHECK-LABEL: module @awaited
 // CHECK-DAG:   aie.shim_dma_allocation @out_a__shim_alloc(%{{.*}}, S2MM, 0)
 // CHECK-DAG:   aie.shim_dma_allocation @out_b__shim_alloc(%{{.*}}, S2MM, 0)
@@ -218,30 +265,53 @@ module @awaited {
     %a = aie.tile(0, 2)
     %b = aie.tile(0, 3)
     %c = aie.tile(0, 4)
+    aie.objectfifo @in_a(%s, {%a}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_b(%s, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.core(%a) {
-      %x = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_a(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_a(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_a(Consume, 1)
+        aie.objectfifo.release @out_a(Produce, 1)
+      }
       aie.end
     }
     aie.core(%b) {
-      %x = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_b(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_b(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_b(Consume, 1)
+        aie.objectfifo.release @out_b(Produce, 1)
+      }
       aie.end
     }
     aie.core(%c) {
-      %x = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_c(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
       aie.end
     }
-    aie.runtime_sequence(%in : memref<16xi32>) {
-      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 0 : i64, issue_token = true} : memref<16xi32>
+    aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_a, id = 0 : i64} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @out_a}
-      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 3 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_b, id = 2 : i64} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @out_b}
-      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 4 : i64, issue_token = true} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @out_c}
     }
   }
@@ -302,39 +372,62 @@ module @freed {
     %a = aie.tile(0, 2)
     %b = aie.tile(0, 3)
     %c = aie.tile(0, 4)
+    aie.objectfifo @in_a(%s, {%a}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_b(%s, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.core(%a) {
-      %x = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_a(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_a(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_a(Consume, 1)
+        aie.objectfifo.release @out_a(Produce, 1)
+      }
       aie.end
     }
     aie.core(%b) {
-      %x = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_b(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_b(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_b(Consume, 1)
+        aie.objectfifo.release @out_b(Produce, 1)
+      }
       aie.end
     }
     aie.core(%c) {
-      %x = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_c(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
       aie.end
     }
-    aie.runtime_sequence(%in : memref<16xi32>) {
+    aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_a, id = 0 : i64} : memref<64xi32>
       %ta = aiex.dma_configure_task_for @out_a {
-        aie.dma_bd(%in : memref<16xi32> offset = 0 len = 16)
+        aie.dma_bd(%out : memref<64xi32> offset = 0 len = 16)
         aie.end
       }
       aiex.dma_start_task(%ta)
       aiex.dma_free_task(%ta)
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_b, id = 2 : i64} : memref<64xi32>
       %tb = aiex.dma_configure_task_for @out_b {
-        aie.dma_bd(%in : memref<16xi32> offset = 0 len = 16)
+        aie.dma_bd(%out : memref<64xi32> offset = 0 len = 16)
         aie.end
       }
       aiex.dma_start_task(%tb)
       aiex.dma_free_task(%tb)
       %tc = aiex.dma_configure_task_for @out_c {
-        aie.dma_bd(%in : memref<16xi32> offset = 0 len = 16)
+        aie.dma_bd(%out : memref<64xi32> offset = 0 len = 16)
         aie.end
       }
       aiex.dma_start_task(%tc)
@@ -431,28 +524,368 @@ module @partly_awaited {
     %b = aie.tile(0, 3)
     %c = aie.tile(0, 4)
     aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_b(%s, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_c(%s, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.core(%a) {
-      %x = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_a(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_a(Produce, 1)
+      }
       aie.end
     }
     aie.core(%b) {
-      %x = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_b(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_b(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_b(Consume, 1)
+        aie.objectfifo.release @out_b(Produce, 1)
+      }
       aie.end
     }
     aie.core(%c) {
-      %x = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_c(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_c(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_c(Consume, 1)
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
       aie.end
     }
-    aie.runtime_sequence(%in : memref<16xi32>) {
-      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 0 : i64} : memref<16xi32>
-      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 0 : i64, issue_token = true} : memref<16xi32>
+    aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 5 : i64} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_b, id = 0 : i64} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @out_b}
-      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 3 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_c, id = 2 : i64} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_c}
+    }
+  }
+}
+
+// -----
+
+// One drain per runtime sequence. A core runs on across dispatches, so each
+// still waits on an input only its own sequence fills, and every sequence
+// drains all its input lets the core send.
+// CHECK-LABEL: module @across_sequences
+// CHECK-DAG:   aie.shim_dma_allocation @out_a__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @out_b__shim_alloc(%{{.*}}, S2MM, 0)
+// CHECK-DAG:   aie.shim_dma_allocation @out_c__shim_alloc(%{{.*}}, S2MM, 1)
+module @across_sequences {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    aie.objectfifo @in_a(%s, {%a}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_b(%s, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_c(%s, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_a(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_a(Consume, 1)
+        aie.objectfifo.release @out_a(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%b) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_b(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_b(Consume, 1)
+        aie.objectfifo.release @out_b(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_c(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_c(Consume, 1)
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
+      aie.end
+    }
+    aie.runtime_sequence @run_a(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_a, id = 0 : i64} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_a}
+    }
+    aie.runtime_sequence @run_b(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_b, id = 0 : i64} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_b}
+    }
+    aie.runtime_sequence @run_c(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_c, id = 0 : i64} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_c}
+    }
+  }
+}
+
+// -----
+
+// The host awaits each drain before the next, but the cores wait on nothing:
+// out_b's core may send while out_a's drain runs, and the shim channel would
+// write it into out_a's buffer. None share.
+// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+module @ungated {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_a(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%b) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_b(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
+      aie.end
+    }
+    aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_a}
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 2 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_b}
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 3 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_c}
+    }
+  }
+}
+
+// -----
+
+// in_b is filled before out_a is awaited, so out_b's core may send during
+// out_a's turn. None share.
+// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+module @gate_filled_early {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    aie.objectfifo @in_a(%s, {%a}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_b(%s, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_a(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_a(Consume, 1)
+        aie.objectfifo.release @out_a(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%b) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_b(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_b(Consume, 1)
+        aie.objectfifo.release @out_b(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
+      aie.end
+    }
+    aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_a, id = 0 : i64} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_b, id = 2 : i64} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_a}
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 3 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_b}
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 4 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_c}
+    }
+  }
+}
+
+// -----
+
+// in_a lets out_a's core send two objects, but the host drains one: the second
+// would land in out_b's turn. None share.
+// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+module @overfilled {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    aie.objectfifo @in_a(%s, {%a}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_b(%s, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 2 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_a(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_a(Consume, 1)
+        aie.objectfifo.release @out_a(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%b) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %got = aie.objectfifo.acquire @in_b(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_b(Consume, 1)
+        aie.objectfifo.release @out_b(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
+      aie.end
+    }
+    aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 32][0, 0, 0, 1]) {metadata = @in_a, id = 0 : i64} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_a}
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 3 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_b, id = 2 : i64} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_b}
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 4 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_c}
+    }
+  }
+}
+
+// -----
+
+// One drain per runtime sequence, but the cores wait on nothing and run on
+// across dispatches, so each may send during another sequence's drain.
+// None share.
+// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+module @across_sequences_ungated {
+  aie.device(npu2_1col) {
+    %s = aie.tile(0, 0)
+    %a = aie.tile(0, 2)
+    %b = aie.tile(0, 3)
+    %c = aie.tile(0, 4)
+    aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%a) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_a(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%b) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_b(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %n = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
+      aie.end
+    }
+    aie.runtime_sequence @run_a(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_a, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_a}
+    }
+    aie.runtime_sequence @run_b(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 1 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @out_b}
+    }
+    aie.runtime_sequence @run_c(%in : memref<64xi32>, %out : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 1 : i64, issue_token = true} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @out_c}
     }
   }
@@ -542,7 +975,8 @@ module @overlapping {
 // -----
 
 // out_a is sent again by a BD chain that nothing awaits, so it stays in flight
-// across out_b's turn: out_a keeps a channel to itself, as with a memcpy.
+// across the others' turns and keeps a channel to itself, as with a memcpy;
+// out_b and out_c, each gated in its turn, take turns on the other.
 // CHECK-LABEL: module @chain_in_flight
 // CHECK-DAG:   aie.shim_dma_allocation @out_a__shim_alloc(%{{.*}}, S2MM, [[A:[0-9]]])
 // CHECK-DAG:   aie.shim_dma_allocation @out_b__shim_alloc(%{{.*}}, S2MM, [[B:[0-9]]])
@@ -554,7 +988,9 @@ module @chain_in_flight {
     %b = aie.tile(0, 3)
     %c = aie.tile(0, 4)
     aie.objectfifo @out_a(%a, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_b(%s, {%b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_b(%b, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @in_c(%s, {%c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @out_c(%c, {%s}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.core(%a) {
       %x = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
@@ -562,13 +998,25 @@ module @chain_in_flight {
       aie.end
     }
     aie.core(%b) {
-      %x = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_b(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.for %i = %c0 to %c1 step %c1 {
+        %got = aie.objectfifo.acquire @in_b(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_b(Consume, 1)
+        aie.objectfifo.release @out_b(Produce, 1)
+      }
       aie.end
     }
     aie.core(%c) {
-      %x = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_c(Produce, 1)
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.for %i = %c0 to %c1 step %c1 {
+        %got = aie.objectfifo.acquire @in_c(Consume, 1) : memref<16xi32>
+        %put = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @in_c(Consume, 1)
+        aie.objectfifo.release @out_c(Produce, 1)
+      }
       aie.end
     }
     aie.bd_chain @ch(%buf: memref<16xi32>) {
@@ -580,8 +1028,10 @@ module @chain_in_flight {
       aiex.npu.dma_wait {symbol = @out_a}
       %t = aiex.dma_start_bd_chain_for @ch(%in) : (memref<16xi32>) for @out_a
       aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_b, id = 2 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_b, id = 4 : i64} : memref<16xi32>
       aiex.npu.dma_wait {symbol = @out_b}
       aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @out_c, id = 3 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {metadata = @in_c, id = 5 : i64} : memref<16xi32>
       aiex.npu.dma_wait {symbol = @out_c}
     }
   }
