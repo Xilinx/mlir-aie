@@ -2007,6 +2007,18 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
   return maxAcquire + 1;
 }
 
+ObjectFifoLinkOp ObjectFifoCreateOp::getConsumerLink(unsigned consumer) {
+  auto consumers = getConsumerTiles();
+  Value tile = consumers[consumer];
+  size_t earlier = llvm::count(consumers.take_front(consumer), tile);
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (link.getOptionalSharedTile() == tile &&
+        llvm::is_contained(link.getInputObjectFifos(), *this) && earlier-- == 0)
+      return link;
+  return {};
+}
+
 std::optional<PlannedDmaEnd>
 ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
   bool drains = !consumer;
@@ -2022,12 +2034,14 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
   };
 
   ObjectFifoLinkOp link;
-  for (ObjectFifoLinkOp candidate : device.getOps<ObjectFifoLinkOp>())
-    if (candidate.getOptionalSharedTile() == tile &&
-        llvm::is_contained(drains ? candidate.getOutputObjectFifos()
-                                  : candidate.getInputObjectFifos(),
-                           *this))
-      link = candidate;
+  if (drains) {
+    for (ObjectFifoLinkOp candidate : device.getOps<ObjectFifoLinkOp>())
+      if (candidate.getOptionalSharedTile() == tile &&
+          llvm::is_contained(candidate.getOutputObjectFifos(), *this))
+        link = candidate;
+  } else {
+    link = getConsumerLink(*consumer);
+  }
   if (!link) {
     int depth = dmaDepth(consumer);
     if (!drains)
@@ -2524,21 +2538,12 @@ LogicalResult ObjectFifoLinkOp::getStreamWindow(StreamWindow &window) {
 
 std::optional<unsigned> ObjectFifoLinkOp::getOwnerConsumerIndex() {
   ObjectFifoCreateOp owner = getPoolOwner();
-  std::optional<Value> tile = getOptionalSharedTile();
-  if (!tile || llvm::is_contained(getOutputObjectFifos(), owner))
+  if (!getOptionalSharedTile() ||
+      llvm::is_contained(getOutputObjectFifos(), owner))
     return std::nullopt;
-  unsigned earlier = 0;
-  for (ObjectFifoLinkOp link :
-       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
-    if (link == *this)
-      break;
-    if (link.getOptionalSharedTile() == tile &&
-        llvm::is_contained(link.getInputObjectFifos(), owner))
-      ++earlier;
-  }
-  auto consumers = owner.getConsumerTiles();
-  for (unsigned index = 0, seen = 0; index < consumers.size(); ++index)
-    if (consumers[index] == *tile && seen++ == earlier)
+  for (unsigned index = 0, e = owner.getConsumerTiles().size(); index < e;
+       ++index)
+    if (owner.getConsumerLink(index) == *this)
       return index;
   return std::nullopt;
 }
