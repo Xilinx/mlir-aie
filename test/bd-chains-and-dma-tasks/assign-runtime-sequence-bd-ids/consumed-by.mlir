@@ -543,3 +543,46 @@ module {
     }
   }
 }
+
+// -----
+
+// A raw write to the input's task queue pushes a task the counts cannot see,
+// so no await on the output proves the input's pushes finished.
+module {
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
+    aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    aie.runtime_sequence @rounds(%a: memref<512xi32>, %c: memref<512xi32>) {
+      %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in0)
+      %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<512xi32> offset = 0 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out0)
+      aiex.dma_await_task(%out0)
+      // expected-note@+1 {{released here}}
+      aiex.dma_free_task(%in0)
+      %in1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        // expected-warning@+1 {{reuses buffer descriptor ID 0 on tile (0,0) after it was released by an aiex.dma_free_task that had no completion guarantee}}
+        aie.dma_bd(%a : memref<512xi32> offset = 64 len = 64)
+        aie.end
+      } {alloc = @in}
+      aiex.dma_start_task(%in1)
+      %out1 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
+        aie.dma_bd(%c : memref<512xi32> offset = 64 len = 64)
+        aie.end
+      } {alloc = @out, issue_token = true}
+      aiex.dma_start_task(%out1)
+      aiex.dma_await_task(%out1)
+      aiex.dma_free_task(%in1)
+      %queue = arith.constant 119312 : i32
+      %bd = arith.constant 15 : i32
+      aiex.npu.write32(%queue, %bd) {column = 0 : i32, row = 0 : i32} : i32, i32
+    }
+  }
+}

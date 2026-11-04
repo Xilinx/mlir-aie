@@ -113,6 +113,42 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return std::nullopt;
   }
 
+  // Whether `op` writes array registers raw, at an address it does not fix or
+  // over one of `keys`' task queues, so pushing a task no count sees.
+  static bool writesQueue(Operation *op,
+                          ArrayRef<DmaQueueModel::ChannelKey> keys) {
+    std::optional<uint32_t> first;
+    uint64_t bytes = 4;
+    if (auto write = dyn_cast<NpuWrite32Op>(op)) {
+      if (write.getBuffer())
+        return false;
+      first = write.getAbsoluteAddress();
+    } else if (auto write = dyn_cast<NpuMaskWrite32Op>(op)) {
+      if (write.getBuffer())
+        return false;
+      first = write.getAbsoluteAddress();
+    } else if (auto write = dyn_cast<NpuBlockWriteOp>(op)) {
+      if (write.getBuffer())
+        return false;
+      first = write.getAbsoluteAddress();
+      auto data = dyn_cast<MemRefType>(write.getData().getType());
+      if (!data || !data.hasStaticShape())
+        return true;
+      bytes = data.getNumElements() * data.getElementTypeBitWidth() / 8;
+    } else {
+      return false;
+    }
+    if (!first)
+      return true;
+    const AIETargetModel &tm =
+        op->getParentOfType<AIE::DeviceOp>().getTargetModel();
+    return llvm::any_of(keys, [&](const DmaQueueModel::ChannelKey &key) {
+      uint64_t queue = tm.getDmaControlAddress(
+          key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
+      return queue >= *first && queue < *first + bytes;
+    });
+  }
+
   static std::optional<DmaQueueModel::ChannelKey>
   otherAwaitChannel(Operation *op) {
     if (auto sync = dyn_cast<NpuSyncOp>(op))
@@ -754,8 +790,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         std::optional<DmaQueueModel::ChannelKey> channel =
             cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
         bool foreign =
-            channel && ((*channel == inKey && allocation != input) ||
-                        (*channel == outKey && allocation != output));
+            (channel && ((*channel == inKey && allocation != input) ||
+                         (*channel == outKey && allocation != output))) ||
+            writesQueue(op, {inKey, outKey});
         if (foreign) {
           it->second = false;
           return WalkResult::interrupt();
