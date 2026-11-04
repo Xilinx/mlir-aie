@@ -308,6 +308,35 @@ static LogicalResult checkBarrierLimits(AIE::DeviceOp device) {
   return result;
 }
 
+// A cert.wait_uc_dma handle must be a local register r0..r7 written by an
+// earlier cert.uc_dma_write_des in the same job.
+static LogicalResult checkUcDmaWaitHandles(AIE::DeviceOp device) {
+  LogicalResult result = success();
+  device.walk([&](AIEX::CertJobOp job) {
+    llvm::SmallDenseSet<uint32_t> handles;
+    for (Operation &o : job.getBody().front()) {
+      if (auto write = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o)) {
+        handles.insert(write.getWaitHandle());
+      } else if (auto wait = dyn_cast<AIEX::CertWaitUcDmaOp>(o)) {
+        uint32_t r = wait.getWaitHandle();
+        if (r >= 8) {
+          wait.emitError() << "cert.wait_uc_dma handle r" << r
+                           << " is a shared register; the handle must be a "
+                              "local register r0..r7 written by a "
+                              "cert.uc_dma_write_des in the same job";
+          result = failure();
+        } else if (!handles.contains(r)) {
+          wait.emitError() << "cert.wait_uc_dma waits on r" << r
+                           << ", which no earlier cert.uc_dma_write_des in "
+                              "this job writes";
+          result = failure();
+        }
+      }
+    }
+  });
+  return result;
+}
+
 struct AIECertVerifyPass
     : xilinx::AIEX::impl::AIECertVerifyBase<AIECertVerifyPass> {
   void runOnOperation() override {
@@ -323,6 +352,8 @@ struct AIECertVerifyPass
     if (failed(checkRemoteBarrierParties(device)))
       signalPassFailure();
     if (failed(checkBarrierLimits(device)))
+      signalPassFailure();
+    if (failed(checkUcDmaWaitHandles(device)))
       signalPassFailure();
   }
 };
