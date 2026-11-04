@@ -673,6 +673,36 @@ def test_cache_key_walks_a_shared_graph_once(tmp_path):
     assert fresh.stdout.strip() == before, "ids differ; the content must not"
 
 
+def test_swapped_fileless_helpers_rekey_their_positions():
+    """Swapping two same-named fileless helpers moves the key.
+
+    Lambdas from one factory share a module and a qualname, so a position
+    that binds only the name cannot tell a swap: ``OPS = [f, g]`` and
+    ``OPS = [g, f]`` keyed identically while ``OPS[0]()`` selected different
+    flags -- a stale binary served from the cache.  The position now binds
+    the callable's code identity as well.
+    """
+
+    def source(first, second):
+        return (
+            "la = lambda: ['-DSTEP=1']\n"
+            "lb = lambda: ['-DSTEP=2']\n"
+            f"OPS = [{first}, {second}]\n"
+            "def gen(a, b, N=None):\n"
+            "    return OPS[0]()\n"
+        )
+
+    def key(src):
+        # exec'd namespaces are file-less, as a notebook or -c design is.
+        ns = {"__name__": "swapped_mod"}
+        exec(src, ns)
+        return _compute_recipe_hash(ns["gen"], {}, (), ())
+
+    forward = key(source("la", "lb"))
+    assert key(source("la", "lb")) == forward, "the same order must key alike"
+    assert key(source("lb", "la")) != forward, "swapping them must move the key"
+
+
 def test_cache_key_survives_a_self_configuring_generator(tmp_path):
     """A generator that records what it learns keeps finding its own entry.
 

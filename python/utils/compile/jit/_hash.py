@@ -423,8 +423,20 @@ def _python_identity(
             # not what they hold, so the state read through it is an input
             # like a container's members are.
             if isinstance(value, (FunctionType, type)):
-                return f"{value.__module__}.{value.__qualname__}"
-            binding = f"{type(value).__module__}.{type(value).__qualname__}"
+                # _import_name keeps a design's file run as a script on the
+                # key its import gets.  A function also binds its code: two
+                # products of one factory share module and qualname while
+                # their constants differ.
+                if isinstance(value, FunctionType):
+                    ident = _code_identity(value.__code__).hex()
+                    return (
+                        f"{_import_name(value.__module__)}.{value.__qualname__}"
+                        f"#{ident}"
+                    )
+                return f"{_import_name(value.__module__)}.{value.__qualname__}"
+            binding = (
+                f"{_import_name(type(value).__module__)}.{type(value).__qualname__}"
+            )
             state = getattr(value, "__dict__", None)
             if not state:
                 return binding
@@ -456,7 +468,11 @@ def _python_identity(
                 if id(value) not in seen:
                     seen.add(id(value))
                     todo.append(value)
-                return f"{value.__module__}.{value.__qualname__}"
+                # Two same-named fileless helpers (lambdas from one factory,
+                # a swapped OPS list) share a qualname; the position must
+                # bind the code, or swapping them leaves the key unchanged.
+                ident = _code_identity(value.__code__).hex()
+                return f"{value.__module__}.{value.__qualname__}#{ident}"
         return "<not-followed>"
 
     def _digest(value, where: str, depth: int) -> str:
@@ -529,8 +545,13 @@ def _python_identity(
             continue
         if id(obj) not in roots:
             records.add(name.encode() + _code_identity(obj.__code__))
-        visit(obj.__defaults__, f"{name}.__defaults__")
-        visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
+            # A root's defaults are keyed with its filtered signature already
+            # (a CompileTime default moves the key, a DispatchTime or
+            # overridden one does not); visiting them here would double-count
+            # them and let a dispatch default move the key.  A reached
+            # helper's defaults are content and are visited.
+            visit(obj.__defaults__, f"{name}.__defaults__")
+            visit(tuple(sorted((obj.__kwdefaults__ or {}).items())), f"{name}.kw")
         names = _names(obj.__code__)
         scope = dict(obj.__globals__)
         where = {n: f"{home}.{n}" for n in scope}
