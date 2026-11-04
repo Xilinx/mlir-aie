@@ -201,6 +201,16 @@ def test_a_router_timeout_is_not_called_a_crash(priority):
     assert outcome == "timeout", detail
 
 
+def test_a_timeout_on_a_design_the_verifier_rejects_is_a_timeout():
+    d = rp.load_design(PRIORITY)
+    d.packet_flows.append(d.packet_flows[-1])
+    assert router_mutation.must_reject(d) == "a packet flow twice"
+    with pytest.raises(Exception, match="duplicates an earlier packet flow"):
+        rp.canonical(d)
+    outcome, detail = router_mutation.judge(d, "route", True, 0, timeout=1e-6)
+    assert outcome == "timeout", detail
+
+
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():
     d = rp.load_design(OVER_CUT)
     holds = router_shrink.holds_fn(OVERUSED, True)

@@ -743,7 +743,7 @@ REPORTED = {
 }
 
 
-def judge(e, expect, hops_on, seed):
+def judge(e, expect, hops_on, seed, timeout=120):
     """Route `e` and hold the router to `expect`. Returns (outcome, detail),
     outcome one of ok, completeness, soundness, illegal, crash, known,
     model-limit, strict-miss (tallied, not failed: the properties ratchet it,
@@ -755,7 +755,9 @@ def judge(e, expect, hops_on, seed):
         if not why:
             return "model-limit", f"emit: {x!r}"
         # The IR verifier rejects it before the router runs.
-        p = rp.aie_opt(e.emit(), hops_on, timeout=120)
+        p = rp.aie_opt(e.emit(), hops_on, timeout=timeout)
+        if p.returncode == rp.TIMEOUT:
+            return "timeout", p.stderr
         if p.returncode == 0:
             return "soundness", f"router routes it, must reject: {why}"
         return "ok", f"rejected by the verifier ({why})"
@@ -769,7 +771,7 @@ def judge(e, expect, hops_on, seed):
             return "model-limit", f"verdict: {x!r}"
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
         why = v["reason"]
-    p = rp.aie_opt(e.emit(), hops_on, timeout=120)
+    p = rp.aie_opt(e.emit(), hops_on, timeout=timeout)
     if p.returncode == rp.TIMEOUT:
         return "timeout", p.stderr
     if p.returncode < 0:
@@ -1367,6 +1369,8 @@ def run_seed(seed, args):
         return rows
     d = case["design"]
     p = rp.aie_opt(d.emit(), hops_on, timeout=120)
+    if p.returncode == rp.TIMEOUT:
+        return [("base", "timeout", "", p.stderr, d)]
     if p.returncode:
         return [("base", "base-fails", "", rp.first_error(p.stderr)[:200], d)]
     routed = p.stdout
@@ -1424,6 +1428,9 @@ def run_seed(seed, args):
             rows.append(("relation", "broken", name, f"{what}: {check}", d))
             continue
         q = rp.aie_opt(e.emit(), hops_on, timeout=120)
+        if q.returncode == rp.TIMEOUT:
+            rows.append(("relation", "timeout", name, f"{what}: {q.stderr}", e))
+            continue
         # Reshaping flows can move a prioritized source's own route (see the
         # pinned overlay in AIECreatePathFindFlows.cpp), so the model judges.
         if q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(e, trees):
