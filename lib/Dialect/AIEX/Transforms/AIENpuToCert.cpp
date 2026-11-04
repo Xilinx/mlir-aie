@@ -1260,12 +1260,24 @@ static bool isLocalRegister(uint32_t r) { return r < 8; }
 static void collectLocalRegisterDefsUses(Operation &o,
                                          SmallVectorImpl<uint32_t> &uses,
                                          SmallVectorImpl<uint32_t> &defs) {
+  auto add = [](SmallVectorImpl<uint32_t> &regs, uint32_t r) {
+    if (isLocalRegister(r))
+      regs.push_back(r);
+  };
   if (auto op = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o)) {
-    if (isLocalRegister(op.getWaitHandle()))
-      defs.push_back(op.getWaitHandle());
+    add(defs, op.getWaitHandle());
   } else if (auto op = dyn_cast<AIEX::CertWaitUcDmaOp>(o)) {
-    if (isLocalRegister(op.getWaitHandle()))
-      uses.push_back(op.getWaitHandle());
+    add(uses, op.getWaitHandle());
+  } else if (auto op = dyn_cast<AIEX::CertRead32Op>(o)) {
+    add(defs, op.getValue());
+  } else if (auto op = dyn_cast<AIEX::CertRead32DOp>(o)) {
+    add(uses, op.getAddress());
+    add(defs, op.getValue());
+  } else if (auto op = dyn_cast<AIEX::CertWrite32DOp>(o)) {
+    if (op.getAddressIsReg())
+      add(uses, op.getAddress());
+    if (op.getValueIsReg())
+      add(uses, op.getValue());
   }
 }
 
@@ -1367,6 +1379,12 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     addChainDataCost(desOp.getSymbol(), deviceOp, data_cost, seen);
   } else if (isa<AIEX::CertWaitUcDmaOp>(o)) {
     text_cost += 4; // ISA_OPSIZE_WAIT_UC_DMA
+  } else if (isa<AIEX::CertRead32Op>(o)) {
+    text_cost += 8; // ISA_OPSIZE_READ_32
+  } else if (isa<AIEX::CertRead32DOp>(o)) {
+    text_cost += 4; // ISA_OPSIZE_READ_32_D
+  } else if (isa<AIEX::CertWrite32DOp>(o)) {
+    text_cost += 12; // ISA_OPSIZE_WRITE_32_D
   }
 }
 

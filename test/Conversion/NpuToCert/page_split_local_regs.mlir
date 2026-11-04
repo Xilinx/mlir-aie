@@ -112,3 +112,39 @@ aie.device(xcve3858) @isolate_ok {
     }
   }
 }
+
+// -----
+
+// The same holds for a value read into a register and later written through
+// it: job 2 is kept whole.
+//
+// CHECK-LABEL: aie.device(xcve3858) @read_then_write
+// CHECK: aiex.cert.page
+// CHECK: aiex.cert.uc_dma_write_des_sync(@chainA)
+// CHECK-NOT: aiex.cert.read32(
+// CHECK: aiex.cert.page
+// CHECK: aiex.cert.read32(1, 8192)
+// CHECK-NOT: aiex.cert.page
+// CHECK: aiex.cert.uc_dma_write_des_sync(@chainB)
+// CHECK-NOT: aiex.cert.page
+// CHECK: aiex.cert.write32_d(1, 5) {address_is_reg}
+aie.device(xcve3858) @read_then_write {
+  memref.global "private" constant @a : memref<900xi32> = dense<0>
+  memref.global "private" constant @b : memref<1200xi32> = dense<0>
+  aiex.cert.uc_dma_chain @chainA {
+    aiex.cert.uc_dma_bd @a, 0, 900, false
+  }
+  aiex.cert.uc_dma_chain @chainB {
+    aiex.cert.uc_dma_bd @b, 0, 1200, false
+  }
+  aiex.cert.page {
+    aiex.cert.job(1) {
+      aiex.cert.uc_dma_write_des_sync(@chainA)
+    }
+    aiex.cert.job(2) {
+      aiex.cert.read32(1, 0x2000)
+      aiex.cert.uc_dma_write_des_sync(@chainB)
+      aiex.cert.write32_d(1, 5) {address_is_reg}
+    }
+  }
+}

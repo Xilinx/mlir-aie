@@ -161,6 +161,63 @@ def AIE_CertWrite32Op : AIEX_Op<"cert.write32", [HasParent<"CertJobOp">]> {
   }];
 }
 
+def AIE_CertWrite32DOp : AIEX_Op<"cert.write32_d", [HasParent<"CertJobOp">]> {
+  let summary = "Write a 32-bit value, taking the address or value from a "
+                "register";
+  let description = [{
+    Like `cert.write32`, but `address` and `value` may each name a register
+    instead of an immediate. With `address_is_reg`, `address` is a register
+    index r0..r23 holding the address; with `value_is_reg`, `value` is a
+    register index holding the value.
+
+    Example:
+    ```
+      cert.write32_d(3, 5) {address_is_reg}
+    ```
+  }];
+  let arguments = (ins UI32Attr:$address, UI32Attr:$value,
+      UnitAttr:$address_is_reg, UnitAttr:$value_is_reg);
+  let assemblyFormat = [{
+    `(` $address `,` $value `)` attr-dict
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_CertRead32Op : AIEX_Op<"cert.read32", [HasParent<"CertJobOp">]> {
+  let summary = "Read a 32-bit value from an address into a register";
+  let description = [{
+    Reads the 32-bit value at `address` into register `value`.
+
+    Example:
+    ```
+      cert.read32(1, 0x1000)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$value, UI32Attr:$address);
+  let assemblyFormat = [{
+    `(` $value `,` $address `)` attr-dict
+  }];
+}
+
+def AIE_CertRead32DOp : AIEX_Op<"cert.read32_d", [HasParent<"CertJobOp">]> {
+  let summary = "Read a 32-bit value from a register-held address into a "
+                "register";
+  let description = [{
+    Reads the 32-bit value at the address held in register `address` into
+    register `value`.
+
+    Example:
+    ```
+      cert.read32_d(0, 1)
+    ```
+  }];
+  let arguments = (ins AIEX_CertRegisterAttr:$address,
+      AIEX_CertRegisterAttr:$value);
+  let assemblyFormat = [{
+    `(` $address `,` $value `)` attr-dict
+  }];
+}
+
 def AIE_CertMaskWrite32Op
     : AIEX_Op<"cert.maskwrite32", [HasParent<"CertJobOp">]> {
   let summary = "Write a masked 32-bit value to a specified address";
