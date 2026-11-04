@@ -145,8 +145,8 @@ public:
   flowChannelDemand(
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
       llvm::ArrayRef<RouteOp> routes,
-      llvm::DenseMap<mlir::Operation *,
-                     llvm::SmallVector<std::pair<int, int>>> *named = nullptr);
+      llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
+          *named = nullptr);
 
   // Check if a logical tile's col/row constraints are satisfied at a position.
   static bool satisfiesConstraints(mlir::Operation *tile, TileID pos);
@@ -601,7 +601,6 @@ private:
       mlir::InFlightDiagnostic &diag, LogicalTileOp logicalTile,
       const Adjacency &adjacency,
       llvm::function_ref<llvm::StringRef(bool thisIsFirst)> labelPeer) const;
-
 };
 
 // Configuration for the SA placer's cost model and schedule.
