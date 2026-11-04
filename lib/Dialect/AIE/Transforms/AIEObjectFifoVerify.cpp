@@ -792,8 +792,8 @@ struct AIEObjectFifoVerifyPass
   /// back, and locks keep their counts until a PDI load, so the next run of
   /// the configuration finds those objects taken. Only cores certain to end
   /// are checked: one block, and no loop that may run forever. A fifo an
-  /// `aiex.dma_channel_reset_for` re-arms in every runtime sequence gets its
-  /// locks back each launch.
+  /// `aiex.dma_channel_reset_for` re-arms in every runtime sequence that moves
+  /// data through it gets its locks back each launch.
   LogicalResult verifyHeldAtEnd(DeviceOp device) {
     for (auto core : device.getOps<CoreOp>()) {
       Region &body = core.getBody();
@@ -824,9 +824,24 @@ struct AIEObjectFifoVerifyPass
             pool ? pool.getFifoName() : std::nullopt;
         auto rearms =
             fifo ? poolLocks->rearms().find(*fifo) : poolLocks->rearms().end();
+        // The sequences that fill or drain the fifo by name must each re-arm
+        // it; where none names it (a link fills it), every sequence must.
+        SmallVector<RuntimeSequenceOp> launches;
+        for (auto seq : device.getOps<RuntimeSequenceOp>()) {
+          auto uses = SymbolTable::getSymbolUses(seq.getOperation());
+          if (fifo && uses && llvm::any_of(*uses, [&](auto use) {
+                auto end = dyn_cast_or_null<RouteEndpoint>(
+                    SymbolTable::lookupNearestSymbolFrom(seq,
+                                                         use.getSymbolRef()));
+                return end && end.getFifoName() == *fifo;
+              }))
+            launches.push_back(seq);
+        }
+        if (launches.empty())
+          llvm::append_range(launches, device.getOps<RuntimeSequenceOp>());
         bool rearmedEveryLaunch =
             rearms != poolLocks->rearms().end() &&
-            llvm::all_of(device.getOps<RuntimeSequenceOp>(), [&](auto seq) {
+            llvm::all_of(launches, [&](RuntimeSequenceOp seq) {
               return llvm::any_of(rearms->second, [&](auto reset) {
                 return reset->getParentOp() == seq;
               });
