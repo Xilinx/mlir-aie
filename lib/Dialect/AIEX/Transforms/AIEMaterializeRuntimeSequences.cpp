@@ -452,9 +452,9 @@ static LogicalResult inlineReferencedSymbolDefinitions(
           stamped.push_back(AIE::ConsumedByAttr::get(
               proof.getContext(), proof.getOutput(), proof.getInputBytes(),
               proof.getOutputBytes(),
-              proof.getDevice() ? proof.getDevice()
-                                : FlatSymbolRefAttr::get(
-                                      callee.getSymNameAttr())));
+              proof.getDevice()
+                  ? proof.getDevice()
+                  : FlatSymbolRefAttr::get(callee.getSymNameAttr())));
         allocation.setConsumedByAttr(rewriter.getArrayAttr(stamped));
       }
       return std::make_pair(newSymbolRef, WalkResult::advance());

@@ -769,8 +769,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       entry.first->second = llvm::all_of(
           getOperation().getOps<AIE::RuntimeSequenceOp>(),
           [&](AIE::RuntimeSequenceOp seq) {
-            return stretchesUnbalanced(seq, nullptr, proofDevice(proof),
-                                       input, output, {input}, {output},
+            return stretchesUnbalanced(seq, nullptr, proofDevice(proof), input,
+                                       output, {input}, {output},
                                        proof) == Unbalanced::No;
           });
     return entry.first->second;
@@ -792,10 +792,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   AIE::DeviceOp loadedBy(NpuLoadPdiOp load) {
     FlatSymbolRefAttr ref = load.getDeviceRefAttr();
     Operation *module = getOperation()->getParentOp();
-    return ref && module
-               ? SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(module,
-                                                                     ref)
-               : AIE::DeviceOp();
+    return ref && module ? SymbolTable::lookupNearestSymbolFrom<AIE::DeviceOp>(
+                               module, ref)
+                         : AIE::DeviceOp();
   }
 
   // Why a stretch of `proof`'s device may leave `input`'s bytes behind.
@@ -860,12 +859,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       std::optional<DmaQueueModel::ChannelKey> channel =
           cfg ? std::optional(channelOf(cfg)) : rawPushChannel(op);
       bool circuit = byChannel && allocation && !allocation.getPacket();
-      bool isInput = llvm::is_contained(inputs, allocation) ||
-                     (circuit && channel && *channel == inKey &&
-                      !input.getPacket());
-      bool isOutput = llvm::is_contained(outputs, allocation) ||
-                      (circuit && channel && *channel == outKey &&
-                       !output.getPacket());
+      bool isInput =
+          llvm::is_contained(inputs, allocation) ||
+          (circuit && channel && *channel == inKey && !input.getPacket());
+      bool isOutput =
+          llvm::is_contained(outputs, allocation) ||
+          (circuit && channel && *channel == outKey && !output.getPacket());
       if ((channel && ((*channel == inKey && !isInput) ||
                        (*channel == outKey && !isOutput))) ||
           writesQueue(op, {inKey, outKey})) {
@@ -976,7 +975,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (done == outPushes->second.end() || done->order != order ||
         !done->through)
       return;
-    AIE::DeviceOp configured = opaqueLoad   ? AIE::DeviceOp()
+    AIE::DeviceOp configured = opaqueLoad     ? AIE::DeviceOp()
                                : loadedDevice ? loadedDevice
                                               : getOperation();
     for (auto [input, proof] : proofs->second) {

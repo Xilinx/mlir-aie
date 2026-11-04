@@ -742,8 +742,8 @@ void SAPlacer::collectSpillBuffers() {
       if (pool->depth > 1 &&
           pool->depth <= static_cast<int>(targetModel->getMaxLockValue()))
         deep.push_back(pool);
-    llvm::stable_sort(
-        deep, [](Pool *a, Pool *b) { return a->depth > b->depth; });
+    llvm::stable_sort(deep,
+                      [](Pool *a, Pool *b) { return a->depth > b->depth; });
     for (Pool *pool : deep) {
       if (bds <= channelBDs)
         break;
