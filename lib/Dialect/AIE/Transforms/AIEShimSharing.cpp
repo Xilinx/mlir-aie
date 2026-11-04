@@ -61,8 +61,8 @@ ShimTransferSpans::ShimTransferSpans(
         std::optional<APInt> trips =
             loop ? loop.getStaticTripCount() : std::nullopt;
         runs = runs && trips && !trips->isZero()
-                   ? llvm::checkedMul(*runs,
-                                      static_cast<int64_t>(trips->getZExtValue()))
+                   ? llvm::checkedMul(
+                         *runs, static_cast<int64_t>(trips->getZExtValue()))
                    : std::nullopt;
       }
       Span &span = byFifo[shimEnd->fifo];

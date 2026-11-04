@@ -958,10 +958,8 @@ struct AIELowerScratchpadParametersPass
           else if (auto end = dyn_cast_or_null<AIE::RouteEndpoint>(named))
             tile = end.getTile().getDefiningOp<TileLike>();
         }
-        uint32_t step = isa<NpuDmaMemcpyNdOp>(op) ||
-                                (tile && !tile.isMemTile())
-                            ? 4
-                            : 16;
+        uint32_t step =
+            isa<NpuDmaMemcpyNdOp>(op) || (tile && !tile.isMemTile()) ? 4 : 16;
         if (elemBytes && elemBytes % step) {
           int64_t &multiple =
               offsetMultiples.try_emplace(offsetRef.getValue(), 1)

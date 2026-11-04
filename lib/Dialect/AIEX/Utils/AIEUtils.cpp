@@ -253,12 +253,12 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   Value address = arith::ConstantOp::create(
       builder, loc,
       builder.getI32IntegerAttr(static_cast<int32_t>(registerAddr)));
-  Value lowBits = arith::ConstantOp::create(
-      builder, loc,
-      builder.getI32IntegerAttr(
-          static_cast<int32_t>(lengthBits.place(*lengthField) & 0x3)));
-  Value mask = arith::ConstantOp::create(builder, loc,
-                                         builder.getI32IntegerAttr(0x3));
+  Value lowBits =
+      arith::ConstantOp::create(builder, loc,
+                                builder.getI32IntegerAttr(static_cast<int32_t>(
+                                    lengthBits.place(*lengthField) & 0x3)));
+  Value mask =
+      arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0x3));
   AIEX::NpuMaskWrite32Op::create(builder, loc, address, lowBits, mask, nullptr,
                                  nullptr, nullptr);
   return success();

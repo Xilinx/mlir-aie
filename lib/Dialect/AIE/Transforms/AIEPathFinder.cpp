@@ -2867,8 +2867,8 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     // attempt never to have fit, so it stalls the routing check's count.
     if (fewestIllegal == 0 && illegalEdges > 0) {
       sinceFewestRejected++;
-      LLVM_DEBUG(llvm::dbgs() << "Rejected-routing stall "
-                              << sinceFewestRejected << '\n');
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Rejected-routing stall " << sinceFewestRejected << '\n');
     }
     if (illegalEdges && sinceFewest >= stallIterations) {
       auto losing = [&](int flow) {
@@ -2917,9 +2917,8 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                     } else {
                       sinceFewestRejected++;
                     }
-                    LLVM_DEBUG(llvm::dbgs()
-                               << "Rejected-routing stall "
-                               << sinceFewestRejected << '\n');
+                    LLVM_DEBUG(llvm::dbgs() << "Rejected-routing stall "
+                                            << sinceFewestRejected << '\n');
                     overlayFaults = rejected->faults.onlyOverlayMasters
                                         ? overlayFaults + 1
                                         : 0;

@@ -1218,15 +1218,17 @@ struct AIEObjectFifoAllocatePass
         Operation *transfer = op;
         if (auto start = dyn_cast<AIEX::DMAStartTaskOp>(op))
           transfer = start.getTask().getDefiningOp();
-        if (!transfer || !isa<AIEX::NpuDmaMemcpyNdOp, AIEX::DMAConfigureTaskForOp,
-                                AIEX::DMAStartBdChainForOp>(transfer) ||
+        if (!transfer ||
+            !isa<AIEX::NpuDmaMemcpyNdOp, AIEX::DMAConfigureTaskForOp,
+                 AIEX::DMAStartBdChainForOp>(transfer) ||
             isa<AIEX::DMAConfigureTaskForOp>(op) || !names(transfer))
           return WalkResult::advance();
         if (waited)
           return WalkResult::interrupt();
         for (Operation *parent = op->getParentOp(); parent != seq;
              parent = parent->getParentOp())
-          if (parent->walk([&](Operation *inner) {
+          if (parent
+                  ->walk([&](Operation *inner) {
                     return waits(inner) ? WalkResult::interrupt()
                                         : WalkResult::advance();
                   })
