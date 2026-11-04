@@ -44,6 +44,7 @@
 
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
 #include "aie/InitialAllDialect.h"
@@ -3109,20 +3110,28 @@ int main(int argc, char **argv) {
                        coresPerCol.getNumOccurrences() == 0 &&
                        cutEdges.empty() && !resume.active;
   // A repeated attempt runs every edge again, so it repeats every error but
-  // those the placement caused.
-  if (mayPlaceAgain)
+  // those the placement caused; the first attempt's are held, and reported,
+  // failed edge last, as an attempt reports them, unless a later one routes.
+  if (mayPlaceAgain) {
     diagHandler.holdErrors();
+    engine->opts.deferFailedEdge = true;
+  }
   mlir::LogicalResult ran = engine->run(
       g, runOutputs, satisfied, DeserializeContext{&context}, buildAlso);
   std::vector<mlir::Diagnostic> firstErrors = diagHandler.takeErrors();
+  EdgeBase *firstFailed = engine->failedEdge;
   // The sequential placer fills each column with cores and has no model of
   // the links between columns, so its placement can leave flows the router
   // cannot fit where one with fewer cores a column routes. Unless the
   // command line chose the placement, a design with cores to place is placed
   // again with fewer cores a column until the router fits the flows.
   std::vector<std::unique_ptr<Graph>> unrouted;
-  if (mlir::failed(ran) && mayPlaceAgain && engine->failedEdge &&
-      engine->failedEdge->name == kRoutedEdge) {
+  bool unroutable = llvm::any_of(firstErrors, [](mlir::Diagnostic &error) {
+    return llvm::StringRef(error.str())
+        .starts_with(xilinx::AIE::kNoLegalRouting);
+  });
+  if (mlir::failed(ran) && mayPlaceAgain && unroutable && firstFailed &&
+      firstFailed->name == kRoutedEdge) {
     int coreRows = 0;
     if (mlir::OwningOpRef<mlir::ModuleOp> input =
             parseModuleFromFile(getInputFilename(), &context))
@@ -3155,6 +3164,7 @@ int main(int argc, char **argv) {
           buildMainGraph(context, *graph, cutEdges, checkEdges,
                          deviceCache ? &*deviceCache : nullptr, keptDevices);
       engine = std::make_unique<Engine>(engineOptions);
+      engine->opts.deferFailedEdge = true;
       diagHandler.holdErrors();
       ran = engine->run(*graph, runOutputs, satisfied,
                         DeserializeContext{&context}, buildAlso);
@@ -3162,11 +3172,13 @@ int main(int argc, char **argv) {
     }
     if (mlir::succeeded(ran))
       firstErrors.clear();
-    else
-      llvm::errs() << "aiecc: no placement with fewer cores a column routes "
-                      "either; these errors are the first placement's\n";
   }
   diagHandler.emitErrors(firstErrors);
+  if (mlir::failed(ran) && !unrouted.empty())
+    llvm::errs() << "aiecc: no placement with fewer cores a column routes "
+                    "either; the errors above are the first placement's\n";
+  if (mlir::failed(ran) && mayPlaceAgain && firstFailed)
+    Engine::reportFailedEdge(firstFailed);
   if (mlir::failed(ran)) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and

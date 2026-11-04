@@ -290,6 +290,10 @@ struct Routing {
   std::map<std::pair<PathEndPoint, int>, SwitchSettings> idSettings;
 };
 
+// How the router's message starts when the flows do not fit the links.
+inline constexpr llvm::StringLiteral kNoLegalRouting =
+    "Unable to find a legal routing";
+
 // Why no legal routing was found, reported at `loc`, or the device if unset,
 // with `reason` if the router can say. A routing check's failure also names
 // the faults the router has to move.

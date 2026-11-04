@@ -21,13 +21,14 @@
 
 // Five flows down one column need more links than any placement of the
 // unrelated core gives them; aiecc tries each, then reports the first
-// placement's error.
+// placement's error and its failed edge, as one attempt would.
 // NEVER: placing again with --cores-per-col=3
 // NEVER: placing again with --cores-per-col=2
 // NEVER: placing again with --cores-per-col=1
-// NEVER: aiecc: no placement with fewer cores a column routes either; these errors are the first placement's
 // NEVER: error: Unable to find a legal routing
 // NEVER-SAME: cross from row 2 to row 1
+// NEVER: aiecc: no placement with fewer cores a column routes either; the errors above are the first placement's
+// NEVER: aiecc: edge 'input_physical.mlir' (key '{{.*}}') failed
 
 module {
   aie.device(npu1_1col) {

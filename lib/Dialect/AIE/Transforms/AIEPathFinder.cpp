@@ -98,7 +98,7 @@ char DeadlockProneRouting::ID = 0;
 char PinnedRoutingFailure::ID = 0;
 
 void RoutingFailure::log(llvm::raw_ostream &os) const {
-  os << "Unable to find a legal routing";
+  os << kNoLegalRouting;
   if (!reason.empty())
     os << ": " << reason;
 }
