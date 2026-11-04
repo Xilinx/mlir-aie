@@ -139,20 +139,15 @@ struct AIECtrlPacketToDmaPass
         int col = ctrlPktOp.getColumnFromAddr();
         int row = ctrlPktOp.getRowFromAddr();
 
-        // Calculate control packet size
-        int64_t ctrlPktSize = 0;
-        auto data = ctrlPktOp.getData();
-        auto length = ctrlPktOp.getLength();
-        if (data)
-          ctrlPktSize = data->size();
-        else if (length)
-          ctrlPktSize = *length;
-        ctrlPktSize++; // Ctrl info word
-        ctrlPktSize++; // Packet header
+        // A read's length describes its response, not an outgoing payload.
+        int64_t ctrlPktSize = 2;
+        if (auto data = ctrlPktOp.getData())
+          ctrlPktSize += data->size();
 
-        // Check if we can batch with the previous packet
-        if (targetModel.getTargetArch() == AIEArch::AIE2p && !new_batch &&
-            batches.back().tileId == TileID{col, row}) {
+        // Read requests must end their DMA transfer.
+        bool batchable = ctrlPktOp.getOpcode() == 0;
+        if (targetModel.getTargetArch() == AIEArch::AIE2p && batchable &&
+            !new_batch && batches.back().tileId == TileID{col, row}) {
           // Add to existing batch
           batches.back().totalSize += ctrlPktSize;
         } else {
@@ -169,8 +164,8 @@ struct AIECtrlPacketToDmaPass
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
                              alloc.getSymName().str(),
                              static_cast<int>(alloc.getChannelIndex()), &o});
-          new_batch = false;
         }
+        new_batch = !batchable;
         ddrOffset += ctrlPktSize;
       }
 

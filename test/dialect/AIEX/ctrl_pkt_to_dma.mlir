@@ -123,3 +123,27 @@ aie.device(npu2) {
   }
   aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1 (%tile_0_0, MM2S, 1) {aie.is_ctrl_pkt_overlay}
 }
+
+// -----
+
+// Read requests send only headers and require separate DMA transfers.
+// CHECK-LABEL: aie.device(npu2_1col) {
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 0][1, 1, 1, 2][0, 0, 0, 1])
+// CHECK: aiex.npu.sync
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 2][1, 1, 1, 2][0, 0, 0, 1])
+// CHECK: aiex.npu.sync
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 4][1, 1, 1, 3][0, 0, 0, 1])
+// CHECK: aiex.npu.sync
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 7][1, 1, 1, 2][0, 0, 0, 1])
+// CHECK: aiex.npu.sync
+aie.device(npu2_1col) {
+  %shim = aie.tile(0, 0)
+  %core = aie.tile(0, 2)
+  aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(%shim, MM2S, 1) {aie.is_ctrl_pkt_overlay}
+  aie.runtime_sequence() {
+    aiex.control_packet {address = 0x200440 : ui32, length = 4 : i32, opcode = 1 : i32, stream_id = 2 : i32}
+    aiex.control_packet {address = 0x200450 : ui32, length = 4 : i32, opcode = 1 : i32, stream_id = 2 : i32}
+    aiex.control_packet {address = 0x21f000 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
+    aiex.control_packet {address = 0x200440 : ui32, length = 4 : i32, opcode = 1 : i32, stream_id = 2 : i32}
+  }
+}
