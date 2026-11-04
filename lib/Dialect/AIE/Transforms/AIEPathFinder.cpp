@@ -73,6 +73,10 @@ constexpr int maxReorderedStall = 300;
 // fit the fabric gives up. In the nightly's designs, none that routed took
 // over 275.
 constexpr int maxOverusedStall = 400;
+// Routings that fit the fabric, rejected by the routing check without it
+// naming fewer connections to move, before an attempt gives up. In the lit
+// corpus, none that routed took over 506.
+constexpr int maxRejectedStall = 600;
 // How much faster a stalled routing's overused channels that only circuit
 // trees take accrue history, so the trees spread out sooner.
 constexpr int stallHistory = 4;
@@ -2656,6 +2660,9 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
   // Iterations of the current stall that moved circuit trees first.
   int reorderedStall = 0;
   int overlayFaults = 0;
+  // Routings that fit the fabric but the routing check rejects, since it last
+  // named fewer connections to move.
+  int fewestRejected = std::numeric_limits<int>::max(), sinceFewestRejected = 0;
   do {
     if (usable && (iterationCount + 1 >= maxIterations ||
                    iterationCount - usableAt >= maxSteers)) {
@@ -2667,13 +2674,16 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     // trees first has stopped helping
     if (++iterationCount >= maxIterations ||
         (fewestIllegal > 0 && sinceFewest >= maxOverusedStall) ||
-        reorderedStall >= maxReorderedStall) {
+        reorderedStall >= maxReorderedStall ||
+        sinceFewestRejected >= maxRejectedStall) {
       LLVM_DEBUG(llvm::dbgs()
                  << "\t\tPathfinder: giving up after " << iterationCount
                  << " iterations ("
                  << (iterationCount >= maxIterations ? "the iteration limit"
                      : reorderedStall >= maxReorderedStall
                          ? "circuit trees routed first stopped helping"
+                     : sinceFewestRejected >= maxRejectedStall
+                         ? "the routing check stopped naming fewer faults"
                          : "the overuse stalled")
                  << ")...unable to find routing for flows.\n");
       // Packet streams took part if they share a switchbox or link with an
@@ -2877,6 +2887,12 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                     LLVM_DEBUG(llvm::dbgs() << "Routing rejected: "
                                             << rejected->reason << '\n');
                     illegalEdges += applyRoutingFaults(st, rejected->faults);
+                    if (illegalEdges < fewestRejected) {
+                      fewestRejected = illegalEdges;
+                      sinceFewestRejected = 0;
+                    } else {
+                      sinceFewestRejected++;
+                    }
                     overlayFaults = rejected->faults.onlyOverlayMasters
                                         ? overlayFaults + 1
                                         : 0;
