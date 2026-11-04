@@ -1293,9 +1293,11 @@ struct AIEObjectFifoAllocatePass
     // them once here turns every lookup below from O(device size) into O(1).
     DenseMap<Operation *, ObjectFifoCoreEndpointOp> coreEndCache;
     DenseMap<Operation *, ObjectFifoDmaEndpointOp> circuitPeerCache;
+    DenseMap<Operation *, SmallVector<ObjectFifoDmaEndpointOp>> poolEnds;
     for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>()) {
       coreEndCache[dma] = coreEndOf(dma);
       circuitPeerCache[dma] = circuitPeer(dma);
+      poolEnds[dma.getPoolOp()].push_back(dma);
     }
     auto cachedCoreEnd = [&](ObjectFifoDmaEndpointOp dma) {
       return coreEndCache.lookup(dma);
@@ -1357,22 +1359,49 @@ struct AIEObjectFifoAllocatePass
         std::string reason;
         if (succeeded(turns.read(cores, reason)) && !turns.keepsUp(depths))
           reason = "would stall";
-        // The peers' chain moves the same turns, so a core at their other end
-        // must keep up with that order too.
+        // The peers' chain moves the same turns, so a core working through
+        // their pools, or through the pools one circuit back that feed them,
+        // must keep up with that order too, through both pools' depths.
+        // Cores of their own each feed one peer and wait on no other.
         SmallVector<ObjectFifoCoreEndpointOp> peerCores;
         SmallVector<int64_t> peerDepths;
         for (ObjectFifoDmaEndpointOp peer : peers) {
-          peerCores.push_back(cachedCoreEnd(peer));
-          peerDepths.push_back(peer.getPoolOp().getDepth());
+          ObjectFifoPoolOp pool = peer.getPoolOp();
+          int64_t depth = pool.getDepth();
+          ObjectFifoCoreEndpointOp core = cachedCoreEnd(peer);
+          if (!core) {
+            SmallVector<ObjectFifoDmaEndpointOp> across;
+            for (ObjectFifoDmaEndpointOp end : poolEnds.lookup(pool))
+              if (end.drains() != peer.drains())
+                across.push_back(end);
+            ObjectFifoDmaEndpointOp source =
+                across.size() == 1 ? cachedCircuitPeer(across.front())
+                                   : ObjectFifoDmaEndpointOp();
+            if (source && (core = cachedCoreEnd(source)))
+              depth += source.getPoolOp().getDepth();
+          }
+          peerCores.push_back(core);
+          peerDepths.push_back(depth);
         }
-        if (reason.empty() &&
-            llvm::any_of(peerCores, [](auto c) { return c; })) {
+        auto present = [](ObjectFifoCoreEndpointOp c) { return bool(c); };
+        bool oneCore = llvm::all_of(peerCores, [&](auto c) {
+          return c && sameTile(c.getTile(), peerCores.front().getTile());
+        });
+        bool ownCores =
+            llvm::all_of(peerCores, present) &&
+            llvm::all_of(llvm::enumerate(peerCores), [&](auto x) {
+              return llvm::none_of(
+                  llvm::drop_begin(peerCores, x.index() + 1), [&](auto c) {
+                    return sameTile(c.getTile(), x.value().getTile());
+                  });
+            });
+        if (reason.empty() && llvm::any_of(peerCores, present) && !ownCores) {
           CoreTurns peerTurns;
-          if (llvm::any_of(peerCores, [](auto c) { return !c; }))
-            reason = "only some peers have a core at their other end";
+          if (!oneCore)
+            reason = "a core feeds only some of the peers";
           else if (succeeded(peerTurns.read(peerCores, reason)) &&
                    !peerTurns.keepsUp(turns.turns(), peerDepths))
-            reason = "the peers' core would stall";
+            reason = "the core feeding the peers would stall";
         }
         // Over plain pools the chain unrolls to whole passes over each; past
         // the peers' channel BDs, walking them whole takes one a turn.
