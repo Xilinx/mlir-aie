@@ -94,5 +94,33 @@ def get_version() -> str:
     return version
 
 
+def write_build_metadata(output: Path) -> None:
+    """Record the Python sources' build identity without runtime Git queries."""
+    status = _git(
+        "status", "--porcelain", "--untracked-files=no", "--ignore-submodules=dirty"
+    )
+    values = {
+        "version": get_version(),
+        "revision": _git("rev-parse", "HEAD"),
+        "dirty": None if status is None else bool(status),
+    }
+    content = (
+        "# Copyright (C) 2026 Advanced Micro Devices, Inc.\n"
+        "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception\n\n"
+        + "".join(f"{key} = {value!r}\n" for key, value in values.items())
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not output.exists() or output.read_text() != content:
+        output.write_text(content)
+
+
 if __name__ == "__main__":
-    print(get_version())
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    if args.output:
+        write_build_metadata(args.output)
+    else:
+        print(get_version())

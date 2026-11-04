@@ -31,7 +31,7 @@ seq_a_with_scalar = Runtime(
 seq_b = Runtime(child_sequence, [Out4], name="seq_b")
 
 
-# CHECK: module attributes {iron.configuration_count = 3 : i32, iron.entry = "main:sequence"}
+# CHECK: module attributes {iron.configuration_count = 3 : i32, iron.entry = "main:sequence", iron.provenance =
 # CHECK: aie.device(npu2_1col) {
 # CHECK: aie.runtime_sequence(%[[OUT:.*]]: memref<8xi32>, %[[VALUE:.*]]: i32)
 def coordinator(out, value):

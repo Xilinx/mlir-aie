@@ -97,6 +97,38 @@ namespace {
 // it, since a pass-generated op shares its object's location.
 constexpr llvm::StringLiteral ironPrefix = "iron:";
 
+// The marker belongs to the IR producer, which may differ from this compiler.
+mlir::FailureOr<llvm::json::Value> ironProvenance(mlir::ModuleOp module) {
+  auto attr = module->getAttr("iron.provenance");
+  if (!attr)
+    return llvm::json::Value(nullptr);
+  auto dictionary = llvm::dyn_cast<mlir::DictionaryAttr>(attr);
+  if (!dictionary) {
+    module.emitError("iron.provenance must be a dictionary");
+    return mlir::failure();
+  }
+  llvm::json::Object result{
+      {"version", nullptr}, {"revision", nullptr}, {"dirty", nullptr}};
+  for (auto field : dictionary) {
+    auto name = field.getName().getValue();
+    if (name == "version" || name == "revision") {
+      if (auto value = llvm::dyn_cast<mlir::StringAttr>(field.getValue())) {
+        result[name] = value.getValue();
+        continue;
+      }
+    } else if (name == "dirty") {
+      if (auto value = llvm::dyn_cast<mlir::BoolAttr>(field.getValue())) {
+        result[name] = value.getValue();
+        continue;
+      }
+    }
+    module.emitError("invalid iron.provenance field '")
+        << name << "': expected version/revision strings or a dirty boolean";
+    return mlir::failure();
+  }
+  return llvm::json::Value(std::move(result));
+}
+
 mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag, bool keepOpDump) {
   llvm::SmallVector<llvm::StringRef> names;
   diag.getLocation()->walk([&](mlir::Location loc) {
@@ -1029,8 +1061,16 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       });
 
   auto &provenance = withDefaultStackSize.map<std::string>(
-      "provenance.json", [matchesDeviceFilter](const ModRef &mod) {
+      "provenance.json",
+      [matchesDeviceFilter](const Item<ModRef> &in,
+                            Item<std::string> &out) -> mlir::LogicalResult {
+        const ModRef &mod = *in.value;
+        auto iron = ironProvenance(mod.get());
+        if (mlir::failed(iron))
+          return mlir::failure();
         auto info = compilerProvenance();
+        if (iron->kind() != llvm::json::Value::Null)
+          info["iron"] = std::move(*iron);
         llvm::json::Array devices;
         bool hasSourceCores = false;
         for (DeviceOp device : mod.get().getOps<DeviceOp>()) {
@@ -1061,7 +1101,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           info["core_compiler"] = coreCompilerProvenance(
               xchesscc ? "chess" : "llvm-aie", tool, "--version");
         }
-        return llvm::formatv("{0}", llvm::json::Value(std::move(info))).str();
+        out.value =
+            llvm::formatv("{0}", llvm::json::Value(std::move(info))).str();
+        return mlir::success();
       });
 
   auto stampElf =
