@@ -99,7 +99,6 @@ void ShimTransferSpans::analyze(
       return result.spans.size() - 1;
     };
     DenseMap<StringAttr, SmallVector<size_t>> pending;
-    DenseMap<StringAttr, int64_t> receiveStarts;
     DenseMap<Value, StringAttr> tasks;
     DenseMap<size_t, Value> owners;
     auto transfer = [&](Operation *op, StringAttr symbol, bool starts,
@@ -110,10 +109,6 @@ void ShimTransferSpans::analyze(
       auto [from, to] = interval(op, position[op], position[op]);
       auto &queue = pending[symbol];
       if (starts) {
-        // A producer can send again before its next receive is posted, so gaps
-        // between receives do not make an endpoint available for sharing.
-        if (!endpoint->sends)
-          from = receiveStarts.try_emplace(endpoint->fifo, from).first->second;
         size_t start = note(endpoint->fifo, from);
         owners[start] = owner;
         queue.push_back(start);
@@ -160,7 +155,6 @@ void ShimTransferSpans::analyze(
       } else if (isa<AIEX::NpuLoadPdiOp, AIEX::NpuWriteConfigOp,
                      AIEX::NpuWriteTeardownOp>(op)) {
         if (isa<AIEX::NpuLoadPdiOp>(op) && op->getParentOp() == sequence) {
-          receiveStarts.clear();
           for (auto &[symbol, queue] : pending) {
             for (size_t start : queue)
               note(result.spans[start].endpoint, position[op] - 1, start);
@@ -244,10 +238,34 @@ void ShimTransferSpans::analyze(
     summaries[sequence] = result;
     return result;
   };
-  root->walk([&](ShimDMAAllocationOp alloc) {
-    if (auto endpoint =
-            endOf(alloc->getParentOfType<DeviceOp>(), alloc.getSymNameAttr()))
+  root->walk([&](Operation *op) {
+    if (!isa<ObjectFifoCreateOp, RouteEndpointOp, ShimDMAAllocationOp>(op))
+      return;
+    DeviceOp device = op->getParentOfType<DeviceOp>();
+    auto endpoint = endOf(device, SymbolTable::getSymbolName(op));
+    if (!endpoint)
+      return;
+    bool sends = endpoint->sends;
+    if (auto alloc = dyn_cast<ShimDMAAllocationOp>(op)) {
+      sends = alloc.getChannelDir() == DMAChannelDir::MM2S;
       used.insert(endpoint->fifo);
+    } else if (auto allowed =
+                   AIEDialect::ShareableWithAttrHelper(op->getContext())
+                       .getAttr(op)) {
+      auto &peers = permissions[endpoint->fifo];
+      for (Attribute attr : allowed)
+        if (auto ref = dyn_cast<FlatSymbolRefAttr>(attr))
+          if (auto other = endOf(device, ref.getAttr()))
+            peers.push_back(other->fifo);
+    }
+    if (auto fifo = dyn_cast<ObjectFifoCreateOp>(op))
+      if (llvm::any_of(fifo.getConsumerTiles(), [](Value tile) {
+            return cast<TileLike>(tile.getDefiningOp()).isShimTile();
+          }))
+        sends = false;
+    // Receive ordering does not constrain when independent producers send.
+    if (!sends)
+      permissions.try_emplace(endpoint->fifo);
   });
   root->walk([&](RuntimeSequenceOp sequence) { summarize(sequence); });
 }
@@ -257,8 +275,13 @@ bool ShimTransferSpans::isUsed(StringAttr endpoint) const {
 }
 
 bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
-  return !unknown && a != b && isUsed(a) && isUsed(b) &&
-         !overlaps.contains({a, b});
+  auto permits = [&](StringAttr from, StringAttr to) {
+    if (auto it = permissions.find(from); it != permissions.end())
+      return llvm::is_contained(it->second, to);
+    return !unknown && isUsed(from) && isUsed(to) &&
+           !overlaps.contains({from, to});
+  };
+  return a != b && permits(a, b) && permits(b, a);
 }
 
 SmallVector<SmallVector<unsigned>>

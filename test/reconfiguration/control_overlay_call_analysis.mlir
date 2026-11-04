@@ -120,12 +120,12 @@ module @nested_calls {
 
 // -----
 
-// Calling a sequence must retain its proof of non-overlapping receives.
+// A call boundary does not order independent S2MM producers.
 // CHECK-LABEL: module @callee_receives
 // CHECK: aie.route_endpoint @a(
-// CHECK-SAME: aie.shareable_with = [@b]
+// CHECK-SAME: aie.shareable_with = []
 // CHECK: aie.route_endpoint @b(
-// CHECK-SAME: aie.shareable_with = [@a]
+// CHECK-SAME: aie.shareable_with = []
 module @callee_receives {
   aie.device(npu2_1col) @cfg {
     %shim = aie.tile(0, 0)

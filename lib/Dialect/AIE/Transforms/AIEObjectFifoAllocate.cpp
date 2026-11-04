@@ -1136,7 +1136,8 @@ struct AIEObjectFifoAllocatePass
         [&](StringAttr symbol) -> std::optional<ShimTransferSpans::End> {
           auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
               device, symbol);
-          if (!endpoint)
+          if (!endpoint || endpoint.getBundle() != WireBundle::DMA ||
+              !endpoint.getTileLike().isShimTile())
             return std::nullopt;
           ShimTransferSpans::End end{
               endpoint.getFifoNameAttr() ? endpoint.getFifoNameAttr()
@@ -1144,17 +1145,10 @@ struct AIEObjectFifoAllocatePass
               endpoint.getRouteDirection() == DMAChannelDir::MM2S};
           return end;
         });
-    auto permits = [&](RouteEndpointOp a, RouteEndpointOp b) {
-      if (auto allowed =
-              AIEDialect::ShareableWithAttrHelper(a->getContext()).getAttr(a))
-        return llvm::is_contained(allowed,
-                                  FlatSymbolRefAttr::get(b.getSymNameAttr()));
+    auto canShare = [&](RouteEndpointOp a, RouteEndpointOp b) {
       return spans.apart(
           a.getFifoNameAttr() ? a.getFifoNameAttr() : a.getSymNameAttr(),
           b.getFifoNameAttr() ? b.getFifoNameAttr() : b.getSymNameAttr());
-    };
-    auto canShare = [&](RouteEndpointOp a, RouteEndpointOp b) {
-      return permits(a, b) && permits(b, a);
     };
     SmallVector<Operation *> candidates;
     SmallVector<StringAttr> fifos;

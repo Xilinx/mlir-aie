@@ -28,7 +28,12 @@ def AIE_Dialect : Dialect {
     both endpoints must permit the pairing. On a shim DMA allocation it lists
     route endpoints allowed to use that fixed channel. Empty lists forbid
     these shares. Explicit lists override lifetime analysis, but resource and
-    packet-routing constraints still apply; omission permits inference.
+    packet-routing constraints still apply. Omission permits MM2S inference;
+    S2MM sharing requires explicit permission because receive ordering does
+    not constrain independent senders. The author must guarantee stream order
+    and completion across repeated executions. On an unsplit objectFIFO, the
+    list names other objectFIFOs and applies to its shim DMA endpoint; splitting
+    transfers the permissions to route endpoints and rewrites the references.
 
     On a device, `aie.reserve_controller_packet_ids` reserves controller IDs
     when assigning packet IDs.

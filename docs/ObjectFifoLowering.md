@@ -459,29 +459,36 @@ Attributes already present are kept, so writing `aie.buffer` ops and naming them
 in the pool, attaching locks to a segment, or setting `channelIndex` on an
 endpoint overrides that choice; this pass fills in the rest.
 
-When a shim tile runs out of channels, shim ends that are never in flight
-together take turns on one channel instead. Ends that different runtime
-sequences use never are: one dispatch runs one sequence and is taken to finish
-its transfers before the next starts, the same contract that lets one design
-be dispatched twice in a row. Within one sequence, a receiving (S2MM) end's
-transfers must be awaited or freed (`aiex.dma_free_task`) before the other's
-first is issued, and an end used inside a loop counts as in flight for the
-whole loop. A sending (MM2S) end stays in flight to the end of its sequence:
-a shim MM2S task reports itself complete once the shim has read its data, up
-to about 1580 words before they have entered the stream (measured on npu2),
-so awaiting it proves nothing about a later transfer queued behind it. An end no
-runtime sequence names is never shared. Only as many ends share as the tile
-needs. The routes of ends sharing a channel become packet-switched, with ids
-that differ from one another; other shared channels reuse the same ids, as the
-router keeps flows with one id apart wherever their destinations differ. Each
-end keeps its own `aie.shim_dma_allocation`, so every transfer stamps its own
-header. A design that fits without sharing is lowered exactly as before.
+When a shim tile runs out of channels, MM2S endpoints whose transfers never
+overlap may share one channel. Ordinary MM2S transfers conservatively remain
+live until their runtime sequence returns. An `aiex.run` call is assumed to
+finish its transfers before returning, so disjoint calls can share. Configuration
+completes before the configure body starts, allowing control and application
+MM2S transfers in separate phases to share as well.
 
-An `aiex.run` call is assumed to be self-contained: its transfers must finish
-before it returns. Based on this assumption, shim DMA allocation may choose
-to use the same DMA channel for endpoints whose transfers do not overlap
-("channel sharing"). Configuration completes before the configure body starts,
-so control and application transfers in these separate phases may also share.
+S2MM sharing requires explicit `aie.shareable_with` permissions. Ordered receives
+do not constrain when independent cores or DMAs send their data. The author must
+guarantee that packets reach the shared channel in the order and quantities the
+receives expect, including across repeated executions. Awaiting or freeing receive
+tasks alone does not establish this guarantee.
+
+On an unsplit objectFIFO, the attribute names other objectFIFOs; on a route
+endpoint, it names other route endpoints. Both ends must permit the pairing:
+
+```mlir
+aie.objectfifo @a(%core_a, {%shim}, 2 : i32) {aie.shareable_with = [@b]} : !aie.objectfifo<memref<16xi32>>
+aie.objectfifo @b(%core_b, {%shim}, 2 : i32) {aie.shareable_with = [@a]} : !aie.objectfifo<memref<16xi32>>
+```
+
+Splitting copies these permissions to the shim route endpoints and rewrites the
+references. Explicit lists override lifetime analysis; `[]` disallows sharing.
+A shim DMA allocation's list instead permits named route endpoints to use its
+fixed channel. Hardware and routing constraints apply in all cases.
+
+Only as many endpoints share as the tile needs. Their routes become
+packet-switched with distinct packet IDs, and each endpoint has its own
+`aie.shim_dma_allocation`. MM2S transfers stamp their endpoint's packet header;
+S2MM descriptors do not select packets by ID.
 
 The runtime BD allocator warns about transfers left neither awaited nor freed
 at sequence exit (`warn-unreleased-transfers`, enabled by default in the pass

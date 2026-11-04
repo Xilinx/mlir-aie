@@ -309,12 +309,19 @@ struct AIEObjectFifoSplitPass
                                       WireBundle bundle,
                                       std::optional<int> channelIndex,
                                       ObjectFifoCreateOp from) {
-    return RouteEndpointOp::create(
+    auto endpoint = RouteEndpointOp::create(
         builder, loc, builder.getStringAttr(name), tile,
         WireBundleAttr::get(builder.getContext(), bundle),
         channelIndex ? builder.getI32IntegerAttr(*channelIndex) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()));
+    if (bundle == WireBundle::DMA &&
+        cast<TileOp>(tile.getDefiningOp()).isShimTile()) {
+      AIEDialect::ShareableWithAttrHelper sharing(builder.getContext());
+      if (auto allowed = sharing.getAttr(from))
+        sharing.setAttr(endpoint, allowed);
+    }
+    return endpoint;
   }
 
   /// External buffers registered against a fifo's shim end form a pool in DDR.

@@ -42,7 +42,7 @@ public:
       mlir::ModuleOp module,
       llvm::function_ref<std::optional<End>(DeviceOp, mlir::StringAttr)> endOf);
 
-  /// Whether the ends of `a` and `b` are never in flight together.
+  /// Whether both ends permit sharing, explicitly or by MM2S lifetime analysis.
   bool apart(mlir::StringAttr a, mlir::StringAttr b) const;
 
   bool isUsed(mlir::StringAttr end) const;
@@ -62,6 +62,8 @@ private:
                  llvm::SmallVector<std::tuple<unsigned, int64_t, int64_t>>>
       lifetimes;
   llvm::DenseSet<mlir::StringAttr> used;
+  llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<mlir::StringAttr>>
+      permissions;
   llvm::DenseSet<std::pair<mlir::StringAttr, mlir::StringAttr>> overlaps;
   bool unknown = false;
 };

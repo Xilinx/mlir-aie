@@ -5,11 +5,11 @@
 // RUN: sed '/@b(.*) DMA/s/DMA/DMA {aie.shareable_with = []}/' %s | aie-opt --aie-annotate-shim-sharing | FileCheck %s --check-prefix=EXPLICIT
 
 // CHECK: aie.route_endpoint @a(
-// CHECK-SAME: aie.shareable_with = [@c]
+// CHECK-SAME: aie.shareable_with = []
 // CHECK: aie.route_endpoint @b(
-// CHECK-SAME: aie.shareable_with = [@c]
+// CHECK-SAME: aie.shareable_with = []
 // CHECK: aie.route_endpoint @c(
-// CHECK-SAME: aie.shareable_with = [@a, @b]
+// CHECK-SAME: aie.shareable_with = []
 // EXPLICIT: aie.route_endpoint @b(
 // EXPLICIT-SAME: aie.shareable_with = []
 

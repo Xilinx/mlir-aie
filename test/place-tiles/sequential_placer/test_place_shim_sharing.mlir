@@ -60,66 +60,6 @@ module @pack {
 
 // -----
 
-// Three receiving ends pinned to the shim tile, one runtime sequence draining
-// them as IRON's runtime tasks do. Freeing a task means its transfers are
-// done, as awaiting does, so each end finishes before the next starts. (A
-// sending end is never done before its sequence ends: a shim MM2S task
-// reports itself complete before its words leave the shim.)
-// CHECK-LABEL: module @pinned_freed
-// CHECK-DAG:   aie.shim_dma_allocation @out_a__shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @out_b__shim_alloc(%{{.*}}, S2MM, 0)
-// CHECK-DAG:   aie.shim_dma_allocation @out_c__shim_alloc(%{{.*}}, S2MM, 1)
-module @pinned_freed {
-  aie.device(npu2_1col) {
-    %s_a = aie.logical_tile<ShimNOCTile>(0, 0)
-    %s_b = aie.logical_tile<ShimNOCTile>(0, 0)
-    %s_c = aie.logical_tile<ShimNOCTile>(0, 0)
-    %a = aie.logical_tile<CoreTile>(?, ?)
-    %b = aie.logical_tile<CoreTile>(?, ?)
-    %c = aie.logical_tile<CoreTile>(?, ?)
-    aie.objectfifo @out_a(%a, {%s_a}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @out_b(%b, {%s_b}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @out_c(%c, {%s_c}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    aie.core(%a) {
-      %x = aie.objectfifo.acquire @out_a(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_a(Produce, 1)
-      aie.end
-    }
-    aie.core(%b) {
-      %x = aie.objectfifo.acquire @out_b(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_b(Produce, 1)
-      aie.end
-    }
-    aie.core(%c) {
-      %x = aie.objectfifo.acquire @out_c(Produce, 1) : memref<16xi32>
-      aie.objectfifo.release @out_c(Produce, 1)
-      aie.end
-    }
-    aie.runtime_sequence(%in : memref<16xi32>) {
-      %ta = aiex.dma_configure_task_for @out_a {
-        aie.dma_bd(%in : memref<16xi32> offset = 0 len = 16)
-        aie.end
-      }
-      aiex.dma_start_task(%ta)
-      aiex.dma_free_task(%ta)
-      %tb = aiex.dma_configure_task_for @out_b {
-        aie.dma_bd(%in : memref<16xi32> offset = 0 len = 16)
-        aie.end
-      }
-      aiex.dma_start_task(%tb)
-      aiex.dma_free_task(%tb)
-      %tc = aiex.dma_configure_task_for @out_c {
-        aie.dma_bd(%in : memref<16xi32> offset = 0 len = 16)
-        aie.end
-      }
-      aiex.dma_start_task(%tc)
-      aiex.dma_free_task(%tc)
-    }
-  }
-}
-
-// -----
-
 // Two ends fit the tile, so nothing is shared and both keep a channel each.
 // CHECK-LABEL: module @fits
 // CHECK-DAG:   aie.shim_dma_allocation @in_a__shim_alloc(%{{.*}}, MM2S, 0)
