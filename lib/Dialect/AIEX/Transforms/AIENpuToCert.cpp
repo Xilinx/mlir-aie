@@ -1478,7 +1478,7 @@ static void computeIndivisibleSpans(AIEX::CertPageOp page,
         continue;
       flatIndex[&o] = idx;
       if (auto bar = dyn_cast<AIEX::CertLocalBarrierOp>(o)) {
-        int id = bar.getLocalBarrierId();
+        int id = static_cast<int>(bar.getLocalBarrierId());
         auto it = barriers.find(id);
         if (it == barriers.end())
           barriers[id] = {idx, idx};

@@ -79,10 +79,10 @@ aie.device(npu2) {
   }
   // expected-error@+1 {{over the 8192-byte microcontroller page limit, and cannot be split without separating a local_barrier participant set across pages; insert an explicit cert.page boundary}}
   aiex.cert.job(1) {
-    aiex.cert.local_barrier(0, 2)
+    aiex.cert.local_barrier(lb0, 2)
     aiex.cert.uc_dma_write_des_sync(@c1)
     aiex.cert.uc_dma_write_des_sync(@c2)
-    aiex.cert.local_barrier(0, 2)
+    aiex.cert.local_barrier(lb0, 2)
   }
 }
 
@@ -105,10 +105,10 @@ aie.device(npu2) {
   // expected-error@+1 {{over the 8192-byte microcontroller page limit, and cannot be split without separating a local_barrier participant set across pages; reduce the page's contents or regroup its local_barrier participants}}
   aiex.cert.page {
     aiex.cert.job(1) {
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
       aiex.cert.uc_dma_write_des_sync(@c1)
       aiex.cert.uc_dma_write_des_sync(@c2)
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
     }
   }
 }

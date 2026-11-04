@@ -363,13 +363,15 @@ def AIE_CertLocalBarrierOp
   let summary = "Local barrier operation";
   let description = [{
     This operation represents a local barrier that synchronizes execution based on a barrier ID and the number of participants.
+    The barrier is named as the assembler names it, `lb0`..`lb15`.
 
     Example:
     ```
-      cert.local_barrier(1, 2)
+      cert.local_barrier(lb1, 2)
     ```
   }];
-  let arguments = (ins I32Attr:$local_barrier_id, I32Attr:$num_participants);
+  let arguments = (ins CertLocalBarrierId:$local_barrier_id,
+      I32Attr:$num_participants);
   let assemblyFormat = [{
     `(` $local_barrier_id `,` $num_participants `)` attr-dict
   }];
@@ -381,15 +383,16 @@ def AIE_CertRemoteBarrierOp
   let description = [{
     This operation represents a remote barrier that synchronizes execution
     based on a barrier ID `remote_barrier_id` and `party_mask`, a bit map of
-    participant uC IDs. The integer id names the assembler operand
-    `$rb0`..`$rb6`, encoded as firmware ids 1..7.
+    participant uC IDs. The barrier is named as the assembler names it,
+    `rb0`..`rb6`, which AIEBU encodes as firmware ids 1..7.
 
     Example:
     ```
-      cert.remote_barrier(1, 0x3)
+      cert.remote_barrier(rb1, 0x3)
     ```
   }];
-  let arguments = (ins I32Attr:$remote_barrier_id, I32Attr:$party_mask);
+  let arguments = (ins CertRemoteBarrierId:$remote_barrier_id,
+      I32Attr:$party_mask);
   let assemblyFormat = [{
     `(` $remote_barrier_id `,` $party_mask `)` attr-dict
   }];

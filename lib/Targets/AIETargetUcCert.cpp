@@ -146,14 +146,16 @@ void emitApplyOffset57(CertApplyOffset57Op op, std::string &text) {
 // LOCAL_BARRIER       $lb0, 2
 void emitLocalBarrier(CertLocalBarrierOp op, std::string &text) {
   text += "  LOCAL_BARRIER          ";
-  text += "$lb" + std::to_string(op.getLocalBarrierId()) + ", ";
+  text +=
+      "$" + stringifyCertLocalBarrierId(op.getLocalBarrierId()).str() + ", ";
   text += std::to_string(op.getNumParticipants()) + "\n";
 }
 
 // REMOTE_BARRIER      $rb3, 3
 void emitRemoteBarrier(CertRemoteBarrierOp op, std::string &text) {
   text += "  REMOTE_BARRIER         ";
-  text += "$rb" + std::to_string(op.getRemoteBarrierId()) + ", ";
+  text +=
+      "$" + stringifyCertRemoteBarrierId(op.getRemoteBarrierId()).str() + ", ";
   text += std::to_string(op.getPartyMask()) + "\n";
 }
 

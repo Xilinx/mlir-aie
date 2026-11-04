@@ -10,14 +10,14 @@
 
 // RUN: aie-opt --aie-cert-verify --split-input-file --verify-diagnostics %s
 
-// Positive: both participants of local_barrier(0) are in the same page -> OK.
+// Positive: both participants of local_barrier(lb0) are in the same page -> OK.
 aie.device(xcve3858) {
   aiex.cert.page {
     aiex.cert.job(0) {
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
     }
     aiex.cert.job(1) {
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
     }
   }
 }
@@ -29,14 +29,14 @@ aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.page {
       aiex.cert.job(0) {
-        aiex.cert.local_barrier(0, 1)
+        aiex.cert.local_barrier(lb0, 1)
       }
     }
   }
   aiex.cert.attach_to_group(2) {
     aiex.cert.page {
       aiex.cert.job(1) {
-        aiex.cert.local_barrier(0, 1)
+        aiex.cert.local_barrier(lb0, 1)
       }
     }
   }
@@ -44,17 +44,17 @@ aie.device(xcve3858) {
 
 // -----
 
-// Negative: local_barrier(0) split across two pages in the same uC -> error.
+// Negative: local_barrier(lb0) split across two pages in the same uC -> error.
 aie.device(xcve3858) {
   aiex.cert.page {
     aiex.cert.job(0) {
-      aiex.cert.local_barrier(0, 2)
+      aiex.cert.local_barrier(lb0, 2)
     }
   }
   aiex.cert.page {
     aiex.cert.job(1) {
-      // expected-error@+1 {{cert.local_barrier with local_barrier_id 0 in uC 0 must be on the same page}}
-      aiex.cert.local_barrier(0, 2)
+      // expected-error@+1 {{cert.local_barrier lb0 in uC 0 must be on the same page}}
+      aiex.cert.local_barrier(lb0, 2)
     }
   }
 }
@@ -66,10 +66,10 @@ aie.device(xcve3858) {
 // both, so this incorrectly passed.
 aie.device(xcve3858) {
   aiex.cert.job(0) {
-    aiex.cert.local_barrier(0, 2)
+    aiex.cert.local_barrier(lb0, 2)
   }
   aiex.cert.job(1) {
-    // expected-error@+1 {{cert.local_barrier with local_barrier_id 0 in uC 0 must be on the same page as its other participants}}
-    aiex.cert.local_barrier(0, 2)
+    // expected-error@+1 {{cert.local_barrier lb0 in uC 0 must be on the same page as its other participants}}
+    aiex.cert.local_barrier(lb0, 2)
   }
 }
