@@ -1770,6 +1770,24 @@ verifyTransferCoversWholeObjects(Operation *transfer, SymbolRefAttr alloc,
   if (partial->copies > 1)
     error << ", each sent " << partial->copies << " times in a row";
   return error << "); the far end's buffer descriptors are sized by the "
+LogicalResult AIEX::DMAConfigureTaskOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  FlatSymbolRefAttr alloc = getAllocAttr();
+  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (!alloc || !dev)
+    return success();
+  auto allocation = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(
+      symbolTable.lookupSymbolIn(dev, alloc.getAttr()));
+  if (!allocation)
+    return emitOpError("alloc ") << alloc
+                                 << " names no aie.shim_dma_allocation";
+  if (allocation.getTile() != getTile() ||
+      allocation.getChannelDir() != getDirection() ||
+      allocation.getChannelIndex() != static_cast<int>(getChannel()))
+    return emitOpError("runs on another channel than its alloc ") << alloc;
+  return success();
+}
+
                   "segments, so a partial one never completes";
 }
 

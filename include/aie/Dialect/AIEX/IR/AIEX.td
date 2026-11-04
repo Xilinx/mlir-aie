@@ -1395,7 +1395,9 @@ def AIE_NpuWriteTeardownOp
 
 def AIE_DMAConfigureTaskOp
     : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
-                                     TileElement, DMAConfigureTaskLike]>,
+                                     TileElement, DMAConfigureTaskLike,
+                                     DeclareOpInterfaceMethods<
+                                         SymbolUserOpInterface>]>,
       Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task "
                 "on a Channel and Direction on a Tile";
