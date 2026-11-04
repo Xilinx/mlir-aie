@@ -892,13 +892,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return why;
   }
 
-  // A dispatch loads its own device first, so array state passes to a later
-  // dispatch only from a sequence that ends on another device's PDI: that
-  // device's next dispatch starts where this one's tail left it, while its
-  // proofs count on a clean start. The tail is held to each of them, read off
-  // that device (as seedFromStaticBds reads its static BDs): pushes on a
-  // proof's channels count through the copies materialization stamped with
-  // that device, and any other there is traffic it does not describe.
+  // Ending on another device's PDI hands that array on as leavesNothing
+  // describes, so the last stretch is held to the loaded device's own proofs,
+  // read off it as seedFromStaticBds reads its BDs: pushes on a proof's
+  // channels count through the copies materialization stamped with it, and
+  // any other there is traffic the proof does not describe.
   LogicalResult checkForeignTail(AIE::RuntimeSequenceOp seq) {
     NpuLoadPdiOp last;
     for (auto load : seq.getOps<NpuLoadPdiOp>())
