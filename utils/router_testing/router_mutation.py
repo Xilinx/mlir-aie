@@ -796,11 +796,34 @@ def judge(e, expect, hops_on, seed):
     # stands; without it the router tries further, and has to succeed where
     # a routing without the cycle exists.
     if rp.shared_receiver_warning(p.stderr) is not None:
-        s = rp.aie_opt(e.emit(), hops_on, timeout=120, strict=True)
-        if s.returncode < 0:
-            return "crash", f"strict: {rp.first_error(s.stderr)[:300]}"
-        if s.returncode and rp.strict_witness(e, rp.Analysis(e)) is not None:
+        return judge_strict(
+            e, expect, hops_on, rp.aie_opt(e.emit(), hops_on, timeout=120, strict=True)
+        )
+    return "ok", f"routed ({expect})"
+
+
+def judge_strict(e, expect, hops_on, s):
+    """Hold the router's run on canonical `e` without allow-deadlock-prone,
+    `s`, to what judge() holds its run with it to. Returns (outcome, detail)
+    as judge() does."""
+    if s.returncode < 0:
+        return "crash", f"strict: {rp.first_error(s.stderr)[:300]}"
+    if s.returncode:
+        if rp.strict_witness(e, rp.Analysis(e)) is not None:
             return "strict-miss", "fails without allow-deadlock-prone, needlessly"
+        return "ok", f"routed ({expect})"
+    try:
+        problems, stats = rp.verify(e, rp.Analysis(e), s.stdout, hops_on)
+    except Exception as x:
+        return "model-limit", f"strict verify: {x!r}"
+    if stats["shared_receiver_cycle"] is not None:
+        problems.append(
+            f"strict routing keeps a hold cycle: {stats['shared_receiver_cycle']}"
+        )
+    if problems:
+        if rp.known_bug(e, problems):
+            return "known", problems[0][:200]
+        return "illegal", f"strict: {problems[0][:300]}"
     return "ok", f"routed ({expect})"
 
 

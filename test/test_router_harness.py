@@ -179,6 +179,20 @@ def test_the_model_rejects_a_mark_no_priority_flow_takes(priority):
     assert "ctrl masterset South:2 at (0, 0) carries no priority flow" in problems
 
 
+def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
+    d, _ = priority
+    strict = rp.aie_opt(d.emit(), True, strict=True)
+    assert strict.returncode == 0, strict.stderr
+    assert router_mutation.judge_strict(d, "route", True, strict)[0] == "ok"
+    # The shim mux no longer takes id 3 down to its DMA channel.
+    cut = strict.stdout.replace("aie.connect<North : 2, DMA : 0>", "")
+    assert cut != strict.stdout
+    broken = subprocess.CompletedProcess(strict.args, 0, cut, strict.stderr)
+    outcome, detail = router_mutation.judge_strict(d, "route", True, broken)
+    assert outcome == "illegal", detail
+    assert "id 3 from (0, 2) DMA:0" in detail
+
+
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():
     d = rp.load_design(OVER_CUT)
     holds = router_shrink.holds_fn(OVERUSED, True)
