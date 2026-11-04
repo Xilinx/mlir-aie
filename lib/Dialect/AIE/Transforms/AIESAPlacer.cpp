@@ -179,8 +179,16 @@ void SAPlacer::buildNetModel(SmallVector<ObjectFifoCreateOp> &objectFifos,
 // on its tile; a pool is bytes on its tile, and descriptors when the tile is a
 // mem tile. None of it needs the DMA-or-shared-memory guess a fifo needs: a
 // route already moves data by DMA.
-void SAPlacer::buildRouteModel(DeviceOp device, ArrayRef<RouteOp> routes) {
+void SAPlacer::buildRouteModel(DeviceOp device, ArrayRef<FlowOp> flows,
+                               ArrayRef<PacketFlowOp> pktFlows,
+                               ArrayRef<RouteOp> routes) {
   routeEnds.clear();
+  for (auto &[tile, inOut] : flowChannelDemand(flows, pktFlows, routes)) {
+    for (int i = 0; i < inOut.first; ++i)
+      routeEnds.push_back({tile, /*output=*/false});
+    for (int i = 0; i < inOut.second; ++i)
+      routeEnds.push_back({tile, /*output=*/true});
+  }
   for (RouteOp route : routes) {
     NetInfo net;
     auto addEnd = [&](StringRef name, bool output) {
@@ -192,8 +200,6 @@ void SAPlacer::buildRouteModel(DeviceOp device, ArrayRef<RouteOp> routes) {
       if (!isa_and_nonnull<LogicalTileOp>(tileOp))
         return;
       net.endpoints.push_back(tileOp);
-      if (endpoint.getRouteBundle() == WireBundle::DMA)
-        routeEnds.push_back({tileOp, output});
     };
     for (StringRef source : route.getSourceNames())
       addEnd(source, /*output=*/true);
@@ -498,10 +504,14 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     }
 
     // DMA contribution: a fifo shared memory does not carry runs through the
-    // DMAs, back to its own tile as well.
+    // DMAs, back to its own tile as well. An end takes a channel of its own
+    // unless it is a stream port, a PLIO, or a merge's or dispatch's
+    // participant whose shared end another took.
     if (!isSharedMem) {
-      currentDMAUsage[consPos].first += sign;
-      prodNeedsDMA = true;
+      bool plio = cast<ObjectFifoCreateOp>(fb.fifoOp).getPlio();
+      if (consIsShim ? !plio : fb.consumerEnds[ci].has_value())
+        currentDMAUsage[consPos].first += sign;
+      prodNeedsDMA = prodIsShim ? !plio : fb.producerEnd.has_value();
     }
   }
 
@@ -1508,7 +1518,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
-  buildRouteModel(device, collected.routes);
+  buildRouteModel(device, collected.flows, collected.pktFlows,
+                  collected.routes);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });

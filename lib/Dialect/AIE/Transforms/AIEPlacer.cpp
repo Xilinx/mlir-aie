@@ -199,7 +199,12 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // and cascade adjacency constraints from CascadeFlow connectivity.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
-  addChannelRequirementsFromFlows(flows, pktFlows, routes, channelRequirements);
+  namedChannels.clear();
+  for (auto &[tile, inOut] :
+       flowChannelDemand(flows, pktFlows, routes, &namedChannels)) {
+    channelRequirements[tile].first += inOut.first;
+    channelRequirements[tile].second += inOut.second;
+  }
   countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
   buildRuntimeBdProfiles(device, objectFifos);
@@ -1437,13 +1442,12 @@ Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
 // consumer. Dedup by (tile, channel) so the producer-of-broadcast and
 // consumer-of-merge sides are each counted once. An `aie.route` end whose
 // channel allocation has yet to pick holds a channel of its own.
-void SequentialPlacer::addChannelRequirementsFromFlows(
+llvm::MapVector<Operation *, std::pair<int, int>> Placer::flowChannelDemand(
     ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
     ArrayRef<RouteOp> routes,
-    llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements) {
-
+    llvm::DenseMap<Operation *, SmallVector<std::pair<int, int>>> *named) {
+  llvm::MapVector<Operation *, std::pair<int, int>> demand;
   llvm::DenseSet<std::tuple<Operation *, int>> seenSrc, seenDst;
-  namedChannels.clear();
 
   auto incIfDMA = [&](Operation *tileOp, WireBundle bundle,
                       std::optional<int> channel, bool isOutput) {
@@ -1454,12 +1458,12 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     auto &seen = isOutput ? seenSrc : seenDst;
     if (channel && !seen.insert({tileOp, *channel}).second)
       return;
-    if (channel)
-      namedChannels[tileOp].push_back({isOutput, *channel});
+    if (channel && named)
+      (*named)[tileOp].push_back({isOutput, *channel});
     if (isOutput)
-      channelRequirements[tileOp].second++;
+      demand[tileOp].second++;
     else
-      channelRequirements[tileOp].first++;
+      demand[tileOp].first++;
   };
 
   for (auto flow : flows) {
@@ -1497,6 +1501,7 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     for (StringRef dest : route.getDestinationNames())
       count(dest, /*isOutput=*/false);
   }
+  return demand;
 }
 
 SequentialPlacer::FlowMembership SequentialPlacer::buildFlowMembership(

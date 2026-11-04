@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
+#include "llvm/ADT/MapVector.h"
 
 #include <array>
 #include <deque>
@@ -135,6 +136,17 @@ public:
 
   // Collect all placement-relevant operations from the device.
   static CollectedOps collectOperations(DeviceOp device);
+
+  // The (input, output) DMA channels each logical tile's flows, packet flows
+  // and route endpoints take: one per endpoint however many routes name it,
+  // and one per channel a flow names by index. With `named`, the (output,
+  // index) channels named by index, by tile.
+  static llvm::MapVector<mlir::Operation *, std::pair<int, int>>
+  flowChannelDemand(
+      llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
+      llvm::ArrayRef<RouteOp> routes,
+      llvm::DenseMap<mlir::Operation *,
+                     llvm::SmallVector<std::pair<int, int>>> *named = nullptr);
 
   // Check if a logical tile's col/row constraints are satisfied at a position.
   static bool satisfiesConstraints(mlir::Operation *tile, TileID pos);
@@ -590,11 +602,6 @@ private:
       const Adjacency &adjacency,
       llvm::function_ref<llvm::StringRef(bool thisIsFirst)> labelPeer) const;
 
-  void addChannelRequirementsFromFlows(
-      llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
-      llvm::ArrayRef<RouteOp> routes,
-      llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
-          &channelRequirements);
 };
 
 // Configuration for the SA placer's cost model and schedule.
@@ -916,7 +923,9 @@ private:
   void buildFifoBufferInfo(DeviceOp device,
                            llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
                            llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks);
-  void buildRouteModel(DeviceOp device, llvm::ArrayRef<RouteOp> routes);
+  void buildRouteModel(DeviceOp device, llvm::ArrayRef<FlowOp> flows,
+                       llvm::ArrayRef<PacketFlowOp> pktFlows,
+                       llvm::ArrayRef<RouteOp> routes);
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();
