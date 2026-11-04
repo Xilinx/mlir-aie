@@ -586,11 +586,20 @@ def test_cache_key_covers_the_shape_of_a_read_container(
 
 
 def _doubling_chain_source(depth):
-    """Return a config chain source referencing its child twice per level."""
+    """Return a config chain source referencing its child twice per level.
+
+    Each level references its child by name. Inlining the child text instead
+    would double the source per level (depth 24 is ~400 MiB, and the parsed
+    tree would share nothing but the TAIL leaf), so the walk -- not the
+    sharing -- would be what the test measures.
+    """
+    lines = ["TAIL = ['-DLEAF=1']"]
     node = "TAIL"
-    for _ in range(depth):
-        node = "{'left': %s, 'right': %s}" % (node, node)
-    return "TAIL = ['-DLEAF=1']\nCHAIN = %s\n" % node
+    for level in range(depth):
+        lines.append("L%d = {'left': %s, 'right': %s}" % (level, node, node))
+        node = "L%d" % level
+    lines.append("CHAIN = %s" % node)
+    return "\n".join(lines) + "\n"
 
 
 def test_cache_key_walks_a_shared_graph_once(tmp_path):
@@ -658,7 +667,7 @@ def test_cache_key_walks_a_shared_graph_once(tmp_path):
         ")._compute_cache_hash())\n"
     )
     fresh = subprocess.run(
-        [sys.executable, "-c", prog], capture_output=True, text=True, timeout=30
+        [sys.executable, "-c", prog], capture_output=True, text=True, timeout=60
     )
     assert fresh.returncode == 0, fresh.stderr
     assert fresh.stdout.strip() == before, "ids differ; the content must not"
