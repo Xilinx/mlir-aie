@@ -761,7 +761,9 @@ private:
     llvm::SmallVector<int> consumerDepths;
     int producerDMADepth = 0;
     llvm::SmallVector<int> consumerDMADepths;
+    // dmaReason(): it moves by DMA wherever its ends sit.
     bool forcesDMA = false;
+    bool linked = false;
     bool linkSharedProd = false;
 
     int consumerDepthAt(size_t ci) const {

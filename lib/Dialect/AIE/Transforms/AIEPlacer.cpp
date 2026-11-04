@@ -929,13 +929,13 @@ SequentialPlacer::buildChannelRequirements(
       auto *consumerOp = consumerTile.getDefiningOp();
       auto consumerLogicalTile = dyn_cast_or_null<LogicalTileOp>(consumerOp);
 
-      // Skip a core-to-core fifo of one consumer: a compute peer, which
-      // neighbor memory may carry instead of DMA (buildComputePeerAdjacency).
-      // A broadcast always moves by DMA, so it is counted here.
+      // Skip a core-to-core fifo neighbor memory may carry instead of DMA: a
+      // compute peer (buildComputePeerAdjacency). One that moves by DMA
+      // wherever it sits (dmaReason) is counted here.
       if (producerLogicalTile && consumerLogicalTile &&
           producerLogicalTile.getTileType() == AIETileType::CoreTile &&
           consumerLogicalTile.getTileType() == AIETileType::CoreTile &&
-          ofOp.getConsumerTiles().size() == 1)
+          !ofOp.dmaReason())
         continue;
 
       // This consumer needs a DMA channel (unless it's a link's tile, which
@@ -1122,8 +1122,8 @@ Placer::buildComputePeerAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
         dyn_cast_or_null<LogicalTileOp>(ofOp.getProducerTile().getDefiningOp());
     if (!producer || producer.getTileType() != AIETileType::CoreTile)
       continue;
-    // A broadcast always moves by DMA (dmaReason in AIEObjectFifoSplit).
-    if (ofOp.getConsumerTiles().size() != 1)
+    // Only a fifo neighbor memory may carry is a compute peer.
+    if (ofOp.dmaReason())
       continue;
     for (Value consumerVal : ofOp.getConsumerTiles()) {
       auto consumer =

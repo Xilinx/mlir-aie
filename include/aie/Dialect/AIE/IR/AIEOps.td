@@ -2597,6 +2597,27 @@ def AIE_ObjectFifoCreateOp
       return false;
     }
 
+    /// The aie.objectfifo.link naming the fifo, if any.
+    std::optional<ObjectFifoLinkOp> getLink();
+    /// The aie.objectfifo.allocate naming the fifo, if any; its verifier
+    /// refuses a second.
+    std::optional<ObjectFifoAllocateOp> getAllocate();
+    /// Whether a delegate on `delegate` holds objects both ends reach.
+    static bool delegateReaches(const AIETargetModel &target, TileID delegate,
+                                TileID producer, TileID consumer);
+
+    /// Why the fifo moves by DMA wherever its ends are placed; nothing when
+    /// shared memory may carry it, which sharedMemoryOf then decides.
+    std::optional<llvm::StringRef> dmaReason();
+    /// The memory module a fifo dmaReason() leaves open shares with its
+    /// producer on `producer`, its consumer on `consumer`, its
+    /// aie.objectfifo.allocate's delegate, if any, on `delegate`, and
+    /// `linked` when an aie.objectfifo.link names it; None means DMA.
+    static AIETargetModel::SharedMemory
+    sharedMemoryOf(const AIETargetModel &target, TileID producer,
+                   TileID consumer, std::optional<TileID> delegate,
+                   bool linked);
+
     /// The packet header this fifo asks its route to carry, or null for a
     /// circuit-switched connection.
     PacketInfoAttr packetHeader() {

@@ -1896,6 +1896,75 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
+// ObjectFifoCreateOp DMA decision
+//===----------------------------------------------------------------------===//
+
+std::optional<ObjectFifoLinkOp> ObjectFifoCreateOp::getLink() {
+  auto names = [&](auto fifos) { return llvm::is_contained(fifos, *this); };
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (names(link.getInputObjectFifos()) || names(link.getOutputObjectFifos()))
+      return link;
+  return std::nullopt;
+}
+
+std::optional<ObjectFifoAllocateOp> ObjectFifoCreateOp::getAllocate() {
+  for (ObjectFifoAllocateOp alloc :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoAllocateOp>())
+    if (alloc.getObjFifoName() == name().getValue())
+      return alloc;
+  return std::nullopt;
+}
+
+bool ObjectFifoCreateOp::delegateReaches(const AIETargetModel &target,
+                                         TileID delegate, TileID producer,
+                                         TileID consumer) {
+  using SharedMemory = AIETargetModel::SharedMemory;
+  return llvm::all_of(std::array{producer, consumer}, [&](TileID end) {
+    SharedMemory s = target.getSharedMemory(delegate, end);
+    return s == SharedMemory::First || s == SharedMemory::Either;
+  });
+}
+
+std::optional<StringRef> ObjectFifoCreateOp::dmaReason() {
+  if (forcesDMA())
+    return "it asks for a dma transport";
+  if (getRepeatCount())
+    return "it repeats objects (`repeat_count`)";
+  if (usesStream())
+    return "an end is a Core stream port";
+  if (getConsumerElemType())
+    return "its consumer takes a different element type";
+  if (getConsumerTiles().size() > 1)
+    return "it has more than one consumer";
+  if (!getDimensionsToStream().empty())
+    return "its producer reshapes the data (`dimensionsToStream`)";
+  for (BDDimLayoutArrayAttr dims : getDimensionsFromStreamPerConsumer())
+    if (!dims.empty())
+      return "a consumer reshapes the data (`dimensionsFromStream`)";
+  // A link passes objects between two fifos through a tile's DMAs, unless an
+  // aie.objectfifo.allocate names a delegate whose memory both ends reach.
+  if (getLink() && !getAllocate())
+    return "it is linked through a tile's DMAs";
+  return std::nullopt;
+}
+
+AIETargetModel::SharedMemory ObjectFifoCreateOp::sharedMemoryOf(
+    const AIETargetModel &target, TileID producer, TileID consumer,
+    std::optional<TileID> delegate, bool linked) {
+  using SharedMemory = AIETargetModel::SharedMemory;
+  // A delegate both ends reach holds the objects even where the ends share no
+  // memory of their own; a link's objects need one.
+  if (delegate && delegateReaches(target, *delegate, producer, consumer)) {
+    SharedMemory own = target.getSharedMemory(producer, consumer);
+    return own == SharedMemory::None ? SharedMemory::Either : own;
+  }
+  if (linked)
+    return SharedMemory::None;
+  return target.getSharedMemory(producer, consumer);
+}
+
+//===----------------------------------------------------------------------===//
 // ObjectFifoAllocateOp
 //===----------------------------------------------------------------------===//
 
@@ -1905,18 +1974,10 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     return emitError("cannot retrieve associated object FIFO");
   if (objFifo.getConsumerTiles().size() != 1)
     return emitError("can only be used in 1-to-1 object FIFOs");
-  if (objFifo.forcesDMA())
-    return emitError("cannot allocate a shared memory module to objectfifo "
-                     "that asks for a dma transport");
-  if (objFifo.getRepeatCount().has_value())
-    return emitError("cannot allocate a shared memory module to objectfifo "
-                     "with set `repeat_count` attribute");
-  if (!objFifo.getDimensionsToStream().empty())
-    return emitError("cannot allocate a shared memory module to objectfifo "
-                     "with set dimensions attribute");
-  if (objFifo.usesStream())
-    return emitError("cannot allocate a shared memory module to objectfifo "
-                     "using stream port");
+  if (std::optional<StringRef> reason = objFifo.dmaReason())
+    return emitError("cannot allocate a shared memory module to an objectfifo "
+                     "that moves by DMA: ")
+           << *reason;
   for (Operation *op = (*this)->getPrevNode(); op; op = op->getPrevNode())
     if (auto other = dyn_cast<ObjectFifoAllocateOp>(op);
         other && other.getObjFifoName() == getObjFifoName())

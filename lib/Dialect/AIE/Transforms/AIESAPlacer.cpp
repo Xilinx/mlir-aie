@@ -448,17 +448,15 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
                            ? fb.consumerDMADepths[ci]
                            : fb.producerDMADepth;
 
-    // Check shared memory between core tiles (skip if fifo forces DMA)
-    bool rightShared = false, leftShared = false;
-    if (!fb.forcesDMA && prodIsCore && consIsCore && prodPos != consPos) {
-      rightShared = targetModel->isLegalMemAffinity(prodPos.col, prodPos.row,
-                                                    consPos.col, consPos.row);
-      leftShared = targetModel->isLegalMemAffinity(consPos.col, consPos.row,
-                                                   prodPos.col, prodPos.row);
-    }
-    bool isSharedMem = rightShared || leftShared;
+    using SharedMemory = AIETargetModel::SharedMemory;
+    SharedMemory shared =
+        fb.forcesDMA
+            ? SharedMemory::None
+            : ObjectFifoCreateOp::sharedMemoryOf(*targetModel, prodPos, consPos,
+                                                 delegatePos, fb.linked);
+    bool isSharedMem = shared != SharedMemory::None;
 
-    if (prodPos == consPos) {
+    if (prodPos == consPos && isSharedMem) {
       // Intratile: shared-mem, use declared depths
       int depth = std::max(fb.producerDepth, consDeclDepth);
       int64_t maxSize = std::max(fb.producerSizeBytes, fb.consumerSizeBytes);
@@ -469,7 +467,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       TileID bufTile;
       if (delegatePos) {
         bufTile = *delegatePos;
-      } else if (rightShared && leftShared) {
+      } else if (shared == SharedMemory::Either) {
         if (sign > 0) {
           int64_t prodUsed =
               currentMemUsage.count(prodPos) ? currentMemUsage[prodPos] : 0;
@@ -485,7 +483,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
           auto it = sharedMemDestination.find(fifoIdx);
           bufTile = (it != sharedMemDestination.end()) ? it->second : prodPos;
         }
-      } else if (rightShared) {
+      } else if (shared == SharedMemory::Second) {
         bufTile = consPos;
       } else {
         bufTile = prodPos;
@@ -538,11 +536,9 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       }
     }
 
-    // DMA contribution — shared-memory connections use no DMA. A mem tile has
-    // no core, so a fifo from one back to itself, between two links there,
-    // runs through its DMAs.
-    bool loopsBack = prodPos == consPos && !prodIsCore && !prodIsShim;
-    if ((prodPos != consPos || loopsBack) && !isSharedMem) {
+    // DMA contribution: a fifo shared memory does not carry runs through the
+    // DMAs, back to its own tile as well.
+    if (!isSharedMem) {
       currentDMAUsage[consPos].first += sign;
       prodNeedsDMA = true;
     }
@@ -1084,7 +1080,7 @@ void SAPlacer::generateAllocates() {
         continue;
       const auto &fb = fifoBuffers[fi];
       if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0] ||
-          fb.delegate)
+          fb.delegate || fb.forcesDMA)
         continue;
       auto prodIt = currentPlacement.find(fb.producer);
       auto consIt = currentPlacement.find(fb.consumers[0]);
@@ -1645,9 +1641,8 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
         if (out.name() == ofOp.getSymName())
           isLinked = true;
     }
-    fb.forcesDMA = ofOp.forcesDMA() || ofOp.getRepeatCount().has_value() ||
-                   ofOp.getConsumerElemType().has_value() ||
-                   !ofOp.getDimensionsToStream().empty() || isLinked;
+    fb.forcesDMA = ofOp.dmaReason().has_value();
+    fb.linked = isLinked;
     // For linked output fifos, producer buffers share memory with
     // the link input fifo's consumer buffer on the MemTile.
     // Mark to skip producer-side MemTile memory charge.

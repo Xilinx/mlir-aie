@@ -30,105 +30,6 @@ struct PoolRef {
   SmallVector<int32_t> segments;
 };
 
-std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
-  auto device = op->getParentOfType<DeviceOp>();
-  for (ObjectFifoLinkOp linkOp : device.getOps<ObjectFifoLinkOp>()) {
-    for (ObjectFifoCreateOp in : linkOp.getInputObjectFifos()) {
-      if (in == op) {
-        return linkOp;
-      }
-    }
-    for (ObjectFifoCreateOp out : linkOp.getOutputObjectFifos()) {
-      if (out == op) {
-        return linkOp;
-      }
-    }
-  }
-  return {};
-}
-
-/// The aie.objectfifo.allocate naming `op`, if any. The allocate verifier
-/// rejects a second one for the same fifo.
-std::optional<ObjectFifoAllocateOp>
-getOptionalAllocateOp(ObjectFifoCreateOp op) {
-  for (auto alloc :
-       op->getParentOfType<DeviceOp>().getOps<ObjectFifoAllocateOp>()) {
-    if (alloc.getObjFifoName() == op.name().getValue()) {
-      return alloc;
-    }
-  }
-  return std::nullopt;
-}
-
-/// Whether `delegate`'s memory module is reachable from both ends of `op`.
-bool delegateReachesBothEnds(ObjectFifoCreateOp op, TileOp delegate) {
-  auto consumerTileOp = cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
-  auto reachesDelegate = [&](TileOp end) {
-    using SharedMemory = AIETargetModel::SharedMemory;
-    SharedMemory shared = sharedMemory(delegate, end);
-    return shared == SharedMemory::First || shared == SharedMemory::Either;
-  };
-  return reachesDelegate(op.getProducerTileOp()) &&
-         reachesDelegate(consumerTileOp);
-}
-
-/// Why a fifo needs DMAs, or nothing when both ends reach one memory module
-/// and neither end asks the DMA to reshape the data on the way.
-std::optional<StringRef> dmaReason(ObjectFifoCreateOp createOp,
-                                   AIETargetModel::SharedMemory &shared) {
-  if (createOp.forcesDMA())
-    return "it asks for a dma transport";
-  if (createOp.getRepeatCount())
-    return "it repeats objects (`repeat_count`)";
-  if (createOp.usesStream())
-    return "an end is a Core stream port";
-  if (createOp.getConsumerElemType())
-    return "its consumer takes a different element type";
-
-  if (createOp.getConsumerTiles().size() == 1 &&
-      createOp.getDimensionsToStream().empty()) {
-    auto consumerTileOp =
-        cast<TileOp>(createOp.getConsumerTiles()[0].getDefiningOp());
-    shared = sharedMemory(createOp.getProducerTileOp(), consumerTileOp);
-    // A delegate both ends reach holds the objects even where the ends share
-    // no memory of their own.
-    if (shared == AIETargetModel::SharedMemory::None) {
-      if (auto alloc = getOptionalAllocateOp(createOp);
-          alloc &&
-          delegateReachesBothEnds(createOp, alloc->getDelegateTileOp()))
-        shared = AIETargetModel::SharedMemory::Either;
-    }
-  }
-
-  if (shared == AIETargetModel::SharedMemory::None) {
-    if (createOp.getConsumerTiles().size() > 1)
-      return "it has more than one consumer";
-    if (!createOp.getDimensionsToStream().empty())
-      return "its producer reshapes the data (`dimensionsToStream`)";
-    return "its ends share no memory module";
-  }
-
-  for (BDDimLayoutArrayAttr dims :
-       createOp.getDimensionsFromStreamPerConsumer()) {
-    if (!dims.empty()) {
-      return "a consumer reshapes the data (`dimensionsFromStream`)";
-    }
-  }
-
-  // A link passes objects between two fifos through a tile's DMAs, unless an
-  // aie.objectfifo.allocate names a delegate tile whose memory both ends of
-  // this fifo can reach directly.
-  if (getOptionalLinkOp(createOp)) {
-    if (auto alloc = getOptionalAllocateOp(createOp)) {
-      if (delegateReachesBothEnds(createOp, alloc->getDelegateTileOp()))
-        return std::nullopt;
-    }
-    return "it is linked through a tile's DMAs";
-  }
-
-  return std::nullopt;
-}
-
 /// Objects a fifo needs on `tile`: enough to cover the largest acquire made
 /// there, plus one so a core can hold an object while the next arrives. A fifo
 /// that states a depth per endpoint is taken at its word instead.
@@ -402,11 +303,16 @@ struct AIEObjectFifoSplitPass
   /// own to place, so its delegate is moot.
   LogicalResult verifyAllocateDelegates() {
     for (auto fifo : device.getOps<ObjectFifoCreateOp>()) {
-      if (getOptionalLinkOp(fifo) && !linkPoolOwner.contains(fifo)) {
+      if (fifo.getLink() && !linkPoolOwner.contains(fifo)) {
         continue;
       }
-      auto alloc = getOptionalAllocateOp(fifo);
-      if (alloc && !delegateReachesBothEnds(fifo, alloc->getDelegateTileOp())) {
+      auto alloc = fifo.getAllocate();
+      if (alloc &&
+          !ObjectFifoCreateOp::delegateReaches(
+              device.getTargetModel(), alloc->getDelegateTileOp().getTileID(),
+              fifo.getProducerTileOp().getTileID(),
+              cast<TileOp>(fifo.getConsumerTiles()[0].getDefiningOp())
+                  .getTileID())) {
         return alloc->emitOpError("objectfifo has no shared memory access to "
                                   "delegate tile's memory module");
       }
@@ -695,7 +601,20 @@ void AIEObjectFifoSplitPass::runOnOperation() {
             .getElementType());
 
     auto sharedModule = AIETargetModel::SharedMemory::None;
-    std::optional<StringRef> needsDMAs = dmaReason(fifo, sharedModule);
+    std::optional<StringRef> needsDMAs = fifo.dmaReason();
+    if (!needsDMAs) {
+      auto alloc = fifo.getAllocate();
+      bool linked = fifo.getLink().has_value();
+      sharedModule = ObjectFifoCreateOp::sharedMemoryOf(
+          device.getTargetModel(), fifo.getProducerTileOp().getTileID(),
+          cast<TileOp>(fifo.getConsumerTiles()[0].getDefiningOp()).getTileID(),
+          alloc ? std::optional(alloc->getDelegateTileOp().getTileID())
+                : std::nullopt,
+          linked);
+      if (sharedModule == AIETargetModel::SharedMemory::None)
+        needsDMAs = linked ? "it is linked through a tile's DMAs"
+                           : "its ends share no memory module";
+    }
     if (needsDMAs && fifo.forcesSharedMemory()) {
       fifo.emitOpError("asks for a shared_mem transport, but ") << *needsDMAs;
       return signalPassFailure();
@@ -717,8 +636,13 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                          : fifo.getProducerTile();
         // An aie.objectfifo.allocate names the tile whose memory is to hold the
         // objects, in place of either end's own.
-        if (auto alloc = getOptionalAllocateOp(fifo)) {
-          if (!delegateReachesBothEnds(fifo, alloc->getDelegateTileOp())) {
+        if (auto alloc = fifo.getAllocate()) {
+          if (!ObjectFifoCreateOp::delegateReaches(
+                  device.getTargetModel(),
+                  alloc->getDelegateTileOp().getTileID(),
+                  fifo.getProducerTileOp().getTileID(),
+                  cast<TileOp>(fifo.getConsumerTiles()[0].getDefiningOp())
+                      .getTileID())) {
             alloc->emitOpError("objectfifo has no shared memory access to "
                                "delegate tile's memory module");
             return signalPassFailure();
