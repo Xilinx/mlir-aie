@@ -1299,6 +1299,21 @@ struct AIEObjectFifoAllocatePass
       circuitPeerCache[dma] = circuitPeer(dma);
       poolEnds[dma.getPoolOp()].push_back(dma);
     }
+    // Each circuit destination's one sender, a broadcast's included.
+    DenseMap<Operation *, ObjectFifoDmaEndpointOp> senderOf;
+    for (RouteOp route : device.getOps<RouteOp>()) {
+      SmallVector<StringRef> sources = llvm::to_vector(route.getSourceNames());
+      RouteEndpoint source = sources.size() == 1 && !route.getPacket()
+                                 ? lookupEndpoint(sources[0])
+                                 : RouteEndpoint();
+      auto sender =
+          source ? dyn_cast<ObjectFifoDmaEndpointOp>(source.getOperation())
+                 : ObjectFifoDmaEndpointOp();
+      if (sender)
+        for (StringRef dest : route.getDestinationNames())
+          if (RouteEndpoint end = lookupEndpoint(dest))
+            senderOf[end.getOperation()] = sender;
+    }
     auto cachedCoreEnd = [&](ObjectFifoDmaEndpointOp dma) {
       return coreEndCache.lookup(dma);
     };
@@ -1360,8 +1375,8 @@ struct AIEObjectFifoAllocatePass
         if (succeeded(turns.read(cores, reason)) && !turns.keepsUp(depths))
           reason = "would stall";
         // The peers' chain moves the same turns, so a core working through
-        // their pools, or through the pools one circuit back that feed them,
-        // must keep up with that order too, through both pools' depths.
+        // their pools, or through the pools that feed them circuit by circuit,
+        // must keep up with that order too, through all those pools' depths.
         // Cores of their own each feed one peer and wait on no other.
         SmallVector<ObjectFifoCoreEndpointOp> peerCores;
         SmallVector<int64_t> peerDepths;
@@ -1369,16 +1384,21 @@ struct AIEObjectFifoAllocatePass
           ObjectFifoPoolOp pool = peer.getPoolOp();
           int64_t depth = pool.getDepth();
           ObjectFifoCoreEndpointOp core = cachedCoreEnd(peer);
-          if (!core) {
+          SmallPtrSet<Operation *, 8> seen;
+          for (ObjectFifoDmaEndpointOp at = peer;
+               !core && seen.insert(at).second;) {
             SmallVector<ObjectFifoDmaEndpointOp> across;
-            for (ObjectFifoDmaEndpointOp end : poolEnds.lookup(pool))
-              if (end.drains() != peer.drains())
+            for (ObjectFifoDmaEndpointOp end : poolEnds.lookup(at.getPoolOp()))
+              if (end.drains() != at.drains())
                 across.push_back(end);
-            ObjectFifoDmaEndpointOp source =
-                across.size() == 1 ? cachedCircuitPeer(across.front())
-                                   : ObjectFifoDmaEndpointOp();
-            if (source && (core = cachedCoreEnd(source)))
-              depth += source.getPoolOp().getDepth();
+            if (across.size() != 1)
+              break;
+            at = across.front().drains() ? cachedCircuitPeer(across.front())
+                                         : senderOf.lookup(across.front());
+            if (!at)
+              break;
+            depth += at.getPoolOp().getDepth();
+            core = cachedCoreEnd(at);
           }
           peerCores.push_back(core);
           peerDepths.push_back(depth);

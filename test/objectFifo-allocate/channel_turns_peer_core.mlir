@@ -171,6 +171,78 @@ module @memtile_sender_keeps_up {
 
 // -----
 
+// As @memtile_sender_keeps_up, but b_up also goes to another tile: a
+// broadcast still has one sender, so the core is found through it and the
+// turns are taken.
+// CHECK-LABEL: module @memtile_sender_broadcasts
+// CHECK: aie.objectfifo.dma_endpoint @a__prod__dma({{.*}}turns = [@a__prod__dma, @b__prod__dma, @b__prod__dma, @b__prod__dma]}
+module @memtile_sender_broadcasts {
+  aie.device(npu2_1col) {
+    %sh = aie.tile(0, 0)
+    %m = aie.tile(0, 1)
+    %s = aie.tile(0, 2)
+    %r = aie.tile(0, 5)
+    %t = aie.tile(0, 3)
+    aie.objectfifo @a_up(%s, {%m}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @a(%m, {%r}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@a_up] -> [@a] ([] [])
+    aie.objectfifo @b_up(%s, {%m, %t}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%m, {%r}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@b_up] -> [@b] ([] [])
+    aie.objectfifo @c(%sh, {%r}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%s) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c4 = arith.constant 4 : index
+      scf.for %i = %c0 to %c4 step %c1 {
+        %a0 = aie.objectfifo.acquire @a_up(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @a_up(Produce, 1)
+        %b0 = aie.objectfifo.acquire @b_up(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @b_up(Produce, 1)
+        %b1 = aie.objectfifo.acquire @b_up(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @b_up(Produce, 1)
+        %b2 = aie.objectfifo.acquire @b_up(Produce, 1) : memref<16xi32>
+        aie.objectfifo.release @b_up(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%r) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c4 = arith.constant 4 : index
+      scf.for %i = %c0 to %c4 step %c1 {
+        %a0 = aie.objectfifo.acquire @a(Consume, 1) : memref<16xi32>
+        %b0 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @b(Consume, 1)
+        %b1 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @b(Consume, 1)
+        %b2 = aie.objectfifo.acquire @b(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @b(Consume, 1)
+        %x = aie.objectfifo.acquire @c(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @c(Consume, 1)
+        aie.objectfifo.release @a(Consume, 1)
+      }
+      aie.end
+    }
+    aie.core(%t) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c12 = arith.constant 12 : index
+      scf.for %i = %c0 to %c12 step %c1 {
+        %x = aie.objectfifo.acquire @b_up(Consume, 1) : memref<16xi32>
+        aie.objectfifo.release @b_up(Consume, 1)
+      }
+      aie.end
+    }
+    aie.runtime_sequence(%in : memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd(%in[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {metadata = @c, id = 0 : i64, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_wait {symbol = @c}
+    }
+  }
+}
+
+// -----
+
 // The same, but the core makes b, b, b, a: with two one-deep pools between it
 // and the mem tile, its third b waits for room while the chain waits on a.
 // So a and b do not take turns, and the receiver needs three channels.
