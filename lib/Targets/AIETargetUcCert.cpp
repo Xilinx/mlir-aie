@@ -79,6 +79,35 @@ void emitUcDmaWriteDesSync(CertUcDmaWriteDesSyncOp op, std::string &text) {
   text += "@" + op.getSymbol().str() + "\n";
 }
 
+// READ_32                $r1, 0x00001000
+void emitRead32(CertRead32Op op, std::string &text) {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  ss << "  READ_32                $r" << op.getValue() << ", ";
+  ss << llvm::format("0x%08x\n", op.getAddress());
+  text += ss.str();
+}
+
+// READ_32_D              $r0, $r1
+void emitRead32D(CertRead32DOp op, std::string &text) {
+  text += "  READ_32_D              $r" + std::to_string(op.getAddress()) +
+          ", $r" + std::to_string(op.getValue()) + "\n";
+}
+
+// WRITE_32_D             1, 0x00000003, 0x00000005
+// The flags byte has bit 0 set when the address is a register index and bit 1
+// when the value is.
+void emitWrite32D(CertWrite32DOp op, std::string &text) {
+  unsigned flags =
+      (op.getAddressIsReg() ? 1 : 0) | (op.getValueIsReg() ? 2 : 0);
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  ss << "  WRITE_32_D             " << flags << ", ";
+  ss << llvm::format("0x%08x, ", op.getAddress());
+  ss << llvm::format("0x%08x\n", op.getValue());
+  text += ss.str();
+}
+
 // UC_DMA_WRITE_DES       $r2, @chain0
 void emitUcDmaWriteDes(CertUcDmaWriteDesOp op, std::string &text) {
   text += "  UC_DMA_WRITE_DES       $r" + std::to_string(op.getWaitHandle()) +
@@ -183,6 +212,9 @@ LogicalResult emitJob(CertJobOp jobOp, std::string &text, std::string &data) {
         .Case<CertUcDmaWriteDesOp>(
             [&](auto op) { emitUcDmaWriteDes(op, text); })
         .Case<CertWaitUcDmaOp>([&](auto op) { emitWaitUcDma(op, text); })
+        .Case<CertRead32Op>([&](auto op) { emitRead32(op, text); })
+        .Case<CertRead32DOp>([&](auto op) { emitRead32D(op, text); })
+        .Case<CertWrite32DOp>([&](auto op) { emitWrite32D(op, text); })
         .Case<CertWaitTCTSOp>([&](auto op) { emitWaitTCTS(op, text); })
         .Case<CertWrite32Op>([&](auto op) { emitWrite32(op, text); })
         .Case<AIE::EndOp>([](auto) { /* implicit region terminator, skip */ })

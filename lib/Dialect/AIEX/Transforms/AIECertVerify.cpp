@@ -308,30 +308,49 @@ static LogicalResult checkBarrierLimits(AIE::DeviceOp device) {
   return result;
 }
 
-// A cert.wait_uc_dma handle must be a local register r0..r7 written by an
-// earlier cert.uc_dma_write_des in the same job.
+// The register `op` writes, if any. cert.write32_d only reads registers.
+static std::optional<uint32_t> registerWrittenBy(Operation &op) {
+  if (auto o = dyn_cast<AIEX::CertUcDmaWriteDesOp>(op))
+    return o.getWaitHandle();
+  if (auto o = dyn_cast<AIEX::CertRead32Op>(op))
+    return o.getValue();
+  if (auto o = dyn_cast<AIEX::CertRead32DOp>(op))
+    return o.getValue();
+  return std::nullopt;
+}
+
+// A cert.wait_uc_dma handle must be a local register r0..r7 whose last write
+// earlier in the same job is a cert.uc_dma_write_des. A read into that register
+// in between replaces the handle.
 static LogicalResult checkUcDmaWaitHandles(AIE::DeviceOp device) {
   LogicalResult result = success();
   device.walk([&](AIEX::CertJobOp job) {
-    llvm::SmallDenseSet<uint32_t> handles;
+    llvm::SmallDenseMap<uint32_t, Operation *> lastWrite;
     for (Operation &o : job.getBody().front()) {
-      if (auto write = dyn_cast<AIEX::CertUcDmaWriteDesOp>(o)) {
-        handles.insert(write.getWaitHandle());
-      } else if (auto wait = dyn_cast<AIEX::CertWaitUcDmaOp>(o)) {
+      if (auto wait = dyn_cast<AIEX::CertWaitUcDmaOp>(o)) {
         uint32_t r = wait.getWaitHandle();
+        auto it = lastWrite.find(r);
         if (r >= 8) {
           wait.emitError() << "cert.wait_uc_dma handle r" << r
                            << " is a shared register; the handle must be a "
                               "local register r0..r7 written by a "
                               "cert.uc_dma_write_des in the same job";
           result = failure();
-        } else if (!handles.contains(r)) {
+        } else if (it == lastWrite.end()) {
           wait.emitError() << "cert.wait_uc_dma waits on r" << r
                            << ", which no earlier cert.uc_dma_write_des in "
                               "this job writes";
           result = failure();
+        } else if (!isa<AIEX::CertUcDmaWriteDesOp>(it->second)) {
+          wait.emitError() << "cert.wait_uc_dma waits on r" << r
+                           << ", but its last write is a '"
+                           << it->second->getName().getStringRef()
+                           << "', which replaced the handle";
+          result = failure();
         }
       }
+      if (auto r = registerWrittenBy(o))
+        lastWrite[*r] = &o;
     }
   });
   return result;
