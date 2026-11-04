@@ -1033,8 +1033,8 @@ void SAPlacer::generateAllocates() {
         continue;
       if (prodIt->second != tilePos || consIt->second != tilePos)
         continue;
-      int64_t sz = std::max(fb.producerSizeBytes, fb.consumerSizeBytes) *
-                   fb.sharedDepth;
+      int64_t sz =
+          std::max(fb.producerSizeBytes, fb.consumerSizeBytes) * fb.sharedDepth;
       relocFifos.push_back({fi, sz});
     }
     llvm::sort(relocFifos, [](const auto &a, const auto &b) {

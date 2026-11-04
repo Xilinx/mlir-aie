@@ -212,10 +212,11 @@ LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,
   return diag;
 }
 
-std::optional<SmallVector<int>> DMAChannelAnalysis::planBDChannels(
-    const AIETargetModel &target, int col, int row, ArrayRef<BDPlanEnd> ends,
-    function_ref<bool(DMAChannelDir, int)> free,
-    function_ref<int64_t(int)> spent) {
+std::optional<SmallVector<int>>
+DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
+                                   int row, ArrayRef<BDPlanEnd> ends,
+                                   function_ref<bool(DMAChannelDir, int)> free,
+                                   function_ref<int64_t(int)> spent) {
   uint32_t numBDs = target.getNumBDs(col, row);
   int numChannels = std::max(
       target.getNumSourceSwitchboxConnections(col, row, WireBundle::DMA),
@@ -235,7 +236,7 @@ std::optional<SmallVector<int>> DMAChannelAnalysis::planBDChannels(
       if (target.isBdChannelAccessible(col, row, bd, channel))
         ids.set(bd);
     Group merged{ids, {channel}};
-    for (auto it = groups.begin(); it != groups.end();) {
+    for (auto *it = groups.begin(); it != groups.end();) {
       if (!it->ids.anyCommon(merged.ids)) {
         ++it;
         continue;
@@ -260,8 +261,8 @@ std::optional<SmallVector<int>> DMAChannelAnalysis::planBDChannels(
   // allowed channels of any two ends nest.
   SmallVector<unsigned> order(ends.size());
   std::iota(order.begin(), order.end(), 0);
-  llvm::stable_sort(order,
-                    [&](unsigned a, unsigned b) { return ends[a].bds > ends[b].bds; });
+  llvm::stable_sort(
+      order, [&](unsigned a, unsigned b) { return ends[a].bds > ends[b].bds; });
   SmallVector<unsigned> groupOf(ends.size());
   SmallVector<int> channelOf(ends.size(), -1);
   auto match = [&]() {

@@ -1040,11 +1040,9 @@ struct AIEObjectFifoAllocatePass
         return channels.isChannelFree(tile, dir, channel);
       };
       const AIETargetModel &target = device.getTargetModel();
-      std::optional<SmallVector<int>> plan =
-          DMAChannelAnalysis::planBDChannels(
-              target, *col, *row, ends, free, [&](int channel) {
-                return demand.lookup({*col, *row, channel});
-              });
+      std::optional<SmallVector<int>> plan = DMAChannelAnalysis::planBDChannels(
+          target, *col, *row, ends, free,
+          [&](int channel) { return demand.lookup({*col, *row, channel}); });
       if (plan) {
         for (auto [endpoint, channel] : llvm::zip_equal(onTile, *plan))
           planned[endpoint.getOperation()] = channel;
@@ -1054,8 +1052,8 @@ struct AIEObjectFifoAllocatePass
       if (!DMAChannelAnalysis::planBDChannels(target, *col, *row, unweighted,
                                               free, [](int) { return 0; }))
         continue;
-      RouteEndpoint deepest = *llvm::max_element(
-          onTile, [&](RouteEndpoint a, RouteEndpoint b) {
+      RouteEndpoint deepest =
+          *llvm::max_element(onTile, [&](RouteEndpoint a, RouteEndpoint b) {
             return bdsOf(a) < bdsOf(b);
           });
       channelFailure = deepest;
@@ -1233,18 +1231,17 @@ struct AIEObjectFifoAllocatePass
            pool.getSegmentOps().size() == 1 && !pool.getRepeatCount() &&
            !pool.getBuffers() && pool.getDepth() > 1 &&
            pool.getDepth() <= static_cast<int>(target.getMaxLockValue()) &&
-           llvm::all_of(device.getOps<ObjectFifoDmaEndpointOp>(),
-                        [&](ObjectFifoDmaEndpointOp end) {
-                          return end.getPoolOp() != pool ||
-                                 (!end.getDispatch() &&
-                                  !(end.drains() && end.getDimensions() &&
-                                    !end.getDimensions()->empty() &&
-                                    !(*end.getDimensions())[0]
-                                         .getValue()
-                                         .empty()) &&
-                                  (!end.getTurns() ||
-                                   llvm::is_contained(regrouped, end)));
-                        });
+           llvm::all_of(
+               device.getOps<ObjectFifoDmaEndpointOp>(),
+               [&](ObjectFifoDmaEndpointOp end) {
+                 return end.getPoolOp() != pool ||
+                        (!end.getDispatch() &&
+                         (!end.drains() || !end.getDimensions() ||
+                          end.getDimensions()->empty() ||
+                          (*end.getDimensions())[0].getValue().empty()) &&
+                         (!end.getTurns() ||
+                          llvm::is_contained(regrouped, end)));
+               });
   }
 
   /// Walks the deepest pool on `tile` that can be walked whole, so its ends
