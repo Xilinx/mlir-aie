@@ -1,7 +1,0 @@
-<map id="xilinx::AIE::PinnedRoutingFailure" name="xilinx::AIE::PinnedRoutingFailure">
-<area shape="rect" id="Node000001" title=" " alt="" coords="112,123,300,168"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,229,50"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="144,60,192,122,187,123,142,65"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="252,14,342,42"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="280,52,225,125,221,121,275,54"/>
-</map>
