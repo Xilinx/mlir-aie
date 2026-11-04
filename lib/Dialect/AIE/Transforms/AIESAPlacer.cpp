@@ -687,14 +687,6 @@ int SAPlacer::computeDelegatePenalty() const {
   return penalty;
 }
 
-// Simulates per-buffer MemTile allocation with neighbor spillover.
-// Approximates the objectfifo allocator's strategy: buffers are
-// collected globally across all MemTile columns, sorted largest-first,
-// and each buffer is placed on its home column when possible, spilling
-// to the neighbor with the most remaining capacity when the home is full.
-// Equal-size buffers may be visited in a different order than the
-// allocator's, so the two can break spill ties differently; the
-// allocator backtracks over its spill choices to cover that.
 void SAPlacer::collectSpillBuffers() {
   // Each MemTile buffer with the logical tile whose column is its home.
   spillBuffers.clear();
@@ -748,6 +740,14 @@ void SAPlacer::collectSpillBuffers() {
   }
 }
 
+// Simulates per-buffer MemTile allocation with neighbor spillover.
+// Approximates the objectfifo allocator's strategy: buffers are
+// collected globally across all MemTile columns, sorted largest-first,
+// and each buffer is placed on its home column when possible, spilling
+// to the neighbor with the most remaining capacity when the home is full.
+// Equal-size buffers may be visited in a different order than the
+// allocator's, so the two can break spill ties differently; the
+// allocator backtracks over its spill choices to cover that.
 int SAPlacer::computeMemSpilloverPenalty() const {
   int64_t memTileCapacity = targetModel->getMemTileSize();
   int numCols = targetModel->columns();
@@ -916,7 +916,6 @@ int SAPlacer::computeDMAChannelPenalty() {
   return penalty;
 }
 
-// Penalizes MemTiles that exceed their BD slot limit.
 void SAPlacer::collectTileBDs() {
   // The BDs each logical tile holds wherever it sits.
   tileBDs.clear();
@@ -943,6 +942,7 @@ void SAPlacer::collectTileBDs() {
       tileBDs[op] += depth;
 }
 
+// Penalizes MemTiles that exceed their BD slot limit.
 int SAPlacer::computeBDCountPenalty() {
   int memTileBDMax = targetModel->getNumBDs(AIETileType::MemTile);
   memTileBDs.clear();
