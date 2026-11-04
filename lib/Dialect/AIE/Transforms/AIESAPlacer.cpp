@@ -873,8 +873,31 @@ SmallVector<Operation *> SAPlacer::memTilesAt(TileID position) const {
 
 int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
                               DenseSet<std::pair<Operation *, int>> *walked) {
+  auto [layout, added] = bdLayoutOf.try_emplace(position, position);
+  if (added) {
+    auto access = [&](TileID at) {
+      std::vector<bool> bits;
+      int channels = targetModel->getNumSourceSwitchboxConnections(
+          at.col, at.row, WireBundle::DMA);
+      for (int channel = 0; channel < channels; ++channel)
+        for (uint32_t bd = 0, e = targetModel->getNumBDs(at.col, at.row);
+             bd < e; ++bd)
+          bits.push_back(
+              targetModel->isBdChannelAccessible(at.col, at.row, bd, channel));
+      return bits;
+    };
+    for (auto &[other, rep] : bdLayoutOf)
+      if (other == rep && !(other == position) &&
+          access(other) == access(position)) {
+        layout->second = other;
+        break;
+      }
+  }
+  // Bounded, since tiles meet at positions in more ways than a design has.
+  if (bdShortfallOf.size() > (1u << 16))
+    bdShortfallOf.clear();
   std::pair<TileID, std::vector<Operation *>> key{
-      position, std::vector<Operation *>(tiles.begin(), tiles.end())};
+      layout->second, std::vector<Operation *>(tiles.begin(), tiles.end())};
   if (!walked)
     if (auto cached = bdShortfallOf.find(key); cached != bdShortfallOf.end())
       return cached->second;

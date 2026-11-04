@@ -825,6 +825,9 @@ private:
   llvm::SmallVector<std::pair<TileID, int64_t>> bdUndo;
   std::map<std::pair<TileID, std::vector<mlir::Operation *>>, int64_t>
       bdShortfallOf;
+  // For each mem tile position, the first position seen whose channels reach
+  // the same BD ids, which the shortfalls are cached under.
+  llvm::DenseMap<TileID, TileID> bdLayoutOf;
   int cachedPressure = 0;
   // The DMA-channel term per tile, and what the last move overwrote in it.
   int dmaPenalty = 0;

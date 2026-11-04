@@ -261,8 +261,12 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
   // allowed channels of any two ends nest.
   SmallVector<unsigned> order(ends.size());
   std::iota(order.begin(), order.end(), 0);
-  llvm::stable_sort(
-      order, [&](unsigned a, unsigned b) { return ends[a].bds > ends[b].bds; });
+  auto shape = [&](unsigned end) {
+    return std::make_tuple(-ends[end].bds, static_cast<int>(ends[end].dir),
+                           ends[end].limit);
+  };
+  llvm::stable_sort(order,
+                    [&](unsigned a, unsigned b) { return shape(a) < shape(b); });
   SmallVector<unsigned> groupOf(ends.size());
   SmallVector<int> channelOf(ends.size(), -1);
   auto match = [&]() {
@@ -287,19 +291,76 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
     }
     return true;
   };
+  // Within a group and direction, ends take distinct free channels below
+  // their bounds, which nest; so they fit exactly when, for every bound, no
+  // more of them have that bound or a tighter one than free channels lie below
+  // it. Checked as ends are placed, every completed choice matches, and no
+  // group ever holds more ends than it has channels.
+  SmallVector<int> bounds;
+  for (const BDPlanEnd &end : ends)
+    bounds.push_back(end.limit);
+  llvm::sort(bounds);
+  bounds.erase(llvm::unique(bounds), bounds.end());
+  size_t slots = 2 * bounds.size();
+  SmallVector<int64_t> below(groups.size() * slots, 0);
+  for (auto [g, group] : llvm::enumerate(groups))
+    for (DMAChannelDir dir : {DMAChannelDir::S2MM, DMAChannelDir::MM2S})
+      for (auto [i, bound] : llvm::enumerate(bounds))
+        for (int channel : group.channels)
+          below[g * slots + static_cast<int>(dir) * bounds.size() + i] +=
+              channel < bound && free(dir, channel);
+  SmallVector<int64_t> held(groups.size() * slots, 0);
+  auto fits = [&](unsigned g, DMAChannelDir dir) {
+    size_t base = g * slots + static_cast<int>(dir) * bounds.size();
+    int64_t tighter = 0;
+    for (size_t i = 0; i < bounds.size(); ++i) {
+      tighter += held[base + i];
+      if (tighter > below[base + i])
+        return false;
+    }
+    return true;
+  };
+  // Over every group at once, too many ends of a direction and bound fail
+  // before any is placed.
+  for (DMAChannelDir dir : {DMAChannelDir::S2MM, DMAChannelDir::MM2S}) {
+    int64_t tighter = 0;
+    for (auto [i, bound] : llvm::enumerate(bounds)) {
+      int64_t room = 0;
+      for (size_t g = 0; g < groups.size(); ++g)
+        room += below[g * slots + static_cast<int>(dir) * bounds.size() + i];
+      tighter += llvm::count_if(ends, [&](const BDPlanEnd &end) {
+        return end.dir == dir && end.limit == bound;
+      });
+      if (tighter > room)
+        return std::nullopt;
+    }
+  }
+  // Ends of one shape are interchangeable, so each takes a group no lower
+  // than the one before it of its shape.
   std::function<bool(size_t)> place = [&](size_t next) {
     if (next == order.size())
       return match();
     unsigned end = order[next];
-    for (unsigned g = 0; g < groups.size(); ++g) {
+    size_t slot = static_cast<int>(ends[end].dir) * bounds.size() +
+                  (llvm::lower_bound(bounds, ends[end].limit) - bounds.begin());
+    unsigned first = next > 0 && shape(order[next - 1]) == shape(end)
+                         ? groupOf[order[next - 1]]
+                         : 0;
+    for (unsigned g = first; g < groups.size(); ++g) {
       if (groups[g].room < ends[end].bds)
         continue;
-      groupOf[end] = g;
-      groups[g].room -= ends[end].bds;
-      bool placed = place(next + 1);
-      groups[g].room += ends[end].bds;
-      if (placed)
-        return true;
+      ++held[g * slots + slot];
+      if (fits(g, ends[end].dir)) {
+        groupOf[end] = g;
+        groups[g].room -= ends[end].bds;
+        bool placed = place(next + 1);
+        groups[g].room += ends[end].bds;
+        if (placed) {
+          --held[g * slots + slot];
+          return true;
+        }
+      }
+      --held[g * slots + slot];
     }
     return false;
   };
