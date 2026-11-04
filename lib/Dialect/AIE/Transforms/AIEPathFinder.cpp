@@ -282,9 +282,9 @@ void Pathfinder::initialize(int maxCol, int maxRow,
                             const AIETargetModel &targetModel) {
   // Reset the graph and flows so a Pathfinder can be reused across analyses
   // and devices; the dense-graph cache must be rebuilt for the new topology.
-  // The relax state (shareChannels, idsApart, meetApart, relaxStep,
-  // cappedTiles, crowdedTiles) survives, so the ladder advances across
-  // attempts.
+  // The relax state (shareChannels, idsApart, meetApart, meetAheadOfPartners,
+  // relaxStep, leads, leadStep, cappedTiles, crowdedTiles) survives, so the
+  // ladder advances across attempts.
   graph.clear();
   flows.clear();
   packetIdsTo.clear();
@@ -496,12 +496,61 @@ bool Pathfinder::stopMeeting() {
   return true;
 }
 
+// Which tree routes first decides where the others meet it, and a switchbox
+// takes trees in to one master set only by slave ports of matching channels,
+// so the first a cluster routes can leave the rest no switchbox to meet at.
+bool Pathfinder::rotateLeads() {
+  std::map<PathEndPoint, std::map<PathEndPoint, std::set<int>>> to;
+  for (const auto &[ends, ids] : packetIdsTo)
+    to[ends.first][ends.second].insert(ids.begin(), ids.end());
+  // Whether `a` sends some id to two or more receivers `b` reaches too.
+  auto spans = [&](const PathEndPoint &a, const PathEndPoint &b) {
+    std::map<int, int> shared;
+    for (const auto &[dst, ids] : to[a])
+      if (to[b].count(dst))
+        for (int id : ids)
+          if (++shared[id] > 1)
+            return true;
+    return false;
+  };
+  SmallVector<PathEndPoint, 8> srcs(llvm::make_first_range(to));
+  llvm::IntEqClasses clusters(srcs.size());
+  for (auto [i, a] : llvm::enumerate(srcs))
+    for (auto [j, b] : llvm::enumerate(srcs))
+      if (i < j && spans(a, b) && spans(b, a))
+        clusters.join(i, j);
+  clusters.compress();
+  std::vector<SmallVector<PathEndPoint, 4>> members(clusters.getNumClasses());
+  for (auto [i, src] : llvm::enumerate(srcs))
+    members[clusters[i]].push_back(src);
+  // The first member of each cluster leads already.
+  ++leadStep;
+  leads.clear();
+  for (const auto &cluster : members)
+    if (leadStep < cluster.size())
+      leads.insert(cluster[leadStep]);
+  return !leads.empty();
+}
+
+// A flow with a same-id partner meets another id's tree only on the way to
+// destinations the partner does not reach, as the partner, routed first, has
+// to be met there. A partner routed later meets the flow's tree instead, so
+// in a cluster of two such pairs the first of each can meet the other's.
+bool Pathfinder::meetAhead() {
+  if (meetAheadOfPartners || !treesMet)
+    return false;
+  meetAheadOfPartners = true;
+  return true;
+}
+
 namespace {
 enum class RelaxStep {
   ShareChannels,
   CapCrowdedTiles,
   RouteIdsApart,
   SplitSharedIds,
+  RotateLeads,
+  MeetAhead,
   StopMeeting
 };
 // Stopping meetings comes last, and runs the ladder once more: what it routes
@@ -511,7 +560,9 @@ constexpr RelaxStep relaxLadder[] = {
     RelaxStep::RouteIdsApart,   RelaxStep::ShareChannels,
     RelaxStep::CapCrowdedTiles, RelaxStep::SplitSharedIds,
     RelaxStep::ShareChannels,   RelaxStep::CapCrowdedTiles,
+    RelaxStep::RotateLeads,     RelaxStep::MeetAhead,
     RelaxStep::StopMeeting};
+constexpr size_t rotateLeadsStep = std::size(relaxLadder) - 3;
 } // namespace
 
 bool Pathfinder::relax() {
@@ -538,15 +589,32 @@ bool Pathfinder::relax() {
         LLVM_DEBUG(llvm::dbgs() << "Relax: route ids apart\n");
         return true;
       }
-      // With one id per source, the steps up to the last would only repeat.
-      relaxStep = std::size(relaxLadder) - 1;
+      // With one id per source, the steps up to the last two would only
+      // repeat.
+      relaxStep = rotateLeadsStep;
       break;
     case RelaxStep::SplitSharedIds:
       if (splitSharedIds()) {
         LLVM_DEBUG(llvm::dbgs() << "Relax: split shared ids\n");
         return true;
       }
-      relaxStep = std::size(relaxLadder) - 1;
+      relaxStep = rotateLeadsStep;
+      break;
+    case RelaxStep::RotateLeads:
+      // Each member of a cluster leads in turn, the step repeating till all
+      // have.
+      if (rotateLeads()) {
+        --relaxStep;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Relax: route cluster member " << leadStep << " first\n");
+        return true;
+      }
+      break;
+    case RelaxStep::MeetAhead:
+      if (meetAhead()) {
+        LLVM_DEBUG(llvm::dbgs() << "Relax: meet ahead of same-id partners\n");
+        return true;
+      }
       break;
     case RelaxStep::StopMeeting:
       if (stopMeeting()) {
@@ -595,8 +663,8 @@ void Pathfinder::sortFlows() {
     return 2;
   };
   llvm::sort(flows, [&](const Flow &lhs, const Flow &rhs) {
-    return std::make_pair(flowRank(lhs), lhs.src) <
-           std::make_pair(flowRank(rhs), rhs.src);
+    return std::make_tuple(flowRank(lhs), !leads.count(lhs.src), lhs.src) <
+           std::make_tuple(flowRank(rhs), !leads.count(rhs.src), rhs.src);
   });
 }
 
@@ -941,6 +1009,13 @@ struct Pathfinder::RouteState {
   std::vector<llvm::BitVector> conflicting;
   std::set<std::pair<PathEndPoint, PathEndPoint>> apartSources;
   std::set<std::pair<PathEndPoint, PathEndPoint>> togetherSources;
+  // Sources a tree had to meet this iteration but whose other ids conflict
+  // with it (see TreeBuilder::meet), which route together from then on.
+  std::set<std::pair<PathEndPoint, PathEndPoint>> meetBlocked;
+  // Ids a source routes as a part of their own so the rest of its tree can
+  // meet another source's, by that pair (see TreeBuilder::findJoins).
+  std::set<std::pair<std::pair<PathEndPoint, PathEndPoint>, std::set<int>>>
+      meetSplits;
   // The packet ids each flow carries, in all and to each destination.
   std::vector<std::set<int>> flowIds;
   std::vector<SmallVector<int, 4>> sameId;
@@ -986,6 +1061,10 @@ struct Pathfinder::RouteState {
   // The flows that met a tree this iteration, by its flow, and how often the
   // routing check faulted a meeting of each pair.
   std::set<std::pair<int, int>> met;
+  // The source whose tree met another's by each slave port this iteration, by
+  // the tree it met: a tree from another source meeting it there would only
+  // share the first one's way in, not meet.
+  std::map<std::pair<int, int>, PathEndPoint> meetingPorts;
   std::map<std::pair<int, int>, int> meetFaults;
   // Joined pairs the routing check faulted along with hops neither joined,
   // which were left to the penalties on those hops once.
@@ -997,6 +1076,7 @@ struct Pathfinder::RouteState {
   std::vector<SmallVector<int, 4>> overlaySets;
   bool mayLeave(ArrayRef<int> masters, int next) const;
   bool reorder(int later, int earlier, bool again = false);
+  void splitOwnIds(const std::pair<PathEndPoint, PathEndPoint> &pair);
 };
 
 Pathfinder::RouteState::RouteState(const Pathfinder &pf)
@@ -1060,6 +1140,30 @@ bool Pathfinder::RouteState::reorder(int later, int earlier, bool again) {
   group.erase(llvm::find(group, later));
   group.insert(llvm::find(group, earlier), later);
   return true;
+}
+
+// Trees with an id in common join where they meet, so the ids a source sends
+// that the other does not route apart as a part of their own.
+void Pathfinder::RouteState::splitOwnIds(
+    const std::pair<PathEndPoint, PathEndPoint> &pair) {
+  for (auto [src, other] : {pair, std::pair{pair.second, pair.first}}) {
+    auto srcParts = partsOf.find(src);
+    auto otherParts = partsOf.find(other);
+    if (srcParts == partsOf.end() || otherParts == partsOf.end())
+      continue;
+    std::set<int> otherIds;
+    for (int k : otherParts->second)
+      otherIds.insert(flowIds[k].begin(), flowIds[k].end());
+    for (int k : SmallVector<int, 2>(srcParts->second)) {
+      std::set<int> own;
+      for (int id : flowIds[k])
+        if (!otherIds.count(id))
+          own.insert(id);
+      if (!parts[k].isPriorityFlow && !own.empty() &&
+          own.size() < flowIds[k].size())
+        splitPart(k, own);
+    }
+  }
 }
 
 // Whether a tree whose packets leave a switchbox by `masters` from one slave
@@ -1301,6 +1405,14 @@ llvm::Error Pathfinder::explainNoRouting(const RouteState &st) const {
       ", and the router found no routing that fits them.");
 }
 
+// The boundary the wires from tile `a` to its neighbour `b` cross: between
+// rows (else columns) `below` and the next, upward (else back).
+static std::tuple<bool, int, bool> boundaryOf(TileID a, TileID b) {
+  bool rows = a.col == b.col;
+  return {rows, rows ? std::min(a.row, b.row) : std::min(a.col, b.col),
+          rows ? b.row > a.row : b.col > a.col};
+}
+
 llvm::Error Pathfinder::cutOverflow() const {
   // Each circuit tree crossing a boundary needs a channel of its own, and the
   // packet flows one more, or one each for streams no two of which may share
@@ -1314,20 +1426,18 @@ llvm::Error Pathfinder::cutOverflow() const {
     auto xbar = graph.find({a, a});
     if (a == b || !onDevice(a) || !onDevice(b) || xbar == graph.end())
       continue;
-    bool rows = a.col == b.col;
-    int below = rows ? std::min(a.row, b.row) : std::min(a.col, b.col);
-    bool up = rows ? b.row > a.row : b.col > a.col;
+    std::tuple<bool, int, bool> cut = boundaryOf(a, b);
     const SwitchboxConnect &x = xbar->second;
     // A boundary with no available channel at all (every one is a fixed
     // connection's) still needs an entry, so flows that must cross it are
     // not skipped as if the boundary did not exist.
-    channels[{rows, below, up}] += 0;
+    channels[cut] += 0;
     for (Port port : sb.srcPorts) {
       int k = x.dstIndex(port);
       if (k >= 0 &&
           llvm::any_of(llvm::seq<size_t>(0, x.srcPorts.size()),
                        [&](size_t i) { return x.at(i, k).available; }))
-        channels[{rows, below, up}]++;
+        channels[cut]++;
     }
   }
   for (const auto &[cut, available] : channels) {
@@ -1442,6 +1552,13 @@ struct Pathfinder::TreeBuilder {
   // The destinations the flow still has to reach that each other source's
   // tree reaches with the ids they share, less the trees it may not join.
   llvm::MapVector<int, SmallVector<int, 4>> sharedDsts;
+  // The destinations it shares with trees it could meet but for the other
+  // ids those trees carry.
+  llvm::MapVector<int, SmallVector<int, 4>> blockedDsts;
+  // The destinations it shares with trees with other ids it could meet but
+  // for its own ids that go elsewhere, and those ids.
+  llvm::MapVector<int, std::pair<SmallVector<int, 4>, std::set<int>>>
+      blockedIds;
   llvm::DenseSet<int> disagree, foreign;
   // The destinations the flow reaches where it meets another tree.
   SmallVector<int, 4> met;
@@ -1546,17 +1663,22 @@ void Pathfinder::TreeBuilder::findJoins() {
       // packets it takes there. A prioritized flow's tree is pinned, so it
       // joins only trees pinned with it. A destination of the other flow alone
       // keeps the flow off the hops toward it, as no join there is joinable.
-      bool agree =
+      bool canJoin =
           (!isPending(dst) || common == shared(st.idsTo(flow, dst), other)) &&
-          !(pf.constraints.conflict &&
-            pf.constraints.conflict(part.src, common, o.src,
-                                    st.flowIds[other])) &&
           !st.noJoin.count({flow, other}) &&
           (!part.isPriorityFlow || st.parts[other].isPriorityFlow);
+      bool agree = canJoin && !(pf.constraints.conflict &&
+                                pf.constraints.conflict(part.src, common, o.src,
+                                                        st.flowIds[other]));
       if (!agree)
         disagree.insert(other);
       else if (isPending(dst))
         sharedDsts[other].push_back(dst);
+      // Only the conflict kept it from joining, and only the ids it shares
+      // with the tree are left to conflict if those leave apart.
+      if (canJoin && !agree && isPending(dst) &&
+          !pf.constraints.conflict(part.src, common, o.src, common))
+        blockedDsts[other].push_back(dst);
       for (auto it = st.treeOf[other].find(dst); it != st.treeOf[other].end();
            it = st.treeOf[other].find(it->second.first)) {
         int up = it->second.first;
@@ -1575,29 +1697,48 @@ void Pathfinder::TreeBuilder::findJoins() {
   // A tree with other ids reaching two of the flow's destinations is met the
   // same way, the flow taking its hops below the meeting with its own ids.
   // Not for a destination a tree with one of its ids also reaches, which the
-  // flow has to meet on the way there instead.
+  // flow has to meet on the way there instead; after meetAhead, only a tree
+  // routed already, as one routed later meets the flow's tree and so this one.
   if (!part.packetId || part.isPriorityFlow)
     return;
   llvm::DenseSet<int> sameIdDsts;
-  for (int other : st.sameId[flow])
+  for (int other : st.sameId[flow]) {
+    if (pf.meetAheadOfPartners && st.treeDsts[other].empty())
+      continue;
     for (const PathEndPoint &dst : st.parts[other].dsts)
       if (!shared(st.idsTo(other, dstState(dst)), flow).empty())
         sameIdDsts.insert(dstState(dst));
+  }
   for (auto [other, o] : llvm::enumerate(st.parts)) {
     int k = other;
     if (k == flow || o.src == part.src || !o.packetId || o.isPriorityFlow ||
         st.treeDsts[k].empty() || llvm::is_contained(st.sameId[flow], k) ||
-        st.conflicting[flow].test(k) || st.noJoin.count({flow, k}))
+        st.noJoin.count({flow, k}))
       continue;
     SmallVector<int, 4> dsts;
     for (int dst : st.treeDsts[k])
-      if (isPending(dst) && dst != dstState(part.src) &&
-          !sameIdDsts.count(dst) && st.treeOf[k].count(dst))
+      if (isPending(dst) && !sameIdDsts.count(dst) && st.treeOf[k].count(dst))
         dsts.push_back(dst);
-    if (dsts.size() > 1) {
+    if (dsts.size() < 2)
+      continue;
+    if (!st.conflicting[flow].test(k)) {
       sharedDsts[k] = std::move(dsts);
       foreign.insert(k);
+      continue;
     }
+    // Where only ids the flow sends elsewhere conflict with the tree, those
+    // can leave as a part of their own and the rest meet it.
+    std::set<int> meeting, rest;
+    for (int dst : dsts)
+      for (int id : st.idsTo(flow, dst))
+        meeting.insert(id);
+    for (int id : st.flowIds[flow])
+      if (!meeting.count(id))
+        rest.insert(id);
+    if (!rest.empty() && pf.constraints.conflict &&
+        !st.apartSources.count(std::minmax(part.src, o.src)) &&
+        !pf.constraints.conflict(part.src, meeting, o.src, st.flowIds[k]))
+      blockedIds[k] = {std::move(dsts), std::move(rest)};
   }
 }
 
@@ -1623,6 +1764,14 @@ void Pathfinder::TreeBuilder::meet() {
   auto mustMeet = [&](int other) {
     return spans(flow, sharedDsts[other]) && spans(other, sharedDsts[other]);
   };
+  // A tree it has to meet but for the other ids it carries leaves those ids to
+  // a part of their own, which findPaths splits off once the iteration ends.
+  for (const auto &[other, dsts] : blockedDsts)
+    if (spans(flow, dsts) && spans(other, dsts))
+      st.meetBlocked.insert({part.src, st.parts[other].src});
+  for (const auto &[other, blocked] : blockedIds)
+    if (spans(flow, blocked.first) && spans(other, blocked.first))
+      st.meetSplits.insert({{part.src, st.parts[other].src}, blocked.second});
   SmallVector<int, 4> owners;
   for (int other : llvm::make_first_range(sharedDsts))
     if (!disagree.count(other) && mustMeet(other))
@@ -1716,7 +1865,9 @@ void Pathfinder::TreeBuilder::meet(int owner) {
       if (node == pf.nodeIds.end())
         continue;
       int in = stateId(node->second, In);
-      if (in == at || t.count(in))
+      auto taken = st.meetingPorts.find({owner, in});
+      if (in == at || t.count(in) ||
+          (taken != st.meetingPorts.end() && !(taken->second == part.src)))
         continue;
       Meeting m{in, {}, 0, k};
       for (int s : next)
@@ -1749,6 +1900,7 @@ void Pathfinder::TreeBuilder::meet(int owner) {
   if (!best || !trace(best->in))
     return;
   st.unmet.erase({flow, owner});
+  st.meetingPorts.try_emplace({owner, best->in}, part.src);
   st.met.insert({flow, owner});
   int hops = treeHops[llvm::find(tree, best->in) - tree.begin()] + 1;
   auto add = [&](int s, int from, const Edge &e, int depth) {
@@ -2091,8 +2243,18 @@ void Pathfinder::TreeBuilder::claim() {
   if (toSelf) {
     switchSettings[part.src.coords].srcs.push_back(part.src.port);
     switchSettings[part.src.coords].dsts.push_back(part.src.port);
-    if (part.packetId)
+    if (part.packetId) {
       st.routing.packetTrees[part.src].push_back({part.src, part.src, false});
+      // On the tree too, so a tree that has to meet this one finds the port.
+      int srcId = pf.nodeIds.at(part.src);
+      for (const Edge &e : ArrayRef<Edge>(pf.adjacency[srcId])
+                               .take_front(pf.wireEdgesBegin[srcId]))
+        if (e.dst == srcId) {
+          st.treeOf[flow].try_emplace(dstState(part.src), tree.front(), e);
+          st.treeDsts[flow].push_back(dstState(part.src));
+          break;
+        }
+    }
   }
   const std::optional<int> &packetId = part.packetId;
   int packetGroupId = part.packetGroupId;
@@ -2172,6 +2334,36 @@ void Pathfinder::TreeBuilder::claim() {
       }
     }
   }
+  // A circuit from or to a switchbox port (as --aie-split-flow-vias leaves a
+  // via) takes the wire that port is fed by or drives, though no hop of its
+  // tree crosses it.
+  auto takeWire = [](SwitchboxConnect &link, int k) {
+    if (k < 0)
+      return;
+    SwitchboxConnect::Cell &c = link.at(k, k);
+    c.usedCapacity++;
+    SwitchboxConnect::bumpDemand(c);
+  };
+  // A via's next segment starts where the last one ended, on the wire that
+  // one already takes.
+  if (!packetId && isDirectional(part.src.port.bundle))
+    for (auto &[ends, link] : pf.graph) {
+      int k = link.dstIndex(part.src.port);
+      if (ends.second != part.src.coords || ends.first == ends.second || k < 0)
+        continue;
+      PathEndPoint feeder{ends.first, link.srcPorts[k]};
+      if (llvm::none_of(pf.flows, [&](const Flow &f) {
+            return llvm::is_contained(f.dsts, feeder);
+          }))
+        takeWire(link, k);
+    }
+  for (const PathEndPoint &dst : part.dsts)
+    if (!packetId && isDirectional(dst.port.bundle)) {
+      int node = pf.nodeIds.at(dst);
+      for (const Edge &e : ArrayRef<Edge>(pf.adjacency[node])
+                               .drop_front(pf.wireEdgesBegin[node]))
+        takeWire(*e.sb, e.i);
+    }
   if (packetId) {
     st.treeDsts[flow].append(reached.begin(), reached.end());
     st.treeDsts[flow].append(met.begin(), met.end());
@@ -2336,28 +2528,6 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     }
   }
   crowdedTiles.insert(faults.crowded.begin(), faults.crowded.end());
-  // Trees with an id in common join where they meet, so the ids a source
-  // sends that the other does not route apart as a part of their own.
-  auto splitOwnIds = [&](const std::pair<PathEndPoint, PathEndPoint> &pair) {
-    for (auto [src, other] : {pair, std::pair{pair.second, pair.first}}) {
-      auto srcParts = st.partsOf.find(src);
-      auto otherParts = st.partsOf.find(other);
-      if (srcParts == st.partsOf.end() || otherParts == st.partsOf.end())
-        continue;
-      std::set<int> otherIds;
-      for (int k : otherParts->second)
-        otherIds.insert(st.flowIds[k].begin(), st.flowIds[k].end());
-      for (int k : SmallVector<int, 2>(srcParts->second)) {
-        std::set<int> own;
-        for (int id : st.flowIds[k])
-          if (!otherIds.count(id))
-            own.insert(id);
-        if (!st.parts[k].isPriorityFlow && !own.empty() &&
-            own.size() < st.flowIds[k].size())
-          st.splitPart(k, own);
-      }
-    }
-  };
   bool related = false;
   for (const auto &pair : faults.apart) {
     if (!st.apartSources.insert(pair).second)
@@ -2370,9 +2540,20 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
                << describeTilePort(pair.second.coords, pair.second.port)
                << "\n");
     if (splitShared)
-      splitOwnIds(pair);
+      st.splitOwnIds(pair);
   }
   for (const auto &pair : faults.together) {
+    // Trees with one id that share a single receiver wait on each other
+    // wherever they join above it, so they fan in at that receiver alone.
+    for (int x : st.partsOf.at(pair.first))
+      for (int y : st.partsOf.at(pair.second))
+        if (llvm::is_contained(st.sameId[x], y) &&
+            llvm::count_if(st.parts[x].dsts, [&](const PathEndPoint &dst) {
+              return llvm::is_contained(st.parts[y].dsts, dst);
+            }) < 2) {
+          st.noJoin.insert({x, y});
+          st.noJoin.insert({y, x});
+        }
     if (!st.togetherSources.insert(pair).second)
       continue;
     related = true;
@@ -2382,7 +2563,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
                << " and "
                << describeTilePort(pair.second.coords, pair.second.port)
                << "\n");
-    splitOwnIds(pair);
+    st.splitOwnIds(pair);
   }
   if (related) {
     illegalEdges++;
@@ -2495,16 +2676,26 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                          ? "circuit trees routed first stopped helping"
                          : "the overuse stalled")
                  << ")...unable to find routing for flows.\n");
+      // Packet streams took part if they share a switchbox or link with an
+      // overused channel, or cross a boundary one does: a channel they take
+      // across it is one fewer for the rest.
+      auto overused = [](const SwitchboxConnect::Cell &c) {
+        return c.usedCapacity > maxCircuitStreamCapacity;
+      };
+      auto packets = [](const SwitchboxConnect::Cell &c) {
+        return c.packetGroupId >= 0;
+      };
+      std::set<std::tuple<bool, int, bool>> full;
+      for (const auto &[ends, sb] : graph)
+        if (ends.first != ends.second && llvm::any_of(sb.cells, overused))
+          full.insert(boundaryOf(ends.first, ends.second));
       packetsFailed =
-          !checkReason.empty() || llvm::any_of(graph, [](const auto &entry) {
-            ArrayRef<SwitchboxConnect::Cell> cells = entry.second.cells;
-            return llvm::any_of(cells,
-                                [](const SwitchboxConnect::Cell &c) {
-                                  return c.packetGroupId >= 0;
-                                }) &&
-                   llvm::any_of(cells, [](const SwitchboxConnect::Cell &c) {
-                     return c.usedCapacity > maxCircuitStreamCapacity;
-                   });
+          !checkReason.empty() || llvm::any_of(graph, [&](const auto &entry) {
+            const auto &[ends, sb] = entry;
+            return llvm::any_of(sb.cells, packets) &&
+                   (llvm::any_of(sb.cells, overused) ||
+                    (ends.first != ends.second &&
+                     full.count(boundaryOf(ends.first, ends.second))));
           });
       return explainNoRouting(st);
     }
@@ -2538,6 +2729,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       hops.clear();
     st.unmet.clear();
     st.met.clear();
+    st.meetingPorts.clear();
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
@@ -2568,6 +2760,49 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       if (steered)
         illegalEdges++;
     }
+    bool split = false;
+    for (const auto &pair : st.meetBlocked)
+      if (st.togetherSources.insert(pair).second) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Route together to meet: "
+                   << describeTilePort(pair.first.coords, pair.first.port)
+                   << " and "
+                   << describeTilePort(pair.second.coords, pair.second.port)
+                   << "\n");
+        st.splitOwnIds(pair);
+        // Trunks steered them to where they could not meet; split, they can.
+        for (int a : st.partsOf.at(pair.first))
+          for (int b : st.partsOf.at(pair.second)) {
+            st.trunked.erase({a, b});
+            st.trunked.erase({b, a});
+          }
+        split = true;
+      }
+    st.meetBlocked.clear();
+    for (const auto &[pair, ids] : st.meetSplits)
+      for (int k : SmallVector<int, 2>(st.partsOf.at(pair.first)))
+        if (!st.parts[k].isPriorityFlow && ids.size() < st.flowIds[k].size() &&
+            llvm::all_of(ids,
+                         [&](int id) { return st.flowIds[k].count(id); })) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Route apart to meet: "
+                     << describeTilePort(pair.first.coords, pair.first.port)
+                     << " and "
+                     << describeTilePort(pair.second.coords, pair.second.port)
+                     << "\n");
+          st.splitPart(k, ids);
+          for (int a : st.partsOf.at(pair.first))
+            for (int b : st.partsOf.at(pair.second)) {
+              st.trunked.erase({a, b});
+              st.trunked.erase({b, a});
+            }
+          split = true;
+        }
+    st.meetSplits.clear();
+    if (split) {
+      st.relateParts();
+      illegalEdges++;
+    }
 
     for (auto &[_, sb] : graph) {
       for (size_t i = 0; i < sb.srcPorts.size(); i++) {
@@ -2593,7 +2828,6 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
         }
       }
     }
-
     // Once the overuse stalls, circuit trees that overuse a circuit-only
     // channel route first, so the same tree stops losing it. Packet-shared
     // overuse is left to the packet steering.

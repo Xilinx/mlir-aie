@@ -10,13 +10,14 @@
 
 // Id 28 from (3,5) reaches (0,1) DMA:2 on the arbiter DMA:2 and DMA:4 already
 // share, so branching to DMA:4 at (0,1) puts no new flow on it. Branching
-// higher up enters (0,1) twice and needs a fifth msel there. Reduced from
-// router_mutation.py npu2 seed 1902.
+// higher up enters (0,1) twice and needs a fifth msel there. The trees from
+// (3,5) and (0,4) meet above (0,1), so id 28 comes in by one slave port.
+// Reduced from router_mutation.py npu2 seed 1902.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         aie.masterset(DMA : 4, %[[SEL:[0-9]+]])
 // CHECK:           aie.rule(31, 28, %[[SEL]])
-// CHECK:           aie.rule(31, 28, %[[SEL]])
+// CHECK-NOT:       aie.rule(31, 28,
 // CHECK-LABEL: aie.switchbox(%tile_0_2)
 
 module {

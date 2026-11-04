@@ -746,7 +746,8 @@ REPORTED = {
 def judge(e, expect, hops_on, seed):
     """Route `e` and hold the router to `expect`. Returns (outcome, detail),
     outcome one of ok, completeness, soundness, illegal, crash, known,
-    model-limit."""
+    model-limit, strict-miss (tallied, not failed: the properties ratchet it,
+    see max_strict_misses)."""
     why = must_reject(e)
     try:
         e = rp.canonical(e)
@@ -791,6 +792,15 @@ def judge(e, expect, hops_on, seed):
         if rp.known_bug(e, problems):
             return "known", problems[0][:200]
         return "illegal", problems[0][:300]
+    # With allow-deadlock-prone the first routing with only that hold cycle
+    # stands; without it the router tries further, and has to succeed where
+    # a routing without the cycle exists.
+    if rp.shared_receiver_warning(p.stderr) is not None:
+        s = rp.aie_opt(e.emit(), hops_on, timeout=120, strict=True)
+        if s.returncode < 0:
+            return "crash", f"strict: {rp.first_error(s.stderr)[:300]}"
+        if s.returncode and rp.strict_witness(e, rp.Analysis(e)) is not None:
+            return "strict-miss", "fails without allow-deadlock-prone, needlessly"
     return "ok", f"routed ({expect})"
 
 
@@ -1523,11 +1533,15 @@ def main():
         "base-illegal",
         "model-limit",
     }
+    # Strict misses are saved with the failures, but do not fail the run.
+    misses = []
     for seed, rows in results:
         for kind, outcome, name, detail, payload in rows:
             tally[(kind, name)][outcome] += 1
             if outcome in bad:
                 failures.append((seed, kind, outcome, name, detail, payload))
+            elif outcome == "strict-miss":
+                misses.append((seed, kind, outcome, name, detail, payload))
     for (kind, name), c in sorted(tally.items()):
         print(
             f"{kind:9} {name:18} " + ", ".join(f"{k} {v}" for k, v in sorted(c.items()))
@@ -1542,9 +1556,11 @@ def main():
         + (f" = {kills['killed'] / total:.3f}" if total else "")
     )
     seen = Counter()
-    for seed, kind, outcome, name, detail, payload in failures:
+    for seed, kind, outcome, name, detail, payload in failures + misses:
         seen[(kind, outcome, name)] += 1
-        if seen[(kind, outcome, name)] <= (10 if args.v else 3):
+        if outcome != "strict-miss" and seen[(kind, outcome, name)] <= (
+            10 if args.v else 3
+        ):
             print(f"FAIL seed {seed} {kind} {name} {outcome}: {detail.strip()[:400]}")
         if args.out and payload is not None:
             args.out.mkdir(parents=True, exist_ok=True)
