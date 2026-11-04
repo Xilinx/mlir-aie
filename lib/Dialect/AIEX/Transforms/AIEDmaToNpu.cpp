@@ -653,8 +653,8 @@ public:
     // register (additive; applied after the base patch above).
     if (op.getOffsetStateTableIdxAttr()) {
       auto bufType = cast<BaseMemRefType>(op.getMemref().getType());
-      if (failed(emitUpdateBdAddressFromOffsetParameter(rewriter, op, bufType,
-                                                        patchAddr)))
+      if (failed(emitUpdateBdAddressFromOffsetParameter(
+              rewriter, op, bufType, patchAddr, targetModel, tileCol, tileRow)))
         return failure();
     }
     return success();

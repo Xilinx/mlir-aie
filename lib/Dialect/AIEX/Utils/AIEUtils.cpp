@@ -199,7 +199,8 @@ memref::GlobalOp AIEX::BlockwriteData::getOrCreate(OpBuilder &builder,
 
 LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
-    uint64_t registerAddr) {
+    uint64_t registerAddr, const AIE::AIETargetModel &targetModel, int col,
+    int row) {
   auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("offset_state_table_idx");
   assert(idxAttr && "emitUpdateBdAddressFromOffsetParameter called without "
                     "offset_state_table_idx attribute");
@@ -207,12 +208,23 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
   uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
 
-  // Use func=mul with func_arg=elemBytes so the firmware computes
-  // StateTable[idx] * elemBytes = byte offset, added into the BD address
-  // register.
+  // The firmware adds StateTable[idx] * func_arg into the register. A shim
+  // BD's address field counts bytes; a mem or core tile's counts 32-bit words
+  // from its field's shift, so only whole words of offset can be added there.
+  uint32_t perElement = elemBytes;
+  if (!targetModel.isShimNOCTile(col, row)) {
+    const AIE::DmaBdLayout *layout = targetModel.getDmaBdLayout(col, row);
+    if (!layout || elemBytes % 4)
+      return bdOp->emitOpError("a runtime offset into ")
+             << elemBytes
+             << "-byte elements on a mem or core tile buffer descriptor, "
+                "whose address counts 32-bit words; use elements of a "
+                "multiple of 4 bytes";
+    perElement = (elemBytes / 4) << layout->bufferOffset.shift;
+  }
   AIEX::NpuUpdateFromScratchpadOp::create(
       builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
-      /*func_arg=*/elemBytes,
+      /*func_arg=*/perElement,
       /*address=*/static_cast<uint32_t>(registerAddr),
       /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
   return success();

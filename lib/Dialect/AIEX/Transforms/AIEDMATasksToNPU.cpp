@@ -472,8 +472,8 @@ struct AIEDMATasksToNPUPass
     // register value and adds a computed delta to it.
     if (bd_op.getOffsetStateTableIdxAttr()) {
       auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
-      if (failed(emitUpdateBdAddressFromOffsetParameter(builder, bd_op, bufType,
-                                                        register_addr)))
+      if (failed(emitUpdateBdAddressFromOffsetParameter(
+              builder, bd_op, bufType, register_addr, target_model, col, row)))
         return failure();
     }
 

@@ -74,12 +74,12 @@ unsigned getHostBufferCount(Block &block);
 
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset
 // (held in the scratchpad slot referenced by `bdOp`'s
-// `offset_state_table_idx` attribute, multiplied by the element size of
-// `bufType`) into the BD address register at `registerAddr`.
-LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
-                                                     Operation *bdOp,
-                                                     BaseMemRefType bufType,
-                                                     uint64_t registerAddr);
+// `offset_state_table_idx` attribute, in elements of `bufType`) into the
+// address field of the BD at `registerAddr` on tile (`col`, `row`).
+LogicalResult emitUpdateBdAddressFromOffsetParameter(
+    OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
+    uint64_t registerAddr, const AIE::AIETargetModel &targetModel, int col,
+    int row);
 
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime length
 // (held in the scratchpad slot referenced by `bdOp`'s
