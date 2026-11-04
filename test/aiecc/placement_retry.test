@@ -1,0 +1,47 @@
+//===- placement_retry.test -----------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: %aiecc -n --no-progress --tmpdir %t.default --get=input_physical.mlir %S/Inputs/placement_retry_npu2_decode.mlir 2>&1 | FileCheck %s --check-prefix=RETRY
+// RUN: not %aiecc -n --no-progress --tmpdir %t.pinned --cores-per-col=4 --get=input_physical.mlir %S/Inputs/placement_retry_npu2_decode.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
+// RUN: not %aiecc -n --no-progress --tmpdir %t.never --get=input_physical.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
+
+// The sequential placer's default placement of the decode pack does not
+// route; aiecc places it again with three cores a column, which does, and
+// shows none of the first attempt's errors.
+// RETRY: aiecc: the placement does not route; placing again with --cores-per-col=3
+// RETRY-NOT: error:
+
+// A cores-per-col the command line chose is kept.
+// PINNED: error: Unable to find a legal routing
+// PINNED-NOT: placing again
+
+// Five flows down one column need more links than any placement of the
+// unrelated core gives them; aiecc tries each, then reports the first
+// placement's error.
+// NEVER: placing again with --cores-per-col=3
+// NEVER: placing again with --cores-per-col=2
+// NEVER: placing again with --cores-per-col=1
+// NEVER: aiecc: no placement with fewer cores a column routes either; these errors are the first placement's
+// NEVER: error: Unable to find a legal routing
+// NEVER-SAME: cross from row 2 to row 1
+
+module {
+  aie.device(npu1_1col) {
+    %t01 = aie.tile(0, 1)
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    %c = aie.logical_tile<CoreTile>(?, ?)
+    aie.flow(%t02, DMA : 0, %t01, DMA : 0)
+    aie.flow(%t02, DMA : 1, %t01, DMA : 1)
+    aie.flow(%t02, Core : 0, %t01, DMA : 2)
+    aie.flow(%t03, DMA : 0, %t01, DMA : 3)
+    aie.flow(%t03, DMA : 1, %t01, DMA : 4)
+    aie.core(%c) {
+      aie.end
+    }
+  }
+}
