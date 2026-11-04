@@ -989,9 +989,9 @@ void SequentialPlacer::countTurns(
         continue;
       llvm::MapVector<Operation *, SmallVector<ObjectFifoCreateOp>> byTile;
       for (ObjectFifoCreateOp fifo : objectFifos) {
-        auto consumers = fifo.getConsumerTiles();
-        if (consumers.size() != 1)
+        if (!fifo.canTakeTurns())
           continue;
+        auto consumers = fifo.getConsumerTiles();
         Value mine = coreDrains ? consumers[0] : fifo.getProducerTile();
         Value other = coreDrains ? fifo.getProducerTile() : consumers[0];
         auto peer = dyn_cast_or_null<LogicalTileOp>(other.getDefiningOp());
@@ -1006,7 +1006,8 @@ void SequentialPlacer::countTurns(
         SmallVector<int64_t> depths;
         for (ObjectFifoCreateOp fifo : fifos) {
           names.push_back(fifo.getSymNameAttr());
-          depths.push_back(fifo.size(coreDrains ? 1 : 0));
+          depths.push_back(fifo.dmaDepth(coreDrains ? std::optional<unsigned>(0)
+                                                    : std::nullopt));
         }
         CoreTurns turns;
         std::string reason;

@@ -2629,6 +2629,12 @@ def AIE_ObjectFifoCreateOp
     /// a shim's, a stream port's, or a merge's or dispatch's but the one end
     /// its participants share.
     std::optional<PlannedDmaEnd> plannedDmaEnd(std::optional<unsigned> consumer);
+    /// Whether the two DMA ends the split gives the fifo, one circuit apart,
+    /// may each take turns with other ends on one channel: as
+    /// aie-objectfifo-allocate requires of both, neither is pinned to a
+    /// channel, iterates a bounded count, repeats, dispatches, walks a stream
+    /// window or shares its route.
+    bool canTakeTurns();
 
     /// The packet header this fifo asks its route to carry, or null for a
     /// circuit-switched connection.

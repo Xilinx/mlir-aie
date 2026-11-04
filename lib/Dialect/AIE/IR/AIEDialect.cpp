@@ -2082,6 +2082,22 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
           !link.walksStream() && !link.isDispatch() && !drainLaysOut};
 }
 
+bool ObjectFifoCreateOp::canTakeTurns() {
+  if (getConsumerTiles().size() != 1 || packetHeader() || getProdPortAttr() ||
+      getConsumerPort(0) || getIterCount() || getRepeatCount().value_or(1) != 1)
+    return false;
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
+    bool output = llvm::is_contained(link.getOutputObjectFifos(), *this);
+    if (output && (link.isDispatch() || link.walksStream() ||
+                   link.getRepeatCount().value_or(1) != 1))
+      return false;
+    if (link.isMerge() && llvm::is_contained(link.getInputObjectFifos(), *this))
+      return false;
+  }
+  return true;
+}
+
 int ObjectFifoCreateOp::sharedDepth() {
   int depth = size();
   if (auto depths = dyn_cast<ArrayAttr>(getElemNumber()))
