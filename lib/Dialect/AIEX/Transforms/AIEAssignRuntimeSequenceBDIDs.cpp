@@ -492,8 +492,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         if (reclaimBds)
           diag << " The compiler could not take any back either: every "
                   "task holding one is not started yet, is started again "
-                  "later, or runs on a channel whose status it cannot "
-                  "poll.";
+                  "later, waits on a lock this or a later task releases, "
+                  "or runs on a channel whose status it cannot poll.";
         else
           diag << " Or let the compiler poll for finished tasks and take "
                   "their ids (reclaim-bds, aiecc --reclaim-runtime-bds), "
@@ -568,6 +568,27 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   llvm::SmallPtrSet<Operation *, 16> reclaimed;
   // Configures whose ids went back to the pool by any route.
   llvm::SmallPtrSet<Operation *, 16> releasedTasks;
+  // Each top-level op's place in the sequence, and per lock the last place a
+  // task releasing it is configured or started (see reclaimFor).
+  llvm::DenseMap<Operation *, unsigned> positionOf;
+  llvm::DenseMap<Value, unsigned> lastReleaseOf;
+
+  void indexLockReleases(AIE::RuntimeSequenceOp seq) {
+    unsigned position = 0;
+    for (Operation &op : seq.getBody().front()) {
+      positionOf[&op] = position++;
+      DMAConfigureTaskOp cfg = dyn_cast<DMAConfigureTaskOp>(op);
+      if (auto start = dyn_cast<DMAStartTaskOp>(op))
+        cfg = start.getTaskOp();
+      if (!cfg)
+        continue;
+      cfg.walk([&](AIE::UseLockOp lock) {
+        if (lock.release())
+          lastReleaseOf[lock.getLock()] = positionOf[&op];
+      });
+    }
+  }
+
   // Configures allocated on each tile, in program order.
   llvm::DenseMap<AIE::TileOp, SmallVector<DMAConfigureTaskOp, 16>> liveByTile;
   // BD ids released by aiex.dma_free_task while the task could still have been
@@ -1225,9 +1246,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // `op` proves one finished: the oldest with j >= 1 pushes queued behind it,
   // for which Task_Queue_Size <= j - 1 is proof (as a masked equality, the
   // largest 2^k - 1 <= j - 1), so it waits on no push not yet issued; failing
-  // that, the oldest, until its channel is idle. The poll never returns if that
-  // task's inputs come from a later push through a core, which the compiler
-  // cannot see; a design with such a dependence releases its own BDs.
+  // that, the oldest, until its channel is idle. A task that acquires a lock
+  // `op` or a later push releases is never polled for: it cannot finish
+  // before that push, so the poll would never return. The same dependence
+  // through a core the compiler cannot see; a design with one releases its own
+  // BDs.
   LogicalResult reclaimFor(DMAConfigureTaskOp op) {
     AIE::TileOp tile = op.getTileOp();
     const AIETargetModel &tm =
@@ -1259,13 +1282,24 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         return success();
       }
 
+    unsigned at = positionOf.lookup(op);
+    auto waitsOnLater = [&](DMAConfigureTaskOp task) {
+      bool waits = false;
+      task.walk([&](AIE::UseLockOp lock) {
+        auto last = lastReleaseOf.find(lock.getLock());
+        waits |= (lock.acquire() || lock.acquireGE()) &&
+                 last != lastReleaseOf.end() && last->second >= at;
+      });
+      return waits;
+    };
+
     uint32_t field = tm.getDmaTaskQueueSizeMask();
     uint32_t idle = tm.getDmaChannelIdleMask();
     DMAConfigureTaskOp victim;
     size_t victimQueuedBehind = 0;
     uint64_t victimOrder = 0;
     for (DMAConfigureTaskOp task : live) {
-      if (!isCandidate(task))
+      if (!isCandidate(task) || waitsOnLater(task))
         continue;
       DmaQueueModel::ChannelKey key = channelOf(task);
       if (!tm.getDmaStatusAddress(key[0], key[1], key[3],
@@ -1368,6 +1402,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     resetChannels.clear();
     pushesByAllocation.clear();
     creditedPushes.clear();
+    positionOf.clear();
+    lastReleaseOf.clear();
   }
 
   void runOnOperation() override {
@@ -1409,6 +1445,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (failed(validate(seq)))
         return WalkResult::interrupt();
       resetPerSequenceState();
+      indexLockReleases(seq);
 
       // Straight-line walk. Collect frees to erase after (recycling reads the
       // configure the free points at, so erase only once the walk is done).
