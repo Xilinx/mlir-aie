@@ -285,9 +285,11 @@ struct AIEDMATasksToNPUPass
     return bd_op;
   }
 
+  /// `lengthWord` is the register word holding the BD's length as the dynamic
+  /// path wrote it, absent when the length is the static one.
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
-                                      AIE::TileOp &tile,
-                                      OpFoldResult bdId = {}) {
+                                      AIE::TileOp &tile, OpFoldResult bdId = {},
+                                      Value lengthWord = nullptr) {
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
     auto col = tile.getCol();
@@ -474,11 +476,14 @@ struct AIEDMATasksToNPUPass
     // register value and adds a computed delta to it.
     if (bd_op.getOffsetStateTableIdxAttr()) {
       auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
+      OpFoldResult lengthField =
+          lengthWord ? OpFoldResult(lengthWord)
+                     : builder.getI64IntegerAttr(
+                           bd_op.getLenInBytes() * 8 /
+                           target_model.getAddressGenGranularity());
       if (failed(emitUpdateBdAddressFromOffsetParameter(
               builder, bd_op, bufType, register_addr, target_model, col, row,
-              staticByteAddress,
-              bd_op.getLenInBytes() * 8 /
-                  target_model.getAddressGenGranularity())))
+              staticByteAddress, lengthField)))
         return failure();
     }
 
@@ -747,7 +752,10 @@ struct AIEDMATasksToNPUPass
     Value bdBase =
         getBdRegisterBase(builder, loc, target_model, col, row, bdIdOfr);
     NpuBlockWriteValuesOp::create(builder, loc, bdBase, bdWords);
-    return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr);
+    const AIE::DmaBdLayout *layout = target_model.getDmaBdLayout(col, row);
+    return setAddressForSingleBD(
+        builder, bd_op, tile, bdIdOfr,
+        layout ? bdWords[layout->bufferLength.word] : Value());
   }
 
   LogicalResult

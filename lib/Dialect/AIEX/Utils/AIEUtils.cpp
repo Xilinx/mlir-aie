@@ -202,7 +202,7 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
     uint64_t registerAddr, const AIE::AIETargetModel &targetModel, int col,
     int row, std::optional<uint64_t> staticByteAddress,
-    std::optional<uint64_t> lengthField) {
+    OpFoldResult lengthField) {
   auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("offset_state_table_idx");
   assert(idxAttr && "emitUpdateBdAddressFromOffsetParameter called without "
                     "offset_state_table_idx attribute");
@@ -253,12 +253,20 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   Value address = arith::ConstantOp::create(
       builder, loc,
       builder.getI32IntegerAttr(static_cast<int32_t>(registerAddr)));
-  Value lowBits =
-      arith::ConstantOp::create(builder, loc,
-                                builder.getI32IntegerAttr(static_cast<int32_t>(
-                                    lengthBits.place(*lengthField) & 0x3)));
-  Value mask =
-      arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0x3));
+  Value lowBits, mask;
+  if (std::optional<int64_t> length = getConstantIntValue(lengthField)) {
+    lowBits = arith::ConstantOp::create(
+        builder, loc,
+        builder.getI32IntegerAttr(static_cast<int32_t>(
+            lengthBits.place(static_cast<uint64_t>(*length)) & 0x3)));
+    mask =
+        arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0x3));
+  } else {
+    mask =
+        arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0x3));
+    lowBits =
+        arith::AndIOp::create(builder, loc, cast<Value>(lengthField), mask);
+  }
   AIEX::NpuMaskWrite32Op::create(builder, loc, address, lowBits, mask, nullptr,
                                  nullptr, nullptr);
   return success();

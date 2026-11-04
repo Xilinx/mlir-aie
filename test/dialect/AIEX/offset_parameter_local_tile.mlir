@@ -137,3 +137,28 @@ aie.device(npu2) @core_i64 {
     aiex.dma_await_task(%ta)
   }
 }
+
+// -----
+
+// A runtime len sets the length at run time, so the maskwrite puts back the
+// low two bits of the length word the BD was written with, not the buffer's.
+// CHECK-LABEL: aie.device(npu2) @core_runtime_len
+// CHECK: aiex.npu.blockwrite_values({{.*}}) values %[[WORD0:[^,]+]],
+// CHECK: aiex.npu.update_from_scratchpad<mul> {address = [[W0:[0-9]+]] : ui32, func_arg = 16384 : ui32
+// CHECK-NEXT: %[[A:.+]] = arith.constant [[W0]] : i32
+// CHECK-NEXT: %[[M:.+]] = arith.constant 3 : i32
+// CHECK-NEXT: %[[V:.+]] = arith.andi %[[WORD0]], %[[M]] : i32
+// CHECK-NEXT: aiex.npu.maskwrite32(%[[A]], %[[V]], %[[M]])
+aiex.scratchpad_parameter @off : i32
+aie.device(npu2) @core_runtime_len {
+  %t = aie.tile(0, 2)
+  %buf = aie.buffer(%t) {address = 1024 : i32, sym_name = "b"} : memref<128xi32>
+  aie.runtime_sequence(%a : memref<16xi32>, %len : i32) {
+    %ta = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%buf : memref<128xi32> offset = 0 len = %len) {offset_parameter = @off, bd_id = 0 : i32}
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%ta)
+    aiex.dma_await_task(%ta)
+  }
+}
