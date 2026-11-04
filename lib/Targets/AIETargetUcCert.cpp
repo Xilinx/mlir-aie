@@ -108,6 +108,21 @@ void emitWrite32D(CertWrite32DOp op, std::string &text) {
   text += ss.str();
 }
 
+// SAVE_TIMESTAMPS        7
+void emitSaveTimestamps(CertSaveTimestampsOp op, std::string &text) {
+  text += "  SAVE_TIMESTAMPS        " + std::to_string(op.getUnqId()) + "\n";
+}
+
+// SAVE_REGISTER          0x00001000, 9
+void emitSaveRegister(CertSaveRegisterOp op, std::string &text) {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  ss << "  SAVE_REGISTER          ";
+  ss << llvm::format("0x%08x, ", op.getAddress());
+  ss << op.getUnqId() << "\n";
+  text += ss.str();
+}
+
 // UC_DMA_WRITE_DES       $r2, @chain0
 void emitUcDmaWriteDes(CertUcDmaWriteDesOp op, std::string &text) {
   text += "  UC_DMA_WRITE_DES       $r" + std::to_string(op.getWaitHandle()) +
@@ -215,6 +230,9 @@ LogicalResult emitJob(CertJobOp jobOp, std::string &text, std::string &data) {
         .Case<CertRead32Op>([&](auto op) { emitRead32(op, text); })
         .Case<CertRead32DOp>([&](auto op) { emitRead32D(op, text); })
         .Case<CertWrite32DOp>([&](auto op) { emitWrite32D(op, text); })
+        .Case<CertSaveTimestampsOp>(
+            [&](auto op) { emitSaveTimestamps(op, text); })
+        .Case<CertSaveRegisterOp>([&](auto op) { emitSaveRegister(op, text); })
         .Case<CertWaitTCTSOp>([&](auto op) { emitWaitTCTS(op, text); })
         .Case<CertWrite32Op>([&](auto op) { emitWrite32(op, text); })
         .Case<AIE::EndOp>([](auto) { /* implicit region terminator, skip */ })
