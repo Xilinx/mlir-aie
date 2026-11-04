@@ -793,7 +793,8 @@ struct AIEObjectFifoVerifyPass
   /// back, and locks keep their counts until a PDI load, so the next run of
   /// the configuration finds those objects taken. Only cores certain to end
   /// are checked: one block, and no loop that may run forever. A fifo an
-  /// `aiex.dma_channel_reset_for` re-arms gets its locks back each launch.
+  /// `aiex.dma_channel_reset_for` re-arms in every runtime sequence gets its
+  /// locks back each launch.
   LogicalResult verifyHeldAtEnd(DeviceOp device) {
     for (auto core : device.getOps<CoreOp>()) {
       Region &body = core.getBody();
@@ -822,8 +823,16 @@ struct AIEObjectFifoVerifyPass
         ObjectFifoPoolOp pool = endpoint ? endpoint.getPoolOp() : nullptr;
         std::optional<StringRef> fifo =
             pool ? pool.getFifoName() : std::nullopt;
-        if (pool && (!poolLocks->needsLocks(pool) ||
-                     (fifo && poolLocks->rearms().contains(*fifo))))
+        auto rearms = fifo ? poolLocks->rearms().find(*fifo)
+                           : poolLocks->rearms().end();
+        bool rearmedEveryLaunch =
+            rearms != poolLocks->rearms().end() &&
+            llvm::all_of(device.getOps<RuntimeSequenceOp>(), [&](auto seq) {
+              return llvm::any_of(rearms->second, [&](auto reset) {
+                return reset->getParentOp() == seq;
+              });
+            });
+        if (pool && (!poolLocks->needsLocks(pool) || rearmedEveryLaunch))
           continue;
         std::optional<int64_t> held = heldAfter(body.front(), name, 0);
         if (!held || *held == 0)

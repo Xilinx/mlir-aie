@@ -198,3 +198,27 @@ module {
     }
   }
 }
+
+// -----
+
+// Only @reset re-arms @in, so launching @run twice finds the held object taken.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    // expected-error@+1 {{ends with 1 acquired from @in__cons never released}}
+    %core = aie.core(%tile) {
+      // expected-note@+1 {{acquired here}}
+      %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+      aie.end
+    }
+    aie.runtime_sequence @run(%arg0: memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 0 : i64, metadata = @in} : memref<16xi32>
+    }
+    aie.runtime_sequence @reset(%arg0: memref<16xi32>) {
+      aiex.dma_channel_reset_for(@in)
+    }
+  }
+}
