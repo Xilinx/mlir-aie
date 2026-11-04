@@ -140,7 +140,7 @@ struct AIECtrlPacketToDmaPass
         int row = ctrlPktOp.getRowFromAddr();
 
         // A read's length describes its response, not an outgoing payload.
-        int64_t ctrlPktSize = 2;
+        int64_t ctrlPktSize = 2; // ctrl info word + packet header
         if (auto data = ctrlPktOp.getData())
           ctrlPktSize += data->size();
 
