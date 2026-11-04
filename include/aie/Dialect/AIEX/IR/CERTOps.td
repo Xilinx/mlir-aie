@@ -449,6 +449,43 @@ def AIE_CertPreemptOp : AIEX_Op<"cert.preempt", [HasParent<"CertJobOp">]> {
   }];
 }
 
+def AIE_CertSaveTimestampsOp
+    : AIEX_Op<"cert.save_timestamps", [HasParent<"CertJobOp">]> {
+  let summary = "Record a timestamp tagged with an identifier";
+  let description = [{
+    Appends a record of the current timestamp, tagged with `unq_id`, to the
+    microcontroller's debug record buffer, which the host can read back.
+
+    Example:
+    ```
+      cert.save_timestamps(7)
+    ```
+  }];
+  let arguments = (ins UI32Attr:$unq_id);
+  let assemblyFormat = [{
+    `(` $unq_id `)` attr-dict
+  }];
+}
+
+def AIE_CertSaveRegisterOp
+    : AIEX_Op<"cert.save_register", [HasParent<"CertJobOp">]> {
+  let summary = "Record the value at an address tagged with an identifier";
+  let description = [{
+    Reads the 32-bit value at `address` and appends it, tagged with `unq_id`,
+    to the microcontroller's debug record buffer, which the host can read
+    back.
+
+    Example:
+    ```
+      cert.save_register(0x1000, 9)
+    ```
+  }];
+  let arguments = (ins UI32Attr:$address, UI32Attr:$unq_id);
+  let assemblyFormat = [{
+    `(` $address `,` $unq_id `)` attr-dict
+  }];
+}
+
 def AIE_CertNopOp : AIEX_Op<"cert.nop", []> {
   let summary = "No operation (NOP)";
   let description = [{
