@@ -25,6 +25,29 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-placer"
 
+// Packet selection only matters when the transport actually uses DMA.
+// Keep auto FIFOs eligible for the shared-memory path in dmaReason().
+static bool outOfOrderNeedsDMA(ObjectFifoCreateOp fifo) {
+  if (!fifo.getOutOfOrder())
+    return false;
+  if (fifo.forcesDMA() || fifo.getRepeatCount() || fifo.usesStream() ||
+      fifo.getConsumerElemType() || !fifo.getDimensionsToStream().empty())
+    return true;
+  for (auto dims : fifo.getDimensionsFromStreamPerConsumer())
+    if (!dims.empty())
+      return true;
+  auto device = fifo->getParentOfType<DeviceOp>();
+  for (auto alloc : device.getOps<ObjectFifoAllocateOp>())
+    if (alloc.getObjectFifo() == fifo)
+      return false;
+  for (auto link : device.getOps<ObjectFifoLinkOp>()) {
+    if (llvm::is_contained(link.getInputObjectFifos(), fifo) ||
+        llvm::is_contained(link.getOutputObjectFifos(), fifo))
+      return true;
+  }
+  return false;
+}
+
 static std::optional<TileID> resolvePeerPosition(TileLike peer,
                                                  const PlacementResult &placed);
 
@@ -1020,7 +1043,7 @@ SequentialPlacer::buildChannelRequirements(
       if (producerLogicalTile && consumerLogicalTile &&
           producerLogicalTile.getTileType() == AIETileType::CoreTile &&
           consumerLogicalTile.getTileType() == AIETileType::CoreTile &&
-          ofOp.getConsumerTiles().size() == 1 && !ofOp.getOutOfOrder())
+          ofOp.getConsumerTiles().size() == 1 && !outOfOrderNeedsDMA(ofOp))
         continue;
 
       // Linked consumers and shared channels are counted separately.
@@ -1210,7 +1233,7 @@ Placer::buildComputePeerAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
     if (!producer || producer.getTileType() != AIETileType::CoreTile)
       continue;
     // A broadcast always moves by DMA (dmaReason in AIEObjectFifoSplit).
-    if (ofOp.getConsumerTiles().size() != 1 || ofOp.getOutOfOrder())
+    if (ofOp.getConsumerTiles().size() != 1 || outOfOrderNeedsDMA(ofOp))
       continue;
     for (Value consumerVal : ofOp.getConsumerTiles()) {
       auto consumer =

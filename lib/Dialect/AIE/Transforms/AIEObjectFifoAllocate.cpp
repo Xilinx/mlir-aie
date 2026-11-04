@@ -2187,26 +2187,20 @@ struct AIEObjectFifoAllocatePass
     for (auto flow : device.getOps<RouteOp>()) {
       if (flow.getSources().size() != 1)
         continue;
-      RouteEndpoint sender = lookupEndpoint(*flow.getSourceNames().begin());
-      auto src = sender
-                     ? dyn_cast<ObjectFifoDmaEndpointOp>(sender.getOperation())
-                     : nullptr;
-      if (!src || !src.getOutOfOrder())
-        continue;
+      ObjectFifoPoolOp first;
       for (auto destName : flow.getDestinationNames()) {
         RouteEndpoint receiver = lookupEndpoint(destName);
         auto dst =
             receiver
                 ? dyn_cast<ObjectFifoDmaEndpointOp>(receiver.getOperation())
                 : nullptr;
-        if (!dst)
+        if (!dst || !dst.getOutOfOrder())
           continue;
-        ObjectFifoPoolOp from = src.getPoolOp(), to = dst.getPoolOp();
-        if (!from || !to)
-          continue;
-        matchingPools.unionSets(from.getOperation(), to.getOperation());
-        descriptorCounts[from] = src.getNumDescriptors();
-        descriptorCounts[to] = dst.getNumDescriptors();
+        ObjectFifoPoolOp pool = dst.getPoolOp();
+        if (!first)
+          first = pool;
+        matchingPools.unionSets(first.getOperation(), pool.getOperation());
+        descriptorCounts[pool] = dst.getNumDescriptors();
       }
     }
     int32_t nextTag = 0;
@@ -2224,6 +2218,30 @@ struct AIEObjectFifoAllocatePass
         tags = builder.getDenseI32ArrayAttr(values);
       }
       pool.setOutOfOrderTagsAttr(tags);
+    }
+
+    // A sender references the next hop's receiving slots, independently of
+    // any receiving descriptors that fill its own pool.
+    for (auto flow : device.getOps<RouteOp>()) {
+      if (flow.getSources().size() != 1)
+        continue;
+      RouteEndpoint sender = lookupEndpoint(*flow.getSourceNames().begin());
+      auto src = sender
+                     ? dyn_cast<ObjectFifoDmaEndpointOp>(sender.getOperation())
+                     : nullptr;
+      if (!src || !src.getOutOfOrder())
+        continue;
+      for (auto destName : flow.getDestinationNames()) {
+        RouteEndpoint receiver = lookupEndpoint(destName);
+        auto dst =
+            receiver
+                ? dyn_cast<ObjectFifoDmaEndpointOp>(receiver.getOperation())
+                : nullptr;
+        if (dst && dst.getOutOfOrder()) {
+          src.setOutOfOrderTagsAttr(dst.getPoolOp().getOutOfOrderTagsAttr());
+          break;
+        }
+      }
     }
 
     if (failed(bindRearmTargets())) {

@@ -2965,10 +2965,10 @@ def AIE_ObjectFifoPoolOp
     ```
 
     `out_of_order_tags` is a compiler-generated array of receiving BD tags,
-    indexed by buffer slot. Both pools of an out-of-order transfer carry the
-    receiving pool's tags. DMA lowering attaches each tag as `bd_tag` to the
-    receiving descriptor and as `out_of_order_tag` to the matching sending
-    descriptor. BD ID assignment later resolves these references.
+    indexed by buffer slot. DMA lowering attaches each tag as `bd_tag` to a
+    receiving descriptor. Broadcast destinations share these tags; a relay's
+    incoming and outgoing transfers have separate mappings. BD ID assignment
+    later resolves the tags to hardware IDs.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile, AIEI32Attr:$depth,
@@ -2990,9 +2990,7 @@ def AIE_ObjectFifoPoolOp
       // On a contiguous pool, `[before, after]` objects of zeros around the
       // `depth` objects in its buffer, which no endpoint fills.
       OptionalAttr<DenseI32ArrayAttr>:$zeroObjects,
-      // Receiving BD tags indexed by buffer slot. The sender and receiver
-      // pools carry the same tags to pair their descriptors before BD IDs
-      // are assigned.
+      // Receiving BD tags indexed by buffer slot.
       OptionalAttr<DenseI32ArrayAttr>:$out_of_order_tags);
 
   let regions = (region SizedRegion<1>:$segments);
@@ -3134,8 +3132,10 @@ def AIE_ObjectFifoDmaEndpointOp
     `out_of_order` has direction-specific behavior. A filling endpoint
     receives over S2MM and enables packet-directed BD selection. A draining
     endpoint sends over MM2S and places the matching receiving BD ID in each
-    packet header. Both endpoints use their pools' `out_of_order_tags` to
-    associate the sending and receiving descriptors before ID assignment.
+    packet header. The draining endpoint's `out_of_order_tags` references the
+    destination pools' receiving tags, indexed by destination buffer slot.
+    This mapping is separate from its own pool's receiving tags, so relaying
+    an object can select a different BD ID on the next hop.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
@@ -3158,7 +3158,8 @@ def AIE_ObjectFifoDmaEndpointOp
       // On a filling (S2MM) endpoint, enable out-of-order reception. On a
       // draining (MM2S) endpoint, set the receiving BD ID in each packet's
       // header. See aie.objectfifo's transport attribute.
-      UnitAttr:$out_of_order);
+      UnitAttr:$out_of_order,
+      OptionalAttr<DenseI32ArrayAttr>:$out_of_order_tags);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict

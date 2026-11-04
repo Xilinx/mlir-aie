@@ -823,12 +823,21 @@ struct AIEObjectFifoVerifyPass
         continue;
       ObjectFifoDmaEndpointOp src =
           lookup(cast<FlatSymbolRefAttr>(flow.getSources()[0]));
-      if (!src || !src.getOutOfOrder())
-        continue;
+      ObjectFifoDmaEndpointOp firstReceiver;
       for (auto destName :
            flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
         ObjectFifoDmaEndpointOp dst = lookup(destName);
-        if (!dst)
+        if (!dst || !dst.getOutOfOrder())
+          continue;
+        if (!firstReceiver)
+          firstReceiver = dst;
+        if (firstReceiver.getNumDescriptors() != dst.getNumDescriptors() ||
+            objectBytes(firstReceiver.getPoolOp()) !=
+                objectBytes(dst.getPoolOp()))
+          return flow.emitOpError(
+              "out-of-order broadcast destinations require matching buffer "
+              "counts and object sizes");
+        if (!src || !src.getOutOfOrder())
           continue;
         ObjectFifoPoolOp from = src.getPoolOp(), to = dst.getPoolOp();
         if (!from || !to)

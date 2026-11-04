@@ -235,7 +235,9 @@ struct AIEObjectFifoLowerDMAsPass
                            descriptor.size);
     }
     if (endpoint.getOutOfOrder()) {
-      if (auto tags = pool.getOutOfOrderTags()) {
+      auto tags =
+          drains ? endpoint.getOutOfOrderTags() : pool.getOutOfOrderTags();
+      if (tags) {
         assert(descriptor.object < static_cast<int64_t>(tags->size()) &&
                "the allocator names every descriptor of an out-of-order pool");
         int64_t slot = transmittedObject >= 0 && drains

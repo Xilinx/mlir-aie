@@ -34,3 +34,32 @@ module {
     aie.objectfifo @c(%logical_core_0, {%logical_core}, 2 : i32) {cons_ports = [#aie.end_port<DMA : 0>], transport = #aie.transport<dma, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
   }
 }
+
+// -----
+
+// Auto packet FIFOs on neighboring cores can use shared memory.
+// CHECK-LABEL: module @auto_neighbors
+// CHECK-NOT: aie.objectfifo.dma_endpoint
+module @auto_neighbors {
+  aie.device(npu2) {
+    %logical_core = aie.logical_tile<CoreTile>(0, 3)
+    %logical_core_0 = aie.logical_tile<CoreTile>(0, 2)
+    aie.objectfifo @a(%logical_core_0, {%logical_core}, 2 : i32) {transport = #aie.transport<auto, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%logical_core_0, {%logical_core}, 2 : i32) {transport = #aie.transport<auto, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%logical_core_0, {%logical_core}, 2 : i32) {transport = #aie.transport<auto, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+  }
+}
+
+// -----
+
+// Repeating objects requires DMA even with an auto transport.
+module @auto_repeated {
+  aie.device(npu2) {
+    %logical_core = aie.logical_tile<CoreTile>(?, 5)
+    // expected-error@+1 {{requires 0 input/3 output DMA channels}}
+    %logical_core_0 = aie.logical_tile<CoreTile>(0, 2)
+    aie.objectfifo @a(%logical_core_0, {%logical_core}, 2 : i32) {repeat_count = 2 : i32, cons_ports = [#aie.end_port<DMA : 0>], transport = #aie.transport<auto, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%logical_core_0, {%logical_core}, 2 : i32) {repeat_count = 2 : i32, cons_ports = [#aie.end_port<DMA : 0>], transport = #aie.transport<auto, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @c(%logical_core_0, {%logical_core}, 2 : i32) {repeat_count = 2 : i32, cons_ports = [#aie.end_port<DMA : 0>], transport = #aie.transport<auto, packet = #aie.packet_info<>, out_of_order = true>} : !aie.objectfifo<memref<16xi32>>
+  }
+}
