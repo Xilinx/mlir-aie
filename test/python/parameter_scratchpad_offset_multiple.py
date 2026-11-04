@@ -69,26 +69,37 @@ def main():
     table = np.zeros(2, dtype=np.uint32)
     params = ParameterScratchpad(table, args.params)
 
-    # CHECK: row=6 word=0x6 word=7 word=0x7
+    # The table holds row in slot 0 and word in slot 1.
+    # CHECK: row=6 slot0=0x6 word=7 slot1=0x7
     params.write_bytes("row", np.int32(6).tobytes())
     params.write_bytes("word", np.int32(7).tobytes())
-    print(f"row=6 word={table[0]:#x} word=7 word={table[1]:#x}")
+    print(f"row=6 slot0={table[0]:#x} word=7 slot1={table[1]:#x}")
 
     # CHECK: refused 7: {{.*}}value 7 of 'row' is not a multiple of 2 elements
-    # CHECK: kept word=0x6
+    # CHECK: kept slot0=0x6
     try:
         params.write_bytes("row", np.int32(7).tobytes())
     except ValueError as e:
         print(f"refused 7: {e}")
-    print(f"kept word={table[0]:#x}")
+    print(f"kept slot0={table[0]:#x}")
 
-    # CHECK: old file row=7 word=0x7
+    # CHECK: old file row=7 slot0=0x7
     old = args.params + ".old"
     with open(old, "w") as f:
         f.write("\n".join(text.splitlines()[:-2]) + "\n")
     params = ParameterScratchpad(table, old)
     params.write_bytes("row", np.int32(7).tobytes())
-    print(f"old file row=7 word={table[0]:#x}")
+    print(f"old file row=7 slot0={table[0]:#x}")
+
+    # A multiple for a name the table does not hold is a stale or broken file.
+    # CHECK: unknown: {{.*}}offset multiple 0 names unknown parameter 'rwo'
+    typo = args.params + ".typo"
+    with open(typo, "w") as f:
+        f.write(text.replace("\nrow 2", "\nrwo 2"))
+    try:
+        ParameterScratchpad(table, typo)
+    except (ValueError, RuntimeError) as e:
+        print(f"unknown: {e}")
 
 
 main()

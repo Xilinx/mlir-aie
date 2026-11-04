@@ -2072,7 +2072,7 @@ def AIEX_ScratchpadParameterOp : AIEX_Op<"scratchpad_parameter", [AIESymbol]> {
       OptionalAttr<I32Attr>:$min_value, OptionalAttr<I32Attr>:$max_value,
       OptionalAttr<TypedArrayAttrBase<AIEX_JointBoundAttr,
                                       "joint bounds">>:$joint_bounds,
-      OptionalAttr<I32Attr>:$offset_multiple);
+      OptionalAttr<ConfinedAttr<I32Attr, [IntPositive]>>:$offset_multiple);
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }

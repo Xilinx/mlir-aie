@@ -415,6 +415,11 @@ private:
         throw std::runtime_error("ParameterScratchpad: malformed offset "
                                  "multiple " +
                                  std::to_string(i) + " in '" + path + "'");
+      if (!paramMap.count(name))
+        throw std::runtime_error("ParameterScratchpad: offset multiple " +
+                                 std::to_string(i) + " names unknown "
+                                 "parameter '" +
+                                 name + "' in '" + path + "'");
       offsetMultiples[name] = multiple;
     }
   }
