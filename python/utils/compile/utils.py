@@ -1045,7 +1045,10 @@ def _run_aiecc(
     logger.debug("Running: %s", " ".join(cmd))
     # Files rather than pipes: a pipe nobody reads while the link files build
     # would fill and stall aiecc's lowering on its next write.
-    with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
+    with (
+        tempfile.TemporaryFile("w+", encoding="utf-8") as out,
+        tempfile.TemporaryFile("w+", encoding="utf-8") as err,
+    ):
         proc = subprocess.Popen(
             cmd,
             cwd=cwd,
@@ -1054,7 +1057,7 @@ def _run_aiecc(
             ),
             stdout=out,
             stderr=err,
-            text=True,
+            encoding="utf-8",
         )
         if build_link_files is not None:
             try:
@@ -1097,13 +1100,13 @@ def _run_aiecc(
             f"[aiecc] Compilation failed with exit code {proc.returncode}:\n"
             f"{detail if summary else error_msg}"
         )
-        with open(mlir_file) as f:
+        with open(mlir_file, encoding="utf-8") as f:
             ir_text = f.read()
         if readable_path is not None:
             # A diagnostic aid: its own failure must not hide aiecc's error.
             try:
                 text = readable(ir_text)
-                with open(readable_path, "w") as f:
+                with open(readable_path, "w", encoding="utf-8") as f:
                     f.write(text)
             except Exception as dump_error:
                 message += f"\nCould not write the design's readable IR: {dump_error!r}"
@@ -1292,7 +1295,7 @@ def compile_mlir_module(
     # If no work_dir is provided, fall back to a temporary file instead.
     if work_dir:
         mlir_file = os.path.join(work_dir, "aie.mlir")
-        with open(mlir_file, "w") as f:
+        with open(mlir_file, "w", encoding="utf-8") as f:
             f.write(mlir_text)
         profile = os.path.abspath(os.path.join(work_dir, AIECC_PROFILE_NAME))
         _run_aiecc(
@@ -1305,7 +1308,9 @@ def compile_mlir_module(
     elif build_link_files is not None:
         raise ValueError("build_link_files requires work_dir.")
     else:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".mlir", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", suffix=".mlir", delete=False
+        ) as f:
             f.write(mlir_text)
             mlir_file = f.name
         try:
@@ -1952,6 +1957,9 @@ def _compile_external_kernel(
             "symbol_prefix, or drop inline for this kernel."
         )
 
+    # The compilers run with kernel_dir as their cwd, so paths under it must
+    # not be relative to the caller's.
+    kernel_dir = os.path.abspath(kernel_dir)
     # A missing/stale stamp can mean either a legacy cache entry or an interrupted
     # prefix pass. Never rename those bytes again; rebuild from source instead.
     output_file = os.path.join(kernel_dir, func.object_file_name)

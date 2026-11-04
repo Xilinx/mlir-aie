@@ -1,11 +1,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-
-# RUN: %run_on_npu1_xrt% %pytest -m "not extensive" %s
-# RUN: %run_on_npu2_xrt% %pytest -m "not extensive" %s
-# RUN: %run_on_npu2_hrx% %pytest -m "not extensive" %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
+# lit runs this file in shards, from test_mha_e2e_shard*.test: one lit test
+# held the device for longer than lit's per-test timeout.
 """Numeric gates for mha.cc's softmax entry points, alone and as one round.
 
 ``partial_softmax`` and ``rescale_O`` read and write a carried float32
@@ -15,7 +12,8 @@ then all four steps run as one decode round, which checks that they agree, and
 as one round over a long context, which checks that the carry stays accurate.
 
 References use true ``np.exp2`` and state the mask over absolute positions;
-nothing models the device's arithmetic. On AIE2P, ``aie::exp2`` is a linear
+only ``test_partial_softmax_weights_are_exp2_bf16_bit_for_bit`` models the
+device's arithmetic, the AIE2 cubic, to pin its constants. On AIE2P, ``aie::exp2`` is a linear
 interpolant that overshoots by up to 6.15%, so raw weights get that envelope
 (``_RTOL_EXP2``) and the round, where it divides out, gets bf16 rounding only.
 On AIE2 mha.cc evaluates a cubic instead, and the weights are held to
@@ -50,6 +48,8 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
+from aie.iron.device import Tile
+from aie.iron.kernels.linalg import mm_stream_dims
 from aie.utils.compile.utils import resolve_target_arch
 from aie.utils.verify import Tolerance, compare, nearly_equal
 
@@ -110,9 +110,10 @@ _L_RTOL_ACCURATE = 2.0**-9
 
 
 def _unblock(flat: np.ndarray, rows: int = _B, cols: int = _B) -> np.ndarray:
-    """Return the 8x8-blocked O tile as (rows, cols)."""
+    """Return the O tile, blocked in P*V's (r, t) micro-tiles, as (rows, cols)."""
+    r, _, t = kernels.mha.mac_dims(pv=True)
     return (
-        flat.reshape(rows // 8, cols // 8, 8, 8)
+        flat.reshape(rows // r, cols // t, r, t)
         .transpose(0, 2, 1, 3)
         .reshape(rows, cols)
     )
@@ -129,17 +130,22 @@ def _keep(
     window: int = 0,
     packed: bool = False,
     offset: int = 0,
+    group: int = 1,
 ) -> np.ndarray:
     """Which (query, key) pairs of this block pair the band admits.
 
     The query at q keeps the keys from ``q - window`` to ``q`` when causal,
     else to ``q + window``; a window of 0 is none. Packed, every query is at
-    the last key. The query block's rows sit ``offset`` positions past its
-    start.
+    the last key. Row ``i`` of the query block is at its first position plus
+    ``i // group``, ``offset`` positions past its start.
     """
     rows = q_block * b_q + np.arange(b_q)
     cols = kv_block * b_kv + np.arange(b_kv)
-    at = np.full(b_q, s_kv_eff - 1) if packed else rows + offset
+    at = (
+        np.full(b_q, s_kv_eff - 1)
+        if packed
+        else q_block * (b_q // group) + offset + np.arange(b_q) // group
+    )
     ahead = cols[None, :] - at[:, None]
     keep = (rows[:, None] < s_q_eff) & (cols[None, :] < s_kv_eff)
     if causal or window:
@@ -172,10 +178,11 @@ def _attention(scores, v, keep, *, inv_scale):
 
     The running sum and output are float32, so only the result is rounded.
     """
-    scaled = scores.astype(np.float32) * np.float32(inv_scale)
+    scores = scores.astype(np.float32)
     live = keep.any(axis=1)
-    peak = np.where(live, np.where(keep, scaled, -np.inf).max(axis=1), 0)
-    p = np.exp2(scaled - peak[:, None])
+    peak = np.where(live, np.where(keep, scores, -np.inf).max(axis=1), 0)
+    # Centred before scaling, as the kernel takes S - m.
+    p = np.exp2((scores - peak[:, None]).astype(np.float64) * float(inv_scale))
     p = np.where(keep, p.astype(bfloat16).astype(np.float32), np.float32(0))
     y = p @ v.astype(np.float32)
     inv_l = np.float32(1.0) / np.where(live, p.sum(axis=1), np.float32(1))
@@ -194,16 +201,18 @@ def softmax_blocks(
     s_q_eff: CompileTime[int] = 64,
     s_kv_eff: CompileTime[int] = 64,
     accurate_exp2: CompileTime[bool] = False,
+    b: CompileTime[int] = _B,
 ):
     """``partial_softmax`` over two key blocks sharing one ``scale_buffer``.
 
-    The second block reads the state the first carried.
+    The second block reads the state the first carried. A block is ``b``
+    queries by ``b`` keys.
     """
-    tile_ty = np.ndarray[(_B * _B,), BF]
-    scale_ty = np.ndarray[(4 * _B,), F32]
+    tile_ty = np.ndarray[(b * b,), BF]
+    scale_ty = np.ndarray[(4 * b,), F32]
     idx_ty = np.ndarray[(3,), I32]
 
-    mha = kernels.mha(dim_m=_B, dim_k=_B, dim_n=_B, accurate_exp2=accurate_exp2)
+    mha = kernels.mha(dim_m=b, dim_k=_B, dim_n=b, accurate_exp2=accurate_exp2)
     obj = mha.object_file
     softmax = obj.bind(
         "partial_softmax",
@@ -225,7 +234,7 @@ def softmax_blocks(
 
     def core(of_a, of_p, of_scale, softmax, init, idx_first, idx_second):
         scale = of_scale.acquire(1)
-        init(scale, _B)
+        init(scale, b)
         for idx_buf in (idx_first, idx_second):
             softmax(
                 of_a.acquire(1),
@@ -233,8 +242,8 @@ def softmax_blocks(
                 scale,
                 idx_buf,
                 _INV_SCALE,
-                _B,
-                _B,
+                b,
+                b,
                 s_q_eff,
                 s_kv_eff,
             )
@@ -248,8 +257,8 @@ def softmax_blocks(
     )
 
     host = [
-        np.ndarray[(2 * _B * _B,), BF],
-        np.ndarray[(2 * _B * _B,), BF],
+        np.ndarray[(2 * b * b,), BF],
+        np.ndarray[(2 * b * b,), BF],
         scale_ty,
     ]
 
@@ -260,6 +269,65 @@ def softmax_blocks(
 
     rt = Runtime(sequence, [*host, of_a.prod(), of_p.cons(), of_scale.cons()])
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+def _exp2_bf16_aie2(x: np.ndarray) -> np.ndarray:
+    """``exp2_bf16.h``'s AIE2 cubic of float32 ``x``, bit for bit.
+
+    Each Horner step adds an exact bf16 product to an f32 constant term,
+    rounded once; every narrowing to bf16 rounds to nearest even.
+    """
+    f32 = np.float32
+    x = np.clip(x.astype(f32), f32(-200), f32(127))
+    magic = f32(12582912.0)
+    xm = x + magic
+    k = xm.view(np.int32) - np.int32(0x4B400000)
+    f = (x - (xm - magic)).astype(bfloat16).astype(f32)
+    t = f32(0.2402265069) + f * bfloat16(0.0555041087).astype(f32)
+    t = f32(0.6931471805) + f * t.astype(bfloat16).astype(f32)
+    t = f32(1.0) + f * t.astype(bfloat16).astype(f32)
+    bits = np.maximum(t.view(np.int32) + (k << 23), 0)
+    return bits.view(f32).astype(bfloat16)
+
+
+@pytest.mark.parametrize("b", [64, 32, 16])
+def test_partial_softmax_weights_are_exp2_bf16_bit_for_bit(b):
+    """On AIE2 every kept weight is ``exp2_bf16``'s cubic of ``(a - m) * s``.
+
+    At every key block, as the per-row path that 32- and 16-key blocks took
+    before; with its constant terms as bf16 products (0.6931 as 0.6914) the
+    row-group path's fused exp2 was an ulp off on some weights.
+    """
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("AIE2's cubic; AIE2P takes aie::exp2")
+    rng = np.random.default_rng(20261031)
+    scores = [(rng.standard_normal((b, b)) * 4).astype(bfloat16) for _ in range(2)]
+    keeps = [_keep(1, kv, 2 * b, 2 * b, b, b) for kv in (0, 1)]
+
+    p_t = iron.zeros((2 * b * b,), dtype=bfloat16)
+    scale_t = iron.zeros((4 * b,), dtype=np.float32)
+    softmax_blocks(
+        iron.tensor(np.concatenate([s.reshape(-1) for s in scores]), dtype=bfloat16),
+        p_t,
+        scale_t,
+        q_block=1,
+        kv_first=0,
+        kv_second=1,
+        s_q_eff=2 * b,
+        s_kv_eff=2 * b,
+        b=b,
+    )
+    got = p_t.numpy().reshape(2, b, b)
+
+    # Both products are exact, and the kernel rounds their difference once.
+    s = np.float64(_INV_SCALE)
+    m = np.full(b, -np.inf)
+    for block, (a, keep) in enumerate(zip(scores, keeps)):
+        a = a.astype(np.float64)
+        m = np.maximum(m, np.where(keep, a, -np.inf).max(axis=1))
+        x = (a * s - m[:, None] * s).astype(np.float32)
+        want = np.where(keep, _exp2_bf16_aie2(x), bfloat16(0)).astype(bfloat16)
+        np.testing.assert_array_equal(got[block].view(np.uint16), want.view(np.uint16))
 
 
 @jit
@@ -613,7 +681,8 @@ def test_a_factor_of_one_keeps_o():
     factors = np.resize(np.float32([1, 0.5, 1, 1, 0.5, 1, 1, 1]), _B)
     scale = np.zeros(4 * _B, np.float32)
     scale[3 * _B :] = factors
-    blocked = TensorAccessPattern.full((_B, _B)).tile((8, 8))
+    r, _, t = kernels.mha.mac_dims(pv=True)
+    blocked = TensorAccessPattern.full((_B, _B)).tile((r, t))
 
     out_t = iron.zeros((_B * _B,), dtype=np.float32)
     pv_from_state(
@@ -697,9 +766,12 @@ def mha_round(
     of_v = ObjectFifo(v_ty, name="v", depth=2 if d == _B else 1)
     of_o = ObjectFifo(o_ty, name="o", depth=1)
     of_p = ObjectFifo(p_ty, name="p", depth=1)
-    # The row-major P is read back in the mmul's 8x8 block order.
+    # The row-major P is read back in P*V's (r, s) micro-tile order.
     of_pb = of_p.cons().forward(
-        to_stream=TensorAccessPattern.full((b_q, b_kv)).tile((8, 8)), depth=1
+        to_stream=TensorAccessPattern.full((b_q, b_kv)).tile(
+            kernels.mha.mac_dims(pv=True)[:2]
+        ),
+        depth=1,
     )
     of_scale = ObjectFifo(scale_ty, name="scale_out", depth=1)
 
@@ -858,7 +930,7 @@ def _round_case_data(
     v_host = np.concatenate(
         [
             TensorAccessPattern.full((b_kv, d))
-            .tile((8, 8))
+            .tile(kernels.mha.mac_dims(pv=True)[1:])
             .gather(stale[b * b_kv : (b + 1) * b_kv])
             for b in range(n_kv)
         ]
@@ -866,16 +938,10 @@ def _round_case_data(
     return scores, v, keep, s_host, v_host
 
 
-def _skip_f32_off_aie2p(f32_scores):
-    if f32_scores and resolve_target_arch(iron.get_current_device()) == "aie2":
-        pytest.skip("mha.cc's float32 scores are written for AIE2P")
-
-
 def _check_round(
     q_block, n_kv, s_q_eff, s_kv_eff, accurate_exp2, f32_scores=False, **shape
 ):
     """Run ``mha_round`` and hold it to masked attention over its band."""
-    _skip_f32_off_aie2p(f32_scores)
     b_q, d = shape.get("b_q", _B), shape.get("d", _B)
     scores, v, keep, s_host, v_host = _round_case_data(
         q_block, n_kv, s_q_eff, s_kv_eff, **shape
@@ -1018,7 +1084,6 @@ _PAST_2_15 = 252928.0
 @pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
 def test_mha_round_keeps_scores_past_2_15_finite(b_q, b_kv, accurate_exp2, f32_scores):
     """Each row's top keys tie at a scaled score past 2^15, the rest far below."""
-    _skip_f32_off_aie2p(f32_scores)
     scaled = np.float32(_PAST_2_15) * np.float32(_INV_SCALE)
     assert scaled - np.float32(bfloat16(scaled)) == 127
     q_block, s_eff = 1, 2 * b_q
@@ -1037,7 +1102,7 @@ def test_mha_round_keeps_scores_past_2_15_finite(b_q, b_kv, accurate_exp2, f32_s
     v_host = np.concatenate(
         [
             TensorAccessPattern.full((b_kv, _B))
-            .tile((8, 8))
+            .tile(kernels.mha.mac_dims(pv=True)[1:])
             .gather(v[b * b_kv : (b + 1) * b_kv])
             for b in range(n_kv)
         ]
@@ -1065,22 +1130,21 @@ def test_mha_round_keeps_scores_past_2_15_finite(b_q, b_kv, accurate_exp2, f32_s
     np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)
 
 
-# 2^17: bf16 steps by 1024 here, float32 by 2^-6.
-_NEAR_TIES = 131072.0
-
-
 @pytest.mark.parametrize("b_q,b_kv", [(_B, _B), (32, 32)], ids=["64_keys", "32_keys"])
 @pytest.mark.parametrize("accurate_exp2", [False, True])
-def test_mha_round_f32_scores_resolve_near_ties(b_q, b_kv, accurate_exp2):
-    """Scores at 2^17 plus multiples of 4, which bf16 would round to one value."""
-    _skip_f32_off_aie2p(True)
+@pytest.mark.parametrize(
+    "base,step",
+    # At 2^17 bf16 steps by 1024 and float32 by 2^-6. At 2^24 float32 steps by
+    # 2, so a score scaled before its maximum is taken off rounds by 2^-3.
+    [(2.0**17, 4), (2.0**24, 2)],
+    ids=["2^17", "2^24"],
+)
+def test_mha_round_f32_scores_resolve_near_ties(b_q, b_kv, accurate_exp2, base, step):
+    """Scores at ``base`` plus multiples of ``step``, which bf16 would round to one value."""
     q_block, s_eff = 1, 2 * b_q
     n_kv = s_eff // b_kv
     rng = np.random.default_rng(20261014)
-    # Scaled, a step of 4 is 0.72: within bf16's 1024 they would all tie.
-    scores = (_NEAR_TIES + 4 * rng.integers(0, 8, (b_q, n_kv * b_kv))).astype(
-        np.float32
-    )
+    scores = (base + step * rng.integers(0, 8, (b_q, n_kv * b_kv))).astype(np.float32)
     assert np.unique(scores.astype(bfloat16)).size == 1
     v = _dyadic(rng, (n_kv * b_kv, _B), 0.25, mag=2)
     keep = np.concatenate(
@@ -1092,7 +1156,7 @@ def test_mha_round_f32_scores_resolve_near_ties(b_q, b_kv, accurate_exp2):
     v_host = np.concatenate(
         [
             TensorAccessPattern.full((b_kv, _B))
-            .tile((8, 8))
+            .tile(kernels.mha.mac_dims(pv=True)[1:])
             .gather(v[b * b_kv : (b + 1) * b_kv])
             for b in range(n_kv)
         ]
@@ -1161,7 +1225,10 @@ def mha_long_round(
     of_o = ObjectFifo(tile_ty, name="o", depth=1)
     of_p = ObjectFifo(tile_ty, name="p", depth=1)
     of_pb = of_p.cons().forward(
-        to_stream=TensorAccessPattern.full((_B, _B)).tile((8, 8)), depth=1
+        to_stream=TensorAccessPattern.full((_B, _B)).tile(
+            kernels.mha.mac_dims(pv=True)[:2]
+        ),
+        depth=1,
     )
     of_scale = ObjectFifo(scale_ty, name="scale_out", depth=1)
 
@@ -1282,7 +1349,7 @@ def test_a_long_context_keeps_the_running_state_accurate(accurate_exp2):
     v_host = np.concatenate(
         [
             TensorAccessPattern.full((_B, _B))
-            .tile((8, 8))
+            .tile(kernels.mha.mac_dims(pv=True)[1:])
             .gather(v[b * _B : (b + 1) * _B])
             for b in range(n_kv)
         ]
@@ -1301,3 +1368,1373 @@ def test_a_long_context_keeps_the_running_state_accurate(accurate_exp2):
     ref = _attention(scores, v, keep, inv_scale=_INV_SCALE).astype(np.float32)
     ulp = 2**-7 * float(np.abs(ref).max())
     np.testing.assert_allclose(got, ref, rtol=0, atol=2 * ulp)
+
+
+def _fused_kernels(
+    b_q,
+    b_kv,
+    d,
+    causal,
+    window,
+    packed,
+    group,
+    kv_heads=1,
+    f32_scores=False,
+    accurate_exp2=False,
+):
+    """``attend_block`` and the QK^T product of one mha.cc object."""
+    band = dict(
+        causal=causal,
+        window=window,
+        packed=packed,
+        group=group,
+        f32_scores=f32_scores,
+        accurate_exp2=accurate_exp2,
+    )
+    qk = kernels.mha(dim_m=b_q, dim_k=d, dim_n=b_kv, b_col_maj=True, **band)
+    fused = kernels.mha(
+        dim_m=b_q,
+        dim_k=d,
+        dim_n=b_kv,
+        b_col_maj=True,
+        fused=True,
+        kv_heads=kv_heads,
+        **band,
+    )
+    return qk, fused
+
+
+@jit
+def mha_pipeline_round(
+    q_in: In,
+    k_in: In,
+    v_in: In,
+    o_out: Out,
+    *,
+    q_block: CompileTime[int] = 0,
+    n_kv: CompileTime[int] = 1,
+    s_q_eff: CompileTime[int] = _B,
+    s_kv_eff: CompileTime[int] = _B,
+    b_q: CompileTime[int] = _B,
+    b_kv: CompileTime[int] = _B,
+    d: CompileTime[int] = _B,
+    causal: CompileTime[bool] = True,
+    window: CompileTime[int] = 0,
+    packed: CompileTime[bool] = False,
+    group: CompileTime[int] = 1,
+    offset: CompileTime[int] = 0,
+    f32_scores: CompileTime[bool] = False,
+    accurate_exp2: CompileTime[bool] = False,
+):
+    """One query block over ``n_kv`` key blocks on three cores, as IRON's MHA pipeline runs it.
+
+    ``QK^T``, the softmax and ``P V`` each on a core, the scores reblocked to
+    rows and the weights to ``P V``'s tiles through memtiles. Q, K and V
+    arrive as their products read them.
+    """
+    s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
+    p_ty = np.ndarray[(b_q * b_kv,), BF]
+    q_ty = np.ndarray[(b_q * d,), BF]
+    kv_ty = np.ndarray[(b_kv * d,), BF]
+    o_ty = np.ndarray[(b_q * d,), BF]
+    acc_ty = np.ndarray[(b_q * d,), F32]
+    scale_ty = np.ndarray[(4 * b_q,), F32]
+    idx_ty = np.ndarray[(3,), I32]
+    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+
+    qk, _ = _fused_kernels(
+        b_q,
+        b_kv,
+        d,
+        causal,
+        window,
+        packed,
+        group,
+        f32_scores=f32_scores,
+        accurate_exp2=accurate_exp2,
+    )
+    obj = qk.object_file
+    softmax = obj.bind(
+        "partial_softmax", [s_ty, p_ty, scale_ty, idx_ty, bfloat16, *([np.int32] * 4)]
+    )
+    init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
+    pv = obj.bind(
+        "matmul_PV",
+        [p_ty, kv_ty, acc_ty, scale_ty, np.int32, np.int32, idx_ty, np.int32],
+    )
+    rescale = obj.bind("rescale_O", [acc_ty, o_ty, scale_ty, np.int32, idx_ty])
+    zero = kernels.zero(
+        tile_size=(b_q * b_kv,), dtype=np.float32 if f32_scores else bfloat16
+    )
+    copy_scale = kernels.passthrough(4 * b_q, np.int32).object_file.bind(
+        "passThroughLine", [scale_ty, scale_ty, np.int32]
+    )
+    pv_streams = mm_stream_dims(b_q, b_kv, d, kernels.mha.mac_dims(pv=True))
+
+    of_q = ObjectFifo(q_ty, name="q", depth=1)
+    of_k = ObjectFifo(kv_ty, name="k", depth=2)
+    of_v = ObjectFifo(kv_ty, name="v", depth=2)
+    of_s = ObjectFifo(s_ty, name="s", depth=2)
+    of_s_rows = of_s.cons().forward(to_stream=qk.stream_dims.C, depth=2)
+    of_p = ObjectFifo(p_ty, name="p", depth=1)
+    of_p_tiles = of_p.cons().forward(to_stream=pv_streams.A, depth=1)
+    of_scale = ObjectFifo(scale_ty, name="scale_out", depth=1)
+    of_o = ObjectFifo(o_ty, name="o", depth=1)
+
+    def idx(core):
+        return [
+            Buffer(
+                idx_ty,
+                name=f"idx_{core}{k}",
+                initial_value=np.array([k, q_block, offset], np.int32),
+            )
+            for k in range(n_kv)
+        ]
+
+    def qk_core(of_q, of_k, of_s, zero, qk, *idx):
+        q = of_q.acquire(1)
+        for k in range(n_kv):
+            s = of_s.acquire(1)
+            zero(s)
+            qk(q, of_k.acquire(1), s, idx[k])
+            of_k.release(1)
+            of_s.release(1)
+        of_q.release(1)
+
+    def softmax_core(of_s, of_p, of_scale, softmax, init, copy_scale, scale, *idx):
+        init(scale, b_q)
+        for k in range(n_kv):
+            p = of_p.acquire(1)
+            sent = of_scale.acquire(1)
+            softmax(
+                of_s.acquire(1),
+                p,
+                scale,
+                idx[k],
+                inv_scale,
+                b_q,
+                b_kv,
+                s_q_eff,
+                s_kv_eff,
+            )
+            copy_scale(scale, sent, 4 * b_q)
+            of_s.release(1)
+            of_p.release(1)
+            of_scale.release(1)
+
+    def pv_core(of_p, of_v, of_scale, of_o, pv, rescale, acc, *idx):
+        for k in range(n_kv):
+            scale = of_scale.acquire(1)
+            pv(of_p.acquire(1), of_v.acquire(1), acc, scale, b_q, k, idx[k], s_kv_eff)
+            of_p.release(1)
+            of_v.release(1)
+            if k == n_kv - 1:
+                rescale(acc, of_o.acquire(1), scale, b_q, idx[0])
+                of_o.release(1)
+            of_scale.release(1)
+
+    workers = [
+        Worker(
+            qk_core,
+            fn_args=[of_q.cons(), of_k.cons(), of_s.prod(), zero, qk, *idx("qk")],
+        ),
+        Worker(
+            softmax_core,
+            fn_args=[
+                of_s_rows.cons(),
+                of_p.prod(),
+                of_scale.prod(),
+                softmax,
+                init,
+                copy_scale,
+                Buffer(scale_ty, name="scale"),
+                *idx("softmax"),
+            ],
+        ),
+        Worker(
+            pv_core,
+            fn_args=[
+                of_p_tiles.cons(),
+                of_v.cons(),
+                of_scale.cons(),
+                of_o.prod(),
+                pv,
+                rescale,
+                Buffer(acc_ty, name="acc"),
+                *idx("pv"),
+            ],
+        ),
+    ]
+
+    def sequence(q_h, k_h, v_h, o_h, qf, kf, vf, of):
+        qf.fill(q_h)
+        kf.fill(k_h)
+        vf.fill(v_h)
+        of.drain(o_h, wait=True)
+
+    host = [
+        q_ty,
+        np.ndarray[(n_kv * b_kv * d,), BF],
+        np.ndarray[(n_kv * b_kv * d,), BF],
+        o_ty,
+    ]
+    rt = Runtime(sequence, [*host, of_q.prod(), of_k.prod(), of_v.prod(), of_o.cons()])
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+
+
+@jit
+def mha_fused_round(
+    q_in: In,
+    kv_in: In,
+    o_out: Out,
+    *,
+    q_block: CompileTime[int] = 0,
+    n_kv: CompileTime[int] = 1,
+    s_q_eff: CompileTime[int] = _B,
+    s_kv_eff: CompileTime[int] = _B,
+    b_q: CompileTime[int] = _B,
+    b_kv: CompileTime[int] = _B,
+    d: CompileTime[int] = _B,
+    causal: CompileTime[bool] = True,
+    window: CompileTime[int] = 0,
+    packed: CompileTime[bool] = False,
+    group: CompileTime[int] = 1,
+    offset: CompileTime[int] = 0,
+    kv_heads: CompileTime[int] = 1,
+    head: CompileTime[int] = 0,
+    f32_scores: CompileTime[bool] = False,
+    accurate_exp2: CompileTime[bool] = False,
+):
+    """``mha_pipeline_round`` on one core: ``attend_block`` per key block, each K then V on one stream.
+
+    With ``kv_heads``, each block holds that many heads' keys and
+    ``attend_head`` takes head ``head``'s.
+    """
+    q_ty = np.ndarray[(b_q * d,), BF]
+    kv_ty = np.ndarray[(2 * kv_heads * b_kv * d,), BF]
+    s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
+    p_ty = np.ndarray[(b_q * b_kv,), BF]
+    o_ty = np.ndarray[(b_q * d,), BF]
+    acc_ty = np.ndarray[(b_q * d,), F32]
+    scale_ty = np.ndarray[(4 * b_q,), F32]
+    idx_ty = np.ndarray[(3,), I32]
+    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+
+    _, fused = _fused_kernels(
+        b_q, b_kv, d, causal, window, packed, group, kv_heads, f32_scores, accurate_exp2
+    )
+    obj = fused.object_file
+    init = obj.bind("init_scale_buffer", [scale_ty, np.int32])
+    rescale = obj.bind("rescale_O", [acc_ty, o_ty, scale_ty, np.int32, idx_ty])
+    if kv_heads > 1:
+        attend_head = obj.bind(
+            "attend_head",
+            [q_ty, kv_ty, acc_ty, s_ty, p_ty, scale_ty, idx_ty, bfloat16]
+            + [np.int32] * 3,
+        )
+        attend_args = (head,)
+    else:
+        attend_head, attend_args = fused, ()
+
+    of_q = ObjectFifo(q_ty, name="q", depth=1)
+    # Double-buffered only where the core's L1 still holds S, O and Q beside.
+    of_kv = ObjectFifo(kv_ty, name="kv", depth=2 if b_q * d <= 32 * _B else 1)
+    of_o = ObjectFifo(o_ty, name="o", depth=1)
+    idx = [
+        Buffer(
+            idx_ty,
+            name=f"idx{k}",
+            initial_value=np.array([k, q_block, offset], np.int32),
+        )
+        for k in range(n_kv)
+    ]
+
+    def core(of_q, of_kv, of_o, attend, init, rescale, acc, s, p, state, *idx):
+        init(state, b_q)
+        q = of_q.acquire(1)
+        for k in range(n_kv):
+            attend(
+                q,
+                of_kv.acquire(1),
+                acc,
+                s,
+                p,
+                state,
+                idx[k],
+                inv_scale,
+                s_q_eff,
+                s_kv_eff,
+                *attend_args,
+            )
+            of_kv.release(1)
+        rescale(acc, of_o.acquire(1), state, b_q, idx[0])
+        of_o.release(1)
+        of_q.release(1)
+
+    worker = Worker(
+        core,
+        fn_args=[
+            of_q.cons(),
+            of_kv.cons(),
+            of_o.prod(),
+            attend_head,
+            init,
+            rescale,
+            Buffer(acc_ty, name="acc"),
+            Buffer(s_ty, name="s"),
+            Buffer(p_ty, name="p"),
+            Buffer(scale_ty, name="state"),
+            *idx,
+        ],
+    )
+
+    def sequence(q_h, kv_h, o_h, qf, kvf, of):
+        qf.fill(q_h)
+        kvf.fill(kv_h)
+        of.drain(o_h, wait=True)
+
+    host = [q_ty, np.ndarray[(n_kv * 2 * kv_heads * b_kv * d,), BF], o_ty]
+    rt = Runtime(sequence, [*host, of_q.prod(), of_kv.prod(), of_o.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+def _fused_case_data(
+    q_block, n_kv, s_kv_eff, b_q, b_kv, d, packed, group, offset, rows=None, window=0
+):
+    """Q, K and V for a round, with keys aimed at each row's band edges.
+
+    Each row's own key, the one past it, the window's far edge and the one
+    beyond, and the last key and the first padded one score about 2^4 over
+    the rest for that row, and every query shares a component they all
+    score high on, so a mask one key off, or a merge that drops a partial's
+    rescale, moves the result by many ulps. Dyadic, so every score is exact
+    in float32 and rounds to bf16 alike on the core and on the host.
+    """
+    rng = np.random.default_rng(20261101 + 97 * q_block + n_kv + s_kv_eff + 7 * offset)
+    q = _dyadic(rng, (b_q, d), 0.25, mag=2) if rows is None else rows
+    k = _dyadic(rng, (n_kv * b_kv, d), 0.125, mag=2)
+    v = _dyadic(rng, (n_kv * b_kv, d), 0.25, mag=2)
+    if rows is None:
+        q[:, 0] = 0.5
+    scale = np.log2(np.e) / np.sqrt(d)
+    shared = 2.0 ** round(np.log2(8.0 / scale))
+    for row in range(0, b_q, group):
+        pos = (
+            s_kv_eff - 1 - row
+            if packed
+            else q_block * (b_q // group) + offset + row // group
+        )
+        own = q[row].astype(np.float32)
+        energy = float(own @ own) * scale
+        aimed = own * (2.0 ** round(np.log2(4.0 / energy)) if energy else 0.0)
+        edge = (pos - window, pos - window - 1) if window else ()
+        for key in (pos, pos + 1, s_kv_eff - 1, s_kv_eff, *edge):
+            if 0 <= key < n_kv * b_kv:
+                k[key] = aimed.astype(bfloat16)
+                k[key, 0] = shared
+    return q, k, v
+
+
+def _run_fused(q, k, v, n_kv, **shape):
+    """Run ``mha_fused_round`` on logical Q, K and V; return O, (b_q, d).
+
+    With ``kv_heads``, K and V are ``(kv_heads, keys, d)``, a position's heads
+    side by side in each block.
+    """
+    b_q, b_kv, d = shape["b_q"], shape["b_kv"], shape["d"]
+    heads = shape.get("kv_heads", 1)
+    band = {n: shape[n] for n in ("causal", "window", "packed", "group")}
+    _, fused = _fused_kernels(
+        b_q,
+        b_kv,
+        d,
+        **band,
+        kv_heads=heads,
+        f32_scores=shape.get("f32_scores", False),
+        accurate_exp2=shape.get("accurate_exp2", False),
+    )
+    q_layout, kv_layout = fused.contract.layouts[:2]
+    k, v = (x.reshape(heads, n_kv, b_kv, d) for x in (k, v))
+    kv = np.concatenate([k, v], axis=3).transpose(1, 2, 0, 3)
+    kv = kv.reshape(n_kv, b_kv, heads * 2 * d)
+    o_t = iron.zeros((b_q * d,), dtype=bfloat16)
+    mha_fused_round(
+        iron.tensor(q_layout.encode(q).reshape(-1), dtype=bfloat16),
+        iron.tensor(kv_layout.encode(kv).reshape(-1), dtype=bfloat16),
+        o_t,
+        n_kv=n_kv,
+        **shape,
+    )
+    return _unblock(o_t.numpy(), b_q, d)
+
+
+def _run_pipeline(q, k, v, n_kv, **shape):
+    """Run ``mha_pipeline_round`` on logical Q, K and V; return O, (b_q, d)."""
+    b_q, b_kv, d = shape["b_q"], shape["b_kv"], shape["d"]
+    band = {n: shape[n] for n in ("causal", "window", "packed", "group")}
+    qk, fused = _fused_kernels(
+        b_q,
+        b_kv,
+        d,
+        **band,
+        f32_scores=shape.get("f32_scores", False),
+        accurate_exp2=shape.get("accurate_exp2", False),
+    )
+    q_layout, k_layout = qk.contract.layouts[:2]
+    blocks = [slice(b * b_kv, (b + 1) * b_kv) for b in range(n_kv)]
+    v_tiles = TensorAccessPattern.full((b_kv, d)).tile(
+        kernels.mha.mac_dims(pv=True)[1:]
+    )
+    o_t = iron.zeros((b_q * d,), dtype=bfloat16)
+    mha_pipeline_round(
+        iron.tensor(q_layout.encode(q).reshape(-1), dtype=bfloat16),
+        iron.tensor(
+            np.concatenate([k_layout.encode(k[b].T).reshape(-1) for b in blocks]),
+            dtype=bfloat16,
+        ),
+        iron.tensor(
+            np.concatenate([v_tiles.gather(v[b]) for b in blocks]), dtype=bfloat16
+        ),
+        o_t,
+        n_kv=n_kv,
+        **shape,
+    )
+    return _unblock(o_t.numpy(), b_q, d)
+
+
+@pytest.mark.parametrize(
+    "q_block,n_kv,s_q_eff,s_kv_eff,b_q,b_kv,d,offset,band",
+    [
+        # Llama 3.2 1B's fused block: 32 queries over 64-key blocks, the
+        # diagonal in the last.
+        (3, 2, 128, 128, 32, 64, 64, 0, {}),
+        # 64 queries over 32-key blocks.
+        (1, 4, 2 * _B, 2 * _B, _B, 32, _B, 0, {}),
+        # Llama 3.2 3B's and a d=256 layer's, key and query tails mid-block.
+        (2, 3, 96, 90, 32, 32, 128, 0, {}),
+        # Llama 3.2 3B's on npu2: 24 queries, a group of 3 heads each of 8
+        # positions, over 32-key blocks; positions 60 to 67, so the diagonal
+        # and the key tail in the last two, and the last position padded.
+        (7, 3, 189, 66, 24, 32, 128, 4, dict(group=3)),
+        (5, 6, 90, 85, 16, 16, 256, 0, {}),
+        # Queries from mid-block, then rows past s_q_eff.
+        (1, 2, 64, 74, 32, 64, 64, 10, {}),
+        (1, 2, 37, 2 * _B, 32, 64, 64, 0, {}),
+        # Gemma's sliding window, an encoder's both ways, a decode step's
+        # packed group.
+        (5, 6, 96, 96, 16, 16, 256, 0, dict(window=20)),
+        # A window past int16, which each row's start must not wrap.
+        (3, 2, 128, 128, 32, 64, 64, 0, dict(window=40000)),
+        (1, 2, 2 * _B, 2 * _B, 32, 64, 64, 0, dict(causal=False)),
+        (0, 2, 8, 100, 8, 64, 64, 0, dict(packed=True)),
+    ],
+)
+@pytest.mark.parametrize(
+    "f32_scores,accurate_exp2",
+    [(False, False), (True, False), (True, True), (False, True)],
+    ids=["bf16_scores", "f32_scores", "f32_scores_accurate", "bf16_scores_accurate"],
+)
+def test_attend_block_is_the_pipeline_bit_for_bit(
+    q_block,
+    n_kv,
+    s_q_eff,
+    s_kv_eff,
+    b_q,
+    b_kv,
+    d,
+    offset,
+    band,
+    f32_scores,
+    accurate_exp2,
+):
+    """``attend_block`` on one core gives the three-core pipeline's O, bit for bit, and masked attention's."""
+    aie2p = resolve_target_arch(iron.get_current_device()) == "aie2p"
+    if aie2p != accurate_exp2 and (aie2p or not f32_scores):
+        pytest.skip(
+            "AIE2P's fused block takes the accurate exp2 only, and AIE2's "
+            "takes it over f32 scores only"
+        )
+    band = {**dict(causal=True, window=0, packed=False, group=1), **band}
+    shape = dict(
+        f32_scores=f32_scores,
+        accurate_exp2=accurate_exp2,
+        q_block=q_block,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        d=d,
+        offset=offset,
+        **band,
+    )
+    q, k, v = _fused_case_data(
+        q_block,
+        n_kv,
+        s_kv_eff,
+        b_q,
+        b_kv,
+        d,
+        band["packed"],
+        band["group"],
+        offset,
+        window=band["window"],
+    )
+    fused = _run_fused(q, k, v, n_kv, **shape)
+    pipeline = _run_pipeline(q, k, v, n_kv, **shape)
+    differ = np.argwhere(fused.view(np.uint16) != pipeline.view(np.uint16))
+    assert not len(differ), f"{len(differ)} of O differ, first {differ[:4]}"
+
+    keep = np.concatenate(
+        [
+            _keep(
+                q_block,
+                kv,
+                s_q_eff,
+                s_kv_eff,
+                b_q,
+                b_kv,
+                band["causal"],
+                band["window"],
+                band["packed"],
+                offset,
+                band["group"],
+            )
+            for kv in range(n_kv)
+        ],
+        axis=1,
+    )
+    scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(
+        np.float32 if f32_scores else bfloat16
+    )
+    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+    ref = _attention(scores, v, keep, inv_scale=inv_scale).astype(np.float32)
+    live = keep.any(axis=1)
+    ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
+    got = fused.astype(np.float32)
+    np.testing.assert_allclose(got[live], ref[live], rtol=0, atol=_ATOL_ULP * ulp)
+    np.testing.assert_array_equal(got[~live], 0)
+
+
+def test_packed_rows_attend_as_their_heads_alone():
+    """Four heads' queries packed position-major (``group=4``) give each head's own rows bit for bit.
+
+    One query block of 32 positions per head unpacked, against four blocks
+    of 8 positions x 4 heads packed, over the same keys.
+    """
+    accurate_exp2 = resolve_target_arch(iron.get_current_device()) == "aie2p"
+    heads, b_q, b_kv, d, n_kv, q_block = 4, 32, 64, 64, 2, 3
+    s_eff = n_kv * b_kv
+    rng = np.random.default_rng(20261102)
+    q = _dyadic(rng, (heads, b_q, d), 0.25, mag=2)
+    _, k, v = _fused_case_data(q_block, n_kv, s_eff, b_q, b_kv, d, False, 1, 0)
+    band = dict(causal=True, window=0, packed=False, accurate_exp2=accurate_exp2)
+    alone = [
+        _run_fused(
+            q[h],
+            k,
+            v,
+            n_kv,
+            q_block=q_block,
+            s_q_eff=(q_block + 1) * b_q,
+            s_kv_eff=s_eff,
+            b_q=b_q,
+            b_kv=b_kv,
+            d=d,
+            offset=0,
+            group=1,
+            **band,
+        )
+        for h in range(heads)
+    ]
+    per = b_q // heads
+    for j in range(heads):
+        rows = q[:, j * per : (j + 1) * per].transpose(1, 0, 2).reshape(b_q, d)
+        packed = _run_fused(
+            rows,
+            k,
+            v,
+            n_kv,
+            q_block=q_block * heads + j,
+            s_q_eff=(q_block * heads + j + 1) * b_q,
+            s_kv_eff=s_eff,
+            b_q=b_q,
+            b_kv=b_kv,
+            d=d,
+            offset=0,
+            group=heads,
+            **band,
+        )
+        want = np.stack(
+            [alone[h][j * per : (j + 1) * per] for h in range(heads)], axis=1
+        )
+        want = want.reshape(b_q, d)
+        differ = np.argwhere(packed.view(np.uint16) != want.view(np.uint16))
+        assert not len(differ), f"block {j}: {len(differ)} differ, first {differ[:4]}"
+
+
+@pytest.mark.parametrize(
+    "n_kv,s_kv_eff,b_kv,d,band",
+    [
+        # Llama 3.2 1B's split decode: two KV heads a block, the last block
+        # partly past the keys.
+        (3, 80, 32, 64, {}),
+        # A packed sliding decode: the window masks the first blocks.
+        (4, 100, 32, 64, dict(window=20, packed=True)),
+    ],
+)
+def test_attend_head_is_its_head_alone(n_kv, s_kv_eff, b_kv, d, band):
+    """``attend_head`` on each head of blocks holding two KV heads gives ``attend_block`` on that head's keys alone, bit for bit."""
+    band = {**dict(causal=True, window=0, packed=False, group=1), **band}
+    b_q, heads = 8, 2
+    q_block = 0 if band["packed"] else -(-s_kv_eff // b_q)
+    shape = dict(
+        q_block=q_block,
+        s_q_eff=(q_block + 1) * b_q,
+        s_kv_eff=s_kv_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        d=d,
+        offset=0,
+        accurate_exp2=resolve_target_arch(iron.get_current_device()) == "aie2p",
+        **band,
+    )
+    data = [
+        _fused_case_data(
+            q_block + 7 * h,
+            n_kv,
+            s_kv_eff,
+            b_q,
+            b_kv,
+            d,
+            band["packed"],
+            1,
+            0,
+            window=band["window"],
+        )
+        for h in range(heads)
+    ]
+    k = np.stack([x[1] for x in data])
+    v = np.stack([x[2] for x in data])
+    for h, (q, k_h, v_h) in enumerate(data):
+        alone = _run_fused(q, k_h, v_h, n_kv, **shape)
+        together = _run_fused(q, k, v, n_kv, **shape, kv_heads=heads, head=h)
+        differ = np.argwhere(alone.view(np.uint16) != together.view(np.uint16))
+        assert not len(differ), f"head {h}: {len(differ)} differ, first {differ[:4]}"
+
+
+@jit
+def mha_pair_round(
+    q_in: In,
+    kv_in: In,
+    o_out: Out,
+    *,
+    q_block: CompileTime[int] = 0,
+    n_kv: CompileTime[int] = 1,
+    s_q_eff: CompileTime[int] = 16,
+    s_kv_eff: CompileTime[int] = 16,
+    b_q: CompileTime[int] = 16,
+    b_kv: CompileTime[int] = 16,
+    d: CompileTime[int] = 512,
+    causal: CompileTime[bool] = True,
+    group: CompileTime[int] = 1,
+    f32_scores: CompileTime[bool] = False,
+    scale_d: CompileTime[int] = 0,
+):
+    """One query block over ``n_kv`` key blocks on two neighbouring cores, each half of ``d``.
+
+    Each core takes its half's partial scores (``pair_scores``), hands them
+    to the other through a depth-1 ObjectFifo in their shared memory, and
+    ``attend_pair`` adds the two in half order. A core accumulates O in its
+    output object and ``rescale_O`` ends it there in place, its bf16 O the
+    object's first half, so L1 holds K-and-V double-buffered. Host buffers
+    hold the halves one after the other: Q's, each key block's K-and-V, and
+    O's objects. The scale is ``log2(e) / sqrt(scale_d or d)``.
+    """
+    half = d // 2
+    q_ty = np.ndarray[(b_q * half,), BF]
+    kv_ty = np.ndarray[(2 * b_kv * half,), BF]
+    part_ty = np.ndarray[(b_q * b_kv,), F32]
+    s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
+    p_ty = np.ndarray[(b_q * b_kv,), BF]
+    o_ty = np.ndarray[(b_q * half,), F32]
+    state_ty = np.ndarray[(4 * b_q,), F32]
+    idx_ty = np.ndarray[(3,), I32]
+    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(scale_d or d)))
+
+    attend = kernels.mha(
+        dim_m=b_q,
+        dim_k=d,
+        dim_n=b_kv,
+        b_col_maj=True,
+        fused=True,
+        pair=True,
+        causal=causal,
+        group=group,
+        f32_scores=f32_scores,
+    )
+    obj = attend.object_file
+    scores = obj.bind("pair_scores", [q_ty, kv_ty, part_ty, idx_ty, np.int32, np.int32])
+    init = obj.bind("init_scale_buffer", [state_ty, np.int32])
+    rescale = obj.bind("rescale_O", [o_ty, o_ty, state_ty, np.int32, idx_ty])
+
+    of_q = [ObjectFifo(q_ty, name=f"q{h}", depth=1) for h in range(2)]
+    of_kv = [ObjectFifo(kv_ty, name=f"kv{h}", depth=2) for h in range(2)]
+    of_o = [ObjectFifo(o_ty, name=f"o{h}", depth=1) for h in range(2)]
+    # Each core's partial scores, to the other core.
+    of_part = [ObjectFifo(part_ty, name=f"part{h}", depth=1) for h in range(2)]
+
+    def core(of_q, of_kv, of_o, of_mine, of_theirs, h, scores, attend, init, *bufs):
+        rescale, s, p, state, *idx = bufs
+        o = of_o.acquire(1)
+        init(state, b_q)
+        q = of_q.acquire(1)
+        for k in range(n_kv):
+            kv = of_kv.acquire(1)
+            mine = of_mine.acquire(1)
+            scores(q, kv, mine, idx[k], s_q_eff, s_kv_eff)
+            # Released before the other core's is taken, so neither waits on
+            # the other; the other only reads it, so this core's add still may.
+            of_mine.release(1)
+            theirs = of_theirs.acquire(1)
+            s0, s1 = (mine, theirs) if h == 0 else (theirs, mine)
+            attend(s0, s1, kv, o, s, p, state, idx[k], inv_scale, s_q_eff, s_kv_eff)
+            of_theirs.release(1)
+            of_kv.release(1)
+        rescale(o, o, state, b_q, idx[0])
+        of_o.release(1)
+        of_q.release(1)
+
+    workers = [
+        Worker(
+            core,
+            fn_args=[
+                of_q[h].cons(),
+                of_kv[h].cons(),
+                of_o[h].prod(),
+                of_part[h].prod(),
+                of_part[1 - h].cons(),
+                h,
+                scores,
+                attend,
+                init,
+                rescale,
+                Buffer(s_ty, name=f"s{h}"),
+                Buffer(p_ty, name=f"p{h}"),
+                Buffer(state_ty, name=f"state{h}"),
+                *(
+                    Buffer(
+                        idx_ty,
+                        name=f"idx{h}_{k}",
+                        initial_value=np.array([k, q_block, 0], np.int32),
+                    )
+                    for k in range(n_kv)
+                ),
+            ],
+            # Vertical neighbours, so each reads the other's memory.
+            tile=Tile(0, 2 + h),
+        )
+        for h in range(2)
+    ]
+
+    q_size, kv_block, o_size = b_q * half, 2 * b_kv * half, b_q * half
+    total = n_kv * 2 * kv_block
+
+    def sequence(q_h, kv_h, o_h, *ends):
+        qf, kvf, of = ends[0:2], ends[2:4], ends[4:6]
+        for h in range(2):
+            qf[h].fill(
+                q_h, TensorAccessPattern((2 * q_size,), h * q_size, [1, q_size], [0, 1])
+            )
+            kvf[h].fill(
+                kv_h,
+                TensorAccessPattern(
+                    (total,), h * kv_block, [n_kv, kv_block], [2 * kv_block, 1]
+                ),
+            )
+        for h in range(2):
+            of[h].drain(
+                o_h,
+                TensorAccessPattern((2 * o_size,), h * o_size, [1, o_size], [0, 1]),
+                wait=True,
+            )
+
+    host = [
+        np.ndarray[(2 * q_size,), BF],
+        np.ndarray[(total,), BF],
+        np.ndarray[(2 * o_size,), F32],
+    ]
+    rt = Runtime(
+        sequence,
+        [
+            *host,
+            *(f.prod() for f in of_q),
+            *(f.prod() for f in of_kv),
+            *(f.cons() for f in of_o),
+        ],
+    )
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+
+
+def _run_pair(q, k, v, n_kv, **shape):
+    """Run ``mha_pair_round`` on logical Q, K and V, ``(rows, d)``; return O, (b_q, d)."""
+    b_q, b_kv, d = shape["b_q"], shape["b_kv"], shape["d"]
+    half = d // 2
+    q_tiles = TensorAccessPattern.full((b_q, half)).tile((4, 8))
+    kv_tiles = TensorAccessPattern.full((b_kv, 2 * half)).tile((4, 8))
+    halves = [slice(0, half), slice(half, d)]
+    blocks = [slice(b * b_kv, (b + 1) * b_kv) for b in range(n_kv)]
+    o_t = iron.zeros((b_q * d,), dtype=np.float32)
+    mha_pair_round(
+        iron.tensor(
+            np.concatenate([q_tiles.gather(q[:, h].copy()) for h in halves]),
+            dtype=bfloat16,
+        ),
+        iron.tensor(
+            np.concatenate(
+                [
+                    kv_tiles.gather(np.concatenate([k[b, h], v[b, h]], axis=1))
+                    for b in blocks
+                    for h in halves
+                ]
+            ),
+            dtype=bfloat16,
+        ),
+        o_t,
+        n_kv=n_kv,
+        **shape,
+    )
+    o = o_t.numpy().view(bfloat16).reshape(2, -1)[:, : b_q * half]
+    return np.concatenate([_unblock(o[h], b_q, half) for h in range(2)], axis=1)
+
+
+# Gemma 4 E2B's and EmbeddingGemma's global layers, at d=512: a causal block
+# on the diagonal with a key tail; 8 query heads of one KV head, two
+# positions a block; bidirectional, 4 heads a position, rows past s_q_eff.
+_PAIR_CASES = [
+    (5, 6, 96, 90, 1, True),
+    (20, 3, 336, 44, 8, True),
+    (1, 4, 30, 60, 4, False),
+]
+
+
+@pytest.mark.parametrize("q_block,n_kv,s_q_eff,s_kv_eff,group,causal", _PAIR_CASES)
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
+def test_pair_is_masked_attention(
+    q_block, n_kv, s_q_eff, s_kv_eff, group, causal, f32_scores
+):
+    """Two cores, each half of d=512 (``pair=True``), give masked attention over the whole head's scores.
+
+    The two halves' float32 partials sum in another order than one core's
+    product would, so the bound is attend_block's against masked attention.
+    """
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("mha.cc's fused block is written for AIE2")
+    b_q, b_kv, d = 16, 16, 512
+    q, k, v = _fused_case_data(q_block, n_kv, s_kv_eff, b_q, b_kv, d, False, group, 0)
+    got = _run_pair(
+        q,
+        k,
+        v,
+        n_kv,
+        q_block=q_block,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        d=d,
+        causal=causal,
+        group=group,
+        f32_scores=f32_scores,
+    ).astype(np.float32)
+    keep = np.concatenate(
+        [
+            _keep(q_block, kv, s_q_eff, s_kv_eff, b_q, b_kv, causal, group=group)
+            for kv in range(n_kv)
+        ],
+        axis=1,
+    )
+    scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(
+        np.float32 if f32_scores else bfloat16
+    )
+    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+    ref = _attention(scores, v, keep, inv_scale=inv_scale).astype(np.float32)
+    live = keep.any(axis=1)
+    ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
+    np.testing.assert_allclose(got[live], ref[live], rtol=0, atol=_ATOL_ULP * ulp)
+    np.testing.assert_array_equal(got[~live], 0)
+
+
+@pytest.mark.parametrize("q_block,n_kv,s_q_eff,s_kv_eff,group,causal", _PAIR_CASES)
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
+def test_pair_is_one_core_where_the_second_half_scores_zero(
+    q_block, n_kv, s_q_eff, s_kv_eff, group, causal, f32_scores
+):
+    """With Q's second half zero, each core's half of O is ``attend_block``'s at d=256 on that half of V, bit for bit."""
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("mha.cc's fused block is written for AIE2")
+    b_q, b_kv, d = 16, 16, 512
+    half = d // 2
+    q, k, v = _fused_case_data(q_block, n_kv, s_kv_eff, b_q, b_kv, d, False, group, 0)
+    q[:, half:] = 0
+    shape = dict(
+        q_block=q_block,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        causal=causal,
+        group=group,
+        f32_scores=f32_scores,
+    )
+    pair = _run_pair(q, k, v, n_kv, d=d, scale_d=half, **shape)
+    for h, cols in enumerate((slice(0, half), slice(half, d))):
+        alone = _run_fused(
+            q[:, :half].copy(),
+            k[:, :half].copy(),
+            v[:, cols].copy(),
+            n_kv,
+            d=half,
+            offset=0,
+            window=0,
+            packed=False,
+            **shape,
+        )
+        differ = np.argwhere(pair[:, cols].view(np.uint16) != alone.view(np.uint16))
+        assert not len(differ), f"half {h}: {len(differ)} differ, first {differ[:4]}"
+
+
+@jit
+def mha_relative_rows(
+    q_in: In,
+    r_in: In,
+    qr_out: Out,
+    *,
+    b_q: CompileTime[int] = 32,
+    d: CompileTime[int] = 128,
+):
+    """``relative_rows`` on one core: a query block's ``Q R^T``, laid out as ``attend_block`` reads it.
+
+    R arrives as a 16-key block's object, each key's K row a relative key.
+    """
+    q_ty = np.ndarray[(b_q * d,), BF]
+    r_ty = np.ndarray[(16 * 2 * d,), BF]
+    qr_ty = np.ndarray[(b_q * 32,), F32]
+    fused = kernels.mha(
+        dim_m=b_q,
+        dim_k=d,
+        dim_n=16,
+        b_col_maj=True,
+        fused=True,
+        f32_scores=True,
+        accurate_exp2=True,
+        window=11,
+        soft_cap=50.0,
+        relative_band=True,
+    )
+    rows = fused.object_file.bind("relative_rows", [q_ty, r_ty, qr_ty])
+    of_q = ObjectFifo(q_ty, name="q", depth=1)
+    of_r = ObjectFifo(r_ty, name="r", depth=1)
+    of_qr = ObjectFifo(qr_ty, name="qr", depth=1)
+
+    def core(of_q, of_r, of_qr, rows):
+        rows(of_q.acquire(1), of_r.acquire(1), of_qr.acquire(1))
+        of_q.release(1)
+        of_r.release(1)
+        of_qr.release(1)
+
+    worker = Worker(core, fn_args=[of_q.cons(), of_r.cons(), of_qr.prod(), rows])
+
+    def sequence(q_h, r_h, qr_h, qf, rf, qrf):
+        qf.fill(q_h)
+        rf.fill(r_h)
+        qrf.drain(qr_h, wait=True)
+
+    rt = Runtime(sequence, [q_ty, r_ty, qr_ty, of_q.prod(), of_r.prod(), of_qr.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.parametrize("b_q,d", [(32, 128), (16, 64)])
+def test_relative_rows_lay_q_r_by_distance(b_q, d):
+    """``relative_rows``: row ``i``'s ``Q_i . R_d`` at column ``23 - d``, zeros elsewhere, exact over dyadic Q and R.
+
+    R rides as a key block's K rows, its V rows anything.
+    """
+    if resolve_target_arch(iron.get_current_device()) != "aie2":
+        pytest.skip("mha.cc's fused block is written for AIE2")
+    rng = np.random.default_rng(20261101 + d)
+    q = _dyadic(rng, (b_q, d), 0.25, mag=2)
+    r = _dyadic(rng, (16, d), 0.125, mag=2)
+    fused = kernels.mha(
+        dim_m=b_q,
+        dim_k=d,
+        dim_n=16,
+        b_col_maj=True,
+        fused=True,
+        f32_scores=True,
+        accurate_exp2=True,
+        window=11,
+        soft_cap=50.0,
+        relative_band=True,
+    )
+    q_layout, kv_layout = fused.contract.layouts[:2]
+    keys = np.concatenate([r, _dyadic(rng, (16, d), 0.5)], axis=1)
+    out = iron.zeros((b_q * 32,), dtype=np.float32)
+    mha_relative_rows(
+        iron.tensor(q_layout.encode(q).reshape(-1), dtype=bfloat16),
+        iron.tensor(kv_layout.encode(keys).reshape(-1), dtype=bfloat16),
+        out,
+        b_q=b_q,
+        d=d,
+    )
+    want = np.zeros((b_q, 32), np.float32)
+    want[:, 23 - np.arange(16)] = q.astype(np.float32) @ r.astype(np.float32).T
+    np.testing.assert_array_equal(out.numpy().reshape(b_q, 32), want)
+
+
+@jit
+def mha_split_q(
+    obj_in: In,
+    q_out: Out,
+    *,
+    heads: CompileTime[int] = 32,
+    group: CompileTime[int] = 4,
+    b_kv: CompileTime[int] = 32,
+    d: CompileTime[int] = 64,
+    kv_heads: CompileTime[int] = 2,
+    accurate_exp2: CompileTime[bool] = False,
+):
+    """``keep_q`` then ``take_q`` per KV group on one core, from a key block's object holding a position's query heads flat."""
+    obj_ty = np.ndarray[(b_kv * kv_heads * 2 * d,), BF]
+    flat_ty = np.ndarray[(heads * d,), BF]
+    block_ty = np.ndarray[(8 * d,), BF]
+    _, fused = _fused_kernels(
+        8, b_kv, d, True, 0, False, 1, kv_heads, accurate_exp2=accurate_exp2
+    )
+    obj = fused.object_file
+    keep_q = obj.bind("keep_q", [obj_ty, flat_ty, np.int32])
+    take_q = obj.bind("take_q", [flat_ty, block_ty, np.int32, np.int32])
+    of_obj = ObjectFifo(obj_ty, name="obj", depth=1)
+    of_q = ObjectFifo(block_ty, name="q", depth=1)
+
+    def core(of_obj, of_q, keep_q, take_q, flat):
+        keep_q(of_obj.acquire(1), flat, heads * d)
+        of_obj.release(1)
+        for kv_head in range_(heads // group):
+            take_q(flat, of_q.acquire(1), kv_head, group)
+            of_q.release(1)
+
+    worker = Worker(
+        core,
+        fn_args=[of_obj.cons(), of_q.prod(), keep_q, take_q, Buffer(flat_ty)],
+    )
+
+    def sequence(obj_h, q_h, objf, qf):
+        objf.fill(obj_h)
+        qf.drain(q_h, wait=True)
+
+    host = [obj_ty, np.ndarray[(heads // group * 8 * d,), BF]]
+    rt = Runtime(sequence, [*host, of_obj.prod(), of_q.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.parametrize(
+    "heads,kv_heads,d,b_kv",
+    [
+        # Llama 3.2 1B's (two KV heads a block), 3B's, Granite's group of 5,
+        # Qwen3's of 2, MHA's of 1, Gemma 3's MQA.
+        (32, 2, 64, 32),
+        (24, 1, 128, 32),
+        (40, 2, 64, 32),
+        (16, 2, 64, 32),
+        (8, 2, 64, 32),
+        (4, 1, 256, 16),
+    ],
+)
+def test_take_q_packs_each_groups_heads(heads, kv_heads, d, b_kv):
+    """Q flat at the head of a key block's object, tiled as keys: ``take_q`` packs each KV group's every head into rows i and i + 4, tiled as ``attend_block`` reads Q."""
+    aie2p = resolve_target_arch(iron.get_current_device()) == "aie2p"
+    group = {32: 4, 24: 3, 40: 5, 16: 2, 8: 1, 4: 4}[heads]
+    rng = np.random.default_rng(20261101 + heads)
+    width = kv_heads * 2 * d
+    q = rng.standard_normal((heads, d)).astype(bfloat16)
+    obj = rng.standard_normal(b_kv * width).astype(bfloat16)
+    obj[: heads * d] = q.reshape(-1)
+    _, fused = _fused_kernels(
+        8, b_kv, d, True, 0, False, 1, kv_heads, accurate_exp2=aie2p
+    )
+    q_layout, kv_layout = fused.contract.layouts[:2]
+    out = iron.zeros((heads // group * 8 * d,), dtype=bfloat16)
+    mha_split_q(
+        iron.tensor(kv_layout.encode(obj.reshape(b_kv, width)).reshape(-1)),
+        out,
+        heads=heads,
+        group=group,
+        b_kv=b_kv,
+        d=d,
+        kv_heads=kv_heads,
+        accurate_exp2=aie2p,
+    )
+    pairs = 1 if group == 1 else group - 1 if group % 2 else group // 2
+    step = 0 if group == 1 else 1 if group % 2 else 2
+    rows = [step * (i % pairs) + (j and group > 1) for j in (0, 1) for i in range(4)]
+    assert sorted(set(rows)) == list(range(group))
+    got = out.numpy().reshape(heads // group, -1)
+    for kv_head, block in enumerate(got):
+        want = q_layout.encode(q[kv_head * group + np.array(rows)]).reshape(-1)
+        assert np.array_equal(block.view(np.uint16), want.view(np.uint16)), kv_head
+
+
+@jit
+def mha_split_round(
+    q_in: In,
+    kv_in: In,
+    o_out: Out,
+    *,
+    ways: CompileTime[int] = 2,
+    n_kv: CompileTime[int] = 2,
+    q_block: CompileTime[int] = 0,
+    s_q_eff: CompileTime[int] = _B,
+    s_kv_eff: CompileTime[int] = _B,
+    b_q: CompileTime[int] = _B,
+    b_kv: CompileTime[int] = _B,
+    d: CompileTime[int] = _B,
+    window: CompileTime[int] = 0,
+    packed: CompileTime[bool] = False,
+    f32_scores: CompileTime[bool] = False,
+    accurate_exp2: CompileTime[bool] = False,
+):
+    """Split decode in small: ``ways`` cores each ``attend_block`` over every ``ways``-th key block into a partial, a memtile joining them, and a last core folding them in order (``merge_partials``) and ending the rows (``rescale_O``)."""
+    q_ty = np.ndarray[(b_q * d,), BF]
+    kv_ty = np.ndarray[(2 * b_kv * d,), BF]
+    s_ty = np.ndarray[(b_q * b_kv,), F32 if f32_scores else BF]
+    p_ty = np.ndarray[(b_q * b_kv,), BF]
+    o_ty = np.ndarray[(b_q * d,), BF]
+    part = b_q * d + 4 * b_q
+    part_ty = np.ndarray[(part,), F32]
+    joined_ty = np.ndarray[(ways * part,), F32]
+    scale_ty = np.ndarray[(4 * b_q,), F32]
+    idx_ty = np.ndarray[(3,), I32]
+    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+    per = -(-n_kv // ways)
+
+    _, fused = _fused_kernels(
+        b_q,
+        b_kv,
+        d,
+        True,
+        window,
+        packed,
+        1,
+        f32_scores=f32_scores,
+        accurate_exp2=accurate_exp2,
+    )
+    obj = fused.object_file
+    attend = obj.bind(
+        "attend_block",
+        [
+            q_ty,
+            kv_ty,
+            part_ty,
+            s_ty,
+            p_ty,
+            scale_ty,
+            idx_ty,
+            bfloat16,
+            np.int32,
+            np.int32,
+        ],
+    )
+    open_partial = obj.bind("open_partial", [part_ty, scale_ty])
+    close_partial = obj.bind("close_partial", [scale_ty, part_ty])
+    merge = obj.bind(
+        "merge_partials", [part_ty, scale_ty, joined_ty, np.int32, bfloat16]
+    )
+    rescale = obj.bind("rescale_O", [part_ty, o_ty, scale_ty, np.int32, idx_ty])
+
+    of_q = ObjectFifo(q_ty, name="q", depth=1)
+    of_kv = [ObjectFifo(kv_ty, name=f"kv{w}", depth=1) for w in range(ways)]
+    of_joined = ObjectFifo(joined_ty, name="parts", depth=1)
+    of_parts = of_joined.prod().join(
+        offsets=[w * part for w in range(ways)],
+        obj_types=[part_ty] * ways,
+        depths=[1] * ways,
+    )
+    of_o = ObjectFifo(o_ty, name="o", depth=1)
+
+    def attend_core(of_q, of_kv, of_part, attend, open_partial, close_partial, *bufs):
+        s, p, state, *idx = bufs
+        q = of_q.acquire(1)
+        acc = of_part.acquire(1)
+        open_partial(acc, state)
+        for i in idx:
+            attend(
+                q, of_kv.acquire(1), acc, s, p, state, i, inv_scale, s_q_eff, s_kv_eff
+            )
+            of_kv.release(1)
+        close_partial(state, acc)
+        of_part.release(1)
+        of_q.release(1)
+
+    def merge_core(of_joined, of_o, open_partial, merge, rescale, acc, state, idx):
+        open_partial(acc, state)
+        merge(acc, state, of_joined.acquire(1), ways, inv_scale)
+        of_joined.release(1)
+        rescale(acc, of_o.acquire(1), state, b_q, idx)
+        of_o.release(1)
+
+    # Each core's key blocks by their global index, so a band masks as one
+    # core's would.
+    workers = [
+        Worker(
+            attend_core,
+            fn_args=[
+                of_q.cons(),
+                of_kv[w].cons(),
+                of_parts[w].prod(),
+                attend,
+                open_partial,
+                close_partial,
+                Buffer(s_ty, name=f"s{w}"),
+                Buffer(p_ty, name=f"p{w}"),
+                Buffer(scale_ty, name=f"state{w}"),
+                *(
+                    Buffer(
+                        idx_ty,
+                        name=f"idx{w}_{j}",
+                        initial_value=np.array([w + j * ways, q_block, 0], np.int32),
+                    )
+                    for j in range(per)
+                ),
+            ],
+        )
+        for w in range(ways)
+    ]
+    workers.append(
+        Worker(
+            merge_core,
+            fn_args=[
+                of_joined.cons(),
+                of_o.prod(),
+                open_partial,
+                merge,
+                rescale,
+                Buffer(part_ty, name="acc"),
+                Buffer(scale_ty, name="state"),
+                Buffer(
+                    idx_ty,
+                    name="idx",
+                    initial_value=np.array([0, q_block, 0], np.int32),
+                ),
+            ],
+        )
+    )
+
+    block = 2 * b_kv * d
+    total = per * ways * block
+
+    def sequence(q_h, kv_h, o_h, qf, *ends):
+        *kvf, of = ends
+        qf.fill(q_h)
+        for w, f in enumerate(kvf):
+            f.fill(
+                kv_h,
+                TensorAccessPattern(
+                    (total,), w * block, [per, block], [ways * block, 1]
+                ),
+            )
+        of.drain(o_h, wait=True)
+
+    host = [q_ty, np.ndarray[(total,), BF], o_ty]
+    rt = Runtime(
+        sequence,
+        [*host, of_q.prod(), *(f.prod() for f in of_kv), of_o.cons()],
+    )
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+
+
+@pytest.mark.parametrize(
+    "ways,n_kv,s_kv_eff,b_q,b_kv,d,band",
+    [
+        # Llama 3.2 1B's decode step as split decode runs it, its query block
+        # past every key: four cores over five blocks, the last partly past
+        # the keys, three cores' second blocks past them all.
+        (4, 5, 270, 8, 64, 64, {}),
+        # One core's every block past the keys.
+        (4, 3, 150, 8, 64, 64, {}),
+        # Llama 3.2 3B's.
+        (4, 9, 280, 8, 32, 128, {}),
+        # Gemma 3's sliding decode, packed: the window masks the first blocks.
+        (2, 6, 90, 8, 16, 256, dict(window=20, packed=True)),
+        # 32 queries past every key, unmasked.
+        (2, 2, 2 * _B, 32, 64, 64, {}),
+    ],
+)
+@pytest.mark.parametrize("f32_scores", [False, True], ids=["bf16_scores", "f32_scores"])
+def test_split_keys_merged_are_masked_attention(
+    ways, n_kv, s_kv_eff, b_q, b_kv, d, band, f32_scores
+):
+    """Attention split over keys and merged (``merge_partials``) is masked attention over them all."""
+    aie2p = resolve_target_arch(iron.get_current_device()) == "aie2p"
+    band = {**dict(window=0, packed=False), **band}
+    packed = band["packed"]
+    # Unpacked, the queries sit past every key, as a decode step's do.
+    q_block = 0 if packed else -(-s_kv_eff // b_q)
+    s_q_eff = (q_block + 1) * b_q
+    blocks = -(-n_kv // ways) * ways
+    q, k, v = _fused_case_data(
+        q_block, blocks, s_kv_eff, b_q, b_kv, d, packed, 1, 0, window=band["window"]
+    )
+    if f32_scores:
+        # Every score lifted by 4096, where each partial's float32 maximum
+        # is finer than bf16's spacing, so a merge that rounds it shows.
+        top = k[:, 0] == k[:, 0].max()
+        k[:, 0] = 8192.0 + np.where(top, k[:, 0].astype(np.float32), 0.0)
+    _, fused = _fused_kernels(
+        b_q,
+        b_kv,
+        d,
+        True,
+        band["window"],
+        packed,
+        1,
+        f32_scores=f32_scores,
+        accurate_exp2=aie2p,
+    )
+    q_layout, kv_layout = fused.contract.layouts[:2]
+    kv = np.concatenate(
+        [k.reshape(blocks, b_kv, d), v.reshape(blocks, b_kv, d)], axis=2
+    )
+    o_t = iron.zeros((b_q * d,), dtype=bfloat16)
+    mha_split_round(
+        iron.tensor(q_layout.encode(q).reshape(-1), dtype=bfloat16),
+        iron.tensor(kv_layout.encode(kv).reshape(-1), dtype=bfloat16),
+        o_t,
+        ways=ways,
+        n_kv=n_kv,
+        q_block=q_block,
+        s_q_eff=s_q_eff,
+        s_kv_eff=s_kv_eff,
+        b_q=b_q,
+        b_kv=b_kv,
+        d=d,
+        f32_scores=f32_scores,
+        accurate_exp2=aie2p,
+        **band,
+    )
+    got = _unblock(o_t.numpy(), b_q, d).astype(np.float32)
+    keep = np.concatenate(
+        [
+            _keep(
+                q_block, kv, s_q_eff, s_kv_eff, b_q, b_kv, True, band["window"], packed
+            )
+            for kv in range(blocks)
+        ],
+        axis=1,
+    )
+    scores = (q.astype(np.float32) @ k.astype(np.float32).T).astype(
+        np.float32 if f32_scores else bfloat16
+    )
+    inv_scale = float(bfloat16(np.log2(np.e) / np.sqrt(d)))
+    ref = _attention(scores, v, keep, inv_scale=inv_scale).astype(np.float32)
+    ulp = 2**-7 * float(np.abs(v.astype(np.float32)).max())
+    np.testing.assert_allclose(got, ref, rtol=0, atol=_ATOL_ULP * ulp)

@@ -12,10 +12,13 @@ detections are identical.
 
 The two softmaxes round differently only near a rounding boundary. Every
 attention probability on which they differ goes to `SoftmaxArbiter`, which
-computes it exactly. When ONNX Runtime's is the one off at each, the oracle
-is run again with ONNX Runtime's probabilities, and must then match it in
-every tensor: the image counts as "ORT off-boundary". Exits 0 only when
-every image is exact or ORT off-boundary.
+computes it exactly. Attentions are arbitrated in network order, each on a
+run of the oracle that follows ONNX Runtime's probabilities through the
+attentions before it, so a later attention is compared on the same inputs.
+When ONNX Runtime's is the one off at each, the oracle is run again with
+ONNX Runtime's probabilities, and must then match it in every tensor: the
+image counts as "ORT off-boundary". Exits 0 only when every image is exact
+or ORT off-boundary.
 """
 
 from __future__ import annotations
@@ -98,16 +101,23 @@ def main() -> None:
         same = np.array_equal(ours[detections], theirs[outputs[0]][0])
         verdicts: Counter[str] = Counter()
         followed = {}
+        current = ours
         for op in attentions:
+            # A later attention sees the earlier ones' probabilities, so it is
+            # compared on a rerun that follows ONNX Runtime through them.
+            if any(
+                not np.array_equal(p, ours[f"{n}/probs"]) for n, p in followed.items()
+            ):
+                current = oracle.run(image, probabilities=followed)
             score_name, prob_name = softmax[op.name]
-            scores = ours[f"{op.name}/scores"]
-            probs = ours[f"{op.name}/probs"]
+            scores = current[f"{op.name}/scores"]
+            probs = current[f"{op.name}/probs"]
             ort_probs = theirs[prob_name].reshape(probs.shape).astype(np.int64)
             if not np.array_equal(
                 theirs[score_name].reshape(scores.shape).astype(np.int64), scores
             ):
                 verdicts["scores differ"] += 1
-                continue
+                break
             arbiter = SoftmaxArbiter(
                 int(params.of(op.name, "score_scale")),
                 int(params.of(op.name, "prob_scale")),

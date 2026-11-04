@@ -172,7 +172,7 @@ jobs:
           rm -rf $PIP_CACHE_DIR
 
   build-and-test-peano-only:
-    name: Peano-Only Build and Test, no Vitis/chess (${{ matrix.runner_type }})
+    name: Peano-Only Build and Test, no Vitis/chess
     # Smoke test for the configuration open-source Ryzen AI users rely on:
     # Peano (llvm-aie) as the only AIE backend compiler, with Vitis AIE
     # Essentials never on PATH. find_package(Vitis) (FindVitis.cmake) only

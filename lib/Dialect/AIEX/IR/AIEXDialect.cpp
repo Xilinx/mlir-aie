@@ -532,8 +532,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
         "runtime sizes/strides require a shim_dma_allocation to resolve the "
         "tile; none found.");
   AIE::TileOp tile = allocOp.getTileOp();
+  // Coordinate-dependent checks must wait until logical tiles are placed.
   if (!tile)
-    return emitOpError("shim DMA allocation must reference a valid TileOp");
+    return success();
   if (!targetModel.isShimNOCTile(tile.getCol(), tile.getRow()))
     return emitOpError(
         "runtime sizes/strides are only supported for shim NOC tile DMAs.");
@@ -686,8 +687,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       return failure();
   }
 
-  // The experimental HSA target uses this op on AIE1, skip all the AIE2
-  // specific checks
+  // AIE1 does not use the NPU alignment and packet-header checks.
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return success();
 
@@ -728,13 +728,10 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 
   bool hasLengthParameter =
       getLengthParameterAttr() || getLengthStateTableIdxAttr();
-  // Static AIE1 transfers without a length parameter skip allocation checks,
-  // including on the compatibility target used outside a device.
-  if (!isDynamic && !hasLengthParameter &&
-      targetModel.getTargetArch() == AIE::AIEArch::AIE1)
-    return success();
-
+  bool isAIE1 = targetModel.getTargetArch() == AIE::AIEArch::AIE1;
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (!dev && isAIE1 && !isDynamic && !hasLengthParameter)
+    return success();
   auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getMetadata().getRootReference());
   if (isDynamic)
@@ -744,16 +741,19 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // until metadata names a shim DMA allocation.
   if (!allocOp)
     return success();
-  AIE::TileOp tile = allocOp.getTileOp();
-  if (!tile)
-    return emitOpError("shim DMA allocation must reference a valid TileOp");
+  auto tile = allocOp.getTileOp();
+  // Defer coordinate-dependent checks until logical tiles are placed.
+  if (!tile) {
+    if (isAIE1 && hasLengthParameter)
+      return emitOpError("length_parameter is only supported on AIE2 and "
+                         "AIE2P devices");
+    return success();
+  }
   int col = tile.getCol();
   int row = tile.getRow();
   if (hasLengthParameter &&
       failed(AIE::verifyLengthParameterTile(*this, targetModel, col, row)))
     return failure();
-  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
-    return success();
 
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -791,9 +791,12 @@ AIEX::NpuDmaMemcpyNdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       });
   // aie-decompose-large-dma-bd leaves a transfer with a runtime length
   // alone, so it must be legal as written.
-  if (!hasLengthParameter && AIEX::isDecomposableNdDmaPattern(
-                                 getOperation(), buffer, targetModel, col, row,
-                                 inputOffsets, inputSizes, inputStrides)) {
+  // AIE1 patterns must fit directly, even when the decomposition pass is
+  // scheduled: verification must not rely on it to legalize AIE1 transfers.
+  if (!isAIE1 && !hasLengthParameter &&
+      AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel, col,
+                                       row, inputOffsets, inputSizes,
+                                       inputStrides)) {
     // ok: will be decomposed before lowering
   } else if (failed(verifyStridesWraps(
                  *this, [&] { return emitOpError(); }, buffer, col, row,
@@ -1597,9 +1600,10 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
   // steps through every segment in order, each small end through its own, and
   // a plain link's single segment is the whole pool object. The link's
   // repeat_count sends each of its output's segment BDs that many times in a
-  // row.
-  Value linkTile;
-  std::optional<BdChain> linkChain;
+  // row. Every link the fifo meets has an end the transfer must complete,
+  // one per tile when links on several tiles read a broadcast.
+  SmallVector<Value> linkTiles;
+  SmallVector<BdChain> chains;
   if (AIE::DeviceOp device = fifo->getParentOfType<AIE::DeviceOp>())
     for (AIE::ObjectFifoLinkOp link : device.getOps<AIE::ObjectFifoLinkOp>()) {
       std::vector<AIE::ObjectFifoCreateOp> ins = link.getInputObjectFifos();
@@ -1609,7 +1613,7 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       std::optional<Value> sharedTile = link.getOptionalSharedTile();
       if (ins.empty() || outs.empty() || !sharedTile)
         return success();
-      linkTile = *sharedTile;
+      linkTiles.push_back(*sharedTile);
       AIE::ObjectFifoCreateOp owner = link.getPoolOwner();
       MemRefType pool =
           cast<AIE::AIEObjectFifoType>(owner.getElemType()).getElementType();
@@ -1631,21 +1635,22 @@ verifyTaskCoversWholeObjects(AIEX::DMAConfigureTaskForOp task,
       int64_t copies = llvm::is_contained(outs, fifo)
                            ? link.getRepeatCount().value_or(1)
                            : 1;
+      std::optional<BdChain> chain;
       if (segmentBytes.size() == segments.size())
-        linkChain = BdChain::get(segmentBytes, copies);
-      break;
+        chain = BdChain::get(segmentBytes, copies);
+      if (chain && !llvm::is_contained(chains, *chain))
+        chains.push_back(*chain);
     }
   // Every far-end BD chain this transfer must leave at a BD boundary: the
   // producer's, for a drain, and each consumer's other than the shim's own. A
   // broadcast stalls on its slowest consumer, so a drain bounds what the
-  // others receive too. An end off the link tile is one BD over its own
+  // others receive too. An end off every link tile is one BD over its own
   // object.
-  SmallVector<BdChain> chains;
   auto addChain = [&](Value tile, Type fifoType) {
+    if (llvm::is_contained(linkTiles, tile))
+      return;
     std::optional<BdChain> chain;
-    if (linkTile && tile == linkTile)
-      chain = linkChain;
-    else if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
+    if (std::optional<int64_t> bytes = objectBytesOf(fifoType))
       chain = BdChain::get({*bytes}, 1);
     if (chain && !llvm::is_contained(chains, *chain))
       chains.push_back(*chain);

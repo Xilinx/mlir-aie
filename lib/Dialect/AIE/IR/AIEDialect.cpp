@@ -2139,9 +2139,16 @@ LogicalResult ObjectFifoLinkOp::verify() {
               getDstOffsets())))
         return failure();
     }
-    if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
-      int64_t maxIdx =
-          getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
+    // The end this link reads: the next on its tile after earlier links'.
+    size_t end = 0;
+    for (size_t seen = 0; end < fifoIn.getConsumerTiles().size(); end++)
+      if (fifoIn.getConsumerTiles()[end] == *sharedTile &&
+          seen++ == reads.lookup(fifoIn))
+        break;
+    BDDimLayoutArrayAttr dims =
+        fifoIn.getDimensionsFromStreamPerConsumer()[end];
+    if (!dims.empty()) {
+      int64_t maxIdx = getDimsMaxIdx(dims);
       int64_t minOutputBufferSize = -1;
       for (auto lenOut : getDistributeTransferLengths()) {
         if (lenOut <= minOutputBufferSize || minOutputBufferSize < 0)
@@ -2232,20 +2239,24 @@ LogicalResult ObjectFifoLinkOp::verify() {
 }
 
 std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
+  // An input read by several links meets each at its consumer end on that
+  // link's tile, whichever of its ends that is.
   if (isJoin()) {
-    auto fifoOut = getOutputObjectFifos()[0];
+    Value tile = getOutputObjectFifos()[0].getProducerTile();
     for (auto fifoIn : getInputObjectFifos())
-      if (fifoOut.getProducerTile() != fifoIn.getConsumerTiles()[0])
+      if (!llvm::is_contained(fifoIn.getConsumerTiles(), tile))
         return {};
-    return {fifoOut.getProducerTile()};
+    return {tile};
   }
 
   if (isDistribute()) {
-    auto fifoIn = getInputObjectFifos()[0];
+    Value tile = getOutputObjectFifos()[0].getProducerTile();
     for (auto fifoOut : getOutputObjectFifos())
-      if (fifoIn.getConsumerTiles()[0] != fifoOut.getProducerTile())
+      if (fifoOut.getProducerTile() != tile)
         return {};
-    return {fifoIn.getConsumerTiles()[0]};
+    if (!llvm::is_contained(getInputObjectFifos()[0].getConsumerTiles(), tile))
+      return {};
+    return {tile};
   }
 
   auto fifoIn = getInputObjectFifos();
@@ -5944,7 +5955,7 @@ LogicalResult ShimDMAAllocationOp::verify() {
 }
 
 TileOp ShimDMAAllocationOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
+  return dyn_cast_or_null<TileOp>(getTile().getDefiningOp());
 }
 
 ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,

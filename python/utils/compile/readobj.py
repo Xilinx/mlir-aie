@@ -24,6 +24,10 @@ from pathlib import Path
 
 from aie.utils import config
 
+# The link script's data-region order (AIETargetLdScript.cpp): every
+# .data*, then every .rodata*, before .bss* gets its own output section.
+_DATA_SECTION_GROUPS = (".data", ".rodata", ".bss")
+
 
 @dataclass
 class Linked:
@@ -34,8 +38,12 @@ class Linked:
     # routines are outside the object and not counted.
     stack: int | None = None
     # Bytes of the object's static data (.data, .rodata, .bss and the like),
-    # all of which coexists whatever the entry reaches.
+    # all of it, whatever the entry reaches, each section at its alignment.
     data: int = 0
+    # Bytes of the static data the entry reaches, laid out as ``data`` is:
+    # what a core that binds no other entry of the object keeps of it, the
+    # link collecting the rest.
+    reached_data: int = 0
     # Bytes of the code and initialized data the entry reaches: what the core
     # links of this object, without its sibling entry points, symbol tables or
     # embedded bitcode.
@@ -63,14 +71,16 @@ def linked(obj: Path, entry: str) -> Linked:
 
 def parse_readobj(doc: dict, entry: str) -> Linked:
     """``linked`` on the parsed ``llvm-readobj --elf-output-style=JSON`` document."""
-    alloc, data, stored = {}, 0, {}
+    alloc, stored, data_sections = {}, {}, []
     for s in doc["Sections"]:
         s = s["Section"]
         flags = {f["Name"] for f in s["Flags"]["Flags"]}
         alloc[s["Index"]] = "SHF_ALLOC" in flags
         stored[s["Index"]] = 0 if s["Type"]["Name"] == "SHT_NOBITS" else s["Size"]
         if "SHF_ALLOC" in flags and "SHF_EXECINSTR" not in flags:
-            data += s["Size"]
+            data_sections.append(
+                (s["Index"], s["Size"], s["AddressAlignment"], s["Name"]["Name"])
+            )
     symbols = [s["Symbol"] for s in doc["Symbols"]]
     # A symbol names its section by index; an undefined one names index 0.
     home = [s["Section"]["Value"] or None for s in symbols]
@@ -120,6 +130,24 @@ def parse_readobj(doc: dict, entry: str) -> Linked:
         )
         return depth[sec]
 
+    def laid_out(sections) -> int:
+        # As aiecc's generated link script (AIETargetLdScript.cpp): every
+        # .data* section, then every .rodata*, then every .bss*, in that
+        # output-section order regardless of the object's own section-table
+        # order; each from the next multiple of its alignment, as aiecc's
+        # measureDataSectionDemand does over the linked ELF.
+        def group(name: str) -> int:
+            for i, prefix in enumerate(_DATA_SECTION_GROUPS):
+                if name.startswith(prefix):
+                    return i
+            return len(_DATA_SECTION_GROUPS)
+
+        end = 0
+        for _, size, align, _name in sorted(sections, key=lambda s: group(s[3])):
+            if size:
+                end = -(-end // max(align, 1)) * max(align, 1) + size
+        return end
+
     roots = [sec for sec, names in functions.items() if entry in names]
     todo = list(roots)
     seen: set[int] = set()
@@ -133,6 +161,7 @@ def parse_readobj(doc: dict, entry: str) -> Linked:
         functions={n for sec in seen for n in functions.get(sec, ())},
         undefined=sorted({u for sec in seen for u in calls.get(sec, ())}),
         stack=deepest(roots[0]) if frames and roots else None,
-        data=data,
+        data=laid_out(data_sections),
+        reached_data=laid_out(s for s in data_sections if s[0] in seen),
         linked_bytes=sum(stored[sec] for sec in seen),
     )

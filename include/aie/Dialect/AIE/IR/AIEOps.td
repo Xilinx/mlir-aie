@@ -2311,6 +2311,7 @@ def AIE_ShimDMAAllocationOp
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    // getTileOp() returns null until a logical tile has been placed.
     TileOp getTileOp();
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];

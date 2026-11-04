@@ -11,6 +11,8 @@
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include <tuple>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -96,10 +98,22 @@ bool ShimTransferSpans::apart(StringAttr a, StringAttr b) const {
 
 SmallVector<SmallVector<unsigned>>
 ShimTransferSpans::groups(ArrayRef<StringAttr> ends) const {
+  // By each end's whole span, all apart() reads, not by name: ends this
+  // cannot order relate alike to every other, so either may go first.
+  using Key = std::tuple<int64_t, int64_t, int64_t, int64_t, bool>;
+  SmallVector<SmallVector<Key>> when;
+  for (StringAttr end : ends) {
+    auto &key = when.emplace_back();
+    for (auto &byFifo : spans) {
+      auto it = byFifo.find(end);
+      Span span = it == byFifo.end() ? Span() : it->second;
+      key.push_back(
+          {span.first, span.last, span.lastIssue, span.lastDone, span.sends});
+    }
+  }
   auto order = llvm::to_vector(llvm::seq<unsigned>(0, ends.size()));
-  llvm::stable_sort(order, [&](unsigned x, unsigned y) {
-    return ends[x].getValue() < ends[y].getValue();
-  });
+  llvm::stable_sort(order,
+                    [&](unsigned x, unsigned y) { return when[x] < when[y]; });
   SmallVector<SmallVector<unsigned>> result;
   for (unsigned end : order) {
     auto *group = llvm::find_if(result, [&](ArrayRef<unsigned> members) {

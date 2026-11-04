@@ -1442,6 +1442,37 @@ def test_mha_binds_its_translation_unit_as_one_object():
     assert fn.name in str(design.as_mlir())
     with pytest.raises(ValueError, match="multiple of"):
         kernels.mha(dim_m=17)
+    with pytest.raises(ValueError, match="dim_n must be one of"):
+        kernels.mha(dim_n=128)
+
+
+def test_mha_refuses_what_mha_cc_cannot_build():
+    set_current_device(NPU1Col1())
+    fused = dict(dim_n=16, b_col_maj=True, fused=True)
+    with pytest.raises(ValueError, match="multiple of 16"):
+        kernels.mha(dim_k=24)
+    with pytest.raises(ValueError, match="multiples of 16"):
+        kernels.mha(dim_m=16, dim_k=48, pair=True, f32_scores=True, **fused)
+    with pytest.raises(NotImplementedError, match="kv_heads 3"):
+        kernels.mha(dim_m=8, dim_k=64, kv_heads=3, **fused)
+    with pytest.raises(NotImplementedError, match="8 rows"):
+        kernels.mha(dim_m=8, dim_k=64, pair=True, **fused)
+    kernels.mha(dim_m=8, dim_k=64, kv_heads=4, **fused)
+    kernels.mha(dim_m=8, dim_k=64, pair=True, f32_scores=True, **fused)
+    kernels.mha(dim_m=16, dim_k=64, pair=True, **fused)
+    for bad, match in (
+        (dict(pv=True), "not pv's"),
+        (dict(b_col_maj=False), "needs b_col_maj"),
+        (dict(accurate_exp2=True), "over f32_scores"),
+        (dict(kv_heads=0), "at least 1"),
+    ):
+        with pytest.raises(ValueError, match=match):
+            kernels.mha(dim_m=16, dim_k=64, **{**fused, **bad})
+    set_current_device(NPU2Col1())
+    aie2p = dict(dim_m=32, dim_k=64, dim_n=64, b_col_maj=True, fused=True)
+    kernels.mha(accurate_exp2=True, **aie2p)
+    with pytest.raises(NotImplementedError, match="emulate_bf16_mmul_with_bfp16"):
+        kernels.mha(accurate_exp2=True, emulate_bf16_mmul_with_bfp16=True, **aie2p)
 
 
 def test_mha_band_reaches_the_kernel_and_its_reference():
@@ -1457,6 +1488,7 @@ def test_mha_band_reaches_the_kernel_and_its_reference():
         dict(window=-64),
         dict(scale=0.0),
         dict(dim_n=24),
+        dict(dim_n=128),
     ):
         with pytest.raises(ValueError):
             kernels.mha_softmax(**bad)
@@ -1508,8 +1540,11 @@ def test_mha_answers_its_micro_tile_without_building_a_kernel(
 ):
     """``mha.mac_dims`` is the micro-tile ``mha`` declares, for either product."""
     kw = dict(pv=pv, emulate_bf16_mmul_with_bfp16=emulate)
-    # mha.cc includes mm_aie2p.h even on AIE2, unlike mm.cc.
-    expected = (8, 8, 8) if pv or (emulate and arch == "aie2p") else (4, 8, 8)
+    # Each product is the arch's GEMM tile; AIE2 ignores the emulation.
+    if arch == "aie2":
+        expected = (4, 8, 4)
+    else:
+        expected = (8, 8, 8) if pv or emulate else (4, 8, 8)
     target = device()
     with set_current_device(target):
         instances = ExternalFunction._instances.copy()

@@ -3127,10 +3127,18 @@ CASES += [
     check("mv", dict(dim_m=32, dim_k=32), smoke=True),
     # The attention toolkit's QK^T product: mm.cc's bf16 tile matmul.
     Case("mha", calls=4, smoke=True),
-    Case("mha", dict(f32_scores=True), calls=4, smoke=True, devices=("npu2",)),
-    # ...and its P*V product, mha.cc's own 8x8x8 expansion. Same tile, but a
-    # different micro-tile and so a different blocked operand order, which is
-    # the part a shared case could not check.
+    Case("mha", dict(f32_scores=True), calls=4, smoke=True),
+    # Float32 scores at IRON's fused blocks (DESIGN M4: QK^T at 64x64x64
+    # within GEMM's float32 product).
+    Case(
+        "mha",
+        dict(f32_scores=True, b_col_maj=True),
+        calls=4,
+        tag="f32-scores",
+    ),
+    # ...and its P*V product. Same tile, but on AIE2P a different micro-tile
+    # (8x8x8 against QK^T's 4x8x8) and so a different blocked operand order,
+    # which is the part a shared case could not check.
     Case("mha", dict(pv=True), calls=4, smoke=True),
     # As IRON's MHA operator builds them on npu2: B column-major and the
     # accurate exp2 (operators/mha.py), at head_dim 64 (Llama 3.2 1B) and 128.
@@ -3176,6 +3184,128 @@ CASES += [
         for b_q, phase in ((16, "decode"), (8, "decode8"))
         for d in (64, 128)
     ],
+    # The fused block on one core, attend_block, at the blocks IRON's fused
+    # mapping runs on npu1: Llama 3.2 1B's, 3B's and a d=256 layer's.
+    *[
+        Case(
+            "mha",
+            dict(dim_m=b_q, dim_k=d, dim_n=b_kv, b_col_maj=True, fused=True),
+            calls=4,
+            tag=f"iron-fused-d{d}",
+            smoke=d == 64,
+            devices=("npu1",),
+        )
+        for b_q, d, b_kv in ((32, 64, 64), (32, 128, 32), (16, 256, 16))
+    ],
+    # ...and on npu2, with the accurate exponential the AIE2P pipeline takes,
+    # at Llama 3.2 1B's and 3B's blocks there, over bf16 and float32 scores;
+    # npu1 runs the float32 24-row block too, and the 32-row one below.
+    *[
+        Case(
+            "mha",
+            dict(
+                dim_m=b_q,
+                dim_k=d,
+                dim_n=b_kv,
+                b_col_maj=True,
+                fused=True,
+                accurate_exp2=True,
+            )
+            | ({"f32_scores": True} if f32 else {}),
+            calls=4,
+            tag=f"iron-fused-accurate{'-f32' if f32 else ''}-d{d}",
+            smoke=d == 64 and not f32,
+            devices=() if f32 and d == 128 else ("npu2",),
+        )
+        for f32 in (False, True)
+        for b_q, d, b_kv in ((32, 64, 64), (24, 128, 32))
+    ],
+    # ...and over float32 scores, at Llama 3.2 1B's and 3B's blocks.
+    *[
+        Case(
+            "mha",
+            dict(
+                dim_m=b_q,
+                dim_k=d,
+                dim_n=b_kv,
+                b_col_maj=True,
+                fused=True,
+                f32_scores=True,
+            ),
+            calls=4,
+            tag=f"iron-fused-f32-d{d}",
+            devices=("npu1",),
+        )
+        for b_q, d, b_kv in ((32, 64, 64), (32, 128, 32))
+    ],
+    # ...and at d=512 on two cores a block, each half of the head (pair):
+    # Gemma 4 E2B's and EmbeddingGemma's global layers.
+    *[
+        Case(
+            "mha",
+            dict(
+                dim_m=16,
+                dim_k=512,
+                dim_n=16,
+                b_col_maj=True,
+                fused=True,
+                pair=True,
+                f32_scores=f32,
+            ),
+            calls=4,
+            tag=f"iron-fused-pair{'-f32' if f32 else ''}-d512",
+            devices=("npu1",),
+        )
+        for f32 in (False, True)
+    ],
+    # ...with the accurate exponential, and Gemma 4 audio's block: float32
+    # scores with their relative band, capped at 50, a causal window of 12,
+    # the accurate exponential.
+    Case(
+        "mha",
+        dict(
+            dim_m=32,
+            dim_k=64,
+            dim_n=64,
+            b_col_maj=True,
+            fused=True,
+            f32_scores=True,
+            accurate_exp2=True,
+        ),
+        calls=4,
+        tag="iron-fused-f32-accurate-d64",
+        devices=("npu1",),
+    ),
+    Case(
+        "mha",
+        dict(
+            dim_m=32,
+            dim_k=128,
+            dim_n=16,
+            b_col_maj=True,
+            fused=True,
+            f32_scores=True,
+            accurate_exp2=True,
+            window=11,
+            soft_cap=50.0,
+            relative_band=True,
+        ),
+        calls=4,
+        tag="gemma4-audio",
+        devices=("npu1",),
+    ),
+    # Split decode's on npu1: 8 rows, Llama 3.2 1B's two KV heads a key
+    # block, 3B's one.
+    *[
+        Case(
+            "mha",
+            dict(dim_m=8, dim_k=d, dim_n=b_kv, b_col_maj=True, fused=True, kv_heads=h),
+            calls=4,
+            tag=f"iron-split-d{d}",
+            devices=("npu1",),
+        )
+        for d, b_kv, h in ((64, 32, 2), (128, 32, 1))
+    ],
     # The toolkit's online softmax over one key block: params is (key block,
     # query block, row offset), scalars the two sequence lengths. The padded
     # diagonal block takes every branch the full one skips (the causal mask,
@@ -3194,6 +3324,38 @@ CASES += [
         params=((0, 0, 0),),
         scalars=(64, 64),
         tag="diagonal",
+    ),
+    # The same over float32 scores, the plain block and the padded diagonal;
+    # rows whose every score is negative take AIE2's float maximum's other
+    # branch.
+    Case(
+        "mha_softmax",
+        dict(f32_scores=True),
+        calls=4,
+        params=((0, 1, 0),),
+        scalars=(128, 64),
+        smoke=True,
+        tag="f32-scores",
+        data_cases=(*FLOAT_BASE, "negative", "min"),
+    ),
+    Case(
+        "mha_softmax",
+        dict(f32_scores=True),
+        calls=4,
+        params=((0, 0, 0),),
+        scalars=(64, 64),
+        tag="f32-scores-diagonal",
+        data_cases=(*FLOAT_BASE, "negative"),
+    ),
+    # Float32 scores near 2^24, under the accurate exponential's tight bound.
+    Case(
+        "mha_softmax",
+        dict(f32_scores=True, accurate_exp2=True),
+        calls=4,
+        params=((0, 1, 0),),
+        scalars=(128, 64),
+        tag="f32-scores-accurate",
+        data_cases=("random", "near_ties"),
     ),
     # A decode step's block: 16 packed rows past every one of the 64
     # keys, so nothing is masked.

@@ -40,6 +40,15 @@ inline constexpr llvm::StringLiteral kObjectFifoObjectSlotAttrName =
 /// loop can be unrolled by repeating its body.
 bool isForeverLoop(mlir::scf::WhileOp whileOp);
 
+/// Whether `forOp` counts from 0 to INT64_MAX in steps of 1 and never reads its
+/// induction variable. INT64_MAX iterations never finish, so the loop repeats
+/// forever; a smaller bound such as 2^32-1 can be reached.
+bool isForeverForLoop(mlir::scf::ForOp forOp);
+
+/// Replace `forOp`, which `isForeverForLoop` accepts, with an `scf.while` that
+/// `isForeverLoop` accepts and that carries the same values.
+mlir::scf::WhileOp replaceWithForeverLoop(mlir::scf::ForOp forOp);
+
 /// Whether `op` is a loop that objectFifo lowering unrolls by the rotation
 /// period of the objectFifos accessed in it: an `scf.for`, or an `scf.while`
 /// that repeats forever.

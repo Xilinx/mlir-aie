@@ -1442,8 +1442,11 @@ SmallVector<std::pair<size_t, size_t>> StreamConflicts::unavoidable() const {
   const StreamDeadlockAnalysis &a = getAnalysis();
   for (size_t s = 0; s < numRequested; s++)
     for (size_t t = 0; t < numRequested; t++) {
-      if (s == t || !(streams[s].packetID || streams[t].packetID) ||
-          !related(s, t) || !a.canBlock(s, t))
+      // A tree's branches move as one, as a circuit broadcast's do, so a wait
+      // between them is the design's own.
+      if (s == t || treeOf[s] == treeOf[t] ||
+          !(streams[s].packetID || streams[t].packetID) || !related(s, t) ||
+          !a.canBlock(s, t))
         continue;
       if (a.assumptions(s, t).empty())
         pairs.push_back({s, t});
