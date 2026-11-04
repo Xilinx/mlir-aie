@@ -1766,7 +1766,9 @@ def AIE_DMAStartBdChainOp
   let arguments = (ins FlatSymbolRefAttr:$symbol, Variadic<AnyType>:$args,
       Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
       DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count);
+      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      // The shim allocation a dma_start_bd_chain_for named, kept for the task.
+      OptionalAttr<FlatSymbolRefAttr>:$alloc);
 
   let assemblyFormat = [{
      $symbol `(` $args `)` `:` `(` type($args) `)` ` ` `on` ` ` `(` $tile `,` $direction `,` $channel `)` attr-dict
