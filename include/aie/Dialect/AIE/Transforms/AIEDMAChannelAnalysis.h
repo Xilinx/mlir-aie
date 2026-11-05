@@ -116,7 +116,8 @@ public:
                  llvm::ArrayRef<BDWalkPool> pools, llvm::ArrayRef<bool> whole);
 
   /// Walks whole the pools of `ends` nextPoolToWalk picks until
-  /// planBDChannels fits them; `poolOf` gives each end's pool.
+  /// planBDChannels fits them; `poolOf` gives each end's pool. Walks nothing
+  /// when the ends do not fit their channels even taking no BD ids.
   /// aie-objectfifo-allocate and the SA placer both walk by this.
   static BDWalkPlan
   walkPoolsUntilBDsFit(const AIETargetModel &target, int col, int row,

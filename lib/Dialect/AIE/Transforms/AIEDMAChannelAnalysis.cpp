@@ -394,6 +394,12 @@ DMAChannelAnalysis::BDWalkPlan DMAChannelAnalysis::walkPoolsUntilBDsFit(
     function_ref<bool(DMAChannelDir, int)> free,
     function_ref<int64_t(int)> spent) {
   BDWalkPlan plan;
+  SmallVector<BDPlanEnd> unweighted;
+  for (const BDPlanEnd &end : ends)
+    unweighted.push_back({end.dir, 0, end.limit});
+  if (!planBDChannels(target, col, row, unweighted, free,
+                      [](int) -> int64_t { return 0; }))
+    return plan;
   SmallVector<bool> whole(pools.size(), false);
   while (true) {
     SmallVector<BDPlanEnd> planned;
