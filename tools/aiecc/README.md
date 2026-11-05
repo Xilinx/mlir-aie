@@ -497,3 +497,9 @@ automatically.
 
 For the full picture, start from `buildMainGraph` in `aiecc.cpp`, then read
 `Graph.h` (edges) and `Items.h` (payloads).
+
+## Artifact provenance
+
+Generated ELFs are stamped with a `.note.mlir-aie.provenance` section recording
+the MLIR-AIE version and whether the IRON Python abstractions were used to
+generate the output.

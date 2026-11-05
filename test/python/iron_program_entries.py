@@ -17,15 +17,15 @@ def sequence(_out):
 
 
 # Several entries: the first is the default, and every one is listed.
-# CHECK: module attributes {iron.entries = ["main:one", "main:two"], iron.entry = "main:one"}
+# CHECK: module attributes {iron.entries = ["main:one", "main:two"], iron.entry = "main:one", iron.provenance =
 # CHECK: aie.runtime_sequence @one(%{{.*}}: memref<4xi32>)
 # CHECK: aie.runtime_sequence @two(%{{.*}}: memref<4xi32>)
 one = Runtime(sequence, [Out4], name="one")
 two = Runtime(sequence, [Out4], name="two")
 print(Program(NPU2Col1(), [one, two]).resolve_program())
 
-# One entry keeps the module as it was: no entry attributes.
-# CHECK: module {
+# One entry has provenance but no entry attributes.
+# CHECK: module attributes {iron.provenance =
 single = Runtime(sequence, [Out4], name="single")
 print(Program(NPU2Col1(), single).resolve_program())
 
