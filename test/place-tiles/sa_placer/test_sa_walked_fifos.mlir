@@ -14,6 +14,7 @@
 // no hole. Counted apart, their objects fit the holes beside the core, where
 // the SA places them; allocation then finds no room and names the fifo.
 // DIAG: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @main::@a_in
+// DIAG: note: channel turns walked these objectFIFOs' mem tile pools whole: @main::@b_in, @main::@a_in
 
 // Counted walked, the SA places the pools where whole buffers fit.
 // CHECK-DAG: %a_in__cons__buf0 = aie.buffer(%mem_tile_2_1) {{.*}} : memref<448xi32>

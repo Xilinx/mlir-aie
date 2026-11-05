@@ -14,12 +14,12 @@
 // kernel object does not exist). aiecc reports that attempt, the one that
 // stands, not the first placement's error, and its reproducer places as it
 // did.
-// CHECK: aiecc: objectFIFO @a_in of @main's buffers find no room; placing again with --sa-walked-fifos=main:a_in
+// CHECK: aiecc: buffers channel turns walked whole find no room; placing again with --sa-walked-fifos=main:b_in,main:a_in
 // CHECK-NOT: could not place buffers
 // CHECK-NOT: no placement
 // CHECK: cannot open {{.*}}missing_kernel.o
 // CHECK: aiecc: edge 'probeElfs_{0}.elf' (key '{{.*}}') failed
-// REPEAT: "--sa-walked-fifos=main:a_in"
+// REPEAT: "--sa-walked-fifos=main:b_in,main:a_in"
 
 module @turn_walk_link {
   aie.device(npu2) {

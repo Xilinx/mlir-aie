@@ -3319,7 +3319,7 @@ int main(int argc, char **argv) {
     Attempt &last = attempts.back();
     // Each charge names its device, and only the devices that failed are
     // charged, so the others place as they did.
-    std::optional<std::string> fifo;
+    std::vector<std::string> fifos;
     llvm::StringSet<> fullDevices;
     for (const HeldError &error : last.diags.errors) {
       llvm::StringRef message = error.message;
@@ -3331,14 +3331,18 @@ int main(int argc, char **argv) {
                 fullDevices.insert(device.getValue());
       if (!mayWalkAgain || !message.contains(xilinx::AIE::kNoBufferRoom))
         continue;
-      for (mlir::Attribute arg : error.arguments)
-        if (auto name = llvm::dyn_cast<mlir::SymbolRefAttr>(arg)) {
-          std::string entry = (name.getRootReference().getValue() + ":" +
-                               name.getLeafReference().getValue())
-                                  .str();
-          if (!llvm::is_contained(saWalkedFifos, entry))
-            fifo = entry;
-        }
+      // Only the pools the SA counts otherwise than allocation lays them out.
+      for (const auto &[note, attrs] : error.notes)
+        if (llvm::StringRef(note).starts_with(xilinx::AIE::kTurnWalkedNote))
+          for (mlir::Attribute attr : attrs)
+            if (auto name = llvm::dyn_cast<mlir::SymbolRefAttr>(attr)) {
+              std::string entry = (name.getRootReference().getValue() + ":" +
+                                   name.getLeafReference().getValue())
+                                      .str();
+              if (!llvm::is_contained(saWalkedFifos, entry) &&
+                  !llvm::is_contained(fifos, entry))
+                fifos.push_back(entry);
+            }
     }
     // A core's measurement keeps its largest value, so the charges only grow
     // and the attempts end.
@@ -3352,18 +3356,17 @@ int main(int argc, char **argv) {
             grew = true;
           }
     }
-    if (!fifo && !grew) {
+    if (fifos.empty() && !grew) {
       if (attempts.size() > 1)
         noPlacement = "aiecc: no placement with what allocation found counted "
                       "fits either; the errors above are the first placement's";
       break;
     }
-    if (fifo) {
-      saWalkedFifos.push_back(*fifo);
-      auto [device, name] = llvm::StringRef(*fifo).rsplit(':');
-      llvm::errs() << "aiecc: objectFIFO @" << name << " of @" << device
-                   << "'s buffers find no room; placing again with "
-                      "--sa-walked-fifos="
+    if (!fifos.empty()) {
+      for (std::string &entry : fifos)
+        saWalkedFifos.push_back(entry);
+      llvm::errs() << "aiecc: buffers channel turns walked whole find no "
+                      "room; placing again with --sa-walked-fifos="
                    << llvm::join(saWalkedFifos, ",") << "\n";
     }
     if (grew) {

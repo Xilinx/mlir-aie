@@ -39,6 +39,10 @@ inline constexpr llvm::StringLiteral kObjectFifoObjectSlotAttrName =
 /// nested in its device.
 inline constexpr llvm::StringLiteral kNoBufferRoom =
     "could not place buffers in accessible memory with available capacity";
+/// The note on it naming, as its symbol arguments, the mem tile pools channel
+/// turns walked whole: one buffer each, where the SA placer counts objects.
+inline constexpr llvm::StringLiteral kTurnWalkedNote =
+    "channel turns walked these objectFIFOs' mem tile pools whole: ";
 
 /// How `--aie-assign-buffer-addresses` says a buffer fits no tile memory left,
 /// and the note it adds when a core on that tile keeps its own sections there;
