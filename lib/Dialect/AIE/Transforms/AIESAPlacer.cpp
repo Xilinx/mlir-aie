@@ -1680,6 +1680,10 @@ LogicalResult SAPlacer::generateInitialPlacement() {
 
   size_t compIdx = 0, memIdx = 0, shimIdx = 0;
 
+  // A core position holds one tile. Mem and shim positions hold several, as
+  // moves and allocation allow, so a pinned one only sends its position to
+  // the back of the pool, after the free ones.
+  SmallVector<TileID> pinnedMem, pinnedShim;
   for (auto lt : logicalTiles) {
     Operation *op = lt.getOperation();
     auto col = lt.tryGetCol();
@@ -1693,15 +1697,19 @@ LogicalResult SAPlacer::generateInitialPlacement() {
       physToLogical[pos] = op;
       constrainedTiles.insert(op);
 
-      // Remove from available pool
-      if (type == AIETileType::CoreTile)
+      if (type == AIETileType::CoreTile) {
         llvm::erase(availComp, pos);
-      else if (type == AIETileType::MemTile)
+      } else if (llvm::is_contained(availMem, pos)) {
         llvm::erase(availMem, pos);
-      else if (type == AIETileType::ShimNOCTile)
+        pinnedMem.push_back(pos);
+      } else if (llvm::is_contained(availShim, pos)) {
         llvm::erase(availShim, pos);
+        pinnedShim.push_back(pos);
+      }
     }
   }
+  llvm::append_range(availMem, pinnedMem);
+  llvm::append_range(availShim, pinnedShim);
 
   // Place unconstrained core tiles sorted by memory weight (heaviest first)
   // into checkerboard-spread positions. Cascade tiles are placed independently;
