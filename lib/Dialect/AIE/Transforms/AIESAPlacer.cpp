@@ -919,15 +919,19 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
   // Bounded, since tiles meet at positions in more ways than a design has.
   if (bdShortfallOf.size() > (1u << 16))
     bdShortfallOf.clear();
+  // Every tile at the position holds what its programs take; a tile with
+  // fixed coordinates is only ever here, so the list keys the position too.
   SmallVector<Operation *> holders(tiles);
-  auto physical = physicalTiles.find(position);
-  if (physical != physicalTiles.end())
-    for (Operation *tile : physical->second)
-      if (!llvm::is_contained(holders, tile))
-        holders.push_back(tile);
+  for (Operation *tile : logicalMemTiles)
+    if (auto at = currentPlacement.find(tile);
+        at != currentPlacement.end() && at->second == position &&
+        !llvm::is_contained(holders, tile))
+      holders.push_back(tile);
+  for (Operation *tile : physicalTiles.lookup(position))
+    if (!llvm::is_contained(holders, tile))
+      holders.push_back(tile);
   std::pair<TileID, std::vector<Operation *>> key{
-      physical != physicalTiles.end() ? position : layout->second,
-      std::vector<Operation *>(tiles.begin(), tiles.end())};
+      layout->second, std::vector<Operation *>(holders.begin(), holders.end())};
   if (auto cached = bdShortfallOf.find(key); cached != bdShortfallOf.end()) {
     if (walked)
       *walked = DenseSet<std::pair<Operation *, int>>(
@@ -1216,7 +1220,7 @@ int SAPlacer::updateResourcePenalty(
   bdUndo.clear();
   SmallVector<TileID> bdTouched;
   for (auto &[op, oldPos] : oldPlacements)
-    if (memTileEnds.count(op))
+    if (memTileEnds.count(op) || llvm::is_contained(logicalMemTiles, op))
       for (TileID pos : {oldPos, currentPlacement[op]})
         if (!llvm::is_contained(bdTouched, pos))
           bdTouched.push_back(pos);
@@ -1527,6 +1531,10 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
   channelAnalysis.emplace(device);
   takenBDs = DMAChannelAnalysis::TakenBDs(device);
+  logicalMemTiles.clear();
+  for (auto tile : device.getOps<LogicalTileOp>())
+    if (tile.getTileType() == AIETileType::MemTile)
+      logicalMemTiles.push_back(tile);
   physicalTiles.clear();
   for (TileOp tile : device.getOps<TileOp>())
     physicalTiles[{tile.getCol(), tile.getRow()}].push_back(tile);

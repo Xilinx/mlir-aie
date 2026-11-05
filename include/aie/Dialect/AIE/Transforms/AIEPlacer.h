@@ -903,6 +903,9 @@ private:
   std::optional<DMAChannelAnalysis> channelAnalysis;
   DMAChannelAnalysis::TakenBDs takenBDs;
   llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> physicalTiles;
+  // Every logical mem tile, objectFIFO ends or not: its programs hold BD ids
+  // and channels wherever it is placed.
+  llvm::SmallVector<mlir::Operation *> logicalMemTiles;
   int cachedPressure = 0;
   // The DMA-channel term per tile, and what the last move overwrote in it.
   int dmaPenalty = 0;
