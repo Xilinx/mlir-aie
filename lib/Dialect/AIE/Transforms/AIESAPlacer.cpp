@@ -687,7 +687,7 @@ int SAPlacer::computeMemSpilloverPenalty() {
                     std::pair<const PlannedDmaEnd *, std::pair<int, int>>>
         pools;
     for (Operation *op : here)
-      for (const MemTileEnd &end : memTileEnds.lookup(op)) {
+      for (const MemTileEnd &end : memTileEnds.find(op)->second) {
         const PlannedDmaEnd &plan = end.end;
         auto split = dyn_cast_or_null<ObjectFifoPoolOp>(plan.pool);
         if (!plan.pool || (split && split.getBuffers()))
