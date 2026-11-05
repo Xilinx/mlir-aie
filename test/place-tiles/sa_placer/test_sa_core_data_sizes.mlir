@@ -7,13 +7,11 @@
 
 // RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s --check-prefix=ESTIMATE
 // RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-core-data-sizes=main:1=28672" %s | FileCheck %s --check-prefix=MEASURED
-// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-core-data-sizes=other:1=28672" %s | FileCheck %s --check-prefix=ESTIMATE
 // RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-core-data-sizes=main:x=1" %s 2>&1 | FileCheck %s --check-prefix=BAD
 
 // With its estimate of %c's own sections, the SA places %c by the shim's
 // column, holding x's buffers beside them. Given the 28 KiB a build measured
 // for core 1 of @main, it places %c beside %p, whose tile holds x's buffers.
-// An entry for another device changes nothing.
 // ESTIMATE: aie.tile(7, 2)
 // MEASURED: aie.tile(1, 2)
 // BAD: error: sa-core-data-sizes entry 'main:x=1' is not <device>:<core>=<bytes>

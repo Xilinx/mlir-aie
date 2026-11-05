@@ -122,7 +122,8 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
                   "Bytes the SA placer reserves for a core's own sections "
                   "in place of its estimate, as <device>:<core>=<bytes>, "
                   "<core> counting the device's aie.core ops in order. A "
-                  "declared data_size still wins">];
+                  "core's declared data_size or measured_data_size still "
+                  "wins">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,

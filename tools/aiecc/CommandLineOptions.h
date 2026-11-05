@@ -146,7 +146,9 @@ inline cl::list<std::string> saCoreDataSizes(
     "sa-core-data-sizes", cl::CommaSeparated,
     cl::desc("Bytes the SA placer reserves for a core's own sections, as "
              "<device>:<core>=<bytes> (the device's aie.core ops counted in "
-             "order); aiecc adds what the probe link measured when a core's "
+             "order), unless the core declares data_size or "
+             "measured_data_size; aiecc adds what the probe link measured when "
+             "a core's "
              "buffers find no room and it places again, unless this option "
              "is given"));
 inline cl::opt<int64_t> placementBudget(
