@@ -742,22 +742,6 @@ REPORTED = {
 }
 
 
-def run_failure(p):
-    """How a router run gave no answer, if it did not.
-
-    Args:
-        p: The run's result.
-
-    Returns:
-        ("timeout", detail) or ("crash", detail), else None.
-    """
-    if p.returncode == rp.TIMEOUT:
-        return "timeout", p.stderr
-    if p.returncode < 0:
-        return "crash", rp.first_error(p.stderr)[:300]
-    return None
-
-
 def judge(e, expect, hops_on, seed, deadline=None):
     """Route `e` and hold the router to `expect`. Returns (outcome, detail),
     outcome one of ok, completeness, soundness, illegal, crash, known,
@@ -772,7 +756,7 @@ def judge(e, expect, hops_on, seed, deadline=None):
             return "model-limit", f"emit: {x!r}"
         # The IR verifier rejects it before the router runs.
         p = rp.aie_opt(e.emit(), hops_on, deadline=deadline)
-        if failure := run_failure(p):
+        if failure := rp.run_failure(p):
             return failure
         if p.returncode == 0:
             return "soundness", f"router routes it, must reject: {why}"
@@ -790,7 +774,7 @@ def judge(e, expect, hops_on, seed, deadline=None):
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
         why = v["reason"]
     p = rp.aie_opt(e.emit(), hops_on, deadline=deadline)
-    if failure := run_failure(p):
+    if failure := rp.run_failure(p):
         return failure
     if p.returncode:
         err = rp.first_error(p.stderr)
@@ -830,7 +814,7 @@ def judge_strict(e, expect, hops_on, s, deadline=None):
     """Hold the router's run on canonical `e` without allow-deadlock-prone,
     `s`, to what judge() holds its run with it to, its router runs stopping by
     `deadline` as judge()'s do. Returns (outcome, detail) as judge() does."""
-    if failure := run_failure(s):
+    if failure := rp.run_failure(s):
         return failure[0], f"strict: {failure[1]}"
     if s.returncode:
         try:
@@ -1007,9 +991,7 @@ def delivered(x, d):
 def r_lift(rng, d, routed):
     """aie-find-flows lifts the routing back into the flows the design asked
     for, and routing those again lifts to the same."""
-    p = rp.find_flows(routed)
-    if p.returncode == rp.TIMEOUT:
-        raise rp.RouterTimeout(f"lifting the routing: {p.stderr}")
+    p = rp.model_run(rp.find_flows(routed), "lifting the routing")
     if p.returncode:
         return "lift", None, f"aie-find-flows fails: {rp.first_error(p.stderr)[:200]}"
     lifted = rp.load_design(p.stdout)
@@ -1036,9 +1018,7 @@ def r_lift(rng, d, routed):
         return "lift", None, f"lifting the routing loses {lost}, adds {extra}"
 
     def check(text):
-        q = rp.find_flows(text)
-        if q.returncode == rp.TIMEOUT:
-            raise rp.RouterTimeout(f"lifting the rerouted output: {q.stderr}")
+        q = rp.model_run(rp.find_flows(text), "lifting the rerouted output")
         if q.returncode:
             return f"aie-find-flows fails on the rerouted output: {rp.first_error(q.stderr)[:200]}"
         again = rp.load_design(q.stdout)

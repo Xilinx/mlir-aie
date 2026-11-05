@@ -5914,6 +5914,22 @@ class RouterCrash(ModelRunFailed):
     outcome = "crash"
 
 
+def run_failure(p):
+    """How a run gave no answer, if it did not.
+
+    Args:
+        p: The run's result.
+
+    Returns:
+        ("timeout", detail) or ("crash", detail), else None.
+    """
+    if p.returncode == TIMEOUT:
+        return "timeout", p.stderr
+    if p.returncode < 0:
+        return "crash", first_error(p.stderr)[:300]
+    return None
+
+
 def model_run(p, what):
     """`p`, a run the model relies on, if it answered.
 
@@ -5928,10 +5944,9 @@ def model_run(p, what):
         RouterTimeout: The run ran out of time.
         RouterCrash: The run crashed.
     """
-    if p.returncode == TIMEOUT:
-        raise RouterTimeout(f"{what}: {p.stderr}")
-    if p.returncode < 0:
-        raise RouterCrash(f"{what}: crash {first_error(p.stderr)[:200]}")
+    if failure := run_failure(p):
+        kind = RouterTimeout if failure[0] == "timeout" else RouterCrash
+        raise kind(f"{what}: {failure[0]} {failure[1]}")
     return p
 
 
@@ -6730,9 +6745,9 @@ def main(argv=None):
         tag = f"seed {c['seed']} ({c['shape']})"
         if p.returncode >= 0:
             check_inherent(tag, c, p.stderr)
-        if p.returncode < 0:
-            unknown_illegal.append(f"{tag}: crashed: {first_error(p.stderr)[:300]}")
-            save(c, "crash", c["design"].emit(), p.stderr)
+        if failure := run_failure(p):
+            unknown_illegal.append(f"{tag}: {failure[0]}: {failure[1]}")
+            save(c, failure[0], c["design"].emit(), p.stderr)
         elif p.returncode == 0:
             problems, _ = verify(c["design"], c["analysis"], p.stdout, c["hops_on"])
             if problems and (label := known_bug(c["design"], problems)):
@@ -6753,7 +6768,7 @@ def main(argv=None):
     report(
         "unknown-legality",
         not unknown_illegal,
-        f"{len(unknown_illegal)} illegal or crashed of {len(kcases)}",
+        f"{len(unknown_illegal)} illegal, crashed or timed out of {len(kcases)}",
     )
     for line in inherent_wrong[:10]:
         print("WRONG WARNING:", line)

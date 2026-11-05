@@ -236,13 +236,30 @@ def test_a_crash_retry_stops_by_the_deadline_and_keeps_the_crash():
 
 def test_every_judged_router_run_reads_a_crash_as_a_crash():
     nested = "module {" * 20000 + "}" * 20000
-    assert router_mutation.run_failure(rp.aie_opt(nested))[0] == "crash"
+    assert rp.run_failure(rp.aie_opt(nested))[0] == "crash"
     spent = rp.aie_opt(nested, deadline=time.monotonic())
-    assert router_mutation.run_failure(spent)[0] == "timeout"
+    assert rp.run_failure(spent)[0] == "timeout"
     # judge() routes twice: the design the verifier rejects, and any other.
     for fn, runs in ((router_mutation.judge, 2), (router_mutation.judge_strict, 1)):
         calls = [i for i in dis.get_instructions(fn) if i.argval == "run_failure"]
         assert len(calls) == runs, fn.__name__
+
+
+def test_a_lift_whose_find_flows_crashes_is_a_crash(priority):
+    d, routed = priority
+    nested = "module {" * 20000 + "}" * 20000
+    with pytest.raises(rp.RouterCrash):
+        router_mutation.r_lift(random.Random(0), d, nested)
+    _, _, check = router_mutation.r_lift(random.Random(0), d, routed)
+    with pytest.raises(rp.RouterCrash):
+        check(nested)
+
+
+def test_the_unknown_tier_names_a_timeout_a_timeout():
+    for fn in (rp.main, rp.model_run):
+        assert "run_failure" in code_names(fn.__code__), fn.__name__
+    spent = rp.aie_opt("module {}", deadline=time.monotonic())
+    assert rp.run_failure(spent)[0] == "timeout"
 
 
 def test_a_router_timeout_is_not_called_a_crash(priority):
