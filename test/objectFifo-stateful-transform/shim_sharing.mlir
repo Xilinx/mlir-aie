@@ -322,7 +322,7 @@ module @awaited {
 // Awaiting a sending end proves nothing: a shim MM2S task reports itself
 // complete before its words leave the shim, so each fill may still be in
 // flight when the next starts, and none share.
-// ERR: error: 'aie.tile' op number of output DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of output DMA channel exceeded!
 module @sending_awaited {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -364,7 +364,7 @@ module @sending_awaited {
 // wait on: a free does not wait for the transfer, so in_b may reach core b
 // while out_a's task still runs, and out_b's words would land in it. The
 // receiving ends keep channels of their own, and the tile runs out.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @freed {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -653,7 +653,7 @@ module @across_sequences {
 // The host awaits each drain before the next, but the cores wait on nothing:
 // out_b's core may send while out_a's drain runs, and the shim channel would
 // write it into out_a's buffer. None share.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @ungated {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -708,7 +708,7 @@ module @ungated {
 
 // in_b is filled before out_a is awaited, so out_b's core may send during
 // out_a's turn. None share.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @gate_filled_early {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -771,7 +771,7 @@ module @gate_filled_early {
 
 // in_a lets out_a's core send two objects, but the host drains one: the second
 // would land in out_b's turn. None share.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @overfilled {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -835,7 +835,7 @@ module @overfilled {
 // One drain per runtime sequence, but the cores wait on nothing and run on
 // across dispatches, so each may send during another sequence's drain.
 // None share.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @across_sequences_ungated {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -894,7 +894,7 @@ module @across_sequences_ungated {
 
 // A loop issues each transfer again after the others' waits, so the ends
 // inside it are in flight across one another's turns, and none share.
-// ERR: error: 'aie.tile' op number of output DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of output DMA channel exceeded!
 module @looped {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -938,7 +938,7 @@ module @looped {
 // -----
 
 // Nothing is awaited, so all three may be in flight at once.
-// ERR: error: 'aie.tile' op number of output DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of output DMA channel exceeded!
 module @overlapping {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -1041,7 +1041,7 @@ module @chain_in_flight {
 // out_b is drained and awaited only when %flag is set, yet in_b is filled
 // either way, so core b may send into the next dispatch's out_a task: out_b
 // keeps a channel of its own, and the tile runs out.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @drain_under_dynamic_if {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -1108,7 +1108,7 @@ module @drain_under_dynamic_if {
 
 // in_b's length is the runtime parameter @n, which may let core b send more
 // than out_b's task takes: out_b keeps a channel of its own.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+4]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @gate_length_parameter {
   aiex.scratchpad_parameter @n : i32
   aie.device(npu2_1col) {
@@ -1173,7 +1173,7 @@ module @gate_length_parameter {
 // out_a drains with two transfers but the host waits once, which takes one
 // token: the second may still run when in_b lets core b send, so out_b's
 // words could land in it. The ends keep channels of their own.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @second_unawaited {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -1236,7 +1236,7 @@ module @second_unawaited {
 // -----
 
 // The same with runtime tasks: two started on out_a, one awaited.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @second_task_unawaited_tasks {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)

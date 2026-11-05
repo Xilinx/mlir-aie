@@ -78,7 +78,7 @@ module @straight {
 
 // out_b is drained every dispatch but awaited only when %flag is set: an
 // await under a branch takes nothing, so out_b keeps a channel of its own.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @await_under_if {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)
@@ -142,7 +142,7 @@ module @await_under_if {
 
 // out_b is drained only when %flag is set and awaited after the branch: no
 // await can take an issue that may not run, so out_b keeps a channel too.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+3]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @issue_under_if {
   aie.device(npu2_1col) {
     %s = aie.tile(0, 0)

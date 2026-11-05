@@ -62,7 +62,7 @@ module @sender_keeps_up {
 // deep: a chain walking a, b, b would wait on a while the core waits for room
 // for its second b. So a and b do not take turns, and the receiver's three
 // inputs need three channels.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+5]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @sender_out_of_order {
   aie.device(npu2_1col) {
     %sh = aie.tile(0, 0)
@@ -246,7 +246,7 @@ module @memtile_sender_broadcasts {
 // The same, but the core makes b, b, b, a: with two one-deep pools between it
 // and the mem tile, its third b waits for room while the chain waits on a.
 // So a and b do not take turns, and the receiver needs three channels.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+6]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @memtile_sender_out_of_order {
   aie.device(npu2_1col) {
     %sh = aie.tile(0, 0)
@@ -307,7 +307,7 @@ module @memtile_sender_out_of_order {
 // back from the peers cannot name one core per peer. Both cores make b three
 // times before a while the receiver wants a first, so the ends do not take
 // turns.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+7]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @join_peers {
   aie.device(npu2_1col) {
     %sh = aie.tile(0, 0)
@@ -387,7 +387,7 @@ module @join_peers {
 // x, which s2 makes after its three b's. Taking turns a, b, b, b, the chain
 // waits on a, s1 on x, and s2 for room for its third b, so separate cores
 // do not let the ends take turns.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+7]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @own_cores_cross_dep {
   aie.device(npu2_1col) {
     %sh = aie.tile(0, 0)
@@ -516,7 +516,7 @@ module @shim_feeds_b {
 
 // The core feeding the peers sits two circuits back, through two mem tiles,
 // and makes b four times before a: too many for the pools on the way.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+7]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @two_hops_four_b {
   aie.device(npu2) {
     %sh = aie.tile(0, 0)
@@ -649,7 +649,7 @@ module @two_hops_out_of_order {
 // A core sends a and b through a mem tile that broadcasts each to two cores.
 // The walk down from the mem tile cannot follow a broadcast, so the core's
 // ends do not take turns.
-// ERR: error: 'aie.tile' op number of output DMA channel exceeded!
+// ERR: :[[@LINE+5]]:10: error: 'aie.tile' op number of output DMA channel exceeded!
 module @down_broadcast {
   aie.device(npu2_1col) {
     %sh = aie.tile(0, 0)
@@ -759,7 +759,7 @@ module @down_broadcast {
 // all its a's, before it fills b_up: with a and b taking turns the chain
 // waits on b, a's core on room for a, and the host on @o. The host must move
 // a shim-fed peer before it waits on anything, so a and b do not take turns.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+6]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @host_waits_on_peer_core {
   aie.device(npu2_1col) {
     %sh = aie.tile(0, 0)
@@ -818,7 +818,7 @@ module @host_waits_on_peer_core {
 
 // b_up is filled before the wait in each pass of the loop, but the second
 // pass fills after the first pass's wait: no turns.
-// ERR: error: 'aie.tile' op number of input DMA channel exceeded!
+// ERR: :[[@LINE+7]]:10: error: 'aie.tile' op number of input DMA channel exceeded!
 module @shim_fed_in_waiting_loop {
   aie.device(npu2_1col) {
     %sh = aie.tile(0, 0)
