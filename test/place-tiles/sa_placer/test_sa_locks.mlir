@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-place-tiles="placer=sa_placer sa-seed=1" --mlir-pass-statistics %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=STATS
 // RUN: aie-opt --split-input-file --pass-pipeline='builtin.module(aie.device(aie-place-tiles{placer=sa_placer sa-seed=1},aie-objectFifo-stateful-transform))' %s -o /dev/null
 
 // The SA counts the locks aie-objectfifo-allocate can place. @a at (0, 2)
@@ -18,6 +19,13 @@
 // With 14 segments on @a the locks fit with @b at row 3, which @ab prefers.
 // CHECK-LABEL: @lock_fits
 // CHECK: aie.objectfifo @b0(%tile_0_3
+
+// The SA counts the lock groups allocation makes: with @a and @b apart, @ab
+// has a pool at each end.
+// STATS: 28 sa-lock-groups
+// STATS-NEXT: 0 sa-lock-penalty
+// STATS: 26 sa-lock-groups
+// STATS-NEXT: 0 sa-lock-penalty
 
 module @lock_short {
   aie.device(npu1_1col) {

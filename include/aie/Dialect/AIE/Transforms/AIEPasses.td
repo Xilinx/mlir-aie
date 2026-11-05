@@ -117,6 +117,11 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,
+                    Statistic<"saLockGroups", "sa-lock-groups",
+                              "Lock groups the SA counts on the placement it "
+                              "kept">,
+                    Statistic<"saLockPenalty", "sa-lock-penalty",
+                              "SA lock penalty of the placement it kept">,
   ];
 }
 

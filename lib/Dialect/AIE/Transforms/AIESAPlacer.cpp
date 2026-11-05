@@ -2354,6 +2354,9 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
 
   // Generate allocates (state is fresh from initResourceTracking)
   generateAllocates();
+  for (auto &[pos, locks] : currentLockDemand)
+    finalLockGroups += locks / 2;
+  finalLockPenalty = computeLockPenalty();
 
   auto endTime = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(

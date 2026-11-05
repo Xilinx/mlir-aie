@@ -806,12 +806,15 @@ public:
   mlir::LogicalResult place(DeviceOp device) override;
   llvm::StringRef getName() const override { return "sa_placer"; }
   int getFinalCost() const { return finalCost; }
+  int getFinalLockGroups() const { return finalLockGroups; }
+  int getFinalLockPenalty() const { return finalLockPenalty; }
 
 private:
   // Configuration
   unsigned rngSeed;
   SAConfig config;
   int finalCost = 0;
+  int finalLockGroups = 0, finalLockPenalty = 0;
   std::mt19937 rng;
   SASchedule schedule;
 
