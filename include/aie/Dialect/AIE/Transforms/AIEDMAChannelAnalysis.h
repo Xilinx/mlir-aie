@@ -43,17 +43,28 @@ class DMAChannelAnalysis {
   };
   mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, StreamClaim>
       usedStreams;
-  /// The DMA program starts that claimed a channel, in program order.
-  llvm::SmallVector<DMAStartOp> claimingStarts;
+
+public:
+  /// A channel claimed by index: by a DMA program start, a runtime task or a
+  /// shim allocation, on `tile`.
+  struct ChannelClaim {
+    mlir::Value tile;
+    DMAChannelDir dir;
+    int channel;
+  };
+
+private:
+  /// Every claim that took a channel, in the order they were made.
+  llvm::SmallVector<ChannelClaim> claims;
+  void claim(mlir::Value tile, DMAChannelDir dir, int channel,
+             mlir::Operation *owner);
 
 public:
   DMAChannelAnalysis(DeviceOp &device);
 
-  /// The starts of DMA programs that claim a channel by index rather than
-  /// through a route endpoint, one per channel they claim, in program order.
-  llvm::ArrayRef<DMAStartOp> getClaimingStarts() const {
-    return claimingStarts;
-  }
+  /// The channels taken by index rather than through a route endpoint, one
+  /// per channel, in the order the claims were made.
+  llvm::ArrayRef<ChannelClaim> getChannelClaims() const { return claims; }
 
   /// Exclusive upper bound on channel indices eligible for this transfer.
   static int getDMAChannelLimit(TileLike tile, DMAChannelDir dir,

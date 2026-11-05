@@ -179,13 +179,13 @@ void SAPlacer::buildNetModel(SmallVector<ObjectFifoCreateOp> &objectFifos,
 // on its tile; a pool is bytes on its tile, and descriptors when the tile is a
 // mem tile. None of it needs the DMA-or-shared-memory guess a fifo needs: a
 // route already moves data by DMA.
-void SAPlacer::buildRouteModel(DeviceOp device, ArrayRef<FlowOp> flows,
-                               ArrayRef<PacketFlowOp> pktFlows,
-                               ArrayRef<RouteOp> routes,
-                               ArrayRef<DMAStartOp> starts) {
+void SAPlacer::buildRouteModel(
+    DeviceOp device, ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
+    ArrayRef<RouteOp> routes,
+    ArrayRef<DMAChannelAnalysis::ChannelClaim> claims) {
   routeEnds.clear();
   for (auto &[tile, inOut] :
-       flowChannelDemand(flows, pktFlows, routes, starts)) {
+       flowChannelDemand(flows, pktFlows, routes, claims)) {
     for (int i = 0; i < inOut.first; ++i)
       routeEnds.push_back({tile, /*output=*/false});
     for (int i = 0; i < inOut.second; ++i)
@@ -1526,7 +1526,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   buildNetModel(objectFifos, objectFifoLinks);
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
   buildRouteModel(device, collected.flows, collected.pktFlows, collected.routes,
-                  channelAnalysis.emplace(device).getClaimingStarts());
+                  channelAnalysis.emplace(device).getChannelClaims());
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },

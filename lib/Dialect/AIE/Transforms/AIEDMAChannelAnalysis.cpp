@@ -30,6 +30,12 @@ Value DMAChannelAnalysis::getTileKey(Value tile) {
   return tilesByCoordinate.try_emplace({*col, *row}, tile).first->second;
 }
 
+void DMAChannelAnalysis::claim(Value tile, DMAChannelDir dir, int channel,
+                               Operation *owner) {
+  if (usedChannels.try_emplace({getTileKey(tile), dir, channel}, owner).second)
+    claims.push_back({tile, dir, channel});
+}
+
 DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   for (auto program : device.getOps<DmaBody>()) {
     for (Block &block : program.getDmaBody()) {
@@ -37,13 +43,8 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
         // The route endpoint it names claims the channel; see assignChannels.
         if (start.getEndpoint())
           continue;
-        if (usedChannels
-                .try_emplace(std::make_tuple(getTileKey(program.getTile()),
-                                             start.getChannelDir(),
-                                             start.getChannelIndex()),
-                             start.getOperation())
-                .second)
-          claimingStarts.push_back(start);
+        claim(program.getTile(), start.getChannelDir(), start.getChannelIndex(),
+              start);
       }
     }
   }
@@ -90,10 +91,7 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   // A task the runtime sequence configures on a channel by index programs that
   // channel, as a DMA body would.
   device.walk([&](AIEX::DMAConfigureTaskOp task) {
-    usedChannels.try_emplace(std::make_tuple(getTileKey(task.getTile()),
-                                             task.getDirection(),
-                                             (int)task.getChannel()),
-                             task.getOperation());
+    claim(task.getTile(), task.getDirection(), (int)task.getChannel(), task);
   });
 
   for (auto flow : device.getOps<PacketFlowOp>()) {
@@ -112,10 +110,8 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 
   // Shim allocations reserve channels outside the DMA bodies above.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    usedChannels.try_emplace(std::make_tuple(getTileKey(allocOp.getTile()),
-                                             allocOp.getChannelDir(),
-                                             (int)allocOp.getChannelIndex()),
-                             allocOp.getOperation());
+    claim(allocOp.getTile(), allocOp.getChannelDir(),
+          (int)allocOp.getChannelIndex(), allocOp);
   }
 }
 
