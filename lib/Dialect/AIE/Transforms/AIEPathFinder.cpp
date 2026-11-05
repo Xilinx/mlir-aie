@@ -2478,9 +2478,10 @@ llvm::Error Pathfinder::routePart(RouteState &st, int flow) {
   return llvm::Error::success();
 }
 
-int Pathfinder::applyRoutingFaults(RouteState &st,
-                                   const RoutingFaults &faults) {
+int Pathfinder::applyRoutingFaults(RouteState &st, const RoutingFaults &faults,
+                                   int &pinnedOnly) {
   int illegalEdges = 0;
+  pinnedOnly = 0;
   for (const TreeSplit &split : faults.splits) {
     auto src = st.partsOf.find(split.src);
     if (src == st.partsOf.end())
@@ -2609,6 +2610,19 @@ int Pathfinder::applyRoutingFaults(RouteState &st,
     if (i < 0 || j < 0)
       continue;
     sb.at(i, j).overCapacity += routingCheckPenalty;
+    auto takes = [&](const Edge &e) {
+      return e.sb == &sb && e.i == i && e.j == j;
+    };
+    bool taken = false, pinnedTakesAll = true;
+    for (auto [k, part] : llvm::enumerate(st.parts))
+      if (llvm::any_of(st.circuitHops[k], takes) ||
+          llvm::any_of(st.treeOf[k], [&](const auto &hop) {
+            return takes(hop.second.second);
+          })) {
+        taken = true;
+        pinnedTakesAll &= st.isPinned(part);
+      }
+    pinnedOnly += taken && pinnedTakesAll;
     bool joined = false;
     for (auto [flow, hops] : llvm::enumerate(st.joinedHops))
       for (const auto &[other, e] : hops)
@@ -2909,8 +2923,10 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                   [&](std::unique_ptr<RoutingFailure> rejected) -> llvm::Error {
                     LLVM_DEBUG(llvm::dbgs() << "Routing rejected: "
                                             << rejected->reason << '\n');
-                    int lessons = st.lessons;
-                    illegalEdges += applyRoutingFaults(st, rejected->faults);
+                    int lessons = st.lessons, pinnedOnly = 0;
+                    int faulted =
+                        applyRoutingFaults(st, rejected->faults, pinnedOnly);
+                    illegalEdges += faulted;
                     if (illegalEdges < fewestRejected || st.lessons > lessons) {
                       fewestRejected = std::min(fewestRejected, illegalEdges);
                       sinceFewestRejected = 0;
@@ -2922,7 +2938,15 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                     overlayFaults = rejected->faults.onlyOverlayMasters
                                         ? overlayFaults + 1
                                         : 0;
-                    stuck = illegalEdges == 0 && st.lessons == lessons;
+                    // Penalties on connections only pinned trees take move
+                    // nothing, so such faults are as stuck as none.
+                    stuck = faulted == pinnedOnly && st.lessons == lessons;
+                    LLVM_DEBUG(
+                        if (stuck && pinnedOnly) llvm::dbgs()
+                        << "\t\tPathfinder: the routing check names only "
+                           "connections pinned trees take ("
+                        << pinnedOnly << ") after " << iterationCount
+                        << " iterations\n");
                     if (rejected->isA(DeadlockProneRouting::classID())) {
                       if (!usable) {
                         usable = st.routing;

@@ -451,8 +451,11 @@ private:
   // RoutingFailure if it reaches no path to a destination.
   llvm::Error routePart(RouteState &st, int flow);
   // Steer the next iteration away from what the routing check faulted.
-  // Returns the illegal edges the faults count as.
-  int applyRoutingFaults(RouteState &st, const RoutingFaults &faults);
+  // Returns the illegal edges the faults count as; `pinnedOnly` counts those
+  // of them that are connections only pinned trees take, which no penalty
+  // moves.
+  int applyRoutingFaults(RouteState &st, const RoutingFaults &faults,
+                         int &pinnedOnly);
   // A RoutingFailure saying why the last iteration's routing does not fit.
   llvm::Error explainNoRouting(const RouteState &st) const;
   // A RoutingFailure if the flows crossing some row or column boundary need
