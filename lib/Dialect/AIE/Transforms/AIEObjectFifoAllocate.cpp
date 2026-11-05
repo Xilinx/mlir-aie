@@ -961,6 +961,15 @@ struct AIEObjectFifoAllocatePass
     return failure(clash);
   }
 
+  /// Whether `endpoint` draws a DMA channel of its own: a core's stream port
+  /// is named by the design (checkStreamPorts has claimed it), and an end in
+  /// channelSharers takes another's channel, so neither is counted where
+  /// channels are planned.
+  bool drawsOwnChannel(RouteEndpoint endpoint) {
+    return endpoint.getRouteBundle() != WireBundle::Core &&
+           !channelSharers.contains(endpoint.getOperation());
+  }
+
   LogicalResult assignChannels(DMAChannelAnalysis &channels,
                                bool diagnose = true) {
     channelAssignments.clear();
@@ -988,10 +997,7 @@ struct AIEObjectFifoAllocatePass
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       std::optional<int> channel = endpoint.getRouteChannel();
-      // A core's stream port is named by the design, not drawn from the tile's
-      // DMA channels; checkStreamPorts has claimed it.
-      if (endpoint.getRouteBundle() == WireBundle::Core ||
-          channelSharers.count(endpoint.getOperation()))
+      if (!drawsOwnChannel(endpoint))
         continue;
 
       if (channel) {
@@ -1245,9 +1251,9 @@ struct AIEObjectFifoAllocatePass
                         });
   }
 
-  /// The DMA ends `dmas` of one mem tile and their pools, in structural
-  /// order, as a plan of the tile's BD ids weighs them with every buffer at
-  /// home.
+  /// The DMA ends `dmas` of one mem tile that draw a channel of their own,
+  /// and their pools in structural order, as a plan of the tile's BD ids
+  /// weighs them with every buffer at home.
   struct HomeBDPlan {
     SmallVector<ObjectFifoPoolOp> pools;
     SmallVector<DMAChannelAnalysis::BDWalkPool> walkable;
@@ -1267,6 +1273,8 @@ struct AIEObjectFifoAllocatePass
           {pool.getDepth(), pool.getObjectSizeInBytes(), canWalkWhole(pool)});
     for (auto dma : dmas) {
       auto endpoint = cast<RouteEndpoint>(dma.getOperation());
+      if (!drawsOwnChannel(endpoint))
+        continue;
       DMAChannelDir dir = endpoint.getRouteDirection();
       plan.ends.push_back({dir, dma.getNumBDs(),
                            DMAChannelAnalysis::getDMAChannelLimit(
