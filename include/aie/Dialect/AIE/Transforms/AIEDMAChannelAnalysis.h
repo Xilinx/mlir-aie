@@ -107,9 +107,10 @@ public:
   };
 
   /// The walkable pool not yet `whole` to walk next: the deepest, then the one
-  /// whose ends take the most BD ids, then the one with the smallest objects;
-  /// `pools` order decides only between pools alike in all three. Nothing
-  /// when none is left.
+  /// with the smallest objects, since a whole buffer that fits nowhere ends
+  /// the search while too few BD ids only walk another, then the one whose
+  /// ends take the most BD ids; `pools` order decides only between pools
+  /// alike in all three. Nothing when none is left.
   static std::optional<unsigned>
   nextPoolToWalk(llvm::ArrayRef<BDPlanEnd> ends,
                  llvm::ArrayRef<unsigned> poolOf,

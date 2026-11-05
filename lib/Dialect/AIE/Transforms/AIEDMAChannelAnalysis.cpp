@@ -377,8 +377,8 @@ std::optional<unsigned> DMAChannelAnalysis::nextPoolToWalk(
   for (auto [end, pool] : llvm::zip_equal(ends, poolOf))
     bds[pool] += end.bds;
   auto key = [&](unsigned pool) {
-    return std::make_tuple(pools[pool].depth, bds[pool],
-                           -pools[pool].objectBytes);
+    return std::make_tuple(pools[pool].depth, -pools[pool].objectBytes,
+                           bds[pool]);
   };
   std::optional<unsigned> next;
   for (unsigned pool = 0, e = pools.size(); pool < e; ++pool)
