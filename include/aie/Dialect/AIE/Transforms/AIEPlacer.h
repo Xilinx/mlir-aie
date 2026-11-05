@@ -921,7 +921,6 @@ private:
   void initializeSAState();
   void runSAMainLoop();
   mlir::LogicalResult finalizePlacement(DeviceOp device);
-  mlir::LogicalResult mergeMemShimTiles(DeviceOp device);
 
   // Cost and resource methods
   void initResourceTracking();
