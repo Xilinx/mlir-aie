@@ -808,6 +808,34 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "sa-placer",
+   "id": "41981794211",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41981794211",
+   "date": "2026-11-05T06:38:42+00:00",
+   "commit": {
+    "id": "2e8434adf0cdfb9010862a3fba8afdc50396758d",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/2e8434adf0cdfb9010862a3fba8afdc50396758d",
+    "message": "[cert] Add debug record ops save_timestamps and save_register (#4017)",
+    "timestamp": "2026-11-04T19:13:07Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "AMD EPYC 7763 64-Core Processor",
+   "device_raw": null,
+   "provenance": {
+    "commit": "2e8434adf0",
+    "fixtures": "9b6b41d42657",
+    "cpu": "AMD EPYC 7763 64-Core Processor"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 12,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }

@@ -584,6 +584,40 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "yolo26n-hw",
+   "id": "41981794211",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41981794211",
+   "date": "2026-11-05T06:38:42+00:00",
+   "commit": {
+    "id": "2e8434adf0cdfb9010862a3fba8afdc50396758d",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/2e8434adf0cdfb9010862a3fba8afdc50396758d",
+    "message": "[cert] Add debug record ops save_timestamps and save_register (#4017)",
+    "timestamp": "2026-11-04T19:13:07Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Krackan",
+   "device_raw": "NPU Krackan 1",
+   "provenance": {
+    "commit": "2e8434adf0",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "a6d60d5d2bde",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie8",
+    "device": "NPU Krackan 1",
+    "pmode": "turbo"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 68,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
