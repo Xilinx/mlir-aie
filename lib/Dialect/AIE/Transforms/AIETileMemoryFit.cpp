@@ -73,7 +73,10 @@ llvm::SmallVector<int, 2> xilinx::AIE::banksFromMemorySpace(mlir::Type type) {
   if (!space) {
     return {};
   }
-  int64_t value = space.getInt();
+  return banksOfMemorySpace(space.getInt());
+}
+
+llvm::SmallVector<int, 2> xilinx::AIE::banksOfMemorySpace(int64_t value) {
   if (value >= 5 && value <= 8) {
     return {static_cast<int>(value - 5)};
   }

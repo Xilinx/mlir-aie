@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
+#include "aie/Dialect/AIE/Transforms/AIETileMemoryFit.h"
 #include "llvm/ADT/MapVector.h"
 
 #include <array>
@@ -817,6 +818,16 @@ private:
   llvm::DenseMap<mlir::Operation *, AIETileType> tileTypes;
   llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
   llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
+  // What aie-assign-buffer-addresses lays out on each logical core tile
+  // wherever it sits, besides its fifos' objects.
+  struct CoreMemory {
+    bool core = false;
+    llvm::SmallVector<MemoryRun> pinned;
+    MemoryRun stack;
+    std::optional<int> stackBank;
+    llvm::SmallVector<FitBuffer> buffers;
+  };
+  llvm::DenseMap<mlir::Operation *, CoreMemory> coreMemory;
 
   // Net model
   struct FifoBufferInfo {
@@ -826,6 +837,10 @@ private:
     mlir::Operation *delegate = nullptr;
     int64_t producerSizeBytes = 0;
     int64_t consumerSizeBytes = 0;
+    // An object's bytes on each end before alignment, and its memory space.
+    int64_t producerObjectBytes = 0;
+    int64_t consumerObjectBytes = 0;
+    int64_t objectSpace = 0;
     // ObjectFifoCreateOp::sharedDepth() and dmaDepth() of each end.
     int sharedDepth = 0;
     int producerDepth = 0;
@@ -874,6 +889,18 @@ private:
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>>
       tileToFifoIndices;
   llvm::DenseMap<TileID, int64_t> currentMemUsage;
+  // The fifo objects at each position: how many of each bytes and memory
+  // space.
+  using ObjectCounts = std::map<std::pair<int64_t, int64_t>, int>;
+  llvm::DenseMap<TileID, ObjectCounts> currentObjects;
+  // The bytes aie-assign-buffer-addresses leaves unplaced on a core
+  // position, by what it holds.
+  mutable std::map<std::vector<int64_t>, int64_t> coreFitCache;
+  // What coreUnplacedBytes gives each position for what it holds now, and
+  // the object changes the move being weighed made, to undo on rejection.
+  mutable llvm::DenseMap<TileID, int64_t> unplacedAt;
+  llvm::SmallVector<std::tuple<TileID, std::pair<int64_t, int64_t>, int>>
+      objectsUndo;
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
   llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
@@ -951,7 +978,17 @@ private:
   /// The logical mem tiles at `position`, in memTileEnds order.
   llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
   int computeMemSpilloverPenalty();
-  int computeCoreOverflowPenalty() const;
+  /// The bytes aie-assign-buffer-addresses cannot place at core position
+  /// `pos` holding the logical tile there and fifo objects `objects`; 0 when
+  /// they all fit.
+  int64_t coreUnplacedBytes(TileID pos, const ObjectCounts &objects) const;
+  /// The intra-tile fifos generateAllocates moves to a neighbour's memory,
+  /// and the penalty for what still does not fit.
+  struct CoreFitPlan {
+    int penalty = 0;
+    llvm::SmallVector<std::pair<size_t, TileID>> moves;
+  };
+  CoreFitPlan planCoreFit() const;
   /// Fills `dmaPenaltyAt` and returns its sum.
   int computeDMAChannelPenalty();
   int computeTileDMAPenalty(TileID tilePos) const;

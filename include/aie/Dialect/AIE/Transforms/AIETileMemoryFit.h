@@ -263,6 +263,7 @@ struct FitResult {
 
 /// The banks a buffer's memory space pins it to, empty when it pins none.
 llvm::SmallVector<int, 2> banksFromMemorySpace(mlir::Type type);
+llvm::SmallVector<int, 2> banksOfMemorySpace(int64_t space);
 
 /// The alignment, in bytes, a buffer of `size` is placed at.
 int64_t fitAlignBytes(bool aligned, uint32_t tileAlignBitWidth,
