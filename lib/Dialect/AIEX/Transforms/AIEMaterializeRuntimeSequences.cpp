@@ -451,7 +451,7 @@ static LogicalResult inlineReferencedSymbolDefinitions(
         for (auto proof : proofs.getAsRange<AIE::ConsumedByAttr>())
           stamped.push_back(AIE::ConsumedByAttr::get(
               proof.getContext(), proof.getOutput(), proof.getInputBytes(),
-              proof.getOutputBytes(),
+              proof.getOutputBytes(), proof.getGranuleBytes(),
               proof.getDevice()
                   ? proof.getDevice()
                   : FlatSymbolRefAttr::get(callee.getSymNameAttr())));

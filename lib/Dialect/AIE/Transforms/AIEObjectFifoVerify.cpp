@@ -289,147 +289,268 @@ static std::optional<int64_t> tripCount(scf::ForOp forOp, DeviceOp device) {
   return *value > *lower ? (*value - *lower + *step - 1) / *step : 0;
 }
 
-/// Objects of the fifo `in` a core newly takes, and of `out` it releases, in
-/// one pass of `loop`, when that pass takes its share of `in` ahead of each
-/// release: then once the core has released r objects of `out` in such
-/// passes, it has taken at least r * in / out of `in`. Unknown when the pass
-/// holds objects across passes, or reaches `uses` under a branch or a loop
-/// whose count `tripCount` cannot tell.
-static std::optional<std::pair<int64_t, int64_t>>
-loopRatio(DeviceOp device, Operation *loop, StringRef in, StringRef out,
-          ArrayRef<Operation *> uses) {
-  auto fifoOf = [](Operation *op) -> StringRef {
+/// How many objects of the fifo `in` a core has taken, at least, for each
+/// object of `out` it has released, at every point of its program: once it
+/// has released r objects of `out`, it has taken r * in / out of `in`.
+///
+/// Each region of the core is summarized by two sets of (taken, released)
+/// pairs: for a ratio k, the smallest taken - k * released over `end` bounds
+/// that value where the region ends, and over `low` at every point inside it,
+/// on every path. A branch may take either arm and a loop whose trip count
+/// `tripCount` cannot tell may run any number of times, so the ratio holds
+/// whatever decides them. Unknown when a branch's arms, or the passes of a
+/// loop whose count is unknown, leave different objects held, or when `in` or
+/// `out` is used under any other region.
+class TakeRatio {
+public:
+  TakeRatio(DeviceOp device, StringRef in, StringRef out)
+      : device(device), in(in), out(out) {}
+
+  std::optional<std::pair<int64_t, int64_t>> of(CoreOp core) {
+    core.walk([&](Operation *op) {
+      if (fifoOf(op) != in && fifoOf(op) != out)
+        return;
+      for (Operation *parent = op->getParentOp(); parent != core;
+           parent = parent->getParentOp())
+        onUsePath.insert(parent);
+      used = true;
+    });
+    Region &body = core.getBody();
+    if (!used || !body.hasOneBlock())
+      return std::nullopt;
+    Held held;
+    std::optional<Effect> effect = analyze(body.front(), held);
+    if (!effect)
+      return std::nullopt;
+    std::optional<Pair> least;
+    for (const Pair &pair : llvm::concat<const Pair>(effect->low, bounds))
+      if (pair.released > 0 && (!least || pair.taken * least->released <
+                                              least->taken * pair.released))
+        least = pair;
+    if (!least || least->taken == 0)
+      return std::nullopt;
+    int64_t common = std::gcd(least->taken, least->released);
+    return std::make_pair(least->taken / common, least->released / common);
+  }
+
+private:
+  struct Pair {
+    int64_t taken, released;
+  };
+  struct Effect {
+    SmallVector<Pair> end = {{0, 0}}, low = {{0, 0}};
+  };
+  struct Held {
+    int64_t in = 0, out = 0;
+    bool operator==(const Held &other) const {
+      return in == other.in && out == other.out;
+    }
+  };
+  static constexpr size_t maxPairs = 64;
+  static constexpr int64_t maxPeeledPasses = 4096;
+
+  static StringRef fifoOf(Operation *op) {
     if (auto acquire = dyn_cast<ObjectFifoAcquireOp>(op))
       return acquire.getObjFifoName();
     if (auto release = dyn_cast<ObjectFifoReleaseOp>(op))
       return release.getObjFifoName();
     return {};
-  };
-  struct Event {
-    bool ofIn, acquire;
-    int64_t count;
-  };
-  constexpr size_t maxPassEvents = 4096;
-  SmallVector<Event> pass;
-  std::function<bool(Block &)> unroll = [&](Block &block) {
+  }
+
+  // Keeps the pairs no other bounds from below: one with no more taken and no
+  // fewer released gives a smaller taken - k * released for every k >= 0.
+  std::optional<SmallVector<Pair>> prune(ArrayRef<Pair> pairs) {
+    SmallVector<Pair> kept;
+    for (auto [index, pair] : llvm::enumerate(pairs)) {
+      bool dominated = false;
+      for (auto [other, by] : llvm::enumerate(pairs))
+        dominated |= other != index && by.taken <= pair.taken &&
+                     by.released >= pair.released &&
+                     (by.taken != pair.taken || by.released != pair.released ||
+                      other < index);
+      if (!dominated)
+        kept.push_back(pair);
+    }
+    if (kept.size() > maxPairs)
+      return std::nullopt;
+    return kept;
+  }
+
+  std::optional<SmallVector<Pair>> sum(ArrayRef<Pair> a, ArrayRef<Pair> b) {
+    SmallVector<Pair> sums;
+    for (const Pair &x : a)
+      for (const Pair &y : b) {
+        Pair both;
+        if (llvm::AddOverflow(x.taken, y.taken, both.taken) ||
+            llvm::AddOverflow(x.released, y.released, both.released))
+          return std::nullopt;
+        sums.push_back(both);
+      }
+    return prune(sums);
+  }
+
+  std::optional<SmallVector<Pair>> scale(ArrayRef<Pair> pairs, int64_t n) {
+    SmallVector<Pair> scaled;
+    for (const Pair &pair : pairs) {
+      Pair times;
+      if (llvm::MulOverflow(pair.taken, n, times.taken) ||
+          llvm::MulOverflow(pair.released, n, times.released))
+        return std::nullopt;
+      scaled.push_back(times);
+    }
+    return scaled;
+  }
+
+  std::optional<Effect> then(const Effect &first, const Effect &second) {
+    std::optional<SmallVector<Pair>> end = sum(first.end, second.end);
+    std::optional<SmallVector<Pair>> late = sum(first.end, second.low);
+    if (!end || !late)
+      return std::nullopt;
+    std::optional<SmallVector<Pair>> low =
+        prune(llvm::to_vector(llvm::concat<const Pair>(first.low, *late)));
+    if (!low)
+      return std::nullopt;
+    return Effect{*end, *low};
+  }
+
+  std::optional<Effect> either(const Effect &a, const Effect &b) {
+    std::optional<SmallVector<Pair>> end =
+        prune(llvm::to_vector(llvm::concat<const Pair>(a.end, b.end)));
+    std::optional<SmallVector<Pair>> low =
+        prune(llvm::to_vector(llvm::concat<const Pair>(a.low, b.low)));
+    if (!end || !low)
+      return std::nullopt;
+    return Effect{*end, *low};
+  }
+
+  // `n` >= 1 passes of `pass`, each starting with the objects it ends with
+  // held: the value at a point of pass j is j times a pass's end plus a point
+  // of one pass, smallest at j = 0 or j = n - 1.
+  std::optional<Effect> repeat(const Effect &pass, int64_t n) {
+    std::optional<SmallVector<Pair>> end = scale(pass.end, n);
+    std::optional<SmallVector<Pair>> before = scale(pass.end, n - 1);
+    std::optional<SmallVector<Pair>> late =
+        before ? sum(*before, pass.low) : std::nullopt;
+    if (!end || !late)
+      return std::nullopt;
+    std::optional<SmallVector<Pair>> low =
+        prune(llvm::to_vector(llvm::concat<const Pair>(pass.low, *late)));
+    std::optional<SmallVector<Pair>> ends = prune(*end);
+    if (!low || !ends)
+      return std::nullopt;
+    return Effect{*ends, *low};
+  }
+
+  // Any number of passes: the ratio must keep each pass's end at or above
+  // its start, recorded in `bounds`; then a point of pass j is no lower than
+  // a point of one pass, and the end no lower than the start.
+  Effect anyRepeat(const Effect &pass) {
+    llvm::append_range(bounds, pass.end);
+    Effect any;
+    llvm::append_range(any.low, pass.low);
+    return any;
+  }
+
+  std::optional<Effect> analyze(Block &block, Held &held) {
+    Effect effect;
     for (Operation &op : block) {
-      StringRef fifo = fifoOf(&op);
-      if (fifo == in || fifo == out) {
-        auto acquire = dyn_cast<ObjectFifoAcquireOp>(op);
-        pass.push_back({fifo == in, static_cast<bool>(acquire),
-                        acquire ? acquire.acqNumber()
-                                : cast<ObjectFifoReleaseOp>(op).relNumber()});
-        if (pass.size() > maxPassEvents)
-          return false;
-        continue;
-      }
-      if (llvm::none_of(
-              uses, [&](Operation *use) { return op.isProperAncestor(use); }))
-        continue;
-      auto forOp = dyn_cast<scf::ForOp>(op);
-      std::optional<int64_t> trip =
-          forOp ? tripCount(forOp, device) : std::nullopt;
-      if (!trip || *trip > static_cast<int64_t>(maxPassEvents))
-        return false;
-      for (int64_t i = 0; i < *trip; i++)
-        if (!unroll(*forOp.getBody()))
-          return false;
+      std::optional<Effect> step = analyzeOp(op, held);
+      if (!step)
+        return std::nullopt;
+      std::optional<Effect> next = then(effect, *step);
+      if (!next)
+        return std::nullopt;
+      effect = *next;
     }
-    return true;
-  };
-  for (Region *region : cast<LoopLikeOpInterface>(loop).getLoopRegions())
-    for (Block &block : *region)
-      if (!unroll(block))
-        return std::nullopt;
+    return effect;
+  }
 
-  // The first walk totals the pass; the second checks each release against
-  // those totals.
-  int64_t taken = 0, released = 0;
-  for (int walk = 0; walk < 2; walk++) {
-    int64_t totalTaken = taken, totalReleased = released;
-    int64_t heldIn = 0, heldOut = 0;
-    taken = released = 0;
-    for (const Event &event : pass) {
-      int64_t &held = event.ofIn ? heldIn : heldOut;
-      if (event.acquire) {
-        if (event.ofIn)
-          taken += std::max<int64_t>(0, event.count - held);
-        held = std::max(held, event.count);
-        continue;
+  std::optional<Effect> analyzeOp(Operation &op, Held &held) {
+    StringRef fifo = fifoOf(&op);
+    if (fifo == in || fifo == out) {
+      int64_t &count = fifo == in ? held.in : held.out;
+      Effect effect;
+      if (auto acquire = dyn_cast<ObjectFifoAcquireOp>(op)) {
+        int64_t wanted = acquire.acqNumber();
+        if (fifo == in)
+          effect.end = {{std::max<int64_t>(0, wanted - count), 0}};
+        count = std::max(count, wanted);
+        return effect;
       }
-      if (event.count > held)
+      int64_t released = cast<ObjectFifoReleaseOp>(op).relNumber();
+      if (released > count)
         return std::nullopt;
-      held -= event.count;
-      if (event.ofIn)
-        continue;
-      released += event.count;
-      if (walk == 1 && released * totalTaken > taken * totalReleased)
-        return std::nullopt;
+      count -= released;
+      if (fifo == out) {
+        effect.end = {{0, released}};
+        effect.low.push_back({0, released});
+      }
+      return effect;
     }
-    if (heldIn || heldOut || !taken || !released)
-      return std::nullopt;
-  }
-  return std::make_pair(taken, released);
-}
-
-/// How many objects of `in` a core takes, at least, per objects of `out` it
-/// releases: the ratio one pass of the innermost loop around all their accesses
-/// gives, or else the smallest one pass of any loop directly around some of
-/// them gives, when each loop's passes stand alone. Passes of either kind
-/// interleave in any order and each keeps its ratio, so the total does too.
-static std::optional<std::pair<int64_t, int64_t>>
-passRatio(DeviceOp device, CoreOp core, StringRef in, StringRef out) {
-  SmallVector<Operation *> uses;
-  core.walk([&](Operation *op) {
-    StringRef fifo;
-    if (auto acquire = dyn_cast<ObjectFifoAcquireOp>(op))
-      fifo = acquire.getObjFifoName();
-    else if (auto release = dyn_cast<ObjectFifoReleaseOp>(op))
-      fifo = release.getObjFifoName();
-    if (!fifo.empty() && (fifo == in || fifo == out))
-      uses.push_back(op);
-  });
-  if (uses.empty())
+    if (!onUsePath.contains(&op))
+      return Effect();
+    if (auto forOp = dyn_cast<scf::ForOp>(op)) {
+      std::optional<int64_t> trip = tripCount(forOp, device);
+      Held entry = held;
+      if (!trip) {
+        std::optional<Effect> pass = analyze(*forOp.getBody(), held);
+        if (!pass || !(held == entry))
+          return std::nullopt;
+        return anyRepeat(*pass);
+      }
+      Effect total;
+      for (int64_t done = 0; done < *trip; ++done) {
+        Held before = held;
+        std::optional<Effect> pass = analyze(*forOp.getBody(), held);
+        std::optional<Effect> rest = pass;
+        // Any number of passes covers this many, where counting overflows.
+        if (pass && held == before) {
+          rest = repeat(*pass, *trip - done);
+          if (!rest)
+            rest = anyRepeat(*pass);
+        }
+        std::optional<Effect> next = rest ? then(total, *rest) : std::nullopt;
+        if (!next || (!(held == before) && done >= maxPeeledPasses))
+          return std::nullopt;
+        total = *next;
+        if (held == before)
+          break;
+      }
+      return total;
+    }
+    if (auto ifOp = dyn_cast<scf::IfOp>(op)) {
+      Held otherwise = held;
+      std::optional<Effect> taken = analyze(ifOp.getThenRegion().front(), held);
+      std::optional<Effect> skipped =
+          ifOp.getElseRegion().empty()
+              ? Effect()
+              : analyze(ifOp.getElseRegion().front(), otherwise);
+      if (!taken || !skipped || !(held == otherwise))
+        return std::nullopt;
+      return either(*taken, *skipped);
+    }
+    if (auto whileOp = dyn_cast<scf::WhileOp>(op)) {
+      Held entry = held;
+      std::optional<Effect> check = analyze(*whileOp.getBeforeBody(), held);
+      Held afterCheck = held;
+      std::optional<Effect> body =
+          check ? analyze(*whileOp.getAfterBody(), held) : std::nullopt;
+      if (!body || !(held == entry))
+        return std::nullopt;
+      held = afterCheck;
+      std::optional<Effect> pass = then(*body, *check);
+      return pass ? then(*check, anyRepeat(*pass)) : std::nullopt;
+    }
     return std::nullopt;
-  auto innermostLoop = [&](Operation *from, auto encloses) -> Operation * {
-    for (Operation *op = from->getParentOp(); op && op != core;
-         op = op->getParentOp())
-      if (isa<LoopLikeOpInterface>(op) && encloses(op))
-        return op;
-    return nullptr;
-  };
-  if (Operation *loop = innermostLoop(uses.front(), [&](Operation *op) {
-        return llvm::all_of(
-            uses, [&](Operation *use) { return op->isProperAncestor(use); });
-      }))
-    if (auto ratio = loopRatio(device, loop, in, out, uses))
-      return ratio;
+  }
 
-  llvm::MapVector<Operation *, SmallVector<Operation *>> byLoop;
-  for (Operation *use : uses) {
-    Operation *loop = innermostLoop(use, [](Operation *) { return true; });
-    if (!loop)
-      return std::nullopt;
-    byLoop[loop].push_back(use);
-  }
-  if (byLoop.size() < 2)
-    return std::nullopt;
-  std::optional<std::pair<int64_t, int64_t>> least;
-  for (auto &[loop, loopUses] : byLoop) {
-    Operation *outer = loop;
-    if (llvm::any_of(byLoop, [&](auto &other) {
-          return other.first != outer && outer->isProperAncestor(other.first);
-        }))
-      return std::nullopt;
-    std::optional<std::pair<int64_t, int64_t>> ratio =
-        loopRatio(device, loop, in, out, loopUses);
-    if (!ratio)
-      return std::nullopt;
-    if (!least || ratio->first * least->second < least->first * ratio->second)
-      least = ratio;
-  }
-  return least;
-}
+  DeviceOp device;
+  StringRef in, out;
+  llvm::SmallPtrSet<Operation *, 16> onUsePath;
+  bool used = false;
+  // Pass ends of loops that may run any number of times.
+  SmallVector<Pair> bounds;
+};
 
 struct AIEObjectFifoVerifyPass
     : public xilinx::AIE::impl::AIEObjectFifoVerifyBase<
@@ -1164,10 +1285,14 @@ struct AIEObjectFifoVerifyPass
 
   /// A place the bytes some endpoint sends reach: once `far` has taken some
   /// of them, the endpoint has sent at least `inBytes` for every `outBytes`
-  /// taken.
+  /// taken. With a nonzero `lagObject`, they pass a later segment of a join
+  /// on the way, whose drainer takes `lagObject` bytes an object and has taken
+  /// at least `lagIn` for every `lagOut` `far` took: that holds in whole
+  /// objects of the join only (see recordConsumption's granule).
   struct Reach {
     Operation *far;
     int64_t inBytes, outBytes;
+    int64_t lagObject = 0, lagIn = 0, lagOut = 0;
   };
 
   static int64_t segmentBytes(ObjectFifoPoolOp pool,
@@ -1219,9 +1344,11 @@ struct AIEObjectFifoVerifyPass
       Operation *dest = SymbolTable::lookupNearestSymbolFrom(
           device, StringAttr::get(device.getContext(), name));
       if (auto shim = dyn_cast_or_null<RouteEndpointOp>(dest)) {
+        Reach at = scale;
+        at.far = shim;
         if (shim.getBundle() == WireBundle::DMA &&
             shim.getTileLike().isShimTile())
-          reaches.push_back({shim, scale.inBytes, scale.outBytes});
+          reaches.push_back(at);
         continue;
       }
       auto fill = dyn_cast_or_null<ObjectFifoDmaEndpointOp>(dest);
@@ -1258,18 +1385,36 @@ struct AIEObjectFifoVerifyPass
           continue;
         bool split = drained.size() == 1 && drained.front() == filled.back();
         bool join = filled.size() == 1 && filled.front() == drained.front();
-        if (drained != filled && !split && !join)
+        // A later segment of a join is taken only after those ahead of it in
+        // each object (a join's drainer reads its segments in order, any
+        // transform staying within each), so its progress shows in whole
+        // objects alone; one such segment per path.
+        bool laterJoin = dma && filled.size() == 1 && !join &&
+                         llvm::is_contained(drained, filled.front());
+        if ((drained != filled && !split && !join && !laterJoin) ||
+            (laterJoin && scale.lagObject))
           continue;
         int64_t in = objectBytes(fill);
         int64_t out = core ? segmentBytes(pool, drained) : objectBytes(dma);
-        Reach next{drainer, 0, 0};
+        Reach next = scale;
+        next.far = drainer;
         if (in <= 0 || out <= 0 ||
             llvm::MulOverflow(scale.inBytes, in, next.inBytes) ||
-            llvm::MulOverflow(scale.outBytes, out, next.outBytes))
+            llvm::MulOverflow(scale.outBytes, out, next.outBytes) ||
+            (scale.lagObject &&
+             (llvm::MulOverflow(scale.lagIn, in, next.lagIn) ||
+              llvm::MulOverflow(scale.lagOut, out, next.lagOut))))
           continue;
         int64_t common = std::gcd(next.inBytes, next.outBytes);
         next.inBytes /= common;
         next.outBytes /= common;
+        if (laterJoin)
+          next = {next.far, next.inBytes, next.outBytes, out, 1, 1};
+        if (next.lagObject) {
+          int64_t lagCommon = std::gcd(next.lagIn, next.lagOut);
+          next.lagIn /= lagCommon;
+          next.lagOut /= lagCommon;
+        }
         if (core)
           reaches.push_back(next);
         else
@@ -1281,27 +1426,44 @@ struct AIEObjectFifoVerifyPass
 
   /// Records on each shim input the shim outputs whose progress proves it
   /// consumed (#aie.consumed_by). Its bytes reach such an output; or they
-  /// reach a core that, in each pass of the loop around its accesses, takes
+  /// reach a core that, on every path through its program (TakeRatio), takes
   /// its share of them before each release into a fifo whose bytes reach the
   /// output, or another such core. A shim input sends a byte before anything
   /// downstream can take it, and the host receives a byte only after the
   /// cores released it, so once the output has received R bytes the input's
-  /// first R * in / out have been sent.
+  /// first R * in / out have been sent; with a granule (see carries), R
+  /// rounded down to a multiple of it.
   void recordConsumption(DeviceOp device, const PoolActors &actors) {
     MLIRContext *ctx = device.getContext();
+    struct Share {
+      int64_t in, out, granule;
+    };
     for (auto input : device.getOps<RouteEndpointOp>()) {
       if (input.getBundle() != WireBundle::DMA ||
           !input.getTileLike().isShimTile())
         continue;
-      // The most bytes the input is proven to have sent for every `out` each
-      // output received, as (in, out); a smaller share follows from it.
-      llvm::MapVector<Operation *, std::pair<int64_t, int64_t>> proofs;
-      auto prove = [&](RouteEndpointOp output, int64_t in, int64_t out) {
-        auto [it, inserted] = proofs.try_emplace(output, in, out);
+      // Per output, one proof: one without a granule where there is one, else
+      // the most bytes for every `out` received, then the smallest granule.
+      llvm::MapVector<Operation *, Share> proofs;
+      auto prove = [&](RouteEndpointOp output, const Reach &reach) {
+        Share share{reach.inBytes, reach.outBytes, 0};
+        if (reach.lagObject) {
+          // The smallest R with R * lagIn a multiple of lagOut * lagObject.
+          int64_t whole;
+          if (llvm::MulOverflow(reach.lagOut, reach.lagObject, whole))
+            return;
+          share.granule = whole / std::gcd(whole, reach.lagIn);
+        }
+        auto [it, inserted] = proofs.try_emplace(output, share);
+        const Share &old = it->second;
         int64_t lhs, rhs;
-        if (!inserted && !llvm::MulOverflow(in, it->second.second, lhs) &&
-            !llvm::MulOverflow(it->second.first, out, rhs) && lhs > rhs)
-          it->second = {in, out};
+        if (inserted || llvm::MulOverflow(share.in, old.out, lhs) ||
+            llvm::MulOverflow(old.in, share.out, rhs))
+          return;
+        if ((old.granule && !share.granule) ||
+            (!old.granule == !share.granule &&
+             (lhs > rhs || (lhs == rhs && share.granule < old.granule))))
+          it->second = share;
       };
       SmallVector<Reach> reaches;
       llvm::SmallPtrSet<Operation *, 8> onPath;
@@ -1316,7 +1478,7 @@ struct AIEObjectFifoVerifyPass
       while (!work.empty()) {
         auto [reach, hops] = work.pop_back_val();
         if (auto output = dyn_cast<RouteEndpointOp>(reach.far)) {
-          prove(output, reach.inBytes, reach.outBytes);
+          prove(output, reach);
           continue;
         }
         if (hops == maxCoreHops)
@@ -1342,8 +1504,9 @@ struct AIEObjectFifoVerifyPass
               it->second.front().drainers.size() != 1)
             continue;
           Operation *drainer = it->second.front().drainers.front();
-          std::optional<std::pair<int64_t, int64_t>> ratio = passRatio(
-              device, core, consumer.getSymName(), producer.getSymName());
+          std::optional<std::pair<int64_t, int64_t>> ratio =
+              TakeRatio(device, consumer.getSymName(), producer.getSymName())
+                  .of(core);
           if (!ratio)
             continue;
           // Once the next place has taken X bytes, the drainer sent X *
@@ -1365,14 +1528,16 @@ struct AIEObjectFifoVerifyPass
           // A core sharing the pool's memory takes what this one released.
           SmallVector<Reach> nexts;
           if (!dma) {
-            nexts.push_back({drainer, 1, 1});
+            nexts.push_back({drainer, 1, 1, 0, 0, 0});
           } else {
             llvm::SmallPtrSet<Operation *, 8> outPath;
             carries(device, dma.getSymNameAttr(), actors, {nullptr, 1, 1},
                     outPath, nexts);
           }
           for (const Reach &next : nexts) {
-            Reach composed{next.far, 0, 0};
+            if (reach.lagObject && next.lagObject)
+              continue;
+            Reach composed = next;
             if (llvm::MulOverflow(next.inBytes, taken, composed.inBytes) ||
                 llvm::MulOverflow(composed.inBytes, reach.inBytes,
                                   composed.inBytes) ||
@@ -1383,6 +1548,21 @@ struct AIEObjectFifoVerifyPass
             int64_t common = std::gcd(composed.inBytes, composed.outBytes);
             composed.inBytes /= common;
             composed.outBytes /= common;
+            // A join before the core: its drainer took at least what the
+            // core took, scaled on to the next place as the input's share is.
+            if (reach.lagObject) {
+              composed.lagObject = reach.lagObject;
+              if (llvm::MulOverflow(reach.lagIn, taken, composed.lagIn) ||
+                  llvm::MulOverflow(composed.lagIn, next.inBytes,
+                                    composed.lagIn) ||
+                  llvm::MulOverflow(reach.lagOut, released, composed.lagOut) ||
+                  llvm::MulOverflow(composed.lagOut, next.outBytes,
+                                    composed.lagOut))
+                continue;
+              int64_t lagCommon = std::gcd(composed.lagIn, composed.lagOut);
+              composed.lagIn /= lagCommon;
+              composed.lagOut /= lagCommon;
+            }
             work.push_back({composed, hops + 1});
           }
         }
@@ -1393,13 +1573,13 @@ struct AIEObjectFifoVerifyPass
       }
       SmallVector<Attribute> attrs;
       for (auto [output, share] : proofs) {
-        auto [in, out] = share;
-        int64_t common = std::gcd(in, out);
+        int64_t common = std::gcd(share.in, share.out);
         attrs.push_back(ConsumedByAttr::get(
             ctx,
             FlatSymbolRefAttr::get(
                 cast<RouteEndpointOp>(output).getSymNameAttr()),
-            in / common, out / common, /*device=*/FlatSymbolRefAttr()));
+            share.in / common, share.out / common, share.granule,
+            /*device=*/FlatSymbolRefAttr()));
       }
       input.setConsumedByAttr(ArrayAttr::get(ctx, attrs));
     }

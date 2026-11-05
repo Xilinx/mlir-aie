@@ -635,10 +635,14 @@ ObjectFifoTransportAttr::verify(function_ref<InFlightDiagnostic()> emitError,
 LogicalResult
 ConsumedByAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                        FlatSymbolRefAttr output, int64_t input_bytes,
-                       int64_t output_bytes, FlatSymbolRefAttr device) {
+                       int64_t output_bytes, int64_t granule_bytes,
+                       FlatSymbolRefAttr device) {
   if (input_bytes <= 0 || output_bytes <= 0)
     return emitError() << "consumed_by needs positive byte counts, got "
                        << input_bytes << " and " << output_bytes;
+  if (granule_bytes < 0)
+    return emitError() << "consumed_by needs a granule of 0 or more bytes, got "
+                       << granule_bytes;
   return success();
 }
 

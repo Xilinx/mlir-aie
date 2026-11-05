@@ -570,11 +570,13 @@ module @split {
 
 // A memtile joins two cores' objects into one. Once the shim has received part
 // of an object, the memtile has the first segment of it, so the core filling
-// that segment has taken its input; the second core's input stays unproven.
+// that segment has taken its input. The second segment goes only after the
+// first, so the second core's input is proven in whole joined objects (256
+// bytes) of the output.
 
 // CHECK-LABEL: module @join
 // CHECK: aie.route_endpoint @ina__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 2>], fifoName = "ina"}
-// CHECK: aie.route_endpoint @inb__prod__dma({{.*}}) DMA {fifoName = "inb"}
+// CHECK: aie.route_endpoint @inb__prod__dma({{.*}}) DMA {consumed_by = [#aie.consumed_by<output = @out__cons__dma, input_bytes = 1, output_bytes = 2, granule_bytes = 256>], fifoName = "inb"}
 module @join {
   aie.device(npu2_1col) {
     %shim = aie.tile(0, 0)

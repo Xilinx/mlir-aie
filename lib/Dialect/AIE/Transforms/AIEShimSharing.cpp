@@ -176,7 +176,8 @@ bool ShimTransferSpans::contained(StringAttr end, const Gate &gate) const {
       return in == byFifo.end();
     const Span &drain = out->second;
     std::optional<int64_t> filled = in == byFifo.end() ? 0 : in->second.bytes;
-    if (!filled || !drain.bytes || drain.lastAwaited <= drain.lastIssue)
+    if (!filled || !drain.bytes || drain.lastAwaited <= drain.lastIssue ||
+        (gate.granuleBytes && *drain.bytes % gate.granuleBytes))
       return false;
     std::optional<int64_t> sent = llvm::checkedMul(*filled, gate.outputBytes);
     std::optional<int64_t> taken =

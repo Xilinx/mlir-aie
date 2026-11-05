@@ -290,6 +290,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     freedInFlight.clear();
     pushesByAllocation.clear();
     creditedPushes.clear();
+    awaitedThrough.clear();
   }
 
   // Reject control flow the static path cannot lower. Constant-trip scf.for is
@@ -534,6 +535,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // yet finished. A configure pushes onto its own channel alone.
   llvm::DenseMap<Operation *, unsigned> startCount;
   llvm::DenseMap<Operation *, unsigned> runningCount;
+  llvm::DenseMap<Operation *, uint64_t> lastPushOrder;
 
   void notePush(const DmaQueueModel::ChannelKey &key, DMAConfigureTaskOp task,
                 bool issuesToken, DMAStartTaskOp start = {}) {
@@ -542,6 +544,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (task) {
       ++startCount[task];
       ++runningCount[task];
+      lastPushOrder[task] = order;
     }
     AIE::ShimDMAAllocationOp allocation = task ? allocationOf(task) : nullptr;
     if (!allocation)
@@ -660,19 +663,42 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   using Volume = std::map<int64_t, int64_t>;
 
   // Whether a * scaleA <= b * scaleB whatever values the parameters take.
-  // Every coefficient is a length and every parameter is at least 0, so it is
-  // enough to compare them one by one.
+  // Every parameter is at least 0, so it is enough to compare the terms one
+  // by one, a term missing from either side counting as 0.
   static bool atMost(const Volume &a, int64_t scaleA, const Volume &b,
                      int64_t scaleB) {
-    for (auto [key, coefficient] : a) {
-      auto it = b.find(key);
-      int64_t lhs, rhs = 0;
-      if (llvm::MulOverflow(coefficient, scaleA, lhs) ||
-          (it != b.end() && llvm::MulOverflow(it->second, scaleB, rhs)) ||
+    std::set<int64_t> keys;
+    for (const auto &term :
+         llvm::concat<const std::pair<const int64_t, int64_t>>(a, b))
+      keys.insert(term.first);
+    for (int64_t key : keys) {
+      auto x = a.find(key), y = b.find(key);
+      int64_t lhs = 0, rhs = 0;
+      if ((x != a.end() && llvm::MulOverflow(x->second, scaleA, lhs)) ||
+          (y != b.end() && llvm::MulOverflow(y->second, scaleB, rhs)) ||
           lhs > rhs)
         return false;
     }
     return true;
+  }
+
+  // Whether `bytes` is a multiple of `granule` whatever values the parameters
+  // take: every term is.
+  static bool wholeGranules(const Volume &bytes, int64_t granule) {
+    return !granule || llvm::all_of(bytes, [&](const auto &term) {
+      return term.second % granule == 0;
+    });
+  }
+
+  // The output bytes `proof` lets count: `received` rounded down to a
+  // multiple of its granule, at least `received` - (granule - 1).
+  static Volume countedOutput(const Volume &received,
+                              AIE::ConsumedByAttr proof) {
+    int64_t granule = proof.getGranuleBytes();
+    Volume counted = received;
+    if (!wholeGranules(received, granule))
+      counted[-1] -= granule - 1;
+    return counted;
   }
 
   // Whether the host library holds the scratchpad parameter `seq` reads at
@@ -773,6 +799,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // already proven taken: both counts only grow, so a credit resumes there.
   llvm::DenseMap<std::pair<Operation *, Operation *>, size_t> creditedPushes;
   llvm::DenseMap<std::pair<Operation *, Operation *>, bool> balancedPairs;
+  // Per output, the bytes moved through its newest push an await retired since
+  // the latest load (nullopt where unknown), and how many pushes the sequence
+  // had issued by that await.
+  struct Awaited {
+    std::optional<Volume> through;
+    uint64_t pushesBefore;
+  };
+  llvm::DenseMap<Operation *, Awaited> awaitedThrough;
 
   // Whether every stretch of every runtime sequence of this device, from its
   // start or a load to the next load or its end, ends with all of `input`'s
@@ -828,6 +862,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     Traffic,
     // The input moves more than the output proves taken.
     Excess,
+    // The output may end partway through an object of the join its proof
+    // passes, whose later segments it has then taken less of.
+    PartGranule,
   };
 
   // Whether each stretch of `seq` after `from` (all of them when null) with
@@ -837,14 +874,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // (no packet header on it or on `input`/`output`), which carries only that
   // route's words; any other on those channels is traffic the proof does not
   // describe. Stretches under another PDI end at a real load of `target`.
-  Unbalanced stretchesUnbalanced(AIE::RuntimeSequenceOp seq, Operation *from,
-                                 AIE::DeviceOp target,
-                                 AIE::ShimDMAAllocationOp input,
-                                 AIE::ShimDMAAllocationOp output,
-                                 ArrayRef<AIE::ShimDMAAllocationOp> inputs,
-                                 ArrayRef<AIE::ShimDMAAllocationOp> outputs,
-                                 AIE::ConsumedByAttr proof,
-                                 bool byChannel = false) {
+  // `at` receives where the verdict stops, null for the sequence end, and the
+  // stretch's counts there.
+  struct Verdict {
+    Operation *where = nullptr;
+    Volume in, out;
+  };
+  Unbalanced stretchesUnbalanced(
+      AIE::RuntimeSequenceOp seq, Operation *from, AIE::DeviceOp target,
+      AIE::ShimDMAAllocationOp input, AIE::ShimDMAAllocationOp output,
+      ArrayRef<AIE::ShimDMAAllocationOp> inputs,
+      ArrayRef<AIE::ShimDMAAllocationOp> outputs, AIE::ConsumedByAttr proof,
+      bool byChannel = false, Verdict *at = nullptr) {
     DmaQueueModel::ChannelKey inKey = DmaQueueModel::keyOf(
         input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
     DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(
@@ -863,8 +904,17 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         return WalkResult::advance();
       if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
         if (target && loaded == target &&
+            !wholeGranules(out, proof.getGranuleBytes())) {
+          why = Unbalanced::PartGranule;
+          if (at)
+            *at = {op, in, out};
+          return WalkResult::interrupt();
+        }
+        if (target && loaded == target &&
             !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes())) {
           why = Unbalanced::Excess;
+          if (at)
+            *at = {op, in, out};
           return WalkResult::interrupt();
         }
         in.clear();
@@ -890,6 +940,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                        (*channel == outKey && !isOutput))) ||
           writesQueue(op, {inKey, outKey})) {
         why = Unbalanced::Traffic;
+        if (at)
+          *at = {op, in, out};
         return WalkResult::interrupt();
       }
       if (!allocation || (!isInput && !isOutput))
@@ -900,6 +952,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           op->getParentOp() == seq ? pushVolume(start, cfg) : std::nullopt;
       if (!moved) {
         why = Unbalanced::Unsized;
+        if (at)
+          *at = {op, in, out};
         return WalkResult::interrupt();
       }
       for (auto [key, bytes] : *moved)
@@ -907,8 +961,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return WalkResult::advance();
     });
     if (why == Unbalanced::No && target && loaded == target &&
-        !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
+        !wholeGranules(out, proof.getGranuleBytes()))
+      why = Unbalanced::PartGranule;
+    else if (why == Unbalanced::No && target && loaded == target &&
+             !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
       why = Unbalanced::Excess;
+    if (at && why != Unbalanced::No && !at->where)
+      *at = {nullptr, in, out};
     return why;
   }
 
@@ -969,6 +1028,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         if (why == Unbalanced::Excess)
           diag << "moves more through that input than the output proves "
                   "taken";
+        else if (why == Unbalanced::PartGranule)
+          diag << "may end with the output partway through an object of the "
+                  "join the proof passes";
         else if (why == Unbalanced::Traffic)
           diag << "has other traffic on their channels";
         else
@@ -993,8 +1055,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     };
     const AllocationPush *done =
         llvm::lower_bound(outPushes->second, order, byOrder);
-    if (done == outPushes->second.end() || done->order != order ||
-        !done->through)
+    if (done == outPushes->second.end() || done->order != order)
+      return;
+    awaitedThrough[output] = {done->through, pushCount};
+    if (!done->through)
       return;
     AIE::DeviceOp configured = opaqueLoad     ? AIE::DeviceOp()
                                : loadedDevice ? loadedDevice
@@ -1011,10 +1075,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       ArrayRef<AllocationPush> pushes = inPushes->second;
       size_t &credited = creditedPushes[{input, output}];
       size_t covered = credited;
+      Volume counted = countedOutput(*done->through, proof);
       for (; covered < pushes.size(); ++covered) {
         const std::optional<Volume> &through = pushes[covered].through;
-        if (!through || !atMost(*through, proof.getOutputBytes(),
-                                *done->through, proof.getInputBytes()))
+        if (!through || !atMost(*through, proof.getOutputBytes(), counted,
+                                proof.getInputBytes()))
           break;
       }
       if (covered == credited)
@@ -1072,6 +1137,208 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     });
   }
 
+  // Prints `bytes` scaled by `scale` as "c + k x @param ...".
+  void printVolume(llvm::raw_ostream &os, const Volume &bytes, int64_t scale,
+                   AIE::RuntimeSequenceOp seq) {
+    auto constant = bytes.find(-1);
+    os << (constant == bytes.end() ? 0 : constant->second * scale);
+    for (const auto &term : bytes) {
+      if (term.first < 0 || !term.second)
+        continue;
+      os << " + " << term.second * scale << " x ";
+      printParameter(os, term.first, seq);
+    }
+  }
+
+  // Prints the scratchpad parameter `seq` reads at state-table index `index`.
+  void printParameter(llvm::raw_ostream &os, int64_t index,
+                      AIE::RuntimeSequenceOp seq) {
+    auto module = getOperation()->getParentOfType<ModuleOp>();
+    ArrayAttr reads = seq.getScratchpadParametersAttr();
+    if (module)
+      for (auto parameter : module.getOps<ScratchpadParameterOp>())
+        if (parameter.getStateTableIdx() == index &&
+            (!reads ||
+             llvm::is_contained(reads.getAsValueRange<FlatSymbolRefAttr>(),
+                                parameter.getSymName()))) {
+          os << "@" << parameter.getSymName();
+          return;
+        }
+    os << "parameter " << index;
+  }
+
+  // Why no proof shows `task`'s transfer finished, for the unsafe-reuse
+  // warning: one clause per proof its allocation holds, and the ops they
+  // point at as notes.
+  void explainUnproven(DMAConfigureTaskOp task, llvm::raw_ostream &os,
+                       SmallVectorImpl<std::pair<Location, std::string>> &at) {
+    AIE::ShimDMAAllocationOp input = allocationOf(task);
+    ArrayAttr proofs = input ? input.getConsumedByAttr() : ArrayAttr();
+    if (!input) {
+      os << "it names no shim allocation, so no output's progress can prove "
+            "it consumed";
+      return;
+    }
+    if (!proofs || proofs.empty()) {
+      os << "aie-objectfifo-verify found no output whose progress proves @"
+         << input.getSymName() << " consumed";
+      return;
+    }
+    auto seq = task->getParentOfType<AIE::RuntimeSequenceOp>();
+    AIE::DeviceOp configured = opaqueLoad     ? AIE::DeviceOp()
+                               : loadedDevice ? loadedDevice
+                                              : getOperation();
+    size_t excess = 0;
+    SmallVector<std::pair<int64_t, AIE::RuntimeSequenceOp>> exceeding;
+    llvm::interleave(
+        proofs.getAsRange<AIE::ConsumedByAttr>(), os,
+        [&](AIE::ConsumedByAttr proof) {
+          AIE::ShimDMAAllocationOp output =
+              allocationsByName.lookup(proof.getOutput().getAttr());
+          os << "through " << proof.getOutput() << ", ";
+          if (!output) {
+            os << "that output is not in this device";
+            return;
+          }
+          if (!configured || proofDevice(proof) != configured) {
+            os << "the proof describes the array of "
+               << (proof.getDevice() ? proof.getDevice()
+                                     : FlatSymbolRefAttr::get(
+                                           getOperation().getSymNameAttr()))
+               << ", which is not the one loaded";
+            return;
+          }
+          if (!leavesNothing(input, output, proof)) {
+            for (auto other : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
+              Verdict verdict;
+              Unbalanced why = stretchesUnbalanced(
+                  other, nullptr, proofDevice(proof), input, output, {input},
+                  {output}, proof, /*byChannel=*/false, &verdict);
+              Operation *where = verdict.where;
+              if (why == Unbalanced::No)
+                continue;
+              std::string note;
+              if (why == Unbalanced::Traffic) {
+                os << "another transfer shares their channels, which the "
+                      "counts do not describe";
+                note = "the other transfer";
+              } else if (why == Unbalanced::PartGranule) {
+                os << "a stretch of @" << other.getSymName()
+                   << " may end with the output partway through an object of "
+                      "the join the proof passes ("
+                   << proof.getGranuleBytes()
+                   << " output bytes), whose later segments it has then taken "
+                      "less of";
+                note = "the stretch ends here";
+              } else if (why == Unbalanced::Unsized) {
+                os << "a transfer on them moves a byte count the compiler "
+                      "cannot follow (a BD chain, a loop, or a length "
+                      "parameter without min_value >= 0)";
+                note = "the transfer";
+              } else {
+                os << "a stretch of @" << other.getSymName()
+                   << " can end having moved more through the input than the "
+                      "output proves taken, so the next dispatch's counts do "
+                      "not start clean (input bytes times "
+                   << proof.getOutputBytes() << ", ";
+                printVolume(os, verdict.in, proof.getOutputBytes(), other);
+                os << ", against output bytes times " << proof.getInputBytes()
+                   << ", ";
+                printVolume(os, verdict.out, proof.getInputBytes(), other);
+                os << ")";
+                ++excess;
+                for (const auto &term : verdict.in) {
+                  int64_t index = term.first;
+                  auto taken = verdict.out.find(index);
+                  if (index >= 0 &&
+                      term.second * proof.getOutputBytes() >
+                          (taken == verdict.out.end() ? 0 : taken->second) *
+                              proof.getInputBytes() &&
+                      llvm::none_of(exceeding, [&](const auto &seen) {
+                        return seen.first == index;
+                      }))
+                    exceeding.push_back({index, other});
+                }
+                note = "the stretch ends here";
+              }
+              std::pair<Location, std::string> pointer = {
+                  where ? where->getLoc() : other.getLoc(), note};
+              if (!llvm::is_contained(at, pointer))
+                at.push_back(pointer);
+              return;
+            }
+          }
+          auto pushes = pushesByAllocation.find(input);
+          auto order = lastPushOrder.find(task);
+          const AllocationPush *push =
+              pushes == pushesByAllocation.end() || order == lastPushOrder.end()
+                  ? nullptr
+                  : llvm::find_if(pushes->second, [&](const AllocationPush &p) {
+                      return p.order == order->second;
+                    });
+          if (!push || push == pushes->second.end() || !push->through) {
+            os << "the bytes the input has moved up to this transfer are not "
+                  "known";
+            return;
+          }
+          auto awaited = awaitedThrough.find(output);
+          if (awaited == awaitedThrough.end()) {
+            os << "no await on it has retired a transfer yet";
+            return;
+          }
+          if (awaited->second.pushesBefore <= push->order) {
+            os << "no await on it has retired a transfer since this one was "
+                  "pushed";
+            return;
+          }
+          const std::optional<Volume> &taken = awaited->second.through;
+          if (!taken) {
+            os << "the bytes its awaited transfers moved are not known";
+            return;
+          }
+          Volume counted = countedOutput(*taken, proof);
+          if (atMost(*push->through, proof.getOutputBytes(), counted,
+                     proof.getInputBytes())) {
+            os << "its awaited transfers cover this transfer's bytes, but "
+                  "not those of every push of this task";
+            return;
+          }
+          bool scaled = proof.getInputBytes() != proof.getOutputBytes();
+          os << "the bytes its awaited transfers moved";
+          if (!wholeGranules(*taken, proof.getGranuleBytes()))
+            os << ", less the part of an object of the join the proof passes ("
+               << proof.getGranuleBytes() << " bytes) they may end in,";
+          if (scaled)
+            os << " times " << proof.getInputBytes();
+          os << ", ";
+          printVolume(os, counted, proof.getInputBytes(), seq);
+          os << ", fall short of the bytes the input moved up to this "
+                "transfer";
+          if (scaled)
+            os << " times " << proof.getOutputBytes();
+          os << ", ";
+          printVolume(os, *push->through, proof.getOutputBytes(), seq);
+          auto isParameter = [](auto term) { return term.first >= 0; };
+          if (llvm::any_of(counted, isParameter) ||
+              llvm::any_of(*push->through, isParameter))
+            os << ", for some parameter values";
+        },
+        "; ");
+    if (proofs.size() > 1 && excess == proofs.size()) {
+      os << ". No one output's proof covers the input: it moves more than "
+            "each proves alone";
+      if (!exceeding.empty()) {
+        os << ", by how much depending on the runtime parameter";
+        if (exceeding.size() > 1)
+          os << "s";
+        os << " ";
+        llvm::interleaveComma(exceeding, os, [&](const auto &parameter) {
+          printParameter(os, parameter.first, parameter.second);
+        });
+      }
+    }
+  }
+
   // Warn where the hazard actually bites: reusing the id, not releasing it.
   void checkReallocation(AIE::TileOp tile, uint32_t id, AIE::DMABDOp bd) {
     if (!warnUnsafeBdReuse)
@@ -1087,12 +1354,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (knownComplete.contains(released.configure) ||
         provenFinished.contains(released.configure))
       return;
-    UnsafeReuse &reuse =
-        unsafeReuses
-            .try_emplace(bd.getLoc(),
-                         UnsafeReuse{id, tile.getCol(), tile.getRow(),
-                                     released.freeOp->getLoc()})
-            .first->second;
+    auto [entry, inserted] = unsafeReuses.try_emplace(
+        bd.getLoc(), UnsafeReuse{id, tile.getCol(), tile.getRow(),
+                                 released.freeOp->getLoc()});
+    UnsafeReuse &reuse = entry->second;
+    if (inserted) {
+      llvm::raw_string_ostream os(reuse.why);
+      explainUnproven(released.configure, os, reuse.notes);
+    }
     reuse.tiles.insert({tile.getCol(), tile.getRow()});
     reuse.count++;
   }
@@ -1105,6 +1374,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     Location freeLoc;
     std::set<std::pair<int, int>> tiles = {};
     int64_t count = 0;
+    std::string why = {};
+    SmallVector<std::pair<Location, std::string>> notes = {};
   };
   llvm::MapVector<Location, UnsafeReuse> unsafeReuses;
 
@@ -1121,8 +1392,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
              "running and this reprograms it underneath. Consume the "
              "outstanding tokens on the same tile, direction and channel "
              "through a task queued at or after this transfer -- each await "
-             "consumes the oldest token, regardless of the task it names";
+             "consumes the oldest token, regardless of the task it names. "
+             "The compiler cannot prove that transfer finished: "
+          << reuse.why;
       diag.attachNote(reuse.freeLoc) << "released here";
+      for (auto &[noteLoc, text] : reuse.notes)
+        diag.attachNote(noteLoc) << text;
       if (reuse.count > 1) {
         Diagnostic &note = diag.attachNote();
         note << "and " << reuse.count - 1
@@ -1402,6 +1677,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     resetChannels.clear();
     pushesByAllocation.clear();
     creditedPushes.clear();
+    awaitedThrough.clear();
+    lastPushOrder.clear();
     positionOf.clear();
     lastReleaseOf.clear();
   }

@@ -153,6 +153,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @k(%tile_0_0, MM2S, 1) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    // expected-note@+1 {{the stretch ends here}}
     aie.runtime_sequence @other_parameter(%a: memref<4096xi32>, %c: memref<4096xi32>) {
       %k0 = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
         aie.dma_bd(%a : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 1 : ui8, length_unit = 64 : i32}
@@ -186,6 +187,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    // expected-note@+1 {{the stretch ends here}}
     aie.runtime_sequence @partial(%a: memref<512xi32>, %c: memref<512xi32>) {
       %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%a : memref<512xi32> offset = 0 len = 128)
@@ -220,6 +222,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    // expected-note@+1 {{the stretch ends here}}
     aie.runtime_sequence @leaves_input(%a: memref<512xi32>, %c: memref<512xi32>) {
       %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
@@ -254,6 +257,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    // expected-note@+1 {{the stretch ends here}}
     aie.runtime_sequence @after_load(%a: memref<512xi32>, %c: memref<512xi32>) {
       aiex.npu.load_pdi {device_ref = @design}
       %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
@@ -289,6 +293,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @in(%tile_0_0, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%tile_0_0, S2MM, 0)
+    // expected-note@+1 {{the stretch ends here}}
     aie.runtime_sequence @init(%a: memref<512xi32>, %c: memref<512xi32>) {
       aiex.npu.load_pdi {device_ref = @design}
       %in0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
@@ -428,6 +433,7 @@ module {
         aie.dma_bd(%a : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
         aie.end
       } {alloc = @k}
+      // expected-note@+1 {{the transfer}}
       aiex.dma_start_task(%k0)
       %out0 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
         aie.dma_bd(%c : memref<4096xi32> offset = 0 len = 0) {length_state_table_idx = 0 : ui8, length_unit = 64 : i32}
@@ -463,6 +469,7 @@ module {
     aie.shim_dma_allocation @in(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%t, S2MM, 0)
     aie.runtime_sequence @rounds(%a: memref<512xi32>, %c: memref<512xi32>) {
+      // expected-note@+1 {{the other transfer}}
       aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 15 : i64, metadata = @in} : memref<512xi32>
       %in0 = aiex.dma_configure_task(%t, MM2S, 0) {
         aie.dma_bd(%a : memref<512xi32> offset = 0 len = 64)
@@ -503,6 +510,7 @@ module {
     aie.shim_dma_allocation @in(%t, MM2S, 0) {consumed_by = [#aie.consumed_by<output = @out, input_bytes = 1, output_bytes = 1>]}
     aie.shim_dma_allocation @out(%t, S2MM, 0)
     aie.runtime_sequence @pre(%a: memref<512xi32>, %c: memref<512xi32>) {
+      // expected-note@+1 {{the other transfer}}
       aiex.npu.dma_memcpy_nd(%a[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 15 : i64, metadata = @in} : memref<512xi32>
     }
     aie.runtime_sequence @rounds(%a: memref<512xi32>, %c: memref<512xi32>) {
@@ -574,6 +582,7 @@ module {
       aiex.dma_free_task(%in1)
       %queue = arith.constant 119316 : i32
       %bd = arith.constant 15 : i32
+      // expected-note@+1 {{the other transfer}}
       aiex.npu.write32(%queue, %bd) {column = 0 : i32, row = 0 : i32} : i32, i32
     }
   }
