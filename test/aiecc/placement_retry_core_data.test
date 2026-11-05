@@ -1,0 +1,80 @@
+//===- placement_retry_core_data.test --------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// REQUIRES: peano
+// RUN: %aiecc --no-progress --tmpdir %t.retry --placer=sa_placer --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=RETRY
+// RUN: not %aiecc --no-progress --tmpdir %t.pinned --placer=sa_placer --sa-core-data-sizes=main:1=0 --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
+// RUN: not %aiecc --no-progress --tmpdir %t.never --placer=sa_placer --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
+
+// Core %c keeps 28 KiB of .bss, which the SA placer cannot know before the
+// probe link measures it. Its estimate fits %c's buffers on any tile, and the
+// shim's column pulls %c east, where x's buffers sit on %c too and do not fit
+// beside its sections. aiecc places again with the measured bytes, and the SA
+// puts %c beside %p, whose tile holds x's buffers.
+// RETRY: aiecc: a core's buffers find no room beside its own sections; placing again with --sa-core-data-sizes=main:0=0,main:1=28672
+// RETRY-NOT: error:
+
+// Core data sizes the command line chose are kept.
+// PINNED: error: 'aie.buffer' op could not be placed:
+// PINNED: note: the core on this tile keeps its own sections in 28672 bytes
+// PINNED-NOT: placing again
+
+// %c keeps 60 KiB of .bss here, and its own buffers fit beside that nowhere;
+// aiecc reports the first placement's error and its failed edge.
+// NEVER: aiecc: a core's buffers find no room beside its own sections; placing again with --sa-core-data-sizes=main:0=0,main:1=61440
+// NEVER-NOT: placing again
+// NEVER: error: 'aie.buffer' op could not be placed:
+// NEVER: note: the core on this tile keeps its own sections in 61440 bytes
+// NEVER: aiecc: no placement with what allocation found counted fits either; the errors above are the first placement's
+// NEVER: aiecc: edge 'input_with_addresses.mlir' failed
+
+module @core_data_never {
+  aie.device(npu2) {
+    %shim = aie.logical_tile<ShimNOCTile>(7, 0)
+    %p = aie.logical_tile<CoreTile>(0, 2)
+    %c = aie.logical_tile<CoreTile>(?, ?)
+    memref.global "private" @scratch : memref<15360xi32> = uninitialized
+    aie.objectfifo @x(%p, {%c}, 2 : i32) : !aie.objectfifo<memref<4096xi32>>
+    aie.objectfifo @y(%c, {%shim}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @z(%c, {%shim}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.core(%p) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %cmax = arith.constant 9223372036854775807 : index
+      scf.for %i = %c0 to %cmax step %c1 {
+        %o = aie.objectfifo.acquire @x(Produce, 1) : memref<4096xi32>
+        %v = arith.index_cast %i : index to i32
+        memref.store %v, %o[%c0] : memref<4096xi32>
+        aie.objectfifo.release @x(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %cmax = arith.constant 9223372036854775807 : index
+      %n = arith.constant 15360 : index
+      %g = memref.get_global @scratch : memref<15360xi32>
+      scf.for %i = %c0 to %cmax step %c1 {
+        %ix = aie.objectfifo.acquire @x(Consume, 1) : memref<4096xi32>
+        %oy = aie.objectfifo.acquire @y(Produce, 1) : memref<1024xi32>
+        %oz = aie.objectfifo.acquire @z(Produce, 1) : memref<1024xi32>
+        %v = memref.load %ix[%c0] : memref<4096xi32>
+        %vi = arith.index_cast %v : i32 to index
+        %k = arith.remui %vi, %n : index
+        %old = memref.load %g[%k] : memref<15360xi32>
+        memref.store %v, %g[%k] : memref<15360xi32>
+        memref.store %old, %oy[%c0] : memref<1024xi32>
+        memref.store %v, %oz[%c0] : memref<1024xi32>
+        aie.objectfifo.release @x(Consume, 1)
+        aie.objectfifo.release @y(Produce, 1)
+        aie.objectfifo.release @z(Produce, 1)
+      }
+      aie.end
+    }
+  }
+}

@@ -741,6 +741,9 @@ struct SAConfig {
 
   // ObjectFIFOs whose mem tile pools allocation walked whole.
   llvm::SmallVector<std::string> walkedFifos;
+  // Bytes each core keeps for its own sections, by the device's core order,
+  // where a build measured them: used in place of coreSectionsBytes.
+  llvm::DenseMap<unsigned, int64_t> coreDataBytes;
 };
 
 // SA temperature schedule with windowed acceptance tracking.

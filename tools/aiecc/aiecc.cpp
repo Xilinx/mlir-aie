@@ -941,8 +941,19 @@ static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
 // `cache` is --device-cache, which the graph uses only when this build's
 // outputs allow it. `keptDevices` are the devices --device-name keeps, or
 // empty to keep all.
+// What the probe link measured of each core's own sections, as
+// `<device>:<core>` (the device's aie.core ops counted in order) to bytes; the
+// address edge fills it in from its worker threads.
+struct MeasuredCoreData {
+  std::mutex mutex;
+  llvm::StringMap<int64_t> bytes;
+};
+
 static // The edge that routes the placed design's flows.
     constexpr llvm::StringLiteral kRoutedEdge = "input_physical.mlir";
+// The edge that places the compiled design's buffers.
+static constexpr llvm::StringLiteral kAddressesEdge =
+    "input_with_addresses.mlir";
 // The edge that allocates the placed design's objectFIFOs.
 static constexpr llvm::StringLiteral kWithSymbolsEdge =
     "input_with_symbols.mlir";
@@ -951,7 +962,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                        std::vector<EdgeBase *> &cutEdges,
                                        std::vector<EdgeBase *> &checkEdges,
                                        DeviceCache *cache,
-                                       llvm::StringSet<> keptDevices) {
+                                       llvm::StringSet<> keptDevices,
+                                       MeasuredCoreData &measuredCores) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -1067,12 +1079,12 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   auto &traced =
       withDefaultStackSize
-          .map<ModRef>(
-              "placed.mlir",
-              PassPipeline{getPlacementPipeline(
-                  &context, coresPerCol.getValue(), placerType.getValue(),
-                  saSeed.getValue(), saEffort.getValue(),
-                  llvm::to_vector(saWalkedFifos))})
+          .map<ModRef>("placed.mlir",
+                       PassPipeline{getPlacementPipeline(
+                           &context, coresPerCol.getValue(),
+                           placerType.getValue(), saSeed.getValue(),
+                           saEffort.getValue(), llvm::to_vector(saWalkedFifos),
+                           llvm::to_vector(saCoreDataSizes))})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
   // Everything a core needs before it can be compiled: objectFifo lowering
@@ -1371,17 +1383,26 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &physical =
       bundle(placementInput.out, objects.out, compileInput.out)
           .join<ModRef>(
-              "input_with_addresses.mlir",
-              [&context, elfLookup, bankDemand, useProbe, cache](
-                  const Node<Directory> &probes,
-                  const Node<Directory> &coreObjects, const Node<ModRef> &modN,
-                  Item<ModRef> &out) -> mlir::LogicalResult {
+              kAddressesEdge.str(),
+              [&context, elfLookup, bankDemand, useProbe, cache,
+               &measuredCores](const Node<Directory> &probes,
+                               const Node<Directory> &coreObjects,
+                               const Node<ModRef> &modN,
+                               Item<ModRef> &out) -> mlir::LogicalResult {
                 out.value = ModRef(modN.get().get().clone());
                 mlir::ModuleOp mod = out.value->get();
                 auto placeCompiled = [&]() -> mlir::LogicalResult {
                   if (useProbe) {
                     recordBankDemand(mod, elfLookup(probes), *bankDemand,
                                      !noMeasureDataSize.getValue());
+                    std::lock_guard<std::mutex> lock(measuredCores.mutex);
+                    for (auto device : mod.getOps<DeviceOp>())
+                      for (auto [ordinal, core] :
+                           llvm::enumerate(device.getOps<CoreOp>()))
+                        if (auto bytes = core.getMeasuredDataSize())
+                          measuredCores.bytes[(device.getSymName() + ":" +
+                                               llvm::Twine(ordinal))
+                                                  .str()] = *bytes;
                     if (!noMeasureStackSize.getValue() &&
                         mlir::failed(recordStackDemand(
                             mod, elfLookup(probes), elfLookup(coreObjects)))) {
@@ -3020,9 +3041,10 @@ int main(int argc, char **argv) {
       keptDevices = devicesReachedFrom(*input, deviceName);
     }
   }
-  std::vector<EdgeBase *> outputs =
-      buildMainGraph(context, g, cutEdges, checkEdges,
-                     deviceCache ? &*deviceCache : nullptr, keptDevices);
+  MeasuredCoreData measuredCores;
+  std::vector<EdgeBase *> outputs = buildMainGraph(
+      context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr,
+      keptDevices, measuredCores);
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file
@@ -3113,13 +3135,14 @@ int main(int argc, char **argv) {
   bool mayPlaceAgain = placerType.getNumOccurrences() == 0 &&
                        coresPerCol.getNumOccurrences() == 0 &&
                        cutEdges.empty() && !resume.active;
-  bool mayWalkAgain = placerType == xilinx::AIE::PlacerType::SAPlacer &&
-                      saWalkedFifos.getNumOccurrences() == 0 &&
-                      cutEdges.empty() && !resume.active;
+  bool mayChargeAgain = placerType == xilinx::AIE::PlacerType::SAPlacer &&
+                        saWalkedFifos.getNumOccurrences() == 0 &&
+                        saCoreDataSizes.getNumOccurrences() == 0 &&
+                        cutEdges.empty() && !resume.active;
   // A repeated attempt runs every edge again, so it repeats every error but
   // those the placement caused; the first attempt's are held, and reported,
   // failed edge last, as an attempt reports them, unless a later one routes.
-  if (mayPlaceAgain || mayWalkAgain) {
+  if (mayPlaceAgain || mayChargeAgain) {
     diagHandler.holdErrors();
     engine->opts.deferFailedEdge = true;
   }
@@ -3167,9 +3190,9 @@ int main(int argc, char **argv) {
       unrouted.push_back(std::move(graph));
       graph = std::make_unique<Graph>();
       checkEdges.clear();
-      outputs =
-          buildMainGraph(context, *graph, cutEdges, checkEdges,
-                         deviceCache ? &*deviceCache : nullptr, keptDevices);
+      outputs = buildMainGraph(context, *graph, cutEdges, checkEdges,
+                               deviceCache ? &*deviceCache : nullptr,
+                               keptDevices, measuredCores);
       engine = std::make_unique<Engine>(engineOptions);
       engine->opts.deferFailedEdge = true;
       diagHandler.holdErrors();
@@ -3180,19 +3203,29 @@ int main(int argc, char **argv) {
     if (mlir::succeeded(ran))
       firstErrors.clear();
   }
-  // Allocation walks some mem tile pools whole, one buffer each, where the SA
-  // placer counts their objects apart; when such a pool finds no room, the SA
-  // places again counting it walked, until the buffers fit or allocation
-  // names only pools it already counts.
+  // The SA placer estimates two things later passes measure: allocation walks
+  // some mem tile pools whole, one buffer each, where the SA counts their
+  // objects apart, and the probe link measures each core's own sections, which
+  // the SA guesses. When a pool or a core's buffers find no room, the SA places
+  // again with what was found, until everything fits or nothing new is.
   std::vector<std::unique_ptr<Graph>> unfitted;
   std::vector<mlir::Diagnostic> laterErrors;
   std::vector<mlir::Diagnostic> *errors = &firstErrors;
   EdgeBase *lastFailed = firstFailed;
-  while (mlir::failed(ran) && mayWalkAgain && lastFailed &&
-         lastFailed->name == kWithSymbolsEdge) {
+  llvm::StringMap<int64_t> coreData;
+  while (mlir::failed(ran) && mayChargeAgain && lastFailed &&
+         (lastFailed->name == kWithSymbolsEdge ||
+          lastFailed->name == kAddressesEdge)) {
     std::optional<std::string> fifo;
+    bool coreFull = false;
     for (mlir::Diagnostic &error : *errors) {
-      if (!llvm::StringRef(error.str()).contains(xilinx::AIE::kNoBufferRoom))
+      llvm::StringRef message = error.str();
+      coreFull |= message.contains(xilinx::AIE::kNoTileRoom) &&
+                  llvm::any_of(error.getNotes(), [](mlir::Diagnostic &note) {
+                    return llvm::StringRef(note.str())
+                        .starts_with(xilinx::AIE::kCoreSectionsNote);
+                  });
+      if (!message.contains(xilinx::AIE::kNoBufferRoom))
         continue;
       for (mlir::DiagnosticArgument &arg : error.getArguments())
         if (arg.getKind() ==
@@ -3202,19 +3235,41 @@ int main(int argc, char **argv) {
               name && !llvm::is_contained(saWalkedFifos, name.getValue()))
             fifo = name.getValue().str();
     }
-    if (!fifo)
+    // A core's measurement keeps its largest value, so the charges only grow
+    // and the attempts end.
+    bool grew = false;
+    if (coreFull) {
+      std::lock_guard<std::mutex> lock(measuredCores.mutex);
+      for (auto &[core, bytes] : measuredCores.bytes)
+        if (int64_t &charged = coreData[core]; bytes > charged) {
+          charged = bytes;
+          grew = true;
+        }
+    }
+    if (!fifo && !grew)
       break;
-    saWalkedFifos.push_back(*fifo);
-    llvm::errs() << "aiecc: objectFIFO @" << *fifo
-                 << "'s buffers find no room; placing again with "
-                    "--sa-walked-fifos="
-                 << llvm::join(saWalkedFifos, ",") << "\n";
+    if (fifo) {
+      saWalkedFifos.push_back(*fifo);
+      llvm::errs() << "aiecc: objectFIFO @" << *fifo
+                   << "'s buffers find no room; placing again with "
+                      "--sa-walked-fifos="
+                   << llvm::join(saWalkedFifos, ",") << "\n";
+    }
+    if (grew) {
+      saCoreDataSizes.clear();
+      for (auto &[core, bytes] : coreData)
+        saCoreDataSizes.push_back((core + "=" + llvm::Twine(bytes)).str());
+      llvm::sort(saCoreDataSizes);
+      llvm::errs() << "aiecc: a core's buffers find no room beside its own "
+                      "sections; placing again with --sa-core-data-sizes="
+                   << llvm::join(saCoreDataSizes, ",") << "\n";
+    }
     unfitted.push_back(std::move(graph));
     graph = std::make_unique<Graph>();
     checkEdges.clear();
-    outputs =
-        buildMainGraph(context, *graph, cutEdges, checkEdges,
-                       deviceCache ? &*deviceCache : nullptr, keptDevices);
+    outputs = buildMainGraph(context, *graph, cutEdges, checkEdges,
+                             deviceCache ? &*deviceCache : nullptr, keptDevices,
+                             measuredCores);
     engine = std::make_unique<Engine>(engineOptions);
     engine->opts.deferFailedEdge = true;
     diagHandler.holdErrors();
@@ -3231,9 +3286,9 @@ int main(int argc, char **argv) {
     llvm::errs() << "aiecc: no placement with fewer cores a column routes "
                     "either; the errors above are the first placement's\n";
   if (mlir::failed(ran) && !unfitted.empty())
-    llvm::errs() << "aiecc: no placement with those pools walked whole fits "
-                    "either; the errors above are the first placement's\n";
-  if (mlir::failed(ran) && (mayPlaceAgain || mayWalkAgain) && firstFailed)
+    llvm::errs() << "aiecc: no placement with what allocation found counted "
+                    "fits either; the errors above are the first placement's\n";
+  if (mlir::failed(ran) && (mayPlaceAgain || mayChargeAgain) && firstFailed)
     Engine::reportFailedEdge(firstFailed);
   if (mlir::failed(ran)) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed

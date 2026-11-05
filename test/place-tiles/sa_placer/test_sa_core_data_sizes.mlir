@@ -1,0 +1,66 @@
+//===- test_sa_core_data_sizes.mlir ----------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1" %s | FileCheck %s --check-prefix=ESTIMATE
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-core-data-sizes=main:1=28672" %s | FileCheck %s --check-prefix=MEASURED
+// RUN: aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-core-data-sizes=other:1=28672" %s | FileCheck %s --check-prefix=ESTIMATE
+// RUN: not aie-opt --aie-place-tiles="placer=sa_placer sa-seed=1 sa-core-data-sizes=main:x=1" %s 2>&1 | FileCheck %s --check-prefix=BAD
+
+// With its estimate of %c's own sections, the SA places %c by the shim's
+// column, holding x's buffers beside them. Given the 28 KiB a build measured
+// for core 1 of @main, it places %c beside %p, whose tile holds x's buffers.
+// An entry for another device changes nothing.
+// ESTIMATE: aie.tile(7, 2)
+// MEASURED: aie.tile(1, 2)
+// BAD: error: sa-core-data-sizes entry 'main:x=1' is not <device>:<core>=<bytes>
+
+module @core_data_retry {
+  aie.device(npu2) {
+    %shim = aie.logical_tile<ShimNOCTile>(7, 0)
+    %p = aie.logical_tile<CoreTile>(0, 2)
+    %c = aie.logical_tile<CoreTile>(?, ?)
+    memref.global "private" @scratch : memref<7168xi32> = uninitialized
+    aie.objectfifo @x(%p, {%c}, 2 : i32) : !aie.objectfifo<memref<4096xi32>>
+    aie.objectfifo @y(%c, {%shim}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @z(%c, {%shim}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.core(%p) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %cmax = arith.constant 9223372036854775807 : index
+      scf.for %i = %c0 to %cmax step %c1 {
+        %o = aie.objectfifo.acquire @x(Produce, 1) : memref<4096xi32>
+        %v = arith.index_cast %i : index to i32
+        memref.store %v, %o[%c0] : memref<4096xi32>
+        aie.objectfifo.release @x(Produce, 1)
+      }
+      aie.end
+    }
+    aie.core(%c) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %cmax = arith.constant 9223372036854775807 : index
+      %n = arith.constant 7168 : index
+      %g = memref.get_global @scratch : memref<7168xi32>
+      scf.for %i = %c0 to %cmax step %c1 {
+        %ix = aie.objectfifo.acquire @x(Consume, 1) : memref<4096xi32>
+        %oy = aie.objectfifo.acquire @y(Produce, 1) : memref<1024xi32>
+        %oz = aie.objectfifo.acquire @z(Produce, 1) : memref<1024xi32>
+        %v = memref.load %ix[%c0] : memref<4096xi32>
+        %vi = arith.index_cast %v : i32 to index
+        %k = arith.remui %vi, %n : index
+        %old = memref.load %g[%k] : memref<7168xi32>
+        memref.store %v, %g[%k] : memref<7168xi32>
+        memref.store %old, %oy[%c0] : memref<1024xi32>
+        memref.store %v, %oz[%c0] : memref<1024xi32>
+        aie.objectfifo.release @x(Consume, 1)
+        aie.objectfifo.release @y(Produce, 1)
+        aie.objectfifo.release @z(Produce, 1)
+      }
+      aie.end
+    }
+  }
+}

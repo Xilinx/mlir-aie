@@ -93,6 +93,20 @@ struct AIEPlaceTilesPass
       SAConfig config;
       config.effort = effort;
       config.walkedFifos.assign(clSAWalkedFifos.begin(), clSAWalkedFifos.end());
+      for (StringRef entry : clSACoreDataSizes) {
+        auto [core, bytes] = entry.split('=');
+        auto [name, ordinal] = core.rsplit(':');
+        unsigned index;
+        int64_t size;
+        if (ordinal.getAsInteger(10, index) || bytes.getAsInteger(10, size) ||
+            size < 0) {
+          device.emitError("sa-core-data-sizes entry '")
+              << entry << "' is not <device>:<core>=<bytes>";
+          return signalPassFailure();
+        }
+        if (name == device.getSymName())
+          config.coreDataBytes[index] = size;
+      }
       placer = saPlacer = std::make_shared<SAPlacer>(clSASeed, config);
       break;
     }

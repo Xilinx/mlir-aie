@@ -26,7 +26,7 @@
 // NEVER: aiecc: objectFIFO @a_in's buffers find no room; placing again with --sa-walked-fifos=a_in
 // NEVER-NOT: placing again
 // NEVER: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @a_in
-// NEVER: aiecc: no placement with those pools walked whole fits either; the errors above are the first placement's
+// NEVER: aiecc: no placement with what allocation found counted fits either; the errors above are the first placement's
 // NEVER: aiecc: edge 'input_with_symbols.mlir' (key '{{.*}}') failed
 
 module @turn_walk_never {

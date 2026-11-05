@@ -1486,10 +1486,10 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   });
 
   // Collect core stack and data regions (reserved by assign-buffer-addresses)
-  device.walk([&](CoreOp coreOp) {
+  for (auto [ordinal, coreOp] : llvm::enumerate(device.getOps<CoreOp>())) {
     auto *tileOp = coreOp.getTile().getDefiningOp();
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
-      return;
+      continue;
     // The data region a core sets aside for its own sections is as much its
     // memory as the stack.
     stackSizes[tileOp] =
@@ -1498,8 +1498,9 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
         alignedBufferBytes(
             *targetModel, AIETileType::CoreTile,
             coreOp.getDataSize().value_or(coreOp.getMeasuredDataSize().value_or(
-                config.coreSectionsBytes)));
-  });
+                config.coreDataBytes.lookup_or(ordinal,
+                                               config.coreSectionsBytes))));
+  }
 
   // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
