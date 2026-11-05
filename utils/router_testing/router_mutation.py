@@ -767,6 +767,8 @@ def judge(e, expect, hops_on, seed, deadline=None):
     elif expect == "model":
         try:
             v = rp.verdict(e, hops_on, seed, deadline)
+        except rp.RouterTimeout as x:
+            return "timeout", f"model: {x}"
         except Exception as x:
             return "model-limit", f"verdict: {x!r}"
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
@@ -819,7 +821,11 @@ def judge_strict(e, expect, hops_on, s, deadline=None):
     if s.returncode < 0:
         return "crash", f"strict: {rp.first_error(s.stderr)[:300]}"
     if s.returncode:
-        if rp.strict_witness(e, rp.Analysis(e), deadline=deadline) is not None:
+        try:
+            witness = rp.strict_witness(e, rp.Analysis(e), deadline=deadline)
+        except rp.RouterTimeout as x:
+            return "timeout", f"strict witness: {x}"
+        if witness is not None:
             return "strict-miss", "fails without allow-deadlock-prone, needlessly"
         return "ok", f"routed ({expect})"
     try:
@@ -990,6 +996,8 @@ def r_lift(rng, d, routed):
     """aie-find-flows lifts the routing back into the flows the design asked
     for, and routing those again lifts to the same."""
     p = rp.find_flows(routed)
+    if p.returncode == rp.TIMEOUT:
+        raise rp.RouterTimeout(f"lifting the routing: {p.stderr}")
     if p.returncode:
         return "lift", None, f"aie-find-flows fails: {rp.first_error(p.stderr)[:200]}"
     lifted = rp.load_design(p.stdout)
@@ -1017,6 +1025,8 @@ def r_lift(rng, d, routed):
 
     def check(text):
         q = rp.find_flows(text)
+        if q.returncode == rp.TIMEOUT:
+            raise rp.RouterTimeout(f"lifting the rerouted output: {q.stderr}")
         if q.returncode:
             return f"aie-find-flows fails on the rerouted output: {rp.first_error(q.stderr)[:200]}"
         again = rp.load_design(q.stdout)
@@ -1355,6 +1365,8 @@ def run_seed(seed, args):
     hops_on = not args.hops_off
     try:
         case = rp.generate(seed, device=args.device)
+    except rp.RouterTimeout as x:
+        return [("base", "timeout", "generate", str(x), None)]
     except Exception:
         return [
             ("base", "model-limit", "generate", traceback.format_exc(limit=2), None)
@@ -1391,6 +1403,9 @@ def run_seed(seed, args):
             continue
         try:
             m = fn(random.Random(f"{seed}-{name}"), d, ctx)
+        except rp.RouterTimeout as x:
+            rows.append(("mutator", "timeout", name, str(x), d))
+            continue
         except Exception:
             rows.append(
                 ("mutator", "model-limit", name, traceback.format_exc(limit=3), d)
@@ -1409,6 +1424,9 @@ def run_seed(seed, args):
             continue
         try:
             m = fn(random.Random(f"{seed}-{name}"), d, routed)
+        except rp.RouterTimeout as x:
+            rows.append(("relation", "timeout", name, str(x), d))
+            continue
         except Exception:
             rows.append(
                 ("relation", "model-limit", name, traceback.format_exc(limit=3), d)
@@ -1427,7 +1445,14 @@ def run_seed(seed, args):
             continue
         # Reshaping flows can move a prioritized source's own route (see the
         # pinned overlay in AIECreatePathFindFlows.cpp), so the model judges.
-        if q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(e, trees):
+        try:
+            moved = q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(
+                e, trees
+            )
+        except rp.RouterTimeout as x:
+            rows.append(("relation", "timeout", name, f"{what}: {x}", e))
+            continue
+        if moved:
             outcome, detail = judge(e, "model", hops_on, seed)
             rows.append(("relation", outcome, name, f"{what}: {detail}", e))
             continue
@@ -1448,7 +1473,11 @@ def run_seed(seed, args):
         except Exception as x:
             rows.append(("relation", "model-limit", name, f"{what}: {x!r}", e))
             continue
-        bad = probs[0] if probs else (check(q.stdout) if check else None)
+        try:
+            bad = probs[0] if probs else (check(q.stdout) if check else None)
+        except rp.RouterTimeout as x:
+            rows.append(("relation", "timeout", name, f"{what}: {x}", e))
+            continue
         same = name == "permute" and routing_key(q.stdout) == routing_key(routed)
         if bad:
             rows.append(("relation", "broken", name, f"{what}: {bad[:300]}", e))

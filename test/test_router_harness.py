@@ -82,6 +82,17 @@ OVER_CUT = """module {
     aie.flow(%t02, DMA : 1, %t01, DMA : 0)
   }
 }"""
+# Two packet sources sharing two receivers: a strict witness exists.
+SHARED = """module {
+  aie.device(npu1_1col) {
+    %t02 = aie.tile(0, 2)
+    %t03 = aie.tile(0, 3)
+    %t04 = aie.tile(0, 4)
+    %t05 = aie.tile(0, 5)
+    aie.packet_flow(1) { aie.packet_source<%t02, DMA : 0> aie.packet_dest<%t03, DMA : 0> aie.packet_dest<%t04, DMA : 0> }
+    aie.packet_flow(2) { aie.packet_source<%t05, DMA : 0> aie.packet_dest<%t03, DMA : 0> aie.packet_dest<%t04, DMA : 0> }
+  }
+}"""
 OVERUSED = r"cross from row 2 to row 3, which takes 7 channels across, and it has 6"
 
 
@@ -264,6 +275,28 @@ def test_shrinking_stops_a_judgement_at_its_budget():
     assert not finished
     # The router alone takes over a minute on this design.
     assert time.monotonic() - start < 30
+
+
+def test_a_timeout_in_the_models_router_runs_is_a_timeout(priority):
+    d, _ = priority
+    with pytest.raises(rp.RouterTimeout):
+        rp.priority_trees(d, {}, deadline=time.monotonic())
+    outcome, detail = router_mutation.judge(
+        d, "model", True, 0, deadline=time.monotonic()
+    )
+    assert outcome == "timeout", detail
+    assert detail.startswith("model: routing the prioritized flows alone"), detail
+
+
+def test_a_strict_witness_timeout_is_no_strict_pass():
+    d = rp.canonical(rp.load_design(SHARED))
+    strict = rp.route_design(d.emit(), strict=True)
+    failed = subprocess.CompletedProcess(strict.args, 1, "", "no routing")
+    assert router_mutation.judge_strict(d, "route", True, failed)[0] == "strict-miss"
+    outcome, detail = router_mutation.judge_strict(
+        d, "route", True, failed, deadline=time.monotonic()
+    )
+    assert outcome == "timeout", detail
 
 
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():
