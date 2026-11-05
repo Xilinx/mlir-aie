@@ -825,8 +825,12 @@ private:
   // Net model
   struct FifoBufferInfo {
     mlir::Operation *fifoOp = nullptr;
+    // Logical ends, null for a physical one.
     mlir::Operation *producer = nullptr;
     llvm::SmallVector<mlir::Operation *> consumers;
+    // Every end's tile, physical ones included.
+    mlir::Operation *producerTile = nullptr;
+    llvm::SmallVector<mlir::Operation *> consumerTiles;
     mlir::Operation *delegate = nullptr;
     int64_t producerSizeBytes = 0;
     int64_t consumerSizeBytes = 0;

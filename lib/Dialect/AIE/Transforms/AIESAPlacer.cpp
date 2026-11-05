@@ -427,13 +427,10 @@ void SAPlacer::addRouteEndContribution(size_t endIdx, int sign) {
 
 void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   const auto &fb = fifoBuffers[fifoIdx];
-  Operation *prod = fb.producer;
-  if (!prod)
+  std::optional<TileID> prodAt = positionOf(fb.producerTile);
+  if (!prodAt)
     return;
-  auto prodPlaceIt = currentPlacement.find(prod);
-  if (prodPlaceIt == currentPlacement.end())
-    return;
-  TileID prodPos = prodPlaceIt->second;
+  TileID prodPos = *prodAt;
   const FifoEndTypes &types = fifoEndTypes[fifoIdx];
   bool prodIsShim = types.producer == AIETileType::ShimNOCTile ||
                     types.producer == AIETileType::ShimPLTile;
@@ -448,14 +445,11 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   bool prodCharged = false;
   bool prodNeedsDMA = false;
 
-  for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
-    auto *cons = fb.consumers[ci];
-    if (!cons)
+  for (size_t ci = 0; ci < fb.consumerTiles.size(); ci++) {
+    std::optional<TileID> consAt = positionOf(fb.consumerTiles[ci]);
+    if (!consAt)
       continue;
-    auto consPlaceIt = currentPlacement.find(cons);
-    if (consPlaceIt == currentPlacement.end())
-      continue;
-    TileID consPos = consPlaceIt->second;
+    TileID consPos = *consAt;
     bool consIsShim = types.consumers[ci] == AIETileType::ShimNOCTile ||
                       types.consumers[ci] == AIETileType::ShimPLTile;
 
@@ -532,13 +526,15 @@ void SAPlacer::initResourceTracking() {
   auto typeOf = [&](Operation *tile) -> std::optional<AIETileType> {
     if (auto it = tileTypes.find(tile); it != tileTypes.end())
       return it->second;
+    if (auto placed = dyn_cast_or_null<TileOp>(tile))
+      return placed.getTileType();
     return std::nullopt;
   };
   fifoEndTypes.clear();
   for (const auto &fb : fifoBuffers) {
     FifoEndTypes &types = fifoEndTypes.emplace_back();
-    types.producer = typeOf(fb.producer);
-    for (Operation *cons : fb.consumers)
+    types.producer = typeOf(fb.producerTile);
+    for (Operation *cons : fb.consumerTiles)
       types.consumers.push_back(typeOf(cons));
   }
 
@@ -855,8 +851,7 @@ int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
                          AIETileType::ShimNOCTile) {
       SmallVector<StringAttr> ends;
       for (auto &[lt, own] : shareableShimEnds) {
-        auto at = currentPlacement.find(lt);
-        if (at != currentPlacement.end() && at->second == tilePos)
+        if (positionOf(lt) == tilePos)
           llvm::append_range(ends, own[dir]);
       }
       used[dir] += static_cast<int>(shimSpans->groups(ends).size()) -
@@ -1569,12 +1564,14 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     // Get producer
     auto *prodOp = ofOp.getProducerTile().getDefiningOp();
     fb.producer = (isa_and_nonnull<LogicalTileOp>(prodOp)) ? prodOp : nullptr;
+    fb.producerTile = prodOp;
 
     // Null for a placed consumer, so indices stay the fifo's own.
     for (Value ct : ofOp.getConsumerTiles()) {
       auto *consOp = ct.getDefiningOp();
       fb.consumers.push_back(isa_and_nonnull<LogicalTileOp>(consOp) ? consOp
                                                                     : nullptr);
+      fb.consumerTiles.push_back(consOp);
     }
 
     // Compute buffer element size (producer side)
@@ -1583,8 +1580,9 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     int64_t producerBytes =
         elemType.getNumElements() *
         static_cast<int64_t>(dataLayout.getTypeSize(elemType.getElementType()));
+    auto prodLike = dyn_cast_or_null<TileLike>(prodOp);
     AIETileType prodType =
-        fb.producer ? tileTypes.lookup(fb.producer) : AIETileType::CoreTile;
+        prodLike ? prodLike.getTileType() : AIETileType::CoreTile;
     fb.producerSizeBytes =
         alignedBufferBytes(*targetModel, prodType, producerBytes);
 
@@ -1599,8 +1597,9 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     }
     // One size serves every consumer, so align it for a core tile if any
     // consumer is one.
-    bool coreConsumer = llvm::any_of(fb.consumers, [&](Operation *cons) {
-      return cons && tileTypes.lookup(cons) == AIETileType::CoreTile;
+    bool coreConsumer = llvm::any_of(fb.consumerTiles, [&](Operation *cons) {
+      auto tile = dyn_cast_or_null<TileLike>(cons);
+      return tile && tile.getTileType() == AIETileType::CoreTile;
     });
     fb.consumerSizeBytes = alignedBufferBytes(
         *targetModel,

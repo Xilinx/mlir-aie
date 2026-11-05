@@ -208,16 +208,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   for (auto &[tile, inOut] : flowChannelDemand(
            flows, pktFlows, routes,
            DMAChannelAnalysis(device).getChannelClaims(), &namedChannels)) {
-    if (auto placed = dyn_cast<TileOp>(tile)) {
-      TileID at = placed.getTileID();
-      if (inOut.first)
-        updateChannelUsage(at, DmaDir::In, inOut.first);
-      if (inOut.second)
-        updateChannelUsage(at, DmaDir::Out, inOut.second);
-      for (auto named : namedChannels.lookup(tile))
-        availability.namedChannelsUsed[at].insert(named);
-      continue;
-    }
     channelRequirements[tile].first += inOut.first;
     channelRequirements[tile].second += inOut.second;
   }
@@ -229,6 +219,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device));
   shimEndsAt.clear();
+  // A physical tile's fifo ends, flows and claims hold channels at its
+  // position, which logical tiles placed there share.
+  for (TileOp placed : device.getOps<TileOp>()) {
+    TileID at = placed.getTileID();
+    auto [in, out] = channelRequirements.lookup(placed);
+    if (in)
+      updateChannelUsage(at, DmaDir::In, in);
+    if (out)
+      updateChannelUsage(at, DmaDir::Out, out);
+    for (auto named : namedChannels.lookup(placed))
+      availability.namedChannelsUsed[at].insert(named);
+    recordShimEnds(at, placed);
+  }
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
@@ -1400,11 +1403,11 @@ Placer::collectShareableShimEnds(DeviceOp device,
   ShareableShimEnds ends;
   auto shareable = [&](ObjectFifoCreateOp fifo, Value tile,
                        ObjectFifoEndPortAttr port) -> Operation * {
-    auto lt = dyn_cast_or_null<LogicalTileOp>(tile.getDefiningOp());
+    auto lt = dyn_cast_or_null<TileLike>(tile.getDefiningOp());
     if (!lt || lt.getTileType() != AIETileType::ShimNOCTile || fifo.getPlio() ||
         (port && port.channelIndex()) || registered.contains({fifo, tile}))
       return nullptr;
-    return lt;
+    return lt.getOperation();
   };
   for (auto fifo : objectFifos) {
     if (Operation *lt =
