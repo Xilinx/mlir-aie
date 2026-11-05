@@ -402,20 +402,21 @@ struct AIEObjectFifoAllocatePass
           RankedTensorType::get(type.getShape(), type.getElementType());
       Attribute zero = builder.getZeroAttr(type.getElementType());
       if (filled) {
-        // The one buffer starts as its objects do, in order, after the zero
-        // objects before them; objects with no initial contents start zero.
+        // The one buffer starts as its objects do, in order, between its zero
+        // objects; objects with no initial contents start zero.
         auto zeroObjects = pool.getZeroObjects();
-        int64_t before = zeroObjects ? (*zeroObjects)[0] : 0;
-        SmallVector<Attribute> values(before * objectElements, zero);
+        SmallVector<Attribute> values(
+            (zeroObjects ? (*zeroObjects)[0] : 0) * objectElements, zero);
         for (int i = 0; i < pool.getDepth(); i++) {
           if (i < filled)
             llvm::append_range(
                 values,
-                cast<ElementsAttr>(initValues[i]).getValues<Attribute>());
+                cast<DenseElementsAttr>(initValues[i]).getValues<Attribute>());
           else
             values.append(objectElements, zero);
         }
-        values.resize(tensor.getNumElements(), zero);
+        values.append((zeroObjects ? (*zeroObjects)[1] : 0) * objectElements,
+                      zero);
         zeros = DenseElementsAttr::get(tensor, values);
       } else if (pool.getZeroObjects()) {
         zeros = DenseElementsAttr::get(tensor, zero);
