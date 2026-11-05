@@ -112,6 +112,8 @@ assignSequentialBufferAddresses(llvm::MutableArrayRef<BufferAllocation> buffers,
 /// `bytes` homed on `home`, and the DMA ends it has there in its busier
 /// direction.
 struct SpillPool {
+  SpillPool(int64_t bytes, int64_t count, unsigned home, int demand)
+      : bytes(bytes), count(count), home(home), demand(demand) {}
   int64_t bytes;
   int64_t count;
   unsigned home;
@@ -187,6 +189,8 @@ memTileSpillNeighbours(const AIETargetModel &target, TileID home) {
 class MemTileSpillSearch {
 public:
   struct Tile {
+    Tile(int64_t capacity, llvm::SmallVector<BufferAllocation> fixed)
+        : capacity(capacity), fixed(std::move(fixed)) {}
     int64_t capacity;
     llvm::SmallVector<BufferAllocation> fixed;
   };
@@ -194,6 +198,10 @@ public:
   /// is false, and the `neighbours` it may spill to, in the order tried when
   /// they are equally used.
   struct Buffer {
+    Buffer(int64_t bytes, unsigned home, bool atHome,
+           llvm::SmallVector<unsigned, 2> neighbours)
+        : bytes(bytes), home(home), atHome(atHome),
+          neighbours(std::move(neighbours)) {}
     int64_t bytes;
     unsigned home;
     bool atHome;

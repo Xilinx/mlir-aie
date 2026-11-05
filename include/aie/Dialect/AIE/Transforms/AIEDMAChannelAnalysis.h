@@ -76,6 +76,8 @@ public:
   /// A DMA end of one tile still to get a channel: its direction, the BD ids
   /// it takes, and the exclusive upper bound on the channels it may take.
   struct BDPlanEnd {
+    BDPlanEnd(DMAChannelDir dir, int64_t bds, int limit)
+        : dir(dir), bds(bds), limit(limit) {}
     DMAChannelDir dir;
     int64_t bds;
     int limit;
