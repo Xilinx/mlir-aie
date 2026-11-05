@@ -388,31 +388,98 @@ std::optional<unsigned> DMAChannelAnalysis::nextPoolToWalk(
   return next;
 }
 
-DMAChannelAnalysis::BDWalkPlan DMAChannelAnalysis::walkPoolsUntilBDsFit(
+DMAChannelAnalysis::BDWalkSets DMAChannelAnalysis::walkSetsThatFit(
     const AIETargetModel &target, int col, int row, ArrayRef<BDPlanEnd> ends,
     ArrayRef<unsigned> poolOf, ArrayRef<BDWalkPool> pools,
     function_ref<bool(DMAChannelDir, int)> free,
     function_ref<int64_t(int)> spent) {
-  BDWalkPlan plan;
-  SmallVector<BDPlanEnd> unweighted;
-  for (const BDPlanEnd &end : ends)
-    unweighted.push_back({end.dir, 0, end.limit});
-  if (!planBDChannels(target, col, row, unweighted, free,
-                      [](int) -> int64_t { return 0; }))
-    return plan;
-  SmallVector<bool> whole(pools.size(), false);
-  while (true) {
+  BDWalkSets result;
+  auto none = [](int) -> int64_t { return 0; };
+  auto fitsWalking = [&](ArrayRef<bool> whole, bool weighted) {
     SmallVector<BDPlanEnd> planned;
     for (auto [end, pool] : llvm::zip_equal(ends, poolOf))
-      planned.push_back({end.dir, whole[pool] ? 1 : end.bds, end.limit});
-    if (planBDChannels(target, col, row, planned, free, spent)) {
-      plan.fits = true;
-      return plan;
-    }
-    std::optional<unsigned> next = nextPoolToWalk(ends, poolOf, pools, whole);
-    if (!next)
-      return plan;
-    whole[*next] = true;
-    plan.walked.push_back(*next);
+      planned.push_back({end.dir,
+                         !weighted     ? 0
+                         : whole[pool] ? 1
+                                       : end.bds,
+                         end.limit});
+    return planBDChannels(target, col, row, planned, free,
+                          weighted ? spent : function_ref<int64_t(int)>(none))
+        .has_value();
+  };
+  SmallVector<bool> whole(pools.size(), false);
+  if (!fitsWalking(whole, /*weighted=*/false)) {
+    result.channelShort = true;
+    return result;
   }
+  if (fitsWalking(whole, /*weighted=*/true))
+    return result;
+
+  // The walkable pools in nextPoolToWalk's order, whose position ranks them.
+  SmallVector<unsigned> ranked;
+  while (std::optional<unsigned> next =
+             nextPoolToWalk(ends, poolOf, pools, whole)) {
+    ranked.push_back(*next);
+    whole[*next] = true;
+  }
+  if (!fitsWalking(whole, /*weighted=*/true)) {
+    result.fits = false;
+    return result;
+  }
+  if (ranked.size() > kMaxWalkSearch) {
+    SmallVector<bool> searched(pools.size(), false);
+    for (unsigned pool : ArrayRef(ranked).take_front(kMaxWalkSearch))
+      searched[pool] = true;
+    if (!fitsWalking(searched, /*weighted=*/true)) {
+      result.sets.push_back(ranked);
+      return result;
+    }
+    ranked.resize(kMaxWalkSearch);
+  }
+
+  unsigned n = ranked.size();
+  SmallVector<uint32_t> masks;
+  for (uint32_t mask = 1; mask < (uint32_t(1) << n); ++mask) {
+    llvm::fill(whole, false);
+    for (unsigned bit = 0; bit < n; ++bit)
+      if (mask >> bit & 1)
+        whole[ranked[bit]] = true;
+    if (fitsWalking(whole, /*weighted=*/true))
+      masks.push_back(mask);
+  }
+  auto bytes = [&](uint32_t mask) {
+    int64_t total = 0;
+    for (unsigned bit = 0; bit < n; ++bit)
+      if (mask >> bit & 1)
+        total += pools[ranked[bit]].depth * pools[ranked[bit]].objectBytes;
+    return total;
+  };
+  llvm::stable_sort(masks, [&](uint32_t a, uint32_t b) {
+    int64_t aBytes = bytes(a), bBytes = bytes(b);
+    if (aBytes != bBytes)
+      return aBytes < bBytes;
+    if (llvm::popcount(a) != llvm::popcount(b))
+      return llvm::popcount(a) < llvm::popcount(b);
+    // Of two sets alike in size, the one holding the first-ranked pool that
+    // only one holds.
+    uint32_t differ = a ^ b;
+    return differ && (a & differ & -differ);
+  });
+  for (uint32_t mask : masks) {
+    SmallVector<unsigned> set;
+    for (unsigned bit = 0; bit < n; ++bit)
+      if (mask >> bit & 1)
+        set.push_back(ranked[bit]);
+    result.sets.push_back(std::move(set));
+  }
+  return result;
+}
+
+unsigned DMAChannelAnalysis::chooseWalkSet(unsigned count,
+                                           function_ref<bool(unsigned)> fits) {
+  for (unsigned index = 0; count > 1 && index < std::min(count, kMaxWalkChecks);
+       ++index)
+    if (fits(index))
+      return index;
+  return 0;
 }

@@ -1286,9 +1286,14 @@ struct AIEObjectFifoAllocatePass
     return plan;
   }
 
-  /// Walks whole the pool on `tile` DMAChannelAnalysis::nextPoolToWalk picks,
-  /// so its ends take one BD each; false when none is left.
-  bool walkDeepestWhole(TileLike tile) {
+  /// Walks the pools a plan of the BD ids at home needs (walkHomeBDPools);
+  /// when that plan needs none, the pool on `tile`
+  /// DMAChannelAnalysis::nextPoolToWalk picks, for what only the tile's real
+  /// channels are short of. False when none is left.
+  bool walkForBDShortfall(TileLike tile,
+                          MutableArrayRef<ObjectFifoPoolOp> pools) {
+    if (walkHomeBDPools(pools))
+      return true;
     SmallVector<ObjectFifoDmaEndpointOp> dmas;
     for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
       if (sameTile(dma.getTile(), tile->getResult(0)) && dma.getPoolOp())
@@ -1302,33 +1307,78 @@ struct AIEObjectFifoAllocatePass
     return next.has_value();
   }
 
-  /// Walks whole, on each placed mem tile, the pools a plan of its BD ids
-  /// needs walked when every buffer stays at home, as the SA placer weighs the
-  /// tile's memory; those tiles then take their channels from that plan.
-  /// False when nothing is left to walk.
-  bool walkHomeBDPools() {
-    llvm::MapVector<TileID, SmallVector<ObjectFifoDmaEndpointOp>> ends;
+  /// Walks whole, on each placed mem tile, a set of
+  /// DMAChannelAnalysis::walkSetsThatFit's, chosen by placing `pools` as the
+  /// SA placer does; every walkable pool when none fits. Those tiles then take
+  /// their channels from that plan. False when nothing is left to walk.
+  bool walkHomeBDPools(MutableArrayRef<ObjectFifoPoolOp> pools) {
+    std::map<std::pair<int, int>, SmallVector<ObjectFifoDmaEndpointOp>> ends;
     for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>()) {
       TileLike tile = tileOf(cast<RouteEndpoint>(dma.getOperation()));
       auto col = tile.tryGetCol(), row = tile.tryGetRow();
       if (tile.isMemTile() && col && row && dma.getPoolOp())
         ends[{*col, *row}].push_back(dma);
     }
-    bool walkedAny = false;
+    // Every tile walks its first set; when `pools` then cannot be placed, each
+    // tile in turn walks the first of its sets they place in with the others'
+    // as they stand (DMAChannelAnalysis::chooseWalkSet), as the SA placer does.
+    struct Tile {
+      HomeBDPlan home;
+      DMAChannelAnalysis::BDWalkSets found;
+      SmallVector<ObjectFifoDmaEndpointOp> dmas;
+    };
+    SmallVector<Tile, 0> tiles;
     for (auto &[at, dmas] : ends) {
       HomeBDPlan home = homeBDPlan(dmas);
-      DMAChannelAnalysis::BDWalkPlan plan =
-          DMAChannelAnalysis::walkPoolsUntilBDsFit(
-              device.getTargetModel(), at.col, at.row, home.ends, home.poolOf,
-              home.walkable, [](DMAChannelDir, int) { return true; },
+      DMAChannelAnalysis::BDWalkSets found =
+          DMAChannelAnalysis::walkSetsThatFit(
+              device.getTargetModel(), at.first, at.second, home.ends,
+              home.poolOf, home.walkable,
+              [](DMAChannelDir, int) { return true; },
               [](int) -> int64_t { return 0; });
-      for (unsigned pool : plan.walked)
-        home.pools[pool].setContiguous(true);
-      if (!plan.walked.empty())
-        for (auto dma : dmas)
-          bdPlanned.insert(
-              tileOf(cast<RouteEndpoint>(dma.getOperation())).getOperation());
-      walkedAny |= !plan.walked.empty();
+      if (found.sets.empty() && !found.fits && !found.channelShort) {
+        found.sets.emplace_back();
+        for (auto [pool, walkable] : llvm::enumerate(home.walkable))
+          if (walkable.walkable)
+            found.sets.back().push_back(pool);
+      }
+      if (!found.sets.empty())
+        tiles.push_back({std::move(home), std::move(found), dmas});
+    }
+    SmallVector<unsigned> chosen(tiles.size(), 0);
+    auto setWalked = [&](unsigned tile, bool walked) {
+      for (unsigned pool : tiles[tile].found.sets[chosen[tile]])
+        tiles[tile].home.pools[pool].setContiguous(walked);
+    };
+    auto placed = [&] {
+      SmallVector<ObjectFifoPoolOp> trial(pools.begin(), pools.end());
+      sizeOrder(trial);
+      localPools.clear();
+      return succeeded(planBuffers(trial));
+    };
+    for (unsigned tile = 0; tile < tiles.size(); ++tile)
+      setWalked(tile, true);
+    if (!placed())
+      for (unsigned tile = 0; tile < tiles.size(); ++tile) {
+        setWalked(tile, false);
+        chosen[tile] = DMAChannelAnalysis::chooseWalkSet(
+            tiles[tile].found.sets.size(), [&](unsigned set) {
+              chosen[tile] = set;
+              setWalked(tile, true);
+              bool fits = placed();
+              setWalked(tile, false);
+              return fits;
+            });
+        setWalked(tile, true);
+      }
+    bool walkedAny = false;
+    for (unsigned tile = 0; tile < tiles.size(); ++tile) {
+      if (tiles[tile].found.sets[chosen[tile]].empty())
+        continue;
+      walkedAny = true;
+      for (auto dma : tiles[tile].dmas)
+        bdPlanned.insert(
+            tileOf(cast<RouteEndpoint>(dma.getOperation())).getOperation());
     }
     return walkedAny;
   }
@@ -2378,7 +2428,8 @@ struct AIEObjectFifoAllocatePass
         TileLike tile = tileOf(channelFailure);
         DMAChannelDir dir = channelFailure.getRouteDirection();
         if (bdShortfall) {
-          if (bdPlanned.insert(tile.getOperation()) || walkDeepestWhole(tile))
+          if (bdPlanned.insert(tile.getOperation()) ||
+              walkForBDShortfall(tile, pools))
             return true;
         } else if (tile.isShimTile() ? planShimSharing(tile, dir)
                                      : planTurnSharing(tile, dir)) {
@@ -2386,7 +2437,7 @@ struct AIEObjectFifoAllocatePass
         }
       }
       localPools.clear();
-      return failed(planBuffers(pools)) && walkHomeBDPools();
+      return failed(planBuffers(pools)) && walkHomeBDPools(pools);
     };
     while (failed(allocated) && repair()) {
       localPools.clear();

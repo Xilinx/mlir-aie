@@ -890,9 +890,12 @@ private:
   // sharing a position, by its tiles in order.
   llvm::DenseMap<TileID, int64_t> bdShortfallAt;
   llvm::SmallVector<std::pair<TileID, int64_t>> bdUndo;
-  std::map<
-      std::pair<TileID, std::vector<mlir::Operation *>>,
-      std::pair<int64_t, llvm::SmallVector<std::pair<mlir::Operation *, int>>>>
+  /// Sets of pools, by (pool, id), that a mem tile may walk whole, in the
+  /// order DMAChannelAnalysis::walkSetsThatFit tries them.
+  using WalkSets =
+      llvm::SmallVector<llvm::SmallVector<std::pair<mlir::Operation *, int>>>;
+  std::map<std::pair<TileID, std::vector<mlir::Operation *>>,
+           std::pair<int64_t, WalkSets>>
       bdShortfallOf;
   // For each mem tile position, the first position seen whose channels reach
   // the same BD ids, which the shortfalls are cached under.
@@ -942,12 +945,11 @@ private:
           &oldPlacements);
   int getResourcePenalty() const { return cachedResourcePenalty; }
   /// The BD ids the ends of mem tiles `tiles`, at `position`, are short of
-  /// once aie-objectfifo-allocate has planned their channels
-  /// (DMAChannelAnalysis::planBDChannels) and walked whole the deepest pools
-  /// it can, deepest first, until they fit; with `walked`, those pools.
-  int64_t bdShortfall(
-      TileID position, llvm::ArrayRef<mlir::Operation *> tiles,
-      llvm::DenseSet<std::pair<mlir::Operation *, int>> *walked = nullptr);
+  /// once aie-objectfifo-allocate has planned their channels; with
+  /// `walkSets`, DMAChannelAnalysis::walkSetsThatFit's sets (every walkable
+  /// pool when none fits).
+  int64_t bdShortfall(TileID position, llvm::ArrayRef<mlir::Operation *> tiles,
+                      WalkSets *walkSets = nullptr);
   /// The logical mem tiles at `position`, in memTileEnds order.
   llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
   int computeMemSpilloverPenalty();

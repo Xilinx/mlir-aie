@@ -100,33 +100,45 @@ public:
     int64_t objectBytes;
     bool walkable;
   };
-  /// The pools walked whole, in walk order, and whether the ends then fit.
-  struct BDWalkPlan {
-    llvm::SmallVector<unsigned> walked;
-    bool fits = false;
+  /// walkSetsThatFit's result; `channelShort` when the ends do not fit the
+  /// tile's channels even taking no BD ids, `fits` false when no set does.
+  struct BDWalkSets {
+    llvm::SmallVector<llvm::SmallVector<unsigned>> sets;
+    bool channelShort = false;
+    bool fits = true;
   };
 
   /// The walkable pool not yet `whole` to walk next: the deepest, then the one
-  /// with the smallest objects, since a whole buffer that fits nowhere ends
-  /// the search while too few BD ids only walk another, then the one whose
-  /// ends take the most BD ids; `pools` order decides only between pools
-  /// alike in all three. Nothing when none is left.
+  /// with the smallest objects, then the one whose ends take the most BD ids;
+  /// `pools` order decides only between pools alike in all three. Nothing
+  /// when none is left.
   static std::optional<unsigned>
   nextPoolToWalk(llvm::ArrayRef<BDPlanEnd> ends,
                  llvm::ArrayRef<unsigned> poolOf,
                  llvm::ArrayRef<BDWalkPool> pools, llvm::ArrayRef<bool> whole);
 
-  /// Walks whole the pools of `ends` nextPoolToWalk picks until
-  /// planBDChannels fits them; `poolOf` gives each end's pool. Walks nothing
-  /// when the ends do not fit their channels even taking no BD ids.
+  /// Every set of walkable `pools` whose walk lets planBDChannels fit `ends`
+  /// (`poolOf` gives each end's pool), ordered by the bytes the set walks
+  /// whole, then its size, then its members in nextPoolToWalk's order. Empty
+  /// when the ends fit unwalked. Sets are drawn from the first
+  /// kMaxWalkSearch walkable pools in nextPoolToWalk's order.
   /// aie-objectfifo-allocate and the SA placer both walk by this.
-  static BDWalkPlan
-  walkPoolsUntilBDsFit(const AIETargetModel &target, int col, int row,
-                       llvm::ArrayRef<BDPlanEnd> ends,
-                       llvm::ArrayRef<unsigned> poolOf,
-                       llvm::ArrayRef<BDWalkPool> pools,
-                       llvm::function_ref<bool(DMAChannelDir, int)> free,
-                       llvm::function_ref<int64_t(int)> spent);
+  static BDWalkSets
+  walkSetsThatFit(const AIETargetModel &target, int col, int row,
+                  llvm::ArrayRef<BDPlanEnd> ends,
+                  llvm::ArrayRef<unsigned> poolOf,
+                  llvm::ArrayRef<BDWalkPool> pools,
+                  llvm::function_ref<bool(DMAChannelDir, int)> free,
+                  llvm::function_ref<int64_t(int)> spent);
+  static constexpr unsigned kMaxWalkSearch = 16;
+
+  /// The first of the first kMaxWalkChecks of `count` walk sets, in
+  /// walkSetsThatFit's order, whose walk `fits` (the caller's memory search)
+  /// accepts, or the first when it accepts none, so the caller fails as it
+  /// would have.
+  static unsigned chooseWalkSet(unsigned count,
+                                llvm::function_ref<bool(unsigned)> fits);
+  static constexpr unsigned kMaxWalkChecks = 8;
 
   /// Claim a raw stream port for `user`, reporting on it when the port is
   /// taken; packet users may share it with other packets.
