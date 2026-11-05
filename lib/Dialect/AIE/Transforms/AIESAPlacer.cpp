@@ -941,7 +941,7 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
     auto *at = llvm::find(poolKeys, poolKey);
     if (at == poolKeys.end()) {
       poolKeys.push_back(poolKey);
-      pools.push_back({end->end.depth, false});
+      pools.push_back({end->end.depth, end->end.objectBytes, false});
       at = std::prev(poolKeys.end());
     }
     unsigned pool = at - poolKeys.begin();

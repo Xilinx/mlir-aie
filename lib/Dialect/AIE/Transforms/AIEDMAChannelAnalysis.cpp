@@ -370,6 +370,24 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
   return channelOf;
 }
 
+std::optional<unsigned> DMAChannelAnalysis::nextPoolToWalk(
+    ArrayRef<BDPlanEnd> ends, ArrayRef<unsigned> poolOf,
+    ArrayRef<BDWalkPool> pools, ArrayRef<bool> whole) {
+  SmallVector<int64_t> bds(pools.size(), 0);
+  for (auto [end, pool] : llvm::zip_equal(ends, poolOf))
+    bds[pool] += end.bds;
+  auto key = [&](unsigned pool) {
+    return std::make_tuple(pools[pool].depth, bds[pool],
+                           -pools[pool].objectBytes);
+  };
+  std::optional<unsigned> next;
+  for (unsigned pool = 0, e = pools.size(); pool < e; ++pool)
+    if (pools[pool].walkable && !whole[pool] &&
+        (!next || key(pool) > key(*next)))
+      next = pool;
+  return next;
+}
+
 DMAChannelAnalysis::BDWalkPlan DMAChannelAnalysis::walkPoolsUntilBDsFit(
     const AIETargetModel &target, int col, int row, ArrayRef<BDPlanEnd> ends,
     ArrayRef<unsigned> poolOf, ArrayRef<BDWalkPool> pools,
@@ -385,14 +403,10 @@ DMAChannelAnalysis::BDWalkPlan DMAChannelAnalysis::walkPoolsUntilBDsFit(
       plan.fits = true;
       return plan;
     }
-    std::optional<unsigned> deepest;
-    for (auto [index, pool] : llvm::enumerate(pools))
-      if (pool.walkable && !whole[index] &&
-          (!deepest || pool.depth > pools[*deepest].depth))
-        deepest = index;
-    if (!deepest)
+    std::optional<unsigned> next = nextPoolToWalk(ends, poolOf, pools, whole);
+    if (!next)
       return plan;
-    whole[*deepest] = true;
-    plan.walked.push_back(*deepest);
+    whole[*next] = true;
+    plan.walked.push_back(*next);
   }
 }

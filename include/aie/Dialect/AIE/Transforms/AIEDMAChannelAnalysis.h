@@ -92,10 +92,12 @@ public:
                  llvm::function_ref<bool(DMAChannelDir, int)> free,
                  llvm::function_ref<int64_t(int)> spent);
 
-  /// A pool whose ends a BD plan weighs: how many objects it holds, and
-  /// whether it can be walked whole, its ends then taking one BD id each.
+  /// A pool whose ends a BD plan weighs: how many objects it holds, the bytes
+  /// of one, and whether it can be walked whole, its ends then taking one BD
+  /// id each.
   struct BDWalkPool {
     int64_t depth;
+    int64_t objectBytes;
     bool walkable;
   };
   /// The pools walked whole, in walk order, and whether the ends then fit.
@@ -104,9 +106,18 @@ public:
     bool fits = false;
   };
 
-  /// Walks whole the deepest walkable pool of `ends` (the earliest in `pools`
-  /// among equals) until planBDChannels fits them; `poolOf` gives each end's
-  /// pool. aie-objectfifo-allocate and the SA placer both walk by this.
+  /// The walkable pool not yet `whole` to walk next: the deepest, then the one
+  /// whose ends take the most BD ids, then the one with the smallest objects;
+  /// `pools` order decides only between pools alike in all three. Nothing
+  /// when none is left.
+  static std::optional<unsigned>
+  nextPoolToWalk(llvm::ArrayRef<BDPlanEnd> ends,
+                 llvm::ArrayRef<unsigned> poolOf,
+                 llvm::ArrayRef<BDWalkPool> pools, llvm::ArrayRef<bool> whole);
+
+  /// Walks whole the pools of `ends` nextPoolToWalk picks until
+  /// planBDChannels fits them; `poolOf` gives each end's pool.
+  /// aie-objectfifo-allocate and the SA placer both walk by this.
   static BDWalkPlan
   walkPoolsUntilBDsFit(const AIETargetModel &target, int col, int row,
                        llvm::ArrayRef<BDPlanEnd> ends,

@@ -1226,21 +1226,52 @@ struct AIEObjectFifoAllocatePass
                         });
   }
 
-  /// Walks the deepest pool on `tile` that can be walked whole, so its ends
-  /// take one BD each; false when none is left.
-  bool walkDeepestWhole(TileLike tile) {
-    ObjectFifoPoolOp deepest;
-    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>()) {
-      ObjectFifoPoolOp pool = dma.getPoolOp();
-      if (sameTile(dma.getTile(), tile->getResult(0)) && canWalkWhole(pool) &&
-          (!deepest || pool.getDepth() > deepest.getDepth() ||
-           (pool.getDepth() == deepest.getDepth() &&
-            structuralRank.lookup(pool) < structuralRank.lookup(deepest))))
-        deepest = pool;
+  /// The DMA ends `dmas` of one mem tile and their pools, in structural
+  /// order, as a plan of the tile's BD ids weighs them with every buffer at
+  /// home.
+  struct HomeBDPlan {
+    SmallVector<ObjectFifoPoolOp> pools;
+    SmallVector<DMAChannelAnalysis::BDWalkPool> walkable;
+    SmallVector<DMAChannelAnalysis::BDPlanEnd> ends;
+    SmallVector<unsigned> poolOf;
+  };
+  HomeBDPlan homeBDPlan(ArrayRef<ObjectFifoDmaEndpointOp> dmas) {
+    HomeBDPlan plan;
+    for (auto dma : dmas)
+      if (!llvm::is_contained(plan.pools, dma.getPoolOp()))
+        plan.pools.push_back(dma.getPoolOp());
+    llvm::stable_sort(plan.pools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+      return structuralRank.lookup(a) < structuralRank.lookup(b);
+    });
+    for (ObjectFifoPoolOp pool : plan.pools)
+      plan.walkable.push_back(
+          {pool.getDepth(), pool.getObjectSizeInBytes(), canWalkWhole(pool)});
+    for (auto dma : dmas) {
+      auto endpoint = cast<RouteEndpoint>(dma.getOperation());
+      DMAChannelDir dir = endpoint.getRouteDirection();
+      plan.ends.push_back({dir, dma.getNumBDs(),
+                           DMAChannelAnalysis::getDMAChannelLimit(
+                               tileOf(endpoint), dir, false)});
+      plan.poolOf.push_back(llvm::find(plan.pools, dma.getPoolOp()) -
+                            plan.pools.begin());
     }
-    if (deepest)
-      deepest.setContiguous(true);
-    return bool(deepest);
+    return plan;
+  }
+
+  /// Walks whole the pool on `tile` DMAChannelAnalysis::nextPoolToWalk picks,
+  /// so its ends take one BD each; false when none is left.
+  bool walkDeepestWhole(TileLike tile) {
+    SmallVector<ObjectFifoDmaEndpointOp> dmas;
+    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>())
+      if (sameTile(dma.getTile(), tile->getResult(0)) && dma.getPoolOp())
+        dmas.push_back(dma);
+    HomeBDPlan plan = homeBDPlan(dmas);
+    std::optional<unsigned> next = DMAChannelAnalysis::nextPoolToWalk(
+        plan.ends, plan.poolOf, plan.walkable,
+        SmallVector<bool>(plan.pools.size(), false));
+    if (next)
+      plan.pools[*next].setContiguous(true);
+    return next.has_value();
   }
 
   /// Walks whole, on each placed mem tile, the pools a plan of its BD ids
@@ -1257,33 +1288,14 @@ struct AIEObjectFifoAllocatePass
     }
     bool walkedAny = false;
     for (auto &[at, dmas] : ends) {
-      SmallVector<ObjectFifoPoolOp> pools;
-      for (auto dma : dmas)
-        if (!llvm::is_contained(pools, dma.getPoolOp()))
-          pools.push_back(dma.getPoolOp());
-      llvm::stable_sort(pools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
-        return structuralRank.lookup(a) < structuralRank.lookup(b);
-      });
-      SmallVector<DMAChannelAnalysis::BDWalkPool> walkable;
-      for (ObjectFifoPoolOp pool : pools)
-        walkable.push_back({pool.getDepth(), canWalkWhole(pool)});
-      SmallVector<DMAChannelAnalysis::BDPlanEnd> planned;
-      SmallVector<unsigned> poolOf;
-      for (auto dma : dmas) {
-        auto endpoint = cast<RouteEndpoint>(dma.getOperation());
-        DMAChannelDir dir = endpoint.getRouteDirection();
-        planned.push_back({dir, dma.getNumBDs(),
-                           DMAChannelAnalysis::getDMAChannelLimit(
-                               tileOf(endpoint), dir, false)});
-        poolOf.push_back(llvm::find(pools, dma.getPoolOp()) - pools.begin());
-      }
+      HomeBDPlan home = homeBDPlan(dmas);
       DMAChannelAnalysis::BDWalkPlan plan =
           DMAChannelAnalysis::walkPoolsUntilBDsFit(
-              device.getTargetModel(), at.col, at.row, planned, poolOf,
-              walkable, [](DMAChannelDir, int) { return true; },
+              device.getTargetModel(), at.col, at.row, home.ends, home.poolOf,
+              home.walkable, [](DMAChannelDir, int) { return true; },
               [](int) -> int64_t { return 0; });
       for (unsigned pool : plan.walked)
-        pools[pool].setContiguous(true);
+        home.pools[pool].setContiguous(true);
       if (!plan.walked.empty())
         for (auto dma : dmas)
           bdPlanned.insert(
