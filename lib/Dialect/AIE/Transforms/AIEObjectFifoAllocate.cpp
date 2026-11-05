@@ -1176,9 +1176,9 @@ struct AIEObjectFifoAllocatePass
         auto output = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
             device, proof.getOutput());
         if (output && output.getFifoName())
-          gates[output.getFifoNameAttr()].push_back({input.getFifoNameAttr(),
-                                                     proof.getInputBytes(),
-                                                     proof.getOutputBytes()});
+          gates[output.getFifoNameAttr()].push_back(
+              {input.getFifoNameAttr(), proof.getInputBytes(),
+               proof.getOutputBytes(), proof.getGranuleBytes()});
       }
     }
     ShimTransferSpans spans(

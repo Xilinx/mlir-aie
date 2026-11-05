@@ -45,6 +45,9 @@ public:
     mlir::StringAttr input;
     int64_t inputBytes;
     int64_t outputBytes;
+    /// The proof counts drained bytes only in whole multiples of this, when
+    /// nonzero.
+    int64_t granuleBytes;
   };
 
   /// `endOf` maps a symbol a runtime sequence transfers through to the

@@ -1285,10 +1285,14 @@ struct AIEObjectFifoVerifyPass
 
   /// A place the bytes some endpoint sends reach: once `far` has taken some
   /// of them, the endpoint has sent at least `inBytes` for every `outBytes`
-  /// taken.
+  /// taken. With a nonzero `lagObject`, they pass a later segment of a join
+  /// on the way, whose drainer takes `lagObject` bytes an object and has taken
+  /// at least `lagIn` for every `lagOut` `far` took: that holds in whole
+  /// objects of the join only (see recordConsumption's granule).
   struct Reach {
     Operation *far;
     int64_t inBytes, outBytes;
+    int64_t lagObject = 0, lagIn = 0, lagOut = 0;
   };
 
   static int64_t segmentBytes(ObjectFifoPoolOp pool,
@@ -1340,9 +1344,11 @@ struct AIEObjectFifoVerifyPass
       Operation *dest = SymbolTable::lookupNearestSymbolFrom(
           device, StringAttr::get(device.getContext(), name));
       if (auto shim = dyn_cast_or_null<RouteEndpointOp>(dest)) {
+        Reach at = scale;
+        at.far = shim;
         if (shim.getBundle() == WireBundle::DMA &&
             shim.getTileLike().isShimTile())
-          reaches.push_back({shim, scale.inBytes, scale.outBytes});
+          reaches.push_back(at);
         continue;
       }
       auto fill = dyn_cast_or_null<ObjectFifoDmaEndpointOp>(dest);
@@ -1379,18 +1385,36 @@ struct AIEObjectFifoVerifyPass
           continue;
         bool split = drained.size() == 1 && drained.front() == filled.back();
         bool join = filled.size() == 1 && filled.front() == drained.front();
-        if (drained != filled && !split && !join)
+        // A later segment of a join is taken only after those ahead of it in
+        // each object (a join's drainer reads its segments in order, any
+        // transform staying within each), so its progress shows in whole
+        // objects alone; one such segment per path.
+        bool laterJoin = dma && filled.size() == 1 && !join &&
+                         llvm::is_contained(drained, filled.front());
+        if ((drained != filled && !split && !join && !laterJoin) ||
+            (laterJoin && scale.lagObject))
           continue;
         int64_t in = objectBytes(fill);
         int64_t out = core ? segmentBytes(pool, drained) : objectBytes(dma);
-        Reach next{drainer, 0, 0};
+        Reach next = scale;
+        next.far = drainer;
         if (in <= 0 || out <= 0 ||
             llvm::MulOverflow(scale.inBytes, in, next.inBytes) ||
-            llvm::MulOverflow(scale.outBytes, out, next.outBytes))
+            llvm::MulOverflow(scale.outBytes, out, next.outBytes) ||
+            (scale.lagObject &&
+             (llvm::MulOverflow(scale.lagIn, in, next.lagIn) ||
+              llvm::MulOverflow(scale.lagOut, out, next.lagOut))))
           continue;
         int64_t common = std::gcd(next.inBytes, next.outBytes);
         next.inBytes /= common;
         next.outBytes /= common;
+        if (laterJoin)
+          next = {next.far, next.inBytes, next.outBytes, out, 1, 1};
+        if (next.lagObject) {
+          int64_t lagCommon = std::gcd(next.lagIn, next.lagOut);
+          next.lagIn /= lagCommon;
+          next.lagOut /= lagCommon;
+        }
         if (core)
           reaches.push_back(next);
         else
@@ -1407,22 +1431,39 @@ struct AIEObjectFifoVerifyPass
   /// output, or another such core. A shim input sends a byte before anything
   /// downstream can take it, and the host receives a byte only after the
   /// cores released it, so once the output has received R bytes the input's
-  /// first R * in / out have been sent.
+  /// first R * in / out have been sent; with a granule (see carries), R
+  /// rounded down to a multiple of it.
   void recordConsumption(DeviceOp device, const PoolActors &actors) {
     MLIRContext *ctx = device.getContext();
+    struct Share {
+      int64_t in, out, granule;
+    };
     for (auto input : device.getOps<RouteEndpointOp>()) {
       if (input.getBundle() != WireBundle::DMA ||
           !input.getTileLike().isShimTile())
         continue;
-      // The most bytes the input is proven to have sent for every `out` each
-      // output received, as (in, out); a smaller share follows from it.
-      llvm::MapVector<Operation *, std::pair<int64_t, int64_t>> proofs;
-      auto prove = [&](RouteEndpointOp output, int64_t in, int64_t out) {
-        auto [it, inserted] = proofs.try_emplace(output, in, out);
+      // Per output, one proof: one without a granule where there is one, else
+      // the most bytes for every `out` received, then the smallest granule.
+      llvm::MapVector<Operation *, Share> proofs;
+      auto prove = [&](RouteEndpointOp output, const Reach &reach) {
+        Share share{reach.inBytes, reach.outBytes, 0};
+        if (reach.lagObject) {
+          // The smallest R with R * lagIn a multiple of lagOut * lagObject.
+          int64_t whole;
+          if (llvm::MulOverflow(reach.lagOut, reach.lagObject, whole))
+            return;
+          share.granule = whole / std::gcd(whole, reach.lagIn);
+        }
+        auto [it, inserted] = proofs.try_emplace(output, share);
+        const Share &old = it->second;
         int64_t lhs, rhs;
-        if (!inserted && !llvm::MulOverflow(in, it->second.second, lhs) &&
-            !llvm::MulOverflow(it->second.first, out, rhs) && lhs > rhs)
-          it->second = {in, out};
+        if (inserted || llvm::MulOverflow(share.in, old.out, lhs) ||
+            llvm::MulOverflow(old.in, share.out, rhs))
+          return;
+        if ((old.granule && !share.granule) ||
+            (!old.granule == !share.granule &&
+             (lhs > rhs || (lhs == rhs && share.granule < old.granule))))
+          it->second = share;
       };
       SmallVector<Reach> reaches;
       llvm::SmallPtrSet<Operation *, 8> onPath;
@@ -1437,7 +1478,7 @@ struct AIEObjectFifoVerifyPass
       while (!work.empty()) {
         auto [reach, hops] = work.pop_back_val();
         if (auto output = dyn_cast<RouteEndpointOp>(reach.far)) {
-          prove(output, reach.inBytes, reach.outBytes);
+          prove(output, reach);
           continue;
         }
         if (hops == maxCoreHops)
@@ -1487,14 +1528,16 @@ struct AIEObjectFifoVerifyPass
           // A core sharing the pool's memory takes what this one released.
           SmallVector<Reach> nexts;
           if (!dma) {
-            nexts.push_back({drainer, 1, 1});
+            nexts.push_back({drainer, 1, 1, 0, 0, 0});
           } else {
             llvm::SmallPtrSet<Operation *, 8> outPath;
             carries(device, dma.getSymNameAttr(), actors, {nullptr, 1, 1},
                     outPath, nexts);
           }
           for (const Reach &next : nexts) {
-            Reach composed{next.far, 0, 0};
+            if (reach.lagObject && next.lagObject)
+              continue;
+            Reach composed = next;
             if (llvm::MulOverflow(next.inBytes, taken, composed.inBytes) ||
                 llvm::MulOverflow(composed.inBytes, reach.inBytes,
                                   composed.inBytes) ||
@@ -1505,6 +1548,21 @@ struct AIEObjectFifoVerifyPass
             int64_t common = std::gcd(composed.inBytes, composed.outBytes);
             composed.inBytes /= common;
             composed.outBytes /= common;
+            // A join before the core: its drainer took at least what the
+            // core took, scaled on to the next place as the input's share is.
+            if (reach.lagObject) {
+              composed.lagObject = reach.lagObject;
+              if (llvm::MulOverflow(reach.lagIn, taken, composed.lagIn) ||
+                  llvm::MulOverflow(composed.lagIn, next.inBytes,
+                                    composed.lagIn) ||
+                  llvm::MulOverflow(reach.lagOut, released, composed.lagOut) ||
+                  llvm::MulOverflow(composed.lagOut, next.outBytes,
+                                    composed.lagOut))
+                continue;
+              int64_t lagCommon = std::gcd(composed.lagIn, composed.lagOut);
+              composed.lagIn /= lagCommon;
+              composed.lagOut /= lagCommon;
+            }
             work.push_back({composed, hops + 1});
           }
         }
@@ -1515,13 +1573,13 @@ struct AIEObjectFifoVerifyPass
       }
       SmallVector<Attribute> attrs;
       for (auto [output, share] : proofs) {
-        auto [in, out] = share;
-        int64_t common = std::gcd(in, out);
+        int64_t common = std::gcd(share.in, share.out);
         attrs.push_back(ConsumedByAttr::get(
             ctx,
             FlatSymbolRefAttr::get(
                 cast<RouteEndpointOp>(output).getSymNameAttr()),
-            in / common, out / common, /*device=*/FlatSymbolRefAttr()));
+            share.in / common, share.out / common, share.granule,
+            /*device=*/FlatSymbolRefAttr()));
       }
       input.setConsumedByAttr(ArrayAttr::get(ctx, attrs));
     }

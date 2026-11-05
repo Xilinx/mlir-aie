@@ -243,9 +243,12 @@ def ConsumedByAttr : AttrDef<AIE_Dialect, "ConsumedBy", []> {
     `--aie-objectfifo-allocate`, its `aie.shim_dma_allocation` after.
     `--aie-objectfifo-verify` records one where the design proves that, once
     the host has received `R` bytes through `output` since the array was
-    loaded, the input's first `R * input_bytes / output_bytes` bytes have left
-    the shim, taken by the tile they went to, so the transfers that sent them
-    have finished.
+    loaded, the input's first `G(R) * input_bytes / output_bytes` bytes have
+    left the shim, taken by the tile they went to, so the transfers that sent
+    them have finished. `G(R)` is `R`, or with a nonzero `granule_bytes` `g`,
+    `R` rounded down to a multiple of `g`: the input's bytes then reach the
+    output through a later segment of a join, whose drainer takes it only
+    after the segments ahead of it in each object.
     `--aie-assign-runtime-sequence-bd-ids` credits that completion when an
     await retires a transfer on `output`.
 
@@ -263,6 +266,7 @@ def ConsumedByAttr : AttrDef<AIE_Dialect, "ConsumedBy", []> {
 
   let parameters = (ins "::mlir::FlatSymbolRefAttr":$output,
       "int64_t":$input_bytes, "int64_t":$output_bytes,
+      DefaultValuedParameter<"int64_t", "0">:$granule_bytes,
       OptionalParameter<"::mlir::FlatSymbolRefAttr">:$device);
 
   let assemblyFormat = "`<` struct(params) `>`";

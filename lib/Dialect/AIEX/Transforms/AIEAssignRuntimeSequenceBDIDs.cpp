@@ -663,19 +663,42 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   using Volume = std::map<int64_t, int64_t>;
 
   // Whether a * scaleA <= b * scaleB whatever values the parameters take.
-  // Every coefficient is a length and every parameter is at least 0, so it is
-  // enough to compare them one by one.
+  // Every parameter is at least 0, so it is enough to compare the terms one
+  // by one, a term missing from either side counting as 0.
   static bool atMost(const Volume &a, int64_t scaleA, const Volume &b,
                      int64_t scaleB) {
-    for (auto [key, coefficient] : a) {
-      auto it = b.find(key);
-      int64_t lhs, rhs = 0;
-      if (llvm::MulOverflow(coefficient, scaleA, lhs) ||
-          (it != b.end() && llvm::MulOverflow(it->second, scaleB, rhs)) ||
+    std::set<int64_t> keys;
+    for (const auto &term :
+         llvm::concat<const std::pair<const int64_t, int64_t>>(a, b))
+      keys.insert(term.first);
+    for (int64_t key : keys) {
+      auto x = a.find(key), y = b.find(key);
+      int64_t lhs = 0, rhs = 0;
+      if ((x != a.end() && llvm::MulOverflow(x->second, scaleA, lhs)) ||
+          (y != b.end() && llvm::MulOverflow(y->second, scaleB, rhs)) ||
           lhs > rhs)
         return false;
     }
     return true;
+  }
+
+  // Whether `bytes` is a multiple of `granule` whatever values the parameters
+  // take: every term is.
+  static bool wholeGranules(const Volume &bytes, int64_t granule) {
+    return !granule || llvm::all_of(bytes, [&](const auto &term) {
+      return term.second % granule == 0;
+    });
+  }
+
+  // The output bytes `proof` lets count: `received` rounded down to a
+  // multiple of its granule, at least `received` - (granule - 1).
+  static Volume countedOutput(const Volume &received,
+                              AIE::ConsumedByAttr proof) {
+    int64_t granule = proof.getGranuleBytes();
+    Volume counted = received;
+    if (!wholeGranules(received, granule))
+      counted[-1] -= granule - 1;
+    return counted;
   }
 
   // Whether the host library holds the scratchpad parameter `seq` reads at
@@ -839,6 +862,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     Traffic,
     // The input moves more than the output proves taken.
     Excess,
+    // The output may end partway through an object of the join its proof
+    // passes, whose later segments it has then taken less of.
+    PartGranule,
   };
 
   // Whether each stretch of `seq` after `from` (all of them when null) with
@@ -848,13 +874,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // (no packet header on it or on `input`/`output`), which carries only that
   // route's words; any other on those channels is traffic the proof does not
   // describe. Stretches under another PDI end at a real load of `target`.
-  // `where` receives the op the verdict stops at, null for the sequence end.
+  // `at` receives where the verdict stops, null for the sequence end, and the
+  // stretch's counts there.
+  struct Verdict {
+    Operation *where = nullptr;
+    Volume in, out;
+  };
   Unbalanced stretchesUnbalanced(
       AIE::RuntimeSequenceOp seq, Operation *from, AIE::DeviceOp target,
       AIE::ShimDMAAllocationOp input, AIE::ShimDMAAllocationOp output,
       ArrayRef<AIE::ShimDMAAllocationOp> inputs,
       ArrayRef<AIE::ShimDMAAllocationOp> outputs, AIE::ConsumedByAttr proof,
-      bool byChannel = false, Operation **where = nullptr) {
+      bool byChannel = false, Verdict *at = nullptr) {
     DmaQueueModel::ChannelKey inKey = DmaQueueModel::keyOf(
         input.getTileOp(), input.getChannelDir(), input.getChannelIndex());
     DmaQueueModel::ChannelKey outKey = DmaQueueModel::keyOf(
@@ -873,10 +904,17 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         return WalkResult::advance();
       if (auto load = dyn_cast<NpuLoadPdiOp>(op)) {
         if (target && loaded == target &&
+            !wholeGranules(out, proof.getGranuleBytes())) {
+          why = Unbalanced::PartGranule;
+          if (at)
+            *at = {op, in, out};
+          return WalkResult::interrupt();
+        }
+        if (target && loaded == target &&
             !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes())) {
           why = Unbalanced::Excess;
-          if (where)
-            *where = op;
+          if (at)
+            *at = {op, in, out};
           return WalkResult::interrupt();
         }
         in.clear();
@@ -902,8 +940,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                        (*channel == outKey && !isOutput))) ||
           writesQueue(op, {inKey, outKey})) {
         why = Unbalanced::Traffic;
-        if (where)
-          *where = op;
+        if (at)
+          *at = {op, in, out};
         return WalkResult::interrupt();
       }
       if (!allocation || (!isInput && !isOutput))
@@ -914,8 +952,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           op->getParentOp() == seq ? pushVolume(start, cfg) : std::nullopt;
       if (!moved) {
         why = Unbalanced::Unsized;
-        if (where)
-          *where = op;
+        if (at)
+          *at = {op, in, out};
         return WalkResult::interrupt();
       }
       for (auto [key, bytes] : *moved)
@@ -923,8 +961,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return WalkResult::advance();
     });
     if (why == Unbalanced::No && target && loaded == target &&
-        !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
+        !wholeGranules(out, proof.getGranuleBytes()))
+      why = Unbalanced::PartGranule;
+    else if (why == Unbalanced::No && target && loaded == target &&
+             !atMost(in, proof.getOutputBytes(), out, proof.getInputBytes()))
       why = Unbalanced::Excess;
+    if (at && why != Unbalanced::No && !at->where)
+      *at = {nullptr, in, out};
     return why;
   }
 
@@ -985,6 +1028,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         if (why == Unbalanced::Excess)
           diag << "moves more through that input than the output proves "
                   "taken";
+        else if (why == Unbalanced::PartGranule)
+          diag << "may end with the output partway through an object of the "
+                  "join the proof passes";
         else if (why == Unbalanced::Traffic)
           diag << "has other traffic on their channels";
         else
@@ -1029,10 +1075,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       ArrayRef<AllocationPush> pushes = inPushes->second;
       size_t &credited = creditedPushes[{input, output}];
       size_t covered = credited;
+      Volume counted = countedOutput(*done->through, proof);
       for (; covered < pushes.size(); ++covered) {
         const std::optional<Volume> &through = pushes[covered].through;
-        if (!through || !atMost(*through, proof.getOutputBytes(),
-                                *done->through, proof.getInputBytes()))
+        if (!through || !atMost(*through, proof.getOutputBytes(), counted,
+                                proof.getInputBytes()))
           break;
       }
       if (covered == credited)
@@ -1159,10 +1206,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           }
           if (!leavesNothing(input, output, proof)) {
             for (auto other : getOperation().getOps<AIE::RuntimeSequenceOp>()) {
-              Operation *where = nullptr;
+              Verdict verdict;
               Unbalanced why = stretchesUnbalanced(
                   other, nullptr, proofDevice(proof), input, output, {input},
-                  {output}, proof, /*byChannel=*/false, &where);
+                  {output}, proof, /*byChannel=*/false, &verdict);
+              Operation *where = verdict.where;
               if (why == Unbalanced::No)
                 continue;
               std::string note;
@@ -1170,6 +1218,14 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                 os << "another transfer shares their channels, which the "
                       "counts do not describe";
                 note = "the other transfer";
+              } else if (why == Unbalanced::PartGranule) {
+                os << "a stretch of @" << other.getSymName()
+                   << " may end with the output partway through an object of "
+                      "the join the proof passes ("
+                   << proof.getGranuleBytes()
+                   << " output bytes), whose later segments it has then taken "
+                      "less of";
+                note = "the stretch ends here";
               } else if (why == Unbalanced::Unsized) {
                 os << "a transfer on them moves a byte count the compiler "
                       "cannot follow (a BD chain, a loop, or a length "
@@ -1179,7 +1235,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                 os << "a stretch of @" << other.getSymName()
                    << " can end having moved more through the input than the "
                       "output proves taken, so the next dispatch's counts do "
-                      "not start clean";
+                      "not start clean (input bytes times "
+                   << proof.getOutputBytes() << ", ";
+                printVolume(os, verdict.in, proof.getOutputBytes(), other);
+                os << ", against output bytes times " << proof.getInputBytes()
+                   << ", ";
+                printVolume(os, verdict.out, proof.getInputBytes(), other);
+                os << ")";
                 note = "the stretch ends here";
               }
               at.push_back({where ? where->getLoc() : other.getLoc(), note});
@@ -1214,7 +1276,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             os << "the bytes its awaited transfers moved are not known";
             return;
           }
-          if (atMost(*push->through, proof.getOutputBytes(), *taken,
+          Volume counted = countedOutput(*taken, proof);
+          if (atMost(*push->through, proof.getOutputBytes(), counted,
                      proof.getInputBytes())) {
             os << "its awaited transfers cover this transfer's bytes, but "
                   "not those of every push of this task";
@@ -1222,10 +1285,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           }
           bool scaled = proof.getInputBytes() != proof.getOutputBytes();
           os << "the bytes its awaited transfers moved";
+          if (!wholeGranules(*taken, proof.getGranuleBytes()))
+            os << ", less the part of an object of the join the proof passes ("
+               << proof.getGranuleBytes() << " bytes) they may end in,";
           if (scaled)
             os << " times " << proof.getInputBytes();
           os << ", ";
-          printVolume(os, *taken, proof.getInputBytes(), seq);
+          printVolume(os, counted, proof.getInputBytes(), seq);
           os << ", fall short of the bytes the input moved up to this "
                 "transfer";
           if (scaled)
@@ -1233,7 +1299,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           os << ", ";
           printVolume(os, *push->through, proof.getOutputBytes(), seq);
           auto isParameter = [](auto term) { return term.first >= 0; };
-          if (llvm::any_of(*taken, isParameter) ||
+          if (llvm::any_of(counted, isParameter) ||
               llvm::any_of(*push->through, isParameter))
             os << ", for some parameter values";
         },
