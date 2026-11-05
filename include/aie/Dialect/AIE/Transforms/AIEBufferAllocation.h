@@ -108,6 +108,59 @@ assignSequentialBufferAddresses(llvm::MutableArrayRef<BufferAllocation> buffers,
   return std::max(highWater, address);
 }
 
+/// A mem tile pool as aie-objectfifo-allocate packs it: `count` buffers of
+/// `bytes` homed on `home`, and the DMA ends it has there in its busier
+/// direction.
+struct SpillPool {
+  int64_t bytes;
+  int64_t count;
+  unsigned home;
+  int demand;
+};
+
+/// aie-objectfifo-allocate's demand-first packing order of `pools`, given in
+/// its size-first order, as indices into them: each home's pools by demand,
+/// then buffer size, merged by buffer size, then demand, then home in order of
+/// first appearance, so that small pools are not put first over large buffers
+/// on unrelated tiles.
+inline llvm::SmallVector<unsigned>
+demandFirstOrder(llvm::ArrayRef<SpillPool> pools) {
+  llvm::SmallVector<unsigned> homes;
+  llvm::SmallVector<llvm::SmallVector<unsigned>> perHome;
+  for (auto [index, pool] : llvm::enumerate(pools)) {
+    auto *at = llvm::find(homes, pool.home);
+    if (at == homes.end()) {
+      homes.push_back(pool.home);
+      perHome.emplace_back();
+      at = std::prev(homes.end());
+    }
+    perHome[at - homes.begin()].push_back(index);
+  }
+  for (auto &list : perHome)
+    llvm::stable_sort(list, [&](unsigned a, unsigned b) {
+      if (pools[a].demand != pools[b].demand)
+        return pools[a].demand > pools[b].demand;
+      return pools[a].bytes > pools[b].bytes;
+    });
+  llvm::SmallVector<unsigned> order;
+  llvm::SmallVector<size_t> next(perHome.size(), 0);
+  for (size_t slot = 0; slot < pools.size(); ++slot) {
+    std::optional<size_t> best;
+    for (size_t home = 0; home < perHome.size(); ++home) {
+      if (next[home] >= perHome[home].size())
+        continue;
+      const SpillPool &pool = pools[perHome[home][next[home]]];
+      const SpillPool *top =
+          best ? &pools[perHome[*best][next[*best]]] : nullptr;
+      if (!top || pool.bytes > top->bytes ||
+          (pool.bytes == top->bytes && pool.demand > top->demand))
+        best = home;
+    }
+    order.push_back(perHome[*best][next[*best]++]);
+  }
+  return order;
+}
+
 /// The tiles a mem tile buffer homed at `home` may spill to: either side of it
 /// in its row, where home shares memory with them.
 inline llvm::SmallVector<TileID, 2>

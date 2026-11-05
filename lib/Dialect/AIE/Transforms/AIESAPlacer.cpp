@@ -656,11 +656,13 @@ int SAPlacer::computeDelegatePenalty() const {
   return penalty;
 }
 
-// Runs aie-objectfifo-allocate's mem tile buffer search on this placement:
-// each pool's buffers, one an object or one holding them all for a pool the
-// split lays out contiguously or the allocator walks whole, in the
-// allocator's size-first order, on tiles holding their static buffers. What
-// it cannot place is charged by the KB.
+// Runs aie-objectfifo-allocate's mem tile buffer search on this placement,
+// as the allocator does: first in its size-first, then its demand-first order,
+// with pools laid out as the split makes them; when the BD plan walks pools
+// whole, those attempts run short of BD ids, and the size-first order with the
+// walked pools decides. Buffers are one an object, or one holding them all
+// for a contiguous pool, on tiles holding their static buffers. What the
+// deciding attempt cannot place is charged by the KB.
 int SAPlacer::computeMemSpilloverPenalty() {
   SmallVector<MemTileSpillSearch::Tile> tiles;
   DenseMap<TileID, unsigned> index;
@@ -674,50 +676,83 @@ int SAPlacer::computeMemSpilloverPenalty() {
     if (auto at = currentPlacement.find(op); at != currentPlacement.end())
       llvm::append_range(tiles[index.lookup(at->second)].fixed, fixed);
 
-  SmallVector<std::pair<int64_t, TileID>> spills;
+  // Per pool, in the allocator's size-first order: as split, and as walked.
+  SmallVector<std::pair<SpillPool, TileID>> split, walkedPools;
+  bool anyWalked = false;
   DenseSet<TileID> positions;
   for (auto &[tile, _] : memTileEnds) {
     auto at = currentPlacement.find(tile);
     if (at == currentPlacement.end() || !positions.insert(at->second).second)
       continue;
     SmallVector<Operation *> here = memTilesAt(at->second);
-    DenseSet<std::pair<Operation *, int>> walked, seen;
+    DenseSet<std::pair<Operation *, int>> walked;
     (void)bdShortfall(at->second, here, &walked);
+    anyWalked |= !walked.empty();
+    llvm::MapVector<std::pair<Operation *, int>,
+                    std::pair<const PlannedDmaEnd *, std::pair<int, int>>>
+        pools;
     for (Operation *op : here)
       for (const MemTileEnd &end : memTileEnds.lookup(op)) {
         const PlannedDmaEnd &plan = end.end;
-        std::pair<Operation *, int> pool{plan.pool, plan.id};
         auto split = dyn_cast_or_null<ObjectFifoPoolOp>(plan.pool);
-        if (!pool.first || (split && split.getBuffers()) ||
-            !seen.insert(pool).second)
+        if (!plan.pool || (split && split.getBuffers()))
           continue;
-        int64_t whole = plan.contiguousObjects  ? plan.contiguousObjects
-                        : walked.contains(pool) ? plan.depth
-                                                : 0;
-        for (int64_t i = 0, e = whole ? 1 : plan.depth; i < e; ++i)
-          spills.push_back(
-              {plan.objectBytes * std::max<int64_t>(whole, 1), at->second});
+        auto &[first, demand] = pools[{plan.pool, plan.id}];
+        first = first ? first : &plan;
+        ++(end.dir == DMAChannelDir::S2MM ? demand.first : demand.second);
       }
+    unsigned home = index.lookup(at->second);
+    for (auto &[key, entry] : pools) {
+      auto [plan, demand] = entry;
+      int busier = std::max(demand.first, demand.second);
+      int64_t whole = plan->contiguousObjects;
+      split.push_back({{plan->objectBytes * std::max<int64_t>(whole, 1),
+                        whole ? 1 : plan->depth, home, busier},
+                       at->second});
+      if (!whole && walked.contains(key))
+        whole = plan->depth;
+      walkedPools.push_back({{plan->objectBytes * std::max<int64_t>(whole, 1),
+                              whole ? 1 : plan->depth, home, busier},
+                             at->second});
+    }
   }
-  llvm::stable_sort(spills, [](const auto &a, const auto &b) {
-    return std::make_pair(a.second.col, a.second.row) <
-           std::make_pair(b.second.col, b.second.row);
-  });
-  sortLargestBufferFirst(spills, [](const auto &spill) { return spill.first; });
+  for (auto *pools : {&split, &walkedPools}) {
+    llvm::stable_sort(*pools, [](const auto &a, const auto &b) {
+      return std::make_pair(a.second.col, a.second.row) <
+             std::make_pair(b.second.col, b.second.row);
+    });
+    sortLargestBufferFirst(*pools,
+                           [](const auto &pool) { return pool.first.bytes; });
+  }
 
-  SmallVector<MemTileSpillSearch::Buffer> buffers;
-  for (auto [bytes, home] : spills) {
-    SmallVector<unsigned, 2> neighbours;
-    for (TileID neighbour : memTileSpillNeighbours(*targetModel, home))
-      if (auto it = index.find(neighbour); it != index.end())
-        neighbours.push_back(it->second);
-    buffers.push_back({bytes, index.lookup(home), true, neighbours});
+  auto attempt = [&](ArrayRef<std::pair<SpillPool, TileID>> pools,
+                     ArrayRef<unsigned> order) {
+    SmallVector<MemTileSpillSearch::Buffer> buffers;
+    for (unsigned i : order) {
+      auto [pool, at] = pools[i];
+      SmallVector<unsigned, 2> neighbours;
+      for (TileID neighbour : memTileSpillNeighbours(*targetModel, at))
+        if (auto it = index.find(neighbour); it != index.end())
+          neighbours.push_back(it->second);
+      buffers.append(pool.count, {pool.bytes, pool.home, true, neighbours});
+    }
+    MemTileSpillSearch search(tiles,
+                              targetModel->getMemTileLoadStoreBusWidth() / 8);
+    return search.place(buffers) ? int64_t{0}
+                                 : std::max<int64_t>(search.unplacedBytes, 1);
+  };
+  auto inOrder = [](size_t size) {
+    return llvm::to_vector(llvm::seq<unsigned>(0, size));
+  };
+  int64_t unplaced = attempt(walkedPools, inOrder(walkedPools.size()));
+  if (unplaced && !anyWalked) {
+    SmallVector<SpillPool> records;
+    for (auto &[pool, _] : split)
+      records.push_back(pool);
+    if (!attempt(split, demandFirstOrder(records)))
+      unplaced = 0;
   }
-  MemTileSpillSearch search(std::move(tiles),
-                            targetModel->getMemTileLoadStoreBusWidth() / 8);
-  if (search.place(buffers))
-    return 0;
-  return ((search.unplacedBytes + 1023) / 1024) * config.memPenaltyPerKB;
+  return ((unplaced + 1023) / 1024) * config.memPenaltyPerKB;
 }
 
 // Penalizes core tiles whose buffer usage exceeds local memory, accounting

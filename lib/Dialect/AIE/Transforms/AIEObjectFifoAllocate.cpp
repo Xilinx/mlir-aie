@@ -2156,16 +2156,10 @@ struct AIEObjectFifoAllocatePass
       pools[slot] = pool;
   }
 
-  /// Alternative packing order: prioritize DMA demand within each home tile,
-  /// but merge those lists by buffer size to avoid globally prioritizing small
-  /// pools over large buffers on unrelated tiles. This is only a heuristic;
-  /// the same buffer, lock and channel planner validates both orders.
+  /// Alternative packing order (demandFirstOrder). The same buffer, lock and
+  /// channel planner validates both orders.
   SmallVector<ObjectFifoPoolOp>
   demandOrderedPools(ArrayRef<ObjectFifoPoolOp> pools) {
-    SmallVector<ObjectFifoPoolOp> ordered(pools);
-    SmallVector<size_t> memTileSlots;
-    SmallVector<Value> memTileHomes;
-    DenseMap<Value, SmallVector<ObjectFifoPoolOp>> memTilePools;
     DenseMap<Operation *, std::pair<int, int>> poolChannelDemand;
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
@@ -2177,52 +2171,29 @@ struct AIEObjectFifoAllocatePass
       else
         ++demand.second;
     }
-    for (auto [index, pool] : llvm::enumerate(ordered)) {
-      if (pool.getTileLike().isMemTile()) {
-        memTileSlots.push_back(index);
-        Value home = pool.getTile();
-        for (Value known : memTileHomes)
-          if (sameTile(home, known)) {
-            home = known;
-            break;
-          }
-        if (!memTilePools.count(home))
-          memTileHomes.push_back(home);
-        memTilePools[home].push_back(pool);
+    SmallVector<size_t> memTileSlots;
+    SmallVector<Value> homes;
+    SmallVector<SpillPool> records;
+    for (size_t index = 0, e = pools.size(); index < e; ++index) {
+      ObjectFifoPoolOp pool = pools[index];
+      if (!pool.getTileLike().isMemTile())
+        continue;
+      memTileSlots.push_back(index);
+      auto *home = llvm::find_if(
+          homes, [&](Value known) { return sameTile(pool.getTile(), known); });
+      if (home == homes.end()) {
+        homes.push_back(pool.getTile());
+        home = std::prev(homes.end());
       }
-    }
-    DenseMap<Value, size_t> nextPool;
-    auto demand = [&](ObjectFifoPoolOp pool) {
       auto [input, output] = poolChannelDemand.lookup(pool.getOperation());
-      return std::max(input, output);
-    };
-    for (Value home : memTileHomes) {
-      auto &tilePools = memTilePools[home];
-      llvm::stable_sort(tilePools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
-        if (demand(a) != demand(b))
-          return demand(a) > demand(b);
-        return bufferBytes(a) > bufferBytes(b);
-      });
+      records.push_back({bufferBytes(pool), bufferCount(pool),
+                         static_cast<unsigned>(home - homes.begin()),
+                         std::max(input, output)});
     }
-    for (size_t slot : memTileSlots) {
-      Value bestHome;
-      ObjectFifoPoolOp bestPool;
-      for (Value home : memTileHomes) {
-        auto &tilePools = memTilePools[home];
-        size_t index = nextPool[home];
-        if (index >= tilePools.size())
-          continue;
-        ObjectFifoPoolOp pool = tilePools[index];
-        if (!bestPool || bufferBytes(pool) > bufferBytes(bestPool) ||
-            (bufferBytes(pool) == bufferBytes(bestPool) &&
-             demand(pool) > demand(bestPool))) {
-          bestHome = home;
-          bestPool = pool;
-        }
-      }
-      ordered[slot] = bestPool;
-      ++nextPool[bestHome];
-    }
+    SmallVector<ObjectFifoPoolOp> ordered(pools);
+    for (auto [slot, index] :
+         llvm::zip(memTileSlots, demandFirstOrder(records)))
+      ordered[slot] = pools[memTileSlots[index]];
     return ordered;
   }
 
