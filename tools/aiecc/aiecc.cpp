@@ -1410,11 +1410,13 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   if (useProbe) {
                     recordBankDemand(mod, elfLookup(probes), *bankDemand,
                                      !noMeasureDataSize.getValue());
+                    // A declared data_size is what the SA reserves already.
                     std::lock_guard<std::mutex> lock(measuredCores.mutex);
                     for (auto device : mod.getOps<DeviceOp>())
                       for (auto [ordinal, core] :
                            llvm::enumerate(device.getOps<CoreOp>()))
-                        if (auto bytes = core.getMeasuredDataSize())
+                        if (auto bytes = core.getMeasuredDataSize();
+                            bytes && !core.getDataSize())
                           measuredCores.bytes[(device.getSymName() + ":" +
                                                llvm::Twine(ordinal))
                                                   .str()] = *bytes;
