@@ -3293,7 +3293,8 @@ def priority_trees(d, cache, deadline=None):
     as the router routes the prioritized packets without the rest of the
     design: priority_route promises they keep that routing whatever else the
     design asks for, so a witness has to route around them. A source's other
-    ids are no part of it. None if the router cannot route them."""
+    ids are no part of it. None if the router cannot route them. A run that
+    timed out raises RouterTimeout again for as long as `cache` lives."""
     prio = {(s, f["id"]) for f in d.packet_flows if f["priority"] for s in f["srcs"]}
     if not prio:
         return {}
@@ -3305,11 +3306,17 @@ def priority_trees(d, cache, deadline=None):
         if (srcs := [s for s in f["srcs"] if (s, f["id"]) in prio])
     ]
     text = c.emit()
+    if isinstance(cache.get(text), RouterTimeout):
+        raise cache[text]
     if text not in cache:
-        p = model_run(
-            aie_opt(text, hops_on=False, deadline=deadline),
-            "routing the prioritized flows alone",
-        )
+        try:
+            p = model_run(
+                aie_opt(text, hops_on=False, deadline=deadline),
+                "routing the prioritized flows alone",
+            )
+        except RouterTimeout as x:
+            cache[text] = x
+            raise
         trees = None
         if p.returncode == 0:
             out, trees = load_design(p.stdout), defaultdict(dict)

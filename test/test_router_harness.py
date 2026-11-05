@@ -301,6 +301,16 @@ def test_a_timeout_in_the_models_router_runs_is_a_timeout(priority):
     assert detail.startswith("model: routing the prioritized flows alone"), detail
 
 
+def test_a_seed_remembers_its_prioritized_routing_timed_out(priority):
+    d, _ = priority
+    trees = {}
+    with pytest.raises(rp.RouterTimeout):
+        rp.priority_trees(d, trees, deadline=time.monotonic())
+    with pytest.raises(rp.RouterTimeout):
+        rp.priority_trees(d, trees)
+    assert rp.priority_trees(d, {}) is not None
+
+
 def test_a_crash_in_the_models_router_runs_is_a_crash():
     nested = "module {" * 20000 + "}" * 20000
     with pytest.raises(rp.RouterCrash):
