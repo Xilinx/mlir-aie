@@ -38,6 +38,7 @@ from .events import (
     PortEvent,
     ShimTileEvent,
 )
+from .utils import CTRL_PKT_READS
 
 logger = logging.getLogger(__name__)
 
@@ -165,87 +166,119 @@ def configure_shimtile_dma_aie2(
     )
 
 
-# default packet_id = 30 for broadcast packet to all tiles to trace/ ctrl packet
-# We do not choose id = 31 in case that's might be chosen for a special purpose
-# return packet_id starts at 29 and goes down. We run into potential conflict when we get
-# to id = 15 since that's used for routing of tct token in shim stream switch to
-# axi interface (south 0). So in practice, we support 14 targets.
-def configure_packet_ctrl_flow(
-    tiles_to_trace,
-    shim,
-    tile2shim_pkt_id=28,  # WARNING: Careful not to change. Must match stream id for control packet
-    # shim2tile_pkt_id = 16,
-    shim2tile_pkt_id=29,  # WARNING: Careful not to change. Used by config_ctrl_pkts_aie
-):
+# Packet ids of the Trace_Status read requests, one per tile type. A request is
+# multicast to every traced tile of that type. The response comes back on the
+# return packet id of the read (see CTRL_PKT_READS), carrying its tile's column
+# and row.
+CTRL_PKT_CORE_TILE_ID = 29
+CTRL_PKT_MEM_TILE_ID = 26
+CTRL_PKT_SHIM_TILE_ID = 25
 
-    exist_traces = []
-    for i in range(len(tiles_to_trace)):
 
-        if tiles_to_trace[i] not in exist_traces:
+# Get the Trace_Status reads needed to cover the traced tiles as
+# (shim2tile_pkt_id, index into CTRL_PKT_READS, tiles). Each core tile has a
+# core and a memory module, the latter reads idle when it is not traced.
+def get_ctrl_pkt_reads(tiles_to_trace):
+    core_tiles = []
+    mem_tiles = []
+    shim_tiles = []
+    for tile_op in tiles_to_trace:
+        if tile_op.is_core_tile():
+            tiles = core_tiles
+        elif tile_op.is_mem_tile():
+            tiles = mem_tiles
+        elif tile_op.is_shim_tile():
+            tiles = shim_tiles
+        else:
+            raise ValueError(f"Unknown tile type for {tile_op}")
+        if tile_op not in tiles:
+            tiles.append(tile_op)
 
-            exist_traces.append(tiles_to_trace[i])
+    reads = []
+    if core_tiles:
+        reads.append((CTRL_PKT_CORE_TILE_ID, 0, core_tiles))
+        reads.append((CTRL_PKT_CORE_TILE_ID, 1, core_tiles))
+    if mem_tiles:
+        reads.append((CTRL_PKT_MEM_TILE_ID, 2, mem_tiles))
+    if shim_tiles:
+        reads.append((CTRL_PKT_SHIM_TILE_ID, 0, shim_tiles))
+    return reads
 
-            # id 14 - tile -> shim
-            packetflow(
-                tile2shim_pkt_id,
-                tiles_to_trace[i],
-                WireBundle.TileControl,
-                0,
-                dests={"dest": shim, "port": WireBundle.DMA, "channel": 0},
-                keep_pkt_header=True,
-            )
 
-            # id 15 - shim -> tile
-            packetflow(
-                shim2tile_pkt_id,
-                shim,
-                WireBundle.DMA,
-                0,
-                dests={
-                    "dest": tiles_to_trace[i],
-                    "port": WireBundle.TileControl,
-                    "channel": 0,
-                },
-            )
+# Configure the packet flows that carry the Trace_Status reads from the shim to
+# the traced tiles, and the responses back to the shim.
+def configure_packet_ctrl_flow(tiles_to_trace, shim):
+
+    exist_flows = []
+    for shim2tile_pkt_id, read, tiles in get_ctrl_pkt_reads(tiles_to_trace):
+        tile2shim_pkt_id = CTRL_PKT_READS[read][1]
+        for tile in tiles:
+
+            if (shim2tile_pkt_id, tile) not in exist_flows:
+
+                exist_flows.append((shim2tile_pkt_id, tile))
+
+                packetflow(
+                    shim2tile_pkt_id,
+                    shim,
+                    WireBundle.DMA,
+                    0,
+                    dests={
+                        "dest": tile,
+                        "port": WireBundle.TileControl,
+                        "channel": 0,
+                    },
+                )
+
+            if (tile2shim_pkt_id, tile) not in exist_flows:
+
+                exist_flows.append((tile2shim_pkt_id, tile))
+
+                packetflow(
+                    tile2shim_pkt_id,
+                    tile,
+                    WireBundle.TileControl,
+                    0,
+                    dests={"dest": shim, "port": WireBundle.DMA, "channel": 0},
+                    keep_pkt_header=True,
+                )
 
 
 # Configure shim for control packets.
 #
-# We configure the input shim (mm2s) to read num_pkts control commands where we
-# assume control command consists of 1x 32b word. We use ddr_id=6 as the input XRT buffer
-# which is not used in simple 1 in/ 1 out and 2 in/ 1 out designs.
+# We configure the input shim (mm2s) to read one control command per Trace_Status
+# read, where a control command consists of 1x 32b word from the control packet
+# buffer (ctrl_ddr_id).
 #
 # On the output shim (s2mm), we write the control packet responses to the same
-# XRT buffer as trace (ddr_id=4) and write the results after the end of the trace buffer.
-# Here, responses are compsed of 2x 32-bit word per control command.
+# XRT buffer as trace (trace_ddr_id) and write the results after the end of the
+# trace buffer. Here, responses are composed of 2x 32-bit words per tile that
+# receives the control command.
 #
 # NOTE:
-# We cannot batch control commands right now. Each control command has to be a separate
-# transfer. Hence, we need to sync between each config.
-#
-# Only supports one target so far
-# * need packet router at shim to use mask to allow multiple packet_ids
+# We cannot batch control commands right now. Each control command has to be a
+# separate transfer. Hence, we need to sync between each config.
 def config_ctrl_pkts_aie(
     tiles_to_trace,
     shim,
-    shim2tile_pkt_id=29,  # WARNING: Careful not to change. Used by configure_packet_ctrl_flow
+    ctrl_ddr_id,  # ddr_id of the control packet buffer
+    trace_ddr_id,  # ddr_id of the trace buffer
     output_offset=0,  # needs offset from trace buffer
-    num_pkts=1,
     channel=0,
     mm2s_bd_id=14,  # TODO: default bd ids (hopefully doesn't conflict with other shim cfg)
     s2mm_bd_id=15,  # TODO: default bd ids (hopefully doesn't conflict with other shim cfg)
 ):
 
-    for i in range(num_pkts):
+    for shim2tile_pkt_id, read, tiles in get_ctrl_pkt_reads(tiles_to_trace):
         # config mm2s shim
         configure_shimtile_dma_aie2(
             shim=shim,
             channel=channel,
             direction=direction_mm2s,
             bd_id=mm2s_bd_id,
-            ddr_id=3,  # group_id(6)
+            ddr_id=ctrl_ddr_id,
             size=1,  # 1x 32b word
-            offset=(i * 4),  # bytes
+            offset=(read * 4),  # bytes
             packet_id=shim2tile_pkt_id,
             packet_type=0,  # no used in same way as trace to identiyf source
             enable_token=1,
@@ -265,10 +298,9 @@ def config_ctrl_pkts_aie(
             channel=channel,
             direction=direction_s2mm,
             bd_id=s2mm_bd_id,
-            # ddr_id=3, # group_id(6)
-            ddr_id=4,  # group_id(7)
-            size=2,  # 2 32b words, pkt header + 1 word data
-            offset=output_offset + (i * 8),  # bytes
+            ddr_id=trace_ddr_id,
+            size=2 * len(tiles),  # 2 32b words, pkt header + 1 word data, per tile
+            offset=output_offset,  # bytes
             # packet_id=tile2shim_pkt_id, # NOT USED
             packet_type=0,  # not used in same way as trace to identify source
             enable_token=1,
@@ -281,6 +313,8 @@ def config_ctrl_pkts_aie(
             direction=direction_s2mm,
             channel=channel,
         )  # output
+
+        output_offset += 8 * len(tiles)
 
 
 # ============================================================================

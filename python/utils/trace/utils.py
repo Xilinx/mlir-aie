@@ -49,6 +49,19 @@ def create_ctrl_pkt(
     return header
 
 
+# Control packet reads of the Trace_Status registers as (address, return packet
+# id). Read i is word i of the control packet buffer. The return id tells the
+# host which module a response came from: the core and memory module of a core
+# tile share a row, while the mem tile and shim tile are told apart by theirs.
+CTRL_PKT_CORE_ID = 28
+CTRL_PKT_MEM_ID = 27
+CTRL_PKT_READS = [
+    (0x340D8, CTRL_PKT_CORE_ID),  # core module of a core tile, and shim tile
+    (0x140D8, CTRL_PKT_MEM_ID),  # memory module of a core tile
+    (0x940D8, CTRL_PKT_CORE_ID),  # mem tile
+]
+
+
 def get_kernel_code(test: dict, solutions_path: Optional[str] = None) -> Optional[str]:
     """Fetch the kernel code from the provided solution path.
 

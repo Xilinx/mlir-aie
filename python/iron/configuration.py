@@ -19,6 +19,9 @@ from ..dialects.aie import (
     TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
     device,
 )
+from ..dialects.aie import (
+    tile as aie_tile,
+)
 from ..dialects.aiex import (
     ConfigureOp,  # pyright: ignore[reportAttributeAccessIssue]
     ScratchpadParameterOp,  # pyright: ignore[reportAttributeAccessIssue]
@@ -87,6 +90,7 @@ class DeviceConfiguration(DeviceResources):
         self._trace_size = None
         self._trace_workers = None
         self._reuse_output_buffer = False
+        self._enable_ctrl_pkts = False
         self._egress_shim_col = 0
         self._coretile_events = None
         self._coremem_events = None
@@ -306,10 +310,17 @@ class DeviceConfiguration(DeviceResources):
         shimtile_events: list | None = None,
         egress_shim_col: int = 0,
         core_trace_mode=TraceMode.EventTime,
+        enable_ctrl_pkts: bool = False,
     ) -> None:
+        if enable_ctrl_pkts and reuse_output_buffer:
+            raise ValueError(
+                "enable_ctrl_pkts needs a dedicated trace buffer; "
+                "it cannot be combined with reuse_output_buffer."
+            )
         self._trace_size = trace_size
         self._trace_workers = workers
         self._reuse_output_buffer = reuse_output_buffer
+        self._enable_ctrl_pkts = enable_ctrl_pkts
         self._coretile_events = coretile_events
         self._coremem_events = coremem_events
         self._memtile_events = memtile_events
@@ -650,6 +661,19 @@ class DeviceConfiguration(DeviceResources):
                     core_trace_mode=self._core_trace_mode,
                 )
 
+            # The control packets use a shim tile of their own: the trace
+            # keeps its shim DMA channel busy until the buffer is full.
+            ctrl_pkt_shim = None
+            if self._enable_ctrl_pkts and self._trace_size:
+                if self._egress_shim_col + 1 >= current_device.cols:
+                    raise ValueError(
+                        "enable_ctrl_pkts needs the shim tile in the column after "
+                        f"egress_shim_col, but the device has {current_device.cols} "
+                        "column(s)."
+                    )
+                ctrl_pkt_shim = aie_tile(self._egress_shim_col + 1, 0)
+                trace_utils.configure_packet_ctrl_flow(tiles_to_trace, ctrl_pkt_shim)
+
             for runtime in self._runtimes:
                 implicit_configure_device_ref = (
                     device_name
@@ -660,6 +684,8 @@ class DeviceConfiguration(DeviceResources):
                     trace_size=self._trace_size,
                     reuse_output_buffer=self._reuse_output_buffer,
                     egress_shim_col=self._egress_shim_col,
+                    ctrl_pkt_shim=ctrl_pkt_shim,
+                    traced_tiles=tiles_to_trace,
                     implicit_configure_device_ref=implicit_configure_device_ref,
                     device=current_device,
                 )
