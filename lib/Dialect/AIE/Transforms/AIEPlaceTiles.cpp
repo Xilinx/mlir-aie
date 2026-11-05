@@ -82,7 +82,7 @@ struct AIEPlaceTilesPass
       walked.push_back({name.str(), fifo.str()});
     }
     for (StringRef entry : clSACoreDataSizes) {
-      auto [core, bytes] = entry.split('=');
+      auto [core, bytes] = entry.rsplit('=');
       auto [name, ordinal] = core.rsplit(':');
       unsigned index;
       int64_t size;
