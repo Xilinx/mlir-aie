@@ -7,6 +7,7 @@
 
 import argparse
 import importlib.util
+import inspect
 import shutil
 import subprocess
 import sys
@@ -209,6 +210,14 @@ def test_a_timeout_on_a_design_the_verifier_rejects_is_a_timeout():
         rp.canonical(d)
     outcome, detail = router_mutation.judge(d, "route", True, 0, timeout=1e-6)
     assert outcome == "timeout", detail
+
+
+def test_the_judge_waits_out_the_slowest_nightly_mutant():
+    # The npu2 port-cap mutant of seed 207560359 takes about 134 s on the hosted
+    # runner; under load, twice that.
+    assert router_mutation.ROUTE_TIMEOUT_S >= 2 * 134
+    judge = inspect.signature(router_mutation.judge)
+    assert judge.parameters["timeout"].default == router_mutation.ROUTE_TIMEOUT_S
 
 
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():

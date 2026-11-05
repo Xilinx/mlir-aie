@@ -737,13 +737,18 @@ MUTATORS = {
 }
 
 
+# Seconds one router run of a judged design may take. The npu2 port-cap mutant
+# of seed 207560359 takes 67 s alone and 129 s under load on xcoradaie218, and
+# the hosted runner is about twice as slow.
+ROUTE_TIMEOUT_S = 300
+
 # Router bugs already reported, by the must_reject reason they show as.
 REPORTED = {
     "circuit and packet flows from one port merged": "sends both circuit and packet flows",
 }
 
 
-def judge(e, expect, hops_on, seed, timeout=120):
+def judge(e, expect, hops_on, seed, timeout=ROUTE_TIMEOUT_S):
     """Route `e` and hold the router to `expect`. Returns (outcome, detail),
     outcome one of ok, completeness, soundness, illegal, crash, known,
     model-limit, strict-miss (tallied, not failed: the properties ratchet it,
@@ -801,7 +806,10 @@ def judge(e, expect, hops_on, seed, timeout=120):
     # a routing without the cycle exists.
     if rp.shared_receiver_warning(p.stderr) is not None:
         return judge_strict(
-            e, expect, hops_on, rp.aie_opt(e.emit(), hops_on, timeout=120, strict=True)
+            e,
+            expect,
+            hops_on,
+            rp.aie_opt(e.emit(), hops_on, timeout=timeout, strict=True),
         )
     return "ok", f"routed ({expect})"
 
@@ -1368,7 +1376,7 @@ def run_seed(seed, args):
     if case is None:
         return rows
     d = case["design"]
-    p = rp.aie_opt(d.emit(), hops_on, timeout=120)
+    p = rp.aie_opt(d.emit(), hops_on, timeout=ROUTE_TIMEOUT_S)
     if p.returncode == rp.TIMEOUT:
         return [("base", "timeout", "", p.stderr, d)]
     if p.returncode:
@@ -1427,7 +1435,7 @@ def run_seed(seed, args):
         if e is None:
             rows.append(("relation", "broken", name, f"{what}: {check}", d))
             continue
-        q = rp.aie_opt(e.emit(), hops_on, timeout=120)
+        q = rp.aie_opt(e.emit(), hops_on, timeout=ROUTE_TIMEOUT_S)
         if q.returncode == rp.TIMEOUT:
             rows.append(("relation", "timeout", name, f"{what}: {q.stderr}", e))
             continue
