@@ -833,8 +833,13 @@ private:
     llvm::SmallVector<FitBuffer> buffers;
   };
   llvm::DenseMap<mlir::Operation *, CoreMemory> coreMemory;
-  // Locks the design already places on each logical tile.
+  // Locks the design already places on each logical tile, and on each
+  // placed tile; placed tiles take lock groups too.
   llvm::DenseMap<mlir::Operation *, int> fixedLocks;
+  llvm::DenseMap<TileID, int> placedLocks;
+  llvm::SmallVector<TileID> placedTiles;
+  // Placed core tiles, whose own memory sits where they are.
+  llvm::DenseMap<TileID, mlir::Operation *> placedCoreAt;
 
   // Net model
   struct FifoBufferInfo {
@@ -842,6 +847,9 @@ private:
     mlir::Operation *producer = nullptr;
     llvm::SmallVector<mlir::Operation *> consumers;
     mlir::Operation *delegate = nullptr;
+    // Where ends on placed tiles sit; logical ends move with the placement.
+    std::optional<TileID> producerFixed;
+    llvm::SmallVector<std::optional<TileID>> consumerFixed;
     int64_t producerSizeBytes = 0;
     int64_t consumerSizeBytes = 0;
     // An object's bytes on each end before alignment, and its memory space.
@@ -1055,6 +1063,14 @@ private:
   int computeBDCountPenalty();
   int computeDelegatePenalty() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
+  /// Where a fifo's producer (no `consumer`) or consumer end sits now.
+  std::optional<TileID> endAt(const FifoBufferInfo &fb,
+                              std::optional<size_t> consumer) const {
+    if (!consumer)
+      return fb.producer ? positionOf(fb.producer) : fb.producerFixed;
+    return fb.consumers[*consumer] ? positionOf(fb.consumers[*consumer])
+                                   : fb.consumerFixed[*consumer];
+  }
   int computeMemoryPressure() const;
   int computeAdjacencyPenalty(const Adjacency &adj,
                               llvm::ArrayRef<std::pair<int, int>> validOffsets,

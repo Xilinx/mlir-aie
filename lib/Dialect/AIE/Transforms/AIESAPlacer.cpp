@@ -444,13 +444,10 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
 
   int64_t sharedObjectBytes =
       std::max(fb.producerObjectBytes, fb.consumerObjectBytes);
-  Operation *prod = fb.producer;
-  if (!prod)
+  std::optional<TileID> prodAt = endAt(fb, std::nullopt);
+  if (!prodAt)
     return;
-  auto prodPlaceIt = currentPlacement.find(prod);
-  if (prodPlaceIt == currentPlacement.end())
-    return;
-  TileID prodPos = prodPlaceIt->second;
+  TileID prodPos = *prodAt;
   const FifoEndTypes &types = fifoEndTypes[fifoIdx];
   bool prodIsShim = types.producer == AIETileType::ShimNOCTile ||
                     types.producer == AIETileType::ShimPLTile;
@@ -466,13 +463,10 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   bool prodNeedsDMA = false;
 
   for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
-    auto *cons = fb.consumers[ci];
-    if (!cons)
+    std::optional<TileID> consAt = endAt(fb, ci);
+    if (!consAt)
       continue;
-    auto consPlaceIt = currentPlacement.find(cons);
-    if (consPlaceIt == currentPlacement.end())
-      continue;
-    TileID consPos = consPlaceIt->second;
+    TileID consPos = *consAt;
     bool consIsShim = types.consumers[ci] == AIETileType::ShimNOCTile ||
                       types.consumers[ci] == AIETileType::ShimPLTile;
 
@@ -496,6 +490,10 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       TileID bufTile;
       if (delegatePos) {
         bufTile = *delegatePos;
+      } else if (shared == SharedMemory::Either && !fb.producer &&
+                 !fb.consumers[ci]) {
+        // Neither end moves, so the split's choice stands: the producer's.
+        bufTile = prodPos;
       } else if (shared == SharedMemory::Either) {
         if (sign > 0) {
           int64_t prodUsed =
@@ -570,11 +568,17 @@ void SAPlacer::initResourceTracking() {
     return std::nullopt;
   };
   fifoEndTypes.clear();
+  auto fixedType = [&](std::optional<TileID> at) -> std::optional<AIETileType> {
+    if (!at)
+      return std::nullopt;
+    return targetModel->getTileType(at->col, at->row);
+  };
   for (const auto &fb : fifoBuffers) {
     FifoEndTypes &types = fifoEndTypes.emplace_back();
-    types.producer = typeOf(fb.producer);
-    for (Operation *cons : fb.consumers)
-      types.consumers.push_back(typeOf(cons));
+    types.producer =
+        fb.producer ? typeOf(fb.producer) : fixedType(fb.producerFixed);
+    for (auto [cons, at] : llvm::zip(fb.consumers, fb.consumerFixed))
+      types.consumers.push_back(cons ? typeOf(cons) : fixedType(at));
   }
 
   // Build reverse index: tile → fifo indices
@@ -607,6 +611,9 @@ void SAPlacer::initResourceTracking() {
       currentMemUsage[pos] += it->second;
   }
 
+  for (auto &[pos, op] : placedCoreAt)
+    currentMemUsage[pos] +=
+        staticBufferSizes.lookup(op) + stackSizes.lookup(op);
   for (size_t i = 0; i < fifoBuffers.size(); i++)
     addFifoContribution(i, +1);
 
@@ -793,6 +800,8 @@ int SAPlacer::computeMemSpilloverPenalty() {
 int64_t SAPlacer::coreUnplacedBytes(TileID pos,
                                     const ObjectCounts &objects) const {
   Operation *tile = physToLogical.lookup(pos);
+  if (!tile)
+    tile = placedCoreAt.lookup(pos);
   auto memory = coreMemory.find(tile);
   bool known = memory != coreMemory.end();
   TileMemoryLayout layout(*targetModel, pos, known && memory->second.core);
@@ -1014,13 +1023,17 @@ int SAPlacer::computeLockPenalty() const {
                                  entry.first.col, entry.first.row));
     });
   };
-  if (fixedLocks.empty() ? fitsAtHome(currentLockDemand) : [&] {
-        DenseMap<TileID, int> atHome = currentLockDemand;
-        for (auto &[tile, locks] : fixedLocks)
-          if (std::optional<TileID> at = positionOf(tile))
-            atHome[*at] += locks;
-        return fitsAtHome(atHome);
-      }())
+  if (fixedLocks.empty() && placedLocks.empty()
+          ? fitsAtHome(currentLockDemand)
+          : [&] {
+              DenseMap<TileID, int> atHome = currentLockDemand;
+              for (auto &[tile, locks] : fixedLocks)
+                if (std::optional<TileID> at = positionOf(tile))
+                  atHome[*at] += locks;
+              for (auto &[at, locks] : placedLocks)
+                atHome[at] += locks;
+              return fitsAtHome(atHome);
+            }())
     return 0;
 
   // Lock groups by the tiles that use them, a compute tile's DMA reaching
@@ -1034,14 +1047,14 @@ int SAPlacer::computeLockPenalty() const {
     return type == AIETileType::ShimNOCTile || type == AIETileType::ShimPLTile;
   };
   for (auto [index, fb] : llvm::enumerate(fifoBuffers)) {
-    std::optional<TileID> prodPos = positionOf(fb.producer);
+    std::optional<TileID> prodPos = endAt(fb, std::nullopt);
     if (!fb.synchronized || !prodPos)
       continue;
     const FifoEndTypes &types = fifoEndTypes[index];
     std::optional<TileID> delegatePos = positionOf(fb.delegate);
     bool prodPool = false;
-    for (auto [ci, cons] : llvm::enumerate(fb.consumers)) {
-      std::optional<TileID> consPos = positionOf(cons);
+    for (size_t ci = 0; ci < fb.consumers.size(); ++ci) {
+      std::optional<TileID> consPos = endAt(fb, ci);
       if (!consPos)
         continue;
       using SharedMemory = AIETargetModel::SharedMemory;
@@ -1071,6 +1084,7 @@ int SAPlacer::computeLockPenalty() const {
   SmallVector<TileID> positions;
   for (auto &[op, at] : currentPlacement)
     positions.push_back(at);
+  llvm::append_range(positions, placedTiles);
   llvm::sort(positions, [](TileID a, TileID b) {
     return std::make_pair(a.col, a.row) < std::make_pair(b.col, b.row);
   });
@@ -1089,6 +1103,9 @@ int SAPlacer::computeLockPenalty() const {
     if (std::optional<TileID> at = positionOf(tile))
       if (!plan.reserve(tileAt(*at), locks))
         penalty += locks * config.dmaPenaltyPerChannel;
+  for (auto &[at, locks] : placedLocks)
+    if (!plan.reserve(tileAt(at), locks))
+      penalty += locks * config.dmaPenaltyPerChannel;
   SmallVector<unsigned> ranked;
   for (TileID at : positions)
     ranked.push_back(tileAt(at));
@@ -1322,15 +1339,13 @@ void SAPlacer::generateAllocates() {
     if (emittedFifoIndices.contains(fifoIdx))
       continue;
     const auto &fb = fifoBuffers[fifoIdx];
-    if (!fb.producer || fb.consumers.empty() || !fb.consumers[0])
+    if (fb.consumers.empty())
       continue;
-    auto prodIt = currentPlacement.find(fb.producer);
-    auto consIt = currentPlacement.find(fb.consumers[0]);
-    if (prodIt == currentPlacement.end() || consIt == currentPlacement.end())
+    std::optional<TileID> prodAt = endAt(fb, std::nullopt);
+    std::optional<TileID> consAt = endAt(fb, 0);
+    if (!prodAt || !consAt || *prodAt == *consAt)
       continue;
-    if (prodIt->second == consIt->second)
-      continue;
-    if (destTile != prodIt->second)
+    if (destTile != *prodAt)
       allocates.push_back({fb.fifoOp, destTile});
   }
 }
@@ -1667,9 +1682,27 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   for (auto lt : logicalTiles)
     tileTypes[lt.getOperation()] = lt.getTileType();
 
-  // Collect static buffer sizes per logical tile
+  for (auto tile : device.getOps<TileOp>())
+    if (tile.isCoreTile())
+      placedCoreAt[tile.getTileID()] = tile;
+  auto onCore = [&](Operation *tileOp) {
+    if (auto placed = dyn_cast_or_null<TileOp>(tileOp))
+      return placed.isCoreTile();
+    return isa_and_nonnull<LogicalTileOp>(tileOp) &&
+           tileTypes.lookup(tileOp) == AIETileType::CoreTile;
+  };
+
+  // Collect static buffer sizes per logical tile, and per placed core
   device.walk([&](BufferOp bufOp) {
     auto *tileOp = bufOp.getTile().getDefiningOp();
+    if (isa_and_nonnull<TileOp>(tileOp) && onCore(tileOp)) {
+      staticBufferSizes[tileOp] +=
+          bufOp.getAligned()
+              ? alignedBufferBytes(*targetModel, AIETileType::CoreTile,
+                                   bufOp.getAllocationSize())
+              : bufOp.getAllocationSize();
+      return;
+    }
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
     int64_t bytes = bufOp.getAllocationSize();
@@ -1689,13 +1722,16 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     Operation *tileOp = lock.getTile().getDefiningOp();
     if (isa_and_nonnull<LogicalTileOp>(tileOp))
       ++fixedLocks[tileOp];
+    else if (auto placed = dyn_cast_or_null<TileOp>(tileOp))
+      ++placedLocks[placed.getTileID()];
   });
+  for (auto tile : device.getOps<TileOp>())
+    placedTiles.push_back(tile.getTileID());
   TileMemoryLimits coreLimits =
       tileMemoryLimits(*targetModel, AIETileType::CoreTile);
   device.walk([&](BufferOp bufOp) {
     auto *tileOp = bufOp.getTile().getDefiningOp();
-    if (!isa_and_nonnull<LogicalTileOp>(tileOp) ||
-        tileTypes.lookup(tileOp) != AIETileType::CoreTile)
+    if (!onCore(tileOp))
       return;
     CoreMemory &memory = coreMemory[tileOp];
     int64_t bytes = bufOp.getAllocationSize();
@@ -1714,8 +1750,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   });
   for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
     Operation *tileOp = pool.getTile().getDefiningOp();
-    if (!isa_and_nonnull<LogicalTileOp>(tileOp) ||
-        tileTypes.lookup(tileOp) != AIETileType::CoreTile || pool.getBuffers())
+    if (!onCore(tileOp) || pool.getBuffers())
       continue;
     int64_t bytes = pool.getObjectSizeInBytes() * pool.getObjectsPerBuffer();
     for (int i = 0, e = pool.getContiguous() ? 1 : pool.getDepth(); i < e; ++i)
@@ -1729,7 +1764,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   // Collect core stack and data regions (reserved by assign-buffer-addresses)
   device.walk([&](CoreOp coreOp) {
     auto *tileOp = coreOp.getTile().getDefiningOp();
-    if (!tileOp || !isa<LogicalTileOp>(tileOp))
+    if (!onCore(tileOp))
       return;
     int64_t dataBytes = coreOp.getDataSize().value_or(
         coreOp.getMeasuredDataSize().value_or(config.coreSectionsBytes));
@@ -1813,12 +1848,17 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     // Get producer
     auto *prodOp = ofOp.getProducerTile().getDefiningOp();
     fb.producer = (isa_and_nonnull<LogicalTileOp>(prodOp)) ? prodOp : nullptr;
+    if (auto placed = dyn_cast_or_null<TileOp>(prodOp))
+      fb.producerFixed = placed.getTileID();
 
     // Null for a placed consumer, so indices stay the fifo's own.
     for (Value ct : ofOp.getConsumerTiles()) {
       auto *consOp = ct.getDefiningOp();
       fb.consumers.push_back(isa_and_nonnull<LogicalTileOp>(consOp) ? consOp
                                                                     : nullptr);
+      auto placed = dyn_cast_or_null<TileOp>(consOp);
+      fb.consumerFixed.push_back(placed ? std::optional(placed.getTileID())
+                                        : std::nullopt);
     }
 
     // Compute buffer element size (producer side)
