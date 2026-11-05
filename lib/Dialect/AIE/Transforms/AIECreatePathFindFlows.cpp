@@ -18,6 +18,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
@@ -3339,6 +3340,11 @@ void AIEPathfinderPass::runOnOperation() {
                            const StreamConflicts &c, const PinnedOverlay &pin,
                            bool prioritize =
                                true) -> llvm::Expected<PacketPlan> {
+    // Every attempt of the ladder routes `dev` under the same constraints, so
+    // one that replays an earlier attempt is skipped (see findPaths).
+    std::vector<PathfinderAttempt> attempts;
+    an.pathfinder.attempts = &attempts;
+    llvm::scope_exit detach([&] { an.pathfinder.attempts = nullptr; });
     llvm::Expected<PacketPlan> plan =
         route(dev, an, c, pin, clCircuitSwitchHops, prioritize);
     if (plan)

@@ -17,6 +17,7 @@
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/IntEqClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -357,6 +358,35 @@ struct PacketConstraints {
   bool prioritize = true;
 };
 
+// The relax settings an attempt reads while it routes (see Pathfinder::relax).
+struct RelaxSettings {
+  bool idsApart = false, splitShared = false, meetApart = false,
+       meetAheadOfPartners = false;
+};
+
+// What one attempt of a relax ladder read that a relax step changes, and what
+// it found. A later attempt of the ladder that reads the same replays it
+// exactly, as routing is deterministic and the ladder's constraints are fixed.
+struct PathfinderAttempt {
+  std::vector<Flow> flows;
+  std::vector<llvm::BitVector> circuitOnly;
+  // The settings' values, and which of them the attempt read.
+  RelaxSettings values, consulted;
+  // The routing found, else the failure: its class (RoutingFailure::classID or
+  // a subclass's) and contents.
+  std::optional<Routing> routing;
+  const void *failureClass = nullptr;
+  std::string reason;
+  RoutingFaults faults;
+  std::optional<mlir::Location> loc;
+  // What relax reads after the attempt.
+  llvm::DenseSet<TileID> crowdedTiles;
+  bool packetsFailed = false;
+  std::string checkReason;
+  // Each iteration's routing, kept under -aie-pathfinder-verify-replays.
+  std::vector<llvm::hash_code> trajectory;
+};
+
 // Congestion-negotiated routing: each iteration routes every flow by
 // Dijkstra, given each connection's demand, and raises the demand of the
 // connections used over capacity, until no connection is.
@@ -374,8 +404,12 @@ public:
   mlir::LogicalResult addFixedConnection(SwitchboxOp switchboxOp);
   // Keeps routes out of the switchbox at `coords`.
   void excludeTile(TileID coords);
-  // A RoutingFailure if no legal routing is found in `maxIterations`.
+  // A RoutingFailure if no legal routing is found in `maxIterations`. An
+  // attempt that replays one in `attempts` returns what that one found.
   llvm::Expected<Routing> findPaths(int maxIterations);
+  // The attempts of the relax ladder being routed, if the caller keeps them;
+  // it routes one design under one set of constraints meanwhile.
+  std::vector<PathfinderAttempt> *attempts = nullptr;
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
   // Loosens the packet constraints by one step after findPaths found no
   // routing; false once no step is left or no packet stream took part in the
@@ -450,6 +484,10 @@ private:
   // Route `flow`'s tree around those routed before it this iteration. A
   // RoutingFailure if it reaches no path to a destination.
   llvm::Error routePart(RouteState &st, int flow);
+  // findPaths' iterations, once it has set the graph up; each routing's hash
+  // goes to `trajectory` if given.
+  llvm::Expected<Routing> negotiate(int maxIterations,
+                                    std::vector<llvm::hash_code> *trajectory);
   // Steer the next iteration away from what the routing check faulted.
   // Returns the illegal edges the faults count as; `pinnedOnly` counts those
   // of them that are connections only pinned trees take, which no penalty
@@ -530,6 +568,9 @@ private:
   std::set<PathEndPoint> leads;
   size_t leadStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
+  // The relax settings this attempt read; sortFlows and findPaths fold in
+  // the others (shareChannels, leads, cappedTiles) before it routes.
+  RelaxSettings consulted;
 };
 
 // Routes the flows of a device with a Pathfinder, and finds or creates the

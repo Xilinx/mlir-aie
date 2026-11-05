@@ -13,7 +13,10 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/Statistic.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 
 #include <iterator>
@@ -24,6 +27,52 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-pathfinder"
+
+STATISTIC(numReplaysSkipped, "Attempts skipped as replays of an earlier one");
+STATISTIC(numReplaysVerified, "Attempts routed and verified to replay one");
+
+static llvm::cl::opt<bool> clVerifyReplays(
+    "aie-pathfinder-verify-replays", llvm::cl::Hidden,
+    llvm::cl::desc("Route the attempts of a relax ladder that replay an "
+                   "earlier one anyway, and abort unless each iteration's "
+                   "routing and the result are the earlier attempt's"),
+    llvm::cl::init(false));
+
+static llvm::hash_code hashRouting(const Routing &routing) {
+  llvm::hash_code h = llvm::hash_value(routing.settings.size());
+  auto settings = [&](const SwitchSettings &ss) {
+    for (const auto &[tile, s] : ss) {
+      h = llvm::hash_combine(h, tile.col, tile.row, s.srcs.size(),
+                             s.dsts.size());
+      for (const Port &p : s.srcs)
+        h = llvm::hash_combine(h, p.bundle, p.channel);
+      for (const Port &p : s.dsts)
+        h = llvm::hash_combine(h, p.bundle, p.channel);
+    }
+  };
+  auto endpoint = [&](const PathEndPoint &e) {
+    h = llvm::hash_combine(h, e.coords.col, e.coords.row, e.port.bundle,
+                           e.port.channel);
+  };
+  for (const auto &[src, ss] : routing.settings) {
+    endpoint(src);
+    settings(ss);
+  }
+  for (const auto &[key, ss] : routing.idSettings) {
+    endpoint(key.first);
+    h = llvm::hash_combine(h, key.second);
+    settings(ss);
+  }
+  for (const auto &[src, hops] : routing.packetTrees) {
+    endpoint(src);
+    for (const TreeHop &hop : hops) {
+      endpoint(hop.from);
+      endpoint(hop.to);
+      h = llvm::hash_combine(h, hop.joined);
+    }
+  }
+  return h;
+}
 
 namespace {
 // A connection's demand, the cost Dijkstra weighs it by, is
@@ -1712,6 +1761,7 @@ void Pathfinder::TreeBuilder::findJoins() {
     return;
   llvm::DenseSet<int> sameIdDsts;
   for (int other : st.sameId[flow]) {
+    pf.consulted.meetAheadOfPartners = true;
     if (pf.meetAheadOfPartners && st.treeDsts[other].empty())
       continue;
     for (const PathEndPoint &dst : st.parts[other].dsts)
@@ -1761,6 +1811,7 @@ void Pathfinder::TreeBuilder::findJoins() {
 // the other, so two trees meet only when each sends some id to two shared
 // destinations.
 void Pathfinder::TreeBuilder::meet() {
+  pf.consulted.meetApart = true;
   if (pf.meetApart)
     return;
   auto spans = [&](int k, ArrayRef<int> dsts) {
@@ -2523,6 +2574,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st, const RoutingFaults &faults,
       }
       return false;
     };
+    consulted.idsApart = true;
     if (idsApart && flow == other && !split.apart &&
         !st.parts[flow].isPriorityFlow && inseparable())
       other = st.splitPart(flow, {split.b});
@@ -2558,6 +2610,7 @@ int Pathfinder::applyRoutingFaults(RouteState &st, const RoutingFaults &faults,
                << " and "
                << describeTilePort(pair.second.coords, pair.second.port)
                << "\n");
+    consulted.splitShared = true;
     if (splitShared)
       st.splitOwnIds(pair);
   }
@@ -2666,6 +2719,7 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
     return std::move(err);
   }
   crowdedTiles.clear();
+  consulted = {};
   // initialize all Channel histories to 0
   for (auto &[_, sb] : graph) {
     if (sb.srcCoords == sb.dstCoords)
@@ -2679,7 +2733,112 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
       c.isPriority = false;
     }
   }
+  if (!attempts)
+    return negotiate(maxIterations, nullptr);
 
+  // Of what a relax step changes, an attempt reads the flows as sortFlows
+  // left them, the circuit-only ports, and the settings it consults while it
+  // routes. One that reads all of these as an earlier attempt did, the
+  // settings only where that one consulted them, routes as it did: the two
+  // run alike up to the first read that differs, which the earlier one made.
+  PathfinderAttempt now;
+  now.flows = flows;
+  for (const auto &[_, sb] : graph)
+    now.circuitOnly.push_back(sb.circuitOnlyDst);
+  now.values = {idsApart, splitShared, meetApart, meetAheadOfPartners};
+  auto sameFlow = [](const Flow &a, const Flow &b) {
+    return std::tie(a.packetGroupId, a.isPriorityFlow, a.src, a.dsts,
+                    a.packetId) == std::tie(b.packetGroupId, b.isPriorityFlow,
+                                            b.src, b.dsts, b.packetId);
+  };
+  auto replays = [&](const PathfinderAttempt &a) {
+    auto same = [](bool read, bool then, bool value) {
+      return !read || then == value;
+    };
+    return llvm::equal(a.flows, now.flows, sameFlow) &&
+           a.circuitOnly == now.circuitOnly &&
+           same(a.consulted.idsApart, a.values.idsApart, idsApart) &&
+           same(a.consulted.splitShared, a.values.splitShared, splitShared) &&
+           same(a.consulted.meetApart, a.values.meetApart, meetApart) &&
+           same(a.consulted.meetAheadOfPartners, a.values.meetAheadOfPartners,
+                meetAheadOfPartners);
+  };
+  auto replayed = llvm::find_if(*attempts, replays);
+  if (replayed != attempts->end() && !clVerifyReplays) {
+    LLVM_DEBUG(llvm::dbgs() << "\tPathfinder: this attempt replays attempt "
+                            << (replayed - attempts->begin())
+                            << " of the ladder, so it is skipped\n");
+    ++numReplaysSkipped;
+    crowdedTiles = replayed->crowdedTiles;
+    packetsFailed = replayed->packetsFailed;
+    checkReason = replayed->checkReason;
+    if (replayed->routing)
+      return *replayed->routing;
+    if (replayed->failureClass == DeadlockProneRouting::classID())
+      return llvm::make_error<DeadlockProneRouting>(
+          replayed->reason, replayed->faults, replayed->loc);
+    if (replayed->failureClass == PinnedRoutingFailure::classID())
+      return llvm::make_error<PinnedRoutingFailure>(
+          replayed->reason, replayed->faults, replayed->loc);
+    return llvm::make_error<RoutingFailure>(replayed->reason, replayed->faults,
+                                            replayed->loc);
+  }
+
+  llvm::Expected<Routing> found =
+      negotiate(maxIterations, clVerifyReplays ? &now.trajectory : nullptr);
+  now.consulted = consulted;
+  now.crowdedTiles = crowdedTiles;
+  now.packetsFailed = packetsFailed;
+  now.checkReason = checkReason;
+  bool replayable = static_cast<bool>(found);
+  if (found)
+    now.routing = *found;
+  llvm::Error failure =
+      found ? llvm::Error::success()
+            : llvm::handleErrors(
+                  found.takeError(),
+                  [&](std::unique_ptr<RoutingFailure> f) -> llvm::Error {
+                    const void *cls = f->dynamicClassID();
+                    replayable = cls == RoutingFailure::classID() ||
+                                 cls == DeadlockProneRouting::classID() ||
+                                 cls == PinnedRoutingFailure::classID();
+                    now.failureClass = cls;
+                    now.reason = f->reason;
+                    now.faults = f->faults;
+                    now.loc = f->loc;
+                    return llvm::Error(std::move(f));
+                  });
+  if (replayed != attempts->end()) {
+    bool same = replayed->trajectory == now.trajectory &&
+                replayed->routing.has_value() == now.routing.has_value() &&
+                (!now.routing || hashRouting(*replayed->routing) ==
+                                     hashRouting(*now.routing)) &&
+                replayed->failureClass == now.failureClass &&
+                replayed->reason == now.reason &&
+                replayed->crowdedTiles == now.crowdedTiles &&
+                replayed->packetsFailed == now.packetsFailed &&
+                replayed->checkReason == now.checkReason;
+    if (!same)
+      llvm::report_fatal_error(llvm::Twine("aie-pathfinder-verify-replays: "
+                                           "attempt ") +
+                               llvm::Twine(attempts->size()) +
+                               " does not replay attempt " +
+                               llvm::Twine(replayed - attempts->begin()));
+    LLVM_DEBUG(llvm::dbgs() << "\tPathfinder: this attempt replays attempt "
+                            << (replayed - attempts->begin())
+                            << " of the ladder, as verified\n");
+    ++numReplaysVerified;
+  } else if (replayable) {
+    attempts->push_back(std::move(now));
+  }
+  if (failure)
+    return std::move(failure);
+  return found;
+}
+
+llvm::Expected<Routing>
+Pathfinder::negotiate(const int maxIterations,
+                      std::vector<llvm::hash_code> *trajectory) {
   RouteState st(*this);
 
   int iterationCount = -1;
@@ -2974,6 +3133,8 @@ llvm::Expected<Routing> Pathfinder::findPaths(const int maxIterations) {
                    << " , illegal edges count = " << illegalEdges
                    << ", total path length = " << totalPathLength << "---\n";
     });
+    if (trajectory)
+      trajectory->push_back(hashRouting(st.routing));
     if (stuck && usable) {
       llvm::consumeError(std::move(unmoved));
       return std::move(*usable);
