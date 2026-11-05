@@ -742,6 +742,22 @@ REPORTED = {
 }
 
 
+def run_failure(p):
+    """How a router run gave no answer, if it did not.
+
+    Args:
+        p: The run's result.
+
+    Returns:
+        ("timeout", detail) or ("crash", detail), else None.
+    """
+    if p.returncode == rp.TIMEOUT:
+        return "timeout", p.stderr
+    if p.returncode < 0:
+        return "crash", rp.first_error(p.stderr)[:300]
+    return None
+
+
 def judge(e, expect, hops_on, seed, deadline=None):
     """Route `e` and hold the router to `expect`. Returns (outcome, detail),
     outcome one of ok, completeness, soundness, illegal, crash, known,
@@ -756,8 +772,8 @@ def judge(e, expect, hops_on, seed, deadline=None):
             return "model-limit", f"emit: {x!r}"
         # The IR verifier rejects it before the router runs.
         p = rp.aie_opt(e.emit(), hops_on, deadline=deadline)
-        if p.returncode == rp.TIMEOUT:
-            return "timeout", p.stderr
+        if failure := run_failure(p):
+            return failure
         if p.returncode == 0:
             return "soundness", f"router routes it, must reject: {why}"
         return "ok", f"rejected by the verifier ({why})"
@@ -774,10 +790,8 @@ def judge(e, expect, hops_on, seed, deadline=None):
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
         why = v["reason"]
     p = rp.aie_opt(e.emit(), hops_on, deadline=deadline)
-    if p.returncode == rp.TIMEOUT:
-        return "timeout", p.stderr
-    if p.returncode < 0:
-        return "crash", rp.first_error(p.stderr)[:300]
+    if failure := run_failure(p):
+        return failure
     if p.returncode:
         err = rp.first_error(p.stderr)
         if expect != "route":
@@ -816,10 +830,8 @@ def judge_strict(e, expect, hops_on, s, deadline=None):
     """Hold the router's run on canonical `e` without allow-deadlock-prone,
     `s`, to what judge() holds its run with it to, its router runs stopping by
     `deadline` as judge()'s do. Returns (outcome, detail) as judge() does."""
-    if s.returncode == rp.TIMEOUT:
-        return "timeout", f"strict: {s.stderr}"
-    if s.returncode < 0:
-        return "crash", f"strict: {rp.first_error(s.stderr)[:300]}"
+    if failure := run_failure(s):
+        return failure[0], f"strict: {failure[1]}"
     if s.returncode:
         try:
             witness = rp.strict_witness(e, rp.Analysis(e), deadline=deadline)

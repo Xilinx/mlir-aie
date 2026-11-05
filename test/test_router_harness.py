@@ -6,6 +6,7 @@
 """The router's model and shrinker, with the real aie-opt; no NPU required."""
 
 import argparse
+import dis
 import functools
 import importlib.util
 import inspect
@@ -231,6 +232,17 @@ def test_a_crash_retry_stops_by_the_deadline_and_keeps_the_crash():
     cut = rp.aie_opt(nested, deadline=start + 1.4 * crash_s)
     assert cut.returncode == crashed.returncode, cut.stderr[-200:]
     assert time.monotonic() - start < 1.65 * crash_s
+
+
+def test_every_judged_router_run_reads_a_crash_as_a_crash():
+    nested = "module {" * 20000 + "}" * 20000
+    assert router_mutation.run_failure(rp.aie_opt(nested))[0] == "crash"
+    spent = rp.aie_opt(nested, deadline=time.monotonic())
+    assert router_mutation.run_failure(spent)[0] == "timeout"
+    # judge() routes twice: the design the verifier rejects, and any other.
+    for fn, runs in ((router_mutation.judge, 2), (router_mutation.judge_strict, 1)):
+        calls = [i for i in dis.get_instructions(fn) if i.argval == "run_failure"]
+        assert len(calls) == runs, fn.__name__
 
 
 def test_a_router_timeout_is_not_called_a_crash(priority):
