@@ -208,6 +208,16 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   for (auto &[tile, inOut] : flowChannelDemand(
            flows, pktFlows, routes,
            DMAChannelAnalysis(device).getChannelClaims(), &namedChannels)) {
+    if (auto placed = dyn_cast<TileOp>(tile)) {
+      TileID at = placed.getTileID();
+      if (inOut.first)
+        updateChannelUsage(at, DmaDir::In, inOut.first);
+      if (inOut.second)
+        updateChannelUsage(at, DmaDir::Out, inOut.second);
+      for (auto named : namedChannels.lookup(tile))
+        availability.namedChannelsUsed[at].insert(named);
+      continue;
+    }
     channelRequirements[tile].first += inOut.first;
     channelRequirements[tile].second += inOut.second;
   }
@@ -1524,9 +1534,10 @@ Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
   return adjacency;
 }
 
-// Already-resolved TileOps have no placer-visible budget, so only flows whose
-// endpoints are LogicalTileOps contribute to channelRequirements. A DMA
-// channel is a hardware resource: a broadcast (one source channel feeding
+// Tiles with both coordinates are one tile however many ops name them, as in
+// DMAChannelAnalysis::getTileKey: their demand is keyed by the first op seen
+// there, placed or not, so a physical tile's channels count at its position.
+// A DMA channel is a hardware resource: a broadcast (one source channel feeding
 // multiple destinations) consumes one MM2S channel on the producer regardless
 // of the number of `aie.flow` ops it lowers to, and a merge (multiple sources
 // landing on one destination channel) consumes one S2MM channel on the
@@ -1539,13 +1550,15 @@ llvm::MapVector<Operation *, std::pair<int, int>> Placer::flowChannelDemand(
     llvm::DenseMap<Operation *, SmallVector<std::pair<int, int>>> *named) {
   llvm::MapVector<Operation *, std::pair<int, int>> demand;
   llvm::DenseSet<std::tuple<Operation *, int>> seenSrc, seenDst;
+  llvm::DenseMap<std::pair<int, int>, Operation *> byCoordinate;
 
   auto incIfDMA = [&](Operation *tileOp, WireBundle bundle,
                       std::optional<int> channel, bool isOutput) {
-    if (!tileOp || !isa<LogicalTileOp>(tileOp))
+    auto tile = dyn_cast_or_null<TileLike>(tileOp);
+    if (!tile || bundle != WireBundle::DMA)
       return;
-    if (bundle != WireBundle::DMA)
-      return;
+    if (auto col = tile.tryGetCol(), row = tile.tryGetRow(); col && row)
+      tileOp = byCoordinate.try_emplace({*col, *row}, tileOp).first->second;
     auto &seen = isOutput ? seenSrc : seenDst;
     if (channel && !seen.insert({tileOp, *channel}).second)
       return;

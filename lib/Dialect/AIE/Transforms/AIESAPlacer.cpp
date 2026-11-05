@@ -416,13 +416,13 @@ std::optional<TileID> SAPlacer::positionOf(Operation *tile) const {
 // Add a single fifo's contributions to memory and DMA usage maps.
 void SAPlacer::addRouteEndContribution(size_t endIdx, int sign) {
   const RouteEndInfo &end = routeEnds[endIdx];
-  auto posIt = currentPlacement.find(end.tile);
-  if (posIt == currentPlacement.end())
+  std::optional<TileID> pos = positionOf(end.tile);
+  if (!pos)
     return;
   if (end.output)
-    currentDMAUsage[posIt->second].second += sign;
+    currentDMAUsage[*pos].second += sign;
   else
-    currentDMAUsage[posIt->second].first += sign;
+    currentDMAUsage[*pos].first += sign;
 }
 
 void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {

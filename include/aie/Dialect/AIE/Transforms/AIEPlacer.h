@@ -138,11 +138,12 @@ public:
   // Collect all placement-relevant operations from the device.
   static CollectedOps collectOperations(DeviceOp device);
 
-  // The (input, output) DMA channels each logical tile's flows, packet flows,
-  // route endpoints and channel claims (DMAChannelAnalysis's: program starts,
+  // The (input, output) DMA channels each tile's flows, packet flows, route
+  // endpoints and channel claims (DMAChannelAnalysis's: program starts,
   // runtime tasks, shim allocations) take: one per endpoint however many
-  // routes name it, and one per channel named by index. With `named`, the
-  // (output, index) channels named by index, by tile.
+  // routes name it, and one per channel named by index. Tiles with both
+  // coordinates are keyed by position. With `named`, the (output, index)
+  // channels named by index, by tile.
   static llvm::MapVector<mlir::Operation *, std::pair<int, int>>
   flowChannelDemand(
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
