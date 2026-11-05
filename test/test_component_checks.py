@@ -682,3 +682,27 @@ def test_strict_misses_add_up_over_properties_and_mutations(tmp_path):
     assert result.returncode == 0, result.stderr
     assert rows["npu2/strict_misses"] == (3, "designs")
     assert meta["detail"][0]["strict_misses"] == 1
+
+
+def test_a_mutation_report_without_strict_misses_fails_clearly(tmp_path):
+    report = tmp_path / "npu1-hops-on.json"
+    report.write_text(
+        json.dumps(
+            {
+                "device": "npu1",
+                "hops": "on",
+                "first_seed": 0,
+                "seeds": 2,
+                "killed": 3,
+                "survived": 0,
+                "failures": [],
+            }
+        )
+    )
+    result, rows, meta = collect(tmp_path, "router", report)
+    assert result.returncode == 1
+    assert meta["failed"] == [
+        "npu1-hops-on: report has no strict_misses; it predates "
+        "router_mutation.py's strict-miss report, so rerun it"
+    ]
+    assert rows == {}

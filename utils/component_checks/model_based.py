@@ -112,6 +112,12 @@ def router(
                 }
             )
             continue
+        if "strict_misses" not in report:
+            failed.append(
+                f"{stem}: report has no strict_misses; it predates "
+                "router_mutation.py's strict-miss report, so rerun it"
+            )
+            continue
         part = f"hops-{report['hops']}"
         seen = set()
         for f in report["failures"]:
