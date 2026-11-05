@@ -3370,7 +3370,11 @@ int main(int argc, char **argv) {
   // whose failed edge comes latest in the graph, which is built in pipeline
   // order, the later placement on a tie. Otherwise the last stands, which
   // succeeded or failed past what placing again fixes.
-  auto reached = [](const Attempt &a) {
+  // Every attempt here failed at an edge: each was placed again, or ran out,
+  // only on failedAt() one. An attempt with none would rank lowest.
+  auto reached = [](const Attempt &a) -> std::ptrdiff_t {
+    if (!a.engine->failedEdge)
+      return -1;
     return llvm::find_if(a.graph->edges,
                          [&](const std::unique_ptr<EdgeBase> &edge) {
                            return edge.get() == a.engine->failedEdge;
