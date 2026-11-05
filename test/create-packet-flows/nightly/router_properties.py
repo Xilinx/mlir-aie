@@ -3306,7 +3306,7 @@ def priority_trees(d, cache, deadline=None):
     ]
     text = c.emit()
     if text not in cache:
-        p = route_design(text, hops_on=False, deadline=deadline)
+        p = aie_opt(text, hops_on=False, deadline=deadline)
         if p.returncode == TIMEOUT:
             raise RouterTimeout(f"routing the prioritized flows alone: {p.stderr}")
         trees = None
@@ -5208,7 +5208,7 @@ def witness_problem(d, an, text, deadline=None):
     to exactly the requested flows; else what fails."""
     # With nothing left to route, the router only adds the wires find-flows
     # follows.
-    wired = route_design(text, strict=True, deadline=deadline)
+    wired = aie_opt(text, strict=True, deadline=deadline)
     if wired.returncode == TIMEOUT:
         raise RouterTimeout(f"wiring a strict witness: {wired.stderr}")
     if wired.returncode:
@@ -5825,9 +5825,25 @@ def aie_opt_path():
     return os.environ.get("AIE_OPT") or shutil.which("aie-opt") or str(here)
 
 
-def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=False):
-    """Run the router, letting flows that can deadlock route with a warning
-    unless strict. A timeout comes back as returncode TIMEOUT."""
+def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=None):
+    """Run the router on `text`, `ROUTE_TIMEOUT_S` for each design in it.
+
+    Args:
+        text: The design, or with `split` designs separated by `// -----`.
+        hops_on: Whether circuit-switch hops are on.
+        split: Whether `text` holds several designs.
+        extra: More aie-opt arguments.
+        strict: Whether flows that can deadlock fail instead of routing with a
+            warning.
+        deadline: A `time.monotonic()` value to stop by, if that comes first.
+
+    Returns:
+        The run's result, with returncode `TIMEOUT` if it ran out of time.
+    """
+    designs = text.count(SPLIT) + 1 if split else 1
+    timeout = ROUTE_TIMEOUT_S * designs
+    if deadline is not None:
+        timeout = max(0.0, min(timeout, deadline - time.monotonic()))
     opts = [] if hops_on else ["circuit-switch-hops=false"]
     if not strict:
         opts.append("allow-deadlock-prone=true")
@@ -5853,6 +5869,7 @@ def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=Fals
 
 
 TIMEOUT = -1000
+SPLIT = "\n// -----\n"
 
 # Room for the slowest design the mutation nightly judges, on a busy runner.
 ROUTE_TIMEOUT_S = 360
@@ -5862,25 +5879,6 @@ class RouterTimeout(Exception):
     """A router run the model relies on ran out of time, so it cannot say."""
 
 
-def route_design(text, hops_on=True, strict=False, deadline=None):
-    """Route one design the mutation nightly judges, as aie_opt does.
-
-    Args:
-        text: The design.
-        hops_on: Whether circuit-switch hops are on.
-        strict: Whether flows that can deadlock fail instead of routing.
-        deadline: A `time.monotonic()` value to stop by, if that comes before
-            `ROUTE_TIMEOUT_S`.
-
-    Returns:
-        aie_opt's result, with returncode `TIMEOUT` if the run ran out of time.
-    """
-    limit = ROUTE_TIMEOUT_S
-    if deadline is not None:
-        limit = max(0.0, min(limit, deadline - time.monotonic()))
-    return aie_opt(text, hops_on, strict=strict, timeout=limit)
-
-
 def find_flows(text, keep_partial=False, deadline=None):
     """Lift a routing back into flows with --aie-find-flows.
 
@@ -5888,7 +5886,7 @@ def find_flows(text, keep_partial=False, deadline=None):
         text: The routed design.
         keep_partial: Whether to keep what it cannot lift as switchbox
             configuration.
-        deadline: As `route_design`.
+        deadline: As `aie_opt`.
 
     Returns:
         The run's result, with returncode `TIMEOUT` if it ran out of time.
@@ -5914,14 +5912,14 @@ def route_batch(tagged, hops_on, extra=(), strict=False):
     output, so designs missing from it are rerun alone. Returns ({tag:
     output}, {tag: (returncode, stderr)}, {tag: debug output})."""
     p = aie_opt(
-        "\n// -----\n".join(m for _, m in tagged),
+        SPLIT.join(m for _, m in tagged),
         hops_on,
         split=True,
         extra=extra,
         strict=strict,
     )
     out, errs, debug = {}, {}, {}
-    for chunk in p.stdout.split("\n// -----\n"):
+    for chunk in p.stdout.split(SPLIT):
         if m := MODULE_TAG_RE.search(chunk):
             out[int(m.group(1))] = chunk.removeprefix("// -----\n")
     logs = p.stderr.split(PASS_BEGIN)[1:]

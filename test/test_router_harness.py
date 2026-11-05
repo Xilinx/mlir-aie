@@ -6,6 +6,7 @@
 """The router's model and shrinker, with the real aie-opt; no NPU required."""
 
 import argparse
+import functools
 import importlib.util
 import inspect
 import random
@@ -209,7 +210,7 @@ def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
 
 def test_a_router_timeout_is_not_called_a_crash(priority):
     d, _ = priority
-    slow = rp.aie_opt(d.emit(), True, strict=True, timeout=1e-6)
+    slow = rp.aie_opt(d.emit(), True, strict=True, deadline=time.monotonic())
     assert slow.returncode == rp.TIMEOUT
     outcome, detail = router_mutation.judge_strict(d, "route", True, slow)
     assert outcome == "timeout", detail
@@ -235,11 +236,6 @@ def code_names(code):
     return names
 
 
-# The properties run's own aie-opt runs: batches and its checks, not judged.
-UNJUDGED = {"aie_opt", "route_design", "find_flows", "route_batch", "debug_flags"}
-UNJUDGED |= {"check_verifier", "main"}
-
-
 # Seconds the slowest judged design takes on a busy hosted runner.
 SLOWEST_JUDGED_S = 258
 
@@ -248,18 +244,22 @@ def test_the_nightly_limit_leaves_room_over_the_slowest_judged_design():
     assert SLOWEST_JUDGED_S <= 0.75 * rp.ROUTE_TIMEOUT_S
 
 
-def test_every_judged_router_run_has_the_nightly_limit():
-    for helper in (rp.route_design, rp.find_flows):
-        assert "timeout" not in inspect.signature(helper).parameters
-        assert "ROUTE_TIMEOUT_S" in code_names(helper.__code__)
-    for module in (router_mutation, rp):
+def test_no_router_run_chooses_its_own_limit():
+    for runner in (rp.aie_opt, rp.find_flows):
+        params = inspect.signature(runner).parameters
+        assert "timeout" not in params and "deadline" in params
+        assert "ROUTE_TIMEOUT_S" in code_names(runner.__code__)
+    for module in (rp, router_mutation, router_shrink):
         for name, fn in vars(module).items():
             if not inspect.isfunction(fn) or fn.__module__ != module.__name__:
                 continue
-            if module is rp and name in UNJUDGED:
+            if fn in (rp.aie_opt, rp.find_flows):
                 continue
-            names = code_names(fn.__code__)
-            assert not {"aie_opt", "subprocess"} & names, f"{module.__name__}.{name}"
+            assert "subprocess" not in code_names(fn.__code__), name
+    for name, value in vars(router_mutation).items():
+        assert not isinstance(value, functools.partial), name
+        if inspect.isfunction(value):
+            assert value.__module__ != rp.__name__, name
 
 
 def test_shrinking_stops_a_judgement_at_its_budget():
@@ -290,7 +290,7 @@ def test_a_timeout_in_the_models_router_runs_is_a_timeout(priority):
 
 def test_a_strict_witness_timeout_is_no_strict_pass():
     d = rp.canonical(rp.load_design(SHARED))
-    strict = rp.route_design(d.emit(), strict=True)
+    strict = rp.aie_opt(d.emit(), strict=True)
     failed = subprocess.CompletedProcess(strict.args, 1, "", "no routing")
     assert router_mutation.judge_strict(d, "route", True, failed)[0] == "strict-miss"
     outcome, detail = router_mutation.judge_strict(

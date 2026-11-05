@@ -755,7 +755,7 @@ def judge(e, expect, hops_on, seed, deadline=None):
         if not why:
             return "model-limit", f"emit: {x!r}"
         # The IR verifier rejects it before the router runs.
-        p = rp.route_design(e.emit(), hops_on, deadline=deadline)
+        p = rp.aie_opt(e.emit(), hops_on, deadline=deadline)
         if p.returncode == rp.TIMEOUT:
             return "timeout", p.stderr
         if p.returncode == 0:
@@ -773,7 +773,7 @@ def judge(e, expect, hops_on, seed, deadline=None):
             return "model-limit", f"verdict: {x!r}"
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
         why = v["reason"]
-    p = rp.route_design(e.emit(), hops_on, deadline=deadline)
+    p = rp.aie_opt(e.emit(), hops_on, deadline=deadline)
     if p.returncode == rp.TIMEOUT:
         return "timeout", p.stderr
     if p.returncode < 0:
@@ -806,7 +806,7 @@ def judge(e, expect, hops_on, seed, deadline=None):
             e,
             expect,
             hops_on,
-            rp.route_design(e.emit(), hops_on, strict=True, deadline=deadline),
+            rp.aie_opt(e.emit(), hops_on, strict=True, deadline=deadline),
             deadline,
         )
     return "ok", f"routed ({expect})"
@@ -1374,7 +1374,7 @@ def run_seed(seed, args):
     if case is None:
         return rows
     d = case["design"]
-    p = rp.route_design(d.emit(), hops_on)
+    p = rp.aie_opt(d.emit(), hops_on)
     if p.returncode == rp.TIMEOUT:
         return [("base", "timeout", "", p.stderr, d)]
     if p.returncode:
@@ -1439,7 +1439,7 @@ def run_seed(seed, args):
         if e is None:
             rows.append(("relation", "broken", name, f"{what}: {check}", d))
             continue
-        q = rp.route_design(e.emit(), hops_on)
+        q = rp.aie_opt(e.emit(), hops_on)
         if q.returncode == rp.TIMEOUT:
             rows.append(("relation", "timeout", name, f"{what}: {q.stderr}", e))
             continue

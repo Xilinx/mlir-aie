@@ -40,7 +40,7 @@ def holds_fn(pattern, hops_on, verbose=False, timeout=60):
         except (KeyError, IndexError, ValueError):
             return False
         t0 = time.monotonic()
-        p = rp.aie_opt(text, hops_on, timeout=timeout)
+        p = rp.aie_opt(text, hops_on, deadline=time.monotonic() + timeout)
         spent = time.monotonic() - t0
         if verbose and spent > 1:
             print(f"  slow aie-opt: {spent:.1f}s", file=sys.stderr)
