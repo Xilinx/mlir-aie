@@ -4461,12 +4461,13 @@ def devices_of(device):
     return FAMILIES.get(device, (device,))
 
 
-def routable_case(seed, device):
-    """A design the generator routed itself. None if it gave up."""
+def routable_case(seed, device, deadline=None):
+    """A design the generator routed itself. None if it gave up; the model's
+    router runs stop by `deadline` (ModelRunFailed) if given."""
     devs = devices_of(device)
     rng = random.Random(seed)
     d = canonical(random_design(rng, devs[seed % len(devs)]))
-    built = construct(d, seed)
+    built = construct(d, seed, deadline=deadline)
     if built is None:
         return None
     shape = "random"
@@ -4474,7 +4475,7 @@ def routable_case(seed, device):
         fixed = fix_ir(rng, d, built[0])
         if fixed is not None:
             fd = canonical(fixed)
-            fbuilt = construct(fd, seed)
+            fbuilt = construct(fd, seed, deadline=deadline)
             if fbuilt is not None and (fd.flows or fd.packet_flows):
                 d, built, shape = fd, fbuilt, "fixed-ir"
     con, an, _ = built
@@ -6276,6 +6277,29 @@ def known_bug(d, problems):
     return next((label for label, test in KNOWN_BUGS if test(d, problems)), None)
 
 
+def generated_cases(first, count, device, deadline=None):
+    """Generate the routable designs of seeds `first` to `first + count`.
+
+    Args:
+        first: The first seed.
+        count: How many seeds to try.
+        device: The device or family to generate for.
+        deadline: As `aie_opt`, for the model's router runs.
+
+    Yields:
+        (seed, case, outcome): the case, else None with outcome None where the
+        generator gave up, or the outcome of the model's router run
+        ("timeout", "crash") where the model could not decide.
+    """
+    for seed in range(first, first + count):
+        try:
+            case = routable_case(seed, device, deadline)
+        except ModelRunFailed as x:
+            yield seed, None, x.outcome
+            continue
+        yield seed, case, None
+
+
 def main(argv=None):
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--device", default="npu2", help="npu1, npu2 or a device name")
@@ -6303,12 +6327,39 @@ def main(argv=None):
 
     regressions = []
     properties = []
+    tried, undecided = 0, []
+
+    def write_report(partial, counts=None):
+        """Replace the report whole with the properties so far.
+
+        Args:
+            partial: Whether the run is not done, so a run stopped early
+                still leaves the properties and seeds it got to.
+            counts: The run's counts, once it has them.
+        """
+        if not args.report:
+            return
+        out = {
+            "device": args.device,
+            "first_seed": first,
+            "seeds": PARAMS["routable"],
+            "seeds_tried": tried,
+            "undecided": undecided,
+            "partial": partial,
+            "properties": properties,
+        }
+        if counts is not None:
+            out["counts"] = counts
+        tmp = args.report.with_name(args.report.name + ".tmp")
+        tmp.write_text(json.dumps(out, indent=1))
+        tmp.replace(args.report)
 
     def report(label, ok, detail):
         print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
         properties.append({"name": label, "ok": bool(ok), "detail": detail})
         if not ok:
             regressions.append(label)
+        write_report(partial=True)
 
     def save(case, what, text, stderr=""):
         if args.out:
@@ -6366,17 +6417,25 @@ def main(argv=None):
         for hops_on in (True, False):
             pending[hops_on, k] = pool.submit(route, hops_on, cases[k : k + size])
 
-    for seed in range(first, first + PARAMS["routable"]):
-        try:
-            case = routable_case(seed, args.device)
-        except ModelRunFailed:
-            case = None
-        if case is None:
+    for seed, case, outcome in generated_cases(first, PARAMS["routable"], args.device):
+        tried += 1
+        if outcome:
+            undecided.append(f"seed {seed}: {outcome}")
+        elif case is None:
             gave_up += 1
-            continue
-        cases.append(case)
-        if len(cases) % size == 0:
-            submit(len(cases) - size)
+        else:
+            cases.append(case)
+            if len(cases) % size == 0:
+                submit(len(cases) - size)
+        write_report(partial=True)
+    for line in undecided[:10]:
+        print("UNDECIDED:", line)
+    report(
+        "generation",
+        not undecided,
+        f"{len(undecided)} seeds the model could not decide, its router run "
+        f"timed out or crashed: {', '.join(undecided[:10])}",
+    )
     if len(cases) % size:
         submit(len(cases) - len(cases) % size)
     shapes = Counter(c["shape"] for c in cases)
@@ -6777,24 +6836,14 @@ def main(argv=None):
             "ms_per_design": round(per_design, 2),
             "wall_s": round(time.monotonic() - t_start, 1),
         }
-        args.report.write_text(
-            json.dumps(
-                {
-                    "device": args.device,
-                    "first_seed": first,
-                    "seeds": PARAMS["routable"],
-                    "properties": properties,
-                    "counts": counts,
-                },
-                indent=1,
-            )
-        )
+        write_report(partial=False, counts=counts)
     return 1 if regressions else 0
 
 
 # CHECK: model-validation: {{.*}} : OK
 # CHECK: verifier-validation: {{.*}} : OK
 
+# CHECK: generation: {{.*}} : OK
 # CHECK: completeness: {{.*}} : OK
 # CHECK: legality: {{.*}} : OK
 # CHECK: determinism: {{.*}} : OK

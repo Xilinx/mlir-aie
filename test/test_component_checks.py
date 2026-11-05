@@ -587,6 +587,35 @@ def test_a_mutation_run_its_time_limit_stops_leaves_a_partial_report(aie_opt, tm
     assert f"npu1/hops-on/stopped after {done} of 400 seeds" in meta["failed"]
 
 
+def test_a_properties_run_its_time_limit_stops_leaves_a_partial_report(
+    aie_opt, tmp_path
+):
+    report = tmp_path / "npu1-properties.json"
+    run = subprocess.Popen(
+        [sys.executable, ROOT / "test/create-packet-flows/nightly/router_properties.py"]
+        + ["--device", "npu1", "--seeds", "2000", "--report", report],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline and run.poll() is None:
+        if report.exists() and json.loads(report.read_text())["seeds_tried"]:
+            break
+        time.sleep(0.2)
+    run.kill()
+    run.wait()
+    assert report.exists(), "the run wrote no report before it was stopped"
+    partial = json.loads(report.read_text())
+    assert partial["partial"]
+    assert 1 <= partial["seeds_tried"] < 2000
+    assert partial["undecided"] == []
+
+    result, _, meta = collect(tmp_path, "router", report)
+    assert result.returncode == 1
+    tried = partial["seeds_tried"]
+    assert f"npu1/properties/stopped after {tried} of 2000 seeds" in meta["failed"]
+
+
 def test_mutation_failures_name_the_first_seed_of_each_kind(tmp_path):
     report = tmp_path / "npu2-hops-off.json"
     failures = [

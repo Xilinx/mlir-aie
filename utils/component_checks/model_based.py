@@ -97,9 +97,15 @@ def router(
             bad = [p["name"] for p in report["properties"] if not p["ok"]]
             span = f"seed={first}+{report['seeds']}"
             failed += [f"{device}/properties/{span}/{name}" for name in bad]
+            if report.get("partial", False):
+                failed.append(
+                    f"{device}/properties/stopped after {report['seeds_tried']} "
+                    f"of {report['seeds']} seeds"
+                )
             cells["failed_properties"] = (len(bad), "properties")
-            for metric, unit in ROUTER_COUNTS.items():
-                cells[metric] = (report["counts"][metric], unit)
+            if "counts" in report:
+                for metric, unit in ROUTER_COUNTS.items():
+                    cells[metric] = (report["counts"][metric], unit)
             detail.append(
                 {
                     "device": device,
