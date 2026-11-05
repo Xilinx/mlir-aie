@@ -655,7 +655,7 @@ int SAPlacer::computeDelegatePenalty() const {
 }
 
 void SAPlacer::collectSpillBuffers() {
-  // Each mem tile pool's objects, with the logical tile whose column is its
+  // Each mem tile pool's objects, with the logical tile whose position is its
   // home; a pool aie-objectfifo-allocate walks whole is one buffer, which
   // spills only whole. A logical tile's ends do not depend on where it sits,
   // so neither do the pools it walks, those of tiles sharing its position
@@ -680,7 +680,7 @@ void SAPlacer::collectSpillBuffers() {
     }
   }
   // Sort globally by size descending (matching stateful transform). Which
-  // buffers there are never changes while tiles move, only their columns, and
+  // buffers there are never changes while tiles move, only their positions, and
   // the sort compares sizes alone, so this is the order every placement
   // visits them in.
   llvm::sort(spillBuffers,
@@ -708,43 +708,42 @@ void SAPlacer::collectSpillBuffers() {
 // allocator backtracks over its spill choices to cover that.
 int SAPlacer::computeMemSpilloverPenalty() const {
   int64_t memTileCapacity = targetModel->getMemTileSize();
-  int numCols = targetModel->columns();
   int penalty = 0;
 
-  llvm::SmallVector<int64_t> memTileBaseline(numCols, 0);
+  // remaining[tile] = capacity available after baseline, per mem tile.
+  llvm::DenseMap<TileID, int64_t> remaining;
+  for (int col = 0; col < targetModel->columns(); col++)
+    for (int row = 0; row < targetModel->rows(); row++)
+      if (targetModel->getTileType(col, row) == AIETileType::MemTile)
+        remaining[{col, row}] = memTileCapacity;
   for (auto &[op, bufSize] : spillBaseline)
-    memTileBaseline[currentPlacement.lookup(op).col] += bufSize;
+    if (auto it = remaining.find(currentPlacement.lookup(op));
+        it != remaining.end())
+      it->second = std::max(it->second - bufSize, int64_t{0});
 
-  // remaining[col] = capacity available after baseline.
-  llvm::SmallVector<int64_t> remaining(numCols, 0);
-  for (int col = 0; col < numCols; col++) {
-    if (targetModel->getTileType(col, 1) != AIETileType::MemTile)
-      continue;
-    remaining[col] =
-        std::max(memTileCapacity - memTileBaseline[col], int64_t{0});
-  }
-
-  // Place each buffer: try home first, then neighbor with most capacity.
+  // Place each buffer: try home first, then the neighbor with the most
+  // capacity, as objectFIFO allocation spills: same row, one column over,
+  // where home's DMAs reach its memory.
   for (auto &[bufSize, home] : spillBuffers) {
-    int homeCol = currentPlacement.lookup(home).col;
-    if (remaining[homeCol] >= bufSize) {
-      remaining[homeCol] -= bufSize;
+    TileID homePos = currentPlacement.lookup(home);
+    if (auto it = remaining.find(homePos);
+        it != remaining.end() && it->second >= bufSize) {
+      it->second -= bufSize;
     } else {
-      // Pick neighbor with the most remaining capacity.
-      int bestNbr = -1;
-      int64_t bestCap = -1;
-      for (int nbr : {homeCol - 1, homeCol + 1}) {
-        if (nbr < 0 || nbr >= numCols)
+      int64_t *best = nullptr;
+      for (int col : {homePos.col - 1, homePos.col + 1}) {
+        auto nbr = remaining.find({col, homePos.row});
+        if (nbr == remaining.end())
           continue;
-        if (targetModel->getTileType(nbr, 1) != AIETileType::MemTile)
+        auto shared = targetModel->getSharedMemory(homePos, nbr->first);
+        if (shared != AIETargetModel::SharedMemory::Second &&
+            shared != AIETargetModel::SharedMemory::Either)
           continue;
-        if (remaining[nbr] >= bufSize && remaining[nbr] > bestCap) {
-          bestCap = remaining[nbr];
-          bestNbr = nbr;
-        }
+        if (nbr->second >= bufSize && (!best || nbr->second > *best))
+          best = &nbr->second;
       }
-      if (bestNbr >= 0) {
-        remaining[bestNbr] -= bufSize;
+      if (best) {
+        *best -= bufSize;
       } else {
         // Ceiling division: bytes → KB.
         penalty += ((bufSize + 1023) / 1024) * config.memPenaltyPerKB;
@@ -857,6 +856,16 @@ int SAPlacer::computeTileDMAPenalty(TileID tilePos) const {
                    static_cast<int>(ends.size());
     }
     penalty += std::max(0, used[dir] - max[dir]) * config.dmaPenaltyPerChannel;
+  }
+  if (targetModel->getTileType(tilePos.col, tilePos.row) ==
+      AIETileType::ShimNOCTile) {
+    SmallVector<Operation *> onTile;
+    for (auto &[lt, peak] : runtimeBdIds.users())
+      if (auto at = currentPlacement.find(lt);
+          at != currentPlacement.end() && at->second == tilePos)
+        onTile.push_back(lt);
+    penalty +=
+        runtimeBdIds.shortfall(onTile, tilePos) * config.dmaPenaltyPerChannel;
   }
   return penalty;
 }
@@ -1005,8 +1014,9 @@ int SAPlacer::computeAdjacencyPenalty(
 }
 
 int SAPlacer::computePairingPenalty() const {
-  int penalty = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
-                                        config.cascadeWeightPerDist);
+  int penalty =
+      computeAdjacencyPenalty(cascadeAdjacency, targetModel->getCascadeSteps(),
+                              config.cascadeWeightPerDist);
   for (auto [first, second] : sharedMemAdjacency.edges) {
     auto firstIt = currentPlacement.find(first.getOperation());
     auto secondIt = currentPlacement.find(second.getOperation());
@@ -1416,39 +1426,6 @@ int64_t SAPlacer::computeTileMemoryWeight(Operation *tile) const {
 }
 
 //===----------------------------------------------------------------------===//
-// Post-SA mem/shim merge
-//===----------------------------------------------------------------------===//
-
-LogicalResult SAPlacer::mergeMemShimTiles(DeviceOp device) {
-  // After SA, each logical tile has its own physical position.
-  // Mem/shim tiles in the same column and of the same type share a
-  // physical tile. The SA's penalty model already enforces DMA capacity
-  // and memory constraints, so merge unconditionally.
-
-  // Group non-compute logical tiles by (col, tileType)
-  llvm::DenseMap<std::pair<int, AIETileType>, SmallVector<Operation *>> groups;
-
-  for (auto &[op, pos] : currentPlacement) {
-    auto it = tileTypes.find(op);
-    if (it == tileTypes.end())
-      continue;
-    if (it->second == AIETileType::CoreTile)
-      continue;
-    groups[{pos.col, it->second}].push_back(op);
-  }
-
-  for (auto &[key, ops] : groups) {
-    if (ops.size() <= 1)
-      continue;
-    TileID mergeTarget = currentPlacement[ops[0]];
-    for (size_t i = 1; i < ops.size(); i++)
-      currentPlacement[ops[i]] = mergeTarget;
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // SA placement
 //===----------------------------------------------------------------------===//
 
@@ -1508,11 +1485,13 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
       return;
     // The data region a core sets aside for its own sections is as much its
     // memory as the stack.
-    stackSizes[tileOp] = alignedBufferBytes(*targetModel, AIETileType::CoreTile,
-                                            coreOp.getEffectiveStackSize()) +
-                         alignedBufferBytes(*targetModel, AIETileType::CoreTile,
-                                            coreOp.getDataSize().value_or(
-                                                config.coreSectionsBytes));
+    stackSizes[tileOp] =
+        alignedBufferBytes(*targetModel, AIETileType::CoreTile,
+                           coreOp.getEffectiveStackSize()) +
+        alignedBufferBytes(
+            *targetModel, AIETileType::CoreTile,
+            coreOp.getDataSize().value_or(coreOp.getMeasuredDataSize().value_or(
+                config.coreSectionsBytes)));
   });
 
   // Build net model, fifo buffer info, and cascade groups
@@ -1522,7 +1501,9 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
                   collected.routes);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
-      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });
+      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
+      provenShimGates(device));
+  runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
   cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
   LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "
                           << cascadeAdjacency.edges.size() << " edges\n");
@@ -1563,9 +1544,9 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     // Compute buffer element size (producer side)
     auto fifoType = llvm::cast<AIEObjectFifoType>(ofOp.getElemType());
     auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
-    int64_t elementBits =
-        dataLayout.getTypeSizeInBits(elemType.getElementType());
-    int64_t producerBytes = elemType.getNumElements() * elementBits / 8;
+    int64_t producerBytes =
+        elemType.getNumElements() *
+        static_cast<int64_t>(dataLayout.getTypeSize(elemType.getElementType()));
     AIETileType prodType =
         fb.producer ? tileTypes.lookup(fb.producer) : AIETileType::CoreTile;
     fb.producerSizeBytes =
@@ -1576,9 +1557,9 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     if (auto consType = ofOp.getConsumerElemType()) {
       auto consOFType = llvm::cast<AIEObjectFifoType>(consType.value());
       auto consMemref = llvm::cast<MemRefType>(consOFType.getElementType());
-      int64_t consBits =
-          dataLayout.getTypeSizeInBits(consMemref.getElementType());
-      consumerBytes = consMemref.getNumElements() * consBits / 8;
+      consumerBytes = consMemref.getNumElements() *
+                      static_cast<int64_t>(
+                          dataLayout.getTypeSize(consMemref.getElementType()));
     }
     // One size serves every consumer, so align it for a core tile if any
     // consumer is one.
@@ -1606,10 +1587,10 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
       auto owner = cast<MemRefType>(
           cast<AIEObjectFifoType>(link.getPoolOwner().getElemType())
               .getElementType());
-      return alignedBufferBytes(
-          *targetModel, AIETileType::MemTile,
-          owner.getNumElements() *
-              dataLayout.getTypeSizeInBits(owner.getElementType()) / 8);
+      return alignedBufferBytes(*targetModel, AIETileType::MemTile,
+                                owner.getNumElements() *
+                                    static_cast<int64_t>(dataLayout.getTypeSize(
+                                        owner.getElementType())));
     };
     auto onMemTile = [&](Operation *tile) {
       return tile && tileTypes.lookup(tile) == AIETileType::MemTile;
@@ -2085,10 +2066,6 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
 
   // Generate allocates (state is fresh from initResourceTracking)
   generateAllocates();
-
-  // Merge mem/shim tiles that SA placed at the same position
-  if (failed(mergeMemShimTiles(device)))
-    return failure();
 
   auto endTime = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(

@@ -61,6 +61,12 @@ public:
       std::optional<llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<Gate>>>
           gates = std::nullopt);
 
+  /// Each receiving end's gates, by objectFIFO name: the shim inputs whose
+  /// consumption its progress proves, from the `#aie.consumed_by` proofs
+  /// aie-objectfifo-verify leaves on split route endpoints.
+  static llvm::DenseMap<mlir::StringAttr, llvm::SmallVector<Gate>>
+  provenGates(DeviceOp device);
+
   /// Whether the ends of `a` and `b` are never in flight together.
   bool apart(mlir::StringAttr a, mlir::StringAttr b) const;
 

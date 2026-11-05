@@ -19,6 +19,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/Support/MathExtras.h"
 #include <algorithm>
 #include <cstdint>
 
@@ -221,15 +222,14 @@ public:
         op.getColumn(), op.getRow(), op.getChannel(), op.getDirection());
 
     // Command word: bd_id in the START_BD_ID field, repeat_count [23:16],
-    // issue-token bit [31]. START_BD_ID is 6 bits on a mem tile (48 BDs) and 4
-    // bits on core/shim tiles, so mask to the tile class instead of a flat 0xF
-    // (a flat 0xF silently truncates a mem-tile head bd_id >= 16).
+    // issue-token bit [31]. START_BD_ID is as wide as the tile's BD ids.
     // bd_id and repeat_count may be runtime SSA; all-constant folds to one
     // constant (byte-identical to the static path), else built with arith.
     Location loc = op->getLoc();
     auto i32ty = rewriter.getIntegerType(32);
     uint32_t bdIdMask =
-        tm.isMemTile(op.getColumn(), op.getRow()) ? 0x3Fu : 0xFu;
+        (1u << llvm::Log2_32_Ceil(tm.getNumBDs(op.getColumn(), op.getRow()))) -
+        1;
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
     std::optional<uint64_t> repeat_cnt =
         getConstantInt64Operand(op.getRepeatCount());

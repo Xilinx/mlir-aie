@@ -67,6 +67,7 @@ add_mlir_dialect_library(
   MLIRAnalysis
   MLIRArithTransforms
   MLIRIR
+  MLIRParser
   MLIRPass
   MLIRSupport
   MLIRSCFTransforms

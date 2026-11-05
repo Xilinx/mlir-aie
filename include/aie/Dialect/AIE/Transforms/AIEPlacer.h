@@ -68,9 +68,8 @@ struct TileAvailability {
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;
   llvm::DenseMap<TileID, StreamDemand> streamsUsed;
-  // Live runtime-sequence BDs after each task event, as in
-  // SequentialPlacer::runtimeBdProfiles.
-  llvm::DenseMap<TileID, llvm::SmallVector<int>> runtimeBdsUsed;
+  // The logical tiles placed here whose runtime tasks take BD ids.
+  llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *>> runtimeBdTiles;
   // DMA channels, as (output, index), that flows of the logical tiles placed
   // here name by index.
   llvm::DenseMap<TileID, llvm::DenseSet<std::pair<int, int>>> namedChannelsUsed;
@@ -190,6 +189,72 @@ public:
   // the fifo itself, sending when its producer is a shim tile.
   static std::optional<ShimTransferSpans::End>
   shimEndOf(DeviceOp device, mlir::StringAttr symbol);
+
+  // The gates objectFIFO allocation will share receiving shim ends by: the
+  // #aie.consumed_by proofs aie-objectfifo-verify finds on a copy of the
+  // design with every fifo between two tiles moved by DMA. Placing a fifo
+  // on shared memory instead keeps each such proof (see the commit that adds
+  // this), so these never promise a turn allocation refuses. Empty when the
+  // copy does not verify.
+  static llvm::DenseMap<mlir::StringAttr,
+                        llvm::SmallVector<ShimTransferSpans::Gate>>
+  provenShimGates(DeviceOp device);
+
+  // The BD ids a shim tile's DMAs take, handed out as aie-assign-bd-ids and
+  // aie-assign-runtime-sequence-bd-ids do. Static aie.shim_dma BDs take ids
+  // around the ones runtime tasks pin, pinned ids first, then the lowest free;
+  // every runtime sequence starts from those. A runtime task takes its pinned
+  // ids, then the lowest free ones, the head aligned as its starts need, each
+  // descriptor split as aie-decompose-large-dma-bd splits it and held from
+  // configure to await or free. Pieces split into separate tasks are held
+  // together, and reclaim is not modeled, so the count errs high. Shims
+  // already placed count where they sit.
+  class RuntimeBdIds {
+  public:
+    // The most ids a shim's DMAs hold at once on a tile of their own, and
+    // whether any pins an id or aligns its head.
+    struct Peak {
+      int live = 0;
+      bool constrained = false;
+    };
+    RuntimeBdIds() = default;
+    RuntimeBdIds(DeviceOp device,
+                 llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+                 const AIETargetModel &targetModel);
+
+    bool uses(mlir::Operation *logicalTile) const {
+      return peaks.contains(logicalTile);
+    }
+    const llvm::DenseMap<mlir::Operation *, Peak> &users() const {
+      return peaks;
+    }
+
+    // The ids the DMAs of `onTile` and of the shim already placed at `tile`
+    // cannot get when they share it.
+    int shortfall(llvm::ArrayRef<mlir::Operation *> onTile, TileID tile) const;
+
+  private:
+    struct Task {
+      mlir::Operation *owner;
+      // One entry per descriptor after the split: its pinned id, if any.
+      llvm::SmallVector<std::optional<uint32_t>> bdIds;
+      uint32_t headAlignment;
+    };
+    struct StaticBds {
+      llvm::SmallVector<uint32_t> pinned;
+      int unpinned = 0;
+    };
+    llvm::SmallVector<Task> tasks;
+    // Per runtime sequence, (task, configured or released) in program order.
+    llvm::SmallVector<llvm::SmallVector<std::pair<unsigned, bool>>> sequences;
+    llvm::DenseMap<mlir::Operation *, StaticBds> statics;
+    llvm::DenseMap<mlir::Operation *, Peak> peaks;
+    llvm::DenseMap<TileID, mlir::Operation *> placed;
+    const AIETargetModel *targetModel = nullptr;
+    // Every shim tile lays out its BD ids alike, so the answer depends only on
+    // which shims share one.
+    mutable std::map<std::vector<mlir::Operation *>, int> shortfallOf;
+  };
 
 protected:
   PlacementResult result;
@@ -383,16 +448,12 @@ private:
   llvm::DenseMap<TileID, int> broadcastFanoutUsed;
   void buildStreamDemand(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
-  // Live runtime-sequence BDs of each ShimNOCTile LTO after every task event,
-  // counting each descriptor as aie-decompose-large-dma-bd splits it.
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<int>> runtimeBdProfiles;
+  RuntimeBdIds runtimeBdIds;
 
   // DMA channels, as (output, index), that each logical tile's flows name by
   // index. Two logical tiles naming the same one cannot share a physical tile.
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
       namedChannels;
-  void buildRuntimeBdProfiles(DeviceOp device,
-                              llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
   // True if `tile`'s stream ports and BDs still fit `logicalTile`'s demand on
   // top of what earlier placements use.
@@ -843,10 +904,11 @@ private:
   // still needs once ends never in flight together share them.
   std::optional<ShimTransferSpans> shimSpans;
   ShareableShimEnds shareableShimEnds;
+  // A shim tile is also charged for the runtime BD ids its LTOs' tasks lack.
+  RuntimeBdIds runtimeBdIds;
 
   // Cascade
   Adjacency cascadeAdjacency;
-  static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
   // Ends of fifos that ask for shared memory, which must share a module.
   Adjacency sharedMemAdjacency;
 
@@ -868,7 +930,6 @@ private:
   void initializeSAState();
   void runSAMainLoop();
   mlir::LogicalResult finalizePlacement(DeviceOp device);
-  mlir::LogicalResult mergeMemShimTiles(DeviceOp device);
 
   // Cost and resource methods
   void initResourceTracking();

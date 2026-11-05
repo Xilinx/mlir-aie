@@ -116,9 +116,10 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 
 int DMAChannelAnalysis::getDMAChannelLimit(
     TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
+  // The switchbox direction is reversed relative to the DMA direction.
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
-                          ? tile.getNumSourceConnections(WireBundle::DMA)
-                          : tile.getNumDestConnections(WireBundle::DMA);
+                          ? tile.getNumDestConnections(WireBundle::DMA)
+                          : tile.getNumSourceConnections(WireBundle::DMA);
 
   if (!requiresAdjacentTileAccessChannels)
     return maxChannelNum;
