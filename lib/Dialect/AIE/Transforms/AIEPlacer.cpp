@@ -1487,7 +1487,7 @@ Placer::provenShimGates(DeviceOp device) {
     for (const ShimTransferSpans::Gate &gate : proven)
       gates[StringAttr::get(ctx, fifo.getValue())].push_back(
           {StringAttr::get(ctx, gate.input.getValue()), gate.inputBytes,
-           gate.outputBytes});
+           gate.outputBytes, gate.granuleBytes});
   return gates;
 }
 
