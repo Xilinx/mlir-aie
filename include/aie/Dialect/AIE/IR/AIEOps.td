@@ -2629,6 +2629,9 @@ def AIE_ObjectFifoCreateOp
     /// a shim's, a stream port's, or a merge's or dispatch's but the one end
     /// its participants share.
     std::optional<PlannedDmaEnd> plannedDmaEnd(std::optional<unsigned> consumer);
+    /// The link reading consumer `consumer`'s end, if any: each link on a tile
+    /// takes the next of the fifo's consumer ends there, in order.
+    ObjectFifoLinkOp getConsumerLink(unsigned consumer);
     /// Whether the two DMA ends the split gives the fifo, one circuit apart,
     /// may each take turns with other ends on one channel: as
     /// aie-objectfifo-allocate requires of both, neither is pinned to a

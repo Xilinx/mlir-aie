@@ -818,6 +818,9 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
     assert(end->bds == endpoint.getNumBDs() && end->depth == pool.getDepth() &&
            end->walkable == pool.canWalkWhole() &&
+           end->objectBytes == pool.getObjectSizeInBytes() &&
+           end->contiguousObjects ==
+               (pool.getContiguous() ? pool.getObjectsPerBuffer() : 0) &&
            "plannedDmaEnd disagrees with the endpoint the split made");
     ++planned[endpoint];
   }

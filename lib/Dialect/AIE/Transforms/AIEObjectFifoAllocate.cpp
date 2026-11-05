@@ -62,7 +62,6 @@ struct AIEObjectFifoAllocatePass
   /// Ends that take another end's channel, by the end they take it from:
   /// shim ends never in flight together, and ends taking turns.
   llvm::MapVector<Operation *, Operation *> channelSharers;
-  DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
   DenseMap<Operation *, Value> localPools;
@@ -101,8 +100,7 @@ struct AIEObjectFifoAllocatePass
   /// The pool the buffer search could not place with the fewest left
   /// unplaced, i.e. where it got furthest.
   ObjectFifoPoolOp bufferFailure;
-  size_t unplacedAtFailure = 0;
-  /// Neighbors spillTargets created to weigh a spill. The ones no buffer or
+  /// Neighbors made for a spill planBuffers weighed. The ones no buffer or
   /// lock ends up on are erased once allocation is done.
   SmallVector<TileOp> spillTiles;
   Value lockFailure;
@@ -118,38 +116,67 @@ struct AIEObjectFifoAllocatePass
     return ac && ar && bc && br && ac == bc && ar == br;
   }
 
-  int64_t memoryUsed(Value tile, int64_t extraSize = 0, int extraCount = 0) {
-    SmallVector<BufferAllocation> layout;
-    int64_t alignment =
-        device.getTargetModel().getMemTileLoadStoreBusWidth() / 8;
-    // Generated buffers are inserted immediately after their tile, before
-    // existing buffers. Preserve that order for equal-sized aligned/unaligned
-    // buffers, including coordinate-equivalent tile references.
-    for (Operation &op : *device.getBody()) {
-      if (auto placed = dyn_cast<TileLike>(op);
-          placed && sameTile(tile, placed->getResult(0))) {
-        Value value = placed->getResult(0);
-        for (int64_t size : plannedMemory[value])
-          layout.push_back({size, alignment, std::nullopt});
-        if (value == tile)
-          for (int i = 0; i < extraCount; ++i)
-            layout.push_back({extraSize, alignment, std::nullopt});
-      } else if (auto buffer = dyn_cast<BufferOp>(op);
-                 buffer && sameTile(tile, buffer.getTile())) {
-        layout.push_back({buffer.getAllocationSize(),
-                          buffer.getAligned() ? alignment : 1,
-                          buffer.getAddress()});
-      }
-    }
-    return assignSequentialBufferAddresses(layout);
+  /// The mem tiles a buffer search weighs, as MemTileSpillSearch indices: one
+  /// per placed position, however many ops name it, with the positions a
+  /// placed TileOp may spill to, and one per unplaced tile.
+  DenseMap<TileID, unsigned> memTilePositions;
+  DenseMap<Operation *, unsigned> unplacedMemTiles;
+  SmallVector<std::optional<TileID>> memTileAt;
+
+  std::optional<unsigned> memTileIndex(Value tile) {
+    auto like = cast<TileLike>(tile.getDefiningOp());
+    if (!like.isMemTile())
+      return std::nullopt;
+    auto col = like.tryGetCol(), row = like.tryGetRow();
+    if (col && row)
+      return memTilePositions.lookup({*col, *row});
+    return unplacedMemTiles.lookup(like);
   }
 
-  LogicalResult collectFixedMemory() {
-    plannedMemory.clear();
+  /// The search over the device's mem tiles, holding their existing buffers.
+  MemTileSpillSearch memTileSearch() {
+    const auto &target = device.getTargetModel();
+    memTilePositions.clear();
+    unplacedMemTiles.clear();
+    memTileAt.clear();
+    SmallVector<MemTileSpillSearch::Tile> tiles;
+    auto add = [&](std::optional<TileID> at) {
+      memTileAt.push_back(at);
+      tiles.push_back({target.getMemTileSize(), {}});
+      return static_cast<unsigned>(tiles.size() - 1);
+    };
     for (auto tile : device.getOps<TileLike>()) {
       if (!tile.isMemTile())
         continue;
-      int64_t bytes = memoryUsed(tile->getResult(0));
+      auto col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (!col || !row) {
+        unplacedMemTiles[tile] = add(std::nullopt);
+        continue;
+      }
+      TileID at{*col, *row};
+      if (!memTilePositions.count(at))
+        memTilePositions[at] = add(at);
+      if (isa<TileOp>(tile.getOperation()))
+        for (TileID neighbour : memTileSpillNeighbours(target, at))
+          if (!memTilePositions.count(neighbour))
+            memTilePositions[neighbour] = add(neighbour);
+    }
+    int64_t alignment = target.getMemTileLoadStoreBusWidth() / 8;
+    for (auto buffer : device.getOps<BufferOp>())
+      if (std::optional<unsigned> index = memTileIndex(buffer.getTile()))
+        tiles[*index].fixed.push_back({buffer.getAllocationSize(),
+                                       buffer.getAligned() ? alignment : 1,
+                                       buffer.getAddress()});
+    return MemTileSpillSearch(std::move(tiles), alignment);
+  }
+
+  LogicalResult collectFixedMemory() {
+    MemTileSpillSearch search = memTileSearch();
+    for (auto tile : device.getOps<TileLike>()) {
+      std::optional<unsigned> index = memTileIndex(tile->getResult(0));
+      if (!index)
+        continue;
+      int64_t bytes = search.used(*index);
       int64_t capacity = device.getTargetModel().getMemTileSize();
       if (bytes > capacity)
         return tile->emitOpError("existing buffers require ")
@@ -159,33 +186,41 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
+  /// Coordinates `tile` may take: its own once placed, else every position
+  /// of its type in the rows and columns it is pinned to.
+  SmallVector<TileID> compatiblePositions(TileLike tile) {
+    const auto &target = device.getTargetModel();
+    SmallVector<TileID> compatible;
+    auto col = tile.tryGetCol(), row = tile.tryGetRow();
+    for (int c = 0; c < target.columns(); ++c) {
+      if (col && c != *col)
+        continue;
+      for (int r = 0; r < target.rows(); ++r) {
+        if ((!row || r == *row) &&
+            target.getTileType(c, r) == tile.getTileType())
+          compatible.push_back({c, r});
+      }
+    }
+    return compatible;
+  }
+
   bool canAccess(Value user, Value memory, bool localOnly = false) {
     if (user == memory)
       return true;
-    auto userTile = dyn_cast<TileLike>(user.getDefiningOp());
     auto memoryTile = dyn_cast<TileLike>(memory.getDefiningOp());
-    if (!userTile || !memoryTile)
+    return memoryTile &&
+           canAccess(user, compatiblePositions(memoryTile), localOnly);
+  }
+
+  /// Before placement, defer only accesses that some compatible physical
+  /// positions could satisfy. Known coordinates can already disprove affinity.
+  bool canAccess(Value user, ArrayRef<TileID> memoryPositions,
+                 bool localOnly = false) {
+    auto userTile = dyn_cast<TileLike>(user.getDefiningOp());
+    if (!userTile)
       return false;
     const auto &target = device.getTargetModel();
-    auto positions = [&](TileLike tile) {
-      SmallVector<TileID> compatible;
-      auto col = tile.tryGetCol(), row = tile.tryGetRow();
-      for (int c = 0; c < target.columns(); ++c) {
-        if (col && c != *col)
-          continue;
-        for (int r = 0; r < target.rows(); ++r) {
-          if ((!row || r == *row) &&
-              target.getTileType(c, r) == tile.getTileType())
-            compatible.push_back({c, r});
-        }
-      }
-      return compatible;
-    };
-    // Before placement, defer only accesses that some compatible physical
-    // positions could satisfy. Known coordinates can already disprove affinity.
-    auto userPositions = positions(userTile);
-    auto memoryPositions = positions(memoryTile);
-    for (TileID u : userPositions)
+    for (TileID u : compatiblePositions(userTile))
       for (TileID m : memoryPositions) {
         if (localOnly && u != m)
           continue;
@@ -195,16 +230,6 @@ struct AIEObjectFifoAllocatePass
           return true;
       }
     return false;
-  }
-
-  bool canPlace(ObjectFifoPoolOp pool, Value tile, int64_t sizeBytes,
-                int count = 1) {
-    if (cast<TileLike>(tile.getDefiningOp()).isMemTile() &&
-        memoryUsed(tile, sizeBytes, count) >
-            device.getTargetModel().getMemTileSize())
-      return false;
-    return llvm::all_of(poolUsers[pool],
-                        [&](Value user) { return canAccess(user, tile); });
   }
 
   Value lockPlacement(ObjectFifoPoolOp pool, Operation *group) {
@@ -222,36 +247,47 @@ struct AIEObjectFifoAllocatePass
     return pool.getObjectSizeInBytes() * pool.getObjectsPerBuffer();
   }
 
+  /// FIXME: choosing which tile a buffer lives on is the buffer allocator's
+  /// job, not this pass's; --aie-assign-buffer-addresses should instead be
+  /// free to move buffers between tiles that share a memory module.
+  ///
   /// Reserve mandatory-local objects before any other pool can spill into
   /// their memory. Existing buffers are fixed and counted by identity, not by
-  /// how many pools or endpoints reference them.
+  /// how many pools or endpoints reference them. The others' mem tile buffers
+  /// go where MemTileSpillSearch puts them, in pool order.
   LogicalResult planBuffers(ArrayRef<ObjectFifoPoolOp> pools) {
-    plannedMemory.clear();
     bufferPlacements.clear();
     bufferFailure = nullptr;
+    MemTileSpillSearch search = memTileSearch();
+    auto reachable = [&](ObjectFifoPoolOp pool, auto memory) {
+      return llvm::all_of(poolUsers[pool],
+                          [&](Value user) { return canAccess(user, memory); });
+    };
     for (auto pool : pools) {
       if (!localPools.contains(pool))
         continue;
       Value tile = localPools.lookup(pool);
       int count = pool.getBuffers() ? 0 : bufferCount(pool);
       int64_t size = bufferBytes(pool);
-      if (!canAccess(pool.getTile(), tile) ||
-          !canPlace(pool, tile, size, count)) {
+      std::optional<unsigned> index = memTileIndex(tile);
+      if (!canAccess(pool.getTile(), tile) || !reachable(pool, tile) ||
+          (index && !search.fits(*index, size, count))) {
         bufferFailure = pool;
         return failure();
       }
-      plannedMemory[tile].append(count, size);
+      if (index)
+        search.reserve(*index, size, count);
     }
-    SmallVector<ObjectFifoPoolOp> generated;
+    const auto &target = device.getTargetModel();
+    SmallVector<MemTileSpillSearch::Buffer> buffers;
+    SmallVector<ObjectFifoPoolOp> owners;
     for (auto pool : pools) {
       if (pool.getBuffers()) {
         for (auto buffer : pool.getBufferOps()) {
           Value tile = buffer.getBufferTile();
           if (tile && ((localPools.contains(pool) &&
                         !sameTile(tile, localPools.lookup(pool))) ||
-                       !llvm::all_of(poolUsers[pool], [&](Value user) {
-                         return canAccess(user, tile);
-                       }))) {
+                       !reachable(pool, tile))) {
             bufferFailure = pool;
             return failure();
           }
@@ -261,117 +297,68 @@ struct AIEObjectFifoAllocatePass
       }
       if (pool.getTileLike().isShimTile())
         continue;
-      if (localPools.contains(pool))
+      if (localPools.contains(pool)) {
         bufferPlacements[pool].append(bufferCount(pool),
                                       localPools.lookup(pool));
-      else
-        generated.append(bufferCount(pool), pool);
-    }
-    int retries = kSpillRetries;
-    return success(placeBuffers(generated, retries));
-  }
-
-  /// The first layout tried is the greedy one. When a buffer fits nowhere,
-  /// an earlier buffer may have spilled to the one neighbor it could use, or
-  /// stayed home where a later buffer that only home can hold needed the
-  /// room, so earlier choices are revisited, latest first, a bounded number of
-  /// times.
-  static constexpr int kSpillRetries = 256;
-
-  bool placeBuffers(ArrayRef<ObjectFifoPoolOp> buffers, int &retries) {
-    if (buffers.empty())
-      return true;
-    ObjectFifoPoolOp pool = buffers.front();
-    int64_t size = bufferBytes(pool);
-    Value homeTile = pool.getTileLike()->getResult(0);
-    bool fitsHome = canPlace(pool, homeTile, size);
-    SmallVector<Value> candidates;
-    if (fitsHome)
-      candidates.push_back(homeTile);
-    else
-      candidates = spillTargets(pool, size);
-    if (candidates.empty() &&
-        (!bufferFailure || buffers.size() < unplacedAtFailure)) {
-      bufferFailure = pool;
-      unplacedAtFailure = buffers.size();
-    }
-    auto tryTile = [&](Value tile) {
-      plannedMemory[tile].push_back(size);
-      bufferPlacements[pool].push_back(tile);
-      if (placeBuffers(buffers.drop_front(), retries))
-        return true;
-      plannedMemory[tile].pop_back();
-      bufferPlacements[pool].pop_back();
-      return false;
-    };
-    for (auto [index, tile] : llvm::enumerate(candidates)) {
-      if (index > 0 && retries-- <= 0)
-        return false;
-      if (tryTile(tile))
-        return true;
-    }
-    if (!fitsHome)
-      return false;
-    // Spill targets are only looked up once home has failed, so a layout that
-    // keeps every buffer home creates no neighbor tiles.
-    for (Value tile : spillTargets(pool, size)) {
-      if (retries-- <= 0)
-        return false;
-      if (tryTile(tile))
-        return true;
-    }
-    return false;
-  }
-
-  /// FIXME: choosing which tile a buffer lives on is the buffer allocator's
-  /// job, not this pass's. Tracking used memory here to make that choice
-  /// breaks the separation of concerns; --aie-assign-buffer-addresses should
-  /// instead be free to move buffers between tiles that share a memory module.
-  ///
-  /// A MemTile buffer that does not fit at home spills to a neighbor reachable
-  /// by its DMAs, preferring the emptier one so adjacent MemTiles
-  /// keep room for their own spills. Which tiles neighbor an unplaced one is
-  /// not yet known, so its buffers stay at home.
-  SmallVector<Value> spillTargets(ObjectFifoPoolOp pool, int64_t sizeBytes) {
-    TileLike home = pool.getTileLike();
-    auto &target = device.getTargetModel();
-    if (!home.isMemTile())
-      return {};
-
-    auto homeOp = dyn_cast<TileOp>(home.getOperation());
-    if (!homeOp) {
-      return {};
-    }
-
-    SmallVector<TileOp> neighbors;
-    for (int col : {homeOp.getCol() - 1, homeOp.getCol() + 1}) {
-      if (col < 0 || col >= target.columns()) {
         continue;
       }
-      int row = homeOp.getRow();
-      bool declared = llvm::any_of(device.getOps<TileOp>(), [&](TileOp t) {
-        return t.getCol() == col && t.getRow() == row;
-      });
-      TileOp neighbor =
-          TileOp::getOrCreate(builder, device, col, row, pool.getLoc());
-      if (!declared)
-        spillTiles.push_back(neighbor);
-      using SharedMemory = AIETargetModel::SharedMemory;
-      SharedMemory shared = sharedMemory(homeOp, neighbor);
-      if (shared == SharedMemory::Second || shared == SharedMemory::Either) {
-        neighbors.push_back(neighbor);
+      Value home = pool.getTile();
+      bool atHome = reachable(pool, home);
+      std::optional<unsigned> index = memTileIndex(home);
+      if (!index) {
+        if (!atHome) {
+          bufferFailure = pool;
+          return failure();
+        }
+        bufferPlacements[pool].append(bufferCount(pool), home);
+        continue;
+      }
+      // Which tiles neighbor an unplaced one is not yet known, so its buffers
+      // stay at home.
+      SmallVector<unsigned, 2> neighbours;
+      if (auto homeOp = dyn_cast<TileOp>(home.getDefiningOp()))
+        for (TileID at :
+             memTileSpillNeighbours(target, {homeOp.getCol(), homeOp.getRow()}))
+          if (reachable(pool, ArrayRef<TileID>{at}))
+            neighbours.push_back(memTilePositions.lookup(at));
+      for (int i = 0, e = bufferCount(pool); i < e; ++i) {
+        buffers.push_back({bufferBytes(pool), *index, atHome, neighbours});
+        owners.push_back(pool);
       }
     }
-    llvm::stable_sort(neighbors, [&](TileOp a, TileOp b) {
-      return memoryUsed(a.getResult()) < memoryUsed(b.getResult());
+    bool placed = search.place(buffers);
+    // A spill weighed from a placed home makes its neighbors' tile ops; the
+    // ones no buffer or lock ends up on are erased once allocation is done.
+    for (auto [buffer, pool] : llvm::zip(buffers, owners)) {
+      auto homeOp = dyn_cast<TileOp>(pool.getTile().getDefiningOp());
+      if (!homeOp || !search.weighed[buffer.home])
+        continue;
+      for (int col : {homeOp.getCol() - 1, homeOp.getCol() + 1})
+        if (col >= 0 && col < target.columns())
+          spillTile(col, homeOp.getRow(), pool.getLoc());
+    }
+    if (!placed) {
+      bufferFailure = owners[search.failed];
+      return failure();
+    }
+    for (auto [buffer, tile, pool] : llvm::zip(buffers, search.chosen, owners))
+      bufferPlacements[pool].push_back(
+          tile == buffer.home ? pool.getTile()
+                              : spillTile(memTileAt[tile]->col,
+                                          memTileAt[tile]->row, pool.getLoc())
+                                    .getResult());
+    return success();
+  }
+
+  /// The tile op at (`col`, `row`), made if the device has none.
+  TileOp spillTile(int col, int row, Location loc) {
+    bool declared = llvm::any_of(device.getOps<TileOp>(), [&](TileOp t) {
+      return t.getCol() == col && t.getRow() == row;
     });
-    SmallVector<Value> fitting;
-    for (TileOp neighbor : neighbors) {
-      if (canPlace(pool, neighbor.getResult(), sizeBytes)) {
-        fitting.push_back(neighbor.getResult());
-      }
-    }
-    return fitting;
+    TileOp tile = TileOp::getOrCreate(builder, device, col, row, loc);
+    if (!declared)
+      spillTiles.push_back(tile);
+    return tile;
   }
 
   /// Buffers and locks sit directly below the tile whose memory holds them,
@@ -2156,16 +2143,36 @@ struct AIEObjectFifoAllocatePass
     }
   }
 
-  /// Alternative packing order: prioritize DMA demand within each home tile,
-  /// but merge those lists by object size to avoid globally prioritizing small
-  /// pools over large objects on unrelated tiles. This is only a heuristic;
-  /// the same buffer, lock and channel planner validates both orders.
+  /// Size-first packing order: mem tile pools largest buffer first, equal
+  /// ones by home coordinates, unplaced last, as the SA placer orders them, in
+  /// the slots mem tile pools hold, the others left in place. A pool walked
+  /// whole becomes one large buffer, so this is chosen again after every walk.
+  void sizeOrder(MutableArrayRef<ObjectFifoPoolOp> pools) {
+    SmallVector<size_t> memTileSlots;
+    SmallVector<ObjectFifoPoolOp> memTilePools;
+    for (auto [index, pool] : llvm::enumerate(pools)) {
+      if (pool.getTileLike().isMemTile()) {
+        memTileSlots.push_back(index);
+        memTilePools.push_back(pool);
+      }
+    }
+    llvm::stable_sort(memTilePools, [](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+      auto home = [](ObjectFifoPoolOp pool) {
+        TileLike tile = pool.getTileLike();
+        auto col = tile.tryGetCol(), row = tile.tryGetRow();
+        return std::make_tuple(!col || !row, col.value_or(0), row.value_or(0));
+      };
+      return home(a) < home(b);
+    });
+    sortLargestBufferFirst(memTilePools, bufferBytes);
+    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools))
+      pools[slot] = pool;
+  }
+
+  /// Alternative packing order (demandFirstOrder). The same buffer, lock and
+  /// channel planner validates both orders.
   SmallVector<ObjectFifoPoolOp>
   demandOrderedPools(ArrayRef<ObjectFifoPoolOp> pools) {
-    SmallVector<ObjectFifoPoolOp> ordered(pools);
-    SmallVector<size_t> memTileSlots;
-    SmallVector<Value> memTileHomes;
-    DenseMap<Value, SmallVector<ObjectFifoPoolOp>> memTilePools;
     DenseMap<Operation *, std::pair<int, int>> poolChannelDemand;
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
@@ -2177,53 +2184,29 @@ struct AIEObjectFifoAllocatePass
       else
         ++demand.second;
     }
-    for (auto [index, pool] : llvm::enumerate(ordered)) {
-      if (pool.getTileLike().isMemTile()) {
-        memTileSlots.push_back(index);
-        Value home = pool.getTile();
-        for (Value known : memTileHomes)
-          if (sameTile(home, known)) {
-            home = known;
-            break;
-          }
-        if (!memTilePools.count(home))
-          memTileHomes.push_back(home);
-        memTilePools[home].push_back(pool);
+    SmallVector<size_t> memTileSlots;
+    SmallVector<Value> homes;
+    SmallVector<SpillPool> records;
+    for (size_t index = 0, e = pools.size(); index < e; ++index) {
+      ObjectFifoPoolOp pool = pools[index];
+      if (!pool.getTileLike().isMemTile())
+        continue;
+      memTileSlots.push_back(index);
+      auto *home = llvm::find_if(
+          homes, [&](Value known) { return sameTile(pool.getTile(), known); });
+      if (home == homes.end()) {
+        homes.push_back(pool.getTile());
+        home = std::prev(homes.end());
       }
-    }
-    DenseMap<Value, size_t> nextPool;
-    auto demand = [&](ObjectFifoPoolOp pool) {
       auto [input, output] = poolChannelDemand.lookup(pool.getOperation());
-      return std::max(input, output);
-    };
-    for (Value home : memTileHomes) {
-      auto &tilePools = memTilePools[home];
-      llvm::stable_sort(tilePools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
-        if (demand(a) != demand(b))
-          return demand(a) > demand(b);
-        return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
-      });
+      records.push_back({bufferBytes(pool), bufferCount(pool),
+                         static_cast<unsigned>(home - homes.begin()),
+                         std::max(input, output)});
     }
-    for (size_t slot : memTileSlots) {
-      Value bestHome;
-      ObjectFifoPoolOp bestPool;
-      for (Value home : memTileHomes) {
-        auto &tilePools = memTilePools[home];
-        size_t index = nextPool[home];
-        if (index >= tilePools.size())
-          continue;
-        ObjectFifoPoolOp pool = tilePools[index];
-        if (!bestPool ||
-            pool.getObjectSizeInBytes() > bestPool.getObjectSizeInBytes() ||
-            (pool.getObjectSizeInBytes() == bestPool.getObjectSizeInBytes() &&
-             demand(pool) > demand(bestPool))) {
-          bestHome = home;
-          bestPool = pool;
-        }
-      }
-      ordered[slot] = bestPool;
-      ++nextPool[bestHome];
-    }
+    SmallVector<ObjectFifoPoolOp> ordered(pools);
+    for (auto [slot, index] :
+         llvm::zip(memTileSlots, demandFirstOrder(records)))
+      ordered[slot] = pools[memTileSlots[index]];
     return ordered;
   }
 
@@ -2243,7 +2226,6 @@ struct AIEObjectFifoAllocatePass
     dispatchHeaders.clear();
     channelSharers.clear();
     bdPlanned.clear();
-    plannedMemory.clear();
     bufferPlacements.clear();
     channelAssignments.clear();
     endpointStarts.clear();
@@ -2254,7 +2236,6 @@ struct AIEObjectFifoAllocatePass
     structuralRank.clear();
     channelFailure = nullptr;
     bufferFailure = nullptr;
-    unplacedAtFailure = 0;
     lockFailure = nullptr;
     lockAccessFailure = nullptr;
 
@@ -2269,20 +2250,7 @@ struct AIEObjectFifoAllocatePass
     llvm::stable_sort(pools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
       return structuralRank.lookup(a) < structuralRank.lookup(b);
     });
-    SmallVector<size_t> memTileSlots;
-    SmallVector<ObjectFifoPoolOp> memTilePools;
-    for (auto [index, pool] : llvm::enumerate(pools)) {
-      if (pool.getTileLike().isMemTile()) {
-        memTileSlots.push_back(index);
-        memTilePools.push_back(pool);
-      }
-    }
-    llvm::stable_sort(memTilePools, [](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
-      return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
-    });
-    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools)) {
-      pools[slot] = pool;
-    }
+    sizeOrder(pools);
 
     poolLocks = std::make_shared<PoolLocks>(device);
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
@@ -2325,6 +2293,7 @@ struct AIEObjectFifoAllocatePass
                                   channelFailure.getRouteDirection()))) {
       localPools.clear();
       tried.clear();
+      sizeOrder(pools);
       allocated = planAllocation(pools, tried);
     }
     if (succeeded(allocated) && !channelSharers.empty() &&

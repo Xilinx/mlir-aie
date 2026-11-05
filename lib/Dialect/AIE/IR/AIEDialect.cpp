@@ -2011,6 +2011,18 @@ int ObjectFifoCreateOp::dmaDepth(std::optional<unsigned> consumer) {
   return maxAcquire + 1;
 }
 
+ObjectFifoLinkOp ObjectFifoCreateOp::getConsumerLink(unsigned consumer) {
+  auto consumers = getConsumerTiles();
+  Value tile = consumers[consumer];
+  size_t earlier = llvm::count(consumers.take_front(consumer), tile);
+  for (ObjectFifoLinkOp link :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>())
+    if (link.getOptionalSharedTile() == tile &&
+        llvm::is_contained(link.getInputObjectFifos(), *this) && earlier-- == 0)
+      return link;
+  return {};
+}
+
 std::optional<PlannedDmaEnd>
 ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
   bool drains = !consumer;
@@ -2026,22 +2038,36 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
   };
 
   ObjectFifoLinkOp link;
-  for (ObjectFifoLinkOp candidate : device.getOps<ObjectFifoLinkOp>())
-    if (candidate.getOptionalSharedTile() == tile &&
-        llvm::is_contained(drains ? candidate.getOutputObjectFifos()
-                                  : candidate.getInputObjectFifos(),
-                           *this))
-      link = candidate;
+  if (drains) {
+    for (ObjectFifoLinkOp candidate : device.getOps<ObjectFifoLinkOp>())
+      if (candidate.getOptionalSharedTile() == tile &&
+          llvm::is_contained(candidate.getOutputObjectFifos(), *this))
+        link = candidate;
+  } else {
+    link = getConsumerLink(*consumer);
+  }
+  DataLayout layout = DataLayout::closest(*this);
+  auto objectBytes = [&](Type fifoType) -> int64_t {
+    MemRefType type = cast<AIEObjectFifoType>(fifoType).getElementType();
+    return type.getNumElements() * layout.getTypeSize(type.getElementType());
+  };
   if (!link) {
     int depth = dmaDepth(consumer);
     if (!drains)
-      return PlannedDmaEnd{depth, *this, static_cast<int>(*consumer), depth,
-                           walkable(depth)};
+      return PlannedDmaEnd{
+          depth, *this,           static_cast<int>(*consumer),
+          depth, walkable(depth), objectBytes(getConsumerElemTypeOrDefault()),
+          0};
     int64_t repeat = getRepeatCount().value_or(1);
     bool inHardware = repeat > 1 && depth == 1 && !getIterCount();
-    return PlannedDmaEnd{depth * (inHardware ? 1 : repeat), *this, -1, depth,
+    return PlannedDmaEnd{depth * (inHardware ? 1 : repeat),
+                         *this,
+                         -1,
+                         depth,
                          walkable(depth) && !getRepeatCount() &&
-                             getDimensionsToStream().empty()};
+                             getDimensionsToStream().empty(),
+                         objectBytes(getElemType()),
+                         0};
   }
 
   // A merge's participants fill one end, a dispatch's drain one, made by the
@@ -2061,11 +2087,13 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
   int64_t selected =
       (drains ? link.isDistribute() : link.isJoin()) ? 1 : segments;
   int64_t descriptors = depth * selected;
+  int64_t contiguousObjects = 0;
   if (link.walksStream()) {
     StreamWindow window;
-    descriptors = !drains                                   ? 1
-                  : succeeded(link.getStreamWindow(window)) ? window.outputs
-                                                            : 0;
+    bool inferred = succeeded(link.getStreamWindow(window));
+    descriptors = !drains ? 1 : inferred ? window.outputs : 0;
+    if (inferred)
+      contiguousObjects = depth + window.top + window.bottom;
   }
   int64_t repeat = drains ? link.getRepeatCount().value_or(1) : 1;
   bool inHardware = repeat > 1 && descriptors == 1 && !getIterCount();
@@ -2080,10 +2108,15 @@ ObjectFifoCreateOp::plannedDmaEnd(std::optional<unsigned> consumer) {
       llvm::any_of(link.getOutputObjectFifos(), [](ObjectFifoCreateOp out) {
         return !out.getDimensionsToStream().empty();
       });
-  return PlannedDmaEnd{
-      descriptors * (inHardware ? 1 : repeat) * passes, link, -1, depth,
-      walkable(depth) && segments == 1 && !link.getRepeatCount() &&
-          !link.walksStream() && !link.isDispatch() && !drainLaysOut};
+  return PlannedDmaEnd{descriptors * (inHardware ? 1 : repeat) * passes,
+                       link,
+                       -1,
+                       depth,
+                       walkable(depth) && segments == 1 &&
+                           !link.getRepeatCount() && !link.walksStream() &&
+                           !link.isDispatch() && !drainLaysOut,
+                       objectBytes(link.getPoolOwner().getElemType()),
+                       contiguousObjects};
 }
 
 bool ObjectFifoCreateOp::canTakeTurns() {
@@ -2528,21 +2561,12 @@ LogicalResult ObjectFifoLinkOp::getStreamWindow(StreamWindow &window) {
 
 std::optional<unsigned> ObjectFifoLinkOp::getOwnerConsumerIndex() {
   ObjectFifoCreateOp owner = getPoolOwner();
-  std::optional<Value> tile = getOptionalSharedTile();
-  if (!tile || llvm::is_contained(getOutputObjectFifos(), owner))
+  if (!getOptionalSharedTile() ||
+      llvm::is_contained(getOutputObjectFifos(), owner))
     return std::nullopt;
-  unsigned earlier = 0;
-  for (ObjectFifoLinkOp link :
-       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
-    if (link == *this)
-      break;
-    if (link.getOptionalSharedTile() == tile &&
-        llvm::is_contained(link.getInputObjectFifos(), owner))
-      ++earlier;
-  }
-  auto consumers = owner.getConsumerTiles();
-  for (unsigned index = 0, seen = 0; index < consumers.size(); ++index)
-    if (consumers[index] == *tile && seen++ == earlier)
+  for (unsigned index = 0, e = owner.getConsumerTiles().size(); index < e;
+       ++index)
+    if (owner.getConsumerLink(index) == *this)
       return index;
   return std::nullopt;
 }

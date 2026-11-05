@@ -416,13 +416,17 @@ struct StreamWindow {
 // The DMA end aie-objectfifo-split gives a fifo on one tile, known before
 // placement: the BD ids it takes, as ObjectFifoDmaEndpointOp::getNumBDs
 // counts them, and the pool it walks, `id` telling a fifo's own consumer
-// pools apart. Walked whole, a pool's ends take one BD id each.
+// pools apart. Walked whole, a pool's ends take one BD id each. The pool's
+// objects are `objectBytes` each, one a buffer, unless the split lays
+// `contiguousObjects` of them, zero objects included, in one buffer.
 struct PlannedDmaEnd {
   int64_t bds;
   mlir::Operation *pool;
   int id;
   int64_t depth;
   bool walkable;
+  int64_t objectBytes;
+  int64_t contiguousObjects;
 };
 
 // One output of a StreamWindow: the first object it reads, counting the `top`
