@@ -1,21 +1,21 @@
 {
  "schema": 1,
  "target": "allocator",
- "id": "41766480666",
- "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41766480666",
- "date": "2026-11-04T03:20:17+00:00",
+ "id": "41961032971",
+ "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41961032971",
+ "date": "2026-11-05T03:21:00+00:00",
  "commit": {
-  "id": "6a97402957cffc709a2dbeb40878e414a65ef444",
-  "url": "https://github.com/Xilinx/mlir-aie/commit/6a97402957cffc709a2dbeb40878e414a65ef444",
-  "message": "[cert] Add asynchronous uC DMA push and wait (#4014)",
-  "timestamp": "2026-11-04T00:51:56Z"
+  "id": "2e8434adf0cdfb9010862a3fba8afdc50396758d",
+  "url": "https://github.com/Xilinx/mlir-aie/commit/2e8434adf0cdfb9010862a3fba8afdc50396758d",
+  "message": "[cert] Add debug record ops save_timestamps and save_register (#4017)",
+  "timestamp": "2026-11-04T19:13:07Z"
  },
  "event": "schedule",
  "pmode": null,
  "device": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
  "device_raw": null,
  "provenance": {
-  "commit": "6a97402957",
+  "commit": "2e8434adf0",
   "cpu": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
  },
  "sane": true,
@@ -47,7 +47,7 @@
     "unit": "fraction"
    },
    "wall_s": {
-    "value": 146.6,
+    "value": 147.3,
     "unit": "s"
    }
   }
@@ -102,7 +102,7 @@
   {
    "name": "stress",
    "ok": true,
-   "detail": "300/300 placed in 0.0s (max 30s)"
+   "detail": "300/300 placed in 0.1s (max 30s)"
   }
  ]
 }

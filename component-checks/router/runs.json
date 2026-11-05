@@ -565,6 +565,33 @@
    "exitstatus": 0,
    "failed": [],
    "truncated": []
+  },
+  {
+   "schema": 1,
+   "target": "router",
+   "id": "41961032971",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41961032971",
+   "date": "2026-11-05T03:21:00+00:00",
+   "commit": {
+    "id": "2e8434adf0cdfb9010862a3fba8afdc50396758d",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/2e8434adf0cdfb9010862a3fba8afdc50396758d",
+    "message": "[cert] Add debug record ops save_timestamps and save_register (#4017)",
+    "timestamp": "2026-11-04T19:13:07Z"
+   },
+   "event": "schedule",
+   "pmode": null,
+   "device": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+   "device_raw": null,
+   "provenance": {
+    "commit": "2e8434adf0",
+    "cpu": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 24,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": []
   }
  ]
 }
