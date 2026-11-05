@@ -3621,6 +3621,53 @@
     "offered": 100,
     "checked": 98
    }
+  },
+  {
+   "schema": 1,
+   "target": "npu1",
+   "id": "41978869560",
+   "url": "https://github.com/Xilinx/mlir-aie/actions/runs/41978869560",
+   "date": "2026-11-05T06:12:27+00:00",
+   "commit": {
+    "id": "2e8434adf0cdfb9010862a3fba8afdc50396758d",
+    "url": "https://github.com/Xilinx/mlir-aie/commit/2e8434adf0cdfb9010862a3fba8afdc50396758d",
+    "message": "[cert] Add debug record ops save_timestamps and save_register (#4017)",
+    "timestamp": "2026-11-04T19:13:07Z"
+   },
+   "event": "schedule",
+   "pmode": "turbo",
+   "device": "Phoenix",
+   "device_raw": "RyzenAI-npu1",
+   "provenance": {
+    "commit": "2e8434adf0",
+    "peano": "22.0.0+4f5df13d",
+    "kernels": "a6d60d5d2bde",
+    "runtime": "CachedXRTRuntime",
+    "xdna": "2.25.0_20260902",
+    "xrt": "2.25.0",
+    "host": "aie1",
+    "device": "RyzenAI-npu1",
+    "pmode": "turbo",
+    "measurement": "3"
+   },
+   "sane": true,
+   "published": true,
+   "n_rows": 2195,
+   "exitstatus": 0,
+   "failed": [],
+   "truncated": [],
+   "cases": {
+    "passed": 846,
+    "failed": 0,
+    "timed": 371,
+    "timing_failed": 0,
+    "untimed": 479,
+    "flaky": 0
+   },
+   "kernels": {
+    "offered": 100,
+    "checked": 98
+   }
   }
  ]
 }
