@@ -63,3 +63,33 @@ module @false {
     aie.objectfifo @b(%tile_0_3, {%tile_0_5}, 2 : i32) {transport = #aie.transport<dma, packet = #aie.packet_info<pkt_id = 4>, out_of_order = false>, cons_ports = [#aie.end_port<DMA : 1>]} : !aie.objectfifo<memref<16xi32>>
   }
 }
+
+// -----
+
+// CHECK-LABEL: module @auto_shared_memory
+// CHECK: aie.objectfifo.pool @a
+// CHECK: aie.objectfifo.pool @b
+// CHECK-NOT: aie.objectfifo.dma_endpoint
+module @auto_shared_memory {
+  aie.device(npu2) {
+    %producer = aie.tile(0, 2)
+    %consumer = aie.tile(0, 3)
+    aie.objectfifo @a(%producer, {%consumer}, 2 : i32) {cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%producer, {%consumer}, 2 : i32) {cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: module @explicit_shared_memory
+// CHECK: aie.objectfifo.pool @a
+// CHECK: aie.objectfifo.pool @b
+// CHECK-NOT: aie.objectfifo.dma_endpoint
+module @explicit_shared_memory {
+  aie.device(npu2) {
+    %producer = aie.tile(0, 2)
+    %consumer = aie.tile(0, 3)
+    aie.objectfifo @a(%producer, {%consumer}, 2 : i32) {transport = #aie.transport<shared_mem>, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @b(%producer, {%consumer}, 2 : i32) {transport = #aie.transport<shared_mem>, cons_ports = [#aie.end_port<DMA : 0>]} : !aie.objectfifo<memref<16xi32>>
+  }
+}

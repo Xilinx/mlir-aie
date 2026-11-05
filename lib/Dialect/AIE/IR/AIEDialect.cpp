@@ -3767,9 +3767,8 @@ LogicalResult PacketFlowOp::verify() {
 //===----------------------------------------------------------------------===//
 
 /// The channels a core's own tile has in `direction`.
-static uint32_t channelsOfOwnTile(CoreOp core, DMAChannelDir direction,
+static uint32_t channelsOfOwnTile(TileOp tile, DMAChannelDir direction,
                                   const AIETargetModel &targetModel) {
-  TileOp tile = core.getTileOp();
   int col = tile.getCol(), row = tile.getRow();
   if (direction == DMAChannelDir::MM2S)
     return targetModel.getNumSourceSwitchboxConnections(col, row,
@@ -3781,14 +3780,15 @@ LogicalResult DmaPushQueueOp::verify() {
   if (getOutOfOrder() && getDirection() != DMAChannelDir::S2MM)
     return emitOpError("out_of_order is only supported on S2MM channels");
   auto core = (*this)->getParentOfType<CoreOp>();
-  TileOp tile = core.getTileOp();
   const AIETargetModel &targetModel = getTargetModel(*this);
-  uint32_t channels = channelsOfOwnTile(core, getDirection(), targetModel);
-  if (getChannel() >= static_cast<int32_t>(channels))
-    return emitOpError("pushes onto ")
-           << stringifyDMAChannelDir(getDirection()) << " channel "
-           << getChannel() << ", but tile (" << tile.getCol() << ", "
-           << tile.getRow() << ") has " << channels;
+  if (auto tile = core.getTile().getDefiningOp<TileOp>()) {
+    uint32_t channels = channelsOfOwnTile(tile, getDirection(), targetModel);
+    if (getChannel() >= static_cast<int32_t>(channels))
+      return emitOpError("pushes onto ")
+             << stringifyDMAChannelDir(getDirection()) << " channel "
+             << getChannel() << ", but tile (" << tile.getCol() << ", "
+             << tile.getRow() << ") has " << channels;
+  }
   uint32_t maxRepeat = targetModel.getMaxRepeatCount();
   if (getRepeatCount() < 0 ||
       static_cast<uint32_t>(getRepeatCount()) > maxRepeat)
@@ -3798,14 +3798,15 @@ LogicalResult DmaPushQueueOp::verify() {
 
 LogicalResult DmaPollForQueueSpaceOp::verify() {
   auto core = (*this)->getParentOfType<CoreOp>();
-  TileOp tile = core.getTileOp();
   const AIETargetModel &targetModel = getTargetModel(*this);
-  uint32_t channels = channelsOfOwnTile(core, getDirection(), targetModel);
-  if (getChannel() >= static_cast<int32_t>(channels))
-    return emitOpError("waits on ")
-           << stringifyDMAChannelDir(getDirection()) << " channel "
-           << getChannel() << ", but tile (" << tile.getCol() << ", "
-           << tile.getRow() << ") has " << channels;
+  if (auto tile = core.getTile().getDefiningOp<TileOp>()) {
+    uint32_t channels = channelsOfOwnTile(tile, getDirection(), targetModel);
+    if (getChannel() >= static_cast<int32_t>(channels))
+      return emitOpError("waits on ")
+             << stringifyDMAChannelDir(getDirection()) << " channel "
+             << getChannel() << ", but tile (" << tile.getCol() << ", "
+             << tile.getRow() << ") has " << channels;
+  }
   if (targetModel.getDmaTaskQueueDepth() == 0)
     return emitOpError("waits on a task queue, which this device has none of");
   return success();

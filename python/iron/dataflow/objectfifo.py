@@ -22,6 +22,7 @@ from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects.aie import Port, Transport, object_fifo, object_fifo_link
 from ...helpers.npdtypes import (
     NpuDType,
+    is_block_float,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
     np_ndarray_type_of,
@@ -809,9 +810,10 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
     ):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
 
-        An ``out_of_order`` fifo takes ``out_of_order_id``: the buffer of the
-        pool this transfer lands in. One transfer carries one header, so it
-        carries one object; walk the pool by cycling the id across transfers.
+        An ``out_of_order`` fifo requires ``out_of_order_id`` to select its
+        receiving buffer. Each packet must contain exactly one receiving
+        object's bytes, with a statically known length. Task repetitions reuse
+        the same ID; use separate fills to cycle through receiving buffers.
 
         Call from within a [`Runtime`][aie.iron.Runtime] sequence body on a producer
         handle. See ``_emit_transfer`` for the shared arguments; returns a
@@ -821,11 +823,45 @@ class ObjectFifoHandle(PerDeviceConfigurationResolvable):
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
 
         transport = self._object_fifo._transport
-        if transport and transport.out_of_order and out_of_order_id is None:
-            raise ValueError(
-                f"ObjectFifo '{self.name}' is out_of_order, so each fill names "
-                "the buffer it lands in: pass out_of_order_id"
-            )
+        if transport and transport.out_of_order:
+            from ...dialects.aiex import shim_dims
+            from ..runtime.data import RuntimeData
+
+            if out_of_order_id is None:
+                raise ValueError(
+                    f"ObjectFifo '{self.name}' is out_of_order, so each fill names "
+                    "the buffer it lands in: pass out_of_order_id"
+                )
+            if not isinstance(source, RuntimeData):
+                raise ValueError(f"Expected a RuntimeData source/dest, got {source}")
+            if length_parameter is not None:
+                raise ValueError("out_of_order fill does not support length_parameter")
+            if tap is None:
+                tap = source.default_tap()
+            _, sizes, _ = shim_dims(tap)
+            # Outer dimensions repeat the BD; the last three size each packet.
+            packet_sizes = sizes[-3:]
+            if not all(isinstance(s, (int, np.integer)) for s in packet_sizes):
+                raise ValueError("out_of_order fill requires a static packet length")
+
+            def element_bytes(dtype):
+                return (
+                    dtype.block_bytes
+                    if is_block_float(dtype)
+                    else np.dtype(dtype).itemsize
+                )
+
+            packet_bytes = math.prod(packet_sizes) * element_bytes(source.dtype)
+            obj_type = self._object_fifo.consumer_obj_type
+            object_bytes = math.prod(
+                np_ndarray_type_get_shape(obj_type)
+            ) * element_bytes(np_ndarray_type_get_dtype(obj_type))
+            if packet_bytes != object_bytes:
+                raise ValueError(
+                    f"out_of_order fill sends {packet_bytes} bytes per packet, but "
+                    f"one receiving object requires {object_bytes} bytes; "
+                    "use an object-sized tap and a separate fill for each destination ID"
+                )
         return self._emit_transfer(
             source,
             tap,

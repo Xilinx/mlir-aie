@@ -407,6 +407,9 @@ struct AIEObjectFifoSplitPass
     DenseMap<std::tuple<int, int, int>, SmallVector<ObjectFifoCreateOp>>
         onChannel;
     for (ObjectFifoCreateOp fifo : fifos) {
+      auto shared = AIETargetModel::SharedMemory::None;
+      if (!dmaReason(fifo, shared))
+        continue;
       for (auto [index, consumer] : llvm::enumerate(fifo.getConsumerTiles())) {
         ObjectFifoEndPortAttr port = fifo.getConsumerPort(index);
         if (!port || port.isCore())
