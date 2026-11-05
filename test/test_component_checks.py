@@ -585,6 +585,14 @@ def test_a_mutation_run_its_time_limit_stops_leaves_a_partial_report(aie_opt, tm
     assert result.returncode == 1
     done = partial["seeds_done"]
     assert f"npu1/hops-on/stopped after {done} of 400 seeds" in meta["failed"]
+    assert (meta["detail"][0]["partial"], meta["detail"][0]["seeds_done"]) == (
+        True,
+        done,
+    )
+    perf = {r["name"]: r for r in json.loads((tmp_path / "perf.json").read_text())}
+    note = f"partial: hops-on {done} of 400 seeds"
+    assert perf["npu1/failed_mutations"]["range"] == note
+    assert perf["npu1/survived_corruptions"]["range"] == note
 
 
 def test_a_properties_run_its_time_limit_stops_leaves_a_partial_report(
@@ -614,6 +622,13 @@ def test_a_properties_run_its_time_limit_stops_leaves_a_partial_report(
     assert result.returncode == 1
     tried = partial["seeds_tried"]
     assert f"npu1/properties/stopped after {tried} of 2000 seeds" in meta["failed"]
+    assert (meta["detail"][0]["partial"], meta["detail"][0]["seeds_tried"]) == (
+        True,
+        tried,
+    )
+    perf = {r["name"]: r for r in json.loads((tmp_path / "perf.json").read_text())}
+    note = f"partial: properties {tried} of 2000 seeds"
+    assert perf["npu1/failed_properties"]["range"] == note
 
 
 def test_mutation_failures_name_the_first_seed_of_each_kind(tmp_path):
