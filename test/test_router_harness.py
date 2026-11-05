@@ -9,6 +9,7 @@ import argparse
 import functools
 import importlib.util
 import inspect
+import json
 import random
 import shutil
 import subprocess
@@ -317,6 +318,21 @@ def test_the_generator_names_the_seeds_the_model_could_not_decide():
         (0, "timeout"),
         (4, "timeout"),
     ]
+
+
+def test_the_properties_report_keeps_the_generators_undecided_seeds(tmp_path):
+    path = tmp_path / "npu1-properties.json"
+    run = rp.PropertiesReport(path, "npu1", 0, 3)
+    run.seed_tried(0, "timeout")
+    run.seed_tried(1, None)
+    partial = json.loads(path.read_text())
+    assert (partial["partial"], partial["seeds_tried"]) == (True, 2)
+    assert partial["undecided"] == ["seed 0: timeout"]
+    run.add("unroutable", True, "0 left to the model")
+    run.add("strict-completeness", True, "0 undecided")
+    run.write(partial=False, counts={})
+    final = json.loads(path.read_text())
+    assert (final["partial"], final["undecided"]) == (False, ["seed 0: timeout"])
 
 
 def test_a_crash_in_the_models_router_runs_is_a_crash():

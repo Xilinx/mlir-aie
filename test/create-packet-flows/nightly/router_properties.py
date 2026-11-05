@@ -6300,6 +6300,69 @@ def generated_cases(first, count, device, deadline=None):
         yield seed, case, None
 
 
+class PropertiesReport:
+    """The properties run's report, replaced whole each time it changes, so a
+    run its step stops early still leaves the properties and seeds it got to.
+
+    Args:
+        path: Where to write it; None to only print the properties.
+        device: The run's device.
+        first_seed: The run's first seed.
+        seeds: How many seeds the generator is to try.
+    """
+
+    def __init__(self, path, device, first_seed, seeds):
+        self.path, self.device = path, device
+        self.first_seed, self.seeds = first_seed, seeds
+        self.properties, self.regressions = [], []
+        self.tried, self.undecided = 0, []
+
+    def seed_tried(self, seed, outcome):
+        """Count a seed the generator tried.
+
+        Args:
+            seed: The seed.
+            outcome: The outcome of the model's router run where the model
+                could not decide the seed ("timeout", "crash"), else None.
+        """
+        self.tried += 1
+        if outcome:
+            self.undecided.append(f"seed {seed}: {outcome}")
+        self.write(partial=True)
+
+    def add(self, label, ok, detail):
+        """Print a property's verdict and add it to the report."""
+        print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
+        self.properties.append({"name": label, "ok": bool(ok), "detail": detail})
+        if not ok:
+            self.regressions.append(label)
+        self.write(partial=True)
+
+    def write(self, partial, counts=None):
+        """Replace the report whole.
+
+        Args:
+            partial: Whether the run is not done.
+            counts: The run's counts, once it has them.
+        """
+        if self.path is None:
+            return
+        out = {
+            "device": self.device,
+            "first_seed": self.first_seed,
+            "seeds": self.seeds,
+            "seeds_tried": self.tried,
+            "undecided": self.undecided,
+            "partial": partial,
+            "properties": self.properties,
+        }
+        if counts is not None:
+            out["counts"] = counts
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        tmp.write_text(json.dumps(out, indent=1))
+        tmp.replace(self.path)
+
+
 def main(argv=None):
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--device", default="npu2", help="npu1, npu2 or a device name")
@@ -6325,41 +6388,8 @@ def main(argv=None):
     t_start = time.monotonic()
     first = args.first_seed
 
-    regressions = []
-    properties = []
-    tried, undecided = 0, []
-
-    def write_report(partial, counts=None):
-        """Replace the report whole with the properties so far.
-
-        Args:
-            partial: Whether the run is not done, so a run stopped early
-                still leaves the properties and seeds it got to.
-            counts: The run's counts, once it has them.
-        """
-        if not args.report:
-            return
-        out = {
-            "device": args.device,
-            "first_seed": first,
-            "seeds": PARAMS["routable"],
-            "seeds_tried": tried,
-            "undecided": undecided,
-            "partial": partial,
-            "properties": properties,
-        }
-        if counts is not None:
-            out["counts"] = counts
-        tmp = args.report.with_name(args.report.name + ".tmp")
-        tmp.write_text(json.dumps(out, indent=1))
-        tmp.replace(args.report)
-
-    def report(label, ok, detail):
-        print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}", flush=True)
-        properties.append({"name": label, "ok": bool(ok), "detail": detail})
-        if not ok:
-            regressions.append(label)
-        write_report(partial=True)
+    run_report = PropertiesReport(args.report, args.device, first, PARAMS["routable"])
+    report = run_report.add
 
     def save(case, what, text, stderr=""):
         if args.out:
@@ -6418,16 +6448,16 @@ def main(argv=None):
             pending[hops_on, k] = pool.submit(route, hops_on, cases[k : k + size])
 
     for seed, case, outcome in generated_cases(first, PARAMS["routable"], args.device):
-        tried += 1
+        run_report.seed_tried(seed, outcome)
         if outcome:
-            undecided.append(f"seed {seed}: {outcome}")
-        elif case is None:
+            continue
+        if case is None:
             gave_up += 1
         else:
             cases.append(case)
             if len(cases) % size == 0:
                 submit(len(cases) - size)
-        write_report(partial=True)
+    undecided = run_report.undecided
     for line in undecided[:10]:
         print("UNDECIDED:", line)
     report(
@@ -6739,12 +6769,12 @@ def main(argv=None):
         f"hold cycle, {strict['shared']} fail on one, {strict['inherent']} fail "
         f"on flows that deadlock however they are routed)",
     )
-    misses, undecided = [], []
+    misses, strict_undecided = [], []
     for seed, c in sorted(strict_shared.items()):
         try:
             witness = strict_witness(c["design"], c["analysis"])
         except ModelRunFailed:
-            undecided.append(seed)
+            strict_undecided.append(seed)
             continue
         if witness is not None:
             misses.append(seed)
@@ -6752,18 +6782,18 @@ def main(argv=None):
             save(c, "strict-witness", witness)
     for seed in misses[:10]:
         print(f"STRICT MISS: seed {seed}")
-    for seed in undecided[:10]:
+    for seed in strict_undecided[:10]:
         print(f"STRICT WITNESS UNDECIDED: seed {seed}")
     report(
         "strict-completeness",
-        not undecided
+        not strict_undecided
         and len(misses)
         <= PARAMS["max_strict_misses"] * totals["designs"]
         + PARAMS["strict_miss_allowance"],
         f"{len(misses)}/{len(strict_shared)} designs that fail without "
         f"allow-deadlock-prone on a shared-receiver hold cycle have a routing "
         f"without one (max {PARAMS['max_strict_misses']} per design + "
-        f"{PARAMS['strict_miss_allowance']}); {len(undecided)} undecided, the "
+        f"{PARAMS['strict_miss_allowance']}); {len(strict_undecided)} undecided, the "
         f"router timed out or crashed",
     )
 
@@ -6836,8 +6866,8 @@ def main(argv=None):
             "ms_per_design": round(per_design, 2),
             "wall_s": round(time.monotonic() - t_start, 1),
         }
-        write_report(partial=False, counts=counts)
-    return 1 if regressions else 0
+        run_report.write(partial=False, counts=counts)
+    return 1 if run_report.regressions else 0
 
 
 # CHECK: model-validation: {{.*}} : OK
