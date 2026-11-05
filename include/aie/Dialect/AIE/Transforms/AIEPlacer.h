@@ -138,14 +138,15 @@ public:
   // Collect all placement-relevant operations from the device.
   static CollectedOps collectOperations(DeviceOp device);
 
-  // The (input, output) DMA channels each logical tile's flows, packet flows
-  // and route endpoints take: one per endpoint however many routes name it,
-  // and one per channel a flow names by index. With `named`, the (output,
+  // The (input, output) DMA channels each logical tile's flows, packet flows,
+  // route endpoints and DMA programs take: one per endpoint however many
+  // routes name it, and one per channel a flow or a program start (`starts`,
+  // DMAChannelAnalysis's claims) names by index. With `named`, the (output,
   // index) channels named by index, by tile.
   static llvm::MapVector<mlir::Operation *, std::pair<int, int>>
   flowChannelDemand(
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
-      llvm::ArrayRef<RouteOp> routes,
+      llvm::ArrayRef<RouteOp> routes, llvm::ArrayRef<DMAStartOp> starts,
       llvm::DenseMap<mlir::Operation *, llvm::SmallVector<std::pair<int, int>>>
           *named = nullptr);
 
@@ -997,7 +998,8 @@ private:
                            llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks);
   void buildRouteModel(DeviceOp device, llvm::ArrayRef<FlowOp> flows,
                        llvm::ArrayRef<PacketFlowOp> pktFlows,
-                       llvm::ArrayRef<RouteOp> routes);
+                       llvm::ArrayRef<RouteOp> routes,
+                       llvm::ArrayRef<DMAStartOp> starts);
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();

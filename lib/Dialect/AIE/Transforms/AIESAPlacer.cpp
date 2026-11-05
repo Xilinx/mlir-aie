@@ -181,9 +181,11 @@ void SAPlacer::buildNetModel(SmallVector<ObjectFifoCreateOp> &objectFifos,
 // route already moves data by DMA.
 void SAPlacer::buildRouteModel(DeviceOp device, ArrayRef<FlowOp> flows,
                                ArrayRef<PacketFlowOp> pktFlows,
-                               ArrayRef<RouteOp> routes) {
+                               ArrayRef<RouteOp> routes,
+                               ArrayRef<DMAStartOp> starts) {
   routeEnds.clear();
-  for (auto &[tile, inOut] : flowChannelDemand(flows, pktFlows, routes)) {
+  for (auto &[tile, inOut] :
+       flowChannelDemand(flows, pktFlows, routes, starts)) {
     for (int i = 0; i < inOut.first; ++i)
       routeEnds.push_back({tile, /*output=*/false});
     for (int i = 0; i < inOut.second; ++i)
@@ -1522,14 +1524,13 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
-  buildRouteModel(device, collected.flows, collected.pktFlows,
-                  collected.routes);
+  buildRouteModel(device, collected.flows, collected.pktFlows, collected.routes,
+                  channelAnalysis.emplace(device).getClaimingStarts());
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
       device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
       provenShimGates(device));
   runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
-  channelAnalysis.emplace(device);
   takenBDs = DMAChannelAnalysis::TakenBDs(device);
   logicalMemTiles.clear();
   for (auto tile : device.getOps<LogicalTileOp>())

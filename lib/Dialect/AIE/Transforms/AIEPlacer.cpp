@@ -205,8 +205,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
   namedChannels.clear();
-  for (auto &[tile, inOut] :
-       flowChannelDemand(flows, pktFlows, routes, &namedChannels)) {
+  for (auto &[tile, inOut] : flowChannelDemand(
+           flows, pktFlows, routes,
+           DMAChannelAnalysis(device).getClaimingStarts(), &namedChannels)) {
     channelRequirements[tile].first += inOut.first;
     channelRequirements[tile].second += inOut.second;
   }
@@ -1534,7 +1535,7 @@ Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
 // channel allocation has yet to pick holds a channel of its own.
 llvm::MapVector<Operation *, std::pair<int, int>> Placer::flowChannelDemand(
     ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
-    ArrayRef<RouteOp> routes,
+    ArrayRef<RouteOp> routes, ArrayRef<DMAStartOp> starts,
     llvm::DenseMap<Operation *, SmallVector<std::pair<int, int>>> *named) {
   llvm::MapVector<Operation *, std::pair<int, int>> demand;
   llvm::DenseSet<std::tuple<Operation *, int>> seenSrc, seenDst;
@@ -1574,6 +1575,11 @@ llvm::MapVector<Operation *, std::pair<int, int>> Placer::flowChannelDemand(
       }
     });
   }
+
+  for (DMAStartOp start : starts)
+    incIfDMA(start->getParentOfType<DmaBody>().getTile().getDefiningOp(),
+             WireBundle::DMA, start.getChannelIndex(),
+             start.getChannelDir() == DMAChannelDir::MM2S);
 
   // Packet routes may share an endpoint, which holds one channel however many
   // routes name it, and a fan-in's sources share one destination channel.

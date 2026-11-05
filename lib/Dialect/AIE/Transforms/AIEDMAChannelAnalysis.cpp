@@ -37,10 +37,13 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
         // The route endpoint it names claims the channel; see assignChannels.
         if (start.getEndpoint())
           continue;
-        usedChannels.try_emplace(std::make_tuple(getTileKey(program.getTile()),
-                                                 start.getChannelDir(),
-                                                 start.getChannelIndex()),
-                                 start.getOperation());
+        if (usedChannels
+                .try_emplace(std::make_tuple(getTileKey(program.getTile()),
+                                             start.getChannelDir(),
+                                             start.getChannelIndex()),
+                             start.getOperation())
+                .second)
+          claimingStarts.push_back(start);
       }
     }
   }
