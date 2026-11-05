@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // an oversized page must never split a local_barrier participant set
-// across an .eop (G-localbar). The two local_barrier(0, 2) ops are participants
+// across an .eop (G-localbar). The two local_barrier(lb0, 2) ops are participants
 // of one barrier; the cost-based mid-split would fall between them (separating
 // the group), so the splitter retargets to a legal cut after both participants.
 // Both barriers therefore land on the SAME emitted page.
@@ -15,8 +15,8 @@
 
 // CHECK: aiex.cert.page
 // CHECK: aiex.cert.job(1)
-// CHECK: aiex.cert.local_barrier(0, 2)
-// CHECK: aiex.cert.local_barrier(0, 2)
+// CHECK: aiex.cert.local_barrier(lb0, 2)
+// CHECK: aiex.cert.local_barrier(lb0, 2)
 // CHECK: aiex.cert.page
 // CHECK-NOT: aiex.cert.local_barrier
 
@@ -38,9 +38,9 @@ module {
     // keeping both local_barrier participants on the earlier page.
     aiex.cert.page {
       aiex.cert.job(1) {
-        aiex.cert.local_barrier(0, 2)
+        aiex.cert.local_barrier(lb0, 2)
         aiex.cert.uc_dma_write_des_sync(@chainA)
-        aiex.cert.local_barrier(0, 2)
+        aiex.cert.local_barrier(lb0, 2)
         aiex.cert.uc_dma_write_des_sync(@chainB)
       }
     }
