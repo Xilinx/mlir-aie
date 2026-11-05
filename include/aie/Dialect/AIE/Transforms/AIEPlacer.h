@@ -838,6 +838,15 @@ private:
   llvm::DenseMap<mlir::Operation *, int> fixedLocks;
   llvm::DenseMap<TileID, int> placedLocks;
   llvm::SmallVector<TileID> placedTiles;
+  // The lock groups of pools already in the input, read as
+  // aie-objectfifo-allocate reads them: each segment without its locks, used
+  // by the tiles of the endpoints selecting it (a compute tile's DMA reaching
+  // only its own locks).
+  struct InputLockGroup {
+    mlir::Operation *home;
+    llvm::SmallVector<std::pair<mlir::Operation *, bool>, 2> users;
+  };
+  llvm::SmallVector<InputLockGroup> inputLockGroups;
   // Placed core tiles, whose own memory sits where they are.
   llvm::DenseMap<TileID, mlir::Operation *> placedCoreAt;
 
@@ -1069,6 +1078,12 @@ private:
   int computeBDCountPenalty();
   int computeDelegatePenalty() const;
   std::optional<TileID> positionOf(mlir::Operation *tile) const;
+  /// Where a logical or placed tile op sits now.
+  std::optional<TileID> tileOpAt(mlir::Operation *tile) const {
+    if (auto placed = llvm::dyn_cast_or_null<TileOp>(tile))
+      return placed.getTileID();
+    return positionOf(tile);
+  }
   /// Where a fifo's producer (no `consumer`) or consumer end sits now.
   std::optional<TileID> endAt(const FifoBufferInfo &fb,
                               std::optional<size_t> consumer) const {

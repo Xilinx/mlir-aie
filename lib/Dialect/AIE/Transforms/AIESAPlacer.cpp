@@ -1030,7 +1030,7 @@ int SAPlacer::computeLockPenalty() const {
                                  entry.first.col, entry.first.row));
     });
   };
-  if (fixedLocks.empty() && placedLocks.empty()
+  if (fixedLocks.empty() && placedLocks.empty() && inputLockGroups.empty()
           ? fitsAtHome(currentLockDemand)
           : [&] {
               DenseMap<TileID, int> atHome = currentLockDemand;
@@ -1039,6 +1039,9 @@ int SAPlacer::computeLockPenalty() const {
                   atHome[*at] += locks;
               for (auto &[at, locks] : placedLocks)
                 atHome[at] += locks;
+              for (const InputLockGroup &group : inputLockGroups)
+                if (std::optional<TileID> at = tileOpAt(group.home))
+                  atHome[*at] += 2;
               return fitsAtHome(atHome);
             }())
     return 0;
@@ -1102,6 +1105,18 @@ int SAPlacer::computeLockPenalty() const {
         classes[users] += fb.consumerLockGroups;
       }
     }
+  }
+  for (const InputLockGroup &group : inputLockGroups) {
+    SmallVector<std::pair<TileID, bool>, 2> users;
+    bool placed = true;
+    for (auto [tile, localOnly] : group.users) {
+      std::optional<TileID> at = tileOpAt(tile);
+      placed &= at.has_value();
+      if (at)
+        users.push_back({*at, localOnly});
+    }
+    if (placed)
+      ++classes[users];
   }
   SmallVector<TileID> positions;
   for (auto &[op, at] : currentPlacement)
@@ -1749,6 +1764,32 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   });
   for (auto tile : device.getOps<TileOp>())
     placedTiles.push_back(tile.getTileID());
+  if (targetModel->getTargetArch() != AIEArch::AIE1) {
+    PoolLocks poolLocks(device);
+    for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
+      if (!poolLocks.needsLocks(pool))
+        continue;
+      for (auto segment : pool.getSegmentOps()) {
+        if (segment.getProduceLock() && segment.getConsumeLock())
+          continue;
+        InputLockGroup &group = inputLockGroups.emplace_back();
+        group.home = pool.getTile().getDefiningOp();
+        auto addUser = [&](Operation *endpoint, auto selected, bool dma) {
+          if (!llvm::is_contained(selected, segment))
+            return;
+          auto *tile = endpoint->getOperand(0).getDefiningOp();
+          group.users.push_back(
+              {tile, dma && !cast<TileLike>(tile).isMemTile()});
+        };
+        for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
+          if (endpoint.getPoolOp() == pool)
+            addUser(endpoint, endpoint.getSelectedSegments(), false);
+        for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>())
+          if (endpoint.getPoolOp() == pool)
+            addUser(endpoint, endpoint.getSelectedSegments(), true);
+      }
+    }
+  }
   TileMemoryLimits coreLimits =
       tileMemoryLimits(*targetModel, AIETileType::CoreTile);
   device.walk([&](BufferOp bufOp) {
@@ -2427,6 +2468,7 @@ LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
   generateAllocates();
   for (auto &[pos, locks] : currentLockDemand)
     finalLockGroups += locks / 2;
+  finalLockGroups += inputLockGroups.size();
   finalLockPenalty = computeLockPenalty();
 
   auto endTime = std::chrono::steady_clock::now();
