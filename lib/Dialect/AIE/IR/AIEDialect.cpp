@@ -2901,7 +2901,10 @@ LogicalResult CascadeFlowOp::verify() {
     return emitOpError("memTile row has no cascade stream interface");
 
   const auto &t = getTargetModel(*this);
-  if (t.getCascadeSteps().empty())
+  // Which ways a cascade may run is the target's; an op built outside any
+  // device is checked for adjacency alone.
+  bool onTarget = (*this)->getParentOfType<AIETarget>() != nullptr;
+  if (onTarget && t.getCascadeSteps().empty())
     return emitOpError("cascade not supported in ")
            << stringifyAIEArch(t.getTargetArch());
 
@@ -2917,7 +2920,7 @@ LogicalResult CascadeFlowOp::verify() {
         !t.isEast(*srcCol, *srcRow, *dstCol, *dstRow)) {
       return emitOpError("tiles must be adjacent");
     }
-    if (!t.isLegalCascade(*srcCol, *srcRow, *dstCol, *dstRow))
+    if (onTarget && !t.isLegalCascade(*srcCol, *srcRow, *dstCol, *dstRow))
       return emitOpError("source tile must be to the North or West of the "
                          "destination tile");
   }
