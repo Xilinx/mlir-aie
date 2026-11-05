@@ -369,3 +369,30 @@ DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
     return std::nullopt;
   return channelOf;
 }
+
+DMAChannelAnalysis::BDWalkPlan DMAChannelAnalysis::walkPoolsUntilBDsFit(
+    const AIETargetModel &target, int col, int row, ArrayRef<BDPlanEnd> ends,
+    ArrayRef<unsigned> poolOf, ArrayRef<BDWalkPool> pools,
+    function_ref<bool(DMAChannelDir, int)> free,
+    function_ref<int64_t(int)> spent) {
+  BDWalkPlan plan;
+  SmallVector<bool> whole(pools.size(), false);
+  while (true) {
+    SmallVector<BDPlanEnd> planned;
+    for (auto [end, pool] : llvm::zip_equal(ends, poolOf))
+      planned.push_back({end.dir, whole[pool] ? 1 : end.bds, end.limit});
+    if (planBDChannels(target, col, row, planned, free, spent)) {
+      plan.fits = true;
+      return plan;
+    }
+    std::optional<unsigned> deepest;
+    for (auto [index, pool] : llvm::enumerate(pools))
+      if (pool.walkable && !whole[index] &&
+          (!deepest || pool.depth > pools[*deepest].depth))
+        deepest = index;
+    if (!deepest)
+      return plan;
+    whole[*deepest] = true;
+    plan.walked.push_back(*deepest);
+  }
+}

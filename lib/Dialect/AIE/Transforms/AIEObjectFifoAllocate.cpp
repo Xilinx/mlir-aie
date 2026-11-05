@@ -1243,6 +1243,56 @@ struct AIEObjectFifoAllocatePass
     return bool(deepest);
   }
 
+  /// Walks whole, on each placed mem tile, the pools a plan of its BD ids
+  /// needs walked when every buffer stays at home, as the SA placer weighs the
+  /// tile's memory; those tiles then take their channels from that plan.
+  /// False when nothing is left to walk.
+  bool walkHomeBDPools() {
+    llvm::MapVector<TileID, SmallVector<ObjectFifoDmaEndpointOp>> ends;
+    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      TileLike tile = tileOf(cast<RouteEndpoint>(dma.getOperation()));
+      auto col = tile.tryGetCol(), row = tile.tryGetRow();
+      if (tile.isMemTile() && col && row && dma.getPoolOp())
+        ends[{*col, *row}].push_back(dma);
+    }
+    bool walkedAny = false;
+    for (auto &[at, dmas] : ends) {
+      SmallVector<ObjectFifoPoolOp> pools;
+      for (auto dma : dmas)
+        if (!llvm::is_contained(pools, dma.getPoolOp()))
+          pools.push_back(dma.getPoolOp());
+      llvm::stable_sort(pools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+        return structuralRank.lookup(a) < structuralRank.lookup(b);
+      });
+      SmallVector<DMAChannelAnalysis::BDWalkPool> walkable;
+      for (ObjectFifoPoolOp pool : pools)
+        walkable.push_back({pool.getDepth(), canWalkWhole(pool)});
+      SmallVector<DMAChannelAnalysis::BDPlanEnd> planned;
+      SmallVector<unsigned> poolOf;
+      for (auto dma : dmas) {
+        auto endpoint = cast<RouteEndpoint>(dma.getOperation());
+        DMAChannelDir dir = endpoint.getRouteDirection();
+        planned.push_back({dir, dma.getNumBDs(),
+                           DMAChannelAnalysis::getDMAChannelLimit(
+                               tileOf(endpoint), dir, false)});
+        poolOf.push_back(llvm::find(pools, dma.getPoolOp()) - pools.begin());
+      }
+      DMAChannelAnalysis::BDWalkPlan plan =
+          DMAChannelAnalysis::walkPoolsUntilBDsFit(
+              device.getTargetModel(), at.col, at.row, planned, poolOf,
+              walkable, [](DMAChannelDir, int) { return true; },
+              [](int) -> int64_t { return 0; });
+      for (unsigned pool : plan.walked)
+        pools[pool].setContiguous(true);
+      if (!plan.walked.empty())
+        for (auto dma : dmas)
+          bdPlanned.insert(
+              tileOf(cast<RouteEndpoint>(dma.getOperation())).getOperation());
+      walkedAny |= !plan.walked.empty();
+    }
+    return walkedAny;
+  }
+
   /// The other end of the one route naming `endpoint`, when that route is a
   /// circuit between two objectFIFO DMA endpoints.
   /// Whether, in every runtime sequence, the host issues each transfer
@@ -2281,16 +2331,24 @@ struct AIEObjectFifoAllocatePass
     // a tile and direction at a time: on a shim tile, ends never in flight
     // together; elsewhere, ends whose objects one core needs in a fixed order.
     // Short of BD ids on a mem tile channel, its deepest pool walked whole
-    // takes one a side.
-    while (failed(allocated) && channelFailure &&
-           (bdShortfall
-                ? bdPlanned.insert(tileOf(channelFailure).getOperation()) ||
-                      walkDeepestWhole(tileOf(channelFailure))
-            : tileOf(channelFailure).isShimTile()
-                ? planShimSharing(tileOf(channelFailure),
-                                  channelFailure.getRouteDirection())
-                : planTurnSharing(tileOf(channelFailure),
-                                  channelFailure.getRouteDirection()))) {
+    // takes one a side. Buffers that fit nowhere as split are placed again
+    // with the pools walked whole that the tiles' BD ids need anyway.
+    auto repair = [&] {
+      if (channelFailure) {
+        TileLike tile = tileOf(channelFailure);
+        DMAChannelDir dir = channelFailure.getRouteDirection();
+        if (bdShortfall) {
+          if (bdPlanned.insert(tile.getOperation()) || walkDeepestWhole(tile))
+            return true;
+        } else if (tile.isShimTile() ? planShimSharing(tile, dir)
+                                     : planTurnSharing(tile, dir)) {
+          return true;
+        }
+      }
+      localPools.clear();
+      return failed(planBuffers(pools)) && walkHomeBDPools();
+    };
+    while (failed(allocated) && repair()) {
       localPools.clear();
       tried.clear();
       sizeOrder(pools);

@@ -932,38 +932,44 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
           col, row, WireBundle::DMA))};
   auto free = [](DMAChannelDir, int) { return true; };
   auto unspent = [](int) -> int64_t { return 0; };
+  SmallVector<DMAChannelAnalysis::BDPlanEnd> planned;
+  SmallVector<unsigned> poolOf;
+  SmallVector<DMAChannelAnalysis::BDWalkPool> pools;
+  SmallVector<std::pair<Operation *, int>> poolKeys;
+  for (const MemTileEnd *end : ends) {
+    std::pair<Operation *, int> poolKey{end->end.pool, end->end.id};
+    auto *at = llvm::find(poolKeys, poolKey);
+    if (at == poolKeys.end()) {
+      poolKeys.push_back(poolKey);
+      pools.push_back({end->end.depth, false});
+      at = std::prev(poolKeys.end());
+    }
+    unsigned pool = at - poolKeys.begin();
+    pools[pool].walkable |= end->end.walkable;
+    poolOf.push_back(pool);
+    planned.push_back(
+        {end->dir, end->end.bds, channels[end->dir == DMAChannelDir::MM2S]});
+  }
+  DMAChannelAnalysis::BDWalkPlan plan =
+      DMAChannelAnalysis::walkPoolsUntilBDsFit(*targetModel, col, row, planned,
+                                               poolOf, pools, free, unspent);
   DenseSet<std::pair<Operation *, int>> whole;
+  for (unsigned pool : plan.walked)
+    whole.insert(poolKeys[pool]);
   int64_t shortfall = 0;
-  while (true) {
-    SmallVector<DMAChannelAnalysis::BDPlanEnd> planned, unweighted;
-    int64_t total = 0;
-    for (const MemTileEnd *end : ends) {
-      int64_t bds =
-          whole.contains({end->end.pool, end->end.id}) ? 1 : end->end.bds;
-      int limit = channels[end->dir == DMAChannelDir::MM2S];
-      planned.push_back({end->dir, bds, limit});
-      unweighted.push_back({end->dir, 0, limit});
-      total += bds;
-    }
-    if (DMAChannelAnalysis::planBDChannels(*targetModel, col, row, planned,
-                                           free, unspent))
-      break;
-    const MemTileEnd *deepest = nullptr;
-    for (const MemTileEnd *end : ends)
-      if (end->end.walkable && !whole.contains({end->end.pool, end->end.id}) &&
-          (!deepest || end->end.depth > deepest->end.depth))
-        deepest = end;
-    if (deepest) {
-      whole.insert({deepest->end.pool, deepest->end.id});
-      continue;
-    }
+  if (!plan.fits) {
     // Too few channels is the DMA term's to charge.
+    SmallVector<DMAChannelAnalysis::BDPlanEnd> unweighted;
+    int64_t total = 0;
+    for (auto [end, pool] : llvm::zip_equal(planned, poolOf)) {
+      unweighted.push_back({end.dir, 0, end.limit});
+      total += whole.contains(poolKeys[pool]) ? 1 : end.bds;
+    }
     int64_t ids = targetModel->getNumBDs(col, row);
     shortfall = DMAChannelAnalysis::planBDChannels(*targetModel, col, row,
                                                    unweighted, free, unspent)
                     ? std::max<int64_t>(1, total - ids)
                     : std::max<int64_t>(0, total - ids);
-    break;
   }
   bdShortfallOf[key] = {shortfall, {whole.begin(), whole.end()}};
   if (walked)

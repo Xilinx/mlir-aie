@@ -92,6 +92,29 @@ public:
                  llvm::function_ref<bool(DMAChannelDir, int)> free,
                  llvm::function_ref<int64_t(int)> spent);
 
+  /// A pool whose ends a BD plan weighs: how many objects it holds, and
+  /// whether it can be walked whole, its ends then taking one BD id each.
+  struct BDWalkPool {
+    int64_t depth;
+    bool walkable;
+  };
+  /// The pools walked whole, in walk order, and whether the ends then fit.
+  struct BDWalkPlan {
+    llvm::SmallVector<unsigned> walked;
+    bool fits = false;
+  };
+
+  /// Walks whole the deepest walkable pool of `ends` (the earliest in `pools`
+  /// among equals) until planBDChannels fits them; `poolOf` gives each end's
+  /// pool. aie-objectfifo-allocate and the SA placer both walk by this.
+  static BDWalkPlan
+  walkPoolsUntilBDsFit(const AIETargetModel &target, int col, int row,
+                       llvm::ArrayRef<BDPlanEnd> ends,
+                       llvm::ArrayRef<unsigned> poolOf,
+                       llvm::ArrayRef<BDWalkPool> pools,
+                       llvm::function_ref<bool(DMAChannelDir, int)> free,
+                       llvm::function_ref<int64_t(int)> spent);
+
   /// Claim a raw stream port for `user`, reporting on it when the port is
   /// taken; packet users may share it with other packets.
   mlir::LogicalResult checkAIEStreamIndex(TileLike tile, DMAChannel chan,
