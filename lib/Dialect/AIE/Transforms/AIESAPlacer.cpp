@@ -586,6 +586,7 @@ void SAPlacer::initResourceTracking() {
     spillTiles.insert(op);
   for (auto &[op, _] : memTileFixed)
     spillTiles.insert(op);
+  spillTiles.insert(logicalMemTiles.begin(), logicalMemTiles.end());
   delegateTermTiles.clear();
   for (const auto &fb : fifoBuffers) {
     if (!fb.delegate)
