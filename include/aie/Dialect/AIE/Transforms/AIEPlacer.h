@@ -190,16 +190,19 @@ public:
   static std::optional<ShimTransferSpans::End>
   shimEndOf(DeviceOp device, mlir::StringAttr symbol);
 
-  // The BD ids the runtime tasks of shim LTOs take, handed out as
-  // aie-assign-runtime-sequence-bd-ids does: pinned ids first, then the
-  // lowest free one, the head aligned as its starts need, each descriptor
-  // split as aie-decompose-large-dma-bd splits it and held from configure to
-  // await or free. Pieces split into separate tasks are held together, and
-  // reclaim is not modeled, so the count errs high.
+  // The BD ids a shim tile's DMAs take, handed out as aie-assign-bd-ids and
+  // aie-assign-runtime-sequence-bd-ids do. Static aie.shim_dma BDs take ids
+  // around the ones runtime tasks pin, pinned ids first, then the lowest free;
+  // every runtime sequence starts from those. A runtime task takes its pinned
+  // ids, then the lowest free ones, the head aligned as its starts need, each
+  // descriptor split as aie-decompose-large-dma-bd splits it and held from
+  // configure to await or free. Pieces split into separate tasks are held
+  // together, and reclaim is not modeled, so the count errs high. Shims
+  // already placed count where they sit.
   class RuntimeBdIds {
   public:
-    // The most ids a logical tile's tasks hold at once on a tile of their own,
-    // and whether any pins an id or aligns its head.
+    // The most ids a shim's DMAs hold at once on a tile of their own, and
+    // whether any pins an id or aligns its head.
     struct Peak {
       int live = 0;
       bool constrained = false;
@@ -216,23 +219,30 @@ public:
       return peaks;
     }
 
-    // The ids the tasks of `onTile`, sharing physical tile `tile`, cannot get.
+    // The ids the DMAs of `onTile` and of the shim already placed at `tile`
+    // cannot get when they share it.
     int shortfall(llvm::ArrayRef<mlir::Operation *> onTile, TileID tile) const;
 
   private:
     struct Task {
-      mlir::Operation *logicalTile;
+      mlir::Operation *owner;
       // One entry per descriptor after the split: its pinned id, if any.
       llvm::SmallVector<std::optional<uint32_t>> bdIds;
       uint32_t headAlignment;
     };
+    struct StaticBds {
+      llvm::SmallVector<uint32_t> pinned;
+      int unpinned = 0;
+    };
     llvm::SmallVector<Task> tasks;
     // Per runtime sequence, (task, configured or released) in program order.
     llvm::SmallVector<llvm::SmallVector<std::pair<unsigned, bool>>> sequences;
+    llvm::DenseMap<mlir::Operation *, StaticBds> statics;
     llvm::DenseMap<mlir::Operation *, Peak> peaks;
+    llvm::DenseMap<TileID, mlir::Operation *> placed;
     const AIETargetModel *targetModel = nullptr;
     // Every shim tile lays out its BD ids alike, so the answer depends only on
-    // which logical tiles share one.
+    // which shims share one.
     mutable std::map<std::vector<mlir::Operation *>, int> shortfallOf;
   };
 

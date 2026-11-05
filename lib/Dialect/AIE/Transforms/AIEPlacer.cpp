@@ -2019,57 +2019,66 @@ Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
                                    ArrayRef<ObjectFifoCreateOp> objectFifos,
                                    const AIETargetModel &targetModel)
     : targetModel(&targetModel) {
+  auto shimOf = [](Value tile) -> Operation * {
+    auto like = dyn_cast_or_null<TileLike>(tile.getDefiningOp());
+    return like && like.isShimNOCTile() ? like.getOperation() : nullptr;
+  };
   llvm::StringMap<Operation *> shimOfFifo;
   for (auto of : objectFifos) {
     SmallVector<Value> ends{of.getProducerTile()};
     llvm::append_range(ends, of.getConsumerTiles());
-    for (Value end : ends) {
-      auto lt = dyn_cast_or_null<LogicalTileOp>(end.getDefiningOp());
-      if (lt && lt.getTileType() == AIETileType::ShimNOCTile)
-        shimOfFifo[of.getSymName()] = lt;
-    }
+    for (Value end : ends)
+      if (Operation *shim = shimOf(end))
+        shimOfFifo[of.getSymName()] = shim;
   }
-  if (shimOfFifo.empty())
-    return;
+  for (auto program : device.getOps<ShimDMAOp>())
+    if (Operation *shim = shimOf(program.getTile())) {
+      StaticBds &bds = statics[shim];
+      program.walk([&](DMABDOp bd) {
+        if (std::optional<int32_t> id = bd.getBdId())
+          bds.pinned.push_back(*id);
+        else
+          ++bds.unpinned;
+      });
+    }
   // How a descriptor splits depends on the tile type, not on its column.
   std::optional<int> shimCol;
   for (int col = 0; col < targetModel.columns() && !shimCol; ++col)
     if (targetModel.getTileType(col, 0) == AIETileType::ShimNOCTile)
       shimCol = col;
-  if (!shimCol)
-    return;
 
   device.walk([&](RuntimeSequenceOp seq) {
     auto &events = sequences.emplace_back();
     DenseMap<Value, unsigned> taskOf;
+    auto configure = [&](Operation *shim, Value result, Region &body) {
+      Task task{shim, {}, AIEX::DMAStartTaskOp::headBdIdAlignment(result)};
+      body.walk([&](DMABDOp bd) {
+        std::optional<uint32_t> pinned;
+        if (std::optional<int32_t> id = bd.getBdId())
+          pinned = static_cast<uint32_t>(*id);
+        auto plan = AIEX::decomposeTaskBdPattern(bd, targetModel, *shimCol, 0);
+        size_t pieces =
+            succeeded(plan) && !plan->pieces.empty() ? plan->pieces.size() : 1;
+        // A pinned id stays with the first piece.
+        task.bdIds.push_back(pinned);
+        task.bdIds.append(pieces - 1, std::nullopt);
+      });
+      taskOf[result] = tasks.size();
+      events.push_back({tasks.size(), true});
+      tasks.push_back(std::move(task));
+    };
     seq.walk([&](Operation *op) {
+      if (!shimCol)
+        return;
       if (auto cfg = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
-        Operation *shim =
-            shimOfFifo.lookup(cfg.getAlloc().getRootReference().getValue());
-        if (!shim)
-          return;
-        Task task{
-            shim, {}, AIEX::DMAStartTaskOp::headBdIdAlignment(cfg.getResult())};
-        cfg.getBody().walk([&](DMABDOp bd) {
-          std::optional<uint32_t> pinned;
-          if (std::optional<int32_t> id = bd.getBdId())
-            pinned = static_cast<uint32_t>(*id);
-          auto plan =
-              AIEX::decomposeTaskBdPattern(bd, targetModel, *shimCol, 0);
-          size_t pieces = succeeded(plan) && !plan->pieces.empty()
-                              ? plan->pieces.size()
-                              : 1;
-          // A pinned id stays with the first piece.
-          task.bdIds.push_back(pinned);
-          task.bdIds.append(pieces - 1, std::nullopt);
-        });
-        Peak &peak = peaks[shim];
-        peak.constrained |=
-            task.headAlignment > 1 ||
-            llvm::any_of(task.bdIds, [](auto id) { return id; });
-        taskOf[cfg.getResult()] = tasks.size();
-        events.push_back({tasks.size(), true});
-        tasks.push_back(std::move(task));
+        if (Operation *shim =
+                shimOfFifo.lookup(cfg.getAlloc().getRootReference().getValue()))
+          configure(shim, cfg.getResult(), cfg.getBody());
+        return;
+      }
+      if (auto cfg = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
+        if (Operation *shim = shimOf(cfg.getTile()))
+          configure(shim, cfg.getResult(), cfg.getBody());
         return;
       }
       Value released;
@@ -2083,17 +2092,33 @@ Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
       }
     });
   });
+
+  for (auto &[shim, bds] : statics) {
+    Peak &peak = peaks[shim];
+    peak.live = bds.pinned.size() + bds.unpinned;
+    peak.constrained |= !bds.pinned.empty();
+  }
+  DenseMap<Operation *, int> mostHeld;
   for (const auto &events : sequences) {
-    DenseMap<Operation *, int> live;
+    DenseMap<Operation *, int> held;
     for (auto [index, configured] : events) {
       const Task &task = tasks[index];
-      int &held = live[task.logicalTile];
       int bds = static_cast<int>(task.bdIds.size());
-      held += configured ? bds : -bds;
-      Peak &peak = peaks[task.logicalTile];
-      peak.live = std::max(peak.live, held);
+      int &now = held[task.owner];
+      now += configured ? bds : -bds;
+      int &most = mostHeld[task.owner];
+      most = std::max(most, now);
     }
   }
+  for (const Task &task : tasks)
+    peaks[task.owner].constrained |=
+        task.headAlignment > 1 ||
+        llvm::any_of(task.bdIds, [](auto id) { return id.has_value(); });
+  for (auto &[shim, most] : mostHeld)
+    peaks[shim].live += most;
+  for (auto &[shim, peak] : peaks)
+    if (auto tile = dyn_cast<TileOp>(shim))
+      placed[{tile.getCol(), tile.getRow()}] = shim;
 }
 
 int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
@@ -2101,12 +2126,18 @@ int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
   std::vector<Operation *> key;
   int live = 0;
   bool constrained = false;
-  for (Operation *lt : onTile)
-    if (auto peak = peaks.find(lt); peak != peaks.end()) {
-      key.push_back(lt);
-      live += peak->second.live;
-      constrained |= peak->second.constrained;
-    }
+  auto add = [&](Operation *shim) {
+    auto peak = peaks.find(shim);
+    if (peak == peaks.end() || llvm::is_contained(key, shim))
+      return;
+    key.push_back(shim);
+    live += peak->second.live;
+    constrained |= peak->second.constrained;
+  };
+  for (Operation *shim : onTile)
+    add(shim);
+  if (Operation *shim = placed.lookup(tile))
+    add(shim);
   // Lowest-free ids never fragment, so peaks that fit together always do.
   if (!constrained &&
       live <= static_cast<int>(targetModel->getNumBDs(tile.col, tile.row)))
@@ -2116,12 +2147,43 @@ int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
   if (!added)
     return cached->second;
   int &missing = cached->second;
+
+  // aie-assign-bd-ids: runtime-pinned ids are reserved, then static BDs take
+  // theirs.
+  BdIdGenerator assigned(tile.col, tile.row, *targetModel);
+  for (const Task &task : tasks)
+    if (llvm::binary_search(key, task.owner))
+      for (std::optional<uint32_t> pinned : task.bdIds)
+        if (pinned && !assigned.bdIdAlreadyAssigned(*pinned))
+          assigned.assignBdId(*pinned);
+  SmallVector<uint32_t> staticIds;
+  for (Operation *shim : key) {
+    StaticBds bds = statics.lookup(shim);
+    for (uint32_t id : bds.pinned) {
+      if (assigned.bdIdAlreadyAssigned(id)) {
+        ++missing;
+        continue;
+      }
+      assigned.assignBdId(id);
+      staticIds.push_back(id);
+    }
+  }
+  for (Operation *shim : key)
+    for (int i = 0, e = statics.lookup(shim).unpinned; i < e; ++i) {
+      if (std::optional<uint32_t> id = assigned.nextBdId(0))
+        staticIds.push_back(*id);
+      else
+        ++missing;
+    }
+
   for (const auto &events : sequences) {
     BdIdGenerator ids(tile.col, tile.row, *targetModel);
+    for (uint32_t id : staticIds)
+      ids.assignBdId(id);
     DenseMap<unsigned, SmallVector<uint32_t>> held;
     for (auto [index, configured] : events) {
       const Task &task = tasks[index];
-      if (!llvm::binary_search(key, task.logicalTile))
+      if (!llvm::binary_search(key, task.owner))
         continue;
       if (!configured) {
         for (uint32_t id : held.lookup(index))
