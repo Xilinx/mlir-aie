@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEShimSharing.h"
 #include "llvm/ADT/MapVector.h"
 
@@ -819,16 +820,18 @@ private:
   // recomputes one only when it moves a tile the term reads.
   int memSpilloverPenalty = 0, bdCountPenalty = 0, delegatePenalty = 0;
   llvm::DenseSet<mlir::Operation *> spillTiles, delegateTermTiles, pairedTiles;
-  // MemTile buffers by size, largest first, each with the tile whose column
-  // is its home, and the static buffers on MemTiles.
-  llvm::SmallVector<std::pair<int64_t, mlir::Operation *>> spillBuffers;
-  llvm::SmallVector<std::pair<mlir::Operation *, int64_t>> spillBaseline;
+  // The buffers each logical mem tile already holds, as the allocator lays
+  // them out.
+  llvm::MapVector<mlir::Operation *, llvm::SmallVector<BufferAllocation>>
+      memTileFixed;
   // The BD ids the mem tile ends at each position are short of, what the
   // last move overwrote in it, and the shortfall of each set of logical tiles
   // sharing a position, by its tiles in order.
   llvm::DenseMap<TileID, int64_t> bdShortfallAt;
   llvm::SmallVector<std::pair<TileID, int64_t>> bdUndo;
-  std::map<std::pair<TileID, std::vector<mlir::Operation *>>, int64_t>
+  std::map<
+      std::pair<TileID, std::vector<mlir::Operation *>>,
+      std::pair<int64_t, llvm::SmallVector<std::pair<mlir::Operation *, int>>>>
       bdShortfallOf;
   // For each mem tile position, the first position seen whose channels reach
   // the same BD ids, which the shortfalls are cached under.
@@ -877,7 +880,6 @@ private:
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);
   int getResourcePenalty() const { return cachedResourcePenalty; }
-  void collectSpillBuffers();
   /// The BD ids the ends of mem tiles `tiles`, at `position`, are short of
   /// once aie-objectfifo-allocate has planned their channels
   /// (DMAChannelAnalysis::planBDChannels) and walked whole the deepest pools
@@ -887,7 +889,7 @@ private:
       llvm::DenseSet<std::pair<mlir::Operation *, int>> *walked = nullptr);
   /// The logical mem tiles at `position`, in memTileEnds order.
   llvm::SmallVector<mlir::Operation *> memTilesAt(TileID position) const;
-  int computeMemSpilloverPenalty() const;
+  int computeMemSpilloverPenalty();
   int computeCoreOverflowPenalty() const;
   /// Fills `dmaPenaltyAt` and returns its sum.
   int computeDMAChannelPenalty();

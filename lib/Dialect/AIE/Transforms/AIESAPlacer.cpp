@@ -579,11 +579,10 @@ void SAPlacer::initResourceTracking() {
     addRouteEndContribution(i, +1);
   }
 
-  collectSpillBuffers();
   spillTiles.clear();
-  for (auto &[_, op] : spillBuffers)
+  for (auto &[op, _] : memTileEnds)
     spillTiles.insert(op);
-  for (auto &[op, _] : spillBaseline)
+  for (auto &[op, _] : memTileFixed)
     spillTiles.insert(op);
   delegateTermTiles.clear();
   for (const auto &fb : fifoBuffers) {
@@ -657,107 +656,68 @@ int SAPlacer::computeDelegatePenalty() const {
   return penalty;
 }
 
-void SAPlacer::collectSpillBuffers() {
-  // Each mem tile pool's buffers, with the logical tile whose column is its
-  // home: one an object, or one holding them all for a pool the split lays out
-  // contiguously or aie-objectfifo-allocate walks whole, which spills only
-  // whole. A logical tile's ends do not depend on where it sits, so neither do
-  // the pools it walks, those of tiles sharing its position aside.
-  spillBuffers.clear();
-  for (auto &[tile, ends] : memTileEnds) {
+// Runs aie-objectfifo-allocate's mem tile buffer search on this placement:
+// each pool's buffers, one an object or one holding them all for a pool the
+// split lays out contiguously or the allocator walks whole, in the
+// allocator's size-first order, on tiles holding their static buffers. What
+// it cannot place is charged by the KB.
+int SAPlacer::computeMemSpilloverPenalty() {
+  SmallVector<MemTileSpillSearch::Tile> tiles;
+  DenseMap<TileID, unsigned> index;
+  for (int col = 0; col < targetModel->columns(); ++col)
+    for (int row = 0; row < targetModel->rows(); ++row)
+      if (targetModel->getTileType(col, row) == AIETileType::MemTile) {
+        index[{col, row}] = tiles.size();
+        tiles.push_back({targetModel->getMemTileSize(), {}});
+      }
+  for (auto &[op, fixed] : memTileFixed)
+    if (auto at = currentPlacement.find(op); at != currentPlacement.end())
+      llvm::append_range(tiles[index.lookup(at->second)].fixed, fixed);
+
+  SmallVector<std::pair<int64_t, TileID>> spills;
+  DenseSet<TileID> positions;
+  for (auto &[tile, _] : memTileEnds) {
     auto at = currentPlacement.find(tile);
-    if (at == currentPlacement.end())
+    if (at == currentPlacement.end() || !positions.insert(at->second).second)
       continue;
+    SmallVector<Operation *> here = memTilesAt(at->second);
     DenseSet<std::pair<Operation *, int>> walked, seen;
-    (void)bdShortfall(at->second, {tile}, &walked);
-    for (const MemTileEnd &end : ends) {
-      const PlannedDmaEnd &plan = end.end;
-      std::pair<Operation *, int> pool{plan.pool, plan.id};
-      if (!pool.first || !seen.insert(pool).second)
-        continue;
-      int64_t whole = plan.contiguousObjects  ? plan.contiguousObjects
-                      : walked.contains(pool) ? plan.depth
-                                              : 0;
-      for (int64_t buffer = 0, e = whole ? 1 : plan.depth; buffer < e; ++buffer)
-        spillBuffers.push_back(
-            {alignedBufferBytes(*targetModel, AIETileType::MemTile,
-                                plan.objectBytes * std::max<int64_t>(whole, 1)),
-             tile});
-    }
-  }
-  // The allocator's order. Which buffers there are never changes while tiles
-  // move, only their columns, and the order compares sizes alone, so this is
-  // the order every placement visits them in.
-  sortLargestBufferFirst(spillBuffers,
-                         [](const auto &buffer) { return buffer.first; });
-
-  // Static buffers as baseline (non-spillable).
-  spillBaseline.clear();
-  for (auto &[op, bufSize] : staticBufferSizes) {
-    if (!currentPlacement.count(op))
-      continue;
-    auto typeIt = tileTypes.find(op);
-    if (typeIt == tileTypes.end() || typeIt->second != AIETileType::MemTile)
-      continue;
-    spillBaseline.push_back({op, bufSize});
-  }
-}
-
-// Simulates per-buffer MemTile allocation with neighbor spillover.
-// Approximates the objectfifo allocator's strategy: buffers are
-// collected globally across all MemTile columns, sorted largest-first,
-// and each buffer is placed on its home column when possible, spilling
-// to the neighbor with the most remaining capacity when the home is full.
-// Equal-size buffers may be visited in a different order than the
-// allocator's, so the two can break spill ties differently; the
-// allocator backtracks over its spill choices to cover that.
-int SAPlacer::computeMemSpilloverPenalty() const {
-  int64_t memTileCapacity = targetModel->getMemTileSize();
-  int numCols = targetModel->columns();
-  int penalty = 0;
-
-  llvm::SmallVector<int64_t> memTileBaseline(numCols, 0);
-  for (auto &[op, bufSize] : spillBaseline)
-    memTileBaseline[currentPlacement.lookup(op).col] += bufSize;
-
-  // remaining[col] = capacity available after baseline.
-  llvm::SmallVector<int64_t> remaining(numCols, 0);
-  for (int col = 0; col < numCols; col++) {
-    if (targetModel->getTileType(col, 1) != AIETileType::MemTile)
-      continue;
-    remaining[col] =
-        std::max(memTileCapacity - memTileBaseline[col], int64_t{0});
-  }
-
-  // Place each buffer: try home first, then neighbor with most capacity.
-  for (auto &[bufSize, home] : spillBuffers) {
-    int homeCol = currentPlacement.lookup(home).col;
-    if (remaining[homeCol] >= bufSize) {
-      remaining[homeCol] -= bufSize;
-    } else {
-      // Pick neighbor with the most remaining capacity.
-      int bestNbr = -1;
-      int64_t bestCap = -1;
-      for (int nbr : {homeCol - 1, homeCol + 1}) {
-        if (nbr < 0 || nbr >= numCols)
+    (void)bdShortfall(at->second, here, &walked);
+    for (Operation *op : here)
+      for (const MemTileEnd &end : memTileEnds.lookup(op)) {
+        const PlannedDmaEnd &plan = end.end;
+        std::pair<Operation *, int> pool{plan.pool, plan.id};
+        auto split = dyn_cast_or_null<ObjectFifoPoolOp>(plan.pool);
+        if (!pool.first || (split && split.getBuffers()) ||
+            !seen.insert(pool).second)
           continue;
-        if (targetModel->getTileType(nbr, 1) != AIETileType::MemTile)
-          continue;
-        if (remaining[nbr] >= bufSize && remaining[nbr] > bestCap) {
-          bestCap = remaining[nbr];
-          bestNbr = nbr;
-        }
+        int64_t whole = plan.contiguousObjects  ? plan.contiguousObjects
+                        : walked.contains(pool) ? plan.depth
+                                                : 0;
+        for (int64_t i = 0, e = whole ? 1 : plan.depth; i < e; ++i)
+          spills.push_back(
+              {plan.objectBytes * std::max<int64_t>(whole, 1), at->second});
       }
-      if (bestNbr >= 0) {
-        remaining[bestNbr] -= bufSize;
-      } else {
-        // Ceiling division: bytes → KB.
-        penalty += ((bufSize + 1023) / 1024) * config.memPenaltyPerKB;
-      }
-    }
   }
+  llvm::stable_sort(spills, [](const auto &a, const auto &b) {
+    return std::make_pair(a.second.col, a.second.row) <
+           std::make_pair(b.second.col, b.second.row);
+  });
+  sortLargestBufferFirst(spills, [](const auto &spill) { return spill.first; });
 
-  return penalty;
+  SmallVector<MemTileSpillSearch::Buffer> buffers;
+  for (auto [bytes, home] : spills) {
+    SmallVector<unsigned, 2> neighbours;
+    for (TileID neighbour : memTileSpillNeighbours(*targetModel, home))
+      if (auto it = index.find(neighbour); it != index.end())
+        neighbours.push_back(it->second);
+    buffers.push_back({bytes, index.lookup(home), true, neighbours});
+  }
+  MemTileSpillSearch search(std::move(tiles),
+                            targetModel->getMemTileLoadStoreBusWidth() / 8);
+  if (search.place(buffers))
+    return 0;
+  return ((search.unplacedBytes + 1023) / 1024) * config.memPenaltyPerKB;
 }
 
 // Penalizes core tiles whose buffer usage exceeds local memory, accounting
@@ -913,9 +873,12 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
     bdShortfallOf.clear();
   std::pair<TileID, std::vector<Operation *>> key{
       layout->second, std::vector<Operation *>(tiles.begin(), tiles.end())};
-  if (!walked)
-    if (auto cached = bdShortfallOf.find(key); cached != bdShortfallOf.end())
-      return cached->second;
+  if (auto cached = bdShortfallOf.find(key); cached != bdShortfallOf.end()) {
+    if (walked)
+      *walked = DenseSet<std::pair<Operation *, int>>(
+          cached->second.second.begin(), cached->second.second.end());
+    return cached->second.first;
+  }
   SmallVector<const MemTileEnd *> ends;
   for (Operation *tile : tiles)
     if (auto *it = memTileEnds.find(tile); it != memTileEnds.end())
@@ -962,9 +925,9 @@ int64_t SAPlacer::bdShortfall(TileID position, ArrayRef<Operation *> tiles,
                     : std::max<int64_t>(0, total - ids);
     break;
   }
+  bdShortfallOf[key] = {shortfall, {whole.begin(), whole.end()}};
   if (walked)
     *walked = std::move(whole);
-  bdShortfallOf[key] = shortfall;
   return shortfall;
 }
 
@@ -1500,6 +1463,12 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
     int64_t bytes = bufOp.getAllocationSize();
+    if (tileTypes.lookup(tileOp) == AIETileType::MemTile)
+      memTileFixed[tileOp].push_back(
+          {bytes,
+           bufOp.getAligned() ? targetModel->getMemTileLoadStoreBusWidth() / 8
+                              : 1,
+           bufOp.getAddress()});
     staticBufferSizes[tileOp] +=
         bufOp.getAligned()
             ? alignedBufferBytes(*targetModel, tileTypes.lookup(tileOp), bytes)

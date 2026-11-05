@@ -108,6 +108,182 @@ assignSequentialBufferAddresses(llvm::MutableArrayRef<BufferAllocation> buffers,
   return std::max(highWater, address);
 }
 
+/// The tiles a mem tile buffer homed at `home` may spill to: either side of it
+/// in its row, where home shares memory with them.
+inline llvm::SmallVector<TileID, 2>
+memTileSpillNeighbours(const AIETargetModel &target, TileID home) {
+  llvm::SmallVector<TileID, 2> neighbours;
+  for (int col : {home.col - 1, home.col + 1}) {
+    if (col < 0 || col >= target.columns())
+      continue;
+    TileID neighbour{col, home.row};
+    auto shared = target.getSharedMemory(home, neighbour);
+    if (shared == AIETargetModel::SharedMemory::Second ||
+        shared == AIETargetModel::SharedMemory::Either)
+      neighbours.push_back(neighbour);
+  }
+  return neighbours;
+}
+
+/// The mem tiles a mem tile pool's buffers go to: aie-objectfifo-allocate
+/// places them by this search, and the SA placer runs it on each placement it
+/// weighs. A tile's use is its layout by assignSequentialBufferAddresses. Each
+/// buffer in turn goes home when it fits there, else to a neighbour home shares
+/// memory with, least used first; when one fits nowhere, earlier choices are
+/// revisited, latest first, until kRetries alternatives have been tried.
+class MemTileSpillSearch {
+public:
+  struct Tile {
+    int64_t capacity;
+    llvm::SmallVector<BufferAllocation> fixed;
+  };
+  /// A buffer of `bytes` homed on `home`, which it may take unless `atHome`
+  /// is false, and the `neighbours` it may spill to, in the order tried when
+  /// they are equally used.
+  struct Buffer {
+    int64_t bytes;
+    unsigned home;
+    bool atHome;
+    llvm::SmallVector<unsigned, 2> neighbours;
+  };
+
+  MemTileSpillSearch(llvm::SmallVector<Tile> tiles, int64_t alignment)
+      : tiles(std::move(tiles)), planned(this->tiles.size()),
+        alignment(alignment) {
+    weighed.assign(this->tiles.size(), false);
+    plannedBytes.assign(this->tiles.size(), 0);
+    misaligned.assign(this->tiles.size(), 0);
+    for (const Tile &tile : this->tiles) {
+      bool packed = llvm::all_of(tile.fixed, [&](const BufferAllocation &b) {
+        return !b.address && b.size % alignment == 0;
+      });
+      int64_t bytes = 0;
+      for (const BufferAllocation &buffer : tile.fixed)
+        bytes += buffer.size;
+      fixedBytes.push_back(packed ? std::optional<int64_t>(bytes)
+                                  : std::nullopt);
+    }
+  }
+
+  /// The bytes `tile` spans with what it holds and `count` more of `bytes`.
+  int64_t used(unsigned tile, int64_t bytes = 0, int count = 0) const {
+    // Unpinned buffers whose sizes all keep the alignment leave no gaps, so
+    // the layout spans their sum.
+    if (fixedBytes[tile] && !misaligned[tile] && bytes % alignment == 0)
+      return *fixedBytes[tile] + plannedBytes[tile] + count * bytes;
+    llvm::SmallVector<BufferAllocation> layout;
+    for (int64_t size : planned[tile])
+      layout.push_back({size, alignment, std::nullopt});
+    for (int i = 0; i < count; ++i)
+      layout.push_back({bytes, alignment, std::nullopt});
+    llvm::append_range(layout, tiles[tile].fixed);
+    return assignSequentialBufferAddresses(layout);
+  }
+  bool fits(unsigned tile, int64_t bytes, int count = 1) const {
+    return used(tile, bytes, count) <= tiles[tile].capacity;
+  }
+  void reserve(unsigned tile, int64_t bytes, int count = 1) {
+    for (int i = 0; i < count; ++i)
+      add(tile, bytes);
+  }
+
+  /// Alternatives the search tries before it gives up.
+  static constexpr int kRetries = 256;
+
+  /// Places `buffers` in order on top of what the tiles hold. On success each
+  /// buffer's tile is in `chosen`; otherwise `failed` is the buffer that fit
+  /// nowhere with the fewest buffers left after it, and `unplacedBytes` the
+  /// bytes of it and those.
+  bool place(llvm::ArrayRef<Buffer> buffers) {
+    chosen.clear();
+    failed = buffers.size();
+    unplacedBytes = 0;
+    int retries = kRetries;
+    return placeFrom(buffers, 0, retries);
+  }
+  llvm::SmallVector<unsigned> chosen;
+  size_t failed = 0;
+  int64_t unplacedBytes = 0;
+  /// Homes a spill from was weighed: aie-objectfifo-allocate gives their
+  /// neighbours tile ops, as later passes may use them.
+  llvm::SmallVector<bool> weighed;
+
+private:
+  llvm::SmallVector<unsigned> spillTargets(const Buffer &buffer) {
+    weighed[buffer.home] = true;
+    llvm::SmallVector<unsigned, 2> neighbours(buffer.neighbours);
+    llvm::stable_sort(
+        neighbours, [&](unsigned a, unsigned b) { return used(a) < used(b); });
+    llvm::SmallVector<unsigned> fitting;
+    for (unsigned neighbour : neighbours)
+      if (fits(neighbour, buffer.bytes))
+        fitting.push_back(neighbour);
+    return fitting;
+  }
+
+  bool placeFrom(llvm::ArrayRef<Buffer> buffers, size_t index, int &retries) {
+    if (index == buffers.size())
+      return true;
+    const Buffer &buffer = buffers[index];
+    bool fitsHome = buffer.atHome && fits(buffer.home, buffer.bytes);
+    llvm::SmallVector<unsigned> candidates;
+    if (fitsHome)
+      candidates.push_back(buffer.home);
+    else
+      candidates = spillTargets(buffer);
+    if (candidates.empty() && index < failed) {
+      failed = index;
+      unplacedBytes = 0;
+      for (const Buffer &left : buffers.drop_front(index))
+        unplacedBytes += left.bytes;
+    }
+    auto tryTile = [&](unsigned tile) {
+      add(tile, buffer.bytes);
+      chosen.push_back(tile);
+      if (placeFrom(buffers, index + 1, retries))
+        return true;
+      removeLast(tile);
+      chosen.pop_back();
+      return false;
+    };
+    for (auto [i, tile] : llvm::enumerate(candidates)) {
+      if (i > 0 && retries-- <= 0)
+        return false;
+      if (tryTile(tile))
+        return true;
+    }
+    if (!fitsHome)
+      return false;
+    for (unsigned tile : spillTargets(buffer)) {
+      if (retries-- <= 0)
+        return false;
+      if (tryTile(tile))
+        return true;
+    }
+    return false;
+  }
+
+  void add(unsigned tile, int64_t bytes) {
+    planned[tile].push_back(bytes);
+    plannedBytes[tile] += bytes;
+    misaligned[tile] += bytes % alignment != 0;
+  }
+  void removeLast(unsigned tile) {
+    int64_t bytes = planned[tile].pop_back_val();
+    plannedBytes[tile] -= bytes;
+    misaligned[tile] -= bytes % alignment != 0;
+  }
+
+  llvm::SmallVector<Tile> tiles;
+  llvm::SmallVector<llvm::SmallVector<int64_t>> planned;
+  int64_t alignment;
+  /// What the fixed buffers span when unpinned and aligned in size, and the
+  /// planned buffers' bytes and how many of them are not.
+  llvm::SmallVector<std::optional<int64_t>> fixedBytes;
+  llvm::SmallVector<int64_t> plannedBytes;
+  llvm::SmallVector<int> misaligned;
+};
+
 } // namespace xilinx::AIE
 
 #endif // AIE_DIALECT_AIE_TRANSFORMS_AIEBUFFERALLOCATION_H
