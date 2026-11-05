@@ -39,11 +39,11 @@
 
 // The one mem tile's four 1 KiB holes take the objects, so channel turns
 // walk the pools, but not the walked buffers, wherever the SA puts them;
-// aiecc reports the first placement's error and its failed edge.
+// both placements fail at the same edge, so the later one stands.
 // NEVER: aiecc: placing again with --sa-walked-fifos=main:b_in,main:a_in (buffers channel turns walked whole found no room); the messages above are from placement 1
 // NEVER-NOT: placing again
 // NEVER: error: 'aie.objectfifo.pool' op could not place buffers in accessible memory with available capacity for objectFIFO @main::@a_in
-// NEVER: aiecc: no placement with what allocation found counted fits either; placement 1's failure stands
+// NEVER: aiecc: no placement with what allocation found counted fits either; placement 2's failure stands
 // NEVER: aiecc: edge 'input_with_symbols.mlir' (key '{{.*}}') failed
 
 module @turn_walk_never {

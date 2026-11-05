@@ -40,12 +40,12 @@
 // PINNED-NOT: placing again
 
 // %c keeps 60 KiB of .bss here, and its own buffers fit beside that nowhere;
-// aiecc reports the first placement's error and its failed edge.
+// both placements fail at the same edge, so the later one stands.
 // NEVER: aiecc: placing again with --sa-core-data-sizes=main:0=0,main:1=61440 (a core's buffers found no room beside its own sections); the messages above are from placement 1
 // NEVER-NOT: placing again
 // NEVER: error: 'aie.buffer' op could not be placed:
 // NEVER: note: the core on this tile keeps its own sections in 61440 bytes
-// NEVER: aiecc: no placement with what allocation found counted fits either; placement 1's failure stands
+// NEVER: aiecc: no placement with what allocation found counted fits either; placement 2's failure stands
 // NEVER: aiecc: edge 'input_with_addresses.mlir' failed
 
 module @core_data_never {

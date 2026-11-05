@@ -1003,7 +1003,7 @@ def _readable_diagnostic(line: str) -> str:
 
 # How aiecc marks placing a design again, and says which placement stands.
 _PLACING_AGAIN = "aiecc: placing again with "
-_FIRST_STANDS = "placement 1's failure stands"
+_FAILURE_STANDS_RE = re.compile(r"placement (\d+)'s failure stands$")
 _STANDS_RE = re.compile(r"^aiecc: (placement \d+ \(.*\) stands|no placement with .*)$")
 
 
@@ -1012,7 +1012,8 @@ def standing_placement(log: str) -> tuple[list[str], list[str], list[str]]:
 
     When aiecc places a design again, each placement prints as it runs, a
     line marks where the next one starts, and one line says which placement
-    stands; what aiecc prints after that line reports on that placement.
+    stands (the last, unless it names another whose failure stands); what
+    aiecc prints after that line reports on that placement.
 
     Args:
         log: aiecc's output.
@@ -1035,8 +1036,9 @@ def standing_placement(log: str) -> tuple[list[str], list[str], list[str]]:
             report = []
         else:
             placements[-1].append(line)
-    first = any(_FIRST_STANDS in marker for marker in markers)
-    return placements[0 if first else -1], markers, report or []
+    stands = _FAILURE_STANDS_RE.search(markers[-1]) if markers else None
+    standing = placements[int(stands[1]) - 1] if stands else placements[-1]
+    return standing, markers, report or []
 
 
 def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:

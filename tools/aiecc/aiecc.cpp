@@ -3366,20 +3366,28 @@ int main(int argc, char **argv) {
                            llvm::join(saCoreDataSizes, ","));
     ran = placeAgain(std::move(placedWith), llvm::join(why, "; "));
   }
-  // The first placement stands when attempts ran out failing where it did;
-  // otherwise the last, which got furthest, succeeded, or failed past what
-  // placing again fixes.
-  EdgeBase *firstFailed = attempts.front().engine->failedEdge;
-  EdgeBase *lastFailed = attempts.back().engine->failedEdge;
-  bool firstStands = noPlacement && firstFailed && lastFailed &&
-                     firstFailed->name == lastFailed->name;
-  Attempt &standing = firstStands ? attempts.front() : attempts.back();
+  // When attempts ran out, the placement that got furthest stands: the one
+  // whose failed edge comes latest in the graph, which is built in pipeline
+  // order, the later placement on a tie. Otherwise the last stands, which
+  // succeeded or failed past what placing again fixes.
+  auto reached = [](const Attempt &a) {
+    return llvm::find_if(a.graph->edges,
+                         [&](const std::unique_ptr<EdgeBase> &edge) {
+                           return edge.get() == a.engine->failedEdge;
+                         }) -
+           a.graph->edges.begin();
+  };
+  size_t stands = attempts.size() - 1;
+  if (noPlacement)
+    for (size_t i = attempts.size() - 1; i-- > 0;)
+      if (reached(attempts[i]) > reached(attempts[stands]))
+        stands = i;
+  Attempt &standing = attempts[stands];
   EdgeBase *standingFailed = standing.engine->failedEdge;
   if (attempts.size() > 1) {
     auto log = endProgressLine();
     if (noPlacement)
-      llvm::errs() << *noPlacement << "; placement "
-                   << (firstStands ? 1 : attempts.size())
+      llvm::errs() << *noPlacement << "; placement " << stands + 1
                    << "'s failure stands\n";
     else
       llvm::errs() << "aiecc: placement " << attempts.size() << " ("

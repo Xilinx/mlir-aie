@@ -16,7 +16,7 @@ AIECC_TESTS = Path(__file__).resolve().parents[1] / "aiecc"
 # Its first placement does not route, and the one with three cores a column
 # does; every placement warns about an uncalled function.
 ROUTES_SECOND = AIECC_TESTS / "Inputs/placement_retry_npu2_decode.mlir"
-# No placement routes; placement 1's failure stands.
+# No placement routes; the last, placement 4, stands.
 NEVER_ROUTES = AIECC_TESTS / "placement_retry.test"
 # Placement 1 has no room for its walked pools; placement 2 allocates, then
 # cannot link a missing kernel object, and stands.
@@ -36,7 +36,7 @@ def test_success_shows_the_standing_placement(tmp_path, capsys):
     assert err.count("never called from any core") == 1, err
 
 
-def test_failure_summarises_the_first_placement_when_it_stands(tmp_path):
+def test_failure_summarises_the_placement_that_stands(tmp_path):
     with pytest.raises(RuntimeError) as failure:
         utils._run_aiecc(
             str(NEVER_ROUTES),
@@ -47,7 +47,7 @@ def test_failure_summarises_the_first_placement_when_it_stands(tmp_path):
     summary = str(failure.value).split("--- full aiecc log ---")[0]
     assert summary.count("Unable to find a legal routing") == 1, summary
     assert "the messages above are from placement 3" in summary, summary
-    assert "placement 1's failure stands" in summary, summary
+    assert "placement 4's failure stands" in summary, summary
 
 
 def test_failure_locates_the_standing_placement(tmp_path):

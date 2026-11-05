@@ -29,16 +29,16 @@
 // PINNED-NOT: placing again
 
 // Five flows down one column need more links than any placement of the
-// unrelated core gives them; aiecc tries each, then says the first
-// placement's failure stands and reports its failed edge.
+// unrelated core gives them; aiecc tries each, and as all fail at routing,
+// the last stands (on a tie, the later placement): its failed edge, and a
+// reproducer placing as it did.
 // NEVER: aiecc: placing again with --cores-per-col=3 (the placement does not route); the messages above are from placement 1
 // NEVER: aiecc: placing again with --cores-per-col=2 (the placement does not route); the messages above are from placement 2
 // NEVER: aiecc: placing again with --cores-per-col=1 (the placement does not route); the messages above are from placement 3
 // NEVER: error: Unable to find a legal routing
 // NEVER-SAME: cross from row 2 to row 1
-// NEVER: aiecc: no placement with fewer cores a column routes either; placement 1's failure stands
-// Its reproducer places as placement 1 did: no --cores-per-col.
-// NEVERREP-NOT: --cores-per-col
+// NEVER: aiecc: no placement with fewer cores a column routes either; placement 4's failure stands
+// NEVERREP: "--cores-per-col=1"
 // NEVERREP: "--get=input_physical.mlir"
 // NEVER: aiecc: edge 'input_physical.mlir' (key '{{.*}}') failed
 
