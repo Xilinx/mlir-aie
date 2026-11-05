@@ -858,7 +858,13 @@ private:
     int64_t objectSpace = 0;
     // Whether its pools take locks, and how many lock groups the pool at a
     // consumer end holds: a distribute link's input has one per output.
-    bool synchronized = true;
+    // PoolLocks::needsLocks' facts for the pools the split makes, and which
+    // ends' cores use the fifo.
+    bool unsynchronized = false;
+    int64_t initObjects = 0;
+    bool rearmed = false;
+    bool producerCore = false;
+    llvm::SmallVector<bool> consumerCore;
     int consumerLockGroups = 1;
     // ObjectFifoCreateOp::sharedDepth() and dmaDepth() of each end.
     int sharedDepth = 0;

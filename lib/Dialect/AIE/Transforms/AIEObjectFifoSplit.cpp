@@ -30,27 +30,6 @@ struct PoolRef {
   SmallVector<int32_t> segments;
 };
 
-bool hasCoreAccess(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo,
-                   ObjectFifoPort port) {
-  for (auto coreOp : device.getOps<CoreOp>()) {
-    if (coreOp.getTile() != tile) {
-      continue;
-    }
-    bool found = false;
-    coreOp.walk([&](Operation *op) {
-      if (auto acq = dyn_cast<ObjectFifoAcquireOp>(op)) {
-        found |= acq.getObjectFifo() == objFifo && acq.getPort() == port;
-      } else if (auto rel = dyn_cast<ObjectFifoReleaseOp>(op)) {
-        found |= rel.getObjectFifo() == objFifo && rel.getPort() == port;
-      }
-    });
-    if (found) {
-      return true;
-    }
-  }
-  return false;
-}
-
 struct AIEObjectFifoSplitPass
     : public xilinx::AIE::impl::AIEObjectFifoSplitBase<AIEObjectFifoSplitPass> {
 

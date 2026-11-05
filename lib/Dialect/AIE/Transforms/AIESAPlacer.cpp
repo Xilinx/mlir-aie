@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
 #include "aie/Dialect/AIE/Transforms/AIETileMemoryFit.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/Support/Debug.h"
@@ -435,8 +436,14 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     objectsUndo.push_back({pos, {bytes, fb.objectSpace}, sign * count});
     touchCore(pos);
   };
-  auto addLocks = [&](TileID pos, int groups) {
-    if (!fb.synchronized)
+  // The producer's pool, or a shared one, holds the initial objects; a
+  // consumer's starts empty.
+  auto heldLocks = [&](int64_t depth) {
+    return PoolLocks::needsLocks(fb.unsynchronized, fb.initObjects, depth,
+                                 fb.producerCore, fb.rearmed);
+  };
+  auto addLocks = [&](TileID pos, int groups, bool needed) {
+    if (!needed)
       return;
     currentLockDemand[pos] += sign * 2 * groups;
     lockUndo.push_back({pos, sign * 2 * groups});
@@ -485,7 +492,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       addObjects(delegatePos.value_or(prodPos), sharedObjectBytes,
                  fb.sharedDepth);
       if (ci == 0)
-        addLocks(delegatePos.value_or(prodPos), 1);
+        addLocks(delegatePos.value_or(prodPos), 1, heldLocks(fb.sharedDepth));
     } else if (isSharedMem) {
       TileID bufTile;
       if (delegatePos) {
@@ -518,14 +525,14 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
       currentMemUsage[bufTile] += sign * sharedBytes;
       addObjects(bufTile, sharedObjectBytes, fb.sharedDepth);
       if (ci == 0)
-        addLocks(bufTile, 1);
+        addLocks(bufTile, 1, heldLocks(fb.sharedDepth));
     } else {
       if (!prodCharged && !prodIsShim && !fb.linkSharedProd) {
         currentMemUsage[prodPos] +=
             sign * fb.producerSizeBytes * fb.producerDepth;
         addObjects(prodPos, fb.producerObjectBytes, fb.producerDepth);
         if (fb.producerEnd)
-          addLocks(prodPos, 1);
+          addLocks(prodPos, 1, heldLocks(fb.producerDepth));
         prodCharged = true;
       }
       if (!consIsShim) {
@@ -533,7 +540,7 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
             sign * fb.consumerSizeBytes * fb.consumerDepths[ci];
         addObjects(consPos, fb.consumerObjectBytes, fb.consumerDepths[ci]);
         if (fb.consumerEnds[ci])
-          addLocks(consPos, fb.consumerLockGroups);
+          addLocks(consPos, fb.consumerLockGroups, !fb.unsynchronized);
       }
     }
 
@@ -1048,8 +1055,12 @@ int SAPlacer::computeLockPenalty() const {
   };
   for (auto [index, fb] : llvm::enumerate(fifoBuffers)) {
     std::optional<TileID> prodPos = endAt(fb, std::nullopt);
-    if (!fb.synchronized || !prodPos)
+    if (!prodPos)
       continue;
+    auto heldLocks = [&](int64_t depth) {
+      return PoolLocks::needsLocks(fb.unsynchronized, fb.initObjects, depth,
+                                   fb.producerCore, fb.rearmed);
+    };
     const FifoEndTypes &types = fifoEndTypes[index];
     std::optional<TileID> delegatePos = positionOf(fb.delegate);
     bool prodPool = false;
@@ -1061,24 +1072,35 @@ int SAPlacer::computeLockPenalty() const {
       if (!fb.forcesDMA && ObjectFifoCreateOp::sharedMemoryOf(
                                *targetModel, *prodPos, *consPos, delegatePos,
                                fb.linked) != SharedMemory::None) {
-        if (ci != 0)
+        if (ci != 0 || !heldLocks(fb.sharedDepth))
           continue;
         SmallVector<std::pair<TileID, bool>, 2> users;
-        if (isCore(types.producer))
+        if (fb.producerCore)
           users.push_back({*prodPos, false});
-        if (isCore(types.consumers[ci]))
+        if (fb.consumerCore[ci])
           users.push_back({*consPos, false});
         ++classes[users];
         continue;
       }
       if (!prodPool && !isShim(types.producer) && !fb.linkSharedProd &&
           fb.producerEnd) {
-        ++classes[{{*prodPos, false}, {*prodPos, isCore(types.producer)}}];
         prodPool = true;
+        if (heldLocks(fb.producerDepth)) {
+          SmallVector<std::pair<TileID, bool>, 2> users;
+          if (fb.producerCore)
+            users.push_back({*prodPos, false});
+          users.push_back({*prodPos, isCore(types.producer)});
+          ++classes[users];
+        }
       }
-      if (!isShim(types.consumers[ci]) && fb.consumerEnds[ci])
-        classes[{{*consPos, false}, {*consPos, isCore(types.consumers[ci])}}] +=
-            fb.consumerLockGroups;
+      if (!isShim(types.consumers[ci]) && fb.consumerEnds[ci] &&
+          !fb.unsynchronized) {
+        SmallVector<std::pair<TileID, bool>, 2> users;
+        if (fb.consumerCore[ci])
+          users.push_back({*consPos, false});
+        users.push_back({*consPos, isCore(types.consumers[ci])});
+        classes[users] += fb.consumerLockGroups;
+      }
     }
   }
   SmallVector<TileID> positions;
@@ -1836,6 +1858,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
   mlir::DataLayout dataLayout(device->getParentOfType<ModuleOp>());
 
   memTileEnds.clear();
+  PoolLocks poolLocks(device);
   llvm::StringMap<Operation *> delegates;
   for (auto alloc : device.getOps<ObjectFifoAllocateOp>())
     delegates[alloc.getObjFifoName()] = alloc.getDelegateTile().getDefiningOp();
@@ -1920,7 +1943,15 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     // A link output's producer objects are the link input's consumer pool.
     fb.linkSharedProd =
         link && llvm::is_contained(link->getOutputObjectFifos(), ofOp);
-    fb.synchronized = !ofOp.getDisableSynchronization();
+    fb.unsynchronized = ofOp.getDisableSynchronization();
+    if (auto init = ofOp.getInitValues())
+      fb.initObjects = init->size();
+    fb.rearmed = poolLocks.rearms().contains(ofOp.getSymName());
+    fb.producerCore = hasCoreAccess(device, ofOp.getProducerTile(), ofOp,
+                                    ObjectFifoPort::Produce);
+    for (Value tile : ofOp.getConsumerTiles())
+      fb.consumerCore.push_back(
+          hasCoreAccess(device, tile, ofOp, ObjectFifoPort::Consume));
     if (link && link->isDistribute() &&
         llvm::is_contained(link->getInputObjectFifos(), ofOp))
       fb.consumerLockGroups = link->getPoolSegments().size();
