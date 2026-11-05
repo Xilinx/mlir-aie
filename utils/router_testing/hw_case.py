@@ -10,6 +10,7 @@ switchbox configuration in ways that should or should not deadlock, and the
 output every run that completes has to produce.
 """
 
+from collections import Counter
 from dataclasses import dataclass
 
 import numpy as np
@@ -83,12 +84,13 @@ class HwCase:
         """
         problems = []
         for k, (got, want) in enumerate(zip(outputs, wants, strict=True)):
-            chunks = sorted(tuple(c) for c in got.reshape(-1, chunk))
-            want = sorted(tuple(p) for p in want)
+            chunks = Counter(tuple(c) for c in got.reshape(-1, chunk))
+            want = Counter(tuple(p) for p in want)
             if chunks != want:
-                missing = len(set(want) - set(chunks))
+                missing = (want - chunks).total()
+                unexpected = (chunks - want).total()
                 problems.append(
                     f"output {k}: packets differ from the expected set "
-                    f"({missing} missing)"
+                    f"({missing} missing, {unexpected} unexpected)"
                 )
         return problems
