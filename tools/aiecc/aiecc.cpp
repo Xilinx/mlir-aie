@@ -3250,7 +3250,7 @@ int main(int argc, char **argv) {
     }
     if (attempts.size() > 1 && unroutable())
       noPlacement = "aiecc: no placement with fewer cores a column routes "
-                    "either; placement 1's failure stands";
+                    "either";
   }
   // The SA placer estimates two things later passes measure: allocation walks
   // some mem tile pools whole, one buffer each, where the SA counts their
@@ -3339,7 +3339,7 @@ int main(int argc, char **argv) {
     if (fifos.empty() && !grew) {
       if (attempts.size() > 1)
         noPlacement = "aiecc: no placement with what allocation found counted "
-                      "fits either; placement 1's failure stands";
+                      "fits either";
       break;
     }
     std::vector<std::string> why;
@@ -3365,14 +3365,21 @@ int main(int argc, char **argv) {
                            llvm::join(saCoreDataSizes, ","));
     ran = placeAgain(std::move(placedWith), llvm::join(why, "; "));
   }
-  // The first placement stands when the others failed as it did; otherwise
-  // the last, which either succeeded or failed past what placing again fixes.
-  Attempt &standing = noPlacement ? attempts.front() : attempts.back();
+  // The first placement stands when attempts ran out failing where it did;
+  // otherwise the last, which got furthest, succeeded, or failed past what
+  // placing again fixes.
+  EdgeBase *firstFailed = attempts.front().engine->failedEdge;
+  EdgeBase *lastFailed = attempts.back().engine->failedEdge;
+  bool firstStands = noPlacement && firstFailed && lastFailed &&
+                     firstFailed->name == lastFailed->name;
+  Attempt &standing = firstStands ? attempts.front() : attempts.back();
   EdgeBase *standingFailed = standing.engine->failedEdge;
   if (attempts.size() > 1) {
     auto log = endProgressLine();
     if (noPlacement)
-      llvm::errs() << *noPlacement << "\n";
+      llvm::errs() << *noPlacement << "; placement "
+                   << (firstStands ? 1 : attempts.size())
+                   << "'s failure stands\n";
     else
       llvm::errs() << "aiecc: placement " << attempts.size() << " ("
                    << llvm::join(standing.placedWith, " ") << ") stands\n";
