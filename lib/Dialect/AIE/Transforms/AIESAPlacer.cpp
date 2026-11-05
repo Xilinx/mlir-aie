@@ -1485,11 +1485,13 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
       return;
     // The data region a core sets aside for its own sections is as much its
     // memory as the stack.
-    stackSizes[tileOp] = alignedBufferBytes(*targetModel, AIETileType::CoreTile,
-                                            coreOp.getEffectiveStackSize()) +
-                         alignedBufferBytes(*targetModel, AIETileType::CoreTile,
-                                            coreOp.getDataSize().value_or(
-                                                config.coreSectionsBytes));
+    stackSizes[tileOp] =
+        alignedBufferBytes(*targetModel, AIETileType::CoreTile,
+                           coreOp.getEffectiveStackSize()) +
+        alignedBufferBytes(
+            *targetModel, AIETileType::CoreTile,
+            coreOp.getDataSize().value_or(coreOp.getMeasuredDataSize().value_or(
+                config.coreSectionsBytes)));
   });
 
   // Build net model, fifo buffer info, and cascade groups
@@ -1541,9 +1543,9 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     // Compute buffer element size (producer side)
     auto fifoType = llvm::cast<AIEObjectFifoType>(ofOp.getElemType());
     auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
-    int64_t elementBits =
-        dataLayout.getTypeSizeInBits(elemType.getElementType());
-    int64_t producerBytes = elemType.getNumElements() * elementBits / 8;
+    int64_t producerBytes =
+        elemType.getNumElements() *
+        static_cast<int64_t>(dataLayout.getTypeSize(elemType.getElementType()));
     AIETileType prodType =
         fb.producer ? tileTypes.lookup(fb.producer) : AIETileType::CoreTile;
     fb.producerSizeBytes =
@@ -1554,9 +1556,9 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     if (auto consType = ofOp.getConsumerElemType()) {
       auto consOFType = llvm::cast<AIEObjectFifoType>(consType.value());
       auto consMemref = llvm::cast<MemRefType>(consOFType.getElementType());
-      int64_t consBits =
-          dataLayout.getTypeSizeInBits(consMemref.getElementType());
-      consumerBytes = consMemref.getNumElements() * consBits / 8;
+      consumerBytes = consMemref.getNumElements() *
+                      static_cast<int64_t>(
+                          dataLayout.getTypeSize(consMemref.getElementType()));
     }
     // One size serves every consumer, so align it for a core tile if any
     // consumer is one.
@@ -1584,10 +1586,10 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
       auto owner = cast<MemRefType>(
           cast<AIEObjectFifoType>(link.getPoolOwner().getElemType())
               .getElementType());
-      return alignedBufferBytes(
-          *targetModel, AIETileType::MemTile,
-          owner.getNumElements() *
-              dataLayout.getTypeSizeInBits(owner.getElementType()) / 8);
+      return alignedBufferBytes(*targetModel, AIETileType::MemTile,
+                                owner.getNumElements() *
+                                    static_cast<int64_t>(dataLayout.getTypeSize(
+                                        owner.getElementType())));
     };
     auto onMemTile = [&](Operation *tile) {
       return tile && tileTypes.lookup(tile) == AIETileType::MemTile;
