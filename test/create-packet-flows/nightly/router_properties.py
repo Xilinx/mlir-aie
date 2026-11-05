@@ -3306,9 +3306,10 @@ def priority_trees(d, cache, deadline=None):
     ]
     text = c.emit()
     if text not in cache:
-        p = aie_opt(text, hops_on=False, deadline=deadline)
-        if p.returncode == TIMEOUT:
-            raise RouterTimeout(f"routing the prioritized flows alone: {p.stderr}")
+        p = model_run(
+            aie_opt(text, hops_on=False, deadline=deadline),
+            "routing the prioritized flows alone",
+        )
         trees = None
         if p.returncode == 0:
             out, trees = load_design(p.stdout), defaultdict(dict)
@@ -5208,17 +5209,18 @@ def witness_problem(d, an, text, deadline=None):
     to exactly the requested flows; else what fails."""
     # With nothing left to route, the router only adds the wires find-flows
     # follows.
-    wired = aie_opt(text, strict=True, deadline=deadline)
-    if wired.returncode == TIMEOUT:
-        raise RouterTimeout(f"wiring a strict witness: {wired.stderr}")
+    wired = model_run(
+        aie_opt(text, strict=True, deadline=deadline), "wiring a strict witness"
+    )
     if wired.returncode:
         return "C++ verifier: " + first_error(wired.stderr)[:120]
     problems, stats = verify(d, an, text, hops_on=False)
     if problems or stats.get("shared_receiver_cycle") is not None:
         return "verify: " + (problems[0][:80] if problems else "shared-receiver cycle")
-    lifted = find_flows(wired.stdout, keep_partial=True, deadline=deadline)
-    if lifted.returncode == TIMEOUT:
-        raise RouterTimeout(f"lifting a strict witness: {lifted.stderr}")
+    lifted = model_run(
+        find_flows(wired.stdout, keep_partial=True, deadline=deadline),
+        "lifting a strict witness",
+    )
     if lifted.returncode:
         return "find-flows: " + first_error(lifted.stderr)[:120]
     got = load_design(lifted.stdout)
@@ -5876,8 +5878,37 @@ SPLIT = "\n// -----\n"
 ROUTE_TIMEOUT_S = 360
 
 
-class RouterTimeout(Exception):
-    """A router run the model relies on ran out of time, so it cannot say."""
+class ModelRunFailed(Exception):
+    """A run the model relies on gave no answer, so the model cannot say."""
+
+
+class RouterTimeout(ModelRunFailed):
+    outcome = "timeout"
+
+
+class RouterCrash(ModelRunFailed):
+    outcome = "crash"
+
+
+def model_run(p, what):
+    """`p`, a run the model relies on, if it answered.
+
+    Args:
+        p: The run's result.
+        what: What the run was for, to name it.
+
+    Returns:
+        `p`, whatever it decided.
+
+    Raises:
+        RouterTimeout: The run ran out of time.
+        RouterCrash: The run crashed.
+    """
+    if p.returncode == TIMEOUT:
+        raise RouterTimeout(f"{what}: {p.stderr}")
+    if p.returncode < 0:
+        raise RouterCrash(f"{what}: crash {first_error(p.stderr)[:200]}")
+    return p
 
 
 def find_flows(text, keep_partial=False, deadline=None):
@@ -6331,7 +6362,7 @@ def main(argv=None):
     for seed in range(first, first + PARAMS["routable"]):
         try:
             case = routable_case(seed, args.device)
-        except RouterTimeout:
+        except ModelRunFailed:
             case = None
         if case is None:
             gave_up += 1
@@ -6642,12 +6673,12 @@ def main(argv=None):
         f"hold cycle, {strict['shared']} fail on one, {strict['inherent']} fail "
         f"on flows that deadlock however they are routed)",
     )
-    misses, timed_out = [], []
+    misses, undecided = [], []
     for seed, c in sorted(strict_shared.items()):
         try:
             witness = strict_witness(c["design"], c["analysis"])
-        except RouterTimeout:
-            timed_out.append(seed)
+        except ModelRunFailed:
+            undecided.append(seed)
             continue
         if witness is not None:
             misses.append(seed)
@@ -6655,19 +6686,19 @@ def main(argv=None):
             save(c, "strict-witness", witness)
     for seed in misses[:10]:
         print(f"STRICT MISS: seed {seed}")
-    for seed in timed_out[:10]:
-        print(f"STRICT WITNESS TIMEOUT: seed {seed}")
+    for seed in undecided[:10]:
+        print(f"STRICT WITNESS UNDECIDED: seed {seed}")
     report(
         "strict-completeness",
-        not timed_out
+        not undecided
         and len(misses)
         <= PARAMS["max_strict_misses"] * totals["designs"]
         + PARAMS["strict_miss_allowance"],
         f"{len(misses)}/{len(strict_shared)} designs that fail without "
         f"allow-deadlock-prone on a shared-receiver hold cycle have a routing "
         f"without one (max {PARAMS['max_strict_misses']} per design + "
-        f"{PARAMS['strict_miss_allowance']}); {len(timed_out)} undecided, the "
-        f"router timed out",
+        f"{PARAMS['strict_miss_allowance']}); {len(undecided)} undecided, the "
+        f"router timed out or crashed",
     )
 
     for label, count in sorted(known.items()):

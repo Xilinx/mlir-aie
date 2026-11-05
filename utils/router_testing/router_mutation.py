@@ -767,8 +767,8 @@ def judge(e, expect, hops_on, seed, deadline=None):
     elif expect == "model":
         try:
             v = rp.verdict(e, hops_on, seed, deadline)
-        except rp.RouterTimeout as x:
-            return "timeout", f"model: {x}"
+        except rp.ModelRunFailed as x:
+            return x.outcome, f"model: {x}"
         except Exception as x:
             return "model-limit", f"verdict: {x!r}"
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
@@ -823,8 +823,8 @@ def judge_strict(e, expect, hops_on, s, deadline=None):
     if s.returncode:
         try:
             witness = rp.strict_witness(e, rp.Analysis(e), deadline=deadline)
-        except rp.RouterTimeout as x:
-            return "timeout", f"strict witness: {x}"
+        except rp.ModelRunFailed as x:
+            return x.outcome, f"strict witness: {x}"
         if witness is not None:
             return "strict-miss", "fails without allow-deadlock-prone, needlessly"
         return "ok", f"routed ({expect})"
@@ -1365,8 +1365,8 @@ def run_seed(seed, args):
     hops_on = not args.hops_off
     try:
         case = rp.generate(seed, device=args.device)
-    except rp.RouterTimeout as x:
-        return [("base", "timeout", "generate", str(x), None)]
+    except rp.ModelRunFailed as x:
+        return [("base", x.outcome, "generate", str(x), None)]
     except Exception:
         return [
             ("base", "model-limit", "generate", traceback.format_exc(limit=2), None)
@@ -1403,8 +1403,8 @@ def run_seed(seed, args):
             continue
         try:
             m = fn(random.Random(f"{seed}-{name}"), d, ctx)
-        except rp.RouterTimeout as x:
-            rows.append(("mutator", "timeout", name, str(x), d))
+        except rp.ModelRunFailed as x:
+            rows.append(("mutator", x.outcome, name, str(x), d))
             continue
         except Exception:
             rows.append(
@@ -1424,8 +1424,8 @@ def run_seed(seed, args):
             continue
         try:
             m = fn(random.Random(f"{seed}-{name}"), d, routed)
-        except rp.RouterTimeout as x:
-            rows.append(("relation", "timeout", name, str(x), d))
+        except rp.ModelRunFailed as x:
+            rows.append(("relation", x.outcome, name, str(x), d))
             continue
         except Exception:
             rows.append(
@@ -1449,8 +1449,8 @@ def run_seed(seed, args):
             moved = q.returncode and rp.priority_trees(d, trees) != rp.priority_trees(
                 e, trees
             )
-        except rp.RouterTimeout as x:
-            rows.append(("relation", "timeout", name, f"{what}: {x}", e))
+        except rp.ModelRunFailed as x:
+            rows.append(("relation", x.outcome, name, f"{what}: {x}", e))
             continue
         if moved:
             outcome, detail = judge(e, "model", hops_on, seed)
@@ -1475,8 +1475,8 @@ def run_seed(seed, args):
             continue
         try:
             bad = probs[0] if probs else (check(q.stdout) if check else None)
-        except rp.RouterTimeout as x:
-            rows.append(("relation", "timeout", name, f"{what}: {x}", e))
+        except rp.ModelRunFailed as x:
+            rows.append(("relation", x.outcome, name, f"{what}: {x}", e))
             continue
         same = name == "permute" and routing_key(q.stdout) == routing_key(routed)
         if bad:

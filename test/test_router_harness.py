@@ -301,6 +301,17 @@ def test_a_timeout_in_the_models_router_runs_is_a_timeout(priority):
     assert detail.startswith("model: routing the prioritized flows alone"), detail
 
 
+def test_a_crash_in_the_models_router_runs_is_a_crash():
+    nested = "module {" * 20000 + "}" * 20000
+    with pytest.raises(rp.RouterCrash):
+        rp.model_run(rp.aie_opt(nested), "a nested module")
+    d = rp.canonical(rp.load_design(SHARED))
+    with pytest.raises(rp.RouterCrash):
+        rp.witness_problem(d, rp.Analysis(d), nested)
+    for fn in (rp.priority_trees, rp.witness_problem):
+        assert "model_run" in code_names(fn.__code__), fn.__name__
+
+
 def test_a_strict_witness_timeout_is_no_strict_pass():
     d = rp.canonical(rp.load_design(SHARED))
     strict = rp.aie_opt(d.emit(), strict=True)
