@@ -113,7 +113,11 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
               /*default=*/"1.0",
               "Scales the SA placer's moves per temperature step and its "
               "greedy tail. Below 1.0 trades placement cost for compile "
-              "time.">];
+              "time.">,
+       ListOption<"clSAWalkedFifos", "sa-walked-fifos", "std::string",
+                  "ObjectFIFOs whose mem tile pools the SA placer counts as "
+                  "walked whole, one buffer each, as allocation lays out "
+                  "the pools a turn-sharing walk takes">];
 
   let statistics = [Statistic<"saFinalCost", "sa-final-cost",
                               "SA placer cost of the placement it kept">,

@@ -136,6 +136,11 @@ inline cl::opt<double> saEffort(
     cl::desc("Scale on the SA placer's search budget (1.0 = full; lower "
              "trades placement cost for compile time)"),
     cl::init(1.0));
+inline cl::list<std::string> saWalkedFifos(
+    "sa-walked-fifos", cl::CommaSeparated,
+    cl::desc("ObjectFIFOs whose mem tile pools the SA placer counts as "
+             "walked whole; aiecc adds those allocation finds no room for "
+             "when it places again"));
 inline cl::opt<int64_t> placementBudget(
     "placement-budget",
     cl::desc("Buffer placements aie-assign-buffer-addresses may try per tile "

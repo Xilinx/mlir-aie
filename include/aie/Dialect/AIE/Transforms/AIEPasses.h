@@ -34,6 +34,11 @@ inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
 inline constexpr llvm::StringLiteral kObjectFifoObjectSlotAttrName =
     "aie.objectfifo.object_slot";
 
+/// How `--aie-objectfifo-allocate` says a pool's buffers fit no memory its
+/// users reach; the diagnostic's symbol argument names the pool's objectFIFO.
+inline constexpr llvm::StringLiteral kNoBufferRoom =
+    "could not place buffers in accessible memory with available capacity";
+
 /// Whether `whileOp` repeats forever: its condition is a constant true, and its
 /// condition region does nothing but forward its arguments to the body. This is
 /// how IRON's `Worker` writes a core that runs until reconfiguration. Such a

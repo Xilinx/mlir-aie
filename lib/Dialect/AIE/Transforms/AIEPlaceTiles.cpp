@@ -92,6 +92,7 @@ struct AIEPlaceTilesPass
       }
       SAConfig config;
       config.effort = effort;
+      config.walkedFifos.assign(clSAWalkedFifos.begin(), clSAWalkedFifos.end());
       placer = saPlacer = std::make_shared<SAPlacer>(clSASeed, config);
       break;
     }

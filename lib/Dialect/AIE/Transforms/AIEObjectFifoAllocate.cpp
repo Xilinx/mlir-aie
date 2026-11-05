@@ -2302,9 +2302,10 @@ struct AIEObjectFifoAllocatePass
     if (failed(allocated)) {
       localPools.clear();
       if (failed(planBuffers(pools))) {
-        bufferFailure.emitOpError(
-            "could not place buffers in accessible memory with available "
-            "capacity");
+        InFlightDiagnostic error = bufferFailure.emitOpError(kNoBufferRoom);
+        if (std::optional<StringRef> fifo = bufferFailure.getFifoName())
+          error << " for objectFIFO "
+                << FlatSymbolRefAttr::get(device.getContext(), *fifo);
       } else if (failed(planLocks(pools))) {
         if (lockAccessFailure)
           lockAccessFailure->emitOpError("cannot access pool locks");

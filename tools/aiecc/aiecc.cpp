@@ -943,6 +943,9 @@ static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
 // empty to keep all.
 static // The edge that routes the placed design's flows.
     constexpr llvm::StringLiteral kRoutedEdge = "input_physical.mlir";
+// The edge that allocates the placed design's objectFIFOs.
+static constexpr llvm::StringLiteral kWithSymbolsEdge =
+    "input_with_symbols.mlir";
 
 std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                        std::vector<EdgeBase *> &cutEdges,
@@ -1068,14 +1071,15 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
               "placed.mlir",
               PassPipeline{getPlacementPipeline(
                   &context, coresPerCol.getValue(), placerType.getValue(),
-                  saSeed.getValue(), saEffort.getValue())})
+                  saSeed.getValue(), saEffort.getValue(),
+                  llvm::to_vector(saWalkedFifos))})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
   // Everything a core needs before it can be compiled: objectFifo lowering
   // (which creates buffers), lock and BD ids, and the core-body lowerings.
   // Buffer addresses are not among them; see the placement edge below.
   auto &withSymbols = traced.map<ModRef>(
-      "input_with_symbols.mlir",
+      kWithSymbolsEdge.str(),
       PassPipeline{
           &context,
           [dyn = dynamicObjFifos.getValue(), pkt = packetSwObjFifos.getValue(),
@@ -3109,10 +3113,13 @@ int main(int argc, char **argv) {
   bool mayPlaceAgain = placerType.getNumOccurrences() == 0 &&
                        coresPerCol.getNumOccurrences() == 0 &&
                        cutEdges.empty() && !resume.active;
+  bool mayWalkAgain = placerType == xilinx::AIE::PlacerType::SAPlacer &&
+                      saWalkedFifos.getNumOccurrences() == 0 &&
+                      cutEdges.empty() && !resume.active;
   // A repeated attempt runs every edge again, so it repeats every error but
   // those the placement caused; the first attempt's are held, and reported,
   // failed edge last, as an attempt reports them, unless a later one routes.
-  if (mayPlaceAgain) {
+  if (mayPlaceAgain || mayWalkAgain) {
     diagHandler.holdErrors();
     engine->opts.deferFailedEdge = true;
   }
@@ -3173,11 +3180,60 @@ int main(int argc, char **argv) {
     if (mlir::succeeded(ran))
       firstErrors.clear();
   }
+  // Allocation walks some mem tile pools whole, one buffer each, where the SA
+  // placer counts their objects apart; when such a pool finds no room, the SA
+  // places again counting it walked, until the buffers fit or allocation
+  // names only pools it already counts.
+  std::vector<std::unique_ptr<Graph>> unfitted;
+  std::vector<mlir::Diagnostic> laterErrors;
+  std::vector<mlir::Diagnostic> *errors = &firstErrors;
+  EdgeBase *lastFailed = firstFailed;
+  while (mlir::failed(ran) && mayWalkAgain && lastFailed &&
+         lastFailed->name == kWithSymbolsEdge) {
+    std::optional<std::string> fifo;
+    for (mlir::Diagnostic &error : *errors) {
+      if (!llvm::StringRef(error.str()).contains(xilinx::AIE::kNoBufferRoom))
+        continue;
+      for (mlir::DiagnosticArgument &arg : error.getArguments())
+        if (arg.getKind() ==
+            mlir::DiagnosticArgument::DiagnosticArgumentKind::Attribute)
+          if (auto name =
+                  llvm::dyn_cast<mlir::FlatSymbolRefAttr>(arg.getAsAttribute());
+              name && !llvm::is_contained(saWalkedFifos, name.getValue()))
+            fifo = name.getValue().str();
+    }
+    if (!fifo)
+      break;
+    saWalkedFifos.push_back(*fifo);
+    llvm::errs() << "aiecc: objectFIFO @" << *fifo
+                 << "'s buffers find no room; placing again with "
+                    "--sa-walked-fifos="
+                 << llvm::join(saWalkedFifos, ",") << "\n";
+    unfitted.push_back(std::move(graph));
+    graph = std::make_unique<Graph>();
+    checkEdges.clear();
+    outputs =
+        buildMainGraph(context, *graph, cutEdges, checkEdges,
+                       deviceCache ? &*deviceCache : nullptr, keptDevices);
+    engine = std::make_unique<Engine>(engineOptions);
+    engine->opts.deferFailedEdge = true;
+    diagHandler.holdErrors();
+    ran = engine->run(*graph, runOutputs, satisfied,
+                      DeserializeContext{&context}, buildAlso);
+    laterErrors = diagHandler.takeErrors();
+    errors = &laterErrors;
+    lastFailed = engine->failedEdge;
+  }
+  if (mlir::succeeded(ran))
+    firstErrors.clear();
   diagHandler.emitErrors(firstErrors);
   if (mlir::failed(ran) && !unrouted.empty())
     llvm::errs() << "aiecc: no placement with fewer cores a column routes "
                     "either; the errors above are the first placement's\n";
-  if (mlir::failed(ran) && mayPlaceAgain && firstFailed)
+  if (mlir::failed(ran) && !unfitted.empty())
+    llvm::errs() << "aiecc: no placement with those pools walked whole fits "
+                    "either; the errors above are the first placement's\n";
+  if (mlir::failed(ran) && (mayPlaceAgain || mayWalkAgain) && firstFailed)
     Engine::reportFailedEdge(firstFailed);
   if (mlir::failed(ran)) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed

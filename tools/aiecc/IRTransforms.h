@@ -1376,13 +1376,14 @@ inline std::optional<CanonicalCoreIR> canonicalizeCoreIR(llvm::StringRef ir) {
 inline std::unique_ptr<mlir::PassManager>
 getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
                      xilinx::AIE::PlacerType placerType, int saSeed,
-                     double saEffort) {
+                     double saEffort, llvm::ArrayRef<std::string> walkedFifos) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   xilinx::AIE::AIEPlaceTilesOptions opts;
   opts.clPlacerType = placerType;
   opts.clCoresPerCol = coresPerCol;
   opts.clSASeed = saSeed;
   opts.clSAEffort = saEffort;
+  opts.clSAWalkedFifos.assign(walkedFifos.begin(), walkedFifos.end());
   xilinx::AIEX::addPlacementStage(*pm, opts);
   return pm;
 }

@@ -738,6 +738,9 @@ struct SAConfig {
 
   // Acceptance tracking
   int windowSize = 100; // sliding window for acceptance ratio
+
+  // ObjectFIFOs whose mem tile pools allocation walked whole.
+  llvm::SmallVector<std::string> walkedFifos;
 };
 
 // SA temperature schedule with windowed acceptance tracking.
@@ -863,6 +866,8 @@ private:
     PlannedDmaEnd end;
   };
   llvm::MapVector<mlir::Operation *, llvm::SmallVector<MemTileEnd>> memTileEnds;
+  // The pools of memTileEnds that config.walkedFifos names.
+  llvm::DenseSet<mlir::Operation *> chargedPools;
 
   // Placement state
   llvm::DenseMap<mlir::Operation *, TileID> currentPlacement;
