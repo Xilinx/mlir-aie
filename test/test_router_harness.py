@@ -208,6 +208,19 @@ def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
     assert "id 3 from (0, 2) DMA:0" in detail
 
 
+def test_a_crash_retry_stops_by_the_deadline():
+    # Nested deeper than the parser's stack: a real crash, after a while.
+    nested = "module {" * 20000 + "}" * 20000
+    start = time.monotonic()
+    crashed = rp.aie_opt(nested)
+    assert crashed.returncode < 0 and crashed.returncode != rp.TIMEOUT
+    crash_s = (time.monotonic() - start) / 2
+    start = time.monotonic()
+    cut = rp.aie_opt(nested, deadline=start + 1.5 * crash_s)
+    assert cut.returncode == rp.TIMEOUT, cut.returncode
+    assert time.monotonic() - start < 1.75 * crash_s
+
+
 def test_a_router_timeout_is_not_called_a_crash(priority):
     d, _ = priority
     slow = rp.aie_opt(d.emit(), True, strict=True, deadline=time.monotonic())

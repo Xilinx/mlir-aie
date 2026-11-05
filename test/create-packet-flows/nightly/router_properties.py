@@ -5841,9 +5841,9 @@ def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=No
         The run's result, with returncode `TIMEOUT` if it ran out of time.
     """
     designs = text.count(SPLIT) + 1 if split else 1
-    timeout = ROUTE_TIMEOUT_S * designs
+    end = time.monotonic() + ROUTE_TIMEOUT_S * designs
     if deadline is not None:
-        timeout = max(0.0, min(timeout, deadline - time.monotonic()))
+        end = min(end, deadline)
     opts = [] if hops_on else ["circuit-switch-hops=false"]
     if not strict:
         opts.append("allow-deadlock-prone=true")
@@ -5854,6 +5854,7 @@ def aie_opt(text, hops_on=True, split=False, extra=(), strict=False, deadline=No
         + ["-"]
     )
     for _ in range(2):
+        timeout = max(0.0, end - time.monotonic())
         try:
             p = subprocess.run(
                 cmd, input=text, capture_output=True, text=True, timeout=timeout
