@@ -8,6 +8,7 @@
 import argparse
 import importlib.util
 import inspect
+import random
 import shutil
 import subprocess
 import sys
@@ -248,6 +249,21 @@ def test_every_judged_router_run_has_the_nightly_limit():
                 continue
             names = code_names(fn.__code__)
             assert not {"aie_opt", "subprocess"} & names, f"{module.__name__}.{name}"
+
+
+def test_shrinking_stops_a_judgement_at_its_budget():
+    seed = 207560359
+    d = rp.generate(seed, device="npu2")["design"]
+    ctx = {"shared": set(), "witness": lambda: None}
+    rng = random.Random(f"{seed}-port-cap")
+    _, e, expect = router_mutation.MUTATORS["port-cap"](rng, d, ctx)
+    start = time.monotonic()
+    _, finished = router_mutation.shrink_failure(
+        "mutator", "port-cap", (e, expect), True, seed, False, start + 5
+    )
+    assert not finished
+    # The router alone takes over a minute on this design.
+    assert time.monotonic() - start < 30
 
 
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():

@@ -746,7 +746,8 @@ def judge(e, expect, hops_on, seed, deadline=None):
     """Route `e` and hold the router to `expect`. Returns (outcome, detail),
     outcome one of ok, completeness, soundness, illegal, crash, known,
     model-limit, strict-miss (tallied, not failed: the properties ratchet it,
-    see max_strict_misses)."""
+    see max_strict_misses). Every router run stops by `deadline`, a
+    time.monotonic() value, if given."""
     why = must_reject(e)
     try:
         e = rp.canonical(e)
@@ -765,7 +766,7 @@ def judge(e, expect, hops_on, seed, deadline=None):
         expect = "reject"
     elif expect == "model":
         try:
-            v = rp.verdict(e, hops_on, seed)
+            v = rp.verdict(e, hops_on, seed, deadline)
         except Exception as x:
             return "model-limit", f"verdict: {x!r}"
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
@@ -804,20 +805,21 @@ def judge(e, expect, hops_on, seed, deadline=None):
             expect,
             hops_on,
             rp.route_design(e.emit(), hops_on, strict=True, deadline=deadline),
+            deadline,
         )
     return "ok", f"routed ({expect})"
 
 
-def judge_strict(e, expect, hops_on, s):
+def judge_strict(e, expect, hops_on, s, deadline=None):
     """Hold the router's run on canonical `e` without allow-deadlock-prone,
-    `s`, to what judge() holds its run with it to. Returns (outcome, detail)
-    as judge() does."""
+    `s`, to what judge() holds its run with it to, its router runs stopping by
+    `deadline` as judge()'s do. Returns (outcome, detail) as judge() does."""
     if s.returncode == rp.TIMEOUT:
         return "timeout", f"strict: {s.stderr}"
     if s.returncode < 0:
         return "crash", f"strict: {rp.first_error(s.stderr)[:300]}"
     if s.returncode:
-        if rp.strict_witness(e, rp.Analysis(e)) is not None:
+        if rp.strict_witness(e, rp.Analysis(e), deadline=deadline) is not None:
             return "strict-miss", "fails without allow-deadlock-prone, needlessly"
         return "ok", f"routed ({expect})"
     try:
@@ -1501,17 +1503,19 @@ def shrink_failure(kind, name, payload, hops_on, seed, verbose, deadline):
         # smaller design no longer has, so only the model can vouch for it.
         if expect == "route":
             expect = "model"
-            if judge(e, expect, hops_on, seed)[0] == "ok":
+            if judge(e, expect, hops_on, seed, deadline)[0] == "ok":
                 return e, True
             if time.monotonic() >= deadline:
                 return e, False
-        first, _ = judge(e, expect, hops_on, seed)
+        first, _ = judge(e, expect, hops_on, seed, deadline)
 
         def holds(x):
             try:
-                return judge(x, expect, hops_on, seed)[0] == first
+                outcome = judge(x, expect, hops_on, seed, deadline)[0]
             except Exception:
                 return False
+            # A judgement the deadline cut short shows nothing about `x`.
+            return outcome == first and time.monotonic() < deadline
 
         return shrinker.shrink(
             rp.canonical(e),

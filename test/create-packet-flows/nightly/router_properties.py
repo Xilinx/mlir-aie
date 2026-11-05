@@ -3288,7 +3288,7 @@ def pins_hops_fn(d, hops_on):
     return lambda tile: not hops_on or d.target.kind(tile) == "shim"
 
 
-def priority_trees(d, cache):
+def priority_trees(d, cache, deadline=None):
     """The trees from `d`'s prioritized sources, {source: trace_output ends},
     as the router routes the prioritized packets without the rest of the
     design: priority_route promises they keep that routing whatever else the
@@ -3306,7 +3306,7 @@ def priority_trees(d, cache):
     ]
     text = c.emit()
     if text not in cache:
-        p = route_design(text, hops_on=False)
+        p = route_design(text, hops_on=False, deadline=deadline)
         trees = None
         if p.returncode == 0:
             out, trees = load_design(p.stdout), defaultdict(dict)
@@ -3401,14 +3401,14 @@ def overlay_problems(out, alone):
     return problems
 
 
-def construct(d, seed, attempts=40):
+def construct(d, seed, attempts=40, deadline=None):
     """Route `d` on exclusive links and plan its arbiters with the router's
     rules, dropping streams until both hop modes accept the witness. Returns
     (construction, analysis, plan) or None; `d` is pruned in place."""
     cache = {}
     for attempt in range(attempts):
         con = Construction(d, random.Random(f"route-{seed}-{attempt}"))
-        pinned = priority_trees(d, cache)
+        pinned = priority_trees(d, cache, deadline)
         if pinned is None:
             prio = {s for f in d.packet_flows if f["priority"] for s in f["srcs"]}
             blame = [st for st in requested_streams(d) if st.src in prio]
@@ -4787,7 +4787,7 @@ def generate(seed, params=None, device="npu2", tier="routable"):
     }[tier](seed, device)
 
 
-def verdict(d, hops_on=True, seed=0):
+def verdict(d, hops_on=True, seed=0, deadline=None):
     """What the model says about routing `d`: routable True (the generator
     found a witness), False (the router's pre-routing check rejects it, with
     its exact reason), or None; and every pair of requested streams that can
@@ -4812,7 +4812,7 @@ def verdict(d, hops_on=True, seed=0):
         return out
     c = d.copy()
     before = design_signature(c)
-    built = construct(c, seed)
+    built = construct(c, seed, deadline=deadline)
     if built is not None and design_signature(c) == before:
         out["routable"] = True
         out["witness"] = built[0].solution()
@@ -5200,19 +5200,19 @@ def lower_witness(d, con, plan):
     return out.emit()
 
 
-def witness_problem(d, an, text):
+def witness_problem(d, an, text, deadline=None):
     """None if the lowered routing `text` of `d` passes the C++ verifier,
     verify() with no shared-receiver cycle, and --aie-find-flows lifts it back
     to exactly the requested flows; else what fails."""
     # With nothing left to route, the router only adds the wires find-flows
     # follows.
-    wired = route_design(text, strict=True)
+    wired = route_design(text, strict=True, deadline=deadline)
     if wired.returncode:
         return "C++ verifier: " + first_error(wired.stderr)[:120]
     problems, stats = verify(d, an, text, hops_on=False)
     if problems or stats.get("shared_receiver_cycle") is not None:
         return "verify: " + (problems[0][:80] if problems else "shared-receiver cycle")
-    lifted = find_flows(wired.stdout, keep_partial=True)
+    lifted = find_flows(wired.stdout, keep_partial=True, deadline=deadline)
     if lifted.returncode:
         return "find-flows: " + first_error(lifted.stderr)[:120]
     got = load_design(lifted.stdout)
@@ -5238,7 +5238,7 @@ def witness_problem(d, an, text):
     return None
 
 
-def strict_witness(d, an, witnesses=2, tries=10):
+def strict_witness(d, an, witnesses=2, tries=10, deadline=None):
     """A routing of `d` with no shared-receiver hold cycle, lowered to
     switchbox configuration, or None if the search found none."""
     if not shared_receiver_pairs(d):
@@ -5246,7 +5246,7 @@ def strict_witness(d, an, witnesses=2, tries=10):
     for w in range(witnesses):
         c = d.copy()
         before = design_signature(c)
-        built = construct(c, w)
+        built = construct(c, w, deadline=deadline)
         if built is None or design_signature(c) != before:
             continue
         for k in range(tries):
@@ -5262,7 +5262,7 @@ def strict_witness(d, an, witnesses=2, tries=10):
             if plan["reason"] is not None or plan["shared_receiver_cycle"] is not None:
                 continue
             text = lower_witness(d, search.con, plan)
-            if text is not None and witness_problem(d, an, text) is None:
+            if text is not None and witness_problem(d, an, text, deadline) is None:
                 return text
     return None
 
