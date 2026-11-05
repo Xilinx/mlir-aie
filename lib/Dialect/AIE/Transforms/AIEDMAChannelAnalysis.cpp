@@ -9,6 +9,12 @@
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/DenseSet.h"
+
+#include <functional>
+#include <numeric>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -110,9 +116,10 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 
 int DMAChannelAnalysis::getDMAChannelLimit(
     TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
+  // The switchbox direction is reversed relative to the DMA direction.
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
-                          ? tile.getNumSourceConnections(WireBundle::DMA)
-                          : tile.getNumDestConnections(WireBundle::DMA);
+                          ? tile.getNumDestConnections(WireBundle::DMA)
+                          : tile.getNumSourceConnections(WireBundle::DMA);
 
   if (!requiresAdjacentTileAccessChannels)
     return maxChannelNum;
@@ -204,4 +211,161 @@ LogicalResult DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile,
                  "one circuit or only packet flows";
   diag.attachNote(it->second.owner->getLoc()) << "the other stream is here";
   return diag;
+}
+
+std::optional<SmallVector<int>>
+DMAChannelAnalysis::planBDChannels(const AIETargetModel &target, int col,
+                                   int row, ArrayRef<BDPlanEnd> ends,
+                                   function_ref<bool(DMAChannelDir, int)> free,
+                                   function_ref<int64_t(int)> spent) {
+  uint32_t numBDs = target.getNumBDs(col, row);
+  int numChannels = std::max(
+      target.getNumSourceSwitchboxConnections(col, row, WireBundle::DMA),
+      target.getNumDestSwitchboxConnections(col, row, WireBundle::DMA));
+
+  // Channels whose BD ids overlap at all share one pool of ids, as bdRoom in
+  // aie-objectfifo-allocate counts them.
+  struct Group {
+    llvm::BitVector ids;
+    SmallVector<int> channels;
+    int64_t room = 0;
+  };
+  SmallVector<Group> groups;
+  for (int channel = 0; channel < numChannels; ++channel) {
+    llvm::BitVector ids(numBDs);
+    for (uint32_t bd = 0; bd < numBDs; ++bd)
+      if (target.isBdChannelAccessible(col, row, bd, channel))
+        ids.set(bd);
+    Group merged{ids, {channel}};
+    for (auto *it = groups.begin(); it != groups.end();) {
+      if (!it->ids.anyCommon(merged.ids)) {
+        ++it;
+        continue;
+      }
+      merged.ids |= it->ids;
+      llvm::append_range(merged.channels, it->channels);
+      it = groups.erase(it);
+    }
+    groups.push_back(std::move(merged));
+  }
+  for (Group &group : groups) {
+    llvm::sort(group.channels);
+    group.room = group.ids.count();
+    for (int channel : group.channels)
+      group.room -= spent(channel);
+  }
+
+  // Each end goes to a group, the most demanding first; a choice stands when
+  // every group's ends fit its ids and, within a direction, take distinct free
+  // channels below their bounds: the tightest bound first, each the lowest
+  // channel left, which finds a matching whenever one exists since the
+  // allowed channels of any two ends nest.
+  SmallVector<unsigned> order(ends.size());
+  std::iota(order.begin(), order.end(), 0);
+  auto shape = [&](unsigned end) {
+    return std::make_tuple(-ends[end].bds, static_cast<int>(ends[end].dir),
+                           ends[end].limit);
+  };
+  llvm::stable_sort(
+      order, [&](unsigned a, unsigned b) { return shape(a) < shape(b); });
+  SmallVector<unsigned> groupOf(ends.size());
+  SmallVector<int> channelOf(ends.size(), -1);
+  auto match = [&]() {
+    SmallVector<unsigned> byBound(ends.size());
+    std::iota(byBound.begin(), byBound.end(), 0);
+    llvm::stable_sort(byBound, [&](unsigned a, unsigned b) {
+      return ends[a].limit < ends[b].limit;
+    });
+    llvm::DenseSet<std::pair<int, int>> taken;
+    for (unsigned end : byBound) {
+      channelOf[end] = -1;
+      for (int channel : groups[groupOf[end]].channels) {
+        int dir = static_cast<int>(ends[end].dir);
+        if (channel < ends[end].limit && free(ends[end].dir, channel) &&
+            taken.insert({dir, channel}).second) {
+          channelOf[end] = channel;
+          break;
+        }
+      }
+      if (channelOf[end] < 0)
+        return false;
+    }
+    return true;
+  };
+  // Within a group and direction, ends take distinct free channels below
+  // their bounds, which nest; so they fit exactly when, for every bound, no
+  // more of them have that bound or a tighter one than free channels lie below
+  // it. Checked as ends are placed, every completed choice matches, and no
+  // group ever holds more ends than it has channels.
+  SmallVector<int> bounds;
+  for (const BDPlanEnd &end : ends)
+    bounds.push_back(end.limit);
+  llvm::sort(bounds);
+  bounds.erase(llvm::unique(bounds), bounds.end());
+  size_t slots = 2 * bounds.size();
+  SmallVector<int64_t> below(groups.size() * slots, 0);
+  for (auto [g, group] : llvm::enumerate(groups))
+    for (DMAChannelDir dir : {DMAChannelDir::S2MM, DMAChannelDir::MM2S})
+      for (auto [i, bound] : llvm::enumerate(bounds))
+        for (int channel : group.channels)
+          below[g * slots + static_cast<int>(dir) * bounds.size() + i] +=
+              channel < bound && free(dir, channel);
+  SmallVector<int64_t> held(groups.size() * slots, 0);
+  auto fits = [&](unsigned g, DMAChannelDir dir) {
+    size_t base = g * slots + static_cast<int>(dir) * bounds.size();
+    int64_t tighter = 0;
+    for (size_t i = 0; i < bounds.size(); ++i) {
+      tighter += held[base + i];
+      if (tighter > below[base + i])
+        return false;
+    }
+    return true;
+  };
+  // Over every group at once, too many ends of a direction and bound fail
+  // before any is placed.
+  for (DMAChannelDir dir : {DMAChannelDir::S2MM, DMAChannelDir::MM2S}) {
+    int64_t tighter = 0;
+    for (size_t i = 0; i < bounds.size(); ++i) {
+      int64_t room = 0;
+      for (size_t g = 0; g < groups.size(); ++g)
+        room += below[g * slots + static_cast<int>(dir) * bounds.size() + i];
+      tighter += llvm::count_if(ends, [&](const BDPlanEnd &end) {
+        return end.dir == dir && end.limit == bounds[i];
+      });
+      if (tighter > room)
+        return std::nullopt;
+    }
+  }
+  // Ends of one shape are interchangeable, so each takes a group no lower
+  // than the one before it of its shape.
+  std::function<bool(size_t)> place = [&](size_t next) {
+    if (next == order.size())
+      return match();
+    unsigned end = order[next];
+    size_t slot = static_cast<int>(ends[end].dir) * bounds.size() +
+                  (llvm::lower_bound(bounds, ends[end].limit) - bounds.begin());
+    unsigned first = next > 0 && shape(order[next - 1]) == shape(end)
+                         ? groupOf[order[next - 1]]
+                         : 0;
+    for (unsigned g = first; g < groups.size(); ++g) {
+      if (groups[g].room < ends[end].bds)
+        continue;
+      ++held[g * slots + slot];
+      if (fits(g, ends[end].dir)) {
+        groupOf[end] = g;
+        groups[g].room -= ends[end].bds;
+        bool placed = place(next + 1);
+        groups[g].room += ends[end].bds;
+        if (placed) {
+          --held[g * slots + slot];
+          return true;
+        }
+      }
+      --held[g * slots + slot];
+    }
+    return false;
+  };
+  if (!place(0))
+    return std::nullopt;
+  return channelOf;
 }

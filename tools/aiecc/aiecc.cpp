@@ -44,6 +44,7 @@
 
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
 #include "aie/InitialAllDialect.h"
@@ -135,6 +136,13 @@ public:
         held.push_back(std::move(diag));
         return;
       }
+      if (diag.getSeverity() == mlir::DiagnosticSeverity::Error) {
+        std::lock_guard<std::mutex> lock(heldMutex);
+        if (holdingErrors) {
+          heldErrors.push_back(std::move(diag));
+          return;
+        }
+      }
       auto log = endProgressLine();
       mlir::Diagnostic named = nameAfterDesign(diag, isVerbose);
       emitDiagnostic(named);
@@ -152,10 +160,34 @@ public:
     held.clear();
   }
 
+  /// Hold back errors from now on, for an attempt that may be repeated.
+  void holdErrors() {
+    std::lock_guard<std::mutex> lock(heldMutex);
+    holdingErrors = true;
+  }
+
+  /// Stop holding errors and hand back those held.
+  std::vector<mlir::Diagnostic> takeErrors() {
+    std::lock_guard<std::mutex> lock(heldMutex);
+    holdingErrors = false;
+    return std::exchange(heldErrors, {});
+  }
+
+  /// Print `errors`, held back earlier.
+  void emitErrors(std::vector<mlir::Diagnostic> &errors) {
+    auto log = endProgressLine();
+    for (mlir::Diagnostic &diag : errors) {
+      mlir::Diagnostic named = nameAfterDesign(diag, isVerbose);
+      emitDiagnostic(named);
+    }
+  }
+
 private:
   bool isVerbose;
   std::mutex heldMutex;
   std::vector<mlir::Diagnostic> held;
+  bool holdingErrors = false;
+  std::vector<mlir::Diagnostic> heldErrors;
 };
 
 // Defined here rather than in CommandLineOptions.h: __DATE__/__TIME__ need
@@ -909,11 +941,14 @@ static llvm::StringSet<> devicesReachedFrom(mlir::ModuleOp module,
 // `cache` is --device-cache, which the graph uses only when this build's
 // outputs allow it. `keptDevices` are the devices --device-name keeps, or
 // empty to keep all.
-static std::vector<EdgeBase *>
-buildMainGraph(mlir::MLIRContext &context, Graph &g,
-               std::vector<EdgeBase *> &cutEdges,
-               std::vector<EdgeBase *> &checkEdges, DeviceCache *cache,
-               llvm::StringSet<> keptDevices) {
+static // The edge that routes the placed design's flows.
+    constexpr llvm::StringLiteral kRoutedEdge = "input_physical.mlir";
+
+std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
+                                       std::vector<EdgeBase *> &cutEdges,
+                                       std::vector<EdgeBase *> &checkEdges,
+                                       DeviceCache *cache,
+                                       llvm::StringSet<> keptDevices) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -1064,7 +1099,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       });
 
   auto &routed = withSymbols.map<ModRef>(
-      "input_physical.mlir", PassPipeline{getRoutingPipeline(&context)});
+      kRoutedEdge.str(), PassPipeline{getRoutingPipeline(&context)});
 
   // The device cache's key and every compile or link of a core read the files
   // the cores link; all of them are downstream of this view.
@@ -2981,9 +3016,9 @@ int main(int argc, char **argv) {
       keptDevices = devicesReachedFrom(*input, deviceName);
     }
   }
-  std::vector<EdgeBase *> outputs = buildMainGraph(
-      context, g, cutEdges, checkEdges, deviceCache ? &*deviceCache : nullptr,
-      std::move(keptDevices));
+  std::vector<EdgeBase *> outputs =
+      buildMainGraph(context, g, cutEdges, checkEdges,
+                     deviceCache ? &*deviceCache : nullptr, keptDevices);
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file
@@ -3054,10 +3089,13 @@ int main(int argc, char **argv) {
   // Progress is on by default; --no-progress turns it off, and --verbose
   // (line-per-edge logging) takes precedence over the single-line display.
   bool showProgress = !noProgress && !verbose;
-  Engine engine({outputDir, getWorkDir(), verbose, showProgress,
-                 keepIntermediates, numThreads, profile,
-                 enableRepeaterScripts && !disableRepeaterScripts, profileJson,
-                 processStart});
+  Engine::Options engineOptions{
+      outputDir,         getWorkDir(),
+      verbose,           showProgress,
+      keepIntermediates, numThreads,
+      profile,           enableRepeaterScripts && !disableRepeaterScripts,
+      profileJson,       processStart};
+  auto engine = std::make_unique<Engine>(engineOptions);
   // --cut stops the build at the cut point: only the prefix up to the cut
   // edges is produced (as work-dir intermediates) and snapshotted by
   // --checkpoint; the requested final artifacts are NOT built here (the
@@ -3068,17 +3106,90 @@ int main(int argc, char **argv) {
       cutEdges.empty() ? outputs : noOutputs;
   const std::vector<EdgeBase *> &buildAlso =
       cutEdges.empty() ? checkEdges : cutEdges;
-  if (mlir::failed(engine.run(g, runOutputs, satisfied,
-                              DeserializeContext{&context}, buildAlso))) {
+  bool mayPlaceAgain = placerType.getNumOccurrences() == 0 &&
+                       coresPerCol.getNumOccurrences() == 0 &&
+                       cutEdges.empty() && !resume.active;
+  // A repeated attempt runs every edge again, so it repeats every error but
+  // those the placement caused; the first attempt's are held, and reported,
+  // failed edge last, as an attempt reports them, unless a later one routes.
+  if (mayPlaceAgain) {
+    diagHandler.holdErrors();
+    engine->opts.deferFailedEdge = true;
+  }
+  mlir::LogicalResult ran = engine->run(
+      g, runOutputs, satisfied, DeserializeContext{&context}, buildAlso);
+  std::vector<mlir::Diagnostic> firstErrors = diagHandler.takeErrors();
+  EdgeBase *firstFailed = engine->failedEdge;
+  // The sequential placer fills each column with cores and has no model of
+  // the links between columns, so its placement can leave flows the router
+  // cannot fit where one with fewer cores a column routes. Unless the
+  // command line chose the placement, a design with cores to place is placed
+  // again with fewer cores a column until the router fits the flows.
+  std::vector<std::unique_ptr<Graph>> unrouted;
+  bool unroutable = llvm::any_of(firstErrors, [](mlir::Diagnostic &error) {
+    return llvm::StringRef(error.str())
+        .starts_with(xilinx::AIE::kNoLegalRouting);
+  });
+  if (mlir::failed(ran) && mayPlaceAgain && unroutable && firstFailed &&
+      firstFailed->name == kRoutedEdge) {
+    int coreRows = 0;
+    if (mlir::OwningOpRef<mlir::ModuleOp> input =
+            parseModuleFromFile(getInputFilename(), &context))
+      input->walk([&](DeviceOp device) {
+        bool placesCores = llvm::any_of(
+            device.getOps<xilinx::AIE::LogicalTileOp>(),
+            [](xilinx::AIE::LogicalTileOp tile) {
+              return tile.getTileType() == xilinx::AIE::AIETileType::CoreTile;
+            });
+        if (!placesCores)
+          return;
+        const xilinx::AIE::AIETargetModel &target = device.getTargetModel();
+        for (int col = 0; col < target.columns(); ++col) {
+          int rows = 0;
+          for (int row = 0; row < target.rows(); ++row)
+            rows += target.getTileType(col, row) ==
+                    xilinx::AIE::AIETileType::CoreTile;
+          coreRows = std::max(coreRows, rows);
+        }
+      });
+    for (int cores = coreRows - 1; mlir::failed(ran) && cores > 0; --cores) {
+      llvm::errs() << "aiecc: the placement does not route; placing again "
+                      "with --cores-per-col="
+                   << cores << "\n";
+      coresPerCol = cores;
+      unrouted.push_back(std::move(graph));
+      graph = std::make_unique<Graph>();
+      checkEdges.clear();
+      outputs =
+          buildMainGraph(context, *graph, cutEdges, checkEdges,
+                         deviceCache ? &*deviceCache : nullptr, keptDevices);
+      engine = std::make_unique<Engine>(engineOptions);
+      engine->opts.deferFailedEdge = true;
+      diagHandler.holdErrors();
+      ran = engine->run(*graph, runOutputs, satisfied,
+                        DeserializeContext{&context}, buildAlso);
+      (void)diagHandler.takeErrors();
+    }
+    if (mlir::succeeded(ran))
+      firstErrors.clear();
+  }
+  diagHandler.emitErrors(firstErrors);
+  if (mlir::failed(ran) && !unrouted.empty())
+    llvm::errs() << "aiecc: no placement with fewer cores a column routes "
+                    "either; the errors above are the first placement's\n";
+  if (mlir::failed(ran) && mayPlaceAgain && firstFailed)
+    Engine::reportFailedEdge(firstFailed);
+  if (mlir::failed(ran)) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and
     // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.
-    if (enableRepeaterScripts && !disableRepeaterScripts && engine.failedEdge) {
+    if (enableRepeaterScripts && !disableRepeaterScripts &&
+        engine->failedEdge) {
       std::string dir = repeaterOutputDir.empty()
                             ? getWorkDir() + "/repeater"
                             : repeaterOutputDir.getValue();
       std::vector<EdgeBase *> frontierEdges;
-      for (NodeBase *n : engine.failedEdge->inputNodes()) {
+      for (NodeBase *n : engine->failedEdge->inputNodes()) {
         if (n && n->producer) {
           frontierEdges.push_back(n->producer);
         }
@@ -3086,7 +3197,7 @@ int main(int argc, char **argv) {
       // Record argv that rebuilds this graph, narrowed to the failed edge so a
       // resume reloads its inputs and re-runs only it.
       std::vector<std::string> reproArgv = graphArgv;
-      reproArgv.push_back("--get=" + engine.failedEdge->name);
+      reproArgv.push_back("--get=" + engine->failedEdge->name);
       writeCheckpoint(frontierEdges, dir, reproArgv);
       llvm::errs() << "aiecc: To reproduce, run: aiecc --resume=" << dir
                    << "/manifest.json\n";
@@ -3121,5 +3232,7 @@ int main(int argc, char **argv) {
   // The graph still holds every module it built; freeing them op by op takes
   // over a second on a large design, and the process is about to exit.
   llvm::BuryPointer(std::move(graph));
+  for (std::unique_ptr<Graph> &tried : unrouted)
+    llvm::BuryPointer(std::move(tried));
   return 0;
 }

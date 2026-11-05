@@ -31,6 +31,7 @@ aie.device(npu1) {
       aie.end
     } {issue_token = true}
     aiex.dma_start_task(%t)
+    aiex.dma_await_task(%init)
     aiex.dma_free_task(%init)
     aiex.dma_await_task(%t)
     aiex.dma_free_task(%t)

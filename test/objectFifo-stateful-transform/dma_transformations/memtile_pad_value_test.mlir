@@ -33,8 +33,8 @@ module {
       aie.objectfifo.release @objFifo_out1 (Produce, 1)
       aie.end
     }
-    aie.runtime_sequence(%arg0: memref<61x56xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 61, 56][0, 0, 56, 1]) {id = 0 : i64, metadata = @objFifo_in0} : memref<61x56xi8>
+    aie.runtime_sequence(%arg0: memref<64x64xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 0 : i64, metadata = @objFifo_in0} : memref<64x64xi8>
       aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<64x64xi8>
       aiex.npu.dma_wait { symbol = @objFifo_out0 }
     }

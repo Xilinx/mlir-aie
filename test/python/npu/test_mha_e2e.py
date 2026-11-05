@@ -20,10 +20,6 @@ On AIE2 mha.cc evaluates a cubic instead, and the weights are held to
 ``kernels.mha_softmax``'s tolerance. With ``accurate_exp2`` both take the same
 polynomial and are held to one ulp. Each parametrized configuration is the
 only one that catches some mask or carry bug.
-
-Not covered: a key block that is all padding inside the causal region.
-``partial_softmax`` returns early there and leaves the previous correction
-factor in ``scale_buffer``; that is existing kernel behaviour, not frozen here.
 """
 
 import itertools

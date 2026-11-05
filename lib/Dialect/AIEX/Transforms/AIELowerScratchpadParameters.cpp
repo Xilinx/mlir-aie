@@ -57,23 +57,6 @@ static bool shouldEmitParameterSyncPreamble(CoreOp coreOp) {
   return found.wasInterrupted();
 }
 
-// Warned here, not at NPU lowering, which inlines a sequence at every call
-// site and so would warn once per call.
-static void warnIfRuntimeOffsetMayRound(Operation *op, Type bufType) {
-  uint32_t elemBytes =
-      llvm::cast<BaseMemRefType>(bufType).getElementTypeBitWidth() / 8;
-  if (elemBytes == 0 || elemBytes % 4 == 0) {
-    return;
-  }
-  mlir::emitWarning(op->getLoc())
-      << "runtime offset parameter on a " << (elemBytes * 8)
-      << "-bit element type: the firmware masks the BD address register with "
-         "0xFFFFFFFC, so a value that is not a multiple of "
-      << (4 / std::gcd(4u, elemBytes))
-      << " elements is silently rounded down to the 4-byte boundary below "
-         "instead of being rejected";
-}
-
 /// A DMA with runtime offset `o` and length `l` touches elements
 /// [offset + o, last + o + lengthStep * l].
 struct TransferExtent {
@@ -946,6 +929,11 @@ struct AIELowerScratchpadParametersPass
     // (length, offset, length step) -> max of offset + length step * length.
     llvm::MapVector<std::tuple<StringRef, StringRef, int64_t>, int64_t>
         jointBounds;
+    // Each offset parameter's element step: the firmware clears the low two
+    // bits of the register it adds an offset into, so an offset moves in 4
+    // bytes on a shim (bytes) or core tile (words, from bit 14), and in 16 on a
+    // mem tile (words, from bit 0); a tile not known takes the 16.
+    DenseMap<StringRef, int64_t> offsetMultiples;
     auto rewriteParams =
         [&](Operation *op, FlatSymbolRefAttr offsetRef,
             FlatSymbolRefAttr lengthRef, Type bufType,
@@ -957,7 +945,28 @@ struct AIELowerScratchpadParametersPass
         if (failed(rewriteParam(op, offsetRef, "offset_parameter",
                                 "offset_state_table_idx")))
           return failure();
-        warnIfRuntimeOffsetMayRound(op, bufType);
+        uint32_t elemBytes =
+            llvm::cast<BaseMemRefType>(bufType).getElementTypeBitWidth() / 8;
+        TileLike tile;
+        if (auto task = op->getParentOfType<DMAConfigureTaskOp>()) {
+          tile = task.getTileLike();
+        } else if (auto task = op->getParentOfType<DMAConfigureTaskForOp>()) {
+          Operation *named = SymbolTable::lookupNearestSymbolFrom(
+              task, task.getAlloc().getRootReference());
+          if (auto alloc = dyn_cast_or_null<AIE::ShimDMAAllocationOp>(named))
+            tile = alloc.getTile().getDefiningOp<TileLike>();
+          else if (auto end = dyn_cast_or_null<AIE::RouteEndpoint>(named))
+            tile = end.getTile().getDefiningOp<TileLike>();
+        }
+        uint32_t step =
+            isa<NpuDmaMemcpyNdOp>(op) || (tile && !tile.isMemTile()) ? 4 : 16;
+        if (elemBytes && elemBytes % step) {
+          int64_t &multiple =
+              offsetMultiples.try_emplace(offsetRef.getValue(), 1)
+                  .first->second;
+          multiple =
+              std::lcm<int64_t>(multiple, step / std::gcd(step, elemBytes));
+        }
         auto &[lo, hi] =
             bounds.try_emplace(offsetRef.getValue(), INT32_MIN, INT32_MAX)
                 .first->second;
@@ -1068,6 +1077,9 @@ struct AIELowerScratchpadParametersPass
       p.setMinValueAttr(builder.getI32IntegerAttr(it->second.first));
       p.setMaxValueAttr(builder.getI32IntegerAttr(it->second.second));
     }
+    for (ScratchpadParameterOp p : allParams)
+      if (int64_t multiple = offsetMultiples.lookup(p.getSymName()))
+        p.setOffsetMultipleAttr(builder.getI32IntegerAttr(multiple));
     llvm::MapVector<StringRef, SmallVector<Attribute>> jointBoundAttrs;
     for (auto [key, max] : jointBounds) {
       auto [length, offset, step] = key;

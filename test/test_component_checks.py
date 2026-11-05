@@ -569,7 +569,10 @@ def test_mutation_failures_name_the_first_seed_of_each_kind(tmp_path):
         {"seed": 15, "kind": "mutator", "name": "fanout", "outcome": "illegal"},
         {"seed": 15, "kind": "kill", "name": "amsel", "outcome": "survived"},
         {"seed": 20, "kind": "base", "name": "", "outcome": "base-fails"},
+        {"seed": 21, "kind": "mutator", "name": "pin-config", "outcome": "timeout"},
     ]
+    for f in failures:
+        f["detail"] = "timeout after 120s" if f["outcome"] == "timeout" else "x"
     report.write_text(
         json.dumps(
             {
@@ -589,11 +592,17 @@ def test_mutation_failures_name_the_first_seed_of_each_kind(tmp_path):
         "npu2/hops-off/seed=12+1/mutator fanout illegal",
         "npu2/hops-off/seed=15+1/kill amsel survived",
         "npu2/hops-off/seed=20+1/base base-fails",
+        "npu2/hops-off/seed=21+1/mutator pin-config timeout",
     ]
     assert rows == {
-        "npu2/failed_mutations": (4, "cases"),
+        "npu2/failed_mutations": (5, "cases"),
         "npu2/survived_corruptions": (1, "corruptions"),
     }
+    # A timeout reads as one in the published record, not as a crash.
+    assert (
+        "seed 21 mutator pin-config timeout: timeout after 120s"
+        in meta["detail"][0]["why"]
+    )
 
 
 def test_the_allocator_report_is_one_case_named_by_its_failed_properties(tmp_path):

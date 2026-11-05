@@ -179,6 +179,38 @@ def test_the_model_rejects_a_mark_no_priority_flow_takes(priority):
     assert "ctrl masterset South:2 at (0, 0) carries no priority flow" in problems
 
 
+def test_the_mutation_nightly_verifies_a_strict_routing_too(priority):
+    d, _ = priority
+    strict = rp.aie_opt(d.emit(), True, strict=True)
+    assert strict.returncode == 0, strict.stderr
+    assert router_mutation.judge_strict(d, "route", True, strict)[0] == "ok"
+    # The shim mux no longer takes id 3 down to its DMA channel.
+    cut = strict.stdout.replace("aie.connect<North : 2, DMA : 0>", "")
+    assert cut != strict.stdout
+    broken = subprocess.CompletedProcess(strict.args, 0, cut, strict.stderr)
+    outcome, detail = router_mutation.judge_strict(d, "route", True, broken)
+    assert outcome == "illegal", detail
+    assert "id 3 from (0, 2) DMA:0" in detail
+
+
+def test_a_router_timeout_is_not_called_a_crash(priority):
+    d, _ = priority
+    slow = rp.aie_opt(d.emit(), True, strict=True, timeout=1e-6)
+    assert slow.returncode == rp.TIMEOUT
+    outcome, detail = router_mutation.judge_strict(d, "route", True, slow)
+    assert outcome == "timeout", detail
+
+
+def test_a_timeout_on_a_design_the_verifier_rejects_is_a_timeout():
+    d = rp.load_design(PRIORITY)
+    d.packet_flows.append(d.packet_flows[-1])
+    assert router_mutation.must_reject(d) == "a packet flow twice"
+    with pytest.raises(Exception, match="duplicates an earlier packet flow"):
+        rp.canonical(d)
+    outcome, detail = router_mutation.judge(d, "route", True, 0, timeout=1e-6)
+    assert outcome == "timeout", detail
+
+
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():
     d = rp.load_design(OVER_CUT)
     holds = router_shrink.holds_fn(OVERUSED, True)
@@ -253,6 +285,22 @@ def test_an_unknown_variant_name_fails_instead_of_running_nothing(
         peano="unused",
     )
     assert router_hw.run_case(args) != 0
+    assert not (tmp_path / "work").exists()
+
+
+def test_a_case_not_on_npu2_is_not_retargeted(router_hw, hw_case, tmp_path, capsys):
+    args = argparse.Namespace(
+        case=hw_case,
+        variant=[],
+        device="npu1",
+        runs=20,
+        process_timeout_s=120,
+        work=tmp_path / "work",
+        verdicts=None,
+        peano="unused",
+    )
+    assert router_hw.run_case(args) != 0
+    assert "cannot retarget to npu1" in capsys.readouterr().err
     assert not (tmp_path / "work").exists()
 
 

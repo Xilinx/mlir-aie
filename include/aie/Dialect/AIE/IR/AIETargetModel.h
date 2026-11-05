@@ -11,7 +11,10 @@
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <iostream>
 #include <memory>
@@ -270,6 +273,18 @@ public:
   /// Return true if src is South of dst
   bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) const {
     return srcCol == dstCol && srcRow == dstRow + 1;
+  }
+
+  /// The steps (destination column - source column, destination row - source
+  /// row) from one core's cascade output to the next core's input.
+  virtual llvm::ArrayRef<std::pair<int, int>> getCascadeSteps() const {
+    return {};
+  }
+
+  /// Return true if a cascade can run from src to dst.
+  bool isLegalCascade(int srcCol, int srcRow, int dstCol, int dstRow) const {
+    return llvm::is_contained(getCascadeSteps(),
+                              std::pair{dstCol - srcCol, dstRow - srcRow});
   }
 
   /// Return true if src has a memory tile which is West of dst
@@ -566,6 +581,13 @@ public:
   /// queued, nothing running, nothing stalled (0 when unsupported).
   virtual uint32_t getDmaChannelIdleMask() const { return 0; }
 
+  /// Return the array address of the task queue register a push writes, the
+  /// word after the channel's control register.
+  uint32_t getDmaQueueAddress(int col, int row, int channel,
+                              AIE::DMAChannelDir direction) const {
+    return getDmaControlAddress(col, row, channel, direction) + 0x4;
+  }
+
   /// Return the DMA task-queue register address relative to its tile.
   uint32_t getLocalDmaControlAddress(int col, int row, int channel,
                                      AIE::DMAChannelDir direction) const {
@@ -608,6 +630,12 @@ public:
   virtual uint32_t getNumMselsPerArbiter() const = 0;
   /// Return the largest packet id the stream switch can route.
   virtual uint32_t getMaxPacketId() const = 0;
+
+  /// Bits a packet id spans, and the mask a switch's id match uses.
+  int getPacketIdBits() const {
+    return llvm::Log2_32_Ceil(getMaxPacketId() + 1);
+  }
+  int getPacketIdMask() const { return (1 << getPacketIdBits()) - 1; }
   /// Return the largest out-of-order BD id (unsupported = 0).
   virtual uint32_t getMaxOutOfOrderId() const = 0;
   /// Return the largest DMA task repeat count (unsupported = 0).
@@ -856,6 +884,12 @@ public:
   }
 
   AIEArch getTargetArch() const override;
+
+  // Cascade input comes from the North or West, output goes South or East.
+  llvm::ArrayRef<std::pair<int, int>> getCascadeSteps() const override {
+    static constexpr std::pair<int, int> steps[] = {{0, -1}, {1, 0}};
+    return steps;
+  }
 
   uint32_t getAddressGenGranularity() const override { return 32; }
 

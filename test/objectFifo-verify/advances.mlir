@@ -201,3 +201,60 @@ module {
     }
   }
 }
+
+// -----
+
+// A finite loop under a branch that is never taken never runs, however often
+// the forever loop around it repeats.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c2 = arith.constant 2 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        %false = arith.constant false
+        scf.if %false {
+          scf.for %i = %c0 to %c2 step %c1 {
+            %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+          }
+        }
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Nor does a loop that runs no times.
+
+module {
+  aie.device(npu1_1col) {
+    %shim = aie.tile(0, 0)
+    %tile = aie.tile(0, 2)
+    aie.objectfifo @in(%shim, {%tile}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    %core = aie.core(%tile) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.while : () -> () {
+        %true = arith.constant true
+        scf.condition(%true)
+      } do {
+        scf.for %i = %c0 to %c0 step %c1 {
+          %o = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+        }
+        scf.yield
+      }
+      aie.end
+    }
+  }
+}

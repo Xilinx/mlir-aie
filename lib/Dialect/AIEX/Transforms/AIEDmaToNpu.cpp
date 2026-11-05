@@ -19,6 +19,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/Support/MathExtras.h"
 #include <algorithm>
 #include <cstdint>
 
@@ -217,19 +218,18 @@ public:
       }
     }
 
-    // the offset of the task queue register in the tile
-    uint32_t queue_offset = ctrl_offset + 0x4;
+    uint32_t queue_offset = tm.getDmaQueueAddress(
+        op.getColumn(), op.getRow(), op.getChannel(), op.getDirection());
 
     // Command word: bd_id in the START_BD_ID field, repeat_count [23:16],
-    // issue-token bit [31]. START_BD_ID is 6 bits on a mem tile (48 BDs) and 4
-    // bits on core/shim tiles, so mask to the tile class instead of a flat 0xF
-    // (a flat 0xF silently truncates a mem-tile head bd_id >= 16).
+    // issue-token bit [31]. START_BD_ID is as wide as the tile's BD ids.
     // bd_id and repeat_count may be runtime SSA; all-constant folds to one
     // constant (byte-identical to the static path), else built with arith.
     Location loc = op->getLoc();
     auto i32ty = rewriter.getIntegerType(32);
     uint32_t bdIdMask =
-        tm.isMemTile(op.getColumn(), op.getRow()) ? 0x3Fu : 0xFu;
+        (1u << llvm::Log2_32_Ceil(tm.getNumBDs(op.getColumn(), op.getRow()))) -
+        1;
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
     std::optional<uint64_t> repeat_cnt =
         getConstantInt64Operand(op.getRepeatCount());
@@ -653,8 +653,8 @@ public:
     // register (additive; applied after the base patch above).
     if (op.getOffsetStateTableIdxAttr()) {
       auto bufType = cast<BaseMemRefType>(op.getMemref().getType());
-      if (failed(emitUpdateBdAddressFromOffsetParameter(rewriter, op, bufType,
-                                                        patchAddr)))
+      if (failed(emitUpdateBdAddressFromOffsetParameter(
+              rewriter, op, bufType, patchAddr, targetModel, tileCol, tileRow)))
         return failure();
     }
     return success();
@@ -869,31 +869,47 @@ public:
   }
 };
 
+// What a push or a sync does to its channel at their common representation.
+static QueueEffect queueEffectOf(Operation *op) {
+  if (auto push = dyn_cast<NpuPushQueueOp>(op))
+    return QueueEffect::push({static_cast<int>(push.getColumn()),
+                              static_cast<int>(push.getRow()),
+                              static_cast<int>(push.getDirection()),
+                              static_cast<int>(push.getChannel())},
+                             push.getIssueToken());
+  if (auto sync = dyn_cast<NpuSyncOp>(op))
+    if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
+      return QueueEffect::await(*key);
+  return {};
+}
+
 // Count all task starts at their common representation, after memcpy lowering
 // but before pushes become register writes. This includes starts lowered by
-// dma-tasks-to-npu and compiler-generated channel rearm pushes.
-static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
+// dma-tasks-to-npu and compiler-generated channel rearm pushes, and so every
+// path's tokens: no sequence may leave one on a channel any of them awaits.
+static LogicalResult checkQueueDepth(AIE::DeviceOp device,
+                                     bool enforceQueueDepth) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
-  auto effectOf = [&](Operation *op) -> QueueEffect {
-    if (auto push = dyn_cast<NpuPushQueueOp>(op))
-      return QueueEffect::push({static_cast<int>(push.getColumn()),
-                                static_cast<int>(push.getRow()),
-                                static_cast<int>(push.getDirection()),
-                                static_cast<int>(push.getChannel())},
-                               push.getIssueToken());
-    if (auto sync = dyn_cast<NpuSyncOp>(op))
-      if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
-        return QueueEffect::await(*key);
-    return {};
-  };
-
+  std::set<DmaQueueModel::ChannelKey> awaited;
+  SmallVector<SyncCover> mayAwait;
+  device.walk([&](Operation *op) {
+    QueueEffect e = queueEffectOf(op);
+    if (e.kind == QueueEffect::Kind::Await)
+      awaited.insert(e.key);
+    else if (auto sync = dyn_cast<NpuSyncOp>(op))
+      mayAwait.push_back(syncCover(sync));
+  });
+  bool consumed = true;
   device.walk([&](AIE::RuntimeSequenceOp seq) {
     DmaQueueModel queue;
     // No dma_free_task survives to this lowering stage; nothing to check here.
     guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
-                            /*warnUnsafeBdReuse=*/false, effectOf);
+                            /*warnUnsafeBdReuse=*/false, queueEffectOf);
     seq->removeAttr(queueDiagnosedAttr);
+    consumed &=
+        succeeded(checkTokensConsumed(seq, awaited, mayAwait, queueEffectOf));
   });
+  return success(consumed);
 }
 
 struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
@@ -956,7 +972,10 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
       return;
     }
 
-    checkQueueDepth(device, enforceQueueDepth);
+    if (failed(checkQueueDepth(device, enforceQueueDepth))) {
+      signalPassFailure();
+      return;
+    }
 
     target.addIllegalOp<NpuPushQueueOp>();
     RewritePatternSet pushPatterns(&getContext());

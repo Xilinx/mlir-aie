@@ -12,6 +12,10 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVector.h"
+
+#include <optional>
 
 namespace xilinx::AIE {
 
@@ -68,6 +72,25 @@ public:
   /// neither.
   mlir::Operation *getDMAChannelOwner(TileLike tile, DMAChannelDir dir,
                                       int channel);
+
+  /// A DMA end of one tile still to get a channel: its direction, the BD ids
+  /// it takes, and the exclusive upper bound on the channels it may take.
+  struct BDPlanEnd {
+    DMAChannelDir dir;
+    int64_t bds;
+    int limit;
+  };
+
+  /// A channel of the tile at (`col`, `row`) for each of `ends`, among those
+  /// `free` leaves, with no two ends of a direction on one channel and, for
+  /// every set of channels sharing BD ids, the ends on them plus the ids
+  /// `spent` on each channel within those ids; nothing when no assignment
+  /// fits.
+  static std::optional<llvm::SmallVector<int>>
+  planBDChannels(const AIETargetModel &target, int col, int row,
+                 llvm::ArrayRef<BDPlanEnd> ends,
+                 llvm::function_ref<bool(DMAChannelDir, int)> free,
+                 llvm::function_ref<int64_t(int)> spent);
 
   /// Claim a raw stream port for `user`, reporting on it when the port is
   /// taken; packet users may share it with other packets.

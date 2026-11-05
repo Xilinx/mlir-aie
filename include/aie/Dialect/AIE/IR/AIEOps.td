@@ -2186,7 +2186,10 @@ def AIE_RouteEndpointOp
       OptionalAttr<PacketInfoAttr>:$packet,
       // If lowered from a high-level ObjectFifo, the name of that fifo.
       // Used to group ops lowered by the same ObjectFifo.
-      OptionalAttr<StrAttr>:$fifoName);
+      OptionalAttr<StrAttr>:$fifoName,
+      // On a shim input, the outputs whose progress proves it consumed; see
+      // #aie.consumed_by. Allocation moves it to the shim_dma_allocation.
+      OptionalAttr<ConsumedByArrayAttr>:$consumed_by);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $bundle attr-dict
@@ -2294,7 +2297,10 @@ def AIE_ShimDMAAllocationOp
       DMAChannelDir:$channel_dir, AIEI64Attr:$channel_index,
       // If this is set we are using the PLIO in this ShimTile
       DefaultValuedAttr<BoolAttr, "false">:$plio,
-      OptionalAttr<PacketInfoAttr>:$packet);
+      OptionalAttr<PacketInfoAttr>:$packet,
+      // On an input, the outputs whose progress proves it consumed; see
+      // #aie.consumed_by.
+      OptionalAttr<ConsumedByArrayAttr>:$consumed_by);
 
   let results = (outs);
 
@@ -2591,6 +2597,48 @@ def AIE_ObjectFifoCreateOp
       return false;
     }
 
+    /// The aie.objectfifo.link naming the fifo, if any.
+    std::optional<ObjectFifoLinkOp> getLink();
+    /// The aie.objectfifo.allocate naming the fifo, if any; its verifier
+    /// refuses a second.
+    std::optional<ObjectFifoAllocateOp> getAllocate();
+    /// Whether a delegate on `delegate` holds objects both ends reach.
+    static bool delegateReaches(const AIETargetModel &target, TileID delegate,
+                                TileID producer, TileID consumer);
+
+    /// Why the fifo moves by DMA wherever its ends are placed; nothing when
+    /// shared memory may carry it, which sharedMemoryOf then decides.
+    std::optional<llvm::StringRef> dmaReason();
+    /// The memory module a fifo dmaReason() leaves open shares with its
+    /// producer on `producer`, its consumer on `consumer`, its
+    /// aie.objectfifo.allocate's delegate, if any, on `delegate`, and
+    /// `linked` when an aie.objectfifo.link names it; None means DMA.
+    static AIETargetModel::SharedMemory
+    sharedMemoryOf(const AIETargetModel &target, TileID producer,
+                   TileID consumer, std::optional<TileID> delegate,
+                   bool linked);
+
+    /// Objects in the pool an end keeps on its own tile when the fifo moves by
+    /// DMA: the producer's when `consumer` is empty, else that consumer's. An
+    /// end wired to a core stream port keeps none.
+    int dmaDepth(std::optional<unsigned> consumer);
+    /// Objects in the one pool of a fifo whose ends share a memory module.
+    int sharedDepth();
+    /// The DMA end the fifo gets on its producer's tile (`consumer` empty) or
+    /// consumer `consumer`'s, unless that end takes no BD ids of the tile's:
+    /// a shim's, a stream port's, or a merge's or dispatch's but the one end
+    /// its participants share.
+    std::optional<PlannedDmaEnd> plannedDmaEnd(std::optional<unsigned> consumer);
+    /// The link reading consumer `consumer`'s end, if any: each link on a tile
+    /// takes the next of the fifo's consumer ends there, in order.
+    ObjectFifoLinkOp getConsumerLink(unsigned consumer);
+    /// Whether the two DMA ends the split gives the fifo, one circuit apart,
+    /// may each take turns with other ends on one channel: as
+    /// aie-objectfifo-allocate requires of both, neither is pinned to a
+    /// channel, iterates a bounded count, repeats, dispatches, walks a stream
+    /// window or shares its route.
+    bool canTakeTurns();
+
     /// The packet header this fifo asks its route to carry, or null for a
     /// circuit-switched connection.
     PacketInfoAttr packetHeader() {
@@ -2766,6 +2814,11 @@ def AIE_ObjectFifoLinkOp : AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     bool walksStream();
     // The window a stream walk reads, in input objects.
     mlir::LogicalResult getStreamWindow(StreamWindow &window);
+    // When the pool owner is an input, the consumer of it whose end the pool
+    // is: one on the shared tile, after those earlier links took there.
+    std::optional<unsigned> getOwnerConsumerIndex();
+    // Objects in the pool on the shared tile.
+    int64_t getPoolDepth();
   }];
 }
 
@@ -2900,6 +2953,12 @@ def AIE_ObjectFifoPoolOp
     /// The pool's name without the end marker, which buffers and locks are
     /// named after.
     llvm::StringRef getBaseName();
+
+    /// Whether one iterating descriptor a side could walk the pool: a plain
+    /// mem tile pool of one segment, deeper than one object and no deeper than
+    /// a lock counts, whose ends neither dispatch nor, draining, lay out
+    /// dimensions, which on a contiguous pool walk a stream window.
+    bool canWalkWhole();
   }];
 }
 

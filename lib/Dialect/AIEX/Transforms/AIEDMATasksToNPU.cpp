@@ -285,9 +285,11 @@ struct AIEDMATasksToNPUPass
     return bd_op;
   }
 
+  /// `lengthWord` is the register word holding the BD's length as the dynamic
+  /// path wrote it, absent when the length is the static one.
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
-                                      AIE::TileOp &tile,
-                                      OpFoldResult bdId = {}) {
+                                      AIE::TileOp &tile, OpFoldResult bdId = {},
+                                      Value lengthWord = nullptr) {
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
     auto col = tile.getCol();
@@ -297,6 +299,7 @@ struct AIEDMATasksToNPUPass
     uint32_t bd_id = constBdId ? *constBdId : bd_op.getBdId().value_or(0);
     uint64_t register_addr = target_model.getDmaBdAddress(col, row, bd_id) +
                              target_model.getDmaBdAddressOffset(col, row);
+    std::optional<uint64_t> staticByteAddress;
     // On the runtime-bd_id path the patched register (BD buffer-address word)
     // is itself runtime: getBdRegisterBase(bd_id) + getDmaBdAddressOffset.
     // Emitted as an SSA operand on the address patch; null keeps the static
@@ -408,6 +411,7 @@ struct AIEDMATasksToNPUPass
         if (buf_addr > maxByteAddr)
           return bd_op->emitOpError("buffer address exceeds the tile's DMA "
                                     "address field.");
+        staticByteAddress = buf_addr;
         addrField =
             createConstantI32(builder, loc, addrBits.place(buf_addr / divisor));
       } else {
@@ -472,8 +476,14 @@ struct AIEDMATasksToNPUPass
     // register value and adds a computed delta to it.
     if (bd_op.getOffsetStateTableIdxAttr()) {
       auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
-      if (failed(emitUpdateBdAddressFromOffsetParameter(builder, bd_op, bufType,
-                                                        register_addr)))
+      OpFoldResult lengthField =
+          lengthWord ? OpFoldResult(lengthWord)
+                     : builder.getI64IntegerAttr(
+                           bd_op.getLenInBytes() * 8 /
+                           target_model.getAddressGenGranularity());
+      if (failed(emitUpdateBdAddressFromOffsetParameter(
+              builder, bd_op, bufType, register_addr, target_model, col, row,
+              staticByteAddress, lengthField)))
         return failure();
     }
 
@@ -742,7 +752,10 @@ struct AIEDMATasksToNPUPass
     Value bdBase =
         getBdRegisterBase(builder, loc, target_model, col, row, bdIdOfr);
     NpuBlockWriteValuesOp::create(builder, loc, bdBase, bdWords);
-    return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr);
+    const AIE::DmaBdLayout *layout = target_model.getDmaBdLayout(col, row);
+    return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr,
+                                 layout ? bdWords[layout->bufferLength.word]
+                                        : Value());
   }
 
   LogicalResult

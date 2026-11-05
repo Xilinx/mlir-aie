@@ -17,6 +17,7 @@
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/IntEqClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -290,6 +291,10 @@ struct Routing {
   std::map<std::pair<PathEndPoint, int>, SwitchSettings> idSettings;
 };
 
+// How the router's message starts when the flows do not fit the links.
+inline constexpr llvm::StringLiteral kNoLegalRouting =
+    "Unable to find a legal routing";
+
 // Why no legal routing was found, reported at `loc`, or the device if unset,
 // with `reason` if the router can say. A routing check's failure also names
 // the faults the router has to move.
@@ -353,6 +358,35 @@ struct PacketConstraints {
   bool prioritize = true;
 };
 
+// The relax settings an attempt reads while it routes (see Pathfinder::relax).
+struct RelaxSettings {
+  bool idsApart = false, splitShared = false, meetApart = false,
+       meetAheadOfPartners = false;
+};
+
+// What one attempt of a relax ladder read that a relax step changes, and what
+// it found. A later attempt of the ladder that reads the same replays it
+// exactly, as routing is deterministic and the ladder's constraints are fixed.
+struct PathfinderAttempt {
+  std::vector<Flow> flows;
+  std::vector<llvm::BitVector> circuitOnly;
+  // The settings' values, and which of them the attempt read.
+  RelaxSettings values, consulted;
+  // The routing found, else the failure: its class (RoutingFailure::classID or
+  // a subclass's) and contents.
+  std::optional<Routing> routing;
+  const void *failureClass = nullptr;
+  std::string reason;
+  RoutingFaults faults;
+  std::optional<mlir::Location> loc;
+  // What relax reads after the attempt.
+  llvm::DenseSet<TileID> crowdedTiles;
+  bool packetsFailed = false;
+  std::string checkReason;
+  // Each iteration's routing, kept under -aie-pathfinder-verify-replays.
+  std::vector<llvm::hash_code> trajectory;
+};
+
 // Congestion-negotiated routing: each iteration routes every flow by
 // Dijkstra, given each connection's demand, and raises the demand of the
 // connections used over capacity, until no connection is.
@@ -370,8 +404,12 @@ public:
   mlir::LogicalResult addFixedConnection(SwitchboxOp switchboxOp);
   // Keeps routes out of the switchbox at `coords`.
   void excludeTile(TileID coords);
-  // A RoutingFailure if no legal routing is found in `maxIterations`.
+  // A RoutingFailure if no legal routing is found in `maxIterations`. An
+  // attempt that replays one in `attempts` returns what that one found.
   llvm::Expected<Routing> findPaths(int maxIterations);
+  // The attempts of the relax ladder being routed, if the caller keeps them;
+  // it routes one design under one set of constraints meanwhile.
+  std::vector<PathfinderAttempt> *attempts = nullptr;
   void setPacketConstraints(PacketConstraints c) { constraints = std::move(c); }
   // Loosens the packet constraints by one step after findPaths found no
   // routing; false once no step is left or no packet stream took part in the
@@ -382,7 +420,10 @@ public:
   // direction; route the second id of an unbranchable split apart, which
   // restarts sharing and caps; then share and cap again; route the ids a
   // source sends that a source it must keep apart from does not as a part of
-  // their own, which restarts sharing and caps; then share and cap again.
+  // their own, which restarts sharing and caps; then share and cap again;
+  // route each other source of a cluster that has to meet first, one per
+  // attempt (see rotateLeads); meet ahead of same-id partners; then stop
+  // meeting, which runs the steps before rotating again.
   bool relax();
 
 private:
@@ -443,9 +484,16 @@ private:
   // Route `flow`'s tree around those routed before it this iteration. A
   // RoutingFailure if it reaches no path to a destination.
   llvm::Error routePart(RouteState &st, int flow);
+  // findPaths' iterations, once it has set the graph up; each routing's hash
+  // goes to `trajectory` if given.
+  llvm::Expected<Routing> negotiate(int maxIterations,
+                                    std::vector<llvm::hash_code> *trajectory);
   // Steer the next iteration away from what the routing check faulted.
-  // Returns the illegal edges the faults count as.
-  int applyRoutingFaults(RouteState &st, const RoutingFaults &faults);
+  // Returns the illegal edges the faults count as; `pinnedOnly` counts those
+  // of them that are connections only pinned trees take, which no penalty
+  // moves.
+  int applyRoutingFaults(RouteState &st, const RoutingFaults &faults,
+                         int &pinnedOnly);
   // A RoutingFailure saying why the last iteration's routing does not fit.
   llvm::Error explainNoRouting(const RouteState &st) const;
   // A RoutingFailure if the flows crossing some row or column boundary need
@@ -458,6 +506,8 @@ private:
   bool routeIdsApart();
   bool splitSharedIds();
   bool stopMeeting();
+  bool rotateLeads();
+  bool meetAhead();
 
   // Flows to be routed
   std::vector<Flow> flows;
@@ -497,19 +547,30 @@ private:
   // Why the routing check rejected the last routing it rejected.
   std::string checkReason;
   // Whether packet streams took part in the last failure: the routing check
-  // rejected a routing, or packet streams cross a link left overused.
+  // rejected a routing, or packet streams cross a link left overused, or the
+  // boundary it crosses.
   bool packetsFailed = true;
   bool shareChannels = false, idsApart = false, splitShared = false;
   // Trees that share destinations no longer meet (see TreeBuilder::meet), so
   // what is left of their hazard is a hold cycle through those receivers.
   bool meetApart = false;
+  // Whether a flow meets another id's tree ahead of a same-id partner that
+  // has not routed yet (see meetAhead).
+  bool meetAheadOfPartners = false;
   // Whether a tree met another in any attempt, so stopping meeting can change
   // anything.
   bool treesMet = false;
   // The device's columns and rows; the graph has tiles one past each.
   int columns = 0, rows = 0;
   size_t relaxStep = 0;
+  // The sources that route first among those that have to meet, and how many
+  // turns of rotateLeads they have taken.
+  std::set<PathEndPoint> leads;
+  size_t leadStep = 0;
   llvm::DenseSet<TileID> crowdedTiles, cappedTiles;
+  // The relax settings this attempt read; sortFlows and findPaths fold in
+  // the others (shareChannels, leads, cappedTiles) before it routes.
+  RelaxSettings consulted;
 };
 
 // Routes the flows of a device with a Pathfinder, and finds or creates the

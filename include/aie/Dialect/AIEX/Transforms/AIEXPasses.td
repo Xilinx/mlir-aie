@@ -180,9 +180,17 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "AIE::DeviceOp"> {
 }
 
 def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
-  let summary = "";
+  let summary = "Lower runtime-sequence DMA operations to NPU register writes";
   let description = [{
+    Lowers `aiex.npu.dma_memcpy_nd`, `aiex.npu.dma_wait`, RTP and buffer
+    descriptor writes, and `aiex.npu.push_queue` to register writes and syncs.
 
+    Every path's pushes and syncs meet here, so the pass checks two things
+    on all of them: it guards task-queue depth (`enforce-queue-depth`), and
+    it rejects a runtime sequence that ends with a task-completion token
+    outstanding on a channel some sequence of the device awaits. Such a token
+    outlives the command, and the next command's await on that channel takes
+    it and returns before its own transfer has finished.
   }];
 
   let options = [Option<

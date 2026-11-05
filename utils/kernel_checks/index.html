@@ -1011,6 +1011,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       bank_pair_sharing: 'how far each design\'s buffers sit from the most even bank split toward all in one bank (0 = most even, 1 = one bank), mean over designs',
       wall_s: 'wall time of the whole run, on a shared hosted runner',
       unrouted: 'routable designs the router failed to route, over both hop settings',
+      strict_misses: 'designs the router fails without allow-deadlock-prone on a hold cycle through shared receivers, though a routing without one exists',
       hop_ratio: 'switchbox hops over the hops of the routing the generator constructed',
       amsels_per_design: 'arbiter msels the router used, mean per design',
       ms_per_design: 'routing time of one design, mean, on a shared hosted runner',
@@ -1033,7 +1034,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
       failed_properties: 'Failed properties', unsolved: 'Unplaced', illegal: 'Illegal', avoidable_crossings: 'Avoidable crossings',
       bank_pair_sharing: 'Bank sharing (0–1)', wall_s: 'Wall time', unrouted: 'Unrouted', hop_ratio: 'Hops ÷ constructed',
       amsels_per_design: 'Msels / design', ms_per_design: 'Time / design', failed_mutations: 'Failed mutations',
-      survived_corruptions: 'Missed corruptions', tok_s: 'Dispatch rate', ms_per_token: 'Dispatch / token', dma_floor_ratio: 'Over the DMA floor',
+      survived_corruptions: 'Missed corruptions', strict_misses: 'Strict misses', tok_s: 'Dispatch rate', ms_per_token: 'Dispatch / token', dma_floor_ratio: 'Over the DMA floor',
       tokens_passed: 'Tokens verified', ttft_ms: 'Time to first token', ttft_min_ms: 'Fastest time to first token', ttft_npu_dispatch_ms: 'Time to first token, prefill dispatches', ttft_host_ms: 'Time to first token, host',
       decode_tok_s: 'Decode tokens / s', prefill_tok_s: 'Prefill tokens / s', greedy_agree: 'Greedy agreement', kl_bf16: 'KL vs bf16', top1_bf16: 'Top-1 vs bf16', xclbin_bytes: 'xclbin', instr_bytes: 'Instructions', pdi_bytes: 'Device image',
       us_per_image_b1: 'End-to-end / image (b1)', us_per_image_b8: 'End-to-end / image (b8)', fps_b1: 'Images / s (b1)', fps_b8: 'Images / s (b8)',
@@ -1329,7 +1330,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         },
         say: (device, run, first, count, what, test) => test ? `lit ${test}`
           : run === 'properties' ? `${device} ${what}` : `${device} ${run.replace('-', ' ')} ${what} (seed ${first})`,
-        metrics: ['failed_properties', 'unrouted', 'illegal', 'failed_mutations', 'survived_corruptions', 'hop_ratio', 'amsels_per_design', 'ms_per_design'],
+        metrics: ['failed_properties', 'unrouted', 'strict_misses', 'illegal', 'failed_mutations', 'survived_corruptions', 'hop_ratio', 'amsels_per_design', 'ms_per_design'],
         table: routerTable, charts: () => [], summary: routerSummary,
         trend: [{ id: 'hop_ratio', name: 'Route length', axis: 'Switchbox hops ÷ the known routing\'s', cases: true, lines: [['', ['hop_ratio']]],
                   about: 'the router\'s switchbox hops over those of the routing the generator built and knows to be legal, per device: 1.015 is 1.5% longer' },
@@ -1339,7 +1340,9 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
                   about: 'the router\'s time for one design, the mean, per device, on a shared GitHub-hosted runner whose CPU model changes from night to night' },
                 { id: 'failed_properties', name: 'Failures', axis: 'Failures (any above 0 is a bug)', cases: true, hideIfZero: true,
                   lines: [['', ['failed_properties', 'unrouted', 'illegal', 'failed_mutations', 'survived_corruptions']]],
-                  about: 'every failure the night counted, per device: properties that did not hold, routings that failed or were illegal, mutations answered wrong and corruptions missed' }] },
+                  about: 'every failure the night counted, per device: properties that did not hold, routings that failed or were illegal, mutations answered wrong and corruptions missed' },
+                { id: 'strict_misses', name: 'Strict misses', axis: 'Designs routed only with allow-deadlock-prone', cases: true, hideIfZero: true, lines: [['', ['strict_misses']]],
+                  about: 'designs the router fails without allow-deadlock-prone though a routing without a hold cycle exists, per device; the nightly allows 0.1% of its designs plus 2' }] },
       { id: 'allocator', section: 'placement', title: 'Buffer allocator model-based tests', short: 'Buffer allocator', failure: 'property',
         passed: 'Every property held.',
         about: 'aie-opt places 5,000 generated designs and 200,000 with per-bank reservations, each built around a layout known to fit, on a GitHub-hosted runner with no NPU: '
@@ -3733,7 +3736,7 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
     function routerTable(record, cases) {
       const detail = record.detail || [];
       const heads = [['Seeds', 'the night\'s range of generated designs'], columnHead('Properties failed', 'failed_properties'), columnHead('Unrouted', 'unrouted'),
-                     columnHead('Illegal', 'illegal'), columnHead('Mutations wrong', 'failed_mutations'), columnHead('Corruptions missed', 'survived_corruptions'),
+                     columnHead('Strict misses', 'strict_misses'), columnHead('Illegal', 'illegal'), columnHead('Mutations wrong', 'failed_mutations'), columnHead('Corruptions missed', 'survived_corruptions'),
                      columnHead('Hops ÷ known', 'hop_ratio'), columnHead('Msels / design', 'amsels_per_design'), columnHead('Time / design', 'ms_per_design')];
       const rows = Object.keys(record.rows).map(device => {
         const props = detail.find(d => d.device === device && d.run === 'properties');
@@ -3742,11 +3745,13 @@ MLIR_AIE_BUILD_DIR=build utils/run_clang_tidy.sh lib/&lt;file&gt;.cpp</pre>
         const missed = failureFigure(cases, device, 'survived_corruptions');
         return { name: device, cells: [
           props ? { text: `${props.first_seed.toLocaleString('en-US')} + ${props.seeds.toLocaleString('en-US')}` } : null,
-          ...['failed_properties', 'unrouted', 'illegal', 'failed_mutations'].map(m => failureFigure(cases, device, m)),
+          failureFigure(cases, device, 'failed_properties'), failureFigure(cases, device, 'unrouted'), figure(cases, device, 'strict_misses'),
+          ...['illegal', 'failed_mutations'].map(m => failureFigure(cases, device, m)),
           missed && tried ? { ...missed, title: `the verifier caught ${killed} of ${tried} corruptions` } : missed,
           figure(cases, device, 'hop_ratio'), figure(cases, device, 'amsels_per_design'), figure(cases, device, 'ms_per_design')] };
       });
-      return rows.length ? figureTable(heads, rows, 'The five counts are correctness: any above 0 is a bug. Hops ÷ known is the route\'s length over '
+      return rows.length ? figureTable(heads, rows, 'Properties, unrouted, illegal, mutations and corruptions are correctness: any above 0 is a bug. Strict misses are tallied; '
+        + 'the nightly allows 0.1% of its designs plus 2. Hops ÷ known is the route\'s length over '
         + 'the routing the generator built and knows to be legal; time is CPU time on a shared GitHub-hosted runner.') : null;
     }
 

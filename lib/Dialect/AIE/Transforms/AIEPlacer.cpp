@@ -6,11 +6,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
@@ -199,13 +204,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // and cascade adjacency constraints from CascadeFlow connectivity.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
-  addChannelRequirementsFromFlows(flows, pktFlows, routes, channelRequirements);
+  namedChannels.clear();
+  for (auto &[tile, inOut] :
+       flowChannelDemand(flows, pktFlows, routes, &namedChannels)) {
+    channelRequirements[tile].first += inOut.first;
+    channelRequirements[tile].second += inOut.second;
+  }
   countTurns(device, objectFifos, channelRequirements);
   buildStreamDemand(objectFifos);
-  buildRuntimeBdProfiles(device, objectFifos);
+  runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
-      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });
+      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
+      provenShimGates(device));
   shimEndsAt.clear();
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
@@ -248,8 +259,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       continue;
     auto [peerIn, peerOut] =
         totalComputePeers(lt.getOperation(), computePeerAdjacency);
-    int inBudget = lt.getNumDestConnections(WireBundle::DMA);
-    int outBudget = lt.getNumSourceConnections(WireBundle::DMA);
+    int inBudget = lt.getNumSourceConnections(WireBundle::DMA);
+    int outBudget = lt.getNumDestConnections(WireBundle::DMA);
     auto [nonPeerIn, nonPeerOut] =
         channelRequirements.lookup(lt.getOperation());
     needNeighborIn[lt.getOperation()] =
@@ -291,9 +302,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // must be one row North or one column West of dst (edge.second); rows
   // increase upward, so isSouth(src,dst) means dst is south of src.
   auto cascadePred = [this](TileID srcPos, TileID dstPos) {
-    return targetModel->isSouth(srcPos.col, srcPos.row, dstPos.col,
-                                dstPos.row) ||
-           targetModel->isEast(srcPos.col, srcPos.row, dstPos.col, dstPos.row);
+    return targetModel->isLegalCascade(srcPos.col, srcPos.row, dstPos.col,
+                                       dstPos.row);
   };
   auto cascadeLabel = [](bool thisIsSrc) -> StringRef {
     return thisIsSrc ? "cascade destination" : "cascade source";
@@ -844,8 +854,8 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
 
   if (!hasAvailableChannels(tile, inChannels, outChannels) &&
       !fitsSharingShim(tile, logicalTile, {inChannels, outChannels})) {
-    int maxIn = logicalTile.getNumDestConnections(WireBundle::DMA);
-    int maxOut = logicalTile.getNumSourceConnections(WireBundle::DMA);
+    int maxIn = logicalTile.getNumSourceConnections(WireBundle::DMA);
+    int maxOut = logicalTile.getNumDestConnections(WireBundle::DMA);
     int availIn = maxIn - availability.inputChannelsUsed[tile];
     int availOut = maxOut - availability.outputChannelsUsed[tile];
 
@@ -929,13 +939,13 @@ SequentialPlacer::buildChannelRequirements(
       auto *consumerOp = consumerTile.getDefiningOp();
       auto consumerLogicalTile = dyn_cast_or_null<LogicalTileOp>(consumerOp);
 
-      // Skip a core-to-core fifo of one consumer: a compute peer, which
-      // neighbor memory may carry instead of DMA (buildComputePeerAdjacency).
-      // A broadcast always moves by DMA, so it is counted here.
+      // Skip a core-to-core fifo neighbor memory may carry instead of DMA: a
+      // compute peer (buildComputePeerAdjacency). One that moves by DMA
+      // wherever it sits (dmaReason) is counted here.
       if (producerLogicalTile && consumerLogicalTile &&
           producerLogicalTile.getTileType() == AIETileType::CoreTile &&
           consumerLogicalTile.getTileType() == AIETileType::CoreTile &&
-          ofOp.getConsumerTiles().size() == 1)
+          !ofOp.dmaReason())
         continue;
 
       // This consumer needs a DMA channel (unless it's a link's tile, which
@@ -983,15 +993,15 @@ void SequentialPlacer::countTurns(
     auto &[in, out] = requirements[tile];
     for (bool coreDrains : {true, false}) {
       int &need = coreDrains ? in : out;
-      int budget = coreDrains ? tile.getNumDestConnections(WireBundle::DMA)
-                              : tile.getNumSourceConnections(WireBundle::DMA);
+      int budget = coreDrains ? tile.getNumSourceConnections(WireBundle::DMA)
+                              : tile.getNumDestConnections(WireBundle::DMA);
       if (need <= budget)
         continue;
       llvm::MapVector<Operation *, SmallVector<ObjectFifoCreateOp>> byTile;
       for (ObjectFifoCreateOp fifo : objectFifos) {
-        auto consumers = fifo.getConsumerTiles();
-        if (consumers.size() != 1)
+        if (!fifo.canTakeTurns())
           continue;
+        auto consumers = fifo.getConsumerTiles();
         Value mine = coreDrains ? consumers[0] : fifo.getProducerTile();
         Value other = coreDrains ? fifo.getProducerTile() : consumers[0];
         auto peer = dyn_cast_or_null<LogicalTileOp>(other.getDefiningOp());
@@ -1006,7 +1016,8 @@ void SequentialPlacer::countTurns(
         SmallVector<int64_t> depths;
         for (ObjectFifoCreateOp fifo : fifos) {
           names.push_back(fifo.getSymNameAttr());
-          depths.push_back(fifo.size(coreDrains ? 1 : 0));
+          depths.push_back(fifo.dmaDepth(coreDrains ? std::optional<unsigned>(0)
+                                                    : std::nullopt));
         }
         CoreTurns turns;
         std::string reason;
@@ -1122,8 +1133,8 @@ Placer::buildComputePeerAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
         dyn_cast_or_null<LogicalTileOp>(ofOp.getProducerTile().getDefiningOp());
     if (!producer || producer.getTileType() != AIETileType::CoreTile)
       continue;
-    // A broadcast always moves by DMA (dmaReason in AIEObjectFifoSplit).
-    if (ofOp.getConsumerTiles().size() != 1)
+    // Only a fifo neighbor memory may carry is a compute peer.
+    if (ofOp.dmaReason())
       continue;
     for (Value consumerVal : ofOp.getConsumerTiles()) {
       auto consumer =
@@ -1395,6 +1406,91 @@ Placer::collectShareableShimEnds(DeviceOp device,
   return ends;
 }
 
+DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>>
+Placer::provenShimGates(DeviceOp device) {
+  auto module = device->getParentOfType<ModuleOp>();
+  if (!module)
+    return {};
+  unsigned index = 0;
+  for (DeviceOp other : module.getOps<DeviceOp>()) {
+    if (other == device)
+      break;
+    ++index;
+  }
+  // A context of its own: the passes below cannot run nested in this one's.
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  module->print(os, OpPrintingFlags().printGenericOpForm());
+  MLIRContext context(device.getContext()->getDialectRegistry(),
+                      MLIRContext::Threading::DISABLED);
+  ScopedDiagnosticHandler quiet(&context,
+                                [](Diagnostic &) { return success(); });
+  OwningOpRef<ModuleOp> copy = parseSourceString<ModuleOp>(text, &context);
+  if (!copy)
+    return {};
+  auto devices = llvm::to_vector(copy->getOps<DeviceOp>());
+  if (index >= devices.size())
+    return {};
+  DeviceOp clone = devices[index];
+
+  // Split needs placed tiles. With every fifo between two tiles on DMA,
+  // which tiles they are does not change what verify proves.
+  const AIETargetModel &target = clone.getTargetModel();
+  DenseSet<TileID> usedCores;
+  for (auto tile : clone.getOps<TileOp>())
+    if (tile.isCoreTile())
+      usedCores.insert({tile.getCol(), tile.getRow()});
+  DenseMap<AIETileType, unsigned> turn;
+  OpBuilder builder(clone.getBody(), clone.getBody()->begin());
+  for (auto lt : llvm::to_vector(clone.getOps<LogicalTileOp>())) {
+    SmallVector<TileID> fits;
+    for (int col = 0; col < target.columns(); ++col)
+      for (int row = 0; row < target.rows(); ++row)
+        if (target.getTileType(col, row) == lt.getTileType() &&
+            satisfiesConstraints(lt, {col, row}) &&
+            (lt.getTileType() != AIETileType::CoreTile ||
+             !usedCores.contains({col, row})))
+          fits.push_back({col, row});
+    if (fits.empty())
+      return {};
+    TileID at = lt.getTileType() == AIETileType::CoreTile
+                    ? fits.front()
+                    : fits[turn[lt.getTileType()]++ % fits.size()];
+    if (lt.getTileType() == AIETileType::CoreTile)
+      usedCores.insert(at);
+    TileOp tile = TileOp::getOrCreate(builder, clone, at.col, at.row);
+    lt.getResult().replaceAllUsesWith(tile.getResult());
+    lt.erase();
+  }
+  for (auto fifo : clone.getOps<ObjectFifoCreateOp>()) {
+    if (fifo.forcesDMA() ||
+        llvm::all_of(fifo.getConsumerTiles(), [&](Value consumer) {
+          return consumer == fifo.getProducerTile();
+        }))
+      continue;
+    ObjectFifoTransportAttr transport = fifo.getTransportAttr();
+    fifo.setTransportAttr(ObjectFifoTransportAttr::get(
+        &context, ObjectFifoTransportMode::DMA,
+        transport ? transport.getPacket() : PacketInfoAttr()));
+  }
+  for (auto allocate : llvm::to_vector(clone.getOps<ObjectFifoAllocateOp>()))
+    allocate.erase();
+
+  PassManager pm(&context, DeviceOp::getOperationName());
+  pm.addPass(createAIEObjectFifoSplitPass());
+  pm.addPass(createAIEObjectFifoVerifyPass());
+  if (failed(pm.run(clone)))
+    return {};
+  DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>> gates;
+  MLIRContext *ctx = device.getContext();
+  for (auto &[fifo, proven] : ShimTransferSpans::provenGates(clone))
+    for (const ShimTransferSpans::Gate &gate : proven)
+      gates[StringAttr::get(ctx, fifo.getValue())].push_back(
+          {StringAttr::get(ctx, gate.input.getValue()), gate.inputBytes,
+           gate.outputBytes});
+  return gates;
+}
+
 std::optional<ShimTransferSpans::End> Placer::shimEndOf(DeviceOp device,
                                                         StringAttr symbol) {
   auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(
@@ -1436,13 +1532,12 @@ Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
 // consumer. Dedup by (tile, channel) so the producer-of-broadcast and
 // consumer-of-merge sides are each counted once. An `aie.route` end whose
 // channel allocation has yet to pick holds a channel of its own.
-void SequentialPlacer::addChannelRequirementsFromFlows(
+llvm::MapVector<Operation *, std::pair<int, int>> Placer::flowChannelDemand(
     ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
     ArrayRef<RouteOp> routes,
-    llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements) {
-
+    llvm::DenseMap<Operation *, SmallVector<std::pair<int, int>>> *named) {
+  llvm::MapVector<Operation *, std::pair<int, int>> demand;
   llvm::DenseSet<std::tuple<Operation *, int>> seenSrc, seenDst;
-  namedChannels.clear();
 
   auto incIfDMA = [&](Operation *tileOp, WireBundle bundle,
                       std::optional<int> channel, bool isOutput) {
@@ -1453,12 +1548,12 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     auto &seen = isOutput ? seenSrc : seenDst;
     if (channel && !seen.insert({tileOp, *channel}).second)
       return;
-    if (channel)
-      namedChannels[tileOp].push_back({isOutput, *channel});
+    if (channel && named)
+      (*named)[tileOp].push_back({isOutput, *channel});
     if (isOutput)
-      channelRequirements[tileOp].second++;
+      demand[tileOp].second++;
     else
-      channelRequirements[tileOp].first++;
+      demand[tileOp].first++;
   };
 
   for (auto flow : flows) {
@@ -1496,6 +1591,7 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     for (StringRef dest : route.getDestinationNames())
       count(dest, /*isOutput=*/false);
   }
+  return demand;
 }
 
 SequentialPlacer::FlowMembership SequentialPlacer::buildFlowMembership(
@@ -2008,47 +2104,70 @@ void SequentialPlacer::buildStreamDemand(
       broadcastFanoutUsed[{tile.getCol(), tile.getRow()}] += fanout;
 }
 
-void SequentialPlacer::buildRuntimeBdProfiles(
-    DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos) {
+Placer::RuntimeBdIds::RuntimeBdIds(DeviceOp device,
+                                   ArrayRef<ObjectFifoCreateOp> objectFifos,
+                                   const AIETargetModel &targetModel)
+    : targetModel(&targetModel) {
+  auto shimOf = [](Value tile) -> Operation * {
+    auto like = dyn_cast_or_null<TileLike>(tile.getDefiningOp());
+    return like && like.isShimNOCTile() ? like.getOperation() : nullptr;
+  };
   llvm::StringMap<Operation *> shimOfFifo;
   for (auto of : objectFifos) {
     SmallVector<Value> ends{of.getProducerTile()};
     llvm::append_range(ends, of.getConsumerTiles());
-    for (Value end : ends) {
-      auto lt = dyn_cast_or_null<LogicalTileOp>(end.getDefiningOp());
-      if (lt && lt.getTileType() == AIETileType::ShimNOCTile)
-        shimOfFifo[of.getSymName()] = lt;
-    }
+    for (Value end : ends)
+      if (Operation *shim = shimOf(end))
+        shimOfFifo[of.getSymName()] = shim;
   }
-  if (shimOfFifo.empty())
-    return;
+  for (auto program : device.getOps<ShimDMAOp>())
+    if (Operation *shim = shimOf(program.getTile())) {
+      StaticBds &bds = statics[shim];
+      program.walk([&](DMABDOp bd) {
+        if (std::optional<int32_t> id = bd.getBdId())
+          bds.pinned.push_back(*id);
+        else
+          ++bds.unpinned;
+      });
+    }
   // How a descriptor splits depends on the tile type, not on its column.
-  auto shimTile = llvm::find_if(availability.nonCompTiles, [&](TileID t) {
-    return targetModel->getTileType(t.col, t.row) == AIETileType::ShimNOCTile;
-  });
-  if (shimTile == availability.nonCompTiles.end())
-    return;
+  std::optional<int> shimCol;
+  for (int col = 0; col < targetModel.columns() && !shimCol; ++col)
+    if (targetModel.getTileType(col, 0) == AIETileType::ShimNOCTile)
+      shimCol = col;
 
-  // (shim LTO, change in live BDs) in program order; a task holds its BDs from
-  // configure to await or free, else to the end of its sequence.
-  SmallVector<std::pair<Operation *, int>> events;
   device.walk([&](RuntimeSequenceOp seq) {
-    llvm::MapVector<Value, std::pair<Operation *, int>> live;
+    auto &events = sequences.emplace_back();
+    DenseMap<Value, unsigned> taskOf;
+    auto configure = [&](Operation *shim, Value result, Region &body) {
+      Task task{shim, {}, AIEX::DMAStartTaskOp::headBdIdAlignment(result)};
+      body.walk([&](DMABDOp bd) {
+        std::optional<uint32_t> pinned;
+        if (std::optional<int32_t> id = bd.getBdId())
+          pinned = static_cast<uint32_t>(*id);
+        auto plan = AIEX::decomposeTaskBdPattern(bd, targetModel, *shimCol, 0);
+        size_t pieces =
+            succeeded(plan) && !plan->pieces.empty() ? plan->pieces.size() : 1;
+        // A pinned id stays with the first piece.
+        task.bdIds.push_back(pinned);
+        task.bdIds.append(pieces - 1, std::nullopt);
+      });
+      taskOf[result] = tasks.size();
+      events.push_back({tasks.size(), true});
+      tasks.push_back(std::move(task));
+    };
     seq.walk([&](Operation *op) {
-      if (auto task = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
-        Operation *shim =
-            shimOfFifo.lookup(task.getAlloc().getRootReference().getValue());
-        if (!shim)
-          return;
-        int bds = 0;
-        task.getBody().walk([&](DMABDOp bd) {
-          auto plan = AIEX::decomposeTaskBdPattern(
-              bd, *targetModel, shimTile->col, shimTile->row);
-          bds += succeeded(plan) && !plan->pieces.empty() ? plan->pieces.size()
-                                                          : 1;
-        });
-        live[task.getResult()] = {shim, bds};
-        events.push_back({shim, bds});
+      if (!shimCol)
+        return;
+      if (auto cfg = dyn_cast<AIEX::DMAConfigureTaskForOp>(op)) {
+        if (Operation *shim =
+                shimOfFifo.lookup(cfg.getAlloc().getRootReference().getValue()))
+          configure(shim, cfg.getResult(), cfg.getBody());
+        return;
+      }
+      if (auto cfg = dyn_cast<AIEX::DMAConfigureTaskOp>(op)) {
+        if (Operation *shim = shimOf(cfg.getTile()))
+          configure(shim, cfg.getResult(), cfg.getBody());
         return;
       }
       Value released;
@@ -2056,25 +2175,134 @@ void SequentialPlacer::buildRuntimeBdProfiles(
         released = await.getTask();
       else if (auto free = dyn_cast<AIEX::DMAFreeTaskOp>(op))
         released = free.getTask();
-      auto *it = live.find(released);
-      if (it == live.end())
-        return;
-      events.push_back({it->second.first, -it->second.second});
-      live.erase(it);
+      if (auto it = taskOf.find(released); it != taskOf.end()) {
+        events.push_back({it->second, false});
+        taskOf.erase(it);
+      }
     });
-    for (auto &[task, held] : live)
-      events.push_back({held.first, -held.second});
   });
 
-  llvm::MapVector<Operation *, int> running;
-  for (auto &[shim, delta] : events)
-    if (running.insert({shim, 0}).second)
-      runtimeBdProfiles[shim].assign(events.size(), 0);
-  for (auto [idx, event] : llvm::enumerate(events)) {
-    running[event.first] += event.second;
-    for (auto &[shim, n] : running)
-      runtimeBdProfiles[shim][idx] = n;
+  for (auto &[shim, bds] : statics) {
+    Peak &peak = peaks[shim];
+    peak.live = bds.pinned.size() + bds.unpinned;
+    peak.constrained |= !bds.pinned.empty();
   }
+  DenseMap<Operation *, int> mostHeld;
+  for (const auto &events : sequences) {
+    DenseMap<Operation *, int> held;
+    for (auto [index, configured] : events) {
+      const Task &task = tasks[index];
+      int bds = static_cast<int>(task.bdIds.size());
+      int &now = held[task.owner];
+      now += configured ? bds : -bds;
+      int &most = mostHeld[task.owner];
+      most = std::max(most, now);
+    }
+  }
+  for (const Task &task : tasks)
+    peaks[task.owner].constrained |=
+        task.headAlignment > 1 ||
+        llvm::any_of(task.bdIds, [](auto id) { return id.has_value(); });
+  for (auto &[shim, most] : mostHeld)
+    peaks[shim].live += most;
+  for (auto &[shim, peak] : peaks)
+    if (auto tile = dyn_cast<TileOp>(shim))
+      placed[{tile.getCol(), tile.getRow()}] = shim;
+}
+
+int Placer::RuntimeBdIds::shortfall(ArrayRef<Operation *> onTile,
+                                    TileID tile) const {
+  std::vector<Operation *> key;
+  int live = 0;
+  bool constrained = false;
+  auto add = [&](Operation *shim) {
+    auto peak = peaks.find(shim);
+    if (peak == peaks.end() || llvm::is_contained(key, shim))
+      return;
+    key.push_back(shim);
+    live += peak->second.live;
+    constrained |= peak->second.constrained;
+  };
+  for (Operation *shim : onTile)
+    add(shim);
+  if (Operation *shim = placed.lookup(tile))
+    add(shim);
+  // Lowest-free ids never fragment, so peaks that fit together always do.
+  if (!constrained &&
+      live <= static_cast<int>(targetModel->getNumBDs(tile.col, tile.row)))
+    return 0;
+  llvm::sort(key);
+  auto [cached, added] = shortfallOf.try_emplace(key, 0);
+  if (!added)
+    return cached->second;
+  int &missing = cached->second;
+
+  // aie-assign-bd-ids: runtime-pinned ids are reserved, then static BDs take
+  // theirs.
+  BdIdGenerator assigned(tile.col, tile.row, *targetModel);
+  for (const Task &task : tasks)
+    if (llvm::binary_search(key, task.owner))
+      for (std::optional<uint32_t> pinned : task.bdIds)
+        if (pinned && !assigned.bdIdAlreadyAssigned(*pinned))
+          assigned.assignBdId(*pinned);
+  SmallVector<uint32_t> staticIds;
+  for (Operation *shim : key) {
+    StaticBds bds = statics.lookup(shim);
+    for (uint32_t id : bds.pinned) {
+      if (assigned.bdIdAlreadyAssigned(id)) {
+        ++missing;
+        continue;
+      }
+      assigned.assignBdId(id);
+      staticIds.push_back(id);
+    }
+  }
+  for (Operation *shim : key)
+    for (int i = 0, e = statics.lookup(shim).unpinned; i < e; ++i) {
+      if (std::optional<uint32_t> id = assigned.nextBdId(0))
+        staticIds.push_back(*id);
+      else
+        ++missing;
+    }
+
+  for (const auto &events : sequences) {
+    BdIdGenerator ids(tile.col, tile.row, *targetModel);
+    for (uint32_t id : staticIds)
+      ids.assignBdId(id);
+    DenseMap<unsigned, SmallVector<uint32_t>> held;
+    for (auto [index, configured] : events) {
+      const Task &task = tasks[index];
+      if (!llvm::binary_search(key, task.owner))
+        continue;
+      if (!configured) {
+        for (uint32_t id : held.lookup(index))
+          ids.freeBdId(id);
+        held.erase(index);
+        continue;
+      }
+      SmallVector<uint32_t> &taken = held[index];
+      for (std::optional<uint32_t> pinned : task.bdIds) {
+        if (!pinned)
+          continue;
+        if (ids.bdIdAlreadyAssigned(*pinned)) {
+          ++missing;
+          continue;
+        }
+        ids.assignBdId(*pinned);
+        taken.push_back(*pinned);
+      }
+      for (auto [i, pinned] : llvm::enumerate(task.bdIds)) {
+        if (pinned)
+          continue;
+        if (std::optional<uint32_t> id =
+                ids.nextBdId(0, i == 0 ? task.headAlignment : 1))
+          taken.push_back(*id);
+        else
+          ++missing;
+      }
+    }
+  }
+  return missing;
 }
 
 bool SequentialPlacer::fitsStreamAndBdBudgets(Operation *logicalTile,
@@ -2099,16 +2327,14 @@ bool SequentialPlacer::fitsStreamAndBdBudgets(Operation *logicalTile,
                               tile.col, tile.row, WireBundle::South))))
     return false;
 
-  auto profile = runtimeBdProfiles.find(logicalTile);
-  if (profile == runtimeBdProfiles.end())
+  if (!runtimeBdIds.uses(logicalTile))
     return true;
-  SmallVector<int> used = availability.runtimeBdsUsed.lookup(tile);
-  used.resize(profile->second.size(), 0);
-  int numBDs = tm.getNumBDs(tile.col, tile.row);
-  return llvm::all_of(llvm::zip(profile->second, used), [&](auto live) {
-    return !std::get<0>(live) ||
-           std::get<0>(live) + std::get<1>(live) <= numBDs;
-  });
+  // Only the ids this LTO adds to: a tile a fallback already overfilled stays
+  // open to LTOs whose tasks take none.
+  SmallVector<Operation *> onTile = availability.runtimeBdTiles.lookup(tile);
+  int before = runtimeBdIds.shortfall(onTile, tile);
+  onTile.push_back(logicalTile);
+  return runtimeBdIds.shortfall(onTile, tile) == before;
 }
 
 void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
@@ -2118,13 +2344,8 @@ void SequentialPlacer::recordStreamAndBdUsage(Operation *logicalTile,
     availability.namedChannelsUsed[tile].insert(named);
   if (auto it = streamDemand.find(logicalTile); it != streamDemand.end())
     availability.streamsUsed[tile] += it->second;
-  auto profile = runtimeBdProfiles.find(logicalTile);
-  if (profile == runtimeBdProfiles.end())
-    return;
-  SmallVector<int> &used = availability.runtimeBdsUsed[tile];
-  used.resize(profile->second.size(), 0);
-  for (auto [idx, live] : llvm::enumerate(profile->second))
-    used[idx] += live;
+  if (runtimeBdIds.uses(logicalTile))
+    availability.runtimeBdTiles[tile].push_back(logicalTile);
 }
 
 void TileAvailability::removeTile(TileID tile, AIETileType type) {

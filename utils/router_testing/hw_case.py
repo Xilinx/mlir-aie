@@ -64,3 +64,31 @@ class HwCase:
             One line per mismatch; empty when the outputs are right.
         """
         raise NotImplementedError
+
+    def check_packets(
+        self, outputs: list[np.ndarray], wants: list[list], chunk: int
+    ) -> list[str]:
+        """Compare each output with the packets it has to hold, in any order.
+
+        Packets from different sources reach a receiver in either order, so
+        only the set of packets an output holds is fixed.
+
+        Args:
+            outputs: Each runtime sequence argument as the run left it.
+            wants: For each output, the packets it has to hold once each.
+            chunk: The element count of one packet.
+
+        Returns:
+            One line per output that differs; empty when the outputs are right.
+        """
+        problems = []
+        for k, (got, want) in enumerate(zip(outputs, wants, strict=True)):
+            chunks = sorted(tuple(c) for c in got.reshape(-1, chunk))
+            want = sorted(tuple(p) for p in want)
+            if chunks != want:
+                missing = len(set(want) - set(chunks))
+                problems.append(
+                    f"output {k}: packets differ from the expected set "
+                    f"({missing} missing)"
+                )
+        return problems

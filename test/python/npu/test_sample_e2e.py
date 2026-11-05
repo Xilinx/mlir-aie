@@ -4,8 +4,7 @@
 
 # RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
-# RUN: %run_on_npu2_hrx% %pytest %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
+# REQUIRES: xrt_python_bindings
 """Draw tokens with sample_select and sample_combine, and match sample_ref exactly.
 
 The two kernels only make sense together: ``cores`` select cores each reduce

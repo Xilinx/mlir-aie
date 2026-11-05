@@ -469,8 +469,26 @@ first is issued, and an end used inside a loop counts as in flight for the
 whole loop. A sending (MM2S) end stays in flight to the end of its sequence:
 a shim MM2S task reports itself complete once the shim has read its data, up
 to about 1580 words before they have entered the stream (measured on npu2),
-so awaiting it proves nothing about a later transfer queued behind it. An end no
-runtime sequence names is never shared. Only as many ends share as the tile
+so awaiting it proves nothing about a later transfer queued behind it.
+
+A receiving end's turns also depend on the array, not just on the host: a shim
+S2MM channel writes whatever arrives into the task it is running, so if the
+array sent a receiving end's words during another end's turn, they would land
+in the other end's buffer. Ends whose senders run freely therefore never
+share, in one sequence or across sequences, since cores keep running between
+dispatches. A receiving end shares only where its senders wait on a gate: a
+shim input that `--aie-objectfifo-verify` proves they consume before sending,
+recording a `#aie.consumed_by` on the input's endpoint. In each sequence that
+issues the gate, the host must also drain the end, awaiting every byte the gate
+lets its senders send, so nothing spills into the next turn; the transfer
+sizes must be static for that count. Within one sequence, the gate must be
+issued only after the end before it is awaited: freeing a task does not wait
+for it, and an await under a branch, or in a loop that may not run, may never
+happen. Without `--aie-objectfifo-verify` there are no proofs, so no
+receiving end shares. The placers run before the proofs and count shareable
+ends by the runtime order alone, so a design whose receiving ends cannot be
+proven fails at allocation rather than at placement. An end no runtime
+sequence names is never shared. Only as many ends share as the tile
 needs. The routes of ends sharing a channel become packet-switched, with ids
 that differ from one another; other shared channels reuse the same ids, as the
 router keeps flows with one id apart wherever their destinations differ. Each

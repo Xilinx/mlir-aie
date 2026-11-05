@@ -7,6 +7,7 @@
 
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -199,7 +200,9 @@ memref::GlobalOp AIEX::BlockwriteData::getOrCreate(OpBuilder &builder,
 
 LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
-    uint64_t registerAddr) {
+    uint64_t registerAddr, const AIE::AIETargetModel &targetModel, int col,
+    int row, std::optional<uint64_t> staticByteAddress,
+    OpFoldResult lengthField) {
   auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("offset_state_table_idx");
   assert(idxAttr && "emitUpdateBdAddressFromOffsetParameter called without "
                     "offset_state_table_idx attribute");
@@ -207,14 +210,65 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
   uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
 
-  // Use func=mul with func_arg=elemBytes so the firmware computes
-  // StateTable[idx] * elemBytes = byte offset, added into the BD address
-  // register.
+  const AIE::DmaBdLayout *layout = targetModel.getDmaBdLayout(col, row);
+  if (!layout)
+    return bdOp->emitOpError("has no buffer descriptor layout on this tile");
+  const AIE::DmaBdField &addressField = layout->bufferOffset;
+  // The firmware adds StateTable[idx] * func_arg into the register holding the
+  // address field, which counts bytes on a shim BD and 32-bit words elsewhere.
+  uint64_t unit = targetModel.isShimNOCTile(col, row) ? 1 : 4;
+  uint64_t perElement = uint64_t{elemBytes} << addressField.shift;
+  if (perElement % unit || perElement / unit > UINT32_MAX)
+    return bdOp->emitOpError("a runtime offset into ")
+           << elemBytes
+           << "-byte elements cannot be added to this tile's buffer "
+              "descriptor address, which counts "
+           << unit << "-byte units from bit " << int{addressField.shift};
+  // It also clears bits [1:0] of that register. An address field from bit 0
+  // loses its own low bits, so the buffer must start on that step, as the
+  // offset moves by it (offset_multiple); one higher up loses another field's,
+  // restored below.
+  uint64_t step = addressField.shift < 2 ? unit << (2 - addressField.shift) : 0;
+  if (step && unit > 1 && (!staticByteAddress || *staticByteAddress % step))
+    return bdOp->emitOpError("a runtime offset needs the buffer at a multiple "
+                             "of ")
+           << step
+           << " bytes, as the firmware clears the address's low two bits "
+              "when it adds the offset";
+  Location loc = bdOp->getLoc();
   AIEX::NpuUpdateFromScratchpadOp::create(
-      builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
-      /*func_arg=*/elemBytes,
+      builder, loc, stateIdx, AIEX::StateTableFunc::Mul,
+      /*func_arg=*/static_cast<uint32_t>(perElement / unit),
       /*address=*/static_cast<uint32_t>(registerAddr),
       /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+  if (step)
+    return success();
+  const AIE::DmaBdField &lengthBits = layout->bufferLength;
+  if (lengthBits.word != addressField.word || lengthBits.shift != 0 ||
+      !lengthField)
+    return bdOp->emitOpError("a runtime offset would clear bits [1:0] of a "
+                             "buffer descriptor register it cannot restore");
+  // Created one at a time: the order of a call's arguments is unspecified, and
+  // the constants' order shows in the output.
+  Value address = arith::ConstantOp::create(
+      builder, loc,
+      builder.getI32IntegerAttr(static_cast<int32_t>(registerAddr)));
+  Value lowBits, mask;
+  if (std::optional<int64_t> length = getConstantIntValue(lengthField)) {
+    lowBits = arith::ConstantOp::create(
+        builder, loc,
+        builder.getI32IntegerAttr(static_cast<int32_t>(
+            lengthBits.place(static_cast<uint64_t>(*length)) & 0x3)));
+    mask =
+        arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0x3));
+  } else {
+    mask =
+        arith::ConstantOp::create(builder, loc, builder.getI32IntegerAttr(0x3));
+    lowBits =
+        arith::AndIOp::create(builder, loc, cast<Value>(lengthField), mask);
+  }
+  AIEX::NpuMaskWrite32Op::create(builder, loc, address, lowBits, mask, nullptr,
+                                 nullptr, nullptr);
   return success();
 }
 
@@ -313,6 +367,18 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
       os << " " << ref.getValue();
     os << "\n";
   }
+
+  // Last, and only when there are any, so a reader that predates it stops
+  // before it.
+  SmallVector<std::pair<StringRef, uint32_t>> multiples;
+  for (auto p : allParams)
+    if (std::optional<uint32_t> multiple = p.getOffsetMultiple())
+      multiples.push_back({p.getSymName(), *multiple});
+  if (multiples.empty())
+    return;
+  os << multiples.size() << "\n";
+  for (auto [name, multiple] : multiples)
+    os << name << " " << multiple << "\n";
 }
 
 bool AIEX::getReachableConfigures(

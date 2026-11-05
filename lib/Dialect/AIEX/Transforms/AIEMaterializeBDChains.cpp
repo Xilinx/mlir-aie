@@ -61,7 +61,7 @@ struct DMAStartBdChainForOpPattern : RewritePattern {
         rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(),
         op.getArgs(), tile.getResult(), alloc_op.getChannelDir(),
         (int32_t)alloc_op.getChannelIndex(), op.getIssueToken(),
-        op.getRepeatCount());
+        op.getRepeatCount(), op.getAllocAttr());
     rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
     rewriter.eraseOp(op);
     return success();
@@ -92,6 +92,7 @@ struct DMAInlineBDChainPattern : RewritePattern {
         rewriter, start_op.getLoc(), rewriter.getIndexType(),
         start_op.getTile(), start_op.getDirection(), start_op.getChannel(),
         start_op.getIssueToken(), start_op.getRepeatCount());
+    configure_op.setAllocAttr(start_op.getAllocAttr());
     Region &target_region = configure_op.getBody();
 
     // Clone BD definition into usage site, replacing abstract SSA values with
