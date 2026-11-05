@@ -395,18 +395,37 @@ struct AIEObjectFifoAllocatePass
     MemRefType type = pool.getElemType();
     ElementsAttr zeros;
     if (pool.getContiguous()) {
-      type =
-          MemRefType::get({pool.getObjectsPerBuffer() * type.getNumElements()},
-                          type.getElementType());
-      if (pool.getZeroObjects())
-        zeros = DenseElementsAttr::get(
-            RankedTensorType::get(type.getShape(), type.getElementType()),
-            builder.getZeroAttr(type.getElementType()));
+      int64_t objectElements = type.getNumElements();
+      type = MemRefType::get({pool.getObjectsPerBuffer() * objectElements},
+                             type.getElementType());
+      auto tensor =
+          RankedTensorType::get(type.getShape(), type.getElementType());
+      Attribute zero = builder.getZeroAttr(type.getElementType());
+      if (filled) {
+        // The one buffer starts as its objects do, in order, after the zero
+        // objects before them; objects with no initial contents start zero.
+        auto zeroObjects = pool.getZeroObjects();
+        int64_t before = zeroObjects ? (*zeroObjects)[0] : 0;
+        SmallVector<Attribute> values(before * objectElements, zero);
+        for (int i = 0; i < pool.getDepth(); i++) {
+          if (i < filled)
+            llvm::append_range(
+                values,
+                cast<ElementsAttr>(initValues[i]).getValues<Attribute>());
+          else
+            values.append(objectElements, zero);
+        }
+        values.resize(tensor.getNumElements(), zero);
+        zeros = DenseElementsAttr::get(tensor, values);
+      } else if (pool.getZeroObjects()) {
+        zeros = DenseElementsAttr::get(tensor, zero);
+      }
     }
     // Initial contents may fill only the first objects of a deeper pool.
     for (int i = 0; i < bufferCount(pool); i++) {
-      ElementsAttr init =
-          i < filled ? cast<ElementsAttr>(initValues[i]) : zeros;
+      ElementsAttr init = !pool.getContiguous() && i < filled
+                              ? cast<ElementsAttr>(initValues[i])
+                              : zeros;
       std::string name = (base + "__buf" + std::to_string(i)).str();
       Value placement = bufferPlacements[pool][i];
       setInsertionPointOn(placement);
