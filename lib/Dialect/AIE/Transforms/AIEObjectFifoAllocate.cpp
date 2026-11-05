@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
+#include "aie/Dialect/AIE/Transforms/AIELockPlan.h"
 #include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEPoolLocks.h"
@@ -217,19 +218,9 @@ struct AIEObjectFifoAllocatePass
   bool canAccess(Value user, ArrayRef<TileID> memoryPositions,
                  bool localOnly = false) {
     auto userTile = dyn_cast<TileLike>(user.getDefiningOp());
-    if (!userTile)
-      return false;
-    const auto &target = device.getTargetModel();
-    for (TileID u : compatiblePositions(userTile))
-      for (TileID m : memoryPositions) {
-        if (localOnly && u != m)
-          continue;
-        auto shared = target.getSharedMemory(u, m);
-        if (shared == AIETargetModel::SharedMemory::Second ||
-            shared == AIETargetModel::SharedMemory::Either)
-          return true;
-      }
-    return false;
+    return userTile && LockPlan::reaches(device.getTargetModel(),
+                                         compatiblePositions(userTile),
+                                         memoryPositions, localOnly);
   }
 
   Value lockPlacement(ObjectFifoPoolOp pool, Operation *group) {
@@ -433,23 +424,26 @@ struct AIEObjectFifoAllocatePass
     lockFailure = {};
     lockAccessFailure = nullptr;
     lockPlacements.clear();
-    DenseMap<std::pair<int, int>, int64_t> used;
-    auto reserve = [&](Value tile, int64_t count) {
-      auto like = cast<TileLike>(tile.getDefiningOp());
-      auto col = like.tryGetCol(), row = like.tryGetRow();
-      if (!col || !row)
-        return success();
-      if (used[{*col, *row}] + count >
-          device.getTargetModel().getNumLocks(*col, *row)) {
-        lockFailure = tile;
-        return failure();
+    LockPlan plan(device.getTargetModel());
+    SmallVector<Value> tileValues;
+    DenseMap<Value, unsigned> tileIndex;
+    auto indexOf = [&](Value tile) {
+      auto [at, fresh] = tileIndex.try_emplace(tile, tileValues.size());
+      if (fresh) {
+        auto like = cast<TileLike>(tile.getDefiningOp());
+        auto col = like.tryGetCol(), row = like.tryGetRow();
+        plan.addTile(
+            {compatiblePositions(like),
+             col && row ? std::optional<TileID>({*col, *row}) : std::nullopt});
+        tileValues.push_back(tile);
       }
-      used[{*col, *row}] += count;
-      return success();
+      return at->second;
     };
     for (auto lock : device.getOps<LockOp>())
-      if (failed(reserve(lock.getTile(), 1)))
+      if (!plan.reserve(indexOf(lock.getTile()), 1)) {
+        lockFailure = lock.getTile();
         return failure();
+      }
     // Neighbors created to weigh a spill have no rank and come last.
     SmallVector<TileLike> tiles(device.getOps<TileLike>());
     llvm::stable_sort(tiles, [&](TileLike a, TileLike b) {
@@ -458,47 +452,52 @@ struct AIEObjectFifoAllocatePass
         return bRank == structuralRank.end();
       return aRank != structuralRank.end() && aRank->second < bRank->second;
     });
-    auto place = [&](ObjectFifoPoolOp pool, Operation *group, int count) {
-      SmallVector<Value> candidates{lockPlacement(pool, group)};
-      if (!localPools.contains(pool)) {
-        llvm::append_range(candidates, bufferPlacements[pool]);
-        for (Operation *user : lockUsers[group])
-          candidates.push_back(user->getOperand(0));
-        for (auto tile : tiles)
-          candidates.push_back(tile->getResult(0));
+    SmallVector<unsigned> ranked;
+    for (auto tile : tiles)
+      ranked.push_back(indexOf(tile->getResult(0)));
+    SmallVector<LockPlan::Group> groups;
+    SmallVector<Operation *> groupOps;
+    auto add = [&](ObjectFifoPoolOp pool, Operation *group, int count) {
+      SmallVector<unsigned> buffers;
+      for (Value tile : bufferPlacements[pool])
+        if (tile)
+          buffers.push_back(indexOf(tile));
+      SmallVector<LockPlan::User> users;
+      for (Operation *user : lockUsers[group]) {
+        Value tile = user->getOperand(0);
+        users.push_back(
+            {indexOf(tile),
+             isa<ObjectFifoDmaEndpointOp>(user) &&
+                 !cast<TileLike>(tile.getDefiningOp()).isMemTile()});
       }
-      bool reachable = false;
-      for (Value tile : candidates) {
-        if (!tile || !llvm::all_of(lockUsers[group], [&](Operation *user) {
-              return canAccessLocks(user, tile);
-            }))
-          continue;
-        reachable = true;
-        if (succeeded(reserve(tile, count))) {
-          lockPlacements[group] = tile;
-          lockFailure = {};
-          return success();
-        }
-      }
-      if (!reachable && !lockUsers[group].empty()) {
-        lockFailure = {};
-        lockAccessFailure = lockUsers[group].front();
-      }
-      return failure();
+      groups.push_back(
+          LockPlan::group(count, indexOf(lockPlacement(pool, group)),
+                          localPools.contains(pool), buffers, users, ranked));
+      groupOps.push_back(group);
     };
     for (auto pool : pools) {
       if (!poolLocks->needsLocks(pool))
         continue;
       if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
-        if (!pool.getLocks() && failed(place(pool, pool, pool.getDepth())))
-          return failure();
+        if (!pool.getLocks())
+          add(pool, pool, pool.getDepth());
       } else {
         for (auto segment : pool.getSegmentOps())
-          if (!(segment.getProduceLock() && segment.getConsumeLock()) &&
-              failed(place(pool, segment, 2)))
-            return failure();
+          if (!(segment.getProduceLock() && segment.getConsumeLock()))
+            add(pool, segment, 2);
       }
     }
+    LockPlan::Assignment assignment = plan.assign(groups);
+    if (assignment.failed) {
+      Operation *group = groupOps[*assignment.failed];
+      const LockPlan::Placed &missed = assignment.failure;
+      lockFailure = missed.full ? tileValues[*missed.full] : Value();
+      if (!missed.reachable && !lockUsers[group].empty())
+        lockAccessFailure = lockUsers[group].front();
+      return failure();
+    }
+    for (auto [group, tile] : llvm::zip(groupOps, assignment.tiles))
+      lockPlacements[group] = tileValues[*tile];
     auto check = [&](auto endpoint) {
       for (Value tile : endpointLockTiles(endpoint)) {
         if (!canAccessLocks(endpoint, tile)) {
