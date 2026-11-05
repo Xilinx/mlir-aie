@@ -4202,6 +4202,15 @@ LogicalResult BufferOp::verify() {
     return failure();
   }
 
+  if (auto init = getInitialValue()) {
+    auto initType = cast<ShapedType>(init->getType());
+    MemRefType type = getType();
+    if (initType.getShape() != type.getShape() ||
+        initType.getElementType() != type.getElementType())
+      return emitOpError("initial value of type ")
+             << initType << " does not cover the buffer's " << type;
+  }
+
   // A logical tile stands for a placement the compiler has yet to choose, so
   // neither check below has a tile to reason about.
   auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
