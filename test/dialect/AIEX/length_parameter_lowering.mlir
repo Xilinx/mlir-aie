@@ -287,6 +287,50 @@ aie.device(npu2) {
 
 // -----
 
+// An iterated BD with no dimensions whose length comes only from the
+// parameter: each of its 8 runs moves n units of 128 bf16, 512 elements apart.
+
+// WRITEBD-LABEL: aie.runtime_sequence @iterated
+// WRITEBD: aiex.npu.writebd
+// WRITEBD-SAME: buffer_length = 0 : i32
+// WRITEBD-SAME: iteration_current = 0 : i32, iteration_size = 7 : i32, iteration_stride = 255 : i32
+// WRITEBD: aiex.npu.update_from_scratchpad<mul> {{{.*}}func_arg = 64 : ui32
+// WRITEBD: aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %{{.*}} repeat %{{.*}} {issue_token = false}
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence @iterated(%arg0 : memref<8x512xbf16>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<8x512xbf16> offset = 0 len = 0) {bd_id = 3 : i32, iteration = #aie.bd_iteration<size = 8, stride = 512, current = 0>, length_parameter = @n, length_unit = 128 : i32}
+      aie.end
+    } {repeat_count = 7 : i32}
+    aiex.dma_start_task(%task)
+  }
+}
+
+// -----
+
+// The same with a static length of one unit: each run moves 1 + n units.
+
+// WRITEBD-LABEL: aie.runtime_sequence @iterated_base
+// WRITEBD: aiex.npu.writebd
+// WRITEBD-SAME: buffer_length = 64 : i32
+// WRITEBD-SAME: iteration_current = 0 : i32, iteration_size = 7 : i32, iteration_stride = 255 : i32
+// WRITEBD: aiex.npu.update_from_scratchpad<mul> {{{.*}}func_arg = 64 : ui32
+aiex.scratchpad_parameter @n : i32
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.runtime_sequence @iterated_base(%arg0 : memref<8x512xbf16>) {
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<8x512xbf16> offset = 0 len = 128) {bd_id = 3 : i32, iteration = #aie.bd_iteration<size = 8, stride = 512, current = 0>, length_parameter = @n, length_unit = 128 : i32}
+      aie.end
+    } {repeat_count = 7 : i32}
+    aiex.dma_start_task(%task)
+  }
+}
+
+// -----
+
 // An offset may also run backwards to the buffer's start, so its range starts
 // below 0, while a parameter only cores read has no range. With a length
 // parameter too, off + 16 * n <= 32 keeps the transfer within the buffer, and
