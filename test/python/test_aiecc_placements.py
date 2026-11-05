@@ -75,3 +75,58 @@ def test_failure_locates_the_standing_placement(tmp_path):
         frames.append(tb.tb_frame.f_code.co_filename)
         tb = tb.tb_next
     assert str(FAILS_ELSEWHERE) not in frames, frames
+
+
+# Placement 1 has no room for its walked pools; placement 2 allocates them
+# and has no room beside a core's sections; placement 3 fails as placement 2
+# did, and stands.
+MIXED = AIECC_TESTS / "placement_retry_mixed.test"
+
+
+def _failure(design: Path, tmp_path: Path) -> str:
+    with pytest.raises(RuntimeError) as failure:
+        utils._run_aiecc(
+            str(design),
+            [
+                f"--peano={config.peano_install_dir()}",
+                f"--tmpdir={tmp_path / 'prj'}",
+                "--placer=sa_placer",
+                "--get=input_with_addresses.mlir",
+            ],
+            cwd=tmp_path,
+        )
+    return str(failure.value)
+
+
+@pytest.fixture(scope="module")
+def fails_elsewhere(tmp_path_factory) -> str:
+    return _failure(FAILS_ELSEWHERE, tmp_path_factory.mktemp("elsewhere"))
+
+
+def test_failure_summary_keeps_log_order(fails_elsewhere):
+    summary = fails_elsewhere.split("--- full aiecc log ---")[0]
+    marker = summary.index("the messages above are from placement 1")
+    error = summary.index("missing_kernel.o")
+    assert marker < error < summary.index(") stands"), summary
+
+
+def test_failure_summary_keeps_log_order_when_a_later_placement_stands(tmp_path):
+    summary = _failure(MIXED, tmp_path).split("--- full aiecc log ---")[0]
+    marker = summary.index("the messages above are from placement 2")
+    error = summary.index("could not be placed", marker)
+    assert error < summary.index("placement 3's failure stands"), summary
+
+
+def test_summary_limit_keeps_what_says_which_placement_stands(fails_elsewhere):
+    log = fails_elsewhere.split("--- full aiecc log ---\n")[1]
+    marker = next(
+        line for line in log.splitlines() if line.startswith("aiecc: placing again")
+    )
+    # Placement 2 printing 25 distinct errors before its link fails.
+    errors = "".join(f"design.mlir:{n}:1: error: error {n}\n" for n in range(25))
+    summary = utils.aiecc_diagnostics(log.replace(marker, marker + "\n" + errors))
+
+    assert summary[0] == marker, summary
+    assert summary[-1].startswith("aiecc: "), summary
+    assert any(line.endswith(") stands") for line in summary), summary
+    assert any(line.startswith("... truncated") for line in summary), summary

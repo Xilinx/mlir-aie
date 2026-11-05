@@ -1008,7 +1008,7 @@ _STANDS_RE = re.compile(r"^aiecc: (placement \d+ \(.*\) stands|no placement with
 
 
 def standing_placement(log: str) -> tuple[list[str], list[str], list[str]]:
-    """Split an aiecc log by the placement each line belongs to.
+    """Split an aiecc log around the placement that stands.
 
     When aiecc places a design again, each placement prints as it runs, a
     line marks where the next one starts, and one line says which placement
@@ -1019,26 +1019,26 @@ def standing_placement(log: str) -> tuple[list[str], list[str], list[str]]:
         log: aiecc's output.
 
     Returns:
-        The lines the standing placement printed, aiecc's lines about placing
-        again, and the lines it printed after saying which placement stands.
+        In log order: aiecc's lines placing again before the standing
+        placement, the lines that placement printed, and aiecc's lines after
+        it (placing again, saying which stands, and its report).
     """
     placements: list[list[str]] = [[]]
-    markers: list[str] = []
-    report: list[str] | None = None
+    ends: list[str] = []
+    after: list[str] | None = None
     for line in log.splitlines():
-        if report is not None:
-            report.append(line)
+        if after is not None:
+            after.append(line)
         elif line.startswith(_PLACING_AGAIN):
-            markers.append(line)
+            ends.append(line)
             placements.append([])
         elif _STANDS_RE.match(line.rstrip()):
-            markers.append(line.rstrip())
-            report = []
+            after = [line.rstrip()]
         else:
             placements[-1].append(line)
-    stands = _FAILURE_STANDS_RE.search(markers[-1]) if markers else None
-    standing = placements[int(stands[1]) - 1] if stands else placements[-1]
-    return standing, markers, report or []
+    stands = _FAILURE_STANDS_RE.search(after[0]) if after else None
+    index = int(stands[1]) - 1 if stands else len(placements) - 1
+    return ends[:index], placements[index], ends[index:] + (after or [])
 
 
 def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
@@ -1049,29 +1049,38 @@ def aiecc_diagnostics(log: str, limit: int = 20) -> list[str]:
     naming the fix hundreds of lines from either end of the log, so neither
     the head nor the tail of a failure is worth showing on its own. Keep the
     ``error:`` and ``warning:`` lines and the edge aiecc gave up on, in order
-    and without repeats. When aiecc placed the design more than once, only the
-    placement that stands is summarised, then aiecc's lines saying so.
+    and without repeats, at most `limit` of them. When aiecc placed the design
+    more than once, only the placement that stands is summarised, in log
+    order between aiecc's lines placing again and saying which stands, which
+    are always kept.
     """
-    standing, markers, report = standing_placement(log)
-    lines = log.splitlines()
+    before, standing, after = standing_placement(log)
     kept: list[str] = []
     seen: set[str] = set()
-    for line in standing + markers + report:
-        if line in markers:
-            keep = line
-        elif "error: " in line or "warning: " in line:
-            keep = _readable_diagnostic(line)
-        elif line.startswith("aiecc: ") and line.rstrip().endswith("failed"):
-            keep = line.rstrip()
-        else:
-            continue
-        if keep in seen:
-            continue
-        seen.add(keep)
-        kept.append(keep)
-        if len(kept) == limit:
-            kept.append(f"... truncated, see the full log ({len(lines)} lines)")
-            break
+    summarised = 0
+    for section in (before, standing, after):
+        for line in section:
+            if line.startswith(_PLACING_AGAIN) or _STANDS_RE.match(line):
+                keep = line
+            elif "error: " in line or "warning: " in line:
+                keep = _readable_diagnostic(line)
+            elif line.startswith("aiecc: ") and line.rstrip().endswith("failed"):
+                keep = line.rstrip()
+            else:
+                continue
+            if keep in seen:
+                continue
+            seen.add(keep)
+            kept.append(keep)
+            if section is not standing:
+                continue
+            summarised += 1
+            if summarised == limit:
+                kept.append(
+                    f"... truncated, see the full log ({len(log.splitlines())} "
+                    "lines)"
+                )
+                break
     return kept
 
 
@@ -1125,10 +1134,11 @@ def _run_aiecc(
         if proc.returncode == 0:
             # Only the placement that stands, and the line saying which it is:
             # an earlier placement's errors were what aiecc placed again for.
-            standing, markers, report = standing_placement(stderr)
-            for line in markers[-1:]:
-                print(f"[aiecc] {line}", file=sys.stderr)
-            for line in standing + report:
+            _, standing, after = standing_placement(stderr)
+            for line in after:
+                if _STANDS_RE.match(line):
+                    print(f"[aiecc] {line}", file=sys.stderr)
+            for line in standing + after:
                 # Notes are the explanation, not decoration. A warning that
                 # queue-depth enforcement could not be applied says why in an
                 # attached note, so dropping notes leaves the generic overflow
@@ -1164,7 +1174,7 @@ def _run_aiecc(
                     f"\nThe design's IR, each op noted with its source: {readable_path}"
                 )
         exc = RuntimeError(message)
-        attach_tool_location(exc, "\n".join(standing_placement(error_msg)[0]), ir_text)
+        attach_tool_location(exc, "\n".join(standing_placement(error_msg)[1]), ir_text)
         raise exc
 
 
