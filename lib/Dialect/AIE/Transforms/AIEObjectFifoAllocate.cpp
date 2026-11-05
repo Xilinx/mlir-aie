@@ -1487,12 +1487,31 @@ struct AIEObjectFifoAllocatePass
         // must keep up with that order too, through all those pools' depths.
         // A peer reached from the shim waits on the host, so the host must
         // move it before it waits on anything; one whose feeding core the walk
-        // cannot find refuses the turns.
+        // cannot find refuses the turns. Peers draining one pool are its
+        // segments: each object stays until every segment has sent its part,
+        // and its core fills whole objects, so they count as one peer of the
+        // core's, and only when every segment of the pool takes these turns.
         SmallVector<ObjectFifoCoreEndpointOp> peerCores;
         SmallVector<int64_t> peerDepths;
         SmallVector<unsigned> fed(peers.size(), ~0u);
+        DenseMap<Operation *, unsigned> fedByPool;
         bool lost = false, hostWaits = false;
+        auto wholePool = [&](ObjectFifoDmaEndpointOp peer) {
+          bool drains = peer.drains();
+          return peer.getSegments() &&
+                 llvm::all_of(poolEnds.lookup(peer.getPoolOp()), [&](auto end) {
+                   return end.drains() != drains ||
+                          llvm::is_contained(peers, end);
+                 });
+        };
         for (auto [i, peer] : llvm::enumerate(peers)) {
+          if (wholePool(peer)) {
+            auto segment = fedByPool.find(peer.getPoolOp());
+            if (segment != fedByPool.end()) {
+              fed[i] = segment->second;
+              continue;
+            }
+          }
           int64_t depth = peer.getPoolOp().getDepth();
           ObjectFifoCoreEndpointOp core = cachedCoreEnd(peer);
           SmallPtrSet<Operation *, 8> seen;
@@ -1525,6 +1544,8 @@ struct AIEObjectFifoAllocatePass
             continue;
           }
           fed[i] = peerCores.size();
+          if (wholePool(peer))
+            fedByPool[peer.getPoolOp()] = fed[i];
           peerCores.push_back(core);
           peerDepths.push_back(depth);
         }
@@ -1532,11 +1553,35 @@ struct AIEObjectFifoAllocatePass
           reason = "a peer's feeding core is not known, or feeds two peers";
         if (reason.empty() && hostWaits)
           reason = "the host waits before it moves a peer fed by the shim";
+        // A turn on a segment past every object its pool's segments have
+        // reached asks the core for the next one; the objects the segments
+        // hold open at once must fit the pool, and every segment takes one
+        // part of each object.
+        SmallVector<unsigned> peerOrder;
+        DenseMap<unsigned, int64_t> asked;
+        SmallVector<int64_t> taken(peers.size(), 0);
+        for (unsigned turn : turns.turns()) {
+          if (fed[turn] == ~0u)
+            continue;
+          int64_t part = ++taken[turn];
+          if (part > asked[fed[turn]]) {
+            asked[fed[turn]] = part;
+            peerOrder.push_back(fed[turn]);
+          }
+          ObjectFifoPoolOp pool = peers[turn].getPoolOp();
+          int64_t fewest = part;
+          for (auto [j, other] : llvm::enumerate(peers))
+            if (other.getPoolOp() == pool)
+              fewest = std::min(fewest, taken[j]);
+          if (reason.empty() && asked[fed[turn]] - fewest > pool.getDepth())
+            reason = "a pool's segments hold more objects open than it has";
+        }
+        for (auto [i, peer] : llvm::enumerate(peers))
+          for (auto [j, other] : llvm::enumerate(peers))
+            if (reason.empty() && other.getPoolOp() == peer.getPoolOp() &&
+                taken[i] != taken[j])
+              reason = "a pool's segments take different counts of turns";
         if (reason.empty() && !peerCores.empty()) {
-          SmallVector<unsigned> peerOrder;
-          for (unsigned turn : turns.turns())
-            if (fed[turn] != ~0u)
-              peerOrder.push_back(fed[turn]);
           CoreTurns peerTurns;
           if (llvm::any_of(peerCores, [&](ObjectFifoCoreEndpointOp c) {
                 return !sameTile(c.getTile(), peerCores.front().getTile());
