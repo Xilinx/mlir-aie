@@ -15,7 +15,15 @@
 // shim's column pulls %c east, where x's buffers sit on %c too and do not fit
 // beside its sections. aiecc places again with the measured bytes, and the SA
 // puts %c beside %p, whose tile holds x's buffers.
+// Only the standing attempt's diagnostics print: not the first placement's
+// memory map warning, but the warning every attempt makes (never_called has
+// link_with but no caller), once.
+// RETRY-NOT: warning:
 // RETRY: aiecc: a core's buffers find no room beside its own sections; placing again with --sa-core-data-sizes=main:0=0,main:1=28672
+// RETRY-NOT: Not all requested buffers fit
+// RETRY-NOT: error:
+// RETRY: warning: func 'never_called' has link_with but is never called from any core
+// RETRY-NOT: warning:
 // RETRY-NOT: error:
 
 // Core data sizes the command line chose are kept.

@@ -9,6 +9,7 @@
 
 module @core_data_retry {
   aie.device(npu2) {
+    func.func private @never_called(memref<16xi32>) attributes {link_with = "never_called.o"}
     %shim = aie.logical_tile<ShimNOCTile>(7, 0)
     %p = aie.logical_tile<CoreTile>(0, 2)
     %c = aie.logical_tile<CoreTile>(?, ?)

@@ -12,6 +12,7 @@
 
 module {
   aie.device(npu2) @d0 {
+    func.func private @never_called(memref<16xi32>) attributes {link_with = "never_called.o"}
     %logical_core = aie.logical_tile<CoreTile>(?, ?)
     %logical_core_0 = aie.logical_tile<CoreTile>(?, ?)
     %logical_core_1 = aie.logical_tile<CoreTile>(?, ?)

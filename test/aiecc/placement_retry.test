@@ -12,7 +12,14 @@
 // The sequential placer's default placement of the decode pack does not
 // route; aiecc places it again with three cores a column, which does, and
 // shows none of the first attempt's errors.
+// The input warns once an attempt (never_called has link_with but no
+// caller): the first attempt's warnings are dropped with it, and the standing
+// attempt's are printed.
+// RETRY-NOT: warning:
 // RETRY: aiecc: the placement does not route; placing again with --cores-per-col=3
+// RETRY-NOT: error:
+// RETRY: warning: func 'never_called' has link_with but is never called from any core
+// RETRY-NOT: warning:
 // RETRY-NOT: error:
 
 // A cores-per-col the command line chose is kept.
