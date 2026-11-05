@@ -1414,10 +1414,14 @@ def AIE_DMAConfigureTaskOp
 
     An `aie.dma_bd` in a task may give more than 4 dimensions when all are constant; `aie-decompose-large-dma-bd` iterates every one past the innermost three.
 
-    `alloc` names the `aie.shim_dma_allocation` the task was configured for,
-    when `aie-substitute-shim-dma-allocations` made it from an
-    `aiex.dma_configure_task_for`. `aie-assign-runtime-sequence-bd-ids` reads
-    that allocation's `consumed_by`.
+    `alloc` names the `aie.shim_dma_allocation` the task carries transfers
+    for, which must be on the task's tile, direction and channel.
+    `aie-substitute-shim-dma-allocations` sets it on the task it makes from an
+    `aiex.dma_configure_task_for`, and `aie-materialize-bd-chains` on the task
+    it makes from an `aiex.dma_start_bd_chain_for`; it may also be written by
+    hand. A task `aie-objectfifo-allocate` configures on a non-shim endpoint
+    has none. `aie-assign-runtime-sequence-bd-ids` credits the task's pushes
+    by that allocation's `consumed_by`.
   }];
 
   let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,

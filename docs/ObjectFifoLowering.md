@@ -485,9 +485,10 @@ sizes must be static for that count. Within one sequence, the gate must be
 issued only after the end before it is awaited: freeing a task does not wait
 for it, and an await under a branch, or in a loop that may not run, may never
 happen. Without `--aie-objectfifo-verify` there are no proofs, so no
-receiving end shares. The placers run before the proofs and count shareable
-ends by the runtime order alone, so a design whose receiving ends cannot be
-proven fails at allocation rather than at placement. An end no runtime
+receiving end shares. The placers run before split, so they find the proofs
+by running split and verify on a copy of the design with every fifo between
+two tiles on DMA (placement can move to shared memory only a fifo whose proof
+holds the same there), and share a receiving end only under them. An end no runtime
 sequence names is never shared. Only as many ends share as the tile
 needs. The routes of ends sharing a channel become packet-switched, with ids
 that differ from one another; other shared channels reuse the same ids, as the
@@ -504,7 +505,11 @@ order of a draining core's needs (or of a filling core's releases) once its
 holdings settle is `turns`. An end used under a branch, or in a loop of
 unknown trip count inside the period, has no fixed order and never shares.
 Each end must be one circuit route from another DMA endpoint, and those
-endpoints, on one tile, take the same turns. The turns are taken only if a
+endpoints, on one tile, take the same turns. Endpoints that drain one mem tile
+pool as a distribute's segments count as one there, fed by the one core that
+fills the pool: they take turns only if every segment of the pool is among
+them, each takes as many turns, and the objects they hold open at once fit the
+pool. The turns are taken only if a
 chain moving objects in their order forever, through the pools' depths, never
 leaves the channel and the core both waiting: a window over one pool beside
 a one-deep pool would, as the chain's next object of the second waits for a
