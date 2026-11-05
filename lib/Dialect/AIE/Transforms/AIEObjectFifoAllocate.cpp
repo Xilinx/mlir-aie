@@ -1487,10 +1487,11 @@ struct AIEObjectFifoAllocatePass
         // must keep up with that order too, through all those pools' depths.
         // A peer reached from the shim waits on the host, so the host must
         // move it before it waits on anything; one whose feeding core the walk
-        // cannot find refuses the turns. Peers draining one pool are its
-        // segments: each object stays until every segment has sent its part,
-        // and its core fills whole objects, so they count as one peer of the
-        // core's, and only when every segment of the pool takes these turns.
+        // cannot find refuses the turns. Peers that are one pool's segments,
+        // draining it or filling it, each move a part of every object, and the
+        // core at the pool's other end moves objects whole, so they count as
+        // one peer of that core's when every segment on their side takes these
+        // turns.
         SmallVector<ObjectFifoCoreEndpointOp> peerCores;
         SmallVector<int64_t> peerDepths;
         SmallVector<unsigned> fed(peers.size(), ~0u);
