@@ -750,6 +750,19 @@ int SAPlacer::computeMemSpilloverPenalty() {
   return ((unplaced + 1023) / 1024) * config.memPenaltyPerKB;
 }
 
+// In position order: room one tile is lent is gone for the next, so the
+// order decides the outcome and must not follow the map's hashing.
+SmallVector<TileID> SAPlacer::overflowingCoreTiles() const {
+  SmallVector<TileID> tiles;
+  for (auto &[tilePos, used] : currentMemUsage)
+    if (targetModel->getTileType(tilePos.col, tilePos.row) ==
+            AIETileType::CoreTile &&
+        used > targetModel->getLocalMemorySize())
+      tiles.push_back(tilePos);
+  llvm::sort(tiles);
+  return tiles;
+}
+
 // Penalizes core tiles whose buffer usage exceeds local memory, accounting
 // for intratile fifos that can be relocated to a neighbor via allocate.
 int SAPlacer::computeCoreOverflowPenalty() const {
@@ -759,13 +772,8 @@ int SAPlacer::computeCoreOverflowPenalty() const {
   // generateAllocates hands it out.
   llvm::DenseMap<TileID, int64_t> lent;
 
-  for (auto &[tilePos, used] : currentMemUsage) {
-    if (targetModel->getTileType(tilePos.col, tilePos.row) !=
-        AIETileType::CoreTile)
-      continue;
-    if (used <= coreCapacity)
-      continue;
-    int64_t overflow = used - coreCapacity;
+  for (TileID tilePos : overflowingCoreTiles()) {
+    int64_t overflow = currentMemUsage.lookup(tilePos) - coreCapacity;
 
     // Build accessible neighbor spare capacities.
     llvm::SmallVector<std::pair<int64_t, TileID>, 4> nbrSpares;
@@ -1038,14 +1046,7 @@ void SAPlacer::generateAllocates() {
   // Case A: Intratile fifo relocation for overflowing core tiles.
   // Snapshot overflowing tiles first to avoid iterator invalidation
   // (delegate updates modify currentMemUsage during packing).
-  SmallVector<TileID> overflowTiles;
-  for (auto &[tilePos, used] : currentMemUsage) {
-    if (targetModel->getTileType(tilePos.col, tilePos.row) ==
-            AIETileType::CoreTile &&
-        used > coreCapacity)
-      overflowTiles.push_back(tilePos);
-  }
-  for (auto &tilePos : overflowTiles) {
+  for (TileID tilePos : overflowingCoreTiles()) {
 
     // Build accessible neighbor spare capacities: (tilePos, spare)
     SmallVector<std::pair<TileID, int64_t>, 4> nbrSpares;

@@ -966,6 +966,8 @@ private:
   /// Cascade neighbours placed apart, and shared-memory ends placed on
   /// tiles sharing no memory module, by how far.
   int computePairingPenalty() const;
+  /// Core tiles over local memory, in position order.
+  llvm::SmallVector<TileID> overflowingCoreTiles() const;
   void generateAllocates();
 
   // Move methods
