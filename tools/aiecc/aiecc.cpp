@@ -3256,9 +3256,24 @@ int main(int argc, char **argv) {
   // objects apart, and the probe link measures each core's own sections, which
   // the SA guesses. When a pool or a core's buffers find no room, the SA places
   // again with what was found, until everything fits or nothing new is.
+  // Only the failure placing again addresses (no room, with the note naming
+  // what to charge) counts; anything else the attempt reports stands as
+  // itself.
+  auto noRoom = [&](llvm::StringRef edge, llvm::StringLiteral message,
+                    llvm::StringLiteral note) {
+    return failedAt(edge) &&
+           llvm::any_of(attempts.back().errors, [&](const RecordedError &error) {
+             return llvm::StringRef(error.message).contains(message) &&
+                    llvm::any_of(error.notes, [&](const auto &n) {
+                      return llvm::StringRef(n.first).starts_with(note);
+                    });
+           });
+  };
   llvm::StringMap<int64_t> coreData;
-  while ((mayWalkAgain && failedAt(kWithSymbolsEdge)) ||
-         (mayCoreAgain && failedAt(kAddressesEdge))) {
+  while ((mayWalkAgain && noRoom(kWithSymbolsEdge, xilinx::AIE::kNoBufferRoom,
+                                 xilinx::AIE::kTurnWalkedNote)) ||
+         (mayCoreAgain && noRoom(kAddressesEdge, xilinx::AIE::kNoTileRoom,
+                                 xilinx::AIE::kCoreSectionsNote))) {
     Attempt &last = attempts.back();
     // Each charge names its device, and only the devices that failed are
     // charged, so the others place as they did.
