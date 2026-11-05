@@ -497,7 +497,8 @@ struct AIEObjectFifoAllocatePass
       return failure();
     }
     for (auto [group, tile] : llvm::zip(groupOps, assignment.tiles))
-      lockPlacements[group] = tileValues[*tile];
+      if (tile)
+        lockPlacements[group] = tileValues[*tile];
     auto check = [&](auto endpoint) {
       for (Value tile : endpointLockTiles(endpoint)) {
         if (!canAccessLocks(endpoint, tile)) {

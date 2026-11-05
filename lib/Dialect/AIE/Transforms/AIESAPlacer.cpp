@@ -1671,7 +1671,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     if (isa_and_nonnull<LogicalTileOp>(tileOp))
       ++fixedLocks[tileOp];
   });
-  auto [coreBytes, coreBus, coreVector] =
+  TileMemoryLimits coreLimits =
       tileMemoryLimits(*targetModel, AIETileType::CoreTile);
   device.walk([&](BufferOp bufOp) {
     auto *tileOp = bufOp.getTile().getDefiningOp();
@@ -1689,7 +1689,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
       banks = {static_cast<int>(*bank)};
     memory.buffers.push_back(
         {bytes,
-         fitAlignBytes(bufOp.getAligned(), coreBus, coreVector, bytes, 1),
+         fitAlignBytes(bufOp.getAligned(), coreLimits.tileAlignBitWidth,
+                       coreLimits.maxVecAlignBits, bytes, 1),
          bufOp.getInitialValue().has_value(), banks});
   });
   for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
@@ -1700,8 +1701,10 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     int64_t bytes = pool.getObjectSizeInBytes() * pool.getObjectsPerBuffer();
     for (int i = 0, e = pool.getContiguous() ? 1 : pool.getDepth(); i < e; ++i)
       coreMemory[tileOp].buffers.push_back(
-          {bytes, fitAlignBytes(true, coreBus, coreVector, bytes, 1), false,
-           banksFromMemorySpace(pool.getElemType())});
+          {bytes,
+           fitAlignBytes(true, coreLimits.tileAlignBitWidth,
+                         coreLimits.maxVecAlignBits, bytes, 1),
+           false, banksFromMemorySpace(pool.getElemType())});
   }
 
   // Collect core stack and data regions (reserved by assign-buffer-addresses)
@@ -1725,7 +1728,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     if (dataBytes > 0)
       memory.buffers.push_back(
           {dataBytes,
-           fitAlignBytes(true, coreBus, coreVector, dataBytes,
+           fitAlignBytes(true, coreLimits.tileAlignBitWidth,
+                         coreLimits.maxVecAlignBits, dataBytes,
                          coreOp.getMeasuredDataAlignment().value_or(1)),
            false,
            {}});
@@ -1739,7 +1743,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
           align = std::max<int64_t>((*alignments)[bank], 1);
         memory.buffers.push_back(
             {size,
-             fitAlignBytes(true, coreBus, coreVector, size, align),
+             fitAlignBytes(true, coreLimits.tileAlignBitWidth,
+                           coreLimits.maxVecAlignBits, size, align),
              false,
              {static_cast<int>(bank)}});
       }
