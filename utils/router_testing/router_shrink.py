@@ -170,6 +170,9 @@ def shrink(d, holds, log=None, budget_s=None):
                 if log:
                     log(d)
                 break
+            # A candidate judged past the deadline was not decided.
+            if deadline is not None and time.monotonic() >= deadline:
+                return d, False
     return d, True
 
 

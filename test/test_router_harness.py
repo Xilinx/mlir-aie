@@ -343,6 +343,23 @@ def test_a_live_shared_budget_judges_before_shrinking(monkeypatch, tmp_path):
         )
 
 
+def test_a_last_candidate_judged_past_the_budget_leaves_shrinking_unfinished():
+    d = rp.load_design(OVER_CUT)
+    last = len(list(router_shrink.candidates(d)))
+    calls = [0]
+
+    def holds(e):
+        calls[0] += 1
+        if calls[0] == last:
+            time.sleep(1.5)
+        return False
+
+    small, finished = router_shrink.shrink(d, holds, budget_s=1)
+    assert calls[0] == last
+    assert not finished
+    assert small is d
+
+
 def test_an_unbounded_shrink_finishes_on_what_fails():
     d = rp.load_design(OVER_CUT)
     holds = router_shrink.holds_fn(OVERUSED, True)
