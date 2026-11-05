@@ -34,7 +34,7 @@ import sys
 import time
 import traceback
 from collections import Counter, defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(
@@ -1521,6 +1521,58 @@ def shrink_failure(kind, name, payload, hops_on, seed, verbose, deadline):
     return payload, True
 
 
+# Outcomes that fail the run.
+BAD = {
+    "completeness",
+    "soundness",
+    "illegal",
+    "crash",
+    "timeout",
+    "broken",
+    "survived",
+    "base-fails",
+    "base-illegal",
+    "model-limit",
+}
+
+
+def write_report(path, args, results, partial):
+    """Write the run's report: the tally of the seeds finished so far.
+
+    Args:
+        path: Where to write it; replaced whole, so a reader never sees half.
+        args: The run's arguments.
+        results: (seed, rows) of each seed finished, in any order.
+        partial: Whether seeds are left, so the report covers only those done.
+    """
+    rows = [(seed, row) for seed, seed_rows in sorted(results) for row in seed_rows]
+    kills = Counter(row[1] for _, row in rows if row[0] == "kill")
+    report = {
+        "device": args.device,
+        "hops": "off" if args.hops_off else "on",
+        "first_seed": args.first_seed,
+        "seeds": args.seeds,
+        "seeds_done": len(results),
+        "partial": partial,
+        "killed": kills["killed"],
+        "survived": kills["survived"],
+        "failures": [
+            {
+                "seed": seed,
+                "kind": kind,
+                "name": name,
+                "outcome": outcome,
+                "detail": detail.strip()[:300],
+            }
+            for seed, (kind, outcome, name, detail, _) in rows
+            if outcome in BAD
+        ],
+    }
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(report, indent=1))
+    tmp.replace(path)
+
+
 def main():
     cli = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1543,29 +1595,24 @@ def main():
     args = cli.parse_args()
     t0 = time.monotonic()
     seeds = range(args.first_seed, args.first_seed + args.seeds)
+    results = []
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(lambda s: (s, run_seed(s, args)), seeds))
+        futures = {pool.submit(run_seed, s, args): s for s in seeds}
+        for future in as_completed(futures):
+            results.append((futures[future], future.result()))
+            # A run the job's time limit stops still leaves what it found.
+            if args.report:
+                write_report(args.report, args, results, partial=True)
+    results.sort(key=lambda r: r[0])
 
     tally = defaultdict(Counter)
     failures = []
-    bad = {
-        "completeness",
-        "soundness",
-        "illegal",
-        "crash",
-        "timeout",
-        "broken",
-        "survived",
-        "base-fails",
-        "base-illegal",
-        "model-limit",
-    }
     # Strict misses are saved with the failures, but do not fail the run.
     misses = []
     for seed, rows in results:
         for kind, outcome, name, detail, payload in rows:
             tally[(kind, name)][outcome] += 1
-            if outcome in bad:
+            if outcome in BAD:
                 failures.append((seed, kind, outcome, name, detail, payload))
             elif outcome == "strict-miss":
                 misses.append((seed, kind, outcome, name, detail, payload))
@@ -1601,29 +1648,7 @@ def main():
             (args.out / f"{kind}-{name}-{outcome}-{seed}.mlir").write_text(text)
     # Written before shrinking, which can outlast the job's timeout.
     if args.report:
-        args.report.write_text(
-            json.dumps(
-                {
-                    "device": args.device,
-                    "hops": "off" if args.hops_off else "on",
-                    "first_seed": args.first_seed,
-                    "seeds": args.seeds,
-                    "killed": kills["killed"],
-                    "survived": kills["survived"],
-                    "failures": [
-                        {
-                            "seed": seed,
-                            "kind": kind,
-                            "name": name,
-                            "outcome": outcome,
-                            "detail": detail.strip()[:300],
-                        }
-                        for seed, kind, outcome, name, detail, _ in failures
-                    ],
-                },
-                indent=1,
-            )
-        )
+        write_report(args.report, args, results, partial=False)
     if args.shrink:
         done = set()
         # One deadline for the whole shrink phase, not one per failure.

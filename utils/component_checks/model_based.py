@@ -111,6 +111,11 @@ def router(
             )
             continue
         part = f"hops-{report['hops']}"
+        if report.get("partial", False):
+            failed.append(
+                f"{device}/{part}/stopped after {report['seeds_done']} of "
+                f"{report['seeds']} seeds"
+            )
         seen = set()
         for f in report["failures"]:
             what = " ".join(x for x in (f["kind"], f["name"], f["outcome"]) if x)
