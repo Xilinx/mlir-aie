@@ -35,3 +35,34 @@ aie.device(npu2) {
     } {alloc = @notalloc}
   }
 }
+
+// -----
+
+// The same channel index on another tile.
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  %t1 = aie.tile(1, 0)
+  aie.shim_dma_allocation @out(%t, S2MM, 0)
+  aie.runtime_sequence(%c: memref<64xi32>) {
+    // expected-error@+1 {{runs on another channel than its alloc @out}}
+    %task = aiex.dma_configure_task(%t1, S2MM, 0) {
+      aie.dma_bd(%c : memref<64xi32> offset = 0 len = 64)
+      aie.end
+    } {alloc = @out}
+  }
+}
+
+// -----
+
+// The same tile and channel index in the other direction.
+aie.device(npu2) {
+  %t = aie.tile(0, 0)
+  aie.shim_dma_allocation @out(%t, S2MM, 0)
+  aie.runtime_sequence(%c: memref<64xi32>) {
+    // expected-error@+1 {{runs on another channel than its alloc @out}}
+    %task = aiex.dma_configure_task(%t, MM2S, 0) {
+      aie.dma_bd(%c : memref<64xi32> offset = 0 len = 64)
+      aie.end
+    } {alloc = @out}
+  }
+}
