@@ -8,10 +8,14 @@
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 #include "aie/Dialect/AIE/Transforms/AIEChannelTurns.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIE/Transforms/AIEStructuralRank.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
@@ -211,7 +215,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
-      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });
+      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
+      provenShimGates(device));
   shimEndsAt.clear();
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
@@ -1399,6 +1404,91 @@ Placer::collectShareableShimEnds(DeviceOp device,
         ends[lt][0].push_back(fifo.getSymNameAttr());
   }
   return ends;
+}
+
+DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>>
+Placer::provenShimGates(DeviceOp device) {
+  auto module = device->getParentOfType<ModuleOp>();
+  if (!module)
+    return {};
+  unsigned index = 0;
+  for (DeviceOp other : module.getOps<DeviceOp>()) {
+    if (other == device)
+      break;
+    ++index;
+  }
+  // A context of its own: the passes below cannot run nested in this one's.
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  module->print(os, OpPrintingFlags().printGenericOpForm());
+  MLIRContext context(device.getContext()->getDialectRegistry(),
+                      MLIRContext::Threading::DISABLED);
+  ScopedDiagnosticHandler quiet(&context,
+                                [](Diagnostic &) { return success(); });
+  OwningOpRef<ModuleOp> copy = parseSourceString<ModuleOp>(text, &context);
+  if (!copy)
+    return {};
+  auto devices = llvm::to_vector(copy->getOps<DeviceOp>());
+  if (index >= devices.size())
+    return {};
+  DeviceOp clone = devices[index];
+
+  // Split needs placed tiles. With every fifo between two tiles on DMA,
+  // which tiles they are does not change what verify proves.
+  const AIETargetModel &target = clone.getTargetModel();
+  DenseSet<TileID> usedCores;
+  for (auto tile : clone.getOps<TileOp>())
+    if (tile.isCoreTile())
+      usedCores.insert({tile.getCol(), tile.getRow()});
+  DenseMap<AIETileType, unsigned> turn;
+  OpBuilder builder(clone.getBody(), clone.getBody()->begin());
+  for (auto lt : llvm::to_vector(clone.getOps<LogicalTileOp>())) {
+    SmallVector<TileID> fits;
+    for (int col = 0; col < target.columns(); ++col)
+      for (int row = 0; row < target.rows(); ++row)
+        if (target.getTileType(col, row) == lt.getTileType() &&
+            satisfiesConstraints(lt, {col, row}) &&
+            (lt.getTileType() != AIETileType::CoreTile ||
+             !usedCores.contains({col, row})))
+          fits.push_back({col, row});
+    if (fits.empty())
+      return {};
+    TileID at = lt.getTileType() == AIETileType::CoreTile
+                    ? fits.front()
+                    : fits[turn[lt.getTileType()]++ % fits.size()];
+    if (lt.getTileType() == AIETileType::CoreTile)
+      usedCores.insert(at);
+    TileOp tile = TileOp::getOrCreate(builder, clone, at.col, at.row);
+    lt.getResult().replaceAllUsesWith(tile.getResult());
+    lt.erase();
+  }
+  for (auto fifo : clone.getOps<ObjectFifoCreateOp>()) {
+    if (fifo.forcesDMA() ||
+        llvm::all_of(fifo.getConsumerTiles(), [&](Value consumer) {
+          return consumer == fifo.getProducerTile();
+        }))
+      continue;
+    ObjectFifoTransportAttr transport = fifo.getTransportAttr();
+    fifo.setTransportAttr(ObjectFifoTransportAttr::get(
+        &context, ObjectFifoTransportMode::DMA,
+        transport ? transport.getPacket() : PacketInfoAttr()));
+  }
+  for (auto allocate : llvm::to_vector(clone.getOps<ObjectFifoAllocateOp>()))
+    allocate.erase();
+
+  PassManager pm(&context, DeviceOp::getOperationName());
+  pm.addPass(createAIEObjectFifoSplitPass());
+  pm.addPass(createAIEObjectFifoVerifyPass());
+  if (failed(pm.run(clone)))
+    return {};
+  DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>> gates;
+  MLIRContext *ctx = device.getContext();
+  for (auto &[fifo, proven] : ShimTransferSpans::provenGates(clone))
+    for (const ShimTransferSpans::Gate &gate : proven)
+      gates[StringAttr::get(ctx, fifo.getValue())].push_back(
+          {StringAttr::get(ctx, gate.input.getValue()), gate.inputBytes,
+           gate.outputBytes});
+  return gates;
 }
 
 std::optional<ShimTransferSpans::End> Placer::shimEndOf(DeviceOp device,

@@ -1501,7 +1501,8 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
                   collected.routes);
   shareableShimEnds = collectShareableShimEnds(device, objectFifos);
   shimSpans.emplace(
-      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); });
+      device, [&](StringAttr symbol) { return shimEndOf(device, symbol); },
+      provenShimGates(device));
   runtimeBdIds = RuntimeBdIds(device, objectFifos, *targetModel);
   cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
   LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "

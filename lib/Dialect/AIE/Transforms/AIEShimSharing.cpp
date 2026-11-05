@@ -238,3 +238,21 @@ ShimTransferSpans::groups(ArrayRef<StringAttr> ends) const {
   }
   return result;
 }
+
+DenseMap<StringAttr, SmallVector<ShimTransferSpans::Gate>>
+ShimTransferSpans::provenGates(DeviceOp device) {
+  DenseMap<StringAttr, SmallVector<Gate>> gates;
+  for (auto input : device.getOps<RouteEndpointOp>()) {
+    if (!input.getConsumedBy() || !input.getFifoName())
+      continue;
+    for (auto proof : input.getConsumedByAttr().getAsRange<ConsumedByAttr>()) {
+      auto output = SymbolTable::lookupNearestSymbolFrom<RouteEndpointOp>(
+          device, proof.getOutput());
+      if (output && output.getFifoName())
+        gates[output.getFifoNameAttr()].push_back({input.getFifoNameAttr(),
+                                                   proof.getInputBytes(),
+                                                   proof.getOutputBytes()});
+    }
+  }
+  return gates;
+}

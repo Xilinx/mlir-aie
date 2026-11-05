@@ -190,6 +190,16 @@ public:
   static std::optional<ShimTransferSpans::End>
   shimEndOf(DeviceOp device, mlir::StringAttr symbol);
 
+  // The gates objectFIFO allocation will share receiving shim ends by: the
+  // #aie.consumed_by proofs aie-objectfifo-verify finds on a copy of the
+  // design with every fifo between two tiles moved by DMA. Placing a fifo
+  // on shared memory instead keeps each such proof (see the commit that adds
+  // this), so these never promise a turn allocation refuses. Empty when the
+  // copy does not verify.
+  static llvm::DenseMap<mlir::StringAttr,
+                        llvm::SmallVector<ShimTransferSpans::Gate>>
+  provenShimGates(DeviceOp device);
+
   // The BD ids a shim tile's DMAs take, handed out as aie-assign-bd-ids and
   // aie-assign-runtime-sequence-bd-ids do. Static aie.shim_dma BDs take ids
   // around the ones runtime tasks pin, pinned ids first, then the lowest free;
