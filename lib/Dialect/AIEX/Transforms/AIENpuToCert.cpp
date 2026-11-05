@@ -13,6 +13,8 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Matchers.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -599,6 +601,101 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
   }
 };
 
+// The blockwrite that loads the BD an address_patch patches: the nearest
+// preceding blockwrite, when it targets the patched BD.
+static AIEX::NpuBlockWriteOp
+findPatchedBlockWrite(AIEX::NpuAddressPatchOp patch) {
+  const auto &tm = AIE::getTargetModel(patch);
+  uint32_t addr = patch.getAddr();
+  int col = (addr >> tm.getColumnShift()) & 0x1f;
+  int row = (addr >> tm.getRowShift()) & 0x1f;
+  if (!tm.isValidTile({col, row}))
+    return {};
+  for (Block::iterator it(patch); it != patch->getBlock()->begin();) {
+    auto blockWrite = dyn_cast<AIEX::NpuBlockWriteOp>(*--it);
+    if (!blockWrite)
+      continue;
+    if (blockWrite.getAddress() + tm.getDmaBdAddressOffset(col, row) != addr)
+      return {};
+    return blockWrite;
+  }
+  return {};
+}
+
+// An address_patch writes buffer address + arg_plus into a BD register, but
+// cert.apply_offset_57 adds the buffer address to the BD template in memory.
+// So before conversion the patched template word must hold arg_plus, and the
+// template must belong to its blockwrite alone: dma-to-npu shares identical
+// templates between BDs, and a shared one would accumulate every BD's address.
+static LogicalResult prepareAddressPatchTemplates(AIE::DeviceOp device) {
+  LogicalResult result = success();
+  SymbolTable symbols(device);
+  SmallVector<AIEX::NpuAddressPatchOp> patches;
+  device.walk([&](AIEX::NpuAddressPatchOp patch) { patches.push_back(patch); });
+  for (AIEX::NpuAddressPatchOp patch : patches) {
+    AIEX::NpuBlockWriteOp blockWrite = findPatchedBlockWrite(patch);
+    if (!blockWrite)
+      continue;
+    auto getGlobal = dyn_cast_or_null<memref::GetGlobalOp>(
+        blockWrite.getData().getDefiningOp());
+    if (!getGlobal)
+      continue;
+    auto global = symbols.lookup<memref::GlobalOp>(getGlobal.getName());
+    if (!global)
+      continue;
+    std::optional<Attribute> initialValue = global.getInitialValue();
+    auto words = initialValue ? dyn_cast<DenseIntElementsAttr>(*initialValue)
+                              : DenseIntElementsAttr();
+    if (!words)
+      continue;
+
+    if (!patch.getArgIdx()) {
+      patch.emitError("cert lowering requires an address_patch with arg_idx");
+      result = failure();
+      continue;
+    }
+    APInt argPlus;
+    if (!matchPattern(patch.getArgPlus(), m_ConstantInt(&argPlus))) {
+      patch.emitError("cert lowering requires a constant arg_plus: "
+                      "apply_offset_57 cannot add a runtime offset");
+      result = failure();
+      continue;
+    }
+    if (argPlus.isNegative() || argPlus.getActiveBits() > 32) {
+      patch.emitError("arg_plus ")
+          << argPlus.getSExtValue()
+          << " does not fit the BD's 32-bit address word";
+      result = failure();
+      continue;
+    }
+    unsigned word = (patch.getAddr() - blockWrite.getAddress()) / 4;
+    if (word >= words.getNumElements())
+      continue;
+
+    // Give this blockwrite a private template if anything else uses it.
+    auto uses = SymbolTable::getSymbolUses(global, device);
+    if (uses && !llvm::hasSingleElement(*uses)) {
+      OpBuilder builder(global);
+      auto copy = cast<memref::GlobalOp>(builder.clone(*global));
+      symbols.insert(copy);
+      OpBuilder atBlockWrite(blockWrite);
+      auto privateGet =
+          memref::GetGlobalOp::create(atBlockWrite, getGlobal.getLoc(),
+                                      getGlobal.getType(), copy.getSymName());
+      blockWrite.getDataMutable().assign(privateGet);
+      if (getGlobal->use_empty())
+        getGlobal->erase();
+      global = copy;
+    }
+
+    auto values = llvm::to_vector(words.getValues<APInt>());
+    values[word] = argPlus.zextOrTrunc(values[word].getBitWidth());
+    global.setInitialValueAttr(
+        DenseIntElementsAttr::get(words.getType(), values));
+  }
+  return result;
+}
+
 struct NpuAddressPatchToCertApplyOffset57
     : OpConversionPattern<AIEX::NpuAddressPatchOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -606,42 +703,18 @@ struct NpuAddressPatchToCertApplyOffset57
   LogicalResult
   matchAndRewrite(AIEX::NpuAddressPatchOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // find the previous blockwrite operation
-    Block::iterator it(op);
-    while (it != op->getBlock()->begin()) {
-      --it;
-      auto blockWriteOp = dyn_cast<AIEX::NpuBlockWriteOp>(*it);
-      if (!blockWriteOp)
-        continue;
-
-      const auto &tm = AIE::getTargetModel(op);
-      uint32_t addr = op.getAddr();
-      int col = (addr >> tm.getColumnShift()) & 0x1f;
-      int row = (addr >> tm.getRowShift()) & 0x1f;
-      if (!tm.isValidTile({col, row}))
-        return failure();
-
-      // if it's not a matching blockwrite, give up.
-      if (blockWriteOp.getAddress() + tm.getDmaBdAddressOffset(col, row) !=
-          addr)
-        break;
-
-      Value data = blockWriteOp.getData();
-      auto getGlobalOp = dyn_cast<memref::GetGlobalOp>(data.getDefiningOp());
-      if (!getGlobalOp)
-        break;
-
-      // replace the address with the new address
-      std::optional<uint32_t> argIdx = op.getArgIdx();
-      if (!argIdx)
-        break;
-      rewriter.setInsertionPoint(blockWriteOp);
-      rewriter.replaceOpWithNewOp<AIEX::CertApplyOffset57Op>(
-          op, getGlobalOp.getName(), 1, *argIdx);
-      return success();
-    }
-
-    return failure();
+    AIEX::NpuBlockWriteOp blockWriteOp = findPatchedBlockWrite(op);
+    std::optional<uint32_t> argIdx = op.getArgIdx();
+    if (!blockWriteOp || !argIdx)
+      return failure();
+    auto getGlobalOp =
+        dyn_cast<memref::GetGlobalOp>(blockWriteOp.getData().getDefiningOp());
+    if (!getGlobalOp)
+      return failure();
+    rewriter.setInsertionPoint(blockWriteOp);
+    rewriter.replaceOpWithNewOp<AIEX::CertApplyOffset57Op>(
+        op, getGlobalOp.getName(), 1, *argIdx);
+    return success();
   }
 };
 
@@ -1114,6 +1187,9 @@ struct AIENpuToCertPass
     p0.insert<RuntimeSequenceToCertJob>(&getContext());
 
     if (failed(applyPartialConversion(currentDevice, target, std::move(p0))))
+      return signalPassFailure();
+
+    if (failed(prepareAddressPatchTemplates(currentDevice)))
       return signalPassFailure();
 
     target.addIllegalOp<AIEX::NpuAddressPatchOp>();
