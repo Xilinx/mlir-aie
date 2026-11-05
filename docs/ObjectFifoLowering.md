@@ -505,11 +505,12 @@ order of a draining core's needs (or of a filling core's releases) once its
 holdings settle is `turns`. An end used under a branch, or in a loop of
 unknown trip count inside the period, has no fixed order and never shares.
 Each end must be one circuit route from another DMA endpoint, and those
-endpoints, on one tile, take the same turns. Endpoints that drain one mem tile
-pool as a distribute's segments count as one there, fed by the one core that
-fills the pool: they take turns only if every segment of the pool is among
-them, each takes as many turns, and the objects they hold open at once fit the
-pool. The turns are taken only if a
+endpoints, on one tile, take the same turns. Endpoints that are one mem tile
+pool's segments, draining it for a distribute or filling it for a join, count
+as one there, tied to the one core at the pool's other end, which fills or
+takes its objects whole: they take turns only if every segment of the pool on
+their side is among them, each takes as many turns, and the objects they hold
+open at once fit the pool. The turns are taken only if a
 chain moving objects in their order forever, through the pools' depths, never
 leaves the channel and the core both waiting: a window over one pool beside
 a one-deep pool would, as the chain's next object of the second waits for a
