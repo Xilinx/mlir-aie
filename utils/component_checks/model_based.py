@@ -29,6 +29,7 @@ crashed before writing it) fails as ``<file stem>: no report``.
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 from aiecc_stages import cpu_model, row
@@ -75,6 +76,7 @@ def router(
 ) -> tuple[list, list, list]:
     """Return the router's rows, failed ids and detail, a case per device."""
     cases: dict[str, dict] = {}
+    missed: Counter[str] = Counter()
     failed, detail = [], []
     for stem, lit in lits.items():
         if lit is None:
@@ -117,6 +119,7 @@ def router(
             if what not in seen:
                 seen.add(what)
                 failed.append(f"{device}/{part}/seed={f['seed']}+1/{what}")
+        missed[device] += len(report["strict_misses"])
         failures = cells.get("failed_mutations", (0, ""))[0] + len(report["failures"])
         survived = cells.get("survived_corruptions", (0, ""))[0] + report["survived"]
         cells["failed_mutations"] = (failures, "cases")
@@ -130,6 +133,7 @@ def router(
                 "killed": report["killed"],
                 "survived": report["survived"],
                 "failures": len(report["failures"]),
+                "strict_misses": len(report["strict_misses"]),
                 "why": [
                     f"seed {f['seed']} {f['kind']} {f['name']} {f['outcome']}: "
                     + f["detail"]
@@ -137,6 +141,9 @@ def router(
                 ][:10],
             }
         )
+    for device, count in missed.items():
+        found = cases[device].get("strict_misses", (0, ""))[0]
+        cases[device]["strict_misses"] = (found + count, "designs")
     rows = [
         row(device, metric, value, unit)
         for device, cells in cases.items()

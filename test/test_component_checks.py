@@ -583,6 +583,7 @@ def test_mutation_failures_name_the_first_seed_of_each_kind(tmp_path):
                 "killed": 99,
                 "survived": 1,
                 "failures": failures,
+                "strict_misses": [{"seed": 13, "kind": "base", "name": ""}],
             }
         )
     )
@@ -597,6 +598,7 @@ def test_mutation_failures_name_the_first_seed_of_each_kind(tmp_path):
     assert rows == {
         "npu2/failed_mutations": (5, "cases"),
         "npu2/survived_corruptions": (1, "corruptions"),
+        "npu2/strict_misses": (1, "designs"),
     }
     # A timeout reads as one in the published record, not as a crash.
     assert (
@@ -642,3 +644,41 @@ def test_a_placement_that_fails_to_replay_has_no_cost(hw, aie_opt, tmp_path):
     assert hw.replay_placement(aie_opt, str(bad), 1, 1.0, 60) == (None, None)
     # Nor does one that runs past its timeout.
     assert hw.replay_placement(aie_opt, str(MOBILENET), 3, 1.0, 0.01) == (None, None)
+
+
+def test_strict_misses_add_up_over_properties_and_mutations(tmp_path):
+    mutation, properties = tmp_path / "npu2-hops-on.json", tmp_path / "npu2-p.json"
+    mutation.write_text(
+        json.dumps(
+            {
+                "device": "npu2",
+                "hops": "on",
+                "first_seed": 0,
+                "seeds": 4,
+                "killed": 4,
+                "survived": 0,
+                "failures": [],
+                "strict_misses": [{"seed": 1, "kind": "mutator", "name": "fanout"}],
+            }
+        )
+    )
+    counts = dict.fromkeys(
+        ["unrouted", "illegal", "hop_ratio", "amsels_per_design", "ms_per_design"], 0
+    )
+    properties.write_text(
+        json.dumps(
+            {
+                "device": "npu2",
+                "first_seed": 0,
+                "seeds": 4,
+                "properties": [],
+                "counts": counts | {"strict_misses": 2},
+            }
+        )
+    )
+    # The mutation report comes first, so the properties' count must not
+    # overwrite its misses.
+    result, rows, meta = collect(tmp_path, "router", mutation, properties)
+    assert result.returncode == 0, result.stderr
+    assert rows["npu2/strict_misses"] == (3, "designs")
+    assert meta["detail"][0]["strict_misses"] == 1
