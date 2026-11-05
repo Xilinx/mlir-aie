@@ -3276,8 +3276,11 @@ int main(int argc, char **argv) {
                                  xilinx::AIE::kCoreSectionsNote))) {
     Attempt &last = attempts.back();
     // Each charge names its device, and only the devices that failed are
-    // charged, so the others place as they did.
+    // charged, so the others place as they did. Entries are <device>:<name>
+    // in a comma-separated list, which a name holding ':' or ',' would break;
+    // such a name is not charged.
     std::vector<std::string> fifos;
+    std::vector<mlir::Attribute> uncharged;
     llvm::StringSet<> fullDevices;
     for (const RecordedError &error : last.errors) {
       llvm::StringRef message = error.message;
@@ -3285,8 +3288,12 @@ int main(int argc, char **argv) {
         for (const auto &[note, attrs] : error.notes)
           if (llvm::StringRef(note).starts_with(xilinx::AIE::kCoreSectionsNote))
             for (mlir::Attribute attr : attrs)
-              if (auto device = llvm::dyn_cast<mlir::FlatSymbolRefAttr>(attr))
-                fullDevices.insert(device.getValue());
+              if (auto device = llvm::dyn_cast<mlir::FlatSymbolRefAttr>(attr)) {
+                if (device.getValue().contains(','))
+                  uncharged.push_back(device);
+                else
+                  fullDevices.insert(device.getValue());
+              }
       if (!mayWalkAgain || !message.contains(xilinx::AIE::kNoBufferRoom))
         continue;
       // Only the pools the SA counts otherwise than allocation lays them out.
@@ -3294,13 +3301,26 @@ int main(int argc, char **argv) {
         if (llvm::StringRef(note).starts_with(xilinx::AIE::kTurnWalkedNote))
           for (mlir::Attribute attr : attrs)
             if (auto name = llvm::dyn_cast<mlir::SymbolRefAttr>(attr)) {
-              std::string entry = (name.getRootReference().getValue() + ":" +
-                                   name.getLeafReference().getValue())
-                                      .str();
+              llvm::StringRef device = name.getRootReference().getValue();
+              llvm::StringRef fifo = name.getLeafReference().getValue();
+              if (device.contains(',') || fifo.contains(',') ||
+                  fifo.contains(':')) {
+                uncharged.push_back(name);
+                continue;
+              }
+              std::string entry = (device + ":" + fifo).str();
               if (!llvm::is_contained(saWalkedFifos, entry) &&
                   !llvm::is_contained(fifos, entry))
                 fifos.push_back(entry);
             }
+    }
+    if (!uncharged.empty()) {
+      auto log = endProgressLine();
+      llvm::errs() << "aiecc: cannot place again for ";
+      llvm::interleaveComma(uncharged, llvm::errs());
+      llvm::errs() << ": a name holding ':' or ',' cannot be passed to "
+                      "--sa-walked-fifos or --sa-core-data-sizes\n";
+      break;
     }
     // A core's measurement keeps its largest value, so the charges only grow
     // and the attempts end.
