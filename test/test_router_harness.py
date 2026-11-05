@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+import types
 from pathlib import Path
 
 import pytest
@@ -208,16 +209,37 @@ def test_a_timeout_on_a_design_the_verifier_rejects_is_a_timeout():
     assert router_mutation.must_reject(d) == "a packet flow twice"
     with pytest.raises(Exception, match="duplicates an earlier packet flow"):
         rp.canonical(d)
-    outcome, detail = router_mutation.judge(d, "route", True, 0, timeout=1e-6)
+    outcome, detail = router_mutation.judge(
+        d, "route", True, 0, deadline=time.monotonic()
+    )
     assert outcome == "timeout", detail
 
 
-def test_the_judge_waits_out_the_slowest_nightly_mutant():
-    # The npu2 port-cap mutant of seed 207560359 takes about 134 s on the hosted
-    # runner; under load, twice that.
-    assert router_mutation.ROUTE_TIMEOUT_S >= 2 * 134
-    judge = inspect.signature(router_mutation.judge)
-    assert judge.parameters["timeout"].default == router_mutation.ROUTE_TIMEOUT_S
+def code_names(code):
+    names = set(code.co_names)
+    for const in code.co_consts:
+        if isinstance(const, types.CodeType):
+            names |= code_names(const)
+    return names
+
+
+# The properties run's own aie-opt runs: batches and its checks, not judged.
+UNJUDGED = {"aie_opt", "route_design", "find_flows", "route_batch", "debug_flags"}
+UNJUDGED |= {"check_verifier", "main"}
+
+
+def test_every_judged_router_run_has_the_nightly_limit():
+    for helper in (rp.route_design, rp.find_flows):
+        assert "timeout" not in inspect.signature(helper).parameters
+        assert "ROUTE_TIMEOUT_S" in code_names(helper.__code__)
+    for module in (router_mutation, rp):
+        for name, fn in vars(module).items():
+            if not inspect.isfunction(fn) or fn.__module__ != module.__name__:
+                continue
+            if module is rp and name in UNJUDGED:
+                continue
+            names = code_names(fn.__code__)
+            assert not {"aie_opt", "subprocess"} & names, f"{module.__name__}.{name}"
 
 
 def test_a_spent_shrink_budget_keeps_the_design_as_it_is():

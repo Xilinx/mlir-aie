@@ -3306,7 +3306,7 @@ def priority_trees(d, cache):
     ]
     text = c.emit()
     if text not in cache:
-        p = aie_opt(text, hops_on=False, timeout=120)
+        p = route_design(text, hops_on=False)
         trees = None
         if p.returncode == 0:
             out, trees = load_design(p.stdout), defaultdict(dict)
@@ -5206,22 +5206,13 @@ def witness_problem(d, an, text):
     to exactly the requested flows; else what fails."""
     # With nothing left to route, the router only adds the wires find-flows
     # follows.
-    wired = aie_opt(text, strict=True, timeout=120)
+    wired = route_design(text, strict=True)
     if wired.returncode:
         return "C++ verifier: " + first_error(wired.stderr)[:120]
     problems, stats = verify(d, an, text, hops_on=False)
     if problems or stats.get("shared_receiver_cycle") is not None:
         return "verify: " + (problems[0][:80] if problems else "shared-receiver cycle")
-    try:
-        lifted = subprocess.run(
-            [aie_opt_path(), "--aie-find-flows=keep-partial-flows=true", "-"],
-            input=wired.stdout,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-    except subprocess.TimeoutExpired:
-        return "find-flows: timeout after 120s"
+    lifted = find_flows(wired.stdout, keep_partial=True)
     if lifted.returncode:
         return "find-flows: " + first_error(lifted.stderr)[:120]
     got = load_design(lifted.stdout)
@@ -5856,6 +5847,56 @@ def aie_opt(text, hops_on=True, split=False, extra=(), timeout=None, strict=Fals
 
 
 TIMEOUT = -1000
+
+# Seconds one router run of a judged design may take. The npu2 port-cap mutant
+# of seed 207560359 takes 67 s alone and 129 s under load on xcoradaie218, and
+# the hosted runner is about twice as slow.
+ROUTE_TIMEOUT_S = 300
+
+
+def route_design(text, hops_on=True, strict=False, deadline=None):
+    """Route one design the mutation nightly judges, as aie_opt does.
+
+    Args:
+        text: The design.
+        hops_on: Whether circuit-switch hops are on.
+        strict: Whether flows that can deadlock fail instead of routing.
+        deadline: A `time.monotonic()` value to stop by, if that comes before
+            `ROUTE_TIMEOUT_S`.
+
+    Returns:
+        aie_opt's result, with returncode `TIMEOUT` if the run ran out of time.
+    """
+    limit = ROUTE_TIMEOUT_S
+    if deadline is not None:
+        limit = max(0.0, min(limit, deadline - time.monotonic()))
+    return aie_opt(text, hops_on, strict=strict, timeout=limit)
+
+
+def find_flows(text, keep_partial=False, deadline=None):
+    """Lift a routing back into flows with --aie-find-flows.
+
+    Args:
+        text: The routed design.
+        keep_partial: Whether to keep what it cannot lift as switchbox
+            configuration.
+        deadline: As `route_design`.
+
+    Returns:
+        The run's result, with returncode `TIMEOUT` if it ran out of time.
+    """
+    limit = ROUTE_TIMEOUT_S
+    if deadline is not None:
+        limit = max(0.0, min(limit, deadline - time.monotonic()))
+    opt = "--aie-find-flows" + ("=keep-partial-flows=true" if keep_partial else "")
+    cmd = [aie_opt_path(), opt, "-"]
+    try:
+        return subprocess.run(
+            cmd, input=text, capture_output=True, text=True, timeout=limit
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, TIMEOUT, "", f"timeout after {limit}s")
+
 
 MODULE_TAG_RE = re.compile(r"^module @s(\d+)\b", re.M)
 

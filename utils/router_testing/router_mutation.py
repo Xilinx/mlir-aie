@@ -30,7 +30,6 @@ Failures are shrunk with router_shrink.py (--shrink) and written to --repros.
 import argparse
 import json
 import random
-import subprocess
 import sys
 import time
 import traceback
@@ -737,18 +736,13 @@ MUTATORS = {
 }
 
 
-# Seconds one router run of a judged design may take. The npu2 port-cap mutant
-# of seed 207560359 takes 67 s alone and 129 s under load on xcoradaie218, and
-# the hosted runner is about twice as slow.
-ROUTE_TIMEOUT_S = 300
-
 # Router bugs already reported, by the must_reject reason they show as.
 REPORTED = {
     "circuit and packet flows from one port merged": "sends both circuit and packet flows",
 }
 
 
-def judge(e, expect, hops_on, seed, timeout=ROUTE_TIMEOUT_S):
+def judge(e, expect, hops_on, seed, deadline=None):
     """Route `e` and hold the router to `expect`. Returns (outcome, detail),
     outcome one of ok, completeness, soundness, illegal, crash, known,
     model-limit, strict-miss (tallied, not failed: the properties ratchet it,
@@ -760,7 +754,7 @@ def judge(e, expect, hops_on, seed, timeout=ROUTE_TIMEOUT_S):
         if not why:
             return "model-limit", f"emit: {x!r}"
         # The IR verifier rejects it before the router runs.
-        p = rp.aie_opt(e.emit(), hops_on, timeout=timeout)
+        p = rp.route_design(e.emit(), hops_on, deadline=deadline)
         if p.returncode == rp.TIMEOUT:
             return "timeout", p.stderr
         if p.returncode == 0:
@@ -776,7 +770,7 @@ def judge(e, expect, hops_on, seed, timeout=ROUTE_TIMEOUT_S):
             return "model-limit", f"verdict: {x!r}"
         expect = {True: "route", False: "reject", None: None}[v["routable"]]
         why = v["reason"]
-    p = rp.aie_opt(e.emit(), hops_on, timeout=timeout)
+    p = rp.route_design(e.emit(), hops_on, deadline=deadline)
     if p.returncode == rp.TIMEOUT:
         return "timeout", p.stderr
     if p.returncode < 0:
@@ -809,7 +803,7 @@ def judge(e, expect, hops_on, seed, timeout=ROUTE_TIMEOUT_S):
             e,
             expect,
             hops_on,
-            rp.aie_opt(e.emit(), hops_on, timeout=timeout, strict=True),
+            rp.route_design(e.emit(), hops_on, strict=True, deadline=deadline),
         )
     return "ok", f"routed ({expect})"
 
@@ -949,16 +943,6 @@ def r_rename(rng, d, routed):
     return f"ids x -> x ^ {c}", rename(d, c), None
 
 
-def find_flows(text):
-    p = subprocess.run(
-        [rp.aie_opt_path(), "--aie-find-flows", "-"],
-        input=text,
-        capture_output=True,
-        text=True,
-    )
-    return p
-
-
 def flow_set(d):
     return (
         frozenset(d.flows),
@@ -1003,7 +987,7 @@ def delivered(x, d):
 def r_lift(rng, d, routed):
     """aie-find-flows lifts the routing back into the flows the design asked
     for, and routing those again lifts to the same."""
-    p = find_flows(routed)
+    p = rp.find_flows(routed)
     if p.returncode:
         return "lift", None, f"aie-find-flows fails: {rp.first_error(p.stderr)[:200]}"
     lifted = rp.load_design(p.stdout)
@@ -1030,7 +1014,7 @@ def r_lift(rng, d, routed):
         return "lift", None, f"lifting the routing loses {lost}, adds {extra}"
 
     def check(text):
-        q = find_flows(text)
+        q = rp.find_flows(text)
         if q.returncode:
             return f"aie-find-flows fails on the rerouted output: {rp.first_error(q.stderr)[:200]}"
         again = rp.load_design(q.stdout)
@@ -1376,7 +1360,7 @@ def run_seed(seed, args):
     if case is None:
         return rows
     d = case["design"]
-    p = rp.aie_opt(d.emit(), hops_on, timeout=ROUTE_TIMEOUT_S)
+    p = rp.route_design(d.emit(), hops_on)
     if p.returncode == rp.TIMEOUT:
         return [("base", "timeout", "", p.stderr, d)]
     if p.returncode:
@@ -1435,7 +1419,7 @@ def run_seed(seed, args):
         if e is None:
             rows.append(("relation", "broken", name, f"{what}: {check}", d))
             continue
-        q = rp.aie_opt(e.emit(), hops_on, timeout=ROUTE_TIMEOUT_S)
+        q = rp.route_design(e.emit(), hops_on)
         if q.returncode == rp.TIMEOUT:
             rows.append(("relation", "timeout", name, f"{what}: {q.stderr}", e))
             continue
