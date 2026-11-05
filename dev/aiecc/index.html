@@ -3651,6 +3651,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#artifact-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Artifact provenance
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -4164,6 +4175,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#artifact-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Artifact provenance
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -4620,6 +4642,10 @@ edge to <code>outputs</code> — the engine and every user-facing feature above 
 automatically.</p>
 <p>For the full picture, start from <code>buildMainGraph</code> in <code>aiecc.cpp</code>, then read
 <code>Graph.h</code> (edges) and <code>Items.h</code> (payloads).</p>
+<h2 id="artifact-provenance">Artifact provenance<a class="headerlink" href="#artifact-provenance" title="Permanent link">&para;</a></h2>
+<p>Generated ELFs are stamped with a <code>.note.mlir-aie.provenance</code> section recording
+the MLIR-AIE version and whether the IRON Python abstractions were used to
+generate the output.</p>
 
 
 
