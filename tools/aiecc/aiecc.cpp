@@ -3210,6 +3210,8 @@ int main(int argc, char **argv) {
     // What it wrote, when it failed before its edges passed.
     OutputHold::Held held;
     AttemptDiagnostics diags;
+    // The flags that place it, past the command line's.
+    std::vector<std::string> placedWith;
   };
   std::vector<Attempt> attempts;
   auto runAttempt = [&](std::unique_ptr<Graph> attemptGraph,
@@ -3240,29 +3242,39 @@ int main(int argc, char **argv) {
     a.diags = diagHandler.endAttempt();
     return a.ran;
   };
-  auto placeAgain = [&] {
+  auto placeAgain = [&](std::vector<std::string> placedWith) {
     auto next = std::make_unique<Graph>();
     checkEdges.clear();
     outputs = buildMainGraph(context, *next, cutEdges, checkEdges,
                              deviceCache ? &*deviceCache : nullptr, keptDevices,
                              measuredCores);
-    return runAttempt(std::move(next), std::make_unique<Engine>(engineOptions));
+    mlir::LogicalResult ran =
+        runAttempt(std::move(next), std::make_unique<Engine>(engineOptions));
+    attempts.back().placedWith = std::move(placedWith);
+    return ran;
   };
+  // Whether the last attempt failed at `edge`.
+  auto failedAt = [&](llvm::StringRef edge) {
+    EdgeBase *failed = attempts.back().engine->failedEdge;
+    return mlir::failed(attempts.back().ran) && failed && failed->name == edge;
+  };
+  // Set when attempts ran out on a failure only another placement could fix.
+  std::optional<std::string> noPlacement;
   mlir::LogicalResult ran = runAttempt(std::move(graph), std::move(engine));
-  EdgeBase *firstFailed = attempts.front().engine->failedEdge;
   // The sequential placer fills each column with cores and has no model of
   // the links between columns, so its placement can leave flows the router
   // cannot fit where one with fewer cores a column routes. Unless the
   // command line chose the placement, a design with cores to place is placed
   // again with fewer cores a column until the router fits the flows.
-  bool unrouted = false;
-  bool unroutable =
-      llvm::any_of(attempts.front().diags.errors, [](const HeldError &error) {
-        return llvm::StringRef(error.message)
-            .starts_with(xilinx::AIE::kNoLegalRouting);
-      });
-  if (mlir::failed(ran) && mayPlaceAgain && unroutable && firstFailed &&
-      firstFailed->name == kRoutedEdge) {
+  auto unroutable = [&] {
+    return failedAt(kRoutedEdge) &&
+           llvm::any_of(attempts.back().diags.errors,
+                        [](const HeldError &error) {
+                          return llvm::StringRef(error.message)
+                              .starts_with(xilinx::AIE::kNoLegalRouting);
+                        });
+  };
+  if (mayPlaceAgain && unroutable()) {
     int coreRows = 0;
     if (mlir::OwningOpRef<mlir::ModuleOp> input =
             parseModuleFromFile(getInputFilename(), &context))
@@ -3283,28 +3295,26 @@ int main(int argc, char **argv) {
           coreRows = std::max(coreRows, rows);
         }
       });
-    for (int cores = coreRows - 1; mlir::failed(ran) && cores > 0; --cores) {
+    for (int cores = coreRows - 1; cores > 0 && unroutable(); --cores) {
       llvm::errs() << "aiecc: the placement does not route; placing again "
                       "with --cores-per-col="
                    << cores << "\n";
       coresPerCol = cores;
-      unrouted = true;
-      ran = placeAgain();
+      ran = placeAgain({"--cores-per-col=" + std::to_string(cores)});
     }
+    if (attempts.size() > 1 && unroutable())
+      noPlacement = "aiecc: no placement with fewer cores a column routes "
+                    "either; the errors above are the first placement's";
   }
   // The SA placer estimates two things later passes measure: allocation walks
   // some mem tile pools whole, one buffer each, where the SA counts their
   // objects apart, and the probe link measures each core's own sections, which
   // the SA guesses. When a pool or a core's buffers find no room, the SA places
   // again with what was found, until everything fits or nothing new is.
-  bool unfitted = false;
   llvm::StringMap<int64_t> coreData;
-  while (mlir::failed(ran) && mayChargeAgain) {
+  while (mayChargeAgain &&
+         (failedAt(kWithSymbolsEdge) || failedAt(kAddressesEdge))) {
     Attempt &last = attempts.back();
-    EdgeBase *lastFailed = last.engine->failedEdge;
-    if (!lastFailed || (lastFailed->name != kWithSymbolsEdge &&
-                        lastFailed->name != kAddressesEdge))
-      break;
     std::optional<std::string> fifo;
     bool coreFull = false;
     for (const HeldError &error : last.diags.errors) {
@@ -3332,8 +3342,12 @@ int main(int argc, char **argv) {
           grew = true;
         }
     }
-    if (!fifo && !grew)
+    if (!fifo && !grew) {
+      if (attempts.size() > 1)
+        noPlacement = "aiecc: no placement with what allocation found counted "
+                      "fits either; the errors above are the first placement's";
       break;
+    }
     if (fifo) {
       saWalkedFifos.push_back(*fifo);
       llvm::errs() << "aiecc: objectFIFO @" << *fifo
@@ -3350,10 +3364,19 @@ int main(int argc, char **argv) {
                       "sections; placing again with --sa-core-data-sizes="
                    << llvm::join(saCoreDataSizes, ",") << "\n";
     }
-    unfitted = true;
-    ran = placeAgain();
+    std::vector<std::string> placedWith;
+    if (!saWalkedFifos.empty())
+      placedWith.push_back("--sa-walked-fifos=" +
+                           llvm::join(saWalkedFifos, ","));
+    if (!saCoreDataSizes.empty())
+      placedWith.push_back("--sa-core-data-sizes=" +
+                           llvm::join(saCoreDataSizes, ","));
+    ran = placeAgain(std::move(placedWith));
   }
-  Attempt &standing = mlir::succeeded(ran) ? attempts.back() : attempts.front();
+  // The first placement stands when the others failed as it did; otherwise
+  // the last, which either succeeded or failed past what placing again fixes.
+  Attempt &standing = noPlacement ? attempts.front() : attempts.back();
+  EdgeBase *standingFailed = standing.engine->failedEdge;
   {
     std::lock_guard<std::mutex> log(logMutex());
     llvm::outs() << standing.held.out;
@@ -3362,26 +3385,20 @@ int main(int argc, char **argv) {
     llvm::errs().flush();
   }
   diagHandler.standAttempt(standing.diags);
-  if (mlir::failed(ran) && unrouted)
-    llvm::errs() << "aiecc: no placement with fewer cores a column routes "
-                    "either; the errors above are the first placement's\n";
-  if (mlir::failed(ran) && unfitted)
-    llvm::errs() << "aiecc: no placement with what allocation found counted "
-                    "fits either; the errors above are the first placement's\n";
-  if (mlir::failed(ran) && !holdUntil.empty() && firstFailed)
-    Engine::reportFailedEdge(firstFailed);
-  Engine *lastEngine = attempts.back().engine.get();
+  if (noPlacement)
+    llvm::errs() << *noPlacement << "\n";
+  if (mlir::failed(ran) && !holdUntil.empty() && standingFailed)
+    Engine::reportFailedEdge(standingFailed);
   if (mlir::failed(ran)) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and
     // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.
-    if (enableRepeaterScripts && !disableRepeaterScripts &&
-        lastEngine->failedEdge) {
+    if (enableRepeaterScripts && !disableRepeaterScripts && standingFailed) {
       std::string dir = repeaterOutputDir.empty()
                             ? getWorkDir() + "/repeater"
                             : repeaterOutputDir.getValue();
       std::vector<EdgeBase *> frontierEdges;
-      for (NodeBase *n : lastEngine->failedEdge->inputNodes()) {
+      for (NodeBase *n : standingFailed->inputNodes()) {
         if (n && n->producer) {
           frontierEdges.push_back(n->producer);
         }
@@ -3389,7 +3406,8 @@ int main(int argc, char **argv) {
       // Record argv that rebuilds this graph, narrowed to the failed edge so a
       // resume reloads its inputs and re-runs only it.
       std::vector<std::string> reproArgv = graphArgv;
-      reproArgv.push_back("--get=" + lastEngine->failedEdge->name);
+      llvm::append_range(reproArgv, standing.placedWith);
+      reproArgv.push_back("--get=" + standingFailed->name);
       writeCheckpoint(frontierEdges, dir, reproArgv);
       llvm::errs() << "aiecc: To reproduce, run: aiecc --resume=" << dir
                    << "/manifest.json\n";
