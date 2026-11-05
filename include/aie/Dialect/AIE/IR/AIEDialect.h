@@ -543,6 +543,11 @@ mlir::LogicalResult verifyAssignedPacket(mlir::Operation *op,
                                          PacketInfoAttr packet,
                                          llvm::StringRef what = "packet");
 
+// `channel` names one of `tile`'s DMA channels in `dir`. Callable from the
+// AIEX dialect.
+mlir::LogicalResult verifyDMAChannelIndex(mlir::Operation *op, TileLike tile,
+                                          DMAChannelDir dir, int64_t channel);
+
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult
 verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,

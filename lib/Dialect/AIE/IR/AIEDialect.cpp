@@ -4424,6 +4424,20 @@ static bool isBdPacketEnabled(DMABDOp bd) {
   return false;
 }
 
+LogicalResult xilinx::AIE::verifyDMAChannelIndex(Operation *op, TileLike tile,
+                                                 DMAChannelDir dir,
+                                                 int64_t channel) {
+  int64_t channels = dir == DMAChannelDir::MM2S
+                         ? tile.getNumDestConnections(WireBundle::DMA)
+                         : tile.getNumSourceConnections(WireBundle::DMA);
+  if (channel >= 0 && channel < channels)
+    return success();
+  return op->emitOpError() << stringifyDMAChannelDir(dir) << " channel "
+                           << channel << " is out of range: the tile has "
+                           << channels << " " << stringifyDMAChannelDir(dir)
+                           << " channels";
+}
+
 LogicalResult xilinx::AIE::verifyAssignedPacket(Operation *op,
                                                 PacketInfoAttr packet,
                                                 StringRef what) {
@@ -5723,6 +5737,12 @@ LogicalResult DMAStartOp::verify() {
                          "unavailable on this target");
   }
   if (failed(verifyDMARepeatCount(getOperation(), getRepeatCount())))
+    return failure();
+  if (auto program = dyn_cast<DmaBody>((*this)->getParentOp());
+      program && !getEndpoint() &&
+      failed(verifyDMAChannelIndex(
+          getOperation(), cast<TileLike>(program.getTile().getDefiningOp()),
+          getChannelDir(), getChannelIndex())))
     return failure();
   SmallVector<DMABDOp> bds;
   if (getOutOfOrder()) {

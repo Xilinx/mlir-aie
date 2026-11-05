@@ -1395,6 +1395,9 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
 }
 
 LogicalResult AIEX::DMAConfigureTaskOp::verify() {
+  if (failed(AIE::verifyDMAChannelIndex(getOperation(), getTileLike(),
+                                        getDirection(), getChannel())))
+    return failure();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
   // Skip the per-BD dimension check on an unplaced (logical) tile: the ND limit
   // is a function of the tile's placed coordinates, which are not yet known.
