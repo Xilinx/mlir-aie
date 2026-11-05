@@ -3188,10 +3188,12 @@ int main(int argc, char **argv) {
   bool mayPlaceAgain = placerType.getNumOccurrences() == 0 &&
                        coresPerCol.getNumOccurrences() == 0 &&
                        cutEdges.empty() && !resume.active;
-  bool mayChargeAgain = placerType == xilinx::AIE::PlacerType::SAPlacer &&
-                        saWalkedFifos.getNumOccurrences() == 0 &&
-                        saCoreDataSizes.getNumOccurrences() == 0 &&
-                        cutEdges.empty() && !resume.active;
+  // The SA placer's two charges place again independently; each is off
+  // when the command line chose it.
+  bool maySAAgain = placerType == xilinx::AIE::PlacerType::SAPlacer &&
+                    cutEdges.empty() && !resume.active;
+  bool mayWalkAgain = maySAAgain && saWalkedFifos.getNumOccurrences() == 0;
+  bool mayCoreAgain = maySAAgain && saCoreDataSizes.getNumOccurrences() == 0;
   // Until the edges whose failure places again have passed, an attempt may
   // be discarded; everything it writes to stderr is held until then, and only
   // the attempt that stands is reported: the last if it succeeds, else the
@@ -3199,10 +3201,10 @@ int main(int argc, char **argv) {
   std::vector<std::string> holdUntil;
   if (mayPlaceAgain)
     holdUntil.push_back(kRoutedEdge.str());
-  if (mayChargeAgain) {
+  if (mayWalkAgain)
     holdUntil.push_back(kWithSymbolsEdge.str());
+  if (mayCoreAgain)
     holdUntil.push_back(kAddressesEdge.str());
-  }
   struct Attempt {
     std::unique_ptr<Graph> graph;
     std::unique_ptr<Engine> engine;
@@ -3312,19 +3314,19 @@ int main(int argc, char **argv) {
   // the SA guesses. When a pool or a core's buffers find no room, the SA places
   // again with what was found, until everything fits or nothing new is.
   llvm::StringMap<int64_t> coreData;
-  while (mayChargeAgain &&
-         (failedAt(kWithSymbolsEdge) || failedAt(kAddressesEdge))) {
+  while ((mayWalkAgain && failedAt(kWithSymbolsEdge)) ||
+         (mayCoreAgain && failedAt(kAddressesEdge))) {
     Attempt &last = attempts.back();
     std::optional<std::string> fifo;
     bool coreFull = false;
     for (const HeldError &error : last.diags.errors) {
       llvm::StringRef message = error.message;
-      coreFull |= message.contains(xilinx::AIE::kNoTileRoom) &&
+      coreFull |= mayCoreAgain && message.contains(xilinx::AIE::kNoTileRoom) &&
                   llvm::any_of(error.notes, [](const auto &note) {
                     return llvm::StringRef(note.first)
                         .starts_with(xilinx::AIE::kCoreSectionsNote);
                   });
-      if (!message.contains(xilinx::AIE::kNoBufferRoom))
+      if (!mayWalkAgain || !message.contains(xilinx::AIE::kNoBufferRoom))
         continue;
       for (mlir::Attribute arg : error.arguments)
         if (auto name = llvm::dyn_cast<mlir::FlatSymbolRefAttr>(arg);
@@ -3365,10 +3367,10 @@ int main(int argc, char **argv) {
                    << llvm::join(saCoreDataSizes, ",") << "\n";
     }
     std::vector<std::string> placedWith;
-    if (!saWalkedFifos.empty())
+    if (mayWalkAgain && !saWalkedFifos.empty())
       placedWith.push_back("--sa-walked-fifos=" +
                            llvm::join(saWalkedFifos, ","));
-    if (!saCoreDataSizes.empty())
+    if (mayCoreAgain && !saCoreDataSizes.empty())
       placedWith.push_back("--sa-core-data-sizes=" +
                            llvm::join(saCoreDataSizes, ","));
     ran = placeAgain(std::move(placedWith));
