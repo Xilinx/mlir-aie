@@ -74,6 +74,7 @@
 #include "llvm/Support/BuryPointer.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/xxhash.h"
@@ -120,6 +121,22 @@ mlir::Diagnostic nameAfterDesign(mlir::Diagnostic &diag, bool keepOpDump) {
   return renamed;
 }
 
+// What the retry decisions read of an error: its message, its notes, and the
+// attributes each carries.
+struct HeldError {
+  std::string message;
+  std::vector<mlir::Attribute> arguments;
+  std::vector<std::pair<std::string, std::vector<mlir::Attribute>>> notes;
+};
+
+// One attempt's diagnostics that are not on stderr already: what was held
+// back, and the errors it reported.
+struct AttemptDiagnostics {
+  std::vector<HeldError> errors;
+  std::vector<mlir::Diagnostic> heldErrors;
+  std::vector<mlir::Diagnostic> remarks;
+};
+
 // A remark says what the compiler chose (a poll it inserted, an allocation
 // order it fell back to): worth reading when tuning or when a compile fails,
 // noise otherwise. So remarks print with --verbose, or once a compile fails.
@@ -130,27 +147,17 @@ public:
                                          mlir::MLIRContext *ctx, bool verbose)
       : mlir::SourceMgrDiagnosticHandler(mgr, ctx), isVerbose(verbose) {
     setHandler([this](mlir::Diagnostic &diag) {
-      {
+      if (diag.getSeverity() == mlir::DiagnosticSeverity::Error) {
         std::lock_guard<std::mutex> lock(heldMutex);
-        if (holdingAttempt) {
-          attempt.push_back(std::move(diag));
+        if (recording)
+          attempt.errors.push_back(record(diag));
+        if (holdingErrors) {
+          attempt.heldErrors.push_back(std::move(diag));
           return;
         }
       }
       report(diag);
     });
-  }
-
-  /// Print `diag` now, or hold it with the remarks.
-  void report(mlir::Diagnostic &diag) {
-    if (diag.getSeverity() == mlir::DiagnosticSeverity::Remark && !isVerbose) {
-      std::lock_guard<std::mutex> lock(heldMutex);
-      held.push_back(std::move(diag));
-      return;
-    }
-    auto log = endProgressLine();
-    mlir::Diagnostic named = nameAfterDesign(diag, isVerbose);
-    emitDiagnostic(named);
   }
 
   /// Print the remarks held back so far.
@@ -164,33 +171,75 @@ public:
     held.clear();
   }
 
-  /// Hold back every diagnostic from now on, for an attempt that may be
-  /// repeated.
-  void holdAttempt() {
+  /// Record the errors of an attempt that may be repeated; `holdErrors` holds
+  /// them back too, where stderr itself cannot be held.
+  void beginAttempt(bool holdErrors) {
     std::lock_guard<std::mutex> lock(heldMutex);
-    holdingAttempt = true;
+    recording = true;
+    holdingErrors = holdErrors;
+    remarksBefore = held.size();
   }
 
-  /// Stop holding and hand back the attempt's diagnostics, in order.
-  std::vector<mlir::Diagnostic> takeAttempt() {
+  /// The attempt's errors and what it held back, its remarks included.
+  AttemptDiagnostics endAttempt() {
     std::lock_guard<std::mutex> lock(heldMutex);
-    holdingAttempt = false;
-    return std::exchange(attempt, {});
+    recording = false;
+    holdingErrors = false;
+    AttemptDiagnostics diags = std::exchange(attempt, {});
+    auto from = held.begin() + std::min(remarksBefore, held.size());
+    diags.remarks.assign(std::make_move_iterator(from),
+                         std::make_move_iterator(held.end()));
+    held.erase(from, held.end());
+    return diags;
   }
 
-  /// Report the diagnostics of the attempt that stands, as they would have
-  /// been reported had it been the only one.
-  void emitAttempt(std::vector<mlir::Diagnostic> &diags) {
-    for (mlir::Diagnostic &diag : diags)
+  /// Report what the attempt that stands held back, as if it had been the only
+  /// one.
+  void standAttempt(AttemptDiagnostics &diags) {
+    for (mlir::Diagnostic &diag : diags.heldErrors)
       report(diag);
+    std::lock_guard<std::mutex> lock(heldMutex);
+    for (mlir::Diagnostic &remark : diags.remarks)
+      held.push_back(std::move(remark));
+    diags.remarks.clear();
   }
 
 private:
+  void report(mlir::Diagnostic &diag) {
+    if (diag.getSeverity() == mlir::DiagnosticSeverity::Remark && !isVerbose) {
+      std::lock_guard<std::mutex> lock(heldMutex);
+      held.push_back(std::move(diag));
+      return;
+    }
+    auto log = endProgressLine();
+    mlir::Diagnostic named = nameAfterDesign(diag, isVerbose);
+    emitDiagnostic(named);
+  }
+
+  static HeldError record(mlir::Diagnostic &diag) {
+    HeldError error{diag.str(), {}, {}};
+    for (mlir::DiagnosticArgument &arg : diag.getArguments())
+      if (arg.getKind() ==
+          mlir::DiagnosticArgument::DiagnosticArgumentKind::Attribute)
+        error.arguments.push_back(arg.getAsAttribute());
+    for (mlir::Diagnostic &note : diag.getNotes()) {
+      std::vector<mlir::Attribute> attrs;
+      for (mlir::DiagnosticArgument &arg : note.getArguments())
+        if (arg.getKind() ==
+            mlir::DiagnosticArgument::DiagnosticArgumentKind::Attribute)
+          attrs.push_back(arg.getAsAttribute());
+      error.notes.emplace_back(note.str(), std::move(attrs));
+    }
+    return error;
+  }
+
   bool isVerbose;
   std::mutex heldMutex;
   std::vector<mlir::Diagnostic> held;
-  bool holdingAttempt = false;
-  std::vector<mlir::Diagnostic> attempt;
+  bool recording = false;
+  bool holdingErrors = false;
+  size_t remarksBefore = 0;
+  AttemptDiagnostics attempt;
 };
 
 // Defined here rather than in CommandLineOptions.h: __DATE__/__TIME__ need
@@ -2814,6 +2863,7 @@ int main(int argc, char **argv) {
   //--------------------------------------------------------------------------//
 
   llvm::InitLLVM y(argc, argv);
+  OutputHold::flushOnSignals();
   mlir::registerAsmPrinterCLOptions();
   mlir::registerAllPasses();
   xilinx::registerConversionPasses();
@@ -3142,29 +3192,75 @@ int main(int argc, char **argv) {
                         saWalkedFifos.getNumOccurrences() == 0 &&
                         saCoreDataSizes.getNumOccurrences() == 0 &&
                         cutEdges.empty() && !resume.active;
-  // A repeated attempt runs every edge again, so it repeats every diagnostic
-  // but those the placement caused. Each attempt's are held; the one that
-  // stands (the last, if it succeeds, else the first) has its own reported,
-  // failed edge last, as an attempt reports them.
-  if (mayPlaceAgain || mayChargeAgain) {
-    diagHandler.holdAttempt();
-    engine->opts.deferFailedEdge = true;
+  // Until the edges whose failure places again have passed, an attempt may
+  // be discarded; everything it writes to stderr is held until then, and only
+  // the attempt that stands is reported: the last if it succeeds, else the
+  // first placement's, failed edge last, as one attempt reports it.
+  std::vector<std::string> holdUntil;
+  if (mayPlaceAgain)
+    holdUntil.push_back(kRoutedEdge.str());
+  if (mayChargeAgain) {
+    holdUntil.push_back(kWithSymbolsEdge.str());
+    holdUntil.push_back(kAddressesEdge.str());
   }
-  mlir::LogicalResult ran = engine->run(
-      g, runOutputs, satisfied, DeserializeContext{&context}, buildAlso);
-  std::vector<mlir::Diagnostic> firstAttempt = diagHandler.takeAttempt();
-  std::vector<mlir::Diagnostic> lastAttempt;
-  EdgeBase *firstFailed = engine->failedEdge;
+  struct Attempt {
+    std::unique_ptr<Graph> graph;
+    std::unique_ptr<Engine> engine;
+    mlir::LogicalResult ran = mlir::failure();
+    // What it wrote, when it failed before its edges passed.
+    OutputHold::Held held;
+    AttemptDiagnostics diags;
+  };
+  std::vector<Attempt> attempts;
+  auto runAttempt = [&](std::unique_ptr<Graph> attemptGraph,
+                        std::unique_ptr<Engine> attemptEngine) {
+    Attempt &a = attempts.emplace_back();
+    a.graph = std::move(attemptGraph);
+    a.engine = std::move(attemptEngine);
+    bool holding = false;
+    if (!holdUntil.empty()) {
+      a.engine->opts.deferFailedEdge = true;
+      a.engine->opts.holdUntil = holdUntil;
+      a.engine->opts.onHoldEnd = [] {
+        std::lock_guard<std::mutex> log(logMutex());
+        bool lineOpen = progressLineOpen();
+        OutputHold::get().release(lineOpen);
+        progressLineOpen() = false;
+      };
+      std::lock_guard<std::mutex> log(logMutex());
+      holding = OutputHold::get().open();
+    }
+    diagHandler.beginAttempt(!holdUntil.empty() && !holding);
+    a.ran = a.engine->run(*a.graph, runOutputs, satisfied,
+                          DeserializeContext{&context}, buildAlso);
+    {
+      std::lock_guard<std::mutex> log(logMutex());
+      a.held = OutputHold::get().take();
+    }
+    a.diags = diagHandler.endAttempt();
+    return a.ran;
+  };
+  auto placeAgain = [&] {
+    auto next = std::make_unique<Graph>();
+    checkEdges.clear();
+    outputs = buildMainGraph(context, *next, cutEdges, checkEdges,
+                             deviceCache ? &*deviceCache : nullptr, keptDevices,
+                             measuredCores);
+    return runAttempt(std::move(next), std::make_unique<Engine>(engineOptions));
+  };
+  mlir::LogicalResult ran = runAttempt(std::move(graph), std::move(engine));
+  EdgeBase *firstFailed = attempts.front().engine->failedEdge;
   // The sequential placer fills each column with cores and has no model of
   // the links between columns, so its placement can leave flows the router
   // cannot fit where one with fewer cores a column routes. Unless the
   // command line chose the placement, a design with cores to place is placed
   // again with fewer cores a column until the router fits the flows.
-  std::vector<std::unique_ptr<Graph>> unrouted;
-  bool unroutable = llvm::any_of(firstAttempt, [](mlir::Diagnostic &error) {
-    return llvm::StringRef(error.str())
-        .starts_with(xilinx::AIE::kNoLegalRouting);
-  });
+  bool unrouted = false;
+  bool unroutable =
+      llvm::any_of(attempts.front().diags.errors, [](const HeldError &error) {
+        return llvm::StringRef(error.message)
+            .starts_with(xilinx::AIE::kNoLegalRouting);
+      });
   if (mlir::failed(ran) && mayPlaceAgain && unroutable && firstFailed &&
       firstFailed->name == kRoutedEdge) {
     int coreRows = 0;
@@ -3192,18 +3288,8 @@ int main(int argc, char **argv) {
                       "with --cores-per-col="
                    << cores << "\n";
       coresPerCol = cores;
-      unrouted.push_back(std::move(graph));
-      graph = std::make_unique<Graph>();
-      checkEdges.clear();
-      outputs = buildMainGraph(context, *graph, cutEdges, checkEdges,
-                               deviceCache ? &*deviceCache : nullptr,
-                               keptDevices, measuredCores);
-      engine = std::make_unique<Engine>(engineOptions);
-      engine->opts.deferFailedEdge = true;
-      diagHandler.holdAttempt();
-      ran = engine->run(*graph, runOutputs, satisfied,
-                        DeserializeContext{&context}, buildAlso);
-      lastAttempt = diagHandler.takeAttempt();
+      unrouted = true;
+      ran = placeAgain();
     }
   }
   // The SA placer estimates two things later passes measure: allocation walks
@@ -3211,31 +3297,29 @@ int main(int argc, char **argv) {
   // objects apart, and the probe link measures each core's own sections, which
   // the SA guesses. When a pool or a core's buffers find no room, the SA places
   // again with what was found, until everything fits or nothing new is.
-  std::vector<std::unique_ptr<Graph>> unfitted;
-  std::vector<mlir::Diagnostic> *errors = &firstAttempt;
-  EdgeBase *lastFailed = firstFailed;
+  bool unfitted = false;
   llvm::StringMap<int64_t> coreData;
-  while (mlir::failed(ran) && mayChargeAgain && lastFailed &&
-         (lastFailed->name == kWithSymbolsEdge ||
-          lastFailed->name == kAddressesEdge)) {
+  while (mlir::failed(ran) && mayChargeAgain) {
+    Attempt &last = attempts.back();
+    EdgeBase *lastFailed = last.engine->failedEdge;
+    if (!lastFailed || (lastFailed->name != kWithSymbolsEdge &&
+                        lastFailed->name != kAddressesEdge))
+      break;
     std::optional<std::string> fifo;
     bool coreFull = false;
-    for (mlir::Diagnostic &error : *errors) {
-      llvm::StringRef message = error.str();
+    for (const HeldError &error : last.diags.errors) {
+      llvm::StringRef message = error.message;
       coreFull |= message.contains(xilinx::AIE::kNoTileRoom) &&
-                  llvm::any_of(error.getNotes(), [](mlir::Diagnostic &note) {
-                    return llvm::StringRef(note.str())
+                  llvm::any_of(error.notes, [](const auto &note) {
+                    return llvm::StringRef(note.first)
                         .starts_with(xilinx::AIE::kCoreSectionsNote);
                   });
       if (!message.contains(xilinx::AIE::kNoBufferRoom))
         continue;
-      for (mlir::DiagnosticArgument &arg : error.getArguments())
-        if (arg.getKind() ==
-            mlir::DiagnosticArgument::DiagnosticArgumentKind::Attribute)
-          if (auto name =
-                  llvm::dyn_cast<mlir::FlatSymbolRefAttr>(arg.getAsAttribute());
-              name && !llvm::is_contained(saWalkedFifos, name.getValue()))
-            fifo = name.getValue().str();
+      for (mlir::Attribute arg : error.arguments)
+        if (auto name = llvm::dyn_cast<mlir::FlatSymbolRefAttr>(arg);
+            name && !llvm::is_contained(saWalkedFifos, name.getValue()))
+          fifo = name.getValue().str();
     }
     // A core's measurement keeps its largest value, so the charges only grow
     // and the attempts end.
@@ -3266,43 +3350,38 @@ int main(int argc, char **argv) {
                       "sections; placing again with --sa-core-data-sizes="
                    << llvm::join(saCoreDataSizes, ",") << "\n";
     }
-    unfitted.push_back(std::move(graph));
-    graph = std::make_unique<Graph>();
-    checkEdges.clear();
-    outputs = buildMainGraph(context, *graph, cutEdges, checkEdges,
-                             deviceCache ? &*deviceCache : nullptr, keptDevices,
-                             measuredCores);
-    engine = std::make_unique<Engine>(engineOptions);
-    engine->opts.deferFailedEdge = true;
-    diagHandler.holdAttempt();
-    ran = engine->run(*graph, runOutputs, satisfied,
-                      DeserializeContext{&context}, buildAlso);
-    lastAttempt = diagHandler.takeAttempt();
-    errors = &lastAttempt;
-    lastFailed = engine->failedEdge;
+    unfitted = true;
+    ran = placeAgain();
   }
-  bool placedAgain = !unrouted.empty() || !unfitted.empty();
-  diagHandler.emitAttempt(mlir::succeeded(ran) && placedAgain ? lastAttempt
-                                                              : firstAttempt);
-  if (mlir::failed(ran) && !unrouted.empty())
+  Attempt &standing = mlir::succeeded(ran) ? attempts.back() : attempts.front();
+  {
+    std::lock_guard<std::mutex> log(logMutex());
+    llvm::outs() << standing.held.out;
+    llvm::outs().flush();
+    llvm::errs() << standing.held.err;
+    llvm::errs().flush();
+  }
+  diagHandler.standAttempt(standing.diags);
+  if (mlir::failed(ran) && unrouted)
     llvm::errs() << "aiecc: no placement with fewer cores a column routes "
                     "either; the errors above are the first placement's\n";
-  if (mlir::failed(ran) && !unfitted.empty())
+  if (mlir::failed(ran) && unfitted)
     llvm::errs() << "aiecc: no placement with what allocation found counted "
                     "fits either; the errors above are the first placement's\n";
-  if (mlir::failed(ran) && (mayPlaceAgain || mayChargeAgain) && firstFailed)
+  if (mlir::failed(ran) && !holdUntil.empty() && firstFailed)
     Engine::reportFailedEdge(firstFailed);
+  Engine *lastEngine = attempts.back().engine.get();
   if (mlir::failed(ran)) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and
     // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.
     if (enableRepeaterScripts && !disableRepeaterScripts &&
-        engine->failedEdge) {
+        lastEngine->failedEdge) {
       std::string dir = repeaterOutputDir.empty()
                             ? getWorkDir() + "/repeater"
                             : repeaterOutputDir.getValue();
       std::vector<EdgeBase *> frontierEdges;
-      for (NodeBase *n : engine->failedEdge->inputNodes()) {
+      for (NodeBase *n : lastEngine->failedEdge->inputNodes()) {
         if (n && n->producer) {
           frontierEdges.push_back(n->producer);
         }
@@ -3310,12 +3389,16 @@ int main(int argc, char **argv) {
       // Record argv that rebuilds this graph, narrowed to the failed edge so a
       // resume reloads its inputs and re-runs only it.
       std::vector<std::string> reproArgv = graphArgv;
-      reproArgv.push_back("--get=" + engine->failedEdge->name);
+      reproArgv.push_back("--get=" + lastEngine->failedEdge->name);
       writeCheckpoint(frontierEdges, dir, reproArgv);
       llvm::errs() << "aiecc: To reproduce, run: aiecc --resume=" << dir
                    << "/manifest.json\n";
     }
     diagHandler.releaseRemarks();
+    {
+      std::lock_guard<std::mutex> log(logMutex());
+      OutputHold::get().drainLate();
+    }
     llvm::errs() << "aiecc: pipeline failed\n";
     return 1;
   }
@@ -3344,8 +3427,11 @@ int main(int argc, char **argv) {
 
   // The graph still holds every module it built; freeing them op by op takes
   // over a second on a large design, and the process is about to exit.
-  llvm::BuryPointer(std::move(graph));
-  for (std::unique_ptr<Graph> &tried : unrouted)
-    llvm::BuryPointer(std::move(tried));
+  {
+    std::lock_guard<std::mutex> log(logMutex());
+    OutputHold::get().drainLate();
+  }
+  for (Attempt &tried : attempts)
+    llvm::BuryPointer(std::move(tried.graph));
   return 0;
 }

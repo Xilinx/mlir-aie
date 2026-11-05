@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: %aiecc -n --no-progress --tmpdir %t.default --get=input_physical.mlir %S/Inputs/placement_retry_npu2_decode.mlir 2>&1 | FileCheck %s --check-prefix=RETRY
+// RUN: %aiecc -n --no-progress --tmpdir %t.once --get=input_physical.mlir %S/Inputs/placement_retry_npu2_decode.mlir 2>&1 | grep -c "never called from any core" | FileCheck %s --check-prefix=ONCE
 // RUN: not %aiecc -n --no-progress --tmpdir %t.pinned --cores-per-col=4 --get=input_physical.mlir %S/Inputs/placement_retry_npu2_decode.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
 // RUN: not %aiecc -n --no-progress --tmpdir %t.never --get=input_physical.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
 
@@ -15,12 +16,12 @@
 // The input warns once an attempt (never_called has link_with but no
 // caller): the first attempt's warnings are dropped with it, and the standing
 // attempt's are printed.
-// RETRY-NOT: warning:
 // RETRY: aiecc: the placement does not route; placing again with --cores-per-col=3
 // RETRY-NOT: error:
 // RETRY: warning: func 'never_called' has link_with but is never called from any core
 // RETRY-NOT: warning:
 // RETRY-NOT: error:
+// ONCE: {{^}}1{{$}}
 
 // A cores-per-col the command line chose is kept.
 // PINNED: error: Unable to find a legal routing

@@ -7,6 +7,7 @@
 
 // REQUIRES: peano
 // RUN: %aiecc --no-progress --tmpdir %t.retry --placer=sa_placer --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=RETRY
+// RUN: %aiecc --no-progress --tmpdir %t.once --placer=sa_placer --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | grep -c "never called from any core" | FileCheck %s --check-prefix=ONCE
 // RUN: not %aiecc --no-progress --tmpdir %t.pinned --placer=sa_placer --sa-core-data-sizes=main:1=0 --get=input_with_addresses.mlir %S/Inputs/placement_retry_core_data.mlir 2>&1 | FileCheck %s --check-prefix=PINNED
 // RUN: not %aiecc --no-progress --tmpdir %t.never --placer=sa_placer --get=input_with_addresses.mlir %s 2>&1 | FileCheck %s --check-prefix=NEVER
 
@@ -18,13 +19,13 @@
 // Only the standing attempt's diagnostics print: not the first placement's
 // memory map warning, but the warning every attempt makes (never_called has
 // link_with but no caller), once.
-// RETRY-NOT: warning:
 // RETRY: aiecc: a core's buffers find no room beside its own sections; placing again with --sa-core-data-sizes=main:0=0,main:1=28672
 // RETRY-NOT: Not all requested buffers fit
 // RETRY-NOT: error:
 // RETRY: warning: func 'never_called' has link_with but is never called from any core
 // RETRY-NOT: warning:
 // RETRY-NOT: error:
+// ONCE: {{^}}1{{$}}
 
 // Core data sizes the command line chose are kept.
 // PINNED: error: 'aie.buffer' op could not be placed:
